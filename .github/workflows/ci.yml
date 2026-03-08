@@ -1,8 +1,9 @@
 name: ci
 
 on:
-  push:
-  pull_request:
+  # Temporarily disabled for milestone sequencing.
+  # Re-enable push/pull_request triggers in the CI milestone.
+  workflow_dispatch:
 
 jobs:
   # ── zombied: Zig lint ────────────────────────────────────────────────────
@@ -49,6 +50,7 @@ jobs:
       - name: Upload backend coverage to Codecov
         uses: codecov/codecov-action@v5
         with:
+          slug: usezombie/usezombie
           files: coverage/zombied/cobertura.xml
           flags: zombied
           fail_ci_if_error: true
@@ -69,9 +71,9 @@ jobs:
         working-directory: cli
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
-          node-version: 22
+          node-version: 25
       - run: npm ci
       - run: npm run lint
       - run: npm run build
@@ -85,9 +87,9 @@ jobs:
         working-directory: cli
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
-          node-version: 22
+          node-version: 25
       - run: npm ci
       - run: npm test
 
@@ -123,6 +125,7 @@ jobs:
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
         with:
+          slug: usezombie/usezombie
           files: ui/packages/website/coverage/lcov.info
           flags: website
           fail_ci_if_error: true
@@ -170,7 +173,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: docker/setup-qemu-action@v3
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
       - name: Build and push dev image
         run: |
           make build-dev
