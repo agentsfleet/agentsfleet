@@ -1,11 +1,11 @@
-# M4_005: Harden Deferred Events, Observability, And Config Hygiene
+# M4_005: Harden Events, Observability (Langfuse), And Config Hygiene
 
 **Prototype:** v1.0.0
 **Milestone:** M4
 **Workstream:** 005
 **Date:** Mar 06, 2026
 **Status:** PENDING
-**Priority:** P2 — deferred hardening
+**Priority:** P1 — required for free plan metering
 **Batch:** B3 — needs M4_007
 **Depends on:** M4_007 (Define Runtime, Observability, And Config Contracts)
 
@@ -15,13 +15,14 @@
 
 **Status:** PENDING
 
-Implement one working hardening function for deferred D4/D8/D19/D20 runtime concerns.
+Implement one working hardening function for D4/D8/D19/D20 runtime concerns.
 
 **Dimensions:**
 - 1.1 PENDING Add durable event persistence/replay boundary
 - 1.2 PENDING Add canonical trace context model
 - 1.3 PENDING Add OTEL-friendly export path without Prometheus regression
 - 1.4 PENDING Add key-versioned config/secret envelope and rotation verification
+- 1.5 PENDING Integrate Langfuse as LLM/agent tracing backend (token cost, run traces, latency)
 
 ---
 
@@ -33,6 +34,7 @@ Implement one working hardening function for deferred D4/D8/D19/D20 runtime conc
 - 2.1 PENDING Unit test: replay model survives restart without duplicate side effects
 - 2.2 PENDING Unit test: trace fields are present across HTTP/worker paths
 - 2.3 PENDING Unit test: key rotation path preserves decryptability during transition
+- 2.4 PENDING Integration test: Langfuse traces are emitted for agent runs and contain token/cost metadata
 
 ---
 
