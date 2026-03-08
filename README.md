@@ -6,7 +6,7 @@
 
 **Agent Delivery Control Plane — one Zig binary that takes a spec and ships a validated PR.**
 
-[![CI](https://github.com/usezombie/usezombie/actions/workflows/ci.yml/badge.svg)](https://github.com/usezombie/usezombie/actions/workflows/ci.yml)
+[![CI](https://github.com/usezombie/usezombie/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/usezombie/usezombie/actions/workflows/ci.yml?query=branch%3Amain)
 [![Release](https://github.com/usezombie/usezombie/actions/workflows/release.yml/badge.svg)](https://github.com/usezombie/usezombie/actions/workflows/release.yml)
 [![Coverage](https://codecov.io/gh/usezombie/usezombie/branch/main/graph/badge.svg)](https://codecov.io/gh/usezombie/usezombie)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](https://opensource.org/licenses/MIT)
