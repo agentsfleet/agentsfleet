@@ -1,0 +1,169 @@
+"use client";
+
+import { usePathname } from "next/navigation";
+import Link from "next/link";
+import { UserButton } from "@clerk/nextjs";
+import {
+  LayoutDashboardIcon,
+  BoxIcon,
+  ActivityIcon,
+  SettingsIcon,
+  BookOpenIcon,
+  ZapIcon,
+} from "lucide-react";
+
+const NAV = [
+  {
+    label: "Workspaces",
+    href: "/workspaces",
+    icon: BoxIcon,
+  },
+  {
+    label: "Activity",
+    href: "/activity",
+    icon: ActivityIcon,
+  },
+  {
+    label: "Overview",
+    href: "/",
+    icon: LayoutDashboardIcon,
+  },
+];
+
+const BOTTOM_NAV = [
+  {
+    label: "Docs",
+    href: "https://docs.usezombie.com",
+    icon: BookOpenIcon,
+    external: true,
+  },
+  {
+    label: "Settings",
+    href: "/settings",
+    icon: SettingsIcon,
+  },
+];
+
+export default function Shell({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+
+  function isActive(href: string) {
+    if (href === "/") return pathname === "/";
+    return pathname.startsWith(href);
+  }
+
+  return (
+    <div className="mc-shell">
+      {/* Header */}
+      <header className="mc-header">
+        <Link href="/" className="mc-brand">
+          <ZapIcon size={16} className="mc-brand-icon" />
+          <span>UseZombie</span>
+          <span className="mc-brand-tag">Mission Control</span>
+        </Link>
+
+        <div style={{ flex: 1 }} />
+
+        <nav className="mc-header-nav">
+          <a
+            href="https://docs.usezombie.com"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mc-header-link"
+          >
+            Docs
+          </a>
+          <a
+            href="https://usezombie.com"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mc-header-link"
+          >
+            UseZombie.com
+          </a>
+        </nav>
+
+        <UserButton
+          appearance={{
+            variables: {
+              colorPrimary: "#ff6b35",
+              colorBackground: "#0f1520",
+              colorText: "#e8f2ff",
+              borderRadius: "8px",
+            },
+          }}
+        />
+      </header>
+
+      {/* Sidebar */}
+      <aside className="mc-sidebar">
+        <div className="mc-nav-section">
+          <div className="mc-nav-label">Navigation</div>
+          {NAV.map(({ label, href, icon: Icon }) => (
+            <Link
+              key={href}
+              href={href}
+              className={`mc-nav-item${isActive(href) ? " active" : ""}`}
+            >
+              <Icon size={15} />
+              {label}
+            </Link>
+          ))}
+        </div>
+
+        <div className="mc-nav-section" style={{ marginTop: "auto" }}>
+          <div className="mc-nav-label">More</div>
+          {BOTTOM_NAV.map(({ label, href, icon: Icon, external }) => (
+            <a
+              key={href}
+              href={href}
+              className="mc-nav-item"
+              {...(external ? { target: "_blank", rel: "noopener noreferrer" } : {})}
+            >
+              <Icon size={15} />
+              {label}
+            </a>
+          ))}
+        </div>
+      </aside>
+
+      {/* Main content */}
+      <main className="mc-content">{children}</main>
+
+      <style>{`
+        .mc-brand {
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+          text-decoration: none;
+          font-weight: 700;
+          font-size: 1rem;
+          letter-spacing: 0.02em;
+        }
+        .mc-brand-icon { color: var(--z-orange); }
+        .mc-brand-tag {
+          font-family: var(--z-font-mono);
+          font-size: 0.68rem;
+          color: var(--z-amber);
+          text-transform: uppercase;
+          letter-spacing: 0.08em;
+          padding: 0.15rem 0.45rem;
+          border: 1px solid rgba(255, 190, 46, 0.2);
+          border-radius: var(--z-radius-pill);
+        }
+        .mc-header-nav {
+          display: flex;
+          gap: 1rem;
+          margin-right: 1rem;
+        }
+        .mc-header-link {
+          font-size: 0.82rem;
+          color: var(--z-text-muted);
+          text-decoration: none;
+          transition: color 0.15s;
+        }
+        .mc-header-link:hover { color: var(--z-text-primary); }
+      `}</style>
+    </div>
+  );
+}

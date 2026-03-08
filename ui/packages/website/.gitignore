@@ -1,0 +1,6 @@
+node_modules/
+dist/
+coverage/
+playwright-report/
+playwright-results/
+tsconfig.tsbuildinfo

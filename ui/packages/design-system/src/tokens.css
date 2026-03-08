@@ -1,0 +1,133 @@
+/*
+ * UseZombie Design Tokens
+ * Shared across website + Mission Control (future).
+ * Import this file first in any app entry point.
+ */
+
+:root {
+  /* ── Palette ── */
+  --z-bg-0: #05080d;
+  --z-bg-1: #0b1018;
+  --z-surface-0: #0f1520;
+  --z-surface-1: #161e2b;
+  --z-surface-2: #1c2636;
+
+  --z-text-primary: #e8f2ff;
+  --z-text-muted: #8b97a8;
+  --z-text-dim: #5a6577;
+
+  --z-orange: #ff6b35;
+  --z-orange-bright: #ff8c42;
+  --z-amber: #ffbe2e;
+  --z-cyan: #5ed4ec;
+  --z-green: #39ff85;
+  --z-red: #ff4d6a;
+
+  --z-border: #1a2533;
+  --z-border-active: rgba(255, 107, 53, 0.3);
+
+  --z-glow-orange: rgba(255, 107, 53, 0.15);
+  --z-glow-strong: rgba(255, 107, 53, 0.3);
+  --z-glow-green: rgba(57, 255, 133, 0.15);
+
+  /* ── Typography ── */
+  --z-font-sans: "Geist", system-ui, -apple-system, sans-serif;
+  --z-font-mono: "Geist Mono", ui-monospace, "Cascadia Code", monospace;
+
+  --z-text-xs: 0.72rem;
+  --z-text-sm: 0.82rem;
+  --z-text-base: 0.92rem;
+  --z-text-md: 1rem;
+  --z-text-lg: 1.125rem;
+  --z-text-xl: 1.25rem;
+  --z-text-2xl: 1.35rem;
+  --z-text-3xl: clamp(1.5rem, 4vw, 2.2rem);
+  --z-text-hero: clamp(2.2rem, 5.5vw, 4rem);
+
+  /* ── Spacing ── */
+  --z-space-xs: 0.25rem;
+  --z-space-sm: 0.5rem;
+  --z-space-md: 0.75rem;
+  --z-space-lg: 1rem;
+  --z-space-xl: 1.25rem;
+  --z-space-2xl: 1.5rem;
+  --z-space-3xl: 2rem;
+  --z-space-4xl: 3rem;
+  --z-space-5xl: 4rem;
+
+  /* ── Radii ── */
+  --z-radius-sm: 8px;
+  --z-radius-md: 10px;
+  --z-radius-lg: 12px;
+  --z-radius-pill: 999px;
+
+  /* ── Shadows ── */
+  --z-shadow-card: 0 0 32px var(--z-glow-orange);
+  --z-shadow-cta: 0 0 24px var(--z-glow-strong);
+  --z-shadow-subtle: 0 0 16px var(--z-glow-orange);
+
+  /* ── Transitions ── */
+  --z-ease-default: 0.2s ease;
+  --z-ease-fast: 0.15s ease;
+
+  /* ── Layout ── */
+  --z-max-width: 1120px;
+  --z-content-width: min(var(--z-max-width), 92vw);
+
+  /* ── Z-index ── */
+  --z-layer-bg: 0;
+  --z-layer-content: 1;
+  --z-layer-overlay: 10;
+  --z-layer-modal: 100;
+}
+
+/* ── Animated background particles ── */
+@keyframes z-float-up {
+  0% {
+    transform: translateY(0) scale(1);
+    opacity: 0;
+  }
+  10% {
+    opacity: 0.6;
+  }
+  90% {
+    opacity: 0.6;
+  }
+  100% {
+    transform: translateY(-100vh) scale(0.5);
+    opacity: 0;
+  }
+}
+
+@keyframes z-drift {
+  0%, 100% {
+    transform: translateX(0) translateY(0);
+  }
+  25% {
+    transform: translateX(30px) translateY(-15px);
+  }
+  50% {
+    transform: translateX(-20px) translateY(-30px);
+  }
+  75% {
+    transform: translateX(15px) translateY(-10px);
+  }
+}
+
+@keyframes z-glow-pulse {
+  0%, 100% {
+    opacity: 0.08;
+  }
+  50% {
+    opacity: 0.15;
+  }
+}
+
+@keyframes z-grid-shift {
+  0% {
+    background-position: 0 0;
+  }
+  100% {
+    background-position: 24px 24px;
+  }
+}

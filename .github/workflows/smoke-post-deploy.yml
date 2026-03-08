@@ -1,0 +1,40 @@
+name: smoke (post-deploy)
+
+# Vercel creates a GitHub deployment and marks it "success" after each deploy.
+# This workflow fires on that event and runs Playwright smoke against the live URL.
+on:
+  deployment_status:
+
+jobs:
+  smoke:
+    # Only run when Vercel marks the deployment as success
+    if: github.event.deployment_status.state == 'success'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ui/packages/website
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.10
+
+      - run: bun install --frozen-lockfile
+
+      - name: Install Playwright browsers
+        run: bunx playwright install --with-deps chromium
+
+      - name: Run smoke tests against deployed URL
+        run: bun run test:e2e:smoke
+        env:
+          # Vercel sets the deployment URL in the deployment_status event
+          BASE_URL: ${{ github.event.deployment_status.target_url }}
+
+      - name: Upload Playwright report
+        uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: smoke-post-deploy-${{ github.sha }}
+          path: ui/packages/website/playwright-report/
+          retention-days: 7

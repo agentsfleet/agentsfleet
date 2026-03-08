@@ -1,0 +1,17 @@
+{
+  "name": "zombiectl",
+  "version": "0.1.0",
+  "description": "UseZombie operator CLI",
+  "type": "module",
+  "bin": {
+    "zombiectl": "./bin/zombiectl.js"
+  },
+  "engines": {
+    "bun": ">=1.3.0"
+  },
+  "scripts": {
+    "test": "bun test",
+    "build": "node --check ./src/cli.js && node --check ./bin/zombiectl.js"
+  },
+  "license": "MIT"
+}

@@ -1,0 +1,27 @@
+.{
+    .name = .zombied,
+    .version = "0.1.0",
+    .minimum_zig_version = "0.15.2",
+    .fingerprint = 0xc908abec9a0e1bf3,
+    .dependencies = .{
+        .nullclaw = .{
+            .url = "git+https://github.com/nullclaw/nullclaw.git#v2026.3.1",
+            .hash = "nullclaw-2026.3.1-wlZZyfBS9gA-pjAjqqVshNcX2wS-MxaZjUNwUTkvAAWZ",
+        },
+        .zap = .{
+            .url = "git+https://github.com/zigzap/zap#76679f308c702cd8880201e6e93914e1d836a54b",
+            .hash = "zap-0.10.6-GoeB8w-EJABTkxyoGH_Z8oMBYMxTBvn7YWk-DrJOHuDO",
+        },
+        .pg = .{
+            .url = "git+https://github.com/karlseguin/pg.zig#master",
+            .hash = "pg-0.0.0-Wp_7gXFoBgD0fQ72WICKa-bxLga03AXXQ3BbIsjjohQ3",
+        },
+    },
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+        "config",
+        "schema",
+    },
+}

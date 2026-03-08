@@ -1,0 +1,42 @@
+{
+  "default_temperature": 0.1,
+
+  "models": {
+    "providers": {
+      "openrouter": {
+        "api_key": "${NULLCLAW_API_KEY}"
+      }
+    }
+  },
+
+  "agents": {
+    "defaults": {
+      "model": {
+        "primary": "openrouter/anthropic/claude-sonnet-4"
+      }
+    }
+  },
+
+  "autonomy": {
+    "level": "full",
+    "workspace_only": true,
+    "max_actions_per_hour": 50
+  },
+
+  "security": {
+    "sandbox": {
+      "backend": "auto"
+    }
+  },
+
+  "agent": {
+    "max_tool_iterations": 25,
+    "max_history_messages": 50,
+    "message_timeout_secs": 300
+  },
+
+  "memory": {
+    "backend": "memory",
+    "auto_save": false
+  }
+}

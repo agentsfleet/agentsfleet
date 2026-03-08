@@ -1,0 +1,9 @@
+{
+  "name": "usezombie",
+  "private": true,
+  "workspaces": [
+    "ui/packages/app",
+    "ui/packages/website",
+    "ui/packages/design-system"
+  ]
+}

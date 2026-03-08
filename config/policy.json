@@ -1,0 +1,31 @@
+{
+  "retry_budget": 3,
+  "action_classes": {
+    "allowed": ["safe"],
+    "sensitive_require_confirmation": true,
+    "critical_require_double_confirmation": true
+  },
+  "timeouts": {
+    "echo_seconds": 300,
+    "scout_seconds": 600,
+    "warden_seconds": 300,
+    "default_seconds": 300
+  },
+  "rate_limits": {
+    "max_runs_per_workspace_per_hour": 10,
+    "max_tokens_per_run": 500000
+  },
+  "slos": {
+    "pr_opened_within_minutes": 30,
+    "blocked_run_rate_max_pct": 10,
+    "median_retries_per_run_max": 1,
+    "blocked_alert_latency_seconds": 60
+  },
+  "alerts": {
+    "p1_admission_failure_rate_pct": 25,
+    "p1_window_minutes": 15,
+    "p2_blocked_run_rate_pct": 10,
+    "p2_window_hours": 1,
+    "p3_cost_spike_multiplier": 3
+  }
+}

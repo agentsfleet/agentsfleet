@@ -1,0 +1,313 @@
+@import url("https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&display=swap");
+@import "tailwindcss";
+
+/*
+ * UseZombie Mission Control — Global Styles
+ * Design token bridge: maps --z-* → Shadcn --* + Tailwind CSS variables.
+ * Same visual language as UseZombie.com, extended for dashboard UI.
+ */
+
+@font-face {
+  font-family: "Geist Mono";
+  src: url("https://cdn.jsdelivr.net/npm/geist@1.3.1/dist/fonts/geist-mono/GeistMono-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Geist Mono";
+  src: url("https://cdn.jsdelivr.net/npm/geist@1.3.1/dist/fonts/geist-mono/GeistMono-Medium.woff2") format("woff2");
+  font-weight: 500;
+  font-display: swap;
+}
+
+/* ── Design Tokens (shared with UseZombie.com) ── */
+:root {
+  /* Palette */
+  --z-bg-0: #05080d;
+  --z-bg-1: #0b1018;
+  --z-surface-0: #0f1520;
+  --z-surface-1: #161e2b;
+  --z-surface-2: #1c2636;
+  --z-text-primary: #e8f2ff;
+  --z-text-muted: #8b97a8;
+  --z-text-dim: #5a6577;
+  --z-orange: #ff6b35;
+  --z-orange-bright: #ff8c42;
+  --z-amber: #ffbe2e;
+  --z-cyan: #5ed4ec;
+  --z-green: #39ff85;
+  --z-red: #ff4d6a;
+  --z-border: #1a2533;
+  --z-glow-orange: rgba(255, 107, 53, 0.15);
+  --z-glow-strong: rgba(255, 107, 53, 0.3);
+  --z-font-sans: "Geist", system-ui, -apple-system, sans-serif;
+  --z-font-mono: "Geist Mono", ui-monospace, monospace;
+  --z-radius-sm: 6px;
+  --z-radius-md: 8px;
+  --z-radius-lg: 12px;
+  --z-radius-pill: 999px;
+
+  /* ── Shadcn / Tailwind CSS variable bridge ── */
+  --background: var(--z-bg-0);
+  --foreground: var(--z-text-primary);
+  --card: var(--z-surface-0);
+  --card-foreground: var(--z-text-primary);
+  --popover: var(--z-surface-1);
+  --popover-foreground: var(--z-text-primary);
+  --primary: var(--z-orange);
+  --primary-foreground: #111111;
+  --secondary: var(--z-surface-1);
+  --secondary-foreground: var(--z-text-primary);
+  --muted: var(--z-surface-1);
+  --muted-foreground: var(--z-text-muted);
+  --accent: var(--z-surface-2);
+  --accent-foreground: var(--z-text-primary);
+  --destructive: var(--z-red);
+  --destructive-foreground: var(--z-text-primary);
+  --border: var(--z-border);
+  --input: var(--z-border);
+  --ring: var(--z-orange);
+  --radius: 0.5rem;
+
+  /* Mission Control specific */
+  --sidebar-width: 240px;
+  --header-height: 56px;
+  --content-max: 1200px;
+}
+
+/* ── Base ── */
+* { box-sizing: border-box; }
+
+html, body { margin: 0; min-height: 100%; }
+
+body {
+  font-family: var(--z-font-sans);
+  background: var(--z-bg-0);
+  color: var(--z-text-primary);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+a { color: inherit; }
+
+code, pre, kbd {
+  font-family: var(--z-font-mono);
+}
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--z-bg-0); }
+::-webkit-scrollbar-thumb { background: var(--z-border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--z-text-dim); }
+
+/* ── Utilities ── */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+/* ── Dashboard Shell ── */
+.mc-shell {
+  display: grid;
+  grid-template-columns: var(--sidebar-width) 1fr;
+  grid-template-rows: var(--header-height) 1fr;
+  min-height: 100vh;
+}
+
+.mc-header {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0 1.5rem;
+  border-bottom: 1px solid var(--z-border);
+  background: rgba(5, 8, 13, 0.85);
+  backdrop-filter: blur(12px);
+  position: sticky;
+  top: 0;
+  z-index: 40;
+}
+
+.mc-sidebar {
+  border-right: 1px solid var(--z-border);
+  padding: 1rem 0;
+  overflow-y: auto;
+  position: sticky;
+  top: var(--header-height);
+  height: calc(100vh - var(--header-height));
+}
+
+.mc-content {
+  padding: 2rem;
+  overflow: auto;
+}
+
+/* ── Sidebar navigation ── */
+.mc-nav-section {
+  padding: 0 0.75rem;
+  margin-bottom: 1.5rem;
+}
+
+.mc-nav-label {
+  font-family: var(--z-font-mono);
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--z-text-dim);
+  padding: 0 0.5rem;
+  margin-bottom: 0.4rem;
+}
+
+.mc-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--z-radius-md);
+  color: var(--z-text-muted);
+  text-decoration: none;
+  font-size: 0.875rem;
+  transition: background 0.15s, color 0.15s;
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  width: 100%;
+  text-align: left;
+}
+
+.mc-nav-item:hover {
+  background: var(--z-surface-1);
+  color: var(--z-text-primary);
+}
+
+.mc-nav-item.active {
+  background: rgba(255, 107, 53, 0.12);
+  color: var(--z-orange);
+}
+
+/* ── Status badges ── */
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.2rem 0.6rem;
+  border-radius: var(--z-radius-pill);
+  font-family: var(--z-font-mono);
+  font-size: 0.72rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.status-badge::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}
+
+.status-done      { background: rgba(57, 255, 133, 0.1); color: var(--z-green); }
+.status-running   { background: rgba(94, 212, 236, 0.1); color: var(--z-cyan); animation: z-pulse 1.5s ease-in-out infinite; }
+.status-failed    { background: rgba(255, 77, 106, 0.1); color: var(--z-red); }
+.status-queued    { background: rgba(255, 190, 46, 0.1); color: var(--z-amber); }
+.status-pending   { background: rgba(139, 151, 168, 0.1); color: var(--z-text-muted); }
+
+@keyframes z-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+/* ── Pipeline visualization ── */
+.pipeline-track {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  overflow-x: auto;
+  padding: 1rem 0;
+}
+
+.pipeline-stage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4rem;
+  flex-shrink: 0;
+}
+
+.pipeline-stage-dot {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 2px solid var(--z-border);
+  background: var(--z-surface-0);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.65rem;
+  font-family: var(--z-font-mono);
+  transition: all 0.2s ease;
+  position: relative;
+  z-index: 1;
+}
+
+.pipeline-stage.done .pipeline-stage-dot    { border-color: var(--z-green); background: rgba(57, 255, 133, 0.1); color: var(--z-green); }
+.pipeline-stage.active .pipeline-stage-dot  { border-color: var(--z-cyan); background: rgba(94, 212, 236, 0.1); color: var(--z-cyan); }
+.pipeline-stage.failed .pipeline-stage-dot  { border-color: var(--z-red); background: rgba(255, 77, 106, 0.1); color: var(--z-red); }
+
+.pipeline-connector {
+  height: 2px;
+  width: 3rem;
+  background: var(--z-border);
+  flex-shrink: 0;
+  margin-bottom: 1.2rem;
+  transition: background 0.2s;
+}
+
+.pipeline-connector.done { background: var(--z-green); }
+
+.pipeline-stage-label {
+  font-family: var(--z-font-mono);
+  font-size: 0.6rem;
+  color: var(--z-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  text-align: center;
+  max-width: 64px;
+  line-height: 1.2;
+}
+
+/* ── Misc UI ── */
+.mc-page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1.5rem;
+}
+
+.mc-page-title {
+  font-size: 1.25rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.mc-empty {
+  text-align: center;
+  padding: 4rem 1rem;
+  color: var(--z-text-muted);
+}
+
+.mc-empty p {
+  font-size: 0.9rem;
+  margin-top: 0.5rem;
+}

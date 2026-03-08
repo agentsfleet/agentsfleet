@@ -1,0 +1,197 @@
+const std = @import("std");
+const zap = @import("zap");
+const pg = @import("pg");
+const clerk = @import("../../auth/clerk.zig");
+const auth_sessions = @import("../../auth/sessions.zig");
+const queue_redis = @import("../../queue/redis.zig");
+const worker = @import("../../pipeline/worker.zig");
+const metrics = @import("../../observability/metrics.zig");
+const obs_log = @import("../../observability/logging.zig");
+const db = @import("../../db/pool.zig");
+
+pub const Context = struct {
+    pool: *pg.Pool,
+    queue: *queue_redis.Client,
+    alloc: std.mem.Allocator,
+    api_keys: []const u8,
+    clerk: ?*clerk.Verifier,
+    auth_sessions: *auth_sessions.SessionStore,
+    app_url: []const u8,
+    worker_state: *const worker.WorkerState,
+    api_in_flight_requests: std.atomic.Value(u32),
+    api_max_in_flight_requests: u32,
+    ready_max_queue_depth: ?i64,
+    ready_max_queue_age_ms: ?i64,
+};
+
+pub const AuthMode = enum {
+    api_key,
+    clerk_jwt,
+};
+
+pub const AuthPrincipal = struct {
+    mode: AuthMode,
+    tenant_id: ?[]const u8 = null,
+};
+
+pub const AuthError = error{
+    Unauthorized,
+    TokenExpired,
+    AuthServiceUnavailable,
+};
+
+pub fn writeJson(r: zap.Request, status: zap.http.StatusCode, value: anytype) void {
+    var buf: [64 * 1024]u8 = undefined;
+    var fba = std.heap.FixedBufferAllocator.init(&buf);
+    const json = std.json.Stringify.valueAlloc(fba.allocator(), value, .{}) catch {
+        r.setStatus(.internal_server_error);
+        r.sendBody("{}") catch |err| obs_log.logWarnErr(.http, err, "writeJson fallback send failed", .{});
+        return;
+    };
+    r.setStatus(status);
+    r.setContentType(.JSON) catch |err| obs_log.logWarnErr(.http, err, "setContentType failed", .{});
+    r.sendBody(json) catch |err| obs_log.logWarnErr(.http, err, "sendBody failed", .{});
+}
+
+pub fn errorResponse(
+    r: zap.Request,
+    status: zap.http.StatusCode,
+    code: []const u8,
+    message: []const u8,
+    request_id: []const u8,
+) void {
+    writeJson(r, status, .{
+        .@"error" = .{ .code = code, .message = message },
+        .request_id = request_id,
+    });
+}
+
+pub fn requestId(alloc: std.mem.Allocator) []const u8 {
+    var id: [16]u8 = undefined;
+    std.crypto.random.bytes(&id);
+    const hex = std.fmt.bytesToHex(id, .lower);
+    return std.fmt.allocPrint(alloc, "req_{s}", .{hex[0..12]}) catch "req_unknown";
+}
+
+pub fn authenticateApiKey(r: zap.Request, ctx: *Context) bool {
+    const auth = r.getHeader("authorization") orelse return false;
+    const prefix = "Bearer ";
+    if (!std.mem.startsWith(u8, auth, prefix)) return false;
+    const provided = auth[prefix.len..];
+
+    var it = std.mem.tokenizeScalar(u8, ctx.api_keys, ',');
+    while (it.next()) |candidate_raw| {
+        const candidate = std.mem.trim(u8, candidate_raw, " \t");
+        if (candidate.len == 0) continue;
+        if (std.mem.eql(u8, provided, candidate)) return true;
+    }
+    return false;
+}
+
+pub fn authenticate(alloc: std.mem.Allocator, r: zap.Request, ctx: *Context) AuthError!AuthPrincipal {
+    if (ctx.clerk) |verifier| {
+        const auth = r.getHeader("authorization") orelse return AuthError.Unauthorized;
+        const principal = verifier.verifyAuthorization(alloc, auth) catch |err| return mapClerkVerifyError(err);
+        return .{ .mode = .clerk_jwt, .tenant_id = principal.tenant_id };
+    }
+
+    if (!authenticateApiKey(r, ctx)) return AuthError.Unauthorized;
+    return .{ .mode = .api_key };
+}
+
+pub fn writeAuthError(r: zap.Request, req_id: []const u8, err: AuthError) void {
+    switch (err) {
+        AuthError.TokenExpired => errorResponse(r, .unauthorized, "token_expired", "token expired", req_id),
+        AuthError.Unauthorized => errorResponse(r, .unauthorized, "UNAUTHORIZED", "Invalid or missing token", req_id),
+        AuthError.AuthServiceUnavailable => errorResponse(r, .service_unavailable, "AUTH_UNAVAILABLE", "Authentication service unavailable", req_id),
+    }
+}
+
+pub fn mapClerkVerifyError(err: clerk.VerifyError) AuthError {
+    return switch (err) {
+        .TokenExpired => AuthError.TokenExpired,
+        .JwksFetchFailed, .JwksParseFailed => AuthError.AuthServiceUnavailable,
+        else => AuthError.Unauthorized,
+    };
+}
+
+pub fn authorizeWorkspace(conn: *pg.Conn, principal: AuthPrincipal, workspace_id: []const u8) bool {
+    if (principal.mode == .api_key) return true;
+    const tenant_id = principal.tenant_id orelse return false;
+
+    var q = conn.query(
+        "SELECT 1 FROM workspaces WHERE workspace_id = $1 AND tenant_id = $2",
+        .{ workspace_id, tenant_id },
+    ) catch return false;
+    defer q.deinit();
+    return (q.next() catch null) != null;
+}
+
+pub fn beginApiRequest(ctx: *Context) bool {
+    const prev = ctx.api_in_flight_requests.fetchAdd(1, .acq_rel);
+    if (prev >= ctx.api_max_in_flight_requests) {
+        const reverted = ctx.api_in_flight_requests.fetchSub(1, .acq_rel);
+        std.debug.assert(reverted > 0);
+        metrics.incApiBackpressureRejections();
+        return false;
+    }
+
+    metrics.setApiInFlightRequests(ctx.api_in_flight_requests.load(.acquire));
+    return true;
+}
+
+pub fn endApiRequest(ctx: *Context) void {
+    const prev = ctx.api_in_flight_requests.fetchSub(1, .acq_rel);
+    std.debug.assert(prev > 0);
+    metrics.setApiInFlightRequests(ctx.api_in_flight_requests.load(.acquire));
+}
+
+pub fn compensateStartRunQueueFailure(conn: *pg.Conn, run_id: []const u8) void {
+    _ = conn.query(
+        "DELETE FROM runs WHERE run_id = $1 AND state = 'SPEC_QUEUED'",
+        .{run_id},
+    ) catch {};
+}
+
+pub fn compensateRetryQueueFailure(
+    conn: *pg.Conn,
+    run_id: []const u8,
+    previous_state: []const u8,
+    transition_ts: i64,
+) void {
+    _ = conn.query(
+        "UPDATE runs SET state = $1, updated_at = $2 WHERE run_id = $3",
+        .{ previous_state, std.time.milliTimestamp(), run_id },
+    ) catch {};
+    _ = conn.query(
+        "DELETE FROM run_transitions WHERE run_id = $1 AND reason_code = 'MANUAL_RETRY' AND ts = $2",
+        .{ run_id, transition_ts },
+    ) catch {};
+}
+
+pub fn openHandlerTestConn(alloc: std.mem.Allocator) !?struct { pool: *db.Pool, conn: *pg.Conn } {
+    const url = std.process.getEnvVarOwned(alloc, "HANDLER_DB_TEST_URL") catch
+        std.process.getEnvVarOwned(alloc, "DATABASE_URL") catch return null;
+    defer alloc.free(url);
+
+    var arena = std.heap.ArenaAllocator.init(alloc);
+    defer arena.deinit();
+    const opts = try db.parseUrl(arena.allocator(), url);
+    const pool = try pg.Pool.init(alloc, opts);
+    errdefer pool.deinit();
+    const conn = try pool.acquire();
+    return .{ .pool = pool, .conn = conn };
+}
+
+test "mapClerkVerifyError maps expired token to token_expired response path" {
+    try std.testing.expectEqual(AuthError.TokenExpired, mapClerkVerifyError(clerk.VerifyError.TokenExpired));
+}
+
+test "mapClerkVerifyError maps jwks failures to auth unavailable" {
+    try std.testing.expectEqual(AuthError.AuthServiceUnavailable, mapClerkVerifyError(clerk.VerifyError.JwksFetchFailed));
+    try std.testing.expectEqual(AuthError.AuthServiceUnavailable, mapClerkVerifyError(clerk.VerifyError.JwksParseFailed));
+}
+
+test "mapClerkVerifyError maps signature failures to unauthorized" {
+    try std.testing.expectEqual(AuthError.Unauthorized, mapClerkVerifyError(clerk.VerifyError.SignatureInvalid));
+}

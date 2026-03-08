@@ -1,0 +1,47 @@
+# UseZombie local dev — Postgres + Zig binary
+services:
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: usezombie
+      POSTGRES_PASSWORD: usezombie
+      POSTGRES_DB: usezombiedb
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - ./docker/redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
+      - ./docker/redis/tls:/tls:ro
+      - redis-data:/data
+
+  zombied:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    environment:
+      PORT: 3000
+      DATABASE_URL: postgres://usezombie:usezombie@postgres:5432/usezombiedb
+      REDIS_URL: rediss://redis:6379
+      REDIS_TLS_CA_CERT_FILE: /app/docker/redis/tls/ca.crt
+      API_KEY: local-dev-api-key
+      AGENT_CONFIG_DIR: /app/config
+    depends_on:
+      - postgres
+      - redis
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./:/app
+      - zig-cache:/app/.zig-cache
+
+volumes:
+  postgres-data:
+  redis-data:
+  zig-cache:
