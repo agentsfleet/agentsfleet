@@ -103,7 +103,7 @@ New to UseZombie? Start here:
 
 ## Documentation
 
-- **[usezombie.com](https://usezombie.com)** — Product homepage
+- **[UseZombie.com](https://usezombie.com)** — Product homepage
 - **[docs.usezombie.com](https://docs.usezombie.com)** — Full documentation
 - **[usezombie.sh](https://usezombie.sh)** — Agent discovery and machine-readable surfaces
 
@@ -116,6 +116,6 @@ New to UseZombie? Start here:
 
 ## License
 
-MIT License — Copyright (c) 2026 usezombie
+MIT License — Copyright (c) 2026 UseZombie
 
 See [LICENSE](LICENSE) for details.

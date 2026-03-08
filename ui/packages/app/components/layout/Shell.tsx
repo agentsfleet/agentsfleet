@@ -58,7 +58,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
       <header className="mc-header">
         <Link href="/" className="mc-brand">
           <ZapIcon size={16} className="mc-brand-icon" />
-          <span>usezombie</span>
+          <span>UseZombie</span>
           <span className="mc-brand-tag">Mission Control</span>
         </Link>
 
@@ -79,7 +79,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
             rel="noopener noreferrer"
             className="mc-header-link"
           >
-            usezombie.com
+            UseZombie.com
           </a>
         </nav>
 

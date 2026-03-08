@@ -6,6 +6,7 @@
 **Date:** Mar 07, 2026
 **Status:** PENDING
 **Priority:** P0 — Validate low-friction lead capture from website CTAs before broader launch spend
+**Batch:** B8 — documentation-aligned launch batch
 **Depends on:** M3_007_WEBSITE_LAUNCH_BLOCKERS.md, M3_009_WEBSITE_POSITIONING_AND_BRAND_SYSTEM.md
 
 ---

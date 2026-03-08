@@ -2,6 +2,7 @@ const std = @import("std");
 
 pub const Subcommand = enum {
     serve,
+    worker,
     doctor,
     run,
     migrate,
@@ -20,6 +21,7 @@ pub fn parseSubcommandFromProcessArgs() Subcommand {
 
 test "parseSubcommandName returns known subcommands" {
     try std.testing.expectEqual(Subcommand.serve, parseSubcommandName("serve"));
+    try std.testing.expectEqual(Subcommand.worker, parseSubcommandName("worker"));
     try std.testing.expectEqual(Subcommand.doctor, parseSubcommandName("doctor"));
     try std.testing.expectEqual(Subcommand.run, parseSubcommandName("run"));
     try std.testing.expectEqual(Subcommand.migrate, parseSubcommandName("migrate"));

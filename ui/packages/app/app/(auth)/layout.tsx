@@ -2,7 +2,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
   return (
     <div className="auth-shell">
       <div className="auth-brand">
-        <span className="auth-logo">usezombie</span>
+        <span className="auth-logo">UseZombie</span>
         <span className="auth-tag">Mission Control</span>
       </div>
       {children}

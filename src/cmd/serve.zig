@@ -2,6 +2,7 @@ const std = @import("std");
 
 const db = @import("../db/pool.zig");
 const runtime_config = @import("../config/runtime.zig");
+const env_vars = @import("../config/env_vars.zig");
 const events_bus = @import("../events/bus.zig");
 const clerk_auth = @import("../auth/clerk.zig");
 const http_server = @import("../http/server.zig");
@@ -20,16 +21,39 @@ var shutdown_requested = std.atomic.Value(bool).init(false);
 var stop_server_fn: *const fn () void = http_server.stop;
 var stop_server_test_counter: ?*std.atomic.Value(u32) = null;
 
-const SecurityEnvError = error{
-    MissingDatabaseUrlApi,
-    MissingDatabaseUrlWorker,
-    MissingRedisUrlApi,
-    MissingRedisUrlWorker,
-    SameDatabaseUrlForApiAndWorker,
-    SameRedisUrlForApiAndWorker,
-    RedisApiTlsRequired,
-    RedisWorkerTlsRequired,
+const ServeArgError = error{
+    InvalidServeArgument,
+    MissingPortValue,
+    InvalidPortValue,
 };
+
+fn parseServeArgOverrides(alloc: std.mem.Allocator) ServeArgError!void {
+    var it = std.process.args();
+    _ = it.next();
+    _ = it.next();
+    while (it.next()) |arg| {
+        if (std.mem.eql(u8, arg, "--port")) {
+            const port_raw = it.next() orelse return ServeArgError.MissingPortValue;
+            const parsed = std.fmt.parseInt(u16, port_raw, 10) catch return ServeArgError.InvalidPortValue;
+            if (parsed == 0) return ServeArgError.InvalidPortValue;
+            var buf: [16]u8 = undefined;
+            const text = std.fmt.bufPrint(&buf, "{d}", .{parsed}) catch return ServeArgError.InvalidPortValue;
+            if (std.c.setenv("PORT", text.ptr, 1) != 0) return ServeArgError.InvalidPortValue;
+            continue;
+        }
+        if (std.mem.startsWith(u8, arg, "--port=")) {
+            const port_raw = arg["--port=".len..];
+            const parsed = std.fmt.parseInt(u16, port_raw, 10) catch return ServeArgError.InvalidPortValue;
+            if (parsed == 0) return ServeArgError.InvalidPortValue;
+            var buf: [16]u8 = undefined;
+            const text = std.fmt.bufPrint(&buf, "{d}", .{parsed}) catch return ServeArgError.InvalidPortValue;
+            if (std.c.setenv("PORT", text.ptr, 1) != 0) return ServeArgError.InvalidPortValue;
+            continue;
+        }
+        return ServeArgError.InvalidServeArgument;
+    }
+    _ = alloc;
+}
 
 fn onSignal(sig: i32) callconv(.c) void {
     _ = sig;
@@ -55,54 +79,28 @@ fn signalWatcher(wstate: *worker.WorkerState) void {
     stop_server_fn();
 }
 
-fn validateRoleSeparatedSecurityValues(
-    db_api: []const u8,
-    db_worker: []const u8,
-    redis_api: []const u8,
-    redis_worker: []const u8,
-) SecurityEnvError!void {
-    if (std.mem.trim(u8, db_api, " \t\r\n").len == 0) return SecurityEnvError.MissingDatabaseUrlApi;
-    if (std.mem.trim(u8, db_worker, " \t\r\n").len == 0) return SecurityEnvError.MissingDatabaseUrlWorker;
-    if (std.mem.trim(u8, redis_api, " \t\r\n").len == 0) return SecurityEnvError.MissingRedisUrlApi;
-    if (std.mem.trim(u8, redis_worker, " \t\r\n").len == 0) return SecurityEnvError.MissingRedisUrlWorker;
-
-    if (std.mem.eql(u8, db_api, db_worker)) return SecurityEnvError.SameDatabaseUrlForApiAndWorker;
-    if (std.mem.eql(u8, redis_api, redis_worker)) return SecurityEnvError.SameRedisUrlForApiAndWorker;
-    if (!std.mem.startsWith(u8, redis_api, "rediss://")) return SecurityEnvError.RedisApiTlsRequired;
-    if (!std.mem.startsWith(u8, redis_worker, "rediss://")) return SecurityEnvError.RedisWorkerTlsRequired;
-}
-
-fn enforceRoleSeparatedSecurityEnv(alloc: std.mem.Allocator) SecurityEnvError!void {
-    const db_api = std.process.getEnvVarOwned(alloc, db.roleEnvVarName(.api)) catch
-        return SecurityEnvError.MissingDatabaseUrlApi;
-    defer alloc.free(db_api);
-    const db_worker = std.process.getEnvVarOwned(alloc, db.roleEnvVarName(.worker)) catch
-        return SecurityEnvError.MissingDatabaseUrlWorker;
-    defer alloc.free(db_worker);
-    if (std.mem.eql(u8, db_api, db_worker)) return SecurityEnvError.SameDatabaseUrlForApiAndWorker;
-
-    const redis_api = std.process.getEnvVarOwned(alloc, queue_redis.roleEnvVarName(.api)) catch
-        return SecurityEnvError.MissingRedisUrlApi;
-    defer alloc.free(redis_api);
-    const redis_worker = std.process.getEnvVarOwned(alloc, queue_redis.roleEnvVarName(.worker)) catch
-        return SecurityEnvError.MissingRedisUrlWorker;
-    defer alloc.free(redis_worker);
-    try validateRoleSeparatedSecurityValues(db_api, db_worker, redis_api, redis_worker);
-}
-
 pub fn run(alloc: std.mem.Allocator) !void {
     log.info("starting zombied serve", .{});
 
-    enforceRoleSeparatedSecurityEnv(alloc) catch |err| {
+    parseServeArgOverrides(alloc) catch |err| {
         switch (err) {
-            SecurityEnvError.MissingDatabaseUrlApi => std.debug.print("fatal: DATABASE_URL_API not set\n", .{}),
-            SecurityEnvError.MissingDatabaseUrlWorker => std.debug.print("fatal: DATABASE_URL_WORKER not set\n", .{}),
-            SecurityEnvError.MissingRedisUrlApi => std.debug.print("fatal: REDIS_URL_API not set\n", .{}),
-            SecurityEnvError.MissingRedisUrlWorker => std.debug.print("fatal: REDIS_URL_WORKER not set\n", .{}),
-            SecurityEnvError.SameDatabaseUrlForApiAndWorker => std.debug.print("fatal: DATABASE_URL_API and DATABASE_URL_WORKER must differ (role separation required)\n", .{}),
-            SecurityEnvError.SameRedisUrlForApiAndWorker => std.debug.print("fatal: REDIS_URL_API and REDIS_URL_WORKER must differ (ACL role separation required)\n", .{}),
-            SecurityEnvError.RedisApiTlsRequired => std.debug.print("fatal: REDIS_URL_API must use rediss:// (TLS required)\n", .{}),
-            SecurityEnvError.RedisWorkerTlsRequired => std.debug.print("fatal: REDIS_URL_WORKER must use rediss:// (TLS required)\n", .{}),
+            ServeArgError.InvalidServeArgument => std.debug.print("fatal: invalid serve argument (supported: --port)\n", .{}),
+            ServeArgError.MissingPortValue => std.debug.print("fatal: --port requires a value\n", .{}),
+            ServeArgError.InvalidPortValue => std.debug.print("fatal: invalid --port value\n", .{}),
+        }
+        std.process.exit(2);
+    };
+
+    env_vars.enforceFromEnv(alloc) catch |err| {
+        switch (err) {
+            env_vars.EnvVarsErrors.MissingDatabaseUrlApi => std.debug.print("fatal: DATABASE_URL_API not set\n", .{}),
+            env_vars.EnvVarsErrors.MissingDatabaseUrlWorker => std.debug.print("fatal: DATABASE_URL_WORKER not set\n", .{}),
+            env_vars.EnvVarsErrors.MissingRedisUrlApi => std.debug.print("fatal: REDIS_URL_API not set\n", .{}),
+            env_vars.EnvVarsErrors.MissingRedisUrlWorker => std.debug.print("fatal: REDIS_URL_WORKER not set\n", .{}),
+            env_vars.EnvVarsErrors.SameDatabaseUrlForApiAndWorker => std.debug.print("fatal: DATABASE_URL_API and DATABASE_URL_WORKER must differ (role separation required)\n", .{}),
+            env_vars.EnvVarsErrors.SameRedisUrlForApiAndWorker => std.debug.print("fatal: REDIS_URL_API and REDIS_URL_WORKER must differ (ACL role separation required)\n", .{}),
+            env_vars.EnvVarsErrors.RedisApiTlsRequired => std.debug.print("fatal: REDIS_URL_API must use rediss:// (TLS required)\n", .{}),
+            env_vars.EnvVarsErrors.RedisWorkerTlsRequired => std.debug.print("fatal: REDIS_URL_WORKER must use rediss:// (TLS required)\n", .{}),
         }
         std.process.exit(1);
     };
@@ -119,12 +117,16 @@ pub fn run(alloc: std.mem.Allocator) !void {
             runtime_config.ValidationError.InvalidPort,
             runtime_config.ValidationError.InvalidMaxAttempts,
             runtime_config.ValidationError.InvalidWorkerConcurrency,
+            runtime_config.ValidationError.InvalidApiHttpThreads,
+            runtime_config.ValidationError.InvalidApiHttpWorkers,
+            runtime_config.ValidationError.InvalidApiMaxClients,
+            runtime_config.ValidationError.InvalidApiMaxInFlightRequests,
             runtime_config.ValidationError.InvalidRunTimeoutMs,
             runtime_config.ValidationError.InvalidRateLimitCapacity,
             runtime_config.ValidationError.InvalidRateLimitRefillPerSec,
             runtime_config.ValidationError.InvalidReadyMaxQueueDepth,
             runtime_config.ValidationError.InvalidReadyMaxQueueAgeMs,
-            => runtime_config.ServeConfig.printValidationError(err),
+            => runtime_config.ServeConfig.printValidationError(@errorCast(err)),
             else => std.debug.print("fatal: failed to load runtime config: {}\n", .{err}),
         }
         std.process.exit(1);
@@ -345,34 +347,4 @@ test "integration: migrate_on_start env parser accepts deterministic values" {
     try std.testing.expect(try common.migrateOnStartEnabledFromEnv(alloc));
     try std.posix.setenv("MIGRATE_ON_START", "0", true);
     try std.testing.expect(!try common.migrateOnStartEnabledFromEnv(alloc));
-}
-
-test "enforceRoleSeparatedSecurityEnv requires split role URLs and redis TLS" {
-    try std.testing.expectError(SecurityEnvError.MissingDatabaseUrlApi, validateRoleSeparatedSecurityValues(
-        "",
-        "postgres://worker:pw@db.local:5432/worker",
-        "rediss://api:pw@cache.local:6379",
-        "rediss://worker:pw@cache.local:6379",
-    ));
-
-    try std.testing.expectError(SecurityEnvError.SameDatabaseUrlForApiAndWorker, validateRoleSeparatedSecurityValues(
-        "postgres://shared:pw@db.local:5432/app",
-        "postgres://shared:pw@db.local:5432/app",
-        "rediss://api:pw@cache.local:6379",
-        "rediss://worker:pw@cache.local:6379",
-    ));
-
-    try std.testing.expectError(SecurityEnvError.RedisApiTlsRequired, validateRoleSeparatedSecurityValues(
-        "postgres://api:pw@db.local:5432/app",
-        "postgres://worker:pw@db.local:5432/worker",
-        "redis://api:pw@cache.local:6379",
-        "rediss://worker:pw@cache.local:6379",
-    ));
-
-    try validateRoleSeparatedSecurityValues(
-        "postgres://api:pw@db.local:5432/app",
-        "postgres://worker:pw@db.local:5432/worker",
-        "rediss://api:pw@cache.local:6379",
-        "rediss://worker:pw@cache.local:6379",
-    );
 }

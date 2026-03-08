@@ -63,7 +63,7 @@ export default function App() {
         <ScrollRestoration />
         <div className="brand-wrap">
           <Link className="brand" to="/">
-            usezombie
+            UseZombie
           </Link>
           <span className="badge">agent delivery control plane</span>
         </div>

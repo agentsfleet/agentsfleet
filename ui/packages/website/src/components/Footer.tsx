@@ -1,12 +1,14 @@
 import { Link } from "react-router-dom";
 import { DISCORD_URL, DOCS_URL, GITHUB_URL } from "../config";
 
+const BRAND_NAME = "UseZombie";
+
 export default function Footer() {
   return (
     <footer className="site-footer">
       <div className="footer-grid">
         <div className="footer-brand">
-          <span className="brand">usezombie</span>
+          <span className="brand">{BRAND_NAME}</span>
           <p>Agent delivery control plane for governed, review-ready pull requests.</p>
         </div>
 
@@ -38,7 +40,7 @@ export default function Footer() {
       </div>
 
       <div className="footer-bottom">
-        <span>&copy; {new Date().getFullYear()} UseZombie. All rights reserved.</span>
+        <span>&copy; {new Date().getFullYear()} {BRAND_NAME}. All rights reserved.</span>
       </div>
     </footer>
   );

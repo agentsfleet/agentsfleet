@@ -2,7 +2,8 @@
 //! One Zig binary. Takes a spec. Ships a validated PR.
 //!
 //! Subcommands:
-//!   serve    Start HTTP API server + worker loop (default)
+//!   serve    Start HTTP API server (default)
+//!   worker   Start worker loop
 //!   doctor   Verify Postgres, git, agent config, and critical env
 //!   run      One-shot: process a spec file without HTTP server
 //!   migrate  Apply schema migrations and exit
@@ -12,9 +13,11 @@ const builtin = @import("builtin");
 
 const cli_commands = @import("cli/commands.zig");
 const cmd_serve = @import("cmd/serve.zig");
+const cmd_worker = @import("cmd/worker.zig");
 const cmd_doctor = @import("cmd/doctor.zig");
 const cmd_run = @import("cmd/run.zig");
 const cmd_migrate = @import("cmd/migrate.zig");
+const config_load = @import("config/load.zig");
 
 const log = std.log.scoped(.zombied);
 
@@ -79,6 +82,10 @@ pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{ .thread_safe = true }){};
     defer _ = gpa.deinit();
     const alloc = gpa.allocator();
+    config_load.applyEnvSources(alloc) catch |err| {
+        std.debug.print("fatal: failed loading env sources: {}\n", .{err});
+        std.process.exit(1);
+    };
     initRuntimeLogLevel(alloc);
 
     if (builtin.mode == .Debug) {
@@ -88,6 +95,7 @@ pub fn main() !void {
     const cmd = cli_commands.parseSubcommandFromProcessArgs();
     switch (cmd) {
         .serve => try cmd_serve.run(alloc),
+        .worker => try cmd_worker.run(alloc),
         .doctor => try cmd_doctor.run(alloc),
         .run => try cmd_run.run(alloc),
         .migrate => try cmd_migrate.run(alloc),
@@ -107,6 +115,8 @@ test {
     _ = @import("state/machine.zig");
     _ = @import("secrets/crypto.zig");
     _ = @import("db/pool.zig");
+    _ = @import("config/env_vars.zig");
+    _ = @import("config/load.zig");
     _ = @import("harness/control_plane.zig");
     _ = @import("cli/commands.zig");
     _ = @import("auth/sessions.zig");

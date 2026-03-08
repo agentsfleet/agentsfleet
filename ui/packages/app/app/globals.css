@@ -4,7 +4,7 @@
 /*
  * UseZombie Mission Control — Global Styles
  * Design token bridge: maps --z-* → Shadcn --* + Tailwind CSS variables.
- * Same visual language as usezombie.com, extended for dashboard UI.
+ * Same visual language as UseZombie.com, extended for dashboard UI.
  */
 
 @font-face {
@@ -21,7 +21,7 @@
   font-display: swap;
 }
 
-/* ── Design Tokens (shared with usezombie.com) ── */
+/* ── Design Tokens (shared with UseZombie.com) ── */
 :root {
   /* Palette */
   --z-bg-0: #05080d;

@@ -2,11 +2,25 @@ const std = @import("std");
 
 const db = @import("../db/pool.zig");
 const clerk_auth = @import("../auth/clerk.zig");
+const env_vars = @import("../config/env_vars.zig");
 const queue_redis = @import("../queue/redis.zig");
 
-fn redisUrlUsesTls(url: []const u8) bool {
-    return std.mem.startsWith(u8, url, "rediss://");
-}
+const OutputFormat = enum {
+    text,
+    json,
+};
+
+const DoctorArgError = error{
+    InvalidDoctorArgument,
+    MissingFormatValue,
+    InvalidFormatValue,
+};
+
+const CheckResult = struct {
+    id: []const u8,
+    ok: bool,
+    detail: []const u8,
+};
 
 fn redisUsernameFromUrl(url: []const u8) ?[]const u8 {
     const rest = if (std.mem.startsWith(u8, url, "redis://"))
@@ -22,135 +36,199 @@ fn redisUsernameFromUrl(url: []const u8) ?[]const u8 {
     return userpass[0..colon];
 }
 
+fn parseFormatValue(raw: []const u8) DoctorArgError!OutputFormat {
+    if (std.mem.eql(u8, raw, "text")) return .text;
+    if (std.mem.eql(u8, raw, "json")) return .json;
+    return DoctorArgError.InvalidFormatValue;
+}
+
+fn parseOutputFormatArgs(args: []const []const u8) DoctorArgError!OutputFormat {
+    var format: OutputFormat = .text;
+    var i: usize = 0;
+    while (i < args.len) : (i += 1) {
+        const arg = args[i];
+        if (std.mem.eql(u8, arg, "--json")) {
+            format = .json;
+            continue;
+        }
+        if (std.mem.eql(u8, arg, "--format")) {
+            if (i + 1 >= args.len) return DoctorArgError.MissingFormatValue;
+            i += 1;
+            format = try parseFormatValue(args[i]);
+            continue;
+        }
+        if (std.mem.startsWith(u8, arg, "--format=")) {
+            format = try parseFormatValue(arg["--format=".len..]);
+            continue;
+        }
+        return DoctorArgError.InvalidDoctorArgument;
+    }
+    return format;
+}
+
+fn appendCheck(results: *std.ArrayList(CheckResult), id: []const u8, ok: bool, detail: []const u8, overall_ok: *bool) !void {
+    try results.append(.{
+        .id = id,
+        .ok = ok,
+        .detail = detail,
+    });
+    if (!ok) overall_ok.* = false;
+}
+
+fn renderText(stdout: *std.Io.Writer, results: []const CheckResult, overall_ok: bool) !void {
+    try stdout.print("zombied doctor\n\n", .{});
+    for (results) |c| {
+        try stdout.print("  [{s}] {s}\n", .{
+            if (c.ok) "OK" else "FAIL",
+            c.detail,
+        });
+    }
+    try stdout.print("\n{s}\n", .{
+        if (overall_ok) "All checks passed." else "Some checks failed — fix before running serve.",
+    });
+}
+
+fn renderJson(stdout: *std.Io.Writer, results: []const CheckResult, overall_ok: bool) !void {
+    var pass_count: usize = 0;
+    for (results) |c| {
+        if (c.ok) pass_count += 1;
+    }
+    const fail_count = results.len - pass_count;
+
+    try stdout.print("{{\"ok\":{s},\"summary\":{{\"total\":{d},\"passed\":{d},\"failed\":{d}}},\"checks\":[", .{
+        if (overall_ok) "true" else "false",
+        results.len,
+        pass_count,
+        fail_count,
+    });
+
+    for (results, 0..) |c, idx| {
+        if (idx > 0) try stdout.print(",", .{});
+        try stdout.print("{{\"id\":{f},\"status\":{f},\"detail\":{f}}}", .{
+            std.json.fmt(c.id, .{}),
+            std.json.fmt(if (c.ok) "ok" else "fail", .{}),
+            std.json.fmt(c.detail, .{}),
+        });
+    }
+    try stdout.print("]}}\n", .{});
+}
+
 pub fn run(alloc: std.mem.Allocator) !void {
     var ok = true;
     var stdout_buf: [8192]u8 = undefined;
     var stdout_w = std.fs.File.stdout().writer(&stdout_buf);
     const stdout = &stdout_w.interface;
+    var results: std.ArrayList(CheckResult) = .empty;
+    defer results.deinit(alloc);
 
-    try stdout.print("zombied doctor\n\n", .{});
+    var args_it = std.process.args();
+    _ = args_it.next();
+    _ = args_it.next();
+    var extra_args: std.ArrayList([]const u8) = .empty;
+    defer extra_args.deinit(alloc);
+    while (args_it.next()) |arg| {
+        try extra_args.append(alloc, arg);
+    }
+    const output_format = parseOutputFormatArgs(extra_args.items) catch |err| {
+        switch (err) {
+            DoctorArgError.InvalidDoctorArgument => try stdout.print("fatal: invalid doctor argument\n", .{}),
+            DoctorArgError.MissingFormatValue => try stdout.print("fatal: --format requires a value (text|json)\n", .{}),
+            DoctorArgError.InvalidFormatValue => try stdout.print("fatal: invalid --format value (use text|json)\n", .{}),
+        }
+        try stdout.flush();
+        std.process.exit(2);
+    };
 
-    const db_api_url = std.process.getEnvVarOwned(alloc, db.roleEnvVarName(.api)) catch null;
-    defer if (db_api_url) |v| alloc.free(v);
-    const db_worker_url = std.process.getEnvVarOwned(alloc, db.roleEnvVarName(.worker)) catch null;
-    defer if (db_worker_url) |v| alloc.free(v);
-    const redis_api_url = std.process.getEnvVarOwned(alloc, queue_redis.roleEnvVarName(.api)) catch null;
-    defer if (redis_api_url) |v| alloc.free(v);
-    const redis_worker_url = std.process.getEnvVarOwned(alloc, queue_redis.roleEnvVarName(.worker)) catch null;
-    defer if (redis_worker_url) |v| alloc.free(v);
+    var role_urls = env_vars.loadFromEnv(alloc);
+    defer role_urls.deinit();
+    const redis_api_url = role_urls.redis_api;
+    const redis_worker_url = role_urls.redis_worker;
 
     role_env_check: {
-        if (db_api_url == null or db_worker_url == null) {
-            try stdout.print("  [FAIL] DATABASE_URL_API and DATABASE_URL_WORKER required (no shared fallback)\n", .{});
-            ok = false;
+        env_vars.validateLoaded(role_urls) catch |err| {
+            switch (err) {
+                env_vars.EnvVarsErrors.MissingDatabaseUrlApi,
+                env_vars.EnvVarsErrors.MissingDatabaseUrlWorker,
+                => try appendCheck(&results, "role_env_required", false, "DATABASE_URL_API and DATABASE_URL_WORKER required (no shared fallback)", &ok),
+                env_vars.EnvVarsErrors.SameDatabaseUrlForApiAndWorker => try appendCheck(&results, "role_env_db_separation", false, "DATABASE_URL_API and DATABASE_URL_WORKER must differ", &ok),
+                env_vars.EnvVarsErrors.MissingRedisUrlApi,
+                env_vars.EnvVarsErrors.MissingRedisUrlWorker,
+                => try appendCheck(&results, "role_env_redis_required", false, "REDIS_URL_API and REDIS_URL_WORKER required (no shared fallback)", &ok),
+                env_vars.EnvVarsErrors.SameRedisUrlForApiAndWorker => try appendCheck(&results, "role_env_redis_separation", false, "REDIS_URL_API and REDIS_URL_WORKER must differ", &ok),
+                env_vars.EnvVarsErrors.RedisApiTlsRequired => try appendCheck(&results, "redis_api_tls", false, "REDIS_URL_API must use rediss://", &ok),
+                env_vars.EnvVarsErrors.RedisWorkerTlsRequired => try appendCheck(&results, "redis_worker_tls", false, "REDIS_URL_WORKER must use rediss://", &ok),
+            }
             break :role_env_check;
-        }
-        if (std.mem.eql(u8, db_api_url.?, db_worker_url.?)) {
-            try stdout.print("  [FAIL] DATABASE_URL_API and DATABASE_URL_WORKER must differ\n", .{});
-            ok = false;
-            break :role_env_check;
-        }
-
-        if (redis_api_url == null or redis_worker_url == null) {
-            try stdout.print("  [FAIL] REDIS_URL_API and REDIS_URL_WORKER required (no shared fallback)\n", .{});
-            ok = false;
-            break :role_env_check;
-        }
-        if (std.mem.eql(u8, redis_api_url.?, redis_worker_url.?)) {
-            try stdout.print("  [FAIL] REDIS_URL_API and REDIS_URL_WORKER must differ\n", .{});
-            ok = false;
-            break :role_env_check;
-        }
-        if (!redisUrlUsesTls(redis_api_url.?)) {
-            try stdout.print("  [FAIL] REDIS_URL_API must use rediss://\n", .{});
-            ok = false;
-            break :role_env_check;
-        }
-        if (!redisUrlUsesTls(redis_worker_url.?)) {
-            try stdout.print("  [FAIL] REDIS_URL_WORKER must use rediss://\n", .{});
-            ok = false;
-            break :role_env_check;
-        }
-
-        try stdout.print("  [OK]   Role-separated DB/Redis URLs configured with Redis TLS\n", .{});
+        };
+        try appendCheck(&results, "env_vars_contract", true, "Role-separated DB/Redis URLs configured with Redis TLS", &ok);
     }
 
     db_check: {
         const pool = db.initFromEnvForRole(alloc, .api) catch {
-            try stdout.print("  [FAIL] DATABASE_URL_API or DATABASE_URL not set/invalid\n", .{});
-            ok = false;
+            try appendCheck(&results, "db_api_config", false, "DATABASE_URL_API not set/invalid", &ok);
             break :db_check;
         };
         pool.deinit();
-        try stdout.print("  [OK]   API database config\n", .{});
+        try appendCheck(&results, "db_api_config", true, "API database config", &ok);
     }
 
     worker_db_check: {
         const pool = db.initFromEnvForRole(alloc, .worker) catch {
-            try stdout.print("  [FAIL] DATABASE_URL_WORKER or DATABASE_URL not set/invalid\n", .{});
-            ok = false;
+            try appendCheck(&results, "db_worker_config", false, "DATABASE_URL_WORKER not set/invalid", &ok);
             break :worker_db_check;
         };
         pool.deinit();
-        try stdout.print("  [OK]   Worker database config\n", .{});
+        try appendCheck(&results, "db_worker_config", true, "Worker database config", &ok);
     }
 
     redis_api_check: {
         var client = queue_redis.Client.connectFromEnv(alloc, .api) catch {
-            try stdout.print("  [FAIL] REDIS_URL_API not set/invalid\n", .{});
-            ok = false;
+            try appendCheck(&results, "redis_api_config", false, "REDIS_URL_API not set/invalid", &ok);
             break :redis_api_check;
         };
         defer client.deinit();
         client.readyCheck() catch {
-            try stdout.print("  [FAIL] Redis API readiness (PING + XGROUP)\n", .{});
-            ok = false;
+            try appendCheck(&results, "redis_api_ready", false, "Redis API readiness (PING + XGROUP)", &ok);
             break :redis_api_check;
         };
         const expected = if (redis_api_url) |u| redisUsernameFromUrl(u) else null;
         if (expected) |user| {
             const actual = client.aclWhoAmI() catch {
-                try stdout.print("  [FAIL] Redis API ACL identity probe failed (ACL WHOAMI)\n", .{});
-                ok = false;
+                try appendCheck(&results, "redis_api_acl_probe", false, "Redis API ACL identity probe failed (ACL WHOAMI)", &ok);
                 break :redis_api_check;
             };
             defer alloc.free(actual);
             if (!std.mem.eql(u8, actual, user)) {
-                try stdout.print("  [FAIL] Redis API ACL user mismatch expected={s} actual={s}\n", .{ user, actual });
-                ok = false;
+                try appendCheck(&results, "redis_api_acl_mismatch", false, "Redis API ACL user mismatch expected URL user", &ok);
                 break :redis_api_check;
             }
         }
-        try stdout.print("  [OK]   Redis API readiness + ACL identity\n", .{});
+        try appendCheck(&results, "redis_api_ready_acl", true, "Redis API readiness + ACL identity", &ok);
     }
 
     redis_worker_check: {
         var client = queue_redis.Client.connectFromEnv(alloc, .worker) catch {
-            try stdout.print("  [FAIL] REDIS_URL_WORKER not set/invalid\n", .{});
-            ok = false;
+            try appendCheck(&results, "redis_worker_config", false, "REDIS_URL_WORKER not set/invalid", &ok);
             break :redis_worker_check;
         };
         defer client.deinit();
         client.readyCheck() catch {
-            try stdout.print("  [FAIL] Redis worker readiness (PING + XGROUP)\n", .{});
-            ok = false;
+            try appendCheck(&results, "redis_worker_ready", false, "Redis worker readiness (PING + XGROUP)", &ok);
             break :redis_worker_check;
         };
         const expected = if (redis_worker_url) |u| redisUsernameFromUrl(u) else null;
         if (expected) |user| {
             const actual = client.aclWhoAmI() catch {
-                try stdout.print("  [FAIL] Redis worker ACL identity probe failed (ACL WHOAMI)\n", .{});
-                ok = false;
+                try appendCheck(&results, "redis_worker_acl_probe", false, "Redis worker ACL identity probe failed (ACL WHOAMI)", &ok);
                 break :redis_worker_check;
             };
             defer alloc.free(actual);
             if (!std.mem.eql(u8, actual, user)) {
-                try stdout.print("  [FAIL] Redis worker ACL user mismatch expected={s} actual={s}\n", .{ user, actual });
-                ok = false;
+                try appendCheck(&results, "redis_worker_acl_mismatch", false, "Redis worker ACL user mismatch expected URL user", &ok);
                 break :redis_worker_check;
             }
         }
-        try stdout.print("  [OK]   Redis worker readiness + ACL identity\n", .{});
+        try appendCheck(&results, "redis_worker_ready_acl", true, "Redis worker readiness + ACL identity", &ok);
     }
 
     {
@@ -158,14 +236,12 @@ pub fn run(alloc: std.mem.Allocator) !void {
         if (key) |k| {
             defer alloc.free(k);
             if (k.len == 64) {
-                try stdout.print("  [OK]   ENCRYPTION_MASTER_KEY set\n", .{});
+                try appendCheck(&results, "encryption_master_key", true, "ENCRYPTION_MASTER_KEY set", &ok);
             } else {
-                try stdout.print("  [FAIL] ENCRYPTION_MASTER_KEY must be 64 hex chars\n", .{});
-                ok = false;
+                try appendCheck(&results, "encryption_master_key", false, "ENCRYPTION_MASTER_KEY must be 64 hex chars", &ok);
             }
         } else {
-            try stdout.print("  [FAIL] ENCRYPTION_MASTER_KEY not set\n", .{});
-            ok = false;
+            try appendCheck(&results, "encryption_master_key", false, "ENCRYPTION_MASTER_KEY not set", &ok);
         }
     }
 
@@ -174,14 +250,12 @@ pub fn run(alloc: std.mem.Allocator) !void {
         if (app_id) |id| {
             defer alloc.free(id);
             if (id.len > 0) {
-                try stdout.print("  [OK]   GITHUB_APP_ID set\n", .{});
+                try appendCheck(&results, "github_app_id", true, "GITHUB_APP_ID set", &ok);
             } else {
-                try stdout.print("  [FAIL] GITHUB_APP_ID is empty\n", .{});
-                ok = false;
+                try appendCheck(&results, "github_app_id", false, "GITHUB_APP_ID is empty", &ok);
             }
         } else {
-            try stdout.print("  [FAIL] GITHUB_APP_ID not set\n", .{});
-            ok = false;
+            try appendCheck(&results, "github_app_id", false, "GITHUB_APP_ID not set", &ok);
         }
     }
 
@@ -190,14 +264,12 @@ pub fn run(alloc: std.mem.Allocator) !void {
         if (key) |k| {
             defer alloc.free(k);
             if (k.len > 0) {
-                try stdout.print("  [OK]   GITHUB_APP_PRIVATE_KEY set\n", .{});
+                try appendCheck(&results, "github_app_private_key", true, "GITHUB_APP_PRIVATE_KEY set", &ok);
             } else {
-                try stdout.print("  [FAIL] GITHUB_APP_PRIVATE_KEY is empty\n", .{});
-                ok = false;
+                try appendCheck(&results, "github_app_private_key", false, "GITHUB_APP_PRIVATE_KEY is empty", &ok);
             }
         } else {
-            try stdout.print("  [FAIL] GITHUB_APP_PRIVATE_KEY not set\n", .{});
-            ok = false;
+            try appendCheck(&results, "github_app_private_key", false, "GITHUB_APP_PRIVATE_KEY not set", &ok);
         }
     }
 
@@ -215,10 +287,13 @@ pub fn run(alloc: std.mem.Allocator) !void {
             const path = try std.fmt.allocPrint(alloc, "{s}/{s}", .{ config_dir, fname });
             defer alloc.free(path);
             if (std.fs.accessAbsolute(path, .{})) |_| {
-                try stdout.print("  [OK]   config/{s}\n", .{fname});
+                const detail = try std.fmt.allocPrint(alloc, "config/{s}", .{fname});
+                defer alloc.free(detail);
+                try appendCheck(&results, "agent_config_file", true, detail, &ok);
             } else |_| {
-                try stdout.print("  [FAIL] config/{s} missing\n", .{fname});
-                ok = false;
+                const detail = try std.fmt.allocPrint(alloc, "config/{s} missing", .{fname});
+                defer alloc.free(detail);
+                try appendCheck(&results, "agent_config_file", false, detail, &ok);
             }
         }
     }
@@ -228,13 +303,12 @@ pub fn run(alloc: std.mem.Allocator) !void {
         if (clerk_secret) |secret| {
             defer alloc.free(secret);
             if (std.mem.trim(u8, secret, " \t\r\n").len > 0) {
-                try stdout.print("  [OK]   CLERK_SECRET_KEY set\n", .{});
+                try appendCheck(&results, "clerk_secret_key", true, "CLERK_SECRET_KEY set", &ok);
                 const jwks_url = std.process.getEnvVarOwned(alloc, "CLERK_JWKS_URL") catch null;
                 if (jwks_url) |url| {
                     defer alloc.free(url);
                     if (url.len == 0) {
-                        try stdout.print("  [FAIL] CLERK_JWKS_URL is empty\n", .{});
-                        ok = false;
+                        try appendCheck(&results, "clerk_jwks_url", false, "CLERK_JWKS_URL is empty", &ok);
                     } else {
                         var verifier = clerk_auth.Verifier.init(alloc, .{
                             .jwks_url = url,
@@ -242,37 +316,34 @@ pub fn run(alloc: std.mem.Allocator) !void {
                         defer verifier.deinit();
                         var jwks_ok = true;
                         verifier.checkJwksConnectivity() catch {
-                            try stdout.print("  [FAIL] CLERK JWKS fetch failed\n", .{});
-                            ok = false;
+                            try appendCheck(&results, "clerk_jwks_reachability", false, "CLERK JWKS fetch failed", &ok);
                             jwks_ok = false;
                         };
                         if (jwks_ok) {
-                            try stdout.print("  [OK]   Clerk JWKS reachable\n", .{});
+                            try appendCheck(&results, "clerk_jwks_reachability", true, "Clerk JWKS reachable", &ok);
                         }
                     }
                 } else {
-                    try stdout.print("  [FAIL] CLERK_JWKS_URL not set\n", .{});
-                    ok = false;
+                    try appendCheck(&results, "clerk_jwks_url", false, "CLERK_JWKS_URL not set", &ok);
                 }
             } else {
-                try stdout.print("  [FAIL] CLERK_SECRET_KEY is empty\n", .{});
-                ok = false;
+                try appendCheck(&results, "clerk_secret_key", false, "CLERK_SECRET_KEY is empty", &ok);
             }
         } else {
             const key = std.process.getEnvVarOwned(alloc, "API_KEY") catch null;
             if (key) |k| {
                 defer alloc.free(k);
-                try stdout.print("  [OK]   API_KEY set (dev fallback)\n", .{});
+                try appendCheck(&results, "api_key_fallback", true, "API_KEY set (dev fallback)", &ok);
             } else {
-                try stdout.print("  [FAIL] API_KEY not set (required when Clerk is disabled)\n", .{});
-                ok = false;
+                try appendCheck(&results, "api_key_fallback", false, "API_KEY not set (required when Clerk is disabled)", &ok);
             }
         }
     }
 
-    try stdout.print("\n{s}\n", .{
-        if (ok) "All checks passed." else "Some checks failed — fix before running serve.",
-    });
+    switch (output_format) {
+        .text => try renderText(stdout, results.items, ok),
+        .json => try renderJson(stdout, results.items, ok),
+    }
     try stdout.flush();
     if (!ok) std.process.exit(1);
 }
@@ -283,7 +354,24 @@ test "redisUsernameFromUrl parses user for redis and rediss" {
     try std.testing.expect(redisUsernameFromUrl("rediss://cache.local:6379") == null);
 }
 
-test "redisUrlUsesTls enforces rediss scheme" {
-    try std.testing.expect(redisUrlUsesTls("rediss://api:pw@cache.local:6379"));
-    try std.testing.expect(!redisUrlUsesTls("redis://api:pw@cache.local:6379"));
+test "parseOutputFormatArgs supports --json and --format" {
+    const args1 = [_][]const u8{"--json"};
+    try std.testing.expectEqual(OutputFormat.json, try parseOutputFormatArgs(&args1));
+
+    const args2 = [_][]const u8{ "--format", "json" };
+    try std.testing.expectEqual(OutputFormat.json, try parseOutputFormatArgs(&args2));
+
+    const args3 = [_][]const u8{"--format=text"};
+    try std.testing.expectEqual(OutputFormat.text, try parseOutputFormatArgs(&args3));
+}
+
+test "parseOutputFormatArgs validates invalid values" {
+    const args1 = [_][]const u8{ "--format", "yaml" };
+    try std.testing.expectError(DoctorArgError.InvalidFormatValue, parseOutputFormatArgs(&args1));
+
+    const args2 = [_][]const u8{"--format"};
+    try std.testing.expectError(DoctorArgError.MissingFormatValue, parseOutputFormatArgs(&args2));
+
+    const args3 = [_][]const u8{"--unknown"};
+    try std.testing.expectError(DoctorArgError.InvalidDoctorArgument, parseOutputFormatArgs(&args3));
 }
