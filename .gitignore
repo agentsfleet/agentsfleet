@@ -21,3 +21,5 @@ playwright-tests/
 test-results/
 blob-report/
 **/tsconfig.tsbuildinfo
+scratch_pad.md
+**/scratch_pad.md
