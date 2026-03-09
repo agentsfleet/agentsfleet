@@ -40,11 +40,11 @@
 | 1 | Memory lifecycle cleanup | ✅ DONE | Completed in M3_001 |
 | 2 | Allocation best practices | ⏭ DEFERRED | Deferred to `docs/spec/v1/M4_004_HIGH_LEVERAGE_GUARDRAILS.md` |
 | 3 | Async/API performance | ⏭ DEFERRED | Deferred to `docs/spec/v1/M4_004_HIGH_LEVERAGE_GUARDRAILS.md` |
-| 4 | Event bus / actor dispatch | ⏭ DEFERRED | Deferred to `docs/spec/v1/M4_005_DEFERRED_EVENTS_OBSERVABILITY_CONFIG.md` |
+| 4 | Event bus / actor dispatch | ⏭ DEFERRED | Deferred to `docs/spec/v1/M4_005_EVENTS_OBSERVABILITY_AND_CONFIG.md` |
 | 5 | Reliability & retry | ⏭ DEFERRED | Deferred to `docs/spec/v1/M4_004_HIGH_LEVERAGE_GUARDRAILS.md` |
 | 6 | Rate limiting | ⏭ DEFERRED | Deferred to `docs/spec/v1/M4_004_HIGH_LEVERAGE_GUARDRAILS.md` |
 | 7 | Backoff | ⏭ DEFERRED | Deferred to `docs/spec/v1/M4_004_HIGH_LEVERAGE_GUARDRAILS.md` |
-| 8 | Structured logging backend | ⏭ DEFERRED | Deferred to `docs/spec/v1/M4_005_DEFERRED_EVENTS_OBSERVABILITY_CONFIG.md` |
+| 8 | Structured logging backend | ⏭ DEFERRED | Deferred to `docs/spec/v1/M4_005_EVENTS_OBSERVABILITY_AND_CONFIG.md` |
 | 9 | Error-context logging | ⏭ DEFERRED | Deferred to `docs/spec/v1/M4_004_HIGH_LEVERAGE_GUARDRAILS.md` |
 | 10 | Error classification | ⏭ DEFERRED | Deferred to `docs/spec/v1/M4_004_HIGH_LEVERAGE_GUARDRAILS.md` |
 | 11 | Secure execution boundary | ⏭ DEFERRED | Deferred to `docs/spec/v1/M4_004_HIGH_LEVERAGE_GUARDRAILS.md` |
@@ -55,8 +55,8 @@
 | 16 | Thread safety / allocator guards | ⏭ DEFERRED | Deferred to `docs/spec/v1/M4_004_HIGH_LEVERAGE_GUARDRAILS.md` |
 | 17 | Schema migration safety | ⏭ DEFERRED | Deferred to `docs/spec/v1/M4_004_HIGH_LEVERAGE_GUARDRAILS.md` |
 | 18 | Health/readiness depth | ⏭ DEFERRED | Deferred to `docs/spec/v1/M4_004_HIGH_LEVERAGE_GUARDRAILS.md` |
-| 19 | Metrics / telemetry / tracing | ⏭ DEFERRED | Deferred to `docs/spec/v1/M4_005_DEFERRED_EVENTS_OBSERVABILITY_CONFIG.md` |
-| 20 | Config validation/secret hygiene | ⏭ DEFERRED | Deferred to `docs/spec/v1/M4_005_DEFERRED_EVENTS_OBSERVABILITY_CONFIG.md` |
+| 19 | Metrics / telemetry / tracing | ⏭ DEFERRED | Deferred to `docs/spec/v1/M4_005_EVENTS_OBSERVABILITY_AND_CONFIG.md` |
+| 20 | Config validation/secret hygiene | ⏭ DEFERRED | Deferred to `docs/spec/v1/M4_005_EVENTS_OBSERVABILITY_AND_CONFIG.md` |
 | 21 | Coverage and test depth | ⏭ DEFERRED | Deferred to `docs/spec/v1/M4_004_HIGH_LEVERAGE_GUARDRAILS.md` |
 | 22 | Comment policy | ✅ DONE | Completed in M3_001 |
 

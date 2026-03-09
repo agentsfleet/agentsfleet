@@ -49,7 +49,7 @@ Resolved policy for "env vs CLI flags" to keep `zombiectl` slim:
 
 This scope is intentionally moved out of M4_007 so runtime env closure is not blocked by broader observability delivery.
 Canonical owner for deferred implementation remains:
-- `docs/spec/v1/M4_005_DEFERRED_EVENTS_OBSERVABILITY_CONFIG.md`
+- `docs/spec/v1/M4_005_EVENTS_OBSERVABILITY_AND_CONFIG.md`
 
 Supporting context already landed in docs/code:
 - `docs/CONFIGURATION.md` (trace field contract terms)

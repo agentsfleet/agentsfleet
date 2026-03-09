@@ -19,6 +19,81 @@ These are additive. OTel tells you p99 latency is 450ms. PostHog tells you alice
 
 ---
 
+## Langfuse: LLM/Agent Tracing
+
+### Langfuse Organization & Project Structure
+
+**Organization:** `usezombie` (Startup plan)
+**Projects:** One project per environment for access isolation (agents get dev keys only, prod is restricted).
+
+| Project | Access | Used by |
+|---|---|---|
+| `zombie-agents-dev` | Developers + agents | Local `zombied` via `make dev` |
+| `zombie-agents-staging` | Developers + CI | Automated tests (M4_005 dim 2.4) |
+| `zombie-agents-prod` | Restricted (ops only) | Production `zombied worker` |
+
+Each project has its own API key pair. Prompt management and eval datasets are not shared across projects — this is fine because nullclaw manages prompts in `config/` files, not in Langfuse.
+
+**Env vars:** `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_BASE_URL` (defaults to `https://cloud.langfuse.com`).
+
+### Trace Model: Profile-Driven, Not Static
+
+The harness control plane (M5_002) replaces the static Echo→Scout→Warden pipeline with per-workspace configurable profiles. The Langfuse trace model must reflect this — traces are profile-driven, not hardcoded to three agent roles.
+
+**Hierarchy:**
+
+```
+Trace (1 per run)
+└── Span (1 per stage in the resolved profile)
+    └── Generation (1 per LLM call inside agent.runSingle())
+```
+
+**Trace = `run_id`:**
+- Created when worker starts the pipeline for a claimed run.
+- Metadata: `workspace_id`, `tenant_id`, `profile_id`, `request_id`, `attempt`.
+- `user_id`: Clerk user ID from run's Bearer token claims (same identity contract as PostHog).
+
+**Span = `stage.stage_id`** (not actor name):
+- A `default-v1` profile produces spans: `plan`, `implement`, `verify`.
+- A custom profile might produce: `plan`, `security-review`, `implement`, `verify` — N stages, not always 3.
+- Span metadata: `role_id`, `skill_id`, `actor` (echo|scout|warden), `is_gate`.
+- Span output: `tokens`, `wall_seconds`, `exit_ok`.
+
+**Generation = per-LLM-call** inside `agent.runSingle()`:
+- Model name, prompt tokens, completion tokens, total tokens, latency.
+- Emitted by nullclaw's `Observer` vtable during execution.
+
+### Correlation Chain
+
+The `request_id` generated at the HTTP layer stitches the full journey:
+
+```
+CLI/Web request_id → Postgres runs.request_id → RunContext.request_id → Langfuse trace metadata
+```
+
+This enables joining a Langfuse trace back to a PostHog `run_started` event and an OTel HTTP span using the same `request_id`.
+
+### Integration Point
+
+All data needed for Langfuse emission already flows through `emitNullclawRunEvent()` in `src/pipeline/worker_stage_executor.zig`, which receives `run_id`, `request_id`, `attempt`, `stage_id`, `role_id`, `actor`, and `AgentResult` (tokens, wall_seconds, exit_ok) per stage.
+
+Implementation (M4_005 dim 1.5):
+1. Add `langfuse` variant to `ObserverBackend` enum in `src/pipeline/agents.zig`.
+2. Implement `LangfuseObserver` that POSTs to Langfuse's `/api/public/ingestion` endpoint.
+3. Create trace on pipeline start, create span per stage, close span with token/duration metadata.
+4. Generation-level spans emitted by nullclaw's `Observer` vtable callbacks during `agent.runSingle()`.
+5. Fire-and-forget with local buffer — Langfuse emission must never block or fail a run.
+
+### What Langfuse Enables
+
+1. **Per-run cost breakdown** — which stage burned the most tokens, which model was used.
+2. **Profile comparison** — compare token spend across different workspace profiles.
+3. **Retry cost visibility** — total cost across attempts for a single run (grouped by trace).
+4. **Model regression detection** — latency/quality drift when LLM provider updates models.
+5. **Usage metering input** — Langfuse token counts feed the M5_004 usage ledger for billing.
+
+---
+
 ## PostHog: End-to-End Product Analytics
 
 ### Decision: option A — SDK per surface, single PostHog project
@@ -154,6 +229,7 @@ Group analytics: workspace-level events include `$groups: { workspace: "ws_abc" 
 
 | Spec | Surface | Status |
 |---|---|---|
+| M4_005 dim 1.5 | Langfuse integration (zombied worker) | PENDING |
 | M5_001 | posthog-zig SDK (library) | PENDING |
 | M5_005 | Website PostHog integration | PENDING |
 | M5_006 | zombied PostHog integration | PENDING |
