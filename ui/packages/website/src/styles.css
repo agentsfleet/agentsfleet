@@ -71,7 +71,7 @@ body::before {
   inset: 0;
   background-image: radial-gradient(
     circle,
-    rgba(255, 107, 53, 0.05) 1px,
+    rgba(217, 107, 43, 0.05) 1px,
     transparent 1px
   );
   background-size: 24px 24px;
@@ -90,8 +90,8 @@ body::after {
   height: 60vh;
   background: radial-gradient(
     ellipse at center,
-    rgba(255, 107, 53, 0.08) 0%,
-    rgba(255, 107, 53, 0.02) 40%,
+    rgba(217, 107, 43, 0.08) 0%,
+    rgba(217, 107, 43, 0.02) 40%,
     transparent 70%
   );
   animation: z-glow-pulse 8s ease-in-out infinite;
@@ -425,10 +425,28 @@ a {
   display: inline-flex;
   gap: var(--z-space-sm);
   align-items: center;
+  justify-content: flex-end;
+  min-width: 170px;
 }
 
-.header-actions .cta {
+.header-actions .cta,
+.header-actions .z-btn {
   white-space: nowrap;
+}
+
+.header-mission-control.is-hidden {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.header-mission-control:hover {
+  border-color: var(--z-orange);
+  box-shadow: var(--z-shadow-cta);
+}
+
+.header-mission-control:focus-visible {
+  outline: 2px solid var(--z-cyan);
+  outline-offset: 2px;
 }
 
 .site-nav a {
@@ -449,6 +467,25 @@ a {
 .site-main {
   display: grid;
   gap: var(--z-space-2xl);
+}
+
+.route-fade {
+  animation: route-fade-in 220ms ease;
+}
+
+@keyframes route-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .route-fade {
+    animation: none;
+  }
 }
 
 /* ---- Typography ---- */

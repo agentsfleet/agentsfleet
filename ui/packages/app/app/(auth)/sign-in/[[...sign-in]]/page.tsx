@@ -10,7 +10,7 @@ export default function SignInPage() {
           colorInputText: "#e8f2ff",
           colorText: "#e8f2ff",
           colorTextSecondary: "#8b97a8",
-          colorPrimary: "#ff6b35",
+          colorPrimary: "var(--z-orange)",
           colorDanger: "#ff4d6a",
           borderRadius: "8px",
           fontFamily: "Geist, system-ui, sans-serif",

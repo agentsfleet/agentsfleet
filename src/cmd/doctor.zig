@@ -118,13 +118,13 @@ pub fn run(alloc: std.mem.Allocator) !void {
     var stdout_buf: [8192]u8 = undefined;
     var stdout_w = std.fs.File.stdout().writer(&stdout_buf);
     const stdout = &stdout_w.interface;
-    var results: std.ArrayList(CheckResult) = .empty;
+    var results: std.ArrayList(CheckResult) = .{};
     defer results.deinit(alloc);
 
     var args_it = std.process.args();
     _ = args_it.next();
     _ = args_it.next();
-    var extra_args: std.ArrayList([]const u8) = .empty;
+    var extra_args: std.ArrayList([]const u8) = .{};
     defer extra_args.deinit(alloc);
     while (args_it.next()) |arg| {
         try extra_args.append(alloc, arg);

@@ -53,6 +53,7 @@ function ParticleField() {
 }
 
 export default function App() {
+  const location = useLocation();
   const [mode, setMode] = useMode();
 
   return (
@@ -98,16 +99,19 @@ export default function App() {
           <a href={DOCS_URL} target="_blank" rel="noopener noreferrer">Docs</a>
         </nav>
 
-        {mode === "humans" && (
-          <div className="header-actions">
-            <Button to={APP_BASE_URL}>
-              Mission Control
-            </Button>
-          </div>
-        )}
+        <div className="header-actions">
+          <Button
+            to={APP_BASE_URL}
+            className={mode === "humans" ? "header-mission-control" : "header-mission-control is-hidden"}
+            aria-hidden={mode !== "humans"}
+            tabIndex={mode === "humans" ? undefined : -1}
+          >
+            Mission Control
+          </Button>
+        </div>
       </header>
 
-      <main className="site-main">
+      <main key={location.pathname} className="site-main route-fade">
         <Routes>
           <Route path="/" element={<Home mode={mode} />} />
           <Route path="/pricing" element={<Pricing />} />

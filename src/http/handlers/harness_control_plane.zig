@@ -293,7 +293,7 @@ fn normalizeProfileId(
 ) ![]u8 {
     if (provided) |raw| {
         if (raw.len == 0) return error.InvalidProfileId;
-        var out = std.ArrayList(u8).empty;
+        var out: std.ArrayList(u8) = .{};
         defer out.deinit(alloc);
         for (raw) |c| {
             if (std.ascii.isAlphanumeric(c) or c == '-' or c == '_') {

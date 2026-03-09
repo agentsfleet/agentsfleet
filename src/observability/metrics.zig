@@ -313,7 +313,7 @@ pub fn renderPrometheus(
     const queue_depth_gauge: i64 = queue_depth orelse 0;
     const oldest_age_gauge: i64 = oldest_queued_age_ms orelse 0;
 
-    var out: std.ArrayList(u8) = .empty;
+    var out: std.ArrayList(u8) = .{};
     errdefer out.deinit(alloc);
     const writer = out.writer(alloc);
 

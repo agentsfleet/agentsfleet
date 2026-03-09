@@ -29,7 +29,7 @@ pub fn loadForEcho(
     });
     defer result.deinit();
 
-    var list: std.ArrayList([]const u8) = .empty;
+    var list: std.ArrayList([]const u8) = .{};
     defer list.deinit(alloc);
 
     while (try result.next()) |row| {
@@ -39,7 +39,7 @@ pub fn loadForEcho(
 
     if (list.items.len == 0) return try alloc.dupe(u8, "");
 
-    var buf: std.ArrayList(u8) = .empty;
+    var buf: std.ArrayList(u8) = .{};
     try buf.appendSlice(alloc, "## Cross-run workspace memories\n\n");
     for (list.items, 0..) |item, i| {
         defer alloc.free(item);

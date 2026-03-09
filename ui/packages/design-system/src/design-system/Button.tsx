@@ -1,6 +1,7 @@
 import { type ComponentProps, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { uiButtonClass, type UiButtonVariant } from "@usezombie/design-system/classes";
+import { cn } from "../utils";
 
 type Variant = UiButtonVariant;
 
@@ -31,26 +32,27 @@ export default function Button(props: ButtonProps) {
   const cls = classNames(variant);
 
   if (isLink(props)) {
-    const { to, external, variant, children, ...rest } = props;
+    const { to, external, variant, children, className, ...rest } = props;
     void variant;
+    const classes = cn(cls, className);
     if (external || to.startsWith("http") || to.startsWith("mailto:")) {
       return (
-        <a className={cls} href={to} target={external ? "_blank" : undefined} rel={external ? "noopener noreferrer" : undefined} {...rest}>
+        <a className={classes} href={to} target={external ? "_blank" : undefined} rel={external ? "noopener noreferrer" : undefined} {...rest}>
           {children}
         </a>
       );
     }
     return (
-      <Link className={cls} to={to} {...(rest as Omit<ComponentProps<typeof Link>, "to" | "className">)}>
+      <Link className={classes} to={to} {...(rest as Omit<ComponentProps<typeof Link>, "to" | "className">)}>
         {children}
       </Link>
     );
   }
 
-  const { variant: propsVariant, children, ...rest } = props;
+  const { variant: propsVariant, children, className, ...rest } = props;
   void propsVariant;
   return (
-    <button className={cls} type="button" {...rest}>
+    <button className={cn(cls, className)} type="button" {...rest}>
       {children}
     </button>
   );

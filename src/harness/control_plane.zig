@@ -24,7 +24,7 @@ pub const CompileOutcome = struct {
 };
 
 pub fn compileHarnessMarkdown(alloc: std.mem.Allocator, source_markdown: []const u8) !CompileOutcome {
-    var issues = std.ArrayList(ValidationIssue).empty;
+    var issues: std.ArrayList(ValidationIssue) = .{};
     defer issues.deinit(alloc);
 
     if (containsLikelySecretLiteral(source_markdown)) {
@@ -233,7 +233,7 @@ pub fn stringifyTopologyProfile(alloc: std.mem.Allocator, profile: *const topolo
         stages: []const StageOut,
     };
 
-    var stages = std.ArrayList(StageOut).empty;
+    var stages: std.ArrayList(StageOut) = .{};
     defer stages.deinit(alloc);
     for (profile.stages) |stage| {
         try stages.append(alloc, .{
@@ -262,7 +262,7 @@ fn stringifyValidationReport(alloc: std.mem.Allocator, issues: []const Validatio
         issue_count: usize,
         status: []const u8,
     };
-    var out = std.ArrayList(ReportIssue).empty;
+    var out: std.ArrayList(ReportIssue) = .{};
     defer out.deinit(alloc);
     for (issues) |issue| {
         try out.append(alloc, .{

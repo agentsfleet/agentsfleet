@@ -16,18 +16,18 @@
   --z-text-muted: #8b97a8;
   --z-text-dim: #5a6577;
 
-  --z-orange: #ff6b35;
-  --z-orange-bright: #ff8c42;
-  --z-amber: #ffbe2e;
+  --z-orange: #d96b2b;
+  --z-orange-bright: #e78a3c;
+  --z-amber: #c99232;
   --z-cyan: #5ed4ec;
   --z-green: #39ff85;
   --z-red: #ff4d6a;
 
   --z-border: #1a2533;
-  --z-border-active: rgba(255, 107, 53, 0.3);
+  --z-border-active: rgba(169, 86, 32, 0.3);
 
-  --z-glow-orange: rgba(255, 107, 53, 0.15);
-  --z-glow-strong: rgba(255, 107, 53, 0.3);
+  --z-glow-orange: rgba(217, 107, 43, 0.14);
+  --z-glow-strong: rgba(217, 107, 43, 0.26);
   --z-glow-green: rgba(57, 255, 133, 0.15);
 
   /* ── Typography ── */

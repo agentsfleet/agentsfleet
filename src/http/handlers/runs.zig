@@ -221,7 +221,7 @@ pub fn handleGetRun(ctx: *common.Context, r: zap.Request, run_id: []const u8) vo
     };
     defer trans_result.deinit();
 
-    var transitions: std.ArrayList(std.json.Value) = .empty;
+    var transitions: std.ArrayList(std.json.Value) = .{};
 
     while (trans_result.next() catch null) |trow| {
         const tf = trow.get([]u8, 0) catch continue;
@@ -240,7 +240,7 @@ pub fn handleGetRun(ctx: *common.Context, r: zap.Request, run_id: []const u8) vo
     }
     trans_result.drain() catch |err| obs_log.logWarnErr(.http, err, "transitions query drain failed run_id={s}", .{run_id});
 
-    var artifacts_arr: std.ArrayList(std.json.Value) = .empty;
+    var artifacts_arr: std.ArrayList(std.json.Value) = .{};
     fetch_artifacts: {
         var art_result = conn.query(
             \\SELECT artifact_name, object_key, checksum_sha256, producer, attempt, created_at
@@ -266,7 +266,7 @@ pub fn handleGetRun(ctx: *common.Context, r: zap.Request, run_id: []const u8) vo
         }
     }
 
-    var policy_events_arr: std.ArrayList(std.json.Value) = .empty;
+    var policy_events_arr: std.ArrayList(std.json.Value) = .{};
     fetch_policy_events: {
         var pe_result = conn.query(
             \\SELECT action_class, decision, rule_id, actor, ts

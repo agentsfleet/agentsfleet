@@ -120,7 +120,7 @@ pub fn delete(
 }
 
 pub fn decodePathSegment(alloc: std.mem.Allocator, value: []const u8) ![]u8 {
-    var out = std.ArrayList(u8).empty;
+    var out: std.ArrayList(u8) = .{};
     defer out.deinit(alloc);
 
     var i: usize = 0;

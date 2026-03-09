@@ -95,7 +95,7 @@ pub const SessionStore = struct {
 
     fn evictExpiredLocked(self: *SessionStore) void {
         const now = std.time.milliTimestamp();
-        var to_remove: std.ArrayList([]const u8) = .empty;
+        var to_remove: std.ArrayList([]const u8) = .{};
         defer to_remove.deinit(self.alloc);
 
         var it = self.sessions.iterator();

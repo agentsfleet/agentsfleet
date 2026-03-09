@@ -201,7 +201,7 @@ pub const Verifier = struct {
         var client: std.http.Client = .{ .allocator = self.alloc };
         defer client.deinit();
 
-        var body: std.ArrayList(u8) = .empty;
+        var body: std.ArrayList(u8) = .{};
         var aw: std.Io.Writer.Allocating = .fromArrayList(self.alloc, &body);
 
         const result = client.fetch(.{
@@ -251,7 +251,7 @@ fn parseJwks(alloc: std.mem.Allocator, raw: []const u8) !JwksCache {
     const parsed = std.json.parseFromSlice(JwkDoc, alloc, raw, .{ .ignore_unknown_fields = true }) catch return VerifyError.JwksParseFailed;
     defer parsed.deinit();
 
-    var keys: std.ArrayList(JwkKey) = .empty;
+    var keys: std.ArrayList(JwkKey) = .{};
     errdefer {
         for (keys.items) |key| {
             alloc.free(key.kid);
