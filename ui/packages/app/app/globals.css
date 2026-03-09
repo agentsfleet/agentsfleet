@@ -1,5 +1,6 @@
 @import url("https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&display=swap");
 @import "tailwindcss";
+@import "@usezombie/design-system/tokens.css";
 
 /*
  * UseZombie Mission Control — Global Styles
@@ -21,33 +22,8 @@
   font-display: swap;
 }
 
-/* ── Design Tokens (shared with UseZombie.com) ── */
+/* ── App variable bridge ── */
 :root {
-  /* Palette */
-  --z-bg-0: #05080d;
-  --z-bg-1: #0b1018;
-  --z-surface-0: #0f1520;
-  --z-surface-1: #161e2b;
-  --z-surface-2: #1c2636;
-  --z-text-primary: #e8f2ff;
-  --z-text-muted: #8b97a8;
-  --z-text-dim: #5a6577;
-  --z-orange: #ff6b35;
-  --z-orange-bright: #ff8c42;
-  --z-amber: #ffbe2e;
-  --z-cyan: #5ed4ec;
-  --z-green: #39ff85;
-  --z-red: #ff4d6a;
-  --z-border: #1a2533;
-  --z-glow-orange: rgba(255, 107, 53, 0.15);
-  --z-glow-strong: rgba(255, 107, 53, 0.3);
-  --z-font-sans: "Geist", system-ui, -apple-system, sans-serif;
-  --z-font-mono: "Geist Mono", ui-monospace, monospace;
-  --z-radius-sm: 6px;
-  --z-radius-md: 8px;
-  --z-radius-lg: 12px;
-  --z-radius-pill: 999px;
-
   /* ── Shadcn / Tailwind CSS variable bridge ── */
   --background: var(--z-bg-0);
   --foreground: var(--z-text-primary);
@@ -189,7 +165,7 @@ code, pre, kbd {
 }
 
 .mc-nav-item.active {
-  background: rgba(255, 107, 53, 0.12);
+  background: rgba(217, 107, 43, 0.12);
   color: var(--z-orange);
 }
 

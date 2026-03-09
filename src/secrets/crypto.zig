@@ -288,7 +288,7 @@ pub fn buildSecretInjectionPlan(
 ) !SecretInjectionPlan {
     if (keys.len != values.len or keys.len != scopes.len) return SecretError.InvalidEnvelope;
 
-    var host_env = std.ArrayList(EnvPair).empty;
+    var host_env: std.ArrayList(EnvPair) = .{};
     errdefer {
         for (host_env.items) |entry| {
             alloc.free(entry.name);
@@ -297,7 +297,7 @@ pub fn buildSecretInjectionPlan(
         host_env.deinit(alloc);
     }
 
-    var sandbox_env = std.ArrayList(EnvPair).empty;
+    var sandbox_env: std.ArrayList(EnvPair) = .{};
     errdefer {
         for (sandbox_env.items) |entry| {
             alloc.free(entry.name);
@@ -331,7 +331,7 @@ fn normalizeSkillSecretEnvName(
         .host => "UZ_HOST_SKILL_",
         .sandbox => "UZ_SANDBOX_SKILL_",
     };
-    var out = std.ArrayList(u8).empty;
+    var out: std.ArrayList(u8) = .{};
     defer out.deinit(alloc);
     try out.appendSlice(alloc, prefix);
     for (key_name) |c| {

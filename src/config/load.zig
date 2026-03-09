@@ -1,5 +1,8 @@
 const std = @import("std");
 const builtin = @import("builtin");
+const c = @cImport({
+    @cInclude("stdlib.h");
+});
 
 const LoadError = error{
     InvalidDotenvLine,
@@ -81,7 +84,7 @@ fn setIfMissingEnv(key: []const u8, value: []const u8) !void {
             return;
         },
         else => {
-            if (std.c.setenv(key.ptr, value.ptr, 0) != 0) return error.Unexpected;
+            if (c.setenv(key.ptr, value.ptr, 0) != 0) return error.Unexpected;
         },
     }
 }

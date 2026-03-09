@@ -155,7 +155,7 @@ fn fromDoc(alloc: std.mem.Allocator, doc: ProfileDoc) !Profile {
     const profile_id = try alloc.dupe(u8, doc.profile_id);
     errdefer alloc.free(profile_id);
 
-    var stages = std.ArrayList(Stage).empty;
+    var stages: std.ArrayList(Stage) = .{};
     errdefer {
         for (stages.items) |stage| {
             alloc.free(stage.stage_id);

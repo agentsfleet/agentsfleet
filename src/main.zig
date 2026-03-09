@@ -74,7 +74,7 @@ fn zombiedLog(
         "ts_ms={d} level={s} scope={s} msg={f}\n",
         .{ ts, level_str, scope_str, std.json.fmt(msg, .{}) },
     ) catch return;
-    const stderr = std.fs.File.stderr();
+    const stderr = std.io.getStdErr();
     _ = stderr.write(line) catch {};
 }
 

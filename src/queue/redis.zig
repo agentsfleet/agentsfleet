@@ -603,7 +603,7 @@ fn readRespValue(alloc: std.mem.Allocator, reader: *std.Io.Reader) !RespValue {
 }
 
 fn readRespLine(alloc: std.mem.Allocator, reader: *std.Io.Reader) ![]u8 {
-    var buf: std.ArrayList(u8) = .empty;
+    var buf: std.ArrayList(u8) = .{};
     defer buf.deinit(alloc);
 
     while (true) {

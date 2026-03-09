@@ -28,6 +28,32 @@ test.describe("Home page", () => {
     await expect(page.locator("header").getByRole("link", { name: "Connect GitHub, automate PRs" })).toHaveCount(0);
   });
 
+  test("Mission Control button applies hover style", async ({ page }) => {
+    const mission = page.locator("header").getByRole("link", { name: "Mission Control", exact: true });
+    await expect(mission).toBeVisible();
+
+    const before = await mission.evaluate((el) => {
+      const style = window.getComputedStyle(el);
+      return {
+        borderColor: style.borderColor,
+        boxShadow: style.boxShadow,
+      };
+    });
+
+    await mission.hover();
+
+    const after = await mission.evaluate((el) => {
+      const style = window.getComputedStyle(el);
+      return {
+        borderColor: style.borderColor,
+        boxShadow: style.boxShadow,
+      };
+    });
+
+    expect(after.borderColor).not.toBe(before.borderColor);
+    expect(after.boxShadow).not.toBe("none");
+  });
+
   test("renders feature flow rows", async ({ page }) => {
     await expect(page.getByRole("heading", { name: "Install once. Start shipping PRs." })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Traceability and replay by default" })).toBeVisible();

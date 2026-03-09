@@ -86,7 +86,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
         <UserButton
           appearance={{
             variables: {
-              colorPrimary: "#ff6b35",
+              colorPrimary: "var(--z-orange)",
               colorBackground: "#0f1520",
               colorText: "#e8f2ff",
               borderRadius: "8px",

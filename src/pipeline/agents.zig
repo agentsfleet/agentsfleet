@@ -134,7 +134,7 @@ pub const SkillRegistry = struct {
     pub fn init(alloc: std.mem.Allocator) SkillRegistry {
         return .{
             .alloc = alloc,
-            .custom_skills = std.ArrayList(SkillBinding).empty,
+            .custom_skills = std.ArrayList(SkillBinding){},
         };
     }
 
@@ -526,7 +526,7 @@ fn buildRestrictedTools(
     cfg: *const Config,
     opts: RestrictedToolOptions,
 ) ![]tools_mod.Tool {
-    var list: std.ArrayList(tools_mod.Tool) = .empty;
+    var list: std.ArrayList(tools_mod.Tool) = .{};
     errdefer {
         for (list.items) |t| t.deinit(alloc);
         list.deinit(alloc);

@@ -18,9 +18,9 @@
   },
   "dependencies": {
     "@usezombie/design-system": "workspace:*",
-    "react": "^19.1.0",
-    "react-dom": "^19.1.0",
-    "react-router-dom": "^7.3.0"
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "react-router-dom": "7.13.1"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
@@ -29,8 +29,8 @@
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",
-    "@types/react": "^19.1.2",
-    "@types/react-dom": "^19.1.2",
+    "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3",
     "@typescript-eslint/eslint-plugin": "^8.56.1",
     "@typescript-eslint/parser": "^8.56.1",
     "@vitejs/plugin-react": "^5.0.0",

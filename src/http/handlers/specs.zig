@@ -48,7 +48,7 @@ pub fn handleListSpecs(ctx: *common.Context, r: zap.Request) void {
     };
     defer result.deinit();
 
-    var specs: std.ArrayList(std.json.Value) = .empty;
+    var specs: std.ArrayList(std.json.Value) = .{};
 
     while (result.next() catch null) |row| {
         const spec_id = row.get([]u8, 0) catch continue;

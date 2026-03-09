@@ -56,7 +56,7 @@ export default function WorkspaceCard({ workspace }: Props) {
           cursor: pointer;
         }
         .ws-card:hover {
-          border-color: rgba(255, 107, 53, 0.3);
+          border-color: var(--z-border-active);
           box-shadow: 0 0 24px var(--z-glow-orange);
         }
         .ws-card--paused {
