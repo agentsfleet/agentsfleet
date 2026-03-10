@@ -8,6 +8,7 @@ ZIG_GLOBAL_CACHE_DIR ?= $(CURDIR)/.tmp/zig-global-cache
 ZIG_LOCAL_CACHE_DIR  ?= $(CURDIR)/.tmp/zig-local-cache
 ZOMBIED_COVERAGE_MIN_LINES ?= 35
 BENCH_MODE ?= bench
+MEMLEAK_TARGET ?= x86_64-linux
 BACKEND_E2E_FILTER_1 ?= integration: beginApiRequest enforces max in-flight limit
 BACKEND_E2E_FILTER_2 ?= integration: endApiRequest decrements in-flight counter deterministically
 BACKEND_E2E_FILTER_3 ?= integration: start-run queue failure compensation removes only SPEC_QUEUED row
@@ -169,7 +170,7 @@ memleak:  ## Run Zig memory leak gates (allocator tests + Linux valgrind pass)
 	@case "$$(uname -s)" in \
 	  Linux) \
 	    command -v valgrind >/dev/null 2>&1 || { echo "✗ valgrind is required on Linux for make memleak"; exit 1; }; \
-	    $(MAKE) _ensure-test-bin; \
+	    $(MAKE) _ensure-test-bin TARGET="$(MEMLEAK_TARGET)"; \
 	    echo "→ [zombied] Running valgrind leak gate..."; \
 	    valgrind --quiet --leak-check=full --show-leak-kinds=all --errors-for-leak-kinds=definite,possible --error-exitcode=1 \
 	      zig-out/bin/zombied-tests;; \
@@ -205,7 +206,7 @@ _ensure-test-bin:
 	@mkdir -p "$(ZIG_GLOBAL_CACHE_DIR)" "$(ZIG_LOCAL_CACHE_DIR)"
 	@ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" \
 	 ZIG_LOCAL_CACHE_DIR="$(ZIG_LOCAL_CACHE_DIR)" \
-	 zig build test-bin
+	 zig build test-bin $(if $(TARGET),-Dtarget=$(TARGET),)
 
 # --- Aggregate ---
 
