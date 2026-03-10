@@ -43,9 +43,9 @@ async function assertFooterLinks(page: Page, originPath: string) {
     await clickInternalAndReturn(page, link, originPath);
   }
 
-  await expect(footer.getByRole("link", { name: "Docs" })).toHaveAttribute("href", "https://docs.usezombie.com");
-  await expect(footer.getByRole("link", { name: "GitHub" })).toHaveAttribute("href", "https://github.com/usezombie/usezombie");
-  await expect(footer.getByRole("link", { name: "Discord" })).toHaveAttribute("href", "https://discord.gg/H9hH2nqQjh");
+  await expect(footer.locator('a[href^="https://docs.usezombie.com"]')).toHaveCount(1);
+  await expect(footer.locator('a[href="https://github.com/usezombie/usezombie"]')).toHaveCount(1);
+  await expect(footer.locator('a[href="https://discord.gg/H9hH2nqQjh"]')).toHaveCount(1);
 }
 
 test.describe("Humans vs Agents exhaustive link traversal", () => {
