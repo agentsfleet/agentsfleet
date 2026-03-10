@@ -62,3 +62,4 @@ Implement one working control-plane function: compile, validate, activate, and r
 - 5.1 DONE Industry-standard auth baseline: Clerk-issued JWTs are the canonical auth path for API access in production.
 - 5.2 DONE Inbound integrations (Slack/Linear/GitHub webhooks) must use provider signature verification with replay protection, not API keys.
 - 5.3 DONE App-managed `api_keys` storage is excluded from M5_002 final design; tenant/workspace scope enforcement is driven by JWT claims plus RLS session context.
+- 5.4 DONE Clerk M2M `jwt_oidc` claim enforcement in `zombied`: when `workspace_id` claim is present, cross-workspace access is denied even within the same tenant.

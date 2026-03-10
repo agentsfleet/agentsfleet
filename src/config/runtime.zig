@@ -2,11 +2,13 @@
 //! Centralizes env parsing and validation in one place.
 
 const std = @import("std");
+const oidc = @import("../auth/oidc.zig");
 
 pub const ValidationError = error{
     MissingApiKey,
     InvalidApiKeyList,
     MissingClerkJwksUrl,
+    InvalidOidcProvider,
     MissingEncryptionMasterKey,
     InvalidEncryptionMasterKey,
     MissingGitHubAppId,
@@ -46,6 +48,7 @@ pub const ServeConfig = struct {
     ready_max_queue_age_ms: ?i64,
     app_url: []u8,
     clerk_enabled: bool,
+    oidc_provider: oidc.Provider,
     clerk_jwks_url: ?[]u8,
     clerk_issuer: ?[]u8,
     clerk_audience: ?[]u8,
@@ -122,6 +125,11 @@ pub const ServeConfig = struct {
         errdefer if (clerk_issuer) |v| alloc.free(v);
         const clerk_audience = std.process.getEnvVarOwned(alloc, "CLERK_AUDIENCE") catch null;
         errdefer if (clerk_audience) |v| alloc.free(v);
+        const oidc_provider = blk: {
+            const raw = std.process.getEnvVarOwned(alloc, "OIDC_PROVIDER") catch break :blk oidc.Provider.clerk;
+            defer alloc.free(raw);
+            break :blk oidc.parseProvider(std.mem.trim(u8, raw, " \t\r\n")) catch return ValidationError.InvalidOidcProvider;
+        };
 
         const app_url = try envOrDefaultOwned(alloc, "APP_URL", "https://app.usezombie.com");
         errdefer alloc.free(app_url);
@@ -147,6 +155,7 @@ pub const ServeConfig = struct {
             .ready_max_queue_age_ms = ready_max_queue_age_ms,
             .app_url = app_url,
             .clerk_enabled = clerk_enabled,
+            .oidc_provider = oidc_provider,
             .clerk_jwks_url = clerk_jwks_url,
             .clerk_issuer = clerk_issuer,
             .clerk_audience = clerk_audience,
@@ -174,6 +183,7 @@ pub const ServeConfig = struct {
             ValidationError.MissingApiKey => std.debug.print("fatal: API_KEY not set\n", .{}),
             ValidationError.InvalidApiKeyList => std.debug.print("fatal: API_KEY has no usable keys\n", .{}),
             ValidationError.MissingClerkJwksUrl => std.debug.print("fatal: CLERK_JWKS_URL not set while CLERK_SECRET_KEY is configured\n", .{}),
+            ValidationError.InvalidOidcProvider => std.debug.print("fatal: OIDC_PROVIDER is invalid (supported: clerk)\n", .{}),
             ValidationError.MissingEncryptionMasterKey => std.debug.print("fatal: ENCRYPTION_MASTER_KEY not set\n", .{}),
             ValidationError.InvalidEncryptionMasterKey => std.debug.print("fatal: ENCRYPTION_MASTER_KEY must be 64 hex chars\n", .{}),
             ValidationError.MissingGitHubAppId => std.debug.print("fatal: GITHUB_APP_ID not set\n", .{}),

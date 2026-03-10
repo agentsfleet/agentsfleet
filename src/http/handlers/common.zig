@@ -1,7 +1,7 @@
 const std = @import("std");
 const zap = @import("zap");
 const pg = @import("pg");
-const clerk = @import("../../auth/clerk.zig");
+const oidc = @import("../../auth/oidc.zig");
 const auth_sessions = @import("../../auth/sessions.zig");
 const queue_redis = @import("../../queue/redis.zig");
 const worker = @import("../../pipeline/worker.zig");
@@ -14,7 +14,7 @@ pub const Context = struct {
     queue: *queue_redis.Client,
     alloc: std.mem.Allocator,
     api_keys: []const u8,
-    clerk: ?*clerk.Verifier,
+    oidc: ?*oidc.Verifier,
     auth_sessions: *auth_sessions.SessionStore,
     app_url: []const u8,
     worker_state: *const worker.WorkerState,
@@ -26,13 +26,13 @@ pub const Context = struct {
 
 pub const AuthMode = enum {
     api_key,
-    clerk_jwt,
+    jwt_oidc,
 };
 
 pub const AuthPrincipal = struct {
     mode: AuthMode,
     tenant_id: ?[]const u8 = null,
-    api_key_workspace_id: ?[]const u8 = null,
+    workspace_scope_id: ?[]const u8 = null,
 };
 
 pub const AuthError = error{
@@ -99,7 +99,7 @@ fn authenticateApiKey(
         return .{
             .mode = .api_key,
             .tenant_id = try alloc.dupe(u8, "github_app"),
-            .api_key_workspace_id = null,
+            .workspace_scope_id = null,
         };
     }
 
@@ -107,10 +107,14 @@ fn authenticateApiKey(
 }
 
 pub fn authenticate(alloc: std.mem.Allocator, r: zap.Request, ctx: *Context) AuthError!AuthPrincipal {
-    if (ctx.clerk) |verifier| {
+    if (ctx.oidc) |verifier| {
         const auth = r.getHeader("authorization") orelse return AuthError.Unauthorized;
-        const principal = verifier.verifyAuthorization(alloc, auth) catch |err| return mapClerkVerifyError(err);
-        return .{ .mode = .clerk_jwt, .tenant_id = principal.tenant_id };
+        const principal = verifier.verifyAuthorization(alloc, auth) catch |err| return mapOidcVerifyError(err);
+        return .{
+            .mode = .jwt_oidc,
+            .tenant_id = principal.tenant_id,
+            .workspace_scope_id = principal.workspace_id,
+        };
     }
 
     return authenticateApiKey(alloc, r, ctx);
@@ -124,7 +128,7 @@ pub fn writeAuthError(r: zap.Request, req_id: []const u8, err: AuthError) void {
     }
 }
 
-pub fn mapClerkVerifyError(err: clerk.VerifyError) AuthError {
+pub fn mapOidcVerifyError(err: oidc.VerifyError) AuthError {
     return switch (err) {
         .TokenExpired => AuthError.TokenExpired,
         .JwksFetchFailed, .JwksParseFailed => AuthError.AuthServiceUnavailable,
@@ -142,10 +146,8 @@ pub fn authorizeWorkspace(conn: *pg.Conn, principal: AuthPrincipal, workspace_id
     defer q.deinit();
     if ((q.next() catch null) == null) return false;
 
-    if (principal.mode == .api_key) {
-        if (principal.api_key_workspace_id) |scoped_workspace_id| {
-            if (!std.mem.eql(u8, scoped_workspace_id, workspace_id)) return false;
-        }
+    if (principal.workspace_scope_id) |scoped_workspace_id| {
+        if (!std.mem.eql(u8, scoped_workspace_id, workspace_id)) return false;
     }
     return true;
 }
@@ -218,17 +220,17 @@ pub fn openHandlerTestConn(alloc: std.mem.Allocator) !?struct { pool: *db.Pool, 
     return .{ .pool = pool, .conn = conn };
 }
 
-test "mapClerkVerifyError maps expired token to token_expired response path" {
-    try std.testing.expectEqual(AuthError.TokenExpired, mapClerkVerifyError(clerk.VerifyError.TokenExpired));
+test "mapOidcVerifyError maps expired token to token_expired response path" {
+    try std.testing.expectEqual(AuthError.TokenExpired, mapOidcVerifyError(oidc.VerifyError.TokenExpired));
 }
 
-test "mapClerkVerifyError maps jwks failures to auth unavailable" {
-    try std.testing.expectEqual(AuthError.AuthServiceUnavailable, mapClerkVerifyError(clerk.VerifyError.JwksFetchFailed));
-    try std.testing.expectEqual(AuthError.AuthServiceUnavailable, mapClerkVerifyError(clerk.VerifyError.JwksParseFailed));
+test "mapOidcVerifyError maps jwks failures to auth unavailable" {
+    try std.testing.expectEqual(AuthError.AuthServiceUnavailable, mapOidcVerifyError(oidc.VerifyError.JwksFetchFailed));
+    try std.testing.expectEqual(AuthError.AuthServiceUnavailable, mapOidcVerifyError(oidc.VerifyError.JwksParseFailed));
 }
 
-test "mapClerkVerifyError maps signature failures to unauthorized" {
-    try std.testing.expectEqual(AuthError.Unauthorized, mapClerkVerifyError(clerk.VerifyError.SignatureInvalid));
+test "mapOidcVerifyError maps signature failures to unauthorized" {
+    try std.testing.expectEqual(AuthError.Unauthorized, mapOidcVerifyError(oidc.VerifyError.SignatureInvalid));
 }
 
 test "integration: api key workspace scoping blocks cross-workspace access" {
@@ -256,7 +258,38 @@ test "integration: api key workspace scoping blocks cross-workspace access" {
     const principal = AuthPrincipal{
         .mode = .api_key,
         .tenant_id = "tenant_a",
-        .api_key_workspace_id = "ws_a",
+        .workspace_scope_id = "ws_a",
+    };
+    try std.testing.expect(authorizeWorkspace(db_ctx.conn, principal, "ws_a"));
+    try std.testing.expect(!authorizeWorkspace(db_ctx.conn, principal, "ws_b"));
+}
+
+test "integration: clerk workspace claim scoping blocks cross-workspace access" {
+    const db_ctx = (try openHandlerTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.release(db_ctx.conn);
+    defer db_ctx.pool.deinit();
+
+    {
+        var q = try db_ctx.conn.query(
+            \\CREATE TEMP TABLE workspaces (
+            \\  workspace_id TEXT PRIMARY KEY,
+            \\  tenant_id TEXT NOT NULL
+            \\) ON COMMIT DROP
+        , .{});
+        q.deinit();
+    }
+    {
+        var q = try db_ctx.conn.query(
+            "INSERT INTO workspaces (workspace_id, tenant_id) VALUES ('ws_a', 'tenant_a'), ('ws_b', 'tenant_a')",
+            .{},
+        );
+        q.deinit();
+    }
+
+    const principal = AuthPrincipal{
+        .mode = .jwt_oidc,
+        .tenant_id = "tenant_a",
+        .workspace_scope_id = "ws_a",
     };
     try std.testing.expect(authorizeWorkspace(db_ctx.conn, principal, "ws_a"));
     try std.testing.expect(!authorizeWorkspace(db_ctx.conn, principal, "ws_b"));
