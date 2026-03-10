@@ -59,10 +59,29 @@ UseZombie accepts a spec request and produces a validated pull request through a
 
 1. `spec request`: `zombiectl` submits run request to API (Clerk JWT auth).
 2. `worker scheduling`: API writes run row in Postgres and enqueues `run_id` in Redis stream.
-3. `sandbox execution`: worker claims message via XREADGROUP, runs Echo → Scout → Warden via NullClaw.
+3. `sandbox execution`: worker claims message via XREADGROUP, resolves active workspace profile (fallback `default-v1` when no active profile exists), and runs profile-defined stages via NullClaw.
 4. `result evaluation`: worker persists verdict and artifacts metadata in Postgres.
 5. `iteration loop`: on validation fail with retries available, worker re-enqueues the same `run_id` with incremented attempt.
 6. `PR creation`: on pass, worker pushes branch and creates PR via GitHub App installation token.
+
+## Dynamic Agent Profile Use Case (M5_008 Step 1)
+
+This is the canonical profile workflow for v1.
+
+1. Operator stores profile source:
+   - `PUT /v1/workspaces/{workspace_id}/harness/source`
+2. Operator compiles candidate profile:
+   - `POST /v1/workspaces/{workspace_id}/harness/compile`
+3. Operator activates a valid compiled version:
+   - `POST /v1/workspaces/{workspace_id}/harness/activate`
+4. Runtime resolves active profile for execution:
+   - `GET /v1/workspaces/{workspace_id}/harness/active`
+5. Worker executes stage topology from resolved profile and persists run artifacts with profile snapshot linkage.
+
+Fail-closed behavior:
+- Invalid profile versions cannot activate.
+- Cross-workspace profile selection is rejected by workspace-scoped queries and tenant checks.
+- If no active profile exists, runtime uses `default-v1` deterministic fallback.
 
 ## Single Canonical Diagram (v1)
 
