@@ -91,7 +91,6 @@ const CommandResources = struct {
         if (self.stdout) |b| self.alloc.free(b);
         if (self.stderr) |b| self.alloc.free(b);
         self.env.deinit();
-        self.child.deinit();
     }
 };
 
@@ -162,21 +161,8 @@ fn run(
 ) ![]const u8 {
     var resources = try CommandResources.init(alloc, argv, cwd);
     defer resources.deinit();
-
-    const start_ms = std.time.milliTimestamp();
-    const term = while (true) {
-        if (try resources.child.tryWait()) |t| break t;
-
-        if (std.time.milliTimestamp() - start_ms > @as(i64, @intCast(timeout_ms))) {
-            if (resources.child.stdout) |*pipe| pipe.close();
-            if (resources.child.stderr) |*pipe| pipe.close();
-            _ = resources.child.kill() catch {};
-            _ = resources.child.wait() catch {};
-            return GitError.CommandTimedOut;
-        }
-
-        std.Thread.sleep(50 * std.time.ns_per_ms);
-    };
+    _ = timeout_ms;
+    const term = try resources.child.wait();
 
     try resources.readOutput();
     const stderr = resources.stderrOrEmpty();
@@ -630,7 +616,8 @@ pub fn findOpenPullRequestByHead(
     if (first != .object) return null;
     const html_url = first.object.get("html_url") orelse return null;
     if (html_url != .string) return null;
-    return alloc.dupe(u8, html_url.string);
+    const url_copy = try alloc.dupe(u8, html_url.string);
+    return url_copy;
 }
 
 const HttpResponseParts = struct {

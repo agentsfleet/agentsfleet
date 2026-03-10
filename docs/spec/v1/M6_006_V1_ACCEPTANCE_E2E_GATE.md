@@ -9,6 +9,7 @@
 **Batch:** B7 — deferred after M6_003
 **Depends on:** M4_001 (Implement `zombiectl` CLI Runtime), M3_006 (Implement Clerk Authentication Contract)
 **Note:** M3_004 (Redis streams) and M3_005 (security hardening) already DONE
+**Prerequisite Update (Mar 10, 2026):** Zig 0.15.2 compile blockers in `src/auth/github.zig` and `src/pipeline/worker_pr_flow.zig` were resolved; `zig build --summary all` and release-target builds (`x86_64/aarch64` for Linux and macOS) now pass locally.
 
 ---
 

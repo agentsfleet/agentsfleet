@@ -1,7 +1,7 @@
 const std = @import("std");
 
 const db = @import("../db/pool.zig");
-const runtime_config = @import("../config/runtime.zig");
+const worker_config = @import("worker_config.zig");
 const env_vars = @import("../config/env_vars.zig");
 const events_bus = @import("../events/bus.zig");
 const worker = @import("../pipeline/worker.zig");
@@ -48,16 +48,16 @@ pub fn run(alloc: std.mem.Allocator) !void {
         std.process.exit(1);
     };
 
-    var worker_cfg = runtime_config.WorkerConfig.load(alloc) catch |err| {
+    var worker_cfg = worker_config.Config.load(alloc) catch |err| {
         switch (err) {
-            runtime_config.ValidationError.MissingGitHubAppId,
-            runtime_config.ValidationError.MissingGitHubAppPrivateKey,
-            runtime_config.ValidationError.InvalidMaxAttempts,
-            runtime_config.ValidationError.InvalidWorkerConcurrency,
-            runtime_config.ValidationError.InvalidRunTimeoutMs,
-            runtime_config.ValidationError.InvalidRateLimitCapacity,
-            runtime_config.ValidationError.InvalidRateLimitRefillPerSec,
-            => runtime_config.ServeConfig.printValidationError(@errorCast(err)),
+            worker_config.ValidationError.MissingGitHubAppId,
+            worker_config.ValidationError.MissingGitHubAppPrivateKey,
+            worker_config.ValidationError.InvalidMaxAttempts,
+            worker_config.ValidationError.InvalidWorkerConcurrency,
+            worker_config.ValidationError.InvalidRunTimeoutMs,
+            worker_config.ValidationError.InvalidRateLimitCapacity,
+            worker_config.ValidationError.InvalidRateLimitRefillPerSec,
+            => worker_config.printValidationError(@errorCast(err)),
             else => std.debug.print("fatal: failed to load worker config: {}\n", .{err}),
         }
         std.process.exit(1);

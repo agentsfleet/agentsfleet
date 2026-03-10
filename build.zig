@@ -3,6 +3,7 @@ const std = @import("std");
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
+    const with_bench_tools = b.option(bool, "with-bench-tools", "Enable benchmark tooling (zBench)") orelse false;
 
     // ── NullClaw dependency ──────────────────────────────────────────────────
     // Use base engines (sqlite for per-run memory) + no channels (we don't
@@ -79,6 +80,32 @@ pub fn build(b: *std.Build) void {
         }),
     });
     b.step("test", "Run unit tests").dependOn(&b.addRunArtifact(tests).step);
+
+    if (with_bench_tools) {
+        // ── zBench dependency ────────────────────────────────────────────────
+        const zbench_dep = b.dependency("zbench", .{
+            .target = target,
+            .optimize = optimize,
+        });
+        const zbench_mod = zbench_dep.module("zbench");
+
+        // ── API benchmark gate step (zBench-backed) ─────────────────────────
+        const api_bench = b.addExecutable(.{
+            .name = "api-bench-runner",
+            .root_module = b.createModule(.{
+                .root_source_file = b.path("src/tools/api_bench_runner.zig"),
+                .target = target,
+                .optimize = optimize,
+                .imports = &.{
+                    .{ .name = "zbench", .module = zbench_mod },
+                },
+            }),
+        });
+
+        const run_api_bench = b.addRunArtifact(api_bench);
+        if (b.args) |args| run_api_bench.addArgs(args);
+        b.step("bench-api", "Run API benchmark gate").dependOn(&run_api_bench.step);
+    }
 
     // Installable backend test binary for coverage tooling (kcov/codecov).
     const install_tests = b.addInstallArtifact(tests, .{

@@ -65,7 +65,7 @@ pub const SkillKind = enum {
     custom,
 };
 
-pub const CustomSkillFn = *const fn (std.mem.Allocator, RoleBinding, RoleInput) anyerror!AgentResult;
+pub const CustomSkillFn = *const fn (std.mem.Allocator, []const u8, []const u8, RoleInput) anyerror!AgentResult;
 
 pub const SkillBinding = struct {
     skill_id: []const u8,
@@ -216,7 +216,7 @@ pub fn runByRole(alloc: std.mem.Allocator, binding: RoleBinding, input: RoleInpu
         ),
         .custom => {
             const runner = binding.custom_runner orelse return RoleError.MissingCustomRunner;
-            return runner(alloc, binding, input);
+            return runner(alloc, binding.role_id, binding.skill_id, input);
         },
     };
 }
@@ -632,13 +632,15 @@ test "lookupRole resolves built-in role ids" {
 
 fn testCustomSkill(
     alloc: std.mem.Allocator,
-    binding: RoleBinding,
+    role_id: []const u8,
+    skill_id: []const u8,
     input: RoleInput,
 ) !AgentResult {
     _ = alloc;
+    _ = skill_id;
     _ = input;
     return .{
-        .content = binding.role_id,
+        .content = role_id,
         .token_count = 1,
         .wall_seconds = 0,
         .exit_ok = true,

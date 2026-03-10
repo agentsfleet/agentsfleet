@@ -64,8 +64,10 @@ pub const Verifier = struct {
     pub fn verifyAuthorization(self: *Verifier, alloc: std.mem.Allocator, authorization: []const u8) !Principal {
         return switch (self.provider) {
             .clerk => {
-                const v = self.clerk_verifier orelse return VerifyError.TokenMalformed;
-                const p = try v.verifyAuthorization(alloc, authorization);
+                const p = if (self.clerk_verifier) |*v|
+                    try v.verifyAuthorization(alloc, authorization)
+                else
+                    return VerifyError.TokenMalformed;
                 return .{
                     .subject = p.subject,
                     .issuer = p.issuer,
@@ -80,8 +82,11 @@ pub const Verifier = struct {
     pub fn checkJwksConnectivity(self: *Verifier) !void {
         switch (self.provider) {
             .clerk => {
-                const v = self.clerk_verifier orelse return VerifyError.JwksFetchFailed;
-                try v.checkJwksConnectivity();
+                if (self.clerk_verifier) |*v| {
+                    try v.checkJwksConnectivity();
+                } else {
+                    return VerifyError.JwksFetchFailed;
+                }
             },
         }
     }

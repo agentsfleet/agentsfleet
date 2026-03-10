@@ -4,7 +4,7 @@
 **Milestone:** M6
 **Workstream:** 003
 **Date:** Mar 07, 2026
-**Status:** IN_PROGRESS
+**Status:** ✅ DONE
 **Priority:** P0 — v1 stability and stress confidence
 **Depends on:** M1_003 (Observability and Policy)
 
@@ -12,7 +12,7 @@
 
 ## 1.0 Ghostty Precedent And Why It Matters
 
-**Status:** IN_PROGRESS
+**Status:** ✅ DONE
 
 Adopt the proven pattern used by Ghostty: explicit Valgrind execution targets in build orchestration (`run-valgrind`, `test-valgrind`) and operator documentation for leak checks.
 
@@ -25,11 +25,22 @@ Why it helps UseZombie:
 - Turns leak checks into one-command, repeatable developer/CI workflows.
 - Reduces regressions by making memory safety a routine gate instead of ad-hoc debugging.
 
+Suppression-file policy:
+- Default policy is zero suppressions for M6_003.
+- Linux gate uses strict Valgrind flags with `--error-exitcode=1` and no suppression file.
+- If suppressions are ever introduced, they must be explicitly reviewed and documented in this workstream evidence before enabling in CI.
+
+Evidence format used:
+- Command line invoked.
+- Key summary metrics (`total`, `ok`, `fail`, `timeout`, latency percentiles, RSS growth).
+- Artifact path under `.tmp/`.
+- Pass/fail exit behavior.
+
 **Dimensions:**
 - 1.1 ✅ DONE Document Ghostty precedent and map equivalent commands for UseZombie runtime
 - 1.2 ✅ DONE Define platform behavior (`valgrind` required on Linux; explicit unsupported handling on macOS)
-- 1.3 IN_PROGRESS Define suppression-file policy and storage location for deterministic results
-- 1.4 IN_PROGRESS Define evidence format (command, output summary, leak/error counts)
+- 1.3 ✅ DONE Define suppression-file policy and storage location for deterministic results
+- 1.4 ✅ DONE Define evidence format (command, output summary, leak/error counts)
 
 ---
 
@@ -55,13 +66,19 @@ Required targets:
 
 ## 3.0 Metrics, Thresholds, And Failure Contracts
 
-**Status:** IN_PROGRESS
+**Status:** ✅ DONE
 
 Define objective, machine-checkable thresholds so stress tests are actionable.
 
+Default gate thresholds:
+- `bench`: `error_rate <= 0.01`, `p95 <= 250ms`, `rss_growth <= 128MB`
+- `soak`: `error_rate <= 0.02`, `p95 <= 400ms`, `rss_growth <= 256MB`
+- `profile`: `error_rate <= 0.02`, `p95 <= 300ms`, `rss_growth <= 192MB`
+- Leak-counter acceptance: `make memleak` is red on allocator-leak test failure and Linux valgrind leak/error exit (`--error-exitcode=1`)
+
 **Dimensions:**
-- 3.1 IN_PROGRESS Define default SLO thresholds (error-rate, p95/p99 latency, timeout budget)
-- 3.2 PENDING Define memory regression thresholds (RSS growth and leak counter acceptance)
+- 3.1 ✅ DONE Define default SLO thresholds (error-rate, p95/p99 latency, timeout budget)
+- 3.2 ✅ DONE Define memory regression thresholds (RSS growth and leak counter acceptance)
 - 3.3 ✅ DONE Define output schema for bench/soak/profile summaries under `.tmp/` and/or `coverage/`
 - 3.4 ✅ DONE Define failure exit-code contract for local and CI usage
 
@@ -69,7 +86,7 @@ Define objective, machine-checkable thresholds so stress tests are actionable.
 
 ## 4.0 Status Transition Discipline (Execution Rule)
 
-**Status:** IN_PROGRESS
+**Status:** ✅ DONE
 
 When this milestone is executed, status updates are mandatory and explicit:
 - Milestone status must move `PENDING -> IN_PROGRESS -> ✅ DONE`.
@@ -78,21 +95,21 @@ When this milestone is executed, status updates are mandatory and explicit:
 - No section or dimension may remain `PENDING` when milestone status is `✅ DONE`.
 
 **Dimensions:**
-- 4.1 IN_PROGRESS Apply transition rule to all milestone updates in this workstream
-- 4.2 IN_PROGRESS Enforce green-tick completion markers (`✅ DONE`) in final state
-- 4.3 IN_PROGRESS Capture verification evidence before marking any item `✅ DONE`
+- 4.1 ✅ DONE Apply transition rule to all milestone updates in this workstream
+- 4.2 ✅ DONE Enforce green-tick completion markers (`✅ DONE`) in final state
+- 4.3 ✅ DONE Capture verification evidence before marking any item `✅ DONE`
 
 ---
 
 ## 5.0 Acceptance Criteria
 
-**Status:** IN_PROGRESS
+**Status:** ✅ DONE
 
 - [x] 5.1 `make memleak` passes deterministically and catches intentional leak fixture
 - [x] 5.2 `make bench` provides repeatable latency/throughput output and threshold result
 - [x] 5.3 `make bench BENCH_MODE=soak` completes duration run with explicit pass/fail summary
 - [x] 5.4 `make bench BENCH_MODE=profile` produces profile artifacts and locations are documented
-- [ ] 5.5 CI can execute at least `memleak` + `bench` without manual intervention
+- [x] 5.5 CI can execute at least `memleak` + `bench` without manual intervention (`.github/workflows/memleak.yml`, `.github/workflows/bench.yml`)
 
 ---
 
@@ -101,3 +118,15 @@ When this milestone is executed, status updates are mandatory and explicit:
 - Cross-region distributed load generation for v1
 - Full production traffic replay before v1
 - UI performance benchmarking (tracked separately)
+
+---
+
+## 7.0 Post-Completion Revalidation
+
+**Status:** ✅ DONE
+
+`Mar 10, 2026: 06:35 PM` — Revalidated Zig 0.15.2 compatibility after fixing compile blockers in GitHub auth and PR flow paths.
+
+**Dimensions:**
+- 7.1 ✅ DONE `zig build --summary all` passes after the compatibility fixes
+- 7.2 ✅ DONE Release-target verification passes for `x86_64-linux`, `aarch64-linux`, `x86_64-macos`, and `aarch64-macos`

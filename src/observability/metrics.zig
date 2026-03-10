@@ -302,6 +302,18 @@ fn appendDurationHistogram(
     try writer.print("{s}_count {d}\n", .{ name, hist.count });
 }
 
+fn appendMetric(
+    writer: anytype,
+    name: []const u8,
+    metric_type: []const u8,
+    help: []const u8,
+    value: anytype,
+) !void {
+    try writer.print("# HELP {s} {s}\n", .{ name, help });
+    try writer.print("# TYPE {s} {s}\n", .{ name, metric_type });
+    try writer.print("{s} {d}\n", .{ name, value });
+}
+
 pub fn renderPrometheus(
     alloc: std.mem.Allocator,
     worker_running: bool,
@@ -317,162 +329,44 @@ pub fn renderPrometheus(
     errdefer out.deinit(alloc);
     const writer = out.writer(alloc);
 
-    try writer.print(
-        \\# HELP zombie_runs_created_total Total runs accepted by API.
-        \\# TYPE zombie_runs_created_total counter
-        \\zombie_runs_created_total {d}
-        \\# HELP zombie_runs_completed_total Total runs completed successfully.
-        \\# TYPE zombie_runs_completed_total counter
-        \\zombie_runs_completed_total {d}
-        \\# HELP zombie_runs_blocked_total Total runs that ended blocked.
-        \\# TYPE zombie_runs_blocked_total counter
-        \\zombie_runs_blocked_total {d}
-        \\# HELP zombie_run_retries_total Total retry attempts across runs.
-        \\# TYPE zombie_run_retries_total counter
-        \\zombie_run_retries_total {d}
-        \\# HELP zombie_external_retries_total Total retry attempts inside external side-effect wrappers.
-        \\# TYPE zombie_external_retries_total counter
-        \\zombie_external_retries_total {d}
-        \\# HELP zombie_external_retries_rate_limited_total External retries classified as rate-limited.
-        \\# TYPE zombie_external_retries_rate_limited_total counter
-        \\zombie_external_retries_rate_limited_total {d}
-        \\# HELP zombie_external_retries_timeout_total External retries classified as timeout.
-        \\# TYPE zombie_external_retries_timeout_total counter
-        \\zombie_external_retries_timeout_total {d}
-        \\# HELP zombie_external_retries_context_exhausted_total External retries classified as context exhausted.
-        \\# TYPE zombie_external_retries_context_exhausted_total counter
-        \\zombie_external_retries_context_exhausted_total {d}
-        \\# HELP zombie_external_retries_auth_total External retries classified as auth.
-        \\# TYPE zombie_external_retries_auth_total counter
-        \\zombie_external_retries_auth_total {d}
-        \\# HELP zombie_external_retries_invalid_request_total External retries classified as invalid request.
-        \\# TYPE zombie_external_retries_invalid_request_total counter
-        \\zombie_external_retries_invalid_request_total {d}
-        \\# HELP zombie_external_retries_server_error_total External retries classified as server error.
-        \\# TYPE zombie_external_retries_server_error_total counter
-        \\zombie_external_retries_server_error_total {d}
-        \\# HELP zombie_external_retries_unknown_total External retries classified as unknown.
-        \\# TYPE zombie_external_retries_unknown_total counter
-        \\zombie_external_retries_unknown_total {d}
-        \\# HELP zombie_external_failures_total External calls that exited wrappers as classified failures.
-        \\# TYPE zombie_external_failures_total counter
-        \\zombie_external_failures_total {d}
-        \\# HELP zombie_external_failures_rate_limited_total External failures classified as rate-limited.
-        \\# TYPE zombie_external_failures_rate_limited_total counter
-        \\zombie_external_failures_rate_limited_total {d}
-        \\# HELP zombie_external_failures_timeout_total External failures classified as timeout.
-        \\# TYPE zombie_external_failures_timeout_total counter
-        \\zombie_external_failures_timeout_total {d}
-        \\# HELP zombie_external_failures_context_exhausted_total External failures classified as context exhausted.
-        \\# TYPE zombie_external_failures_context_exhausted_total counter
-        \\zombie_external_failures_context_exhausted_total {d}
-        \\# HELP zombie_external_failures_auth_total External failures classified as auth.
-        \\# TYPE zombie_external_failures_auth_total counter
-        \\zombie_external_failures_auth_total {d}
-        \\# HELP zombie_external_failures_invalid_request_total External failures classified as invalid request.
-        \\# TYPE zombie_external_failures_invalid_request_total counter
-        \\zombie_external_failures_invalid_request_total {d}
-        \\# HELP zombie_external_failures_server_error_total External failures classified as server error.
-        \\# TYPE zombie_external_failures_server_error_total counter
-        \\zombie_external_failures_server_error_total {d}
-        \\# HELP zombie_external_failures_unknown_total External failures classified as unknown.
-        \\# TYPE zombie_external_failures_unknown_total counter
-        \\zombie_external_failures_unknown_total {d}
-        \\# HELP zombie_retry_after_hints_total Retry attempts that used Retry-After guidance.
-        \\# TYPE zombie_retry_after_hints_total counter
-        \\zombie_retry_after_hints_total {d}
-        \\# HELP zombie_worker_errors_total Total worker loop errors.
-        \\# TYPE zombie_worker_errors_total counter
-        \\zombie_worker_errors_total {d}
-        \\# HELP zombie_agent_echo_calls_total Total Echo agent invocations.
-        \\# TYPE zombie_agent_echo_calls_total counter
-        \\zombie_agent_echo_calls_total {d}
-        \\# HELP zombie_agent_scout_calls_total Total Scout agent invocations.
-        \\# TYPE zombie_agent_scout_calls_total counter
-        \\zombie_agent_scout_calls_total {d}
-        \\# HELP zombie_agent_warden_calls_total Total Warden agent invocations.
-        \\# TYPE zombie_agent_warden_calls_total counter
-        \\zombie_agent_warden_calls_total {d}
-        \\# HELP zombie_agent_tokens_total Total tokens consumed by agent calls.
-        \\# TYPE zombie_agent_tokens_total counter
-        \\zombie_agent_tokens_total {d}
-        \\# HELP zombie_backoff_wait_ms_total Total backoff wait time in milliseconds.
-        \\# TYPE zombie_backoff_wait_ms_total counter
-        \\zombie_backoff_wait_ms_total {d}
-        \\# HELP zombie_rate_limit_wait_ms_total Total wait time due to rate limiting in milliseconds.
-        \\# TYPE zombie_rate_limit_wait_ms_total counter
-        \\zombie_rate_limit_wait_ms_total {d}
-        \\# HELP zombie_side_effect_outbox_enqueued_total Total side-effect outbox entries enqueued.
-        \\# TYPE zombie_side_effect_outbox_enqueued_total counter
-        \\zombie_side_effect_outbox_enqueued_total {d}
-        \\# HELP zombie_side_effect_outbox_delivered_total Total side-effect outbox entries marked delivered.
-        \\# TYPE zombie_side_effect_outbox_delivered_total counter
-        \\zombie_side_effect_outbox_delivered_total {d}
-        \\# HELP zombie_side_effect_outbox_dead_letter_total Total side-effect outbox entries dead-lettered by reconciliation.
-        \\# TYPE zombie_side_effect_outbox_dead_letter_total counter
-        \\zombie_side_effect_outbox_dead_letter_total {d}
-        \\# HELP zombie_api_backpressure_rejections_total Total API requests rejected by in-flight backpressure guard.
-        \\# TYPE zombie_api_backpressure_rejections_total counter
-        \\zombie_api_backpressure_rejections_total {d}
-        \\# HELP zombie_api_in_flight_requests Current in-flight API requests protected by backpressure guard.
-        \\# TYPE zombie_api_in_flight_requests gauge
-        \\zombie_api_in_flight_requests {d}
-        \\# HELP zombie_worker_in_flight_runs Current in-flight runs across worker threads.
-        \\# TYPE zombie_worker_in_flight_runs gauge
-        \\zombie_worker_in_flight_runs {d}
-        \\# HELP zombie_worker_allocator_leaks_total Total worker allocator leak detections on teardown.
-        \\# TYPE zombie_worker_allocator_leaks_total counter
-        \\zombie_worker_allocator_leaks_total {d}
-        \\# HELP zombie_worker_running Worker liveness gauge (1 running, 0 stopped).
-        \\# TYPE zombie_worker_running gauge
-        \\zombie_worker_running {d}
-        \\# HELP zombie_queue_depth Current queued runs in SPEC_QUEUED.
-        \\# TYPE zombie_queue_depth gauge
-        \\zombie_queue_depth {d}
-        \\# HELP zombie_oldest_queued_age_ms Oldest queued run age in milliseconds.
-        \\# TYPE zombie_oldest_queued_age_ms gauge
-        \\zombie_oldest_queued_age_ms {d}
-        \\
-    , .{
-        s.runs_created_total,
-        s.runs_completed_total,
-        s.runs_blocked_total,
-        s.run_retries_total,
-        s.external_retries_total,
-        s.external_retries_rate_limited_total,
-        s.external_retries_timeout_total,
-        s.external_retries_context_exhausted_total,
-        s.external_retries_auth_total,
-        s.external_retries_invalid_request_total,
-        s.external_retries_server_error_total,
-        s.external_retries_unknown_total,
-        s.external_failures_total,
-        s.external_failures_rate_limited_total,
-        s.external_failures_timeout_total,
-        s.external_failures_context_exhausted_total,
-        s.external_failures_auth_total,
-        s.external_failures_invalid_request_total,
-        s.external_failures_server_error_total,
-        s.external_failures_unknown_total,
-        s.retry_after_hints_total,
-        s.worker_errors_total,
-        s.agent_echo_calls_total,
-        s.agent_scout_calls_total,
-        s.agent_warden_calls_total,
-        s.agent_tokens_total,
-        s.backoff_wait_ms_total,
-        s.rate_limit_wait_ms_total,
-        s.side_effect_outbox_enqueued_total,
-        s.side_effect_outbox_delivered_total,
-        s.side_effect_outbox_dead_letter_total,
-        s.api_backpressure_rejections_total,
-        s.api_in_flight_requests,
-        s.worker_in_flight_runs,
-        s.worker_allocator_leaks_total,
-        worker_running_gauge,
-        queue_depth_gauge,
-        oldest_age_gauge,
-    });
+    try appendMetric(writer, "zombie_runs_created_total", "counter", "Total runs accepted by API.", s.runs_created_total);
+    try appendMetric(writer, "zombie_runs_completed_total", "counter", "Total runs completed successfully.", s.runs_completed_total);
+    try appendMetric(writer, "zombie_runs_blocked_total", "counter", "Total runs that ended blocked.", s.runs_blocked_total);
+    try appendMetric(writer, "zombie_run_retries_total", "counter", "Total retry attempts across runs.", s.run_retries_total);
+    try appendMetric(writer, "zombie_external_retries_total", "counter", "Total retry attempts inside external side-effect wrappers.", s.external_retries_total);
+    try appendMetric(writer, "zombie_external_retries_rate_limited_total", "counter", "External retries classified as rate-limited.", s.external_retries_rate_limited_total);
+    try appendMetric(writer, "zombie_external_retries_timeout_total", "counter", "External retries classified as timeout.", s.external_retries_timeout_total);
+    try appendMetric(writer, "zombie_external_retries_context_exhausted_total", "counter", "External retries classified as context exhausted.", s.external_retries_context_exhausted_total);
+    try appendMetric(writer, "zombie_external_retries_auth_total", "counter", "External retries classified as auth.", s.external_retries_auth_total);
+    try appendMetric(writer, "zombie_external_retries_invalid_request_total", "counter", "External retries classified as invalid request.", s.external_retries_invalid_request_total);
+    try appendMetric(writer, "zombie_external_retries_server_error_total", "counter", "External retries classified as server error.", s.external_retries_server_error_total);
+    try appendMetric(writer, "zombie_external_retries_unknown_total", "counter", "External retries classified as unknown.", s.external_retries_unknown_total);
+    try appendMetric(writer, "zombie_external_failures_total", "counter", "External calls that exited wrappers as classified failures.", s.external_failures_total);
+    try appendMetric(writer, "zombie_external_failures_rate_limited_total", "counter", "External failures classified as rate-limited.", s.external_failures_rate_limited_total);
+    try appendMetric(writer, "zombie_external_failures_timeout_total", "counter", "External failures classified as timeout.", s.external_failures_timeout_total);
+    try appendMetric(writer, "zombie_external_failures_context_exhausted_total", "counter", "External failures classified as context exhausted.", s.external_failures_context_exhausted_total);
+    try appendMetric(writer, "zombie_external_failures_auth_total", "counter", "External failures classified as auth.", s.external_failures_auth_total);
+    try appendMetric(writer, "zombie_external_failures_invalid_request_total", "counter", "External failures classified as invalid request.", s.external_failures_invalid_request_total);
+    try appendMetric(writer, "zombie_external_failures_server_error_total", "counter", "External failures classified as server error.", s.external_failures_server_error_total);
+    try appendMetric(writer, "zombie_external_failures_unknown_total", "counter", "External failures classified as unknown.", s.external_failures_unknown_total);
+    try appendMetric(writer, "zombie_retry_after_hints_total", "counter", "Retry attempts that used Retry-After guidance.", s.retry_after_hints_total);
+    try appendMetric(writer, "zombie_worker_errors_total", "counter", "Total worker loop errors.", s.worker_errors_total);
+    try appendMetric(writer, "zombie_agent_echo_calls_total", "counter", "Total Echo agent invocations.", s.agent_echo_calls_total);
+    try appendMetric(writer, "zombie_agent_scout_calls_total", "counter", "Total Scout agent invocations.", s.agent_scout_calls_total);
+    try appendMetric(writer, "zombie_agent_warden_calls_total", "counter", "Total Warden agent invocations.", s.agent_warden_calls_total);
+    try appendMetric(writer, "zombie_agent_tokens_total", "counter", "Total tokens consumed by agent calls.", s.agent_tokens_total);
+    try appendMetric(writer, "zombie_backoff_wait_ms_total", "counter", "Total backoff wait time in milliseconds.", s.backoff_wait_ms_total);
+    try appendMetric(writer, "zombie_rate_limit_wait_ms_total", "counter", "Total wait time due to rate limiting in milliseconds.", s.rate_limit_wait_ms_total);
+    try appendMetric(writer, "zombie_side_effect_outbox_enqueued_total", "counter", "Total side-effect outbox entries enqueued.", s.side_effect_outbox_enqueued_total);
+    try appendMetric(writer, "zombie_side_effect_outbox_delivered_total", "counter", "Total side-effect outbox entries marked delivered.", s.side_effect_outbox_delivered_total);
+    try appendMetric(writer, "zombie_side_effect_outbox_dead_letter_total", "counter", "Total side-effect outbox entries dead-lettered by reconciliation.", s.side_effect_outbox_dead_letter_total);
+    try appendMetric(writer, "zombie_api_backpressure_rejections_total", "counter", "Total API requests rejected by in-flight backpressure guard.", s.api_backpressure_rejections_total);
+    try appendMetric(writer, "zombie_api_in_flight_requests", "gauge", "Current in-flight API requests protected by backpressure guard.", s.api_in_flight_requests);
+    try appendMetric(writer, "zombie_worker_in_flight_runs", "gauge", "Current in-flight runs across worker threads.", s.worker_in_flight_runs);
+    try appendMetric(writer, "zombie_worker_allocator_leaks_total", "counter", "Total worker allocator leak detections on teardown.", s.worker_allocator_leaks_total);
+    try appendMetric(writer, "zombie_worker_running", "gauge", "Worker liveness gauge (1 running, 0 stopped).", worker_running_gauge);
+    try appendMetric(writer, "zombie_queue_depth", "gauge", "Current queued runs in SPEC_QUEUED.", queue_depth_gauge);
+    try appendMetric(writer, "zombie_oldest_queued_age_ms", "gauge", "Oldest queued run age in milliseconds.", oldest_age_gauge);
 
     try appendDurationHistogram(
         writer,
