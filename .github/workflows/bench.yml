@@ -1,11 +1,8 @@
 name: bench
 
 on:
-  push:
-    branches:
-      - main
-  pull_request:
-    types: [opened, synchronize, reopened]
+  # Temporarily disabled from automatic CI while bench gate is being stabilized.
+  workflow_dispatch:
 
 jobs:
   bench:
