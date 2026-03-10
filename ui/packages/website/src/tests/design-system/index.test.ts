@@ -9,5 +9,7 @@ describe("design-system index exports", () => {
     expect(DesignSystem.Grid).toBeDefined();
     expect(DesignSystem.Section).toBeDefined();
     expect(DesignSystem.InstallBlock).toBeDefined();
+    expect(DesignSystem.AnimatedIcon).toBeDefined();
+    expect(DesignSystem.ZombieHandIcon).toBeDefined();
   });
 });

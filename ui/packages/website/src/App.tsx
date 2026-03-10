@@ -5,7 +5,7 @@ import Agents from "./pages/Agents";
 import Privacy from "./pages/Privacy";
 import Terms from "./pages/Terms";
 import Footer from "./components/Footer";
-import { Button } from "@usezombie/design-system";
+import { Button, AnimatedIcon, ZombieHandIcon } from "@usezombie/design-system";
 import { APP_BASE_URL, DOCS_URL } from "./config";
 
 type Mode = "humans" | "agents";
@@ -53,7 +53,6 @@ function ParticleField() {
 }
 
 export default function App() {
-  const location = useLocation();
   const [mode, setMode] = useMode();
 
   return (
@@ -102,16 +101,17 @@ export default function App() {
         <div className="header-actions">
           <Button
             to={APP_BASE_URL}
-            className={mode === "humans" ? "header-mission-control" : "header-mission-control is-hidden"}
+            className={mode === "humans" ? "header-mission-control z-animated-icon-trigger" : "header-mission-control z-animated-icon-trigger is-hidden"}
             aria-hidden={mode !== "humans"}
             tabIndex={mode === "humans" ? undefined : -1}
           >
-            Mission Control
+            Mission Control{" "}
+            <AnimatedIcon trigger="parent-hover" animation="wave"><ZombieHandIcon size={18} /></AnimatedIcon>
           </Button>
         </div>
       </header>
 
-      <main key={location.pathname} className="site-main route-fade">
+      <main className="site-main">
         <Routes>
           <Route path="/" element={<Home mode={mode} />} />
           <Route path="/pricing" element={<Pricing />} />

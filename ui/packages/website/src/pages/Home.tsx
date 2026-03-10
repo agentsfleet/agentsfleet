@@ -39,6 +39,18 @@ const features = [
     description:
       "Investigate retries with full run replay, track agent output quality, and keep execution boundaries tighter for untrusted code.",
   },
+  {
+    number: "06",
+    title: "Stop agents from piling up during a release",
+    description:
+      "Freeze runs before a deploy, prioritize the hotfix, and let everything else resume when you're ready — no more surprise PRs landing mid-release.",
+  },
+  {
+    number: "07",
+    title: "Know exactly what the agent was allowed to do",
+    description:
+      "Require sign-off before agents touch sensitive code, enforce repo-specific rules automatically, and give reviewers a clear audit trail instead of guesswork.",
+  },
 ];
 
 type Props = {
@@ -48,7 +60,7 @@ type Props = {
 export default function Home({ mode }: Props) {
   if (mode === "humans") {
     return (
-      <section className="stack home-stack">
+      <section className="stack home-stack route-fade">
         <Hero mode={mode} />
         <FeatureFlow />
         <HowItWorks />
@@ -67,7 +79,7 @@ export default function Home({ mode }: Props) {
   }
 
   return (
-    <section className="stack home-stack">
+    <section className="stack home-stack route-fade">
       <Hero mode={mode} />
       <ProviderStrip />
       <div className="section-gap home-section-head">
