@@ -1,0 +1,27 @@
+name: memleak
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  memleak:
+    runs-on: ubuntu-latest
+    container:
+      image: debian:trixie-slim
+      options: --security-opt seccomp=unconfined
+    steps:
+      - name: Install valgrind and toolchain deps
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            valgrind git curl xz-utils ca-certificates make gpg
+      - uses: actions/checkout@v6
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.15.2
+      - name: Run memleak gate
+        run: make memleak

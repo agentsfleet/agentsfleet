@@ -15,6 +15,7 @@ pub const Principal = struct {
     issuer: []u8,
     tenant_id: ?[]u8,
     org_id: ?[]u8,
+    workspace_id: ?[]u8,
 };
 
 pub const Config = struct {
@@ -61,6 +62,7 @@ pub const Verifier = struct {
             .issuer = verified.issuer,
             .tenant_id = clerk_claims.tenant_id,
             .org_id = clerk_claims.org_id,
+            .workspace_id = clerk_claims.workspace_id,
         };
     }
 
@@ -93,12 +95,14 @@ test "verifyAuthorization validates RS256 token and extracts tenant" {
         std.testing.allocator.free(principal.issuer);
         if (principal.tenant_id) |v| std.testing.allocator.free(v);
         if (principal.org_id) |v| std.testing.allocator.free(v);
+        if (principal.workspace_id) |v| std.testing.allocator.free(v);
     }
 
     try std.testing.expectEqualStrings("user_test", principal.subject);
     try std.testing.expectEqualStrings("https://clerk.dev.usezombie.com", principal.issuer);
     try std.testing.expectEqualStrings("tenant_a", principal.tenant_id.?);
     try std.testing.expectEqualStrings("org_1", principal.org_id.?);
+    try std.testing.expect(principal.workspace_id == null);
 }
 
 test "verifyAuthorization rejects expired token" {

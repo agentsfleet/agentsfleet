@@ -19,7 +19,7 @@ Implement one working policy function: deterministic per-workspace entitlement e
 
 **Dimensions:**
 - 1.1 PENDING Define plan-tier policy model (`Free`, `Scale`)
-- 1.2 PENDING Define entitlement source-of-truth and fail-closed defaults
+- 1.2 PENDING Define entitlement source-of-truth and Clerk Management API credential lifecycle provisioning contract (issue, rotate, revoke) with fail-closed defaults
 - 1.3 PENDING Enforce skill/profile/usage limit checks in compile and activate flows
 - 1.4 PENDING Emit machine-readable rejection reasons and policy audit snapshots
 

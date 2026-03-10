@@ -4,7 +4,7 @@ const db = @import("../db/pool.zig");
 const runtime_config = @import("../config/runtime.zig");
 const env_vars = @import("../config/env_vars.zig");
 const events_bus = @import("../events/bus.zig");
-const clerk_auth = @import("../auth/clerk.zig");
+const oidc_auth = @import("../auth/oidc.zig");
 const http_server = @import("../http/server.zig");
 const http_handler = @import("../http/handler.zig");
 const auth_sessions = @import("../auth/sessions.zig");
@@ -110,6 +110,7 @@ pub fn run(alloc: std.mem.Allocator) !void {
             runtime_config.ValidationError.MissingApiKey,
             runtime_config.ValidationError.InvalidApiKeyList,
             runtime_config.ValidationError.MissingClerkJwksUrl,
+            runtime_config.ValidationError.InvalidOidcProvider,
             runtime_config.ValidationError.MissingEncryptionMasterKey,
             runtime_config.ValidationError.InvalidEncryptionMasterKey,
             runtime_config.ValidationError.MissingGitHubAppId,
@@ -217,7 +218,7 @@ pub fn run(alloc: std.mem.Allocator) !void {
         .queue = &api_queue,
         .alloc = alloc,
         .api_keys = serve_cfg.api_keys,
-        .clerk = null,
+        .oidc = null,
         .auth_sessions = &sessions,
         .app_url = serve_cfg.app_url,
         .worker_state = &wstate,
@@ -228,13 +229,14 @@ pub fn run(alloc: std.mem.Allocator) !void {
     };
     metrics.setApiInFlightRequests(0);
 
-    var clerk = if (serve_cfg.clerk_enabled) clerk_auth.Verifier.init(alloc, .{
+    var oidc = if (serve_cfg.clerk_enabled) oidc_auth.Verifier.init(alloc, .{
+        .provider = serve_cfg.oidc_provider,
         .jwks_url = serve_cfg.clerk_jwks_url orelse "",
         .issuer = serve_cfg.clerk_issuer,
         .audience = serve_cfg.clerk_audience,
     }) else null;
-    defer if (clerk) |*v| v.deinit();
-    if (clerk) |*v| ctx.clerk = v;
+    defer if (oidc) |*v| v.deinit();
+    if (oidc) |*v| ctx.oidc = v;
 
     const wcfg = worker.WorkerConfig{
         .pool = worker_pool,
