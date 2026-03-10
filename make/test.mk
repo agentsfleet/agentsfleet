@@ -2,13 +2,18 @@
 # TEST — unit + integration + e2e
 # =============================================================================
 
-.PHONY: test test-unit test-unit-zombied test-unit-website test-integration test-integration-zombied test-depth test-coverage-zombied test-e2e qa qa-smoke memleak bench _soak _bench_apiprofile _ensure-test-bin _bench-run
+.PHONY: test test-unit test-zombied test-unit-zombied test-unit-website test-unit-app test-integration test-integration-zombied test-depth test-coverage-zombied test-e2e _test_e2e _test_e2e_backend _test_e2e_smoke _test_e2e_backend_smoke _qa_website _qa_website_smoke qa qa_app qa-smoke qa_app_smoke memleak bench _soak _bench_apiprofile _ensure-test-bin _bench-run _zig_test_filter
 
 ZIG_GLOBAL_CACHE_DIR ?= $(CURDIR)/.tmp/zig-global-cache
 ZIG_LOCAL_CACHE_DIR  ?= $(CURDIR)/.tmp/zig-local-cache
 ZOMBIED_COVERAGE_MIN_LINES ?= 35
 BENCH_MODE ?= bench
 LEAK_FILTER ?= finalizeWorkerAllocator returns false for clean allocator
+BACKEND_E2E_FILTER_1 ?= integration: beginApiRequest enforces max in-flight limit
+BACKEND_E2E_FILTER_2 ?= integration: endApiRequest decrements in-flight counter deterministically
+BACKEND_E2E_FILTER_3 ?= integration: start-run queue failure compensation removes only SPEC_QUEUED row
+BACKEND_E2E_FILTER_4 ?= integration: retry queue failure compensation restores state and removes retry transition
+BACKEND_E2E_SMOKE_FILTER ?= integration: beginApiRequest enforces max in-flight limit
 
 # --- Unit tests ---
 
@@ -32,7 +37,15 @@ test-unit-website:  ## Run website unit tests (vitest)
 	@cd ui/packages/website && bun run test
 	@echo "✓ [website] Unit tests passed"
 
-test-unit: test-unit-zombied test-unit-website  ## Run all unit tests (zombied + website)
+test-unit-app:  ## Run app unit tests (vitest)
+	@echo "→ [app] Running Vitest unit tests..."
+	@cd ui/packages/app && bun run test
+	@echo "✓ [app] Unit tests passed"
+
+test-zombied: test-unit-zombied test-integration-zombied  ## Run zombied tests (unit + integration)
+	@echo "✓ [zombied] Unit + integration passed"
+
+test-unit: test-zombied test-unit-website test-unit-app  ## Run all unit tests (zombied + website + app)
 	@echo "✓ All unit tests passed"
 
 # --- Integration tests ---
@@ -82,26 +95,69 @@ test-coverage-zombied:  ## Run backend line coverage with kcov and enforce minim
 # --- E2E: API flow (zombied backend) ---
 
 test-e2e:  ## Run e2e API flow against a running local service
-	@echo "→ [zombied] Running e2e API tests..."
-	@curl -sf -X POST http://localhost:3000/v1/runs \
-		-H "Authorization: Bearer $$API_KEY" \
-		-H "Content-Type: application/json" \
-		-d '{"workspace_id":"$$ACCEPTANCE_WORKSPACE_ID","spec_id":"$$ACCEPTANCE_SPEC_ID","mode":"api","requested_by":"ci","idempotency_key":"e2e-001"}' \
-		| jq .
+	@$(MAKE) _test_e2e
 
 # --- E2E: Website Playwright ---
 # Local: Playwright config starts Vite dev server automatically.
 # Post-deploy: BASE_URL=https://usezombie.com make qa-smoke
 
-qa:  ## Run Playwright e2e tests (full suite)
+_zig_test_filter:
+	@mkdir -p "$(ZIG_GLOBAL_CACHE_DIR)" "$(ZIG_LOCAL_CACHE_DIR)"
+	@redis_tls_test_url="$$REDIS_TLS_TEST_URL"; \
+	 if [ -z "$$redis_tls_test_url" ] && [ -n "$$REDIS_URL" ]; then \
+	   case "$$REDIS_URL" in \
+	     rediss://*) redis_tls_test_url="$$REDIS_URL" ;; \
+	   esac; \
+	 fi; \
+	 ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" \
+	 ZIG_LOCAL_CACHE_DIR="$(ZIG_LOCAL_CACHE_DIR)" \
+	 REDIS_TLS_TEST_URL="$$redis_tls_test_url" \
+	 zig build test -- --test-filter "$$TEST_FILTER"
+
+_test_e2e_backend:
+	@echo "→ [zombied] Running backend/API e2e integration lane..."
+	@TEST_FILTER="$(BACKEND_E2E_FILTER_1)" $(MAKE) _zig_test_filter
+	@TEST_FILTER="$(BACKEND_E2E_FILTER_2)" $(MAKE) _zig_test_filter
+	@TEST_FILTER="$(BACKEND_E2E_FILTER_3)" $(MAKE) _zig_test_filter
+	@TEST_FILTER="$(BACKEND_E2E_FILTER_4)" $(MAKE) _zig_test_filter
+	@echo "✓ [zombied] Backend/API e2e lane passed"
+
+_test_e2e_backend_smoke:
+	@echo "→ [zombied] Running backend/API e2e smoke lane..."
+	@TEST_FILTER="$(BACKEND_E2E_SMOKE_FILTER)" $(MAKE) _zig_test_filter
+	@echo "✓ [zombied] Backend/API e2e smoke lane passed"
+
+_test_e2e: _test_e2e_backend
+	@echo "✓ [zombied] _test_e2e passed"
+
+_test_e2e_smoke: _test_e2e_backend_smoke
+	@echo "✓ [zombied] _test_e2e_smoke passed"
+
+_qa_website:  ## Internal: run website Playwright e2e suite
 	@echo "→ [website] Running Playwright e2e..."
 	@cd ui/packages/website && bun run test:e2e
 	@echo "✓ [website] E2E passed"
 
-qa-smoke:  ## Run Playwright smoke tests only (fast CI gate)
+_qa_website_smoke:  ## Internal: run website Playwright smoke suite
 	@echo "→ [website] Running Playwright smoke..."
 	@cd ui/packages/website && bun run test:e2e:smoke
 	@echo "✓ [website] Smoke passed"
+
+qa_app:  ## Run app QA lane (deterministic vitest suite)
+	@echo "→ [app] Running QA lane..."
+	@cd ui/packages/app && bun run qa
+	@echo "✓ [app] QA lane passed"
+
+qa_app_smoke:  ## Run app smoke lane (fast vitest subset)
+	@echo "→ [app] Running smoke lane..."
+	@cd ui/packages/app && bun run qa:smoke
+	@echo "✓ [app] Smoke lane passed"
+
+qa: _test_e2e _qa_website qa_app  ## Run full QA lanes (backend e2e + website + app)
+	@echo "✓ All QA lanes passed"
+
+qa-smoke: _test_e2e_smoke _qa_website_smoke qa_app_smoke  ## Run smoke QA lanes (backend e2e + website + app)
+	@echo "✓ All smoke QA lanes passed"
 
 # --- API stress/perf gates (single runner, mode-based wrappers) ---
 
@@ -154,5 +210,5 @@ _ensure-test-bin:
 
 # --- Aggregate ---
 
-test: test-unit test-integration test-e2e  ## Run all backend tests (zombied unit + integration + e2e)
-	@echo "✓ All backend tests passed"
+test: test-unit _test_e2e  ## Run full test suite (test-unit + backend/API e2e)
+	@echo "✓ Full test suite passed"

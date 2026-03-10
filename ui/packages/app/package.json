@@ -8,7 +8,11 @@
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test": "vitest run",
+    "test:smoke": "vitest run tests/smoke.test.ts",
+    "qa": "bun run test",
+    "qa:smoke": "bun run test:smoke"
   },
   "dependencies": {
     "@clerk/nextjs": "^7.0.1",
@@ -35,6 +39,7 @@
     "@types/react": "19.2.14",
     "@types/react-dom": "19.2.3",
     "tailwindcss": "^4.0.0",
-    "typescript": "6.0.1-rc"
+    "typescript": "6.0.1-rc",
+    "vitest": "4.1.0-beta.5"
   }
 }
