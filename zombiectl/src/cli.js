@@ -1,9 +1,8 @@
-import fs from "node:fs/promises";
-import path from "node:path";
 import { ApiError, apiRequest, authHeaders } from "./lib/http.js";
 import { openUrl } from "./lib/browser.js";
 import { findRoute } from "./program/routes.js";
 import { registerProgramCommands } from "./program/command-registry.js";
+import { commandHarness as commandHarnessModule } from "./commands/harness.js";
 import { ui, printKeyValue, printTable } from "./ui-theme.js";
 import { createSpinner } from "./ui-progress.js";
 import {
@@ -133,7 +132,7 @@ function printHelp(stdout) {
   writeLine(stdout, "  runs list [--workspace-id ID]");
   writeLine(stdout, "  doctor");
   writeLine(stdout, "  harness source put --workspace-id ID --file PATH [--profile-id ID] [--name NAME]");
-  writeLine(stdout, "  harness compile --workspace-id ID [--selector SELECTOR]");
+  writeLine(stdout, "  harness compile --workspace-id ID [--profile-id ID] [--profile-version-id ID]");
   writeLine(stdout, "  harness activate --workspace-id ID --profile-version-id ID [--activated-by USER]");
   writeLine(stdout, "  harness active --workspace-id ID");
   writeLine(stdout, "  skill-secret put --workspace-id ID --skill-ref REF --key KEY --value VALUE [--scope host|sandbox]");
@@ -527,86 +526,6 @@ async function commandDoctor(ctx, workspaces) {
   return ok ? 0 : 1;
 }
 
-async function commandHarness(ctx, args, workspaces) {
-  const group = args[0];
-  const action = args[1];
-  const parsed = parseFlags(args.slice(2));
-
-  const workspaceId = parsed.options["workspace-id"] || workspaces.current_workspace_id;
-  if (!workspaceId) {
-    writeLine(ctx.stderr, "workspace_id required");
-    return 2;
-  }
-
-  if (group === "source" && action === "put") {
-    const file = parsed.options.file;
-    if (!file) {
-      writeLine(ctx.stderr, ui.err("harness source put requires --file"));
-      return 2;
-    }
-    const fileContent = await fs.readFile(path.resolve(file), "utf8");
-    const sourceJson = JSON.parse(fileContent);
-    const body = {
-      profile_id: parsed.options["profile-id"] || null,
-      name: parsed.options.name || null,
-      source_json: sourceJson,
-    };
-    const res = await request(ctx, `/v1/workspaces/${encodeURIComponent(workspaceId)}/harness/source`, {
-      method: "PUT",
-      headers: apiHeaders(ctx),
-      body: JSON.stringify(body),
-    });
-    if (ctx.jsonMode) printJson(ctx.stdout, res);
-    else writeLine(ctx.stdout, ui.ok(`harness source stored profile_version_id=${res.profile_version_id}`));
-    return 0;
-  }
-
-  if (group === "compile" && action === undefined) {
-    const body = { selector: parsed.options.selector || null };
-    const res = await request(ctx, `/v1/workspaces/${encodeURIComponent(workspaceId)}/harness/compile`, {
-      method: "POST",
-      headers: apiHeaders(ctx),
-      body: JSON.stringify(body),
-    });
-    if (ctx.jsonMode) printJson(ctx.stdout, res);
-    else writeLine(ctx.stdout, `compile_job_id=${res.compile_job_id} valid=${res.is_valid}`);
-    return 0;
-  }
-
-  if (group === "activate" && action === undefined) {
-    const profileVersionId = parsed.options["profile-version-id"];
-    if (!profileVersionId) {
-      writeLine(ctx.stderr, ui.err("harness activate requires --profile-version-id"));
-      return 2;
-    }
-    const body = {
-      profile_version_id: profileVersionId,
-      activated_by: parsed.options["activated-by"] || "zombiectl",
-    };
-    const res = await request(ctx, `/v1/workspaces/${encodeURIComponent(workspaceId)}/harness/activate`, {
-      method: "POST",
-      headers: apiHeaders(ctx),
-      body: JSON.stringify(body),
-    });
-    if (ctx.jsonMode) printJson(ctx.stdout, res);
-    else writeLine(ctx.stdout, ui.ok(`activated profile_version_id=${res.profile_version_id}`));
-    return 0;
-  }
-
-  if (group === "active" && action === undefined) {
-    const res = await request(ctx, `/v1/workspaces/${encodeURIComponent(workspaceId)}/harness/active`, {
-      method: "GET",
-      headers: apiHeaders(ctx),
-    });
-    if (ctx.jsonMode) printJson(ctx.stdout, res);
-    else writeLine(ctx.stdout, ui.info(`active profile_version_id=${res.profile_version_id}`));
-    return 0;
-  }
-
-  writeLine(ctx.stderr, ui.err("usage: harness source put|compile|activate|active"));
-  return 2;
-}
-
 async function commandSkillSecret(ctx, args, workspaces) {
   const action = args[0];
   const parsed = parseFlags(args.slice(1));
@@ -699,7 +618,14 @@ export async function runCli(argv, io = {}) {
     run: (routeArgs) => commandRun(ctx, routeArgs, workspaces),
     runsList: (routeArgs) => commandRunsList(ctx, routeArgs.slice(1), workspaces),
     doctor: () => commandDoctor(ctx, workspaces),
-    harness: (routeArgs) => commandHarness(ctx, routeArgs, workspaces),
+    harness: (routeArgs) => commandHarnessModule(ctx, routeArgs, workspaces, {
+      parseFlags,
+      request,
+      apiHeaders,
+      ui,
+      printJson,
+      writeLine,
+    }),
     skillSecret: (routeArgs) => commandSkillSecret(ctx, routeArgs, workspaces),
   });
 
