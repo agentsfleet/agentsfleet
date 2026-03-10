@@ -69,8 +69,13 @@ test-integration: test-integration-zombied  ## Run integration checks
 
 test-depth:  ## Enforce minimum test depth inventory
 	@mkdir -p .tmp
-	@unit_count=$$(rg -n '^test \"' src -g '*.zig' | wc -l | tr -d ' '); \
-	 integration_count=$$(rg -n '^test \"integration:' src -g '*.zig' | wc -l | tr -d ' '); \
+	@if command -v rg >/dev/null 2>&1; then \
+	   unit_count=$$(rg -n '^test \"' src -g '*.zig' | wc -l | tr -d ' '); \
+	   integration_count=$$(rg -n '^test \"integration:' src -g '*.zig' | wc -l | tr -d ' '); \
+	 else \
+	   unit_count=$$(find src -name '*.zig' -exec grep -hE '^test \"' {} + | wc -l | tr -d ' '); \
+	   integration_count=$$(find src -name '*.zig' -exec grep -hE '^test \"integration:' {} + | wc -l | tr -d ' '); \
+	 fi; \
 	 printf 'zombied_test_cases=%s\nzombied_integration_cases=%s\n' "$$unit_count" "$$integration_count" | tee .tmp/zombied-test-depth.txt >/dev/null; \
 	 if [ "$$unit_count" -lt 25 ]; then echo "✗ expected at least 25 Zig tests, got $$unit_count"; exit 1; fi; \
 	 if [ "$$integration_count" -lt 3 ]; then echo "✗ expected at least 3 Zig integration tests, got $$integration_count"; exit 1; fi; \
