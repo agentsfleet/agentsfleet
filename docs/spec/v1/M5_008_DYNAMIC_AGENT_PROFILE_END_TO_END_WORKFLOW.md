@@ -4,7 +4,7 @@
 **Milestone:** M5
 **Workstream:** 8
 **Date:** Mar 10, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P0 — close profile workflow gap from config to run execution
 **Batch:** B3 — follows M5_002 control-plane baseline
 **Depends on:** M4_001 (CLI runtime), M4_003 (profile-driven runtime baseline), M5_002 (harness control plane)
@@ -48,8 +48,8 @@ Make architecture docs match shipped profile behavior and remove stale static-st
 **Dimensions:**
 - 3.1 DONE Update `docs/ARCHITECTURE.md` execution lifecycle to reference profile-resolved stage topology instead of fixed Echo -> Scout -> Warden sequence
 - 3.2 DONE Add dynamic profile control-plane flow to architecture docs (compile/activate/resolve/run)
-- 3.3 PENDING Add operator runbook snippet with concrete commands and expected outputs
-- 3.4 PENDING Add demo evidence checklist (commands/logs) proving profile switch impacts run behavior
+- 3.3 DONE Add operator runbook snippet with concrete commands and expected outputs
+- 3.4 DONE Add demo evidence checklist (commands/logs) proving profile switch impacts run behavior
 
 ---
 

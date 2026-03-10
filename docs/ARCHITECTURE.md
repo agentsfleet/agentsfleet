@@ -83,6 +83,75 @@ Fail-closed behavior:
 - Cross-workspace profile selection is rejected by workspace-scoped queries and tenant checks.
 - If no active profile exists, runtime uses `default-v1` deterministic fallback.
 
+### Operator Runbook Snippet (API-first, deterministic)
+
+Set required context:
+
+```bash
+export API_BASE_URL="http://localhost:3000"
+export WORKSPACE_ID="ws_123"
+export AUTH_HEADER="Authorization: Bearer <jwt>"
+```
+
+1. Put harness source markdown:
+
+```bash
+curl -sS -X PUT "$API_BASE_URL/v1/workspaces/$WORKSPACE_ID/harness/source" \
+  -H "$AUTH_HEADER" \
+  -H "Content-Type: application/json" \
+  -d @- <<'JSON'
+{
+  "name": "Workspace Harness",
+  "source_markdown": "# Harness\n```json\n{\"profile_id\":\"ws_123-harness\",\"stages\":[{\"stage_id\":\"plan\",\"role\":\"planner\",\"skill\":\"echo\"},{\"stage_id\":\"implement\",\"role\":\"implementer\",\"skill\":\"scout\",\"on_pass\":\"verify\",\"on_fail\":\"retry\"},{\"stage_id\":\"verify\",\"role\":\"security\",\"skill\":\"warden\",\"gate\":true,\"on_pass\":\"done\",\"on_fail\":\"retry\"}]}\n```"
+}
+JSON
+```
+
+Expected response keys: `profile_id`, `profile_version_id`.
+
+2. Compile profile version:
+
+```bash
+curl -sS -X POST "$API_BASE_URL/v1/workspaces/$WORKSPACE_ID/harness/compile" \
+  -H "$AUTH_HEADER" \
+  -H "Content-Type: application/json" \
+  -d '{"profile_id":"ws_123-harness"}'
+```
+
+Expected response keys: `compile_job_id`, `profile_version_id`, `is_valid`, `validation_report`.
+Expected fail-closed behavior: `is_valid=false` when prompt-injection/unsafe patterns are present.
+
+3. Activate compiled valid version:
+
+```bash
+curl -sS -X POST "$API_BASE_URL/v1/workspaces/$WORKSPACE_ID/harness/activate" \
+  -H "$AUTH_HEADER" \
+  -H "Content-Type: application/json" \
+  -d '{"profile_version_id":"<pver_id>","activated_by":"operator"}'
+```
+
+Expected response keys: `profile_version_id`, `activated_by`, `activated_at`.
+
+4. Resolve active profile used by runtime:
+
+```bash
+curl -sS "$API_BASE_URL/v1/workspaces/$WORKSPACE_ID/harness/active" \
+  -H "$AUTH_HEADER"
+```
+
+Expected response keys: `source`, `profile_version_id`, `profile`.
+Fallback behavior: `source="default-v1"` with `profile_version_id=null` when no active profile exists.
+
+### Demo Evidence Checklist (Profile Switch Proof)
+
+- Capture command output for source put with returned `profile_version_id`.
+- Capture compile output showing `is_valid=true` and `compile_job_id`.
+- Capture activate output for the same `profile_version_id`.
+- Capture active-profile output showing activated `profile_version_id`.
+- Trigger one run and capture run artifact/log showing stage IDs from resolved profile.
+- Trigger one negative compile case (prompt-injection/unsafe text) and capture `is_valid=false` validation report.
+- Store all command transcripts in PR/MR evidence notes for audit.
+
 ## Single Canonical Diagram (v1)
 
 ```mermaid
