@@ -2,7 +2,7 @@
 # TEST — unit + integration + e2e
 # =============================================================================
 
-.PHONY: test test-unit test-zombied test-unit-zombied test-unit-website test-unit-app test-integration test-integration-zombied test-depth test-coverage-zombied test-e2e _test_e2e _test_e2e_backend _test_e2e_smoke _test_e2e_backend_smoke _qa_website _qa_website_smoke qa qa_app qa-smoke qa_app_smoke memleak bench _soak _bench_apiprofile _ensure-test-bin _bench-run _zig_test_filter
+.PHONY: test test-unit test-zombied test-unit-zombied test-unit-zombiectl test-unit-website test-unit-app test-integration test-integration-zombied test-depth test-coverage-zombied test-e2e _test_e2e _test_e2e_backend _test_e2e_smoke _test_e2e_backend_smoke _qa_website _qa_website_smoke qa qa_app qa-smoke qa_app_smoke memleak bench _soak _bench_apiprofile _ensure-test-bin _bench-run _zig_test_filter
 
 ZIG_GLOBAL_CACHE_DIR ?= $(CURDIR)/.tmp/zig-global-cache
 ZIG_LOCAL_CACHE_DIR  ?= $(CURDIR)/.tmp/zig-local-cache
@@ -32,6 +32,11 @@ test-unit-zombied:  ## Run zombied unit tests (Zig)
 	 zig build test --summary all
 	@$(MAKE) test-depth
 
+test-unit-zombiectl:  ## Run zombiectl CLI unit tests (bun)
+	@echo "→ [zombiectl] Running Bun unit tests..."
+	@cd zombiectl && bun test
+	@echo "✓ [zombiectl] Unit tests passed"
+
 test-unit-website:  ## Run website unit tests (vitest)
 	@echo "→ [website] Running Vitest unit tests..."
 	@cd ui/packages/website && bun run test
@@ -45,7 +50,7 @@ test-unit-app:  ## Run app unit tests (vitest)
 test-zombied: test-unit-zombied test-integration-zombied  ## Run zombied tests (unit + integration)
 	@echo "✓ [zombied] Unit + integration passed"
 
-test-unit: test-zombied test-unit-website test-unit-app  ## Run all unit tests (zombied + website + app)
+test-unit: test-zombied test-unit-zombiectl test-unit-website test-unit-app  ## Run all unit tests (zombied + zombiectl + website + app)
 	@echo "✓ All unit tests passed"
 
 # --- Integration tests ---

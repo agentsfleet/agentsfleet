@@ -78,6 +78,14 @@ This is the canonical profile workflow for v1.
    - `GET /v1/workspaces/{workspace_id}/harness/active`
 5. Worker executes stage topology from resolved profile and persists run artifacts with profile snapshot linkage.
 
+Immutable audit linkage contract (sync, DB-backed):
+- `COMPILE` artifact row records `compile_job_id -> profile_version_id`.
+- `ACTIVATE` artifact row records `profile_version_id` and parent compile artifact when available.
+- `RUN` artifact row records `run_id -> profile_version_id` and parent activate artifact.
+- All linkage artifacts are append-only rows in `profile_linkage_audit_artifacts` (updates/deletes rejected by trigger).
+- `GET /v1/runs/{run_id}` exposes queryable linkage IDs (`run_artifact_id`, `activate_artifact_id`, `compile_artifact_id`, `compile_job_id`, `profile_version_id`).
+- "Immutable" means Postgres is the append-only authority; downstream ClickHouse/Langfuse linkage views are async projections only.
+
 Fail-closed behavior:
 - Invalid profile versions cannot activate.
 - Cross-workspace profile selection is rejected by workspace-scoped queries and tenant checks.

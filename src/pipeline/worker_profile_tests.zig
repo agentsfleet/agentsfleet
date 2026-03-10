@@ -104,6 +104,89 @@ test "integration: worker profile fallback path returns null when no active bind
     try std.testing.expect(none == null);
 }
 
+test "integration: switching active profile changes worker-resolved profile deterministically" {
+    const db_ctx = (try openWorkerTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.release(db_ctx.conn);
+    defer db_ctx.pool.deinit();
+
+    {
+        var q = try db_ctx.conn.query(
+            \\CREATE TEMP TABLE agent_profile_versions (
+            \\  profile_version_id TEXT PRIMARY KEY,
+            \\  compiled_profile_json TEXT,
+            \\  is_valid BOOLEAN NOT NULL
+            \\) ON COMMIT DROP
+        , .{});
+        q.deinit();
+    }
+    {
+        var q = try db_ctx.conn.query(
+            \\CREATE TEMP TABLE workspace_active_profile (
+            \\  workspace_id TEXT PRIMARY KEY,
+            \\  profile_version_id TEXT NOT NULL
+            \\) ON COMMIT DROP
+        , .{});
+        q.deinit();
+    }
+
+    const profile_a =
+        \\{
+        \\  "profile_id": "acme-harness-v1",
+        \\  "stages": [
+        \\    {"stage_id":"plan","role":"planner","skill":"echo"},
+        \\    {"stage_id":"implement","role":"implementer","skill":"scout"},
+        \\    {"stage_id":"verify","role":"security","skill":"warden","gate":true,"on_pass":"done","on_fail":"retry"}
+        \\  ]
+        \\}
+    ;
+
+    const profile_b =
+        \\{
+        \\  "profile_id": "acme-harness-v2",
+        \\  "stages": [
+        \\    {"stage_id":"plan","role":"planner","skill":"echo"},
+        \\    {"stage_id":"security-review","role":"security","skill":"warden"},
+        \\    {"stage_id":"implement","role":"implementer","skill":"scout"},
+        \\    {"stage_id":"verify","role":"security","skill":"warden","gate":true,"on_pass":"done","on_fail":"retry"}
+        \\  ]
+        \\}
+    ;
+
+    {
+        var q = try db_ctx.conn.query(
+            "INSERT INTO agent_profile_versions (profile_version_id, compiled_profile_json, is_valid) VALUES ('pver_1', $1, TRUE), ('pver_2', $2, TRUE)",
+            .{ profile_a, profile_b },
+        );
+        q.deinit();
+    }
+    {
+        var q = try db_ctx.conn.query(
+            "INSERT INTO workspace_active_profile (workspace_id, profile_version_id) VALUES ('ws_1', 'pver_1')",
+            .{},
+        );
+        q.deinit();
+    }
+
+    var resolved_a = (try profile_resolver.loadWorkspaceActiveProfile(std.testing.allocator, db_ctx.conn, "ws_1")) orelse return error.TestUnexpectedResult;
+    defer resolved_a.deinit();
+    try std.testing.expectEqualStrings("acme-harness-v1", resolved_a.profile_id);
+    try std.testing.expectEqual(@as(usize, 3), resolved_a.stages.len);
+
+    {
+        var q = try db_ctx.conn.query(
+            "UPDATE workspace_active_profile SET profile_version_id = 'pver_2' WHERE workspace_id = 'ws_1'",
+            .{},
+        );
+        q.deinit();
+    }
+
+    var resolved_b = (try profile_resolver.loadWorkspaceActiveProfile(std.testing.allocator, db_ctx.conn, "ws_1")) orelse return error.TestUnexpectedResult;
+    defer resolved_b.deinit();
+    try std.testing.expectEqualStrings("acme-harness-v2", resolved_b.profile_id);
+    try std.testing.expectEqual(@as(usize, 4), resolved_b.stages.len);
+    try std.testing.expectEqualStrings("security-review", resolved_b.stages[1].stage_id);
+}
+
 test "integration: default topology roles resolve through registry" {
     var profile = try topology.defaultProfile(std.testing.allocator);
     defer profile.deinit();

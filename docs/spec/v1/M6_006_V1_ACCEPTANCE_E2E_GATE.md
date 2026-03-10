@@ -88,3 +88,17 @@ npx zombiectl runs list
 - UI-driven acceptance workflows
 - Non-CLI onboarding variants
 - Production SRE runbook expansion beyond v1 gate evidence
+
+---
+
+## 6.0 Integration DB Gate Environment (`HANDLER_DB_TEST_URL`)
+
+**Status:** PENDING
+
+Define and enforce a deterministic database-backed integration test path so acceptance evidence includes non-skipped DB integration coverage.
+
+**Dimensions:**
+- 6.1 PENDING Document `HANDLER_DB_TEST_URL` as the canonical integration DB variable for handler/harness/audit integration tests (fallback to `DATABASE_URL` only for local convenience)
+- 6.2 PENDING Add CI job/service wiring so integration tests run with a real Postgres endpoint and do not silently skip DB-backed tests
+- 6.3 PENDING Capture explicit acceptance evidence proving DB-backed integration tests executed (including linkage/snapshot contract tests)
+- 6.4 PENDING Define failure policy: acceptance gate is red if required DB integration suites are skipped or env var is missing in CI

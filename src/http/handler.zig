@@ -330,7 +330,9 @@ pub fn handleActivateHarness(ctx: *Context, r: zap.Request, workspace_id: []cons
 
     common.writeJson(r, .ok, .{
         .workspace_id = workspace_id,
+        .profile_id = out.profile_id,
         .profile_version_id = out.profile_version_id,
+        .run_snapshot_version = out.run_snapshot_version,
         .activated_by = out.activated_by,
         .activated_at = out.activated_at,
         .request_id = req_id,
@@ -373,7 +375,10 @@ pub fn handleGetHarnessActive(ctx: *Context, r: zap.Request, workspace_id: []con
     common.writeJson(r, .ok, .{
         .workspace_id = workspace_id,
         .source = out.source,
+        .profile_id = out.profile_id,
         .profile_version_id = out.profile_version_id,
+        .run_snapshot_version = out.run_snapshot_version,
+        .active_at = out.active_at,
         .profile = parsed.value,
         .request_id = req_id,
     });

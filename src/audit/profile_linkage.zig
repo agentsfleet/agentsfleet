@@ -1,0 +1,328 @@
+const std = @import("std");
+const pg = @import("pg");
+
+pub const RunLinkage = struct {
+    run_artifact_id: ?[]u8 = null,
+    activate_artifact_id: ?[]u8 = null,
+    compile_artifact_id: ?[]u8 = null,
+    profile_version_id: ?[]u8 = null,
+    compile_job_id: ?[]u8 = null,
+};
+
+pub fn insertCompileArtifact(
+    conn: *pg.Conn,
+    tenant_id: []const u8,
+    workspace_id: []const u8,
+    profile_version_id: []const u8,
+    compile_job_id: []const u8,
+    is_valid: bool,
+    created_at: i64,
+) !void {
+    var artifact_id_buf: [20]u8 = undefined;
+    const artifact_id = prefixedId(&artifact_id_buf, "pla");
+    const meta = if (is_valid) "{\"is_valid\":true}" else "{\"is_valid\":false}";
+
+    var q = try conn.query(
+        \\INSERT INTO profile_linkage_audit_artifacts
+        \\  (artifact_id, tenant_id, workspace_id, artifact_type, profile_version_id, compile_job_id, run_id, parent_artifact_id, metadata_json, created_at)
+        \\VALUES ($1, $2, $3, 'COMPILE', $4, $5, NULL, NULL, $6, $7)
+    , .{ artifact_id, tenant_id, workspace_id, profile_version_id, compile_job_id, meta, created_at });
+    q.deinit();
+}
+
+pub fn insertActivateArtifact(
+    conn: *pg.Conn,
+    tenant_id: []const u8,
+    workspace_id: []const u8,
+    profile_version_id: []const u8,
+    activated_by: []const u8,
+    created_at: i64,
+) !void {
+    var artifact_id_buf: [20]u8 = undefined;
+    const artifact_id = prefixedId(&artifact_id_buf, "pla");
+
+    var compile_q = try conn.query(
+        \\SELECT artifact_id, compile_job_id
+        \\FROM profile_linkage_audit_artifacts
+        \\WHERE workspace_id = $1 AND profile_version_id = $2 AND artifact_type = 'COMPILE'
+        \\ORDER BY created_at DESC
+        \\LIMIT 1
+    , .{ workspace_id, profile_version_id });
+    defer compile_q.deinit();
+
+    var parent_artifact_id: ?[]const u8 = null;
+    var compile_job_id: ?[]const u8 = null;
+    if (try compile_q.next()) |row| {
+        parent_artifact_id = try row.get([]const u8, 0);
+        compile_job_id = try row.get(?[]const u8, 1);
+    }
+
+    var q = try conn.query(
+        \\INSERT INTO profile_linkage_audit_artifacts
+        \\  (artifact_id, tenant_id, workspace_id, artifact_type, profile_version_id, compile_job_id, run_id, parent_artifact_id, metadata_json, created_at)
+        \\VALUES ($1, $2, $3, 'ACTIVATE', $4, $5, NULL, $6, json_build_object('activated_by', $7)::text, $8)
+    , .{ artifact_id, tenant_id, workspace_id, profile_version_id, compile_job_id, parent_artifact_id, activated_by, created_at });
+    q.deinit();
+}
+
+pub fn insertRunArtifact(
+    conn: *pg.Conn,
+    tenant_id: []const u8,
+    workspace_id: []const u8,
+    run_id: []const u8,
+    profile_version_id: []const u8,
+    created_at: i64,
+) !void {
+    var artifact_id_buf: [20]u8 = undefined;
+    const artifact_id = prefixedId(&artifact_id_buf, "pla");
+
+    var act_q = try conn.query(
+        \\SELECT artifact_id, compile_job_id
+        \\FROM profile_linkage_audit_artifacts
+        \\WHERE workspace_id = $1 AND profile_version_id = $2 AND artifact_type = 'ACTIVATE' AND created_at <= $3
+        \\ORDER BY created_at DESC
+        \\LIMIT 1
+    , .{ workspace_id, profile_version_id, created_at });
+    defer act_q.deinit();
+
+    var parent_artifact_id: ?[]const u8 = null;
+    var compile_job_id: ?[]const u8 = null;
+    if (try act_q.next()) |row| {
+        parent_artifact_id = try row.get([]const u8, 0);
+        compile_job_id = try row.get(?[]const u8, 1);
+    }
+
+    var q = try conn.query(
+        \\INSERT INTO profile_linkage_audit_artifacts
+        \\  (artifact_id, tenant_id, workspace_id, artifact_type, profile_version_id, compile_job_id, run_id, parent_artifact_id, metadata_json, created_at)
+        \\VALUES ($1, $2, $3, 'RUN', $4, $5, $6, $7, '{}', $8)
+    , .{ artifact_id, tenant_id, workspace_id, profile_version_id, compile_job_id, run_id, parent_artifact_id, created_at });
+    q.deinit();
+}
+
+pub fn fetchRunLinkage(conn: *pg.Conn, alloc: std.mem.Allocator, run_id: []const u8) !?RunLinkage {
+    var q = try conn.query(
+        \\SELECT run_art.artifact_id,
+        \\       run_art.profile_version_id,
+        \\       run_art.compile_job_id,
+        \\       run_art.parent_artifact_id,
+        \\       act.parent_artifact_id
+        \\FROM profile_linkage_audit_artifacts run_art
+        \\LEFT JOIN profile_linkage_audit_artifacts act
+        \\  ON act.artifact_id = run_art.parent_artifact_id AND act.artifact_type = 'ACTIVATE'
+        \\WHERE run_art.run_id = $1 AND run_art.artifact_type = 'RUN'
+        \\ORDER BY run_art.created_at DESC
+        \\LIMIT 1
+    , .{run_id});
+    defer q.deinit();
+
+    const row = (try q.next()) orelse return null;
+
+    return .{
+        .run_artifact_id = if (try row.get(?[]const u8, 0)) |v| try alloc.dupe(u8, v) else null,
+        .profile_version_id = if (try row.get(?[]const u8, 1)) |v| try alloc.dupe(u8, v) else null,
+        .compile_job_id = if (try row.get(?[]const u8, 2)) |v| try alloc.dupe(u8, v) else null,
+        .activate_artifact_id = if (try row.get(?[]const u8, 3)) |v| try alloc.dupe(u8, v) else null,
+        .compile_artifact_id = if (try row.get(?[]const u8, 4)) |v| try alloc.dupe(u8, v) else null,
+    };
+}
+
+pub fn freeRunLinkage(alloc: std.mem.Allocator, linkage: *RunLinkage) void {
+    if (linkage.run_artifact_id) |v| alloc.free(v);
+    if (linkage.activate_artifact_id) |v| alloc.free(v);
+    if (linkage.compile_artifact_id) |v| alloc.free(v);
+    if (linkage.profile_version_id) |v| alloc.free(v);
+    if (linkage.compile_job_id) |v| alloc.free(v);
+    linkage.* = .{};
+}
+
+fn prefixedId(buf: []u8, prefix: []const u8) []const u8 {
+    var id: [16]u8 = undefined;
+    std.crypto.random.bytes(&id);
+    const hex = std.fmt.bytesToHex(id, .lower);
+    return std.fmt.bufPrint(buf, "{s}_{s}", .{ prefix, hex[0..12] }) catch "id_unknown";
+}
+
+test "integration: linkage chain is queryable for run" {
+    const common = @import("../http/handlers/common.zig");
+
+    const db_ctx = (try common.openHandlerTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.release(db_ctx.conn);
+    defer db_ctx.pool.deinit();
+
+    {
+        var q = try db_ctx.conn.query(
+            \\CREATE TEMP TABLE profile_linkage_audit_artifacts (
+            \\  artifact_id TEXT PRIMARY KEY,
+            \\  tenant_id TEXT NOT NULL,
+            \\  workspace_id TEXT NOT NULL,
+            \\  artifact_type TEXT NOT NULL,
+            \\  profile_version_id TEXT NOT NULL,
+            \\  compile_job_id TEXT,
+            \\  run_id TEXT,
+            \\  parent_artifact_id TEXT,
+            \\  metadata_json TEXT NOT NULL DEFAULT '{}',
+            \\  created_at BIGINT NOT NULL
+            \\) ON COMMIT DROP
+        , .{});
+        q.deinit();
+    }
+
+    try insertCompileArtifact(db_ctx.conn, "tenant_1", "ws_1", "pver_1", "cjob_1", true, 10);
+    try insertActivateArtifact(db_ctx.conn, "tenant_1", "ws_1", "pver_1", "operator", 20);
+    try insertRunArtifact(db_ctx.conn, "tenant_1", "ws_1", "run_1", "pver_1", 30);
+
+    var linkage = (try fetchRunLinkage(db_ctx.conn, std.testing.allocator, "run_1")).?;
+    defer freeRunLinkage(std.testing.allocator, &linkage);
+
+    try std.testing.expect(linkage.run_artifact_id != null);
+    try std.testing.expect(linkage.activate_artifact_id != null);
+    try std.testing.expect(linkage.compile_artifact_id != null);
+    try std.testing.expectEqualStrings("pver_1", linkage.profile_version_id.?);
+    try std.testing.expectEqualStrings("cjob_1", linkage.compile_job_id.?);
+}
+
+test "integration: linkage artifacts are immutable and reject updates" {
+    const common = @import("../http/handlers/common.zig");
+
+    const db_ctx = (try common.openHandlerTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.release(db_ctx.conn);
+    defer db_ctx.pool.deinit();
+
+    {
+        var q = try db_ctx.conn.query(
+            \\CREATE TEMP TABLE profile_linkage_audit_artifacts (
+            \\  artifact_id TEXT PRIMARY KEY,
+            \\  tenant_id TEXT NOT NULL,
+            \\  workspace_id TEXT NOT NULL,
+            \\  artifact_type TEXT NOT NULL,
+            \\  profile_version_id TEXT NOT NULL,
+            \\  compile_job_id TEXT,
+            \\  run_id TEXT,
+            \\  parent_artifact_id TEXT,
+            \\  metadata_json TEXT NOT NULL DEFAULT '{}',
+            \\  created_at BIGINT NOT NULL
+            \\) ON COMMIT DROP
+        , .{});
+        q.deinit();
+    }
+
+    {
+        var q = try db_ctx.conn.query(
+            \\CREATE OR REPLACE FUNCTION reject_profile_linkage_mutation_test()
+            \\RETURNS trigger LANGUAGE plpgsql AS $$
+            \\BEGIN
+            \\    RAISE EXCEPTION 'profile_linkage_audit_artifacts is append-only';
+            \\END;
+            \\$$
+        , .{});
+        q.deinit();
+    }
+    {
+        var q = try db_ctx.conn.query(
+            \\CREATE TRIGGER trg_profile_linkage_no_update_test
+            \\BEFORE UPDATE ON profile_linkage_audit_artifacts
+            \\FOR EACH ROW EXECUTE FUNCTION reject_profile_linkage_mutation_test()
+        , .{});
+        q.deinit();
+    }
+
+    try insertCompileArtifact(db_ctx.conn, "tenant_1", "ws_1", "pver_1", "cjob_1", true, 10);
+
+    try std.testing.expectError(error.PgError, db_ctx.conn.query(
+        "UPDATE profile_linkage_audit_artifacts SET metadata_json = '{\"x\":1}' WHERE artifact_type = 'COMPILE'",
+        .{},
+    ));
+}
+
+test "integration: activate linkage metadata preserves escaped activated_by value" {
+    const common = @import("../http/handlers/common.zig");
+
+    const db_ctx = (try common.openHandlerTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.release(db_ctx.conn);
+    defer db_ctx.pool.deinit();
+
+    {
+        var q = try db_ctx.conn.query(
+            \\CREATE TEMP TABLE profile_linkage_audit_artifacts (
+            \\  artifact_id TEXT PRIMARY KEY,
+            \\  tenant_id TEXT NOT NULL,
+            \\  workspace_id TEXT NOT NULL,
+            \\  artifact_type TEXT NOT NULL,
+            \\  profile_version_id TEXT NOT NULL,
+            \\  compile_job_id TEXT,
+            \\  run_id TEXT,
+            \\  parent_artifact_id TEXT,
+            \\  metadata_json TEXT NOT NULL DEFAULT '{}',
+            \\  created_at BIGINT NOT NULL
+            \\) ON COMMIT DROP
+        , .{});
+        q.deinit();
+    }
+
+    try insertCompileArtifact(db_ctx.conn, "tenant_1", "ws_1", "pver_1", "cjob_1", true, 10);
+    const activated_by = "operator \"alpha\" \\ slash";
+    try insertActivateArtifact(db_ctx.conn, "tenant_1", "ws_1", "pver_1", activated_by, 20);
+
+    var q = try db_ctx.conn.query(
+        "SELECT metadata_json FROM profile_linkage_audit_artifacts WHERE artifact_type = 'ACTIVATE' LIMIT 1",
+        .{},
+    );
+    defer q.deinit();
+    const row = (try q.next()) orelse return error.TestUnexpectedResult;
+    const metadata_json = try row.get([]const u8, 0);
+    const parsed = try std.json.parseFromSlice(std.json.Value, std.testing.allocator, metadata_json, .{});
+    defer parsed.deinit();
+    const meta_obj = parsed.value.object;
+    const value = meta_obj.get("activated_by") orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqual(std.json.Value.Tag.string, value);
+    try std.testing.expectEqualStrings(activated_by, value.string);
+}
+
+test "integration: run linkage insert fails closed when snapshot profile version does not exist" {
+    const common = @import("../http/handlers/common.zig");
+
+    const db_ctx = (try common.openHandlerTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.release(db_ctx.conn);
+    defer db_ctx.pool.deinit();
+
+    {
+        var q = try db_ctx.conn.query(
+            \\CREATE TEMP TABLE agent_profile_versions (
+            \\  profile_version_id TEXT PRIMARY KEY
+            \\) ON COMMIT DROP
+        , .{});
+        q.deinit();
+    }
+    {
+        var q = try db_ctx.conn.query(
+            \\CREATE TEMP TABLE runs (
+            \\  run_id TEXT PRIMARY KEY
+            \\) ON COMMIT DROP
+        , .{});
+        q.deinit();
+    }
+    {
+        var q = try db_ctx.conn.query(
+            \\CREATE TEMP TABLE profile_linkage_audit_artifacts (
+            \\  artifact_id TEXT PRIMARY KEY,
+            \\  tenant_id TEXT NOT NULL,
+            \\  workspace_id TEXT NOT NULL,
+            \\  artifact_type TEXT NOT NULL,
+            \\  profile_version_id TEXT NOT NULL REFERENCES agent_profile_versions(profile_version_id),
+            \\  compile_job_id TEXT,
+            \\  run_id TEXT REFERENCES runs(run_id),
+            \\  parent_artifact_id TEXT,
+            \\  metadata_json TEXT NOT NULL DEFAULT '{}',
+            \\  created_at BIGINT NOT NULL
+            \\) ON COMMIT DROP
+        , .{});
+        q.deinit();
+    }
+    {
+        var q = try db_ctx.conn.query("INSERT INTO runs (run_id) VALUES ('run_1')", .{});
+        q.deinit();
+    }
+
+    try std.testing.expectError(error.PgError, insertRunArtifact(db_ctx.conn, "tenant_1", "ws_1", "run_1", "pver_missing", 30));
+}

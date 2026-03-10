@@ -19,7 +19,7 @@ help:  ## Show all available Makefile targets
 	@echo "Quality & Testing:"
 	@echo "  lint               Run formatter and linter (zombied Zig + website ESLint)"
 	@echo "  test-zombied       Run zombied tests (Zig unit + Zig integration)"
-	@echo "  test-unit          Run all unit lanes (zombied + website Vitest + app Vitest)"
+	@echo "  test-unit          Run all unit lanes (zombied + zombiectl + website Vitest + app Vitest)"
 	@echo "  test               Run test-unit (includes test-zombied) + backend/API e2e"
 	@echo "  memleak            Run Zig memory leak gate (platform-aware)"
 	@echo "  bench              Run API benchmark (set BENCH_MODE=bench|soak|profile)"
