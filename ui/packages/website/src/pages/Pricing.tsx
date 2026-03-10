@@ -41,7 +41,7 @@ const tiers = [
 
 export default function Pricing() {
   return (
-    <section className="stack">
+    <section className="stack route-fade">
       <p className="eyebrow">pricing</p>
       <h1>Free and Scale plans</h1>
       <p className="lead">

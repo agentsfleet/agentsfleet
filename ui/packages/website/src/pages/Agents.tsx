@@ -49,7 +49,7 @@ const webhookPayload = `{
 
 export default function Agents() {
   return (
-    <section className="stack agent-surface">
+    <section className="stack agent-surface route-fade">
       <div className="scanline" aria-hidden="true" />
 
       <p className="eyebrow">agent surface</p>

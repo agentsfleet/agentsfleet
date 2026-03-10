@@ -50,6 +50,16 @@
   box-sizing: border-box;
 }
 
+html {
+  scrollbar-gutter: stable;
+}
+
+@supports not (scrollbar-gutter: stable) {
+  html {
+    overflow-y: scroll;
+  }
+}
+
 html,
 body,
 #root {
@@ -410,10 +420,19 @@ a {
   transition: all var(--z-ease-default);
 }
 
+.mode-btn:hover:not(.active) {
+  color: var(--z-text-primary);
+  background: rgba(217, 107, 43, 0.08);
+}
+
 .mode-btn.active {
   color: var(--z-bg-0);
   background: linear-gradient(120deg, var(--z-orange), var(--z-amber));
   font-weight: 700;
+}
+
+.mode-btn.active:hover {
+  box-shadow: 0 0 12px var(--z-glow-strong);
 }
 
 .site-nav {
@@ -442,6 +461,7 @@ a {
 .header-mission-control:hover {
   border-color: var(--z-orange);
   box-shadow: var(--z-shadow-cta);
+  transform: translateY(-1px);
 }
 
 .header-mission-control:focus-visible {
@@ -1243,6 +1263,7 @@ code {
 
 .hero-cta-primary:hover {
   box-shadow: 0 0 60px var(--z-glow-strong), 0 4px 32px rgba(0, 0, 0, 0.5);
+  transform: translateY(-2px);
 }
 
 /* Terminal */

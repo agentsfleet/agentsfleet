@@ -131,3 +131,59 @@
     background-position: 24px 24px;
   }
 }
+
+/* ── AnimatedIcon ── */
+
+.z-animated-icon {
+  display: inline-flex;
+  align-items: center;
+  line-height: 1;
+}
+
+.z-animated-icon__glyph {
+  display: inline-block;
+  transform-origin: 70% 70%;
+  will-change: transform;
+}
+
+/* Wave animation triggers */
+.z-animated-icon-trigger:hover .z-animated-icon[data-trigger="parent-hover"][data-animation="wave"] .z-animated-icon__glyph,
+.z-animated-icon-trigger:focus-visible .z-animated-icon[data-trigger="parent-hover"][data-animation="wave"] .z-animated-icon__glyph,
+.z-animated-icon[data-trigger="self-hover"][data-animation="wave"]:hover .z-animated-icon__glyph,
+.z-animated-icon[data-trigger="self-hover"][data-animation="wave"]:focus-visible .z-animated-icon__glyph,
+.z-animated-icon[data-trigger="always"][data-animation="wave"] .z-animated-icon__glyph {
+  animation: z-icon-wave 700ms ease-in-out;
+}
+
+/* Wiggle animation triggers */
+.z-animated-icon-trigger:hover .z-animated-icon[data-trigger="parent-hover"][data-animation="wiggle"] .z-animated-icon__glyph,
+.z-animated-icon-trigger:focus-visible .z-animated-icon[data-trigger="parent-hover"][data-animation="wiggle"] .z-animated-icon__glyph,
+.z-animated-icon[data-trigger="self-hover"][data-animation="wiggle"]:hover .z-animated-icon__glyph,
+.z-animated-icon[data-trigger="self-hover"][data-animation="wiggle"]:focus-visible .z-animated-icon__glyph,
+.z-animated-icon[data-trigger="always"][data-animation="wiggle"] .z-animated-icon__glyph {
+  animation: z-icon-wiggle 700ms ease-in-out;
+}
+
+@keyframes z-icon-wave {
+  0%   { transform: rotate(0deg); }
+  20%  { transform: rotate(14deg); }
+  40%  { transform: rotate(-8deg); }
+  60%  { transform: rotate(14deg); }
+  80%  { transform: rotate(-4deg); }
+  100% { transform: rotate(0deg); }
+}
+
+@keyframes z-icon-wiggle {
+  0%   { transform: rotate(0deg) translateY(0); }
+  25%  { transform: rotate(8deg) translateY(-1px); }
+  50%  { transform: rotate(-6deg) translateY(0); }
+  75%  { transform: rotate(5deg) translateY(-1px); }
+  100% { transform: rotate(0deg) translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .z-animated-icon__glyph {
+    animation: none !important;
+    transform: none !important;
+  }
+}

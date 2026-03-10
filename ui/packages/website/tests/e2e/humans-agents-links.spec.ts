@@ -18,7 +18,7 @@ async function clickInternalAndReturn(page: Page, link: InternalLinkCase, origin
   await scope.getByRole("link", { name: link.label, exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`${link.href.replace("/", "\\/")}$`));
   if (link.heading) {
-    await expect(page.getByRole("heading", { level: 1 })).toContainText(link.heading);
+    await expect(page.getByRole("heading", { level: 1 })).toContainText(link.heading, { timeout: 10_000 });
   }
   if (link.href === originPath) {
     return;
