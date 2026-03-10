@@ -8,7 +8,6 @@ ZIG_GLOBAL_CACHE_DIR ?= $(CURDIR)/.tmp/zig-global-cache
 ZIG_LOCAL_CACHE_DIR  ?= $(CURDIR)/.tmp/zig-local-cache
 ZOMBIED_COVERAGE_MIN_LINES ?= 35
 BENCH_MODE ?= bench
-LEAK_FILTER ?= finalizeWorkerAllocator returns false for clean allocator
 BACKEND_E2E_FILTER_1 ?= integration: beginApiRequest enforces max in-flight limit
 BACKEND_E2E_FILTER_2 ?= integration: endApiRequest decrements in-flight counter deterministically
 BACKEND_E2E_FILTER_3 ?= integration: start-run queue failure compensation removes only SPEC_QUEUED row
@@ -173,12 +172,12 @@ memleak:  ## Run Zig memory leak gates (allocator tests + Linux valgrind pass)
 	    $(MAKE) _ensure-test-bin; \
 	    echo "→ [zombied] Running valgrind leak gate..."; \
 	    valgrind --quiet --leak-check=full --show-leak-kinds=all --errors-for-leak-kinds=definite,possible --error-exitcode=1 \
-	      zig-out/bin/zombied-tests --test-filter "$(LEAK_FILTER)";; \
+	      zig-out/bin/zombied-tests;; \
 	  Darwin) \
 	    if command -v leaks >/dev/null 2>&1; then \
 	      $(MAKE) _ensure-test-bin; \
 	      echo "→ [zombied] Running macOS leaks gate..."; \
-	      MallocStackLogging=1 leaks -atExit -- zig-out/bin/zombied-tests --test-filter "$(LEAK_FILTER)" >/dev/null || \
+	      MallocStackLogging=1 leaks -atExit -- zig-out/bin/zombied-tests >/dev/null || \
 	        echo "→ [zombied] leaks check unavailable in current runtime (continuing with allocator gate)"; \
 	    else \
 	      echo "→ [zombied] leaks not found; allocator gate only"; \
