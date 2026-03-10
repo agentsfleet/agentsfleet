@@ -18,7 +18,7 @@
 Implement one working policy function: deterministic per-workspace entitlement enforcement at compile/activate boundaries.
 
 **Dimensions:**
-- 1.1 PENDING Define plan-tier policy model (`Free`, `Pro`, `Team`, `Enterprise`)
+- 1.1 PENDING Define plan-tier policy model (`Free`, `Scale`)
 - 1.2 PENDING Define entitlement source-of-truth and fail-closed defaults
 - 1.3 PENDING Enforce skill/profile/usage limit checks in compile and activate flows
 - 1.4 PENDING Emit machine-readable rejection reasons and policy audit snapshots
