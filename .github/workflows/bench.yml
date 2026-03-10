@@ -1,0 +1,55 @@
+name: bench
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  bench:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.15.2
+      - name: Run bench gate against local health fixture
+        run: |
+          node -e '
+          const http = require("http");
+          const server = http.createServer((req, res) => {
+            if (req.url === "/healthz") {
+              res.writeHead(200, { "content-type": "application/json" });
+              res.end(JSON.stringify({ status: "ok" }));
+              return;
+            }
+            res.writeHead(404);
+            res.end("not found");
+          });
+          server.listen(38080, "127.0.0.1");
+          setInterval(() => {}, 1 << 30);
+          ' &
+          fixture_pid=$!
+          trap 'kill "$fixture_pid" >/dev/null 2>&1 || true' EXIT
+
+          for _ in $(seq 1 20); do
+            if curl -fsS http://127.0.0.1:38080/healthz >/dev/null; then
+              break
+            fi
+            sleep 0.5
+          done
+
+          API_BENCH_URL=http://127.0.0.1:38080/healthz \
+          API_BENCH_DURATION_SEC=10 \
+          API_BENCH_CONCURRENCY=16 \
+          make bench
+      - name: Upload bench artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: bench-artifacts
+          path: .tmp/api-bench-*.json
+          if-no-files-found: warn
+          retention-days: 7

@@ -16,6 +16,10 @@
             .url = "git+https://github.com/karlseguin/pg.zig#master",
             .hash = "pg-0.0.0-Wp_7gXFoBgD0fQ72WICKa-bxLga03AXXQ3BbIsjjohQ3",
         },
+        .zbench = .{
+            .url = "git+https://github.com/hendriknielaender/zBench#feaf455d9f8efa7a95b75b52ac3efe0c52549691",
+            .hash = "zbench-0.11.1-YTdc7zkmAQBWI99esNFueJc9GuzK-KaU6Nfr1ZXhNGmc",
+        },
     },
     .paths = .{
         "build.zig",

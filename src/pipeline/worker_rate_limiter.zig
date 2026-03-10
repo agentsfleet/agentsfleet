@@ -48,7 +48,9 @@ pub const TenantRateLimiter = struct {
             try worker_runtime.ensureRunActive(cancel_flag, deadline_ms);
 
             const now_ms = std.time.milliTimestamp();
-            const bucket = try self.getOrCreateBucket(tenant_id, provider, now_ms);
+            const bucket = self.getOrCreateBucket(tenant_id, provider, now_ms) catch |err| switch (err) {
+                error.OutOfMemory, error.NoSpaceLeft => return worker_runtime.WorkerError.InvalidPipelineProfile,
+            };
             if (bucket.allow(now_ms, cost)) return;
 
             const wait_ms = @max(bucket.waitMsUntil(now_ms, cost), 1);

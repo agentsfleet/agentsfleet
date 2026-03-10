@@ -246,8 +246,8 @@ pub fn transition(
     {
         var rq = conn.query("SELECT request_id FROM runs WHERE run_id = $1", .{run_id}) catch null;
         if (rq) |*q| {
-            defer q.deinit();
-            if ((q.next() catch null)) |rrow| {
+            defer q.*.deinit();
+            if ((q.*.next() catch null)) |rrow| {
                 if (rrow.get(?[]u8, 0) catch null) |rid| {
                     if (rid.len > 0) request_id = rid;
                 }

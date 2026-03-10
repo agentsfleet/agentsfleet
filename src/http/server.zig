@@ -11,7 +11,7 @@ pub const ServerConfig = struct {
     interface: []const u8 = "0.0.0.0",
     threads: i16 = 1,
     workers: i16 = 1,
-    max_clients: usize = 1024,
+    max_clients: ?isize = 1024,
 };
 
 /// Single global context pointer used by the Zap callbacks.

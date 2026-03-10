@@ -438,7 +438,8 @@ pub const Client = struct {
         if (stream_entry[1] != .array) return error.RedisUnexpectedResponse;
         const messages = stream_entry[1].array orelse return null;
         if (messages.len == 0) return null;
-        return self.decodeMessageTuple(messages[0]);
+        const message = try self.decodeMessageTuple(messages[0]);
+        return message;
     }
 
     fn decodeAutoClaimMessage(self: *Client, value: RespValue) !?QueueMessage {
@@ -448,7 +449,8 @@ pub const Client = struct {
         if (top[1] != .array) return error.RedisUnexpectedResponse;
         const messages = top[1].array orelse return null;
         if (messages.len == 0) return null;
-        return self.decodeMessageTuple(messages[0]);
+        const message = try self.decodeMessageTuple(messages[0]);
+        return message;
     }
 
     fn decodeMessageTuple(self: *Client, item: RespValue) !QueueMessage {
@@ -620,7 +622,7 @@ fn readRespLine(alloc: std.mem.Allocator, reader: *std.Io.Reader) ![]u8 {
 }
 
 pub fn makeConsumerId(alloc: std.mem.Allocator) ![]u8 {
-    var host_buf: [64]u8 = undefined;
+    var host_buf: [std.posix.HOST_NAME_MAX]u8 = undefined;
     const host = std.posix.gethostname(&host_buf) catch "localhost";
     const now = std.time.nanoTimestamp();
     return std.fmt.allocPrint(alloc, "{s}-{s}-{d}", .{

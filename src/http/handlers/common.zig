@@ -98,7 +98,7 @@ fn authenticateApiKey(
         if (!std.mem.eql(u8, provided, candidate)) continue;
         return .{
             .mode = .api_key,
-            .tenant_id = try alloc.dupe(u8, "github_app"),
+            .tenant_id = alloc.dupe(u8, "github_app") catch return AuthError.AuthServiceUnavailable,
             .workspace_scope_id = null,
         };
     }
@@ -128,10 +128,10 @@ pub fn writeAuthError(r: zap.Request, req_id: []const u8, err: AuthError) void {
     }
 }
 
-pub fn mapOidcVerifyError(err: oidc.VerifyError) AuthError {
+pub fn mapOidcVerifyError(err: anyerror) AuthError {
     return switch (err) {
-        .TokenExpired => AuthError.TokenExpired,
-        .JwksFetchFailed, .JwksParseFailed => AuthError.AuthServiceUnavailable,
+        error.TokenExpired => AuthError.TokenExpired,
+        error.JwksFetchFailed, error.JwksParseFailed => AuthError.AuthServiceUnavailable,
         else => AuthError.Unauthorized,
     };
 }

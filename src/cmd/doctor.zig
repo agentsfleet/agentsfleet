@@ -66,8 +66,8 @@ fn parseOutputFormatArgs(args: []const []const u8) DoctorArgError!OutputFormat {
     return format;
 }
 
-fn appendCheck(results: *std.ArrayList(CheckResult), id: []const u8, ok: bool, detail: []const u8, overall_ok: *bool) !void {
-    try results.append(.{
+fn appendCheck(alloc: std.mem.Allocator, results: *std.ArrayList(CheckResult), id: []const u8, ok: bool, detail: []const u8, overall_ok: *bool) !void {
+    try results.append(alloc, .{
         .id = id,
         .ok = ok,
         .detail = detail,
@@ -149,86 +149,86 @@ pub fn run(alloc: std.mem.Allocator) !void {
             switch (err) {
                 env_vars.EnvVarsErrors.MissingDatabaseUrlApi,
                 env_vars.EnvVarsErrors.MissingDatabaseUrlWorker,
-                => try appendCheck(&results, "role_env_required", false, "DATABASE_URL_API and DATABASE_URL_WORKER required (no shared fallback)", &ok),
-                env_vars.EnvVarsErrors.SameDatabaseUrlForApiAndWorker => try appendCheck(&results, "role_env_db_separation", false, "DATABASE_URL_API and DATABASE_URL_WORKER must differ", &ok),
+                => try appendCheck(alloc, &results, "role_env_required", false, "DATABASE_URL_API and DATABASE_URL_WORKER required (no shared fallback)", &ok),
+                env_vars.EnvVarsErrors.SameDatabaseUrlForApiAndWorker => try appendCheck(alloc, &results, "role_env_db_separation", false, "DATABASE_URL_API and DATABASE_URL_WORKER must differ", &ok),
                 env_vars.EnvVarsErrors.MissingRedisUrlApi,
                 env_vars.EnvVarsErrors.MissingRedisUrlWorker,
-                => try appendCheck(&results, "role_env_redis_required", false, "REDIS_URL_API and REDIS_URL_WORKER required (no shared fallback)", &ok),
-                env_vars.EnvVarsErrors.SameRedisUrlForApiAndWorker => try appendCheck(&results, "role_env_redis_separation", false, "REDIS_URL_API and REDIS_URL_WORKER must differ", &ok),
-                env_vars.EnvVarsErrors.RedisApiTlsRequired => try appendCheck(&results, "redis_api_tls", false, "REDIS_URL_API must use rediss://", &ok),
-                env_vars.EnvVarsErrors.RedisWorkerTlsRequired => try appendCheck(&results, "redis_worker_tls", false, "REDIS_URL_WORKER must use rediss://", &ok),
+                => try appendCheck(alloc, &results, "role_env_redis_required", false, "REDIS_URL_API and REDIS_URL_WORKER required (no shared fallback)", &ok),
+                env_vars.EnvVarsErrors.SameRedisUrlForApiAndWorker => try appendCheck(alloc, &results, "role_env_redis_separation", false, "REDIS_URL_API and REDIS_URL_WORKER must differ", &ok),
+                env_vars.EnvVarsErrors.RedisApiTlsRequired => try appendCheck(alloc, &results, "redis_api_tls", false, "REDIS_URL_API must use rediss://", &ok),
+                env_vars.EnvVarsErrors.RedisWorkerTlsRequired => try appendCheck(alloc, &results, "redis_worker_tls", false, "REDIS_URL_WORKER must use rediss://", &ok),
             }
             break :role_env_check;
         };
-        try appendCheck(&results, "env_vars_contract", true, "Role-separated DB/Redis URLs configured with Redis TLS", &ok);
+        try appendCheck(alloc, &results, "env_vars_contract", true, "Role-separated DB/Redis URLs configured with Redis TLS", &ok);
     }
 
     db_check: {
         const pool = db.initFromEnvForRole(alloc, .api) catch {
-            try appendCheck(&results, "db_api_config", false, "DATABASE_URL_API not set/invalid", &ok);
+            try appendCheck(alloc, &results, "db_api_config", false, "DATABASE_URL_API not set/invalid", &ok);
             break :db_check;
         };
         pool.deinit();
-        try appendCheck(&results, "db_api_config", true, "API database config", &ok);
+        try appendCheck(alloc, &results, "db_api_config", true, "API database config", &ok);
     }
 
     worker_db_check: {
         const pool = db.initFromEnvForRole(alloc, .worker) catch {
-            try appendCheck(&results, "db_worker_config", false, "DATABASE_URL_WORKER not set/invalid", &ok);
+            try appendCheck(alloc, &results, "db_worker_config", false, "DATABASE_URL_WORKER not set/invalid", &ok);
             break :worker_db_check;
         };
         pool.deinit();
-        try appendCheck(&results, "db_worker_config", true, "Worker database config", &ok);
+        try appendCheck(alloc, &results, "db_worker_config", true, "Worker database config", &ok);
     }
 
     redis_api_check: {
         var client = queue_redis.Client.connectFromEnv(alloc, .api) catch {
-            try appendCheck(&results, "redis_api_config", false, "REDIS_URL_API not set/invalid", &ok);
+            try appendCheck(alloc, &results, "redis_api_config", false, "REDIS_URL_API not set/invalid", &ok);
             break :redis_api_check;
         };
         defer client.deinit();
         client.readyCheck() catch {
-            try appendCheck(&results, "redis_api_ready", false, "Redis API readiness (PING + XGROUP)", &ok);
+            try appendCheck(alloc, &results, "redis_api_ready", false, "Redis API readiness (PING + XGROUP)", &ok);
             break :redis_api_check;
         };
         const expected = if (redis_api_url) |u| redisUsernameFromUrl(u) else null;
         if (expected) |user| {
             const actual = client.aclWhoAmI() catch {
-                try appendCheck(&results, "redis_api_acl_probe", false, "Redis API ACL identity probe failed (ACL WHOAMI)", &ok);
+                try appendCheck(alloc, &results, "redis_api_acl_probe", false, "Redis API ACL identity probe failed (ACL WHOAMI)", &ok);
                 break :redis_api_check;
             };
             defer alloc.free(actual);
             if (!std.mem.eql(u8, actual, user)) {
-                try appendCheck(&results, "redis_api_acl_mismatch", false, "Redis API ACL user mismatch expected URL user", &ok);
+                try appendCheck(alloc, &results, "redis_api_acl_mismatch", false, "Redis API ACL user mismatch expected URL user", &ok);
                 break :redis_api_check;
             }
         }
-        try appendCheck(&results, "redis_api_ready_acl", true, "Redis API readiness + ACL identity", &ok);
+        try appendCheck(alloc, &results, "redis_api_ready_acl", true, "Redis API readiness + ACL identity", &ok);
     }
 
     redis_worker_check: {
         var client = queue_redis.Client.connectFromEnv(alloc, .worker) catch {
-            try appendCheck(&results, "redis_worker_config", false, "REDIS_URL_WORKER not set/invalid", &ok);
+            try appendCheck(alloc, &results, "redis_worker_config", false, "REDIS_URL_WORKER not set/invalid", &ok);
             break :redis_worker_check;
         };
         defer client.deinit();
         client.readyCheck() catch {
-            try appendCheck(&results, "redis_worker_ready", false, "Redis worker readiness (PING + XGROUP)", &ok);
+            try appendCheck(alloc, &results, "redis_worker_ready", false, "Redis worker readiness (PING + XGROUP)", &ok);
             break :redis_worker_check;
         };
         const expected = if (redis_worker_url) |u| redisUsernameFromUrl(u) else null;
         if (expected) |user| {
             const actual = client.aclWhoAmI() catch {
-                try appendCheck(&results, "redis_worker_acl_probe", false, "Redis worker ACL identity probe failed (ACL WHOAMI)", &ok);
+                try appendCheck(alloc, &results, "redis_worker_acl_probe", false, "Redis worker ACL identity probe failed (ACL WHOAMI)", &ok);
                 break :redis_worker_check;
             };
             defer alloc.free(actual);
             if (!std.mem.eql(u8, actual, user)) {
-                try appendCheck(&results, "redis_worker_acl_mismatch", false, "Redis worker ACL user mismatch expected URL user", &ok);
+                try appendCheck(alloc, &results, "redis_worker_acl_mismatch", false, "Redis worker ACL user mismatch expected URL user", &ok);
                 break :redis_worker_check;
             }
         }
-        try appendCheck(&results, "redis_worker_ready_acl", true, "Redis worker readiness + ACL identity", &ok);
+        try appendCheck(alloc, &results, "redis_worker_ready_acl", true, "Redis worker readiness + ACL identity", &ok);
     }
 
     {
@@ -236,12 +236,12 @@ pub fn run(alloc: std.mem.Allocator) !void {
         if (key) |k| {
             defer alloc.free(k);
             if (k.len == 64) {
-                try appendCheck(&results, "encryption_master_key", true, "ENCRYPTION_MASTER_KEY set", &ok);
+                try appendCheck(alloc, &results, "encryption_master_key", true, "ENCRYPTION_MASTER_KEY set", &ok);
             } else {
-                try appendCheck(&results, "encryption_master_key", false, "ENCRYPTION_MASTER_KEY must be 64 hex chars", &ok);
+                try appendCheck(alloc, &results, "encryption_master_key", false, "ENCRYPTION_MASTER_KEY must be 64 hex chars", &ok);
             }
         } else {
-            try appendCheck(&results, "encryption_master_key", false, "ENCRYPTION_MASTER_KEY not set", &ok);
+            try appendCheck(alloc, &results, "encryption_master_key", false, "ENCRYPTION_MASTER_KEY not set", &ok);
         }
     }
 
@@ -250,12 +250,12 @@ pub fn run(alloc: std.mem.Allocator) !void {
         if (app_id) |id| {
             defer alloc.free(id);
             if (id.len > 0) {
-                try appendCheck(&results, "github_app_id", true, "GITHUB_APP_ID set", &ok);
+                try appendCheck(alloc, &results, "github_app_id", true, "GITHUB_APP_ID set", &ok);
             } else {
-                try appendCheck(&results, "github_app_id", false, "GITHUB_APP_ID is empty", &ok);
+                try appendCheck(alloc, &results, "github_app_id", false, "GITHUB_APP_ID is empty", &ok);
             }
         } else {
-            try appendCheck(&results, "github_app_id", false, "GITHUB_APP_ID not set", &ok);
+            try appendCheck(alloc, &results, "github_app_id", false, "GITHUB_APP_ID not set", &ok);
         }
     }
 
@@ -264,12 +264,12 @@ pub fn run(alloc: std.mem.Allocator) !void {
         if (key) |k| {
             defer alloc.free(k);
             if (k.len > 0) {
-                try appendCheck(&results, "github_app_private_key", true, "GITHUB_APP_PRIVATE_KEY set", &ok);
+                try appendCheck(alloc, &results, "github_app_private_key", true, "GITHUB_APP_PRIVATE_KEY set", &ok);
             } else {
-                try appendCheck(&results, "github_app_private_key", false, "GITHUB_APP_PRIVATE_KEY is empty", &ok);
+                try appendCheck(alloc, &results, "github_app_private_key", false, "GITHUB_APP_PRIVATE_KEY is empty", &ok);
             }
         } else {
-            try appendCheck(&results, "github_app_private_key", false, "GITHUB_APP_PRIVATE_KEY not set", &ok);
+            try appendCheck(alloc, &results, "github_app_private_key", false, "GITHUB_APP_PRIVATE_KEY not set", &ok);
         }
     }
 
@@ -289,11 +289,11 @@ pub fn run(alloc: std.mem.Allocator) !void {
             if (std.fs.accessAbsolute(path, .{})) |_| {
                 const detail = try std.fmt.allocPrint(alloc, "config/{s}", .{fname});
                 defer alloc.free(detail);
-                try appendCheck(&results, "agent_config_file", true, detail, &ok);
+                try appendCheck(alloc, &results, "agent_config_file", true, detail, &ok);
             } else |_| {
                 const detail = try std.fmt.allocPrint(alloc, "config/{s} missing", .{fname});
                 defer alloc.free(detail);
-                try appendCheck(&results, "agent_config_file", false, detail, &ok);
+                try appendCheck(alloc, &results, "agent_config_file", false, detail, &ok);
             }
         }
     }
@@ -303,12 +303,12 @@ pub fn run(alloc: std.mem.Allocator) !void {
         if (clerk_secret) |secret| {
             defer alloc.free(secret);
             if (std.mem.trim(u8, secret, " \t\r\n").len > 0) {
-                try appendCheck(&results, "clerk_secret_key", true, "CLERK_SECRET_KEY set", &ok);
+                try appendCheck(alloc, &results, "clerk_secret_key", true, "CLERK_SECRET_KEY set", &ok);
                 const jwks_url = std.process.getEnvVarOwned(alloc, "CLERK_JWKS_URL") catch null;
                 if (jwks_url) |url| {
                     defer alloc.free(url);
                     if (url.len == 0) {
-                        try appendCheck(&results, "clerk_jwks_url", false, "CLERK_JWKS_URL is empty", &ok);
+                        try appendCheck(alloc, &results, "clerk_jwks_url", false, "CLERK_JWKS_URL is empty", &ok);
                     } else {
                         var verifier = clerk_auth.Verifier.init(alloc, .{
                             .jwks_url = url,
@@ -316,26 +316,26 @@ pub fn run(alloc: std.mem.Allocator) !void {
                         defer verifier.deinit();
                         var jwks_ok = true;
                         verifier.checkJwksConnectivity() catch {
-                            try appendCheck(&results, "clerk_jwks_reachability", false, "CLERK JWKS fetch failed", &ok);
+                            try appendCheck(alloc, &results, "clerk_jwks_reachability", false, "CLERK JWKS fetch failed", &ok);
                             jwks_ok = false;
                         };
                         if (jwks_ok) {
-                            try appendCheck(&results, "clerk_jwks_reachability", true, "Clerk JWKS reachable", &ok);
+                            try appendCheck(alloc, &results, "clerk_jwks_reachability", true, "Clerk JWKS reachable", &ok);
                         }
                     }
                 } else {
-                    try appendCheck(&results, "clerk_jwks_url", false, "CLERK_JWKS_URL not set", &ok);
+                    try appendCheck(alloc, &results, "clerk_jwks_url", false, "CLERK_JWKS_URL not set", &ok);
                 }
             } else {
-                try appendCheck(&results, "clerk_secret_key", false, "CLERK_SECRET_KEY is empty", &ok);
+                try appendCheck(alloc, &results, "clerk_secret_key", false, "CLERK_SECRET_KEY is empty", &ok);
             }
         } else {
             const key = std.process.getEnvVarOwned(alloc, "API_KEY") catch null;
             if (key) |k| {
                 defer alloc.free(k);
-                try appendCheck(&results, "api_key_fallback", true, "API_KEY set (dev fallback)", &ok);
+                try appendCheck(alloc, &results, "api_key_fallback", true, "API_KEY set (dev fallback)", &ok);
             } else {
-                try appendCheck(&results, "api_key_fallback", false, "API_KEY not set (required when Clerk is disabled)", &ok);
+                try appendCheck(alloc, &results, "api_key_fallback", false, "API_KEY not set (required when Clerk is disabled)", &ok);
             }
         }
     }

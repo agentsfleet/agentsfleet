@@ -41,8 +41,8 @@ pub fn recordPolicyEvent(
 
     var request_id: []const u8 = "-";
     if (run_id) |rid| {
-        var rq = conn.query("SELECT request_id FROM runs WHERE run_id = $1", .{rid}) catch null;
-        if (rq) |*q| {
+        const rq = conn.query("SELECT request_id FROM runs WHERE run_id = $1", .{rid}) catch null;
+        if (rq) |q| {
             defer q.deinit();
             if ((q.next() catch null)) |rrow| {
                 if (rrow.get(?[]u8, 0) catch null) |req| {

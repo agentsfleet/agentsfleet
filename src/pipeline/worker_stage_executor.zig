@@ -186,7 +186,7 @@ pub fn executeRun(
         var verification_started = false;
         var final_stage_output: []const u8 = plan_result.content;
         var final_stage_actor: types.Actor = .orchestrator;
-        var terminal = worker_execute_run.StageTransition.retry;
+        var terminal: worker_execute_run.StageTransition = .retry;
 
         while (true) {
             const stage = profile.stages[current_stage_index];

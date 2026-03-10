@@ -27,7 +27,8 @@ const ServeArgError = error{
     InvalidPortValue,
 };
 
-fn parseServeArgOverrides(alloc: std.mem.Allocator) ServeArgError!void {
+fn parseServeArgOverrides() ServeArgError!?u16 {
+    var override_port: ?u16 = null;
     var it = std.process.args();
     _ = it.next();
     _ = it.next();
@@ -36,23 +37,19 @@ fn parseServeArgOverrides(alloc: std.mem.Allocator) ServeArgError!void {
             const port_raw = it.next() orelse return ServeArgError.MissingPortValue;
             const parsed = std.fmt.parseInt(u16, port_raw, 10) catch return ServeArgError.InvalidPortValue;
             if (parsed == 0) return ServeArgError.InvalidPortValue;
-            var buf: [16]u8 = undefined;
-            const text = std.fmt.bufPrint(&buf, "{d}", .{parsed}) catch return ServeArgError.InvalidPortValue;
-            if (std.c.setenv("PORT", text.ptr, 1) != 0) return ServeArgError.InvalidPortValue;
+            override_port = parsed;
             continue;
         }
         if (std.mem.startsWith(u8, arg, "--port=")) {
             const port_raw = arg["--port=".len..];
             const parsed = std.fmt.parseInt(u16, port_raw, 10) catch return ServeArgError.InvalidPortValue;
             if (parsed == 0) return ServeArgError.InvalidPortValue;
-            var buf: [16]u8 = undefined;
-            const text = std.fmt.bufPrint(&buf, "{d}", .{parsed}) catch return ServeArgError.InvalidPortValue;
-            if (std.c.setenv("PORT", text.ptr, 1) != 0) return ServeArgError.InvalidPortValue;
+            override_port = parsed;
             continue;
         }
         return ServeArgError.InvalidServeArgument;
     }
-    _ = alloc;
+    return override_port;
 }
 
 fn onSignal(sig: i32) callconv(.c) void {
@@ -82,7 +79,7 @@ fn signalWatcher(wstate: *worker.WorkerState) void {
 pub fn run(alloc: std.mem.Allocator) !void {
     log.info("starting zombied serve", .{});
 
-    parseServeArgOverrides(alloc) catch |err| {
+    const serve_port_override = parseServeArgOverrides() catch |err| {
         switch (err) {
             ServeArgError.InvalidServeArgument => std.debug.print("fatal: invalid serve argument (supported: --port)\n", .{}),
             ServeArgError.MissingPortValue => std.debug.print("fatal: --port requires a value\n", .{}),
@@ -133,6 +130,9 @@ pub fn run(alloc: std.mem.Allocator) !void {
         std.process.exit(1);
     };
     defer serve_cfg.deinit();
+    if (serve_port_override) |override| {
+        serve_cfg.port = override;
+    }
 
     const api_pool = db.initFromEnvForRole(alloc, .api) catch |err| {
         std.debug.print("fatal: api database init failed: {}\n", .{err});
