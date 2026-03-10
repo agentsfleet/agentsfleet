@@ -225,6 +225,14 @@ pub fn storeWorkspaceSkillSecret(
     secret_meta_json: []const u8,
     kek: [KEY_LEN]u8,
 ) !void {
+    var ws = try conn.query(
+        "SELECT tenant_id FROM workspaces WHERE workspace_id = $1 LIMIT 1",
+        .{workspace_id},
+    );
+    defer ws.deinit();
+    const ws_row = (try ws.next()) orelse return error.NotFound;
+    const tenant_id = try ws_row.get([]const u8, 0);
+
     var dek: [KEY_LEN]u8 = undefined;
     std.crypto.random.bytes(&dek);
 
@@ -238,10 +246,11 @@ pub fn storeWorkspaceSkillSecret(
 
     var result = try conn.query(
         \\INSERT INTO vault.workspace_skill_secrets
-        \\  (workspace_id, skill_ref, key_name, scope, secret_meta_json, kek_version, encrypted_dek, dek_nonce, dek_tag, nonce, ciphertext, tag, created_at, updated_at)
-        \\VALUES ($1, $2, $3, $4, $5, 1, $6, $7, $8, $9, $10, $11, $12, $12)
+        \\  (tenant_id, workspace_id, skill_ref, key_name, scope, secret_meta_json, kek_version, encrypted_dek, dek_nonce, dek_tag, nonce, ciphertext, tag, created_at, updated_at)
+        \\VALUES ($1, $2, $3, $4, $5, $6, 1, $7, $8, $9, $10, $11, $12, $13, $13)
         \\ON CONFLICT (workspace_id, skill_ref, key_name) DO UPDATE
-        \\SET scope = EXCLUDED.scope,
+        \\SET tenant_id = EXCLUDED.tenant_id,
+        \\    scope = EXCLUDED.scope,
         \\    secret_meta_json = EXCLUDED.secret_meta_json,
         \\    encrypted_dek = EXCLUDED.encrypted_dek,
         \\    dek_nonce = EXCLUDED.dek_nonce,
@@ -251,6 +260,7 @@ pub fn storeWorkspaceSkillSecret(
         \\    tag = EXCLUDED.tag,
         \\    updated_at = EXCLUDED.updated_at
     , .{
+        tenant_id,
         workspace_id,
         skill_ref,
         key_name,

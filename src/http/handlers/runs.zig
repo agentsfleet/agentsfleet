@@ -56,7 +56,7 @@ pub fn handleStartRun(ctx: *common.Context, r: zap.Request) void {
     };
     defer ctx.pool.release(conn);
 
-    if (!common.authorizeWorkspace(conn, principal, req.workspace_id)) {
+    if (!common.authorizeWorkspaceAndSetTenantContext(conn, principal, req.workspace_id)) {
         common.errorResponse(r, .forbidden, "FORBIDDEN", "Workspace access denied", req_id);
         return;
     }
@@ -205,7 +205,7 @@ pub fn handleGetRun(ctx: *common.Context, r: zap.Request, run_id: []const u8) vo
     const created_at = row.get(i64, 10) catch 0;
     const updated_at = row.get(i64, 11) catch 0;
 
-    if (!common.authorizeWorkspace(conn, principal, workspace_id)) {
+    if (!common.authorizeWorkspaceAndSetTenantContext(conn, principal, workspace_id)) {
         common.errorResponse(r, .forbidden, "FORBIDDEN", "Workspace access denied", req_id);
         return;
     }
@@ -353,7 +353,7 @@ pub fn handleRetryRun(ctx: *common.Context, r: zap.Request, run_id: []const u8) 
         break :blk alloc.dupe(u8, wid) catch @as([]const u8, "");
     };
 
-    if (workspace_id_for_policy.len > 0 and !common.authorizeWorkspace(conn, principal, workspace_id_for_policy)) {
+    if (workspace_id_for_policy.len > 0 and !common.authorizeWorkspaceAndSetTenantContext(conn, principal, workspace_id_for_policy)) {
         common.errorResponse(r, .forbidden, "FORBIDDEN", "Workspace access denied", req_id);
         return;
     }

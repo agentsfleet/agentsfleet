@@ -7,6 +7,26 @@ pub fn loadWorkspaceActiveProfile(
     conn: *pg.Conn,
     workspace_id: []const u8,
 ) !?topology.Profile {
+    {
+        var tenant_q = conn.query(
+            "SELECT tenant_id FROM workspaces WHERE workspace_id = $1 LIMIT 1",
+            .{workspace_id},
+        ) catch null;
+        if (tenant_q) |*tq| {
+            defer tq.deinit();
+            if (tq.next() catch null) |tenant_row| {
+                const tenant_id = tenant_row.get([]const u8, 0) catch null;
+                if (tenant_id) |tid| {
+                    var set_q = conn.query(
+                        "SELECT set_config('app.current_tenant_id', $1, true)",
+                        .{tid},
+                    ) catch null;
+                    if (set_q) |*sq| sq.deinit();
+                }
+            }
+        }
+    }
+
     var q = try conn.query(
         \\SELECT v.compiled_profile_json
         \\FROM workspace_active_profile wap

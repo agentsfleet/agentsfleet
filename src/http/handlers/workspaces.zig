@@ -68,6 +68,7 @@ pub fn handleCreateWorkspace(ctx: *common.Context, r: zap.Request) void {
     defer ctx.pool.release(conn);
 
     const now_ms = std.time.milliTimestamp();
+    _ = common.setTenantSessionContext(conn, tenant_id);
     var tenant_q = conn.query(
         \\INSERT INTO tenants (tenant_id, name, api_key_hash, created_at)
         \\VALUES ($1, $2, 'managed', $3)
@@ -161,7 +162,7 @@ pub fn handlePauseWorkspace(ctx: *common.Context, r: zap.Request, workspace_id: 
     };
     defer ctx.pool.release(conn);
 
-    if (!common.authorizeWorkspace(conn, principal, workspace_id)) {
+    if (!common.authorizeWorkspaceAndSetTenantContext(conn, principal, workspace_id)) {
         common.errorResponse(r, .forbidden, "FORBIDDEN", "Workspace access denied", req_id);
         return;
     }
@@ -221,7 +222,7 @@ pub fn handleSyncSpecs(ctx: *common.Context, r: zap.Request, workspace_id: []con
     };
     defer ctx.pool.release(conn);
 
-    if (!common.authorizeWorkspace(conn, principal, workspace_id)) {
+    if (!common.authorizeWorkspaceAndSetTenantContext(conn, principal, workspace_id)) {
         common.errorResponse(r, .forbidden, "FORBIDDEN", "Workspace access denied", req_id);
         return;
     }

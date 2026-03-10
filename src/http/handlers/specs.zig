@@ -33,7 +33,7 @@ pub fn handleListSpecs(ctx: *common.Context, r: zap.Request) void {
     };
     defer ctx.pool.release(conn);
 
-    if (!common.authorizeWorkspace(conn, principal, wid)) {
+    if (!common.authorizeWorkspaceAndSetTenantContext(conn, principal, wid)) {
         common.errorResponse(r, .forbidden, "FORBIDDEN", "Workspace access denied", req_id);
         return;
     }

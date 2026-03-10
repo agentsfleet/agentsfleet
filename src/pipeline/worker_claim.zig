@@ -12,6 +12,8 @@ const worker_rate_limiter = @import("worker_rate_limiter.zig");
 const worker_stage_executor = @import("worker_stage_executor.zig");
 const metrics = @import("../observability/metrics.zig");
 const events = @import("../events/bus.zig");
+const prompt_events = @import("../observability/prompt_events.zig");
+const http_common = @import("../http/handlers/common.zig");
 const obs_log = @import("../observability/logging.zig");
 const log = std.log.scoped(.worker);
 
@@ -85,6 +87,7 @@ pub fn processNextRun(
     const repo_url = try claim_alloc.dupe(u8, try row.get([]u8, 6));
     const default_branch = try claim_alloc.dupe(u8, try row.get([]u8, 7));
     const spec_path = try claim_alloc.dupe(u8, try row.get([]u8, 8));
+    _ = http_common.setTenantSessionContext(conn, tenant_id);
 
     result.drain() catch |err| {
         obs_log.logWarnErr(.worker, err, "claim query drain failed run_id={s}", .{run_id});
@@ -120,7 +123,17 @@ pub fn processNextRun(
         .{ request_id, attempt },
     ) catch "run_claimed";
     events.emit("run_claimed", run_id, claimed_detail_slice);
+    prompt_events.emitBestEffort(conn, .{
+        .event_type = .prompt_eval,
+        .workspace_id = workspace_id,
+        .tenant_id = tenant_id,
+        .profile_id = effective_profile.profile_id,
+        .profile_version_id = null,
+        .metadata_json = "{\"phase\":\"start\"}",
+        .ts_ms = std.time.milliTimestamp(),
+    });
 
+    var run_failed = false;
     worker_stage_executor.executeRun(
         alloc,
         cfg.execute,
@@ -142,6 +155,16 @@ pub fn processNextRun(
         },
         tenant_limiter,
     ) catch |err| {
+        run_failed = true;
+        prompt_events.emitBestEffort(conn, .{
+            .event_type = .prompt_performance,
+            .workspace_id = workspace_id,
+            .tenant_id = tenant_id,
+            .profile_id = effective_profile.profile_id,
+            .profile_version_id = null,
+            .metadata_json = "{\"status\":\"failed\"}",
+            .ts_ms = std.time.milliTimestamp(),
+        });
         if (err == worker_runtime.WorkerError.ShutdownRequested or err == worker_runtime.WorkerError.RunDeadlineExceeded) {
             const reason_note = if (err == worker_runtime.WorkerError.RunDeadlineExceeded) "run deadline exceeded" else "shutdown requested";
             _ = state.transition(conn, run_id, .BLOCKED, .orchestrator, .AGENT_TIMEOUT, reason_note) catch |tx_err| {
@@ -170,4 +193,16 @@ pub fn processNextRun(
         };
         metrics.incRunsBlocked();
     };
+
+    if (!run_failed) {
+        prompt_events.emitBestEffort(conn, .{
+            .event_type = .prompt_performance,
+            .workspace_id = workspace_id,
+            .tenant_id = tenant_id,
+            .profile_id = effective_profile.profile_id,
+            .profile_version_id = null,
+            .metadata_json = "{\"status\":\"completed\"}",
+            .ts_ms = std.time.milliTimestamp(),
+        });
+    }
 }

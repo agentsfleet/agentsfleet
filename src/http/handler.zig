@@ -209,7 +209,7 @@ pub fn handlePutHarnessSource(ctx: *Context, r: zap.Request, workspace_id: []con
         return;
     };
     defer ctx.pool.release(conn);
-    if (!common.authorizeWorkspace(conn, principal, workspace_id)) {
+    if (!common.authorizeWorkspaceAndSetTenantContext(conn, principal, workspace_id)) {
         common.errorResponse(r, .forbidden, "FORBIDDEN", "Workspace access denied", req_id);
         return;
     }
@@ -261,7 +261,7 @@ pub fn handleCompileHarness(ctx: *Context, r: zap.Request, workspace_id: []const
     };
     defer ctx.pool.release(conn);
 
-    if (!common.authorizeWorkspace(conn, principal, workspace_id)) {
+    if (!common.authorizeWorkspaceAndSetTenantContext(conn, principal, workspace_id)) {
         common.errorResponse(r, .forbidden, "FORBIDDEN", "Workspace access denied", req_id);
         return;
     }
@@ -314,7 +314,7 @@ pub fn handleActivateHarness(ctx: *Context, r: zap.Request, workspace_id: []cons
     };
     defer ctx.pool.release(conn);
 
-    if (!common.authorizeWorkspace(conn, principal, workspace_id)) {
+    if (!common.authorizeWorkspaceAndSetTenantContext(conn, principal, workspace_id)) {
         common.errorResponse(r, .forbidden, "FORBIDDEN", "Workspace access denied", req_id);
         return;
     }
@@ -354,7 +354,7 @@ pub fn handleGetHarnessActive(ctx: *Context, r: zap.Request, workspace_id: []con
     };
     defer ctx.pool.release(conn);
 
-    if (!common.authorizeWorkspace(conn, principal, workspace_id)) {
+    if (!common.authorizeWorkspaceAndSetTenantContext(conn, principal, workspace_id)) {
         common.errorResponse(r, .forbidden, "FORBIDDEN", "Workspace access denied", req_id);
         return;
     }
@@ -412,7 +412,7 @@ pub fn handlePutWorkspaceSkillSecret(
     };
     defer ctx.pool.release(conn);
 
-    if (!common.authorizeWorkspace(conn, principal, workspace_id)) {
+    if (!common.authorizeWorkspaceAndSetTenantContext(conn, principal, workspace_id)) {
         common.errorResponse(r, .forbidden, "FORBIDDEN", "Workspace access denied", req_id);
         return;
     }
@@ -458,7 +458,7 @@ pub fn handleDeleteWorkspaceSkillSecret(
     };
     defer ctx.pool.release(conn);
 
-    if (!common.authorizeWorkspace(conn, principal, workspace_id)) {
+    if (!common.authorizeWorkspaceAndSetTenantContext(conn, principal, workspace_id)) {
         common.errorResponse(r, .forbidden, "FORBIDDEN", "Workspace access denied", req_id);
         return;
     }
@@ -502,6 +502,7 @@ pub fn handleGitHubCallback(ctx: *Context, r: zap.Request) void {
     defer ctx.pool.release(conn);
 
     const now_ms = std.time.milliTimestamp();
+    _ = common.setTenantSessionContext(conn, "github_app");
 
     {
         var t = conn.query(

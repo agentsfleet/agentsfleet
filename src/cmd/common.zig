@@ -15,7 +15,7 @@ const ServeMigrationDecision = enum {
     run_required,
 };
 
-pub fn canonicalMigrations() [6]db.Migration {
+pub fn canonicalMigrations() [7]db.Migration {
     const schema = @import("schema");
     return .{
         .{ .version = 1, .sql = schema.initial_sql },
@@ -24,6 +24,7 @@ pub fn canonicalMigrations() [6]db.Migration {
         .{ .version = 4, .sql = schema.side_effect_ledger_sql },
         .{ .version = 5, .sql = schema.side_effect_outbox_sql },
         .{ .version = 6, .sql = schema.harness_control_plane_sql },
+        .{ .version = 7, .sql = schema.rls_tenant_isolation_sql },
     };
 }
 
@@ -100,10 +101,10 @@ test "migrateOnStartEnabledFromEnv parses known values" {
 
 test "unit: migration guard allows startup when schema is clean" {
     const decision = try decideServeMigrationPolicy(.{
-        .expected_versions = 6,
-        .applied_versions = 6,
-        .latest_expected_version = 6,
-        .latest_applied_version = 6,
+        .expected_versions = 7,
+        .applied_versions = 7,
+        .latest_expected_version = 7,
+        .latest_applied_version = 7,
         .has_failed_migrations = false,
         .lock_available = true,
         .has_newer_schema_version = false,
@@ -113,10 +114,10 @@ test "unit: migration guard allows startup when schema is clean" {
 
 test "integration: startup allows clean schema with no pending migrations" {
     const decision = try decideServeMigrationPolicy(.{
-        .expected_versions = 6,
-        .applied_versions = 6,
-        .latest_expected_version = 6,
-        .latest_applied_version = 6,
+        .expected_versions = 7,
+        .applied_versions = 7,
+        .latest_expected_version = 7,
+        .latest_applied_version = 7,
         .has_failed_migrations = false,
         .lock_available = true,
         .has_newer_schema_version = false,
@@ -126,10 +127,10 @@ test "integration: startup allows clean schema with no pending migrations" {
 
 test "integration: startup blocks when migrations are pending and MIGRATE_ON_START disabled" {
     try std.testing.expectError(MigrationGuardError.MigrationPending, decideServeMigrationPolicy(.{
-        .expected_versions = 6,
-        .applied_versions = 5,
-        .latest_expected_version = 6,
-        .latest_applied_version = 5,
+        .expected_versions = 7,
+        .applied_versions = 6,
+        .latest_expected_version = 7,
+        .latest_applied_version = 6,
         .has_failed_migrations = false,
         .lock_available = true,
         .has_newer_schema_version = false,
@@ -138,10 +139,10 @@ test "integration: startup blocks when migrations are pending and MIGRATE_ON_STA
 
 test "integration: startup blocks when partial failed migration state exists" {
     try std.testing.expectError(MigrationGuardError.MigrationFailed, decideServeMigrationPolicy(.{
-        .expected_versions = 6,
-        .applied_versions = 5,
-        .latest_expected_version = 6,
-        .latest_applied_version = 5,
+        .expected_versions = 7,
+        .applied_versions = 6,
+        .latest_expected_version = 7,
+        .latest_applied_version = 6,
         .has_failed_migrations = true,
         .lock_available = true,
         .has_newer_schema_version = false,
@@ -150,9 +151,9 @@ test "integration: startup blocks when partial failed migration state exists" {
 
 test "integration: startup blocks on concurrent migration race when lock unavailable" {
     try std.testing.expectError(MigrationGuardError.MigrationLockUnavailable, decideServeMigrationPolicy(.{
-        .expected_versions = 6,
+        .expected_versions = 7,
         .applied_versions = 3,
-        .latest_expected_version = 6,
+        .latest_expected_version = 7,
         .latest_applied_version = 3,
         .has_failed_migrations = false,
         .lock_available = false,
@@ -162,9 +163,9 @@ test "integration: startup blocks on concurrent migration race when lock unavail
 
 test "integration: startup with pending migrations proceeds when enabled and lock available" {
     const decision = try decideServeMigrationPolicy(.{
-        .expected_versions = 6,
+        .expected_versions = 7,
         .applied_versions = 3,
-        .latest_expected_version = 6,
+        .latest_expected_version = 7,
         .latest_applied_version = 3,
         .has_failed_migrations = false,
         .lock_available = true,

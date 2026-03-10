@@ -32,6 +32,7 @@ pub const AuthMode = enum {
 pub const AuthPrincipal = struct {
     mode: AuthMode,
     tenant_id: ?[]const u8 = null,
+    api_key_workspace_id: ?[]const u8 = null,
 };
 
 pub const AuthError = error{
@@ -73,19 +74,36 @@ pub fn requestId(alloc: std.mem.Allocator) []const u8 {
     return std.fmt.allocPrint(alloc, "req_{s}", .{hex[0..12]}) catch "req_unknown";
 }
 
-pub fn authenticateApiKey(r: zap.Request, ctx: *Context) bool {
-    const auth = r.getHeader("authorization") orelse return false;
+fn parseBearerToken(r: zap.Request) ?[]const u8 {
+    const auth = r.getHeader("authorization") orelse return null;
     const prefix = "Bearer ";
-    if (!std.mem.startsWith(u8, auth, prefix)) return false;
+    if (!std.mem.startsWith(u8, auth, prefix)) return null;
     const provided = auth[prefix.len..];
+    if (std.mem.trim(u8, provided, " \t\r\n").len == 0) return null;
+    return provided;
+}
 
+fn authenticateApiKey(
+    alloc: std.mem.Allocator,
+    r: zap.Request,
+    ctx: *Context,
+) AuthError!AuthPrincipal {
+    const provided = parseBearerToken(r) orelse return AuthError.Unauthorized;
+
+    // Backward compatible behavior for non-empty env key list until DB keys are provisioned.
     var it = std.mem.tokenizeScalar(u8, ctx.api_keys, ',');
     while (it.next()) |candidate_raw| {
         const candidate = std.mem.trim(u8, candidate_raw, " \t");
         if (candidate.len == 0) continue;
-        if (std.mem.eql(u8, provided, candidate)) return true;
+        if (!std.mem.eql(u8, provided, candidate)) continue;
+        return .{
+            .mode = .api_key,
+            .tenant_id = try alloc.dupe(u8, "github_app"),
+            .api_key_workspace_id = null,
+        };
     }
-    return false;
+
+    return AuthError.Unauthorized;
 }
 
 pub fn authenticate(alloc: std.mem.Allocator, r: zap.Request, ctx: *Context) AuthError!AuthPrincipal {
@@ -95,8 +113,7 @@ pub fn authenticate(alloc: std.mem.Allocator, r: zap.Request, ctx: *Context) Aut
         return .{ .mode = .clerk_jwt, .tenant_id = principal.tenant_id };
     }
 
-    if (!authenticateApiKey(r, ctx)) return AuthError.Unauthorized;
-    return .{ .mode = .api_key };
+    return authenticateApiKey(alloc, r, ctx);
 }
 
 pub fn writeAuthError(r: zap.Request, req_id: []const u8, err: AuthError) void {
@@ -116,7 +133,6 @@ pub fn mapClerkVerifyError(err: clerk.VerifyError) AuthError {
 }
 
 pub fn authorizeWorkspace(conn: *pg.Conn, principal: AuthPrincipal, workspace_id: []const u8) bool {
-    if (principal.mode == .api_key) return true;
     const tenant_id = principal.tenant_id orelse return false;
 
     var q = conn.query(
@@ -124,7 +140,26 @@ pub fn authorizeWorkspace(conn: *pg.Conn, principal: AuthPrincipal, workspace_id
         .{ workspace_id, tenant_id },
     ) catch return false;
     defer q.deinit();
-    return (q.next() catch null) != null;
+    if ((q.next() catch null) == null) return false;
+
+    if (principal.mode == .api_key) {
+        if (principal.api_key_workspace_id) |scoped_workspace_id| {
+            if (!std.mem.eql(u8, scoped_workspace_id, workspace_id)) return false;
+        }
+    }
+    return true;
+}
+
+pub fn setTenantSessionContext(conn: *pg.Conn, tenant_id: []const u8) bool {
+    var q = conn.query("SELECT set_config('app.current_tenant_id', $1, true)", .{tenant_id}) catch return false;
+    q.deinit();
+    return true;
+}
+
+pub fn authorizeWorkspaceAndSetTenantContext(conn: *pg.Conn, principal: AuthPrincipal, workspace_id: []const u8) bool {
+    const tenant_id = principal.tenant_id orelse return false;
+    if (!setTenantSessionContext(conn, tenant_id)) return false;
+    return authorizeWorkspace(conn, principal, workspace_id);
 }
 
 pub fn beginApiRequest(ctx: *Context) bool {
@@ -194,4 +229,108 @@ test "mapClerkVerifyError maps jwks failures to auth unavailable" {
 
 test "mapClerkVerifyError maps signature failures to unauthorized" {
     try std.testing.expectEqual(AuthError.Unauthorized, mapClerkVerifyError(clerk.VerifyError.SignatureInvalid));
+}
+
+test "integration: api key workspace scoping blocks cross-workspace access" {
+    const db_ctx = (try openHandlerTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.release(db_ctx.conn);
+    defer db_ctx.pool.deinit();
+
+    {
+        var q = try db_ctx.conn.query(
+            \\CREATE TEMP TABLE workspaces (
+            \\  workspace_id TEXT PRIMARY KEY,
+            \\  tenant_id TEXT NOT NULL
+            \\) ON COMMIT DROP
+        , .{});
+        q.deinit();
+    }
+    {
+        var q = try db_ctx.conn.query(
+            "INSERT INTO workspaces (workspace_id, tenant_id) VALUES ('ws_a', 'tenant_a'), ('ws_b', 'tenant_a')",
+            .{},
+        );
+        q.deinit();
+    }
+
+    const principal = AuthPrincipal{
+        .mode = .api_key,
+        .tenant_id = "tenant_a",
+        .api_key_workspace_id = "ws_a",
+    };
+    try std.testing.expect(authorizeWorkspace(db_ctx.conn, principal, "ws_a"));
+    try std.testing.expect(!authorizeWorkspace(db_ctx.conn, principal, "ws_b"));
+}
+
+test "integration: tenant context helper writes app.current_tenant_id" {
+    const db_ctx = (try openHandlerTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.release(db_ctx.conn);
+    defer db_ctx.pool.deinit();
+
+    try std.testing.expect(setTenantSessionContext(db_ctx.conn, "tenant_ctx"));
+    var q = try db_ctx.conn.query(
+        "SELECT current_setting('app.current_tenant_id', true)",
+        .{},
+    );
+    defer q.deinit();
+    const row = (try q.next()) orelse return error.TestUnexpectedResult;
+    const current_tenant = try row.get(?[]const u8, 0);
+    try std.testing.expect(current_tenant != null);
+    try std.testing.expectEqualStrings("tenant_ctx", current_tenant.?);
+}
+
+test "integration: RLS policy enforces tenant session isolation" {
+    const db_ctx = (try openHandlerTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.release(db_ctx.conn);
+    defer db_ctx.pool.deinit();
+
+    {
+        var q = try db_ctx.conn.query(
+            \\CREATE TEMP TABLE rls_probe (
+            \\  tenant_id TEXT NOT NULL,
+            \\  value TEXT NOT NULL
+            \\) ON COMMIT DROP
+        , .{});
+        q.deinit();
+    }
+    {
+        var q = try db_ctx.conn.query("ALTER TABLE rls_probe ENABLE ROW LEVEL SECURITY", .{});
+        q.deinit();
+    }
+    {
+        var q = try db_ctx.conn.query("ALTER TABLE rls_probe FORCE ROW LEVEL SECURITY", .{});
+        q.deinit();
+    }
+    {
+        var q = try db_ctx.conn.query(
+            \\CREATE POLICY rls_probe_select_tenant ON rls_probe
+            \\FOR SELECT USING (tenant_id = current_setting('app.current_tenant_id', true))
+        , .{});
+        q.deinit();
+    }
+    {
+        var q = try db_ctx.conn.query(
+            \\CREATE POLICY rls_probe_insert_tenant ON rls_probe
+            \\FOR INSERT WITH CHECK (tenant_id = current_setting('app.current_tenant_id', true))
+        , .{});
+        q.deinit();
+    }
+
+    try std.testing.expect(setTenantSessionContext(db_ctx.conn, "tenant_a"));
+    {
+        var q = try db_ctx.conn.query("INSERT INTO rls_probe (tenant_id, value) VALUES ('tenant_a', 'a1')", .{});
+        q.deinit();
+    }
+    try std.testing.expect(setTenantSessionContext(db_ctx.conn, "tenant_b"));
+    {
+        var q = try db_ctx.conn.query("INSERT INTO rls_probe (tenant_id, value) VALUES ('tenant_b', 'b1')", .{});
+        q.deinit();
+    }
+
+    try std.testing.expect(setTenantSessionContext(db_ctx.conn, "tenant_a"));
+    var count_q = try db_ctx.conn.query("SELECT COUNT(*)::BIGINT FROM rls_probe", .{});
+    defer count_q.deinit();
+    const row = (try count_q.next()) orelse return error.TestUnexpectedResult;
+    const visible_rows = try row.get(i64, 0);
+    try std.testing.expectEqual(@as(i64, 1), visible_rows);
 }
