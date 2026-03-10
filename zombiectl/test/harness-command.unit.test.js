@@ -96,3 +96,85 @@ test("commandHarness compile sends explicit profile selectors", async () => {
   assert.equal(body.profile_id, null);
   assert.equal(body.profile_version_id, "pver_9");
 });
+
+test("commandHarness activate requires profile version id", async () => {
+  const out = bufferStream();
+  const err = bufferStream();
+  const deps = {
+    parseFlags,
+    request: async () => {
+      throw new Error("should not be called");
+    },
+    apiHeaders: () => ({ "Content-Type": "application/json" }),
+    ui: { ok: (s) => s, err: (s) => s, info: (s) => s },
+    printJson: () => {},
+    writeLine: (stream, line = "") => stream.write(`${line}\n`),
+  };
+  const ctx = { stdout: out.stream, stderr: err.stream, jsonMode: false };
+  const workspaces = { current_workspace_id: "ws_123" };
+
+  const code = await commandHarness(ctx, ["activate"], workspaces, deps);
+  assert.equal(code, 2);
+  assert.match(err.read(), /requires --profile-version-id/);
+});
+
+test("commandHarness activate sends profile version and activated_by", async () => {
+  let captured = null;
+  const deps = {
+    parseFlags,
+    request: async (_ctx, reqPath, options) => {
+      captured = { reqPath, options };
+      return {
+        profile_id: "ws_123-harness",
+        profile_version_id: "pver_2",
+        run_snapshot_version: "pver_2",
+        activated_at: 1730000000,
+      };
+    },
+    apiHeaders: () => ({ "Content-Type": "application/json" }),
+    ui: { ok: (s) => s, err: (s) => s, info: (s) => s },
+    printJson: () => {},
+    writeLine: () => {},
+  };
+  const ctx = { stdout: new Writable({ write(_c, _e, cb) { cb(); } }), stderr: new Writable({ write(_c, _e, cb) { cb(); } }), jsonMode: false };
+  const workspaces = { current_workspace_id: "ws_123" };
+
+  const code = await commandHarness(
+    ctx,
+    ["activate", "--profile-version-id", "pver_2", "--activated-by", "operator"],
+    workspaces,
+    deps,
+  );
+  assert.equal(code, 0);
+  assert.equal(captured.reqPath, "/v1/workspaces/ws_123/harness/activate");
+  const body = JSON.parse(captured.options.body);
+  assert.equal(body.profile_version_id, "pver_2");
+  assert.equal(body.activated_by, "operator");
+});
+
+test("commandHarness active queries active profile endpoint", async () => {
+  let captured = null;
+  const deps = {
+    parseFlags,
+    request: async (_ctx, reqPath, options) => {
+      captured = { reqPath, options };
+      return {
+        source: "active",
+        profile_id: "ws_123-harness",
+        profile_version_id: "pver_2",
+        run_snapshot_version: "pver_2",
+      };
+    },
+    apiHeaders: () => ({ "Content-Type": "application/json" }),
+    ui: { ok: (s) => s, err: (s) => s, info: (s) => s },
+    printJson: () => {},
+    writeLine: () => {},
+  };
+  const ctx = { stdout: new Writable({ write(_c, _e, cb) { cb(); } }), stderr: new Writable({ write(_c, _e, cb) { cb(); } }), jsonMode: false };
+  const workspaces = { current_workspace_id: "ws_123" };
+
+  const code = await commandHarness(ctx, ["active"], workspaces, deps);
+  assert.equal(code, 0);
+  assert.equal(captured.reqPath, "/v1/workspaces/ws_123/harness/active");
+  assert.equal(captured.options.method, "GET");
+});

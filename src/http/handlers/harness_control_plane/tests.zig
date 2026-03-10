@@ -1,0 +1,578 @@
+const std = @import("std");
+const pg = @import("pg");
+const types = @import("types.zig");
+const util = @import("util.zig");
+const activate_mod = @import("activate.zig");
+const compile_mod = @import("compile.zig");
+const get_active_mod = @import("get_active.zig");
+
+fn createTempLinkageTable(conn: *pg.Conn) !void {
+    var q = try conn.query(
+        \\CREATE TEMP TABLE profile_linkage_audit_artifacts (
+        \\  artifact_id TEXT PRIMARY KEY,
+        \\  tenant_id TEXT NOT NULL,
+        \\  workspace_id TEXT NOT NULL,
+        \\  artifact_type TEXT NOT NULL,
+        \\  profile_version_id TEXT NOT NULL,
+        \\  compile_job_id TEXT,
+        \\  run_id TEXT,
+        \\  parent_artifact_id TEXT,
+        \\  metadata_json TEXT NOT NULL DEFAULT '{}',
+        \\  created_at BIGINT NOT NULL
+        \\) ON COMMIT DROP
+    , .{});
+    q.deinit();
+}
+
+test "integration: activateProfile rejects invalid profile versions" {
+    const db_ctx = (try util.openHarnessHandlerTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.release(db_ctx.conn);
+    defer db_ctx.pool.deinit();
+
+    {
+        var q = try db_ctx.conn.query(
+            \\CREATE TEMP TABLE agent_profiles (
+            \\  profile_id TEXT PRIMARY KEY,
+            \\  tenant_id TEXT NOT NULL,
+            \\  workspace_id TEXT NOT NULL,
+            \\  status TEXT NOT NULL DEFAULT 'DRAFT',
+            \\  updated_at BIGINT NOT NULL DEFAULT 0
+            \\) ON COMMIT DROP
+        , .{});
+        q.deinit();
+    }
+    {
+        var q = try db_ctx.conn.query(
+            \\CREATE TEMP TABLE agent_profile_versions (
+            \\  profile_version_id TEXT PRIMARY KEY,
+            \\  profile_id TEXT NOT NULL,
+            \\  tenant_id TEXT NOT NULL,
+            \\  is_valid BOOLEAN NOT NULL
+            \\) ON COMMIT DROP
+        , .{});
+        q.deinit();
+    }
+    try createTempLinkageTable(db_ctx.conn);
+
+    {
+        var q = try db_ctx.conn.query(
+            "INSERT INTO agent_profiles (profile_id, tenant_id, workspace_id, status, updated_at) VALUES ('prof_1', 'tenant_1', 'ws_1', 'DRAFT', 0)",
+            .{},
+        );
+        q.deinit();
+    }
+    {
+        var q = try db_ctx.conn.query(
+            "INSERT INTO agent_profile_versions (profile_version_id, profile_id, tenant_id, is_valid) VALUES ('pver_1', 'prof_1', 'tenant_1', false)",
+            .{},
+        );
+        q.deinit();
+    }
+
+    try std.testing.expectError(types.ControlPlaneError.ProfileInvalid, activate_mod.activateProfile(db_ctx.conn, "ws_1", .{
+        .profile_version_id = "pver_1",
+        .activated_by = "test",
+    }));
+}
+
+test "integration: getActiveProfile falls back to default-v1 when no active profile exists" {
+    const db_ctx = (try util.openHarnessHandlerTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.release(db_ctx.conn);
+    defer db_ctx.pool.deinit();
+
+    {
+        var q = try db_ctx.conn.query(
+            \\CREATE TEMP TABLE workspace_active_profile (
+            \\  workspace_id TEXT PRIMARY KEY,
+            \\  tenant_id TEXT NOT NULL,
+            \\  profile_version_id TEXT NOT NULL
+            \\) ON COMMIT DROP
+        , .{});
+        q.deinit();
+    }
+    {
+        var q = try db_ctx.conn.query(
+            \\CREATE TEMP TABLE agent_profile_versions (
+            \\  profile_version_id TEXT PRIMARY KEY,
+            \\  compiled_profile_json TEXT
+            \\) ON COMMIT DROP
+        , .{});
+        q.deinit();
+    }
+    try createTempLinkageTable(db_ctx.conn);
+
+    const out = try get_active_mod.getActiveProfile(db_ctx.conn, std.testing.allocator, "ws_missing");
+    defer std.testing.allocator.free(out.profile_json);
+    try std.testing.expectEqualStrings("default-v1", out.source);
+    try std.testing.expect(out.profile_id == null);
+    try std.testing.expect(out.profile_version_id == null);
+    try std.testing.expect(out.run_snapshot_version == null);
+    try std.testing.expect(out.active_at == null);
+}
+
+test "integration: activate/getActive profile identity contract includes snapshot linkage fields" {
+    const db_ctx = (try util.openHarnessHandlerTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.release(db_ctx.conn);
+    defer db_ctx.pool.deinit();
+
+    {
+        var q = try db_ctx.conn.query(
+            \\CREATE TEMP TABLE agent_profiles (
+            \\  profile_id TEXT PRIMARY KEY,
+            \\  tenant_id TEXT NOT NULL,
+            \\  workspace_id TEXT NOT NULL,
+            \\  status TEXT NOT NULL DEFAULT 'DRAFT',
+            \\  updated_at BIGINT NOT NULL DEFAULT 0
+            \\) ON COMMIT DROP
+        , .{});
+        q.deinit();
+    }
+    {
+        var q = try db_ctx.conn.query(
+            \\CREATE TEMP TABLE agent_profile_versions (
+            \\  profile_version_id TEXT PRIMARY KEY,
+            \\  profile_id TEXT NOT NULL,
+            \\  tenant_id TEXT NOT NULL,
+            \\  is_valid BOOLEAN NOT NULL,
+            \\  compiled_profile_json TEXT
+            \\) ON COMMIT DROP
+        , .{});
+        q.deinit();
+    }
+    {
+        var q = try db_ctx.conn.query(
+            \\CREATE TEMP TABLE workspace_active_profile (
+            \\  workspace_id TEXT PRIMARY KEY,
+            \\  tenant_id TEXT NOT NULL,
+            \\  profile_version_id TEXT NOT NULL,
+            \\  activated_by TEXT NOT NULL,
+            \\  activated_at BIGINT NOT NULL
+            \\) ON COMMIT DROP
+        , .{});
+        q.deinit();
+    }
+    try createTempLinkageTable(db_ctx.conn);
+
+    {
+        var q = try db_ctx.conn.query(
+            "INSERT INTO agent_profiles (profile_id, tenant_id, workspace_id, status, updated_at) VALUES ('prof_1', 'tenant_1', 'ws_1', 'DRAFT', 0)",
+            .{},
+        );
+        q.deinit();
+    }
+    {
+        var q = try db_ctx.conn.query(
+            "INSERT INTO agent_profile_versions (profile_version_id, profile_id, tenant_id, is_valid, compiled_profile_json) VALUES ('pver_1', 'prof_1', 'tenant_1', TRUE, '{\"profile_id\":\"prof_1\",\"stages\":[]}')",
+            .{},
+        );
+        q.deinit();
+    }
+
+    const activated = try activate_mod.activateProfile(db_ctx.conn, "ws_1", .{
+        .profile_version_id = "pver_1",
+        .activated_by = "operator",
+    });
+    try std.testing.expectEqualStrings("prof_1", activated.profile_id);
+    try std.testing.expectEqualStrings("pver_1", activated.profile_version_id);
+    try std.testing.expectEqualStrings("pver_1", activated.run_snapshot_version);
+
+    const active = try get_active_mod.getActiveProfile(db_ctx.conn, std.testing.allocator, "ws_1");
+    defer std.testing.allocator.free(active.profile_json);
+    try std.testing.expectEqualStrings("active", active.source);
+    try std.testing.expectEqualStrings("prof_1", active.profile_id.?);
+    try std.testing.expectEqualStrings("pver_1", active.profile_version_id.?);
+    try std.testing.expectEqualStrings("pver_1", active.run_snapshot_version.?);
+    try std.testing.expect(active.active_at != null);
+}
+
+test "integration: compileProfile rejects cross-workspace profile version selector" {
+    const db_ctx = (try util.openHarnessHandlerTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.release(db_ctx.conn);
+    defer db_ctx.pool.deinit();
+
+    {
+        var q = try db_ctx.conn.query(
+            \\CREATE TEMP TABLE agent_profiles (
+            \\  profile_id TEXT PRIMARY KEY,
+            \\  tenant_id TEXT NOT NULL,
+            \\  workspace_id TEXT NOT NULL
+            \\) ON COMMIT DROP
+        , .{});
+        q.deinit();
+    }
+    {
+        var q = try db_ctx.conn.query(
+            \\CREATE TEMP TABLE agent_profile_versions (
+            \\  profile_version_id TEXT PRIMARY KEY,
+            \\  profile_id TEXT NOT NULL,
+            \\  version INTEGER NOT NULL,
+            \\  source_markdown TEXT NOT NULL
+            \\) ON COMMIT DROP
+        , .{});
+        q.deinit();
+    }
+    {
+        var q = try db_ctx.conn.query(
+            "INSERT INTO agent_profiles (profile_id, tenant_id, workspace_id) VALUES ('prof_other', 'tenant_1', 'ws_other')",
+            .{},
+        );
+        q.deinit();
+    }
+    {
+        var q = try db_ctx.conn.query(
+            "INSERT INTO agent_profile_versions (profile_version_id, profile_id, version, source_markdown) VALUES ('pver_other', 'prof_other', 1, '{\"profile_id\":\"prof_other\",\"stages\":[]}')",
+            .{},
+        );
+        q.deinit();
+    }
+
+    try std.testing.expectError(types.ControlPlaneError.ProfileNotFound, compile_mod.compileProfile(db_ctx.conn, std.testing.allocator, "ws_1", .{
+        .profile_version_id = "pver_other",
+    }));
+}
+
+test "integration: compileProfile persists deterministic invalid outcome and linkage metadata" {
+    const db_ctx = (try util.openHarnessHandlerTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.release(db_ctx.conn);
+    defer db_ctx.pool.deinit();
+
+    {
+        var q = try db_ctx.conn.query(
+            \\CREATE TEMP TABLE agent_profiles (
+            \\  profile_id TEXT PRIMARY KEY,
+            \\  tenant_id TEXT NOT NULL,
+            \\  workspace_id TEXT NOT NULL
+            \\) ON COMMIT DROP
+        , .{});
+        q.deinit();
+    }
+    {
+        var q = try db_ctx.conn.query(
+            \\CREATE TEMP TABLE agent_profile_versions (
+            \\  profile_version_id TEXT PRIMARY KEY,
+            \\  profile_id TEXT NOT NULL,
+            \\  version INTEGER NOT NULL,
+            \\  source_markdown TEXT NOT NULL,
+            \\  compiled_profile_json TEXT,
+            \\  compile_engine TEXT,
+            \\  validation_report_json TEXT,
+            \\  is_valid BOOLEAN NOT NULL DEFAULT false,
+            \\  updated_at BIGINT NOT NULL DEFAULT 0
+            \\) ON COMMIT DROP
+        , .{});
+        q.deinit();
+    }
+    {
+        var q = try db_ctx.conn.query(
+            \\CREATE TEMP TABLE profile_compile_jobs (
+            \\  compile_job_id TEXT PRIMARY KEY,
+            \\  tenant_id TEXT NOT NULL,
+            \\  workspace_id TEXT NOT NULL,
+            \\  requested_profile_id TEXT NOT NULL,
+            \\  requested_version INTEGER NOT NULL,
+            \\  state TEXT NOT NULL,
+            \\  failure_reason TEXT,
+            \\  validation_report_json TEXT NOT NULL,
+            \\  created_at BIGINT NOT NULL,
+            \\  updated_at BIGINT NOT NULL
+            \\) ON COMMIT DROP
+        , .{});
+        q.deinit();
+    }
+    try createTempLinkageTable(db_ctx.conn);
+
+    {
+        var q = try db_ctx.conn.query(
+            "INSERT INTO agent_profiles (profile_id, tenant_id, workspace_id) VALUES ('prof_1', 'tenant_1', 'ws_1')",
+            .{},
+        );
+        q.deinit();
+    }
+    {
+        var q = try db_ctx.conn.query(
+            "INSERT INTO agent_profile_versions (profile_version_id, profile_id, version, source_markdown, compiled_profile_json, compile_engine, validation_report_json, is_valid, updated_at) VALUES ('pver_1', 'prof_1', 1, '# invalid source markdown', NULL, NULL, NULL, false, 0)",
+            .{},
+        );
+        q.deinit();
+    }
+
+    const out = try compile_mod.compileProfile(db_ctx.conn, std.testing.allocator, "ws_1", .{
+        .profile_version_id = "pver_1",
+    });
+    try std.testing.expect(!out.is_valid);
+    try std.testing.expect(std.mem.indexOf(u8, out.validation_report_json, "PROFILE_PAYLOAD_NOT_FOUND") != null);
+
+    {
+        var q = try db_ctx.conn.query(
+            "SELECT state, failure_reason FROM profile_compile_jobs WHERE compile_job_id = $1",
+            .{out.compile_job_id},
+        );
+        defer q.deinit();
+        const row = (try q.next()) orelse return error.TestUnexpectedResult;
+        try std.testing.expectEqualStrings("FAILED", try row.get([]const u8, 0));
+        try std.testing.expectEqualStrings("deterministic validation failed", (try row.get(?[]const u8, 1)).?);
+    }
+    {
+        var q = try db_ctx.conn.query(
+            "SELECT metadata_json FROM profile_linkage_audit_artifacts WHERE compile_job_id = $1 AND artifact_type = 'COMPILE'",
+            .{out.compile_job_id},
+        );
+        defer q.deinit();
+        const row = (try q.next()) orelse return error.TestUnexpectedResult;
+        try std.testing.expectEqualStrings("{\"is_valid\":false}", try row.get([]const u8, 0));
+    }
+}
+
+test "integration: activateProfile rejects profile versions from another workspace" {
+    const db_ctx = (try util.openHarnessHandlerTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.release(db_ctx.conn);
+    defer db_ctx.pool.deinit();
+
+    {
+        var q = try db_ctx.conn.query(
+            \\CREATE TEMP TABLE agent_profiles (
+            \\  profile_id TEXT PRIMARY KEY,
+            \\  tenant_id TEXT NOT NULL,
+            \\  workspace_id TEXT NOT NULL,
+            \\  status TEXT NOT NULL DEFAULT 'DRAFT',
+            \\  updated_at BIGINT NOT NULL DEFAULT 0
+            \\) ON COMMIT DROP
+        , .{});
+        q.deinit();
+    }
+    {
+        var q = try db_ctx.conn.query(
+            \\CREATE TEMP TABLE agent_profile_versions (
+            \\  profile_version_id TEXT PRIMARY KEY,
+            \\  profile_id TEXT NOT NULL,
+            \\  tenant_id TEXT NOT NULL,
+            \\  is_valid BOOLEAN NOT NULL
+            \\) ON COMMIT DROP
+        , .{});
+        q.deinit();
+    }
+    {
+        var q = try db_ctx.conn.query(
+            "INSERT INTO agent_profiles (profile_id, tenant_id, workspace_id, status, updated_at) VALUES ('prof_2', 'tenant_1', 'ws_2', 'DRAFT', 0)",
+            .{},
+        );
+        q.deinit();
+    }
+    {
+        var q = try db_ctx.conn.query(
+            "INSERT INTO agent_profile_versions (profile_version_id, profile_id, tenant_id, is_valid) VALUES ('pver_2', 'prof_2', 'tenant_1', true)",
+            .{},
+        );
+        q.deinit();
+    }
+    try createTempLinkageTable(db_ctx.conn);
+
+    try std.testing.expectError(types.ControlPlaneError.ProfileNotFound, activate_mod.activateProfile(db_ctx.conn, "ws_1", .{
+        .profile_version_id = "pver_2",
+        .activated_by = "operator",
+    }));
+}
+
+test "integration: compileProfile is atomic and rolls back on linkage persist failure" {
+    const db_ctx = (try util.openHarnessHandlerTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.release(db_ctx.conn);
+    defer db_ctx.pool.deinit();
+
+    {
+        var q = try db_ctx.conn.query(
+            \\CREATE TEMP TABLE agent_profiles (
+            \\  profile_id TEXT PRIMARY KEY,
+            \\  tenant_id TEXT NOT NULL,
+            \\  workspace_id TEXT NOT NULL,
+            \\  status TEXT NOT NULL DEFAULT 'DRAFT',
+            \\  updated_at BIGINT NOT NULL DEFAULT 0
+            \\) ON COMMIT DROP
+        , .{});
+        q.deinit();
+    }
+    {
+        var q = try db_ctx.conn.query(
+            \\CREATE TEMP TABLE agent_profile_versions (
+            \\  profile_version_id TEXT PRIMARY KEY,
+            \\  profile_id TEXT NOT NULL,
+            \\  tenant_id TEXT NOT NULL,
+            \\  version INTEGER NOT NULL,
+            \\  source_markdown TEXT NOT NULL,
+            \\  compiled_profile_json TEXT,
+            \\  compile_engine TEXT,
+            \\  validation_report_json TEXT,
+            \\  is_valid BOOLEAN NOT NULL DEFAULT false,
+            \\  updated_at BIGINT NOT NULL DEFAULT 0
+            \\) ON COMMIT DROP
+        , .{});
+        q.deinit();
+    }
+    {
+        var q = try db_ctx.conn.query(
+            \\CREATE TEMP TABLE profile_compile_jobs (
+            \\  compile_job_id TEXT PRIMARY KEY,
+            \\  tenant_id TEXT NOT NULL,
+            \\  workspace_id TEXT NOT NULL,
+            \\  requested_profile_id TEXT NOT NULL,
+            \\  requested_version INTEGER NOT NULL,
+            \\  state TEXT NOT NULL,
+            \\  failure_reason TEXT,
+            \\  validation_report_json TEXT NOT NULL,
+            \\  created_at BIGINT NOT NULL,
+            \\  updated_at BIGINT NOT NULL
+            \\) ON COMMIT DROP
+        , .{});
+        q.deinit();
+    }
+    try createTempLinkageTable(db_ctx.conn);
+    {
+        var q = try db_ctx.conn.query(
+            \\CREATE OR REPLACE FUNCTION reject_profile_linkage_insert_test()
+            \\RETURNS trigger LANGUAGE plpgsql AS $$
+            \\BEGIN
+            \\  RAISE EXCEPTION 'forced linkage failure';
+            \\END;
+            \\$$
+        , .{});
+        q.deinit();
+    }
+    {
+        var q = try db_ctx.conn.query(
+            \\CREATE TRIGGER trg_profile_linkage_no_insert_test
+            \\BEFORE INSERT ON profile_linkage_audit_artifacts
+            \\FOR EACH ROW EXECUTE FUNCTION reject_profile_linkage_insert_test()
+        , .{});
+        q.deinit();
+    }
+
+    {
+        var q = try db_ctx.conn.query(
+            "INSERT INTO agent_profiles (profile_id, tenant_id, workspace_id, status, updated_at) VALUES ('prof_1', 'tenant_1', 'ws_1', 'DRAFT', 0)",
+            .{},
+        );
+        q.deinit();
+    }
+    {
+        var q = try db_ctx.conn.query(
+            "INSERT INTO agent_profile_versions (profile_version_id, profile_id, tenant_id, version, source_markdown, compiled_profile_json, compile_engine, validation_report_json, is_valid, updated_at) VALUES ('pver_1', 'prof_1', 'tenant_1', 1, '# invalid source', NULL, NULL, NULL, false, 0)",
+            .{},
+        );
+        q.deinit();
+    }
+
+    try std.testing.expectError(error.PgError, compile_mod.compileProfile(db_ctx.conn, std.testing.allocator, "ws_1", .{
+        .profile_version_id = "pver_1",
+    }));
+
+    {
+        var q = try db_ctx.conn.query("SELECT COUNT(*)::BIGINT FROM profile_compile_jobs", .{});
+        defer q.deinit();
+        const row = (try q.next()) orelse return error.TestUnexpectedResult;
+        try std.testing.expectEqual(@as(i64, 0), try row.get(i64, 0));
+    }
+    {
+        var q = try db_ctx.conn.query(
+            "SELECT compile_engine, validation_report_json FROM agent_profile_versions WHERE profile_version_id = 'pver_1'",
+            .{},
+        );
+        defer q.deinit();
+        const row = (try q.next()) orelse return error.TestUnexpectedResult;
+        try std.testing.expect((try row.get(?[]const u8, 0)) == null);
+        try std.testing.expect((try row.get(?[]const u8, 1)) == null);
+    }
+}
+
+test "integration: activateProfile is atomic and rolls back on linkage persist failure" {
+    const db_ctx = (try util.openHarnessHandlerTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.release(db_ctx.conn);
+    defer db_ctx.pool.deinit();
+
+    {
+        var q = try db_ctx.conn.query(
+            \\CREATE TEMP TABLE agent_profiles (
+            \\  profile_id TEXT PRIMARY KEY,
+            \\  tenant_id TEXT NOT NULL,
+            \\  workspace_id TEXT NOT NULL,
+            \\  status TEXT NOT NULL DEFAULT 'DRAFT',
+            \\  updated_at BIGINT NOT NULL DEFAULT 0
+            \\) ON COMMIT DROP
+        , .{});
+        q.deinit();
+    }
+    {
+        var q = try db_ctx.conn.query(
+            \\CREATE TEMP TABLE agent_profile_versions (
+            \\  profile_version_id TEXT PRIMARY KEY,
+            \\  profile_id TEXT NOT NULL,
+            \\  tenant_id TEXT NOT NULL,
+            \\  is_valid BOOLEAN NOT NULL
+            \\) ON COMMIT DROP
+        , .{});
+        q.deinit();
+    }
+    {
+        var q = try db_ctx.conn.query(
+            \\CREATE TEMP TABLE workspace_active_profile (
+            \\  workspace_id TEXT PRIMARY KEY,
+            \\  tenant_id TEXT NOT NULL,
+            \\  profile_version_id TEXT NOT NULL,
+            \\  activated_by TEXT NOT NULL,
+            \\  activated_at BIGINT NOT NULL
+            \\) ON COMMIT DROP
+        , .{});
+        q.deinit();
+    }
+    try createTempLinkageTable(db_ctx.conn);
+    {
+        var q = try db_ctx.conn.query(
+            \\CREATE OR REPLACE FUNCTION reject_profile_linkage_insert_test()
+            \\RETURNS trigger LANGUAGE plpgsql AS $$
+            \\BEGIN
+            \\  RAISE EXCEPTION 'forced linkage failure';
+            \\END;
+            \\$$
+        , .{});
+        q.deinit();
+    }
+    {
+        var q = try db_ctx.conn.query(
+            \\CREATE TRIGGER trg_profile_linkage_no_insert_test
+            \\BEFORE INSERT ON profile_linkage_audit_artifacts
+            \\FOR EACH ROW EXECUTE FUNCTION reject_profile_linkage_insert_test()
+        , .{});
+        q.deinit();
+    }
+
+    {
+        var q = try db_ctx.conn.query(
+            "INSERT INTO agent_profiles (profile_id, tenant_id, workspace_id, status, updated_at) VALUES ('prof_1', 'tenant_1', 'ws_1', 'DRAFT', 0)",
+            .{},
+        );
+        q.deinit();
+    }
+    {
+        var q = try db_ctx.conn.query(
+            "INSERT INTO agent_profile_versions (profile_version_id, profile_id, tenant_id, is_valid) VALUES ('pver_1', 'prof_1', 'tenant_1', true)",
+            .{},
+        );
+        q.deinit();
+    }
+
+    try std.testing.expectError(error.PgError, activate_mod.activateProfile(db_ctx.conn, "ws_1", .{
+        .profile_version_id = "pver_1",
+        .activated_by = "operator",
+    }));
+
+    {
+        var q = try db_ctx.conn.query("SELECT COUNT(*)::BIGINT FROM workspace_active_profile", .{});
+        defer q.deinit();
+        const row = (try q.next()) orelse return error.TestUnexpectedResult;
+        try std.testing.expectEqual(@as(i64, 0), try row.get(i64, 0));
+    }
+    {
+        var q = try db_ctx.conn.query("SELECT status FROM agent_profiles WHERE profile_id = 'prof_1'", .{});
+        defer q.deinit();
+        const row = (try q.next()) orelse return error.TestUnexpectedResult;
+        try std.testing.expectEqualStrings("DRAFT", try row.get([]const u8, 0));
+    }
+}

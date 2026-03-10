@@ -79,7 +79,12 @@ export async function commandHarness(ctx, args, workspaces, deps) {
       body: JSON.stringify(body),
     });
     if (ctx.jsonMode) printJson(ctx.stdout, res);
-    else writeLine(ctx.stdout, ui.ok(`activated profile_version_id=${res.profile_version_id}`));
+    else writeLine(
+      ctx.stdout,
+      ui.ok(
+        `activated profile_id=${res.profile_id} profile_version_id=${res.profile_version_id} run_snapshot_version=${res.run_snapshot_version}`,
+      ),
+    );
     return 0;
   }
 
@@ -89,7 +94,12 @@ export async function commandHarness(ctx, args, workspaces, deps) {
       headers: apiHeaders(ctx),
     });
     if (ctx.jsonMode) printJson(ctx.stdout, res);
-    else writeLine(ctx.stdout, ui.info(`active profile_version_id=${res.profile_version_id}`));
+    else writeLine(
+      ctx.stdout,
+      ui.info(
+        `active profile_id=${res.profile_id ?? "default-v1"} profile_version_id=${res.profile_version_id ?? "default-v1"} run_snapshot_version=${res.run_snapshot_version ?? "default-v1"}`,
+      ),
+    );
     return 0;
   }
 

@@ -413,7 +413,11 @@ async function commandRun(ctx, args, workspaces) {
       headers: apiHeaders(ctx),
     });
     if (ctx.jsonMode) printJson(ctx.stdout, res);
-    else writeLine(ctx.stdout, ui.info(`run ${res.run_id} state=${res.state} attempt=${res.attempt}`));
+    else {
+      const state = res.current_state ?? res.state ?? "unknown";
+      const snapshot = res.run_snapshot_version ?? "default-v1";
+      writeLine(ctx.stdout, ui.info(`run ${res.run_id} state=${state} attempt=${res.attempt} run_snapshot_version=${snapshot}`));
+    }
     return 0;
   }
 
