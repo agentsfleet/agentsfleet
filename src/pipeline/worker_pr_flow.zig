@@ -120,7 +120,7 @@ const PrRetryCtx = struct {
 
 fn opCreatePr(ctx: *PrRetryCtx, _: u32) ![]u8 {
     ctx.last_error_detail = null;
-    return git.createPullRequest(
+    const created_pr = try git.createPullRequest(
         ctx.alloc,
         ctx.repo_url,
         ctx.branch,
@@ -130,6 +130,8 @@ fn opCreatePr(ctx: *PrRetryCtx, _: u32) ![]u8 {
         ctx.github_token,
         &ctx.last_error_detail,
     );
+    defer ctx.alloc.free(created_pr);
+    return try ctx.alloc.dupe(u8, created_pr);
 }
 
 fn prDetail(ctx: *PrRetryCtx, _: anyerror) ?[]const u8 {
@@ -151,7 +153,10 @@ fn getExistingPrUrl(alloc: std.mem.Allocator, conn: *pg.Conn, run_id: []const u8
 
     const row = try result.next() orelse return null;
     const value = try row.get(?[]u8, 0);
-    if (value) |pr| return alloc.dupe(u8, pr);
+    if (value) |pr| {
+        const pr_copy = try alloc.dupe(u8, pr);
+        return pr_copy;
+    }
     return null;
 }
 
@@ -191,7 +196,7 @@ fn tryRecoverPrUrl(
         const side_effect_key = try side_effect_keys.sideEffectKeyPrCreate(run_alloc, &side_effect_key_buf, ctx.branch);
         defer side_effect_key.deinit(run_alloc);
         try state.markSideEffectDone(conn, ctx.run_id, side_effect_key.value, pr_url);
-        return pr_url;
+        return try run_alloc.dupe(u8, pr_url);
     }
     return null;
 }
@@ -290,7 +295,7 @@ pub fn ensurePrForRun(
                 switch (onPrCreateFailure(pr_err, pr_retry_ctx.last_error_detail)) {
                     .lookup_existing_pr => {
                         const recovered = try git.findOpenPullRequestByHead(run_alloc, ctx.repo_url, ctx.branch, github_token, null);
-                        if (recovered) |url| break :blk url;
+                        if (recovered) |url| break :blk try run_alloc.dupe(u8, url);
                         if (indicatesClosedOrDeleted(pr_retry_ctx.last_error_detail)) {
                             return git.GitError.PrInvalidRequest;
                         }

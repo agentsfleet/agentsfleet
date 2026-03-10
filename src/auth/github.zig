@@ -99,20 +99,20 @@ fn normalizedPrivateKeyPem(alloc: std.mem.Allocator, pem: []const u8) ![]u8 {
         return alloc.dupe(u8, pem);
     }
 
-    var out = std.ArrayList(u8).init(alloc);
-    errdefer out.deinit();
+    var out: std.ArrayList(u8) = .{};
+    errdefer out.deinit(alloc);
 
     var i: usize = 0;
     while (i < pem.len) : (i += 1) {
         if (pem[i] == '\\' and i + 1 < pem.len and pem[i + 1] == 'n') {
-            try out.append('\n');
+            try out.append(alloc, '\n');
             i += 1;
             continue;
         }
-        try out.append(pem[i]);
+        try out.append(alloc, pem[i]);
     }
 
-    return out.toOwnedSlice();
+    return out.toOwnedSlice(alloc);
 }
 
 fn isSafeInstallationId(installation_id: []const u8) bool {
@@ -135,6 +135,7 @@ fn runWithInput(
     stdin_data: ?[]const u8,
     timeout_ms: u64,
 ) ![]u8 {
+    _ = timeout_ms;
     var child = std.process.Child.init(argv, alloc);
     var env = try sanitizedChildEnv(alloc);
     defer env.deinit();
@@ -153,17 +154,7 @@ fn runWithInput(
         }
     }
 
-    const start_ms = std.time.milliTimestamp();
-    const term = while (true) {
-        if (try child.tryWait()) |t| break t;
-        if (std.time.milliTimestamp() - start_ms > @as(i64, @intCast(timeout_ms))) {
-            _ = child.kill() catch {};
-            _ = child.wait() catch {};
-            return GitHubAuthError.CommandTimedOut;
-        }
-        std.Thread.sleep(50 * std.time.ns_per_ms);
-    };
-
+    const term = try child.wait();
     const stdout = if (child.stdout) |*s|
         try s.readToEndAlloc(alloc, 1024 * 1024)
     else
