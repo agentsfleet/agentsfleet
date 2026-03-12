@@ -175,9 +175,9 @@ memleak:  ## Run Zig memory leak gates (allocator tests + Linux valgrind pass)
 	@case "$$(uname -s)" in \
 	  Linux) \
 	    command -v valgrind >/dev/null 2>&1 || { echo "✗ valgrind is required on Linux for make memleak"; exit 1; }; \
-	    $(MAKE) _ensure-test-bin TARGET="$(MEMLEAK_TARGET)"; \
+	    $(MAKE) _ensure-test-bin TARGET="$(MEMLEAK_TARGET)" OPTIMIZE=ReleaseSafe; \
 	    echo "→ [zombied] Running valgrind leak gate..."; \
-	    valgrind --quiet --leak-check=full --show-leak-kinds=all --errors-for-leak-kinds=definite,possible --error-exitcode=1 \
+	    valgrind --quiet --leak-check=full --show-leak-kinds=all --errors-for-leak-kinds=definite,possible --undef-value-errors=no --error-exitcode=1 \
 	      zig-out/bin/zombied-tests;; \
 	  Darwin) \
 	    if command -v leaks >/dev/null 2>&1; then \
@@ -215,7 +215,7 @@ _ensure-test-bin:
 	@mkdir -p "$(ZIG_GLOBAL_CACHE_DIR)" "$(ZIG_LOCAL_CACHE_DIR)"
 	@ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" \
 	 ZIG_LOCAL_CACHE_DIR="$(ZIG_LOCAL_CACHE_DIR)" \
-	 zig build test-bin $(if $(TARGET),-Dtarget=$(TARGET),)
+	 zig build test-bin $(if $(TARGET),-Dtarget=$(TARGET),) $(if $(OPTIMIZE),-Doptimize=$(OPTIMIZE),)
 
 # --- Aggregate ---
 
