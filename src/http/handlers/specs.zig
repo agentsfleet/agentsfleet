@@ -1,6 +1,7 @@
 const std = @import("std");
 const zap = @import("zap");
 const common = @import("common.zig");
+const error_codes = @import("../../errors/codes.zig");
 
 pub fn handleListSpecs(ctx: *common.Context, r: zap.Request) void {
     var arena = std.heap.ArenaAllocator.init(ctx.alloc);
@@ -14,7 +15,7 @@ pub fn handleListSpecs(ctx: *common.Context, r: zap.Request) void {
     };
 
     const workspace_id = r.getParamStr(alloc, "workspace_id") catch null orelse {
-        common.errorResponse(r, .bad_request, "INVALID_REQUEST", "workspace_id query param required", req_id);
+        common.errorResponse(r, .bad_request, error_codes.ERR_INVALID_REQUEST, "workspace_id query param required", req_id);
         return;
     };
     defer alloc.free(workspace_id);
@@ -28,13 +29,13 @@ pub fn handleListSpecs(ctx: *common.Context, r: zap.Request) void {
         50;
 
     const conn = ctx.pool.acquire() catch {
-        common.errorResponse(r, .service_unavailable, "INTERNAL_ERROR", "Database unavailable", req_id);
+        common.internalDbUnavailable(r, req_id);
         return;
     };
     defer ctx.pool.release(conn);
 
     if (!common.authorizeWorkspaceAndSetTenantContext(conn, principal, wid)) {
-        common.errorResponse(r, .forbidden, "FORBIDDEN", "Workspace access denied", req_id);
+        common.errorResponse(r, .forbidden, error_codes.ERR_FORBIDDEN, "Workspace access denied", req_id);
         return;
     }
 
@@ -43,7 +44,7 @@ pub fn handleListSpecs(ctx: *common.Context, r: zap.Request) void {
         \\FROM specs WHERE workspace_id = $1
         \\ORDER BY created_at DESC LIMIT $2
     , .{ wid, limit }) catch {
-        common.errorResponse(r, .internal_server_error, "INTERNAL_ERROR", "Database error", req_id);
+        common.internalDbError(r, req_id);
         return;
     };
     defer result.deinit();

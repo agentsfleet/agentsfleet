@@ -7,6 +7,7 @@ const pg = @import("pg");
 const secrets = @import("../secrets/crypto.zig");
 const metrics = @import("../observability/metrics.zig");
 const obs_log = @import("../observability/logging.zig");
+const error_codes = @import("../errors/codes.zig");
 const harness_handlers = @import("handlers/harness_control_plane.zig");
 const skill_secret_handlers = @import("handlers/skill_secrets.zig");
 const common = @import("handlers/common.zig");
@@ -195,30 +196,31 @@ pub fn handlePutHarnessSource(ctx: *Context, r: zap.Request, workspace_id: []con
 
     const Req = harness_handlers.PutSourceInput;
     const body = r.body orelse {
-        common.errorResponse(r, .bad_request, "INVALID_REQUEST", "Request body required", req_id);
+        common.errorResponse(r, .bad_request, error_codes.ERR_INVALID_REQUEST, "Request body required", req_id);
         return;
     };
     const parsed = std.json.parseFromSlice(Req, alloc, body, .{}) catch {
-        common.errorResponse(r, .bad_request, "INVALID_REQUEST", "Malformed JSON", req_id);
+        common.errorResponse(r, .bad_request, error_codes.ERR_INVALID_REQUEST, "Malformed JSON", req_id);
         return;
     };
     defer parsed.deinit();
 
     const conn = ctx.pool.acquire() catch {
-        common.errorResponse(r, .service_unavailable, "INTERNAL_ERROR", "Database unavailable", req_id);
+        common.internalDbUnavailable(r, req_id);
         return;
     };
     defer ctx.pool.release(conn);
     if (!common.authorizeWorkspaceAndSetTenantContext(conn, principal, workspace_id)) {
-        common.errorResponse(r, .forbidden, "FORBIDDEN", "Workspace access denied", req_id);
+        common.errorResponse(r, .forbidden, error_codes.ERR_FORBIDDEN, "Workspace access denied", req_id);
         return;
     }
 
     const out = harness_handlers.putSource(conn, alloc, workspace_id, parsed.value) catch |err| {
         switch (err) {
-            error.InvalidRequest => common.errorResponse(r, .bad_request, "INVALID_REQUEST", "Invalid harness source payload", req_id),
-            error.WorkspaceNotFound => common.errorResponse(r, .not_found, "WORKSPACE_NOT_FOUND", "Workspace not found", req_id),
-            else => common.errorResponse(r, .internal_server_error, "INTERNAL_ERROR", "Failed to store harness source", req_id),
+            error.InvalidRequest => common.errorResponse(r, .bad_request, error_codes.ERR_INVALID_REQUEST, "Invalid harness source payload", req_id),
+            error.InvalidIdShape => common.errorResponse(r, .bad_request, error_codes.ERR_UUIDV7_INVALID_ID_SHAPE, "Invalid profile_version_id format", req_id),
+            error.WorkspaceNotFound => common.errorResponse(r, .not_found, error_codes.ERR_WORKSPACE_NOT_FOUND, "Workspace not found", req_id),
+            else => common.internalOperationError(r, "Failed to store harness source", req_id),
         }
         return;
     };
@@ -246,31 +248,32 @@ pub fn handleCompileHarness(ctx: *Context, r: zap.Request, workspace_id: []const
 
     const Req = harness_handlers.CompileInput;
     const body = r.body orelse {
-        common.errorResponse(r, .bad_request, "INVALID_REQUEST", "Request body required", req_id);
+        common.errorResponse(r, .bad_request, error_codes.ERR_INVALID_REQUEST, "Request body required", req_id);
         return;
     };
     const parsed = std.json.parseFromSlice(Req, alloc, body, .{}) catch {
-        common.errorResponse(r, .bad_request, "INVALID_REQUEST", "Malformed JSON", req_id);
+        common.errorResponse(r, .bad_request, error_codes.ERR_INVALID_REQUEST, "Malformed JSON", req_id);
         return;
     };
     defer parsed.deinit();
 
     const conn = ctx.pool.acquire() catch {
-        common.errorResponse(r, .service_unavailable, "INTERNAL_ERROR", "Database unavailable", req_id);
+        common.internalDbUnavailable(r, req_id);
         return;
     };
     defer ctx.pool.release(conn);
 
     if (!common.authorizeWorkspaceAndSetTenantContext(conn, principal, workspace_id)) {
-        common.errorResponse(r, .forbidden, "FORBIDDEN", "Workspace access denied", req_id);
+        common.errorResponse(r, .forbidden, error_codes.ERR_FORBIDDEN, "Workspace access denied", req_id);
         return;
     }
 
     const out = harness_handlers.compileProfile(conn, alloc, workspace_id, parsed.value) catch |err| {
         switch (err) {
-            error.ProfileNotFound => common.errorResponse(r, .not_found, "PROFILE_NOT_FOUND", "No harness profile source found for workspace", req_id),
-            error.CompileFailed => common.errorResponse(r, .internal_server_error, "INTERNAL_ERROR", "Harness compile failed", req_id),
-            else => common.errorResponse(r, .internal_server_error, "INTERNAL_ERROR", "Failed to compile harness profile", req_id),
+            error.InvalidIdShape => common.errorResponse(r, .bad_request, error_codes.ERR_UUIDV7_INVALID_ID_SHAPE, "Invalid profile_version_id format", req_id),
+            error.ProfileNotFound => common.errorResponse(r, .not_found, error_codes.ERR_PROFILE_NOT_FOUND, "No harness profile source found for workspace", req_id),
+            error.CompileFailed => common.internalOperationError(r, "Harness compile failed", req_id),
+            else => common.internalOperationError(r, "Failed to compile harness profile", req_id),
         }
         return;
     };
@@ -299,31 +302,32 @@ pub fn handleActivateHarness(ctx: *Context, r: zap.Request, workspace_id: []cons
 
     const Req = harness_handlers.ActivateInput;
     const body = r.body orelse {
-        common.errorResponse(r, .bad_request, "INVALID_REQUEST", "Request body required", req_id);
+        common.errorResponse(r, .bad_request, error_codes.ERR_INVALID_REQUEST, "Request body required", req_id);
         return;
     };
     const parsed = std.json.parseFromSlice(Req, alloc, body, .{}) catch {
-        common.errorResponse(r, .bad_request, "INVALID_REQUEST", "Malformed JSON", req_id);
+        common.errorResponse(r, .bad_request, error_codes.ERR_INVALID_REQUEST, "Malformed JSON", req_id);
         return;
     };
     defer parsed.deinit();
 
     const conn = ctx.pool.acquire() catch {
-        common.errorResponse(r, .service_unavailable, "INTERNAL_ERROR", "Database unavailable", req_id);
+        common.internalDbUnavailable(r, req_id);
         return;
     };
     defer ctx.pool.release(conn);
 
     if (!common.authorizeWorkspaceAndSetTenantContext(conn, principal, workspace_id)) {
-        common.errorResponse(r, .forbidden, "FORBIDDEN", "Workspace access denied", req_id);
+        common.errorResponse(r, .forbidden, error_codes.ERR_FORBIDDEN, "Workspace access denied", req_id);
         return;
     }
 
     const out = harness_handlers.activateProfile(conn, workspace_id, parsed.value) catch |err| {
         switch (err) {
-            error.ProfileNotFound => common.errorResponse(r, .not_found, "PROFILE_NOT_FOUND", "Profile version not found", req_id),
-            error.ProfileInvalid => common.errorResponse(r, .conflict, "PROFILE_INVALID", "Invalid profile cannot be activated", req_id),
-            else => common.errorResponse(r, .internal_server_error, "INTERNAL_ERROR", "Failed to activate profile", req_id),
+            error.InvalidIdShape => common.errorResponse(r, .bad_request, error_codes.ERR_UUIDV7_INVALID_ID_SHAPE, "Invalid profile_version_id format", req_id),
+            error.ProfileNotFound => common.errorResponse(r, .not_found, error_codes.ERR_PROFILE_NOT_FOUND, "Profile version not found", req_id),
+            error.ProfileInvalid => common.errorResponse(r, .conflict, error_codes.ERR_PROFILE_INVALID, "Invalid profile cannot be activated", req_id),
+            else => common.internalOperationError(r, "Failed to activate profile", req_id),
         }
         return;
     };
@@ -351,24 +355,24 @@ pub fn handleGetHarnessActive(ctx: *Context, r: zap.Request, workspace_id: []con
     };
 
     const conn = ctx.pool.acquire() catch {
-        common.errorResponse(r, .service_unavailable, "INTERNAL_ERROR", "Database unavailable", req_id);
+        common.internalDbUnavailable(r, req_id);
         return;
     };
     defer ctx.pool.release(conn);
 
     if (!common.authorizeWorkspaceAndSetTenantContext(conn, principal, workspace_id)) {
-        common.errorResponse(r, .forbidden, "FORBIDDEN", "Workspace access denied", req_id);
+        common.errorResponse(r, .forbidden, error_codes.ERR_FORBIDDEN, "Workspace access denied", req_id);
         return;
     }
 
     const out = harness_handlers.getActiveProfile(conn, alloc, workspace_id) catch {
-        common.errorResponse(r, .internal_server_error, "INTERNAL_ERROR", "Failed to resolve active profile", req_id);
+        common.internalOperationError(r, "Failed to resolve active profile", req_id);
         return;
     };
     defer alloc.free(out.profile_json);
 
     const parsed = std.json.parseFromSlice(std.json.Value, alloc, out.profile_json, .{}) catch {
-        common.errorResponse(r, .internal_server_error, "INTERNAL_ERROR", "Failed to render profile JSON", req_id);
+        common.internalOperationError(r, "Failed to render profile JSON", req_id);
         return;
     };
     defer parsed.deinit();
@@ -403,30 +407,30 @@ pub fn handlePutWorkspaceSkillSecret(
 
     const Req = skill_secret_handlers.PutInput;
     const body = r.body orelse {
-        common.errorResponse(r, .bad_request, "INVALID_REQUEST", "Request body required", req_id);
+        common.errorResponse(r, .bad_request, error_codes.ERR_INVALID_REQUEST, "Request body required", req_id);
         return;
     };
     const parsed = std.json.parseFromSlice(Req, alloc, body, .{}) catch {
-        common.errorResponse(r, .bad_request, "INVALID_REQUEST", "Malformed JSON", req_id);
+        common.errorResponse(r, .bad_request, error_codes.ERR_INVALID_REQUEST, "Malformed JSON", req_id);
         return;
     };
     defer parsed.deinit();
     const conn = ctx.pool.acquire() catch {
-        common.errorResponse(r, .service_unavailable, "INTERNAL_ERROR", "Database unavailable", req_id);
+        common.internalDbUnavailable(r, req_id);
         return;
     };
     defer ctx.pool.release(conn);
 
     if (!common.authorizeWorkspaceAndSetTenantContext(conn, principal, workspace_id)) {
-        common.errorResponse(r, .forbidden, "FORBIDDEN", "Workspace access denied", req_id);
+        common.errorResponse(r, .forbidden, error_codes.ERR_FORBIDDEN, "Workspace access denied", req_id);
         return;
     }
 
     const out = skill_secret_handlers.put(conn, alloc, workspace_id, skill_ref_encoded, key_name_encoded, parsed.value) catch |err| {
         switch (err) {
-            error.InvalidRequest => common.errorResponse(r, .bad_request, "INVALID_REQUEST", "Invalid skill secret payload", req_id),
-            error.MissingMasterKey => common.errorResponse(r, .internal_server_error, "INTERNAL_ERROR", "ENCRYPTION_MASTER_KEY is missing", req_id),
-            else => common.errorResponse(r, .internal_server_error, "INTERNAL_ERROR", "Failed to store skill secret", req_id),
+            error.InvalidRequest => common.errorResponse(r, .bad_request, error_codes.ERR_INVALID_REQUEST, "Invalid skill secret payload", req_id),
+            error.MissingMasterKey => common.internalOperationError(r, "ENCRYPTION_MASTER_KEY is missing", req_id),
+            else => common.internalOperationError(r, "Failed to store skill secret", req_id),
         }
         return;
     };
@@ -458,18 +462,18 @@ pub fn handleDeleteWorkspaceSkillSecret(
     };
 
     const conn = ctx.pool.acquire() catch {
-        common.errorResponse(r, .service_unavailable, "INTERNAL_ERROR", "Database unavailable", req_id);
+        common.internalDbUnavailable(r, req_id);
         return;
     };
     defer ctx.pool.release(conn);
 
     if (!common.authorizeWorkspaceAndSetTenantContext(conn, principal, workspace_id)) {
-        common.errorResponse(r, .forbidden, "FORBIDDEN", "Workspace access denied", req_id);
+        common.errorResponse(r, .forbidden, error_codes.ERR_FORBIDDEN, "Workspace access denied", req_id);
         return;
     }
 
     const out = skill_secret_handlers.delete(conn, alloc, workspace_id, skill_ref_encoded, key_name_encoded) catch {
-        common.errorResponse(r, .internal_server_error, "INTERNAL_ERROR", "Failed to delete skill secret", req_id);
+        common.internalOperationError(r, "Failed to delete skill secret", req_id);
         return;
     };
 
@@ -489,19 +493,19 @@ pub fn handleGitHubCallback(ctx: *Context, r: zap.Request) void {
     const req_id = common.requestId(alloc);
 
     const installation_id = r.getParamStr(alloc, "installation_id") catch null orelse {
-        common.errorResponse(r, .bad_request, "INVALID_REQUEST", "installation_id query param required", req_id);
+        common.errorResponse(r, .bad_request, error_codes.ERR_INVALID_REQUEST, "installation_id query param required", req_id);
         return;
     };
     defer alloc.free(installation_id);
 
     const workspace_id = r.getParamStr(alloc, "state") catch null orelse {
-        common.errorResponse(r, .bad_request, "INVALID_REQUEST", "state query param required", req_id);
+        common.errorResponse(r, .bad_request, error_codes.ERR_INVALID_REQUEST, "state query param required", req_id);
         return;
     };
     defer alloc.free(workspace_id);
 
     const conn = ctx.pool.acquire() catch {
-        common.errorResponse(r, .service_unavailable, "INTERNAL_ERROR", "Database unavailable", req_id);
+        common.internalDbUnavailable(r, req_id);
         return;
     };
     defer ctx.pool.release(conn);
@@ -515,7 +519,7 @@ pub fn handleGitHubCallback(ctx: *Context, r: zap.Request) void {
             \\VALUES ('github_app', 'GitHub App', 'callback', $1)
             \\ON CONFLICT (tenant_id) DO NOTHING
         , .{now_ms}) catch {
-            common.errorResponse(r, .internal_server_error, "INTERNAL_ERROR", "Failed to upsert tenant", req_id);
+            common.internalOperationError(r, "Failed to upsert tenant", req_id);
             return;
         };
         t.deinit();
@@ -539,16 +543,11 @@ pub fn handleGitHubCallback(ctx: *Context, r: zap.Request) void {
             \\    default_branch = EXCLUDED.default_branch,
             \\    updated_at = EXCLUDED.updated_at
         , .{ workspace_id, repo_url, default_branch, now_ms }) catch {
-            common.errorResponse(r, .internal_server_error, "INTERNAL_ERROR", "Failed to upsert workspace", req_id);
+            common.internalOperationError(r, "Failed to upsert workspace", req_id);
             return;
         };
         w.deinit();
     }
-
-    const kek = secrets.loadKek(alloc) catch {
-        common.errorResponse(r, .internal_server_error, "INTERNAL_ERROR", "ENCRYPTION_MASTER_KEY is missing", req_id);
-        return;
-    };
 
     secrets.store(
         alloc,
@@ -556,9 +555,9 @@ pub fn handleGitHubCallback(ctx: *Context, r: zap.Request) void {
         workspace_id,
         "github_app_installation_id",
         installation_id,
-        kek,
+        1,
     ) catch {
-        common.errorResponse(r, .internal_server_error, "INTERNAL_ERROR", "Failed to store installation secret", req_id);
+        common.internalOperationError(r, "Failed to store installation secret", req_id);
         return;
     };
 
@@ -576,12 +575,12 @@ pub fn handleCreateAuthSession(ctx: *Context, r: zap.Request) void {
     const req_id = common.requestId(alloc);
 
     const session_id = ctx.auth_sessions.create() catch {
-        common.errorResponse(r, .service_unavailable, "SESSION_LIMIT", "Too many pending sessions", req_id);
+        common.errorResponse(r, .service_unavailable, error_codes.ERR_SESSION_LIMIT, "Too many pending sessions", req_id);
         return;
     };
 
     const login_url = std.fmt.allocPrint(alloc, "{s}/auth/cli?session_id={s}", .{ ctx.app_url, session_id }) catch {
-        common.errorResponse(r, .internal_server_error, "INTERNAL_ERROR", "Failed to build login URL", req_id);
+        common.internalOperationError(r, "Failed to build login URL", req_id);
         return;
     };
 
@@ -615,26 +614,26 @@ pub fn handleCompleteAuthSession(ctx: *Context, r: zap.Request, session_id: []co
     _ = principal;
 
     const body = r.body orelse {
-        common.errorResponse(r, .bad_request, "INVALID_REQUEST", "Request body required", req_id);
+        common.errorResponse(r, .bad_request, error_codes.ERR_INVALID_REQUEST, "Request body required", req_id);
         return;
     };
     const parsed = std.json.parseFromSlice(struct { token: []const u8 }, alloc, body, .{}) catch {
-        common.errorResponse(r, .bad_request, "INVALID_REQUEST", "Malformed JSON or missing token field", req_id);
+        common.errorResponse(r, .bad_request, error_codes.ERR_INVALID_REQUEST, "Malformed JSON or missing token field", req_id);
         return;
     };
     defer parsed.deinit();
 
     if (parsed.value.token.len == 0) {
-        common.errorResponse(r, .bad_request, "INVALID_REQUEST", "Token must not be empty", req_id);
+        common.errorResponse(r, .bad_request, error_codes.ERR_INVALID_REQUEST, "Token must not be empty", req_id);
         return;
     }
 
     ctx.auth_sessions.complete(session_id, parsed.value.token) catch |err| {
         const code: []const u8 = switch (err) {
-            error.SessionNotFound => "SESSION_NOT_FOUND",
-            error.SessionExpired => "SESSION_EXPIRED",
-            error.SessionAlreadyComplete => "SESSION_ALREADY_COMPLETE",
-            else => "INTERNAL_ERROR",
+            error.SessionNotFound => error_codes.ERR_SESSION_NOT_FOUND,
+            error.SessionExpired => error_codes.ERR_SESSION_EXPIRED,
+            error.SessionAlreadyComplete => error_codes.ERR_SESSION_ALREADY_COMPLETE,
+            else => error_codes.ERR_INTERNAL_OPERATION_FAILED,
         };
         common.errorResponse(r, .bad_request, code, @errorName(err), req_id);
         return;

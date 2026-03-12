@@ -2,6 +2,7 @@ const std = @import("std");
 const zap = @import("zap");
 const policy = @import("../../state/policy.zig");
 const obs_log = @import("../../observability/logging.zig");
+const error_codes = @import("../../errors/codes.zig");
 const common = @import("common.zig");
 const log = std.log.scoped(.http);
 
@@ -44,25 +45,25 @@ pub fn handleCreateWorkspace(ctx: *common.Context, r: zap.Request) void {
     };
 
     const body = r.body orelse {
-        common.errorResponse(r, .bad_request, "INVALID_REQUEST", "Request body required", req_id);
+        common.errorResponse(r, .bad_request, error_codes.ERR_INVALID_REQUEST, "Request body required", req_id);
         return;
     };
     const parsed = std.json.parseFromSlice(Req, alloc, body, .{}) catch {
-        common.errorResponse(r, .bad_request, "INVALID_REQUEST", "Malformed JSON", req_id);
+        common.errorResponse(r, .bad_request, error_codes.ERR_INVALID_REQUEST, "Malformed JSON", req_id);
         return;
     };
     defer parsed.deinit();
 
     const repo_url = std.mem.trim(u8, parsed.value.repo_url, " \t\r\n");
     if (repo_url.len == 0) {
-        common.errorResponse(r, .bad_request, "INVALID_REQUEST", "repo_url is required", req_id);
+        common.errorResponse(r, .bad_request, error_codes.ERR_INVALID_REQUEST, "repo_url is required", req_id);
         return;
     }
     const default_branch = normalizeDefaultBranch(parsed.value.default_branch);
     const tenant_id = principal.tenant_id orelse "github_app";
 
     const conn = ctx.pool.acquire() catch {
-        common.errorResponse(r, .service_unavailable, "INTERNAL_ERROR", "Database unavailable", req_id);
+        common.internalDbUnavailable(r, req_id);
         return;
     };
     defer ctx.pool.release(conn);
@@ -74,13 +75,13 @@ pub fn handleCreateWorkspace(ctx: *common.Context, r: zap.Request) void {
         \\VALUES ($1, $2, 'managed', $3)
         \\ON CONFLICT (tenant_id) DO NOTHING
     , .{ tenant_id, "Workspace Tenant", now_ms }) catch {
-        common.errorResponse(r, .internal_server_error, "INTERNAL_ERROR", "Failed to upsert tenant", req_id);
+        common.internalOperationError(r, "Failed to upsert tenant", req_id);
         return;
     };
     tenant_q.deinit();
 
     const workspace_id = generateWorkspaceId(alloc) catch {
-        common.errorResponse(r, .internal_server_error, "INTERNAL_ERROR", "Failed to allocate workspace id", req_id);
+        common.internalOperationError(r, "Failed to allocate workspace id", req_id);
         return;
     };
 
@@ -89,14 +90,14 @@ pub fn handleCreateWorkspace(ctx: *common.Context, r: zap.Request) void {
         \\  (workspace_id, tenant_id, repo_url, default_branch, paused, version, created_at, updated_at)
         \\VALUES ($1, $2, $3, $4, false, 1, $5, $5)
     , .{ workspace_id, tenant_id, repo_url, default_branch, now_ms }) catch {
-        common.errorResponse(r, .internal_server_error, "INTERNAL_ERROR", "Failed to create workspace", req_id);
+        common.internalOperationError(r, "Failed to create workspace", req_id);
         return;
     };
     ws_q.deinit();
 
     const github_app_slug = std.process.getEnvVarOwned(alloc, "GITHUB_APP_SLUG") catch "usezombie";
     const install_url = buildInstallUrl(alloc, github_app_slug, workspace_id) catch {
-        common.errorResponse(r, .internal_server_error, "INTERNAL_ERROR", "Failed to build install URL", req_id);
+        common.internalOperationError(r, "Failed to build install URL", req_id);
         return;
     };
 
@@ -147,23 +148,23 @@ pub fn handlePauseWorkspace(ctx: *common.Context, r: zap.Request, workspace_id: 
     };
 
     const body = r.body orelse {
-        common.errorResponse(r, .bad_request, "INVALID_REQUEST", "Request body required", req_id);
+        common.errorResponse(r, .bad_request, error_codes.ERR_INVALID_REQUEST, "Request body required", req_id);
         return;
     };
     const parsed = std.json.parseFromSlice(Req, alloc, body, .{}) catch {
-        common.errorResponse(r, .bad_request, "INVALID_REQUEST", "Malformed JSON", req_id);
+        common.errorResponse(r, .bad_request, error_codes.ERR_INVALID_REQUEST, "Malformed JSON", req_id);
         return;
     };
     defer parsed.deinit();
 
     const conn = ctx.pool.acquire() catch {
-        common.errorResponse(r, .service_unavailable, "INTERNAL_ERROR", "Database unavailable", req_id);
+        common.internalDbUnavailable(r, req_id);
         return;
     };
     defer ctx.pool.release(conn);
 
     if (!common.authorizeWorkspaceAndSetTenantContext(conn, principal, workspace_id)) {
-        common.errorResponse(r, .forbidden, "FORBIDDEN", "Workspace access denied", req_id);
+        common.errorResponse(r, .forbidden, error_codes.ERR_FORBIDDEN, "Workspace access denied", req_id);
         return;
     }
 
@@ -184,13 +185,13 @@ pub fn handlePauseWorkspace(ctx: *common.Context, r: zap.Request, workspace_id: 
         workspace_id,
         parsed.value.version,
     }) catch {
-        common.errorResponse(r, .internal_server_error, "INTERNAL_ERROR", "Database error", req_id);
+        common.internalDbError(r, req_id);
         return;
     };
     defer upd.deinit();
 
     const row = upd.next() catch null orelse {
-        common.errorResponse(r, .conflict, "WORKSPACE_NOT_FOUND", "Workspace not found or version conflict", req_id);
+        common.errorResponse(r, .conflict, error_codes.ERR_WORKSPACE_NOT_FOUND, "Workspace not found or version conflict", req_id);
         return;
     };
 
@@ -217,13 +218,13 @@ pub fn handleSyncSpecs(ctx: *common.Context, r: zap.Request, workspace_id: []con
     };
 
     const conn = ctx.pool.acquire() catch {
-        common.errorResponse(r, .service_unavailable, "INTERNAL_ERROR", "Database unavailable", req_id);
+        common.internalDbUnavailable(r, req_id);
         return;
     };
     defer ctx.pool.release(conn);
 
     if (!common.authorizeWorkspaceAndSetTenantContext(conn, principal, workspace_id)) {
-        common.errorResponse(r, .forbidden, "FORBIDDEN", "Workspace access denied", req_id);
+        common.errorResponse(r, .forbidden, error_codes.ERR_FORBIDDEN, "Workspace access denied", req_id);
         return;
     }
 
@@ -231,13 +232,13 @@ pub fn handleSyncSpecs(ctx: *common.Context, r: zap.Request, workspace_id: []con
         "SELECT repo_url, default_branch FROM workspaces WHERE workspace_id = $1",
         .{workspace_id},
     ) catch {
-        common.errorResponse(r, .internal_server_error, "INTERNAL_ERROR", "Database error", req_id);
+        common.internalDbError(r, req_id);
         return;
     };
     defer ws.deinit();
 
     const ws_row = ws.next() catch null orelse {
-        common.errorResponse(r, .not_found, "WORKSPACE_NOT_FOUND", "Workspace not found", req_id);
+        common.errorResponse(r, .not_found, error_codes.ERR_WORKSPACE_NOT_FOUND, "Workspace not found", req_id);
         return;
     };
 
@@ -248,7 +249,7 @@ pub fn handleSyncSpecs(ctx: *common.Context, r: zap.Request, workspace_id: []con
         "SELECT COUNT(*) FROM specs WHERE workspace_id = $1 AND status = 'pending'",
         .{workspace_id},
     ) catch {
-        common.errorResponse(r, .internal_server_error, "INTERNAL_ERROR", "Database error", req_id);
+        common.internalDbError(r, req_id);
         return;
     };
     defer count_result.deinit();

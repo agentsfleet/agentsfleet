@@ -1,0 +1,47 @@
+const std = @import("std");
+
+pub const ERROR_DOCS_BASE = "https://docs.e2enetworks.com/error-codes#";
+
+pub const ERR_UUIDV7_CANONICAL_FORMAT = "UZ-UUIDV7-003";
+pub const ERR_UUIDV7_ID_GENERATION_FAILED = "UZ-UUIDV7-005";
+pub const ERR_UUIDV7_INVALID_ID_SHAPE = "UZ-UUIDV7-009";
+pub const ERR_UUIDV7_BACKFILL_CONFLICT = "UZ-UUIDV7-010";
+pub const ERR_UUIDV7_ROLLBACK_BLOCKED = "UZ-UUIDV7-011";
+pub const ERR_UUIDV7_ERROR_RESPONSE_LINKING = "UZ-UUIDV7-012";
+
+pub const ERR_INTERNAL_DB_UNAVAILABLE = "UZ-INTERNAL-001";
+pub const ERR_INTERNAL_DB_QUERY = "UZ-INTERNAL-002";
+pub const ERR_INTERNAL_OPERATION_FAILED = "UZ-INTERNAL-003";
+
+pub const ERR_INVALID_REQUEST = "UZ-REQ-001";
+pub const ERR_FORBIDDEN = "UZ-AUTH-001";
+pub const ERR_UNAUTHORIZED = "UZ-AUTH-002";
+pub const ERR_TOKEN_EXPIRED = "UZ-AUTH-003";
+pub const ERR_AUTH_UNAVAILABLE = "UZ-AUTH-004";
+pub const ERR_SESSION_NOT_FOUND = "UZ-AUTH-005";
+pub const ERR_SESSION_EXPIRED = "UZ-AUTH-006";
+pub const ERR_SESSION_ALREADY_COMPLETE = "UZ-AUTH-007";
+pub const ERR_SESSION_LIMIT = "UZ-AUTH-008";
+
+pub const ERR_API_SATURATED = "UZ-API-001";
+pub const ERR_QUEUE_UNAVAILABLE = "UZ-API-002";
+pub const ERR_WORKSPACE_NOT_FOUND = "UZ-WORKSPACE-001";
+pub const ERR_WORKSPACE_PAUSED = "UZ-WORKSPACE-002";
+pub const ERR_SPEC_NOT_FOUND = "UZ-SPEC-001";
+pub const ERR_RUN_NOT_FOUND = "UZ-RUN-001";
+pub const ERR_INVALID_STATE_TRANSITION = "UZ-RUN-002";
+pub const ERR_PROFILE_NOT_FOUND = "UZ-PROFILE-001";
+pub const ERR_PROFILE_INVALID = "UZ-PROFILE-002";
+
+pub fn docsRef(code: []const u8) struct { base: []const u8, code: []const u8 } {
+    return .{
+        .base = ERROR_DOCS_BASE,
+        .code = code,
+    };
+}
+
+test "docsRef returns single base and code tuple" {
+    const ref = docsRef(ERR_UUIDV7_INVALID_ID_SHAPE);
+    try std.testing.expectEqualStrings(ERROR_DOCS_BASE, ref.base);
+    try std.testing.expectEqualStrings("UZ-UUIDV7-009", ref.code);
+}
