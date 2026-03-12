@@ -3,6 +3,7 @@ const pg = @import("pg");
 const prompt_events = @import("../../../observability/prompt_events.zig");
 const profile_linkage = @import("../../../audit/profile_linkage.zig");
 const types = @import("types.zig");
+const util = @import("util.zig");
 
 fn beginTx(conn: *pg.Conn) !void {
     var tx = try conn.query("BEGIN", .{});
@@ -24,6 +25,8 @@ pub fn activateProfile(
     workspace_id: []const u8,
     input: types.ActivateInput,
 ) (types.ControlPlaneError || anyerror)!types.ActivateOutput {
+    if (!util.isSupportedProfileVersionId(input.profile_version_id)) return types.ControlPlaneError.InvalidIdShape;
+
     var q = try conn.query(
         \\SELECT v.profile_id, v.is_valid, p.tenant_id
         \\FROM agent_profile_versions v

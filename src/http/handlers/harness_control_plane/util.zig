@@ -1,12 +1,20 @@
 const std = @import("std");
 const pg = @import("pg");
 const db = @import("../../../db/pool.zig");
+const id_format = @import("../../../types/id_format.zig");
 
-pub fn prefixedId(alloc: std.mem.Allocator, prefix: []const u8) []const u8 {
-    var id: [16]u8 = undefined;
-    std.crypto.random.bytes(&id);
-    const hex = std.fmt.bytesToHex(id, .lower);
-    return std.fmt.allocPrint(alloc, "{s}_{s}", .{ prefix, hex[0..12] }) catch "id_unknown";
+pub fn prefixedId(alloc: std.mem.Allocator, prefix: []const u8) ![]const u8 {
+    if (std.mem.eql(u8, prefix, "pver")) return id_format.generateProfileVersionId(alloc);
+    if (std.mem.eql(u8, prefix, "cjob")) return id_format.generateCompileJobId(alloc);
+    return error.UnsupportedPrefix;
+}
+
+pub fn isSupportedProfileVersionId(id: []const u8) bool {
+    return id_format.isSupportedProfileVersionId(id);
+}
+
+pub fn isSupportedCompileJobId(id: []const u8) bool {
+    return id_format.isSupportedCompileJobId(id);
 }
 
 pub fn normalizeProfileId(

@@ -332,6 +332,22 @@ Moved to [`docs/USECASE.md`](./USECASE.md) under:
 6. Idempotency:
    - Postgres transition update must be compare-and-set (`WHERE state = expected_state`) before side effects.
 
+## Side-Effect Outbox Contract
+
+Side effects (GitHub PR creation, notifications) are written to `run_side_effect_outbox` in Postgres before the external call is attempted. This separates durable intent from fragile delivery.
+
+**Delivery states:** `pending` → `delivered` | `dead_letter`
+
+**Two recovery paths run in parallel:**
+
+1. **Worker startup reconciler** — on startup, each worker claims a batch of `status='pending'` rows using `SELECT ... FOR UPDATE SKIP LOCKED` and re-attempts delivery. `SKIP LOCKED` ensures 5 concurrent workers each claim a disjoint set — no double-delivery. If delivery succeeds: `delivered`. If it fails again: row left `pending` for the next startup cycle.
+
+2. **Terminal-state reconciler** (`reconcileSideEffectsForRunState`) — when a run reaches a terminal state (`DONE`, `BLOCKED`, `NOTIFIED_BLOCKED`, `SPEC_QUEUED` on requeue), any `status='claimed'` rows for that run are dead-lettered. This covers the case where a worker crashed mid-delivery and the run moved forward via a different worker.
+
+**Idempotency:** the outbox upsert uses `ON CONFLICT (run_id, effect_key) DO UPDATE`. Re-delivery of an already-delivered side effect is a safe no-op.
+
+**Relationship to Redis recovery:** `XAUTOCLAIM` (Redis) recovers stale run messages for re-execution. The outbox reconciler (Postgres) recovers stale side-effect delivery for already-executed runs. They are complementary, not overlapping.
+
 ## Documentation Simplification Policy
 
 1. This file contains the **single canonical architecture diagram** for v1.

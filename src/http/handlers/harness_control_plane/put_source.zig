@@ -37,7 +37,8 @@ pub fn putSource(
     );
     defer vq.deinit();
     const next_version: i32 = if (try vq.next()) |row| (try row.get(i32, 0)) + 1 else 1;
-    const profile_version_id = util.prefixedId(alloc, "pver");
+    const profile_version_id = try util.prefixedId(alloc, "pver");
+    if (!util.isSupportedProfileVersionId(profile_version_id)) return types.ControlPlaneError.InvalidIdShape;
 
     var insert_version = try conn.query(
         \\INSERT INTO agent_profile_versions

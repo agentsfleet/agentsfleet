@@ -60,7 +60,7 @@ pub fn processNextRun(
 
     var result = try conn.query(
         \\SELECT r.run_id, r.workspace_id, r.spec_id, r.tenant_id, r.attempt, r.request_id,
-        \\       w.repo_url, w.default_branch,
+        \\       r.trace_id, w.repo_url, w.default_branch,
         \\       s.file_path
         \\FROM runs r
         \\JOIN workspaces w ON w.workspace_id = r.workspace_id
@@ -84,9 +84,11 @@ pub fn processNextRun(
     const attempt = @as(u32, @intCast(try row.get(i32, 4)));
     const request_id_raw = try row.get(?[]u8, 5);
     const request_id = try claim_alloc.dupe(u8, request_id_raw orelse "-");
-    const repo_url = try claim_alloc.dupe(u8, try row.get([]u8, 6));
-    const default_branch = try claim_alloc.dupe(u8, try row.get([]u8, 7));
-    const spec_path = try claim_alloc.dupe(u8, try row.get([]u8, 8));
+    const trace_id_raw = try row.get(?[]u8, 6);
+    const trace_id = try claim_alloc.dupe(u8, trace_id_raw orelse "-");
+    const repo_url = try claim_alloc.dupe(u8, try row.get([]u8, 7));
+    const default_branch = try claim_alloc.dupe(u8, try row.get([]u8, 8));
+    const spec_path = try claim_alloc.dupe(u8, try row.get([]u8, 9));
     _ = http_common.setTenantSessionContext(conn, tenant_id);
 
     result.drain() catch |err| {
@@ -115,12 +117,12 @@ pub fn processNextRun(
     try worker_state_mod.beginRunIfActive(worker_state);
     defer worker_state.endRun();
 
-    log.info("claimed run run_id={s} request_id={s} attempt={d}", .{ run_id, request_id, attempt });
-    var claimed_detail: [128]u8 = undefined;
+    log.info("claimed run run_id={s} request_id={s} trace_id={s} attempt={d}", .{ run_id, request_id, trace_id, attempt });
+    var claimed_detail: [192]u8 = undefined;
     const claimed_detail_slice = std.fmt.bufPrint(
         &claimed_detail,
-        "request_id={s} attempt={d}",
-        .{ request_id, attempt },
+        "request_id={s} trace_id={s} attempt={d}",
+        .{ request_id, trace_id, attempt },
     ) catch "run_claimed";
     events.emit("run_claimed", run_id, claimed_detail_slice);
     prompt_events.emitBestEffort(conn, .{
@@ -145,6 +147,7 @@ pub fn processNextRun(
         .{
             .run_id = run_id,
             .request_id = request_id,
+            .trace_id = trace_id,
             .workspace_id = workspace_id,
             .spec_id = spec_id,
             .tenant_id = tenant_id,
@@ -184,8 +187,8 @@ pub fn processNextRun(
         var failed_detail: [224]u8 = undefined;
         const failed_detail_slice = std.fmt.bufPrint(
             &failed_detail,
-            "request_id={s} class={s} retryable={} err={s}",
-            .{ request_id, @tagName(classified.class), classified.retryable, @errorName(err) },
+            "request_id={s} trace_id={s} class={s} retryable={} err={s}",
+            .{ request_id, trace_id, @tagName(classified.class), classified.retryable, @errorName(err) },
         ) catch "run_failed";
         events.emit("run_failed", run_id, failed_detail_slice);
         _ = state.transition(conn, run_id, .BLOCKED, .orchestrator, classified.reason_code, note) catch |tx_err| {

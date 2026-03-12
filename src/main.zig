@@ -6,7 +6,8 @@
 //!   worker   Start worker loop
 //!   doctor   Verify Postgres, git, agent config, and critical env
 //!   run      One-shot: process a spec file without HTTP server
-//!   migrate  Apply schema migrations and exit
+//!   migrate    Apply schema migrations and exit
+//!   reconcile  Dead-letter stale outbox rows (cron/scheduled)
 
 const std = @import("std");
 const builtin = @import("builtin");
@@ -17,6 +18,7 @@ const cmd_worker = @import("cmd/worker.zig");
 const cmd_doctor = @import("cmd/doctor.zig");
 const cmd_run = @import("cmd/run.zig");
 const cmd_migrate = @import("cmd/migrate.zig");
+const cmd_reconcile = @import("cmd/reconcile.zig");
 const config_load = @import("config/load.zig");
 
 const log = std.log.scoped(.zombied);
@@ -99,6 +101,7 @@ pub fn main() !void {
         .doctor => try cmd_doctor.run(alloc),
         .run => try cmd_run.run(alloc),
         .migrate => try cmd_migrate.run(alloc),
+        .reconcile => try cmd_reconcile.run(alloc),
     }
 }
 
@@ -122,4 +125,8 @@ test {
     _ = @import("auth/sessions.zig");
     _ = @import("auth/claims.zig");
     _ = @import("auth/jwks.zig");
+    _ = @import("observability/trace.zig");
+    _ = @import("observability/otel_export.zig");
+    _ = @import("observability/langfuse.zig");
+    _ = @import("state/outbox_reconciler.zig");
 }

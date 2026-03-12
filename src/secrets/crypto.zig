@@ -84,6 +84,30 @@ pub fn loadMasterKey(alloc: std.mem.Allocator) ![KEY_LEN]u8 {
     return loadKek(alloc);
 }
 
+/// Load KEK by version number. Version 1 reads ENCRYPTION_MASTER_KEY,
+/// version 2 reads ENCRYPTION_MASTER_KEY_V2.
+pub fn loadKekByVersion(alloc: std.mem.Allocator, version: u32) ![KEY_LEN]u8 {
+    const env_name = switch (version) {
+        1 => "ENCRYPTION_MASTER_KEY",
+        2 => "ENCRYPTION_MASTER_KEY_V2",
+        else => {
+            log.err("unsupported kek_version={d}", .{version});
+            return SecretError.InvalidKeyHex;
+        },
+    };
+    const hex = std.process.getEnvVarOwned(alloc, env_name) catch {
+        log.err("{s} not set (kek_version={d})", .{ env_name, version });
+        return SecretError.MissingMasterKey;
+    };
+    defer alloc.free(hex);
+
+    if (hex.len != KEY_LEN * 2) return SecretError.InvalidKeyHex;
+
+    var key: [KEY_LEN]u8 = undefined;
+    _ = try std.fmt.hexToBytes(&key, hex);
+    return key;
+}
+
 /// Encrypt plaintext to raw binary components (nonce + ciphertext + tag).
 pub fn encrypt(
     alloc: std.mem.Allocator,
@@ -125,14 +149,17 @@ pub fn decrypt(
 }
 
 /// Store encrypted secret in vault.secrets with envelope encryption.
+/// kek_version selects which ENCRYPTION_MASTER_KEY_V{N} env var to use.
 pub fn store(
     alloc: std.mem.Allocator,
     conn: *pg.Conn,
     workspace_id: []const u8,
     key_name: []const u8,
     plaintext: []const u8,
-    kek: [KEY_LEN]u8,
+    kek_version: u32,
 ) !void {
+    const kek = try loadKekByVersion(alloc, kek_version);
+
     var dek: [KEY_LEN]u8 = undefined;
     std.crypto.random.bytes(&dek);
 
@@ -147,9 +174,10 @@ pub fn store(
     var result = try conn.query(
         \\INSERT INTO vault.secrets
         \\  (workspace_id, key_name, kek_version, encrypted_dek, dek_nonce, dek_tag, nonce, ciphertext, tag, created_at, updated_at)
-        \\VALUES ($1, $2, 1, $3, $4, $5, $6, $7, $8, $9, $9)
+        \\VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10)
         \\ON CONFLICT (workspace_id, key_name) DO UPDATE
-        \\SET encrypted_dek = EXCLUDED.encrypted_dek,
+        \\SET kek_version = EXCLUDED.kek_version,
+        \\    encrypted_dek = EXCLUDED.encrypted_dek,
         \\    dek_nonce = EXCLUDED.dek_nonce,
         \\    dek_tag = EXCLUDED.dek_tag,
         \\    nonce = EXCLUDED.nonce,
@@ -159,6 +187,7 @@ pub fn store(
     , .{
         workspace_id,
         key_name,
+        @as(i32, @intCast(kek_version)),
         wrapped_dek.ciphertext,
         wrapped_dek.nonce[0..],
         wrapped_dek.tag[0..],
@@ -179,15 +208,15 @@ fn toFixed(comptime N: usize, bytes: []const u8) ![N]u8 {
 }
 
 /// Load and decrypt a secret from vault.secrets.
+/// Reads kek_version from the stored row and selects the correct KEK automatically.
 pub fn load(
     alloc: std.mem.Allocator,
     conn: *pg.Conn,
     workspace_id: []const u8,
     key_name: []const u8,
-    kek: [KEY_LEN]u8,
 ) ![]u8 {
     var result = try conn.query(
-        \\SELECT encrypted_dek, dek_nonce, dek_tag, nonce, ciphertext, tag
+        \\SELECT kek_version, encrypted_dek, dek_nonce, dek_tag, nonce, ciphertext, tag
         \\FROM vault.secrets
         \\WHERE workspace_id = $1 AND key_name = $2
     , .{ workspace_id, key_name });
@@ -195,23 +224,42 @@ pub fn load(
 
     const row = try result.next() orelse return SecretError.NotFound;
 
-    const encrypted_dek = try row.get([]u8, 0);
-    const dek_nonce_slice = try row.get([]u8, 1);
-    const dek_tag_slice = try row.get([]u8, 2);
-    const payload_nonce_slice = try row.get([]u8, 3);
-    const payload_ciphertext = try row.get([]u8, 4);
-    const payload_tag_slice = try row.get([]u8, 5);
+    const kek_version = @as(u32, @intCast(try row.get(i32, 0)));
+    const encrypted_dek = try row.get([]u8, 1);
+    const dek_nonce_slice = try row.get([]u8, 2);
+    const dek_tag_slice = try row.get([]u8, 3);
+    const payload_nonce_slice = try row.get([]u8, 4);
+    const payload_ciphertext = try row.get([]u8, 5);
+    const payload_tag_slice = try row.get([]u8, 6);
 
     const dek_nonce = try toFixed(NONCE_LEN, dek_nonce_slice);
     const dek_tag = try toFixed(TAG_LEN, dek_tag_slice);
     const payload_nonce = try toFixed(NONCE_LEN, payload_nonce_slice);
     const payload_tag = try toFixed(TAG_LEN, payload_tag_slice);
 
+    const kek = try loadKekByVersion(alloc, kek_version);
+
     const dek_plain = try decrypt(alloc, &dek_nonce, encrypted_dek, &dek_tag, &kek);
     defer alloc.free(dek_plain);
 
     const dek = try toFixed(KEY_LEN, dek_plain);
     return decrypt(alloc, &payload_nonce, payload_ciphertext, &payload_tag, &dek);
+}
+
+/// Re-encrypt a secret under a new KEK version. Safe to call during rotation:
+/// reads the secret using the version stored in the DB row, writes it back
+/// under new_kek_version. The ON CONFLICT upsert in store() atomically replaces
+/// the old envelope with the new one.
+pub fn reencryptSecret(
+    alloc: std.mem.Allocator,
+    conn: *pg.Conn,
+    workspace_id: []const u8,
+    key_name: []const u8,
+    new_kek_version: u32,
+) !void {
+    const plaintext = try load(alloc, conn, workspace_id, key_name);
+    defer alloc.free(plaintext);
+    try store(alloc, conn, workspace_id, key_name, plaintext, new_kek_version);
 }
 
 pub fn storeWorkspaceSkillSecret(
@@ -223,8 +271,10 @@ pub fn storeWorkspaceSkillSecret(
     plaintext: []const u8,
     scope: SkillSecretScope,
     secret_meta_json: []const u8,
-    kek: [KEY_LEN]u8,
+    kek_version: u32,
 ) !void {
+    const kek = try loadKekByVersion(alloc, kek_version);
+
     var ws = try conn.query(
         "SELECT tenant_id FROM workspaces WHERE workspace_id = $1 LIMIT 1",
         .{workspace_id},
@@ -385,6 +435,88 @@ test "decrypt fails when tag is tampered" {
     try std.testing.expectError(
         SecretError.DecryptFailed,
         decrypt(alloc, &blob.nonce, blob.ciphertext, &bad_tag, &key),
+    );
+}
+
+test "loadKekByVersion dispatches to correct env var" {
+    const alloc = std.testing.allocator;
+
+    var key_v1: [KEY_LEN]u8 = undefined;
+    std.crypto.random.bytes(&key_v1);
+    var key_v2: [KEY_LEN]u8 = undefined;
+    std.crypto.random.bytes(&key_v2);
+
+    const hex_v1 = std.fmt.bytesToHex(key_v1, .lower);
+    const hex_v2 = std.fmt.bytesToHex(key_v2, .lower);
+    var hex_v1_z: [65]u8 = undefined;
+    var hex_v2_z: [65]u8 = undefined;
+    @memcpy(hex_v1_z[0..64], &hex_v1);
+    hex_v1_z[64] = 0;
+    @memcpy(hex_v2_z[0..64], &hex_v2);
+    hex_v2_z[64] = 0;
+
+    const c = @cImport(@cInclude("stdlib.h"));
+    _ = c.setenv("ENCRYPTION_MASTER_KEY", &hex_v1_z, 1);
+    _ = c.setenv("ENCRYPTION_MASTER_KEY_V2", &hex_v2_z, 1);
+    defer _ = c.unsetenv("ENCRYPTION_MASTER_KEY");
+    defer _ = c.unsetenv("ENCRYPTION_MASTER_KEY_V2");
+
+    const loaded_v1 = try loadKekByVersion(alloc, 1);
+    const loaded_v2 = try loadKekByVersion(alloc, 2);
+
+    try std.testing.expectEqualSlices(u8, &key_v1, &loaded_v1);
+    try std.testing.expectEqualSlices(u8, &key_v2, &loaded_v2);
+    try std.testing.expect(!std.mem.eql(u8, &loaded_v1, &loaded_v2));
+}
+
+test "reencryptSecret: plaintext recoverable after re-encryption with new KEK" {
+    const alloc = std.testing.allocator;
+
+    // Two distinct keys
+    var raw_v1: [KEY_LEN]u8 = undefined;
+    var raw_v2: [KEY_LEN]u8 = undefined;
+    std.crypto.random.bytes(&raw_v1);
+    std.crypto.random.bytes(&raw_v2);
+    const hex_v1 = std.fmt.bytesToHex(raw_v1, .lower);
+    const hex_v2 = std.fmt.bytesToHex(raw_v2, .lower);
+    var hex_v1_z: [65]u8 = undefined;
+    var hex_v2_z: [65]u8 = undefined;
+    @memcpy(hex_v1_z[0..64], &hex_v1);
+    hex_v1_z[64] = 0;
+    @memcpy(hex_v2_z[0..64], &hex_v2);
+    hex_v2_z[64] = 0;
+
+    const c = @cImport(@cInclude("stdlib.h"));
+    _ = c.setenv("ENCRYPTION_MASTER_KEY", &hex_v1_z, 1);
+    _ = c.setenv("ENCRYPTION_MASTER_KEY_V2", &hex_v2_z, 1);
+    defer _ = c.unsetenv("ENCRYPTION_MASTER_KEY");
+    defer _ = c.unsetenv("ENCRYPTION_MASTER_KEY_V2");
+
+    const plaintext = "rotation-test-secret-value";
+
+    // Encrypt with v1 directly (low-level, no DB)
+    const kek_v1 = try loadKekByVersion(alloc, 1);
+    const kek_v2 = try loadKekByVersion(alloc, 2);
+
+    const blob_v1 = try encrypt(alloc, plaintext, &kek_v1);
+    defer blob_v1.deinit(alloc);
+
+    // Re-wrap DEK under v2: decrypt with v1, re-encrypt with v2
+    const recovered_v1 = try decrypt(alloc, &blob_v1.nonce, blob_v1.ciphertext, &blob_v1.tag, &kek_v1);
+    defer alloc.free(recovered_v1);
+
+    const blob_v2 = try encrypt(alloc, recovered_v1, &kek_v2);
+    defer blob_v2.deinit(alloc);
+
+    const recovered_v2 = try decrypt(alloc, &blob_v2.nonce, blob_v2.ciphertext, &blob_v2.tag, &kek_v2);
+    defer alloc.free(recovered_v2);
+
+    try std.testing.expectEqualStrings(plaintext, recovered_v2);
+
+    // v1 key must not decrypt the v2 envelope
+    try std.testing.expectError(
+        SecretError.DecryptFailed,
+        decrypt(alloc, &blob_v2.nonce, blob_v2.ciphertext, &blob_v2.tag, &kek_v1),
     );
 }
 

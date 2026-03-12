@@ -143,8 +143,7 @@ fn loadInstallationId(
     conn: *pg.Conn,
     workspace_id: []const u8,
 ) ![]u8 {
-    const kek = secrets.loadKek(alloc) catch return worker_runtime.WorkerError.MissingGitHubInstallation;
-    return secrets.load(alloc, conn, workspace_id, "github_app_installation_id", kek) catch worker_runtime.WorkerError.MissingGitHubInstallation;
+    return secrets.load(alloc, conn, workspace_id, "github_app_installation_id") catch worker_runtime.WorkerError.MissingGitHubInstallation;
 }
 
 fn getExistingPrUrl(alloc: std.mem.Allocator, conn: *pg.Conn, run_id: []const u8) !?[]u8 {
