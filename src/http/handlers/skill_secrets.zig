@@ -80,7 +80,6 @@ pub fn put(
         return SkillSecretError.InvalidRequest;
     } else secrets.SkillSecretScope.sandbox;
 
-    const kek = try secrets.loadKek(alloc);
     try secrets.storeWorkspaceSkillSecret(
         alloc,
         conn,
@@ -90,7 +89,7 @@ pub fn put(
         input.value,
         scope,
         input.meta_json orelse "{}",
-        kek,
+        1,
     );
 
     return .{

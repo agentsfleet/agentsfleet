@@ -375,3 +375,132 @@ test "roleEnvVarName maps db roles deterministically" {
     try std.testing.expectEqualStrings("DATABASE_URL_WORKER", roleEnvVarName(.worker));
     try std.testing.expectEqualStrings("DATABASE_URL_CALLBACK", roleEnvVarName(.callback));
 }
+
+fn openIntegrationTestConn(alloc: std.mem.Allocator) !?struct { pool: *Pool, conn: *Conn } {
+    const url = std.process.getEnvVarOwned(alloc, "HANDLER_DB_TEST_URL") catch
+        std.process.getEnvVarOwned(alloc, "DATABASE_URL") catch return null;
+    defer alloc.free(url);
+
+    var arena = std.heap.ArenaAllocator.init(alloc);
+    defer arena.deinit();
+    const opts = try parseUrl(arena.allocator(), url);
+    const pool = pg.Pool.init(alloc, opts) catch return null;
+    errdefer pool.deinit();
+    const conn = try pool.acquire();
+    return .{ .pool = pool, .conn = conn };
+}
+
+fn createUuidMigrationTempSchema(conn: *Conn) !void {
+    var q = try conn.query(
+        \\CREATE TEMP TABLE runs (
+        \\  run_id TEXT PRIMARY KEY,
+        \\  run_snapshot_version TEXT
+        \\) ON COMMIT DROP;
+        \\CREATE TEMP TABLE agent_profile_versions (
+        \\  profile_version_id TEXT PRIMARY KEY
+        \\) ON COMMIT DROP;
+        \\CREATE TEMP TABLE profile_compile_jobs (
+        \\  compile_job_id TEXT PRIMARY KEY
+        \\) ON COMMIT DROP;
+        \\CREATE TEMP TABLE run_transitions (
+        \\  run_id TEXT NOT NULL REFERENCES runs(run_id)
+        \\) ON COMMIT DROP;
+        \\CREATE TEMP TABLE artifacts (
+        \\  run_id TEXT NOT NULL REFERENCES runs(run_id)
+        \\) ON COMMIT DROP;
+        \\CREATE TEMP TABLE usage_ledger (
+        \\  run_id TEXT NOT NULL REFERENCES runs(run_id)
+        \\) ON COMMIT DROP;
+        \\CREATE TEMP TABLE run_side_effects (
+        \\  run_id TEXT NOT NULL REFERENCES runs(run_id)
+        \\) ON COMMIT DROP;
+        \\CREATE TEMP TABLE run_side_effect_outbox (
+        \\  run_id TEXT NOT NULL REFERENCES runs(run_id)
+        \\) ON COMMIT DROP;
+        \\CREATE TEMP TABLE workspace_memories (
+        \\  run_id TEXT NOT NULL
+        \\) ON COMMIT DROP;
+        \\CREATE TEMP TABLE policy_events (
+        \\  run_id TEXT
+        \\) ON COMMIT DROP;
+        \\CREATE TEMP TABLE workspace_active_profile (
+        \\  profile_version_id TEXT NOT NULL REFERENCES agent_profile_versions(profile_version_id)
+        \\) ON COMMIT DROP;
+        \\CREATE TEMP TABLE profile_linkage_audit_artifacts (
+        \\  profile_version_id TEXT NOT NULL REFERENCES agent_profile_versions(profile_version_id),
+        \\  compile_job_id TEXT REFERENCES profile_compile_jobs(compile_job_id),
+        \\  run_id TEXT REFERENCES runs(run_id)
+        \\) ON COMMIT DROP
+    , .{});
+    q.deinit();
+}
+
+test "integration: uuid migration converts core id columns to uuid and blocks rollback when rows exist" {
+    if (!std.process.hasEnvVarConstant("UUID_MIGRATION_TESTS")) return error.SkipZigTest;
+    const db_ctx = (try openIntegrationTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.release(db_ctx.conn);
+    defer db_ctx.pool.deinit();
+
+    try createUuidMigrationTempSchema(db_ctx.conn);
+
+    const run_id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f99";
+    const pver_id = "0195b4ba-8d3a-7f13-9abc-2b3e1e0a6f98";
+    const cjob_id = "0195b4ba-8d3a-7f13-aabc-2b3e1e0a6f97";
+
+    {
+        var q = try db_ctx.conn.query(
+            \\INSERT INTO runs (run_id, run_snapshot_version) VALUES ($1, $2);
+            \\INSERT INTO agent_profile_versions (profile_version_id) VALUES ($2);
+            \\INSERT INTO profile_compile_jobs (compile_job_id) VALUES ($3);
+            \\INSERT INTO run_transitions (run_id) VALUES ($1);
+            \\INSERT INTO artifacts (run_id) VALUES ($1);
+            \\INSERT INTO usage_ledger (run_id) VALUES ($1);
+            \\INSERT INTO run_side_effects (run_id) VALUES ($1);
+            \\INSERT INTO run_side_effect_outbox (run_id) VALUES ($1);
+            \\INSERT INTO workspace_memories (run_id) VALUES ($1);
+            \\INSERT INTO policy_events (run_id) VALUES ($1);
+            \\INSERT INTO workspace_active_profile (profile_version_id) VALUES ($2);
+            \\INSERT INTO profile_linkage_audit_artifacts (profile_version_id, compile_job_id, run_id) VALUES ($2, $3, $1)
+        , .{ run_id, pver_id, cjob_id });
+        q.deinit();
+    }
+
+    const schema = @import("schema");
+    _ = try applySqlStatements(db_ctx.conn, schema.uuidv7_id_migration_sql);
+
+    {
+        var q = try db_ctx.conn.query(
+            \\SELECT data_type
+            \\FROM information_schema.columns
+            \\WHERE table_name = 'runs' AND column_name = 'run_id'
+        , .{});
+        defer q.deinit();
+        const row = (try q.next()) orelse return error.TestUnexpectedResult;
+        try std.testing.expectEqualStrings("uuid", try row.get([]const u8, 0));
+    }
+
+    try std.testing.expectError(error.PgError, db_ctx.conn.query(
+        "SELECT assert_uuidv7_rollback_allowed()",
+        .{},
+    ));
+}
+
+test "integration: uuid migration fails fast when legacy prefixed ids still exist" {
+    if (!std.process.hasEnvVarConstant("UUID_MIGRATION_TESTS")) return error.SkipZigTest;
+    const db_ctx = (try openIntegrationTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.release(db_ctx.conn);
+    defer db_ctx.pool.deinit();
+
+    try createUuidMigrationTempSchema(db_ctx.conn);
+
+    {
+        var q = try db_ctx.conn.query(
+            \\INSERT INTO runs (run_id, run_snapshot_version) VALUES ('run_legacy', NULL);
+            \\INSERT INTO workspace_memories (run_id) VALUES ('run_legacy')
+        , .{});
+        q.deinit();
+    }
+
+    const schema = @import("schema");
+    try std.testing.expectError(error.PgError, applySqlStatements(db_ctx.conn, schema.uuidv7_id_migration_sql));
+}

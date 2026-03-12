@@ -3,6 +3,8 @@ const zap = @import("zap");
 const common = @import("../common.zig");
 const obs_log = @import("../../../observability/logging.zig");
 const profile_linkage = @import("../../../audit/profile_linkage.zig");
+const id_format = @import("../../../types/id_format.zig");
+const error_codes = @import("../../../errors/codes.zig");
 
 const RunResponse = struct {
     run_id: []const u8,
@@ -78,8 +80,13 @@ pub fn handleGetRun(ctx: *common.Context, r: zap.Request, run_id: []const u8) vo
         return;
     };
 
+    if (!id_format.isSupportedRunId(run_id)) {
+        common.errorResponse(r, .bad_request, error_codes.ERR_UUIDV7_INVALID_ID_SHAPE, "Invalid run_id format", req_id);
+        return;
+    }
+
     const conn = ctx.pool.acquire() catch {
-        common.errorResponse(r, .service_unavailable, "INTERNAL_ERROR", "Database unavailable", req_id);
+        common.internalDbUnavailable(r, req_id);
         return;
     };
     defer ctx.pool.release(conn);
@@ -89,13 +96,13 @@ pub fn handleGetRun(ctx: *common.Context, r: zap.Request, run_id: []const u8) vo
         \\       requested_by, branch, pr_url, request_id, run_snapshot_version, created_at, updated_at
         \\FROM runs WHERE run_id = $1
     , .{run_id}) catch {
-        common.errorResponse(r, .internal_server_error, "INTERNAL_ERROR", "Database error", req_id);
+        common.internalDbError(r, req_id);
         return;
     };
     defer run_result.deinit();
 
     const row = run_result.next() catch null orelse {
-        common.errorResponse(r, .not_found, "RUN_NOT_FOUND", "Run not found", req_id);
+        common.errorResponse(r, .not_found, error_codes.ERR_RUN_NOT_FOUND, "Run not found", req_id);
         return;
     };
 
@@ -114,7 +121,7 @@ pub fn handleGetRun(ctx: *common.Context, r: zap.Request, run_id: []const u8) vo
     const updated_at = row.get(i64, 12) catch 0;
 
     if (!common.authorizeWorkspaceAndSetTenantContext(conn, principal, workspace_id)) {
-        common.errorResponse(r, .forbidden, "FORBIDDEN", "Workspace access denied", req_id);
+        common.errorResponse(r, .forbidden, error_codes.ERR_FORBIDDEN, "Workspace access denied", req_id);
         return;
     }
 
@@ -124,7 +131,7 @@ pub fn handleGetRun(ctx: *common.Context, r: zap.Request, run_id: []const u8) vo
         \\SELECT state_from, state_to, actor, reason_code, ts
         \\FROM run_transitions WHERE run_id = $1 ORDER BY ts ASC
     , .{run_id}) catch {
-        common.errorResponse(r, .internal_server_error, "INTERNAL_ERROR", "Database error", req_id);
+        common.internalDbError(r, req_id);
         return;
     };
     defer trans_result.deinit();

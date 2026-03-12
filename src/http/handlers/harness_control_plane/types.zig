@@ -47,6 +47,7 @@ pub const ActiveOutput = struct {
 
 pub const ControlPlaneError = error{
     InvalidRequest,
+    InvalidIdShape,
     WorkspaceNotFound,
     ProfileNotFound,
     ProfileInvalid,

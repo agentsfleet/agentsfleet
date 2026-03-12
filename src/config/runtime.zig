@@ -25,6 +25,9 @@ pub const ValidationError = error{
     InvalidRunTimeoutMs,
     InvalidReadyMaxQueueDepth,
     InvalidReadyMaxQueueAgeMs,
+    InvalidKekVersion,
+    MissingEncryptionMasterKeyV2,
+    InvalidEncryptionMasterKeyV2,
 };
 
 pub const ServeConfig = struct {
@@ -53,6 +56,8 @@ pub const ServeConfig = struct {
     clerk_issuer: ?[]u8,
     clerk_audience: ?[]u8,
     encryption_master_key: []u8,
+    encryption_master_key_v2: ?[]u8,
+    active_kek_version: u32,
 
     alloc: std.mem.Allocator,
 
@@ -100,6 +105,19 @@ pub const ServeConfig = struct {
         if (encryption_master_key.len != 64 or !isHexString(encryption_master_key)) {
             return ValidationError.InvalidEncryptionMasterKey;
         }
+
+        const active_kek_version = try parseU32Env(alloc, "KEK_VERSION", 1, ValidationError.InvalidKekVersion);
+        if (active_kek_version == 0 or active_kek_version > 2) return ValidationError.InvalidKekVersion;
+
+        const encryption_master_key_v2: ?[]u8 = if (active_kek_version == 2) blk: {
+            const v2 = try requiredEnvOwned(alloc, "ENCRYPTION_MASTER_KEY_V2", ValidationError.MissingEncryptionMasterKeyV2);
+            if (v2.len != 64 or !isHexString(v2)) {
+                alloc.free(v2);
+                return ValidationError.InvalidEncryptionMasterKeyV2;
+            }
+            break :blk v2;
+        } else std.process.getEnvVarOwned(alloc, "ENCRYPTION_MASTER_KEY_V2") catch null;
+        errdefer if (encryption_master_key_v2) |v| alloc.free(v);
 
         const github_app_id = try requiredEnvOwned(alloc, "GITHUB_APP_ID", ValidationError.MissingGitHubAppId);
         errdefer alloc.free(github_app_id);
@@ -160,6 +178,8 @@ pub const ServeConfig = struct {
             .clerk_issuer = clerk_issuer,
             .clerk_audience = clerk_audience,
             .encryption_master_key = encryption_master_key,
+            .encryption_master_key_v2 = encryption_master_key_v2,
+            .active_kek_version = active_kek_version,
             .alloc = alloc,
         };
     }
@@ -176,6 +196,7 @@ pub const ServeConfig = struct {
         if (self.clerk_issuer) |v| self.alloc.free(v);
         if (self.clerk_audience) |v| self.alloc.free(v);
         self.alloc.free(self.encryption_master_key);
+        if (self.encryption_master_key_v2) |v| self.alloc.free(v);
     }
 
     pub fn printValidationError(err: ValidationError) void {
@@ -200,6 +221,9 @@ pub const ServeConfig = struct {
             ValidationError.InvalidRateLimitRefillPerSec => std.debug.print("fatal: invalid RATE_LIMIT_REFILL_PER_SEC value\n", .{}),
             ValidationError.InvalidReadyMaxQueueDepth => std.debug.print("fatal: invalid READY_MAX_QUEUE_DEPTH value\n", .{}),
             ValidationError.InvalidReadyMaxQueueAgeMs => std.debug.print("fatal: invalid READY_MAX_QUEUE_AGE_MS value\n", .{}),
+            ValidationError.InvalidKekVersion => std.debug.print("fatal: KEK_VERSION must be 1 or 2\n", .{}),
+            ValidationError.MissingEncryptionMasterKeyV2 => std.debug.print("fatal: ENCRYPTION_MASTER_KEY_V2 not set (required when KEK_VERSION=2)\n", .{}),
+            ValidationError.InvalidEncryptionMasterKeyV2 => std.debug.print("fatal: ENCRYPTION_MASTER_KEY_V2 must be 64 hex chars\n", .{}),
         }
     }
 };

@@ -6,6 +6,7 @@ pub const Subcommand = enum {
     doctor,
     run,
     migrate,
+    reconcile,
 };
 
 pub fn parseSubcommandName(name: []const u8) Subcommand {
@@ -25,6 +26,7 @@ test "parseSubcommandName returns known subcommands" {
     try std.testing.expectEqual(Subcommand.doctor, parseSubcommandName("doctor"));
     try std.testing.expectEqual(Subcommand.run, parseSubcommandName("run"));
     try std.testing.expectEqual(Subcommand.migrate, parseSubcommandName("migrate"));
+    try std.testing.expectEqual(Subcommand.reconcile, parseSubcommandName("reconcile"));
 }
 
 test "parseSubcommandName defaults to serve for unknown values" {

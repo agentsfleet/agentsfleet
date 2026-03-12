@@ -8,6 +8,7 @@ const worker = @import("../../pipeline/worker.zig");
 const metrics = @import("../../observability/metrics.zig");
 const obs_log = @import("../../observability/logging.zig");
 const db = @import("../../db/pool.zig");
+const error_codes = @import("../../errors/codes.zig");
 
 pub const Context = struct {
     pool: *pg.Pool,
@@ -62,9 +63,24 @@ pub fn errorResponse(
     request_id: []const u8,
 ) void {
     writeJson(r, status, .{
-        .@"error" = .{ .code = code, .message = message },
+        .@"error" = .{
+            .code = code,
+            .message = message,
+        },
         .request_id = request_id,
     });
+}
+
+pub fn internalDbUnavailable(r: zap.Request, request_id: []const u8) void {
+    errorResponse(r, .service_unavailable, error_codes.ERR_INTERNAL_DB_UNAVAILABLE, "Database unavailable", request_id);
+}
+
+pub fn internalDbError(r: zap.Request, request_id: []const u8) void {
+    errorResponse(r, .internal_server_error, error_codes.ERR_INTERNAL_DB_QUERY, "Database error", request_id);
+}
+
+pub fn internalOperationError(r: zap.Request, message: []const u8, request_id: []const u8) void {
+    errorResponse(r, .internal_server_error, error_codes.ERR_INTERNAL_OPERATION_FAILED, message, request_id);
 }
 
 pub fn requestId(alloc: std.mem.Allocator) []const u8 {
@@ -122,9 +138,9 @@ pub fn authenticate(alloc: std.mem.Allocator, r: zap.Request, ctx: *Context) Aut
 
 pub fn writeAuthError(r: zap.Request, req_id: []const u8, err: AuthError) void {
     switch (err) {
-        AuthError.TokenExpired => errorResponse(r, .unauthorized, "token_expired", "token expired", req_id),
-        AuthError.Unauthorized => errorResponse(r, .unauthorized, "UNAUTHORIZED", "Invalid or missing token", req_id),
-        AuthError.AuthServiceUnavailable => errorResponse(r, .service_unavailable, "AUTH_UNAVAILABLE", "Authentication service unavailable", req_id),
+        AuthError.TokenExpired => errorResponse(r, .unauthorized, error_codes.ERR_TOKEN_EXPIRED, "token expired", req_id),
+        AuthError.Unauthorized => errorResponse(r, .unauthorized, error_codes.ERR_UNAUTHORIZED, "Invalid or missing token", req_id),
+        AuthError.AuthServiceUnavailable => errorResponse(r, .service_unavailable, error_codes.ERR_AUTH_UNAVAILABLE, "Authentication service unavailable", req_id),
     }
 }
 

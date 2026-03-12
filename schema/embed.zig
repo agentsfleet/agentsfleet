@@ -7,3 +7,5 @@ pub const harness_control_plane_sql = @embedFile("006_harness_control_plane.sql"
 pub const rls_tenant_isolation_sql = @embedFile("007_rls_tenant_isolation.sql");
 pub const run_snapshot_version_sql = @embedFile("008_run_snapshot_version.sql");
 pub const profile_linkage_audit_sql = @embedFile("009_profile_linkage_audit.sql");
+pub const trace_context_sql = @embedFile("010_trace_context.sql");
+pub const uuidv7_id_migration_sql = @embedFile("011_uuidv7_id_migration.sql");

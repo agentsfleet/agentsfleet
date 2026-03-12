@@ -31,6 +31,7 @@ pub const AgentResult = struct {
 pub fn emitNullclawRunEvent(
     run_id: []const u8,
     request_id: []const u8,
+    trace_id: []const u8,
     attempt: u32,
     stage_id: []const u8,
     role_id: []const u8,
@@ -38,14 +39,14 @@ pub fn emitNullclawRunEvent(
     result: AgentResult,
 ) void {
     log.info(
-        "nullclaw_run event_type=nullclaw_run run_id={s} request_id={s} attempt={d} stage_id={s} role_id={s} actor={s} exit_ok={} tokens={d} wall_seconds={d} peak_memory_kb=N/A",
-        .{ run_id, request_id, attempt, stage_id, role_id, actor.label(), result.exit_ok, result.token_count, result.wall_seconds },
+        "nullclaw_run event_type=nullclaw_run run_id={s} request_id={s} trace_id={s} attempt={d} stage_id={s} role_id={s} actor={s} exit_ok={} tokens={d} wall_seconds={d} peak_memory_kb=N/A",
+        .{ run_id, request_id, trace_id, attempt, stage_id, role_id, actor.label(), result.exit_ok, result.token_count, result.wall_seconds },
     );
-    var detail_buf: [192]u8 = undefined;
+    var detail_buf: [256]u8 = undefined;
     const detail = std.fmt.bufPrint(
         &detail_buf,
-        "request_id={s} attempt={d} stage_id={s} role_id={s} actor={s} exit_ok={} tokens={d} wall_seconds={d}",
-        .{ request_id, attempt, stage_id, role_id, actor.label(), result.exit_ok, result.token_count, result.wall_seconds },
+        "request_id={s} trace_id={s} attempt={d} stage_id={s} role_id={s} actor={s} exit_ok={} tokens={d} wall_seconds={d}",
+        .{ request_id, trace_id, attempt, stage_id, role_id, actor.label(), result.exit_ok, result.token_count, result.wall_seconds },
     ) catch "nullclaw_run";
     events.emit("nullclaw_run", run_id, detail);
 }

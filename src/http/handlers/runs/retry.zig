@@ -4,9 +4,11 @@ const state = @import("../../../state/machine.zig");
 const policy = @import("../../../state/policy.zig");
 const obs_log = @import("../../../observability/logging.zig");
 const common = @import("../common.zig");
+const id_format = @import("../../../types/id_format.zig");
+const error_codes = @import("../../../errors/codes.zig");
 const log = std.log.scoped(.http);
 
-const queue_unavailable_code = "QUEUE_UNAVAILABLE";
+const queue_unavailable_code = error_codes.ERR_QUEUE_UNAVAILABLE;
 const queue_unavailable_message = "Queue unavailable";
 
 pub fn handleRetryRun(ctx: *common.Context, r: zap.Request, run_id: []const u8) void {
@@ -20,23 +22,28 @@ pub fn handleRetryRun(ctx: *common.Context, r: zap.Request, run_id: []const u8) 
         return;
     };
 
+    if (!id_format.isSupportedRunId(run_id)) {
+        common.errorResponse(r, .bad_request, error_codes.ERR_UUIDV7_INVALID_ID_SHAPE, "Invalid run_id format", req_id);
+        return;
+    }
+
     const Req = struct {
         reason: []const u8,
         retry_token: []const u8,
     };
 
     const body = r.body orelse {
-        common.errorResponse(r, .bad_request, "INVALID_REQUEST", "Request body required", req_id);
+        common.errorResponse(r, .bad_request, error_codes.ERR_INVALID_REQUEST, "Request body required", req_id);
         return;
     };
     const parsed = std.json.parseFromSlice(Req, alloc, body, .{}) catch {
-        common.errorResponse(r, .bad_request, "INVALID_REQUEST", "Malformed JSON", req_id);
+        common.errorResponse(r, .bad_request, error_codes.ERR_INVALID_REQUEST, "Malformed JSON", req_id);
         return;
     };
     defer parsed.deinit();
 
     const conn = ctx.pool.acquire() catch {
-        common.errorResponse(r, .service_unavailable, "INTERNAL_ERROR", "Database unavailable", req_id);
+        common.internalDbUnavailable(r, req_id);
         return;
     };
     defer ctx.pool.release(conn);
@@ -53,23 +60,23 @@ pub fn handleRetryRun(ctx: *common.Context, r: zap.Request, run_id: []const u8) 
     };
 
     if (workspace_id_for_policy.len > 0 and !common.authorizeWorkspaceAndSetTenantContext(conn, principal, workspace_id_for_policy)) {
-        common.errorResponse(r, .forbidden, "FORBIDDEN", "Workspace access denied", req_id);
+        common.errorResponse(r, .forbidden, error_codes.ERR_FORBIDDEN, "Workspace access denied", req_id);
         return;
     }
 
     const current = state.getRunState(conn, run_id) catch |err| switch (err) {
         state.TransitionError.RunNotFound => {
-            common.errorResponse(r, .not_found, "RUN_NOT_FOUND", "Run not found", req_id);
+            common.errorResponse(r, .not_found, error_codes.ERR_RUN_NOT_FOUND, "Run not found", req_id);
             return;
         },
         else => {
-            common.errorResponse(r, .internal_server_error, "INTERNAL_ERROR", "Database error", req_id);
+            common.internalDbError(r, req_id);
             return;
         },
     };
 
     if (!current.state.isRetryable()) {
-        common.errorResponse(r, .unprocessable_content, "INVALID_STATE_TRANSITION", "Run is not in a retryable state", req_id);
+        common.errorResponse(r, .unprocessable_content, error_codes.ERR_INVALID_STATE_TRANSITION, "Run is not in a retryable state", req_id);
         return;
     }
 
@@ -82,7 +89,7 @@ pub fn handleRetryRun(ctx: *common.Context, r: zap.Request, run_id: []const u8) 
         "UPDATE runs SET state = 'SPEC_QUEUED', request_id = $1, updated_at = $2 WHERE run_id = $3",
         .{ req_id, now_ms, run_id },
     ) catch {
-        common.errorResponse(r, .internal_server_error, "INTERNAL_ERROR", "Database error", req_id);
+        common.internalDbError(r, req_id);
         return;
     };
     r2.deinit();
@@ -95,7 +102,7 @@ pub fn handleRetryRun(ctx: *common.Context, r: zap.Request, run_id: []const u8) 
         current.state.label(), parsed.value.reason,
         now_ms,
     }) catch {
-        common.errorResponse(r, .internal_server_error, "INTERNAL_ERROR", "Database error", req_id);
+        common.internalDbError(r, req_id);
         return;
     };
     r3.deinit();

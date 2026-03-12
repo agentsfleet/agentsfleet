@@ -16,6 +16,8 @@ const worker_execute_run = @import("worker_execute_run.zig");
 const worker_pr_flow = @import("worker_pr_flow.zig");
 const metrics = @import("../observability/metrics.zig");
 const events = @import("../events/bus.zig");
+const trace = @import("../observability/trace.zig");
+const langfuse = @import("../observability/langfuse.zig");
 const obs_log = @import("../observability/logging.zig");
 const log = std.log.scoped(.worker);
 
@@ -29,6 +31,7 @@ pub const ExecuteConfig = struct {
 pub const RunContext = struct {
     run_id: []const u8,
     request_id: []const u8,
+    trace_id: []const u8,
     workspace_id: []const u8,
     spec_id: []const u8,
     tenant_id: []const u8,
@@ -154,10 +157,12 @@ pub fn executeRun(
     metrics.incAgentEchoCalls();
     metrics.addAgentTokens(plan_result.token_count);
     metrics.observeAgentDurationSeconds(plan_result.wall_seconds);
+    emitLangfuseTrace(run_alloc, ctx, plan_stage.stage_id, plan_stage.role_id, plan_result);
 
     agents.emitNullclawRunEvent(
         ctx.run_id,
         ctx.request_id,
+        ctx.trace_id,
         ctx.attempt,
         plan_stage.stage_id,
         plan_stage.role_id,
@@ -223,8 +228,9 @@ pub fn executeRun(
             }
             metrics.addAgentTokens(stage_result.token_count);
             metrics.observeAgentDurationSeconds(stage_result.wall_seconds);
+            emitLangfuseTrace(run_alloc, ctx, stage.stage_id, stage.role_id, stage_result);
 
-            agents.emitNullclawRunEvent(ctx.run_id, ctx.request_id, attempt, stage.stage_id, stage.role_id, binding.actor, stage_result);
+            agents.emitNullclawRunEvent(ctx.run_id, ctx.request_id, ctx.trace_id, attempt, stage.stage_id, stage.role_id, binding.actor, stage_result);
             total_tokens += stage_result.token_count;
             total_wall_seconds += stage_result.wall_seconds;
             try state.writeUsage(conn, ctx.run_id, attempt, binding.actor, stage_result.token_count, stage_result.wall_seconds);
@@ -307,7 +313,7 @@ pub fn executeRun(
                     obs_log.logWarnErr(.worker, err, "run_summary.md alloc failed (non-fatal) run_id={s}", .{ctx.run_id});
                     log.info("run completed run_id={s} pr_url={s}", .{ ctx.run_id, pr_final });
                     var done_detail: [160]u8 = undefined;
-                    const done_detail_slice = std.fmt.bufPrint(&done_detail, "request_id={s} state=done total_wall_seconds={d}", .{ ctx.request_id, total_wall_seconds }) catch "run_done";
+                    const done_detail_slice = std.fmt.bufPrint(&done_detail, "request_id={s} trace_id={s} state=done total_wall_seconds={d}", .{ ctx.request_id, ctx.trace_id, total_wall_seconds }) catch "run_done";
                     events.emit("run_done", ctx.run_id, done_detail_slice);
                     metrics.observeRunTotalWallSeconds(total_wall_seconds);
                     metrics.incRunsCompleted();
@@ -321,7 +327,7 @@ pub fn executeRun(
 
                 log.info("run completed run_id={s} pr_url={s}", .{ ctx.run_id, pr_final });
                 var done_detail: [160]u8 = undefined;
-                const done_detail_slice = std.fmt.bufPrint(&done_detail, "request_id={s} state=done total_wall_seconds={d}", .{ ctx.request_id, total_wall_seconds }) catch "run_done";
+                const done_detail_slice = std.fmt.bufPrint(&done_detail, "request_id={s} trace_id={s} state=done total_wall_seconds={d}", .{ ctx.request_id, ctx.trace_id, total_wall_seconds }) catch "run_done";
                 events.emit("run_done", ctx.run_id, done_detail_slice);
                 metrics.observeRunTotalWallSeconds(total_wall_seconds);
                 metrics.incRunsCompleted();
@@ -363,8 +369,8 @@ pub fn executeRun(
     var blocked_detail: [176]u8 = undefined;
     const blocked_detail_slice = std.fmt.bufPrint(
         &blocked_detail,
-        "request_id={s} state=blocked reason=retries_exhausted total_wall_seconds={d}",
-        .{ ctx.request_id, total_wall_seconds },
+        "request_id={s} trace_id={s} state=blocked reason=retries_exhausted total_wall_seconds={d}",
+        .{ ctx.request_id, ctx.trace_id, total_wall_seconds },
     ) catch "run_blocked";
     events.emit("run_blocked", ctx.run_id, blocked_detail_slice);
     metrics.observeRunTotalWallSeconds(total_wall_seconds);
@@ -397,6 +403,33 @@ fn commitArtifact(
 
     const name = std.fs.path.basename(rel_path);
     try state.registerArtifact(conn, ctx.run_id, attempt, name, object_key, &checksum, actor);
+}
+
+/// Best-effort Langfuse trace emission. Reads config from env on each call
+/// (cheap: returns null immediately when LANGFUSE_HOST is unset).
+fn emitLangfuseTrace(
+    alloc: std.mem.Allocator,
+    ctx: RunContext,
+    stage_id: []const u8,
+    role_id: []const u8,
+    result: agents.AgentResult,
+) void {
+    const cfg = langfuse.configFromEnv(alloc) orelse return;
+    defer {
+        alloc.free(cfg.host);
+        alloc.free(cfg.public_key);
+        alloc.free(cfg.secret_key);
+    }
+    langfuse.emitTrace(alloc, cfg, .{
+        .trace_id = ctx.trace_id,
+        .run_id = ctx.run_id,
+        .stage_id = stage_id,
+        .role_id = role_id,
+        .token_count = result.token_count,
+        .wall_seconds = result.wall_seconds,
+        .exit_ok = result.exit_ok,
+        .timestamp_ms = std.time.milliTimestamp(),
+    });
 }
 
 fn sha256Hex(data: []const u8) [64]u8 {

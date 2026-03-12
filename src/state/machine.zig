@@ -446,3 +446,14 @@ test "integration: dead-letter reconciliation reasons are stable" {
     try std.testing.expectEqualStrings("reconciled_on_notified_blocked", deadLetterReasonForState(.NOTIFIED_BLOCKED));
     try std.testing.expectEqualStrings("reconciled_on_done", deadLetterReasonForState(.DONE));
 }
+
+test "dead-letter reconciliation reason falls back for non-reconcile target states" {
+    try std.testing.expectEqualStrings("reconciled", deadLetterReasonForState(.PR_OPENED));
+    try std.testing.expectEqualStrings("reconciled", deadLetterReasonForState(.RUN_PLANNED));
+}
+
+test "outbox status labels are stable" {
+    try std.testing.expectEqualStrings("pending", outboxStatusLabel(.pending));
+    try std.testing.expectEqualStrings("delivered", outboxStatusLabel(.delivered));
+    try std.testing.expectEqualStrings("dead_letter", outboxStatusLabel(.dead_letter));
+}
