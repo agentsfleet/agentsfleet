@@ -13,6 +13,9 @@ const log = std.log.scoped(.otel_export);
 
 const OTLP_METRICS_PATH = "/v1/metrics";
 pub const ERR_OTEL_EXPORT_FAILED = "UZ-OBS-OTEL-001";
+pub const ERR_OTEL_CONNECT_FAILED = "UZ-OBS-OTEL-002";
+pub const ERR_OTEL_REQUEST_FAILED = "UZ-OBS-OTEL-003";
+pub const ERR_OTEL_UNEXPECTED_STATUS = "UZ-OBS-OTEL-004";
 
 pub const OtelConfig = struct {
     endpoint: []const u8, // e.g. "http://localhost:4318"
@@ -20,6 +23,7 @@ pub const OtelConfig = struct {
 };
 
 const ExportError = error{
+    ConnectFailed,
     RequestFailed,
     UnexpectedStatus,
 };
@@ -116,7 +120,7 @@ pub fn exportMetricsSnapshotBestEffort(
     oldest_queued_age_ms: ?i64,
 ) void {
     exportMetricsSnapshotInner(alloc, cfg, worker_running, queue_depth, oldest_queued_age_ms) catch |err| {
-        obs_log.logWarnErr(.otel_export, err, "error_code={s} otel export failed endpoint={s}", .{ ERR_OTEL_EXPORT_FAILED, cfg.endpoint });
+        obs_log.logWarnErr(.otel_export, err, "error_code={s} otel export failed endpoint={s}", .{ exportErrorCode(err), cfg.endpoint });
     };
 }
 
@@ -156,9 +160,32 @@ fn postOtlpJson(alloc: std.mem.Allocator, url: []const u8, payload: []const u8) 
         .payload = payload,
         .extra_headers = &headers,
         .response_writer = &aw.writer,
-    }) catch return ExportError.RequestFailed;
+    }) catch |err| return mapFetchError(err);
 
     if (!isSuccessStatus(result.status)) return ExportError.UnexpectedStatus;
+}
+
+fn mapFetchError(err: anyerror) ExportError {
+    return switch (err) {
+        error.ConnectionRefused,
+        error.NetworkUnreachable,
+        error.ConnectionTimedOut,
+        error.HostUnreachable,
+        error.TemporaryNameServerFailure,
+        error.NameServerFailure,
+        error.UnknownHostName,
+        => ExportError.ConnectFailed,
+        else => ExportError.RequestFailed,
+    };
+}
+
+fn exportErrorCode(err: anyerror) []const u8 {
+    return switch (err) {
+        ExportError.ConnectFailed => ERR_OTEL_CONNECT_FAILED,
+        ExportError.RequestFailed => ERR_OTEL_REQUEST_FAILED,
+        ExportError.UnexpectedStatus => ERR_OTEL_UNEXPECTED_STATUS,
+        else => ERR_OTEL_EXPORT_FAILED,
+    };
 }
 
 fn isSuccessStatus(status: std.http.Status) bool {
@@ -213,10 +240,10 @@ test "configFromEnv returns null when env not set" {
     }
 }
 
-test "postOtlpJson returns RequestFailed when endpoint unreachable" {
+test "postOtlpJson returns ConnectFailed when endpoint unreachable" {
     const alloc = std.testing.allocator;
     try std.testing.expectError(
-        ExportError.RequestFailed,
+        ExportError.ConnectFailed,
         postOtlpJson(alloc, "http://127.0.0.1:1/v1/metrics", "{\"resourceMetrics\":[]}"),
     );
 }
