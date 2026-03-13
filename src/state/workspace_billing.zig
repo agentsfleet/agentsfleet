@@ -1,59 +1,40 @@
 const std = @import("std");
 const pg = @import("pg");
 const entitlements = @import("./entitlements.zig");
+const error_codes = @import("../errors/codes.zig");
 const id_format = @import("../types/id_format.zig");
+const model = @import("./workspace_billing_model.zig");
+const transition = @import("./workspace_billing_transition.zig");
 
-pub const FREE_PLAN_SKU = "free_v1";
-pub const SCALE_PLAN_SKU = "scale_v1";
-pub const DEFAULT_GRACE_PERIOD_MS: i64 = 7 * 24 * 60 * 60 * 1000;
+pub const FREE_PLAN_SKU = model.FREE_PLAN_SKU;
+pub const SCALE_PLAN_SKU = model.SCALE_PLAN_SKU;
+pub const DEFAULT_GRACE_PERIOD_MS = model.DEFAULT_GRACE_PERIOD_MS;
+pub const PlanTier = model.PlanTier;
+pub const BillingStatus = model.BillingStatus;
+pub const PendingStatus = model.PendingStatus;
+pub const BillingLifecycleEvent = model.BillingLifecycleEvent;
+pub const StateView = model.StateView;
+pub const UpgradeInput = model.UpgradeInput;
+pub const BillingLifecycleEventInput = model.BillingLifecycleEventInput;
 
-pub const PlanTier = enum {
-    free,
-    scale,
+pub fn errorCode(err: anyerror) ?[]const u8 {
+    return switch (err) {
+        error.InvalidSubscriptionId => error_codes.ERR_BILLING_INVALID_SUBSCRIPTION_ID,
+        error.WorkspaceBillingStateMissing => error_codes.ERR_BILLING_STATE_MISSING,
+        error.InvalidWorkspaceBillingState => error_codes.ERR_BILLING_STATE_INVALID,
+        else => null,
+    };
+}
 
-    pub fn label(self: PlanTier) []const u8 {
-        return switch (self) {
-            .free => "FREE",
-            .scale => "SCALE",
-        };
-    }
-};
-
-pub const BillingStatus = enum {
-    active,
-    grace,
-    downgraded,
-
-    pub fn label(self: BillingStatus) []const u8 {
-        return switch (self) {
-            .active => "ACTIVE",
-            .grace => "GRACE",
-            .downgraded => "DOWNGRADED",
-        };
-    }
-};
-
-const PendingStatus = enum {
-    activate_scale,
-    payment_failed,
-    downgrade_to_free,
-
-    fn label(self: PendingStatus) []const u8 {
-        return switch (self) {
-            .activate_scale => "ACTIVATE_SCALE",
-            .payment_failed => "PAYMENT_FAILED",
-            .downgrade_to_free => "DOWNGRADE_TO_FREE",
-        };
-    }
-};
-
-pub const StateView = struct {
-    plan_tier: PlanTier,
-    billing_status: BillingStatus,
-    plan_sku: []const u8,
-    subscription_id: ?[]const u8,
-    grace_expires_at: ?i64,
-};
+pub fn errorMessage(err: anyerror) ?[]const u8 {
+    return switch (err) {
+        error.InvalidSubscriptionId => "subscription_id is required",
+        error.InvalidBillingEventReason => "billing event reason is required",
+        error.WorkspaceBillingStateMissing => "Workspace billing state missing",
+        error.InvalidWorkspaceBillingState => "Workspace billing state invalid",
+        else => null,
+    };
+}
 
 const StateRow = struct {
     plan_tier: PlanTier,
@@ -72,11 +53,12 @@ const StateRow = struct {
         if (self.subscription_id) |v| alloc.free(v);
         if (self.pending_reason) |v| alloc.free(v);
     }
-};
-
-pub const UpgradeInput = struct {
-    subscription_id: []const u8,
-    actor: []const u8,
+    fn clearSubscription(self: *StateRow, alloc: std.mem.Allocator) void {
+        if (self.subscription_id) |value| {
+            alloc.free(value);
+            self.subscription_id = null;
+        }
+    }
 };
 
 pub fn provisionFreeWorkspace(
@@ -146,80 +128,197 @@ pub fn reconcileWorkspaceBilling(
     var state = try ensureStateRow(conn, alloc, workspace_id);
     defer state.deinit(alloc);
 
-    if (state.pending_status) |pending| {
-        switch (pending) {
-            .activate_scale => {
-                try applyEntitlementPlan(conn, alloc, workspace_id, .scale, now_ms);
-                try upsertBillingState(conn, alloc, workspace_id, .{
-                    .plan_tier = .scale,
-                    .plan_sku = SCALE_PLAN_SKU,
-                    .billing_status = .active,
-                    .adapter = state.adapter,
-                    .subscription_id = state.subscription_id,
-                    .payment_failed_at = null,
-                    .grace_expires_at = null,
-                    .pending_status = null,
-                    .pending_reason = null,
-                }, now_ms);
-                try insertAudit(conn, alloc, workspace_id, "PENDING_SCALE_APPLIED", state.plan_tier, .scale, state.billing_status, .active, "sync_applied_scale_activation", actor, "{}");
-                state.plan_tier = .scale;
-                state.billing_status = .active;
-                state.grace_expires_at = null;
-            },
-            .payment_failed => {
-                if (state.plan_tier == .scale and state.billing_status != .grace) {
-                    const grace_expires_at = now_ms + DEFAULT_GRACE_PERIOD_MS;
-                    try upsertBillingState(conn, alloc, workspace_id, .{
-                        .plan_tier = .scale,
-                        .plan_sku = SCALE_PLAN_SKU,
-                        .billing_status = .grace,
-                        .adapter = state.adapter,
-                        .subscription_id = state.subscription_id,
-                        .payment_failed_at = now_ms,
-                        .grace_expires_at = grace_expires_at,
-                        .pending_status = null,
-                        .pending_reason = null,
-                    }, now_ms);
-                    try insertAudit(conn, alloc, workspace_id, "PAYMENT_FAILED_GRACE_STARTED", state.plan_tier, .scale, state.billing_status, .grace, "payment_failed", actor, "{}");
-                    state.plan_tier = .scale;
-                    state.billing_status = .grace;
-                    state.grace_expires_at = grace_expires_at;
-                    state.payment_failed_at = now_ms;
-                }
-            },
-            .downgrade_to_free => {
-                try downgradeToFree(conn, alloc, workspace_id, state, now_ms, actor, "forced_downgrade");
-                state.plan_tier = .free;
-                state.billing_status = .downgraded;
-                state.grace_expires_at = null;
-                state.payment_failed_at = null;
-                if (state.subscription_id) |v| {
-                    alloc.free(v);
-                    state.subscription_id = null;
-                }
-            },
-        }
+    if (transition.decidePending(snapshotFromState(state), now_ms)) |outcome| {
+        try applyTransitionOutcome(conn, alloc, workspace_id, &state, now_ms, actor, outcome);
     }
 
-    if (state.plan_tier == .scale and state.billing_status == .grace and state.grace_expires_at != null and now_ms >= state.grace_expires_at.?) {
-        try downgradeToFree(conn, alloc, workspace_id, state, now_ms, actor, "grace_expired");
-        state.plan_tier = .free;
-        state.billing_status = .downgraded;
-        state.grace_expires_at = null;
-        state.payment_failed_at = null;
-        if (state.subscription_id) |v| {
-            alloc.free(v);
-            state.subscription_id = null;
-        }
+    if (transition.decideGraceExpiry(snapshotFromState(state), now_ms)) |outcome| {
+        try applyTransitionOutcome(conn, alloc, workspace_id, &state, now_ms, actor, outcome);
     }
 
+    return try viewFromState(alloc, state);
+}
+
+pub fn applyBillingLifecycleEvent(
+    conn: *pg.Conn,
+    alloc: std.mem.Allocator,
+    workspace_id: []const u8,
+    input: BillingLifecycleEventInput,
+) !StateView {
+    const trimmed_reason = std.mem.trim(u8, input.reason, " \t\r\n");
+    if (trimmed_reason.len == 0) return error.InvalidBillingEventReason;
+
+    const pending_status: PendingStatus = switch (input.event) {
+        .payment_failed => .payment_failed,
+        .downgrade_to_free => .downgrade_to_free,
+    };
+
+    const state = try ensureStateRow(conn, alloc, workspace_id);
+    defer state.deinit(alloc);
+
+    const now_ms = std.time.milliTimestamp();
+    try upsertBillingState(conn, alloc, workspace_id, .{
+        .plan_tier = state.plan_tier,
+        .plan_sku = state.plan_sku,
+        .billing_status = state.billing_status,
+        .adapter = state.adapter,
+        .subscription_id = state.subscription_id,
+        .payment_failed_at = state.payment_failed_at,
+        .grace_expires_at = state.grace_expires_at,
+        .pending_status = pending_status,
+        .pending_reason = trimmed_reason,
+    }, now_ms);
+    try insertAudit(
+        conn,
+        alloc,
+        workspace_id,
+        auditEventTypeForLifecycleEvent(input.event),
+        state.plan_tier,
+        state.plan_tier,
+        state.billing_status,
+        state.billing_status,
+        trimmed_reason,
+        input.actor,
+        "{}",
+    );
+
+    return reconcileWorkspaceBilling(conn, alloc, workspace_id, now_ms, input.actor);
+}
+
+fn auditEventTypeForLifecycleEvent(event: BillingLifecycleEvent) []const u8 {
+    return switch (event) {
+        .payment_failed => "PAYMENT_FAILED_RECORDED",
+        .downgrade_to_free => "DOWNGRADE_REQUESTED",
+    };
+}
+
+fn snapshotFromState(state: StateRow) transition.Snapshot {
+    return .{
+        .plan_tier = state.plan_tier,
+        .billing_status = state.billing_status,
+        .pending_status = state.pending_status,
+        .grace_expires_at = state.grace_expires_at,
+    };
+}
+
+fn viewFromState(alloc: std.mem.Allocator, state: StateRow) !StateView {
     return .{
         .plan_tier = state.plan_tier,
         .billing_status = state.billing_status,
         .plan_sku = try alloc.dupe(u8, state.plan_sku),
-        .subscription_id = if (state.subscription_id) |v| try alloc.dupe(u8, v) else null,
+        .subscription_id = if (state.subscription_id) |value| try alloc.dupe(u8, value) else null,
         .grace_expires_at = state.grace_expires_at,
     };
+}
+
+fn applyTransitionOutcome(
+    conn: *pg.Conn,
+    alloc: std.mem.Allocator,
+    workspace_id: []const u8,
+    state: *StateRow,
+    now_ms: i64,
+    actor: []const u8,
+    outcome: transition.Outcome,
+) !void {
+    switch (outcome) {
+        .activate_scale => try applyScaleActivation(conn, alloc, workspace_id, state.*, now_ms, actor),
+        .start_grace => |grace| try applyGracePeriod(conn, alloc, workspace_id, state.*, now_ms, grace.grace_expires_at, actor),
+        .downgrade_to_free => |downgrade| try downgradeStateToFree(conn, alloc, workspace_id, state, now_ms, actor, downgrade.reason),
+    }
+    try refreshStateMutations(state, outcome, now_ms, alloc);
+}
+
+fn applyScaleActivation(
+    conn: *pg.Conn,
+    alloc: std.mem.Allocator,
+    workspace_id: []const u8,
+    state: StateRow,
+    now_ms: i64,
+    actor: []const u8,
+) !void {
+    try applyEntitlementPlan(conn, alloc, workspace_id, .scale, now_ms);
+    try upsertBillingState(conn, alloc, workspace_id, .{
+        .plan_tier = .scale,
+        .plan_sku = SCALE_PLAN_SKU,
+        .billing_status = .active,
+        .adapter = state.adapter,
+        .subscription_id = state.subscription_id,
+        .payment_failed_at = null,
+        .grace_expires_at = null,
+        .pending_status = null,
+        .pending_reason = null,
+    }, now_ms);
+    try insertAudit(conn, alloc, workspace_id, "PENDING_SCALE_APPLIED", state.plan_tier, .scale, state.billing_status, .active, "sync_applied_scale_activation", actor, "{}");
+}
+
+fn applyGracePeriod(
+    conn: *pg.Conn,
+    alloc: std.mem.Allocator,
+    workspace_id: []const u8,
+    state: StateRow,
+    now_ms: i64,
+    grace_expires_at: i64,
+    actor: []const u8,
+) !void {
+    try upsertBillingState(conn, alloc, workspace_id, .{
+        .plan_tier = .scale,
+        .plan_sku = SCALE_PLAN_SKU,
+        .billing_status = .grace,
+        .adapter = state.adapter,
+        .subscription_id = state.subscription_id,
+        .payment_failed_at = now_ms,
+        .grace_expires_at = grace_expires_at,
+        .pending_status = null,
+        .pending_reason = null,
+    }, now_ms);
+    try insertAudit(conn, alloc, workspace_id, "PAYMENT_FAILED_GRACE_STARTED", state.plan_tier, .scale, state.billing_status, .grace, "payment_failed", actor, "{}");
+}
+
+fn downgradeStateToFree(
+    conn: *pg.Conn,
+    alloc: std.mem.Allocator,
+    workspace_id: []const u8,
+    state: *StateRow,
+    now_ms: i64,
+    actor: []const u8,
+    reason: []const u8,
+) !void {
+    try downgradeToFree(conn, alloc, workspace_id, state.*, now_ms, actor, reason);
+}
+
+fn refreshStateMutations(
+    state: *StateRow,
+    outcome: transition.Outcome,
+    now_ms: i64,
+    alloc: std.mem.Allocator,
+) !void {
+    state.pending_status = null;
+    if (state.pending_reason) |reason| {
+        alloc.free(reason);
+        state.pending_reason = null;
+    }
+
+    switch (outcome) {
+        .activate_scale => {
+            state.plan_tier = .scale;
+            state.billing_status = .active;
+            state.payment_failed_at = null;
+            state.grace_expires_at = null;
+        },
+        .start_grace => |grace| {
+            state.plan_tier = .scale;
+            state.billing_status = .grace;
+            state.payment_failed_at = now_ms;
+            state.grace_expires_at = grace.grace_expires_at;
+        },
+        .downgrade_to_free => {
+            state.plan_tier = .free;
+            state.billing_status = .downgraded;
+            state.payment_failed_at = null;
+            state.grace_expires_at = null;
+            state.clearSubscription(alloc);
+        },
+    }
 }
 
 fn downgradeToFree(
@@ -460,306 +559,6 @@ fn parsePendingStatus(raw: []const u8) ?PendingStatus {
     return null;
 }
 
-test "upgrade applies scale entitlement deterministically" {
-    const db_ctx = (try openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
-    defer db_ctx.pool.release(db_ctx.conn);
-    defer db_ctx.pool.deinit();
-
-    try createTempWorkspaceBillingTables(db_ctx.conn);
-    try seedWorkspace(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11");
-    try provisionFreeWorkspace(db_ctx.conn, std.testing.allocator, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11", "test");
-
-    const upgraded = try upgradeWorkspaceToScale(db_ctx.conn, std.testing.allocator, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11", .{
-        .subscription_id = "sub_scale_123",
-        .actor = "test",
-    });
-    defer std.testing.allocator.free(upgraded.plan_sku);
-    defer if (upgraded.subscription_id) |v| std.testing.allocator.free(v);
-
-    try std.testing.expectEqual(PlanTier.scale, upgraded.plan_tier);
-    try std.testing.expectEqual(BillingStatus.active, upgraded.billing_status);
-
-    var q = try db_ctx.conn.query(
-        "SELECT plan_tier, max_profiles, max_stages, max_distinct_skills, allow_custom_skills FROM workspace_entitlements WHERE workspace_id = $1",
-        .{"0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11"},
-    );
-    defer q.deinit();
-    const row = (try q.next()) orelse return error.TestExpectedEqual;
-    try std.testing.expectEqualStrings("SCALE", try row.get([]const u8, 0));
-    try std.testing.expectEqual(@as(i32, 8), try row.get(i32, 1));
-    try std.testing.expectEqual(@as(i32, 8), try row.get(i32, 2));
-    try std.testing.expectEqual(@as(i32, 16), try row.get(i32, 3));
-    try std.testing.expect(try row.get(bool, 4));
-}
-
-test "payment failure transitions to grace then downgrade policy" {
-    const db_ctx = (try openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
-    defer db_ctx.pool.release(db_ctx.conn);
-    defer db_ctx.pool.deinit();
-
-    try createTempWorkspaceBillingTables(db_ctx.conn);
-    try seedWorkspace(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11");
-    _ = try upgradeWorkspaceToScale(db_ctx.conn, std.testing.allocator, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11", .{
-        .subscription_id = "sub_scale_123",
-        .actor = "test",
-    });
-
-    var q = try db_ctx.conn.query(
-        \\UPDATE workspace_billing_state
-        \\SET pending_status = 'PAYMENT_FAILED', pending_reason = 'invoice_failed', updated_at = 10
-        \\WHERE workspace_id = $1
-    , .{"0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11"});
-    q.deinit();
-
-    const grace = try reconcileWorkspaceBilling(db_ctx.conn, std.testing.allocator, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11", 100, "sync");
-    defer std.testing.allocator.free(grace.plan_sku);
-    defer if (grace.subscription_id) |v| std.testing.allocator.free(v);
-    try std.testing.expectEqual(PlanTier.scale, grace.plan_tier);
-    try std.testing.expectEqual(BillingStatus.grace, grace.billing_status);
-    try std.testing.expect(grace.grace_expires_at != null);
-
-    const downgraded = try reconcileWorkspaceBilling(db_ctx.conn, std.testing.allocator, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11", grace.grace_expires_at.? + 1, "sync");
-    defer std.testing.allocator.free(downgraded.plan_sku);
-    try std.testing.expectEqual(PlanTier.free, downgraded.plan_tier);
-    try std.testing.expectEqual(BillingStatus.downgraded, downgraded.billing_status);
-    try std.testing.expect(downgraded.subscription_id == null);
-}
-
-test "billing sync remains stable across repeated sync cycles" {
-    const db_ctx = (try openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
-    defer db_ctx.pool.release(db_ctx.conn);
-    defer db_ctx.pool.deinit();
-
-    try createTempWorkspaceBillingTables(db_ctx.conn);
-    try seedWorkspace(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11");
-    _ = try upgradeWorkspaceToScale(db_ctx.conn, std.testing.allocator, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11", .{
-        .subscription_id = "sub_scale_123",
-        .actor = "test",
-    });
-
-    const first = try reconcileWorkspaceBilling(db_ctx.conn, std.testing.allocator, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11", 200, "sync");
-    defer std.testing.allocator.free(first.plan_sku);
-    defer if (first.subscription_id) |v| std.testing.allocator.free(v);
-
-    const second = try reconcileWorkspaceBilling(db_ctx.conn, std.testing.allocator, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11", 201, "sync");
-    defer std.testing.allocator.free(second.plan_sku);
-    defer if (second.subscription_id) |v| std.testing.allocator.free(v);
-
-    try std.testing.expectEqual(PlanTier.scale, first.plan_tier);
-    try std.testing.expectEqual(BillingStatus.active, first.billing_status);
-    try std.testing.expectEqual(PlanTier.scale, second.plan_tier);
-    try std.testing.expectEqual(BillingStatus.active, second.billing_status);
-
-    var q = try db_ctx.conn.query(
-        "SELECT COUNT(*)::BIGINT FROM workspace_billing_audit WHERE event_type = 'SCALE_ACTIVATED'",
-        .{},
-    );
-    defer q.deinit();
-    const row = (try q.next()) orelse return error.TestExpectedEqual;
-    try std.testing.expectEqual(@as(i64, 1), try row.get(i64, 0));
-}
-
-test "missing billing state provisions free deterministically on reconcile" {
-    const db_ctx = (try openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
-    defer db_ctx.pool.release(db_ctx.conn);
-    defer db_ctx.pool.deinit();
-
-    try createTempWorkspaceBillingTables(db_ctx.conn);
-    try seedWorkspace(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f12");
-
-    const state = try reconcileWorkspaceBilling(db_ctx.conn, std.testing.allocator, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f12", 50, "sync");
-    defer std.testing.allocator.free(state.plan_sku);
-    try std.testing.expectEqual(PlanTier.free, state.plan_tier);
-    try std.testing.expectEqual(BillingStatus.active, state.billing_status);
-    try std.testing.expect(state.subscription_id == null);
-
-    var q = try db_ctx.conn.query(
-        "SELECT plan_tier, billing_status FROM workspace_billing_state WHERE workspace_id = $1",
-        .{"0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f12"},
-    );
-    defer q.deinit();
-    const row = (try q.next()) orelse return error.TestExpectedEqual;
-    try std.testing.expectEqualStrings("FREE", try row.get([]const u8, 0));
-    try std.testing.expectEqualStrings("ACTIVE", try row.get([]const u8, 1));
-}
-
-test "manual scale to free downgrade is deterministic" {
-    const db_ctx = (try openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
-    defer db_ctx.pool.release(db_ctx.conn);
-    defer db_ctx.pool.deinit();
-
-    try createTempWorkspaceBillingTables(db_ctx.conn);
-    try seedWorkspace(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f13");
-    _ = try upgradeWorkspaceToScale(db_ctx.conn, std.testing.allocator, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f13", .{
-        .subscription_id = "sub_scale_456",
-        .actor = "test",
-    });
-
-    var q = try db_ctx.conn.query(
-        \\UPDATE workspace_billing_state
-        \\SET pending_status = 'DOWNGRADE_TO_FREE', pending_reason = 'operator_request', updated_at = 20
-        \\WHERE workspace_id = $1
-    , .{"0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f13"});
-    q.deinit();
-
-    const state = try reconcileWorkspaceBilling(db_ctx.conn, std.testing.allocator, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f13", 21, "sync");
-    defer std.testing.allocator.free(state.plan_sku);
-    try std.testing.expectEqual(PlanTier.free, state.plan_tier);
-    try std.testing.expectEqual(BillingStatus.downgraded, state.billing_status);
-    try std.testing.expect(state.subscription_id == null);
-}
-
-test "downgraded workspace can become a paying customer again" {
-    const db_ctx = (try openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
-    defer db_ctx.pool.release(db_ctx.conn);
-    defer db_ctx.pool.deinit();
-
-    try createTempWorkspaceBillingTables(db_ctx.conn);
-    try seedWorkspace(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f14");
-    _ = try upgradeWorkspaceToScale(db_ctx.conn, std.testing.allocator, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f14", .{
-        .subscription_id = "sub_scale_789",
-        .actor = "test",
-    });
-
-    var downgrade = try db_ctx.conn.query(
-        \\UPDATE workspace_billing_state
-        \\SET pending_status = 'DOWNGRADE_TO_FREE', pending_reason = 'operator_request', updated_at = 20
-        \\WHERE workspace_id = $1
-    , .{"0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f14"});
-    downgrade.deinit();
-    _ = try reconcileWorkspaceBilling(db_ctx.conn, std.testing.allocator, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f14", 21, "sync");
-
-    const upgraded = try upgradeWorkspaceToScale(db_ctx.conn, std.testing.allocator, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f14", .{
-        .subscription_id = "sub_scale_790",
-        .actor = "test",
-    });
-    defer std.testing.allocator.free(upgraded.plan_sku);
-    defer if (upgraded.subscription_id) |v| std.testing.allocator.free(v);
-
-    try std.testing.expectEqual(PlanTier.scale, upgraded.plan_tier);
-    try std.testing.expectEqual(BillingStatus.active, upgraded.billing_status);
-    try std.testing.expectEqualStrings("sub_scale_790", upgraded.subscription_id.?);
-}
-
-test "workspace deletion cascades billing state cleanup" {
-    const db_ctx = (try openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
-    defer db_ctx.pool.release(db_ctx.conn);
-    defer db_ctx.pool.deinit();
-
-    try createTempWorkspaceBillingTables(db_ctx.conn);
-    try seedWorkspace(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f15");
-    try provisionFreeWorkspace(db_ctx.conn, std.testing.allocator, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f15", "test");
-
-    var delete_q = try db_ctx.conn.query(
-        "DELETE FROM workspaces WHERE workspace_id = $1",
-        .{"0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f15"},
-    );
-    delete_q.deinit();
-
-    {
-        var q = try db_ctx.conn.query(
-            "SELECT COUNT(*)::BIGINT FROM workspace_billing_state WHERE workspace_id = $1",
-            .{"0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f15"},
-        );
-        defer q.deinit();
-        const row = (try q.next()) orelse return error.TestExpectedEqual;
-        try std.testing.expectEqual(@as(i64, 0), try row.get(i64, 0));
-    }
-    {
-        var q = try db_ctx.conn.query(
-            "SELECT COUNT(*)::BIGINT FROM workspace_billing_audit WHERE workspace_id = $1",
-            .{"0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f15"},
-        );
-        defer q.deinit();
-        const row = (try q.next()) orelse return error.TestExpectedEqual;
-        try std.testing.expectEqual(@as(i64, 0), try row.get(i64, 0));
-    }
-}
-
-fn openTestConn(alloc: std.mem.Allocator) !?struct { pool: *pg.Pool, conn: *pg.Conn } {
-    const url = std.process.getEnvVarOwned(alloc, "HANDLER_DB_TEST_URL") catch
-        std.process.getEnvVarOwned(alloc, "DATABASE_URL") catch return null;
-    defer alloc.free(url);
-
-    const db = @import("../db/pool.zig");
-    var arena = std.heap.ArenaAllocator.init(alloc);
-    defer arena.deinit();
-    const opts = try db.parseUrl(arena.allocator(), url);
-    const pool = try pg.Pool.init(alloc, opts);
-    errdefer pool.deinit();
-    const conn = try pool.acquire();
-    return .{ .pool = pool, .conn = conn };
-}
-
-fn createTempWorkspaceBillingTables(conn: *pg.Conn) !void {
-    {
-        var q = try conn.query(
-            \\CREATE TEMP TABLE workspaces (
-            \\  workspace_id TEXT PRIMARY KEY
-            \\) ON COMMIT DROP
-        , .{});
-        q.deinit();
-    }
-    {
-        var q = try conn.query(
-            \\CREATE TEMP TABLE workspace_entitlements (
-            \\  entitlement_id TEXT PRIMARY KEY,
-            \\  workspace_id TEXT NOT NULL UNIQUE REFERENCES workspaces(workspace_id) ON DELETE CASCADE,
-            \\  plan_tier TEXT NOT NULL,
-            \\  max_profiles INTEGER NOT NULL,
-            \\  max_stages INTEGER NOT NULL,
-            \\  max_distinct_skills INTEGER NOT NULL,
-            \\  allow_custom_skills BOOLEAN NOT NULL,
-            \\  created_at BIGINT NOT NULL,
-            \\  updated_at BIGINT NOT NULL
-            \\) ON COMMIT DROP
-        , .{});
-        q.deinit();
-    }
-    {
-        var q = try conn.query(
-            \\CREATE TEMP TABLE workspace_billing_state (
-            \\  billing_id TEXT PRIMARY KEY,
-            \\  workspace_id TEXT NOT NULL UNIQUE REFERENCES workspaces(workspace_id) ON DELETE CASCADE,
-            \\  plan_tier TEXT NOT NULL,
-            \\  plan_sku TEXT NOT NULL,
-            \\  billing_status TEXT NOT NULL,
-            \\  adapter TEXT NOT NULL,
-            \\  subscription_id TEXT,
-            \\  payment_failed_at BIGINT,
-            \\  grace_expires_at BIGINT,
-            \\  pending_status TEXT,
-            \\  pending_reason TEXT,
-            \\  created_at BIGINT NOT NULL,
-            \\  updated_at BIGINT NOT NULL
-            \\) ON COMMIT DROP
-        , .{});
-        q.deinit();
-    }
-    {
-        var q = try conn.query(
-            \\CREATE TEMP TABLE workspace_billing_audit (
-            \\  audit_id TEXT PRIMARY KEY,
-            \\  workspace_id TEXT NOT NULL REFERENCES workspaces(workspace_id) ON DELETE CASCADE,
-            \\  event_type TEXT NOT NULL,
-            \\  previous_plan_tier TEXT,
-            \\  new_plan_tier TEXT NOT NULL,
-            \\  previous_status TEXT,
-            \\  new_status TEXT NOT NULL,
-            \\  reason TEXT NOT NULL,
-            \\  actor TEXT NOT NULL,
-            \\  metadata_json TEXT NOT NULL,
-            \\  created_at BIGINT NOT NULL
-            \\) ON COMMIT DROP
-        , .{});
-        q.deinit();
-    }
-}
-
-fn seedWorkspace(conn: *pg.Conn, workspace_id: []const u8) !void {
-    var q = try conn.query(
-        "INSERT INTO workspaces (workspace_id) VALUES ($1)",
-        .{workspace_id},
-    );
-    q.deinit();
+test {
+    _ = @import("./workspace_billing_test.zig");
 }

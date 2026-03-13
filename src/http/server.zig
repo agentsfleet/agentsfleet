@@ -4,6 +4,7 @@
 const std = @import("std");
 const zap = @import("zap");
 const handler = @import("handler.zig");
+const router = @import("router.zig");
 const log = std.log.scoped(.http);
 
 pub const ServerConfig = struct {
@@ -20,11 +21,6 @@ var g_ctx: *handler.Context = undefined;
 
 // ── Request dispatch ──────────────────────────────────────────────────────
 
-// Route prefixes used in 3+ dispatch branches.
-const prefix_workspaces = "/v1/workspaces/";
-const prefix_runs = "/v1/runs/";
-const prefix_auth_sessions = "/v1/auth/sessions/";
-
 /// Top-level request handler — dispatches based on method + path prefix.
 fn dispatch(r: zap.Request) !void {
     const path = r.path orelse {
@@ -32,264 +28,64 @@ fn dispatch(r: zap.Request) !void {
         r.sendBody("") catch {};
         return;
     };
+    if (dispatchMatchedRoute(r, path)) return;
+    respondNotFound(r);
+}
 
-    // Health check (no auth)
-    if (std.mem.eql(u8, path, "/healthz")) {
-        handler.handleHealthz(g_ctx, r);
-        return;
-    }
-    if (std.mem.eql(u8, path, "/readyz")) {
-        handler.handleReadyz(g_ctx, r);
-        return;
-    }
-    if (std.mem.eql(u8, path, "/metrics")) {
-        handler.handleMetrics(g_ctx, r);
-        return;
-    }
-
-    // Route: /v1/auth/sessions (create)
-    if (std.mem.eql(u8, path, "/v1/auth/sessions")) {
-        if (r.methodAsEnum() == .POST) {
-            handler.handleCreateAuthSession(g_ctx, r);
-        } else {
-            r.setStatus(.method_not_allowed);
-            r.sendBody("") catch {};
-        }
-        return;
-    }
-
-    // Route: /v1/auth/sessions/:id/complete
-    if (std.mem.startsWith(u8, path, prefix_auth_sessions) and
-        std.mem.endsWith(u8, path, "/complete"))
-    {
-        const inner = path[prefix_auth_sessions.len .. path.len - "/complete".len];
-        if (inner.len > 0 and std.mem.indexOfScalar(u8, inner, '/') == null) {
-            if (r.methodAsEnum() == .POST) {
-                handler.handleCompleteAuthSession(g_ctx, r, inner);
-            } else {
-                r.setStatus(.method_not_allowed);
-                r.sendBody("") catch {};
-            }
-            return;
-        }
-    }
-
-    // Route: /v1/auth/sessions/:id (poll)
-    if (std.mem.startsWith(u8, path, prefix_auth_sessions)) {
-        const session_id = path[prefix_auth_sessions.len..];
-        if (session_id.len > 0 and !std.mem.containsAtLeast(u8, session_id, 1, "/")) {
-            if (r.methodAsEnum() == .GET) {
-                handler.handlePollAuthSession(g_ctx, r, session_id);
-            } else {
-                r.setStatus(.method_not_allowed);
-                r.sendBody("") catch {};
-            }
-            return;
-        }
-    }
-
-    // Route: /v1/github/callback
-    if (std.mem.eql(u8, path, "/v1/github/callback")) {
-        if (r.methodAsEnum() == .GET) {
-            handler.handleGitHubCallback(g_ctx, r);
-        } else {
-            r.setStatus(.method_not_allowed);
-            r.sendBody("") catch {};
-        }
-        return;
-    }
-
-    // Route: /v1/workspaces (create)
-    if (std.mem.eql(u8, path, "/v1/workspaces")) {
-        if (r.methodAsEnum() == .POST) {
-            handler.handleCreateWorkspace(g_ctx, r);
-        } else {
-            r.setStatus(.method_not_allowed);
-            r.sendBody("") catch {};
-        }
-        return;
-    }
-
-    // Route: /v1/runs
-    if (std.mem.eql(u8, path, "/v1/runs")) {
-        if (r.methodAsEnum() == .POST) {
-            handler.handleStartRun(g_ctx, r);
-        } else {
-            r.setStatus(.method_not_allowed);
-            r.sendBody("") catch {};
-        }
-        return;
-    }
-
-    // Route: /v1/specs
-    if (std.mem.eql(u8, path, "/v1/specs")) {
-        if (r.methodAsEnum() == .GET) {
-            handler.handleListSpecs(g_ctx, r);
-        } else {
-            r.setStatus(.method_not_allowed);
-            r.sendBody("") catch {};
-        }
-        return;
-    }
-
-    // Route: /v1/runs/:run_id:retry
-    if (std.mem.startsWith(u8, path, prefix_runs) and
-        std.mem.endsWith(u8, path, ":retry"))
-    {
-        if (r.methodAsEnum() == .POST) {
-            const inner = path[prefix_runs.len .. path.len - ":retry".len];
-            handler.handleRetryRun(g_ctx, r, inner);
-        } else {
-            r.setStatus(.method_not_allowed);
-            r.sendBody("") catch {};
-        }
-        return;
-    }
-
-    // Route: /v1/runs/:run_id
-    if (std.mem.startsWith(u8, path, prefix_runs)) {
-        const run_id = path[prefix_runs.len..];
-        if (run_id.len > 0 and !std.mem.containsAtLeast(u8, run_id, 1, "/")) {
-            if (r.methodAsEnum() == .GET) {
-                handler.handleGetRun(g_ctx, r, run_id);
-            } else {
-                r.setStatus(.method_not_allowed);
-                r.sendBody("") catch {};
-            }
-            return;
-        }
-    }
-
-    // Route: /v1/workspaces/:workspace_id:pause
-    if (std.mem.startsWith(u8, path, prefix_workspaces) and
-        std.mem.endsWith(u8, path, ":pause"))
-    {
-        if (r.methodAsEnum() == .POST) {
-            const inner = path[prefix_workspaces.len .. path.len - ":pause".len];
-            handler.handlePauseWorkspace(g_ctx, r, inner);
-        } else {
-            r.setStatus(.method_not_allowed);
-            r.sendBody("") catch {};
-        }
-        return;
-    }
-
-    // Route: /v1/workspaces/{workspace_id}/billing/scale
-    if (std.mem.startsWith(u8, path, prefix_workspaces) and
-        std.mem.endsWith(u8, path, "/billing/scale"))
-    {
-        if (r.methodAsEnum() == .POST) {
-            const inner = path[prefix_workspaces.len .. path.len - "/billing/scale".len];
-            if (inner.len > 0 and std.mem.indexOfScalar(u8, inner, '/') == null) {
-                handler.handleUpgradeWorkspaceToScale(g_ctx, r, inner);
-                return;
-            }
-        } else {
-            r.setStatus(.method_not_allowed);
-            r.sendBody("") catch {};
-            return;
-        }
-    }
-
-    // Route: /v1/workspaces/{workspace_id}/harness/source
-    if (std.mem.startsWith(u8, path, prefix_workspaces) and
-        std.mem.endsWith(u8, path, "/harness/source"))
-    {
-        if (r.methodAsEnum() == .PUT) {
-            const inner = path[prefix_workspaces.len .. path.len - "/harness/source".len];
-            if (inner.len > 0 and std.mem.indexOfScalar(u8, inner, '/') == null) {
-                handler.handlePutHarnessSource(g_ctx, r, inner);
-                return;
-            }
-        } else {
-            r.setStatus(.method_not_allowed);
-            r.sendBody("") catch {};
-            return;
-        }
-    }
-
-    // Route: /v1/workspaces/{workspace_id}/harness/compile
-    if (std.mem.startsWith(u8, path, prefix_workspaces) and
-        std.mem.endsWith(u8, path, "/harness/compile"))
-    {
-        if (r.methodAsEnum() == .POST) {
-            const inner = path[prefix_workspaces.len .. path.len - "/harness/compile".len];
-            if (inner.len > 0 and std.mem.indexOfScalar(u8, inner, '/') == null) {
-                handler.handleCompileHarness(g_ctx, r, inner);
-                return;
-            }
-        } else {
-            r.setStatus(.method_not_allowed);
-            r.sendBody("") catch {};
-            return;
-        }
-    }
-
-    // Route: /v1/workspaces/{workspace_id}/harness/activate
-    if (std.mem.startsWith(u8, path, prefix_workspaces) and
-        std.mem.endsWith(u8, path, "/harness/activate"))
-    {
-        if (r.methodAsEnum() == .POST) {
-            const inner = path[prefix_workspaces.len .. path.len - "/harness/activate".len];
-            if (inner.len > 0 and std.mem.indexOfScalar(u8, inner, '/') == null) {
-                handler.handleActivateHarness(g_ctx, r, inner);
-                return;
-            }
-        } else {
-            r.setStatus(.method_not_allowed);
-            r.sendBody("") catch {};
-            return;
-        }
-    }
-
-    // Route: /v1/workspaces/{workspace_id}/harness/active
-    if (std.mem.startsWith(u8, path, prefix_workspaces) and
-        std.mem.endsWith(u8, path, "/harness/active"))
-    {
-        if (r.methodAsEnum() == .GET) {
-            const inner = path[prefix_workspaces.len .. path.len - "/harness/active".len];
-            if (inner.len > 0 and std.mem.indexOfScalar(u8, inner, '/') == null) {
-                handler.handleGetHarnessActive(g_ctx, r, inner);
-                return;
-            }
-        } else {
-            r.setStatus(.method_not_allowed);
-            r.sendBody("") catch {};
-            return;
-        }
-    }
-
-    // Route: /v1/workspaces/{workspace_id}/skills/{skill_ref}/secrets/{key_name}
+fn dispatchMatchedRoute(r: zap.Request, path: []const u8) bool {
     if (handler.parseSkillSecretRoute(path)) |route| {
         switch (r.methodAsEnum()) {
             .PUT => handler.handlePutWorkspaceSkillSecret(g_ctx, r, route.workspace_id, route.skill_ref_encoded, route.key_name_encoded),
             .DELETE => handler.handleDeleteWorkspaceSkillSecret(g_ctx, r, route.workspace_id, route.skill_ref_encoded, route.key_name_encoded),
-            else => {
-                r.setStatus(.method_not_allowed);
-                r.sendBody("") catch {};
-            },
+            else => respondMethodNotAllowed(r),
         }
-        return;
+        return true;
     }
 
-    // Route: /v1/workspaces/:workspace_id:sync
-    if (std.mem.startsWith(u8, path, prefix_workspaces) and
-        std.mem.endsWith(u8, path, ":sync"))
-    {
-        if (r.methodAsEnum() == .POST) {
-            const inner = path[prefix_workspaces.len .. path.len - ":sync".len];
-            handler.handleSyncSpecs(g_ctx, r, inner);
-        } else {
-            r.setStatus(.method_not_allowed);
-            r.sendBody("") catch {};
-        }
-        return;
+    const matched = router.match(path) orelse return false;
+    switch (matched) {
+        .healthz => handler.handleHealthz(g_ctx, r),
+        .readyz => handler.handleReadyz(g_ctx, r),
+        .metrics => handler.handleMetrics(g_ctx, r),
+        .create_auth_session => if (r.methodAsEnum() == .POST) handler.handleCreateAuthSession(g_ctx, r) else respondMethodNotAllowed(r),
+        .complete_auth_session => |session_id| if (r.methodAsEnum() == .POST) handler.handleCompleteAuthSession(g_ctx, r, session_id) else respondMethodNotAllowed(r),
+        .poll_auth_session => |session_id| if (r.methodAsEnum() == .GET) handler.handlePollAuthSession(g_ctx, r, session_id) else respondMethodNotAllowed(r),
+        .github_callback => if (r.methodAsEnum() == .GET) handler.handleGitHubCallback(g_ctx, r) else respondMethodNotAllowed(r),
+        .create_workspace => if (r.methodAsEnum() == .POST) handler.handleCreateWorkspace(g_ctx, r) else respondMethodNotAllowed(r),
+        .start_run => if (r.methodAsEnum() == .POST) handler.handleStartRun(g_ctx, r) else respondMethodNotAllowed(r),
+        .list_specs => if (r.methodAsEnum() == .GET) handler.handleListSpecs(g_ctx, r) else respondMethodNotAllowed(r),
+        .retry_run => |run_id| if (r.methodAsEnum() == .POST) handler.handleRetryRun(g_ctx, r, run_id) else respondMethodNotAllowed(r),
+        .get_run => |run_id| if (r.methodAsEnum() == .GET) handler.handleGetRun(g_ctx, r, run_id) else respondMethodNotAllowed(r),
+        .pause_workspace => |workspace_id| if (r.methodAsEnum() == .POST) handler.handlePauseWorkspace(g_ctx, r, workspace_id) else respondMethodNotAllowed(r),
+        .upgrade_workspace_to_scale => |workspace_id| if (r.methodAsEnum() == .POST) handler.handleUpgradeWorkspaceToScale(g_ctx, r, workspace_id) else respondMethodNotAllowed(r),
+        .apply_workspace_billing_event => |workspace_id| if (r.methodAsEnum() == .POST) handler.handleApplyWorkspaceBillingEvent(g_ctx, r, workspace_id) else respondMethodNotAllowed(r),
+        .put_harness_source => |workspace_id| if (r.methodAsEnum() == .PUT) handler.handlePutHarnessSource(g_ctx, r, workspace_id) else respondMethodNotAllowed(r),
+        .compile_harness => |workspace_id| if (r.methodAsEnum() == .POST) handler.handleCompileHarness(g_ctx, r, workspace_id) else respondMethodNotAllowed(r),
+        .activate_harness => |workspace_id| if (r.methodAsEnum() == .POST) handler.handleActivateHarness(g_ctx, r, workspace_id) else respondMethodNotAllowed(r),
+        .get_harness_active => |workspace_id| if (r.methodAsEnum() == .GET) handler.handleGetHarnessActive(g_ctx, r, workspace_id) else respondMethodNotAllowed(r),
+        .sync_workspace => |workspace_id| if (r.methodAsEnum() == .POST) handler.handleSyncSpecs(g_ctx, r, workspace_id) else respondMethodNotAllowed(r),
     }
+    return true;
+}
 
+fn respondMethodNotAllowed(r: zap.Request) void {
+    r.setStatus(.method_not_allowed);
+    r.sendBody("") catch {};
+}
+
+fn respondNotFound(r: zap.Request) void {
     r.setStatus(.not_found);
     r.sendBody(
         \\{"error":{"code":"NOT_FOUND","message":"No such route"}}
     ) catch {};
+}
+
+test "dispatchMatchedRoute route matcher covers billing event endpoint" {
+    const matched = router.match("/v1/workspaces/ws_1/billing/events") orelse return error.TestExpectedEqual;
+    switch (matched) {
+        .apply_workspace_billing_event => |workspace_id| try std.testing.expectEqualStrings("ws_1", workspace_id),
+        else => return error.TestExpectedEqual,
+    }
 }
 
 // ── Server lifecycle ──────────────────────────────────────────────────────

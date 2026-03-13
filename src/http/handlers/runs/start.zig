@@ -97,7 +97,11 @@ pub fn handleStartRun(ctx: *common.Context, r: zap.Request) void {
         return;
     }
 
-    const billing_state = workspace_billing.reconcileWorkspaceBilling(conn, alloc, req.workspace_id, std.time.milliTimestamp(), principal.user_id orelse "api") catch {
+    const billing_state = workspace_billing.reconcileWorkspaceBilling(conn, alloc, req.workspace_id, std.time.milliTimestamp(), principal.user_id orelse "api") catch |err| {
+        if (workspace_billing.errorCode(err)) |code| {
+            common.errorResponse(r, .internal_server_error, code, workspace_billing.errorMessage(err) orelse "Workspace billing failure", req_id);
+            return;
+        }
         common.internalOperationError(r, "Failed to reconcile workspace billing state", req_id);
         return;
     };

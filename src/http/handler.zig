@@ -28,6 +28,7 @@ pub const handleCreateWorkspace = workspace_handlers.handleCreateWorkspace;
 pub const handlePauseWorkspace = workspace_handlers.handlePauseWorkspace;
 pub const handleSyncSpecs = workspace_handlers.handleSyncSpecs;
 pub const handleUpgradeWorkspaceToScale = workspace_handlers.handleUpgradeWorkspaceToScale;
+pub const handleApplyWorkspaceBillingEvent = workspace_handlers.handleApplyWorkspaceBillingEvent;
 pub const handleListSpecs = specs_handlers.handleListSpecs;
 
 pub fn parseSkillSecretRoute(path: []const u8) ?SkillSecretRoute {
