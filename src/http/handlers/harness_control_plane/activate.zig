@@ -3,6 +3,7 @@ const pg = @import("pg");
 const prompt_events = @import("../../../observability/prompt_events.zig");
 const profile_linkage = @import("../../../audit/profile_linkage.zig");
 const entitlements = @import("../../../state/entitlements.zig");
+const workspace_billing = @import("../../../state/workspace_billing.zig");
 const types = @import("types.zig");
 const util = @import("util.zig");
 
@@ -44,6 +45,7 @@ pub fn activateProfile(
     const tenant_id = try row.get([]const u8, 2);
     const compiled_profile_json = try row.get(?[]const u8, 3);
     if (!is_valid) return types.ControlPlaneError.ProfileInvalid;
+    _ = try workspace_billing.reconcileWorkspaceBilling(conn, alloc, workspace_id, std.time.milliTimestamp(), input.activated_by orelse "api");
     entitlements.enforceWithAudit(
         conn,
         alloc,

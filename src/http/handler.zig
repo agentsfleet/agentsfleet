@@ -10,6 +10,7 @@ const posthog_events = @import("../observability/posthog_events.zig");
 const obs_log = @import("../observability/logging.zig");
 const error_codes = @import("../errors/codes.zig");
 const id_format = @import("../types/id_format.zig");
+const workspace_billing = @import("../state/workspace_billing.zig");
 const harness_handlers = @import("handlers/harness_control_plane.zig");
 const skill_secret_handlers = @import("handlers/skill_secrets.zig");
 const common = @import("handlers/common.zig");
@@ -26,6 +27,7 @@ pub const handleRetryRun = runs_handlers.handleRetryRun;
 pub const handleCreateWorkspace = workspace_handlers.handleCreateWorkspace;
 pub const handlePauseWorkspace = workspace_handlers.handlePauseWorkspace;
 pub const handleSyncSpecs = workspace_handlers.handleSyncSpecs;
+pub const handleUpgradeWorkspaceToScale = workspace_handlers.handleUpgradeWorkspaceToScale;
 pub const handleListSpecs = specs_handlers.handleListSpecs;
 
 pub fn parseSkillSecretRoute(path: []const u8) ?SkillSecretRoute {
@@ -621,22 +623,10 @@ pub fn handleGitHubCallback(ctx: *Context, r: zap.Request) void {
         w.deinit();
     }
 
-    {
-        const entitlement_id = id_format.generateEntitlementSnapshotId(alloc) catch {
-            common.internalOperationError(r, "Failed to allocate entitlement id", req_id);
-            return;
-        };
-        var e = conn.query(
-            \\INSERT INTO workspace_entitlements
-            \\  (entitlement_id, workspace_id, plan_tier, max_profiles, max_stages, max_distinct_skills, allow_custom_skills, created_at, updated_at)
-            \\VALUES ($1::uuid, $2, 'FREE', 1, 3, 3, false, $3, $3)
-            \\ON CONFLICT (workspace_id) DO NOTHING
-        , .{ entitlement_id, workspace_id, now_ms }) catch {
-            common.internalOperationError(r, "Failed to provision free entitlement", req_id);
-            return;
-        };
-        e.deinit();
-    }
+    workspace_billing.provisionFreeWorkspace(conn, alloc, workspace_id, "api") catch {
+        common.internalOperationError(r, "Failed to provision free entitlement", req_id);
+        return;
+    };
 
     secrets.store(
         alloc,

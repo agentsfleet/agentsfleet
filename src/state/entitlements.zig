@@ -7,11 +7,13 @@ const id_format = @import("../types/id_format.zig");
 pub const Boundary = enum {
     compile,
     activate,
+    runtime,
 
     fn label(self: Boundary) []const u8 {
         return switch (self) {
             .compile => "COMPILE",
             .activate => "ACTIVATE",
+            .runtime => "RUNTIME",
         };
     }
 };
