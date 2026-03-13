@@ -5,6 +5,7 @@ const id_format = @import("../types/id_format.zig");
 const billing = @import("./workspace_billing.zig");
 
 pub const FREE_PLAN_INITIAL_CREDIT_CENTS: i64 = 1000;
+pub const FREE_PLAN_CENTS_PER_AGENT_SECOND: i64 = 1;
 pub const CREDIT_CURRENCY = "USD";
 
 pub const CreditView = struct {
@@ -99,6 +100,92 @@ pub fn enforceExecutionAllowed(
     return credit;
 }
 
+pub fn deductCompletedRuntimeUsage(
+    conn: *pg.Conn,
+    alloc: std.mem.Allocator,
+    workspace_id: []const u8,
+    run_id: []const u8,
+    attempt: u32,
+    agent_seconds: u64,
+    actor: []const u8,
+) !CreditView {
+    const debit_cents = runtimeUsageCostCents(agent_seconds);
+    if (debit_cents <= 0) return getOrProvisionWorkspaceCredit(conn, alloc, workspace_id);
+
+    const metadata_json = try runtimeDeductionMetadata(alloc, run_id, attempt, agent_seconds, debit_cents);
+    defer alloc.free(metadata_json);
+
+    const existing_audit = try hasAuditEvent(
+        conn,
+        workspace_id,
+        "CREDIT_DEDUCTED",
+        "runtime_completed",
+        metadata_json,
+    );
+    if (existing_audit) return getOrProvisionWorkspaceCredit(conn, alloc, workspace_id);
+
+    const now_ms = std.time.milliTimestamp();
+    const current = try getOrProvisionWorkspaceCredit(conn, alloc, workspace_id);
+    defer alloc.free(current.currency);
+
+    const applied_debit = @min(current.remaining_credit_cents, debit_cents);
+    if (applied_debit <= 0) return .{
+        .currency = try alloc.dupe(u8, current.currency),
+        .initial_credit_cents = current.initial_credit_cents,
+        .consumed_credit_cents = current.consumed_credit_cents,
+        .remaining_credit_cents = current.remaining_credit_cents,
+        .exhausted_at = current.exhausted_at,
+    };
+
+    const next_remaining = current.remaining_credit_cents - applied_debit;
+    const next_exhausted_at = if (next_remaining == 0) current.exhausted_at orelse now_ms else null;
+    try upsertCreditState(conn, alloc, workspace_id, .{
+        .currency = CREDIT_CURRENCY,
+        .initial_credit_cents = current.initial_credit_cents,
+        .consumed_credit_cents = current.consumed_credit_cents + applied_debit,
+        .remaining_credit_cents = next_remaining,
+        .exhausted_at = next_exhausted_at,
+    }, now_ms);
+    try insertAudit(
+        conn,
+        alloc,
+        workspace_id,
+        "CREDIT_DEDUCTED",
+        -applied_debit,
+        next_remaining,
+        "runtime_completed",
+        actor,
+        metadata_json,
+    );
+    if (next_remaining == 0 and current.remaining_credit_cents > 0) {
+        try insertAudit(
+            conn,
+            alloc,
+            workspace_id,
+            "CREDIT_EXHAUSTED",
+            0,
+            0,
+            "runtime_completed",
+            actor,
+            metadata_json,
+        );
+    }
+
+    return .{
+        .currency = try alloc.dupe(u8, CREDIT_CURRENCY),
+        .initial_credit_cents = current.initial_credit_cents,
+        .consumed_credit_cents = current.consumed_credit_cents + applied_debit,
+        .remaining_credit_cents = next_remaining,
+        .exhausted_at = next_exhausted_at,
+    };
+}
+
+pub fn runtimeUsageCostCents(agent_seconds: u64) i64 {
+    if (agent_seconds == 0) return 0;
+    const seconds = std.math.cast(i64, agent_seconds) orelse return std.math.maxInt(i64);
+    return std.math.mul(i64, seconds, FREE_PLAN_CENTS_PER_AGENT_SECOND) catch std.math.maxInt(i64);
+}
+
 fn loadCreditRow(
     conn: *pg.Conn,
     alloc: std.mem.Allocator,
@@ -119,6 +206,26 @@ fn loadCreditRow(
         .remaining_credit_cents = try row.get(i64, 3),
         .exhausted_at = try row.get(?i64, 4),
     };
+}
+
+fn hasAuditEvent(
+    conn: *pg.Conn,
+    workspace_id: []const u8,
+    event_type: []const u8,
+    reason: []const u8,
+    metadata_json: []const u8,
+) !bool {
+    var q = try conn.query(
+        \\SELECT 1
+        \\FROM workspace_credit_audit
+        \\WHERE workspace_id = $1
+        \\  AND event_type = $2
+        \\  AND reason = $3
+        \\  AND metadata_json = $4
+        \\LIMIT 1
+    , .{ workspace_id, event_type, reason, metadata_json });
+    defer q.deinit();
+    return (try q.next()) != null;
 }
 
 fn upsertCreditState(
@@ -191,6 +298,20 @@ fn insertAudit(
     q.deinit();
 }
 
+fn runtimeDeductionMetadata(
+    alloc: std.mem.Allocator,
+    run_id: []const u8,
+    attempt: u32,
+    agent_seconds: u64,
+    debit_cents: i64,
+) ![]u8 {
+    return std.fmt.allocPrint(
+        alloc,
+        "{{\"run_id\":\"{s}\",\"attempt\":{d},\"billable_unit\":\"agent_second\",\"billable_quantity\":{d},\"debit_cents\":{d}}}",
+        .{ run_id, attempt, agent_seconds, debit_cents },
+    );
+}
+
 test "provisionWorkspaceCredit grants initial free credit deterministically" {
     const db_ctx = (try openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
     defer db_ctx.pool.release(db_ctx.conn);
@@ -228,6 +349,96 @@ test "enforceExecutionAllowed blocks exhausted free plan and allows scale" {
     const scale_credit = try enforceExecutionAllowed(db_ctx.conn, std.testing.allocator, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f22", .scale);
     defer std.testing.allocator.free(scale_credit.currency);
     try std.testing.expectEqual(@as(i64, 0), scale_credit.remaining_credit_cents);
+}
+
+test "deductCompletedRuntimeUsage debits free-plan credit once per completed run" {
+    const db_ctx = (try openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.release(db_ctx.conn);
+    defer db_ctx.pool.deinit();
+
+    try createTempCreditTables(db_ctx.conn);
+    try seedWorkspace(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f23");
+    try provisionWorkspaceCredit(db_ctx.conn, std.testing.allocator, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f23", "test");
+
+    const first = try deductCompletedRuntimeUsage(
+        db_ctx.conn,
+        std.testing.allocator,
+        "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f23",
+        "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f93",
+        1,
+        42,
+        "worker",
+    );
+    defer std.testing.allocator.free(first.currency);
+    try std.testing.expectEqual(@as(i64, 42), first.consumed_credit_cents);
+    try std.testing.expectEqual(FREE_PLAN_INITIAL_CREDIT_CENTS - 42, first.remaining_credit_cents);
+
+    const second = try deductCompletedRuntimeUsage(
+        db_ctx.conn,
+        std.testing.allocator,
+        "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f23",
+        "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f93",
+        1,
+        42,
+        "worker",
+    );
+    defer std.testing.allocator.free(second.currency);
+    try std.testing.expectEqual(@as(i64, 42), second.consumed_credit_cents);
+    try std.testing.expectEqual(FREE_PLAN_INITIAL_CREDIT_CENTS - 42, second.remaining_credit_cents);
+
+    {
+        var q = try db_ctx.conn.query(
+            \\SELECT COUNT(*)::BIGINT
+            \\FROM workspace_credit_audit
+            \\WHERE workspace_id = $1
+            \\  AND event_type = 'CREDIT_DEDUCTED'
+        , .{"0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f23"});
+        defer q.deinit();
+        const row = (try q.next()) orelse return error.TestExpectedEqual;
+        try std.testing.expectEqual(@as(i64, 1), try row.get(i64, 0));
+    }
+}
+
+test "deductCompletedRuntimeUsage clamps to zero and records exhaustion" {
+    const db_ctx = (try openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.release(db_ctx.conn);
+    defer db_ctx.pool.deinit();
+
+    try createTempCreditTables(db_ctx.conn);
+    try seedWorkspace(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f24");
+    try upsertCreditState(db_ctx.conn, std.testing.allocator, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f24", .{
+        .currency = CREDIT_CURRENCY,
+        .initial_credit_cents = FREE_PLAN_INITIAL_CREDIT_CENTS,
+        .consumed_credit_cents = 995,
+        .remaining_credit_cents = 5,
+        .exhausted_at = null,
+    }, 123);
+
+    const credit = try deductCompletedRuntimeUsage(
+        db_ctx.conn,
+        std.testing.allocator,
+        "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f24",
+        "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f94",
+        1,
+        30,
+        "worker",
+    );
+    defer std.testing.allocator.free(credit.currency);
+    try std.testing.expectEqual(FREE_PLAN_INITIAL_CREDIT_CENTS, credit.consumed_credit_cents);
+    try std.testing.expectEqual(@as(i64, 0), credit.remaining_credit_cents);
+    try std.testing.expect(credit.exhausted_at != null);
+
+    {
+        var q = try db_ctx.conn.query(
+            \\SELECT COUNT(*)::BIGINT
+            \\FROM workspace_credit_audit
+            \\WHERE workspace_id = $1
+            \\  AND event_type = 'CREDIT_EXHAUSTED'
+        , .{"0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f24"});
+        defer q.deinit();
+        const row = (try q.next()) orelse return error.TestExpectedEqual;
+        try std.testing.expectEqual(@as(i64, 1), try row.get(i64, 0));
+    }
 }
 
 fn openTestConn(alloc: std.mem.Allocator) !?struct { pool: *pg.Pool, conn: *pg.Conn } {

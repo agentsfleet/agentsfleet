@@ -233,6 +233,15 @@ pub fn handleCreateWorkspace(ctx: *common.Context, r: zap.Request) void {
     };
     tenant_q.deinit();
 
+    workspace_billing.enforceFreeWorkspaceCreationAllowed(conn, tenant_id, null) catch |err| {
+        if (workspace_billing.errorCode(err)) |code| {
+            common.errorResponse(r, .forbidden, code, workspace_billing.errorMessage(err) orelse "Workspace billing failure", req_id);
+            return;
+        }
+        common.internalOperationError(r, "Failed to validate free workspace limit", req_id);
+        return;
+    };
+
     const workspace_id = generateWorkspaceId(alloc) catch {
         common.internalOperationError(r, "Failed to allocate workspace id", req_id);
         return;

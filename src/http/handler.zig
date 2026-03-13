@@ -602,6 +602,15 @@ pub fn handleGitHubCallback(ctx: *Context, r: zap.Request) void {
         t.deinit();
     }
 
+    workspace_billing.enforceFreeWorkspaceCreationAllowed(conn, tenant_id, workspace_id) catch |err| {
+        if (workspace_billing.errorCode(err)) |code| {
+            common.errorResponse(r, .forbidden, code, workspace_billing.errorMessage(err) orelse "Workspace billing failure", req_id);
+            return;
+        }
+        common.internalOperationError(r, "Failed to validate free workspace limit", req_id);
+        return;
+    };
+
     {
         const repo_url_opt = r.getParamStr(alloc, "repo_url") catch null;
         const repo_url = repo_url_opt orelse "https://github.com/unknown/unknown";

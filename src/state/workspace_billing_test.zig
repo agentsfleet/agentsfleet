@@ -214,6 +214,49 @@ test "workspace deletion cascades billing state cleanup" {
     }
 }
 
+test "free workspace creation limit blocks second non-scale workspace for same tenant" {
+    const db_ctx = (try openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.release(db_ctx.conn);
+    defer db_ctx.pool.deinit();
+
+    try createTempWorkspaceBillingTables(db_ctx.conn);
+    try seedWorkspaceWithTenant(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f16", "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fa1");
+    try workspace_billing.provisionFreeWorkspace(db_ctx.conn, std.testing.allocator, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f16", "test");
+
+    try std.testing.expectError(
+        error.FreeWorkspaceLimitExceeded,
+        workspace_billing.enforceFreeWorkspaceCreationAllowed(
+            db_ctx.conn,
+            "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fa1",
+            null,
+        ),
+    );
+}
+
+test "free workspace creation limit ignores existing scale workspace and same callback workspace" {
+    const db_ctx = (try openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.release(db_ctx.conn);
+    defer db_ctx.pool.deinit();
+
+    try createTempWorkspaceBillingTables(db_ctx.conn);
+    try seedWorkspaceWithTenant(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f17", "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fa2");
+    _ = try workspace_billing.upgradeWorkspaceToScale(db_ctx.conn, std.testing.allocator, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f17", .{
+        .subscription_id = "sub_scale_999",
+        .actor = "test",
+    });
+
+    try workspace_billing.enforceFreeWorkspaceCreationAllowed(
+        db_ctx.conn,
+        "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fa2",
+        null,
+    );
+    try workspace_billing.enforceFreeWorkspaceCreationAllowed(
+        db_ctx.conn,
+        "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fa2",
+        "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f17",
+    );
+}
+
 fn openTestConn(alloc: std.mem.Allocator) !?struct { pool: *pg.Pool, conn: *pg.Conn } {
     const url = std.process.getEnvVarOwned(alloc, "HANDLER_DB_TEST_URL") catch
         std.process.getEnvVarOwned(alloc, "DATABASE_URL") catch return null;
@@ -233,7 +276,8 @@ fn createTempWorkspaceBillingTables(conn: *pg.Conn) !void {
     {
         var q = try conn.query(
             \\CREATE TEMP TABLE workspaces (
-            \\  workspace_id TEXT PRIMARY KEY
+            \\  workspace_id TEXT PRIMARY KEY,
+            \\  tenant_id TEXT
             \\) ON COMMIT DROP
         , .{});
         q.deinit();
@@ -296,8 +340,16 @@ fn createTempWorkspaceBillingTables(conn: *pg.Conn) !void {
 
 fn seedWorkspace(conn: *pg.Conn, workspace_id: []const u8) !void {
     var q = try conn.query(
-        "INSERT INTO workspaces (workspace_id) VALUES ($1)",
+        "INSERT INTO workspaces (workspace_id, tenant_id) VALUES ($1, 'tenant-test-default')",
         .{workspace_id},
+    );
+    q.deinit();
+}
+
+fn seedWorkspaceWithTenant(conn: *pg.Conn, workspace_id: []const u8, tenant_id: []const u8) !void {
+    var q = try conn.query(
+        "INSERT INTO workspaces (workspace_id, tenant_id) VALUES ($1, $2)",
+        .{ workspace_id, tenant_id },
     );
     q.deinit();
 }
