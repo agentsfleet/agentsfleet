@@ -2,6 +2,7 @@ const std = @import("std");
 const pg = @import("pg");
 const types = @import("../types.zig");
 const state = @import("../state/machine.zig");
+const billing = @import("../state/billing.zig");
 const agents = @import("agents.zig");
 const git = @import("../git/ops.zig");
 const github_auth = @import("../auth/github.zig");
@@ -169,7 +170,16 @@ pub fn executeRun(
         plan_binding.actor,
         plan_result,
     );
-    try state.writeUsage(conn, ctx.run_id, ctx.attempt, plan_binding.actor, plan_result.token_count, plan_result.wall_seconds);
+    try billing.recordRuntimeStageUsage(
+        conn,
+        ctx.workspace_id,
+        ctx.run_id,
+        ctx.attempt,
+        plan_stage.stage_id,
+        plan_binding.actor,
+        plan_result.token_count,
+        plan_result.wall_seconds,
+    );
 
     const plan_path = try std.fmt.allocPrint(run_alloc, "docs/runs/{s}/{s}", .{ ctx.run_id, plan_stage.artifact_name });
     try commitArtifact(run_alloc, conn, ctx, &wt, running, deadline_ms, plan_path, plan_result.content, plan_stage.commit_message, plan_binding.actor, ctx.attempt);
@@ -233,7 +243,16 @@ pub fn executeRun(
             agents.emitNullclawRunEvent(ctx.run_id, ctx.request_id, ctx.trace_id, attempt, stage.stage_id, stage.role_id, binding.actor, stage_result);
             total_tokens += stage_result.token_count;
             total_wall_seconds += stage_result.wall_seconds;
-            try state.writeUsage(conn, ctx.run_id, attempt, binding.actor, stage_result.token_count, stage_result.wall_seconds);
+            try billing.recordRuntimeStageUsage(
+                conn,
+                ctx.workspace_id,
+                ctx.run_id,
+                attempt,
+                stage.stage_id,
+                binding.actor,
+                stage_result.token_count,
+                stage_result.wall_seconds,
+            );
 
             const stage_path = try std.fmt.allocPrint(run_alloc, "docs/runs/{s}/{s}", .{ ctx.run_id, stage.artifact_name });
             try commitArtifact(run_alloc, conn, ctx, &wt, running, deadline_ms, stage_path, stage_result.content, stage.commit_message, binding.actor, attempt);
@@ -261,6 +280,15 @@ pub fn executeRun(
 
         switch (terminal) {
             .done => {
+                try billing.finalizeRunForBilling(
+                    run_alloc,
+                    conn,
+                    ctx.workspace_id,
+                    ctx.run_id,
+                    attempt,
+                    .completed,
+                    "noop",
+                );
                 _ = try state.transition(conn, ctx.run_id, .PR_PREPARED, final_stage_actor, .VALIDATION_PASSED, null);
 
                 const pr_final = try worker_pr_flow.ensurePrForRun(
@@ -334,6 +362,15 @@ pub fn executeRun(
                 return;
             },
             .blocked => {
+                try billing.finalizeRunForBilling(
+                    run_alloc,
+                    conn,
+                    ctx.workspace_id,
+                    ctx.run_id,
+                    attempt,
+                    .non_billable,
+                    "noop",
+                );
                 _ = try state.transition(conn, ctx.run_id, .BLOCKED, .orchestrator, .VALIDATION_FAILED, "blocked by stage transition graph");
                 _ = try state.transition(conn, ctx.run_id, .NOTIFIED_BLOCKED, .orchestrator, .NOTIFICATION_SENT, null);
                 metrics.observeRunTotalWallSeconds(total_wall_seconds);
@@ -341,6 +378,15 @@ pub fn executeRun(
                 return;
             },
             .retry => {
+                try billing.finalizeRunForBilling(
+                    run_alloc,
+                    conn,
+                    ctx.workspace_id,
+                    ctx.run_id,
+                    attempt,
+                    .non_billable,
+                    "noop",
+                );
                 _ = try state.transition(conn, ctx.run_id, .VERIFICATION_FAILED, final_stage_actor, .VALIDATION_FAILED, null);
                 if (attempt >= cfg.max_attempts) break;
 

@@ -10,3 +10,4 @@ pub const profile_linkage_audit_sql = @embedFile("009_profile_linkage_audit.sql"
 pub const trace_context_sql = @embedFile("010_trace_context.sql");
 pub const uuidv7_id_migration_sql = @embedFile("011_uuidv7_id_migration.sql");
 pub const workspace_entitlements_sql = @embedFile("012_workspace_entitlements.sql");
+pub const usage_metering_billing_sql = @embedFile("013_usage_metering_billing.sql");
