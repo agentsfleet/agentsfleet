@@ -11,3 +11,4 @@ pub const trace_context_sql = @embedFile("010_trace_context.sql");
 pub const uuidv7_id_migration_sql = @embedFile("011_uuidv7_id_migration.sql");
 pub const workspace_entitlements_sql = @embedFile("012_workspace_entitlements.sql");
 pub const usage_metering_billing_sql = @embedFile("013_usage_metering_billing.sql");
+pub const workspace_billing_state_sql = @embedFile("014_workspace_billing_state.sql");

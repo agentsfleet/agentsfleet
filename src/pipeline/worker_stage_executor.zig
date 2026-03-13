@@ -363,6 +363,14 @@ pub fn executeRun(
                     .{ ctx.run_id, ctx.spec_id, attempt, pr_final, total_tokens, total_wall_seconds },
                 ) catch |err| {
                     obs_log.logWarnErr(.worker, err, "run_summary.md alloc failed (non-fatal) run_id={s}", .{ctx.run_id});
+                    try billing.finalizeRunForBilling(
+                        run_alloc,
+                        conn,
+                        ctx.workspace_id,
+                        ctx.run_id,
+                        attempt,
+                        .completed,
+                    );
                     log.info("run completed run_id={s} pr_url={s}", .{ ctx.run_id, pr_final });
                     var done_detail: [160]u8 = undefined;
                     const done_detail_slice = std.fmt.bufPrint(&done_detail, "request_id={s} trace_id={s} state=done total_wall_seconds={d}", .{ ctx.request_id, ctx.trace_id, total_wall_seconds }) catch "run_done";
@@ -385,6 +393,14 @@ pub fn executeRun(
                     obs_log.logWarnErr(.worker, err, "run_summary.md commit failed (non-fatal) run_id={s}", .{ctx.run_id});
                 };
 
+                try billing.finalizeRunForBilling(
+                    run_alloc,
+                    conn,
+                    ctx.workspace_id,
+                    ctx.run_id,
+                    attempt,
+                    .completed,
+                );
                 log.info("run completed run_id={s} pr_url={s}", .{ ctx.run_id, pr_final });
                 var done_detail: [160]u8 = undefined;
                 const done_detail_slice = std.fmt.bufPrint(&done_detail, "request_id={s} trace_id={s} state=done total_wall_seconds={d}", .{ ctx.request_id, ctx.trace_id, total_wall_seconds }) catch "run_done";
@@ -409,7 +425,6 @@ pub fn executeRun(
                     ctx.run_id,
                     attempt,
                     .non_billable,
-                    "noop",
                 );
                 _ = try state.transition(conn, ctx.run_id, .BLOCKED, .orchestrator, .VALIDATION_FAILED, "blocked by stage transition graph");
                 _ = try state.transition(conn, ctx.run_id, .NOTIFIED_BLOCKED, .orchestrator, .NOTIFICATION_SENT, null);
@@ -433,7 +448,6 @@ pub fn executeRun(
                     ctx.run_id,
                     attempt,
                     .non_billable,
-                    "noop",
                 );
                 _ = try state.transition(conn, ctx.run_id, .VERIFICATION_FAILED, final_stage_actor, .VALIDATION_FAILED, null);
                 if (attempt >= cfg.max_attempts) break;
@@ -456,6 +470,14 @@ pub fn executeRun(
         }
     }
 
+    try billing.finalizeRunForBilling(
+        run_alloc,
+        conn,
+        ctx.workspace_id,
+        ctx.run_id,
+        attempt,
+        .non_billable,
+    );
     _ = try state.transition(conn, ctx.run_id, .BLOCKED, .orchestrator, .RETRIES_EXHAUSTED, null);
     _ = try state.transition(conn, ctx.run_id, .NOTIFIED_BLOCKED, .orchestrator, .NOTIFICATION_SENT, null);
 

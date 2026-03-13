@@ -1,6 +1,7 @@
 const std = @import("std");
 const zap = @import("zap");
 const policy = @import("../../state/policy.zig");
+const workspace_billing = @import("../../state/workspace_billing.zig");
 const obs_log = @import("../../observability/logging.zig");
 const error_codes = @import("../../errors/codes.zig");
 const id_format = @import("../../types/id_format.zig");
@@ -24,6 +25,69 @@ fn buildInstallUrl(alloc: std.mem.Allocator, app_slug: []const u8, workspace_id:
         "https://github.com/apps/{s}/installations/new?state={s}",
         .{ app_slug, workspace_id },
     );
+}
+
+pub fn handleUpgradeWorkspaceToScale(ctx: *common.Context, r: zap.Request, workspace_id: []const u8) void {
+    var arena = std.heap.ArenaAllocator.init(ctx.alloc);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    const req_id = common.requestId(alloc);
+
+    const principal = common.authenticate(alloc, r, ctx) catch |err| {
+        common.writeAuthError(r, req_id, err);
+        return;
+    };
+    if (!common.requireUuidV7Id(r, req_id, workspace_id, "workspace_id")) return;
+
+    const Req = struct {
+        subscription_id: []const u8,
+    };
+
+    const body = r.body orelse {
+        common.errorResponse(r, .bad_request, error_codes.ERR_INVALID_REQUEST, "Request body required", req_id);
+        return;
+    };
+    const parsed = std.json.parseFromSlice(Req, alloc, body, .{}) catch {
+        common.errorResponse(r, .bad_request, error_codes.ERR_INVALID_REQUEST, "Malformed JSON", req_id);
+        return;
+    };
+    defer parsed.deinit();
+
+    const conn = ctx.pool.acquire() catch {
+        common.internalDbUnavailable(r, req_id);
+        return;
+    };
+    defer ctx.pool.release(conn);
+
+    if (!common.authorizeWorkspaceAndSetTenantContext(conn, principal, workspace_id)) {
+        common.errorResponse(r, .forbidden, error_codes.ERR_FORBIDDEN, "Workspace access denied", req_id);
+        return;
+    }
+
+    const upgraded = workspace_billing.upgradeWorkspaceToScale(conn, alloc, workspace_id, .{
+        .subscription_id = parsed.value.subscription_id,
+        .actor = principal.user_id orelse "api",
+    }) catch |err| switch (err) {
+        error.InvalidSubscriptionId => {
+            common.errorResponse(r, .bad_request, error_codes.ERR_INVALID_REQUEST, "subscription_id is required", req_id);
+            return;
+        },
+        else => {
+            common.internalOperationError(r, "Failed to upgrade workspace to Scale", req_id);
+            return;
+        },
+    };
+    defer alloc.free(upgraded.plan_sku);
+    defer if (upgraded.subscription_id) |v| alloc.free(v);
+
+    common.writeJson(r, .ok, .{
+        .workspace_id = workspace_id,
+        .plan_tier = upgraded.plan_tier.label(),
+        .billing_status = upgraded.billing_status.label(),
+        .plan_sku = upgraded.plan_sku,
+        .subscription_id = upgraded.subscription_id,
+        .request_id = req_id,
+    });
 }
 
 pub fn handleCreateWorkspace(ctx: *common.Context, r: zap.Request) void {
@@ -96,20 +160,10 @@ pub fn handleCreateWorkspace(ctx: *common.Context, r: zap.Request) void {
     };
     ws_q.deinit();
 
-    const entitlement_id = id_format.generateEntitlementSnapshotId(alloc) catch {
-        common.internalOperationError(r, "Failed to allocate entitlement id", req_id);
-        return;
-    };
-    var ent_q = conn.query(
-        \\INSERT INTO workspace_entitlements
-        \\  (entitlement_id, workspace_id, plan_tier, max_profiles, max_stages, max_distinct_skills, allow_custom_skills, created_at, updated_at)
-        \\VALUES ($1::uuid, $2, 'FREE', 1, 3, 3, false, $3, $3)
-        \\ON CONFLICT (workspace_id) DO NOTHING
-    , .{ entitlement_id, workspace_id, now_ms }) catch {
+    workspace_billing.provisionFreeWorkspace(conn, alloc, workspace_id, "api") catch {
         common.internalOperationError(r, "Failed to provision free entitlement", req_id);
         return;
     };
-    ent_q.deinit();
 
     const github_app_slug = std.process.getEnvVarOwned(alloc, "GITHUB_APP_SLUG") catch "usezombie";
     const install_url = buildInstallUrl(alloc, github_app_slug, workspace_id) catch {
@@ -246,6 +300,13 @@ pub fn handleSyncSpecs(ctx: *common.Context, r: zap.Request, workspace_id: []con
         return;
     }
 
+    const billing_state = workspace_billing.reconcileWorkspaceBilling(conn, alloc, workspace_id, std.time.milliTimestamp(), "api") catch {
+        common.internalOperationError(r, "Failed to reconcile workspace billing state", req_id);
+        return;
+    };
+    defer alloc.free(billing_state.plan_sku);
+    defer if (billing_state.subscription_id) |v| alloc.free(v);
+
     var ws = conn.query(
         "SELECT repo_url, default_branch FROM workspaces WHERE workspace_id = $1",
         .{workspace_id},
@@ -283,6 +344,10 @@ pub fn handleSyncSpecs(ctx: *common.Context, r: zap.Request, workspace_id: []con
         .synced_count = @as(i64, 0),
         .total_pending = total_pending,
         .specs = &[_]u8{},
+        .plan_tier = billing_state.plan_tier.label(),
+        .billing_status = billing_state.billing_status.label(),
+        .plan_sku = billing_state.plan_sku,
+        .grace_expires_at = billing_state.grace_expires_at,
         .request_id = req_id,
     });
 }

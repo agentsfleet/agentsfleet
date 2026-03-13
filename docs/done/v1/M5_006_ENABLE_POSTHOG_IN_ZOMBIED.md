@@ -3,8 +3,8 @@
 **Prototype:** v1.0.0
 **Milestone:** M5
 **Workstream:** 006
-**Date:** Mar 06, 2026 (updated Mar 07, 2026)
-**Status:** IN_PROGRESS
+**Date:** Mar 06, 2026 (updated Mar 13, 2026)
+**Status:** DONE
 **Priority:** P1 — operational analytics baseline
 **Batch:** B2 — needs M5_001 and M5_002
 **Depends on:** M5_001 (Build `posthog-zig` Analytics SDK for Zig), M5_002 (Operate Multi-Tenant Harness Control Plane)
@@ -27,22 +27,22 @@ Implement one working telemetry function: `zombied` emits deterministic run/cont
 
 ## 2.0 Verification Units
 
-**Status:** IN_PROGRESS
+**Status:** DONE
 
 **Dimensions:**
 - 2.1 DONE Unit test: event envelope contains required IDs (`workspace_id`, `run_id`)
-- 2.2 IN_PROGRESS Integration test: successful and failed runs emit expected events once
-- 2.3 IN_PROGRESS Integration test: PostHog outage does not fail core run execution path
+- 2.2 DONE Integration test: successful and failed runs emit expected events once
+- 2.3 DONE Integration test: PostHog outage does not fail core run execution path
 
 ---
 
 ## 3.0 Acceptance Criteria
 
-**Status:** IN_PROGRESS
+**Status:** DONE
 
-- [ ] 3.1 Core `zombied` lifecycle events are visible in PostHog with stable schema
+- [x] 3.1 Core `zombied` lifecycle events are visible in PostHog with stable schema
 - [x] 3.2 Analytics path is non-blocking and outage-tolerant
-- [ ] 3.3 Demo evidence captured for run lifecycle events in PostHog
+- [x] 3.3 Demo evidence captured for run lifecycle events in PostHog
 
 ---
 
@@ -226,3 +226,14 @@ No other PostHog env vars needed for v0.1. Host defaults to `https://us.i.postho
 - `POSTHOG_API_KEY` not set: client is `null`, all capture calls are skipped with zero overhead
 
 The analytics path can never block, crash, or slow down run execution.
+
+---
+
+## 6.0 Implementation Notes (Mar 13, 2026: 11:39 AM)
+
+- `src/cmd/serve.zig` and `src/cmd/worker.zig` initialize the PostHog client with environment-gated fail-open behavior.
+- `src/http/handlers/runs/start.zig` and `src/http/handlers/runs/retry.zig` emit `run_started` and `run_retried`.
+- `src/http/handler.zig` emits `entitlement_rejected` and `profile_activated` for harness control-plane flows.
+- `src/pipeline/worker_stage_executor.zig` emits `agent_completed`, `run_completed`, and `run_failed` from worker execution paths.
+- `src/observability/posthog_events.zig` centralizes event schema and no-op behavior when analytics is disabled.
+- `docs/OBSERVABILITY.md` already reflects M5_006 as complete and documents the unified PostHog surface model.

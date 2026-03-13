@@ -4,6 +4,7 @@ const harness = @import("../../../harness/control_plane.zig");
 const prompt_events = @import("../../../observability/prompt_events.zig");
 const profile_linkage = @import("../../../audit/profile_linkage.zig");
 const entitlements = @import("../../../state/entitlements.zig");
+const workspace_billing = @import("../../../state/workspace_billing.zig");
 const types = @import("types.zig");
 const util = @import("util.zig");
 
@@ -74,6 +75,7 @@ pub fn compileProfile(
     const compile_job_id = try util.generateCompileJobId(alloc);
     if (!util.isSupportedCompileJobId(compile_job_id)) return types.ControlPlaneError.InvalidIdShape;
     const now_ms = std.time.milliTimestamp();
+    _ = try workspace_billing.reconcileWorkspaceBilling(conn, alloc, workspace_id, now_ms, "api");
     var outcome = harness.compileHarnessMarkdown(alloc, source_markdown) catch return types.ControlPlaneError.CompileFailed;
     defer outcome.deinit(alloc);
     entitlements.enforceWithAudit(

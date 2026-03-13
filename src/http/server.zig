@@ -174,6 +174,23 @@ fn dispatch(r: zap.Request) !void {
         return;
     }
 
+    // Route: /v1/workspaces/{workspace_id}/billing/scale
+    if (std.mem.startsWith(u8, path, prefix_workspaces) and
+        std.mem.endsWith(u8, path, "/billing/scale"))
+    {
+        if (r.methodAsEnum() == .POST) {
+            const inner = path[prefix_workspaces.len .. path.len - "/billing/scale".len];
+            if (inner.len > 0 and std.mem.indexOfScalar(u8, inner, '/') == null) {
+                handler.handleUpgradeWorkspaceToScale(g_ctx, r, inner);
+                return;
+            }
+        } else {
+            r.setStatus(.method_not_allowed);
+            r.sendBody("") catch {};
+            return;
+        }
+    }
+
     // Route: /v1/workspaces/{workspace_id}/harness/source
     if (std.mem.startsWith(u8, path, prefix_workspaces) and
         std.mem.endsWith(u8, path, "/harness/source"))

@@ -1,5 +1,6 @@
 const std = @import("std");
 const pg = @import("pg");
+const billing = @import("../state/billing.zig");
 const state = @import("../state/machine.zig");
 const agents = @import("agents.zig");
 const github_auth = @import("../auth/github.zig");
@@ -174,6 +175,16 @@ pub fn processNextRun(
         });
         if (err == worker_runtime.WorkerError.ShutdownRequested or err == worker_runtime.WorkerError.RunDeadlineExceeded) {
             const reason_note = if (err == worker_runtime.WorkerError.RunDeadlineExceeded) "run deadline exceeded" else "shutdown requested";
+            billing.finalizeRunForBilling(
+                claim_alloc,
+                conn,
+                workspace_id,
+                run_id,
+                attempt,
+                .non_billable,
+            ) catch |billing_err| {
+                obs_log.logWarnErr(.worker, billing_err, "billing finalize failed run_id={s}", .{run_id});
+            };
             _ = state.transition(conn, run_id, .BLOCKED, .orchestrator, .AGENT_TIMEOUT, reason_note) catch |tx_err| {
                 obs_log.logWarnErr(.worker, tx_err, "shutdown transition failed run_id={s}", .{run_id});
             };
@@ -203,6 +214,16 @@ pub fn processNextRun(
             @errorName(err),
             0,
         );
+        billing.finalizeRunForBilling(
+            claim_alloc,
+            conn,
+            workspace_id,
+            run_id,
+            attempt,
+            .non_billable,
+        ) catch |billing_err| {
+            obs_log.logWarnErr(.worker, billing_err, "billing finalize failed run_id={s}", .{run_id});
+        };
         _ = state.transition(conn, run_id, .BLOCKED, .orchestrator, classified.reason_code, note) catch |tx_err| {
             obs_log.logWarnErr(.worker, tx_err, "failure transition failed run_id={s}", .{run_id});
         };
