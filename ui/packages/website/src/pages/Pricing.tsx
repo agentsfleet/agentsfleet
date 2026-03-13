@@ -1,6 +1,7 @@
 import FAQ from "../components/FAQ";
 import { Button } from "@usezombie/design-system";
 import { DOCS_QUICKSTART_URL, MAILTO_SCALE_WAITLIST } from "../config";
+import { trackSignupCompleted } from "../analytics/posthog";
 
 const tiers = [
   {
@@ -64,7 +65,11 @@ export default function Pricing() {
                 Join waitlist — I want this now
               </Button>
             ) : (
-              <Button to={DOCS_QUICKSTART_URL} style={{ marginTop: "0.75rem" }}>
+              <Button
+                to={DOCS_QUICKSTART_URL}
+                style={{ marginTop: "0.75rem" }}
+                onClick={() => trackSignupCompleted({ source: "pricing_tier_start_free", surface: "pricing", mode: "humans" })}
+              >
                 Start free
               </Button>
             )}
@@ -82,7 +87,11 @@ export default function Pricing() {
         <h2>Not sure which plan?</h2>
         <p>Start with Free for fast onboarding. Move to Scale for multi-repo orchestration, richer harness control, and saved team learnings.</p>
         <div className="cta-row">
-          <a className="cta" href={DOCS_QUICKSTART_URL}>
+          <a
+            className="cta"
+            href={DOCS_QUICKSTART_URL}
+            onClick={() => trackSignupCompleted({ source: "pricing_bottom_start_free", surface: "pricing", mode: "humans" })}
+          >
             Start free
           </a>
           <a className="cta ghost" href={MAILTO_SCALE_WAITLIST}>

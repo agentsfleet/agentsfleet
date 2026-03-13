@@ -130,10 +130,10 @@ Bus pattern remains valid if posthog-zig proves operationally painful. Revisit i
 
 | Event | Trigger |
 |---|---|
-| `signup_started` | Signup form opened |
-| `signup_completed` | Account created |
-| `team_pilot_booking_started` | CTA click |
-| `zombiectl_install` | `curl /install` via Vercel edge function |
+| `signup_started` | Website CTA click to `app.usezombie.com` (for example hero/header Mission Control actions) |
+| `signup_completed` | Website CTA click to quickstart/onboarding flow (`docs.usezombie.com/quickstart`) |
+| `team_pilot_booking_started` | Team pilot CTA click (`mailto:team@usezombie.com`) |
+| `navigation_clicked` | Website navigation click (for example Docs link in header) |
 
 `distinct_id`: anonymous until login, then aliased to Clerk user ID via `posthog.identify()`.
 

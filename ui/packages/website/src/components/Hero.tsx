@@ -1,5 +1,6 @@
 import { Terminal } from "@usezombie/design-system";
 import { APP_BASE_URL, DOCS_QUICKSTART_URL } from "../config";
+import { trackSignupCompleted, trackSignupStarted } from "../analytics/posthog";
 
 type Props = {
   mode: "humans" | "agents";
@@ -31,7 +32,17 @@ export default function Hero({ mode }: Props) {
           </p>
 
           <div className="hero-cta-row">
-            <a className="cta hero-cta-primary" href={primaryCtaHref}>
+            <a
+              className="cta hero-cta-primary"
+              href={primaryCtaHref}
+              onClick={() => {
+                if (mode === "humans") {
+                  trackSignupStarted({ source: "hero_primary", surface: "hero", mode });
+                  return;
+                }
+                trackSignupCompleted({ source: "hero_primary_docs", surface: "hero", mode });
+              }}
+            >
               Connect GitHub, automate PRs
             </a>
           </div>
