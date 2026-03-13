@@ -3,6 +3,7 @@
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { UserButton } from "@clerk/nextjs";
+import { trackNavigationClicked } from "@/lib/analytics/posthog";
 import {
   LayoutDashboardIcon,
   BoxIcon,
@@ -70,6 +71,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
             target="_blank"
             rel="noopener noreferrer"
             className="mc-header-link"
+            onClick={() => trackNavigationClicked({ source: "app_header_docs", surface: "app_header", target: "docs" })}
           >
             Docs
           </a>
@@ -78,6 +80,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
             target="_blank"
             rel="noopener noreferrer"
             className="mc-header-link"
+            onClick={() => trackNavigationClicked({ source: "app_header_marketing", surface: "app_header", target: "marketing_site" })}
           >
             UseZombie.com
           </a>
@@ -104,6 +107,13 @@ export default function Shell({ children }: { children: React.ReactNode }) {
               key={href}
               href={href}
               className={`mc-nav-item${isActive(href) ? " active" : ""}`}
+              onClick={() =>
+                trackNavigationClicked({
+                  source: `app_sidebar_${href === "/" ? "root" : href.replaceAll("/", "_").replace(/^_+/, "")}`,
+                  surface: "app_sidebar",
+                  target: href,
+                })
+              }
             >
               <Icon size={15} />
               {label}
@@ -119,6 +129,13 @@ export default function Shell({ children }: { children: React.ReactNode }) {
               href={href}
               className="mc-nav-item"
               {...(external ? { target: "_blank", rel: "noopener noreferrer" } : {})}
+              onClick={() =>
+                trackNavigationClicked({
+                  source: `app_sidebar_more_${label.toLowerCase().replace(/\s+/g, "_")}`,
+                  surface: "app_sidebar_more",
+                  target: href,
+                })
+              }
             >
               <Icon size={15} />
               {label}

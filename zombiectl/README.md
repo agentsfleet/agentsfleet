@@ -31,6 +31,11 @@ Global flags:
 - `--help`
 - `--version`
 
+Analytics env vars (optional):
+- `ZOMBIE_POSTHOG_KEY` PostHog project API key (`phc_...`)
+- `ZOMBIE_POSTHOG_ENABLED` set `false`/`0` to disable telemetry even when key exists
+- `ZOMBIE_POSTHOG_HOST` override PostHog host (default `https://us.i.posthog.com`)
+
 ## Verify
 
 ```bash

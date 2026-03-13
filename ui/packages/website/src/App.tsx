@@ -7,6 +7,7 @@ import Terms from "./pages/Terms";
 import Footer from "./components/Footer";
 import { Button, AnimatedIcon, ZombieHandIcon } from "@usezombie/design-system";
 import { APP_BASE_URL, DOCS_URL } from "./config";
+import { trackNavigationClicked, trackSignupStarted } from "./analytics/posthog";
 
 type Mode = "humans" | "agents";
 
@@ -95,12 +96,20 @@ export default function App() {
           <NavLink to="/">Home</NavLink>
           <NavLink to="/pricing">Pricing</NavLink>
           <NavLink to="/agents">Agents</NavLink>
-          <a href={DOCS_URL} target="_blank" rel="noopener noreferrer">Docs</a>
+          <a
+            href={DOCS_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={() => trackNavigationClicked({ source: "header_nav_docs", surface: "header", target: "docs" })}
+          >
+            Docs
+          </a>
         </nav>
 
         <div className="header-actions">
           <Button
             to={APP_BASE_URL}
+            onClick={() => trackSignupStarted({ source: "header_mission_control", surface: "header", mode })}
             className={mode === "humans" ? "header-mission-control z-animated-icon-trigger" : "header-mission-control z-animated-icon-trigger is-hidden"}
             aria-hidden={mode !== "humans"}
             tabIndex={mode === "humans" ? undefined : -1}

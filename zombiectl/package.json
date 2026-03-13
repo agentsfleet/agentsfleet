@@ -13,5 +13,8 @@
     "test": "bun test",
     "build": "node --check ./src/cli.js && node --check ./bin/zombiectl.js"
   },
+  "dependencies": {
+    "posthog-node": "^5.10.0"
+  },
   "license": "MIT"
 }
