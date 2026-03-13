@@ -7,7 +7,7 @@ const oidc = @import("../auth/oidc.zig");
 pub const ValidationError = error{
     MissingApiKey,
     InvalidApiKeyList,
-    MissingClerkJwksUrl,
+    MissingOidcJwksUrl,
     InvalidOidcProvider,
     MissingEncryptionMasterKey,
     InvalidEncryptionMasterKey,
@@ -50,11 +50,11 @@ pub const ServeConfig = struct {
     ready_max_queue_depth: ?i64,
     ready_max_queue_age_ms: ?i64,
     app_url: []u8,
-    clerk_enabled: bool,
+    oidc_enabled: bool,
     oidc_provider: oidc.Provider,
-    clerk_jwks_url: ?[]u8,
-    clerk_issuer: ?[]u8,
-    clerk_audience: ?[]u8,
+    oidc_jwks_url: ?[]u8,
+    oidc_issuer: ?[]u8,
+    oidc_audience: ?[]u8,
     encryption_master_key: []u8,
     encryption_master_key_v2: ?[]u8,
     active_kek_version: u32,
@@ -87,18 +87,33 @@ pub const ServeConfig = struct {
         if (ready_max_queue_depth) |v| if (v <= 0) return ValidationError.InvalidReadyMaxQueueDepth;
         if (ready_max_queue_age_ms) |v| if (v <= 0) return ValidationError.InvalidReadyMaxQueueAgeMs;
 
-        const clerk_secret_key = std.process.getEnvVarOwned(alloc, "CLERK_SECRET_KEY") catch null;
-        const clerk_enabled = if (clerk_secret_key) |raw| blk: {
-            defer alloc.free(raw);
-            break :blk std.mem.trim(u8, raw, " \t\r\n").len > 0;
-        } else false;
+        const oidc_jwks_url = std.process.getEnvVarOwned(alloc, "OIDC_JWKS_URL") catch null;
+        const oidc_issuer = std.process.getEnvVarOwned(alloc, "OIDC_ISSUER") catch null;
+        errdefer if (oidc_issuer) |v| alloc.free(v);
+        const oidc_audience = std.process.getEnvVarOwned(alloc, "OIDC_AUDIENCE") catch null;
+        errdefer if (oidc_audience) |v| alloc.free(v);
+        const oidc_provider_raw = std.process.getEnvVarOwned(alloc, "OIDC_PROVIDER") catch null;
+        errdefer if (oidc_provider_raw) |v| alloc.free(v);
 
-        const api_keys = if (clerk_enabled)
-            std.process.getEnvVarOwned(alloc, "API_KEY") catch try alloc.dupe(u8, "")
+        const oidc_requested =
+            oidc_jwks_url != null or
+            oidc_issuer != null or
+            oidc_audience != null or
+            oidc_provider_raw != null;
+        const oidc_enabled = if (oidc_jwks_url) |raw|
+            std.mem.trim(u8, raw, " \t\r\n").len > 0
         else
-            try requiredEnvOwned(alloc, "API_KEY", ValidationError.MissingApiKey);
+            false;
+        if (oidc_requested and !oidc_enabled) return ValidationError.MissingOidcJwksUrl;
+
+        const api_keys = blk: {
+            const configured = std.process.getEnvVarOwned(alloc, "API_KEY") catch null;
+            if (configured) |keys| break :blk keys;
+            if (oidc_enabled) break :blk try alloc.dupe(u8, "");
+            return ValidationError.MissingApiKey;
+        };
         errdefer alloc.free(api_keys);
-        if (!clerk_enabled and !hasUsableApiKey(api_keys)) return ValidationError.InvalidApiKeyList;
+        if (api_keys.len > 0 and !hasUsableApiKey(api_keys)) return ValidationError.InvalidApiKeyList;
 
         const encryption_master_key = try requiredEnvOwned(alloc, "ENCRYPTION_MASTER_KEY", ValidationError.MissingEncryptionMasterKey);
         errdefer alloc.free(encryption_master_key);
@@ -134,18 +149,9 @@ pub const ServeConfig = struct {
         const pipeline_profile_path = try envOrDefaultOwned(alloc, "PIPELINE_PROFILE_PATH", "./config/pipeline-default.json");
         errdefer alloc.free(pipeline_profile_path);
 
-        const clerk_jwks_url = if (clerk_enabled)
-            try requiredEnvOwned(alloc, "CLERK_JWKS_URL", ValidationError.MissingClerkJwksUrl)
-        else
-            std.process.getEnvVarOwned(alloc, "CLERK_JWKS_URL") catch null;
-        errdefer if (clerk_jwks_url) |v| alloc.free(v);
-        const clerk_issuer = std.process.getEnvVarOwned(alloc, "CLERK_ISSUER") catch null;
-        errdefer if (clerk_issuer) |v| alloc.free(v);
-        const clerk_audience = std.process.getEnvVarOwned(alloc, "CLERK_AUDIENCE") catch null;
-        errdefer if (clerk_audience) |v| alloc.free(v);
+        errdefer if (oidc_jwks_url) |v| alloc.free(v);
         const oidc_provider = blk: {
-            const raw = std.process.getEnvVarOwned(alloc, "OIDC_PROVIDER") catch break :blk oidc.Provider.clerk;
-            defer alloc.free(raw);
+            const raw = oidc_provider_raw orelse break :blk oidc.Provider.clerk;
             break :blk oidc.parseProvider(std.mem.trim(u8, raw, " \t\r\n")) catch return ValidationError.InvalidOidcProvider;
         };
 
@@ -172,11 +178,11 @@ pub const ServeConfig = struct {
             .ready_max_queue_depth = ready_max_queue_depth,
             .ready_max_queue_age_ms = ready_max_queue_age_ms,
             .app_url = app_url,
-            .clerk_enabled = clerk_enabled,
+            .oidc_enabled = oidc_enabled,
             .oidc_provider = oidc_provider,
-            .clerk_jwks_url = clerk_jwks_url,
-            .clerk_issuer = clerk_issuer,
-            .clerk_audience = clerk_audience,
+            .oidc_jwks_url = oidc_jwks_url,
+            .oidc_issuer = oidc_issuer,
+            .oidc_audience = oidc_audience,
             .encryption_master_key = encryption_master_key,
             .encryption_master_key_v2 = encryption_master_key_v2,
             .active_kek_version = active_kek_version,
@@ -192,9 +198,9 @@ pub const ServeConfig = struct {
         self.alloc.free(self.config_dir);
         self.alloc.free(self.pipeline_profile_path);
         self.alloc.free(self.app_url);
-        if (self.clerk_jwks_url) |v| self.alloc.free(v);
-        if (self.clerk_issuer) |v| self.alloc.free(v);
-        if (self.clerk_audience) |v| self.alloc.free(v);
+        if (self.oidc_jwks_url) |v| self.alloc.free(v);
+        if (self.oidc_issuer) |v| self.alloc.free(v);
+        if (self.oidc_audience) |v| self.alloc.free(v);
         self.alloc.free(self.encryption_master_key);
         if (self.encryption_master_key_v2) |v| self.alloc.free(v);
     }
@@ -203,8 +209,8 @@ pub const ServeConfig = struct {
         switch (err) {
             ValidationError.MissingApiKey => std.debug.print("fatal: API_KEY not set\n", .{}),
             ValidationError.InvalidApiKeyList => std.debug.print("fatal: API_KEY has no usable keys\n", .{}),
-            ValidationError.MissingClerkJwksUrl => std.debug.print("fatal: CLERK_JWKS_URL not set while CLERK_SECRET_KEY is configured\n", .{}),
-            ValidationError.InvalidOidcProvider => std.debug.print("fatal: OIDC_PROVIDER is invalid (supported: clerk)\n", .{}),
+            ValidationError.MissingOidcJwksUrl => std.debug.print("fatal: OIDC_JWKS_URL is required and must be non-empty\n", .{}),
+            ValidationError.InvalidOidcProvider => std.debug.print("fatal: OIDC_PROVIDER is invalid (supported: {s})\n", .{oidc.supportedProviderList()}),
             ValidationError.MissingEncryptionMasterKey => std.debug.print("fatal: ENCRYPTION_MASTER_KEY not set\n", .{}),
             ValidationError.InvalidEncryptionMasterKey => std.debug.print("fatal: ENCRYPTION_MASTER_KEY must be 64 hex chars\n", .{}),
             ValidationError.MissingGitHubAppId => std.debug.print("fatal: GITHUB_APP_ID not set\n", .{}),
@@ -306,4 +312,127 @@ test "parseI16Env parses signed short values" {
 
     const value = try parseI16Env(alloc, "API_HTTP_THREADS", 1, ValidationError.InvalidApiHttpThreads);
     try std.testing.expectEqual(@as(i16, 3), value);
+}
+
+const test_encryption_master_key = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
+test "ServeConfig.load accepts custom provider" {
+    const env = [_][2][]const u8{
+        .{ "OIDC_JWKS_URL", "https://idp.example.com/.well-known/jwks.json" },
+        .{ "OIDC_PROVIDER", "custom" },
+        .{ "ENCRYPTION_MASTER_KEY", test_encryption_master_key },
+        .{ "GITHUB_APP_ID", "12345" },
+        .{ "GITHUB_APP_PRIVATE_KEY", "pem" },
+    };
+    try setTestEnv(&env);
+    defer unsetTestEnv(&env);
+
+    var cfg = try ServeConfig.load(std.testing.allocator);
+    defer cfg.deinit();
+
+    try std.testing.expect(cfg.oidc_enabled);
+    try std.testing.expectEqual(oidc.Provider.custom, cfg.oidc_provider);
+}
+
+test "ServeConfig.load rejects invalid provider deterministically" {
+    const env = [_][2][]const u8{
+        .{ "OIDC_JWKS_URL", "https://idp.example.com/.well-known/jwks.json" },
+        .{ "OIDC_PROVIDER", "not-real" },
+        .{ "ENCRYPTION_MASTER_KEY", test_encryption_master_key },
+        .{ "GITHUB_APP_ID", "12345" },
+        .{ "GITHUB_APP_PRIVATE_KEY", "pem" },
+    };
+    try setTestEnv(&env);
+    defer unsetTestEnv(&env);
+
+    try std.testing.expectError(ValidationError.InvalidOidcProvider, ServeConfig.load(std.testing.allocator));
+}
+
+test "ServeConfig.load rejects provider without required OIDC_JWKS_URL" {
+    const env = [_][2][]const u8{
+        .{ "OIDC_PROVIDER", "custom" },
+        .{ "ENCRYPTION_MASTER_KEY", test_encryption_master_key },
+        .{ "GITHUB_APP_ID", "12345" },
+        .{ "GITHUB_APP_PRIVATE_KEY", "pem" },
+    };
+    try setTestEnv(&env);
+    defer unsetTestEnv(&env);
+
+    try std.testing.expectError(ValidationError.MissingOidcJwksUrl, ServeConfig.load(std.testing.allocator));
+}
+
+test "ServeConfig.load rejects empty OIDC_JWKS_URL" {
+    const env = [_][2][]const u8{
+        .{ "OIDC_JWKS_URL", "" },
+        .{ "ENCRYPTION_MASTER_KEY", test_encryption_master_key },
+        .{ "GITHUB_APP_ID", "12345" },
+        .{ "GITHUB_APP_PRIVATE_KEY", "pem" },
+    };
+    try setTestEnv(&env);
+    defer unsetTestEnv(&env);
+
+    try std.testing.expectError(ValidationError.MissingOidcJwksUrl, ServeConfig.load(std.testing.allocator));
+}
+
+test "ServeConfig.load accepts api key only auth mode" {
+    const env = [_][2][]const u8{
+        .{ "API_KEY", "dev-key" },
+        .{ "ENCRYPTION_MASTER_KEY", test_encryption_master_key },
+        .{ "GITHUB_APP_ID", "12345" },
+        .{ "GITHUB_APP_PRIVATE_KEY", "pem" },
+    };
+    try setTestEnv(&env);
+    defer unsetTestEnv(&env);
+
+    var cfg = try ServeConfig.load(std.testing.allocator);
+    defer cfg.deinit();
+
+    try std.testing.expect(!cfg.oidc_enabled);
+    try std.testing.expectEqualStrings("dev-key", cfg.api_keys);
+}
+
+test "ServeConfig.load accepts oidc plus api key auth mode" {
+    const env = [_][2][]const u8{
+        .{ "OIDC_JWKS_URL", "https://idp.example.com/.well-known/jwks.json" },
+        .{ "OIDC_PROVIDER", "custom" },
+        .{ "API_KEY", "issued-key" },
+        .{ "ENCRYPTION_MASTER_KEY", test_encryption_master_key },
+        .{ "GITHUB_APP_ID", "12345" },
+        .{ "GITHUB_APP_PRIVATE_KEY", "pem" },
+    };
+    try setTestEnv(&env);
+    defer unsetTestEnv(&env);
+
+    var cfg = try ServeConfig.load(std.testing.allocator);
+    defer cfg.deinit();
+
+    try std.testing.expect(cfg.oidc_enabled);
+    try std.testing.expectEqual(oidc.Provider.custom, cfg.oidc_provider);
+    try std.testing.expectEqualStrings("issued-key", cfg.api_keys);
+}
+
+test "ServeConfig.load rejects empty api key when explicitly configured with oidc" {
+    const env = [_][2][]const u8{
+        .{ "OIDC_JWKS_URL", "https://idp.example.com/.well-known/jwks.json" },
+        .{ "API_KEY", "   " },
+        .{ "ENCRYPTION_MASTER_KEY", test_encryption_master_key },
+        .{ "GITHUB_APP_ID", "12345" },
+        .{ "GITHUB_APP_PRIVATE_KEY", "pem" },
+    };
+    try setTestEnv(&env);
+    defer unsetTestEnv(&env);
+
+    try std.testing.expectError(ValidationError.InvalidApiKeyList, ServeConfig.load(std.testing.allocator));
+}
+
+fn setTestEnv(env: []const [2][]const u8) !void {
+    for (env) |entry| {
+        try std.posix.setenv(entry[0], entry[1], true);
+    }
+}
+
+fn unsetTestEnv(env: []const [2][]const u8) void {
+    for (env) |entry| {
+        std.posix.unsetenv(entry[0]);
+    }
 }

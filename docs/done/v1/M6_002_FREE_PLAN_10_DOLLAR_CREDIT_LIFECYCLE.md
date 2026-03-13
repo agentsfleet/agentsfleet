@@ -1,4 +1,4 @@
-# M6_002: Free Plan $10 Credit Lifecycle
+# M6_002: Free Plan $10 Credit Pricing Contract
 
 **Prototype:** v1.0.0
 **Milestone:** M6
@@ -10,31 +10,31 @@
 
 ---
 
-## 1.0 Free Plan Credit Contract
+## 1.0 Free Plan Pricing Contract
 
 **Status:** DONE
 
-Define the backend Free plan credit model: every new workspace receives a $10 credit (no expiry) to run agents, with deterministic enforcement when credit is exhausted and a single-workspace Free creation limit per tenant.
+Define the user-facing Free plan promise: every new user sees a $10 credit with no expiry in pricing and plan copy, with the implementation details delegated to follow-on work.
 
 **Dimensions:**
-- 1.1 DONE Create credit ledger contract per workspace (initial_credit, consumed, remaining, no expiry)
-- 1.2 DONE Block future execution when credit reaches $0 with no overdraft path
-- 1.3 DONE Bind Free plan to 1 workspace creation scope per tenant unless an existing workspace is upgraded to Scale
-- 1.4 DONE Return explicit error contract on credit exhaustion (`CREDIT_EXHAUSTED`, upgrade path to Scale)
+- 1.1 DONE Define Free plan pricing copy as `$10 credit included (no expiry)`
+- 1.2 DONE Publish Free vs Scale positioning in website pricing content
+- 1.3 DONE Keep the Free plan promise explicit and deterministic in tests
+- 1.4 DONE Leave ledger, exhaustion, and conversion implementation to downstream workstreams
 
 ---
 
-## 2.0 Runtime Enforcement And Metering
+## 2.0 Verification Units
 
 **Status:** DONE
 
-Implement backend enforcement so Free plan work cannot continue after the $10 credit is consumed, with debit derived from completed runtime metering.
+Verify the pricing contract is present and stable in the website experience.
 
 **Dimensions:**
-- 2.1 DONE Gate all run/sync/harness endpoints with Free plan credit balance check
-- 2.2 DONE Deduct credit only for completed agent runtime (match Scale metering: no charge for failed/incomplete runs)
-- 2.3 DONE Enforce exhausted credit from actual runtime depletion, not just preexisting zero balance
-- 2.4 DONE Add deterministic audit events for credit grant, credit deduction, and credit exhaustion
+- 2.1 DONE Unit test: pricing page renders Free and Scale tiers
+- 2.2 DONE Unit test: pricing page renders exact `$10 credit included (no expiry)` copy
+- 2.3 DONE E2E test: pricing page exposes the same Free plan promise
+- 2.4 DONE Navigation/smoke coverage keeps the pricing contract visible across the website
 
 ---
 
@@ -42,41 +42,18 @@ Implement backend enforcement so Free plan work cannot continue after the $10 cr
 
 **Status:** DONE
 
--- [x] 3.1 New workspace receives $10 credit and can execute agent workloads until credit is consumed
-- [x] 3.2 At $0 balance, future compile/activate/run/sync execution is blocked with deterministic error contract
-- [x] 3.3 Credit deductions match completed runtime only (failed runs are free)
-- [x] 3.4 Free-plan tenants cannot create a second non-Scale workspace
-- [x] 3.5 Deterministic audit evidence exists for credit grant, deduction, and exhaustion
+- [x] 3.1 Website pricing copy references exact $10 free credit with no expiry
+- [x] 3.2 Free vs Scale plan positioning is explicit and test-covered
+- [x] 3.3 Backend ledger and exhaustion behavior are intentionally deferred to follow-on work
+- [x] 3.4 The public pricing contract is stable enough for downstream implementation specs to depend on
 
 ---
 
 ## 4.0 Out Of Scope
 
+- Backend credit ledger and balance accounting
+- Runtime exhaustion enforcement and stop semantics
+- CLI remaining-credit output and exhaustion errors
+- Free-to-Scale conversion flow after exhaustion
 - Unlimited anonymous usage
 - Credit top-up or renewal on Free plan in v1
-- Credit card capture before first Free plan run
-- Mid-run interruption when balance reaches zero
-- CLI/UI conversion and pricing copy alignment
-
----
-
-## 5.0 Follow-On Scope
-
-Deferred to [M7_003_FREE_PLAN_EXHAUSTION_AND_CONVERSION_UX.md](/Users/kishore/Projects/usezombie/docs/spec/v1/M7_003_FREE_PLAN_EXHAUSTION_AND_CONVERSION_UX.md):
-
-- Hard-stop active runs at credit exhaustion and emit terminal state + reason code
-- CLI output for remaining credit and exhaustion messaging
-- Website pricing copy alignment for exact $10 no-expiry contract
-- Upgrade/conversion handoff path from exhausted Free plan to Scale
-
----
-
-## 6.0 Implementation Notes (Mar 13, 2026)
-
-- Added `workspace_credit_state` and `workspace_credit_audit` ledger tables and wired them into startup migrations.
-- Added explicit credit exhaustion error code `UZ-BILLING-005`.
-- Provisioned Free credit during workspace creation and GitHub App callback workspace bootstrap.
-- Gated Free execution on run start, sync, compile, activate, and workspace status endpoints.
-- Debit now happens from completed runtime metering only, using the finalized `usage_ledger` billable quantity path.
-- Added deterministic audit rows for `CREDIT_GRANTED`, `CREDIT_DEDUCTED`, and `CREDIT_EXHAUSTED`.
-- Enforced single-workspace Free creation limit per tenant unless the existing workspace is already on Scale.

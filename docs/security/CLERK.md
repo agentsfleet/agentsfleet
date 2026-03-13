@@ -1,21 +1,28 @@
-# Clerk Security
+# OIDC Security
 
 ## Why This Exists
 
-API identity verification needs a centralized issuer and signed JWT validation to prevent unauthorized control-plane mutation.
+API identity verification needs a centralized issuer and signed JWT validation to prevent unauthorized control-plane mutation across supported OIDC providers.
 
 ## Architecture
 
 ```
 src/auth/
   jwks.zig      Generic OIDC JWKS verifier (RS256). Provider-agnostic.
-  claims.zig    Provider-specific claim extraction (Clerk: tenant_id, org_id).
-  clerk.zig     Thin wrapper: jwks.Verifier + claims.extractClerkClaims -> Principal.
+  claims.zig    Provider claim normalization (Clerk/custom).
+  clerk.zig     Clerk adapter kept for direct adapter tests and doctor checks.
+  oidc.zig      Vendor-neutral verifier facade + provider routing.
   sessions.zig  In-memory auth session store for CLI login polling flow.
 ```
 
-Swapping identity providers means writing a new `claims.zig` extractor and wrapper.
-The JWKS verification core (`jwks.zig`) stays unchanged.
+The JWKS verification core (`jwks.zig`) stays unchanged. Runtime routing now supports:
+- `clerk`
+- `custom`
+
+The active adapter is selected with `OIDC_PROVIDER`. Provider transport config is vendor-neutral:
+- `OIDC_JWKS_URL`
+- `OIDC_ISSUER`
+- `OIDC_AUDIENCE`
 
 ## Authentication Flow: API Request
 
@@ -29,12 +36,12 @@ sequenceDiagram
     Z->>Z: Extract Bearer token
     Z->>Z: Split JWT (header.payload.signature)
     Z->>Z: Decode header, verify alg=RS256
-    Z->>JW: Lookup kid (fetch from Clerk if cache stale)
+    Z->>JW: Lookup kid (fetch from active OIDC provider if cache stale)
     JW-->>Z: RSA public key
     Z->>Z: Verify RS256 signature
     Z->>Z: Parse claims (sub, iss, aud, exp)
     Z->>Z: Check issuer, audience, expiry
-    Z->>Z: Extract Clerk claims (tenant_id, org_id)
+    Z->>Z: Normalize provider claims (tenant_id, workspace_id, org_id, aud, scopes)
     Z->>Z: Authorize workspace via tenant_id
     Z-->>C: 200 OK / 401 Unauthorized
 ```
@@ -44,11 +51,11 @@ Step-by-step:
 1. Extract Bearer token from Authorization header
 2. Split JWT into header, payload, signature (base64url)
 3. Decode header, reject if `alg` is not `RS256`
-4. Lookup `kid` in cached JWKS (HTTP fetch from Clerk if cache expired, 6hr TTL)
+4. Lookup `kid` in cached JWKS (HTTP fetch from active OIDC provider if cache expired, 6hr TTL)
 5. Verify RS256 signature against JWKS public key
 6. Parse standard claims: `sub`, `iss`, `aud`, `exp`
 7. Check issuer match, audience match, token not expired
-8. Extract Clerk-specific claims: `tenant_id` (from `metadata.tenant_id` or top-level), `org_id`
+8. Normalize provider claims into a canonical identity contract: `tenant_id`, `workspace_id`, `org_id`, `audience`, `scopes`
 9. Authorize workspace access: query DB for workspace ownership by `tenant_id`
 
 ## Authentication Flow: CLI Login (signup or signin)
@@ -131,7 +138,9 @@ Key points:
 | `POST /v1/workspaces/:id:pause`           | Yes           |
 | All other `/v1/*`                         | Yes           |
 
-Auth tries Clerk JWT first, falls back to API key (`common.authenticate()`).
+Auth accepts two user auth types:
+- OIDC JWT via the configured provider
+- bearer `API_KEY` for users/operators issued API keys
 
 ## New User (First Signup)
 
@@ -144,12 +153,13 @@ Auth tries Clerk JWT first, falls back to API key (`common.authenticate()`).
 
 ## Decisions
 
-1. Clerk JWT verification for API authentication in hardened environments.
+1. OIDC JWT verification for API authentication in hardened environments.
 2. JWKS endpoint required and validated; cached with 6-hour TTL.
 3. Clear error mapping for token expiry, signature, and JWKS failures.
 4. Provider-agnostic split: swapping IdP is a config change, not a rewrite.
-5. Empty token in session complete is rejected (handler validates non-empty).
-6. Session store caps at 64 concurrent sessions to prevent resource exhaustion.
+5. Separate bearer `API_KEY` auth remains available for issued user/operator API keys.
+6. Empty token in session complete is rejected (handler validates non-empty).
+7. Session store caps at 64 concurrent sessions to prevent resource exhaustion.
 
 ## What This Prevents
 
@@ -166,15 +176,16 @@ Auth tries Clerk JWT first, falls back to API key (`common.authenticate()`).
 
 | Env Var             | Required | Default                        |
 |---------------------|----------|--------------------------------|
-| `CLERK_SECRET_KEY`  | Yes      | (enables Clerk auth when set)  |
-| `CLERK_JWKS_URL`    | Yes*     | (required when Clerk enabled)  |
-| `CLERK_ISSUER`      | No       | (skips issuer check if unset)  |
-| `CLERK_AUDIENCE`    | No       | (skips audience check if unset)|
+| `OIDC_PROVIDER`     | No       | `clerk` (default), `custom` |
+| `OIDC_JWKS_URL`     | Yes*     | Active-provider JWKS URL |
+| `OIDC_ISSUER`       | No       | Active-provider issuer check |
+| `OIDC_AUDIENCE`     | No       | Active-provider audience check |
+| `API_KEY`           | No       | Bearer API key auth when issued/configured |
 | `APP_URL`           | No       | `https://app.usezombie.com`    |
 
 ## Test Coverage
 
-97 auth-related tests across `jwks.zig`, `claims.zig`, `clerk.zig`, `sessions.zig`:
+Auth coverage includes `jwks.zig`, `claims.zig`, `oidc.zig`, `clerk.zig`, and `sessions.zig`, including:
 
 - JWT signature verification (valid, expired, tampered)
 - OWASP attack vectors (alg:none, alg switching, missing kid)
@@ -183,7 +194,9 @@ Auth tries Clerk JWT first, falls back to API key (`common.authenticate()`).
 - Injection payloads (SQL injection in sub, XSS, null bytes, 10KB DoS)
 - JWKS parsing (truncated, empty modulus, null keys, duplicate kids)
 - RS256 edge cases (wrong modulus, empty sig, length mismatch)
-- Clerk claims (metadata.tenant_id, top-level, missing, non-JSON)
+- Clerk claim normalization (metadata.tenant_id, top-level, missing, non-JSON)
+- Custom provider claim normalization (nested and namespaced tenant/workspace claims, aud arrays, scope arrays)
+- Runtime config parsing for supported and invalid `OIDC_PROVIDER` values
 - Session store (create, poll, complete, max limit, double complete, injection payloads, independence)
 
 ## Verification

@@ -1,7 +1,7 @@
 const std = @import("std");
 
 const db = @import("../db/pool.zig");
-const clerk_auth = @import("../auth/clerk.zig");
+const oidc_auth = @import("../auth/oidc.zig");
 const env_vars = @import("../config/env_vars.zig");
 const queue_redis = @import("../queue/redis.zig");
 
@@ -299,44 +299,61 @@ pub fn run(alloc: std.mem.Allocator) !void {
     }
 
     {
-        const clerk_secret = std.process.getEnvVarOwned(alloc, "CLERK_SECRET_KEY") catch null;
-        if (clerk_secret) |secret| {
-            defer alloc.free(secret);
-            if (std.mem.trim(u8, secret, " \t\r\n").len > 0) {
-                try appendCheck(alloc, &results, "clerk_secret_key", true, "CLERK_SECRET_KEY set", &ok);
-                const jwks_url = std.process.getEnvVarOwned(alloc, "CLERK_JWKS_URL") catch null;
-                if (jwks_url) |url| {
-                    defer alloc.free(url);
-                    if (url.len == 0) {
-                        try appendCheck(alloc, &results, "clerk_jwks_url", false, "CLERK_JWKS_URL is empty", &ok);
-                    } else {
-                        var verifier = clerk_auth.Verifier.init(alloc, .{
-                            .jwks_url = url,
-                        });
-                        defer verifier.deinit();
-                        var jwks_ok = true;
-                        verifier.checkJwksConnectivity() catch {
-                            try appendCheck(alloc, &results, "clerk_jwks_reachability", false, "CLERK JWKS fetch failed", &ok);
-                            jwks_ok = false;
-                        };
-                        if (jwks_ok) {
-                            try appendCheck(alloc, &results, "clerk_jwks_reachability", true, "Clerk JWKS reachable", &ok);
-                        }
-                    }
-                } else {
-                    try appendCheck(alloc, &results, "clerk_jwks_url", false, "CLERK_JWKS_URL not set", &ok);
+        const oidc_provider_raw = std.process.getEnvVarOwned(alloc, "OIDC_PROVIDER") catch null;
+        defer if (oidc_provider_raw) |v| alloc.free(v);
+        const oidc_provider = blk: {
+            const raw = oidc_provider_raw orelse break :blk oidc_auth.Provider.clerk;
+            break :blk oidc_auth.parseProvider(std.mem.trim(u8, raw, " \t\r\n")) catch {
+                try appendCheck(alloc, &results, "oidc_provider", false, "OIDC_PROVIDER is invalid", &ok);
+                break :blk null;
+            };
+        };
+
+        var any_auth_configured = false;
+
+        const jwks_url = std.process.getEnvVarOwned(alloc, "OIDC_JWKS_URL") catch null;
+        if (jwks_url) |url| {
+            defer alloc.free(url);
+            any_auth_configured = true;
+            if (std.mem.trim(u8, url, " \t\r\n").len == 0) {
+                try appendCheck(alloc, &results, "oidc_jwks_url", false, "OIDC_JWKS_URL is empty", &ok);
+            } else {
+                if (oidc_provider) |provider| {
+                    const provider_name = @tagName(provider);
+                    const detail = try std.fmt.allocPrint(alloc, "OIDC_PROVIDER={s}", .{provider_name});
+                    defer alloc.free(detail);
+                    try appendCheck(alloc, &results, "oidc_provider", true, detail, &ok);
                 }
-            } else {
-                try appendCheck(alloc, &results, "clerk_secret_key", false, "CLERK_SECRET_KEY is empty", &ok);
+
+                var verifier = oidc_auth.Verifier.init(alloc, .{
+                    .provider = oidc_provider orelse .clerk,
+                    .jwks_url = url,
+                });
+                defer verifier.deinit();
+                var jwks_ok = true;
+                verifier.checkJwksConnectivity() catch {
+                    try appendCheck(alloc, &results, "oidc_jwks_reachability", false, "OIDC JWKS fetch failed", &ok);
+                    jwks_ok = false;
+                };
+                if (jwks_ok) {
+                    try appendCheck(alloc, &results, "oidc_jwks_reachability", true, "OIDC JWKS reachable", &ok);
+                }
             }
-        } else {
-            const key = std.process.getEnvVarOwned(alloc, "API_KEY") catch null;
-            if (key) |k| {
-                defer alloc.free(k);
-                try appendCheck(alloc, &results, "api_key_fallback", true, "API_KEY set (dev fallback)", &ok);
+        }
+
+        const key = std.process.getEnvVarOwned(alloc, "API_KEY") catch null;
+        if (key) |k| {
+            defer alloc.free(k);
+            any_auth_configured = true;
+            if (std.mem.trim(u8, k, " \t\r\n").len == 0) {
+                try appendCheck(alloc, &results, "api_key", false, "API_KEY is empty", &ok);
             } else {
-                try appendCheck(alloc, &results, "api_key_fallback", false, "API_KEY not set (required when Clerk is disabled)", &ok);
+                try appendCheck(alloc, &results, "api_key", true, "API_KEY configured", &ok);
             }
+        }
+
+        if (!any_auth_configured) {
+            try appendCheck(alloc, &results, "auth_config", false, "Set OIDC_JWKS_URL or API_KEY", &ok);
         }
     }
 

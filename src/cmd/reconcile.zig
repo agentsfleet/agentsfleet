@@ -244,7 +244,7 @@ fn renderDaemonMetrics(alloc: std.mem.Allocator, state: *DaemonState) ![]u8 {
     errdefer list.deinit(alloc);
     try list.appendSlice(alloc, base);
 
-    const writer = list.writer();
+    const writer = list.writer(alloc);
     try appendMetric(writer, "zombied_reconcile_last_attempt_timestamp_ms", "gauge", "Last reconcile attempt timestamp in unix milliseconds.", state.last_attempt_ms.load(.acquire));
     try appendMetric(writer, "zombied_reconcile_last_success_timestamp_ms", "gauge", "Last successful reconcile timestamp in unix milliseconds.", state.last_success_ms.load(.acquire));
     try appendMetric(writer, "zombied_reconcile_last_dead_lettered", "gauge", "Rows dead-lettered by the latest reconcile tick.", state.last_dead_lettered.load(.acquire));
@@ -386,14 +386,15 @@ fn emitResult(
     );
 
     // Structured JSON to stdout for machine parsing (cron output capture, CloudWatch, etc.)
-    const stdout = std.io.getStdOut();
-    var buf: [512]u8 = undefined;
+    var stdout_buf: [512]u8 = undefined;
+    var stdout_writer = std.fs.File.stdout().writer(&stdout_buf);
     const json = std.fmt.bufPrint(
-        &buf,
+        &stdout_buf,
         "{{\"event\":\"reconcile\",\"status\":\"{s}\",\"dead_lettered\":{d},\"elapsed_ms\":{d},\"error\":\"{s}\"}}\n",
         .{ status, dead_lettered, elapsed_ms, err_name },
     ) catch return;
-    stdout.writeAll(json) catch {};
+    stdout_writer.interface.writeAll(json) catch {};
+    stdout_writer.interface.flush() catch {};
 
     // OTLP push if configured — fire-and-forget.
     pushOtelMetrics(alloc, dead_lettered);

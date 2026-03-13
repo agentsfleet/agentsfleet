@@ -103,34 +103,42 @@ fn parseBearerToken(r: zap.Request) ?[]const u8 {
     return provided;
 }
 
-fn authenticateApiKey(
-    _: std.mem.Allocator,
-    r: zap.Request,
-    ctx: *Context,
-) AuthError!AuthPrincipal {
-    const provided = parseBearerToken(r) orelse return AuthError.Unauthorized;
-
-    // Backward compatible behavior for non-empty env key list until DB keys are provisioned.
-    var it = std.mem.tokenizeScalar(u8, ctx.api_keys, ',');
+fn matchApiKey(provided: []const u8, configured_keys: []const u8) bool {
+    var it = std.mem.tokenizeScalar(u8, configured_keys, ',');
     while (it.next()) |candidate_raw| {
         const candidate = std.mem.trim(u8, candidate_raw, " \t");
         if (candidate.len == 0) continue;
-        if (!std.mem.eql(u8, provided, candidate)) continue;
-        return .{
-            .mode = .api_key,
-            .user_id = null,
-            .tenant_id = null,
-            .workspace_scope_id = null,
-        };
+        if (std.mem.eql(u8, provided, candidate)) return true;
     }
+    return false;
+}
 
-    return AuthError.Unauthorized;
+fn authenticateApiKey(provided: []const u8, ctx: *Context) AuthError!AuthPrincipal {
+    if (!matchApiKey(provided, ctx.api_keys)) return AuthError.Unauthorized;
+    return .{
+        .mode = .api_key,
+        .user_id = null,
+        .tenant_id = null,
+        .workspace_scope_id = null,
+    };
 }
 
 pub fn authenticate(alloc: std.mem.Allocator, r: zap.Request, ctx: *Context) AuthError!AuthPrincipal {
+    const provided = parseBearerToken(r) orelse return AuthError.Unauthorized;
+    if (authenticateApiKey(provided, ctx)) |principal| {
+        return principal;
+    } else |err| switch (err) {
+        AuthError.Unauthorized => {},
+        else => return err,
+    }
+
     if (ctx.oidc) |verifier| {
         const auth = r.getHeader("authorization") orelse return AuthError.Unauthorized;
-        const principal = verifier.verifyAuthorization(alloc, auth) catch |err| return mapOidcVerifyError(err);
+        const principal = verifier.verifyAuthorization(alloc, auth) catch |err| switch (err) {
+            error.TokenExpired => return AuthError.TokenExpired,
+            error.JwksFetchFailed, error.JwksParseFailed => return AuthError.AuthServiceUnavailable,
+            else => return AuthError.Unauthorized,
+        };
         if (principal.tenant_id) |tenant_id| {
             if (!id_format.isSupportedTenantId(tenant_id)) return AuthError.Unauthorized;
         }
@@ -145,7 +153,16 @@ pub fn authenticate(alloc: std.mem.Allocator, r: zap.Request, ctx: *Context) Aut
         };
     }
 
-    return authenticateApiKey(alloc, r, ctx);
+    return AuthError.Unauthorized;
+}
+
+test "matchApiKey accepts configured key in rotation list" {
+    try std.testing.expect(matchApiKey("key-b", "key-a, key-b, key-c"));
+}
+
+test "matchApiKey rejects empty and non-matching candidates" {
+    try std.testing.expect(!matchApiKey("key-z", "key-a, , key-b"));
+    try std.testing.expect(!matchApiKey("key-a", ""));
 }
 
 pub fn requireUuidV7Id(
@@ -178,18 +195,21 @@ pub fn mapOidcVerifyError(err: anyerror) AuthError {
 }
 
 pub fn authorizeWorkspace(conn: *pg.Conn, principal: AuthPrincipal, workspace_id: []const u8) bool {
-    var q = if (principal.tenant_id) |tenant_id|
-        conn.query(
-            "SELECT 1 FROM workspaces WHERE workspace_id = $1 AND tenant_id = $2",
-            .{ workspace_id, tenant_id },
-        )
-    else
-        conn.query(
+    var q = blk: {
+        if (principal.tenant_id) |tenant_id| {
+            break :blk conn.query(
+                "SELECT 1 FROM workspaces WHERE workspace_id = $1 AND tenant_id = $2",
+                .{ workspace_id, tenant_id },
+            ) catch return false;
+        }
+        break :blk conn.query(
             "SELECT 1 FROM workspaces WHERE workspace_id = $1",
             .{workspace_id},
         ) catch return false;
+    };
     defer q.deinit();
-    if ((q.next() catch null) == null) return false;
+    const row = (q.next() catch return false) orelse return false;
+    _ = row;
 
     if (principal.workspace_scope_id) |scoped_workspace_id| {
         if (!std.mem.eql(u8, scoped_workspace_id, workspace_id)) return false;
@@ -207,7 +227,7 @@ pub fn authorizeWorkspaceAndSetTenantContext(conn: *pg.Conn, principal: AuthPrin
     const tenant_id = principal.tenant_id orelse blk: {
         var lookup = conn.query("SELECT tenant_id FROM workspaces WHERE workspace_id = $1", .{workspace_id}) catch return false;
         defer lookup.deinit();
-        const row = (lookup.next() catch null) orelse return false;
+        const row = (lookup.next() catch return false) orelse return false;
         break :blk row.get([]u8, 0) catch return false;
     };
     if (!setTenantSessionContext(conn, tenant_id)) return false;
@@ -283,7 +303,7 @@ test "mapOidcVerifyError maps signature failures to unauthorized" {
     try std.testing.expectEqual(AuthError.Unauthorized, mapOidcVerifyError(oidc.VerifyError.SignatureInvalid));
 }
 
-test "integration: api key workspace scoping blocks cross-workspace access" {
+test "integration: oidc workspace scoping blocks cross-workspace access" {
     const db_ctx = (try openHandlerTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
     defer db_ctx.pool.release(db_ctx.conn);
     defer db_ctx.pool.deinit();
@@ -306,7 +326,7 @@ test "integration: api key workspace scoping blocks cross-workspace access" {
     }
 
     const principal = AuthPrincipal{
-        .mode = .api_key,
+        .mode = .jwt_oidc,
         .tenant_id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01",
         .workspace_scope_id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11",
     };

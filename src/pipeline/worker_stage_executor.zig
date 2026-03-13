@@ -311,7 +311,6 @@ pub fn executeRun(
                     ctx.run_id,
                     attempt,
                     .completed,
-                    "noop",
                 );
                 _ = try state.transition(conn, ctx.run_id, .PR_PREPARED, final_stage_actor, .VALIDATION_PASSED, null);
 
