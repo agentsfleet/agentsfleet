@@ -15,20 +15,16 @@ const ServeMigrationDecision = enum {
     run_required,
 };
 
-pub fn canonicalMigrations() [12]db.Migration {
+pub fn canonicalMigrations() [8]db.Migration {
     const schema = @import("schema");
     return .{
         .{ .version = 1, .sql = schema.initial_sql },
         .{ .version = 2, .sql = schema.vault_sql },
-        .{ .version = 3, .sql = schema.request_correlation_sql },
         .{ .version = 4, .sql = schema.side_effect_ledger_sql },
         .{ .version = 5, .sql = schema.side_effect_outbox_sql },
         .{ .version = 6, .sql = schema.harness_control_plane_sql },
         .{ .version = 7, .sql = schema.rls_tenant_isolation_sql },
-        .{ .version = 8, .sql = schema.run_snapshot_version_sql },
         .{ .version = 9, .sql = schema.profile_linkage_audit_sql },
-        .{ .version = 10, .sql = schema.trace_context_sql },
-        .{ .version = 11, .sql = schema.uuidv7_id_migration_sql },
         .{ .version = 12, .sql = schema.workspace_entitlements_sql },
     };
 }
@@ -106,8 +102,8 @@ test "migrateOnStartEnabledFromEnv parses known values" {
 
 test "unit: migration guard allows startup when schema is clean" {
     const decision = try decideServeMigrationPolicy(.{
-        .expected_versions = 12,
-        .applied_versions = 12,
+        .expected_versions = 8,
+        .applied_versions = 8,
         .latest_expected_version = 12,
         .latest_applied_version = 12,
         .has_failed_migrations = false,
@@ -119,8 +115,8 @@ test "unit: migration guard allows startup when schema is clean" {
 
 test "integration: startup allows clean schema with no pending migrations" {
     const decision = try decideServeMigrationPolicy(.{
-        .expected_versions = 12,
-        .applied_versions = 12,
+        .expected_versions = 8,
+        .applied_versions = 8,
         .latest_expected_version = 12,
         .latest_applied_version = 12,
         .has_failed_migrations = false,
@@ -132,7 +128,7 @@ test "integration: startup allows clean schema with no pending migrations" {
 
 test "integration: startup blocks when migrations are pending and MIGRATE_ON_START disabled" {
     try std.testing.expectError(MigrationGuardError.MigrationPending, decideServeMigrationPolicy(.{
-        .expected_versions = 12,
+        .expected_versions = 8,
         .applied_versions = 6,
         .latest_expected_version = 12,
         .latest_applied_version = 6,
@@ -144,7 +140,7 @@ test "integration: startup blocks when migrations are pending and MIGRATE_ON_STA
 
 test "integration: startup blocks when partial failed migration state exists" {
     try std.testing.expectError(MigrationGuardError.MigrationFailed, decideServeMigrationPolicy(.{
-        .expected_versions = 12,
+        .expected_versions = 8,
         .applied_versions = 6,
         .latest_expected_version = 12,
         .latest_applied_version = 6,
@@ -156,7 +152,7 @@ test "integration: startup blocks when partial failed migration state exists" {
 
 test "integration: startup blocks on concurrent migration race when lock unavailable" {
     try std.testing.expectError(MigrationGuardError.MigrationLockUnavailable, decideServeMigrationPolicy(.{
-        .expected_versions = 12,
+        .expected_versions = 8,
         .applied_versions = 3,
         .latest_expected_version = 12,
         .latest_applied_version = 3,
@@ -168,7 +164,7 @@ test "integration: startup blocks on concurrent migration race when lock unavail
 
 test "integration: startup with pending migrations proceeds when enabled and lock available" {
     const decision = try decideServeMigrationPolicy(.{
-        .expected_versions = 12,
+        .expected_versions = 8,
         .applied_versions = 3,
         .latest_expected_version = 12,
         .latest_applied_version = 3,

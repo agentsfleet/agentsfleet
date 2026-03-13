@@ -156,19 +156,19 @@ test "integration: prompt lifecycle events are append-only and auditable" {
 
     emitBestEffort(db_ctx.conn, .{
         .event_type = .prompt_birth,
-        .workspace_id = "ws_1",
-        .tenant_id = "tenant_1",
+        .workspace_id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11",
+        .tenant_id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01",
         .profile_id = "profile_1",
-        .profile_version_id = "pver_1",
+        .profile_version_id = "0195b4ba-8d3a-7f13-9abc-2b3e1e0a6f98",
         .metadata_json = "{}",
         .ts_ms = std.time.milliTimestamp(),
     });
     emitBestEffort(db_ctx.conn, .{
         .event_type = .prompt_applied,
-        .workspace_id = "ws_1",
-        .tenant_id = "tenant_1",
+        .workspace_id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11",
+        .tenant_id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01",
         .profile_id = "profile_1",
-        .profile_version_id = "pver_1",
+        .profile_version_id = "0195b4ba-8d3a-7f13-9abc-2b3e1e0a6f98",
         .metadata_json = "{}",
         .ts_ms = std.time.milliTimestamp(),
     });

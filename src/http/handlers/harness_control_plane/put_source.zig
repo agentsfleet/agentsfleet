@@ -17,7 +17,7 @@ pub fn putSource(
     const ws_row = (try ws.next()) orelse return types.ControlPlaneError.WorkspaceNotFound;
     const tenant_id = try ws_row.get([]const u8, 0);
 
-    const profile_id = try util.normalizeProfileId(alloc, workspace_id, input.profile_id);
+    const profile_id = try util.normalizeProfileId(alloc, input.profile_id);
     errdefer alloc.free(profile_id);
     const profile_name = input.name orelse "Workspace Harness";
     const now_ms = std.time.milliTimestamp();
@@ -37,7 +37,7 @@ pub fn putSource(
     );
     defer vq.deinit();
     const next_version: i32 = if (try vq.next()) |row| (try row.get(i32, 0)) + 1 else 1;
-    const profile_version_id = try util.prefixedId(alloc, "pver");
+    const profile_version_id = try util.generateProfileVersionId(alloc);
     if (!util.isSupportedProfileVersionId(profile_version_id)) return types.ControlPlaneError.InvalidIdShape;
 
     var insert_version = try conn.query(

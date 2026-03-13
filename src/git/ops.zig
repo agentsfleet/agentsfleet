@@ -686,7 +686,7 @@ test "integration: sanitizedChildEnv keeps minimal allowlist" {
 }
 
 test "isSafeIdentifierSegment accepts bounded identifiers" {
-    try std.testing.expect(isSafeIdentifierSegment("ws_123"));
+    try std.testing.expect(isSafeIdentifierSegment("0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11"));
     try std.testing.expect(isSafeIdentifierSegment("run-abc.42"));
     try std.testing.expect(!isSafeIdentifierSegment(""));
     try std.testing.expect(!isSafeIdentifierSegment("../ws"));
@@ -768,10 +768,10 @@ test "integration: findOpenPullRequestByHead rejects invalid branch ref" {
 }
 
 test "isSafeWorktreeDirName accepts only controlled prefix and identifiers" {
-    try std.testing.expect(isSafeWorktreeDirName("zombie-wt-run_123"));
+    try std.testing.expect(isSafeWorktreeDirName("zombie-wt-0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11"));
     try std.testing.expect(isSafeWorktreeDirName("zombie-wt-r-abc.1"));
     try std.testing.expect(!isSafeWorktreeDirName("zombie-wt-"));
-    try std.testing.expect(!isSafeWorktreeDirName("tmp-zombie-wt-run_123"));
+    try std.testing.expect(!isSafeWorktreeDirName("tmp-zombie-wt-0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11"));
     try std.testing.expect(!isSafeWorktreeDirName("zombie-wt-run/123"));
     try std.testing.expect(!isSafeWorktreeDirName("zombie-wt-run 123"));
 }
@@ -781,7 +781,7 @@ test "integration: cleanupRuntimeArtifacts removes stale worktrees in root" {
     defer tmp.cleanup();
 
     try tmp.dir.makePath("cache");
-    try tmp.dir.makePath("wt/zombie-wt-run_1");
+    try tmp.dir.makePath("wt/zombie-wt-0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11");
     try tmp.dir.makePath("wt/not-zombie");
 
     const cache_root = try tmp.dir.realpathAlloc(std.testing.allocator, "cache");
@@ -795,7 +795,7 @@ test "integration: cleanupRuntimeArtifacts removes stale worktrees in root" {
 
     try std.testing.expectError(
         error.FileNotFound,
-        tmp.dir.access("wt/zombie-wt-run_1", .{}),
+        tmp.dir.access("wt/zombie-wt-0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11", .{}),
     );
     try tmp.dir.access("wt/not-zombie", .{});
 }

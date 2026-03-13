@@ -9,6 +9,7 @@ const metrics = @import("../../observability/metrics.zig");
 const obs_log = @import("../../observability/logging.zig");
 const db = @import("../../db/pool.zig");
 const error_codes = @import("../../errors/codes.zig");
+const id_format = @import("../../types/id_format.zig");
 
 pub const Context = struct {
     pool: *pg.Pool,
@@ -100,7 +101,7 @@ fn parseBearerToken(r: zap.Request) ?[]const u8 {
 }
 
 fn authenticateApiKey(
-    alloc: std.mem.Allocator,
+    _: std.mem.Allocator,
     r: zap.Request,
     ctx: *Context,
 ) AuthError!AuthPrincipal {
@@ -114,7 +115,7 @@ fn authenticateApiKey(
         if (!std.mem.eql(u8, provided, candidate)) continue;
         return .{
             .mode = .api_key,
-            .tenant_id = alloc.dupe(u8, "github_app") catch return AuthError.AuthServiceUnavailable,
+            .tenant_id = null,
             .workspace_scope_id = null,
         };
     }
@@ -126,6 +127,12 @@ pub fn authenticate(alloc: std.mem.Allocator, r: zap.Request, ctx: *Context) Aut
     if (ctx.oidc) |verifier| {
         const auth = r.getHeader("authorization") orelse return AuthError.Unauthorized;
         const principal = verifier.verifyAuthorization(alloc, auth) catch |err| return mapOidcVerifyError(err);
+        if (principal.tenant_id) |tenant_id| {
+            if (!id_format.isSupportedTenantId(tenant_id)) return AuthError.Unauthorized;
+        }
+        if (principal.workspace_id) |workspace_id| {
+            if (!id_format.isSupportedWorkspaceId(workspace_id)) return AuthError.Unauthorized;
+        }
         return .{
             .mode = .jwt_oidc,
             .tenant_id = principal.tenant_id,
@@ -134,6 +141,19 @@ pub fn authenticate(alloc: std.mem.Allocator, r: zap.Request, ctx: *Context) Aut
     }
 
     return authenticateApiKey(alloc, r, ctx);
+}
+
+pub fn requireUuidV7Id(
+    r: zap.Request,
+    req_id: []const u8,
+    id: []const u8,
+    id_label: []const u8,
+) bool {
+    if (id_format.isUuidV7(id)) return true;
+    var msg_buf: [96]u8 = undefined;
+    const message = std.fmt.bufPrint(&msg_buf, "Invalid {s} format", .{id_label}) catch "Invalid identifier format";
+    errorResponse(r, .bad_request, error_codes.ERR_UUIDV7_INVALID_ID_SHAPE, message, req_id);
+    return false;
 }
 
 pub fn writeAuthError(r: zap.Request, req_id: []const u8, err: AuthError) void {
@@ -153,12 +173,16 @@ pub fn mapOidcVerifyError(err: anyerror) AuthError {
 }
 
 pub fn authorizeWorkspace(conn: *pg.Conn, principal: AuthPrincipal, workspace_id: []const u8) bool {
-    const tenant_id = principal.tenant_id orelse return false;
-
-    var q = conn.query(
-        "SELECT 1 FROM workspaces WHERE workspace_id = $1 AND tenant_id = $2",
-        .{ workspace_id, tenant_id },
-    ) catch return false;
+    var q = if (principal.tenant_id) |tenant_id|
+        conn.query(
+            "SELECT 1 FROM workspaces WHERE workspace_id = $1 AND tenant_id = $2",
+            .{ workspace_id, tenant_id },
+        )
+    else
+        conn.query(
+            "SELECT 1 FROM workspaces WHERE workspace_id = $1",
+            .{workspace_id},
+        ) catch return false;
     defer q.deinit();
     if ((q.next() catch null) == null) return false;
 
@@ -175,7 +199,12 @@ pub fn setTenantSessionContext(conn: *pg.Conn, tenant_id: []const u8) bool {
 }
 
 pub fn authorizeWorkspaceAndSetTenantContext(conn: *pg.Conn, principal: AuthPrincipal, workspace_id: []const u8) bool {
-    const tenant_id = principal.tenant_id orelse return false;
+    const tenant_id = principal.tenant_id orelse blk: {
+        var lookup = conn.query("SELECT tenant_id FROM workspaces WHERE workspace_id = $1", .{workspace_id}) catch return false;
+        defer lookup.deinit();
+        const row = (lookup.next() catch null) orelse return false;
+        break :blk row.get([]u8, 0) catch return false;
+    };
     if (!setTenantSessionContext(conn, tenant_id)) return false;
     return authorizeWorkspace(conn, principal, workspace_id);
 }
@@ -257,15 +286,15 @@ test "integration: api key workspace scoping blocks cross-workspace access" {
     {
         var q = try db_ctx.conn.query(
             \\CREATE TEMP TABLE workspaces (
-            \\  workspace_id TEXT PRIMARY KEY,
-            \\  tenant_id TEXT NOT NULL
+            \\  workspace_id UUID PRIMARY KEY,
+            \\  tenant_id UUID NOT NULL
             \\) ON COMMIT DROP
         , .{});
         q.deinit();
     }
     {
         var q = try db_ctx.conn.query(
-            "INSERT INTO workspaces (workspace_id, tenant_id) VALUES ('ws_a', 'tenant_a'), ('ws_b', 'tenant_a')",
+            "INSERT INTO workspaces (workspace_id, tenant_id) VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01'), ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f12', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01')",
             .{},
         );
         q.deinit();
@@ -273,11 +302,11 @@ test "integration: api key workspace scoping blocks cross-workspace access" {
 
     const principal = AuthPrincipal{
         .mode = .api_key,
-        .tenant_id = "tenant_a",
-        .workspace_scope_id = "ws_a",
+        .tenant_id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01",
+        .workspace_scope_id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11",
     };
-    try std.testing.expect(authorizeWorkspace(db_ctx.conn, principal, "ws_a"));
-    try std.testing.expect(!authorizeWorkspace(db_ctx.conn, principal, "ws_b"));
+    try std.testing.expect(authorizeWorkspace(db_ctx.conn, principal, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11"));
+    try std.testing.expect(!authorizeWorkspace(db_ctx.conn, principal, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f12"));
 }
 
 test "integration: clerk workspace claim scoping blocks cross-workspace access" {
@@ -288,15 +317,15 @@ test "integration: clerk workspace claim scoping blocks cross-workspace access" 
     {
         var q = try db_ctx.conn.query(
             \\CREATE TEMP TABLE workspaces (
-            \\  workspace_id TEXT PRIMARY KEY,
-            \\  tenant_id TEXT NOT NULL
+            \\  workspace_id UUID PRIMARY KEY,
+            \\  tenant_id UUID NOT NULL
             \\) ON COMMIT DROP
         , .{});
         q.deinit();
     }
     {
         var q = try db_ctx.conn.query(
-            "INSERT INTO workspaces (workspace_id, tenant_id) VALUES ('ws_a', 'tenant_a'), ('ws_b', 'tenant_a')",
+            "INSERT INTO workspaces (workspace_id, tenant_id) VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01'), ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f12', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01')",
             .{},
         );
         q.deinit();
@@ -304,11 +333,11 @@ test "integration: clerk workspace claim scoping blocks cross-workspace access" 
 
     const principal = AuthPrincipal{
         .mode = .jwt_oidc,
-        .tenant_id = "tenant_a",
-        .workspace_scope_id = "ws_a",
+        .tenant_id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01",
+        .workspace_scope_id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11",
     };
-    try std.testing.expect(authorizeWorkspace(db_ctx.conn, principal, "ws_a"));
-    try std.testing.expect(!authorizeWorkspace(db_ctx.conn, principal, "ws_b"));
+    try std.testing.expect(authorizeWorkspace(db_ctx.conn, principal, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11"));
+    try std.testing.expect(!authorizeWorkspace(db_ctx.conn, principal, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f12"));
 }
 
 test "integration: tenant context helper writes app.current_tenant_id" {
@@ -316,7 +345,7 @@ test "integration: tenant context helper writes app.current_tenant_id" {
     defer db_ctx.pool.release(db_ctx.conn);
     defer db_ctx.pool.deinit();
 
-    try std.testing.expect(setTenantSessionContext(db_ctx.conn, "tenant_ctx"));
+    try std.testing.expect(setTenantSessionContext(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f21"));
     var q = try db_ctx.conn.query(
         "SELECT current_setting('app.current_tenant_id', true)",
         .{},
@@ -325,7 +354,7 @@ test "integration: tenant context helper writes app.current_tenant_id" {
     const row = (try q.next()) orelse return error.TestUnexpectedResult;
     const current_tenant = try row.get(?[]const u8, 0);
     try std.testing.expect(current_tenant != null);
-    try std.testing.expectEqualStrings("tenant_ctx", current_tenant.?);
+    try std.testing.expectEqualStrings("0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f21", current_tenant.?);
 }
 
 test "integration: RLS policy enforces tenant session isolation" {
@@ -336,7 +365,7 @@ test "integration: RLS policy enforces tenant session isolation" {
     {
         var q = try db_ctx.conn.query(
             \\CREATE TEMP TABLE rls_probe (
-            \\  tenant_id TEXT NOT NULL,
+            \\  tenant_id UUID NOT NULL,
             \\  value TEXT NOT NULL
             \\) ON COMMIT DROP
         , .{});
@@ -353,30 +382,30 @@ test "integration: RLS policy enforces tenant session isolation" {
     {
         var q = try db_ctx.conn.query(
             \\CREATE POLICY rls_probe_select_tenant ON rls_probe
-            \\FOR SELECT USING (tenant_id = current_setting('app.current_tenant_id', true))
+            \\FOR SELECT USING (tenant_id::text = current_setting('app.current_tenant_id', true))
         , .{});
         q.deinit();
     }
     {
         var q = try db_ctx.conn.query(
             \\CREATE POLICY rls_probe_insert_tenant ON rls_probe
-            \\FOR INSERT WITH CHECK (tenant_id = current_setting('app.current_tenant_id', true))
+            \\FOR INSERT WITH CHECK (tenant_id::text = current_setting('app.current_tenant_id', true))
         , .{});
         q.deinit();
     }
 
-    try std.testing.expect(setTenantSessionContext(db_ctx.conn, "tenant_a"));
+    try std.testing.expect(setTenantSessionContext(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f31"));
     {
-        var q = try db_ctx.conn.query("INSERT INTO rls_probe (tenant_id, value) VALUES ('tenant_a', 'a1')", .{});
+        var q = try db_ctx.conn.query("INSERT INTO rls_probe (tenant_id, value) VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f31', 'a1')", .{});
         q.deinit();
     }
-    try std.testing.expect(setTenantSessionContext(db_ctx.conn, "tenant_b"));
+    try std.testing.expect(setTenantSessionContext(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f32"));
     {
-        var q = try db_ctx.conn.query("INSERT INTO rls_probe (tenant_id, value) VALUES ('tenant_b', 'b1')", .{});
+        var q = try db_ctx.conn.query("INSERT INTO rls_probe (tenant_id, value) VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f32', 'b1')", .{});
         q.deinit();
     }
 
-    try std.testing.expect(setTenantSessionContext(db_ctx.conn, "tenant_a"));
+    try std.testing.expect(setTenantSessionContext(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f31"));
     var count_q = try db_ctx.conn.query("SELECT COUNT(*)::BIGINT FROM rls_probe", .{});
     defer count_q.deinit();
     const row = (try count_q.next()) orelse return error.TestUnexpectedResult;

@@ -12,6 +12,7 @@ const std = @import("std");
 const zap = @import("zap");
 const db = @import("../db/pool.zig");
 const outbox = @import("../state/outbox_reconciler.zig");
+const id_format = @import("../types/id_format.zig");
 const otel = @import("../observability/otel_export.zig");
 const metrics = @import("../observability/metrics.zig");
 
@@ -540,9 +541,9 @@ fn createTempOutboxTable(conn: *db.Conn) !void {
 fn insertPendingRows(conn: *db.Conn, count: usize) !void {
     var i: usize = 0;
     while (i < count) : (i += 1) {
-        var run_buf: [48]u8 = undefined;
         var key_buf: [48]u8 = undefined;
-        const run_id = try std.fmt.bufPrint(&run_buf, "run_{d}", .{i});
+        const run_id = try id_format.generateRunId(std.testing.allocator);
+        defer std.testing.allocator.free(run_id);
         const key = try std.fmt.bufPrint(&key_buf, "k_{d}", .{i});
         var q = try conn.query(
             \\INSERT INTO run_side_effect_outbox
@@ -609,10 +610,10 @@ test "integration: reconcile dead-letters stale pending rows and is idempotent" 
         \\INSERT INTO run_side_effect_outbox
         \\  (run_id, effect_key, status, last_event, created_at, updated_at)
         \\VALUES
-        \\  ('run_1', 'k1', 'pending', 'claimed', 1, 1),
-        \\  ('run_2', 'k2', 'pending', 'claimed', 2, 2),
-        \\  ('run_3', 'k3', 'delivered', 'done', 3, 3),
-        \\  ('run_4', 'k4', 'pending', 'claimed', 4, 4)
+        \\  ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f91', 'k1', 'pending', 'claimed', 1, 1),
+        \\  ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f92', 'k2', 'pending', 'claimed', 2, 2),
+        \\  ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f93', 'k3', 'delivered', 'done', 3, 3),
+        \\  ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f94', 'k4', 'pending', 'claimed', 4, 4)
     , .{});
     seed_q.deinit();
 

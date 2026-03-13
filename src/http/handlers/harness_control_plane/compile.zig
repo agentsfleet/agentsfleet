@@ -28,6 +28,9 @@ pub fn compileProfile(
     workspace_id: []const u8,
     input: types.CompileInput,
 ) (types.ControlPlaneError || anyerror)!types.CompileOutput {
+    if (input.profile_id) |provided_profile_id| {
+        if (!util.isSupportedProfileId(provided_profile_id)) return types.ControlPlaneError.InvalidIdShape;
+    }
     if (input.profile_version_id) |provided| {
         if (!util.isSupportedProfileVersionId(provided)) return types.ControlPlaneError.InvalidIdShape;
     }
@@ -68,7 +71,7 @@ pub fn compileProfile(
     const source_markdown = try row.get([]const u8, 3);
     const tenant_id = try row.get([]const u8, 4);
 
-    const compile_job_id = try util.prefixedId(alloc, "cjob");
+    const compile_job_id = try util.generateCompileJobId(alloc);
     if (!util.isSupportedCompileJobId(compile_job_id)) return types.ControlPlaneError.InvalidIdShape;
     const now_ms = std.time.milliTimestamp();
     var outcome = harness.compileHarnessMarkdown(alloc, source_markdown) catch return types.ControlPlaneError.CompileFailed;

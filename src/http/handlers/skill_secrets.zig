@@ -141,9 +141,9 @@ pub fn decodePathSegment(alloc: std.mem.Allocator, value: []const u8) ![]u8 {
 }
 
 test "parseRoute extracts workspace, skill_ref, and key_name" {
-    const route = parseRoute("/v1/workspaces/ws_123/skills/clawhub%3A%2F%2Fopenclaw%2Freviewer%401.2.0/secrets/API_KEY") orelse
+    const route = parseRoute("/v1/workspaces/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f23/skills/clawhub%3A%2F%2Fopenclaw%2Freviewer%401.2.0/secrets/API_KEY") orelse
         return error.TestUnexpectedResult;
-    try std.testing.expectEqualStrings("ws_123", route.workspace_id);
+    try std.testing.expectEqualStrings("0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f23", route.workspace_id);
     try std.testing.expectEqualStrings("clawhub%3A%2F%2Fopenclaw%2Freviewer%401.2.0", route.skill_ref_encoded);
     try std.testing.expectEqualStrings("API_KEY", route.key_name_encoded);
 }
