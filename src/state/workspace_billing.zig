@@ -19,6 +19,7 @@ pub const BillingLifecycleEventInput = model.BillingLifecycleEventInput;
 
 pub fn errorCode(err: anyerror) ?[]const u8 {
     return switch (err) {
+        error.FreeWorkspaceLimitExceeded => error_codes.ERR_WORKSPACE_FREE_LIMIT,
         error.InvalidSubscriptionId => error_codes.ERR_BILLING_INVALID_SUBSCRIPTION_ID,
         error.WorkspaceBillingStateMissing => error_codes.ERR_BILLING_STATE_MISSING,
         error.InvalidWorkspaceBillingState => error_codes.ERR_BILLING_STATE_INVALID,
@@ -28,6 +29,7 @@ pub fn errorCode(err: anyerror) ?[]const u8 {
 
 pub fn errorMessage(err: anyerror) ?[]const u8 {
     return switch (err) {
+        error.FreeWorkspaceLimitExceeded => "Free plan is limited to one workspace. Upgrade an existing workspace to Scale before creating another.",
         error.InvalidSubscriptionId => "subscription_id is required",
         error.InvalidBillingEventReason => "billing event reason is required",
         error.WorkspaceBillingStateMissing => "Workspace billing state missing",
@@ -81,6 +83,24 @@ pub fn provisionFreeWorkspace(
         .pending_reason = null,
     }, now_ms);
     try insertAudit(conn, alloc, workspace_id, "FREE_PROVISIONED", null, .free, null, .active, "workspace_created", actor, "{}");
+}
+
+pub fn enforceFreeWorkspaceCreationAllowed(
+    conn: *pg.Conn,
+    tenant_id: []const u8,
+    exclude_workspace_id: ?[]const u8,
+) !void {
+    var q = try conn.query(
+        \\SELECT COUNT(*)::BIGINT
+        \\FROM workspaces w
+        \\LEFT JOIN workspace_billing_state s ON s.workspace_id = w.workspace_id
+        \\WHERE w.tenant_id = $1
+        \\  AND ($2::TEXT IS NULL OR w.workspace_id <> $2)
+        \\  AND COALESCE(s.plan_tier, 'FREE') <> 'SCALE'
+    , .{ tenant_id, exclude_workspace_id });
+    defer q.deinit();
+    const row = (try q.next()) orelse return error.InvalidWorkspaceBillingState;
+    if ((try row.get(i64, 0)) > 0) return error.FreeWorkspaceLimitExceeded;
 }
 
 pub fn upgradeWorkspaceToScale(
