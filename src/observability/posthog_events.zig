@@ -175,6 +175,33 @@ pub fn trackProfileActivated(
     }
 }
 
+pub fn trackBillingLifecycleEvent(
+    client: ?*posthog.PostHogClient,
+    distinct_id: []const u8,
+    workspace_id: []const u8,
+    event_type: []const u8,
+    reason: []const u8,
+    plan_tier: []const u8,
+    billing_status: []const u8,
+    request_id: []const u8,
+) void {
+    if (client) |ph| {
+        const props = [_]posthog.Property{
+            .{ .key = "workspace_id", .value = .{ .string = workspace_id } },
+            .{ .key = "event_type", .value = .{ .string = event_type } },
+            .{ .key = "reason", .value = .{ .string = reason } },
+            .{ .key = "plan_tier", .value = .{ .string = plan_tier } },
+            .{ .key = "billing_status", .value = .{ .string = billing_status } },
+            .{ .key = "request_id", .value = .{ .string = request_id } },
+        };
+        ph.capture(.{
+            .distinct_id = distinct_id,
+            .event = "billing_lifecycle_event",
+            .properties = &props,
+        }) catch {};
+    }
+}
+
 test "unit: distinctIdOrSystem falls back to system" {
     try std.testing.expectEqualStrings("system", distinctIdOrSystem(""));
     try std.testing.expectEqualStrings("user_123", distinctIdOrSystem("user_123"));
@@ -189,5 +216,6 @@ test "integration: telemetry helpers are no-op when posthog client is disabled" 
     trackAgentCompleted(disabled, "u", "run_1", "ws_1", "Echo", 10, 50, "ok");
     trackEntitlementRejected(disabled, "u", "ws_1", "COMPILE", "ERR_ENTITLEMENT_STAGE_LIMIT", "req_1");
     trackProfileActivated(disabled, "u", "ws_1", "prof_1", "ver_1", "ver_1", "req_1");
+    trackBillingLifecycleEvent(disabled, "u", "ws_1", "PAYMENT_FAILED", "invoice_failed", "SCALE", "GRACE", "req_1");
     try std.testing.expect(true);
 }

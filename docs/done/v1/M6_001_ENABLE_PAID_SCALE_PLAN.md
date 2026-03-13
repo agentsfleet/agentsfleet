@@ -62,6 +62,7 @@ Implement one working paid-plan function: the `Scale` tier operates as pay-as-yo
 - Added `src/state/workspace_billing.zig` as the billing source of truth for `Free` and `Scale`, including deterministic grace handling and downgrade reconciliation.
 - Provisioned billing state on workspace creation and legacy GitHub-installation workspace upsert paths.
 - Added `POST /v1/workspaces/{workspace_id}/billing/scale` to perform the `Free` -> `Scale` upgrade flow.
+- Added `POST /v1/workspaces/{workspace_id}/billing/events` to record `PAYMENT_FAILED` and `DOWNGRADE_TO_FREE` lifecycle events through a production path instead of test-only SQL.
 - Updated `POST /v1/workspaces/{workspace_id}:sync` to reconcile pending billing state and surface current `plan_tier`, `billing_status`, `plan_sku`, and `grace_expires_at`.
 - Reconciled billing state before harness compile/activate and before run start, then re-applied entitlement enforcement at the runtime boundary against the active profile snapshot.
 - Closed the metering loop so successful runs finalize as billable and blocked/failed/incomplete runs finalize as non-billable.
@@ -71,6 +72,8 @@ Implement one working paid-plan function: the `Scale` tier operates as pay-as-yo
 ## 6.0 Verification Evidence (Mar 13, 2026: 12:05 PM)
 
 - `zig build test` — passed after the M6 implementation updates.
-- `src/state/workspace_billing.zig` tests cover deterministic `Free` -> `Scale` upgrade and `payment_failed -> grace -> downgrade`.
+- Evidence note: `docs/evidence/M6_001_PAID_SCALE_PLAN_LIFECYCLE.md`
+- `src/state/workspace_billing_test.zig` covers deterministic `Free` -> `Scale` upgrade and the production billing lifecycle path for `payment_failed -> grace -> downgrade`.
+- `src/state/workspace_billing_transition.zig` covers pure grace-window and downgrade decision logic.
 - `src/state/billing.zig` tests cover success-only billable finalization and zero-charge failed/incomplete finalization.
 - Runtime enforcement path is exercised by the shared entitlement enforcement module now invoked from compile, activate, and run start.

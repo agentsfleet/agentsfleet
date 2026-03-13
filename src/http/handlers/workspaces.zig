@@ -2,6 +2,7 @@ const std = @import("std");
 const zap = @import("zap");
 const policy = @import("../../state/policy.zig");
 const workspace_billing = @import("../../state/workspace_billing.zig");
+const posthog_events = @import("../../observability/posthog_events.zig");
 const obs_log = @import("../../observability/logging.zig");
 const error_codes = @import("../../errors/codes.zig");
 const id_format = @import("../../types/id_format.zig");
@@ -69,7 +70,7 @@ pub fn handleUpgradeWorkspaceToScale(ctx: *common.Context, r: zap.Request, works
         .actor = principal.user_id orelse "api",
     }) catch |err| switch (err) {
         error.InvalidSubscriptionId => {
-            common.errorResponse(r, .bad_request, error_codes.ERR_INVALID_REQUEST, "subscription_id is required", req_id);
+            common.errorResponse(r, .bad_request, error_codes.ERR_BILLING_INVALID_SUBSCRIPTION_ID, "subscription_id is required", req_id);
             return;
         },
         else => {
@@ -88,6 +89,92 @@ pub fn handleUpgradeWorkspaceToScale(ctx: *common.Context, r: zap.Request, works
         .subscription_id = upgraded.subscription_id,
         .request_id = req_id,
     });
+}
+
+fn parseBillingLifecycleEvent(raw: []const u8) ?workspace_billing.BillingLifecycleEvent {
+    if (std.ascii.eqlIgnoreCase(raw, "PAYMENT_FAILED")) return .payment_failed;
+    if (std.ascii.eqlIgnoreCase(raw, "DOWNGRADE_TO_FREE")) return .downgrade_to_free;
+    return null;
+}
+
+pub fn handleApplyWorkspaceBillingEvent(ctx: *common.Context, r: zap.Request, workspace_id: []const u8) void {
+    var arena = std.heap.ArenaAllocator.init(ctx.alloc);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    const req_id = common.requestId(alloc);
+
+    const principal = common.authenticate(alloc, r, ctx) catch |err| {
+        common.writeAuthError(r, req_id, err);
+        return;
+    };
+    if (!common.requireUuidV7Id(r, req_id, workspace_id, "workspace_id")) return;
+
+    const Req = struct {
+        event_type: []const u8,
+        reason: []const u8,
+    };
+
+    const body = r.body orelse {
+        common.errorResponse(r, .bad_request, error_codes.ERR_INVALID_REQUEST, "Request body required", req_id);
+        return;
+    };
+    const parsed = std.json.parseFromSlice(Req, alloc, body, .{}) catch {
+        common.errorResponse(r, .bad_request, error_codes.ERR_INVALID_REQUEST, "Malformed JSON", req_id);
+        return;
+    };
+    defer parsed.deinit();
+
+    const event = parseBillingLifecycleEvent(parsed.value.event_type) orelse {
+        common.errorResponse(r, .bad_request, error_codes.ERR_BILLING_INVALID_EVENT, "Unsupported billing event_type", req_id);
+        return;
+    };
+
+    const conn = ctx.pool.acquire() catch {
+        common.internalDbUnavailable(r, req_id);
+        return;
+    };
+    defer ctx.pool.release(conn);
+
+    if (!common.authorizeWorkspaceAndSetTenantContext(conn, principal, workspace_id)) {
+        common.errorResponse(r, .forbidden, error_codes.ERR_FORBIDDEN, "Workspace access denied", req_id);
+        return;
+    }
+
+    const state = workspace_billing.applyBillingLifecycleEvent(conn, alloc, workspace_id, .{
+        .event = event,
+        .reason = parsed.value.reason,
+        .actor = principal.user_id orelse "api",
+    }) catch |err| {
+        if (workspace_billing.errorCode(err)) |code| {
+            common.errorResponse(r, .bad_request, code, workspace_billing.errorMessage(err) orelse "Workspace billing failure", req_id);
+            return;
+        }
+        common.internalOperationError(r, "Failed to apply workspace billing event", req_id);
+        return;
+    };
+    defer alloc.free(state.plan_sku);
+    defer if (state.subscription_id) |v| alloc.free(v);
+
+    common.writeJson(r, .ok, .{
+        .workspace_id = workspace_id,
+        .event_type = parsed.value.event_type,
+        .plan_tier = state.plan_tier.label(),
+        .billing_status = state.billing_status.label(),
+        .plan_sku = state.plan_sku,
+        .grace_expires_at = state.grace_expires_at,
+        .request_id = req_id,
+    });
+
+    posthog_events.trackBillingLifecycleEvent(
+        ctx.posthog,
+        posthog_events.distinctIdOrSystem(principal.user_id orelse ""),
+        workspace_id,
+        parsed.value.event_type,
+        parsed.value.reason,
+        state.plan_tier.label(),
+        state.billing_status.label(),
+        req_id,
+    );
 }
 
 pub fn handleCreateWorkspace(ctx: *common.Context, r: zap.Request) void {
@@ -200,6 +287,12 @@ test "buildInstallUrl renders GitHub app install URL" {
     );
 }
 
+test "parseBillingLifecycleEvent accepts supported event types" {
+    try std.testing.expectEqual(workspace_billing.BillingLifecycleEvent.payment_failed, parseBillingLifecycleEvent("PAYMENT_FAILED").?);
+    try std.testing.expectEqual(workspace_billing.BillingLifecycleEvent.downgrade_to_free, parseBillingLifecycleEvent("DOWNGRADE_TO_FREE").?);
+    try std.testing.expect(parseBillingLifecycleEvent("ACTIVATE_SCALE") == null);
+}
+
 pub fn handlePauseWorkspace(ctx: *common.Context, r: zap.Request, workspace_id: []const u8) void {
     var arena = std.heap.ArenaAllocator.init(ctx.alloc);
     defer arena.deinit();
@@ -300,7 +393,11 @@ pub fn handleSyncSpecs(ctx: *common.Context, r: zap.Request, workspace_id: []con
         return;
     }
 
-    const billing_state = workspace_billing.reconcileWorkspaceBilling(conn, alloc, workspace_id, std.time.milliTimestamp(), "api") catch {
+    const billing_state = workspace_billing.reconcileWorkspaceBilling(conn, alloc, workspace_id, std.time.milliTimestamp(), "api") catch |err| {
+        if (workspace_billing.errorCode(err)) |code| {
+            common.errorResponse(r, .internal_server_error, code, workspace_billing.errorMessage(err) orelse "Workspace billing failure", req_id);
+            return;
+        }
         common.internalOperationError(r, "Failed to reconcile workspace billing state", req_id);
         return;
     };
