@@ -8,6 +8,7 @@ const secrets = @import("../secrets/crypto.zig");
 const metrics = @import("../observability/metrics.zig");
 const obs_log = @import("../observability/logging.zig");
 const error_codes = @import("../errors/codes.zig");
+const id_format = @import("../types/id_format.zig");
 const harness_handlers = @import("handlers/harness_control_plane.zig");
 const skill_secret_handlers = @import("handlers/skill_secrets.zig");
 const common = @import("handlers/common.zig");
@@ -273,6 +274,10 @@ pub fn handleCompileHarness(ctx: *Context, r: zap.Request, workspace_id: []const
             error.InvalidIdShape => common.errorResponse(r, .bad_request, error_codes.ERR_UUIDV7_INVALID_ID_SHAPE, "Invalid profile_version_id format", req_id),
             error.ProfileNotFound => common.errorResponse(r, .not_found, error_codes.ERR_PROFILE_NOT_FOUND, "No harness profile source found for workspace", req_id),
             error.CompileFailed => common.internalOperationError(r, "Harness compile failed", req_id),
+            error.EntitlementMissing => common.errorResponse(r, .forbidden, error_codes.ERR_ENTITLEMENT_UNAVAILABLE, "Workspace entitlement missing; request denied", req_id),
+            error.EntitlementProfileLimit => common.errorResponse(r, .forbidden, error_codes.ERR_ENTITLEMENT_PROFILE_LIMIT, "Workspace profile limit exceeded", req_id),
+            error.EntitlementStageLimit => common.errorResponse(r, .forbidden, error_codes.ERR_ENTITLEMENT_STAGE_LIMIT, "Plan stage limit exceeded", req_id),
+            error.EntitlementSkillNotAllowed => common.errorResponse(r, .forbidden, error_codes.ERR_ENTITLEMENT_SKILL_NOT_ALLOWED, "Plan does not allow one or more profile skills", req_id),
             else => common.internalOperationError(r, "Failed to compile harness profile", req_id),
         }
         return;
@@ -322,11 +327,15 @@ pub fn handleActivateHarness(ctx: *Context, r: zap.Request, workspace_id: []cons
         return;
     }
 
-    const out = harness_handlers.activateProfile(conn, workspace_id, parsed.value) catch |err| {
+    const out = harness_handlers.activateProfile(conn, alloc, workspace_id, parsed.value) catch |err| {
         switch (err) {
             error.InvalidIdShape => common.errorResponse(r, .bad_request, error_codes.ERR_UUIDV7_INVALID_ID_SHAPE, "Invalid profile_version_id format", req_id),
             error.ProfileNotFound => common.errorResponse(r, .not_found, error_codes.ERR_PROFILE_NOT_FOUND, "Profile version not found", req_id),
             error.ProfileInvalid => common.errorResponse(r, .conflict, error_codes.ERR_PROFILE_INVALID, "Invalid profile cannot be activated", req_id),
+            error.EntitlementMissing => common.errorResponse(r, .forbidden, error_codes.ERR_ENTITLEMENT_UNAVAILABLE, "Workspace entitlement missing; request denied", req_id),
+            error.EntitlementProfileLimit => common.errorResponse(r, .forbidden, error_codes.ERR_ENTITLEMENT_PROFILE_LIMIT, "Workspace profile limit exceeded", req_id),
+            error.EntitlementStageLimit => common.errorResponse(r, .forbidden, error_codes.ERR_ENTITLEMENT_STAGE_LIMIT, "Plan stage limit exceeded", req_id),
+            error.EntitlementSkillNotAllowed => common.errorResponse(r, .forbidden, error_codes.ERR_ENTITLEMENT_SKILL_NOT_ALLOWED, "Plan does not allow one or more profile skills", req_id),
             else => common.internalOperationError(r, "Failed to activate profile", req_id),
         }
         return;
@@ -547,6 +556,23 @@ pub fn handleGitHubCallback(ctx: *Context, r: zap.Request) void {
             return;
         };
         w.deinit();
+    }
+
+    {
+        const entitlement_id = id_format.generateEntitlementSnapshotId(alloc) catch {
+            common.internalOperationError(r, "Failed to allocate entitlement id", req_id);
+            return;
+        };
+        var e = conn.query(
+            \\INSERT INTO workspace_entitlements
+            \\  (entitlement_id, workspace_id, plan_tier, max_profiles, max_stages, max_distinct_skills, allow_custom_skills, created_at, updated_at)
+            \\VALUES ($1::uuid, $2, 'FREE', 1, 3, 3, false, $3, $3)
+            \\ON CONFLICT (workspace_id) DO NOTHING
+        , .{ entitlement_id, workspace_id, now_ms }) catch {
+            common.internalOperationError(r, "Failed to provision free entitlement", req_id);
+            return;
+        };
+        e.deinit();
     }
 
     secrets.store(

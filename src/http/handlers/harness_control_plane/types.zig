@@ -52,4 +52,8 @@ pub const ControlPlaneError = error{
     ProfileNotFound,
     ProfileInvalid,
     CompileFailed,
+    EntitlementMissing,
+    EntitlementProfileLimit,
+    EntitlementStageLimit,
+    EntitlementSkillNotAllowed,
 };

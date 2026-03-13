@@ -3,6 +3,7 @@ const zap = @import("zap");
 const policy = @import("../../state/policy.zig");
 const obs_log = @import("../../observability/logging.zig");
 const error_codes = @import("../../errors/codes.zig");
+const id_format = @import("../../types/id_format.zig");
 const common = @import("common.zig");
 const log = std.log.scoped(.http);
 
@@ -94,6 +95,21 @@ pub fn handleCreateWorkspace(ctx: *common.Context, r: zap.Request) void {
         return;
     };
     ws_q.deinit();
+
+    const entitlement_id = id_format.generateEntitlementSnapshotId(alloc) catch {
+        common.internalOperationError(r, "Failed to allocate entitlement id", req_id);
+        return;
+    };
+    var ent_q = conn.query(
+        \\INSERT INTO workspace_entitlements
+        \\  (entitlement_id, workspace_id, plan_tier, max_profiles, max_stages, max_distinct_skills, allow_custom_skills, created_at, updated_at)
+        \\VALUES ($1::uuid, $2, 'FREE', 1, 3, 3, false, $3, $3)
+        \\ON CONFLICT (workspace_id) DO NOTHING
+    , .{ entitlement_id, workspace_id, now_ms }) catch {
+        common.internalOperationError(r, "Failed to provision free entitlement", req_id);
+        return;
+    };
+    ent_q.deinit();
 
     const github_app_slug = std.process.getEnvVarOwned(alloc, "GITHUB_APP_SLUG") catch "usezombie";
     const install_url = buildInstallUrl(alloc, github_app_slug, workspace_id) catch {

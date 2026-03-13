@@ -2,6 +2,7 @@ const std = @import("std");
 const pg = @import("pg");
 const prompt_events = @import("../../../observability/prompt_events.zig");
 const profile_linkage = @import("../../../audit/profile_linkage.zig");
+const entitlements = @import("../../../state/entitlements.zig");
 const types = @import("types.zig");
 const util = @import("util.zig");
 
@@ -22,13 +23,14 @@ fn rollbackTx(conn: *pg.Conn) void {
 
 pub fn activateProfile(
     conn: *pg.Conn,
+    alloc: std.mem.Allocator,
     workspace_id: []const u8,
     input: types.ActivateInput,
 ) (types.ControlPlaneError || anyerror)!types.ActivateOutput {
     if (!util.isSupportedProfileVersionId(input.profile_version_id)) return types.ControlPlaneError.InvalidIdShape;
 
     var q = try conn.query(
-        \\SELECT v.profile_id, v.is_valid, p.tenant_id
+        \\SELECT v.profile_id, v.is_valid, p.tenant_id, v.compiled_profile_json
         \\FROM agent_profile_versions v
         \\JOIN agent_profiles p ON p.profile_id = v.profile_id
         \\WHERE p.workspace_id = $1 AND v.profile_version_id = $2
@@ -40,7 +42,24 @@ pub fn activateProfile(
     const profile_id = try row.get([]const u8, 0);
     const is_valid = try row.get(bool, 1);
     const tenant_id = try row.get([]const u8, 2);
+    const compiled_profile_json = try row.get(?[]const u8, 3);
     if (!is_valid) return types.ControlPlaneError.ProfileInvalid;
+    entitlements.enforceWithAudit(
+        conn,
+        alloc,
+        workspace_id,
+        input.profile_version_id,
+        compiled_profile_json,
+        .activate,
+        input.activated_by orelse "api",
+    ) catch |err| switch (err) {
+        entitlements.EnforcementError.EntitlementMissing => return types.ControlPlaneError.EntitlementMissing,
+        entitlements.EnforcementError.EntitlementProfileLimit => return types.ControlPlaneError.EntitlementProfileLimit,
+        entitlements.EnforcementError.EntitlementStageLimit => return types.ControlPlaneError.EntitlementStageLimit,
+        entitlements.EnforcementError.EntitlementSkillNotAllowed => return types.ControlPlaneError.EntitlementSkillNotAllowed,
+        entitlements.EnforcementError.InvalidCompiledProfile => return types.ControlPlaneError.ProfileInvalid,
+        else => return err,
+    };
 
     const now_ms = std.time.milliTimestamp();
     const activated_by = input.activated_by orelse "api";

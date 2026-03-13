@@ -24,6 +24,52 @@ fn createTempLinkageTable(conn: *pg.Conn) !void {
     q.deinit();
 }
 
+fn createTempEntitlementTables(conn: *pg.Conn) !void {
+    {
+        var q = try conn.query(
+            \\CREATE TEMP TABLE workspace_entitlements (
+            \\  entitlement_id TEXT PRIMARY KEY,
+            \\  workspace_id TEXT NOT NULL UNIQUE,
+            \\  plan_tier TEXT NOT NULL,
+            \\  max_profiles INTEGER NOT NULL,
+            \\  max_stages INTEGER NOT NULL,
+            \\  max_distinct_skills INTEGER NOT NULL,
+            \\  allow_custom_skills BOOLEAN NOT NULL,
+            \\  created_at BIGINT NOT NULL,
+            \\  updated_at BIGINT NOT NULL
+            \\) ON COMMIT DROP
+        , .{});
+        q.deinit();
+    }
+    {
+        var q = try conn.query(
+            \\CREATE TEMP TABLE entitlement_policy_audit_snapshots (
+            \\  snapshot_id TEXT PRIMARY KEY,
+            \\  workspace_id TEXT NOT NULL,
+            \\  boundary TEXT NOT NULL,
+            \\  decision TEXT NOT NULL,
+            \\  reason_code TEXT NOT NULL,
+            \\  plan_tier TEXT NOT NULL,
+            \\  policy_json TEXT NOT NULL,
+            \\  observed_json TEXT NOT NULL,
+            \\  actor TEXT NOT NULL,
+            \\  created_at BIGINT NOT NULL
+            \\) ON COMMIT DROP
+        , .{});
+        q.deinit();
+    }
+}
+
+fn seedFreeEntitlement(conn: *pg.Conn, workspace_id: []const u8) !void {
+    var q = try conn.query(
+        \\INSERT INTO workspace_entitlements
+        \\  (entitlement_id, workspace_id, plan_tier, max_profiles, max_stages, max_distinct_skills, allow_custom_skills, created_at, updated_at)
+        \\VALUES ($1, $2, 'FREE', 1, 3, 3, false, 0, 0)
+        \\ON CONFLICT (workspace_id) DO NOTHING
+    , .{ workspace_id, workspace_id });
+    q.deinit();
+}
+
 test "integration: activateProfile rejects invalid profile versions" {
     const db_ctx = (try util.openHarnessHandlerTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
     defer db_ctx.pool.release(db_ctx.conn);
@@ -53,6 +99,8 @@ test "integration: activateProfile rejects invalid profile versions" {
         q.deinit();
     }
     try createTempLinkageTable(db_ctx.conn);
+    try createTempEntitlementTables(db_ctx.conn);
+    try seedFreeEntitlement(db_ctx.conn, "ws_1");
 
     {
         var q = try db_ctx.conn.query(
@@ -63,14 +111,14 @@ test "integration: activateProfile rejects invalid profile versions" {
     }
     {
         var q = try db_ctx.conn.query(
-            "INSERT INTO agent_profile_versions (profile_version_id, profile_id, tenant_id, is_valid) VALUES ('pver_1', 'prof_1', 'tenant_1', false)",
+            "INSERT INTO agent_profile_versions (profile_version_id, profile_id, tenant_id, is_valid) VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f91', 'prof_1', 'tenant_1', false)",
             .{},
         );
         q.deinit();
     }
 
-    try std.testing.expectError(types.ControlPlaneError.ProfileInvalid, activate_mod.activateProfile(db_ctx.conn, "ws_1", .{
-        .profile_version_id = "pver_1",
+    try std.testing.expectError(types.ControlPlaneError.ProfileInvalid, activate_mod.activateProfile(db_ctx.conn, std.testing.allocator, "ws_1", .{
+        .profile_version_id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f91",
         .activated_by = "test",
     }));
 }
@@ -100,6 +148,8 @@ test "integration: getActiveProfile falls back to default-v1 when no active prof
         q.deinit();
     }
     try createTempLinkageTable(db_ctx.conn);
+    try createTempEntitlementTables(db_ctx.conn);
+    try seedFreeEntitlement(db_ctx.conn, "ws_1");
 
     const out = try get_active_mod.getActiveProfile(db_ctx.conn, std.testing.allocator, "ws_missing");
     defer std.testing.allocator.free(out.profile_json);
@@ -152,6 +202,8 @@ test "integration: activate/getActive profile identity contract includes snapsho
         q.deinit();
     }
     try createTempLinkageTable(db_ctx.conn);
+    try createTempEntitlementTables(db_ctx.conn);
+    try seedFreeEntitlement(db_ctx.conn, "ws_1");
 
     {
         var q = try db_ctx.conn.query(
@@ -162,26 +214,26 @@ test "integration: activate/getActive profile identity contract includes snapsho
     }
     {
         var q = try db_ctx.conn.query(
-            "INSERT INTO agent_profile_versions (profile_version_id, profile_id, tenant_id, is_valid, compiled_profile_json) VALUES ('pver_1', 'prof_1', 'tenant_1', TRUE, '{\"profile_id\":\"prof_1\",\"stages\":[]}')",
+            "INSERT INTO agent_profile_versions (profile_version_id, profile_id, tenant_id, is_valid, compiled_profile_json) VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f91', 'prof_1', 'tenant_1', TRUE, '{\"profile_id\":\"prof_1\",\"stages\":[]}')",
             .{},
         );
         q.deinit();
     }
 
-    const activated = try activate_mod.activateProfile(db_ctx.conn, "ws_1", .{
-        .profile_version_id = "pver_1",
+    const activated = try activate_mod.activateProfile(db_ctx.conn, std.testing.allocator, "ws_1", .{
+        .profile_version_id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f91",
         .activated_by = "operator",
     });
     try std.testing.expectEqualStrings("prof_1", activated.profile_id);
-    try std.testing.expectEqualStrings("pver_1", activated.profile_version_id);
-    try std.testing.expectEqualStrings("pver_1", activated.run_snapshot_version);
+    try std.testing.expectEqualStrings("0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f91", activated.profile_version_id);
+    try std.testing.expectEqualStrings("0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f91", activated.run_snapshot_version);
 
     const active = try get_active_mod.getActiveProfile(db_ctx.conn, std.testing.allocator, "ws_1");
     defer std.testing.allocator.free(active.profile_json);
     try std.testing.expectEqualStrings("active", active.source);
     try std.testing.expectEqualStrings("prof_1", active.profile_id.?);
-    try std.testing.expectEqualStrings("pver_1", active.profile_version_id.?);
-    try std.testing.expectEqualStrings("pver_1", active.run_snapshot_version.?);
+    try std.testing.expectEqualStrings("0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f91", active.profile_version_id.?);
+    try std.testing.expectEqualStrings("0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f91", active.run_snapshot_version.?);
     try std.testing.expect(active.active_at != null);
 }
 
@@ -220,14 +272,14 @@ test "integration: compileProfile rejects cross-workspace profile version select
     }
     {
         var q = try db_ctx.conn.query(
-            "INSERT INTO agent_profile_versions (profile_version_id, profile_id, version, source_markdown) VALUES ('pver_other', 'prof_other', 1, '{\"profile_id\":\"prof_other\",\"stages\":[]}')",
+            "INSERT INTO agent_profile_versions (profile_version_id, profile_id, version, source_markdown) VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f93', 'prof_other', 1, '{\"profile_id\":\"prof_other\",\"stages\":[]}')",
             .{},
         );
         q.deinit();
     }
 
     try std.testing.expectError(types.ControlPlaneError.ProfileNotFound, compile_mod.compileProfile(db_ctx.conn, std.testing.allocator, "ws_1", .{
-        .profile_version_id = "pver_other",
+        .profile_version_id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f93",
     }));
 }
 
@@ -280,6 +332,8 @@ test "integration: compileProfile persists deterministic invalid outcome and lin
         q.deinit();
     }
     try createTempLinkageTable(db_ctx.conn);
+    try createTempEntitlementTables(db_ctx.conn);
+    try seedFreeEntitlement(db_ctx.conn, "ws_1");
 
     {
         var q = try db_ctx.conn.query(
@@ -290,14 +344,14 @@ test "integration: compileProfile persists deterministic invalid outcome and lin
     }
     {
         var q = try db_ctx.conn.query(
-            "INSERT INTO agent_profile_versions (profile_version_id, profile_id, version, source_markdown, compiled_profile_json, compile_engine, validation_report_json, is_valid, updated_at) VALUES ('pver_1', 'prof_1', 1, '# invalid source markdown', NULL, NULL, NULL, false, 0)",
+            "INSERT INTO agent_profile_versions (profile_version_id, profile_id, version, source_markdown, compiled_profile_json, compile_engine, validation_report_json, is_valid, updated_at) VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f91', 'prof_1', 1, '# invalid source markdown', NULL, NULL, NULL, false, 0)",
             .{},
         );
         q.deinit();
     }
 
     const out = try compile_mod.compileProfile(db_ctx.conn, std.testing.allocator, "ws_1", .{
-        .profile_version_id = "pver_1",
+        .profile_version_id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f91",
     });
     try std.testing.expect(!out.is_valid);
     try std.testing.expect(std.mem.indexOf(u8, out.validation_report_json, "PROFILE_PAYLOAD_NOT_FOUND") != null);
@@ -360,15 +414,17 @@ test "integration: activateProfile rejects profile versions from another workspa
     }
     {
         var q = try db_ctx.conn.query(
-            "INSERT INTO agent_profile_versions (profile_version_id, profile_id, tenant_id, is_valid) VALUES ('pver_2', 'prof_2', 'tenant_1', true)",
+            "INSERT INTO agent_profile_versions (profile_version_id, profile_id, tenant_id, is_valid) VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f92', 'prof_2', 'tenant_1', true)",
             .{},
         );
         q.deinit();
     }
     try createTempLinkageTable(db_ctx.conn);
+    try createTempEntitlementTables(db_ctx.conn);
+    try seedFreeEntitlement(db_ctx.conn, "ws_1");
 
-    try std.testing.expectError(types.ControlPlaneError.ProfileNotFound, activate_mod.activateProfile(db_ctx.conn, "ws_1", .{
-        .profile_version_id = "pver_2",
+    try std.testing.expectError(types.ControlPlaneError.ProfileNotFound, activate_mod.activateProfile(db_ctx.conn, std.testing.allocator, "ws_1", .{
+        .profile_version_id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f92",
         .activated_by = "operator",
     }));
 }
@@ -425,6 +481,8 @@ test "integration: compileProfile is atomic and rolls back on linkage persist fa
         q.deinit();
     }
     try createTempLinkageTable(db_ctx.conn);
+    try createTempEntitlementTables(db_ctx.conn);
+    try seedFreeEntitlement(db_ctx.conn, "ws_1");
     {
         var q = try db_ctx.conn.query(
             \\CREATE OR REPLACE FUNCTION reject_profile_linkage_insert_test()
@@ -454,14 +512,14 @@ test "integration: compileProfile is atomic and rolls back on linkage persist fa
     }
     {
         var q = try db_ctx.conn.query(
-            "INSERT INTO agent_profile_versions (profile_version_id, profile_id, tenant_id, version, source_markdown, compiled_profile_json, compile_engine, validation_report_json, is_valid, updated_at) VALUES ('pver_1', 'prof_1', 'tenant_1', 1, '# invalid source', NULL, NULL, NULL, false, 0)",
+            "INSERT INTO agent_profile_versions (profile_version_id, profile_id, tenant_id, version, source_markdown, compiled_profile_json, compile_engine, validation_report_json, is_valid, updated_at) VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f91', 'prof_1', 'tenant_1', 1, '# invalid source', NULL, NULL, NULL, false, 0)",
             .{},
         );
         q.deinit();
     }
 
     try std.testing.expectError(error.PgError, compile_mod.compileProfile(db_ctx.conn, std.testing.allocator, "ws_1", .{
-        .profile_version_id = "pver_1",
+        .profile_version_id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f91",
     }));
 
     {
@@ -472,7 +530,7 @@ test "integration: compileProfile is atomic and rolls back on linkage persist fa
     }
     {
         var q = try db_ctx.conn.query(
-            "SELECT compile_engine, validation_report_json FROM agent_profile_versions WHERE profile_version_id = 'pver_1'",
+            "SELECT compile_engine, validation_report_json FROM agent_profile_versions WHERE profile_version_id = '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f91'",
             .{},
         );
         defer q.deinit();
@@ -552,14 +610,14 @@ test "integration: activateProfile is atomic and rolls back on linkage persist f
     }
     {
         var q = try db_ctx.conn.query(
-            "INSERT INTO agent_profile_versions (profile_version_id, profile_id, tenant_id, is_valid) VALUES ('pver_1', 'prof_1', 'tenant_1', true)",
+            "INSERT INTO agent_profile_versions (profile_version_id, profile_id, tenant_id, is_valid) VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f91', 'prof_1', 'tenant_1', true)",
             .{},
         );
         q.deinit();
     }
 
-    try std.testing.expectError(error.PgError, activate_mod.activateProfile(db_ctx.conn, "ws_1", .{
-        .profile_version_id = "pver_1",
+    try std.testing.expectError(error.PgError, activate_mod.activateProfile(db_ctx.conn, std.testing.allocator, "ws_1", .{
+        .profile_version_id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f91",
         .activated_by = "operator",
     }));
 
