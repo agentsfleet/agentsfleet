@@ -31,6 +31,13 @@ pub fn build(b: *std.Build) void {
     });
     const pg_mod = pg_dep.module("pg");
 
+    // ── posthog-zig (server-side PostHog SDK) ───────────────────────────────
+    const posthog_dep = b.dependency("posthog", .{
+        .target = target,
+        .optimize = optimize,
+    });
+    const posthog_mod = posthog_dep.module("posthog");
+
     // ── Schema embed module (root = schema/ so @embedFile is in-bounds) ──────
     const schema_mod = b.createModule(.{
         .root_source_file = b.path("schema/embed.zig"),
@@ -47,6 +54,7 @@ pub fn build(b: *std.Build) void {
                 .{ .name = "nullclaw", .module = nullclaw_mod },
                 .{ .name = "zap", .module = zap_mod },
                 .{ .name = "pg", .module = pg_mod },
+                .{ .name = "posthog", .module = posthog_mod },
                 .{ .name = "schema", .module = schema_mod },
             },
         }),
@@ -75,6 +83,7 @@ pub fn build(b: *std.Build) void {
                 .{ .name = "nullclaw", .module = nullclaw_mod },
                 .{ .name = "zap", .module = zap_mod },
                 .{ .name = "pg", .module = pg_mod },
+                .{ .name = "posthog", .module = posthog_mod },
                 .{ .name = "schema", .module = schema_mod },
             },
         }),

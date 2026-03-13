@@ -5,6 +5,7 @@
 
 const std = @import("std");
 const pg = @import("pg");
+const posthog = @import("posthog");
 const agents = @import("agents.zig");
 const github_auth = @import("../auth/github.zig");
 const backoff = @import("../reliability/backoff.zig");
@@ -35,6 +36,7 @@ pub const WorkerConfig = struct {
     poll_interval_ms: u64 = 2_000,
     rate_limit_capacity: u32 = 30,
     rate_limit_refill_per_sec: f64 = 5.0,
+    posthog: ?*posthog.PostHogClient = null,
 };
 
 // ── Worker state shared between HTTP and worker threads ──────────────────
@@ -144,6 +146,7 @@ pub fn workerLoop(cfg: WorkerConfig, worker_state: *WorkerState) void {
                     .max_attempts = cfg.max_attempts,
                     .run_timeout_ms = cfg.run_timeout_ms,
                     .skill_registry = cfg.skill_registry,
+                    .posthog = cfg.posthog,
                 },
             },
             worker_state,

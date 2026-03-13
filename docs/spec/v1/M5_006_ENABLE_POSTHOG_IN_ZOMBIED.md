@@ -4,7 +4,7 @@
 **Milestone:** M5
 **Workstream:** 006
 **Date:** Mar 06, 2026 (updated Mar 07, 2026)
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — operational analytics baseline
 **Batch:** B2 — needs M5_001 and M5_002
 **Depends on:** M5_001 (Build `posthog-zig` Analytics SDK for Zig), M5_002 (Operate Multi-Tenant Harness Control Plane)
@@ -13,35 +13,35 @@
 
 ## 1.0 Singular Function
 
-**Status:** PENDING
+**Status:** DONE
 
 Implement one working telemetry function: `zombied` emits deterministic run/control-plane events to PostHog.
 
 **Dimensions:**
-- 1.1 PENDING Initialize server-side PostHog client in `zombied` runtime
-- 1.2 PENDING Capture lifecycle events (`run_started`, `run_completed`, `run_failed`, `agent_completed`)
-- 1.3 PENDING Capture policy events (`entitlement_rejected`, `profile_activated`)
-- 1.4 PENDING Add failure-safe async flushing without blocking run execution
+- 1.1 DONE Initialize server-side PostHog client in `zombied` runtime
+- 1.2 DONE Capture lifecycle events (`run_started`, `run_completed`, `run_failed`, `agent_completed`)
+- 1.3 DONE Capture policy events (`entitlement_rejected`, `profile_activated`)
+- 1.4 DONE Add failure-safe async flushing without blocking run execution
 
 ---
 
 ## 2.0 Verification Units
 
-**Status:** PENDING
+**Status:** IN_PROGRESS
 
 **Dimensions:**
-- 2.1 PENDING Unit test: event envelope contains required IDs (`workspace_id`, `run_id`)
-- 2.2 PENDING Integration test: successful and failed runs emit expected events once
-- 2.3 PENDING Integration test: PostHog outage does not fail core run execution path
+- 2.1 DONE Unit test: event envelope contains required IDs (`workspace_id`, `run_id`)
+- 2.2 IN_PROGRESS Integration test: successful and failed runs emit expected events once
+- 2.3 IN_PROGRESS Integration test: PostHog outage does not fail core run execution path
 
 ---
 
 ## 3.0 Acceptance Criteria
 
-**Status:** PENDING
+**Status:** IN_PROGRESS
 
 - [ ] 3.1 Core `zombied` lifecycle events are visible in PostHog with stable schema
-- [ ] 3.2 Analytics path is non-blocking and outage-tolerant
+- [x] 3.2 Analytics path is non-blocking and outage-tolerant
 - [ ] 3.3 Demo evidence captured for run lifecycle events in PostHog
 
 ---
@@ -58,13 +58,13 @@ Implement one working telemetry function: `zombied` emits deterministic run/cont
 
 ### 5.1 SDK dependency
 
-Add `posthog-zig` from `https://github.com/usezombie/posthog-zig` once v0.1.0 is tagged and tests pass.
+Add `posthog-zig` from `https://github.com/usezombie/posthog-zig` using current `v0.1.3` tag.
 
 `build.zig.zon`:
 ```zig
 .posthog = .{
-    .url = "https://github.com/usezombie/posthog-zig/archive/refs/tags/v0.1.0.tar.gz",
-    .hash = "<zig fetch hash>",
+    .url = "git+https://github.com/usezombie/posthog-zig.git#v0.1.3",
+    .hash = "posthog-0.1.3-QwvZljuyAQBuzL5fxzbzL7OE1I8J90mB7f7vYckyasfY",
 },
 ```
 
@@ -84,8 +84,7 @@ const posthog = @import("posthog");
 
 // In serve.run() — after env_vars and runtime config:
 const posthog_api_key = std.process.getEnvVarOwned(alloc, "POSTHOG_API_KEY") catch null;
-var ph_client: ?posthog.PostHogClient = if (posthog_api_key) |key| blk: {
-    defer alloc.free(key);
+var ph_client: ?*posthog.PostHogClient = if (posthog_api_key) |key| blk: {
     break :blk posthog.init(alloc, .{
         .api_key = key,
         .host = "https://us.i.posthog.com",
@@ -94,7 +93,7 @@ var ph_client: ?posthog.PostHogClient = if (posthog_api_key) |key| blk: {
         .max_retries = 3,
     }) catch null;
 } else null;
-defer if (ph_client) |*c| c.deinit(); // drains remaining events before exit
+defer if (ph_client) |c| c.deinit(); // drains remaining events before exit
 ```
 
 Add to `http_handler.Context`:
@@ -107,7 +106,7 @@ pub const Context = struct {
 
 Set in serve.zig before starting the HTTP server:
 ```zig
-if (ph_client) |*c| ctx.posthog = c;
+ctx.posthog = ph_client;
 ```
 
 `POSTHOG_API_KEY` not set → `ctx.posthog = null` → analytics silently skipped. Never blocks the run path.

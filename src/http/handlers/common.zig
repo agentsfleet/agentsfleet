@@ -1,6 +1,7 @@
 const std = @import("std");
 const zap = @import("zap");
 const pg = @import("pg");
+const posthog = @import("posthog");
 const oidc = @import("../../auth/oidc.zig");
 const auth_sessions = @import("../../auth/sessions.zig");
 const queue_redis = @import("../../queue/redis.zig");
@@ -24,6 +25,7 @@ pub const Context = struct {
     api_max_in_flight_requests: u32,
     ready_max_queue_depth: ?i64,
     ready_max_queue_age_ms: ?i64,
+    posthog: ?*posthog.PostHogClient = null,
 };
 
 pub const AuthMode = enum {
@@ -33,6 +35,7 @@ pub const AuthMode = enum {
 
 pub const AuthPrincipal = struct {
     mode: AuthMode,
+    user_id: ?[]const u8 = null,
     tenant_id: ?[]const u8 = null,
     workspace_scope_id: ?[]const u8 = null,
 };
@@ -115,6 +118,7 @@ fn authenticateApiKey(
         if (!std.mem.eql(u8, provided, candidate)) continue;
         return .{
             .mode = .api_key,
+            .user_id = null,
             .tenant_id = null,
             .workspace_scope_id = null,
         };
@@ -135,6 +139,7 @@ pub fn authenticate(alloc: std.mem.Allocator, r: zap.Request, ctx: *Context) Aut
         }
         return .{
             .mode = .jwt_oidc,
+            .user_id = principal.subject,
             .tenant_id = principal.tenant_id,
             .workspace_scope_id = principal.workspace_id,
         };

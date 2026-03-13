@@ -13,6 +13,7 @@ const worker_stage_executor = @import("worker_stage_executor.zig");
 const metrics = @import("../observability/metrics.zig");
 const events = @import("../events/bus.zig");
 const prompt_events = @import("../observability/prompt_events.zig");
+const posthog_events = @import("../observability/posthog_events.zig");
 const http_common = @import("../http/handlers/common.zig");
 const obs_log = @import("../observability/logging.zig");
 const log = std.log.scoped(.worker);
@@ -60,7 +61,7 @@ pub fn processNextRun(
 
     var result = try conn.query(
         \\SELECT r.run_id, r.workspace_id, r.spec_id, r.tenant_id, r.attempt, r.request_id,
-        \\       r.trace_id, w.repo_url, w.default_branch,
+        \\       r.trace_id, r.requested_by, w.repo_url, w.default_branch,
         \\       s.file_path
         \\FROM runs r
         \\JOIN workspaces w ON w.workspace_id = r.workspace_id
@@ -86,9 +87,11 @@ pub fn processNextRun(
     const request_id = try claim_alloc.dupe(u8, request_id_raw orelse "-");
     const trace_id_raw = try row.get(?[]u8, 6);
     const trace_id = try claim_alloc.dupe(u8, trace_id_raw orelse "-");
-    const repo_url = try claim_alloc.dupe(u8, try row.get([]u8, 7));
-    const default_branch = try claim_alloc.dupe(u8, try row.get([]u8, 8));
-    const spec_path = try claim_alloc.dupe(u8, try row.get([]u8, 9));
+    const requested_by_raw = try row.get(?[]u8, 7);
+    const requested_by = try claim_alloc.dupe(u8, requested_by_raw orelse "");
+    const repo_url = try claim_alloc.dupe(u8, try row.get([]u8, 8));
+    const default_branch = try claim_alloc.dupe(u8, try row.get([]u8, 9));
+    const spec_path = try claim_alloc.dupe(u8, try row.get([]u8, 10));
     _ = http_common.setTenantSessionContext(conn, tenant_id);
 
     result.drain() catch |err| {
@@ -151,6 +154,7 @@ pub fn processNextRun(
             .workspace_id = workspace_id,
             .spec_id = spec_id,
             .tenant_id = tenant_id,
+            .requested_by = requested_by,
             .repo_url = repo_url,
             .default_branch = default_branch,
             .spec_path = spec_path,
@@ -191,6 +195,14 @@ pub fn processNextRun(
             .{ request_id, trace_id, @tagName(classified.class), classified.retryable, @errorName(err) },
         ) catch "run_failed";
         events.emit("run_failed", run_id, failed_detail_slice);
+        posthog_events.trackRunFailed(
+            cfg.execute.posthog,
+            posthog_events.distinctIdOrSystem(requested_by),
+            run_id,
+            workspace_id,
+            @errorName(err),
+            0,
+        );
         _ = state.transition(conn, run_id, .BLOCKED, .orchestrator, classified.reason_code, note) catch |tx_err| {
             obs_log.logWarnErr(.worker, tx_err, "failure transition failed run_id={s}", .{run_id});
         };

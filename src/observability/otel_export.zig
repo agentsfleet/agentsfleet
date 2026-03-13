@@ -167,10 +167,12 @@ fn postOtlpJson(alloc: std.mem.Allocator, url: []const u8, payload: []const u8) 
 
 fn mapFetchError(err: anyerror) ExportError {
     return switch (err) {
+        error.UnexpectedConnectFailure,
         error.ConnectionRefused,
         error.NetworkUnreachable,
         error.ConnectionTimedOut,
         error.HostUnreachable,
+        error.PermissionDenied,
         error.TemporaryNameServerFailure,
         error.NameServerFailure,
         error.UnknownHostName,

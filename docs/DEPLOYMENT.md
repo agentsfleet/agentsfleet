@@ -135,7 +135,7 @@ This runs `pass-cli inject -i .env.{ENV}.tpl -o .env -f`, resolving all `{{ pass
 | `GITHUB_APP_PRIVATE_KEY` | ✅ | ✅ | ✅ | GitHub App |
 | `GITHUB_CLIENT_ID` | ✅ | ✅ | ✅ | OAuth callback |
 | `GITHUB_CLIENT_SECRET` | ✅ | ✅ | ✅ | OAuth callback |
-| `POSTHOG_KEY` | ✅ | ✅ | ✅ | Product analytics |
+| `POSTHOG_API_KEY` | ✅ | ✅ | ✅ | Product analytics |
 | `RESEND_API_KEY` | ✅ | ✅ | ✅ | Email notifications |
 | `DISCORD_WEBHOOK_URL` | ✅ | ✅ | ✅ | Notifications |
 | `SLACK_WEBHOOK_URL` | ✅ | ✅ | ✅ | Notifications |

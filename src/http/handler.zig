@@ -6,6 +6,7 @@ const zap = @import("zap");
 const pg = @import("pg");
 const secrets = @import("../secrets/crypto.zig");
 const metrics = @import("../observability/metrics.zig");
+const posthog_events = @import("../observability/posthog_events.zig");
 const obs_log = @import("../observability/logging.zig");
 const error_codes = @import("../errors/codes.zig");
 const id_format = @import("../types/id_format.zig");
@@ -276,10 +277,22 @@ pub fn handleCompileHarness(ctx: *Context, r: zap.Request, workspace_id: []const
             error.InvalidIdShape => common.errorResponse(r, .bad_request, error_codes.ERR_UUIDV7_INVALID_ID_SHAPE, "Invalid profile_version_id format", req_id),
             error.ProfileNotFound => common.errorResponse(r, .not_found, error_codes.ERR_PROFILE_NOT_FOUND, "No harness profile source found for workspace", req_id),
             error.CompileFailed => common.internalOperationError(r, "Harness compile failed", req_id),
-            error.EntitlementMissing => common.errorResponse(r, .forbidden, error_codes.ERR_ENTITLEMENT_UNAVAILABLE, "Workspace entitlement missing; request denied", req_id),
-            error.EntitlementProfileLimit => common.errorResponse(r, .forbidden, error_codes.ERR_ENTITLEMENT_PROFILE_LIMIT, "Workspace profile limit exceeded", req_id),
-            error.EntitlementStageLimit => common.errorResponse(r, .forbidden, error_codes.ERR_ENTITLEMENT_STAGE_LIMIT, "Plan stage limit exceeded", req_id),
-            error.EntitlementSkillNotAllowed => common.errorResponse(r, .forbidden, error_codes.ERR_ENTITLEMENT_SKILL_NOT_ALLOWED, "Plan does not allow one or more profile skills", req_id),
+            error.EntitlementMissing => {
+                posthog_events.trackEntitlementRejected(ctx.posthog, posthog_events.distinctIdOrSystem(principal.user_id orelse ""), workspace_id, "COMPILE", error_codes.ERR_ENTITLEMENT_UNAVAILABLE, req_id);
+                common.errorResponse(r, .forbidden, error_codes.ERR_ENTITLEMENT_UNAVAILABLE, "Workspace entitlement missing; request denied", req_id);
+            },
+            error.EntitlementProfileLimit => {
+                posthog_events.trackEntitlementRejected(ctx.posthog, posthog_events.distinctIdOrSystem(principal.user_id orelse ""), workspace_id, "COMPILE", error_codes.ERR_ENTITLEMENT_PROFILE_LIMIT, req_id);
+                common.errorResponse(r, .forbidden, error_codes.ERR_ENTITLEMENT_PROFILE_LIMIT, "Workspace profile limit exceeded", req_id);
+            },
+            error.EntitlementStageLimit => {
+                posthog_events.trackEntitlementRejected(ctx.posthog, posthog_events.distinctIdOrSystem(principal.user_id orelse ""), workspace_id, "COMPILE", error_codes.ERR_ENTITLEMENT_STAGE_LIMIT, req_id);
+                common.errorResponse(r, .forbidden, error_codes.ERR_ENTITLEMENT_STAGE_LIMIT, "Plan stage limit exceeded", req_id);
+            },
+            error.EntitlementSkillNotAllowed => {
+                posthog_events.trackEntitlementRejected(ctx.posthog, posthog_events.distinctIdOrSystem(principal.user_id orelse ""), workspace_id, "COMPILE", error_codes.ERR_ENTITLEMENT_SKILL_NOT_ALLOWED, req_id);
+                common.errorResponse(r, .forbidden, error_codes.ERR_ENTITLEMENT_SKILL_NOT_ALLOWED, "Plan does not allow one or more profile skills", req_id);
+            },
             else => common.internalOperationError(r, "Failed to compile harness profile", req_id),
         }
         return;
@@ -335,14 +348,35 @@ pub fn handleActivateHarness(ctx: *Context, r: zap.Request, workspace_id: []cons
             error.InvalidIdShape => common.errorResponse(r, .bad_request, error_codes.ERR_UUIDV7_INVALID_ID_SHAPE, "Invalid profile_version_id format", req_id),
             error.ProfileNotFound => common.errorResponse(r, .not_found, error_codes.ERR_PROFILE_NOT_FOUND, "Profile version not found", req_id),
             error.ProfileInvalid => common.errorResponse(r, .conflict, error_codes.ERR_PROFILE_INVALID, "Invalid profile cannot be activated", req_id),
-            error.EntitlementMissing => common.errorResponse(r, .forbidden, error_codes.ERR_ENTITLEMENT_UNAVAILABLE, "Workspace entitlement missing; request denied", req_id),
-            error.EntitlementProfileLimit => common.errorResponse(r, .forbidden, error_codes.ERR_ENTITLEMENT_PROFILE_LIMIT, "Workspace profile limit exceeded", req_id),
-            error.EntitlementStageLimit => common.errorResponse(r, .forbidden, error_codes.ERR_ENTITLEMENT_STAGE_LIMIT, "Plan stage limit exceeded", req_id),
-            error.EntitlementSkillNotAllowed => common.errorResponse(r, .forbidden, error_codes.ERR_ENTITLEMENT_SKILL_NOT_ALLOWED, "Plan does not allow one or more profile skills", req_id),
+            error.EntitlementMissing => {
+                posthog_events.trackEntitlementRejected(ctx.posthog, posthog_events.distinctIdOrSystem(principal.user_id orelse ""), workspace_id, "ACTIVATE", error_codes.ERR_ENTITLEMENT_UNAVAILABLE, req_id);
+                common.errorResponse(r, .forbidden, error_codes.ERR_ENTITLEMENT_UNAVAILABLE, "Workspace entitlement missing; request denied", req_id);
+            },
+            error.EntitlementProfileLimit => {
+                posthog_events.trackEntitlementRejected(ctx.posthog, posthog_events.distinctIdOrSystem(principal.user_id orelse ""), workspace_id, "ACTIVATE", error_codes.ERR_ENTITLEMENT_PROFILE_LIMIT, req_id);
+                common.errorResponse(r, .forbidden, error_codes.ERR_ENTITLEMENT_PROFILE_LIMIT, "Workspace profile limit exceeded", req_id);
+            },
+            error.EntitlementStageLimit => {
+                posthog_events.trackEntitlementRejected(ctx.posthog, posthog_events.distinctIdOrSystem(principal.user_id orelse ""), workspace_id, "ACTIVATE", error_codes.ERR_ENTITLEMENT_STAGE_LIMIT, req_id);
+                common.errorResponse(r, .forbidden, error_codes.ERR_ENTITLEMENT_STAGE_LIMIT, "Plan stage limit exceeded", req_id);
+            },
+            error.EntitlementSkillNotAllowed => {
+                posthog_events.trackEntitlementRejected(ctx.posthog, posthog_events.distinctIdOrSystem(principal.user_id orelse ""), workspace_id, "ACTIVATE", error_codes.ERR_ENTITLEMENT_SKILL_NOT_ALLOWED, req_id);
+                common.errorResponse(r, .forbidden, error_codes.ERR_ENTITLEMENT_SKILL_NOT_ALLOWED, "Plan does not allow one or more profile skills", req_id);
+            },
             else => common.internalOperationError(r, "Failed to activate profile", req_id),
         }
         return;
     };
+    posthog_events.trackProfileActivated(
+        ctx.posthog,
+        posthog_events.distinctIdOrSystem(principal.user_id orelse ""),
+        workspace_id,
+        out.profile_id,
+        out.profile_version_id,
+        out.run_snapshot_version,
+        req_id,
+    );
 
     common.writeJson(r, .ok, .{
         .workspace_id = workspace_id,

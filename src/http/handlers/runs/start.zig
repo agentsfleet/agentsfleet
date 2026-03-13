@@ -5,6 +5,7 @@ const policy = @import("../../../state/policy.zig");
 const metrics = @import("../../../observability/metrics.zig");
 const trace_ctx = @import("../../../observability/trace.zig");
 const obs_log = @import("../../../observability/logging.zig");
+const posthog_events = @import("../../../observability/posthog_events.zig");
 const profile_linkage = @import("../../../audit/profile_linkage.zig");
 const id_format = @import("../../../types/id_format.zig");
 const error_codes = @import("../../../errors/codes.zig");
@@ -175,6 +176,15 @@ pub fn handleStartRun(ctx: *common.Context, r: zap.Request) void {
             common.errorResponse(r, .service_unavailable, queue_unavailable_code, queue_unavailable_message, req_id);
             return;
         };
+        posthog_events.trackRunStarted(
+            ctx.posthog,
+            posthog_events.distinctIdOrSystem(principal.user_id orelse ""),
+            final_run_id,
+            req.workspace_id,
+            req.spec_id,
+            req.mode,
+            req_id,
+        );
         metrics.incRunsCreated();
     } else {
         log.info("run idempotent replay run_id={s} workspace_id={s}", .{ final_run_id, req.workspace_id });

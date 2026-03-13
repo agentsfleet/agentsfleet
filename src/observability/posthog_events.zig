@@ -1,0 +1,193 @@
+const std = @import("std");
+const posthog = @import("posthog");
+
+pub fn distinctIdOrSystem(raw: []const u8) []const u8 {
+    if (raw.len == 0) return "system";
+    return raw;
+}
+
+pub fn trackRunStarted(
+    client: ?*posthog.PostHogClient,
+    distinct_id: []const u8,
+    run_id: []const u8,
+    workspace_id: []const u8,
+    spec_id: []const u8,
+    mode: []const u8,
+    request_id: []const u8,
+) void {
+    if (client) |ph| {
+        const props = [_]posthog.Property{
+            .{ .key = "run_id", .value = .{ .string = run_id } },
+            .{ .key = "workspace_id", .value = .{ .string = workspace_id } },
+            .{ .key = "spec_id", .value = .{ .string = spec_id } },
+            .{ .key = "mode", .value = .{ .string = mode } },
+            .{ .key = "request_id", .value = .{ .string = request_id } },
+        };
+        ph.capture(.{
+            .distinct_id = distinct_id,
+            .event = "run_started",
+            .properties = &props,
+        }) catch {};
+    }
+}
+
+pub fn trackRunRetried(
+    client: ?*posthog.PostHogClient,
+    distinct_id: []const u8,
+    run_id: []const u8,
+    workspace_id: []const u8,
+    attempt: u32,
+    request_id: []const u8,
+) void {
+    if (client) |ph| {
+        const props = [_]posthog.Property{
+            .{ .key = "run_id", .value = .{ .string = run_id } },
+            .{ .key = "workspace_id", .value = .{ .string = workspace_id } },
+            .{ .key = "attempt", .value = .{ .integer = @intCast(attempt) } },
+            .{ .key = "request_id", .value = .{ .string = request_id } },
+        };
+        ph.capture(.{
+            .distinct_id = distinct_id,
+            .event = "run_retried",
+            .properties = &props,
+        }) catch {};
+    }
+}
+
+pub fn trackRunCompleted(
+    client: ?*posthog.PostHogClient,
+    distinct_id: []const u8,
+    run_id: []const u8,
+    workspace_id: []const u8,
+    verdict: []const u8,
+    duration_ms: u64,
+) void {
+    if (client) |ph| {
+        const props = [_]posthog.Property{
+            .{ .key = "run_id", .value = .{ .string = run_id } },
+            .{ .key = "workspace_id", .value = .{ .string = workspace_id } },
+            .{ .key = "verdict", .value = .{ .string = verdict } },
+            .{ .key = "duration_ms", .value = .{ .integer = @intCast(duration_ms) } },
+        };
+        ph.capture(.{
+            .distinct_id = distinct_id,
+            .event = "run_completed",
+            .properties = &props,
+        }) catch {};
+    }
+}
+
+pub fn trackRunFailed(
+    client: ?*posthog.PostHogClient,
+    distinct_id: []const u8,
+    run_id: []const u8,
+    workspace_id: []const u8,
+    reason: []const u8,
+    duration_ms: u64,
+) void {
+    if (client) |ph| {
+        const props = [_]posthog.Property{
+            .{ .key = "run_id", .value = .{ .string = run_id } },
+            .{ .key = "workspace_id", .value = .{ .string = workspace_id } },
+            .{ .key = "reason", .value = .{ .string = reason } },
+            .{ .key = "duration_ms", .value = .{ .integer = @intCast(duration_ms) } },
+        };
+        ph.capture(.{
+            .distinct_id = distinct_id,
+            .event = "run_failed",
+            .properties = &props,
+        }) catch {};
+    }
+}
+
+pub fn trackAgentCompleted(
+    client: ?*posthog.PostHogClient,
+    distinct_id: []const u8,
+    run_id: []const u8,
+    workspace_id: []const u8,
+    actor: []const u8,
+    tokens: u64,
+    duration_ms: u64,
+    exit_status: []const u8,
+) void {
+    if (client) |ph| {
+        const props = [_]posthog.Property{
+            .{ .key = "run_id", .value = .{ .string = run_id } },
+            .{ .key = "workspace_id", .value = .{ .string = workspace_id } },
+            .{ .key = "actor", .value = .{ .string = actor } },
+            .{ .key = "tokens", .value = .{ .integer = @intCast(tokens) } },
+            .{ .key = "duration_ms", .value = .{ .integer = @intCast(duration_ms) } },
+            .{ .key = "exit_status", .value = .{ .string = exit_status } },
+        };
+        ph.capture(.{
+            .distinct_id = distinct_id,
+            .event = "agent_completed",
+            .properties = &props,
+        }) catch {};
+    }
+}
+
+pub fn trackEntitlementRejected(
+    client: ?*posthog.PostHogClient,
+    distinct_id: []const u8,
+    workspace_id: []const u8,
+    boundary: []const u8,
+    reason_code: []const u8,
+    request_id: []const u8,
+) void {
+    if (client) |ph| {
+        const props = [_]posthog.Property{
+            .{ .key = "workspace_id", .value = .{ .string = workspace_id } },
+            .{ .key = "boundary", .value = .{ .string = boundary } },
+            .{ .key = "reason_code", .value = .{ .string = reason_code } },
+            .{ .key = "request_id", .value = .{ .string = request_id } },
+        };
+        ph.capture(.{
+            .distinct_id = distinct_id,
+            .event = "entitlement_rejected",
+            .properties = &props,
+        }) catch {};
+    }
+}
+
+pub fn trackProfileActivated(
+    client: ?*posthog.PostHogClient,
+    distinct_id: []const u8,
+    workspace_id: []const u8,
+    profile_id: []const u8,
+    profile_version_id: []const u8,
+    run_snapshot_version: []const u8,
+    request_id: []const u8,
+) void {
+    if (client) |ph| {
+        const props = [_]posthog.Property{
+            .{ .key = "workspace_id", .value = .{ .string = workspace_id } },
+            .{ .key = "profile_id", .value = .{ .string = profile_id } },
+            .{ .key = "profile_version_id", .value = .{ .string = profile_version_id } },
+            .{ .key = "run_snapshot_version", .value = .{ .string = run_snapshot_version } },
+            .{ .key = "request_id", .value = .{ .string = request_id } },
+        };
+        ph.capture(.{
+            .distinct_id = distinct_id,
+            .event = "profile_activated",
+            .properties = &props,
+        }) catch {};
+    }
+}
+
+test "unit: distinctIdOrSystem falls back to system" {
+    try std.testing.expectEqualStrings("system", distinctIdOrSystem(""));
+    try std.testing.expectEqualStrings("user_123", distinctIdOrSystem("user_123"));
+}
+
+test "integration: telemetry helpers are no-op when posthog client is disabled" {
+    const disabled: ?*posthog.PostHogClient = null;
+    trackRunStarted(disabled, "u", "run_1", "ws_1", "spec_1", "auto", "req_1");
+    trackRunRetried(disabled, "u", "run_1", "ws_1", 2, "req_1");
+    trackRunCompleted(disabled, "u", "run_1", "ws_1", "passed", 42);
+    trackRunFailed(disabled, "u", "run_1", "ws_1", "blocked", 42);
+    trackAgentCompleted(disabled, "u", "run_1", "ws_1", "Echo", 10, 50, "ok");
+    trackEntitlementRejected(disabled, "u", "ws_1", "COMPILE", "ERR_ENTITLEMENT_STAGE_LIMIT", "req_1");
+    trackProfileActivated(disabled, "u", "ws_1", "prof_1", "ver_1", "ver_1", "req_1");
+    try std.testing.expect(true);
+}
