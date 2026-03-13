@@ -5,6 +5,7 @@ const common = @import("../common.zig");
 const policy = @import("../../../state/policy.zig");
 const entitlements = @import("../../../state/entitlements.zig");
 const workspace_billing = @import("../../../state/workspace_billing.zig");
+const workspace_credit = @import("../../../state/workspace_credit.zig");
 const metrics = @import("../../../observability/metrics.zig");
 const trace_ctx = @import("../../../observability/trace.zig");
 const obs_log = @import("../../../observability/logging.zig");
@@ -107,6 +108,15 @@ pub fn handleStartRun(ctx: *common.Context, r: zap.Request) void {
     };
     defer alloc.free(billing_state.plan_sku);
     defer if (billing_state.subscription_id) |v| alloc.free(v);
+    const credit = workspace_credit.enforceExecutionAllowed(conn, alloc, req.workspace_id, billing_state.plan_tier) catch |err| {
+        if (workspace_credit.errorCode(err)) |code| {
+            common.errorResponse(r, .forbidden, code, workspace_credit.errorMessage(err) orelse "Workspace credit failure", req_id);
+            return;
+        }
+        common.internalOperationError(r, "Failed to validate workspace credit balance", req_id);
+        return;
+    };
+    defer alloc.free(credit.currency);
 
     {
         var ws_check = conn.query(

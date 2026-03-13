@@ -56,4 +56,5 @@ pub const ControlPlaneError = error{
     EntitlementProfileLimit,
     EntitlementStageLimit,
     EntitlementSkillNotAllowed,
+    CreditExhausted,
 };

@@ -11,6 +11,7 @@ const obs_log = @import("../observability/logging.zig");
 const error_codes = @import("../errors/codes.zig");
 const id_format = @import("../types/id_format.zig");
 const workspace_billing = @import("../state/workspace_billing.zig");
+const workspace_credit = @import("../state/workspace_credit.zig");
 const harness_handlers = @import("handlers/harness_control_plane.zig");
 const skill_secret_handlers = @import("handlers/skill_secrets.zig");
 const common = @import("handlers/common.zig");
@@ -296,6 +297,7 @@ pub fn handleCompileHarness(ctx: *Context, r: zap.Request, workspace_id: []const
                 posthog_events.trackEntitlementRejected(ctx.posthog, posthog_events.distinctIdOrSystem(principal.user_id orelse ""), workspace_id, "COMPILE", error_codes.ERR_ENTITLEMENT_SKILL_NOT_ALLOWED, req_id);
                 common.errorResponse(r, .forbidden, error_codes.ERR_ENTITLEMENT_SKILL_NOT_ALLOWED, "Plan does not allow one or more profile skills", req_id);
             },
+            error.CreditExhausted => common.errorResponse(r, .forbidden, error_codes.ERR_CREDIT_EXHAUSTED, "Free plan credit exhausted. Upgrade to Scale to continue.", req_id),
             else => common.internalOperationError(r, "Failed to compile harness profile", req_id),
         }
         return;
@@ -367,6 +369,7 @@ pub fn handleActivateHarness(ctx: *Context, r: zap.Request, workspace_id: []cons
                 posthog_events.trackEntitlementRejected(ctx.posthog, posthog_events.distinctIdOrSystem(principal.user_id orelse ""), workspace_id, "ACTIVATE", error_codes.ERR_ENTITLEMENT_SKILL_NOT_ALLOWED, req_id);
                 common.errorResponse(r, .forbidden, error_codes.ERR_ENTITLEMENT_SKILL_NOT_ALLOWED, "Plan does not allow one or more profile skills", req_id);
             },
+            error.CreditExhausted => common.errorResponse(r, .forbidden, error_codes.ERR_CREDIT_EXHAUSTED, "Free plan credit exhausted. Upgrade to Scale to continue.", req_id),
             else => common.internalOperationError(r, "Failed to activate profile", req_id),
         }
         return;
@@ -626,6 +629,10 @@ pub fn handleGitHubCallback(ctx: *Context, r: zap.Request) void {
 
     workspace_billing.provisionFreeWorkspace(conn, alloc, workspace_id, "api") catch {
         common.internalOperationError(r, "Failed to provision free entitlement", req_id);
+        return;
+    };
+    workspace_credit.provisionWorkspaceCredit(conn, alloc, workspace_id, "api") catch {
+        common.internalOperationError(r, "Failed to provision free credit", req_id);
         return;
     };
 

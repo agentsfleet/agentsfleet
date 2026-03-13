@@ -4,7 +4,7 @@
 **Milestone:** M6
 **Workstream:** 002
 **Date:** Mar 06, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P0 — reduce onboarding friction with deterministic credit control
 **Depends on:** M5_003 (Workspace Entitlements and Plan Limits), M6_001 (Paid Scale Plan)
 
@@ -12,7 +12,7 @@
 
 ## 1.0 Free Plan Credit Contract
 
-**Status:** PENDING
+**Status:** IN_PROGRESS
 
 Define the Free plan credit model: every new user receives a $10 credit (no expiry) to run agents, with deterministic enforcement when credit is exhausted.
 
@@ -26,7 +26,7 @@ Define the Free plan credit model: every new user receives a $10 credit (no expi
 
 ## 2.0 Runtime Enforcement And Metering
 
-**Status:** PENDING
+**Status:** IN_PROGRESS
 
 Implement backend enforcement so Free plan work cannot continue after the $10 credit is consumed.
 
