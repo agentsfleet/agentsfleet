@@ -238,10 +238,10 @@ Worker claims run from Redis
 | Flow | Method | Token | Used by |
 |---|---|---|---|
 | CLI login | OAuth 2.0 Device Authorization (RFC 8628) | Clerk JWT | `zombiectl` |
-| API requests | Bearer token | Clerk JWT (verified via JWKS) | All clients |
+| API requests | Bearer token | Clerk JWT or issued `API_KEY` | All clients |
 | Agent pipelines | OAuth 2.0 Client Credentials | Clerk M2M JWT | AI PM agents, CI |
 | GitHub operations | GitHub App installation token | `ghs_...` (1hr, repo-scoped) | Worker git ops |
-| Local dev fallback | Static API key | `API_KEY` env var | Dev only |
+| API key auth | Bearer API key | `API_KEY` | Users or operators issued API keys |
 
 ### CLI Authentication Flow (Device Authorization)
 
@@ -272,9 +272,9 @@ sequenceDiagram
     CK-->>API: Valid claims (user_id, org_id)
     API-->>CLI: 201 Created
 
-    Note over User,API: Local dev fallback (no Clerk needed)
-    User->>CLI: API_KEY=dev-key zombiectl workspace add <repo_url>
-    CLI->>API: POST /v1/workspaces (X-API-Key: dev-key)
+    Note over User,API: API key auth path
+    User->>CLI: API_KEY=issued-key zombiectl workspace add <repo_url>
+    CLI->>API: POST /v1/workspaces (Authorization: Bearer issued-key)
     API-->>CLI: 201 Created
 ```
 
@@ -353,6 +353,64 @@ Side effects (GitHub PR creation, notifications) are written to `run_side_effect
 1. This file contains the **single canonical architecture diagram** for v1.
 2. Deployment and GTM docs may reference this diagram but should not duplicate alternate architecture diagrams.
 3. Additional diagrams are only allowed for narrowly scoped runbooks or debugging notes.
+
+## Agent Gamification & Self-Improvement (M9)
+
+The M9 milestone closes a feedback loop where every completed run scores itself,
+injects its score history into the next run, and — when quality is declining —
+proposes concrete harness changes for operator approval.
+
+```mermaid
+flowchart TD
+    A([Agent Run Submitted]) --> B[zombied Worker\nExecutes Stages\nEcho → Scout → Warden]
+    B --> C{Reaches Terminal\nState?}
+    C -->|In flight| B
+
+    C -->|Yes| D["<b>M9_001 Scoring Engine</b>\nCompute axes: completion · errors · latency · resources\nNormalize → integer score 0–100\nAssign tier: Bronze / Silver / Gold / Elite"]
+
+    D --> E["<b>M9_002 Persist</b>\nagent_run_scores row written\nagent_profiles tier + streak updated\nLeaderboard refreshed"]
+
+    D --> F["<b>M9_003 Failure Analysis</b>\nClassify: TIMEOUT · OOM · BAD_OUTPUT\nUNHANDLED_EXCEPTION · CONTEXT_OVERFLOW\nProduce improvement_hints (structured)"]
+
+    F --> G["Build ScoringContext Block\nlast 5 scores + failure classes\ncapped at 512 tokens"]
+
+    G -->|Prepended to system message| A
+
+    E --> H{5-run rolling avg\ndeclining OR avg lt 60?}
+    H -->|No — trajectory OK| I([Continue Running])
+
+    H -->|Yes — trigger| J["<b>M9_004 Proposal Generation</b>\nAgent LLM reviews last 10 analyses\n+ current harness config\nOutputs structured proposed_changes\ntargets: timeout · tokens · tools · prompt"]
+
+    J --> K[Operator Reviews\nzombiciectl agent proposals list]
+
+    K -->|approve| L["Apply Harness Changes\nAtomically update agent config\nharness_change_log written\nPostHog event emitted"]
+    K -->|reject / expire 7d| M([Proposal Archived\nNew proposal on next trigger])
+
+    L --> N["Tag next 5 runs\npost_change_window = true\nCompute score_delta after window"]
+
+    N -->|Feeds back into| A
+
+    style D fill:#1a3a5c,color:#fff,stroke:#2d6a9f
+    style F fill:#1a3a5c,color:#fff,stroke:#2d6a9f
+    style E fill:#1a3a5c,color:#fff,stroke:#2d6a9f
+    style J fill:#1a3a5c,color:#fff,stroke:#2d6a9f
+    style G fill:#2d4a1e,color:#fff,stroke:#4a7a2e
+    style L fill:#2d4a1e,color:#fff,stroke:#4a7a2e
+```
+
+**Key invariants:**
+- Score is deterministic — identical result from same run metadata, no LLM in scoring path.
+- Context injection is bounded — 512 token hard cap, oldest runs truncated first.
+- Harness changes require explicit operator `approve` — no autonomous mutation.
+- Proposals targeting auth, billing, or network config are rejected at schema validation.
+
+**Workstream files:**
+- `docs/spec/v1/M9_001_AGENT_RUN_QUALITY_SCORING.md`
+- `docs/spec/v1/M9_002_AGENT_SCORE_PERSISTENCE_AND_API.md`
+- `docs/spec/v1/M9_003_AGENT_FAILURE_ANALYSIS_AND_CONTEXT_INJECTION.md`
+- `docs/spec/v1/M9_004_AGENT_HARNESS_AUTO_IMPROVEMENT.md`
+
+---
 
 ## Open Risks
 

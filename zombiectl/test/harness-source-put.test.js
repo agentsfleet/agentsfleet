@@ -55,7 +55,7 @@ test("harness source put uploads markdown file content as source_markdown", asyn
         "ws_123-harness",
       ],
       {
-        env: { ...process.env, API_KEY: "dev-key" },
+        env: { ...process.env, ZOMBIE_TOKEN: "header.payload.sig" },
         stdout: out.stream,
         stderr: err.stream,
         fetchImpl,

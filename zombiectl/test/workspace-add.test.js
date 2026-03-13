@@ -53,7 +53,7 @@ test("workspace add does not persist local state when API create fails", async (
     };
 
     const code = await runCli(["workspace", "add", "https://github.com/acme/repo"], {
-      env: { ...process.env, API_KEY: "dev-key", BROWSER: "false" },
+      env: { ...process.env, ZOMBIE_TOKEN: "header.payload.sig", BROWSER: "false" },
       stdout: out.stream,
       stderr: err.stream,
       fetchImpl,
@@ -87,7 +87,7 @@ test("workspace add persists backend workspace_id and emits install url in json 
     });
 
     const code = await runCli(["--json", "workspace", "add", "https://github.com/acme/repo"], {
-      env: { ...process.env, API_KEY: "dev-key" },
+      env: { ...process.env, ZOMBIE_TOKEN: "header.payload.sig" },
       stdout: out.stream,
       stderr: err.stream,
       fetchImpl,

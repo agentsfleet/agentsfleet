@@ -619,7 +619,7 @@ export async function runCli(argv, io = {}) {
   const ctx = {
     apiUrl: normalizeApiUrl(global.apiUrl || creds.api_url || DEFAULT_API_URL),
     token: creds.token || env.ZOMBIE_TOKEN || null,
-    apiKey: env.API_KEY || null,
+    apiKey: env.API_KEY || env.ZOMBIE_API_KEY || null,
     jsonMode: global.json,
     noOpen: global.noOpen,
     noInput: global.noInput,

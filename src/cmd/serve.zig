@@ -107,7 +107,7 @@ pub fn run(alloc: std.mem.Allocator) !void {
         switch (err) {
             runtime_config.ValidationError.MissingApiKey,
             runtime_config.ValidationError.InvalidApiKeyList,
-            runtime_config.ValidationError.MissingClerkJwksUrl,
+            runtime_config.ValidationError.MissingOidcJwksUrl,
             runtime_config.ValidationError.InvalidOidcProvider,
             runtime_config.ValidationError.MissingEncryptionMasterKey,
             runtime_config.ValidationError.InvalidEncryptionMasterKey,
@@ -248,11 +248,11 @@ pub fn run(alloc: std.mem.Allocator) !void {
     defer if (ph_client) |client| client.deinit();
     ctx.posthog = ph_client;
 
-    var oidc = if (serve_cfg.clerk_enabled) oidc_auth.Verifier.init(alloc, .{
+    var oidc = if (serve_cfg.oidc_enabled) oidc_auth.Verifier.init(alloc, .{
         .provider = serve_cfg.oidc_provider,
-        .jwks_url = serve_cfg.clerk_jwks_url orelse "",
-        .issuer = serve_cfg.clerk_issuer,
-        .audience = serve_cfg.clerk_audience,
+        .jwks_url = serve_cfg.oidc_jwks_url orelse "",
+        .issuer = serve_cfg.oidc_issuer,
+        .audience = serve_cfg.oidc_audience,
     }) else null;
     defer if (oidc) |*v| v.deinit();
     if (oidc) |*v| ctx.oidc = v;

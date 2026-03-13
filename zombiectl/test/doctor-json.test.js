@@ -44,7 +44,7 @@ test("doctor --json emits machine-parseable payload", async () => {
   };
 
   const code = await runCli(["--json", "doctor"], {
-    env: { ...process.env, API_KEY: "dev-key" },
+    env: { ...process.env, ZOMBIE_TOKEN: "header.payload.sig" },
     stdout: out.stream,
     stderr: err.stream,
     fetchImpl,

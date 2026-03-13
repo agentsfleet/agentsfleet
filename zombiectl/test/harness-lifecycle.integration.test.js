@@ -125,7 +125,7 @@ test("harness lifecycle: activate deterministically changes subsequent run snaps
   };
 
   try {
-    const env = { ...process.env, API_KEY: "dev-key" };
+    const env = { ...process.env, ZOMBIE_TOKEN: "header.payload.sig" };
 
     assert.equal(
       await runCli(["harness", "source", "put", "--workspace-id", "ws_123", "--file", filePath], {
@@ -283,7 +283,7 @@ test("harness lifecycle contract: API and CLI JSON expose profile identity parit
     throw new Error(`unexpected route: ${route}`);
   };
 
-  const env = { ...process.env, API_KEY: "dev-key" };
+  const env = { ...process.env, ZOMBIE_TOKEN: "header.payload.sig" };
 
   try {
     assert.equal(

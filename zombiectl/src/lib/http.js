@@ -66,18 +66,18 @@ export async function apiRequest(url, options = {}) {
 }
 
 export function authHeaders(auth) {
-  const headers = {
-    "Content-Type": "application/json",
-  };
+    const headers = {
+        "Content-Type": "application/json",
+    };
 
-  if (auth?.token) {
-    headers.Authorization = `Bearer ${auth.token}`;
+    if (auth?.token) {
+        headers.Authorization = `Bearer ${auth.token}`;
+        return headers;
+    }
+
+    if (auth?.apiKey) {
+        headers.Authorization = `Bearer ${auth.apiKey}`;
+    }
+
     return headers;
-  }
-
-  if (auth?.apiKey) {
-    headers["X-API-Key"] = auth.apiKey;
-  }
-
-  return headers;
 }

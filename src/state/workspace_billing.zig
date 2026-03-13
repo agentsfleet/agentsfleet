@@ -92,7 +92,7 @@ pub fn upgradeWorkspaceToScale(
     const trimmed_subscription = std.mem.trim(u8, input.subscription_id, " \t\r\n");
     if (trimmed_subscription.len == 0) return error.InvalidSubscriptionId;
 
-    const previous = try ensureStateRow(conn, alloc, workspace_id);
+    var previous = try ensureStateRow(conn, alloc, workspace_id);
     defer previous.deinit(alloc);
 
     const now_ms = std.time.milliTimestamp();
@@ -153,7 +153,7 @@ pub fn applyBillingLifecycleEvent(
         .downgrade_to_free => .downgrade_to_free,
     };
 
-    const state = try ensureStateRow(conn, alloc, workspace_id);
+    var state = try ensureStateRow(conn, alloc, workspace_id);
     defer state.deinit(alloc);
 
     const now_ms = std.time.milliTimestamp();

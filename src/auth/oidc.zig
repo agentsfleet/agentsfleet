@@ -1,11 +1,13 @@
 //! Vendor-neutral OIDC verifier facade.
-//! Current provider implementation: Clerk.
+//! Supported adapters: Clerk and custom OIDC claim mappings.
 
 const std = @import("std");
-const clerk = @import("clerk.zig");
+const jwks = @import("jwks.zig");
+const claims = @import("claims.zig");
 
 pub const Provider = enum {
     clerk,
+    custom,
 };
 
 pub const ParseProviderError = error{
@@ -14,10 +16,15 @@ pub const ParseProviderError = error{
 
 pub fn parseProvider(raw: []const u8) ParseProviderError!Provider {
     if (std.ascii.eqlIgnoreCase(raw, "clerk")) return .clerk;
+    if (std.ascii.eqlIgnoreCase(raw, "custom")) return .custom;
     return ParseProviderError.InvalidProvider;
 }
 
-pub const VerifyError = clerk.VerifyError;
+pub fn supportedProviderList() []const u8 {
+    return "clerk, custom";
+}
+
+pub const VerifyError = jwks.VerifyError;
 
 pub const Principal = struct {
     subject: []u8,
@@ -25,6 +32,8 @@ pub const Principal = struct {
     tenant_id: ?[]u8,
     org_id: ?[]u8,
     workspace_id: ?[]u8,
+    audience: ?[]u8,
+    scopes: ?[]u8,
 };
 
 pub const Config = struct {
@@ -38,57 +47,51 @@ pub const Config = struct {
 
 pub const Verifier = struct {
     provider: Provider,
-    clerk_verifier: ?clerk.Verifier = null,
+    inner: jwks.Verifier,
 
     pub fn init(alloc: std.mem.Allocator, cfg: Config) Verifier {
-        return switch (cfg.provider) {
-            .clerk => .{
-                .provider = .clerk,
-                .clerk_verifier = clerk.Verifier.init(alloc, .{
-                    .jwks_url = cfg.jwks_url,
-                    .issuer = cfg.issuer,
-                    .audience = cfg.audience,
-                    .inline_jwks_json = cfg.inline_jwks_json,
-                    .cache_ttl_ms = cfg.cache_ttl_ms,
-                }),
-            },
+        return .{
+            .provider = cfg.provider,
+            .inner = jwks.Verifier.init(alloc, .{
+                .jwks_url = cfg.jwks_url,
+                .issuer = cfg.issuer,
+                .audience = cfg.audience,
+                .inline_jwks_json = cfg.inline_jwks_json,
+                .cache_ttl_ms = cfg.cache_ttl_ms,
+            }),
         };
     }
 
     pub fn deinit(self: *Verifier) void {
-        switch (self.provider) {
-            .clerk => if (self.clerk_verifier) |*v| v.deinit(),
-        }
+        self.inner.deinit();
     }
 
     pub fn verifyAuthorization(self: *Verifier, alloc: std.mem.Allocator, authorization: []const u8) !Principal {
-        return switch (self.provider) {
-            .clerk => {
-                const p = if (self.clerk_verifier) |*v|
-                    try v.verifyAuthorization(alloc, authorization)
-                else
-                    return VerifyError.TokenMalformed;
-                return .{
-                    .subject = p.subject,
-                    .issuer = p.issuer,
-                    .tenant_id = p.tenant_id,
-                    .org_id = p.org_id,
-                    .workspace_id = p.workspace_id,
-                };
-            },
+        const verified = try self.inner.verifyAndDecode(alloc, authorization);
+        errdefer {
+            alloc.free(verified.subject);
+            alloc.free(verified.issuer);
+        }
+
+        const normalized = switch (self.provider) {
+            .clerk => try claims.extractClerkClaims(alloc, verified.claims_json),
+            .custom => try claims.extractCustomClaims(alloc, verified.claims_json),
+        };
+        alloc.free(verified.claims_json);
+
+        return .{
+            .subject = verified.subject,
+            .issuer = verified.issuer,
+            .tenant_id = normalized.tenant_id,
+            .org_id = normalized.org_id,
+            .workspace_id = normalized.workspace_id,
+            .audience = normalized.audience,
+            .scopes = normalized.scopes,
         };
     }
 
     pub fn checkJwksConnectivity(self: *Verifier) !void {
-        switch (self.provider) {
-            .clerk => {
-                if (self.clerk_verifier) |*v| {
-                    try v.checkJwksConnectivity();
-                } else {
-                    return VerifyError.JwksFetchFailed;
-                }
-            },
-        }
+        try self.inner.checkJwksConnectivity();
     }
 };
 
@@ -99,24 +102,30 @@ const TEST_VALID_TOKEN =
     "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6InRlc3Qta2lkLXN0YXRpYyJ9" ++ ".eyJzdWIiOiJ1c2VyX3Rlc3QiLCJpc3MiOiJodHRwczovL2NsZXJrLmRldi51c2V6b21iaWUuY29tIiwiYXVkIjoiaHR0cHM6Ly9hcGkudXNlem9tYmllLmNvbSIsImlhdCI6MTcwNDA2NzIwMCwib3JnX2lkIjoib3JnXzEiLCJtZXRhZGF0YSI6eyJ0ZW5hbnRfaWQiOiJ0ZW5hbnRfYSJ9LCJleHAiOjQxMDI0NDQ4MDB9" ++ ".R5EaetratAEMN3VcDRDyR3KM9dKU3FYGEvzajPdmMUB_3T3qE0G0xZ_IoqyNilvjuMcbdSF-YQL1ylcMPTyBeFUWYAUlMjWBju-Bt3FF0Abqdte5-a64oPb_Ev0ogZyJcI8DDt9yT4kUjH7S2jp4fu9hQaEDMW_6tcASagCHTIjw2h0A41_Y8PI4CrgglIFqEKGim5PUEWM_KzZxs9pjv7-_HsZTovfZTcKeiJkGiFQvyR3oKfudvjLNyyGtdYKiSjfOWtLfJkxGt0CKPkbDbrnj_cSmwCt-X_v_OmG5vm07h7iDKrKhXiav0Djn7W3zZ8EcwjhlvMSsKZ3Uy9Nk2g";
 
 test "verifyAuthorization happy path via vendor-neutral oidc facade" {
-    var verifier = Verifier.init(std.testing.allocator, .{
-        .provider = .clerk,
-        .jwks_url = "https://clerk.dev.usezombie.com/.well-known/jwks.json",
-        .issuer = "https://clerk.dev.usezombie.com",
-        .audience = "https://api.usezombie.com",
-        .inline_jwks_json = TEST_JWKS,
-    });
-    defer verifier.deinit();
+    const providers = [_]Provider{ .clerk, .custom };
+    for (providers) |provider| {
+        var verifier = Verifier.init(std.testing.allocator, .{
+            .provider = provider,
+            .jwks_url = "https://clerk.dev.usezombie.com/.well-known/jwks.json",
+            .issuer = "https://clerk.dev.usezombie.com",
+            .audience = "https://api.usezombie.com",
+            .inline_jwks_json = TEST_JWKS,
+        });
+        defer verifier.deinit();
 
-    const principal = try verifier.verifyAuthorization(std.testing.allocator, "Bearer " ++ TEST_VALID_TOKEN);
-    defer {
-        std.testing.allocator.free(principal.subject);
-        std.testing.allocator.free(principal.issuer);
-        if (principal.tenant_id) |v| std.testing.allocator.free(v);
-        if (principal.org_id) |v| std.testing.allocator.free(v);
-        if (principal.workspace_id) |v| std.testing.allocator.free(v);
+        const principal = try verifier.verifyAuthorization(std.testing.allocator, "Bearer " ++ TEST_VALID_TOKEN);
+        defer {
+            std.testing.allocator.free(principal.subject);
+            std.testing.allocator.free(principal.issuer);
+            if (principal.tenant_id) |v| std.testing.allocator.free(v);
+            if (principal.org_id) |v| std.testing.allocator.free(v);
+            if (principal.workspace_id) |v| std.testing.allocator.free(v);
+            if (principal.audience) |v| std.testing.allocator.free(v);
+            if (principal.scopes) |v| std.testing.allocator.free(v);
+        }
+        try std.testing.expectEqualStrings("tenant_a", principal.tenant_id.?);
+        try std.testing.expectEqualStrings("https://api.usezombie.com", principal.audience.?);
     }
-    try std.testing.expectEqualStrings("tenant_a", principal.tenant_id.?);
 }
 
 test "verifyAuthorization rejects invalid jwt_oidc token" {
@@ -130,6 +139,11 @@ test "verifyAuthorization rejects invalid jwt_oidc token" {
     defer verifier.deinit();
 
     try std.testing.expectError(VerifyError.InvalidAuthorization, verifier.verifyAuthorization(std.testing.allocator, "Bearer invalid.token.value"));
+}
+
+test "parseProvider accepts supported adapters" {
+    try std.testing.expectEqual(Provider.clerk, try parseProvider("clerk"));
+    try std.testing.expectEqual(Provider.custom, try parseProvider("custom"));
 }
 
 test "parseProvider rejects invalid provider" {

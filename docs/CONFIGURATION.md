@@ -35,8 +35,9 @@ These must be present for secure `zombied serve` operation.
 - `REDIS_URL_WORKER`: required, must use `rediss://` and differ from `REDIS_URL_API`.
 
 Auth mode:
-- Clerk enabled (`CLERK_SECRET_KEY` non-empty): `CLERK_JWKS_URL` is required.
-- Clerk disabled: `API_KEY` must be present with at least one usable key.
+- OIDC enabled (`OIDC_JWKS_URL` set and non-empty): `OIDC_PROVIDER` may be `clerk` or `custom`.
+- API key auth enabled (`API_KEY` set and non-empty): bearer API key auth is accepted as a separate user auth type.
+- At least one auth path must be configured: `OIDC_JWKS_URL` or `API_KEY`.
 
 ## Configuration Partitions
 
@@ -49,9 +50,11 @@ Required column legend:
 
 | Key | Required | Override Source | Notes |
 |---|---|---|---|
-| `CLERK_SECRET_KEY` | Conditional | Process env (optional dev `.env.local` fallback), no CLI | Enables Clerk mode. |
-| `CLERK_JWKS_URL` | Conditional | Process env (optional dev `.env.local` fallback), no CLI | Required when `CLERK_SECRET_KEY` is set. |
-| `API_KEY` | Conditional | Process env (optional dev `.env.local` fallback), no CLI | Required when Clerk is disabled. |
+| `OIDC_PROVIDER` | Optional | Process env (optional dev `.env.local` fallback), no CLI | Defaults to `clerk`; supported values: `clerk`, `custom`. |
+| `OIDC_JWKS_URL` | Conditional | Process env (optional dev `.env.local` fallback), no CLI | Required when any `OIDC_*` setting is used. Empty values fail startup. |
+| `OIDC_ISSUER` | Optional | Process env (optional dev `.env.local` fallback), no CLI | Expected issuer check for the active provider. |
+| `OIDC_AUDIENCE` | Optional | Process env (optional dev `.env.local` fallback), no CLI | Expected audience check for the active provider. |
+| `API_KEY` | Conditional | Process env (optional dev `.env.local` fallback), no CLI | Enables bearer API key auth as a separate user auth type. |
 | `GITHUB_APP_ID` | Yes | Process env (optional dev `.env.local` fallback), no CLI | GitHub App runtime auth. |
 | `GITHUB_APP_PRIVATE_KEY` | Yes | Process env (optional dev `.env.local` fallback), no CLI | GitHub App runtime auth. |
 
@@ -135,8 +138,10 @@ Security-critical values are env-only and must not be introduced as CLI flags:
 - `ENCRYPTION_MASTER_KEY`
 - `GITHUB_APP_ID`
 - `GITHUB_APP_PRIVATE_KEY`
-- `CLERK_SECRET_KEY`
-- `CLERK_JWKS_URL`
+- `OIDC_PROVIDER`
+- `OIDC_JWKS_URL`
+- `OIDC_ISSUER`
+- `OIDC_AUDIENCE`
 - `API_KEY`
 - `DATABASE_URL_API`
 - `DATABASE_URL_WORKER`
@@ -165,7 +170,7 @@ Validated at startup:
 - API and worker DB config load
 - Redis readiness and ACL identity checks
 - required secrets (`ENCRYPTION_MASTER_KEY`, GitHub App keys)
-- auth reachability (`CLERK_JWKS_URL` when Clerk is enabled)
+- auth reachability (`OIDC_JWKS_URL` when OIDC is enabled)
 
 Output contract:
 - Human mode: `zombied doctor` (default)

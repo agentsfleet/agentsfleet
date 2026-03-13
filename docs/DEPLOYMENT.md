@@ -127,7 +127,7 @@ This runs `pass-cli inject -i .env.{ENV}.tpl -o .env -f`, resolving all `{{ pass
 | Item | LOCAL | DEV | PROD | Purpose |
 |------|:-----:|:---:|:----:|---------|
 | `CLERK_PUBLISHABLE_KEY` | ✅ | ✅ | ✅ | Auth (all clients) |
-| `CLERK_SECRET_KEY` | ✅ | ✅ | ✅ | API JWT verification |
+| `OIDC_JWKS_URL` | ✅ | ✅ | ✅ | API JWT verification |
 | `CLERK_WEBHOOK_SECRET` | ✅ | ✅ | ✅ | Webhook validation |
 | `CLERK_M2M_ISSUER` | ✅ | ✅ | ✅ | Agent/CI auth |
 | `CLERK_M2M_AUDIENCE` | ✅ | ✅ | ✅ | Agent/CI auth |
@@ -276,7 +276,7 @@ Out of scope for local:
 Local notes:
 1. Run API/worker/Postgres/Redis via Docker Compose.
 2. Generate `.env` with `make env` (injects from `ZOMBIE_LOCAL` vault via `pass-cli inject`).
-3. Clerk: reuse dev instance for auth E2E. Skip for pure API development (use `API_KEY` fallback).
+3. Clerk: reuse dev instance for OIDC auth E2E. Bearer `API_KEY` auth remains available as a separate operator auth type.
 4. NullClaw sandbox may use bubblewrap on Linux Docker or degrade gracefully on macOS.
 5. Website: `cd ui/packages/website && npm run dev` for local preview.
 
@@ -296,7 +296,7 @@ Components:
 Development expectations:
 1. Redis stream semantics (`XADD`, `XREADGROUP`, `XACK`, `XAUTOCLAIM`) fully operational.
 2. Tailscale + IP allowlisting enforced before team access.
-3. Clerk JWT auth enforced (no `API_KEY` fallback in dev).
+3. OIDC auth enforced for JWT-bearing clients; bearer `API_KEY` auth remains available where issued.
 4. NullClaw sandbox active with Landlock backend on Linux workers.
 
 ### 3.3 Environment Production
@@ -315,7 +315,7 @@ Components:
 
 Production expectations:
 1. All security hardening from M3_005 enforced.
-2. Clerk JWT auth required for all API access.
+2. API access requires either Clerk-issued JWT auth or a valid bearer `API_KEY`.
 3. Database role separation (api_accessor / worker_accessor) enforced.
 4. Redis ACLs enforced (separate API/worker credentials).
 5. Secrets rotation and audit reporting required before customer workloads.
@@ -329,7 +329,7 @@ Three client surfaces consume the same `zombied` API. Each follows the same loca
 
 | Stage | API target | Auth | How to run |
 |-------|-----------|------|------------|
-| LOCAL | `http://localhost:3000` | Clerk DEV device flow or `API_KEY` | `bun run cli` / `npx zombiectl` |
+| LOCAL | `http://localhost:3000` | Clerk DEV device flow or bearer `API_KEY` | `bun run cli` / `npx zombiectl` |
 | DEV | `https://api.dev.usezombie.com` | Clerk DEV device flow | `npx zombiectl --api https://api.dev.usezombie.com` |
 | PROD | `https://api.usezombie.com` | Clerk PROD device flow | `npx zombiectl` |
 
@@ -371,7 +371,7 @@ Deploy in sequence.
 ### Step 3: Authentication (Clerk)
 
 1. Configure Clerk application with device flow (CLI) and JWT verification (API).
-2. Set environment variables: `CLERK_SECRET_KEY`, `CLERK_JWKS_URL`.
+2. Set environment variables: `OIDC_JWKS_URL` and, if needed, `OIDC_ISSUER`, `OIDC_AUDIENCE`, `OIDC_PROVIDER`.
 3. Configure GitHub App callback URL: `https://api.usezombie.com/v1/github/callback`.
 4. Canonical auth/install/runtime token flow lives in `docs/USECASE.md` section `0. GitHub Auth + Installation + Runtime Token Flow`.
 
@@ -515,7 +515,7 @@ Before production launch, verify all items from M3_005:
 - [ ] Postgres role separation — `api_accessor` cannot read `vault.secrets`
 - [ ] Redis ACLs — API user cannot XREADGROUP, worker user cannot write arbitrary keys
 - [ ] GitHub tokens — installation-scoped, 1-hour lifetime, never stored
-- [ ] Clerk JWT — all API requests authenticated (no `API_KEY` in production)
+- [ ] API auth configured: Clerk JWT and/or issued bearer `API_KEY` accepted as intended
 - [ ] TLS on all Postgres and Redis connections
 - [ ] `ENCRYPTION_MASTER_KEY` in memory only, never logged
 - [ ] `zombied doctor` reports security posture
