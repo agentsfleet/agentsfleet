@@ -12,6 +12,8 @@ const std = @import("std");
 const zap = @import("zap");
 const db = @import("../db/pool.zig");
 const outbox = @import("../state/outbox_reconciler.zig");
+const billing_adapter = @import("../state/billing_adapter.zig");
+const billing_reconciler = @import("../state/billing_reconciler.zig");
 const id_format = @import("../types/id_format.zig");
 const otel = @import("../observability/otel_export.zig");
 const metrics = @import("../observability/metrics.zig");
@@ -263,7 +265,15 @@ fn openDbOrExit(alloc: std.mem.Allocator) *db.Pool {
 fn reconcileTick(pool: *db.Pool) !outbox.ReconcileResult {
     const conn = try pool.acquire();
     defer pool.release(conn);
-    return outbox.reconcileStartup(conn);
+    const side_effect_result = try outbox.reconcileStartup(conn);
+    var adapter = try billing_adapter.adapterFromEnv(std.heap.page_allocator);
+    defer adapter.deinit(std.heap.page_allocator);
+    const billing_result = try billing_reconciler.reconcilePending(std.heap.page_allocator, conn, adapter, billing_reconciler.DEFAULT_BATCH_LIMIT);
+
+    return .{
+        .dead_lettered = side_effect_result.dead_lettered + billing_result.dead_lettered,
+        .skipped = side_effect_result.skipped,
+    };
 }
 
 fn runOnce(alloc: std.mem.Allocator, pool: *db.Pool) bool {
