@@ -15,7 +15,7 @@ const ServeMigrationDecision = enum {
     run_required,
 };
 
-pub fn canonicalMigrations() [10]db.Migration {
+pub fn canonicalMigrations() [11]db.Migration {
     const schema = @import("schema");
     return .{
         .{ .version = 1, .sql = schema.initial_sql },
@@ -28,6 +28,7 @@ pub fn canonicalMigrations() [10]db.Migration {
         .{ .version = 12, .sql = schema.workspace_entitlements_sql },
         .{ .version = 13, .sql = schema.usage_metering_billing_sql },
         .{ .version = 14, .sql = schema.workspace_billing_state_sql },
+        .{ .version = 15, .sql = schema.workspace_free_credit_sql },
     };
 }
 
@@ -104,10 +105,10 @@ test "migrateOnStartEnabledFromEnv parses known values" {
 
 test "unit: migration guard allows startup when schema is clean" {
     const decision = try decideServeMigrationPolicy(.{
-        .expected_versions = 10,
-        .applied_versions = 10,
-        .latest_expected_version = 14,
-        .latest_applied_version = 14,
+        .expected_versions = 11,
+        .applied_versions = 11,
+        .latest_expected_version = 15,
+        .latest_applied_version = 15,
         .has_failed_migrations = false,
         .lock_available = true,
         .has_newer_schema_version = false,
@@ -117,10 +118,10 @@ test "unit: migration guard allows startup when schema is clean" {
 
 test "integration: startup allows clean schema with no pending migrations" {
     const decision = try decideServeMigrationPolicy(.{
-        .expected_versions = 10,
-        .applied_versions = 10,
-        .latest_expected_version = 14,
-        .latest_applied_version = 14,
+        .expected_versions = 11,
+        .applied_versions = 11,
+        .latest_expected_version = 15,
+        .latest_applied_version = 15,
         .has_failed_migrations = false,
         .lock_available = true,
         .has_newer_schema_version = false,

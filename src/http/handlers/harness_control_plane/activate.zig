@@ -4,6 +4,7 @@ const prompt_events = @import("../../../observability/prompt_events.zig");
 const profile_linkage = @import("../../../audit/profile_linkage.zig");
 const entitlements = @import("../../../state/entitlements.zig");
 const workspace_billing = @import("../../../state/workspace_billing.zig");
+const workspace_credit = @import("../../../state/workspace_credit.zig");
 const types = @import("types.zig");
 const util = @import("util.zig");
 
@@ -45,7 +46,14 @@ pub fn activateProfile(
     const tenant_id = try row.get([]const u8, 2);
     const compiled_profile_json = try row.get(?[]const u8, 3);
     if (!is_valid) return types.ControlPlaneError.ProfileInvalid;
-    _ = try workspace_billing.reconcileWorkspaceBilling(conn, alloc, workspace_id, std.time.milliTimestamp(), input.activated_by orelse "api");
+    const billing_state = try workspace_billing.reconcileWorkspaceBilling(conn, alloc, workspace_id, std.time.milliTimestamp(), input.activated_by orelse "api");
+    defer alloc.free(billing_state.plan_sku);
+    defer if (billing_state.subscription_id) |v| alloc.free(v);
+    const credit = workspace_credit.enforceExecutionAllowed(conn, alloc, workspace_id, billing_state.plan_tier) catch |err| switch (err) {
+        error.CreditExhausted => return types.ControlPlaneError.CreditExhausted,
+        else => return err,
+    };
+    defer alloc.free(credit.currency);
     entitlements.enforceWithAudit(
         conn,
         alloc,

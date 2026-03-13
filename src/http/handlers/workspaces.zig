@@ -2,6 +2,7 @@ const std = @import("std");
 const zap = @import("zap");
 const policy = @import("../../state/policy.zig");
 const workspace_billing = @import("../../state/workspace_billing.zig");
+const workspace_credit = @import("../../state/workspace_credit.zig");
 const posthog_events = @import("../../observability/posthog_events.zig");
 const obs_log = @import("../../observability/logging.zig");
 const error_codes = @import("../../errors/codes.zig");
@@ -232,6 +233,15 @@ pub fn handleCreateWorkspace(ctx: *common.Context, r: zap.Request) void {
     };
     tenant_q.deinit();
 
+    workspace_billing.enforceFreeWorkspaceCreationAllowed(conn, tenant_id, null) catch |err| {
+        if (workspace_billing.errorCode(err)) |code| {
+            common.errorResponse(r, .forbidden, code, workspace_billing.errorMessage(err) orelse "Workspace billing failure", req_id);
+            return;
+        }
+        common.internalOperationError(r, "Failed to validate free workspace limit", req_id);
+        return;
+    };
+
     const workspace_id = generateWorkspaceId(alloc) catch {
         common.internalOperationError(r, "Failed to allocate workspace id", req_id);
         return;
@@ -249,6 +259,10 @@ pub fn handleCreateWorkspace(ctx: *common.Context, r: zap.Request) void {
 
     workspace_billing.provisionFreeWorkspace(conn, alloc, workspace_id, "api") catch {
         common.internalOperationError(r, "Failed to provision free entitlement", req_id);
+        return;
+    };
+    workspace_credit.provisionWorkspaceCredit(conn, alloc, workspace_id, "api") catch {
+        common.internalOperationError(r, "Failed to provision free credit", req_id);
         return;
     };
 
@@ -403,6 +417,15 @@ pub fn handleSyncSpecs(ctx: *common.Context, r: zap.Request, workspace_id: []con
     };
     defer alloc.free(billing_state.plan_sku);
     defer if (billing_state.subscription_id) |v| alloc.free(v);
+    const credit = workspace_credit.enforceExecutionAllowed(conn, alloc, workspace_id, billing_state.plan_tier) catch |err| {
+        if (workspace_credit.errorCode(err)) |code| {
+            common.errorResponse(r, .forbidden, code, workspace_credit.errorMessage(err) orelse "Workspace credit failure", req_id);
+            return;
+        }
+        common.internalOperationError(r, "Failed to validate workspace credit balance", req_id);
+        return;
+    };
+    defer alloc.free(credit.currency);
 
     var ws = conn.query(
         "SELECT repo_url, default_branch FROM workspaces WHERE workspace_id = $1",
@@ -445,6 +468,8 @@ pub fn handleSyncSpecs(ctx: *common.Context, r: zap.Request, workspace_id: []con
         .billing_status = billing_state.billing_status.label(),
         .plan_sku = billing_state.plan_sku,
         .grace_expires_at = billing_state.grace_expires_at,
+        .credit_remaining_cents = credit.remaining_credit_cents,
+        .credit_currency = credit.currency,
         .request_id = req_id,
     });
 }

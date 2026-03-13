@@ -5,6 +5,7 @@ const prompt_events = @import("../../../observability/prompt_events.zig");
 const profile_linkage = @import("../../../audit/profile_linkage.zig");
 const entitlements = @import("../../../state/entitlements.zig");
 const workspace_billing = @import("../../../state/workspace_billing.zig");
+const workspace_credit = @import("../../../state/workspace_credit.zig");
 const types = @import("types.zig");
 const util = @import("util.zig");
 
@@ -75,7 +76,14 @@ pub fn compileProfile(
     const compile_job_id = try util.generateCompileJobId(alloc);
     if (!util.isSupportedCompileJobId(compile_job_id)) return types.ControlPlaneError.InvalidIdShape;
     const now_ms = std.time.milliTimestamp();
-    _ = try workspace_billing.reconcileWorkspaceBilling(conn, alloc, workspace_id, now_ms, "api");
+    const billing_state = try workspace_billing.reconcileWorkspaceBilling(conn, alloc, workspace_id, now_ms, "api");
+    defer alloc.free(billing_state.plan_sku);
+    defer if (billing_state.subscription_id) |v| alloc.free(v);
+    const credit = workspace_credit.enforceExecutionAllowed(conn, alloc, workspace_id, billing_state.plan_tier) catch |err| switch (err) {
+        error.CreditExhausted => return types.ControlPlaneError.CreditExhausted,
+        else => return err,
+    };
+    defer alloc.free(credit.currency);
     var outcome = harness.compileHarnessMarkdown(alloc, source_markdown) catch return types.ControlPlaneError.CompileFailed;
     defer outcome.deinit(alloc);
     entitlements.enforceWithAudit(
