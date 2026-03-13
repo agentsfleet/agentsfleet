@@ -1,4 +1,5 @@
 const std = @import("std");
+const posthog = @import("posthog");
 
 const db = @import("../db/pool.zig");
 const worker_config = @import("worker_config.zig");
@@ -63,6 +64,22 @@ pub fn run(alloc: std.mem.Allocator) !void {
         std.process.exit(1);
     };
     defer worker_cfg.deinit();
+
+    const posthog_api_key = std.process.getEnvVarOwned(alloc, "POSTHOG_API_KEY") catch null;
+    defer if (posthog_api_key) |key| alloc.free(key);
+    const ph_client: ?*posthog.PostHogClient = if (posthog_api_key) |key| blk: {
+        break :blk posthog.init(alloc, .{
+            .api_key = key,
+            .host = "https://us.i.posthog.com",
+            .flush_interval_ms = 10_000,
+            .flush_at = 20,
+            .max_retries = 3,
+        }) catch |err| {
+            obs_log.logWarnErr(.worker, err, "posthog init failed; analytics disabled", .{});
+            break :blk null;
+        };
+    } else null;
+    defer if (ph_client) |client| client.deinit();
 
     const worker_pool = db.initFromEnvForRole(alloc, .worker) catch |err| {
         std.debug.print("fatal: worker database init failed: {}\n", .{err});
@@ -139,6 +156,7 @@ pub fn run(alloc: std.mem.Allocator) !void {
         .run_timeout_ms = worker_cfg.run_timeout_ms,
         .rate_limit_capacity = worker_cfg.rate_limit_capacity,
         .rate_limit_refill_per_sec = worker_cfg.rate_limit_refill_per_sec,
+        .posthog = ph_client,
     };
 
     for (worker_threads) |*t| {

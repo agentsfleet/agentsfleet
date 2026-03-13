@@ -3,6 +3,7 @@ const zap = @import("zap");
 const state = @import("../../../state/machine.zig");
 const policy = @import("../../../state/policy.zig");
 const obs_log = @import("../../../observability/logging.zig");
+const posthog_events = @import("../../../observability/posthog_events.zig");
 const common = @import("../common.zig");
 const id_format = @import("../../../types/id_format.zig");
 const error_codes = @import("../../../errors/codes.zig");
@@ -114,6 +115,14 @@ pub fn handleRetryRun(ctx: *common.Context, r: zap.Request, run_id: []const u8) 
         common.errorResponse(r, .service_unavailable, queue_unavailable_code, queue_unavailable_message, req_id);
         return;
     };
+    posthog_events.trackRunRetried(
+        ctx.posthog,
+        posthog_events.distinctIdOrSystem(principal.user_id orelse ""),
+        run_id,
+        workspace_id_for_policy,
+        current.attempt + 1,
+        req_id,
+    );
 
     common.writeJson(r, .accepted, .{
         .run_id = run_id,

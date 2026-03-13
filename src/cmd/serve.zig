@@ -1,4 +1,5 @@
 const std = @import("std");
+const posthog = @import("posthog");
 
 const db = @import("../db/pool.zig");
 const runtime_config = @import("../config/runtime.zig");
@@ -226,8 +227,26 @@ pub fn run(alloc: std.mem.Allocator) !void {
         .api_max_in_flight_requests = serve_cfg.api_max_in_flight_requests,
         .ready_max_queue_depth = serve_cfg.ready_max_queue_depth,
         .ready_max_queue_age_ms = serve_cfg.ready_max_queue_age_ms,
+        .posthog = null,
     };
     metrics.setApiInFlightRequests(0);
+
+    const posthog_api_key = std.process.getEnvVarOwned(alloc, "POSTHOG_API_KEY") catch null;
+    defer if (posthog_api_key) |key| alloc.free(key);
+    const ph_client: ?*posthog.PostHogClient = if (posthog_api_key) |key| blk: {
+        break :blk posthog.init(alloc, .{
+            .api_key = key,
+            .host = "https://us.i.posthog.com",
+            .flush_interval_ms = 10_000,
+            .flush_at = 20,
+            .max_retries = 3,
+        }) catch |err| {
+            obs_log.logWarnErr(.zombied, err, "posthog init failed; analytics disabled", .{});
+            break :blk null;
+        };
+    } else null;
+    defer if (ph_client) |client| client.deinit();
+    ctx.posthog = ph_client;
 
     var oidc = if (serve_cfg.clerk_enabled) oidc_auth.Verifier.init(alloc, .{
         .provider = serve_cfg.oidc_provider,
@@ -249,6 +268,7 @@ pub fn run(alloc: std.mem.Allocator) !void {
         .run_timeout_ms = serve_cfg.run_timeout_ms,
         .rate_limit_capacity = serve_cfg.rate_limit_capacity,
         .rate_limit_refill_per_sec = serve_cfg.rate_limit_refill_per_sec,
+        .posthog = ph_client,
     };
 
     shutdown_requested.store(false, .release);

@@ -98,8 +98,8 @@ Required column legend:
 | Key | Required | Override Source | Notes |
 |---|---|---|---|
 | `LOG_LEVEL` | Optional | Process env > optional dev `.env.local` > default | Process-env log level. |
-| `POSTHOG_KEY` | Optional | Process env (optional dev `.env.local` fallback), no CLI | Required when PostHog is enabled. |
-| `POSTHOG_HOST` | Optional | Process env (optional dev `.env.local` fallback), no CLI | PostHog host URL. |
+| `POSTHOG_API_KEY` | Optional | Process env (optional dev `.env.local` fallback), no CLI | Required when PostHog is enabled in zombied. |
+| `POSTHOG_HOST` | Optional | Process env (optional dev `.env.local` fallback), no CLI | Used by non-zombied surfaces; zombied defaults to `https://us.i.posthog.com`. |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | Optional | Process env (optional dev `.env.local` fallback), no CLI | OTEL endpoint (when enabled). |
 | `OTEL_EXPORTER_OTLP_HEADERS` | Optional | Process env (optional dev `.env.local` fallback), no CLI | OTEL headers (when enabled). |
 

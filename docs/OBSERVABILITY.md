@@ -243,9 +243,9 @@ Group analytics: workspace-level events include `$groups: { workspace: "ws_abc" 
 | Spec | Surface | Status |
 |---|---|---|
 | M4_005 dim 1.5 | Langfuse integration (zombied worker) | PENDING |
-| M5_001 | posthog-zig SDK (library) | PENDING |
+| M5_001 | posthog-zig SDK (library) | DONE |
 | M5_005 | Website PostHog integration | DONE |
-| M5_006 | zombied PostHog integration | PENDING |
+| M5_006 | zombied PostHog integration | DONE |
 | — | app dashboard + zombiectl PostHog integration | DONE (implementation; spec backfill pending) |
 
 ---

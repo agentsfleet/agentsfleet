@@ -1,5 +1,6 @@
 const std = @import("std");
 const pg = @import("pg");
+const posthog = @import("posthog");
 const types = @import("../types.zig");
 const state = @import("../state/machine.zig");
 const billing = @import("../state/billing.zig");
@@ -19,6 +20,7 @@ const metrics = @import("../observability/metrics.zig");
 const events = @import("../events/bus.zig");
 const trace = @import("../observability/trace.zig");
 const langfuse = @import("../observability/langfuse.zig");
+const posthog_events = @import("../observability/posthog_events.zig");
 const obs_log = @import("../observability/logging.zig");
 const log = std.log.scoped(.worker);
 
@@ -27,6 +29,7 @@ pub const ExecuteConfig = struct {
     max_attempts: u32,
     run_timeout_ms: u64,
     skill_registry: ?*const agents.SkillRegistry = null,
+    posthog: ?*posthog.PostHogClient = null,
 };
 
 pub const RunContext = struct {
@@ -36,6 +39,7 @@ pub const RunContext = struct {
     workspace_id: []const u8,
     spec_id: []const u8,
     tenant_id: []const u8,
+    requested_by: []const u8,
     repo_url: []const u8,
     default_branch: []const u8,
     spec_path: []const u8,
@@ -170,6 +174,16 @@ pub fn executeRun(
         plan_binding.actor,
         plan_result,
     );
+    posthog_events.trackAgentCompleted(
+        cfg.posthog,
+        posthog_events.distinctIdOrSystem(ctx.requested_by),
+        ctx.run_id,
+        ctx.workspace_id,
+        plan_binding.actor.label(),
+        plan_result.token_count,
+        plan_result.wall_seconds * 1000,
+        if (plan_result.exit_ok) "ok" else "failed",
+    );
     try billing.recordRuntimeStageUsage(
         conn,
         ctx.workspace_id,
@@ -241,6 +255,16 @@ pub fn executeRun(
             emitLangfuseTrace(run_alloc, ctx, stage.stage_id, stage.role_id, stage_result);
 
             agents.emitNullclawRunEvent(ctx.run_id, ctx.request_id, ctx.trace_id, attempt, stage.stage_id, stage.role_id, binding.actor, stage_result);
+            posthog_events.trackAgentCompleted(
+                cfg.posthog,
+                posthog_events.distinctIdOrSystem(ctx.requested_by),
+                ctx.run_id,
+                ctx.workspace_id,
+                binding.actor.label(),
+                stage_result.token_count,
+                stage_result.wall_seconds * 1000,
+                if (stage_result.exit_ok) "ok" else "failed",
+            );
             total_tokens += stage_result.token_count;
             total_wall_seconds += stage_result.wall_seconds;
             try billing.recordRuntimeStageUsage(
@@ -343,6 +367,14 @@ pub fn executeRun(
                     var done_detail: [160]u8 = undefined;
                     const done_detail_slice = std.fmt.bufPrint(&done_detail, "request_id={s} trace_id={s} state=done total_wall_seconds={d}", .{ ctx.request_id, ctx.trace_id, total_wall_seconds }) catch "run_done";
                     events.emit("run_done", ctx.run_id, done_detail_slice);
+                    posthog_events.trackRunCompleted(
+                        cfg.posthog,
+                        posthog_events.distinctIdOrSystem(ctx.requested_by),
+                        ctx.run_id,
+                        ctx.workspace_id,
+                        "passed",
+                        total_wall_seconds * 1000,
+                    );
                     metrics.observeRunTotalWallSeconds(total_wall_seconds);
                     metrics.incRunsCompleted();
                     return;
@@ -357,6 +389,14 @@ pub fn executeRun(
                 var done_detail: [160]u8 = undefined;
                 const done_detail_slice = std.fmt.bufPrint(&done_detail, "request_id={s} trace_id={s} state=done total_wall_seconds={d}", .{ ctx.request_id, ctx.trace_id, total_wall_seconds }) catch "run_done";
                 events.emit("run_done", ctx.run_id, done_detail_slice);
+                posthog_events.trackRunCompleted(
+                    cfg.posthog,
+                    posthog_events.distinctIdOrSystem(ctx.requested_by),
+                    ctx.run_id,
+                    ctx.workspace_id,
+                    "passed",
+                    total_wall_seconds * 1000,
+                );
                 metrics.observeRunTotalWallSeconds(total_wall_seconds);
                 metrics.incRunsCompleted();
                 return;
@@ -373,6 +413,14 @@ pub fn executeRun(
                 );
                 _ = try state.transition(conn, ctx.run_id, .BLOCKED, .orchestrator, .VALIDATION_FAILED, "blocked by stage transition graph");
                 _ = try state.transition(conn, ctx.run_id, .NOTIFIED_BLOCKED, .orchestrator, .NOTIFICATION_SENT, null);
+                posthog_events.trackRunFailed(
+                    cfg.posthog,
+                    posthog_events.distinctIdOrSystem(ctx.requested_by),
+                    ctx.run_id,
+                    ctx.workspace_id,
+                    "blocked",
+                    total_wall_seconds * 1000,
+                );
                 metrics.observeRunTotalWallSeconds(total_wall_seconds);
                 metrics.incRunsBlocked();
                 return;
@@ -419,6 +467,14 @@ pub fn executeRun(
         .{ ctx.request_id, ctx.trace_id, total_wall_seconds },
     ) catch "run_blocked";
     events.emit("run_blocked", ctx.run_id, blocked_detail_slice);
+    posthog_events.trackRunFailed(
+        cfg.posthog,
+        posthog_events.distinctIdOrSystem(ctx.requested_by),
+        ctx.run_id,
+        ctx.workspace_id,
+        "retries_exhausted",
+        total_wall_seconds * 1000,
+    );
     metrics.observeRunTotalWallSeconds(total_wall_seconds);
     metrics.incRunsBlocked();
 }

@@ -16,6 +16,10 @@
             .url = "git+https://github.com/karlseguin/pg.zig#master",
             .hash = "pg-0.0.0-Wp_7gXFoBgD0fQ72WICKa-bxLga03AXXQ3BbIsjjohQ3",
         },
+        .posthog = .{
+            .url = "git+https://github.com/usezombie/posthog-zig.git#v0.1.3",
+            .hash = "posthog-0.1.3-QwvZljuyAQBuzL5fxzbzL7OE1I8J90mB7f7vYckyasfY",
+        },
         .zbench = .{
             .url = "git+https://github.com/hendriknielaender/zBench#feaf455d9f8efa7a95b75b52ac3efe0c52549691",
             .hash = "zbench-0.11.1-YTdc7zkmAQBWI99esNFueJc9GuzK-KaU6Nfr1ZXhNGmc",
