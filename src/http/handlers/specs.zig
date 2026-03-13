@@ -20,6 +20,7 @@ pub fn handleListSpecs(ctx: *common.Context, r: zap.Request) void {
     };
     defer alloc.free(workspace_id);
     const wid = workspace_id;
+    if (!common.requireUuidV7Id(r, req_id, wid, "workspace_id")) return;
 
     const limit_str = r.getParamStr(alloc, "limit") catch null;
     defer if (limit_str) |ls| alloc.free(ls);

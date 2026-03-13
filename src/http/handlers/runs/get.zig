@@ -253,26 +253,26 @@ test "integration: get-run response payload includes profile_linkage chain contr
         q.deinit();
     }
 
-    try profile_linkage.insertCompileArtifact(db_ctx.conn, "tenant_1", "ws_1", "pver_1", "cjob_1", true, 10);
-    try profile_linkage.insertActivateArtifact(db_ctx.conn, "tenant_1", "ws_1", "pver_1", "operator", 20);
-    try profile_linkage.insertRunArtifact(db_ctx.conn, "tenant_1", "ws_1", "run_1", "pver_1", 30);
+    try profile_linkage.insertCompileArtifact(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01", "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11", "0195b4ba-8d3a-7f13-9abc-2b3e1e0a6f98", "0195b4ba-8d3a-7f13-aabc-2b3e1e0a6f97", true, 10);
+    try profile_linkage.insertActivateArtifact(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01", "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11", "0195b4ba-8d3a-7f13-9abc-2b3e1e0a6f98", "operator", 20);
+    try profile_linkage.insertRunArtifact(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01", "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11", "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f99", "0195b4ba-8d3a-7f13-9abc-2b3e1e0a6f98", 30);
 
-    var linkage = (try profile_linkage.fetchRunLinkage(db_ctx.conn, std.testing.allocator, "run_1")).?;
+    var linkage = (try profile_linkage.fetchRunLinkage(db_ctx.conn, std.testing.allocator, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f99")).?;
     defer profile_linkage.freeRunLinkage(std.testing.allocator, &linkage);
 
     const empty_values = [_]std.json.Value{};
     const payload = buildRunResponse(
-        "run_1",
-        "ws_1",
-        "spec_1",
+        "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f99",
+        "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11",
+        "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f55",
         "SPEC_QUEUED",
         1,
         "api",
         "operator",
-        "zombie/run-run_1",
+        "zombie/run-0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f99",
         null,
         null,
-        "pver_1",
+        "0195b4ba-8d3a-7f13-9abc-2b3e1e0a6f98",
         30,
         30,
         empty_values[0..],
@@ -302,6 +302,6 @@ test "integration: get-run response payload includes profile_linkage chain contr
     try std.testing.expectEqual(std.json.Value.Tag.string, compile_artifact_id);
     try std.testing.expectEqual(std.json.Value.Tag.string, profile_version_id);
     try std.testing.expectEqual(std.json.Value.Tag.string, compile_job_id);
-    try std.testing.expectEqualStrings("pver_1", profile_version_id.string);
-    try std.testing.expectEqualStrings("cjob_1", compile_job_id.string);
+    try std.testing.expectEqualStrings("0195b4ba-8d3a-7f13-9abc-2b3e1e0a6f98", profile_version_id.string);
+    try std.testing.expectEqualStrings("0195b4ba-8d3a-7f13-aabc-2b3e1e0a6f97", compile_job_id.string);
 }

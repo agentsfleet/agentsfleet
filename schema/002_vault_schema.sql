@@ -1,6 +1,6 @@
--- UseZombie M3_000 vault schema and role separation
+-- UseZombie clean-state vault schema and role separation
 
-CREATE SCHEMA IF NOT EXISTS vault;
+CREATE SCHEMA vault;
 
 DO $$
 BEGIN
@@ -30,11 +30,11 @@ GRANT api_accessor TO worker_accessor;
 GRANT vault_accessor TO worker_accessor;
 GRANT vault_accessor TO callback_accessor;
 
-DROP TABLE IF EXISTS public.secrets;
+DROP TABLE public.secrets;
 
-CREATE TABLE IF NOT EXISTS vault.secrets (
+CREATE TABLE vault.secrets (
     id            BIGSERIAL PRIMARY KEY,
-    workspace_id  TEXT    NOT NULL REFERENCES public.workspaces(workspace_id),
+    workspace_id  UUID    NOT NULL REFERENCES public.workspaces(workspace_id),
     key_name      TEXT    NOT NULL,
     kek_version   INTEGER NOT NULL DEFAULT 1,
     encrypted_dek BYTEA   NOT NULL,
@@ -48,7 +48,7 @@ CREATE TABLE IF NOT EXISTS vault.secrets (
     UNIQUE (workspace_id, key_name)
 );
 
-CREATE INDEX IF NOT EXISTS idx_vault_secrets_workspace
+CREATE INDEX idx_vault_secrets_workspace
     ON vault.secrets(workspace_id, key_name);
 
 ALTER TABLE vault.secrets ENABLE ROW LEVEL SECURITY;

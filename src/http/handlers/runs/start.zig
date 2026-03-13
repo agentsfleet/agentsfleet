@@ -44,6 +44,8 @@ pub fn handleStartRun(ctx: *common.Context, r: zap.Request) void {
     };
     defer parsed.deinit();
     const req = parsed.value;
+    if (!common.requireUuidV7Id(r, req_id, req.workspace_id, "workspace_id")) return;
+    if (!common.requireUuidV7Id(r, req_id, req.spec_id, "spec_id")) return;
 
     if (!common.beginApiRequest(ctx)) {
         common.errorResponse(r, .service_unavailable, error_codes.ERR_API_SATURATED, "Server overloaded; retry shortly", req_id);

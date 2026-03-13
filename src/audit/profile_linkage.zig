@@ -18,8 +18,8 @@ pub fn insertCompileArtifact(
     is_valid: bool,
     created_at: i64,
 ) !void {
-    var artifact_id_buf: [20]u8 = undefined;
-    const artifact_id = prefixedId(&artifact_id_buf, "pla");
+    var artifact_id_buf: [36]u8 = undefined;
+    const artifact_id = generateUuidV7(&artifact_id_buf);
     const meta = if (is_valid) "{\"is_valid\":true}" else "{\"is_valid\":false}";
 
     var q = try conn.query(
@@ -38,8 +38,8 @@ pub fn insertActivateArtifact(
     activated_by: []const u8,
     created_at: i64,
 ) !void {
-    var artifact_id_buf: [20]u8 = undefined;
-    const artifact_id = prefixedId(&artifact_id_buf, "pla");
+    var artifact_id_buf: [36]u8 = undefined;
+    const artifact_id = generateUuidV7(&artifact_id_buf);
 
     var compile_q = try conn.query(
         \\SELECT artifact_id, compile_job_id
@@ -73,8 +73,8 @@ pub fn insertRunArtifact(
     profile_version_id: []const u8,
     created_at: i64,
 ) !void {
-    var artifact_id_buf: [20]u8 = undefined;
-    const artifact_id = prefixedId(&artifact_id_buf, "pla");
+    var artifact_id_buf: [36]u8 = undefined;
+    const artifact_id = generateUuidV7(&artifact_id_buf);
 
     var act_q = try conn.query(
         \\SELECT artifact_id, compile_job_id
@@ -136,11 +136,26 @@ pub fn freeRunLinkage(alloc: std.mem.Allocator, linkage: *RunLinkage) void {
     linkage.* = .{};
 }
 
-fn prefixedId(buf: []u8, prefix: []const u8) []const u8 {
-    var id: [16]u8 = undefined;
-    std.crypto.random.bytes(&id);
-    const hex = std.fmt.bytesToHex(id, .lower);
-    return std.fmt.bufPrint(buf, "{s}_{s}", .{ prefix, hex[0..12] }) catch "id_unknown";
+fn generateUuidV7(buf: []u8) []const u8 {
+    var raw: [16]u8 = undefined;
+    std.crypto.random.bytes(&raw);
+
+    const ts_ms: u64 = @intCast(std.time.milliTimestamp());
+    raw[0] = @intCast((ts_ms >> 40) & 0xff);
+    raw[1] = @intCast((ts_ms >> 32) & 0xff);
+    raw[2] = @intCast((ts_ms >> 24) & 0xff);
+    raw[3] = @intCast((ts_ms >> 16) & 0xff);
+    raw[4] = @intCast((ts_ms >> 8) & 0xff);
+    raw[5] = @intCast(ts_ms & 0xff);
+    raw[6] = (raw[6] & 0x0f) | 0x70;
+    raw[8] = (raw[8] & 0x3f) | 0x80;
+
+    const hex = std.fmt.bytesToHex(raw, .lower);
+    return std.fmt.bufPrint(
+        buf,
+        "{s}-{s}-{s}-{s}-{s}",
+        .{ hex[0..8], hex[8..12], hex[12..16], hex[16..20], hex[20..32] },
+    ) catch "00000000-0000-7000-8000-000000000000";
 }
 
 test "integration: linkage chain is queryable for run" {
@@ -168,18 +183,18 @@ test "integration: linkage chain is queryable for run" {
         q.deinit();
     }
 
-    try insertCompileArtifact(db_ctx.conn, "tenant_1", "ws_1", "pver_1", "cjob_1", true, 10);
-    try insertActivateArtifact(db_ctx.conn, "tenant_1", "ws_1", "pver_1", "operator", 20);
-    try insertRunArtifact(db_ctx.conn, "tenant_1", "ws_1", "run_1", "pver_1", 30);
+    try insertCompileArtifact(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01", "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11", "0195b4ba-8d3a-7f13-9abc-2b3e1e0a6f98", "0195b4ba-8d3a-7f13-aabc-2b3e1e0a6f97", true, 10);
+    try insertActivateArtifact(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01", "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11", "0195b4ba-8d3a-7f13-9abc-2b3e1e0a6f98", "operator", 20);
+    try insertRunArtifact(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01", "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11", "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f99", "0195b4ba-8d3a-7f13-9abc-2b3e1e0a6f98", 30);
 
-    var linkage = (try fetchRunLinkage(db_ctx.conn, std.testing.allocator, "run_1")).?;
+    var linkage = (try fetchRunLinkage(db_ctx.conn, std.testing.allocator, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f99")).?;
     defer freeRunLinkage(std.testing.allocator, &linkage);
 
     try std.testing.expect(linkage.run_artifact_id != null);
     try std.testing.expect(linkage.activate_artifact_id != null);
     try std.testing.expect(linkage.compile_artifact_id != null);
-    try std.testing.expectEqualStrings("pver_1", linkage.profile_version_id.?);
-    try std.testing.expectEqualStrings("cjob_1", linkage.compile_job_id.?);
+    try std.testing.expectEqualStrings("0195b4ba-8d3a-7f13-9abc-2b3e1e0a6f98", linkage.profile_version_id.?);
+    try std.testing.expectEqualStrings("0195b4ba-8d3a-7f13-aabc-2b3e1e0a6f97", linkage.compile_job_id.?);
 }
 
 test "integration: linkage artifacts are immutable and reject updates" {
@@ -227,7 +242,7 @@ test "integration: linkage artifacts are immutable and reject updates" {
         q.deinit();
     }
 
-    try insertCompileArtifact(db_ctx.conn, "tenant_1", "ws_1", "pver_1", "cjob_1", true, 10);
+    try insertCompileArtifact(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01", "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11", "0195b4ba-8d3a-7f13-9abc-2b3e1e0a6f98", "0195b4ba-8d3a-7f13-aabc-2b3e1e0a6f97", true, 10);
 
     try std.testing.expectError(error.PgError, db_ctx.conn.query(
         "UPDATE profile_linkage_audit_artifacts SET metadata_json = '{\"x\":1}' WHERE artifact_type = 'COMPILE'",
@@ -260,9 +275,9 @@ test "integration: activate linkage metadata preserves escaped activated_by valu
         q.deinit();
     }
 
-    try insertCompileArtifact(db_ctx.conn, "tenant_1", "ws_1", "pver_1", "cjob_1", true, 10);
+    try insertCompileArtifact(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01", "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11", "0195b4ba-8d3a-7f13-9abc-2b3e1e0a6f98", "0195b4ba-8d3a-7f13-aabc-2b3e1e0a6f97", true, 10);
     const activated_by = "operator \"alpha\" \\ slash";
-    try insertActivateArtifact(db_ctx.conn, "tenant_1", "ws_1", "pver_1", activated_by, 20);
+    try insertActivateArtifact(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01", "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11", "0195b4ba-8d3a-7f13-9abc-2b3e1e0a6f98", activated_by, 20);
 
     var q = try db_ctx.conn.query(
         "SELECT metadata_json FROM profile_linkage_audit_artifacts WHERE artifact_type = 'ACTIVATE' LIMIT 1",
@@ -320,9 +335,9 @@ test "integration: run linkage insert fails closed when snapshot profile version
         q.deinit();
     }
     {
-        var q = try db_ctx.conn.query("INSERT INTO runs (run_id) VALUES ('run_1')", .{});
+        var q = try db_ctx.conn.query("INSERT INTO runs (run_id) VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f99')", .{});
         q.deinit();
     }
 
-    try std.testing.expectError(error.PgError, insertRunArtifact(db_ctx.conn, "tenant_1", "ws_1", "run_1", "pver_missing", 30));
+    try std.testing.expectError(error.PgError, insertRunArtifact(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01", "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11", "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f99", "0195b4ba-8d3a-7f13-9abc-2b3e1e0a6fff", 30));
 }

@@ -194,6 +194,7 @@ pub fn handlePutHarnessSource(ctx: *Context, r: zap.Request, workspace_id: []con
         common.writeAuthError(r, req_id, err);
         return;
     };
+    if (!common.requireUuidV7Id(r, req_id, workspace_id, "workspace_id")) return;
 
     const Req = harness_handlers.PutSourceInput;
     const body = r.body orelse {
@@ -246,6 +247,7 @@ pub fn handleCompileHarness(ctx: *Context, r: zap.Request, workspace_id: []const
         common.writeAuthError(r, req_id, err);
         return;
     };
+    if (!common.requireUuidV7Id(r, req_id, workspace_id, "workspace_id")) return;
 
     const Req = harness_handlers.CompileInput;
     const body = r.body orelse {
@@ -304,6 +306,7 @@ pub fn handleActivateHarness(ctx: *Context, r: zap.Request, workspace_id: []cons
         common.writeAuthError(r, req_id, err);
         return;
     };
+    if (!common.requireUuidV7Id(r, req_id, workspace_id, "workspace_id")) return;
 
     const Req = harness_handlers.ActivateInput;
     const body = r.body orelse {
@@ -362,6 +365,7 @@ pub fn handleGetHarnessActive(ctx: *Context, r: zap.Request, workspace_id: []con
         common.writeAuthError(r, req_id, err);
         return;
     };
+    if (!common.requireUuidV7Id(r, req_id, workspace_id, "workspace_id")) return;
 
     const conn = ctx.pool.acquire() catch {
         common.internalDbUnavailable(r, req_id);
@@ -413,6 +417,7 @@ pub fn handlePutWorkspaceSkillSecret(
         common.writeAuthError(r, req_id, err);
         return;
     };
+    if (!common.requireUuidV7Id(r, req_id, workspace_id, "workspace_id")) return;
 
     const Req = skill_secret_handlers.PutInput;
     const body = r.body orelse {
@@ -469,6 +474,7 @@ pub fn handleDeleteWorkspaceSkillSecret(
         common.writeAuthError(r, req_id, err);
         return;
     };
+    if (!common.requireUuidV7Id(r, req_id, workspace_id, "workspace_id")) return;
 
     const conn = ctx.pool.acquire() catch {
         common.internalDbUnavailable(r, req_id);
@@ -512,6 +518,7 @@ pub fn handleGitHubCallback(ctx: *Context, r: zap.Request) void {
         return;
     };
     defer alloc.free(workspace_id);
+    if (!common.requireUuidV7Id(r, req_id, workspace_id, "workspace_id")) return;
 
     const conn = ctx.pool.acquire() catch {
         common.internalDbUnavailable(r, req_id);
@@ -520,14 +527,35 @@ pub fn handleGitHubCallback(ctx: *Context, r: zap.Request) void {
     defer ctx.pool.release(conn);
 
     const now_ms = std.time.milliTimestamp();
-    _ = common.setTenantSessionContext(conn, "github_app");
+    const tenant_id = blk: {
+        var existing = conn.query("SELECT tenant_id FROM workspaces WHERE workspace_id = $1", .{workspace_id}) catch {
+            common.internalDbError(r, req_id);
+            return;
+        };
+        defer existing.deinit();
+        if (existing.next() catch null) |row| {
+            const current_tenant = row.get([]u8, 0) catch {
+                common.internalDbError(r, req_id);
+                return;
+            };
+            break :blk alloc.dupe(u8, current_tenant) catch {
+                common.internalOperationError(r, "Failed to allocate tenant id", req_id);
+                return;
+            };
+        }
+        break :blk id_format.generateTenantId(alloc) catch {
+            common.internalOperationError(r, "Failed to allocate tenant id", req_id);
+            return;
+        };
+    };
+    _ = common.setTenantSessionContext(conn, tenant_id);
 
     {
         var t = conn.query(
             \\INSERT INTO tenants (tenant_id, name, api_key_hash, created_at)
-            \\VALUES ('github_app', 'GitHub App', 'callback', $1)
+            \\VALUES ($1, 'GitHub App', 'callback', $2)
             \\ON CONFLICT (tenant_id) DO NOTHING
-        , .{now_ms}) catch {
+        , .{ tenant_id, now_ms }) catch {
             common.internalOperationError(r, "Failed to upsert tenant", req_id);
             return;
         };
@@ -546,12 +574,13 @@ pub fn handleGitHubCallback(ctx: *Context, r: zap.Request) void {
         var w = conn.query(
             \\INSERT INTO workspaces
             \\  (workspace_id, tenant_id, repo_url, default_branch, paused, version, created_at, updated_at)
-            \\VALUES ($1, 'github_app', $2, $3, false, 1, $4, $4)
+            \\VALUES ($1, $2, $3, $4, false, 1, $5, $5)
             \\ON CONFLICT (workspace_id) DO UPDATE
-            \\SET repo_url = EXCLUDED.repo_url,
+            \\SET tenant_id = EXCLUDED.tenant_id,
+            \\    repo_url = EXCLUDED.repo_url,
             \\    default_branch = EXCLUDED.default_branch,
             \\    updated_at = EXCLUDED.updated_at
-        , .{ workspace_id, repo_url, default_branch, now_ms }) catch {
+        , .{ workspace_id, tenant_id, repo_url, default_branch, now_ms }) catch {
             common.internalOperationError(r, "Failed to upsert workspace", req_id);
             return;
         };

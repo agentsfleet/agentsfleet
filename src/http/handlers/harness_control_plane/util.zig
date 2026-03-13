@@ -3,14 +3,20 @@ const pg = @import("pg");
 const db = @import("../../../db/pool.zig");
 const id_format = @import("../../../types/id_format.zig");
 
-pub fn prefixedId(alloc: std.mem.Allocator, prefix: []const u8) ![]const u8 {
-    if (std.mem.eql(u8, prefix, "pver")) return id_format.generateProfileVersionId(alloc);
-    if (std.mem.eql(u8, prefix, "cjob")) return id_format.generateCompileJobId(alloc);
-    return error.UnsupportedPrefix;
+pub fn generateProfileVersionId(alloc: std.mem.Allocator) ![]const u8 {
+    return id_format.generateProfileVersionId(alloc);
+}
+
+pub fn generateCompileJobId(alloc: std.mem.Allocator) ![]const u8 {
+    return id_format.generateCompileJobId(alloc);
 }
 
 pub fn isSupportedProfileVersionId(id: []const u8) bool {
     return id_format.isSupportedProfileVersionId(id);
+}
+
+pub fn isSupportedProfileId(id: []const u8) bool {
+    return id_format.isSupportedProfileId(id);
 }
 
 pub fn isSupportedCompileJobId(id: []const u8) bool {
@@ -19,23 +25,14 @@ pub fn isSupportedCompileJobId(id: []const u8) bool {
 
 pub fn normalizeProfileId(
     alloc: std.mem.Allocator,
-    workspace_id: []const u8,
     provided: ?[]const u8,
 ) ![]u8 {
     if (provided) |raw| {
-        if (raw.len == 0) return error.InvalidProfileId;
-        var out: std.ArrayList(u8) = .{};
-        defer out.deinit(alloc);
-        for (raw) |c| {
-            if (std.ascii.isAlphanumeric(c) or c == '-' or c == '_') {
-                try out.append(alloc, std.ascii.toLower(c));
-            } else {
-                try out.append(alloc, '-');
-            }
-        }
-        return out.toOwnedSlice(alloc);
+        if (!id_format.isSupportedProfileId(raw)) return error.InvalidProfileId;
+        return alloc.dupe(u8, raw);
     }
-    return std.fmt.allocPrint(alloc, "{s}-harness", .{workspace_id});
+    const generated = try id_format.generateProfileId(alloc);
+    return @constCast(generated);
 }
 
 pub fn openHarnessHandlerTestConn(alloc: std.mem.Allocator) !?struct { pool: *db.Pool, conn: *pg.Conn } {

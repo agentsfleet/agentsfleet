@@ -8,10 +8,7 @@ const common = @import("common.zig");
 const log = std.log.scoped(.http);
 
 fn generateWorkspaceId(alloc: std.mem.Allocator) ![]const u8 {
-    var raw: [16]u8 = undefined;
-    std.crypto.random.bytes(&raw);
-    const hex = std.fmt.bytesToHex(raw, .lower);
-    return std.fmt.allocPrint(alloc, "ws_{s}", .{hex[0..12]});
+    return id_format.generateWorkspaceId(alloc);
 }
 
 fn normalizeDefaultBranch(default_branch: ?[]const u8) []const u8 {
@@ -61,7 +58,10 @@ pub fn handleCreateWorkspace(ctx: *common.Context, r: zap.Request) void {
         return;
     }
     const default_branch = normalizeDefaultBranch(parsed.value.default_branch);
-    const tenant_id = principal.tenant_id orelse "github_app";
+    const tenant_id = principal.tenant_id orelse id_format.generateTenantId(alloc) catch {
+        common.internalOperationError(r, "Failed to allocate tenant id", req_id);
+        return;
+    };
 
     const conn = ctx.pool.acquire() catch {
         common.internalDbUnavailable(r, req_id);
@@ -138,10 +138,10 @@ test "normalizeDefaultBranch trims provided value" {
 
 test "buildInstallUrl renders GitHub app install URL" {
     const alloc = std.testing.allocator;
-    const url = try buildInstallUrl(alloc, "usezombie", "ws_abc123");
+    const url = try buildInstallUrl(alloc, "usezombie", "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f21");
     defer alloc.free(url);
     try std.testing.expectEqualStrings(
-        "https://github.com/apps/usezombie/installations/new?state=ws_abc123",
+        "https://github.com/apps/usezombie/installations/new?state=0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f21",
         url,
     );
 }
@@ -156,6 +156,7 @@ pub fn handlePauseWorkspace(ctx: *common.Context, r: zap.Request, workspace_id: 
         common.writeAuthError(r, req_id, err);
         return;
     };
+    if (!common.requireUuidV7Id(r, req_id, workspace_id, "workspace_id")) return;
 
     const Req = struct {
         pause: bool,
@@ -232,6 +233,7 @@ pub fn handleSyncSpecs(ctx: *common.Context, r: zap.Request, workspace_id: []con
         common.writeAuthError(r, req_id, err);
         return;
     };
+    if (!common.requireUuidV7Id(r, req_id, workspace_id, "workspace_id")) return;
 
     const conn = ctx.pool.acquire() catch {
         common.internalDbUnavailable(r, req_id);
