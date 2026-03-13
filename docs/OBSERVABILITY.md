@@ -101,8 +101,9 @@ Implementation (M4_005 dim 1.5):
 All surfaces identify users with the same `distinct_id` (Clerk user ID) so PostHog can stitch the full user journey across web, CLI, and backend.
 
 ```
-app.usezombie.com ──── posthog-js (TypeScript)    ──► PostHog
-zombiectl (Node CLI) ── posthog-node (npm)         ──► PostHog   (same project)
+usezombie.com (website) ─ posthog-js (TypeScript)  ──► PostHog
+app.usezombie.com ─────── posthog-js (TypeScript)  ──► PostHog
+zombiectl (Node CLI) ──── posthog-node (npm)       ──► PostHog   (same project)
 zombied (Zig daemon) ── posthog-zig (M5_001)       ──► PostHog
 nullclaw agents ─────── via zombied's client        ──► PostHog
 Vercel edge (/install) ─ posthog-node server-side  ──► PostHog
@@ -123,7 +124,7 @@ Bus pattern remains valid if posthog-zig proves operationally painful. Revisit i
 
 ## Surface-by-Surface Integration
 
-### 1. Website (`app.usezombie.com`) — M5_005
+### 1. Website (`usezombie.com`) — M5_005
 
 **SDK:** `posthog-js`
 **Key events:**
@@ -137,24 +138,36 @@ Bus pattern remains valid if posthog-zig proves operationally painful. Revisit i
 
 `distinct_id`: anonymous until login, then aliased to Clerk user ID via `posthog.identify()`.
 
-### 2. CLI (`zombiectl`) — no spec yet, add in M5
+### 2. App Dashboard (`app.usezombie.com`) — implemented Mar 13, 2026
+
+**SDK:** `posthog-js`
+**Key events:**
+
+| Event | Trigger |
+|---|---|
+| `navigation_clicked` | Mission Control header/sidebar navigation click |
+
+`distinct_id`: PostHog anonymous ID by default; can be upgraded to Clerk ID in later auth-identify wiring.
+
+### 3. CLI (`zombiectl`) — implemented Mar 13, 2026
 
 **SDK:** `posthog-node`
 **Key events:**
 
 | Event | Trigger |
 |---|---|
+| `cli_command_started` | Any routed command begins execution |
+| `cli_command_finished` | Routed command exits with code |
 | `user_authenticated` | `zombiectl login` success |
-| `workspace_created` | `zombiectl workspace create` |
-| `run_triggered` | `zombiectl run start` |
+| `workspace_created` | `zombiectl workspace add` success |
+| `run_triggered` | `zombiectl run` start success |
 | `cli_error` | Any command exits non-zero with error context |
-| `cli_upgrade` | Version mismatch detected on startup |
 
-`distinct_id`: Clerk user ID from stored auth token. Set on `zombiectl login`, persisted in local config.
+`distinct_id`: Clerk user ID (`sub`) parsed from stored auth token when available, otherwise `anonymous`.
 
 Feature flags: `posthog-node` `/decide/` calls to gate beta CLI commands per user.
 
-### 3. `zombied` (Zig daemon) — M5_006, depends on M5_001
+### 4. `zombied` (Zig daemon) — M5_006, depends on M5_001
 
 **SDK:** `posthog-zig`
 **Key events:**
@@ -172,7 +185,7 @@ Feature flags: `posthog-node` `/decide/` calls to gate beta CLI commands per use
 
 `distinct_id`: Clerk user ID from Bearer token claims extracted per request.
 
-### 4. NullClaw agents
+### 5. NullClaw agents
 
 Agents run inside zombied's process space. They emit events through zombied's posthog-zig client — no separate SDK needed.
 
@@ -231,11 +244,9 @@ Group analytics: workspace-level events include `$groups: { workspace: "ws_abc" 
 |---|---|---|
 | M4_005 dim 1.5 | Langfuse integration (zombied worker) | PENDING |
 | M5_001 | posthog-zig SDK (library) | PENDING |
-| M5_005 | Website PostHog integration | PENDING |
+| M5_005 | Website PostHog integration | DONE |
 | M5_006 | zombied PostHog integration | PENDING |
-| — | zombiectl PostHog integration | **no spec yet** |
-
-Next: add M5_007 for zombiectl PostHog integration.
+| — | app dashboard + zombiectl PostHog integration | DONE (implementation; spec backfill pending) |
 
 ---
 

@@ -1,5 +1,6 @@
 import { ApiError, apiRequest, authHeaders } from "./lib/http.js";
 import { openUrl } from "./lib/browser.js";
+import { createCliAnalytics, shutdownCliAnalytics, trackCliEvent } from "./lib/analytics.js";
 import { findRoute } from "./program/routes.js";
 import { registerProgramCommands } from "./program/command-registry.js";
 import { commandHarness as commandHarnessModule } from "./commands/harness.js";
@@ -29,6 +30,23 @@ function printJson(stream, value) {
 
 function normalizeApiUrl(url) {
   return String(url || DEFAULT_API_URL).replace(/\/+$/, "");
+}
+
+function extractDistinctIdFromToken(token) {
+  if (!token || typeof token !== "string") return null;
+  const parts = token.split(".");
+  if (parts.length < 2 || !parts[1]) return null;
+  try {
+    const base64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const padded = base64 + "===".slice((base64.length + 3) % 4);
+    const payload = JSON.parse(Buffer.from(padded, "base64").toString("utf8"));
+    if (payload && typeof payload.sub === "string" && payload.sub.trim().length > 0) {
+      return payload.sub.trim();
+    }
+  } catch {
+    return null;
+  }
+  return null;
 }
 
 function splitOption(token) {
@@ -610,6 +628,8 @@ export async function runCli(argv, io = {}) {
     env,
     fetchImpl,
   };
+  const analyticsClient = await createCliAnalytics(env);
+  const distinctId = extractDistinctIdFromToken(ctx.token);
 
   const command = rest[0];
   const args = rest.slice(1);
@@ -635,12 +655,60 @@ export async function runCli(argv, io = {}) {
 
   try {
     if (route && handlers[route.key]) {
-      return await handlers[route.key](args);
+      trackCliEvent(analyticsClient, distinctId, "cli_command_started", {
+        command: route.key,
+        json_mode: String(ctx.jsonMode),
+      });
+
+      const exitCode = await handlers[route.key](args);
+      let eventDistinctId = distinctId;
+      if (exitCode === 0 && route.key === "login") {
+        const latestCreds = await loadCredentials();
+        eventDistinctId = extractDistinctIdFromToken(latestCreds.token) || distinctId;
+      }
+      trackCliEvent(analyticsClient, distinctId, "cli_command_finished", {
+        command: route.key,
+        exit_code: String(exitCode),
+      });
+
+      if (exitCode === 0 && route.key === "login") {
+        trackCliEvent(analyticsClient, eventDistinctId, "user_authenticated", {
+          command: route.key,
+        });
+      }
+      if (exitCode === 0 && route.key === "workspace" && args[0] === "add") {
+        trackCliEvent(analyticsClient, distinctId, "workspace_created", {
+          command: route.key,
+        });
+      }
+      if (exitCode === 0 && route.key === "run" && args[0] !== "status") {
+        trackCliEvent(analyticsClient, distinctId, "run_triggered", {
+          command: route.key,
+        });
+      }
+      if (exitCode !== 0) {
+        trackCliEvent(analyticsClient, distinctId, "cli_error", {
+          command: route.key,
+          exit_code: String(exitCode),
+        });
+      }
+      return exitCode;
     }
 
     writeLine(stderr, ui.err(`unknown command: ${command}`));
+    trackCliEvent(analyticsClient, distinctId, "cli_error", {
+      command,
+      error_code: "UNKNOWN_COMMAND",
+      exit_code: "2",
+    });
     return 2;
   } catch (err) {
+    const errorCode = err instanceof ApiError ? err.code || "API_ERROR" : "UNEXPECTED";
+    trackCliEvent(analyticsClient, distinctId, "cli_error", {
+      command: route?.key || command || "unknown",
+      error_code: errorCode,
+      exit_code: "1",
+    });
     try {
       printApiError(stderr, err, global.json);
       return 1;
@@ -652,5 +720,7 @@ export async function runCli(argv, io = {}) {
       }
       return 1;
     }
+  } finally {
+    await shutdownCliAnalytics(analyticsClient);
   }
 }
