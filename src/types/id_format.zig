@@ -12,6 +12,10 @@ pub fn generateCompileJobId(alloc: std.mem.Allocator) ![]const u8 {
     return allocUuidV7(alloc);
 }
 
+pub fn generateEntitlementSnapshotId(alloc: std.mem.Allocator) ![]const u8 {
+    return allocUuidV7(alloc);
+}
+
 pub fn isSupportedRunId(id: []const u8) bool {
     return isUuidV7(id);
 }
@@ -21,6 +25,10 @@ pub fn isSupportedProfileVersionId(id: []const u8) bool {
 }
 
 pub fn isSupportedCompileJobId(id: []const u8) bool {
+    return isUuidV7(id);
+}
+
+pub fn isSupportedEntitlementSnapshotId(id: []const u8) bool {
     return isUuidV7(id);
 }
 
@@ -89,6 +97,10 @@ test "generate ids support both formats" {
     const cjob_id = try generateCompileJobId(alloc);
     defer alloc.free(cjob_id);
     try std.testing.expect(isSupportedCompileJobId(cjob_id));
+
+    const snapshot_id = try generateEntitlementSnapshotId(alloc);
+    defer alloc.free(snapshot_id);
+    try std.testing.expect(isSupportedEntitlementSnapshotId(snapshot_id));
 }
 
 test "uuidv7 validator accepts canonical v7 variant 10xx" {

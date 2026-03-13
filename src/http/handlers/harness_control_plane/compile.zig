@@ -3,6 +3,7 @@ const pg = @import("pg");
 const harness = @import("../../../harness/control_plane.zig");
 const prompt_events = @import("../../../observability/prompt_events.zig");
 const profile_linkage = @import("../../../audit/profile_linkage.zig");
+const entitlements = @import("../../../state/entitlements.zig");
 const types = @import("types.zig");
 const util = @import("util.zig");
 
@@ -72,6 +73,22 @@ pub fn compileProfile(
     const now_ms = std.time.milliTimestamp();
     var outcome = harness.compileHarnessMarkdown(alloc, source_markdown) catch return types.ControlPlaneError.CompileFailed;
     defer outcome.deinit(alloc);
+    entitlements.enforceWithAudit(
+        conn,
+        alloc,
+        workspace_id,
+        profile_version_id,
+        if (outcome.is_valid) outcome.compiled_profile_json else null,
+        .compile,
+        "api",
+    ) catch |err| switch (err) {
+        entitlements.EnforcementError.EntitlementMissing => return types.ControlPlaneError.EntitlementMissing,
+        entitlements.EnforcementError.EntitlementProfileLimit => return types.ControlPlaneError.EntitlementProfileLimit,
+        entitlements.EnforcementError.EntitlementStageLimit => return types.ControlPlaneError.EntitlementStageLimit,
+        entitlements.EnforcementError.EntitlementSkillNotAllowed => return types.ControlPlaneError.EntitlementSkillNotAllowed,
+        entitlements.EnforcementError.InvalidCompiledProfile => return types.ControlPlaneError.CompileFailed,
+        else => return err,
+    };
 
     const finish_ts = std.time.milliTimestamp();
     try beginTx(conn);
