@@ -2,6 +2,7 @@ const std = @import("std");
 const pg = @import("pg");
 const db = @import("../db/pool.zig");
 const obs_log = @import("logging.zig");
+const id_format = @import("../types/id_format.zig");
 
 pub const EventType = enum {
     prompt_birth,
@@ -53,12 +54,14 @@ pub fn dbEmitter(conn: *pg.Conn) Emitter {
 
 fn emitToDb(ctx: *anyopaque, event: PromptEvent) anyerror!void {
     const conn: *pg.Conn = @ptrCast(@alignCast(ctx));
+    const row_id = try id_format.generatePromptLifecycleEventId(conn.arena);
     const event_id = randomEventId();
     var q = try conn.query(
         \\INSERT INTO prompt_lifecycle_events
-        \\  (event_id, event_type, workspace_id, tenant_id, profile_id, profile_version_id, metadata_json, created_at)
-        \\VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        \\  (id, event_id, event_type, workspace_id, tenant_id, profile_id, profile_version_id, metadata_json, created_at)
+        \\VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
     , .{
+        row_id,
         event_id,
         event.event_type.label(),
         event.workspace_id,
@@ -113,7 +116,7 @@ test "integration: prompt lifecycle events are append-only and auditable" {
     {
         var q = try db_ctx.conn.query(
             \\CREATE TEMP TABLE prompt_lifecycle_events (
-            \\  id BIGSERIAL PRIMARY KEY,
+            \\  id UUID PRIMARY KEY,
             \\  event_id TEXT NOT NULL UNIQUE,
             \\  event_type TEXT NOT NULL,
             \\  workspace_id TEXT NOT NULL,

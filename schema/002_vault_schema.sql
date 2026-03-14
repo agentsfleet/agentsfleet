@@ -30,10 +30,9 @@ GRANT api_accessor TO worker_accessor;
 GRANT vault_accessor TO worker_accessor;
 GRANT vault_accessor TO callback_accessor;
 
-DROP TABLE public.secrets;
-
 CREATE TABLE vault.secrets (
-    id            BIGSERIAL PRIMARY KEY,
+    id            UUID PRIMARY KEY,
+    CONSTRAINT ck_vault_secrets_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
     workspace_id  UUID    NOT NULL REFERENCES public.workspaces(workspace_id),
     key_name      TEXT    NOT NULL,
     kek_version   INTEGER NOT NULL DEFAULT 1,
@@ -55,5 +54,4 @@ ALTER TABLE vault.secrets ENABLE ROW LEVEL SECURITY;
 
 GRANT SELECT, INSERT, UPDATE ON vault.secrets TO worker_accessor;
 GRANT SELECT, INSERT, UPDATE ON vault.secrets TO callback_accessor;
-GRANT USAGE, SELECT ON SEQUENCE vault.secrets_id_seq TO worker_accessor;
-GRANT USAGE, SELECT ON SEQUENCE vault.secrets_id_seq TO callback_accessor;
+

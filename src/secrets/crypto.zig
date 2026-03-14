@@ -5,6 +5,7 @@
 const std = @import("std");
 const pg = @import("pg");
 const log = std.log.scoped(.secrets);
+const id_format = @import("../types/id_format.zig");
 
 const AesGcm = std.crypto.aead.aes_gcm.Aes256Gcm;
 const KEY_LEN = AesGcm.key_length; // 32
@@ -171,10 +172,12 @@ pub fn store(
 
     const now_ms = std.time.milliTimestamp();
 
+    const secret_id = try id_format.generateVaultSecretId(alloc);
+    defer alloc.free(secret_id);
     var result = try conn.query(
         \\INSERT INTO vault.secrets
-        \\  (workspace_id, key_name, kek_version, encrypted_dek, dek_nonce, dek_tag, nonce, ciphertext, tag, created_at, updated_at)
-        \\VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10)
+        \\  (id, workspace_id, key_name, kek_version, encrypted_dek, dek_nonce, dek_tag, nonce, ciphertext, tag, created_at, updated_at)
+        \\VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11)
         \\ON CONFLICT (workspace_id, key_name) DO UPDATE
         \\SET kek_version = EXCLUDED.kek_version,
         \\    encrypted_dek = EXCLUDED.encrypted_dek,
@@ -185,6 +188,7 @@ pub fn store(
         \\    tag = EXCLUDED.tag,
         \\    updated_at = EXCLUDED.updated_at
     , .{
+        secret_id,
         workspace_id,
         key_name,
         @as(i32, @intCast(kek_version)),
@@ -294,10 +298,12 @@ pub fn storeWorkspaceSkillSecret(
 
     const now_ms = std.time.milliTimestamp();
 
+    const skill_secret_id = try id_format.generateSkillSecretId(alloc);
+    defer alloc.free(skill_secret_id);
     var result = try conn.query(
         \\INSERT INTO vault.workspace_skill_secrets
-        \\  (tenant_id, workspace_id, skill_ref, key_name, scope, secret_meta_json, kek_version, encrypted_dek, dek_nonce, dek_tag, nonce, ciphertext, tag, created_at, updated_at)
-        \\VALUES ($1, $2, $3, $4, $5, $6, 1, $7, $8, $9, $10, $11, $12, $13, $13)
+        \\  (id, tenant_id, workspace_id, skill_ref, key_name, scope, secret_meta_json, kek_version, encrypted_dek, dek_nonce, dek_tag, nonce, ciphertext, tag, created_at, updated_at)
+        \\VALUES ($1, $2, $3, $4, $5, $6, $7, 1, $8, $9, $10, $11, $12, $13, $14, $14)
         \\ON CONFLICT (workspace_id, skill_ref, key_name) DO UPDATE
         \\SET tenant_id = EXCLUDED.tenant_id,
         \\    scope = EXCLUDED.scope,
@@ -310,6 +316,7 @@ pub fn storeWorkspaceSkillSecret(
         \\    tag = EXCLUDED.tag,
         \\    updated_at = EXCLUDED.updated_at
     , .{
+        skill_secret_id,
         tenant_id,
         workspace_id,
         skill_ref,

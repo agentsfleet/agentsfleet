@@ -56,7 +56,8 @@ CREATE INDEX IF NOT EXISTS idx_usage_ledger_billable
     ON usage_ledger (run_id, attempt, is_billable, billable_unit);
 
 CREATE TABLE IF NOT EXISTS billing_delivery_outbox (
-    id                BIGSERIAL PRIMARY KEY,
+    id                UUID PRIMARY KEY,
+    CONSTRAINT ck_billing_delivery_outbox_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
     run_id            UUID NOT NULL REFERENCES runs(run_id),
     workspace_id      UUID NOT NULL REFERENCES workspaces(workspace_id),
     attempt           INT NOT NULL,

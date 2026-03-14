@@ -61,7 +61,8 @@ CREATE INDEX idx_runs_trace_id ON runs(trace_id);
 CREATE INDEX idx_runs_snapshot_version ON runs(run_snapshot_version, created_at DESC);
 
 CREATE TABLE run_transitions (
-    id           BIGSERIAL PRIMARY KEY,
+    id           UUID PRIMARY KEY,
+    CONSTRAINT ck_run_transitions_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
     run_id       UUID NOT NULL REFERENCES runs(run_id),
     attempt      INT  NOT NULL,
     state_from   TEXT NOT NULL,
@@ -71,10 +72,11 @@ CREATE TABLE run_transitions (
     notes        TEXT,
     ts           BIGINT NOT NULL
 );
-CREATE INDEX idx_transitions_run ON run_transitions(run_id, ts);
+CREATE INDEX idx_transitions_run ON run_transitions(run_id, ts ASC) INCLUDE (state_from, state_to, actor, reason_code);
 
 CREATE TABLE artifacts (
-    id               BIGSERIAL PRIMARY KEY,
+    id               UUID PRIMARY KEY,
+    CONSTRAINT ck_artifacts_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
     run_id           UUID NOT NULL REFERENCES runs(run_id),
     attempt          INT  NOT NULL,
     artifact_name    TEXT NOT NULL,
@@ -84,9 +86,11 @@ CREATE TABLE artifacts (
     created_at       BIGINT NOT NULL,
     UNIQUE (run_id, attempt, artifact_name)
 );
+CREATE INDEX idx_artifacts_run ON artifacts(run_id, attempt DESC, artifact_name);
 
 CREATE TABLE usage_ledger (
-    id            BIGSERIAL PRIMARY KEY,
+    id            UUID PRIMARY KEY,
+    CONSTRAINT ck_usage_ledger_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
     run_id        UUID NOT NULL REFERENCES runs(run_id),
     attempt       INT  NOT NULL,
     actor         TEXT NOT NULL,
@@ -94,10 +98,11 @@ CREATE TABLE usage_ledger (
     agent_seconds BIGINT NOT NULL DEFAULT 0,
     created_at    BIGINT NOT NULL
 );
-CREATE INDEX idx_usage_run ON usage_ledger(run_id);
+CREATE INDEX idx_usage_run ON usage_ledger(run_id, attempt, source);
 
 CREATE TABLE workspace_memories (
-    id           BIGSERIAL PRIMARY KEY,
+    id           UUID PRIMARY KEY,
+    CONSTRAINT ck_workspace_memories_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
     workspace_id UUID NOT NULL REFERENCES workspaces(workspace_id),
     run_id       UUID NOT NULL REFERENCES runs(run_id),
     content      TEXT NOT NULL,
@@ -108,7 +113,8 @@ CREATE TABLE workspace_memories (
 CREATE INDEX idx_memories_workspace ON workspace_memories(workspace_id, created_at DESC);
 
 CREATE TABLE policy_events (
-    id           BIGSERIAL PRIMARY KEY,
+    id           UUID PRIMARY KEY,
+    CONSTRAINT ck_policy_events_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
     run_id       UUID REFERENCES runs(run_id),
     workspace_id UUID NOT NULL REFERENCES workspaces(workspace_id),
     action_class TEXT NOT NULL,
@@ -117,14 +123,5 @@ CREATE TABLE policy_events (
     actor        TEXT NOT NULL,
     ts           BIGINT NOT NULL
 );
-CREATE INDEX idx_policy_workspace ON policy_events(workspace_id, ts DESC);
+CREATE INDEX idx_policy_workspace ON policy_events(workspace_id, ts DESC) INCLUDE (action_class, decision);
 
-CREATE TABLE secrets (
-    id           BIGSERIAL PRIMARY KEY,
-    workspace_id UUID NOT NULL REFERENCES workspaces(workspace_id),
-    key_name     TEXT NOT NULL,
-    ciphertext   TEXT NOT NULL,
-    created_at   BIGINT NOT NULL,
-    updated_at   BIGINT NOT NULL,
-    UNIQUE (workspace_id, key_name)
-);

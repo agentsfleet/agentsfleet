@@ -3,6 +3,7 @@ const pg = @import("pg");
 const types = @import("../types.zig");
 const workspace_billing = @import("./workspace_billing.zig");
 const workspace_credit = @import("./workspace_credit.zig");
+const id_format = @import("../types/id_format.zig");
 
 pub const BillableUnit = enum {
     agent_second,
@@ -43,13 +44,15 @@ pub fn recordRuntimeStageUsage(
     });
 
     const now_ms = std.time.milliTimestamp();
+    const usage_id = try id_format.generateUsageLedgerId(conn.arena);
     var q = try conn.query(
         \\INSERT INTO usage_ledger
-        \\  (workspace_id, run_id, attempt, actor, token_count, agent_seconds, created_at,
+        \\  (id, workspace_id, run_id, attempt, actor, token_count, agent_seconds, created_at,
         \\   event_key, lifecycle_event, billable_unit, billable_quantity, is_billable, source)
-        \\VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'stage_completed', $9, 0, false, 'runtime_stage')
+        \\VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'stage_completed', $10, 0, false, 'runtime_stage')
         \\ON CONFLICT (run_id, event_key) DO NOTHING
     , .{
+        usage_id,
         workspace_id,
         run_id,
         @as(i32, @intCast(attempt)),
@@ -85,14 +88,17 @@ pub fn finalizeRunForBilling(
     const billable_quantity: i64 = if (is_billable) @intCast(stage_total) else 0;
     const now_ms = std.time.milliTimestamp();
 
+    const finalize_id = try id_format.generateUsageLedgerId(alloc);
+    defer alloc.free(finalize_id);
     var q = try conn.query(
         \\INSERT INTO usage_ledger
-        \\  (workspace_id, run_id, attempt, actor, token_count, agent_seconds, created_at,
+        \\  (id, workspace_id, run_id, attempt, actor, token_count, agent_seconds, created_at,
         \\   event_key, lifecycle_event, billable_unit, billable_quantity, is_billable, source)
-        \\VALUES ($1, $2, $3, 'orchestrator', 0, 0, $4, $5, $6, $7, $8, $9, 'runtime_summary')
+        \\VALUES ($1, $2, $3, $4, 'orchestrator', 0, 0, $5, $6, $7, $8, $9, $10, 'runtime_summary')
         \\ON CONFLICT (run_id, event_key) DO NOTHING
         \\RETURNING 1
     , .{
+        finalize_id,
         workspace_id,
         run_id,
         @as(i32, @intCast(attempt)),
@@ -164,16 +170,19 @@ fn queueBillingDelivery(
         BillableUnit.agent_second.label(),
     });
 
+    const billing_id = try id_format.generateBillingDeliveryId(alloc);
+    defer alloc.free(billing_id);
     var q = try conn.query(
         \\INSERT INTO billing_delivery_outbox
-        \\  (run_id, workspace_id, attempt, idempotency_key, billable_unit, billable_quantity,
+        \\  (id, run_id, workspace_id, attempt, idempotency_key, billable_unit, billable_quantity,
         \\   status, delivery_attempts, next_retry_at, adapter, created_at, updated_at)
-        \\VALUES ($1, $2, $3, $4, $5, $6, 'pending', 0, 0, $7, $8, $8)
+        \\VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending', 0, 0, $8, $9, $9)
         \\ON CONFLICT (idempotency_key) DO UPDATE
         \\SET billable_quantity = EXCLUDED.billable_quantity,
         \\    adapter = EXCLUDED.adapter,
         \\    updated_at = EXCLUDED.updated_at
     , .{
+        billing_id,
         run_id,
         workspace_id,
         @as(i32, @intCast(attempt)),

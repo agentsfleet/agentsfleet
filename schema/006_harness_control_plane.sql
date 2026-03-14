@@ -55,7 +55,8 @@ CREATE INDEX idx_profile_compile_jobs_workspace ON profile_compile_jobs(workspac
 CREATE INDEX idx_profile_compile_jobs_tenant ON profile_compile_jobs(tenant_id, created_at DESC);
 
 CREATE TABLE vault.workspace_skill_secrets (
-    id               BIGSERIAL PRIMARY KEY,
+    id               UUID PRIMARY KEY,
+    CONSTRAINT ck_workspace_skill_secrets_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
     tenant_id        UUID NOT NULL REFERENCES public.tenants(tenant_id),
     workspace_id     UUID NOT NULL REFERENCES public.workspaces(workspace_id) ON DELETE CASCADE,
     skill_ref        TEXT NOT NULL,
@@ -88,4 +89,4 @@ TO worker_accessor;
 
 GRANT SELECT, INSERT, UPDATE, DELETE ON vault.workspace_skill_secrets TO api_accessor;
 GRANT SELECT ON vault.workspace_skill_secrets TO worker_accessor;
-GRANT USAGE, SELECT ON SEQUENCE vault.workspace_skill_secrets_id_seq TO api_accessor, worker_accessor;
+
