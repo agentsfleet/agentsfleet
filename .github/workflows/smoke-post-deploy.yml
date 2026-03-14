@@ -24,11 +24,11 @@ jobs:
         run: |
           URL="${{ github.event.deployment_status.target_url }}"
           if echo "$URL" | grep -qi "usezombie-app\|app\.usezombie"; then
-            echo "package=app" >> $GITHUB_OUTPUT
-            echo "workdir=ui/packages/app" >> $GITHUB_OUTPUT
+            echo "package=app" >> "$GITHUB_OUTPUT"
+            echo "workdir=ui/packages/app" >> "$GITHUB_OUTPUT"
           else
-            echo "package=website" >> $GITHUB_OUTPUT
-            echo "workdir=ui/packages/website" >> $GITHUB_OUTPUT
+            echo "package=website" >> "$GITHUB_OUTPUT"
+            echo "workdir=ui/packages/website" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Install dependencies
