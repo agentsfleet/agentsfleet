@@ -6,6 +6,7 @@ const std = @import("std");
 const pg = @import("pg");
 const types = @import("../types.zig");
 const log = std.log.scoped(.memory);
+const id_format = @import("../types/id_format.zig");
 
 /// Fetch recent memories for a workspace, newest first.
 /// Returns a formatted string suitable for injection into Echo's prompt.
@@ -67,11 +68,13 @@ pub fn saveFromWarden(
         if (trimmed.len == 0) continue;
         if (trimmed.len > 2048) continue; // sanity cap
 
+        const memory_id = try id_format.generateWorkspaceMemoryId(conn.arena);
         var r = try conn.query(
             \\INSERT INTO workspace_memories
-            \\  (workspace_id, run_id, content, tags, created_at, expires_at)
-            \\VALUES ($1, $2, $3, '[]', $4, $5)
+            \\  (id, workspace_id, run_id, content, tags, created_at, expires_at)
+            \\VALUES ($1, $2, $3, $4, '[]', $5, $6)
         , .{
+            memory_id,
             workspace_id,
             run_id,
             trimmed,

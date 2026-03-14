@@ -8,6 +8,7 @@ const pg = @import("pg");
 const types = @import("../types.zig");
 const events = @import("../events/bus.zig");
 const log = std.log.scoped(.policy);
+const id_format = @import("../types/id_format.zig");
 
 /// Record a policy_decision event in the policy_events table.
 ///
@@ -24,11 +25,13 @@ pub fn recordPolicyEvent(
     actor: []const u8,
 ) !void {
     const now_ms = std.time.milliTimestamp();
+    const event_id = try id_format.generatePolicyEventId(conn.arena);
     var r = try conn.query(
         \\INSERT INTO policy_events
-        \\  (run_id, workspace_id, action_class, decision, rule_id, actor, ts)
-        \\VALUES ($1, $2, $3, $4, $5, $6, $7)
+        \\  (id, run_id, workspace_id, action_class, decision, rule_id, actor, ts)
+        \\VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
     , .{
+        event_id,
         run_id,
         workspace_id,
         @tagName(action_class),

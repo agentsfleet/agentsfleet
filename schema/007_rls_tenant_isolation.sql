@@ -1,7 +1,8 @@
 -- Tenant isolation hardening + prompt lifecycle observability (clean-state)
 
 CREATE TABLE prompt_lifecycle_events (
-    id                  BIGSERIAL PRIMARY KEY,
+    id                  UUID PRIMARY KEY,
+    CONSTRAINT ck_prompt_lifecycle_events_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
     event_id            TEXT NOT NULL UNIQUE,
     event_type          TEXT NOT NULL,
     workspace_id        UUID NOT NULL REFERENCES workspaces(workspace_id) ON DELETE CASCADE,
@@ -94,4 +95,4 @@ CREATE POLICY workspace_skill_secrets_delete_tenant ON vault.workspace_skill_sec
     FOR DELETE USING (tenant_id::text = current_setting('app.current_tenant_id', true));
 
 GRANT SELECT, INSERT ON prompt_lifecycle_events TO api_accessor, worker_accessor;
-GRANT USAGE, SELECT ON SEQUENCE prompt_lifecycle_events_id_seq TO api_accessor, worker_accessor;
+

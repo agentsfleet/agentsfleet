@@ -535,7 +535,7 @@ fn openReconcileTestConn(alloc: std.mem.Allocator) !?struct { pool: *db.Pool, co
 fn createTempOutboxTable(conn: *db.Conn) !void {
     var create_q = try conn.query(
         \\CREATE TEMP TABLE run_side_effect_outbox (
-        \\  id BIGSERIAL PRIMARY KEY,
+        \\  id UUID PRIMARY KEY,
         \\  run_id TEXT NOT NULL,
         \\  effect_key TEXT NOT NULL,
         \\  status TEXT NOT NULL,
@@ -555,12 +555,14 @@ fn insertPendingRows(conn: *db.Conn, count: usize) !void {
         var key_buf: [48]u8 = undefined;
         const run_id = try id_format.generateRunId(std.testing.allocator);
         defer std.testing.allocator.free(run_id);
+        const outbox_id = try id_format.generateOutboxId(std.testing.allocator);
+        defer std.testing.allocator.free(outbox_id);
         const key = try std.fmt.bufPrint(&key_buf, "k_{d}", .{i});
         var q = try conn.query(
             \\INSERT INTO run_side_effect_outbox
-            \\  (run_id, effect_key, status, last_event, created_at, updated_at)
-            \\VALUES ($1, $2, 'pending', 'claimed', $3, $3)
-        , .{ run_id, key, @as(i64, @intCast(i + 1)) });
+            \\  (id, run_id, effect_key, status, last_event, created_at, updated_at)
+            \\VALUES ($1, $2, $3, 'pending', 'claimed', $4, $4)
+        , .{ outbox_id, run_id, key, @as(i64, @intCast(i + 1)) });
         q.deinit();
     }
 }
@@ -619,12 +621,12 @@ test "integration: reconcile dead-letters stale pending rows and is idempotent" 
 
     var seed_q = try db_ctx.conn.query(
         \\INSERT INTO run_side_effect_outbox
-        \\  (run_id, effect_key, status, last_event, created_at, updated_at)
+        \\  (id, run_id, effect_key, status, last_event, created_at, updated_at)
         \\VALUES
-        \\  ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f91', 'k1', 'pending', 'claimed', 1, 1),
-        \\  ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f92', 'k2', 'pending', 'claimed', 2, 2),
-        \\  ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f93', 'k3', 'delivered', 'done', 3, 3),
-        \\  ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f94', 'k4', 'pending', 'claimed', 4, 4)
+        \\  ('0195b4ba-8d3a-7f13-8abc-000000000001', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f91', 'k1', 'pending', 'claimed', 1, 1),
+        \\  ('0195b4ba-8d3a-7f13-8abc-000000000002', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f92', 'k2', 'pending', 'claimed', 2, 2),
+        \\  ('0195b4ba-8d3a-7f13-8abc-000000000003', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f93', 'k3', 'delivered', 'done', 3, 3),
+        \\  ('0195b4ba-8d3a-7f13-8abc-000000000004', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f94', 'k4', 'pending', 'claimed', 4, 4)
     , .{});
     seed_q.deinit();
 

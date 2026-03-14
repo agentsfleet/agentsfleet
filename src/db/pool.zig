@@ -3,6 +3,7 @@
 
 const std = @import("std");
 const pg = @import("pg");
+const id_format = @import("../types/id_format.zig");
 const log = std.log.scoped(.db);
 
 pub const Pool = pg.Pool;
@@ -386,7 +387,10 @@ fn openIntegrationTestConn(alloc: std.mem.Allocator) !?struct { pool: *Pool, con
     const opts = try parseUrl(arena.allocator(), url);
     const pool = pg.Pool.init(alloc, opts) catch return null;
     errdefer pool.deinit();
-    const conn = try pool.acquire();
+    const conn = pool.acquire() catch {
+        pool.deinit();
+        return null;
+    };
     return .{ .pool = pool, .conn = conn };
 }
 
@@ -403,6 +407,7 @@ fn createUuidContractTempSchema(conn: *Conn) !void {
         \\  compile_job_id UUID PRIMARY KEY
         \\) ON COMMIT DROP;
         \\CREATE TEMP TABLE run_transitions (
+        \\  id UUID PRIMARY KEY,
         \\  run_id UUID NOT NULL REFERENCES runs(run_id)
         \\) ON COMMIT DROP;
         \\CREATE TEMP TABLE artifacts (
@@ -436,7 +441,7 @@ fn createUuidContractTempSchema(conn: *Conn) !void {
 }
 
 test "integration: uuid contract tables are UUID typed for run/profile/linkage IDs" {
-    if (!std.process.hasEnvVarConstant("UUID_CONTRACT_TESTS")) return error.SkipZigTest;
+    if (!std.process.hasEnvVarConstant("LIVE_DB")) return error.SkipZigTest;
     const db_ctx = (try openIntegrationTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
     defer db_ctx.pool.release(db_ctx.conn);
     defer db_ctx.pool.deinit();
@@ -468,4 +473,162 @@ test "integration: uuid contract tables are UUID typed for run/profile/linkage I
         \\INSERT INTO profile_linkage_audit_artifacts (profile_version_id, compile_job_id, run_id) VALUES ($2::uuid, $3::uuid, $1::uuid)
     , .{ run_id, pver_id, cjob_id });
     insert_q.deinit();
+}
+
+test "T6 integration: generated UUID PKs round-trip through INSERT and SELECT" {
+    if (!std.process.hasEnvVarConstant("LIVE_DB")) return error.SkipZigTest;
+    const alloc = std.testing.allocator;
+    const db_ctx = (try openIntegrationTestConn(alloc)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.release(db_ctx.conn);
+    defer db_ctx.pool.deinit();
+
+    // Create TEMP tables with UUID PK + CHECK constraint (mirrors real schema)
+    {
+        var q = try db_ctx.conn.query(
+            \\CREATE TEMP TABLE t6_run_transitions (
+            \\  id UUID PRIMARY KEY,
+            \\  CONSTRAINT ck_t6_rt_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
+            \\  run_id TEXT NOT NULL,
+            \\  ts BIGINT NOT NULL
+            \\) ON COMMIT DROP
+        , .{});
+        q.deinit();
+    }
+    {
+        var q = try db_ctx.conn.query(
+            \\CREATE TEMP TABLE t6_usage_ledger (
+            \\  id UUID PRIMARY KEY,
+            \\  CONSTRAINT ck_t6_ul_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
+            \\  run_id TEXT NOT NULL
+            \\) ON COMMIT DROP
+        , .{});
+        q.deinit();
+    }
+    {
+        var q = try db_ctx.conn.query(
+            \\CREATE TEMP TABLE t6_policy_events (
+            \\  id UUID PRIMARY KEY,
+            \\  CONSTRAINT ck_t6_pe_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
+            \\  workspace_id TEXT NOT NULL
+            \\) ON COMMIT DROP
+        , .{});
+        q.deinit();
+    }
+
+    // INSERT with generated ids
+    const tid = try id_format.generateTransitionId(alloc);
+    defer alloc.free(tid);
+    const uid = try id_format.generateUsageLedgerId(alloc);
+    defer alloc.free(uid);
+    const pid = try id_format.generatePolicyEventId(alloc);
+    defer alloc.free(pid);
+
+    {
+        var q = try db_ctx.conn.query(
+            "INSERT INTO t6_run_transitions (id, run_id, ts) VALUES ($1::uuid, 'run-1', 1000)",
+            .{tid},
+        );
+        q.deinit();
+    }
+    {
+        var q = try db_ctx.conn.query(
+            "INSERT INTO t6_usage_ledger (id, run_id) VALUES ($1::uuid, 'run-1')",
+            .{uid},
+        );
+        q.deinit();
+    }
+    {
+        var q = try db_ctx.conn.query(
+            "INSERT INTO t6_policy_events (id, workspace_id) VALUES ($1::uuid, 'ws-1')",
+            .{pid},
+        );
+        q.deinit();
+    }
+
+    // SELECT and verify round-trip: id::text matches original string
+    {
+        var q = try db_ctx.conn.query(
+            "SELECT id::text FROM t6_run_transitions WHERE id = $1::uuid",
+            .{tid},
+        );
+        defer q.deinit();
+        const row = (try q.next()) orelse return error.TestUnexpectedResult;
+        try std.testing.expectEqualStrings(tid, try row.get([]const u8, 0));
+    }
+    {
+        var q = try db_ctx.conn.query(
+            "SELECT id::text FROM t6_usage_ledger WHERE id = $1::uuid",
+            .{uid},
+        );
+        defer q.deinit();
+        const row = (try q.next()) orelse return error.TestUnexpectedResult;
+        try std.testing.expectEqualStrings(uid, try row.get([]const u8, 0));
+    }
+    {
+        var q = try db_ctx.conn.query(
+            "SELECT id::text FROM t6_policy_events WHERE id = $1::uuid",
+            .{pid},
+        );
+        defer q.deinit();
+        const row = (try q.next()) orelse return error.TestUnexpectedResult;
+        try std.testing.expectEqualStrings(pid, try row.get([]const u8, 0));
+    }
+}
+
+test "T6 integration: UUID CHECK constraint rejects non-v7 ids" {
+    if (!std.process.hasEnvVarConstant("LIVE_DB")) return error.SkipZigTest;
+    const alloc = std.testing.allocator;
+    const db_ctx = (try openIntegrationTestConn(alloc)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.release(db_ctx.conn);
+    defer db_ctx.pool.deinit();
+
+    {
+        var q = try db_ctx.conn.query(
+            \\CREATE TEMP TABLE t6_check_reject (
+            \\  id UUID PRIMARY KEY,
+            \\  CONSTRAINT ck_t6_cr_uuidv7 CHECK (substring(id::text from 15 for 1) = '7')
+            \\) ON COMMIT DROP
+        , .{});
+        q.deinit();
+    }
+
+    // v4 UUID must be rejected by the CHECK constraint
+    try std.testing.expectError(error.PgError, db_ctx.conn.query(
+        "INSERT INTO t6_check_reject (id) VALUES ('a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'::uuid)",
+        .{},
+    ));
+}
+
+test "T6 integration: duplicate UUID PK is rejected" {
+    if (!std.process.hasEnvVarConstant("LIVE_DB")) return error.SkipZigTest;
+    const alloc = std.testing.allocator;
+    const db_ctx = (try openIntegrationTestConn(alloc)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.release(db_ctx.conn);
+    defer db_ctx.pool.deinit();
+
+    {
+        var q = try db_ctx.conn.query(
+            \\CREATE TEMP TABLE t6_dup_reject (
+            \\  id UUID PRIMARY KEY,
+            \\  CONSTRAINT ck_t6_dr_uuidv7 CHECK (substring(id::text from 15 for 1) = '7')
+            \\) ON COMMIT DROP
+        , .{});
+        q.deinit();
+    }
+
+    const dup_id = try id_format.generateTransitionId(alloc);
+    defer alloc.free(dup_id);
+
+    {
+        var q = try db_ctx.conn.query(
+            "INSERT INTO t6_dup_reject (id) VALUES ($1::uuid)",
+            .{dup_id},
+        );
+        q.deinit();
+    }
+    // Second insert with same id must fail (PK violation)
+    try std.testing.expectError(error.PgError, db_ctx.conn.query(
+        "INSERT INTO t6_dup_reject (id) VALUES ($1::uuid)",
+        .{dup_id},
+    ));
 }

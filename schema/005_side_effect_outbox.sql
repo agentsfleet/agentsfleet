@@ -1,6 +1,7 @@
 -- Durable side-effect outbox + dead-letter baseline
 CREATE TABLE run_side_effect_outbox (
-    id               BIGSERIAL PRIMARY KEY,
+    id               UUID PRIMARY KEY,
+    CONSTRAINT ck_run_side_effect_outbox_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
     run_id           UUID   NOT NULL REFERENCES runs(run_id),
     effect_key       TEXT   NOT NULL,
     status           TEXT   NOT NULL DEFAULT 'pending',

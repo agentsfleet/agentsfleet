@@ -5,6 +5,7 @@
 const std = @import("std");
 const pg = @import("pg");
 const types = @import("../types.zig");
+const id_format = @import("../types/id_format.zig");
 const events = @import("../events/bus.zig");
 const metrics = @import("../observability/metrics.zig");
 const obs_log = @import("../observability/logging.zig");
@@ -58,10 +59,11 @@ fn upsertSideEffectOutbox(
     reconciled_state: ?[]const u8,
     now_ms: i64,
 ) !void {
+    const outbox_id = try id_format.generateOutboxId(conn.arena);
     var q = try conn.query(
         \\INSERT INTO run_side_effect_outbox
-        \\  (run_id, effect_key, status, last_event, payload, reconciled_state, created_at, updated_at)
-        \\VALUES ($1, $2, $3, $4, $5, $6, $7, $7)
+        \\  (id, run_id, effect_key, status, last_event, payload, reconciled_state, created_at, updated_at)
+        \\VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8)
         \\ON CONFLICT (run_id, effect_key) DO UPDATE
         \\SET status = EXCLUDED.status,
         \\    last_event = EXCLUDED.last_event,
@@ -69,6 +71,7 @@ fn upsertSideEffectOutbox(
         \\    reconciled_state = EXCLUDED.reconciled_state,
         \\    updated_at = EXCLUDED.updated_at
     , .{
+        outbox_id,
         run_id,
         effect_key,
         outboxStatusLabel(status),
@@ -197,11 +200,13 @@ pub fn transition(
 
     // Append transition record
     {
+        const transition_id = try id_format.generateTransitionId(conn.arena);
         var r = try conn.query(
             \\INSERT INTO run_transitions
-            \\  (run_id, attempt, state_from, state_to, actor, reason_code, notes, ts)
-            \\VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            \\  (id, run_id, attempt, state_from, state_to, actor, reason_code, notes, ts)
+            \\VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
         , .{
+            transition_id,
             run_id,
             @as(i32, @intCast(attempt)),
             current.state.label(),
@@ -297,11 +302,13 @@ pub fn writeUsage(
     agent_seconds: u64,
 ) !void {
     const now_ms = std.time.milliTimestamp();
+    const usage_id = try id_format.generateUsageLedgerId(conn.arena);
     var r = try conn.query(
         \\INSERT INTO usage_ledger
-        \\  (run_id, attempt, actor, token_count, agent_seconds, created_at)
-        \\VALUES ($1, $2, $3, $4, $5, $6)
+        \\  (id, run_id, attempt, actor, token_count, agent_seconds, created_at)
+        \\VALUES ($1, $2, $3, $4, $5, $6, $7)
     , .{
+        usage_id,
         run_id,
         @as(i32, @intCast(attempt)),
         actor.label(),
@@ -323,15 +330,17 @@ pub fn registerArtifact(
     producer: types.Actor,
 ) !void {
     const now_ms = std.time.milliTimestamp();
+    const artifact_id = try id_format.generateArtifactId(conn.arena);
     var r = try conn.query(
         \\INSERT INTO artifacts
-        \\  (run_id, attempt, artifact_name, object_key, checksum_sha256, producer, created_at)
-        \\VALUES ($1, $2, $3, $4, $5, $6, $7)
+        \\  (id, run_id, attempt, artifact_name, object_key, checksum_sha256, producer, created_at)
+        \\VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
         \\ON CONFLICT (run_id, attempt, artifact_name) DO UPDATE
         \\  SET object_key = EXCLUDED.object_key,
         \\      checksum_sha256 = EXCLUDED.checksum_sha256,
         \\      created_at = EXCLUDED.created_at
     , .{
+        artifact_id,
         run_id,
         @as(i32, @intCast(attempt)),
         artifact_name,
@@ -352,13 +361,14 @@ pub fn claimSideEffect(
     details: ?[]const u8,
 ) !bool {
     const now_ms = std.time.milliTimestamp();
+    const side_effect_id = try id_format.generateSideEffectId(conn.arena);
     var insert_claim = try conn.query(
         \\INSERT INTO run_side_effects
-        \\  (run_id, effect_key, status, details, created_at, updated_at)
-        \\VALUES ($1, $2, 'claimed', $3, $4, $4)
+        \\  (id, run_id, effect_key, status, details, created_at, updated_at)
+        \\VALUES ($1, $2, $3, 'claimed', $4, $5, $5)
         \\ON CONFLICT (run_id, effect_key) DO NOTHING
         \\RETURNING id
-    , .{ run_id, effect_key, details, now_ms });
+    , .{ side_effect_id, run_id, effect_key, details, now_ms });
     defer insert_claim.deinit();
     if ((try insert_claim.next()) != null) {
         try upsertSideEffectOutbox(conn, run_id, effect_key, .pending, "claimed", details, null, now_ms);
