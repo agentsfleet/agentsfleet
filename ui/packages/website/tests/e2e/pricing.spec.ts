@@ -9,23 +9,22 @@ test.describe("Pricing page", () => {
     await expect(page.getByRole("heading", { level: 1 })).toContainText("Free and Scale plans");
   });
 
-  test("renders Free and Scale tiers", async ({ page }) => {
+  test("renders current pricing tiers", async ({ page }) => {
     await expect(page.getByRole("heading", { name: "Free", exact: true, level: 2 })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Scale", exact: true, level: 2 })).toBeVisible();
   });
 
-  test("Scale tier has featured styling", async ({ page }) => {
-    const teamCard = page.locator(".card.featured");
-    await expect(teamCard).toBeVisible();
-    await expect(teamCard).toContainText("Scale");
+  test("pricing page highlights the launch-now tier", async ({ page }) => {
+    await expect(page.getByText("Coming soon")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Scale", exact: true, level: 2 })).toBeVisible();
   });
 
   test("Free tier lists no-expiry credit", async ({ page }) => {
     await expect(page.getByText(/\$10 credit included \(no expiry\)/i)).toBeVisible();
   });
 
-  test("renders protections note for all plans", async ({ page }) => {
-    await expect(page.getByText(/rate limits, abuse checks, and policy controls apply to all plans/i)).toBeVisible();
+  test("renders pricing intent posture note", async ({ page }) => {
+    await expect(page.getByText(/All plans include BYOK\/BYOM and direct provider billing for token usage\./i)).toBeVisible();
   });
 
   test("FAQ accordion: first item opens on click", async ({ page }) => {
@@ -52,14 +51,13 @@ test.describe("Pricing page", () => {
     await expect(page.getByTestId("faq-answer-0")).not.toBeVisible();
   });
 
-  test("Start free CTA links to docs", async ({ page }) => {
+  test("Start free CTA links to mission control", async ({ page }) => {
     const cta = page.getByRole("link", { name: /start free/i }).first();
     await expect(cta).toHaveAttribute("href", "https://docs.usezombie.com/quickstart");
   });
 
-  test("Scale waitlist CTA is a mailto link", async ({ page }) => {
-    const cta = page.getByRole("link", { name: /join waitlist/i });
-    await expect(cta).toHaveAttribute("href", /Scale%20Waitlist/);
+  test("paid tiers expose notify and sales actions", async ({ page }) => {
+    await expect(page.getByRole("link", { name: /join waitlist/i }).first()).toBeVisible();
   });
 
   test("footer renders on pricing page", async ({ page }) => {

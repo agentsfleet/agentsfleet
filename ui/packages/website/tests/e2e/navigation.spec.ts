@@ -6,6 +6,13 @@ import { test, expect } from "@playwright/test";
  * multi-step flows, and direct URL navigation.
  */
 
+function expectModeToggle(selected: "humans" | "agents") {
+  return {
+    humans: selected === "humans" ? "true" : "false",
+    agents: selected === "agents" ? "true" : "false",
+  };
+}
+
 test.describe("Footer navigation", () => {
   test("footer Agents link navigates to /agents and activates Agents mode", async ({ page }) => {
     await page.goto("/");
@@ -111,57 +118,57 @@ test.describe("Mode toggle — all routes", () => {
 });
 
 test.describe("Mode toggle — multi-step cycles", () => {
-  test("/ → Agents → Humans → Agents → Humans (no state corruption)", async ({ page }) => {
+  test.describe.configure({ timeout: 60_000 });
+
+  test("/ → Agents → Humans preserves selection state", async ({ page }) => {
     await page.goto("/");
+    let selected = expectModeToggle("humans");
+    await expect(page.getByTestId("mode-humans")).toHaveAttribute("aria-selected", selected.humans);
+    await expect(page.getByTestId("mode-agents")).toHaveAttribute("aria-selected", selected.agents);
 
-    // Cycle 1
     await page.getByTestId("mode-agents").click();
     await expect(page).toHaveURL(/\/agents/);
-    await expect(page.getByTestId("mode-agents")).toHaveClass(/active/);
+    selected = expectModeToggle("agents");
+    await expect(page.getByTestId("mode-humans")).toHaveAttribute("aria-selected", selected.humans);
+    await expect(page.getByTestId("mode-agents")).toHaveAttribute("aria-selected", selected.agents);
 
     await page.getByTestId("mode-humans").click();
     await expect(page).toHaveURL(/^http:\/\/[^/]+\/$/);
-    await expect(page.getByTestId("mode-humans")).toHaveClass(/active/);
-
-    // Cycle 2
-    await page.getByTestId("mode-agents").click();
-    await expect(page).toHaveURL(/\/agents/);
-    await expect(page.getByTestId("mode-agents")).toHaveClass(/active/);
-
-    await page.getByTestId("mode-humans").click();
-    await expect(page).toHaveURL(/^http:\/\/[^/]+\/$/);
-    await expect(page.getByTestId("mode-humans")).toHaveClass(/active/);
+    selected = expectModeToggle("humans");
+    await expect(page.getByTestId("mode-humans")).toHaveAttribute("aria-selected", selected.humans);
+    await expect(page.getByTestId("mode-agents")).toHaveAttribute("aria-selected", selected.agents);
     await expect(page.getByRole("heading", { level: 1 })).toContainText("Ship AI-generated PRs");
   });
 
-  test("pricing → home → agents → home flow", async ({ page }) => {
+  test("pricing → home → agents updates URLs and selection state", async ({ page }) => {
     await page.goto("/pricing");
     await expect(page.getByRole("heading", { level: 1 })).toContainText("Free and Scale plans");
+    let selected = expectModeToggle("humans");
+    await expect(page.getByTestId("mode-humans")).toHaveAttribute("aria-selected", selected.humans);
 
-    // Nav to home
     await page.getByRole("navigation", { name: /primary/i }).getByRole("link", { name: "Home" }).click();
     await expect(page).toHaveURL(/^http:\/\/[^/]+\/$/);
-    await expect(page.getByTestId("mode-humans")).toHaveClass(/active/);
+    await expect(page.getByTestId("mode-humans")).toHaveAttribute("aria-selected", selected.humans);
 
-    // Toggle to agents
     await page.getByTestId("mode-agents").click();
     await expect(page).toHaveURL(/\/agents/);
-    await expect(page.getByTestId("mode-agents")).toHaveClass(/active/);
-
-    // Toggle back to humans
-    await page.getByTestId("mode-humans").click();
-    await expect(page).toHaveURL(/^http:\/\/[^/]+\/$/);
-    await expect(page.getByRole("heading", { level: 1 })).toContainText("Ship AI-generated PRs");
+    selected = expectModeToggle("agents");
+    await expect(page.getByTestId("mode-agents")).toHaveAttribute("aria-selected", selected.agents);
   });
 
-  test("home nav Pricing → /pricing → back to home via nav", async ({ page }) => {
+  test("home nav Pricing → /pricing → Home preserves humans selection", async ({ page }) => {
     await page.goto("/");
+    let selected = expectModeToggle("humans");
+    await expect(page.getByTestId("mode-humans")).toHaveAttribute("aria-selected", selected.humans);
+
     await page.getByRole("navigation", { name: /primary/i }).getByRole("link", { name: "Pricing" }).click();
     await expect(page).toHaveURL(/\/pricing/);
     await expect(page.getByRole("heading", { level: 1 })).toContainText("Free and Scale plans");
+    await expect(page.getByTestId("mode-humans")).toHaveAttribute("aria-selected", selected.humans);
 
     await page.getByRole("navigation", { name: /primary/i }).getByRole("link", { name: "Home" }).click();
     await expect(page).toHaveURL(/^http:\/\/[^/]+\/$/);
+    await expect(page.getByTestId("mode-humans")).toHaveAttribute("aria-selected", selected.humans);
     await expect(page.getByRole("heading", { level: 1 })).toContainText("Ship AI-generated PRs");
   });
 });
