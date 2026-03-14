@@ -34,7 +34,7 @@ Each dimension is independently measurable, idempotent, and reproducible from ru
   - **Resource efficiency (10%)** — STUBBED at 50 until M4_008 (Firecracker sandbox) provides CPU/memory metrics. Score formula is versioned; historical scores preserved when this axis activates.
 - 1.2 PENDING Assign stable weights per axis: completion 40%, error rate 30%, latency 20%, resource efficiency 10% — weights are config values stored in workspace settings, not hardcoded; default weights ship with these values
 - 1.3 PENDING Produce a normalized integer score 0–100 per run: `score = clamp(0, 100, round(sum(axis_score * weight)))`. Score is deterministic given the same run metadata (no randomness, no LLM calls in scoring path). Division-by-zero guards: if baseline_count < 1, latency axis = 50; if no usage rows exist, completion axis = 0 with warning logged.
-- 1.4 PENDING Assign a tier label from score: Unranked (no prior runs), Bronze (0–39), Silver (40–69), Gold (70–89), Elite (90–100)
+- 1.4 PENDING Assign a tier label from score: Unranked (no prior runs; score still emitted but tier remains `UNRANKED`), Bronze (0–39), Silver (40–69), Gold (70–89), Elite (90–100)
 
 ---
 
@@ -73,7 +73,7 @@ Emit the score as a structured, observable event immediately after run finalizat
 
 **Dimensions:**
 - 4.1 PENDING Emit `agent.run.scored` event to PostHog with fields: `run_id`, `agent_id`, `workspace_id`, `score`, `tier`, `axis_scores` (map of axis_name → int), `weight_snapshot` (map of axis_name → float), `scored_at`
-- 4.2 PENDING Emit same payload to internal persistence path for `agent_run_scores` table write (M9_002)
+- 4.2 PENDING Emit same payload to internal persistence path for `agent_run_scores` table write (M9_002). M9_001 ends at in-worker score computation plus `agent.run.scored` emission; DB row persistence begins in M9_002.
 - 4.3 PENDING Score computation happens in zombied worker after run reaches terminal state; no score on in-flight runs
 - 4.4 PENDING Score is immutable once emitted — no retroactive rescoring; if weights change, future runs use new weights, historical scores are preserved as-is with their `weight_snapshot`
 

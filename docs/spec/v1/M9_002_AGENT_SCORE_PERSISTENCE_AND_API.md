@@ -45,7 +45,7 @@ Persist scores in the workspace data model using UUIDv7 keys (M8_001 contract).
       agent_id         UUID NOT NULL REFERENCES agent_profiles(agent_id),
       workspace_id     UUID NOT NULL REFERENCES workspaces(workspace_id),
       score            INTEGER NOT NULL CHECK (score >= 0 AND score <= 100),
-      tier             TEXT NOT NULL CHECK (tier IN ('BRONZE', 'SILVER', 'GOLD', 'ELITE')),
+      tier             TEXT NOT NULL CHECK (tier IN ('UNRANKED', 'BRONZE', 'SILVER', 'GOLD', 'ELITE')),
       axis_scores      TEXT NOT NULL,   -- JSON: {"completion":95,"error_rate":80,"latency":70,"resource":50}
       weight_snapshot  TEXT NOT NULL,   -- JSON: {"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}
       scored_at        BIGINT NOT NULL,

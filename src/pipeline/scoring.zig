@@ -17,6 +17,7 @@ const log = std.log.scoped(.scoring);
 // ── Types ──────────────────────────────────────────────────────────────
 
 pub const Tier = enum {
+    unranked,
     bronze,
     silver,
     gold,
@@ -24,6 +25,7 @@ pub const Tier = enum {
 
     pub fn label(self: Tier) []const u8 {
         return switch (self) {
+            .unranked => "UNRANKED",
             .bronze => "BRONZE",
             .silver => "SILVER",
             .gold => "GOLD",
@@ -122,7 +124,21 @@ pub fn computeScore(axes: AxisScores, weights: Weights) u8 {
     return @intCast(@as(u64, @intCast(std.math.clamp(rounded, 0, 100))));
 }
 
-pub fn tierFromScore(score: u8) Tier {
+pub fn tierFromScore(score: ?u8) Tier {
+    const value = score orelse return .unranked;
+    if (value >= 90) return .elite;
+    if (value >= 70) return .gold;
+    if (value >= 40) return .silver;
+    return .bronze;
+}
+
+fn hasPriorRuns(baseline: ?LatencyBaseline) bool {
+    const bl = baseline orelse return false;
+    return bl.sample_count > 0;
+}
+
+pub fn tierFromRun(score: u8, baseline: ?LatencyBaseline) Tier {
+    if (!hasPriorRuns(baseline)) return .unranked;
     if (score >= 90) return .elite;
     if (score >= 70) return .gold;
     if (score >= 40) return .silver;
@@ -255,7 +271,7 @@ fn scoreRunInner(
     };
 
     const score = computeScore(axes, DEFAULT_WEIGHTS);
-    const tier = tierFromScore(score);
+    const tier = tierFromRun(score, baseline);
 
     log.info("run scored run_id={s} score={d} tier={s}", .{ run_id, score, tier.label() });
 
@@ -359,6 +375,7 @@ test "computeScore: failed run" {
 }
 
 test "tier boundaries" {
+    try std.testing.expectEqual(Tier.unranked, tierFromScore(null));
     try std.testing.expectEqual(Tier.bronze, tierFromScore(0));
     try std.testing.expectEqual(Tier.bronze, tierFromScore(39));
     try std.testing.expectEqual(Tier.silver, tierFromScore(40));
@@ -367,6 +384,27 @@ test "tier boundaries" {
     try std.testing.expectEqual(Tier.gold, tierFromScore(89));
     try std.testing.expectEqual(Tier.elite, tierFromScore(90));
     try std.testing.expectEqual(Tier.elite, tierFromScore(100));
+}
+
+test "tier is unranked when workspace has no prior runs" {
+    try std.testing.expectEqual(Tier.unranked, tierFromRun(95, null));
+    try std.testing.expectEqual(Tier.unranked, tierFromRun(95, .{
+        .p50_seconds = 12,
+        .p95_seconds = 18,
+        .sample_count = 0,
+    }));
+}
+
+test "tier uses score boundaries once prior runs exist" {
+    const baseline = LatencyBaseline{
+        .p50_seconds = 10,
+        .p95_seconds = 20,
+        .sample_count = 1,
+    };
+    try std.testing.expectEqual(Tier.bronze, tierFromRun(39, baseline));
+    try std.testing.expectEqual(Tier.silver, tierFromRun(40, baseline));
+    try std.testing.expectEqual(Tier.gold, tierFromRun(70, baseline));
+    try std.testing.expectEqual(Tier.elite, tierFromRun(90, baseline));
 }
 
 test "determinism: same inputs produce same score" {

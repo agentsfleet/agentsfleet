@@ -48,6 +48,7 @@ const Snapshot = struct {
     worker_in_flight_runs: u64,
     worker_allocator_leaks_total: u64,
     agent_score_computed_total: u64,
+    agent_score_computed_unranked: u64,
     agent_score_computed_bronze: u64,
     agent_score_computed_silver: u64,
     agent_score_computed_gold: u64,
@@ -95,6 +96,7 @@ var g_api_in_flight_requests = std.atomic.Value(u64).init(0);
 var g_worker_in_flight_runs = std.atomic.Value(u64).init(0);
 var g_worker_allocator_leaks_total = std.atomic.Value(u64).init(0);
 var g_agent_score_computed_total = std.atomic.Value(u64).init(0);
+var g_agent_score_computed_unranked = std.atomic.Value(u64).init(0);
 var g_agent_score_computed_bronze = std.atomic.Value(u64).init(0);
 var g_agent_score_computed_silver = std.atomic.Value(u64).init(0);
 var g_agent_score_computed_gold = std.atomic.Value(u64).init(0);
@@ -234,6 +236,7 @@ pub fn incWorkerAllocatorLeaks() void {
 pub fn incAgentScoreComputed(tier: anytype) void {
     _ = g_agent_score_computed_total.fetchAdd(1, .monotonic);
     switch (tier) {
+        .unranked => _ = g_agent_score_computed_unranked.fetchAdd(1, .monotonic),
         .bronze => _ = g_agent_score_computed_bronze.fetchAdd(1, .monotonic),
         .silver => _ = g_agent_score_computed_silver.fetchAdd(1, .monotonic),
         .gold => _ = g_agent_score_computed_gold.fetchAdd(1, .monotonic),
@@ -313,6 +316,7 @@ fn snapshot() Snapshot {
         .worker_in_flight_runs = g_worker_in_flight_runs.load(.acquire),
         .worker_allocator_leaks_total = g_worker_allocator_leaks_total.load(.acquire),
         .agent_score_computed_total = g_agent_score_computed_total.load(.acquire),
+        .agent_score_computed_unranked = g_agent_score_computed_unranked.load(.acquire),
         .agent_score_computed_bronze = g_agent_score_computed_bronze.load(.acquire),
         .agent_score_computed_silver = g_agent_score_computed_silver.load(.acquire),
         .agent_score_computed_gold = g_agent_score_computed_gold.load(.acquire),
@@ -418,6 +422,7 @@ pub fn renderPrometheus(
     try appendMetric(writer, "zombie_oldest_queued_age_ms", "gauge", "Oldest queued run age in milliseconds.", oldest_age_gauge);
 
     try appendMetric(writer, "zombie_agent_score_computed_total", "counter", "Total scored runs across all tiers.", s.agent_score_computed_total);
+    try appendMetric(writer, "zombie_agent_score_computed_unranked_total", "counter", "Scored runs with UNRANKED tier.", s.agent_score_computed_unranked);
     try appendMetric(writer, "zombie_agent_score_computed_bronze_total", "counter", "Scored runs with BRONZE tier.", s.agent_score_computed_bronze);
     try appendMetric(writer, "zombie_agent_score_computed_silver_total", "counter", "Scored runs with SILVER tier.", s.agent_score_computed_silver);
     try appendMetric(writer, "zombie_agent_score_computed_gold_total", "counter", "Scored runs with GOLD tier.", s.agent_score_computed_gold);
@@ -463,6 +468,7 @@ test "prometheus render includes key metrics" {
     try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_side_effect_outbox_dead_letter_total"));
     try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_api_backpressure_rejections_total"));
     try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_api_in_flight_requests"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_agent_score_computed_unranked_total"));
     try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_agent_duration_seconds_bucket"));
     try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_run_total_wall_seconds_bucket"));
 }

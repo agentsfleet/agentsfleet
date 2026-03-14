@@ -371,7 +371,7 @@ flowchart TD
     B --> C{Reaches Terminal\nState?}
     C -->|In flight| B
 
-    C -->|Yes| D["M9_001 Scoring Engine\nCompute axes: completion · errors · latency · resources\nNormalize 0-100 → tier: Bronze · Silver · Gold · Elite"]
+    C -->|Yes| D["M9_001 Scoring Engine\nCompute axes: completion · errors · latency · resources\nNormalize 0-100 → tier: Unranked · Bronze · Silver · Gold · Elite"]
 
     D --> E["M9_002 Persist\nagent_run_scores written\nagent_profiles: tier + streak\nconsecutive_gold_plus_runs recalculated\nLeaderboard refreshed"]
 
@@ -421,6 +421,7 @@ flowchart TD
 
 **Key invariants:**
 - Score is deterministic — identical result from same run metadata, no LLM in scoring path.
+- First run/no-history behavior is explicit — score is still computed, but the tier emitted for that run is `UNRANKED`.
 - Scoring is fail-safe — errors are caught, logged, and the run continues normally. Score is null (absent) on failure.
 - Scoring is in-worker, synchronous — single deferred call at function exit, < 50ms overhead.
 - Context injection is bounded — 512 token hard cap, oldest runs truncated first.
