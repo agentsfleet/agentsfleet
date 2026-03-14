@@ -47,8 +47,16 @@ const Snapshot = struct {
     api_in_flight_requests: u64,
     worker_in_flight_runs: u64,
     worker_allocator_leaks_total: u64,
+    agent_score_computed_total: u64,
+    agent_score_computed_bronze: u64,
+    agent_score_computed_silver: u64,
+    agent_score_computed_gold: u64,
+    agent_score_computed_elite: u64,
+    agent_scoring_failed_total: u64,
+    agent_score_latest: u64,
     agent_duration_seconds: HistogramSnapshot,
     run_total_wall_seconds: HistogramSnapshot,
+    agent_scoring_duration_ms: HistogramSnapshot,
 };
 
 var g_runs_created_total = std.atomic.Value(u64).init(0);
@@ -86,9 +94,17 @@ var g_api_backpressure_rejections_total = std.atomic.Value(u64).init(0);
 var g_api_in_flight_requests = std.atomic.Value(u64).init(0);
 var g_worker_in_flight_runs = std.atomic.Value(u64).init(0);
 var g_worker_allocator_leaks_total = std.atomic.Value(u64).init(0);
+var g_agent_score_computed_total = std.atomic.Value(u64).init(0);
+var g_agent_score_computed_bronze = std.atomic.Value(u64).init(0);
+var g_agent_score_computed_silver = std.atomic.Value(u64).init(0);
+var g_agent_score_computed_gold = std.atomic.Value(u64).init(0);
+var g_agent_score_computed_elite = std.atomic.Value(u64).init(0);
+var g_agent_scoring_failed_total = std.atomic.Value(u64).init(0);
+var g_agent_score_latest = std.atomic.Value(u64).init(0);
 var g_histograms_mu: std.Thread.Mutex = .{};
 var g_agent_duration_seconds = HistogramSnapshot{};
 var g_run_total_wall_seconds = HistogramSnapshot{};
+var g_agent_scoring_duration_ms = HistogramSnapshot{};
 
 pub fn incRunsCreated() void {
     _ = g_runs_created_total.fetchAdd(1, .monotonic);
@@ -215,6 +231,30 @@ pub fn incWorkerAllocatorLeaks() void {
     _ = g_worker_allocator_leaks_total.fetchAdd(1, .monotonic);
 }
 
+pub fn incAgentScoreComputed(tier: anytype) void {
+    _ = g_agent_score_computed_total.fetchAdd(1, .monotonic);
+    switch (tier) {
+        .bronze => _ = g_agent_score_computed_bronze.fetchAdd(1, .monotonic),
+        .silver => _ = g_agent_score_computed_silver.fetchAdd(1, .monotonic),
+        .gold => _ = g_agent_score_computed_gold.fetchAdd(1, .monotonic),
+        .elite => _ = g_agent_score_computed_elite.fetchAdd(1, .monotonic),
+    }
+}
+
+pub fn incAgentScoringFailed() void {
+    _ = g_agent_scoring_failed_total.fetchAdd(1, .monotonic);
+}
+
+pub fn setAgentScoreLatest(score: u8) void {
+    g_agent_score_latest.store(@as(u64, score), .release);
+}
+
+pub fn observeAgentScoringDurationMs(ms: u64) void {
+    g_histograms_mu.lock();
+    defer g_histograms_mu.unlock();
+    observeHistogram(&g_agent_scoring_duration_ms, ms);
+}
+
 pub fn observeAgentDurationSeconds(seconds: u64) void {
     g_histograms_mu.lock();
     defer g_histograms_mu.unlock();
@@ -272,13 +312,22 @@ fn snapshot() Snapshot {
         .api_in_flight_requests = g_api_in_flight_requests.load(.acquire),
         .worker_in_flight_runs = g_worker_in_flight_runs.load(.acquire),
         .worker_allocator_leaks_total = g_worker_allocator_leaks_total.load(.acquire),
+        .agent_score_computed_total = g_agent_score_computed_total.load(.acquire),
+        .agent_score_computed_bronze = g_agent_score_computed_bronze.load(.acquire),
+        .agent_score_computed_silver = g_agent_score_computed_silver.load(.acquire),
+        .agent_score_computed_gold = g_agent_score_computed_gold.load(.acquire),
+        .agent_score_computed_elite = g_agent_score_computed_elite.load(.acquire),
+        .agent_scoring_failed_total = g_agent_scoring_failed_total.load(.acquire),
+        .agent_score_latest = g_agent_score_latest.load(.acquire),
         .agent_duration_seconds = .{},
         .run_total_wall_seconds = .{},
+        .agent_scoring_duration_ms = .{},
     };
     g_histograms_mu.lock();
     defer g_histograms_mu.unlock();
     s.agent_duration_seconds = g_agent_duration_seconds;
     s.run_total_wall_seconds = g_run_total_wall_seconds;
+    s.agent_scoring_duration_ms = g_agent_scoring_duration_ms;
     return s;
 }
 
@@ -368,6 +417,14 @@ pub fn renderPrometheus(
     try appendMetric(writer, "zombie_queue_depth", "gauge", "Current queued runs in SPEC_QUEUED.", queue_depth_gauge);
     try appendMetric(writer, "zombie_oldest_queued_age_ms", "gauge", "Oldest queued run age in milliseconds.", oldest_age_gauge);
 
+    try appendMetric(writer, "zombie_agent_score_computed_total", "counter", "Total scored runs across all tiers.", s.agent_score_computed_total);
+    try appendMetric(writer, "zombie_agent_score_computed_bronze_total", "counter", "Scored runs with BRONZE tier.", s.agent_score_computed_bronze);
+    try appendMetric(writer, "zombie_agent_score_computed_silver_total", "counter", "Scored runs with SILVER tier.", s.agent_score_computed_silver);
+    try appendMetric(writer, "zombie_agent_score_computed_gold_total", "counter", "Scored runs with GOLD tier.", s.agent_score_computed_gold);
+    try appendMetric(writer, "zombie_agent_score_computed_elite_total", "counter", "Scored runs with ELITE tier.", s.agent_score_computed_elite);
+    try appendMetric(writer, "zombie_agent_scoring_failed_total", "counter", "Total scoring failures caught by fail-safe.", s.agent_scoring_failed_total);
+    try appendMetric(writer, "zombie_agent_score_latest", "gauge", "Most recently computed agent score.", s.agent_score_latest);
+
     try appendDurationHistogram(
         writer,
         "zombie_agent_duration_seconds",
@@ -379,6 +436,12 @@ pub fn renderPrometheus(
         "zombie_run_total_wall_seconds",
         "End-to-end run wall-clock duration in seconds.",
         s.run_total_wall_seconds,
+    );
+    try appendDurationHistogram(
+        writer,
+        "zombie_agent_scoring_duration_ms",
+        "Time spent in scoreRun in milliseconds.",
+        s.agent_scoring_duration_ms,
     );
     try writer.writeAll("\n");
 

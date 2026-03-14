@@ -15,7 +15,7 @@ const ServeMigrationDecision = enum {
     run_required,
 };
 
-pub fn canonicalMigrations() [11]db.Migration {
+pub fn canonicalMigrations() [12]db.Migration {
     const schema = @import("schema");
     return .{
         .{ .version = 1, .sql = schema.initial_sql },
@@ -29,6 +29,7 @@ pub fn canonicalMigrations() [11]db.Migration {
         .{ .version = 13, .sql = schema.usage_metering_billing_sql },
         .{ .version = 14, .sql = schema.workspace_billing_state_sql },
         .{ .version = 15, .sql = schema.workspace_free_credit_sql },
+        .{ .version = 16, .sql = schema.agent_scoring_baseline_sql },
     };
 }
 
