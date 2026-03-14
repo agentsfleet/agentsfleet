@@ -15,9 +15,8 @@ test.describe("Smoke", () => {
   test("pricing page loads", async ({ page }) => {
     await page.goto("/pricing");
     await expect(page).toHaveURL(/\/pricing$/);
-    const main = page.getByRole("main");
-    await expect(main.getByRole("heading", { level: 1 })).toBeVisible();
-    await expect(main.getByRole("heading", { level: 2 }).first()).toBeVisible();
+    await expect(page.locator(".pricing-page")).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
   });
 
   test("agents page loads", async ({ page }) => {

@@ -36,7 +36,7 @@ test.describe("Footer navigation", () => {
 
     await expect(page).toHaveURL(/\/pricing/);
     await expect(page.getByTestId("mode-humans")).toHaveClass(/active/);
-    await expect(page.getByRole("heading", { level: 1 })).toContainText("Free and Scale plans");
+    await expect(page.getByRole("heading", { level: 1 })).toContainText("Start free. Upgrade when you need stronger control.");
   });
 
   test("footer Features link navigates to / and Humans mode is active", async ({ page }) => {
@@ -142,7 +142,7 @@ test.describe("Mode toggle — multi-step cycles", () => {
 
   test("pricing → home → agents updates URLs and selection state", async ({ page }) => {
     await page.goto("/pricing");
-    await expect(page.getByRole("heading", { level: 1 })).toContainText("Free and Scale plans");
+    await expect(page.getByRole("heading", { level: 1 })).toContainText("Start free. Upgrade when you need stronger control.");
     let selected = expectModeToggle("humans");
     await expect(page.getByTestId("mode-humans")).toHaveAttribute("aria-selected", selected.humans);
 
@@ -163,7 +163,7 @@ test.describe("Mode toggle — multi-step cycles", () => {
 
     await page.getByRole("navigation", { name: /primary/i }).getByRole("link", { name: "Pricing" }).click();
     await expect(page).toHaveURL(/\/pricing/);
-    await expect(page.getByRole("heading", { level: 1 })).toContainText("Free and Scale plans");
+    await expect(page.getByRole("heading", { level: 1 })).toContainText("Start free. Upgrade when you need stronger control.");
     await expect(page.getByTestId("mode-humans")).toHaveAttribute("aria-selected", selected.humans);
 
     await page.getByRole("navigation", { name: /primary/i }).getByRole("link", { name: "Home" }).click();

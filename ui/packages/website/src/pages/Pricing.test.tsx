@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { BrowserRouter } from "react-router-dom";
 import userEvent from "@testing-library/user-event";
 import { describe, it, expect } from "vitest";
@@ -15,84 +15,71 @@ function renderPricing() {
 describe("Pricing", () => {
   it("renders the heading", () => {
     renderPricing();
-    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(/free and scale plans/i);
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(/start free\. upgrade when you need stronger control\./i);
   });
 
-  it("renders the BYOK explanation", () => {
+  it("renders roadmap proof points", () => {
     renderPricing();
-    expect(screen.getByText(/never resells model tokens/i)).toBeInTheDocument();
+    expect(screen.getByText(/upcoming firecracker resource governance/i)).toBeInTheDocument();
+    expect(screen.getByText(/upcoming agent scoring, failure analysis, and learning loops/i)).toBeInTheDocument();
   });
 
-  it("renders Free and Scale tiers", () => {
+  it("renders Hobby, Core, Pro, and Enterprise tiers", () => {
     renderPricing();
-    expect(screen.getByText("Free")).toBeInTheDocument();
-    expect(screen.getByText("Scale")).toBeInTheDocument();
+    expect(screen.getByText("Hobby")).toBeInTheDocument();
+    expect(screen.getByText("Core")).toBeInTheDocument();
+    expect(screen.getByText("Pro")).toBeInTheDocument();
+    expect(screen.getByText("Enterprise")).toBeInTheDocument();
   });
 
-  it("renders prices for each tier", () => {
+  it("renders Start free CTA for Hobby", () => {
     renderPricing();
-    expect(screen.getByText("$0")).toBeInTheDocument();
-    expect(screen.getByText("Coming soon")).toBeInTheDocument();
-  });
-
-  it("marks Scale tier as featured", () => {
-    const { container } = renderPricing();
-    const featured = container.querySelector(".card.featured");
-    expect(featured).not.toBeNull();
-    expect(featured!.textContent).toContain("Scale");
-  });
-
-  it("renders Free tier with no-expiry credit", () => {
-    renderPricing();
-    expect(screen.getByText(/\$10 credit included \(no expiry\)/i)).toBeInTheDocument();
-  });
-
-  it("renders BYOK/BYOM feature language", () => {
-    renderPricing();
-    const byokItems = screen.getAllByText(/byok\/byom/i);
-    expect(byokItems.length).toBeGreaterThanOrEqual(2);
-  });
-
-  it("renders Start free CTA for Free tier", () => {
-    renderPricing();
-    const startFree = screen.getAllByRole("link", { name: /start free/i });
-    expect(startFree.length).toBeGreaterThanOrEqual(1);
-  });
-
-  it("renders waitlist CTA for Scale", () => {
-    renderPricing();
-    expect(screen.getByRole("link", { name: /join waitlist/i })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: /start free/i })).toHaveAttribute(
       "href",
-      expect.stringContaining("Scale%20Waitlist")
+      "https://app.dev.usezombie.com",
     );
   });
 
-  it("renders note that protections apply to all plans", () => {
+  it("opens on-page notify flow for Core", async () => {
+    const user = userEvent.setup();
     renderPricing();
-    expect(screen.getByText(/rate limits, abuse checks, and policy controls apply to all plans/i)).toBeInTheDocument();
+
+    await user.click(screen.getAllByRole("button", { name: /notify me/i })[0]);
+
+    expect(screen.getByRole("heading", { level: 2, name: /get notified when core opens/i })).toBeInTheDocument();
+    expect(screen.getByLabelText(/work email/i)).toBeInTheDocument();
   });
 
-  it("renders usage billing language for Scale", () => {
+  it("keeps the notify flow on-site for Enterprise", async () => {
+    const user = userEvent.setup();
     renderPricing();
-    expect(screen.getByText(/usage-based billing for completed agent execution/i)).toBeInTheDocument();
-    expect(screen.getByText(/no charge for failed or incomplete agent runs/i)).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /talk to sales/i }));
+
+    expect(screen.getByRole("heading", { level: 2, name: /talk to sales about enterprise/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /request follow-up/i })).toBeInTheDocument();
+  });
+
+  it("shows a missing endpoint error until lead capture is configured", async () => {
+    const user = userEvent.setup();
+    renderPricing();
+
+    await user.click(screen.getAllByRole("button", { name: /notify me/i })[0]);
+    await user.type(screen.getByLabelText(/work email/i), "team@example.com");
+    const form = screen.getByLabelText(/work email/i).closest("form");
+    expect(form).not.toBeNull();
+    await user.click(within(form!).getByRole("button", { name: /^notify me$/i }));
+
+    expect(screen.getByRole("alert")).toHaveTextContent(/notify me is not configured yet/i);
+  });
+
+  it("renders launch posture copy", () => {
+    renderPricing();
+    expect(screen.getByText(/only pricing captures demand/i)).toBeInTheDocument();
   });
 
   it("renders FAQ section", () => {
     renderPricing();
     expect(screen.getByText("What does BYOK mean?")).toBeInTheDocument();
-  });
-
-  it("FAQ accordion works", async () => {
-    const user = userEvent.setup();
-    renderPricing();
-
-    await user.click(screen.getByText("What does BYOK mean?"));
-    expect(screen.getByText(/Bring Your Own Keys/)).toBeInTheDocument();
-  });
-
-  it("renders bottom CTA block", () => {
-    renderPricing();
-    expect(screen.getByText(/not sure which plan/i)).toBeInTheDocument();
   });
 });

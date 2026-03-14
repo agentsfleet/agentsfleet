@@ -1,10 +1,8 @@
 import { Link } from "react-router-dom";
 import Hero from "../components/Hero";
 import FeatureSection from "../components/FeatureSection";
-import ProviderStrip from "../components/ProviderStrip";
 import FeatureFlow from "../components/FeatureFlow";
 import HowItWorks from "../components/HowItWorks";
-import CTABlock from "../components/CTABlock";
 import { InstallBlock } from "@usezombie/design-system";
 import { APP_BASE_URL, DOCS_URL } from "../config";
 
@@ -17,9 +15,9 @@ const features = [
   },
   {
     number: "02",
-    title: "Bring your own models",
+    title: "Resource-governed execution",
     description:
-      "Connect the model providers your team already uses. UseZombie focuses on controlled execution and delivery, not token resale.",
+      "Upcoming paid plans add stricter sandbox memory, CPU, and disk controls so one runaway run cannot wreck the rest of the queue.",
   },
   {
     number: "03",
@@ -29,62 +27,38 @@ const features = [
   },
   {
     number: "04",
-    title: "Custom agent profiles",
+    title: "Run quality that gets measured",
     description:
-      "Define team-specific workflows for Echo, Scout, and Warden so each repo gets the right behavior and constraints.",
+      "Score every run on completion, reliability, latency, and eventually resource efficiency so teams can see whether automation is actually improving.",
   },
   {
     number: "05",
-    title: "Replay, observability, and isolation",
+    title: "Failure analysis with next-run context",
     description:
-      "Investigate retries with full run replay, track agent output quality, and keep execution boundaries tighter for untrusted code.",
+      "When a run fails, upcoming analysis surfaces why it failed and feeds the key lesson back into the next run instead of repeating the same mistake.",
   },
   {
     number: "06",
-    title: "Stop agents from piling up during a release",
+    title: "Dynamic agent profiles by repo and team",
     description:
-      "Freeze runs before a deploy, prioritize the hotfix, and let everything else resume when you're ready — no more surprise PRs landing mid-release.",
+      "Shape agent behavior per repo without rewriting workers, so each team can compile, activate, and audit the profile that matches its workflow.",
   },
   {
     number: "07",
     title: "Know exactly what the agent was allowed to do",
     description:
       "Require sign-off before agents touch sensitive code, enforce repo-specific rules automatically, and give reviewers a clear audit trail instead of guesswork.",
-  },
+    },
 ];
 
-type Props = {
-  mode: "humans" | "agents";
-};
-
-export default function Home({ mode }: Props) {
-  if (mode === "humans") {
-    return (
-      <section className="stack home-stack route-fade">
-        <Hero mode={mode} />
-        <FeatureFlow />
-        <HowItWorks />
-        <div className="section-gap">
-          <InstallBlock
-            title="Install zombiectl and connect GitHub"
-            command="curl -fsSL https://usezombie.sh/install.sh | bash"
-            actions={[
-              { label: "Read the docs", to: DOCS_URL, variant: "ghost" },
-              { label: "Connect GitHub, automate PRs", to: APP_BASE_URL, variant: "double-border" },
-            ]}
-          />
-        </div>
-      </section>
-    );
-  }
-
+export default function Home() {
   return (
     <section className="stack home-stack route-fade">
-      <Hero mode={mode} />
-      <ProviderStrip />
+      <Hero />
+      <FeatureFlow />
       <div className="section-gap home-section-head">
-        <p className="eyebrow">Features</p>
-        <h2>What teams get from UseZombie</h2>
+        <p className="eyebrow">What improves as you scale</p>
+        <h2>Safer runs, clearer quality signals, and better automation over time.</h2>
       </div>
       <div className="grid two features-grid">
         {features.map((f) => (
@@ -92,7 +66,16 @@ export default function Home({ mode }: Props) {
         ))}
       </div>
       <HowItWorks />
-      <CTABlock />
+      <div className="section-gap">
+        <InstallBlock
+          title="Install zombiectl and connect GitHub"
+          command="curl -fsSL https://usezombie.sh/install.sh | bash"
+          actions={[
+            { label: "Read the docs", to: DOCS_URL, variant: "ghost" },
+            { label: "Connect GitHub, automate PRs", to: APP_BASE_URL, variant: "double-border" },
+          ]}
+        />
+      </div>
       <div className="cta-row" style={{ marginTop: "1rem" }}>
         <Link className="cta ghost" to="/pricing">
           View full pricing

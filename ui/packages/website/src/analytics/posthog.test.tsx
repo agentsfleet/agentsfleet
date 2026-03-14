@@ -1,14 +1,31 @@
 import { render, screen } from "@testing-library/react";
+import { BrowserRouter } from "react-router-dom";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import posthog from "posthog-js";
 import CTABlock from "../components/CTABlock";
 import {
+  EVENT_LEAD_CAPTURE_CLICKED,
+  EVENT_LEAD_CAPTURE_FAILED,
+  EVENT_LEAD_CAPTURE_OPENED,
+  EVENT_LEAD_CAPTURE_SUBMITTED,
+  EVENT_NAVIGATION_CLICKED,
   EVENT_SIGNUP_STARTED,
-  EVENT_TEAM_PILOT_BOOKING_STARTED,
   resetAnalyticsForTests,
+  trackLeadCaptureClicked,
+  trackLeadCaptureFailed,
+  trackLeadCaptureOpened,
+  trackLeadCaptureSubmitted,
   trackSignupStarted,
 } from "./posthog";
+
+function renderCtaBlock() {
+  return render(
+    <BrowserRouter>
+      <CTABlock />
+    </BrowserRouter>
+  );
+}
 
 vi.mock("posthog-js", () => ({
   default: {
@@ -58,21 +75,72 @@ describe("website analytics", () => {
     expect(props.email).toBeUndefined();
   });
 
-  it("captures CTA click events in website flow", async () => {
+  it("captures agent-safe CTA navigation events", async () => {
     const user = userEvent.setup();
-    render(<CTABlock />);
+    renderCtaBlock();
 
-    await user.click(screen.getByRole("link", { name: /start free/i }));
-    await user.click(screen.getByRole("link", { name: /book team pilot/i }));
+    await user.click(screen.getByRole("link", { name: /read quickstart/i }));
+    await user.click(screen.getByRole("link", { name: /view pricing/i }));
 
     expect(mockedPosthog.capture).toHaveBeenCalledWith(
-      "signup_completed",
-      expect.objectContaining({ source: "cta_block_start_free" }),
+      EVENT_NAVIGATION_CLICKED,
+      expect.objectContaining({ source: "agents_cta_docs" }),
     );
     expect(mockedPosthog.capture).toHaveBeenCalledWith(
-      EVENT_TEAM_PILOT_BOOKING_STARTED,
-      expect.objectContaining({ source: "cta_block_team_pilot" }),
+      EVENT_NAVIGATION_CLICKED,
+      expect.objectContaining({ source: "agents_cta_pricing" }),
     );
+  });
+
+  it("captures pricing lead funnel events with allowlisted metadata only", () => {
+    trackLeadCaptureClicked({
+      page: "pricing",
+      surface: "pricing_card",
+      cta_id: "pricing_pro_notify",
+      plan_interest: "Pro",
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      email: "should-not-leak@example.com" as any,
+    });
+    trackLeadCaptureOpened({
+      page: "pricing",
+      surface: "pricing_lead_capture",
+      cta_id: "pricing_pro_notify",
+      plan_interest: "Pro",
+    });
+    trackLeadCaptureSubmitted({
+      page: "pricing",
+      surface: "pricing_lead_capture",
+      cta_id: "pricing_pro_notify",
+      plan_interest: "Pro",
+      status: "success",
+    });
+    trackLeadCaptureFailed({
+      page: "pricing",
+      surface: "pricing_lead_capture",
+      cta_id: "pricing_pro_notify",
+      plan_interest: "Pro",
+      status: "submit_failed",
+    });
+
+    expect(mockedPosthog.capture).toHaveBeenCalledWith(
+      EVENT_LEAD_CAPTURE_CLICKED,
+      expect.objectContaining({ cta_id: "pricing_pro_notify", plan_interest: "Pro" }),
+    );
+    expect(mockedPosthog.capture).toHaveBeenCalledWith(
+      EVENT_LEAD_CAPTURE_OPENED,
+      expect.objectContaining({ cta_id: "pricing_pro_notify", plan_interest: "Pro" }),
+    );
+    expect(mockedPosthog.capture).toHaveBeenCalledWith(
+      EVENT_LEAD_CAPTURE_SUBMITTED,
+      expect.objectContaining({ status: "success" }),
+    );
+    expect(mockedPosthog.capture).toHaveBeenCalledWith(
+      EVENT_LEAD_CAPTURE_FAILED,
+      expect.objectContaining({ status: "submit_failed" }),
+    );
+
+    const props = mockedPosthog.capture.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(props.email).toBeUndefined();
   });
 
   it("does not emit when analytics is disabled", async () => {
@@ -84,8 +152,8 @@ describe("website analytics", () => {
       host: "https://us.i.posthog.com",
     };
 
-    render(<CTABlock />);
-    await user.click(screen.getByRole("link", { name: /start free/i }));
+    renderCtaBlock();
+    await user.click(screen.getByRole("link", { name: /read quickstart/i }));
 
     expect(mockedPosthog.init).not.toHaveBeenCalled();
     expect(mockedPosthog.capture).not.toHaveBeenCalled();

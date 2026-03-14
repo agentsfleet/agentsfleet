@@ -29,11 +29,11 @@ const items: FeatureFlowItem[] = [
     id: "trace",
     title: "Traceability and replay by default",
     description:
-      "Track each run from intent to merged PR with event history, validation output, and reproducible replay.",
+      "Track each run from intent to merged PR with event history, validation output, replay, and M9 quality signals that show whether agents are actually improving.",
     bullets: [
-      "Understand what changed and why",
-      "Debug retries with deterministic run artifacts",
-      "Reduce review churn with clearer context in every PR",
+      "Replay failed runs with deterministic artifacts and clearer context",
+      "See why a run degraded before it becomes review churn",
+      "Use score history and failure analysis to guide improvements",
     ],
     ctaLabel: "Read docs",
     ctaHref: DOCS_URL,
@@ -43,11 +43,11 @@ const items: FeatureFlowItem[] = [
     id: "mission",
     title: "Mission Control",
     description:
-      "Centralize run visibility, profile-level behavior, and guardrails so teams can scale automation safely.",
+      "Centralize run visibility, profile behavior, and rollout guardrails so teams can scale automation without giving up control.",
     bullets: [
-      "Observe run quality and policy outcomes",
-      "Tune agent profiles by repo and team",
-      "Keep execution isolated for untrusted code paths",
+      "Observe quality trends and policy outcomes in one place",
+      "Tune agent profiles by repo and team with auditability",
+      "Paid tiers add stronger sandbox governance for untrusted code paths",
     ],
     ctaLabel: "Open Mission Control",
     ctaHref: APP_BASE_URL,
