@@ -1,6 +1,6 @@
 import { defineConfig, devices } from "@playwright/test";
 
-const BASE_URL = process.env.BASE_URL ?? "http://localhost:5173";
+const BASE_URL = process.env.BASE_URL ?? "http://127.0.0.1:5173";
 
 export default defineConfig({
   testDir: "./tests/e2e",
@@ -27,9 +27,9 @@ export default defineConfig({
   webServer: process.env.BASE_URL
     ? undefined
     : {
-        command: "bun run dev",
-        url: "http://localhost:5173",
-        reuseExistingServer: !process.env.CI,
+        command: "bun run dev -- --host 127.0.0.1",
+        url: "http://127.0.0.1:5173",
+        reuseExistingServer: false,
         timeout: 30_000,
       },
   outputDir: "playwright-results",

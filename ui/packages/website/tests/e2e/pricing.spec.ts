@@ -11,17 +11,15 @@ test.describe("Pricing page", () => {
 
   test("renders current pricing tiers", async ({ page }) => {
     await expect(page.getByRole("heading", { name: "Hobby", exact: true, level: 2 })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Core", exact: true, level: 2 })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Pro", exact: true, level: 2 })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Enterprise", exact: true, level: 2 })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Scale", exact: true, level: 2 })).toBeVisible();
   });
 
   test("pricing page highlights the launch-now tier", async ({ page }) => {
-    await expect(page.getByText("Launching next")).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Core", exact: true, level: 2 })).toBeVisible();
+    await expect(page.getByText("Unlimited users")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Scale", exact: true, level: 2 })).toBeVisible();
   });
 
-  test("Free tier lists no-expiry credit", async ({ page }) => {
+  test("Hobby tier lists no-expiry credit", async ({ page }) => {
     await expect(page.getByText(/\$10 credit included with no expiry/i)).toBeVisible();
   });
 
@@ -58,9 +56,8 @@ test.describe("Pricing page", () => {
     await expect(cta).toHaveAttribute("href", "https://app.dev.usezombie.com");
   });
 
-  test("paid tiers expose notify and sales actions", async ({ page }) => {
-    await expect(page.getByRole("button", { name: "Notify me" }).first()).toBeVisible();
-    await expect(page.getByRole("button", { name: "Talk to sales" })).toBeVisible();
+  test("paid tier exposes a single notify action", async ({ page }) => {
+    await expect(page.getByRole("button", { name: "Notify me" })).toBeVisible();
   });
 
   test("footer renders on pricing page", async ({ page }) => {

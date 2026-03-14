@@ -96,39 +96,39 @@ describe("website analytics", () => {
     trackLeadCaptureClicked({
       page: "pricing",
       surface: "pricing_card",
-      cta_id: "pricing_pro_notify",
-      plan_interest: "Pro",
+      cta_id: "pricing_scale_notify",
+      plan_interest: "Scale",
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       email: "should-not-leak@example.com" as any,
     });
     trackLeadCaptureOpened({
       page: "pricing",
       surface: "pricing_lead_capture",
-      cta_id: "pricing_pro_notify",
-      plan_interest: "Pro",
+      cta_id: "pricing_scale_notify",
+      plan_interest: "Scale",
     });
     trackLeadCaptureSubmitted({
       page: "pricing",
       surface: "pricing_lead_capture",
-      cta_id: "pricing_pro_notify",
-      plan_interest: "Pro",
+      cta_id: "pricing_scale_notify",
+      plan_interest: "Scale",
       status: "success",
     });
     trackLeadCaptureFailed({
       page: "pricing",
       surface: "pricing_lead_capture",
-      cta_id: "pricing_pro_notify",
-      plan_interest: "Pro",
+      cta_id: "pricing_scale_notify",
+      plan_interest: "Scale",
       status: "submit_failed",
     });
 
     expect(mockedPosthog.capture).toHaveBeenCalledWith(
       EVENT_LEAD_CAPTURE_CLICKED,
-      expect.objectContaining({ cta_id: "pricing_pro_notify", plan_interest: "Pro" }),
+      expect.objectContaining({ cta_id: "pricing_scale_notify", plan_interest: "Scale" }),
     );
     expect(mockedPosthog.capture).toHaveBeenCalledWith(
       EVENT_LEAD_CAPTURE_OPENED,
-      expect.objectContaining({ cta_id: "pricing_pro_notify", plan_interest: "Pro" }),
+      expect.objectContaining({ cta_id: "pricing_scale_notify", plan_interest: "Scale" }),
     );
     expect(mockedPosthog.capture).toHaveBeenCalledWith(
       EVENT_LEAD_CAPTURE_SUBMITTED,

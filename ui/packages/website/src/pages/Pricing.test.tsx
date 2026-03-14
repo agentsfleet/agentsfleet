@@ -24,12 +24,10 @@ describe("Pricing", () => {
     expect(screen.getByText(/upcoming agent scoring, failure analysis, and learning loops/i)).toBeInTheDocument();
   });
 
-  it("renders Hobby, Core, Pro, and Enterprise tiers", () => {
+  it("renders Hobby and Scale tiers", () => {
     renderPricing();
-    expect(screen.getByText("Hobby")).toBeInTheDocument();
-    expect(screen.getByText("Core")).toBeInTheDocument();
-    expect(screen.getByText("Pro")).toBeInTheDocument();
-    expect(screen.getByText("Enterprise")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 2, name: "Hobby" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 2, name: "Scale" })).toBeInTheDocument();
   });
 
   it("renders Start free CTA for Hobby", () => {
@@ -40,31 +38,27 @@ describe("Pricing", () => {
     );
   });
 
-  it("opens on-page notify flow for Core", async () => {
-    const user = userEvent.setup();
+  it("shows Free and Unlimited users in the card chrome", () => {
     renderPricing();
-
-    await user.click(screen.getAllByRole("button", { name: /notify me/i })[0]);
-
-    expect(screen.getByRole("heading", { level: 2, name: /get notified when core opens/i })).toBeInTheDocument();
-    expect(screen.getByLabelText(/work email/i)).toBeInTheDocument();
+    expect(screen.getByText("Free")).toBeInTheDocument();
+    expect(screen.getByText("Unlimited users")).toBeInTheDocument();
   });
 
-  it("keeps the notify flow on-site for Enterprise", async () => {
+  it("opens on-page notify flow for Scale", async () => {
     const user = userEvent.setup();
     renderPricing();
 
-    await user.click(screen.getByRole("button", { name: /talk to sales/i }));
+    await user.click(screen.getByRole("button", { name: /notify me/i }));
 
-    expect(screen.getByRole("heading", { level: 2, name: /talk to sales about enterprise/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /request follow-up/i })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 2, name: /get notified when scale opens/i })).toBeInTheDocument();
+    expect(screen.getByLabelText(/work email/i)).toBeInTheDocument();
   });
 
   it("shows a missing endpoint error until lead capture is configured", async () => {
     const user = userEvent.setup();
     renderPricing();
 
-    await user.click(screen.getAllByRole("button", { name: /notify me/i })[0]);
+    await user.click(screen.getByRole("button", { name: /notify me/i }));
     await user.type(screen.getByLabelText(/work email/i), "team@example.com");
     const form = screen.getByLabelText(/work email/i).closest("form");
     expect(form).not.toBeNull();
