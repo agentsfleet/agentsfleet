@@ -358,7 +358,12 @@ Side effects (GitHub PR creation, notifications) are written to `run_side_effect
 
 The M9 milestone closes a feedback loop where every completed run scores itself,
 injects its score history into the next run, and — when quality is declining —
-proposes concrete harness changes for operator approval.
+proposes harness changes. Agents that earn **TRUSTED** status (10 consecutive Gold+
+runs, excluding infrastructure failures) get a 24-hour veto window instead of
+waiting for manual approval.
+
+**Entity model:** `agent_id` maps to `agent_profiles.agent_id` (renamed from `profile_id`).
+A harness profile IS an agent. Scoring, trust, and proposals all scope to the profile.
 
 ```mermaid
 flowchart TD
@@ -366,27 +371,41 @@ flowchart TD
     B --> C{Reaches Terminal\nState?}
     C -->|In flight| B
 
-    C -->|Yes| D["<b>M9_001 Scoring Engine</b>\nCompute axes: completion · errors · latency · resources\nNormalize → integer score 0–100\nAssign tier: Bronze / Silver / Gold / Elite"]
+    C -->|Yes| D["M9_001 Scoring Engine\nCompute axes: completion · errors · latency · resources\nNormalize 0-100 → tier: Unranked · Bronze · Silver · Gold · Elite"]
 
-    D --> E["<b>M9_002 Persist</b>\nagent_run_scores row written\nagent_profiles tier + streak updated\nLeaderboard refreshed"]
+    D --> E["M9_002 Persist\nagent_run_scores written\nagent_profiles: tier + streak\nconsecutive_gold_plus_runs recalculated\nLeaderboard refreshed"]
 
-    D --> F["<b>M9_003 Failure Analysis</b>\nClassify: TIMEOUT · OOM · BAD_OUTPUT\nUNHANDLED_EXCEPTION · CONTEXT_OVERFLOW\nProduce improvement_hints (structured)"]
+    D --> F["M9_003 Failure Analysis\nClassify: TIMEOUT · OOM · BAD_OUTPUT\nUNHANDLED_EXCEPTION · CONTEXT_OVERFLOW\nProduce structured improvement_hints"]
 
     F --> G["Build ScoringContext Block\nlast 5 scores + failure classes\ncapped at 512 tokens"]
 
-    G -->|Prepended to system message| A
+    G -->|Prepended to next run system message| A
 
-    E --> H{5-run rolling avg\ndeclining OR avg lt 60?}
-    H -->|No — trajectory OK| I([Continue Running])
+    E --> T{trust_level?}
 
-    H -->|Yes — trigger| J["<b>M9_004 Proposal Generation</b>\nAgent LLM reviews last 10 analyses\n+ current harness config\nOutputs structured proposed_changes\ntargets: timeout · tokens · tools · prompt"]
+    T -->|UNEARNED\nconsecutive Gold+ lt 10| H
+    T -->|TRUSTED\n10+ consecutive Gold+| H
 
-    J --> K[Operator Reviews\nzombiciectl agent proposals list]
+    H{5-run rolling avg\ndeclining OR avg lt 60?}
+    H -->|No| I([Continue Running])
 
-    K -->|approve| L["Apply Harness Changes\nAtomically update agent config\nharness_change_log written\nPostHog event emitted"]
-    K -->|reject / expire 7d| M([Proposal Archived\nNew proposal on next trigger])
+    H -->|Yes — trigger| J["M9_004 Generate Proposal\nLLM reviews last 10 run analyses\n+ current harness config\nvalidated proposed_changes\ntargets: timeout · tokens · tools"]
 
-    L --> N["Tag next 5 runs\npost_change_window = true\nCompute score_delta after window"]
+    J --> AP{approval_mode}
+
+    AP -->|UNEARNED\nMANUAL| K["PENDING_REVIEW\nOperator must explicitly\napprove or reject\nExpires in 7 days"]
+
+    AP -->|TRUSTED\nAUTO| V["VETO_WINDOW\nauto_apply_at = now + 24h\nCLI shows countdown\nOperator can veto to cancel"]
+
+    K -->|approve| L
+    K -->|reject / expire| M([Proposal Archived])
+
+    V -->|24h passes, no veto| L
+    V -->|operator vetoes| M
+
+    L["Apply Harness Changes\nCAS check: config_version_id must match\nAtomic compile + activate\nharness_change_log written\napplied_by: operator or system:auto\nPostHog agent.harness.changed emitted"]
+
+    L --> N["Tag next 5 runs post_change_window\nCompute score_delta\nIf 3 consecutive negative deltas\nemit agent.improvement.stalled\nreset trust to UNEARNED"]
 
     N -->|Feeds back into| A
 
@@ -396,13 +415,25 @@ flowchart TD
     style J fill:#1a3a5c,color:#fff,stroke:#2d6a9f
     style G fill:#2d4a1e,color:#fff,stroke:#4a7a2e
     style L fill:#2d4a1e,color:#fff,stroke:#4a7a2e
+    style V fill:#5c3a1a,color:#fff,stroke:#9f6a2d
+    style K fill:#3a1a1a,color:#fff,stroke:#9f2d2d
 ```
 
 **Key invariants:**
 - Score is deterministic — identical result from same run metadata, no LLM in scoring path.
+- First run/no-history behavior is explicit — score is still computed, but the tier emitted for that run is `UNRANKED`.
+- Scoring is fail-safe — errors are caught, logged, and the run continues normally. Score is null (absent) on failure.
+- Scoring is in-worker, synchronous — single deferred call at function exit, < 50ms overhead.
 - Context injection is bounded — 512 token hard cap, oldest runs truncated first.
-- Harness changes require explicit operator `approve` — no autonomous mutation.
+- Trust is earned, not granted — 10 consecutive Gold+ runs required; only agent-attributable failures reset the streak (TIMEOUT, OOM, CONTEXT_OVERFLOW are excluded as infrastructure failures).
+- TRUSTED agents: proposals auto-apply after 24h veto window; operator can cancel anytime.
+- UNEARNED agents: every proposal requires explicit `zombiectl agent proposals approve`.
+- 3 consecutive negative score deltas resets trust to UNEARNED regardless of run history.
+- Proposals target numeric fields only (tokens, timeout, tool_allowlist restrict-only). `system_prompt_appendix` is excluded — no LLM-generated text in future system prompts.
 - Proposals targeting auth, billing, or network config are rejected at schema validation.
+- CAS guard: proposal stores `config_version_id` at creation; before apply, version must match current config. If operator changed the harness since proposal was generated, proposal is rejected with `CONFIG_CHANGED_SINCE_PROPOSAL`.
+- Proposal generation is async (enqueued, not inline) — LLM call runs out-of-band, does not block scoring path.
+- Resource efficiency axis is stubbed at 50 until M4_008 (Firecracker) provides sandbox metrics.
 
 **Workstream files:**
 - `docs/spec/v1/M9_001_AGENT_RUN_QUALITY_SCORING.md`
