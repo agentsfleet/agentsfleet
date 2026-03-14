@@ -19,7 +19,7 @@ async function assertFooterLinks(page: Page) {
 
   const internalFooterLinks: InternalLinkCase[] = [
     { label: "Features", href: "/" },
-    { label: "Pricing", href: "/pricing", heading: "Start free. Upgrade when you need stronger control." },
+    { label: "Pricing", href: "/pricing", heading: "Free and Scale plans" },
     { label: "Agents", href: "/agents", heading: "This page is for autonomous agents." },
     { label: "Privacy", href: "/privacy", heading: "Privacy Policy" },
     { label: "Terms", href: "/terms", heading: "Terms of Service" },
@@ -38,7 +38,7 @@ test.describe("Humans vs Agents link coverage", () => {
   test("Humans page exposes expected internal and external links", async ({ page }) => {
     await page.goto("/");
     await expectMode(page, "humans");
-    await expect(page.getByRole("heading", { level: 1 })).toContainText("Autonomous PR delivery");
+    await expect(page.getByRole("heading", { level: 1 })).toContainText("Ship AI-generated PRs");
 
     const nav = page.getByRole("navigation", { name: /primary/i });
     await nav.getByRole("link", { name: "Pricing" }).click();
@@ -53,7 +53,7 @@ test.describe("Humans vs Agents link coverage", () => {
 
     await expect(nav.getByRole("link", { name: "Docs" })).toHaveAttribute("href", "https://docs.usezombie.com");
 
-    await expect(page.getByRole("link", { name: /start free/i }).first()).toHaveAttribute(
+    await expect(page.getByRole("link", { name: /connect github, automate prs/i }).first()).toHaveAttribute(
       "href",
       /app\.(dev\.)?usezombie\.com/
     );
