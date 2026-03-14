@@ -202,6 +202,64 @@ pub fn trackBillingLifecycleEvent(
     }
 }
 
+pub fn trackAgentRunScored(
+    client: ?*posthog.PostHogClient,
+    distinct_id: []const u8,
+    run_id: []const u8,
+    workspace_id: []const u8,
+    agent_id: []const u8,
+    score: u8,
+    tier: []const u8,
+    axis_completion: u8,
+    axis_error_rate: u8,
+    axis_latency: u8,
+    axis_resource: u8,
+) void {
+    if (client) |ph| {
+        const props = [_]posthog.Property{
+            .{ .key = "run_id", .value = .{ .string = run_id } },
+            .{ .key = "workspace_id", .value = .{ .string = workspace_id } },
+            .{ .key = "agent_id", .value = .{ .string = agent_id } },
+            .{ .key = "score", .value = .{ .integer = @intCast(score) } },
+            .{ .key = "tier", .value = .{ .string = tier } },
+            .{ .key = "axis_completion", .value = .{ .integer = @intCast(axis_completion) } },
+            .{ .key = "axis_error_rate", .value = .{ .integer = @intCast(axis_error_rate) } },
+            .{ .key = "axis_latency", .value = .{ .integer = @intCast(axis_latency) } },
+            .{ .key = "axis_resource", .value = .{ .integer = @intCast(axis_resource) } },
+            .{ .key = "weight_completion", .value = .{ .integer = 40 } },
+            .{ .key = "weight_error_rate", .value = .{ .integer = 30 } },
+            .{ .key = "weight_latency", .value = .{ .integer = 20 } },
+            .{ .key = "weight_resource", .value = .{ .integer = 10 } },
+        };
+        ph.capture(.{
+            .distinct_id = distinct_id,
+            .event = "agent.run.scored",
+            .properties = &props,
+        }) catch {};
+    }
+}
+
+pub fn trackAgentScoringFailed(
+    client: ?*posthog.PostHogClient,
+    distinct_id: []const u8,
+    run_id: []const u8,
+    workspace_id: []const u8,
+    err_name: []const u8,
+) void {
+    if (client) |ph| {
+        const props = [_]posthog.Property{
+            .{ .key = "run_id", .value = .{ .string = run_id } },
+            .{ .key = "workspace_id", .value = .{ .string = workspace_id } },
+            .{ .key = "error", .value = .{ .string = err_name } },
+        };
+        ph.capture(.{
+            .distinct_id = distinct_id,
+            .event = "agent.scoring.failed",
+            .properties = &props,
+        }) catch {};
+    }
+}
+
 test "unit: distinctIdOrSystem falls back to system" {
     try std.testing.expectEqualStrings("system", distinctIdOrSystem(""));
     try std.testing.expectEqualStrings("user_123", distinctIdOrSystem("user_123"));

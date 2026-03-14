@@ -21,6 +21,7 @@ const events = @import("../events/bus.zig");
 const trace = @import("../observability/trace.zig");
 const langfuse = @import("../observability/langfuse.zig");
 const posthog_events = @import("../observability/posthog_events.zig");
+const scoring = @import("scoring.zig");
 const obs_log = @import("../observability/logging.zig");
 const log = std.log.scoped(.worker);
 
@@ -44,6 +45,7 @@ pub const RunContext = struct {
     default_branch: []const u8,
     spec_path: []const u8,
     attempt: u32,
+    agent_id: []const u8 = "",
 };
 
 const BareCloneRetryCtx = struct {
@@ -114,6 +116,23 @@ pub fn executeRun(
     var run_arena = std.heap.ArenaAllocator.init(alloc);
     defer run_arena.deinit();
     const run_alloc = run_arena.allocator();
+
+    var scoring_state = scoring.ScoringState{};
+    var total_wall_seconds: u64 = 0;
+    var total_tokens: u64 = 0;
+    defer {
+        scoring.scoreRunIfTerminal(
+            conn,
+            cfg.posthog,
+            ctx.run_id,
+            ctx.workspace_id,
+            ctx.agent_id,
+            ctx.requested_by,
+            &scoring_state,
+            total_wall_seconds,
+        );
+    }
+    errdefer scoring_state.outcome = .error_propagation;
 
     if (!running.load(.acquire)) return worker_runtime.WorkerError.ShutdownRequested;
 
@@ -203,8 +222,10 @@ pub fn executeRun(
     var attempt = ctx.attempt;
     var defects: ?[]const u8 = null;
 
-    var total_tokens: u64 = plan_result.token_count;
-    var total_wall_seconds: u64 = plan_result.wall_seconds;
+    total_tokens = plan_result.token_count;
+    total_wall_seconds = plan_result.wall_seconds;
+    scoring_state.stages_total = 1;
+    if (plan_result.exit_ok) scoring_state.stages_passed = 1;
 
     while (attempt <= cfg.max_attempts) : (attempt += 1) {
         try worker_runtime.ensureRunActive(running, deadline_ms);
@@ -267,6 +288,8 @@ pub fn executeRun(
             );
             total_tokens += stage_result.token_count;
             total_wall_seconds += stage_result.wall_seconds;
+            scoring_state.stages_total += 1;
+            if (stage_result.exit_ok) scoring_state.stages_passed += 1;
             try billing.recordRuntimeStageUsage(
                 conn,
                 ctx.workspace_id,
@@ -304,6 +327,7 @@ pub fn executeRun(
 
         switch (terminal) {
             .done => {
+                scoring_state.outcome = .done;
                 try billing.finalizeRunForBilling(
                     run_alloc,
                     conn,
@@ -417,6 +441,7 @@ pub fn executeRun(
                 return;
             },
             .blocked => {
+                scoring_state.outcome = .blocked_stage_graph;
                 try billing.finalizeRunForBilling(
                     run_alloc,
                     conn,
@@ -469,6 +494,7 @@ pub fn executeRun(
         }
     }
 
+    scoring_state.outcome = .blocked_retries_exhausted;
     try billing.finalizeRunForBilling(
         run_alloc,
         conn,

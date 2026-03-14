@@ -160,6 +160,7 @@ pub fn processNextRun(
             .default_branch = default_branch,
             .spec_path = spec_path,
             .attempt = attempt,
+            .agent_id = effective_profile.profile_id,
         },
         tenant_limiter,
     ) catch |err| {
