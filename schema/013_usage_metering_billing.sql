@@ -9,10 +9,10 @@ ALTER TABLE usage_ledger
     ADD COLUMN IF NOT EXISTS event_key TEXT;
 
 ALTER TABLE usage_ledger
-    ADD COLUMN IF NOT EXISTS lifecycle_event TEXT NOT NULL DEFAULT 'stage_completed';
+    ADD COLUMN IF NOT EXISTS lifecycle_event TEXT NOT NULL;
 
 ALTER TABLE usage_ledger
-    ADD COLUMN IF NOT EXISTS billable_unit TEXT NOT NULL DEFAULT 'agent_second';
+    ADD COLUMN IF NOT EXISTS billable_unit TEXT NOT NULL;
 
 ALTER TABLE usage_ledger
     ADD COLUMN IF NOT EXISTS billable_quantity BIGINT NOT NULL DEFAULT 0;
@@ -21,7 +21,7 @@ ALTER TABLE usage_ledger
     ADD COLUMN IF NOT EXISTS is_billable BOOLEAN NOT NULL DEFAULT FALSE;
 
 ALTER TABLE usage_ledger
-    ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'runtime_stage';
+    ADD COLUMN IF NOT EXISTS source TEXT NOT NULL;
 
 UPDATE usage_ledger ul
 SET workspace_id = r.workspace_id
@@ -64,7 +64,7 @@ CREATE TABLE IF NOT EXISTS billing_delivery_outbox (
     idempotency_key   TEXT NOT NULL UNIQUE,
     billable_unit     TEXT NOT NULL,
     billable_quantity BIGINT NOT NULL CHECK (billable_quantity >= 0),
-    status            TEXT NOT NULL DEFAULT 'pending',
+    status            TEXT NOT NULL,
     delivery_attempts INT NOT NULL DEFAULT 0,
     next_retry_at     BIGINT NOT NULL DEFAULT 0,
     adapter           TEXT NOT NULL,

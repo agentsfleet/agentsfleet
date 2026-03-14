@@ -15,7 +15,7 @@ const ServeMigrationDecision = enum {
     run_required,
 };
 
-pub fn canonicalMigrations() [12]db.Migration {
+pub fn canonicalMigrations() [13]db.Migration {
     const schema = @import("schema");
     return .{
         .{ .version = 1, .sql = schema.initial_sql },
@@ -30,6 +30,7 @@ pub fn canonicalMigrations() [12]db.Migration {
         .{ .version = 14, .sql = schema.workspace_billing_state_sql },
         .{ .version = 15, .sql = schema.workspace_free_credit_sql },
         .{ .version = 16, .sql = schema.agent_scoring_baseline_sql },
+        .{ .version = 17, .sql = schema.agent_score_persistence_api_sql },
     };
 }
 
@@ -181,9 +182,10 @@ test "integration: startup with pending migrations proceeds when enabled and loc
 
 test "canonical schema bootstrap includes scoring config in base schema" {
     const migrations = canonicalMigrations();
-    try std.testing.expectEqual(@as(i32, 12), migrations[migrations.len - 1].version);
-    try std.testing.expect(std.mem.containsAtLeast(u8, migrations[7].sql, 1, "enable_agent_scoring BOOLEAN NOT NULL DEFAULT FALSE"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, migrations[7].sql, 1, "agent_scoring_weights_json TEXT NOT NULL DEFAULT"));
+    try std.testing.expectEqual(@as(i32, 17), migrations[migrations.len - 1].version);
+    try std.testing.expect(std.mem.containsAtLeast(u8, migrations[7].sql, 1, "enable_agent_scoring BOOLEAN NOT NULL"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, migrations[7].sql, 1, "agent_scoring_weights_json TEXT NOT NULL"));
     try std.testing.expect(std.mem.containsAtLeast(u8, migrations[11].sql, 1, "CREATE TABLE workspace_latency_baseline"));
-    try std.testing.expect(!std.mem.containsAtLeast(u8, migrations[11].sql, 1, "ALTER TABLE workspace_entitlements"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, migrations[12].sql, 1, "CREATE TABLE agent_run_scores"));
+    try std.testing.expect(!std.mem.containsAtLeast(u8, migrations[12].sql, 1, "tier             TEXT"));
 }

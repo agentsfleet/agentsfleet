@@ -11,6 +11,7 @@ const posthog = @import("posthog");
 const posthog_events = @import("../observability/posthog_events.zig");
 const metrics = @import("../observability/metrics.zig");
 const obs_log = @import("../observability/logging.zig");
+const id_format = @import("../types/id_format.zig");
 
 const log = std.log.scoped(.scoring);
 const DEFAULT_WEIGHTS_JSON = "{\"completion\":0.4,\"error_rate\":0.3,\"latency\":0.2,\"resource\":0.1}";
@@ -272,6 +273,51 @@ pub fn queryScoringConfig(
     };
 }
 
+fn persistScoreRecord(
+    conn: *pg.Conn,
+    alloc: std.mem.Allocator,
+    run_id: []const u8,
+    workspace_id: []const u8,
+    agent_id: []const u8,
+    score: u8,
+    axis_scores_json: []const u8,
+    weight_snapshot_json: []const u8,
+    scored_at: i64,
+) !bool {
+    var existing = try conn.query(
+        "SELECT 1 FROM agent_run_scores WHERE run_id = $1",
+        .{run_id},
+    );
+    defer existing.deinit();
+    if (try existing.next() != null) return false;
+
+    const score_id = try id_format.generateTransitionId(alloc);
+    defer alloc.free(score_id);
+
+    var q = try conn.query(
+        \\INSERT INTO agent_run_scores
+        \\  (score_id, run_id, agent_id, workspace_id, score, axis_scores, weight_snapshot, scored_at)
+        \\VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+    , .{ score_id, run_id, agent_id, workspace_id, score, axis_scores_json, weight_snapshot_json, scored_at });
+    q.deinit();
+    return true;
+}
+
+fn persistScore(
+    conn: *pg.Conn,
+    alloc: std.mem.Allocator,
+    run_id: []const u8,
+    workspace_id: []const u8,
+    agent_id: []const u8,
+    score: u8,
+    axis_scores_json: []const u8,
+    weight_snapshot_json: []const u8,
+    scored_at: i64,
+) !void {
+    if (agent_id.len == 0) return;
+    _ = try persistScoreRecord(conn, alloc, run_id, workspace_id, agent_id, score, axis_scores_json, weight_snapshot_json, scored_at);
+}
+
 // ── Orchestrator ───────────────────────────────────────────────────────
 
 /// Fail-safe entry point called from a `defer` block in `executeRun`.
@@ -343,6 +389,18 @@ fn scoreRunInner(
     defer std.heap.page_allocator.free(axis_scores_json);
     const weight_snapshot_json = try weightsJson(std.heap.page_allocator, config.weights);
     defer std.heap.page_allocator.free(weight_snapshot_json);
+
+    try persistScore(
+        conn,
+        std.heap.page_allocator,
+        run_id,
+        workspace_id,
+        agent_id,
+        score,
+        axis_scores_json,
+        weight_snapshot_json,
+        scored_at,
+    );
 
     log.info("run scored run_id={s} score={d} tier={s}", .{ run_id, score, tier.label() });
 
@@ -570,6 +628,31 @@ fn createTempScoringTables(conn: *pg.Conn) !void {
         , .{});
         q.deinit();
     }
+    {
+        var q = try conn.query(
+            \\CREATE TEMP TABLE agent_profiles (
+            \\  agent_id TEXT PRIMARY KEY,
+            \\  workspace_id TEXT NOT NULL,
+            \\  updated_at BIGINT NOT NULL DEFAULT 0
+            \\) ON COMMIT DROP
+        , .{});
+        q.deinit();
+    }
+    {
+        var q = try conn.query(
+            \\CREATE TEMP TABLE agent_run_scores (
+            \\  score_id TEXT PRIMARY KEY,
+            \\  run_id TEXT NOT NULL UNIQUE,
+            \\  agent_id TEXT NOT NULL,
+            \\  workspace_id TEXT NOT NULL,
+            \\  score INTEGER NOT NULL,
+            \\  axis_scores TEXT NOT NULL,
+            \\  weight_snapshot TEXT NOT NULL,
+            \\  scored_at BIGINT NOT NULL
+            \\) ON COMMIT DROP
+        , .{});
+        q.deinit();
+    }
 }
 
 fn prometheusMetricValue(body: []const u8, name: []const u8) !u64 {
@@ -656,4 +739,53 @@ test "db-backed scoring config changes final score" {
     try std.testing.expect(config.enabled);
     try std.testing.expect(default_score != configured_score);
     try std.testing.expectEqual(@as(u8, 50), configured_score);
+}
+
+test "scoreRunIfTerminal persists run score" {
+    const db_ctx = (try openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.release(db_ctx.conn);
+    defer db_ctx.pool.deinit();
+
+    try createTempScoringTables(db_ctx.conn);
+    {
+        var q = try db_ctx.conn.query(
+            \\INSERT INTO workspace_entitlements
+            \\  (entitlement_id, workspace_id, plan_tier, max_profiles, max_stages, max_distinct_skills, allow_custom_skills, enable_agent_scoring, agent_scoring_weights_json, created_at, updated_at)
+            \\VALUES ('ent_3', 'ws_3', 'FREE', 1, 3, 3, false, true, '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}', 0, 0)
+        , .{});
+        q.deinit();
+    }
+    {
+        var q = try db_ctx.conn.query(
+            \\INSERT INTO workspace_latency_baseline
+            \\  (workspace_id, p50_seconds, p95_seconds, sample_count, computed_at)
+            \\VALUES ('ws_3', 10, 30, 5, 0)
+        , .{});
+        q.deinit();
+    }
+    {
+        var q = try db_ctx.conn.query(
+            \\INSERT INTO agent_profiles (agent_id, workspace_id, updated_at)
+            \\VALUES ('agent_3', 'ws_3', 0)
+        , .{});
+        q.deinit();
+    }
+
+    const state = ScoringState{
+        .outcome = .done,
+        .stages_passed = 2,
+        .stages_total = 2,
+    };
+    scoreRunIfTerminal(db_ctx.conn, null, "run_3", "ws_3", "agent_3", "user_3", &state, 8);
+
+    {
+        var q = try db_ctx.conn.query(
+            "SELECT score, agent_id FROM agent_run_scores WHERE run_id = 'run_3'",
+            .{},
+        );
+        defer q.deinit();
+        const row = (try q.next()) orelse return error.TestUnexpectedResult;
+        try std.testing.expectEqual(@as(i32, 95), row.get(i32, 0) catch -1);
+        try std.testing.expectEqualStrings("agent_3", row.get([]const u8, 1) catch "");
+    }
 }

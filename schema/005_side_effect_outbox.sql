@@ -4,7 +4,7 @@ CREATE TABLE run_side_effect_outbox (
     CONSTRAINT ck_run_side_effect_outbox_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
     run_id           UUID   NOT NULL REFERENCES runs(run_id),
     effect_key       TEXT   NOT NULL,
-    status           TEXT   NOT NULL DEFAULT 'pending',
+    status           TEXT   NOT NULL,
     last_event       TEXT   NOT NULL,
     payload          TEXT,
     reconciled_state TEXT,

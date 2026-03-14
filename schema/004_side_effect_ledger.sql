@@ -4,7 +4,7 @@ CREATE TABLE run_side_effects (
     CONSTRAINT ck_run_side_effects_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
     run_id     UUID   NOT NULL REFERENCES runs(run_id),
     effect_key TEXT   NOT NULL,
-    status     TEXT   NOT NULL DEFAULT 'claimed',
+    status     TEXT   NOT NULL,
     details    TEXT,
     created_at BIGINT NOT NULL,
     updated_at BIGINT NOT NULL,

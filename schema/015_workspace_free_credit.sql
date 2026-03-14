@@ -1,7 +1,7 @@
 CREATE TABLE IF NOT EXISTS workspace_credit_state (
     credit_id UUID PRIMARY KEY,
     workspace_id UUID NOT NULL UNIQUE REFERENCES workspaces(workspace_id) ON DELETE CASCADE,
-    currency TEXT NOT NULL DEFAULT 'USD',
+    currency TEXT NOT NULL,
     initial_credit_cents BIGINT NOT NULL CHECK (initial_credit_cents >= 0),
     consumed_credit_cents BIGINT NOT NULL CHECK (consumed_credit_cents >= 0),
     remaining_credit_cents BIGINT NOT NULL CHECK (remaining_credit_cents >= 0),

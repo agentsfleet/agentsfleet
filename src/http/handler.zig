@@ -225,7 +225,7 @@ pub fn handlePutHarnessSource(ctx: *Context, r: zap.Request, workspace_id: []con
     const out = harness_handlers.putSource(conn, alloc, workspace_id, parsed.value) catch |err| {
         switch (err) {
             error.InvalidRequest => common.errorResponse(r, .bad_request, error_codes.ERR_INVALID_REQUEST, "Invalid harness source payload", req_id),
-            error.InvalidIdShape => common.errorResponse(r, .bad_request, error_codes.ERR_UUIDV7_INVALID_ID_SHAPE, "Invalid profile_version_id format", req_id),
+            error.InvalidIdShape => common.errorResponse(r, .bad_request, error_codes.ERR_UUIDV7_INVALID_ID_SHAPE, "Invalid agent_id format", req_id),
             error.WorkspaceNotFound => common.errorResponse(r, .not_found, error_codes.ERR_WORKSPACE_NOT_FOUND, "Workspace not found", req_id),
             else => common.internalOperationError(r, "Failed to store harness source", req_id),
         }
@@ -234,8 +234,8 @@ pub fn handlePutHarnessSource(ctx: *Context, r: zap.Request, workspace_id: []con
 
     common.writeJson(r, .ok, .{
         .workspace_id = workspace_id,
-        .profile_id = out.profile_id,
-        .profile_version_id = out.profile_version_id,
+        .agent_id = out.agent_id,
+        .config_version_id = out.config_version_id,
         .version = out.version,
         .status = "DRAFT",
         .request_id = req_id,
@@ -278,7 +278,7 @@ pub fn handleCompileHarness(ctx: *Context, r: zap.Request, workspace_id: []const
 
     const out = harness_handlers.compileProfile(conn, alloc, workspace_id, parsed.value) catch |err| {
         switch (err) {
-            error.InvalidIdShape => common.errorResponse(r, .bad_request, error_codes.ERR_UUIDV7_INVALID_ID_SHAPE, "Invalid profile_version_id format", req_id),
+            error.InvalidIdShape => common.errorResponse(r, .bad_request, error_codes.ERR_UUIDV7_INVALID_ID_SHAPE, "Invalid config_version_id format", req_id),
             error.ProfileNotFound => common.errorResponse(r, .not_found, error_codes.ERR_PROFILE_NOT_FOUND, "No harness profile source found for workspace", req_id),
             error.CompileFailed => common.internalOperationError(r, "Harness compile failed", req_id),
             error.EntitlementMissing => {
@@ -306,8 +306,8 @@ pub fn handleCompileHarness(ctx: *Context, r: zap.Request, workspace_id: []const
     common.writeJson(r, .ok, .{
         .compile_job_id = out.compile_job_id,
         .workspace_id = workspace_id,
-        .profile_id = out.profile_id,
-        .profile_version_id = out.profile_version_id,
+        .agent_id = out.agent_id,
+        .config_version_id = out.config_version_id,
         .is_valid = out.is_valid,
         .validation_report_json = out.validation_report_json,
         .request_id = req_id,
@@ -350,7 +350,7 @@ pub fn handleActivateHarness(ctx: *Context, r: zap.Request, workspace_id: []cons
 
     const out = harness_handlers.activateProfile(conn, alloc, workspace_id, parsed.value) catch |err| {
         switch (err) {
-            error.InvalidIdShape => common.errorResponse(r, .bad_request, error_codes.ERR_UUIDV7_INVALID_ID_SHAPE, "Invalid profile_version_id format", req_id),
+            error.InvalidIdShape => common.errorResponse(r, .bad_request, error_codes.ERR_UUIDV7_INVALID_ID_SHAPE, "Invalid config_version_id format", req_id),
             error.ProfileNotFound => common.errorResponse(r, .not_found, error_codes.ERR_PROFILE_NOT_FOUND, "Profile version not found", req_id),
             error.ProfileInvalid => common.errorResponse(r, .conflict, error_codes.ERR_PROFILE_INVALID, "Invalid profile cannot be activated", req_id),
             error.EntitlementMissing => {
@@ -378,17 +378,17 @@ pub fn handleActivateHarness(ctx: *Context, r: zap.Request, workspace_id: []cons
         ctx.posthog,
         posthog_events.distinctIdOrSystem(principal.user_id orelse ""),
         workspace_id,
-        out.profile_id,
-        out.profile_version_id,
-        out.run_snapshot_version,
+        out.agent_id,
+        out.config_version_id,
+        out.run_snapshot_config_version,
         req_id,
     );
 
     common.writeJson(r, .ok, .{
         .workspace_id = workspace_id,
-        .profile_id = out.profile_id,
-        .profile_version_id = out.profile_version_id,
-        .run_snapshot_version = out.run_snapshot_version,
+        .agent_id = out.agent_id,
+        .config_version_id = out.config_version_id,
+        .run_snapshot_config_version = out.run_snapshot_config_version,
         .activated_by = out.activated_by,
         .activated_at = out.activated_at,
         .request_id = req_id,
@@ -432,9 +432,9 @@ pub fn handleGetHarnessActive(ctx: *Context, r: zap.Request, workspace_id: []con
     common.writeJson(r, .ok, .{
         .workspace_id = workspace_id,
         .source = out.source,
-        .profile_id = out.profile_id,
-        .profile_version_id = out.profile_version_id,
-        .run_snapshot_version = out.run_snapshot_version,
+        .agent_id = out.agent_id,
+        .config_version_id = out.config_version_id,
+        .run_snapshot_config_version = out.run_snapshot_config_version,
         .active_at = out.active_at,
         .profile = parsed.value,
         .request_id = req_id,

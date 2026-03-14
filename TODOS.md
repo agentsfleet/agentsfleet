@@ -111,21 +111,8 @@ picking it up in 3 months understands the motivation and where to start.
 
 ## M9 Pre-Requisite: Rename profile_id → agent_id
 
-**What:** Rename `profile_id` → `agent_id` and `profile_version_id` → `config_version_id` across all existing tables, FK references, and source code. Separate migration before M9 additions.
-**Why:** `agent_id` is the universal identifier for M9. `config_version_id` eliminates the word "profile" from the vocabulary entirely. The rename aligns the existing schema with the M9 entity model.
-**Pros:** Clean, consistent naming. No confusion between old "profile" terminology and new "agent" + "config" terminology.
-**Cons:** Touches multiple tables and all Zig source references. Pre-launch so no production data to migrate.
-**Context:** Renames in migration 016:
-- `agent_profiles.profile_id` → `agent_id` (PK)
-- `agent_profile_versions.profile_version_id` → `config_version_id` (PK); table rename to `agent_config_versions`
-- `agent_profile_versions.profile_id` → `agent_id` (FK)
-- `workspace_active_profile.profile_version_id` → `config_version_id` (FK)
-- `profile_compile_jobs.requested_profile_id` → `requested_agent_id` (FK)
-- `entitlement_policy_audit_snapshots` references updated
-- `profile_linkage_audit_artifacts` references updated
-- Source files: all harness control plane handlers, entitlements, profile resolver
-**Effort:** M
-**Priority:** P0 (must ship before M9)
-**Depends on:** Nothing — can start immediately
+**Status:** DONE
+**Tracked in:** `docs/spec/v1/M9_000_AGENT_ID_AND_CONFIG_VERSION_RENAME.md`
+**Note:** This TODO is closed as a planning item. Implementation is now tracked in the dedicated prerequisite spec.
 
 - TODO: Define Bronze/Silver/Gold/Elite as human-coined quality tiers, then add a built-in AI Slop Inspector that reasons about the concrete criteria so the tiers measure less-sloppy agent output instead of arbitrary label drift.

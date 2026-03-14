@@ -1,7 +1,3 @@
 -- UseZombie M5_008 run snapshot linkage
-
-ALTER TABLE runs
-ADD COLUMN IF NOT EXISTS run_snapshot_version TEXT;
-
-CREATE INDEX IF NOT EXISTS idx_runs_snapshot_version
-    ON runs(run_snapshot_version, created_at DESC);
+-- Clean-state note: canonical schema now defines `runs.run_snapshot_config_version`
+-- directly in schema/001_initial.sql, so this file intentionally remains a no-op.

@@ -1,23 +1,16 @@
 -- M6_001: Paid Scale plan lifecycle and deterministic billing-state sync
 
-ALTER TABLE entitlement_policy_audit_snapshots
-    DROP CONSTRAINT IF EXISTS entitlement_policy_audit_snapshots_boundary_check;
-
-ALTER TABLE entitlement_policy_audit_snapshots
-    ADD CONSTRAINT entitlement_policy_audit_snapshots_boundary_check
-    CHECK (boundary IN ('COMPILE', 'ACTIVATE', 'RUNTIME'));
-
 CREATE TABLE IF NOT EXISTS workspace_billing_state (
     billing_id         UUID PRIMARY KEY,
     workspace_id       UUID NOT NULL UNIQUE REFERENCES workspaces(workspace_id) ON DELETE CASCADE,
-    plan_tier          TEXT NOT NULL CHECK (plan_tier IN ('FREE', 'SCALE')),
+    plan_tier          TEXT NOT NULL,
     plan_sku           TEXT NOT NULL,
-    billing_status     TEXT NOT NULL CHECK (billing_status IN ('ACTIVE', 'GRACE', 'DOWNGRADED')),
-    adapter            TEXT NOT NULL DEFAULT 'noop',
+    billing_status     TEXT NOT NULL,
+    adapter            TEXT NOT NULL,
     subscription_id    TEXT,
     payment_failed_at  BIGINT,
     grace_expires_at   BIGINT,
-    pending_status     TEXT CHECK (pending_status IN ('ACTIVATE_SCALE', 'PAYMENT_FAILED', 'DOWNGRADE_TO_FREE')),
+    pending_status     TEXT,
     pending_reason     TEXT,
     created_at         BIGINT NOT NULL,
     updated_at         BIGINT NOT NULL

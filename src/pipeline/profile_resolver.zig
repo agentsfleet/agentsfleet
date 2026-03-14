@@ -29,8 +29,8 @@ pub fn loadWorkspaceActiveProfile(
 
     var q = try conn.query(
         \\SELECT v.compiled_profile_json
-        \\FROM workspace_active_profile wap
-        \\JOIN agent_profile_versions v ON v.profile_version_id = wap.profile_version_id
+        \\FROM workspace_active_config wap
+        \\JOIN agent_config_versions v ON v.config_version_id = wap.config_version_id
         \\WHERE wap.workspace_id = $1 AND v.is_valid = TRUE
         \\LIMIT 1
     , .{workspace_id});
