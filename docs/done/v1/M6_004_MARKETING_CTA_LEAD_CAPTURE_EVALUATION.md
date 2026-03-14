@@ -15,10 +15,10 @@
 
 **Status:** DONE
 
-Define and implement a low-friction human-only lead capture path from homepage and pricing CTAs with one primary action (`Notify me`) and durable storage in an external marketing system.
+Define and implement a low-friction human-only lead capture path on pricing CTAs, while keeping the homepage primary CTA pointed at the app. Lead capture uses one primary action (`Notify me`) and durable storage in an external marketing system.
 
 **Dimensions:**
-- 1.1 DONE Replace selected human CTAs with lead-capture action and one-field form or hosted form handoff
+- 1.1 DONE Replace selected pricing CTAs with lead-capture action and one-field form or hosted form handoff while preserving the homepage primary CTA to the app
 - 1.2 DONE Persist leads with source metadata (`page`, `cta_id`, `plan_interest`, `timestamp`)
 - 1.3 DONE Provide explicit success state (`You’re in`) with no navigation dead-end
 - 1.4 DONE Ensure all human capture links and endpoints are config-driven via environment variables

@@ -19,7 +19,7 @@ async function assertFooterLinks(page: Page) {
 
   const internalFooterLinks: InternalLinkCase[] = [
     { label: "Features", href: "/" },
-    { label: "Pricing", href: "/pricing", heading: "Free and Scale plans" },
+    { label: "Pricing", href: "/pricing", heading: "Start free. Upgrade when you need stronger control." },
     { label: "Agents", href: "/agents", heading: "This page is for autonomous agents." },
     { label: "Privacy", href: "/privacy", heading: "Privacy Policy" },
     { label: "Terms", href: "/terms", heading: "Terms of Service" },

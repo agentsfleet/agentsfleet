@@ -2,14 +2,20 @@ import posthog from "posthog-js";
 
 export const EVENT_SIGNUP_STARTED = "signup_started";
 export const EVENT_SIGNUP_COMPLETED = "signup_completed";
-export const EVENT_TEAM_PILOT_BOOKING_STARTED = "team_pilot_booking_started";
 export const EVENT_NAVIGATION_CLICKED = "navigation_clicked";
+export const EVENT_LEAD_CAPTURE_CLICKED = "lead_capture_clicked";
+export const EVENT_LEAD_CAPTURE_OPENED = "lead_capture_opened";
+export const EVENT_LEAD_CAPTURE_SUBMITTED = "lead_capture_submitted";
+export const EVENT_LEAD_CAPTURE_FAILED = "lead_capture_failed";
 
 type AnalyticsEventName =
   | typeof EVENT_SIGNUP_STARTED
   | typeof EVENT_SIGNUP_COMPLETED
-  | typeof EVENT_TEAM_PILOT_BOOKING_STARTED
-  | typeof EVENT_NAVIGATION_CLICKED;
+  | typeof EVENT_NAVIGATION_CLICKED
+  | typeof EVENT_LEAD_CAPTURE_CLICKED
+  | typeof EVENT_LEAD_CAPTURE_OPENED
+  | typeof EVENT_LEAD_CAPTURE_SUBMITTED
+  | typeof EVENT_LEAD_CAPTURE_FAILED;
 
 type AnalyticsPrimitive = string | number | boolean;
 type AnalyticsProps = Record<string, AnalyticsPrimitive>;
@@ -28,6 +34,13 @@ const ALLOWED_PROPERTY_KEYS = new Set([
   "target",
   "path",
   "component",
+  "page",
+  "cta_id",
+  "plan_interest",
+  "status",
+  "utm_source",
+  "utm_medium",
+  "utm_campaign",
 ]);
 
 let initialized = false;
@@ -94,15 +107,36 @@ export function trackSignupCompleted(properties: Omit<AnalyticsProps, "path">): 
   });
 }
 
-export function trackTeamPilotBookingStarted(properties: Omit<AnalyticsProps, "path">): void {
-  track(EVENT_TEAM_PILOT_BOOKING_STARTED, {
+export function trackNavigationClicked(properties: Omit<AnalyticsProps, "path">): void {
+  track(EVENT_NAVIGATION_CLICKED, {
     ...properties,
     path: window.location.pathname,
   });
 }
 
-export function trackNavigationClicked(properties: Omit<AnalyticsProps, "path">): void {
-  track(EVENT_NAVIGATION_CLICKED, {
+export function trackLeadCaptureClicked(properties: Omit<AnalyticsProps, "path">): void {
+  track(EVENT_LEAD_CAPTURE_CLICKED, {
+    ...properties,
+    path: window.location.pathname,
+  });
+}
+
+export function trackLeadCaptureOpened(properties: Omit<AnalyticsProps, "path">): void {
+  track(EVENT_LEAD_CAPTURE_OPENED, {
+    ...properties,
+    path: window.location.pathname,
+  });
+}
+
+export function trackLeadCaptureSubmitted(properties: Omit<AnalyticsProps, "path">): void {
+  track(EVENT_LEAD_CAPTURE_SUBMITTED, {
+    ...properties,
+    path: window.location.pathname,
+  });
+}
+
+export function trackLeadCaptureFailed(properties: Omit<AnalyticsProps, "path">): void {
+  track(EVENT_LEAD_CAPTURE_FAILED, {
     ...properties,
     path: window.location.pathname,
   });

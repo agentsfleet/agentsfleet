@@ -4,10 +4,10 @@ import { describe, it, expect } from "vitest";
 import Hero from "./Hero";
 import { APP_BASE_URL } from "../config";
 
-function renderHero(mode: "humans" | "agents" = "humans") {
+function renderHero() {
   return render(
     <BrowserRouter>
-      <Hero mode={mode} />
+      <Hero />
     </BrowserRouter>
   );
 }
@@ -20,31 +20,20 @@ describe("Hero", () => {
     expect(h1).toHaveTextContent(/without babysitting the run/i);
   });
 
-  it("shows humans badge text in humans mode", () => {
-    renderHero("humans");
+  it("shows the human badge text", () => {
+    renderHero();
     expect(screen.getByText(/for engineering teams/i)).toBeInTheDocument();
   });
 
-  it("shows agents badge text in agents mode", () => {
-    renderHero("agents");
-    expect(screen.getByText(/agent delivery control plane/i)).toBeInTheDocument();
-  });
-
-  it("renders the primary CTA linking to app for humans mode", () => {
+  it("renders the primary CTA linking to app", () => {
     renderHero();
     const cta = screen.getByRole("link", { name: /connect github, automate prs/i });
     expect(cta).toHaveAttribute("href", APP_BASE_URL);
   });
 
-  it("renders the primary CTA linking to quickstart for agents mode", () => {
-    renderHero("agents");
-    const cta = screen.getByRole("link", { name: /connect github, automate prs/i });
-    expect(cta).toHaveAttribute("href", "https://docs.usezombie.com/quickstart");
-  });
-
-  it("does not render secondary talk CTA", () => {
+  it("renders the pricing CTA", () => {
     renderHero();
-    expect(screen.queryByRole("link", { name: /talk to us/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /see pricing/i })).toHaveAttribute("href", "/pricing");
   });
 
   it("renders the terminal with quick start label", () => {
@@ -63,8 +52,10 @@ describe("Hero", () => {
     expect(terminal).toHaveAttribute("data-command", "curl -fsSL https://usezombie.sh/install.sh | bash");
   });
 
-  it("does not render hero stats section", () => {
+  it("renders the human proof cards", () => {
     renderHero();
-    expect(screen.queryByText("agents on Hobby")).not.toBeInTheDocument();
+    expect(screen.getByText("Validated PRs")).toBeInTheDocument();
+    expect(screen.getByText("Direct model billing")).toBeInTheDocument();
+    expect(screen.getByText("Gamified agent delivery")).toBeInTheDocument();
   });
 });

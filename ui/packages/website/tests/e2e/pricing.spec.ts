@@ -6,25 +6,25 @@ test.describe("Pricing page", () => {
   });
 
   test("renders pricing heading", async ({ page }) => {
-    await expect(page.getByRole("heading", { level: 1 })).toContainText("Free and Scale plans");
+    await expect(page.getByRole("heading", { level: 1 })).toContainText("Start free. Upgrade when you need stronger control.");
   });
 
   test("renders current pricing tiers", async ({ page }) => {
-    await expect(page.getByRole("heading", { name: "Free", exact: true, level: 2 })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Hobby", exact: true, level: 2 })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Scale", exact: true, level: 2 })).toBeVisible();
   });
 
   test("pricing page highlights the launch-now tier", async ({ page }) => {
-    await expect(page.getByText("Coming soon")).toBeVisible();
+    await expect(page.getByText("Unlimited users")).toBeVisible();
     await expect(page.getByRole("heading", { name: "Scale", exact: true, level: 2 })).toBeVisible();
   });
 
-  test("Free tier lists no-expiry credit", async ({ page }) => {
-    await expect(page.getByText(/\$10 credit included \(no expiry\)/i)).toBeVisible();
+  test("Hobby tier lists no-expiry credit", async ({ page }) => {
+    await expect(page.getByText(/\$10 credit included with no expiry/i)).toBeVisible();
   });
 
   test("renders pricing intent posture note", async ({ page }) => {
-    await expect(page.getByText(/All plans include BYOK\/BYOM and direct provider billing for token usage\./i)).toBeVisible();
+    await expect(page.getByText(/Only pricing captures demand\./i)).toBeVisible();
   });
 
   test("FAQ accordion: first item opens on click", async ({ page }) => {
@@ -53,11 +53,11 @@ test.describe("Pricing page", () => {
 
   test("Start free CTA links to mission control", async ({ page }) => {
     const cta = page.getByRole("link", { name: /start free/i }).first();
-    await expect(cta).toHaveAttribute("href", "https://docs.usezombie.com/quickstart");
+    await expect(cta).toHaveAttribute("href", "https://app.dev.usezombie.com");
   });
 
-  test("paid tiers expose notify and sales actions", async ({ page }) => {
-    await expect(page.getByRole("link", { name: /join waitlist/i }).first()).toBeVisible();
+  test("paid tier exposes a single notify action", async ({ page }) => {
+    await expect(page.getByRole("button", { name: "Notify me" })).toBeVisible();
   });
 
   test("footer renders on pricing page", async ({ page }) => {
