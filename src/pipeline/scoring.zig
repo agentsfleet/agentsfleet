@@ -526,29 +526,50 @@ fn openTestConn(alloc: std.mem.Allocator) !?struct { pool: *pg.Pool, conn: *pg.C
     var arena = std.heap.ArenaAllocator.init(alloc);
     defer arena.deinit();
     const opts = try db.parseUrl(arena.allocator(), url);
-    const pool = try pg.Pool.init(alloc, opts);
+    const host = opts.connect.host orelse return null;
+    const port = opts.connect.port orelse 5432;
+    const probe = std.net.tcpConnectToHost(alloc, host, port) catch return null;
+    probe.close();
+    const pool = pg.Pool.init(alloc, opts) catch return null;
     errdefer pool.deinit();
-    const conn = try pool.acquire();
+    const conn = pool.acquire() catch {
+        pool.deinit();
+        return null;
+    };
     return .{ .pool = pool, .conn = conn };
 }
 
 fn createTempScoringTables(conn: *pg.Conn) !void {
-    var q = try conn.query(
-        \\CREATE TEMP TABLE workspace_entitlements (
-        \\  entitlement_id TEXT PRIMARY KEY,
-        \\  workspace_id TEXT NOT NULL UNIQUE,
-        \\  plan_tier TEXT NOT NULL,
-        \\  max_profiles INTEGER NOT NULL,
-        \\  max_stages INTEGER NOT NULL,
-        \\  max_distinct_skills INTEGER NOT NULL,
-        \\  allow_custom_skills BOOLEAN NOT NULL,
-        \\  enable_agent_scoring BOOLEAN NOT NULL DEFAULT FALSE,
-        \\  agent_scoring_weights_json TEXT NOT NULL DEFAULT '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}',
-        \\  created_at BIGINT NOT NULL,
-        \\  updated_at BIGINT NOT NULL
-        \\) ON COMMIT DROP
-    , .{});
-    q.deinit();
+    {
+        var q = try conn.query(
+            \\CREATE TEMP TABLE workspace_entitlements (
+            \\  entitlement_id TEXT PRIMARY KEY,
+            \\  workspace_id TEXT NOT NULL UNIQUE,
+            \\  plan_tier TEXT NOT NULL,
+            \\  max_profiles INTEGER NOT NULL,
+            \\  max_stages INTEGER NOT NULL,
+            \\  max_distinct_skills INTEGER NOT NULL,
+            \\  allow_custom_skills BOOLEAN NOT NULL,
+            \\  enable_agent_scoring BOOLEAN NOT NULL DEFAULT FALSE,
+            \\  agent_scoring_weights_json TEXT NOT NULL DEFAULT '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}',
+            \\  created_at BIGINT NOT NULL,
+            \\  updated_at BIGINT NOT NULL
+            \\) ON COMMIT DROP
+        , .{});
+        q.deinit();
+    }
+    {
+        var q = try conn.query(
+            \\CREATE TEMP TABLE workspace_latency_baseline (
+            \\  workspace_id TEXT PRIMARY KEY,
+            \\  p50_seconds BIGINT NOT NULL,
+            \\  p95_seconds BIGINT NOT NULL,
+            \\  sample_count INTEGER NOT NULL,
+            \\  computed_at BIGINT NOT NULL
+            \\) ON COMMIT DROP
+        , .{});
+        q.deinit();
+    }
 }
 
 fn prometheusMetricValue(body: []const u8, name: []const u8) !u64 {
@@ -592,4 +613,47 @@ test "scoreRunIfTerminal fail-safe catches invalid workspace scoring config" {
     const after_failed = try prometheusMetricValue(after_body, "zombie_agent_scoring_failed_total");
 
     try std.testing.expectEqual(before_failed + 1, after_failed);
+}
+
+test "db-backed scoring config changes final score" {
+    const db_ctx = (try openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.release(db_ctx.conn);
+    defer db_ctx.pool.deinit();
+
+    try createTempScoringTables(db_ctx.conn);
+    {
+        var q = try db_ctx.conn.query(
+            \\INSERT INTO workspace_entitlements
+            \\  (entitlement_id, workspace_id, plan_tier, max_profiles, max_stages, max_distinct_skills, allow_custom_skills, enable_agent_scoring, agent_scoring_weights_json, created_at, updated_at)
+            \\VALUES ('ent_2', 'ws_2', 'FREE', 1, 3, 3, false, true, '{"completion":0.1,"error_rate":0.7,"latency":0.1,"resource":0.1}', 0, 0)
+        , .{});
+        q.deinit();
+    }
+    {
+        var q = try db_ctx.conn.query(
+            \\INSERT INTO workspace_latency_baseline
+            \\  (workspace_id, p50_seconds, p95_seconds, sample_count, computed_at)
+            \\VALUES ('ws_2', 10, 30, 5, 0)
+        , .{});
+        q.deinit();
+    }
+
+    const config = try queryScoringConfig(db_ctx.conn, std.testing.allocator, "ws_2");
+    const axes = AxisScores{
+        .completion = computeCompletionScore(.done),
+        .error_rate = computeErrorRateScore(1, 2),
+        .latency = computeLatencyScore(30, .{
+            .p50_seconds = 10,
+            .p95_seconds = 30,
+            .sample_count = 5,
+        }),
+        .resource = computeResourceScore(),
+    };
+
+    const default_score = computeScore(axes, DEFAULT_WEIGHTS);
+    const configured_score = computeScore(axes, config.weights);
+
+    try std.testing.expect(config.enabled);
+    try std.testing.expect(default_score != configured_score);
+    try std.testing.expectEqual(@as(u8, 50), configured_score);
 }

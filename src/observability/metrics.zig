@@ -2,6 +2,7 @@
 
 const std = @import("std");
 const error_classify = @import("../reliability/error_classify.zig");
+const scoring = @import("../pipeline/scoring.zig");
 
 const DurationBuckets = [_]u64{ 1, 3, 5, 10, 30, 60, 120, 300 };
 
@@ -509,4 +510,17 @@ test "integration: api throughput guardrail metrics are exposed in prometheus ou
 
     try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_api_in_flight_requests 3"));
     try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_api_backpressure_rejections_total"));
+}
+
+test "scoring metrics remain low-cardinality without agent labels" {
+    const alloc = std.testing.allocator;
+    incAgentScoreComputed(scoring.Tier.gold);
+    setAgentScoreLatest(87);
+
+    const body = try renderPrometheus(alloc, true, 0, 0);
+    defer alloc.free(body);
+
+    try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_agent_score_latest 87"));
+    try std.testing.expect(!std.mem.containsAtLeast(u8, body, 1, "zombie_agent_score_latest{"));
+    try std.testing.expect(!std.mem.containsAtLeast(u8, body, 1, "agent_id="));
 }

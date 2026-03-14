@@ -178,3 +178,12 @@ test "integration: startup with pending migrations proceeds when enabled and loc
     }, true);
     try std.testing.expectEqual(.run_required, decision);
 }
+
+test "canonical schema bootstrap includes scoring config in base schema" {
+    const migrations = canonicalMigrations();
+    try std.testing.expectEqual(@as(i32, 12), migrations[migrations.len - 1].version);
+    try std.testing.expect(std.mem.containsAtLeast(u8, migrations[7].sql, 1, "enable_agent_scoring BOOLEAN NOT NULL DEFAULT FALSE"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, migrations[7].sql, 1, "agent_scoring_weights_json TEXT NOT NULL DEFAULT"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, migrations[11].sql, 1, "CREATE TABLE workspace_latency_baseline"));
+    try std.testing.expect(!std.mem.containsAtLeast(u8, migrations[11].sql, 1, "ALTER TABLE workspace_entitlements"));
+}
