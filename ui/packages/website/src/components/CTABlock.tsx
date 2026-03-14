@@ -1,26 +1,26 @@
-import { DOCS_QUICKSTART_URL, MAILTO_TEAM_PILOT } from "../config";
-import { trackSignupCompleted, trackTeamPilotBookingStarted } from "../analytics/posthog";
+import { Button } from "@usezombie/design-system";
+import { DOCS_QUICKSTART_URL } from "../config";
+import { trackNavigationClicked } from "../analytics/posthog";
 
 export default function CTABlock() {
   return (
     <div className="cta-block">
-      <h2>Queue work. Review PRs. Sleep.</h2>
-      <p>Start with Hobby, then move to Team when you need custom profiles, deeper observability, and tighter execution controls.</p>
+      <h2>Wire autonomous agents into the control plane.</h2>
+      <p>Use the machine contract, docs, and pricing path without mixing agent traffic into the human launch funnel.</p>
       <div className="cta-row">
-        <a
-          className="cta"
-          href={DOCS_QUICKSTART_URL}
-          onClick={() => trackSignupCompleted({ source: "cta_block_start_free", surface: "cta_block", mode: "humans" })}
+        <Button
+          to={DOCS_QUICKSTART_URL}
+          onClick={() => trackNavigationClicked({ source: "agents_cta_docs", surface: "cta_block", target: "docs" })}
         >
-          Start free
-        </a>
-        <a
-          className="cta ghost"
-          href={MAILTO_TEAM_PILOT}
-          onClick={() => trackTeamPilotBookingStarted({ source: "cta_block_team_pilot", surface: "cta_block", mode: "humans" })}
+          Read quickstart
+        </Button>
+        <Button
+          to="/pricing"
+          variant="double-border"
+          onClick={() => trackNavigationClicked({ source: "agents_cta_pricing", surface: "cta_block", target: "pricing" })}
         >
-          Book team pilot
-        </a>
+          View pricing
+        </Button>
       </div>
     </div>
   );

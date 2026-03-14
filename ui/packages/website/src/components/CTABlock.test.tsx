@@ -1,27 +1,36 @@
 import { render, screen } from "@testing-library/react";
+import { BrowserRouter } from "react-router-dom";
 import { describe, it, expect } from "vitest";
 import CTABlock from "./CTABlock";
 
+function renderCtaBlock() {
+  return render(
+    <BrowserRouter>
+      <CTABlock />
+    </BrowserRouter>
+  );
+}
+
 describe("CTABlock", () => {
   it("renders the heading", () => {
-    render(<CTABlock />);
-    expect(screen.getByRole("heading", { level: 2, name: /queue work\. review prs\. sleep\./i })).toBeInTheDocument();
+    renderCtaBlock();
+    expect(screen.getByRole("heading", { level: 2, name: /wire autonomous agents into the control plane\./i })).toBeInTheDocument();
   });
 
   it("renders the description", () => {
-    render(<CTABlock />);
-    expect(screen.getByText(/start with Hobby, then move to Team/i)).toBeInTheDocument();
+    renderCtaBlock();
+    expect(screen.getByText(/without mixing agent traffic into the human launch funnel/i)).toBeInTheDocument();
   });
 
-  it("renders Start free CTA with correct href", () => {
-    render(<CTABlock />);
-    const cta = screen.getByRole("link", { name: /start free/i });
+  it("renders quickstart CTA with correct href", () => {
+    renderCtaBlock();
+    const cta = screen.getByRole("link", { name: /read quickstart/i });
     expect(cta).toHaveAttribute("href", "https://docs.usezombie.com/quickstart");
   });
 
-  it("renders Book team pilot CTA with mailto", () => {
-    render(<CTABlock />);
-    const cta = screen.getByRole("link", { name: /book team pilot/i });
-    expect(cta).toHaveAttribute("href", expect.stringContaining("mailto:team@usezombie.com"));
+  it("renders pricing CTA as internal link", () => {
+    renderCtaBlock();
+    const cta = screen.getByRole("link", { name: /view pricing/i });
+    expect(cta).toHaveAttribute("href", "/pricing");
   });
 });

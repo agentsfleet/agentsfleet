@@ -8,18 +8,16 @@ import Footer from "./components/Footer";
 import { Button, AnimatedIcon, ZombieHandIcon } from "@usezombie/design-system";
 import { APP_BASE_URL, DOCS_URL } from "./config";
 import { trackNavigationClicked, trackSignupStarted } from "./analytics/posthog";
-
-type Mode = "humans" | "agents";
+import { getModeFromPathname, MODE_AGENTS, MODE_HUMANS, MODE_PATHS, type Mode } from "./constants/mode";
 
 /** Derive mode from current URL — single source of truth. */
 function useMode() {
   const location = useLocation();
   const navigate = useNavigate();
-  const mode: Mode = location.pathname === "/agents" ? "agents" : "humans";
+  const mode: Mode = getModeFromPathname(location.pathname);
 
   function setMode(next: Mode) {
-    if (next === "agents") navigate("/agents");
-    else navigate("/");
+    navigate(MODE_PATHS[next]);
   }
 
   return [mode, setMode] as const;
@@ -55,6 +53,8 @@ function ParticleField() {
 
 export default function App() {
   const [mode, setMode] = useMode();
+  const isHumansMode = mode === MODE_HUMANS;
+  const isAgentsMode = mode === MODE_AGENTS;
 
   return (
     <div className="site-shell">
@@ -72,20 +72,20 @@ export default function App() {
         <div className="mode-switch" role="tablist" aria-label="Mode switch" data-testid="mode-switch">
           <button
             type="button"
-            className={mode === "humans" ? "mode-btn active" : "mode-btn"}
-            onClick={() => setMode("humans")}
+            className={isHumansMode ? "mode-btn active" : "mode-btn"}
+            onClick={() => setMode(MODE_HUMANS)}
             role="tab"
-            aria-selected={mode === "humans"}
+            aria-selected={isHumansMode}
             data-testid="mode-humans"
           >
             Humans
           </button>
           <button
             type="button"
-            className={mode === "agents" ? "mode-btn active" : "mode-btn"}
-            onClick={() => setMode("agents")}
+            className={isAgentsMode ? "mode-btn active" : "mode-btn"}
+            onClick={() => setMode(MODE_AGENTS)}
             role="tab"
-            aria-selected={mode === "agents"}
+            aria-selected={isAgentsMode}
             data-testid="mode-agents"
           >
             Agents
@@ -110,19 +110,21 @@ export default function App() {
           <Button
             to={APP_BASE_URL}
             onClick={() => trackSignupStarted({ source: "header_mission_control", surface: "header", mode })}
-            className={mode === "humans" ? "header-mission-control z-animated-icon-trigger" : "header-mission-control z-animated-icon-trigger is-hidden"}
-            aria-hidden={mode !== "humans"}
-            tabIndex={mode === "humans" ? undefined : -1}
+            className={isHumansMode ? "header-mission-control z-animated-icon-trigger" : "header-mission-control z-animated-icon-trigger is-hidden"}
+            aria-hidden={!isHumansMode}
+            tabIndex={isHumansMode ? undefined : -1}
           >
-            Mission Control{" "}
-            <AnimatedIcon trigger="parent-hover" animation="wave"><ZombieHandIcon size={18} /></AnimatedIcon>
+            <span>Mission Control</span>
+            <span className="header-mission-control-icon" aria-hidden="true">
+              <AnimatedIcon trigger="parent-hover" animation="wave"><ZombieHandIcon size={18} /></AnimatedIcon>
+            </span>
           </Button>
         </div>
       </header>
 
       <main className="site-main">
         <Routes>
-          <Route path="/" element={<Home mode={mode} />} />
+          <Route path="/" element={<Home />} />
           <Route path="/pricing" element={<Pricing />} />
           <Route path="/agents" element={<Agents />} />
           <Route path="/privacy" element={<Privacy />} />
