@@ -2,3 +2,11 @@
 85006eb7426c73d3a7f14caae33edbbdb43efe44:src/auth/clerk.zig:jwt:365
 1f045fe4a88e2d26f0a658f4c945362caba1ba4b:src/auth/jwks.zig:jwt:369
 1f045fe4a88e2d26f0a658f4c945362caba1ba4b:src/auth/jwks.zig:jwt:370
+1289ec2396482db7b11b482875b74d8c6ef50b1b:app/.next/dev/cache/.rscinfo:generic-api-key:1
+1289ec2396482db7b11b482875b74d8c6ef50b1b:app/.next/dev/prerender-manifest.json:generic-api-key:8
+1289ec2396482db7b11b482875b74d8c6ef50b1b:app/.next/dev/prerender-manifest.json:generic-api-key:9
+1289ec2396482db7b11b482875b74d8c6ef50b1b:app/.next/dev/server/server-reference-manifest.json:generic-api-key:93
+1289ec2396482db7b11b482875b74d8c6ef50b1b:app/.next/dev/server/chunks/ssr/node_modules_8813d049._.js:generic-api-key:20352
+1289ec2396482db7b11b482875b74d8c6ef50b1b:app/.next/dev/server/chunks/ssr/node_modules_8813d049._.js:generic-api-key:20456
+1289ec2396482db7b11b482875b74d8c6ef50b1b:app/.next/dev/server/chunks/ssr/node_modules_8813d049._.js:generic-api-key:20457
+1289ec2396482db7b11b482875b74d8c6ef50b1b:app/.next/dev/server/chunks/ssr/node_modules_8813d049._.js:generic-api-key:20458

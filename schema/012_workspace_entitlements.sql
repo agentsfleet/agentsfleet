@@ -8,6 +8,8 @@ CREATE TABLE workspace_entitlements (
     max_stages           INTEGER NOT NULL CHECK (max_stages > 0),
     max_distinct_skills  INTEGER NOT NULL CHECK (max_distinct_skills > 0),
     allow_custom_skills  BOOLEAN NOT NULL DEFAULT FALSE,
+    enable_agent_scoring BOOLEAN NOT NULL DEFAULT FALSE,
+    agent_scoring_weights_json TEXT NOT NULL DEFAULT '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}',
     created_at           BIGINT NOT NULL,
     updated_at           BIGINT NOT NULL
 );

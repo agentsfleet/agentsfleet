@@ -210,6 +210,10 @@ pub fn trackAgentRunScored(
     agent_id: []const u8,
     score: u8,
     tier: []const u8,
+    formula_version: []const u8,
+    axis_scores_json: []const u8,
+    weight_snapshot_json: []const u8,
+    scored_at: i64,
     axis_completion: u8,
     axis_error_rate: u8,
     axis_latency: u8,
@@ -222,14 +226,14 @@ pub fn trackAgentRunScored(
             .{ .key = "agent_id", .value = .{ .string = agent_id } },
             .{ .key = "score", .value = .{ .integer = @intCast(score) } },
             .{ .key = "tier", .value = .{ .string = tier } },
+            .{ .key = "score_formula_version", .value = .{ .string = formula_version } },
+            .{ .key = "axis_scores", .value = .{ .string = axis_scores_json } },
+            .{ .key = "weight_snapshot", .value = .{ .string = weight_snapshot_json } },
+            .{ .key = "scored_at", .value = .{ .integer = scored_at } },
             .{ .key = "axis_completion", .value = .{ .integer = @intCast(axis_completion) } },
             .{ .key = "axis_error_rate", .value = .{ .integer = @intCast(axis_error_rate) } },
             .{ .key = "axis_latency", .value = .{ .integer = @intCast(axis_latency) } },
             .{ .key = "axis_resource", .value = .{ .integer = @intCast(axis_resource) } },
-            .{ .key = "weight_completion", .value = .{ .integer = 40 } },
-            .{ .key = "weight_error_rate", .value = .{ .integer = 30 } },
-            .{ .key = "weight_latency", .value = .{ .integer = 20 } },
-            .{ .key = "weight_resource", .value = .{ .integer = 10 } },
         };
         ph.capture(.{
             .distinct_id = distinct_id,
@@ -272,6 +276,7 @@ test "integration: telemetry helpers are no-op when posthog client is disabled" 
     trackRunCompleted(disabled, "u", "run_1", "ws_1", "passed", 42);
     trackRunFailed(disabled, "u", "run_1", "ws_1", "blocked", 42);
     trackAgentCompleted(disabled, "u", "run_1", "ws_1", "Echo", 10, 50, "ok");
+    trackAgentRunScored(disabled, "u", "run_1", "ws_1", "agent_1", 95, "ELITE", "{}", "{}", 42, 100, 100, 100, 50);
     trackEntitlementRejected(disabled, "u", "ws_1", "COMPILE", "ERR_ENTITLEMENT_STAGE_LIMIT", "req_1");
     trackProfileActivated(disabled, "u", "ws_1", "prof_1", "ver_1", "ver_1", "req_1");
     trackBillingLifecycleEvent(disabled, "u", "ws_1", "PAYMENT_FAILED", "invoice_failed", "SCALE", "GRACE", "req_1");
