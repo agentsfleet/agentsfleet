@@ -127,3 +127,5 @@ picking it up in 3 months understands the motivation and where to start.
 **Effort:** M
 **Priority:** P0 (must ship before M9)
 **Depends on:** Nothing — can start immediately
+
+- TODO: Define Bronze/Silver/Gold/Elite as human-coined quality tiers, then add a built-in AI Slop Inspector that reasons about the concrete criteria so the tiers measure less-sloppy agent output instead of arbitrary label drift.
