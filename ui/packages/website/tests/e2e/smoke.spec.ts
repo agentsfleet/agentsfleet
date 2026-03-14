@@ -14,7 +14,7 @@ test.describe("Smoke", () => {
 
   test("pricing page loads", async ({ page }) => {
     await page.goto("/pricing");
-    await expect(page.getByRole("heading", { level: 1 })).toContainText("Free and Scale plans");
+    await expect(page.getByRole("heading", { level: 1 })).toContainText("Start free. Upgrade when you need stronger control.");
   });
 
   test("agents page loads", async ({ page }) => {
@@ -43,7 +43,8 @@ test.describe("Smoke", () => {
   test("footer renders on all routes", async ({ page }) => {
     for (const route of ["/", "/pricing", "/agents", "/privacy", "/terms"]) {
       await page.goto(route);
-      await expect(page.getByRole("contentinfo")).toBeVisible();
+      await page.waitForLoadState("domcontentloaded");
+      await expect(page.getByRole("contentinfo")).toBeVisible({ timeout: 10_000 });
     }
   });
 

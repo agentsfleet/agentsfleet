@@ -148,12 +148,12 @@ _qa_website_smoke:  ## Internal: run website Playwright smoke suite
 	@cd ui/packages/website && bun run test:e2e:smoke
 	@echo "✓ [website] Smoke passed"
 
-qa_app:  ## Run app QA lane (deterministic vitest suite)
+qa_app:  ## Run app QA lane (vitest + Playwright auth/browser checks)
 	@echo "→ [app] Running QA lane..."
 	@cd ui/packages/app && bun run qa
 	@echo "✓ [app] QA lane passed"
 
-qa_app_smoke:  ## Run app smoke lane (fast vitest subset)
+qa_app_smoke:  ## Run app smoke lane (fast vitest + Playwright smoke)
 	@echo "→ [app] Running smoke lane..."
 	@cd ui/packages/app && bun run qa:smoke
 	@echo "✓ [app] Smoke lane passed"

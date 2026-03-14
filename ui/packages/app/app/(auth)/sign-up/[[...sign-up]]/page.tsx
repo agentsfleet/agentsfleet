@@ -1,21 +1,6 @@
 import { SignUp } from "@clerk/nextjs";
+import { AUTH_APPEARANCE } from "@/lib/clerkAppearance";
 
 export default function SignUpPage() {
-  return (
-    <SignUp
-      appearance={{
-        variables: {
-          colorBackground: "#0f1520",
-          colorInputBackground: "#161e2b",
-          colorInputText: "#e8f2ff",
-          colorText: "#e8f2ff",
-          colorTextSecondary: "#8b97a8",
-          colorPrimary: "var(--z-orange)",
-          colorDanger: "#ff4d6a",
-          borderRadius: "8px",
-          fontFamily: "Geist, system-ui, sans-serif",
-        },
-      }}
-    />
-  );
+  return <SignUp appearance={AUTH_APPEARANCE} />;
 }

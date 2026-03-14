@@ -7,12 +7,12 @@ test.describe("Home page", () => {
 
   test("renders hero heading", async ({ page }) => {
     const h1 = page.getByRole("heading", { level: 1 });
-    await expect(h1).toContainText("Ship AI-generated PRs");
-    await expect(h1).toContainText("without babysitting the run.");
+    await expect(h1).toContainText("Autonomous PR delivery");
+    await expect(h1).toContainText("review-grade control");
   });
 
   test("renders hero CTAs", async ({ page }) => {
-    const connect = page.getByRole("link", { name: /connect github, automate prs/i }).first();
+    const connect = page.getByRole("link", { name: /start free/i }).first();
     await expect(connect).toBeVisible();
     await expect(connect).toHaveAttribute("href", /app\.(dev\.)?usezombie\.com/);
     await expect(page.getByRole("link", { name: /talk to us/i })).toHaveCount(0);
@@ -56,15 +56,15 @@ test.describe("Home page", () => {
 
   test("renders feature flow rows", async ({ page }) => {
     await expect(page.getByRole("heading", { name: "Install once. Start shipping PRs." })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Traceability and replay by default" })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Mission Control" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Understand every run, not just the final PR" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Mission Control for safer automation" })).toBeVisible();
   });
 
   test("renders how it works steps", async ({ page }) => {
     const how = page.locator(".how-steps");
     await expect(how.getByRole("heading", { name: "Queue work", exact: true })).toBeVisible();
     await expect(how.getByRole("heading", { name: "Agents execute with guardrails", exact: true })).toBeVisible();
-    await expect(how.getByRole("heading", { name: "Review a validated PR", exact: true })).toBeVisible();
+    await expect(how.getByRole("heading", { name: "Review and improve with evidence", exact: true })).toBeVisible();
   });
 
   test("renders final install block actions", async ({ page }) => {
@@ -79,7 +79,7 @@ test.describe("Home page", () => {
   test("header Pricing link navigates to /pricing via React Router", async ({ page }) => {
     await page.getByRole("navigation", { name: /primary/i }).getByRole("link", { name: "Pricing" }).click();
     await expect(page).toHaveURL(/\/pricing/);
-    await expect(page.getByRole("heading", { level: 1 })).toContainText("Free and Scale plans");
+    await expect(page.getByRole("heading", { level: 1 })).toContainText("Start free. Upgrade when you need stronger control.");
   });
 
   test("footer is present with canonical Discord URL", async ({ page }) => {

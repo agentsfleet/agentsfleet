@@ -341,6 +341,8 @@ Three client surfaces consume the same `zombied` API. Each follows the same loca
 | DEV | `https://api.dev.usezombie.com` | Clerk DEV browser flow | Vercel preview deploy |
 | PROD | `https://api.usezombie.com` | Clerk PROD browser flow | Vercel production deploy |
 
+Local Mission Control auth redirects must stay on the app's `/sign-in` and `/sign-up` routes so the shared dark token theme is preserved during protected-route handoff; do not rely on Clerk's hosted development redirect for local visual QA.
+
 ### Mobile (Swift / Android)
 
 | Stage | API target | Auth | How to run |

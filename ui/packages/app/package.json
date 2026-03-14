@@ -9,10 +9,12 @@
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "lint": "next lint",
-    "test": "vitest run",
+    "test": "vitest run tests/*.test.ts",
     "test:smoke": "vitest run tests/smoke.test.ts",
-    "qa": "bun run test",
-    "qa:smoke": "bun run test:smoke"
+    "test:e2e": "bunx playwright test",
+    "test:e2e:smoke": "bunx playwright test tests/e2e/smoke.spec.ts",
+    "qa": "bun run test && bun run test:e2e",
+    "qa:smoke": "bun run test:smoke && bun run test:e2e:smoke"
   },
   "dependencies": {
     "@clerk/nextjs": "^7.0.1",
@@ -35,6 +37,7 @@
     "tailwind-merge": "^3.5.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.58.2",
     "@tailwindcss/postcss": "^4.0.0",
     "@types/node": "^25.0.0",
     "@types/react": "19.2.14",
