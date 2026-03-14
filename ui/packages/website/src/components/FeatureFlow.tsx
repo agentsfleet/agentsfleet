@@ -29,11 +29,11 @@ const items: FeatureFlowItem[] = [
     id: "trace",
     title: "Traceability and replay by default",
     description:
-      "Track each run from intent to merged PR with event history, validation output, replay, and M9 quality signals that show whether agents are actually improving.",
+      "Track each run from intent to merged PR with event history, validation output, replay, and run quality scores that show whether automation is improving over time.",
     bullets: [
-      "Replay failed runs with deterministic artifacts and clearer context",
-      "See why a run degraded before it becomes review churn",
-      "Use score history and failure analysis to guide improvements",
+      "Replay runs with deterministic artifacts and preserved context",
+      "Spot regressions early with score and failure breakdowns",
+      "Use failure analysis to improve the next run",
     ],
     ctaLabel: "Read docs",
     ctaHref: DOCS_URL,
@@ -47,7 +47,7 @@ const items: FeatureFlowItem[] = [
     bullets: [
       "Observe quality trends and policy outcomes in one place",
       "Tune agent profiles by repo and team with auditability",
-      "Paid tiers add stronger sandbox governance for untrusted code paths",
+      "Apply sandbox limits and approval controls to sensitive code paths",
     ],
     ctaLabel: "Open Mission Control",
     ctaHref: APP_BASE_URL,

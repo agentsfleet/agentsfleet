@@ -5,11 +5,11 @@ const steps = [
   },
   {
     title: "Agents execute with guardrails",
-    description: "Echo plans, Scout patches, and Warden validates with policy controls today, with stronger sandbox resource governance shipping in paid plans.",
+    description: "Agents plan, implement, and validate with policy controls, sandbox limits, and repo-specific profiles so automation stays inside defined boundaries.",
   },
   {
     title: "Review a validated PR",
-    description: "A pull request opens with run replay, validation output, and the score-based quality context that helps teams improve the next run.",
+    description: "Each pull request includes run replay, validation output, and run quality scoring so reviewers can assess both the change and the run that produced it.",
   },
 ];
 

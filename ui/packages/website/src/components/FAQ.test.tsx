@@ -54,7 +54,7 @@ describe("FAQ", () => {
 
     await user.click(screen.getByText("What am I actually paying for?"));
     expect(screen.queryByText(/Bring Your Own Keys/)).not.toBeInTheDocument();
-    expect(screen.getByText(/Compute billing/)).toBeInTheDocument();
+    expect(screen.getByText(/hosted agent execution time/)).toBeInTheDocument();
   });
 
   it("sets aria-expanded correctly", async () => {
