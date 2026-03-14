@@ -1,0 +1,8 @@
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Ignore generated Next.js build artifacts"
+paths = [
+  '''(^|/)app/\.next/.*''',
+]
