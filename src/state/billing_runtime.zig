@@ -44,7 +44,8 @@ pub fn recordRuntimeStageUsage(
     });
 
     const now_ms = std.time.milliTimestamp();
-    const usage_id = try id_format.generateUsageLedgerId(conn.arena);
+    const usage_id = try id_format.generateUsageLedgerId(conn._allocator);
+    defer conn._allocator.free(usage_id);
     var q = try conn.query(
         \\INSERT INTO usage_ledger
         \\  (id, workspace_id, run_id, attempt, actor, token_count, agent_seconds, created_at,

@@ -59,7 +59,8 @@ fn upsertSideEffectOutbox(
     reconciled_state: ?[]const u8,
     now_ms: i64,
 ) !void {
-    const outbox_id = try id_format.generateOutboxId(conn.arena);
+    const outbox_id = try id_format.generateOutboxId(conn._allocator);
+    defer conn._allocator.free(outbox_id);
     var q = try conn.query(
         \\INSERT INTO run_side_effect_outbox
         \\  (id, run_id, effect_key, status, last_event, payload, reconciled_state, created_at, updated_at)
@@ -200,7 +201,8 @@ pub fn transition(
 
     // Append transition record
     {
-        const transition_id = try id_format.generateTransitionId(conn.arena);
+        const transition_id = try id_format.generateTransitionId(conn._allocator);
+        defer conn._allocator.free(transition_id);
         var r = try conn.query(
             \\INSERT INTO run_transitions
             \\  (id, run_id, attempt, state_from, state_to, actor, reason_code, notes, ts)
@@ -302,7 +304,8 @@ pub fn writeUsage(
     agent_seconds: u64,
 ) !void {
     const now_ms = std.time.milliTimestamp();
-    const usage_id = try id_format.generateUsageLedgerId(conn.arena);
+    const usage_id = try id_format.generateUsageLedgerId(conn._allocator);
+    defer conn._allocator.free(usage_id);
     var r = try conn.query(
         \\INSERT INTO usage_ledger
         \\  (id, run_id, attempt, actor, token_count, agent_seconds, created_at)
@@ -330,7 +333,8 @@ pub fn registerArtifact(
     producer: types.Actor,
 ) !void {
     const now_ms = std.time.milliTimestamp();
-    const artifact_id = try id_format.generateArtifactId(conn.arena);
+    const artifact_id = try id_format.generateArtifactId(conn._allocator);
+    defer conn._allocator.free(artifact_id);
     var r = try conn.query(
         \\INSERT INTO artifacts
         \\  (id, run_id, attempt, artifact_name, object_key, checksum_sha256, producer, created_at)
@@ -361,7 +365,8 @@ pub fn claimSideEffect(
     details: ?[]const u8,
 ) !bool {
     const now_ms = std.time.milliTimestamp();
-    const side_effect_id = try id_format.generateSideEffectId(conn.arena);
+    const side_effect_id = try id_format.generateSideEffectId(conn._allocator);
+    defer conn._allocator.free(side_effect_id);
     var insert_claim = try conn.query(
         \\INSERT INTO run_side_effects
         \\  (id, run_id, effect_key, status, details, created_at, updated_at)

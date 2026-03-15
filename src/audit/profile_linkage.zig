@@ -5,7 +5,7 @@ pub const RunLinkage = struct {
     run_artifact_id: ?[]u8 = null,
     activate_artifact_id: ?[]u8 = null,
     compile_artifact_id: ?[]u8 = null,
-    profile_version_id: ?[]u8 = null,
+    config_version_id: ?[]u8 = null,
     compile_job_id: ?[]u8 = null,
 };
 
@@ -13,7 +13,7 @@ pub fn insertCompileArtifact(
     conn: *pg.Conn,
     tenant_id: []const u8,
     workspace_id: []const u8,
-    profile_version_id: []const u8,
+    config_version_id: []const u8,
     compile_job_id: []const u8,
     is_valid: bool,
     created_at: i64,
@@ -23,10 +23,10 @@ pub fn insertCompileArtifact(
     const meta = if (is_valid) "{\"is_valid\":true}" else "{\"is_valid\":false}";
 
     var q = try conn.query(
-        \\INSERT INTO profile_linkage_audit_artifacts
-        \\  (artifact_id, tenant_id, workspace_id, artifact_type, profile_version_id, compile_job_id, run_id, parent_artifact_id, metadata_json, created_at)
+        \\INSERT INTO config_linkage_audit_artifacts
+        \\  (artifact_id, tenant_id, workspace_id, artifact_type, config_version_id, compile_job_id, run_id, parent_artifact_id, metadata_json, created_at)
         \\VALUES ($1, $2, $3, 'COMPILE', $4, $5, NULL, NULL, $6, $7)
-    , .{ artifact_id, tenant_id, workspace_id, profile_version_id, compile_job_id, meta, created_at });
+    , .{ artifact_id, tenant_id, workspace_id, config_version_id, compile_job_id, meta, created_at });
     q.deinit();
 }
 
@@ -34,7 +34,7 @@ pub fn insertActivateArtifact(
     conn: *pg.Conn,
     tenant_id: []const u8,
     workspace_id: []const u8,
-    profile_version_id: []const u8,
+    config_version_id: []const u8,
     activated_by: []const u8,
     created_at: i64,
 ) !void {
@@ -43,11 +43,11 @@ pub fn insertActivateArtifact(
 
     var compile_q = try conn.query(
         \\SELECT artifact_id, compile_job_id
-        \\FROM profile_linkage_audit_artifacts
-        \\WHERE workspace_id = $1 AND profile_version_id = $2 AND artifact_type = 'COMPILE'
+        \\FROM config_linkage_audit_artifacts
+        \\WHERE workspace_id = $1 AND config_version_id = $2 AND artifact_type = 'COMPILE'
         \\ORDER BY created_at DESC
         \\LIMIT 1
-    , .{ workspace_id, profile_version_id });
+    , .{ workspace_id, config_version_id });
     defer compile_q.deinit();
 
     var parent_artifact_id: ?[]const u8 = null;
@@ -58,10 +58,10 @@ pub fn insertActivateArtifact(
     }
 
     var q = try conn.query(
-        \\INSERT INTO profile_linkage_audit_artifacts
-        \\  (artifact_id, tenant_id, workspace_id, artifact_type, profile_version_id, compile_job_id, run_id, parent_artifact_id, metadata_json, created_at)
+        \\INSERT INTO config_linkage_audit_artifacts
+        \\  (artifact_id, tenant_id, workspace_id, artifact_type, config_version_id, compile_job_id, run_id, parent_artifact_id, metadata_json, created_at)
         \\VALUES ($1, $2, $3, 'ACTIVATE', $4, $5, NULL, $6, json_build_object('activated_by', $7)::text, $8)
-    , .{ artifact_id, tenant_id, workspace_id, profile_version_id, compile_job_id, parent_artifact_id, activated_by, created_at });
+    , .{ artifact_id, tenant_id, workspace_id, config_version_id, compile_job_id, parent_artifact_id, activated_by, created_at });
     q.deinit();
 }
 
@@ -70,7 +70,7 @@ pub fn insertRunArtifact(
     tenant_id: []const u8,
     workspace_id: []const u8,
     run_id: []const u8,
-    profile_version_id: []const u8,
+    config_version_id: []const u8,
     created_at: i64,
 ) !void {
     var artifact_id_buf: [36]u8 = undefined;
@@ -78,11 +78,11 @@ pub fn insertRunArtifact(
 
     var act_q = try conn.query(
         \\SELECT artifact_id, compile_job_id
-        \\FROM profile_linkage_audit_artifacts
-        \\WHERE workspace_id = $1 AND profile_version_id = $2 AND artifact_type = 'ACTIVATE' AND created_at <= $3
+        \\FROM config_linkage_audit_artifacts
+        \\WHERE workspace_id = $1 AND config_version_id = $2 AND artifact_type = 'ACTIVATE' AND created_at <= $3
         \\ORDER BY created_at DESC
         \\LIMIT 1
-    , .{ workspace_id, profile_version_id, created_at });
+    , .{ workspace_id, config_version_id, created_at });
     defer act_q.deinit();
 
     var parent_artifact_id: ?[]const u8 = null;
@@ -93,22 +93,22 @@ pub fn insertRunArtifact(
     }
 
     var q = try conn.query(
-        \\INSERT INTO profile_linkage_audit_artifacts
-        \\  (artifact_id, tenant_id, workspace_id, artifact_type, profile_version_id, compile_job_id, run_id, parent_artifact_id, metadata_json, created_at)
+        \\INSERT INTO config_linkage_audit_artifacts
+        \\  (artifact_id, tenant_id, workspace_id, artifact_type, config_version_id, compile_job_id, run_id, parent_artifact_id, metadata_json, created_at)
         \\VALUES ($1, $2, $3, 'RUN', $4, $5, $6, $7, '{}', $8)
-    , .{ artifact_id, tenant_id, workspace_id, profile_version_id, compile_job_id, run_id, parent_artifact_id, created_at });
+    , .{ artifact_id, tenant_id, workspace_id, config_version_id, compile_job_id, run_id, parent_artifact_id, created_at });
     q.deinit();
 }
 
 pub fn fetchRunLinkage(conn: *pg.Conn, alloc: std.mem.Allocator, run_id: []const u8) !?RunLinkage {
     var q = try conn.query(
         \\SELECT run_art.artifact_id,
-        \\       run_art.profile_version_id,
+        \\       run_art.config_version_id,
         \\       run_art.compile_job_id,
         \\       run_art.parent_artifact_id,
         \\       act.parent_artifact_id
-        \\FROM profile_linkage_audit_artifacts run_art
-        \\LEFT JOIN profile_linkage_audit_artifacts act
+        \\FROM config_linkage_audit_artifacts run_art
+        \\LEFT JOIN config_linkage_audit_artifacts act
         \\  ON act.artifact_id = run_art.parent_artifact_id AND act.artifact_type = 'ACTIVATE'
         \\WHERE run_art.run_id = $1 AND run_art.artifact_type = 'RUN'
         \\ORDER BY run_art.created_at DESC
@@ -120,7 +120,7 @@ pub fn fetchRunLinkage(conn: *pg.Conn, alloc: std.mem.Allocator, run_id: []const
 
     return .{
         .run_artifact_id = if (try row.get(?[]const u8, 0)) |v| try alloc.dupe(u8, v) else null,
-        .profile_version_id = if (try row.get(?[]const u8, 1)) |v| try alloc.dupe(u8, v) else null,
+        .config_version_id = if (try row.get(?[]const u8, 1)) |v| try alloc.dupe(u8, v) else null,
         .compile_job_id = if (try row.get(?[]const u8, 2)) |v| try alloc.dupe(u8, v) else null,
         .activate_artifact_id = if (try row.get(?[]const u8, 3)) |v| try alloc.dupe(u8, v) else null,
         .compile_artifact_id = if (try row.get(?[]const u8, 4)) |v| try alloc.dupe(u8, v) else null,
@@ -131,7 +131,7 @@ pub fn freeRunLinkage(alloc: std.mem.Allocator, linkage: *RunLinkage) void {
     if (linkage.run_artifact_id) |v| alloc.free(v);
     if (linkage.activate_artifact_id) |v| alloc.free(v);
     if (linkage.compile_artifact_id) |v| alloc.free(v);
-    if (linkage.profile_version_id) |v| alloc.free(v);
+    if (linkage.config_version_id) |v| alloc.free(v);
     if (linkage.compile_job_id) |v| alloc.free(v);
     linkage.* = .{};
 }
@@ -172,7 +172,7 @@ test "integration: linkage chain is queryable for run" {
             \\  tenant_id TEXT NOT NULL,
             \\  workspace_id TEXT NOT NULL,
             \\  artifact_type TEXT NOT NULL,
-            \\  profile_version_id TEXT NOT NULL,
+            \\  config_version_id TEXT NOT NULL,
             \\  compile_job_id TEXT,
             \\  run_id TEXT,
             \\  parent_artifact_id TEXT,
@@ -193,7 +193,7 @@ test "integration: linkage chain is queryable for run" {
     try std.testing.expect(linkage.run_artifact_id != null);
     try std.testing.expect(linkage.activate_artifact_id != null);
     try std.testing.expect(linkage.compile_artifact_id != null);
-    try std.testing.expectEqualStrings("0195b4ba-8d3a-7f13-9abc-2b3e1e0a6f98", linkage.profile_version_id.?);
+    try std.testing.expectEqualStrings("0195b4ba-8d3a-7f13-9abc-2b3e1e0a6f98", linkage.config_version_id.?);
     try std.testing.expectEqualStrings("0195b4ba-8d3a-7f13-aabc-2b3e1e0a6f97", linkage.compile_job_id.?);
 }
 

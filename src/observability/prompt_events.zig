@@ -26,8 +26,8 @@ pub const PromptEvent = struct {
     event_type: EventType,
     workspace_id: []const u8,
     tenant_id: []const u8,
-    profile_id: ?[]const u8 = null,
-    profile_version_id: ?[]const u8 = null,
+    agent_id: ?[]const u8 = null,
+    config_version_id: ?[]const u8 = null,
     metadata_json: []const u8 = "{}",
     ts_ms: i64,
 };
@@ -54,11 +54,12 @@ pub fn dbEmitter(conn: *pg.Conn) Emitter {
 
 fn emitToDb(ctx: *anyopaque, event: PromptEvent) anyerror!void {
     const conn: *pg.Conn = @ptrCast(@alignCast(ctx));
-    const row_id = try id_format.generatePromptLifecycleEventId(conn.arena);
+    const row_id = try id_format.generatePromptLifecycleEventId(conn._allocator);
+    defer conn._allocator.free(row_id);
     const event_id = randomEventId();
     var q = try conn.query(
         \\INSERT INTO prompt_lifecycle_events
-        \\  (id, event_id, event_type, workspace_id, tenant_id, profile_id, profile_version_id, metadata_json, created_at)
+        \\  (id, event_id, event_type, workspace_id, tenant_id, agent_id, config_version_id, metadata_json, created_at)
         \\VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
     , .{
         row_id,
@@ -66,8 +67,8 @@ fn emitToDb(ctx: *anyopaque, event: PromptEvent) anyerror!void {
         event.event_type.label(),
         event.workspace_id,
         event.tenant_id,
-        event.profile_id,
-        event.profile_version_id,
+        event.agent_id,
+        event.config_version_id,
         event.metadata_json,
         event.ts_ms,
     });
@@ -121,8 +122,8 @@ test "integration: prompt lifecycle events are append-only and auditable" {
             \\  event_type TEXT NOT NULL,
             \\  workspace_id TEXT NOT NULL,
             \\  tenant_id TEXT NOT NULL,
-            \\  profile_id TEXT,
-            \\  profile_version_id TEXT,
+            \\  agent_id TEXT,
+            \\  config_version_id TEXT,
             \\  metadata_json TEXT NOT NULL DEFAULT '{}',
             \\  created_at BIGINT NOT NULL
             \\) ON COMMIT DROP
@@ -161,8 +162,8 @@ test "integration: prompt lifecycle events are append-only and auditable" {
         .event_type = .prompt_birth,
         .workspace_id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11",
         .tenant_id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01",
-        .profile_id = "profile_1",
-        .profile_version_id = "0195b4ba-8d3a-7f13-9abc-2b3e1e0a6f98",
+        .agent_id = "agent_1",
+        .config_version_id = "0195b4ba-8d3a-7f13-9abc-2b3e1e0a6f98",
         .metadata_json = "{}",
         .ts_ms = std.time.milliTimestamp(),
     });
@@ -170,8 +171,8 @@ test "integration: prompt lifecycle events are append-only and auditable" {
         .event_type = .prompt_applied,
         .workspace_id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11",
         .tenant_id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01",
-        .profile_id = "profile_1",
-        .profile_version_id = "0195b4ba-8d3a-7f13-9abc-2b3e1e0a6f98",
+        .agent_id = "agent_1",
+        .config_version_id = "0195b4ba-8d3a-7f13-9abc-2b3e1e0a6f98",
         .metadata_json = "{}",
         .ts_ms = std.time.milliTimestamp(),
     });

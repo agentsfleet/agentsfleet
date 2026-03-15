@@ -11,7 +11,7 @@ CREATE TABLE workspaces (
     workspace_id    UUID PRIMARY KEY,
     tenant_id       UUID NOT NULL REFERENCES tenants(tenant_id),
     repo_url        TEXT NOT NULL,
-    default_branch  TEXT NOT NULL DEFAULT 'main',
+    default_branch  TEXT NOT NULL,
     paused          BOOLEAN NOT NULL DEFAULT FALSE,
     paused_reason   TEXT,
     version         BIGINT NOT NULL DEFAULT 1,
@@ -26,7 +26,7 @@ CREATE TABLE specs (
     tenant_id    UUID NOT NULL REFERENCES tenants(tenant_id),
     file_path    TEXT NOT NULL,
     title        TEXT NOT NULL,
-    status       TEXT NOT NULL DEFAULT 'pending',
+    status       TEXT NOT NULL,
     created_at   BIGINT NOT NULL,
     updated_at   BIGINT NOT NULL,
     UNIQUE (workspace_id, file_path)
@@ -38,27 +38,27 @@ CREATE TABLE runs (
     workspace_id          UUID NOT NULL REFERENCES workspaces(workspace_id),
     spec_id               UUID NOT NULL REFERENCES specs(spec_id),
     tenant_id             UUID NOT NULL REFERENCES tenants(tenant_id),
-    state                 TEXT NOT NULL DEFAULT 'SPEC_QUEUED',
+    state                 TEXT NOT NULL,
     attempt               INT  NOT NULL DEFAULT 1,
-    mode                  TEXT NOT NULL DEFAULT 'api',
+    mode                  TEXT NOT NULL,
     requested_by          TEXT NOT NULL,
     idempotency_key       TEXT NOT NULL,
     request_id            TEXT,
     trace_id              TEXT,
     branch                TEXT,
     pr_url                TEXT,
-    run_snapshot_version  UUID,
+    run_snapshot_config_version  UUID,
     created_at            BIGINT NOT NULL,
     updated_at            BIGINT NOT NULL,
     UNIQUE (workspace_id, idempotency_key),
     CONSTRAINT ck_runs_run_id_uuidv7 CHECK (substring(run_id::text from 15 for 1) = '7'),
-    CONSTRAINT ck_runs_snapshot_uuidv7 CHECK (run_snapshot_version IS NULL OR substring(run_snapshot_version::text from 15 for 1) = '7')
+    CONSTRAINT ck_runs_snapshot_config_uuidv7 CHECK (run_snapshot_config_version IS NULL OR substring(run_snapshot_config_version::text from 15 for 1) = '7')
 );
 CREATE INDEX idx_runs_state ON runs(state, created_at);
 CREATE INDEX idx_runs_workspace ON runs(workspace_id, state);
 CREATE INDEX idx_runs_request_id ON runs(request_id);
 CREATE INDEX idx_runs_trace_id ON runs(trace_id);
-CREATE INDEX idx_runs_snapshot_version ON runs(run_snapshot_version, created_at DESC);
+CREATE INDEX idx_runs_snapshot_config_version ON runs(run_snapshot_config_version, created_at DESC);
 
 CREATE TABLE run_transitions (
     id           UUID PRIMARY KEY,
@@ -124,4 +124,3 @@ CREATE TABLE policy_events (
     ts           BIGINT NOT NULL
 );
 CREATE INDEX idx_policy_workspace ON policy_events(workspace_id, ts DESC) INCLUDE (action_class, decision);
-

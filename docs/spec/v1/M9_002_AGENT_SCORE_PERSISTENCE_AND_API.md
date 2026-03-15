@@ -4,29 +4,20 @@
 **Milestone:** M9
 **Workstream:** 002
 **Date:** Mar 13, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P0 — exposes scores to CLI and UI; required before feedback injection (M9_003)
 **Batch:** B1 — parallel with M9_001 schema work; depends on M9_001 event contract
 **Depends on:** M9_001 (scoring engine + event schema)
 
 ---
 
-## 0.0 Pre-Requisite Migration: agent_id Rename
+## 0.0 Pre-Requisite Rename
 
-**Status:** PENDING
+**Status:** DONE
 
-Before M9 tables are created, rename `agent_profiles.profile_id` → `agent_id` across all existing tables and FK references. This is a separate migration (016) isolated from M9 additions.
+M9_002 depends on the canonical naming defined in [M9_000](./M9_000_AGENT_ID_AND_CONFIG_VERSION_RENAME.md). This workstream assumes the clean-state schema already uses `agent_id`, `config_version_id`, `workspace_active_config`, and `config_compile_jobs`.
 
-**Tables affected:**
-- `agent_profiles`: `profile_id` → `agent_id` (PK)
-- `agent_profile_versions`: `profile_id` → `agent_id` (FK)
-- `workspace_active_profile`: `profile_version_id` → `config_version_id` (FK)
-- `profile_compile_jobs`: `requested_profile_id` → `requested_agent_id` (FK)
-- `agent_profile_versions`: `profile_version_id` → `config_version_id` (PK); table rename to `agent_config_versions`
-- `entitlement_policy_audit_snapshots`: `profile_version_id` → `config_version_id`
-- `profile_linkage_audit_artifacts`: `profile_version_id` → `config_version_id`
-
-**Source code affected:** All Zig files referencing `profile_id` in harness control plane handlers, entitlements, and profile resolver. Grep for `"profile_id"` in `src/` to find all locations.
+No separate rename migration is part of M9_002.
 
 ---
 
@@ -34,7 +25,7 @@ Before M9 tables are created, rename `agent_profiles.profile_id` → `agent_id` 
 
 **Status:** PENDING
 
-Persist scores in the workspace data model using UUIDv7 keys (M8_001 contract).
+Persist raw deterministic score outputs in the workspace data model using UUIDv7 keys (M8_001 contract). Do not persist derived labels such as tiers or trust levels in Postgres.
 
 **Dimensions:**
 - 1.1 PENDING Add `agent_run_scores` table:
@@ -45,7 +36,6 @@ Persist scores in the workspace data model using UUIDv7 keys (M8_001 contract).
       agent_id         UUID NOT NULL REFERENCES agent_profiles(agent_id),
       workspace_id     UUID NOT NULL REFERENCES workspaces(workspace_id),
       score            INTEGER NOT NULL CHECK (score >= 0 AND score <= 100),
-      tier             TEXT NOT NULL CHECK (tier IN ('UNRANKED', 'BRONZE', 'SILVER', 'GOLD', 'ELITE')),
       axis_scores      TEXT NOT NULL,   -- JSON: {"completion":95,"error_rate":80,"latency":70,"resource":50}
       weight_snapshot  TEXT NOT NULL,   -- JSON: {"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}
       scored_at        BIGINT NOT NULL,
@@ -55,17 +45,7 @@ Persist scores in the workspace data model using UUIDv7 keys (M8_001 contract).
   CREATE INDEX idx_agent_run_scores_agent ON agent_run_scores(agent_id, scored_at DESC);
   CREATE INDEX idx_agent_run_scores_workspace ON agent_run_scores(workspace_id, score DESC);
   ```
-- 1.2 PENDING Add columns to existing `agent_profiles` table:
-  ```sql
-  ALTER TABLE agent_profiles
-      ADD COLUMN current_tier TEXT DEFAULT 'UNRANKED',
-      ADD COLUMN lifetime_runs INTEGER NOT NULL DEFAULT 0,
-      ADD COLUMN lifetime_score_avg NUMERIC(5,2) NOT NULL DEFAULT 0.0,
-      ADD COLUMN consecutive_gold_plus_runs INTEGER NOT NULL DEFAULT 0,
-      ADD COLUMN trust_level TEXT NOT NULL DEFAULT 'UNEARNED' CHECK (trust_level IN ('UNEARNED', 'TRUSTED')),
-      ADD COLUMN last_scored_at BIGINT;
-  ```
-  Updated by the scoring persistence path after each scored run.
+- 1.2 DONE Do not add score-derived columns to `agent_profiles`. Tiering, trust, and leaderboard-specific aggregates remain application concerns or follow-on work.
 - 1.3 PENDING Add `workspace_latency_baseline` table:
   ```sql
   CREATE TABLE workspace_latency_baseline (
@@ -76,7 +56,7 @@ Persist scores in the workspace data model using UUIDv7 keys (M8_001 contract).
       computed_at     BIGINT NOT NULL
   );
   ```
-- 1.4 PENDING Migration is additive (new tables + ALTER columns only); zero downtime; no existing table mutations beyond the pre-requisite rename
+- 1.4 DONE Canonical schema is updated in-place for this unreleased project; no `ALTER TABLE`-based rename or score-aggregate expansion is introduced in M9_002
 - 1.5 PENDING Indexes: `(agent_id, scored_at DESC)` for trajectory queries; `(workspace_id, score DESC)` for leaderboard queries
 - 1.6 PENDING DB grants:
   ```sql
@@ -86,7 +66,7 @@ Persist scores in the workspace data model using UUIDv7 keys (M8_001 contract).
   GRANT SELECT ON workspace_latency_baseline TO api_accessor;
   ```
   Worker writes scores; API reads them. Agent_profiles grants already exist (schema 006).
-- 1.7 PENDING Retention policy: `agent_run_scores` rows older than 365 days may be archived. Aggregate data on `agent_profiles` is sufficient for long-term trend analysis. Retention job is a follow-on, not M9 scope.
+- 1.7 PENDING Retention policy: `agent_run_scores` rows older than 365 days may be archived. Retention automation is a follow-on, not M9 scope.
 
 ---
 
@@ -97,9 +77,9 @@ Persist scores in the workspace data model using UUIDv7 keys (M8_001 contract).
 Expose score data via the existing zombied HTTP API following current auth and error-code conventions.
 
 **Dimensions:**
-- 2.1 PENDING `GET /v1/agents/{agent_id}/scores?limit=50&cursor=` — paginated run score history, newest first; response includes `score_id`, `run_id`, `score`, `tier`, `axis_scores`, `weight_snapshot`, `scored_at` per entry. Returns `[]` if no scores exist.
-- 2.2 PENDING `GET /v1/agents/{agent_id}/profile` — returns agent_profiles row: `agent_id`, `name`, `current_tier`, `lifetime_runs`, `lifetime_score_avg`, `consecutive_gold_plus_runs`, `trust_level`, `last_scored_at`. Returns 404 if agent_id not found.
-- 2.3 PENDING `GET /v1/workspaces/{workspace_id}/leaderboard?limit=20` — top agents by `lifetime_score_avg` within workspace; returns `agent_id`, `name`, `current_tier`, `lifetime_score_avg`, `consecutive_gold_plus_runs`. Cached for 5 minutes at the handler level.
+- 2.1 PENDING `GET /v1/agents/{agent_id}/scores?limit=50&cursor=` — paginated run score history, newest first; response includes `score_id`, `run_id`, `score`, `axis_scores`, `weight_snapshot`, `scored_at` per entry. Returns `[]` if no scores exist.
+- 2.2 PENDING `GET /v1/agents/{agent_id}` — returns base agent metadata from `agent_profiles` such as `agent_id`, `name`, `status`, `created_at`, and `updated_at`. Returns 404 if agent_id not found.
+- 2.3 PENDING Workspace leaderboards and derived tiers are deferred until a separate aggregation design is approved.
 - 2.4 PENDING All three endpoints are read-only; require workspace-scoped auth token; workspace_id extracted from auth claims. Cross-workspace data leakage prevented by `WHERE workspace_id = $auth_workspace_id` on every query.
 
 ---
@@ -112,8 +92,8 @@ Expose score data through `zombiectl` with structured and human-readable output.
 
 **Dimensions:**
 - 3.1 PENDING `zombiectl agent scores <agent-id> [--limit 20] [--json]` — prints score history table or JSON
-- 3.2 PENDING `zombiectl agent profile <agent-id>` — prints current tier, trust level, streak, lifetime avg
-- 3.3 PENDING `zombiectl workspace leaderboard [--json]` — prints workspace leaderboard table
+- 3.2 PENDING `zombiectl agent profile <agent-id>` — prints base agent metadata
+- 3.3 PENDING Workspace leaderboard CLI is deferred with the API
 
 ---
 
@@ -122,12 +102,11 @@ Expose score data through `zombiectl` with structured and human-readable output.
 **Status:** PENDING
 
 - [ ] 4.1 Score row written within 2 seconds of run reaching terminal state (synchronous path, not outbox)
-- [ ] 4.2 `agent_profiles` row reflects correct tier and streak after 10 sequential scored runs
-- [ ] 4.3 Leaderboard returns correct ordering for a workspace with 5 agents and mixed scores
+- [ ] 4.2 Score persistence writes exactly one row per run and remains idempotent on duplicate scoring attempts
+- [ ] 4.3 Stored score payload preserves raw `axis_scores` and `weight_snapshot` JSON for later API reads
 - [ ] 4.4 Cross-workspace isolation: agent in workspace A never appears in workspace B leaderboard
 - [ ] 4.5 CLI commands return `--json` output parseable by `jq` with no extra prose
-- [ ] 4.6 `agent_profiles.consecutive_gold_plus_runs` correctly excludes infrastructure failures (TIMEOUT, OOM, CONTEXT_OVERFLOW) from streak resets — only agent-attributable failures (BAD_OUTPUT, low score) break the streak (depends on M9_003 failure classification)
-- [ ] 4.7 DB grants enforce worker-write / api-read separation
+- [ ] 4.6 DB grants enforce worker-write / api-read separation
 
 ---
 
@@ -136,5 +115,6 @@ Expose score data through `zombiectl` with structured and human-readable output.
 - Global cross-workspace leaderboard (privacy concern, deferred)
 - Score history charts or UI visualization (deferred to Mission Control v3)
 - Score export / CSV download
+- Tiering, trust levels, and leaderboard aggregates
 - Agent display name management (uses agent_profiles.name for now)
 - Retention job for old score rows (follow-on)

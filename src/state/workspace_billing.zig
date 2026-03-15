@@ -17,6 +17,9 @@ pub const StateView = model.StateView;
 pub const UpgradeInput = model.UpgradeInput;
 pub const BillingLifecycleEventInput = model.BillingLifecycleEventInput;
 
+const EMPTY_JSON = "{}";
+const DEFAULT_AGENT_SCORING_WEIGHTS_JSON = "{\"completion\":0.4,\"error_rate\":0.3,\"latency\":0.2,\"resource\":0.1}";
+
 pub fn errorCode(err: anyerror) ?[]const u8 {
     return switch (err) {
         error.FreeWorkspaceLimitExceeded => error_codes.ERR_WORKSPACE_FREE_LIMIT,
@@ -82,7 +85,7 @@ pub fn provisionFreeWorkspace(
         .pending_status = null,
         .pending_reason = null,
     }, now_ms);
-    try insertAudit(conn, alloc, workspace_id, "FREE_PROVISIONED", null, .free, null, .active, "workspace_created", actor, "{}");
+    try insertAudit(conn, alloc, workspace_id, "FREE_PROVISIONED", null, .free, null, .active, "workspace_created", actor, EMPTY_JSON);
 }
 
 pub fn enforceFreeWorkspaceCreationAllowed(
@@ -128,7 +131,7 @@ pub fn upgradeWorkspaceToScale(
         .pending_status = null,
         .pending_reason = null,
     }, now_ms);
-    try insertAudit(conn, alloc, workspace_id, "SCALE_ACTIVATED", previous.plan_tier, .scale, previous.billing_status, .active, "upgrade_to_scale", input.actor, "{}");
+    try insertAudit(conn, alloc, workspace_id, "SCALE_ACTIVATED", previous.plan_tier, .scale, previous.billing_status, .active, "upgrade_to_scale", input.actor, EMPTY_JSON);
     return .{
         .plan_tier = .scale,
         .billing_status = .active,
@@ -199,7 +202,7 @@ pub fn applyBillingLifecycleEvent(
         state.billing_status,
         trimmed_reason,
         input.actor,
-        "{}",
+        EMPTY_JSON,
     );
 
     return reconcileWorkspaceBilling(conn, alloc, workspace_id, now_ms, input.actor);
@@ -268,7 +271,7 @@ fn applyScaleActivation(
         .pending_status = null,
         .pending_reason = null,
     }, now_ms);
-    try insertAudit(conn, alloc, workspace_id, "PENDING_SCALE_APPLIED", state.plan_tier, .scale, state.billing_status, .active, "sync_applied_scale_activation", actor, "{}");
+    try insertAudit(conn, alloc, workspace_id, "PENDING_SCALE_APPLIED", state.plan_tier, .scale, state.billing_status, .active, "sync_applied_scale_activation", actor, EMPTY_JSON);
 }
 
 fn applyGracePeriod(
@@ -291,7 +294,7 @@ fn applyGracePeriod(
         .pending_status = null,
         .pending_reason = null,
     }, now_ms);
-    try insertAudit(conn, alloc, workspace_id, "PAYMENT_FAILED_GRACE_STARTED", state.plan_tier, .scale, state.billing_status, .grace, "payment_failed", actor, "{}");
+    try insertAudit(conn, alloc, workspace_id, "PAYMENT_FAILED_GRACE_STARTED", state.plan_tier, .scale, state.billing_status, .grace, "payment_failed", actor, EMPTY_JSON);
 }
 
 fn downgradeStateToFree(
@@ -362,7 +365,7 @@ fn downgradeToFree(
         .pending_status = null,
         .pending_reason = null,
     }, now_ms);
-    try insertAudit(conn, alloc, workspace_id, "DOWNGRADED_TO_FREE", state.plan_tier, .free, state.billing_status, .downgraded, reason, actor, "{}");
+    try insertAudit(conn, alloc, workspace_id, "DOWNGRADED_TO_FREE", state.plan_tier, .free, state.billing_status, .downgraded, reason, actor, EMPTY_JSON);
 }
 
 fn configuredAdapterModeLabel(alloc: std.mem.Allocator) []const u8 {
@@ -386,14 +389,17 @@ fn applyEntitlementPlan(
     const policy = entitlementForTier(tier);
     var q = try conn.query(
         \\INSERT INTO workspace_entitlements
-        \\  (entitlement_id, workspace_id, plan_tier, max_profiles, max_stages, max_distinct_skills, allow_custom_skills, created_at, updated_at)
-        \\VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $8)
+        \\  (entitlement_id, workspace_id, plan_tier, max_profiles, max_stages, max_distinct_skills,
+        \\   allow_custom_skills, enable_agent_scoring, agent_scoring_weights_json, created_at, updated_at)
+        \\VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, false, $8, $9, $9)
         \\ON CONFLICT (workspace_id) DO UPDATE
         \\SET plan_tier = EXCLUDED.plan_tier,
         \\    max_profiles = EXCLUDED.max_profiles,
         \\    max_stages = EXCLUDED.max_stages,
         \\    max_distinct_skills = EXCLUDED.max_distinct_skills,
         \\    allow_custom_skills = EXCLUDED.allow_custom_skills,
+        \\    enable_agent_scoring = EXCLUDED.enable_agent_scoring,
+        \\    agent_scoring_weights_json = EXCLUDED.agent_scoring_weights_json,
         \\    updated_at = EXCLUDED.updated_at
     , .{
         entitlement_id,
@@ -403,6 +409,7 @@ fn applyEntitlementPlan(
         @as(i32, policy.max_stages),
         @as(i32, policy.max_distinct_skills),
         policy.allow_custom_skills,
+        DEFAULT_AGENT_SCORING_WEIGHTS_JSON,
         now_ms,
     });
     q.deinit();

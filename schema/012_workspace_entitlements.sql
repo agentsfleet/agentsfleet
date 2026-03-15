@@ -3,13 +3,13 @@
 CREATE TABLE workspace_entitlements (
     entitlement_id       UUID PRIMARY KEY,
     workspace_id         UUID NOT NULL UNIQUE REFERENCES workspaces(workspace_id) ON DELETE CASCADE,
-    plan_tier            TEXT NOT NULL CHECK (plan_tier IN ('FREE', 'SCALE')),
+    plan_tier            TEXT NOT NULL,
     max_profiles         INTEGER NOT NULL CHECK (max_profiles > 0),
     max_stages           INTEGER NOT NULL CHECK (max_stages > 0),
     max_distinct_skills  INTEGER NOT NULL CHECK (max_distinct_skills > 0),
-    allow_custom_skills  BOOLEAN NOT NULL DEFAULT FALSE,
-    enable_agent_scoring BOOLEAN NOT NULL DEFAULT FALSE,
-    agent_scoring_weights_json TEXT NOT NULL DEFAULT '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}',
+    allow_custom_skills  BOOLEAN NOT NULL,
+    enable_agent_scoring BOOLEAN NOT NULL,
+    agent_scoring_weights_json TEXT NOT NULL,
     created_at           BIGINT NOT NULL,
     updated_at           BIGINT NOT NULL
 );
@@ -19,8 +19,8 @@ CREATE INDEX idx_workspace_entitlements_tier
 CREATE TABLE entitlement_policy_audit_snapshots (
     snapshot_id        UUID PRIMARY KEY,
     workspace_id       UUID NOT NULL REFERENCES workspaces(workspace_id) ON DELETE CASCADE,
-    boundary           TEXT NOT NULL CHECK (boundary IN ('COMPILE', 'ACTIVATE')),
-    decision           TEXT NOT NULL CHECK (decision IN ('ALLOW', 'DENY')),
+    boundary           TEXT NOT NULL,
+    decision           TEXT NOT NULL,
     reason_code        TEXT NOT NULL,
     plan_tier          TEXT NOT NULL,
     policy_json        TEXT NOT NULL DEFAULT '{}',

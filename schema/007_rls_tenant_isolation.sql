@@ -7,8 +7,8 @@ CREATE TABLE prompt_lifecycle_events (
     event_type          TEXT NOT NULL,
     workspace_id        UUID NOT NULL REFERENCES workspaces(workspace_id) ON DELETE CASCADE,
     tenant_id           UUID NOT NULL REFERENCES tenants(tenant_id) ON DELETE CASCADE,
-    profile_id          UUID,
-    profile_version_id  UUID,
+    agent_id            UUID,
+    config_version_id   UUID,
     metadata_json       TEXT NOT NULL DEFAULT '{}',
     created_at          BIGINT NOT NULL
 );
@@ -32,18 +32,6 @@ CREATE TRIGGER trg_prompt_lifecycle_events_no_delete
     BEFORE DELETE ON prompt_lifecycle_events
     FOR EACH ROW EXECUTE FUNCTION reject_prompt_lifecycle_event_mutation();
 
-ALTER TABLE agent_profiles ENABLE ROW LEVEL SECURITY;
-ALTER TABLE agent_profile_versions ENABLE ROW LEVEL SECURITY;
-ALTER TABLE workspace_active_profile ENABLE ROW LEVEL SECURITY;
-ALTER TABLE profile_compile_jobs ENABLE ROW LEVEL SECURITY;
-ALTER TABLE vault.workspace_skill_secrets ENABLE ROW LEVEL SECURITY;
-
-ALTER TABLE agent_profiles FORCE ROW LEVEL SECURITY;
-ALTER TABLE agent_profile_versions FORCE ROW LEVEL SECURITY;
-ALTER TABLE workspace_active_profile FORCE ROW LEVEL SECURITY;
-ALTER TABLE profile_compile_jobs FORCE ROW LEVEL SECURITY;
-ALTER TABLE vault.workspace_skill_secrets FORCE ROW LEVEL SECURITY;
-
 CREATE POLICY agent_profiles_select_tenant ON agent_profiles
     FOR SELECT USING (tenant_id::text = current_setting('app.current_tenant_id', true));
 CREATE POLICY agent_profiles_insert_tenant ON agent_profiles
@@ -54,34 +42,34 @@ CREATE POLICY agent_profiles_update_tenant ON agent_profiles
 CREATE POLICY agent_profiles_delete_tenant ON agent_profiles
     FOR DELETE USING (tenant_id::text = current_setting('app.current_tenant_id', true));
 
-CREATE POLICY agent_profile_versions_select_tenant ON agent_profile_versions
+CREATE POLICY agent_config_versions_select_tenant ON agent_config_versions
     FOR SELECT USING (tenant_id::text = current_setting('app.current_tenant_id', true));
-CREATE POLICY agent_profile_versions_insert_tenant ON agent_profile_versions
+CREATE POLICY agent_config_versions_insert_tenant ON agent_config_versions
     FOR INSERT WITH CHECK (tenant_id::text = current_setting('app.current_tenant_id', true));
-CREATE POLICY agent_profile_versions_update_tenant ON agent_profile_versions
+CREATE POLICY agent_config_versions_update_tenant ON agent_config_versions
     FOR UPDATE USING (tenant_id::text = current_setting('app.current_tenant_id', true))
     WITH CHECK (tenant_id::text = current_setting('app.current_tenant_id', true));
-CREATE POLICY agent_profile_versions_delete_tenant ON agent_profile_versions
+CREATE POLICY agent_config_versions_delete_tenant ON agent_config_versions
     FOR DELETE USING (tenant_id::text = current_setting('app.current_tenant_id', true));
 
-CREATE POLICY workspace_active_profile_select_tenant ON workspace_active_profile
+CREATE POLICY workspace_active_config_select_tenant ON workspace_active_config
     FOR SELECT USING (tenant_id::text = current_setting('app.current_tenant_id', true));
-CREATE POLICY workspace_active_profile_insert_tenant ON workspace_active_profile
+CREATE POLICY workspace_active_config_insert_tenant ON workspace_active_config
     FOR INSERT WITH CHECK (tenant_id::text = current_setting('app.current_tenant_id', true));
-CREATE POLICY workspace_active_profile_update_tenant ON workspace_active_profile
+CREATE POLICY workspace_active_config_update_tenant ON workspace_active_config
     FOR UPDATE USING (tenant_id::text = current_setting('app.current_tenant_id', true))
     WITH CHECK (tenant_id::text = current_setting('app.current_tenant_id', true));
-CREATE POLICY workspace_active_profile_delete_tenant ON workspace_active_profile
+CREATE POLICY workspace_active_config_delete_tenant ON workspace_active_config
     FOR DELETE USING (tenant_id::text = current_setting('app.current_tenant_id', true));
 
-CREATE POLICY profile_compile_jobs_select_tenant ON profile_compile_jobs
+CREATE POLICY config_compile_jobs_select_tenant ON config_compile_jobs
     FOR SELECT USING (tenant_id::text = current_setting('app.current_tenant_id', true));
-CREATE POLICY profile_compile_jobs_insert_tenant ON profile_compile_jobs
+CREATE POLICY config_compile_jobs_insert_tenant ON config_compile_jobs
     FOR INSERT WITH CHECK (tenant_id::text = current_setting('app.current_tenant_id', true));
-CREATE POLICY profile_compile_jobs_update_tenant ON profile_compile_jobs
+CREATE POLICY config_compile_jobs_update_tenant ON config_compile_jobs
     FOR UPDATE USING (tenant_id::text = current_setting('app.current_tenant_id', true))
     WITH CHECK (tenant_id::text = current_setting('app.current_tenant_id', true));
-CREATE POLICY profile_compile_jobs_delete_tenant ON profile_compile_jobs
+CREATE POLICY config_compile_jobs_delete_tenant ON config_compile_jobs
     FOR DELETE USING (tenant_id::text = current_setting('app.current_tenant_id', true));
 
 CREATE POLICY workspace_skill_secrets_select_tenant ON vault.workspace_skill_secrets
@@ -95,4 +83,3 @@ CREATE POLICY workspace_skill_secrets_delete_tenant ON vault.workspace_skill_sec
     FOR DELETE USING (tenant_id::text = current_setting('app.current_tenant_id', true));
 
 GRANT SELECT, INSERT ON prompt_lifecycle_events TO api_accessor, worker_accessor;
-

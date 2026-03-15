@@ -95,10 +95,11 @@ pub fn handleRetryRun(ctx: *common.Context, r: zap.Request, run_id: []const u8) 
     };
     r2.deinit();
 
-    const transition_id = id_format.generateTransitionId(conn.arena) catch {
+    const transition_id = id_format.generateTransitionId(alloc) catch {
         common.internalDbError(r, req_id);
         return;
     };
+    defer alloc.free(transition_id);
     var r3 = conn.query(
         \\INSERT INTO run_transitions (id, run_id, attempt, state_from, state_to, actor, reason_code, notes, ts)
         \\VALUES ($1, $2, $3, $4, 'SPEC_QUEUED', 'orchestrator', 'MANUAL_RETRY', $5, $6)
