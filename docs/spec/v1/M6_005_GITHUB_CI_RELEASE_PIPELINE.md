@@ -55,7 +55,8 @@ Access: `ZMB_CD_DEV` + `ZMB_CD_PROD`
 | `zombied-prod-server-1` | `hostname`, `ssh-private-key`, `deploy-user` | prod blue-green deploy |
 | `zombied-prod-server-2` | `hostname`, `ssh-private-key`, `deploy-user` | prod blue-green second node |
 | `npm-publish-token` | `credential` | zombiectl npm publish |
-| `vercel-bypass-website` | `credential` | Vercel preview bypass for `usezombie-agents-sh` (smoke CI) |
+| `vercel-bypass-website` | `credential` | Vercel preview bypass for `usezombie-website` (smoke CI) |
+| `vercel-bypass-agents` | `credential` | Vercel preview bypass for `usezombie-agents-sh` (smoke CI) |
 | `vercel-bypass-app` | `credential` | Vercel preview bypass for `usezombie-app` (smoke CI) |
 | `cloudflare-token` | `credential` | Cloudflare API token (Zone:Edit + Zone:Read) |
 

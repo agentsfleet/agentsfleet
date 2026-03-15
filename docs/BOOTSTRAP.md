@@ -49,8 +49,9 @@ Give the agent:
 |---|---|---|
 | `cloudflare-token` | `credential` | CF API token from human |
 | `npm-publish-token` | `credential` | npm token from human |
-| `vercel-bypass-website` | `credential` | Vercel bypass secret (website project) |
-| `vercel-bypass-app` | `credential` | Vercel bypass secret (app project) |
+| `vercel-bypass-website` | `credential` | Vercel → `usezombie-website` project → Deployment Protection → Bypass |
+| `vercel-bypass-agents` | `credential` | Vercel → `usezombie-agents-sh` project → Deployment Protection → Bypass |
+| `vercel-bypass-app` | `credential` | Vercel → `usezombie-app` project → Deployment Protection → Bypass |
 | `zombied-prod-server-1` | `hostname`, `ssh-private-key`, `deploy-user` | on server provision |
 | `zombied-prod-server-2` | `hostname`, `ssh-private-key`, `deploy-user` | on server provision |
 
