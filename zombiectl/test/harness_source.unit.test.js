@@ -1,18 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { Writable } from "node:stream";
 import { commandHarnessSourcePut } from "../src/commands/harness_source.js";
+import { makeNoop, makeBufferStream, ui } from "./helpers.js";
 
-function bufferStream() {
-  let data = "";
-  return {
-    stream: new Writable({ write(chunk, _enc, cb) { data += String(chunk); cb(); } }),
-    read: () => data,
-  };
-}
-
-const ui = { ok: (s) => s, err: (s) => s, info: (s) => s };
-const noop = new Writable({ write(_c, _e, cb) { cb(); } });
+const bufferStream = makeBufferStream;
 
 test("commandHarnessSourcePut builds source_markdown payload", async () => {
   const out = bufferStream();
@@ -45,7 +36,7 @@ test("commandHarnessSourcePut returns 2 when --file is missing", async () => {
   const err = bufferStream();
   const deps = { ui, writeLine: (stream, line = "") => stream.write(`${line}\n`) };
   const parsed = { options: {}, positionals: [] };
-  const code = await commandHarnessSourcePut({ stdout: noop, stderr: err.stream, jsonMode: false }, parsed, "ws_123", deps);
+  const code = await commandHarnessSourcePut({ stdout: makeNoop(), stderr: err.stream, jsonMode: false }, parsed, "ws_123", deps);
   assert.equal(code, 2);
   assert.match(err.read(), /--file/);
 });
@@ -62,7 +53,7 @@ test("commandHarnessSourcePut json mode outputs raw response", async () => {
     resolvePath: (p) => p,
   };
   const parsed = { options: { file: "f.md" }, positionals: [] };
-  const code = await commandHarnessSourcePut({ stdout: noop, stderr: noop, jsonMode: true }, parsed, "ws_123", deps);
+  const code = await commandHarnessSourcePut({ stdout: makeNoop(), stderr: makeNoop(), jsonMode: true }, parsed, "ws_123", deps);
   assert.equal(code, 0);
   assert.equal(printed.profile_version_id, "pver_9");
 });
