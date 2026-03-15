@@ -21,9 +21,13 @@
 | Service | What to generate | Where |
 |---|---|---|
 | 1Password | Service account token for `usezombie-ci` | 1Password → Service Accounts |
+| Vercel | Account API token (Full Account scope) | Vercel → Account Settings → Tokens |
+| Vercel (`usezombie-website`) | Deployment Protection bypass secret | Vercel → project → Settings → Deployment Protection |
+| Vercel (`usezombie-agents-sh`) | Deployment Protection bypass secret | Vercel → project → Settings → Deployment Protection |
+| Vercel (`usezombie-app`) | Deployment Protection bypass secret | Vercel → project → Settings → Deployment Protection |
 | Cloudflare | API token with Zone:Edit + Zone:Read (all zones) | CF → My Profile → API Tokens |
-| Vercel (website) | Deployment Protection bypass secret | Vercel → project → Settings → Deployment Protection |
-| Vercel (app) | Deployment Protection bypass secret | Vercel → project → Settings → Deployment Protection |
+| Clerk (DEV instance) | Publishable key + Secret key | Clerk dashboard → DEV instance → API Keys |
+| Clerk (PROD instance) | Publishable key + Secret key | Clerk dashboard → PROD instance → API Keys |
 | npm | Granular publish token | npmjs.org → Access Tokens |
 | Codecov | Repo token | Codecov → repo settings |
 | gitleaks | License key | gitleaks.io |
@@ -60,6 +64,14 @@ Give the agent:
 | Item | Field | Value source |
 |---|---|---|
 | `zombied-dev-server` | `hostname`, `ssh-private-key`, `deploy-user` | on server provision |
+| `clerk-dev` | `publishable-key`, `secret-key` | Clerk DEV instance API Keys |
+| `vercel-api-token` | `credential` | Vercel Account Settings → Tokens |
+
+**Vault: `ZMB_CD_PROD`** — production Clerk
+
+| Item | Field | Value source |
+|---|---|---|
+| `clerk-prod` | `publishable-key`, `secret-key` | Clerk PROD instance API Keys |
 
 ### GitHub Secrets to set
 
@@ -81,15 +93,19 @@ zsh -i -c "op read 'op://ZMB_CD_PROD/cloudflare-token/credential'" | \
   https://api.cloudflare.com/client/v4/zones | jq '.result[] | {name, id}'
 ```
 
-### Vercel — env var scoping
+### Vercel — env var scoping (agent sets via Vercel API)
 
-**`usezombie-app`** → Settings → Environment Variables:
+Agent reads project IDs and API token from 1Password, then sets env vars via `PATCH /v9/projects/{id}/env`.
+
+**`usezombie-app`:**
 
 | Variable | Preview | Production |
 |---|---|---|
 | `NEXT_PUBLIC_API_URL` | `https://api.dev.usezombie.com` | `https://api.usezombie.com` |
+| `NEXT_PUBLIC_PUBLISHABLE_KEY` | Clerk DEV publishable key | Clerk PROD publishable key |
+| `CLERK_SECRET_KEY` | Clerk DEV secret key | Clerk PROD secret key |
 
-**`usezombie-agents-sh`** and **`usezombie-website`** → Settings → Environment Variables:
+**`usezombie-agents-sh`** and **`usezombie-website`:**
 
 | Variable | Preview | Production |
 |---|---|---|
