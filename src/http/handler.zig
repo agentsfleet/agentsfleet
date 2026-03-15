@@ -18,6 +18,7 @@ const common = @import("handlers/common.zig");
 const runs_handlers = @import("handlers/runs.zig");
 const workspace_handlers = @import("handlers/workspaces.zig");
 const specs_handlers = @import("handlers/specs.zig");
+const agents_handlers = @import("handlers/agents.zig");
 
 pub const Context = common.Context;
 pub const SkillSecretRoute = skill_secret_handlers.Route;
@@ -31,6 +32,8 @@ pub const handleSyncSpecs = workspace_handlers.handleSyncSpecs;
 pub const handleUpgradeWorkspaceToScale = workspace_handlers.handleUpgradeWorkspaceToScale;
 pub const handleApplyWorkspaceBillingEvent = workspace_handlers.handleApplyWorkspaceBillingEvent;
 pub const handleListSpecs = specs_handlers.handleListSpecs;
+pub const handleGetAgent = agents_handlers.handleGetAgent;
+pub const handleGetAgentScores = agents_handlers.handleGetAgentScores;
 
 pub fn parseSkillSecretRoute(path: []const u8) ?SkillSecretRoute {
     return skill_secret_handlers.parseRoute(path);

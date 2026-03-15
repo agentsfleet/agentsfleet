@@ -9,5 +9,6 @@ export function registerProgramCommands(handlers) {
     doctor: handlers.doctor,
     harness: handlers.harness,
     "skill-secret": handlers.skillSecret,
+    agent: handlers.agent,
   };
 }

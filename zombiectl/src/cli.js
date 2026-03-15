@@ -4,6 +4,7 @@ import { createCliAnalytics, shutdownCliAnalytics, trackCliEvent } from "./lib/a
 import { findRoute } from "./program/routes.js";
 import { registerProgramCommands } from "./program/command-registry.js";
 import { commandHarness as commandHarnessModule } from "./commands/harness.js";
+import { commandAgent as commandAgentModule } from "./commands/agent.js";
 import { ui, printKeyValue, printTable } from "./ui-theme.js";
 import { createSpinner } from "./ui-progress.js";
 import {
@@ -155,6 +156,8 @@ function printHelp(stdout) {
   writeLine(stdout, "  harness active --workspace-id ID");
   writeLine(stdout, "  skill-secret put --workspace-id ID --skill-ref REF --key KEY --value VALUE [--scope host|sandbox]");
   writeLine(stdout, "  skill-secret delete --workspace-id ID --skill-ref REF --key KEY");
+  writeLine(stdout, "  agent scores <agent-id> [--limit N] [--cursor T]");
+  writeLine(stdout, "  agent profile <agent-id>");
   writeLine(stdout);
   writeLine(stdout, ui.dim("workspace add opens UseZombie GitHub App install and binds via callback."));
 }
@@ -651,6 +654,16 @@ export async function runCli(argv, io = {}) {
       writeLine,
     }),
     skillSecret: (routeArgs) => commandSkillSecret(ctx, routeArgs, workspaces),
+    agent: (routeArgs) => commandAgentModule(ctx, routeArgs, workspaces, {
+      parseFlags,
+      request,
+      apiHeaders,
+      ui,
+      printJson,
+      printTable,
+      printKeyValue,
+      writeLine,
+    }),
   });
 
   try {

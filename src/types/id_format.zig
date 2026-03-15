@@ -80,6 +80,14 @@ pub fn generatePromptLifecycleEventId(alloc: std.mem.Allocator) ![]const u8 {
     return allocUuidV7(alloc);
 }
 
+pub fn generateScoreId(alloc: std.mem.Allocator) ![]const u8 {
+    return allocUuidV7(alloc);
+}
+
+pub fn isSupportedAgentId(id: []const u8) bool {
+    return isUuidV7(id);
+}
+
 pub fn isSupportedRunId(id: []const u8) bool {
     return isUuidV7(id);
 }
