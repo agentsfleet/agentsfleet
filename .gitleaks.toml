@@ -6,3 +6,9 @@ description = "Ignore generated Next.js build artifacts"
 paths = [
   '''(^|/)app/\.next/.*''',
 ]
+
+[[allowlists]]
+description = "Ignore deterministic JWT fixtures in jwks unit tests"
+paths = [
+  '''(^|/)src/auth/jwks_test\.zig$''',
+]

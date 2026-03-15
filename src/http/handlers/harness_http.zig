@@ -1,0 +1,260 @@
+const std = @import("std");
+const zap = @import("zap");
+const posthog_events = @import("../../observability/posthog_events.zig");
+const error_codes = @import("../../errors/codes.zig");
+const harness_handlers = @import("harness_control_plane.zig");
+const common = @import("common.zig");
+
+pub const Context = common.Context;
+
+pub fn handlePutHarnessSource(ctx: *Context, r: zap.Request, workspace_id: []const u8) void {
+    var arena = std.heap.ArenaAllocator.init(ctx.alloc);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    const req_id = common.requestId(alloc);
+
+    const principal = common.authenticate(alloc, r, ctx) catch |err| {
+        common.writeAuthError(r, req_id, err);
+        return;
+    };
+    if (!common.requireUuidV7Id(r, req_id, workspace_id, "workspace_id")) return;
+
+    const Req = harness_handlers.PutSourceInput;
+    const body = r.body orelse {
+        common.errorResponse(r, .bad_request, error_codes.ERR_INVALID_REQUEST, "Request body required", req_id);
+        return;
+    };
+    const parsed = std.json.parseFromSlice(Req, alloc, body, .{}) catch {
+        common.errorResponse(r, .bad_request, error_codes.ERR_INVALID_REQUEST, "Malformed JSON", req_id);
+        return;
+    };
+    defer parsed.deinit();
+
+    const conn = ctx.pool.acquire() catch {
+        common.internalDbUnavailable(r, req_id);
+        return;
+    };
+    defer ctx.pool.release(conn);
+    if (!common.authorizeWorkspaceAndSetTenantContext(conn, principal, workspace_id)) {
+        common.errorResponse(r, .forbidden, error_codes.ERR_FORBIDDEN, "Workspace access denied", req_id);
+        return;
+    }
+
+    const out = harness_handlers.putSource(conn, alloc, workspace_id, parsed.value) catch |err| {
+        switch (err) {
+            error.InvalidRequest => common.errorResponse(r, .bad_request, error_codes.ERR_INVALID_REQUEST, "Invalid harness source payload", req_id),
+            error.InvalidIdShape => common.errorResponse(r, .bad_request, error_codes.ERR_UUIDV7_INVALID_ID_SHAPE, "Invalid agent_id format", req_id),
+            error.WorkspaceNotFound => common.errorResponse(r, .not_found, error_codes.ERR_WORKSPACE_NOT_FOUND, "Workspace not found", req_id),
+            else => common.internalOperationError(r, "Failed to store harness source", req_id),
+        }
+        return;
+    };
+
+    common.writeJson(r, .ok, .{
+        .workspace_id = workspace_id,
+        .agent_id = out.agent_id,
+        .config_version_id = out.config_version_id,
+        .version = out.version,
+        .status = "DRAFT",
+        .request_id = req_id,
+    });
+}
+
+pub fn handleCompileHarness(ctx: *Context, r: zap.Request, workspace_id: []const u8) void {
+    var arena = std.heap.ArenaAllocator.init(ctx.alloc);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    const req_id = common.requestId(alloc);
+
+    const principal = common.authenticate(alloc, r, ctx) catch |err| {
+        common.writeAuthError(r, req_id, err);
+        return;
+    };
+    if (!common.requireUuidV7Id(r, req_id, workspace_id, "workspace_id")) return;
+
+    const Req = harness_handlers.CompileInput;
+    const body = r.body orelse {
+        common.errorResponse(r, .bad_request, error_codes.ERR_INVALID_REQUEST, "Request body required", req_id);
+        return;
+    };
+    const parsed = std.json.parseFromSlice(Req, alloc, body, .{}) catch {
+        common.errorResponse(r, .bad_request, error_codes.ERR_INVALID_REQUEST, "Malformed JSON", req_id);
+        return;
+    };
+    defer parsed.deinit();
+
+    const conn = ctx.pool.acquire() catch {
+        common.internalDbUnavailable(r, req_id);
+        return;
+    };
+    defer ctx.pool.release(conn);
+
+    if (!common.authorizeWorkspaceAndSetTenantContext(conn, principal, workspace_id)) {
+        common.errorResponse(r, .forbidden, error_codes.ERR_FORBIDDEN, "Workspace access denied", req_id);
+        return;
+    }
+
+    const out = harness_handlers.compileProfile(conn, alloc, workspace_id, parsed.value) catch |err| {
+        switch (err) {
+            error.InvalidIdShape => common.errorResponse(r, .bad_request, error_codes.ERR_UUIDV7_INVALID_ID_SHAPE, "Invalid config_version_id format", req_id),
+            error.ProfileNotFound => common.errorResponse(r, .not_found, error_codes.ERR_PROFILE_NOT_FOUND, "No harness profile source found for workspace", req_id),
+            error.CompileFailed => common.internalOperationError(r, "Harness compile failed", req_id),
+            error.EntitlementMissing => {
+                posthog_events.trackEntitlementRejected(ctx.posthog, posthog_events.distinctIdOrSystem(principal.user_id orelse ""), workspace_id, "COMPILE", error_codes.ERR_ENTITLEMENT_UNAVAILABLE, req_id);
+                common.errorResponse(r, .forbidden, error_codes.ERR_ENTITLEMENT_UNAVAILABLE, "Workspace entitlement missing; request denied", req_id);
+            },
+            error.EntitlementProfileLimit => {
+                posthog_events.trackEntitlementRejected(ctx.posthog, posthog_events.distinctIdOrSystem(principal.user_id orelse ""), workspace_id, "COMPILE", error_codes.ERR_ENTITLEMENT_PROFILE_LIMIT, req_id);
+                common.errorResponse(r, .forbidden, error_codes.ERR_ENTITLEMENT_PROFILE_LIMIT, "Workspace profile limit exceeded", req_id);
+            },
+            error.EntitlementStageLimit => {
+                posthog_events.trackEntitlementRejected(ctx.posthog, posthog_events.distinctIdOrSystem(principal.user_id orelse ""), workspace_id, "COMPILE", error_codes.ERR_ENTITLEMENT_STAGE_LIMIT, req_id);
+                common.errorResponse(r, .forbidden, error_codes.ERR_ENTITLEMENT_STAGE_LIMIT, "Plan stage limit exceeded", req_id);
+            },
+            error.EntitlementSkillNotAllowed => {
+                posthog_events.trackEntitlementRejected(ctx.posthog, posthog_events.distinctIdOrSystem(principal.user_id orelse ""), workspace_id, "COMPILE", error_codes.ERR_ENTITLEMENT_SKILL_NOT_ALLOWED, req_id);
+                common.errorResponse(r, .forbidden, error_codes.ERR_ENTITLEMENT_SKILL_NOT_ALLOWED, "Plan does not allow one or more profile skills", req_id);
+            },
+            error.CreditExhausted => common.errorResponse(r, .forbidden, error_codes.ERR_CREDIT_EXHAUSTED, "Free plan credit exhausted. Upgrade to Scale to continue.", req_id),
+            else => common.internalOperationError(r, "Failed to compile harness profile", req_id),
+        }
+        return;
+    };
+
+    common.writeJson(r, .ok, .{
+        .compile_job_id = out.compile_job_id,
+        .workspace_id = workspace_id,
+        .agent_id = out.agent_id,
+        .config_version_id = out.config_version_id,
+        .is_valid = out.is_valid,
+        .validation_report_json = out.validation_report_json,
+        .request_id = req_id,
+    });
+}
+
+pub fn handleActivateHarness(ctx: *Context, r: zap.Request, workspace_id: []const u8) void {
+    var arena = std.heap.ArenaAllocator.init(ctx.alloc);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    const req_id = common.requestId(alloc);
+
+    const principal = common.authenticate(alloc, r, ctx) catch |err| {
+        common.writeAuthError(r, req_id, err);
+        return;
+    };
+    if (!common.requireUuidV7Id(r, req_id, workspace_id, "workspace_id")) return;
+
+    const Req = harness_handlers.ActivateInput;
+    const body = r.body orelse {
+        common.errorResponse(r, .bad_request, error_codes.ERR_INVALID_REQUEST, "Request body required", req_id);
+        return;
+    };
+    const parsed = std.json.parseFromSlice(Req, alloc, body, .{}) catch {
+        common.errorResponse(r, .bad_request, error_codes.ERR_INVALID_REQUEST, "Malformed JSON", req_id);
+        return;
+    };
+    defer parsed.deinit();
+
+    const conn = ctx.pool.acquire() catch {
+        common.internalDbUnavailable(r, req_id);
+        return;
+    };
+    defer ctx.pool.release(conn);
+
+    if (!common.authorizeWorkspaceAndSetTenantContext(conn, principal, workspace_id)) {
+        common.errorResponse(r, .forbidden, error_codes.ERR_FORBIDDEN, "Workspace access denied", req_id);
+        return;
+    }
+
+    const out = harness_handlers.activateProfile(conn, alloc, workspace_id, parsed.value) catch |err| {
+        switch (err) {
+            error.InvalidIdShape => common.errorResponse(r, .bad_request, error_codes.ERR_UUIDV7_INVALID_ID_SHAPE, "Invalid config_version_id format", req_id),
+            error.ProfileNotFound => common.errorResponse(r, .not_found, error_codes.ERR_PROFILE_NOT_FOUND, "Profile version not found", req_id),
+            error.ProfileInvalid => common.errorResponse(r, .conflict, error_codes.ERR_PROFILE_INVALID, "Invalid profile cannot be activated", req_id),
+            error.EntitlementMissing => {
+                posthog_events.trackEntitlementRejected(ctx.posthog, posthog_events.distinctIdOrSystem(principal.user_id orelse ""), workspace_id, "ACTIVATE", error_codes.ERR_ENTITLEMENT_UNAVAILABLE, req_id);
+                common.errorResponse(r, .forbidden, error_codes.ERR_ENTITLEMENT_UNAVAILABLE, "Workspace entitlement missing; request denied", req_id);
+            },
+            error.EntitlementProfileLimit => {
+                posthog_events.trackEntitlementRejected(ctx.posthog, posthog_events.distinctIdOrSystem(principal.user_id orelse ""), workspace_id, "ACTIVATE", error_codes.ERR_ENTITLEMENT_PROFILE_LIMIT, req_id);
+                common.errorResponse(r, .forbidden, error_codes.ERR_ENTITLEMENT_PROFILE_LIMIT, "Workspace profile limit exceeded", req_id);
+            },
+            error.EntitlementStageLimit => {
+                posthog_events.trackEntitlementRejected(ctx.posthog, posthog_events.distinctIdOrSystem(principal.user_id orelse ""), workspace_id, "ACTIVATE", error_codes.ERR_ENTITLEMENT_STAGE_LIMIT, req_id);
+                common.errorResponse(r, .forbidden, error_codes.ERR_ENTITLEMENT_STAGE_LIMIT, "Plan stage limit exceeded", req_id);
+            },
+            error.EntitlementSkillNotAllowed => {
+                posthog_events.trackEntitlementRejected(ctx.posthog, posthog_events.distinctIdOrSystem(principal.user_id orelse ""), workspace_id, "ACTIVATE", error_codes.ERR_ENTITLEMENT_SKILL_NOT_ALLOWED, req_id);
+                common.errorResponse(r, .forbidden, error_codes.ERR_ENTITLEMENT_SKILL_NOT_ALLOWED, "Plan does not allow one or more profile skills", req_id);
+            },
+            error.CreditExhausted => common.errorResponse(r, .forbidden, error_codes.ERR_CREDIT_EXHAUSTED, "Free plan credit exhausted. Upgrade to Scale to continue.", req_id),
+            else => common.internalOperationError(r, "Failed to activate profile", req_id),
+        }
+        return;
+    };
+    posthog_events.trackProfileActivated(
+        ctx.posthog,
+        posthog_events.distinctIdOrSystem(principal.user_id orelse ""),
+        workspace_id,
+        out.agent_id,
+        out.config_version_id,
+        out.run_snapshot_config_version,
+        req_id,
+    );
+
+    common.writeJson(r, .ok, .{
+        .workspace_id = workspace_id,
+        .agent_id = out.agent_id,
+        .config_version_id = out.config_version_id,
+        .run_snapshot_config_version = out.run_snapshot_config_version,
+        .activated_by = out.activated_by,
+        .activated_at = out.activated_at,
+        .request_id = req_id,
+    });
+}
+
+pub fn handleGetHarnessActive(ctx: *Context, r: zap.Request, workspace_id: []const u8) void {
+    var arena = std.heap.ArenaAllocator.init(ctx.alloc);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    const req_id = common.requestId(alloc);
+
+    const principal = common.authenticate(alloc, r, ctx) catch |err| {
+        common.writeAuthError(r, req_id, err);
+        return;
+    };
+    if (!common.requireUuidV7Id(r, req_id, workspace_id, "workspace_id")) return;
+
+    const conn = ctx.pool.acquire() catch {
+        common.internalDbUnavailable(r, req_id);
+        return;
+    };
+    defer ctx.pool.release(conn);
+
+    if (!common.authorizeWorkspaceAndSetTenantContext(conn, principal, workspace_id)) {
+        common.errorResponse(r, .forbidden, error_codes.ERR_FORBIDDEN, "Workspace access denied", req_id);
+        return;
+    }
+
+    const out = harness_handlers.getActiveProfile(conn, alloc, workspace_id) catch {
+        common.internalOperationError(r, "Failed to resolve active profile", req_id);
+        return;
+    };
+    defer alloc.free(out.profile_json);
+
+    const parsed = std.json.parseFromSlice(std.json.Value, alloc, out.profile_json, .{}) catch {
+        common.internalOperationError(r, "Failed to render profile JSON", req_id);
+        return;
+    };
+    defer parsed.deinit();
+    common.writeJson(r, .ok, .{
+        .workspace_id = workspace_id,
+        .source = out.source,
+        .agent_id = out.agent_id,
+        .config_version_id = out.config_version_id,
+        .run_snapshot_config_version = out.run_snapshot_config_version,
+        .active_at = out.active_at,
+        .profile = parsed.value,
+        .request_id = req_id,
+    });
+}

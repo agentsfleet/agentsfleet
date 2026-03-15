@@ -1,3 +1,11 @@
+function spinnerFrames(style) {
+  if (style === "dotmatrix" || style === "matrix") {
+    return ["⣾", "⣽", "⣻", "⢿", "⡿", "⣟", "⣯", "⣷"];
+  }
+
+  return ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+}
+
 export async function withSpinner(opts, work) {
   const spin = createSpinner(opts);
   spin.start();
@@ -16,7 +24,8 @@ export function createSpinner(opts = {}) {
   const enabled = opts.enabled === true;
   const stream = opts.stream || process.stderr;
   const label = opts.label || "working";
-  const frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+  const style = opts.style || process.env.ZOMBIE_PROGRESS_STYLE || "spinner";
+  const frames = spinnerFrames(style);
   let i = 0;
   let timer = null;
 
