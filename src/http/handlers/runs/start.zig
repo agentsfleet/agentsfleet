@@ -25,9 +25,9 @@ fn enforceRuntimeActiveProfile(
     requested_by: []const u8,
 ) (entitlements.EnforcementError || anyerror)!void {
     var active_profile = try conn.query(
-        \\SELECT wap.profile_version_id, v.compiled_profile_json
-        \\FROM workspace_active_profile wap
-        \\JOIN agent_profile_versions v ON v.profile_version_id = wap.profile_version_id
+        \\SELECT wap.config_version_id, v.compiled_profile_json
+        \\FROM workspace_active_config wap
+        \\JOIN agent_config_versions v ON v.config_version_id = wap.config_version_id
         \\WHERE wap.workspace_id = $1
         \\LIMIT 1
     , .{workspace_id});
@@ -204,7 +204,7 @@ pub fn handleStartRun(ctx: *common.Context, r: zap.Request) void {
         \\  (run_id, workspace_id, spec_id, tenant_id, state, attempt, mode,
         \\   requested_by, idempotency_key, request_id, trace_id, branch, run_snapshot_version, created_at, updated_at)
         \\SELECT $1, $2, $3, tenant_id, 'SPEC_QUEUED', 1, $4, $5, $6, $7,
-        \\       $8, $9, (SELECT wap.profile_version_id FROM workspace_active_profile wap WHERE wap.workspace_id = $2), $10, $10
+        \\       $8, $9, (SELECT wap.config_version_id FROM workspace_active_config wap WHERE wap.workspace_id = $2), $10, $10
         \\FROM workspaces WHERE workspace_id = $2
         \\ON CONFLICT (workspace_id, idempotency_key) DO UPDATE
         \\SET updated_at = runs.updated_at
@@ -331,17 +331,17 @@ test "runtime entitlement enforcement rejects downgraded free workspace using sc
     }
     {
         var q = try db_ctx.conn.query(
-            \\CREATE TEMP TABLE workspace_active_profile (
+            \\CREATE TEMP TABLE workspace_active_config (
             \\  workspace_id TEXT PRIMARY KEY,
-            \\  profile_version_id TEXT NOT NULL
+            \\  config_version_id TEXT NOT NULL
             \\) ON COMMIT DROP
         , .{});
         q.deinit();
     }
     {
         var q = try db_ctx.conn.query(
-            \\CREATE TEMP TABLE agent_profile_versions (
-            \\  profile_version_id TEXT PRIMARY KEY,
+            \\CREATE TEMP TABLE agent_config_versions (
+            \\  config_version_id TEXT PRIMARY KEY,
             \\  compiled_profile_json TEXT
             \\) ON COMMIT DROP
         , .{});
@@ -365,7 +365,7 @@ test "runtime entitlement enforcement rejects downgraded free workspace using sc
     }
     {
         var q = try db_ctx.conn.query(
-            \\INSERT INTO agent_profile_versions (profile_version_id, compiled_profile_json)
+            \\INSERT INTO agent_config_versions (config_version_id, compiled_profile_json)
             \\VALUES (
             \\  '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f91',
             \\  '{"profile_id":"0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f41","stages":[{"stage_id":"plan","role":"echo","skill":"echo"},{"stage_id":"implement","role":"scout","skill":"scout"},{"stage_id":"verify","role":"warden","skill":"warden","gate":true,"on_pass":"done","on_fail":"retry"},{"stage_id":"extra","role":"scout","skill":"scout","gate":false}]}'
@@ -375,7 +375,7 @@ test "runtime entitlement enforcement rejects downgraded free workspace using sc
     }
     {
         var q = try db_ctx.conn.query(
-            "INSERT INTO workspace_active_profile (workspace_id, profile_version_id) VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f91')",
+            "INSERT INTO workspace_active_config (workspace_id, config_version_id) VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f91')",
             .{},
         );
         q.deinit();

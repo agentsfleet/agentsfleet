@@ -1,5 +1,5 @@
 {
-  "profile_id": "default-v1",
+  "agent_id": "default-v1",
   "stages": [
     {
       "stage_id": "plan",

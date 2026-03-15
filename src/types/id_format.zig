@@ -16,7 +16,7 @@ pub fn generateSpecId(alloc: std.mem.Allocator) ![]const u8 {
     return allocUuidV7(alloc);
 }
 
-pub fn generateProfileId(alloc: std.mem.Allocator) ![]const u8 {
+pub fn generateAgentId(alloc: std.mem.Allocator) ![]const u8 {
     return allocUuidV7(alloc);
 }
 
@@ -194,7 +194,7 @@ test "generate ids support both formats" {
     defer alloc.free(run_id);
     try std.testing.expect(isSupportedRunId(run_id));
 
-    const profile_id = try generateProfileId(alloc);
+    const profile_id = try generateAgentId(alloc);
     defer alloc.free(profile_id);
     try std.testing.expect(isSupportedProfileId(profile_id));
 

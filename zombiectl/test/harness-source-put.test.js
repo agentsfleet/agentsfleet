@@ -32,13 +32,13 @@ test("harness source put uploads markdown file content as source_markdown", asyn
       assert.equal(url, "http://localhost:3000/v1/workspaces/ws_123/harness/source");
       assert.equal(options.method, "PUT");
       const payload = JSON.parse(String(options.body));
-      assert.equal(payload.profile_id, "ws_123-harness");
+      assert.equal(payload.agent_id, "ws_123-harness");
       assert.equal(payload.name, "agent-profile");
       assert.equal(payload.source_markdown, markdown);
       return {
         ok: true,
         status: 200,
-        text: async () => JSON.stringify({ profile_version_id: "pver_123" }),
+        text: async () => JSON.stringify({ config_version_id: "pver_123" }),
       };
     };
 
@@ -64,7 +64,7 @@ test("harness source put uploads markdown file content as source_markdown", asyn
 
     assert.equal(code, 0);
     assert.equal(err.read(), "");
-    assert.match(out.read(), /profile_version_id=pver_123/);
+    assert.match(out.read(), /config_version_id=pver_123/);
   } finally {
     await fs.rm(tmpDir, { recursive: true, force: true });
   }

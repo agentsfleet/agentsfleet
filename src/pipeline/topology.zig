@@ -37,12 +37,12 @@ pub const Stage = struct {
 };
 
 pub const Profile = struct {
-    profile_id: []u8,
+    agent_id: []u8,
     stages: []Stage,
     alloc: std.mem.Allocator,
 
     pub fn deinit(self: *Profile) void {
-        self.alloc.free(self.profile_id);
+        self.alloc.free(self.agent_id);
         freeStages(self.alloc, self.stages);
     }
 
@@ -112,7 +112,7 @@ pub fn loadProfile(alloc: std.mem.Allocator, path: []const u8) !Profile {
 
 pub fn defaultProfile(alloc: std.mem.Allocator) !Profile {
     return Profile{
-        .profile_id = try alloc.dupe(u8, "default-v1"),
+        .agent_id = try alloc.dupe(u8, "default-v1"),
         .stages = try alloc.dupe(Stage, &[_]Stage{
             .{
                 .stage_id = try alloc.dupe(u8, STAGE_PLAN),
@@ -152,8 +152,8 @@ pub fn defaultProfile(alloc: std.mem.Allocator) !Profile {
 fn fromDoc(alloc: std.mem.Allocator, doc: ProfileDoc) !Profile {
     if (doc.stages.len < 3) return TopologyError.InvalidProfile;
 
-    const profile_id = try alloc.dupe(u8, doc.profile_id);
-    errdefer alloc.free(profile_id);
+    const agent_id = try alloc.dupe(u8, doc.profile_id);
+    errdefer alloc.free(agent_id);
 
     var stages: std.ArrayList(Stage) = .{};
     errdefer {
@@ -208,7 +208,7 @@ fn fromDoc(alloc: std.mem.Allocator, doc: ProfileDoc) !Profile {
     try validateProfile(built);
 
     return .{
-        .profile_id = profile_id,
+        .agent_id = agent_id,
         .stages = built,
         .alloc = alloc,
     };
@@ -297,7 +297,7 @@ test "integration: custom profile with non built-in role and built-in skill is a
     var profile = try fromDoc(alloc, doc);
     defer profile.deinit();
 
-    try std.testing.expectEqualStrings("custom-profile", profile.profile_id);
+    try std.testing.expectEqualStrings("custom-profile", profile.agent_id);
     try std.testing.expectEqual(@as(usize, 3), profile.stages.len);
     try std.testing.expectEqualStrings("security", profile.stages[1].role_id);
     try std.testing.expectEqualStrings("scout", profile.stages[1].skill_id);

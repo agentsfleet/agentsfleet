@@ -154,16 +154,16 @@ pub fn trackProfileActivated(
     client: ?*posthog.PostHogClient,
     distinct_id: []const u8,
     workspace_id: []const u8,
-    profile_id: []const u8,
-    profile_version_id: []const u8,
+    agent_id: []const u8,
+    config_version_id: []const u8,
     run_snapshot_version: []const u8,
     request_id: []const u8,
 ) void {
     if (client) |ph| {
         const props = [_]posthog.Property{
             .{ .key = "workspace_id", .value = .{ .string = workspace_id } },
-            .{ .key = "profile_id", .value = .{ .string = profile_id } },
-            .{ .key = "profile_version_id", .value = .{ .string = profile_version_id } },
+            .{ .key = "agent_id", .value = .{ .string = agent_id } },
+            .{ .key = "config_version_id", .value = .{ .string = config_version_id } },
             .{ .key = "run_snapshot_version", .value = .{ .string = run_snapshot_version } },
             .{ .key = "request_id", .value = .{ .string = request_id } },
         };

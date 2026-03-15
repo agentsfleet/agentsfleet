@@ -53,20 +53,20 @@ test("harness lifecycle: activate deterministically changes subsequent run snaps
       return {
         ok: true,
         status: 200,
-        text: async () => JSON.stringify({ profile_id: "ws_123-harness", profile_version_id: version }),
+        text: async () => JSON.stringify({ agent_id: "ws_123-harness", config_version_id: version }),
       };
     }
 
     if (route === "POST /v1/workspaces/ws_123/harness/compile") {
       const body = JSON.parse(String(options.body || "{}"));
-      const version = body.profile_version_id;
+      const version = body.config_version_id;
       return {
         ok: true,
         status: 200,
         text: async () => JSON.stringify({
           compile_job_id: `cjob_${version}`,
-          profile_id: state.profileByVersion.get(version),
-          profile_version_id: version,
+          agent_id: state.profileByVersion.get(version),
+          config_version_id: version,
           is_valid: true,
           validation_report_json: "{}",
         }),
@@ -75,14 +75,14 @@ test("harness lifecycle: activate deterministically changes subsequent run snaps
 
     if (route === "POST /v1/workspaces/ws_123/harness/activate") {
       const body = JSON.parse(String(options.body || "{}"));
-      state.activeProfileVersion = body.profile_version_id;
+      state.activeProfileVersion = body.config_version_id;
       return {
         ok: true,
         status: 200,
         text: async () => JSON.stringify({
           workspace_id: "ws_123",
-          profile_id: state.profileByVersion.get(state.activeProfileVersion),
-          profile_version_id: state.activeProfileVersion,
+          agent_id: state.profileByVersion.get(state.activeProfileVersion),
+          config_version_id: state.activeProfileVersion,
           run_snapshot_version: state.activeProfileVersion,
           activated_by: body.activated_by || "zombiectl",
           activated_at: 1730000000,
@@ -97,8 +97,8 @@ test("harness lifecycle: activate deterministically changes subsequent run snaps
         text: async () => JSON.stringify({
           workspace_id: "ws_123",
           source: state.activeProfileVersion ? "active" : "default-v1",
-          profile_id: state.activeProfileVersion ? state.profileByVersion.get(state.activeProfileVersion) : null,
-          profile_version_id: state.activeProfileVersion,
+          agent_id: state.activeProfileVersion ? state.profileByVersion.get(state.activeProfileVersion) : null,
+          config_version_id: state.activeProfileVersion,
           run_snapshot_version: state.activeProfileVersion,
           active_at: state.activeProfileVersion ? 1730000000 : null,
           profile: { profile_id: state.activeProfileVersion || "default-v1", stages: [] },
@@ -255,8 +255,8 @@ test("harness lifecycle contract: API and CLI JSON expose profile identity parit
         status: 200,
         text: async () => JSON.stringify({
           workspace_id: "ws_123",
-          profile_id: "ws_123-harness",
-          profile_version_id: "pver_2",
+          agent_id: "ws_123-harness",
+          config_version_id: "pver_2",
           run_snapshot_version: "pver_2",
           activated_by: "operator",
           activated_at: 1730000100,
@@ -271,8 +271,8 @@ test("harness lifecycle contract: API and CLI JSON expose profile identity parit
         text: async () => JSON.stringify({
           workspace_id: "ws_123",
           source: "active",
-          profile_id: "ws_123-harness",
-          profile_version_id: "pver_2",
+          agent_id: "ws_123-harness",
+          config_version_id: "pver_2",
           run_snapshot_version: "pver_2",
           active_at: 1730000100,
           profile: { profile_id: "ws_123-harness", stages: [] },
@@ -309,8 +309,8 @@ test("harness lifecycle contract: API and CLI JSON expose profile identity parit
       0,
     );
     const activatePayload = parseJsonOutput(out.read());
-    assert.equal(activatePayload.profile_id, "ws_123-harness");
-    assert.equal(activatePayload.profile_version_id, "pver_2");
+    assert.equal(activatePayload.agent_id, "ws_123-harness");
+    assert.equal(activatePayload.config_version_id, "pver_2");
     assert.equal(activatePayload.run_snapshot_version, "pver_2");
     assert.equal(activatePayload.activated_at, 1730000100);
 
@@ -326,8 +326,8 @@ test("harness lifecycle contract: API and CLI JSON expose profile identity parit
       0,
     );
     const activePayload = parseJsonOutput(out.read());
-    assert.equal(activePayload.profile_id, "ws_123-harness");
-    assert.equal(activePayload.profile_version_id, "pver_2");
+    assert.equal(activePayload.agent_id, "ws_123-harness");
+    assert.equal(activePayload.config_version_id, "pver_2");
     assert.equal(activePayload.run_snapshot_version, "pver_2");
     assert.equal(activePayload.active_at, 1730000100);
     assert.equal(err.read(), "");

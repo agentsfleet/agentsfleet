@@ -26,8 +26,8 @@ test "integration: workspace active profile is loaded for worker execution" {
 
     {
         var q = try db_ctx.conn.query(
-            \\CREATE TEMP TABLE agent_profile_versions (
-            \\  profile_version_id TEXT PRIMARY KEY,
+            \\CREATE TEMP TABLE agent_config_versions (
+            \\  config_version_id TEXT PRIMARY KEY,
             \\  compiled_profile_json TEXT,
             \\  is_valid BOOLEAN NOT NULL
             \\) ON COMMIT DROP
@@ -36,9 +36,9 @@ test "integration: workspace active profile is loaded for worker execution" {
     }
     {
         var q = try db_ctx.conn.query(
-            \\CREATE TEMP TABLE workspace_active_profile (
+            \\CREATE TEMP TABLE workspace_active_config (
             \\  workspace_id TEXT PRIMARY KEY,
-            \\  profile_version_id TEXT NOT NULL
+            \\  config_version_id TEXT NOT NULL
             \\) ON COMMIT DROP
         , .{});
         q.deinit();
@@ -56,14 +56,14 @@ test "integration: workspace active profile is loaded for worker execution" {
     ;
     {
         var q = try db_ctx.conn.query(
-            "INSERT INTO agent_profile_versions (profile_version_id, compiled_profile_json, is_valid) VALUES ('0195b4ba-8d3a-7f13-9abc-2b3e1e0a6f98', $1, TRUE)",
+            "INSERT INTO agent_config_versions (config_version_id, compiled_profile_json, is_valid) VALUES ('0195b4ba-8d3a-7f13-9abc-2b3e1e0a6f98', $1, TRUE)",
             .{compiled},
         );
         q.deinit();
     }
     {
         var q = try db_ctx.conn.query(
-            "INSERT INTO workspace_active_profile (workspace_id, profile_version_id) VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11', '0195b4ba-8d3a-7f13-9abc-2b3e1e0a6f98')",
+            "INSERT INTO workspace_active_config (workspace_id, config_version_id) VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11', '0195b4ba-8d3a-7f13-9abc-2b3e1e0a6f98')",
             .{},
         );
         q.deinit();
@@ -71,7 +71,7 @@ test "integration: workspace active profile is loaded for worker execution" {
 
     var profile = (try profile_resolver.loadWorkspaceActiveProfile(std.testing.allocator, db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11")) orelse return error.TestUnexpectedResult;
     defer profile.deinit();
-    try std.testing.expectEqualStrings("acme-harness-v1", profile.profile_id);
+    try std.testing.expectEqualStrings("acme-harness-v1", profile.agent_id);
     try std.testing.expectEqual(@as(usize, 3), profile.stages.len);
 }
 
@@ -82,8 +82,8 @@ test "integration: worker profile fallback path returns null when no active bind
 
     {
         var q = try db_ctx.conn.query(
-            \\CREATE TEMP TABLE agent_profile_versions (
-            \\  profile_version_id TEXT PRIMARY KEY,
+            \\CREATE TEMP TABLE agent_config_versions (
+            \\  config_version_id TEXT PRIMARY KEY,
             \\  compiled_profile_json TEXT,
             \\  is_valid BOOLEAN NOT NULL
             \\) ON COMMIT DROP
@@ -92,9 +92,9 @@ test "integration: worker profile fallback path returns null when no active bind
     }
     {
         var q = try db_ctx.conn.query(
-            \\CREATE TEMP TABLE workspace_active_profile (
+            \\CREATE TEMP TABLE workspace_active_config (
             \\  workspace_id TEXT PRIMARY KEY,
-            \\  profile_version_id TEXT NOT NULL
+            \\  config_version_id TEXT NOT NULL
             \\) ON COMMIT DROP
         , .{});
         q.deinit();
@@ -111,8 +111,8 @@ test "integration: switching active profile changes worker-resolved profile dete
 
     {
         var q = try db_ctx.conn.query(
-            \\CREATE TEMP TABLE agent_profile_versions (
-            \\  profile_version_id TEXT PRIMARY KEY,
+            \\CREATE TEMP TABLE agent_config_versions (
+            \\  config_version_id TEXT PRIMARY KEY,
             \\  compiled_profile_json TEXT,
             \\  is_valid BOOLEAN NOT NULL
             \\) ON COMMIT DROP
@@ -121,9 +121,9 @@ test "integration: switching active profile changes worker-resolved profile dete
     }
     {
         var q = try db_ctx.conn.query(
-            \\CREATE TEMP TABLE workspace_active_profile (
+            \\CREATE TEMP TABLE workspace_active_config (
             \\  workspace_id TEXT PRIMARY KEY,
-            \\  profile_version_id TEXT NOT NULL
+            \\  config_version_id TEXT NOT NULL
             \\) ON COMMIT DROP
         , .{});
         q.deinit();
@@ -154,14 +154,14 @@ test "integration: switching active profile changes worker-resolved profile dete
 
     {
         var q = try db_ctx.conn.query(
-            "INSERT INTO agent_profile_versions (profile_version_id, compiled_profile_json, is_valid) VALUES ('0195b4ba-8d3a-7f13-9abc-2b3e1e0a6f98', $1, TRUE), ('pver_2', $2, TRUE)",
+            "INSERT INTO agent_config_versions (config_version_id, compiled_profile_json, is_valid) VALUES ('0195b4ba-8d3a-7f13-9abc-2b3e1e0a6f98', $1, TRUE), ('pver_2', $2, TRUE)",
             .{ profile_a, profile_b },
         );
         q.deinit();
     }
     {
         var q = try db_ctx.conn.query(
-            "INSERT INTO workspace_active_profile (workspace_id, profile_version_id) VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11', '0195b4ba-8d3a-7f13-9abc-2b3e1e0a6f98')",
+            "INSERT INTO workspace_active_config (workspace_id, config_version_id) VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11', '0195b4ba-8d3a-7f13-9abc-2b3e1e0a6f98')",
             .{},
         );
         q.deinit();
@@ -169,12 +169,12 @@ test "integration: switching active profile changes worker-resolved profile dete
 
     var resolved_a = (try profile_resolver.loadWorkspaceActiveProfile(std.testing.allocator, db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11")) orelse return error.TestUnexpectedResult;
     defer resolved_a.deinit();
-    try std.testing.expectEqualStrings("acme-harness-v1", resolved_a.profile_id);
+    try std.testing.expectEqualStrings("acme-harness-v1", resolved_a.agent_id);
     try std.testing.expectEqual(@as(usize, 3), resolved_a.stages.len);
 
     {
         var q = try db_ctx.conn.query(
-            "UPDATE workspace_active_profile SET profile_version_id = 'pver_2' WHERE workspace_id = '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11'",
+            "UPDATE workspace_active_config SET config_version_id = 'pver_2' WHERE workspace_id = '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11'",
             .{},
         );
         q.deinit();
@@ -182,7 +182,7 @@ test "integration: switching active profile changes worker-resolved profile dete
 
     var resolved_b = (try profile_resolver.loadWorkspaceActiveProfile(std.testing.allocator, db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11")) orelse return error.TestUnexpectedResult;
     defer resolved_b.deinit();
-    try std.testing.expectEqualStrings("acme-harness-v2", resolved_b.profile_id);
+    try std.testing.expectEqualStrings("acme-harness-v2", resolved_b.agent_id);
     try std.testing.expectEqual(@as(usize, 4), resolved_b.stages.len);
     try std.testing.expectEqualStrings("security-review", resolved_b.stages[1].stage_id);
 }

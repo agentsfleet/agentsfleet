@@ -400,10 +400,10 @@ fn createUuidContractTempSchema(conn: *Conn) !void {
         \\  run_id UUID PRIMARY KEY,
         \\  run_snapshot_version UUID
         \\) ON COMMIT DROP;
-        \\CREATE TEMP TABLE agent_profile_versions (
-        \\  profile_version_id UUID PRIMARY KEY
+        \\CREATE TEMP TABLE agent_config_versions (
+        \\  config_version_id UUID PRIMARY KEY
         \\) ON COMMIT DROP;
-        \\CREATE TEMP TABLE profile_compile_jobs (
+        \\CREATE TEMP TABLE config_compile_jobs (
         \\  compile_job_id UUID PRIMARY KEY
         \\) ON COMMIT DROP;
         \\CREATE TEMP TABLE run_transitions (
@@ -428,12 +428,12 @@ fn createUuidContractTempSchema(conn: *Conn) !void {
         \\CREATE TEMP TABLE policy_events (
         \\  run_id UUID REFERENCES runs(run_id)
         \\) ON COMMIT DROP;
-        \\CREATE TEMP TABLE workspace_active_profile (
-        \\  profile_version_id UUID NOT NULL REFERENCES agent_profile_versions(profile_version_id)
+        \\CREATE TEMP TABLE workspace_active_config (
+        \\  config_version_id UUID NOT NULL REFERENCES agent_config_versions(config_version_id)
         \\) ON COMMIT DROP;
         \\CREATE TEMP TABLE profile_linkage_audit_artifacts (
-        \\  profile_version_id UUID NOT NULL REFERENCES agent_profile_versions(profile_version_id),
-        \\  compile_job_id UUID REFERENCES profile_compile_jobs(compile_job_id),
+        \\  config_version_id UUID NOT NULL REFERENCES agent_config_versions(config_version_id),
+        \\  compile_job_id UUID REFERENCES config_compile_jobs(compile_job_id),
         \\  run_id UUID REFERENCES runs(run_id)
         \\) ON COMMIT DROP
     , .{});
@@ -452,8 +452,8 @@ test "integration: uuid contract tables are UUID typed for run/profile/linkage I
         var q = try db_ctx.conn.query(
             \\SELECT table_name, column_name, data_type
             \\FROM information_schema.columns
-            \\WHERE table_name IN ('runs', 'agent_profile_versions', 'profile_compile_jobs', 'profile_linkage_audit_artifacts')
-            \\  AND column_name IN ('run_id', 'run_snapshot_version', 'profile_version_id', 'compile_job_id')
+            \\WHERE table_name IN ('runs', 'agent_config_versions', 'config_compile_jobs', 'profile_linkage_audit_artifacts')
+            \\  AND column_name IN ('run_id', 'run_snapshot_version', 'config_version_id', 'compile_job_id')
             \\ORDER BY table_name, column_name
         , .{});
         defer q.deinit();
@@ -468,9 +468,9 @@ test "integration: uuid contract tables are UUID typed for run/profile/linkage I
     const cjob_id = "0195b4ba-8d3a-7f13-aabc-2b3e1e0a6f97";
     var insert_q = try db_ctx.conn.query(
         \\INSERT INTO runs (run_id, run_snapshot_version) VALUES ($1::uuid, $2::uuid);
-        \\INSERT INTO agent_profile_versions (profile_version_id) VALUES ($2::uuid);
-        \\INSERT INTO profile_compile_jobs (compile_job_id) VALUES ($3::uuid);
-        \\INSERT INTO profile_linkage_audit_artifacts (profile_version_id, compile_job_id, run_id) VALUES ($2::uuid, $3::uuid, $1::uuid)
+        \\INSERT INTO agent_config_versions (config_version_id) VALUES ($2::uuid);
+        \\INSERT INTO config_compile_jobs (compile_job_id) VALUES ($3::uuid);
+        \\INSERT INTO profile_linkage_audit_artifacts (config_version_id, compile_job_id, run_id) VALUES ($2::uuid, $3::uuid, $1::uuid)
     , .{ run_id, pver_id, cjob_id });
     insert_q.deinit();
 }
