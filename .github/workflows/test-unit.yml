@@ -25,11 +25,47 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.3.10
+
       - name: Install website dependencies
         run: bun install --frozen-lockfile
         working-directory: ui/packages/website
       - name: Install app dependencies
         run: bun install --frozen-lockfile
         working-directory: ui/packages/app
-      - name: Run unit test gate
-        run: make test-unit
+      - name: Install zombiectl dependencies
+        run: bun install --frozen-lockfile
+        working-directory: zombiectl
+
+      # zombied — Zig unit + integration + depth gate
+      - name: Test zombied
+        run: make test-zombied
+
+      # zombiectl — CLI unit tests
+      - name: Test zombiectl
+        run: make test-unit-zombiectl
+
+      # website — Vitest with coverage
+      - name: Test website
+        run: bun run test:coverage
+        working-directory: ui/packages/website
+      - name: Upload website coverage
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          slug: usezombie/usezombie
+          flags: website
+          files: ui/packages/website/coverage/lcov.info
+          fail_ci_if_error: false
+
+      # app — Vitest with coverage
+      - name: Test app
+        run: bun run test:coverage
+        working-directory: ui/packages/app
+      - name: Upload app coverage
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          slug: usezombie/usezombie
+          flags: apps
+          files: ui/packages/app/coverage/lcov.info
+          fail_ci_if_error: false

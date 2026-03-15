@@ -1,14 +1,13 @@
 import { Button, Terminal } from "@usezombie/design-system";
 import { APP_BASE_URL } from "../config";
 import { trackNavigationClicked, trackSignupStarted } from "../analytics/posthog";
-import HeroIllustration from "./HeroIllustration";
 export default function Hero() {
   const heading = {
     badge: "For engineering teams · BYOK · No token markup",
     line1: "Ship AI-generated PRs",
     line2: "without babysitting the run.",
     kicker:
-      "UseZombie turns queued engineering work into validated pull requests with replay, scoring, and policy control so teams can prove automation is actually getting better.",
+      "UseZombie turns queued engineering work into validated pull requests with replay, run quality scoring, and policy controls so teams can improve automation with evidence, not guesswork.",
   };
 
   return (
@@ -54,14 +53,13 @@ export default function Hero() {
               <p>Bring your own keys and providers. UseZombie does not resell tokens or hide model costs.</p>
             </div>
             <div className="hero-proof-card">
-              <span>Gamified agent delivery</span>
-              <p>Paid plans unlock score history, failure analysis, and stronger rollout control for agent fleets.</p>
+              <span>Measurable run quality</span>
+              <p>Quality scores, failure analysis, and improvement history show whether automation is getting better over time.</p>
             </div>
           </div>
         </div>
 
         <div className="hero-visual-stack">
-          <HeroIllustration />
           <div className="hero-command-card">
             <p className="hero-command-label">Quick start command</p>
             <Terminal label="Quick start command" copyable>

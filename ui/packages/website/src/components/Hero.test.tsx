@@ -56,6 +56,6 @@ describe("Hero", () => {
     renderHero();
     expect(screen.getByText("Validated PRs")).toBeInTheDocument();
     expect(screen.getByText("Direct model billing")).toBeInTheDocument();
-    expect(screen.getByText("Gamified agent delivery")).toBeInTheDocument();
+    expect(screen.getByText("Measurable run quality")).toBeInTheDocument();
   });
 });

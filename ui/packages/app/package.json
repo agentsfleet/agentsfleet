@@ -8,12 +8,13 @@
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
-    "lint": "next lint",
+    "lint": "eslint .",
     "test": "vitest run tests/*.test.ts",
     "test:smoke": "vitest run tests/smoke.test.ts",
     "test:e2e": "bunx playwright test",
     "test:e2e:smoke": "bunx playwright test tests/e2e/smoke.spec.ts",
     "qa": "bun run test && bun run test:e2e",
+    "test:coverage": "vitest run tests/*.test.ts --coverage",
     "qa:smoke": "bun run test:smoke && bun run test:e2e:smoke"
   },
   "dependencies": {
@@ -44,6 +45,14 @@
     "@types/react-dom": "19.2.3",
     "tailwindcss": "^4.0.0",
     "typescript": "6.0.1-rc",
+    "@eslint/js": "^10.0.1",
+    "@typescript-eslint/eslint-plugin": "^8.56.1",
+    "@typescript-eslint/parser": "^8.56.1",
+    "@vitest/coverage-v8": "4.1.0-beta.5",
+    "eslint": "^10.0.2",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^7.0.1",
+    "globals": "^17.4.0",
     "vitest": "4.1.0-beta.5"
   }
 }

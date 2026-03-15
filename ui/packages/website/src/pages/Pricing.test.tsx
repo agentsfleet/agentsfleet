@@ -20,8 +20,8 @@ describe("Pricing", () => {
 
   it("renders roadmap proof points", () => {
     renderPricing();
-    expect(screen.getByText(/upcoming firecracker resource governance/i)).toBeInTheDocument();
-    expect(screen.getByText(/upcoming agent scoring, failure analysis, and learning loops/i)).toBeInTheDocument();
+    expect(screen.getByText(/run quality scoring and failure analysis/i)).toBeInTheDocument();
+    expect(screen.getByText(/sandbox governance and team controls/i)).toBeInTheDocument();
   });
 
   it("renders Hobby and Scale tiers", () => {
@@ -38,10 +38,10 @@ describe("Pricing", () => {
     );
   });
 
-  it("shows Free and Unlimited users in the card chrome", () => {
+  it("shows Free and Waitlist open in the card chrome", () => {
     renderPricing();
     expect(screen.getByText("Free")).toBeInTheDocument();
-    expect(screen.getByText("Unlimited users")).toBeInTheDocument();
+    expect(screen.getByText("Waitlist open")).toBeInTheDocument();
   });
 
   it("opens on-page notify flow for Scale", async () => {
@@ -67,9 +67,9 @@ describe("Pricing", () => {
     expect(screen.getByRole("alert")).toHaveTextContent(/notify me is not configured yet/i);
   });
 
-  it("renders launch posture copy", () => {
+  it("renders move-up guidance copy", () => {
     renderPricing();
-    expect(screen.getByText(/only pricing captures demand/i)).toBeInTheDocument();
+    expect(screen.getByText(/start on hobby/i)).toBeInTheDocument();
   });
 
   it("renders FAQ section", () => {

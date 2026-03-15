@@ -1,0 +1,41 @@
+name: cross-compile
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'src/**'
+      - 'build.zig'
+      - 'build.zig.zon'
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'src/**'
+      - 'build.zig'
+      - 'build.zig.zon'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  cross-compile:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - target: x86_64-linux
+          - target: aarch64-linux
+          - target: x86_64-macos
+          - target: aarch64-macos
+    steps:
+      - uses: actions/checkout@v6
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.15.2
+      - name: Cross-compile zombied (${{ matrix.target }})
+        run: zig build -Doptimize=ReleaseSafe -Dtarget=${{ matrix.target }}
