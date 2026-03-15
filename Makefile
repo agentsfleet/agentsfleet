@@ -17,7 +17,7 @@ help:  ## Show all available Makefile targets
 	@echo "  dev                Alias for 'make up'"
 	@echo ""
 	@echo "Quality & Testing:"
-	@echo "  lint               Run formatter and linter (zombied Zig + website ESLint)"
+	@echo "  lint               Run formatter and linter (zombied Zig + website + app + zombiectl)"
 	@echo "  test-zombied       Run zombied tests (Zig unit + Zig integration)"
 	@echo "  test-unit          Run all unit lanes (zombied + zombiectl + website Vitest + app Vitest)"
 	@echo "  test               Run test-unit (includes test-zombied) + backend/API e2e"
