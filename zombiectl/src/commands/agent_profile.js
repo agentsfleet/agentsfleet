@@ -1,7 +1,9 @@
+import { AGENTS_PATH } from "../lib/api-paths.js";
+
 export async function commandAgentProfile(ctx, parsed, agentId, deps) {
   const { request, apiHeaders, ui, printJson, printKeyValue, writeLine } = deps;
 
-  const res = await request(ctx, `/v1/agents/${encodeURIComponent(agentId)}`, {
+  const res = await request(ctx, `${AGENTS_PATH}${encodeURIComponent(agentId)}`, {
     method: "GET",
     headers: apiHeaders(ctx),
   });

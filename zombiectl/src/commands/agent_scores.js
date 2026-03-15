@@ -1,10 +1,12 @@
+import { AGENTS_PATH } from "../lib/api-paths.js";
+
 export async function commandAgentScores(ctx, parsed, agentId, deps) {
   const { request, apiHeaders, ui, printJson, printTable, writeLine } = deps;
 
   const limit = parsed.options.limit || 20;
   const startingAfter = parsed.options["starting-after"] || null;
 
-  let url = `/v1/agents/${encodeURIComponent(agentId)}/scores?limit=${limit}`;
+  let url = `${AGENTS_PATH}${encodeURIComponent(agentId)}/scores?limit=${limit}`;
   if (startingAfter) url += `&starting_after=${encodeURIComponent(startingAfter)}`;
 
   const res = await request(ctx, url, { method: "GET", headers: apiHeaders(ctx) });
