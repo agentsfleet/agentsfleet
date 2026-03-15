@@ -12,19 +12,21 @@ const sql_resolve_agent_workspace =
     \\SELECT workspace_id FROM agent_profiles WHERE agent_id = $1
 ;
 
+// score_id is UUIDv7: lexicographic order == chronological order, so
+// `score_id < $cursor` gives stable keyset pagination without a subquery.
 const sql_scores_first_page =
     \\SELECT score_id, run_id, score, axis_scores, weight_snapshot, scored_at
     \\FROM agent_run_scores
     \\WHERE agent_id = $1 AND workspace_id = $2
-    \\ORDER BY scored_at DESC
+    \\ORDER BY score_id DESC
     \\LIMIT $3
 ;
 
-const sql_scores_cursor_page =
+const sql_scores_after_cursor =
     \\SELECT score_id, run_id, score, axis_scores, weight_snapshot, scored_at
     \\FROM agent_run_scores
-    \\WHERE agent_id = $1 AND workspace_id = $2 AND scored_at < $3
-    \\ORDER BY scored_at DESC
+    \\WHERE agent_id = $1 AND workspace_id = $2 AND score_id < $3
+    \\ORDER BY score_id DESC
     \\LIMIT $4
 ;
 
@@ -50,10 +52,8 @@ pub fn handleGetAgentScores(ctx: *common.Context, r: zap.Request, agent_id: []co
         break :blk @min(@max(parsed, 1), max_limit);
     };
 
-    const cursor: ?i64 = blk: {
-        const param = r.getParamStr(alloc, "cursor") catch null orelse break :blk null;
-        break :blk std.fmt.parseInt(i64, param, 10) catch null;
-    };
+    // Stripe-style cursor: score_id of the last item on the previous page.
+    const starting_after: ?[]const u8 = r.getParamStr(alloc, "starting_after") catch null;
 
     const conn = ctx.pool.acquire() catch {
         common.internalDbUnavailable(r, req_id);
@@ -82,10 +82,11 @@ pub fn handleGetAgentScores(ctx: *common.Context, r: zap.Request, agent_id: []co
         return;
     }
 
+    // Fetch limit+1 to detect whether a next page exists.
     const fetch_limit = limit + 1;
 
-    var sq = if (cursor) |cur|
-        conn.query(sql_scores_cursor_page, .{ agent_id, workspace_id, cur, fetch_limit }) catch {
+    var sq = if (starting_after) |cursor|
+        conn.query(sql_scores_after_cursor, .{ agent_id, workspace_id, cursor, fetch_limit }) catch {
             common.internalDbError(r, req_id);
             return;
         }
@@ -96,7 +97,7 @@ pub fn handleGetAgentScores(ctx: *common.Context, r: zap.Request, agent_id: []co
         };
     defer sq.deinit();
 
-    var items: std.ArrayList(std.json.Value) = .{};
+    var data: std.ArrayList(std.json.Value) = .{};
     while (sq.next() catch null) |srow| {
         const sid = srow.get([]u8, 0) catch continue;
         const run_id = srow.get([]u8, 1) catch continue;
@@ -112,33 +113,33 @@ pub fn handleGetAgentScores(ctx: *common.Context, r: zap.Request, agent_id: []co
         obj.put("axis_scores", .{ .string = axis_scores }) catch continue;
         obj.put("weight_snapshot", .{ .string = weight_snapshot }) catch continue;
         obj.put("scored_at", .{ .integer = scored_at }) catch continue;
-        items.append(alloc, .{ .object = obj }) catch continue;
+        data.append(alloc, .{ .object = obj }) catch continue;
     }
     sq.drain() catch |err| obs_log.logWarnErr(.http, err, "scores query drain failed agent_id={s}", .{agent_id});
 
-    const has_more = items.items.len > @as(usize, @intCast(limit));
-    const result_count = @min(items.items.len, @as(usize, @intCast(limit)));
-    const result_items = items.items[0..result_count];
+    const result_count = @min(data.items.len, @as(usize, @intCast(limit)));
+    const has_more = data.items.len > result_count;
+    const result_data = data.items[0..result_count];
 
-    const next_cursor: ?i64 = if (has_more and result_count > 0) blk: {
-        const last = result_items[result_count - 1];
-        if (last.object.get("scored_at")) |v| break :blk v.integer;
+    const next_cursor: ?[]const u8 = if (has_more and result_count > 0) blk: {
+        const last = result_data[result_count - 1];
+        if (last.object.get("score_id")) |v| break :blk v.string;
         break :blk null;
     } else null;
 
     common.writeJson(r, .ok, .{
-        .items = result_items,
+        .data = result_data,
+        .has_more = has_more,
         .next_cursor = next_cursor,
         .request_id = req_id,
     });
 }
 
-test "integration: agent scores returns empty items for agent with no scores" {
+test "integration: agent scores returns empty for unknown agent" {
     const db_ctx = (try common.openHandlerTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
     defer db_ctx.pool.release(db_ctx.conn);
     defer db_ctx.pool.deinit();
 
-    // Verify workspace resolution query works against empty result
     var q = try db_ctx.conn.query(sql_resolve_agent_workspace, .{"0195b4ba-8d3a-7f13-8abc-000000000000"});
     defer q.deinit();
     try std.testing.expect(try q.next() == null);

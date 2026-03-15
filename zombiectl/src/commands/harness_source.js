@@ -1,0 +1,38 @@
+import fs from "node:fs/promises";
+import path from "node:path";
+
+export async function commandHarnessSourcePut(ctx, parsed, workspaceId, deps) {
+  const {
+    request,
+    apiHeaders,
+    ui,
+    printJson,
+    writeLine,
+    readFile = fs.readFile,
+    resolvePath = path.resolve,
+  } = deps;
+
+  const file = parsed.options.file;
+  if (!file) {
+    writeLine(ctx.stderr, ui.err("harness source put requires --file"));
+    return 2;
+  }
+
+  const fileContent = await readFile(resolvePath(file), "utf8");
+  const inferredName = path.basename(String(file), path.extname(String(file)));
+  const body = {
+    profile_id: parsed.options["profile-id"] || null,
+    name: parsed.options.name || inferredName || "Workspace Harness",
+    source_markdown: fileContent,
+  };
+
+  const res = await request(ctx, `/v1/workspaces/${encodeURIComponent(workspaceId)}/harness/source`, {
+    method: "PUT",
+    headers: apiHeaders(ctx),
+    body: JSON.stringify(body),
+  });
+
+  if (ctx.jsonMode) printJson(ctx.stdout, res);
+  else writeLine(ctx.stdout, ui.ok(`harness source stored profile_version_id=${res.profile_version_id}`));
+  return 0;
+}
