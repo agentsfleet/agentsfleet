@@ -206,7 +206,8 @@ pub const Client = struct {
         if (stream_entry[1] != .array) return error.RedisUnexpectedResponse;
         const messages = stream_entry[1].array orelse return null;
         if (messages.len == 0) return null;
-        return self.decodeMessageTuple(messages[0]);
+        const message = try self.decodeMessageTuple(messages[0]);
+        return message;
     }
 
     fn decodeAutoClaimMessage(self: *Client, value: redis_protocol.RespValue) !?redis_types.QueueMessage {
@@ -216,7 +217,8 @@ pub const Client = struct {
         if (top[1] != .array) return error.RedisUnexpectedResponse;
         const messages = top[1].array orelse return null;
         if (messages.len == 0) return null;
-        return self.decodeMessageTuple(messages[0]);
+        const message = try self.decodeMessageTuple(messages[0]);
+        return message;
     }
 
     fn decodeMessageTuple(self: *Client, item: redis_protocol.RespValue) !redis_types.QueueMessage {
