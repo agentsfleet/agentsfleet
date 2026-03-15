@@ -21,10 +21,13 @@ pub const Route = union(enum) {
     activate_harness: []const u8,
     get_harness_active: []const u8,
     sync_workspace: []const u8,
+    get_agent: []const u8,
+    get_agent_scores: []const u8,
 };
 
 const prefix_workspaces = "/v1/workspaces/";
 const prefix_runs = "/v1/runs/";
+const prefix_agents = "/v1/agents/";
 const prefix_auth_sessions = "/v1/auth/sessions/";
 
 pub fn match(path: []const u8) ?Route {
@@ -74,6 +77,16 @@ pub fn match(path: []const u8) ?Route {
         if (inner.len > 0) return .{ .sync_workspace = inner };
     }
 
+    if (std.mem.startsWith(u8, path, prefix_agents) and std.mem.endsWith(u8, path, "/scores")) {
+        const inner = path[prefix_agents.len .. path.len - "/scores".len];
+        if (isSingleSegment(inner)) return .{ .get_agent_scores = inner };
+    }
+
+    if (std.mem.startsWith(u8, path, prefix_agents)) {
+        const agent_id = path[prefix_agents.len..];
+        if (isSingleSegment(agent_id)) return .{ .get_agent = agent_id };
+    }
+
     return null;
 }
 
@@ -116,6 +129,26 @@ test "match resolves workspace billing and harness routes" {
 test "match rejects multi-segment workspace suffix routes" {
     try std.testing.expect(match("/v1/workspaces/ws_1/extra/billing/events") == null);
     try std.testing.expect(match("/v1/workspaces//billing/events") == null);
+}
+
+test "match resolves agent profile and scores routes" {
+    const agent_id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
+    try std.testing.expectEqualStrings(
+        agent_id,
+        switch (match("/v1/agents/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11").?) {
+            .get_agent => |id| id,
+            else => return error.TestExpectedEqual,
+        },
+    );
+    try std.testing.expectEqualStrings(
+        agent_id,
+        switch (match("/v1/agents/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/scores").?) {
+            .get_agent_scores => |id| id,
+            else => return error.TestExpectedEqual,
+        },
+    );
+    try std.testing.expect(match("/v1/agents/") == null);
+    try std.testing.expect(match("/v1/agents/foo/bar/scores") == null);
 }
 
 test "match resolves auth and run routes" {

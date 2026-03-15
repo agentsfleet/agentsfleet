@@ -64,6 +64,8 @@ fn dispatchMatchedRoute(r: zap.Request, path: []const u8) bool {
         .activate_harness => |workspace_id| if (r.methodAsEnum() == .POST) handler.handleActivateHarness(g_ctx, r, workspace_id) else respondMethodNotAllowed(r),
         .get_harness_active => |workspace_id| if (r.methodAsEnum() == .GET) handler.handleGetHarnessActive(g_ctx, r, workspace_id) else respondMethodNotAllowed(r),
         .sync_workspace => |workspace_id| if (r.methodAsEnum() == .POST) handler.handleSyncSpecs(g_ctx, r, workspace_id) else respondMethodNotAllowed(r),
+        .get_agent => |agent_id| if (r.methodAsEnum() == .GET) handler.handleGetAgent(g_ctx, r, agent_id) else respondMethodNotAllowed(r),
+        .get_agent_scores => |agent_id| if (r.methodAsEnum() == .GET) handler.handleGetAgentScores(g_ctx, r, agent_id) else respondMethodNotAllowed(r),
     }
     return true;
 }

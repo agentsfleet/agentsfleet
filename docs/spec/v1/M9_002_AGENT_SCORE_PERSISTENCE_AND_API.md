@@ -4,7 +4,7 @@
 **Milestone:** M9
 **Workstream:** 002
 **Date:** Mar 13, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P0 — exposes scores to CLI and UI; required before feedback injection (M9_003)
 **Batch:** B1 — parallel with M9_001 schema work; depends on M9_001 event contract
 **Depends on:** M9_001 (scoring engine + event schema)
@@ -23,12 +23,12 @@ No separate rename migration is part of M9_002.
 
 ## 1.0 Data Model
 
-**Status:** PENDING
+**Status:** DONE
 
 Persist raw deterministic score outputs in the workspace data model using UUIDv7 keys (M8_001 contract). Do not persist derived labels such as tiers or trust levels in Postgres.
 
 **Dimensions:**
-- 1.1 PENDING Add `agent_run_scores` table:
+- 1.1 DONE Add `agent_run_scores` table:
   ```sql
   CREATE TABLE agent_run_scores (
       score_id         UUID PRIMARY KEY,
@@ -46,7 +46,7 @@ Persist raw deterministic score outputs in the workspace data model using UUIDv7
   CREATE INDEX idx_agent_run_scores_workspace ON agent_run_scores(workspace_id, score DESC);
   ```
 - 1.2 DONE Do not add score-derived columns to `agent_profiles`. Tiering, trust, and leaderboard-specific aggregates remain application concerns or follow-on work.
-- 1.3 PENDING Add `workspace_latency_baseline` table:
+- 1.3 DONE Add `workspace_latency_baseline` table:
   ```sql
   CREATE TABLE workspace_latency_baseline (
       workspace_id    UUID PRIMARY KEY REFERENCES workspaces(workspace_id),
@@ -57,8 +57,8 @@ Persist raw deterministic score outputs in the workspace data model using UUIDv7
   );
   ```
 - 1.4 DONE Canonical schema is updated in-place for this unreleased project; no `ALTER TABLE`-based rename or score-aggregate expansion is introduced in M9_002
-- 1.5 PENDING Indexes: `(agent_id, scored_at DESC)` for trajectory queries; `(workspace_id, score DESC)` for leaderboard queries
-- 1.6 PENDING DB grants:
+- 1.5 DONE Indexes: `(agent_id, scored_at DESC)` for trajectory queries; `(workspace_id, score DESC)` for leaderboard queries
+- 1.6 DONE DB grants:
   ```sql
   GRANT SELECT, INSERT, UPDATE ON agent_run_scores TO worker_accessor;
   GRANT SELECT ON agent_run_scores TO api_accessor;
@@ -72,41 +72,41 @@ Persist raw deterministic score outputs in the workspace data model using UUIDv7
 
 ## 2.0 API Endpoints
 
-**Status:** PENDING
+**Status:** DONE
 
 Expose score data via the existing zombied HTTP API following current auth and error-code conventions.
 
 **Dimensions:**
-- 2.1 PENDING `GET /v1/agents/{agent_id}/scores?limit=50&cursor=` — paginated run score history, newest first; response includes `score_id`, `run_id`, `score`, `axis_scores`, `weight_snapshot`, `scored_at` per entry. Returns `[]` if no scores exist.
-- 2.2 PENDING `GET /v1/agents/{agent_id}` — returns base agent metadata from `agent_profiles` such as `agent_id`, `name`, `status`, `created_at`, and `updated_at`. Returns 404 if agent_id not found.
+- 2.1 DONE `GET /v1/agents/{agent_id}/scores?limit=50&cursor=` — paginated run score history, newest first; response includes `score_id`, `run_id`, `score`, `axis_scores`, `weight_snapshot`, `scored_at` per entry. Returns `[]` if no scores exist.
+- 2.2 DONE `GET /v1/agents/{agent_id}` — returns base agent metadata from `agent_profiles` such as `agent_id`, `name`, `status`, `created_at`, and `updated_at`. Returns 404 if agent_id not found.
 - 2.3 PENDING Workspace leaderboards and derived tiers are deferred until a separate aggregation design is approved.
-- 2.4 PENDING All three endpoints are read-only; require workspace-scoped auth token; workspace_id extracted from auth claims. Cross-workspace data leakage prevented by `WHERE workspace_id = $auth_workspace_id` on every query.
+- 2.4 DONE All endpoints are read-only; require workspace-scoped auth token; workspace_id resolved from agent_profiles and enforced via `WHERE workspace_id = $auth_workspace_id` on every query.
 
 ---
 
 ## 3.0 CLI Surface
 
-**Status:** PENDING
+**Status:** DONE
 
 Expose score data through `zombiectl` with structured and human-readable output.
 
 **Dimensions:**
-- 3.1 PENDING `zombiectl agent scores <agent-id> [--limit 20] [--json]` — prints score history table or JSON
-- 3.2 PENDING `zombiectl agent profile <agent-id>` — prints base agent metadata
+- 3.1 DONE `zombiectl agent scores <agent-id> [--limit 20] [--json]` — prints score history table or JSON
+- 3.2 DONE `zombiectl agent profile <agent-id>` — prints base agent metadata
 - 3.3 PENDING Workspace leaderboard CLI is deferred with the API
 
 ---
 
 ## 4.0 Acceptance Criteria
 
-**Status:** PENDING
+**Status:** DONE
 
-- [ ] 4.1 Score row written within 2 seconds of run reaching terminal state (synchronous path, not outbox)
-- [ ] 4.2 Score persistence writes exactly one row per run and remains idempotent on duplicate scoring attempts
-- [ ] 4.3 Stored score payload preserves raw `axis_scores` and `weight_snapshot` JSON for later API reads
-- [ ] 4.4 Cross-workspace isolation: agent in workspace A never appears in workspace B leaderboard
-- [ ] 4.5 CLI commands return `--json` output parseable by `jq` with no extra prose
-- [ ] 4.6 DB grants enforce worker-write / api-read separation
+- [x] 4.1 Score row written within 2 seconds of run reaching terminal state (synchronous path, not outbox)
+- [x] 4.2 Score persistence writes exactly one row per run and remains idempotent on duplicate scoring attempts
+- [x] 4.3 Stored score payload preserves raw `axis_scores` and `weight_snapshot` JSON for later API reads
+- [x] 4.4 Cross-workspace isolation: agent scores filtered by `workspace_id` resolved from `agent_profiles`; cross-workspace data leakage prevented
+- [x] 4.5 CLI commands return `--json` output parseable by `jq` with no extra prose
+- [x] 4.6 DB grants enforce worker-write / api-read separation
 
 ---
 
