@@ -6,6 +6,7 @@ const common = @import("handlers/common.zig");
 const runs_handlers = @import("handlers/runs.zig");
 const workspace_handlers = @import("handlers/workspaces.zig");
 const specs_handlers = @import("handlers/specs.zig");
+const agents_handlers = @import("handlers/agents.zig");
 const skill_secret_handlers = @import("handlers/skill_secrets.zig");
 const health_handlers = @import("handlers/health.zig");
 const harness_http = @import("handlers/harness_http.zig");
@@ -25,6 +26,8 @@ pub const handleSyncSpecs = workspace_handlers.handleSyncSpecs;
 pub const handleUpgradeWorkspaceToScale = workspace_handlers.handleUpgradeWorkspaceToScale;
 pub const handleApplyWorkspaceBillingEvent = workspace_handlers.handleApplyWorkspaceBillingEvent;
 pub const handleListSpecs = specs_handlers.handleListSpecs;
+pub const handleGetAgent = agents_handlers.handleGetAgent;
+pub const handleGetAgentScores = agents_handlers.handleGetAgentScores;
 
 pub const handleHealthz = health_handlers.handleHealthz;
 pub const handleReadyz = health_handlers.handleReadyz;
