@@ -11,44 +11,38 @@ const features = [
     number: "01",
     title: "Automated PR delivery",
     description:
-      "Move from queued engineering intent to review-ready pull requests without manually orchestrating each run.",
+      "Turn queued engineering work into review-ready pull requests without manually shepherding each run.",
   },
   {
     number: "02",
-    title: "Resource-governed execution",
+    title: "Validation before review",
     description:
-      "Upcoming paid plans add stricter sandbox memory, CPU, and disk controls so one runaway run cannot wreck the rest of the queue.",
+      "Run harness checks before reviewers are pulled in, and attach validation output to every pull request.",
   },
   {
     number: "03",
-    title: "Built-in harness and validation",
+    title: "Replay and traceability",
     description:
-      "Run checks before reviewers are pulled in. Validation output and run context ship with each PR so issues are found earlier.",
+      "Track each run from intent to PR with event history, replayable artifacts, and a clear audit trail.",
   },
   {
     number: "04",
-    title: "Run quality that gets measured",
+    title: "Run quality scoring",
     description:
-      "Score every run on completion, reliability, latency, and eventually resource efficiency so teams can see whether automation is actually improving.",
+      "Score runs across completion, reliability, latency, and efficiency so teams can track whether automation is actually improving.",
   },
   {
     number: "05",
-    title: "Failure analysis with next-run context",
+    title: "Failure analysis and improvement guidance",
     description:
-      "When a run fails, upcoming analysis surfaces why it failed and feeds the key lesson back into the next run instead of repeating the same mistake.",
+      "When a run fails, surface the likely cause, preserve the right context, and guide the next run toward a better outcome.",
   },
   {
     number: "06",
-    title: "Dynamic agent profiles by repo and team",
+    title: "Repo-level governance",
     description:
-      "Shape agent behavior per repo without rewriting workers, so each team can compile, activate, and audit the profile that matches its workflow.",
+      "Apply repo and team-specific profiles, approvals, and sandbox limits so agents operate inside clear boundaries.",
   },
-  {
-    number: "07",
-    title: "Know exactly what the agent was allowed to do",
-    description:
-      "Require sign-off before agents touch sensitive code, enforce repo-specific rules automatically, and give reviewers a clear audit trail instead of guesswork.",
-    },
 ];
 
 export default function Home() {
@@ -57,8 +51,8 @@ export default function Home() {
       <Hero />
       <FeatureFlow />
       <div className="section-gap home-section-head">
-        <p className="eyebrow">What improves as you scale</p>
-        <h2>Safer runs, clearer quality signals, and better automation over time.</h2>
+        <p className="eyebrow">Core capabilities</p>
+        <h2>Validated PR delivery, measurable run quality, and tighter control as automation scales.</h2>
       </div>
       <div className="grid two features-grid">
         {features.map((f) => (

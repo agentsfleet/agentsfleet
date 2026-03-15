@@ -7,11 +7,11 @@ const items = [
   },
   {
     q: "What am I actually paying for?",
-    a: "Compute billing: per agent-second of wall-clock time that workers (Echo, Scout, Warden) run. Plus a one-time $5 workspace activation fee. That's it.",
+    a: "UseZombie charges for hosted agent execution time — per agent-second of wall-clock time. Model usage is billed directly by your provider through BYOK, so there is no token markup.",
   },
   {
     q: "Can I try it before committing?",
-    a: "Yes. Hobby gives you a single workspace and a free daily runtime window. No credit card required. Upgrade to Team when you need higher limits and controls.",
+    a: "Yes. Hobby includes one workspace and $10 in credit with no expiry. No credit card required. Move to Scale when you need shared workspaces, stronger governance, and deeper quality visibility.",
   },
   {
     q: "What happens to my code?",
@@ -23,7 +23,7 @@ const items = [
   },
   {
     q: "Is there an SLA?",
-    a: "Team runs with priority support and stronger execution boundaries. Contractual SLAs are handled through dedicated enterprise agreements when offered.",
+    a: "Scale includes priority support and stronger execution boundaries. Contractual SLAs are available for larger deployments.",
   },
 ];
 
