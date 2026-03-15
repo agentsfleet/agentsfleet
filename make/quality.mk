@@ -20,7 +20,7 @@ _website_lint:
 
 _app_lint:
 	@echo "→ [app] Running ESLint + TypeScript check..."
-	@cd ui/packages/app && bunx next lint .
+	@cd ui/packages/app && bun run lint
 	@cd ui/packages/app && bun run typecheck
 	@echo "✓ [app] Lint passed"
 
