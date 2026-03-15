@@ -8,7 +8,8 @@
 
 [![CI](https://github.com/usezombie/usezombie/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/usezombie/usezombie/actions/workflows/test.yml?query=branch%3Amain)
 [![Release](https://github.com/usezombie/usezombie/actions/workflows/release.yml/badge.svg)](https://github.com/usezombie/usezombie/actions/workflows/release.yml)
-[![Coverage](https://codecov.io/gh/usezombie/usezombie/branch/main/graph/badge.svg)](https://codecov.io/gh/usezombie/usezombie)
+[![Coverage: website](https://codecov.io/gh/usezombie/usezombie/flags/website/graph/badge.svg)](https://codecov.io/gh/usezombie/usezombie/flags/website)
+[![Coverage: app](https://codecov.io/gh/usezombie/usezombie/flags/apps/graph/badge.svg)](https://codecov.io/gh/usezombie/usezombie/flags/apps)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](https://opensource.org/licenses/MIT)
 [![Version](https://img.shields.io/badge/version-0.1.0-blue?style=flat-square)](https://github.com/usezombie/usezombie/releases)
 [![Zig](https://img.shields.io/badge/zig-0.15.2-orange?style=flat-square&logo=zig)](https://ziglang.org)
