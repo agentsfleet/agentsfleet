@@ -18,13 +18,27 @@ jobs:
         with:
           bun-version: 1.3.10
 
-      # Detect which Vercel project deployed based on URL pattern
-      # Three projects: usezombie-app, usezombie-agents-sh, usezombie-website
+      # Detect which Vercel project deployed based on GitHub deployment metadata first.
+      # URL-shape fallback remains for safety, but deployment.environment is the stable source.
       - name: Detect project
         id: detect
         run: |
           URL="${{ github.event.deployment_status.target_url }}"
-          if echo "$URL" | grep -qi "usezombie-app\|app\.usezombie"; then
+          DEPLOY_ENV="${{ github.event.deployment.original_environment || github.event.deployment.environment }}"
+
+          echo "deployment_environment=$DEPLOY_ENV"
+          echo "target_url=$URL"
+
+          if echo "$DEPLOY_ENV" | grep -qi "usezombie-app"; then
+            echo "package=app" >> "$GITHUB_OUTPUT"
+            echo "workdir=ui/packages/app" >> "$GITHUB_OUTPUT"
+          elif echo "$DEPLOY_ENV" | grep -qi "usezombie-agents"; then
+            echo "package=agents" >> "$GITHUB_OUTPUT"
+            echo "workdir=ui/packages/website" >> "$GITHUB_OUTPUT"
+          elif echo "$DEPLOY_ENV" | grep -qi "usezombie-website"; then
+            echo "package=website" >> "$GITHUB_OUTPUT"
+            echo "workdir=ui/packages/website" >> "$GITHUB_OUTPUT"
+          elif echo "$URL" | grep -qi "usezombie-app\|app\.usezombie"; then
             echo "package=app" >> "$GITHUB_OUTPUT"
             echo "workdir=ui/packages/app" >> "$GITHUB_OUTPUT"
           elif echo "$URL" | grep -qi "usezombie-agents"; then
