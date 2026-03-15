@@ -54,7 +54,8 @@ pub fn dbEmitter(conn: *pg.Conn) Emitter {
 
 fn emitToDb(ctx: *anyopaque, event: PromptEvent) anyerror!void {
     const conn: *pg.Conn = @ptrCast(@alignCast(ctx));
-    const row_id = try id_format.generatePromptLifecycleEventId(conn.arena);
+    const row_id = try id_format.generatePromptLifecycleEventId(conn._allocator);
+    defer conn._allocator.free(row_id);
     const event_id = randomEventId();
     var q = try conn.query(
         \\INSERT INTO prompt_lifecycle_events

@@ -133,8 +133,8 @@ pub fn processNextRun(
         .event_type = .prompt_eval,
         .workspace_id = workspace_id,
         .tenant_id = tenant_id,
-        .profile_id = effective_profile.profile_id,
-        .profile_version_id = null,
+        .agent_id = effective_profile.profile_id,
+        .config_version_id = null,
         .metadata_json = "{\"phase\":\"start\"}",
         .ts_ms = std.time.milliTimestamp(),
     });
@@ -169,8 +169,8 @@ pub fn processNextRun(
             .event_type = .prompt_performance,
             .workspace_id = workspace_id,
             .tenant_id = tenant_id,
-            .profile_id = effective_profile.profile_id,
-            .profile_version_id = null,
+            .agent_id = effective_profile.profile_id,
+            .config_version_id = null,
             .metadata_json = "{\"status\":\"failed\"}",
             .ts_ms = std.time.milliTimestamp(),
         });
@@ -236,8 +236,8 @@ pub fn processNextRun(
             .event_type = .prompt_performance,
             .workspace_id = workspace_id,
             .tenant_id = tenant_id,
-            .profile_id = effective_profile.profile_id,
-            .profile_version_id = null,
+            .agent_id = effective_profile.profile_id,
+            .config_version_id = null,
             .metadata_json = "{\"status\":\"completed\"}",
             .ts_ms = std.time.milliTimestamp(),
         });

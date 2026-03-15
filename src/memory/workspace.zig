@@ -68,7 +68,8 @@ pub fn saveFromWarden(
         if (trimmed.len == 0) continue;
         if (trimmed.len > 2048) continue; // sanity cap
 
-        const memory_id = try id_format.generateWorkspaceMemoryId(conn.arena);
+        const memory_id = try id_format.generateWorkspaceMemoryId(conn._allocator);
+        defer conn._allocator.free(memory_id);
         var r = try conn.query(
             \\INSERT INTO workspace_memories
             \\  (id, workspace_id, run_id, content, tags, created_at, expires_at)

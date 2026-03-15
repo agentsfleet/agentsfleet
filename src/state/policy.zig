@@ -25,7 +25,8 @@ pub fn recordPolicyEvent(
     actor: []const u8,
 ) !void {
     const now_ms = std.time.milliTimestamp();
-    const event_id = try id_format.generatePolicyEventId(conn.arena);
+    const event_id = try id_format.generatePolicyEventId(conn._allocator);
+    defer conn._allocator.free(event_id);
     var r = try conn.query(
         \\INSERT INTO policy_events
         \\  (id, run_id, workspace_id, action_class, decision, rule_id, actor, ts)
