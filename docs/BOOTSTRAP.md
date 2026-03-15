@@ -51,7 +51,7 @@ Give the agent:
 
 | Item | Field | Value source |
 |---|---|---|
-| `cloudflare-token` | `credential` | CF API token from human |
+| `cloudflare-api-token` | `credential` | CF API token from human |
 | `npm-publish-token` | `credential` | npm token from human |
 | `vercel-bypass-website` | `credential` | Vercel → `usezombie-website` project → Deployment Protection → Bypass |
 | `vercel-bypass-agents` | `credential` | Vercel → `usezombie-agents-sh` project → Deployment Protection → Bypass |
@@ -88,7 +88,7 @@ GitHub repo → Settings → Secrets and Variables → Actions:
 ### Cloudflare — zone discovery
 
 ```bash
-zsh -i -c "op read 'op://ZMB_CD_PROD/cloudflare-token/credential'" | \
+zsh -i -c "op read 'op://ZMB_CD_PROD/cloudflare-api-token/credential'" | \
   xargs -I{} curl -s -H "Authorization: Bearer {}" \
   https://api.cloudflare.com/client/v4/zones | jq '.result[] | {name, id}'
 ```
@@ -102,7 +102,7 @@ Agent reads project IDs and API token from 1Password, then sets env vars via `PA
 | Variable | Preview | Production |
 |---|---|---|
 | `NEXT_PUBLIC_API_URL` | `https://api.dev.usezombie.com` | `https://api.usezombie.com` |
-| `NEXT_PUBLIC_PUBLISHABLE_KEY` | Clerk DEV publishable key | Clerk PROD publishable key |
+| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Clerk DEV publishable key | Clerk PROD publishable key |
 | `CLERK_SECRET_KEY` | Clerk DEV secret key | Clerk PROD secret key |
 
 **`usezombie-agents-sh`** and **`usezombie-website`:**

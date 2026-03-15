@@ -58,7 +58,7 @@ Access: `ZMB_CD_DEV` + `ZMB_CD_PROD`
 | `vercel-bypass-website` | `credential` | Vercel preview bypass for `usezombie-website` (smoke CI) |
 | `vercel-bypass-agents` | `credential` | Vercel preview bypass for `usezombie-agents-sh` (smoke CI) |
 | `vercel-bypass-app` | `credential` | Vercel preview bypass for `usezombie-app` (smoke CI) |
-| `cloudflare-token` | `credential` | Cloudflare API token (Zone:Edit + Zone:Read) |
+| `cloudflare-api-token` | `credential` | Cloudflare API token (Zone:Edit + Zone:Read) |
 
 ---
 
@@ -83,6 +83,8 @@ Configure in each project → Settings → Environment Variables.
 
 | Variable | Preview | Production |
 |---|---|---|
+| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Clerk DEV publishable key | Clerk PROD publishable key |
+| `CLERK_SECRET_KEY` | Clerk DEV secret key | Clerk PROD secret key |
 | `NEXT_PUBLIC_API_URL` | `https://api.dev.usezombie.com` | `https://api.usezombie.com` |
 
 **`usezombie-agents-sh`** and **`usezombie-website`**
