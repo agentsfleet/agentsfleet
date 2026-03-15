@@ -55,6 +55,9 @@ Access: `ZMB_CD_DEV` + `ZMB_CD_PROD`
 | `zombied-prod-server-1` | `hostname`, `ssh-private-key`, `deploy-user` | prod blue-green deploy |
 | `zombied-prod-server-2` | `hostname`, `ssh-private-key`, `deploy-user` | prod blue-green second node |
 | `npm-publish-token` | `credential` | zombiectl npm publish |
+| `vercel-bypass-website` | `credential` | Vercel preview bypass for `usezombie-agents-sh` (smoke CI) |
+| `vercel-bypass-app` | `credential` | Vercel preview bypass for `usezombie-app` (smoke CI) |
+| `cloudflare-token` | `credential` | Cloudflare API token (Zone:Edit + Zone:Read) |
 
 ---
 
@@ -66,10 +69,34 @@ Vercel handles all deploys automatically — no explicit CI deploy step required
 | Project | Root directory | Production domain | Env var |
 |---|---|---|---|
 | `usezombie-website` | `ui/packages/website` | `usezombie.com` | `SITE_VARIANT=humans` |
-| `usezombie-agents-site` | `ui/packages/website` | `usezombie.sh` | `SITE_VARIANT=agents` |
+| `usezombie-agents-sh` | `ui/packages/website` | `usezombie.sh` | `SITE_VARIANT=agents` |
 | `usezombie-app` | `ui/packages/app` | `app.usezombie.com` | — |
 
 Preview deploys happen automatically on PR. `smoke-post-deploy.yml` fires on `deployment_status` per project and routes to the correct Playwright smoke suite.
+
+### Vercel Environment Variables (scoped per environment)
+
+Configure in each project → Settings → Environment Variables.
+
+**`usezombie-app`**
+
+| Variable | Preview | Production |
+|---|---|---|
+| `NEXT_PUBLIC_API_URL` | `https://api.dev.usezombie.com` | `https://api.usezombie.com` |
+
+**`usezombie-agents-sh`** and **`usezombie-website`**
+
+| Variable | Preview | Production |
+|---|---|---|
+| `VITE_APP_BASE_URL` | `https://app.dev.usezombie.com` | `https://app.usezombie.com` |
+
+> Without explicit Preview scoping, Vite builds with `import.meta.env.PROD=true` and falls back to the production URL. Explicit scoping ensures preview smoke tests hit the dev API/app.
+
+### Vercel Bypass Secrets
+
+Enable in each project → Settings → Deployment Protection → Protection Bypass for Automation.
+Copy the generated token → store in `ZMB_CD_PROD` vault (see table above).
+`smoke-post-deploy.yml` loads them from 1Password and injects `x-vercel-protection-bypass` header automatically.
 
 ---
 

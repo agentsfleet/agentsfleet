@@ -31,6 +31,23 @@ jobs:
             echo "workdir=ui/packages/website" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Load Vercel bypass secrets from 1Password
+        uses: 1password/load-secrets-action@v2
+        with:
+          export-env: true
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          VERCEL_BYPASS_SECRET_WEBSITE: op://ZMB_CD_PROD/vercel-bypass-website/credential
+          VERCEL_BYPASS_SECRET_APP: op://ZMB_CD_PROD/vercel-bypass-app/credential
+
+      - name: Select Vercel bypass secret
+        run: |
+          if [ "${{ steps.detect.outputs.package }}" = "app" ]; then
+            echo "VERCEL_BYPASS_SECRET=$VERCEL_BYPASS_SECRET_APP" >> "$GITHUB_ENV"
+          else
+            echo "VERCEL_BYPASS_SECRET=$VERCEL_BYPASS_SECRET_WEBSITE" >> "$GITHUB_ENV"
+          fi
+
       - name: Install dependencies
         run: bun install --frozen-lockfile
         working-directory: ${{ steps.detect.outputs.workdir }}
@@ -44,6 +61,7 @@ jobs:
         working-directory: ${{ steps.detect.outputs.workdir }}
         env:
           BASE_URL: ${{ github.event.deployment_status.target_url }}
+          VERCEL_BYPASS_SECRET: ${{ env.VERCEL_BYPASS_SECRET }}
 
       - name: Upload Playwright report
         uses: actions/upload-artifact@v7
