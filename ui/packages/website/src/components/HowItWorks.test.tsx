@@ -23,7 +23,7 @@ describe("HowItWorks", () => {
   it("renders step descriptions", () => {
     render(<HowItWorks />);
     expect(screen.getByText(/trigger a run from CLI or API/i)).toBeInTheDocument();
-    expect(screen.getByText(/Echo plans, Scout patches, and Warden validates/i)).toBeInTheDocument();
-    expect(screen.getByText(/pull request opens with run replay/i)).toBeInTheDocument();
+    expect(screen.getByText(/Agents plan, implement, and validate with policy controls/i)).toBeInTheDocument();
+    expect(screen.getByText(/pull request includes run replay/i)).toBeInTheDocument();
   });
 });

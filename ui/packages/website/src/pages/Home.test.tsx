@@ -22,7 +22,7 @@ describe("Home", () => {
 
   it("renders the hero kicker description", () => {
     renderHome();
-    expect(screen.getByText(/turns queued engineering work into validated pull requests with replay, scoring, and policy control/i)).toBeInTheDocument();
+    expect(screen.getByText(/turns queued engineering work into validated pull requests with replay, run quality scoring, and policy controls/i)).toBeInTheDocument();
   });
 
   it("renders primary app CTA with app link", () => {
@@ -59,9 +59,9 @@ describe("Home", () => {
 
   it("renders scaling features on the homepage", () => {
     renderHome();
-    expect(screen.getByText(/what improves as you scale/i)).toBeInTheDocument();
-    expect(screen.getByText("Resource-governed execution")).toBeInTheDocument();
-    expect(screen.getByText("Run quality that gets measured")).toBeInTheDocument();
+    expect(screen.getByText(/core capabilities/i)).toBeInTheDocument();
+    expect(screen.getByText("Validation before review")).toBeInTheDocument();
+    expect(screen.getByText("Run quality scoring")).toBeInTheDocument();
   });
 
   it("renders the install block", () => {

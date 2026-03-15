@@ -15,7 +15,7 @@ test.describe("Pricing page", () => {
   });
 
   test("pricing page highlights the launch-now tier", async ({ page }) => {
-    await expect(page.getByText("Unlimited users")).toBeVisible();
+    await expect(page.getByText("Waitlist open")).toBeVisible();
     await expect(page.getByRole("heading", { name: "Scale", exact: true, level: 2 })).toBeVisible();
   });
 
@@ -23,8 +23,8 @@ test.describe("Pricing page", () => {
     await expect(page.getByText(/\$10 credit included with no expiry/i)).toBeVisible();
   });
 
-  test("renders pricing intent posture note", async ({ page }) => {
-    await expect(page.getByText(/Only pricing captures demand\./i)).toBeVisible();
+  test("renders move-up guidance note", async ({ page }) => {
+    await expect(page.getByText(/Start on Hobby/i)).toBeVisible();
   });
 
   test("FAQ accordion: first item opens on click", async ({ page }) => {

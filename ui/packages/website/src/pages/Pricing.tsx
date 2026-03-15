@@ -33,16 +33,16 @@ type Tier = {
 };
 
 const roadmapSignals = [
-  "BYOK/BYOM and direct provider billing",
-  "Validated PR flow before human review",
-  "Upcoming Firecracker resource governance",
-  "Upcoming agent scoring, failure analysis, and learning loops",
+  "Direct provider billing with BYOK/BYOM",
+  "Validated PR delivery before review",
+  "Run quality scoring and failure analysis",
+  "Sandbox governance and team controls",
 ];
 
 const tiers: Tier[] = [
   {
     name: "Hobby",
-    availability: "Free plan",
+    availability: "Available now",
     price: "Free",
     audience: "For solo builders and early evaluation.",
     isLive: true,
@@ -57,19 +57,19 @@ const tiers: Tier[] = [
   },
   {
     name: "Scale",
-    availability: "Unlimited users",
+    availability: "Waitlist open",
     price: "Notify me",
     audience: "For teams moving from trial usage to governed production delivery.",
     featured: true,
     ctaLabel: "Notify me",
     priceNote: "Join the waitlist for rollout pricing",
-    proof: "Built for teams that want one signal for serious buying intent.",
+    proof: "Built for teams running automation across shared repos with stronger governance and quality visibility.",
     leadIntent: {
       ctaId: "pricing_scale_notify",
       planInterest: "Scale",
       title: "Get notified when Scale opens",
       description:
-        "Scale bundles the upcoming team and control path: shared workspaces, rollout history, sandbox governance, score history, and failure analysis.",
+        "Scale adds shared workspaces, sandbox governance, score history, failure analysis, and controlled improvement workflows for teams.",
       actionLabel: "Notify me",
     },
     highlights: [
@@ -166,12 +166,12 @@ export default function Pricing() {
 
       <div className="pricing-bottom-band">
         <div>
-          <p className="eyebrow">Launch posture</p>
-          <h2>Only pricing captures demand.</h2>
+          <p className="eyebrow">When to move up</p>
+          <h2>Start on Hobby. Move to Scale when automation becomes shared infrastructure.</h2>
         </div>
         <p>
-          The homepage stays focused on product understanding. `/pricing` is where upcoming paid
-          demand is collected, with cleaner attribution and less friction for humans.
+          Hobby is enough to validate the workflow on real repos. Scale adds shared history,
+          stronger controls, and deeper quality analysis for teams operating across multiple repos.
         </p>
       </div>
 

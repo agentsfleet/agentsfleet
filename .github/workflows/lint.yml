@@ -28,5 +28,11 @@ jobs:
       - name: Install website dependencies
         run: bun install --frozen-lockfile
         working-directory: ui/packages/website
+      - name: Install app dependencies
+        run: bun install --frozen-lockfile
+        working-directory: ui/packages/app
+      - name: Install zombiectl dependencies
+        run: bun install --frozen-lockfile
+        working-directory: zombiectl
       - name: Run lint gate
         run: make lint
