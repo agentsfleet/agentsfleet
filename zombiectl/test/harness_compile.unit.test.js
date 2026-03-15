@@ -17,8 +17,8 @@ test("commandHarnessCompile sends profile_version_id", async () => {
   assert.equal(code, 0);
   assert.equal(captured.reqPath, "/v1/workspaces/ws_123/harness/compile");
   const body = JSON.parse(captured.options.body);
-  assert.equal(body.profile_version_id, PVER_ID);
-  assert.equal(body.profile_id, null);
+  assert.equal(body.config_version_id, PVER_ID);
+  assert.equal(body.agent_id, null);
 });
 
 test("commandHarnessCompile sends profile_id selector", async () => {
@@ -34,8 +34,8 @@ test("commandHarnessCompile sends profile_id selector", async () => {
   const code = await commandHarnessCompile({ stdout: makeNoop(), stderr: makeNoop(), jsonMode: false }, parsed, "ws_123", deps);
   assert.equal(code, 0);
   const body = JSON.parse(captured.options.body);
-  assert.equal(body.profile_id, AGENT_ID);
-  assert.equal(body.profile_version_id, null);
+  assert.equal(body.agent_id, AGENT_ID);
+  assert.equal(body.config_version_id, null);
 });
 
 test("commandHarnessCompile json mode outputs raw response", async () => {

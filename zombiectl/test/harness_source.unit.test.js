@@ -11,7 +11,7 @@ test("commandHarnessSourcePut builds source_markdown payload", async () => {
   let captured = null;
 
   const deps = {
-    request: async (_ctx, reqPath, options) => { captured = { reqPath, options }; return { profile_version_id: "pver_1" }; },
+    request: async (_ctx, reqPath, options) => { captured = { reqPath, options }; return { config_version_id: "pver_1" }; },
     apiHeaders: () => ({}),
     ui,
     printJson: () => {},
@@ -27,7 +27,7 @@ test("commandHarnessSourcePut builds source_markdown payload", async () => {
   assert.equal(err.read(), "");
   assert.equal(captured.reqPath, "/v1/workspaces/ws_123/harness/source");
   const body = JSON.parse(captured.options.body);
-  assert.equal(body.profile_id, "agent_1");
+  assert.equal(body.agent_id, "agent_1");
   assert.equal(body.name, "profile");
   assert.match(body.source_markdown, /# Harness/);
 });
@@ -44,7 +44,7 @@ test("commandHarnessSourcePut returns 2 when --file is missing", async () => {
 test("commandHarnessSourcePut json mode outputs raw response", async () => {
   let printed = null;
   const deps = {
-    request: async () => ({ profile_version_id: "pver_9" }),
+    request: async () => ({ config_version_id: "pver_9" }),
     apiHeaders: () => ({}),
     ui,
     printJson: (_stream, v) => { printed = v; },
@@ -55,5 +55,5 @@ test("commandHarnessSourcePut json mode outputs raw response", async () => {
   const parsed = { options: { file: "f.md" }, positionals: [] };
   const code = await commandHarnessSourcePut({ stdout: makeNoop(), stderr: makeNoop(), jsonMode: true }, parsed, "ws_123", deps);
   assert.equal(code, 0);
-  assert.equal(printed.profile_version_id, "pver_9");
+  assert.equal(printed.config_version_id, "pver_9");
 });

@@ -167,7 +167,7 @@ test "integration: linkage chain is queryable for run" {
 
     {
         var q = try db_ctx.conn.query(
-            \\CREATE TEMP TABLE profile_linkage_audit_artifacts (
+            \\CREATE TEMP TABLE config_linkage_audit_artifacts (
             \\  artifact_id TEXT PRIMARY KEY,
             \\  tenant_id TEXT NOT NULL,
             \\  workspace_id TEXT NOT NULL,
@@ -206,12 +206,12 @@ test "integration: linkage artifacts are immutable and reject updates" {
 
     {
         var q = try db_ctx.conn.query(
-            \\CREATE TEMP TABLE profile_linkage_audit_artifacts (
+            \\CREATE TEMP TABLE config_linkage_audit_artifacts (
             \\  artifact_id TEXT PRIMARY KEY,
             \\  tenant_id TEXT NOT NULL,
             \\  workspace_id TEXT NOT NULL,
             \\  artifact_type TEXT NOT NULL,
-            \\  profile_version_id TEXT NOT NULL,
+            \\  config_version_id TEXT NOT NULL,
             \\  compile_job_id TEXT,
             \\  run_id TEXT,
             \\  parent_artifact_id TEXT,
@@ -227,7 +227,7 @@ test "integration: linkage artifacts are immutable and reject updates" {
             \\CREATE OR REPLACE FUNCTION reject_profile_linkage_mutation_test()
             \\RETURNS trigger LANGUAGE plpgsql AS $$
             \\BEGIN
-            \\    RAISE EXCEPTION 'profile_linkage_audit_artifacts is append-only';
+            \\    RAISE EXCEPTION 'config_linkage_audit_artifacts is append-only';
             \\END;
             \\$$
         , .{});
@@ -236,7 +236,7 @@ test "integration: linkage artifacts are immutable and reject updates" {
     {
         var q = try db_ctx.conn.query(
             \\CREATE TRIGGER trg_profile_linkage_no_update_test
-            \\BEFORE UPDATE ON profile_linkage_audit_artifacts
+            \\BEFORE UPDATE ON config_linkage_audit_artifacts
             \\FOR EACH ROW EXECUTE FUNCTION reject_profile_linkage_mutation_test()
         , .{});
         q.deinit();
@@ -245,7 +245,7 @@ test "integration: linkage artifacts are immutable and reject updates" {
     try insertCompileArtifact(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01", "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11", "0195b4ba-8d3a-7f13-9abc-2b3e1e0a6f98", "0195b4ba-8d3a-7f13-aabc-2b3e1e0a6f97", true, 10);
 
     try std.testing.expectError(error.PgError, db_ctx.conn.query(
-        "UPDATE profile_linkage_audit_artifacts SET metadata_json = '{\"x\":1}' WHERE artifact_type = 'COMPILE'",
+        "UPDATE config_linkage_audit_artifacts SET metadata_json = '{\"x\":1}' WHERE artifact_type = 'COMPILE'",
         .{},
     ));
 }
@@ -259,12 +259,12 @@ test "integration: activate linkage metadata preserves escaped activated_by valu
 
     {
         var q = try db_ctx.conn.query(
-            \\CREATE TEMP TABLE profile_linkage_audit_artifacts (
+            \\CREATE TEMP TABLE config_linkage_audit_artifacts (
             \\  artifact_id TEXT PRIMARY KEY,
             \\  tenant_id TEXT NOT NULL,
             \\  workspace_id TEXT NOT NULL,
             \\  artifact_type TEXT NOT NULL,
-            \\  profile_version_id TEXT NOT NULL,
+            \\  config_version_id TEXT NOT NULL,
             \\  compile_job_id TEXT,
             \\  run_id TEXT,
             \\  parent_artifact_id TEXT,
@@ -280,7 +280,7 @@ test "integration: activate linkage metadata preserves escaped activated_by valu
     try insertActivateArtifact(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01", "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11", "0195b4ba-8d3a-7f13-9abc-2b3e1e0a6f98", activated_by, 20);
 
     var q = try db_ctx.conn.query(
-        "SELECT metadata_json FROM profile_linkage_audit_artifacts WHERE artifact_type = 'ACTIVATE' LIMIT 1",
+        "SELECT metadata_json FROM config_linkage_audit_artifacts WHERE artifact_type = 'ACTIVATE' LIMIT 1",
         .{},
     );
     defer q.deinit();
@@ -303,8 +303,8 @@ test "integration: run linkage insert fails closed when snapshot profile version
 
     {
         var q = try db_ctx.conn.query(
-            \\CREATE TEMP TABLE agent_profile_versions (
-            \\  profile_version_id TEXT PRIMARY KEY
+            \\CREATE TEMP TABLE agent_config_versions (
+            \\  config_version_id TEXT PRIMARY KEY
             \\) ON COMMIT DROP
         , .{});
         q.deinit();
@@ -319,12 +319,12 @@ test "integration: run linkage insert fails closed when snapshot profile version
     }
     {
         var q = try db_ctx.conn.query(
-            \\CREATE TEMP TABLE profile_linkage_audit_artifacts (
+            \\CREATE TEMP TABLE config_linkage_audit_artifacts (
             \\  artifact_id TEXT PRIMARY KEY,
             \\  tenant_id TEXT NOT NULL,
             \\  workspace_id TEXT NOT NULL,
             \\  artifact_type TEXT NOT NULL,
-            \\  profile_version_id TEXT NOT NULL REFERENCES agent_profile_versions(profile_version_id),
+            \\  config_version_id TEXT NOT NULL REFERENCES agent_config_versions(config_version_id),
             \\  compile_job_id TEXT,
             \\  run_id TEXT REFERENCES runs(run_id),
             \\  parent_artifact_id TEXT,

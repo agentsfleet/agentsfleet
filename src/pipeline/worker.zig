@@ -80,7 +80,7 @@ pub fn workerLoop(cfg: WorkerConfig, worker_state: *WorkerState) void {
         return;
     };
     defer profile.deinit();
-    log.info("default pipeline profile loaded profile={s} stages={d}", .{ profile.profile_id, profile.stages.len });
+    log.info("default pipeline profile loaded agent_id={s} stages={d}", .{ profile.agent_id, profile.stages.len });
 
     var token_cache = github_auth.TokenCache.init(alloc, cfg.github_app_id, cfg.github_app_private_key);
     defer token_cache.deinit();

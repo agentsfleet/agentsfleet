@@ -17,7 +17,7 @@ test("commandHarnessActivate sends profile_version_id and activated_by", async (
   const deps = {
     request: async (_ctx, reqPath, options) => {
       captured = { reqPath, options };
-      return { profile_id: "agent_1", profile_version_id: PVER_ID, run_snapshot_version: PVER_ID };
+      return { agent_id: "agent_1", config_version_id: PVER_ID, run_snapshot_version: PVER_ID };
     },
     apiHeaders: () => ({}),
     ui,
@@ -29,7 +29,7 @@ test("commandHarnessActivate sends profile_version_id and activated_by", async (
   assert.equal(code, 0);
   assert.equal(captured.reqPath, "/v1/workspaces/ws_123/harness/activate");
   const body = JSON.parse(captured.options.body);
-  assert.equal(body.profile_version_id, PVER_ID);
+  assert.equal(body.config_version_id, PVER_ID);
   assert.equal(body.activated_by, "operator");
 });
 

@@ -12,13 +12,13 @@ const ValidationIssue = struct {
 
 pub const CompileOutcome = struct {
     compiled_profile_json: ?[]u8,
-    profile_id: ?[]u8,
+    agent_id: ?[]u8,
     is_valid: bool,
     validation_report_json: []u8,
 
     pub fn deinit(self: *CompileOutcome, alloc: std.mem.Allocator) void {
         if (self.compiled_profile_json) |json| alloc.free(json);
-        if (self.profile_id) |id| alloc.free(id);
+        if (self.agent_id) |id| alloc.free(id);
         alloc.free(self.validation_report_json);
     }
 };
@@ -54,7 +54,7 @@ pub fn compileHarnessMarkdown(alloc: std.mem.Allocator, source_markdown: []const
         const report = try stringifyValidationReport(alloc, issues.items);
         return .{
             .compiled_profile_json = null,
-            .profile_id = null,
+            .agent_id = null,
             .is_valid = false,
             .validation_report_json = report,
         };
@@ -68,7 +68,7 @@ pub fn compileHarnessMarkdown(alloc: std.mem.Allocator, source_markdown: []const
         const report = try stringifyValidationReport(alloc, issues.items);
         return .{
             .compiled_profile_json = null,
-            .profile_id = null,
+            .agent_id = null,
             .is_valid = false,
             .validation_report_json = report,
         };
@@ -92,7 +92,7 @@ pub fn compileHarnessMarkdown(alloc: std.mem.Allocator, source_markdown: []const
         const report = try stringifyValidationReport(alloc, issues.items);
         return .{
             .compiled_profile_json = null,
-            .profile_id = null,
+            .agent_id = null,
             .is_valid = false,
             .validation_report_json = report,
         };
@@ -107,7 +107,7 @@ pub fn compileHarnessMarkdown(alloc: std.mem.Allocator, source_markdown: []const
 
     return .{
         .compiled_profile_json = compiled,
-        .profile_id = try alloc.dupe(u8, profile.profile_id),
+        .agent_id = try alloc.dupe(u8, profile.agent_id),
         .is_valid = is_valid,
         .validation_report_json = report,
     };
@@ -283,7 +283,7 @@ pub fn stringifyTopologyProfile(alloc: std.mem.Allocator, profile: *const topolo
         gate: bool,
     };
     const ProfileOut = struct {
-        profile_id: []const u8,
+        agent_id: []const u8,
         stages: []const StageOut,
     };
 
@@ -301,7 +301,7 @@ pub fn stringifyTopologyProfile(alloc: std.mem.Allocator, profile: *const topolo
     }
 
     return std.json.Stringify.valueAlloc(alloc, ProfileOut{
-        .profile_id = profile.profile_id,
+        .agent_id = profile.agent_id,
         .stages = stages.items,
     }, .{});
 }
@@ -350,7 +350,7 @@ test "compileHarnessMarkdown compiles fenced profile json" {
     defer outcome.deinit(std.testing.allocator);
     try std.testing.expect(outcome.is_valid);
     try std.testing.expect(outcome.compiled_profile_json != null);
-    try std.testing.expect(outcome.profile_id != null);
+    try std.testing.expect(outcome.agent_id != null);
 }
 
 test "compileHarnessMarkdown rejects unpinned clawhub refs" {

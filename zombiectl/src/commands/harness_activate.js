@@ -8,7 +8,7 @@ export async function commandHarnessActivate(ctx, parsed, workspaceId, deps) {
   }
 
   const body = {
-    profile_version_id: profileVersionId,
+    config_version_id: profileVersionId,
     activated_by: parsed.options["activated-by"] || "zombiectl",
   };
 
@@ -22,7 +22,7 @@ export async function commandHarnessActivate(ctx, parsed, workspaceId, deps) {
   else writeLine(
     ctx.stdout,
     ui.ok(
-      `activated profile_id=${res.profile_id} profile_version_id=${res.profile_version_id} run_snapshot_version=${res.run_snapshot_version}`,
+      `activated agent_id=${res.agent_id} config_version_id=${res.config_version_id} run_snapshot_version=${res.run_snapshot_version}`,
     ),
   );
   return 0;

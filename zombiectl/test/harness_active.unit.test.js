@@ -8,7 +8,7 @@ test("commandHarnessActive calls GET harness/active", async () => {
   const deps = {
     request: async (_ctx, reqPath, options) => {
       captured = { reqPath, options };
-      return { profile_id: "agent_1", profile_version_id: PVER_ID, run_snapshot_version: PVER_ID };
+      return { agent_id: "agent_1", config_version_id: PVER_ID, run_snapshot_version: PVER_ID };
     },
     apiHeaders: () => ({}),
     ui,
@@ -25,7 +25,7 @@ test("commandHarnessActive calls GET harness/active", async () => {
 test("commandHarnessActive json mode outputs raw response", async () => {
   let printed = null;
   const deps = {
-    request: async () => ({ profile_id: "agent_1", profile_version_id: PVER_ID, run_snapshot_version: PVER_ID }),
+    request: async () => ({ agent_id: "agent_1", config_version_id: PVER_ID, run_snapshot_version: PVER_ID }),
     apiHeaders: () => ({}),
     ui,
     printJson: (_stream, v) => { printed = v; },
@@ -34,13 +34,13 @@ test("commandHarnessActive json mode outputs raw response", async () => {
   const parsed = { options: {}, positionals: [] };
   const code = await commandHarnessActive({ stdout: makeNoop(), stderr: makeNoop(), jsonMode: true }, parsed, "ws_123", deps);
   assert.equal(code, 0);
-  assert.equal(printed.profile_version_id, PVER_ID);
+  assert.equal(printed.config_version_id, PVER_ID);
 });
 
 test("commandHarnessActive falls back to default-v1 for null fields", async () => {
   let output = "";
   const deps = {
-    request: async () => ({ profile_id: null, profile_version_id: null, run_snapshot_version: null }),
+    request: async () => ({ agent_id: null, config_version_id: null, run_snapshot_version: null }),
     apiHeaders: () => ({}),
     ui,
     printJson: () => {},

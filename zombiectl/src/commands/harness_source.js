@@ -21,7 +21,7 @@ export async function commandHarnessSourcePut(ctx, parsed, workspaceId, deps) {
   const fileContent = await readFile(resolvePath(file), "utf8");
   const inferredName = path.basename(String(file), path.extname(String(file)));
   const body = {
-    profile_id: parsed.options["profile-id"] || null,
+    agent_id: parsed.options["profile-id"] || null,
     name: parsed.options.name || inferredName || "Workspace Harness",
     source_markdown: fileContent,
   };
@@ -33,6 +33,6 @@ export async function commandHarnessSourcePut(ctx, parsed, workspaceId, deps) {
   });
 
   if (ctx.jsonMode) printJson(ctx.stdout, res);
-  else writeLine(ctx.stdout, ui.ok(`harness source stored profile_version_id=${res.profile_version_id}`));
+  else writeLine(ctx.stdout, ui.ok(`harness source stored config_version_id=${res.config_version_id}`));
   return 0;
 }

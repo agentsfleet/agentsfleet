@@ -114,7 +114,7 @@ pub fn processNextRun(
     const using_fallback = workspace_profile == null;
     log.info("workspace profile resolved workspace_id={s} profile={s} fallback_default_v1={}", .{
         workspace_id,
-        effective_profile.profile_id,
+        effective_profile.agent_id,
         using_fallback,
     });
 
@@ -133,7 +133,7 @@ pub fn processNextRun(
         .event_type = .prompt_eval,
         .workspace_id = workspace_id,
         .tenant_id = tenant_id,
-        .agent_id = effective_profile.profile_id,
+        .agent_id = effective_profile.agent_id,
         .config_version_id = null,
         .metadata_json = "{\"phase\":\"start\"}",
         .ts_ms = std.time.milliTimestamp(),
@@ -160,7 +160,7 @@ pub fn processNextRun(
             .default_branch = default_branch,
             .spec_path = spec_path,
             .attempt = attempt,
-            .agent_id = effective_profile.profile_id,
+            .agent_id = effective_profile.agent_id,
         },
         tenant_limiter,
     ) catch |err| {
@@ -169,7 +169,7 @@ pub fn processNextRun(
             .event_type = .prompt_performance,
             .workspace_id = workspace_id,
             .tenant_id = tenant_id,
-            .agent_id = effective_profile.profile_id,
+            .agent_id = effective_profile.agent_id,
             .config_version_id = null,
             .metadata_json = "{\"status\":\"failed\"}",
             .ts_ms = std.time.milliTimestamp(),
@@ -236,7 +236,7 @@ pub fn processNextRun(
             .event_type = .prompt_performance,
             .workspace_id = workspace_id,
             .tenant_id = tenant_id,
-            .agent_id = effective_profile.profile_id,
+            .agent_id = effective_profile.agent_id,
             .config_version_id = null,
             .metadata_json = "{\"status\":\"completed\"}",
             .ts_ms = std.time.milliTimestamp(),

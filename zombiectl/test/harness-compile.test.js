@@ -24,8 +24,8 @@ test("harness compile sends profile_id selector", async () => {
     assert.equal(url, "http://localhost:3000/v1/workspaces/ws_123/harness/compile");
     assert.equal(options.method, "POST");
     const payload = JSON.parse(String(options.body));
-    assert.equal(payload.profile_id, "ws_123-harness");
-    assert.equal(payload.profile_version_id, null);
+    assert.equal(payload.agent_id, "ws_123-harness");
+    assert.equal(payload.config_version_id, null);
     return {
       ok: true,
       status: 200,
@@ -54,8 +54,8 @@ test("harness compile sends profile_version_id selector", async () => {
 
   const fetchImpl = async (_url, options) => {
     const payload = JSON.parse(String(options.body));
-    assert.equal(payload.profile_id, null);
-    assert.equal(payload.profile_version_id, "pver_456");
+    assert.equal(payload.agent_id, null);
+    assert.equal(payload.config_version_id, "pver_456");
     return {
       ok: true,
       status: 200,

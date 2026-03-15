@@ -44,7 +44,7 @@ pub const Observed = struct {
     profile_count: u32 = 0,
     stage_count: u16 = 0,
     distinct_skill_count: u16 = 0,
-    profile_version_id: ?[]const u8 = null,
+    config_version_id: ?[]const u8 = null,
 };
 
 pub const EnforcementError = error{
@@ -165,7 +165,7 @@ fn insertAuditSnapshot(
         .profile_count = observed.profile_count,
         .stage_count = observed.stage_count,
         .distinct_skill_count = observed.distinct_skill_count,
-        .profile_version_id = observed.profile_version_id,
+        .config_version_id = observed.config_version_id,
     }, .{});
     defer alloc.free(observed_json);
 
@@ -195,13 +195,13 @@ pub fn enforceWithAudit(
     conn: *pg.Conn,
     alloc: std.mem.Allocator,
     workspace_id: []const u8,
-    profile_version_id: ?[]const u8,
+    config_version_id: ?[]const u8,
     compiled_profile_json: ?[]const u8,
     boundary: Boundary,
     actor: []const u8,
 ) (EnforcementError || anyerror)!void {
     var observed: Observed = .{
-        .profile_version_id = profile_version_id,
+        .config_version_id = config_version_id,
     };
 
     const policy = loadPolicy(conn, workspace_id) catch |err| {

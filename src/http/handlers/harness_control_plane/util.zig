@@ -8,7 +8,7 @@ pub fn generateConfigVersionId(alloc: std.mem.Allocator) ![]const u8 {
 }
 
 pub fn generateAgentId(alloc: std.mem.Allocator) ![]const u8 {
-    return id_format.generateProfileId(alloc);
+    return id_format.generateAgentId(alloc);
 }
 
 pub fn generateCompileJobId(alloc: std.mem.Allocator) ![]const u8 {
@@ -35,7 +35,7 @@ pub fn normalizeAgentId(
         if (!id_format.isSupportedProfileId(raw)) return error.InvalidAgentId;
         return alloc.dupe(u8, raw);
     }
-    const generated = try id_format.generateProfileId(alloc);
+    const generated = try id_format.generateAgentId(alloc);
     return @constCast(generated);
 }
 

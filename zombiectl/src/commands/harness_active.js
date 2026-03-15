@@ -10,7 +10,7 @@ export async function commandHarnessActive(ctx, parsed, workspaceId, deps) {
   else writeLine(
     ctx.stdout,
     ui.info(
-      `active profile_id=${res.profile_id ?? "default-v1"} profile_version_id=${res.profile_version_id ?? "default-v1"} run_snapshot_version=${res.run_snapshot_version ?? "default-v1"}`,
+      `active agent_id=${res.agent_id ?? "default-v1"} config_version_id=${res.config_version_id ?? "default-v1"} run_snapshot_version=${res.run_snapshot_version ?? "default-v1"}`,
     ),
   );
   return 0;

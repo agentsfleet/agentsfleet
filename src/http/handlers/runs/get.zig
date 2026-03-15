@@ -237,12 +237,12 @@ test "integration: get-run response payload includes profile_linkage chain contr
 
     {
         var q = try db_ctx.conn.query(
-            \\CREATE TEMP TABLE profile_linkage_audit_artifacts (
+            \\CREATE TEMP TABLE config_linkage_audit_artifacts (
             \\  artifact_id TEXT PRIMARY KEY,
             \\  tenant_id TEXT NOT NULL,
             \\  workspace_id TEXT NOT NULL,
             \\  artifact_type TEXT NOT NULL,
-            \\  profile_version_id TEXT NOT NULL,
+            \\  config_version_id TEXT NOT NULL,
             \\  compile_job_id TEXT,
             \\  run_id TEXT,
             \\  parent_artifact_id TEXT,
@@ -294,14 +294,14 @@ test "integration: get-run response payload includes profile_linkage chain contr
     const run_artifact_id = linkage_obj.get("run_artifact_id") orelse return error.TestUnexpectedResult;
     const activate_artifact_id = linkage_obj.get("activate_artifact_id") orelse return error.TestUnexpectedResult;
     const compile_artifact_id = linkage_obj.get("compile_artifact_id") orelse return error.TestUnexpectedResult;
-    const profile_version_id = linkage_obj.get("profile_version_id") orelse return error.TestUnexpectedResult;
+    const config_version_id = linkage_obj.get("config_version_id") orelse return error.TestUnexpectedResult;
     const compile_job_id = linkage_obj.get("compile_job_id") orelse return error.TestUnexpectedResult;
 
     try std.testing.expectEqual(std.json.Value.Tag.string, run_artifact_id);
     try std.testing.expectEqual(std.json.Value.Tag.string, activate_artifact_id);
     try std.testing.expectEqual(std.json.Value.Tag.string, compile_artifact_id);
-    try std.testing.expectEqual(std.json.Value.Tag.string, profile_version_id);
+    try std.testing.expectEqual(std.json.Value.Tag.string, config_version_id);
     try std.testing.expectEqual(std.json.Value.Tag.string, compile_job_id);
-    try std.testing.expectEqualStrings("0195b4ba-8d3a-7f13-9abc-2b3e1e0a6f98", profile_version_id.string);
+    try std.testing.expectEqualStrings("0195b4ba-8d3a-7f13-9abc-2b3e1e0a6f98", config_version_id.string);
     try std.testing.expectEqualStrings("0195b4ba-8d3a-7f13-aabc-2b3e1e0a6f97", compile_job_id.string);
 }

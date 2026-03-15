@@ -41,7 +41,7 @@ test("commandHarness source put builds source_markdown payload", async () => {
     parseFlags,
     request: async (_ctx, reqPath, options) => {
       captured = { reqPath, options };
-      return { profile_version_id: "pver_1" };
+      return { config_version_id: "pver_1" };
     },
     apiHeaders: () => ({ "Content-Type": "application/json" }),
     ui: { ok: (s) => s, err: (s) => s, info: (s) => s },
@@ -63,7 +63,7 @@ test("commandHarness source put builds source_markdown payload", async () => {
   assert.equal(err.read(), "");
   assert.equal(captured.reqPath, "/v1/workspaces/ws_123/harness/source");
   const body = JSON.parse(captured.options.body);
-  assert.equal(body.profile_id, "ws_123-harness");
+  assert.equal(body.agent_id, "ws_123-harness");
   assert.equal(body.name, "profile");
   assert.match(body.source_markdown, /# Harness/);
 });
@@ -93,8 +93,8 @@ test("commandHarness compile sends explicit profile selectors", async () => {
   assert.equal(code, 0);
   assert.equal(captured.reqPath, "/v1/workspaces/ws_123/harness/compile");
   const body = JSON.parse(captured.options.body);
-  assert.equal(body.profile_id, null);
-  assert.equal(body.profile_version_id, "pver_9");
+  assert.equal(body.agent_id, null);
+  assert.equal(body.config_version_id, "pver_9");
 });
 
 test("commandHarness activate requires profile version id", async () => {
@@ -125,8 +125,8 @@ test("commandHarness activate sends profile version and activated_by", async () 
     request: async (_ctx, reqPath, options) => {
       captured = { reqPath, options };
       return {
-        profile_id: "ws_123-harness",
-        profile_version_id: "pver_2",
+        agent_id: "ws_123-harness",
+        config_version_id: "pver_2",
         run_snapshot_version: "pver_2",
         activated_at: 1730000000,
       };
@@ -148,7 +148,7 @@ test("commandHarness activate sends profile version and activated_by", async () 
   assert.equal(code, 0);
   assert.equal(captured.reqPath, "/v1/workspaces/ws_123/harness/activate");
   const body = JSON.parse(captured.options.body);
-  assert.equal(body.profile_version_id, "pver_2");
+  assert.equal(body.config_version_id, "pver_2");
   assert.equal(body.activated_by, "operator");
 });
 
@@ -160,8 +160,8 @@ test("commandHarness active queries active profile endpoint", async () => {
       captured = { reqPath, options };
       return {
         source: "active",
-        profile_id: "ws_123-harness",
-        profile_version_id: "pver_2",
+        agent_id: "ws_123-harness",
+        config_version_id: "pver_2",
         run_snapshot_version: "pver_2",
       };
     },
