@@ -138,7 +138,9 @@ test "verifyAuthorization rejects invalid jwt_oidc token" {
     });
     defer verifier.deinit();
 
-    try std.testing.expectError(VerifyError.InvalidAuthorization, verifier.verifyAuthorization(std.testing.allocator, "Bearer invalid.token.value"));
+    // "invalid.token.value" has a 7-char base64 segment which has invalid padding;
+    // decodeBase64UrlOwned maps that to TokenMalformed before authorization is checked.
+    try std.testing.expectError(VerifyError.TokenMalformed, verifier.verifyAuthorization(std.testing.allocator, "Bearer invalid.token.value"));
 }
 
 test "parseProvider accepts supported adapters" {
