@@ -45,8 +45,8 @@ test "integration: endApiRequest decrements in-flight counter deterministically"
 
 test "integration: start-run queue failure compensation removes only SPEC_QUEUED row" {
     const db_ctx = (try common.openHandlerTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
-    defer db_ctx.pool.release(db_ctx.conn);
     defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
 
     {
         var q = try db_ctx.conn.query(
@@ -94,8 +94,8 @@ test "integration: start-run queue failure compensation removes only SPEC_QUEUED
 
 test "integration: retry queue failure compensation restores state and removes retry transition" {
     const db_ctx = (try common.openHandlerTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
-    defer db_ctx.pool.release(db_ctx.conn);
     defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
 
     {
         var q = try db_ctx.conn.query(

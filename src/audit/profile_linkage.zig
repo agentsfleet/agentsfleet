@@ -162,8 +162,8 @@ test "integration: linkage chain is queryable for run" {
     const common = @import("../http/handlers/common.zig");
 
     const db_ctx = (try common.openHandlerTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
-    defer db_ctx.pool.release(db_ctx.conn);
     defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
 
     {
         var q = try db_ctx.conn.query(
@@ -201,8 +201,8 @@ test "integration: linkage artifacts are immutable and reject updates" {
     const common = @import("../http/handlers/common.zig");
 
     const db_ctx = (try common.openHandlerTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
-    defer db_ctx.pool.release(db_ctx.conn);
     defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
 
     {
         var q = try db_ctx.conn.query(
@@ -254,8 +254,8 @@ test "integration: activate linkage metadata preserves escaped activated_by valu
     const common = @import("../http/handlers/common.zig");
 
     const db_ctx = (try common.openHandlerTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
-    defer db_ctx.pool.release(db_ctx.conn);
     defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
 
     {
         var q = try db_ctx.conn.query(
@@ -298,8 +298,8 @@ test "integration: run linkage insert fails closed when snapshot profile version
     const common = @import("../http/handlers/common.zig");
 
     const db_ctx = (try common.openHandlerTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
-    defer db_ctx.pool.release(db_ctx.conn);
     defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
 
     {
         var q = try db_ctx.conn.query(

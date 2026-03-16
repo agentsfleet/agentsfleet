@@ -1,0 +1,49 @@
+name: test-integration-db
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-integration-db:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.15.2
+
+      - name: Start Postgres via docker compose
+        run: docker compose up -d postgres
+
+      - name: Wait for Postgres to be ready
+        run: |
+          echo "→ Waiting for Postgres..."
+          for i in $(seq 1 30); do
+            docker compose exec -T postgres pg_isready -U usezombie -d usezombiedb && break
+            echo "  attempt $i/30 — not ready yet"
+            sleep 2
+          done
+          docker compose exec -T postgres pg_isready -U usezombie -d usezombiedb \
+            || { echo "✗ Postgres did not become ready in time"; exit 1; }
+          echo "✓ Postgres is ready"
+
+      - name: Run DB-backed integration tests
+        env:
+          HANDLER_DB_TEST_URL: postgres://usezombie:usezombie@localhost:5432/usezombiedb
+        run: make test-integration-db
+
+      - name: Stop Postgres
+        if: always()
+        run: docker compose down

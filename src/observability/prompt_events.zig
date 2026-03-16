@@ -111,8 +111,8 @@ fn openPromptEventTestConn(alloc: std.mem.Allocator) !?struct { pool: *db.Pool, 
 
 test "integration: prompt lifecycle events are append-only and auditable" {
     const db_ctx = (try openPromptEventTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
-    defer db_ctx.pool.release(db_ctx.conn);
     defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
 
     {
         var q = try db_ctx.conn.query(

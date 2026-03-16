@@ -95,11 +95,31 @@ fn createUuidContractTempSchema(conn: *Conn) !void {
     q.deinit();
 }
 
+test "integration: canary pool acquire + exec + query SELECT 1" {
+    const alloc = std.testing.allocator;
+    const url = std.process.getEnvVarOwned(alloc, "HANDLER_DB_TEST_URL") catch
+        std.process.getEnvVarOwned(alloc, "DATABASE_URL") catch return error.SkipZigTest;
+    defer alloc.free(url);
+
+    const opts = try parseUrl(std.heap.page_allocator, url);
+    const pool = try pg.Pool.init(alloc, opts);
+    defer pool.deinit();
+
+    const conn = try pool.acquire();
+    defer pool.release(conn);
+
+    // Simple query protocol
+    _ = try conn.exec("SELECT 1", .{});
+    // Extended query protocol (no params)
+    var q = try conn.query("SELECT 1", .{});
+    q.deinit();
+}
+
 test "integration: uuid contract tables are UUID typed for run/profile/linkage IDs" {
     if (!std.process.hasEnvVarConstant("LIVE_DB")) return error.SkipZigTest;
     const db_ctx = (try openIntegrationTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
-    defer db_ctx.pool.release(db_ctx.conn);
     defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
 
     try createUuidContractTempSchema(db_ctx.conn);
 
@@ -134,8 +154,8 @@ test "T6 integration: generated UUID PKs round-trip through INSERT and SELECT" {
     if (!std.process.hasEnvVarConstant("LIVE_DB")) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     const db_ctx = (try openIntegrationTestConn(alloc)) orelse return error.SkipZigTest;
-    defer db_ctx.pool.release(db_ctx.conn);
     defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
 
     // Create TEMP tables with UUID PK + CHECK constraint (mirrors real schema)
     {
@@ -234,8 +254,8 @@ test "T6 integration: UUID CHECK constraint rejects non-v7 ids" {
     if (!std.process.hasEnvVarConstant("LIVE_DB")) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     const db_ctx = (try openIntegrationTestConn(alloc)) orelse return error.SkipZigTest;
-    defer db_ctx.pool.release(db_ctx.conn);
     defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
 
     {
         var q = try db_ctx.conn.query(
@@ -258,8 +278,8 @@ test "T6 integration: duplicate UUID PK is rejected" {
     if (!std.process.hasEnvVarConstant("LIVE_DB")) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     const db_ctx = (try openIntegrationTestConn(alloc)) orelse return error.SkipZigTest;
-    defer db_ctx.pool.release(db_ctx.conn);
     defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
 
     {
         var q = try db_ctx.conn.query(

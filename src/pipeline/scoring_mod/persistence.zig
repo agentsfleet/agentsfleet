@@ -55,16 +55,18 @@ pub fn queryLatencyBaseline(conn: *pg.Conn, workspace_id: []const u8) ?types.Lat
     defer q.deinit();
 
     const row = (q.next() catch return null) orelse return null;
-    return types.LatencyBaseline{
+    const result = types.LatencyBaseline{
         .p50_seconds = @intCast(@max(row.get(i64, 0) catch return null, 0)),
         .p95_seconds = @intCast(@max(row.get(i64, 1) catch return null, 0)),
         .sample_count = @intCast(@max(row.get(i32, 2) catch return null, 0)),
     };
+    _ = q.next() catch {}; // drain CommandComplete + ReadyForQuery → state = .idle
+    return result;
 }
 
 pub fn updateLatencyBaseline(conn: *pg.Conn, workspace_id: []const u8) void {
     const now_ms = std.time.milliTimestamp();
-    var q = conn.query(
+    _ = conn.exec(
         \\WITH completed_runs AS (
         \\    SELECT COALESCE(SUM(ul.agent_seconds), 0) AS total_seconds
         \\    FROM runs r
@@ -90,9 +92,7 @@ pub fn updateLatencyBaseline(conn: *pg.Conn, workspace_id: []const u8) void {
         \\    computed_at = EXCLUDED.computed_at
     , .{ workspace_id, now_ms }) catch |err| {
         obs_log.logWarnErr(.scoring, err, "latency baseline update failed workspace_id={s}", .{workspace_id});
-        return;
     };
-    q.deinit();
 }
 
 pub fn queryScoringConfig(
@@ -112,12 +112,14 @@ pub fn queryScoringConfig(
     const enable_context = try row.get(bool, 2);
     const raw_context_max_tokens = try row.get(i32, 3);
 
-    return .{
+    const result = types.ScoringConfig{
         .enabled = enabled,
         .weights = if (enabled) try math.parseWeightsJson(alloc, raw_weights) else types.DEFAULT_WEIGHTS,
         .enable_score_context_injection = enable_context,
         .scoring_context_max_tokens = clampScoringContextMaxTokens(raw_context_max_tokens),
     };
+    _ = q.next() catch {}; // drain CommandComplete + ReadyForQuery → state = .idle
+    return result;
 }
 
 fn clampScoringContextMaxTokens(raw_value: i32) u32 {
@@ -142,17 +144,19 @@ fn persistScoreRecord(
         .{run_id},
     );
     defer existing.deinit();
-    if (try existing.next() != null) return false;
+    if (try existing.next() != null) {
+        _ = existing.next() catch {}; // drain CommandComplete + ReadyForQuery → state = .idle
+        return false;
+    }
 
     const score_id = try id_format.generateTransitionId(alloc);
     defer alloc.free(score_id);
 
-    var q = try conn.query(
+    _ = try conn.exec(
         \\INSERT INTO agent_run_scores
         \\  (score_id, run_id, agent_id, workspace_id, score, axis_scores, weight_snapshot, scored_at)
         \\VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
     , .{ score_id, run_id, agent_id, workspace_id, score, axis_scores_json, weight_snapshot_json, scored_at });
-    q.deinit();
     return true;
 }
 
@@ -288,7 +292,10 @@ pub fn persistRunAnalysis(
 
     var existing = try conn.query("SELECT 1 FROM agent_run_analysis WHERE run_id = $1", .{run_id});
     defer existing.deinit();
-    if (try existing.next() != null) return;
+    if (try existing.next() != null) {
+        _ = existing.next() catch {}; // drain CommandComplete + ReadyForQuery → state = .idle
+        return;
+    }
 
     const maybe_class = classifyFailure(outcome);
 
@@ -336,7 +343,7 @@ pub fn persistRunAnalysis(
     const analysis_id = try id_format.generateTransitionId(alloc);
     defer alloc.free(analysis_id);
 
-    var q = try conn.query(
+    _ = try conn.exec(
         \\INSERT INTO agent_run_analysis
         \\  (analysis_id, run_id, agent_id, workspace_id, failure_class, failure_is_infra,
         \\   failure_signals, improvement_hints, stderr_tail, analyzed_at)
@@ -353,7 +360,6 @@ pub fn persistRunAnalysis(
         @as(?[]const u8, null),
         std.time.milliTimestamp(),
     });
-    q.deinit();
 }
 
 pub fn persistScore(

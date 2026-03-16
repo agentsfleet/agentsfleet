@@ -128,8 +128,8 @@ fn markDeadLetter(conn: *pg.Conn, row_id: i64, now_ms: i64, err_name: []const u8
 
 test "integration: adapter outage preserves accounting state and retries safely" {
     const db_ctx = (try openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
-    defer db_ctx.pool.release(db_ctx.conn);
     defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
 
     try createTempBillingOutboxTable(db_ctx.conn);
     try seedPendingCharge(db_ctx.conn, 42);

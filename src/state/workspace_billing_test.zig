@@ -7,8 +7,8 @@ const PlanTier = workspace_billing.PlanTier;
 
 test "upgrade applies scale entitlement deterministically" {
     const db_ctx = (try openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
-    defer db_ctx.pool.release(db_ctx.conn);
     defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
 
     try createTempWorkspaceBillingTables(db_ctx.conn);
     try seedWorkspace(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11");
@@ -39,8 +39,8 @@ test "upgrade applies scale entitlement deterministically" {
 
 test "payment failure transitions to grace then downgrade policy" {
     const db_ctx = (try openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
-    defer db_ctx.pool.release(db_ctx.conn);
     defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
 
     try createTempWorkspaceBillingTables(db_ctx.conn);
     try seedWorkspace(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11");
@@ -69,8 +69,8 @@ test "payment failure transitions to grace then downgrade policy" {
 
 test "billing sync remains stable across repeated sync cycles" {
     const db_ctx = (try openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
-    defer db_ctx.pool.release(db_ctx.conn);
     defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
 
     try createTempWorkspaceBillingTables(db_ctx.conn);
     try seedWorkspace(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11");
@@ -103,8 +103,8 @@ test "billing sync remains stable across repeated sync cycles" {
 
 test "missing billing state provisions free deterministically on reconcile" {
     const db_ctx = (try openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
-    defer db_ctx.pool.release(db_ctx.conn);
     defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
 
     try createTempWorkspaceBillingTables(db_ctx.conn);
     try seedWorkspace(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f12");
@@ -127,8 +127,8 @@ test "missing billing state provisions free deterministically on reconcile" {
 
 test "manual scale to free downgrade is deterministic" {
     const db_ctx = (try openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
-    defer db_ctx.pool.release(db_ctx.conn);
     defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
 
     try createTempWorkspaceBillingTables(db_ctx.conn);
     try seedWorkspace(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f13");
@@ -150,8 +150,8 @@ test "manual scale to free downgrade is deterministic" {
 
 test "downgraded workspace can become a paying customer again" {
     const db_ctx = (try openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
-    defer db_ctx.pool.release(db_ctx.conn);
     defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
 
     try createTempWorkspaceBillingTables(db_ctx.conn);
     try seedWorkspace(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f14");
@@ -181,8 +181,8 @@ test "downgraded workspace can become a paying customer again" {
 
 test "workspace deletion cascades billing state cleanup" {
     const db_ctx = (try openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
-    defer db_ctx.pool.release(db_ctx.conn);
     defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
 
     try createTempWorkspaceBillingTables(db_ctx.conn);
     try seedWorkspace(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f15");
@@ -216,8 +216,8 @@ test "workspace deletion cascades billing state cleanup" {
 
 test "free workspace creation limit blocks second non-scale workspace for same tenant" {
     const db_ctx = (try openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
-    defer db_ctx.pool.release(db_ctx.conn);
     defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
 
     try createTempWorkspaceBillingTables(db_ctx.conn);
     try seedWorkspaceWithTenant(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f16", "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fa1");
@@ -235,8 +235,8 @@ test "free workspace creation limit blocks second non-scale workspace for same t
 
 test "free workspace creation limit ignores existing scale workspace and same callback workspace" {
     const db_ctx = (try openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
-    defer db_ctx.pool.release(db_ctx.conn);
     defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
 
     try createTempWorkspaceBillingTables(db_ctx.conn);
     try seedWorkspaceWithTenant(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f17", "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fa2");

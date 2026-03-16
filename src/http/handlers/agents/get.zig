@@ -70,8 +70,8 @@ pub fn handleGetAgent(ctx: *common.Context, r: zap.Request, agent_id: []const u8
 
 test "integration: get agent returns 404 for unknown agent_id" {
     const db_ctx = (try common.openHandlerTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
-    defer db_ctx.pool.release(db_ctx.conn);
     defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
 
     var q = try db_ctx.conn.query(sql_get_agent, .{"0195b4ba-8d3a-7f13-8abc-000000000000"});
     defer q.deinit();
