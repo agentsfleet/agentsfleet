@@ -52,10 +52,10 @@ describe("Hero", () => {
     expect(terminal).toHaveAttribute("data-command", "curl -fsSL https://usezombie.sh/install.sh | bash");
   });
 
-  it("renders the human proof cards", () => {
+  it("does not render the removed proof cards", () => {
     renderHero();
-    expect(screen.getByText("Validated PRs")).toBeInTheDocument();
-    expect(screen.getByText("Direct model billing")).toBeInTheDocument();
-    expect(screen.getByText("Measurable run quality")).toBeInTheDocument();
+    expect(screen.queryByText("Validated PRs")).not.toBeInTheDocument();
+    expect(screen.queryByText("Direct model billing")).not.toBeInTheDocument();
+    expect(screen.queryByText("Measurable run quality")).not.toBeInTheDocument();
   });
 });

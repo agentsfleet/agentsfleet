@@ -6,8 +6,12 @@ CREATE TABLE agent_profiles (
     workspace_id  UUID NOT NULL REFERENCES workspaces(workspace_id),
     name          TEXT NOT NULL,
     status        TEXT NOT NULL,
+    trust_streak_runs INTEGER NOT NULL,
+    trust_level   TEXT NOT NULL,
+    last_scored_at BIGINT,
     created_at    BIGINT NOT NULL,
-    updated_at    BIGINT NOT NULL
+    updated_at    BIGINT NOT NULL,
+    CONSTRAINT ck_agent_profiles_trust_level CHECK (trust_level IN ('UNEARNED', 'TRUSTED'))
 );
 CREATE INDEX idx_agent_profiles_workspace_agent ON agent_profiles(workspace_id, updated_at DESC);
 
@@ -37,6 +41,44 @@ CREATE TABLE workspace_active_config (
     activated_at       BIGINT NOT NULL
 );
 CREATE INDEX idx_workspace_active_config_tenant ON workspace_active_config(tenant_id, activated_at DESC);
+
+CREATE TABLE agent_improvement_proposals (
+    proposal_id         UUID PRIMARY KEY,
+    agent_id            UUID NOT NULL REFERENCES agent_profiles(agent_id) ON DELETE CASCADE,
+    workspace_id        UUID NOT NULL REFERENCES workspaces(workspace_id) ON DELETE CASCADE,
+    trigger_reason      TEXT NOT NULL,
+    proposed_changes    TEXT NOT NULL,
+    config_version_id   UUID NOT NULL REFERENCES agent_config_versions(config_version_id),
+    approval_mode       TEXT NOT NULL,
+    generation_status   TEXT NOT NULL,
+    status              TEXT NOT NULL,
+    rejection_reason    TEXT,
+    auto_apply_at       BIGINT,
+    applied_by          TEXT,
+    created_at          BIGINT NOT NULL,
+    updated_at          BIGINT NOT NULL,
+    CONSTRAINT ck_agent_improvement_proposals_uuidv7 CHECK (substring(proposal_id::text from 15 for 1) = '7')
+);
+CREATE INDEX idx_agent_improvement_proposals_agent
+    ON agent_improvement_proposals(agent_id, created_at DESC);
+CREATE INDEX idx_agent_improvement_proposals_veto_window
+    ON agent_improvement_proposals(status, auto_apply_at);
+
+CREATE TABLE harness_change_log (
+    change_id      UUID PRIMARY KEY,
+    agent_id       UUID NOT NULL REFERENCES agent_profiles(agent_id) ON DELETE CASCADE,
+    proposal_id    UUID NOT NULL REFERENCES agent_improvement_proposals(proposal_id),
+    workspace_id   UUID NOT NULL REFERENCES workspaces(workspace_id) ON DELETE CASCADE,
+    field_name     TEXT NOT NULL,
+    old_value      TEXT NOT NULL,
+    new_value      TEXT NOT NULL,
+    applied_at     BIGINT NOT NULL,
+    applied_by     TEXT NOT NULL,
+    reverted_from  UUID REFERENCES harness_change_log(change_id),
+    score_delta    DOUBLE PRECISION,
+    CONSTRAINT ck_harness_change_log_uuidv7 CHECK (substring(change_id::text from 15 for 1) = '7')
+);
+CREATE INDEX idx_harness_change_log_agent ON harness_change_log(agent_id, applied_at DESC);
 
 CREATE TABLE config_compile_jobs (
     compile_job_id        UUID PRIMARY KEY,
@@ -83,8 +125,24 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON
     agent_profiles, agent_config_versions, workspace_active_config, config_compile_jobs
 TO api_accessor;
 
+GRANT SELECT, UPDATE ON
+    agent_improvement_proposals
+TO api_accessor;
+
+GRANT SELECT, INSERT ON
+    harness_change_log
+TO api_accessor;
+
 GRANT SELECT ON
     agent_profiles, agent_config_versions, workspace_active_config
+TO worker_accessor;
+
+GRANT SELECT, INSERT, UPDATE ON
+    agent_improvement_proposals
+TO worker_accessor;
+
+GRANT SELECT, INSERT ON
+    harness_change_log
 TO worker_accessor;
 
 GRANT SELECT, INSERT, UPDATE, DELETE ON vault.workspace_skill_secrets TO api_accessor;

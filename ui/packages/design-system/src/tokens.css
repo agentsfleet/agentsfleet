@@ -69,9 +69,10 @@
   --z-shadow-deep: rgba(0, 0, 0, 0.4);
   --z-shadow-deep-strong: rgba(0, 0, 0, 0.5);
   --z-shadow-card-accent: rgba(217, 107, 43, 0.18);
-  --z-icon-zombie-wrist-fill: #4a7a3b;
-  --z-icon-zombie-fill: #5a9a48;
-  --z-icon-zombie-line: #2d5a23;
+  --z-icon-zombie-wrist-fill: #6f4b46;
+  --z-icon-zombie-fill: #c1a091;
+  --z-icon-zombie-line: #4f302c;
+  --z-icon-zombie-nail: #ead9cc;
   --z-illustration-bucket-start: #8892a0;
   --z-illustration-bucket-end: #5f6977;
   --z-illustration-skin-start: #66a093;
@@ -228,11 +229,11 @@
 }
 
 @keyframes z-icon-wiggle {
-  0%   { transform: rotate(0deg) translateY(0); }
-  25%  { transform: rotate(8deg) translateY(-1px); }
-  50%  { transform: rotate(-6deg) translateY(0); }
-  75%  { transform: rotate(5deg) translateY(-1px); }
-  100% { transform: rotate(0deg) translateY(0); }
+  0%   { transform: rotate(0deg) translate3d(0, 0, 0) scale(1); }
+  22%  { transform: rotate(11deg) translate3d(1px, -1px, 0) scale(1.03); }
+  46%  { transform: rotate(-7deg) translate3d(-1px, 1px, 0) scale(0.98); }
+  72%  { transform: rotate(9deg) translate3d(1px, -2px, 0) scale(1.04); }
+  100% { transform: rotate(0deg) translate3d(0, 0, 0) scale(1); }
 }
 
 @media (prefers-reduced-motion: reduce) {

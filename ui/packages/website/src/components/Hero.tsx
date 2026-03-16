@@ -43,23 +43,6 @@ export default function Hero() {
             </Button>
           </div>
 
-          <div className="hero-proof-grid" aria-label="UseZombie proof points">
-            <div className="hero-proof-card">
-              <span>Validated PRs</span>
-              <p>Automated changes arrive with harness output and scoring context before review starts.</p>
-            </div>
-            <div className="hero-proof-card">
-              <span>Direct model billing</span>
-              <p>Bring your own keys and providers. UseZombie does not resell tokens or hide model costs.</p>
-            </div>
-            <div className="hero-proof-card">
-              <span>Measurable run quality</span>
-              <p>Quality scores, failure analysis, and improvement history show whether automation is getting better over time.</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="hero-visual-stack">
           <div className="hero-command-card">
             <p className="hero-command-label">Quick start command</p>
             <Terminal label="Quick start command" copyable>

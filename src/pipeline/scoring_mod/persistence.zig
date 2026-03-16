@@ -1,9 +1,11 @@
 const std = @import("std");
 const pg = @import("pg");
+const shared_types = @import("../../types.zig");
 const obs_log = @import("../../observability/logging.zig");
 const id_format = @import("../../types/id_format.zig");
 const types = @import("types.zig");
 const math = @import("math.zig");
+const proposals = @import("proposals.zig");
 
 const DEFAULT_SCORING_CONTEXT_MAX_TOKENS: u32 = 2048;
 const MIN_SCORING_CONTEXT_MAX_TOKENS: u32 = 512;
@@ -16,29 +18,6 @@ const ORIENTATION_BLOCK =
 pub fn orientationContext(alloc: std.mem.Allocator) ![]const u8 {
     return alloc.dupe(u8, ORIENTATION_BLOCK);
 }
-
-const FailureClass = enum {
-    timeout,
-    bad_output_format,
-    unhandled_exception,
-    unknown,
-
-    fn label(self: FailureClass) []const u8 {
-        return switch (self) {
-            .timeout => "TIMEOUT",
-            .bad_output_format => "BAD_OUTPUT_FORMAT",
-            .unhandled_exception => "UNHANDLED_EXCEPTION",
-            .unknown => "UNKNOWN",
-        };
-    }
-
-    fn isInfra(self: FailureClass) bool {
-        return switch (self) {
-            .timeout => true,
-            .bad_output_format, .unhandled_exception, .unknown => false,
-        };
-    }
-};
 
 const ScoringRow = struct {
     score: i32,
@@ -156,8 +135,113 @@ fn persistScoreRecord(
     return true;
 }
 
-fn classifyFailure(outcome: types.TerminalOutcome) ?FailureClass {
-    return switch (outcome) {
+fn refreshAgentTrustState(conn: *pg.Conn, agent_id: []const u8, scored_at: i64) !void {
+    var q = try conn.query(
+        \\SELECT s.score, COALESCE(a.failure_is_infra, FALSE)
+        \\FROM agent_run_scores s
+        \\LEFT JOIN agent_run_analysis a ON a.run_id = s.run_id
+        \\WHERE s.agent_id = $1
+        \\ORDER BY s.scored_at DESC, s.score_id DESC
+    , .{agent_id});
+    defer q.deinit();
+
+    var trust_streak_runs: i32 = 0;
+    while (try q.next()) |row| {
+        const score = try row.get(i32, 0);
+        const failure_is_infra = try row.get(bool, 1);
+        if (failure_is_infra) continue;
+        if (score >= 70) {
+            trust_streak_runs += 1;
+            continue;
+        }
+        trust_streak_runs = 0;
+        break;
+    }
+
+    const trust_level = if (trust_streak_runs >= 10)
+        shared_types.TrustLevel.trusted.label()
+    else
+        shared_types.TrustLevel.unearned.label();
+    var uq = try conn.query(
+        \\UPDATE agent_profiles
+        \\SET trust_streak_runs = $2,
+        \\    trust_level = $3,
+        \\    last_scored_at = $4,
+        \\    updated_at = $5
+        \\WHERE agent_id = $1
+    , .{ agent_id, trust_streak_runs, trust_level, scored_at, scored_at });
+    uq.deinit();
+}
+
+fn containsIgnoreCase(haystack: []const u8, needle: []const u8) bool {
+    if (needle.len == 0) return true;
+    if (haystack.len < needle.len) return false;
+
+    var i: usize = 0;
+    while (i + needle.len <= haystack.len) : (i += 1) {
+        if (std.ascii.eqlIgnoreCase(haystack[i .. i + needle.len], needle)) return true;
+    }
+    return false;
+}
+
+fn classifyFailureFromErrorName(error_name: []const u8) ?types.FailureClass {
+    if (std.mem.eql(u8, error_name, "RunDeadlineExceeded") or
+        std.mem.eql(u8, error_name, "CommandTimedOut") or
+        std.mem.eql(u8, error_name, "Timeout") or
+        std.mem.eql(u8, error_name, "TimedOut"))
+    {
+        return .timeout;
+    }
+
+    if (std.mem.eql(u8, error_name, "OutOfMemory") or
+        std.mem.eql(u8, error_name, "NoSpaceLeft"))
+    {
+        return .oom;
+    }
+
+    if (std.mem.eql(u8, error_name, "MissingConfig") or
+        std.mem.eql(u8, error_name, "MissingGitHubInstallation") or
+        std.mem.eql(u8, error_name, "MissingMasterKey") or
+        std.mem.eql(u8, error_name, "PrAuthFailed") or
+        std.mem.eql(u8, error_name, "AuthFailed") or
+        std.mem.eql(u8, error_name, "TokenExpired") or
+        std.mem.eql(u8, error_name, "Unauthorized") or
+        std.mem.eql(u8, error_name, "RedisAuthFailed") or
+        std.mem.eql(u8, error_name, "InvalidAuthorization"))
+    {
+        return .auth_failure;
+    }
+
+    if ((containsIgnoreCase(error_name, "context") and
+        (containsIgnoreCase(error_name, "overflow") or
+            containsIgnoreCase(error_name, "exhaust") or
+            containsIgnoreCase(error_name, "window"))) or
+        (containsIgnoreCase(error_name, "token") and
+            (containsIgnoreCase(error_name, "limit") or
+                containsIgnoreCase(error_name, "overflow") or
+                containsIgnoreCase(error_name, "exceed"))))
+    {
+        return .context_overflow;
+    }
+
+    if (std.mem.eql(u8, error_name, "FileNotFound") or
+        std.mem.eql(u8, error_name, "PathTraversal") or
+        std.mem.eql(u8, error_name, "CommandFailed") or
+        std.mem.eql(u8, error_name, "InvalidResponse"))
+    {
+        return .tool_call_failure;
+    }
+
+    return null;
+}
+
+fn classifyFailure(state: *const types.ScoringState) ?types.FailureClass {
+    if (state.failure_class_override) |failure_class| return failure_class;
+    if (state.failure_error_name) |error_name| {
+        if (classifyFailureFromErrorName(error_name)) |failure_class| return failure_class;
+    }
+
+    return switch (state.outcome) {
         .done => null,
         .blocked_retries_exhausted => .timeout,
         .blocked_stage_graph => .bad_output_format,
@@ -279,7 +363,7 @@ pub fn persistRunAnalysis(
     run_id: []const u8,
     workspace_id: []const u8,
     agent_id: []const u8,
-    outcome: types.TerminalOutcome,
+    scoring_state: *const types.ScoringState,
     stages_passed: u32,
     stages_total: u32,
     total_wall_seconds: u64,
@@ -290,7 +374,7 @@ pub fn persistRunAnalysis(
     defer existing.deinit();
     if (try existing.next() != null) return;
 
-    const maybe_class = classifyFailure(outcome);
+    const maybe_class = classifyFailure(scoring_state);
 
     var failure_signals: std.ArrayList([]const u8) = .{};
     defer failure_signals.deinit(alloc);
@@ -304,9 +388,25 @@ pub fn persistRunAnalysis(
                 try failure_signals.append(alloc, "RETRIES_EXHAUSTED");
                 try improvement_hints.append(alloc, "Reduce stage scope or split large tasks to avoid retries/timeouts.");
             },
+            .oom => {
+                try failure_signals.append(alloc, "RESOURCE_LIMIT_EXCEEDED");
+                try improvement_hints.append(alloc, "Reduce stage memory pressure or split the task into smaller steps.");
+            },
             .bad_output_format => {
                 try failure_signals.append(alloc, "VALIDATION_FAILED");
                 try improvement_hints.append(alloc, "Enforce output schema and explicit verdict formatting before completing stage.");
+            },
+            .tool_call_failure => {
+                try failure_signals.append(alloc, "TOOL_CALL_FAILED");
+                try improvement_hints.append(alloc, "Validate tool inputs and handle file or shell failures before completing the stage.");
+            },
+            .context_overflow => {
+                try failure_signals.append(alloc, "TOKEN_CONTEXT_EXCEEDED");
+                try improvement_hints.append(alloc, "Compress prompts, trim run context, or reduce artifact payload size before retrying.");
+            },
+            .auth_failure => {
+                try failure_signals.append(alloc, "AUTHENTICATION_FAILED");
+                try improvement_hints.append(alloc, "Repair missing or expired credentials before re-running the harness.");
             },
             .unhandled_exception => {
                 try failure_signals.append(alloc, "ERROR_PROPAGATION");
@@ -366,12 +466,14 @@ pub fn persistScore(
     axis_scores_json: []const u8,
     weight_snapshot_json: []const u8,
     scored_at: i64,
-    outcome: types.TerminalOutcome,
+    scoring_state: *const types.ScoringState,
     stages_passed: u32,
     stages_total: u32,
     total_wall_seconds: u64,
 ) !void {
     if (agent_id.len == 0) return;
     _ = try persistScoreRecord(conn, alloc, run_id, workspace_id, agent_id, score, axis_scores_json, weight_snapshot_json, scored_at);
-    try persistRunAnalysis(conn, alloc, run_id, workspace_id, agent_id, outcome, stages_passed, stages_total, total_wall_seconds);
+    try persistRunAnalysis(conn, alloc, run_id, workspace_id, agent_id, scoring_state, stages_passed, stages_total, total_wall_seconds);
+    try refreshAgentTrustState(conn, agent_id, scored_at);
+    try proposals.maybePersistTriggerProposal(conn, alloc, workspace_id, agent_id, scored_at);
 }

@@ -116,7 +116,7 @@ export default function App() {
           >
             <span>Mission Control</span>
             <span className="header-mission-control-icon" aria-hidden="true">
-              <AnimatedIcon trigger="parent-hover" animation="wave"><ZombieHandIcon size={18} /></AnimatedIcon>
+              <AnimatedIcon trigger="parent-hover" animation="wiggle"><ZombieHandIcon size={18} /></AnimatedIcon>
             </span>
           </Button>
         </div>

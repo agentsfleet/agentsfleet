@@ -117,7 +117,7 @@ fn scoreRunInner(
         axis_scores_json,
         weight_snapshot_json,
         scored_at,
-        s.outcome,
+        s,
         s.stages_passed,
         s.stages_total,
         total_wall_seconds,
@@ -149,5 +149,6 @@ fn scoreRunInner(
 }
 
 test {
+    _ = @import("proposals_test.zig");
     _ = @import("scoring_test.zig");
 }
