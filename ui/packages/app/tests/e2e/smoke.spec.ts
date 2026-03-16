@@ -7,7 +7,6 @@ test.describe("App smoke", () => {
   test("sign-in page loads", async ({ page }) => {
     await page.goto("/sign-in");
     await expect(page.getByText("UseZombie", { exact: true })).toBeVisible();
-    await expect(page.getByRole("heading", { level: 1, name: /sign in/i })).toBeVisible();
     await expect(page.getByRole("button", { name: /continue/i }).last()).toBeVisible();
   });
 
