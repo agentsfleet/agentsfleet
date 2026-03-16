@@ -9,7 +9,6 @@ const DEFAULT_SCORING_CONTEXT_MAX_TOKENS: u32 = 2048;
 const MIN_SCORING_CONTEXT_MAX_TOKENS: u32 = 512;
 const MAX_SCORING_CONTEXT_MAX_TOKENS: u32 = 8192;
 const TOKEN_ESTIMATE_DIVISOR: u32 = 4;
-const STDERR_TAIL_MAX_LINES: usize = 200;
 const ORIENTATION_BLOCK =
     "## Agent Performance Context (v1)\n" ++
     "You have no prior score history. Aim for clean terminal states, minimal resource use, and valid output format.";
@@ -167,31 +166,6 @@ fn classifyFailure(outcome: types.TerminalOutcome) ?FailureClass {
     };
 }
 
-fn scrubStderrTail(alloc: std.mem.Allocator, stderr_tail: []const u8) ![]const u8 {
-    var out = try alloc.dupe(u8, stderr_tail);
-
-    const redact_markers = [_][]const u8{
-        "API_KEY=",
-        "Bearer ",
-        "DATABASE_URL=",
-        "ENCRYPTION_MASTER_KEY=",
-        "-----BEGIN",
-    };
-
-    for (redact_markers) |marker| {
-        var idx: usize = 0;
-        while (idx < out.len) {
-            const found = std.mem.indexOfPos(u8, out, idx, marker) orelse break;
-            var end = found + marker.len;
-            while (end < out.len and out[end] != '\n' and out[end] != '\r' and out[end] != ' ') : (end += 1) {}
-            @memset(out[found + marker.len .. end], '*');
-            idx = end;
-        }
-    }
-
-    return out;
-}
-
 fn scoreTierLabel(score: i32) []const u8 {
     if (score >= 90) return "Elite";
     if (score >= 70) return "Gold";
@@ -203,40 +177,6 @@ fn approximateTokenCount(content: []const u8) u32 {
     // Align with NullClaw runtime compaction heuristic tokenEstimate:
     // estimated_tokens = (chars + 3) / 4
     return @intCast((content.len + (TOKEN_ESTIMATE_DIVISOR - 1)) / TOKEN_ESTIMATE_DIVISOR);
-}
-
-fn buildRunDiagnosticsTail(
-    conn: *pg.Conn,
-    alloc: std.mem.Allocator,
-    run_id: []const u8,
-) ![]const u8 {
-    var q = conn.query(
-        \\SELECT reason_code, state_to, COALESCE(notes, '')
-        \\FROM run_transitions
-        \\WHERE run_id = $1
-        \\ORDER BY ts DESC
-        \\LIMIT $2
-    , .{ run_id, @as(i32, @intCast(STDERR_TAIL_MAX_LINES)) }) catch |err| {
-        obs_log.logWarnErr(.scoring, err, "run transition diagnostics query failed run_id={s}", .{run_id});
-        return alloc.dupe(u8, "");
-    };
-    defer q.deinit();
-
-    var buf: std.ArrayList(u8) = .{};
-    defer buf.deinit(alloc);
-
-    while (try q.next()) |row| {
-        const reason_code = row.get([]const u8, 0) catch continue;
-        const state_to = row.get([]const u8, 1) catch continue;
-        const notes = row.get([]const u8, 2) catch "";
-        if (notes.len > 0) {
-            try buf.writer(alloc).print("[{s}] {s}: {s}\n", .{ reason_code, state_to, notes });
-        } else {
-            try buf.writer(alloc).print("[{s}] {s}\n", .{ reason_code, state_to });
-        }
-    }
-
-    return buf.toOwnedSlice(alloc);
 }
 
 fn buildScoringContextBlock(
@@ -394,11 +334,6 @@ pub fn persistRunAnalysis(
     const improvement_hints_json = try std.json.Stringify.valueAlloc(alloc, improvement_hints.items, .{});
     defer alloc.free(improvement_hints_json);
 
-    const raw_stderr_tail = try buildRunDiagnosticsTail(conn, alloc, run_id);
-    defer alloc.free(raw_stderr_tail);
-    const stderr_tail = try scrubStderrTail(alloc, raw_stderr_tail);
-    defer alloc.free(stderr_tail);
-
     const analysis_id = try id_format.generateTransitionId(alloc);
     defer alloc.free(analysis_id);
 
@@ -416,7 +351,7 @@ pub fn persistRunAnalysis(
         if (maybe_class) |fc| fc.isInfra() else false,
         failure_signals_json,
         improvement_hints_json,
-        stderr_tail,
+        @as(?[]const u8, null),
         std.time.milliTimestamp(),
     });
     q.deinit();
