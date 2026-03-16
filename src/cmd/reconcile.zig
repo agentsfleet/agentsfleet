@@ -17,6 +17,7 @@ const billing_reconciler = @import("../state/billing_reconciler.zig");
 const id_format = @import("../types/id_format.zig");
 const otel = @import("../observability/otel_export.zig");
 const metrics = @import("../observability/metrics.zig");
+const proposals = @import("../pipeline/scoring_mod/proposals.zig");
 
 const log = std.log.scoped(.reconcile);
 const ReconcileLeaderLockKey: i64 = 0x7A6F6D6269651001;
@@ -269,6 +270,10 @@ fn reconcileTick(pool: *db.Pool) !outbox.ReconcileResult {
     var adapter = try billing_adapter.adapterFromEnv(std.heap.page_allocator);
     defer adapter.deinit(std.heap.page_allocator);
     const billing_result = try billing_reconciler.reconcilePending(std.heap.page_allocator, conn, adapter, billing_reconciler.DEFAULT_BATCH_LIMIT);
+    const proposal_result = try proposals.reconcilePendingProposalGenerations(conn, std.heap.page_allocator, 0);
+    if (proposal_result.ready > 0 or proposal_result.rejected > 0) {
+        log.info("proposal_generation_reconciled ready={d} rejected={d}", .{ proposal_result.ready, proposal_result.rejected });
+    }
 
     return .{
         .dead_lettered = side_effect_result.dead_lettered + billing_result.dead_lettered,

@@ -107,6 +107,20 @@ fn createTempProposalTables(conn: *pg.Conn) !void {
         \\) ON COMMIT DROP
     );
     try execSql(conn,
+        \\CREATE TEMP TABLE entitlement_policy_audit_snapshots (
+        \\  snapshot_id TEXT PRIMARY KEY,
+        \\  workspace_id TEXT NOT NULL,
+        \\  boundary TEXT NOT NULL,
+        \\  decision TEXT NOT NULL,
+        \\  reason_code TEXT NOT NULL,
+        \\  plan_tier TEXT NOT NULL,
+        \\  policy_json TEXT NOT NULL,
+        \\  observed_json TEXT NOT NULL,
+        \\  actor TEXT NOT NULL,
+        \\  created_at BIGINT NOT NULL
+        \\) ON COMMIT DROP
+    );
+    try execSql(conn,
         \\CREATE TEMP TABLE agent_improvement_proposals (
         \\  proposal_id TEXT PRIMARY KEY,
         \\  agent_id TEXT NOT NULL,
@@ -140,8 +154,18 @@ fn insertActiveConfig(
     workspace_id: []const u8,
     config_version_id: []const u8,
 ) !void {
-    const profile_json =
-        "{\"profile_id\":\"agent\",\"stages\":[{\"stage_id\":\"plan\",\"role\":\"echo\",\"skill\":\"echo\"},{\"stage_id\":\"implement\",\"role\":\"scout\",\"skill\":\"scout\"},{\"stage_id\":\"verify\",\"role\":\"warden\",\"skill\":\"warden\",\"gate\":true,\"on_pass\":\"done\",\"on_fail\":\"retry\"}]}";
+    try insertActiveConfigWithProfile(conn, agent_id, workspace_id, config_version_id,
+        "{\"profile_id\":\"agent\",\"stages\":[{\"stage_id\":\"plan\",\"role\":\"echo\",\"skill\":\"echo\"},{\"stage_id\":\"implement\",\"role\":\"scout\",\"skill\":\"scout\"},{\"stage_id\":\"verify\",\"role\":\"warden\",\"skill\":\"warden\",\"gate\":true,\"on_pass\":\"done\",\"on_fail\":\"retry\"}]}"
+    );
+}
+
+fn insertActiveConfigWithProfile(
+    conn: *pg.Conn,
+    agent_id: []const u8,
+    workspace_id: []const u8,
+    config_version_id: []const u8,
+    profile_json: []const u8,
+) !void {
     {
         var q = try conn.query(
             \\INSERT INTO agent_config_versions (config_version_id, agent_id, compiled_profile_json)
@@ -252,6 +276,94 @@ test "scoreRunIfTerminal triggers proposal on declining five-run average" {
     try std.testing.expect((try q.next()) == null);
 }
 
+test "reconcilePendingProposalGenerations materializes generated stage proposal payload" {
+    const db_ctx = (try openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.release(db_ctx.conn);
+    defer db_ctx.pool.deinit();
+
+    try createTempProposalTables(db_ctx.conn);
+    {
+        var q = try db_ctx.conn.query(
+            \\INSERT INTO workspace_entitlements
+            \\  (entitlement_id, workspace_id, plan_tier, max_profiles, max_stages, max_distinct_skills, allow_custom_skills, enable_agent_scoring, agent_scoring_weights_json, created_at, updated_at)
+            \\VALUES ('ent_prop_4', 'ws_prop_4', 'FREE', 3, 4, 3, false, true, '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}', 0, 0)
+        , .{});
+        q.deinit();
+    }
+    try insertAgentProfile(db_ctx.conn, "agent_prop_4", "ws_prop_4");
+    try insertActiveConfig(db_ctx.conn, "agent_prop_4", "ws_prop_4", "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f94");
+
+    const low_state = scoring.ScoringState{ .outcome = .blocked_stage_graph, .stages_passed = 0, .stages_total = 3 };
+    var i: usize = 0;
+    while (i < 5) : (i += 1) {
+        const run_id = try std.fmt.allocPrint(std.testing.allocator, "run_prop_ready_{d}", .{i});
+        defer std.testing.allocator.free(run_id);
+        scoring.scoreRunIfTerminal(db_ctx.conn, null, run_id, "ws_prop_4", "agent_prop_4", "user_prop_4", &low_state, 20);
+    }
+
+    const result = try proposals.reconcilePendingProposalGenerations(db_ctx.conn, std.testing.allocator, 0);
+    try std.testing.expectEqual(@as(u32, 1), result.ready);
+    try std.testing.expectEqual(@as(u32, 0), result.rejected);
+
+    var q = try db_ctx.conn.query(
+        \\SELECT proposed_changes, generation_status, status, rejection_reason
+        \\FROM agent_improvement_proposals
+        \\WHERE agent_id = 'agent_prop_4'
+    , .{});
+    defer q.deinit();
+    const row = (try q.next()) orelse return error.TestUnexpectedResult;
+    const proposed_changes = row.get([]const u8, 0) catch "";
+    try std.testing.expect(std.mem.containsAtLeast(u8, proposed_changes, 1, "\"target_field\":\"stage_insert\""));
+    try std.testing.expect(std.mem.containsAtLeast(u8, proposed_changes, 1, "\"insert_before_stage_id\":\"verify\""));
+    try std.testing.expect(std.mem.containsAtLeast(u8, proposed_changes, 1, "\"stage_id\":\"verify-precheck\""));
+    try std.testing.expectEqualStrings("READY", row.get([]const u8, 1) catch "");
+    try std.testing.expectEqualStrings("PENDING_REVIEW", row.get([]const u8, 2) catch "");
+    try std.testing.expect((row.get(?[]const u8, 3) catch null) == null);
+    try std.testing.expect((try q.next()) == null);
+}
+
+test "reconcilePendingProposalGenerations rejects generated proposals that exceed stage entitlements" {
+    const db_ctx = (try openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.release(db_ctx.conn);
+    defer db_ctx.pool.deinit();
+
+    try createTempProposalTables(db_ctx.conn);
+    {
+        var q = try db_ctx.conn.query(
+            \\INSERT INTO workspace_entitlements
+            \\  (entitlement_id, workspace_id, plan_tier, max_profiles, max_stages, max_distinct_skills, allow_custom_skills, enable_agent_scoring, agent_scoring_weights_json, created_at, updated_at)
+            \\VALUES ('ent_prop_5', 'ws_prop_5', 'FREE', 3, 3, 3, false, true, '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}', 0, 0)
+        , .{});
+        q.deinit();
+    }
+    try insertAgentProfile(db_ctx.conn, "agent_prop_5", "ws_prop_5");
+    try insertActiveConfig(db_ctx.conn, "agent_prop_5", "ws_prop_5", "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f95");
+    {
+        var q = try db_ctx.conn.query(
+            \\INSERT INTO agent_improvement_proposals
+            \\  (proposal_id, agent_id, workspace_id, trigger_reason, proposed_changes, config_version_id, approval_mode, generation_status, status, auto_apply_at, created_at, updated_at)
+            \\VALUES ('prop_stage_limit_1', 'agent_prop_5', 'ws_prop_5', 'SUSTAINED_LOW_SCORE', '[]', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f95', 'MANUAL', 'PENDING', 'PENDING_REVIEW', NULL, 0, 0)
+        , .{});
+        q.deinit();
+    }
+
+    const result = try proposals.reconcilePendingProposalGenerations(db_ctx.conn, std.testing.allocator, 0);
+    try std.testing.expectEqual(@as(u32, 0), result.ready);
+    try std.testing.expectEqual(@as(u32, 1), result.rejected);
+
+    var q = try db_ctx.conn.query(
+        \\SELECT proposed_changes, generation_status, status, rejection_reason
+        \\FROM agent_improvement_proposals
+        \\WHERE proposal_id = 'prop_stage_limit_1'
+    , .{});
+    defer q.deinit();
+    const row = (try q.next()) orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqualStrings("[]", row.get([]const u8, 0) catch "");
+    try std.testing.expectEqualStrings("REJECTED", row.get([]const u8, 1) catch "");
+    try std.testing.expectEqualStrings("REJECTED", row.get([]const u8, 2) catch "");
+    try std.testing.expectEqualStrings("UZ-ENTL-003", row.get([]const u8, 3) catch "");
+}
+
 test "proposal validation rejects unregistered agent refs and entitlement-disallowed skills" {
     const db_ctx = (try openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
     defer db_ctx.pool.release(db_ctx.conn);
@@ -267,6 +379,7 @@ test "proposal validation rejects unregistered agent refs and entitlement-disall
         q.deinit();
     }
     try insertAgentProfile(db_ctx.conn, "agent_prop_3", "ws_prop_3");
+    try insertActiveConfig(db_ctx.conn, "agent_prop_3", "ws_prop_3", "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f96");
 
     try std.testing.expectError(
         proposals.ProposalValidationError.UnregisteredAgentRef,
@@ -274,7 +387,7 @@ test "proposal validation rejects unregistered agent refs and entitlement-disall
             db_ctx.conn,
             std.testing.allocator,
             "ws_prop_3",
-            "[{\"target_field\":\"stage_binding\",\"proposed_value\":{\"agent_id\":\"missing-agent\",\"skill\":\"echo\"},\"rationale\":\"rebind stage\"}]",
+            "[{\"target_field\":\"stage_binding\",\"proposed_value\":{\"agent_id\":\"missing-agent\",\"stage_id\":\"verify\",\"role\":\"warden\",\"skill\":\"warden\"},\"rationale\":\"rebind stage\"}]",
         ),
     );
 
@@ -284,7 +397,7 @@ test "proposal validation rejects unregistered agent refs and entitlement-disall
             db_ctx.conn,
             std.testing.allocator,
             "ws_prop_3",
-            "[{\"target_field\":\"stage_binding\",\"proposed_value\":{\"agent_id\":\"agent_prop_3\",\"skill\":\"clawhub://openclaw/github-reviewer@1.2.0\"},\"rationale\":\"rebind stage\"}]",
+            "[{\"target_field\":\"stage_binding\",\"proposed_value\":{\"agent_id\":\"agent_prop_3\",\"stage_id\":\"verify\",\"role\":\"warden\",\"skill\":\"clawhub://openclaw/github-reviewer@1.2.0\"},\"rationale\":\"rebind stage\"}]",
         ),
     );
 }
