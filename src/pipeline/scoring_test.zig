@@ -38,6 +38,8 @@ fn createTempScoringTables(conn: *pg.Conn) !void {
             \\  allow_custom_skills BOOLEAN NOT NULL,
             \\  enable_agent_scoring BOOLEAN NOT NULL DEFAULT FALSE,
             \\  agent_scoring_weights_json TEXT NOT NULL DEFAULT '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}',
+            \\  enable_score_context_injection BOOLEAN NOT NULL DEFAULT TRUE,
+            \\  scoring_context_max_tokens INTEGER NOT NULL DEFAULT 2048,
             \\  created_at BIGINT NOT NULL,
             \\  updated_at BIGINT NOT NULL
             \\) ON COMMIT DROP
@@ -62,6 +64,23 @@ fn createTempScoringTables(conn: *pg.Conn) !void {
             \\  agent_id TEXT PRIMARY KEY,
             \\  workspace_id TEXT NOT NULL,
             \\  updated_at BIGINT NOT NULL DEFAULT 0
+            \\) ON COMMIT DROP
+        , .{});
+        q.deinit();
+    }
+    {
+        var q = try conn.query(
+            \\CREATE TEMP TABLE agent_run_analysis (
+            \\  analysis_id TEXT PRIMARY KEY,
+            \\  run_id TEXT NOT NULL UNIQUE,
+            \\  agent_id TEXT NOT NULL,
+            \\  workspace_id TEXT NOT NULL,
+            \\  failure_class TEXT,
+            \\  failure_is_infra BOOLEAN NOT NULL DEFAULT FALSE,
+            \\  failure_signals JSONB NOT NULL DEFAULT '[]'::jsonb,
+            \\  improvement_hints JSONB NOT NULL DEFAULT '[]'::jsonb,
+            \\  stderr_tail TEXT,
+            \\  analyzed_at BIGINT NOT NULL
             \\) ON COMMIT DROP
         , .{});
         q.deinit();
@@ -253,4 +272,55 @@ test "scoreRunIfTerminal persists run score" {
         try std.testing.expectEqual(@as(i32, 95), row.get(i32, 0) catch -1);
         try std.testing.expectEqualStrings("agent_3", row.get([]const u8, 1) catch "");
     }
+    {
+        var q = try db_ctx.conn.query("SELECT failure_class, failure_is_infra FROM agent_run_analysis WHERE run_id = 'run_3'", .{});
+        defer q.deinit();
+        const row = (try q.next()) orelse return error.TestUnexpectedResult;
+        try std.testing.expect((row.get(?[]const u8, 0) catch null) == null);
+        try std.testing.expectEqual(false, row.get(bool, 1) catch true);
+    }
+}
+
+test "buildScoringContextForEcho returns orientation when no history" {
+    const db_ctx = (try openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.release(db_ctx.conn);
+    defer db_ctx.pool.deinit();
+
+    try createTempScoringTables(db_ctx.conn);
+    {
+        var q = try db_ctx.conn.query(
+            \\INSERT INTO workspace_entitlements
+            \\  (entitlement_id, workspace_id, plan_tier, max_profiles, max_stages, max_distinct_skills, allow_custom_skills, enable_agent_scoring, agent_scoring_weights_json, enable_score_context_injection, scoring_context_max_tokens, created_at, updated_at)
+            \\VALUES ('ent_ctx_1', 'ws_ctx_1', 'FREE', 1, 3, 3, false, true, '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}', true, 2048, 0, 0)
+        , .{});
+        q.deinit();
+    }
+
+    const cfg = try scoring.queryScoringConfig(db_ctx.conn, std.testing.allocator, "ws_ctx_1");
+    const block = try scoring.buildScoringContextForEcho(db_ctx.conn, std.testing.allocator, "ws_ctx_1", "agent_ctx_1", cfg);
+    defer std.testing.allocator.free(block);
+
+    try std.testing.expect(std.mem.containsAtLeast(u8, block, 1, "You have no prior score history"));
+}
+
+test "buildScoringContextForEcho is empty when injection disabled" {
+    const db_ctx = (try openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.release(db_ctx.conn);
+    defer db_ctx.pool.deinit();
+
+    try createTempScoringTables(db_ctx.conn);
+    {
+        var q = try db_ctx.conn.query(
+            \\INSERT INTO workspace_entitlements
+            \\  (entitlement_id, workspace_id, plan_tier, max_profiles, max_stages, max_distinct_skills, allow_custom_skills, enable_agent_scoring, agent_scoring_weights_json, enable_score_context_injection, scoring_context_max_tokens, created_at, updated_at)
+            \\VALUES ('ent_ctx_2', 'ws_ctx_2', 'FREE', 1, 3, 3, false, true, '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}', false, 2048, 0, 0)
+        , .{});
+        q.deinit();
+    }
+
+    const cfg = try scoring.queryScoringConfig(db_ctx.conn, std.testing.allocator, "ws_ctx_2");
+    const block = try scoring.buildScoringContextForEcho(db_ctx.conn, std.testing.allocator, "ws_ctx_2", "agent_ctx_2", cfg);
+    defer std.testing.allocator.free(block);
+
+    try std.testing.expectEqual(@as(usize, 0), block.len);
 }

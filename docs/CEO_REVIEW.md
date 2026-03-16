@@ -29,7 +29,7 @@
   - M6_006 — V1 Acceptance E2E Gate
   - M7_001 — Deploy from Deployment Guide (dev/prod)
   - M7_002 — Documentation Production & Publish
-  - M7_003 — Free Plan Exhaustion & Conversion UX
+  - M12_001 — Free Plan Exhaustion & Conversion UX
 
   No stashed work. No TODOS.md file.
 
@@ -611,7 +611,7 @@
 
     ┌──────────────────────────────────────────────────────────┐
     │  API / CLI Layer (read paths)                            │
-    │                                                          │
+    │                                                         │
     │  GET /v1/agents/{profile_id}/scores                      │
     │  GET /v1/agents/{profile_id}/profile                     │
     │  GET /v1/workspaces/{ws_id}/leaderboard                  │

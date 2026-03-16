@@ -161,7 +161,17 @@ pub fn executeRun(
     defer spec_file.close();
     const spec_content = try spec_file.readToEndAlloc(run_alloc, 512 * 1024);
 
-    const memory_context = try memory.loadForEcho(run_alloc, conn, ctx.workspace_id, 20);
+    const workspace_memory_context = try memory.loadForEcho(run_alloc, conn, ctx.workspace_id, 20);
+    const score_context = try loadScoreContextBestEffort(run_alloc, conn, ctx.workspace_id, ctx.agent_id);
+    const memory_context = try std.fmt.allocPrint(
+        run_alloc,
+        "{s}{s}{s}",
+        .{
+            score_context,
+            if (score_context.len > 0 and workspace_memory_context.len > 0) "\n\n" else "",
+            workspace_memory_context,
+        },
+    );
 
     const plan_stage = profile.stages[0];
     const plan_binding = resolveBinding(cfg, plan_stage.role_id, plan_stage.skill_id) orelse return worker_runtime.WorkerError.InvalidPipelineRole;
@@ -552,6 +562,19 @@ fn commitArtifact(
 
     const name = std.fs.path.basename(rel_path);
     try state.registerArtifact(conn, ctx.run_id, attempt, name, object_key, &checksum, actor);
+}
+
+fn loadScoreContextBestEffort(
+    alloc: std.mem.Allocator,
+    conn: *pg.Conn,
+    workspace_id: []const u8,
+    agent_id: []const u8,
+) ![]const u8 {
+    const config = scoring.queryScoringConfig(conn, alloc, workspace_id) catch |err| {
+        obs_log.logWarnErr(.scoring, err, "scoring config lookup failed workspace_id={s}; using orientation block", .{workspace_id});
+        return scoring.orientationContext(alloc);
+    };
+    return scoring.buildScoringContextForEcho(conn, alloc, workspace_id, agent_id, config);
 }
 
 /// Best-effort Langfuse trace emission. Reads config from env on each call

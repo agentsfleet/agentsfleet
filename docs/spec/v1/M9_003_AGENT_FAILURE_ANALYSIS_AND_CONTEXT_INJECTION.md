@@ -4,7 +4,7 @@
 **Milestone:** M9
 **Workstream:** 003
 **Date:** Mar 13, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P0 — the feedback loop that enables auto-learning; M9_004 depends on this
 **Batch:** B2 — starts after M9_002 score persistence is stable
 **Depends on:** M9_002 (score persistence and profile API)
@@ -13,7 +13,7 @@
 
 ## 1.0 Failure Analysis Generation
 
-**Status:** PENDING
+**Status:** IN_PROGRESS
 
 After each scored run, produce a structured failure analysis document that names what went wrong and why.
 Analysis must be deterministic, structured, and LLM-independent (LLM may enhance but is not required).
@@ -39,7 +39,7 @@ Analysis must be deterministic, structured, and LLM-independent (LLM may enhance
 
   This classification is used by M9_004 trust evaluation: infrastructure failures do NOT reset the consecutive Gold+ streak; only agent-attributable failures reset it.
 
-- 1.3 PENDING Produce `agent_run_analysis` record:
+- 1.3 DONE Produce `agent_run_analysis` record:
   ```sql
   CREATE TABLE agent_run_analysis (
       analysis_id      UUID PRIMARY KEY,
@@ -48,14 +48,17 @@ Analysis must be deterministic, structured, and LLM-independent (LLM may enhance
       workspace_id     UUID NOT NULL REFERENCES workspaces(workspace_id),
       failure_class    TEXT,  -- NULL for successful runs
       failure_is_infra BOOLEAN NOT NULL DEFAULT FALSE,
-      failure_signals  TEXT NOT NULL DEFAULT '[]',  -- JSON array of signal strings
-      improvement_hints TEXT NOT NULL DEFAULT '[]', -- JSON array of structured hints
+      failure_signals  JSONB NOT NULL DEFAULT '[]'::jsonb,   -- JSON array of signal strings
+      improvement_hints JSONB NOT NULL DEFAULT '[]'::jsonb,  -- JSON array of structured hints
       stderr_tail      TEXT,  -- last 200 lines, secrets scrubbed
       analyzed_at      BIGINT NOT NULL,
       UNIQUE (run_id),
-      CONSTRAINT ck_agent_run_analysis_uuidv7 CHECK (substring(analysis_id::text from 15 for 1) = '7')
+      CONSTRAINT ck_agent_run_analysis_uuidv7 CHECK (substring(analysis_id::text from 15 for 1) = '7'),
+      CONSTRAINT ck_failure_signals_array CHECK (jsonb_typeof(failure_signals) = 'array'),
+      CONSTRAINT ck_improvement_hints_array CHECK (jsonb_typeof(improvement_hints) = 'array')
   );
   CREATE INDEX idx_agent_run_analysis_agent ON agent_run_analysis(agent_id, analyzed_at DESC);
+  CREATE INDEX idx_agent_run_analysis_hints_gin ON agent_run_analysis USING GIN (improvement_hints);
   ```
   DB grants:
   ```sql
@@ -63,21 +66,22 @@ Analysis must be deterministic, structured, and LLM-independent (LLM may enhance
   GRANT SELECT ON agent_run_analysis TO api_accessor;
   ```
 
-- 1.4 PENDING For successful runs, record `failure_class = NULL`, `failure_is_infra = FALSE`, and `improvement_hints` focused on efficiency: where latency or resource headroom can be recovered (e.g., "stage 'implement' used 80% of total tokens — investigate prompt compression")
+- 1.4 DONE For successful runs, record `failure_class = NULL`, `failure_is_infra = FALSE`, and `improvement_hints` focused on efficiency: where latency or resource headroom can be recovered (e.g., "stage 'implement' used 80% of total tokens — investigate prompt compression")
 
-- 1.5 PENDING **Stderr secret scrubbing:** Before persisting `stderr_tail`, apply a scrubbing pass that redacts patterns matching: `API_KEY=...`, `Bearer ...`, `DATABASE_URL=...`, `ENCRYPTION_MASTER_KEY=...`, `-----BEGIN.*PRIVATE KEY-----`, and any env var from CONFIGURATION.md's "Keys That Should Never Come From CLI Flags" list. Replace matched values with `[REDACTED]`.
+- 1.5 IN_PROGRESS **Stderr secret scrubbing + exporter safety:** Before persisting `stderr_tail`, apply a deterministic scrubbing pass that redacts patterns matching: `API_KEY=...`, `Bearer ...`, `DATABASE_URL=...`, `ENCRYPTION_MASTER_KEY=...`, `-----BEGIN.*PRIVATE KEY-----`, and any env var from CONFIGURATION.md's "Keys That Should Never Come From CLI Flags" list. Replace matched values with `[REDACTED]`. Only the scrubbed value may be exported by log shippers (Grafana Cloud path included); raw stderr is never exported.
 
 ---
 
 ## 2.0 Context Injection Into Next Run
 
-**Status:** PENDING
+**Status:** IN_PROGRESS
 
 Before a new run starts, inject the agent's recent score trajectory and failure analysis into the run context so the agent can self-correct.
 
 **Dimensions:**
-- 2.1 PENDING Build a `ScoringContext` block from the last 5 scored runs: per-run `score`, `tier`, `failure_class` (if any), top `improvement_hint` — capped at 512 tokens; truncate oldest run first if over limit. Token counting uses a simple byte-based estimate (4 chars ≈ 1 token) for determinism.
-- 2.2 PENDING Inject `ScoringContext` as a structured system-message prefix before the agent's primary instruction. Format is stable and versioned:
+- 2.1 IN_PROGRESS Build a `ScoringContext` block from the last 5 scored runs: per-run `score`, `tier`, `failure_class` (if any), top `improvement_hint` — capped by `scoring_context_max_tokens` from zombied config (default: 2048, min: 512, max: 8192). Truncate oldest run first if over limit. Enforce cap with the runtime tokenizer (not byte/char estimates).
+- 2.2 PENDING Expose admin control for `scoring_context_max_tokens` via CLI (`zombiectl admin config set scoring_context_max_tokens <n>`) so operators can tighten limits for abuse or raise limits for larger repositories.
+- 2.3 DONE Inject `ScoringContext` as a structured system-message prefix before the agent's primary instruction. Format is stable and versioned:
   ```
   ## Agent Performance Context (v1)
   Your recent run history:
@@ -90,9 +94,9 @@ Before a new run starts, inject the agent's recent score trajectory and failure 
   | 1 | 45 | Silver | BAD_OUTPUT_FORMAT |
   Trend: improving. Focus: avoid timeouts on large repos.
   ```
-- 2.3 PENDING If agent has no prior runs (Unranked), inject a brief orientation block: "You have no prior score history. Aim for clean terminal states, minimal resource use, and valid output format."
-- 2.4 PENDING Injection is opt-in per workspace via a workspace setting `enable_score_context_injection: bool` (default: true); can be disabled without affecting scoring or persistence. Requires `enable_agent_scoring` (M9_001) to be true.
-- 2.5 PENDING If the DB query for last 5 scores fails, inject the orientation block as fallback (not empty context). Log the error. Run continues normally.
+- 2.4 DONE If agent has no prior runs (Unranked), inject a brief orientation block: "You have no prior score history. Aim for clean terminal states, minimal resource use, and valid output format."
+- 2.5 DONE Injection is opt-in per workspace via a workspace setting `enable_score_context_injection: bool` (default: true); can be disabled without affecting scoring or persistence. Requires `enable_agent_scoring` (M9_001) to be true.
+- 2.6 DONE If the DB query for last 5 scores fails, inject the orientation block as fallback (not empty context). Log the error. Run continues normally.
 
 ---
 
@@ -106,8 +110,8 @@ Before a new run starts, inject the agent's recent score trajectory and failure 
 - [ ] 3.4 `failure_is_infra = false` for BAD_OUTPUT_FORMAT, TOOL_CALL_FAILURE, UNHANDLED_EXCEPTION, UNKNOWN
 - [ ] 3.5 `ScoringContext` block injected into run context when workspace setting is enabled
 - [ ] 3.6 `ScoringContext` block is absent when workspace setting is disabled
-- [ ] 3.7 Context block never exceeds 512 tokens (enforced by truncation, not best-effort)
-- [ ] 3.8 Stderr tail does not contain any patterns matching the secret scrubbing list
+- [ ] 3.7 Context block never exceeds configured `scoring_context_max_tokens` (hard-enforced by tokenizer + truncation)
+- [ ] 3.8 Stderr tail does not contain any patterns matching the secret scrubbing list in storage or exported logs
 - [ ] 3.9 Agent with 3 prior TIMEOUT failures and injected context shows measurable reduction in timeout rate over next 10 runs (demo evidence required — not a unit test)
 
 ---
@@ -119,3 +123,13 @@ Before a new run starts, inject the agent's recent score trajectory and failure 
 - Context injection into non-agent (human-driven) runs
 - Injection format changes mid-workspace (versioning handles this; no live migration)
 - Full stderr capture (only last 200 lines, scrubbed)
+
+---
+
+## 5.0 Implementation Notes (Mar 16, 2026)
+
+- Added migration `018_agent_failure_analysis_and_context_injection.sql` with `agent_run_analysis` plus workspace settings: `enable_score_context_injection` and `scoring_context_max_tokens`.
+- Worker scoring finalization now writes `agent_run_analysis` for each scored run and persists deterministic failure classification + improvement hints.
+- Echo prompt injection now prepends `ScoringContext` before workspace memories; when history is unavailable or query fails, orientation context is injected.
+- Current cap enforcement uses deterministic token estimation (`~4 chars/token`) until runtime tokenizer integration lands.
+- Remaining gap: admin CLI setter for `scoring_context_max_tokens` is still pending.

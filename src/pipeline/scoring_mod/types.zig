@@ -45,6 +45,8 @@ pub const DEFAULT_WEIGHTS = Weights{};
 pub const ScoringConfig = struct {
     enabled: bool = false,
     weights: Weights = DEFAULT_WEIGHTS,
+    enable_score_context_injection: bool = true,
+    scoring_context_max_tokens: u32 = 2048,
 };
 
 pub const WeightsDoc = struct {

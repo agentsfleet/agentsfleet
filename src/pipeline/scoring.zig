@@ -35,6 +35,8 @@ pub const weightsJson = math.weightsJson;
 pub const queryLatencyBaseline = persistence.queryLatencyBaseline;
 pub const updateLatencyBaseline = persistence.updateLatencyBaseline;
 pub const queryScoringConfig = persistence.queryScoringConfig;
+pub const buildScoringContextForEcho = persistence.buildScoringContextForEcho;
+pub const orientationContext = persistence.orientationContext;
 
 pub fn scoreRunIfTerminal(
     conn: *pg.Conn,
@@ -115,6 +117,10 @@ fn scoreRunInner(
         axis_scores_json,
         weight_snapshot_json,
         scored_at,
+        s.outcome,
+        s.stages_passed,
+        s.stages_total,
+        total_wall_seconds,
     );
 
     log.info("run scored run_id={s} score={d} tier={s}", .{ run_id, score, tier.label() });
