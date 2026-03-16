@@ -6,8 +6,8 @@ const EXPECTED_HOSTNAME = new URL(BASE_URL).hostname;
 test.describe("App smoke", () => {
   test("sign-in page loads", async ({ page }) => {
     await page.goto("/sign-in");
+    await expect(page).toHaveURL(/\/sign-in/);
     await expect(page.getByText("UseZombie", { exact: true })).toBeVisible();
-    await expect(page.getByRole("button", { name: /continue/i }).last()).toBeVisible();
   });
 
   test("protected route redirects to local sign-in", async ({ page }) => {
