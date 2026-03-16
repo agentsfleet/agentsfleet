@@ -24,6 +24,7 @@ pub fn handlePutHarnessSource(ctx: *Context, r: zap.Request, workspace_id: []con
         common.errorResponse(r, .bad_request, error_codes.ERR_INVALID_REQUEST, "Request body required", req_id);
         return;
     };
+    if (!common.checkBodySize(r, body, req_id)) return;
     const parsed = std.json.parseFromSlice(Req, alloc, body, .{}) catch {
         common.errorResponse(r, .bad_request, error_codes.ERR_INVALID_REQUEST, "Malformed JSON", req_id);
         return;
