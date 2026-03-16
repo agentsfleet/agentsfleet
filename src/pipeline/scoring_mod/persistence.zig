@@ -1,11 +1,11 @@
 const std = @import("std");
 const pg = @import("pg");
-const shared_types = @import("../../types.zig");
 const obs_log = @import("../../observability/logging.zig");
 const id_format = @import("../../types/id_format.zig");
 const types = @import("types.zig");
 const math = @import("math.zig");
 const proposals = @import("proposals.zig");
+const trust = @import("trust.zig");
 
 const DEFAULT_SCORING_CONTEXT_MAX_TOKENS: u32 = 2048;
 const MIN_SCORING_CONTEXT_MAX_TOKENS: u32 = 512;
@@ -133,44 +133,6 @@ fn persistScoreRecord(
     , .{ score_id, run_id, agent_id, workspace_id, score, axis_scores_json, weight_snapshot_json, scored_at });
     q.deinit();
     return true;
-}
-
-fn refreshAgentTrustState(conn: *pg.Conn, agent_id: []const u8, scored_at: i64) !void {
-    var q = try conn.query(
-        \\SELECT s.score, COALESCE(a.failure_is_infra, FALSE)
-        \\FROM agent_run_scores s
-        \\LEFT JOIN agent_run_analysis a ON a.run_id = s.run_id
-        \\WHERE s.agent_id = $1
-        \\ORDER BY s.scored_at DESC, s.score_id DESC
-    , .{agent_id});
-    defer q.deinit();
-
-    var trust_streak_runs: i32 = 0;
-    while (try q.next()) |row| {
-        const score = try row.get(i32, 0);
-        const failure_is_infra = try row.get(bool, 1);
-        if (failure_is_infra) continue;
-        if (score >= 70) {
-            trust_streak_runs += 1;
-            continue;
-        }
-        trust_streak_runs = 0;
-        break;
-    }
-
-    const trust_level = if (trust_streak_runs >= 10)
-        shared_types.TrustLevel.trusted.label()
-    else
-        shared_types.TrustLevel.unearned.label();
-    var uq = try conn.query(
-        \\UPDATE agent_profiles
-        \\SET trust_streak_runs = $2,
-        \\    trust_level = $3,
-        \\    last_scored_at = $4,
-        \\    updated_at = $5
-        \\WHERE agent_id = $1
-    , .{ agent_id, trust_streak_runs, trust_level, scored_at, scored_at });
-    uq.deinit();
 }
 
 fn containsIgnoreCase(haystack: []const u8, needle: []const u8) bool {
@@ -470,10 +432,12 @@ pub fn persistScore(
     stages_passed: u32,
     stages_total: u32,
     total_wall_seconds: u64,
-) !void {
-    if (agent_id.len == 0) return;
-    _ = try persistScoreRecord(conn, alloc, run_id, workspace_id, agent_id, score, axis_scores_json, weight_snapshot_json, scored_at);
+) !?trust.TrustUpdate {
+    if (agent_id.len == 0) return null;
+    const inserted = try persistScoreRecord(conn, alloc, run_id, workspace_id, agent_id, score, axis_scores_json, weight_snapshot_json, scored_at);
+    if (!inserted) return null;
     try persistRunAnalysis(conn, alloc, run_id, workspace_id, agent_id, scoring_state, stages_passed, stages_total, total_wall_seconds);
-    try refreshAgentTrustState(conn, agent_id, scored_at);
+    const trust_update = try trust.refreshAgentTrustState(conn, agent_id, scored_at);
     try proposals.maybePersistTriggerProposal(conn, alloc, workspace_id, agent_id, scored_at);
+    return trust_update;
 }

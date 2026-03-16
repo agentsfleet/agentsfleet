@@ -296,6 +296,56 @@ pub fn trackAgentScoringFailed(
     }
 }
 
+pub fn trackAgentTrustEarned(
+    client: ?*posthog.PostHogClient,
+    distinct_id: []const u8,
+    run_id: []const u8,
+    workspace_id: []const u8,
+    agent_id: []const u8,
+    consecutive_count_at_event: i32,
+) void {
+    if (client) |ph| {
+        const props = trustTransitionProps(run_id, workspace_id, agent_id, consecutive_count_at_event);
+        ph.capture(.{
+            .distinct_id = distinct_id,
+            .event = "agent.trust.earned",
+            .properties = &props,
+        }) catch {};
+    }
+}
+
+pub fn trackAgentTrustLost(
+    client: ?*posthog.PostHogClient,
+    distinct_id: []const u8,
+    run_id: []const u8,
+    workspace_id: []const u8,
+    agent_id: []const u8,
+    consecutive_count_at_event: i32,
+) void {
+    if (client) |ph| {
+        const props = trustTransitionProps(run_id, workspace_id, agent_id, consecutive_count_at_event);
+        ph.capture(.{
+            .distinct_id = distinct_id,
+            .event = "agent.trust.lost",
+            .properties = &props,
+        }) catch {};
+    }
+}
+
+fn trustTransitionProps(
+    run_id: []const u8,
+    workspace_id: []const u8,
+    agent_id: []const u8,
+    consecutive_count_at_event: i32,
+) [4]posthog.Property {
+    return .{
+        .{ .key = "run_id", .value = .{ .string = run_id } },
+        .{ .key = "workspace_id", .value = .{ .string = workspace_id } },
+        .{ .key = "agent_id", .value = .{ .string = agent_id } },
+        .{ .key = "consecutive_count_at_event", .value = .{ .integer = consecutive_count_at_event } },
+    };
+}
+
 test "unit: distinctIdOrSystem falls back to system" {
     try std.testing.expectEqualStrings("system", distinctIdOrSystem(""));
     try std.testing.expectEqualStrings("user_123", distinctIdOrSystem("user_123"));
@@ -312,6 +362,8 @@ test "integration: telemetry helpers are no-op when posthog client is disabled" 
     trackEntitlementRejected(disabled, "u", "ws_1", "COMPILE", "ERR_ENTITLEMENT_STAGE_LIMIT", "req_1");
     trackProfileActivated(disabled, "u", "ws_1", "prof_1", "ver_1", "ver_1", "req_1");
     trackBillingLifecycleEvent(disabled, "u", "ws_1", "PAYMENT_FAILED", "invoice_failed", "SCALE", "GRACE", "req_1");
+    trackAgentTrustEarned(disabled, "u", "run_1", "ws_1", "agent_1", 10);
+    trackAgentTrustLost(disabled, "u", "run_1", "ws_1", "agent_1", 0);
     try std.testing.expect(true);
 }
 
@@ -344,4 +396,16 @@ test "agent run scored payload includes structured and flat scoring fields" {
     try std.testing.expectEqualStrings("{\"completion\":100}", props[6].value.string);
     try std.testing.expectEqual(@as(i64, 1234), props[8].value.integer);
     try std.testing.expectEqual(@as(i64, 50), props[12].value.integer);
+}
+
+test "trust transition payload includes required event fields" {
+    const props = trustTransitionProps("run_7", "ws_7", "agent_7", 10);
+
+    try std.testing.expectEqual(@as(usize, 4), props.len);
+    try std.testing.expectEqualStrings("run_id", props[0].key);
+    try std.testing.expectEqualStrings("workspace_id", props[1].key);
+    try std.testing.expectEqualStrings("agent_id", props[2].key);
+    try std.testing.expectEqualStrings("consecutive_count_at_event", props[3].key);
+    try std.testing.expectEqualStrings("agent_7", props[2].value.string);
+    try std.testing.expectEqual(@as(i64, 10), props[3].value.integer);
 }

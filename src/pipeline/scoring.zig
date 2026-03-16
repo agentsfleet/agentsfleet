@@ -107,7 +107,7 @@ fn scoreRunInner(
     const weight_snapshot_json = try weightsJson(std.heap.page_allocator, config.weights);
     defer std.heap.page_allocator.free(weight_snapshot_json);
 
-    try persistence.persistScore(
+    if (try persistence.persistScore(
         conn,
         std.heap.page_allocator,
         run_id,
@@ -121,7 +121,27 @@ fn scoreRunInner(
         s.stages_passed,
         s.stages_total,
         total_wall_seconds,
-    );
+    )) |trust_update| {
+        if (trust_update.earned()) {
+            posthog_events.trackAgentTrustEarned(
+                posthog_client,
+                posthog_events.distinctIdOrSystem(requested_by),
+                run_id,
+                workspace_id,
+                agent_id,
+                trust_update.trust_streak_runs,
+            );
+        } else if (trust_update.lost()) {
+            posthog_events.trackAgentTrustLost(
+                posthog_client,
+                posthog_events.distinctIdOrSystem(requested_by),
+                run_id,
+                workspace_id,
+                agent_id,
+                trust_update.trust_streak_runs,
+            );
+        }
+    }
 
     log.info("run scored run_id={s} score={d} tier={s}", .{ run_id, score, tier.label() });
 
@@ -149,6 +169,7 @@ fn scoreRunInner(
 }
 
 test {
+    _ = @import("proposal_agent_team_test.zig");
     _ = @import("proposals_test.zig");
     _ = @import("scoring_test.zig");
 }

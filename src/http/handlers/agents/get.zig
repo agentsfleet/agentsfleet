@@ -6,7 +6,7 @@ const id_format = @import("../../../types/id_format.zig");
 const error_codes = @import("../../../errors/codes.zig");
 
 const sql_get_agent =
-    \\SELECT agent_id, name, status, workspace_id, created_at, updated_at
+    \\SELECT agent_id, name, status, workspace_id, trust_level, trust_streak_runs, created_at, updated_at
     \\FROM agent_profiles WHERE agent_id = $1
 ;
 
@@ -47,8 +47,10 @@ pub fn handleGetAgent(ctx: *common.Context, r: zap.Request, agent_id: []const u8
     const name = row.get([]u8, 1) catch "?";
     const status = row.get([]u8, 2) catch "?";
     const workspace_id = row.get([]u8, 3) catch "?";
-    const created_at = row.get(i64, 4) catch 0;
-    const updated_at = row.get(i64, 5) catch 0;
+    const trust_level = row.get([]u8, 4) catch "UNEARNED";
+    const trust_streak_runs = row.get(i32, 5) catch 0;
+    const created_at = row.get(i64, 6) catch 0;
+    const updated_at = row.get(i64, 7) catch 0;
 
     q.drain() catch |err| obs_log.logWarnErr(.http, err, "agent query drain failed agent_id={s}", .{agent_id});
 
@@ -62,6 +64,8 @@ pub fn handleGetAgent(ctx: *common.Context, r: zap.Request, agent_id: []const u8
         .name = name,
         .status = status,
         .workspace_id = workspace_id,
+        .trust_level = trust_level,
+        .trust_streak_runs = trust_streak_runs,
         .created_at = created_at,
         .updated_at = updated_at,
         .request_id = req_id,

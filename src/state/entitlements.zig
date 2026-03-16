@@ -260,8 +260,8 @@ test "unit: evaluateProfile rejects stage limits deterministically" {
         \\  "stages":[
         \\    {"stage_id":"plan","role":"echo","skill":"echo"},
         \\    {"stage_id":"implement","role":"scout","skill":"scout"},
-        \\    {"stage_id":"verify","role":"warden","skill":"warden","gate":true,"on_pass":"done","on_fail":"retry"},
-        \\    {"stage_id":"extra","role":"scout","skill":"scout","gate":false}
+        \\    {"stage_id":"extra","role":"scout","skill":"scout","gate":false},
+        \\    {"stage_id":"verify","role":"warden","skill":"warden","gate":true,"on_pass":"done","on_fail":"retry"}
         \\  ]
         \\}
     ;
