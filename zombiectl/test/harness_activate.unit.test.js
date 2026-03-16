@@ -9,7 +9,7 @@ test("commandHarnessActivate returns 2 when profile-version-id is missing", asyn
   const parsed = { options: {}, positionals: [] };
   const code = await commandHarnessActivate({ stdout: makeNoop(), stderr: err.stream, jsonMode: false }, parsed, "ws_123", deps);
   assert.equal(code, 2);
-  assert.match(err.read(), /--profile-version-id/);
+  assert.match(err.read(), /--config-version-id/);
 });
 
 test("commandHarnessActivate sends profile_version_id and activated_by", async () => {
@@ -24,7 +24,7 @@ test("commandHarnessActivate sends profile_version_id and activated_by", async (
     printJson: () => {},
     writeLine: () => {},
   };
-  const parsed = { options: { "profile-version-id": PVER_ID, "activated-by": "operator" }, positionals: [] };
+  const parsed = { options: { "config-version-id": PVER_ID, "activated-by": "operator" }, positionals: [] };
   const code = await commandHarnessActivate({ stdout: makeNoop(), stderr: makeNoop(), jsonMode: false }, parsed, "ws_123", deps);
   assert.equal(code, 0);
   assert.equal(captured.reqPath, "/v1/workspaces/ws_123/harness/activate");
@@ -42,7 +42,7 @@ test("commandHarnessActivate defaults activated_by to zombiectl", async () => {
     printJson: () => {},
     writeLine: () => {},
   };
-  const parsed = { options: { "profile-version-id": PVER_ID }, positionals: [] };
+  const parsed = { options: { "config-version-id": PVER_ID }, positionals: [] };
   await commandHarnessActivate({ stdout: makeNoop(), stderr: makeNoop(), jsonMode: false }, parsed, "ws_123", deps);
   assert.equal(body.activated_by, "zombiectl");
 });

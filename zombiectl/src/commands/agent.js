@@ -1,5 +1,6 @@
 import { commandAgentScores } from "./agent_scores.js";
 import { commandAgentProfile } from "./agent_profile.js";
+import { validateRequiredId } from "../program/validate.js";
 
 export async function commandAgent(ctx, args, workspaces, deps) {
   const { parseFlags, ui, writeLine } = deps;
@@ -13,12 +14,22 @@ export async function commandAgent(ctx, args, workspaces, deps) {
       writeLine(ctx.stderr, ui.err("agent scores requires <agent-id>"));
       return 2;
     }
+    const check = validateRequiredId(agentId, "agent-id");
+    if (!check.ok) {
+      writeLine(ctx.stderr, ui.err(check.message));
+      return 2;
+    }
     return commandAgentScores(ctx, parsed, agentId, deps);
   }
 
   if (action === "profile") {
     if (!agentId) {
       writeLine(ctx.stderr, ui.err("agent profile requires <agent-id>"));
+      return 2;
+    }
+    const check = validateRequiredId(agentId, "agent-id");
+    if (!check.ok) {
+      writeLine(ctx.stderr, ui.err(check.message));
       return 2;
     }
     return commandAgentProfile(ctx, parsed, agentId, deps);

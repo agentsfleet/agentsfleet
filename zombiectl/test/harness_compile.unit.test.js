@@ -12,7 +12,7 @@ test("commandHarnessCompile sends profile_version_id", async () => {
     printJson: () => {},
     writeLine: () => {},
   };
-  const parsed = { options: { "profile-version-id": PVER_ID }, positionals: [] };
+  const parsed = { options: { "config-version-id": PVER_ID }, positionals: [] };
   const code = await commandHarnessCompile({ stdout: makeNoop(), stderr: makeNoop(), jsonMode: false }, parsed, "ws_123", deps);
   assert.equal(code, 0);
   assert.equal(captured.reqPath, "/v1/workspaces/ws_123/harness/compile");
@@ -30,7 +30,7 @@ test("commandHarnessCompile sends profile_id selector", async () => {
     printJson: () => {},
     writeLine: () => {},
   };
-  const parsed = { options: { "profile-id": AGENT_ID }, positionals: [] };
+  const parsed = { options: { "agent-id": AGENT_ID }, positionals: [] };
   const code = await commandHarnessCompile({ stdout: makeNoop(), stderr: makeNoop(), jsonMode: false }, parsed, "ws_123", deps);
   assert.equal(code, 0);
   const body = JSON.parse(captured.options.body);

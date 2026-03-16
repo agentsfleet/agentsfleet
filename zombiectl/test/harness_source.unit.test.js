@@ -20,7 +20,7 @@ test("commandHarnessSourcePut builds source_markdown payload", async () => {
     resolvePath: (p) => p,
   };
 
-  const parsed = { options: { file: "profile.md", "profile-id": "agent_1" }, positionals: [] };
+  const parsed = { options: { file: "profile.md", "agent-id": "agent_1" }, positionals: [] };
   const code = await commandHarnessSourcePut({ stdout: out.stream, stderr: err.stream, jsonMode: false }, parsed, "ws_123", deps);
 
   assert.equal(code, 0);

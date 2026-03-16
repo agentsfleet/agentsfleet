@@ -51,7 +51,7 @@ test("harness source put uploads markdown file content as source_markdown", asyn
         "ws_123",
         "--file",
         filePath,
-        "--profile-id",
+        "--agent-id",
         "ws_123-harness",
       ],
       {
