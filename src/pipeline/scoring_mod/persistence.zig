@@ -191,11 +191,10 @@ fn buildScoringContextBlock(
         var buf: std.ArrayList(u8) = .{};
         defer buf.deinit(alloc);
 
-        try buf.appendSlice(alloc,
-            "## Agent Performance Context (v1)\n" ++
-                "Your recent run history:\n" ++
-                "| Run | Score | Tier | Issue |\n" ++
-                "|-----|-------|------|-------|\n");
+        try buf.appendSlice(alloc, "## Agent Performance Context (v1)\n" ++
+            "Your recent run history:\n" ++
+            "| Run | Score | Tier | Issue |\n" ++
+            "|-----|-------|------|-------|\n");
 
         var i: usize = 0;
         while (i < keep_count) : (i += 1) {

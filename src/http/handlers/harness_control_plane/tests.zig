@@ -239,7 +239,6 @@ test "integration: activate/getActive profile identity contract includes snapsho
     try std.testing.expect(active.active_at != null);
 }
 
-
 comptime {
     _ = @import("tests_extended.zig");
 }

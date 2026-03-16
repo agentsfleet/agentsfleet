@@ -353,7 +353,6 @@ pub fn runMigrations(pool: *Pool, migrations: []const Migration) !void {
     }
 }
 
-
 test {
     _ = @import("./pool_test.zig");
 }
