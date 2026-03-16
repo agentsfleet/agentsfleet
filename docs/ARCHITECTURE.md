@@ -318,6 +318,86 @@ Implementation note (Mar 05, 2026):
 Moved to [`docs/USECASE.md`](./USECASE.md) under:
 `0. GitHub Auth + Installation + Runtime Token Flow`.
 
+## Database Access Patterns (Zig / pg-0.0.0)
+
+These rules apply to every file that imports `pg` and touches `pg.Conn`.
+Violating them causes `ConnectionBusy` — the next `conn.query()` call sees
+`_state != .idle` and errors immediately.
+
+### Rule 1 — Use `conn.exec()` for all INSERT / UPDATE / DDL
+
+`conn.exec()` uses the simple query protocol and has an internal drain loop that
+reads all server messages (`'C'` CommandComplete + `'Z'` ReadyForQuery) to
+completion before returning.  `conn.query()` uses the extended query protocol and
+does **not** auto-drain.
+
+```zig
+// CORRECT
+_ = try conn.exec("INSERT INTO foo (id) VALUES ($1)", .{id});
+
+// WRONG — leaves connection state != .idle
+var q = try conn.query("INSERT INTO foo (id) VALUES ($1)", .{id});
+q.deinit(); // ← deinit() does NOT drain 'C'+'Z'
+```
+
+### Rule 2 — Always drain after the last row you read
+
+`Result.deinit()` releases Zig-side memory but does **not** send or consume any
+server messages.  After `q.next()` returns the final row you need, call
+`q.next()` once more to consume the `'C'` CommandComplete — which internally calls
+`readyForQuery()` to consume `'Z'` and reset `_state = .idle`.
+
+```zig
+var q = try conn.query("SELECT score FROM agent_run_scores WHERE run_id = $1", .{run_id});
+const row = (try q.next()) orelse { q.deinit(); return error.NotFound; };
+const score = try row.get(i32, 0);
+_ = q.next() catch {}; // drain 'C' + 'Z' → _state = .idle
+q.deinit();
+```
+
+### Rule 3 — Drain on early returns from existence checks
+
+When an existence-check query finds a row and you return early, drain before
+returning:
+
+```zig
+var existing = try conn.query("SELECT 1 FROM t WHERE id = $1", .{id});
+defer existing.deinit();
+if (try existing.next() != null) {
+    _ = existing.next() catch {}; // drain — must come before return
+    return false;
+}
+```
+
+### Rule 4 — Build result structs before draining
+
+Postgres row data (strings, slices) is read from the connection's internal
+buffer.  Calling the drain `q.next()` may overwrite that buffer.  Copy or
+fully process all values from a row **before** calling the drain:
+
+```zig
+const raw_weights = try row.get([]const u8, 1); // still in buffer
+const weights = try parseWeightsJson(alloc, raw_weights); // copy now
+_ = q.next() catch {}; // safe to drain after copy
+```
+
+### Rule 5 — No `ON COMMIT DROP` in test temp tables with `exec()`
+
+`exec()` (simple protocol) auto-commits every statement.  `ON COMMIT DROP` temp
+tables are therefore dropped immediately on creation.  Omit `ON COMMIT DROP`
+from all test scaffolding.
+
+### Rule 6 — `set_config` must use `is_local = false` on auto-commit connections
+
+`set_config('key', 'value', true)` (is_local = true) only persists for the
+current transaction.  In auto-commit mode (every `exec()` is its own transaction)
+the value vanishes after the single statement.  Use `is_local = false` for
+session-scoped settings:
+
+```zig
+_ = conn.exec("SELECT set_config('app.current_tenant_id', $1, false)", .{tenant_id}) catch return false;
+```
+
 ## Redis Usage Contract
 
 1. Stream: `run_queue`.
