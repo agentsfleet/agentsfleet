@@ -87,6 +87,29 @@ pub fn internalOperationError(r: zap.Request, message: []const u8, request_id: [
     errorResponse(r, .internal_server_error, error_codes.ERR_INTERNAL_OPERATION_FAILED, message, request_id);
 }
 
+pub const MAX_BODY_SIZE: usize = 2 * 1024 * 1024; // 2MB — must match server.zig max_body_size
+
+/// Returns true if the body size is within the allowed limit.
+/// Sends a 413 response and returns false if the Content-Length header
+/// indicates the payload exceeds MAX_BODY_SIZE, or if the received body
+/// itself exceeds the limit after facil.io truncation.
+pub fn checkBodySize(r: zap.Request, body: []const u8, request_id: []const u8) bool {
+    if (r.getHeader("content-length")) |cl_str| {
+        const cl = std.fmt.parseInt(usize, cl_str, 10) catch 0;
+        if (cl > MAX_BODY_SIZE) {
+            errorResponse(r, .content_too_large, error_codes.ERR_PAYLOAD_TOO_LARGE,
+                "Payload too large: max 2MB", request_id);
+            return false;
+        }
+    }
+    if (body.len >= MAX_BODY_SIZE) {
+        errorResponse(r, .content_too_large, error_codes.ERR_PAYLOAD_TOO_LARGE,
+            "Payload too large: max 2MB", request_id);
+        return false;
+    }
+    return true;
+}
+
 pub fn requestId(alloc: std.mem.Allocator) []const u8 {
     var id: [16]u8 = undefined;
     std.crypto.random.bytes(&id);

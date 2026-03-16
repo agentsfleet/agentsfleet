@@ -1,9 +1,9 @@
 export async function commandHarnessActivate(ctx, parsed, workspaceId, deps) {
   const { request, apiHeaders, ui, printJson, writeLine } = deps;
 
-  const profileVersionId = parsed.options["profile-version-id"];
+  const profileVersionId = parsed.options["config-version-id"];
   if (!profileVersionId) {
-    writeLine(ctx.stderr, ui.err("harness activate requires --profile-version-id"));
+    writeLine(ctx.stderr, ui.err("harness activate requires --config-version-id"));
     return 2;
   }
 

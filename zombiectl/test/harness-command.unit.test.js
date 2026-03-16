@@ -55,7 +55,7 @@ test("commandHarness source put builds source_markdown payload", async () => {
 
   const code = await commandHarness(
     ctx,
-    ["source", "put", "--file", "profile.md", "--profile-id", "ws_123-harness"],
+    ["source", "put", "--file", "profile.md", "--agent-id", "ws_123-harness"],
     workspaces,
     deps,
   );
@@ -86,7 +86,7 @@ test("commandHarness compile sends explicit profile selectors", async () => {
 
   const code = await commandHarness(
     ctx,
-    ["compile", "--profile-version-id", "pver_9"],
+    ["compile", "--config-version-id", "pver_9"],
     workspaces,
     deps,
   );
@@ -115,7 +115,7 @@ test("commandHarness activate requires profile version id", async () => {
 
   const code = await commandHarness(ctx, ["activate"], workspaces, deps);
   assert.equal(code, 2);
-  assert.match(err.read(), /requires --profile-version-id/);
+  assert.match(err.read(), /requires --config-version-id/);
 });
 
 test("commandHarness activate sends profile version and activated_by", async () => {
@@ -141,7 +141,7 @@ test("commandHarness activate sends profile version and activated_by", async () 
 
   const code = await commandHarness(
     ctx,
-    ["activate", "--profile-version-id", "pver_2", "--activated-by", "operator"],
+    ["activate", "--config-version-id", "pver_2", "--activated-by", "operator"],
     workspaces,
     deps,
   );

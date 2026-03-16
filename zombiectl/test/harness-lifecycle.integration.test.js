@@ -137,7 +137,7 @@ test("harness lifecycle: activate deterministically changes subsequent run snaps
       0,
     );
     assert.equal(
-      await runCli(["harness", "compile", "--workspace-id", "ws_123", "--profile-version-id", "pver_1"], {
+      await runCli(["harness", "compile", "--workspace-id", "ws_123", "--config-version-id", "pver_1"], {
         env,
         stdout: out.stream,
         stderr: err.stream,
@@ -146,7 +146,7 @@ test("harness lifecycle: activate deterministically changes subsequent run snaps
       0,
     );
     assert.equal(
-      await runCli(["harness", "activate", "--workspace-id", "ws_123", "--profile-version-id", "pver_1"], {
+      await runCli(["harness", "activate", "--workspace-id", "ws_123", "--config-version-id", "pver_1"], {
         env,
         stdout: out.stream,
         stderr: err.stream,
@@ -189,7 +189,7 @@ test("harness lifecycle: activate deterministically changes subsequent run snaps
       0,
     );
     assert.equal(
-      await runCli(["harness", "compile", "--workspace-id", "ws_123", "--profile-version-id", "pver_2"], {
+      await runCli(["harness", "compile", "--workspace-id", "ws_123", "--config-version-id", "pver_2"], {
         env,
         stdout: out.stream,
         stderr: err.stream,
@@ -198,7 +198,7 @@ test("harness lifecycle: activate deterministically changes subsequent run snaps
       0,
     );
     assert.equal(
-      await runCli(["harness", "activate", "--workspace-id", "ws_123", "--profile-version-id", "pver_2"], {
+      await runCli(["harness", "activate", "--workspace-id", "ws_123", "--config-version-id", "pver_2"], {
         env,
         stdout: out.stream,
         stderr: err.stream,
@@ -294,7 +294,7 @@ test("harness lifecycle contract: API and CLI JSON expose profile identity parit
           "activate",
           "--workspace-id",
           "ws_123",
-          "--profile-version-id",
+          "--config-version-id",
           "pver_2",
           "--activated-by",
           "operator",

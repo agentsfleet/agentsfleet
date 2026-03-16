@@ -103,3 +103,25 @@ Define and enforce a deterministic database-backed integration test path so acce
 - 6.2 PENDING Add CI job/service wiring so integration tests run with a real Postgres endpoint and do not silently skip DB-backed tests
 - 6.3 PENDING Capture explicit acceptance evidence proving DB-backed integration tests executed (including linkage/snapshot contract tests)
 - 6.4 PENDING Define failure policy: acceptance gate is red if required DB integration suites are skipped or env var is missing in CI
+
+---
+
+## 7.0 CLI Audit Gate (M6_006 Pre-Acceptance Tighten)
+
+**Status:** DONE (Mar 16, 2026) — shipped in PR #41 `feat/m6-006-cli-audit-tighten`
+
+CLI hardening completed as a prerequisite to acceptance gate execution. All 139 tests pass.
+
+**Dimensions:**
+- 7.1 DONE Wire dead `agent` command in `cli.js` (was registered but never dispatched)
+- 7.2 DONE Rename `--profile-id` → `--agent-id`, `--profile-version-id` → `--config-version-id` across harness commands
+- 7.3 DONE Emoji banner on `--help`/`--version`; suppressed in `--json` and `NO_COLOR`
+- 7.4 DONE "Did you mean?" Levenshtein suggestions for unknown commands (git-style)
+- 7.5 DONE ID format validation with local error before API round-trip
+- 7.6 DONE Auth guard pre-flight: `zombiectl login` prompt when unauthenticated
+- 7.7 DONE Payload size guard: CLI rejects harness uploads >2MB locally before API call; server returns deterministic `413 UZ-REQ-002` with `"Payload too large: max 2MB"` for direct API callers (`checkBodySize` in `common.zig`, `ERR_PAYLOAD_TOO_LARGE` in `codes.zig`)
+- 7.8 DONE `runs list` queries server `GET /v1/runs` — local `runs.json` write-behind cache removed
+- 7.9 DONE Operator commands (`harness`, `skill-secret`, `agent`) hidden from default `--help` unless `ZOMBIE_OPERATOR=1`
+- 7.10 DONE Doctor pretty print: header, `[OK]`/`[FAIL]` per check, pass/fail summary
+- 7.11 DONE Complete help text: all flags, env vars, `agent` commands
+- 7.12 DONE 12 new test files; 139/139 passing across 28 files

@@ -34,8 +34,19 @@ function createCoreOpsHandlers(ctx, workspaces, deps) {
     if (ctx.jsonMode) {
       printJson(ctx.stdout, report);
     } else {
-      writeLine(ctx.stdout, ui.head("doctor"));
-      for (const c of checks) writeLine(ctx.stdout, `${c.ok ? ui.ok(c.name) : ui.err(c.name)}`);
+      writeLine(ctx.stdout, ui.head("zombiectl doctor"));
+      writeLine(ctx.stdout);
+      for (const c of checks) {
+        const tag = c.ok ? "[OK]" : "[FAIL]";
+        writeLine(ctx.stdout, c.ok ? ui.ok(`${tag} ${c.name}`) : ui.err(`${tag} ${c.name}`));
+      }
+      writeLine(ctx.stdout);
+      const passed = checks.filter((c) => c.ok).length;
+      if (ok) {
+        writeLine(ctx.stdout, ui.ok(`All checks passed.`));
+      } else {
+        writeLine(ctx.stdout, ui.err(`${passed}/${checks.length} checks passed`));
+      }
     }
     return ok ? 0 : 1;
   }

@@ -34,7 +34,7 @@ test("harness compile sends profile_id selector", async () => {
   };
 
   const code = await runCli(
-    ["harness", "compile", "--workspace-id", "ws_123", "--profile-id", "ws_123-harness"],
+    ["harness", "compile", "--workspace-id", "ws_123", "--agent-id", "ws_123-harness"],
     {
       env: { ...process.env, ZOMBIE_TOKEN: "header.payload.sig" },
       stdout: out.stream,
@@ -64,7 +64,7 @@ test("harness compile sends profile_version_id selector", async () => {
   };
 
   const code = await runCli(
-    ["harness", "compile", "--workspace-id", "ws_123", "--profile-version-id", "pver_456"],
+    ["harness", "compile", "--workspace-id", "ws_123", "--config-version-id", "pver_456"],
     {
       env: { ...process.env, ZOMBIE_TOKEN: "header.payload.sig" },
       stdout: out.stream,

@@ -66,6 +66,22 @@ Add explicit operator control for scoring context token cap to support abuse con
 
 ---
 
+## 3.2 Role-Based Access Control For Operator And Admin Commands
+
+**Status:** PENDING
+
+**Audit Finding (Mar 16, 2026):** The server `AuthPrincipal` carries `user_id`, `tenant_id`, and `workspace_scope_id` but no `role` claim. Every authenticated user can hit every endpoint including operator-level surfaces: `harness source put/compile/activate`, `skill-secret put/delete`, `agent scores/profile`, and future `admin config` commands. There is no RBAC fence between workspace users and workspace operators.
+
+**Dimensions:**
+- 3.2.1 PENDING Add `role` claim to JWT via Clerk custom claims (values: `user`, `operator`, `admin`)
+- 3.2.2 PENDING Add server-side RBAC middleware that checks role before allowing harness, skill-secret, agent, and admin endpoints; return `403 FORBIDDEN` with deterministic error code `INSUFFICIENT_ROLE`
+- 3.2.3 PENDING CLI reads role from token and auto-shows/hides operator commands in `--help` output; operator commands remain callable but hidden from default help for non-operator tokens
+- 3.2.4 PENDING Acceptance evidence: non-operator token receives 403 on harness/skill-secret/admin endpoints
+
+**Short-term mitigation (pre-RBAC, shipped in M6_006 CLI audit):** Operator commands (`harness`, `skill-secret`, `agent`) hidden from default `--help` unless `ZOMBIE_OPERATOR=1` env var is set. Commands still functional for any authenticated user until server-side RBAC lands.
+
+---
+
 ## 4.0 Acceptance Criteria
 
 **Status:** PENDING
