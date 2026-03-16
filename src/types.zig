@@ -95,6 +95,18 @@ pub const Actor = enum {
     }
 };
 
+pub const TrustLevel = enum {
+    unearned,
+    trusted,
+
+    pub fn label(self: TrustLevel) []const u8 {
+        return switch (self) {
+            .unearned => "UNEARNED",
+            .trusted => "TRUSTED",
+        };
+    }
+};
+
 // ── Run ingress mode ──────────────────────────────────────────────────────
 
 pub const IngressMode = enum {
