@@ -4,34 +4,45 @@
 **Milestone:** M9
 **Workstream:** 004
 **Date:** Mar 13, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — the payoff of the gamification system; ships after B2 is stable
 **Batch:** B3 — starts after M9_003 failure analysis and injection are proven
 **Depends on:** M9_003 (failure analysis + context injection), M9_002 (profile + trajectory API)
+
+**Harness boundary:** M9_004 operates on dynamic agent harness profiles. Proposals may tune stage-to-agent bindings and stage-local limits, but every referenced agent/skill must still pass the existing control-plane compile validation, registry checks, and workspace entitlement limits before it can be stored or applied.
+
+**Carry-forward from M9_003:** M9_004 also absorbs the unfinished engineering work discovered during M9_003 review:
+- Complete failure-signal extraction from runtime/stage metadata
+- Complete failure taxonomy for `OOM`, `TOOL_CALL_FAILURE`, `CONTEXT_OVERFLOW`, and `AUTH_FAILURE`
+- Prevent score/analysis orphaning by hardening persistence atomicity
+- Enforce `scoring_context_max_tokens` with the runtime tokenizer
+- Generalize score-context injection for dynamic-agent harnesses beyond the current plan-stage path
+- Capture and scrub `stderr_tail` safely before storage/export
+- Produce demo evidence that injected context measurably reduces repeat failures
 
 ---
 
 ## 1.0 Improvement Proposal Generation
 
-**Status:** PENDING
+**Status:** IN_PROGRESS
 
 After sufficient score history accumulates (minimum 5 runs), the system can generate a structured
 improvement proposal targeting the agent's harness configuration.
 
 **Dimensions:**
-- 1.1 PENDING Trigger proposal generation when: agent has >= 5 scored runs AND current 5-run rolling avg score < previous 5-run rolling avg score (trajectory is declining) OR avg score < 60 for any 5-run window. Trigger check is synchronous (fast comparison after score persist). If triggered, **enqueue** proposal generation as async work — do not generate inline.
-- 1.2 PENDING Proposal is a structured document:
+- 1.1 IN_PROGRESS Trigger proposal generation when: agent has >= 5 scored runs AND current 5-run rolling avg score < previous 5-run rolling avg score (trajectory is declining) OR avg score < 60 for any 5-run window. Trigger check is synchronous (fast comparison after score persist). If triggered, **enqueue** proposal generation as async work — do not generate inline.
+- 1.2 IN_PROGRESS Proposal is a structured document:
   ```sql
   CREATE TABLE agent_improvement_proposals (
       proposal_id          UUID PRIMARY KEY,
       agent_id             UUID NOT NULL REFERENCES agent_profiles(agent_id),
       workspace_id         UUID NOT NULL REFERENCES workspaces(workspace_id),
-      trigger_reason       TEXT NOT NULL CHECK (trigger_reason IN ('DECLINING_SCORE', 'SUSTAINED_LOW_SCORE')),
+      trigger_reason       TEXT NOT NULL,  -- lifecycle vocabulary enforced in application code
       proposed_changes     TEXT NOT NULL,  -- JSON array of change objects
       config_version_id    UUID NOT NULL,  -- version at time of proposal (CAS guard)
-      approval_mode        TEXT NOT NULL CHECK (approval_mode IN ('AUTO', 'MANUAL')),
-      status               TEXT NOT NULL DEFAULT 'PENDING_REVIEW'
-                           CHECK (status IN ('PENDING_REVIEW', 'VETO_WINDOW', 'APPROVED', 'REJECTED', 'APPLIED', 'VETOED', 'CONFIG_CHANGED')),
+      approval_mode        TEXT NOT NULL,  -- AUTO | MANUAL enforced in application code
+      generation_status    TEXT NOT NULL,  -- PENDING | READY | REJECTED enforced in application code
+      status               TEXT NOT NULL,  -- review/apply lifecycle enforced in application code
       rejection_reason     TEXT,
       auto_apply_at        BIGINT,  -- NULL if MANUAL
       applied_by           TEXT,    -- 'operator:<identity>' or 'system:auto'
@@ -40,23 +51,25 @@ improvement proposal targeting the agent's harness configuration.
       CONSTRAINT ck_proposals_uuidv7 CHECK (substring(proposal_id::text from 15 for 1) = '7')
   );
   CREATE INDEX idx_proposals_agent ON agent_improvement_proposals(agent_id, created_at DESC);
-  CREATE INDEX idx_proposals_veto_window ON agent_improvement_proposals(status, auto_apply_at)
-      WHERE status = 'VETO_WINDOW';
+  CREATE INDEX idx_proposals_veto_window ON agent_improvement_proposals(status, auto_apply_at);
   ```
   DB grants:
   ```sql
   GRANT SELECT, INSERT, UPDATE ON agent_improvement_proposals TO worker_accessor;
   GRANT SELECT, UPDATE ON agent_improvement_proposals TO api_accessor;
   ```
-- 1.3 PENDING `proposed_changes` targets numeric harness-level fields only:
+- Groundwork rule for this slice: score-triggered rows may be persisted with `generation_status = 'PENDING'`, `proposed_changes = '[]'`, `status = 'PENDING_REVIEW'`, and `auto_apply_at = NULL`. The async generator later fills `proposed_changes`, flips `generation_status` to `READY`, and only then may manual-review or veto-window transitions occur.
+- 1.3 IN_PROGRESS `proposed_changes` targets numeric harness-level fields only:
   - `max_tokens` — bounded between 1000 and workspace entitlement max
   - `timeout_seconds` — bounded between 30 and `RUN_TIMEOUT_MS / 1000`
   - `tool_allowlist` — can only **restrict** (remove tools), never expand beyond current profile's allowed tools
+  - Dynamic agent harness configs are allowed: proposals may add, remove, or rebind stage agent/skill assignments only when the resulting harness still compiles and remains within workspace entitlement limits
 
   **Explicitly excluded** from proposable fields (rejected at schema validation):
   - `system_prompt_appendix` — direct prompt injection vector; removed to eliminate LLM-generated text in future system prompts
   - Any auth, billing, or network config field
   - Model selection or provider configuration
+  - Any agent/stage mutation that references an unregistered skill, violates workspace entitlement limits, or bypasses harness compile validation
 
   Each change object: `{"target_field": "max_tokens", "current_value": 8000, "proposed_value": 4000, "rationale": "last 5 runs averaged 2100 tokens; reducing cap saves cost"}`
 
@@ -74,13 +87,13 @@ An agent earns autonomous approval rights by demonstrating sustained high-qualit
 Trust is computed, not granted — it cannot be manually assigned.
 
 **Dimensions:**
-- 2.1 PENDING Define `TRUSTED` threshold: agent has >= 10 consecutive scored runs all in Gold or Elite tier (score >= 70 each); tracked as `consecutive_gold_plus_runs` on `agent_profiles`
+- 2.1 PENDING Define `TRUSTED` threshold: agent has >= 10 consecutive scored runs all in Gold or Elite tier (score >= 70 each); tracked as `trust_streak_runs` on `agent_profiles`
 - 2.2 PENDING Trust evaluation uses M9_003 failure classification to distinguish infrastructure failures from agent-attributable failures:
-  - **Infrastructure failures** (`failure_is_infra = true`: TIMEOUT, OOM, CONTEXT_OVERFLOW, AUTH_FAILURE) do NOT reset `consecutive_gold_plus_runs`. The run is excluded from the streak count (neither increments nor resets).
-  - **Agent-attributable failures** (`failure_is_infra = false`: BAD_OUTPUT_FORMAT, TOOL_CALL_FAILURE, UNHANDLED_EXCEPTION, UNKNOWN) with score < 70 reset `consecutive_gold_plus_runs` to 0.
-  - **Successful runs scoring Gold+ (>= 70)** increment `consecutive_gold_plus_runs` by 1.
+  - **Infrastructure failures** (`failure_is_infra = true`: TIMEOUT, OOM, CONTEXT_OVERFLOW, AUTH_FAILURE) do NOT reset `trust_streak_runs`. The run is excluded from the streak count (neither increments nor resets).
+  - **Agent-attributable failures** (`failure_is_infra = false`: BAD_OUTPUT_FORMAT, TOOL_CALL_FAILURE, UNHANDLED_EXCEPTION, UNKNOWN) with score < 70 reset `trust_streak_runs` to 0.
+  - **Successful runs scoring Gold+ (>= 70)** increment `trust_streak_runs` by 1.
   This ensures trust measures agent quality, not infrastructure reliability.
-- 2.3 PENDING `agent_profiles` exposes `trust_level` (enum: `UNEARNED` | `TRUSTED`) and `consecutive_gold_plus_runs` (int); surfaced in `zombiectl agent profile <agent-id>` output
+- 2.3 PENDING `agent_profiles` exposes `trust_level` (enum: `UNEARNED` | `TRUSTED`) and `trust_streak_runs` (int); surfaced in `zombiectl agent profile <agent-id>` output
 - 2.4 PENDING PostHog event `agent.trust.earned` emitted when agent crosses from UNEARNED → TRUSTED; `agent.trust.lost` emitted on reset — both include `agent_id`, `run_id`, `consecutive_count_at_event`
 
 ---
@@ -161,7 +174,7 @@ Measure whether applied proposals actually improve the agent's score.
 - 6.1 PENDING After each applied change, tag the next 5 runs as `post_change_window: true` in `agent_run_scores` (add nullable `change_id` column referencing the proposal that triggered the change window)
 - 6.2 PENDING Compute `score_delta`: avg score of post-change window minus avg score of 5 runs before the change; store on `harness_change_log` as `score_delta` (nullable, populated after window completes)
 - 6.3 PENDING `zombiectl agent improvement-report <agent-id>` — prints: trust level, proposals generated/approved/vetoed/rejected/applied, avg score delta per applied change, current vs baseline tier
-- 6.4 PENDING If 3 consecutive applied proposals each produce negative `score_delta`, emit `agent.improvement.stalled` event, surface warning in CLI profile output, and reset trust level to UNEARNED regardless of consecutive_gold_plus_runs count
+- 6.4 PENDING If 3 consecutive applied proposals each produce negative `score_delta`, emit `agent.improvement.stalled` event, surface warning in CLI profile output, and reset trust level to UNEARNED regardless of `trust_streak_runs`
 
 ---
 
@@ -174,15 +187,16 @@ Measure whether applied proposals actually improve the agent's score.
 - [ ] 7.3 Proposal targeting `system_prompt_appendix` is rejected at schema validation
 - [ ] 7.4 Proposal with `max_tokens` exceeding entitlement limit is rejected with VALUE_OUT_OF_RANGE
 - [ ] 7.5 Proposal with `tool_allowlist` that expands beyond current profile is rejected
-- [ ] 7.6 Agent with 10 consecutive Gold+ runs (excluding infra failures) shows `trust_level: TRUSTED` in profile output
-- [ ] 7.7 TRUSTED agent proposal enters VETO_WINDOW with correct `auto_apply_at` timestamp
-- [ ] 7.8 Operator veto within 24h prevents application; status shows VETOED, harness unchanged
-- [ ] 7.9 TRUSTED agent drops an agent-attributable Silver run → `consecutive_gold_plus_runs` resets to 0 → next proposal requires manual approval
-- [ ] 7.10 TRUSTED agent has a TIMEOUT (infra) run → `consecutive_gold_plus_runs` unchanged → trust preserved
-- [ ] 7.11 CAS version check: proposal generated against config_version_id X, operator changes config, auto-apply attempt rejects with CONFIG_CHANGED_SINCE_PROPOSAL
-- [ ] 7.12 Revert restores previous value exactly; `applied_by` on revert row shows operator identity
-- [ ] 7.13 No harness change applied without a proposal record in APPROVED/VETO_WINDOW state (enforced at application logic level)
-- [ ] 7.14 Demo evidence: agent earns TRUSTED, generates auto-approved proposal, harness updates, score improves over next 5 runs
+- [ ] 7.6 Proposal attempting to reference an unregistered or entitlement-disallowed dynamic agent/skill is rejected at schema validation
+- [ ] 7.7 Agent with 10 consecutive Gold+ runs (excluding infra failures) shows `trust_level: TRUSTED` in profile output
+- [ ] 7.8 TRUSTED agent proposal enters VETO_WINDOW with correct `auto_apply_at` timestamp
+- [ ] 7.9 Operator veto within 24h prevents application; status shows VETOED, harness unchanged
+- [ ] 7.10 TRUSTED agent drops an agent-attributable Silver run → `trust_streak_runs` resets to 0 → next proposal requires manual approval
+- [ ] 7.11 TRUSTED agent has a TIMEOUT (infra) run → `trust_streak_runs` unchanged → trust preserved
+- [ ] 7.12 CAS version check: proposal generated against config_version_id X, operator changes config, auto-apply attempt rejects with CONFIG_CHANGED_SINCE_PROPOSAL
+- [ ] 7.13 Revert restores previous value exactly; `applied_by` on revert row shows operator identity
+- [ ] 7.14 No harness change applied without a proposal record in APPROVED/VETO_WINDOW state (enforced at application logic level)
+- [ ] 7.15 Demo evidence: agent earns TRUSTED, generates auto-approved proposal, harness updates, score improves over next 5 runs
 
 ---
 
