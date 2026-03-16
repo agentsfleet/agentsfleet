@@ -1,11 +1,10 @@
 import { createCoreOpsHandlers } from "./core-ops.js";
+import { validateRequiredId } from "../program/validate.js";
 
 function createCoreHandlers(ctx, workspaces, deps) {
   const {
-    appendRun,
     clearCredentials,
     createSpinner,
-    loadRuns,
     newIdempotencyKey,
     openUrl,
     parseFlags,
@@ -61,7 +60,7 @@ function createCoreHandlers(ctx, workspaces, deps) {
       if (shouldOpen && !opened) writeLine(ctx.stdout, "browser: not opened (open URL manually)");
     }
 
-    const deadline = Date.now() + Math.max(5, timeoutSec) * 1000;
+    const deadline = Date.now() + Math.max(1, timeoutSec) * 1000;
     let last = { status: "pending", token: null };
     const spinner = createSpinner({
       enabled: !ctx.jsonMode && Boolean(ctx.stderr.isTTY),
@@ -221,7 +220,13 @@ function createCoreHandlers(ctx, workspaces, deps) {
       const parsed = parseFlags(tail);
       const workspaceId = parsed.positionals[0] || parsed.options["workspace-id"];
       if (!workspaceId) {
-        writeLine(ctx.stderr, "workspace remove requires <workspace_id>");
+        writeLine(ctx.stderr, ui.err("workspace remove requires <workspace_id>"));
+        return 2;
+      }
+
+      const check = validateRequiredId(workspaceId, "workspace_id");
+      if (!check.ok) {
+        writeLine(ctx.stderr, ui.err(check.message));
         return 2;
       }
 
@@ -266,6 +271,13 @@ function createCoreHandlers(ctx, workspaces, deps) {
         writeLine(ctx.stderr, ui.err("run status requires <run_id>"));
         return 2;
       }
+
+      const check = validateRequiredId(runId, "run_id");
+      if (!check.ok) {
+        writeLine(ctx.stderr, ui.err(check.message));
+        return 2;
+      }
+
       const res = await request(ctx, `/v1/runs/${encodeURIComponent(runId)}`, {
         method: "GET",
         headers: apiHeaders(ctx),
@@ -319,15 +331,6 @@ function createCoreHandlers(ctx, workspaces, deps) {
       body: JSON.stringify(payload),
     });
 
-    await appendRun({
-      run_id: res.run_id,
-      workspace_id: workspaceId,
-      spec_id: specId,
-      state: res.state,
-      attempt: res.attempt,
-      created_at: Date.now(),
-    });
-
     if (ctx.jsonMode) printJson(ctx.stdout, res);
     else writeLine(ctx.stdout, ui.ok(`run queued: ${res.run_id} state=${res.state}`));
     return 0;
@@ -336,9 +339,16 @@ function createCoreHandlers(ctx, workspaces, deps) {
   async function commandRunsList(args) {
     const parsed = parseFlags(args);
     const workspaceId = parsed.options["workspace-id"] || workspaces.current_workspace_id;
-    const state = await loadRuns();
-    let items = Array.isArray(state.items) ? state.items : [];
-    if (workspaceId) items = items.filter((x) => x.workspace_id === workspaceId);
+
+    let url = "/v1/runs";
+    if (workspaceId) url += `?workspace_id=${encodeURIComponent(workspaceId)}`;
+
+    const res = await request(ctx, url, {
+      method: "GET",
+      headers: apiHeaders(ctx),
+    });
+
+    const items = Array.isArray(res.runs) ? res.runs : [];
 
     if (ctx.jsonMode) printJson(ctx.stdout, { runs: items, total: items.length });
     else {

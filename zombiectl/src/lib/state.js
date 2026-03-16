@@ -9,7 +9,6 @@ function resolveStatePaths() {
     baseDir,
     credentialsPath: path.join(baseDir, "credentials.json"),
     workspacesPath: path.join(baseDir, "workspaces.json"),
-    runsPath: path.join(baseDir, "runs.json"),
   };
 }
 
@@ -63,14 +62,3 @@ export async function saveWorkspaces(next) {
   await writeJson(workspacesPath, next);
 }
 
-export async function loadRuns() {
-  const { runsPath } = resolveStatePaths();
-  return readJson(runsPath, { items: [] });
-}
-
-export async function appendRun(run) {
-  const { runsPath } = resolveStatePaths();
-  const state = await loadRuns();
-  state.items = [run, ...(state.items || [])].slice(0, 200);
-  await writeJson(runsPath, state);
-}

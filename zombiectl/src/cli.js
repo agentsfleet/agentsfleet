@@ -3,13 +3,12 @@ import { createCliAnalytics, shutdownCliAnalytics, trackCliEvent } from "./lib/a
 import { findRoute } from "./program/routes.js";
 import { registerProgramCommands } from "./program/command-registry.js";
 import { commandHarness as commandHarnessModule } from "./commands/harness.js";
+import { commandAgent as commandAgentModule } from "./commands/agent.js";
 import { ui, printKeyValue, printTable } from "./ui-theme.js";
 import { createSpinner } from "./ui-progress.js";
 import {
-  appendRun,
   clearCredentials,
   loadCredentials,
-  loadRuns,
   loadWorkspaces,
   newIdempotencyKey,
   saveCredentials,
@@ -19,11 +18,16 @@ import { ApiError, apiHeaders, printApiError, request } from "./program/http-cli
 import { parseFlags, parseGlobalArgs, normalizeApiUrl, DEFAULT_API_URL } from "./program/args.js";
 import { extractDistinctIdFromToken } from "./program/auth-token.js";
 import { printHelp, printJson, writeLine } from "./program/io.js";
+import { printBanner } from "./program/banner.js";
+import { suggestCommand } from "./program/suggest.js";
+import { requireAuth, AUTH_FAIL_MESSAGE } from "./program/auth-guard.js";
 import { createCoreHandlers } from "./commands/core.js";
 
-const VERSION = "0.1.0";
+export const VERSION = "0.1.0";
 
 export { parseGlobalArgs };
+
+const AUTH_EXEMPT_ROUTES = new Set(["login", "doctor"]);
 
 export async function runCli(argv, io = {}) {
   const stdout = io.stdout || process.stdout;
@@ -32,13 +36,19 @@ export async function runCli(argv, io = {}) {
   const fetchImpl = io.fetchImpl || globalThis.fetch;
 
   const { global, rest } = parseGlobalArgs(argv, env);
+  const noColor = Boolean(env.NO_COLOR === "1" || env.NO_COLOR === "true");
+
   if (global.version) {
-    writeLine(stdout, VERSION);
+    if (global.json) {
+      printJson(stdout, { version: VERSION });
+    } else {
+      printBanner(stdout, VERSION, { noColor, jsonMode: false });
+    }
     return 0;
   }
 
   if (global.help || rest.length === 0) {
-    printHelp(stdout, ui);
+    printHelp(stdout, ui, { version: VERSION, env, jsonMode: global.json });
     return 0;
   }
 
@@ -58,11 +68,26 @@ export async function runCli(argv, io = {}) {
     fetchImpl,
   };
 
+  const command = rest[0];
+  const args = rest.slice(1);
+  const route = findRoute(command, args);
+
+  // Auth guard: skip for login, doctor, help, version
+  if (route && !AUTH_EXEMPT_ROUTES.has(route.key)) {
+    const auth = requireAuth(ctx);
+    if (!auth.ok) {
+      if (ctx.jsonMode) {
+        printJson(stderr, { error: { code: "AUTH_REQUIRED", message: AUTH_FAIL_MESSAGE } });
+      } else {
+        writeLine(stderr, ui.err(AUTH_FAIL_MESSAGE));
+      }
+      return 1;
+    }
+  }
+
   const core = createCoreHandlers(ctx, workspaces, {
-    appendRun,
     clearCredentials,
     createSpinner,
-    loadRuns,
     newIdempotencyKey,
     openUrl,
     parseFlags,
@@ -80,9 +105,6 @@ export async function runCli(argv, io = {}) {
   const analyticsClient = await createCliAnalytics(env);
   const distinctId = extractDistinctIdFromToken(ctx.token);
 
-  const command = rest[0];
-  const args = rest.slice(1);
-  const route = findRoute(command, args);
   const handlers = registerProgramCommands({
     login: (routeArgs) => core.commandLogin(routeArgs),
     logout: () => core.commandLogout(),
@@ -100,6 +122,16 @@ export async function runCli(argv, io = {}) {
       writeLine,
     }),
     skillSecret: (routeArgs) => core.commandSkillSecret(routeArgs),
+    agent: (routeArgs) => commandAgentModule(ctx, routeArgs, workspaces, {
+      parseFlags,
+      request,
+      apiHeaders,
+      ui,
+      printJson,
+      printKeyValue,
+      printTable,
+      writeLine,
+    }),
   });
 
   try {
@@ -144,7 +176,21 @@ export async function runCli(argv, io = {}) {
       return exitCode;
     }
 
-    writeLine(stderr, ui.err(`unknown command: ${command}`));
+    // "Did you mean?" suggestion for unknown commands
+    const fullInput = [command, ...args].join(" ");
+    const suggestions = suggestCommand(fullInput);
+    if (suggestions.length > 0) {
+      writeLine(stderr, ui.err(`unknown command: ${command}`));
+      writeLine(stderr);
+      writeLine(stderr, "The most similar commands are");
+      for (const s of suggestions) {
+        writeLine(stderr, `    ${s}`);
+      }
+    } else {
+      writeLine(stderr, ui.err(`unknown command: ${command}`));
+      writeLine(stderr, `Run 'zombiectl --help' for usage.`);
+    }
+
     trackCliEvent(analyticsClient, distinctId, "cli_error", {
       command,
       error_code: "UNKNOWN_COMMAND",
