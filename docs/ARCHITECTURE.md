@@ -377,7 +377,7 @@ flowchart TD
 
     D --> F["M9_003 Failure Analysis\nClassify: TIMEOUT · OOM · BAD_OUTPUT\nUNHANDLED_EXCEPTION · CONTEXT_OVERFLOW\nProduce structured improvement_hints"]
 
-    F --> G["Build ScoringContext Block\nlast 5 scores + failure classes\ncapped at 512 tokens"]
+    F --> G["Build ScoringContext Block\nlast 5 scores + failure classes\ncap from scoring_context_max_tokens (default 2048)"]
 
     G -->|Prepended to next run system message| A
 
@@ -424,7 +424,7 @@ flowchart TD
 - First run/no-history behavior is explicit — score is still computed, but the tier emitted for that run is `UNRANKED`.
 - Scoring is fail-safe — errors are caught, logged, and the run continues normally. Score is null (absent) on failure.
 - Scoring is in-worker, synchronous — single deferred call at function exit, < 50ms overhead.
-- Context injection is bounded — 512 token hard cap, oldest runs truncated first.
+- Context injection is bounded — hard cap from `scoring_context_max_tokens` (default 2048, min 512, max 8192), oldest runs truncated first.
 - Trust is earned, not granted — 10 consecutive Gold+ runs required; only agent-attributable failures reset the streak (TIMEOUT, OOM, CONTEXT_OVERFLOW are excluded as infrastructure failures).
 - TRUSTED agents: proposals auto-apply after 24h veto window; operator can cancel anytime.
 - UNEARNED agents: every proposal requires explicit `zombiectl agent proposals approve`.

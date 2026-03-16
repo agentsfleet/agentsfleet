@@ -14,3 +14,4 @@ pub const workspace_billing_state_sql = @embedFile("014_workspace_billing_state.
 pub const workspace_free_credit_sql = @embedFile("015_workspace_free_credit.sql");
 pub const agent_scoring_baseline_sql = @embedFile("016_agent_scoring_baseline.sql");
 pub const agent_score_persistence_api_sql = @embedFile("017_agent_score_persistence_and_api.sql");
+pub const agent_failure_analysis_context_sql = @embedFile("018_agent_failure_analysis_and_context_injection.sql");

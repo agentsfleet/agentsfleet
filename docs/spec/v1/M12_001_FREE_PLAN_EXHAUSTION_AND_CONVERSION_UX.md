@@ -1,19 +1,21 @@
-# M7_003: Free Plan Credit Ledger, Exhaustion, And Conversion UX
+# M12_001: Free Plan Credit Ledger, Exhaustion, And Conversion UX
 
 **Prototype:** v1.0.0
-**Milestone:** M7
-**Workstream:** 003
-**Date:** Mar 13, 2026
-**Status:** IN_PROGRESS
-**Priority:** P0 — implement deterministic free-credit accounting and user-visible exhaustion flow
-**Batch:** B1 — after M6_002 pricing contract is locked
-**Depends on:** M6_002 (Free Plan $10 Credit Pricing Contract), M6_001 (Paid Scale Plan)
+**Milestone:** M12
+**Workstream:** 1
+**Date:** Mar 16, 2026
+**Status:** PENDING
+**Priority:** P2 — post-v1 monetization hardening; not a v1.0 launch gate
+**Batch:** B4 — after v1.0 acceptance gate and production stabilization
+**Depends on:** M11_001 (Grafana Observability Pipeline And Langfuse Async Delivery), M6_006 (Validate v1 Acceptance E2E Gate), M6_002 (Free Plan $10 Credit Pricing Contract), M6_001 (Paid Scale Plan)
+
+**v1.0 Scope Decision (Mar 16, 2026):** Deferred from v1.0 release gating. This workstream remains important for revenue protection and free-tier abuse control, but is not required to pass v1.0 acceptance.
 
 ---
 
 ## 1.0 Free Plan Credit Ledger And Enforcement
 
-**Status:** IN_PROGRESS
+**Status:** PENDING
 
 Implement the backend credit ledger and enforcement contract for the Free plan.
 
@@ -53,6 +55,17 @@ Define the user-visible behavior that CLI and website pricing copy must reflect 
 
 ---
 
+## 3.1 Operator Control For Scoring Context Cap
+
+**Status:** PENDING
+
+Add explicit operator control for scoring context token cap to support abuse control and large-repo tuning.
+
+**Dimensions:**
+- 3.1.1 PENDING Add `zombiectl admin config set scoring_context_max_tokens <n>` with bounds validation (512-8192) and deterministic error messaging
+
+---
+
 ## 4.0 Acceptance Criteria
 
 **Status:** PENDING
@@ -69,3 +82,4 @@ Define the user-visible behavior that CLI and website pricing copy must reflect 
 
 - Credit top-up or renewal on Free plan
 - New payment-provider integrations beyond existing Scale upgrade path
+- v1.0 go/no-go release decision (owned by M6_006 acceptance gate)
