@@ -107,18 +107,18 @@ Trust is computed, not granted — it cannot be manually assigned.
 
 ## 3.0 Confidence-Based Auto-Approval
 
-**Status:** PENDING
+**Status:** IN_PROGRESS
 
 TRUSTED agents bypass the manual approval gate. Proposals enter a 24-hour veto window
 instead, during which the operator can inspect and cancel before the change applies.
 
 **Dimensions:**
-- 3.1 PENDING When a proposal is generated for a TRUSTED agent, set `approval_mode = AUTO` and `auto_apply_at = created_at + 24h`; status transitions to `VETO_WINDOW` immediately
+- 3.1 DONE When a proposal is generated for a TRUSTED agent, set `approval_mode = AUTO` and `auto_apply_at = created_at + 24h`; status transitions to `VETO_WINDOW` immediately
 - 3.2 PENDING `zombiectl agent proposals <agent-id>` lists VETO_WINDOW proposals prominently with a countdown: `"Auto-applies in 18h 42m — zombiectl agent proposals veto <proposal-id> to cancel"`
 - 3.3 PENDING `zombiectl agent proposals veto <proposal-id> [--reason "..."]` — operator cancels; status transitions to `VETOED`; agent is not penalized but reason is stored; next proposal on next trigger
-- 3.4 PENDING A background checker (worker goroutine, 60-second tick) queries `WHERE status = 'VETO_WINDOW' AND auto_apply_at <= now()` and transitions matching proposals through the apply path. `applied_by` recorded as `system:auto`.
-- 3.5 PENDING **CAS guard before apply:** Before applying any proposal (auto or manual), compare the harness config's current `config_version_id` to the proposal's `config_version_id` field. If they differ (operator changed the harness since the proposal was generated), reject the proposal with status `CONFIG_CHANGED` and reason `CONFIG_CHANGED_SINCE_PROPOSAL`. Notify operator via PostHog event. This prevents silent overwrite of manual harness changes.
-- 3.6 PENDING **Reconciler for stuck proposals:** If a proposal is in `VETO_WINDOW` and `auto_apply_at` is more than 1 hour past (indicating the background job missed it), the reconciler picks it up on next tick. This handles worker crash recovery.
+- 3.4 DONE A background checker (reconcile tick) queries `WHERE status = 'VETO_WINDOW' AND auto_apply_at <= now()` and transitions matching proposals through the current auto-apply path. `applied_by` is recorded as `system:auto`, and the active harness config is advanced to the generated candidate version.
+- 3.5 IN_PROGRESS **CAS guard before apply:** Before auto-applying a proposal, compare the harness config's current `config_version_id` to the proposal's `config_version_id` field. If they differ (operator changed the harness since the proposal was generated), reject the proposal with status `CONFIG_CHANGED` and reason `CONFIG_CHANGED_SINCE_PROPOSAL`. The CAS rejection is implemented for the reconcile auto-apply path; PostHog notification and the manual-approval path remain pending.
+- 3.6 DONE **Reconciler for stuck proposals:** The same reconcile scan handles overdue veto-window proposals by selecting any `auto_apply_at <= now()`, so proposals missed for more than 1 hour are picked up on the next tick without a separate recovery path.
 
 ---
 
@@ -196,16 +196,16 @@ Measure whether applied proposals actually improve the agent's score.
 - [x] 7.5 Generated proposals are persisted in final structured topology form (`stage_insert` / `stage_binding` payloads), not only placeholder rows
 - [x] 7.6 Proposal attempting to reference an unregistered or entitlement-disallowed dynamic agent/skill is rejected at schema validation
 - [x] 7.7 Agent with 10 consecutive Gold+ runs (excluding infra failures) shows `trust_level: TRUSTED` in profile output
-- [ ] 7.8 TRUSTED agent proposal enters VETO_WINDOW with correct `auto_apply_at` timestamp
+- [x] 7.8 TRUSTED agent proposal enters VETO_WINDOW with correct `auto_apply_at` timestamp
 - [ ] 7.9 Operator veto within 24h prevents application; status shows VETOED, harness unchanged
 - [x] 7.10 TRUSTED agent drops an agent-attributable Silver run → `trust_streak_runs` resets to 0 → next proposal requires manual approval
 - [x] 7.11 TRUSTED agent has a TIMEOUT (infra) run → `trust_streak_runs` unchanged → trust preserved
-- [ ] 7.12 CAS version check: proposal generated against config_version_id X, operator changes config, auto-apply attempt rejects with CONFIG_CHANGED_SINCE_PROPOSAL
+- [x] 7.12 CAS version check: proposal generated against config_version_id X, operator changes config, auto-apply attempt rejects with CONFIG_CHANGED_SINCE_PROPOSAL
 - [ ] 7.13 Revert restores previous value exactly; `applied_by` on revert row shows operator identity
 - [ ] 7.14 No harness change applied without a proposal record in APPROVED/VETO_WINDOW state (enforced at application logic level)
 - [ ] 7.15 Demo evidence: agent earns TRUSTED, generates auto-approved proposal, harness updates, score improves over next 5 runs
 
-**Verification note:** local aggregate runtime execution of the DB-backed criteria is currently blocked by test Postgres authentication in this environment. The criteria above are marked against implemented code paths and wired tests in this branch.
+**Verification note:** `zig build test` and `make test-zombied` both pass in this worktree. The new coverage in this slice exercises TRUSTED veto-window creation, `auto_apply_at` scheduling, overdue reconcile pickup, and CAS rejection on config drift. Operator-facing veto/list commands remain pending, so the corresponding acceptance criteria stay open.
 
 ---
 

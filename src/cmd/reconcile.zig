@@ -274,6 +274,13 @@ fn reconcileTick(pool: *db.Pool) !outbox.ReconcileResult {
     if (proposal_result.ready > 0 or proposal_result.rejected > 0) {
         log.info("proposal_generation_reconciled ready={d} rejected={d}", .{ proposal_result.ready, proposal_result.rejected });
     }
+    const auto_approval_result = try proposals.reconcileDueAutoApprovalProposals(conn, std.heap.page_allocator, 0, std.time.milliTimestamp());
+    if (auto_approval_result.applied > 0 or auto_approval_result.config_changed > 0 or auto_approval_result.rejected > 0) {
+        log.info(
+            "proposal_auto_approval_reconciled applied={d} config_changed={d} rejected={d}",
+            .{ auto_approval_result.applied, auto_approval_result.config_changed, auto_approval_result.rejected },
+        );
+    }
 
     return .{
         .dead_lettered = side_effect_result.dead_lettered + billing_result.dead_lettered,
