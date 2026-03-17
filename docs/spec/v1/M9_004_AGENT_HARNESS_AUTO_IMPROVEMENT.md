@@ -213,8 +213,3 @@ Measure whether applied proposals actually improve the agent's score.
 - LLM provider or model selection as a proposable change (deferred)
 - Veto window length as a user-configurable setting (fixed at 24h in v1)
 - Synchronous proposal generation (always async/enqueued)
-
-
-1. Dummy User
-2. API for IAM User
-3. Webhook
