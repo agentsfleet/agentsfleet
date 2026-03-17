@@ -26,6 +26,37 @@ pub const TerminalOutcome = enum {
     error_propagation,
 };
 
+pub const FailureClass = enum {
+    timeout,
+    oom,
+    unhandled_exception,
+    bad_output_format,
+    tool_call_failure,
+    context_overflow,
+    auth_failure,
+    unknown,
+
+    pub fn label(self: FailureClass) []const u8 {
+        return switch (self) {
+            .timeout => "TIMEOUT",
+            .oom => "OOM",
+            .unhandled_exception => "UNHANDLED_EXCEPTION",
+            .bad_output_format => "BAD_OUTPUT_FORMAT",
+            .tool_call_failure => "TOOL_CALL_FAILURE",
+            .context_overflow => "CONTEXT_OVERFLOW",
+            .auth_failure => "AUTH_FAILURE",
+            .unknown => "UNKNOWN",
+        };
+    }
+
+    pub fn isInfra(self: FailureClass) bool {
+        return switch (self) {
+            .timeout, .oom, .context_overflow, .auth_failure => true,
+            .unhandled_exception, .bad_output_format, .tool_call_failure, .unknown => false,
+        };
+    }
+};
+
 pub const AxisScores = struct {
     completion: u8 = 0,
     error_rate: u8 = 0,
@@ -67,6 +98,8 @@ pub const ScoringState = struct {
     outcome: TerminalOutcome = .pending,
     stages_passed: u32 = 0,
     stages_total: u32 = 0,
+    failure_class_override: ?FailureClass = null,
+    failure_error_name: ?[]const u8 = null,
 };
 
 pub fn hasPriorRuns(baseline: ?LatencyBaseline) bool {

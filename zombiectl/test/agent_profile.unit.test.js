@@ -12,6 +12,8 @@ const SAMPLE_AGENT = {
   name:         AGENT_NAME,
   status:       "ACTIVE",
   workspace_id: WS_ID,
+  trust_level:  "TRUSTED",
+  trust_streak_runs: 10,
   created_at:   1700000000000,
   updated_at:   1700000001000,
 };
@@ -58,6 +60,8 @@ test("commandAgentProfile human mode calls printKeyValue with agent fields", asy
   assert.equal(kvData.agent_id, SAMPLE_AGENT.agent_id);
   assert.equal(kvData.name, SAMPLE_AGENT.name);
   assert.equal(kvData.status, SAMPLE_AGENT.status);
+  assert.equal(kvData.trust_level, SAMPLE_AGENT.trust_level);
+  assert.equal(kvData.trust_streak_runs, SAMPLE_AGENT.trust_streak_runs);
 });
 
 // ── T2: Edge cases ────────────────────────────────────────────────────────────
@@ -86,6 +90,8 @@ test("commandAgentProfile human mode includes all expected keys", async () => {
   const parsed = { options: {}, positionals: [] };
   await commandAgentProfile({ stdout: makeNoop(), stderr: makeNoop(), jsonMode: false }, parsed, AGENT_ID, deps);
   assert.ok(Object.prototype.hasOwnProperty.call(kvData, "workspace_id"), "missing workspace_id");
+  assert.ok(Object.prototype.hasOwnProperty.call(kvData, "trust_level"), "missing trust_level");
+  assert.ok(Object.prototype.hasOwnProperty.call(kvData, "trust_streak_runs"), "missing trust_streak_runs");
   assert.ok(Object.prototype.hasOwnProperty.call(kvData, "created_at"),  "missing created_at");
   assert.ok(Object.prototype.hasOwnProperty.call(kvData, "updated_at"),  "missing updated_at");
 });

@@ -103,6 +103,12 @@ npx zombiectl runs list
 - 6.2 DONE `.github/workflows/test-integration-db.yml` spins up Postgres via `docker compose up -d postgres`, waits for `pg_isready`, then runs `make test-integration-db`
 - 6.3 DONE `make test-integration-db` target hard-fails if `HANDLER_DB_TEST_URL` is unset — tests cannot silently skip in CI; passing CI run is the acceptance evidence
 - 6.4 DONE Failure policy enforced: `make test-integration-db` exits 1 with a clear message if `HANDLER_DB_TEST_URL` is missing, ensuring the gate is always red when DB coverage is absent
+- 6.5 DONE DB-backed proposal-generation and trust-state coverage now passes cleanly against the local Postgres harness fixture, including the dynamic auto-agent gate role/skill case and the proposal reconcile path
+
+**Recorded evidence (Mar 17, 2026):**
+- Command: `HANDLER_DB_TEST_URL=postgres://usezombie:usezombie@localhost:5432/usezombiedb make test-integration-db`
+- Result: pass (`217/217`, `4 skipped`)
+- Notes: fixed remaining pg query-drain handling in proposal generation (`LIMIT 1` readers must drain before `q.deinit()` on early-return paths), removed static echo/warden skill identity assumptions from dynamic topology validation, and normalized DB test teardown/drain handling so the gate no longer aborts during `pool.release()`
 
 ---
 

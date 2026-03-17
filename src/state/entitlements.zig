@@ -74,15 +74,25 @@ fn loadPolicy(conn: *pg.Conn, workspace_id: []const u8) !EntitlementPolicy {
         \\WHERE workspace_id = $1
         \\LIMIT 1
     , .{workspace_id});
-    defer q.deinit();
 
-    const row = (try q.next()) orelse return EnforcementError.EntitlementMissing;
+    const row = (try q.next()) orelse {
+        // null → 'C'+'Z' already consumed → _state=.idle
+        q.deinit();
+        return EnforcementError.EntitlementMissing;
+    };
+    // Rule 4: read all column values before draining (row buffer lives in conn reader)
     const tier_raw = try row.get([]const u8, 0);
-    const tier = parseTier(tier_raw) orelse return EnforcementError.EntitlementMissing;
+    const tier = parseTier(tier_raw) orelse {
+        q.drain() catch {};
+        q.deinit();
+        return EnforcementError.EntitlementMissing;
+    };
     const max_profiles_i32 = try row.get(i32, 1);
     const max_stages_i32 = try row.get(i32, 2);
     const max_distinct_skills_i32 = try row.get(i32, 3);
     const allow_custom_skills = try row.get(bool, 4);
+    q.drain() catch {}; // Rule 2: drain 'C'+'Z' → _state=.idle
+    q.deinit();
     if (max_profiles_i32 <= 0 or max_stages_i32 <= 0 or max_distinct_skills_i32 <= 0) {
         return EnforcementError.EntitlementMissing;
     }
@@ -101,10 +111,15 @@ fn countWorkspaceProfiles(conn: *pg.Conn, workspace_id: []const u8) !u32 {
         "SELECT COUNT(*)::BIGINT FROM agent_profiles WHERE workspace_id = $1",
         .{workspace_id},
     );
-    defer q.deinit();
 
-    const row = (try q.next()) orelse return 0;
+    const row = (try q.next()) orelse {
+        // null → 'C'+'Z' already consumed → _state=.idle
+        q.deinit();
+        return 0;
+    };
     const count = try row.get(i64, 0);
+    q.drain() catch {}; // Rule 2: drain 'C'+'Z' → _state=.idle
+    q.deinit();
     if (count <= 0) return 0;
     return @intCast(count);
 }
@@ -172,7 +187,8 @@ fn insertAuditSnapshot(
     const snapshot_id = try id_format.generateEntitlementSnapshotId(alloc);
     defer alloc.free(snapshot_id);
 
-    var q = try conn.query(
+    // Rule 1: exec() for INSERT — internal drain loop, always leaves _state=.idle
+    _ = try conn.exec(
         \\INSERT INTO entitlement_policy_audit_snapshots
         \\  (snapshot_id, workspace_id, boundary, decision, reason_code, plan_tier, policy_json, observed_json, actor, created_at)
         \\VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9, $10)
@@ -188,7 +204,6 @@ fn insertAuditSnapshot(
         actor,
         std.time.milliTimestamp(),
     });
-    q.deinit();
 }
 
 pub fn enforceWithAudit(
@@ -260,8 +275,8 @@ test "unit: evaluateProfile rejects stage limits deterministically" {
         \\  "stages":[
         \\    {"stage_id":"plan","role":"echo","skill":"echo"},
         \\    {"stage_id":"implement","role":"scout","skill":"scout"},
-        \\    {"stage_id":"verify","role":"warden","skill":"warden","gate":true,"on_pass":"done","on_fail":"retry"},
-        \\    {"stage_id":"extra","role":"scout","skill":"scout","gate":false}
+        \\    {"stage_id":"extra","role":"scout","skill":"scout","gate":false},
+        \\    {"stage_id":"verify","role":"warden","skill":"warden","gate":true,"on_pass":"done","on_fail":"retry"}
         \\  ]
         \\}
     ;

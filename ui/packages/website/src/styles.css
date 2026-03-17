@@ -1255,14 +1255,14 @@ code {
 }
 
 .hero-inner--humans {
-  grid-template-columns: minmax(0, 1.05fr) minmax(320px, 0.95fr);
-  align-items: center;
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .hero-copy {
   display: grid;
   gap: var(--z-space-xl);
   justify-items: flex-start;
+  max-width: 980px;
 }
 
 /* Badge */
@@ -1454,6 +1454,7 @@ code {
     var(--z-surface-panel-soft);
   box-shadow: var(--z-shadow-floating);
   text-align: left;
+  width: min(100%, 860px);
 }
 
 .hero-command-label {
