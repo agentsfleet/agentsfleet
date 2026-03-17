@@ -4,6 +4,7 @@ const common = @import("../common.zig");
 const obs_log = @import("../../../observability/logging.zig");
 const id_format = @import("../../../types/id_format.zig");
 const error_codes = @import("../../../errors/codes.zig");
+const proposals = @import("../../../pipeline/scoring_mod/proposals.zig");
 
 const sql_get_agent =
     \\SELECT agent_id, name, status, workspace_id, trust_level, trust_streak_runs, created_at, updated_at
@@ -59,6 +60,8 @@ pub fn handleGetAgent(ctx: *common.Context, r: zap.Request, agent_id: []const u8
         return;
     }
 
+    const improvement_stalled_warning = proposals.hasImprovementStalledWarning(conn, agent_id) catch false;
+
     common.writeJson(r, .ok, .{
         .agent_id = rid,
         .name = name,
@@ -66,6 +69,7 @@ pub fn handleGetAgent(ctx: *common.Context, r: zap.Request, agent_id: []const u8
         .workspace_id = workspace_id,
         .trust_level = trust_level,
         .trust_streak_runs = trust_streak_runs,
+        .improvement_stalled_warning = improvement_stalled_warning,
         .created_at = created_at,
         .updated_at = updated_at,
         .request_id = req_id,

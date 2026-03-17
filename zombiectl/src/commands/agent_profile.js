@@ -18,6 +18,7 @@ export async function commandAgentProfile(ctx, parsed, agentId, deps) {
       workspace_id: res.workspace_id,
       trust_level: res.trust_level,
       trust_streak_runs: res.trust_streak_runs,
+      improvement_stalled_warning: res.improvement_stalled_warning,
       created_at: res.created_at,
       updated_at: res.updated_at,
     });

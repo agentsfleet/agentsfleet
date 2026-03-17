@@ -504,7 +504,7 @@ flowchart TD
     H{5-run rolling avg\ndeclining OR avg lt 60?}
     H -->|No| I([Continue Running])
 
-    H -->|Yes — trigger| J["M9_004 Generate Proposal\nLLM reviews last 10 run analyses\n+ current harness config\nvalidated proposed_changes\ntargets: timeout · tokens · tools"]
+    H -->|Yes — trigger| J["M9_004 Generate Proposal\nPlaceholder row persisted inline\nAsync reconcile materializes deterministic proposed_changes\nTargets stage_insert or stage_binding\nCandidate profile must still compile"]
 
     J --> AP{approval_mode}
 
@@ -520,7 +520,7 @@ flowchart TD
 
     L["Apply Harness Changes\nCAS check: config_version_id must match\nAtomic compile + activate\nharness_change_log written\napplied_by: operator or system:auto\nPostHog agent.harness.changed emitted"]
 
-    L --> N["Tag next 5 runs post_change_window\nCompute score_delta\nIf 3 consecutive negative deltas\nemit agent.improvement.stalled\nreset trust to UNEARNED"]
+    L --> N["Tag next 5 runs with proposal_id\nCompute score_delta vs prior 5-run baseline\nPersist delta on harness_change_log\nIf 3 consecutive negative deltas\nemit agent.improvement.stalled\nreset trust to UNEARNED"]
 
     N -->|Feeds back into| A
 
@@ -543,12 +543,19 @@ flowchart TD
 - Trust is earned, not granted — 10 consecutive Gold+ runs required; only agent-attributable failures reset the streak (TIMEOUT, OOM, CONTEXT_OVERFLOW are excluded as infrastructure failures).
 - TRUSTED agents: proposals auto-apply after 24h veto window; operator can cancel anytime.
 - UNEARNED agents: every proposal requires explicit `zombiectl agent proposals approve`.
-- 3 consecutive negative score deltas resets trust to UNEARNED regardless of run history.
-- Proposals target numeric fields only (tokens, timeout, tool_allowlist restrict-only). `system_prompt_appendix` is excluded — no LLM-generated text in future system prompts.
+- Post-change evaluation is proposal-linked — the next 5 scored runs are tagged with `proposal_id`, and `score_delta` is finalized only after that window closes.
+- 3 consecutive negative score deltas resets trust to UNEARNED regardless of run history and surfaces `improvement_stalled_warning` in profile/report output.
+- Proposal generation in this slice is deterministic — scoring persists a placeholder row inline, and an async reconcile worker materializes topology-safe `proposed_changes` without an LLM call.
+- Proposals target dynamic harness topology only (`stage_insert`, `stage_binding`). `system_prompt_appendix` is excluded — no LLM-generated text in future system prompts.
 - Proposals targeting auth, billing, or network config are rejected at schema validation.
 - CAS guard: proposal stores `config_version_id` at creation; before apply, version must match current config. If operator changed the harness since proposal was generated, proposal is rejected with `CONFIG_CHANGED_SINCE_PROPOSAL`.
-- Proposal generation is async (enqueued, not inline) — LLM call runs out-of-band, does not block scoring path.
+- Proposal generation is async (enqueued, not inline) — background reconcile work does not block the scoring path.
 - Resource efficiency axis is stubbed at 50 until M4_008 (Firecracker) provides sandbox metrics.
+
+**Operator surfaces shipped in this loop:**
+- `GET /v1/agents/{agent_id}` returns trust state plus `improvement_stalled_warning`.
+- `GET /v1/agents/{agent_id}/improvement-report` returns proposal counts, average applied `score_delta`, and current vs baseline tier.
+- `zombiectl agent improvement-report <agent-id>` mirrors the report endpoint for operators.
 
 **Workstream files:**
 - `docs/spec/v1/M9_001_AGENT_RUN_QUALITY_SCORING.md`

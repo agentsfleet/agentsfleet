@@ -96,6 +96,7 @@ fn createTempProposalTables(conn: *pg.Conn) !void {
         \\  run_id TEXT NOT NULL UNIQUE,
         \\  agent_id TEXT NOT NULL,
         \\  workspace_id TEXT NOT NULL,
+        \\  proposal_id TEXT,
         \\  score INTEGER NOT NULL,
         \\  axis_scores TEXT NOT NULL,
         \\  weight_snapshot TEXT NOT NULL,
@@ -340,6 +341,63 @@ test "scoreRunIfTerminal triggers proposal on declining five-run average" {
     const row = (try q.next()) orelse return error.TestUnexpectedResult;
     try std.testing.expectEqualStrings("DECLINING_SCORE", row.get([]const u8, 0) catch "");
     try std.testing.expect((try q.next()) == null);
+}
+
+test "loadImprovementReport summarizes counts, tiers, and stalled warning" {
+    const db_ctx = (try common.openHandlerTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
+
+    try createTempProposalTables(db_ctx.conn);
+    try insertAgentProfileWithTrust(db_ctx.conn, "agent_report_1", "ws_report_1", 0, "UNEARNED");
+
+    var idx: usize = 0;
+    while (idx < 5) : (idx += 1) {
+        const run_id = try std.fmt.allocPrint(std.testing.allocator, "report_hist_{d}", .{idx});
+        defer std.testing.allocator.free(run_id);
+        try insertScoreRow(db_ctx.conn, run_id, "agent_report_1", "ws_report_1", 90, @intCast(idx + 1));
+    }
+    idx = 0;
+    while (idx < 5) : (idx += 1) {
+        const run_id = try std.fmt.allocPrint(std.testing.allocator, "report_current_{d}", .{idx});
+        defer std.testing.allocator.free(run_id);
+        try insertScoreRow(db_ctx.conn, run_id, "agent_report_1", "ws_report_1", 30, @intCast(200 + idx));
+    }
+
+    _ = try db_ctx.conn.exec(
+        \\INSERT INTO agent_improvement_proposals
+        \\  (proposal_id, agent_id, workspace_id, trigger_reason, proposed_changes, config_version_id, approval_mode, generation_status, status, applied_by, created_at, updated_at)
+        \\VALUES
+        \\  ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6ac1', 'agent_report_1', 'ws_report_1', 'DECLINING_SCORE', '[]', 'cfg_1', 'MANUAL', 'READY', 'APPLIED', 'operator:test', 100, 100),
+        \\  ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6ac2', 'agent_report_1', 'ws_report_1', 'DECLINING_SCORE', '[]', 'cfg_2', 'MANUAL', 'READY', 'APPLIED', 'operator:test', 110, 110),
+        \\  ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6ac3', 'agent_report_1', 'ws_report_1', 'DECLINING_SCORE', '[]', 'cfg_3', 'MANUAL', 'READY', 'APPLIED', 'operator:test', 120, 120),
+        \\  ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6ac4', 'agent_report_1', 'ws_report_1', 'DECLINING_SCORE', '[]', 'cfg_4', 'AUTO', 'READY', 'VETOED', NULL, 130, 130),
+        \\  ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6ac5', 'agent_report_1', 'ws_report_1', 'DECLINING_SCORE', '[]', 'cfg_5', 'MANUAL', 'READY', 'REJECTED', NULL, 140, 140)
+    , .{});
+    _ = try db_ctx.conn.exec(
+        \\INSERT INTO harness_change_log
+        \\  (change_id, agent_id, proposal_id, workspace_id, field_name, old_value, new_value, applied_at, applied_by, reverted_from, score_delta)
+        \\VALUES
+        \\  ('chg_report_1', 'agent_report_1', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6ac1', 'ws_report_1', 'stage_insert', '{}', '{}', 100, 'operator:test', NULL, -5.0),
+        \\  ('chg_report_2', 'agent_report_1', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6ac2', 'ws_report_1', 'stage_insert', '{}', '{}', 110, 'operator:test', NULL, -10.0),
+        \\  ('chg_report_3', 'agent_report_1', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6ac3', 'ws_report_1', 'stage_insert', '{}', '{}', 120, 'operator:test', NULL, -15.0)
+    , .{});
+
+    var report = (try proposals.loadImprovementReport(db_ctx.conn, std.testing.allocator, "agent_report_1")) orelse return error.TestUnexpectedResult;
+    defer report.deinit(std.testing.allocator);
+
+    try std.testing.expectEqualStrings("agent_report_1", report.agent_id);
+    try std.testing.expectEqualStrings("UNEARNED", report.trust_level);
+    try std.testing.expect(report.improvement_stalled_warning);
+    try std.testing.expectEqual(@as(u32, 5), report.proposals_generated);
+    try std.testing.expectEqual(@as(u32, 3), report.proposals_approved);
+    try std.testing.expectEqual(@as(u32, 1), report.proposals_vetoed);
+    try std.testing.expectEqual(@as(u32, 1), report.proposals_rejected);
+    try std.testing.expectEqual(@as(u32, 3), report.proposals_applied);
+    try std.testing.expect(report.avg_score_delta_per_applied_change != null);
+    try std.testing.expect(std.math.approxEqAbs(f64, -10.0, report.avg_score_delta_per_applied_change.?, 0.001));
+    try std.testing.expectEqualStrings("Bronze", report.current_tier.?);
+    try std.testing.expectEqualStrings("Elite", report.baseline_tier.?);
 }
 
 test "trusted proposal enters veto window with auto-apply deadline" {

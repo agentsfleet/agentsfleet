@@ -50,8 +50,5 @@ CREATE TABLE vault.secrets (
 CREATE INDEX idx_vault_secrets_workspace
     ON vault.secrets(workspace_id, key_name);
 
-ALTER TABLE vault.secrets ENABLE ROW LEVEL SECURITY;
-
 GRANT SELECT, INSERT, UPDATE ON vault.secrets TO worker_accessor;
 GRANT SELECT, INSERT, UPDATE ON vault.secrets TO callback_accessor;
-

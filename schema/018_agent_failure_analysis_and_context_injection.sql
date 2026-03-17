@@ -19,13 +19,5 @@ CREATE INDEX idx_agent_run_analysis_agent
 CREATE INDEX idx_agent_run_analysis_hints_gin
     ON agent_run_analysis USING GIN (improvement_hints);
 
-ALTER TABLE workspace_entitlements
-    ADD COLUMN IF NOT EXISTS enable_score_context_injection BOOLEAN NOT NULL DEFAULT TRUE;
-ALTER TABLE workspace_entitlements
-    ADD COLUMN IF NOT EXISTS scoring_context_max_tokens INTEGER NOT NULL DEFAULT 2048;
-ALTER TABLE workspace_entitlements
-    ADD CONSTRAINT ck_workspace_entitlements_scoring_context_max_tokens
-    CHECK (scoring_context_max_tokens >= 512 AND scoring_context_max_tokens <= 8192);
-
 GRANT SELECT, INSERT ON agent_run_analysis TO worker_accessor;
 GRANT SELECT ON agent_run_analysis TO api_accessor;

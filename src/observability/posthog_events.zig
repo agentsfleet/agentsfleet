@@ -361,6 +361,31 @@ pub fn trackAgentHarnessChanged(
     }
 }
 
+pub fn trackAgentImprovementStalled(
+    client: ?*posthog.PostHogClient,
+    distinct_id: []const u8,
+    run_id: []const u8,
+    workspace_id: []const u8,
+    agent_id: []const u8,
+    proposal_id: []const u8,
+    consecutive_negative_deltas: i32,
+) void {
+    if (client) |ph| {
+        const props = [_]posthog.Property{
+            .{ .key = "run_id", .value = .{ .string = run_id } },
+            .{ .key = "workspace_id", .value = .{ .string = workspace_id } },
+            .{ .key = "agent_id", .value = .{ .string = agent_id } },
+            .{ .key = "proposal_id", .value = .{ .string = proposal_id } },
+            .{ .key = "consecutive_negative_deltas", .value = .{ .integer = consecutive_negative_deltas } },
+        };
+        ph.capture(.{
+            .distinct_id = distinct_id,
+            .event = "agent.improvement.stalled",
+            .properties = &props,
+        }) catch {};
+    }
+}
+
 fn trustTransitionProps(
     run_id: []const u8,
     workspace_id: []const u8,
@@ -394,6 +419,7 @@ test "integration: telemetry helpers are no-op when posthog client is disabled" 
     trackAgentTrustEarned(disabled, "u", "run_1", "ws_1", "agent_1", 10);
     trackAgentTrustLost(disabled, "u", "run_1", "ws_1", "agent_1", 0);
     trackAgentHarnessChanged(disabled, "u", "agent_1", "proposal_1", "ws_1", "AUTO", "DECLINING_SCORE", &[_][]const u8{"stage_insert"});
+    trackAgentImprovementStalled(disabled, "u", "run_1", "ws_1", "agent_1", "proposal_1", 3);
     try std.testing.expect(true);
 }
 

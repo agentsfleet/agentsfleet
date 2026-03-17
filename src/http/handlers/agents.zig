@@ -62,6 +62,55 @@ pub fn handleListAgentProposals(ctx: *common.Context, r: zap.Request, agent_id: 
     });
 }
 
+pub fn handleGetAgentImprovementReport(ctx: *common.Context, r: zap.Request, agent_id: []const u8) void {
+    var arena = std.heap.ArenaAllocator.init(ctx.alloc);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    const req_id = common.requestId(alloc);
+
+    const principal = common.authenticate(alloc, r, ctx) catch |err| {
+        common.writeAuthError(r, req_id, err);
+        return;
+    };
+    if (!common.requireUuidV7Id(r, req_id, agent_id, "agent_id")) return;
+
+    const conn = ctx.pool.acquire() catch {
+        common.internalDbUnavailable(r, req_id);
+        return;
+    };
+    defer ctx.pool.release(conn);
+
+    const workspace_id = resolveAgentWorkspace(conn, alloc, agent_id, req_id, r) orelse return;
+    if (!common.authorizeWorkspaceAndSetTenantContext(conn, principal, workspace_id)) {
+        common.errorResponse(r, .forbidden, error_codes.ERR_FORBIDDEN, "Workspace access denied", req_id);
+        return;
+    }
+
+    var report = proposals.loadImprovementReport(conn, alloc, agent_id) catch {
+        common.internalDbError(r, req_id);
+        return;
+    } orelse {
+        common.errorResponse(r, .not_found, error_codes.ERR_AGENT_NOT_FOUND, "Agent not found", req_id);
+        return;
+    };
+    defer report.deinit(alloc);
+
+    common.writeJson(r, .ok, .{
+        .agent_id = report.agent_id,
+        .trust_level = report.trust_level,
+        .improvement_stalled_warning = report.improvement_stalled_warning,
+        .proposals_generated = report.proposals_generated,
+        .proposals_approved = report.proposals_approved,
+        .proposals_vetoed = report.proposals_vetoed,
+        .proposals_rejected = report.proposals_rejected,
+        .proposals_applied = report.proposals_applied,
+        .avg_score_delta_per_applied_change = report.avg_score_delta_per_applied_change,
+        .current_tier = report.current_tier,
+        .baseline_tier = report.baseline_tier,
+        .request_id = req_id,
+    });
+}
+
 pub fn handleApproveAgentProposal(ctx: *common.Context, r: zap.Request, agent_id: []const u8, proposal_id: []const u8) void {
     handleManualProposalDecision(ctx, r, agent_id, proposal_id, .approve);
 }

@@ -109,7 +109,7 @@ fn scoreRunInner(
     const weight_snapshot_json = try weightsJson(std.heap.page_allocator, config.weights);
     defer std.heap.page_allocator.free(weight_snapshot_json);
 
-    if (try persistence.persistScore(
+    var persist_outcome = try persistence.persistScore(
         conn,
         std.heap.page_allocator,
         run_id,
@@ -123,7 +123,10 @@ fn scoreRunInner(
         s.stages_passed,
         s.stages_total,
         total_wall_seconds,
-    )) |trust_update| {
+    );
+    defer persist_outcome.deinit(std.heap.page_allocator);
+
+    if (persist_outcome.trust_update) |trust_update| {
         if (trust_update.earned()) {
             posthog_events.trackAgentTrustEarned(
                 posthog_client,
@@ -143,6 +146,18 @@ fn scoreRunInner(
                 trust_update.trust_streak_runs,
             );
         }
+    }
+
+    if (persist_outcome.stalled_alert) |alert| {
+        posthog_events.trackAgentImprovementStalled(
+            posthog_client,
+            posthog_events.distinctIdOrSystem(requested_by),
+            run_id,
+            workspace_id,
+            agent_id,
+            alert.proposal_id,
+            3,
+        );
     }
 
     log.info("run scored run_id={s} score={d} tier={s}", .{ run_id, score, tier.label() });

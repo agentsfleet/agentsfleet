@@ -5,6 +5,7 @@ CREATE TABLE agent_run_scores (
     run_id           UUID NOT NULL REFERENCES runs(run_id) ON DELETE CASCADE,
     agent_id         UUID NOT NULL REFERENCES agent_profiles(agent_id) ON DELETE CASCADE,
     workspace_id     UUID NOT NULL REFERENCES workspaces(workspace_id) ON DELETE CASCADE,
+    proposal_id      UUID REFERENCES agent_improvement_proposals(proposal_id) ON DELETE SET NULL,
     score            INTEGER NOT NULL CHECK (score >= 0 AND score <= 100),
     axis_scores      TEXT NOT NULL,
     weight_snapshot  TEXT NOT NULL,
@@ -17,6 +18,9 @@ CREATE INDEX idx_agent_run_scores_agent
     ON agent_run_scores(agent_id, scored_at DESC);
 CREATE INDEX idx_agent_run_scores_workspace
     ON agent_run_scores(workspace_id, score DESC, scored_at DESC);
+CREATE INDEX idx_agent_run_scores_proposal
+    ON agent_run_scores(proposal_id, scored_at DESC)
+    WHERE proposal_id IS NOT NULL;
 
 GRANT SELECT, INSERT, UPDATE ON agent_run_scores TO worker_accessor;
 GRANT SELECT ON agent_run_scores TO api_accessor;
