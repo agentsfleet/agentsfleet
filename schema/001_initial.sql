@@ -92,12 +92,26 @@ CREATE TABLE usage_ledger (
     id            UUID PRIMARY KEY,
     CONSTRAINT ck_usage_ledger_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
     run_id        UUID NOT NULL REFERENCES runs(run_id),
+    workspace_id  UUID NOT NULL REFERENCES workspaces(workspace_id),
     attempt       INT  NOT NULL,
     actor         TEXT NOT NULL,
+    event_key     TEXT,
+    lifecycle_event TEXT NOT NULL,
+    billable_unit TEXT NOT NULL,
+    billable_quantity BIGINT NOT NULL DEFAULT 0,
+    is_billable   BOOLEAN NOT NULL DEFAULT FALSE,
+    source        TEXT NOT NULL,
     token_count   BIGINT NOT NULL DEFAULT 0,
     agent_seconds BIGINT NOT NULL DEFAULT 0,
     created_at    BIGINT NOT NULL
 );
+CREATE UNIQUE INDEX idx_usage_ledger_run_event_key
+    ON usage_ledger (run_id, event_key)
+    WHERE event_key IS NOT NULL;
+CREATE INDEX idx_usage_ledger_workspace
+    ON usage_ledger (workspace_id, created_at DESC);
+CREATE INDEX idx_usage_ledger_billable
+    ON usage_ledger (run_id, attempt, is_billable, billable_unit);
 CREATE INDEX idx_usage_run ON usage_ledger(run_id, attempt, source);
 
 CREATE TABLE workspace_memories (
