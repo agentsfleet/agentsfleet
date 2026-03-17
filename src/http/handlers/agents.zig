@@ -39,7 +39,7 @@ pub fn handleListAgentProposals(ctx: *common.Context, r: zap.Request, agent_id: 
         return;
     }
 
-    const items = proposals.listManualProposals(conn, alloc, agent_id, 0) catch {
+    const items = proposals.listOpenProposals(conn, alloc, agent_id, 0) catch {
         common.internalDbError(r, req_id);
         return;
     };
@@ -51,6 +51,13 @@ pub fn handleListAgentProposals(ctx: *common.Context, r: zap.Request, agent_id: 
         obj.put("trigger_reason", .{ .string = item.trigger_reason }) catch continue;
         obj.put("proposed_changes", .{ .string = item.proposed_changes }) catch continue;
         obj.put("config_version_id", .{ .string = item.config_version_id }) catch continue;
+        obj.put("approval_mode", .{ .string = item.approval_mode }) catch continue;
+        obj.put("status", .{ .string = item.status }) catch continue;
+        if (item.auto_apply_at) |auto_apply_at| {
+            obj.put("auto_apply_at", .{ .integer = auto_apply_at }) catch continue;
+        } else {
+            obj.put("auto_apply_at", .null) catch continue;
+        }
         obj.put("created_at", .{ .integer = item.created_at }) catch continue;
         obj.put("updated_at", .{ .integer = item.updated_at }) catch continue;
         data.append(alloc, .{ .object = obj }) catch continue;
@@ -119,6 +126,10 @@ pub fn handleRejectAgentProposal(ctx: *common.Context, r: zap.Request, agent_id:
     handleManualProposalDecision(ctx, r, agent_id, proposal_id, .reject);
 }
 
+pub fn handleVetoAgentProposal(ctx: *common.Context, r: zap.Request, agent_id: []const u8, proposal_id: []const u8) void {
+    handleManualProposalDecision(ctx, r, agent_id, proposal_id, .veto);
+}
+
 pub fn handleRevertAgentHarnessChange(ctx: *common.Context, r: zap.Request, agent_id: []const u8, change_id: []const u8) void {
     var arena = std.heap.ArenaAllocator.init(ctx.alloc);
     defer arena.deinit();
@@ -177,6 +188,7 @@ pub fn handleRevertAgentHarnessChange(ctx: *common.Context, r: zap.Request, agen
 const DecisionAction = enum {
     approve,
     reject,
+    veto,
 };
 
 fn handleManualProposalDecision(
@@ -265,6 +277,24 @@ fn handleManualProposalDecision(
                 .request_id = req_id,
             });
         },
+        .veto => {
+            const reason = parseVetoReason(alloc, r, req_id) orelse return;
+            const changed = proposals.vetoAutoProposal(conn, agent_id, proposal_id, reason, std.time.milliTimestamp()) catch {
+                common.internalOperationError(r, "Failed to veto proposal", req_id);
+                return;
+            };
+            if (!changed) {
+                common.errorResponse(r, .not_found, error_codes.ERR_PROPOSAL_NOT_FOUND, "Proposal not found", req_id);
+                return;
+            }
+            common.writeJson(r, .ok, .{
+                .agent_id = agent_id,
+                .proposal_id = proposal_id,
+                .status = "VETOED",
+                .rejection_reason = reason,
+                .request_id = req_id,
+            });
+        },
     }
 }
 
@@ -285,6 +315,12 @@ fn parseRejectReason(alloc: std.mem.Allocator, r: zap.Request, req_id: []const u
     const trimmed = std.mem.trim(u8, raw, " \t\r\n");
     if (trimmed.len == 0) return "OPERATOR_REJECTED";
     return trimmed;
+}
+
+fn parseVetoReason(alloc: std.mem.Allocator, r: zap.Request, req_id: []const u8) ?[]const u8 {
+    const parsed = parseRejectReason(alloc, r, req_id) orelse return null;
+    if (std.mem.eql(u8, parsed, "OPERATOR_REJECTED")) return "OPERATOR_VETOED";
+    return parsed;
 }
 
 fn resolveAgentWorkspace(

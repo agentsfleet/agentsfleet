@@ -248,7 +248,7 @@ pub fn enforceWithAudit(
 test "unit: evaluateProfile rejects disallowed skill with stable reason code" {
     const raw =
         \\{
-        \\  "profile_id":"prof_1",
+        \\  "agent_id":"prof_1",
         \\  "stages":[
         \\    {"stage_id":"plan","role":"echo","skill":"echo"},
         \\    {"stage_id":"implement","role":"scout","skill":"custom_skill"},
@@ -271,7 +271,7 @@ test "unit: evaluateProfile rejects disallowed skill with stable reason code" {
 test "unit: evaluateProfile rejects stage limits deterministically" {
     const raw =
         \\{
-        \\  "profile_id":"prof_1",
+        \\  "agent_id":"prof_1",
         \\  "stages":[
         \\    {"stage_id":"plan","role":"echo","skill":"echo"},
         \\    {"stage_id":"implement","role":"scout","skill":"scout"},

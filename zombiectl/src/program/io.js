@@ -48,6 +48,7 @@ function printHelp(stdout, ui, opts = {}) {
     writeLine(stdout, "  agent proposals <agent-id>");
     writeLine(stdout, "  agent proposals <agent-id> approve <proposal-id>");
     writeLine(stdout, "  agent proposals <agent-id> reject <proposal-id> [--reason TEXT]");
+    writeLine(stdout, "  agent proposals <agent-id> veto <proposal-id> [--reason TEXT]");
     writeLine(stdout, "  agent harness revert <agent-id> --to-change <change-id>");
     writeLine(stdout, "  admin config set scoring_context_max_tokens <value> --workspace-id ID");
   }

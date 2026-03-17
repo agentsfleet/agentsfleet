@@ -132,21 +132,28 @@ pub const AutoApprovalReconcileResult = struct {
     expired: u32 = 0,
 };
 
-pub const ManualProposalSummary = struct {
+pub const ProposalSummary = struct {
     proposal_id: []u8,
     trigger_reason: []u8,
     proposed_changes: []u8,
     config_version_id: []u8,
+    approval_mode: []u8,
+    status: []u8,
+    auto_apply_at: ?i64,
     created_at: i64,
     updated_at: i64,
 
-    pub fn deinit(self: *ManualProposalSummary, alloc: std.mem.Allocator) void {
+    pub fn deinit(self: *ProposalSummary, alloc: std.mem.Allocator) void {
         alloc.free(self.proposal_id);
         alloc.free(self.trigger_reason);
         alloc.free(self.proposed_changes);
         alloc.free(self.config_version_id);
+        alloc.free(self.approval_mode);
+        alloc.free(self.status);
     }
 };
+
+pub const ManualProposalSummary = ProposalSummary;
 
 pub const ProposalLookup = struct {
     proposal_id: []u8,

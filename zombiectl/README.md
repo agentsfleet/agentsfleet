@@ -28,6 +28,7 @@ Operator trajectory flow:
 zombiectl agent profile <agent-id>
 zombiectl agent improvement-report <agent-id>
 zombiectl agent proposals <agent-id>
+zombiectl agent proposals <agent-id> veto <proposal-id> --reason "operator pause"
 ```
 
 `workspace add` opens the UseZombie GitHub App install page and binds workspace via callback automatically.

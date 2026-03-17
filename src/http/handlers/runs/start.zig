@@ -323,7 +323,7 @@ test "runtime entitlement enforcement rejects downgraded free workspace using sc
     {
         var q = try db_ctx.conn.query(
             \\CREATE TEMP TABLE agent_profiles (
-            \\  profile_id TEXT PRIMARY KEY,
+            \\  agent_id TEXT PRIMARY KEY,
             \\  workspace_id TEXT NOT NULL
             \\) ON COMMIT DROP
         , .{});
@@ -358,7 +358,7 @@ test "runtime entitlement enforcement rejects downgraded free workspace using sc
     }
     {
         var q = try db_ctx.conn.query(
-            "INSERT INTO agent_profiles (profile_id, workspace_id) VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f41', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11')",
+            "INSERT INTO agent_profiles (agent_id, workspace_id) VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f41', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11')",
             .{},
         );
         q.deinit();
@@ -368,7 +368,7 @@ test "runtime entitlement enforcement rejects downgraded free workspace using sc
             \\INSERT INTO agent_config_versions (config_version_id, compiled_profile_json)
             \\VALUES (
             \\  '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f91',
-            \\  '{"profile_id":"0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f41","stages":[{"stage_id":"plan","role":"echo","skill":"echo"},{"stage_id":"implement","role":"scout","skill":"scout"},{"stage_id":"verify","role":"warden","skill":"warden","gate":true,"on_pass":"done","on_fail":"retry"},{"stage_id":"extra","role":"scout","skill":"scout","gate":false}]}'
+            \\  '{"agent_id":"0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f41","stages":[{"stage_id":"plan","role":"echo","skill":"echo"},{"stage_id":"implement","role":"scout","skill":"scout"},{"stage_id":"verify","role":"warden","skill":"warden","gate":true,"on_pass":"done","on_fail":"retry"},{"stage_id":"extra","role":"scout","skill":"scout","gate":false}]}'
             \\)
         , .{});
         q.deinit();

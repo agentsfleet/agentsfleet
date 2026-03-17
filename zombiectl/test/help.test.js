@@ -55,6 +55,7 @@ describe("help output", () => {
     expect(output).toContain("agent scores");
     expect(output).toContain("agent profile");
     expect(output).toContain("agent improvement-report");
+    expect(output).toContain("agent proposals <agent-id> veto <proposal-id>");
     expect(output).toContain("agent harness revert");
   });
 

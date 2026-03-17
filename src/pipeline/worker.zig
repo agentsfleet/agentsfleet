@@ -180,5 +180,5 @@ pub fn workerLoop(cfg: WorkerConfig, worker_state: *WorkerState) void {
 }
 
 test {
-    _ = @import("worker_profile_tests.zig");
+    _ = @import("worker_agent_test.zig");
 }
