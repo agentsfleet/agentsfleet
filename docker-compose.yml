@@ -1,4 +1,5 @@
-# UseZombie local dev — Postgres + Zig binary
+# UseZombie local dev — Postgres + Redis only
+# zombied removed: zig build is run natively via mise, not inside Docker
 services:
   postgres:
     image: postgres:17-alpine  # pg-0.0.0 library tested against PG17; upgrade pg dep before bumping to PG18
@@ -21,27 +22,6 @@ services:
       - ./docker/redis/tls:/tls:ro
       - redis-data:/data
 
-  zombied:
-    build:
-      context: .
-      dockerfile: Dockerfile.dev
-    environment:
-      PORT: 3000
-      DATABASE_URL: postgres://usezombie:usezombie@postgres:5432/usezombiedb
-      REDIS_URL: rediss://redis:6379
-      REDIS_TLS_CA_CERT_FILE: /app/docker/redis/tls/ca.crt
-      API_KEY: local-dev-api-key
-      AGENT_CONFIG_DIR: /app/config
-    depends_on:
-      - postgres
-      - redis
-    ports:
-      - "3000:3000"
-    volumes:
-      - ./:/app
-      - zig-cache:/app/.zig-cache
-
 volumes:
   postgres-data:
   redis-data:
-  zig-cache:
