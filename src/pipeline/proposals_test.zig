@@ -1,6 +1,7 @@
 const std = @import("std");
 const pg = @import("pg");
 const scoring = @import("scoring.zig");
+const topology = @import("topology.zig");
 const proposals = @import("scoring_mod/proposals.zig");
 const proposals_shared = @import("scoring_mod/proposals_shared.zig");
 const common = @import("../http/handlers/common.zig");
@@ -133,6 +134,21 @@ fn createTempProposalTables(conn: *pg.Conn) !void {
         \\  updated_at BIGINT NOT NULL
         \\)
     );
+    try execSql(conn,
+        \\CREATE TEMP TABLE harness_change_log (
+        \\  change_id TEXT PRIMARY KEY,
+        \\  agent_id TEXT NOT NULL,
+        \\  proposal_id TEXT NOT NULL,
+        \\  workspace_id TEXT NOT NULL,
+        \\  field_name TEXT NOT NULL,
+        \\  old_value TEXT NOT NULL,
+        \\  new_value TEXT NOT NULL,
+        \\  applied_at BIGINT NOT NULL,
+        \\  applied_by TEXT NOT NULL,
+        \\  reverted_from TEXT,
+        \\  score_delta DOUBLE PRECISION
+        \\)
+    );
 }
 
 fn insertAgentProfile(conn: *pg.Conn, agent_id: []const u8, workspace_id: []const u8) !void {
@@ -209,6 +225,36 @@ fn insertScoreRow(
         \\  (score_id, run_id, agent_id, workspace_id, score, axis_scores, weight_snapshot, scored_at)
         \\VALUES ($1, $2, $3, $4, $5, '{}', '{}', $6)
     , .{ run_id, run_id, agent_id, workspace_id, score, scored_at });
+}
+
+const ExpectedStage = struct {
+    stage_id: []const u8,
+    role_id: []const u8,
+    skill_id: []const u8,
+    artifact_name: []const u8,
+    commit_message: []const u8,
+    is_gate: bool,
+    on_pass: ?[]const u8,
+    on_fail: ?[]const u8,
+};
+
+fn expectProfileMatches(raw_json: []const u8, expected_profile_id: []const u8, expected_stages: []const ExpectedStage) !void {
+    var parsed = try topology.parseProfileJson(std.testing.allocator, raw_json);
+    defer parsed.deinit();
+
+    try std.testing.expectEqualStrings(expected_profile_id, parsed.agent_id);
+    try std.testing.expectEqual(expected_stages.len, parsed.stages.len);
+
+    for (expected_stages, parsed.stages) |expected_stage, actual_stage| {
+        try std.testing.expectEqualStrings(expected_stage.stage_id, actual_stage.stage_id);
+        try std.testing.expectEqualStrings(expected_stage.role_id, actual_stage.role_id);
+        try std.testing.expectEqualStrings(expected_stage.skill_id, actual_stage.skill_id);
+        try std.testing.expectEqualStrings(expected_stage.artifact_name, actual_stage.artifact_name);
+        try std.testing.expectEqualStrings(expected_stage.commit_message, actual_stage.commit_message);
+        try std.testing.expectEqual(expected_stage.is_gate, actual_stage.is_gate);
+        try std.testing.expectEqualStrings(expected_stage.on_pass orelse "", actual_stage.on_pass orelse "");
+        try std.testing.expectEqualStrings(expected_stage.on_fail orelse "", actual_stage.on_fail orelse "");
+    }
 }
 
 test "scoreRunIfTerminal persists proposal groundwork after sustained low-score window" {
@@ -439,8 +485,26 @@ test "reconcileDueAutoApprovalProposals applies overdue veto-window proposals" {
     , .{});
     defer active_q.deinit();
     const active_row = (try active_q.next()) orelse return error.TestUnexpectedResult;
-    try std.testing.expect(!std.mem.eql(u8, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fa2", active_row.get([]const u8, 0) catch ""));
+    const activated_config_version_id = active_row.get([]const u8, 0) catch "";
+    try std.testing.expect(!std.mem.eql(u8, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fa2", activated_config_version_id));
     try std.testing.expect((try active_q.next()) == null);
+
+    var log_q = try db_ctx.conn.query(
+        \\SELECT field_name, old_value, new_value, applied_by
+        \\FROM harness_change_log
+        \\WHERE proposal_id = (
+        \\  SELECT proposal_id
+        \\  FROM agent_improvement_proposals
+        \\  WHERE agent_id = 'agent_prop_auto_1'
+        \\)
+    , .{});
+    defer log_q.deinit();
+    const log_row = (try log_q.next()) orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqualStrings("stage_insert", log_row.get([]const u8, 0) catch "");
+    try std.testing.expectEqualStrings("null", log_row.get([]const u8, 1) catch "");
+    try std.testing.expect(std.mem.containsAtLeast(u8, log_row.get([]const u8, 2) catch "", 1, "\"stage_id\":\"verify-precheck\""));
+    try std.testing.expectEqualStrings("system:auto", log_row.get([]const u8, 3) catch "");
+    try std.testing.expect((try log_q.next()) == null);
 }
 
 test "reconcileDueAutoApprovalProposals rejects auto-apply when config version changed" {
@@ -574,6 +638,152 @@ test "approveManualProposal applies proposal with operator identity" {
     try std.testing.expectEqualStrings("APPLIED", proposal_row.get([]const u8, 0) catch "");
     try std.testing.expectEqualStrings("operator:kishore", proposal_row.get([]const u8, 1) catch "");
     try std.testing.expect((try proposal_q.next()) == null);
+
+    var active_q = try db_ctx.conn.query(
+        \\SELECT config_version_id
+        \\FROM workspace_active_config
+        \\WHERE workspace_id = 'ws_prop_manual_2'
+    , .{});
+    defer active_q.deinit();
+    const active_row = (try active_q.next()) orelse return error.TestUnexpectedResult;
+    try std.testing.expect(!std.mem.eql(u8, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fc1", active_row.get([]const u8, 0) catch ""));
+    try std.testing.expect((try active_q.next()) == null);
+
+    var change_q = try db_ctx.conn.query(
+        \\SELECT field_name, old_value, new_value, applied_by
+        \\FROM harness_change_log
+        \\WHERE proposal_id = '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fc2'
+    , .{});
+    defer change_q.deinit();
+    const change_row = (try change_q.next()) orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqualStrings("stage_insert", change_row.get([]const u8, 0) catch "");
+    try std.testing.expectEqualStrings("null", change_row.get([]const u8, 1) catch "");
+    try std.testing.expect(std.mem.containsAtLeast(u8, change_row.get([]const u8, 2) catch "", 1, "\"insert_before_stage_id\":\"verify\""));
+    try std.testing.expectEqualStrings("operator:kishore", change_row.get([]const u8, 3) catch "");
+    try std.testing.expect((try change_q.next()) == null);
+
+    var telemetry = (try proposals.loadAppliedProposalTelemetry(
+        db_ctx.conn,
+        std.testing.allocator,
+        "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fc2",
+    )) orelse return error.TestUnexpectedResult;
+    defer telemetry.deinit(std.testing.allocator);
+    try std.testing.expectEqualStrings("agent_prop_manual_2", telemetry.agent_id);
+    try std.testing.expectEqualStrings("ws_prop_manual_2", telemetry.workspace_id);
+    try std.testing.expectEqualStrings("DECLINING_SCORE", telemetry.trigger_reason);
+    try std.testing.expectEqualStrings("MANUAL", telemetry.approval_mode);
+    try std.testing.expectEqual(@as(usize, 1), telemetry.fields_changed.len);
+    try std.testing.expectEqualStrings("stage_insert", telemetry.fields_changed[0]);
+}
+
+test "approveManualProposal rejects malformed proposal changes with compile failure" {
+    const db_ctx = (try common.openHandlerTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
+
+    try createTempProposalTables(db_ctx.conn);
+    _ = try db_ctx.conn.exec(
+        \\INSERT INTO workspace_entitlements
+        \\  (entitlement_id, workspace_id, plan_tier, max_profiles, max_stages, max_distinct_skills, allow_custom_skills, enable_agent_scoring, agent_scoring_weights_json, created_at, updated_at)
+        \\VALUES ('ent_prop_manual_compile_1', 'ws_prop_manual_compile_1', 'FREE', 3, 4, 3, false, true, '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}', 0, 0)
+    , .{});
+    try insertAgentProfile(db_ctx.conn, "agent_prop_manual_compile_1", "ws_prop_manual_compile_1");
+    try insertActiveConfig(db_ctx.conn, "agent_prop_manual_compile_1", "ws_prop_manual_compile_1", "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fd3");
+    _ = try db_ctx.conn.exec(
+        \\INSERT INTO agent_improvement_proposals
+        \\  (proposal_id, agent_id, workspace_id, trigger_reason, proposed_changes, config_version_id, approval_mode, generation_status, status, auto_apply_at, created_at, updated_at)
+        \\VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fd4', 'agent_prop_manual_compile_1', 'ws_prop_manual_compile_1', 'DECLINING_SCORE', '[{"target_field":"stage_insert","current_value":null,"proposed_value":{"agent_id":"agent_prop_manual_compile_1","insert_before_stage_id":"missing-stage","stage_id":"verify-precheck","role":"autoworkerready","skill":"warden","gate":false,"on_pass":"verify","on_fail":"retry"},"rationale":"broken stage ref"}]', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fd3', 'MANUAL', 'READY', 'PENDING_REVIEW', NULL, 100, 101)
+    , .{});
+
+    const result = (try proposals.approveManualProposal(
+        db_ctx.conn,
+        std.testing.allocator,
+        "agent_prop_manual_compile_1",
+        "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fd4",
+        "kishore",
+        4_000,
+    )) orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqual(proposals.ApplyProposalResult.rejected, result);
+
+    var proposal_q = try db_ctx.conn.query(
+        \\SELECT status, rejection_reason
+        \\FROM agent_improvement_proposals
+        \\WHERE proposal_id = '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fd4'
+    , .{});
+    defer proposal_q.deinit();
+    const proposal_row = (try proposal_q.next()) orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqualStrings("REJECTED", proposal_row.get([]const u8, 0) catch "");
+    try std.testing.expectEqualStrings("COMPILE_FAILED", proposal_row.get([]const u8, 1) catch "");
+    try std.testing.expect((try proposal_q.next()) == null);
+
+    var change_q = try db_ctx.conn.query(
+        \\SELECT change_id
+        \\FROM harness_change_log
+        \\WHERE proposal_id = '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fd4'
+    , .{});
+    defer change_q.deinit();
+    try std.testing.expect((try change_q.next()) == null);
+}
+
+test "approveManualProposal rejects activation failure when config context is missing" {
+    const db_ctx = (try common.openHandlerTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
+
+    try createTempProposalTables(db_ctx.conn);
+    _ = try db_ctx.conn.exec(
+        \\INSERT INTO workspace_entitlements
+        \\  (entitlement_id, workspace_id, plan_tier, max_profiles, max_stages, max_distinct_skills, allow_custom_skills, enable_agent_scoring, agent_scoring_weights_json, created_at, updated_at)
+        \\VALUES ('ent_prop_manual_activate_1', 'ws_prop_manual_activate_1', 'FREE', 3, 4, 3, false, true, '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}', 0, 0)
+    , .{});
+    try insertAgentProfile(db_ctx.conn, "agent_prop_manual_activate_1", "ws_prop_manual_activate_1");
+    try insertConfigVersionOnly(
+        db_ctx.conn,
+        "different_agent",
+        "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fd5",
+        1,
+        "{\"profile_id\":\"different_agent\",\"stages\":[{\"stage_id\":\"plan\",\"role\":\"echo\",\"skill\":\"echo\"},{\"stage_id\":\"implement\",\"role\":\"scout\",\"skill\":\"scout\"},{\"stage_id\":\"verify\",\"role\":\"warden\",\"skill\":\"warden\",\"gate\":true,\"on_pass\":\"done\",\"on_fail\":\"retry\"}]}",
+    );
+    _ = try db_ctx.conn.exec(
+        \\INSERT INTO workspace_active_config (workspace_id, tenant_id, config_version_id, activated_by, activated_at)
+        \\VALUES ('ws_prop_manual_activate_1', 'tenant_test', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fd5', 'test', 0)
+    , .{});
+    _ = try db_ctx.conn.exec(
+        \\INSERT INTO agent_improvement_proposals
+        \\  (proposal_id, agent_id, workspace_id, trigger_reason, proposed_changes, config_version_id, approval_mode, generation_status, status, auto_apply_at, created_at, updated_at)
+        \\VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fd6', 'agent_prop_manual_activate_1', 'ws_prop_manual_activate_1', 'DECLINING_SCORE', '[{"target_field":"stage_insert","current_value":null,"proposed_value":{"agent_id":"agent_prop_manual_activate_1","insert_before_stage_id":"verify","stage_id":"verify-precheck","role":"autoworkerready","skill":"warden","gate":false,"on_pass":"verify","on_fail":"retry"},"rationale":"recover quality"}]', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fd5', 'MANUAL', 'READY', 'PENDING_REVIEW', NULL, 100, 101)
+    , .{});
+
+    const result = (try proposals.approveManualProposal(
+        db_ctx.conn,
+        std.testing.allocator,
+        "agent_prop_manual_activate_1",
+        "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fd6",
+        "kishore",
+        5_000,
+    )) orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqual(proposals.ApplyProposalResult.rejected, result);
+
+    var proposal_q = try db_ctx.conn.query(
+        \\SELECT status, rejection_reason
+        \\FROM agent_improvement_proposals
+        \\WHERE proposal_id = '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fd6'
+    , .{});
+    defer proposal_q.deinit();
+    const proposal_row = (try proposal_q.next()) orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqualStrings("REJECTED", proposal_row.get([]const u8, 0) catch "");
+    try std.testing.expectEqualStrings("ACTIVATE_FAILED", proposal_row.get([]const u8, 1) catch "");
+    try std.testing.expect((try proposal_q.next()) == null);
+
+    var active_q = try db_ctx.conn.query(
+        \\SELECT config_version_id
+        \\FROM workspace_active_config
+        \\WHERE workspace_id = 'ws_prop_manual_activate_1'
+    , .{});
+    defer active_q.deinit();
+    const active_row = (try active_q.next()) orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqualStrings("0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fd5", active_row.get([]const u8, 0) catch "");
+    try std.testing.expect((try active_q.next()) == null);
 }
 
 test "rejectManualProposal stores rejection reason" {
@@ -613,6 +823,262 @@ test "rejectManualProposal stores rejection reason" {
     try std.testing.expectEqualStrings("REJECTED", row.get([]const u8, 0) catch "");
     try std.testing.expectEqualStrings("OPERATOR_REJECTED", row.get([]const u8, 1) catch "");
     try std.testing.expect((try q.next()) == null);
+}
+
+test "revertHarnessChange restores previous stage_insert profile and audit log" {
+    const db_ctx = (try common.openHandlerTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
+
+    const profile_before =
+        \\{"profile_id":"agent_prop_revert_insert","stages":[
+        \\{"stage_id":"plan","role":"echo","skill":"echo","artifact_name":"plan.json","commit_message":"echo: add plan.json","gate":false},
+        \\{"stage_id":"implement","role":"scout","skill":"scout","artifact_name":"implementation.md","commit_message":"scout: add implementation.md","gate":false},
+        \\{"stage_id":"verify","role":"warden","skill":"warden","artifact_name":"validation.md","commit_message":"warden: add validation.md","gate":true,"on_pass":"done","on_fail":"retry"}]}
+    ;
+    const profile_after =
+        \\{"profile_id":"agent_prop_revert_insert","stages":[
+        \\{"stage_id":"plan","role":"echo","skill":"echo","artifact_name":"plan.json","commit_message":"echo: add plan.json","gate":false},
+        \\{"stage_id":"implement","role":"scout","skill":"scout","artifact_name":"implementation.md","commit_message":"scout: add implementation.md","gate":false},
+        \\{"stage_id":"verify-precheck","role":"autoworkerready","skill":"clawhub://usezombie/autoworkerready@1.0.0","artifact_name":"verify-precheck.md","commit_message":"agent: add verify-precheck.md","gate":false,"on_pass":"verify","on_fail":"retry"},
+        \\{"stage_id":"verify","role":"warden","skill":"warden","artifact_name":"validation.md","commit_message":"warden: add validation.md","gate":true,"on_pass":"done","on_fail":"retry"}]}
+    ;
+    const inserted_stage =
+        \\{"agent_id":"agent_prop_revert_insert","insert_before_stage_id":"verify","stage_id":"verify-precheck","role":"autoworkerready","skill":"clawhub://usezombie/autoworkerready@1.0.0","artifact_name":"verify-precheck.md","commit_message":"agent: add verify-precheck.md","gate":false,"on_pass":"verify","on_fail":"retry"}
+    ;
+
+    try createTempProposalTables(db_ctx.conn);
+    _ = try db_ctx.conn.exec(
+        \\INSERT INTO workspace_entitlements
+        \\  (entitlement_id, workspace_id, plan_tier, max_profiles, max_stages, max_distinct_skills, allow_custom_skills, enable_agent_scoring, agent_scoring_weights_json, created_at, updated_at)
+        \\VALUES ('ent_prop_revert_insert', 'ws_prop_revert_insert', 'SCALE', 8, 8, 8, true, true, '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}', 0, 0)
+    , .{});
+    try insertAgentProfile(db_ctx.conn, "agent_prop_revert_insert", "ws_prop_revert_insert");
+    try insertActiveConfigWithProfile(
+        db_ctx.conn,
+        "agent_prop_revert_insert",
+        "ws_prop_revert_insert",
+        "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6ff1",
+        profile_before,
+    );
+    try insertConfigVersionOnly(
+        db_ctx.conn,
+        "agent_prop_revert_insert",
+        "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6ff2",
+        2,
+        profile_after,
+    );
+    _ = try db_ctx.conn.exec(
+        \\UPDATE workspace_active_config
+        \\SET config_version_id = '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6ff2',
+        \\    activated_by = 'operator:kishore',
+        \\    activated_at = 1
+        \\WHERE workspace_id = 'ws_prop_revert_insert'
+    , .{});
+    _ = try db_ctx.conn.exec(
+        \\INSERT INTO agent_improvement_proposals
+        \\  (proposal_id, agent_id, workspace_id, trigger_reason, proposed_changes, config_version_id, approval_mode, generation_status, status, auto_apply_at, applied_by, created_at, updated_at)
+        \\VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6ff3', 'agent_prop_revert_insert', 'ws_prop_revert_insert', 'DECLINING_SCORE', '[]', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6ff1', 'MANUAL', 'READY', 'APPLIED', NULL, 'operator:kishore', 0, 1)
+    , .{});
+    _ = try db_ctx.conn.exec(
+        \\INSERT INTO harness_change_log
+        \\  (change_id, agent_id, proposal_id, workspace_id, field_name, old_value, new_value, applied_at, applied_by, reverted_from)
+        \\VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6ff4', 'agent_prop_revert_insert', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6ff3', 'ws_prop_revert_insert', 'stage_insert', 'null', $1, 1, 'operator:kishore', NULL)
+    , .{inserted_stage});
+
+    var result = (try proposals.revertHarnessChange(
+        db_ctx.conn,
+        std.testing.allocator,
+        "agent_prop_revert_insert",
+        "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6ff4",
+        "kishore",
+        6_000,
+    )) orelse return error.TestUnexpectedResult;
+    defer result.deinit(std.testing.allocator);
+
+    try std.testing.expectEqualStrings("0195b4ba-8d3a-7f13-8abc-2b3e1e0a6ff4", result.reverted_from);
+    try std.testing.expectEqualStrings("operator:kishore", result.applied_by);
+
+    var active_q = try db_ctx.conn.query(
+        \\SELECT config_version_id, activated_by
+        \\FROM workspace_active_config
+        \\WHERE workspace_id = 'ws_prop_revert_insert'
+    , .{});
+    defer active_q.deinit();
+    const active_row = (try active_q.next()) orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqualStrings(result.config_version_id, active_row.get([]const u8, 0) catch "");
+    try std.testing.expectEqualStrings("operator:kishore", active_row.get([]const u8, 1) catch "");
+    try std.testing.expect((try active_q.next()) == null);
+
+    var config_q = try db_ctx.conn.query(
+        \\SELECT compiled_profile_json
+        \\FROM agent_config_versions
+        \\WHERE config_version_id = $1
+    , .{result.config_version_id});
+    defer config_q.deinit();
+    const config_row = (try config_q.next()) orelse return error.TestUnexpectedResult;
+    try expectProfileMatches(config_row.get([]const u8, 0) catch "", "agent_prop_revert_insert", &.{
+        .{
+            .stage_id = "plan",
+            .role_id = "echo",
+            .skill_id = "echo",
+            .artifact_name = "plan.json",
+            .commit_message = "echo: add plan.json",
+            .is_gate = false,
+            .on_pass = null,
+            .on_fail = null,
+        },
+        .{
+            .stage_id = "implement",
+            .role_id = "scout",
+            .skill_id = "scout",
+            .artifact_name = "implementation.md",
+            .commit_message = "scout: add implementation.md",
+            .is_gate = false,
+            .on_pass = null,
+            .on_fail = null,
+        },
+        .{
+            .stage_id = "verify",
+            .role_id = "warden",
+            .skill_id = "warden",
+            .artifact_name = "validation.md",
+            .commit_message = "warden: add validation.md",
+            .is_gate = true,
+            .on_pass = "done",
+            .on_fail = "retry",
+        },
+    });
+    try std.testing.expect((try config_q.next()) == null);
+
+    var change_q = try db_ctx.conn.query(
+        \\SELECT field_name, old_value, new_value, applied_by, reverted_from
+        \\FROM harness_change_log
+        \\WHERE change_id = $1
+    , .{result.change_id});
+    defer change_q.deinit();
+    const change_row = (try change_q.next()) orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqualStrings("stage_insert", change_row.get([]const u8, 0) catch "");
+    try std.testing.expectEqualStrings(inserted_stage, change_row.get([]const u8, 1) catch "");
+    try std.testing.expectEqualStrings("null", change_row.get([]const u8, 2) catch "");
+    try std.testing.expectEqualStrings("operator:kishore", change_row.get([]const u8, 3) catch "");
+    try std.testing.expectEqualStrings("0195b4ba-8d3a-7f13-8abc-2b3e1e0a6ff4", change_row.get([]const u8, 4) catch "");
+    try std.testing.expect((try change_q.next()) == null);
+}
+
+test "revertHarnessChange restores previous stage_binding profile exactly" {
+    const db_ctx = (try common.openHandlerTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
+
+    const profile_before =
+        \\{"profile_id":"agent_prop_revert_binding","stages":[
+        \\{"stage_id":"plan","role":"echo","skill":"echo","artifact_name":"plan.json","commit_message":"echo: add plan.json","gate":false},
+        \\{"stage_id":"implement","role":"scout","skill":"scout","artifact_name":"implementation.md","commit_message":"scout: add implementation.md","gate":false},
+        \\{"stage_id":"verify","role":"warden","skill":"warden","artifact_name":"validation.md","commit_message":"warden: add validation.md","gate":true,"on_pass":"done","on_fail":"retry"}]}
+    ;
+    const profile_after =
+        \\{"profile_id":"agent_prop_revert_binding","stages":[
+        \\{"stage_id":"plan","role":"echo","skill":"echo","artifact_name":"plan.json","commit_message":"echo: add plan.json","gate":false},
+        \\{"stage_id":"implement","role":"scout","skill":"scout","artifact_name":"implementation.md","commit_message":"scout: add implementation.md","gate":false},
+        \\{"stage_id":"verify","role":"autoworkerready","skill":"clawhub://usezombie/autoworkerready@1.0.0","artifact_name":"verify-ready.md","commit_message":"agent: replace verify-ready.md","gate":true,"on_pass":"done","on_fail":"retry"}]}
+    ;
+    const old_stage =
+        \\{"stage_id":"verify","role":"warden","skill":"warden","artifact_name":"validation.md","commit_message":"warden: add validation.md","gate":true,"on_pass":"done","on_fail":"retry"}
+    ;
+    const new_stage =
+        \\{"stage_id":"verify","role":"autoworkerready","skill":"clawhub://usezombie/autoworkerready@1.0.0","artifact_name":"verify-ready.md","commit_message":"agent: replace verify-ready.md","gate":true,"on_pass":"done","on_fail":"retry"}
+    ;
+
+    try createTempProposalTables(db_ctx.conn);
+    _ = try db_ctx.conn.exec(
+        \\INSERT INTO workspace_entitlements
+        \\  (entitlement_id, workspace_id, plan_tier, max_profiles, max_stages, max_distinct_skills, allow_custom_skills, enable_agent_scoring, agent_scoring_weights_json, created_at, updated_at)
+        \\VALUES ('ent_prop_revert_binding', 'ws_prop_revert_binding', 'SCALE', 8, 8, 8, true, true, '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}', 0, 0)
+    , .{});
+    try insertAgentProfile(db_ctx.conn, "agent_prop_revert_binding", "ws_prop_revert_binding");
+    try insertActiveConfigWithProfile(
+        db_ctx.conn,
+        "agent_prop_revert_binding",
+        "ws_prop_revert_binding",
+        "0195b4ba-8d3a-7f13-8abc-2b3e1e0a7001",
+        profile_before,
+    );
+    try insertConfigVersionOnly(
+        db_ctx.conn,
+        "agent_prop_revert_binding",
+        "0195b4ba-8d3a-7f13-8abc-2b3e1e0a7002",
+        2,
+        profile_after,
+    );
+    _ = try db_ctx.conn.exec(
+        \\UPDATE workspace_active_config
+        \\SET config_version_id = '0195b4ba-8d3a-7f13-8abc-2b3e1e0a7002',
+        \\    activated_by = 'operator:kishore',
+        \\    activated_at = 1
+        \\WHERE workspace_id = 'ws_prop_revert_binding'
+    , .{});
+    _ = try db_ctx.conn.exec(
+        \\INSERT INTO agent_improvement_proposals
+        \\  (proposal_id, agent_id, workspace_id, trigger_reason, proposed_changes, config_version_id, approval_mode, generation_status, status, auto_apply_at, applied_by, created_at, updated_at)
+        \\VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a7003', 'agent_prop_revert_binding', 'ws_prop_revert_binding', 'DECLINING_SCORE', '[]', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a7001', 'MANUAL', 'READY', 'APPLIED', NULL, 'operator:kishore', 0, 1)
+    , .{});
+    _ = try db_ctx.conn.exec(
+        \\INSERT INTO harness_change_log
+        \\  (change_id, agent_id, proposal_id, workspace_id, field_name, old_value, new_value, applied_at, applied_by, reverted_from)
+        \\VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a7004', 'agent_prop_revert_binding', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a7003', 'ws_prop_revert_binding', 'stage_binding', $1, $2, 1, 'operator:kishore', NULL)
+    , .{ old_stage, new_stage });
+
+    var result = (try proposals.revertHarnessChange(
+        db_ctx.conn,
+        std.testing.allocator,
+        "agent_prop_revert_binding",
+        "0195b4ba-8d3a-7f13-8abc-2b3e1e0a7004",
+        "kishore",
+        7_000,
+    )) orelse return error.TestUnexpectedResult;
+    defer result.deinit(std.testing.allocator);
+
+    var config_q = try db_ctx.conn.query(
+        \\SELECT compiled_profile_json
+        \\FROM agent_config_versions
+        \\WHERE config_version_id = $1
+    , .{result.config_version_id});
+    defer config_q.deinit();
+    const config_row = (try config_q.next()) orelse return error.TestUnexpectedResult;
+    try expectProfileMatches(config_row.get([]const u8, 0) catch "", "agent_prop_revert_binding", &.{
+        .{
+            .stage_id = "plan",
+            .role_id = "echo",
+            .skill_id = "echo",
+            .artifact_name = "plan.json",
+            .commit_message = "echo: add plan.json",
+            .is_gate = false,
+            .on_pass = null,
+            .on_fail = null,
+        },
+        .{
+            .stage_id = "implement",
+            .role_id = "scout",
+            .skill_id = "scout",
+            .artifact_name = "implementation.md",
+            .commit_message = "scout: add implementation.md",
+            .is_gate = false,
+            .on_pass = null,
+            .on_fail = null,
+        },
+        .{
+            .stage_id = "verify",
+            .role_id = "warden",
+            .skill_id = "warden",
+            .artifact_name = "validation.md",
+            .commit_message = "warden: add validation.md",
+            .is_gate = true,
+            .on_pass = "done",
+            .on_fail = "retry",
+        },
+    });
+    try std.testing.expect((try config_q.next()) == null);
 }
 
 test "reconcileDueAutoApprovalProposals expires stale manual proposals" {

@@ -5,6 +5,11 @@ const AgentProposalRoute = struct {
     proposal_id: []const u8,
 };
 
+const AgentHarnessChangeRoute = struct {
+    agent_id: []const u8,
+    change_id: []const u8,
+};
+
 pub const Route = union(enum) {
     healthz,
     readyz,
@@ -32,6 +37,7 @@ pub const Route = union(enum) {
     list_agent_proposals: []const u8,
     approve_agent_proposal: AgentProposalRoute,
     reject_agent_proposal: AgentProposalRoute,
+    revert_agent_harness_change: AgentHarnessChangeRoute,
 };
 
 const prefix_workspaces = "/v1/workspaces/";
@@ -99,6 +105,7 @@ pub fn match(path: []const u8) ?Route {
 
     if (matchAgentProposalAction(path, ":approve")) |route| return .{ .approve_agent_proposal = route };
     if (matchAgentProposalAction(path, ":reject")) |route| return .{ .reject_agent_proposal = route };
+    if (matchAgentHarnessChangeAction(path, ":revert")) |route| return .{ .revert_agent_harness_change = route };
 
     if (std.mem.startsWith(u8, path, prefix_agents)) {
         const agent_id = path[prefix_agents.len..];
@@ -126,6 +133,18 @@ fn matchAgentProposalAction(path: []const u8, suffix: []const u8) ?AgentProposal
     const proposal_id = inner[marker_idx + marker.len ..];
     if (!isSingleSegment(agent_id) or !isSingleSegment(proposal_id)) return null;
     return .{ .agent_id = agent_id, .proposal_id = proposal_id };
+}
+
+fn matchAgentHarnessChangeAction(path: []const u8, suffix: []const u8) ?AgentHarnessChangeRoute {
+    if (!std.mem.startsWith(u8, path, prefix_agents)) return null;
+    if (!std.mem.endsWith(u8, path, suffix)) return null;
+    const inner = path[prefix_agents.len .. path.len - suffix.len];
+    const marker = "/harness/changes/";
+    const marker_idx = std.mem.indexOf(u8, inner, marker) orelse return null;
+    const agent_id = inner[0..marker_idx];
+    const change_id = inner[marker_idx + marker.len ..];
+    if (!isSingleSegment(agent_id) or !isSingleSegment(change_id)) return null;
+    return .{ .agent_id = agent_id, .change_id = change_id };
 }
 
 fn isSingleSegment(value: []const u8) bool {
@@ -197,9 +216,16 @@ test "match resolves agent profile and scores routes" {
     };
     try std.testing.expectEqualStrings(agent_id, approve.agent_id);
     try std.testing.expectEqualStrings("0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f21", approve.proposal_id);
+    const revert = switch (match("/v1/agents/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/harness/changes/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f31:revert").?) {
+        .revert_agent_harness_change => |route| route,
+        else => return error.TestExpectedEqual,
+    };
+    try std.testing.expectEqualStrings(agent_id, revert.agent_id);
+    try std.testing.expectEqualStrings("0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f31", revert.change_id);
     try std.testing.expect(match("/v1/agents/") == null);
     try std.testing.expect(match("/v1/agents/foo/bar/scores") == null);
     try std.testing.expect(match("/v1/agents/foo/proposals/bar/baz:approve") == null);
+    try std.testing.expect(match("/v1/agents/foo/harness/changes/bar/baz:revert") == null);
 }
 
 test "match resolves auth and run routes" {

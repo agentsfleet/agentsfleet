@@ -3,6 +3,7 @@ const pg = @import("pg");
 const id_format = @import("../../types/id_format.zig");
 const auto_approval = @import("proposals_auto_approval.zig");
 const generation = @import("proposals_generation.zig");
+const revert = @import("proposals_revert.zig");
 const shared = @import("proposals_shared.zig");
 const validation = @import("proposals_validation.zig");
 
@@ -11,6 +12,8 @@ pub const AutoApprovalReconcileResult = shared.AutoApprovalReconcileResult;
 pub const ProposalValidationError = shared.ProposalError;
 pub const ManualProposalSummary = shared.ManualProposalSummary;
 pub const ApplyProposalResult = auto_approval.ApplyProposalResult;
+pub const AppliedProposalTelemetry = shared.AppliedProposalTelemetry;
+pub const RevertHarnessResult = revert.RevertHarnessResult;
 
 pub fn maybePersistTriggerProposal(
     conn: *pg.Conn,
@@ -177,6 +180,90 @@ pub fn reconcileDueAutoApprovalProposals(
     now_ms: i64,
 ) !AutoApprovalReconcileResult {
     return auto_approval.reconcileDueAutoApprovalProposals(conn, alloc, limit, now_ms);
+}
+
+pub fn loadAppliedProposalTelemetry(
+    conn: *pg.Conn,
+    alloc: std.mem.Allocator,
+    proposal_id: []const u8,
+) !?AppliedProposalTelemetry {
+    var q = try conn.query(
+        \\SELECT proposal_id, agent_id, workspace_id, trigger_reason, approval_mode
+        \\FROM agent_improvement_proposals
+        \\WHERE proposal_id = $1
+        \\  AND status = $2
+        \\LIMIT 1
+    , .{ proposal_id, shared.STATUS_APPLIED });
+
+    const row = (try q.next()) orelse {
+        q.deinit();
+        return null;
+    };
+    const copied_proposal_id = try alloc.dupe(u8, try row.get([]const u8, 0));
+    const copied_agent_id = try alloc.dupe(u8, try row.get([]const u8, 1));
+    const copied_workspace_id = try alloc.dupe(u8, try row.get([]const u8, 2));
+    const copied_trigger_reason = try alloc.dupe(u8, try row.get([]const u8, 3));
+    const copied_approval_mode = try alloc.dupe(u8, try row.get([]const u8, 4));
+    q.drain() catch {};
+    q.deinit();
+    const telemetry = AppliedProposalTelemetry{
+        .proposal_id = copied_proposal_id,
+        .agent_id = copied_agent_id,
+        .workspace_id = copied_workspace_id,
+        .trigger_reason = copied_trigger_reason,
+        .approval_mode = copied_approval_mode,
+        .fields_changed = try loadAppliedProposalFieldsChanged(conn, alloc, proposal_id),
+    };
+    return telemetry;
+}
+
+pub fn revertHarnessChange(
+    conn: *pg.Conn,
+    alloc: std.mem.Allocator,
+    agent_id: []const u8,
+    change_id: []const u8,
+    operator_identity: []const u8,
+    now_ms: i64,
+) !?RevertHarnessResult {
+    return revert.revertHarnessChange(conn, alloc, agent_id, change_id, operator_identity, now_ms);
+}
+
+pub fn listAppliedAutoProposalTelemetryAt(
+    conn: *pg.Conn,
+    alloc: std.mem.Allocator,
+    applied_at_ms: i64,
+) ![]AppliedProposalTelemetry {
+    var q = try conn.query(
+        \\SELECT proposal_id
+        \\FROM agent_improvement_proposals
+        \\WHERE status = $1
+        \\  AND applied_by = $2
+        \\  AND updated_at = $3
+        \\ORDER BY proposal_id ASC
+    , .{ shared.STATUS_APPLIED, shared.APPLIED_BY_SYSTEM_AUTO, applied_at_ms });
+
+    var ids: std.ArrayList([]u8) = .{};
+    defer {
+        for (ids.items) |id| alloc.free(id);
+        ids.deinit(alloc);
+    }
+
+    while (try q.next()) |row| {
+        try ids.append(alloc, try alloc.dupe(u8, try row.get([]const u8, 0)));
+    }
+    q.deinit();
+
+    var items: std.ArrayList(AppliedProposalTelemetry) = .{};
+    errdefer {
+        for (items.items) |*item| item.deinit(alloc);
+        items.deinit(alloc);
+    }
+
+    for (ids.items) |id| {
+        const telemetry = (try loadAppliedProposalTelemetry(conn, alloc, id)) orelse continue;
+        try items.append(alloc, telemetry);
+    }
+    return try items.toOwnedSlice(alloc);
 }
 
 pub fn listManualProposals(
@@ -423,6 +510,31 @@ fn loadManualProposalForDecision(
     q.drain() catch {};
     q.deinit();
     return result;
+}
+
+fn loadAppliedProposalFieldsChanged(
+    conn: *pg.Conn,
+    alloc: std.mem.Allocator,
+    proposal_id: []const u8,
+) ![][]u8 {
+    var q = try conn.query(
+        \\SELECT field_name
+        \\FROM harness_change_log
+        \\WHERE proposal_id = $1
+        \\ORDER BY applied_at ASC, change_id ASC
+    , .{proposal_id});
+
+    var fields: std.ArrayList([]u8) = .{};
+    errdefer {
+        for (fields.items) |field| alloc.free(field);
+        fields.deinit(alloc);
+    }
+
+    while (try q.next()) |row| {
+        try fields.append(alloc, try alloc.dupe(u8, try row.get([]const u8, 0)));
+    }
+    q.deinit();
+    return try fields.toOwnedSlice(alloc);
 }
 
 fn rejectProposal(conn: *pg.Conn, proposal_id: []const u8, rejection_reason: []const u8) !void {

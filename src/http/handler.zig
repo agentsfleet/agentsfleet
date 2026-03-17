@@ -32,6 +32,7 @@ pub const handleGetAgentScores = agents_handlers.handleGetAgentScores;
 pub const handleListAgentProposals = agents_handlers.handleListAgentProposals;
 pub const handleApproveAgentProposal = agents_handlers.handleApproveAgentProposal;
 pub const handleRejectAgentProposal = agents_handlers.handleRejectAgentProposal;
+pub const handleRevertAgentHarnessChange = agents_handlers.handleRevertAgentHarnessChange;
 
 pub const handleHealthz = health_handlers.handleHealthz;
 pub const handleReadyz = health_handlers.handleReadyz;

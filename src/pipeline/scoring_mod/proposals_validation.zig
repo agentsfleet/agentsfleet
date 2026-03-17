@@ -278,7 +278,7 @@ fn isPinnedSkillRef(skill_ref: []const u8) bool {
     return !std.ascii.eqlIgnoreCase(skill_ref[at_idx + 1 ..], "latest");
 }
 
-fn stageFromProposalValue(alloc: std.mem.Allocator, proposed_obj: std.json.ObjectMap) (ProposalValidationError || anyerror)!topology.Stage {
+pub fn stageFromProposalValue(alloc: std.mem.Allocator, proposed_obj: std.json.ObjectMap) (ProposalValidationError || anyerror)!topology.Stage {
     const stage_id = stringField(proposed_obj, shared.JSON_KEY_STAGE_ID) orelse return ProposalValidationError.MissingStageId;
     const role = stringField(proposed_obj, shared.JSON_KEY_ROLE) orelse return ProposalValidationError.MissingRole;
     const skill = stringField(proposed_obj, shared.JSON_KEY_SKILL) orelse stringField(proposed_obj, shared.JSON_KEY_SKILL_ID) orelse return ProposalValidationError.InvalidSkillRef;
@@ -294,7 +294,7 @@ fn stageFromProposalValue(alloc: std.mem.Allocator, proposed_obj: std.json.Objec
     };
 }
 
-fn stringifyProfileJson(alloc: std.mem.Allocator, profile: *const topology.Profile) ![]u8 {
+pub fn stringifyProfileJson(alloc: std.mem.Allocator, profile: *const topology.Profile) ![]u8 {
     const StageDoc = struct {
         stage_id: []const u8,
         role: []const u8,
@@ -331,7 +331,7 @@ fn stringifyProfileJson(alloc: std.mem.Allocator, profile: *const topology.Profi
     }, .{});
 }
 
-fn cloneStage(alloc: std.mem.Allocator, stage: topology.Stage) !topology.Stage {
+pub fn cloneStage(alloc: std.mem.Allocator, stage: topology.Stage) !topology.Stage {
     return .{
         .stage_id = try alloc.dupe(u8, stage.stage_id),
         .role_id = try alloc.dupe(u8, stage.role_id),
@@ -344,7 +344,7 @@ fn cloneStage(alloc: std.mem.Allocator, stage: topology.Stage) !topology.Stage {
     };
 }
 
-fn freeStage(alloc: std.mem.Allocator, stage: topology.Stage) void {
+pub fn freeStage(alloc: std.mem.Allocator, stage: topology.Stage) void {
     alloc.free(stage.stage_id);
     alloc.free(stage.role_id);
     alloc.free(stage.skill_id);
@@ -354,7 +354,7 @@ fn freeStage(alloc: std.mem.Allocator, stage: topology.Stage) void {
     if (stage.on_fail) |value| alloc.free(value);
 }
 
-fn indexOfStage(stages: []const topology.Stage, stage_id: []const u8) ?usize {
+pub fn indexOfStage(stages: []const topology.Stage, stage_id: []const u8) ?usize {
     for (stages, 0..) |stage, idx| {
         if (std.mem.eql(u8, stage.stage_id, stage_id)) return idx;
     }

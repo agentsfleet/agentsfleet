@@ -332,6 +332,35 @@ pub fn trackAgentTrustLost(
     }
 }
 
+pub fn trackAgentHarnessChanged(
+    client: ?*posthog.PostHogClient,
+    distinct_id: []const u8,
+    agent_id: []const u8,
+    proposal_id: []const u8,
+    workspace_id: []const u8,
+    approval_mode: []const u8,
+    trigger_reason: []const u8,
+    fields_changed: []const []const u8,
+) void {
+    if (client) |ph| {
+        const fields_json = std.json.Stringify.valueAlloc(std.heap.page_allocator, fields_changed, .{}) catch return;
+        defer std.heap.page_allocator.free(fields_json);
+        const props = [_]posthog.Property{
+            .{ .key = "agent_id", .value = .{ .string = agent_id } },
+            .{ .key = "proposal_id", .value = .{ .string = proposal_id } },
+            .{ .key = "workspace_id", .value = .{ .string = workspace_id } },
+            .{ .key = "approval_mode", .value = .{ .string = approval_mode } },
+            .{ .key = "trigger_reason", .value = .{ .string = trigger_reason } },
+            .{ .key = "fields_changed", .value = .{ .string = fields_json } },
+        };
+        ph.capture(.{
+            .distinct_id = distinct_id,
+            .event = "agent.harness.changed",
+            .properties = &props,
+        }) catch {};
+    }
+}
+
 fn trustTransitionProps(
     run_id: []const u8,
     workspace_id: []const u8,
@@ -364,6 +393,7 @@ test "integration: telemetry helpers are no-op when posthog client is disabled" 
     trackBillingLifecycleEvent(disabled, "u", "ws_1", "PAYMENT_FAILED", "invoice_failed", "SCALE", "GRACE", "req_1");
     trackAgentTrustEarned(disabled, "u", "run_1", "ws_1", "agent_1", 10);
     trackAgentTrustLost(disabled, "u", "run_1", "ws_1", "agent_1", 0);
+    trackAgentHarnessChanged(disabled, "u", "agent_1", "proposal_1", "ws_1", "AUTO", "DECLINING_SCORE", &[_][]const u8{"stage_insert"});
     try std.testing.expect(true);
 }
 

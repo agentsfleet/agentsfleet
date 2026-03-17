@@ -4,6 +4,7 @@ const get = @import("agents/get.zig");
 const scores = @import("agents/scores.zig");
 const common = @import("common.zig");
 const obs_log = @import("../../observability/logging.zig");
+const posthog_events = @import("../../observability/posthog_events.zig");
 const proposals = @import("../../pipeline/scoring_mod/proposals.zig");
 const error_codes = @import("../../errors/codes.zig");
 
@@ -69,6 +70,61 @@ pub fn handleRejectAgentProposal(ctx: *common.Context, r: zap.Request, agent_id:
     handleManualProposalDecision(ctx, r, agent_id, proposal_id, .reject);
 }
 
+pub fn handleRevertAgentHarnessChange(ctx: *common.Context, r: zap.Request, agent_id: []const u8, change_id: []const u8) void {
+    var arena = std.heap.ArenaAllocator.init(ctx.alloc);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    const req_id = common.requestId(alloc);
+
+    const principal = common.authenticate(alloc, r, ctx) catch |err| {
+        common.writeAuthError(r, req_id, err);
+        return;
+    };
+    if (!common.requireUuidV7Id(r, req_id, agent_id, "agent_id")) return;
+    if (!common.requireUuidV7Id(r, req_id, change_id, "change_id")) return;
+
+    const conn = ctx.pool.acquire() catch {
+        common.internalDbUnavailable(r, req_id);
+        return;
+    };
+    defer ctx.pool.release(conn);
+
+    const workspace_id = resolveAgentWorkspace(conn, alloc, agent_id, req_id, r) orelse return;
+    if (!common.authorizeWorkspaceAndSetTenantContext(conn, principal, workspace_id)) {
+        common.errorResponse(r, .forbidden, error_codes.ERR_FORBIDDEN, "Workspace access denied", req_id);
+        return;
+    }
+
+    const operator_identity = principal.user_id orelse "api";
+    var outcome = proposals.revertHarnessChange(
+        conn,
+        alloc,
+        agent_id,
+        change_id,
+        operator_identity,
+        std.time.milliTimestamp(),
+    ) catch {
+        common.internalOperationError(r, "Failed to revert harness change", req_id);
+        return;
+    } orelse {
+        common.errorResponse(r, .not_found, error_codes.ERR_HARNESS_CHANGE_NOT_FOUND, "Harness change not found", req_id);
+        return;
+    };
+    defer outcome.deinit(alloc);
+
+    common.writeJson(r, .ok, .{
+        .agent_id = outcome.agent_id,
+        .proposal_id = outcome.proposal_id,
+        .change_id = outcome.change_id,
+        .reverted_from = outcome.reverted_from,
+        .config_version_id = outcome.config_version_id,
+        .status = "APPLIED",
+        .applied_by = outcome.applied_by,
+        .applied_at = outcome.applied_at,
+        .request_id = req_id,
+    });
+}
+
 const DecisionAction = enum {
     approve,
     reject,
@@ -125,6 +181,22 @@ fn handleManualProposalDecision(
                 },
                 .request_id = req_id,
             });
+            if (outcome == .applied) {
+                var telemetry = proposals.loadAppliedProposalTelemetry(conn, alloc, proposal_id) catch null;
+                if (telemetry) |*event| {
+                    defer event.deinit(alloc);
+                    posthog_events.trackAgentHarnessChanged(
+                        ctx.posthog,
+                        posthog_events.distinctIdOrSystem(operator_identity),
+                        event.agent_id,
+                        event.proposal_id,
+                        event.workspace_id,
+                        event.approval_mode,
+                        event.trigger_reason,
+                        event.fields_changed,
+                    );
+                }
+            }
         },
         .reject => {
             const reason = parseRejectReason(alloc, r, req_id) orelse return;
