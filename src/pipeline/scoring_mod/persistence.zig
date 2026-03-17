@@ -527,12 +527,25 @@ pub fn persistScore(
     stages_passed: u32,
     stages_total: u32,
     total_wall_seconds: u64,
-) !?trust.TrustUpdate {
-    if (agent_id.len == 0) return null;
+) !PersistScoreOutcome {
+    if (agent_id.len == 0) return .{};
     const inserted = try persistScoreRecord(conn, alloc, run_id, workspace_id, agent_id, score, axis_scores_json, weight_snapshot_json, scored_at);
-    if (!inserted) return null;
+    if (!inserted) return .{};
     try persistRunAnalysis(conn, alloc, run_id, workspace_id, agent_id, scoring_state, stages_passed, stages_total, total_wall_seconds);
     const trust_update = try trust.refreshAgentTrustState(conn, agent_id, scored_at);
     try proposals.maybePersistTriggerProposal(conn, alloc, workspace_id, agent_id, scored_at);
-    return trust_update;
+    const stalled_alert = try proposals.recordScoreAgainstImprovementWindow(conn, alloc, run_id, agent_id, scored_at);
+    return .{
+        .trust_update = trust_update,
+        .stalled_alert = stalled_alert,
+    };
 }
+
+pub const PersistScoreOutcome = struct {
+    trust_update: ?trust.TrustUpdate = null,
+    stalled_alert: ?proposals.ImprovementStalledAlert = null,
+
+    pub fn deinit(self: *PersistScoreOutcome, alloc: std.mem.Allocator) void {
+        if (self.stalled_alert) |*alert| alert.deinit(alloc);
+    }
+};

@@ -29,6 +29,7 @@ pub const handleSetWorkspaceScoringConfig = workspace_handlers.handleSetWorkspac
 pub const handleListSpecs = specs_handlers.handleListSpecs;
 pub const handleGetAgent = agents_handlers.handleGetAgent;
 pub const handleGetAgentScores = agents_handlers.handleGetAgentScores;
+pub const handleGetAgentImprovementReport = agents_handlers.handleGetAgentImprovementReport;
 pub const handleListAgentProposals = agents_handlers.handleListAgentProposals;
 pub const handleApproveAgentProposal = agents_handlers.handleApproveAgentProposal;
 pub const handleRejectAgentProposal = agents_handlers.handleRejectAgentProposal;

@@ -22,6 +22,14 @@ zombiectl run status <run_id>
 zombiectl doctor --json
 ```
 
+Operator trajectory flow:
+
+```bash
+zombiectl agent profile <agent-id>
+zombiectl agent improvement-report <agent-id>
+zombiectl agent proposals <agent-id>
+```
+
 `workspace add` opens the UseZombie GitHub App install page and binds workspace via callback automatically.
 Global flags:
 - `--api <url>` API base URL (default `http://localhost:3000`)
