@@ -145,13 +145,7 @@ test "reconcilePendingProposalGenerations preserves dynamic auto-agent gate role
         \\VALUES ('ent_prop_team_1', 'ws_prop_team_1', 'SCALE', 6, 10, 10, true, true, '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}', 0, 0)
     , .{});
     try insertAgentProfile(db_ctx.conn, "agent_prop_team_1", "ws_prop_team_1");
-    try insertActiveConfigWithProfile(
-        db_ctx.conn,
-        "agent_prop_team_1",
-        "ws_prop_team_1",
-        "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f97",
-        "{\"profile_id\":\"agent-team\",\"stages\":[{\"stage_id\":\"autoforecaster\",\"role\":\"autoforecaster\",\"skill\":\"clawhub://usezombie/autoforecaster@1.0.0\"},{\"stage_id\":\"autoprocurer\",\"role\":\"autoprocurer\",\"skill\":\"clawhub://usezombie/autoprocurer@1.0.0\"},{\"stage_id\":\"autoworkerstandup\",\"role\":\"autoworkerstandup\",\"skill\":\"clawhub://usezombie/autoworkerstandup@1.0.0\"},{\"stage_id\":\"autoworkerready\",\"role\":\"autoworkerready\",\"skill\":\"clawhub://usezombie/autoworkerready@1.0.0\",\"gate\":true,\"on_pass\":\"done\",\"on_fail\":\"retry\"}]}"
-    );
+    try insertActiveConfigWithProfile(db_ctx.conn, "agent_prop_team_1", "ws_prop_team_1", "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f97", "{\"profile_id\":\"agent-team\",\"stages\":[{\"stage_id\":\"autoforecaster\",\"role\":\"autoforecaster\",\"skill\":\"clawhub://usezombie/autoforecaster@1.0.0\"},{\"stage_id\":\"autoprocurer\",\"role\":\"autoprocurer\",\"skill\":\"clawhub://usezombie/autoprocurer@1.0.0\"},{\"stage_id\":\"autoworkerstandup\",\"role\":\"autoworkerstandup\",\"skill\":\"clawhub://usezombie/autoworkerstandup@1.0.0\"},{\"stage_id\":\"autoworkerready\",\"role\":\"autoworkerready\",\"skill\":\"clawhub://usezombie/autoworkerready@1.0.0\",\"gate\":true,\"on_pass\":\"done\",\"on_fail\":\"retry\"}]}");
 
     const low_state = scoring.ScoringState{ .outcome = .blocked_stage_graph, .stages_passed = 0, .stages_total = 4 };
     var i: usize = 0;

@@ -1,0 +1,8 @@
+{
+  "rules": {
+    "avoid-as": "off",
+    "no-catch-return": "off",
+    "suppressed-errors": "off",
+    "unsafe-undefined": "off"
+  }
+}

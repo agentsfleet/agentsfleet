@@ -381,11 +381,11 @@ const weights = try parseWeightsJson(alloc, raw_weights); // copy now
 _ = q.next() catch {}; // safe to drain after copy
 ```
 
-### Rule 5 — No `ON COMMIT DROP` in test temp tables with `exec()`
+### Rule 5 — Test-only DB caveats live in `docs/ZIG_RULES.md`
 
-`exec()` (simple protocol) auto-commits every statement.  `ON COMMIT DROP` temp
-tables are therefore dropped immediately on creation.  Omit `ON COMMIT DROP`
-from all test scaffolding.
+Test-only temp-table and helper rules are documented in
+`docs/ZIG_RULES.md` so this file stays focused on driver behavior and runtime
+architecture.
 
 ### Rule 6 — `set_config` must use `is_local = false` on auto-commit connections
 
@@ -397,6 +397,41 @@ session-scoped settings:
 ```zig
 _ = conn.exec("SELECT set_config('app.current_tenant_id', $1, false)", .{tenant_id}) catch return false;
 ```
+
+### Rule 7 — Do not issue writes on a connection while a read result is still open
+
+If code iterates a `SELECT` with `conn.query()`, that result must be fully
+consumed or materialized into owned memory before the same connection is used
+for `BEGIN`, `INSERT`, `UPDATE`, or other statements. Mixing writes into an
+open read cursor produces `ConnectionBusy` or leaves the driver in a dirty
+state.
+
+Safe pattern:
+
+```zig
+var due_q = try conn.query("SELECT proposal_id, workspace_id FROM proposals", .{});
+defer due_q.deinit();
+
+var due = std.ArrayList(ProposalRef).init(alloc);
+defer due.deinit();
+
+while (try due_q.next()) |row| {
+    try due.append(.{
+        .proposal_id = try alloc.dupe(u8, try row.get([]const u8, 0)),
+        .workspace_id = try alloc.dupe(u8, try row.get([]const u8, 1)),
+    });
+}
+
+for (due.items) |proposal| {
+    _ = try conn.exec("UPDATE proposals SET status = 'APPLIED' WHERE proposal_id = $1", .{proposal.proposal_id});
+}
+```
+
+### Rule 8 — Keep test-only caveats out of the runtime architecture doc
+
+Schema-fixture drift, temp-table setup behavior, and pool-helper lifetime
+pitfalls are tracked in `docs/ZIG_RULES.md`. Keep this file for invariants
+that apply to production code paths too.
 
 ## Redis Usage Contract
 

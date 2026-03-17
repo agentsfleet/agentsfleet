@@ -97,14 +97,12 @@ pub fn checkBodySize(r: zap.Request, body: []const u8, request_id: []const u8) b
     if (r.getHeader("content-length")) |cl_str| {
         const cl = std.fmt.parseInt(usize, cl_str, 10) catch 0;
         if (cl > MAX_BODY_SIZE) {
-            errorResponse(r, .content_too_large, error_codes.ERR_PAYLOAD_TOO_LARGE,
-                "Payload too large: max 2MB", request_id);
+            errorResponse(r, .content_too_large, error_codes.ERR_PAYLOAD_TOO_LARGE, "Payload too large: max 2MB", request_id);
             return false;
         }
     }
     if (body.len >= MAX_BODY_SIZE) {
-        errorResponse(r, .content_too_large, error_codes.ERR_PAYLOAD_TOO_LARGE,
-            "Payload too large: max 2MB", request_id);
+        errorResponse(r, .content_too_large, error_codes.ERR_PAYLOAD_TOO_LARGE, "Payload too large: max 2MB", request_id);
         return false;
     }
     return true;

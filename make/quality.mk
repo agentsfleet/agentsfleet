@@ -2,7 +2,9 @@
 # QUALITY — code quality, formatting, analysis
 # =============================================================================
 
-.PHONY: lint lint-zig lint-website lint-apps doctor _fmt _fmt_check _website_lint _app_lint _zombiectl_lint
+.PHONY: lint lint-zig lint-website lint-apps doctor _fmt _fmt_check _zlint_check _website_lint _app_lint _zombiectl_lint
+
+ZLINT ?= zlint
 
 _fmt:
 	@echo "→ [zombied] Formatting Zig code..."
@@ -11,6 +13,12 @@ _fmt:
 _fmt_check:
 	@echo "→ [zombied] Checking Zig formatting..."
 	@find src -name '*.zig' -exec zig fmt --check {} \;
+
+_zlint_check:
+	@echo "→ [zombied] Running ZLint..."
+	@command -v $(ZLINT) >/dev/null 2>&1 || { echo "ZLint not found. Install v0.7.9 or set ZLINT=/path/to/zlint."; exit 1; }
+	@$(ZLINT) --deny-warnings
+	@echo "✓ [zombied] ZLint passed"
 
 _website_lint:
 	@echo "→ [website] Running ESLint + TypeScript check..."
@@ -29,7 +37,7 @@ _zombiectl_lint:
 	@cd zombiectl && node --check src/cli.js && node --check bin/zombiectl.js
 	@echo "✓ [zombiectl] Lint passed"
 
-lint-zig: _fmt_check _fmt  ## Lint zombied only (Zig fmt)
+lint-zig: _fmt_check _zlint_check  ## Lint zombied only (Zig fmt check + ZLint)
 	@echo "✓ [zombied] Lint passed"
 
 lint-website: _website_lint  ## Lint website only (ESLint + tsc)

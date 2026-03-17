@@ -133,7 +133,10 @@ fn expectTrustState(conn: *pg.Conn, agent_id: []const u8, expected_streak: i32, 
         "SELECT trust_streak_runs, trust_level FROM agent_profiles WHERE agent_id = $1",
         .{agent_id},
     );
-    const row = (try q.next()) orelse { q.deinit(); return error.TestUnexpectedResult; };
+    const row = (try q.next()) orelse {
+        q.deinit();
+        return error.TestUnexpectedResult;
+    };
     try std.testing.expectEqual(expected_streak, row.get(i32, 0) catch -1);
     try std.testing.expectEqualStrings(expected_level, row.get([]const u8, 1) catch "");
     _ = q.next() catch {}; // Rule 2: drain 'C'+'Z' → _state=.idle before pool.release()
@@ -296,7 +299,10 @@ test "scoreRunIfTerminal persists run score" {
 
     {
         var q = try db_ctx.conn.query("SELECT score, agent_id FROM agent_run_scores WHERE run_id = 'run_3'", .{});
-        const row = (try q.next()) orelse { q.deinit(); return error.TestUnexpectedResult; };
+        const row = (try q.next()) orelse {
+            q.deinit();
+            return error.TestUnexpectedResult;
+        };
         try std.testing.expectEqual(@as(i32, 95), row.get(i32, 0) catch -1);
         try std.testing.expectEqualStrings("agent_3", row.get([]const u8, 1) catch "");
         _ = q.next() catch {}; // drain CommandComplete + ReadyForQuery → state = .idle
@@ -304,7 +310,10 @@ test "scoreRunIfTerminal persists run score" {
     }
     {
         var q = try db_ctx.conn.query("SELECT failure_class, failure_is_infra FROM agent_run_analysis WHERE run_id = 'run_3'", .{});
-        const row = (try q.next()) orelse { q.deinit(); return error.TestUnexpectedResult; };
+        const row = (try q.next()) orelse {
+            q.deinit();
+            return error.TestUnexpectedResult;
+        };
         try std.testing.expect((row.get(?[]const u8, 0) catch null) == null);
         try std.testing.expectEqual(false, row.get(bool, 1) catch true);
         _ = q.next() catch {}; // drain

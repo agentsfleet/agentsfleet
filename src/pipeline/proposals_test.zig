@@ -159,9 +159,7 @@ fn insertActiveConfig(
     workspace_id: []const u8,
     config_version_id: []const u8,
 ) !void {
-    try insertActiveConfigWithProfile(conn, agent_id, workspace_id, config_version_id,
-        "{\"profile_id\":\"agent\",\"stages\":[{\"stage_id\":\"plan\",\"role\":\"echo\",\"skill\":\"echo\"},{\"stage_id\":\"implement\",\"role\":\"scout\",\"skill\":\"scout\"},{\"stage_id\":\"verify\",\"role\":\"warden\",\"skill\":\"warden\",\"gate\":true,\"on_pass\":\"done\",\"on_fail\":\"retry\"}]}"
-    );
+    try insertActiveConfigWithProfile(conn, agent_id, workspace_id, config_version_id, "{\"profile_id\":\"agent\",\"stages\":[{\"stage_id\":\"plan\",\"role\":\"echo\",\"skill\":\"echo\"},{\"stage_id\":\"implement\",\"role\":\"scout\",\"skill\":\"scout\"},{\"stage_id\":\"verify\",\"role\":\"warden\",\"skill\":\"warden\",\"gate\":true,\"on_pass\":\"done\",\"on_fail\":\"retry\"}]}");
 }
 
 fn insertActiveConfigWithProfile(
@@ -475,13 +473,7 @@ test "reconcileDueAutoApprovalProposals rejects auto-apply when config version c
     const generated = try proposals.reconcilePendingProposalGenerations(db_ctx.conn, std.testing.allocator, 0);
     try std.testing.expectEqual(@as(u32, 1), generated.ready);
 
-    try insertConfigVersionOnly(
-        db_ctx.conn,
-        "agent_prop_auto_2",
-        "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fa4",
-        2,
-        "{\"profile_id\":\"agent\",\"stages\":[{\"stage_id\":\"plan\",\"role\":\"echo\",\"skill\":\"echo\"},{\"stage_id\":\"verify\",\"role\":\"warden\",\"skill\":\"warden\",\"gate\":true,\"on_pass\":\"done\",\"on_fail\":\"retry\"}]}"
-    );
+    try insertConfigVersionOnly(db_ctx.conn, "agent_prop_auto_2", "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fa4", 2, "{\"profile_id\":\"agent\",\"stages\":[{\"stage_id\":\"plan\",\"role\":\"echo\",\"skill\":\"echo\"},{\"stage_id\":\"verify\",\"role\":\"warden\",\"skill\":\"warden\",\"gate\":true,\"on_pass\":\"done\",\"on_fail\":\"retry\"}]}");
     _ = try db_ctx.conn.exec(
         \\UPDATE workspace_active_config
         \\SET config_version_id = '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fa4'
