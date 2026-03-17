@@ -1,5 +1,10 @@
 const std = @import("std");
 
+const AgentProposalRoute = struct {
+    agent_id: []const u8,
+    proposal_id: []const u8,
+};
+
 pub const Route = union(enum) {
     healthz,
     readyz,
@@ -16,6 +21,7 @@ pub const Route = union(enum) {
     pause_workspace: []const u8,
     upgrade_workspace_to_scale: []const u8,
     apply_workspace_billing_event: []const u8,
+    set_workspace_scoring_config: []const u8,
     put_harness_source: []const u8,
     compile_harness: []const u8,
     activate_harness: []const u8,
@@ -23,6 +29,9 @@ pub const Route = union(enum) {
     sync_workspace: []const u8,
     get_agent: []const u8,
     get_agent_scores: []const u8,
+    list_agent_proposals: []const u8,
+    approve_agent_proposal: AgentProposalRoute,
+    reject_agent_proposal: AgentProposalRoute,
 };
 
 const prefix_workspaces = "/v1/workspaces/";
@@ -67,6 +76,7 @@ pub fn match(path: []const u8) ?Route {
 
     if (matchWorkspaceSuffix(path, "/billing/scale")) |workspace_id| return .{ .upgrade_workspace_to_scale = workspace_id };
     if (matchWorkspaceSuffix(path, "/billing/events")) |workspace_id| return .{ .apply_workspace_billing_event = workspace_id };
+    if (matchWorkspaceSuffix(path, "/scoring/config")) |workspace_id| return .{ .set_workspace_scoring_config = workspace_id };
     if (matchWorkspaceSuffix(path, "/harness/source")) |workspace_id| return .{ .put_harness_source = workspace_id };
     if (matchWorkspaceSuffix(path, "/harness/compile")) |workspace_id| return .{ .compile_harness = workspace_id };
     if (matchWorkspaceSuffix(path, "/harness/activate")) |workspace_id| return .{ .activate_harness = workspace_id };
@@ -81,6 +91,14 @@ pub fn match(path: []const u8) ?Route {
         const inner = path[prefix_agents.len .. path.len - "/scores".len];
         if (isSingleSegment(inner)) return .{ .get_agent_scores = inner };
     }
+
+    if (std.mem.startsWith(u8, path, prefix_agents) and std.mem.endsWith(u8, path, "/proposals")) {
+        const inner = path[prefix_agents.len .. path.len - "/proposals".len];
+        if (isSingleSegment(inner)) return .{ .list_agent_proposals = inner };
+    }
+
+    if (matchAgentProposalAction(path, ":approve")) |route| return .{ .approve_agent_proposal = route };
+    if (matchAgentProposalAction(path, ":reject")) |route| return .{ .reject_agent_proposal = route };
 
     if (std.mem.startsWith(u8, path, prefix_agents)) {
         const agent_id = path[prefix_agents.len..];
@@ -98,6 +116,18 @@ fn matchWorkspaceSuffix(path: []const u8, suffix: []const u8) ?[]const u8 {
     return inner;
 }
 
+fn matchAgentProposalAction(path: []const u8, suffix: []const u8) ?AgentProposalRoute {
+    if (!std.mem.startsWith(u8, path, prefix_agents)) return null;
+    if (!std.mem.endsWith(u8, path, suffix)) return null;
+    const inner = path[prefix_agents.len .. path.len - suffix.len];
+    const marker = "/proposals/";
+    const marker_idx = std.mem.indexOf(u8, inner, marker) orelse return null;
+    const agent_id = inner[0..marker_idx];
+    const proposal_id = inner[marker_idx + marker.len ..];
+    if (!isSingleSegment(agent_id) or !isSingleSegment(proposal_id)) return null;
+    return .{ .agent_id = agent_id, .proposal_id = proposal_id };
+}
+
 fn isSingleSegment(value: []const u8) bool {
     return value.len > 0 and std.mem.indexOfScalar(u8, value, '/') == null;
 }
@@ -107,6 +137,13 @@ test "match resolves workspace billing and harness routes" {
         "ws_1",
         switch (match("/v1/workspaces/ws_1/billing/events").?) {
             .apply_workspace_billing_event => |workspace_id| workspace_id,
+            else => return error.TestExpectedEqual,
+        },
+    );
+    try std.testing.expectEqualStrings(
+        "ws_1",
+        switch (match("/v1/workspaces/ws_1/scoring/config").?) {
+            .set_workspace_scoring_config => |workspace_id| workspace_id,
             else => return error.TestExpectedEqual,
         },
     );
@@ -147,8 +184,22 @@ test "match resolves agent profile and scores routes" {
             else => return error.TestExpectedEqual,
         },
     );
+    try std.testing.expectEqualStrings(
+        agent_id,
+        switch (match("/v1/agents/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/proposals").?) {
+            .list_agent_proposals => |id| id,
+            else => return error.TestExpectedEqual,
+        },
+    );
+    const approve = switch (match("/v1/agents/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/proposals/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f21:approve").?) {
+        .approve_agent_proposal => |route| route,
+        else => return error.TestExpectedEqual,
+    };
+    try std.testing.expectEqualStrings(agent_id, approve.agent_id);
+    try std.testing.expectEqualStrings("0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f21", approve.proposal_id);
     try std.testing.expect(match("/v1/agents/") == null);
     try std.testing.expect(match("/v1/agents/foo/bar/scores") == null);
+    try std.testing.expect(match("/v1/agents/foo/proposals/bar/baz:approve") == null);
 }
 
 test "match resolves auth and run routes" {

@@ -98,6 +98,82 @@ fn parseBillingLifecycleEvent(raw: []const u8) ?workspace_billing.BillingLifecyc
     return null;
 }
 
+pub fn handleSetWorkspaceScoringConfig(ctx: *common.Context, r: zap.Request, workspace_id: []const u8) void {
+    var arena = std.heap.ArenaAllocator.init(ctx.alloc);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    const req_id = common.requestId(alloc);
+
+    const principal = common.authenticate(alloc, r, ctx) catch |err| {
+        common.writeAuthError(r, req_id, err);
+        return;
+    };
+    if (!common.requireUuidV7Id(r, req_id, workspace_id, "workspace_id")) return;
+
+    const Req = struct {
+        scoring_context_max_tokens: i32,
+    };
+
+    const body = r.body orelse {
+        common.errorResponse(r, .bad_request, error_codes.ERR_INVALID_REQUEST, "Request body required", req_id);
+        return;
+    };
+    if (!common.checkBodySize(r, body, req_id)) return;
+    const parsed = std.json.parseFromSlice(Req, alloc, body, .{}) catch {
+        common.errorResponse(r, .bad_request, error_codes.ERR_INVALID_REQUEST, "Malformed JSON", req_id);
+        return;
+    };
+    defer parsed.deinit();
+
+    if (parsed.value.scoring_context_max_tokens < 512 or parsed.value.scoring_context_max_tokens > 8192) {
+        common.errorResponse(r, .bad_request, error_codes.ERR_SCORING_CONTEXT_TOKENS_INVALID, "scoring_context_max_tokens must be between 512 and 8192", req_id);
+        return;
+    }
+
+    const conn = ctx.pool.acquire() catch {
+        common.internalDbUnavailable(r, req_id);
+        return;
+    };
+    defer ctx.pool.release(conn);
+
+    if (!common.authorizeWorkspaceAndSetTenantContext(conn, principal, workspace_id)) {
+        common.errorResponse(r, .forbidden, error_codes.ERR_FORBIDDEN, "Workspace access denied", req_id);
+        return;
+    }
+
+    var q = conn.query(
+        \\UPDATE workspace_entitlements
+        \\SET scoring_context_max_tokens = $2,
+        \\    updated_at = $3
+        \\WHERE workspace_id = $1
+        \\RETURNING scoring_context_max_tokens
+    , .{ workspace_id, parsed.value.scoring_context_max_tokens, std.time.milliTimestamp() }) catch {
+        common.internalDbError(r, req_id);
+        return;
+    };
+    defer q.deinit();
+
+    const row = (q.next() catch null) orelse {
+        common.errorResponse(r, .not_found, error_codes.ERR_WORKSPACE_NOT_FOUND, "Workspace not found", req_id);
+        return;
+    };
+    const configured_tokens = row.get(i32, 0) catch {
+        common.internalDbError(r, req_id);
+        return;
+    };
+    q.drain() catch |err| {
+        obs_log.logWarnErr(.http, err, "workspace scoring config drain failed workspace_id={s}", .{workspace_id});
+        common.internalDbError(r, req_id);
+        return;
+    };
+
+    common.writeJson(r, .ok, .{
+        .workspace_id = workspace_id,
+        .scoring_context_max_tokens = configured_tokens,
+        .request_id = req_id,
+    });
+}
+
 pub fn handleApplyWorkspaceBillingEvent(ctx: *common.Context, r: zap.Request, workspace_id: []const u8) void {
     var arena = std.heap.ArenaAllocator.init(ctx.alloc);
     defer arena.deinit();

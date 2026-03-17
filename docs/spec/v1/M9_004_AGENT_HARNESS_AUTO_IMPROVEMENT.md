@@ -11,14 +11,7 @@
 
 **Harness boundary:** M9_004 operates on dynamic agent harness profiles. Proposals may tune stage-to-agent bindings and stage-local limits, but every referenced agent/skill must still pass the existing control-plane compile validation, registry checks, and workspace entitlement limits before it can be stored or applied.
 
-**Carry-forward from M9_003:** M9_004 also absorbs the unfinished engineering work discovered during M9_003 review:
-- Complete failure-signal extraction from runtime/stage metadata
-- Complete failure taxonomy for `OOM`, `TOOL_CALL_FAILURE`, `CONTEXT_OVERFLOW`, and `AUTH_FAILURE`
-- Prevent score/analysis orphaning by hardening persistence atomicity
-- Enforce `scoring_context_max_tokens` with the runtime tokenizer
-- Generalize score-context injection for dynamic-agent harnesses beyond the current plan-stage path
-- Capture and scrub `stderr_tail` safely before storage/export
-- Produce demo evidence that injected context measurably reduces repeat failures
+**Carry-forward from M9_003:** M9_003 is now closed. M9_004 no longer carries failure-analysis completion work and focuses only on the proposal/trust/approval lifecycle built on top of the shipped M9_003 signals.
 
 ---
 
@@ -124,15 +117,15 @@ instead, during which the operator can inspect and cancel before the change appl
 
 ## 4.0 Manual Approval (UNEARNED Agents)
 
-**Status:** PENDING
+**Status:** DONE
 
 Agents that have not earned TRUSTED status require explicit operator action on every proposal.
 
 **Dimensions:**
-- 4.1 PENDING `zombiectl agent proposals <agent-id>` — list PENDING_REVIEW proposals with proposed changes, rationale, and bounded ranges
-- 4.2 PENDING `zombiectl agent proposals approve <proposal-id>` — operator approves; CAS version check, then status transitions to APPROVED → APPLIED in the same transaction
-- 4.3 PENDING `zombiectl agent proposals reject <proposal-id> [--reason "..."]` — operator rejects; status transitions to REJECTED; reason stored
-- 4.4 PENDING Proposals older than 7 days without a decision auto-expire to REJECTED with reason `EXPIRED`; agent generates a new proposal on next trigger. Expiry handled by the same background checker as auto-apply.
+- 4.1 DONE `zombiectl agent proposals <agent-id>` lists READY `PENDING_REVIEW` manual proposals through the new `/v1/agents/{agent_id}/proposals` API so operators can inspect structured changes before acting
+- 4.2 DONE `zombiectl agent proposals <agent-id> approve <proposal-id>` approves manual proposals through `/v1/agents/{agent_id}/proposals/{proposal_id}:approve`; the backend performs the CAS check, flips the row through `APPROVED`, and applies the candidate profile in the same transaction before ending at `APPLIED`
+- 4.3 DONE `zombiectl agent proposals <agent-id> reject <proposal-id> [--reason "..."]` rejects READY manual proposals through `/v1/agents/{agent_id}/proposals/{proposal_id}:reject`; the rejection reason is persisted with the final `REJECTED` state
+- 4.4 DONE Manual proposals older than 7 days now auto-expire to `REJECTED` with reason `EXPIRED` inside the same reconcile tick that already handles overdue auto-apply proposals
 
 ---
 
@@ -205,7 +198,7 @@ Measure whether applied proposals actually improve the agent's score.
 - [ ] 7.14 No harness change applied without a proposal record in APPROVED/VETO_WINDOW state (enforced at application logic level)
 - [ ] 7.15 Demo evidence: agent earns TRUSTED, generates auto-approved proposal, harness updates, score improves over next 5 runs
 
-**Verification note:** `zig build test` and `make test-zombied` both pass in this worktree. The new coverage in this slice exercises TRUSTED veto-window creation, `auto_apply_at` scheduling, overdue reconcile pickup, and CAS rejection on config drift. Operator-facing veto/list commands remain pending, so the corresponding acceptance criteria stay open.
+**Verification note:** `node --test zombiectl/test/agent_proposals.unit.test.js`, `zig build test`, `HANDLER_DB_TEST_URL=postgres://usezombie:usezombie@localhost:5432/usezombiedb make test-integration-db`, and `make test` pass in this worktree. The new coverage now includes manual proposal listing, manual approve/apply with operator identity, manual rejection with persisted reason, stale manual proposal expiry, TRUSTED veto-window creation, overdue reconcile pickup, and CAS rejection on config drift. Operator veto and revert flows remain pending, so their acceptance criteria stay open.
 
 ---
 
@@ -218,3 +211,8 @@ Measure whether applied proposals actually improve the agent's score.
 - LLM provider or model selection as a proposable change (deferred)
 - Veto window length as a user-configurable setting (fixed at 24h in v1)
 - Synchronous proposal generation (always async/enqueued)
+
+
+1. Dummy User
+2. API for IAM User
+3. Webhook

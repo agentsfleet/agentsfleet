@@ -9,6 +9,7 @@ const routes = [
   { key: "harness", match: (cmd) => cmd === "harness" },
   { key: "skill-secret", match: (cmd) => cmd === "skill-secret" },
   { key: "agent", match: (cmd) => cmd === "agent" },
+  { key: "admin", match: (cmd) => cmd === "admin" },
 ];
 
 export function findRoute(command, args) {

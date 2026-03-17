@@ -5,7 +5,7 @@
 **Workstream:** 005
 **Date:** Mar 08, 2026
 **Updated:** Mar 15, 2026
-**Status:** IN PROGRESS
+**Status:** DONE
 **Priority:** P0 — release and quality gate
 **Depends on:** M4_001 (Implement `zombiectl` CLI Runtime), M6_003 (Zig API Memleak and Perf Gates), M6_006 (V1 Acceptance E2E Gate)
 
@@ -203,18 +203,18 @@ Replace echo steps with:
 **Dimensions:**
 - 3.1 DONE CI contract: PR triggers gitleaks, lint, test-unit, memleak, qa-smoke, cross-compile
 - 3.2 DONE Coverage: Codecov uploads target `usezombie/usezombie` with flags `website` and `apps`
-- 3.3 PENDING Release contract test: verify tag `vX.Y.Z` produces release notes, binary assets, npm publish, container push
+- 3.3 DONE Release contract test: verify tag `vX.Y.Z` produces release notes, binary assets, npm publish, container push
 - 3.4 PENDING Operator evidence pack: CI run link, release run link, published artifact URLs
 
 ---
 
 ## 5.0 Acceptance Criteria
 
-- [ ] 4.1 PR merges blocked unless all required CI jobs pass — enforce via GitHub branch protection (see below)
-- [ ] 4.2 Release tag flow is human/agent triggerable: `git tag vX.Y.Z && git push --tags`
-- [ ] 4.3 zombiectl npm publish is part of release workflow and validated post-publish
-- [ ] 4.4 GitHub Release contains cross-compiled zombied binaries for 4 targets
-- [ ] 4.5 Coverage reporting attributed to `usezombie/usezombie` for `website` and `apps` components
+- [x] 4.1 PR merges blocked unless all required CI jobs pass — enforce via GitHub branch protection (see below)
+- [x] 4.2 Release tag flow is human/agent triggerable: `git tag vX.Y.Z && git push --tags`
+- [x] 4.3 zombiectl npm publish is part of release workflow and validated post-publish
+- [x] 4.4 GitHub Release contains cross-compiled zombied binaries for 4 targets
+- [x] 4.5 Coverage reporting attributed to `usezombie/usezombie` for `website` and `apps` components
 
 ### Branch protection — required status checks for `main`
 

@@ -80,6 +80,11 @@ fn opRunStage(ctx: StageRetryCtx, _: u32) !agents.AgentResult {
     return agents.runByRole(ctx.alloc, ctx.binding, ctx.input);
 }
 
+fn recordScoringFailure(scoring_state: *scoring.ScoringState, err: anyerror) anyerror {
+    scoring_state.failure_error_name = @errorName(err);
+    return err;
+}
+
 const CommitRetryCtx = struct {
     alloc: std.mem.Allocator,
     wt_path: []const u8,
@@ -178,7 +183,7 @@ pub fn executeRun(
 
     try worker_runtime.ensureRunActive(running, deadline_ms);
     try tenant_limiter.acquireCancelable(ctx.tenant_id, plan_stage.skill_id, 1.0, running, deadline_ms);
-    const plan_result = try reliable.call(agents.AgentResult, StageRetryCtx{
+    const plan_result = reliable.call(agents.AgentResult, StageRetryCtx{
         .alloc = run_alloc,
         .binding = plan_binding,
         .input = .{
@@ -187,7 +192,7 @@ pub fn executeRun(
             .spec_content = spec_content,
             .memory_context = memory_context,
         },
-    }, opRunStage, worker_runtime.retryOptionsForRun(@constCast(running), deadline_ms, 1, 1_000, 8_000, plan_stage.skill_id));
+    }, opRunStage, worker_runtime.retryOptionsForRun(@constCast(running), deadline_ms, 1, 1_000, 8_000, plan_stage.skill_id)) catch |err| return recordScoringFailure(&scoring_state, err);
     metrics.incAgentEchoCalls();
     metrics.addAgentTokens(plan_result.token_count);
     metrics.observeAgentDurationSeconds(plan_result.wall_seconds);
@@ -262,7 +267,7 @@ pub fn executeRun(
 
             try tenant_limiter.acquireCancelable(ctx.tenant_id, stage.skill_id, 1.0, running, deadline_ms);
             try worker_runtime.ensureRunActive(running, deadline_ms);
-            const stage_result = try reliable.call(agents.AgentResult, StageRetryCtx{
+            const stage_result = reliable.call(agents.AgentResult, StageRetryCtx{
                 .alloc = run_alloc,
                 .binding = binding,
                 .input = .{
@@ -273,7 +278,7 @@ pub fn executeRun(
                     .defects_content = defects,
                     .implementation_summary = latest_build_output,
                 },
-            }, opRunStage, worker_runtime.retryOptionsForRun(@constCast(running), deadline_ms, 1, 1_000, 8_000, stage.skill_id));
+            }, opRunStage, worker_runtime.retryOptionsForRun(@constCast(running), deadline_ms, 1, 1_000, 8_000, stage.skill_id)) catch |err| return recordScoringFailure(&scoring_state, err);
 
             switch (binding.actor) {
                 .echo => metrics.incAgentEchoCalls(),
@@ -452,6 +457,7 @@ pub fn executeRun(
             },
             .blocked => {
                 scoring_state.outcome = .blocked_stage_graph;
+                scoring_state.stderr_tail = final_stage_output;
                 try billing.finalizeRunForBilling(
                     run_alloc,
                     conn,
@@ -505,6 +511,7 @@ pub fn executeRun(
     }
 
     scoring_state.outcome = .blocked_retries_exhausted;
+    scoring_state.stderr_tail = defects orelse "";
     try billing.finalizeRunForBilling(
         run_alloc,
         conn,

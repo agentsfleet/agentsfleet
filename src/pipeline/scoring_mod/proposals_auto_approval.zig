@@ -10,6 +10,12 @@ const ProposalAutoApprovalError = error{
     MissingConfigVersionContext,
 };
 
+pub const ApplyProposalResult = enum {
+    applied,
+    config_changed,
+    rejected,
+};
+
 const DueProposal = struct {
     proposal_id: []u8,
     agent_id: []u8,
@@ -24,12 +30,6 @@ const DueProposal = struct {
         alloc.free(self.config_version_id);
         alloc.free(self.proposed_changes);
     }
-};
-
-const ApplyOutcome = enum {
-    applied,
-    config_changed,
-    rejected,
 };
 
 fn beginTx(conn: *pg.Conn) !void {
@@ -88,36 +88,51 @@ pub fn reconcileDueAutoApprovalProposals(
     q.deinit();
 
     for (due_list.items) |*proposal| {
-        switch (try applyDueProposal(conn, alloc, proposal, now_ms)) {
+        switch (try applyProposal(conn, alloc, proposal.agent_id, proposal.workspace_id, proposal.proposal_id, proposal.config_version_id, proposal.proposed_changes, shared.STATUS_VETO_WINDOW, shared.APPLIED_BY_SYSTEM_AUTO, now_ms)) {
             .applied => result.applied += 1,
             .config_changed => result.config_changed += 1,
             .rejected => result.rejected += 1,
         }
     }
 
+    const expired = try expireStaleManualProposals(conn, now_ms - shared.MANUAL_PROPOSAL_EXPIRY_MS);
+    result.expired = expired;
+
     return result;
 }
 
-fn applyDueProposal(
+pub fn applyProposal(
     conn: *pg.Conn,
     alloc: std.mem.Allocator,
-    proposal: *const DueProposal,
+    agent_id: []const u8,
+    workspace_id: []const u8,
+    proposal_id: []const u8,
+    config_version_id: []const u8,
+    proposed_changes: []const u8,
+    required_status: []const u8,
+    applied_by: []const u8,
     now_ms: i64,
-) !ApplyOutcome {
+) !ApplyProposalResult {
     try beginTx(conn);
     var tx_open = true;
     errdefer if (tx_open) rollbackTx(conn);
 
-    const current_config_version_id = (try loadCurrentActiveConfigVersionId(conn, alloc, proposal.workspace_id)) orelse {
-        try markProposalConfigChanged(conn, proposal.proposal_id, now_ms);
+    if (!try markProposalApprovedIfExpected(conn, proposal_id, required_status, now_ms)) {
+        rollbackTx(conn);
+        tx_open = false;
+        return .rejected;
+    }
+
+    const current_config_version_id = (try loadCurrentActiveConfigVersionId(conn, alloc, workspace_id)) orelse {
+        try markProposalConfigChanged(conn, proposal_id, now_ms);
         try commitTx(conn);
         tx_open = false;
         return .config_changed;
     };
     defer alloc.free(current_config_version_id);
 
-    if (!std.mem.eql(u8, current_config_version_id, proposal.config_version_id)) {
-        try markProposalConfigChanged(conn, proposal.proposal_id, now_ms);
+    if (!std.mem.eql(u8, current_config_version_id, config_version_id)) {
+        try markProposalConfigChanged(conn, proposal_id, now_ms);
         try commitTx(conn);
         tx_open = false;
         return .config_changed;
@@ -126,19 +141,19 @@ fn applyDueProposal(
     const candidate_profile_json = validation.buildCandidateProfileJson(
         conn,
         alloc,
-        proposal.config_version_id,
-        proposal.proposed_changes,
+        config_version_id,
+        proposed_changes,
     ) catch {
-        try rejectProposal(conn, proposal.proposal_id, shared.rejectionCodeForError(shared.ProposalError.ProposalWouldNotCompile), now_ms);
+        try rejectProposal(conn, proposal_id, shared.rejectionCodeForError(shared.ProposalError.ProposalWouldNotCompile), now_ms);
         try commitTx(conn);
         tx_open = false;
         return .rejected;
     };
     defer alloc.free(candidate_profile_json);
 
-    const activated_config_version_id = try persistCandidateConfigVersion(conn, alloc, proposal, candidate_profile_json, now_ms);
+    const activated_config_version_id = try persistCandidateConfigVersion(conn, alloc, agent_id, candidate_profile_json, now_ms);
     defer alloc.free(activated_config_version_id);
-    try activateAppliedProposal(conn, proposal, activated_config_version_id, now_ms);
+    try activateAppliedProposal(conn, agent_id, workspace_id, proposal_id, activated_config_version_id, applied_by, now_ms);
 
     try commitTx(conn);
     tx_open = false;
@@ -170,7 +185,7 @@ fn loadCurrentActiveConfigVersionId(
 fn persistCandidateConfigVersion(
     conn: *pg.Conn,
     alloc: std.mem.Allocator,
-    proposal: *const DueProposal,
+    agent_id: []const u8,
     candidate_profile_json: []const u8,
     now_ms: i64,
 ) ![]const u8 {
@@ -184,7 +199,7 @@ fn persistCandidateConfigVersion(
         \\GROUP BY tenant_id
         \\ORDER BY MAX(version) DESC
         \\LIMIT 1
-    , .{proposal.agent_id});
+    , .{agent_id});
 
     const row = (try current_q.next()) orelse {
         current_q.deinit();
@@ -204,7 +219,7 @@ fn persistCandidateConfigVersion(
     , .{
         config_version_id,
         tenant_id,
-        proposal.agent_id,
+        agent_id,
         next_version,
         candidate_profile_json,
         candidate_profile_json,
@@ -218,8 +233,11 @@ fn persistCandidateConfigVersion(
 
 fn activateAppliedProposal(
     conn: *pg.Conn,
-    proposal: *const DueProposal,
+    agent_id: []const u8,
+    workspace_id: []const u8,
+    proposal_id: []const u8,
     activated_config_version_id: []const u8,
+    applied_by: []const u8,
     now_ms: i64,
 ) !void {
     _ = try conn.exec(
@@ -229,9 +247,9 @@ fn activateAppliedProposal(
         \\    activated_at = $4
         \\WHERE workspace_id = $1
     , .{
-        proposal.workspace_id,
+        workspace_id,
         activated_config_version_id,
-        shared.APPLIED_BY_SYSTEM_AUTO,
+        applied_by,
         now_ms,
     });
 
@@ -240,7 +258,7 @@ fn activateAppliedProposal(
         \\SET status = CASE WHEN agent_id = $1 THEN 'ACTIVE' ELSE status END,
         \\    updated_at = $2
         \\WHERE workspace_id = $3
-    , .{ proposal.agent_id, now_ms, proposal.workspace_id });
+    , .{ agent_id, now_ms, workspace_id });
 
     _ = try conn.exec(
         \\UPDATE agent_improvement_proposals
@@ -249,11 +267,37 @@ fn activateAppliedProposal(
         \\    updated_at = $4
         \\WHERE proposal_id = $1
     , .{
-        proposal.proposal_id,
+        proposal_id,
         shared.STATUS_APPLIED,
-        shared.APPLIED_BY_SYSTEM_AUTO,
+        applied_by,
         now_ms,
     });
+}
+
+fn markProposalApprovedIfExpected(
+    conn: *pg.Conn,
+    proposal_id: []const u8,
+    expected_status: []const u8,
+    now_ms: i64,
+) !bool {
+    var q = try conn.query(
+        \\UPDATE agent_improvement_proposals
+        \\SET status = $2,
+        \\    updated_at = $3
+        \\WHERE proposal_id = $1
+        \\  AND status = $4
+        \\RETURNING proposal_id
+    , .{
+        proposal_id,
+        shared.STATUS_APPROVED,
+        now_ms,
+        expected_status,
+    });
+
+    const changed = (try q.next()) != null;
+    if (changed) q.drain() catch {};
+    q.deinit();
+    return changed;
 }
 
 fn markProposalConfigChanged(conn: *pg.Conn, proposal_id: []const u8, now_ms: i64) !void {
@@ -284,4 +328,31 @@ fn rejectProposal(conn: *pg.Conn, proposal_id: []const u8, rejection_reason: []c
         rejection_reason,
         now_ms,
     });
+}
+
+fn expireStaleManualProposals(conn: *pg.Conn, cutoff_ms: i64) !u32 {
+    var q = try conn.query(
+        \\UPDATE agent_improvement_proposals
+        \\SET status = $1,
+        \\    rejection_reason = $2,
+        \\    updated_at = $3
+        \\WHERE approval_mode = $4
+        \\  AND generation_status = $5
+        \\  AND status = $6
+        \\  AND created_at <= $7
+        \\RETURNING proposal_id
+    , .{
+        shared.STATUS_REJECTED,
+        shared.REJECTION_REASON_EXPIRED,
+        std.time.milliTimestamp(),
+        shared.ApprovalMode.manual.label(),
+        shared.GENERATION_STATUS_READY,
+        shared.STATUS_PENDING_REVIEW,
+        cutoff_ms,
+    });
+
+    var expired: u32 = 0;
+    while (try q.next()) |_| expired += 1;
+    q.deinit();
+    return expired;
 }

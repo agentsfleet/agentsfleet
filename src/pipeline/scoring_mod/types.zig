@@ -100,6 +100,7 @@ pub const ScoringState = struct {
     stages_total: u32 = 0,
     failure_class_override: ?FailureClass = null,
     failure_error_name: ?[]const u8 = null,
+    stderr_tail: ?[]const u8 = null,
 };
 
 pub fn hasPriorRuns(baseline: ?LatencyBaseline) bool {

@@ -503,6 +503,153 @@ test "reconcileDueAutoApprovalProposals rejects auto-apply when config version c
     try std.testing.expect((try proposal_q.next()) == null);
 }
 
+test "listManualProposals returns only ready pending manual proposals" {
+    const db_ctx = (try common.openHandlerTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
+
+    try createTempProposalTables(db_ctx.conn);
+    _ = try db_ctx.conn.exec(
+        \\INSERT INTO workspace_entitlements
+        \\  (entitlement_id, workspace_id, plan_tier, max_profiles, max_stages, max_distinct_skills, allow_custom_skills, enable_agent_scoring, agent_scoring_weights_json, created_at, updated_at)
+        \\VALUES ('ent_prop_manual_1', 'ws_prop_manual_1', 'FREE', 3, 4, 3, false, true, '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}', 0, 0)
+    , .{});
+    try insertAgentProfile(db_ctx.conn, "agent_prop_manual_1", "ws_prop_manual_1");
+    try insertActiveConfig(db_ctx.conn, "agent_prop_manual_1", "ws_prop_manual_1", "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fb1");
+    _ = try db_ctx.conn.exec(
+        \\INSERT INTO agent_improvement_proposals
+        \\  (proposal_id, agent_id, workspace_id, trigger_reason, proposed_changes, config_version_id, approval_mode, generation_status, status, auto_apply_at, created_at, updated_at)
+        \\VALUES
+        \\  ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fb2', 'agent_prop_manual_1', 'ws_prop_manual_1', 'DECLINING_SCORE', '[{"target_field":"stage_insert","current_value":null,"proposed_value":{"agent_id":"agent_prop_manual_1","insert_before_stage_id":"verify","stage_id":"verify-precheck","role":"autoworkerready","skill":"clawhub://usezombie/autoworkerready@1.0.0","artifact_name":"verify-precheck.md","commit_message":"agent: add verify-precheck.md","gate":false,"on_pass":"verify","on_fail":"retry"},"rationale":"recover quality"}]', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fb1', 'MANUAL', 'READY', 'PENDING_REVIEW', NULL, 100, 101),
+        \\  ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fb3', 'agent_prop_manual_1', 'ws_prop_manual_1', 'DECLINING_SCORE', '[]', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fb1', 'MANUAL', 'READY', 'REJECTED', NULL, 99, 99)
+    , .{});
+
+    const items = try proposals.listManualProposals(db_ctx.conn, std.testing.allocator, "agent_prop_manual_1", 0);
+    defer {
+        for (items) |*item| item.deinit(std.testing.allocator);
+        std.testing.allocator.free(items);
+    }
+
+    try std.testing.expectEqual(@as(usize, 1), items.len);
+    try std.testing.expectEqualStrings("0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fb2", items[0].proposal_id);
+    try std.testing.expect(std.mem.containsAtLeast(u8, items[0].proposed_changes, 1, "\"stage_insert\""));
+}
+
+test "approveManualProposal applies proposal with operator identity" {
+    const db_ctx = (try common.openHandlerTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
+
+    try createTempProposalTables(db_ctx.conn);
+    _ = try db_ctx.conn.exec(
+        \\INSERT INTO workspace_entitlements
+        \\  (entitlement_id, workspace_id, plan_tier, max_profiles, max_stages, max_distinct_skills, allow_custom_skills, enable_agent_scoring, agent_scoring_weights_json, created_at, updated_at)
+        \\VALUES ('ent_prop_manual_2', 'ws_prop_manual_2', 'FREE', 3, 4, 3, false, true, '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}', 0, 0)
+    , .{});
+    try insertAgentProfile(db_ctx.conn, "agent_prop_manual_2", "ws_prop_manual_2");
+    try insertActiveConfig(db_ctx.conn, "agent_prop_manual_2", "ws_prop_manual_2", "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fc1");
+    _ = try db_ctx.conn.exec(
+        \\INSERT INTO agent_improvement_proposals
+        \\  (proposal_id, agent_id, workspace_id, trigger_reason, proposed_changes, config_version_id, approval_mode, generation_status, status, auto_apply_at, created_at, updated_at)
+        \\VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fc2', 'agent_prop_manual_2', 'ws_prop_manual_2', 'DECLINING_SCORE', '[{"target_field":"stage_insert","current_value":null,"proposed_value":{"agent_id":"agent_prop_manual_2","insert_before_stage_id":"verify","stage_id":"verify-precheck","role":"autoworkerready","skill":"clawhub://usezombie/autoworkerready@1.0.0","artifact_name":"verify-precheck.md","commit_message":"agent: add verify-precheck.md","gate":false,"on_pass":"verify","on_fail":"retry"},"rationale":"recover quality"}]', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fc1', 'MANUAL', 'READY', 'PENDING_REVIEW', NULL, 100, 101)
+    , .{});
+
+    const result = (try proposals.approveManualProposal(
+        db_ctx.conn,
+        std.testing.allocator,
+        "agent_prop_manual_2",
+        "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fc2",
+        "kishore",
+        2_000,
+    )) orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqual(proposals.ApplyProposalResult.applied, result);
+
+    var proposal_q = try db_ctx.conn.query(
+        \\SELECT status, applied_by
+        \\FROM agent_improvement_proposals
+        \\WHERE proposal_id = '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fc2'
+    , .{});
+    defer proposal_q.deinit();
+    const proposal_row = (try proposal_q.next()) orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqualStrings("APPLIED", proposal_row.get([]const u8, 0) catch "");
+    try std.testing.expectEqualStrings("operator:kishore", proposal_row.get([]const u8, 1) catch "");
+    try std.testing.expect((try proposal_q.next()) == null);
+}
+
+test "rejectManualProposal stores rejection reason" {
+    const db_ctx = (try common.openHandlerTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
+
+    try createTempProposalTables(db_ctx.conn);
+    _ = try db_ctx.conn.exec(
+        \\INSERT INTO workspace_entitlements
+        \\  (entitlement_id, workspace_id, plan_tier, max_profiles, max_stages, max_distinct_skills, allow_custom_skills, enable_agent_scoring, agent_scoring_weights_json, created_at, updated_at)
+        \\VALUES ('ent_prop_manual_3', 'ws_prop_manual_3', 'FREE', 3, 4, 3, false, true, '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}', 0, 0)
+    , .{});
+    try insertAgentProfile(db_ctx.conn, "agent_prop_manual_3", "ws_prop_manual_3");
+    try insertActiveConfig(db_ctx.conn, "agent_prop_manual_3", "ws_prop_manual_3", "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fd1");
+    _ = try db_ctx.conn.exec(
+        \\INSERT INTO agent_improvement_proposals
+        \\  (proposal_id, agent_id, workspace_id, trigger_reason, proposed_changes, config_version_id, approval_mode, generation_status, status, auto_apply_at, created_at, updated_at)
+        \\VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fd2', 'agent_prop_manual_3', 'ws_prop_manual_3', 'DECLINING_SCORE', '[]', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fd1', 'MANUAL', 'READY', 'PENDING_REVIEW', NULL, 100, 101)
+    , .{});
+
+    try std.testing.expect(try proposals.rejectManualProposal(
+        db_ctx.conn,
+        "agent_prop_manual_3",
+        "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fd2",
+        "OPERATOR_REJECTED",
+        3_000,
+    ));
+
+    var q = try db_ctx.conn.query(
+        \\SELECT status, rejection_reason
+        \\FROM agent_improvement_proposals
+        \\WHERE proposal_id = '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fd2'
+    , .{});
+    defer q.deinit();
+    const row = (try q.next()) orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqualStrings("REJECTED", row.get([]const u8, 0) catch "");
+    try std.testing.expectEqualStrings("OPERATOR_REJECTED", row.get([]const u8, 1) catch "");
+    try std.testing.expect((try q.next()) == null);
+}
+
+test "reconcileDueAutoApprovalProposals expires stale manual proposals" {
+    const db_ctx = (try common.openHandlerTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
+
+    try createTempProposalTables(db_ctx.conn);
+    _ = try db_ctx.conn.exec(
+        \\INSERT INTO workspace_entitlements
+        \\  (entitlement_id, workspace_id, plan_tier, max_profiles, max_stages, max_distinct_skills, allow_custom_skills, enable_agent_scoring, agent_scoring_weights_json, created_at, updated_at)
+        \\VALUES ('ent_prop_manual_4', 'ws_prop_manual_4', 'FREE', 3, 4, 3, false, true, '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}', 0, 0)
+    , .{});
+    try insertAgentProfile(db_ctx.conn, "agent_prop_manual_4", "ws_prop_manual_4");
+    try insertActiveConfig(db_ctx.conn, "agent_prop_manual_4", "ws_prop_manual_4", "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fe1");
+    _ = try db_ctx.conn.exec(
+        \\INSERT INTO agent_improvement_proposals
+        \\  (proposal_id, agent_id, workspace_id, trigger_reason, proposed_changes, config_version_id, approval_mode, generation_status, status, auto_apply_at, created_at, updated_at)
+        \\VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fe2', 'agent_prop_manual_4', 'ws_prop_manual_4', 'DECLINING_SCORE', '[]', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fe1', 'MANUAL', 'READY', 'PENDING_REVIEW', NULL, 0, 0)
+    , .{});
+
+    const now_ms = proposals_shared.MANUAL_PROPOSAL_EXPIRY_MS + 1;
+    const result = try proposals.reconcileDueAutoApprovalProposals(db_ctx.conn, std.testing.allocator, 0, now_ms);
+    try std.testing.expectEqual(@as(u32, 1), result.expired);
+
+    var q = try db_ctx.conn.query(
+        \\SELECT status, rejection_reason
+        \\FROM agent_improvement_proposals
+        \\WHERE proposal_id = '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fe2'
+    , .{});
+    defer q.deinit();
+    const row = (try q.next()) orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqualStrings("REJECTED", row.get([]const u8, 0) catch "");
+    try std.testing.expectEqualStrings("EXPIRED", row.get([]const u8, 1) catch "");
+    try std.testing.expect((try q.next()) == null);
+}
+
 test "reconcilePendingProposalGenerations rejects generated proposals that exceed stage entitlements" {
     const db_ctx = (try common.openHandlerTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();
