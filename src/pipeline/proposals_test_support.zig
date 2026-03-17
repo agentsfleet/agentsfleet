@@ -235,11 +235,11 @@ pub const ExpectedStage = struct {
     on_fail: ?[]const u8,
 };
 
-pub fn expectProfileMatches(raw_json: []const u8, expected_profile_id: []const u8, expected_stages: []const ExpectedStage) !void {
+pub fn expectProfileMatches(raw_json: []const u8, expected_agent_id: []const u8, expected_stages: []const ExpectedStage) !void {
     var parsed = try topology.parseProfileJson(std.testing.allocator, raw_json);
     defer parsed.deinit();
 
-    try std.testing.expectEqualStrings(expected_profile_id, parsed.agent_id);
+    try std.testing.expectEqualStrings(expected_agent_id, parsed.agent_id);
     try std.testing.expectEqual(expected_stages.len, parsed.stages.len);
 
     for (expected_stages, parsed.stages) |expected_stage, actual_stage| {

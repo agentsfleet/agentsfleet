@@ -193,5 +193,7 @@ test {
     _ = @import("proposals_lifecycle_manual_test.zig");
     _ = @import("proposals_revert_validation_test.zig");
     _ = @import("proposals_idempotent_test.zig");
+    _ = @import("proposals_guard_test.zig");
+    _ = @import("proposals_e2e_test.zig");
     _ = @import("scoring_test.zig");
 }
