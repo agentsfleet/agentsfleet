@@ -15,7 +15,7 @@ const ServeMigrationDecision = enum {
     run_required,
 };
 
-pub fn canonicalMigrations() [15]db.Migration {
+pub fn canonicalMigrations() [14]db.Migration {
     const schema = @import("schema");
     return .{
         .{ .version = 1, .sql = schema.initial_sql },
@@ -32,7 +32,6 @@ pub fn canonicalMigrations() [15]db.Migration {
         .{ .version = 16, .sql = schema.agent_scoring_baseline_sql },
         .{ .version = 17, .sql = schema.agent_score_persistence_api_sql },
         .{ .version = 18, .sql = schema.agent_failure_analysis_context_sql },
-        .{ .version = 19, .sql = schema.agent_improvement_trajectory_sql },
     };
 }
 
