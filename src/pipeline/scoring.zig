@@ -187,6 +187,11 @@ fn scoreRunInner(
 
 test {
     _ = @import("proposal_agent_team_test.zig");
-    _ = @import("proposals_test.zig");
+    _ = @import("proposals_architecture_integration_test.zig");
+    _ = @import("proposals_trigger_reporting_test.zig");
+    _ = @import("proposals_lifecycle_autoapply_test.zig");
+    _ = @import("proposals_lifecycle_manual_test.zig");
+    _ = @import("proposals_revert_validation_test.zig");
+    _ = @import("proposals_idempotent_test.zig");
     _ = @import("scoring_test.zig");
 }

@@ -85,7 +85,7 @@ const StageDoc = struct {
 };
 
 const ProfileDoc = struct {
-    profile_id: []const u8,
+    agent_id: []const u8,
     stages: []const StageDoc,
 };
 
@@ -150,7 +150,7 @@ pub fn defaultProfile(alloc: std.mem.Allocator) !Profile {
 fn fromDoc(alloc: std.mem.Allocator, doc: ProfileDoc) !Profile {
     if (doc.stages.len < 3) return TopologyError.InvalidProfile;
 
-    const agent_id = try alloc.dupe(u8, doc.profile_id);
+    const agent_id = try alloc.dupe(u8, doc.agent_id);
     errdefer alloc.free(agent_id);
 
     var stages: std.ArrayList(Stage) = .{};
@@ -282,7 +282,7 @@ test "default profile preserves v1 flow" {
 test "integration: custom profile with non built-in role and built-in skill is accepted" {
     const alloc = std.testing.allocator;
     const doc = ProfileDoc{
-        .profile_id = "custom-profile",
+        .agent_id = "custom-profile",
         .stages = &[_]StageDoc{
             .{ .stage_id = "plan", .role = "echo" },
             .{ .stage_id = "security-review", .role = "security", .skill = "scout" },
@@ -302,7 +302,7 @@ test "integration: custom profile with non built-in role and built-in skill is a
 test "integration: stage transitions validate on_pass/on_fail targets" {
     const alloc = std.testing.allocator;
     const bad = ProfileDoc{
-        .profile_id = "bad-transition",
+        .agent_id = "bad-transition",
         .stages = &[_]StageDoc{
             .{ .stage_id = "plan", .role = "echo" },
             .{ .stage_id = "implement", .role = "scout", .on_pass = "missing" },
@@ -316,7 +316,7 @@ test "integration: stage transitions validate on_pass/on_fail targets" {
 test "profile with custom gate skill is accepted (roles are dynamic)" {
     const alloc = std.testing.allocator;
     const doc = ProfileDoc{
-        .profile_id = "custom-gate",
+        .agent_id = "custom-gate",
         .stages = &[_]StageDoc{
             .{ .stage_id = "plan", .role = "echo" },
             .{ .stage_id = "implement", .role = "scout" },

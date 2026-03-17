@@ -306,7 +306,7 @@ pub fn stringifyProfileJson(alloc: std.mem.Allocator, profile: *const topology.P
         on_fail: ?[]const u8,
     };
     const ProfileDoc = struct {
-        profile_id: []const u8,
+        agent_id: []const u8,
         stages: []const StageDoc,
     };
 
@@ -326,7 +326,7 @@ pub fn stringifyProfileJson(alloc: std.mem.Allocator, profile: *const topology.P
     }
 
     return std.json.Stringify.valueAlloc(alloc, ProfileDoc{
-        .profile_id = profile.agent_id,
+        .agent_id = profile.agent_id,
         .stages = out.items,
     }, .{});
 }

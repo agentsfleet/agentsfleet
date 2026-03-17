@@ -38,6 +38,7 @@ pub const Route = union(enum) {
     list_agent_proposals: []const u8,
     approve_agent_proposal: AgentProposalRoute,
     reject_agent_proposal: AgentProposalRoute,
+    veto_agent_proposal: AgentProposalRoute,
     revert_agent_harness_change: AgentHarnessChangeRoute,
 };
 
@@ -111,6 +112,7 @@ pub fn match(path: []const u8) ?Route {
 
     if (matchAgentProposalAction(path, ":approve")) |route| return .{ .approve_agent_proposal = route };
     if (matchAgentProposalAction(path, ":reject")) |route| return .{ .reject_agent_proposal = route };
+    if (matchAgentProposalAction(path, ":veto")) |route| return .{ .veto_agent_proposal = route };
     if (matchAgentHarnessChangeAction(path, ":revert")) |route| return .{ .revert_agent_harness_change = route };
 
     if (std.mem.startsWith(u8, path, prefix_agents)) {
@@ -229,6 +231,12 @@ test "match resolves agent profile and scores routes" {
     };
     try std.testing.expectEqualStrings(agent_id, approve.agent_id);
     try std.testing.expectEqualStrings("0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f21", approve.proposal_id);
+    const veto = switch (match("/v1/agents/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/proposals/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f21:veto").?) {
+        .veto_agent_proposal => |route| route,
+        else => return error.TestExpectedEqual,
+    };
+    try std.testing.expectEqualStrings(agent_id, veto.agent_id);
+    try std.testing.expectEqualStrings("0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f21", veto.proposal_id);
     const revert = switch (match("/v1/agents/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/harness/changes/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f31:revert").?) {
         .revert_agent_harness_change => |route| route,
         else => return error.TestExpectedEqual,

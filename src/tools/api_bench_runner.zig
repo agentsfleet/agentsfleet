@@ -16,6 +16,9 @@ const Config = struct {
     mode: Mode,
     url: []const u8,
     method: std.http.Method,
+    bearer_token: ?[]const u8,
+    request_body: ?[]const u8,
+    content_type: ?[]const u8,
     duration_sec: u64,
     concurrency: usize,
     timeout_ms: u64,
@@ -29,6 +32,9 @@ const Summary = struct {
     config: struct {
         url: []const u8,
         method: []const u8,
+        has_auth_bearer: bool,
+        has_request_body: bool,
+        content_type: ?[]const u8,
         duration_sec: u64,
         concurrency: usize,
         timeout_ms: u64,
@@ -107,6 +113,9 @@ pub fn main() !void {
 
     const cfg = try readConfig(alloc);
     defer alloc.free(cfg.url);
+    if (cfg.bearer_token) |token| alloc.free(token);
+    if (cfg.request_body) |body| alloc.free(body);
+    if (cfg.content_type) |content_type| alloc.free(content_type);
 
     // Pre-flight: verify the target server is reachable before starting the benchmark.
     {
@@ -115,11 +124,7 @@ pub fn main() !void {
         var body: std.ArrayList(u8) = .{};
         defer body.deinit(alloc);
         var aw: std.Io.Writer.Allocating = .fromArrayList(alloc, &body);
-        _ = client.fetch(.{
-            .location = .{ .url = cfg.url },
-            .method = cfg.method,
-            .response_writer = &aw.writer,
-        }) catch {
+        _ = performFetch(alloc, &client, &cfg, &aw.writer) catch {
             std.debug.print("error: server not reachable at {s}\n", .{cfg.url});
             std.debug.print("hint: start the server first (e.g. `make up`) then re-run `make bench`\n", .{});
             std.process.exit(1);
@@ -187,6 +192,9 @@ pub fn main() !void {
         .config = .{
             .url = cfg.url,
             .method = @tagName(cfg.method),
+            .has_auth_bearer = cfg.bearer_token != null,
+            .has_request_body = cfg.request_body != null,
+            .content_type = cfg.content_type,
             .duration_sec = cfg.duration_sec,
             .concurrency = cfg.concurrency,
             .timeout_ms = cfg.timeout_ms,
@@ -279,11 +287,7 @@ fn workerMain(ctx: *WorkerCtx) void {
         var aw: std.Io.Writer.Allocating = .fromArrayList(std.heap.page_allocator, &body);
         const start_ns = std.time.nanoTimestamp();
 
-        const result = client.fetch(.{
-            .location = .{ .url = ctx.cfg.url },
-            .method = ctx.cfg.method,
-            .response_writer = &aw.writer,
-        }) catch {
+        const result = performFetch(std.heap.page_allocator, &client, ctx.cfg, &aw.writer) catch {
             const elapsed_ns: u64 = @intCast(@max(std.time.nanoTimestamp() - start_ns, 0));
             ctx.shared.record(false, elapsed_ns);
             continue;
@@ -315,6 +319,9 @@ fn readConfig(alloc: std.mem.Allocator) !Config {
         std.debug.print("error: unsupported API_BENCH_METHOD={s}; expected GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS\n", .{method_text});
         std.process.exit(2);
     };
+    const bearer_token = try envOwnedOrNull(alloc, "API_BENCH_AUTH_BEARER");
+    const request_body = try envOwnedOrNull(alloc, "API_BENCH_BODY");
+    const content_type = try envOwnedOrNull(alloc, "API_BENCH_CONTENT_TYPE");
 
     const duration_sec = try envU64OrDefault(alloc, "API_BENCH_DURATION_SEC", defaults.duration_sec);
     const concurrency = try envUsizeOrDefault(alloc, "API_BENCH_CONCURRENCY", defaults.concurrency);
@@ -327,6 +334,9 @@ fn readConfig(alloc: std.mem.Allocator) !Config {
         .mode = mode,
         .url = url,
         .method = method,
+        .bearer_token = bearer_token,
+        .request_body = request_body,
+        .content_type = content_type,
         .duration_sec = @max(duration_sec, 1),
         .concurrency = @max(concurrency, 1),
         .timeout_ms = @max(timeout_ms, 1),
@@ -376,6 +386,59 @@ fn envOwnedOrDefault(alloc: std.mem.Allocator, key: []const u8, default_value: [
     } else |_| {
         return alloc.dupe(u8, default_value);
     }
+}
+
+fn envOwnedOrNull(alloc: std.mem.Allocator, key: []const u8) !?[]const u8 {
+    const raw = std.process.getEnvVarOwned(alloc, key) catch return null;
+    if (std.mem.trim(u8, raw, " \t\r\n").len == 0) {
+        alloc.free(raw);
+        return null;
+    }
+    return raw;
+}
+
+fn performFetch(
+    alloc: std.mem.Allocator,
+    client: *std.http.Client,
+    cfg: *const Config,
+    response_writer: *std.Io.Writer,
+) !std.http.Client.FetchResult {
+    var auth_header: ?[]u8 = null;
+    defer if (auth_header) |header| alloc.free(header);
+
+    var headers_buf: [2]std.http.Header = undefined;
+    const headers = try buildExtraHeaders(alloc, cfg, &auth_header, &headers_buf);
+
+    return client.fetch(.{
+        .location = .{ .url = cfg.url },
+        .method = cfg.method,
+        .payload = cfg.request_body,
+        .extra_headers = headers,
+        .response_writer = response_writer,
+    });
+}
+
+fn buildExtraHeaders(
+    alloc: std.mem.Allocator,
+    cfg: *const Config,
+    auth_header: *?[]u8,
+    headers_buf: *[2]std.http.Header,
+) ![]const std.http.Header {
+    var count: usize = 0;
+
+    if (cfg.bearer_token) |token| {
+        const header = try std.fmt.allocPrint(alloc, "Bearer {s}", .{token});
+        auth_header.* = header;
+        headers_buf[count] = .{ .name = "authorization", .value = header };
+        count += 1;
+    }
+
+    if (cfg.content_type) |content_type| {
+        headers_buf[count] = .{ .name = "content-type", .value = content_type };
+        count += 1;
+    }
+
+    return headers_buf[0..count];
 }
 
 fn envU64OrDefault(alloc: std.mem.Allocator, key: []const u8, default_value: u64) !u64 {

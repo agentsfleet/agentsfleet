@@ -46,7 +46,7 @@ test "integration: workspace active profile is loaded for worker execution" {
 
     const compiled =
         \\{
-        \\  "profile_id": "acme-harness-v1",
+        \\  "agent_id": "acme-harness-v1",
         \\  "stages": [
         \\    {"stage_id":"plan","role":"planner","skill":"echo"},
         \\    {"stage_id":"implement","role":"implementer","skill":"scout"},
@@ -131,7 +131,7 @@ test "integration: switching active profile changes worker-resolved profile dete
 
     const profile_a =
         \\{
-        \\  "profile_id": "acme-harness-v1",
+        \\  "agent_id": "acme-harness-v1",
         \\  "stages": [
         \\    {"stage_id":"plan","role":"planner","skill":"echo"},
         \\    {"stage_id":"implement","role":"implementer","skill":"scout"},
@@ -142,7 +142,7 @@ test "integration: switching active profile changes worker-resolved profile dete
 
     const profile_b =
         \\{
-        \\  "profile_id": "acme-harness-v2",
+        \\  "agent_id": "acme-harness-v2",
         \\  "stages": [
         \\    {"stage_id":"plan","role":"planner","skill":"echo"},
         \\    {"stage_id":"security-review","role":"security","skill":"warden"},

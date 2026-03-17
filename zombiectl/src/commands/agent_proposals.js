@@ -17,14 +17,19 @@ export async function commandAgentProposals(ctx, parsed, agentId, deps) {
     } else {
       const items = Array.isArray(res.data) ? res.data : [];
       if (items.length === 0) {
-        writeLine(ctx.stdout, ui.info("no pending manual proposals"));
+        writeLine(ctx.stdout, ui.info("no open proposals"));
       } else {
         printTable(ctx.stdout, [
           { key: "proposal_id", label: "PROPOSAL_ID" },
+          { key: "status", label: "STATUS" },
           { key: "trigger_reason", label: "TRIGGER" },
+          { key: "action", label: "ACTION" },
           { key: "config_version_id", label: "CONFIG_VERSION_ID" },
           { key: "created_at", label: "CREATED_AT" },
-        ], items);
+        ], items.map((item) => ({
+          ...item,
+          action: describeProposalAction(item),
+        })));
       }
     }
     return 0;
@@ -71,8 +76,44 @@ export async function commandAgentProposals(ctx, parsed, agentId, deps) {
     return 0;
   }
 
+  if (subaction === "veto") {
+    const reason = parsed.options.reason || null;
+    const res = await request(
+      ctx,
+      `${AGENTS_PATH}${encodeURIComponent(agentId)}/proposals/${encodeURIComponent(proposalId)}:veto`,
+      {
+        method: "POST",
+        headers: apiHeaders(ctx),
+        body: JSON.stringify(reason ? { reason } : {}),
+      },
+    );
+    if (ctx.jsonMode) {
+      printJson(ctx.stdout, res);
+    } else {
+      writeLine(ctx.stdout, ui.ok(`vetoed ${res.proposal_id} (${res.rejection_reason})`));
+    }
+    return 0;
+  }
+
   writeLine(ctx.stderr, ui.err("usage: agent proposals <agent-id>"));
   writeLine(ctx.stderr, ui.err("       agent proposals <agent-id> approve <proposal-id>"));
   writeLine(ctx.stderr, ui.err("       agent proposals <agent-id> reject <proposal-id> [--reason TEXT]"));
+  writeLine(ctx.stderr, ui.err("       agent proposals <agent-id> veto <proposal-id> [--reason TEXT]"));
   return 2;
+}
+
+function describeProposalAction(item) {
+  if (item?.status === "VETO_WINDOW") {
+    return `${formatCountdown(item.auto_apply_at)} - zombiectl agent proposals veto ${item.proposal_id} to cancel`;
+  }
+  return "manual review required";
+}
+
+function formatCountdown(autoApplyAt) {
+  if (!Number.isFinite(autoApplyAt)) return "Auto-apply scheduled";
+  const diffMs = Math.max(0, autoApplyAt - Date.now());
+  const totalMinutes = Math.floor(diffMs / 60000);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return `Auto-applies in ${hours}h ${minutes}m`;
 }

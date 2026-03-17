@@ -90,7 +90,7 @@ export async function commandAgent(ctx, args, workspaces, deps) {
   writeLine(ctx.stderr, ui.err("usage: agent scores <agent-id> [--limit N] [--starting-after ID] [--json]"));
   writeLine(ctx.stderr, ui.err("       agent profile <agent-id> [--json]"));
   writeLine(ctx.stderr, ui.err("       agent improvement-report <agent-id> [--json]"));
-  writeLine(ctx.stderr, ui.err("       agent proposals <agent-id> [approve <proposal-id> | reject <proposal-id> [--reason TEXT] | --json]"));
+  writeLine(ctx.stderr, ui.err("       agent proposals <agent-id> [approve <proposal-id> | reject <proposal-id> [--reason TEXT] | veto <proposal-id> [--reason TEXT] | --json]"));
   writeLine(ctx.stderr, ui.err("       agent harness revert <agent-id> --to-change <change-id>"));
   return 2;
 }

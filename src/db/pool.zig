@@ -165,7 +165,9 @@ fn isMigrationApplied(conn: *Conn, version: i32) !bool {
         .{version},
     );
     defer result.deinit();
-    return (try result.next()) != null;
+    const applied = (try result.next()) != null;
+    try result.drain();
+    return applied;
 }
 
 fn hasFailedMigrationRecords(conn: *Conn) !bool {
@@ -174,14 +176,18 @@ fn hasFailedMigrationRecords(conn: *Conn) !bool {
         .{},
     );
     defer result.deinit();
-    return (try result.next()) != null;
+    const failed = (try result.next()) != null;
+    try result.drain();
+    return failed;
 }
 
 fn tryAcquireMigrationLock(conn: *Conn) !bool {
     var result = try conn.query("SELECT pg_try_advisory_lock($1)", .{MigrationAdvisoryLockKey});
     defer result.deinit();
     const row = try result.next() orelse return false;
-    return try row.get(bool, 0);
+    const acquired = try row.get(bool, 0);
+    try result.drain();
+    return acquired;
 }
 
 fn acquireMigrationLock(conn: *Conn) !void {
@@ -215,7 +221,9 @@ fn maxAppliedMigrationVersion(conn: *Conn) !i32 {
     var result = try conn.query("SELECT COALESCE(MAX(version), 0) FROM schema_migrations", .{});
     defer result.deinit();
     const row = try result.next() orelse return 0;
-    return try row.get(i32, 0);
+    const version = try row.get(i32, 0);
+    try result.drain();
+    return version;
 }
 
 fn applySqlStatements(conn: *Conn, sql: []const u8) !u32 {
