@@ -9,14 +9,17 @@
 //!   - Exit code: 0 = success, 1 = fatal error.
 
 const std = @import("std");
+const posthog = @import("posthog");
 const zap = @import("zap");
 const db = @import("../db/pool.zig");
 const outbox = @import("../state/outbox_reconciler.zig");
 const billing_adapter = @import("../state/billing_adapter.zig");
 const billing_reconciler = @import("../state/billing_reconciler.zig");
 const id_format = @import("../types/id_format.zig");
+const obs_log = @import("../observability/logging.zig");
 const otel = @import("../observability/otel_export.zig");
 const metrics = @import("../observability/metrics.zig");
+const posthog_events = @import("../observability/posthog_events.zig");
 const proposals = @import("../pipeline/scoring_mod/proposals.zig");
 
 const log = std.log.scoped(.reconcile);
@@ -263,7 +266,7 @@ fn openDbOrExit(alloc: std.mem.Allocator) *db.Pool {
     return pool;
 }
 
-fn reconcileTick(pool: *db.Pool) !outbox.ReconcileResult {
+fn reconcileTick(pool: *db.Pool, posthog_client: ?*posthog.PostHogClient) !outbox.ReconcileResult {
     const conn = try pool.acquire();
     defer pool.release(conn);
     const side_effect_result = try outbox.reconcileStartup(conn);
@@ -274,12 +277,32 @@ fn reconcileTick(pool: *db.Pool) !outbox.ReconcileResult {
     if (proposal_result.ready > 0 or proposal_result.rejected > 0) {
         log.info("proposal_generation_reconciled ready={d} rejected={d}", .{ proposal_result.ready, proposal_result.rejected });
     }
-    const auto_approval_result = try proposals.reconcileDueAutoApprovalProposals(conn, std.heap.page_allocator, 0, std.time.milliTimestamp());
+    const reconcile_now_ms = std.time.milliTimestamp();
+    const auto_approval_result = try proposals.reconcileDueAutoApprovalProposals(conn, std.heap.page_allocator, 0, reconcile_now_ms);
     if (auto_approval_result.applied > 0 or auto_approval_result.config_changed > 0 or auto_approval_result.rejected > 0 or auto_approval_result.expired > 0) {
         log.info(
             "proposal_auto_approval_reconciled applied={d} config_changed={d} rejected={d} expired={d}",
             .{ auto_approval_result.applied, auto_approval_result.config_changed, auto_approval_result.rejected, auto_approval_result.expired },
         );
+    }
+    if (auto_approval_result.applied > 0) {
+        const items = try proposals.listAppliedAutoProposalTelemetryAt(conn, std.heap.page_allocator, reconcile_now_ms);
+        defer {
+            for (items) |*item| item.deinit(std.heap.page_allocator);
+            std.heap.page_allocator.free(items);
+        }
+        for (items) |item| {
+            posthog_events.trackAgentHarnessChanged(
+                posthog_client,
+                posthog_events.distinctIdOrSystem("system:auto"),
+                item.agent_id,
+                item.proposal_id,
+                item.workspace_id,
+                item.approval_mode,
+                item.trigger_reason,
+                item.fields_changed,
+            );
+        }
     }
 
     return .{
@@ -288,9 +311,9 @@ fn reconcileTick(pool: *db.Pool) !outbox.ReconcileResult {
     };
 }
 
-fn runOnce(alloc: std.mem.Allocator, pool: *db.Pool) bool {
+fn runOnce(alloc: std.mem.Allocator, pool: *db.Pool, posthog_client: ?*posthog.PostHogClient) bool {
     const start_ms = std.time.milliTimestamp();
-    const result = reconcileTick(pool) catch |err| {
+    const result = reconcileTick(pool, posthog_client) catch |err| {
         emitResult(alloc, start_ms, null, err);
         return false;
     };
@@ -303,16 +326,31 @@ pub fn run(alloc: std.mem.Allocator) !void {
     const args = parseArgs(alloc) catch |err| printArgErrorAndExit(err);
     const pool = openDbOrExit(alloc);
     defer pool.deinit();
+    const posthog_api_key = std.process.getEnvVarOwned(alloc, "POSTHOG_API_KEY") catch null;
+    defer if (posthog_api_key) |key| alloc.free(key);
+    const ph_client: ?*posthog.PostHogClient = if (posthog_api_key) |key| blk: {
+        break :blk posthog.init(alloc, .{
+            .api_key = key,
+            .host = "https://us.i.posthog.com",
+            .flush_interval_ms = 10_000,
+            .flush_at = 20,
+            .max_retries = 3,
+        }) catch |err| {
+            obs_log.logWarnErr(.reconcile, err, "posthog init failed; analytics disabled", .{});
+            break :blk null;
+        };
+    } else null;
+    defer if (ph_client) |client| client.deinit();
 
     switch (args.mode) {
         .one_shot => {
-            if (!runOnce(alloc, pool)) std.process.exit(1);
+            if (!runOnce(alloc, pool, ph_client)) std.process.exit(1);
         },
-        .daemon => try runDaemon(alloc, pool, args.interval_seconds, args.metrics_port),
+        .daemon => try runDaemon(alloc, pool, ph_client, args.interval_seconds, args.metrics_port),
     }
 }
 
-fn runDaemon(alloc: std.mem.Allocator, pool: *db.Pool, interval_seconds: u64, metrics_port: u16) !void {
+fn runDaemon(alloc: std.mem.Allocator, pool: *db.Pool, posthog_client: ?*posthog.PostHogClient, interval_seconds: u64, metrics_port: u16) !void {
     daemon_shutdown_requested.store(false, .release);
     installSignalHandlers();
 
@@ -355,7 +393,7 @@ fn runDaemon(alloc: std.mem.Allocator, pool: *db.Pool, interval_seconds: u64, me
         state.last_attempt_ms.store(now_ms, .release);
         _ = state.total_ticks.fetchAdd(1, .monotonic);
 
-        const ok = runOnce(alloc, pool);
+        const ok = runOnce(alloc, pool, posthog_client);
         if (ok) {
             state.last_success_ms.store(now_ms, .release);
             state.consecutive_failures.store(0, .release);

@@ -131,12 +131,12 @@ Agents that have not earned TRUSTED status require explicit operator action on e
 
 ## 5.0 Harness Change Application And Tracking
 
-**Status:** PENDING
+**Status:** DONE
 
 Approved proposals (auto or manual) are applied atomically; every change is versioned and reversible.
 
 **Dimensions:**
-- 5.1 PENDING On APPROVED or auto-apply: apply `proposed_changes` through the existing harness control plane path (compile → activate). If compile fails, reject proposal with status `REJECTED` and reason `COMPILE_FAILED`. If activate fails, reject with `ACTIVATE_FAILED`. Create a `harness_change_log` record per field changed:
+- 5.1 DONE On APPROVED or auto-apply: apply `proposed_changes` through the existing harness control plane path (compile → activate). If compile fails, reject proposal with status `REJECTED` and reason `COMPILE_FAILED`. If activate fails, reject with `ACTIVATE_FAILED`. Create a `harness_change_log` record per field changed:
   ```sql
   CREATE TABLE harness_change_log (
       change_id       UUID PRIMARY KEY,
@@ -158,9 +158,11 @@ Approved proposals (auto or manual) are applied atomically; every change is vers
   GRANT SELECT, INSERT ON harness_change_log TO worker_accessor;
   GRANT SELECT, INSERT ON harness_change_log TO api_accessor;
   ```
-- 5.2 PENDING Applied change is immediately reflected in the next run's profile resolution (no restart required); harness control plane already supports this via workspace_active_profile. No mid-run config mutation.
-- 5.3 PENDING Revert path: `zombiectl agent harness revert <agent-id> --to-change <change-id>` restores the harness to pre-change state via compile → activate with old_value; creates a new `harness_change_log` entry with `reverted_from` reference; revert does not affect trust level
-- 5.4 PENDING PostHog event `agent.harness.changed` emitted on apply with fields: `agent_id`, `proposal_id`, `approval_mode`, `fields_changed` (array), `trigger_reason`
+- 5.2 DONE Applied change is immediately reflected in the next run's profile resolution (no restart required); harness control plane already supports this via `workspace_active_config`. No mid-run config mutation.
+- 5.3 DONE Revert path: `zombiectl agent harness revert <agent-id> --to-change <change-id>` restores the harness to pre-change state via compile → activate with old_value; creates a new `harness_change_log` entry with `reverted_from` reference; revert does not affect trust level
+- 5.4 DONE PostHog event `agent.harness.changed` emitted on apply with fields: `agent_id`, `proposal_id`, `approval_mode`, `fields_changed` (array), `trigger_reason`
+
+**Verification note:** DB-backed proposal apply and revert coverage now verifies atomic `harness_change_log` persistence for manual and auto-applied proposals, `COMPILE_FAILED` rejection when stored proposal payloads can no longer compile, `ACTIVATE_FAILED` rejection when activation context is inconsistent, immediate `workspace_active_config` updates so the next profile resolution sees the applied harness without restart, applied-proposal telemetry payload loading used by the manual-approval HTTP path and auto-approval reconcile tick for `agent.harness.changed`, and operator-triggered revert flows that restore prior `stage_insert` / `stage_binding` topology state while appending a new `reverted_from` audit row.
 
 ---
 
@@ -194,11 +196,11 @@ Measure whether applied proposals actually improve the agent's score.
 - [x] 7.10 TRUSTED agent drops an agent-attributable Silver run → `trust_streak_runs` resets to 0 → next proposal requires manual approval
 - [x] 7.11 TRUSTED agent has a TIMEOUT (infra) run → `trust_streak_runs` unchanged → trust preserved
 - [x] 7.12 CAS version check: proposal generated against config_version_id X, operator changes config, auto-apply attempt rejects with CONFIG_CHANGED_SINCE_PROPOSAL
-- [ ] 7.13 Revert restores previous value exactly; `applied_by` on revert row shows operator identity
+- [x] 7.13 Revert restores previous value exactly; `applied_by` on revert row shows operator identity
 - [ ] 7.14 No harness change applied without a proposal record in APPROVED/VETO_WINDOW state (enforced at application logic level)
 - [ ] 7.15 Demo evidence: agent earns TRUSTED, generates auto-approved proposal, harness updates, score improves over next 5 runs
 
-**Verification note:** `node --test zombiectl/test/agent_proposals.unit.test.js`, `zig build test`, `HANDLER_DB_TEST_URL=postgres://usezombie:usezombie@localhost:5432/usezombiedb make test-integration-db`, and `make test` pass in this worktree. The new coverage now includes manual proposal listing, manual approve/apply with operator identity, manual rejection with persisted reason, stale manual proposal expiry, TRUSTED veto-window creation, overdue reconcile pickup, and CAS rejection on config drift. Operator veto and revert flows remain pending, so their acceptance criteria stay open.
+**Verification note:** `zig build test` passes. `make test-unit` advances through the touched Zig and `zombiectl` unit suites in this worktree, but the aggregate target still stops at the website package because `vitest` is not available locally. `HANDLER_DB_TEST_URL=postgres://usezombie:usezombie@localhost:5432/usezombiedb make test-integration-db` passes. The new coverage now includes manual and auto proposal apply with atomic `harness_change_log` records, failure-specific `COMPILE_FAILED` / `ACTIVATE_FAILED` proposal rejection, immediate active-config flips for the next profile resolution, applied-proposal telemetry payload loading for `agent.harness.changed`, manual proposal listing, manual rejection with persisted reason, stale manual proposal expiry, TRUSTED veto-window creation, overdue reconcile pickup, CAS rejection on config drift, and operator-triggered revert flows that restore prior harness state while appending `reverted_from` audit rows. Operator veto remains pending.
 
 ---
 

@@ -63,6 +63,7 @@ pub const ERR_PROPOSAL_WOULD_NOT_COMPILE = "UZ-PROPOSAL-014";
 pub const ERR_PROPOSAL_NO_VALID_TEMPLATE = "UZ-PROPOSAL-015";
 pub const ERR_PROPOSAL_GENERATION_FAILED = "UZ-PROPOSAL-016";
 pub const ERR_PROPOSAL_NOT_FOUND = "UZ-PROPOSAL-017";
+pub const ERR_HARNESS_CHANGE_NOT_FOUND = "UZ-HARNESS-001";
 
 pub fn docsRef(code: []const u8) struct { base: []const u8, code: []const u8 } {
     return .{

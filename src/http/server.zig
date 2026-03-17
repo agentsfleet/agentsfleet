@@ -70,6 +70,7 @@ fn dispatchMatchedRoute(r: zap.Request, path: []const u8) bool {
         .list_agent_proposals => |agent_id| if (r.methodAsEnum() == .GET) handler.handleListAgentProposals(g_ctx, r, agent_id) else respondMethodNotAllowed(r),
         .approve_agent_proposal => |route| if (r.methodAsEnum() == .POST) handler.handleApproveAgentProposal(g_ctx, r, route.agent_id, route.proposal_id) else respondMethodNotAllowed(r),
         .reject_agent_proposal => |route| if (r.methodAsEnum() == .POST) handler.handleRejectAgentProposal(g_ctx, r, route.agent_id, route.proposal_id) else respondMethodNotAllowed(r),
+        .revert_agent_harness_change => |route| if (r.methodAsEnum() == .POST) handler.handleRevertAgentHarnessChange(g_ctx, r, route.agent_id, route.change_id) else respondMethodNotAllowed(r),
     }
     return true;
 }

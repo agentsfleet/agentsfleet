@@ -8,6 +8,7 @@ pub const AutoApprovalReconcileResult = shared.AutoApprovalReconcileResult;
 
 const ProposalAutoApprovalError = error{
     MissingConfigVersionContext,
+    ActivateTargetMissing,
 };
 
 pub const ApplyProposalResult = enum {
@@ -29,6 +30,18 @@ const DueProposal = struct {
         alloc.free(self.workspace_id);
         alloc.free(self.config_version_id);
         alloc.free(self.proposed_changes);
+    }
+};
+
+const ChangeLogEntry = struct {
+    field_name: []u8,
+    old_value: []u8,
+    new_value: []u8,
+
+    fn deinit(self: *ChangeLogEntry, alloc: std.mem.Allocator) void {
+        alloc.free(self.field_name);
+        alloc.free(self.old_value);
+        alloc.free(self.new_value);
     }
 };
 
@@ -144,20 +157,85 @@ pub fn applyProposal(
         config_version_id,
         proposed_changes,
     ) catch {
-        try rejectProposal(conn, proposal_id, shared.rejectionCodeForError(shared.ProposalError.ProposalWouldNotCompile), now_ms);
+        try rejectProposal(conn, proposal_id, shared.REJECTION_REASON_COMPILE_FAILED, now_ms);
         try commitTx(conn);
         tx_open = false;
         return .rejected;
     };
     defer alloc.free(candidate_profile_json);
 
-    const activated_config_version_id = try persistCandidateConfigVersion(conn, alloc, agent_id, candidate_profile_json, now_ms);
+    const change_log_entries = collectChangeLogEntries(alloc, proposed_changes) catch {
+        try rejectProposal(conn, proposal_id, shared.REJECTION_REASON_COMPILE_FAILED, now_ms);
+        try commitTx(conn);
+        tx_open = false;
+        return .rejected;
+    };
+    defer {
+        for (change_log_entries) |*entry| entry.deinit(alloc);
+        alloc.free(change_log_entries);
+    }
+
+    const activated_config_version_id = persistCandidateConfigVersion(conn, alloc, agent_id, candidate_profile_json, now_ms) catch |err| switch (err) {
+        ProposalAutoApprovalError.MissingConfigVersionContext => {
+            rollbackTx(conn);
+            tx_open = false;
+            try rejectProposal(conn, proposal_id, shared.REJECTION_REASON_ACTIVATE_FAILED, now_ms);
+            return .rejected;
+        },
+        else => return err,
+    };
     defer alloc.free(activated_config_version_id);
-    try activateAppliedProposal(conn, agent_id, workspace_id, proposal_id, activated_config_version_id, applied_by, now_ms);
+    activateAppliedProposal(conn, agent_id, workspace_id, proposal_id, activated_config_version_id, applied_by, now_ms) catch |err| switch (err) {
+        ProposalAutoApprovalError.ActivateTargetMissing => {
+            rollbackTx(conn);
+            tx_open = false;
+            try rejectProposal(conn, proposal_id, shared.REJECTION_REASON_ACTIVATE_FAILED, now_ms);
+            return .rejected;
+        },
+        else => return err,
+    };
+    try insertHarnessChangeLog(conn, alloc, agent_id, proposal_id, workspace_id, change_log_entries, applied_by, now_ms);
 
     try commitTx(conn);
     tx_open = false;
     return .applied;
+}
+
+fn collectChangeLogEntries(alloc: std.mem.Allocator, proposed_changes: []const u8) ![]ChangeLogEntry {
+    const parsed = try std.json.parseFromSlice(std.json.Value, alloc, proposed_changes, .{});
+    defer parsed.deinit();
+
+    const items = switch (parsed.value) {
+        .array => |value| value.items,
+        else => return shared.ProposalError.ProposalNotArray,
+    };
+
+    var list: std.ArrayList(ChangeLogEntry) = .{};
+    errdefer {
+        for (list.items) |*entry| entry.deinit(alloc);
+        list.deinit(alloc);
+    }
+
+    for (items) |item| {
+        const obj = switch (item) {
+            .object => |value| value,
+            else => return shared.ProposalError.ProposalChangeNotObject,
+        };
+        const target_field = switch (obj.get(shared.JSON_KEY_TARGET_FIELD) orelse return shared.ProposalError.MissingTargetField) {
+            .string => |value| value,
+            else => return shared.ProposalError.MissingTargetField,
+        };
+        const proposed_value = obj.get(shared.JSON_KEY_PROPOSED_VALUE) orelse return shared.ProposalError.InvalidProposalJson;
+        const current_value = obj.get(shared.JSON_KEY_CURRENT_VALUE) orelse std.json.Value{ .null = {} };
+
+        try list.append(alloc, .{
+            .field_name = try alloc.dupe(u8, target_field),
+            .old_value = try std.json.Stringify.valueAlloc(alloc, current_value, .{}),
+            .new_value = try std.json.Stringify.valueAlloc(alloc, proposed_value, .{}),
+        });
+    }
+
+    return try list.toOwnedSlice(alloc);
 }
 
 fn loadCurrentActiveConfigVersionId(
@@ -182,7 +260,7 @@ fn loadCurrentActiveConfigVersionId(
     return result;
 }
 
-fn persistCandidateConfigVersion(
+pub fn persistCandidateConfigVersion(
     conn: *pg.Conn,
     alloc: std.mem.Allocator,
     agent_id: []const u8,
@@ -231,6 +309,40 @@ fn persistCandidateConfigVersion(
     return config_version_id;
 }
 
+pub fn activateConfigVersion(
+    conn: *pg.Conn,
+    agent_id: []const u8,
+    workspace_id: []const u8,
+    activated_config_version_id: []const u8,
+    applied_by: []const u8,
+    now_ms: i64,
+) !void {
+    var q = try conn.query(
+        \\UPDATE workspace_active_config
+        \\SET config_version_id = $2,
+        \\    activated_by = $3,
+        \\    activated_at = $4
+        \\WHERE workspace_id = $1
+        \\RETURNING workspace_id
+    , .{
+        workspace_id,
+        activated_config_version_id,
+        applied_by,
+        now_ms,
+    });
+    const updated = (try q.next()) != null;
+    if (updated) q.drain() catch {};
+    q.deinit();
+    if (!updated) return ProposalAutoApprovalError.ActivateTargetMissing;
+
+    _ = try conn.exec(
+        \\UPDATE agent_profiles
+        \\SET status = CASE WHEN agent_id = $1 THEN 'ACTIVE' ELSE status END,
+        \\    updated_at = $2
+        \\WHERE workspace_id = $3
+    , .{ agent_id, now_ms, workspace_id });
+}
+
 fn activateAppliedProposal(
     conn: *pg.Conn,
     agent_id: []const u8,
@@ -240,25 +352,7 @@ fn activateAppliedProposal(
     applied_by: []const u8,
     now_ms: i64,
 ) !void {
-    _ = try conn.exec(
-        \\UPDATE workspace_active_config
-        \\SET config_version_id = $2,
-        \\    activated_by = $3,
-        \\    activated_at = $4
-        \\WHERE workspace_id = $1
-    , .{
-        workspace_id,
-        activated_config_version_id,
-        applied_by,
-        now_ms,
-    });
-
-    _ = try conn.exec(
-        \\UPDATE agent_profiles
-        \\SET status = CASE WHEN agent_id = $1 THEN 'ACTIVE' ELSE status END,
-        \\    updated_at = $2
-        \\WHERE workspace_id = $3
-    , .{ agent_id, now_ms, workspace_id });
+    try activateConfigVersion(conn, agent_id, workspace_id, activated_config_version_id, applied_by, now_ms);
 
     _ = try conn.exec(
         \\UPDATE agent_improvement_proposals
@@ -272,6 +366,38 @@ fn activateAppliedProposal(
         applied_by,
         now_ms,
     });
+}
+
+fn insertHarnessChangeLog(
+    conn: *pg.Conn,
+    alloc: std.mem.Allocator,
+    agent_id: []const u8,
+    proposal_id: []const u8,
+    workspace_id: []const u8,
+    entries: []const ChangeLogEntry,
+    applied_by: []const u8,
+    now_ms: i64,
+) !void {
+    for (entries) |entry| {
+        const change_id = try id_format.generateTransitionId(alloc);
+        defer alloc.free(change_id);
+
+        _ = try conn.exec(
+            \\INSERT INTO harness_change_log
+            \\  (change_id, agent_id, proposal_id, workspace_id, field_name, old_value, new_value, applied_at, applied_by, reverted_from)
+            \\VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NULL)
+        , .{
+            change_id,
+            agent_id,
+            proposal_id,
+            workspace_id,
+            entry.field_name,
+            entry.old_value,
+            entry.new_value,
+            now_ms,
+            applied_by,
+        });
+    }
 }
 
 fn markProposalApprovedIfExpected(
