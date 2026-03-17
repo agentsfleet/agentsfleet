@@ -110,6 +110,7 @@ pub fn resolveRole(role_id: []const u8, skill_id: []const u8) ?RoleBinding {
 pub const SkillRegistryError = error{
     InvalidSkillId,
     DuplicateSkillId,
+    OutOfMemory,
 };
 
 pub const SkillRegistry = struct {

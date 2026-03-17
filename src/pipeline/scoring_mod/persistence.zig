@@ -10,10 +10,27 @@ const trust = @import("trust.zig");
 const DEFAULT_SCORING_CONTEXT_MAX_TOKENS: u32 = 2048;
 const MIN_SCORING_CONTEXT_MAX_TOKENS: u32 = 512;
 const MAX_SCORING_CONTEXT_MAX_TOKENS: u32 = 8192;
-const TOKEN_ESTIMATE_DIVISOR: u32 = 4;
+const MAX_STDERR_LINES: usize = 200;
+const REDACTED = "[REDACTED]";
 const ORIENTATION_BLOCK =
     "## Agent Performance Context (v1)\n" ++
     "You have no prior score history. Aim for clean terminal states, minimal resource use, and valid output format.";
+const NEVER_FLAG_KEYS = [_][]const u8{
+    "ENCRYPTION_MASTER_KEY",
+    "GITHUB_APP_ID",
+    "GITHUB_APP_PRIVATE_KEY",
+    "OIDC_PROVIDER",
+    "OIDC_JWKS_URL",
+    "OIDC_ISSUER",
+    "OIDC_AUDIENCE",
+    "API_KEY",
+    "DATABASE_URL_API",
+    "DATABASE_URL_WORKER",
+    "REDIS_URL_API",
+    "REDIS_URL_WORKER",
+    "POSTHOG_API_KEY",
+    "RESEND_API_KEY",
+};
 
 pub fn orientationContext(alloc: std.mem.Allocator) ![]const u8 {
     return alloc.dupe(u8, ORIENTATION_BLOCK);
@@ -223,10 +240,9 @@ fn scoreTierLabel(score: i32) []const u8 {
     return "Bronze";
 }
 
-fn approximateTokenCount(content: []const u8) u32 {
-    // Align with NullClaw runtime compaction heuristic tokenEstimate:
-    // estimated_tokens = (chars + 3) / 4
-    return @intCast((content.len + (TOKEN_ESTIMATE_DIVISOR - 1)) / TOKEN_ESTIMATE_DIVISOR);
+pub fn estimateScoringContextTokens(content: []const u8) u32 {
+    // Match NullClaw's current runtime compaction heuristic: (total_chars + 3) / 4.
+    return @intCast((content.len + 3) / 4);
 }
 
 fn buildScoringContextBlock(
@@ -266,13 +282,84 @@ fn buildScoringContextBlock(
         }
 
         const candidate = try buf.toOwnedSlice(alloc);
-        if (approximateTokenCount(candidate) <= max_tokens) return candidate;
+        if (estimateScoringContextTokens(candidate) <= max_tokens) return candidate;
         alloc.free(candidate);
 
         keep_count -= 1;
     }
 
     return alloc.dupe(u8, ORIENTATION_BLOCK);
+}
+
+fn scrubSecretAssignments(alloc: std.mem.Allocator, input: []const u8) ![]u8 {
+    var out = std.ArrayList(u8){};
+    errdefer out.deinit(alloc);
+
+    var i: usize = 0;
+    while (i < input.len) {
+        var matched_key: ?[]const u8 = null;
+        for (NEVER_FLAG_KEYS) |key| {
+            if (i + key.len + 1 <= input.len and std.mem.eql(u8, input[i .. i + key.len], key) and input[i + key.len] == '=') {
+                matched_key = key;
+                break;
+            }
+        }
+
+        if (matched_key) |key| {
+            try out.appendSlice(alloc, key);
+            try out.append(alloc, '=');
+            try out.appendSlice(alloc, REDACTED);
+            i += key.len + 1;
+            while (i < input.len and input[i] != '\n' and input[i] != '\r' and input[i] != ' ' and input[i] != '\t' and input[i] != '"' and input[i] != '\'') : (i += 1) {}
+            continue;
+        }
+
+        if (i + "Bearer ".len <= input.len and std.ascii.eqlIgnoreCase(input[i .. i + "Bearer ".len], "Bearer ")) {
+            try out.appendSlice(alloc, "Bearer ");
+            try out.appendSlice(alloc, REDACTED);
+            i += "Bearer ".len;
+            while (i < input.len and input[i] != '\n' and input[i] != '\r' and input[i] != ' ' and input[i] != '\t') : (i += 1) {}
+            continue;
+        }
+
+        if (i + "-----BEGIN".len <= input.len and std.mem.eql(u8, input[i .. i + "-----BEGIN".len], "-----BEGIN")) {
+            const end_idx = std.mem.indexOfPos(u8, input, i, "-----END");
+            if (end_idx) |end_start| {
+                const line_end = std.mem.indexOfScalarPos(u8, input, end_start, '\n') orelse input.len;
+                try out.appendSlice(alloc, REDACTED);
+                i = line_end;
+                continue;
+            }
+        }
+
+        try out.append(alloc, input[i]);
+        i += 1;
+    }
+
+    return try out.toOwnedSlice(alloc);
+}
+
+fn lastLinesSlice(input: []const u8, max_lines: usize) []const u8 {
+    if (input.len == 0) return input;
+    var line_count: usize = 0;
+    var idx: usize = input.len;
+    while (idx > 0) {
+        idx -= 1;
+        if (input[idx] == '\n') {
+            line_count += 1;
+            if (line_count >= max_lines) return input[idx + 1 ..];
+        }
+    }
+    return input;
+}
+
+fn scrubStderrTail(alloc: std.mem.Allocator, raw_tail: ?[]const u8) !?[]const u8 {
+    const raw = raw_tail orelse return null;
+    const trimmed = std.mem.trim(u8, raw, " \t\r\n");
+    if (trimmed.len == 0) return null;
+    const tail = lastLinesSlice(trimmed, MAX_STDERR_LINES);
+    const scrubbed = try scrubSecretAssignments(alloc, tail);
+    return scrubbed;
 }
 
 pub fn buildScoringContextForEcho(
@@ -401,6 +488,8 @@ pub fn persistRunAnalysis(
     defer alloc.free(failure_signals_json);
     const improvement_hints_json = try std.json.Stringify.valueAlloc(alloc, improvement_hints.items, .{});
     defer alloc.free(improvement_hints_json);
+    const scrubbed_stderr_tail = try scrubStderrTail(alloc, scoring_state.stderr_tail);
+    defer if (scrubbed_stderr_tail) |value| alloc.free(value);
 
     const analysis_id = try id_format.generateTransitionId(alloc);
     defer alloc.free(analysis_id);
@@ -419,7 +508,7 @@ pub fn persistRunAnalysis(
         if (maybe_class) |fc| fc.isInfra() else false,
         failure_signals_json,
         improvement_hints_json,
-        @as(?[]const u8, null),
+        scrubbed_stderr_tail,
         std.time.milliTimestamp(),
     });
 }

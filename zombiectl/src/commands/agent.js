@@ -1,5 +1,6 @@
 import { commandAgentScores } from "./agent_scores.js";
 import { commandAgentProfile } from "./agent_profile.js";
+import { commandAgentProposals } from "./agent_proposals.js";
 import { validateRequiredId } from "../program/validate.js";
 
 export async function commandAgent(ctx, args, workspaces, deps) {
@@ -35,7 +36,21 @@ export async function commandAgent(ctx, args, workspaces, deps) {
     return commandAgentProfile(ctx, parsed, agentId, deps);
   }
 
+  if (action === "proposals") {
+    if (!agentId) {
+      writeLine(ctx.stderr, ui.err("agent proposals requires <agent-id>"));
+      return 2;
+    }
+    const check = validateRequiredId(agentId, "agent-id");
+    if (!check.ok) {
+      writeLine(ctx.stderr, ui.err(check.message));
+      return 2;
+    }
+    return commandAgentProposals(ctx, parsed, agentId, deps);
+  }
+
   writeLine(ctx.stderr, ui.err("usage: agent scores <agent-id> [--limit N] [--starting-after ID] [--json]"));
   writeLine(ctx.stderr, ui.err("       agent profile <agent-id> [--json]"));
+  writeLine(ctx.stderr, ui.err("       agent proposals <agent-id> [approve <proposal-id> | reject <proposal-id> [--reason TEXT] | --json]"));
   return 2;
 }

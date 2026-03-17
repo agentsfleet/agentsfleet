@@ -59,6 +59,7 @@ fn dispatchMatchedRoute(r: zap.Request, path: []const u8) bool {
         .pause_workspace => |workspace_id| if (r.methodAsEnum() == .POST) handler.handlePauseWorkspace(g_ctx, r, workspace_id) else respondMethodNotAllowed(r),
         .upgrade_workspace_to_scale => |workspace_id| if (r.methodAsEnum() == .POST) handler.handleUpgradeWorkspaceToScale(g_ctx, r, workspace_id) else respondMethodNotAllowed(r),
         .apply_workspace_billing_event => |workspace_id| if (r.methodAsEnum() == .POST) handler.handleApplyWorkspaceBillingEvent(g_ctx, r, workspace_id) else respondMethodNotAllowed(r),
+        .set_workspace_scoring_config => |workspace_id| if (r.methodAsEnum() == .POST) handler.handleSetWorkspaceScoringConfig(g_ctx, r, workspace_id) else respondMethodNotAllowed(r),
         .put_harness_source => |workspace_id| if (r.methodAsEnum() == .PUT) handler.handlePutHarnessSource(g_ctx, r, workspace_id) else respondMethodNotAllowed(r),
         .compile_harness => |workspace_id| if (r.methodAsEnum() == .POST) handler.handleCompileHarness(g_ctx, r, workspace_id) else respondMethodNotAllowed(r),
         .activate_harness => |workspace_id| if (r.methodAsEnum() == .POST) handler.handleActivateHarness(g_ctx, r, workspace_id) else respondMethodNotAllowed(r),
@@ -66,6 +67,9 @@ fn dispatchMatchedRoute(r: zap.Request, path: []const u8) bool {
         .sync_workspace => |workspace_id| if (r.methodAsEnum() == .POST) handler.handleSyncSpecs(g_ctx, r, workspace_id) else respondMethodNotAllowed(r),
         .get_agent => |agent_id| if (r.methodAsEnum() == .GET) handler.handleGetAgent(g_ctx, r, agent_id) else respondMethodNotAllowed(r),
         .get_agent_scores => |agent_id| if (r.methodAsEnum() == .GET) handler.handleGetAgentScores(g_ctx, r, agent_id) else respondMethodNotAllowed(r),
+        .list_agent_proposals => |agent_id| if (r.methodAsEnum() == .GET) handler.handleListAgentProposals(g_ctx, r, agent_id) else respondMethodNotAllowed(r),
+        .approve_agent_proposal => |route| if (r.methodAsEnum() == .POST) handler.handleApproveAgentProposal(g_ctx, r, route.agent_id, route.proposal_id) else respondMethodNotAllowed(r),
+        .reject_agent_proposal => |route| if (r.methodAsEnum() == .POST) handler.handleRejectAgentProposal(g_ctx, r, route.agent_id, route.proposal_id) else respondMethodNotAllowed(r),
     }
     return true;
 }

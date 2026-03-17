@@ -36,6 +36,8 @@ pub const queryLatencyBaseline = persistence.queryLatencyBaseline;
 pub const updateLatencyBaseline = persistence.updateLatencyBaseline;
 pub const queryScoringConfig = persistence.queryScoringConfig;
 pub const buildScoringContextForEcho = persistence.buildScoringContextForEcho;
+pub const estimateScoringContextTokens = persistence.estimateScoringContextTokens;
+pub const persistRunAnalysis = persistence.persistRunAnalysis;
 pub const orientationContext = persistence.orientationContext;
 
 pub fn scoreRunIfTerminal(

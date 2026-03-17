@@ -12,6 +12,7 @@ pub const PROPOSAL_ACTOR = "proposal_generator";
 pub const COMPILE_ENGINE_DETERMINISTIC_V1 = "deterministic-v1";
 pub const STATUS_REJECTED = "REJECTED";
 pub const STATUS_PENDING_REVIEW = "PENDING_REVIEW";
+pub const STATUS_APPROVED = "APPROVED";
 pub const STATUS_VETO_WINDOW = "VETO_WINDOW";
 pub const STATUS_APPLIED = "APPLIED";
 pub const STATUS_CONFIG_CHANGED = "CONFIG_CHANGED";
@@ -19,8 +20,11 @@ pub const STATUS_VETOED = "VETOED";
 pub const TRUST_LEVEL_TRUSTED = "TRUSTED";
 pub const DEFAULT_RECONCILE_BATCH_LIMIT: u32 = 32;
 pub const AUTO_APPLY_WINDOW_MS: i64 = 24 * 60 * 60 * 1000;
+pub const MANUAL_PROPOSAL_EXPIRY_MS: i64 = 7 * 24 * 60 * 60 * 1000;
 pub const APPLIED_BY_SYSTEM_AUTO = "system:auto";
+pub const APPLIED_BY_OPERATOR_PREFIX = "operator:";
 pub const REJECTION_REASON_CONFIG_CHANGED_SINCE_PROPOSAL = "CONFIG_CHANGED_SINCE_PROPOSAL";
+pub const REJECTION_REASON_EXPIRED = "EXPIRED";
 pub const VALIDATION_STATUS_AUTO_APPLIED_JSON = "{\"status\":\"auto_applied\"}";
 pub const JSON_KEY_TARGET_FIELD = "target_field";
 pub const JSON_KEY_CURRENT_VALUE = "current_value";
@@ -122,6 +126,39 @@ pub const AutoApprovalReconcileResult = struct {
     applied: u32 = 0,
     config_changed: u32 = 0,
     rejected: u32 = 0,
+    expired: u32 = 0,
+};
+
+pub const ManualProposalSummary = struct {
+    proposal_id: []u8,
+    trigger_reason: []u8,
+    proposed_changes: []u8,
+    config_version_id: []u8,
+    created_at: i64,
+    updated_at: i64,
+
+    pub fn deinit(self: *ManualProposalSummary, alloc: std.mem.Allocator) void {
+        alloc.free(self.proposal_id);
+        alloc.free(self.trigger_reason);
+        alloc.free(self.proposed_changes);
+        alloc.free(self.config_version_id);
+    }
+};
+
+pub const ProposalLookup = struct {
+    proposal_id: []u8,
+    agent_id: []u8,
+    workspace_id: []u8,
+    config_version_id: []u8,
+    proposed_changes: []u8,
+
+    pub fn deinit(self: *ProposalLookup, alloc: std.mem.Allocator) void {
+        alloc.free(self.proposal_id);
+        alloc.free(self.agent_id);
+        alloc.free(self.workspace_id);
+        alloc.free(self.config_version_id);
+        alloc.free(self.proposed_changes);
+    }
 };
 
 pub fn rejectionCodeForError(err: anyerror) []const u8 {

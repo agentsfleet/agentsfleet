@@ -4,6 +4,7 @@ import { findRoute } from "./program/routes.js";
 import { registerProgramCommands } from "./program/command-registry.js";
 import { commandHarness as commandHarnessModule } from "./commands/harness.js";
 import { commandAgent as commandAgentModule } from "./commands/agent.js";
+import { commandAdmin as commandAdminModule } from "./commands/admin.js";
 import { ui, printKeyValue, printTable } from "./ui-theme.js";
 import { createSpinner } from "./ui-progress.js";
 import {
@@ -130,6 +131,14 @@ export async function runCli(argv, io = {}) {
       printJson,
       printKeyValue,
       printTable,
+      writeLine,
+    }),
+    admin: (routeArgs) => commandAdminModule(ctx, routeArgs, workspaces, {
+      parseFlags,
+      request,
+      apiHeaders,
+      ui,
+      printJson,
       writeLine,
     }),
   });

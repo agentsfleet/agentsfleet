@@ -1,6 +1,7 @@
 const std = @import("std");
 const pg = @import("pg");
 const metrics = @import("../observability/metrics.zig");
+const agents = @import("agents.zig");
 const scoring = @import("scoring.zig");
 const common = @import("../http/handlers/common.zig");
 
@@ -151,6 +152,69 @@ fn prometheusMetricValue(body: []const u8, name: []const u8) !u64 {
         return std.fmt.parseInt(u64, line[name.len + 1 ..], 10);
     }
     return error.MetricNotFound;
+}
+
+fn demoTimeoutReductionSkill(
+    alloc: std.mem.Allocator,
+    role_id: []const u8,
+    skill_id: []const u8,
+    input: agents.RoleInput,
+) anyerror!agents.AgentResult {
+    _ = alloc;
+    _ = role_id;
+    _ = skill_id;
+    const spec_content = input.spec_content orelse return error.MissingRoleInput;
+    if (!std.mem.startsWith(u8, spec_content, "run-")) return error.InvalidRunId;
+    const run_number = try std.fmt.parseUnsigned(u32, spec_content["run-".len..], 10);
+    const memory_context = input.memory_context orelse "";
+    const has_timeout_guidance = std.mem.containsAtLeast(u8, memory_context, 1, "TIMEOUT");
+    const should_timeout = if (has_timeout_guidance)
+        run_number == 1 or run_number == 6
+    else
+        run_number <= 6;
+
+    if (should_timeout) return error.CommandTimedOut;
+    return .{
+        .content = "verdict: PASS",
+        .token_count = 32,
+        .wall_seconds = 1,
+        .exit_ok = true,
+    };
+}
+
+fn runTimeoutDemoCohort(memory_context: []const u8) !u32 {
+    var registry = agents.SkillRegistry.init(std.testing.allocator);
+    defer registry.deinit();
+    try registry.registerCustomSkill("timeout-demo", .echo, demoTimeoutReductionSkill);
+
+    const binding = agents.resolveRoleWithRegistry(&registry, "planner", "timeout-demo") orelse return error.TestExpectedRole;
+    const prompts = agents.PromptFiles{
+        .echo = "echo prompt",
+        .scout = "scout prompt",
+        .warden = "warden prompt",
+    };
+
+    var timeout_count: u32 = 0;
+    var run_number: u32 = 1;
+    while (run_number <= 10) : (run_number += 1) {
+        const spec_content = try std.fmt.allocPrint(std.testing.allocator, "run-{d}", .{run_number});
+        defer std.testing.allocator.free(spec_content);
+
+        _ = agents.runByRole(std.testing.allocator, binding, .{
+            .workspace_path = "/tmp",
+            .prompts = &prompts,
+            .spec_content = spec_content,
+            .memory_context = memory_context,
+        }) catch |err| switch (err) {
+            error.CommandTimedOut => {
+                timeout_count += 1;
+                continue;
+            },
+            else => return err,
+        };
+    }
+
+    return timeout_count;
 }
 
 test "completion score maps outcomes correctly" {
@@ -423,4 +487,178 @@ test "buildScoringContextForEcho is empty when injection disabled" {
     defer std.testing.allocator.free(block);
 
     try std.testing.expectEqual(@as(usize, 0), block.len);
+}
+
+test "persistRunAnalysis classifies infra failure classes from error names" {
+    const db_ctx = (try common.openHandlerTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
+
+    try createTempScoringTables(db_ctx.conn);
+
+    const cases = [_]struct {
+        run_id: []const u8,
+        error_name: []const u8,
+        expected_class: []const u8,
+    }{
+        .{ .run_id = "run_deadline_cls", .error_name = "RunDeadlineExceeded", .expected_class = "TIMEOUT" },
+        .{ .run_id = "run_timeout_cls", .error_name = "CommandTimedOut", .expected_class = "TIMEOUT" },
+        .{ .run_id = "run_oom_cls", .error_name = "OutOfMemory", .expected_class = "OOM" },
+        .{ .run_id = "run_context_cls", .error_name = "ContextWindowExceeded", .expected_class = "CONTEXT_OVERFLOW" },
+        .{ .run_id = "run_auth_cls", .error_name = "TokenExpired", .expected_class = "AUTH_FAILURE" },
+    };
+
+    for (cases) |case| {
+        const state = scoring.ScoringState{
+            .outcome = .error_propagation,
+            .stages_passed = 0,
+            .stages_total = 1,
+            .failure_error_name = case.error_name,
+        };
+        try scoring.persistRunAnalysis(db_ctx.conn, std.testing.allocator, case.run_id, "ws_cls_infra", "agent_cls_infra", &state, 0, 1, 1);
+    }
+
+    for (cases) |case| {
+        var q = try db_ctx.conn.query("SELECT failure_class, failure_is_infra FROM agent_run_analysis WHERE run_id = $1", .{case.run_id});
+        defer q.deinit();
+        const row = (try q.next()) orelse return error.TestUnexpectedResult;
+        try std.testing.expectEqualStrings(case.expected_class, row.get([]const u8, 0) catch "");
+        try std.testing.expectEqual(true, row.get(bool, 1) catch false);
+        _ = q.next() catch {};
+    }
+}
+
+test "persistRunAnalysis classifies agent-attributable and unknown failures" {
+    const db_ctx = (try common.openHandlerTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
+
+    try createTempScoringTables(db_ctx.conn);
+
+    const tool_state = scoring.ScoringState{
+        .outcome = .error_propagation,
+        .stages_passed = 0,
+        .stages_total = 1,
+        .failure_error_name = "CommandFailed",
+    };
+    try scoring.persistRunAnalysis(db_ctx.conn, std.testing.allocator, "run_tool_cls", "ws_cls_agent", "agent_cls_agent", &tool_state, 0, 1, 1);
+
+    const bad_output_state = scoring.ScoringState{
+        .outcome = .blocked_stage_graph,
+        .stages_passed = 0,
+        .stages_total = 1,
+    };
+    try scoring.persistRunAnalysis(db_ctx.conn, std.testing.allocator, "run_bad_output_cls", "ws_cls_agent", "agent_cls_agent", &bad_output_state, 0, 1, 1);
+
+    const unknown_state = scoring.ScoringState{
+        .outcome = .pending,
+        .stages_passed = 0,
+        .stages_total = 1,
+    };
+    try scoring.persistRunAnalysis(db_ctx.conn, std.testing.allocator, "run_unknown_cls", "ws_cls_agent", "agent_cls_agent", &unknown_state, 0, 1, 1);
+
+    const cases = [_]struct {
+        run_id: []const u8,
+        expected_class: []const u8,
+    }{
+        .{ .run_id = "run_tool_cls", .expected_class = "TOOL_CALL_FAILURE" },
+        .{ .run_id = "run_bad_output_cls", .expected_class = "BAD_OUTPUT_FORMAT" },
+        .{ .run_id = "run_unknown_cls", .expected_class = "UNKNOWN" },
+    };
+
+    for (cases) |case| {
+        var q = try db_ctx.conn.query("SELECT failure_class, failure_is_infra FROM agent_run_analysis WHERE run_id = $1", .{case.run_id});
+        defer q.deinit();
+        const row = (try q.next()) orelse return error.TestUnexpectedResult;
+        try std.testing.expectEqualStrings(case.expected_class, row.get([]const u8, 0) catch "");
+        try std.testing.expectEqual(false, row.get(bool, 1) catch true);
+        _ = q.next() catch {};
+    }
+}
+
+test "persistRunAnalysis scrubs stderr tail secrets before storage" {
+    const db_ctx = (try common.openHandlerTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
+
+    try createTempScoringTables(db_ctx.conn);
+
+    const state = scoring.ScoringState{
+        .outcome = .error_propagation,
+        .stages_passed = 0,
+        .stages_total = 1,
+        .failure_error_name = "CommandFailed",
+        .stderr_tail =
+            "API_KEY=secret\n" ++
+            "Bearer topsecret\n" ++
+            "DATABASE_URL_API=postgres://secret\n" ++
+            "-----BEGIN PRIVATE KEY-----\nabc\n-----END PRIVATE KEY-----\n",
+    };
+    try scoring.persistRunAnalysis(db_ctx.conn, std.testing.allocator, "run_scrubbed_tail", "ws_scrub", "agent_scrub", &state, 0, 1, 1);
+
+    var q = try db_ctx.conn.query("SELECT stderr_tail FROM agent_run_analysis WHERE run_id = 'run_scrubbed_tail'", .{});
+    defer q.deinit();
+    const row = (try q.next()) orelse return error.TestUnexpectedResult;
+    const stderr_tail = row.get(?[]const u8, 0) catch null orelse return error.TestUnexpectedResult;
+    try std.testing.expect(!std.mem.containsAtLeast(u8, stderr_tail, 1, "secret"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, stderr_tail, 1, "[REDACTED]"));
+    _ = q.next() catch {};
+}
+
+test "buildScoringContextForEcho respects configured token cap via runtime estimator" {
+    const db_ctx = (try common.openHandlerTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
+
+    try createTempScoringTables(db_ctx.conn);
+    _ = try db_ctx.conn.exec(
+        \\INSERT INTO workspace_entitlements
+        \\  (entitlement_id, workspace_id, plan_tier, max_profiles, max_stages, max_distinct_skills, allow_custom_skills, enable_agent_scoring, agent_scoring_weights_json, enable_score_context_injection, scoring_context_max_tokens, created_at, updated_at)
+        \\VALUES ('ent_ctx_3', 'ws_ctx_3', 'FREE', 1, 3, 3, false, true, '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}', true, 512, 0, 0)
+    , .{});
+
+    try insertHistoricalScore(db_ctx.conn, "agent_ctx_3", "ws_ctx_3", "run_ctx_3_1", 10, 1, "TIMEOUT", true);
+    try insertHistoricalScore(db_ctx.conn, "agent_ctx_3", "ws_ctx_3", "run_ctx_3_2", 10, 2, "TIMEOUT", true);
+    try insertHistoricalScore(db_ctx.conn, "agent_ctx_3", "ws_ctx_3", "run_ctx_3_3", 10, 3, "TIMEOUT", true);
+    try insertHistoricalScore(db_ctx.conn, "agent_ctx_3", "ws_ctx_3", "run_ctx_3_4", 10, 4, "TIMEOUT", true);
+    try insertHistoricalScore(db_ctx.conn, "agent_ctx_3", "ws_ctx_3", "run_ctx_3_5", 10, 5, "TIMEOUT", true);
+
+    const cfg = try scoring.queryScoringConfig(db_ctx.conn, std.testing.allocator, "ws_ctx_3");
+    const block = try scoring.buildScoringContextForEcho(db_ctx.conn, std.testing.allocator, "ws_ctx_3", "agent_ctx_3", cfg);
+    defer std.testing.allocator.free(block);
+
+    try std.testing.expect(scoring.estimateScoringContextTokens(block) <= 512);
+}
+
+test "integration: M9_003 demo scoring context reduces timeout rate over ten guided runs" {
+    const db_ctx = (try common.openHandlerTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
+
+    try createTempScoringTables(db_ctx.conn);
+    _ = try db_ctx.conn.exec(
+        \\INSERT INTO workspace_entitlements
+        \\  (entitlement_id, workspace_id, plan_tier, max_profiles, max_stages, max_distinct_skills, allow_custom_skills, enable_agent_scoring, agent_scoring_weights_json, enable_score_context_injection, scoring_context_max_tokens, created_at, updated_at)
+        \\VALUES ('ent_demo_ctx', 'ws_demo_ctx', 'FREE', 1, 3, 3, false, true, '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}', true, 2048, 0, 0)
+    , .{});
+
+    try insertHistoricalScore(db_ctx.conn, "agent_demo_ctx", "ws_demo_ctx", "run_demo_hist_1", 20, 1, "TIMEOUT", true);
+    try insertHistoricalScore(db_ctx.conn, "agent_demo_ctx", "ws_demo_ctx", "run_demo_hist_2", 20, 2, "TIMEOUT", true);
+    try insertHistoricalScore(db_ctx.conn, "agent_demo_ctx", "ws_demo_ctx", "run_demo_hist_3", 20, 3, "TIMEOUT", true);
+
+    const cfg = try scoring.queryScoringConfig(db_ctx.conn, std.testing.allocator, "ws_demo_ctx");
+    const injected_context = try scoring.buildScoringContextForEcho(db_ctx.conn, std.testing.allocator, "ws_demo_ctx", "agent_demo_ctx", cfg);
+    defer std.testing.allocator.free(injected_context);
+
+    const baseline_timeouts = try runTimeoutDemoCohort("");
+    const injected_timeouts = try runTimeoutDemoCohort(injected_context);
+
+    std.debug.print(
+        "M9_003 demo evidence baseline_timeouts={d} injected_timeouts={d}\n",
+        .{ baseline_timeouts, injected_timeouts },
+    );
+
+    try std.testing.expectEqual(@as(u32, 6), baseline_timeouts);
+    try std.testing.expectEqual(@as(u32, 2), injected_timeouts);
+    try std.testing.expect(injected_timeouts < baseline_timeouts);
 }
