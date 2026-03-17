@@ -9,10 +9,19 @@ pub const GENERATION_STATUS_REJECTED = "REJECTED";
 pub const PROPOSAL_TARGET_STAGE_BINDING = "stage_binding";
 pub const PROPOSAL_TARGET_STAGE_INSERT = "stage_insert";
 pub const PROPOSAL_ACTOR = "proposal_generator";
+pub const COMPILE_ENGINE_DETERMINISTIC_V1 = "deterministic-v1";
 pub const STATUS_REJECTED = "REJECTED";
 pub const STATUS_PENDING_REVIEW = "PENDING_REVIEW";
+pub const STATUS_VETO_WINDOW = "VETO_WINDOW";
+pub const STATUS_APPLIED = "APPLIED";
+pub const STATUS_CONFIG_CHANGED = "CONFIG_CHANGED";
+pub const STATUS_VETOED = "VETOED";
 pub const TRUST_LEVEL_TRUSTED = "TRUSTED";
 pub const DEFAULT_RECONCILE_BATCH_LIMIT: u32 = 32;
+pub const AUTO_APPLY_WINDOW_MS: i64 = 24 * 60 * 60 * 1000;
+pub const APPLIED_BY_SYSTEM_AUTO = "system:auto";
+pub const REJECTION_REASON_CONFIG_CHANGED_SINCE_PROPOSAL = "CONFIG_CHANGED_SINCE_PROPOSAL";
+pub const VALIDATION_STATUS_AUTO_APPLIED_JSON = "{\"status\":\"auto_applied\"}";
 pub const JSON_KEY_TARGET_FIELD = "target_field";
 pub const JSON_KEY_CURRENT_VALUE = "current_value";
 pub const JSON_KEY_PROPOSED_VALUE = "proposed_value";
@@ -106,6 +115,12 @@ pub const PendingProposal = struct {
 
 pub const GenerationReconcileResult = struct {
     ready: u32 = 0,
+    rejected: u32 = 0,
+};
+
+pub const AutoApprovalReconcileResult = struct {
+    applied: u32 = 0,
+    config_changed: u32 = 0,
     rejected: u32 = 0,
 };
 

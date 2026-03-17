@@ -2,28 +2,7 @@ const std = @import("std");
 const pg = @import("pg");
 const scoring = @import("scoring.zig");
 const proposals = @import("scoring_mod/proposals.zig");
-
-fn openTestConn(alloc: std.mem.Allocator) !?struct { pool: *pg.Pool, conn: *pg.Conn } {
-    const url = std.process.getEnvVarOwned(alloc, "HANDLER_DB_TEST_URL") catch
-        std.process.getEnvVarOwned(alloc, "DATABASE_URL") catch return null;
-    defer alloc.free(url);
-
-    const db = @import("../db/pool.zig");
-    var arena = std.heap.ArenaAllocator.init(alloc);
-    defer arena.deinit();
-    const opts = try db.parseUrl(arena.allocator(), url);
-    const host = opts.connect.host orelse return null;
-    const port = opts.connect.port orelse 5432;
-    const probe = std.net.tcpConnectToHost(alloc, host, port) catch return null;
-    probe.close();
-    const pool = pg.Pool.init(alloc, opts) catch return null;
-    errdefer pool.deinit();
-    const conn = pool.acquire() catch {
-        pool.deinit();
-        return null;
-    };
-    return .{ .pool = pool, .conn = conn };
-}
+const common = @import("../http/handlers/common.zig");
 
 fn execSql(conn: *pg.Conn, sql: []const u8) !void {
     _ = try conn.exec(sql, .{});
@@ -155,7 +134,7 @@ fn insertActiveConfigWithProfile(
 }
 
 test "reconcilePendingProposalGenerations preserves dynamic auto-agent gate role and skill" {
-    const db_ctx = (try openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
+    const db_ctx = (try common.openHandlerTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
 

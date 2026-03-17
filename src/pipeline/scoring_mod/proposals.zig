@@ -1,11 +1,13 @@
 const std = @import("std");
 const pg = @import("pg");
 const id_format = @import("../../types/id_format.zig");
+const auto_approval = @import("proposals_auto_approval.zig");
 const generation = @import("proposals_generation.zig");
 const shared = @import("proposals_shared.zig");
 const validation = @import("proposals_validation.zig");
 
 pub const GenerationReconcileResult = shared.GenerationReconcileResult;
+pub const AutoApprovalReconcileResult = shared.AutoApprovalReconcileResult;
 pub const ProposalValidationError = shared.ProposalError;
 
 pub fn maybePersistTriggerProposal(
@@ -34,13 +36,21 @@ pub fn maybePersistTriggerProposal(
         shared.ApprovalMode.auto
     else
         shared.ApprovalMode.manual;
+    const proposal_status = if (approval_mode == .auto)
+        shared.STATUS_VETO_WINDOW
+    else
+        shared.STATUS_PENDING_REVIEW;
+    const auto_apply_at: ?i64 = if (approval_mode == .auto)
+        scored_at + shared.AUTO_APPLY_WINDOW_MS
+    else
+        null;
 
     // Rule 1: exec() for INSERT — internal drain loop, always leaves _state=.idle
     _ = try conn.exec(
         \\INSERT INTO agent_improvement_proposals
         \\  (proposal_id, agent_id, workspace_id, trigger_reason, proposed_changes, config_version_id,
         \\   approval_mode, generation_status, status, auto_apply_at, created_at, updated_at)
-        \\VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NULL, $10, $11)
+        \\VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
     , .{
         proposal_id,
         agent_id,
@@ -50,7 +60,8 @@ pub fn maybePersistTriggerProposal(
         active_context.config_version_id,
         approval_mode.label(),
         shared.GENERATION_STATUS_PENDING,
-        shared.STATUS_PENDING_REVIEW,
+        proposal_status,
+        auto_apply_at,
         scored_at,
         scored_at,
     });
@@ -155,6 +166,15 @@ pub fn validateProposedChanges(
         active_context.config_version_id,
         raw_json,
     );
+}
+
+pub fn reconcileDueAutoApprovalProposals(
+    conn: *pg.Conn,
+    alloc: std.mem.Allocator,
+    limit: u32,
+    now_ms: i64,
+) !AutoApprovalReconcileResult {
+    return auto_approval.reconcileDueAutoApprovalProposals(conn, alloc, limit, now_ms);
 }
 
 fn detectRollingWindowTrigger(conn: *pg.Conn, agent_id: []const u8) !?shared.RollingTrigger {
