@@ -74,8 +74,8 @@ fn seedFreeEntitlement(conn: *pg.Conn, workspace_id: []const u8) !void {
 
 test "integration: compileProfile rejects cross-workspace profile version selector" {
     const db_ctx = (try util.openHarnessHandlerTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
-    defer db_ctx.pool.release(db_ctx.conn);
     defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
 
     {
         var q = try db_ctx.conn.query(
@@ -120,8 +120,8 @@ test "integration: compileProfile rejects cross-workspace profile version select
 
 test "integration: compileProfile persists deterministic invalid outcome and linkage metadata" {
     const db_ctx = (try util.openHarnessHandlerTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
-    defer db_ctx.pool.release(db_ctx.conn);
     defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
 
     {
         var q = try db_ctx.conn.query(
@@ -214,8 +214,8 @@ test "integration: compileProfile persists deterministic invalid outcome and lin
 
 test "integration: activateProfile rejects profile versions from another workspace" {
     const db_ctx = (try util.openHarnessHandlerTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
-    defer db_ctx.pool.release(db_ctx.conn);
     defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
 
     {
         var q = try db_ctx.conn.query(
@@ -266,8 +266,8 @@ test "integration: activateProfile rejects profile versions from another workspa
 
 test "integration: compileProfile is atomic and rolls back on linkage persist failure" {
     const db_ctx = (try util.openHarnessHandlerTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
-    defer db_ctx.pool.release(db_ctx.conn);
     defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
 
     {
         var q = try db_ctx.conn.query(
@@ -377,8 +377,8 @@ test "integration: compileProfile is atomic and rolls back on linkage persist fa
 
 test "integration: activateProfile is atomic and rolls back on linkage persist failure" {
     const db_ctx = (try util.openHarnessHandlerTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
-    defer db_ctx.pool.release(db_ctx.conn);
     defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
 
     {
         var q = try db_ctx.conn.query(

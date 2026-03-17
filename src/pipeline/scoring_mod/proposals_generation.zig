@@ -93,9 +93,14 @@ fn loadDominantFailureClass(conn: *pg.Conn, alloc: std.mem.Allocator, agent_id: 
         \\ORDER BY failure_count DESC, failure_class ASC
         \\LIMIT 1
     , .{agent_id});
-    defer q.deinit();
-    const row = (try q.next()) orelse return null;
-    return @as(?[]u8, try alloc.dupe(u8, try row.get([]const u8, 0)));
+    const row = (try q.next()) orelse {
+        q.deinit();
+        return null;
+    };
+    const result = try alloc.dupe(u8, try row.get([]const u8, 0));
+    q.drain() catch {};
+    q.deinit();
+    return @as(?[]u8, result);
 }
 
 fn loadConfigProfile(conn: *pg.Conn, alloc: std.mem.Allocator, config_version_id: []const u8) !topology.Profile {
@@ -105,9 +110,19 @@ fn loadConfigProfile(conn: *pg.Conn, alloc: std.mem.Allocator, config_version_id
         \\WHERE config_version_id = $1
         \\LIMIT 1
     , .{config_version_id});
-    defer q.deinit();
-    const row = (try q.next()) orelse return shared.ProposalError.ProposalWouldNotCompile;
-    return topology.parseProfileJson(alloc, try row.get([]const u8, 0)) catch shared.ProposalError.ProposalWouldNotCompile;
+    const row = (try q.next()) orelse {
+        q.deinit();
+        return shared.ProposalError.ProposalWouldNotCompile;
+    };
+    const raw_json = alloc.dupe(u8, try row.get([]const u8, 0)) catch |err| {
+        q.drain() catch {};
+        q.deinit();
+        return err;
+    };
+    defer alloc.free(raw_json);
+    q.drain() catch {};
+    q.deinit();
+    return topology.parseProfileJson(alloc, raw_json) catch shared.ProposalError.ProposalWouldNotCompile;
 }
 
 fn uniqueStageId(

@@ -42,8 +42,8 @@ test "duplicate events do not double-charge" {
 
 test "completed runs are metered and non-billable runs are not charged" {
     const db_ctx = (try openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
-    defer db_ctx.pool.release(db_ctx.conn);
     defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
 
     try createTempBillingTables(db_ctx.conn);
     try seedWorkspaceBillingState(
@@ -172,8 +172,8 @@ test "completed runs are metered and non-billable runs are not charged" {
 
 test "scale runs queue billing delivery without touching free-credit ledger" {
     const db_ctx = (try openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
-    defer db_ctx.pool.release(db_ctx.conn);
     defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
 
     try createTempBillingTables(db_ctx.conn);
     try seedWorkspaceBillingState(

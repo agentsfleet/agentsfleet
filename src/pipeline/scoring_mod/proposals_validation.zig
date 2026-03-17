@@ -194,9 +194,21 @@ fn loadConfigProfile(conn: *pg.Conn, alloc: std.mem.Allocator, config_version_id
         \\WHERE config_version_id = $1
         \\LIMIT 1
     , .{config_version_id});
-    defer q.deinit();
-    const row = (try q.next()) orelse return ProposalValidationError.ProposalWouldNotCompile;
-    return topology.parseProfileJson(alloc, try row.get([]const u8, 0)) catch ProposalValidationError.ProposalWouldNotCompile;
+    const row = (try q.next()) orelse {
+        // null return → 'C'+'Z' already consumed → _state=.idle
+        q.deinit();
+        return ProposalValidationError.ProposalWouldNotCompile;
+    };
+    // Rule 4: dupe before draining — row data lives in the connection reader buffer
+    const raw_json = alloc.dupe(u8, try row.get([]const u8, 0)) catch |err| {
+        q.drain() catch {};
+        q.deinit();
+        return err;
+    };
+    defer alloc.free(raw_json);
+    q.drain() catch {}; // Rule 2: drain 'C'+'Z' → _state=.idle
+    q.deinit();
+    return topology.parseProfileJson(alloc, raw_json) catch ProposalValidationError.ProposalWouldNotCompile;
 }
 
 fn validateCandidateProfileSkills(
@@ -230,8 +242,10 @@ fn agentExistsInWorkspace(conn: *pg.Conn, workspace_id: []const u8, agent_id: []
         \\WHERE workspace_id = $1 AND agent_id = $2
         \\LIMIT 1
     , .{ workspace_id, agent_id }) catch return false;
-    defer q.deinit();
-    return (q.next() catch null) != null;
+    const found = (q.next() catch null) != null;
+    if (found) q.drain() catch {}; // Rule 3: drain when row found before early exit
+    q.deinit();
+    return found;
 }
 
 fn workspaceAllowsCustomSkills(conn: *pg.Conn, workspace_id: []const u8) bool {
@@ -241,9 +255,15 @@ fn workspaceAllowsCustomSkills(conn: *pg.Conn, workspace_id: []const u8) bool {
         \\WHERE workspace_id = $1
         \\LIMIT 1
     , .{workspace_id}) catch return false;
-    defer q.deinit();
-    const row = (q.next() catch null) orelse return false;
-    return row.get(bool, 0) catch false;
+    const row = (q.next() catch null) orelse {
+        // null → 'C'+'Z' already consumed → _state=.idle
+        q.deinit();
+        return false;
+    };
+    const result = row.get(bool, 0) catch false;
+    q.drain() catch {}; // Rule 2: drain remaining 'C'+'Z' → _state=.idle
+    q.deinit();
+    return result;
 }
 
 fn isCoreSkill(skill_ref: []const u8) bool {

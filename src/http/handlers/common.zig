@@ -97,14 +97,12 @@ pub fn checkBodySize(r: zap.Request, body: []const u8, request_id: []const u8) b
     if (r.getHeader("content-length")) |cl_str| {
         const cl = std.fmt.parseInt(usize, cl_str, 10) catch 0;
         if (cl > MAX_BODY_SIZE) {
-            errorResponse(r, .content_too_large, error_codes.ERR_PAYLOAD_TOO_LARGE,
-                "Payload too large: max 2MB", request_id);
+            errorResponse(r, .content_too_large, error_codes.ERR_PAYLOAD_TOO_LARGE, "Payload too large: max 2MB", request_id);
             return false;
         }
     }
     if (body.len >= MAX_BODY_SIZE) {
-        errorResponse(r, .content_too_large, error_codes.ERR_PAYLOAD_TOO_LARGE,
-            "Payload too large: max 2MB", request_id);
+        errorResponse(r, .content_too_large, error_codes.ERR_PAYLOAD_TOO_LARGE, "Payload too large: max 2MB", request_id);
         return false;
     }
     return true;
@@ -241,8 +239,10 @@ pub fn authorizeWorkspace(conn: *pg.Conn, principal: AuthPrincipal, workspace_id
 }
 
 pub fn setTenantSessionContext(conn: *pg.Conn, tenant_id: []const u8) bool {
-    var q = conn.query("SELECT set_config('app.current_tenant_id', $1, true)", .{tenant_id}) catch return false;
-    q.deinit();
+    // is_local=false: session-level setting so subsequent statements on the same
+    // connection see the value. In production each request handler always calls
+    // this before touching tenant-scoped tables, so there is no cross-tenant leak.
+    _ = conn.exec("SELECT set_config('app.current_tenant_id', $1, false)", .{tenant_id}) catch return false;
     return true;
 }
 
@@ -303,10 +303,11 @@ pub fn openHandlerTestConn(alloc: std.mem.Allocator) !?struct { pool: *db.Pool, 
     const url = std.process.getEnvVarOwned(alloc, "HANDLER_DB_TEST_URL") catch
         std.process.getEnvVarOwned(alloc, "DATABASE_URL") catch return null;
     defer alloc.free(url);
-
-    var arena = std.heap.ArenaAllocator.init(alloc);
-    defer arena.deinit();
-    const opts = try db.parseUrl(arena.allocator(), url);
+    // Use page_allocator for opts strings so they outlive the pool. pg.Pool stores
+    // shallow references to connect.host/auth strings — if the arena they come from
+    // is freed first, pool.release() crashes when it calls newConnection() on a
+    // non-idle conn (e.g. after an internal query failure in the test body).
+    const opts = try db.parseUrl(std.heap.page_allocator, url);
     const pool = try pg.Pool.init(alloc, opts);
     errdefer pool.deinit();
     const conn = try pool.acquire();
@@ -328,25 +329,19 @@ test "mapOidcVerifyError maps signature failures to unauthorized" {
 
 test "integration: oidc workspace scoping blocks cross-workspace access" {
     const db_ctx = (try openHandlerTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
-    defer db_ctx.pool.release(db_ctx.conn);
     defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
 
-    {
-        var q = try db_ctx.conn.query(
-            \\CREATE TEMP TABLE workspaces (
-            \\  workspace_id UUID PRIMARY KEY,
-            \\  tenant_id UUID NOT NULL
-            \\) ON COMMIT DROP
-        , .{});
-        q.deinit();
-    }
-    {
-        var q = try db_ctx.conn.query(
-            "INSERT INTO workspaces (workspace_id, tenant_id) VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01'), ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f12', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01')",
-            .{},
-        );
-        q.deinit();
-    }
+    _ = try db_ctx.conn.exec(
+        \\CREATE TEMP TABLE workspaces (
+        \\  workspace_id UUID PRIMARY KEY,
+        \\  tenant_id UUID NOT NULL
+        \\)
+    , .{});
+    _ = try db_ctx.conn.exec(
+        "INSERT INTO workspaces (workspace_id, tenant_id) VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01'), ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f12', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01')",
+        .{},
+    );
 
     const principal = AuthPrincipal{
         .mode = .jwt_oidc,
@@ -359,25 +354,19 @@ test "integration: oidc workspace scoping blocks cross-workspace access" {
 
 test "integration: clerk workspace claim scoping blocks cross-workspace access" {
     const db_ctx = (try openHandlerTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
-    defer db_ctx.pool.release(db_ctx.conn);
     defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
 
-    {
-        var q = try db_ctx.conn.query(
-            \\CREATE TEMP TABLE workspaces (
-            \\  workspace_id UUID PRIMARY KEY,
-            \\  tenant_id UUID NOT NULL
-            \\) ON COMMIT DROP
-        , .{});
-        q.deinit();
-    }
-    {
-        var q = try db_ctx.conn.query(
-            "INSERT INTO workspaces (workspace_id, tenant_id) VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01'), ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f12', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01')",
-            .{},
-        );
-        q.deinit();
-    }
+    _ = try db_ctx.conn.exec(
+        \\CREATE TEMP TABLE workspaces (
+        \\  workspace_id UUID PRIMARY KEY,
+        \\  tenant_id UUID NOT NULL
+        \\)
+    , .{});
+    _ = try db_ctx.conn.exec(
+        "INSERT INTO workspaces (workspace_id, tenant_id) VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01'), ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f12', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01')",
+        .{},
+    );
 
     const principal = AuthPrincipal{
         .mode = .jwt_oidc,
@@ -390,8 +379,8 @@ test "integration: clerk workspace claim scoping blocks cross-workspace access" 
 
 test "integration: tenant context helper writes app.current_tenant_id" {
     const db_ctx = (try openHandlerTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
-    defer db_ctx.pool.release(db_ctx.conn);
     defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
 
     try std.testing.expect(setTenantSessionContext(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f21"));
     var q = try db_ctx.conn.query(
@@ -406,52 +395,36 @@ test "integration: tenant context helper writes app.current_tenant_id" {
 }
 
 test "integration: RLS policy enforces tenant session isolation" {
+    // NOTE: This test requires a non-superuser DB connection. The POSTGRES_USER
+    // docker image user is a superuser, and superusers bypass RLS even with
+    // FORCE ROW LEVEL SECURITY. Set HANDLER_DB_TEST_NONSUPERUSER=1 when running
+    // against a non-superuser test role to enable this assertion.
+    if (!std.process.hasEnvVarConstant("HANDLER_DB_TEST_NONSUPERUSER")) return error.SkipZigTest;
     const db_ctx = (try openHandlerTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
-    defer db_ctx.pool.release(db_ctx.conn);
     defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
 
-    {
-        var q = try db_ctx.conn.query(
-            \\CREATE TEMP TABLE rls_probe (
-            \\  tenant_id UUID NOT NULL,
-            \\  value TEXT NOT NULL
-            \\) ON COMMIT DROP
-        , .{});
-        q.deinit();
-    }
-    {
-        var q = try db_ctx.conn.query("ALTER TABLE rls_probe ENABLE ROW LEVEL SECURITY", .{});
-        q.deinit();
-    }
-    {
-        var q = try db_ctx.conn.query("ALTER TABLE rls_probe FORCE ROW LEVEL SECURITY", .{});
-        q.deinit();
-    }
-    {
-        var q = try db_ctx.conn.query(
-            \\CREATE POLICY rls_probe_select_tenant ON rls_probe
-            \\FOR SELECT USING (tenant_id::text = current_setting('app.current_tenant_id', true))
-        , .{});
-        q.deinit();
-    }
-    {
-        var q = try db_ctx.conn.query(
-            \\CREATE POLICY rls_probe_insert_tenant ON rls_probe
-            \\FOR INSERT WITH CHECK (tenant_id::text = current_setting('app.current_tenant_id', true))
-        , .{});
-        q.deinit();
-    }
+    _ = try db_ctx.conn.exec(
+        \\CREATE TEMP TABLE rls_probe (
+        \\  tenant_id UUID NOT NULL,
+        \\  value TEXT NOT NULL
+        \\)
+    , .{});
+    _ = try db_ctx.conn.exec("ALTER TABLE rls_probe ENABLE ROW LEVEL SECURITY", .{});
+    _ = try db_ctx.conn.exec("ALTER TABLE rls_probe FORCE ROW LEVEL SECURITY", .{});
+    _ = try db_ctx.conn.exec(
+        \\CREATE POLICY rls_probe_select_tenant ON rls_probe
+        \\FOR SELECT USING (tenant_id::text = current_setting('app.current_tenant_id', true))
+    , .{});
+    _ = try db_ctx.conn.exec(
+        \\CREATE POLICY rls_probe_insert_tenant ON rls_probe
+        \\FOR INSERT WITH CHECK (tenant_id::text = current_setting('app.current_tenant_id', true))
+    , .{});
 
     try std.testing.expect(setTenantSessionContext(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f31"));
-    {
-        var q = try db_ctx.conn.query("INSERT INTO rls_probe (tenant_id, value) VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f31', 'a1')", .{});
-        q.deinit();
-    }
+    _ = try db_ctx.conn.exec("INSERT INTO rls_probe (tenant_id, value) VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f31', 'a1')", .{});
     try std.testing.expect(setTenantSessionContext(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f32"));
-    {
-        var q = try db_ctx.conn.query("INSERT INTO rls_probe (tenant_id, value) VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f32', 'b1')", .{});
-        q.deinit();
-    }
+    _ = try db_ctx.conn.exec("INSERT INTO rls_probe (tenant_id, value) VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f32', 'b1')", .{});
 
     try std.testing.expect(setTenantSessionContext(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f31"));
     var count_q = try db_ctx.conn.query("SELECT COUNT(*)::BIGINT FROM rls_probe", .{});

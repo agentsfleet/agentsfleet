@@ -19,8 +19,6 @@ pub const TopologyError = error{
     InvalidProfile,
     MissingGateStage,
     GateStageMustBeLast,
-    GateSkillMustBeWarden,
-    FirstStageSkillMustBeEcho,
     DuplicateStageId,
     InvalidTransitionTarget,
 };
@@ -231,7 +229,6 @@ fn defaultCommitMessage(role_id: []const u8, skill: []const u8) []const u8 {
 
 fn validateProfile(stages: []const Stage) !void {
     if (stages.len < 3) return TopologyError.InvalidProfile;
-    if (!std.ascii.eqlIgnoreCase(stages[0].skill_id, ROLE_ECHO)) return TopologyError.FirstStageSkillMustBeEcho;
 
     var gate_count: usize = 0;
     var gate_index: usize = 0;
@@ -244,7 +241,6 @@ fn validateProfile(stages: []const Stage) !void {
 
     if (gate_count != 1) return TopologyError.MissingGateStage;
     if (gate_index != stages.len - 1) return TopologyError.GateStageMustBeLast;
-    if (!std.ascii.eqlIgnoreCase(stages[gate_index].skill_id, ROLE_WARDEN)) return TopologyError.GateSkillMustBeWarden;
 
     for (stages) |stage| {
         if (stage.on_pass) |target| {
@@ -317,16 +313,18 @@ test "integration: stage transitions validate on_pass/on_fail targets" {
     try std.testing.expectError(TopologyError.InvalidTransitionTarget, fromDoc(alloc, bad));
 }
 
-test "profile requires final gate skill to be warden" {
+test "profile with custom gate skill is accepted (roles are dynamic)" {
     const alloc = std.testing.allocator;
-    const bad = ProfileDoc{
-        .profile_id = "bad",
+    const doc = ProfileDoc{
+        .profile_id = "custom-gate",
         .stages = &[_]StageDoc{
             .{ .stage_id = "plan", .role = "echo" },
             .{ .stage_id = "implement", .role = "scout" },
-            .{ .stage_id = "verify", .role = "reviewer", .skill = "scout", .gate = true },
+            .{ .stage_id = "verify", .role = "reviewer", .skill = "clawhub://usezombie/reviewer@1.0.0", .gate = true },
         },
     };
 
-    try std.testing.expectError(TopologyError.GateSkillMustBeWarden, fromDoc(alloc, bad));
+    var profile = try fromDoc(alloc, doc);
+    defer profile.deinit();
+    try std.testing.expectEqualStrings("clawhub://usezombie/reviewer@1.0.0", profile.stages[2].skill_id);
 }

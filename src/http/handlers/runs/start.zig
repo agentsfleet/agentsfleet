@@ -282,8 +282,8 @@ pub fn handleStartRun(ctx: *common.Context, r: zap.Request) void {
 
 test "runtime entitlement enforcement rejects downgraded free workspace using scale-only active profile" {
     const db_ctx = (try common.openHandlerTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
-    defer db_ctx.pool.release(db_ctx.conn);
     defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
 
     {
         var q = try db_ctx.conn.query(

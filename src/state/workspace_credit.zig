@@ -314,8 +314,8 @@ fn runtimeDeductionMetadata(
 
 test "provisionWorkspaceCredit grants initial free credit deterministically" {
     const db_ctx = (try openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
-    defer db_ctx.pool.release(db_ctx.conn);
     defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
 
     try createTempCreditTables(db_ctx.conn);
     try seedWorkspace(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f21");
@@ -331,8 +331,8 @@ test "provisionWorkspaceCredit grants initial free credit deterministically" {
 
 test "enforceExecutionAllowed blocks exhausted free plan and allows scale" {
     const db_ctx = (try openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
-    defer db_ctx.pool.release(db_ctx.conn);
     defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
 
     try createTempCreditTables(db_ctx.conn);
     try seedWorkspace(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f22");
@@ -353,8 +353,8 @@ test "enforceExecutionAllowed blocks exhausted free plan and allows scale" {
 
 test "deductCompletedRuntimeUsage debits free-plan credit once per completed run" {
     const db_ctx = (try openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
-    defer db_ctx.pool.release(db_ctx.conn);
     defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
 
     try createTempCreditTables(db_ctx.conn);
     try seedWorkspace(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f23");
@@ -401,8 +401,8 @@ test "deductCompletedRuntimeUsage debits free-plan credit once per completed run
 
 test "deductCompletedRuntimeUsage clamps to zero and records exhaustion" {
     const db_ctx = (try openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
-    defer db_ctx.pool.release(db_ctx.conn);
     defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
 
     try createTempCreditTables(db_ctx.conn);
     try seedWorkspace(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f24");

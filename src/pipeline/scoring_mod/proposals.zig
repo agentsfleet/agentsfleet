@@ -45,7 +45,8 @@ pub fn maybePersistTriggerProposal(
     else
         null;
 
-    var q = try conn.query(
+    // Rule 1: exec() for INSERT — internal drain loop, always leaves _state=.idle
+    _ = try conn.exec(
         \\INSERT INTO agent_improvement_proposals
         \\  (proposal_id, agent_id, workspace_id, trigger_reason, proposed_changes, config_version_id,
         \\   approval_mode, generation_status, status, auto_apply_at, created_at, updated_at)
@@ -64,7 +65,6 @@ pub fn maybePersistTriggerProposal(
         scored_at,
         scored_at,
     });
-    q.deinit();
 }
 
 pub fn reconcilePendingProposalGenerations(
@@ -75,6 +75,15 @@ pub fn reconcilePendingProposalGenerations(
     var result: GenerationReconcileResult = .{};
     const batch_limit: i32 = @intCast(if (limit == 0) shared.DEFAULT_RECONCILE_BATCH_LIMIT else limit);
 
+    // Rule: materialize all rows before closing the query, then process each
+    // row with separate exec() calls. Running exec()/query() while an outer
+    // SELECT is still open triggers ConnectionBusy on the same connection.
+    var pending_list: std.ArrayList(shared.PendingProposal) = .{};
+    defer {
+        for (pending_list.items) |*p| p.deinit(alloc);
+        pending_list.deinit(alloc);
+    }
+
     var q = try conn.query(
         \\SELECT proposal_id, agent_id, workspace_id, config_version_id, trigger_reason
         \\FROM agent_improvement_proposals
@@ -82,18 +91,20 @@ pub fn reconcilePendingProposalGenerations(
         \\ORDER BY created_at ASC, proposal_id ASC
         \\LIMIT $2
     , .{ shared.GENERATION_STATUS_PENDING, batch_limit });
-    defer q.deinit();
 
     while (try q.next()) |row| {
-        var pending: shared.PendingProposal = .{
+        try pending_list.append(alloc, .{
             .proposal_id = try alloc.dupe(u8, try row.get([]const u8, 0)),
             .agent_id = try alloc.dupe(u8, try row.get([]const u8, 1)),
             .workspace_id = try alloc.dupe(u8, try row.get([]const u8, 2)),
             .config_version_id = try alloc.dupe(u8, try row.get([]const u8, 3)),
             .trigger_reason = try alloc.dupe(u8, try row.get([]const u8, 4)),
-        };
-        defer pending.deinit(alloc);
+        });
+    }
+    // q.next() returning null drains 'C'+'Z' naturally; deinit is safe.
+    q.deinit();
 
+    for (pending_list.items) |*pending| {
         const generated_changes = generation.generateProposalChanges(
             conn,
             alloc,
@@ -119,7 +130,8 @@ pub fn reconcilePendingProposalGenerations(
             continue;
         };
 
-        var update_q = try conn.query(
+        // Rule 1: exec() for UPDATE — internal drain loop, always leaves _state=.idle
+        _ = try conn.exec(
             \\UPDATE agent_improvement_proposals
             \\SET proposed_changes = $2,
             \\    generation_status = $3,
@@ -131,7 +143,6 @@ pub fn reconcilePendingProposalGenerations(
             shared.GENERATION_STATUS_READY,
             std.time.milliTimestamp(),
         });
-        update_q.deinit();
         result.ready += 1;
     }
 
@@ -183,6 +194,10 @@ fn detectRollingWindowTrigger(conn: *pg.Conn, agent_id: []const u8) !?shared.Rol
         scores[count] = try row.get(i32, 0);
         count += 1;
     }
+    // If the loop exited because count == scores.len (not null from q.next()),
+    // the server still has 'C'+'Z' pending; drain so _state=.idle.
+    if (count == scores.len) q.drain() catch {};
+
     if (count < 5) return null;
 
     const current_sum = sumScores(scores[0..5]);
@@ -228,13 +243,22 @@ fn loadActiveConfigContext(
         try conn.query(sql, .{workspace_id})
     else
         try conn.query(sql, .{ workspace_id, agent_id });
-    defer q.deinit();
 
-    const row = (try q.next()) orelse return null;
-    return .{
+    const row = (try q.next()) orelse {
+        // q.next() returned null → it read 'C' then called readyForQuery() which
+        // read 'Z' → _state=.idle. Safe to deinit directly.
+        q.deinit();
+        return null;
+    };
+    // Rule 4: copy values before draining (row buffer lives in the connection reader)
+    const result = shared.ActiveConfigContext{
         .trust_level = try alloc.dupe(u8, try row.get([]const u8, 0)),
         .config_version_id = try alloc.dupe(u8, try row.get([]const u8, 1)),
     };
+    // Rule 2: drain remaining 'C'+'Z' (LIMIT 1 but server may buffer differently)
+    q.drain() catch {};
+    q.deinit();
+    return result;
 }
 
 fn hasPendingOrReadyProposal(conn: *pg.Conn, agent_id: []const u8, config_version_id: []const u8) !bool {
@@ -246,12 +270,16 @@ fn hasPendingOrReadyProposal(conn: *pg.Conn, agent_id: []const u8, config_versio
         \\  AND generation_status IN ($3, $4)
         \\LIMIT 1
     , .{ agent_id, config_version_id, shared.GENERATION_STATUS_PENDING, shared.GENERATION_STATUS_READY });
-    defer q.deinit();
-    return (try q.next()) != null;
+
+    const found = (try q.next()) != null;
+    if (found) q.drain() catch {}; // Rule 3: drain remaining 'C'+'Z' when row found and breaking early
+    q.deinit();
+    return found;
 }
 
 fn rejectProposal(conn: *pg.Conn, proposal_id: []const u8, rejection_reason: []const u8) !void {
-    var q = try conn.query(
+    // Rule 1: exec() for UPDATE — internal drain loop, always leaves _state=.idle
+    _ = try conn.exec(
         \\UPDATE agent_improvement_proposals
         \\SET generation_status = $2,
         \\    status = $3,
@@ -265,5 +293,4 @@ fn rejectProposal(conn: *pg.Conn, proposal_id: []const u8, rejection_reason: []c
         rejection_reason,
         std.time.milliTimestamp(),
     });
-    q.deinit();
 }

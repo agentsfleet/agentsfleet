@@ -615,8 +615,8 @@ fn pendingCount(conn: *db.Conn) !i64 {
 
 test "integration: reconcile handles reachable postgres with no pending rows" {
     const db_ctx = (try openReconcileTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
-    defer db_ctx.pool.release(db_ctx.conn);
     defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
 
     try createTempOutboxTable(db_ctx.conn);
 
@@ -626,8 +626,8 @@ test "integration: reconcile handles reachable postgres with no pending rows" {
 
 test "integration: reconcile dead-letters stale pending rows and is idempotent" {
     const db_ctx = (try openReconcileTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
-    defer db_ctx.pool.release(db_ctx.conn);
     defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
 
     try createTempOutboxTable(db_ctx.conn);
 
@@ -664,8 +664,8 @@ test "integration: reconcile dead-letters stale pending rows and is idempotent" 
 
 test "integration: advisory lock enforces single active reconcile leader" {
     const db_ctx = (try openReconcileTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
-    defer db_ctx.pool.release(db_ctx.conn);
     defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
 
     const conn_2 = try db_ctx.pool.acquire();
     defer db_ctx.pool.release(conn_2);
@@ -679,8 +679,8 @@ test "integration: advisory lock enforces single active reconcile leader" {
 
 test "integration: reconciler restart drains remaining rows after partial pre-crash progress" {
     const db_ctx = (try openReconcileTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
-    defer db_ctx.pool.release(db_ctx.conn);
     defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
 
     try createTempOutboxTable(db_ctx.conn);
     try insertPendingRows(db_ctx.conn, 130);
@@ -696,8 +696,8 @@ test "integration: reconciler restart drains remaining rows after partial pre-cr
 
 test "integration: rollback preserves pending rows for restart recovery" {
     const db_ctx = (try openReconcileTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
-    defer db_ctx.pool.release(db_ctx.conn);
     defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
 
     try createTempOutboxTable(db_ctx.conn);
     try insertPendingRows(db_ctx.conn, 1);

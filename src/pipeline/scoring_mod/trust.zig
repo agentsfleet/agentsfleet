@@ -44,7 +44,8 @@ pub fn refreshAgentTrustState(conn: *pg.Conn, agent_id: []const u8, scored_at: i
     const previous = (try loadCurrentTrustState(conn, agent_id)) orelse return null;
     const next = try computeTrustState(conn, agent_id);
 
-    var q = try conn.query(
+    // Rule 1: exec() for UPDATE — internal drain loop, always leaves _state=.idle
+    _ = try conn.exec(
         \\UPDATE agent_profiles
         \\SET trust_streak_runs = $2,
         \\    trust_level = $3,
@@ -52,7 +53,6 @@ pub fn refreshAgentTrustState(conn: *pg.Conn, agent_id: []const u8, scored_at: i
         \\    updated_at = $5
         \\WHERE agent_id = $1
     , .{ agent_id, next.trust_streak_runs, next.trust_level.label(), scored_at, scored_at });
-    q.deinit();
 
     return .{
         .previous_level = previous.trust_level,
@@ -68,13 +68,20 @@ fn loadCurrentTrustState(conn: *pg.Conn, agent_id: []const u8) !?TrustSnapshot {
         \\WHERE agent_id = $1
         \\LIMIT 1
     , .{agent_id});
-    defer q.deinit();
 
-    const row = (try q.next()) orelse return null;
-    return .{
+    const row = (try q.next()) orelse {
+        // q.next() null → 'C' was read, readyForQuery() consumed 'Z' → _state=.idle
+        q.deinit();
+        return null;
+    };
+    // Rule 4: copy values before draining (row buffer lives in the connection reader)
+    const result = TrustSnapshot{
         .trust_streak_runs = try row.get(i32, 0),
         .trust_level = parseTrustLevel(try row.get([]const u8, 1)),
     };
+    q.drain() catch {}; // Rule 2: drain remaining 'C'+'Z' → _state=.idle
+    q.deinit();
+    return result;
 }
 
 fn computeTrustState(conn: *pg.Conn, agent_id: []const u8) !TrustSnapshot {
@@ -85,9 +92,9 @@ fn computeTrustState(conn: *pg.Conn, agent_id: []const u8) !TrustSnapshot {
         \\WHERE s.agent_id = $1
         \\ORDER BY s.scored_at DESC, s.score_id DESC
     , .{agent_id});
-    defer q.deinit();
 
     var trust_streak_runs: i32 = 0;
+    var broke_early = false;
     while (try q.next()) |row| {
         const history_row = TrustHistoryRow{
             .score = try row.get(i32, 0),
@@ -100,8 +107,15 @@ fn computeTrustState(conn: *pg.Conn, agent_id: []const u8) !TrustSnapshot {
             continue;
         }
         trust_streak_runs = 0;
+        broke_early = true;
         break;
     }
+    // Rule 2: drain all remaining rows + CommandComplete + ReadyForQuery when
+    // we broke early. A single q.next() only reads the *next* message (possibly
+    // another DataRow), not the full tail. q.drain() loops until 'Z' and
+    // conn.read() sets _state=.idle when it processes the ReadyForQuery 'Z'.
+    if (broke_early) q.drain() catch {};
+    q.deinit();
 
     return .{
         .trust_streak_runs = trust_streak_runs,

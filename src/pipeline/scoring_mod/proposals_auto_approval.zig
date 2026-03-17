@@ -33,18 +33,15 @@ const ApplyOutcome = enum {
 };
 
 fn beginTx(conn: *pg.Conn) !void {
-    var tx = try conn.query("BEGIN", .{});
-    tx.deinit();
+    _ = try conn.exec("BEGIN", .{});
 }
 
 fn commitTx(conn: *pg.Conn) !void {
-    var tx = try conn.query("COMMIT", .{});
-    tx.deinit();
+    _ = try conn.exec("COMMIT", .{});
 }
 
 fn rollbackTx(conn: *pg.Conn) void {
-    var tx = conn.query("ROLLBACK", .{}) catch return;
-    tx.deinit();
+    _ = conn.exec("ROLLBACK", .{}) catch return;
 }
 
 pub fn reconcileDueAutoApprovalProposals(
@@ -55,6 +52,11 @@ pub fn reconcileDueAutoApprovalProposals(
 ) !AutoApprovalReconcileResult {
     var result: AutoApprovalReconcileResult = .{};
     const batch_limit: i32 = @intCast(if (limit == 0) shared.DEFAULT_RECONCILE_BATCH_LIMIT else limit);
+    var due_list: std.ArrayList(DueProposal) = .{};
+    defer {
+        for (due_list.items) |*proposal| proposal.deinit(alloc);
+        due_list.deinit(alloc);
+    }
 
     var q = try conn.query(
         \\SELECT proposal_id, agent_id, workspace_id, config_version_id, proposed_changes
@@ -73,19 +75,20 @@ pub fn reconcileDueAutoApprovalProposals(
         now_ms,
         batch_limit,
     });
-    defer q.deinit();
 
     while (try q.next()) |row| {
-        var proposal = DueProposal{
+        try due_list.append(alloc, .{
             .proposal_id = try alloc.dupe(u8, try row.get([]const u8, 0)),
             .agent_id = try alloc.dupe(u8, try row.get([]const u8, 1)),
             .workspace_id = try alloc.dupe(u8, try row.get([]const u8, 2)),
             .config_version_id = try alloc.dupe(u8, try row.get([]const u8, 3)),
             .proposed_changes = try alloc.dupe(u8, try row.get([]const u8, 4)),
-        };
-        defer proposal.deinit(alloc);
+        });
+    }
+    q.deinit();
 
-        switch (try applyDueProposal(conn, alloc, &proposal, now_ms)) {
+    for (due_list.items) |*proposal| {
+        switch (try applyDueProposal(conn, alloc, proposal, now_ms)) {
             .applied => result.applied += 1,
             .config_changed => result.config_changed += 1,
             .rejected => result.rejected += 1,
@@ -153,10 +156,15 @@ fn loadCurrentActiveConfigVersionId(
         \\WHERE workspace_id = $1
         \\LIMIT 1
     , .{workspace_id});
-    defer q.deinit();
 
-    const row = (try q.next()) orelse return null;
-    return try alloc.dupe(u8, try row.get([]const u8, 0));
+    const row = (try q.next()) orelse {
+        q.deinit();
+        return null;
+    };
+    const result = try alloc.dupe(u8, try row.get([]const u8, 0));
+    q.drain() catch {};
+    q.deinit();
+    return result;
 }
 
 fn persistCandidateConfigVersion(
@@ -177,13 +185,18 @@ fn persistCandidateConfigVersion(
         \\ORDER BY MAX(version) DESC
         \\LIMIT 1
     , .{proposal.agent_id});
-    defer current_q.deinit();
 
-    const row = (try current_q.next()) orelse return ProposalAutoApprovalError.MissingConfigVersionContext;
-    const tenant_id = try row.get([]const u8, 0);
+    const row = (try current_q.next()) orelse {
+        current_q.deinit();
+        return ProposalAutoApprovalError.MissingConfigVersionContext;
+    };
+    const tenant_id = try alloc.dupe(u8, try row.get([]const u8, 0));
+    defer alloc.free(tenant_id);
     const next_version = (try row.get(i32, 1)) + 1;
+    current_q.drain() catch {};
+    current_q.deinit();
 
-    var insert_q = try conn.query(
+    _ = try conn.exec(
         \\INSERT INTO agent_config_versions
         \\  (config_version_id, tenant_id, agent_id, version, source_markdown, compiled_profile_json,
         \\   compile_engine, validation_report_json, is_valid, created_at, updated_at)
@@ -199,7 +212,6 @@ fn persistCandidateConfigVersion(
         shared.VALIDATION_STATUS_AUTO_APPLIED_JSON,
         now_ms,
     });
-    insert_q.deinit();
 
     return config_version_id;
 }
@@ -210,7 +222,7 @@ fn activateAppliedProposal(
     activated_config_version_id: []const u8,
     now_ms: i64,
 ) !void {
-    var workspace_q = try conn.query(
+    _ = try conn.exec(
         \\UPDATE workspace_active_config
         \\SET config_version_id = $2,
         \\    activated_by = $3,
@@ -222,17 +234,15 @@ fn activateAppliedProposal(
         shared.APPLIED_BY_SYSTEM_AUTO,
         now_ms,
     });
-    workspace_q.deinit();
 
-    var agent_q = try conn.query(
+    _ = try conn.exec(
         \\UPDATE agent_profiles
         \\SET status = CASE WHEN agent_id = $1 THEN 'ACTIVE' ELSE status END,
         \\    updated_at = $2
         \\WHERE workspace_id = $3
     , .{ proposal.agent_id, now_ms, proposal.workspace_id });
-    agent_q.deinit();
 
-    var proposal_q = try conn.query(
+    _ = try conn.exec(
         \\UPDATE agent_improvement_proposals
         \\SET status = $2,
         \\    applied_by = $3,
@@ -244,11 +254,10 @@ fn activateAppliedProposal(
         shared.APPLIED_BY_SYSTEM_AUTO,
         now_ms,
     });
-    proposal_q.deinit();
 }
 
 fn markProposalConfigChanged(conn: *pg.Conn, proposal_id: []const u8, now_ms: i64) !void {
-    var q = try conn.query(
+    _ = try conn.exec(
         \\UPDATE agent_improvement_proposals
         \\SET status = $2,
         \\    rejection_reason = $3,
@@ -260,11 +269,10 @@ fn markProposalConfigChanged(conn: *pg.Conn, proposal_id: []const u8, now_ms: i6
         shared.REJECTION_REASON_CONFIG_CHANGED_SINCE_PROPOSAL,
         now_ms,
     });
-    q.deinit();
 }
 
 fn rejectProposal(conn: *pg.Conn, proposal_id: []const u8, rejection_reason: []const u8, now_ms: i64) !void {
-    var q = try conn.query(
+    _ = try conn.exec(
         \\UPDATE agent_improvement_proposals
         \\SET status = $2,
         \\    rejection_reason = $3,
@@ -276,5 +284,4 @@ fn rejectProposal(conn: *pg.Conn, proposal_id: []const u8, rejection_reason: []c
         rejection_reason,
         now_ms,
     });
-    q.deinit();
 }

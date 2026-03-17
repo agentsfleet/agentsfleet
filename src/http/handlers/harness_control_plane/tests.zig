@@ -74,8 +74,8 @@ fn seedFreeEntitlement(conn: *pg.Conn, workspace_id: []const u8) !void {
 
 test "integration: activateProfile rejects invalid profile versions" {
     const db_ctx = (try util.openHarnessHandlerTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
-    defer db_ctx.pool.release(db_ctx.conn);
     defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
 
     {
         var q = try db_ctx.conn.query(
@@ -127,8 +127,8 @@ test "integration: activateProfile rejects invalid profile versions" {
 
 test "integration: getActiveProfile falls back to default-v1 when no active profile exists" {
     const db_ctx = (try util.openHarnessHandlerTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
-    defer db_ctx.pool.release(db_ctx.conn);
     defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
 
     {
         var q = try db_ctx.conn.query(
@@ -164,8 +164,8 @@ test "integration: getActiveProfile falls back to default-v1 when no active prof
 
 test "integration: activate/getActive profile identity contract includes snapshot linkage fields" {
     const db_ctx = (try util.openHarnessHandlerTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
-    defer db_ctx.pool.release(db_ctx.conn);
     defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
 
     {
         var q = try db_ctx.conn.query(

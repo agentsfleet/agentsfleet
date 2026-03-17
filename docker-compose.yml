@@ -1,7 +1,7 @@
 # UseZombie local dev — Postgres + Zig binary
 services:
   postgres:
-    image: postgres:18-alpine
+    image: postgres:17-alpine  # pg-0.0.0 library tested against PG17; upgrade pg dep before bumping to PG18
     environment:
       POSTGRES_USER: usezombie
       POSTGRES_PASSWORD: usezombie

@@ -21,8 +21,8 @@ fn openWorkerTestConn(alloc: std.mem.Allocator) !?struct { pool: *pg.Pool, conn:
 
 test "integration: workspace active profile is loaded for worker execution" {
     const db_ctx = (try openWorkerTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
-    defer db_ctx.pool.release(db_ctx.conn);
     defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
 
     {
         var q = try db_ctx.conn.query(
@@ -77,8 +77,8 @@ test "integration: workspace active profile is loaded for worker execution" {
 
 test "integration: worker profile fallback path returns null when no active binding" {
     const db_ctx = (try openWorkerTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
-    defer db_ctx.pool.release(db_ctx.conn);
     defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
 
     {
         var q = try db_ctx.conn.query(
@@ -106,8 +106,8 @@ test "integration: worker profile fallback path returns null when no active bind
 
 test "integration: switching active profile changes worker-resolved profile deterministically" {
     const db_ctx = (try openWorkerTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
-    defer db_ctx.pool.release(db_ctx.conn);
     defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
 
     {
         var q = try db_ctx.conn.query(
