@@ -1,5 +1,10 @@
 const std = @import("std");
 
+const AgentProposalRoute = struct {
+    agent_id: []const u8,
+    proposal_id: []const u8,
+};
+
 pub const Route = union(enum) {
     healthz,
     readyz,
@@ -25,8 +30,8 @@ pub const Route = union(enum) {
     get_agent: []const u8,
     get_agent_scores: []const u8,
     list_agent_proposals: []const u8,
-    approve_agent_proposal: struct { agent_id: []const u8, proposal_id: []const u8 },
-    reject_agent_proposal: struct { agent_id: []const u8, proposal_id: []const u8 },
+    approve_agent_proposal: AgentProposalRoute,
+    reject_agent_proposal: AgentProposalRoute,
 };
 
 const prefix_workspaces = "/v1/workspaces/";
@@ -111,7 +116,7 @@ fn matchWorkspaceSuffix(path: []const u8, suffix: []const u8) ?[]const u8 {
     return inner;
 }
 
-fn matchAgentProposalAction(path: []const u8, suffix: []const u8) ?struct { agent_id: []const u8, proposal_id: []const u8 } {
+fn matchAgentProposalAction(path: []const u8, suffix: []const u8) ?AgentProposalRoute {
     if (!std.mem.startsWith(u8, path, prefix_agents)) return null;
     if (!std.mem.endsWith(u8, path, suffix)) return null;
     const inner = path[prefix_agents.len .. path.len - suffix.len];
