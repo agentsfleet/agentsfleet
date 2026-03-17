@@ -52,6 +52,23 @@ pub fn validateProposedChanges(
     }
 }
 
+pub fn buildCandidateProfileJson(
+    conn: *pg.Conn,
+    alloc: std.mem.Allocator,
+    config_version_id: []const u8,
+    raw_json: []const u8,
+) (ProposalValidationError || anyerror)![]u8 {
+    const parsed = std.json.parseFromSlice(std.json.Value, alloc, raw_json, .{}) catch {
+        return ProposalValidationError.InvalidProposalJson;
+    };
+    defer parsed.deinit();
+
+    return switch (parsed.value) {
+        .array => |items| applyProposalChangesToConfig(conn, alloc, config_version_id, items.items),
+        else => ProposalValidationError.ProposalNotArray,
+    };
+}
+
 fn validateProposalChange(
     conn: *pg.Conn,
     workspace_id: []const u8,
@@ -101,7 +118,7 @@ fn validateProposalChange(
     try validateSkillRef(conn, workspace_id, skill_ref);
 }
 
-fn applyProposalChangesToConfig(
+pub fn applyProposalChangesToConfig(
     conn: *pg.Conn,
     alloc: std.mem.Allocator,
     config_version_id: []const u8,
