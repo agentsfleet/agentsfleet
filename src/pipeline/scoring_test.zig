@@ -38,6 +38,7 @@ fn createTempScoringTables(conn: *pg.Conn) !void {
         \\CREATE TEMP TABLE agent_profiles (
         \\  agent_id TEXT PRIMARY KEY,
         \\  workspace_id TEXT NOT NULL,
+        \\  status TEXT NOT NULL DEFAULT 'ACTIVE',
         \\  trust_streak_runs INTEGER NOT NULL DEFAULT 0,
         \\  trust_level TEXT NOT NULL DEFAULT 'UNEARNED',
         \\  last_scored_at BIGINT,
@@ -64,10 +65,68 @@ fn createTempScoringTables(conn: *pg.Conn) !void {
         \\  run_id TEXT NOT NULL UNIQUE,
         \\  agent_id TEXT NOT NULL,
         \\  workspace_id TEXT NOT NULL,
+        \\  proposal_id TEXT,
         \\  score INTEGER NOT NULL,
         \\  axis_scores TEXT NOT NULL,
         \\  weight_snapshot TEXT NOT NULL,
         \\  scored_at BIGINT NOT NULL
+        \\)
+    , .{});
+    _ = try conn.exec(
+        \\CREATE TEMP TABLE agent_improvement_proposals (
+        \\  proposal_id TEXT PRIMARY KEY,
+        \\  agent_id TEXT NOT NULL,
+        \\  workspace_id TEXT NOT NULL,
+        \\  trigger_reason TEXT NOT NULL,
+        \\  proposed_changes TEXT NOT NULL,
+        \\  config_version_id TEXT NOT NULL,
+        \\  approval_mode TEXT NOT NULL,
+        \\  generation_status TEXT NOT NULL,
+        \\  status TEXT NOT NULL,
+        \\  rejection_reason TEXT,
+        \\  auto_apply_at BIGINT,
+        \\  applied_by TEXT,
+        \\  created_at BIGINT NOT NULL,
+        \\  updated_at BIGINT NOT NULL
+        \\)
+    , .{});
+    _ = try conn.exec(
+        \\CREATE TEMP TABLE harness_change_log (
+        \\  change_id TEXT PRIMARY KEY,
+        \\  agent_id TEXT NOT NULL,
+        \\  proposal_id TEXT NOT NULL,
+        \\  workspace_id TEXT NOT NULL,
+        \\  field_name TEXT NOT NULL,
+        \\  old_value TEXT NOT NULL,
+        \\  new_value TEXT NOT NULL,
+        \\  applied_at BIGINT NOT NULL,
+        \\  applied_by TEXT NOT NULL,
+        \\  reverted_from TEXT,
+        \\  score_delta DOUBLE PRECISION
+        \\)
+    , .{});
+    _ = try conn.exec(
+        \\CREATE TEMP TABLE agent_config_versions (
+        \\  config_version_id TEXT PRIMARY KEY,
+        \\  tenant_id TEXT NOT NULL DEFAULT 'tenant_test',
+        \\  agent_id TEXT NOT NULL,
+        \\  version INTEGER NOT NULL DEFAULT 1,
+        \\  source_markdown TEXT NOT NULL DEFAULT '{}',
+        \\  compiled_profile_json TEXT,
+        \\  compile_engine TEXT NOT NULL DEFAULT 'deterministic-v1',
+        \\  validation_report_json TEXT NOT NULL DEFAULT '{}',
+        \\  is_valid BOOLEAN NOT NULL DEFAULT FALSE,
+        \\  created_at BIGINT NOT NULL DEFAULT 0,
+        \\  updated_at BIGINT NOT NULL DEFAULT 0
+        \\)
+    , .{});
+    _ = try conn.exec(
+        \\CREATE TEMP TABLE workspace_active_config (
+        \\  workspace_id TEXT PRIMARY KEY,
+        \\  tenant_id TEXT NOT NULL DEFAULT 'tenant_test',
+        \\  config_version_id TEXT NOT NULL,
+        \\  activated_by TEXT NOT NULL DEFAULT 'test',
+        \\  activated_at BIGINT NOT NULL DEFAULT 0
         \\)
     , .{});
 }
@@ -449,6 +508,105 @@ test "scoreRunIfTerminal agent-attributable low score resets trusted streak" {
     scoring.scoreRunIfTerminal(db_ctx.conn, null, "run_trust_reset", "ws_trust_reset", "agent_trust_reset", "user_reset", &state, 8);
 
     try expectTrustState(db_ctx.conn, "agent_trust_reset", 0, "UNEARNED");
+}
+
+test "scoreRunIfTerminal tags post-change window and computes score delta" {
+    const db_ctx = (try common.openHandlerTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
+
+    try createTempScoringTables(db_ctx.conn);
+    try insertScoringWorkspace(db_ctx.conn, "ws_improve");
+    try insertAgentProfile(db_ctx.conn, "agent_improve", "ws_improve", 0, "UNEARNED");
+
+    var hist_idx: usize = 0;
+    while (hist_idx < 5) : (hist_idx += 1) {
+        const run_id = try std.fmt.allocPrint(std.testing.allocator, "hist_improve_{d}", .{hist_idx});
+        defer std.testing.allocator.free(run_id);
+        try insertHistoricalScore(db_ctx.conn, "agent_improve", "ws_improve", run_id, 40, @intCast(hist_idx + 1), null, false);
+    }
+
+    _ = try db_ctx.conn.exec(
+        \\INSERT INTO agent_improvement_proposals
+        \\  (proposal_id, agent_id, workspace_id, trigger_reason, proposed_changes, config_version_id, approval_mode, generation_status, status, applied_by, created_at, updated_at)
+        \\VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6aa1', 'agent_improve', 'ws_improve', 'DECLINING_SCORE', '[]', 'cfg_1', 'MANUAL', 'READY', 'APPLIED', 'operator:test', 100, 100)
+    , .{});
+    _ = try db_ctx.conn.exec(
+        \\INSERT INTO harness_change_log
+        \\  (change_id, agent_id, proposal_id, workspace_id, field_name, old_value, new_value, applied_at, applied_by, reverted_from)
+        \\VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6aa2', 'agent_improve', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6aa1', 'ws_improve', 'stage_insert', '{}', '{}', 100, 'operator:test', NULL)
+    , .{});
+
+    const state = scoring.ScoringState{ .outcome = .done, .stages_passed = 2, .stages_total = 2 };
+    var run_idx: usize = 0;
+    while (run_idx < 5) : (run_idx += 1) {
+        const run_id = try std.fmt.allocPrint(std.testing.allocator, "post_improve_{d}", .{run_idx});
+        defer std.testing.allocator.free(run_id);
+        scoring.scoreRunIfTerminal(db_ctx.conn, null, run_id, "ws_improve", "agent_improve", "user_improve", &state, 8);
+    }
+
+    var tagged_q = try db_ctx.conn.query(
+        \\SELECT COUNT(*)
+        \\FROM agent_run_scores
+        \\WHERE proposal_id = '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6aa1'
+    , .{});
+    const tagged_row = (try tagged_q.next()) orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqual(@as(i64, 5), tagged_row.get(i64, 0) catch -1);
+    _ = tagged_q.next() catch {};
+    tagged_q.deinit();
+
+    var delta_q = try db_ctx.conn.query(
+        \\SELECT score_delta
+        \\FROM harness_change_log
+        \\WHERE proposal_id = '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6aa1'
+    , .{});
+    const delta_row = (try delta_q.next()) orelse return error.TestUnexpectedResult;
+    const score_delta = delta_row.get(?f64, 0) catch null;
+    try std.testing.expect(score_delta != null);
+    try std.testing.expect(score_delta.? > 50.0);
+    _ = delta_q.next() catch {};
+    delta_q.deinit();
+}
+
+test "scoreRunIfTerminal resets trust after three consecutive negative score deltas" {
+    const db_ctx = (try common.openHandlerTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
+
+    try createTempScoringTables(db_ctx.conn);
+    try insertScoringWorkspace(db_ctx.conn, "ws_stalled");
+    try insertAgentProfile(db_ctx.conn, "agent_stalled", "ws_stalled", 10, "TRUSTED");
+
+    var hist_idx: usize = 0;
+    while (hist_idx < 5) : (hist_idx += 1) {
+        const run_id = try std.fmt.allocPrint(std.testing.allocator, "hist_stalled_{d}", .{hist_idx});
+        defer std.testing.allocator.free(run_id);
+        try insertHistoricalScore(db_ctx.conn, "agent_stalled", "ws_stalled", run_id, 90, @intCast(hist_idx + 1), null, false);
+    }
+
+    const proposals_to_seed = [_][]const u8{
+        "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6ab1",
+        "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6ab2",
+        "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6ab3",
+    };
+    for (proposals_to_seed, 0..) |proposal_id, idx| {
+        const applied_at: i64 = @intCast(100 + idx);
+        _ = try db_ctx.conn.exec(
+            \\INSERT INTO agent_improvement_proposals
+            \\  (proposal_id, agent_id, workspace_id, trigger_reason, proposed_changes, config_version_id, approval_mode, generation_status, status, applied_by, created_at, updated_at)
+            \\VALUES ($1, 'agent_stalled', 'ws_stalled', 'DECLINING_SCORE', '[]', 'cfg_x', 'MANUAL', 'READY', 'APPLIED', 'operator:test', $2, $2)
+        , .{ proposal_id, applied_at });
+        _ = try db_ctx.conn.exec(
+            \\INSERT INTO harness_change_log
+            \\  (change_id, agent_id, proposal_id, workspace_id, field_name, old_value, new_value, applied_at, applied_by, reverted_from, score_delta)
+            \\VALUES ($1, 'agent_stalled', $2, 'ws_stalled', 'stage_insert', '{}', '{}', $3, 'operator:test', NULL, -5.0)
+        , .{ proposal_id, proposal_id, applied_at });
+    }
+
+    const bad_state = scoring.ScoringState{ .outcome = .blocked_stage_graph, .stages_passed = 0, .stages_total = 2 };
+    scoring.scoreRunIfTerminal(db_ctx.conn, null, "run_stalled_final", "ws_stalled", "agent_stalled", "user_stalled", &bad_state, 30);
+
+    try expectTrustState(db_ctx.conn, "agent_stalled", 0, "UNEARNED");
 }
 
 test "buildScoringContextForEcho returns orientation when no history" {

@@ -168,15 +168,17 @@ Approved proposals (auto or manual) are applied atomically; every change is vers
 
 ## 6.0 Improvement Trajectory Measurement
 
-**Status:** PENDING
+**Status:** DONE
 
 Measure whether applied proposals actually improve the agent's score.
 
 **Dimensions:**
-- 6.1 PENDING After each applied change, tag the next 5 runs as `post_change_window: true` in `agent_run_scores` (add nullable `change_id` column referencing the proposal that triggered the change window)
-- 6.2 PENDING Compute `score_delta`: avg score of post-change window minus avg score of 5 runs before the change; store on `harness_change_log` as `score_delta` (nullable, populated after window completes)
-- 6.3 PENDING `zombiectl agent improvement-report <agent-id>` — prints: trust level, proposals generated/approved/vetoed/rejected/applied, avg score delta per applied change, current vs baseline tier
-- 6.4 PENDING If 3 consecutive applied proposals each produce negative `score_delta`, emit `agent.improvement.stalled` event, surface warning in CLI profile output, and reset trust level to UNEARNED regardless of `trust_streak_runs`
+- 6.1 DONE After each applied proposal, tag the next 5 runs in `agent_run_scores` with nullable `proposal_id` referencing the applied proposal that opened the post-change window
+- 6.2 DONE Compute `score_delta`: avg score of the tagged post-change window minus avg score of the 5 runs before the applied proposal; persist the finalized delta on every `harness_change_log` row written for that proposal
+- 6.3 DONE `zombiectl agent improvement-report <agent-id>` now reads `/v1/agents/{agent_id}/improvement-report` and prints trust level, proposal lifecycle counts, average score delta per applied change, and current vs baseline tier
+- 6.4 DONE When 3 consecutive applied proposals finalize with negative `score_delta`, the scoring path emits `agent.improvement.stalled`, resets the agent trust state to `UNEARNED`, and surfaces `improvement_stalled_warning: true` in profile/report output
+
+**Verification note:** `zig build test` passes in this worktree, including new coverage for proposal-linked post-change windows, `score_delta` persistence, stalled-improvement trust resets, and improvement report aggregation. `bun test zombiectl/test/agent_profile.unit.test.js zombiectl/test/agent_improvement_report.unit.test.js zombiectl/test/help.test.js` passes. Aggregate `make test-unit` advances through `zombied` and `zombiectl`, then stops in the website package because `vitest` is not installed locally; `make lint` similarly reaches the website package and stops because `eslint` is not installed locally.
 
 ---
 

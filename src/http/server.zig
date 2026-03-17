@@ -67,6 +67,7 @@ fn dispatchMatchedRoute(r: zap.Request, path: []const u8) bool {
         .sync_workspace => |workspace_id| if (r.methodAsEnum() == .POST) handler.handleSyncSpecs(g_ctx, r, workspace_id) else respondMethodNotAllowed(r),
         .get_agent => |agent_id| if (r.methodAsEnum() == .GET) handler.handleGetAgent(g_ctx, r, agent_id) else respondMethodNotAllowed(r),
         .get_agent_scores => |agent_id| if (r.methodAsEnum() == .GET) handler.handleGetAgentScores(g_ctx, r, agent_id) else respondMethodNotAllowed(r),
+        .get_agent_improvement_report => |agent_id| if (r.methodAsEnum() == .GET) handler.handleGetAgentImprovementReport(g_ctx, r, agent_id) else respondMethodNotAllowed(r),
         .list_agent_proposals => |agent_id| if (r.methodAsEnum() == .GET) handler.handleListAgentProposals(g_ctx, r, agent_id) else respondMethodNotAllowed(r),
         .approve_agent_proposal => |route| if (r.methodAsEnum() == .POST) handler.handleApproveAgentProposal(g_ctx, r, route.agent_id, route.proposal_id) else respondMethodNotAllowed(r),
         .reject_agent_proposal => |route| if (r.methodAsEnum() == .POST) handler.handleRejectAgentProposal(g_ctx, r, route.agent_id, route.proposal_id) else respondMethodNotAllowed(r),

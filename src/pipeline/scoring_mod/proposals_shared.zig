@@ -17,6 +17,7 @@ pub const STATUS_VETO_WINDOW = "VETO_WINDOW";
 pub const STATUS_APPLIED = "APPLIED";
 pub const STATUS_CONFIG_CHANGED = "CONFIG_CHANGED";
 pub const STATUS_VETOED = "VETOED";
+pub const TRUST_LEVEL_UNEARNED = "UNEARNED";
 pub const TRUST_LEVEL_TRUSTED = "TRUSTED";
 pub const DEFAULT_RECONCILE_BATCH_LIMIT: u32 = 32;
 pub const AUTO_APPLY_WINDOW_MS: i64 = 24 * 60 * 60 * 1000;
@@ -179,6 +180,33 @@ pub const AppliedProposalTelemetry = struct {
         alloc.free(self.approval_mode);
         for (self.fields_changed) |field| alloc.free(field);
         alloc.free(self.fields_changed);
+    }
+};
+
+pub const ImprovementStalledAlert = struct {
+    proposal_id: []u8,
+
+    pub fn deinit(self: *ImprovementStalledAlert, alloc: std.mem.Allocator) void {
+        alloc.free(self.proposal_id);
+    }
+};
+
+pub const ImprovementReport = struct {
+    agent_id: []u8,
+    trust_level: []u8,
+    improvement_stalled_warning: bool,
+    proposals_generated: u32,
+    proposals_approved: u32,
+    proposals_vetoed: u32,
+    proposals_rejected: u32,
+    proposals_applied: u32,
+    avg_score_delta_per_applied_change: ?f64,
+    current_tier: ?[]const u8,
+    baseline_tier: ?[]const u8,
+
+    pub fn deinit(self: *ImprovementReport, alloc: std.mem.Allocator) void {
+        alloc.free(self.agent_id);
+        alloc.free(self.trust_level);
     }
 };
 

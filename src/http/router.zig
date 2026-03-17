@@ -34,6 +34,7 @@ pub const Route = union(enum) {
     sync_workspace: []const u8,
     get_agent: []const u8,
     get_agent_scores: []const u8,
+    get_agent_improvement_report: []const u8,
     list_agent_proposals: []const u8,
     approve_agent_proposal: AgentProposalRoute,
     reject_agent_proposal: AgentProposalRoute,
@@ -96,6 +97,11 @@ pub fn match(path: []const u8) ?Route {
     if (std.mem.startsWith(u8, path, prefix_agents) and std.mem.endsWith(u8, path, "/scores")) {
         const inner = path[prefix_agents.len .. path.len - "/scores".len];
         if (isSingleSegment(inner)) return .{ .get_agent_scores = inner };
+    }
+
+    if (std.mem.startsWith(u8, path, prefix_agents) and std.mem.endsWith(u8, path, "/improvement-report")) {
+        const inner = path[prefix_agents.len .. path.len - "/improvement-report".len];
+        if (isSingleSegment(inner)) return .{ .get_agent_improvement_report = inner };
     }
 
     if (std.mem.startsWith(u8, path, prefix_agents) and std.mem.endsWith(u8, path, "/proposals")) {
@@ -200,6 +206,13 @@ test "match resolves agent profile and scores routes" {
         agent_id,
         switch (match("/v1/agents/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/scores").?) {
             .get_agent_scores => |id| id,
+            else => return error.TestExpectedEqual,
+        },
+    );
+    try std.testing.expectEqualStrings(
+        agent_id,
+        switch (match("/v1/agents/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/improvement-report").?) {
+            .get_agent_improvement_report => |id| id,
             else => return error.TestExpectedEqual,
         },
     );
