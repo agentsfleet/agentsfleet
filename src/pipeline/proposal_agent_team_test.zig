@@ -27,6 +27,15 @@ fn createTempProposalTables(conn: *pg.Conn) !void {
         \\)
     );
     try execSql(conn,
+        \\CREATE TEMP TABLE workspace_latency_baseline (
+        \\  workspace_id TEXT PRIMARY KEY,
+        \\  p50_seconds BIGINT NOT NULL,
+        \\  p95_seconds BIGINT NOT NULL,
+        \\  sample_count INTEGER NOT NULL,
+        \\  computed_at BIGINT NOT NULL
+        \\)
+    );
+    try execSql(conn,
         \\CREATE TEMP TABLE agent_profiles (
         \\  agent_id TEXT PRIMARY KEY,
         \\  workspace_id TEXT NOT NULL,
@@ -69,6 +78,7 @@ fn createTempProposalTables(conn: *pg.Conn) !void {
         \\  run_id TEXT NOT NULL UNIQUE,
         \\  agent_id TEXT NOT NULL,
         \\  workspace_id TEXT NOT NULL,
+        \\  proposal_id TEXT,
         \\  score INTEGER NOT NULL,
         \\  axis_scores TEXT NOT NULL,
         \\  weight_snapshot TEXT NOT NULL,
@@ -105,6 +115,21 @@ fn createTempProposalTables(conn: *pg.Conn) !void {
         \\  applied_by TEXT,
         \\  created_at BIGINT NOT NULL,
         \\  updated_at BIGINT NOT NULL
+        \\)
+    );
+    try execSql(conn,
+        \\CREATE TEMP TABLE harness_change_log (
+        \\  change_id TEXT PRIMARY KEY,
+        \\  agent_id TEXT NOT NULL,
+        \\  proposal_id TEXT NOT NULL,
+        \\  workspace_id TEXT NOT NULL,
+        \\  field_name TEXT NOT NULL,
+        \\  old_value TEXT NOT NULL,
+        \\  new_value TEXT NOT NULL,
+        \\  applied_at BIGINT NOT NULL,
+        \\  applied_by TEXT NOT NULL,
+        \\  reverted_from TEXT,
+        \\  score_delta DOUBLE PRECISION
         \\)
     );
 }
