@@ -47,7 +47,7 @@ pub fn applyEntitlementPlan(
     const entitlement_id = try id_format.generateEntitlementSnapshotId(alloc);
     defer alloc.free(entitlement_id);
     const policy = entitlementForTier(tier);
-    var q = try conn.query(
+    _ = try conn.exec(
         \\INSERT INTO workspace_entitlements
         \\  (entitlement_id, workspace_id, plan_tier, max_profiles, max_stages, max_distinct_skills,
         \\   allow_custom_skills, enable_agent_scoring, agent_scoring_weights_json, created_at, updated_at)
@@ -72,7 +72,6 @@ pub fn applyEntitlementPlan(
         DEFAULT_AGENT_SCORING_WEIGHTS_JSON,
         now_ms,
     });
-    q.deinit();
 }
 
 pub fn upsertBillingState(
@@ -94,7 +93,7 @@ pub fn upsertBillingState(
 ) !void {
     const billing_id = try id_format.generateEntitlementSnapshotId(alloc);
     defer alloc.free(billing_id);
-    var q = try conn.query(
+    _ = try conn.exec(
         \\INSERT INTO workspace_billing_state
         \\  (billing_id, workspace_id, plan_tier, plan_sku, billing_status, adapter, subscription_id,
         \\   payment_failed_at, grace_expires_at, pending_status, pending_reason, created_at, updated_at)
@@ -124,7 +123,6 @@ pub fn upsertBillingState(
         state.pending_reason,
         now_ms,
     });
-    q.deinit();
 }
 
 pub fn insertAudit(
@@ -142,7 +140,7 @@ pub fn insertAudit(
 ) !void {
     const audit_id = try id_format.generateEntitlementSnapshotId(alloc);
     defer alloc.free(audit_id);
-    var q = try conn.query(
+    _ = try conn.exec(
         \\INSERT INTO workspace_billing_audit
         \\  (audit_id, workspace_id, event_type, previous_plan_tier, new_plan_tier, previous_status, new_status, reason, actor, metadata_json, created_at)
         \\VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
@@ -159,7 +157,6 @@ pub fn insertAudit(
         metadata_json,
         std.time.milliTimestamp(),
     });
-    q.deinit();
 }
 
 test "configuredAdapterModeLabel returns noop when env var not set" {

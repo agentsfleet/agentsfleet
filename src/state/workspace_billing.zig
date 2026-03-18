@@ -120,7 +120,7 @@ pub fn upgradeWorkspaceToScale(
     return .{
         .plan_tier = .scale,
         .billing_status = .active,
-        .plan_sku = SCALE_PLAN_SKU,
+        .plan_sku = try alloc.dupe(u8, SCALE_PLAN_SKU),
         .subscription_id = try alloc.dupe(u8, trimmed_subscription),
         .grace_expires_at = null,
     };

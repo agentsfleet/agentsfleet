@@ -67,21 +67,38 @@ pub fn loadStateRow(
         \\LIMIT 1
     , .{workspace_id});
     defer q.deinit();
-    const row = (try q.next()) orelse return error.WorkspaceBillingStateMissing;
+    const row = (try q.next()) orelse {
+        q.drain() catch {};
+        return error.WorkspaceBillingStateMissing;
+    };
     const plan_tier_raw = try row.get([]const u8, 0);
     const billing_status_raw = try row.get([]const u8, 1);
     const pending_status_raw = try row.get(?[]const u8, 7);
-    return .{
-        .plan_tier = parsePlanTier(plan_tier_raw) orelse return error.InvalidWorkspaceBillingState,
-        .billing_status = parseBillingStatus(billing_status_raw) orelse return error.InvalidWorkspaceBillingState,
+    const plan_tier = parsePlanTier(plan_tier_raw) orelse {
+        q.drain() catch {};
+        return error.InvalidWorkspaceBillingState;
+    };
+    const billing_status = parseBillingStatus(billing_status_raw) orelse {
+        q.drain() catch {};
+        return error.InvalidWorkspaceBillingState;
+    };
+    const pending_status = if (pending_status_raw) |v| (parsePendingStatus(v) orelse {
+        q.drain() catch {};
+        return error.InvalidWorkspaceBillingState;
+    }) else null;
+    const result = StateRow{
+        .plan_tier = plan_tier,
+        .billing_status = billing_status,
         .plan_sku = try alloc.dupe(u8, try row.get([]const u8, 2)),
         .adapter = try alloc.dupe(u8, try row.get([]const u8, 3)),
         .subscription_id = if (try row.get(?[]const u8, 4)) |v| try alloc.dupe(u8, v) else null,
         .payment_failed_at = try row.get(?i64, 5),
         .grace_expires_at = try row.get(?i64, 6),
-        .pending_status = if (pending_status_raw) |v| parsePendingStatus(v) orelse return error.InvalidWorkspaceBillingState else null,
+        .pending_status = pending_status,
         .pending_reason = if (try row.get(?[]const u8, 8)) |v| try alloc.dupe(u8, v) else null,
     };
+    q.drain() catch {};
+    return result;
 }
 
 test "parsePlanTier case-insensitive happy path" {
