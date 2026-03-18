@@ -19,8 +19,6 @@
 
 The canonical v1 acceptance target is:
 
-`https://github.com/indykish/terraform-provider-e2e`
-
 **Dimensions:**
 - 1.1 PENDING Authenticate with `zombiectl login`
 - 1.2 PENDING Connect repo using `zombiectl workspace add`
