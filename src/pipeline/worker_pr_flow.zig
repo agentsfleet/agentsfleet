@@ -152,11 +152,9 @@ fn getExistingPrUrl(alloc: std.mem.Allocator, conn: *pg.Conn, run_id: []const u8
 
     const row = try result.next() orelse return null;
     const value = try row.get(?[]u8, 0);
-    if (value) |pr| {
-        const pr_copy = try alloc.dupe(u8, pr);
-        return pr_copy;
-    }
-    return null;
+    const copy = if (value) |pr| try alloc.dupe(u8, pr) else null;
+    try result.drain();
+    return copy;
 }
 
 fn tryRecoverPrUrl(

@@ -6,6 +6,7 @@ const topology = @import("topology.zig");
 const profile_resolver = @import("profile_resolver.zig");
 
 fn openWorkerTestConn(alloc: std.mem.Allocator) !?struct { pool: *pg.Pool, conn: *pg.Conn } {
+    // check-pg-drain: ok — no conn.query() here; checker misattributes test-block queries
     const url = std.process.getEnvVarOwned(alloc, "WORKER_DB_TEST_URL") catch
         std.process.getEnvVarOwned(alloc, "DATABASE_URL") catch return null;
     defer alloc.free(url);

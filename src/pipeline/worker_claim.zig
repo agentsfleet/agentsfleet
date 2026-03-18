@@ -25,18 +25,15 @@ pub const ProcessConfig = struct {
 };
 
 fn beginTx(conn: *pg.Conn) !void {
-    var tx = try conn.query("BEGIN", .{});
-    tx.deinit();
+    _ = try conn.exec("BEGIN", .{});
 }
 
 fn commitTx(conn: *pg.Conn) !void {
-    var tx = try conn.query("COMMIT", .{});
-    tx.deinit();
+    _ = try conn.exec("COMMIT", .{});
 }
 
 fn rollbackTx(conn: *pg.Conn) void {
-    var tx = conn.query("ROLLBACK", .{}) catch return;
-    tx.deinit();
+    _ = conn.exec("ROLLBACK", .{}) catch {};
 }
 
 pub fn processNextRun(

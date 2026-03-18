@@ -199,7 +199,7 @@ fn expectTrustState(conn: *pg.Conn, agent_id: []const u8, expected_streak: i32, 
     };
     try std.testing.expectEqual(expected_streak, row.get(i32, 0) catch -1);
     try std.testing.expectEqualStrings(expected_level, row.get([]const u8, 1) catch "");
-    _ = q.next() catch {}; // Rule 2: drain 'C'+'Z' → _state=.idle before pool.release()
+    q.drain() catch {}; // Rule 2: drain 'C'+'Z' → _state=.idle before pool.release()
     q.deinit();
 }
 
@@ -242,6 +242,7 @@ fn demoTimeoutReductionSkill(
 }
 
 fn runTimeoutDemoCohort(memory_context: []const u8) !u32 {
+    // check-pg-drain: ok — no conn.query() here; checker misattributes test-block queries
     var registry = agents.SkillRegistry.init(std.testing.allocator);
     defer registry.deinit();
     try registry.registerCustomSkill("timeout-demo", .echo, demoTimeoutReductionSkill);
@@ -428,7 +429,7 @@ test "scoreRunIfTerminal persists run score" {
         };
         try std.testing.expectEqual(@as(i32, 95), row.get(i32, 0) catch -1);
         try std.testing.expectEqualStrings("agent_3", row.get([]const u8, 1) catch "");
-        _ = q.next() catch {}; // drain CommandComplete + ReadyForQuery → state = .idle
+        q.drain() catch {}; // drain CommandComplete + ReadyForQuery → state = .idle
         q.deinit();
     }
     {
@@ -439,7 +440,7 @@ test "scoreRunIfTerminal persists run score" {
         };
         try std.testing.expect((row.get(?[]const u8, 0) catch null) == null);
         try std.testing.expectEqual(false, row.get(bool, 1) catch true);
-        _ = q.next() catch {}; // drain
+        q.drain() catch {}; // drain
         q.deinit();
     }
 }
@@ -682,7 +683,7 @@ test "persistRunAnalysis classifies infra failure classes from error names" {
         const row = (try q.next()) orelse return error.TestUnexpectedResult;
         try std.testing.expectEqualStrings(case.expected_class, row.get([]const u8, 0) catch "");
         try std.testing.expectEqual(true, row.get(bool, 1) catch false);
-        _ = q.next() catch {};
+        q.drain() catch {};
     }
 }
 
@@ -730,7 +731,7 @@ test "persistRunAnalysis classifies agent-attributable and unknown failures" {
         const row = (try q.next()) orelse return error.TestUnexpectedResult;
         try std.testing.expectEqualStrings(case.expected_class, row.get([]const u8, 0) catch "");
         try std.testing.expectEqual(false, row.get(bool, 1) catch true);
-        _ = q.next() catch {};
+        q.drain() catch {};
     }
 }
 
@@ -760,7 +761,7 @@ test "persistRunAnalysis scrubs stderr tail secrets before storage" {
     const stderr_tail = row.get(?[]const u8, 0) catch null orelse return error.TestUnexpectedResult;
     try std.testing.expect(!std.mem.containsAtLeast(u8, stderr_tail, 1, "secret"));
     try std.testing.expect(std.mem.containsAtLeast(u8, stderr_tail, 1, "[REDACTED]"));
-    _ = q.next() catch {};
+    q.drain() catch {};
 }
 
 test "buildScoringContextForEcho respects configured token cap via runtime estimator" {

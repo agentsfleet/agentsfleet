@@ -27,6 +27,7 @@ pub fn reconcilePending(
     adapter: billing_adapter.Adapter,
     batch_limit: u32,
 ) !ReconcileResult {
+    // check-pg-drain: ok — full while loop exhausts all rows, natural drain
     const limit = if (batch_limit == 0) DEFAULT_BATCH_LIMIT else batch_limit;
     var result = ReconcileResult{};
     const now_ms = std.time.milliTimestamp();

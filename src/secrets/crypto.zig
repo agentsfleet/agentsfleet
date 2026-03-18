@@ -174,7 +174,7 @@ pub fn store(
 
     const secret_id = try id_format.generateVaultSecretId(alloc);
     defer alloc.free(secret_id);
-    var result = try conn.query(
+    _ = try conn.exec(
         \\INSERT INTO vault.secrets
         \\  (id, workspace_id, key_name, kek_version, encrypted_dek, dek_nonce, dek_tag, nonce, ciphertext, tag, created_at, updated_at)
         \\VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11)
@@ -200,7 +200,6 @@ pub fn store(
         encrypted_payload.tag[0..],
         now_ms,
     });
-    result.deinit();
 }
 
 fn toFixed(comptime N: usize, bytes: []const u8) ![N]u8 {
@@ -240,14 +239,19 @@ pub fn load(
     const dek_tag = try toFixed(TAG_LEN, dek_tag_slice);
     const payload_nonce = try toFixed(NONCE_LEN, payload_nonce_slice);
     const payload_tag = try toFixed(TAG_LEN, payload_tag_slice);
+    const ciphertext_copy = try alloc.dupe(u8, payload_ciphertext);
+    defer alloc.free(ciphertext_copy);
+    const dek_copy = try alloc.dupe(u8, encrypted_dek);
+    defer alloc.free(dek_copy);
+    try result.drain();
 
     const kek = try loadKekByVersion(alloc, kek_version);
 
-    const dek_plain = try decrypt(alloc, &dek_nonce, encrypted_dek, &dek_tag, &kek);
+    const dek_plain = try decrypt(alloc, &dek_nonce, dek_copy, &dek_tag, &kek);
     defer alloc.free(dek_plain);
 
     const dek = try toFixed(KEY_LEN, dek_plain);
-    return decrypt(alloc, &payload_nonce, payload_ciphertext, &payload_tag, &dek);
+    return decrypt(alloc, &payload_nonce, ciphertext_copy, &payload_tag, &dek);
 }
 
 /// Re-encrypt a secret under a new KEK version. Safe to call during rotation:
@@ -283,9 +287,15 @@ pub fn storeWorkspaceSkillSecret(
         "SELECT tenant_id FROM workspaces WHERE workspace_id = $1 LIMIT 1",
         .{workspace_id},
     );
-    defer ws.deinit();
-    const ws_row = (try ws.next()) orelse return error.NotFound;
-    const tenant_id = try ws_row.get([]const u8, 0);
+    const ws_row = (try ws.next()) orelse {
+        ws.deinit();
+        return error.NotFound;
+    };
+    const tenant_id_raw = try ws_row.get([]const u8, 0);
+    const tenant_id = try alloc.dupe(u8, tenant_id_raw);
+    defer alloc.free(tenant_id);
+    ws.drain() catch {};
+    ws.deinit();
 
     var dek: [KEY_LEN]u8 = undefined;
     std.crypto.random.bytes(&dek);
@@ -300,7 +310,7 @@ pub fn storeWorkspaceSkillSecret(
 
     const skill_secret_id = try id_format.generateSkillSecretId(alloc);
     defer alloc.free(skill_secret_id);
-    var result = try conn.query(
+    _ = try conn.exec(
         \\INSERT INTO vault.workspace_skill_secrets
         \\  (id, tenant_id, workspace_id, skill_ref, key_name, scope, secret_meta_json, kek_version, encrypted_dek, dek_nonce, dek_tag, nonce, ciphertext, tag, created_at, updated_at)
         \\VALUES ($1, $2, $3, $4, $5, $6, $7, 1, $8, $9, $10, $11, $12, $13, $14, $14)
@@ -331,7 +341,6 @@ pub fn storeWorkspaceSkillSecret(
         encrypted_payload.tag[0..],
         now_ms,
     });
-    result.deinit();
 }
 
 pub fn deleteWorkspaceSkillSecret(
@@ -340,11 +349,10 @@ pub fn deleteWorkspaceSkillSecret(
     skill_ref: []const u8,
     key_name: []const u8,
 ) !void {
-    var result = try conn.query(
+    _ = try conn.exec(
         \\DELETE FROM vault.workspace_skill_secrets
         \\WHERE workspace_id = $1 AND skill_ref = $2 AND key_name = $3
     , .{ workspace_id, skill_ref, key_name });
-    result.deinit();
 }
 
 pub fn buildSecretInjectionPlan(

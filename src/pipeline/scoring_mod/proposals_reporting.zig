@@ -151,7 +151,7 @@ fn countTaggedWindowScores(conn: *pg.Conn, proposal_id: []const u8) !u32 {
 
     const row = (try q.next()) orelse return 0;
     const count: i64 = try row.get(i64, 0);
-    _ = q.next() catch {};
+    q.drain() catch {};
     return @intCast(@max(count, 0));
 }
 
@@ -185,7 +185,7 @@ fn loadAverageScoreBeforeProposal(conn: *pg.Conn, agent_id: []const u8, applied_
 
     const row = (try q.next()) orelse return null;
     const avg_score = try row.get(?f64, 0);
-    _ = q.next() catch {};
+    q.drain() catch {};
     return avg_score;
 }
 
@@ -199,7 +199,7 @@ fn loadAverageScoreForProposal(conn: *pg.Conn, proposal_id: []const u8) !?f64 {
 
     const row = (try q.next()) orelse return null;
     const avg_score = try row.get(?f64, 0);
-    _ = q.next() catch {};
+    q.drain() catch {};
     return avg_score;
 }
 
@@ -281,7 +281,7 @@ fn loadProposalCounts(conn: *pg.Conn, agent_id: []const u8) !ProposalCounts {
         .rejected = @intCast(@max(try row.get(i64, 3), 0)),
         .applied = @intCast(@max(try row.get(i64, 4), 0)),
     };
-    _ = q.next() catch {};
+    q.drain() catch {};
     return result;
 }
 
@@ -300,7 +300,7 @@ fn loadAverageAppliedScoreDelta(conn: *pg.Conn, agent_id: []const u8) !?f64 {
 
     const row = (try q.next()) orelse return null;
     const avg_delta = try row.get(?f64, 0);
-    _ = q.next() catch {};
+    q.drain() catch {};
     return avg_delta;
 }
 
@@ -315,7 +315,7 @@ fn loadLatestCompletedBaselineAverage(conn: *pg.Conn, agent_id: []const u8) !?f6
 
     const row = (try q.next()) orelse return null;
     const applied_at = try row.get(?i64, 0);
-    _ = q.next() catch {};
+    q.drain() catch {};
     if (applied_at == null) return null;
     return loadAverageScoreBeforeProposal(conn, agent_id, applied_at.?);
 }
@@ -335,7 +335,7 @@ fn loadCurrentAverageScore(conn: *pg.Conn, agent_id: []const u8) !?f64 {
 
     const row = (try q.next()) orelse return null;
     const avg_score = try row.get(?f64, 0);
-    _ = q.next() catch {};
+    q.drain() catch {};
     return avg_score;
 }
 

@@ -375,8 +375,7 @@ pub fn executeRun(
 
                 {
                     const now_ms = std.time.milliTimestamp();
-                    var r = try conn.query("UPDATE runs SET pr_url = $1, updated_at = $2 WHERE run_id = $3", .{ pr_final, now_ms, ctx.run_id });
-                    r.deinit();
+                    _ = try conn.exec("UPDATE runs SET pr_url = $1, updated_at = $2 WHERE run_id = $3", .{ pr_final, now_ms, ctx.run_id });
                 }
 
                 _ = try state.transition(conn, ctx.run_id, .PR_OPENED, .orchestrator, .PR_CREATED, pr_final);
