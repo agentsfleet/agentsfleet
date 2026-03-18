@@ -44,10 +44,14 @@ test "payment failure transitions to grace then downgrade policy" {
 
     try createTempWorkspaceBillingTables(db_ctx.conn);
     try seedWorkspace(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11");
-    _ = try workspace_billing.upgradeWorkspaceToScale(db_ctx.conn, std.testing.allocator, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11", .{
-        .subscription_id = "sub_scale_123",
-        .actor = "test",
-    });
+    {
+        const sv = try workspace_billing.upgradeWorkspaceToScale(db_ctx.conn, std.testing.allocator, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11", .{
+            .subscription_id = "sub_scale_123",
+            .actor = "test",
+        });
+        std.testing.allocator.free(sv.plan_sku);
+        if (sv.subscription_id) |v| std.testing.allocator.free(v);
+    }
 
     const grace = try workspace_billing.applyBillingLifecycleEvent(db_ctx.conn, std.testing.allocator, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11", .{
         .event = .payment_failed,
@@ -74,10 +78,14 @@ test "billing sync remains stable across repeated sync cycles" {
 
     try createTempWorkspaceBillingTables(db_ctx.conn);
     try seedWorkspace(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11");
-    _ = try workspace_billing.upgradeWorkspaceToScale(db_ctx.conn, std.testing.allocator, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11", .{
-        .subscription_id = "sub_scale_123",
-        .actor = "test",
-    });
+    {
+        const sv = try workspace_billing.upgradeWorkspaceToScale(db_ctx.conn, std.testing.allocator, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11", .{
+            .subscription_id = "sub_scale_123",
+            .actor = "test",
+        });
+        std.testing.allocator.free(sv.plan_sku);
+        if (sv.subscription_id) |v| std.testing.allocator.free(v);
+    }
 
     const first = try workspace_billing.reconcileWorkspaceBilling(db_ctx.conn, std.testing.allocator, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11", 200, "sync");
     defer std.testing.allocator.free(first.plan_sku);
@@ -132,10 +140,14 @@ test "manual scale to free downgrade is deterministic" {
 
     try createTempWorkspaceBillingTables(db_ctx.conn);
     try seedWorkspace(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f13");
-    _ = try workspace_billing.upgradeWorkspaceToScale(db_ctx.conn, std.testing.allocator, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f13", .{
-        .subscription_id = "sub_scale_456",
-        .actor = "test",
-    });
+    {
+        const sv = try workspace_billing.upgradeWorkspaceToScale(db_ctx.conn, std.testing.allocator, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f13", .{
+            .subscription_id = "sub_scale_456",
+            .actor = "test",
+        });
+        std.testing.allocator.free(sv.plan_sku);
+        if (sv.subscription_id) |v| std.testing.allocator.free(v);
+    }
 
     const state = try workspace_billing.applyBillingLifecycleEvent(db_ctx.conn, std.testing.allocator, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f13", .{
         .event = .downgrade_to_free,
@@ -155,10 +167,14 @@ test "downgraded workspace can become a paying customer again" {
 
     try createTempWorkspaceBillingTables(db_ctx.conn);
     try seedWorkspace(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f14");
-    _ = try workspace_billing.upgradeWorkspaceToScale(db_ctx.conn, std.testing.allocator, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f14", .{
-        .subscription_id = "sub_scale_789",
-        .actor = "test",
-    });
+    {
+        const sv = try workspace_billing.upgradeWorkspaceToScale(db_ctx.conn, std.testing.allocator, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f14", .{
+            .subscription_id = "sub_scale_789",
+            .actor = "test",
+        });
+        std.testing.allocator.free(sv.plan_sku);
+        if (sv.subscription_id) |v| std.testing.allocator.free(v);
+    }
 
     const downgraded = try workspace_billing.applyBillingLifecycleEvent(db_ctx.conn, std.testing.allocator, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f14", .{
         .event = .downgrade_to_free,
@@ -188,11 +204,10 @@ test "workspace deletion cascades billing state cleanup" {
     try seedWorkspace(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f15");
     try workspace_billing.provisionFreeWorkspace(db_ctx.conn, std.testing.allocator, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f15", "test");
 
-    var delete_q = try db_ctx.conn.query(
+    _ = try db_ctx.conn.exec(
         "DELETE FROM workspaces WHERE workspace_id = $1",
         .{"0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f15"},
     );
-    delete_q.deinit();
 
     {
         var q = try db_ctx.conn.query(
@@ -202,6 +217,7 @@ test "workspace deletion cascades billing state cleanup" {
         defer q.deinit();
         const row = (try q.next()) orelse return error.TestExpectedEqual;
         try std.testing.expectEqual(@as(i64, 0), try row.get(i64, 0));
+        q.drain() catch {};
     }
     {
         var q = try db_ctx.conn.query(
@@ -211,6 +227,7 @@ test "workspace deletion cascades billing state cleanup" {
         defer q.deinit();
         const row = (try q.next()) orelse return error.TestExpectedEqual;
         try std.testing.expectEqual(@as(i64, 0), try row.get(i64, 0));
+        q.drain() catch {};
     }
 }
 
@@ -240,10 +257,14 @@ test "free workspace creation limit ignores existing scale workspace and same ca
 
     try createTempWorkspaceBillingTables(db_ctx.conn);
     try seedWorkspaceWithTenant(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f17", "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fa2");
-    _ = try workspace_billing.upgradeWorkspaceToScale(db_ctx.conn, std.testing.allocator, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f17", .{
-        .subscription_id = "sub_scale_999",
-        .actor = "test",
-    });
+    {
+        const sv = try workspace_billing.upgradeWorkspaceToScale(db_ctx.conn, std.testing.allocator, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f17", .{
+            .subscription_id = "sub_scale_999",
+            .actor = "test",
+        });
+        std.testing.allocator.free(sv.plan_sku);
+        if (sv.subscription_id) |v| std.testing.allocator.free(v);
+    }
 
     try workspace_billing.enforceFreeWorkspaceCreationAllowed(
         db_ctx.conn,
@@ -262,10 +283,12 @@ fn openTestConn(alloc: std.mem.Allocator) !?struct { pool: *pg.Pool, conn: *pg.C
         std.process.getEnvVarOwned(alloc, "DATABASE_URL") catch return null;
     defer alloc.free(url);
 
+    // Use page_allocator for opts strings so they outlive the pool. pg.Pool stores
+    // shallow references to connect.host/auth strings — if the arena they come from
+    // is freed first, pool.release() crashes when it calls newConnection() on a
+    // non-idle conn (e.g. after an internal query failure in the test body).
     const db = @import("../db/pool.zig");
-    var arena = std.heap.ArenaAllocator.init(alloc);
-    defer arena.deinit();
-    const opts = try db.parseUrl(arena.allocator(), url);
+    const opts = try db.parseUrl(std.heap.page_allocator, url);
     const pool = try pg.Pool.init(alloc, opts);
     errdefer pool.deinit();
     const conn = try pool.acquire();
@@ -278,7 +301,7 @@ fn createTempWorkspaceBillingTables(conn: *pg.Conn) !void {
             \\CREATE TEMP TABLE workspaces (
             \\  workspace_id TEXT PRIMARY KEY,
             \\  tenant_id TEXT
-            \\) ON COMMIT DROP
+            \\)
         , .{});
     }
     {
@@ -295,7 +318,7 @@ fn createTempWorkspaceBillingTables(conn: *pg.Conn) !void {
             \\  agent_scoring_weights_json TEXT NOT NULL DEFAULT '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}',
             \\  created_at BIGINT NOT NULL,
             \\  updated_at BIGINT NOT NULL
-            \\) ON COMMIT DROP
+            \\)
         , .{});
     }
     {
@@ -314,7 +337,7 @@ fn createTempWorkspaceBillingTables(conn: *pg.Conn) !void {
             \\  pending_reason TEXT,
             \\  created_at BIGINT NOT NULL,
             \\  updated_at BIGINT NOT NULL
-            \\) ON COMMIT DROP
+            \\)
         , .{});
     }
     {
@@ -331,9 +354,72 @@ fn createTempWorkspaceBillingTables(conn: *pg.Conn) !void {
             \\  actor TEXT NOT NULL,
             \\  metadata_json TEXT NOT NULL,
             \\  created_at BIGINT NOT NULL
-            \\) ON COMMIT DROP
+            \\)
         , .{});
     }
+}
+
+test "upgrade with empty subscription_id returns InvalidSubscriptionId" {
+    const db_ctx = (try openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
+
+    try createTempWorkspaceBillingTables(db_ctx.conn);
+    try seedWorkspace(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f20");
+    try workspace_billing.provisionFreeWorkspace(db_ctx.conn, std.testing.allocator, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f20", "test");
+
+    try std.testing.expectError(
+        error.InvalidSubscriptionId,
+        workspace_billing.upgradeWorkspaceToScale(db_ctx.conn, std.testing.allocator, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f20", .{
+            .subscription_id = "",
+            .actor = "test",
+        }),
+    );
+}
+
+test "upgrade with whitespace-only subscription_id returns InvalidSubscriptionId" {
+    const db_ctx = (try openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
+
+    try createTempWorkspaceBillingTables(db_ctx.conn);
+    try seedWorkspace(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f21");
+    try workspace_billing.provisionFreeWorkspace(db_ctx.conn, std.testing.allocator, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f21", "test");
+
+    try std.testing.expectError(
+        error.InvalidSubscriptionId,
+        workspace_billing.upgradeWorkspaceToScale(db_ctx.conn, std.testing.allocator, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f21", .{
+            .subscription_id = "  \t\r\n  ",
+            .actor = "test",
+        }),
+    );
+}
+
+test "enforceFreeWorkspaceCreationAllowed excludes the workspace itself" {
+    const db_ctx = (try openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
+
+    try createTempWorkspaceBillingTables(db_ctx.conn);
+    try seedWorkspaceWithTenant(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f22", "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fb1");
+    try workspace_billing.provisionFreeWorkspace(db_ctx.conn, std.testing.allocator, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f22", "test");
+
+    // Without exclusion: same-tenant free workspace → limit exceeded
+    try std.testing.expectError(
+        error.FreeWorkspaceLimitExceeded,
+        workspace_billing.enforceFreeWorkspaceCreationAllowed(
+            db_ctx.conn,
+            "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fb1",
+            null,
+        ),
+    );
+
+    // With exclusion of that workspace itself → allowed (T7 regression parity for update path)
+    try workspace_billing.enforceFreeWorkspaceCreationAllowed(
+        db_ctx.conn,
+        "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fb1",
+        "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f22",
+    );
 }
 
 fn seedWorkspace(conn: *pg.Conn, workspace_id: []const u8) !void {

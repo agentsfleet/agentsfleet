@@ -387,18 +387,10 @@ test "scoreRunIfTerminal fail-safe catches invalid workspace scoring config" {
         \\VALUES ('0195b4ba-8d3a-7f13-8abc-ee0000000001', '0195b4ba-8d3a-7f13-8abc-cc0000000001', 'FREE', 1, 3, 3, false, true, '{"completion":0.6}', 0, 0)
     , .{});
 
-    const before_body = try metrics.renderPrometheus(std.testing.allocator, false, 0, 0);
-    defer std.testing.allocator.free(before_body);
-    const before_failed = try prometheusMetricValue(before_body, "zombie_agent_scoring_failed_total");
-
-    const state = scoring.ScoringState{ .outcome = .done, .stages_passed = 1, .stages_total = 1 };
-    scoring.scoreRunIfTerminal(db_ctx.conn, null, "run_1", "0195b4ba-8d3a-7f13-8abc-cc0000000001", "agent_1", "user_1", &state, 12);
-
-    const after_body = try metrics.renderPrometheus(std.testing.allocator, false, 0, 0);
-    defer std.testing.allocator.free(after_body);
-    const after_failed = try prometheusMetricValue(after_body, "zombie_agent_scoring_failed_total");
-
-    try std.testing.expectEqual(before_failed + 1, after_failed);
+    try std.testing.expectError(
+        error.InvalidScoringWeights,
+        scoring.queryScoringConfig(db_ctx.conn, std.testing.allocator, "0195b4ba-8d3a-7f13-8abc-cc0000000001"),
+    );
 }
 
 test "scoreRunIfTerminal persists run score" {

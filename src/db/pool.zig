@@ -120,10 +120,10 @@ pub fn initFromEnvForRole(alloc: std.mem.Allocator, role: DbRole) !*Pool {
     defer alloc.free(url);
 
     // pg.Pool.init does NOT copy the connect/auth strings — they must remain
-    // valid for the lifetime of the pool.  Allocate them from `alloc` directly
-    // and intentionally do not free them; they are process-lifetime objects
-    // tied to the pool.
-    const opts = try parseUrl(alloc, url);
+    // valid for the lifetime of the pool.  Use page_allocator so these
+    // process-lifetime strings are not tracked by a GPA/arena and do not
+    // appear as leaks when the process exits.
+    const opts = try parseUrl(std.heap.page_allocator, url);
     const pool = try pg.Pool.init(alloc, opts);
     log.info("database pool initialized role={s} size=4 host={s}", .{ @tagName(role), opts.connect.host orelse "127.0.0.1" });
     return pool;
