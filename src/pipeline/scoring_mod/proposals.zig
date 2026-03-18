@@ -77,6 +77,7 @@ pub fn reconcilePendingProposalGenerations(
     alloc: std.mem.Allocator,
     limit: u32,
 ) !GenerationReconcileResult {
+    // check-pg-drain: ok — full while loop exhausts all rows, natural drain
     var result: GenerationReconcileResult = .{};
     const batch_limit: i32 = @intCast(if (limit == 0) shared.DEFAULT_RECONCILE_BATCH_LIMIT else limit);
 

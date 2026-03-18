@@ -56,7 +56,7 @@ pub fn queryLatencyBaseline(conn: *pg.Conn, workspace_id: []const u8) ?types.Lat
         .p95_seconds = @intCast(@max(row.get(i64, 1) catch return null, 0)),
         .sample_count = @intCast(@max(row.get(i32, 2) catch return null, 0)),
     };
-    _ = q.next() catch {}; // drain CommandComplete + ReadyForQuery → state = .idle
+    q.drain() catch {}; // drain CommandComplete + ReadyForQuery → state = .idle
     return result;
 }
 
@@ -114,7 +114,7 @@ pub fn queryScoringConfig(
         .enable_score_context_injection = enable_context,
         .scoring_context_max_tokens = clampScoringContextMaxTokens(raw_context_max_tokens),
     };
-    _ = q.next() catch {}; // drain CommandComplete + ReadyForQuery → state = .idle
+    q.drain() catch {}; // drain CommandComplete + ReadyForQuery → state = .idle
     return result;
 }
 
@@ -141,7 +141,7 @@ fn persistScoreRecord(
     );
     defer existing.deinit();
     if (try existing.next() != null) {
-        _ = existing.next() catch {}; // drain CommandComplete + ReadyForQuery → state = .idle
+        existing.drain() catch {}; // drain CommandComplete + ReadyForQuery → state = .idle
         return false;
     }
 
@@ -369,6 +369,7 @@ pub fn buildScoringContextForEcho(
     agent_id: []const u8,
     config: types.ScoringConfig,
 ) ![]const u8 {
+    // check-pg-drain: ok — full while loop exhausts all rows, natural drain
     if (agent_id.len == 0) return alloc.dupe(u8, "");
     if (!config.enabled or !config.enable_score_context_injection) return alloc.dupe(u8, "");
 
@@ -426,7 +427,7 @@ pub fn persistRunAnalysis(
     var existing = try conn.query("SELECT 1 FROM agent_run_analysis WHERE run_id = $1", .{run_id});
     defer existing.deinit();
     if (try existing.next() != null) {
-        _ = existing.next() catch {}; // drain CommandComplete + ReadyForQuery → state = .idle
+        existing.drain() catch {}; // drain CommandComplete + ReadyForQuery → state = .idle
         return;
     }
 

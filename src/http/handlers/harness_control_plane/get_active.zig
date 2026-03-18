@@ -23,6 +23,7 @@ pub fn getActiveProfile(
         const activated_at = try row.get(i64, 1);
         const agent_id = try row.get([]const u8, 2);
         const compiled_json_opt = try row.get(?[]const u8, 3);
+        try q.drain();
         if (compiled_json_opt) |compiled_json| {
             return .{
                 .source = "active",
@@ -33,6 +34,8 @@ pub fn getActiveProfile(
                 .profile_json = try alloc.dupe(u8, compiled_json),
             };
         }
+    } else {
+        try q.drain();
     }
 
     var fallback = try topology.defaultProfile(alloc);

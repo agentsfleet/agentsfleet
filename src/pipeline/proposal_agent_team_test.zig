@@ -123,6 +123,7 @@ fn insertActiveConfigWithProfile(
     config_version_id: []const u8,
     profile_json: []const u8,
 ) !void {
+    // check-pg-drain: ok — no conn.query() here; checker misattributes test-block queries
     _ = try conn.exec(
         \\INSERT INTO agent_config_versions (config_version_id, agent_id, compiled_profile_json)
         \\VALUES ($1, $2, $3)

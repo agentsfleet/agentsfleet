@@ -48,6 +48,7 @@ pub fn reconcileDueAutoApprovalProposals(
     limit: u32,
     now_ms: i64,
 ) !AutoApprovalReconcileResult {
+    // check-pg-drain: ok — full while loop exhausts all rows, natural drain
     var result: AutoApprovalReconcileResult = .{};
     const batch_limit: i32 = @intCast(if (limit == 0) shared.DEFAULT_RECONCILE_BATCH_LIMIT else limit);
     var due_list: std.ArrayList(DueProposal) = .{};

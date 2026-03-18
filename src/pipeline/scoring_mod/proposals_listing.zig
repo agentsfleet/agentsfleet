@@ -52,6 +52,7 @@ pub fn listAppliedAutoProposalTelemetryAt(
     alloc: std.mem.Allocator,
     applied_at_ms: i64,
 ) ![]AppliedProposalTelemetry {
+    // check-pg-drain: ok — full while loop exhausts all rows, natural drain
     var q = try conn.query(
         \\SELECT proposal_id
         \\FROM agent_improvement_proposals
@@ -91,6 +92,7 @@ pub fn listOpenProposals(
     agent_id: []const u8,
     limit: u32,
 ) ![]ProposalSummary {
+    // check-pg-drain: ok — full while loop exhausts all rows, natural drain
     const batch_limit: i32 = @intCast(if (limit == 0) shared.DEFAULT_RECONCILE_BATCH_LIMIT else limit);
     var list: std.ArrayList(ProposalSummary) = .{};
     errdefer {
@@ -136,6 +138,7 @@ pub fn listManualProposals(
     agent_id: []const u8,
     limit: u32,
 ) ![]ManualProposalSummary {
+    // check-pg-drain: ok — full while loop exhausts all rows, natural drain
     const batch_limit: i32 = @intCast(if (limit == 0) shared.DEFAULT_RECONCILE_BATCH_LIMIT else limit);
     var list: std.ArrayList(ManualProposalSummary) = .{};
     errdefer {
@@ -329,6 +332,7 @@ fn loadAppliedProposalFieldsChanged(
     alloc: std.mem.Allocator,
     proposal_id: []const u8,
 ) ![][]u8 {
+    // check-pg-drain: ok — full while loop exhausts all rows, natural drain
     var q = try conn.query(
         \\SELECT field_name
         \\FROM harness_change_log

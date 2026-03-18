@@ -18,18 +18,15 @@ const VALIDATION_STATUS_RUNNING_JSON = "{\"status\":\"running\"}";
 const COMPILE_FAILURE_REASON = "deterministic validation failed";
 
 fn beginTx(conn: *pg.Conn) !void {
-    var tx = try conn.query("BEGIN", .{});
-    tx.deinit();
+    _ = try conn.exec("BEGIN", .{});
 }
 
 fn commitTx(conn: *pg.Conn) !void {
-    var tx = try conn.query("COMMIT", .{});
-    tx.deinit();
+    _ = try conn.exec("COMMIT", .{});
 }
 
 fn rollbackTx(conn: *pg.Conn) void {
-    var tx = conn.query("ROLLBACK", .{}) catch return;
-    tx.deinit();
+    _ = conn.exec("ROLLBACK", .{}) catch {};
 }
 
 pub fn compileProfile(
@@ -80,6 +77,7 @@ pub fn compileProfile(
     const version = try row.get(i32, 2);
     const source_markdown = try row.get([]const u8, 3);
     const tenant_id = try row.get([]const u8, 4);
+    try pick.drain();
 
     const compile_job_id = try util.generateCompileJobId(alloc);
     if (!util.isSupportedCompileJobId(compile_job_id)) return types.ControlPlaneError.InvalidIdShape;
@@ -116,14 +114,13 @@ pub fn compileProfile(
     var tx_open = true;
     errdefer if (tx_open) rollbackTx(conn);
 
-    var insert_job = try conn.query(
+    _ = try conn.exec(
         \\INSERT INTO config_compile_jobs
         \\  (compile_job_id, tenant_id, workspace_id, requested_agent_id, requested_version, state, failure_reason, validation_report_json, created_at, updated_at)
         \\VALUES ($1, $2, $3, $4, $5, $6, NULL, $7, $8, $8)
     , .{ compile_job_id, tenant_id, workspace_id, agent_id, version, COMPILE_JOB_STATE_RUNNING, VALIDATION_STATUS_RUNNING_JSON, now_ms });
-    insert_job.deinit();
 
-    var update_profile = try conn.query(
+    _ = try conn.exec(
         \\UPDATE agent_config_versions
         \\SET compiled_profile_json = $1,
         \\    compile_engine = $2,
@@ -139,9 +136,8 @@ pub fn compileProfile(
         finish_ts,
         config_version_id,
     });
-    update_profile.deinit();
 
-    var update_job = try conn.query(
+    _ = try conn.exec(
         \\UPDATE config_compile_jobs
         \\SET state = $1,
         \\    failure_reason = $2,
@@ -155,7 +151,6 @@ pub fn compileProfile(
         finish_ts,
         compile_job_id,
     });
-    update_job.deinit();
 
     if (outcome.is_valid) {
         const accepted_meta = std.fmt.allocPrint(alloc, "{{\"compile_job_id\":\"{s}\",\"version\":{d}}}", .{ compile_job_id, version }) catch "{}";
