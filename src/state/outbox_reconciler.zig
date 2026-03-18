@@ -56,16 +56,13 @@ pub fn reconcileStartup(conn: *pg.Conn) !ReconcileResult {
 fn reconcileBatch(conn: *pg.Conn) !u32 {
     const now_ms = std.time.milliTimestamp();
 
-    var tx = try conn.query("BEGIN", .{});
-    tx.deinit();
+    _ = try conn.exec("BEGIN", .{});
     var tx_open = true;
     errdefer if (tx_open) {
-        if (conn.query("ROLLBACK", .{})) |rb_result| {
-            var rb = rb_result;
-            rb.deinit();
-        } else |_| {}
+        _ = conn.exec("ROLLBACK", .{}) catch {};
     };
 
+    // check-pg-drain: ok — full while loop exhausts all rows, natural drain
     var result = try conn.query(
         \\UPDATE run_side_effect_outbox
         \\SET status = 'dead_letter',
@@ -88,8 +85,7 @@ fn reconcileBatch(conn: *pg.Conn) !u32 {
         dead_lettered += 1;
     }
 
-    var commit = try conn.query("COMMIT", .{});
-    commit.deinit();
+    _ = try conn.exec("COMMIT", .{});
     tx_open = false;
 
     return dead_lettered;

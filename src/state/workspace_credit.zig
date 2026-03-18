@@ -199,12 +199,19 @@ fn loadCreditRow(
     , .{workspace_id});
     defer q.deinit();
     const row = (try q.next()) orelse return error.WorkspaceCreditStateMissing;
+    const currency = try alloc.dupe(u8, try row.get([]const u8, 0));
+    errdefer alloc.free(currency);
+    const initial_credit_cents = try row.get(i64, 1);
+    const consumed_credit_cents = try row.get(i64, 2);
+    const remaining_credit_cents = try row.get(i64, 3);
+    const exhausted_at = try row.get(?i64, 4);
+    try q.drain();
     return .{
-        .currency = try alloc.dupe(u8, try row.get([]const u8, 0)),
-        .initial_credit_cents = try row.get(i64, 1),
-        .consumed_credit_cents = try row.get(i64, 2),
-        .remaining_credit_cents = try row.get(i64, 3),
-        .exhausted_at = try row.get(?i64, 4),
+        .currency = currency,
+        .initial_credit_cents = initial_credit_cents,
+        .consumed_credit_cents = consumed_credit_cents,
+        .remaining_credit_cents = remaining_credit_cents,
+        .exhausted_at = exhausted_at,
     };
 }
 
@@ -225,7 +232,9 @@ fn hasAuditEvent(
         \\LIMIT 1
     , .{ workspace_id, event_type, reason, metadata_json });
     defer q.deinit();
-    return (try q.next()) != null;
+    const found = (try q.next()) != null;
+    try q.drain();
+    return found;
 }
 
 fn upsertCreditState(
@@ -243,7 +252,7 @@ fn upsertCreditState(
 ) !void {
     const credit_id = try id_format.generateEntitlementSnapshotId(alloc);
     defer alloc.free(credit_id);
-    var q = try conn.query(
+    _ = try conn.exec(
         \\INSERT INTO workspace_credit_state
         \\  (credit_id, workspace_id, currency, initial_credit_cents, consumed_credit_cents, remaining_credit_cents, exhausted_at, created_at, updated_at)
         \\VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $8)
@@ -264,7 +273,6 @@ fn upsertCreditState(
         state.exhausted_at,
         now_ms,
     });
-    q.deinit();
 }
 
 fn insertAudit(
@@ -280,7 +288,7 @@ fn insertAudit(
 ) !void {
     const audit_id = try id_format.generateEntitlementSnapshotId(alloc);
     defer alloc.free(audit_id);
-    var q = try conn.query(
+    _ = try conn.exec(
         \\INSERT INTO workspace_credit_audit
         \\  (audit_id, workspace_id, event_type, delta_credit_cents, remaining_credit_cents, reason, actor, metadata_json, created_at)
         \\VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9)
@@ -295,7 +303,6 @@ fn insertAudit(
         metadata_json,
         std.time.milliTimestamp(),
     });
-    q.deinit();
 }
 
 fn runtimeDeductionMetadata(
@@ -395,7 +402,9 @@ test "deductCompletedRuntimeUsage debits free-plan credit once per completed run
         , .{"0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f23"});
         defer q.deinit();
         const row = (try q.next()) orelse return error.TestExpectedEqual;
-        try std.testing.expectEqual(@as(i64, 1), try row.get(i64, 0));
+        const cnt = try row.get(i64, 0);
+        try q.drain();
+        try std.testing.expectEqual(@as(i64, 1), cnt);
     }
 }
 
@@ -437,7 +446,9 @@ test "deductCompletedRuntimeUsage clamps to zero and records exhaustion" {
         , .{"0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f24"});
         defer q.deinit();
         const row = (try q.next()) orelse return error.TestExpectedEqual;
-        try std.testing.expectEqual(@as(i64, 1), try row.get(i64, 0));
+        const cnt = try row.get(i64, 0);
+        try q.drain();
+        try std.testing.expectEqual(@as(i64, 1), cnt);
     }
 }
 
@@ -458,15 +469,14 @@ fn openTestConn(alloc: std.mem.Allocator) !?struct { pool: *pg.Pool, conn: *pg.C
 
 fn createTempCreditTables(conn: *pg.Conn) !void {
     {
-        var q = try conn.query(
+        _ = try conn.exec(
             \\CREATE TEMP TABLE workspaces (
             \\  workspace_id TEXT PRIMARY KEY
             \\) ON COMMIT DROP
         , .{});
-        q.deinit();
     }
     {
-        var q = try conn.query(
+        _ = try conn.exec(
             \\CREATE TEMP TABLE workspace_credit_state (
             \\  credit_id TEXT PRIMARY KEY,
             \\  workspace_id TEXT NOT NULL UNIQUE REFERENCES workspaces(workspace_id) ON DELETE CASCADE,
@@ -479,10 +489,9 @@ fn createTempCreditTables(conn: *pg.Conn) !void {
             \\  updated_at BIGINT NOT NULL
             \\) ON COMMIT DROP
         , .{});
-        q.deinit();
     }
     {
-        var q = try conn.query(
+        _ = try conn.exec(
             \\CREATE TEMP TABLE workspace_credit_audit (
             \\  audit_id TEXT PRIMARY KEY,
             \\  workspace_id TEXT NOT NULL REFERENCES workspaces(workspace_id) ON DELETE CASCADE,
@@ -495,14 +504,12 @@ fn createTempCreditTables(conn: *pg.Conn) !void {
             \\  created_at BIGINT NOT NULL
             \\) ON COMMIT DROP
         , .{});
-        q.deinit();
     }
 }
 
 fn seedWorkspace(conn: *pg.Conn, workspace_id: []const u8) !void {
-    var q = try conn.query(
+    _ = try conn.exec(
         "INSERT INTO workspaces (workspace_id) VALUES ($1)",
         .{workspace_id},
     );
-    q.deinit();
 }

@@ -46,7 +46,7 @@ pub fn recordRuntimeStageUsage(
     const now_ms = std.time.milliTimestamp();
     const usage_id = try id_format.generateUsageLedgerId(conn._allocator);
     defer conn._allocator.free(usage_id);
-    var q = try conn.query(
+    _ = try conn.exec(
         \\INSERT INTO usage_ledger
         \\  (id, workspace_id, run_id, attempt, actor, token_count, agent_seconds, created_at,
         \\   event_key, lifecycle_event, billable_unit, billable_quantity, is_billable, source)
@@ -64,7 +64,6 @@ pub fn recordRuntimeStageUsage(
         event_key,
         BillableUnit.agent_second.label(),
     });
-    q.deinit();
 }
 
 pub fn finalizeRunForBilling(
@@ -110,8 +109,9 @@ pub fn finalizeRunForBilling(
         billable_quantity,
         is_billable,
     });
+    defer q.deinit();
     const inserted = (try q.next()) != null;
-    q.deinit();
+    try q.drain();
 
     if (!inserted or !is_billable) return;
 
@@ -152,6 +152,7 @@ pub fn aggregateStageAgentSeconds(
 
     const row = (try q.next()) orelse return 0;
     const raw = try row.get(i64, 0);
+    try q.drain();
     return @as(u64, @intCast(@max(raw, 0)));
 }
 
@@ -173,7 +174,7 @@ fn queueBillingDelivery(
 
     const billing_id = try id_format.generateBillingDeliveryId(alloc);
     defer alloc.free(billing_id);
-    var q = try conn.query(
+    _ = try conn.exec(
         \\INSERT INTO billing_delivery_outbox
         \\  (id, run_id, workspace_id, attempt, idempotency_key, billable_unit, billable_quantity,
         \\   status, delivery_attempts, next_retry_at, adapter, created_at, updated_at)
@@ -193,7 +194,6 @@ fn queueBillingDelivery(
         configuredAdapterModeLabel(alloc),
         now_ms,
     });
-    q.deinit();
 }
 
 fn configuredAdapterModeLabel(alloc: std.mem.Allocator) []const u8 {
