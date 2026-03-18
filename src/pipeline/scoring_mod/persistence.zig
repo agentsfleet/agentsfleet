@@ -86,6 +86,7 @@ pub fn updateLatencyBaseline(conn: *pg.Conn, workspace_id: []const u8) void {
         \\    p95_seconds = EXCLUDED.p95_seconds,
         \\    sample_count = EXCLUDED.sample_count,
         \\    computed_at = EXCLUDED.computed_at
+        \\WHERE EXCLUDED.sample_count > 0
     , .{ workspace_id, now_ms }) catch |err| {
         obs_log.logWarnErr(.scoring, err, "latency baseline update failed workspace_id={s}", .{workspace_id});
     };
