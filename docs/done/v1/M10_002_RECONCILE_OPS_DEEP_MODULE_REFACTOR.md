@@ -77,7 +77,7 @@ Follow `skills/write-unit-test/SKILL.md` with mandatory coverage tiers on touche
 **Dimensions:**
 - 4.1 DONE Baseline-first: build and test confirmed clean before edits, then after.
 - 4.2 DONE Targeted tests added for reconcile (T2 boundary, T7 parity, T3 unknown flag) and ops (T2 single-char ref, T2 single-segment path, T3 three new error-path tests).
-- 4.3 DONE `zig build test --summary all` → 200 passed, 67 skipped (DB integration tests require HANDLER_DB_TEST_URL); `make test-depth` → unit=463, integration=99, gate passed.
+- 4.3 DONE `zig build test --summary all` → 210 passed, 79 skipped (DB integration tests require HANDLER_DB_TEST_URL); gate passed. (+10 passing unit tests and +12 skipped integration tests added in 6.0).
 - 4.4 DONE Allocator boundary verification: all defer-free patterns confirmed, no retained slices across module boundaries.
 
 ---
@@ -93,6 +93,17 @@ Follow `skills/write-unit-test/SKILL.md` with mandatory coverage tiers on touche
 
 ---
 
-## 6.0 Refactor workspace_billing
+## 6.0 Workspace Billing Refactor
 
-- `src/state/workspace_billing.zig`
+**Status:** DONE
+
+**Dimensions:**
+- 6.1 DONE Split workspace_billing orchestration, DB access, and state application into focused modules.
+  - `src/state/workspace_billing/row.zig` — StateRow, parsers (parsePlanTier, parseBillingStatus, parsePendingStatus), loadStateRow
+  - `src/state/workspace_billing/db.zig` — configuredAdapterModeLabel, entitlementForTier, applyEntitlementPlan, upsertBillingState, insertAudit
+  - `src/state/workspace_billing/apply.zig` — snapshotFromState, viewFromState, auditEventTypeForLifecycleEvent, applyTransitionOutcome and private transition helpers
+  - `src/state/workspace_billing.zig` — thin orchestrator (public API: errorCode, errorMessage, provisionFreeWorkspace, enforceFreeWorkspaceCreationAllowed, upgradeWorkspaceToScale, reconcileWorkspaceBilling, applyBillingLifecycleEvent; ensureStateRow kept here to avoid circular dep)
+- 6.2 DONE Preserved all existing public API and behavior; all callers unchanged.
+- 6.3 DONE Added T2/T3 unit tests for parsers (parsePlanTier case-insensitive, boundary single-char, invalid; parseBillingStatus unknown; parsePendingStatus bad value) and configuredAdapterModeLabel; T3 integration tests for empty/whitespace subscription_id → InvalidSubscriptionId; T7 regression for exclude_workspace_id enforcement in enforceFreeWorkspaceCreationAllowed.
+- 6.4 DONE Wired `state/workspace_billing.zig` into `src/main.zig` test block — these tests were previously not discovered by the test runner. Now 21 tests are newly included (9 passing unit, 12 skipped integration).
+- 6.5 DONE Allocator/deinit pairing verified: StateRow.deinit frees plan_sku, adapter, subscription_id, pending_reason; viewFromState dupes to caller-owned slices; ensureStateRow calls provisionFreeWorkspace which defers all intermediate allocations.

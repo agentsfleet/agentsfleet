@@ -336,6 +336,69 @@ fn createTempWorkspaceBillingTables(conn: *pg.Conn) !void {
     }
 }
 
+test "upgrade with empty subscription_id returns InvalidSubscriptionId" {
+    const db_ctx = (try openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
+
+    try createTempWorkspaceBillingTables(db_ctx.conn);
+    try seedWorkspace(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f20");
+    try workspace_billing.provisionFreeWorkspace(db_ctx.conn, std.testing.allocator, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f20", "test");
+
+    try std.testing.expectError(
+        error.InvalidSubscriptionId,
+        workspace_billing.upgradeWorkspaceToScale(db_ctx.conn, std.testing.allocator, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f20", .{
+            .subscription_id = "",
+            .actor = "test",
+        }),
+    );
+}
+
+test "upgrade with whitespace-only subscription_id returns InvalidSubscriptionId" {
+    const db_ctx = (try openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
+
+    try createTempWorkspaceBillingTables(db_ctx.conn);
+    try seedWorkspace(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f21");
+    try workspace_billing.provisionFreeWorkspace(db_ctx.conn, std.testing.allocator, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f21", "test");
+
+    try std.testing.expectError(
+        error.InvalidSubscriptionId,
+        workspace_billing.upgradeWorkspaceToScale(db_ctx.conn, std.testing.allocator, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f21", .{
+            .subscription_id = "  \t\r\n  ",
+            .actor = "test",
+        }),
+    );
+}
+
+test "enforceFreeWorkspaceCreationAllowed excludes the workspace itself" {
+    const db_ctx = (try openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
+
+    try createTempWorkspaceBillingTables(db_ctx.conn);
+    try seedWorkspaceWithTenant(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f22", "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fb1");
+    try workspace_billing.provisionFreeWorkspace(db_ctx.conn, std.testing.allocator, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f22", "test");
+
+    // Without exclusion: same-tenant free workspace → limit exceeded
+    try std.testing.expectError(
+        error.FreeWorkspaceLimitExceeded,
+        workspace_billing.enforceFreeWorkspaceCreationAllowed(
+            db_ctx.conn,
+            "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fb1",
+            null,
+        ),
+    );
+
+    // With exclusion of that workspace itself → allowed (T7 regression parity for update path)
+    try workspace_billing.enforceFreeWorkspaceCreationAllowed(
+        db_ctx.conn,
+        "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fb1",
+        "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f22",
+    );
+}
+
 fn seedWorkspace(conn: *pg.Conn, workspace_id: []const u8) !void {
     _ = try conn.exec(
         "INSERT INTO workspaces (workspace_id, tenant_id) VALUES ($1, 'tenant-test-default')",
