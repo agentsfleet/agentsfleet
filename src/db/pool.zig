@@ -119,17 +119,13 @@ pub fn initFromEnvForRole(alloc: std.mem.Allocator, role: DbRole) !*Pool {
     };
     defer alloc.free(url);
 
-    // Use an arena for the URL-parsed opts so pg.Pool.init can copy them
-    // and we can free everything cleanly afterward.
-    var arena = std.heap.ArenaAllocator.init(alloc);
-    defer arena.deinit();
-
-    const opts = try parseUrl(arena.allocator(), url);
-    const host_copy = try alloc.dupe(u8, opts.connect.host orelse "127.0.0.1");
-    defer alloc.free(host_copy);
-
+    // pg.Pool.init does NOT copy the connect/auth strings — they must remain
+    // valid for the lifetime of the pool.  Allocate them from `alloc` directly
+    // and intentionally do not free them; they are process-lifetime objects
+    // tied to the pool.
+    const opts = try parseUrl(alloc, url);
     const pool = try pg.Pool.init(alloc, opts);
-    log.info("database pool initialized role={s} size=4 host={s}", .{ @tagName(role), host_copy });
+    log.info("database pool initialized role={s} size=4 host={s}", .{ @tagName(role), opts.connect.host orelse "127.0.0.1" });
     return pool;
 }
 
@@ -145,7 +141,8 @@ fn ensureSchemaMigrationsTable(conn: *Conn) !void {
         \\    applied_at  BIGINT NOT NULL
         \\)
     , .{});
-    result.deinit();
+    defer result.deinit();
+    try result.drain();
 }
 
 fn ensureSchemaMigrationFailuresTable(conn: *Conn) !void {
@@ -156,7 +153,8 @@ fn ensureSchemaMigrationFailuresTable(conn: *Conn) !void {
         \\    error_text  TEXT NOT NULL
         \\)
     , .{});
-    result.deinit();
+    defer result.deinit();
+    try result.drain();
 }
 
 fn isMigrationApplied(conn: *Conn, version: i32) !bool {
@@ -192,12 +190,16 @@ fn tryAcquireMigrationLock(conn: *Conn) !bool {
 
 fn acquireMigrationLock(conn: *Conn) !void {
     var result = try conn.query("SELECT pg_advisory_lock($1)", .{MigrationAdvisoryLockKey});
-    result.deinit();
+    defer result.deinit();
+    _ = try result.next();
+    try result.drain();
 }
 
 fn releaseMigrationLock(conn: *Conn) void {
     var result = conn.query("SELECT pg_advisory_unlock($1)", .{MigrationAdvisoryLockKey}) catch return;
-    result.deinit();
+    defer result.deinit();
+    _ = result.next() catch {};
+    result.drain() catch {};
 }
 
 fn markMigrationFailure(conn: *Conn, version: i32, err: anyerror) void {
@@ -209,12 +211,14 @@ fn markMigrationFailure(conn: *Conn, version: i32, err: anyerror) void {
         \\SET failed_at = EXCLUDED.failed_at,
         \\    error_text = EXCLUDED.error_text
     , .{ version, ts, @errorName(err) }) catch return;
-    q.deinit();
+    defer q.deinit();
+    q.drain() catch {};
 }
 
 fn clearMigrationFailure(conn: *Conn, version: i32) void {
     var q = conn.query("DELETE FROM schema_migration_failures WHERE version = $1", .{version}) catch return;
-    q.deinit();
+    defer q.deinit();
+    q.drain() catch {};
 }
 
 fn maxAppliedMigrationVersion(conn: *Conn) !i32 {
@@ -257,7 +261,8 @@ fn applySqlStatements(conn: *Conn, sql: []const u8) !u32 {
         const stmt = std.mem.trim(u8, sql[start..i], " \t\r\n");
         if (stmt.len > 0) {
             var result = try conn.query(stmt, .{});
-            result.deinit();
+            defer result.deinit();
+            try result.drain();
             count += 1;
         }
 
@@ -267,7 +272,8 @@ fn applySqlStatements(conn: *Conn, sql: []const u8) !u32 {
     const tail = std.mem.trim(u8, sql[start..], " \t\r\n");
     if (tail.len > 0) {
         var result = try conn.query(tail, .{});
-        result.deinit();
+        defer result.deinit();
+        try result.drain();
         count += 1;
     }
 
@@ -276,17 +282,20 @@ fn applySqlStatements(conn: *Conn, sql: []const u8) !u32 {
 
 fn beginTx(conn: *Conn) !void {
     var tx = try conn.query("BEGIN", .{});
-    tx.deinit();
+    defer tx.deinit();
+    try tx.drain();
 }
 
 fn commitTx(conn: *Conn) !void {
     var tx = try conn.query("COMMIT", .{});
-    tx.deinit();
+    defer tx.deinit();
+    try tx.drain();
 }
 
 fn rollbackTx(conn: *Conn) void {
     var tx = conn.query("ROLLBACK", .{}) catch return;
-    tx.deinit();
+    defer tx.deinit();
+    tx.drain() catch {};
 }
 
 pub fn inspectMigrationState(pool: *Pool, migrations: []const Migration) !MigrationState {
@@ -349,7 +358,8 @@ pub fn runMigrations(pool: *Pool, migrations: []const Migration) !void {
             "INSERT INTO schema_migrations (version, applied_at) VALUES ($1, $2)",
             .{ migration.version, std.time.milliTimestamp() },
         );
-        insert.deinit();
+        defer insert.deinit();
+        try insert.drain();
 
         commitTx(conn) catch |err| {
             rollbackTx(conn);

@@ -252,7 +252,7 @@ fn openTestConn(alloc: std.mem.Allocator) !?struct { pool: *pg.Pool, conn: *pg.C
 
 fn createTempBillingTables(conn: *pg.Conn) !void {
     {
-        var q = try conn.query(
+        _ = try conn.exec(
             \\CREATE TEMP TABLE usage_ledger (
             \\  id BIGSERIAL PRIMARY KEY,
             \\  workspace_id TEXT NOT NULL,
@@ -271,10 +271,9 @@ fn createTempBillingTables(conn: *pg.Conn) !void {
             \\  UNIQUE (run_id, event_key)
             \\) ON COMMIT DROP
         , .{});
-        q.deinit();
     }
     {
-        var q = try conn.query(
+        _ = try conn.exec(
             \\CREATE TEMP TABLE workspace_billing_state (
             \\  billing_id TEXT PRIMARY KEY,
             \\  workspace_id TEXT NOT NULL UNIQUE,
@@ -291,10 +290,9 @@ fn createTempBillingTables(conn: *pg.Conn) !void {
             \\  updated_at BIGINT NOT NULL
             \\) ON COMMIT DROP
         , .{});
-        q.deinit();
     }
     {
-        var q = try conn.query(
+        _ = try conn.exec(
             \\CREATE TEMP TABLE workspace_credit_state (
             \\  credit_id TEXT PRIMARY KEY,
             \\  workspace_id TEXT NOT NULL UNIQUE,
@@ -307,10 +305,9 @@ fn createTempBillingTables(conn: *pg.Conn) !void {
             \\  updated_at BIGINT NOT NULL
             \\) ON COMMIT DROP
         , .{});
-        q.deinit();
     }
     {
-        var q = try conn.query(
+        _ = try conn.exec(
             \\CREATE TEMP TABLE workspace_credit_audit (
             \\  audit_id TEXT PRIMARY KEY,
             \\  workspace_id TEXT NOT NULL,
@@ -323,10 +320,9 @@ fn createTempBillingTables(conn: *pg.Conn) !void {
             \\  created_at BIGINT NOT NULL
             \\) ON COMMIT DROP
         , .{});
-        q.deinit();
     }
     {
-        var q = try conn.query(
+        _ = try conn.exec(
             \\CREATE TEMP TABLE billing_delivery_outbox (
             \\  id BIGSERIAL PRIMARY KEY,
             \\  run_id TEXT NOT NULL,
@@ -346,7 +342,6 @@ fn createTempBillingTables(conn: *pg.Conn) !void {
             \\  delivered_at BIGINT
             \\) ON COMMIT DROP
         , .{});
-        q.deinit();
     }
 }
 
@@ -356,7 +351,7 @@ fn seedWorkspaceBillingState(
     plan_tier: []const u8,
     billing_status: []const u8,
 ) !void {
-    var q = try conn.query(
+    _ = try conn.exec(
         \\INSERT INTO workspace_billing_state
         \\  (billing_id, workspace_id, plan_tier, plan_sku, billing_status, adapter, subscription_id,
         \\   payment_failed_at, grace_expires_at, pending_status, pending_reason, created_at, updated_at)
@@ -368,7 +363,6 @@ fn seedWorkspaceBillingState(
         if (std.mem.eql(u8, plan_tier, "FREE")) workspace_billing.FREE_PLAN_SKU else workspace_billing.SCALE_PLAN_SKU,
         billing_status,
     });
-    q.deinit();
 }
 
 fn seedWorkspaceCreditState(
@@ -379,7 +373,7 @@ fn seedWorkspaceCreditState(
     remaining_credit_cents: i64,
     exhausted_at: ?i64,
 ) !void {
-    var q = try conn.query(
+    _ = try conn.exec(
         \\INSERT INTO workspace_credit_state
         \\  (credit_id, workspace_id, currency, initial_credit_cents, consumed_credit_cents, remaining_credit_cents, exhausted_at, created_at, updated_at)
         \\VALUES ($1, $2, $3, $4, $5, $6, $7, 1, 1)
@@ -392,5 +386,4 @@ fn seedWorkspaceCreditState(
         remaining_credit_cents,
         exhausted_at,
     });
-    q.deinit();
 }

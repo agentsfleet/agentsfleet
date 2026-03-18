@@ -103,7 +103,9 @@ pub fn enforceFreeWorkspaceCreationAllowed(
     , .{ tenant_id, exclude_workspace_id });
     defer q.deinit();
     const row = (try q.next()) orelse return error.InvalidWorkspaceBillingState;
-    if ((try row.get(i64, 0)) > 0) return error.FreeWorkspaceLimitExceeded;
+    const count = try row.get(i64, 0);
+    try q.drain();
+    if (count > 0) return error.FreeWorkspaceLimitExceeded;
 }
 
 pub fn upgradeWorkspaceToScale(
@@ -387,7 +389,7 @@ fn applyEntitlementPlan(
     const entitlement_id = try id_format.generateEntitlementSnapshotId(alloc);
     defer alloc.free(entitlement_id);
     const policy = entitlementForTier(tier);
-    var q = try conn.query(
+    _ = try conn.exec(
         \\INSERT INTO workspace_entitlements
         \\  (entitlement_id, workspace_id, plan_tier, max_profiles, max_stages, max_distinct_skills,
         \\   allow_custom_skills, enable_agent_scoring, agent_scoring_weights_json, created_at, updated_at)
@@ -412,7 +414,6 @@ fn applyEntitlementPlan(
         DEFAULT_AGENT_SCORING_WEIGHTS_JSON,
         now_ms,
     });
-    q.deinit();
 }
 
 fn entitlementForTier(tier: PlanTier) entitlements.EntitlementPolicy {
@@ -465,17 +466,40 @@ fn loadStateRow(
     const row = (try q.next()) orelse return error.WorkspaceBillingStateMissing;
     const plan_tier_raw = try row.get([]const u8, 0);
     const billing_status_raw = try row.get([]const u8, 1);
+    const plan_sku = try alloc.dupe(u8, try row.get([]const u8, 2));
+    errdefer alloc.free(plan_sku);
+    const adapter = try alloc.dupe(u8, try row.get([]const u8, 3));
+    errdefer alloc.free(adapter);
+    const subscription_id = if (try row.get(?[]const u8, 4)) |v| try alloc.dupe(u8, v) else null;
+    errdefer if (subscription_id) |v| alloc.free(v);
+    const payment_failed_at = try row.get(?i64, 5);
+    const grace_expires_at = try row.get(?i64, 6);
     const pending_status_raw = try row.get(?[]const u8, 7);
+    const pending_reason = if (try row.get(?[]const u8, 8)) |v| try alloc.dupe(u8, v) else null;
+    errdefer if (pending_reason) |v| alloc.free(v);
+    const plan_tier = parsePlanTier(plan_tier_raw) orelse {
+        try q.drain();
+        return error.InvalidWorkspaceBillingState;
+    };
+    const billing_status = parseBillingStatus(billing_status_raw) orelse {
+        try q.drain();
+        return error.InvalidWorkspaceBillingState;
+    };
+    const pending_status = if (pending_status_raw) |v| (parsePendingStatus(v) orelse {
+        try q.drain();
+        return error.InvalidWorkspaceBillingState;
+    }) else null;
+    try q.drain();
     return .{
-        .plan_tier = parsePlanTier(plan_tier_raw) orelse return error.InvalidWorkspaceBillingState,
-        .billing_status = parseBillingStatus(billing_status_raw) orelse return error.InvalidWorkspaceBillingState,
-        .plan_sku = try alloc.dupe(u8, try row.get([]const u8, 2)),
-        .adapter = try alloc.dupe(u8, try row.get([]const u8, 3)),
-        .subscription_id = if (try row.get(?[]const u8, 4)) |v| try alloc.dupe(u8, v) else null,
-        .payment_failed_at = try row.get(?i64, 5),
-        .grace_expires_at = try row.get(?i64, 6),
-        .pending_status = if (pending_status_raw) |v| parsePendingStatus(v) orelse return error.InvalidWorkspaceBillingState else null,
-        .pending_reason = if (try row.get(?[]const u8, 8)) |v| try alloc.dupe(u8, v) else null,
+        .plan_tier = plan_tier,
+        .billing_status = billing_status,
+        .plan_sku = plan_sku,
+        .adapter = adapter,
+        .subscription_id = subscription_id,
+        .payment_failed_at = payment_failed_at,
+        .grace_expires_at = grace_expires_at,
+        .pending_status = pending_status,
+        .pending_reason = pending_reason,
     };
 }
 
@@ -498,7 +522,7 @@ fn upsertBillingState(
 ) !void {
     const billing_id = try id_format.generateEntitlementSnapshotId(alloc);
     defer alloc.free(billing_id);
-    var q = try conn.query(
+    _ = try conn.exec(
         \\INSERT INTO workspace_billing_state
         \\  (billing_id, workspace_id, plan_tier, plan_sku, billing_status, adapter, subscription_id,
         \\   payment_failed_at, grace_expires_at, pending_status, pending_reason, created_at, updated_at)
@@ -528,7 +552,6 @@ fn upsertBillingState(
         state.pending_reason,
         now_ms,
     });
-    q.deinit();
 }
 
 fn insertAudit(
@@ -546,7 +569,7 @@ fn insertAudit(
 ) !void {
     const audit_id = try id_format.generateEntitlementSnapshotId(alloc);
     defer alloc.free(audit_id);
-    var q = try conn.query(
+    _ = try conn.exec(
         \\INSERT INTO workspace_billing_audit
         \\  (audit_id, workspace_id, event_type, previous_plan_tier, new_plan_tier, previous_status, new_status, reason, actor, metadata_json, created_at)
         \\VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
@@ -563,7 +586,6 @@ fn insertAudit(
         metadata_json,
         std.time.milliTimestamp(),
     });
-    q.deinit();
 }
 
 fn parsePlanTier(raw: []const u8) ?PlanTier {

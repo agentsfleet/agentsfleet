@@ -18,6 +18,8 @@
 const std = @import("std");
 const posthog = @import("posthog");
 const db = @import("../db/pool.zig");
+
+const sql_rollback = sql_rollback;
 const outbox = @import("../state/outbox_reconciler.zig");
 const id_format = @import("../types/id_format.zig");
 const obs_log = @import("../observability/logging.zig");
@@ -94,6 +96,7 @@ fn createTempOutboxTable(conn: *db.Conn) !void {
         \\  updated_at BIGINT NOT NULL
         \\) ON COMMIT DROP
     , .{});
+    try create_q.drain();
     create_q.deinit();
 }
 
@@ -106,16 +109,16 @@ fn insertPendingRows(conn: *db.Conn, count: usize) !void {
         const outbox_id = try id_format.generateOutboxId(std.testing.allocator);
         defer std.testing.allocator.free(outbox_id);
         const key = try std.fmt.bufPrint(&key_buf, "k_{d}", .{i});
-        var q = try conn.query(
+        _ = try conn.exec(
             \\INSERT INTO run_side_effect_outbox
             \\  (id, run_id, effect_key, status, last_event, created_at, updated_at)
             \\VALUES ($1, $2, $3, 'pending', 'claimed', $4, $4)
         , .{ outbox_id, run_id, key, @as(i64, @intCast(i + 1)) });
-        q.deinit();
     }
 }
 
 fn simulateSingleBatchDeadLetter(conn: *db.Conn, now_ms: i64) !u32 {
+    // check-pg-drain: ok — full while loop exhausts all rows, natural drain
     var q = try conn.query(
         \\UPDATE run_side_effect_outbox
         \\SET status = 'dead_letter',
@@ -146,7 +149,9 @@ fn pendingCount(conn: *db.Conn) !i64 {
     );
     defer q.deinit();
     const row = (try q.next()).?;
-    return try row.get(i64, 0);
+    const count = try row.get(i64, 0);
+    try q.drain();
+    return count;
 }
 
 test "integration: reconcile handles reachable postgres with no pending rows" {
@@ -241,7 +246,7 @@ test "integration: rollback preserves pending rows for restart recovery" {
     var begin_q = try db_ctx.conn.query("BEGIN", .{});
     begin_q.deinit();
     errdefer {
-        if (db_ctx.conn.query("ROLLBACK", .{})) |rb_result| {
+        if (db_ctx.conn.query(sql_rollback, .{})) |rb_result| {
             var rb_q = rb_result;
             rb_q.deinit();
         } else |_| {}
@@ -254,7 +259,7 @@ test "integration: rollback preserves pending rows for restart recovery" {
     , .{std.time.milliTimestamp()});
     update_q.deinit();
 
-    var rollback_q = try db_ctx.conn.query("ROLLBACK", .{});
+    var rollback_q = try db_ctx.conn.query(sql_rollback, .{});
     rollback_q.deinit();
 
     try std.testing.expectEqual(@as(i64, 1), try pendingCount(db_ctx.conn));

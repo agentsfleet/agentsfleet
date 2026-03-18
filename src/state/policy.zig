@@ -27,7 +27,7 @@ pub fn recordPolicyEvent(
     const now_ms = std.time.milliTimestamp();
     const event_id = try id_format.generatePolicyEventId(conn._allocator);
     defer conn._allocator.free(event_id);
-    var r = try conn.query(
+    _ = try conn.exec(
         \\INSERT INTO policy_events
         \\  (id, run_id, workspace_id, action_class, decision, rule_id, actor, ts)
         \\VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
@@ -41,7 +41,6 @@ pub fn recordPolicyEvent(
         actor,
         now_ms,
     });
-    r.deinit();
 
     var request_id: []const u8 = "-";
     if (run_id) |rid| {
@@ -53,6 +52,7 @@ pub fn recordPolicyEvent(
                     if (req.len > 0) request_id = req;
                 }
             }
+            q.drain() catch {};
         }
     }
     log.info("policy_event request_id={s} workspace={s} class={s} decision={s} rule={s} actor={s}", .{

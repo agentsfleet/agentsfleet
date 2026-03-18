@@ -300,6 +300,7 @@ pub fn rejectProposal(conn: *pg.Conn, proposal_id: []const u8, rejection_reason:
 }
 
 pub fn expireStaleManualProposals(conn: *pg.Conn, cutoff_ms: i64) !u32 {
+    // check-pg-drain: ok — full while loop exhausts all rows, natural drain
     var q = try conn.query(
         \\UPDATE agent_improvement_proposals
         \\SET status = $1,

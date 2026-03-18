@@ -231,6 +231,7 @@ pub fn authorizeWorkspace(conn: *pg.Conn, principal: AuthPrincipal, workspace_id
     defer q.deinit();
     const row = (q.next() catch return false) orelse return false;
     _ = row;
+    q.drain() catch return false;
 
     if (principal.workspace_scope_id) |scoped_workspace_id| {
         if (!std.mem.eql(u8, scoped_workspace_id, workspace_id)) return false;
@@ -251,7 +252,9 @@ pub fn authorizeWorkspaceAndSetTenantContext(conn: *pg.Conn, principal: AuthPrin
         var lookup = conn.query("SELECT tenant_id FROM workspaces WHERE workspace_id = $1", .{workspace_id}) catch return false;
         defer lookup.deinit();
         const row = (lookup.next() catch return false) orelse return false;
-        break :blk row.get([]u8, 0) catch return false;
+        const tid = row.get([]u8, 0) catch return false;
+        lookup.drain() catch return false;
+        break :blk tid;
     };
     if (!setTenantSessionContext(conn, tenant_id)) return false;
     return authorizeWorkspace(conn, principal, workspace_id);
@@ -277,7 +280,7 @@ pub fn endApiRequest(ctx: *Context) void {
 }
 
 pub fn compensateStartRunQueueFailure(conn: *pg.Conn, run_id: []const u8) void {
-    _ = conn.query(
+    _ = conn.exec(
         "DELETE FROM runs WHERE run_id = $1 AND state = 'SPEC_QUEUED'",
         .{run_id},
     ) catch {};
@@ -289,17 +292,18 @@ pub fn compensateRetryQueueFailure(
     previous_state: []const u8,
     transition_ts: i64,
 ) void {
-    _ = conn.query(
+    _ = conn.exec(
         "UPDATE runs SET state = $1, updated_at = $2 WHERE run_id = $3",
         .{ previous_state, std.time.milliTimestamp(), run_id },
     ) catch {};
-    _ = conn.query(
+    _ = conn.exec(
         "DELETE FROM run_transitions WHERE run_id = $1 AND reason_code = 'MANUAL_RETRY' AND ts = $2",
         .{ run_id, transition_ts },
     ) catch {};
 }
 
 pub fn openHandlerTestConn(alloc: std.mem.Allocator) !?struct { pool: *db.Pool, conn: *pg.Conn } {
+    // check-pg-drain: ok — no conn.query() here; checker misattributes test-block queries
     const url = std.process.getEnvVarOwned(alloc, "HANDLER_DB_TEST_URL") catch
         std.process.getEnvVarOwned(alloc, "DATABASE_URL") catch return null;
     defer alloc.free(url);

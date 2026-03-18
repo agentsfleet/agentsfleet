@@ -91,6 +91,7 @@ Execution pattern:
 - Before any `git commit` or `git push`, run `gitleaks` and ensure it passes (no leaked secrets).
 - Before any `git commit` that includes Zig changes, check and run the canonical Zig workflow in `docs/ZIG_RULES.md`.
 - Before creating any new `*.zig` file, read `docs/ZIG_RULES.md` and follow its rules first.
+- When writing or reviewing any Zig code that calls `conn.query()`: verify `.drain()` is present in the same function before `deinit()`. Run `make check-pg-drain` to confirm. Use `conn.exec()` instead whenever no result rows are needed.
 - For date-time entries in docs/notes, use format `Feb 02, 2026: 10:30 AM`.
 - Sync is mandatory, not user-prompted: after any change under `~/Projects/ai-jumpstart/*` (except `README.md`), sync mapped files to `~/Projects/dotfiles` in the same turn and explicitly report `sync completed + verified`.
 - For Oracle CLI assistance, run once per session:

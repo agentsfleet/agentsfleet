@@ -299,7 +299,7 @@ pub fn handleCreateWorkspace(ctx: *common.Context, r: zap.Request) void {
 
     const now_ms = std.time.milliTimestamp();
     _ = common.setTenantSessionContext(conn, tenant_id);
-    var tenant_q = conn.query(
+    _ = conn.exec(
         \\INSERT INTO tenants (tenant_id, name, api_key_hash, created_at)
         \\VALUES ($1, $2, 'managed', $3)
         \\ON CONFLICT (tenant_id) DO NOTHING
@@ -307,7 +307,6 @@ pub fn handleCreateWorkspace(ctx: *common.Context, r: zap.Request) void {
         common.internalOperationError(r, "Failed to upsert tenant", req_id);
         return;
     };
-    tenant_q.deinit();
 
     workspace_billing.enforceFreeWorkspaceCreationAllowed(conn, tenant_id, null) catch |err| {
         if (workspace_billing.errorCode(err)) |code| {
@@ -323,7 +322,7 @@ pub fn handleCreateWorkspace(ctx: *common.Context, r: zap.Request) void {
         return;
     };
 
-    var ws_q = conn.query(
+    _ = conn.exec(
         \\INSERT INTO workspaces
         \\  (workspace_id, tenant_id, repo_url, default_branch, paused, version, created_at, updated_at)
         \\VALUES ($1, $2, $3, $4, false, 1, $5, $5)
@@ -331,7 +330,6 @@ pub fn handleCreateWorkspace(ctx: *common.Context, r: zap.Request) void {
         common.internalOperationError(r, "Failed to create workspace", req_id);
         return;
     };
-    ws_q.deinit();
 
     workspace_billing.provisionFreeWorkspace(conn, alloc, workspace_id, "api") catch {
         common.internalOperationError(r, "Failed to provision free entitlement", req_id);
@@ -450,6 +448,7 @@ pub fn handlePauseWorkspace(ctx: *common.Context, r: zap.Request, workspace_id: 
     };
 
     const new_version = row.get(i64, 0) catch 0;
+    upd.drain() catch {};
     log.info("workspace {} pause={} workspace_id={s}", .{ parsed.value.pause, parsed.value.pause, workspace_id });
 
     common.writeJson(r, .ok, .{
@@ -517,8 +516,8 @@ pub fn handleSyncSpecs(ctx: *common.Context, r: zap.Request, workspace_id: []con
         return;
     };
 
-    const repo_url = ws_row.get([]u8, 0) catch "";
-    _ = repo_url;
+    _ = ws_row;
+    ws.drain() catch {};
 
     var count_result = conn.query(
         "SELECT COUNT(*) FROM specs WHERE workspace_id = $1 AND status = 'pending'",
@@ -529,10 +528,12 @@ pub fn handleSyncSpecs(ctx: *common.Context, r: zap.Request, workspace_id: []con
     };
     defer count_result.deinit();
 
-    const total_pending: i64 = if (count_result.next() catch null) |crow|
-        crow.get(i64, 0) catch 0
-    else
-        0;
+    const total_pending: i64 = blk: {
+        const crow = (count_result.next() catch null) orelse break :blk @as(i64, 0);
+        const v = crow.get(i64, 0) catch @as(i64, 0);
+        count_result.drain() catch {};
+        break :blk v;
+    };
 
     log.info("sync workspace_id={s} total_pending={d}", .{ workspace_id, total_pending });
 

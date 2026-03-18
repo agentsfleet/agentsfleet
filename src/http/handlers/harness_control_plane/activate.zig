@@ -9,18 +9,15 @@ const types = @import("types.zig");
 const util = @import("util.zig");
 
 fn beginTx(conn: *pg.Conn) !void {
-    var tx = try conn.query("BEGIN", .{});
-    tx.deinit();
+    _ = try conn.exec("BEGIN", .{});
 }
 
 fn commitTx(conn: *pg.Conn) !void {
-    var tx = try conn.query("COMMIT", .{});
-    tx.deinit();
+    _ = try conn.exec("COMMIT", .{});
 }
 
 fn rollbackTx(conn: *pg.Conn) void {
-    var tx = conn.query("ROLLBACK", .{}) catch return;
-    tx.deinit();
+    _ = conn.exec("ROLLBACK", .{}) catch {};
 }
 
 pub fn activateProfile(
@@ -45,6 +42,7 @@ pub fn activateProfile(
     const is_valid = try row.get(bool, 1);
     const tenant_id = try row.get([]const u8, 2);
     const compiled_profile_json = try row.get(?[]const u8, 3);
+    try q.drain();
     if (!is_valid) return types.ControlPlaneError.ProfileInvalid;
     const billing_state = try workspace_billing.reconcileWorkspaceBilling(conn, alloc, workspace_id, std.time.milliTimestamp(), input.activated_by orelse "api");
     defer alloc.free(billing_state.plan_sku);
@@ -78,7 +76,7 @@ pub fn activateProfile(
     var tx_open = true;
     errdefer if (tx_open) rollbackTx(conn);
 
-    var upsert = try conn.query(
+    _ = try conn.exec(
         \\INSERT INTO workspace_active_config (workspace_id, tenant_id, config_version_id, activated_by, activated_at)
         \\VALUES ($1, $2, $3, $4, $5)
         \\ON CONFLICT (workspace_id) DO UPDATE
@@ -87,13 +85,11 @@ pub fn activateProfile(
         \\    activated_by = EXCLUDED.activated_by,
         \\    activated_at = EXCLUDED.activated_at
     , .{ workspace_id, tenant_id, input.config_version_id, activated_by, now_ms });
-    upsert.deinit();
 
-    var mark_active = try conn.query(
+    _ = try conn.exec(
         "UPDATE agent_profiles SET status = CASE WHEN agent_id = $1 THEN 'ACTIVE' ELSE status END, updated_at = $2 WHERE workspace_id = $3",
         .{ agent_id, now_ms, workspace_id },
     );
-    mark_active.deinit();
 
     prompt_events.emitBestEffort(conn, .{
         .event_type = .prompt_applied,

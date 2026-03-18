@@ -61,7 +61,7 @@ fn upsertSideEffectOutbox(
 ) !void {
     const outbox_id = try id_format.generateOutboxId(conn._allocator);
     defer conn._allocator.free(outbox_id);
-    var q = try conn.query(
+    _ = try conn.exec(
         \\INSERT INTO run_side_effect_outbox
         \\  (id, run_id, effect_key, status, last_event, payload, reconciled_state, created_at, updated_at)
         \\VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8)
@@ -81,7 +81,6 @@ fn upsertSideEffectOutbox(
         reconciled_state,
         now_ms,
     });
-    q.deinit();
 }
 
 pub fn reconcileSideEffectsForRunState(
@@ -94,6 +93,7 @@ pub fn reconcileSideEffectsForRunState(
     const now_ms = std.time.milliTimestamp();
     const reason = deadLetterReasonForState(to);
 
+    // check-pg-drain: ok — full while loop exhausts all rows, natural drain
     var dead = try conn.query(
         \\UPDATE run_side_effects
         \\SET status = 'dead_letter',
@@ -168,6 +168,7 @@ pub fn getRunState(
     const state_str = try row.get([]u8, 0);
     const attempt = @as(u32, @intCast(try row.get(i32, 1)));
     const state = try types.RunState.fromStr(state_str);
+    try result.drain();
     return .{ .state = state, .attempt = attempt };
 }
 
@@ -203,7 +204,7 @@ pub fn transition(
     {
         const transition_id = try id_format.generateTransitionId(conn._allocator);
         defer conn._allocator.free(transition_id);
-        var r = try conn.query(
+        _ = try conn.exec(
             \\INSERT INTO run_transitions
             \\  (id, run_id, attempt, state_from, state_to, actor, reason_code, notes, ts)
             \\VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
@@ -218,7 +219,6 @@ pub fn transition(
             notes,
             now_ms,
         });
-        r.deinit();
     }
 
     // CAS update run state: fail if another worker moved the state first.
@@ -239,6 +239,7 @@ pub fn transition(
             });
             return TransitionError.InvalidTransition;
         };
+        try r.drain();
     }
 
     const dead_lettered = reconcileSideEffectsForRunState(conn, run_id, to) catch |err| blk: {
@@ -291,7 +292,9 @@ pub fn incrementAttempt(conn: *pg.Conn, run_id: []const u8) !u32 {
     defer r.deinit();
 
     const row = try r.next() orelse return TransitionError.RunNotFound;
-    return @as(u32, @intCast(try row.get(i32, 0)));
+    const new_attempt = @as(u32, @intCast(try row.get(i32, 0)));
+    try r.drain();
+    return new_attempt;
 }
 
 /// Write usage ledger entry after an agent call completes.
@@ -306,7 +309,7 @@ pub fn writeUsage(
     const now_ms = std.time.milliTimestamp();
     const usage_id = try id_format.generateUsageLedgerId(conn._allocator);
     defer conn._allocator.free(usage_id);
-    var r = try conn.query(
+    _ = try conn.exec(
         \\INSERT INTO usage_ledger
         \\  (id, run_id, attempt, actor, token_count, agent_seconds, created_at)
         \\VALUES ($1, $2, $3, $4, $5, $6, $7)
@@ -319,7 +322,6 @@ pub fn writeUsage(
         @as(i64, @intCast(agent_seconds)),
         now_ms,
     });
-    r.deinit();
 }
 
 /// Register an artifact in the artifacts table.
@@ -335,7 +337,7 @@ pub fn registerArtifact(
     const now_ms = std.time.milliTimestamp();
     const artifact_id = try id_format.generateArtifactId(conn._allocator);
     defer conn._allocator.free(artifact_id);
-    var r = try conn.query(
+    _ = try conn.exec(
         \\INSERT INTO artifacts
         \\  (id, run_id, attempt, artifact_name, object_key, checksum_sha256, producer, created_at)
         \\VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
@@ -353,7 +355,6 @@ pub fn registerArtifact(
         producer.label(),
         now_ms,
     });
-    r.deinit();
 }
 
 /// Claim a side effect so it can run at-most-once per run/effect_key.
@@ -376,10 +377,12 @@ pub fn claimSideEffect(
     , .{ side_effect_id, run_id, effect_key, details, now_ms });
     defer insert_claim.deinit();
     if ((try insert_claim.next()) != null) {
+        try insert_claim.drain();
         try upsertSideEffectOutbox(conn, run_id, effect_key, .pending, "claimed", details, null, now_ms);
         metrics.incOutboxEnqueued();
         return true;
     }
+    try insert_claim.drain();
 
     var reclaim = try conn.query(
         \\UPDATE run_side_effects
@@ -391,10 +394,12 @@ pub fn claimSideEffect(
     , .{ run_id, effect_key, details, now_ms });
     defer reclaim.deinit();
     if ((try reclaim.next()) != null) {
+        try reclaim.drain();
         try upsertSideEffectOutbox(conn, run_id, effect_key, .pending, "reclaimed", details, null, now_ms);
         metrics.incOutboxEnqueued();
         return true;
     }
+    try reclaim.drain();
 
     return false;
 }
@@ -413,7 +418,9 @@ pub fn markSideEffectDone(
         \\RETURNING id
     , .{ run_id, effect_key, details, now_ms });
     defer r.deinit();
-    if ((try r.next()) != null) {
+    const did_update = (try r.next()) != null;
+    try r.drain();
+    if (did_update) {
         try upsertSideEffectOutbox(conn, run_id, effect_key, .delivered, "done", details, null, now_ms);
         metrics.incOutboxDelivered();
     }

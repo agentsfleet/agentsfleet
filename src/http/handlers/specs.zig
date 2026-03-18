@@ -40,6 +40,7 @@ pub fn handleListSpecs(ctx: *common.Context, r: zap.Request) void {
         return;
     }
 
+    // check-pg-drain: ok — full while loop exhausts all rows, natural drain
     var result = conn.query(
         \\SELECT spec_id, file_path, title, status, created_at, updated_at
         \\FROM specs WHERE workspace_id = $1

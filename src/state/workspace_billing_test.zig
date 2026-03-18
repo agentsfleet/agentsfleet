@@ -274,16 +274,15 @@ fn openTestConn(alloc: std.mem.Allocator) !?struct { pool: *pg.Pool, conn: *pg.C
 
 fn createTempWorkspaceBillingTables(conn: *pg.Conn) !void {
     {
-        var q = try conn.query(
+        _ = try conn.exec(
             \\CREATE TEMP TABLE workspaces (
             \\  workspace_id TEXT PRIMARY KEY,
             \\  tenant_id TEXT
             \\) ON COMMIT DROP
         , .{});
-        q.deinit();
     }
     {
-        var q = try conn.query(
+        _ = try conn.exec(
             \\CREATE TEMP TABLE workspace_entitlements (
             \\  entitlement_id TEXT PRIMARY KEY,
             \\  workspace_id TEXT NOT NULL UNIQUE REFERENCES workspaces(workspace_id) ON DELETE CASCADE,
@@ -298,10 +297,9 @@ fn createTempWorkspaceBillingTables(conn: *pg.Conn) !void {
             \\  updated_at BIGINT NOT NULL
             \\) ON COMMIT DROP
         , .{});
-        q.deinit();
     }
     {
-        var q = try conn.query(
+        _ = try conn.exec(
             \\CREATE TEMP TABLE workspace_billing_state (
             \\  billing_id TEXT PRIMARY KEY,
             \\  workspace_id TEXT NOT NULL UNIQUE REFERENCES workspaces(workspace_id) ON DELETE CASCADE,
@@ -318,10 +316,9 @@ fn createTempWorkspaceBillingTables(conn: *pg.Conn) !void {
             \\  updated_at BIGINT NOT NULL
             \\) ON COMMIT DROP
         , .{});
-        q.deinit();
     }
     {
-        var q = try conn.query(
+        _ = try conn.exec(
             \\CREATE TEMP TABLE workspace_billing_audit (
             \\  audit_id TEXT PRIMARY KEY,
             \\  workspace_id TEXT NOT NULL REFERENCES workspaces(workspace_id) ON DELETE CASCADE,
@@ -336,22 +333,19 @@ fn createTempWorkspaceBillingTables(conn: *pg.Conn) !void {
             \\  created_at BIGINT NOT NULL
             \\) ON COMMIT DROP
         , .{});
-        q.deinit();
     }
 }
 
 fn seedWorkspace(conn: *pg.Conn, workspace_id: []const u8) !void {
-    var q = try conn.query(
+    _ = try conn.exec(
         "INSERT INTO workspaces (workspace_id, tenant_id) VALUES ($1, 'tenant-test-default')",
         .{workspace_id},
     );
-    q.deinit();
 }
 
 fn seedWorkspaceWithTenant(conn: *pg.Conn, workspace_id: []const u8, tenant_id: []const u8) !void {
-    var q = try conn.query(
+    _ = try conn.exec(
         "INSERT INTO workspaces (workspace_id, tenant_id) VALUES ($1, $2)",
         .{ workspace_id, tenant_id },
     );
-    q.deinit();
 }

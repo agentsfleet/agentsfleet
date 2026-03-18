@@ -55,14 +55,14 @@ test "applyProposal rejects when proposal exists but status is PENDING_REVIEW no
     defer db_ctx.pool.release(db_ctx.conn);
 
     try support.createTempProposalTables(db_ctx.conn);
-    try support.insertAgentProfileWithTrust(db_ctx.conn, "agent_guard_2", "ws_guard_2", 10, "TRUSTED");
-    try support.insertActiveConfig(db_ctx.conn, "agent_guard_2", "ws_guard_2", "0195b4ba-8d3a-7f13-8abc-3a0000000003");
+    try support.insertAgentProfileWithTrust(db_ctx.conn, "agent_guard_2", "0195b4ba-8d3a-7f13-8abc-cc0000000401", 10, "TRUSTED");
+    try support.insertActiveConfig(db_ctx.conn, "agent_guard_2", "0195b4ba-8d3a-7f13-8abc-cc0000000401", "0195b4ba-8d3a-7f13-8abc-3a0000000003");
 
     // Insert a MANUAL/PENDING_REVIEW proposal — wrong status for auto-apply guard.
     _ = try db_ctx.conn.exec(
         \\INSERT INTO agent_improvement_proposals
         \\  (proposal_id, agent_id, workspace_id, trigger_reason, proposed_changes, config_version_id, approval_mode, generation_status, status, auto_apply_at, created_at, updated_at)
-        \\VALUES ('0195b4ba-8d3a-7f13-8abc-3a0000000004', 'agent_guard_2', 'ws_guard_2', 'DECLINING_SCORE', $1, '0195b4ba-8d3a-7f13-8abc-3a0000000003', 'MANUAL', 'READY', 'PENDING_REVIEW', NULL, 100, 101)
+        \\VALUES ('0195b4ba-8d3a-7f13-8abc-3a0000000004', 'agent_guard_2', '0195b4ba-8d3a-7f13-8abc-cc0000000401', 'DECLINING_SCORE', $1, '0195b4ba-8d3a-7f13-8abc-3a0000000003', 'MANUAL', 'READY', 'PENDING_REVIEW', NULL, 100, 101)
     , .{STAGE_INSERT_CHANGE});
 
     // Guard called with required_status=VETO_WINDOW — mismatch → rejected.
@@ -70,7 +70,7 @@ test "applyProposal rejects when proposal exists but status is PENDING_REVIEW no
         db_ctx.conn,
         std.testing.allocator,
         "agent_guard_2",
-        "ws_guard_2",
+        "0195b4ba-8d3a-7f13-8abc-cc0000000401",
         "0195b4ba-8d3a-7f13-8abc-3a0000000004",
         "0195b4ba-8d3a-7f13-8abc-3a0000000003",
         STAGE_INSERT_CHANGE,
@@ -101,22 +101,22 @@ test "applyProposal succeeds with a valid VETO_WINDOW proposal" {
     _ = try db_ctx.conn.exec(
         \\INSERT INTO workspace_entitlements
         \\  (entitlement_id, workspace_id, plan_tier, max_profiles, max_stages, max_distinct_skills, allow_custom_skills, enable_agent_scoring, agent_scoring_weights_json, created_at, updated_at)
-        \\VALUES ('ent_guard_3', 'ws_guard_3', 'SCALE', 10, 20, 10, true, true, '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}', 0, 0)
+        \\VALUES ('0195b4ba-8d3a-7f13-8abc-ee0000000401', '0195b4ba-8d3a-7f13-8abc-cc0000000402', 'SCALE', 10, 20, 10, true, true, '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}', 0, 0)
     , .{});
-    try support.insertAgentProfileWithTrust(db_ctx.conn, "agent_guard_3", "ws_guard_3", 10, "TRUSTED");
-    try support.insertActiveConfig(db_ctx.conn, "agent_guard_3", "ws_guard_3", "0195b4ba-8d3a-7f13-8abc-3a0000000005");
+    try support.insertAgentProfileWithTrust(db_ctx.conn, "agent_guard_3", "0195b4ba-8d3a-7f13-8abc-cc0000000402", 10, "TRUSTED");
+    try support.insertActiveConfig(db_ctx.conn, "agent_guard_3", "0195b4ba-8d3a-7f13-8abc-cc0000000402", "0195b4ba-8d3a-7f13-8abc-3a0000000005");
 
     _ = try db_ctx.conn.exec(
         \\INSERT INTO agent_improvement_proposals
         \\  (proposal_id, agent_id, workspace_id, trigger_reason, proposed_changes, config_version_id, approval_mode, generation_status, status, auto_apply_at, created_at, updated_at)
-        \\VALUES ('0195b4ba-8d3a-7f13-8abc-3a0000000006', 'agent_guard_3', 'ws_guard_3', 'DECLINING_SCORE', $1, '0195b4ba-8d3a-7f13-8abc-3a0000000005', 'AUTO', 'READY', 'VETO_WINDOW', 10_000, 100, 101)
+        \\VALUES ('0195b4ba-8d3a-7f13-8abc-3a0000000006', 'agent_guard_3', '0195b4ba-8d3a-7f13-8abc-cc0000000402', 'DECLINING_SCORE', $1, '0195b4ba-8d3a-7f13-8abc-3a0000000005', 'AUTO', 'READY', 'VETO_WINDOW', 10_000, 100, 101)
     , .{STAGE_INSERT_CHANGE});
 
     const result = try auto_approval.applyProposal(
         db_ctx.conn,
         std.testing.allocator,
         "agent_guard_3",
-        "ws_guard_3",
+        "0195b4ba-8d3a-7f13-8abc-cc0000000402",
         "0195b4ba-8d3a-7f13-8abc-3a0000000006",
         "0195b4ba-8d3a-7f13-8abc-3a0000000005",
         STAGE_INSERT_CHANGE,
@@ -150,7 +150,7 @@ test "applyProposal succeeds with a valid VETO_WINDOW proposal" {
     var active_q = try db_ctx.conn.query(
         \\SELECT config_version_id
         \\FROM workspace_active_config
-        \\WHERE workspace_id = 'ws_guard_3'
+        \\WHERE workspace_id = '0195b4ba-8d3a-7f13-8abc-cc0000000402'
     , .{});
     defer active_q.deinit();
     const active_row = (try active_q.next()) orelse return error.TestUnexpectedResult;
@@ -207,14 +207,14 @@ test "applyProposal rejects when agent_id does not match the proposal record" {
     defer db_ctx.pool.release(db_ctx.conn);
 
     try support.createTempProposalTables(db_ctx.conn);
-    try support.insertAgentProfileWithTrust(db_ctx.conn, "agent_guard_edge_2", "ws_guard_edge_2", 10, "TRUSTED");
-    try support.insertActiveConfig(db_ctx.conn, "agent_guard_edge_2", "ws_guard_edge_2", "0195b4ba-8d3a-7f13-8abc-3a0000000011");
+    try support.insertAgentProfileWithTrust(db_ctx.conn, "agent_guard_edge_2", "0195b4ba-8d3a-7f13-8abc-cc0000000403", 10, "TRUSTED");
+    try support.insertActiveConfig(db_ctx.conn, "agent_guard_edge_2", "0195b4ba-8d3a-7f13-8abc-cc0000000403", "0195b4ba-8d3a-7f13-8abc-3a0000000011");
 
     // Insert proposal for agent_guard_edge_2.
     _ = try db_ctx.conn.exec(
         \\INSERT INTO agent_improvement_proposals
         \\  (proposal_id, agent_id, workspace_id, trigger_reason, proposed_changes, config_version_id, approval_mode, generation_status, status, auto_apply_at, created_at, updated_at)
-        \\VALUES ('0195b4ba-8d3a-7f13-8abc-3a0000000012', 'agent_guard_edge_2', 'ws_guard_edge_2', 'DECLINING_SCORE', $1, '0195b4ba-8d3a-7f13-8abc-3a0000000011', 'AUTO', 'READY', 'VETO_WINDOW', 10_000, 100, 101)
+        \\VALUES ('0195b4ba-8d3a-7f13-8abc-3a0000000012', 'agent_guard_edge_2', '0195b4ba-8d3a-7f13-8abc-cc0000000403', 'DECLINING_SCORE', $1, '0195b4ba-8d3a-7f13-8abc-3a0000000011', 'AUTO', 'READY', 'VETO_WINDOW', 10_000, 100, 101)
     , .{STAGE_INSERT_CHANGE});
 
     // Call with a DIFFERENT agent_id — the guard must reject because the
@@ -224,7 +224,7 @@ test "applyProposal rejects when agent_id does not match the proposal record" {
         db_ctx.conn,
         std.testing.allocator,
         "agent_guard_edge_X",
-        "ws_guard_edge_2",
+        "0195b4ba-8d3a-7f13-8abc-cc0000000403",
         "0195b4ba-8d3a-7f13-8abc-3a0000000012",
         "0195b4ba-8d3a-7f13-8abc-3a0000000011",
         STAGE_INSERT_CHANGE,
@@ -245,17 +245,17 @@ test "applyProposal rejects when config_version_id does not match the proposal r
     _ = try db_ctx.conn.exec(
         \\INSERT INTO workspace_entitlements
         \\  (entitlement_id, workspace_id, plan_tier, max_profiles, max_stages, max_distinct_skills, allow_custom_skills, enable_agent_scoring, agent_scoring_weights_json, created_at, updated_at)
-        \\VALUES ('ent_guard_edge_3', 'ws_guard_edge_3', 'SCALE', 10, 20, 10, true, true, '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}', 0, 0)
+        \\VALUES ('0195b4ba-8d3a-7f13-8abc-ee0000000402', '0195b4ba-8d3a-7f13-8abc-cc0000000404', 'SCALE', 10, 20, 10, true, true, '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}', 0, 0)
     , .{});
-    try support.insertAgentProfileWithTrust(db_ctx.conn, "agent_guard_edge_3", "ws_guard_edge_3", 10, "TRUSTED");
+    try support.insertAgentProfileWithTrust(db_ctx.conn, "agent_guard_edge_3", "0195b4ba-8d3a-7f13-8abc-cc0000000404", 10, "TRUSTED");
     // Config version A is the active config.
-    try support.insertActiveConfig(db_ctx.conn, "agent_guard_edge_3", "ws_guard_edge_3", "0195b4ba-8d3a-7f13-8abc-3a0000000013");
+    try support.insertActiveConfig(db_ctx.conn, "agent_guard_edge_3", "0195b4ba-8d3a-7f13-8abc-cc0000000404", "0195b4ba-8d3a-7f13-8abc-3a0000000013");
 
     // Insert VETO_WINDOW proposal with config_version_id = A.
     _ = try db_ctx.conn.exec(
         \\INSERT INTO agent_improvement_proposals
         \\  (proposal_id, agent_id, workspace_id, trigger_reason, proposed_changes, config_version_id, approval_mode, generation_status, status, auto_apply_at, created_at, updated_at)
-        \\VALUES ('0195b4ba-8d3a-7f13-8abc-3a0000000014', 'agent_guard_edge_3', 'ws_guard_edge_3', 'DECLINING_SCORE', $1, '0195b4ba-8d3a-7f13-8abc-3a0000000013', 'AUTO', 'READY', 'VETO_WINDOW', 10_000, 100, 101)
+        \\VALUES ('0195b4ba-8d3a-7f13-8abc-3a0000000014', 'agent_guard_edge_3', '0195b4ba-8d3a-7f13-8abc-cc0000000404', 'DECLINING_SCORE', $1, '0195b4ba-8d3a-7f13-8abc-3a0000000013', 'AUTO', 'READY', 'VETO_WINDOW', 10_000, 100, 101)
     , .{STAGE_INSERT_CHANGE});
 
     // Call applyProposal with config_version_id = B (different from A in the proposal).
@@ -263,7 +263,7 @@ test "applyProposal rejects when config_version_id does not match the proposal r
         db_ctx.conn,
         std.testing.allocator,
         "agent_guard_edge_3",
-        "ws_guard_edge_3",
+        "0195b4ba-8d3a-7f13-8abc-cc0000000404",
         "0195b4ba-8d3a-7f13-8abc-3a0000000014",
         "0195b4ba-8d3a-7f13-8abc-3a0000000099",
         STAGE_INSERT_CHANGE,
@@ -282,21 +282,21 @@ test "applyProposal rejects when proposal status is APPLIED (already applied)" {
     defer db_ctx.pool.release(db_ctx.conn);
 
     try support.createTempProposalTables(db_ctx.conn);
-    try support.insertAgentProfileWithTrust(db_ctx.conn, "agent_guard_edge_4", "ws_guard_edge_4", 10, "TRUSTED");
-    try support.insertActiveConfig(db_ctx.conn, "agent_guard_edge_4", "ws_guard_edge_4", "0195b4ba-8d3a-7f13-8abc-3a0000000015");
+    try support.insertAgentProfileWithTrust(db_ctx.conn, "agent_guard_edge_4", "0195b4ba-8d3a-7f13-8abc-cc0000000405", 10, "TRUSTED");
+    try support.insertActiveConfig(db_ctx.conn, "agent_guard_edge_4", "0195b4ba-8d3a-7f13-8abc-cc0000000405", "0195b4ba-8d3a-7f13-8abc-3a0000000015");
 
     // Insert a proposal that is already APPLIED.
     _ = try db_ctx.conn.exec(
         \\INSERT INTO agent_improvement_proposals
         \\  (proposal_id, agent_id, workspace_id, trigger_reason, proposed_changes, config_version_id, approval_mode, generation_status, status, applied_by, auto_apply_at, created_at, updated_at)
-        \\VALUES ('0195b4ba-8d3a-7f13-8abc-3a0000000016', 'agent_guard_edge_4', 'ws_guard_edge_4', 'DECLINING_SCORE', $1, '0195b4ba-8d3a-7f13-8abc-3a0000000015', 'AUTO', 'READY', 'APPLIED', 'system:auto', 10_000, 100, 101)
+        \\VALUES ('0195b4ba-8d3a-7f13-8abc-3a0000000016', 'agent_guard_edge_4', '0195b4ba-8d3a-7f13-8abc-cc0000000405', 'DECLINING_SCORE', $1, '0195b4ba-8d3a-7f13-8abc-3a0000000015', 'AUTO', 'READY', 'APPLIED', 'system:auto', 10_000, 100, 101)
     , .{STAGE_INSERT_CHANGE});
 
     const result = try auto_approval.applyProposal(
         db_ctx.conn,
         std.testing.allocator,
         "agent_guard_edge_4",
-        "ws_guard_edge_4",
+        "0195b4ba-8d3a-7f13-8abc-cc0000000405",
         "0195b4ba-8d3a-7f13-8abc-3a0000000016",
         "0195b4ba-8d3a-7f13-8abc-3a0000000015",
         STAGE_INSERT_CHANGE,
@@ -324,21 +324,21 @@ test "applyProposal rejects when proposal status is VETOED" {
     defer db_ctx.pool.release(db_ctx.conn);
 
     try support.createTempProposalTables(db_ctx.conn);
-    try support.insertAgentProfileWithTrust(db_ctx.conn, "agent_guard_edge_5", "ws_guard_edge_5", 10, "TRUSTED");
-    try support.insertActiveConfig(db_ctx.conn, "agent_guard_edge_5", "ws_guard_edge_5", "0195b4ba-8d3a-7f13-8abc-3a0000000017");
+    try support.insertAgentProfileWithTrust(db_ctx.conn, "agent_guard_edge_5", "0195b4ba-8d3a-7f13-8abc-cc0000000406", 10, "TRUSTED");
+    try support.insertActiveConfig(db_ctx.conn, "agent_guard_edge_5", "0195b4ba-8d3a-7f13-8abc-cc0000000406", "0195b4ba-8d3a-7f13-8abc-3a0000000017");
 
     // Insert a proposal that has been VETOED.
     _ = try db_ctx.conn.exec(
         \\INSERT INTO agent_improvement_proposals
         \\  (proposal_id, agent_id, workspace_id, trigger_reason, proposed_changes, config_version_id, approval_mode, generation_status, status, rejection_reason, auto_apply_at, created_at, updated_at)
-        \\VALUES ('0195b4ba-8d3a-7f13-8abc-3a0000000018', 'agent_guard_edge_5', 'ws_guard_edge_5', 'DECLINING_SCORE', $1, '0195b4ba-8d3a-7f13-8abc-3a0000000017', 'AUTO', 'READY', 'VETOED', 'OPERATOR_VETOED', 10_000, 100, 101)
+        \\VALUES ('0195b4ba-8d3a-7f13-8abc-3a0000000018', 'agent_guard_edge_5', '0195b4ba-8d3a-7f13-8abc-cc0000000406', 'DECLINING_SCORE', $1, '0195b4ba-8d3a-7f13-8abc-3a0000000017', 'AUTO', 'READY', 'VETOED', 'OPERATOR_VETOED', 10_000, 100, 101)
     , .{STAGE_INSERT_CHANGE});
 
     const result = try auto_approval.applyProposal(
         db_ctx.conn,
         std.testing.allocator,
         "agent_guard_edge_5",
-        "ws_guard_edge_5",
+        "0195b4ba-8d3a-7f13-8abc-cc0000000406",
         "0195b4ba-8d3a-7f13-8abc-3a0000000018",
         "0195b4ba-8d3a-7f13-8abc-3a0000000017",
         STAGE_INSERT_CHANGE,
@@ -373,15 +373,15 @@ test "applyProposal concurrent calls: only one succeeds, rest are rejected or id
     _ = try db_ctx.conn.exec(
         \\INSERT INTO workspace_entitlements
         \\  (entitlement_id, workspace_id, plan_tier, max_profiles, max_stages, max_distinct_skills, allow_custom_skills, enable_agent_scoring, agent_scoring_weights_json, created_at, updated_at)
-        \\VALUES ('ent_guard_t5', 'ws_guard_t5', 'SCALE', 10, 20, 10, true, true, '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}', 0, 0)
+        \\VALUES ('0195b4ba-8d3a-7f13-8abc-ee0000000403', '0195b4ba-8d3a-7f13-8abc-cc0000000407', 'SCALE', 10, 20, 10, true, true, '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}', 0, 0)
     , .{});
-    try support.insertAgentProfileWithTrust(db_ctx.conn, "agent_guard_t5", "ws_guard_t5", 10, "TRUSTED");
-    try support.insertActiveConfig(db_ctx.conn, "agent_guard_t5", "ws_guard_t5", "0195b4ba-8d3a-7f13-8abc-3a0000000020");
+    try support.insertAgentProfileWithTrust(db_ctx.conn, "agent_guard_t5", "0195b4ba-8d3a-7f13-8abc-cc0000000407", 10, "TRUSTED");
+    try support.insertActiveConfig(db_ctx.conn, "agent_guard_t5", "0195b4ba-8d3a-7f13-8abc-cc0000000407", "0195b4ba-8d3a-7f13-8abc-3a0000000020");
 
     _ = try db_ctx.conn.exec(
         \\INSERT INTO agent_improvement_proposals
         \\  (proposal_id, agent_id, workspace_id, trigger_reason, proposed_changes, config_version_id, approval_mode, generation_status, status, auto_apply_at, created_at, updated_at)
-        \\VALUES ('0195b4ba-8d3a-7f13-8abc-3a0000000021', 'agent_guard_t5', 'ws_guard_t5', 'DECLINING_SCORE', $1, '0195b4ba-8d3a-7f13-8abc-3a0000000020', 'AUTO', 'READY', 'VETO_WINDOW', 10_000, 100, 101)
+        \\VALUES ('0195b4ba-8d3a-7f13-8abc-3a0000000021', 'agent_guard_t5', '0195b4ba-8d3a-7f13-8abc-cc0000000407', 'DECLINING_SCORE', $1, '0195b4ba-8d3a-7f13-8abc-3a0000000020', 'AUTO', 'READY', 'VETO_WINDOW', 10_000, 100, 101)
     , .{STAGE_INSERT_CHANGE});
 
     // Sequential idempotency: simulate 4 concurrent calls on the same connection.
@@ -396,7 +396,7 @@ test "applyProposal concurrent calls: only one succeeds, rest are rejected or id
             db_ctx.conn,
             std.testing.allocator,
             "agent_guard_t5",
-            "ws_guard_t5",
+            "0195b4ba-8d3a-7f13-8abc-cc0000000407",
             "0195b4ba-8d3a-7f13-8abc-3a0000000021",
             "0195b4ba-8d3a-7f13-8abc-3a0000000020",
             STAGE_INSERT_CHANGE,

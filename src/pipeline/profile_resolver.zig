@@ -17,13 +17,13 @@ pub fn loadWorkspaceActiveProfile(
             if (tq.*.next() catch null) |tenant_row| {
                 const tenant_id = tenant_row.get([]const u8, 0) catch null;
                 if (tenant_id) |tid| {
-                    var set_q = conn.query(
+                    _ = conn.exec(
                         "SELECT set_config('app.current_tenant_id', $1, true)",
                         .{tid},
-                    ) catch null;
-                    if (set_q) |*sq| sq.*.deinit();
+                    ) catch {};
                 }
             }
+            tq.*.drain() catch {};
         }
     }
 
@@ -40,5 +40,6 @@ pub fn loadWorkspaceActiveProfile(
     const compiled_opt = try row.get(?[]const u8, 0);
     const compiled = compiled_opt orelse return null;
     const profile = try topology.parseProfileJson(alloc, compiled);
+    try q.drain();
     return profile;
 }
