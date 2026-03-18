@@ -6,6 +6,8 @@ const auto_approval = @import("proposals_auto_approval.zig");
 const shared = @import("proposals_shared.zig");
 const validation = @import("proposals_validation.zig");
 
+const sql_rollback = "ROLLBACK";
+
 const RevertError = error{
     CurrentConfigMissing,
 };
@@ -64,11 +66,11 @@ pub fn revertHarnessChange(
     _ = try conn.exec("BEGIN", .{});
     var tx_open = true;
     errdefer {
-        if (tx_open) _ = conn.exec("ROLLBACK", .{}) catch {};
+        if (tx_open) _ = conn.exec(sql_rollback, .{}) catch {};
     }
 
     const current_config_version_id = (try loadCurrentActiveConfigVersionId(conn, alloc, logged_change.workspace_id)) orelse {
-        _ = conn.exec("ROLLBACK", .{}) catch {};
+        _ = conn.exec(sql_rollback, .{}) catch {};
         tx_open = false;
         return RevertError.CurrentConfigMissing;
     };

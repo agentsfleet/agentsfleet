@@ -18,6 +18,8 @@
 const std = @import("std");
 const posthog = @import("posthog");
 const db = @import("../db/pool.zig");
+
+const sql_rollback = sql_rollback;
 const outbox = @import("../state/outbox_reconciler.zig");
 const id_format = @import("../types/id_format.zig");
 const obs_log = @import("../observability/logging.zig");
@@ -244,7 +246,7 @@ test "integration: rollback preserves pending rows for restart recovery" {
     var begin_q = try db_ctx.conn.query("BEGIN", .{});
     begin_q.deinit();
     errdefer {
-        if (db_ctx.conn.query("ROLLBACK", .{})) |rb_result| {
+        if (db_ctx.conn.query(sql_rollback, .{})) |rb_result| {
             var rb_q = rb_result;
             rb_q.deinit();
         } else |_| {}
@@ -257,7 +259,7 @@ test "integration: rollback preserves pending rows for restart recovery" {
     , .{std.time.milliTimestamp()});
     update_q.deinit();
 
-    var rollback_q = try db_ctx.conn.query("ROLLBACK", .{});
+    var rollback_q = try db_ctx.conn.query(sql_rollback, .{});
     rollback_q.deinit();
 
     try std.testing.expectEqual(@as(i64, 1), try pendingCount(db_ctx.conn));
