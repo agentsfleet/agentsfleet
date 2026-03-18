@@ -19,6 +19,7 @@ pub const SkillSecretRoute = skill_secret_handlers.Route;
 
 pub const handleStartRun = runs_handlers.handleStartRun;
 pub const handleGetRun = runs_handlers.handleGetRun;
+pub const handleListRuns = runs_handlers.handleListRuns;
 pub const handleRetryRun = runs_handlers.handleRetryRun;
 pub const handleCreateWorkspace = workspace_handlers.handleCreateWorkspace;
 pub const handlePauseWorkspace = workspace_handlers.handlePauseWorkspace;

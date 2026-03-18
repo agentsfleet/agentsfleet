@@ -52,7 +52,12 @@ fn dispatchMatchedRoute(r: zap.Request, path: []const u8) bool {
         .poll_auth_session => |session_id| if (r.methodAsEnum() == .GET) handler.handlePollAuthSession(g_ctx, r, session_id) else respondMethodNotAllowed(r),
         .github_callback => if (r.methodAsEnum() == .GET) handler.handleGitHubCallback(g_ctx, r) else respondMethodNotAllowed(r),
         .create_workspace => if (r.methodAsEnum() == .POST) handler.handleCreateWorkspace(g_ctx, r) else respondMethodNotAllowed(r),
-        .start_run => if (r.methodAsEnum() == .POST) handler.handleStartRun(g_ctx, r) else respondMethodNotAllowed(r),
+        .start_run => switch (r.methodAsEnum()) {
+            .POST => handler.handleStartRun(g_ctx, r),
+            .GET => handler.handleListRuns(g_ctx, r),
+            else => respondMethodNotAllowed(r),
+        },
+        .list_runs => if (r.methodAsEnum() == .GET) handler.handleListRuns(g_ctx, r) else respondMethodNotAllowed(r),
         .list_specs => if (r.methodAsEnum() == .GET) handler.handleListSpecs(g_ctx, r) else respondMethodNotAllowed(r),
         .retry_run => |run_id| if (r.methodAsEnum() == .POST) handler.handleRetryRun(g_ctx, r, run_id) else respondMethodNotAllowed(r),
         .get_run => |run_id| if (r.methodAsEnum() == .GET) handler.handleGetRun(g_ctx, r, run_id) else respondMethodNotAllowed(r),

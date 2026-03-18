@@ -19,7 +19,7 @@
 
 The canonical v1 acceptance target is:
 
-`https://github.com/indykish/terraform-provider-e2e`
+`TBD` — acceptance target repo to be confirmed before E2E run
 
 **Dimensions:**
 - 1.1 PENDING Authenticate with `zombiectl login`
@@ -61,7 +61,7 @@ The canonical v1 acceptance target is:
 
 ```bash
 npx zombiectl login
-npx zombiectl workspace add https://github.com/indykish/terraform-provider-e2e
+npx zombiectl workspace add <TBD_ACCEPTANCE_REPO_URL>
 npx zombiectl specs sync docs/spec/
 npx zombiectl run
 npx zombiectl runs list
@@ -131,3 +131,17 @@ CLI hardening completed as a prerequisite to acceptance gate execution. All 139 
 - 7.10 DONE Doctor pretty print: header, `[OK]`/`[FAIL]` per check, pass/fail summary
 - 7.11 DONE Complete help text: all flags, env vars, `agent` commands
 - 7.12 DONE 12 new test files; 139/139 passing across 28 files
+
+---
+
+## 8.0 Server `GET /v1/runs` List Endpoint
+
+**Status:** DONE (Mar 18, 2026) — shipped in PR feat/m6-006-list-runs
+
+The CLI `runs list` command calls `GET /v1/runs` but the server only handled `POST /v1/runs` (start run). Added `handleListRuns` handler and wired `GET` method on `/v1/runs` in the server dispatcher.
+
+**Dimensions:**
+- 8.1 DONE `src/http/handlers/runs/list.zig` implements `handleListRuns` — auth, optional `workspace_id` filter, `limit` param, returns `{ runs, total, request_id }`
+- 8.2 DONE Router dispatches `GET /v1/runs` → `handleListRuns`, `POST /v1/runs` → `handleStartRun`
+- 8.3 DONE Follows pg-drain discipline: full while-loop exhaust, no early-exit query paths
+- 8.4 DONE Build passes (`zig build --summary all`), lint passes (`make lint-zig`), pg-drain check passes (`make check-pg-drain`), 152/152 unit tests pass
