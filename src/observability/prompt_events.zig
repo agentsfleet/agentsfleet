@@ -57,7 +57,7 @@ fn emitToDb(ctx: *anyopaque, event: PromptEvent) anyerror!void {
     const row_id = try id_format.generatePromptLifecycleEventId(conn._allocator);
     defer conn._allocator.free(row_id);
     const event_id = randomEventId();
-    var q = try conn.query(
+    _ = try conn.exec(
         \\INSERT INTO prompt_lifecycle_events
         \\  (id, event_id, event_type, workspace_id, tenant_id, agent_id, config_version_id, metadata_json, created_at)
         \\VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
@@ -72,7 +72,6 @@ fn emitToDb(ctx: *anyopaque, event: PromptEvent) anyerror!void {
         event.metadata_json,
         event.ts_ms,
     });
-    q.deinit();
 }
 
 pub fn emitBestEffort(conn: *pg.Conn, event: PromptEvent) void {
@@ -100,9 +99,9 @@ fn openPromptEventTestConn(alloc: std.mem.Allocator) !?struct { pool: *db.Pool, 
         std.process.getEnvVarOwned(alloc, "DATABASE_URL") catch return null;
     defer alloc.free(url);
 
-    var arena = std.heap.ArenaAllocator.init(alloc);
-    defer arena.deinit();
-    const opts = try db.parseUrl(arena.allocator(), url);
+    // pg.Pool.init does NOT copy connect/auth strings — use alloc directly so
+    // they remain valid for the pool's lifetime.
+    const opts = try db.parseUrl(alloc, url);
     const pool = try pg.Pool.init(alloc, opts);
     errdefer pool.deinit();
     const conn = try pool.acquire();
@@ -114,49 +113,37 @@ test "integration: prompt lifecycle events are append-only and auditable" {
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
 
-    {
-        var q = try db_ctx.conn.query(
-            \\CREATE TEMP TABLE prompt_lifecycle_events (
-            \\  id UUID PRIMARY KEY,
-            \\  event_id TEXT NOT NULL UNIQUE,
-            \\  event_type TEXT NOT NULL,
-            \\  workspace_id TEXT NOT NULL,
-            \\  tenant_id TEXT NOT NULL,
-            \\  agent_id TEXT,
-            \\  config_version_id TEXT,
-            \\  metadata_json TEXT NOT NULL DEFAULT '{}',
-            \\  created_at BIGINT NOT NULL
-            \\) ON COMMIT DROP
-        , .{});
-        q.deinit();
-    }
-    {
-        var q = try db_ctx.conn.query(
-            \\CREATE OR REPLACE FUNCTION reject_prompt_lifecycle_event_mutation()
-            \\RETURNS trigger LANGUAGE plpgsql AS $$
-            \\BEGIN
-            \\  RAISE EXCEPTION 'prompt_lifecycle_events is append-only';
-            \\END;
-            \\$$
-        , .{});
-        q.deinit();
-    }
-    {
-        var q = try db_ctx.conn.query(
-            \\CREATE TRIGGER trg_prompt_lifecycle_events_no_update
-            \\BEFORE UPDATE ON prompt_lifecycle_events
-            \\FOR EACH ROW EXECUTE FUNCTION reject_prompt_lifecycle_event_mutation()
-        , .{});
-        q.deinit();
-    }
-    {
-        var q = try db_ctx.conn.query(
-            \\CREATE TRIGGER trg_prompt_lifecycle_events_no_delete
-            \\BEFORE DELETE ON prompt_lifecycle_events
-            \\FOR EACH ROW EXECUTE FUNCTION reject_prompt_lifecycle_event_mutation()
-        , .{});
-        q.deinit();
-    }
+    _ = try db_ctx.conn.exec(
+        \\CREATE TEMP TABLE prompt_lifecycle_events (
+        \\  id UUID PRIMARY KEY,
+        \\  event_id TEXT NOT NULL UNIQUE,
+        \\  event_type TEXT NOT NULL,
+        \\  workspace_id TEXT NOT NULL,
+        \\  tenant_id TEXT NOT NULL,
+        \\  agent_id TEXT,
+        \\  config_version_id TEXT,
+        \\  metadata_json TEXT NOT NULL DEFAULT '{}',
+        \\  created_at BIGINT NOT NULL
+        \\) ON COMMIT DROP
+    , .{});
+    _ = try db_ctx.conn.exec(
+        \\CREATE OR REPLACE FUNCTION reject_prompt_lifecycle_event_mutation()
+        \\RETURNS trigger LANGUAGE plpgsql AS $$
+        \\BEGIN
+        \\  RAISE EXCEPTION 'prompt_lifecycle_events is append-only';
+        \\END;
+        \\$$
+    , .{});
+    _ = try db_ctx.conn.exec(
+        \\CREATE TRIGGER trg_prompt_lifecycle_events_no_update
+        \\BEFORE UPDATE ON prompt_lifecycle_events
+        \\FOR EACH ROW EXECUTE FUNCTION reject_prompt_lifecycle_event_mutation()
+    , .{});
+    _ = try db_ctx.conn.exec(
+        \\CREATE TRIGGER trg_prompt_lifecycle_events_no_delete
+        \\BEFORE DELETE ON prompt_lifecycle_events
+        \\FOR EACH ROW EXECUTE FUNCTION reject_prompt_lifecycle_event_mutation()
+    , .{});
 
     emitBestEffort(db_ctx.conn, .{
         .event_type = .prompt_birth,
@@ -186,11 +173,11 @@ test "integration: prompt lifecycle events are append-only and auditable" {
     try std.testing.expectEqualStrings("prompt_birth", try first.get([]const u8, 0));
     const second = (try events_q.next()) orelse return error.TestUnexpectedResult;
     try std.testing.expectEqualStrings("prompt_applied", try second.get([]const u8, 0));
+    try events_q.drain();
 
-    var update_result = db_ctx.conn.query(
+    _ = db_ctx.conn.exec(
         "UPDATE prompt_lifecycle_events SET metadata_json = '{\"mutated\":true}'",
         .{},
     ) catch return;
-    update_result.deinit();
     return error.TestUnexpectedResult;
 }

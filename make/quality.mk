@@ -2,7 +2,7 @@
 # QUALITY — code quality, formatting, analysis
 # =============================================================================
 
-.PHONY: lint lint-zig lint-website lint-apps doctor _fmt _fmt_check _zlint_check _website_lint _app_lint _zombiectl_lint
+.PHONY: lint lint-zig lint-website lint-apps doctor check-pg-drain _fmt _fmt_check _zlint_check _pg_drain_check _website_lint _app_lint _zombiectl_lint
 
 ZLINT ?= zlint
 
@@ -36,6 +36,13 @@ _zombiectl_lint:
 	@echo "→ [zombiectl] Checking CLI syntax..."
 	@cd zombiectl && node --check src/cli.js && node --check bin/zombiectl.js
 	@echo "✓ [zombiectl] Lint passed"
+
+_pg_drain_check:
+	@echo "→ [zombied] Checking pg query drain discipline..."
+	@python3 scripts/check-pg-drain.py src
+	@echo "✓ [zombied] pg-drain check passed"
+
+check-pg-drain: _pg_drain_check  ## Check that all conn.query() calls have a .drain() (standalone, not in lint-zig until violations cleared)
 
 lint-zig: _fmt_check _zlint_check  ## Lint zombied only (Zig fmt check + ZLint)
 	@echo "✓ [zombied] Lint passed"

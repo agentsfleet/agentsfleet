@@ -31,7 +31,9 @@ fn databaseHealthy(ctx: *Context) bool {
     var ping = conn.query("SELECT 1", .{}) catch return false;
     defer ping.deinit();
 
-    return (ping.next() catch null) != null;
+    const alive = (ping.next() catch null) != null;
+    ping.drain() catch {};
+    return alive;
 }
 
 fn queueHealth(ctx: *Context) ?QueueHealth {
@@ -48,6 +50,7 @@ fn queueHealth(ctx: *Context) ?QueueHealth {
     const row = (q.next() catch null) orelse return null;
     const queued_count = row.get(i64, 0) catch return null;
     const oldest_created_ms = row.get(?i64, 1) catch return null;
+    q.drain() catch {};
     const now_ms = std.time.milliTimestamp();
     const oldest_age_ms = if (oldest_created_ms) |ts| now_ms - ts else null;
     return .{

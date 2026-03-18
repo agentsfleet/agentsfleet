@@ -57,7 +57,9 @@ pub fn handleRetryRun(ctx: *common.Context, r: zap.Request, run_id: []const u8) 
         defer wq.deinit();
         const wrow = wq.next() catch null orelse break :blk @as([]const u8, "");
         const wid = wrow.get([]u8, 0) catch break :blk @as([]const u8, "");
-        break :blk alloc.dupe(u8, wid) catch @as([]const u8, "");
+        const result = alloc.dupe(u8, wid) catch @as([]const u8, "");
+        wq.drain() catch {};
+        break :blk result;
     };
 
     if (workspace_id_for_policy.len > 0 and !common.authorizeWorkspaceAndSetTenantContext(conn, principal, workspace_id_for_policy)) {
@@ -86,21 +88,20 @@ pub fn handleRetryRun(ctx: *common.Context, r: zap.Request, run_id: []const u8) 
     };
 
     const now_ms = std.time.milliTimestamp();
-    var r2 = conn.query(
+    _ = conn.exec(
         "UPDATE runs SET state = 'SPEC_QUEUED', request_id = $1, updated_at = $2 WHERE run_id = $3",
         .{ req_id, now_ms, run_id },
     ) catch {
         common.internalDbError(r, req_id);
         return;
     };
-    r2.deinit();
 
     const transition_id = id_format.generateTransitionId(alloc) catch {
         common.internalDbError(r, req_id);
         return;
     };
     defer alloc.free(transition_id);
-    var r3 = conn.query(
+    _ = conn.exec(
         \\INSERT INTO run_transitions (id, run_id, attempt, state_from, state_to, actor, reason_code, notes, ts)
         \\VALUES ($1, $2, $3, $4, 'SPEC_QUEUED', 'orchestrator', 'MANUAL_RETRY', $5, $6)
     , .{
@@ -114,7 +115,6 @@ pub fn handleRetryRun(ctx: *common.Context, r: zap.Request, run_id: []const u8) 
         common.internalDbError(r, req_id);
         return;
     };
-    r3.deinit();
 
     log.info("run retried run_id={s} reason={s}", .{ run_id, parsed.value.reason });
     ctx.queue.xaddRun(run_id, current.attempt + 1, workspace_id_for_policy) catch |err| {

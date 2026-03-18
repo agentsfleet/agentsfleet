@@ -34,8 +34,11 @@ fn enforceRuntimeActiveProfile(
     defer active_profile.deinit();
 
     const row = (try active_profile.next()) orelse return;
-    const profile_version_id = try row.get([]const u8, 0);
-    const compiled_profile_json = try row.get(?[]const u8, 1);
+    // Copy row-backed slices before drain so enforceWithAudit can use the connection.
+    const profile_version_id = try alloc.dupe(u8, try row.get([]const u8, 0));
+    const cpj_raw = try row.get(?[]const u8, 1);
+    const compiled_profile_json: ?[]const u8 = if (cpj_raw) |v| try alloc.dupe(u8, v) else null;
+    try active_profile.drain();
     try entitlements.enforceWithAudit(
         conn,
         alloc,
@@ -134,6 +137,7 @@ pub fn handleStartRun(ctx: *common.Context, r: zap.Request) void {
         };
 
         const paused = ws_row.get(bool, 0) catch false;
+        ws_check.drain() catch {};
         if (paused) {
             common.errorResponse(r, .conflict, error_codes.ERR_WORKSPACE_PAUSED, "Workspace is paused", req_id);
             return;
@@ -150,7 +154,9 @@ pub fn handleStartRun(ctx: *common.Context, r: zap.Request) void {
         };
         defer spec_check.deinit();
 
-        if (spec_check.next() catch null == null) {
+        const spec_exists = (spec_check.next() catch null) != null;
+        spec_check.drain() catch {};
+        if (!spec_exists) {
             common.errorResponse(r, .not_found, error_codes.ERR_SPEC_NOT_FOUND, "Spec not found", req_id);
             return;
         }
@@ -219,12 +225,15 @@ pub fn handleStartRun(ctx: *common.Context, r: zap.Request) void {
         common.internalOperationError(r, "Failed to upsert run", req_id);
         return;
     };
-    const final_run_id = inserted_row.get([]u8, 0) catch run_id;
-    const final_state = inserted_row.get([]u8, 1) catch "SPEC_QUEUED";
+    // Copy row-backed slices before drain so subsequent conn queries don't hit ConnectionBusy.
+    const final_run_id = alloc.dupe(u8, inserted_row.get([]u8, 0) catch run_id) catch run_id;
+    const final_state = alloc.dupe(u8, inserted_row.get([]u8, 1) catch "SPEC_QUEUED") catch "SPEC_QUEUED";
     const final_attempt = inserted_row.get(i32, 2) catch 1;
-    const run_snapshot_version = inserted_row.get(?[]u8, 3) catch null;
-    const tenant_id = inserted_row.get([]u8, 4) catch "";
+    const run_snapshot_version_raw = inserted_row.get(?[]u8, 3) catch null;
+    const run_snapshot_version: ?[]u8 = if (run_snapshot_version_raw) |v| alloc.dupe(u8, v) catch null else null;
+    const tenant_id = alloc.dupe(u8, inserted_row.get([]u8, 4) catch "") catch "";
     const was_inserted = inserted_row.get(bool, 5) catch false;
+    insert.drain() catch {};
 
     if (!id_format.isSupportedRunId(final_run_id)) {
         common.errorResponse(r, .internal_server_error, error_codes.ERR_UUIDV7_CANONICAL_FORMAT, "Non-canonical run_id persisted", req_id);
@@ -285,101 +294,73 @@ test "runtime entitlement enforcement rejects downgraded free workspace using sc
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
 
-    {
-        var q = try db_ctx.conn.query(
-            \\CREATE TEMP TABLE workspace_entitlements (
-            \\  entitlement_id TEXT PRIMARY KEY,
-            \\  workspace_id TEXT NOT NULL UNIQUE,
-            \\  plan_tier TEXT NOT NULL,
-            \\  max_profiles INTEGER NOT NULL,
-            \\  max_stages INTEGER NOT NULL,
-            \\  max_distinct_skills INTEGER NOT NULL,
-            \\  allow_custom_skills BOOLEAN NOT NULL,
-            \\  enable_agent_scoring BOOLEAN NOT NULL DEFAULT FALSE,
-            \\  agent_scoring_weights_json TEXT NOT NULL DEFAULT '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}',
-            \\  created_at BIGINT NOT NULL,
-            \\  updated_at BIGINT NOT NULL
-            \\) ON COMMIT DROP
-        , .{});
-        q.deinit();
-    }
-    {
-        var q = try db_ctx.conn.query(
-            \\CREATE TEMP TABLE entitlement_policy_audit_snapshots (
-            \\  snapshot_id TEXT PRIMARY KEY,
-            \\  workspace_id TEXT NOT NULL,
-            \\  boundary TEXT NOT NULL,
-            \\  decision TEXT NOT NULL,
-            \\  reason_code TEXT NOT NULL,
-            \\  plan_tier TEXT NOT NULL,
-            \\  policy_json TEXT NOT NULL,
-            \\  observed_json TEXT NOT NULL,
-            \\  actor TEXT NOT NULL,
-            \\  created_at BIGINT NOT NULL
-            \\) ON COMMIT DROP
-        , .{});
-        q.deinit();
-    }
-    {
-        var q = try db_ctx.conn.query(
-            \\CREATE TEMP TABLE agent_profiles (
-            \\  agent_id TEXT PRIMARY KEY,
-            \\  workspace_id TEXT NOT NULL
-            \\) ON COMMIT DROP
-        , .{});
-        q.deinit();
-    }
-    {
-        var q = try db_ctx.conn.query(
-            \\CREATE TEMP TABLE workspace_active_config (
-            \\  workspace_id TEXT PRIMARY KEY,
-            \\  config_version_id TEXT NOT NULL
-            \\) ON COMMIT DROP
-        , .{});
-        q.deinit();
-    }
-    {
-        var q = try db_ctx.conn.query(
-            \\CREATE TEMP TABLE agent_config_versions (
-            \\  config_version_id TEXT PRIMARY KEY,
-            \\  compiled_profile_json TEXT
-            \\) ON COMMIT DROP
-        , .{});
-        q.deinit();
-    }
-
-    {
-        var q = try db_ctx.conn.query(
-            \\INSERT INTO workspace_entitlements
-            \\  (entitlement_id, workspace_id, plan_tier, max_profiles, max_stages, max_distinct_skills, allow_custom_skills, created_at, updated_at)
-            \\VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6faa', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11', 'FREE', 1, 3, 3, false, 0, 0)
-        , .{});
-        q.deinit();
-    }
-    {
-        var q = try db_ctx.conn.query(
-            "INSERT INTO agent_profiles (agent_id, workspace_id) VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f41', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11')",
-            .{},
-        );
-        q.deinit();
-    }
-    {
-        var q = try db_ctx.conn.query(
-            \\INSERT INTO agent_config_versions (config_version_id, compiled_profile_json)
-            \\VALUES (
-            \\  '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f91',
-            \\  '{"agent_id":"0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f41","stages":[{"stage_id":"plan","role":"echo","skill":"echo"},{"stage_id":"implement","role":"scout","skill":"scout"},{"stage_id":"verify","role":"warden","skill":"warden","gate":true,"on_pass":"done","on_fail":"retry"},{"stage_id":"extra","role":"scout","skill":"scout","gate":false}]}'
-            \\)
-        , .{});
-        q.deinit();
-    }
-    {
-        var q = try db_ctx.conn.query(
-            "INSERT INTO workspace_active_config (workspace_id, config_version_id) VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f91')",
-            .{},
-        );
-        q.deinit();
-    }
+    _ = try db_ctx.conn.exec(
+        \\CREATE TEMP TABLE workspace_entitlements (
+        \\  entitlement_id TEXT PRIMARY KEY,
+        \\  workspace_id TEXT NOT NULL UNIQUE,
+        \\  plan_tier TEXT NOT NULL,
+        \\  max_profiles INTEGER NOT NULL,
+        \\  max_stages INTEGER NOT NULL,
+        \\  max_distinct_skills INTEGER NOT NULL,
+        \\  allow_custom_skills BOOLEAN NOT NULL,
+        \\  enable_agent_scoring BOOLEAN NOT NULL DEFAULT FALSE,
+        \\  agent_scoring_weights_json TEXT NOT NULL DEFAULT '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}',
+        \\  created_at BIGINT NOT NULL,
+        \\  updated_at BIGINT NOT NULL
+        \\) ON COMMIT DROP
+    , .{});
+    _ = try db_ctx.conn.exec(
+        \\CREATE TEMP TABLE entitlement_policy_audit_snapshots (
+        \\  snapshot_id TEXT PRIMARY KEY,
+        \\  workspace_id TEXT NOT NULL,
+        \\  boundary TEXT NOT NULL,
+        \\  decision TEXT NOT NULL,
+        \\  reason_code TEXT NOT NULL,
+        \\  plan_tier TEXT NOT NULL,
+        \\  policy_json TEXT NOT NULL,
+        \\  observed_json TEXT NOT NULL,
+        \\  actor TEXT NOT NULL,
+        \\  created_at BIGINT NOT NULL
+        \\) ON COMMIT DROP
+    , .{});
+    _ = try db_ctx.conn.exec(
+        \\CREATE TEMP TABLE agent_profiles (
+        \\  agent_id TEXT PRIMARY KEY,
+        \\  workspace_id TEXT NOT NULL
+        \\) ON COMMIT DROP
+    , .{});
+    _ = try db_ctx.conn.exec(
+        \\CREATE TEMP TABLE workspace_active_config (
+        \\  workspace_id TEXT PRIMARY KEY,
+        \\  config_version_id TEXT NOT NULL
+        \\) ON COMMIT DROP
+    , .{});
+    _ = try db_ctx.conn.exec(
+        \\CREATE TEMP TABLE agent_config_versions (
+        \\  config_version_id TEXT PRIMARY KEY,
+        \\  compiled_profile_json TEXT
+        \\) ON COMMIT DROP
+    , .{});
+    _ = try db_ctx.conn.exec(
+        \\INSERT INTO workspace_entitlements
+        \\  (entitlement_id, workspace_id, plan_tier, max_profiles, max_stages, max_distinct_skills, allow_custom_skills, created_at, updated_at)
+        \\VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6faa', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11', 'FREE', 1, 3, 3, false, 0, 0)
+    , .{});
+    _ = try db_ctx.conn.exec(
+        "INSERT INTO agent_profiles (agent_id, workspace_id) VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f41', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11')",
+        .{},
+    );
+    _ = try db_ctx.conn.exec(
+        \\INSERT INTO agent_config_versions (config_version_id, compiled_profile_json)
+        \\VALUES (
+        \\  '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f91',
+        \\  '{"agent_id":"0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f41","stages":[{"stage_id":"plan","role":"echo","skill":"echo"},{"stage_id":"implement","role":"scout","skill":"scout"},{"stage_id":"verify","role":"warden","skill":"warden","gate":true,"on_pass":"done","on_fail":"retry"},{"stage_id":"extra","role":"scout","skill":"scout","gate":false}]}'
+        \\)
+    , .{});
+    _ = try db_ctx.conn.exec(
+        "INSERT INTO workspace_active_config (workspace_id, config_version_id) VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f91')",
+        .{},
+    );
 
     try std.testing.expectError(
         entitlements.EnforcementError.EntitlementStageLimit,

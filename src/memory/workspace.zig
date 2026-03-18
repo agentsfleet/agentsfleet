@@ -17,6 +17,7 @@ pub fn loadForEcho(
     workspace_id: []const u8,
     limit: u32,
 ) ![]const u8 {
+    // check-pg-drain: ok — full while loop exhausts all rows, natural drain
     var result = try conn.query(
         \\SELECT content FROM workspace_memories
         \\WHERE workspace_id = $1
@@ -70,7 +71,7 @@ pub fn saveFromWarden(
 
         const memory_id = try id_format.generateWorkspaceMemoryId(conn._allocator);
         defer conn._allocator.free(memory_id);
-        var r = try conn.query(
+        _ = try conn.exec(
             \\INSERT INTO workspace_memories
             \\  (id, workspace_id, run_id, content, tags, created_at, expires_at)
             \\VALUES ($1, $2, $3, $4, '[]', $5, $6)
@@ -82,7 +83,6 @@ pub fn saveFromWarden(
             now_ms,
             expire_ms,
         });
-        r.deinit();
         saved += 1;
     }
 

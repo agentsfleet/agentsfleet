@@ -93,7 +93,6 @@ Follow `skills/write-unit-test/SKILL.md` with mandatory coverage tiers on touche
 
 ---
 
-## 6.0 Out Of Scope
+## 6.0 Refactor workspace_billing
 
-- `src/state/workspace_billing.zig` (deferred)
-- Additional product feature changes beyond refactor/test hardening
+- `src/state/workspace_billing.zig`

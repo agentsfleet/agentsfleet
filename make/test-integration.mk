@@ -27,6 +27,12 @@ test-integration-db:  ## Run DB-backed handler integration tests (requires HANDL
 	fi
 	@echo "→ [zombied] Running DB-backed integration tests (HANDLER_DB_TEST_URL is set)..."
 	@mkdir -p "$(ZIG_GLOBAL_CACHE_DIR)" "$(ZIG_LOCAL_CACHE_DIR)"
+	@echo "→ [zombied] Auto-migrating test database..."
+	@ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" \
+	 ZIG_LOCAL_CACHE_DIR="$(ZIG_LOCAL_CACHE_DIR)" \
+	 DATABASE_URL_API="$$HANDLER_DB_TEST_URL" \
+	 zig build run -- migrate
+	@echo "→ [zombied] Migration done, running tests..."
 	@ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" \
 	 ZIG_LOCAL_CACHE_DIR="$(ZIG_LOCAL_CACHE_DIR)" \
 	 HANDLER_DB_TEST_URL="$$HANDLER_DB_TEST_URL" \
