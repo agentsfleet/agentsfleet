@@ -20,6 +20,7 @@ pub const Route = union(enum) {
     github_callback,
     create_workspace,
     start_run,
+    list_runs,
     list_specs,
     retry_run: []const u8,
     get_run: []const u8,

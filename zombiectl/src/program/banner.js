@@ -8,12 +8,15 @@ export function printBanner(stream, version, opts = {}) {
 
   if (jsonMode) return;
 
+  const label = `  zombiectl v${version}   `;
+
   if (noColor) {
     stream.write(`zombiectl v${version}\n`);
     return;
   }
 
-  stream.write(` \u{1F7E7}\n`);
-  stream.write(`\u{1F7E7}\u{1F7E9} zombiectl v${version}\n`);
-  stream.write(`\u{1F7E9} \u{1F7E7}\n`);
+  const bar = "\u2500".repeat(label.length);
+  stream.write(`    \u256D${bar}\u256E\n`);
+  stream.write(` \u{1F9DF} \u2502${label}\u2502\n`);
+  stream.write(`    \u2570${bar}\u256F\n`);
 }
