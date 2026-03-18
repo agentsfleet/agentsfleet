@@ -12,24 +12,24 @@ test "reconcileDueAutoApprovalProposals applies overdue veto-window proposals" {
     _ = try db_ctx.conn.exec(
         \\INSERT INTO workspace_entitlements
         \\  (entitlement_id, workspace_id, plan_tier, max_profiles, max_stages, max_distinct_skills, allow_custom_skills, enable_agent_scoring, agent_scoring_weights_json, created_at, updated_at)
-        \\VALUES ('ent_prop_auto_1', 'ws_prop_auto_1', 'FREE', 3, 4, 3, false, true, '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}', 0, 0)
+        \\VALUES ('0195b4ba-8d3a-7f13-8abc-ee0000000112', '0195b4ba-8d3a-7f13-8abc-cc0000000112', 'FREE', 3, 4, 3, false, true, '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}', 0, 0)
     , .{});
-    try support.insertAgentProfileWithTrust(db_ctx.conn, "agent_prop_auto_1", "ws_prop_auto_1", 10, "TRUSTED");
-    try support.insertActiveConfig(db_ctx.conn, "agent_prop_auto_1", "ws_prop_auto_1", "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fa2");
+    try support.insertAgentProfileWithTrust(db_ctx.conn, "agent_prop_auto_1", "0195b4ba-8d3a-7f13-8abc-cc0000000112", 10, "TRUSTED");
+    try support.insertActiveConfig(db_ctx.conn, "agent_prop_auto_1", "0195b4ba-8d3a-7f13-8abc-cc0000000112", "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fa2");
 
     var i: usize = 0;
     while (i < 5) : (i += 1) {
         const run_id = try std.fmt.allocPrint(std.testing.allocator, "run_auto_prev_{d}", .{i});
         defer std.testing.allocator.free(run_id);
-        try support.insertScoreRow(db_ctx.conn, run_id, "agent_prop_auto_1", "ws_prop_auto_1", 95, @as(i64, @intCast(i + 1)));
+        try support.insertScoreRow(db_ctx.conn, run_id, "agent_prop_auto_1", "0195b4ba-8d3a-7f13-8abc-cc0000000112", 95, @as(i64, @intCast(i + 1)));
     }
     while (i < 10) : (i += 1) {
         const run_id = try std.fmt.allocPrint(std.testing.allocator, "run_auto_curr_{d}", .{i});
         defer std.testing.allocator.free(run_id);
-        try support.insertScoreRow(db_ctx.conn, run_id, "agent_prop_auto_1", "ws_prop_auto_1", 80, @as(i64, @intCast(i + 1)));
+        try support.insertScoreRow(db_ctx.conn, run_id, "agent_prop_auto_1", "0195b4ba-8d3a-7f13-8abc-cc0000000112", 80, @as(i64, @intCast(i + 1)));
     }
 
-    try proposals.maybePersistTriggerProposal(db_ctx.conn, std.testing.allocator, "ws_prop_auto_1", "agent_prop_auto_1", 11_000);
+    try proposals.maybePersistTriggerProposal(db_ctx.conn, std.testing.allocator, "0195b4ba-8d3a-7f13-8abc-cc0000000112", "agent_prop_auto_1", 11_000);
     const generated = try proposals.reconcilePendingProposalGenerations(db_ctx.conn, std.testing.allocator, 0);
     try std.testing.expectEqual(@as(u32, 1), generated.ready);
 
@@ -58,7 +58,7 @@ test "reconcileDueAutoApprovalProposals applies overdue veto-window proposals" {
     var active_q = try db_ctx.conn.query(
         \\SELECT config_version_id
         \\FROM workspace_active_config
-        \\WHERE workspace_id = 'ws_prop_auto_1'
+        \\WHERE workspace_id = '0195b4ba-8d3a-7f13-8abc-cc0000000112'
     , .{});
     defer active_q.deinit();
     const active_row = (try active_q.next()) orelse return error.TestUnexpectedResult;
@@ -93,14 +93,14 @@ test "reconcileDueAutoApprovalProposals applies proposal when auto_apply_at equa
     _ = try db_ctx.conn.exec(
         \\INSERT INTO workspace_entitlements
         \\  (entitlement_id, workspace_id, plan_tier, max_profiles, max_stages, max_distinct_skills, allow_custom_skills, enable_agent_scoring, agent_scoring_weights_json, created_at, updated_at)
-        \\VALUES ('ent_prop_auto_eq_1', 'ws_prop_auto_eq_1', 'FREE', 3, 4, 3, false, true, '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}', 0, 0)
+        \\VALUES ('0195b4ba-8d3a-7f13-8abc-ee0000000114', '0195b4ba-8d3a-7f13-8abc-cc0000000114', 'FREE', 3, 4, 3, false, true, '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}', 0, 0)
     , .{});
-    try support.insertAgentProfileWithTrust(db_ctx.conn, "agent_prop_auto_eq_1", "ws_prop_auto_eq_1", 10, "TRUSTED");
-    try support.insertActiveConfig(db_ctx.conn, "agent_prop_auto_eq_1", "ws_prop_auto_eq_1", "0195b4ba-8d3a-7f13-8abc-2b3e1e0a7202");
+    try support.insertAgentProfileWithTrust(db_ctx.conn, "agent_prop_auto_eq_1", "0195b4ba-8d3a-7f13-8abc-cc0000000114", 10, "TRUSTED");
+    try support.insertActiveConfig(db_ctx.conn, "agent_prop_auto_eq_1", "0195b4ba-8d3a-7f13-8abc-cc0000000114", "0195b4ba-8d3a-7f13-8abc-2b3e1e0a7202");
     _ = try db_ctx.conn.exec(
         \\INSERT INTO agent_improvement_proposals
         \\  (proposal_id, agent_id, workspace_id, trigger_reason, proposed_changes, config_version_id, approval_mode, generation_status, status, auto_apply_at, created_at, updated_at)
-        \\VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a7203', 'agent_prop_auto_eq_1', 'ws_prop_auto_eq_1', 'DECLINING_SCORE', '[{"target_field":"stage_insert","current_value":null,"proposed_value":{"agent_id":"agent_prop_auto_eq_1","insert_before_stage_id":"verify","stage_id":"verify-precheck","role":"autoworkerready","skill":"clawhub://usezombie/autoworkerready@1.0.0","artifact_name":"verify-precheck.md","commit_message":"agent: add verify-precheck.md","gate":false,"on_pass":"verify","on_fail":"retry"},"rationale":"recover quality"}]', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a7202', 'AUTO', 'READY', 'VETO_WINDOW', 20_000, 100, 101)
+        \\VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a7203', 'agent_prop_auto_eq_1', '0195b4ba-8d3a-7f13-8abc-cc0000000114', 'DECLINING_SCORE', '[{"target_field":"stage_insert","current_value":null,"proposed_value":{"agent_id":"agent_prop_auto_eq_1","insert_before_stage_id":"verify","stage_id":"verify-precheck","role":"autoworkerready","skill":"clawhub://usezombie/autoworkerready@1.0.0","artifact_name":"verify-precheck.md","commit_message":"agent: add verify-precheck.md","gate":false,"on_pass":"verify","on_fail":"retry"},"rationale":"recover quality"}]', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a7202', 'AUTO', 'READY', 'VETO_WINDOW', 20_000, 100, 101)
     , .{});
 
     const result = try proposals.reconcileDueAutoApprovalProposals(db_ctx.conn, std.testing.allocator, 0, 20_000);
@@ -116,24 +116,24 @@ test "reconcileDueAutoApprovalProposals rejects auto-apply when config version c
     _ = try db_ctx.conn.exec(
         \\INSERT INTO workspace_entitlements
         \\  (entitlement_id, workspace_id, plan_tier, max_profiles, max_stages, max_distinct_skills, allow_custom_skills, enable_agent_scoring, agent_scoring_weights_json, created_at, updated_at)
-        \\VALUES ('ent_prop_auto_2', 'ws_prop_auto_2', 'FREE', 3, 4, 3, false, true, '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}', 0, 0)
+        \\VALUES ('0195b4ba-8d3a-7f13-8abc-ee0000000113', '0195b4ba-8d3a-7f13-8abc-cc0000000113', 'FREE', 3, 4, 3, false, true, '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}', 0, 0)
     , .{});
-    try support.insertAgentProfileWithTrust(db_ctx.conn, "agent_prop_auto_2", "ws_prop_auto_2", 10, "TRUSTED");
-    try support.insertActiveConfig(db_ctx.conn, "agent_prop_auto_2", "ws_prop_auto_2", "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fa3");
+    try support.insertAgentProfileWithTrust(db_ctx.conn, "agent_prop_auto_2", "0195b4ba-8d3a-7f13-8abc-cc0000000113", 10, "TRUSTED");
+    try support.insertActiveConfig(db_ctx.conn, "agent_prop_auto_2", "0195b4ba-8d3a-7f13-8abc-cc0000000113", "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fa3");
 
     var i: usize = 0;
     while (i < 5) : (i += 1) {
         const run_id = try std.fmt.allocPrint(std.testing.allocator, "run_auto_cfg_{d}", .{i});
         defer std.testing.allocator.free(run_id);
-        try support.insertScoreRow(db_ctx.conn, run_id, "agent_prop_auto_2", "ws_prop_auto_2", 95, @as(i64, @intCast(i + 1)));
+        try support.insertScoreRow(db_ctx.conn, run_id, "agent_prop_auto_2", "0195b4ba-8d3a-7f13-8abc-cc0000000113", 95, @as(i64, @intCast(i + 1)));
     }
     while (i < 10) : (i += 1) {
         const run_id = try std.fmt.allocPrint(std.testing.allocator, "run_auto_cfg_{d}", .{i});
         defer std.testing.allocator.free(run_id);
-        try support.insertScoreRow(db_ctx.conn, run_id, "agent_prop_auto_2", "ws_prop_auto_2", 80, @as(i64, @intCast(i + 1)));
+        try support.insertScoreRow(db_ctx.conn, run_id, "agent_prop_auto_2", "0195b4ba-8d3a-7f13-8abc-cc0000000113", 80, @as(i64, @intCast(i + 1)));
     }
 
-    try proposals.maybePersistTriggerProposal(db_ctx.conn, std.testing.allocator, "ws_prop_auto_2", "agent_prop_auto_2", 11_000);
+    try proposals.maybePersistTriggerProposal(db_ctx.conn, std.testing.allocator, "0195b4ba-8d3a-7f13-8abc-cc0000000113", "agent_prop_auto_2", 11_000);
     const generated = try proposals.reconcilePendingProposalGenerations(db_ctx.conn, std.testing.allocator, 0);
     try std.testing.expectEqual(@as(u32, 1), generated.ready);
 
@@ -141,7 +141,7 @@ test "reconcileDueAutoApprovalProposals rejects auto-apply when config version c
     _ = try db_ctx.conn.exec(
         \\UPDATE workspace_active_config
         \\SET config_version_id = '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fa4'
-        \\WHERE workspace_id = 'ws_prop_auto_2'
+        \\WHERE workspace_id = '0195b4ba-8d3a-7f13-8abc-cc0000000113'
     , .{});
 
     const due_ms: i64 = 20_000;
@@ -176,17 +176,17 @@ test "listOpenProposals returns veto-window proposals before manual review propo
     _ = try db_ctx.conn.exec(
         \\INSERT INTO workspace_entitlements
         \\  (entitlement_id, workspace_id, plan_tier, max_profiles, max_stages, max_distinct_skills, allow_custom_skills, enable_agent_scoring, agent_scoring_weights_json, created_at, updated_at)
-        \\VALUES ('ent_prop_manual_1', 'ws_prop_manual_1', 'FREE', 3, 4, 3, false, true, '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}', 0, 0)
+        \\VALUES ('0195b4ba-8d3a-7f13-8abc-ee0000000117', '0195b4ba-8d3a-7f13-8abc-cc0000000117', 'FREE', 3, 4, 3, false, true, '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}', 0, 0)
     , .{});
-    try support.insertAgentProfile(db_ctx.conn, "agent_prop_manual_1", "ws_prop_manual_1");
-    try support.insertActiveConfig(db_ctx.conn, "agent_prop_manual_1", "ws_prop_manual_1", "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fb1");
+    try support.insertAgentProfile(db_ctx.conn, "agent_prop_manual_1", "0195b4ba-8d3a-7f13-8abc-cc0000000117");
+    try support.insertActiveConfig(db_ctx.conn, "agent_prop_manual_1", "0195b4ba-8d3a-7f13-8abc-cc0000000117", "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fb1");
     _ = try db_ctx.conn.exec(
         \\INSERT INTO agent_improvement_proposals
         \\  (proposal_id, agent_id, workspace_id, trigger_reason, proposed_changes, config_version_id, approval_mode, generation_status, status, auto_apply_at, created_at, updated_at)
         \\VALUES
-        \\  ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fb4', 'agent_prop_manual_1', 'ws_prop_manual_1', 'DECLINING_SCORE', '[{"target_field":"stage_insert","current_value":null,"proposed_value":{"agent_id":"agent_prop_manual_1","insert_before_stage_id":"verify","stage_id":"verify-precheck","role":"autoworkerready","skill":"clawhub://usezombie/autoworkerready@1.0.0","artifact_name":"verify-precheck.md","commit_message":"agent: add verify-precheck.md","gate":false,"on_pass":"verify","on_fail":"retry"},"rationale":"recover quality"}]', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fb1', 'AUTO', 'READY', 'VETO_WINDOW', 250, 90, 90),
-        \\  ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fb2', 'agent_prop_manual_1', 'ws_prop_manual_1', 'DECLINING_SCORE', '[{"target_field":"stage_insert","current_value":null,"proposed_value":{"agent_id":"agent_prop_manual_1","insert_before_stage_id":"verify","stage_id":"verify-precheck","role":"autoworkerready","skill":"clawhub://usezombie/autoworkerready@1.0.0","artifact_name":"verify-precheck.md","commit_message":"agent: add verify-precheck.md","gate":false,"on_pass":"verify","on_fail":"retry"},"rationale":"recover quality"}]', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fb1', 'MANUAL', 'READY', 'PENDING_REVIEW', NULL, 100, 101),
-        \\  ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fb3', 'agent_prop_manual_1', 'ws_prop_manual_1', 'DECLINING_SCORE', '[]', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fb1', 'MANUAL', 'READY', 'REJECTED', NULL, 99, 99)
+        \\  ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fb4', 'agent_prop_manual_1', '0195b4ba-8d3a-7f13-8abc-cc0000000117', 'DECLINING_SCORE', '[{"target_field":"stage_insert","current_value":null,"proposed_value":{"agent_id":"agent_prop_manual_1","insert_before_stage_id":"verify","stage_id":"verify-precheck","role":"autoworkerready","skill":"clawhub://usezombie/autoworkerready@1.0.0","artifact_name":"verify-precheck.md","commit_message":"agent: add verify-precheck.md","gate":false,"on_pass":"verify","on_fail":"retry"},"rationale":"recover quality"}]', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fb1', 'AUTO', 'READY', 'VETO_WINDOW', 250, 90, 90),
+        \\  ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fb2', 'agent_prop_manual_1', '0195b4ba-8d3a-7f13-8abc-cc0000000117', 'DECLINING_SCORE', '[{"target_field":"stage_insert","current_value":null,"proposed_value":{"agent_id":"agent_prop_manual_1","insert_before_stage_id":"verify","stage_id":"verify-precheck","role":"autoworkerready","skill":"clawhub://usezombie/autoworkerready@1.0.0","artifact_name":"verify-precheck.md","commit_message":"agent: add verify-precheck.md","gate":false,"on_pass":"verify","on_fail":"retry"},"rationale":"recover quality"}]', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fb1', 'MANUAL', 'READY', 'PENDING_REVIEW', NULL, 100, 101),
+        \\  ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fb3', 'agent_prop_manual_1', '0195b4ba-8d3a-7f13-8abc-cc0000000117', 'DECLINING_SCORE', '[]', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fb1', 'MANUAL', 'READY', 'REJECTED', NULL, 99, 99)
     , .{});
 
     const items = try proposals.listOpenProposals(db_ctx.conn, std.testing.allocator, "agent_prop_manual_1", 0);

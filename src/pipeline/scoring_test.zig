@@ -384,7 +384,7 @@ test "scoreRunIfTerminal fail-safe catches invalid workspace scoring config" {
     _ = try db_ctx.conn.exec(
         \\INSERT INTO workspace_entitlements
         \\  (entitlement_id, workspace_id, plan_tier, max_profiles, max_stages, max_distinct_skills, allow_custom_skills, enable_agent_scoring, agent_scoring_weights_json, created_at, updated_at)
-        \\VALUES ('ent_1', 'ws_1', 'FREE', 1, 3, 3, false, true, '{"completion":0.6}', 0, 0)
+        \\VALUES ('0195b4ba-8d3a-7f13-8abc-ee0000000001', '0195b4ba-8d3a-7f13-8abc-cc0000000001', 'FREE', 1, 3, 3, false, true, '{"completion":0.6}', 0, 0)
     , .{});
 
     const before_body = try metrics.renderPrometheus(std.testing.allocator, false, 0, 0);
@@ -392,7 +392,7 @@ test "scoreRunIfTerminal fail-safe catches invalid workspace scoring config" {
     const before_failed = try prometheusMetricValue(before_body, "zombie_agent_scoring_failed_total");
 
     const state = scoring.ScoringState{ .outcome = .done, .stages_passed = 1, .stages_total = 1 };
-    scoring.scoreRunIfTerminal(db_ctx.conn, null, "run_1", "ws_1", "agent_1", "user_1", &state, 12);
+    scoring.scoreRunIfTerminal(db_ctx.conn, null, "run_1", "0195b4ba-8d3a-7f13-8abc-cc0000000001", "agent_1", "user_1", &state, 12);
 
     const after_body = try metrics.renderPrometheus(std.testing.allocator, false, 0, 0);
     defer std.testing.allocator.free(after_body);
@@ -410,16 +410,16 @@ test "scoreRunIfTerminal persists run score" {
     _ = try db_ctx.conn.exec(
         \\INSERT INTO workspace_entitlements
         \\  (entitlement_id, workspace_id, plan_tier, max_profiles, max_stages, max_distinct_skills, allow_custom_skills, enable_agent_scoring, agent_scoring_weights_json, created_at, updated_at)
-        \\VALUES ('ent_3', 'ws_3', 'FREE', 1, 3, 3, false, true, '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}', 0, 0)
+        \\VALUES ('0195b4ba-8d3a-7f13-8abc-ee0000000003', '0195b4ba-8d3a-7f13-8abc-cc0000000003', 'FREE', 1, 3, 3, false, true, '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}', 0, 0)
     , .{});
     _ = try db_ctx.conn.exec(
         \\INSERT INTO workspace_latency_baseline
         \\  (workspace_id, p50_seconds, p95_seconds, sample_count, computed_at)
-        \\VALUES ('ws_3', 10, 30, 5, 0)
+        \\VALUES ('0195b4ba-8d3a-7f13-8abc-cc0000000003', 10, 30, 5, 0)
     , .{});
 
     const state = scoring.ScoringState{ .outcome = .done, .stages_passed = 2, .stages_total = 2 };
-    scoring.scoreRunIfTerminal(db_ctx.conn, null, "run_3", "ws_3", "agent_3", "user_3", &state, 8);
+    scoring.scoreRunIfTerminal(db_ctx.conn, null, "run_3", "0195b4ba-8d3a-7f13-8abc-cc0000000003", "agent_3", "user_3", &state, 8);
 
     {
         var q = try db_ctx.conn.query("SELECT score, agent_id FROM agent_run_scores WHERE run_id = 'run_3'", .{});
@@ -451,18 +451,18 @@ test "scoreRunIfTerminal gold run increments streak and earns trusted status" {
     defer db_ctx.pool.release(db_ctx.conn);
 
     try createTempScoringTables(db_ctx.conn);
-    try insertScoringWorkspace(db_ctx.conn, "ws_trust_earned");
-    try insertAgentProfile(db_ctx.conn, "agent_trust_earned", "ws_trust_earned", 9, "UNEARNED");
+    try insertScoringWorkspace(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-cc0000000010");
+    try insertAgentProfile(db_ctx.conn, "agent_trust_earned", "0195b4ba-8d3a-7f13-8abc-cc0000000010", 9, "UNEARNED");
 
     var idx: usize = 0;
     while (idx < 9) : (idx += 1) {
         const run_id = try std.fmt.allocPrint(std.testing.allocator, "hist_gold_{d}", .{idx});
         defer std.testing.allocator.free(run_id);
-        try insertHistoricalScore(db_ctx.conn, "agent_trust_earned", "ws_trust_earned", run_id, 95, @intCast(idx + 1), null, false);
+        try insertHistoricalScore(db_ctx.conn, "agent_trust_earned", "0195b4ba-8d3a-7f13-8abc-cc0000000010", run_id, 95, @intCast(idx + 1), null, false);
     }
 
     const state = scoring.ScoringState{ .outcome = .done, .stages_passed = 2, .stages_total = 2 };
-    scoring.scoreRunIfTerminal(db_ctx.conn, null, "run_trust_earned", "ws_trust_earned", "agent_trust_earned", "user_earned", &state, 8);
+    scoring.scoreRunIfTerminal(db_ctx.conn, null, "run_trust_earned", "0195b4ba-8d3a-7f13-8abc-cc0000000010", "agent_trust_earned", "user_earned", &state, 8);
 
     try expectTrustState(db_ctx.conn, "agent_trust_earned", 10, "TRUSTED");
 }
@@ -473,18 +473,18 @@ test "scoreRunIfTerminal infra failure does not reset trusted streak" {
     defer db_ctx.pool.release(db_ctx.conn);
 
     try createTempScoringTables(db_ctx.conn);
-    try insertScoringWorkspace(db_ctx.conn, "ws_trust_infra");
-    try insertAgentProfile(db_ctx.conn, "agent_trust_infra", "ws_trust_infra", 10, "TRUSTED");
+    try insertScoringWorkspace(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-cc0000000011");
+    try insertAgentProfile(db_ctx.conn, "agent_trust_infra", "0195b4ba-8d3a-7f13-8abc-cc0000000011", 10, "TRUSTED");
 
     var idx: usize = 0;
     while (idx < 10) : (idx += 1) {
         const run_id = try std.fmt.allocPrint(std.testing.allocator, "hist_infra_gold_{d}", .{idx});
         defer std.testing.allocator.free(run_id);
-        try insertHistoricalScore(db_ctx.conn, "agent_trust_infra", "ws_trust_infra", run_id, 95, @intCast(idx + 1), null, false);
+        try insertHistoricalScore(db_ctx.conn, "agent_trust_infra", "0195b4ba-8d3a-7f13-8abc-cc0000000011", run_id, 95, @intCast(idx + 1), null, false);
     }
 
     const state = scoring.ScoringState{ .outcome = .blocked_retries_exhausted, .stages_passed = 1, .stages_total = 1 };
-    scoring.scoreRunIfTerminal(db_ctx.conn, null, "run_trust_infra", "ws_trust_infra", "agent_trust_infra", "user_infra", &state, 8);
+    scoring.scoreRunIfTerminal(db_ctx.conn, null, "run_trust_infra", "0195b4ba-8d3a-7f13-8abc-cc0000000011", "agent_trust_infra", "user_infra", &state, 8);
 
     try expectTrustState(db_ctx.conn, "agent_trust_infra", 10, "TRUSTED");
 }
@@ -495,18 +495,18 @@ test "scoreRunIfTerminal agent-attributable low score resets trusted streak" {
     defer db_ctx.pool.release(db_ctx.conn);
 
     try createTempScoringTables(db_ctx.conn);
-    try insertScoringWorkspace(db_ctx.conn, "ws_trust_reset");
-    try insertAgentProfile(db_ctx.conn, "agent_trust_reset", "ws_trust_reset", 10, "TRUSTED");
+    try insertScoringWorkspace(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-cc0000000012");
+    try insertAgentProfile(db_ctx.conn, "agent_trust_reset", "0195b4ba-8d3a-7f13-8abc-cc0000000012", 10, "TRUSTED");
 
     var idx: usize = 0;
     while (idx < 10) : (idx += 1) {
         const run_id = try std.fmt.allocPrint(std.testing.allocator, "hist_reset_gold_{d}", .{idx});
         defer std.testing.allocator.free(run_id);
-        try insertHistoricalScore(db_ctx.conn, "agent_trust_reset", "ws_trust_reset", run_id, 95, @intCast(idx + 1), null, false);
+        try insertHistoricalScore(db_ctx.conn, "agent_trust_reset", "0195b4ba-8d3a-7f13-8abc-cc0000000012", run_id, 95, @intCast(idx + 1), null, false);
     }
 
     const state = scoring.ScoringState{ .outcome = .blocked_stage_graph, .stages_passed = 0, .stages_total = 1 };
-    scoring.scoreRunIfTerminal(db_ctx.conn, null, "run_trust_reset", "ws_trust_reset", "agent_trust_reset", "user_reset", &state, 8);
+    scoring.scoreRunIfTerminal(db_ctx.conn, null, "run_trust_reset", "0195b4ba-8d3a-7f13-8abc-cc0000000012", "agent_trust_reset", "user_reset", &state, 8);
 
     try expectTrustState(db_ctx.conn, "agent_trust_reset", 0, "UNEARNED");
 }
@@ -517,25 +517,25 @@ test "scoreRunIfTerminal tags post-change window and computes score delta" {
     defer db_ctx.pool.release(db_ctx.conn);
 
     try createTempScoringTables(db_ctx.conn);
-    try insertScoringWorkspace(db_ctx.conn, "ws_improve");
-    try insertAgentProfile(db_ctx.conn, "agent_improve", "ws_improve", 0, "UNEARNED");
+    try insertScoringWorkspace(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-cc0000000013");
+    try insertAgentProfile(db_ctx.conn, "agent_improve", "0195b4ba-8d3a-7f13-8abc-cc0000000013", 0, "UNEARNED");
 
     var hist_idx: usize = 0;
     while (hist_idx < 5) : (hist_idx += 1) {
         const run_id = try std.fmt.allocPrint(std.testing.allocator, "hist_improve_{d}", .{hist_idx});
         defer std.testing.allocator.free(run_id);
-        try insertHistoricalScore(db_ctx.conn, "agent_improve", "ws_improve", run_id, 40, @intCast(hist_idx + 1), null, false);
+        try insertHistoricalScore(db_ctx.conn, "agent_improve", "0195b4ba-8d3a-7f13-8abc-cc0000000013", run_id, 40, @intCast(hist_idx + 1), null, false);
     }
 
     _ = try db_ctx.conn.exec(
         \\INSERT INTO agent_improvement_proposals
         \\  (proposal_id, agent_id, workspace_id, trigger_reason, proposed_changes, config_version_id, approval_mode, generation_status, status, applied_by, created_at, updated_at)
-        \\VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6aa1', 'agent_improve', 'ws_improve', 'DECLINING_SCORE', '[]', 'cfg_1', 'MANUAL', 'READY', 'APPLIED', 'operator:test', 100, 100)
+        \\VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6aa1', 'agent_improve', '0195b4ba-8d3a-7f13-8abc-cc0000000013', 'DECLINING_SCORE', '[]', 'cfg_1', 'MANUAL', 'READY', 'APPLIED', 'operator:test', 100, 100)
     , .{});
     _ = try db_ctx.conn.exec(
         \\INSERT INTO harness_change_log
         \\  (change_id, agent_id, proposal_id, workspace_id, field_name, old_value, new_value, applied_at, applied_by, reverted_from)
-        \\VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6aa2', 'agent_improve', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6aa1', 'ws_improve', 'stage_insert', '{}', '{}', 100, 'operator:test', NULL)
+        \\VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6aa2', 'agent_improve', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6aa1', '0195b4ba-8d3a-7f13-8abc-cc0000000013', 'stage_insert', '{}', '{}', 100, 'operator:test', NULL)
     , .{});
 
     const state = scoring.ScoringState{ .outcome = .done, .stages_passed = 2, .stages_total = 2 };
@@ -543,7 +543,7 @@ test "scoreRunIfTerminal tags post-change window and computes score delta" {
     while (run_idx < 5) : (run_idx += 1) {
         const run_id = try std.fmt.allocPrint(std.testing.allocator, "post_improve_{d}", .{run_idx});
         defer std.testing.allocator.free(run_id);
-        scoring.scoreRunIfTerminal(db_ctx.conn, null, run_id, "ws_improve", "agent_improve", "user_improve", &state, 8);
+        scoring.scoreRunIfTerminal(db_ctx.conn, null, run_id, "0195b4ba-8d3a-7f13-8abc-cc0000000013", "agent_improve", "user_improve", &state, 8);
     }
 
     var tagged_q = try db_ctx.conn.query(
@@ -575,14 +575,14 @@ test "scoreRunIfTerminal resets trust after three consecutive negative score del
     defer db_ctx.pool.release(db_ctx.conn);
 
     try createTempScoringTables(db_ctx.conn);
-    try insertScoringWorkspace(db_ctx.conn, "ws_stalled");
-    try insertAgentProfile(db_ctx.conn, "agent_stalled", "ws_stalled", 10, "TRUSTED");
+    try insertScoringWorkspace(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-cc0000000014");
+    try insertAgentProfile(db_ctx.conn, "agent_stalled", "0195b4ba-8d3a-7f13-8abc-cc0000000014", 10, "TRUSTED");
 
     var hist_idx: usize = 0;
     while (hist_idx < 5) : (hist_idx += 1) {
         const run_id = try std.fmt.allocPrint(std.testing.allocator, "hist_stalled_{d}", .{hist_idx});
         defer std.testing.allocator.free(run_id);
-        try insertHistoricalScore(db_ctx.conn, "agent_stalled", "ws_stalled", run_id, 90, @intCast(hist_idx + 1), null, false);
+        try insertHistoricalScore(db_ctx.conn, "agent_stalled", "0195b4ba-8d3a-7f13-8abc-cc0000000014", run_id, 90, @intCast(hist_idx + 1), null, false);
     }
 
     const proposals_to_seed = [_][]const u8{
@@ -595,17 +595,17 @@ test "scoreRunIfTerminal resets trust after three consecutive negative score del
         _ = try db_ctx.conn.exec(
             \\INSERT INTO agent_improvement_proposals
             \\  (proposal_id, agent_id, workspace_id, trigger_reason, proposed_changes, config_version_id, approval_mode, generation_status, status, applied_by, created_at, updated_at)
-            \\VALUES ($1, 'agent_stalled', 'ws_stalled', 'DECLINING_SCORE', '[]', 'cfg_x', 'MANUAL', 'READY', 'APPLIED', 'operator:test', $2, $2)
+            \\VALUES ($1, 'agent_stalled', '0195b4ba-8d3a-7f13-8abc-cc0000000014', 'DECLINING_SCORE', '[]', 'cfg_x', 'MANUAL', 'READY', 'APPLIED', 'operator:test', $2, $2)
         , .{ proposal_id, applied_at });
         _ = try db_ctx.conn.exec(
             \\INSERT INTO harness_change_log
             \\  (change_id, agent_id, proposal_id, workspace_id, field_name, old_value, new_value, applied_at, applied_by, reverted_from, score_delta)
-            \\VALUES ($1, 'agent_stalled', $2, 'ws_stalled', 'stage_insert', '{}', '{}', $3, 'operator:test', NULL, -5.0)
+            \\VALUES ($1, 'agent_stalled', $2, '0195b4ba-8d3a-7f13-8abc-cc0000000014', 'stage_insert', '{}', '{}', $3, 'operator:test', NULL, -5.0)
         , .{ proposal_id, proposal_id, applied_at });
     }
 
     const bad_state = scoring.ScoringState{ .outcome = .blocked_stage_graph, .stages_passed = 0, .stages_total = 2 };
-    scoring.scoreRunIfTerminal(db_ctx.conn, null, "run_stalled_final", "ws_stalled", "agent_stalled", "user_stalled", &bad_state, 30);
+    scoring.scoreRunIfTerminal(db_ctx.conn, null, "run_stalled_final", "0195b4ba-8d3a-7f13-8abc-cc0000000014", "agent_stalled", "user_stalled", &bad_state, 30);
 
     try expectTrustState(db_ctx.conn, "agent_stalled", 0, "UNEARNED");
 }
@@ -619,11 +619,11 @@ test "buildScoringContextForEcho returns orientation when no history" {
     _ = try db_ctx.conn.exec(
         \\INSERT INTO workspace_entitlements
         \\  (entitlement_id, workspace_id, plan_tier, max_profiles, max_stages, max_distinct_skills, allow_custom_skills, enable_agent_scoring, agent_scoring_weights_json, enable_score_context_injection, scoring_context_max_tokens, created_at, updated_at)
-        \\VALUES ('ent_ctx_1', 'ws_ctx_1', 'FREE', 1, 3, 3, false, true, '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}', true, 2048, 0, 0)
+        \\VALUES ('0195b4ba-8d3a-7f13-8abc-ee0000000301', '0195b4ba-8d3a-7f13-8abc-cc0000000301', 'FREE', 1, 3, 3, false, true, '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}', true, 2048, 0, 0)
     , .{});
 
-    const cfg = try scoring.queryScoringConfig(db_ctx.conn, std.testing.allocator, "ws_ctx_1");
-    const block = try scoring.buildScoringContextForEcho(db_ctx.conn, std.testing.allocator, "ws_ctx_1", "agent_ctx_1", cfg);
+    const cfg = try scoring.queryScoringConfig(db_ctx.conn, std.testing.allocator, "0195b4ba-8d3a-7f13-8abc-cc0000000301");
+    const block = try scoring.buildScoringContextForEcho(db_ctx.conn, std.testing.allocator, "0195b4ba-8d3a-7f13-8abc-cc0000000301", "agent_ctx_1", cfg);
     defer std.testing.allocator.free(block);
 
     try std.testing.expect(std.mem.containsAtLeast(u8, block, 1, "You have no prior score history"));
@@ -638,11 +638,11 @@ test "buildScoringContextForEcho is empty when injection disabled" {
     _ = try db_ctx.conn.exec(
         \\INSERT INTO workspace_entitlements
         \\  (entitlement_id, workspace_id, plan_tier, max_profiles, max_stages, max_distinct_skills, allow_custom_skills, enable_agent_scoring, agent_scoring_weights_json, enable_score_context_injection, scoring_context_max_tokens, created_at, updated_at)
-        \\VALUES ('ent_ctx_2', 'ws_ctx_2', 'FREE', 1, 3, 3, false, true, '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}', false, 2048, 0, 0)
+        \\VALUES ('0195b4ba-8d3a-7f13-8abc-ee0000000302', '0195b4ba-8d3a-7f13-8abc-cc0000000302', 'FREE', 1, 3, 3, false, true, '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}', false, 2048, 0, 0)
     , .{});
 
-    const cfg = try scoring.queryScoringConfig(db_ctx.conn, std.testing.allocator, "ws_ctx_2");
-    const block = try scoring.buildScoringContextForEcho(db_ctx.conn, std.testing.allocator, "ws_ctx_2", "agent_ctx_2", cfg);
+    const cfg = try scoring.queryScoringConfig(db_ctx.conn, std.testing.allocator, "0195b4ba-8d3a-7f13-8abc-cc0000000302");
+    const block = try scoring.buildScoringContextForEcho(db_ctx.conn, std.testing.allocator, "0195b4ba-8d3a-7f13-8abc-cc0000000302", "agent_ctx_2", cfg);
     defer std.testing.allocator.free(block);
 
     try std.testing.expectEqual(@as(usize, 0), block.len);
@@ -773,17 +773,17 @@ test "buildScoringContextForEcho respects configured token cap via runtime estim
     _ = try db_ctx.conn.exec(
         \\INSERT INTO workspace_entitlements
         \\  (entitlement_id, workspace_id, plan_tier, max_profiles, max_stages, max_distinct_skills, allow_custom_skills, enable_agent_scoring, agent_scoring_weights_json, enable_score_context_injection, scoring_context_max_tokens, created_at, updated_at)
-        \\VALUES ('ent_ctx_3', 'ws_ctx_3', 'FREE', 1, 3, 3, false, true, '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}', true, 512, 0, 0)
+        \\VALUES ('0195b4ba-8d3a-7f13-8abc-ee0000000303', '0195b4ba-8d3a-7f13-8abc-cc0000000303', 'FREE', 1, 3, 3, false, true, '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}', true, 512, 0, 0)
     , .{});
 
-    try insertHistoricalScore(db_ctx.conn, "agent_ctx_3", "ws_ctx_3", "run_ctx_3_1", 10, 1, "TIMEOUT", true);
-    try insertHistoricalScore(db_ctx.conn, "agent_ctx_3", "ws_ctx_3", "run_ctx_3_2", 10, 2, "TIMEOUT", true);
-    try insertHistoricalScore(db_ctx.conn, "agent_ctx_3", "ws_ctx_3", "run_ctx_3_3", 10, 3, "TIMEOUT", true);
-    try insertHistoricalScore(db_ctx.conn, "agent_ctx_3", "ws_ctx_3", "run_ctx_3_4", 10, 4, "TIMEOUT", true);
-    try insertHistoricalScore(db_ctx.conn, "agent_ctx_3", "ws_ctx_3", "run_ctx_3_5", 10, 5, "TIMEOUT", true);
+    try insertHistoricalScore(db_ctx.conn, "agent_ctx_3", "0195b4ba-8d3a-7f13-8abc-cc0000000303", "run_ctx_3_1", 10, 1, "TIMEOUT", true);
+    try insertHistoricalScore(db_ctx.conn, "agent_ctx_3", "0195b4ba-8d3a-7f13-8abc-cc0000000303", "run_ctx_3_2", 10, 2, "TIMEOUT", true);
+    try insertHistoricalScore(db_ctx.conn, "agent_ctx_3", "0195b4ba-8d3a-7f13-8abc-cc0000000303", "run_ctx_3_3", 10, 3, "TIMEOUT", true);
+    try insertHistoricalScore(db_ctx.conn, "agent_ctx_3", "0195b4ba-8d3a-7f13-8abc-cc0000000303", "run_ctx_3_4", 10, 4, "TIMEOUT", true);
+    try insertHistoricalScore(db_ctx.conn, "agent_ctx_3", "0195b4ba-8d3a-7f13-8abc-cc0000000303", "run_ctx_3_5", 10, 5, "TIMEOUT", true);
 
-    const cfg = try scoring.queryScoringConfig(db_ctx.conn, std.testing.allocator, "ws_ctx_3");
-    const block = try scoring.buildScoringContextForEcho(db_ctx.conn, std.testing.allocator, "ws_ctx_3", "agent_ctx_3", cfg);
+    const cfg = try scoring.queryScoringConfig(db_ctx.conn, std.testing.allocator, "0195b4ba-8d3a-7f13-8abc-cc0000000303");
+    const block = try scoring.buildScoringContextForEcho(db_ctx.conn, std.testing.allocator, "0195b4ba-8d3a-7f13-8abc-cc0000000303", "agent_ctx_3", cfg);
     defer std.testing.allocator.free(block);
 
     try std.testing.expect(scoring.estimateScoringContextTokens(block) <= 512);
@@ -798,15 +798,15 @@ test "integration: M9_003 demo scoring context reduces timeout rate over ten gui
     _ = try db_ctx.conn.exec(
         \\INSERT INTO workspace_entitlements
         \\  (entitlement_id, workspace_id, plan_tier, max_profiles, max_stages, max_distinct_skills, allow_custom_skills, enable_agent_scoring, agent_scoring_weights_json, enable_score_context_injection, scoring_context_max_tokens, created_at, updated_at)
-        \\VALUES ('ent_demo_ctx', 'ws_demo_ctx', 'FREE', 1, 3, 3, false, true, '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}', true, 2048, 0, 0)
+        \\VALUES ('0195b4ba-8d3a-7f13-8abc-ee0000000304', '0195b4ba-8d3a-7f13-8abc-cc0000000304', 'FREE', 1, 3, 3, false, true, '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}', true, 2048, 0, 0)
     , .{});
 
-    try insertHistoricalScore(db_ctx.conn, "agent_demo_ctx", "ws_demo_ctx", "run_demo_hist_1", 20, 1, "TIMEOUT", true);
-    try insertHistoricalScore(db_ctx.conn, "agent_demo_ctx", "ws_demo_ctx", "run_demo_hist_2", 20, 2, "TIMEOUT", true);
-    try insertHistoricalScore(db_ctx.conn, "agent_demo_ctx", "ws_demo_ctx", "run_demo_hist_3", 20, 3, "TIMEOUT", true);
+    try insertHistoricalScore(db_ctx.conn, "agent_demo_ctx", "0195b4ba-8d3a-7f13-8abc-cc0000000304", "run_demo_hist_1", 20, 1, "TIMEOUT", true);
+    try insertHistoricalScore(db_ctx.conn, "agent_demo_ctx", "0195b4ba-8d3a-7f13-8abc-cc0000000304", "run_demo_hist_2", 20, 2, "TIMEOUT", true);
+    try insertHistoricalScore(db_ctx.conn, "agent_demo_ctx", "0195b4ba-8d3a-7f13-8abc-cc0000000304", "run_demo_hist_3", 20, 3, "TIMEOUT", true);
 
-    const cfg = try scoring.queryScoringConfig(db_ctx.conn, std.testing.allocator, "ws_demo_ctx");
-    const injected_context = try scoring.buildScoringContextForEcho(db_ctx.conn, std.testing.allocator, "ws_demo_ctx", "agent_demo_ctx", cfg);
+    const cfg = try scoring.queryScoringConfig(db_ctx.conn, std.testing.allocator, "0195b4ba-8d3a-7f13-8abc-cc0000000304");
+    const injected_context = try scoring.buildScoringContextForEcho(db_ctx.conn, std.testing.allocator, "0195b4ba-8d3a-7f13-8abc-cc0000000304", "agent_demo_ctx", cfg);
     defer std.testing.allocator.free(injected_context);
 
     const baseline_timeouts = try runTimeoutDemoCohort("");

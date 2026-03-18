@@ -13,14 +13,14 @@ test "integration: trusted vetoed proposal stays canceled after reconcile passes
     _ = try db_ctx.conn.exec(
         \\INSERT INTO workspace_entitlements
         \\  (entitlement_id, workspace_id, plan_tier, max_profiles, max_stages, max_distinct_skills, allow_custom_skills, enable_agent_scoring, agent_scoring_weights_json, created_at, updated_at)
-        \\VALUES ('ent_prop_arch_veto_1', 'ws_prop_arch_veto_1', 'FREE', 3, 4, 3, false, true, '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}', 0, 0)
+        \\VALUES ('0195b4ba-8d3a-7f13-8abc-ee0000000111', '0195b4ba-8d3a-7f13-8abc-cc0000000111', 'FREE', 3, 4, 3, false, true, '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}', 0, 0)
     , .{});
-    try proposal_helpers.insertAgentProfileWithTrust(db_ctx.conn, "agent_prop_arch_veto_1", "ws_prop_arch_veto_1", 10, "TRUSTED");
-    try proposal_helpers.insertActiveConfig(db_ctx.conn, "agent_prop_arch_veto_1", "ws_prop_arch_veto_1", "0195b4ba-8d3a-7f13-8abc-2b3e1e0a7101");
+    try proposal_helpers.insertAgentProfileWithTrust(db_ctx.conn, "agent_prop_arch_veto_1", "0195b4ba-8d3a-7f13-8abc-cc0000000111", 10, "TRUSTED");
+    try proposal_helpers.insertActiveConfig(db_ctx.conn, "agent_prop_arch_veto_1", "0195b4ba-8d3a-7f13-8abc-cc0000000111", "0195b4ba-8d3a-7f13-8abc-2b3e1e0a7101");
     _ = try db_ctx.conn.exec(
         \\INSERT INTO agent_improvement_proposals
         \\  (proposal_id, agent_id, workspace_id, trigger_reason, proposed_changes, config_version_id, approval_mode, generation_status, status, auto_apply_at, created_at, updated_at)
-        \\VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a7102', 'agent_prop_arch_veto_1', 'ws_prop_arch_veto_1', 'DECLINING_SCORE', '[{"target_field":"stage_insert","current_value":null,"proposed_value":{"agent_id":"agent_prop_arch_veto_1","insert_before_stage_id":"verify","stage_id":"verify-precheck","role":"autoworkerready","skill":"clawhub://usezombie/autoworkerready@1.0.0","artifact_name":"verify-precheck.md","commit_message":"agent: add verify-precheck.md","gate":false,"on_pass":"verify","on_fail":"retry"},"rationale":"recover quality"}]', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a7101', 'AUTO', 'READY', 'VETO_WINDOW', 20_000, 100, 101)
+        \\VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a7102', 'agent_prop_arch_veto_1', '0195b4ba-8d3a-7f13-8abc-cc0000000111', 'DECLINING_SCORE', '[{"target_field":"stage_insert","current_value":null,"proposed_value":{"agent_id":"agent_prop_arch_veto_1","insert_before_stage_id":"verify","stage_id":"verify-precheck","role":"autoworkerready","skill":"clawhub://usezombie/autoworkerready@1.0.0","artifact_name":"verify-precheck.md","commit_message":"agent: add verify-precheck.md","gate":false,"on_pass":"verify","on_fail":"retry"},"rationale":"recover quality"}]', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a7101', 'AUTO', 'READY', 'VETO_WINDOW', 20_000, 100, 101)
     , .{});
 
     try std.testing.expect(try proposals.vetoAutoProposal(
@@ -50,7 +50,7 @@ test "integration: trusted vetoed proposal stays canceled after reconcile passes
     var active_q = try db_ctx.conn.query(
         \\SELECT config_version_id
         \\FROM workspace_active_config
-        \\WHERE workspace_id = 'ws_prop_arch_veto_1'
+        \\WHERE workspace_id = '0195b4ba-8d3a-7f13-8abc-cc0000000111'
     , .{});
     defer active_q.deinit();
     const active_row = (try active_q.next()) orelse return error.TestUnexpectedResult;
@@ -67,14 +67,14 @@ test "integration: manual approval CAS drift rejects change and leaves active ha
     _ = try db_ctx.conn.exec(
         \\INSERT INTO workspace_entitlements
         \\  (entitlement_id, workspace_id, plan_tier, max_profiles, max_stages, max_distinct_skills, allow_custom_skills, enable_agent_scoring, agent_scoring_weights_json, created_at, updated_at)
-        \\VALUES ('ent_prop_arch_manual_1', 'ws_prop_arch_manual_1', 'FREE', 3, 4, 3, false, true, '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}', 0, 0)
+        \\VALUES ('0195b4ba-8d3a-7f13-8abc-ee0000000110', '0195b4ba-8d3a-7f13-8abc-cc0000000110', 'FREE', 3, 4, 3, false, true, '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}', 0, 0)
     , .{});
-    try proposal_helpers.insertAgentProfile(db_ctx.conn, "agent_prop_arch_manual_1", "ws_prop_arch_manual_1");
-    try proposal_helpers.insertActiveConfig(db_ctx.conn, "agent_prop_arch_manual_1", "ws_prop_arch_manual_1", "0195b4ba-8d3a-7f13-8abc-2b3e1e0a7103");
+    try proposal_helpers.insertAgentProfile(db_ctx.conn, "agent_prop_arch_manual_1", "0195b4ba-8d3a-7f13-8abc-cc0000000110");
+    try proposal_helpers.insertActiveConfig(db_ctx.conn, "agent_prop_arch_manual_1", "0195b4ba-8d3a-7f13-8abc-cc0000000110", "0195b4ba-8d3a-7f13-8abc-2b3e1e0a7103");
     _ = try db_ctx.conn.exec(
         \\INSERT INTO agent_improvement_proposals
         \\  (proposal_id, agent_id, workspace_id, trigger_reason, proposed_changes, config_version_id, approval_mode, generation_status, status, auto_apply_at, created_at, updated_at)
-        \\VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a7104', 'agent_prop_arch_manual_1', 'ws_prop_arch_manual_1', 'DECLINING_SCORE', '[{"target_field":"stage_insert","current_value":null,"proposed_value":{"agent_id":"agent_prop_arch_manual_1","insert_before_stage_id":"verify","stage_id":"verify-precheck","role":"autoworkerready","skill":"clawhub://usezombie/autoworkerready@1.0.0","artifact_name":"verify-precheck.md","commit_message":"agent: add verify-precheck.md","gate":false,"on_pass":"verify","on_fail":"retry"},"rationale":"recover quality"}]', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a7103', 'MANUAL', 'READY', 'PENDING_REVIEW', NULL, 100, 101)
+        \\VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a7104', 'agent_prop_arch_manual_1', '0195b4ba-8d3a-7f13-8abc-cc0000000110', 'DECLINING_SCORE', '[{"target_field":"stage_insert","current_value":null,"proposed_value":{"agent_id":"agent_prop_arch_manual_1","insert_before_stage_id":"verify","stage_id":"verify-precheck","role":"autoworkerready","skill":"clawhub://usezombie/autoworkerready@1.0.0","artifact_name":"verify-precheck.md","commit_message":"agent: add verify-precheck.md","gate":false,"on_pass":"verify","on_fail":"retry"},"rationale":"recover quality"}]', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a7103', 'MANUAL', 'READY', 'PENDING_REVIEW', NULL, 100, 101)
     , .{});
     try proposal_helpers.insertConfigVersionOnly(
         db_ctx.conn,
@@ -86,7 +86,7 @@ test "integration: manual approval CAS drift rejects change and leaves active ha
     _ = try db_ctx.conn.exec(
         \\UPDATE workspace_active_config
         \\SET config_version_id = '0195b4ba-8d3a-7f13-8abc-2b3e1e0a7105'
-        \\WHERE workspace_id = 'ws_prop_arch_manual_1'
+        \\WHERE workspace_id = '0195b4ba-8d3a-7f13-8abc-cc0000000110'
     , .{});
 
     const outcome = (try proposals.approveManualProposal(
@@ -113,7 +113,7 @@ test "integration: manual approval CAS drift rejects change and leaves active ha
     var active_q = try db_ctx.conn.query(
         \\SELECT config_version_id
         \\FROM workspace_active_config
-        \\WHERE workspace_id = 'ws_prop_arch_manual_1'
+        \\WHERE workspace_id = '0195b4ba-8d3a-7f13-8abc-cc0000000110'
     , .{});
     defer active_q.deinit();
     const active_row = (try active_q.next()) orelse return error.TestUnexpectedResult;
@@ -138,14 +138,14 @@ test "integration: second reconcile pass is idempotent after first auto-apply" {
     _ = try db_ctx.conn.exec(
         \\INSERT INTO workspace_entitlements
         \\  (entitlement_id, workspace_id, plan_tier, max_profiles, max_stages, max_distinct_skills, allow_custom_skills, enable_agent_scoring, agent_scoring_weights_json, created_at, updated_at)
-        \\VALUES ('ent_prop_arch_idem_1', 'ws_prop_arch_idem_1', 'FREE', 3, 4, 3, false, true, '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}', 0, 0)
+        \\VALUES ('0195b4ba-8d3a-7f13-8abc-ee0000000109', '0195b4ba-8d3a-7f13-8abc-cc0000000109', 'FREE', 3, 4, 3, false, true, '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}', 0, 0)
     , .{});
-    try proposal_helpers.insertAgentProfileWithTrust(db_ctx.conn, "agent_prop_arch_idem_1", "ws_prop_arch_idem_1", 10, "TRUSTED");
-    try proposal_helpers.insertActiveConfig(db_ctx.conn, "agent_prop_arch_idem_1", "ws_prop_arch_idem_1", "0195b4ba-8d3a-7f13-8abc-2b3e1e0a7210");
+    try proposal_helpers.insertAgentProfileWithTrust(db_ctx.conn, "agent_prop_arch_idem_1", "0195b4ba-8d3a-7f13-8abc-cc0000000109", 10, "TRUSTED");
+    try proposal_helpers.insertActiveConfig(db_ctx.conn, "agent_prop_arch_idem_1", "0195b4ba-8d3a-7f13-8abc-cc0000000109", "0195b4ba-8d3a-7f13-8abc-2b3e1e0a7210");
     _ = try db_ctx.conn.exec(
         \\INSERT INTO agent_improvement_proposals
         \\  (proposal_id, agent_id, workspace_id, trigger_reason, proposed_changes, config_version_id, approval_mode, generation_status, status, auto_apply_at, created_at, updated_at)
-        \\VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a7211', 'agent_prop_arch_idem_1', 'ws_prop_arch_idem_1', 'DECLINING_SCORE', '[{"target_field":"stage_insert","current_value":null,"proposed_value":{"agent_id":"agent_prop_arch_idem_1","insert_before_stage_id":"verify","stage_id":"verify-precheck","role":"autoworkerready","skill":"clawhub://usezombie/autoworkerready@1.0.0","artifact_name":"verify-precheck.md","commit_message":"agent: add verify-precheck.md","gate":false,"on_pass":"verify","on_fail":"retry"},"rationale":"recover quality"}]', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a7210', 'AUTO', 'READY', 'VETO_WINDOW', 20_000, 100, 101)
+        \\VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a7211', 'agent_prop_arch_idem_1', '0195b4ba-8d3a-7f13-8abc-cc0000000109', 'DECLINING_SCORE', '[{"target_field":"stage_insert","current_value":null,"proposed_value":{"agent_id":"agent_prop_arch_idem_1","insert_before_stage_id":"verify","stage_id":"verify-precheck","role":"autoworkerready","skill":"clawhub://usezombie/autoworkerready@1.0.0","artifact_name":"verify-precheck.md","commit_message":"agent: add verify-precheck.md","gate":false,"on_pass":"verify","on_fail":"retry"},"rationale":"recover quality"}]', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a7210', 'AUTO', 'READY', 'VETO_WINDOW', 20_000, 100, 101)
     , .{});
 
     const first = try proposals.reconcileDueAutoApprovalProposals(db_ctx.conn, std.testing.allocator, 0, 20_000);

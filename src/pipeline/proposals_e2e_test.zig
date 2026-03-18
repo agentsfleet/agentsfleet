@@ -19,7 +19,7 @@ test "e2e: full pipeline from trust-earned to proposal auto-applied" {
         \\INSERT INTO workspace_entitlements
         \\  (entitlement_id, workspace_id, plan_tier, max_profiles, max_stages, max_distinct_skills,
         \\   allow_custom_skills, enable_agent_scoring, agent_scoring_weights_json, created_at, updated_at)
-        \\VALUES ('ent_e2e_1', 'ws_e2e_1', 'SCALE', 10, 20, 10, true, true,
+        \\VALUES ('0195b4ba-8d3a-7f13-8abc-ee0000000201', '0195b4ba-8d3a-7f13-8abc-cc0000000201', 'SCALE', 10, 20, 10, true, true,
         \\        '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}', 0, 0)
     , .{});
 
@@ -27,15 +27,15 @@ test "e2e: full pipeline from trust-earned to proposal auto-applied" {
     _ = try db_ctx.conn.exec(
         \\INSERT INTO workspace_latency_baseline
         \\  (workspace_id, p50_seconds, p95_seconds, sample_count, computed_at)
-        \\VALUES ('ws_e2e_1', 8, 15, 10, 0)
+        \\VALUES ('0195b4ba-8d3a-7f13-8abc-cc0000000201', 8, 15, 10, 0)
     , .{});
 
     // Step 2 – agent_profiles: start UNEARNED, trust_streak_runs=0.
     // We insert with UNEARNED then build up the trust through score history.
-    try support.insertAgentProfile(db_ctx.conn, "agent_e2e_1", "ws_e2e_1");
+    try support.insertAgentProfile(db_ctx.conn, "agent_e2e_1", "0195b4ba-8d3a-7f13-8abc-cc0000000201");
 
     // Step 3 – workspace_active_config + agent_config_versions (default 3-stage profile)
-    try support.insertActiveConfig(db_ctx.conn, "agent_e2e_1", "ws_e2e_1", "0195b4ba-8d3a-7f13-8abc-4e0000000001");
+    try support.insertActiveConfig(db_ctx.conn, "agent_e2e_1", "0195b4ba-8d3a-7f13-8abc-cc0000000201", "0195b4ba-8d3a-7f13-8abc-4e0000000001");
 
     // Step 4 – Insert 10 high-scoring run rows (scored_at 1..10) to simulate 10
     // successful runs.  After inserting them we call refreshAgentTrustState so the
@@ -45,7 +45,7 @@ test "e2e: full pipeline from trust-earned to proposal auto-applied" {
     while (i < 10) : (i += 1) {
         const run_id = try std.fmt.allocPrint(std.testing.allocator, "run_e2e_ok_{d}", .{i});
         defer std.testing.allocator.free(run_id);
-        try support.insertScoreRow(db_ctx.conn, run_id, "agent_e2e_1", "ws_e2e_1", 92, @as(i64, @intCast(i + 1)));
+        try support.insertScoreRow(db_ctx.conn, run_id, "agent_e2e_1", "0195b4ba-8d3a-7f13-8abc-cc0000000201", 92, @as(i64, @intCast(i + 1)));
     }
     // Refresh trust so agent_profiles reflects the 10-run streak.
     _ = try db_ctx.conn.exec(
@@ -81,14 +81,14 @@ test "e2e: full pipeline from trust-earned to proposal auto-applied" {
     while (i < 5) : (i += 1) {
         const run_id = try std.fmt.allocPrint(std.testing.allocator, "run_e2e_fail_{d}", .{i});
         defer std.testing.allocator.free(run_id);
-        try support.insertScoreRow(db_ctx.conn, run_id, "agent_e2e_1", "ws_e2e_1", 15, @as(i64, @intCast(i + 11)));
+        try support.insertScoreRow(db_ctx.conn, run_id, "agent_e2e_1", "0195b4ba-8d3a-7f13-8abc-cc0000000201", 15, @as(i64, @intCast(i + 11)));
     }
 
     // Trigger proposal generation: agent is TRUSTED → approval_mode=AUTO → VETO_WINDOW.
     try proposals.maybePersistTriggerProposal(
         db_ctx.conn,
         std.testing.allocator,
-        "ws_e2e_1",
+        "0195b4ba-8d3a-7f13-8abc-cc0000000201",
         "agent_e2e_1",
         16_000,
     );
@@ -164,7 +164,7 @@ test "e2e: full pipeline from trust-earned to proposal auto-applied" {
     var active_q = try db_ctx.conn.query(
         \\SELECT config_version_id
         \\FROM workspace_active_config
-        \\WHERE workspace_id = 'ws_e2e_1'
+        \\WHERE workspace_id = '0195b4ba-8d3a-7f13-8abc-cc0000000201'
     , .{});
     defer active_q.deinit();
     const active_row = (try active_q.next()) orelse return error.TestUnexpectedResult;
@@ -185,7 +185,7 @@ test "e2e: full pipeline from trust-earned to proposal auto-applied" {
         db_ctx.conn,
         null,
         "run_e2e_improve_0",
-        "ws_e2e_1",
+        "0195b4ba-8d3a-7f13-8abc-cc0000000201",
         "agent_e2e_1",
         "user_e2e_1",
         &improving_state,
@@ -217,24 +217,24 @@ test "e2e: reconcilePendingProposalGenerations is idempotent when called twice" 
         \\INSERT INTO workspace_entitlements
         \\  (entitlement_id, workspace_id, plan_tier, max_profiles, max_stages, max_distinct_skills,
         \\   allow_custom_skills, enable_agent_scoring, agent_scoring_weights_json, created_at, updated_at)
-        \\VALUES ('ent_e2e_2', 'ws_e2e_2', 'SCALE', 10, 20, 10, true, true,
+        \\VALUES ('0195b4ba-8d3a-7f13-8abc-ee0000000202', '0195b4ba-8d3a-7f13-8abc-cc0000000202', 'SCALE', 10, 20, 10, true, true,
         \\        '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}', 0, 0)
     , .{});
     _ = try db_ctx.conn.exec(
         \\INSERT INTO workspace_latency_baseline
         \\  (workspace_id, p50_seconds, p95_seconds, sample_count, computed_at)
-        \\VALUES ('ws_e2e_2', 8, 15, 10, 0)
+        \\VALUES ('0195b4ba-8d3a-7f13-8abc-cc0000000202', 8, 15, 10, 0)
     , .{});
 
-    try support.insertAgentProfile(db_ctx.conn, "agent_e2e_2", "ws_e2e_2");
-    try support.insertActiveConfig(db_ctx.conn, "agent_e2e_2", "ws_e2e_2", "0195b4ba-8d3a-7f13-8abc-4e0000000002");
+    try support.insertAgentProfile(db_ctx.conn, "agent_e2e_2", "0195b4ba-8d3a-7f13-8abc-cc0000000202");
+    try support.insertActiveConfig(db_ctx.conn, "agent_e2e_2", "0195b4ba-8d3a-7f13-8abc-cc0000000202", "0195b4ba-8d3a-7f13-8abc-4e0000000002");
 
     // Insert 10 good score rows.
     var i: usize = 0;
     while (i < 10) : (i += 1) {
         const run_id = try std.fmt.allocPrint(std.testing.allocator, "run_e2e2_ok_{d}", .{i});
         defer std.testing.allocator.free(run_id);
-        try support.insertScoreRow(db_ctx.conn, run_id, "agent_e2e_2", "ws_e2e_2", 92, @as(i64, @intCast(i + 1)));
+        try support.insertScoreRow(db_ctx.conn, run_id, "agent_e2e_2", "0195b4ba-8d3a-7f13-8abc-cc0000000202", 92, @as(i64, @intCast(i + 1)));
     }
     // Manually set trust_level=TRUSTED.
     _ = try db_ctx.conn.exec(
@@ -251,14 +251,14 @@ test "e2e: reconcilePendingProposalGenerations is idempotent when called twice" 
     while (i < 5) : (i += 1) {
         const run_id = try std.fmt.allocPrint(std.testing.allocator, "run_e2e2_fail_{d}", .{i});
         defer std.testing.allocator.free(run_id);
-        try support.insertScoreRow(db_ctx.conn, run_id, "agent_e2e_2", "ws_e2e_2", 15, @as(i64, @intCast(i + 11)));
+        try support.insertScoreRow(db_ctx.conn, run_id, "agent_e2e_2", "0195b4ba-8d3a-7f13-8abc-cc0000000202", 15, @as(i64, @intCast(i + 11)));
     }
 
     // Trigger proposal (creates a PENDING proposal).
     try proposals.maybePersistTriggerProposal(
         db_ctx.conn,
         std.testing.allocator,
-        "ws_e2e_2",
+        "0195b4ba-8d3a-7f13-8abc-cc0000000202",
         "agent_e2e_2",
         16_000,
     );
@@ -304,24 +304,24 @@ test "e2e: reconcileDueAutoApprovalProposals is idempotent when called twice" {
         \\INSERT INTO workspace_entitlements
         \\  (entitlement_id, workspace_id, plan_tier, max_profiles, max_stages, max_distinct_skills,
         \\   allow_custom_skills, enable_agent_scoring, agent_scoring_weights_json, created_at, updated_at)
-        \\VALUES ('ent_e2e_3', 'ws_e2e_3', 'SCALE', 10, 20, 10, true, true,
+        \\VALUES ('0195b4ba-8d3a-7f13-8abc-ee0000000203', '0195b4ba-8d3a-7f13-8abc-cc0000000203', 'SCALE', 10, 20, 10, true, true,
         \\        '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}', 0, 0)
     , .{});
     _ = try db_ctx.conn.exec(
         \\INSERT INTO workspace_latency_baseline
         \\  (workspace_id, p50_seconds, p95_seconds, sample_count, computed_at)
-        \\VALUES ('ws_e2e_3', 8, 15, 10, 0)
+        \\VALUES ('0195b4ba-8d3a-7f13-8abc-cc0000000203', 8, 15, 10, 0)
     , .{});
 
-    try support.insertAgentProfile(db_ctx.conn, "agent_e2e_3", "ws_e2e_3");
-    try support.insertActiveConfig(db_ctx.conn, "agent_e2e_3", "ws_e2e_3", "0195b4ba-8d3a-7f13-8abc-4e0000000003");
+    try support.insertAgentProfile(db_ctx.conn, "agent_e2e_3", "0195b4ba-8d3a-7f13-8abc-cc0000000203");
+    try support.insertActiveConfig(db_ctx.conn, "agent_e2e_3", "0195b4ba-8d3a-7f13-8abc-cc0000000203", "0195b4ba-8d3a-7f13-8abc-4e0000000003");
 
     // Insert 10 good score rows.
     var i: usize = 0;
     while (i < 10) : (i += 1) {
         const run_id = try std.fmt.allocPrint(std.testing.allocator, "run_e2e3_ok_{d}", .{i});
         defer std.testing.allocator.free(run_id);
-        try support.insertScoreRow(db_ctx.conn, run_id, "agent_e2e_3", "ws_e2e_3", 92, @as(i64, @intCast(i + 1)));
+        try support.insertScoreRow(db_ctx.conn, run_id, "agent_e2e_3", "0195b4ba-8d3a-7f13-8abc-cc0000000203", 92, @as(i64, @intCast(i + 1)));
     }
     // Set trust_level=TRUSTED.
     _ = try db_ctx.conn.exec(
@@ -338,14 +338,14 @@ test "e2e: reconcileDueAutoApprovalProposals is idempotent when called twice" {
     while (i < 5) : (i += 1) {
         const run_id = try std.fmt.allocPrint(std.testing.allocator, "run_e2e3_fail_{d}", .{i});
         defer std.testing.allocator.free(run_id);
-        try support.insertScoreRow(db_ctx.conn, run_id, "agent_e2e_3", "ws_e2e_3", 15, @as(i64, @intCast(i + 11)));
+        try support.insertScoreRow(db_ctx.conn, run_id, "agent_e2e_3", "0195b4ba-8d3a-7f13-8abc-cc0000000203", 15, @as(i64, @intCast(i + 11)));
     }
 
     // Trigger proposal + reconcile generation → VETO_WINDOW / READY.
     try proposals.maybePersistTriggerProposal(
         db_ctx.conn,
         std.testing.allocator,
-        "ws_e2e_3",
+        "0195b4ba-8d3a-7f13-8abc-cc0000000203",
         "agent_e2e_3",
         16_000,
     );

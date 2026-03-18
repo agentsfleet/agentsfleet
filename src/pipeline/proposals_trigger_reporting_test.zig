@@ -14,17 +14,17 @@ test "scoreRunIfTerminal persists proposal groundwork after sustained low-score 
     _ = try db_ctx.conn.exec(
         \\INSERT INTO workspace_entitlements
         \\  (entitlement_id, workspace_id, plan_tier, max_profiles, max_stages, max_distinct_skills, allow_custom_skills, enable_agent_scoring, agent_scoring_weights_json, created_at, updated_at)
-        \\VALUES ('ent_prop_1', 'ws_prop_1', 'FREE', 3, 4, 3, false, true, '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}', 0, 0)
+        \\VALUES ('0195b4ba-8d3a-7f13-8abc-ee0000000101', '0195b4ba-8d3a-7f13-8abc-cc0000000101', 'FREE', 3, 4, 3, false, true, '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}', 0, 0)
     , .{});
-    try support.insertAgentProfile(db_ctx.conn, "agent_prop_1", "ws_prop_1");
-    try support.insertActiveConfig(db_ctx.conn, "agent_prop_1", "ws_prop_1", "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f92");
+    try support.insertAgentProfile(db_ctx.conn, "agent_prop_1", "0195b4ba-8d3a-7f13-8abc-cc0000000101");
+    try support.insertActiveConfig(db_ctx.conn, "agent_prop_1", "0195b4ba-8d3a-7f13-8abc-cc0000000101", "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f92");
 
     const low_state = scoring.ScoringState{ .outcome = .blocked_stage_graph, .stages_passed = 0, .stages_total = 3 };
     var i: usize = 0;
     while (i < 5) : (i += 1) {
         const run_id = try std.fmt.allocPrint(std.testing.allocator, "run_prop_low_{d}", .{i});
         defer std.testing.allocator.free(run_id);
-        scoring.scoreRunIfTerminal(db_ctx.conn, null, run_id, "ws_prop_1", "agent_prop_1", "user_prop_1", &low_state, 20);
+        scoring.scoreRunIfTerminal(db_ctx.conn, null, run_id, "0195b4ba-8d3a-7f13-8abc-cc0000000101", "agent_prop_1", "user_prop_1", &low_state, 20);
     }
 
     var q = try db_ctx.conn.query(
@@ -53,22 +53,22 @@ test "scoreRunIfTerminal triggers proposal on declining five-run average" {
     _ = try db_ctx.conn.exec(
         \\INSERT INTO workspace_entitlements
         \\  (entitlement_id, workspace_id, plan_tier, max_profiles, max_stages, max_distinct_skills, allow_custom_skills, enable_agent_scoring, agent_scoring_weights_json, created_at, updated_at)
-        \\VALUES ('ent_prop_2', 'ws_prop_2', 'FREE', 3, 4, 3, false, true, '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}', 0, 0)
+        \\VALUES ('0195b4ba-8d3a-7f13-8abc-ee0000000102', '0195b4ba-8d3a-7f13-8abc-cc0000000102', 'FREE', 3, 4, 3, false, true, '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}', 0, 0)
     , .{});
     _ = try db_ctx.conn.exec(
         \\INSERT INTO workspace_latency_baseline
         \\  (workspace_id, p50_seconds, p95_seconds, sample_count, computed_at)
-        \\VALUES ('ws_prop_2', 10, 30, 5, 0)
+        \\VALUES ('0195b4ba-8d3a-7f13-8abc-cc0000000102', 10, 30, 5, 0)
     , .{});
-    try support.insertAgentProfile(db_ctx.conn, "agent_prop_2", "ws_prop_2");
-    try support.insertActiveConfig(db_ctx.conn, "agent_prop_2", "ws_prop_2", "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f93");
+    try support.insertAgentProfile(db_ctx.conn, "agent_prop_2", "0195b4ba-8d3a-7f13-8abc-cc0000000102");
+    try support.insertActiveConfig(db_ctx.conn, "agent_prop_2", "0195b4ba-8d3a-7f13-8abc-cc0000000102", "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f93");
 
     const high_state = scoring.ScoringState{ .outcome = .done, .stages_passed = 2, .stages_total = 2 };
     var i: usize = 0;
     while (i < 5) : (i += 1) {
         const run_id = try std.fmt.allocPrint(std.testing.allocator, "run_prop_high_{d}", .{i});
         defer std.testing.allocator.free(run_id);
-        scoring.scoreRunIfTerminal(db_ctx.conn, null, run_id, "ws_prop_2", "agent_prop_2", "user_prop_2", &high_state, 8);
+        scoring.scoreRunIfTerminal(db_ctx.conn, null, run_id, "0195b4ba-8d3a-7f13-8abc-cc0000000102", "agent_prop_2", "user_prop_2", &high_state, 8);
     }
 
     const medium_state = scoring.ScoringState{ .outcome = .done, .stages_passed = 1, .stages_total = 2 };
@@ -76,7 +76,7 @@ test "scoreRunIfTerminal triggers proposal on declining five-run average" {
     while (i < 5) : (i += 1) {
         const run_id = try std.fmt.allocPrint(std.testing.allocator, "run_prop_med_{d}", .{i});
         defer std.testing.allocator.free(run_id);
-        scoring.scoreRunIfTerminal(db_ctx.conn, null, run_id, "ws_prop_2", "agent_prop_2", "user_prop_2", &medium_state, 20);
+        scoring.scoreRunIfTerminal(db_ctx.conn, null, run_id, "0195b4ba-8d3a-7f13-8abc-cc0000000102", "agent_prop_2", "user_prop_2", &medium_state, 20);
     }
 
     var q = try db_ctx.conn.query(
@@ -99,19 +99,19 @@ test "scoreRunIfTerminal does not trigger at exact sustained-low threshold avera
     _ = try db_ctx.conn.exec(
         \\INSERT INTO workspace_entitlements
         \\  (entitlement_id, workspace_id, plan_tier, max_profiles, max_stages, max_distinct_skills, allow_custom_skills, enable_agent_scoring, agent_scoring_weights_json, created_at, updated_at)
-        \\VALUES ('ent_prop_threshold_1', 'ws_prop_threshold_1', 'FREE', 3, 4, 3, false, true, '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}', 0, 0)
+        \\VALUES ('0195b4ba-8d3a-7f13-8abc-ee0000000105', '0195b4ba-8d3a-7f13-8abc-cc0000000105', 'FREE', 3, 4, 3, false, true, '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}', 0, 0)
     , .{});
-    try support.insertAgentProfile(db_ctx.conn, "agent_prop_threshold_1", "ws_prop_threshold_1");
-    try support.insertActiveConfig(db_ctx.conn, "agent_prop_threshold_1", "ws_prop_threshold_1", "0195b4ba-8d3a-7f13-8abc-2b3e1e0a7201");
+    try support.insertAgentProfile(db_ctx.conn, "agent_prop_threshold_1", "0195b4ba-8d3a-7f13-8abc-cc0000000105");
+    try support.insertActiveConfig(db_ctx.conn, "agent_prop_threshold_1", "0195b4ba-8d3a-7f13-8abc-cc0000000105", "0195b4ba-8d3a-7f13-8abc-2b3e1e0a7201");
 
     var idx: usize = 0;
     while (idx < 5) : (idx += 1) {
         const run_id = try std.fmt.allocPrint(std.testing.allocator, "run_prop_threshold_{d}", .{idx});
         defer std.testing.allocator.free(run_id);
-        try support.insertScoreRow(db_ctx.conn, run_id, "agent_prop_threshold_1", "ws_prop_threshold_1", 60, @as(i64, @intCast(idx + 1)));
+        try support.insertScoreRow(db_ctx.conn, run_id, "agent_prop_threshold_1", "0195b4ba-8d3a-7f13-8abc-cc0000000105", 60, @as(i64, @intCast(idx + 1)));
     }
 
-    try proposals.maybePersistTriggerProposal(db_ctx.conn, std.testing.allocator, "ws_prop_threshold_1", "agent_prop_threshold_1", 6_000);
+    try proposals.maybePersistTriggerProposal(db_ctx.conn, std.testing.allocator, "0195b4ba-8d3a-7f13-8abc-cc0000000105", "agent_prop_threshold_1", 6_000);
 
     var q = try db_ctx.conn.query(
         \\SELECT proposal_id
@@ -128,38 +128,38 @@ test "loadImprovementReport summarizes counts, tiers, and stalled warning" {
     defer db_ctx.pool.release(db_ctx.conn);
 
     try support.createTempProposalTables(db_ctx.conn);
-    try support.insertAgentProfileWithTrust(db_ctx.conn, "agent_report_1", "ws_report_1", 0, "UNEARNED");
+    try support.insertAgentProfileWithTrust(db_ctx.conn, "agent_report_1", "0195b4ba-8d3a-7f13-8abc-cc0000000107", 0, "UNEARNED");
 
     var idx: usize = 0;
     while (idx < 5) : (idx += 1) {
         const run_id = try std.fmt.allocPrint(std.testing.allocator, "report_hist_{d}", .{idx});
         defer std.testing.allocator.free(run_id);
-        try support.insertScoreRow(db_ctx.conn, run_id, "agent_report_1", "ws_report_1", 90, @intCast(idx + 1));
+        try support.insertScoreRow(db_ctx.conn, run_id, "agent_report_1", "0195b4ba-8d3a-7f13-8abc-cc0000000107", 90, @intCast(idx + 1));
     }
     idx = 0;
     while (idx < 5) : (idx += 1) {
         const run_id = try std.fmt.allocPrint(std.testing.allocator, "report_current_{d}", .{idx});
         defer std.testing.allocator.free(run_id);
-        try support.insertScoreRow(db_ctx.conn, run_id, "agent_report_1", "ws_report_1", 30, @intCast(200 + idx));
+        try support.insertScoreRow(db_ctx.conn, run_id, "agent_report_1", "0195b4ba-8d3a-7f13-8abc-cc0000000107", 30, @intCast(200 + idx));
     }
 
     _ = try db_ctx.conn.exec(
         \\INSERT INTO agent_improvement_proposals
         \\  (proposal_id, agent_id, workspace_id, trigger_reason, proposed_changes, config_version_id, approval_mode, generation_status, status, applied_by, created_at, updated_at)
         \\VALUES
-        \\  ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6ac1', 'agent_report_1', 'ws_report_1', 'DECLINING_SCORE', '[]', 'cfg_1', 'MANUAL', 'READY', 'APPLIED', 'operator:test', 100, 100),
-        \\  ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6ac2', 'agent_report_1', 'ws_report_1', 'DECLINING_SCORE', '[]', 'cfg_2', 'MANUAL', 'READY', 'APPLIED', 'operator:test', 110, 110),
-        \\  ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6ac3', 'agent_report_1', 'ws_report_1', 'DECLINING_SCORE', '[]', 'cfg_3', 'MANUAL', 'READY', 'APPLIED', 'operator:test', 120, 120),
-        \\  ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6ac4', 'agent_report_1', 'ws_report_1', 'DECLINING_SCORE', '[]', 'cfg_4', 'AUTO', 'READY', 'VETOED', NULL, 130, 130),
-        \\  ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6ac5', 'agent_report_1', 'ws_report_1', 'DECLINING_SCORE', '[]', 'cfg_5', 'MANUAL', 'READY', 'REJECTED', NULL, 140, 140)
+        \\  ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6ac1', 'agent_report_1', '0195b4ba-8d3a-7f13-8abc-cc0000000107', 'DECLINING_SCORE', '[]', 'cfg_1', 'MANUAL', 'READY', 'APPLIED', 'operator:test', 100, 100),
+        \\  ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6ac2', 'agent_report_1', '0195b4ba-8d3a-7f13-8abc-cc0000000107', 'DECLINING_SCORE', '[]', 'cfg_2', 'MANUAL', 'READY', 'APPLIED', 'operator:test', 110, 110),
+        \\  ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6ac3', 'agent_report_1', '0195b4ba-8d3a-7f13-8abc-cc0000000107', 'DECLINING_SCORE', '[]', 'cfg_3', 'MANUAL', 'READY', 'APPLIED', 'operator:test', 120, 120),
+        \\  ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6ac4', 'agent_report_1', '0195b4ba-8d3a-7f13-8abc-cc0000000107', 'DECLINING_SCORE', '[]', 'cfg_4', 'AUTO', 'READY', 'VETOED', NULL, 130, 130),
+        \\  ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6ac5', 'agent_report_1', '0195b4ba-8d3a-7f13-8abc-cc0000000107', 'DECLINING_SCORE', '[]', 'cfg_5', 'MANUAL', 'READY', 'REJECTED', NULL, 140, 140)
     , .{});
     _ = try db_ctx.conn.exec(
         \\INSERT INTO harness_change_log
         \\  (change_id, agent_id, proposal_id, workspace_id, field_name, old_value, new_value, applied_at, applied_by, reverted_from, score_delta)
         \\VALUES
-        \\  ('chg_report_1', 'agent_report_1', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6ac1', 'ws_report_1', 'stage_insert', '{}', '{}', 100, 'operator:test', NULL, -5.0),
-        \\  ('chg_report_2', 'agent_report_1', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6ac2', 'ws_report_1', 'stage_insert', '{}', '{}', 110, 'operator:test', NULL, -10.0),
-        \\  ('chg_report_3', 'agent_report_1', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6ac3', 'ws_report_1', 'stage_insert', '{}', '{}', 120, 'operator:test', NULL, -15.0)
+        \\  ('chg_report_1', 'agent_report_1', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6ac1', '0195b4ba-8d3a-7f13-8abc-cc0000000107', 'stage_insert', '{}', '{}', 100, 'operator:test', NULL, -5.0),
+        \\  ('chg_report_2', 'agent_report_1', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6ac2', '0195b4ba-8d3a-7f13-8abc-cc0000000107', 'stage_insert', '{}', '{}', 110, 'operator:test', NULL, -10.0),
+        \\  ('chg_report_3', 'agent_report_1', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6ac3', '0195b4ba-8d3a-7f13-8abc-cc0000000107', 'stage_insert', '{}', '{}', 120, 'operator:test', NULL, -15.0)
     , .{});
 
     var report = (try proposals.loadImprovementReport(db_ctx.conn, std.testing.allocator, "agent_report_1")) orelse return error.TestUnexpectedResult;
@@ -188,24 +188,24 @@ test "trusted proposal enters veto window with auto-apply deadline" {
     _ = try db_ctx.conn.exec(
         \\INSERT INTO workspace_entitlements
         \\  (entitlement_id, workspace_id, plan_tier, max_profiles, max_stages, max_distinct_skills, allow_custom_skills, enable_agent_scoring, agent_scoring_weights_json, created_at, updated_at)
-        \\VALUES ('ent_prop_trusted_1', 'ws_prop_trusted_1', 'FREE', 3, 4, 3, false, true, '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}', 0, 0)
+        \\VALUES ('0195b4ba-8d3a-7f13-8abc-ee0000000106', '0195b4ba-8d3a-7f13-8abc-cc0000000106', 'FREE', 3, 4, 3, false, true, '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}', 0, 0)
     , .{});
-    try support.insertAgentProfileWithTrust(db_ctx.conn, "agent_prop_trusted_1", "ws_prop_trusted_1", 10, "TRUSTED");
-    try support.insertActiveConfig(db_ctx.conn, "agent_prop_trusted_1", "ws_prop_trusted_1", "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fa1");
+    try support.insertAgentProfileWithTrust(db_ctx.conn, "agent_prop_trusted_1", "0195b4ba-8d3a-7f13-8abc-cc0000000106", 10, "TRUSTED");
+    try support.insertActiveConfig(db_ctx.conn, "agent_prop_trusted_1", "0195b4ba-8d3a-7f13-8abc-cc0000000106", "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fa1");
 
     var ts: i64 = 1_000;
     while (ts < 6_000) : (ts += 1_000) {
         const run_id = try std.fmt.allocPrint(std.testing.allocator, "run_prev_{d}", .{ts});
         defer std.testing.allocator.free(run_id);
-        try support.insertScoreRow(db_ctx.conn, run_id, "agent_prop_trusted_1", "ws_prop_trusted_1", 95, ts);
+        try support.insertScoreRow(db_ctx.conn, run_id, "agent_prop_trusted_1", "0195b4ba-8d3a-7f13-8abc-cc0000000106", 95, ts);
     }
     while (ts < 11_000) : (ts += 1_000) {
         const run_id = try std.fmt.allocPrint(std.testing.allocator, "run_curr_{d}", .{ts});
         defer std.testing.allocator.free(run_id);
-        try support.insertScoreRow(db_ctx.conn, run_id, "agent_prop_trusted_1", "ws_prop_trusted_1", 80, ts);
+        try support.insertScoreRow(db_ctx.conn, run_id, "agent_prop_trusted_1", "0195b4ba-8d3a-7f13-8abc-cc0000000106", 80, ts);
     }
 
-    try proposals.maybePersistTriggerProposal(db_ctx.conn, std.testing.allocator, "ws_prop_trusted_1", "agent_prop_trusted_1", 11_000);
+    try proposals.maybePersistTriggerProposal(db_ctx.conn, std.testing.allocator, "0195b4ba-8d3a-7f13-8abc-cc0000000106", "agent_prop_trusted_1", 11_000);
 
     var q = try db_ctx.conn.query(
         \\SELECT approval_mode, status, auto_apply_at
@@ -229,17 +229,17 @@ test "reconcilePendingProposalGenerations materializes generated stage proposal 
     _ = try db_ctx.conn.exec(
         \\INSERT INTO workspace_entitlements
         \\  (entitlement_id, workspace_id, plan_tier, max_profiles, max_stages, max_distinct_skills, allow_custom_skills, enable_agent_scoring, agent_scoring_weights_json, created_at, updated_at)
-        \\VALUES ('ent_prop_4', 'ws_prop_4', 'FREE', 3, 4, 3, false, true, '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}', 0, 0)
+        \\VALUES ('0195b4ba-8d3a-7f13-8abc-ee0000000104', '0195b4ba-8d3a-7f13-8abc-cc0000000104', 'FREE', 3, 4, 3, false, true, '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}', 0, 0)
     , .{});
-    try support.insertAgentProfile(db_ctx.conn, "agent_prop_4", "ws_prop_4");
-    try support.insertActiveConfig(db_ctx.conn, "agent_prop_4", "ws_prop_4", "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f94");
+    try support.insertAgentProfile(db_ctx.conn, "agent_prop_4", "0195b4ba-8d3a-7f13-8abc-cc0000000104");
+    try support.insertActiveConfig(db_ctx.conn, "agent_prop_4", "0195b4ba-8d3a-7f13-8abc-cc0000000104", "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f94");
 
     const low_state = scoring.ScoringState{ .outcome = .blocked_stage_graph, .stages_passed = 0, .stages_total = 3 };
     var i: usize = 0;
     while (i < 5) : (i += 1) {
         const run_id = try std.fmt.allocPrint(std.testing.allocator, "run_prop_ready_{d}", .{i});
         defer std.testing.allocator.free(run_id);
-        scoring.scoreRunIfTerminal(db_ctx.conn, null, run_id, "ws_prop_4", "agent_prop_4", "user_prop_4", &low_state, 20);
+        scoring.scoreRunIfTerminal(db_ctx.conn, null, run_id, "0195b4ba-8d3a-7f13-8abc-cc0000000104", "agent_prop_4", "user_prop_4", &low_state, 20);
     }
 
     const result = try proposals.reconcilePendingProposalGenerations(db_ctx.conn, std.testing.allocator, 0);

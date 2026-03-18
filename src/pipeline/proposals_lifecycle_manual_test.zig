@@ -14,14 +14,14 @@ test "vetoAutoProposal stores veto reason and preserves harness state" {
     _ = try db_ctx.conn.exec(
         \\INSERT INTO workspace_entitlements
         \\  (entitlement_id, workspace_id, plan_tier, max_profiles, max_stages, max_distinct_skills, allow_custom_skills, enable_agent_scoring, agent_scoring_weights_json, created_at, updated_at)
-        \\VALUES ('ent_prop_veto_1', 'ws_prop_veto_1', 'FREE', 3, 4, 3, false, true, '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}', 0, 0)
+        \\VALUES ('0195b4ba-8d3a-7f13-8abc-ee0000000127', '0195b4ba-8d3a-7f13-8abc-cc0000000127', 'FREE', 3, 4, 3, false, true, '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}', 0, 0)
     , .{});
-    try support.insertAgentProfileWithTrust(db_ctx.conn, "agent_prop_veto_1", "ws_prop_veto_1", 10, "TRUSTED");
-    try support.insertActiveConfig(db_ctx.conn, "agent_prop_veto_1", "ws_prop_veto_1", "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fb5");
+    try support.insertAgentProfileWithTrust(db_ctx.conn, "agent_prop_veto_1", "0195b4ba-8d3a-7f13-8abc-cc0000000127", 10, "TRUSTED");
+    try support.insertActiveConfig(db_ctx.conn, "agent_prop_veto_1", "0195b4ba-8d3a-7f13-8abc-cc0000000127", "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fb5");
     _ = try db_ctx.conn.exec(
         \\INSERT INTO agent_improvement_proposals
         \\  (proposal_id, agent_id, workspace_id, trigger_reason, proposed_changes, config_version_id, approval_mode, generation_status, status, auto_apply_at, created_at, updated_at)
-        \\VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fb6', 'agent_prop_veto_1', 'ws_prop_veto_1', 'DECLINING_SCORE', '[{"target_field":"stage_insert","current_value":null,"proposed_value":{"agent_id":"agent_prop_veto_1","insert_before_stage_id":"verify","stage_id":"verify-precheck","role":"autoworkerready","skill":"clawhub://usezombie/autoworkerready@1.0.0","artifact_name":"verify-precheck.md","commit_message":"agent: add verify-precheck.md","gate":false,"on_pass":"verify","on_fail":"retry"},"rationale":"recover quality"}]', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fb5', 'AUTO', 'READY', 'VETO_WINDOW', 20_000, 100, 101)
+        \\VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fb6', 'agent_prop_veto_1', '0195b4ba-8d3a-7f13-8abc-cc0000000127', 'DECLINING_SCORE', '[{"target_field":"stage_insert","current_value":null,"proposed_value":{"agent_id":"agent_prop_veto_1","insert_before_stage_id":"verify","stage_id":"verify-precheck","role":"autoworkerready","skill":"clawhub://usezombie/autoworkerready@1.0.0","artifact_name":"verify-precheck.md","commit_message":"agent: add verify-precheck.md","gate":false,"on_pass":"verify","on_fail":"retry"},"rationale":"recover quality"}]', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fb5', 'AUTO', 'READY', 'VETO_WINDOW', 20_000, 100, 101)
     , .{});
 
     try std.testing.expect(try proposals.vetoAutoProposal(
@@ -46,7 +46,7 @@ test "vetoAutoProposal stores veto reason and preserves harness state" {
     var active_q = try db_ctx.conn.query(
         \\SELECT config_version_id
         \\FROM workspace_active_config
-        \\WHERE workspace_id = 'ws_prop_veto_1'
+        \\WHERE workspace_id = '0195b4ba-8d3a-7f13-8abc-cc0000000127'
     , .{});
     defer active_q.deinit();
     const active_row = (try active_q.next()) orelse return error.TestUnexpectedResult;
@@ -71,14 +71,14 @@ test "approveManualProposal applies proposal with operator identity" {
     _ = try db_ctx.conn.exec(
         \\INSERT INTO workspace_entitlements
         \\  (entitlement_id, workspace_id, plan_tier, max_profiles, max_stages, max_distinct_skills, allow_custom_skills, enable_agent_scoring, agent_scoring_weights_json, created_at, updated_at)
-        \\VALUES ('ent_prop_manual_2', 'ws_prop_manual_2', 'FREE', 3, 4, 3, false, true, '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}', 0, 0)
+        \\VALUES ('0195b4ba-8d3a-7f13-8abc-ee0000000118', '0195b4ba-8d3a-7f13-8abc-cc0000000118', 'FREE', 3, 4, 3, false, true, '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}', 0, 0)
     , .{});
-    try support.insertAgentProfile(db_ctx.conn, "agent_prop_manual_2", "ws_prop_manual_2");
-    try support.insertActiveConfig(db_ctx.conn, "agent_prop_manual_2", "ws_prop_manual_2", "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fc1");
+    try support.insertAgentProfile(db_ctx.conn, "agent_prop_manual_2", "0195b4ba-8d3a-7f13-8abc-cc0000000118");
+    try support.insertActiveConfig(db_ctx.conn, "agent_prop_manual_2", "0195b4ba-8d3a-7f13-8abc-cc0000000118", "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fc1");
     _ = try db_ctx.conn.exec(
         \\INSERT INTO agent_improvement_proposals
         \\  (proposal_id, agent_id, workspace_id, trigger_reason, proposed_changes, config_version_id, approval_mode, generation_status, status, auto_apply_at, created_at, updated_at)
-        \\VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fc2', 'agent_prop_manual_2', 'ws_prop_manual_2', 'DECLINING_SCORE', '[{"target_field":"stage_insert","current_value":null,"proposed_value":{"agent_id":"agent_prop_manual_2","insert_before_stage_id":"verify","stage_id":"verify-precheck","role":"autoworkerready","skill":"clawhub://usezombie/autoworkerready@1.0.0","artifact_name":"verify-precheck.md","commit_message":"agent: add verify-precheck.md","gate":false,"on_pass":"verify","on_fail":"retry"},"rationale":"recover quality"}]', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fc1', 'MANUAL', 'READY', 'PENDING_REVIEW', NULL, 100, 101)
+        \\VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fc2', 'agent_prop_manual_2', '0195b4ba-8d3a-7f13-8abc-cc0000000118', 'DECLINING_SCORE', '[{"target_field":"stage_insert","current_value":null,"proposed_value":{"agent_id":"agent_prop_manual_2","insert_before_stage_id":"verify","stage_id":"verify-precheck","role":"autoworkerready","skill":"clawhub://usezombie/autoworkerready@1.0.0","artifact_name":"verify-precheck.md","commit_message":"agent: add verify-precheck.md","gate":false,"on_pass":"verify","on_fail":"retry"},"rationale":"recover quality"}]', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fc1', 'MANUAL', 'READY', 'PENDING_REVIEW', NULL, 100, 101)
     , .{});
 
     const result = (try proposals.approveManualProposal(
@@ -105,7 +105,7 @@ test "approveManualProposal applies proposal with operator identity" {
     var active_q = try db_ctx.conn.query(
         \\SELECT config_version_id
         \\FROM workspace_active_config
-        \\WHERE workspace_id = 'ws_prop_manual_2'
+        \\WHERE workspace_id = '0195b4ba-8d3a-7f13-8abc-cc0000000118'
     , .{});
     defer active_q.deinit();
     const active_row = (try active_q.next()) orelse return error.TestUnexpectedResult;
@@ -132,7 +132,7 @@ test "approveManualProposal applies proposal with operator identity" {
     )) orelse return error.TestUnexpectedResult;
     defer telemetry.deinit(std.testing.allocator);
     try std.testing.expectEqualStrings("agent_prop_manual_2", telemetry.agent_id);
-    try std.testing.expectEqualStrings("ws_prop_manual_2", telemetry.workspace_id);
+    try std.testing.expectEqualStrings("0195b4ba-8d3a-7f13-8abc-cc0000000118", telemetry.workspace_id);
     try std.testing.expectEqualStrings("DECLINING_SCORE", telemetry.trigger_reason);
     try std.testing.expectEqualStrings("MANUAL", telemetry.approval_mode);
     try std.testing.expectEqual(@as(usize, 1), telemetry.fields_changed.len);
@@ -148,14 +148,14 @@ test "approveManualProposal returns null when proposal was already applied" {
     _ = try db_ctx.conn.exec(
         \\INSERT INTO workspace_entitlements
         \\  (entitlement_id, workspace_id, plan_tier, max_profiles, max_stages, max_distinct_skills, allow_custom_skills, enable_agent_scoring, agent_scoring_weights_json, created_at, updated_at)
-        \\VALUES ('ent_prop_manual_dup_1', 'ws_prop_manual_dup_1', 'FREE', 3, 4, 3, false, true, '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}', 0, 0)
+        \\VALUES ('0195b4ba-8d3a-7f13-8abc-ee0000000123', '0195b4ba-8d3a-7f13-8abc-cc0000000123', 'FREE', 3, 4, 3, false, true, '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}', 0, 0)
     , .{});
-    try support.insertAgentProfile(db_ctx.conn, "agent_prop_manual_dup_1", "ws_prop_manual_dup_1");
-    try support.insertActiveConfig(db_ctx.conn, "agent_prop_manual_dup_1", "ws_prop_manual_dup_1", "0195b4ba-8d3a-7f13-8abc-2b3e1e0a7204");
+    try support.insertAgentProfile(db_ctx.conn, "agent_prop_manual_dup_1", "0195b4ba-8d3a-7f13-8abc-cc0000000123");
+    try support.insertActiveConfig(db_ctx.conn, "agent_prop_manual_dup_1", "0195b4ba-8d3a-7f13-8abc-cc0000000123", "0195b4ba-8d3a-7f13-8abc-2b3e1e0a7204");
     _ = try db_ctx.conn.exec(
         \\INSERT INTO agent_improvement_proposals
         \\  (proposal_id, agent_id, workspace_id, trigger_reason, proposed_changes, config_version_id, approval_mode, generation_status, status, applied_by, auto_apply_at, created_at, updated_at)
-        \\VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a7205', 'agent_prop_manual_dup_1', 'ws_prop_manual_dup_1', 'DECLINING_SCORE', '[]', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a7204', 'MANUAL', 'READY', 'APPLIED', 'operator:kishore', NULL, 100, 101)
+        \\VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a7205', 'agent_prop_manual_dup_1', '0195b4ba-8d3a-7f13-8abc-cc0000000123', 'DECLINING_SCORE', '[]', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a7204', 'MANUAL', 'READY', 'APPLIED', 'operator:kishore', NULL, 100, 101)
     , .{});
 
     try std.testing.expect((try proposals.approveManualProposal(
@@ -177,14 +177,14 @@ test "approveManualProposal rejects malformed proposal changes with compile fail
     _ = try db_ctx.conn.exec(
         \\INSERT INTO workspace_entitlements
         \\  (entitlement_id, workspace_id, plan_tier, max_profiles, max_stages, max_distinct_skills, allow_custom_skills, enable_agent_scoring, agent_scoring_weights_json, created_at, updated_at)
-        \\VALUES ('ent_prop_manual_compile_1', 'ws_prop_manual_compile_1', 'FREE', 3, 4, 3, false, true, '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}', 0, 0)
+        \\VALUES ('0195b4ba-8d3a-7f13-8abc-ee0000000122', '0195b4ba-8d3a-7f13-8abc-cc0000000122', 'FREE', 3, 4, 3, false, true, '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}', 0, 0)
     , .{});
-    try support.insertAgentProfile(db_ctx.conn, "agent_prop_manual_compile_1", "ws_prop_manual_compile_1");
-    try support.insertActiveConfig(db_ctx.conn, "agent_prop_manual_compile_1", "ws_prop_manual_compile_1", "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fd3");
+    try support.insertAgentProfile(db_ctx.conn, "agent_prop_manual_compile_1", "0195b4ba-8d3a-7f13-8abc-cc0000000122");
+    try support.insertActiveConfig(db_ctx.conn, "agent_prop_manual_compile_1", "0195b4ba-8d3a-7f13-8abc-cc0000000122", "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fd3");
     _ = try db_ctx.conn.exec(
         \\INSERT INTO agent_improvement_proposals
         \\  (proposal_id, agent_id, workspace_id, trigger_reason, proposed_changes, config_version_id, approval_mode, generation_status, status, auto_apply_at, created_at, updated_at)
-        \\VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fd4', 'agent_prop_manual_compile_1', 'ws_prop_manual_compile_1', 'DECLINING_SCORE', '[{"target_field":"stage_insert","current_value":null,"proposed_value":{"agent_id":"agent_prop_manual_compile_1","insert_before_stage_id":"missing-stage","stage_id":"verify-precheck","role":"autoworkerready","skill":"warden","gate":false,"on_pass":"verify","on_fail":"retry"},"rationale":"broken stage ref"}]', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fd3', 'MANUAL', 'READY', 'PENDING_REVIEW', NULL, 100, 101)
+        \\VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fd4', 'agent_prop_manual_compile_1', '0195b4ba-8d3a-7f13-8abc-cc0000000122', 'DECLINING_SCORE', '[{"target_field":"stage_insert","current_value":null,"proposed_value":{"agent_id":"agent_prop_manual_compile_1","insert_before_stage_id":"missing-stage","stage_id":"verify-precheck","role":"autoworkerready","skill":"warden","gate":false,"on_pass":"verify","on_fail":"retry"},"rationale":"broken stage ref"}]', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fd3', 'MANUAL', 'READY', 'PENDING_REVIEW', NULL, 100, 101)
     , .{});
 
     const result = (try proposals.approveManualProposal(
@@ -226,9 +226,9 @@ test "approveManualProposal rejects activation failure when config context is mi
     _ = try db_ctx.conn.exec(
         \\INSERT INTO workspace_entitlements
         \\  (entitlement_id, workspace_id, plan_tier, max_profiles, max_stages, max_distinct_skills, allow_custom_skills, enable_agent_scoring, agent_scoring_weights_json, created_at, updated_at)
-        \\VALUES ('ent_prop_manual_activate_1', 'ws_prop_manual_activate_1', 'FREE', 3, 4, 3, false, true, '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}', 0, 0)
+        \\VALUES ('0195b4ba-8d3a-7f13-8abc-ee0000000121', '0195b4ba-8d3a-7f13-8abc-cc0000000121', 'FREE', 3, 4, 3, false, true, '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}', 0, 0)
     , .{});
-    try support.insertAgentProfile(db_ctx.conn, "agent_prop_manual_activate_1", "ws_prop_manual_activate_1");
+    try support.insertAgentProfile(db_ctx.conn, "agent_prop_manual_activate_1", "0195b4ba-8d3a-7f13-8abc-cc0000000121");
     try support.insertConfigVersionOnly(
         db_ctx.conn,
         "different_agent",
@@ -238,12 +238,12 @@ test "approveManualProposal rejects activation failure when config context is mi
     );
     _ = try db_ctx.conn.exec(
         \\INSERT INTO workspace_active_config (workspace_id, tenant_id, config_version_id, activated_by, activated_at)
-        \\VALUES ('ws_prop_manual_activate_1', 'tenant_test', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fd5', 'test', 0)
+        \\VALUES ('0195b4ba-8d3a-7f13-8abc-cc0000000121', 'tenant_test', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fd5', 'test', 0)
     , .{});
     _ = try db_ctx.conn.exec(
         \\INSERT INTO agent_improvement_proposals
         \\  (proposal_id, agent_id, workspace_id, trigger_reason, proposed_changes, config_version_id, approval_mode, generation_status, status, auto_apply_at, created_at, updated_at)
-        \\VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fd6', 'agent_prop_manual_activate_1', 'ws_prop_manual_activate_1', 'DECLINING_SCORE', '[{"target_field":"stage_insert","current_value":null,"proposed_value":{"agent_id":"agent_prop_manual_activate_1","insert_before_stage_id":"verify","stage_id":"verify-precheck","role":"autoworkerready","skill":"warden","gate":false,"on_pass":"verify","on_fail":"retry"},"rationale":"recover quality"}]', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fd5', 'MANUAL', 'READY', 'PENDING_REVIEW', NULL, 100, 101)
+        \\VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fd6', 'agent_prop_manual_activate_1', '0195b4ba-8d3a-7f13-8abc-cc0000000121', 'DECLINING_SCORE', '[{"target_field":"stage_insert","current_value":null,"proposed_value":{"agent_id":"agent_prop_manual_activate_1","insert_before_stage_id":"verify","stage_id":"verify-precheck","role":"autoworkerready","skill":"warden","gate":false,"on_pass":"verify","on_fail":"retry"},"rationale":"recover quality"}]', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fd5', 'MANUAL', 'READY', 'PENDING_REVIEW', NULL, 100, 101)
     , .{});
 
     const result = (try proposals.approveManualProposal(
@@ -270,7 +270,7 @@ test "approveManualProposal rejects activation failure when config context is mi
     var active_q = try db_ctx.conn.query(
         \\SELECT config_version_id
         \\FROM workspace_active_config
-        \\WHERE workspace_id = 'ws_prop_manual_activate_1'
+        \\WHERE workspace_id = '0195b4ba-8d3a-7f13-8abc-cc0000000121'
     , .{});
     defer active_q.deinit();
     const active_row = (try active_q.next()) orelse return error.TestUnexpectedResult;
@@ -287,21 +287,21 @@ test "applyProposal requires proposal to enter approved state before harness mut
     _ = try db_ctx.conn.exec(
         \\INSERT INTO workspace_entitlements
         \\  (entitlement_id, workspace_id, plan_tier, max_profiles, max_stages, max_distinct_skills, allow_custom_skills, enable_agent_scoring, agent_scoring_weights_json, created_at, updated_at)
-        \\VALUES ('ent_prop_guard_1', 'ws_prop_guard_1', 'FREE', 3, 4, 3, false, true, '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}', 0, 0)
+        \\VALUES ('0195b4ba-8d3a-7f13-8abc-ee0000000116', '0195b4ba-8d3a-7f13-8abc-cc0000000116', 'FREE', 3, 4, 3, false, true, '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}', 0, 0)
     , .{});
-    try support.insertAgentProfile(db_ctx.conn, "agent_prop_guard_1", "ws_prop_guard_1");
-    try support.insertActiveConfig(db_ctx.conn, "agent_prop_guard_1", "ws_prop_guard_1", "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fd7");
+    try support.insertAgentProfile(db_ctx.conn, "agent_prop_guard_1", "0195b4ba-8d3a-7f13-8abc-cc0000000116");
+    try support.insertActiveConfig(db_ctx.conn, "agent_prop_guard_1", "0195b4ba-8d3a-7f13-8abc-cc0000000116", "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fd7");
     _ = try db_ctx.conn.exec(
         \\INSERT INTO agent_improvement_proposals
         \\  (proposal_id, agent_id, workspace_id, trigger_reason, proposed_changes, config_version_id, approval_mode, generation_status, status, auto_apply_at, created_at, updated_at)
-        \\VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fd8', 'agent_prop_guard_1', 'ws_prop_guard_1', 'DECLINING_SCORE', '[{"target_field":"stage_insert","current_value":null,"proposed_value":{"agent_id":"agent_prop_guard_1","insert_before_stage_id":"verify","stage_id":"verify-precheck","role":"autoworkerready","skill":"clawhub://usezombie/autoworkerready@1.0.0","artifact_name":"verify-precheck.md","commit_message":"agent: add verify-precheck.md","gate":false,"on_pass":"verify","on_fail":"retry"},"rationale":"recover quality"}]', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fd7', 'MANUAL', 'READY', 'REJECTED', NULL, 100, 101)
+        \\VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fd8', 'agent_prop_guard_1', '0195b4ba-8d3a-7f13-8abc-cc0000000116', 'DECLINING_SCORE', '[{"target_field":"stage_insert","current_value":null,"proposed_value":{"agent_id":"agent_prop_guard_1","insert_before_stage_id":"verify","stage_id":"verify-precheck","role":"autoworkerready","skill":"clawhub://usezombie/autoworkerready@1.0.0","artifact_name":"verify-precheck.md","commit_message":"agent: add verify-precheck.md","gate":false,"on_pass":"verify","on_fail":"retry"},"rationale":"recover quality"}]', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fd7', 'MANUAL', 'READY', 'REJECTED', NULL, 100, 101)
     , .{});
 
     const result = try proposals_auto_approval.applyProposal(
         db_ctx.conn,
         std.testing.allocator,
         "agent_prop_guard_1",
-        "ws_prop_guard_1",
+        "0195b4ba-8d3a-7f13-8abc-cc0000000116",
         "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fd8",
         "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fd7",
         "[{\"target_field\":\"stage_insert\",\"current_value\":null,\"proposed_value\":{\"agent_id\":\"agent_prop_guard_1\",\"insert_before_stage_id\":\"verify\",\"stage_id\":\"verify-precheck\",\"role\":\"autoworkerready\",\"skill\":\"clawhub://usezombie/autoworkerready@1.0.0\",\"artifact_name\":\"verify-precheck.md\",\"commit_message\":\"agent: add verify-precheck.md\",\"gate\":false,\"on_pass\":\"verify\",\"on_fail\":\"retry\"},\"rationale\":\"recover quality\"}]",
@@ -324,7 +324,7 @@ test "applyProposal requires proposal to enter approved state before harness mut
     var active_q = try db_ctx.conn.query(
         \\SELECT config_version_id
         \\FROM workspace_active_config
-        \\WHERE workspace_id = 'ws_prop_guard_1'
+        \\WHERE workspace_id = '0195b4ba-8d3a-7f13-8abc-cc0000000116'
     , .{});
     defer active_q.deinit();
     const active_row = (try active_q.next()) orelse return error.TestUnexpectedResult;
@@ -349,14 +349,14 @@ test "rejectManualProposal stores rejection reason" {
     _ = try db_ctx.conn.exec(
         \\INSERT INTO workspace_entitlements
         \\  (entitlement_id, workspace_id, plan_tier, max_profiles, max_stages, max_distinct_skills, allow_custom_skills, enable_agent_scoring, agent_scoring_weights_json, created_at, updated_at)
-        \\VALUES ('ent_prop_manual_3', 'ws_prop_manual_3', 'FREE', 3, 4, 3, false, true, '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}', 0, 0)
+        \\VALUES ('0195b4ba-8d3a-7f13-8abc-ee0000000119', '0195b4ba-8d3a-7f13-8abc-cc0000000119', 'FREE', 3, 4, 3, false, true, '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}', 0, 0)
     , .{});
-    try support.insertAgentProfile(db_ctx.conn, "agent_prop_manual_3", "ws_prop_manual_3");
-    try support.insertActiveConfig(db_ctx.conn, "agent_prop_manual_3", "ws_prop_manual_3", "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fd1");
+    try support.insertAgentProfile(db_ctx.conn, "agent_prop_manual_3", "0195b4ba-8d3a-7f13-8abc-cc0000000119");
+    try support.insertActiveConfig(db_ctx.conn, "agent_prop_manual_3", "0195b4ba-8d3a-7f13-8abc-cc0000000119", "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fd1");
     _ = try db_ctx.conn.exec(
         \\INSERT INTO agent_improvement_proposals
         \\  (proposal_id, agent_id, workspace_id, trigger_reason, proposed_changes, config_version_id, approval_mode, generation_status, status, auto_apply_at, created_at, updated_at)
-        \\VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fd2', 'agent_prop_manual_3', 'ws_prop_manual_3', 'DECLINING_SCORE', '[]', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fd1', 'MANUAL', 'READY', 'PENDING_REVIEW', NULL, 100, 101)
+        \\VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fd2', 'agent_prop_manual_3', '0195b4ba-8d3a-7f13-8abc-cc0000000119', 'DECLINING_SCORE', '[]', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fd1', 'MANUAL', 'READY', 'PENDING_REVIEW', NULL, 100, 101)
     , .{});
 
     try std.testing.expect(try proposals.rejectManualProposal(
@@ -388,14 +388,14 @@ test "vetoAutoProposal returns false for manual proposal" {
     _ = try db_ctx.conn.exec(
         \\INSERT INTO workspace_entitlements
         \\  (entitlement_id, workspace_id, plan_tier, max_profiles, max_stages, max_distinct_skills, allow_custom_skills, enable_agent_scoring, agent_scoring_weights_json, created_at, updated_at)
-        \\VALUES ('ent_prop_veto_manual_1', 'ws_prop_veto_manual_1', 'FREE', 3, 4, 3, false, true, '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}', 0, 0)
+        \\VALUES ('0195b4ba-8d3a-7f13-8abc-ee0000000128', '0195b4ba-8d3a-7f13-8abc-cc0000000128', 'FREE', 3, 4, 3, false, true, '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}', 0, 0)
     , .{});
-    try support.insertAgentProfile(db_ctx.conn, "agent_prop_veto_manual_1", "ws_prop_veto_manual_1");
-    try support.insertActiveConfig(db_ctx.conn, "agent_prop_veto_manual_1", "ws_prop_veto_manual_1", "0195b4ba-8d3a-7f13-8abc-2b3e1e0a7206");
+    try support.insertAgentProfile(db_ctx.conn, "agent_prop_veto_manual_1", "0195b4ba-8d3a-7f13-8abc-cc0000000128");
+    try support.insertActiveConfig(db_ctx.conn, "agent_prop_veto_manual_1", "0195b4ba-8d3a-7f13-8abc-cc0000000128", "0195b4ba-8d3a-7f13-8abc-2b3e1e0a7206");
     _ = try db_ctx.conn.exec(
         \\INSERT INTO agent_improvement_proposals
         \\  (proposal_id, agent_id, workspace_id, trigger_reason, proposed_changes, config_version_id, approval_mode, generation_status, status, auto_apply_at, created_at, updated_at)
-        \\VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a7207', 'agent_prop_veto_manual_1', 'ws_prop_veto_manual_1', 'DECLINING_SCORE', '[]', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a7206', 'MANUAL', 'READY', 'PENDING_REVIEW', NULL, 100, 101)
+        \\VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a7207', 'agent_prop_veto_manual_1', '0195b4ba-8d3a-7f13-8abc-cc0000000128', 'DECLINING_SCORE', '[]', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a7206', 'MANUAL', 'READY', 'PENDING_REVIEW', NULL, 100, 101)
     , .{});
 
     try std.testing.expect(!try proposals.vetoAutoProposal(
@@ -416,14 +416,14 @@ test "reconcileDueAutoApprovalProposals expires manual proposal at exact cutoff"
     _ = try db_ctx.conn.exec(
         \\INSERT INTO workspace_entitlements
         \\  (entitlement_id, workspace_id, plan_tier, max_profiles, max_stages, max_distinct_skills, allow_custom_skills, enable_agent_scoring, agent_scoring_weights_json, created_at, updated_at)
-        \\VALUES ('ent_prop_expiry_exact_1', 'ws_prop_expiry_exact_1', 'FREE', 3, 4, 3, false, true, '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}', 0, 0)
+        \\VALUES ('0195b4ba-8d3a-7f13-8abc-ee0000000115', '0195b4ba-8d3a-7f13-8abc-cc0000000115', 'FREE', 3, 4, 3, false, true, '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}', 0, 0)
     , .{});
-    try support.insertAgentProfile(db_ctx.conn, "agent_prop_expiry_exact_1", "ws_prop_expiry_exact_1");
-    try support.insertActiveConfig(db_ctx.conn, "agent_prop_expiry_exact_1", "ws_prop_expiry_exact_1", "0195b4ba-8d3a-7f13-8abc-2b3e1e0a7208");
+    try support.insertAgentProfile(db_ctx.conn, "agent_prop_expiry_exact_1", "0195b4ba-8d3a-7f13-8abc-cc0000000115");
+    try support.insertActiveConfig(db_ctx.conn, "agent_prop_expiry_exact_1", "0195b4ba-8d3a-7f13-8abc-cc0000000115", "0195b4ba-8d3a-7f13-8abc-2b3e1e0a7208");
     _ = try db_ctx.conn.exec(
         \\INSERT INTO agent_improvement_proposals
         \\  (proposal_id, agent_id, workspace_id, trigger_reason, proposed_changes, config_version_id, approval_mode, generation_status, status, auto_apply_at, created_at, updated_at)
-        \\VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a7209', 'agent_prop_expiry_exact_1', 'ws_prop_expiry_exact_1', 'DECLINING_SCORE', '[]', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a7208', 'MANUAL', 'READY', 'PENDING_REVIEW', NULL, 100, 101)
+        \\VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a7209', 'agent_prop_expiry_exact_1', '0195b4ba-8d3a-7f13-8abc-cc0000000115', 'DECLINING_SCORE', '[]', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a7208', 'MANUAL', 'READY', 'PENDING_REVIEW', NULL, 100, 101)
     , .{});
 
     const now_ms = 100 + proposals_shared.MANUAL_PROPOSAL_EXPIRY_MS;
@@ -450,14 +450,14 @@ test "reconcileDueAutoApprovalProposals expires stale manual proposals" {
     _ = try db_ctx.conn.exec(
         \\INSERT INTO workspace_entitlements
         \\  (entitlement_id, workspace_id, plan_tier, max_profiles, max_stages, max_distinct_skills, allow_custom_skills, enable_agent_scoring, agent_scoring_weights_json, created_at, updated_at)
-        \\VALUES ('ent_prop_manual_4', 'ws_prop_manual_4', 'FREE', 3, 4, 3, false, true, '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}', 0, 0)
+        \\VALUES ('0195b4ba-8d3a-7f13-8abc-ee0000000120', '0195b4ba-8d3a-7f13-8abc-cc0000000120', 'FREE', 3, 4, 3, false, true, '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}', 0, 0)
     , .{});
-    try support.insertAgentProfile(db_ctx.conn, "agent_prop_manual_4", "ws_prop_manual_4");
-    try support.insertActiveConfig(db_ctx.conn, "agent_prop_manual_4", "ws_prop_manual_4", "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fe1");
+    try support.insertAgentProfile(db_ctx.conn, "agent_prop_manual_4", "0195b4ba-8d3a-7f13-8abc-cc0000000120");
+    try support.insertActiveConfig(db_ctx.conn, "agent_prop_manual_4", "0195b4ba-8d3a-7f13-8abc-cc0000000120", "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fe1");
     _ = try db_ctx.conn.exec(
         \\INSERT INTO agent_improvement_proposals
         \\  (proposal_id, agent_id, workspace_id, trigger_reason, proposed_changes, config_version_id, approval_mode, generation_status, status, auto_apply_at, created_at, updated_at)
-        \\VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fe2', 'agent_prop_manual_4', 'ws_prop_manual_4', 'DECLINING_SCORE', '[]', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fe1', 'MANUAL', 'READY', 'PENDING_REVIEW', NULL, 0, 0)
+        \\VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fe2', 'agent_prop_manual_4', '0195b4ba-8d3a-7f13-8abc-cc0000000120', 'DECLINING_SCORE', '[]', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fe1', 'MANUAL', 'READY', 'PENDING_REVIEW', NULL, 0, 0)
     , .{});
 
     const now_ms = proposals_shared.MANUAL_PROPOSAL_EXPIRY_MS + 1;

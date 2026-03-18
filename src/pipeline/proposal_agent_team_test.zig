@@ -143,17 +143,17 @@ test "reconcilePendingProposalGenerations preserves dynamic auto-agent gate role
     _ = try db_ctx.conn.exec(
         \\INSERT INTO workspace_entitlements
         \\  (entitlement_id, workspace_id, plan_tier, max_profiles, max_stages, max_distinct_skills, allow_custom_skills, enable_agent_scoring, agent_scoring_weights_json, created_at, updated_at)
-        \\VALUES ('ent_prop_team_1', 'ws_prop_team_1', 'SCALE', 6, 10, 10, true, true, '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}', 0, 0)
+        \\VALUES ('0195b4ba-8d3a-7f13-8abc-ee0000000126', '0195b4ba-8d3a-7f13-8abc-cc0000000126', 'SCALE', 6, 10, 10, true, true, '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}', 0, 0)
     , .{});
-    try insertAgentProfile(db_ctx.conn, "agent_prop_team_1", "ws_prop_team_1");
-    try insertActiveConfigWithProfile(db_ctx.conn, "agent_prop_team_1", "ws_prop_team_1", "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f97", "{\"agent_id\":\"agent-team\",\"stages\":[{\"stage_id\":\"autoforecaster\",\"role\":\"autoforecaster\",\"skill\":\"clawhub://usezombie/autoforecaster@1.0.0\"},{\"stage_id\":\"autoprocurer\",\"role\":\"autoprocurer\",\"skill\":\"clawhub://usezombie/autoprocurer@1.0.0\"},{\"stage_id\":\"autoworkerstandup\",\"role\":\"autoworkerstandup\",\"skill\":\"clawhub://usezombie/autoworkerstandup@1.0.0\"},{\"stage_id\":\"autoworkerready\",\"role\":\"autoworkerready\",\"skill\":\"clawhub://usezombie/autoworkerready@1.0.0\",\"gate\":true,\"on_pass\":\"done\",\"on_fail\":\"retry\"}]}");
+    try insertAgentProfile(db_ctx.conn, "agent_prop_team_1", "0195b4ba-8d3a-7f13-8abc-cc0000000126");
+    try insertActiveConfigWithProfile(db_ctx.conn, "agent_prop_team_1", "0195b4ba-8d3a-7f13-8abc-cc0000000126", "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f97", "{\"agent_id\":\"agent-team\",\"stages\":[{\"stage_id\":\"autoforecaster\",\"role\":\"autoforecaster\",\"skill\":\"clawhub://usezombie/autoforecaster@1.0.0\"},{\"stage_id\":\"autoprocurer\",\"role\":\"autoprocurer\",\"skill\":\"clawhub://usezombie/autoprocurer@1.0.0\"},{\"stage_id\":\"autoworkerstandup\",\"role\":\"autoworkerstandup\",\"skill\":\"clawhub://usezombie/autoworkerstandup@1.0.0\"},{\"stage_id\":\"autoworkerready\",\"role\":\"autoworkerready\",\"skill\":\"clawhub://usezombie/autoworkerready@1.0.0\",\"gate\":true,\"on_pass\":\"done\",\"on_fail\":\"retry\"}]}");
 
     const low_state = scoring.ScoringState{ .outcome = .blocked_stage_graph, .stages_passed = 0, .stages_total = 4 };
     var i: usize = 0;
     while (i < 5) : (i += 1) {
         const run_id = try std.fmt.allocPrint(std.testing.allocator, "run_prop_team_{d}", .{i});
         defer std.testing.allocator.free(run_id);
-        scoring.scoreRunIfTerminal(db_ctx.conn, null, run_id, "ws_prop_team_1", "agent_prop_team_1", "user_prop_team_1", &low_state, 20);
+        scoring.scoreRunIfTerminal(db_ctx.conn, null, run_id, "0195b4ba-8d3a-7f13-8abc-cc0000000126", "agent_prop_team_1", "user_prop_team_1", &low_state, 20);
     }
 
     const result = try proposals.reconcilePendingProposalGenerations(db_ctx.conn, std.testing.allocator, 0);

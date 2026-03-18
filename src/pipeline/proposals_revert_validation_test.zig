@@ -29,13 +29,13 @@ test "revertHarnessChange restores previous stage_insert profile and audit log" 
     _ = try db_ctx.conn.exec(
         \\INSERT INTO workspace_entitlements
         \\  (entitlement_id, workspace_id, plan_tier, max_profiles, max_stages, max_distinct_skills, allow_custom_skills, enable_agent_scoring, agent_scoring_weights_json, created_at, updated_at)
-        \\VALUES ('ent_prop_revert_insert', 'ws_prop_revert_insert', 'SCALE', 8, 8, 8, true, true, '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}', 0, 0)
+        \\VALUES ('0195b4ba-8d3a-7f13-8abc-ee0000000125', '0195b4ba-8d3a-7f13-8abc-cc0000000125', 'SCALE', 8, 8, 8, true, true, '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}', 0, 0)
     , .{});
-    try support.insertAgentProfile(db_ctx.conn, "agent_prop_revert_insert", "ws_prop_revert_insert");
+    try support.insertAgentProfile(db_ctx.conn, "agent_prop_revert_insert", "0195b4ba-8d3a-7f13-8abc-cc0000000125");
     try support.insertActiveConfigWithProfile(
         db_ctx.conn,
         "agent_prop_revert_insert",
-        "ws_prop_revert_insert",
+        "0195b4ba-8d3a-7f13-8abc-cc0000000125",
         "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6ff1",
         profile_before,
     );
@@ -51,17 +51,17 @@ test "revertHarnessChange restores previous stage_insert profile and audit log" 
         \\SET config_version_id = '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6ff2',
         \\    activated_by = 'operator:kishore',
         \\    activated_at = 1
-        \\WHERE workspace_id = 'ws_prop_revert_insert'
+        \\WHERE workspace_id = '0195b4ba-8d3a-7f13-8abc-cc0000000125'
     , .{});
     _ = try db_ctx.conn.exec(
         \\INSERT INTO agent_improvement_proposals
         \\  (proposal_id, agent_id, workspace_id, trigger_reason, proposed_changes, config_version_id, approval_mode, generation_status, status, auto_apply_at, applied_by, created_at, updated_at)
-        \\VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6ff3', 'agent_prop_revert_insert', 'ws_prop_revert_insert', 'DECLINING_SCORE', '[]', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6ff1', 'MANUAL', 'READY', 'APPLIED', NULL, 'operator:kishore', 0, 1)
+        \\VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6ff3', 'agent_prop_revert_insert', '0195b4ba-8d3a-7f13-8abc-cc0000000125', 'DECLINING_SCORE', '[]', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6ff1', 'MANUAL', 'READY', 'APPLIED', NULL, 'operator:kishore', 0, 1)
     , .{});
     _ = try db_ctx.conn.exec(
         \\INSERT INTO harness_change_log
         \\  (change_id, agent_id, proposal_id, workspace_id, field_name, old_value, new_value, applied_at, applied_by, reverted_from)
-        \\VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6ff4', 'agent_prop_revert_insert', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6ff3', 'ws_prop_revert_insert', 'stage_insert', 'null', $1, 1, 'operator:kishore', NULL)
+        \\VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6ff4', 'agent_prop_revert_insert', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6ff3', '0195b4ba-8d3a-7f13-8abc-cc0000000125', 'stage_insert', 'null', $1, 1, 'operator:kishore', NULL)
     , .{inserted_stage});
 
     var result = (try proposals.revertHarnessChange(
@@ -80,7 +80,7 @@ test "revertHarnessChange restores previous stage_insert profile and audit log" 
     var active_q = try db_ctx.conn.query(
         \\SELECT config_version_id, activated_by
         \\FROM workspace_active_config
-        \\WHERE workspace_id = 'ws_prop_revert_insert'
+        \\WHERE workspace_id = '0195b4ba-8d3a-7f13-8abc-cc0000000125'
     , .{});
     defer active_q.deinit();
     const active_row = (try active_q.next()) orelse return error.TestUnexpectedResult;
@@ -172,13 +172,13 @@ test "revertHarnessChange restores previous stage_binding profile exactly" {
     _ = try db_ctx.conn.exec(
         \\INSERT INTO workspace_entitlements
         \\  (entitlement_id, workspace_id, plan_tier, max_profiles, max_stages, max_distinct_skills, allow_custom_skills, enable_agent_scoring, agent_scoring_weights_json, created_at, updated_at)
-        \\VALUES ('ent_prop_revert_binding', 'ws_prop_revert_binding', 'SCALE', 8, 8, 8, true, true, '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}', 0, 0)
+        \\VALUES ('0195b4ba-8d3a-7f13-8abc-ee0000000124', '0195b4ba-8d3a-7f13-8abc-cc0000000124', 'SCALE', 8, 8, 8, true, true, '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}', 0, 0)
     , .{});
-    try support.insertAgentProfile(db_ctx.conn, "agent_prop_revert_binding", "ws_prop_revert_binding");
+    try support.insertAgentProfile(db_ctx.conn, "agent_prop_revert_binding", "0195b4ba-8d3a-7f13-8abc-cc0000000124");
     try support.insertActiveConfigWithProfile(
         db_ctx.conn,
         "agent_prop_revert_binding",
-        "ws_prop_revert_binding",
+        "0195b4ba-8d3a-7f13-8abc-cc0000000124",
         "0195b4ba-8d3a-7f13-8abc-2b3e1e0a7001",
         profile_before,
     );
@@ -194,17 +194,17 @@ test "revertHarnessChange restores previous stage_binding profile exactly" {
         \\SET config_version_id = '0195b4ba-8d3a-7f13-8abc-2b3e1e0a7002',
         \\    activated_by = 'operator:kishore',
         \\    activated_at = 1
-        \\WHERE workspace_id = 'ws_prop_revert_binding'
+        \\WHERE workspace_id = '0195b4ba-8d3a-7f13-8abc-cc0000000124'
     , .{});
     _ = try db_ctx.conn.exec(
         \\INSERT INTO agent_improvement_proposals
         \\  (proposal_id, agent_id, workspace_id, trigger_reason, proposed_changes, config_version_id, approval_mode, generation_status, status, auto_apply_at, applied_by, created_at, updated_at)
-        \\VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a7003', 'agent_prop_revert_binding', 'ws_prop_revert_binding', 'DECLINING_SCORE', '[]', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a7001', 'MANUAL', 'READY', 'APPLIED', NULL, 'operator:kishore', 0, 1)
+        \\VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a7003', 'agent_prop_revert_binding', '0195b4ba-8d3a-7f13-8abc-cc0000000124', 'DECLINING_SCORE', '[]', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a7001', 'MANUAL', 'READY', 'APPLIED', NULL, 'operator:kishore', 0, 1)
     , .{});
     _ = try db_ctx.conn.exec(
         \\INSERT INTO harness_change_log
         \\  (change_id, agent_id, proposal_id, workspace_id, field_name, old_value, new_value, applied_at, applied_by, reverted_from)
-        \\VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a7004', 'agent_prop_revert_binding', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a7003', 'ws_prop_revert_binding', 'stage_binding', $1, $2, 1, 'operator:kishore', NULL)
+        \\VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a7004', 'agent_prop_revert_binding', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a7003', '0195b4ba-8d3a-7f13-8abc-cc0000000124', 'stage_binding', $1, $2, 1, 'operator:kishore', NULL)
     , .{ old_stage, new_stage });
 
     var result = (try proposals.revertHarnessChange(
@@ -268,14 +268,14 @@ test "reconcilePendingProposalGenerations rejects generated proposals that excee
     _ = try db_ctx.conn.exec(
         \\INSERT INTO workspace_entitlements
         \\  (entitlement_id, workspace_id, plan_tier, max_profiles, max_stages, max_distinct_skills, allow_custom_skills, enable_agent_scoring, agent_scoring_weights_json, created_at, updated_at)
-        \\VALUES ('ent_prop_5', 'ws_prop_5', 'FREE', 3, 3, 3, false, true, '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}', 0, 0)
+        \\VALUES ('0195b4ba-8d3a-7f13-8abc-ee0000000108', '0195b4ba-8d3a-7f13-8abc-cc0000000108', 'FREE', 3, 3, 3, false, true, '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}', 0, 0)
     , .{});
-    try support.insertAgentProfile(db_ctx.conn, "agent_prop_5", "ws_prop_5");
-    try support.insertActiveConfig(db_ctx.conn, "agent_prop_5", "ws_prop_5", "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f95");
+    try support.insertAgentProfile(db_ctx.conn, "agent_prop_5", "0195b4ba-8d3a-7f13-8abc-cc0000000108");
+    try support.insertActiveConfig(db_ctx.conn, "agent_prop_5", "0195b4ba-8d3a-7f13-8abc-cc0000000108", "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f95");
     _ = try db_ctx.conn.exec(
         \\INSERT INTO agent_improvement_proposals
         \\  (proposal_id, agent_id, workspace_id, trigger_reason, proposed_changes, config_version_id, approval_mode, generation_status, status, auto_apply_at, created_at, updated_at)
-        \\VALUES ('prop_stage_limit_1', 'agent_prop_5', 'ws_prop_5', 'SUSTAINED_LOW_SCORE', '[]', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f95', 'MANUAL', 'PENDING', 'PENDING_REVIEW', NULL, 0, 0)
+        \\VALUES ('prop_stage_limit_1', 'agent_prop_5', '0195b4ba-8d3a-7f13-8abc-cc0000000108', 'SUSTAINED_LOW_SCORE', '[]', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f95', 'MANUAL', 'PENDING', 'PENDING_REVIEW', NULL, 0, 0)
     , .{});
 
     const result = try proposals.reconcilePendingProposalGenerations(db_ctx.conn, std.testing.allocator, 0);
@@ -305,17 +305,17 @@ test "proposal validation rejects unregistered agent refs and entitlement-disall
     _ = try db_ctx.conn.exec(
         \\INSERT INTO workspace_entitlements
         \\  (entitlement_id, workspace_id, plan_tier, max_profiles, max_stages, max_distinct_skills, allow_custom_skills, enable_agent_scoring, agent_scoring_weights_json, created_at, updated_at)
-        \\VALUES ('ent_prop_3', 'ws_prop_3', 'FREE', 3, 4, 3, false, true, '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}', 0, 0)
+        \\VALUES ('0195b4ba-8d3a-7f13-8abc-ee0000000103', '0195b4ba-8d3a-7f13-8abc-cc0000000103', 'FREE', 3, 4, 3, false, true, '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}', 0, 0)
     , .{});
-    try support.insertAgentProfile(db_ctx.conn, "agent_prop_3", "ws_prop_3");
-    try support.insertActiveConfig(db_ctx.conn, "agent_prop_3", "ws_prop_3", "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f96");
+    try support.insertAgentProfile(db_ctx.conn, "agent_prop_3", "0195b4ba-8d3a-7f13-8abc-cc0000000103");
+    try support.insertActiveConfig(db_ctx.conn, "agent_prop_3", "0195b4ba-8d3a-7f13-8abc-cc0000000103", "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f96");
 
     try std.testing.expectError(
         proposals.ProposalValidationError.UnregisteredAgentRef,
         proposals.validateProposedChanges(
             db_ctx.conn,
             std.testing.allocator,
-            "ws_prop_3",
+            "0195b4ba-8d3a-7f13-8abc-cc0000000103",
             "[{\"target_field\":\"stage_binding\",\"proposed_value\":{\"agent_id\":\"missing-agent\",\"stage_id\":\"verify\",\"role\":\"warden\",\"skill\":\"warden\"},\"rationale\":\"rebind stage\"}]",
         ),
     );
@@ -325,7 +325,7 @@ test "proposal validation rejects unregistered agent refs and entitlement-disall
         proposals.validateProposedChanges(
             db_ctx.conn,
             std.testing.allocator,
-            "ws_prop_3",
+            "0195b4ba-8d3a-7f13-8abc-cc0000000103",
             "[{\"target_field\":\"stage_binding\",\"proposed_value\":{\"agent_id\":\"agent_prop_3\",\"stage_id\":\"verify\",\"role\":\"warden\",\"skill\":\"clawhub://openclaw/github-reviewer@1.2.0\"},\"rationale\":\"rebind stage\"}]",
         ),
     );
