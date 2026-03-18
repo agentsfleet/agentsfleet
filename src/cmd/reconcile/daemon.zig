@@ -35,11 +35,14 @@ pub fn tryAcquireLeaderLock(conn: *db.Conn) !bool {
     var q = try conn.query("SELECT pg_try_advisory_lock($1)", .{ReconcileLeaderLockKey});
     defer q.deinit();
     const row = (try q.next()) orelse return false;
-    return try row.get(bool, 0);
+    const acquired = try row.get(bool, 0);
+    try q.drain();
+    return acquired;
 }
 
 pub fn releaseLeaderLock(conn: *db.Conn) void {
     var q = conn.query("SELECT pg_advisory_unlock($1)", .{ReconcileLeaderLockKey}) catch return;
+    q.drain() catch {};
     q.deinit();
 }
 

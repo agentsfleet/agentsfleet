@@ -94,6 +94,7 @@ fn createTempOutboxTable(conn: *db.Conn) !void {
         \\  updated_at BIGINT NOT NULL
         \\) ON COMMIT DROP
     , .{});
+    try create_q.drain();
     create_q.deinit();
 }
 
@@ -106,16 +107,16 @@ fn insertPendingRows(conn: *db.Conn, count: usize) !void {
         const outbox_id = try id_format.generateOutboxId(std.testing.allocator);
         defer std.testing.allocator.free(outbox_id);
         const key = try std.fmt.bufPrint(&key_buf, "k_{d}", .{i});
-        var q = try conn.query(
+        _ = try conn.exec(
             \\INSERT INTO run_side_effect_outbox
             \\  (id, run_id, effect_key, status, last_event, created_at, updated_at)
             \\VALUES ($1, $2, $3, 'pending', 'claimed', $4, $4)
         , .{ outbox_id, run_id, key, @as(i64, @intCast(i + 1)) });
-        q.deinit();
     }
 }
 
 fn simulateSingleBatchDeadLetter(conn: *db.Conn, now_ms: i64) !u32 {
+    // check-pg-drain: ok — full while loop exhausts all rows, natural drain
     var q = try conn.query(
         \\UPDATE run_side_effect_outbox
         \\SET status = 'dead_letter',
@@ -146,7 +147,9 @@ fn pendingCount(conn: *db.Conn) !i64 {
     );
     defer q.deinit();
     const row = (try q.next()).?;
-    return try row.get(i64, 0);
+    const count = try row.get(i64, 0);
+    try q.drain();
+    return count;
 }
 
 test "integration: reconcile handles reachable postgres with no pending rows" {

@@ -92,6 +92,7 @@ fn createUuidContractTempSchema(conn: *Conn) !void {
         \\  run_id UUID REFERENCES runs(run_id)
         \\) ON COMMIT DROP
     , .{});
+    try q.drain();
     q.deinit();
 }
 

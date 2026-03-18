@@ -47,11 +47,20 @@ pub fn handleGitHubCallback(ctx: *Context, r: zap.Request) void {
                 common.internalDbError(r, req_id);
                 return;
             };
-            break :blk alloc.dupe(u8, current_tenant) catch {
+            const tid = alloc.dupe(u8, current_tenant) catch {
                 common.internalOperationError(r, "Failed to allocate tenant id", req_id);
                 return;
             };
+            existing.drain() catch {
+                common.internalDbError(r, req_id);
+                return;
+            };
+            break :blk tid;
         }
+        existing.drain() catch {
+            common.internalDbError(r, req_id);
+            return;
+        };
         break :blk id_format.generateTenantId(alloc) catch {
             common.internalOperationError(r, "Failed to allocate tenant id", req_id);
             return;
