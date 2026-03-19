@@ -119,9 +119,13 @@ pub fn exportMetricsSnapshotBestEffort(
     queue_depth: ?i64,
     oldest_queued_age_ms: ?i64,
 ) void {
+    metrics.incOtelExportTotal();
     exportMetricsSnapshotInner(alloc, cfg, worker_running, queue_depth, oldest_queued_age_ms) catch |err| {
+        metrics.incOtelExportFailed();
         obs_log.logWarnErr(.otel_export, err, "error_code={s} otel export failed endpoint={s}", .{ exportErrorCode(err), cfg.endpoint });
+        return;
     };
+    metrics.setOtelLastSuccessAtMs(std.time.milliTimestamp());
 }
 
 fn exportMetricsSnapshotInner(

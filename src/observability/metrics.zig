@@ -65,6 +65,9 @@ const Snapshot = struct {
     langfuse_export_latency_ms_total: u64,
     langfuse_last_success_at_ms: u64,
     langfuse_last_failure_at_ms: u64,
+    otel_export_total: u64,
+    otel_export_failed_total: u64,
+    otel_last_success_at_ms: i64,
     agent_duration_seconds: HistogramSnapshot,
     run_total_wall_seconds: HistogramSnapshot,
     agent_scoring_duration_ms: HistogramSnapshot,
@@ -122,6 +125,9 @@ var g_langfuse_queue_depth = std.atomic.Value(u64).init(0);
 var g_langfuse_export_latency_ms_total = std.atomic.Value(u64).init(0);
 var g_langfuse_last_success_at_ms = std.atomic.Value(u64).init(0);
 var g_langfuse_last_failure_at_ms = std.atomic.Value(u64).init(0);
+var g_otel_export_total = std.atomic.Value(u64).init(0);
+var g_otel_export_failed_total = std.atomic.Value(u64).init(0);
+var g_otel_last_success_at_ms = std.atomic.Value(i64).init(0);
 var g_histograms_mu: std.Thread.Mutex = .{};
 var g_agent_duration_seconds = HistogramSnapshot{};
 var g_run_total_wall_seconds = HistogramSnapshot{};
@@ -307,6 +313,18 @@ pub fn setLangfuseLastFailureAtMs(ts_ms: i64) void {
     g_langfuse_last_failure_at_ms.store(@as(u64, @intCast(@max(ts_ms, 0))), .release);
 }
 
+pub fn incOtelExportTotal() void {
+    _ = g_otel_export_total.fetchAdd(1, .monotonic);
+}
+
+pub fn incOtelExportFailed() void {
+    _ = g_otel_export_failed_total.fetchAdd(1, .monotonic);
+}
+
+pub fn setOtelLastSuccessAtMs(ms: i64) void {
+    g_otel_last_success_at_ms.store(ms, .release);
+}
+
 pub fn observeAgentScoringDurationMs(ms: u64) void {
     g_histograms_mu.lock();
     defer g_histograms_mu.unlock();
@@ -387,6 +405,9 @@ fn snapshot() Snapshot {
         .langfuse_export_latency_ms_total = g_langfuse_export_latency_ms_total.load(.acquire),
         .langfuse_last_success_at_ms = g_langfuse_last_success_at_ms.load(.acquire),
         .langfuse_last_failure_at_ms = g_langfuse_last_failure_at_ms.load(.acquire),
+        .otel_export_total = g_otel_export_total.load(.acquire),
+        .otel_export_failed_total = g_otel_export_failed_total.load(.acquire),
+        .otel_last_success_at_ms = g_otel_last_success_at_ms.load(.acquire),
         .agent_duration_seconds = .{},
         .run_total_wall_seconds = .{},
         .agent_scoring_duration_ms = .{},
@@ -502,6 +523,9 @@ pub fn renderPrometheus(
     try appendMetric(writer, "zombie_langfuse_export_latency_ms_total", "counter", "Cumulative Langfuse export latency in milliseconds.", s.langfuse_export_latency_ms_total);
     try appendMetric(writer, "zombie_langfuse_last_success_at_ms", "gauge", "Unix epoch milliseconds of last successful Langfuse export.", s.langfuse_last_success_at_ms);
     try appendMetric(writer, "zombie_langfuse_last_failure_at_ms", "gauge", "Unix epoch milliseconds of last failed Langfuse export.", s.langfuse_last_failure_at_ms);
+    try appendMetric(writer, "zombie_otel_export_total", "counter", "Total OTEL metric export attempts.", s.otel_export_total);
+    try appendMetric(writer, "zombie_otel_export_failed_total", "counter", "Total OTEL metric export failures.", s.otel_export_failed_total);
+    try appendMetric(writer, "zombie_otel_last_success_at_ms", "gauge", "Timestamp of last successful OTEL export in epoch ms.", s.otel_last_success_at_ms);
 
     try appendDurationHistogram(
         writer,
@@ -604,6 +628,20 @@ test "integration: api throughput guardrail metrics are exposed in prometheus ou
 
     try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_api_in_flight_requests 3"));
     try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_api_backpressure_rejections_total"));
+}
+
+test "integration: otel exporter metrics are exposed in prometheus output" {
+    const alloc = std.testing.allocator;
+    incOtelExportTotal();
+    incOtelExportFailed();
+    setOtelLastSuccessAtMs(1710000000000);
+
+    const body = try renderPrometheus(alloc, true, 0, 0);
+    defer alloc.free(body);
+
+    try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_otel_export_total"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_otel_export_failed_total"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_otel_last_success_at_ms"));
 }
 
 test "scoring metrics remain low-cardinality without agent labels" {
