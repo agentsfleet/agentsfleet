@@ -46,6 +46,26 @@ Do not add or recommend workflows around:
 - `bird`, `sonoscli`, `peekaboo`, `sweetistics`, `xcp`, `xcodegen`, `lldb`, `mcporter`.
 - Obsidian vault workflows.
 
+## Startup Priming Sequence
+
+When starting a new project or when asked to "set up infrastructure", follow this sequence — do not invent steps:
+
+1. Human completes `docs/M1_001_PLAYBOOK_BOOTSTRAP.md` Milestone 1 (accounts + root API keys).
+2. Agent runs `./scripts/check-credentials.sh` (`M2_001_PLAYBOOK_CREDENTIAL_CHECK.md`) — validates every required vault item is present and non-empty. Runs anywhere `op` CLI is available — no CI dependency. **Do not proceed to step 3 until this passes with zero missing items.**
+3. Agent executes `docs/M2_002_PLAYBOOK_PRIMING_INFRA.md` in order (container pipeline → Railway → data-plane → workers → CI → first release).
+4. Milestones proceed only after PRIMING_INFRA is verified end-to-end.
+
+**Do not skip steps or reorder.** Each step has a verify command — run it before proceeding to the next.
+
+## Milestone Credential Gate Pattern
+
+Every milestone that requires external credentials must start with a credential check workstream (`M{N}_001`) before any execution workstream (`M{N}_002+`). Rules:
+
+- `M{N}_001` = prerequisite/credential check. Lists all required items. Has a CI harness that fails loud with every missing item, not just the first.
+- `M{N}_002+` = execution workstreams. Must not run until `M{N}_001` passes.
+- **Never silently assume a credential exists.** If an `op://` path is used anywhere in a workflow, it must appear in the credential check list.
+- **Always surface missing items to the human explicitly** — include what it is, which vault, and how to generate the value.
+
 ## Source Of Truth
 
 Use these references before inventing new patterns:
@@ -117,7 +137,7 @@ When creating specifications for prototypes, use the following hierarchy and for
 ```
 v1.0.0 (Prototype)
 └── Milestones (M1, M2, M3...)
-    └── Workstreams (M1_1, M1_2, M1_3...)
+    └── Workstreams (M1_001, M1_002, M1_003...)
         └── Sections (1.0, 2.0, 3.0...)
             └── Dimensions (1.1, 1.2, 1.3...)
 ```
@@ -125,7 +145,7 @@ v1.0.0 (Prototype)
 **Terminology:**
 - **Prototype** — v1.0.0 (major release)
 - **Milestone** — Major phase (M1, M2, M3)
-- **Workstream** — Parallel track within milestone (M1_1, M1_2, M1_3; numeric only, single-digit style)
+- **Workstream** — Parallel track within milestone. ID is 3-digit zero-padded (`001`, `002`, `008`). No alphabetic suffixes.
 - **Batch** — Parallel execution group (B1, B2, B3...). Workstreams in the same batch can run concurrently. Batches are sequential — B2 starts after B1 gates clear.
 - **Section** — Logical grouping (1.0, 2.0, 2.1)
 - **Dimension** — Smallest unit of work (1.1, 2.1.1, 3.2.1)
@@ -136,7 +156,7 @@ Use this interpretation for planning and review:
 
 - **Milestone** = a working prototype capability that can be demoed end-to-end with evidence.
 - **Workstream** = one singular working function that contributes to exactly one milestone capability.
-- **Workstream ID format decision** = use numeric single-digit IDs (`1`,`2`,`3`,`4`...) in spec filenames for current scope; do not use alphabetic suffixes like `006A`.
+- **Workstream ID format** = 3-digit zero-padded numeric (`001`, `002`, `003`...). Do not use single-digit or alphabetic suffixes like `1`, `006A`.
 - **Section** = implementation slice inside a workstream (what will be built).
 - **Dimension** = verification-unit check inside a section (unit/integration/contract testable item).
 
@@ -183,9 +203,9 @@ Dimension examples:
 docs/spec/v1/M{Milestone}_{Workstream}_{DESCRIPTIVE_NAME}.md
 
 Example: docs/spec/v1/M3_007_CLERK_AUTH.md
-         └─┬─┘ └──┬──┘ └┬┘ └──────┬────────┘
-           │      │     │         └─ Descriptive name (UPPERCASE_SNAKE_CASE)
-           │      │     └─ Workstream (single digit 1-9 only; no alphabetic suffixes)
+         └─┬─┘ └──┬──┘ └┬─┘ └──────┬────────┘
+           │      │     │           └─ Descriptive name (UPPERCASE_SNAKE_CASE)
+           │      │     └─ Workstream (3-digit zero-padded: 001–009)
            │      └─ Milestone (1-9)
            └─ Milestone prefix
 ```
@@ -197,7 +217,7 @@ Example: docs/spec/v1/M3_007_CLERK_AUTH.md
 
 **Prototype:** v{major}.{minor}.{patch}
 **Milestone:** M{Number}
-**Workstream:** {1-9}
+**Workstream:** {001-009}
 **Date:** {MMM DD, YYYY}
 **Status:** PENDING | IN_PROGRESS | DONE
 **Priority:** P0 | P1 | P2 — {Description}

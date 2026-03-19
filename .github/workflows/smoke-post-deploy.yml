@@ -55,9 +55,9 @@ jobs:
           export-env: true
         env:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
-          VERCEL_BYPASS_SECRET_WEBSITE: op://ZMB_CD_PROD/vercel-bypass-website/credential
-          VERCEL_BYPASS_SECRET_AGENTS: op://ZMB_CD_PROD/vercel-bypass-agents/credential
-          VERCEL_BYPASS_SECRET_APP: op://ZMB_CD_PROD/vercel-bypass-app/credential
+          VERCEL_BYPASS_SECRET_WEBSITE: op://${{ vars.VAULT_PROD }}/vercel-bypass-website/credential
+          VERCEL_BYPASS_SECRET_AGENTS: op://${{ vars.VAULT_PROD }}/vercel-bypass-agents/credential
+          VERCEL_BYPASS_SECRET_APP: op://${{ vars.VAULT_PROD }}/vercel-bypass-app/credential
 
       - name: Select Vercel bypass secret
         run: |

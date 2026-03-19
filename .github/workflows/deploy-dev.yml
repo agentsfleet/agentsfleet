@@ -1,0 +1,160 @@
+name: deploy (dev)
+
+# Triggers on every push to main.
+# Flow: build dev-latest image → push GHCR → Railway DEV auto-deploys
+#       → wait /healthz green → QA smoke → Discord notify
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: deploy-dev
+  cancel-in-progress: true
+
+jobs:
+  # ── 0. Credential gate — all DEV vault items must exist ─────────────────
+  check-credentials:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: 1password/install-cli-action@v1
+
+      - name: Check DEV vault credentials
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          VAULT_DEV: ${{ vars.VAULT_DEV }}
+          VAULT_PROD: ${{ vars.VAULT_PROD }}
+        run: ENV=dev ./scripts/check-credentials.sh
+
+  # ── 1. Build and push dev-latest image to GHCR ──────────────────────────
+  build-dev:
+    needs: check-credentials
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Cross-compile zombied for linux/amd64
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.15.2
+
+      - name: Build linux/amd64 binary
+        run: |
+          zig build -Doptimize=ReleaseSafe -Dtarget=x86_64-linux
+          mkdir -p dist
+          cp zig-out/bin/zombied dist/zombied-linux-amd64
+
+      - name: Build linux/arm64 binary
+        run: |
+          zig build -Doptimize=ReleaseSafe -Dtarget=aarch64-linux
+          cp zig-out/bin/zombied dist/zombied-linux-arm64
+
+      - uses: docker/setup-qemu-action@v4
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Push dev-latest to GHCR
+        run: make push-dev
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_ACTOR: ${{ github.actor }}
+
+  # ── 2. Wait for Railway DEV to go green ─────────────────────────────────
+  verify-dev:
+    runs-on: ubuntu-latest
+    needs: build-dev
+    steps:
+      - name: Wait for Railway DEV deploy
+        # Railway auto-deploys on main push via GitHub integration.
+        # Poll /healthz until green or timeout (3 min).
+        run: |
+          echo "Waiting for Railway DEV deploy..."
+          for i in $(seq 1 18); do
+            STATUS=$(curl -sf -o /dev/null -w "%{http_code}" \
+              https://dev.api.usezombie.com/healthz || echo "000")
+            if [ "$STATUS" = "200" ]; then
+              echo "✓ /healthz green after $((i * 10))s"
+              break
+            fi
+            echo "  attempt $i: status=$STATUS, retrying in 10s..."
+            sleep 10
+          done
+          if [ "$STATUS" != "200" ]; then
+            echo "✗ /healthz did not return 200 after 180s"
+            exit 1
+          fi
+
+      - name: Check /readyz
+        run: |
+          curl -sf https://dev.api.usezombie.com/readyz | jq -e '.ready == true'
+
+  # ── 3. QA smoke tests against DEV ───────────────────────────────────────
+  qa-dev:
+    runs-on: ubuntu-latest
+    needs: verify-dev
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.10
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+        working-directory: ui/packages/app
+
+      - name: Install Playwright browsers
+        run: bunx playwright install --with-deps chromium
+        working-directory: ui/packages/app
+
+      - name: Run smoke tests against DEV
+        run: bun run test:e2e:smoke
+        working-directory: ui/packages/app
+        env:
+          BASE_URL: https://dev.api.usezombie.com
+
+      - name: Upload Playwright report
+        uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: qa-dev-${{ github.sha }}
+          path: ui/packages/app/playwright-report/
+          retention-days: 7
+
+  # ── 4. Discord notify ────────────────────────────────────────────────────
+  notify:
+    runs-on: ubuntu-latest
+    needs: [qa-dev]
+    if: always()
+    steps:
+      - name: Load Discord webhook from 1Password
+        uses: 1password/load-secrets-action@v2
+        with:
+          export-env: true
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          DISCORD_WEBHOOK: op://${{ vars.VAULT_PROD }}/discord-ci-webhook/credential
+
+      - name: Notify Discord
+        run: |
+          SHA="${{ github.sha }}"
+          SHORT="${SHA:0:7}"
+          REF="${{ github.ref_name }}"
+
+          if [ "${{ needs.qa-dev.result }}" = "success" ]; then
+            COLOR=3066993
+            MSG="✅ DEV deploy green — \`$REF\` @ \`$SHORT\`\\n/healthz: ok | QA: passed\\n→ ready for tag release"
+          else
+            COLOR=15158332
+            MSG="❌ DEV deploy failed — \`$REF\` @ \`$SHORT\`\\nCheck: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          fi
+
+          curl -sf -X POST "$DISCORD_WEBHOOK" \
+            -H "Content-Type: application/json" \
+            -d "{\"embeds\":[{\"description\":\"$MSG\",\"color\":$COLOR}]}"

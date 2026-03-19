@@ -56,10 +56,15 @@ const Snapshot = struct {
     agent_score_computed_elite: u64,
     agent_scoring_failed_total: u64,
     agent_score_latest: u64,
-    langfuse_emit_total: u64,
-    langfuse_emit_failed_total: u64,
-    langfuse_circuit_open_total: u64,
-    langfuse_last_success_at_ms: i64,
+    langfuse_enqueued_total: u64,
+    langfuse_dropped_total: u64,
+    langfuse_export_ok_total: u64,
+    langfuse_export_failed_total: u64,
+    langfuse_export_retry_total: u64,
+    langfuse_queue_depth: u64,
+    langfuse_export_latency_ms_total: u64,
+    langfuse_last_success_at_ms: u64,
+    langfuse_last_failure_at_ms: u64,
     otel_export_total: u64,
     otel_export_failed_total: u64,
     otel_last_success_at_ms: i64,
@@ -111,10 +116,15 @@ var g_agent_score_computed_gold = std.atomic.Value(u64).init(0);
 var g_agent_score_computed_elite = std.atomic.Value(u64).init(0);
 var g_agent_scoring_failed_total = std.atomic.Value(u64).init(0);
 var g_agent_score_latest = std.atomic.Value(u64).init(0);
-var g_langfuse_emit_total = std.atomic.Value(u64).init(0);
-var g_langfuse_emit_failed_total = std.atomic.Value(u64).init(0);
-var g_langfuse_circuit_open_total = std.atomic.Value(u64).init(0);
-var g_langfuse_last_success_at_ms = std.atomic.Value(i64).init(0);
+var g_langfuse_enqueued_total = std.atomic.Value(u64).init(0);
+var g_langfuse_dropped_total = std.atomic.Value(u64).init(0);
+var g_langfuse_export_ok_total = std.atomic.Value(u64).init(0);
+var g_langfuse_export_failed_total = std.atomic.Value(u64).init(0);
+var g_langfuse_export_retry_total = std.atomic.Value(u64).init(0);
+var g_langfuse_queue_depth = std.atomic.Value(u64).init(0);
+var g_langfuse_export_latency_ms_total = std.atomic.Value(u64).init(0);
+var g_langfuse_last_success_at_ms = std.atomic.Value(u64).init(0);
+var g_langfuse_last_failure_at_ms = std.atomic.Value(u64).init(0);
 var g_otel_export_total = std.atomic.Value(u64).init(0);
 var g_otel_export_failed_total = std.atomic.Value(u64).init(0);
 var g_otel_last_success_at_ms = std.atomic.Value(i64).init(0);
@@ -267,20 +277,40 @@ pub fn setAgentScoreLatest(score: u8) void {
     g_agent_score_latest.store(@as(u64, score), .release);
 }
 
-pub fn incLangfuseEmitTotal() void {
-    _ = g_langfuse_emit_total.fetchAdd(1, .monotonic);
+pub fn incLangfuseEnqueued() void {
+    _ = g_langfuse_enqueued_total.fetchAdd(1, .monotonic);
 }
 
-pub fn incLangfuseEmitFailed() void {
-    _ = g_langfuse_emit_failed_total.fetchAdd(1, .monotonic);
+pub fn incLangfuseDropped() void {
+    _ = g_langfuse_dropped_total.fetchAdd(1, .monotonic);
 }
 
-pub fn incLangfuseCircuitOpen() void {
-    _ = g_langfuse_circuit_open_total.fetchAdd(1, .monotonic);
+pub fn incLangfuseExportOk() void {
+    _ = g_langfuse_export_ok_total.fetchAdd(1, .monotonic);
 }
 
-pub fn setLangfuseLastSuccessAtMs(ms: i64) void {
-    g_langfuse_last_success_at_ms.store(ms, .release);
+pub fn incLangfuseExportFailed() void {
+    _ = g_langfuse_export_failed_total.fetchAdd(1, .monotonic);
+}
+
+pub fn incLangfuseExportRetry() void {
+    _ = g_langfuse_export_retry_total.fetchAdd(1, .monotonic);
+}
+
+pub fn setLangfuseQueueDepth(v: usize) void {
+    g_langfuse_queue_depth.store(@as(u64, @intCast(v)), .release);
+}
+
+pub fn addLangfuseExportLatencyMs(ms: u64) void {
+    _ = g_langfuse_export_latency_ms_total.fetchAdd(ms, .monotonic);
+}
+
+pub fn setLangfuseLastSuccessAtMs(ts_ms: i64) void {
+    g_langfuse_last_success_at_ms.store(@as(u64, @intCast(@max(ts_ms, 0))), .release);
+}
+
+pub fn setLangfuseLastFailureAtMs(ts_ms: i64) void {
+    g_langfuse_last_failure_at_ms.store(@as(u64, @intCast(@max(ts_ms, 0))), .release);
 }
 
 pub fn incOtelExportTotal() void {
@@ -366,10 +396,15 @@ fn snapshot() Snapshot {
         .agent_score_computed_elite = g_agent_score_computed_elite.load(.acquire),
         .agent_scoring_failed_total = g_agent_scoring_failed_total.load(.acquire),
         .agent_score_latest = g_agent_score_latest.load(.acquire),
-        .langfuse_emit_total = g_langfuse_emit_total.load(.acquire),
-        .langfuse_emit_failed_total = g_langfuse_emit_failed_total.load(.acquire),
-        .langfuse_circuit_open_total = g_langfuse_circuit_open_total.load(.acquire),
+        .langfuse_enqueued_total = g_langfuse_enqueued_total.load(.acquire),
+        .langfuse_dropped_total = g_langfuse_dropped_total.load(.acquire),
+        .langfuse_export_ok_total = g_langfuse_export_ok_total.load(.acquire),
+        .langfuse_export_failed_total = g_langfuse_export_failed_total.load(.acquire),
+        .langfuse_export_retry_total = g_langfuse_export_retry_total.load(.acquire),
+        .langfuse_queue_depth = g_langfuse_queue_depth.load(.acquire),
+        .langfuse_export_latency_ms_total = g_langfuse_export_latency_ms_total.load(.acquire),
         .langfuse_last_success_at_ms = g_langfuse_last_success_at_ms.load(.acquire),
+        .langfuse_last_failure_at_ms = g_langfuse_last_failure_at_ms.load(.acquire),
         .otel_export_total = g_otel_export_total.load(.acquire),
         .otel_export_failed_total = g_otel_export_failed_total.load(.acquire),
         .otel_last_success_at_ms = g_otel_last_success_at_ms.load(.acquire),
@@ -479,11 +514,15 @@ pub fn renderPrometheus(
     try appendMetric(writer, "zombie_agent_score_computed_elite_total", "counter", "Scored runs with ELITE tier.", s.agent_score_computed_elite);
     try appendMetric(writer, "zombie_agent_scoring_failed_total", "counter", "Total scoring failures caught by fail-safe.", s.agent_scoring_failed_total);
     try appendMetric(writer, "zombie_agent_score_latest", "gauge", "Most recently computed agent score.", s.agent_score_latest);
-
-    try appendMetric(writer, "zombie_langfuse_emit_total", "counter", "Total Langfuse trace export attempts.", s.langfuse_emit_total);
-    try appendMetric(writer, "zombie_langfuse_emit_failed_total", "counter", "Total Langfuse trace export failures.", s.langfuse_emit_failed_total);
-    try appendMetric(writer, "zombie_langfuse_circuit_open_total", "counter", "Total Langfuse requests short-circuited by circuit breaker.", s.langfuse_circuit_open_total);
-    try appendMetric(writer, "zombie_langfuse_last_success_at_ms", "gauge", "Timestamp of last successful Langfuse export in epoch ms.", s.langfuse_last_success_at_ms);
+    try appendMetric(writer, "zombie_langfuse_enqueued_total", "counter", "Total Langfuse traces enqueued for async export.", s.langfuse_enqueued_total);
+    try appendMetric(writer, "zombie_langfuse_dropped_total", "counter", "Total Langfuse traces dropped due to full queue.", s.langfuse_dropped_total);
+    try appendMetric(writer, "zombie_langfuse_export_ok_total", "counter", "Total Langfuse exports completed successfully.", s.langfuse_export_ok_total);
+    try appendMetric(writer, "zombie_langfuse_export_failed_total", "counter", "Total Langfuse exports that exhausted retries and failed.", s.langfuse_export_failed_total);
+    try appendMetric(writer, "zombie_langfuse_export_retry_total", "counter", "Total Langfuse export retry attempts.", s.langfuse_export_retry_total);
+    try appendMetric(writer, "zombie_langfuse_queue_depth", "gauge", "Current depth of in-memory async Langfuse queue.", s.langfuse_queue_depth);
+    try appendMetric(writer, "zombie_langfuse_export_latency_ms_total", "counter", "Cumulative Langfuse export latency in milliseconds.", s.langfuse_export_latency_ms_total);
+    try appendMetric(writer, "zombie_langfuse_last_success_at_ms", "gauge", "Unix epoch milliseconds of last successful Langfuse export.", s.langfuse_last_success_at_ms);
+    try appendMetric(writer, "zombie_langfuse_last_failure_at_ms", "gauge", "Unix epoch milliseconds of last failed Langfuse export.", s.langfuse_last_failure_at_ms);
     try appendMetric(writer, "zombie_otel_export_total", "counter", "Total OTEL metric export attempts.", s.otel_export_total);
     try appendMetric(writer, "zombie_otel_export_failed_total", "counter", "Total OTEL metric export failures.", s.otel_export_failed_total);
     try appendMetric(writer, "zombie_otel_last_success_at_ms", "gauge", "Timestamp of last successful OTEL export in epoch ms.", s.otel_last_success_at_ms);
@@ -524,6 +563,7 @@ test "prometheus render includes key metrics" {
     try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_rate_limit_wait_ms_total"));
     try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_side_effect_outbox_enqueued_total"));
     try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_side_effect_outbox_dead_letter_total"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_langfuse_enqueued_total"));
     try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_api_backpressure_rejections_total"));
     try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_api_in_flight_requests"));
     try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_agent_score_computed_unranked_total"));
@@ -557,6 +597,27 @@ test "integration: worker guardrail metrics are exposed in prometheus output" {
     try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_worker_allocator_leaks_total"));
 }
 
+test "integration: langfuse async pipeline metrics are exposed in prometheus output" {
+    const alloc = std.testing.allocator;
+    incLangfuseEnqueued();
+    incLangfuseDropped();
+    incLangfuseExportOk();
+    incLangfuseExportFailed();
+    incLangfuseExportRetry();
+    setLangfuseQueueDepth(7);
+    addLangfuseExportLatencyMs(42);
+    setLangfuseLastSuccessAtMs(1_710_000_000_000);
+    setLangfuseLastFailureAtMs(1_710_000_000_111);
+
+    const body = try renderPrometheus(alloc, true, 0, 0);
+    defer alloc.free(body);
+
+    try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_langfuse_enqueued_total"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_langfuse_queue_depth 7"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_langfuse_export_latency_ms_total 42"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_langfuse_last_success_at_ms 1710000000000"));
+}
+
 test "integration: api throughput guardrail metrics are exposed in prometheus output" {
     const alloc = std.testing.allocator;
     setApiInFlightRequests(3);
@@ -569,12 +630,8 @@ test "integration: api throughput guardrail metrics are exposed in prometheus ou
     try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_api_backpressure_rejections_total"));
 }
 
-test "integration: exporter pipeline health metrics are exposed in prometheus output" {
+test "integration: otel exporter metrics are exposed in prometheus output" {
     const alloc = std.testing.allocator;
-    incLangfuseEmitTotal();
-    incLangfuseEmitFailed();
-    incLangfuseCircuitOpen();
-    setLangfuseLastSuccessAtMs(1710000000000);
     incOtelExportTotal();
     incOtelExportFailed();
     setOtelLastSuccessAtMs(1710000000000);
@@ -582,10 +639,6 @@ test "integration: exporter pipeline health metrics are exposed in prometheus ou
     const body = try renderPrometheus(alloc, true, 0, 0);
     defer alloc.free(body);
 
-    try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_langfuse_emit_total"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_langfuse_emit_failed_total"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_langfuse_circuit_open_total"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_langfuse_last_success_at_ms"));
     try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_otel_export_total"));
     try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_otel_export_failed_total"));
     try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_otel_last_success_at_ms"));

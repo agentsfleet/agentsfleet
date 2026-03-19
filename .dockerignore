@@ -1,0 +1,26 @@
+# Exclude everything except what the runtime container needs
+# Runtime needs: dist/zombied-linux-{amd64,arm64} and config/
+
+.tmp/
+zig-cache/
+.zig-cache/
+zig-out/
+src/
+build.zig
+build.zig.zon
+.env
+.env.*
+node_modules/
+ui/
+docs/
+.github/
+make/
+schema/
+runbooks/
+skills/
+zombiectl/
+dist/*.tar.gz
+dist/*darwin*
+dist/*windows*
+*.log
+.DS_Store
