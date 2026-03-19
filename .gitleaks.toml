@@ -12,3 +12,13 @@ description = "Ignore deterministic JWT fixtures in jwks unit tests"
 paths = [
   '''(^|/)src/auth/jwks_test\.zig$''',
 ]
+
+[[allowlists]]
+description = "Ignore Zig cache and temp directories"
+paths = [
+  '''(^|/)\.tmp/''',
+  '''(^|/)zig-cache/''',
+  '''(^|/)\.zig-cache/''',
+  '''(^|/)zig-out/''',
+  '''(^|/)\.tmp/zig-global-cache/''',
+]

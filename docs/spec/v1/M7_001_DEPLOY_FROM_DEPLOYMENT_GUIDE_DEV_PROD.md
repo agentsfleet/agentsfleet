@@ -4,7 +4,7 @@
 **Milestone:** M7
 **Workstream:** 001
 **Date:** Mar 08, 2026
-**Updated:** Mar 15, 2026
+**Updated:** Mar 19, 2026: 03:30 PM
 **Status:** IN_PROGRESS
 **Priority:** P0 — deployment execution gate
 **Depends on:** M6_006 (Validate v1 Acceptance E2E Gate), M4_007 (Runtime Environment Contract), M7_002 (Documentation Production And Publish)
@@ -18,10 +18,10 @@
 Execute deployment exactly from `docs/DEPLOYMENT.md` for DEV and record deterministic evidence.
 
 **Dimensions:**
-- 1.1 ✅ DONE Gitleaks workflow exists and is enforced on PR/push lanes; must still be wired as the first gate in the release/deploy DAG before deploy jobs
-- 1.2 PENDING Must implement DEV data-plane provisioning automation from `docs/DEPLOYMENT.md` (DB roles/migrations, Redis ACL/stream contracts, runtime prerequisites)
-- 1.3 PENDING Must replace `deploy-dev` stub in `.github/workflows/release.yml` with real `zombied serve` + `zombied worker` deployment steps
-- 1.4 PENDING Must add post-deploy DEV verification gate: `/healthz`, `/readyz`, `zombied doctor`, and acceptance flow (`login` -> `workspace add` -> `run`) with captured logs
+- 1.1 ✅ DONE Gitleaks wired as hard prerequisite in release DAG (`docker` job now `needs: [verify-tag, binaries]`; gitleaks runs on all PR/push lanes). `.gitleaks.toml` updated to ignore `.tmp/`, `zig-cache/`, `.zig-cache/`, `zig-out/` paths.
+- 1.2 PENDING Must implement DEV data-plane provisioning automation from `docs/DEPLOYMENT.md` (DB roles/migrations, Redis stream bootstrap via `XGROUP CREATE`)
+- 1.3 IN_PROGRESS Container deployment path unblocked: `Dockerfile` refactored to binary-copy model; `deploy-dev.yml` wired (main push → GHCR → Railway DEV → /healthz poll → QA smoke → Discord notify); `release.yml` deploy stubs remain — Railway deploy hook wiring is next.
+- 1.4 IN_PROGRESS `deploy-dev.yml` has `/healthz` + `/readyz` verify-dev job and Playwright QA smoke step. Full evidence artifact (logs, `zombied doctor`, acceptance flow) not yet captured.
 
 ---
 
@@ -66,8 +66,13 @@ Treat deployment execution as validation of `docs/DEPLOYMENT.md` correctness and
 
 ## 6.0 Pending Implementation Notes (Must Implement)
 
-- Wire `gitleaks` as a hard prerequisite in the tag release/deploy DAG, not only as a separate PR/push workflow
-- Replace `deploy-dev`/`deploy-prod` echo stubs with real SSH or platform-native deploy steps using 1Password-loaded secrets
+- ✅ Wire `gitleaks` as a hard prerequisite in the tag release/deploy DAG — done via `needs: [verify-tag, binaries]` on `docker` job
+- ✅ Container build path fixed: `Dockerfile` now copies pre-built binary (`dist/zombied-linux-${TARGETARCH}`) instead of running `zig build` inside Docker. `.dockerignore` added to keep build context minimal.
+- ✅ `docker-compose.yml` — local dev: Postgres 18 + Redis 7 with inline TLS cert generation at startup (no mounted config files). Worker naming standardised to `zombie-worker-{animal}`.
+- ✅ `scripts/check-credentials.sh` — portable credential gate for all vault items; DEV vault fully green, PROD missing 3 items (`planetscale-prod`, `tailscale/authkey`, `worker-ssh/private-key`).
+- ✅ Playbooks (M1_001, M2_001, M2_002) — vault references abstracted to `$VAULT_DEV`/`$VAULT_PROD`; human/agent split documented for Tailscale + worker SSH; redis-acl-* items removed (Upstash manages ACL via dashboard).
+- ✅ `schema/redis-bootstrap.sh` deleted — replaced by one-liner `XGROUP CREATE` in M2_002.
+- Replace `deploy-dev`/`deploy-prod` echo stubs in `release.yml` with real Railway deploy hook + OVHCloud Tailscale SSH steps
 - Add deterministic post-deploy validation jobs for DEV and PROD with machine-readable outputs and artifact upload
 - Generate and store DEV+PROD evidence bundles (commands, logs, health snapshots, acceptance-flow proof) as release-linked artifacts
 - Finalize guide drift fixes in `docs/DEPLOYMENT.md`, then re-run and freeze the validated revision

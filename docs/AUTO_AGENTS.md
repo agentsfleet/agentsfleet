@@ -25,7 +25,7 @@ periodic → autoupgrader
 | 2 | **autoprocurer** | scaling recommendation | provider playbook | server provisioned, IP + credentials |
 | 3 | **autoprovisioner** | new server | IP + credentials | OS installed, Tailscale-joined |
 | 4 | **autohardener** | provisioned server | SSH access | firewall, fail2ban, Debian Trixie security baseline |
-| 5 | **autovaultsaver** | hardened server | server name + credentials | 1Password item created (`zombie-prod-server-{name}`) |
+| 5 | **autovaultsaver** | hardened server | server name + credentials | 1Password item created (`zombie-worker-{name}`) |
 | 6 | **autoinfraready** | vaulted server | server record | Discord notification, server marked ready |
 | 7 | **autoworkerstandup** | ready server + latest release tag | server + binary | worker process running, joined Redis consumer group |
 | 8 | **autoworkerready** | deployed worker | health check | verified healthy, serving runs |
@@ -40,7 +40,7 @@ Current: OVHCloud (Beauharnois CA, bare-metal).
 
 The autoprocurer reads from a provider playbook — a versioned list of approved providers with API integrations. An **autoreviewer** agent periodically evaluates new providers for cost, availability, and compliance, then updates the playbook for the autoprocurer to access.
 
-Server naming: alphabetical animals (`zombie-prod-server-ant`, `zombie-prod-server-bird`, ...).
+Worker naming: alphabetical animals (`zombie-worker-ant`, `zombie-worker-bird`, ...).
 
 ---
 

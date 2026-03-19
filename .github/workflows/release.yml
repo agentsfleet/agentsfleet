@@ -64,19 +64,35 @@ jobs:
   # ── 2. Docker: multi-arch build + push stable to GHCR ──────────────────
   docker:
     runs-on: ubuntu-latest
-    needs: verify-tag
+    needs: [verify-tag, binaries]
     permissions:
       packages: write
     steps:
       - uses: actions/checkout@v6
 
+      - name: Download linux/amd64 binary
+        uses: actions/download-artifact@v8
+        with:
+          name: zombied-linux-amd64
+          path: dist
+
+      - name: Download linux/arm64 binary
+        uses: actions/download-artifact@v8
+        with:
+          name: zombied-linux-arm64
+          path: dist
+
+      - name: Extract binaries
+        run: |
+          cd dist
+          tar xzf zombied-linux-amd64.tar.gz
+          tar xzf zombied-linux-arm64.tar.gz
+
       - uses: docker/setup-qemu-action@v4
       - uses: docker/setup-buildx-action@v4
 
       - name: Build and push production image
-        run: |
-          make build
-          make push
+        run: make push
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_ACTOR: ${{ github.actor }}
@@ -105,7 +121,7 @@ jobs:
           export-env: true
         env:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
-          NPM_TOKEN: op://ZMB_CD_PROD/npm-publish-token/credential
+          NPM_TOKEN: op://${{ vars.VAULT_PROD }}/npm-publish-token/credential
 
       - run: npm ci
       - run: npm run build
@@ -148,7 +164,7 @@ jobs:
       - name: stub — deploy zombied to dev
         run: |
           echo "stub: dev deploy zombied"
-          echo "pending: ZMB_CD_DEV/zombied-dev-server SSH wiring via 1Password"
+          echo "pending: Railway DEV deploy hook wiring via 1Password"
 
   # ── 6. Deploy: prod blue-green + worker (stub) ──────────────────────────
   deploy-prod:
@@ -158,8 +174,8 @@ jobs:
       - name: stub — deploy zombied to prod (blue-green)
         run: |
           echo "stub: prod blue-green deploy zombied"
-          echo "pending: ZMB_CD_PROD/zombied-prod-server-* SSH wiring via 1Password"
+          echo "pending: $VAULT_PROD/zombie-worker-* SSH wiring via 1Password"
       - name: stub — deploy zombied worker to prod
         run: |
           echo "stub: prod worker deploy"
-          echo "pending: ZMB_CD_PROD/zombied-prod-server-* SSH wiring via 1Password"
+          echo "pending: $VAULT_PROD/zombie-worker-* SSH wiring via 1Password"
