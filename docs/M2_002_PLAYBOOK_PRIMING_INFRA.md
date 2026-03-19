@@ -60,21 +60,21 @@ Human does once in Railway dashboard: New Project → Deploy from GitHub → sel
 
 Agent reads from 1Password and sets via `railway variables set` or Railway dashboard:
 
-**DEV service** (reads from `ZMB_CD_DEV`):
+**DEV service** (reads from `$VAULT_DEV`):
 ```bash
-DATABASE_URL     = op://ZMB_CD_DEV/planetscale-dev/connection-string
-REDIS_URL        = op://ZMB_CD_DEV/upstash-dev/url
-CLERK_SECRET_KEY = op://ZMB_CD_DEV/clerk-dev/secret-key
+DATABASE_URL     = op://$VAULT_DEV/planetscale-dev/connection-string
+REDIS_URL        = op://$VAULT_DEV/upstash-dev/url
+CLERK_SECRET_KEY = op://$VAULT_DEV/clerk-dev/secret-key
 PORT             = 3000
 MIGRATE_ON_START = 0
 ENVIRONMENT      = dev
 ```
 
-**PROD service** (reads from `ZMB_CD_PROD`):
+**PROD service** (reads from `$VAULT_PROD`):
 ```bash
-DATABASE_URL     = op://ZMB_CD_PROD/planetscale-prod/connection-string
-REDIS_URL        = op://ZMB_CD_PROD/upstash-prod/url
-CLERK_SECRET_KEY = op://ZMB_CD_PROD/clerk-prod/secret-key
+DATABASE_URL     = op://$VAULT_PROD/planetscale-prod/connection-string
+REDIS_URL        = op://$VAULT_PROD/upstash-prod/url
+CLERK_SECRET_KEY = op://$VAULT_PROD/clerk-prod/secret-key
 PORT             = 3000
 MIGRATE_ON_START = 0
 ENVIRONMENT      = prod
@@ -98,7 +98,7 @@ curl -sf https://dev.api.usezombie.com/readyz | jq '.ready'
 Roles (`api_accessor`, `worker_accessor`, `callback_accessor`, `vault_accessor`) are already defined in `schema/002_vault_schema.sql` with `IF NOT EXISTS` guards — idempotent. All grants across tables are in subsequent migration files. Run all migrations in order:
 
 ```bash
-DATABASE_URL=$(op read "op://ZMB_CD_DEV/planetscale-dev/connection-string")
+DATABASE_URL=$(op read "op://$VAULT_DEV/planetscale-dev/connection-string")
 for f in schema/*.sql; do
   echo "applying $f..."
   psql "$DATABASE_URL" -f "$f"
@@ -117,11 +117,11 @@ Redis is hosted on Upstash (DEV and PROD). ACL is managed via Upstash dashboard 
 Stream setup — run once per environment:
 
 ```bash
-REDIS_URL=$(op read "op://ZMB_CD_DEV/upstash-dev/url")
+REDIS_URL=$(op read "op://$VAULT_DEV/upstash-dev/url")
 redis-cli -u "$REDIS_URL" XGROUP CREATE run_queue workers 0 MKSTREAM
 ```
 
-For PROD, swap `ZMB_CD_DEV/upstash-dev` for `ZMB_CD_PROD/upstash-prod`.
+For PROD, swap `$VAULT_DEV/upstash-dev` for `$VAULT_PROD/upstash-prod`.
 
 For local docker-compose Redis, static credentials are configured in `docker-compose.yml`.
 
@@ -133,29 +133,67 @@ For local docker-compose Redis, static credentials are configured in `docker-com
 
 **PROD only:**
 
-### 4.1 Provision OVHCloud Bare-Metal
+Worker naming: alphabetical animals (`zombie-worker-ant`, `zombie-worker-bird`, ...).
 
-Name nodes alphabetically: `zombie-prod-server-ant`, `zombie-prod-server-bird`, ...
+### 4.1 Human: Tailscale Setup
 
-Base: Debian Trixie, hardened. See `docs/DEPLOYMENT.md §7` for full spec.
+Tailscale creates a private mesh network (tailnet) so workers have no public SSH.
 
-### 4.2 Tailscale
+**One-time account setup (human):**
 
-Run once at provision time on each worker node:
+1. Create a Tailscale account at [tailscale.com](https://login.tailscale.com/start)
+2. In admin console: Settings → Keys → Generate auth key
+   - Enable **Reusable** (CI will use it for multiple nodes)
+   - Optionally enable **Ephemeral** (nodes auto-expire when offline)
+3. Store the auth key: `$VAULT_PROD/tailscale/authkey` in 1Password ✅ (already done)
+
+**Join your Mac to the tailnet (human, once):**
 
 ```bash
-TAILSCALE_AUTHKEY=$(op read "op://ZMB_CD_PROD/tailscale/authkey")
-curl -fsSL https://tailscale.com/install.sh | sh
-tailscale up --authkey "$TAILSCALE_AUTHKEY" --hostname zombie-prod-server-ant
+# Start the daemon (requires sudo)
+sudo tailscaled &
+
+# Join using the vault key (VAULT_PROD defaults to ZMB_CD_PROD)
+tailscale up --authkey "$(op read "op://$VAULT_PROD/tailscale/authkey")"
+
+# Verify
+tailscale status
 ```
 
-Workers are only reachable via Tailscale — no public SSH.
+After this, your Mac can reach any worker node by its Tailscale hostname (e.g. `ssh zombie-worker-ant`).
 
-### 4.3 Deploy zombied Worker to PROD
+### 4.2 Human: Provision OVHCloud Bare-Metal
+
+1. Order bare-metal nodes from OVHCloud (Beauharnois CA)
+2. Install Debian Trixie, apply security baseline (see `docs/DEPLOYMENT.md §7`)
+3. Name each node: `zombie-worker-ant`, `zombie-worker-bird`, ...
+
+### 4.3 Human: Generate Worker SSH Key
 
 ```bash
-WORKER_SSH_KEY=$(op read "op://ZMB_CD_PROD/worker-ssh/private-key")
-for host in zombie-prod-server-ant zombie-prod-server-bird; do
+ssh-keygen -t ed25519 -f zombie-worker -C "ci@usezombie"
+```
+
+- Store private key in 1Password: `$VAULT_PROD/worker-ssh/private-key`
+- Add public key to `~/.ssh/authorized_keys` on each worker node
+
+### 4.4 Agent: Join Workers to Tailnet
+
+Run once per node at provision time:
+
+```bash
+TAILSCALE_AUTHKEY=$(op read "op://$VAULT_PROD/tailscale/authkey")
+curl -fsSL https://tailscale.com/install.sh | sh
+tailscale up --authkey "$TAILSCALE_AUTHKEY" --hostname zombie-worker-ant
+```
+
+Repeat for each node, changing the hostname.
+
+### 4.5 Agent: Deploy zombied Worker to PROD
+
+```bash
+WORKER_SSH_KEY=$(op read "op://$VAULT_PROD/worker-ssh/private-key")
+for host in zombie-worker-ant zombie-worker-bird; do
   ssh -i <(echo "$WORKER_SSH_KEY") "$host" "cd /opt/zombie && ./deploy.sh"
 done
 ```
@@ -182,7 +220,7 @@ push to main
 
 Required 1Password item:
 ```
-DISCORD_WEBHOOK: op://ZMB_CD_PROD/discord-ci-webhook/credential
+DISCORD_WEBHOOK: op://$VAULT_PROD/discord-ci-webhook/credential
 ```
 
 Discord message format:

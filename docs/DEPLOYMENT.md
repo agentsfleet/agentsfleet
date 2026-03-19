@@ -202,7 +202,7 @@ Deploy `zombied serve`. Env vars per `CONFIGURATION.md`. Migration policy: `MIGR
 
 ### 7. Workers (OVHCloud)
 
-**Naming:** alphabetical animals — `zombie-prod-server-ant`, `zombie-prod-server-bird`, `zombie-prod-server-cat`, ...
+**Naming:** alphabetical animals — `zombie-worker-ant`, `zombie-worker-bird`, `zombie-worker-cat`, ...
 
 **Base:** Debian Trixie, hardened. Tailscale for SSH — no public SSH.
 **Connectivity:** Planetscale + Upstash via allowlist.

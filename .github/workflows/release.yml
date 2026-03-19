@@ -164,7 +164,7 @@ jobs:
       - name: stub — deploy zombied to dev
         run: |
           echo "stub: dev deploy zombied"
-          echo "pending: ZMB_CD_DEV/zombied-dev-server SSH wiring via 1Password"
+          echo "pending: Railway DEV deploy hook wiring via 1Password"
 
   # ── 6. Deploy: prod blue-green + worker (stub) ──────────────────────────
   deploy-prod:
@@ -174,8 +174,8 @@ jobs:
       - name: stub — deploy zombied to prod (blue-green)
         run: |
           echo "stub: prod blue-green deploy zombied"
-          echo "pending: ZMB_CD_PROD/zombied-prod-server-* SSH wiring via 1Password"
+          echo "pending: $VAULT_PROD/zombie-worker-* SSH wiring via 1Password"
       - name: stub — deploy zombied worker to prod
         run: |
           echo "stub: prod worker deploy"
-          echo "pending: ZMB_CD_PROD/zombied-prod-server-* SSH wiring via 1Password"
+          echo "pending: $VAULT_PROD/zombie-worker-* SSH wiring via 1Password"
