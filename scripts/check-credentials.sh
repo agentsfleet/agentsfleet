@@ -49,7 +49,8 @@ if [[ "$ENV" == "all" || "$ENV" == "prod" ]]; then
   check "$VAULT_PROD" planetscale-prod         connection-string
   check "$VAULT_PROD" upstash-prod             url
   check "$VAULT_PROD" tailscale                authkey
-  check "$VAULT_PROD" worker-ssh               private-key
+  check "$VAULT_PROD" zombie-worker-ant        ssh-private-key
+  check "$VAULT_PROD" zombie-worker-bird       ssh-private-key
   check "$VAULT_PROD" discord-ci-webhook       credential
   echo ""
 fi

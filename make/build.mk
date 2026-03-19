@@ -43,8 +43,8 @@ build-dev:  ## Build development container (multi-arch)
 push: _docker_login _prepare_prebuilt_linux_binaries ## Push production image (always uses prebuilt linux binaries)
 	$(call _buildx,Dockerfile,$(_PROD_TAGS),--push)
 
-push-dev: _docker_login  ## Push development image to registry
-	$(call _buildx,Dockerfile.dev,$(_DEV_TAGS),--push)
+push-dev: _docker_login  ## Push development image to registry (uses prebuilt linux binaries)
+	$(call _buildx,Dockerfile,$(_DEV_TAGS),--push)
 
 _docker_login:
 	@if [ -n "$(GITHUB_TOKEN)" ]; then \
