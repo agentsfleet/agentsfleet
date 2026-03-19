@@ -583,8 +583,8 @@ fn loadScoreContextBestEffort(
     return scoring.buildScoringContextForEcho(conn, alloc, workspace_id, agent_id, config);
 }
 
-/// Best-effort Langfuse trace emission. Reads config from env on each call
-/// (cheap: returns null immediately when LANGFUSE_HOST is unset).
+/// Best-effort Langfuse trace emission. Uses the async exporter when installed
+/// on worker startup, otherwise falls back to synchronous best-effort emission.
 fn emitLangfuseTrace(
     alloc: std.mem.Allocator,
     ctx: RunContext,
@@ -592,13 +592,7 @@ fn emitLangfuseTrace(
     role_id: []const u8,
     result: agents.AgentResult,
 ) void {
-    const cfg = langfuse.configFromEnv(alloc) orelse return;
-    defer {
-        alloc.free(cfg.host);
-        alloc.free(cfg.public_key);
-        alloc.free(cfg.secret_key);
-    }
-    langfuse.emitTrace(alloc, cfg, .{
+    langfuse.emitTraceAsyncOrFallback(alloc, .{
         .trace_id = ctx.trace_id,
         .run_id = ctx.run_id,
         .stage_id = stage_id,
