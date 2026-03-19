@@ -34,8 +34,6 @@ Every `op://` reference the agent will use across M2_002 and the deploy pipeline
 | `clerk-prod` | `secret-key` | Railway PROD env var |
 | `planetscale-prod` | `connection-string` | Railway PROD `DATABASE_URL` |
 | `upstash-prod` | `url` | Railway PROD `REDIS_URL` |
-| `redis-acl-api-user` | `credential` | `schema/redis-bootstrap.sh` PROD |
-| `redis-acl-worker-user` | `credential` | `schema/redis-bootstrap.sh` PROD |
 | `tailscale` | `authkey` | OVHCloud worker provision |
 | `worker-ssh` | `private-key` | CI → worker deploy SSH |
 | `discord-ci-webhook` | `credential` | `deploy-dev.yml` + `release.yml` notify |
@@ -49,8 +47,6 @@ Every `op://` reference the agent will use across M2_002 and the deploy pipeline
 | `vercel-api-token` | `credential` | Vercel env var setup |
 | `planetscale-dev` | `connection-string` | Railway DEV `DATABASE_URL` |
 | `upstash-dev` | `url` | Railway DEV `REDIS_URL` |
-| `redis-acl-api-user` | `credential` | `schema/redis-bootstrap.sh` DEV |
-| `redis-acl-worker-user` | `credential` | `schema/redis-bootstrap.sh` DEV |
 
 ---
 
@@ -128,8 +124,6 @@ Items not yet in the vault that block M2_002. Create these before re-running:
 | `discord-ci-webhook` | `credential` | Discord → Server Settings → Integrations → Webhooks → New Webhook → Copy URL |
 | `planetscale-prod` | `connection-string` | PlanetScale dashboard → your DB → Connect → copy Postgres connection string |
 | `upstash-prod` | `url` | Upstash dashboard → Redis → `usezombie-cache` → Details → copy Redis URL (`rediss://...`) |
-| `redis-acl-api-user` | `credential` | generate a strong password — you define it, store it here, use it in redis-bootstrap.sh |
-| `redis-acl-worker-user` | `credential` | generate a strong password — same as above |
 | `tailscale` | `authkey` | Tailscale admin → Settings → Keys → Generate auth key (reusable, no expiry for CI) |
 | `worker-ssh` | `private-key` | `ssh-keygen -t ed25519 -f zombie-worker` → store private key here, add public key to OVHCloud nodes |
 
@@ -139,5 +133,3 @@ Items not yet in the vault that block M2_002. Create these before re-running:
 |---|---|---|
 | `planetscale-dev` | `connection-string` | PlanetScale → `usezombie-dev` DB → Connect → copy Postgres connection string |
 | `upstash-dev` | `url` | Upstash → Redis → `usezombie-dev` → Details → copy Redis URL (`rediss://...`) |
-| `redis-acl-api-user` | `credential` | generate a strong password |
-| `redis-acl-worker-user` | `credential` | generate a strong password |

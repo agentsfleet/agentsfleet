@@ -110,22 +110,20 @@ Role contract (`schema/002_vault_schema.sql`):
 - `worker_accessor` — inherits `api_accessor`, read/write on `vault.secrets`
 - `callback_accessor` — inherits `vault_accessor`, write on callback table
 
-### 3.2 Redis — ACL Bootstrap
+### 3.2 Redis — Stream Bootstrap (Upstash)
 
-`schema/redis-bootstrap.sh` — idempotent, run once per environment:
+Redis is hosted on Upstash (DEV and PROD). ACL is managed via Upstash dashboard — no custom ACL commands needed.
+
+Stream setup — run once per environment:
 
 ```bash
-API_PASS=$(op read "op://ZMB_CD_DEV/redis-acl-api-user/credential")
-WORKER_PASS=$(op read "op://ZMB_CD_DEV/redis-acl-worker-user/credential")
 REDIS_URL=$(op read "op://ZMB_CD_DEV/upstash-dev/url")
-
 redis-cli -u "$REDIS_URL" XGROUP CREATE run_queue workers 0 MKSTREAM
-redis-cli -u "$REDIS_URL" ACL SETUSER api_user on ">$API_PASS" "~run_queue" +xadd +xgroup +ping
-redis-cli -u "$REDIS_URL" ACL SETUSER worker_user on ">$WORKER_PASS" "~run_queue" +xreadgroup +xack +xautoclaim +xgroup +ping +xinfo
-redis-cli -u "$REDIS_URL" ACL SETUSER default off
 ```
 
-Run for each environment — swap `ZMB_CD_DEV` for `ZMB_CD_PROD` for production.
+For PROD, swap `ZMB_CD_DEV/upstash-dev` for `ZMB_CD_PROD/upstash-prod`.
+
+For local docker-compose Redis, static credentials are configured in `docker-compose.yml`.
 
 ---
 
