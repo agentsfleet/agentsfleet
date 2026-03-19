@@ -8,6 +8,7 @@ const events_bus = @import("../events/bus.zig");
 const worker = @import("../pipeline/worker.zig");
 const git_ops = @import("../git/ops.zig");
 const obs_log = @import("../observability/logging.zig");
+const langfuse = @import("../observability/langfuse.zig");
 const common = @import("common.zig");
 
 const log = std.log.scoped(.worker);
@@ -64,6 +65,19 @@ pub fn run(alloc: std.mem.Allocator) !void {
         std.process.exit(1);
     };
     defer worker_cfg.deinit();
+
+    if (langfuse.configFromEnv(alloc)) |cfg| {
+        langfuse.installAsyncExporter(alloc, cfg) catch |err| {
+            alloc.free(cfg.host);
+            alloc.free(cfg.public_key);
+            alloc.free(cfg.secret_key);
+            obs_log.logWarnErr(.worker, err, "langfuse async exporter install failed; continuing with fallback mode", .{});
+        };
+        if (langfuse.isAsyncExporterInstalled()) {
+            defer langfuse.uninstallAsyncExporter();
+            log.info("langfuse async exporter enabled", .{});
+        }
+    }
 
     const posthog_api_key = std.process.getEnvVarOwned(alloc, "POSTHOG_API_KEY") catch null;
     defer if (posthog_api_key) |key| alloc.free(key);
