@@ -4,10 +4,15 @@
 **Milestone:** M11
 **Workstream:** 1
 **Date:** Mar 16, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P0 — delivery-critical observability reliability for logs, metrics, and traces
 **Batch:** B1 — starts after v1 acceptance gate
 **Depends on:** M6_006 (Validate v1 Acceptance E2E Gate), M5_001 (PostHog Zig SDK)
+
+**Completion Update (Mar 19, 2026):**
+- Completed in this slice: async Langfuse queue + worker exporter path, non-blocking stage-path emission, retry/backoff, queue/failure visibility metrics, and trace correlation preservation.
+- Verified commands passed in this slice: `python3 scripts/check-pg-drain.py`, `make test-unit`, `make lint`, `make build`.
+- Remaining scope stays open: full Grafana log/metric/trace delivery acceptance and final circuit-breaker hardening/demos.
 
 ---
 
@@ -27,29 +32,29 @@ Define the canonical ownership boundaries and required signal contracts.
 
 ## 2.0 Delivery Pipeline Reliability
 
-**Status:** PENDING
+**Status:** IN_PROGRESS
 
 Implement deterministic data collection and delivery with backpressure-safe behavior.
 
 **Dimensions:**
-- 2.1 PENDING Add buffered async exporters for logs/metrics/traces with bounded queue, retry, and dead-letter policy
-- 2.2 PENDING Define and implement retry/backoff + max-age rules per signal type (logs, metrics, traces)
-- 2.3 PENDING Add health metrics for pipeline itself (queue depth, dropped events, retry attempts, export latency, last_success_at)
-- 2.4 PENDING Ensure worker execution path is non-blocking on observability export failures
+- 2.1 IN_PROGRESS Add buffered async exporters for logs/metrics/traces with bounded queue, retry, and dead-letter policy
+- 2.2 IN_PROGRESS Define and implement retry/backoff + max-age rules per signal type (logs, metrics, traces)
+- 2.3 IN_PROGRESS Add health metrics for pipeline itself (queue depth, dropped events, retry attempts, export latency, last_success_at)
+- 2.4 IN_PROGRESS Ensure worker execution path is non-blocking on observability export failures
 
 ---
 
 ## 3.0 Langfuse Async Hardening
 
-**Status:** PENDING
+**Status:** IN_PROGRESS
 
 Eliminate synchronous Langfuse emission on critical execution paths.
 
 **Dimensions:**
-- 3.1 PENDING Replace sync Langfuse emission path with async queue + worker flush model
-- 3.2 PENDING Add timeout budget and circuit breaker for Langfuse exporter to avoid run-path stalls
-- 3.3 PENDING Guarantee failure visibility via structured logs + metrics when Langfuse export fails or is throttled
-- 3.4 PENDING Preserve trace correlation fields (`run_id`, `trace_id`, `stage_id`) in async path without schema drift
+- 3.1 DONE Replace sync Langfuse emission path with async queue + worker flush model
+- 3.2 IN_PROGRESS Add timeout budget and circuit breaker for Langfuse exporter to avoid run-path stalls
+- 3.3 IN_PROGRESS Guarantee failure visibility via structured logs + metrics when Langfuse export fails or is throttled
+- 3.4 DONE Preserve trace correlation fields (`run_id`, `trace_id`, `stage_id`) in async path without schema drift
 
 ---
 

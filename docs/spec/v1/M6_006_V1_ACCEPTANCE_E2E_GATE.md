@@ -19,7 +19,10 @@
 
 The canonical v1 acceptance target is:
 
-`TBD` — acceptance target repo to be confirmed before E2E run
+
+
+
+
 
 **Dimensions:**
 - 1.1 PENDING Authenticate with `zombiectl login`
