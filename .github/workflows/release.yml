@@ -174,8 +174,8 @@ jobs:
       - name: stub — deploy zombied to prod (blue-green)
         run: |
           echo "stub: prod blue-green deploy zombied"
-          echo "pending: $VAULT_PROD/zombie-worker-* SSH wiring via 1Password"
+          echo "pending: zombie-worker-{ant,bird}/ssh-private-key Tailscale SSH wiring"
       - name: stub — deploy zombied worker to prod
         run: |
           echo "stub: prod worker deploy"
-          echo "pending: $VAULT_PROD/zombie-worker-* SSH wiring via 1Password"
+          echo "pending: zombie-worker-{ant,bird}/ssh-private-key Tailscale SSH wiring"

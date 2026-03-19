@@ -35,7 +35,8 @@ Every `op://` reference the agent will use across M2_002 and the deploy pipeline
 | `planetscale-prod` | `connection-string` | Railway PROD `DATABASE_URL` |
 | `upstash-prod` | `url` | Railway PROD `REDIS_URL` |
 | `tailscale` | `authkey` | OVHCloud worker provision |
-| `worker-ssh` | `private-key` | CI → worker deploy SSH |
+| `zombie-worker-ant` | `ssh-private-key` | CI → worker deploy SSH |
+| `zombie-worker-bird` | `ssh-private-key` | CI → worker deploy SSH |
 | `discord-ci-webhook` | `credential` | `deploy-dev.yml` + `release.yml` notify |
 
 ### 1.2 Vault: `ZMB_CD_DEV`
@@ -125,7 +126,8 @@ Items not yet in the vault that block M2_002. Create these before re-running:
 | `planetscale-prod` | `connection-string` | PlanetScale dashboard → your DB → Connect → copy Postgres connection string |
 | `upstash-prod` | `url` | Upstash dashboard → Redis → `usezombie-cache` → Details → copy Redis URL (`rediss://...`) |
 | `tailscale` | `authkey` | Tailscale admin → Settings → Keys → Generate auth key (reusable, no expiry for CI) |
-| `worker-ssh` | `private-key` | `ssh-keygen -t ed25519 -f zombie-worker` → store private key here, add public key to OVHCloud nodes |
+| `zombie-worker-ant` | `ssh-private-key` | Already in vault ✅ — add public key to `~/.ssh/authorized_keys` on the node |
+| `zombie-worker-bird` | `ssh-private-key` | Already in vault ✅ — add public key to `~/.ssh/authorized_keys` on the node |
 
 **ZMB_CD_DEV — create these:**
 

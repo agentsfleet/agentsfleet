@@ -168,14 +168,11 @@ After this, your Mac can reach any worker node by its Tailscale hostname (e.g. `
 2. Install Debian Trixie, apply security baseline (see `docs/DEPLOYMENT.md §7`)
 3. Name each node: `zombie-worker-ant`, `zombie-worker-bird`, ...
 
-### 4.3 Human: Generate Worker SSH Key
+### 4.3 Human: Store Worker SSH Keys
 
-```bash
-ssh-keygen -t ed25519 -f zombie-worker -C "ci@usezombie"
-```
+Each node's SSH private key is stored in its own vault item (`zombie-worker-ant/ssh-private-key`, `zombie-worker-bird/ssh-private-key`). ✅ Already done in `ZMB_CD_PROD`.
 
-- Store private key in 1Password: `$VAULT_PROD/worker-ssh/private-key`
-- Add public key to `~/.ssh/authorized_keys` on each worker node
+Add the corresponding public key to `~/.ssh/authorized_keys` on each node so CI can SSH in.
 
 ### 4.4 Agent: Join Workers to Tailnet
 
@@ -191,10 +188,12 @@ Repeat for each node, changing the hostname.
 
 ### 4.5 Agent: Deploy zombied Worker to PROD
 
+Each node's SSH key is stored in its own vault item:
+
 ```bash
-WORKER_SSH_KEY=$(op read "op://$VAULT_PROD/worker-ssh/private-key")
-for host in zombie-worker-ant zombie-worker-bird; do
-  ssh -i <(echo "$WORKER_SSH_KEY") "$host" "cd /opt/zombie && ./deploy.sh"
+for node in zombie-worker-ant zombie-worker-bird; do
+  KEY=$(op read "op://$VAULT_PROD/$node/ssh-private-key")
+  ssh -i <(echo "$KEY") "$node" "cd /opt/zombie && ./deploy.sh"
 done
 ```
 
