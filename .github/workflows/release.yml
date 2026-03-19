@@ -156,26 +156,73 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  # ── 5. Deploy: dev (stub — pending 1Password SSH wiring) ────────────────
-  deploy-dev:
+  # ── 5. Verify: DEV gate before PROD rollout ──────────────────────────────
+  verify-dev-gate:
     runs-on: ubuntu-latest
     needs: [create-release, docker]
     steps:
-      - name: stub — deploy zombied to dev
+      - name: Verify DEV readiness gate
         run: |
-          echo "stub: dev deploy zombied"
-          echo "pending: Railway DEV deploy hook wiring via 1Password"
+          echo "Checking DEV API health before PROD rollout..."
+          curl -sf https://dev.api.usezombie.com/healthz >/dev/null
+          curl -sf https://dev.api.usezombie.com/readyz | jq -e '.ready == true' >/dev/null
+          echo "✓ DEV readiness gate passed"
 
-  # ── 6. Deploy: prod blue-green + worker (stub) ──────────────────────────
+  # ── 6. Deploy: prod API + worker rollout ────────────────────────────────
   deploy-prod:
     runs-on: ubuntu-latest
-    needs: deploy-dev
+    needs: verify-dev-gate
+    permissions:
+      contents: read
     steps:
-      - name: stub — deploy zombied to prod (blue-green)
+      - uses: actions/checkout@v6
+
+      - name: Load PROD deploy secrets from 1Password
+        uses: 1password/load-secrets-action@v2
+        with:
+          export-env: true
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          TAILSCALE_AUTHKEY: op://${{ vars.VAULT_PROD }}/tailscale/authkey
+          WORKER_ANT_SSH_KEY: op://${{ vars.VAULT_PROD }}/zombie-worker-ant/ssh-private-key
+          WORKER_BIRD_SSH_KEY: op://${{ vars.VAULT_PROD }}/zombie-worker-bird/ssh-private-key
+
+      - name: Join Tailscale network for private worker SSH
+        uses: tailscale/github-action@v3
+        with:
+          authkey: ${{ env.TAILSCALE_AUTHKEY }}
+          tags: tag:ci
+
+      - name: Verify PROD API rollout via Railway auto-deploy
         run: |
-          echo "stub: prod blue-green deploy zombied"
-          echo "pending: zombie-worker-{ant,bird}/ssh-private-key Tailscale SSH wiring"
-      - name: stub — deploy zombied worker to prod
+          echo "Waiting for Railway PROD deploy..."
+          STATUS=000
+          for i in $(seq 1 24); do
+            STATUS=$(curl -sf -o /dev/null -w "%{http_code}" \
+              https://api.usezombie.com/healthz || echo "000")
+            if [ "$STATUS" = "200" ]; then
+              echo "✓ /healthz green after $((i * 10))s"
+              break
+            fi
+            echo "  attempt $i: status=$STATUS, retrying in 10s..."
+            sleep 10
+          done
+          if [ "$STATUS" != "200" ]; then
+            echo "✗ /healthz did not return 200 after 240s"
+            exit 1
+          fi
+          curl -sf https://api.usezombie.com/readyz | jq -e '.ready == true'
+
+      - name: Deploy worker nodes over Tailscale SSH
         run: |
-          echo "stub: prod worker deploy"
-          echo "pending: zombie-worker-{ant,bird}/ssh-private-key Tailscale SSH wiring"
+          install -m 700 -d ~/.ssh
+          ANT_KEY="$RUNNER_TEMP/worker-ant.key"
+          BIRD_KEY="$RUNNER_TEMP/worker-bird.key"
+          printf '%s\n' "$WORKER_ANT_SSH_KEY" > "$ANT_KEY"
+          printf '%s\n' "$WORKER_BIRD_SSH_KEY" > "$BIRD_KEY"
+          chmod 600 "$ANT_KEY" "$BIRD_KEY"
+
+          ssh -i "$ANT_KEY" -o StrictHostKeyChecking=no zombie-worker-ant \
+            "cd /opt/zombie && ./deploy.sh"
+          ssh -i "$BIRD_KEY" -o StrictHostKeyChecking=no zombie-worker-bird \
+            "cd /opt/zombie && ./deploy.sh"

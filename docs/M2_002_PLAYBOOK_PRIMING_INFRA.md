@@ -18,9 +18,10 @@ Milestone 1 (M1_001_PLAYBOOK_BOOTSTRAP.md) — human + agent bootstrap
         ├── 1.0 Container pipeline
         ├── 2.0 Railway (DEV + PROD services)
         ├── 3.0 Data-plane bootstrap
-        ├── 4.0 Worker infrastructure (OVHCloud + Tailscale)
-        ├── 5.0 CI: main-push dev deploy + QA + Discord notify
-        └── 6.0 First release tag → evidence capture
+        └── 4.0 Worker infrastructure (OVHCloud + Tailscale)
+            └── Milestone 3 deployment execution:
+                ├── docs/M3_001_PLAYBOOK_DEPLOY_DEV.md
+                └── docs/M3_002_PLAYBOOK_DEPLOY_PROD.md
 ```
 
 ---
@@ -165,7 +166,10 @@ After this, your Mac can reach any worker node by its Tailscale hostname (e.g. `
 ### 4.2 Human: Provision OVHCloud Bare-Metal
 
 1. Order bare-metal nodes from OVHCloud (Beauharnois CA)
-2. Install Debian Trixie, apply security baseline (see `docs/DEPLOYMENT.md §7`)
+2. Install Debian Trixie, apply worker security baseline:
+   - Tailnet-only SSH access
+   - Public SSH disabled
+   - Node-scoped deploy key in `~/.ssh/authorized_keys`
 3. Name each node: `zombie-worker-ant`, `zombie-worker-bird`, ...
 
 ### 4.3 Human: Store Worker SSH Keys
@@ -201,55 +205,23 @@ done
 
 ---
 
-## 5.0 CI: Main-Push Dev Deploy + QA + Discord Notify
+## 5.0 Handoff: DEV Deployment Execution (M3_001)
 
-**Trigger:** push to `main`
+After M2 infra priming is complete, execute DEV rollout using:
 
-**Flow:**
-```
-push to main
-  → build dev-latest image → push to GHCR
-  → Railway DEV auto-deploys (GitHub integration)
-  → wait for /healthz green
-  → run QA smoke tests against dev.api.usezombie.com
-  → Discord notify: ✅ DEV green / ❌ DEV failed
-```
+- `docs/M3_001_PLAYBOOK_DEPLOY_DEV.md`
 
-**Workflow file:** `.github/workflows/deploy-dev.yml`
-
-Required 1Password item:
-```
-DISCORD_WEBHOOK: op://$VAULT_PROD/discord-ci-webhook/credential
-```
-
-Discord message format:
-```
-✅ DEV deploy green — {branch} @ {sha}
-   /healthz: ok | QA: {N} passed
-   → ready for tag release
-```
+Do not duplicate DEV deploy execution here.
 
 ---
 
-## 6.0 First Release Tag — Evidence Capture
+## 6.0 Handoff: PROD Deployment Execution (M3_002)
 
-```bash
-# Bump VERSION, update CHANGELOG, tag
-git tag v0.1.0 && git push origin v0.1.0
-```
+After DEV rollout is green (M3_001), execute PROD rollout using:
 
-`release.yml` runs in order:
-1. `binaries` — cross-compile linux/amd64 + linux/arm64
-2. `docker` — build multi-arch image, push to GHCR as `v0.1.0` + `latest`
-3. `npm` — publish `zombiectl` to npm
-4. `create-release` — GitHub Release with changelog + binary attachments
-5. `deploy-prod` — trigger PROD deploy (Railway watches `latest` tag)
-6. `verify-prod` — smoke checks + evidence artifact upload
+- `docs/M3_002_PLAYBOOK_DEPLOY_PROD.md`
 
-**Evidence artifact** attached to GitHub Release:
-- `healthz` + `readyz` JSON snapshots
-- `zombied doctor --format=json` output
-- Acceptance flow log: `login → workspace add → run → PR created`
+Do not duplicate PROD deploy execution here.
 
 ---
 
