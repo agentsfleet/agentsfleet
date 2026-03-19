@@ -1,8 +1,11 @@
-# UseZombie local dev — Postgres + Redis only
-# zombied removed: zig build is run natively via mise, not inside Docker
+# UseZombie local dev — Postgres + Redis + zombied API
+# zombied binary must be pre-built for linux before starting zombied service:
+#   zig build -Dtarget=x86_64-linux -Doptimize=ReleaseSafe
+#   mkdir -p dist && cp zig-out/bin/zombied dist/zombied-linux-amd64
+#   docker compose up zombied
 services:
   postgres:
-    image: postgres:17-alpine  # pg-0.0.0 library tested against PG17; upgrade pg dep before bumping to PG18
+    image: postgres:18-alpine
     environment:
       POSTGRES_USER: usezombie
       POSTGRES_PASSWORD: usezombie
@@ -21,6 +24,28 @@ services:
       - ./docker/redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
       - ./docker/redis/tls:/tls:ro
       - redis-data:/data
+
+  zombied:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        TARGETARCH: amd64
+    ports:
+      - "3000:3000"
+    env_file: .env
+    environment:
+      # Override DB/Redis to use compose service names instead of localhost
+      DATABASE_URL: postgresql://usezombie:usezombie@postgres:5432/usezombiedb
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      - postgres
+      - redis
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
 volumes:
   postgres-data:

@@ -1,7 +1,7 @@
 # Deployment Playbook
 
 Updated: Mar 15, 2026
-Model: Agent-first. Humans bootstrap accounts (see `BOOTSTRAP.md`), agents own everything else.
+Model: Agent-first. Humans bootstrap accounts (see `M1_001_PLAYBOOK_BOOTSTRAP.md`), agents own everything else.
 Runtime env contract: `CONFIGURATION.md`. CI/release pipeline: `spec/v1/M6_005_GITHUB_CI_RELEASE_PIPELINE.md`.
 Public docs source: this file informs `docs.usezombie.com` (Mintlify, repo: `usezombie/docs`).
 
@@ -118,13 +118,13 @@ ENV=dev make env      # → op inject -i .env.dev.tpl -o .env -f
 ENV=prod make env     # → op inject -i .env.prod.tpl -o .env -f
 ```
 
-Vaults: `ZMB_CD_DEV` (dev + local), `ZMB_CD_PROD` (production + CI). Full vault structure in `BOOTSTRAP.md`.
+Vaults: `ZMB_CD_DEV` (dev + local), `ZMB_CD_PROD` (production + CI). Full vault structure in `M1_001_PLAYBOOK_BOOTSTRAP.md`.
 
 ---
 
 ## Agent Deploy Sequence
 
-Human completes Phase 1 in `BOOTSTRAP.md` (accounts + root API keys). Agent does everything below.
+Human completes Milestone 1 in `M1_001_PLAYBOOK_BOOTSTRAP.md` (accounts + root API keys). Agent does everything below.
 
 ### 1. GitHub Secrets
 
