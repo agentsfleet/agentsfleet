@@ -44,7 +44,9 @@ services:
         TARGETARCH: amd64
     ports:
       - "3000:3000"
-    env_file: .env
+    env_file:
+      - path: .env
+        required: false
     environment:
       # Override DB/Redis to use compose service names instead of localhost
       DATABASE_URL: postgresql://usezombie:usezombie@postgres:5432/usezombiedb
