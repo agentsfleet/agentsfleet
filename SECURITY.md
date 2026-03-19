@@ -39,7 +39,7 @@ It explains what we protect, why specific controls exist, and where to configure
 
 1. `zombied doctor` for security posture checks.
 2. `/readyz` for runtime dependency posture.
-3. `docs/DEPLOYMENT.md` for environment rollout and operator checklists.
+3. `docs/M3_001_PLAYBOOK_DEPLOY_DEV.md` and `docs/M3_002_PLAYBOOK_DEPLOY_PROD.md` for rollout/operator checklists.
 
 ## Scope Notes
 

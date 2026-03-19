@@ -32,7 +32,7 @@ Publish deployment and architecture docs aligned with split API/worker runtime.
 
 **Dimensions:**
 - 2.1 PENDING Align `docs/ARCHITECTURE.md` with API-only `serve` and isolated `worker` processes
-- 2.2 PENDING Align `docs/DEPLOYMENT.md` with HTTPS-at-LB/private upstream model
+- 2.2 PENDING Align chronological deployment playbooks (`M2_002`, `M3_001`, `M3_002`) with HTTPS-at-LB/private upstream model
 - 2.3 PENDING Align runtime env docs with role-separated DB/Redis and `rediss://` contract
 - 2.4 PENDING Add explicit operator runbooks for `zombied doctor` and `zombied doctor worker`
 

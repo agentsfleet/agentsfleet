@@ -59,7 +59,7 @@ Read these docs in order:
 4) docs/spec/v1/M1_003_OBSERVABILITY_AND_POLICY.md
    - Event taxonomy, SLOs, policy guardrails (safe/sensitive/critical)
 
-5) docs/DEPLOYMENT.md
+5) docs/M2_002_PLAYBOOK_PRIMING_INFRA.md + docs/M3_001_PLAYBOOK_DEPLOY_DEV.md + docs/M3_002_PLAYBOOK_DEPLOY_PROD.md
    - Stack, env vars, service keys
 
 Task:
@@ -142,7 +142,7 @@ These files must be authored during M1 implementation. They do not exist yet.
 - [ ] `schema/001_initial.sql` — Postgres DDL: tenants, workspaces, specs, runs, run_transitions, artifacts, usage_ledger, workspace_memories, policy_events.
 
 ### Config
-- [ ] `.env.example` — all env vars from DEPLOYMENT.md with placeholder values.
+- [ ] `.env.example` — all env vars from M2/M3 deployment playbooks with placeholder values.
 - [ ] `config/policy.json` — M1 policy defaults: retry budget (3), action classes (safe only), timeout (300s).
 
 ### CLI entry points
