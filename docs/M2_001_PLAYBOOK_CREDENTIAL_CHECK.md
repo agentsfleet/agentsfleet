@@ -42,6 +42,7 @@ Every `op://` reference the agent will use across M2_002 and the deploy pipeline
 | `zombie-worker-bird` | `ssh-private-key` | CI → worker deploy SSH |
 | `discord-ci-webhook` | `credential` | `deploy-dev.yml` + `release.yml` notify |
 | `railway-deploy-hook-prod` | `credential` | `release.yml` → trigger Railway PROD deploy |
+| `railway-api-token` | `credential` | Railway CLI — set up PROD service, set env vars (see M2_002 §2.1) |
 
 ### 1.2 Vault: `ZMB_CD_DEV`
 
@@ -56,6 +57,7 @@ Every `op://` reference the agent will use across M2_002 and the deploy pipeline
 | `planetscale-dev` | `connection-string` | Railway DEV `DATABASE_URL_API` + `DATABASE_URL_WORKER` |
 | `upstash-dev` | `url` | Railway DEV `REDIS_URL_API` + `REDIS_URL_WORKER` |
 | `railway-deploy-hook-dev` | `credential` | `deploy-dev.yml` → trigger Railway DEV deploy |
+| `railway-api-token` | `credential` | Railway CLI — set up DEV service, set env vars (see M2_002 §2.1) |
 
 ---
 
@@ -143,3 +145,12 @@ Items not yet in the vault that block M2_002. Create these before re-running:
 |---|---|---|
 | `planetscale-dev` | `connection-string` | PlanetScale → `usezombie-dev` DB → Connect → copy Postgres connection string |
 | `upstash-dev` | `url` | Upstash → Redis → `usezombie-dev` → Details → copy Redis URL (`rediss://...`) |
+| `railway-api-token` | `credential` | Railway dashboard → Account Settings → Tokens → New Token → scope to project. **Do not use the GitHub integration** — use the token for CLI-based service setup only (see M2_002 §2.1). Store the same token in `ZMB_CD_PROD` if both DEV and PROD are in the same Railway project. |
+| `railway-deploy-hook-dev` | `credential` | Generated after DEV service is created via CLI (M2_002 §2.1 step 6). Railway → DEV service → Settings → Deploy Hook → Generate → copy URL. |
+
+**ZMB_CD_PROD — create these (add to existing list):**
+
+| Item name | Field | How to get the value |
+|---|---|---|
+| `railway-api-token` | `credential` | Same token as DEV if same Railway project, or a separate project-scoped token. |
+| `railway-deploy-hook-prod` | `credential` | Railway → PROD service → Settings → Deploy Hook → Generate → copy URL. Generated after PROD service is created via CLI (M2_002 §2.1). |

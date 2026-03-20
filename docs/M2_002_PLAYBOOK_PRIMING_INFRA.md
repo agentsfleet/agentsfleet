@@ -48,21 +48,122 @@ grep "needs:.*binaries" .github/workflows/release.yml
 
 ## 2.0 Railway Services
 
-### 2.1 Connect Railway to GHCR Image
+### 2.1 Create Railway Services via CLI
 
-Human does once in Railway dashboard per service. **Do not use "Deploy from GitHub source"** — this project uses pre-built binaries packaged into Docker images and pushed to GHCR. Railway must pull from the registry, not build from source.
+**Do not use "Deploy from GitHub source" or the Railway GitHub integration** — connecting Railway to GitHub imports all repos into the project. This project deploys pre-built Docker images from GHCR only.
 
-**DEV service:**
-1. Railway dashboard → New Service → **Deploy from Docker Image**
-2. Image: `ghcr.io/<org>/<service>:dev-latest`
-3. Generate a Railway deploy hook URL for this service (Service → Settings → Deploy Hook → Generate)
-4. Store the hook URL: `op://ZMB_CD_DEV/railway-deploy-hook-dev/credential`
+Use the Railway CLI to create and configure the DEV and PROD services independently.
 
-**PROD service:**
-1. Railway dashboard → New Service → **Deploy from Docker Image**
-2. Image: `ghcr.io/<org>/<service>:latest`
-3. Generate a Railway deploy hook URL for this service
-4. Store the hook URL: `op://ZMB_CD_PROD/railway-deploy-hook-prod/credential`
+#### Prerequisites
+
+```bash
+# Install Railway CLI
+brew install railway
+
+# Authenticate with project-scoped token from vault
+export RAILWAY_TOKEN=$(op read "op://ZMB_CD_DEV/railway-api-token/credential")
+railway whoami   # must return your account name
+```
+
+#### Step 1 — Create or link a Railway project
+
+If no project exists yet:
+```bash
+railway projects create --name usezombie
+```
+
+If a project already exists, get its ID from the Railway dashboard and link:
+```bash
+railway link --project <project-id>
+```
+
+#### Step 2 — Create the DEV service
+
+```bash
+# Create the service (empty, no source yet)
+railway service create --name zombied-dev
+
+# Deploy from GHCR image (no GitHub connection)
+railway up \
+  --service zombied-dev \
+  --image ghcr.io/usezombie/zombied:dev-latest
+
+# Verify service is listed
+railway services
+```
+
+#### Step 3 — Create the PROD service
+
+```bash
+railway service create --name zombied-prod
+
+railway up \
+  --service zombied-prod \
+  --image ghcr.io/usezombie/zombied:latest
+
+railway services
+```
+
+#### Step 4 — Expose port and set custom domain
+
+```bash
+# DEV
+railway domain --service zombied-dev
+# Set custom domain in Railway dashboard → zombied-dev → Settings → Networking
+# Target: dev.api.usezombie.com → port 3000
+
+# PROD
+railway domain --service zombied-prod
+# Target: api.usezombie.com → port 3000
+```
+
+#### Step 5 — Set environment variables
+
+Set all vars for DEV from vault (see §2.2 for the full var list):
+
+```bash
+export RAILWAY_TOKEN=$(op read "op://ZMB_CD_DEV/railway-api-token/credential")
+
+railway variables set \
+  --service zombied-dev \
+  PORT=3000 \
+  ENVIRONMENT=dev \
+  DATABASE_URL_API="$(op read "op://ZMB_CD_DEV/planetscale-dev/connection-string")" \
+  DATABASE_URL_WORKER="$(op read "op://ZMB_CD_DEV/planetscale-dev/connection-string")" \
+  REDIS_URL_API="$(op read "op://ZMB_CD_DEV/upstash-dev/url")" \
+  REDIS_URL_WORKER="$(op read "op://ZMB_CD_DEV/upstash-dev/url")" \
+  ENCRYPTION_MASTER_KEY="$(op read "op://ZMB_CD_DEV/encryption-master-key/credential")" \
+  GITHUB_APP_ID="$(op read "op://ZMB_CD_DEV/github-app/app-id")" \
+  GITHUB_APP_PRIVATE_KEY="$(op read "op://ZMB_CD_DEV/github-app/private-key")" \
+  OIDC_PROVIDER=clerk \
+  MIGRATE_ON_START=0
+```
+
+Repeat for PROD using `ZMB_CD_PROD` values and `--service zombied-prod`.
+
+#### Step 6 — Generate deploy hooks and store in vault
+
+Railway dashboard → zombied-dev service → Settings → Deploy Hook → Generate → copy URL:
+
+```bash
+op item edit railway-deploy-hook-dev \
+  --vault ZMB_CD_DEV \
+  "credential=<paste-hook-url>"
+
+op item edit railway-deploy-hook-prod \
+  --vault ZMB_CD_PROD \
+  "credential=<paste-hook-url>"
+```
+
+#### Verify
+
+```bash
+# Re-run credential check — all railway items must be green
+ENV=dev ./scripts/check-credentials.sh
+
+# Confirm services are running
+curl -sf https://dev.api.usezombie.com/healthz
+```
 
 > CI calls the deploy hook after pushing each image. Railway pulls the new image and restarts the service. No source build happens on Railway.
 
