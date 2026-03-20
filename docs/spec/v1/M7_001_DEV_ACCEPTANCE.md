@@ -9,7 +9,7 @@
 **Depends on:** M7_001_DEPLOY (deploy pipeline wired), M6_006 (CLI hardened, DB gate passing)
 **Successor:** M7_003_PROD_ACCEPTANCE.md
 
-> **⚠️ Immediate blocker (Mar 20, 2026):** All GHCR images deleted during cleanup. Railway DEV is not yet connected to GHCR. The next push to `main` will rebuild and push the image — but `verify-dev` will time out until §1.1 is completed. **Do §1.1 before pushing to main.**
+> **Status (Mar 20, 2026):** Railway DEV service created (`zombied-dev`, project `usezombie`, env `production`). Image rebuilt and pushed. Three manual steps remain before `verify-dev` can pass: §1.1a (GHCR public), §1.1b (Cloudflare DNS), §1.1c (Railway Hobby or Host-header workaround).
 
 ---
 
@@ -17,14 +17,18 @@
 
 **Status:** PENDING
 
-Railway DEV must be connected to GHCR and the full deploy-dev pipeline must run green end-to-end.
+Railway DEV must be running, reachable at `dev.api.usezombie.com`, and the full deploy-dev pipeline must run green end-to-end.
 
 **Dimensions:**
-- 1.1 **PENDING [P0 — do first]** Connect Railway DEV service to `ghcr.io/usezombie/zombied:dev-latest` — configure image source, expose port 3000, set required env vars. Must be done before next push to `main`.
+- 1.1a **PENDING [human — do first]** Set GHCR package `ghcr.io/usezombie/zombied` to **public**: github.com → usezombie org → Packages → zombied → Package settings → Change visibility → Public. Railway cannot pull a private image without credentials.
+- 1.1b **PENDING [human]** Set `dev.api.usezombie.com` DNS in Cloudflare: add CNAME `dev.api` → `zombied-dev-production.up.railway.app`, proxy ON (orange cloud). Set SSL mode to **Full**. Add a Transform Rule to override the Host header to `zombied-dev-production.up.railway.app` (required because Railway free plan has no custom domain — see §1.1c for upgrade path).
+- 1.1c **PENDING [human — recommended]** Upgrade Railway project to Hobby ($5/mo): Railway dashboard → project settings → Upgrade. Then run `railway domain dev.api.usezombie.com --port 3000 --service zombied-dev` to register the custom domain. Railway provisions TLS; remove the Cloudflare Host-header Transform Rule once done.
+- 1.1d **DONE** `deploy-dev.yml` wired: `trigger-railway-dev` job calls Railway GraphQL API (`serviceInstanceRedeploy`) after each GHCR push. Railway service ID and env ID stored as GitHub Actions vars (`RAILWAY_DEV_SERVICE_ID`, `RAILWAY_DEV_ENV_ID`). Railway token stored in `op://ZMB_CD_DEV/railway-api-token/credential`.
 - 1.2 PENDING Verify `deploy-dev.yml` `build-dev` step completes: Zig cross-compile → `make push-dev` → GHCR push succeeds
-- 1.3 PENDING Verify `verify-dev` step passes: `https://dev.api.usezombie.com/healthz` returns 200 within 180s of Railway deploy. **Note:** `verify-dev` now prints HTTP status + response body per attempt (PR #62) — Railway-not-connected vs zombied-crashed are distinguishable in CI output.
-- 1.4 PENDING Verify `verify-dev` step passes: `https://dev.api.usezombie.com/readyz` returns `{ "ready": true }`
-- 1.5 PENDING DEV vault items all green in `check-credentials.sh`: `clerk-dev`, `vercel-api-token`, `planetscale-dev`, `upstash-dev`
+- 1.3 PENDING Verify `trigger-railway-dev` step passes: Railway GraphQL `serviceInstanceRedeploy` returns `true`
+- 1.4 PENDING Verify `verify-dev` step passes: `https://dev.api.usezombie.com/healthz` returns 200 within 180s of Railway deploy. Prints HTTP status + response body per attempt for diagnostics.
+- 1.5 PENDING Verify `verify-dev` step passes: `https://dev.api.usezombie.com/readyz` returns `{ "ready": true }`
+- 1.6 PENDING DEV vault items all green in `check-credentials.sh`: `clerk-dev`, `vercel-api-token`, `planetscale-dev`, `upstash-dev`, `railway-api-token`
 
 ---
 
