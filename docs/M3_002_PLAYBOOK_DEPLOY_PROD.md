@@ -18,8 +18,23 @@ This is the canonical step-by-step PROD deployment runbook.
 ENV=prod ./scripts/check-credentials.sh
 ```
 
-2. Confirm DEV is green (M3_001 complete).
-3. Confirm release inputs are ready (`VERSION`, `CHANGELOG`).
+2. Confirm DEV is green (M3_001 complete with CLI acceptance evidence).
+3. Confirm `VERSION` file matches intended release tag:
+```bash
+cat VERSION   # must match the tag you're about to push, e.g. 0.2.0
+```
+
+4. Confirm `CHANGELOG.md` has a `## [X.Y.Z]` section for this version.
+
+5. Confirm `deploy.sh` is bootstrapped and tested on all worker nodes (M2_002 §4.7). **Do not cut a release tag before this is verified.** If not done:
+```bash
+for node in zombie-worker-ant zombie-worker-bird; do
+  KEY=$(op read "op://$VAULT_PROD/$node/ssh-private-key")
+  ssh -i <(echo "$KEY") "$node" "ls -la /opt/zombie/deploy.sh"
+done
+```
+
+6. Confirm Railway PROD deploy hook URL is in vault: `op://ZMB_CD_PROD/railway-deploy-hook-prod/credential`.
 
 ---
 
@@ -96,11 +111,33 @@ Recommended evidence location:
 
 ---
 
-## 6.0 Exit Criteria
+## 6.0 CLI PROD Smoke Gate
 
-- release workflow complete and green
-- PROD `/healthz` and `/readyz` pass
-- workers successfully redeployed over Tailscale SSH
-- evidence recorded
+Run the CLI smoke against PROD after `/healthz` and `/readyz` are green:
 
-If any gate fails, stop and fix before next tag.
+```bash
+export ZOMBIE_API_URL=https://api.<domain>
+
+npx zombiectl login
+npx zombiectl workspace add <ACCEPTANCE_REPO_URL>
+npx zombiectl specs sync docs/spec/
+npx zombiectl run
+npx zombiectl runs list
+```
+
+Confirm:
+- run reaches `completed` with a `pr_url`
+- spec-to-PR latency under 5 minutes
+- no errors in `runs list` output
+
+---
+
+## 7.0 Exit Criteria
+
+- `release.yml` fully green: binaries, docker, npm, GitHub Release, deploy-prod all pass
+- PROD `/healthz` and `/readyz` green
+- workers redeployed over Tailscale SSH; run queue consumed
+- CLI PROD smoke complete (§6.0)
+- evidence recorded (see M7_003_PROD_ACCEPTANCE.md §9.0)
+
+If any gate fails, stop and fix before cutting a new tag.

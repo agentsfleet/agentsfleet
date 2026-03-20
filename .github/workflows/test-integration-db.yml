@@ -20,7 +20,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: mlugg/setup-zig@v2
+      - uses: jetsung/setup-zig@v1
         with:
           version: 0.15.2
 

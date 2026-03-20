@@ -48,34 +48,81 @@ grep "needs:.*binaries" .github/workflows/release.yml
 
 ## 2.0 Railway Services
 
-### 2.1 Connect Railway to GitHub Repo
+### 2.1 Connect Railway to GHCR Image
 
-Human does once in Railway dashboard: New Project → Deploy from GitHub → select repo.
+Human does once in Railway dashboard per service. **Do not use "Deploy from GitHub source"** — this project uses pre-built binaries packaged into Docker images and pushed to GHCR. Railway must pull from the registry, not build from source.
 
-**DEV service:** watches `main` branch — auto-deploys on every push — runs `zombied serve`.
-**PROD service:** watches `ghcr.io/usezombie/zombied:latest` — deploys when a new release tag is pushed.
+**DEV service:**
+1. Railway dashboard → New Service → **Deploy from Docker Image**
+2. Image: `ghcr.io/<org>/<service>:dev-latest`
+3. Generate a Railway deploy hook URL for this service (Service → Settings → Deploy Hook → Generate)
+4. Store the hook URL: `op://ZMB_CD_DEV/railway-deploy-hook-dev/credential`
 
-> GitHub integration is preferred over deploy hooks — no secret webhook URLs to manage.
+**PROD service:**
+1. Railway dashboard → New Service → **Deploy from Docker Image**
+2. Image: `ghcr.io/<org>/<service>:latest`
+3. Generate a Railway deploy hook URL for this service
+4. Store the hook URL: `op://ZMB_CD_PROD/railway-deploy-hook-prod/credential`
+
+> CI calls the deploy hook after pushing each image. Railway pulls the new image and restarts the service. No source build happens on Railway.
 
 ### 2.2 Set Railway Env Vars
 
-Agent reads from 1Password and sets via `railway variables set` or Railway dashboard:
+Agent reads from 1Password and sets via Railway dashboard or `railway variables set`.
 
-**DEV service** (reads from `$VAULT_DEV`):
-```bash
-DATABASE_URL     = op://$VAULT_DEV/planetscale-dev/connection-string
-REDIS_URL        = op://$VAULT_DEV/upstash-dev/url
-CLERK_SECRET_KEY = op://$VAULT_DEV/clerk-dev/secret-key
+> **Important:** `DATABASE_URL` and `REDIS_URL` are **not** valid for `zombied serve`. Use the role-separated vars below. See `docs/CONFIGURATION.md` for the full contract.
+
+**DEV service** — set these in Railway DEV service environment:
+
+```
+# Storage — role-separated (required)
+DATABASE_URL_API     = <planetscale-dev connection-string>
+DATABASE_URL_WORKER  = <planetscale-dev connection-string>   # same DB, different role in practice
+
+REDIS_URL_API        = <upstash-dev url>
+REDIS_URL_WORKER     = <upstash-dev url>
+
+# Secrets (required)
+ENCRYPTION_MASTER_KEY = <encryption-master-key credential from ZMB_CD_DEV>
+
+# GitHub App (required)
+GITHUB_APP_ID          = <github-app app-id from ZMB_CD_DEV>
+GITHUB_APP_PRIVATE_KEY = <github-app private-key from ZMB_CD_DEV>
+
+# Auth (required — Clerk OIDC)
+OIDC_PROVIDER  = clerk
+OIDC_JWKS_URL  = https://<clerk-dev-domain>/.well-known/jwks.json
+OIDC_ISSUER    = https://<clerk-dev-domain>
+
+# Server
 PORT             = 3000
 MIGRATE_ON_START = 0
 ENVIRONMENT      = dev
 ```
 
-**PROD service** (reads from `$VAULT_PROD`):
-```bash
-DATABASE_URL     = op://$VAULT_PROD/planetscale-prod/connection-string
-REDIS_URL        = op://$VAULT_PROD/upstash-prod/url
-CLERK_SECRET_KEY = op://$VAULT_PROD/clerk-prod/secret-key
+**PROD service** — set these in Railway PROD service environment:
+
+```
+# Storage — role-separated (required)
+DATABASE_URL_API     = <planetscale-prod connection-string>
+DATABASE_URL_WORKER  = <planetscale-prod connection-string>
+
+REDIS_URL_API        = <upstash-prod url>
+REDIS_URL_WORKER     = <upstash-prod url>
+
+# Secrets (required)
+ENCRYPTION_MASTER_KEY = <encryption-master-key credential from ZMB_CD_PROD>
+
+# GitHub App (required)
+GITHUB_APP_ID          = <github-app app-id from ZMB_CD_PROD>
+GITHUB_APP_PRIVATE_KEY = <github-app private-key from ZMB_CD_PROD>
+
+# Auth (required — Clerk OIDC)
+OIDC_PROVIDER  = clerk
+OIDC_JWKS_URL  = https://<clerk-prod-domain>/.well-known/jwks.json
+OIDC_ISSUER    = https://<clerk-prod-domain>
+
+# Server
 PORT             = 3000
 MIGRATE_ON_START = 0
 ENVIRONMENT      = prod
@@ -190,9 +237,93 @@ tailscale up --authkey "$TAILSCALE_AUTHKEY" --hostname zombie-worker-ant
 
 Repeat for each node, changing the hostname.
 
-### 4.5 Agent: Deploy zombied Worker to PROD
+### 4.5 Human: Install Docker on Each Worker Node
 
-Each node's SSH key is stored in its own vault item:
+SSH into each node and install Docker (one-time):
+
+```bash
+# On each worker node (Debian Trixie)
+apt-get update
+apt-get install -y docker.io
+systemctl enable docker
+systemctl start docker
+
+# Verify
+docker --version
+```
+
+Also authenticate Docker to GHCR on each node so `docker pull` succeeds:
+
+```bash
+# Generate a GitHub PAT with read:packages scope (human does this once)
+# Then on each node:
+echo "<GITHUB_PAT>" | docker login ghcr.io -u <github-org> --password-stdin
+```
+
+Store the GHCR pull token in the vault: `op://ZMB_CD_PROD/ghcr-pull-token/credential`.
+
+### 4.6 Human: Bootstrap /opt/zombie/ on Each Worker Node
+
+Run once per node:
+
+```bash
+mkdir -p /opt/zombie
+chown deploy-user:deploy-user /opt/zombie
+```
+
+Create `/opt/zombie/deploy.sh` on each node:
+
+```bash
+cat > /opt/zombie/deploy.sh << 'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+IMAGE="ghcr.io/<org>/<service>:latest"
+
+echo "Pulling $IMAGE..."
+docker pull "$IMAGE"
+
+echo "Restarting zombied-worker..."
+docker stop zombied-worker 2>/dev/null || true
+docker rm   zombied-worker 2>/dev/null || true
+
+docker run -d \
+  --name zombied-worker \
+  --restart unless-stopped \
+  --env-file /opt/zombie/.env \
+  "$IMAGE" \
+  zombied worker
+
+echo "Done. Container status:"
+docker ps --filter name=zombied-worker
+EOF
+chmod +x /opt/zombie/deploy.sh
+```
+
+Create `/opt/zombie/.env` on each node with the required runtime env vars (see §2.2 PROD vars — same set, no PORT/MIGRATE_ON_START needed for worker-only nodes).
+
+> `/opt/zombie/.env` contains secrets — set permissions to `600` and owned by `deploy-user` only.
+
+```bash
+chmod 600 /opt/zombie/.env
+```
+
+### 4.7 Agent: Verify deploy.sh Before First Release
+
+Before cutting the first release tag, SSH into each node and do a dry run:
+
+```bash
+for node in zombie-worker-ant zombie-worker-bird; do
+  KEY=$(op read "op://$VAULT_PROD/$node/ssh-private-key")
+  ssh -i <(echo "$KEY") "$node" "ls -la /opt/zombie/deploy.sh && /opt/zombie/deploy.sh"
+done
+```
+
+This confirms Docker auth, image pull, and container restart work before CI depends on it.
+
+### 4.8 Agent: Run Deploy via CI (Normal Path)
+
+After bootstrap, all subsequent deploys go through CI (`release.yml`):
 
 ```bash
 for node in zombie-worker-ant zombie-worker-bird; do
@@ -200,8 +331,6 @@ for node in zombie-worker-ant zombie-worker-bird; do
   ssh -i <(echo "$KEY") "$node" "cd /opt/zombie && ./deploy.sh"
 done
 ```
-
-`deploy.sh` on each node: pulls `ghcr.io/usezombie/zombied:latest`, restarts `zombied worker`.
 
 ---
 

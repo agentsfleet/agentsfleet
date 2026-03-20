@@ -41,7 +41,7 @@ jobs:
       - uses: actions/checkout@v6
 
       - name: Cross-compile zombied for linux/amd64
-        uses: mlugg/setup-zig@v2
+        uses: jetsung/setup-zig@v1
         with:
           version: 0.15.2
 
@@ -134,7 +134,7 @@ jobs:
     if: always()
     steps:
       - name: Load Discord webhook from 1Password
-        uses: 1password/load-secrets-action@v2
+        uses: 1password/load-secrets-action@v3
         with:
           export-env: true
         env:

@@ -38,9 +38,24 @@ One key per service:
 | Cloudflare | API token with Zone:Edit + Zone:Read (all zones) | CF → My Profile → API Tokens |
 | Clerk (DEV instance) | Publishable key + Secret key | Clerk dashboard → DEV instance → API Keys |
 | Clerk (PROD instance) | Publishable key + Secret key | Clerk dashboard → PROD instance → API Keys |
+| GitHub App | App ID + PEM private key | GitHub → Settings → Developer settings → GitHub Apps → New GitHub App |
 | npm | Granular publish token | npmjs.org → Access Tokens |
 | Codecov | Repo token | Codecov → repo settings |
 | gitleaks | License key | gitleaks.io |
+
+### 1.3a Generate Encryption Master Key
+
+Generate a 32-byte (64 hex char) AES-256 key for at-rest secret encryption. Run once per environment:
+
+```bash
+# DEV key
+openssl rand -hex 32
+
+# PROD key (run separately — must differ from DEV)
+openssl rand -hex 32
+```
+
+Store each output as `credential` in its respective vault item (`encryption-master-key`). Never reuse between environments.
 
 ### 1.3 Hand Off to Agent
 
@@ -70,6 +85,9 @@ Agent executes these steps immediately after receiving the hand-off from 1.3.
 | `vercel-bypass-agents` | `credential` | Vercel → `usezombie-agents-sh` → Deployment Protection → Bypass |
 | `vercel-bypass-app` | `credential` | Vercel → `usezombie-app` → Deployment Protection → Bypass |
 | `clerk-prod` | `publishable-key`, `secret-key` | Clerk PROD instance API Keys |
+| `github-app` | `app-id` | GitHub App → App ID (numeric) |
+| `github-app` | `private-key` | GitHub App → Generate a private key → PEM contents |
+| `encryption-master-key` | `credential` | `openssl rand -hex 32` — PROD key (see §1.3a) |
 | `zombied-prod-server-1` | `hostname`, `ssh-private-key`, `deploy-user` | on server provision |
 | `zombied-prod-server-2` | `hostname`, `ssh-private-key`, `deploy-user` | on server provision |
 
@@ -79,6 +97,9 @@ Agent executes these steps immediately after receiving the hand-off from 1.3.
 |---|---|---|
 | `clerk-dev` | `publishable-key`, `secret-key` | Clerk DEV instance API Keys |
 | `vercel-api-token` | `credential` | Vercel Account Settings → Tokens |
+| `github-app` | `app-id` | Same GitHub App — reuse PROD app-id for DEV |
+| `github-app` | `private-key` | Same GitHub App PEM |
+| `encryption-master-key` | `credential` | `openssl rand -hex 32` — DEV key (must differ from PROD) |
 
 ### 2.2 Set GitHub Secrets and Variables
 
@@ -103,7 +124,34 @@ GitHub repo → Settings → Secrets and Variables → Actions:
 
 > Workflows reference these as `${{ vars.VAULT_DEV }}` / `${{ vars.VAULT_PROD }}` — no hardcoded vault names anywhere in CI. Scripts fall back to `ZMB_CD_DEV` / `ZMB_CD_PROD` if the env var is not set locally.
 
-### 2.3 Cloudflare — Zone Discovery
+### 2.3 GHCR Package Permissions
+
+After the first CI push to GHCR (triggered automatically on the first merge to `main`), set the package visibility and grant the repo write access so subsequent pushes succeed:
+
+1. Go to `https://github.com/orgs/<org>/packages/container/<service>`
+2. **Settings → Change visibility** → set to `Private` (or `Public` if open source)
+3. **Settings → Manage Actions access → Add repository** → select the repo → set role to **Write**
+
+This is a one-time human step. Without it, `docker push` in CI fails with a 403.
+
+### 2.3a Railway Services — DEV and PROD
+
+**Human does once in Railway dashboard:**
+
+1. New Project → **Deploy from Docker Image** (not "Deploy from GitHub source")
+2. **DEV service:** image = `ghcr.io/<org>/<service>:dev-latest`
+   - Source type: Docker Image
+   - Auto-deploy: Railway polls or use a deploy hook (see M2_002 §2.3)
+3. **PROD service:** image = `ghcr.io/<org>/<service>:latest`
+   - Source type: Docker Image
+   - Auto-deploy: triggered by Railway deploy hook called from `release.yml`
+4. Set the Railway deploy hook URL for each service and store in vault:
+   - `railway-deploy-hook-dev` → `credential` in `ZMB_CD_DEV`
+   - `railway-deploy-hook-prod` → `credential` in `ZMB_CD_PROD`
+
+> Do **not** connect Railway to the GitHub branch for source-based builds. Our model builds and cross-compiles binaries in CI, packages them into a Docker image, and pushes to GHCR. Railway pulls from GHCR only.
+
+### 2.6 Cloudflare — Zone Discovery
 
 ```bash
 # VAULT_PROD must be set in your environment (or export it first)
@@ -112,7 +160,7 @@ curl -s -H "Authorization: Bearer $CF_TOKEN" \
   https://api.cloudflare.com/client/v4/zones | jq '.result[] | {name, id}'
 ```
 
-### 2.4 Vercel — Set Env Vars
+### 2.7 Vercel — Set Env Vars
 
 Agent reads project IDs and API token from 1Password, sets via Vercel API (`PATCH /v9/projects/{id}/env`).
 
