@@ -51,8 +51,9 @@ if [[ "$ENV" == "all" || "$ENV" == "prod" ]]; then
   check "$VAULT_PROD" tailscale                authkey
   check "$VAULT_PROD" zombie-worker-ant        ssh-private-key
   check "$VAULT_PROD" zombie-worker-bird       ssh-private-key
-  check "$VAULT_PROD" discord-ci-webhook       credential
-  check "$VAULT_PROD" railway-deploy-hook-prod credential
+  check "$VAULT_PROD" discord-ci-webhook        credential
+  check "$VAULT_PROD" fly-api-token             credential
+  check "$VAULT_PROD" cloudflare-tunnel-prod    credential
   echo ""
 fi
 
@@ -60,11 +61,11 @@ if [[ "$ENV" == "all" || "$ENV" == "dev" ]]; then
   echo "=== $VAULT_DEV ==="
   check "$VAULT_DEV" clerk-dev                 publishable-key
   check "$VAULT_DEV" clerk-dev                 secret-key
-  check "$VAULT_DEV" vercel-api-token          credential
-  check "$VAULT_DEV" planetscale-dev           connection-string
-  check "$VAULT_DEV" upstash-dev               url
-  check "$VAULT_DEV" railway-api-token         credential
-  check "$VAULT_DEV" railway-deploy-hook-dev   credential
+  check "$VAULT_DEV" vercel-api-token           credential
+  check "$VAULT_DEV" planetscale-dev            connection-string
+  check "$VAULT_DEV" upstash-dev                url
+  check "$VAULT_DEV" fly-api-token              credential
+  check "$VAULT_DEV" cloudflare-tunnel-dev      credential
   echo ""
 fi
 

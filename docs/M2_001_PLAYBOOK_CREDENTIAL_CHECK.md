@@ -30,34 +30,34 @@ Every `op://` reference the agent will use across M2_002 and the deploy pipeline
 | `vercel-bypass-website` | `credential` | `smoke-post-deploy.yml` |
 | `vercel-bypass-agents` | `credential` | `smoke-post-deploy.yml` |
 | `vercel-bypass-app` | `credential` | `smoke-post-deploy.yml` |
-| `clerk-prod` | `publishable-key` | Railway PROD env var |
-| `clerk-prod` | `secret-key` | Railway PROD env var |
-| `github-app` | `app-id` | Railway PROD + DEV `GITHUB_APP_ID` |
-| `github-app` | `private-key` | Railway PROD + DEV `GITHUB_APP_PRIVATE_KEY` |
-| `encryption-master-key` | `credential` | Railway PROD `ENCRYPTION_MASTER_KEY` |
-| `planetscale-prod` | `connection-string` | Railway PROD `DATABASE_URL_API` + `DATABASE_URL_WORKER` |
-| `upstash-prod` | `url` | Railway PROD `REDIS_URL_API` + `REDIS_URL_WORKER` |
+| `clerk-prod` | `publishable-key` | Fly.io PROD `OIDC_JWKS_URL` + `OIDC_ISSUER` |
+| `clerk-prod` | `secret-key` | Fly.io PROD env var |
+| `github-app` | `app-id` | Fly.io PROD + DEV `GITHUB_APP_ID` |
+| `github-app` | `private-key` | Fly.io PROD + DEV `GITHUB_APP_PRIVATE_KEY` |
+| `encryption-master-key` | `credential` | Fly.io PROD `ENCRYPTION_MASTER_KEY` |
+| `planetscale-prod` | `connection-string` | Fly.io PROD `DATABASE_URL_API` + `DATABASE_URL_WORKER` |
+| `upstash-prod` | `url` | Fly.io PROD `REDIS_URL_API` + `REDIS_URL_WORKER` |
 | `tailscale` | `authkey` | worker node provision |
 | `zombie-worker-ant` | `ssh-private-key` | CI → worker deploy SSH |
 | `zombie-worker-bird` | `ssh-private-key` | CI → worker deploy SSH |
 | `discord-ci-webhook` | `credential` | `deploy-dev.yml` + `release.yml` notify |
-| `railway-deploy-hook-prod` | `credential` | `release.yml` → trigger Railway PROD deploy |
-| `railway-api-token` | `credential` | Railway CLI — set up PROD service, set env vars (see M2_002 §2.1) |
+| `fly-api-token` | `credential` | `release.yml` → `fly deploy --app zombied-prod` (see M2_002 §2.6) |
+| `cloudflare-tunnel-prod` | `credential` | Cloudflare Tunnel credentials for PROD origin shield (see M2_002 §2.4) |
 
 ### 1.2 Vault: `ZMB_CD_DEV`
 
 | Item | Field | Used by |
 |---|---|---|
-| `clerk-dev` | `publishable-key` | Railway DEV env var |
-| `clerk-dev` | `secret-key` | Railway DEV env var |
-| `github-app` | `app-id` | Railway DEV `GITHUB_APP_ID` |
-| `github-app` | `private-key` | Railway DEV `GITHUB_APP_PRIVATE_KEY` |
-| `encryption-master-key` | `credential` | Railway DEV `ENCRYPTION_MASTER_KEY` |
+| `clerk-dev` | `publishable-key` | Fly.io DEV `OIDC_JWKS_URL` + `OIDC_ISSUER` |
+| `clerk-dev` | `secret-key` | Fly.io DEV env var |
+| `github-app` | `app-id` | Fly.io DEV `GITHUB_APP_ID` |
+| `github-app` | `private-key` | Fly.io DEV `GITHUB_APP_PRIVATE_KEY` |
+| `encryption-master-key` | `credential` | Fly.io DEV `ENCRYPTION_MASTER_KEY` |
 | `vercel-api-token` | `credential` | Vercel env var setup |
-| `planetscale-dev` | `connection-string` | Railway DEV `DATABASE_URL_API` + `DATABASE_URL_WORKER` |
-| `upstash-dev` | `url` | Railway DEV `REDIS_URL_API` + `REDIS_URL_WORKER` |
-| `railway-deploy-hook-dev` | `credential` | `deploy-dev.yml` → trigger Railway DEV deploy |
-| `railway-api-token` | `credential` | Railway CLI — set up DEV service, set env vars (see M2_002 §2.1) |
+| `planetscale-dev` | `connection-string` | Fly.io DEV `DATABASE_URL_API` + `DATABASE_URL_WORKER` |
+| `upstash-dev` | `url` | Fly.io DEV `REDIS_URL_API` + `REDIS_URL_WORKER` |
+| `fly-api-token` | `credential` | `deploy-dev.yml` → `fly deploy --app zombied-dev` (see M2_002 §2.6) |
+| `cloudflare-tunnel-dev` | `credential` | Cloudflare Tunnel credentials for DEV origin shield (see M2_002 §2.4) |
 
 ---
 
@@ -145,12 +145,12 @@ Items not yet in the vault that block M2_002. Create these before re-running:
 |---|---|---|
 | `planetscale-dev` | `connection-string` | PlanetScale → `usezombie-dev` DB → Connect → copy Postgres connection string |
 | `upstash-dev` | `url` | Upstash → Redis → `usezombie-dev` → Details → copy Redis URL (`rediss://...`) |
-| `railway-api-token` | `credential` | Railway dashboard → Account Settings → Tokens → New Token → scope to project. **Do not use the GitHub integration** — use the token for CLI-based service setup only (see M2_002 §2.1). Store the same token in `ZMB_CD_PROD` if both DEV and PROD are in the same Railway project. |
-| `railway-deploy-hook-dev` | `credential` | Generated after DEV service is created via CLI (M2_002 §2.1 step 6). Railway → DEV service → Settings → Deploy Hook → Generate → copy URL. |
+| `fly-api-token` | `credential` | `fly tokens create deploy -o <org>` — copy output. Scoped to org, used by CI to deploy. |
+| `cloudflare-tunnel-dev` | `credential` | Agent-created: `cloudflared tunnel create zombied-dev` → base64-encode the credentials JSON → store here (see M2_002 §2.4). |
 
 **ZMB_CD_PROD — create these (add to existing list):**
 
 | Item name | Field | How to get the value |
 |---|---|---|
-| `railway-api-token` | `credential` | Same token as DEV if same Railway project, or a separate project-scoped token. |
-| `railway-deploy-hook-prod` | `credential` | Railway → PROD service → Settings → Deploy Hook → Generate → copy URL. Generated after PROD service is created via CLI (M2_002 §2.1). |
+| `fly-api-token` | `credential` | Same deploy token as DEV if org-scoped, or create a separate one for PROD isolation. |
+| `cloudflare-tunnel-prod` | `credential` | Agent-created: `cloudflared tunnel create zombied-prod` → base64-encode credentials JSON → store here (see M2_002 §2.4). |
