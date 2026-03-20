@@ -1,6 +1,5 @@
 const std = @import("std");
 const pg = @import("pg");
-const posthog = @import("posthog");
 const types = @import("../types.zig");
 const state = @import("../state/machine.zig");
 const billing = @import("../state/billing.zig");
@@ -15,38 +14,16 @@ const worker_runtime = @import("worker_runtime.zig");
 const worker_paths = @import("worker_paths.zig");
 const worker_rate_limiter = @import("worker_rate_limiter.zig");
 const worker_execute_run = @import("worker_execute_run.zig");
-const worker_pr_flow = @import("worker_pr_flow.zig");
 const metrics = @import("../observability/metrics.zig");
-const events = @import("../events/bus.zig");
-const trace = @import("../observability/trace.zig");
-const langfuse = @import("../observability/langfuse.zig");
 const posthog_events = @import("../observability/posthog_events.zig");
 const scoring = @import("scoring.zig");
-const obs_log = @import("../observability/logging.zig");
+const worker_stage_types = @import("worker_stage_types.zig");
+const worker_stage_helpers = @import("worker_stage_helpers.zig");
+const worker_stage_outcomes = @import("worker_stage_outcomes.zig");
 const log = std.log.scoped(.worker);
 
-pub const ExecuteConfig = struct {
-    cache_root: []const u8,
-    max_attempts: u32,
-    run_timeout_ms: u64,
-    skill_registry: ?*const agents.SkillRegistry = null,
-    posthog: ?*posthog.PostHogClient = null,
-};
-
-pub const RunContext = struct {
-    run_id: []const u8,
-    request_id: []const u8,
-    trace_id: []const u8,
-    workspace_id: []const u8,
-    spec_id: []const u8,
-    tenant_id: []const u8,
-    requested_by: []const u8,
-    repo_url: []const u8,
-    default_branch: []const u8,
-    spec_path: []const u8,
-    attempt: u32,
-    agent_id: []const u8 = "",
-};
+pub const ExecuteConfig = worker_stage_types.ExecuteConfig;
+pub const RunContext = worker_stage_types.RunContext;
 
 const BareCloneRetryCtx = struct {
     alloc: std.mem.Allocator,
@@ -83,18 +60,6 @@ fn opRunStage(ctx: StageRetryCtx, _: u32) !agents.AgentResult {
 fn recordScoringFailure(scoring_state: *scoring.ScoringState, err: anyerror) anyerror {
     scoring_state.failure_error_name = @errorName(err);
     return err;
-}
-
-const CommitRetryCtx = struct {
-    alloc: std.mem.Allocator,
-    wt_path: []const u8,
-    rel_path: []const u8,
-    content: []const u8,
-    msg: []const u8,
-};
-
-fn opCommitArtifact(ctx: CommitRetryCtx, _: u32) !void {
-    return git.commitFile(ctx.alloc, ctx.wt_path, ctx.rel_path, ctx.content, ctx.msg, "UseZombie Bot", "bot@usezombie.dev");
 }
 
 fn resolveBinding(cfg: ExecuteConfig, role_id: []const u8, skill_id: []const u8) ?agents.RoleBinding {
@@ -167,7 +132,7 @@ pub fn executeRun(
     const spec_content = try spec_file.readToEndAlloc(run_alloc, 512 * 1024);
 
     const workspace_memory_context = try memory.loadForEcho(run_alloc, conn, ctx.workspace_id, 20);
-    const score_context = try loadScoreContextBestEffort(run_alloc, conn, ctx.workspace_id, ctx.agent_id);
+    const score_context = try worker_stage_helpers.loadScoreContextBestEffort(run_alloc, conn, ctx.workspace_id, ctx.agent_id);
     const memory_context = try std.fmt.allocPrint(
         run_alloc,
         "{s}{s}{s}",
@@ -196,7 +161,7 @@ pub fn executeRun(
     metrics.incAgentEchoCalls();
     metrics.addAgentTokens(plan_result.token_count);
     metrics.observeAgentDurationSeconds(plan_result.wall_seconds);
-    emitLangfuseTrace(run_alloc, ctx, plan_stage.stage_id, plan_stage.role_id, plan_result);
+    worker_stage_helpers.emitLangfuseTrace(run_alloc, ctx, plan_stage.stage_id, plan_stage.role_id, plan_result);
 
     agents.emitNullclawRunEvent(
         ctx.run_id,
@@ -230,7 +195,7 @@ pub fn executeRun(
     );
 
     const plan_path = try std.fmt.allocPrint(run_alloc, "docs/runs/{s}/{s}", .{ ctx.run_id, plan_stage.artifact_name });
-    try commitArtifact(run_alloc, conn, ctx, &wt, running, deadline_ms, plan_path, plan_result.content, plan_stage.commit_message, plan_binding.actor, ctx.attempt);
+    try worker_stage_helpers.commitArtifact(run_alloc, conn, ctx, &wt, running, deadline_ms, plan_path, plan_result.content, plan_stage.commit_message, plan_binding.actor, ctx.attempt);
 
     if (profile.stages.len < 2) return worker_runtime.WorkerError.InvalidPipelineProfile;
 
@@ -288,7 +253,7 @@ pub fn executeRun(
             }
             metrics.addAgentTokens(stage_result.token_count);
             metrics.observeAgentDurationSeconds(stage_result.wall_seconds);
-            emitLangfuseTrace(run_alloc, ctx, stage.stage_id, stage.role_id, stage_result);
+            worker_stage_helpers.emitLangfuseTrace(run_alloc, ctx, stage.stage_id, stage.role_id, stage_result);
 
             agents.emitNullclawRunEvent(ctx.run_id, ctx.request_id, ctx.trace_id, attempt, stage.stage_id, stage.role_id, binding.actor, stage_result);
             posthog_events.trackAgentCompleted(
@@ -317,7 +282,7 @@ pub fn executeRun(
             );
 
             const stage_path = try std.fmt.allocPrint(run_alloc, "docs/runs/{s}/{s}", .{ ctx.run_id, stage.artifact_name });
-            try commitArtifact(run_alloc, conn, ctx, &wt, running, deadline_ms, stage_path, stage_result.content, stage.commit_message, binding.actor, attempt);
+            try worker_stage_helpers.commitArtifact(run_alloc, conn, ctx, &wt, running, deadline_ms, stage_path, stage_result.content, stage.commit_message, binding.actor, attempt);
             latest_build_output = stage_result.content;
             final_stage_output = stage_result.content;
             final_stage_actor = binding.actor;
@@ -342,141 +307,37 @@ pub fn executeRun(
 
         switch (terminal) {
             .done => {
-                scoring_state.outcome = .done;
-                try billing.finalizeRunForBilling(
-                    run_alloc,
-                    conn,
-                    ctx.workspace_id,
-                    ctx.run_id,
-                    attempt,
-                    .completed,
-                );
-                _ = try state.transition(conn, ctx.run_id, .PR_PREPARED, final_stage_actor, .VALIDATION_PASSED, null);
-
-                const pr_final = try worker_pr_flow.ensurePrForRun(
-                    run_alloc,
-                    conn,
-                    token_cache,
-                    tenant_limiter,
-                    running,
-                    deadline_ms,
-                    wt.path,
-                    .{
-                        .run_id = ctx.run_id,
-                        .workspace_id = ctx.workspace_id,
-                        .tenant_id = ctx.tenant_id,
-                        .spec_id = ctx.spec_id,
-                        .repo_url = ctx.repo_url,
-                        .default_branch = ctx.default_branch,
-                        .branch = branch,
-                        .final_stage_output = final_stage_output,
-                    },
-                );
-
-                {
-                    const now_ms = std.time.milliTimestamp();
-                    _ = try conn.exec("UPDATE runs SET pr_url = $1, updated_at = $2 WHERE run_id = $3", .{ pr_final, now_ms, ctx.run_id });
-                }
-
-                _ = try state.transition(conn, ctx.run_id, .PR_OPENED, .orchestrator, .PR_CREATED, pr_final);
-                _ = try state.transition(conn, ctx.run_id, .NOTIFIED, .orchestrator, .NOTIFICATION_SENT, null);
-                _ = try state.transition(conn, ctx.run_id, .DONE, .orchestrator, .NOTIFICATION_SENT, null);
-
-                const summary_content = std.fmt.allocPrint(
-                    run_alloc,
-                    "# Run Summary\n\n" ++
-                        "- **run_id**: {s}\n" ++
-                        "- **spec_id**: {s}\n" ++
-                        "- **final_state**: DONE\n" ++
-                        "- **attempt**: {d}\n" ++
-                        "- **pr_url**: {s}\n" ++
-                        "- **total_tokens**: {d}\n" ++
-                        "- **total_wall_seconds**: {d}\n" ++
-                        "\n## Artifacts\n\n" ++
-                        "- plan.json (echo)\n" ++
-                        "- implementation.md (scout)\n" ++
-                        "- validation.md (warden)\n" ++
-                        "- run_summary.md (orchestrator)\n",
-                    .{ ctx.run_id, ctx.spec_id, attempt, pr_final, total_tokens, total_wall_seconds },
-                ) catch |err| {
-                    obs_log.logWarnErr(.worker, err, "run_summary.md alloc failed (non-fatal) run_id={s}", .{ctx.run_id});
-                    try billing.finalizeRunForBilling(
-                        run_alloc,
-                        conn,
-                        ctx.workspace_id,
-                        ctx.run_id,
-                        attempt,
-                        .completed,
-                    );
-                    log.info("run completed run_id={s} pr_url={s}", .{ ctx.run_id, pr_final });
-                    var done_detail: [160]u8 = undefined;
-                    const done_detail_slice = std.fmt.bufPrint(&done_detail, "request_id={s} trace_id={s} state=done total_wall_seconds={d}", .{ ctx.request_id, ctx.trace_id, total_wall_seconds }) catch "run_done";
-                    events.emit("run_done", ctx.run_id, done_detail_slice);
-                    posthog_events.trackRunCompleted(
-                        cfg.posthog,
-                        posthog_events.distinctIdOrSystem(ctx.requested_by),
-                        ctx.run_id,
-                        ctx.workspace_id,
-                        "passed",
-                        total_wall_seconds * 1000,
-                    );
-                    metrics.observeRunTotalWallSeconds(total_wall_seconds);
-                    metrics.incRunsCompleted();
-                    return;
-                };
-
-                const summary_path = try std.fmt.allocPrint(run_alloc, "docs/runs/{s}/run_summary.md", .{ctx.run_id});
-                commitArtifact(run_alloc, conn, ctx, &wt, running, deadline_ms, summary_path, summary_content, "orchestrator: add run_summary.md", .orchestrator, attempt) catch |err| {
-                    obs_log.logWarnErr(.worker, err, "run_summary.md commit failed (non-fatal) run_id={s}", .{ctx.run_id});
-                };
-
-                try billing.finalizeRunForBilling(
-                    run_alloc,
-                    conn,
-                    ctx.workspace_id,
-                    ctx.run_id,
-                    attempt,
-                    .completed,
-                );
-                log.info("run completed run_id={s} pr_url={s}", .{ ctx.run_id, pr_final });
-                var done_detail: [160]u8 = undefined;
-                const done_detail_slice = std.fmt.bufPrint(&done_detail, "request_id={s} trace_id={s} state=done total_wall_seconds={d}", .{ ctx.request_id, ctx.trace_id, total_wall_seconds }) catch "run_done";
-                events.emit("run_done", ctx.run_id, done_detail_slice);
-                posthog_events.trackRunCompleted(
-                    cfg.posthog,
-                    posthog_events.distinctIdOrSystem(ctx.requested_by),
-                    ctx.run_id,
-                    ctx.workspace_id,
-                    "passed",
-                    total_wall_seconds * 1000,
-                );
-                metrics.observeRunTotalWallSeconds(total_wall_seconds);
-                metrics.incRunsCompleted();
+                try worker_stage_outcomes.handleDoneOutcome(.{
+                    .alloc = run_alloc,
+                    .conn = conn,
+                    .ctx = ctx,
+                    .cfg = cfg,
+                    .wt = &wt,
+                    .branch = branch,
+                    .running = running,
+                    .deadline_ms = deadline_ms,
+                    .token_cache = token_cache,
+                    .tenant_limiter = tenant_limiter,
+                    .final_stage_output = final_stage_output,
+                    .final_stage_actor = final_stage_actor,
+                    .attempt = attempt,
+                    .total_tokens = total_tokens,
+                    .total_wall_seconds = total_wall_seconds,
+                    .scoring_state = &scoring_state,
+                });
                 return;
             },
             .blocked => {
-                scoring_state.outcome = .blocked_stage_graph;
-                scoring_state.stderr_tail = final_stage_output;
-                try billing.finalizeRunForBilling(
-                    run_alloc,
-                    conn,
-                    ctx.workspace_id,
-                    ctx.run_id,
-                    attempt,
-                    .non_billable,
-                );
-                _ = try state.transition(conn, ctx.run_id, .BLOCKED, .orchestrator, .VALIDATION_FAILED, "blocked by stage transition graph");
-                _ = try state.transition(conn, ctx.run_id, .NOTIFIED_BLOCKED, .orchestrator, .NOTIFICATION_SENT, null);
-                posthog_events.trackRunFailed(
-                    cfg.posthog,
-                    posthog_events.distinctIdOrSystem(ctx.requested_by),
-                    ctx.run_id,
-                    ctx.workspace_id,
-                    "blocked",
-                    total_wall_seconds * 1000,
-                );
-                metrics.observeRunTotalWallSeconds(total_wall_seconds);
-                metrics.incRunsBlocked();
+                try worker_stage_outcomes.handleBlockedOutcome(.{
+                    .alloc = run_alloc,
+                    .conn = conn,
+                    .ctx = ctx,
+                    .cfg = cfg,
+                    .final_stage_output = final_stage_output,
+                    .attempt = attempt,
+                    .total_wall_seconds = total_wall_seconds,
+                    .scoring_state = &scoring_state,
+                });
                 return;
             },
             .retry => {
@@ -492,7 +353,7 @@ pub fn executeRun(
                 if (attempt >= cfg.max_attempts) break;
 
                 const defects_path = try std.fmt.allocPrint(run_alloc, "docs/runs/{s}/attempt_{d}_defects.md", .{ ctx.run_id, attempt });
-                try commitArtifact(run_alloc, conn, ctx, &wt, running, deadline_ms, defects_path, final_stage_output, "warden: add defects", final_stage_actor, attempt);
+                try worker_stage_helpers.commitArtifact(run_alloc, conn, ctx, &wt, running, deadline_ms, defects_path, final_stage_output, "warden: add defects", final_stage_actor, attempt);
 
                 defects = try run_alloc.dupe(u8, final_stage_output);
                 _ = try state.incrementAttempt(conn, ctx.run_id);
@@ -509,103 +370,14 @@ pub fn executeRun(
         }
     }
 
-    scoring_state.outcome = .blocked_retries_exhausted;
-    scoring_state.stderr_tail = defects orelse "";
-    try billing.finalizeRunForBilling(
-        run_alloc,
-        conn,
-        ctx.workspace_id,
-        ctx.run_id,
-        attempt,
-        .non_billable,
-    );
-    _ = try state.transition(conn, ctx.run_id, .BLOCKED, .orchestrator, .RETRIES_EXHAUSTED, null);
-    _ = try state.transition(conn, ctx.run_id, .NOTIFIED_BLOCKED, .orchestrator, .NOTIFICATION_SENT, null);
-
-    log.warn("run blocked (retries exhausted) run_id={s}", .{ctx.run_id});
-    var blocked_detail: [176]u8 = undefined;
-    const blocked_detail_slice = std.fmt.bufPrint(
-        &blocked_detail,
-        "request_id={s} trace_id={s} state=blocked reason=retries_exhausted total_wall_seconds={d}",
-        .{ ctx.request_id, ctx.trace_id, total_wall_seconds },
-    ) catch "run_blocked";
-    events.emit("run_blocked", ctx.run_id, blocked_detail_slice);
-    posthog_events.trackRunFailed(
-        cfg.posthog,
-        posthog_events.distinctIdOrSystem(ctx.requested_by),
-        ctx.run_id,
-        ctx.workspace_id,
-        "retries_exhausted",
-        total_wall_seconds * 1000,
-    );
-    metrics.observeRunTotalWallSeconds(total_wall_seconds);
-    metrics.incRunsBlocked();
-}
-
-fn commitArtifact(
-    alloc: std.mem.Allocator,
-    conn: *pg.Conn,
-    ctx: RunContext,
-    wt: *git.WorktreeHandle,
-    running: *const std.atomic.Value(bool),
-    deadline_ms: i64,
-    rel_path: []const u8,
-    content: []const u8,
-    msg: []const u8,
-    actor: types.Actor,
-    attempt: u32,
-) !void {
-    try reliable.call(void, CommitRetryCtx{
-        .alloc = alloc,
-        .wt_path = wt.path,
-        .rel_path = rel_path,
-        .content = content,
-        .msg = msg,
-    }, opCommitArtifact, worker_runtime.retryOptionsForRun(@constCast(running), deadline_ms, 1, 300, 2_000, "git_commit_artifact"));
-
-    const checksum = sha256Hex(content);
-    const object_key = try std.fmt.allocPrint(alloc, "docs/runs/{s}/{s}", .{ ctx.run_id, std.fs.path.basename(rel_path) });
-
-    const name = std.fs.path.basename(rel_path);
-    try state.registerArtifact(conn, ctx.run_id, attempt, name, object_key, &checksum, actor);
-}
-
-fn loadScoreContextBestEffort(
-    alloc: std.mem.Allocator,
-    conn: *pg.Conn,
-    workspace_id: []const u8,
-    agent_id: []const u8,
-) ![]const u8 {
-    const config = scoring.queryScoringConfig(conn, alloc, workspace_id) catch |err| {
-        obs_log.logWarnErr(.scoring, err, "scoring config lookup failed workspace_id={s}; using orientation block", .{workspace_id});
-        return scoring.orientationContext(alloc);
-    };
-    return scoring.buildScoringContextForEcho(conn, alloc, workspace_id, agent_id, config);
-}
-
-/// Best-effort Langfuse trace emission. Uses the async exporter when installed
-/// on worker startup, otherwise falls back to synchronous best-effort emission.
-fn emitLangfuseTrace(
-    alloc: std.mem.Allocator,
-    ctx: RunContext,
-    stage_id: []const u8,
-    role_id: []const u8,
-    result: agents.AgentResult,
-) void {
-    langfuse.emitTraceAsyncOrFallback(alloc, .{
-        .trace_id = ctx.trace_id,
-        .run_id = ctx.run_id,
-        .stage_id = stage_id,
-        .role_id = role_id,
-        .token_count = result.token_count,
-        .wall_seconds = result.wall_seconds,
-        .exit_ok = result.exit_ok,
-        .timestamp_ms = std.time.milliTimestamp(),
+    try worker_stage_outcomes.handleRetriesExhaustedOutcome(.{
+        .alloc = run_alloc,
+        .conn = conn,
+        .ctx = ctx,
+        .cfg = cfg,
+        .defects = defects,
+        .attempt = attempt,
+        .total_wall_seconds = total_wall_seconds,
+        .scoring_state = &scoring_state,
     });
-}
-
-fn sha256Hex(data: []const u8) [64]u8 {
-    var digest: [32]u8 = undefined;
-    std.crypto.hash.sha2.Sha256.hash(data, &digest, .{});
-    return std.fmt.bytesToHex(digest, .lower);
 }

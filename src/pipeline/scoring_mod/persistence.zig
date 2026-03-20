@@ -6,41 +6,16 @@ const types = @import("types.zig");
 const math = @import("math.zig");
 const proposals = @import("proposals.zig");
 const trust = @import("trust.zig");
+const classify = @import("classify.zig");
+const context = @import("context.zig");
 
 const DEFAULT_SCORING_CONTEXT_MAX_TOKENS: u32 = 2048;
 const MIN_SCORING_CONTEXT_MAX_TOKENS: u32 = 512;
 const MAX_SCORING_CONTEXT_MAX_TOKENS: u32 = 8192;
-const MAX_STDERR_LINES: usize = 200;
-const REDACTED = "[REDACTED]";
-const ORIENTATION_BLOCK =
-    "## Agent Performance Context (v1)\n" ++
-    "You have no prior score history. Aim for clean terminal states, minimal resource use, and valid output format.";
-const NEVER_FLAG_KEYS = [_][]const u8{
-    "ENCRYPTION_MASTER_KEY",
-    "GITHUB_APP_ID",
-    "GITHUB_APP_PRIVATE_KEY",
-    "OIDC_PROVIDER",
-    "OIDC_JWKS_URL",
-    "OIDC_ISSUER",
-    "OIDC_AUDIENCE",
-    "API_KEY",
-    "DATABASE_URL_API",
-    "DATABASE_URL_WORKER",
-    "REDIS_URL_API",
-    "REDIS_URL_WORKER",
-    "POSTHOG_API_KEY",
-    "RESEND_API_KEY",
-};
 
-pub fn orientationContext(alloc: std.mem.Allocator) ![]const u8 {
-    return alloc.dupe(u8, ORIENTATION_BLOCK);
-}
-
-const ScoringRow = struct {
-    score: i32,
-    failure_class: []const u8,
-    top_hint: []const u8,
-};
+pub const orientationContext = context.orientationContext;
+pub const estimateScoringContextTokens = context.estimateScoringContextTokens;
+pub const buildScoringContextForEcho = context.buildScoringContextForEcho;
 
 pub fn queryLatencyBaseline(conn: *pg.Conn, workspace_id: []const u8) ?types.LatencyBaseline {
     var q = conn.query(
@@ -157,261 +132,6 @@ fn persistScoreRecord(
     return true;
 }
 
-fn containsIgnoreCase(haystack: []const u8, needle: []const u8) bool {
-    if (needle.len == 0) return true;
-    if (haystack.len < needle.len) return false;
-
-    var i: usize = 0;
-    while (i + needle.len <= haystack.len) : (i += 1) {
-        if (std.ascii.eqlIgnoreCase(haystack[i .. i + needle.len], needle)) return true;
-    }
-    return false;
-}
-
-fn classifyFailureFromErrorName(error_name: []const u8) ?types.FailureClass {
-    if (std.mem.eql(u8, error_name, "RunDeadlineExceeded") or
-        std.mem.eql(u8, error_name, "CommandTimedOut") or
-        std.mem.eql(u8, error_name, "Timeout") or
-        std.mem.eql(u8, error_name, "TimedOut"))
-    {
-        return .timeout;
-    }
-
-    if (std.mem.eql(u8, error_name, "OutOfMemory") or
-        std.mem.eql(u8, error_name, "NoSpaceLeft"))
-    {
-        return .oom;
-    }
-
-    if (std.mem.eql(u8, error_name, "MissingConfig") or
-        std.mem.eql(u8, error_name, "MissingGitHubInstallation") or
-        std.mem.eql(u8, error_name, "MissingMasterKey") or
-        std.mem.eql(u8, error_name, "PrAuthFailed") or
-        std.mem.eql(u8, error_name, "AuthFailed") or
-        std.mem.eql(u8, error_name, "TokenExpired") or
-        std.mem.eql(u8, error_name, "Unauthorized") or
-        std.mem.eql(u8, error_name, "RedisAuthFailed") or
-        std.mem.eql(u8, error_name, "InvalidAuthorization"))
-    {
-        return .auth_failure;
-    }
-
-    if ((containsIgnoreCase(error_name, "context") and
-        (containsIgnoreCase(error_name, "overflow") or
-            containsIgnoreCase(error_name, "exhaust") or
-            containsIgnoreCase(error_name, "window"))) or
-        (containsIgnoreCase(error_name, "token") and
-            (containsIgnoreCase(error_name, "limit") or
-                containsIgnoreCase(error_name, "overflow") or
-                containsIgnoreCase(error_name, "exceed"))))
-    {
-        return .context_overflow;
-    }
-
-    if (std.mem.eql(u8, error_name, "FileNotFound") or
-        std.mem.eql(u8, error_name, "PathTraversal") or
-        std.mem.eql(u8, error_name, "CommandFailed") or
-        std.mem.eql(u8, error_name, "InvalidResponse"))
-    {
-        return .tool_call_failure;
-    }
-
-    return null;
-}
-
-fn classifyFailure(state: *const types.ScoringState) ?types.FailureClass {
-    if (state.failure_class_override) |failure_class| return failure_class;
-    if (state.failure_error_name) |error_name| {
-        if (classifyFailureFromErrorName(error_name)) |failure_class| return failure_class;
-    }
-
-    return switch (state.outcome) {
-        .done => null,
-        .blocked_retries_exhausted => .timeout,
-        .blocked_stage_graph => .bad_output_format,
-        .error_propagation => .unhandled_exception,
-        .pending => .unknown,
-    };
-}
-
-fn scoreTierLabel(score: i32) []const u8 {
-    if (score >= 90) return "Elite";
-    if (score >= 70) return "Gold";
-    if (score >= 40) return "Silver";
-    return "Bronze";
-}
-
-pub fn estimateScoringContextTokens(content: []const u8) u32 {
-    // Match NullClaw's current runtime compaction heuristic: (total_chars + 3) / 4.
-    return @intCast((content.len + 3) / 4);
-}
-
-fn buildScoringContextBlock(
-    alloc: std.mem.Allocator,
-    rows: []const ScoringRow,
-    max_tokens: u32,
-) ![]const u8 {
-    if (rows.len == 0) return alloc.dupe(u8, ORIENTATION_BLOCK);
-
-    var keep_count = rows.len;
-    while (keep_count > 0) {
-        var buf: std.ArrayList(u8) = .{};
-        defer buf.deinit(alloc);
-
-        try buf.appendSlice(alloc, "## Agent Performance Context (v1)\n" ++
-            "Your recent run history:\n" ++
-            "| Run | Score | Tier | Issue |\n" ++
-            "|-----|-------|------|-------|\n");
-
-        var i: usize = 0;
-        while (i < keep_count) : (i += 1) {
-            const row = rows[i];
-            const issue = if (row.failure_class.len == 0) "-" else row.failure_class;
-            const run_idx = keep_count - i;
-            try buf.writer(alloc).print(
-                "| {d}{s} | {d} | {s} | {s} |\n",
-                .{ run_idx, if (i == 0) " (latest)" else "", row.score, scoreTierLabel(row.score), issue },
-            );
-        }
-
-        if (rows[0].top_hint.len > 0) {
-            try buf.writer(alloc).print("Focus: {s}\n", .{rows[0].top_hint});
-        } else if (rows[0].failure_class.len > 0) {
-            try buf.writer(alloc).print("Focus: resolve recurring {s} failures.\n", .{rows[0].failure_class});
-        } else {
-            try buf.appendSlice(alloc, "Focus: maintain clean terminal states and stable runtime usage.\n");
-        }
-
-        const candidate = try buf.toOwnedSlice(alloc);
-        if (estimateScoringContextTokens(candidate) <= max_tokens) return candidate;
-        alloc.free(candidate);
-
-        keep_count -= 1;
-    }
-
-    return alloc.dupe(u8, ORIENTATION_BLOCK);
-}
-
-fn scrubSecretAssignments(alloc: std.mem.Allocator, input: []const u8) ![]u8 {
-    var out = std.ArrayList(u8){};
-    errdefer out.deinit(alloc);
-
-    var i: usize = 0;
-    while (i < input.len) {
-        var matched_key: ?[]const u8 = null;
-        for (NEVER_FLAG_KEYS) |key| {
-            if (i + key.len + 1 <= input.len and std.mem.eql(u8, input[i .. i + key.len], key) and input[i + key.len] == '=') {
-                matched_key = key;
-                break;
-            }
-        }
-
-        if (matched_key) |key| {
-            try out.appendSlice(alloc, key);
-            try out.append(alloc, '=');
-            try out.appendSlice(alloc, REDACTED);
-            i += key.len + 1;
-            while (i < input.len and input[i] != '\n' and input[i] != '\r' and input[i] != ' ' and input[i] != '\t' and input[i] != '"' and input[i] != '\'') : (i += 1) {}
-            continue;
-        }
-
-        if (i + "Bearer ".len <= input.len and std.ascii.eqlIgnoreCase(input[i .. i + "Bearer ".len], "Bearer ")) {
-            try out.appendSlice(alloc, "Bearer ");
-            try out.appendSlice(alloc, REDACTED);
-            i += "Bearer ".len;
-            while (i < input.len and input[i] != '\n' and input[i] != '\r' and input[i] != ' ' and input[i] != '\t') : (i += 1) {}
-            continue;
-        }
-
-        if (i + "-----BEGIN".len <= input.len and std.mem.eql(u8, input[i .. i + "-----BEGIN".len], "-----BEGIN")) {
-            const end_idx = std.mem.indexOfPos(u8, input, i, "-----END");
-            if (end_idx) |end_start| {
-                const line_end = std.mem.indexOfScalarPos(u8, input, end_start, '\n') orelse input.len;
-                try out.appendSlice(alloc, REDACTED);
-                i = line_end;
-                continue;
-            }
-        }
-
-        try out.append(alloc, input[i]);
-        i += 1;
-    }
-
-    return try out.toOwnedSlice(alloc);
-}
-
-fn lastLinesSlice(input: []const u8, max_lines: usize) []const u8 {
-    if (input.len == 0) return input;
-    var line_count: usize = 0;
-    var idx: usize = input.len;
-    while (idx > 0) {
-        idx -= 1;
-        if (input[idx] == '\n') {
-            line_count += 1;
-            if (line_count >= max_lines) return input[idx + 1 ..];
-        }
-    }
-    return input;
-}
-
-fn scrubStderrTail(alloc: std.mem.Allocator, raw_tail: ?[]const u8) !?[]const u8 {
-    const raw = raw_tail orelse return null;
-    const trimmed = std.mem.trim(u8, raw, " \t\r\n");
-    if (trimmed.len == 0) return null;
-    const tail = lastLinesSlice(trimmed, MAX_STDERR_LINES);
-    const scrubbed = try scrubSecretAssignments(alloc, tail);
-    return scrubbed;
-}
-
-pub fn buildScoringContextForEcho(
-    conn: *pg.Conn,
-    alloc: std.mem.Allocator,
-    workspace_id: []const u8,
-    agent_id: []const u8,
-    config: types.ScoringConfig,
-) ![]const u8 {
-    // check-pg-drain: ok — full while loop exhausts all rows, natural drain
-    if (agent_id.len == 0) return alloc.dupe(u8, "");
-    if (!config.enabled or !config.enable_score_context_injection) return alloc.dupe(u8, "");
-
-    var q = conn.query(
-        \\SELECT s.score,
-        \\       COALESCE(a.failure_class, ''),
-        \\       COALESCE(a.improvement_hints->>0, '')
-        \\FROM agent_run_scores s
-        \\LEFT JOIN agent_run_analysis a ON a.run_id = s.run_id
-        \\WHERE s.workspace_id = $1 AND s.agent_id = $2
-        \\ORDER BY s.score_id DESC
-        \\LIMIT 5
-    , .{ workspace_id, agent_id }) catch |err| {
-        obs_log.logWarnErr(.scoring, err, "scoring context query failed workspace_id={s} agent_id={s}", .{ workspace_id, agent_id });
-        return alloc.dupe(u8, ORIENTATION_BLOCK);
-    };
-    defer q.deinit();
-
-    var rows: std.ArrayList(ScoringRow) = .{};
-    defer rows.deinit(alloc);
-
-    while (try q.next()) |row| {
-        const score = try row.get(i32, 0);
-        const failure_class = try alloc.dupe(u8, try row.get([]const u8, 1));
-        const top_hint = try alloc.dupe(u8, try row.get([]const u8, 2));
-        try rows.append(alloc, .{
-            .score = score,
-            .failure_class = failure_class,
-            .top_hint = top_hint,
-        });
-    }
-    defer {
-        for (rows.items) |item| {
-            alloc.free(item.failure_class);
-            alloc.free(item.top_hint);
-        }
-    }
-
-    return buildScoringContextBlock(alloc, rows.items, config.scoring_context_max_tokens);
-}
-
 pub fn persistRunAnalysis(
     conn: *pg.Conn,
     alloc: std.mem.Allocator,
@@ -432,7 +152,7 @@ pub fn persistRunAnalysis(
         return;
     }
 
-    const maybe_class = classifyFailure(scoring_state);
+    const maybe_class = classify.classifyFailure(scoring_state);
 
     var failure_signals: std.ArrayList([]const u8) = .{};
     defer failure_signals.deinit(alloc);
@@ -490,7 +210,7 @@ pub fn persistRunAnalysis(
     defer alloc.free(failure_signals_json);
     const improvement_hints_json = try std.json.Stringify.valueAlloc(alloc, improvement_hints.items, .{});
     defer alloc.free(improvement_hints_json);
-    const scrubbed_stderr_tail = try scrubStderrTail(alloc, scoring_state.stderr_tail);
+    const scrubbed_stderr_tail = try classify.scrubStderrTail(alloc, scoring_state.stderr_tail);
     defer if (scrubbed_stderr_tail) |value| alloc.free(value);
 
     const analysis_id = try id_format.generateTransitionId(alloc);
