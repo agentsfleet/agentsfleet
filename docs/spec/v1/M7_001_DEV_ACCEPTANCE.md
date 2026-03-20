@@ -9,6 +9,8 @@
 **Depends on:** M7_001_DEPLOY (deploy pipeline wired), M6_006 (CLI hardened, DB gate passing)
 **Successor:** M7_003_PROD_ACCEPTANCE.md
 
+> **⚠️ Immediate blocker (Mar 20, 2026):** All GHCR images deleted during cleanup. Railway DEV is not yet connected to GHCR. The next push to `main` will rebuild and push the image — but `verify-dev` will time out until §1.1 is completed. **Do §1.1 before pushing to main.**
+
 ---
 
 ## 1.0 Infrastructure Gate
@@ -18,9 +20,9 @@
 Railway DEV must be connected to GHCR and the full deploy-dev pipeline must run green end-to-end.
 
 **Dimensions:**
-- 1.1 PENDING Connect Railway DEV service to `ghcr.io/usezombie/zombied:dev-latest` — configure image source, expose port 3000, set required env vars
+- 1.1 **PENDING [P0 — do first]** Connect Railway DEV service to `ghcr.io/usezombie/zombied:dev-latest` — configure image source, expose port 3000, set required env vars. Must be done before next push to `main`.
 - 1.2 PENDING Verify `deploy-dev.yml` `build-dev` step completes: Zig cross-compile → `make push-dev` → GHCR push succeeds
-- 1.3 PENDING Verify `verify-dev` step passes: `https://dev.api.usezombie.com/healthz` returns 200 within 180s of Railway deploy
+- 1.3 PENDING Verify `verify-dev` step passes: `https://dev.api.usezombie.com/healthz` returns 200 within 180s of Railway deploy. **Note:** `verify-dev` now prints HTTP status + response body per attempt (PR #62) — Railway-not-connected vs zombied-crashed are distinguishable in CI output.
 - 1.4 PENDING Verify `verify-dev` step passes: `https://dev.api.usezombie.com/readyz` returns `{ "ready": true }`
 - 1.5 PENDING DEV vault items all green in `check-credentials.sh`: `clerk-dev`, `vercel-api-token`, `planetscale-dev`, `upstash-dev`
 

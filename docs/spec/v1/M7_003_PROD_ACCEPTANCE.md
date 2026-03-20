@@ -8,6 +8,8 @@
 **Priority:** P0 — PROD release gate
 **Depends on:** M7_001_DEV_ACCEPTANCE (DEV gate must be green before PROD rollout)
 
+> **Pre-condition (Mar 20, 2026):** M7_001 §1.1 (Railway DEV connection) is the immediate unblocking action. PROD work cannot start until DEV acceptance gate is green.
+
 ---
 
 ## 1.0 Version Gate
@@ -79,7 +81,7 @@ git push origin v0.2.0
 
 **Dimensions:**
 - 5.1 PENDING Railway PROD service connected to `ghcr.io/usezombie/zombied:latest`; auto-deploys on GHCR push
-- 5.2 PENDING `deploy-prod` CI job polls `https://api.usezombie.com/healthz` (24 attempts × 10s); must return 200
+- 5.2 PENDING `deploy-prod` CI job polls `https://api.usezombie.com/healthz` (24 attempts × 10s); must return 200. **Apply same diagnostic pattern as `verify-dev` (PR #62)** — print HTTP status + response body per attempt so Railway-not-connected vs zombied-crashed are distinguishable.
 - 5.3 PENDING `https://api.usezombie.com/readyz` returns `{ "ready": true }`
 - 5.4 PENDING PROD vault items green: `planetscale-prod`, `tailscale`, `zombie-worker-{ant,bird}/ssh-private-key`, `clerk-prod`
 
