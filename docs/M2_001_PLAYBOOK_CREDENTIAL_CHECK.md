@@ -32,12 +32,16 @@ Every `op://` reference the agent will use across M2_002 and the deploy pipeline
 | `vercel-bypass-app` | `credential` | `smoke-post-deploy.yml` |
 | `clerk-prod` | `publishable-key` | Railway PROD env var |
 | `clerk-prod` | `secret-key` | Railway PROD env var |
-| `planetscale-prod` | `connection-string` | Railway PROD `DATABASE_URL` |
-| `upstash-prod` | `url` | Railway PROD `REDIS_URL` |
-| `tailscale` | `authkey` | OVHCloud worker provision |
+| `github-app` | `app-id` | Railway PROD + DEV `GITHUB_APP_ID` |
+| `github-app` | `private-key` | Railway PROD + DEV `GITHUB_APP_PRIVATE_KEY` |
+| `encryption-master-key` | `credential` | Railway PROD `ENCRYPTION_MASTER_KEY` |
+| `planetscale-prod` | `connection-string` | Railway PROD `DATABASE_URL_API` + `DATABASE_URL_WORKER` |
+| `upstash-prod` | `url` | Railway PROD `REDIS_URL_API` + `REDIS_URL_WORKER` |
+| `tailscale` | `authkey` | worker node provision |
 | `zombie-worker-ant` | `ssh-private-key` | CI → worker deploy SSH |
 | `zombie-worker-bird` | `ssh-private-key` | CI → worker deploy SSH |
 | `discord-ci-webhook` | `credential` | `deploy-dev.yml` + `release.yml` notify |
+| `railway-deploy-hook-prod` | `credential` | `release.yml` → trigger Railway PROD deploy |
 
 ### 1.2 Vault: `ZMB_CD_DEV`
 
@@ -45,9 +49,13 @@ Every `op://` reference the agent will use across M2_002 and the deploy pipeline
 |---|---|---|
 | `clerk-dev` | `publishable-key` | Railway DEV env var |
 | `clerk-dev` | `secret-key` | Railway DEV env var |
+| `github-app` | `app-id` | Railway DEV `GITHUB_APP_ID` |
+| `github-app` | `private-key` | Railway DEV `GITHUB_APP_PRIVATE_KEY` |
+| `encryption-master-key` | `credential` | Railway DEV `ENCRYPTION_MASTER_KEY` |
 | `vercel-api-token` | `credential` | Vercel env var setup |
-| `planetscale-dev` | `connection-string` | Railway DEV `DATABASE_URL` |
-| `upstash-dev` | `url` | Railway DEV `REDIS_URL` |
+| `planetscale-dev` | `connection-string` | Railway DEV `DATABASE_URL_API` + `DATABASE_URL_WORKER` |
+| `upstash-dev` | `url` | Railway DEV `REDIS_URL_API` + `REDIS_URL_WORKER` |
+| `railway-deploy-hook-dev` | `credential` | `deploy-dev.yml` → trigger Railway DEV deploy |
 
 ---
 
