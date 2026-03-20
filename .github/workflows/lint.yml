@@ -21,7 +21,7 @@ jobs:
       ZLINT_VERSION: v0.7.9
     steps:
       - uses: actions/checkout@v6
-      - uses: mlugg/setup-zig@v2
+      - uses: jetsung/setup-zig@v1
         with:
           version: 0.15.2
       - uses: oven-sh/setup-bun@v2

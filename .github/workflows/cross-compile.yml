@@ -34,7 +34,7 @@ jobs:
           - target: aarch64-macos
     steps:
       - uses: actions/checkout@v6
-      - uses: mlugg/setup-zig@v2
+      - uses: jetsung/setup-zig@v1
         with:
           version: 0.15.2
       - name: Cross-compile zombied (${{ matrix.target }})
