@@ -8,7 +8,7 @@
 **Priority:** P0 — PROD release gate
 **Depends on:** M7_001_DEV_ACCEPTANCE (DEV gate must be green before PROD rollout)
 
-> **Pre-condition (Mar 20, 2026):** M7_001 §1.1 (Railway DEV connection) is the immediate unblocking action. PROD work cannot start until DEV acceptance gate is green.
+> **Pre-condition (Mar 20, 2026):** M7_001 §1.1 (Fly.io DEV setup + Cloudflare Tunnel) is the immediate unblocking action. PROD work cannot start until DEV acceptance gate is green.
 
 ---
 
@@ -65,7 +65,7 @@ git push origin v0.2.0
 
 | Service | URL | Image / Deployable |
 |---------|-----|--------------------|
-| API | `https://api.usezombie.com` | `ghcr.io/usezombie/zombied:latest` (Railway) |
+| API | `https://api.usezombie.com` | `ghcr.io/usezombie/zombied:latest` (Fly.io `zombied-prod`) |
 | API (version-pinned) | same | `ghcr.io/usezombie/zombied:0.2.0` |
 | Worker ant | Tailscale only | same `latest` pulled on node |
 | Worker bird | Tailscale only | same `latest` pulled on node |
@@ -75,15 +75,15 @@ git push origin v0.2.0
 
 ---
 
-## 5.0 Railway PROD API Gate
+## 5.0 Fly.io PROD API Gate
 
 **Status:** PENDING
 
 **Dimensions:**
-- 5.1 PENDING Railway PROD service connected to `ghcr.io/usezombie/zombied:latest`; auto-deploys on GHCR push
-- 5.2 PENDING `deploy-prod` CI job polls `https://api.usezombie.com/healthz` (24 attempts × 10s); must return 200. **Apply same diagnostic pattern as `verify-dev` (PR #62)** — print HTTP status + response body per attempt so Railway-not-connected vs zombied-crashed are distinguishable.
+- 5.1 PENDING Fly.io PROD app (`zombied-prod`) deployed from `ghcr.io/usezombie/zombied:latest`; Cloudflare Tunnel `zombied-prod` routes `api.usezombie.com` → Fly private network. See M2_002 §2.0.
+- 5.2 PENDING `deploy-prod` CI job polls `https://api.usezombie.com/healthz` (24 attempts × 10s); must return 200. Print HTTP status + response body per attempt so Fly-not-deployed vs zombied-crashed are distinguishable.
 - 5.3 PENDING `https://api.usezombie.com/readyz` returns `{ "ready": true }`
-- 5.4 PENDING PROD vault items green: `planetscale-prod`, `tailscale`, `zombie-worker-{ant,bird}/ssh-private-key`, `clerk-prod`
+- 5.4 PENDING PROD vault items green: `planetscale-prod`, `tailscale`, `zombie-worker-{ant,bird}/ssh-private-key`, `clerk-prod`, `fly-api-token`, `cloudflare-tunnel-prod`
 
 ```bash
 curl -sf https://api.usezombie.com/healthz
@@ -163,7 +163,7 @@ npx zombiectl runs list
 **Status:** PENDING
 
 - [ ] 10.1 `release.yml` runs green on `v0.2.0` tag: binaries, docker, npm, GitHub Release all pass
-- [ ] 10.2 Railway PROD API healthy: `healthz` + `readyz` green
+- [ ] 10.2 Fly.io PROD API healthy (`zombied-prod`); Cloudflare Tunnel wired; `healthz` + `readyz` green
 - [ ] 10.3 Worker nodes deployed via Tailscale SSH; run queue consumed
 - [ ] 10.4 UI PROD smoke passes: app and website Vercel deployments green
 - [ ] 10.5 CLI PROD smoke completes: login → workspace add → specs sync → run → runs list
