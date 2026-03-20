@@ -22,7 +22,7 @@ Create accounts and generate one root API key per service. Hand off to agent whe
 - [ ] **Cloudflare** — add domains, set nameservers
 - [ ] **Codecov** — connect GitHub repo
 - [ ] **npm** — create org
-- [ ] **Railway** — sign up, connect GitHub repo, create DEV and PROD services
+- [ ] **Railway** — sign up at railway.com (use Google/GitHub). **Do not** use "Deploy from GitHub source" integration — it pulls all repos. Use Railway CLI only (see M2_002 §2.1).
 
 ### 1.2 Generate Root API Keys
 
@@ -35,7 +35,8 @@ One key per service:
 | Vercel (`usezombie-website`) | Deployment Protection bypass secret | Vercel → project → Settings → Deployment Protection |
 | Vercel (`usezombie-agents-sh`) | Deployment Protection bypass secret | Vercel → project → Settings → Deployment Protection |
 | Vercel (`usezombie-app`) | Deployment Protection bypass secret | Vercel → project → Settings → Deployment Protection |
-| Cloudflare | API token with Zone:Edit + Zone:Read (all zones) | CF → My Profile → API Tokens |
+| Cloudflare | API token with Zone:Edit + DNS:Edit + Page Rules:Edit (all zones) | CF → My Profile → API Tokens |
+| Railway | Project-scoped API token | Railway dashboard → Account Settings → Tokens → New Token |
 | Clerk (DEV instance) | Publishable key + Secret key | Clerk dashboard → DEV instance → API Keys |
 | Clerk (PROD instance) | Publishable key + Secret key | Clerk dashboard → PROD instance → API Keys |
 | GitHub App | App ID + PEM private key | GitHub → Settings → Developer settings → GitHub Apps → New GitHub App |
@@ -126,30 +127,70 @@ GitHub repo → Settings → Secrets and Variables → Actions:
 
 ### 2.3 GHCR Package Permissions
 
-After the first CI push to GHCR (triggered automatically on the first merge to `main`), set the package visibility and grant the repo write access so subsequent pushes succeed:
+After the first CI push to GHCR (triggered automatically on the first merge to `main`), set the package visibility:
 
-1. Go to `https://github.com/orgs/<org>/packages/container/<service>`
-2. **Settings → Change visibility** → set to `Private` (or `Public` if open source)
-3. **Settings → Manage Actions access → Add repository** → select the repo → set role to **Write**
+1. Go to `https://github.com/orgs/<org>/packages/container/<service>/settings`
+2. **Change visibility → Public** — Railway and any consumer can pull without credentials
+3. **Manage Actions access → Add repository** → select the repo → set role to **Write**
 
-This is a one-time human step. Without it, `docker push` in CI fails with a 403.
+This is a one-time human step. GitHub has no API endpoint to change org package visibility — it must be done in the UI. Once public, it persists across all future CI pushes.
 
-### 2.3a Railway Services — DEV and PROD
+> **Why public?** The image contains only the compiled binary. All secrets come from env vars at runtime. There is no secret in the image.
 
-**Human does once in Railway dashboard:**
+### 2.3a Railway Services — DEV and PROD (Agent-executed via CLI)
 
-1. New Project → **Deploy from Docker Image** (not "Deploy from GitHub source")
-2. **DEV service:** image = `ghcr.io/<org>/<service>:dev-latest`
-   - Source type: Docker Image
-   - Auto-deploy: Railway polls or use a deploy hook (see M2_002 §2.3)
-3. **PROD service:** image = `ghcr.io/<org>/<service>:latest`
-   - Source type: Docker Image
-   - Auto-deploy: triggered by Railway deploy hook called from `release.yml`
-4. Set the Railway deploy hook URL for each service and store in vault:
-   - `railway-deploy-hook-dev` → `credential` in `ZMB_CD_DEV`
-   - `railway-deploy-hook-prod` → `credential` in `ZMB_CD_PROD`
+Agent executes via Railway CLI (see M2_002 §2.1 for full steps):
 
-> Do **not** connect Railway to the GitHub branch for source-based builds. Our model builds and cross-compiles binaries in CI, packages them into a Docker image, and pushes to GHCR. Railway pulls from GHCR only.
+```bash
+# Install Railway CLI
+mise install railway   # or: brew install railway
+railway login          # browser opens — authenticate
+
+# Create project and services
+railway init --name <project>
+railway add --service zombied-dev --image ghcr.io/<org>/zombied:dev-latest
+railway add --service zombied-prod --image ghcr.io/<org>/zombied:latest
+```
+
+CI triggers redeployments via Railway GraphQL API (`serviceInstanceRedeploy`). Store Railway API token in vault and set GitHub Actions vars:
+- `RAILWAY_DEV_SERVICE_ID`, `RAILWAY_DEV_ENV_ID` → GitHub vars
+- `RAILWAY_PROD_SERVICE_ID`, `RAILWAY_PROD_ENV_ID` → GitHub vars
+- `railway-api-token` → `ZMB_CD_DEV` and `ZMB_CD_PROD` vaults
+
+### 2.3b Cloudflare DNS — API + CDN
+
+After Railway services are created, agent sets up DNS via Cloudflare API:
+
+```bash
+CF_TOKEN=$(op read "op://$VAULT_PROD/cloudflare-api-token/credential")
+ZONE_ID=<from 2.6 below>
+
+# DEV
+curl -X POST "https://api.cloudflare.com/client/v4/zones/$ZONE_ID/dns_records" \
+  -H "Authorization: Bearer $CF_TOKEN" -H "Content-Type: application/json" \
+  -d '{"type":"CNAME","name":"dev.api","content":"zombied-dev-production.up.railway.app","proxied":true,"ttl":1}'
+
+# PROD
+curl -X POST "https://api.cloudflare.com/client/v4/zones/$ZONE_ID/dns_records" \
+  -H "Authorization: Bearer $CF_TOKEN" -H "Content-Type: application/json" \
+  -d '{"type":"CNAME","name":"api","content":"zombied-prod-production.up.railway.app","proxied":true,"ttl":1}'
+```
+
+Cloudflare SSL/TLS mode: **Full**. Proxy status: ON (orange cloud).
+
+**Host header Transform Rule (Railway free plan only):** Railway routes by Host header. Without a custom domain registered in Railway, add a Cloudflare Transform Rule to override the Host header:
+
+Cloudflare dashboard → Rules → Transform Rules → Modify Request Header:
+- `dev.api.usezombie.com` → Host: `zombied-dev-production.up.railway.app`
+- `api.usezombie.com` → Host: `zombied-prod-production.up.railway.app`
+
+Note: Cloudflare API token needs Transform Rules permission to set this via API. The DNS-scoped token does not cover it — create a separate token or set manually in the dashboard.
+
+**Upgrade path:** Railway Hobby ($5/mo) allows registering custom domains directly:
+```bash
+railway domain dev.api.usezombie.com --port 3000 --service zombied-dev
+```
+Railway provisions TLS for the custom domain; remove the Transform Rules once done.
 
 ### 2.6 Cloudflare — Zone Discovery
 
