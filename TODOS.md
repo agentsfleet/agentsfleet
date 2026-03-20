@@ -116,3 +116,42 @@ picking it up in 3 months understands the motivation and where to start.
 **Note:** This TODO is closed as a planning item. Implementation is now tracked in the dedicated prerequisite spec.
 
 - TODO: Define Bronze/Silver/Gold/Elite as human-coined quality tiers, then add a built-in AI Slop Inspector that reasons about the concrete criteria so the tiers measure less-sloppy agent output instead of arbitrary label drift.
+
+---
+
+## Ops: Rotate Classic PAT After Railway Setup
+
+**What:** Rotate the classic GitHub PAT (`ghp_*`) stored in `~/.config/usezombie/.env` once Railway DEV is connected and the token is no longer needed for one-off GHCR operations.
+**Why:** The token has org-level `read:packages` + `delete:packages` rights and lives in a plaintext file. Low blast radius today (local-only, not in CI) but a leaked PAT at this scope can delete all container images.
+**Pros:** Removes a standing high-privilege credential. Good hygiene before onboarding collaborators.
+**Cons:** None — pure cleanup.
+**Context:** Token was created Mar 20, 2026 to unblock ghcr.io image deletion. Once Railway is wired and the deploy pipeline is green, this token serves no ongoing purpose.
+**Effort:** S
+**Priority:** P2
+**Depends on:** M7_001 §1.1 (Railway DEV connected)
+
+---
+
+## CI: DB Schema Migration Gate in deploy-dev.yml
+
+**What:** Add an explicit migration check step between `build-dev` (image pushed) and `verify-dev` (/readyz check). If the binary version and PlanetScale schema are out of sync, `/readyz` currently fails silently or 500s with no diagnostic.
+**Why:** As schema changes become more frequent, a binary/schema mismatch will cause silent deploy failures that are hard to distinguish from other failure modes.
+**Pros:** Makes the deploy pipeline's failure surface explicit and actionable.
+**Cons:** M effort — need to define how to introspect schema version from the binary or a migration table.
+**Context:** Not blocking for v1 since schema changes are manually coordinated. Becomes critical when team size or deploy frequency increases. `zombied doctor` might be the right hook — it already checks DB connectivity.
+**Effort:** M
+**Priority:** P2
+**Depends on:** M7_001 (Railway wired, deploy pipeline green)
+
+---
+
+## Docs: PlanetScale Pricing Note in Bootstrap Playbook
+
+**What:** Add a one-liner to `docs/M1_001_PLAYBOOK_BOOTSTRAP.md` noting that PlanetScale's Hobby tier was removed in 2024 — the minimum plan is $39/mo. Recommend the Railway PlanetScale add-on to keep billing on one invoice.
+**Why:** The README now publicly names PlanetScale as part of the opinionated stack. Any new operator following the bootstrap playbook will hit this pricing wall with no warning, causing friction and potential churn before they see any value.
+**Pros:** Prevents a trust-destroying surprise on step 1. Tiny effort.
+**Cons:** None.
+**Context:** PlanetScale removed the free Hobby tier in April 2024. Railway's PlanetScale add-on (via their marketplace) is the smoothest path for solo builders to stay on one invoice.
+**Effort:** S
+**Priority:** P1
+**Depends on:** None

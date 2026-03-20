@@ -73,20 +73,24 @@ jobs:
       - name: Wait for Railway DEV deploy
         # Railway auto-deploys on main push via GitHub integration.
         # Poll /healthz until green or timeout (3 min).
+        # Prints HTTP status + response body on each attempt for diagnostics.
         run: |
           echo "Waiting for Railway DEV deploy..."
+          STATUS="000"
           for i in $(seq 1 18); do
-            STATUS=$(curl -sf -o /dev/null -w "%{http_code}" \
-              https://dev.api.usezombie.com/healthz || echo "000")
+            BODY=$(curl -sf -w "\n%{http_code}" \
+              https://dev.api.usezombie.com/healthz 2>&1 || echo -e "\n000")
+            STATUS=$(echo "$BODY" | tail -1)
+            RESP=$(echo "$BODY" | head -1)
             if [ "$STATUS" = "200" ]; then
               echo "✓ /healthz green after $((i * 10))s"
               break
             fi
-            echo "  attempt $i: status=$STATUS, retrying in 10s..."
+            echo "  attempt $i: status=$STATUS body=$RESP — retrying in 10s..."
             sleep 10
           done
           if [ "$STATUS" != "200" ]; then
-            echo "✗ /healthz did not return 200 after 180s"
+            echo "✗ /healthz did not return 200 after 180s (last status=$STATUS)"
             exit 1
           fi
 

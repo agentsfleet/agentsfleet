@@ -53,7 +53,7 @@ UseZombie accepts a spec request and produces a validated pull request through a
 4. `Redis`: stream-based queue + consumer-group coordination.
 5. `Postgres`: run state, transitions, usage, artifact index, policy events, secrets (vault schema).
 6. `Clerk`: authentication for CLI (device flow), API (JWT), and M2M (client credentials).
-7. `NullClaw`: agent runtime for Echo/Scout/Warden execution.
+7. `NullClaw`: agent runtime for dynamic pipeline execution. Built-in personas (planner, builder, reviewer) ship with every workspace; operators compose custom stage topologies via the harness compile/activate API.
 
 ## Canonical Execution Lifecycle
 

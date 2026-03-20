@@ -31,7 +31,7 @@ No tool today connects a **spec queue** to a **coordinated agent team** to a **s
 > Technical details: `docs/ARCHITECTURE.md`. This section is positioning language for buyers.
 
 1. **Spec-driven, not prompt-driven.** Specs live in the repo as ordered markdown files. Any tool (Codex, Amp, Claude Code, a human) can author them. UseZombie processes them in sequence.
-2. **Agent team, not single agent.** Three agents (Echo/Scout/Warden) with distinct roles and permissions, coordinated by a deterministic state machine with bounded retries.
+2. **Dynamic agent pipeline, not a single agent.** A composable pipeline of agents with distinct roles — planner, builder, reviewer — coordinated by a deterministic state machine with bounded retries. Built-in personas ship with every workspace; operators can compose their own.
 3. **One binary, zero dependencies.** One Zig binary (~2-3MB) with built-in agent runtime, HTTP API, and OS-level sandbox. Deploy by copying a file. No containers, no runtime dependencies.
 4. **Feedback as artifacts.** Every validation failure produces a structured defect report. Auditable paper trail. Agents learn from their own mistakes across retries.
 5. **"Isolate the agent" security model.** Zero secrets in the sandbox. Control plane acts as credential proxy. Agent receives only a session token and callback URL.
