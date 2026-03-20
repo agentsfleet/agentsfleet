@@ -22,7 +22,8 @@ Create accounts and generate one root API key per service. Hand off to agent whe
 - [ ] **Cloudflare** — add domains, set nameservers
 - [ ] **Codecov** — connect GitHub repo
 - [ ] **npm** — create org
-- [ ] **Railway** — sign up at railway.com (use Google/GitHub). **Do not** use "Deploy from GitHub source" integration — it pulls all repos. Use Railway CLI only (see M2_002 §2.1).
+- [ ] **Fly.io** — sign up at fly.io (use Google/GitHub). Add a payment method (required even on free tier). Install `flyctl` locally: `curl -L https://fly.io/install.sh | sh`. Run `fly auth login`. All service setup is agent-executed via CLI (see M2_002 §2.0).
+- [ ] **Cloudflare Tunnel** — no separate sign-up needed; tunnels are created under your existing Cloudflare account. Agent creates tunnels via `cloudflared` CLI (see M2_002 §2.0).
 
 ### 1.2 Generate Root API Keys
 
@@ -35,8 +36,8 @@ One key per service:
 | Vercel (`usezombie-website`) | Deployment Protection bypass secret | Vercel → project → Settings → Deployment Protection |
 | Vercel (`usezombie-agents-sh`) | Deployment Protection bypass secret | Vercel → project → Settings → Deployment Protection |
 | Vercel (`usezombie-app`) | Deployment Protection bypass secret | Vercel → project → Settings → Deployment Protection |
-| Cloudflare | API token with Zone:Edit + DNS:Edit + Page Rules:Edit (all zones) | CF → My Profile → API Tokens |
-| Railway | Project-scoped API token | Railway dashboard → Account Settings → Tokens → New Token |
+| Cloudflare | API token with Zone:Edit + DNS:Edit + Transform Rules:Edit (all zones) | CF → My Profile → API Tokens → Create Token |
+| Fly.io | Deploy token (org-scoped) | `fly tokens create deploy -o <org>` → copy output |
 | Clerk (DEV instance) | Publishable key + Secret key | Clerk dashboard → DEV instance → API Keys |
 | Clerk (PROD instance) | Publishable key + Secret key | Clerk dashboard → PROD instance → API Keys |
 | GitHub App | App ID + PEM private key | GitHub → Settings → Developer settings → GitHub Apps → New GitHub App |
@@ -137,60 +138,103 @@ This is a one-time human step. GitHub has no API endpoint to change org package 
 
 > **Why public?** The image contains only the compiled binary. All secrets come from env vars at runtime. There is no secret in the image.
 
-### 2.3a Railway Services — DEV and PROD (Agent-executed via CLI)
+### 2.3a Fly.io — API + Worker Services (Agent-executed via CLI)
 
-Agent executes via Railway CLI (see M2_002 §2.1 for full steps):
+**Architecture:**
+```
+Cloudflare Edge (dev.api.usezombie.com)
+    │ Cloudflare Tunnel — encrypted, origin-shielded
+    ▼
+cloudflared-dev (Fly app, 2 machines for HA)
+    │ Fly private network / 6PN (internal only, no public port)
+    ▼
+zombied-dev.internal:3000  ← Fly anycast LB (automatic)
+    ├── Machine 1 (iad, shared-cpu-1x 512MB)
+    └── Machine 2 (iad, shared-cpu-1x 512MB)  ← auto-scaled up to N
 
-```bash
-# Install Railway CLI
-mise install railway   # or: brew install railway
-railway login          # browser opens — authenticate
-
-# Create project and services
-railway init --name <project>
-railway add --service zombied-dev --image ghcr.io/<org>/zombied:dev-latest
-railway add --service zombied-prod --image ghcr.io/<org>/zombied:latest
+zombied-dev-worker (separate Fly app, scaled independently)
+    └── Machine 1..N running `zombied worker`
 ```
 
-CI triggers redeployments via Railway GraphQL API (`serviceInstanceRedeploy`). Store Railway API token in vault and set GitHub Actions vars:
-- `RAILWAY_DEV_SERVICE_ID`, `RAILWAY_DEV_ENV_ID` → GitHub vars
-- `RAILWAY_PROD_SERVICE_ID`, `RAILWAY_PROD_ENV_ID` → GitHub vars
-- `railway-api-token` → `ZMB_CD_DEV` and `ZMB_CD_PROD` vaults
+**Why Fly.io:**
+- No `*.fly.dev` public domain created when `[http_service]` is omitted — only the Cloudflare Tunnel is the ingress. True origin shielding.
+- Built-in anycast load balancing across all machines — no LB config.
+- Auto-scaling: set `min_machines_running` + `auto_stop_machines` in `fly.toml`.
+- Static outbound IP included — needed for PlanetScale/Upstash IP allowlisting.
+- `iad` region co-locates with PlanetScale `aws-us-east-2` → ~5ms DB latency vs ~80ms cross-cloud on Railway.
 
-### 2.3b Cloudflare DNS — API + CDN
+Agent executes via Fly CLI (see M2_002 §2.0 for full steps):
 
-After Railway services are created, agent sets up DNS via Cloudflare API:
+```bash
+# Authenticate (human does fly auth login once; agent uses deploy token from vault)
+export FLY_API_TOKEN=$(op read "op://$VAULT_DEV/fly-api-token/credential")
+
+# Create apps
+fly apps create zombied-dev       --org <org>
+fly apps create cloudflared-dev   --org <org>
+fly apps create zombied-dev-worker --org <org>
+
+# Set secrets from vault
+fly secrets set \
+  DATABASE_URL_API="$(op read 'op://$VAULT_DEV/planetscale-dev/connection-string')" \
+  DATABASE_URL_WORKER="$(op read 'op://$VAULT_DEV/planetscale-dev/connection-string')" \
+  REDIS_URL_API="$(op read 'op://$VAULT_DEV/upstash-dev/url')" \
+  REDIS_URL_WORKER="$(op read 'op://$VAULT_DEV/upstash-dev/url')" \
+  ENCRYPTION_MASTER_KEY="$(op read 'op://$VAULT_DEV/zombied-local-config/encryption-master-key')" \
+  GITHUB_APP_ID="$(op read 'op://$VAULT_DEV/github-app/app-id')" \
+  GITHUB_APP_PRIVATE_KEY="$(op read 'op://$VAULT_DEV/github-app/private-key')" \
+  OIDC_JWKS_URL="https://winning-wombat-65.clerk.accounts.dev/.well-known/jwks.json" \
+  OIDC_ISSUER="https://winning-wombat-65.clerk.accounts.dev" \
+  --app zombied-dev
+
+# Deploy from GHCR
+fly deploy --app zombied-dev --image ghcr.io/usezombie/zombied:dev-latest
+
+# Scale to 2 machines for HA
+fly scale count 2 --app zombied-dev
+```
+
+CI triggers redeployments via `fly deploy --image` using the deploy token. Store in vault and set GitHub Actions vars:
+- `fly-api-token` → `ZMB_CD_DEV` and `ZMB_CD_PROD` vaults
+- `FLY_API_TOKEN` → GitHub Actions secret (or load from 1Password via OP_SERVICE_ACCOUNT_TOKEN)
+
+### 2.3b Cloudflare Tunnel — Origin Shield (Agent-executed)
+
+Cloudflare Tunnel routes all traffic from `dev.api.usezombie.com` → Fly private network. No public port on Fly. No bypass possible.
+
+```bash
+# Create tunnel (stores credentials locally; agent saves to vault)
+cloudflared tunnel create zombied-dev
+# Output: tunnel ID e.g. abc123...
+
+# Store tunnel credentials in vault
+op item create --vault ZMB_CD_DEV --title cloudflare-tunnel-dev \
+  --category "API Credential" \
+  "credential=$(cat ~/.cloudflared/<tunnel-id>.json | base64)"
+
+# Create DNS CNAME → tunnel (replaces direct Railway/Fly CNAME)
+cloudflared tunnel route dns zombied-dev dev.api.usezombie.com
+```
+
+`cloudflared` config deployed as a Fly app connects to `zombied-dev.internal:3000` via Fly's private 6PN network. The Fly app has no `[http_service]` — no public endpoint is created.
+
+Cloudflare SSL/TLS mode: **Full (Strict)**. No Transform Rules needed — the tunnel handles routing.
+
+### 2.3c Cloudflare DNS — Managed Records
+
+For non-API DNS (website, app, etc.) — agent sets CNAME records via Cloudflare API:
 
 ```bash
 CF_TOKEN=$(op read "op://$VAULT_PROD/cloudflare-api-token/credential")
 ZONE_ID=<from 2.6 below>
 
-# DEV
+# These point to Vercel (not Fly — API traffic goes via tunnel)
 curl -X POST "https://api.cloudflare.com/client/v4/zones/$ZONE_ID/dns_records" \
   -H "Authorization: Bearer $CF_TOKEN" -H "Content-Type: application/json" \
-  -d '{"type":"CNAME","name":"dev.api","content":"zombied-dev-production.up.railway.app","proxied":true,"ttl":1}'
-
-# PROD
-curl -X POST "https://api.cloudflare.com/client/v4/zones/$ZONE_ID/dns_records" \
-  -H "Authorization: Bearer $CF_TOKEN" -H "Content-Type: application/json" \
-  -d '{"type":"CNAME","name":"api","content":"zombied-prod-production.up.railway.app","proxied":true,"ttl":1}'
+  -d '{"type":"CNAME","name":"app","content":"cname.vercel-dns.com","proxied":true,"ttl":1}'
 ```
 
-Cloudflare SSL/TLS mode: **Full**. Proxy status: ON (orange cloud).
-
-**Host header Transform Rule (Railway free plan only):** Railway routes by Host header. Without a custom domain registered in Railway, add a Cloudflare Transform Rule to override the Host header:
-
-Cloudflare dashboard → Rules → Transform Rules → Modify Request Header:
-- `dev.api.usezombie.com` → Host: `zombied-dev-production.up.railway.app`
-- `api.usezombie.com` → Host: `zombied-prod-production.up.railway.app`
-
-Note: Cloudflare API token needs Transform Rules permission to set this via API. The DNS-scoped token does not cover it — create a separate token or set manually in the dashboard.
-
-**Upgrade path:** Railway Hobby ($5/mo) allows registering custom domains directly:
-```bash
-railway domain dev.api.usezombie.com --port 3000 --service zombied-dev
-```
-Railway provisions TLS for the custom domain; remove the Transform Rules once done.
+Cloudflare API token needs: Zone:Edit + DNS:Edit + Transform Rules:Edit permissions.
 
 ### 2.6 Cloudflare — Zone Discovery
 

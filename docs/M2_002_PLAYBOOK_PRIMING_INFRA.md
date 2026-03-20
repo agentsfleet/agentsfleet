@@ -15,14 +15,31 @@ Reusable across startups. Replace `ZMB` vault prefix and service names per proje
 ```
 Milestone 1 (M1_001_PLAYBOOK_BOOTSTRAP.md) — human + agent bootstrap
     └── Milestone 2 (this doc) — agent infra priming
-        ├── 1.0 Container pipeline
-        ├── 2.0 Railway (DEV + PROD services)
-        ├── 3.0 Data-plane bootstrap
-        └── 4.0 Worker infrastructure (OVHCloud + Tailscale)
+        ├── 1.0 Container pipeline (GHCR)
+        ├── 2.0 Fly.io — API + Worker services (recommended)
+        │     ├── 2.1 Fly apps: zombied-dev, zombied-dev-worker, cloudflared-dev
+        │     ├── 2.2 Cloudflare Tunnel (origin shield — no public Fly port)
+        │     └── 2.3 Auto-scaling configuration
+        ├── 3.0 Data-plane bootstrap (PlanetScale + Upstash)
+        └── 4.0 Worker infrastructure (OVHCloud + Tailscale — defer to v2/scale)
             └── Milestone 3 deployment execution:
                 ├── docs/M3_001_PLAYBOOK_DEPLOY_DEV.md
                 └── docs/M3_002_PLAYBOOK_DEPLOY_PROD.md
 ```
+
+**Human vs Agent split:**
+
+| Step | Owner | Why |
+|------|-------|-----|
+| Create Fly.io account, add payment | Human | Requires browser + billing |
+| `fly auth login` | Human | Requires browser OAuth |
+| Generate deploy token, store in vault | Human | Requires Fly dashboard |
+| Create Fly apps, set secrets, deploy | Agent | Fully scriptable via `flyctl` |
+| Create Cloudflare Tunnel | Agent | `cloudflared` CLI, credentials to vault |
+| Set DNS CNAME records | Agent | Cloudflare API |
+| Configure auto-scaling in fly.toml | Agent | Config file + `fly deploy` |
+| PlanetScale schema migrations | Agent | `psql` + migration files |
+| Upstash stream bootstrap | Agent | `redis-cli` |
 
 ---
 
@@ -46,226 +63,222 @@ grep "needs:.*binaries" .github/workflows/release.yml
 
 ---
 
-## 2.0 Railway Services
+## 2.0 Fly.io Services
 
-### 2.1 Create Railway Services via CLI
+**Owner: Agent** (human does one-time `fly auth login` and stores deploy token — see M1_001 §1.2)
 
-**Do not use "Deploy from GitHub source" or the Railway GitHub integration** — connecting Railway to GitHub imports all repos into the project. This project deploys pre-built Docker images from GHCR only.
-
-Use the Railway CLI to create and configure the DEV and PROD services independently.
-
-#### Prerequisites
+### 2.1 Create Fly Apps (Agent)
 
 ```bash
-# Install Railway CLI
-brew install railway
+export FLY_API_TOKEN=$(op read "op://ZMB_CD_DEV/fly-api-token/credential")
 
-# Authenticate with project-scoped token from vault
-export RAILWAY_TOKEN=$(op read "op://ZMB_CD_DEV/railway-api-token/credential")
-railway whoami   # must return your account name
+# Create the three DEV apps
+fly apps create zombied-dev         --org <org>
+fly apps create zombied-dev-worker  --org <org>
+fly apps create cloudflared-dev     --org <org>
+
+# Repeat for PROD
+fly apps create zombied-prod         --org <org>
+fly apps create zombied-prod-worker  --org <org>
+fly apps create cloudflared-prod     --org <org>
 ```
 
-#### Step 1 — Create or link a Railway project
+### 2.2 Set Secrets from 1Password (Agent)
 
-If no project exists yet:
-```bash
-railway projects create --name usezombie
-```
-
-If a project already exists, get its ID from the Railway dashboard and link:
-```bash
-railway link --project <project-id>
-```
-
-#### Step 2 — Create the DEV service
+> **Important:** `DATABASE_URL` and `REDIS_URL` are not valid for `zombied serve`. Use role-separated vars. See `docs/CONFIGURATION.md`.
 
 ```bash
-# Create the service (empty, no source yet)
-railway service create --name zombied-dev
+# DEV API + Worker (same secrets, separate apps)
+for APP in zombied-dev zombied-dev-worker; do
+  fly secrets set \
+    DATABASE_URL_API="$(op read 'op://ZMB_CD_DEV/planetscale-dev/connection-string')" \
+    DATABASE_URL_WORKER="$(op read 'op://ZMB_CD_DEV/planetscale-dev/connection-string')" \
+    REDIS_URL_API="$(op read 'op://ZMB_CD_DEV/upstash-dev/url')" \
+    REDIS_URL_WORKER="$(op read 'op://ZMB_CD_DEV/upstash-dev/url')" \
+    ENCRYPTION_MASTER_KEY="$(op read 'op://ZMB_CD_DEV/zombied-local-config/encryption-master-key')" \
+    GITHUB_APP_ID="$(op read 'op://ZMB_CD_DEV/github-app/app-id')" \
+    GITHUB_APP_PRIVATE_KEY="$(op read 'op://ZMB_CD_DEV/github-app/private-key')" \
+    OIDC_PROVIDER=clerk \
+    OIDC_JWKS_URL="$(op read 'op://ZMB_CD_DEV/clerk-dev/publishable-key' | python3 -c 'import sys,base64; k=sys.stdin.read().strip().split("_")[2]; print(f\"https://{base64.b64decode(k+\"=\"*4).decode().rstrip(chr(36))}/.well-known/jwks.json\")')" \
+    OIDC_ISSUER="$(op read 'op://ZMB_CD_DEV/clerk-dev/hostname' 2>/dev/null || echo 'https://winning-wombat-65.clerk.accounts.dev')" \
+    PORT=3000 \
+    ENVIRONMENT=dev \
+    MIGRATE_ON_START=0 \
+    --app "$APP"
+done
 
-# Deploy from GHCR image (no GitHub connection)
-railway up \
-  --service zombied-dev \
-  --image ghcr.io/usezombie/zombied:dev-latest
-
-# Verify service is listed
-railway services
+# PROD — same pattern with ZMB_CD_PROD values
 ```
 
-#### Step 3 — Create the PROD service
+### 2.3 Deploy from GHCR (Agent)
 
 ```bash
-railway service create --name zombied-prod
+# Deploy API
+fly deploy --app zombied-dev \
+  --image ghcr.io/usezombie/zombied:dev-latest \
+  --regions iad \
+  --ha=false   # start with 1 machine, scale after verify
 
-railway up \
-  --service zombied-prod \
-  --image ghcr.io/usezombie/zombied:latest
+# Deploy Worker (separate process, same image)
+fly deploy --app zombied-dev-worker \
+  --image ghcr.io/usezombie/zombied:dev-latest \
+  --regions iad
 
-railway services
+# Verify
+fly status --app zombied-dev
 ```
 
-#### Step 4 — Expose port and set up DNS via Cloudflare
+`fly.toml` for the API app (no public port — tunnel is the only ingress):
+
+```toml
+app = "zombied-dev"
+primary_region = "iad"
+
+[build]
+  image = "ghcr.io/usezombie/zombied:dev-latest"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
+
+# NO [http_service] block — suppresses *.fly.dev public domain entirely.
+# All traffic enters via Cloudflare Tunnel (§2.4).
+# Internal-only: accessible at zombied-dev.internal:3000 within Fly 6PN.
+
+[metrics]
+  port = 9091
+  path = "/metrics"
+```
+
+`fly.toml` for the Worker app:
+
+```toml
+app = "zombied-dev-worker"
+primary_region = "iad"
+
+[build]
+  image = "ghcr.io/usezombie/zombied:dev-latest"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
+
+[processes]
+  worker = "zombied worker"
+
+# No http_service — workers consume Redis Streams, no inbound HTTP.
+```
+
+### 2.4 Cloudflare Tunnel — Origin Shield (Agent)
+
+Tunnel replaces CNAME. All traffic: Cloudflare edge → encrypted tunnel → Fly private network. No public Fly port. No bypass.
 
 ```bash
-# Generate Railway-provided subdomain (free, no plan required)
-railway domain --service zombied-dev
-# Output: https://zombied-dev-production.up.railway.app
+# Create tunnel (run locally, credentials stored in ~/.cloudflared/)
+cloudflared tunnel create zombied-dev
+# Output: Created tunnel zombied-dev with id <TUNNEL_ID>
 
-railway domain --service zombied-prod
-# Output: https://zombied-prod-production.up.railway.app
+# Store credentials in vault
+TUNNEL_CREDS=$(cat ~/.cloudflared/<TUNNEL_ID>.json | base64)
+op item create --vault ZMB_CD_DEV --title cloudflare-tunnel-dev \
+  --category "API Credential" \
+  "tunnel-id=<TUNNEL_ID>" \
+  "credentials-json-b64=$TUNNEL_CREDS"
+
+# Route tunnel to domain (creates CNAME <TUNNEL_ID>.cfargotunnel.com automatically)
+cloudflared tunnel route dns zombied-dev dev.api.usezombie.com
+
+# Repeat for PROD
+cloudflared tunnel create zombied-prod
+cloudflared tunnel route dns zombied-prod api.usezombie.com
 ```
 
-**Cloudflare DNS** — add these CNAME records in Cloudflare dashboard → DNS → Records:
+`cloudflared` config deployed as a Fly app (`cloudflared-dev`):
 
-| Name | Type | Target | Proxy |
-|------|------|--------|-------|
-| `dev.api` | CNAME | `zombied-dev-production.up.railway.app` | ON (orange cloud) |
-| `api` | CNAME | `zombied-prod-production.up.railway.app` | ON (orange cloud) |
+```yaml
+# config.yml — baked into cloudflared Fly image or mounted as secret
+tunnel: <TUNNEL_ID>
+credentials-file: /etc/cloudflared/credentials.json
 
-Set Cloudflare SSL/TLS mode to **Full** (not Strict).
-
-**Host header fix (free plan only):** Railway routes by Host header. Since Railway free plan doesn't accept custom domains, add a Cloudflare Transform Rule so Railway receives its own domain:
-
-Cloudflare dashboard → Rules → Transform Rules → Modify Request Header:
-- When: `http.host eq "dev.api.usezombie.com"`
-- Then: Set `Host` → `zombied-dev-production.up.railway.app`
-
-Repeat for PROD (`api.usezombie.com` → `zombied-prod-production.up.railway.app`).
-
-**Upgrade path (recommended):** Upgrade Railway project to Hobby ($5/mo), then register the custom domain directly:
-```bash
-railway domain dev.api.usezombie.com --port 3000 --service zombied-dev
-railway domain api.usezombie.com --port 3000 --service zombied-prod
-```
-Railway provisions TLS for the custom domain. Remove the Cloudflare Transform Rules once done.
-
-#### Step 5 — Set environment variables
-
-Set all vars for DEV from vault (see §2.2 for the full var list):
-
-```bash
-export RAILWAY_TOKEN=$(op read "op://ZMB_CD_DEV/railway-api-token/credential")
-
-railway variables set \
-  --service zombied-dev \
-  PORT=3000 \
-  ENVIRONMENT=dev \
-  DATABASE_URL_API="$(op read "op://ZMB_CD_DEV/planetscale-dev/connection-string")" \
-  DATABASE_URL_WORKER="$(op read "op://ZMB_CD_DEV/planetscale-dev/connection-string")" \
-  REDIS_URL_API="$(op read "op://ZMB_CD_DEV/upstash-dev/url")" \
-  REDIS_URL_WORKER="$(op read "op://ZMB_CD_DEV/upstash-dev/url")" \
-  ENCRYPTION_MASTER_KEY="$(op read "op://ZMB_CD_DEV/encryption-master-key/credential")" \
-  GITHUB_APP_ID="$(op read "op://ZMB_CD_DEV/github-app/app-id")" \
-  GITHUB_APP_PRIVATE_KEY="$(op read "op://ZMB_CD_DEV/github-app/private-key")" \
-  OIDC_PROVIDER=clerk \
-  MIGRATE_ON_START=0
+ingress:
+  - hostname: dev.api.usezombie.com
+    service: http://zombied-dev.internal:3000  # Fly 6PN private DNS
+  - service: http_status:404
 ```
 
-Repeat for PROD using `ZMB_CD_PROD` values and `--service zombied-prod`.
+```toml
+# fly.toml for cloudflared-dev
+app = "cloudflared-dev"
+primary_region = "iad"
 
-#### Step 6 — Store Railway API token and IDs for CI
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"
 
-CI triggers Railway redeployments via the Railway GraphQL API (no deploy hook URL needed).
+[processes]
+  app = "cloudflared tunnel --config /etc/cloudflared/config.yml run"
+```
+
+Cloudflare SSL/TLS: **Full (Strict)**. No Transform Rules. No CNAME hack.
+
+### 2.5 Auto-Scaling (Agent)
 
 ```bash
-# Store Railway session token in vault (generated by railway login)
-RAILWAY_TOKEN=$(python3 -c "import json; d=json.load(open('~/.railway/config.json')); print(d['user']['token'])")
-op item create --vault ZMB_CD_DEV --title railway-api-token --category "API Credential" "credential=$RAILWAY_TOKEN"
-op item create --vault ZMB_CD_PROD --title railway-api-token --category "API Credential" "credential=$RAILWAY_TOKEN"
+# Scale API to 2 machines for HA (both in iad)
+fly scale count 2 --app zombied-dev
 
-# Get service and environment IDs
-railway status --json | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['id'], [s for s in d.get('services',[])])"
+# Auto-scaling: scale up to 5 on load, never scale below 1
+fly autoscale set min=1 max=5 --app zombied-dev
+
+# Workers — scale independently based on queue depth (manual for now)
+fly scale count 1 --app zombied-dev-worker
 ```
 
-Store these as GitHub Actions repository variables (Settings → Variables):
-- `RAILWAY_DEV_ENV_ID` — Railway environment ID for zombied-dev
-- `RAILWAY_DEV_SERVICE_ID` — Railway service ID for zombied-dev
-- `RAILWAY_PROD_ENV_ID` — Railway environment ID for zombied-prod
-- `RAILWAY_PROD_SERVICE_ID` — Railway service ID for zombied-prod
+For PROD multi-region (future):
+```bash
+# Add a second region for global HA
+fly regions add lhr --app zombied-prod     # London for EU users
+fly scale count 2 --app zombied-prod       # 1 machine per region
+```
 
-CI uses these to call `serviceInstanceRedeploy` mutation after each GHCR push.
-
-#### Verify
+### 2.6 CI Wiring (Agent)
 
 ```bash
-# Re-run credential check — all railway items must be green
-ENV=dev ./scripts/check-credentials.sh
+# Store Fly deploy token in vault
+fly tokens create deploy -o <org> --name ci-deploy
+op item create --vault ZMB_CD_DEV --title fly-api-token \
+  --category "API Credential" "credential=<token>"
 
-# Confirm services are running
-curl -sf https://dev.api.usezombie.com/healthz
+# Set GitHub Actions vars
+gh variable set FLY_APP_DEV --body "zombied-dev" --repo usezombie/usezombie
+gh variable set FLY_APP_DEV_WORKER --body "zombied-dev-worker" --repo usezombie/usezombie
+gh variable set FLY_APP_PROD --body "zombied-prod" --repo usezombie/usezombie
 ```
 
-> CI calls Railway GraphQL API (`serviceInstanceRedeploy`) after pushing each image. Railway pulls the new image and restarts the container. No source build happens on Railway.
-
-### 2.2 Set Railway Env Vars
-
-Agent reads from 1Password and sets via Railway dashboard or `railway variables set`.
-
-> **Important:** `DATABASE_URL` and `REDIS_URL` are **not** valid for `zombied serve`. Use the role-separated vars below. See `docs/CONFIGURATION.md` for the full contract.
-
-**DEV service** — set these in Railway DEV service environment:
-
-```
-# Storage — role-separated (required)
-DATABASE_URL_API     = <planetscale-dev connection-string>
-DATABASE_URL_WORKER  = <planetscale-dev connection-string>   # same DB, different role in practice
-
-REDIS_URL_API        = <upstash-dev url>
-REDIS_URL_WORKER     = <upstash-dev url>
-
-# Secrets (required)
-ENCRYPTION_MASTER_KEY = <encryption-master-key credential from ZMB_CD_DEV>
-
-# GitHub App (required)
-GITHUB_APP_ID          = <github-app app-id from ZMB_CD_DEV>
-GITHUB_APP_PRIVATE_KEY = <github-app private-key from ZMB_CD_DEV>
-
-# Auth (required — Clerk OIDC)
-OIDC_PROVIDER  = clerk
-OIDC_JWKS_URL  = https://<clerk-dev-domain>/.well-known/jwks.json
-OIDC_ISSUER    = https://<clerk-dev-domain>
-
-# Server
-PORT             = 3000
-MIGRATE_ON_START = 0
-ENVIRONMENT      = dev
+CI deploy step in `deploy-dev.yml`:
+```yaml
+- name: Deploy to Fly.io DEV
+  run: fly deploy --app ${{ vars.FLY_APP_DEV }} --image ghcr.io/usezombie/zombied:dev-latest --wait-timeout 120
+  env:
+    FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
 ```
 
-**PROD service** — set these in Railway PROD service environment:
-
-```
-# Storage — role-separated (required)
-DATABASE_URL_API     = <planetscale-prod connection-string>
-DATABASE_URL_WORKER  = <planetscale-prod connection-string>
-
-REDIS_URL_API        = <upstash-prod url>
-REDIS_URL_WORKER     = <upstash-prod url>
-
-# Secrets (required)
-ENCRYPTION_MASTER_KEY = <encryption-master-key credential from ZMB_CD_PROD>
-
-# GitHub App (required)
-GITHUB_APP_ID          = <github-app app-id from ZMB_CD_PROD>
-GITHUB_APP_PRIVATE_KEY = <github-app private-key from ZMB_CD_PROD>
-
-# Auth (required — Clerk OIDC)
-OIDC_PROVIDER  = clerk
-OIDC_JWKS_URL  = https://<clerk-prod-domain>/.well-known/jwks.json
-OIDC_ISSUER    = https://<clerk-prod-domain>
-
-# Server
-PORT             = 3000
-MIGRATE_ON_START = 0
-ENVIRONMENT      = prod
-```
-
-Full env var contract: `docs/CONFIGURATION.md`.
-
-### 2.3 Verify Railway Deploy
+### 2.7 Verify
 
 ```bash
+# Tunnel health
+cloudflared tunnel info zombied-dev
+
+# API reachable via Cloudflare (not direct Fly)
 curl -sf https://dev.api.usezombie.com/healthz
 curl -sf https://dev.api.usezombie.com/readyz | jq '.ready'
+
+# Confirm no direct Fly access (should time out or refuse)
+curl -sf https://zombied-dev.fly.dev/healthz  # expected: connection refused / 404
+
+# Fly machine status
+fly status --app zombied-dev
+fly logs   --app zombied-dev
 ```
 
 ---
