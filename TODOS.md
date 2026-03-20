@@ -145,6 +145,19 @@ picking it up in 3 months understands the motivation and where to start.
 
 ---
 
+## Infra: Static IP + Data-Plane IP Allowlisting
+
+**What:** Get a static outbound IP for Railway API service, then allowlist it in PlanetScale and Upstash. Also allowlist OVH worker node IPs in both.
+**Why:** PlanetScale and Upstash both support IP allowlisting. Currently Railway has dynamic outbound IPs, so the database and Redis are accessible from any IP that has the connection string. Allowlisting locks down the data plane to known infra only.
+**Pros:** Real data-plane protection — a leaked `DATABASE_URL` or `REDIS_URL` is useless from an unknown IP.
+**Cons:** Railway Pro costs $20/mo per service for static outbound IPs (vs $5/mo Hobby). Alternative: Fly.io (~$2/mo) has static IPs included. Evaluate at scale.
+**Context:** Discussed Mar 20, 2026 during M7_001 infrastructure review. OVH worker nodes already have static IPs — add those immediately once PlanetScale/Upstash allowlisting is enabled. Railway static IP is the gating item. mTLS (Cloudflare Authenticated Origin Pulls) was also evaluated — not feasible on Railway or Fly.io without running custom TLS termination in the app; deferred to a future `zombied` hardening milestone. Cloudflare Tunnel (free) is a viable origin-obfuscation approach that does not require code changes.
+**Effort:** S (config only once static IP is obtained)
+**Priority:** P2
+**Depends on:** M7_001 green (Railway wired), decision on Railway Pro vs Fly.io migration
+
+---
+
 ## Docs: PlanetScale Pricing Note in Bootstrap Playbook
 
 **What:** Add a one-liner to `docs/M1_001_PLAYBOOK_BOOTSTRAP.md` noting that PlanetScale's Hobby tier was removed in 2024 — the minimum plan is $39/mo. Recommend the Railway PlanetScale add-on to keep billing on one invoice.
