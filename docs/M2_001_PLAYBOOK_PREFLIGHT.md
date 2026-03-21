@@ -1,4 +1,4 @@
-# M2_001: Playbook — Credential Validation
+# M2_001: Playbook — Preflight Readiness
 
 **Milestone:** M2
 **Workstream:** 001
@@ -12,7 +12,7 @@ credential the agent needs is present in the correct 1Password vault and returns
 value. Run this before any infrastructure step. Fail loud — surface every missing item,
 not just the first one.
 
-Script: `scripts/check-credentials.sh` — runs anywhere `op` CLI is available (local, CI, agent terminal).
+Script: `scripts/checks/m2_001/run.sh` — milestone/workstream check runner that runs anywhere `op` CLI is available (local, CI, agent terminal).
 Vault names: set `VAULT_DEV` and `VAULT_PROD` as GitHub Actions repository variables (Settings → Variables). Scripts fall back to `ZMB_CD_DEV` / `ZMB_CD_PROD` if not set locally.
 
 ---
@@ -35,8 +35,10 @@ Every `op://` reference the agent will use across M2_002 and the deploy pipeline
 | `github-app` | `app-id` | Fly.io PROD + DEV `GITHUB_APP_ID` |
 | `github-app` | `private-key` | Fly.io PROD + DEV `GITHUB_APP_PRIVATE_KEY` |
 | `encryption-master-key` | `credential` | Fly.io PROD `ENCRYPTION_MASTER_KEY` |
-| `planetscale-prod` | `connection-string` | Fly.io PROD `DATABASE_URL_API` + `DATABASE_URL_WORKER` |
-| `upstash-prod` | `url` | Fly.io PROD `REDIS_URL_API` + `REDIS_URL_WORKER` |
+| `planetscale-prod` | `api-connection-string` | Fly.io PROD `DATABASE_URL_API` |
+| `planetscale-prod` | `worker-connection-string` | Fly.io PROD `DATABASE_URL_WORKER` |
+| `upstash-prod` | `api-url` | Fly.io PROD `REDIS_URL_API` |
+| `upstash-prod` | `worker-url` | Fly.io PROD `REDIS_URL_WORKER` |
 | `tailscale` | `authkey` | worker node provision |
 | `zombie-prod-worker-ant` | `ssh-private-key` | CI → worker deploy SSH |
 | `zombie-prod-worker-bird` | `ssh-private-key` | CI → worker deploy SSH |
@@ -54,26 +56,49 @@ Every `op://` reference the agent will use across M2_002 and the deploy pipeline
 | `github-app` | `private-key` | Fly.io DEV `GITHUB_APP_PRIVATE_KEY` |
 | `encryption-master-key` | `credential` | Fly.io DEV `ENCRYPTION_MASTER_KEY` |
 | `vercel-api-token` | `credential` | Vercel env var setup |
-| `planetscale-dev` | `connection-string` | Fly.io DEV `DATABASE_URL_API` + `DATABASE_URL_WORKER` |
-| `upstash-dev` | `url` | Fly.io DEV `REDIS_URL_API` + `REDIS_URL_WORKER` |
+| `planetscale-dev` | `api-connection-string` | Fly.io DEV `DATABASE_URL_API` |
+| `planetscale-dev` | `worker-connection-string` | Fly.io DEV `DATABASE_URL_WORKER` |
+| `upstash-dev` | `api-url` | Fly.io DEV `REDIS_URL_API` |
+| `upstash-dev` | `worker-url` | Fly.io DEV `REDIS_URL_WORKER` |
 | `fly-api-token` | `credential` | `deploy-dev.yml` → `fly deploy --app zombied-dev` (see M2_002 §2.6) |
 | `cloudflare-tunnel-dev` | `credential` | Cloudflare Tunnel credentials for DEV origin shield (see M2_002 §2.4) |
 
 ---
 
-## 2.0 Validation Steps
+## 2.0 Validation Steps (Chronological)
+
+Checks are split into ordered sections under `scripts/checks/m2_001/` and executed by `scripts/checks/m2_001/run.sh`.
+
+| Section | Script | Purpose | Blocks startup? | Playbook dependency |
+|---|---|---|---|---|
+| `1` | `scripts/checks/m2_001/section-1-preflight.sh` | Local prerequisites (`op` binary + 1Password auth/session) | Yes | M1 complete → before any M2 work |
+| `2` | `scripts/checks/m2_001/section-2-procurement-readiness-gate.sh` | Procurement readiness gate (all required `op://` refs + API/worker DB/Redis separation) | Yes | Gate for M2_002 infra priming |
+
+Notes:
+- `OP_SERVICE_ACCOUNT_TOKEN` is the preferred non-interactive auth for agents/CI.
+- `gh` / `glab` auth is reported as advisory in section `1` (non-blocking).
+- GitHub PAT is **not** required for this credential gate.
 
 ### 2.1 Run the Check
 
 Run from any terminal where `op` is authenticated:
 
 ```bash
-# Check all vaults
-./scripts/check-credentials.sh
+export VAULT_DEV="${VAULT_DEV:-ZMB_CD_DEV}"
+export VAULT_PROD="${VAULT_PROD:-ZMB_CD_PROD}"
 
-# Check a specific vault
-ENV=dev  ./scripts/check-credentials.sh
-ENV=prod ./scripts/check-credentials.sh
+# Run full chronological gate (section 1 -> 2) for both envs
+./scripts/checks/m2_001/run.sh
+
+# Check a specific env (still runs section 1 -> 2)
+ENV=dev  ./scripts/checks/m2_001/run.sh
+ENV=prod ./scripts/checks/m2_001/run.sh
+
+# Run only startup preflight
+SECTIONS=1 ./scripts/checks/m2_001/run.sh
+
+# Run only procurement readiness gate (after section 1 passes)
+SECTIONS=2 ./scripts/checks/m2_001/run.sh
 ```
 
 Works on: local machine, CI runner, agent session, any context with `op` CLI.
@@ -83,9 +108,10 @@ Works on: local machine, CI runner, agent session, any context with `op` CLI.
 The workflow prints one line per item:
 
 ```
-✓ op://ZMB_CD_PROD/cloudflare-api-token/credential
-✗ MISSING: op://ZMB_CD_PROD/discord-ci-webhook/credential
-✗ MISSING: op://ZMB_CD_DEV/planetscale-dev/connection-string
+✓ op://$VAULT_PROD/cloudflare-api-token/credential
+✗ MISSING: op://$VAULT_PROD/discord-ci-webhook/credential
+✗ MISSING: op://$VAULT_DEV/planetscale-dev/api-connection-string
+✗ MISSING: op://$VAULT_DEV/planetscale-dev/worker-connection-string
 ```
 
 For every `✗ MISSING` line: add the item to the vault, re-run.
@@ -96,15 +122,19 @@ After all items are present, run live connectivity checks:
 
 ```bash
 # Postgres DEV
-DB=$(op read "op://ZMB_CD_DEV/planetscale-dev/connection-string")
-psql "$DB" -c "SELECT 1" && echo "✓ postgres dev"
+DB_API=$(op read "op://$VAULT_DEV/planetscale-dev/api-connection-string")
+DB_WORKER=$(op read "op://$VAULT_DEV/planetscale-dev/worker-connection-string")
+psql "$DB_API" -c "SELECT 1" && echo "✓ postgres dev api"
+psql "$DB_WORKER" -c "SELECT 1" && echo "✓ postgres dev worker"
 
 # Redis DEV
-REDIS=$(op read "op://ZMB_CD_DEV/upstash-dev/url")
-redis-cli -u "$REDIS" PING && echo "✓ redis dev"
+REDIS_API=$(op read "op://$VAULT_DEV/upstash-dev/api-url")
+REDIS_WORKER=$(op read "op://$VAULT_DEV/upstash-dev/worker-url")
+docker run --rm redis:7-alpine redis-cli -u "$REDIS_API" PING && echo "✓ redis dev api"
+docker run --rm redis:7-alpine redis-cli -u "$REDIS_WORKER" PING && echo "✓ redis dev worker"
 
 # Discord webhook
-WEBHOOK=$(op read "op://ZMB_CD_PROD/discord-ci-webhook/credential")
+WEBHOOK=$(op read "op://$VAULT_PROD/discord-ci-webhook/credential")
 curl -sf -X POST "$WEBHOOK" \
   -H "Content-Type: application/json" \
   -d '{"content":"✅ credential check passed"}' && echo "✓ discord"
@@ -133,8 +163,10 @@ Items not yet in the vault that block M2_002. Create these before re-running:
 | Item name | Field | How to get the value |
 |---|---|---|
 | `discord-ci-webhook` | `credential` | Discord → Server Settings → Integrations → Webhooks → New Webhook → Copy URL |
-| `planetscale-prod` | `connection-string` | PlanetScale dashboard → your DB → Connect → copy Postgres connection string |
-| `upstash-prod` | `url` | Upstash dashboard → Redis → `usezombie-cache` → Details → copy Redis URL (`rediss://...`) |
+| `planetscale-prod` | `api-connection-string` | PlanetScale dashboard → create/get `api_accessor` connection string |
+| `planetscale-prod` | `worker-connection-string` | PlanetScale dashboard → create/get `worker_accessor` connection string |
+| `upstash-prod` | `api-url` | Upstash dashboard → Redis → `usezombie-cache` → create/get API role URL (`rediss://...`) |
+| `upstash-prod` | `worker-url` | Upstash dashboard → Redis → `usezombie-cache` → create/get worker role URL (`rediss://...`) |
 | `tailscale` | `authkey` | Tailscale admin → Settings → Keys → Generate auth key (reusable, no expiry for CI) |
 | `zombie-prod-worker-ant` | `ssh-private-key` | Already in vault ✅ — add public key to `~/.ssh/authorized_keys` on the node |
 | `zombie-prod-worker-bird` | `ssh-private-key` | Already in vault ✅ — add public key to `~/.ssh/authorized_keys` on the node |
@@ -143,8 +175,10 @@ Items not yet in the vault that block M2_002. Create these before re-running:
 
 | Item name | Field | How to get the value |
 |---|---|---|
-| `planetscale-dev` | `connection-string` | PlanetScale → `usezombie-dev` DB → Connect → copy Postgres connection string |
-| `upstash-dev` | `url` | Upstash → Redis → `usezombie-dev` → Details → copy Redis URL (`rediss://...`) |
+| `planetscale-dev` | `api-connection-string` | PlanetScale → `usezombie-dev` DB → create/get `api_accessor` connection string |
+| `planetscale-dev` | `worker-connection-string` | PlanetScale → `usezombie-dev` DB → create/get `worker_accessor` connection string |
+| `upstash-dev` | `api-url` | Upstash → Redis → `usezombie-dev` → create/get API role URL (`rediss://...`) |
+| `upstash-dev` | `worker-url` | Upstash → Redis → `usezombie-dev` → create/get worker role URL (`rediss://...`) |
 | `fly-api-token` | `credential` | `fly tokens create deploy -o <org>` — copy output. Scoped to org, used by CI to deploy. |
 | `cloudflare-tunnel-dev` | `credential` | Agent-created: `cloudflared tunnel create zombied-dev` → base64-encode the credentials JSON → store here (see M2_002 §2.4). |
 

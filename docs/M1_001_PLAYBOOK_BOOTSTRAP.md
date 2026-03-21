@@ -67,7 +67,7 @@ Give the agent:
 
 Hand-off message:
 
-> "Milestone 1 complete. Here are the root API keys: [paste keys]. Store them in 1Password vaults `ZMB_CD_PROD` / `ZMB_CD_DEV` per `docs/M1_001_PLAYBOOK_BOOTSTRAP.md §2.0`, then run `./scripts/check-credentials.sh` and proceed with `docs/M2_001_PLAYBOOK_CREDENTIAL_CHECK.md`."
+> "Milestone 1 complete. Here are the root API keys: [paste keys]. Store them in 1Password vaults `ZMB_CD_PROD` / `ZMB_CD_DEV` per `docs/M1_001_PLAYBOOK_BOOTSTRAP.md §2.0`, then run `./scripts/check-credentials.sh` and proceed with `docs/M2_001_PLAYBOOK_PREFLIGHT.md`."
 
 ---
 
@@ -131,7 +131,7 @@ GitHub repo → Settings → Secrets and Variables → Actions:
 After the first CI push to GHCR (triggered automatically on the first merge to `main`), set the package visibility:
 
 1. Go to `https://github.com/orgs/<org>/packages/container/<service>/settings`
-2. **Change visibility → Public** — Railway and any consumer can pull without credentials
+2. **Change visibility → Public** — Fly.io and any consumer can pull without credentials
 3. **Manage Actions access → Add repository** → select the repo → set role to **Write**
 
 This is a one-time human step. GitHub has no API endpoint to change org package visibility — it must be done in the UI. Once public, it persists across all future CI pushes.
@@ -161,7 +161,7 @@ zombied-dev-worker (separate Fly app, scaled independently)
 - Built-in anycast load balancing across all machines — no LB config.
 - Auto-scaling: set `min_machines_running` + `auto_stop_machines` in `fly.toml`.
 - Static outbound IP included — needed for PlanetScale/Upstash IP allowlisting.
-- `iad` region co-locates with PlanetScale `aws-us-east-2` → ~5ms DB latency vs ~80ms cross-cloud on Railway.
+- `iad` region co-locates with PlanetScale `aws-us-east-2` → ~5ms DB latency.
 
 Agent executes via Fly CLI (see M2_002 §2.0 for full steps):
 
@@ -176,11 +176,11 @@ fly apps create zombied-dev-worker --org <org>
 
 # Set secrets from vault
 fly secrets set \
-  DATABASE_URL_API="$(op read 'op://$VAULT_DEV/planetscale-dev/connection-string')" \
-  DATABASE_URL_WORKER="$(op read 'op://$VAULT_DEV/planetscale-dev/connection-string')" \
-  REDIS_URL_API="$(op read 'op://$VAULT_DEV/upstash-dev/url')" \
-  REDIS_URL_WORKER="$(op read 'op://$VAULT_DEV/upstash-dev/url')" \
-  ENCRYPTION_MASTER_KEY="$(op read 'op://$VAULT_DEV/zombied-local-config/encryption-master-key')" \
+  DATABASE_URL_API="$(op read 'op://$VAULT_DEV/planetscale-dev/api-connection-string')" \
+  DATABASE_URL_WORKER="$(op read 'op://$VAULT_DEV/planetscale-dev/worker-connection-string')" \
+  REDIS_URL_API="$(op read 'op://$VAULT_DEV/upstash-dev/api-url')" \
+  REDIS_URL_WORKER="$(op read 'op://$VAULT_DEV/upstash-dev/worker-url')" \
+  ENCRYPTION_MASTER_KEY="$(op read 'op://$VAULT_DEV/encryption-master-key/credential')" \
   GITHUB_APP_ID="$(op read 'op://$VAULT_DEV/github-app/app-id')" \
   GITHUB_APP_PRIVATE_KEY="$(op read 'op://$VAULT_DEV/github-app/private-key')" \
   OIDC_JWKS_URL="https://winning-wombat-65.clerk.accounts.dev/.well-known/jwks.json" \
@@ -208,11 +208,11 @@ cloudflared tunnel create zombied-dev
 # Output: tunnel ID e.g. abc123...
 
 # Store tunnel credentials in vault
-op item create --vault ZMB_CD_DEV --title cloudflare-tunnel-dev \
+op item create --vault "$VAULT_DEV" --title cloudflare-tunnel-dev \
   --category "API Credential" \
   "credential=$(cat ~/.cloudflared/<tunnel-id>.json | base64)"
 
-# Create DNS CNAME → tunnel (replaces direct Railway/Fly CNAME)
+# Create DNS CNAME → tunnel (origin-shielded, no public Fly endpoint)
 cloudflared tunnel route dns zombied-dev api-dev.usezombie.com
 ```
 
@@ -269,7 +269,7 @@ Agent reads project IDs and API token from 1Password, sets via Vercel API (`PATC
 
 Once 2.4 is verified, agent runs `./scripts/check-credentials.sh` (M2_001) to confirm all vault items are present before executing `docs/M2_002_PLAYBOOK_PRIMING_INFRA.md`.
 
-All vault items the agent will need are listed in `docs/M2_001_PLAYBOOK_CREDENTIAL_CHECK.md §1.0` and `§4.0`. Review that list now and create any missing items in 1Password before the handoff — it avoids mid-execution failures.
+All vault items the agent will need are listed in `docs/M2_001_PLAYBOOK_PREFLIGHT.md §1.0` and `§4.0`. Review that list now and create any missing items in 1Password before the handoff — it avoids mid-execution failures.
 
 ---
 

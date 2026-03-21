@@ -739,8 +739,7 @@ test "persistRunAnalysis scrubs stderr tail secrets before storage" {
         .stages_passed = 0,
         .stages_total = 1,
         .failure_error_name = "CommandFailed",
-        .stderr_tail =
-            "API_KEY=secret\n" ++
+        .stderr_tail = "API_KEY=secret\n" ++
             "Bearer topsecret\n" ++
             "DATABASE_URL_API=postgres://secret\n" ++
             "-----BEGIN PRIVATE KEY-----\nabc\n-----END PRIVATE KEY-----\n",

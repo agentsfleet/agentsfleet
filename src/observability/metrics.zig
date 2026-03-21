@@ -52,7 +52,6 @@ pub const setOtelLastSuccessAtMs = mc.setOtelLastSuccessAtMs;
 
 pub const renderPrometheus = mr.renderPrometheus;
 
-
 test "prometheus render includes key metrics" {
     const alloc = std.testing.allocator;
     const body = try renderPrometheus(alloc, true, 3, 1200);

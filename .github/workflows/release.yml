@@ -164,8 +164,8 @@ jobs:
       - name: Verify DEV readiness gate
         run: |
           echo "Checking DEV API health before PROD rollout..."
-          curl -sf https://dev.api.usezombie.com/healthz >/dev/null
-          curl -sf https://dev.api.usezombie.com/readyz | jq -e '.ready == true' >/dev/null
+          curl -sf https://api-dev.usezombie.com/healthz >/dev/null
+          curl -sf https://api-dev.usezombie.com/readyz | jq -e '.ready == true' >/dev/null
           echo "✓ DEV readiness gate passed"
 
   # ── 6. Deploy: prod API + worker rollout ────────────────────────────────
@@ -183,19 +183,27 @@ jobs:
           export-env: true
         env:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          FLY_API_TOKEN: op://${{ vars.VAULT_PROD }}/fly-api-token/credential
           TAILSCALE_AUTHKEY: op://${{ vars.VAULT_PROD }}/tailscale/authkey
           WORKER_ANT_SSH_KEY: op://${{ vars.VAULT_PROD }}/zombie-prod-worker-ant/ssh-private-key
           WORKER_BIRD_SSH_KEY: op://${{ vars.VAULT_PROD }}/zombie-prod-worker-bird/ssh-private-key
 
-      - name: Join Tailscale network for private worker SSH
-        uses: tailscale/github-action@v3
-        with:
-          authkey: ${{ env.TAILSCALE_AUTHKEY }}
-          tags: tag:ci
+      - uses: superfly/flyctl-actions/setup-flyctl@master
 
-      - name: Verify PROD API rollout via Railway auto-deploy
+      - name: Deploy PROD API to Fly.io
         run: |
-          echo "Waiting for Railway PROD deploy..."
+          VERSION=$(cat VERSION)
+          flyctl deploy \
+            --app ${{ vars.FLY_APP_PROD }} \
+            --image ghcr.io/usezombie/zombied:latest \
+            --config deploy/fly/zombied-prod/fly.toml \
+            --wait-timeout 120
+        env:
+          FLY_API_TOKEN: ${{ env.FLY_API_TOKEN }}
+
+      - name: Verify PROD API rollout via Cloudflare Tunnel
+        run: |
+          echo "Waiting for PROD API..."
           STATUS=000
           for i in $(seq 1 24); do
             STATUS=$(curl -sf -o /dev/null -w "%{http_code}" \
@@ -212,6 +220,12 @@ jobs:
             exit 1
           fi
           curl -sf https://api.usezombie.com/readyz | jq -e '.ready == true'
+
+      - name: Join Tailscale network for private worker SSH
+        uses: tailscale/github-action@v3
+        with:
+          authkey: ${{ env.TAILSCALE_AUTHKEY }}
+          tags: tag:ci
 
       - name: Deploy worker nodes over Tailscale SSH
         run: |

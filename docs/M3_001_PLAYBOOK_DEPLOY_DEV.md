@@ -2,9 +2,9 @@
 
 **Milestone:** M3
 **Workstream:** 001
-**Updated:** Mar 20, 2026
+**Updated:** Mar 21, 2026
 **Owner:** Agent
-**Prerequisite:** `docs/M1_001_PLAYBOOK_BOOTSTRAP.md`, `docs/M2_001_PLAYBOOK_CREDENTIAL_CHECK.md`, `docs/M2_002_PLAYBOOK_PRIMING_INFRA.md`
+**Prerequisite:** `docs/M1_001_PLAYBOOK_BOOTSTRAP.md`, `docs/M2_001_PLAYBOOK_PREFLIGHT.md`, `docs/M2_002_PLAYBOOK_PRIMING_INFRA.md`
 
 This is the canonical step-by-step DEV deployment runbook.
 
@@ -31,24 +31,49 @@ make test
 
 ## 2.0 Trigger DEV Deploy
 
-1. Confirm Railway DEV service is configured to deploy from Docker image `ghcr.io/<org>/<service>:dev-latest` (see M2_002 §2.1). If not done, complete M2_002 §2.1–2.3 first.
-2. Confirm Railway DEV deploy hook URL is stored in vault: `op://ZMB_CD_DEV/railway-deploy-hook-dev/credential`.
-3. Merge/push changes to `main`.
-4. Confirm GitHub Actions workflow `.github/workflows/deploy-dev.yml` starts.
+1. Merge/push changes to `main`.
+2. Confirm GitHub Actions workflow `.github/workflows/deploy-dev.yml` starts.
 
 Expected DEV pipeline order:
 
 1. `check-credentials`
-2. `build-dev` — cross-compiles, pushes `dev-latest` to GHCR, calls Railway deploy hook
-3. `verify-dev` — polls `https://dev.api.<domain>/healthz` until 200
-4. `qa-dev` — Playwright smoke suite against live DEV API
-5. `notify` — Discord
+2. `build-dev` — cross-compiles and pushes `dev-latest` to GHCR
+3. `deploy-fly-dev` — `flyctl deploy --app zombied-dev --image ghcr.io/usezombie/zombied:dev-latest`
+4. `verify-dev` — polls `https://api-dev.usezombie.com/healthz` until 200
+5. `qa-dev` — Playwright smoke suite against live DEV API
+6. `notify` — Discord
 
-> If Railway does not auto-deploy after the GHCR push, manually trigger via the Railway dashboard or by calling the deploy hook:
-> ```bash
-> HOOK=$(op read "op://ZMB_CD_DEV/railway-deploy-hook-dev/credential")
-> curl -sf -X POST "$HOOK"
-> ```
+### 2.1 Immediate Fix — Fly Crash Loop on Role-Separated DB URL Guard
+
+Symptom in Fly logs:
+
+```text
+fatal: DATABASE_URL_API and DATABASE_URL_WORKER must differ (role separation required)
+```
+
+Fix:
+
+1. Set different Fly secrets for API vs worker DB URLs on `zombied-dev`:
+
+```bash
+fly secrets set \
+  DATABASE_URL_API='...' \
+  DATABASE_URL_WORKER='...' \
+  --app zombied-dev
+```
+
+2. Redeploy:
+
+```bash
+gh workflow run deploy-dev.yml
+```
+
+3. Verify:
+
+```bash
+curl -sf https://api-dev.usezombie.com/healthz
+curl -sf https://api-dev.usezombie.com/readyz | jq -e '.ready == true'
+```
 
 ---
 

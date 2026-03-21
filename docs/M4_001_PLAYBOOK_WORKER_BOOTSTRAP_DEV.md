@@ -7,7 +7,14 @@
 
 Bootstrap the DEV bare-metal worker node so CI can deploy the `zombied worker` process autonomously. After step 0 (human buys the server), every remaining step is agent-executable — no human interaction required.
 
-**Current provider:** OVHCloud (Beauharnois CA). See `docs/spec/v2/M001_AUTOPROCURER_PROVIDER.md` for the multi-provider design that will replace step 0 entirely.
+**Current provider:** OVHCloud (Beauharnois CA). See `docs/spec/v2/M1_002_AUTOPROCURER_PROVIDER.md` for the multi-provider design that will replace step 0 entirely.
+
+Environment setup for all commands in this playbook:
+
+```bash
+export VAULT_DEV="${VAULT_DEV:-ZMB_CD_DEV}"
+export VAULT_PROD="${VAULT_PROD:-ZMB_CD_PROD}"
+```
 
 ---
 
@@ -62,7 +69,7 @@ ssh-keygen -t ed25519 -C "zombie-dev-worker-ant deploy key" \
   -f /tmp/zombie-dev-worker-ant -N ""
 
 # Store private key in vault
-op item edit "zombie-dev-worker-ant" --vault ZMB_CD_DEV \
+op item edit "zombie-dev-worker-ant" --vault "$VAULT_DEV" \
   "ssh-private-key[concealed]=$(cat /tmp/zombie-dev-worker-ant)"
 
 # Authorize the public key on the server using initial root credentials
@@ -79,7 +86,7 @@ rm /tmp/zombie-dev-worker-ant /tmp/zombie-dev-worker-ant.pub
 ### Acceptance
 
 ```bash
-KEY=$(op read "op://ZMB_CD_DEV/zombie-dev-worker-ant/ssh-private-key")
+KEY=$(op read "op://$VAULT_DEV/zombie-dev-worker-ant/ssh-private-key")
 
 # Vault key is present
 echo "$KEY" | head -1
@@ -97,7 +104,7 @@ ssh -i <(printf '%s\n' "$KEY") -o StrictHostKeyChecking=no root@<server-ip> "ech
 **Goal:** KVM acceleration is available on the node. Fail early — all Firecracker work (M4_008) depends on this. Do not proceed if this fails.
 
 ```bash
-KEY=$(op read "op://ZMB_CD_DEV/zombie-dev-worker-ant/ssh-private-key")
+KEY=$(op read "op://$VAULT_DEV/zombie-dev-worker-ant/ssh-private-key")
 
 ssh -i <(printf '%s\n' "$KEY") -o StrictHostKeyChecking=no root@<server-ip> << 'REMOTE'
 set -euo pipefail
@@ -128,8 +135,8 @@ Abort and reprovision if this fails — do not continue.
 **Goal:** Node is reachable in the tailnet as `zombie-dev-worker-ant`. After this step, all subsequent SSH uses the Tailscale hostname — not the public IP.
 
 ```bash
-KEY=$(op read "op://ZMB_CD_DEV/zombie-dev-worker-ant/ssh-private-key")
-TAILSCALE_AUTHKEY=$(op read "op://ZMB_CD_PROD/tailscale/authkey")
+KEY=$(op read "op://$VAULT_DEV/zombie-dev-worker-ant/ssh-private-key")
+TAILSCALE_AUTHKEY=$(op read "op://$VAULT_PROD/tailscale/authkey")
 
 ssh -i <(printf '%s\n' "$KEY") -o StrictHostKeyChecking=no root@<server-ip> << REMOTE
 set -euo pipefail
@@ -142,7 +149,7 @@ REMOTE
 ### Acceptance
 
 ```bash
-KEY=$(op read "op://ZMB_CD_DEV/zombie-dev-worker-ant/ssh-private-key")
+KEY=$(op read "op://$VAULT_DEV/zombie-dev-worker-ant/ssh-private-key")
 
 # SSH via Tailscale hostname (no more public IP needed)
 ssh -i <(printf '%s\n' "$KEY") zombie-dev-worker-ant \
@@ -159,7 +166,7 @@ All remaining steps use the Tailscale hostname `zombie-dev-worker-ant`.
 **Goal:** Docker daemon is running. Agent can pull GHCR public images.
 
 ```bash
-KEY=$(op read "op://ZMB_CD_DEV/zombie-dev-worker-ant/ssh-private-key")
+KEY=$(op read "op://$VAULT_DEV/zombie-dev-worker-ant/ssh-private-key")
 
 ssh -i <(printf '%s\n' "$KEY") zombie-dev-worker-ant << 'REMOTE'
 set -euo pipefail
@@ -174,7 +181,7 @@ REMOTE
 ### Acceptance
 
 ```bash
-KEY=$(op read "op://ZMB_CD_DEV/zombie-dev-worker-ant/ssh-private-key")
+KEY=$(op read "op://$VAULT_DEV/zombie-dev-worker-ant/ssh-private-key")
 ssh -i <(printf '%s\n' "$KEY") zombie-dev-worker-ant \
   "docker images ghcr.io/usezombie/zombied | grep dev-latest"
 # Expected: zombied  dev-latest  ...
@@ -187,7 +194,7 @@ ssh -i <(printf '%s\n' "$KEY") zombie-dev-worker-ant \
 **Goal:** Firecracker binary is installed. The `debian` user can access `/dev/kvm` without root (required for M4_008 sandbox execution — each spec run boots a Firecracker microVM).
 
 ```bash
-KEY=$(op read "op://ZMB_CD_DEV/zombie-dev-worker-ant/ssh-private-key")
+KEY=$(op read "op://$VAULT_DEV/zombie-dev-worker-ant/ssh-private-key")
 
 ssh -i <(printf '%s\n' "$KEY") zombie-dev-worker-ant << 'REMOTE'
 set -euo pipefail
@@ -204,7 +211,7 @@ REMOTE
 ### Acceptance
 
 ```bash
-KEY=$(op read "op://ZMB_CD_DEV/zombie-dev-worker-ant/ssh-private-key")
+KEY=$(op read "op://$VAULT_DEV/zombie-dev-worker-ant/ssh-private-key")
 ssh -i <(printf '%s\n' "$KEY") zombie-dev-worker-ant \
   "firecracker --version && ls -l /dev/kvm && groups debian | grep kvm"
 # Expected:
@@ -220,14 +227,14 @@ ssh -i <(printf '%s\n' "$KEY") zombie-dev-worker-ant \
 **Goal:** `deploy.sh` and `.env` exist on the node, populated from vault. CI calls `deploy.sh` on every push.
 
 ```bash
-KEY=$(op read "op://ZMB_CD_DEV/zombie-dev-worker-ant/ssh-private-key")
+KEY=$(op read "op://$VAULT_DEV/zombie-dev-worker-ant/ssh-private-key")
 
 # Read secrets from vault (on the agent machine)
-DB_URL=$(op read "op://ZMB_CD_DEV/planetscale-dev/connection-string")
-REDIS_URL=$(op read "op://ZMB_CD_DEV/upstash-dev/url")
-ENC_KEY=$(op read "op://ZMB_CD_DEV/zombied-local-config/encryption-master-key")
-GH_APP_ID=$(op read "op://ZMB_CD_DEV/github-app/app-id")
-GH_APP_KEY=$(op read "op://ZMB_CD_DEV/github-app/private-key")
+DB_URL=$(op read "op://$VAULT_DEV/planetscale-dev/worker-connection-string")
+REDIS_URL=$(op read "op://$VAULT_DEV/upstash-dev/worker-url")
+ENC_KEY=$(op read "op://$VAULT_DEV/encryption-master-key/credential")
+GH_APP_ID=$(op read "op://$VAULT_DEV/github-app/app-id")
+GH_APP_KEY=$(op read "op://$VAULT_DEV/github-app/private-key")
 
 ssh -i <(printf '%s\n' "$KEY") zombie-dev-worker-ant << REMOTE
 set -euo pipefail
@@ -270,7 +277,7 @@ REMOTE
 ### Acceptance
 
 ```bash
-KEY=$(op read "op://ZMB_CD_DEV/zombie-dev-worker-ant/ssh-private-key")
+KEY=$(op read "op://$VAULT_DEV/zombie-dev-worker-ant/ssh-private-key")
 ssh -i <(printf '%s\n' "$KEY") zombie-dev-worker-ant \
   "stat -c '%a %n' /opt/zombie/deploy.sh /opt/zombie/.env"
 # Expected:
@@ -285,7 +292,7 @@ ssh -i <(printf '%s\n' "$KEY") zombie-dev-worker-ant \
 **Goal:** `deploy.sh` runs end-to-end. Container stays up. CI is activated.
 
 ```bash
-KEY=$(op read "op://ZMB_CD_DEV/zombie-dev-worker-ant/ssh-private-key")
+KEY=$(op read "op://$VAULT_DEV/zombie-dev-worker-ant/ssh-private-key")
 
 # Run deploy.sh
 ssh -i <(printf '%s\n' "$KEY") zombie-dev-worker-ant \

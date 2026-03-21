@@ -44,6 +44,7 @@ UseZombie accepts a spec request and produces a validated pull request through a
 5. v1 delivery target is CLI-first (`zombiectl`); Mission Control UI (`app.usezombie.com`) is v3.
 6. v1 git operations use hardened CLI subprocess; v2 migrates to **libgit2**.
 7. v1 execution uses NullClaw built-in sandbox; v2 migrates to **Firecracker microVMs**.
+8. Cryptographic risk assessment and post-quantum posture tracked in `docs/SECURITY.md`.
 
 ## System Components
 

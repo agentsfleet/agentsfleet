@@ -5,8 +5,8 @@
     .fingerprint = 0xc908abec9a0e1bf3,
     .dependencies = .{
         .nullclaw = .{
-            .url = "git+https://github.com/nullclaw/nullclaw.git#v2026.3.15",
-            .hash = "nullclaw-2026.3.15-wlZZyedjFwG-P-9XdbIFBwudzOlxolftGq4gAaJLrDtt",
+            .url = "git+https://github.com/nullclaw/nullclaw.git#v2026.3.18",
+            .hash = "nullclaw-2026.3.18-wlZZyfBwHgE12ip9ITLV3stQ5IXnbXqSZa2jyn-N_YZj",
         },
         .zap = .{
             .url = "git+https://github.com/zigzap/zap#76679f308c702cd8880201e6e93914e1d836a54b",

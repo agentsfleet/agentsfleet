@@ -34,7 +34,7 @@ for node in zombie-prod-worker-ant zombie-prod-worker-bird; do
 done
 ```
 
-6. Confirm Railway PROD deploy hook URL is in vault: `op://ZMB_CD_PROD/railway-deploy-hook-prod/credential`.
+6. Confirm Fly API token is in vault: `op read "op://$VAULT_PROD/fly-api-token/credential"` (non-empty).
 
 ---
 

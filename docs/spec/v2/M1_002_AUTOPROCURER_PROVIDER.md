@@ -1,8 +1,12 @@
-# M001: Spec — Autoprocurer Multi-Provider Design
+# M1_002: Autoprocurer Multi-Provider Design
 
 **Version:** v2
-**Updated:** Mar 21, 2026
-**Status:** DESIGN — not yet implemented. Current execution uses OVHCloud manually (M4_001).
+**Milestone:** M1
+**Workstream:** 002
+**Date:** Mar 21, 2026
+**Status:** DESIGN — not yet implemented. Current execution uses OVHCloud manually (v1 M4_001).
+**Depends on:** None
+**Batch:** B1 — can parallel with M1_001, M1_004
 
 The autoprocurer must be able to provision bare-metal servers from any approved provider without hardcoding provider-specific logic into the pipeline. This spec defines the provider abstraction, the provider playbook format, and the interface the autoprocurer consumes.
 

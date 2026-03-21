@@ -57,6 +57,8 @@ pub fn validateRoleSeparatedValues(
     if (std.mem.trim(u8, redis_worker, " \t\r\n").len == 0) return EnvVarsErrors.MissingRedisUrlWorker;
 
     if (std.mem.eql(u8, db_api, db_worker)) return EnvVarsErrors.SameDatabaseUrlForApiAndWorker;
+    // TODO(infra): once Upstash ACL users are available on our plan, replace the temporary
+    // same-backend URL variants with truly role-separated Redis credentials.
     if (std.mem.eql(u8, redis_api, redis_worker)) return EnvVarsErrors.SameRedisUrlForApiAndWorker;
     if (!std.mem.startsWith(u8, redis_api, "rediss://")) return EnvVarsErrors.RedisApiTlsRequired;
     if (!std.mem.startsWith(u8, redis_worker, "rediss://")) return EnvVarsErrors.RedisWorkerTlsRequired;

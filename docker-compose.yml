@@ -17,20 +17,14 @@ services:
 
   redis:
     image: redis:7-alpine
-    command: >
-      sh -c '
-      apk add --no-cache openssl &&
-      mkdir -p /tls &&
-      openssl req -x509 -newkey rsa:2048 -nodes
-        -keyout /tls/server.key -out /tls/server.crt
-        -days 3650 -subj "/CN=redis" 2>/dev/null &&
-      redis-server
-        --tls-port 6379 --port 0
-        --tls-cert-file /tls/server.crt
-        --tls-key-file /tls/server.key
-        --tls-ca-cert-file /tls/server.crt
-        --tls-auth-clients no
-        --requirepass usezombie'
+    command:
+      - sh
+      - -c
+      - |
+        apk add --no-cache openssl &&
+        mkdir -p /tls &&
+        openssl req -x509 -newkey rsa:2048 -nodes -keyout /tls/server.key -out /tls/server.crt -days 3650 -subj "/CN=redis" 2>/dev/null &&
+        redis-server --tls-port 6379 --port 0 --tls-cert-file /tls/server.crt --tls-key-file /tls/server.key --tls-ca-cert-file /tls/server.crt --tls-auth-clients no --requirepass usezombie
     ports:
       - "6379:6379"
     volumes:

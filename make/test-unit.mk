@@ -34,7 +34,7 @@ test-unit-app:  ## Run app unit tests (vitest)
 	@cd ui/packages/app && bun run test
 	@echo "✓ [app] Unit tests passed"
 
-test-zombied: test-unit-zombied test-integration-zombied  ## Run zombied tests (unit + integration)
+test-zombied: test-unit-zombied _test-integration-zombied  ## Run zombied tests (unit + integration)
 	@echo "✓ [zombied] Unit + integration passed"
 
 test-unit: test-zombied test-unit-zombiectl test-unit-website test-unit-app  ## Run all unit tests (zombied + zombiectl + website + app)

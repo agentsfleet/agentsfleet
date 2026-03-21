@@ -8,6 +8,19 @@
 
 Reusable across startups. Replace `ZMB` vault prefix and service names per project.
 
+Credential gate before this playbook:
+
+```bash
+export VAULT_DEV="${VAULT_DEV:-ZMB_CD_DEV}"
+export VAULT_PROD="${VAULT_PROD:-ZMB_CD_PROD}"
+
+# startup preflight (M2_001 section 1)
+SECTIONS=1 ./scripts/checks/m2_001/run.sh
+
+# procurement readiness gate (M2_001 section 2, must pass)
+SECTIONS=2 ./scripts/checks/m2_001/run.sh
+```
+
 ---
 
 ## Sequence Overview
@@ -41,7 +54,7 @@ Milestone 1 (M1_001_PLAYBOOK_BOOTSTRAP.md) — human + agent bootstrap
 | Set DNS CNAME records | Agent | Cloudflare API |
 | Configure auto-scaling in fly.toml | Agent | Config file + `fly deploy` |
 | PlanetScale schema migrations | Agent | `psql` + migration files |
-| Upstash stream bootstrap | Agent | `redis-cli` |
+| Upstash stream bootstrap | Agent | `docker run --rm redis:7-alpine redis-cli` |
 
 ---
 
@@ -72,7 +85,7 @@ grep "needs:.*binaries" .github/workflows/release.yml
 ### 2.1 Create Fly Apps (Agent)
 
 ```bash
-export FLY_API_TOKEN=$(op read "op://ZMB_CD_DEV/fly-api-token/credential")
+export FLY_API_TOKEN=$(op read "op://$VAULT_DEV/fly-api-token/credential")
 
 # Create the three DEV apps
 fly apps create zombied-dev         --org <org>
@@ -93,23 +106,23 @@ fly apps create cloudflared-prod     --org <org>
 # DEV API + Worker (same secrets, separate apps)
 for APP in zombied-dev zombied-dev-worker; do
   fly secrets set \
-    DATABASE_URL_API="$(op read 'op://ZMB_CD_DEV/planetscale-dev/connection-string')" \
-    DATABASE_URL_WORKER="$(op read 'op://ZMB_CD_DEV/planetscale-dev/connection-string')" \
-    REDIS_URL_API="$(op read 'op://ZMB_CD_DEV/upstash-dev/url')" \
-    REDIS_URL_WORKER="$(op read 'op://ZMB_CD_DEV/upstash-dev/url')" \
-    ENCRYPTION_MASTER_KEY="$(op read 'op://ZMB_CD_DEV/zombied-local-config/encryption-master-key')" \
-    GITHUB_APP_ID="$(op read 'op://ZMB_CD_DEV/github-app/app-id')" \
-    GITHUB_APP_PRIVATE_KEY="$(op read 'op://ZMB_CD_DEV/github-app/private-key')" \
+    DATABASE_URL_API="$(op read 'op://$VAULT_DEV/planetscale-dev/api-connection-string')" \
+    DATABASE_URL_WORKER="$(op read 'op://$VAULT_DEV/planetscale-dev/worker-connection-string')" \
+    REDIS_URL_API="$(op read 'op://$VAULT_DEV/upstash-dev/api-url')" \
+    REDIS_URL_WORKER="$(op read 'op://$VAULT_DEV/upstash-dev/worker-url')" \
+    ENCRYPTION_MASTER_KEY="$(op read 'op://$VAULT_DEV/encryption-master-key/credential')" \
+    GITHUB_APP_ID="$(op read 'op://$VAULT_DEV/github-app/app-id')" \
+    GITHUB_APP_PRIVATE_KEY="$(op read 'op://$VAULT_DEV/github-app/private-key')" \
     OIDC_PROVIDER=clerk \
-    OIDC_JWKS_URL="$(op read 'op://ZMB_CD_DEV/clerk-dev/publishable-key' | python3 -c 'import sys,base64; k=sys.stdin.read().strip().split("_")[2]; print(f\"https://{base64.b64decode(k+\"=\"*4).decode().rstrip(chr(36))}/.well-known/jwks.json\")')" \
-    OIDC_ISSUER="$(op read 'op://ZMB_CD_DEV/clerk-dev/hostname' 2>/dev/null || echo 'https://winning-wombat-65.clerk.accounts.dev')" \
+    OIDC_JWKS_URL="$(op read 'op://$VAULT_DEV/clerk-dev/publishable-key' | python3 -c 'import sys,base64; k=sys.stdin.read().strip().split("_")[2]; print(f\"https://{base64.b64decode(k+\"=\"*4).decode().rstrip(chr(36))}/.well-known/jwks.json\")')" \
+    OIDC_ISSUER="$(op read 'op://$VAULT_DEV/clerk-dev/hostname' 2>/dev/null || echo 'https://winning-wombat-65.clerk.accounts.dev')" \
     PORT=3000 \
     ENVIRONMENT=dev \
     MIGRATE_ON_START=0 \
     --app "$APP"
 done
 
-# PROD — same pattern with ZMB_CD_PROD values
+# PROD — same pattern with $VAULT_PROD values
 ```
 
 ### 2.3 Deploy from GHCR (Agent)
@@ -182,7 +195,7 @@ cloudflared tunnel create zombied-dev
 
 # Store credentials in vault
 TUNNEL_CREDS=$(cat ~/.cloudflared/<TUNNEL_ID>.json | base64)
-op item create --vault ZMB_CD_DEV --title cloudflare-tunnel-dev \
+op item create --vault "$VAULT_DEV" --title cloudflare-tunnel-dev \
   --category "API Credential" \
   "tunnel-id=<TUNNEL_ID>" \
   "credentials-json-b64=$TUNNEL_CREDS"
@@ -226,7 +239,7 @@ Cloudflare SSL/TLS: **Full (Strict)**. No Transform Rules. No CNAME hack.
 **Deploy cloudflared-dev (Human — one-time):**
 
 ```bash
-export FLY_API_TOKEN=$(op read "op://ZMB_CD_DEV/fly-api-token/credential")
+export FLY_API_TOKEN=$(op read "op://$VAULT_DEV/fly-api-token/credential")
 fly deploy --app cloudflared-dev \
   --config deploy/fly/cloudflared-dev/fly.toml \
   --wait-timeout 120
@@ -259,7 +272,7 @@ fly scale count 2 --app zombied-prod       # 1 machine per region
 ```bash
 # Store Fly deploy token in vault
 fly tokens create deploy -o <org> --name ci-deploy
-op item create --vault ZMB_CD_DEV --title fly-api-token \
+op item create --vault "$VAULT_DEV" --title fly-api-token \
   --category "API Credential" "credential=<token>"
 
 # Set GitHub Actions vars
@@ -303,7 +316,7 @@ fly logs   --app zombied-dev
 Roles (`api_accessor`, `worker_accessor`, `callback_accessor`, `vault_accessor`) are already defined in `schema/002_vault_schema.sql` with `IF NOT EXISTS` guards — idempotent. All grants across tables are in subsequent migration files. Run all migrations in order:
 
 ```bash
-DATABASE_URL=$(op read "op://$VAULT_DEV/planetscale-dev/connection-string")
+DATABASE_URL=$(op read "op://$VAULT_DEV/planetscale-dev/api-connection-string")
 for f in schema/*.sql; do
   echo "applying $f..."
   psql "$DATABASE_URL" -f "$f"
@@ -322,8 +335,8 @@ Redis is hosted on Upstash (DEV and PROD). ACL is managed via Upstash dashboard 
 Stream setup — run once per environment:
 
 ```bash
-REDIS_URL=$(op read "op://$VAULT_DEV/upstash-dev/url")
-redis-cli -u "$REDIS_URL" XGROUP CREATE run_queue workers 0 MKSTREAM
+REDIS_URL=$(op read "op://$VAULT_DEV/upstash-dev/api-url")
+docker run --rm redis:7-alpine redis-cli -u "$REDIS_URL" XGROUP CREATE run_queue workers 0 MKSTREAM
 ```
 
 For PROD, swap `$VAULT_DEV/upstash-dev` for `$VAULT_PROD/upstash-prod`.
@@ -393,7 +406,7 @@ Run once per node at provision time. Use `VAULT_DEV` for DEV node, `VAULT_PROD` 
 
 ```bash
 # DEV node
-TAILSCALE_AUTHKEY=$(op read "op://ZMB_CD_PROD/tailscale/authkey")  # same tailnet for all envs
+TAILSCALE_AUTHKEY=$(op read "op://$VAULT_PROD/tailscale/authkey")  # same tailnet for all envs
 curl -fsSL https://tailscale.com/install.sh | sh
 tailscale up --authkey "$TAILSCALE_AUTHKEY" --hostname zombie-dev-worker-ant
 
@@ -507,11 +520,11 @@ Create `/opt/zombie/.env` on each node. For DEV, use `ZMB_CD_DEV` vault values (
 ```bash
 # On zombie-dev-worker-ant — fill from vault
 cat > /opt/zombie/.env << EOF
-DATABASE_URL_WORKER=$(op read 'op://ZMB_CD_DEV/planetscale-dev/connection-string')
-REDIS_URL_WORKER=$(op read 'op://ZMB_CD_DEV/upstash-dev/url')
-ENCRYPTION_MASTER_KEY=$(op read 'op://ZMB_CD_DEV/zombied-local-config/encryption-master-key')
-GITHUB_APP_ID=$(op read 'op://ZMB_CD_DEV/github-app/app-id')
-GITHUB_APP_PRIVATE_KEY=$(op read 'op://ZMB_CD_DEV/github-app/private-key')
+DATABASE_URL_WORKER=$(op read 'op://$VAULT_DEV/planetscale-dev/worker-connection-string')
+REDIS_URL_WORKER=$(op read 'op://$VAULT_DEV/upstash-dev/worker-url')
+ENCRYPTION_MASTER_KEY=$(op read 'op://$VAULT_DEV/encryption-master-key/credential')
+GITHUB_APP_ID=$(op read 'op://$VAULT_DEV/github-app/app-id')
+GITHUB_APP_PRIVATE_KEY=$(op read 'op://$VAULT_DEV/github-app/private-key')
 ENVIRONMENT=dev
 EOF
 chmod 600 /opt/zombie/.env

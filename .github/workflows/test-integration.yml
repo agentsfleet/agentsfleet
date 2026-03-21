@@ -1,4 +1,4 @@
-name: test-integration-db
+name: test-integration
 
 on:
   push:
@@ -15,7 +15,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test-integration-db:
+  test-integration:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -24,8 +24,8 @@ jobs:
         with:
           version: 0.15.2
 
-      - name: Start Postgres via docker compose
-        run: docker compose up -d postgres
+      - name: Start Postgres and Redis via docker compose
+        run: docker compose up -d postgres redis
 
       - name: Wait for Postgres to be ready
         run: |
@@ -39,11 +39,24 @@ jobs:
             || { echo "✗ Postgres did not become ready in time"; exit 1; }
           echo "✓ Postgres is ready"
 
-      - name: Run DB-backed integration tests
+      - name: Wait for Redis to be ready
+        run: |
+          echo "→ Waiting for Redis..."
+          for i in $(seq 1 30); do
+            docker compose exec -T redis redis-cli --tls --insecure -a usezombie ping 2>/dev/null | grep -q PONG && break
+            echo "  attempt $i/30 — not ready yet"
+            sleep 2
+          done
+          docker compose exec -T redis redis-cli --tls --insecure -a usezombie ping 2>/dev/null | grep -q PONG \
+            || { echo "✗ Redis did not become ready in time"; exit 1; }
+          echo "✓ Redis is ready"
+
+      - name: Run all integration tests
         env:
           HANDLER_DB_TEST_URL: postgres://usezombie:usezombie@localhost:5432/usezombiedb
-        run: make test-integration-db
+          REDIS_TLS_TEST_URL: rediss://:usezombie@localhost:6379
+        run: make test-integration
 
-      - name: Stop Postgres
+      - name: Stop services
         if: always()
         run: docker compose down

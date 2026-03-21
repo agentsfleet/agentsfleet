@@ -119,16 +119,16 @@ picking it up in 3 months understands the motivation and where to start.
 
 ---
 
-## Ops: Rotate Classic PAT After Railway Setup
+## Ops: Rotate Classic PAT
 
-**What:** Rotate the classic GitHub PAT (`ghp_*`) stored in `~/.config/usezombie/.env` once Railway DEV is connected and the token is no longer needed for one-off GHCR operations.
+**What:** Rotate the classic GitHub PAT (`ghp_*`) stored in `~/.config/usezombie/.env`. The token is no longer needed — deploy pipeline uses Fly.io + 1Password, not GHCR PAT.
 **Why:** The token has org-level `read:packages` + `delete:packages` rights and lives in a plaintext file. Low blast radius today (local-only, not in CI) but a leaked PAT at this scope can delete all container images.
 **Pros:** Removes a standing high-privilege credential. Good hygiene before onboarding collaborators.
 **Cons:** None — pure cleanup.
-**Context:** Token was created Mar 20, 2026 to unblock ghcr.io image deletion. Once Railway is wired and the deploy pipeline is green, this token serves no ongoing purpose.
+**Context:** Token was created Mar 20, 2026 to unblock ghcr.io image deletion. Deploy pipeline is now green on Fly.io — this token serves no ongoing purpose.
 **Effort:** S
 **Priority:** P2
-**Depends on:** M7_001 §1.1 (Railway DEV connected)
+**Depends on:** None
 
 ---
 
@@ -141,30 +141,30 @@ picking it up in 3 months understands the motivation and where to start.
 **Context:** Not blocking for v1 since schema changes are manually coordinated. Becomes critical when team size or deploy frequency increases. `zombied doctor` might be the right hook — it already checks DB connectivity.
 **Effort:** M
 **Priority:** P2
-**Depends on:** M7_001 (Railway wired, deploy pipeline green)
+**Depends on:** M7_001 (deploy pipeline green)
 
 ---
 
-## Infra: Static IP + Data-Plane IP Allowlisting
+## Infra: Data-Plane IP Allowlisting
 
-**What:** Get a static outbound IP for Railway API service, then allowlist it in PlanetScale and Upstash. Also allowlist OVH worker node IPs in both.
-**Why:** PlanetScale and Upstash both support IP allowlisting. Currently Railway has dynamic outbound IPs, so the database and Redis are accessible from any IP that has the connection string. Allowlisting locks down the data plane to known infra only.
+**What:** Allowlist Fly.io static outbound IPs and OVH worker node IPs in PlanetScale and Upstash.
+**Why:** PlanetScale and Upstash both support IP allowlisting. Currently the database and Redis are accessible from any IP that has the connection string. Allowlisting locks down the data plane to known infra only.
 **Pros:** Real data-plane protection — a leaked `DATABASE_URL` or `REDIS_URL` is useless from an unknown IP.
-**Cons:** Railway Pro costs $20/mo per service for static outbound IPs (vs $5/mo Hobby). Alternative: Fly.io (~$2/mo) has static IPs included. Evaluate at scale.
-**Context:** Discussed Mar 20, 2026 during M7_001 infrastructure review. OVH worker nodes already have static IPs — add those immediately once PlanetScale/Upstash allowlisting is enabled. Railway static IP is the gating item. mTLS (Cloudflare Authenticated Origin Pulls) was also evaluated — not feasible on Railway or Fly.io without running custom TLS termination in the app; deferred to a future `zombied` hardening milestone. Cloudflare Tunnel (free) is a viable origin-obfuscation approach that does not require code changes.
-**Effort:** S (config only once static IP is obtained)
+**Cons:** Minimal — Fly.io includes static IPs at no extra cost.
+**Context:** Fly.io has static outbound IPs included (no extra cost unlike Railway). OVH worker nodes already have static IPs. Both sets can be allowlisted immediately.
+**Effort:** S (config only)
 **Priority:** P2
-**Depends on:** M7_001 green (Railway wired), decision on Railway Pro vs Fly.io migration
+**Depends on:** M7_001 green (Fly.io deploy pipeline green)
 
 ---
 
 ## Docs: PlanetScale Pricing Note in Bootstrap Playbook
 
-**What:** Add a one-liner to `docs/M1_001_PLAYBOOK_BOOTSTRAP.md` noting that PlanetScale's Hobby tier was removed in 2024 — the minimum plan is $39/mo. Recommend the Railway PlanetScale add-on to keep billing on one invoice.
+**What:** Add a one-liner to `docs/M1_001_PLAYBOOK_BOOTSTRAP.md` noting that PlanetScale's Hobby tier was removed in 2024 — the minimum plan is $39/mo.
 **Why:** The README now publicly names PlanetScale as part of the opinionated stack. Any new operator following the bootstrap playbook will hit this pricing wall with no warning, causing friction and potential churn before they see any value.
 **Pros:** Prevents a trust-destroying surprise on step 1. Tiny effort.
 **Cons:** None.
-**Context:** PlanetScale removed the free Hobby tier in April 2024. Railway's PlanetScale add-on (via their marketplace) is the smoothest path for solo builders to stay on one invoice.
+**Context:** PlanetScale removed the free Hobby tier in April 2024.
 **Effort:** S
 **Priority:** P1
 **Depends on:** None

@@ -51,8 +51,8 @@ Do not add or recommend workflows around:
 When starting a new project or when asked to "set up infrastructure", follow this sequence — do not invent steps:
 
 1. Human completes `docs/M1_001_PLAYBOOK_BOOTSTRAP.md` Milestone 1 (accounts + root API keys).
-2. Agent runs `./scripts/check-credentials.sh` (`M2_001_PLAYBOOK_CREDENTIAL_CHECK.md`) — validates every required vault item is present and non-empty. Runs anywhere `op` CLI is available — no CI dependency. **Do not proceed to step 3 until this passes with zero missing items.**
-3. Agent executes `docs/M2_002_PLAYBOOK_PRIMING_INFRA.md` in order (container pipeline → Railway → data-plane → workers → CI → first release).
+2. Agent runs `./scripts/check-credentials.sh` (`M2_001_PLAYBOOK_PREFLIGHT.md`) — validates every required vault item is present and non-empty. Runs anywhere `op` CLI is available — no CI dependency. **Do not proceed to step 3 until this passes with zero missing items.**
+3. Agent executes `docs/M2_002_PLAYBOOK_PRIMING_INFRA.md` in order (container pipeline → Fly.io → Cloudflare Tunnel → data-plane → workers → CI → first release).
 4. Milestones proceed only after PRIMING_INFRA is verified end-to-end.
 
 **Do not skip steps or reorder.** Each step has a verify command — run it before proceeding to the next.

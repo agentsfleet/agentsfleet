@@ -29,7 +29,7 @@ Inspired by [L8 — Build your own orchestrator](https://x.com/garrytan/status/2
 Opinionated by default. UseZombie is built and tested against:
 
 - **Auth** — [Clerk](https://clerk.com)
-- **Hosting** — [Railway.com](https://railway.com) · Baremetal
+- **Hosting** — [Fly.io](https://fly.io) · Baremetal
 - **Database** — [PlanetScale](https://planetscale.com) (Postgres)
 - **Queue** — [Upstash](https://upstash.com) Redis Streams
 - **Analytics** — [PostHog](https://posthog.com)
@@ -42,7 +42,7 @@ You can swap any layer — start with the playbooks below to understand the seam
 Step-by-step guides for bootstrapping, credentials, and deployment:
 
 - [M1 — Bootstrap](docs/M1_001_PLAYBOOK_BOOTSTRAP.md)
-- [M2 — Credential Check](docs/M2_001_PLAYBOOK_CREDENTIAL_CHECK.md)
+- [M2 — Preflight](docs/M2_001_PLAYBOOK_PREFLIGHT.md)
 - [M2 — Priming Infra](docs/M2_002_PLAYBOOK_PRIMING_INFRA.md)
 - [M3 — Deploy Dev](docs/M3_001_PLAYBOOK_DEPLOY_DEV.md)
 - [M3 — Deploy Prod](docs/M3_002_PLAYBOOK_DEPLOY_PROD.md)
@@ -56,11 +56,12 @@ cp .env.example .env
 ```
 
 ```bash
-make up       # Start Postgres + zombied
-make down     # Stop all services
-make test     # Run tests
-make lint     # Format + lint
-make doctor   # Check config, Postgres, LLM key
+make up                # Start Postgres + Redis + zombied
+make down              # Stop all services
+make test              # Run unit tests + backend e2e
+make test-integration  # Run all integration tests (Zig + DB + Redis via docker compose)
+make lint              # Format + lint
+make doctor            # Check config, Postgres, LLM key
 ```
 
 ## License

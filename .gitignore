@@ -6,10 +6,6 @@ zig-cache/
 .DS_Store
 *.log
 .tmp/
-docker/redis/tls/*.crt
-docker/redis/tls/*.csr
-docker/redis/tls/*.key
-docker/redis/tls/*.srl
 node_modules/
 dist/
 coverage/

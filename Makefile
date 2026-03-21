@@ -19,7 +19,7 @@ help:  ## Show all available Makefile targets
 	@echo "Quality & Testing:"
 	@echo "  lint                  Run code quality checks (zombied Zig fmt check + ZLint + website + app + zombiectl)"
 	@echo "  test-unit             Run unit lanes: zombied (Zig unit only) + zombiectl + website + app"
-	@echo "  test-integration-db   Run DB-backed handler integration tests (requires HANDLER_DB_TEST_URL)"
+	@echo "  test-integration      Run all integration tests (Zig + DB + Redis — requires docker compose up)"
 	@echo "  test                  Run test-unit + backend/API e2e"
 	@echo "  memleak               Run Zig memory leak gate (platform-aware)"
 	@echo "  bench                 Run API benchmark (set BENCH_MODE=bench|soak|profile)"

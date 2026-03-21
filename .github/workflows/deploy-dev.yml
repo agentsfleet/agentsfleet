@@ -29,12 +29,12 @@ jobs:
 
       - uses: 1password/install-cli-action@v1
 
-      - name: Check DEV vault credentials
+      - name: Check vault credentials
         env:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
           VAULT_DEV: ${{ vars.VAULT_DEV }}
           VAULT_PROD: ${{ vars.VAULT_PROD }}
-        run: ENV=dev ./scripts/check-credentials.sh
+        run: ./scripts/check-credentials.sh
 
   # ── 1. Build and push dev-latest image to GHCR ──────────────────────────
   build-dev:
@@ -70,18 +70,64 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Load Fly API token from 1Password
+      - name: Load secrets from 1Password
         uses: 1password/load-secrets-action@v3
         with:
           export-env: true
         env:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
           FLY_API_TOKEN: op://${{ vars.VAULT_DEV }}/fly-api-token/credential
+          DATABASE_URL_API: op://${{ vars.VAULT_DEV }}/planetscale-dev/api-connection-string
+          DATABASE_URL_WORKER: op://${{ vars.VAULT_DEV }}/planetscale-dev/worker-connection-string
+          REDIS_URL_API: op://${{ vars.VAULT_DEV }}/upstash-dev/api-url
+          REDIS_URL_WORKER: op://${{ vars.VAULT_DEV }}/upstash-dev/worker-url
+          ENCRYPTION_MASTER_KEY: op://${{ vars.VAULT_DEV }}/encryption-master-key/credential
+          GITHUB_APP_ID: op://${{ vars.VAULT_DEV }}/github-app/app-id
+          GITHUB_APP_PRIVATE_KEY: op://${{ vars.VAULT_DEV }}/github-app/private-key
+          CLERK_PUBLISHABLE_KEY: op://${{ vars.VAULT_DEV }}/clerk-dev/publishable-key
+          CLERK_SECRET_KEY: op://${{ vars.VAULT_DEV }}/clerk-dev/secret-key
 
       - uses: superfly/flyctl-actions/setup-flyctl@master
 
+      - name: Sync Fly secrets from vault
+        run: |
+          flyctl secrets set \
+            DATABASE_URL_API="$DATABASE_URL_API" \
+            DATABASE_URL_WORKER="$DATABASE_URL_WORKER" \
+            REDIS_URL_API="$REDIS_URL_API" \
+            REDIS_URL_WORKER="$REDIS_URL_WORKER" \
+            ENCRYPTION_MASTER_KEY="$ENCRYPTION_MASTER_KEY" \
+            GITHUB_APP_ID="$GITHUB_APP_ID" \
+            GITHUB_APP_PRIVATE_KEY="$GITHUB_APP_PRIVATE_KEY" \
+            CLERK_PUBLISHABLE_KEY="$CLERK_PUBLISHABLE_KEY" \
+            CLERK_SECRET_KEY="$CLERK_SECRET_KEY" \
+            --app ${{ vars.FLY_APP_DEV }} --stage
+        env:
+          FLY_API_TOKEN: ${{ env.FLY_API_TOKEN }}
+
       - name: Deploy zombied-dev
         run: flyctl deploy --app ${{ vars.FLY_APP_DEV }} --image ghcr.io/usezombie/zombied:dev-latest --config deploy/fly/zombied-dev/fly.toml --wait-timeout 120
+        env:
+          FLY_API_TOKEN: ${{ env.FLY_API_TOKEN }}
+
+      - name: Verify Fly machine state (started)
+        run: |
+          APP="${{ vars.FLY_APP_DEV }}"
+          echo "Checking Fly machine state for ${APP}..."
+          for i in $(seq 1 12); do
+            OUT="$(flyctl machine list --app "${APP}" || true)"
+            echo "${OUT}"
+            if echo "${OUT}" | grep -qiE '\bstarted\b'; then
+              echo "✓ at least one machine is started for ${APP}"
+              exit 0
+            fi
+            echo "attempt ${i}/12: no started machine yet; retrying in 5s..."
+            sleep 5
+          done
+          echo "✗ no started machine found for ${APP} after 60s"
+          echo "Fly app status for diagnostics:"
+          flyctl status --app "${APP}" || true
+          exit 1
         env:
           FLY_API_TOKEN: ${{ env.FLY_API_TOKEN }}
 
@@ -120,7 +166,7 @@ jobs:
   # ── 4. Wait for Fly DEV to go green (via Cloudflare Tunnel) ─────────────
   verify-dev:
     runs-on: ubuntu-latest
-    needs: [deploy-fly-dev, deploy-dev-worker]
+    needs: deploy-fly-dev
     steps:
       - name: Wait for zombied-dev to go green
         # Poll /healthz via Cloudflare Tunnel until green or timeout (3 min).
