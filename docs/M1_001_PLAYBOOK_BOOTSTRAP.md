@@ -22,8 +22,8 @@ Create accounts and generate one root API key per service. Hand off to agent whe
 - [ ] **Cloudflare** — add domains, set nameservers
 - [ ] **Codecov** — connect GitHub repo
 - [ ] **npm** — create org
-- [ ] **Fly.io** — sign up at fly.io (use Google/GitHub). Add a payment method (required even on free tier). Install `flyctl` locally: `curl -L https://fly.io/install.sh | sh`. Run `fly auth login`. All service setup is agent-executed via CLI (see M2_002 §2.0).
-- [ ] **Cloudflare Tunnel** — no separate sign-up needed; tunnels are created under your existing Cloudflare account. Agent creates tunnels via `cloudflared` CLI (see M2_002 §2.0).
+- [ ] **Fly.io** — sign up at fly.io (use Google/GitHub). Add a payment method (required even on free tier). Install `flyctl` locally: `curl -L https://fly.io/install.sh | sh`. Run `fly auth login` (browser OAuth, one-time per machine). All service setup is agent-executed via CLI (see M2_002 §2.0).
+- [ ] **Cloudflare Tunnel** — no separate sign-up needed; tunnels are created under your existing Cloudflare account. Install `cloudflared` locally (`mise install cloudflared` or `brew install cloudflared`). Run `cloudflared tunnel login` (browser OAuth, one-time per machine — selects which Cloudflare zone to authorize). Agent then creates tunnels, stores credentials in vault, and routes DNS via `cloudflared` CLI (see M2_002 §2.4).
 
 ### 1.2 Generate Root API Keys
 
@@ -142,7 +142,7 @@ This is a one-time human step. GitHub has no API endpoint to change org package 
 
 **Architecture:**
 ```
-Cloudflare Edge (dev.api.usezombie.com)
+Cloudflare Edge (api-dev.usezombie.com)
     │ Cloudflare Tunnel — encrypted, origin-shielded
     ▼
 cloudflared-dev (Fly app, 2 machines for HA)
@@ -200,7 +200,7 @@ CI triggers redeployments via `fly deploy --image` using the deploy token. Store
 
 ### 2.3b Cloudflare Tunnel — Origin Shield (Agent-executed)
 
-Cloudflare Tunnel routes all traffic from `dev.api.usezombie.com` → Fly private network. No public port on Fly. No bypass possible.
+Cloudflare Tunnel routes all traffic from `api-dev.usezombie.com` → Fly private network. No public port on Fly. No bypass possible.
 
 ```bash
 # Create tunnel (stores credentials locally; agent saves to vault)
@@ -213,7 +213,7 @@ op item create --vault ZMB_CD_DEV --title cloudflare-tunnel-dev \
   "credential=$(cat ~/.cloudflared/<tunnel-id>.json | base64)"
 
 # Create DNS CNAME → tunnel (replaces direct Railway/Fly CNAME)
-cloudflared tunnel route dns zombied-dev dev.api.usezombie.com
+cloudflared tunnel route dns zombied-dev api-dev.usezombie.com
 ```
 
 `cloudflared` config deployed as a Fly app connects to `zombied-dev.internal:3000` via Fly's private 6PN network. The Fly app has no `[http_service]` — no public endpoint is created.

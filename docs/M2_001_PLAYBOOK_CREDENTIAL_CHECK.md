@@ -38,8 +38,8 @@ Every `op://` reference the agent will use across M2_002 and the deploy pipeline
 | `planetscale-prod` | `connection-string` | Fly.io PROD `DATABASE_URL_API` + `DATABASE_URL_WORKER` |
 | `upstash-prod` | `url` | Fly.io PROD `REDIS_URL_API` + `REDIS_URL_WORKER` |
 | `tailscale` | `authkey` | worker node provision |
-| `zombie-worker-ant` | `ssh-private-key` | CI → worker deploy SSH |
-| `zombie-worker-bird` | `ssh-private-key` | CI → worker deploy SSH |
+| `zombie-prod-worker-ant` | `ssh-private-key` | CI → worker deploy SSH |
+| `zombie-prod-worker-bird` | `ssh-private-key` | CI → worker deploy SSH |
 | `discord-ci-webhook` | `credential` | `deploy-dev.yml` + `release.yml` notify |
 | `fly-api-token` | `credential` | `release.yml` → `fly deploy --app zombied-prod` (see M2_002 §2.6) |
 | `cloudflare-tunnel-prod` | `credential` | Cloudflare Tunnel credentials for PROD origin shield (see M2_002 §2.4) |
@@ -136,8 +136,8 @@ Items not yet in the vault that block M2_002. Create these before re-running:
 | `planetscale-prod` | `connection-string` | PlanetScale dashboard → your DB → Connect → copy Postgres connection string |
 | `upstash-prod` | `url` | Upstash dashboard → Redis → `usezombie-cache` → Details → copy Redis URL (`rediss://...`) |
 | `tailscale` | `authkey` | Tailscale admin → Settings → Keys → Generate auth key (reusable, no expiry for CI) |
-| `zombie-worker-ant` | `ssh-private-key` | Already in vault ✅ — add public key to `~/.ssh/authorized_keys` on the node |
-| `zombie-worker-bird` | `ssh-private-key` | Already in vault ✅ — add public key to `~/.ssh/authorized_keys` on the node |
+| `zombie-prod-worker-ant` | `ssh-private-key` | Already in vault ✅ — add public key to `~/.ssh/authorized_keys` on the node |
+| `zombie-prod-worker-bird` | `ssh-private-key` | Already in vault ✅ — add public key to `~/.ssh/authorized_keys` on the node |
 
 **ZMB_CD_DEV — create these:**
 

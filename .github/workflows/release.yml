@@ -184,8 +184,8 @@ jobs:
         env:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
           TAILSCALE_AUTHKEY: op://${{ vars.VAULT_PROD }}/tailscale/authkey
-          WORKER_ANT_SSH_KEY: op://${{ vars.VAULT_PROD }}/zombie-worker-ant/ssh-private-key
-          WORKER_BIRD_SSH_KEY: op://${{ vars.VAULT_PROD }}/zombie-worker-bird/ssh-private-key
+          WORKER_ANT_SSH_KEY: op://${{ vars.VAULT_PROD }}/zombie-prod-worker-ant/ssh-private-key
+          WORKER_BIRD_SSH_KEY: op://${{ vars.VAULT_PROD }}/zombie-prod-worker-bird/ssh-private-key
 
       - name: Join Tailscale network for private worker SSH
         uses: tailscale/github-action@v3
@@ -222,7 +222,7 @@ jobs:
           printf '%s\n' "$WORKER_BIRD_SSH_KEY" > "$BIRD_KEY"
           chmod 600 "$ANT_KEY" "$BIRD_KEY"
 
-          ssh -i "$ANT_KEY" -o StrictHostKeyChecking=no zombie-worker-ant \
+          ssh -i "$ANT_KEY" -o StrictHostKeyChecking=no zombie-prod-worker-ant \
             "cd /opt/zombie && ./deploy.sh"
-          ssh -i "$BIRD_KEY" -o StrictHostKeyChecking=no zombie-worker-bird \
+          ssh -i "$BIRD_KEY" -o StrictHostKeyChecking=no zombie-prod-worker-bird \
             "cd /opt/zombie && ./deploy.sh"

@@ -66,6 +66,20 @@ Every milestone that requires external credentials must start with a credential 
 - **Never silently assume a credential exists.** If an `op://` path is used anywhere in a workflow, it must appear in the credential check list.
 - **Always surface missing items to the human explicitly** — include what it is, which vault, and how to generate the value.
 
+## Agent-First Sequencing
+
+When designing any multi-step operation that involves both a human and an agent:
+
+- **Human steps are bottlenecks — minimize them and front-load them.** The human should hand off one artifact (a provisioned server, a purchased domain, a set of credentials) and then step away. Everything after that handoff must be agent-executable without human interaction.
+- **Every step after the human handoff must be retryable and idempotent.** If a step fails partway through and is run again, it must produce the same result without side effects.
+- **Vault is the handoff contract between steps.** Each step reads what the previous step wrote. Never pass credentials as arguments or environment variables between steps — always write to vault, read from vault.
+
+Applied to playbooks: number steps so human steps come first (and are as few as possible), then agent steps run in sequence to completion. If the playbook completes, no manual activation or follow-up is needed.
+
+Reference implementation: `docs/M4_001_PLAYBOOK_WORKER_BOOTSTRAP_DEV.md`.
+
+---
+
 ## Source Of Truth
 
 Use these references before inventing new patterns:

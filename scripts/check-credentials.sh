@@ -49,8 +49,8 @@ if [[ "$ENV" == "all" || "$ENV" == "prod" ]]; then
   check "$VAULT_PROD" planetscale-prod         connection-string
   check "$VAULT_PROD" upstash-prod             url
   check "$VAULT_PROD" tailscale                authkey
-  check "$VAULT_PROD" zombie-worker-ant        ssh-private-key
-  check "$VAULT_PROD" zombie-worker-bird       ssh-private-key
+  check "$VAULT_PROD" zombie-prod-worker-ant   ssh-private-key
+  check "$VAULT_PROD" zombie-prod-worker-bird  ssh-private-key
   check "$VAULT_PROD" discord-ci-webhook        credential
   check "$VAULT_PROD" fly-api-token             credential
   check "$VAULT_PROD" cloudflare-tunnel-prod    credential
@@ -66,6 +66,7 @@ if [[ "$ENV" == "all" || "$ENV" == "dev" ]]; then
   check "$VAULT_DEV" upstash-dev                url
   check "$VAULT_DEV" fly-api-token              credential
   check "$VAULT_DEV" cloudflare-tunnel-dev      credential
+  check "$VAULT_DEV" zombie-dev-worker-ant      ssh-private-key
   echo ""
 fi
 

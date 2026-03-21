@@ -35,7 +35,9 @@ Milestone 1 (M1_001_PLAYBOOK_BOOTSTRAP.md) — human + agent bootstrap
 | `fly auth login` | Human | Requires browser OAuth |
 | Generate deploy token, store in vault | Human | Requires Fly dashboard |
 | Create Fly apps, set secrets, deploy | Agent | Fully scriptable via `flyctl` |
-| Create Cloudflare Tunnel | Agent | `cloudflared` CLI, credentials to vault |
+| `cloudflared tunnel login` | Human | Requires browser OAuth (one-time per machine) |
+| Create Cloudflare Tunnel, store credentials, route DNS | Agent | `cloudflared tunnel create/route dns`, credentials to vault |
+| Deploy `cloudflared-dev` Fly app | Human | One-time infra bootstrap — `fly deploy --app cloudflared-dev`. Not CI-driven; only redeploy if tunnel config changes. |
 | Set DNS CNAME records | Agent | Cloudflare API |
 | Configure auto-scaling in fly.toml | Agent | Config file + `fly deploy` |
 | PlanetScale schema migrations | Agent | `psql` + migration files |
@@ -186,7 +188,7 @@ op item create --vault ZMB_CD_DEV --title cloudflare-tunnel-dev \
   "credentials-json-b64=$TUNNEL_CREDS"
 
 # Route tunnel to domain (creates CNAME <TUNNEL_ID>.cfargotunnel.com automatically)
-cloudflared tunnel route dns zombied-dev dev.api.usezombie.com
+cloudflared tunnel route dns zombied-dev api-dev.usezombie.com
 
 # Repeat for PROD
 cloudflared tunnel create zombied-prod
@@ -201,7 +203,7 @@ tunnel: <TUNNEL_ID>
 credentials-file: /etc/cloudflared/credentials.json
 
 ingress:
-  - hostname: dev.api.usezombie.com
+  - hostname: api-dev.usezombie.com
     service: http://zombied-dev.internal:3000  # Fly 6PN private DNS
   - service: http_status:404
 ```
@@ -220,6 +222,17 @@ primary_region = "iad"
 ```
 
 Cloudflare SSL/TLS: **Full (Strict)**. No Transform Rules. No CNAME hack.
+
+**Deploy cloudflared-dev (Human — one-time):**
+
+```bash
+export FLY_API_TOKEN=$(op read "op://ZMB_CD_DEV/fly-api-token/credential")
+fly deploy --app cloudflared-dev \
+  --config deploy/fly/cloudflared-dev/fly.toml \
+  --wait-timeout 120
+```
+
+This is infrastructure, not application code. Do not add to CI. Only redeploy if `deploy/fly/cloudflared-dev/config.yml` changes.
 
 ### 2.5 Auto-Scaling (Agent)
 
@@ -270,8 +283,8 @@ CI deploy step in `deploy-dev.yml`:
 cloudflared tunnel info zombied-dev
 
 # API reachable via Cloudflare (not direct Fly)
-curl -sf https://dev.api.usezombie.com/healthz
-curl -sf https://dev.api.usezombie.com/readyz | jq '.ready'
+curl -sf https://api-dev.usezombie.com/healthz
+curl -sf https://api-dev.usezombie.com/readyz | jq '.ready'
 
 # Confirm no direct Fly access (should time out or refuse)
 curl -sf https://zombied-dev.fly.dev/healthz  # expected: connection refused / 404
@@ -321,11 +334,16 @@ For local docker-compose Redis, static credentials are configured in `docker-com
 
 ## 4.0 Worker Infrastructure (OVHCloud + Tailscale)
 
-**DEV:** No dedicated workers — workers run as a local process. Skip for DEV.
+> **Full bootstrap detail is in [`docs/M4_001_PLAYBOOK_WORKER_BOOTSTRAP_DEV.md`](M4_001_PLAYBOOK_WORKER_BOOTSTRAP_DEV.md).**
+> Sections 4.1–4.8 below are a summary reference only.
 
-**PROD only:**
+**DEV:** One bare-metal node (`zombie-dev-worker-ant`) — OVHCloud KS-1, Beauharnois CA. KVM required for Firecracker. SSH key stored in `ZMB_CD_DEV/zombie-dev-worker-ant/ssh-private-key`. Bootstrap follows §4.1–4.7 below using `VAULT_DEV` and the DEV image (`dev-latest`).
 
-Worker naming: alphabetical animals (`zombie-worker-ant`, `zombie-worker-bird`, ...).
+**PROD:** Two bare-metal nodes (`zombie-prod-worker-ant`, `zombie-prod-worker-bird`). Worker naming: alphabetical animals, prefixed by environment.
+
+**deploy.sh lives on the server** — bootstrapped once per node (§4.6). CI calls it remotely via SSH on every deploy:
+- DEV: `deploy-dev.yml` → SSH → `zombie-dev-worker-ant` → `/opt/zombie/deploy.sh`
+- PROD: `release.yml` → SSH → each PROD node → `/opt/zombie/deploy.sh`
 
 ### 4.1 Human: Tailscale Setup
 
@@ -352,7 +370,7 @@ tailscale up --authkey "$(op read "op://$VAULT_PROD/tailscale/authkey")"
 tailscale status
 ```
 
-After this, your Mac can reach any worker node by its Tailscale hostname (e.g. `ssh zombie-worker-ant`).
+After this, your Mac can reach any worker node by its Tailscale hostname (e.g. `ssh zombie-prod-worker-ant`).
 
 ### 4.2 Human: Provision OVHCloud Bare-Metal
 
@@ -361,68 +379,75 @@ After this, your Mac can reach any worker node by its Tailscale hostname (e.g. `
    - Tailnet-only SSH access
    - Public SSH disabled
    - Node-scoped deploy key in `~/.ssh/authorized_keys`
-3. Name each node: `zombie-worker-ant`, `zombie-worker-bird`, ...
+3. Name each node: `zombie-prod-worker-ant`, `zombie-prod-worker-bird`, ...
 
 ### 4.3 Human: Store Worker SSH Keys
 
-Each node's SSH private key is stored in its own vault item (`zombie-worker-ant/ssh-private-key`, `zombie-worker-bird/ssh-private-key`). ✅ Already done in `ZMB_CD_PROD`.
+Each node's SSH private key is stored in its own vault item (`zombie-prod-worker-ant/ssh-private-key`, `zombie-prod-worker-bird/ssh-private-key`). ✅ Already done in `ZMB_CD_PROD`.
 
 Add the corresponding public key to `~/.ssh/authorized_keys` on each node so CI can SSH in.
 
 ### 4.4 Agent: Join Workers to Tailnet
 
-Run once per node at provision time:
+Run once per node at provision time. Use `VAULT_DEV` for DEV node, `VAULT_PROD` for PROD nodes:
 
 ```bash
-TAILSCALE_AUTHKEY=$(op read "op://$VAULT_PROD/tailscale/authkey")
+# DEV node
+TAILSCALE_AUTHKEY=$(op read "op://ZMB_CD_PROD/tailscale/authkey")  # same tailnet for all envs
 curl -fsSL https://tailscale.com/install.sh | sh
-tailscale up --authkey "$TAILSCALE_AUTHKEY" --hostname zombie-worker-ant
+tailscale up --authkey "$TAILSCALE_AUTHKEY" --hostname zombie-dev-worker-ant
+
+# PROD nodes (repeat with zombie-prod-worker-ant, zombie-prod-worker-bird)
+tailscale up --authkey "$TAILSCALE_AUTHKEY" --hostname zombie-prod-worker-ant
 ```
 
-Repeat for each node, changing the hostname.
+### 4.5 Agent: Install Docker + Firecracker on Each Worker Node
 
-### 4.5 Human: Install Docker on Each Worker Node
-
-SSH into each node and install Docker (one-time):
+SSH into each node and run (one-time per node):
 
 ```bash
-# On each worker node (Debian Trixie)
+# Docker
 apt-get update
 apt-get install -y docker.io
-systemctl enable docker
-systemctl start docker
+systemctl enable docker && systemctl start docker
 
-# Verify
-docker --version
+# GHCR auth — image is public, no token needed (GHCR package is public ✅)
+# Verify pull works:
+docker pull ghcr.io/usezombie/zombied:dev-latest
+
+# Firecracker + KVM (required for M4_008 sandbox execution)
+apt-get install -y cpu-checker
+kvm-ok   # must print "KVM acceleration can be used" — bail if not
+
+ARCH=$(uname -m)
+FC_VERSION=v1.7.0
+curl -fsSL "https://github.com/firecracker-microvm/firecracker/releases/download/${FC_VERSION}/firecracker-${FC_VERSION}-${ARCH}.tgz" \
+  | tar xz -C /usr/local/bin --strip-components=1
+firecracker --version
+
+# Allow deploy user to use KVM without root
+usermod -aG kvm debian
 ```
 
-Also authenticate Docker to GHCR on each node so `docker pull` succeeds:
-
-```bash
-# Generate a GitHub PAT with read:packages scope (human does this once)
-# Then on each node:
-echo "<GITHUB_PAT>" | docker login ghcr.io -u <github-org> --password-stdin
-```
-
-Store the GHCR pull token in the vault: `op://ZMB_CD_PROD/ghcr-pull-token/credential`.
-
-### 4.6 Human: Bootstrap /opt/zombie/ on Each Worker Node
+### 4.6 Agent: Bootstrap /opt/zombie/ on Each Worker Node
 
 Run once per node:
 
 ```bash
 mkdir -p /opt/zombie
-chown deploy-user:deploy-user /opt/zombie
+chown debian:debian /opt/zombie
 ```
 
-Create `/opt/zombie/deploy.sh` on each node:
+Create `/opt/zombie/deploy.sh` — content differs by environment:
+
+**DEV (`zombie-dev-worker-ant`):**
 
 ```bash
 cat > /opt/zombie/deploy.sh << 'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 
-IMAGE="ghcr.io/<org>/<service>:latest"
+IMAGE="ghcr.io/usezombie/zombied:dev-latest"
 
 echo "Pulling $IMAGE..."
 docker pull "$IMAGE"
@@ -434,6 +459,7 @@ docker rm   zombied-worker 2>/dev/null || true
 docker run -d \
   --name zombied-worker \
   --restart unless-stopped \
+  --device /dev/kvm \
   --env-file /opt/zombie/.env \
   "$IMAGE" \
   zombied worker
@@ -444,11 +470,50 @@ EOF
 chmod +x /opt/zombie/deploy.sh
 ```
 
-Create `/opt/zombie/.env` on each node with the required runtime env vars (see §2.2 PROD vars — same set, no PORT/MIGRATE_ON_START needed for worker-only nodes).
-
-> `/opt/zombie/.env` contains secrets — set permissions to `600` and owned by `deploy-user` only.
+**PROD (`zombie-prod-worker-ant`, `zombie-prod-worker-bird`):**
 
 ```bash
+cat > /opt/zombie/deploy.sh << 'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+IMAGE="ghcr.io/usezombie/zombied:latest"
+
+echo "Pulling $IMAGE..."
+docker pull "$IMAGE"
+
+echo "Restarting zombied-worker..."
+docker stop zombied-worker 2>/dev/null || true
+docker rm   zombied-worker 2>/dev/null || true
+
+docker run -d \
+  --name zombied-worker \
+  --restart unless-stopped \
+  --device /dev/kvm \
+  --env-file /opt/zombie/.env \
+  "$IMAGE" \
+  zombied worker
+
+echo "Done. Container status:"
+docker ps --filter name=zombied-worker
+EOF
+chmod +x /opt/zombie/deploy.sh
+```
+
+Note: `--device /dev/kvm` passes KVM into the container so the worker can boot Firecracker VMs (M4_008).
+
+Create `/opt/zombie/.env` on each node. For DEV, use `ZMB_CD_DEV` vault values (§2.2 DEV vars — no PORT/MIGRATE_ON_START needed for worker-only nodes):
+
+```bash
+# On zombie-dev-worker-ant — fill from vault
+cat > /opt/zombie/.env << EOF
+DATABASE_URL_WORKER=$(op read 'op://ZMB_CD_DEV/planetscale-dev/connection-string')
+REDIS_URL_WORKER=$(op read 'op://ZMB_CD_DEV/upstash-dev/url')
+ENCRYPTION_MASTER_KEY=$(op read 'op://ZMB_CD_DEV/zombied-local-config/encryption-master-key')
+GITHUB_APP_ID=$(op read 'op://ZMB_CD_DEV/github-app/app-id')
+GITHUB_APP_PRIVATE_KEY=$(op read 'op://ZMB_CD_DEV/github-app/private-key')
+ENVIRONMENT=dev
+EOF
 chmod 600 /opt/zombie/.env
 ```
 
@@ -457,7 +522,7 @@ chmod 600 /opt/zombie/.env
 Before cutting the first release tag, SSH into each node and do a dry run:
 
 ```bash
-for node in zombie-worker-ant zombie-worker-bird; do
+for node in zombie-prod-worker-ant zombie-prod-worker-bird; do
   KEY=$(op read "op://$VAULT_PROD/$node/ssh-private-key")
   ssh -i <(echo "$KEY") "$node" "ls -la /opt/zombie/deploy.sh && /opt/zombie/deploy.sh"
 done
@@ -470,7 +535,7 @@ This confirms Docker auth, image pull, and container restart work before CI depe
 After bootstrap, all subsequent deploys go through CI (`release.yml`):
 
 ```bash
-for node in zombie-worker-ant zombie-worker-bird; do
+for node in zombie-prod-worker-ant zombie-prod-worker-bird; do
   KEY=$(op read "op://$VAULT_PROD/$node/ssh-private-key")
   ssh -i <(echo "$KEY") "$node" "cd /opt/zombie && ./deploy.sh"
 done

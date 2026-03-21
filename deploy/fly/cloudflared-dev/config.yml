@@ -1,0 +1,4 @@
+ingress:
+  - hostname: api-dev.usezombie.com
+    service: http://zombied-dev.internal:3000
+  - service: http_status:404

@@ -57,8 +57,8 @@ Expected DEV pipeline order:
 Run after workflow is green:
 
 ```bash
-curl -sf https://dev.api.usezombie.com/healthz
-curl -sf https://dev.api.usezombie.com/readyz | jq -e '.ready == true'
+curl -sf https://api-dev.usezombie.com/healthz
+curl -sf https://api-dev.usezombie.com/readyz | jq -e '.ready == true'
 ```
 
 Optional operator checks:

@@ -1,0 +1,17 @@
+app = "zombied-dev"
+primary_region = "iad"
+
+[build]
+  image = "ghcr.io/usezombie/zombied:dev-latest"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
+
+# NO [http_service] block — no public Fly port, no *.fly.dev domain.
+# All inbound traffic enters via Cloudflare Tunnel only (cloudflared-dev).
+# Internal access: zombied-dev.internal:3000 over Fly 6PN.
+
+[metrics]
+  port = 9091
+  path = "/metrics"

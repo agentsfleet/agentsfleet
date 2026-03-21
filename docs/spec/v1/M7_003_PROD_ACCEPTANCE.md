@@ -53,8 +53,8 @@ git push origin v0.2.0
 `verify-dev-gate` in `release.yml` blocks PROD rollout until DEV is healthy. M7_001_DEV_ACCEPTANCE must be complete before this gate can pass.
 
 **Dimensions:**
-- 3.1 PENDING `https://dev.api.usezombie.com/healthz` returns 200
-- 3.2 PENDING `https://dev.api.usezombie.com/readyz` returns `{ "ready": true }`
+- 3.1 PENDING `https://api-dev.usezombie.com/healthz` returns 200
+- 3.2 PENDING `https://api-dev.usezombie.com/readyz` returns `{ "ready": true }`
 - 3.3 PENDING `verify-dev-gate` CI job green — PROD rollout unblocked
 
 ---
@@ -83,7 +83,7 @@ git push origin v0.2.0
 - 5.1 PENDING Fly.io PROD app (`zombied-prod`) deployed from `ghcr.io/usezombie/zombied:latest`; Cloudflare Tunnel `zombied-prod` routes `api.usezombie.com` → Fly private network. See M2_002 §2.0.
 - 5.2 PENDING `deploy-prod` CI job polls `https://api.usezombie.com/healthz` (24 attempts × 10s); must return 200. Print HTTP status + response body per attempt so Fly-not-deployed vs zombied-crashed are distinguishable.
 - 5.3 PENDING `https://api.usezombie.com/readyz` returns `{ "ready": true }`
-- 5.4 PENDING PROD vault items green: `planetscale-prod`, `tailscale`, `zombie-worker-{ant,bird}/ssh-private-key`, `clerk-prod`, `fly-api-token`, `cloudflare-tunnel-prod`
+- 5.4 PENDING PROD vault items green: `planetscale-prod`, `tailscale`, `zombie-prod-worker-{ant,bird}/ssh-private-key`, `clerk-prod`, `fly-api-token`, `cloudflare-tunnel-prod`
 
 ```bash
 curl -sf https://api.usezombie.com/healthz
@@ -96,11 +96,11 @@ curl -sf https://api.usezombie.com/readyz | jq -e '.ready == true'
 
 **Status:** PENDING
 
-Worker nodes `zombie-worker-ant` and `zombie-worker-bird` are bare-metal nodes reachable via Tailscale SSH. `deploy.sh` must be written, bootstrapped, and tested before this gate can pass.
+Worker nodes `zombie-prod-worker-ant` and `zombie-prod-worker-bird` are bare-metal nodes reachable via Tailscale SSH. `deploy.sh` must be written, bootstrapped, and tested before this gate can pass.
 
 **Dimensions:**
 - 6.1 PENDING `/opt/zombie/deploy.sh` written on each node — pulls `ghcr.io/usezombie/zombied:latest`, restarts worker process (systemd or docker restart)
-- 6.2 PENDING `deploy-prod` CI SSH step succeeds for both nodes: `ssh zombie-worker-ant "cd /opt/zombie && ./deploy.sh"`
+- 6.2 PENDING `deploy-prod` CI SSH step succeeds for both nodes: `ssh zombie-prod-worker-ant "cd /opt/zombie && ./deploy.sh"`
 - 6.3 PENDING Worker process starts, connects to DB and Redis, begins consuming run queue
 - 6.4 PENDING Worker health confirmed: at least one test run dispatched and consumed by a worker node
 

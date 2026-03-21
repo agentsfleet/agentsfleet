@@ -1,8 +1,10 @@
 name: deploy (dev)
 
 # Triggers on every push to main.
-# Flow: build dev-latest image → push GHCR → Railway DEV auto-deploys
-#       → wait /healthz green → QA smoke → Discord notify
+# Flow: build dev-latest image → push GHCR
+#       → fly deploy zombied-dev (API)
+#       → SSH deploy zombie-dev-worker-ant (bare-metal worker, Tailscale)
+#       → wait /healthz green (via Cloudflare Tunnel) → QA smoke → Discord notify
 
 on:
   push:
@@ -66,42 +68,74 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_ACTOR: ${{ github.actor }}
 
-  # ── 2. Trigger Railway DEV redeploy via API ──────────────────────────────
-  trigger-railway-dev:
+  # ── 2. Deploy to Fly.io DEV ─────────────────────────────────────────────
+  deploy-fly-dev:
     runs-on: ubuntu-latest
     needs: build-dev
     steps:
-      - uses: 1password/load-secrets-action@v3
+      - uses: actions/checkout@v6
+
+      - name: Load Fly API token from 1Password
+        uses: 1password/load-secrets-action@v3
         with:
           export-env: true
         env:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
-          RAILWAY_TOKEN: op://${{ vars.VAULT_DEV }}/railway-api-token/credential
+          FLY_API_TOKEN: op://${{ vars.VAULT_DEV }}/fly-api-token/credential
 
-      - name: Trigger Railway DEV redeploy
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Deploy zombied-dev
+        run: flyctl deploy --app ${{ vars.FLY_APP_DEV }} --image ghcr.io/usezombie/zombied:dev-latest --config deploy/fly/zombied-dev/fly.toml --wait-timeout 120
+        env:
+          FLY_API_TOKEN: ${{ env.FLY_API_TOKEN }}
+
+  # ── 3. Deploy DEV worker to bare-metal via Tailscale SSH ─────────────────
+  # Skips until zombie-dev-worker-ant bootstrap is complete (M4_001).
+  # Enable by setting DEV_WORKER_READY=true in GitHub → Settings → Variables.
+  deploy-dev-worker:
+    runs-on: ubuntu-latest
+    needs: build-dev
+    if: vars.DEV_WORKER_READY == 'true'
+    steps:
+      - name: Load DEV worker secrets from 1Password
+        uses: 1password/load-secrets-action@v3
+        with:
+          export-env: true
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          TAILSCALE_AUTHKEY: op://${{ vars.VAULT_PROD }}/tailscale/authkey
+          WORKER_ANT_SSH_KEY: op://${{ vars.VAULT_DEV }}/zombie-dev-worker-ant/ssh-private-key
+
+      - name: Join Tailscale network
+        uses: tailscale/github-action@v3
+        with:
+          authkey: ${{ env.TAILSCALE_AUTHKEY }}
+          tags: tag:ci
+
+      - name: Deploy zombie-dev-worker-ant
         run: |
-          RESULT=$(curl -s -X POST https://backboard.railway.com/graphql/v2 \
-            -H "Authorization: Bearer $RAILWAY_TOKEN" \
-            -H "Content-Type: application/json" \
-            -d '{"query":"mutation { serviceInstanceRedeploy(environmentId: \"${{ vars.RAILWAY_DEV_ENV_ID }}\", serviceId: \"${{ vars.RAILWAY_DEV_SERVICE_ID }}\") }"}')
-          echo "Railway redeploy: $RESULT"
-          echo "$RESULT" | grep -q '"serviceInstanceRedeploy":true' || (echo "Railway redeploy failed" && exit 1)
+          install -m 700 -d ~/.ssh
+          ANT_KEY="$RUNNER_TEMP/dev-worker-ant.key"
+          printf '%s\n' "$WORKER_ANT_SSH_KEY" > "$ANT_KEY"
+          chmod 600 "$ANT_KEY"
+          ssh -i "$ANT_KEY" -o StrictHostKeyChecking=no zombie-dev-worker-ant \
+            "cd /opt/zombie && ./deploy.sh"
 
-  # ── 3. Wait for Railway DEV to go green ─────────────────────────────────
+  # ── 4. Wait for Fly DEV to go green (via Cloudflare Tunnel) ─────────────
   verify-dev:
     runs-on: ubuntu-latest
-    needs: trigger-railway-dev
+    needs: [deploy-fly-dev, deploy-dev-worker]
     steps:
-      - name: Wait for Railway DEV deploy
-        # Railway is triggered by trigger-railway-dev job above (no GitHub integration).
-        # Poll /healthz until green or timeout (3 min).
+      - name: Wait for zombied-dev to go green
+        # Poll /healthz via Cloudflare Tunnel until green or timeout (3 min).
         # Prints HTTP status + response body on each attempt for diagnostics.
         run: |
-          echo "Waiting for Railway DEV deploy..."
+          echo "Waiting for zombied-dev..."
           STATUS="000"
           for i in $(seq 1 18); do
             BODY=$(curl -sf -w "\n%{http_code}" \
-              https://dev.api.usezombie.com/healthz 2>&1 || echo -e "\n000")
+              https://api-dev.usezombie.com/healthz 2>&1 || echo -e "\n000")
             STATUS=$(echo "$BODY" | tail -1)
             RESP=$(echo "$BODY" | head -1)
             if [ "$STATUS" = "200" ]; then
@@ -118,7 +152,7 @@ jobs:
 
       - name: Check /readyz
         run: |
-          curl -sf https://dev.api.usezombie.com/readyz | jq -e '.ready == true'
+          curl -sf https://api-dev.usezombie.com/readyz | jq -e '.ready == true'
 
   # ── 4. QA smoke tests against DEV ───────────────────────────────────────
   qa-dev:
@@ -143,7 +177,7 @@ jobs:
         run: bun run test:e2e:smoke
         working-directory: ui/packages/app
         env:
-          BASE_URL: https://dev.api.usezombie.com
+          BASE_URL: https://api-dev.usezombie.com
 
       - name: Upload Playwright report
         uses: actions/upload-artifact@v7

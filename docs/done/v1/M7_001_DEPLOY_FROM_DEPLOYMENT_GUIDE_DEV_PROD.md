@@ -21,7 +21,7 @@ CI/CD pipeline fully wired. Railway DEV connection is the remaining runtime depe
 - 1.1 ✅ DONE Gitleaks wired as hard prerequisite in release DAG (`docker` job `needs: [verify-tag, binaries]`; runs on all PR/push lanes). `.gitleaks.toml` updated to ignore `.tmp/`, `zig-cache/`, `.zig-cache/`, `zig-out/` paths.
 - 1.2 ✅ DONE `Dockerfile` refactored to binary-copy model — cross-compiles on CI runner, `COPY dist/zombied-linux-${TARGETARCH}` into `debian:trixie-slim`. No Zig toolchain inside Docker.
 - 1.3 ✅ DONE `deploy-dev.yml` fully wired: main push → Zig cross-compile (amd64 + arm64) → `make push-dev` → `ghcr.io/usezombie/zombied:dev-latest` + `zombied:0.x.0-dev-<sha>` → Railway DEV healthz poll → Playwright QA smoke → Discord notify.
-- 1.4 ✅ DONE `verify-dev` job polls `https://dev.api.usezombie.com/healthz` (18 attempts × 10s). Blocked on Railway DEV being connected to GHCR image — tracked in M7_001_DEV_ACCEPTANCE.md.
+- 1.4 ✅ DONE `verify-dev` job polls `https://api-dev.usezombie.com/healthz` (18 attempts × 10s). Blocked on Railway DEV being connected to GHCR image — tracked in M7_001_DEV_ACCEPTANCE.md.
 - 1.5 ✅ DONE Node.js 20 deprecation resolved: `jetsung/setup-zig@v1` used across all workflows; `mlugg/setup-zig@v2` retained only for `memleak.yml` (runs inside `debian:trixie-slim` container where shell-script actions fail); `1password/load-secrets-action` bumped to `@v3` (PR #61).
 
 ---
@@ -36,7 +36,7 @@ Tag-based release pipeline wired end-to-end. Worker node `deploy.sh` and PROD Ra
 - 2.1 ✅ DONE `release.yml` triggered on `v*` tags. Gate: tag must match `VERSION` file exactly.
 - 2.2 ✅ DONE Binaries cross-compiled for 4 targets (linux/amd64, linux/arm64, darwin/amd64, darwin/arm64), uploaded as artifacts, attached to GitHub Release with CHANGELOG excerpt.
 - 2.3 ✅ DONE `make push` pushes `ghcr.io/usezombie/zombied:latest` + `zombied:vX.Y.Z` + `zombied:vX.Y.Z-<sha>` using prebuilt binaries from artifact download step.
-- 2.4 ✅ DONE `verify-dev-gate` job blocks PROD rollout until `dev.api.usezombie.com/healthz` + `/readyz` are green — prevents deploying to PROD if DEV is unhealthy.
+- 2.4 ✅ DONE `verify-dev-gate` job blocks PROD rollout until `api-dev.usezombie.com/healthz` + `/readyz` are green — prevents deploying to PROD if DEV is unhealthy.
 - 2.5 ✅ DONE `deploy-prod` job: loads Tailscale authkey + per-node SSH keys from `op://ZMB_CD_PROD`; joins Tailscale network; polls `api.usezombie.com/healthz` (24 attempts × 10s); SSHs into `zombie-worker-ant` + `zombie-worker-bird` and runs `/opt/zombie/deploy.sh`.
 - 2.6 ✅ DONE `zombiectl` published to npm on every release tag via `npm publish --provenance`.
 
@@ -48,7 +48,7 @@ Tag-based release pipeline wired end-to-end. Worker node `deploy.sh` and PROD Ra
 
 | Environment | Service | URL | Image / Deployable |
 |-------------|---------|-----|--------------------|
-| DEV | API | `https://dev.api.usezombie.com` | `ghcr.io/usezombie/zombied:dev-latest` (Railway) |
+| DEV | API | `https://api-dev.usezombie.com` | `ghcr.io/usezombie/zombied:dev-latest` (Railway) |
 | DEV | API (sha-pinned) | same | `ghcr.io/usezombie/zombied:0.x.0-dev-<sha>` |
 | DEV | App/Dashboard | Vercel preview URL (per-commit) | `usezombie-app` Vercel project |
 | DEV | Website | Vercel preview URL (per-commit) | `usezombie-website` Vercel project |

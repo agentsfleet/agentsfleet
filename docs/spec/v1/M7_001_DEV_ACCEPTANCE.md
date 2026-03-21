@@ -17,18 +17,18 @@
 
 **Status:** PENDING
 
-Fly.io DEV app must be running, reachable at `dev.api.usezombie.com` via Cloudflare Tunnel, and the full deploy-dev pipeline must run green end-to-end.
+Fly.io DEV app must be running, reachable at `api-dev.usezombie.com` via Cloudflare Tunnel, and the full deploy-dev pipeline must run green end-to-end.
 
 **Dimensions:**
 - 1.1a **DONE** GHCR package `ghcr.io/usezombie/zombied` set to **public** ✅
-- 1.1b **DONE** Cloudflare CNAME `dev.api.usezombie.com` created ✅ — will be updated to tunnel CNAME once Fly.io is wired
+- 1.1b **DONE** Cloudflare CNAME `api-dev.usezombie.com` created ✅ — will be updated to tunnel CNAME once Fly.io is wired
 - 1.1c **PENDING [agent]** Create Fly.io apps (`zombied-dev`, `zombied-dev-worker`, `cloudflared-dev`), set secrets from 1Password, deploy from GHCR. See M2_002 §2.1–2.3. No public Fly port — all traffic via Cloudflare Tunnel only.
-- 1.1d **PENDING [agent]** Create Cloudflare Tunnel `zombied-dev`, route `dev.api.usezombie.com` → tunnel. See M2_002 §2.4. Replaces CNAME + Transform Rule hack.
+- 1.1d **PENDING [agent]** Create Cloudflare Tunnel `zombied-dev`, route `api-dev.usezombie.com` → tunnel. See M2_002 §2.4. Replaces CNAME + Transform Rule hack.
 - 1.1e **PENDING [agent]** Update `deploy-dev.yml`: replace `trigger-railway-dev` job with `fly deploy --app zombied-dev --image ghcr.io/usezombie/zombied:dev-latest`. Store `fly-api-token` in vault + `FLY_API_TOKEN` GitHub secret.
 - 1.2 PENDING Verify `deploy-dev.yml` `build-dev` step completes: Zig cross-compile → `make push-dev` → GHCR push succeeds
 - 1.3 PENDING Verify `deploy-fly-dev` step passes: `fly deploy` returns exit 0, machine healthy
-- 1.4 PENDING Verify `verify-dev` step passes: `https://dev.api.usezombie.com/healthz` returns 200 within 180s. Prints HTTP status + body per attempt for diagnostics.
-- 1.5 PENDING Verify `verify-dev` step passes: `https://dev.api.usezombie.com/readyz` returns `{ "ready": true }`
+- 1.4 PENDING Verify `verify-dev` step passes: `https://api-dev.usezombie.com/healthz` returns 200 within 180s. Prints HTTP status + body per attempt for diagnostics.
+- 1.5 PENDING Verify `verify-dev` step passes: `https://api-dev.usezombie.com/readyz` returns `{ "ready": true }`
 - 1.6 PENDING DEV vault items all green in `check-credentials.sh`: `clerk-dev`, `vercel-api-token`, `planetscale-dev`, `upstash-dev`, `fly-api-token`, `cloudflare-tunnel-dev`
 
 ---
@@ -39,7 +39,7 @@ Fly.io DEV app must be running, reachable at `dev.api.usezombie.com` via Cloudfl
 
 | Service | URL | Image |
 |---------|-----|-------|
-| API | `https://dev.api.usezombie.com` | `ghcr.io/usezombie/zombied:dev-latest` (Fly.io `zombied-dev`) |
+| API | `https://api-dev.usezombie.com` | `ghcr.io/usezombie/zombied:dev-latest` (Fly.io `zombied-dev`) |
 | API (sha-pinned) | same | `ghcr.io/usezombie/zombied:0.x.0-dev-<sha>` |
 | App / Dashboard | Vercel preview URL (per-commit) | `usezombie-app` Vercel project |
 | Website | Vercel preview URL (per-commit) | `usezombie-website` Vercel project |
@@ -51,14 +51,14 @@ Fly.io DEV app must be running, reachable at `dev.api.usezombie.com` via Cloudfl
 **Status:** PENDING
 
 **Dimensions:**
-- 3.1 PENDING `GET https://dev.api.usezombie.com/healthz` → HTTP 200
-- 3.2 PENDING `GET https://dev.api.usezombie.com/readyz` → `{ "ready": true }`
+- 3.1 PENDING `GET https://api-dev.usezombie.com/healthz` → HTTP 200
+- 3.2 PENDING `GET https://api-dev.usezombie.com/readyz` → `{ "ready": true }`
 - 3.3 PENDING `zombied doctor` output: all checks `[OK]` — DB connectivity, Redis connectivity, Clerk auth, vault key present
 
 ```bash
-curl -sf https://dev.api.usezombie.com/healthz
-curl -sf https://dev.api.usezombie.com/readyz | jq -e '.ready == true'
-npx zombiectl doctor --api-url https://dev.api.usezombie.com
+curl -sf https://api-dev.usezombie.com/healthz
+curl -sf https://api-dev.usezombie.com/readyz | jq -e '.ready == true'
+npx zombiectl doctor --api-url https://api-dev.usezombie.com
 ```
 
 ---
@@ -81,7 +81,7 @@ Vercel preview smoke tests fire automatically via `smoke-post-deploy.yml` on eac
 
 **Status:** PENDING
 
-`qa-dev` step in `deploy-dev.yml` runs Playwright smoke suite against `https://dev.api.usezombie.com` after Fly.io DEV goes green.
+`qa-dev` step in `deploy-dev.yml` runs Playwright smoke suite against `https://api-dev.usezombie.com` after Fly.io DEV goes green.
 
 **Dimensions:**
 - 5.1 PENDING `qa-dev` CI step passes end-to-end against live DEV API
@@ -105,7 +105,7 @@ Full CLI-driven end-to-end acceptance run against DEV. Commands run in order; ea
 - 6.6 PENDING Spec-to-PR latency recorded; must be under 5 minutes on DEV infra
 
 ```bash
-export ZOMBIE_API_URL=https://dev.api.usezombie.com
+export ZOMBIE_API_URL=https://api-dev.usezombie.com
 
 npx zombiectl login
 npx zombiectl workspace add <ACCEPTANCE_REPO_URL>
@@ -140,7 +140,7 @@ npx zombiectl runs list
 **Status:** PENDING
 
 - [ ] 8.1 Fly.io DEV running (`zombied-dev`); Cloudflare Tunnel wired; `deploy-dev.yml` pipeline runs green on main push
-- [ ] 8.2 `healthz` + `readyz` return green on `dev.api.usezombie.com`
+- [ ] 8.2 `healthz` + `readyz` return green on `api-dev.usezombie.com`
 - [ ] 8.3 Playwright QA smoke passes against live DEV API
 - [ ] 8.4 UI smoke passes for app and website Vercel previews
 - [ ] 8.5 CLI acceptance run completes: login → workspace add → specs sync → run → runs list

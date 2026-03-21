@@ -28,7 +28,7 @@ cat VERSION   # must match the tag you're about to push, e.g. 0.2.0
 
 5. Confirm `deploy.sh` is bootstrapped and tested on all worker nodes (M2_002 §4.7). **Do not cut a release tag before this is verified.** If not done:
 ```bash
-for node in zombie-worker-ant zombie-worker-bird; do
+for node in zombie-prod-worker-ant zombie-prod-worker-bird; do
   KEY=$(op read "op://$VAULT_PROD/$node/ssh-private-key")
   ssh -i <(echo "$KEY") "$node" "ls -la /opt/zombie/deploy.sh"
 done
@@ -74,7 +74,7 @@ curl -sf https://api.usezombie.com/healthz
 curl -sf https://api.usezombie.com/readyz | jq -e '.ready == true'
 ```
 
-4. SSH to `zombie-worker-ant` and `zombie-worker-bird` over Tailscale and run:
+4. SSH to `zombie-prod-worker-ant` and `zombie-prod-worker-bird` over Tailscale and run:
 
 ```bash
 cd /opt/zombie && ./deploy.sh
