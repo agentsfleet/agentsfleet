@@ -3,6 +3,8 @@ const zap = @import("zap");
 const common = @import("common.zig");
 const error_codes = @import("../../errors/codes.zig");
 
+const log = std.log.scoped(.http);
+
 pub fn handleListSpecs(ctx: *common.Context, r: zap.Request) void {
     var arena = std.heap.ArenaAllocator.init(ctx.alloc);
     defer arena.deinit();
@@ -40,6 +42,8 @@ pub fn handleListSpecs(ctx: *common.Context, r: zap.Request) void {
         return;
     }
 
+    log.debug("list specs request workspace_id={s} limit={d}", .{ wid, limit });
+
     // check-pg-drain: ok — full while loop exhausts all rows, natural drain
     var result = conn.query(
         \\SELECT spec_id, file_path, title, status, created_at, updated_at
@@ -70,6 +74,8 @@ pub fn handleListSpecs(ctx: *common.Context, r: zap.Request) void {
         obj.put("updated_at", .{ .integer = updated_at }) catch continue;
         specs.append(alloc, .{ .object = obj }) catch continue;
     }
+
+    log.info("specs listed workspace_id={s} count={d}", .{ wid, specs.items.len });
 
     common.writeJson(r, .ok, .{
         .specs = specs.items,

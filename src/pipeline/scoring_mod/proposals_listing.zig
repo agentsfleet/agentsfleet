@@ -3,6 +3,8 @@ const pg = @import("pg");
 const auto_approval = @import("proposals_auto_approval.zig");
 const shared = @import("proposals_shared.zig");
 
+const log = std.log.scoped(.scoring);
+
 pub const ApplyProposalResult = auto_approval.ApplyProposalResult;
 pub const AppliedProposalTelemetry = shared.AppliedProposalTelemetry;
 pub const ManualProposalSummary = shared.ManualProposalSummary;
@@ -129,6 +131,7 @@ pub fn listOpenProposals(
         try list.append(alloc, try proposalSummaryFromRow(alloc, row));
     }
     q.deinit();
+    log.debug("listed open proposals agent_id={s} count={d}", .{ agent_id, list.items.len });
     return try list.toOwnedSlice(alloc);
 }
 
@@ -167,6 +170,7 @@ pub fn listManualProposals(
         try list.append(alloc, try proposalSummaryFromRow(alloc, row));
     }
     q.deinit();
+    log.debug("listed manual proposals agent_id={s} count={d}", .{ agent_id, list.items.len });
     return try list.toOwnedSlice(alloc);
 }
 

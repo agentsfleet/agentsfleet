@@ -2,6 +2,8 @@ const std = @import("std");
 const pg = @import("pg");
 const secrets = @import("../../secrets/crypto.zig");
 
+const log = std.log.scoped(.http);
+
 pub const Route = struct {
     workspace_id: []const u8,
     skill_ref_encoded: []const u8,
@@ -80,7 +82,7 @@ pub fn put(
         return SkillSecretError.InvalidRequest;
     } else secrets.SkillSecretScope.sandbox;
 
-    try secrets.storeWorkspaceSkillSecret(
+    secrets.storeWorkspaceSkillSecret(
         alloc,
         conn,
         workspace_id,
@@ -90,7 +92,12 @@ pub fn put(
         scope,
         input.meta_json orelse "{}",
         1,
-    );
+    ) catch |store_err| {
+        log.err("store skill secret failed workspace_id={s} skill_ref={s} key={s}", .{ workspace_id, skill_ref, key_name });
+        return store_err;
+    };
+
+    log.info("skill secret stored workspace_id={s} skill_ref={s} key={s}", .{ workspace_id, skill_ref, key_name });
 
     return .{
         .skill_ref = skill_ref,
@@ -111,7 +118,13 @@ pub fn delete(
     const key_name = try decodePathSegment(alloc, key_name_encoded);
     errdefer alloc.free(key_name);
 
-    try secrets.deleteWorkspaceSkillSecret(conn, workspace_id, skill_ref, key_name);
+    secrets.deleteWorkspaceSkillSecret(conn, workspace_id, skill_ref, key_name) catch |del_err| {
+        log.err("delete skill secret failed workspace_id={s} skill_ref={s} key={s}", .{ workspace_id, skill_ref, key_name });
+        return del_err;
+    };
+
+    log.info("skill secret deleted workspace_id={s} skill_ref={s} key={s}", .{ workspace_id, skill_ref, key_name });
+
     return .{
         .skill_ref = skill_ref,
         .key_name = key_name,

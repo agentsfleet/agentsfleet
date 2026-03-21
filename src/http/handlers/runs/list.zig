@@ -3,6 +3,8 @@ const zap = @import("zap");
 const common = @import("../common.zig");
 const error_codes = @import("../../../errors/codes.zig");
 
+const log = std.log.scoped(.http);
+
 pub fn handleListRuns(ctx: *common.Context, r: zap.Request) void {
     var arena = std.heap.ArenaAllocator.init(ctx.alloc);
     defer arena.deinit();
@@ -41,6 +43,8 @@ pub fn handleListRuns(ctx: *common.Context, r: zap.Request) void {
         }
     }
 
+    log.debug("list runs request workspace_id={?s} limit={d}", .{ workspace_id, limit });
+
     // check-pg-drain: ok — full while loop exhausts all rows, natural drain
     var runs: std.ArrayList(std.json.Value) = .{};
 
@@ -69,6 +73,8 @@ pub fn handleListRuns(ctx: *common.Context, r: zap.Request) void {
         defer result.deinit();
         appendRows(alloc, &runs, &result);
     }
+
+    log.info("runs listed workspace_id={?s} count={d}", .{ workspace_id, runs.items.len });
 
     common.writeJson(r, .ok, .{
         .runs = runs.items,

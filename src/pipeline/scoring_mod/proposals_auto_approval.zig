@@ -4,6 +4,8 @@ const shared = @import("proposals_shared.zig");
 const support = @import("proposals_apply_support.zig");
 const validation = @import("proposals_validation.zig");
 
+const log = std.log.scoped(.scoring);
+
 pub const ApplyProposalResult = enum {
     applied,
     config_changed,
@@ -106,6 +108,7 @@ pub fn reconcileDueAutoApprovalProposals(
     }
 
     result.expired = try support.expireStaleManualProposals(conn, now_ms - shared.MANUAL_PROPOSAL_EXPIRY_MS);
+    log.info("auto-approval reconcile applied={d} rejected={d} config_changed={d} expired={d}", .{ result.applied, result.rejected, result.config_changed, result.expired });
     return result;
 }
 
@@ -205,5 +208,6 @@ pub fn applyProposal(
 
     try commitTx(conn);
     tx_open = false;
+    log.info("proposal applied proposal_id={s} agent_id={s}", .{ proposal_id, agent_id });
     return .applied;
 }

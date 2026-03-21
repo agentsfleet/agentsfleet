@@ -15,7 +15,7 @@ _test-integration-db:
 	@if [ -z "$$HANDLER_DB_TEST_URL" ]; then \
 	  echo "✗ HANDLER_DB_TEST_URL is not set — DB integration tests cannot run"; \
 	  echo "  Set it to a live Postgres URL, e.g.:"; \
-	  echo "    export HANDLER_DB_TEST_URL=postgres://usezombie:usezombie@localhost:5432/usezombiedb"; \
+	  echo "    export HANDLER_DB_TEST_URL='postgres://usezombie:usezombie@localhost:5432/usezombiedb?sslmode=disable'"; \
 	  exit 1; \
 	fi
 	@echo "→ [zombied] Running DB-backed integration tests (HANDLER_DB_TEST_URL is set)..."

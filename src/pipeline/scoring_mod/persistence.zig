@@ -9,6 +9,8 @@ const trust = @import("trust.zig");
 const classify = @import("classify.zig");
 const context = @import("context.zig");
 
+const log = std.log.scoped(.scoring);
+
 const DEFAULT_SCORING_CONTEXT_MAX_TOKENS: u32 = 2048;
 const MIN_SCORING_CONTEXT_MAX_TOKENS: u32 = 512;
 const MAX_SCORING_CONTEXT_MAX_TOKENS: u32 = 8192;
@@ -129,6 +131,7 @@ fn persistScoreRecord(
         \\  (score_id, run_id, agent_id, workspace_id, score, axis_scores, weight_snapshot, scored_at)
         \\VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
     , .{ score_id, run_id, agent_id, workspace_id, score, axis_scores_json, weight_snapshot_json, scored_at });
+    log.info("score_persisted run_id={s} agent_id={s} score={d}", .{ run_id, agent_id, score });
     return true;
 }
 

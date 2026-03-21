@@ -26,25 +26,33 @@ jobs:
 
   # ── 1. Standalone binaries: cross-compile with Zig ─────────────────────
   binaries:
-    runs-on: ubuntu-latest
     needs: verify-tag
     strategy:
+      fail-fast: false
       matrix:
         include:
           - target: x86_64-linux
             artifact: zombied-linux-amd64
+            os: ubuntu-latest
           - target: aarch64-linux
             artifact: zombied-linux-arm64
-          - target: x86_64-macos
-            artifact: zombied-darwin-amd64
+            os: ubuntu-24.04-arm
           - target: aarch64-macos
             artifact: zombied-darwin-arm64
+            os: macos-latest
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v6
 
-      - uses: jetsung/setup-zig@v1
+      - uses: mlugg/setup-zig@v2
         with:
           version: 0.15.2
+      - name: Install OpenSSL dev headers (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libssl-dev
+      - name: Ensure OpenSSL is available (macOS)
+        if: runner.os == 'macOS'
+        run: brew install openssl@3 || true
 
       - name: Build
         run: zig build -Doptimize=ReleaseSafe -Dtarget=${{ matrix.target }}

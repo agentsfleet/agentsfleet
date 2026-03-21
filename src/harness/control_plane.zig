@@ -1,6 +1,8 @@
 const std = @import("std");
 const topology = @import("../pipeline/topology.zig");
 
+const log = std.log.scoped(.harness);
+
 pub const CompileError = error{
     MissingProfilePayload,
 };
@@ -104,6 +106,8 @@ pub fn compileHarnessMarkdown(alloc: std.mem.Allocator, source_markdown: []const
     const compiled = try stringifyCompiledProfile(alloc, &profile);
     const report = try stringifyValidationReport(alloc, issues.items);
     const is_valid = issues.items.len == 0;
+
+    log.debug("compile_harness agent_id={s} valid={} issues={d}", .{ profile.agent_id, is_valid, issues.items.len });
 
     return .{
         .compiled_profile_json = compiled,

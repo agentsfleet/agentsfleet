@@ -2,6 +2,8 @@ const std = @import("std");
 const pg = @import("pg");
 const shared_types = @import("../../types.zig");
 
+const log = std.log.scoped(.scoring);
+
 const TRUST_LEVEL_UNEARNED = shared_types.TrustLevel.unearned.label();
 const TRUST_LEVEL_TRUSTED = shared_types.TrustLevel.trusted.label();
 const TRUST_STREAK_THRESHOLD: i32 = 10;
@@ -54,11 +56,17 @@ pub fn refreshAgentTrustState(conn: *pg.Conn, agent_id: []const u8, scored_at: i
         \\WHERE agent_id = $1
     , .{ agent_id, next.trust_streak_runs, next.trust_level.label(), scored_at, scored_at });
 
-    return .{
+    const update = TrustUpdate{
         .previous_level = previous.trust_level,
         .current_level = next.trust_level,
         .trust_streak_runs = next.trust_streak_runs,
     };
+    if (update.earned()) {
+        log.info("trust earned agent_id={s} streak={d}", .{ agent_id, next.trust_streak_runs });
+    } else if (update.lost()) {
+        log.info("trust lost agent_id={s} streak={d}", .{ agent_id, next.trust_streak_runs });
+    }
+    return update;
 }
 
 fn loadCurrentTrustState(conn: *pg.Conn, agent_id: []const u8) !?TrustSnapshot {

@@ -1,6 +1,8 @@
 const std = @import("std");
 const types = @import("types.zig");
 
+const log = std.log.scoped(.scoring);
+
 const MAX_STDERR_LINES: usize = 200;
 const REDACTED = "[REDACTED]";
 const NEVER_FLAG_KEYS = [_][]const u8{
@@ -83,18 +85,28 @@ pub fn classifyFailureFromErrorName(error_name: []const u8) ?types.FailureClass 
 }
 
 pub fn classifyFailure(state: *const types.ScoringState) ?types.FailureClass {
-    if (state.failure_class_override) |failure_class| return failure_class;
+    if (state.failure_class_override) |failure_class| {
+        log.debug("classify override={s}", .{failure_class.label()});
+        return failure_class;
+    }
     if (state.failure_error_name) |error_name| {
-        if (classifyFailureFromErrorName(error_name)) |failure_class| return failure_class;
+        if (classifyFailureFromErrorName(error_name)) |failure_class| {
+            log.debug("classify error_name={s} class={s}", .{ error_name, failure_class.label() });
+            return failure_class;
+        }
     }
 
-    return switch (state.outcome) {
+    const result: ?types.FailureClass = switch (state.outcome) {
         .done => null,
         .blocked_retries_exhausted => .timeout,
         .blocked_stage_graph => .bad_output_format,
         .error_propagation => .unhandled_exception,
         .pending => .unknown,
     };
+    if (result) |fc| {
+        log.debug("classify outcome_fallback class={s}", .{fc.label()});
+    }
+    return result;
 }
 
 pub fn scoreTierLabel(score: i32) []const u8 {

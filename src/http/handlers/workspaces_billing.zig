@@ -6,6 +6,8 @@ const obs_log = @import("../../observability/logging.zig");
 const error_codes = @import("../../errors/codes.zig");
 const common = @import("common.zig");
 
+const log = std.log.scoped(.http);
+
 fn parseBillingLifecycleEvent(raw: []const u8) ?workspace_billing.BillingLifecycleEvent {
     if (std.ascii.eqlIgnoreCase(raw, "PAYMENT_FAILED")) return .payment_failed;
     if (std.ascii.eqlIgnoreCase(raw, "DOWNGRADE_TO_FREE")) return .downgrade_to_free;
@@ -49,6 +51,8 @@ pub fn handleUpgradeWorkspaceToScale(ctx: *common.Context, r: zap.Request, works
         return;
     }
 
+    log.debug("upgrade to scale request workspace_id={s}", .{workspace_id});
+
     const upgraded = workspace_billing.upgradeWorkspaceToScale(conn, alloc, workspace_id, .{
         .subscription_id = parsed.value.subscription_id,
         .actor = principal.user_id orelse "api",
@@ -58,12 +62,15 @@ pub fn handleUpgradeWorkspaceToScale(ctx: *common.Context, r: zap.Request, works
             return;
         },
         else => {
+            log.err("upgrade to scale failed workspace_id={s}", .{workspace_id});
             common.internalOperationError(r, "Failed to upgrade workspace to Scale", req_id);
             return;
         },
     };
     defer alloc.free(upgraded.plan_sku);
     defer if (upgraded.subscription_id) |v| alloc.free(v);
+
+    log.info("workspace upgraded to scale workspace_id={s} plan_sku={s}", .{ workspace_id, upgraded.plan_sku });
 
     common.writeJson(r, .ok, .{
         .workspace_id = workspace_id,
@@ -101,6 +108,8 @@ pub fn handleSetWorkspaceScoringConfig(ctx: *common.Context, r: zap.Request, wor
         return;
     };
     defer parsed.deinit();
+
+    log.debug("set scoring config request workspace_id={s} tokens={d}", .{ workspace_id, parsed.value.scoring_context_max_tokens });
 
     if (parsed.value.scoring_context_max_tokens < 512 or parsed.value.scoring_context_max_tokens > 8192) {
         common.errorResponse(r, .bad_request, error_codes.ERR_SCORING_CONTEXT_TOKENS_INVALID, "scoring_context_max_tokens must be between 512 and 8192", req_id);
@@ -194,6 +203,8 @@ pub fn handleApplyWorkspaceBillingEvent(ctx: *common.Context, r: zap.Request, wo
         return;
     }
 
+    log.debug("apply billing event request workspace_id={s} event_type={s}", .{ workspace_id, parsed.value.event_type });
+
     const state = workspace_billing.applyBillingLifecycleEvent(conn, alloc, workspace_id, .{
         .event = event,
         .reason = parsed.value.reason,
@@ -203,11 +214,14 @@ pub fn handleApplyWorkspaceBillingEvent(ctx: *common.Context, r: zap.Request, wo
             common.errorResponse(r, .bad_request, code, workspace_billing.errorMessage(err) orelse "Workspace billing failure", req_id);
             return;
         }
+        log.err("apply billing event failed workspace_id={s} event_type={s}", .{ workspace_id, parsed.value.event_type });
         common.internalOperationError(r, "Failed to apply workspace billing event", req_id);
         return;
     };
     defer alloc.free(state.plan_sku);
     defer if (state.subscription_id) |v| alloc.free(v);
+
+    log.info("billing event applied workspace_id={s} event_type={s} plan_tier={s}", .{ workspace_id, parsed.value.event_type, state.plan_tier.label() });
 
     common.writeJson(r, .ok, .{
         .workspace_id = workspace_id,

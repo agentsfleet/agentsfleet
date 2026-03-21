@@ -8,6 +8,8 @@ const workspace_credit = @import("../../../state/workspace_credit.zig");
 const types = @import("types.zig");
 const util = @import("util.zig");
 
+const log = std.log.scoped(.harness);
+
 fn beginTx(conn: *pg.Conn) !void {
     _ = try conn.exec("BEGIN", .{});
 }
@@ -103,6 +105,8 @@ pub fn activateProfile(
     try profile_linkage.insertActivateArtifact(conn, tenant_id, workspace_id, input.config_version_id, activated_by, now_ms);
     try commitTx(conn);
     tx_open = false;
+
+    log.info("activate ok workspace_id={s} agent_id={s} config_version_id={s}", .{ workspace_id, agent_id, input.config_version_id });
 
     return .{
         .agent_id = agent_id,

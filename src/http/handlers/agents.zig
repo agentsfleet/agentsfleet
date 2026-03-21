@@ -8,6 +8,8 @@ const posthog_events = @import("../../observability/posthog_events.zig");
 const proposals = @import("../../pipeline/scoring_mod/proposals.zig");
 const error_codes = @import("../../errors/codes.zig");
 
+const log = std.log.scoped(.http);
+
 pub const handleGetAgent = get.handleGetAgent;
 pub const handleGetAgentScores = scores.handleGetAgentScores;
 
@@ -39,7 +41,10 @@ pub fn handleListAgentProposals(ctx: *common.Context, r: zap.Request, agent_id: 
         return;
     }
 
+    log.debug("list agent proposals request agent_id={s}", .{agent_id});
+
     const items = proposals.listOpenProposals(conn, alloc, agent_id, 0) catch {
+        log.err("list proposals db failed agent_id={s}", .{agent_id});
         common.internalDbError(r, req_id);
         return;
     };
@@ -62,6 +67,8 @@ pub fn handleListAgentProposals(ctx: *common.Context, r: zap.Request, agent_id: 
         obj.put("updated_at", .{ .integer = item.updated_at }) catch continue;
         data.append(alloc, .{ .object = obj }) catch continue;
     }
+
+    log.info("agent proposals listed agent_id={s} count={d}", .{ agent_id, data.items.len });
 
     common.writeJson(r, .ok, .{
         .data = data.items,
@@ -93,7 +100,10 @@ pub fn handleGetAgentImprovementReport(ctx: *common.Context, r: zap.Request, age
         return;
     }
 
+    log.debug("get improvement report request agent_id={s}", .{agent_id});
+
     var report = proposals.loadImprovementReport(conn, alloc, agent_id) catch {
+        log.err("load improvement report failed agent_id={s}", .{agent_id});
         common.internalDbError(r, req_id);
         return;
     } orelse {
@@ -156,6 +166,8 @@ pub fn handleRevertAgentHarnessChange(ctx: *common.Context, r: zap.Request, agen
     }
 
     const operator_identity = principal.user_id orelse "api";
+    log.debug("revert harness change request agent_id={s} change_id={s}", .{ agent_id, change_id });
+
     var outcome = proposals.revertHarnessChange(
         conn,
         alloc,
@@ -164,6 +176,7 @@ pub fn handleRevertAgentHarnessChange(ctx: *common.Context, r: zap.Request, agen
         operator_identity,
         std.time.milliTimestamp(),
     ) catch {
+        log.err("revert harness change failed agent_id={s} change_id={s}", .{ agent_id, change_id });
         common.internalOperationError(r, "Failed to revert harness change", req_id);
         return;
     } orelse {
@@ -171,6 +184,8 @@ pub fn handleRevertAgentHarnessChange(ctx: *common.Context, r: zap.Request, agen
         return;
     };
     defer outcome.deinit(alloc);
+
+    log.info("harness change reverted agent_id={s} change_id={s}", .{ agent_id, change_id });
 
     common.writeJson(r, .ok, .{
         .agent_id = outcome.agent_id,
@@ -222,10 +237,13 @@ fn handleManualProposalDecision(
         return;
     }
 
+    log.debug("proposal decision request agent_id={s} proposal_id={s} action={s}", .{ agent_id, proposal_id, @tagName(action) });
+
     switch (action) {
         .approve => {
             const operator_identity = principal.user_id orelse "api";
             const outcome = proposals.approveManualProposal(conn, alloc, agent_id, proposal_id, operator_identity, std.time.milliTimestamp()) catch {
+                log.err("approve proposal failed agent_id={s} proposal_id={s}", .{ agent_id, proposal_id });
                 common.internalOperationError(r, "Failed to approve proposal", req_id);
                 return;
             } orelse {

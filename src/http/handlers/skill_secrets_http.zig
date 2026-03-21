@@ -4,6 +4,8 @@ const error_codes = @import("../../errors/codes.zig");
 const skill_secret_handlers = @import("skill_secrets.zig");
 const common = @import("common.zig");
 
+const log = std.log.scoped(.http);
+
 pub const Context = common.Context;
 
 pub fn handlePutWorkspaceSkillSecret(
@@ -44,6 +46,8 @@ pub fn handlePutWorkspaceSkillSecret(
         common.errorResponse(r, .forbidden, error_codes.ERR_FORBIDDEN, "Workspace access denied", req_id);
         return;
     }
+
+    log.debug("put skill secret request workspace_id={s}", .{workspace_id});
 
     const out = skill_secret_handlers.put(conn, alloc, workspace_id, skill_ref_encoded, key_name_encoded, parsed.value) catch |err| {
         switch (err) {
@@ -91,6 +95,8 @@ pub fn handleDeleteWorkspaceSkillSecret(
         common.errorResponse(r, .forbidden, error_codes.ERR_FORBIDDEN, "Workspace access denied", req_id);
         return;
     }
+
+    log.debug("delete skill secret request workspace_id={s}", .{workspace_id});
 
     const out = skill_secret_handlers.delete(conn, alloc, workspace_id, skill_ref_encoded, key_name_encoded) catch {
         common.internalOperationError(r, "Failed to delete skill secret", req_id);

@@ -3,6 +3,8 @@ const pg = @import("pg");
 const topology = @import("../topology.zig");
 const shared = @import("proposals_shared.zig");
 
+const log = std.log.scoped(.scoring);
+
 pub fn generateProposalChanges(
     conn: *pg.Conn,
     alloc: std.mem.Allocator,
@@ -41,6 +43,8 @@ pub fn generateProposalChanges(
         proposed_value: ProposedValue,
         rationale: []const u8,
     };
+
+    log.info("proposal generated agent_id={s} stage_id={s} trigger={s}", .{ agent_id, proposed_stage_id, trigger_reason });
 
     return std.json.Stringify.valueAlloc(alloc, &[_]Change{.{
         .target_field = shared.PROPOSAL_TARGET_STAGE_INSERT,

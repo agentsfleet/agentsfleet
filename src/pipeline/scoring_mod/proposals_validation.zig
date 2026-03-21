@@ -4,6 +4,8 @@ const topology = @import("../topology.zig");
 const entitlements = @import("../../state/entitlements.zig");
 const shared = @import("proposals_shared.zig");
 
+const log = std.log.scoped(.scoring);
+
 pub const ProposalValidationError = shared.ProposalError;
 
 pub fn validateProposedChanges(
@@ -18,8 +20,11 @@ pub fn validateProposedChanges(
     };
     defer parsed.deinit();
 
+    log.debug("validating proposed changes workspace_id={s} config_version_id={s}", .{ workspace_id, config_version_id });
+
     switch (parsed.value) {
         .array => |items| {
+            log.debug("validating {d} proposal changes", .{items.items.len});
             for (items.items) |item| {
                 try validateProposalChange(conn, workspace_id, item);
             }
@@ -27,6 +32,7 @@ pub fn validateProposedChanges(
             defer alloc.free(candidate_profile_json);
 
             var candidate_profile = topology.parseProfileJson(alloc, candidate_profile_json) catch {
+                log.warn("proposal would not compile workspace_id={s}", .{workspace_id});
                 return ProposalValidationError.ProposalWouldNotCompile;
             };
             defer candidate_profile.deinit();
@@ -48,7 +54,10 @@ pub fn validateProposedChanges(
                 else => return ProposalValidationError.ProposalWouldNotCompile,
             };
         },
-        else => return ProposalValidationError.ProposalNotArray,
+        else => {
+            log.warn("proposal body is not an array", .{});
+            return ProposalValidationError.ProposalNotArray;
+        },
     }
 }
 
@@ -85,11 +94,13 @@ fn validateProposalChange(
         else => return ProposalValidationError.MissingTargetField,
     };
     if (std.mem.eql(u8, target_field, shared.DISALLOWED_PROMPT_FIELD)) {
+        log.warn("rejected disallowed proposal field workspace_id={s}", .{workspace_id});
         return ProposalValidationError.DisallowedProposalField;
     }
     if (!std.mem.eql(u8, target_field, shared.PROPOSAL_TARGET_STAGE_BINDING) and
         !std.mem.eql(u8, target_field, shared.PROPOSAL_TARGET_STAGE_INSERT))
     {
+        log.warn("rejected unsupported target_field={s}", .{target_field});
         return ProposalValidationError.UnsupportedTargetField;
     }
 
@@ -101,6 +112,7 @@ fn validateProposalChange(
 
     if (stringField(proposed_obj, shared.JSON_KEY_AGENT_ID)) |candidate_agent_id| {
         if (!agentExistsInWorkspace(conn, workspace_id, candidate_agent_id)) {
+            log.warn("rejected unregistered agent_id ref workspace_id={s}", .{workspace_id});
             return ProposalValidationError.UnregisteredAgentRef;
         }
     }

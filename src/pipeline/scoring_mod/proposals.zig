@@ -10,6 +10,8 @@ const shared = @import("proposals_shared.zig");
 const trigger = @import("proposals_trigger.zig");
 const validation = @import("proposals_validation.zig");
 
+const log = std.log.scoped(.scoring);
+
 pub const AppliedProposalTelemetry = listing.AppliedProposalTelemetry;
 pub const ApplyProposalResult = auto_approval.ApplyProposalResult;
 pub const AutoApprovalReconcileResult = shared.AutoApprovalReconcileResult;
@@ -70,6 +72,7 @@ pub fn maybePersistTriggerProposal(
         scored_at,
         scored_at,
     });
+    log.info("proposal_created proposal_id={s} agent_id={s} approval_mode={s}", .{ proposal_id, agent_id, approval_mode.label() });
 }
 
 pub fn reconcilePendingProposalGenerations(
@@ -145,6 +148,7 @@ pub fn reconcilePendingProposalGenerations(
             std.time.milliTimestamp(),
         });
         result.ready += 1;
+        log.info("proposal_generation_ready proposal_id={s} agent_id={s}", .{ pending.proposal_id, pending.agent_id });
     }
 
     return result;

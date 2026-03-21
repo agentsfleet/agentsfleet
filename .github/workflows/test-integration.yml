@@ -20,22 +20,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: jetsung/setup-zig@v1
+      - uses: mlugg/setup-zig@v2
         with:
           version: 0.15.2
+      - name: Install OpenSSL dev headers
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libssl-dev
 
       - name: Start Postgres and Redis via docker compose
         run: docker compose up -d postgres redis
 
       - name: Wait for Postgres to be ready
         run: |
-          echo "→ Waiting for Postgres..."
+          echo "→ Waiting for Postgres (TLS-enabled container, may need extra startup time)..."
           for i in $(seq 1 30); do
-            docker compose exec -T postgres pg_isready -U usezombie -d usezombiedb && break
+            pg_isready -h localhost -p 5432 -U usezombie -d usezombiedb 2>/dev/null && break
             echo "  attempt $i/30 — not ready yet"
-            sleep 2
+            sleep 3
           done
-          docker compose exec -T postgres pg_isready -U usezombie -d usezombiedb \
+          pg_isready -h localhost -p 5432 -U usezombie -d usezombiedb \
             || { echo "✗ Postgres did not become ready in time"; exit 1; }
           echo "✓ Postgres is ready"
 

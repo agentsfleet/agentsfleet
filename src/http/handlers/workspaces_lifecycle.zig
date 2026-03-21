@@ -7,6 +7,8 @@ const error_codes = @import("../../errors/codes.zig");
 const id_format = @import("../../types/id_format.zig");
 const common = @import("common.zig");
 
+const log = std.log.scoped(.http);
+
 fn generateWorkspaceId(alloc: std.mem.Allocator) ![]const u8 {
     return id_format.generateWorkspaceId(alloc);
 }
@@ -64,6 +66,7 @@ pub fn handleCreateWorkspace(ctx: *common.Context, r: zap.Request) void {
     };
 
     const conn = ctx.pool.acquire() catch {
+        log.err("db pool acquire failed op=create_workspace", .{});
         common.internalDbUnavailable(r, req_id);
         return;
     };
@@ -76,15 +79,18 @@ pub fn handleCreateWorkspace(ctx: *common.Context, r: zap.Request) void {
         \\VALUES ($1, $2, 'managed', $3)
         \\ON CONFLICT (tenant_id) DO NOTHING
     , .{ tenant_id, "Workspace Tenant", now_ms }) catch {
+        log.err("tenant upsert failed tenant_id={s}", .{tenant_id});
         common.internalOperationError(r, "Failed to upsert tenant", req_id);
         return;
     };
 
     workspace_billing.enforceFreeWorkspaceCreationAllowed(conn, tenant_id, null) catch |err| {
         if (workspace_billing.errorCode(err)) |code| {
+            log.err("billing enforcement failed tenant_id={s} code={s}", .{ tenant_id, code });
             common.errorResponse(r, .forbidden, code, workspace_billing.errorMessage(err) orelse "Workspace billing failure", req_id);
             return;
         }
+        log.err("billing validation failed tenant_id={s}", .{tenant_id});
         common.internalOperationError(r, "Failed to validate free workspace limit", req_id);
         return;
     };
@@ -117,6 +123,8 @@ pub fn handleCreateWorkspace(ctx: *common.Context, r: zap.Request) void {
         common.internalOperationError(r, "Failed to build install URL", req_id);
         return;
     };
+
+    log.info("workspace created workspace_id={s} tenant_id={s} repo_url={s}", .{ workspace_id, tenant_id, repo_url });
 
     common.writeJson(r, .created, .{
         .workspace_id = workspace_id,

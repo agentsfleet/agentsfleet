@@ -67,8 +67,10 @@ pub const TokenCache = struct {
         const now_ms = std.time.milliTimestamp();
         if (self.cached_token) |token| {
             if (now_ms < self.refresh_deadline_ms) {
+                log.debug("token cache hit installation_id={s}", .{installation_id});
                 return alloc.dupe(u8, token);
             }
+            log.debug("token cache expired installation_id={s}", .{installation_id});
         }
 
         const jwt = try buildAppJwt(alloc, self.app_id, self.private_key_pem);
@@ -83,6 +85,7 @@ pub const TokenCache = struct {
         // GitHub installation tokens expire in ~60 minutes; refresh 5 minutes early.
         self.refresh_deadline_ms = now_ms + (55 * std.time.ms_per_min);
 
+        log.info("installation token refreshed installation_id={s}", .{installation_id});
         return fresh_token;
     }
 };
@@ -231,6 +234,7 @@ fn signRs256(
 }
 
 fn buildAppJwt(alloc: std.mem.Allocator, app_id: []const u8, private_key_pem: []const u8) ![]u8 {
+    log.debug("building app jwt app_id={s}", .{app_id});
     const now = std.time.timestamp();
 
     const header_json = "{\"alg\":\"RS256\",\"typ\":\"JWT\"}";

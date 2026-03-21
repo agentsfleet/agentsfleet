@@ -6,6 +6,8 @@ const profile_linkage = @import("../../../audit/profile_linkage.zig");
 const id_format = @import("../../../types/id_format.zig");
 const error_codes = @import("../../../errors/codes.zig");
 
+const log = std.log.scoped(.http);
+
 const RunResponse = struct {
     run_id: []const u8,
     workspace_id: []const u8,
@@ -79,6 +81,8 @@ pub fn handleGetRun(ctx: *common.Context, r: zap.Request, run_id: []const u8) vo
         common.writeAuthError(r, req_id, err);
         return;
     };
+
+    log.debug("get run request run_id={s}", .{run_id});
 
     if (!id_format.isSupportedRunId(run_id)) {
         common.errorResponse(r, .bad_request, error_codes.ERR_UUIDV7_INVALID_ID_SHAPE, "Invalid run_id format", req_id);

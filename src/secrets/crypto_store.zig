@@ -6,6 +6,8 @@ const pg = @import("pg");
 const id_format = @import("../types/id_format.zig");
 const cp = @import("crypto_primitives.zig");
 
+const log = std.log.scoped(.secrets);
+
 const KEY_LEN = cp.KEY_LEN;
 const NONCE_LEN = cp.NONCE_LEN;
 const TAG_LEN = cp.TAG_LEN;
@@ -61,6 +63,7 @@ pub fn store(
         encrypted_payload.tag[0..],
         now_ms,
     });
+    log.info("secret stored workspace_id={s} key_name={s}", .{ workspace_id, key_name });
 }
 
 /// Load and decrypt a secret from vault.secrets.
@@ -78,7 +81,10 @@ pub fn load(
     , .{ workspace_id, key_name });
     defer result.deinit();
 
-    const row = try result.next() orelse return cp.SecretError.NotFound;
+    const row = try result.next() orelse {
+        log.err("secret not found workspace_id={s} key_name={s}", .{ workspace_id, key_name });
+        return cp.SecretError.NotFound;
+    };
 
     const kek_version = @as(u32, @intCast(try row.get(i32, 0)));
     const encrypted_dek = try row.get([]u8, 1);
@@ -104,7 +110,12 @@ pub fn load(
     defer alloc.free(dek_plain);
 
     const dek = try cp.toFixed(KEY_LEN, dek_plain);
-    return cp.decrypt(alloc, &payload_nonce, ciphertext_copy, &payload_tag, &dek);
+    const plaintext_result = cp.decrypt(alloc, &payload_nonce, ciphertext_copy, &payload_tag, &dek) catch |err| {
+        log.err("secret decrypt failed workspace_id={s} key_name={s}", .{ workspace_id, key_name });
+        return err;
+    };
+    log.info("secret retrieved workspace_id={s} key_name={s}", .{ workspace_id, key_name });
+    return plaintext_result;
 }
 
 /// Re-encrypt a secret under a new KEK version. Safe to call during rotation:

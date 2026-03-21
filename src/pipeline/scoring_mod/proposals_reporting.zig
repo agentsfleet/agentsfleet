@@ -2,6 +2,8 @@ const std = @import("std");
 const pg = @import("pg");
 const shared = @import("proposals_shared.zig");
 
+const log = std.log.scoped(.scoring);
+
 pub const ImprovementReport = shared.ImprovementReport;
 pub const ImprovementStalledAlert = shared.ImprovementStalledAlert;
 
@@ -92,6 +94,8 @@ pub fn loadImprovementReport(
     const avg_score_delta = try loadAverageAppliedScoreDelta(conn, agent_id);
     const baseline_avg = try loadLatestCompletedBaselineAverage(conn, agent_id);
     const current_avg = try loadCurrentAverageScore(conn, agent_id);
+
+    log.info("improvement report generated agent_id={s} applied={d}", .{ agent_id, counts.applied });
 
     return .{
         .agent_id = trust_row.agent_id,

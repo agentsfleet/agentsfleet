@@ -3,6 +3,8 @@
 const std = @import("std");
 const jwks = @import("jwks.zig");
 
+const log = std.log.scoped(.auth);
+
 pub const IdentityClaims = struct {
     tenant_id: ?[]u8,
     org_id: ?[]u8,
@@ -33,9 +35,16 @@ pub fn extractClerkClaims(alloc: std.mem.Allocator, claims_json: []const u8) !Cl
     const parsed = try parseClaimsObject(alloc, claims_json);
     defer parsed.deinit();
 
+    const tenant_id = getClerkTenantId(parsed.value.object);
+    const org_id = getClerkOrgId(parsed.value.object);
+    log.debug("clerk claims tenant_id={s} org_id={s}", .{
+        if (tenant_id) |v| v else "missing",
+        if (org_id) |v| v else "missing",
+    });
+
     return duplicateClaims(alloc, .{
-        .tenant_id = getClerkTenantId(parsed.value.object),
-        .org_id = getClerkOrgId(parsed.value.object),
+        .tenant_id = tenant_id,
+        .org_id = org_id,
         .workspace_id = getClerkWorkspaceId(parsed.value.object),
         .audience = getAudience(parsed.value.object),
         .scopes = try getScopesOwned(alloc, parsed.value.object),
@@ -48,9 +57,16 @@ pub fn extractCustomClaims(alloc: std.mem.Allocator, claims_json: []const u8) !C
     const parsed = try parseClaimsObject(alloc, claims_json);
     defer parsed.deinit();
 
+    const tenant_id = getCustomTenantId(parsed.value.object);
+    const org_id = getCustomOrgId(parsed.value.object);
+    log.debug("custom claims tenant_id={s} org_id={s}", .{
+        if (tenant_id) |v| v else "missing",
+        if (org_id) |v| v else "missing",
+    });
+
     return duplicateClaims(alloc, .{
-        .tenant_id = getCustomTenantId(parsed.value.object),
-        .org_id = getCustomOrgId(parsed.value.object),
+        .tenant_id = tenant_id,
+        .org_id = org_id,
         .workspace_id = getCustomWorkspaceId(parsed.value.object),
         .audience = getAudience(parsed.value.object),
         .scopes = try getScopesOwned(alloc, parsed.value.object),

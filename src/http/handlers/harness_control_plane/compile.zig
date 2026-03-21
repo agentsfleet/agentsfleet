@@ -9,6 +9,8 @@ const workspace_credit = @import("../../../state/workspace_credit.zig");
 const types = @import("types.zig");
 const util = @import("util.zig");
 
+const log = std.log.scoped(.harness);
+
 const API_ACTOR = "api";
 const COMPILE_ENGINE_DETERMINISTIC_V1 = "deterministic-v1";
 const COMPILE_JOB_STATE_RUNNING = "RUNNING";
@@ -177,6 +179,8 @@ pub fn compileProfile(
 
     try commitTx(conn);
     tx_open = false;
+
+    log.info("compile ok workspace_id={s} agent_id={s} is_valid={}", .{ workspace_id, agent_id, outcome.is_valid });
 
     return .{
         .compile_job_id = compile_job_id,

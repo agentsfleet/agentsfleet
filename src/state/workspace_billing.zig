@@ -15,6 +15,8 @@ const row_mod = @import("./workspace_billing/row.zig");
 const db = @import("./workspace_billing/db.zig");
 const apply_mod = @import("./workspace_billing/apply.zig");
 
+const log = std.log.scoped(.state);
+
 pub const FREE_PLAN_SKU = model.FREE_PLAN_SKU;
 pub const SCALE_PLAN_SKU = model.SCALE_PLAN_SKU;
 pub const DEFAULT_GRACE_PERIOD_MS = model.DEFAULT_GRACE_PERIOD_MS;
@@ -69,6 +71,7 @@ pub fn provisionFreeWorkspace(
         .pending_reason = null,
     }, now_ms);
     try db.insertAudit(conn, alloc, workspace_id, "FREE_PROVISIONED", null, .free, null, .active, "workspace_created", actor, EMPTY_JSON);
+    log.info("billing_provisioned workspace_id={s} plan=free actor={s}", .{ workspace_id, actor });
 }
 
 pub fn enforceFreeWorkspaceCreationAllowed(
@@ -88,7 +91,10 @@ pub fn enforceFreeWorkspaceCreationAllowed(
     const row = (try q.next()) orelse return error.InvalidWorkspaceBillingState;
     const count = try row.get(i64, 0);
     try q.drain();
-    if (count > 0) return error.FreeWorkspaceLimitExceeded;
+    if (count > 0) {
+        log.warn("free_workspace_limit_exceeded tenant_id={s} existing_count={d}", .{ tenant_id, count });
+        return error.FreeWorkspaceLimitExceeded;
+    }
 }
 
 pub fn upgradeWorkspaceToScale(

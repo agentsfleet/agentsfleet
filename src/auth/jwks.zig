@@ -4,6 +4,8 @@
 
 const std = @import("std");
 
+const log = std.log.scoped(.auth);
+
 pub const VerifyError = error{
     MissingAuthorization,
     InvalidAuthorization,
@@ -118,6 +120,8 @@ pub const Verifier = struct {
         const token = extractBearerToken(authorization) catch return VerifyError.InvalidAuthorization;
         const parts = splitJwt(token) catch return VerifyError.TokenMalformed;
 
+        log.debug("token parsing ok, decoding segments", .{});
+
         const header_raw = try decodeBase64UrlOwned(alloc, parts.header_b64);
         defer alloc.free(header_raw);
         const payload_raw = try decodeBase64UrlOwned(alloc, parts.payload_b64);
@@ -127,8 +131,16 @@ pub const Verifier = struct {
 
         const header = try std.json.parseFromSlice(Header, alloc, header_raw, .{ .ignore_unknown_fields = true });
         defer header.deinit();
-        if (!std.mem.eql(u8, header.value.alg, "RS256")) return VerifyError.UnsupportedAlgorithm;
-        const kid = header.value.kid orelse return VerifyError.MissingKeyId;
+        if (!std.mem.eql(u8, header.value.alg, "RS256")) {
+            log.warn("unsupported alg={s}", .{header.value.alg});
+            return VerifyError.UnsupportedAlgorithm;
+        }
+        const kid = header.value.kid orelse {
+            log.warn("missing kid in token header", .{});
+            return VerifyError.MissingKeyId;
+        };
+
+        log.debug("token kid={s}", .{kid});
 
         const key = try self.lookupKey(alloc, kid);
         defer {
@@ -140,7 +152,10 @@ pub const Verifier = struct {
         const signing_input = try std.fmt.allocPrint(alloc, "{s}.{s}", .{ parts.header_b64, parts.payload_b64 });
         defer alloc.free(signing_input);
 
-        try verifyRs256(signing_input, signature, key.modulus, key.exponent);
+        verifyRs256(signing_input, signature, key.modulus, key.exponent) catch {
+            log.warn("signature invalid kid={s}", .{kid});
+            return VerifyError.SignatureInvalid;
+        };
 
         return try parseStandardClaims(alloc, payload_raw, self.issuer, self.audience);
     }
@@ -172,17 +187,25 @@ pub const Verifier = struct {
     fn refreshCacheLocked(self: *Verifier) !*JwksCache {
         const now_ms = std.time.milliTimestamp();
         if (self.cache) |*cache| {
-            if (now_ms - cache.fetched_at_ms <= self.cache_ttl_ms) return cache;
+            if (now_ms - cache.fetched_at_ms <= self.cache_ttl_ms) {
+                log.debug("jwks cache hit age_ms={d}", .{now_ms - cache.fetched_at_ms});
+                return cache;
+            }
+            log.debug("jwks cache expired, refreshing", .{});
             cache.deinit(self.alloc);
             self.cache = null;
         }
 
-        const raw = try self.fetchJwksJson();
+        const raw = self.fetchJwksJson() catch |err| {
+            log.warn("jwks fetch failed err={s}", .{@errorName(err)});
+            return err;
+        };
         defer self.alloc.free(raw);
 
         var parsed = try parseJwks(self.alloc, raw);
         parsed.fetched_at_ms = now_ms;
         self.cache = parsed;
+        log.info("jwks fetched keys={d}", .{parsed.keys.len});
         return &self.cache.?;
     }
 

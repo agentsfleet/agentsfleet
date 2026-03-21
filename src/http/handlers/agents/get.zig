@@ -6,6 +6,8 @@ const id_format = @import("../../../types/id_format.zig");
 const error_codes = @import("../../../errors/codes.zig");
 const proposals = @import("../../../pipeline/scoring_mod/proposals.zig");
 
+const log = std.log.scoped(.http);
+
 const sql_get_agent =
     \\SELECT agent_id, name, status, workspace_id, trust_level, trust_streak_runs, created_at, updated_at
     \\FROM agent_profiles WHERE agent_id = $1
@@ -61,6 +63,8 @@ pub fn handleGetAgent(ctx: *common.Context, r: zap.Request, agent_id: []const u8
     }
 
     const improvement_stalled_warning = proposals.hasImprovementStalledWarning(conn, agent_id) catch false;
+
+    log.debug("agent get agent_id={s} status={s}", .{ agent_id, status });
 
     common.writeJson(r, .ok, .{
         .agent_id = rid,

@@ -3,6 +3,8 @@ const zap = @import("zap");
 const error_codes = @import("../../errors/codes.zig");
 const common = @import("common.zig");
 
+const log = std.log.scoped(.http);
+
 pub const Context = common.Context;
 
 pub fn handleCreateAuthSession(ctx: *Context, r: zap.Request) void {
@@ -11,7 +13,10 @@ pub fn handleCreateAuthSession(ctx: *Context, r: zap.Request) void {
     const alloc = arena.allocator();
     const req_id = common.requestId(alloc);
 
+    log.debug("auth_session_create req_id={s}", .{req_id});
+
     const session_id = ctx.auth_sessions.create() catch {
+        log.err("auth_session_create err=too_many_pending_sessions req_id={s}", .{req_id});
         common.errorResponse(r, .service_unavailable, error_codes.ERR_SESSION_LIMIT, "Too many pending sessions", req_id);
         return;
     };
@@ -21,6 +26,7 @@ pub fn handleCreateAuthSession(ctx: *Context, r: zap.Request) void {
         return;
     };
 
+    log.info("auth_session_created session_id={s} req_id={s}", .{ session_id, req_id });
     common.writeJson(r, .created, .{
         .session_id = session_id,
         .login_url = login_url,
@@ -35,6 +41,7 @@ pub fn handlePollAuthSession(ctx: *Context, r: zap.Request, session_id: []const 
         .complete => "complete",
         .expired => "expired",
     };
+    log.debug("auth_session_poll session_id={s} status={s}", .{ session_id, status_str });
     common.writeJson(r, .ok, .{ .status = status_str, .token = result.token });
 }
 
@@ -44,7 +51,10 @@ pub fn handleCompleteAuthSession(ctx: *Context, r: zap.Request, session_id: []co
     const alloc = arena.allocator();
     const req_id = common.requestId(alloc);
 
+    log.debug("auth_session_complete session_id={s} req_id={s}", .{ session_id, req_id });
+
     const principal = common.authenticate(alloc, r, ctx) catch |err| {
+        log.debug("auth_session_complete auth_failed session_id={s} err={s}", .{ session_id, @errorName(err) });
         common.writeAuthError(r, req_id, err);
         return;
     };
@@ -66,6 +76,7 @@ pub fn handleCompleteAuthSession(ctx: *Context, r: zap.Request, session_id: []co
     }
 
     ctx.auth_sessions.complete(session_id, parsed.value.token) catch |err| {
+        log.err("auth_session_complete err={s} session_id={s} req_id={s}", .{ @errorName(err), session_id, req_id });
         const code: []const u8 = switch (err) {
             error.SessionNotFound => error_codes.ERR_SESSION_NOT_FOUND,
             error.SessionExpired => error_codes.ERR_SESSION_EXPIRED,
@@ -76,5 +87,6 @@ pub fn handleCompleteAuthSession(ctx: *Context, r: zap.Request, session_id: []co
         return;
     };
 
+    log.info("auth_session_completed session_id={s} req_id={s}", .{ session_id, req_id });
     common.writeJson(r, .ok, .{ .status = "complete", .request_id = req_id });
 }

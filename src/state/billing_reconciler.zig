@@ -2,6 +2,8 @@ const std = @import("std");
 const pg = @import("pg");
 const billing_adapter = @import("./billing_adapter.zig");
 
+const log = std.log.scoped(.state);
+
 pub const DEFAULT_BATCH_LIMIT: u32 = 64;
 
 pub const ReconcileResult = struct {
@@ -85,6 +87,7 @@ pub fn reconcilePending(
         result.delivered += 1;
     }
 
+    log.info("reconcile cycle scanned={d} delivered={d} retried={d} dead_lettered={d}", .{ result.scanned, result.delivered, result.retried, result.dead_lettered });
     return result;
 }
 

@@ -1,6 +1,8 @@
 const std = @import("std");
 const redis_config = @import("redis_config.zig");
 
+const log = std.log.scoped(.redis_queue);
+
 pub const PlainTransport = struct {
     stream: std.net.Stream,
     stream_reader: std.net.Stream.Reader,
@@ -13,6 +15,8 @@ pub const PlainTransport = struct {
         errdefer alloc.free(read_buffer);
         const write_buffer = try alloc.alloc(u8, 16 * 1024);
         errdefer alloc.free(write_buffer);
+
+        log.debug("plain transport connected", .{});
 
         return .{
             .stream = stream,
@@ -82,7 +86,7 @@ pub const TlsTransport = struct {
             .ca_bundle = ca_bundle,
         };
 
-        self.tls_client = try std.crypto.tls.Client.init(
+        self.tls_client = std.crypto.tls.Client.init(
             self.stream_reader.interface(),
             &self.stream_writer.interface,
             .{
@@ -92,7 +96,11 @@ pub const TlsTransport = struct {
                 .write_buffer = self.socket_write_buffer,
                 .allow_truncation_attacks = false,
             },
-        );
+        ) catch |err| {
+            log.err("TLS handshake failed host={s}", .{host});
+            return err;
+        };
+        log.debug("TLS transport connected host={s}", .{host});
     }
 
     pub fn deinit(self: *TlsTransport, alloc: std.mem.Allocator) void {

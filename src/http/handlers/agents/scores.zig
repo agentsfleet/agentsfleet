@@ -5,6 +5,8 @@ const obs_log = @import("../../../observability/logging.zig");
 const id_format = @import("../../../types/id_format.zig");
 const error_codes = @import("../../../errors/codes.zig");
 
+const log = std.log.scoped(.http);
+
 const default_limit: i64 = 50;
 const max_limit: i64 = 100;
 
@@ -126,6 +128,8 @@ pub fn handleGetAgentScores(ctx: *common.Context, r: zap.Request, agent_id: []co
         if (last.object.get("score_id")) |v| break :blk v.string;
         break :blk null;
     } else null;
+
+    log.debug("scores retrieved agent_id={s} count={d} has_more={}", .{ agent_id, result_count, has_more });
 
     common.writeJson(r, .ok, .{
         .data = result_data,

@@ -9,6 +9,8 @@ const worker_runtime = @import("worker_runtime.zig");
 const side_effect_keys = @import("worker_side_effect_keys.zig");
 const worker_rate_limiter = @import("worker_rate_limiter.zig");
 
+const log = std.log.scoped(.agents);
+
 pub const PushFailureAction = enum {
     lookup_remote_branch,
 };
@@ -271,6 +273,7 @@ pub fn ensurePrForRun(
 
         if (pr_url == null) {
             try worker_runtime.ensureRunActive(cancel_flag, deadline_ms);
+            log.info("pr_create_start run_id={s} branch={s} repo={s}", .{ ctx.run_id, ctx.branch, ctx.repo_url });
             const pr_title = try std.fmt.allocPrint(run_alloc, "usezombie: {s}", .{ctx.spec_id});
             var pr_retry_ctx = PrRetryCtx{
                 .alloc = run_alloc,
@@ -304,7 +307,11 @@ pub fn ensurePrForRun(
             };
             pr_url = created_pr;
             try state.markSideEffectDone(conn, ctx.run_id, pr_side_effect_key.value, created_pr);
+            log.info("pr_created run_id={s} branch={s}", .{ ctx.run_id, ctx.branch });
         }
+    }
+    if (pr_url != null) {
+        log.info("pr_ensured run_id={s} branch={s}", .{ ctx.run_id, ctx.branch });
     }
     return pr_url orelse git.GitError.PrFailed;
 }

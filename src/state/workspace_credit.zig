@@ -5,6 +5,8 @@ const id_format = @import("../types/id_format.zig");
 const billing = @import("./workspace_billing.zig");
 const store = @import("workspace_credit_store.zig");
 
+const log = std.log.scoped(.state);
+
 pub const FREE_PLAN_INITIAL_CREDIT_CENTS: i64 = 1000;
 pub const FREE_PLAN_CENTS_PER_AGENT_SECOND: i64 = 1;
 pub const CREDIT_CURRENCY = "USD";
@@ -48,6 +50,7 @@ pub fn provisionWorkspaceCredit(
         .exhausted_at = null,
     }, now_ms);
     try store.insertAudit(conn, alloc, workspace_id, "CREDIT_GRANTED", FREE_PLAN_INITIAL_CREDIT_CENTS, FREE_PLAN_INITIAL_CREDIT_CENTS, "workspace_created", actor, "{}");
+    log.info("credit_provisioned workspace_id={s} initial_cents={d}", .{ workspace_id, FREE_PLAN_INITIAL_CREDIT_CENTS });
 }
 
 pub fn getOrProvisionWorkspaceCredit(

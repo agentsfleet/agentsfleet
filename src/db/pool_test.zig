@@ -25,6 +25,54 @@ test "parseUrl parses host, port, db, credentials" {
     try std.testing.expectEqualStrings("usezombiedb", database);
 }
 
+test "parseUrl sets tls=require on standard URL" {
+    const alloc = std.testing.allocator;
+    const opts = try parseUrl(alloc, "postgresql://api_user:pw@db.example.com:5432/mydb");
+    defer alloc.free(opts.connect.host.?);
+    defer alloc.free(opts.auth.username);
+    defer alloc.free(opts.auth.password.?);
+    defer alloc.free(opts.auth.database.?);
+
+    try std.testing.expectEqualStrings("mydb", opts.auth.database.?);
+    try std.testing.expect(opts.connect.tls == .require);
+}
+
+test "parseUrl strips query string from dbname" {
+    const alloc = std.testing.allocator;
+    const opts = try parseUrl(alloc, "postgres://u:p@host:5432/zombiedb?sslmode=require");
+    defer alloc.free(opts.connect.host.?);
+    defer alloc.free(opts.auth.username);
+    defer alloc.free(opts.auth.password.?);
+    defer alloc.free(opts.auth.database.?);
+
+    try std.testing.expectEqualStrings("zombiedb", opts.auth.database.?);
+    try std.testing.expect(opts.connect.tls == .require);
+}
+
+test "parseUrl strips multiple query params from dbname" {
+    const alloc = std.testing.allocator;
+    const opts = try parseUrl(alloc, "postgres://u:p@host:5432/mydb?sslmode=require&application_name=worker");
+    defer alloc.free(opts.connect.host.?);
+    defer alloc.free(opts.auth.username);
+    defer alloc.free(opts.auth.password.?);
+    defer alloc.free(opts.auth.database.?);
+
+    try std.testing.expectEqualStrings("mydb", opts.auth.database.?);
+    try std.testing.expect(opts.connect.tls == .require);
+}
+
+test "parseUrl respects sslmode=disable for local dev" {
+    const alloc = std.testing.allocator;
+    const opts = try parseUrl(alloc, "postgres://u:p@localhost:5432/testdb?sslmode=disable");
+    defer alloc.free(opts.connect.host.?);
+    defer alloc.free(opts.auth.username);
+    defer alloc.free(opts.auth.password.?);
+    defer alloc.free(opts.auth.database.?);
+
+    try std.testing.expectEqualStrings("testdb", opts.auth.database.?);
+    try std.testing.expect(opts.connect.tls == .off);
+}
+
 test "roleEnvVarName maps db roles deterministically" {
     try std.testing.expectEqualStrings("DATABASE_URL", roleEnvVarName(.default));
     try std.testing.expectEqualStrings("DATABASE_URL_API", roleEnvVarName(.api));

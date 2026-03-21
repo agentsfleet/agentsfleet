@@ -5,6 +5,8 @@ const error_codes = @import("../../errors/codes.zig");
 const harness_handlers = @import("harness_control_plane.zig");
 const common = @import("common.zig");
 
+const log = std.log.scoped(.http);
+
 pub const Context = common.Context;
 
 pub fn handlePutHarnessSource(ctx: *Context, r: zap.Request, workspace_id: []const u8) void {
@@ -48,8 +50,11 @@ pub fn handlePutHarnessSource(ctx: *Context, r: zap.Request, workspace_id: []con
             error.WorkspaceNotFound => common.errorResponse(r, .not_found, error_codes.ERR_WORKSPACE_NOT_FOUND, "Workspace not found", req_id),
             else => common.internalOperationError(r, "Failed to store harness source", req_id),
         }
+        log.err("put harness source failed workspace_id={s}", .{workspace_id});
         return;
     };
+
+    log.info("harness source stored workspace_id={s} agent_id={s}", .{ workspace_id, out.agent_id });
 
     common.writeJson(r, .ok, .{
         .workspace_id = workspace_id,
@@ -95,6 +100,8 @@ pub fn handleCompileHarness(ctx: *Context, r: zap.Request, workspace_id: []const
         return;
     }
 
+    log.debug("compile harness request workspace_id={s}", .{workspace_id});
+
     const out = harness_handlers.compileProfile(conn, alloc, workspace_id, parsed.value) catch |err| {
         switch (err) {
             error.InvalidIdShape => common.errorResponse(r, .bad_request, error_codes.ERR_UUIDV7_INVALID_ID_SHAPE, "Invalid config_version_id format", req_id),
@@ -119,8 +126,11 @@ pub fn handleCompileHarness(ctx: *Context, r: zap.Request, workspace_id: []const
             error.CreditExhausted => common.errorResponse(r, .forbidden, error_codes.ERR_CREDIT_EXHAUSTED, "Free plan credit exhausted. Upgrade to Scale to continue.", req_id),
             else => common.internalOperationError(r, "Failed to compile harness profile", req_id),
         }
+        log.err("compile harness failed workspace_id={s}", .{workspace_id});
         return;
     };
+
+    log.info("harness compiled workspace_id={s} agent_id={s} is_valid={}", .{ workspace_id, out.agent_id, out.is_valid });
 
     common.writeJson(r, .ok, .{
         .compile_job_id = out.compile_job_id,
@@ -167,6 +177,8 @@ pub fn handleActivateHarness(ctx: *Context, r: zap.Request, workspace_id: []cons
         return;
     }
 
+    log.debug("activate harness request workspace_id={s}", .{workspace_id});
+
     const out = harness_handlers.activateProfile(conn, alloc, workspace_id, parsed.value) catch |err| {
         switch (err) {
             error.InvalidIdShape => common.errorResponse(r, .bad_request, error_codes.ERR_UUIDV7_INVALID_ID_SHAPE, "Invalid config_version_id format", req_id),
@@ -191,8 +203,12 @@ pub fn handleActivateHarness(ctx: *Context, r: zap.Request, workspace_id: []cons
             error.CreditExhausted => common.errorResponse(r, .forbidden, error_codes.ERR_CREDIT_EXHAUSTED, "Free plan credit exhausted. Upgrade to Scale to continue.", req_id),
             else => common.internalOperationError(r, "Failed to activate profile", req_id),
         }
+        log.err("activate harness failed workspace_id={s}", .{workspace_id});
         return;
     };
+
+    log.info("harness activated workspace_id={s} agent_id={s} config_version_id={s}", .{ workspace_id, out.agent_id, out.config_version_id });
+
     posthog_events.trackProfileActivated(
         ctx.posthog,
         posthog_events.distinctIdOrSystem(principal.user_id orelse ""),
@@ -237,7 +253,10 @@ pub fn handleGetHarnessActive(ctx: *Context, r: zap.Request, workspace_id: []con
         return;
     }
 
+    log.debug("get active harness request workspace_id={s}", .{workspace_id});
+
     const out = harness_handlers.getActiveProfile(conn, alloc, workspace_id) catch {
+        log.err("get active profile failed workspace_id={s}", .{workspace_id});
         common.internalOperationError(r, "Failed to resolve active profile", req_id);
         return;
     };

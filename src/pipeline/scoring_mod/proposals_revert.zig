@@ -6,6 +6,8 @@ const auto_approval = @import("proposals_auto_approval.zig");
 const shared = @import("proposals_shared.zig");
 const validation = @import("proposals_validation.zig");
 
+const log = std.log.scoped(.scoring);
+
 const sql_rollback = "ROLLBACK";
 
 const RevertError = error{
@@ -119,6 +121,8 @@ pub fn revertHarnessChange(
 
     _ = try conn.exec("COMMIT", .{});
     tx_open = false;
+
+    log.info("harness change reverted agent_id={s} change_id={s}", .{ agent_id, change_id });
 
     return .{
         .change_id = revert_change_id,

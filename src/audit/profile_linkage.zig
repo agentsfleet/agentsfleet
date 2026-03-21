@@ -1,6 +1,8 @@
 const std = @import("std");
 const pg = @import("pg");
 
+const log = std.log.scoped(.audit);
+
 pub const RunLinkage = struct {
     run_artifact_id: ?[]u8 = null,
     activate_artifact_id: ?[]u8 = null,
@@ -27,6 +29,7 @@ pub fn insertCompileArtifact(
         \\  (artifact_id, tenant_id, workspace_id, artifact_type, config_version_id, compile_job_id, run_id, parent_artifact_id, metadata_json, created_at)
         \\VALUES ($1, $2, $3, 'COMPILE', $4, $5, NULL, NULL, $6, $7)
     , .{ artifact_id, tenant_id, workspace_id, config_version_id, compile_job_id, meta, created_at });
+    log.info("linkage recorded type=COMPILE workspace_id={s} config_version_id={s}", .{ workspace_id, config_version_id });
 }
 
 pub fn insertActivateArtifact(
@@ -62,6 +65,7 @@ pub fn insertActivateArtifact(
         \\  (artifact_id, tenant_id, workspace_id, artifact_type, config_version_id, compile_job_id, run_id, parent_artifact_id, metadata_json, created_at)
         \\VALUES ($1, $2, $3, 'ACTIVATE', $4, $5, NULL, $6, json_build_object('activated_by', $7)::text, $8)
     , .{ artifact_id, tenant_id, workspace_id, config_version_id, compile_job_id, parent_artifact_id, activated_by, created_at });
+    log.info("linkage recorded type=ACTIVATE workspace_id={s} config_version_id={s}", .{ workspace_id, config_version_id });
 }
 
 pub fn insertRunArtifact(
@@ -97,6 +101,7 @@ pub fn insertRunArtifact(
         \\  (artifact_id, tenant_id, workspace_id, artifact_type, config_version_id, compile_job_id, run_id, parent_artifact_id, metadata_json, created_at)
         \\VALUES ($1, $2, $3, 'RUN', $4, $5, $6, $7, '{}', $8)
     , .{ artifact_id, tenant_id, workspace_id, config_version_id, compile_job_id, run_id, parent_artifact_id, created_at });
+    log.info("linkage recorded type=RUN workspace_id={s} run_id={s}", .{ workspace_id, run_id });
 }
 
 pub fn fetchRunLinkage(conn: *pg.Conn, alloc: std.mem.Allocator, run_id: []const u8) !?RunLinkage {

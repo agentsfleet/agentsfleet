@@ -7,6 +7,8 @@ const workspace_billing = @import("../../state/workspace_billing.zig");
 const workspace_credit = @import("../../state/workspace_credit.zig");
 const common = @import("common.zig");
 
+const log = std.log.scoped(.http);
+
 pub const Context = common.Context;
 
 pub fn handleGitHubCallback(ctx: *Context, r: zap.Request) void {
@@ -30,6 +32,7 @@ pub fn handleGitHubCallback(ctx: *Context, r: zap.Request) void {
     if (!common.requireUuidV7Id(r, req_id, workspace_id, "workspace_id")) return;
 
     const conn = ctx.pool.acquire() catch {
+        log.err("db pool acquire failed op=github_callback", .{});
         common.internalDbUnavailable(r, req_id);
         return;
     };
@@ -38,6 +41,7 @@ pub fn handleGitHubCallback(ctx: *Context, r: zap.Request) void {
     const now_ms = std.time.milliTimestamp();
     const tenant_id = blk: {
         var existing = conn.query("SELECT tenant_id FROM workspaces WHERE workspace_id = $1", .{workspace_id}) catch {
+            log.err("tenant lookup failed workspace_id={s}", .{workspace_id});
             common.internalDbError(r, req_id);
             return;
         };
@@ -131,9 +135,12 @@ pub fn handleGitHubCallback(ctx: *Context, r: zap.Request) void {
         installation_id,
         1,
     ) catch {
+        log.err("store installation secret failed workspace_id={s}", .{workspace_id});
         common.internalOperationError(r, "Failed to store installation secret", req_id);
         return;
     };
+
+    log.info("github callback processed workspace_id={s} installation_id={s}", .{ workspace_id, installation_id });
 
     common.writeJson(r, .ok, .{
         .workspace_id = workspace_id,
