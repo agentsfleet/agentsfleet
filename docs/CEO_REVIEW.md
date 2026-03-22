@@ -46,7 +46,7 @@
   workspace-scoped, compile/activate/resolve cycle works. M9's "harness
   auto-improvement" proposals would mutate these profiles.
   5. PostHog + Langfuse + OTel are wired — observability surfaces exist to
-  consume scoring events.
+  consume scoring events. [Note: Langfuse removed in M12_001. LLM data now dual-emitted to Grafana metrics + PostHog events.]
   6. Worker stage executor (worker_stage_executor.zig) is the integration point
   — all stage results flow through executeRun() with token counts, wall seconds,
    and exit status already captured.
@@ -97,6 +97,9 @@
   ├────────────────────────┼────────────────────────────────────────────────┤
   │ Event emission         │ PostHog events + OTel + Langfuse all wired in  │
   │                        │ worker_stage_executor.zig                      │
+  │                        │ [Note: Langfuse removed in M12_001. LLM data  │
+  │                        │ now dual-emitted to Grafana metrics + PostHog  │
+  │                        │ events.]                                       │
   ├────────────────────────┼────────────────────────────────────────────────┤
   │ Profile versioning &   │ profile_linkage_audit_artifacts table,         │
   │ audit                  │ immutable append-only rows                     │
@@ -227,7 +230,7 @@
   Anti-patterns to avoid:
   1. worker_stage_executor.zig:executeRun() — 500+ line function with deeply
   nested control flow (while+switch+while+switch). Metrics, Langfuse, PostHog,
-  billing, state transitions all inline. M9 scoring MUST NOT be added inline to
+  billing, state transitions all inline. [Note: Langfuse removed in M12_001. LLM data now dual-emitted to Grafana metrics + PostHog events.] M9 scoring MUST NOT be added inline to
   this function — it should be a post-run hook called from one point.
   2. Duplicate billing finalization paths — finalizeRunForBilling is called in
   4+ places with slightly different args in executeRun(). The alloc-failure
@@ -503,7 +506,7 @@
 
   Per the taste calibration, worker_stage_executor.zig:executeRun() is already a
    500+ line function with inline metrics, Langfuse, PostHog, billing, and state
-   transitions. The anti-pattern is adding MORE inline code.
+   transitions. [Note: Langfuse removed in M12_001. LLM data now dual-emitted to Grafana metrics + PostHog events.] The anti-pattern is adding MORE inline code.
 
   The scoring hook needs to fire ONCE at the terminal state, not per-stage. The
   plan needs to specify exactly where the scoring call goes and how it avoids

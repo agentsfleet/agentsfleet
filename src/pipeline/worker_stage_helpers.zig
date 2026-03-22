@@ -5,7 +5,6 @@ const reliable = @import("../reliability/reliable_call.zig");
 const worker_runtime = @import("worker_runtime.zig");
 const scoring = @import("scoring.zig");
 const obs_log = @import("../observability/logging.zig");
-const langfuse = @import("../observability/langfuse.zig");
 const state = @import("../state/machine.zig");
 const types = @import("../types.zig");
 const agents = @import("agents.zig");
@@ -62,27 +61,6 @@ pub fn loadScoreContextBestEffort(
         return scoring.orientationContext(alloc);
     };
     return scoring.buildScoringContextForEcho(conn, alloc, workspace_id, agent_id, config);
-}
-
-/// Best-effort Langfuse trace emission. Uses the async exporter when installed
-/// on worker startup, otherwise falls back to synchronous best-effort emission.
-pub fn emitLangfuseTrace(
-    alloc: std.mem.Allocator,
-    ctx: wst.RunContext,
-    stage_id: []const u8,
-    role_id: []const u8,
-    result: agents.AgentResult,
-) void {
-    langfuse.emitTraceAsyncOrFallback(alloc, .{
-        .trace_id = ctx.trace_id,
-        .run_id = ctx.run_id,
-        .stage_id = stage_id,
-        .role_id = role_id,
-        .token_count = result.token_count,
-        .wall_seconds = result.wall_seconds,
-        .exit_ok = result.exit_ok,
-        .timestamp_ms = std.time.milliTimestamp(),
-    });
 }
 
 fn sha256Hex(data: []const u8) [64]u8 {

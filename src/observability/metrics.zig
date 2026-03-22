@@ -33,15 +33,6 @@ pub const incWorkerAllocatorLeaks = mc.incWorkerAllocatorLeaks;
 pub const incAgentScoreComputed = mc.incAgentScoreComputed;
 pub const incAgentScoringFailed = mc.incAgentScoringFailed;
 pub const setAgentScoreLatest = mc.setAgentScoreLatest;
-pub const incLangfuseEnqueued = mc.incLangfuseEnqueued;
-pub const incLangfuseDropped = mc.incLangfuseDropped;
-pub const incLangfuseExportOk = mc.incLangfuseExportOk;
-pub const incLangfuseExportFailed = mc.incLangfuseExportFailed;
-pub const incLangfuseExportRetry = mc.incLangfuseExportRetry;
-pub const setLangfuseQueueDepth = mc.setLangfuseQueueDepth;
-pub const addLangfuseExportLatencyMs = mc.addLangfuseExportLatencyMs;
-pub const setLangfuseLastSuccessAtMs = mc.setLangfuseLastSuccessAtMs;
-pub const setLangfuseLastFailureAtMs = mc.setLangfuseLastFailureAtMs;
 pub const observeAgentScoringDurationMs = mc.observeAgentScoringDurationMs;
 pub const observeAgentDurationSeconds = mc.observeAgentDurationSeconds;
 pub const observeRunTotalWallSeconds = mc.observeRunTotalWallSeconds;
@@ -65,7 +56,6 @@ test "prometheus render includes key metrics" {
     try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_rate_limit_wait_ms_total"));
     try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_side_effect_outbox_enqueued_total"));
     try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_side_effect_outbox_dead_letter_total"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_langfuse_enqueued_total"));
     try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_api_backpressure_rejections_total"));
     try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_api_in_flight_requests"));
     try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_agent_score_computed_unranked_total"));
@@ -97,27 +87,6 @@ test "integration: worker guardrail metrics are exposed in prometheus output" {
 
     try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_worker_in_flight_runs 2"));
     try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_worker_allocator_leaks_total"));
-}
-
-test "integration: langfuse async pipeline metrics are exposed in prometheus output" {
-    const alloc = std.testing.allocator;
-    incLangfuseEnqueued();
-    incLangfuseDropped();
-    incLangfuseExportOk();
-    incLangfuseExportFailed();
-    incLangfuseExportRetry();
-    setLangfuseQueueDepth(7);
-    addLangfuseExportLatencyMs(42);
-    setLangfuseLastSuccessAtMs(1_710_000_000_000);
-    setLangfuseLastFailureAtMs(1_710_000_000_111);
-
-    const body = try renderPrometheus(alloc, true, 0, 0);
-    defer alloc.free(body);
-
-    try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_langfuse_enqueued_total"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_langfuse_queue_depth 7"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_langfuse_export_latency_ms_total 42"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_langfuse_last_success_at_ms 1710000000000"));
 }
 
 test "integration: api throughput guardrail metrics are exposed in prometheus output" {

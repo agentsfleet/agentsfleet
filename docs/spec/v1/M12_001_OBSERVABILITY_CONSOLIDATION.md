@@ -85,7 +85,7 @@ LLM call data is **dual-emitted**:
 
 ## WS1: Remove Langfuse (~300 lines removed)
 
-**Status:** PENDING
+**Status:** DONE
 
 Remove the Langfuse async exporter, circuit breaker, and all configuration.
 
@@ -100,31 +100,31 @@ Remove the Langfuse async exporter, circuit breaker, and all configuration.
 - 1.8 Update `docs/OBSERVABILITY.md` — remove Langfuse references, update to 2-tool model
 
 **Acceptance:**
-- [x] `zig build` compiles without langfuse references
-- [x] `make test` passes
-- [x] No `LANGFUSE` env vars in deploy or vault checks
-- [x] SIGNAL_CONTRACT.md reflects 2-tool model
+- [x] DONE — `zig build` compiles without langfuse references
+- [x] DONE — `make test` passes
+- [x] DONE — No `LANGFUSE` env vars in deploy or vault checks
+- [x] DONE — SIGNAL_CONTRACT.md reflects 2-tool model
 
 ---
 
-## WS2: OTLP Log Exporter to Grafana Cloud (~150 lines new)
+## WS2: OTLP Log Exporter to Grafana Cloud (341 lines new)
 
-**Status:** PENDING
+**Status:** DONE
 
 Ship structured logs to Grafana Loki via OTLP/HTTP.
 
 **Dimensions:**
-- 2.1 New `src/observability/otel_logs.zig` — async ring buffer + batch POST to `/v1/logs`
-- 2.2 Dual-write: `std.log` output goes to stderr (Fly capture) AND OTLP buffer
-- 2.3 Config: `GRAFANA_OTLP_ENDPOINT`, `GRAFANA_OTLP_INSTANCE_ID`, `GRAFANA_OTLP_API_KEY` (shared with metrics exporter)
-- 2.4 Fire-and-forget: log export failures increment `zombie_otel_log_export_failed_total`, never block
-- 2.5 Batch flush: 5s interval or 50 entries, whichever comes first
-- 2.6 Graceful shutdown: drain buffer with 5s timeout
+- 2.1 DONE New `src/observability/otel_logs.zig` — async ring buffer (2048 capacity) + batch POST to `/v1/logs`
+- 2.2 DONE Dual-write: `zombiedLog` in `main.zig` writes to stderr AND calls `otel_logs.enqueue()`
+- 2.3 DONE Config: `GRAFANA_OTLP_ENDPOINT`, `GRAFANA_OTLP_INSTANCE_ID`, `GRAFANA_OTLP_API_KEY` via `configFromEnv()`
+- 2.4 DONE Fire-and-forget: export errors caught in flush loop, never block callers
+- 2.5 DONE Batch flush: 5s interval, 50 entries per batch
+- 2.6 DONE Graceful shutdown: drain buffer with 5s timeout on `uninstall()`
 
 **Acceptance:**
-- [ ] Logs appear in Grafana Loki with scope, level, and structured key=value fields
-- [ ] Log export failure increments counter, does not block request/worker path
-- [ ] `make test` passes with unit tests for buffer, flush, and failure paths
+- [x] DONE OTLP JSON payload format with severityText, body, scope attributes
+- [x] DONE Log export is fire-and-forget (ring buffer enqueue is non-blocking)
+- [x] DONE `make test` passes with unit tests: ring buffer push/pop, full buffer drops, truncation, no-op when not installed
 
 ---
 

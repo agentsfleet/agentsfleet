@@ -7,7 +7,6 @@ const worker = @import("../pipeline/worker.zig");
 const obs_log = @import("../observability/logging.zig");
 const posthog_events = @import("../observability/posthog_events.zig");
 const error_codes = @import("../errors/codes.zig");
-const langfuse = @import("../observability/langfuse.zig");
 const preflight = @import("preflight.zig");
 
 const log = std.log.scoped(.worker);
@@ -27,6 +26,8 @@ fn signalWatcher(wstate: *worker.WorkerState) void {
 }
 
 pub fn run(alloc: std.mem.Allocator) !void {
+    preflight.initOtelLogs(alloc);
+    defer preflight.deinitOtelLogs();
     log.info("startup.worker status=start", .{});
 
     log.info("startup.env_check status=start", .{});
@@ -61,19 +62,6 @@ pub fn run(alloc: std.mem.Allocator) !void {
     };
     defer worker_cfg.deinit();
     log.info("startup.config_load status=ok", .{});
-
-    if (langfuse.configFromEnv(alloc)) |cfg| {
-        langfuse.installAsyncExporter(alloc, cfg) catch |err| {
-            alloc.free(cfg.host);
-            alloc.free(cfg.public_key);
-            alloc.free(cfg.secret_key);
-            obs_log.logWarnErr(.worker, err, "startup.langfuse_init status=fail reason=fallback_mode", .{});
-        };
-        if (langfuse.isAsyncExporterInstalled()) {
-            defer langfuse.uninstallAsyncExporter();
-            log.info("startup.langfuse_init status=ok", .{});
-        }
-    }
 
     const ph = preflight.initPostHog(alloc);
     defer ph.deinit(alloc);

@@ -11,6 +11,7 @@
 
 const std = @import("std");
 const builtin = @import("builtin");
+const otel_logs = @import("observability/otel_logs.zig");
 
 const cli_commands = @import("cli/commands.zig");
 const cmd_serve = @import("cmd/serve.zig");
@@ -78,6 +79,9 @@ fn zombiedLog(
     ) catch return;
     const stderr = std.fs.File.stderr();
     stderr.writeAll(line) catch {};
+
+    // Dual-write: enqueue to OTLP log exporter (no-op when not installed)
+    otel_logs.enqueue(level_str, scope_str, msg);
 }
 
 pub fn main() !void {
@@ -127,7 +131,7 @@ test {
     _ = @import("auth/jwks.zig");
     _ = @import("observability/trace.zig");
     _ = @import("observability/otel_export.zig");
-    _ = @import("observability/langfuse.zig");
+    _ = @import("observability/otel_logs.zig");
     _ = @import("state/outbox_reconciler.zig");
     _ = @import("state/workspace_billing.zig");
 }

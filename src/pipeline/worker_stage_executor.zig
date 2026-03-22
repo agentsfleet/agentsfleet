@@ -161,7 +161,7 @@ pub fn executeRun(
     metrics.incAgentEchoCalls();
     metrics.addAgentTokens(plan_result.token_count);
     metrics.observeAgentDurationSeconds(plan_result.wall_seconds);
-    worker_stage_helpers.emitLangfuseTrace(run_alloc, ctx, plan_stage.stage_id, plan_stage.role_id, plan_result);
+
 
     agents.emitNullclawRunEvent(
         ctx.run_id,
@@ -253,8 +253,6 @@ pub fn executeRun(
             }
             metrics.addAgentTokens(stage_result.token_count);
             metrics.observeAgentDurationSeconds(stage_result.wall_seconds);
-            worker_stage_helpers.emitLangfuseTrace(run_alloc, ctx, stage.stage_id, stage.role_id, stage_result);
-
             agents.emitNullclawRunEvent(ctx.run_id, ctx.request_id, ctx.trace_id, attempt, stage.stage_id, stage.role_id, binding.actor, stage_result);
             posthog_events.trackAgentCompleted(
                 cfg.posthog,

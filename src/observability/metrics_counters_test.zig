@@ -82,19 +82,6 @@ test "observeHistogram value above all buckets increments count and sum only" {
     try std.testing.expectEqual(before.agent_duration_seconds.sum + 999, after.agent_duration_seconds.sum);
 }
 
-// T2 — negative timestamps must be clamped to zero, not wrap around the u64 cast
-test "setLangfuseLastSuccessAtMs clamps negative timestamp to zero" {
-    mc.setLangfuseLastSuccessAtMs(-1);
-    const s = mc.snapshot();
-    try std.testing.expectEqual(@as(u64, 0), s.langfuse_last_success_at_ms);
-}
-
-test "setLangfuseLastFailureAtMs clamps negative timestamp to zero" {
-    mc.setLangfuseLastFailureAtMs(-9_999_999);
-    const s = mc.snapshot();
-    try std.testing.expectEqual(@as(u64, 0), s.langfuse_last_failure_at_ms);
-}
-
 // T5 — atomic counters must not lose increments under concurrent write pressure
 test "atomic counters tolerate concurrent increments without loss" {
     const N = 100;

@@ -55,15 +55,6 @@ pub const Snapshot = struct {
     agent_score_computed_elite: u64,
     agent_scoring_failed_total: u64,
     agent_score_latest: u64,
-    langfuse_enqueued_total: u64,
-    langfuse_dropped_total: u64,
-    langfuse_export_ok_total: u64,
-    langfuse_export_failed_total: u64,
-    langfuse_export_retry_total: u64,
-    langfuse_queue_depth: u64,
-    langfuse_export_latency_ms_total: u64,
-    langfuse_last_success_at_ms: u64,
-    langfuse_last_failure_at_ms: u64,
     otel_export_total: u64,
     otel_export_failed_total: u64,
     otel_last_success_at_ms: i64,
@@ -115,15 +106,6 @@ var g_agent_score_computed_gold = std.atomic.Value(u64).init(0);
 var g_agent_score_computed_elite = std.atomic.Value(u64).init(0);
 var g_agent_scoring_failed_total = std.atomic.Value(u64).init(0);
 var g_agent_score_latest = std.atomic.Value(u64).init(0);
-var g_langfuse_enqueued_total = std.atomic.Value(u64).init(0);
-var g_langfuse_dropped_total = std.atomic.Value(u64).init(0);
-var g_langfuse_export_ok_total = std.atomic.Value(u64).init(0);
-var g_langfuse_export_failed_total = std.atomic.Value(u64).init(0);
-var g_langfuse_export_retry_total = std.atomic.Value(u64).init(0);
-var g_langfuse_queue_depth = std.atomic.Value(u64).init(0);
-var g_langfuse_export_latency_ms_total = std.atomic.Value(u64).init(0);
-var g_langfuse_last_success_at_ms = std.atomic.Value(u64).init(0);
-var g_langfuse_last_failure_at_ms = std.atomic.Value(u64).init(0);
 var g_otel_export_total = std.atomic.Value(u64).init(0);
 var g_otel_export_failed_total = std.atomic.Value(u64).init(0);
 var g_otel_last_success_at_ms = std.atomic.Value(i64).init(0);
@@ -276,42 +258,6 @@ pub fn setAgentScoreLatest(score: u8) void {
     g_agent_score_latest.store(@as(u64, score), .release);
 }
 
-pub fn incLangfuseEnqueued() void {
-    _ = g_langfuse_enqueued_total.fetchAdd(1, .monotonic);
-}
-
-pub fn incLangfuseDropped() void {
-    _ = g_langfuse_dropped_total.fetchAdd(1, .monotonic);
-}
-
-pub fn incLangfuseExportOk() void {
-    _ = g_langfuse_export_ok_total.fetchAdd(1, .monotonic);
-}
-
-pub fn incLangfuseExportFailed() void {
-    _ = g_langfuse_export_failed_total.fetchAdd(1, .monotonic);
-}
-
-pub fn incLangfuseExportRetry() void {
-    _ = g_langfuse_export_retry_total.fetchAdd(1, .monotonic);
-}
-
-pub fn setLangfuseQueueDepth(v: usize) void {
-    g_langfuse_queue_depth.store(@as(u64, @intCast(v)), .release);
-}
-
-pub fn addLangfuseExportLatencyMs(ms: u64) void {
-    _ = g_langfuse_export_latency_ms_total.fetchAdd(ms, .monotonic);
-}
-
-pub fn setLangfuseLastSuccessAtMs(ts_ms: i64) void {
-    g_langfuse_last_success_at_ms.store(@as(u64, @intCast(@max(ts_ms, 0))), .release);
-}
-
-pub fn setLangfuseLastFailureAtMs(ts_ms: i64) void {
-    g_langfuse_last_failure_at_ms.store(@as(u64, @intCast(@max(ts_ms, 0))), .release);
-}
-
 pub fn incOtelExportTotal() void {
     _ = g_otel_export_total.fetchAdd(1, .monotonic);
 }
@@ -395,15 +341,6 @@ pub fn snapshot() Snapshot {
         .agent_score_computed_elite = g_agent_score_computed_elite.load(.acquire),
         .agent_scoring_failed_total = g_agent_scoring_failed_total.load(.acquire),
         .agent_score_latest = g_agent_score_latest.load(.acquire),
-        .langfuse_enqueued_total = g_langfuse_enqueued_total.load(.acquire),
-        .langfuse_dropped_total = g_langfuse_dropped_total.load(.acquire),
-        .langfuse_export_ok_total = g_langfuse_export_ok_total.load(.acquire),
-        .langfuse_export_failed_total = g_langfuse_export_failed_total.load(.acquire),
-        .langfuse_export_retry_total = g_langfuse_export_retry_total.load(.acquire),
-        .langfuse_queue_depth = g_langfuse_queue_depth.load(.acquire),
-        .langfuse_export_latency_ms_total = g_langfuse_export_latency_ms_total.load(.acquire),
-        .langfuse_last_success_at_ms = g_langfuse_last_success_at_ms.load(.acquire),
-        .langfuse_last_failure_at_ms = g_langfuse_last_failure_at_ms.load(.acquire),
         .otel_export_total = g_otel_export_total.load(.acquire),
         .otel_export_failed_total = g_otel_export_failed_total.load(.acquire),
         .otel_last_success_at_ms = g_otel_last_success_at_ms.load(.acquire),

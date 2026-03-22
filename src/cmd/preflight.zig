@@ -8,6 +8,7 @@ const posthog = @import("posthog");
 const db = @import("../db/pool.zig");
 const git_ops = @import("../git/ops.zig");
 const obs_log = @import("../observability/logging.zig");
+const otel_logs = @import("../observability/otel_logs.zig");
 const common = @import("common.zig");
 
 const log = std.log.scoped(.preflight);
@@ -43,6 +44,23 @@ pub fn initPostHog(alloc: std.mem.Allocator) PostHogResult {
     };
 
     return .{ .client = client, .api_key_owned = api_key };
+}
+
+// ---------------------------------------------------------------------------
+// OTLP log exporter
+// ---------------------------------------------------------------------------
+
+pub fn initOtelLogs(alloc: std.mem.Allocator) void {
+    if (otel_logs.configFromEnv(alloc)) |cfg| {
+        otel_logs.install(cfg);
+        log.info("startup.otel_logs status=ok", .{});
+    }
+}
+
+pub fn deinitOtelLogs() void {
+    if (otel_logs.isInstalled()) {
+        otel_logs.uninstall();
+    }
 }
 
 // ---------------------------------------------------------------------------

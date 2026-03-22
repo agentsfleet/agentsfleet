@@ -85,7 +85,7 @@ Immutable audit linkage contract (sync, DB-backed):
 - `RUN` artifact row records `run_id -> profile_version_id` and parent activate artifact.
 - All linkage artifacts are append-only rows in `profile_linkage_audit_artifacts` (updates/deletes rejected by trigger).
 - `GET /v1/runs/{run_id}` exposes queryable linkage IDs (`run_artifact_id`, `activate_artifact_id`, `compile_artifact_id`, `compile_job_id`, `profile_version_id`).
-- "Immutable" means Postgres is the append-only authority; downstream ClickHouse linkage views are async projections only. (Note: Langfuse is being removed in M12_001 — see `docs/spec/v1/M12_001_OBSERVABILITY_CONSOLIDATION.md`.)
+- "Immutable" means Postgres is the append-only authority; downstream ClickHouse linkage views are async projections only.
 
 Fail-closed behavior:
 - Invalid profile versions cannot activate.

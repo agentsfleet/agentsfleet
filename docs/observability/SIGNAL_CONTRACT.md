@@ -14,15 +14,6 @@
 - Delivered via: Prometheus `/metrics` endpoint, OTLP/HTTP JSON exporter (`POST /v1/metrics`).
 - Backend: Grafana Cloud (or compatible).
 
-### Agent Analytics (Langfuse)
-
-> **Superseded:** Langfuse is being removed in M12_001. See `docs/spec/v1/M12_001_OBSERVABILITY_CONSOLIDATION.md`. LLM token/cost data is dual-emitted to Grafana metrics and PostHog event properties.
-
-- Agent execution traces: prompt quality, token usage, timing, outcomes.
-- NOT a platform telemetry backend.
-- Scope: LLM/agent call-level analytics only.
-- Trace schema: `trace-create` + `generation-create` batch per agent call.
-
 ### Product Analytics (PostHog)
 
 - User-facing lifecycle events for product analytics and growth metrics.
@@ -40,7 +31,6 @@ Structured logs use `std.log.scoped` with the following scopes:
 |---|---|
 | `.zombied` | `main.zig`, `cmd/run.zig`, `cmd/serve.zig`, `cmd/migrate.zig`, `cmd/common.zig` |
 | `.worker` | `pipeline/worker.zig`, `worker_claim.zig`, `worker_allocator.zig`, `worker_stage_executor.zig`, `cmd/worker.zig` |
-| `.langfuse` | `observability/langfuse.zig` |
 | `.otel_export` | `observability/otel_export.zig` |
 | `.event_bus` | `events/bus.zig` |
 | `.reliable` | `reliability/reliable_call.zig` |
@@ -132,10 +122,6 @@ Retries and failures by error class (`rate_limited`, `timeout`, `context_exhaust
 
 | Metric | Type | Description |
 |---|---|---|
-| `zombie_langfuse_emit_total` | counter | Total Langfuse trace emission attempts — **Superseded by M12_001** |
-| `zombie_langfuse_emit_failed_total` | counter | Total Langfuse emission failures — **Superseded by M12_001** |
-| `zombie_langfuse_circuit_open_total` | counter | Total requests rejected by Langfuse circuit breaker — **Superseded by M12_001** |
-| `zombie_langfuse_last_success_at_ms` | gauge | Timestamp (ms) of last successful Langfuse emission — **Superseded by M12_001** |
 | `zombie_otel_export_total` | counter | Total OTEL metric export attempts |
 | `zombie_otel_export_failed_total` | counter | Total OTEL export failures |
 | `zombie_otel_last_success_at_ms` | gauge | Timestamp (ms) of last successful OTEL export |
@@ -200,14 +186,6 @@ In-process bounded ring buffer (`capacity=1024`) with background log sink.
 - Protocol: OTLP/HTTP JSON (`POST /v1/metrics`).
 - Config: `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_SERVICE_NAME` (default: `zombied`).
 
-### Langfuse Exporter
-
-> **Superseded:** Langfuse is being removed in M12_001. See `docs/spec/v1/M12_001_OBSERVABILITY_CONSOLIDATION.md`. This section is retained for historical context until M12_001 WS1 is implemented.
-
-- Fire-and-forget: emit errors are logged via `.langfuse` scope, never propagated.
-- Protocol: HTTP POST to `/api/public/ingestion` with Basic auth.
-- Config: `LANGFUSE_HOST`, `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`.
-
 ---
 
 ## No Silent-Drop Policy
@@ -227,5 +205,3 @@ All exporter failures MUST:
 | `UZ-OBS-OTEL-002` | `otel_export.zig` | OTEL connect failed (DNS, connection refused, timeout) |
 | `UZ-OBS-OTEL-003` | `otel_export.zig` | OTEL request failed (non-connect HTTP error) |
 | `UZ-OBS-OTEL-004` | `otel_export.zig` | OTEL unexpected status (non-2xx response) |
-| `UZ-OBS-LANGFUSE-001` | `langfuse.zig` | Langfuse emit failed — **Superseded by M12_001** |
-| `UZ-OBS-LANGFUSE-002` | `langfuse.zig` | Langfuse circuit breaker open (skipped emission) — **Superseded by M12_001** |
