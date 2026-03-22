@@ -4,9 +4,6 @@ primary_region = "iad"
 [build]
   image = "ghcr.io/usezombie/zombied:dev-latest"
 
-[processes]
-  app = "/usr/local/bin/zombied serve"
-
 [[vm]]
   size = "shared-cpu-1x"
   memory = "512mb"
