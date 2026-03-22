@@ -18,7 +18,7 @@ export function makeBufferStream() {
 }
 
 /** Passthrough UI theme (no ANSI escapes). */
-export const ui = { ok: (s) => s, err: (s) => s, info: (s) => s, dim: (s) => s };
+export const ui = { ok: (s) => s, err: (s) => s, info: (s) => s, dim: (s) => s, head: (s) => s };
 
 // ── Stable test constants ─────────────────────────────────────────────────────
 export const AGENT_ID   = "0195b4ba-8d3a-7f13-8abc-000000000001";

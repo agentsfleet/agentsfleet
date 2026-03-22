@@ -1,4 +1,5 @@
 import { createCoreOpsHandlers } from "./core-ops.js";
+import { queueCliAnalyticsEvent, setCliAnalyticsContext } from "../lib/analytics.js";
 import { validateRequiredId } from "../program/validate.js";
 
 function createCoreHandlers(ctx, workspaces, deps) {
@@ -10,6 +11,7 @@ function createCoreHandlers(ctx, workspaces, deps) {
     parseFlags,
     printJson,
     printKeyValue,
+    printSection = () => {},
     printTable,
     request,
     saveCredentials,
@@ -46,10 +48,15 @@ function createCoreHandlers(ctx, workspaces, deps) {
 
     const loginUrl = created.login_url;
     const sessionId = created.session_id;
+    setCliAnalyticsContext(ctx, { session_id: sessionId });
 
     if (!ctx.jsonMode) {
-      writeLine(ctx.stdout, `session_id: ${sessionId}`);
-      writeLine(ctx.stdout, `login_url: ${loginUrl}`);
+      printSection(ctx.stdout, "Login session");
+      printKeyValue(ctx.stdout, {
+        session_id: sessionId,
+        login_url: loginUrl,
+      });
+      writeLine(ctx.stdout);
     }
 
     const shouldOpen = options["no-open"] ? false : !ctx.noOpen;
@@ -91,6 +98,7 @@ function createCoreHandlers(ctx, workspaces, deps) {
             token_saved: true,
             api_url: ctx.apiUrl,
           };
+          queueCliAnalyticsEvent(ctx, "login_completed", { session_id: sessionId });
           if (ctx.jsonMode) printJson(ctx.stdout, result);
           else writeLine(ctx.stdout, ui.ok("login complete"));
           spinner.succeed();
@@ -121,6 +129,7 @@ function createCoreHandlers(ctx, workspaces, deps) {
 
   async function commandLogout() {
     await clearCredentials();
+    queueCliAnalyticsEvent(ctx, "logout_completed");
     if (ctx.jsonMode) printJson(ctx.stdout, { status: "ok", logged_out: true });
     else writeLine(ctx.stdout, ui.ok("logout complete"));
     return 0;
@@ -168,15 +177,24 @@ function createCoreHandlers(ctx, workspaces, deps) {
         install_url: installUrl,
         next_step: "open install_url and complete GitHub App install to bind server-side",
       };
+      setCliAnalyticsContext(ctx, {
+        workspace_id: workspaceId,
+        repo_url: repoUrl,
+        branch,
+      });
+      queueCliAnalyticsEvent(ctx, "workspace_add_completed", {
+        workspace_id: workspaceId,
+      });
       if (ctx.jsonMode) {
         printJson(ctx.stdout, out);
       } else {
-        writeLine(ctx.stdout, ui.ok(`workspace added: ${workspaceId}`));
+        printSection(ctx.stdout, "Workspace added");
         printKeyValue(ctx.stdout, {
           workspace_id: workspaceId,
           repo_url: repoUrl,
           branch,
         });
+        writeLine(ctx.stdout);
         const opened = ctx.noOpen ? false : await openUrl(installUrl, { env: ctx.env });
         writeLine(ctx.stdout, ui.info(`github_app_install_url: ${installUrl}`));
         if (opened) {
@@ -190,6 +208,13 @@ function createCoreHandlers(ctx, workspaces, deps) {
     }
 
     if (action === "list") {
+      setCliAnalyticsContext(ctx, {
+        workspace_id: workspaces.current_workspace_id,
+        workspace_count: workspaces.items.length,
+      });
+      queueCliAnalyticsEvent(ctx, "workspace_list_viewed", {
+        workspace_count: workspaces.items.length,
+      });
       if (ctx.jsonMode) {
         printJson(ctx.stdout, {
           current_workspace_id: workspaces.current_workspace_id,
@@ -236,6 +261,8 @@ function createCoreHandlers(ctx, workspaces, deps) {
       }
       await saveWorkspaces(workspaces);
 
+      setCliAnalyticsContext(ctx, { workspace_id: workspaceId });
+      queueCliAnalyticsEvent(ctx, "workspace_removed", { workspace_id: workspaceId });
       if (ctx.jsonMode) printJson(ctx.stdout, { removed: workspaceId });
       else writeLine(ctx.stdout, ui.ok(`workspace removed: ${workspaceId}`));
       return 0;
@@ -259,8 +286,24 @@ function createCoreHandlers(ctx, workspaces, deps) {
       body: "{}",
     });
 
+    setCliAnalyticsContext(ctx, {
+      workspace_id: workspaceId,
+      synced_count: res.synced_count ?? 0,
+      total_pending: res.total_pending ?? 0,
+    });
+    queueCliAnalyticsEvent(ctx, "specs_synced", {
+      workspace_id: workspaceId,
+      synced_count: res.synced_count ?? 0,
+    });
     if (ctx.jsonMode) printJson(ctx.stdout, res);
-    else writeLine(ctx.stdout, ui.ok(`specs synced: synced_count=${res.synced_count ?? 0} total_pending=${res.total_pending ?? 0}`));
+    else {
+      printSection(ctx.stdout, "Specs synced");
+      printKeyValue(ctx.stdout, {
+        workspace_id: workspaceId,
+        synced_count: res.synced_count ?? 0,
+        total_pending: res.total_pending ?? 0,
+      });
+    }
     return 0;
   }
 
@@ -282,11 +325,25 @@ function createCoreHandlers(ctx, workspaces, deps) {
         method: "GET",
         headers: apiHeaders(ctx),
       });
+      setCliAnalyticsContext(ctx, {
+        run_id: res.run_id,
+        run_state: res.current_state ?? res.state ?? "unknown",
+        run_attempt: res.attempt,
+        run_snapshot_version: res.run_snapshot_version ?? "default-v1",
+      });
+      queueCliAnalyticsEvent(ctx, "run_status_viewed", {
+        run_id: res.run_id,
+        run_state: res.current_state ?? res.state ?? "unknown",
+      });
       if (ctx.jsonMode) printJson(ctx.stdout, res);
       else {
-        const state = res.current_state ?? res.state ?? "unknown";
-        const snapshot = res.run_snapshot_version ?? "default-v1";
-        writeLine(ctx.stdout, ui.info(`run ${res.run_id} state=${state} attempt=${res.attempt} run_snapshot_version=${snapshot}`));
+        printSection(ctx.stdout, "Run status");
+        printKeyValue(ctx.stdout, {
+          run_id: res.run_id,
+          state: res.current_state ?? res.state ?? "unknown",
+          attempt: res.attempt,
+          run_snapshot_version: res.run_snapshot_version ?? "default-v1",
+        });
       }
       return 0;
     }
@@ -331,8 +388,30 @@ function createCoreHandlers(ctx, workspaces, deps) {
       body: JSON.stringify(payload),
     });
 
+    setCliAnalyticsContext(ctx, {
+      workspace_id: workspaceId,
+      spec_id: specId,
+      run_id: res.run_id,
+      run_state: res.state,
+      run_mode: payload.mode,
+      requested_by: payload.requested_by,
+    });
+    queueCliAnalyticsEvent(ctx, "run_queued", {
+      workspace_id: workspaceId,
+      run_id: res.run_id,
+      spec_id: specId,
+    });
     if (ctx.jsonMode) printJson(ctx.stdout, res);
-    else writeLine(ctx.stdout, ui.ok(`run queued: ${res.run_id} state=${res.state}`));
+    else {
+      printSection(ctx.stdout, "Run queued");
+      printKeyValue(ctx.stdout, {
+        workspace_id: workspaceId,
+        spec_id: specId,
+        run_id: res.run_id,
+        state: res.state,
+        mode: payload.mode,
+      });
+    }
     return 0;
   }
 
@@ -349,6 +428,14 @@ function createCoreHandlers(ctx, workspaces, deps) {
     });
 
     const items = Array.isArray(res.runs) ? res.runs : [];
+    setCliAnalyticsContext(ctx, {
+      workspace_id: workspaceId,
+      run_count: items.length,
+    });
+    queueCliAnalyticsEvent(ctx, "runs_list_viewed", {
+      workspace_id: workspaceId,
+      run_count: items.length,
+    });
 
     if (ctx.jsonMode) printJson(ctx.stdout, { runs: items, total: items.length });
     else {

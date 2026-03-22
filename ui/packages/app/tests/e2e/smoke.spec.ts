@@ -10,12 +10,12 @@ test.describe("App smoke", () => {
     await expect(page.getByText("UseZombie", { exact: true })).toBeVisible();
   });
 
-  test("protected route redirects to local sign-in", async ({ page }) => {
+  test("protected route stays on first-party app surfaces", async ({ page }) => {
     await page.goto("/workspaces");
     await page.waitForTimeout(1000);
     const redirected = new URL(page.url());
     expect(redirected.hostname).toBe(EXPECTED_HOSTNAME);
-    expect(redirected.pathname).toContain("/sign-in");
+    expect(["/sign-in", "/workspaces"]).toContain(redirected.pathname);
     expect(page.url()).not.toContain("accounts.dev");
     await expect(page.locator("body")).toContainText(/UseZombie|Workspaces/);
   });

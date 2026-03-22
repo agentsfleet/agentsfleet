@@ -45,7 +45,8 @@ test("harness compile sends profile_id selector", async () => {
 
   assert.equal(code, 0);
   assert.equal(err.read(), "");
-  assert.match(out.read(), /compile_job_id=cjob_123/);
+  assert.match(out.read(), /Harness compile/);
+  assert.match(out.read(), /compile_job_id\s+:\s+cjob_123/);
 });
 
 test("harness compile sends profile_version_id selector", async () => {
@@ -75,5 +76,6 @@ test("harness compile sends profile_version_id selector", async () => {
 
   assert.equal(code, 0);
   assert.equal(err.read(), "");
-  assert.match(out.read(), /compile_job_id=cjob_456/);
+  assert.match(out.read(), /Harness compile/);
+  assert.match(out.read(), /compile_job_id\s+:\s+cjob_456/);
 });

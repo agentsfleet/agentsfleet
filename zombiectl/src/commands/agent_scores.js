@@ -1,7 +1,8 @@
 import { AGENTS_PATH } from "../lib/api-paths.js";
+import { queueCliAnalyticsEvent, setCliAnalyticsContext } from "../lib/analytics.js";
 
 export async function commandAgentScores(ctx, parsed, agentId, deps) {
-  const { request, apiHeaders, ui, printJson, printTable, writeLine } = deps;
+  const { request, apiHeaders, ui, printJson, printSection = () => {}, printTable, writeLine } = deps;
 
   const limit = parsed.options.limit || 20;
   const startingAfter = parsed.options["starting-after"] || null;
@@ -10,14 +11,24 @@ export async function commandAgentScores(ctx, parsed, agentId, deps) {
   if (startingAfter) url += `&starting_after=${encodeURIComponent(startingAfter)}`;
 
   const res = await request(ctx, url, { method: "GET", headers: apiHeaders(ctx) });
+  const items = Array.isArray(res.data) ? res.data : [];
+  setCliAnalyticsContext(ctx, {
+    agent_id: agentId,
+    score_count: items.length,
+    next_cursor: res.next_cursor ?? "",
+  });
+  queueCliAnalyticsEvent(ctx, "agent_scores_viewed", {
+    agent_id: agentId,
+    score_count: items.length,
+  });
 
   if (ctx.jsonMode) {
     printJson(ctx.stdout, res);
   } else {
-    const items = Array.isArray(res.data) ? res.data : [];
     if (items.length === 0) {
       writeLine(ctx.stdout, ui.info("no scores"));
     } else {
+      printSection(ctx.stdout, `Agent scores · ${agentId}`);
       printTable(ctx.stdout, [
         { key: "score_id", label: "SCORE_ID" },
         { key: "run_id", label: "RUN_ID" },

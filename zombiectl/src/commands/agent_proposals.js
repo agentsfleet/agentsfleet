@@ -1,7 +1,8 @@
 import { AGENTS_PATH } from "../lib/api-paths.js";
+import { queueCliAnalyticsEvent, setCliAnalyticsContext } from "../lib/analytics.js";
 
 export async function commandAgentProposals(ctx, parsed, agentId, deps) {
-  const { request, apiHeaders, printJson, printTable, ui, writeLine } = deps;
+  const { request, apiHeaders, printJson, printSection = () => {}, printTable, ui, writeLine } = deps;
 
   const subaction = parsed.positionals[1] || "list";
   const proposalId = parsed.positionals[2] || null;
@@ -11,14 +12,23 @@ export async function commandAgentProposals(ctx, parsed, agentId, deps) {
       method: "GET",
       headers: apiHeaders(ctx),
     });
+    const items = Array.isArray(res.data) ? res.data : [];
+    setCliAnalyticsContext(ctx, {
+      agent_id: agentId,
+      proposal_count: items.length,
+    });
+    queueCliAnalyticsEvent(ctx, "agent_proposals_viewed", {
+      agent_id: agentId,
+      proposal_count: items.length,
+    });
 
     if (ctx.jsonMode) {
       printJson(ctx.stdout, res);
     } else {
-      const items = Array.isArray(res.data) ? res.data : [];
       if (items.length === 0) {
         writeLine(ctx.stdout, ui.info("no open proposals"));
       } else {
+        printSection(ctx.stdout, `Agent proposals · ${agentId}`);
         printTable(ctx.stdout, [
           { key: "proposal_id", label: "PROPOSAL_ID" },
           { key: "status", label: "STATUS" },
@@ -49,6 +59,15 @@ export async function commandAgentProposals(ctx, parsed, agentId, deps) {
         headers: apiHeaders(ctx),
       },
     );
+    setCliAnalyticsContext(ctx, {
+      agent_id: agentId,
+      proposal_id: res.proposal_id,
+      proposal_status: res.status,
+    });
+    queueCliAnalyticsEvent(ctx, "agent_proposal_approved", {
+      agent_id: agentId,
+      proposal_id: res.proposal_id,
+    });
     if (ctx.jsonMode) {
       printJson(ctx.stdout, res);
     } else {
@@ -68,6 +87,16 @@ export async function commandAgentProposals(ctx, parsed, agentId, deps) {
         body: JSON.stringify(reason ? { reason } : {}),
       },
     );
+    setCliAnalyticsContext(ctx, {
+      agent_id: agentId,
+      proposal_id: res.proposal_id,
+      proposal_status: res.status,
+      rejection_reason: res.rejection_reason,
+    });
+    queueCliAnalyticsEvent(ctx, "agent_proposal_rejected", {
+      agent_id: agentId,
+      proposal_id: res.proposal_id,
+    });
     if (ctx.jsonMode) {
       printJson(ctx.stdout, res);
     } else {
@@ -87,6 +116,16 @@ export async function commandAgentProposals(ctx, parsed, agentId, deps) {
         body: JSON.stringify(reason ? { reason } : {}),
       },
     );
+    setCliAnalyticsContext(ctx, {
+      agent_id: agentId,
+      proposal_id: res.proposal_id,
+      proposal_status: res.status,
+      rejection_reason: res.rejection_reason,
+    });
+    queueCliAnalyticsEvent(ctx, "agent_proposal_vetoed", {
+      agent_id: agentId,
+      proposal_id: res.proposal_id,
+    });
     if (ctx.jsonMode) {
       printJson(ctx.stdout, res);
     } else {

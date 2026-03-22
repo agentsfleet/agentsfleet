@@ -1,5 +1,8 @@
+"use client";
+
 import Link from "next/link";
 import type { Run } from "@/lib/types";
+import { trackAppEvent } from "@/lib/analytics/posthog";
 import RunStatus from "./RunStatus";
 import { formatDate, formatDuration, truncate } from "@/lib/utils";
 import { ExternalLinkIcon } from "lucide-react";
@@ -14,6 +17,16 @@ export default function RunRow({ run, workspaceId }: Props) {
     <Link
       href={`/workspaces/${workspaceId}/runs/${run.id}`}
       style={{ textDecoration: "none" }}
+      onClick={() =>
+        trackAppEvent("run_opened", {
+          source: "run_row",
+          surface: "workspace_runs",
+          workspace_id: workspaceId,
+          run_id: run.id,
+          run_status: run.status,
+          has_pr_url: Boolean(run.pr_url),
+        })
+      }
     >
       <div className="run-row">
         <div className="run-row-left">
@@ -28,7 +41,16 @@ export default function RunRow({ run, workspaceId }: Props) {
               target="_blank"
               rel="noopener noreferrer"
               className="run-row-pr"
-              onClick={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                trackAppEvent("run_pr_clicked", {
+                  source: "run_row",
+                  surface: "workspace_runs",
+                  workspace_id: workspaceId,
+                  run_id: run.id,
+                  target: run.pr_url || undefined,
+                });
+              }}
             >
               PR <ExternalLinkIcon size={10} />
             </a>

@@ -1,6 +1,8 @@
 import { auth } from "@clerk/nextjs/server";
 import { listWorkspaces } from "@/lib/api";
 import WorkspaceCard from "@/components/domain/WorkspaceCard";
+import AnalyticsPageEvent from "@/components/analytics/AnalyticsPageEvent";
+import TrackedAnchor from "@/components/analytics/TrackedAnchor";
 import { PlusIcon } from "lucide-react";
 
 export const dynamic = "force-dynamic";
@@ -23,17 +25,42 @@ export default async function WorkspacesPage() {
 
   return (
     <div>
+      <AnalyticsPageEvent
+        event="workspace_list_viewed"
+        properties={{
+          source: "workspaces_page",
+          surface: "workspace_list",
+          workspace_count: workspaces?.length ?? 0,
+          has_error: Boolean(error),
+        }}
+      />
+      {error ? (
+        <AnalyticsPageEvent
+          event="workspace_list_failed"
+          properties={{
+            source: "workspaces_page",
+            surface: "workspace_list",
+            error_message: error,
+          }}
+        />
+      ) : null}
       <div className="mc-page-header">
         <h1 className="mc-page-title">Workspaces</h1>
-        <a
+        <TrackedAnchor
           href="https://docs.usezombie.com/quickstart#add-workspace"
           target="_blank"
           rel="noopener noreferrer"
           className="mc-btn-primary"
+          event="workspace_add_docs_clicked"
+          properties={{
+            source: "workspaces_page",
+            surface: "workspace_list",
+            target: "quickstart_add_workspace",
+          }}
         >
           <PlusIcon size={14} />
           Add workspace
-        </a>
+        </TrackedAnchor>
       </div>
 
       {error && (

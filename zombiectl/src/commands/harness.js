@@ -1,3 +1,4 @@
+import { setCliAnalyticsContext } from "../lib/analytics.js";
 import { commandHarnessSourcePut } from "./harness_source.js";
 import { commandHarnessCompile } from "./harness_compile.js";
 import { commandHarnessActivate } from "./harness_activate.js";
@@ -22,6 +23,7 @@ export async function commandHarness(ctx, args, workspaces, deps) {
     writeLine(ctx.stderr, ui.err(wsCheck.message));
     return 2;
   }
+  setCliAnalyticsContext(ctx, { workspace_id: workspaceId });
 
   if (group === "source" && action === "put") return commandHarnessSourcePut(ctx, parsed, workspaceId, deps);
   if (group === "compile") return commandHarnessCompile(ctx, parsed, workspaceId, deps);

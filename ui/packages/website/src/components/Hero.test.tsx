@@ -14,8 +14,8 @@ function renderHero() {
 
 describe("Hero", () => {
   it("renders h1 with both headline lines", () => {
-    renderHero();
-    const h1 = screen.getByRole("heading", { level: 1 });
+    const { container } = renderHero();
+    const h1 = container.querySelector("h1");
     expect(h1).toHaveTextContent(/ship ai-generated prs/i);
     expect(h1).toHaveTextContent(/without babysitting the run/i);
   });
@@ -26,14 +26,17 @@ describe("Hero", () => {
   });
 
   it("renders the primary CTA linking to app", () => {
-    renderHero();
-    const cta = screen.getByRole("link", { name: /connect github, automate prs/i });
+    const { container } = renderHero();
+    const cta = Array.from(container.querySelectorAll("a")).find((link) =>
+      link.textContent?.match(/connect github, automate prs/i),
+    );
     expect(cta).toHaveAttribute("href", APP_BASE_URL);
   });
 
   it("renders the pricing CTA", () => {
-    renderHero();
-    expect(screen.getByRole("link", { name: /see pricing/i })).toHaveAttribute("href", "/pricing");
+    const { container } = renderHero();
+    const cta = Array.from(container.querySelectorAll("a")).find((link) => link.textContent?.match(/see pricing/i));
+    expect(cta).toHaveAttribute("href", "/pricing");
   });
 
   it("renders the terminal with quick start label", () => {

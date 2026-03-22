@@ -1,5 +1,15 @@
+import { queueCliAnalyticsEvent, setCliAnalyticsContext } from "../lib/analytics.js";
+
 export async function commandHarnessActivate(ctx, parsed, workspaceId, deps) {
-  const { request, apiHeaders, ui, printJson, writeLine } = deps;
+  const {
+    request,
+    apiHeaders,
+    ui,
+    printJson,
+    printKeyValue = () => {},
+    printSection = () => {},
+    writeLine,
+  } = deps;
 
   const profileVersionId = parsed.options["config-version-id"];
   if (!profileVersionId) {
@@ -18,12 +28,26 @@ export async function commandHarnessActivate(ctx, parsed, workspaceId, deps) {
     body: JSON.stringify(body),
   });
 
+  setCliAnalyticsContext(ctx, {
+    workspace_id: workspaceId,
+    agent_id: res.agent_id,
+    harness_config_version_id: res.config_version_id,
+    run_snapshot_version: res.run_snapshot_version,
+  });
+  queueCliAnalyticsEvent(ctx, "harness_activated", {
+    workspace_id: workspaceId,
+    agent_id: res.agent_id,
+    harness_config_version_id: res.config_version_id,
+  });
   if (ctx.jsonMode) printJson(ctx.stdout, res);
-  else writeLine(
-    ctx.stdout,
-    ui.ok(
-      `activated agent_id=${res.agent_id} config_version_id=${res.config_version_id} run_snapshot_version=${res.run_snapshot_version}`,
-    ),
-  );
+  else {
+    printSection(ctx.stdout, "Harness activated");
+    printKeyValue(ctx.stdout, {
+      workspace_id: workspaceId,
+      agent_id: res.agent_id,
+      config_version_id: res.config_version_id,
+      run_snapshot_version: res.run_snapshot_version,
+    });
+  }
   return 0;
 }

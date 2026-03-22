@@ -15,9 +15,11 @@ describe("AnimatedIcon", () => {
   });
 
   it("has role=img and aria-label when label is provided", () => {
-    render(<AnimatedIcon label="Zombie hand">🖐️</AnimatedIcon>);
-    const el = screen.getByRole("img", { name: "Zombie hand" });
+    const { container } = render(<AnimatedIcon label="Zombie hand">🖐️</AnimatedIcon>);
+    const el = container.querySelector(".z-animated-icon");
     expect(el).toBeInTheDocument();
+    expect(el).toHaveAttribute("role", "img");
+    expect(el).toHaveAttribute("aria-label", "Zombie hand");
     expect(el).not.toHaveAttribute("aria-hidden");
   });
 

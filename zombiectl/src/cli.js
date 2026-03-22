@@ -1,11 +1,15 @@
 import { openUrl } from "./lib/browser.js";
-import { cliAnalytics } from "./lib/analytics.js";
+import {
+  cliAnalytics,
+  drainCliAnalyticsEvents,
+  getCliAnalyticsContext,
+} from "./lib/analytics.js";
 import { findRoute } from "./program/routes.js";
 import { registerProgramCommands } from "./program/command-registry.js";
 import { commandHarness as commandHarnessModule } from "./commands/harness.js";
 import { commandAgent as commandAgentModule } from "./commands/agent.js";
 import { commandAdmin as commandAdminModule } from "./commands/admin.js";
-import { ui, printKeyValue, printTable } from "./ui-theme.js";
+import { ui, printKeyValue, printSection, printTable } from "./ui-theme.js";
 import { createSpinner } from "./ui-progress.js";
 import {
   clearCredentials,
@@ -94,6 +98,7 @@ export async function runCli(argv, io = {}) {
     parseFlags,
     printJson,
     printKeyValue,
+    printSection,
     printTable,
     request,
     saveCredentials,
@@ -120,6 +125,8 @@ export async function runCli(argv, io = {}) {
       apiHeaders,
       ui,
       printJson,
+      printKeyValue,
+      printSection,
       writeLine,
     }),
     skillSecret: (routeArgs) => core.commandSkillSecret(routeArgs),
@@ -130,6 +137,7 @@ export async function runCli(argv, io = {}) {
       ui,
       printJson,
       printKeyValue,
+      printSection,
       printTable,
       writeLine,
     }),
@@ -139,6 +147,7 @@ export async function runCli(argv, io = {}) {
       apiHeaders,
       ui,
       printJson,
+      printSection,
       writeLine,
     }),
   });
@@ -151,6 +160,7 @@ export async function runCli(argv, io = {}) {
       });
 
       const exitCode = await handlers[route.key](args);
+      const analyticsContext = getCliAnalyticsContext(ctx);
       let eventDistinctId = distinctId;
       if (exitCode === 0 && route.key === "login") {
         const latestCreds = await loadCredentials();
@@ -159,27 +169,39 @@ export async function runCli(argv, io = {}) {
       cliAnalytics.trackCliEvent(analyticsClient, distinctId, "cli_command_finished", {
         command: route.key,
         exit_code: String(exitCode),
+        ...analyticsContext,
       });
 
       if (exitCode === 0 && route.key === "login") {
         cliAnalytics.trackCliEvent(analyticsClient, eventDistinctId, "user_authenticated", {
           command: route.key,
+          ...analyticsContext,
         });
       }
       if (exitCode === 0 && route.key === "workspace" && args[0] === "add") {
         cliAnalytics.trackCliEvent(analyticsClient, distinctId, "workspace_created", {
           command: route.key,
+          ...analyticsContext,
         });
       }
       if (exitCode === 0 && route.key === "run" && args[0] !== "status") {
         cliAnalytics.trackCliEvent(analyticsClient, distinctId, "run_triggered", {
           command: route.key,
+          ...analyticsContext,
+        });
+      }
+      for (const queuedEvent of drainCliAnalyticsEvents(ctx)) {
+        cliAnalytics.trackCliEvent(analyticsClient, eventDistinctId, queuedEvent.event, {
+          command: route.key,
+          ...analyticsContext,
+          ...queuedEvent.properties,
         });
       }
       if (exitCode !== 0) {
         cliAnalytics.trackCliEvent(analyticsClient, distinctId, "cli_error", {
           command: route.key,
           exit_code: String(exitCode),
+          ...analyticsContext,
         });
       }
       return exitCode;
@@ -204,6 +226,7 @@ export async function runCli(argv, io = {}) {
       command,
       error_code: "UNKNOWN_COMMAND",
       exit_code: "2",
+      ...getCliAnalyticsContext(ctx),
     });
     return 2;
   } catch (err) {
@@ -212,6 +235,7 @@ export async function runCli(argv, io = {}) {
       command: route?.key || command || "unknown",
       error_code: errorCode,
       exit_code: "1",
+      ...getCliAnalyticsContext(ctx),
     });
     try {
       printApiError(stderr, err, global.json, printJson, writeLine);

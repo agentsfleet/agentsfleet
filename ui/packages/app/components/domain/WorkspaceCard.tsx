@@ -1,5 +1,8 @@
+"use client";
+
 import Link from "next/link";
 import type { Workspace } from "@/lib/types";
+import { trackAppEvent } from "@/lib/analytics/posthog";
 import { formatDate } from "@/lib/utils";
 import { PauseIcon, GitBranchIcon, ActivityIcon } from "lucide-react";
 
@@ -16,7 +19,19 @@ export default function WorkspaceCard({ workspace }: Props) {
   const repoShort = workspace.repo_url.replace(/^https?:\/\/[^/]+\//, "");
 
   return (
-    <Link href={`/workspaces/${workspace.id}`} style={{ textDecoration: "none" }}>
+    <Link
+      href={`/workspaces/${workspace.id}`}
+      style={{ textDecoration: "none" }}
+      onClick={() =>
+        trackAppEvent("workspace_opened", {
+          source: "workspace_card",
+          surface: "workspace_list",
+          workspace_id: workspace.id,
+          workspace_plan: workspace.plan,
+          paused: workspace.paused,
+        })
+      }
+    >
       <article className={`ws-card${workspace.paused ? " ws-card--paused" : ""}`}>
         <div className="ws-card-top">
           <div className="ws-card-repo">

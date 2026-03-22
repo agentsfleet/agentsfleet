@@ -1,3 +1,4 @@
+import { setCliAnalyticsContext } from "../lib/analytics.js";
 import { commandAgentScores } from "./agent_scores.js";
 import { commandAgentProfile } from "./agent_profile.js";
 import { commandAgentImprovementReport } from "./agent_improvement_report.js";
@@ -11,6 +12,7 @@ export async function commandAgent(ctx, args, workspaces, deps) {
   const action = args[0];
   const parsed = parseFlags(args.slice(1));
   const agentId = parsed.positionals[0] || parsed.options["agent-id"];
+  if (agentId) setCliAnalyticsContext(ctx, { agent_id: agentId });
 
   if (action === "scores") {
     if (!agentId) {

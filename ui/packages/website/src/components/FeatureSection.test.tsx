@@ -27,10 +27,12 @@ describe("FeatureSection", () => {
   });
 
   it("renders the title as an h3", () => {
-    render(
+    const { container } = render(
       <FeatureSection number="01" title="My Title" description="Desc" />
     );
 
-    expect(screen.getByRole("heading", { level: 3, name: "My Title" })).toBeInTheDocument();
+    const heading = container.querySelector("h3");
+    expect(heading).toBeInTheDocument();
+    expect(heading?.textContent).toBe("My Title");
   });
 });

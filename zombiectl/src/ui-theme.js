@@ -16,6 +16,10 @@ export const ui = {
   dim: (s) => color("2", s),
 };
 
+export function printSection(stream, title, theme = ui) {
+  stream.write(`${theme.head ? theme.head(title) : title}\n`);
+}
+
 export function printKeyValue(stream, rows) {
   const entries = Object.entries(rows);
   const width = Math.max(...entries.map(([k]) => k.length), 0);

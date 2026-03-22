@@ -85,6 +85,7 @@ jobs:
           REDIS_URL_API: op://${{ vars.VAULT_DEV }}/upstash-dev/api-url
           REDIS_URL_WORKER: op://${{ vars.VAULT_DEV }}/upstash-dev/worker-url
           ENCRYPTION_MASTER_KEY: op://${{ vars.VAULT_DEV }}/encryption-master-key/credential
+          POSTHOG_API_KEY: op://${{ vars.VAULT_DEV }}/posthog-dev/credential
           GITHUB_APP_ID: op://${{ vars.VAULT_DEV }}/github-app/app-id
           GITHUB_APP_PRIVATE_KEY: op://${{ vars.VAULT_DEV }}/github-app/private-key
           CLERK_PUBLISHABLE_KEY: op://${{ vars.VAULT_DEV }}/clerk-dev/publishable-key
@@ -102,6 +103,7 @@ jobs:
             REDIS_URL_API="$REDIS_URL_API" \
             REDIS_URL_WORKER="$REDIS_URL_WORKER" \
             ENCRYPTION_MASTER_KEY="$ENCRYPTION_MASTER_KEY" \
+            POSTHOG_API_KEY="$POSTHOG_API_KEY" \
             GITHUB_APP_ID="$GITHUB_APP_ID" \
             GITHUB_APP_PRIVATE_KEY="$GITHUB_APP_PRIVATE_KEY" \
             CLERK_PUBLISHABLE_KEY="$CLERK_PUBLISHABLE_KEY" \

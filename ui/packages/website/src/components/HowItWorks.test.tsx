@@ -4,8 +4,10 @@ import HowItWorks from "./HowItWorks";
 
 describe("HowItWorks", () => {
   it("renders the section heading", () => {
-    render(<HowItWorks />);
-    expect(screen.getByRole("heading", { level: 2, name: /queued intent to validated pull requests/i })).toBeInTheDocument();
+    const { container } = render(<HowItWorks />);
+    const heading = container.querySelector("h2");
+    expect(heading).toBeInTheDocument();
+    expect(heading?.textContent).toBe("From queued intent to validated pull requests.");
   });
 
   it("renders the eyebrow", () => {

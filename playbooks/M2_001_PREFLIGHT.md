@@ -30,6 +30,7 @@ Every `op://` reference the agent will use across M2_002 and the deploy pipeline
 | `vercel-bypass-website` | `credential` | `smoke-post-deploy.yml` |
 | `vercel-bypass-agents` | `credential` | `smoke-post-deploy.yml` |
 | `vercel-bypass-app` | `credential` | `smoke-post-deploy.yml` |
+| `posthog-prod` | `credential` | Website, app, zombied, worker, and CLI PostHog env injection |
 | `clerk-prod` | `publishable-key` | Fly.io PROD `OIDC_JWKS_URL` + `OIDC_ISSUER` |
 | `clerk-prod` | `secret-key` | Fly.io PROD env var |
 | `github-app` | `app-id` | Fly.io PROD + DEV `GITHUB_APP_ID` |
@@ -56,6 +57,7 @@ Every `op://` reference the agent will use across M2_002 and the deploy pipeline
 | `github-app` | `private-key` | Fly.io DEV `GITHUB_APP_PRIVATE_KEY` |
 | `encryption-master-key` | `credential` | Fly.io DEV `ENCRYPTION_MASTER_KEY` |
 | `vercel-api-token` | `credential` | Vercel env var setup |
+| `posthog-dev` | `credential` | Website, app, zombied, worker, and CLI PostHog env injection |
 | `planetscale-dev` | `api-connection-string` | Fly.io DEV `DATABASE_URL_API` |
 | `planetscale-dev` | `worker-connection-string` | Fly.io DEV `DATABASE_URL_WORKER` |
 | `upstash-dev` | `api-url` | Fly.io DEV `REDIS_URL_API` |
@@ -163,6 +165,7 @@ Items not yet in the vault that block M2_002. Create these before re-running:
 | Item name | Field | How to get the value |
 |---|---|---|
 | `discord-ci-webhook` | `credential` | Discord → Server Settings → Integrations → Webhooks → New Webhook → Copy URL |
+| `posthog-prod` | `credential` | PostHog project API key shared by website, app, zombied, worker, and CLI |
 | `planetscale-prod` | `api-connection-string` | PlanetScale dashboard → create/get `api_accessor` connection string |
 | `planetscale-prod` | `worker-connection-string` | PlanetScale dashboard → create/get `worker_accessor` connection string |
 | `upstash-prod` | `api-url` | Upstash dashboard → Redis → `usezombie-cache` → create/get API role URL (`rediss://...`) |
@@ -181,6 +184,7 @@ Items not yet in the vault that block M2_002. Create these before re-running:
 | `upstash-dev` | `worker-url` | Upstash → Redis → `usezombie-dev` → create/get worker role URL (`rediss://...`) |
 | `fly-api-token` | `credential` | `fly tokens create deploy -o <org>` — copy output. Scoped to org, used by CI to deploy. |
 | `cloudflare-tunnel-dev` | `credential` | Agent-created: `cloudflared tunnel create zombied-dev` → base64-encode the credentials JSON → store here (see M2_002 §2.4). |
+| `posthog-dev` | `credential` | PostHog project API key shared by website, app, zombied, worker, and CLI |
 
 **ZMB_CD_PROD — create these (add to existing list):**
 

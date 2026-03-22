@@ -86,6 +86,7 @@ Agent executes these steps immediately after receiving the hand-off from 1.3.
 | `vercel-bypass-website` | `credential` | Vercel → `usezombie-website` → Deployment Protection → Bypass |
 | `vercel-bypass-agents` | `credential` | Vercel → `usezombie-agents-sh` → Deployment Protection → Bypass |
 | `vercel-bypass-app` | `credential` | Vercel → `usezombie-app` → Deployment Protection → Bypass |
+| `posthog-prod` | `credential` | PostHog project API key shared by website, app, zombied, worker, and CLI |
 | `clerk-prod` | `publishable-key`, `secret-key` | Clerk PROD instance API Keys |
 | `github-app` | `app-id` | GitHub App → App ID (numeric) |
 | `github-app` | `private-key` | GitHub App → Generate a private key → PEM contents |
@@ -99,6 +100,7 @@ Agent executes these steps immediately after receiving the hand-off from 1.3.
 |---|---|---|
 | `clerk-dev` | `publishable-key`, `secret-key` | Clerk DEV instance API Keys |
 | `vercel-api-token` | `credential` | Vercel Account Settings → Tokens |
+| `posthog-dev` | `credential` | PostHog project API key shared by website, app, zombied, worker, and CLI |
 | `github-app` | `app-id` | Same GitHub App — reuse PROD app-id for DEV |
 | `github-app` | `private-key` | Same GitHub App PEM |
 | `encryption-master-key` | `credential` | `openssl rand -hex 32` — DEV key (must differ from PROD) |
@@ -256,12 +258,21 @@ Agent reads project IDs and API token from 1Password, sets via Vercel API (`PATC
 | `NEXT_PUBLIC_API_URL` | `https://api.dev.usezombie.com` | `https://api.usezombie.com` |
 | `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Clerk DEV publishable key | Clerk PROD publishable key |
 | `CLERK_SECRET_KEY` | Clerk DEV secret key | Clerk PROD secret key |
+| `NEXT_PUBLIC_POSTHOG_KEY` | `op://$VAULT_DEV/posthog-dev/credential` | `op://$VAULT_PROD/posthog-prod/credential` |
 
 **`usezombie-agents-sh`** and **`usezombie-website`:**
 
 | Variable | Preview | Production |
 |---|---|---|
 | `VITE_APP_BASE_URL` | `https://app.dev.usezombie.com` | `https://app.usezombie.com` |
+| `VITE_POSTHOG_KEY` | `op://$VAULT_DEV/posthog-dev/credential` | `op://$VAULT_PROD/posthog-prod/credential` |
+
+**`zombied` API + worker + `zombiectl`:**
+
+| Variable | Preview | Production |
+|---|---|---|
+| `POSTHOG_API_KEY` | `op://$VAULT_DEV/posthog-dev/credential` | `op://$VAULT_PROD/posthog-prod/credential` |
+| `ZOMBIE_POSTHOG_KEY` | `op://$VAULT_DEV/posthog-dev/credential` | `op://$VAULT_PROD/posthog-prod/credential` |
 
 ---
 

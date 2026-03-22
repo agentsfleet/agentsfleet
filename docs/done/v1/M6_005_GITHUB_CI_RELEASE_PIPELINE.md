@@ -86,14 +86,23 @@ Configure in each project → Settings → Environment Variables.
 | `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Clerk DEV publishable key | Clerk PROD publishable key |
 | `CLERK_SECRET_KEY` | Clerk DEV secret key | Clerk PROD secret key |
 | `NEXT_PUBLIC_API_URL` | `https://api.dev.usezombie.com` | `https://api.usezombie.com` |
+| `NEXT_PUBLIC_POSTHOG_KEY` | `op://$VAULT_DEV/posthog-dev/credential` | `op://$VAULT_PROD/posthog-prod/credential` |
 
 **`usezombie-agents-sh`** and **`usezombie-website`**
 
 | Variable | Preview | Production |
 |---|---|---|
 | `VITE_APP_BASE_URL` | `https://app.dev.usezombie.com` | `https://app.usezombie.com` |
+| `VITE_POSTHOG_KEY` | `op://$VAULT_DEV/posthog-dev/credential` | `op://$VAULT_PROD/posthog-prod/credential` |
 
 > Without explicit Preview scoping, Vite builds with `import.meta.env.PROD=true` and falls back to the production URL. Explicit scoping ensures preview smoke tests hit the dev API/app.
+
+**Runtime / operator surfaces**
+
+| Variable | DEV | PROD |
+|---|---|---|
+| `POSTHOG_API_KEY` | `op://$VAULT_DEV/posthog-dev/credential` | `op://$VAULT_PROD/posthog-prod/credential` |
+| `ZOMBIE_POSTHOG_KEY` | `op://$VAULT_DEV/posthog-dev/credential` | `op://$VAULT_PROD/posthog-prod/credential` |
 
 ### Vercel Bypass Secrets
 

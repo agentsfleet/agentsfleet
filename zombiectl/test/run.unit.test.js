@@ -22,7 +22,10 @@ function makeDeps(overrides = {}) {
       return { options, positionals };
     },
     printJson: (_s, v) => {},
-    printKeyValue: () => {},
+    printKeyValue: (stream, rows) => {
+      for (const [key, value] of Object.entries(rows)) stream.write(`${key}: ${value}\n`);
+    },
+    printSection: (stream, title) => stream.write(`${title}\n`),
     printTable: () => {},
     request: async () => ({}),
     saveCredentials: async () => {},
@@ -52,7 +55,8 @@ describe("commandRun", () => {
     const core = createCoreHandlers(ctx, workspaces, deps);
     const code = await core.commandRun(["--workspace-id", WS_ID]);
     expect(code).toBe(0);
-    expect(out.read()).toContain("run queued");
+    expect(out.read()).toContain("Run queued");
+    expect(out.read()).toContain(RUN_ID_1);
   });
 
   test("auto-picks first spec when no --spec-id", async () => {
@@ -107,6 +111,7 @@ describe("commandRun", () => {
     const code = await core.commandRun(["status", RUN_ID_1]);
     expect(code).toBe(0);
     expect(calledPath).toContain(RUN_ID_1);
+    expect(out.read()).toContain("Run status");
     expect(out.read()).toContain("COMPLETED");
   });
 

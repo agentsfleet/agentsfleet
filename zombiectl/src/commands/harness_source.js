@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { queueCliAnalyticsEvent, setCliAnalyticsContext } from "../lib/analytics.js";
 
 export async function commandHarnessSourcePut(ctx, parsed, workspaceId, deps) {
   const {
@@ -7,6 +8,8 @@ export async function commandHarnessSourcePut(ctx, parsed, workspaceId, deps) {
     apiHeaders,
     ui,
     printJson,
+    printKeyValue = () => {},
+    printSection = () => {},
     writeLine,
     readFile = fs.readFile,
     resolvePath = path.resolve,
@@ -44,7 +47,26 @@ export async function commandHarnessSourcePut(ctx, parsed, workspaceId, deps) {
     body: JSON.stringify(body),
   });
 
+  setCliAnalyticsContext(ctx, {
+    workspace_id: workspaceId,
+    agent_id: body.agent_id,
+    harness_name: body.name,
+    harness_config_version_id: res.config_version_id,
+    harness_source_bytes: sizeBytes,
+  });
+  queueCliAnalyticsEvent(ctx, "harness_source_uploaded", {
+    workspace_id: workspaceId,
+    harness_config_version_id: res.config_version_id,
+  });
   if (ctx.jsonMode) printJson(ctx.stdout, res);
-  else writeLine(ctx.stdout, ui.ok(`harness source stored config_version_id=${res.config_version_id}`));
+  else {
+    printSection(ctx.stdout, "Harness source stored");
+    printKeyValue(ctx.stdout, {
+      workspace_id: workspaceId,
+      config_version_id: res.config_version_id,
+      name: body.name,
+      size_bytes: sizeBytes,
+    });
+  }
   return 0;
 }

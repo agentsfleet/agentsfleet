@@ -83,16 +83,16 @@ test.describe("Humans vs Agents link coverage", () => {
 
     await expect(nav.getByRole("link", { name: "Docs" })).toHaveAttribute("href", "https://docs.usezombie.com");
 
-    await expect(page.getByRole("link", { name: "Install Zombiectl" })).toHaveAttribute("href", "https://docs.usezombie.com/quickstart");
-    await expect(page.getByRole("link", { name: "Read the docs" })).toHaveAttribute("href", "https://docs.usezombie.com");
-    await expect(page.getByRole("link", { name: "Setup your personal dashboard" })).toHaveAttribute(
+    await expect(page.locator('a[href="https://docs.usezombie.com/quickstart"]').filter({ hasText: "Install Zombiectl" })).toHaveCount(1);
+    await expect(page.locator('a[href="https://docs.usezombie.com"]').filter({ hasText: "Read the docs" })).toHaveCount(1);
+    await expect(page.locator("a").filter({ hasText: "Setup your personal dashboard" })).toHaveAttribute(
       "href",
       /app\.(dev\.)?usezombie\.com/
     );
 
     const contractPaths = ["/openapi.json", "/agent-manifest.json", "/skill.md", "/llms.txt", "/heartbeat"];
     for (const endpoint of contractPaths) {
-      await expect(page.getByRole("link", { name: endpoint, exact: true })).toHaveAttribute("href", endpoint);
+      await expect(page.locator(`a[href="${endpoint}"]`)).toHaveCount(1);
     }
     await assertFooterLinks(page);
   });

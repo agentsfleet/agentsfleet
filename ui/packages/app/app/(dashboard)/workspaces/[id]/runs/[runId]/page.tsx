@@ -1,10 +1,12 @@
 import { auth } from "@clerk/nextjs/server";
 import { getRun, listRunTransitions } from "@/lib/api";
+import AnalyticsPageEvent from "@/components/analytics/AnalyticsPageEvent";
 import RunStatus from "@/components/domain/RunStatus";
 import PipelineStage from "@/components/domain/PipelineStage";
 import { notFound } from "next/navigation";
 import { formatDate, formatDuration } from "@/lib/utils";
 import type { RunStatus as RunStatusType } from "@/lib/types";
+import TrackedAnchor from "@/components/analytics/TrackedAnchor";
 import { ArrowLeftIcon, ExternalLinkIcon, RefreshCwIcon } from "lucide-react";
 
 export const dynamic = "force-dynamic";
@@ -39,10 +41,47 @@ export default async function RunDetailPage({
 
   return (
     <div>
+      <AnalyticsPageEvent
+        event="run_detail_viewed"
+        properties={{
+          source: "run_page",
+          surface: "run_detail",
+          workspace_id: id,
+          run_id: runId,
+          run_status: run.status,
+          run_attempts: run.attempts,
+          has_error: Boolean(run.error),
+          has_pr_url: Boolean(run.pr_url),
+        }}
+      />
+      {run.error ? (
+        <AnalyticsPageEvent
+          event="run_error_viewed"
+          properties={{
+            source: "run_page",
+            surface: "run_detail",
+            workspace_id: id,
+            run_id: runId,
+            run_status: run.status,
+            error_message: run.error,
+          }}
+        />
+      ) : null}
       {/* Back nav */}
-      <a href={`/workspaces/${id}`} className="run-back">
+      <TrackedAnchor
+        href={`/workspaces/${id}`}
+        className="run-back"
+        event="run_navigation_clicked"
+        properties={{
+          source: "run_page",
+          surface: "run_detail",
+          workspace_id: id,
+          run_id: runId,
+          target: "workspace_back",
+        }}
+      >
         <ArrowLeftIcon size={14} /> Workspace
-      </a>
+      </TrackedAnchor>
 
       {/* Run header */}
       <div className="mc-page-header" style={{ marginTop: "1rem" }}>
@@ -53,14 +92,38 @@ export default async function RunDetailPage({
         <div className="run-header-right">
           <RunStatus status={run.status} />
           {(run.status === "FAILED" || run.status === "RETRYING") && (
-            <a href={`/workspaces/${id}/runs/${runId}/retry`} className="run-btn-primary">
+            <TrackedAnchor
+              href={`/workspaces/${id}/runs/${runId}/retry`}
+              className="run-btn-primary"
+              event="run_retry_clicked"
+              properties={{
+                source: "run_page",
+                surface: "run_detail",
+                workspace_id: id,
+                run_id: runId,
+                run_status: run.status,
+              }}
+            >
               <RefreshCwIcon size={13} /> Retry
-            </a>
+            </TrackedAnchor>
           )}
           {run.pr_url && (
-            <a href={run.pr_url} target="_blank" rel="noopener noreferrer" className="run-btn-ghost">
+            <TrackedAnchor
+              href={run.pr_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="run-btn-ghost"
+              event="run_pr_clicked"
+              properties={{
+                source: "run_page",
+                surface: "run_detail",
+                workspace_id: id,
+                run_id: runId,
+                target: run.pr_url,
+              }}
+            >
               View PR <ExternalLinkIcon size={13} />
-            </a>
+            </TrackedAnchor>
           )}
         </div>
       </div>

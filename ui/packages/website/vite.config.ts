@@ -11,6 +11,8 @@ export default defineConfig({
     include: ["src/**/*.test.{ts,tsx}"],
     exclude: ["tests/e2e/**", "node_modules/**", "dist/**"],
     css: true,
+    maxWorkers: 2,
+    minWorkers: 1,
     coverage: {
       provider: "v8",
       reporter: ["text", "json-summary", "lcov"],

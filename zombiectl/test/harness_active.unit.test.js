@@ -44,7 +44,8 @@ test("commandHarnessActive falls back to default-v1 for null fields", async () =
     apiHeaders: () => ({}),
     ui,
     printJson: () => {},
-    writeLine: (_stream, line = "") => { output += line; },
+    printSection: (_stream, title) => { output += title; },
+    printKeyValue: (_stream, rows) => { output += Object.values(rows).join(" "); },
   };
   const parsed = { options: {}, positionals: [] };
   await commandHarnessActive({ stdout: makeNoop(), stderr: makeNoop(), jsonMode: false }, parsed, "ws_123", deps);

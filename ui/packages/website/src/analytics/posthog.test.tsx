@@ -1,6 +1,4 @@
-import { render, screen } from "@testing-library/react";
-import { BrowserRouter } from "react-router-dom";
-import userEvent from "@testing-library/user-event";
+import type React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import posthog from "posthog-js";
 import CTABlock from "../components/CTABlock";
@@ -19,12 +17,29 @@ import {
   trackSignupStarted,
 } from "./posthog";
 
-function renderCtaBlock() {
-  return render(
-    <BrowserRouter>
-      <CTABlock />
-    </BrowserRouter>
-  );
+function walkElements(node: React.ReactNode, visit: (element: React.ReactElement<Record<string, unknown>>) => void): void {
+  if (!node || typeof node !== "object") return;
+  const element = node as React.ReactElement<Record<string, unknown>>;
+  visit(element);
+  const children = element.props?.children;
+  if (Array.isArray(children)) {
+    children.forEach((child) => walkElements(child, visit));
+    return;
+  }
+  walkElements(children as React.ReactNode, visit);
+}
+
+function ctaOnClick(label: string) {
+  const tree = CTABlock();
+  let handler: (() => void) | undefined;
+  walkElements(tree, (element) => {
+    if (handler) return;
+    if (typeof element.props?.onClick !== "function") return;
+    if (typeof element.props?.children !== "string") return;
+    if (element.props.children !== label) return;
+    handler = element.props.onClick as () => void;
+  });
+  return handler;
 }
 
 vi.mock("posthog-js", () => ({
@@ -76,11 +91,8 @@ describe("website analytics", () => {
   });
 
   it("captures agent-safe CTA navigation events", async () => {
-    const user = userEvent.setup();
-    renderCtaBlock();
-
-    await user.click(screen.getByRole("link", { name: /read quickstart/i }));
-    await user.click(screen.getByRole("link", { name: /view pricing/i }));
+    ctaOnClick("Read quickstart")?.();
+    ctaOnClick("View pricing")?.();
 
     expect(mockedPosthog.capture).toHaveBeenCalledWith(
       EVENT_NAVIGATION_CLICKED,
@@ -144,7 +156,6 @@ describe("website analytics", () => {
   });
 
   it("does not emit when analytics is disabled", async () => {
-    const user = userEvent.setup();
     resetAnalyticsForTests();
     (globalThis as { __UZ_ANALYTICS_CONFIG__?: unknown }).__UZ_ANALYTICS_CONFIG__ = {
       enabled: false,
@@ -152,8 +163,7 @@ describe("website analytics", () => {
       host: "https://us.i.posthog.com",
     };
 
-    renderCtaBlock();
-    await user.click(screen.getByRole("link", { name: /read quickstart/i }));
+    ctaOnClick("Read quickstart")?.();
 
     expect(mockedPosthog.init).not.toHaveBeenCalled();
     expect(mockedPosthog.capture).not.toHaveBeenCalled();

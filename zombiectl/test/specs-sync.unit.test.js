@@ -22,7 +22,10 @@ function makeDeps(overrides = {}) {
       return { options, positionals };
     },
     printJson: (_s, v) => {},
-    printKeyValue: () => {},
+    printKeyValue: (stream, rows) => {
+      for (const [key, value] of Object.entries(rows)) stream.write(`${key}: ${value}\n`);
+    },
+    printSection: (stream, title) => stream.write(`${title}\n`),
     printTable: () => {},
     request: async () => ({}),
     saveCredentials: async () => {},
@@ -50,7 +53,8 @@ describe("commandSpecsSync", () => {
     const code = await core.commandSpecsSync([]);
     expect(code).toBe(0);
     expect(calledPath).toContain(WS_ID);
-    expect(out.read()).toContain("specs synced");
+    expect(out.read()).toContain("Specs synced");
+    expect(out.read()).toContain(WS_ID);
   });
 
   test("missing workspace_id error", async () => {

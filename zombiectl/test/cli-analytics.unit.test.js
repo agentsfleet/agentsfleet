@@ -100,27 +100,37 @@ test("runCli tracks login success with post-login distinct id and shuts down ana
 
       assert.equal(code, 0);
       assert.equal(pollCount, 1);
-      assert.equal(events.length, 3);
-      assert.deepEqual(
-        events.map(({ event, distinctId, properties }) => ({ event, distinctId, properties })),
-        [
-          {
-            event: "cli_command_started",
-            distinctId: null,
-            properties: { command: "login", json_mode: "false" },
-          },
-          {
-            event: "cli_command_finished",
-            distinctId: null,
-            properties: { command: "login", exit_code: "0" },
-          },
-          {
-            event: "user_authenticated",
-            distinctId: "user_login_123",
-            properties: { command: "login" },
-          },
-        ],
-      );
+      assert.equal(events.length, 4);
+      assert.deepEqual(events.map(({ event }) => event), [
+        "cli_command_started",
+        "cli_command_finished",
+        "user_authenticated",
+        "login_completed",
+      ]);
+      assert.deepEqual(events[0], {
+        client: analyticsClient,
+        distinctId: null,
+        event: "cli_command_started",
+        properties: { command: "login", json_mode: "false" },
+      });
+      assert.deepEqual(events[1], {
+        client: analyticsClient,
+        distinctId: null,
+        event: "cli_command_finished",
+        properties: { command: "login", exit_code: "0", session_id: "sess_analytics" },
+      });
+      assert.deepEqual(events[2], {
+        client: analyticsClient,
+        distinctId: "user_login_123",
+        event: "user_authenticated",
+        properties: { command: "login", session_id: "sess_analytics" },
+      });
+      assert.deepEqual(events[3], {
+        client: analyticsClient,
+        distinctId: "user_login_123",
+        event: "login_completed",
+        properties: { command: "login", session_id: "sess_analytics" },
+      });
       assert.equal(shutdownClient, analyticsClient);
     });
   });
@@ -162,26 +172,53 @@ test("runCli tracks workspace creation with existing distinct id", async () => {
       });
 
       assert.equal(code, 0);
-      assert.deepEqual(
-        events.map(({ event, distinctId, properties }) => ({ event, distinctId, properties })),
-        [
-          {
-            event: "cli_command_started",
-            distinctId: "user_workspace_456",
-            properties: { command: "workspace", json_mode: "false" },
-          },
-          {
-            event: "cli_command_finished",
-            distinctId: "user_workspace_456",
-            properties: { command: "workspace", exit_code: "0" },
-          },
-          {
-            event: "workspace_created",
-            distinctId: "user_workspace_456",
-            properties: { command: "workspace" },
-          },
-        ],
-      );
+      assert.equal(events.length, 4);
+      assert.deepEqual(events.map(({ event }) => event), [
+        "cli_command_started",
+        "cli_command_finished",
+        "workspace_created",
+        "workspace_add_completed",
+      ]);
+      assert.deepEqual(events[0], {
+        client: analyticsClient,
+        distinctId: "user_workspace_456",
+        event: "cli_command_started",
+        properties: { command: "workspace", json_mode: "false" },
+      });
+      assert.deepEqual(events[1], {
+        client: analyticsClient,
+        distinctId: "user_workspace_456",
+        event: "cli_command_finished",
+        properties: {
+          command: "workspace",
+          exit_code: "0",
+          workspace_id: "ws_123456789abc",
+          repo_url: "https://github.com/acme/repo",
+          branch: "main",
+        },
+      });
+      assert.deepEqual(events[2], {
+        client: analyticsClient,
+        distinctId: "user_workspace_456",
+        event: "workspace_created",
+        properties: {
+          command: "workspace",
+          workspace_id: "ws_123456789abc",
+          repo_url: "https://github.com/acme/repo",
+          branch: "main",
+        },
+      });
+      assert.deepEqual(events[3], {
+        client: analyticsClient,
+        distinctId: "user_workspace_456",
+        event: "workspace_add_completed",
+        properties: {
+          command: "workspace",
+          workspace_id: "ws_123456789abc",
+          repo_url: "https://github.com/acme/repo",
+          branch: "main",
+        },
+      });
     });
   });
 });

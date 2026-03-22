@@ -1,4 +1,5 @@
 import { AGENTS_PATH } from "../lib/api-paths.js";
+import { queueCliAnalyticsEvent, setCliAnalyticsContext } from "../lib/analytics.js";
 
 export async function commandAgentHarness(ctx, parsed, agentId, deps) {
   const { request, apiHeaders, printJson, ui, writeLine } = deps;
@@ -23,6 +24,15 @@ export async function commandAgentHarness(ctx, parsed, agentId, deps) {
       headers: apiHeaders(ctx),
     },
   );
+  setCliAnalyticsContext(ctx, {
+    agent_id: agentId,
+    change_id: res.change_id,
+    reverted_from: res.reverted_from,
+  });
+  queueCliAnalyticsEvent(ctx, "agent_harness_reverted", {
+    agent_id: agentId,
+    change_id: res.change_id,
+  });
 
   if (ctx.jsonMode) {
     printJson(ctx.stdout, res);

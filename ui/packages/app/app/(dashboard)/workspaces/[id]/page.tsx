@@ -1,7 +1,9 @@
 import { auth } from "@clerk/nextjs/server";
 import { getWorkspace, listRuns } from "@/lib/api";
+import AnalyticsPageEvent from "@/components/analytics/AnalyticsPageEvent";
 import RunRow from "@/components/domain/RunRow";
 import PipelineStage from "@/components/domain/PipelineStage";
+import TrackedAnchor from "@/components/analytics/TrackedAnchor";
 import { PauseIcon, PlayIcon, RefreshCwIcon } from "lucide-react";
 import { notFound } from "next/navigation";
 import type { RunStatus } from "@/lib/types";
@@ -36,6 +38,19 @@ export default async function WorkspacePage({ params }: { params: Promise<{ id: 
 
   return (
     <div>
+      <AnalyticsPageEvent
+        event="workspace_detail_viewed"
+        properties={{
+          source: "workspace_page",
+          surface: "workspace_detail",
+          workspace_id: id,
+          workspace_plan: workspace.plan,
+          paused: workspace.paused,
+          workspace_count: runsRes.data.length,
+          active_run_id: activeRun?.id,
+          active_run_status: activeRun?.status,
+        }}
+      />
       {/* Workspace header */}
       <div className="mc-page-header">
         <div>
@@ -44,17 +59,47 @@ export default async function WorkspacePage({ params }: { params: Promise<{ id: 
         </div>
         <div className="ws-actions">
           {workspace.paused ? (
-            <a href={`/workspaces/${id}/resume`} className="ws-btn ws-btn-ghost">
+            <TrackedAnchor
+              href={`/workspaces/${id}/resume`}
+              className="ws-btn ws-btn-ghost"
+              event="workspace_action_clicked"
+              properties={{
+                source: "workspace_page",
+                surface: "workspace_detail",
+                workspace_id: id,
+                target: "resume",
+              }}
+            >
               <PlayIcon size={14} /> Resume
-            </a>
+            </TrackedAnchor>
           ) : (
-            <a href={`/workspaces/${id}/pause`} className="ws-btn ws-btn-ghost">
+            <TrackedAnchor
+              href={`/workspaces/${id}/pause`}
+              className="ws-btn ws-btn-ghost"
+              event="workspace_action_clicked"
+              properties={{
+                source: "workspace_page",
+                surface: "workspace_detail",
+                workspace_id: id,
+                target: "pause",
+              }}
+            >
               <PauseIcon size={14} /> Pause
-            </a>
+            </TrackedAnchor>
           )}
-          <a href={`/workspaces/${id}/runs`} className="ws-btn ws-btn-primary">
+          <TrackedAnchor
+            href={`/workspaces/${id}/runs`}
+            className="ws-btn ws-btn-primary"
+            event="workspace_action_clicked"
+            properties={{
+              source: "workspace_page",
+              surface: "workspace_detail",
+              workspace_id: id,
+              target: "all_runs",
+            }}
+          >
             <RefreshCwIcon size={14} /> All runs
-          </a>
+          </TrackedAnchor>
         </div>
       </div>
 

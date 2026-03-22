@@ -59,6 +59,35 @@ export function trackCliEvent(client, distinctId, event, properties = {}) {
   }
 }
 
+export function setCliAnalyticsContext(ctx, properties = {}) {
+  if (!ctx) return;
+  const current = ctx.analyticsContext || {};
+  ctx.analyticsContext = {
+    ...current,
+    ...sanitizeProperties(properties),
+  };
+}
+
+export function getCliAnalyticsContext(ctx) {
+  return ctx?.analyticsContext ? { ...ctx.analyticsContext } : {};
+}
+
+export function queueCliAnalyticsEvent(ctx, event, properties = {}) {
+  if (!ctx) return;
+  if (!Array.isArray(ctx.analyticsEvents)) ctx.analyticsEvents = [];
+  ctx.analyticsEvents.push({
+    event,
+    properties: sanitizeProperties(properties),
+  });
+}
+
+export function drainCliAnalyticsEvents(ctx) {
+  if (!ctx || !Array.isArray(ctx.analyticsEvents) || ctx.analyticsEvents.length === 0) return [];
+  const events = ctx.analyticsEvents.slice();
+  ctx.analyticsEvents = [];
+  return events;
+}
+
 export async function shutdownCliAnalytics(client) {
   if (!client) return;
   try {
@@ -70,8 +99,12 @@ export async function shutdownCliAnalytics(client) {
 
 export const cliAnalyticsInternals = {
   DEFAULT_POSTHOG_KEY,
+  drainCliAnalyticsEvents,
+  getCliAnalyticsContext,
+  queueCliAnalyticsEvent,
   resolveConfig,
   sanitizeProperties,
+  setCliAnalyticsContext,
 };
 
 export const cliAnalytics = {

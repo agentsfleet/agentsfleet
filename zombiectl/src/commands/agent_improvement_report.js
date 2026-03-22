@@ -1,16 +1,29 @@
 import { AGENTS_PATH } from "../lib/api-paths.js";
+import { queueCliAnalyticsEvent, setCliAnalyticsContext } from "../lib/analytics.js";
 
 export async function commandAgentImprovementReport(ctx, parsed, agentId, deps) {
-  const { request, apiHeaders, printJson, printKeyValue } = deps;
+  const { request, apiHeaders, printJson, printKeyValue, printSection = () => {} } = deps;
 
   const res = await request(ctx, `${AGENTS_PATH}${encodeURIComponent(agentId)}/improvement-report`, {
     method: "GET",
     headers: apiHeaders(ctx),
   });
+  setCliAnalyticsContext(ctx, {
+    agent_id: res.agent_id,
+    trust_level: res.trust_level,
+    proposals_generated: res.proposals_generated,
+    proposals_applied: res.proposals_applied,
+    avg_score_delta_per_applied_change: res.avg_score_delta_per_applied_change,
+  });
+  queueCliAnalyticsEvent(ctx, "agent_improvement_report_viewed", {
+    agent_id: res.agent_id,
+    proposals_generated: res.proposals_generated,
+  });
 
   if (ctx.jsonMode) {
     printJson(ctx.stdout, res);
   } else {
+    printSection(ctx.stdout, `Agent improvement report · ${res.agent_id}`);
     printKeyValue(ctx.stdout, {
       agent_id: res.agent_id,
       trust_level: res.trust_level,
