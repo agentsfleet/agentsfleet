@@ -16,6 +16,8 @@ const worker_rate_limiter = @import("worker_rate_limiter.zig");
 const worker_execute_run = @import("worker_execute_run.zig");
 const metrics = @import("../observability/metrics.zig");
 const posthog_events = @import("../observability/posthog_events.zig");
+const otel_traces = @import("../observability/otel_traces.zig");
+const trace_mod = @import("../observability/trace.zig");
 const scoring = @import("scoring.zig");
 const worker_stage_types = @import("worker_stage_types.zig");
 const worker_stage_helpers = @import("worker_stage_helpers.zig");
@@ -55,6 +57,40 @@ const StageRetryCtx = struct {
 
 fn opRunStage(ctx: StageRetryCtx, _: u32) !agents.AgentResult {
     return agents.runByRole(ctx.alloc, ctx.binding, ctx.input);
+}
+
+fn emitAgentSpan(
+    trace_id: []const u8,
+    actor_label: []const u8,
+    result: agents.AgentResult,
+    start_ns: u64,
+) void {
+    const end_ns: u64 = @intCast(std.time.nanoTimestamp());
+    // Build a trace context for this span using the run's trace_id
+    var tc: trace_mod.TraceContext = undefined;
+    const tid_len = @min(trace_id.len, trace_mod.TRACE_ID_HEX_LEN);
+    @memcpy(tc.trace_id[0..tid_len], trace_id[0..tid_len]);
+    if (tid_len < trace_mod.TRACE_ID_HEX_LEN) {
+        @memset(tc.trace_id[tid_len..], '0');
+    }
+    const child = trace_mod.TraceContext.generate();
+    tc.span_id = child.span_id;
+    tc.parent_span_id = null;
+
+    var span = otel_traces.buildSpan(tc, "agent.call", start_ns, end_ns);
+    _ = otel_traces.addAttr(&span, "agent.actor", actor_label);
+
+    var tokens_buf: [20]u8 = undefined;
+    const tokens_str = std.fmt.bufPrint(&tokens_buf, "{d}", .{result.token_count}) catch "0";
+    _ = otel_traces.addAttr(&span, "agent.tokens", tokens_str);
+
+    var dur_buf: [20]u8 = undefined;
+    const dur_str = std.fmt.bufPrint(&dur_buf, "{d}", .{result.wall_seconds * 1000}) catch "0";
+    _ = otel_traces.addAttr(&span, "agent.duration_ms", dur_str);
+
+    _ = otel_traces.addAttr(&span, "agent.exit_ok", if (result.exit_ok) "true" else "false");
+
+    otel_traces.enqueueSpan(span);
 }
 
 fn recordScoringFailure(scoring_state: *scoring.ScoringState, err: anyerror) anyerror {
@@ -148,6 +184,7 @@ pub fn executeRun(
 
     try worker_runtime.ensureRunActive(running, deadline_ms);
     try tenant_limiter.acquireCancelable(ctx.tenant_id, plan_stage.skill_id, 1.0, running, deadline_ms);
+    const plan_stage_start_ns: u64 = @intCast(std.time.nanoTimestamp());
     const plan_result = reliable.call(agents.AgentResult, StageRetryCtx{
         .alloc = run_alloc,
         .binding = plan_binding,
@@ -161,7 +198,7 @@ pub fn executeRun(
     metrics.incAgentEchoCalls();
     metrics.addAgentTokens(plan_result.token_count);
     metrics.observeAgentDurationSeconds(plan_result.wall_seconds);
-
+    emitAgentSpan(ctx.trace_id, plan_binding.actor.label(), plan_result, plan_stage_start_ns);
 
     agents.emitNullclawRunEvent(
         ctx.run_id,
@@ -232,6 +269,7 @@ pub fn executeRun(
 
             try tenant_limiter.acquireCancelable(ctx.tenant_id, stage.skill_id, 1.0, running, deadline_ms);
             try worker_runtime.ensureRunActive(running, deadline_ms);
+            const stage_start_ns: u64 = @intCast(std.time.nanoTimestamp());
             const stage_result = reliable.call(agents.AgentResult, StageRetryCtx{
                 .alloc = run_alloc,
                 .binding = binding,
@@ -253,6 +291,7 @@ pub fn executeRun(
             }
             metrics.addAgentTokens(stage_result.token_count);
             metrics.observeAgentDurationSeconds(stage_result.wall_seconds);
+            emitAgentSpan(ctx.trace_id, binding.actor.label(), stage_result, stage_start_ns);
             agents.emitNullclawRunEvent(ctx.run_id, ctx.request_id, ctx.trace_id, attempt, stage.stage_id, stage.role_id, binding.actor, stage_result);
             posthog_events.trackAgentCompleted(
                 cfg.posthog,

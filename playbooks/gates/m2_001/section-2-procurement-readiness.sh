@@ -70,6 +70,9 @@ check_prod() {
   check_ref "op://$v/discord-ci-webhook/credential"
   check_ref "op://$v/fly-api-token/credential"
   check_ref "op://$v/posthog-prod/credential"
+  check_ref "op://$v/grafana-prod/otlp-endpoint"
+  check_ref "op://$v/grafana-prod/instance-id"
+  check_ref "op://$v/grafana-prod/api-key"
   check_ref "op://$v/cloudflare-tunnel-prod/credential"
 
   check_distinct \
@@ -100,6 +103,9 @@ check_dev() {
   check_ref "op://$v/upstash-dev/worker-url"
   check_ref "op://$v/fly-api-token/credential"
   check_ref "op://$v/posthog-dev/credential"
+  check_ref "op://$v/grafana-dev/otlp-endpoint"
+  check_ref "op://$v/grafana-dev/instance-id"
+  check_ref "op://$v/grafana-dev/api-key"
   check_ref "op://$v/cloudflare-tunnel-dev/credential"
 
   check_distinct \

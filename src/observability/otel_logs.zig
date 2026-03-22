@@ -218,7 +218,7 @@ fn flushBatch() void {
     postWithBasicAuth(alloc, cfg, OTLP_LOGS_PATH, body) catch {};
 }
 
-fn postWithBasicAuth(
+pub fn postWithBasicAuth(
     alloc: std.mem.Allocator,
     cfg: GrafanaOtlpConfig,
     path: []const u8,

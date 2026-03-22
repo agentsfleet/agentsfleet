@@ -28,6 +28,8 @@ fn signalWatcher(wstate: *worker.WorkerState) void {
 pub fn run(alloc: std.mem.Allocator) !void {
     preflight.initOtelLogs(alloc);
     defer preflight.deinitOtelLogs();
+    preflight.initOtelTraces(alloc);
+    defer preflight.deinitOtelTraces();
     log.info("startup.worker status=start", .{});
 
     log.info("startup.env_check status=start", .{});

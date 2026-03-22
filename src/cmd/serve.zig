@@ -71,6 +71,8 @@ fn signalWatcher(wstate: *worker.WorkerState) void {
 pub fn run(alloc: std.mem.Allocator) !void {
     preflight.initOtelLogs(alloc);
     defer preflight.deinitOtelLogs();
+    preflight.initOtelTraces(alloc);
+    defer preflight.deinitOtelTraces();
     log.info("startup.serve status=start", .{});
 
     const serve_port_override = parseServeArgOverrides() catch |err| {

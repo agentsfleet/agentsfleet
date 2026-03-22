@@ -1,7 +1,7 @@
 # Observability Strategy
 
-**Date:** Mar 07, 2026
-**Status:** DECISION RECORDED — implementation in M5
+**Date:** Mar 22, 2026
+**Status:** DECISION RECORDED — 2-tool, 3-signal architecture (M12_001)
 
 ---
 
@@ -11,10 +11,22 @@ usezombie uses two observability tools — Grafana and PostHog. They answer diff
 
 | Layer | Tool | Answers |
 |---|---|---|
-| Infra / ops | Grafana Cloud — Prometheus metrics, Loki logs, Tempo traces (M1_003, M4_005, M12_001) | Is the service healthy? Latency, error rates, traces, token spend alerting |
+| Infra / ops | Grafana Cloud — Prometheus metrics, Loki logs, Tempo traces (M1_003, M4_005, M12_001 WS1-WS3) | Is the service healthy? Latency, error rates, distributed traces, token spend alerting |
 | Product / users | PostHog (M5_001, M5_005, M5_006) | Who is using what? Funnels, retention, error attribution, per-user cost |
 
 LLM token/cost data is dual-emitted to both layers: Grafana metrics (`zombie_agent_tokens_total`, `zombie_agent_duration_seconds`) for ops alerting, and PostHog event properties (`agent_completed.tokens`, `agent_completed.duration_ms`) for per-user cost attribution.
+
+### Grafana 3-Signal Architecture
+
+| Signal | Exporter | Endpoint | Backend |
+|---|---|---|---|
+| Metrics | Prometheus `/metrics` scrape + OTLP push (`otel_export.zig`) | `/v1/metrics` | Grafana Prometheus |
+| Logs | OTLP push (`otel_logs.zig`) | `/v1/logs` | Grafana Loki |
+| Traces | OTLP push (`otel_traces.zig`) | `/v1/traces` | Grafana Tempo |
+
+All OTLP exporters use shared auth: `GRAFANA_OTLP_ENDPOINT`, `GRAFANA_OTLP_INSTANCE_ID`, `GRAFANA_OTLP_API_KEY` (Basic auth). Fire-and-forget — export failures never block request or worker paths.
+
+Trace propagation: inbound `traceparent` header is parsed to preserve distributed trace context. Missing headers generate a new root trace. HTTP request spans and LLM agent call spans are emitted to Tempo.
 
 ---
 

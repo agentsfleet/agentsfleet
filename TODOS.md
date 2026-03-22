@@ -180,7 +180,7 @@ picking it up in 3 months understands the motivation and where to start.
 
 ## Observability: OTLP Trace Exporter + Trace Propagation for Grafana Cloud
 
-**Status:** Superseded by `docs/spec/v1/M12_001_OBSERVABILITY_CONSOLIDATION.md` WS3
+**Status:** DONE — Implemented in `docs/spec/v1/M12_001_OBSERVABILITY_CONSOLIDATION.md` WS3
 **Tracked in:** M12_001 WS3 (OTLP Trace Propagation + Export)
 
 

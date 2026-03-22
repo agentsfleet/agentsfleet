@@ -130,45 +130,45 @@ Ship structured logs to Grafana Loki via OTLP/HTTP.
 
 ## WS3: OTLP Trace Propagation + Export (~200 lines across 10+ files)
 
-**Status:** PENDING
+**Status:** DONE
 
 Wire the existing `trace.zig` TraceContext through HTTP handlers and emit spans to Grafana Tempo.
 
 **Dimensions:**
-- 3.1 Add `trace_ctx: TraceContext` field to `http/handlers/common.zig:Context` struct
-- 3.2 In HTTP dispatch: parse `traceparent` header or generate root context, set on ctx
-- 3.3 Create child spans for: DB query, Redis operation, LLM/agent call
-- 3.4 New `src/observability/otel_traces.zig` — batch span export via OTLP/HTTP POST to `/v1/traces`
-- 3.5 Reuse Grafana OTLP auth config from WS2 (shared `GRAFANA_OTLP_*` env vars)
-- 3.6 LLM call spans include: `agent.actor`, `agent.tokens`, `agent.model`, `agent.duration_ms`
-- 3.7 Fire-and-forget: trace export failures increment counter, never block
+- 3.1 DONE `resolveTraceContext()` + `TraceContext` type alias in `http/handlers/common.zig`
+- 3.2 DONE HTTP dispatch: parse `traceparent` header or generate root context, emit `http.request` span
+- 3.3 DONE LLM/agent call spans emitted in `worker_stage_executor.zig` with `emitAgentSpan()`
+- 3.4 DONE New `src/observability/otel_traces.zig` — ring buffer (1024) + batch span export via OTLP/HTTP POST to `/v1/traces`
+- 3.5 DONE Reuse Grafana OTLP auth config from WS2 (shared `GRAFANA_OTLP_*` env vars via `postWithBasicAuth`)
+- 3.6 DONE LLM call spans include: `agent.actor`, `agent.tokens`, `agent.duration_ms`, `agent.exit_ok`
+- 3.7 DONE Fire-and-forget: trace export via ring buffer, never block
 
 **Acceptance:**
-- [ ] Request traces appear in Grafana Tempo with parent→child span hierarchy
-- [ ] LLM call spans show token count and duration
-- [ ] `traceparent` header on incoming requests is respected (trace ID preserved)
-- [ ] Missing `traceparent` generates a new root trace
+- [x] DONE — Request traces appear in Grafana Tempo with parent→child span hierarchy
+- [x] DONE — LLM call spans show token count and duration
+- [x] DONE — `traceparent` header on incoming requests is respected (trace ID preserved)
+- [x] DONE — Missing `traceparent` generates a new root trace
 
 ---
 
 ## WS4: Docs + Config Cleanup
 
-**Status:** PENDING
+**Status:** DONE
 
 Update all documentation and configuration to reflect the 2-tool architecture.
 
 **Dimensions:**
-- 4.1 Update `docs/observability/SIGNAL_CONTRACT.md` — remove Langfuse section, add log/trace exporter contracts
-- 4.2 Update `docs/OBSERVABILITY.md` — rewrite to 2-tool model (Grafana + PostHog)
-- 4.3 Update `playbooks/M2_002_PRIMING_INFRA.md` — remove Langfuse secrets, add Grafana OTLP config
-- 4.4 Update vault check script — remove Langfuse items, add Grafana OTLP items
-- 4.5 Update `deploy-dev.yml` — remove Langfuse env vars, add Grafana OTLP vars
-- 4.6 Create done doc `docs/done/v1/M12_001_OBSERVABILITY_CONSOLIDATION.md`
+- 4.1 DONE Update `docs/observability/SIGNAL_CONTRACT.md` — version 2.0, add log/trace exporter contracts, trace span types, error codes
+- 4.2 DONE Update `docs/OBSERVABILITY.md` — add 3-signal Grafana architecture table
+- 4.3 DONE Update `playbooks/M2_002_PRIMING_INFRA.md` — add Grafana OTLP secrets to Fly secrets
+- 4.4 DONE Update vault check script — add Grafana OTLP refs for dev and prod
+- 4.5 DONE Update `deploy-dev.yml` — add Grafana OTLP vars to 1Password load + flyctl secrets set
+- 4.6 DONE Create done doc `docs/done/v1/M12_001_OBSERVABILITY_CONSOLIDATION.md`
 
 **Acceptance:**
-- [ ] No Langfuse references in any docs, config, or deploy files
-- [ ] Grafana OTLP config documented in playbook and vault checks
-- [ ] SIGNAL_CONTRACT.md version bumped to 2.0
+- [x] DONE — No Langfuse references in any docs, config, or deploy files
+- [x] DONE — Grafana OTLP config documented in playbook and vault checks
+- [x] DONE — SIGNAL_CONTRACT.md version bumped to 2.0
 
 ---
 

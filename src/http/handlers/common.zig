@@ -9,9 +9,12 @@ const worker = @import("../../pipeline/worker.zig");
 const metrics = @import("../../observability/metrics.zig");
 const obs_log = @import("../../observability/logging.zig");
 const posthog_events = @import("../../observability/posthog_events.zig");
+const trace_ctx = @import("../../observability/trace.zig");
 const db = @import("../../db/pool.zig");
 const error_codes = @import("../../errors/codes.zig");
 const id_format = @import("../../types/id_format.zig");
+
+pub const TraceContext = trace_ctx.TraceContext;
 
 pub const Context = struct {
     pool: *pg.Pool,
@@ -28,6 +31,21 @@ pub const Context = struct {
     ready_max_queue_age_ms: ?i64,
     posthog: ?*posthog.PostHogClient = null,
 };
+
+/// Parse traceparent header from request, or generate a root trace context.
+pub fn resolveTraceContext(r: zap.Request) TraceContext {
+    if (r.getHeader("traceparent")) |header| {
+        if (TraceContext.fromW3CHeader(header)) |parsed| {
+            return parsed.child();
+        }
+    }
+    return TraceContext.generate();
+}
+
+/// Format trace_id from TraceContext as a slice for passing to RunContext.
+pub fn traceIdFromContext(tctx: *const TraceContext) []const u8 {
+    return tctx.traceIdSlice();
+}
 
 pub const AuthMode = enum {
     api_key,

@@ -9,6 +9,7 @@ const db = @import("../db/pool.zig");
 const git_ops = @import("../git/ops.zig");
 const obs_log = @import("../observability/logging.zig");
 const otel_logs = @import("../observability/otel_logs.zig");
+const otel_traces = @import("../observability/otel_traces.zig");
 const common = @import("common.zig");
 
 const log = std.log.scoped(.preflight);
@@ -60,6 +61,23 @@ pub fn initOtelLogs(alloc: std.mem.Allocator) void {
 pub fn deinitOtelLogs() void {
     if (otel_logs.isInstalled()) {
         otel_logs.uninstall();
+    }
+}
+
+// ---------------------------------------------------------------------------
+// OTLP trace exporter
+// ---------------------------------------------------------------------------
+
+pub fn initOtelTraces(alloc: std.mem.Allocator) void {
+    if (otel_logs.configFromEnv(alloc)) |cfg| {
+        otel_traces.install(cfg);
+        log.info("startup.otel_traces status=ok", .{});
+    }
+}
+
+pub fn deinitOtelTraces() void {
+    if (otel_traces.isInstalled()) {
+        otel_traces.uninstall();
     }
 }
 

@@ -1,18 +1,19 @@
 # Signal Ownership Contract
 
-**Version:** 1.0
-**Date:** Mar 19, 2026
+**Version:** 2.0
+**Date:** Mar 22, 2026
 **Status:** Active
 
 ---
 
 ## Ownership Boundaries
 
-### Platform Observability (Grafana)
+### Platform Observability (Grafana — 3-signal)
 
 - Logs, metrics, and traces for platform health and run lifecycle.
-- Delivered via: Prometheus `/metrics` endpoint, OTLP/HTTP JSON exporter (`POST /v1/metrics`).
-- Backend: Grafana Cloud (or compatible).
+- Delivered via: Prometheus `/metrics` endpoint, OTLP/HTTP JSON exporter (`POST /v1/metrics`), OTLP/HTTP JSON log exporter (`POST /v1/logs`), OTLP/HTTP JSON trace exporter (`POST /v1/traces`).
+- Backend: Grafana Cloud — Prometheus (metrics), Loki (logs), Tempo (traces).
+- Auth: `GRAFANA_OTLP_ENDPOINT`, `GRAFANA_OTLP_INSTANCE_ID`, `GRAFANA_OTLP_API_KEY` (Basic auth).
 
 ### Product Analytics (PostHog)
 
@@ -136,9 +137,9 @@ Buckets: `1, 3, 5, 10, 30, 60, 120, 300`.
 | `zombie_run_total_wall_seconds` | histogram | End-to-end run wall-clock duration in seconds |
 | `zombie_agent_scoring_duration_ms` | histogram | Time spent in scoreRun in milliseconds |
 
-### Traces
+### Traces (OTLP → Grafana Tempo)
 
-W3C Trace Context (`traceparent` header) for distributed tracing.
+W3C Trace Context (`traceparent` header) for distributed tracing. Spans are batch-exported via OTLP/HTTP JSON to Grafana Tempo.
 
 | Field | Format |
 |---|---|
@@ -148,6 +149,19 @@ W3C Trace Context (`traceparent` header) for distributed tracing.
 | `traceparent` | `00-{trace_id}-{span_id}-01` |
 
 Operations: `TraceContext.generate()` (root), `TraceContext.child()` (child span), `TraceContext.fromW3CHeader()` (parse inbound).
+
+#### Span Types
+
+| Span Name | Source | Attributes |
+|---|---|---|
+| `http.request` | `http/server.zig` dispatch | `http.route` |
+| `agent.call` | `pipeline/worker_stage_executor.zig` | `agent.actor`, `agent.tokens`, `agent.duration_ms`, `agent.exit_ok` |
+
+#### Trace Propagation
+
+- Incoming `traceparent` header is parsed; a child span is created under the incoming trace.
+- Missing `traceparent` generates a new root trace (`TraceContext.generate()`).
+- Export: ring buffer (1024 capacity), background flush (5s interval, 50 spans/batch), fire-and-forget.
 
 ### PostHog Events
 
@@ -180,11 +194,25 @@ In-process bounded ring buffer (`capacity=1024`) with background log sink.
 
 ## Delivery Health Signals
 
-### OTLP Exporter
+### OTLP Metrics Exporter
 
 - Fire-and-forget: export errors are logged via `.otel_export` scope, never propagated.
 - Protocol: OTLP/HTTP JSON (`POST /v1/metrics`).
 - Config: `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_SERVICE_NAME` (default: `zombied`).
+
+### OTLP Log Exporter
+
+- Fire-and-forget: ring buffer (2048 capacity), background flush (5s interval, 50 entries/batch).
+- Protocol: OTLP/HTTP JSON (`POST /v1/logs`).
+- Config: `GRAFANA_OTLP_ENDPOINT`, `GRAFANA_OTLP_INSTANCE_ID`, `GRAFANA_OTLP_API_KEY`.
+- Scope: `.otel_logs`.
+
+### OTLP Trace Exporter
+
+- Fire-and-forget: ring buffer (1024 capacity), background flush (5s interval, 50 spans/batch).
+- Protocol: OTLP/HTTP JSON (`POST /v1/traces`).
+- Config: reuses `GRAFANA_OTLP_ENDPOINT`, `GRAFANA_OTLP_INSTANCE_ID`, `GRAFANA_OTLP_API_KEY`.
+- Scope: `.otel_traces`.
 
 ---
 
@@ -201,7 +229,11 @@ All exporter failures MUST:
 
 | Code | Source | Description |
 |---|---|---|
-| `UZ-OBS-OTEL-001` | `otel_export.zig` | OTEL export failed (generic) |
+| `UZ-OBS-OTEL-001` | `otel_export.zig` | OTEL metrics export failed (generic) |
 | `UZ-OBS-OTEL-002` | `otel_export.zig` | OTEL connect failed (DNS, connection refused, timeout) |
 | `UZ-OBS-OTEL-003` | `otel_export.zig` | OTEL request failed (non-connect HTTP error) |
 | `UZ-OBS-OTEL-004` | `otel_export.zig` | OTEL unexpected status (non-2xx response) |
+| `UZ-OBS-OTEL-LOG-001` | `otel_logs.zig` | OTEL log export failed |
+| `UZ-OBS-OTEL-LOG-002` | `otel_logs.zig` | OTEL log connect failed |
+| `UZ-OBS-OTEL-TRACE-001` | `otel_traces.zig` | OTEL trace export failed |
+| `UZ-OBS-OTEL-TRACE-002` | `otel_traces.zig` | OTEL trace connect failed |

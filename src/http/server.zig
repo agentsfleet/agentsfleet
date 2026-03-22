@@ -5,6 +5,9 @@ const std = @import("std");
 const zap = @import("zap");
 const handler = @import("handler.zig");
 const router = @import("router.zig");
+const common = @import("handlers/common.zig");
+const otel_traces = @import("../observability/otel_traces.zig");
+const trace_mod = @import("../observability/trace.zig");
 const log = std.log.scoped(.http);
 
 pub const ServerConfig = struct {
@@ -28,8 +31,23 @@ fn dispatch(r: zap.Request) !void {
         r.sendBody("") catch {};
         return;
     };
-    if (dispatchMatchedRoute(r, path)) return;
+
+    // Resolve trace context from inbound traceparent header or generate root.
+    const tctx = common.resolveTraceContext(r);
+    const start_ns: u64 = @intCast(std.time.nanoTimestamp());
+
+    if (dispatchMatchedRoute(r, path)) {
+        emitRequestSpan(tctx, path, start_ns);
+        return;
+    }
     respondNotFound(r);
+}
+
+fn emitRequestSpan(tctx: common.TraceContext, path: []const u8, start_ns: u64) void {
+    const end_ns: u64 = @intCast(std.time.nanoTimestamp());
+    var span = otel_traces.buildSpan(tctx, "http.request", start_ns, end_ns);
+    _ = otel_traces.addAttr(&span, "http.route", path);
+    otel_traces.enqueueSpan(span);
 }
 
 fn dispatchMatchedRoute(r: zap.Request, path: []const u8) bool {
