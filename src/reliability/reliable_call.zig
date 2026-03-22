@@ -76,7 +76,7 @@ pub fn callWithDetail(
             metrics.addBackoffWaitMs(delay_ms);
             if (retry_after_hint != null) metrics.incRetryAfterHintsApplied();
 
-            log.warn("retrying external call op={s} class={s} attempt={d}/{d} delay_ms={d} retry_after={} err={s}", .{
+            log.warn("reliability.retrying op={s} class={s} attempt={d}/{d} delay_ms={d} retry_after={} err={s}", .{
                 opts.operation_name orelse "external_call",
                 @tagName(classified.class),
                 attempt + 1,

@@ -63,7 +63,7 @@ pub fn store(
         encrypted_payload.tag[0..],
         now_ms,
     });
-    log.info("secret stored workspace_id={s} key_name={s}", .{ workspace_id, key_name });
+    log.info("secret.stored workspace_id={s} key_name={s}", .{ workspace_id, key_name });
 }
 
 /// Load and decrypt a secret from vault.secrets.
@@ -82,7 +82,7 @@ pub fn load(
     defer result.deinit();
 
     const row = try result.next() orelse {
-        log.err("secret not found workspace_id={s} key_name={s}", .{ workspace_id, key_name });
+        log.err("secret.not_found workspace_id={s} key_name={s} error_code=UZ-INTERNAL-002", .{ workspace_id, key_name });
         return cp.SecretError.NotFound;
     };
 
@@ -111,10 +111,10 @@ pub fn load(
 
     const dek = try cp.toFixed(KEY_LEN, dek_plain);
     const plaintext_result = cp.decrypt(alloc, &payload_nonce, ciphertext_copy, &payload_tag, &dek) catch |err| {
-        log.err("secret decrypt failed workspace_id={s} key_name={s}", .{ workspace_id, key_name });
+        log.err("secret.decrypt_fail workspace_id={s} key_name={s} error_code=UZ-INTERNAL-003", .{ workspace_id, key_name });
         return err;
     };
-    log.info("secret retrieved workspace_id={s} key_name={s}", .{ workspace_id, key_name });
+    log.info("secret.retrieved workspace_id={s} key_name={s}", .{ workspace_id, key_name });
     return plaintext_result;
 }
 

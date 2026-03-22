@@ -43,7 +43,7 @@ pub fn handleListRuns(ctx: *common.Context, r: zap.Request) void {
         }
     }
 
-    log.debug("list runs request workspace_id={?s} limit={d}", .{ workspace_id, limit });
+    log.debug("run.list workspace_id={?s} limit={d}", .{ workspace_id, limit });
 
     // check-pg-drain: ok — full while loop exhausts all rows, natural drain
     var runs: std.ArrayList(std.json.Value) = .{};
@@ -74,7 +74,7 @@ pub fn handleListRuns(ctx: *common.Context, r: zap.Request) void {
         appendRows(alloc, &runs, &result);
     }
 
-    log.info("runs listed workspace_id={?s} count={d}", .{ workspace_id, runs.items.len });
+    log.info("run.listed workspace_id={?s} count={d}", .{ workspace_id, runs.items.len });
 
     common.writeJson(r, .ok, .{
         .runs = runs.items,

@@ -47,7 +47,7 @@ Prove zero behavior regression with deterministic gates.
 
 **Dimensions:**
 - 3.1 DONE Every targeted file and any new replacement file in this workstream is < 400 lines
-- 3.2 DONE `make lint`, `make test-unit`, and `python3 scripts/check-pg-drain.py` pass after refactor
+- 3.2 DONE `make lint`, `make test-unit`, and `python3 lint-zig.py` pass after refactor
 - 3.3 DONE Relevant integration/contract tests pass for worker execution path, scoring persistence path, and workspace credit path
 - 3.4 DONE No newly unreachable code introduced; all extracted functions remain reachable via updated call sites
 

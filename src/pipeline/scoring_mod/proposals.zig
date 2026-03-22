@@ -72,7 +72,7 @@ pub fn maybePersistTriggerProposal(
         scored_at,
         scored_at,
     });
-    log.info("proposal_created proposal_id={s} agent_id={s} approval_mode={s}", .{ proposal_id, agent_id, approval_mode.label() });
+    log.info("scoring.proposal_created proposal_id={s} agent_id={s} approval_mode={s}", .{ proposal_id, agent_id, approval_mode.label() });
 }
 
 pub fn reconcilePendingProposalGenerations(
@@ -148,7 +148,7 @@ pub fn reconcilePendingProposalGenerations(
             std.time.milliTimestamp(),
         });
         result.ready += 1;
-        log.info("proposal_generation_ready proposal_id={s} agent_id={s}", .{ pending.proposal_id, pending.agent_id });
+        log.info("scoring.proposal_generation_ready proposal_id={s} agent_id={s}", .{ pending.proposal_id, pending.agent_id });
     }
 
     return result;

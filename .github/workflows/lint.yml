@@ -47,4 +47,4 @@ jobs:
       - name: Run lint gate
         run: make lint
       - name: Run pg-drain check
-        run: python3 scripts/check-pg-drain.py src
+        run: python3 lint-zig.py src

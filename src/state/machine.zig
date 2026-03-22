@@ -189,7 +189,7 @@ pub fn transition(
     }
 
     if (!isAllowed(current.state, to)) {
-        log.err("invalid transition run_id={s} from={s} to={s}", .{
+        log.err("state.invalid_transition run_id={s} from={s} to={s}", .{
             run_id,
             current.state.label(),
             to.label(),
@@ -232,7 +232,7 @@ pub fn transition(
         defer r.deinit();
 
         _ = try r.next() orelse {
-            log.err("cas transition failed run_id={s} expected={s} to={s}", .{
+            log.err("state.cas_transition_fail run_id={s} expected={s} to={s}", .{
                 run_id,
                 current.state.label(),
                 to.label(),
@@ -243,7 +243,7 @@ pub fn transition(
     }
 
     const dead_lettered = reconcileSideEffectsForRunState(conn, run_id, to) catch |err| blk: {
-        obs_log.logWarnErr(.state, err, "side-effect reconciliation failed run_id={s} to={s}", .{
+        obs_log.logWarnErr(.state, err, "state.side_effect_reconcile_fail run_id={s} to={s}", .{
             run_id,
             to.label(),
         });
@@ -263,7 +263,7 @@ pub fn transition(
         }
     }
 
-    log.info("transition run_id={s} request_id={s} {s}→{s} actor={s}", .{
+    log.info("state.transition run_id={s} request_id={s} from={s} to={s} actor={s}", .{
         run_id,
         request_id,
         current.state.label(),

@@ -44,7 +44,7 @@ pub fn generateProposalChanges(
         rationale: []const u8,
     };
 
-    log.info("proposal generated agent_id={s} stage_id={s} trigger={s}", .{ agent_id, proposed_stage_id, trigger_reason });
+    log.info("scoring.proposal_generated agent_id={s} stage_id={s} trigger={s}", .{ agent_id, proposed_stage_id, trigger_reason });
 
     return std.json.Stringify.valueAlloc(alloc, &[_]Change{.{
         .target_field = shared.PROPOSAL_TARGET_STAGE_INSERT,

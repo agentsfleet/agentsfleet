@@ -8,6 +8,7 @@ const queue_redis = @import("../../queue/redis.zig");
 const worker = @import("../../pipeline/worker.zig");
 const metrics = @import("../../observability/metrics.zig");
 const obs_log = @import("../../observability/logging.zig");
+const posthog_events = @import("../../observability/posthog_events.zig");
 const db = @import("../../db/pool.zig");
 const error_codes = @import("../../errors/codes.zig");
 const id_format = @import("../../types/id_format.zig");
@@ -200,6 +201,16 @@ pub fn requireUuidV7Id(
 }
 
 pub fn writeAuthError(r: zap.Request, req_id: []const u8, err: AuthError) void {
+    writeAuthErrorWithTracking(r, req_id, err, null);
+}
+
+pub fn writeAuthErrorWithTracking(r: zap.Request, req_id: []const u8, err: AuthError, ph_client: ?*posthog.PostHogClient) void {
+    const reason: []const u8 = switch (err) {
+        AuthError.TokenExpired => "token_expired",
+        AuthError.Unauthorized => "unauthorized",
+        AuthError.AuthServiceUnavailable => "auth_service_unavailable",
+    };
+    posthog_events.trackAuthRejected(ph_client, reason, req_id);
     switch (err) {
         AuthError.TokenExpired => errorResponse(r, .unauthorized, error_codes.ERR_TOKEN_EXPIRED, "token expired", req_id),
         AuthError.Unauthorized => errorResponse(r, .unauthorized, error_codes.ERR_UNAUTHORIZED, "Invalid or missing token", req_id),

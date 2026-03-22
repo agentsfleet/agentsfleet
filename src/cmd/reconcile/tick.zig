@@ -31,13 +31,13 @@ pub fn reconcileTick(pool: *db.Pool, posthog_client: ?*posthog.PostHogClient) !o
     const billing_result = try billing_reconciler.reconcilePending(std.heap.page_allocator, conn, adapter, billing_reconciler.DEFAULT_BATCH_LIMIT);
     const proposal_result = try proposals.reconcilePendingProposalGenerations(conn, std.heap.page_allocator, 0);
     if (proposal_result.ready > 0 or proposal_result.rejected > 0) {
-        log.info("proposal_generation_reconciled ready={d} rejected={d}", .{ proposal_result.ready, proposal_result.rejected });
+        log.info("reconcile.proposal_generation ready={d} rejected={d}", .{ proposal_result.ready, proposal_result.rejected });
     }
     const reconcile_now_ms = std.time.milliTimestamp();
     const auto_approval_result = try proposals.reconcileDueAutoApprovalProposals(conn, std.heap.page_allocator, 0, reconcile_now_ms);
     if (auto_approval_result.applied > 0 or auto_approval_result.config_changed > 0 or auto_approval_result.rejected > 0 or auto_approval_result.expired > 0) {
         log.info(
-            "proposal_auto_approval_reconciled applied={d} config_changed={d} rejected={d} expired={d}",
+            "reconcile.proposal_auto_approval applied={d} config_changed={d} rejected={d} expired={d}",
             .{ auto_approval_result.applied, auto_approval_result.config_changed, auto_approval_result.rejected, auto_approval_result.expired },
         );
     }

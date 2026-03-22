@@ -74,7 +74,7 @@ pub fn enforceServeMigrationSafety(
     switch (decision) {
         .allow_without_running => return,
         .run_required => {
-            log.warn("pending migrations detected; MIGRATE_ON_START enabled -> applying at serve startup", .{});
+            log.warn("startup.migration_auto_apply status=start reason=MIGRATE_ON_START enabled", .{});
             try db.runMigrations(pool, &migrations);
 
             const post = try db.inspectMigrationState(pool, &migrations);

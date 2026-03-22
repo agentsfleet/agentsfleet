@@ -77,7 +77,7 @@ pub fn runDaemon(alloc: std.mem.Allocator, pool: *db.Pool, posthog_client: ?*pos
         std.process.exit(1);
     };
     if (!lock_acquired) {
-        log.warn("reconcile daemon lock already held by another process; exiting", .{});
+        log.warn("reconcile.lock_held status=skip reason=another process holds lock", .{});
         return;
     }
 
@@ -98,7 +98,7 @@ pub fn runDaemon(alloc: std.mem.Allocator, pool: *db.Pool, posthog_client: ?*pos
     var metrics_thread = try std.Thread.spawn(.{}, metrics_mod.metricsServerThread, .{metrics_port});
     defer metrics_thread.join();
 
-    log.info("reconcile daemon started interval_seconds={d} metrics_port={d}", .{ interval_seconds, metrics_port });
+    log.info("reconcile.daemon_started interval_seconds={d} metrics_port={d}", .{ interval_seconds, metrics_port });
     while (!daemon_shutdown_requested.load(.acquire)) {
         const now_ms = std.time.milliTimestamp();
         daemon_state.last_attempt_ms.store(now_ms, .release);
@@ -123,7 +123,7 @@ pub fn runDaemon(alloc: std.mem.Allocator, pool: *db.Pool, posthog_client: ?*pos
 
     daemon_state.running.store(false, .release);
     zap.stop();
-    log.info("reconcile daemon stopped uptime_ms={d} ticks={d}", .{
+    log.info("reconcile.daemon_stopped uptime_ms={d} ticks={d}", .{
         std.time.milliTimestamp() - daemon_state.started_ms,
         daemon_state.total_ticks.load(.acquire),
     });

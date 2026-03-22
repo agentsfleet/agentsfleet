@@ -106,7 +106,7 @@ pub fn activateProfile(
     try commitTx(conn);
     tx_open = false;
 
-    log.info("activate ok workspace_id={s} agent_id={s} config_version_id={s}", .{ workspace_id, agent_id, input.config_version_id });
+    log.info("harness.activate_ok workspace_id={s} agent_id={s} config_version_id={s}", .{ workspace_id, agent_id, input.config_version_id });
 
     return .{
         .agent_id = agent_id,

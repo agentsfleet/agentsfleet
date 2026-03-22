@@ -84,7 +84,7 @@ pub fn handleRetryRun(ctx: *common.Context, r: zap.Request, run_id: []const u8) 
     }
 
     policy.recordPolicyEvent(conn, workspace_id_for_policy, run_id, .sensitive, .allow, "m1.retry_run", "api") catch |err| {
-        obs_log.logWarnErr(.http, err, "policy event insert failed (non-fatal) run_id={s}", .{run_id});
+        obs_log.logWarnErr(.http, err, "run.policy_event_insert_fail run_id={s}", .{run_id});
     };
 
     const now_ms = std.time.milliTimestamp();
@@ -116,9 +116,9 @@ pub fn handleRetryRun(ctx: *common.Context, r: zap.Request, run_id: []const u8) 
         return;
     };
 
-    log.info("run retried run_id={s} reason={s}", .{ run_id, parsed.value.reason });
+    log.info("run.retried run_id={s} reason={s}", .{ run_id, parsed.value.reason });
     ctx.queue.xaddRun(run_id, current.attempt + 1, workspace_id_for_policy) catch |err| {
-        obs_log.logWarnErr(.http, err, "queue enqueue failed for retry run_id={s}", .{run_id});
+        obs_log.logWarnErr(.http, err, "run.queue_enqueue_fail run_id={s}", .{run_id});
         common.compensateRetryQueueFailure(conn, run_id, current.state.label(), now_ms);
         common.errorResponse(r, .service_unavailable, queue_unavailable_code, queue_unavailable_message, req_id);
         return;

@@ -14,6 +14,13 @@ paths = [
 ]
 
 [[allowlists]]
+description = "Ignore UZ-* error codes in structured log messages (false positive: generic-api-key rule)"
+regexTarget = "match"
+regexes = [
+  '''UZ-[A-Z]+-\d{3}''',
+]
+
+[[allowlists]]
 description = "Ignore Zig cache and temp directories"
 paths = [
   '''(^|/)\.tmp/''',

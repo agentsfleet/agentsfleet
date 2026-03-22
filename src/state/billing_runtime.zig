@@ -66,7 +66,7 @@ pub fn recordRuntimeStageUsage(
         event_key,
         BillableUnit.agent_second.label(),
     });
-    log.debug("stage_usage_recorded run_id={s} stage_id={s} agent_seconds={d}", .{ run_id, stage_id, agent_seconds });
+    log.debug("billing.stage_usage_recorded run_id={s} stage_id={s} agent_seconds={d}", .{ run_id, stage_id, agent_seconds });
 }
 
 pub fn finalizeRunForBilling(
@@ -117,10 +117,10 @@ pub fn finalizeRunForBilling(
     try q.drain();
 
     if (!inserted or !is_billable) {
-        log.debug("finalize_skip run_id={s} inserted={} is_billable={}", .{ run_id, inserted, is_billable });
+        log.debug("billing.finalize_skip run_id={s} inserted={} is_billable={}", .{ run_id, inserted, is_billable });
         return;
     }
-    log.debug("finalize_billing run_id={s} billable_quantity={d}", .{ run_id, billable_quantity });
+    log.debug("billing.finalize_billing run_id={s} billable_quantity={d}", .{ run_id, billable_quantity });
 
     const billing_state = try workspace_billing.reconcileWorkspaceBilling(conn, alloc, workspace_id, now_ms, "worker");
     defer alloc.free(billing_state.plan_sku);

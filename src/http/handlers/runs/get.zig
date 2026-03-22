@@ -82,7 +82,7 @@ pub fn handleGetRun(ctx: *common.Context, r: zap.Request, run_id: []const u8) vo
         return;
     };
 
-    log.debug("get run request run_id={s}", .{run_id});
+    log.debug("run.get run_id={s}", .{run_id});
 
     if (!id_format.isSupportedRunId(run_id)) {
         common.errorResponse(r, .bad_request, error_codes.ERR_UUIDV7_INVALID_ID_SHAPE, "Invalid run_id format", req_id);
@@ -129,7 +129,7 @@ pub fn handleGetRun(ctx: *common.Context, r: zap.Request, run_id: []const u8) vo
         return;
     }
 
-    run_result.drain() catch |err| obs_log.logWarnErr(.http, err, "run query drain failed run_id={s}", .{run_id});
+    run_result.drain() catch |err| obs_log.logWarnErr(.http, err, "run.query_drain_fail run_id={s}", .{run_id});
 
     var trans_result = conn.query(
         \\SELECT state_from, state_to, actor, reason_code, ts
@@ -157,7 +157,7 @@ pub fn handleGetRun(ctx: *common.Context, r: zap.Request, run_id: []const u8) vo
         obj.put("ts", .{ .integer = ts }) catch continue;
         transitions.append(alloc, .{ .object = obj }) catch continue;
     }
-    trans_result.drain() catch |err| obs_log.logWarnErr(.http, err, "transitions query drain failed run_id={s}", .{run_id});
+    trans_result.drain() catch |err| obs_log.logWarnErr(.http, err, "run.transitions_drain_fail run_id={s}", .{run_id});
 
     var artifacts_arr: std.ArrayList(std.json.Value) = .{};
     fetch_artifacts: {

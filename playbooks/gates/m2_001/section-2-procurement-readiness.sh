@@ -68,6 +68,7 @@ check_prod() {
   check_ref "op://$v/zombie-prod-worker-bird/ssh-private-key"
   check_ref "op://$v/discord-ci-webhook/credential"
   check_ref "op://$v/fly-api-token/credential"
+  check_ref "op://$v/posthog-prod/credential"
   check_ref "op://$v/cloudflare-tunnel-prod/credential"
 
   check_distinct \
@@ -96,6 +97,7 @@ check_dev() {
   check_ref "op://$v/upstash-dev/api-url"
   check_ref "op://$v/upstash-dev/worker-url"
   check_ref "op://$v/fly-api-token/credential"
+  check_ref "op://$v/posthog-dev/credential"
   check_ref "op://$v/cloudflare-tunnel-dev/credential"
 
   check_distinct \

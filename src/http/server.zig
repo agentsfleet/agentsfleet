@@ -117,7 +117,7 @@ pub fn serve(ctx: *handler.Context, cfg: ServerConfig) !void {
     });
     try listener.listen();
 
-    log.info("listening on 0.0.0.0:{d}", .{cfg.port});
+    log.info("http.listening port={d}", .{cfg.port});
 
     zap.start(.{
         .threads = cfg.threads,

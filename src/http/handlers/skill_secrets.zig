@@ -93,11 +93,11 @@ pub fn put(
         input.meta_json orelse "{}",
         1,
     ) catch |store_err| {
-        log.err("store skill secret failed workspace_id={s} skill_ref={s} key={s}", .{ workspace_id, skill_ref, key_name });
+        log.err("secret.store_fail error_code=UZ-INTERNAL-003 workspace_id={s} skill_ref={s} key={s}", .{ workspace_id, skill_ref, key_name });
         return store_err;
     };
 
-    log.info("skill secret stored workspace_id={s} skill_ref={s} key={s}", .{ workspace_id, skill_ref, key_name });
+    log.info("secret.stored workspace_id={s} skill_ref={s} key={s}", .{ workspace_id, skill_ref, key_name });
 
     return .{
         .skill_ref = skill_ref,
@@ -119,11 +119,11 @@ pub fn delete(
     errdefer alloc.free(key_name);
 
     secrets.deleteWorkspaceSkillSecret(conn, workspace_id, skill_ref, key_name) catch |del_err| {
-        log.err("delete skill secret failed workspace_id={s} skill_ref={s} key={s}", .{ workspace_id, skill_ref, key_name });
+        log.err("secret.delete_fail error_code=UZ-INTERNAL-003 workspace_id={s} skill_ref={s} key={s}", .{ workspace_id, skill_ref, key_name });
         return del_err;
     };
 
-    log.info("skill secret deleted workspace_id={s} skill_ref={s} key={s}", .{ workspace_id, skill_ref, key_name });
+    log.info("secret.deleted workspace_id={s} skill_ref={s} key={s}", .{ workspace_id, skill_ref, key_name });
 
     return .{
         .skill_ref = skill_ref,

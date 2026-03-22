@@ -116,7 +116,7 @@ fn renderJson(stdout: *std.Io.Writer, results: []const CheckResult, overall_ok: 
 }
 
 pub fn run(alloc: std.mem.Allocator) !void {
-    log.info("phase=doctor status=start", .{});
+    log.info("doctor.start status=start", .{});
     var ok = true;
     var stdout_buf: [8192]u8 = undefined;
     var stdout_w = std.fs.File.stdout().writer(&stdout_buf);
@@ -167,33 +167,33 @@ pub fn run(alloc: std.mem.Allocator) !void {
     }
 
     db_check: {
-        log.info("phase=db_connect role=api status=start", .{});
+        log.info("doctor.db_connect role=api status=start", .{});
         const pool = db.initFromEnvForRole(alloc, .api) catch |err| {
-            log.err("phase=db_connect role=api status=fail err={s}", .{@errorName(err)});
+            log.err("doctor.db_connect role=api status=fail err={s}", .{@errorName(err)});
             try appendCheck(alloc, &results, "db_api_config", false, "DATABASE_URL_API not set/invalid", &ok);
             break :db_check;
         };
         pool.deinit();
-        log.info("phase=db_connect role=api status=ok", .{});
+        log.info("doctor.db_connect role=api status=ok", .{});
         try appendCheck(alloc, &results, "db_api_config", true, "API database config", &ok);
     }
 
     worker_db_check: {
-        log.info("phase=db_connect role=worker status=start", .{});
+        log.info("doctor.db_connect role=worker status=start", .{});
         const pool = db.initFromEnvForRole(alloc, .worker) catch |err| {
-            log.err("phase=db_connect role=worker status=fail err={s}", .{@errorName(err)});
+            log.err("doctor.db_connect role=worker status=fail err={s}", .{@errorName(err)});
             try appendCheck(alloc, &results, "db_worker_config", false, "DATABASE_URL_WORKER not set/invalid", &ok);
             break :worker_db_check;
         };
         pool.deinit();
-        log.info("phase=db_connect role=worker status=ok", .{});
+        log.info("doctor.db_connect role=worker status=ok", .{});
         try appendCheck(alloc, &results, "db_worker_config", true, "Worker database config", &ok);
     }
 
     redis_api_check: {
-        log.info("phase=redis_connect role=api status=start", .{});
+        log.info("doctor.redis_connect role=api status=start", .{});
         var client = queue_redis.Client.connectFromEnv(alloc, .api) catch |err| {
-            log.err("phase=redis_connect role=api status=fail err={s}", .{@errorName(err)});
+            log.err("doctor.redis_connect role=api status=fail err={s}", .{@errorName(err)});
             try appendCheck(alloc, &results, "redis_api_config", false, "REDIS_URL_API not set/invalid", &ok);
             break :redis_api_check;
         };
@@ -214,14 +214,14 @@ pub fn run(alloc: std.mem.Allocator) !void {
                 break :redis_api_check;
             }
         }
-        log.info("phase=redis_connect role=api status=ok", .{});
+        log.info("doctor.redis_connect role=api status=ok", .{});
         try appendCheck(alloc, &results, "redis_api_ready_acl", true, "Redis API readiness + ACL identity", &ok);
     }
 
     redis_worker_check: {
-        log.info("phase=redis_connect role=worker status=start", .{});
+        log.info("doctor.redis_connect role=worker status=start", .{});
         var client = queue_redis.Client.connectFromEnv(alloc, .worker) catch |err| {
-            log.err("phase=redis_connect role=worker status=fail err={s}", .{@errorName(err)});
+            log.err("doctor.redis_connect role=worker status=fail err={s}", .{@errorName(err)});
             try appendCheck(alloc, &results, "redis_worker_config", false, "REDIS_URL_WORKER not set/invalid", &ok);
             break :redis_worker_check;
         };
@@ -242,7 +242,7 @@ pub fn run(alloc: std.mem.Allocator) !void {
                 break :redis_worker_check;
             }
         }
-        log.info("phase=redis_connect role=worker status=ok", .{});
+        log.info("doctor.redis_connect role=worker status=ok", .{});
         try appendCheck(alloc, &results, "redis_worker_ready_acl", true, "Redis worker readiness + ACL identity", &ok);
     }
 
@@ -378,9 +378,9 @@ pub fn run(alloc: std.mem.Allocator) !void {
     }
     try stdout.flush();
     if (ok) {
-        log.info("phase=doctor status=ok", .{});
+        log.info("doctor.finish status=ok", .{});
     } else {
-        log.err("phase=doctor status=fail", .{});
+        log.err("doctor.finish status=fail", .{});
     }
     if (!ok) std.process.exit(1);
 }

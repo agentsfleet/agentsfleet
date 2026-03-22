@@ -58,7 +58,7 @@ pub fn handleStartRun(ctx: *common.Context, r: zap.Request) void {
     const req_id = common.requestId(alloc);
 
     const principal = common.authenticate(alloc, r, ctx) catch |err| {
-        common.writeAuthError(r, req_id, err);
+        common.writeAuthErrorWithTracking(r, req_id, err, ctx.posthog);
         return;
     };
 
@@ -190,7 +190,7 @@ pub fn handleStartRun(ctx: *common.Context, r: zap.Request) void {
     };
 
     const run_id = id_format.generateRunId(alloc) catch |err| {
-        obs_log.logWarnErr(.http, err, "error_code={s} run_id generation failed", .{error_codes.ERR_UUIDV7_ID_GENERATION_FAILED});
+        obs_log.logWarnErr(.http, err, "run.id_generation_fail error_code={s}", .{error_codes.ERR_UUIDV7_ID_GENERATION_FAILED});
         common.errorResponse(r, .internal_server_error, error_codes.ERR_UUIDV7_ID_GENERATION_FAILED, "Failed to generate run identifier", req_id);
         return;
     };
@@ -242,22 +242,22 @@ pub fn handleStartRun(ctx: *common.Context, r: zap.Request) void {
 
     if (was_inserted) {
         policy.recordPolicyEvent(conn, req.workspace_id, final_run_id, .sensitive, .allow, "m1.start_run", req.requested_by) catch |err| {
-            obs_log.logWarnErr(.http, err, "policy event insert failed (non-fatal) run_id={s}", .{final_run_id});
+            obs_log.logWarnErr(.http, err, "run.policy_event_insert_fail run_id={s}", .{final_run_id});
         };
 
-        log.info("run created run_id={s} workspace_id={s} spec_id={s}", .{
+        log.info("run.created run_id={s} workspace_id={s} spec_id={s}", .{
             final_run_id, req.workspace_id, req.spec_id,
         });
         if (run_snapshot_version) |snapshot| {
             profile_linkage.insertRunArtifact(conn, tenant_id, req.workspace_id, final_run_id, snapshot, now_ms) catch |err| {
-                obs_log.logWarnErr(.http, err, "run linkage artifact persist failed run_id={s}", .{final_run_id});
+                obs_log.logWarnErr(.http, err, "run.linkage_artifact_fail run_id={s}", .{final_run_id});
                 common.compensateStartRunQueueFailure(conn, final_run_id);
                 common.internalOperationError(r, "Failed to persist run linkage artifact", req_id);
                 return;
             };
         }
         ctx.queue.xaddRun(final_run_id, 0, req.workspace_id) catch |err| {
-            obs_log.logWarnErr(.http, err, "queue enqueue failed run_id={s} workspace_id={s}", .{
+            obs_log.logWarnErr(.http, err, "run.queue_enqueue_fail run_id={s} workspace_id={s}", .{
                 final_run_id,
                 req.workspace_id,
             });
@@ -276,7 +276,7 @@ pub fn handleStartRun(ctx: *common.Context, r: zap.Request) void {
         );
         metrics.incRunsCreated();
     } else {
-        log.info("run idempotent replay run_id={s} workspace_id={s}", .{ final_run_id, req.workspace_id });
+        log.info("run.idempotent_replay run_id={s} workspace_id={s}", .{ final_run_id, req.workspace_id });
     }
 
     common.writeJson(r, .accepted, .{

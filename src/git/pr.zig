@@ -140,7 +140,7 @@ pub fn createPullRequest(
 
     const parsed_response = splitHttpResponse(result);
     const status = parseHttpStatus(parsed_response.headers) orelse {
-        log.err("failed to parse PR creation HTTP status body={s}", .{parsed_response.body});
+        log.err("git.pr_status_parse_fail body={s}", .{parsed_response.body});
         return GitError.PrFailed;
     };
 
@@ -148,7 +148,7 @@ pub fn createPullRequest(
         if (error_detail_out) |out| {
             out.* = alloc.dupe(u8, result) catch null;
         }
-        log.err("PR creation failed status={d} body={s}", .{ status, parsed_response.body });
+        log.err("git.pr_creation_fail status={d} body={s}", .{ status, parsed_response.body });
         return switch (status) {
             429 => GitError.PrRateLimited,
             401, 403 => GitError.PrAuthFailed,
@@ -165,7 +165,7 @@ pub fn createPullRequest(
         return alloc.dupe(u8, url_val.string);
     }
 
-    log.err("PR creation response missing html_url: {s}", .{result});
+    log.err("git.pr_missing_url response={s}", .{result});
     return GitError.PrFailed;
 }
 

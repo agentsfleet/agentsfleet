@@ -58,7 +58,7 @@ pub fn ensureBareClone(
             120_000,
         ) catch return GitError.FetchFailed;
         alloc.free(out);
-        log.info("git fetch workspace_id={s}", .{workspace_id});
+        log.info("git.fetch workspace_id={s}", .{workspace_id});
     } else |_| {
         // Clone bare
         try std.fs.makeDirAbsolute(bare_path);
@@ -67,7 +67,7 @@ pub fn ensureBareClone(
         };
         const out = command.run(alloc, argv, null, 120_000) catch return GitError.CloneFailed;
         alloc.free(out);
-        log.info("git clone bare workspace_id={s}", .{workspace_id});
+        log.info("git.clone_bare workspace_id={s}", .{workspace_id});
     }
 
     return bare_path;
@@ -97,7 +97,7 @@ pub fn createWorktree(
     };
     const out = command.run(alloc, argv, bare_path, 120_000) catch return GitError.WorktreeFailed;
     alloc.free(out);
-    log.info("worktree created path={s} branch={s}", .{ wt_path, branch });
+    log.info("git.worktree_created path={s} branch={s}", .{ wt_path, branch });
 
     return WorktreeHandle{ .path = wt_path, .alloc = alloc };
 }
@@ -114,7 +114,7 @@ pub fn removeWorktree(
         bare_path,
         30_000,
     ) catch {
-        log.warn("worktree remove failed path={s}", .{wt_path});
+        log.warn("git.worktree_remove_fail path={s}", .{wt_path});
         return;
     };
     alloc.free(out1);
@@ -260,7 +260,7 @@ pub fn commitFile(
     };
     alloc.free(commit_out);
 
-    log.info("committed file={s} msg={s}", .{ rel_path, message });
+    log.info("git.committed file={s} msg={s}", .{ rel_path, message });
 }
 
 /// Push the feature branch to origin.
@@ -292,7 +292,7 @@ pub fn push(
     ) catch return GitError.PushFailed;
 
     alloc.free(out);
-    log.info("pushed branch={s}", .{branch});
+    log.info("git.pushed branch={s}", .{branch});
 }
 
 pub fn remoteBranchExists(

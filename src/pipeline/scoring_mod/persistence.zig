@@ -65,7 +65,7 @@ pub fn updateLatencyBaseline(conn: *pg.Conn, workspace_id: []const u8) void {
         \\    computed_at = EXCLUDED.computed_at
         \\WHERE EXCLUDED.sample_count > 0
     , .{ workspace_id, now_ms }) catch |err| {
-        obs_log.logWarnErr(.scoring, err, "latency baseline update failed workspace_id={s}", .{workspace_id});
+        obs_log.logWarnErr(.scoring, err, "scoring.latency_baseline_fail workspace_id={s}", .{workspace_id});
     };
 }
 
@@ -131,7 +131,7 @@ fn persistScoreRecord(
         \\  (score_id, run_id, agent_id, workspace_id, score, axis_scores, weight_snapshot, scored_at)
         \\VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
     , .{ score_id, run_id, agent_id, workspace_id, score, axis_scores_json, weight_snapshot_json, scored_at });
-    log.info("score_persisted run_id={s} agent_id={s} score={d}", .{ run_id, agent_id, score });
+    log.info("scoring.score_persisted run_id={s} agent_id={s} score={d}", .{ run_id, agent_id, score });
     return true;
 }
 

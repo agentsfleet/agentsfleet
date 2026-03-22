@@ -105,9 +105,9 @@ pub fn handleDoneOutcome(o: DoneOutcomeCtx) !void {
             "- run_summary.md (orchestrator)\n",
         .{ o.ctx.run_id, o.ctx.spec_id, o.attempt, pr_final, o.total_tokens, o.total_wall_seconds },
     ) catch |err| {
-        obs_log.logWarnErr(.worker, err, "run_summary.md alloc failed (non-fatal) run_id={s}", .{o.ctx.run_id});
+        obs_log.logWarnErr(.worker, err, "pipeline.run_summary_alloc_fail run_id={s}", .{o.ctx.run_id});
         try billing.finalizeRunForBilling(o.alloc, o.conn, o.ctx.workspace_id, o.ctx.run_id, o.attempt, .completed);
-        log.info("run completed run_id={s} pr_url={s}", .{ o.ctx.run_id, pr_final });
+        log.info("pipeline.run_completed run_id={s} pr_url={s}", .{ o.ctx.run_id, pr_final });
         var done_detail: [160]u8 = undefined;
         const done_detail_slice = std.fmt.bufPrint(&done_detail, "request_id={s} trace_id={s} state=done total_wall_seconds={d}", .{ o.ctx.request_id, o.ctx.trace_id, o.total_wall_seconds }) catch "run_done";
         events.emit("run_done", o.ctx.run_id, done_detail_slice);
@@ -119,11 +119,11 @@ pub fn handleDoneOutcome(o: DoneOutcomeCtx) !void {
 
     const summary_path = try std.fmt.allocPrint(o.alloc, "docs/runs/{s}/run_summary.md", .{o.ctx.run_id});
     worker_stage_helpers.commitArtifact(o.alloc, o.conn, o.ctx, o.wt, o.running, o.deadline_ms, summary_path, summary_content, "orchestrator: add run_summary.md", .orchestrator, o.attempt) catch |err| {
-        obs_log.logWarnErr(.worker, err, "run_summary.md commit failed (non-fatal) run_id={s}", .{o.ctx.run_id});
+        obs_log.logWarnErr(.worker, err, "pipeline.run_summary_commit_fail run_id={s}", .{o.ctx.run_id});
     };
 
     try billing.finalizeRunForBilling(o.alloc, o.conn, o.ctx.workspace_id, o.ctx.run_id, o.attempt, .completed);
-    log.info("run completed run_id={s} pr_url={s}", .{ o.ctx.run_id, pr_final });
+    log.info("pipeline.run_completed run_id={s} pr_url={s}", .{ o.ctx.run_id, pr_final });
     var done_detail: [160]u8 = undefined;
     const done_detail_slice = std.fmt.bufPrint(&done_detail, "request_id={s} trace_id={s} state=done total_wall_seconds={d}", .{ o.ctx.request_id, o.ctx.trace_id, o.total_wall_seconds }) catch "run_done";
     events.emit("run_done", o.ctx.run_id, done_detail_slice);
@@ -150,7 +150,7 @@ pub fn handleRetriesExhaustedOutcome(o: RetriesExhaustedCtx) !void {
     try billing.finalizeRunForBilling(o.alloc, o.conn, o.ctx.workspace_id, o.ctx.run_id, o.attempt, .non_billable);
     _ = try state.transition(o.conn, o.ctx.run_id, .BLOCKED, .orchestrator, .RETRIES_EXHAUSTED, null);
     _ = try state.transition(o.conn, o.ctx.run_id, .NOTIFIED_BLOCKED, .orchestrator, .NOTIFICATION_SENT, null);
-    log.warn("run blocked (retries exhausted) run_id={s}", .{o.ctx.run_id});
+    log.warn("pipeline.run_blocked reason=retries_exhausted run_id={s}", .{o.ctx.run_id});
     var blocked_detail: [176]u8 = undefined;
     const blocked_detail_slice = std.fmt.bufPrint(&blocked_detail, "request_id={s} trace_id={s} state=blocked reason=retries_exhausted total_wall_seconds={d}", .{ o.ctx.request_id, o.ctx.trace_id, o.total_wall_seconds }) catch "run_blocked";
     events.emit("run_blocked", o.ctx.run_id, blocked_detail_slice);

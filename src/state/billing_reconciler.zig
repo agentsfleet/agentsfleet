@@ -87,7 +87,7 @@ pub fn reconcilePending(
         result.delivered += 1;
     }
 
-    log.info("reconcile cycle scanned={d} delivered={d} retried={d} dead_lettered={d}", .{ result.scanned, result.delivered, result.retried, result.dead_lettered });
+    log.info("billing.reconcile_cycle scanned={d} delivered={d} retried={d} dead_lettered={d}", .{ result.scanned, result.delivered, result.retried, result.dead_lettered });
     return result;
 }
 

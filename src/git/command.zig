@@ -112,7 +112,7 @@ pub fn run(
 
     switch (term) {
         .Exited => |code| if (code != 0) {
-            log.err("command failed code={d} argv[0]={s} stderr={s}", .{ code, argv[0], stderr });
+            log.err("git.command_fail code={d} argv[0]={s} stderr={s}", .{ code, argv[0], stderr });
             return GitError.CommandFailed;
         },
         else => {

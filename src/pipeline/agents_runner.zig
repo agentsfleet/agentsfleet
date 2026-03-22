@@ -130,7 +130,7 @@ pub fn runEcho(
     spec_content: []const u8,
     memory_context: []const u8,
 ) !AgentResult {
-    log.info("echo start workspace={s}", .{workspace_path});
+    log.info("pipeline.echo_start workspace={s}", .{workspace_path});
     const start = std.time.milliTimestamp();
 
     var cfg = try buildConfig(alloc, workspace_path);
@@ -172,7 +172,7 @@ pub fn runEcho(
     const owned = try alloc.dupe(u8, response);
 
     const elapsed_ms = std.time.milliTimestamp() - start;
-    log.info("echo done tokens={d} ms={d}", .{ agent.tokensUsed(), elapsed_ms });
+    log.info("pipeline.echo_done tokens={d} ms={d}", .{ agent.tokensUsed(), elapsed_ms });
 
     return .{
         .content = owned,
@@ -189,7 +189,7 @@ pub fn runScout(
     plan_content: []const u8,
     defects_content: ?[]const u8,
 ) !AgentResult {
-    log.info("scout start workspace={s}", .{workspace_path});
+    log.info("pipeline.scout_start workspace={s}", .{workspace_path});
     const start = std.time.milliTimestamp();
 
     var cfg = try buildConfig(alloc, workspace_path);
@@ -239,7 +239,7 @@ pub fn runScout(
     const owned = try alloc.dupe(u8, response);
 
     const elapsed_ms = std.time.milliTimestamp() - start;
-    log.info("scout done tokens={d} ms={d}", .{ agent.tokensUsed(), elapsed_ms });
+    log.info("pipeline.scout_done tokens={d} ms={d}", .{ agent.tokensUsed(), elapsed_ms });
 
     return .{
         .content = owned,
@@ -257,7 +257,7 @@ pub fn runWarden(
     plan_content: []const u8,
     implementation_summary: []const u8,
 ) !AgentResult {
-    log.info("warden start workspace={s}", .{workspace_path});
+    log.info("pipeline.warden_start workspace={s}", .{workspace_path});
     const start = std.time.milliTimestamp();
 
     var cfg = try buildConfig(alloc, workspace_path);
@@ -309,7 +309,7 @@ pub fn runWarden(
     const owned = try alloc.dupe(u8, response);
 
     const elapsed_ms = std.time.milliTimestamp() - start;
-    log.info("warden done tokens={d} ms={d}", .{ agent.tokensUsed(), elapsed_ms });
+    log.info("pipeline.warden_done tokens={d} ms={d}", .{ agent.tokensUsed(), elapsed_ms });
 
     return .{
         .content = owned,

@@ -30,7 +30,7 @@ pub fn emitResult(
 
     // Structured log line — always emitted, picked up by any log aggregator.
     log.info(
-        "reconcile_result status={s} dead_lettered={d} elapsed_ms={d} error={s}",
+        "reconcile.tick_result status={s} dead_lettered={d} elapsed_ms={d} error={s}",
         .{ status, dead_lettered, elapsed_ms, err_name },
     );
 
@@ -64,7 +64,7 @@ pub fn pushOtelMetrics(alloc: std.mem.Allocator, dead_lettered: u32) void {
 
     // The metrics snapshot includes the outbox dead-letter counter we just incremented.
     otel.exportMetricsSnapshotBestEffort(alloc, cfg, false, null, null);
-    log.info("otel_push_attempted endpoint={s} dead_lettered={d}", .{
+    log.info("reconcile.otel_push endpoint={s} dead_lettered={d}", .{
         cfg.endpoint,
         dead_lettered,
     });

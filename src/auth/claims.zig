@@ -37,7 +37,7 @@ pub fn extractClerkClaims(alloc: std.mem.Allocator, claims_json: []const u8) !Cl
 
     const tenant_id = getClerkTenantId(parsed.value.object);
     const org_id = getClerkOrgId(parsed.value.object);
-    log.debug("clerk claims tenant_id={s} org_id={s}", .{
+    log.debug("auth.clerk_claims tenant_id={s} org_id={s}", .{
         if (tenant_id) |v| v else "missing",
         if (org_id) |v| v else "missing",
     });
@@ -59,7 +59,7 @@ pub fn extractCustomClaims(alloc: std.mem.Allocator, claims_json: []const u8) !C
 
     const tenant_id = getCustomTenantId(parsed.value.object);
     const org_id = getCustomOrgId(parsed.value.object);
-    log.debug("custom claims tenant_id={s} org_id={s}", .{
+    log.debug("auth.custom_claims tenant_id={s} org_id={s}", .{
         if (tenant_id) |v| v else "missing",
         if (org_id) |v| v else "missing",
     });

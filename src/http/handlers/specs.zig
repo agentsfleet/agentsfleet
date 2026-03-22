@@ -42,7 +42,7 @@ pub fn handleListSpecs(ctx: *common.Context, r: zap.Request) void {
         return;
     }
 
-    log.debug("list specs request workspace_id={s} limit={d}", .{ wid, limit });
+    log.debug("spec.list workspace_id={s} limit={d}", .{ wid, limit });
 
     // check-pg-drain: ok — full while loop exhausts all rows, natural drain
     var result = conn.query(
@@ -75,7 +75,7 @@ pub fn handleListSpecs(ctx: *common.Context, r: zap.Request) void {
         specs.append(alloc, .{ .object = obj }) catch continue;
     }
 
-    log.info("specs listed workspace_id={s} count={d}", .{ wid, specs.items.len });
+    log.info("spec.listed workspace_id={s} count={d}", .{ wid, specs.items.len });
 
     common.writeJson(r, .ok, .{
         .specs = specs.items,

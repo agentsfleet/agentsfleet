@@ -6,3 +6,5 @@
 25954985e6b92bf10e2e74bd50a79dc93e6e591e:src/auth/jwks_test.zig:jwt:19
 9b513191fe0838a4099c49b02c155e0cf2c1b245:src/auth/jwks_test.zig:jwt:18
 9b513191fe0838a4099c49b02c155e0cf2c1b245:src/auth/jwks_test.zig:jwt:19
+bc451b24ca495ca744a3fe29abb1ba24a16731c6:src/http/handlers/github_callback.zig:generic-api-key:139
+bc451b24ca495ca744a3fe29abb1ba24a16731c6:src/secrets/crypto_primitives.zig:generic-api-key:68

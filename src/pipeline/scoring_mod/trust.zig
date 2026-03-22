@@ -62,9 +62,9 @@ pub fn refreshAgentTrustState(conn: *pg.Conn, agent_id: []const u8, scored_at: i
         .trust_streak_runs = next.trust_streak_runs,
     };
     if (update.earned()) {
-        log.info("trust earned agent_id={s} streak={d}", .{ agent_id, next.trust_streak_runs });
+        log.info("scoring.trust_earned agent_id={s} streak={d}", .{ agent_id, next.trust_streak_runs });
     } else if (update.lost()) {
-        log.info("trust lost agent_id={s} streak={d}", .{ agent_id, next.trust_streak_runs });
+        log.info("scoring.trust_lost agent_id={s} streak={d}", .{ agent_id, next.trust_streak_runs });
     }
     return update;
 }

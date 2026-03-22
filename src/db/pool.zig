@@ -137,7 +137,7 @@ fn resolveDatabaseUrl(alloc: std.mem.Allocator, role: DbRole) ![]const u8 {
 /// Initialize a pool using DATABASE_URL for the selected role.
 pub fn initFromEnvForRole(alloc: std.mem.Allocator, role: DbRole) !*Pool {
     const url = resolveDatabaseUrl(alloc, role) catch {
-        log.err("database url not set for role={s}", .{@tagName(role)});
+        log.err("db.url_not_set role={s} error_code=UZ-INTERNAL-001", .{@tagName(role)});
         return error.MissingDatabaseUrl;
     };
     defer alloc.free(url);
@@ -148,7 +148,7 @@ pub fn initFromEnvForRole(alloc: std.mem.Allocator, role: DbRole) !*Pool {
     // appear as leaks when the process exits.
     const opts = try parseUrl(std.heap.page_allocator, url);
     const pool = try pg.Pool.init(alloc, opts);
-    log.info("database pool initialized role={s} size=4 host={s}", .{ @tagName(role), opts.connect.host orelse "127.0.0.1" });
+    log.info("db.pool_initialized role={s} size=4 host={s}", .{ @tagName(role), opts.connect.host orelse "127.0.0.1" });
     return pool;
 }
 
@@ -390,7 +390,7 @@ pub fn runMigrations(pool: *Pool, migrations: []const Migration) !void {
             return err;
         };
         clearMigrationFailure(conn, migration.version);
-        log.info("migration applied version={d} statements={d}", .{ migration.version, statements });
+        log.info("db.migration_applied version={d} statements={d}", .{ migration.version, statements });
     }
 }
 

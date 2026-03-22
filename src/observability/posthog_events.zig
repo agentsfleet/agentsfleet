@@ -243,7 +243,7 @@ pub fn trackAgentRunScored(
     }
 }
 
-fn agentRunScoredProps(
+pub fn agentRunScoredProps(
     run_id: []const u8,
     workspace_id: []const u8,
     agent_id: []const u8,
@@ -386,7 +386,7 @@ pub fn trackAgentImprovementStalled(
     }
 }
 
-fn trustTransitionProps(
+pub fn trustTransitionProps(
     run_id: []const u8,
     workspace_id: []const u8,
     agent_id: []const u8,
@@ -400,68 +400,215 @@ fn trustTransitionProps(
     };
 }
 
-test "unit: distinctIdOrSystem falls back to system" {
-    try std.testing.expectEqualStrings("system", distinctIdOrSystem(""));
-    try std.testing.expectEqualStrings("user_123", distinctIdOrSystem("user_123"));
+// ---------------------------------------------------------------------------
+// Startup lifecycle events
+// ---------------------------------------------------------------------------
+
+pub fn trackServerStarted(
+    client: ?*posthog.PostHogClient,
+    port: u16,
+    worker_concurrency: u16,
+) void {
+    if (client) |ph| {
+        const props = serverStartedProps(port, worker_concurrency);
+        ph.capture(.{
+            .distinct_id = "system",
+            .event = "server_started",
+            .properties = &props,
+        }) catch {};
+    }
 }
 
-test "integration: telemetry helpers are no-op when posthog client is disabled" {
-    const disabled: ?*posthog.PostHogClient = null;
-    trackRunStarted(disabled, "u", "run_1", "ws_1", "spec_1", "auto", "req_1");
-    trackRunRetried(disabled, "u", "run_1", "ws_1", 2, "req_1");
-    trackRunCompleted(disabled, "u", "run_1", "ws_1", "passed", 42);
-    trackRunFailed(disabled, "u", "run_1", "ws_1", "blocked", 42);
-    trackAgentCompleted(disabled, "u", "run_1", "ws_1", "Echo", 10, 50, "ok");
-    trackAgentRunScored(disabled, "u", "run_1", "ws_1", "agent_1", 95, "ELITE", "m9_v1", "{}", "{}", 42, 100, 100, 100, 50);
-    trackEntitlementRejected(disabled, "u", "ws_1", "COMPILE", "ERR_ENTITLEMENT_STAGE_LIMIT", "req_1");
-    trackProfileActivated(disabled, "u", "ws_1", "prof_1", "ver_1", "ver_1", "req_1");
-    trackBillingLifecycleEvent(disabled, "u", "ws_1", "PAYMENT_FAILED", "invoice_failed", "SCALE", "GRACE", "req_1");
-    trackAgentTrustEarned(disabled, "u", "run_1", "ws_1", "agent_1", 10);
-    trackAgentTrustLost(disabled, "u", "run_1", "ws_1", "agent_1", 0);
-    trackAgentHarnessChanged(disabled, "u", "agent_1", "proposal_1", "ws_1", "AUTO", "DECLINING_SCORE", &[_][]const u8{"stage_insert"});
-    trackAgentImprovementStalled(disabled, "u", "run_1", "ws_1", "agent_1", "proposal_1", 3);
-    try std.testing.expect(true);
+pub fn serverStartedProps(port: u16, worker_concurrency: u16) [2]posthog.Property {
+    return .{
+        .{ .key = "port", .value = .{ .integer = @intCast(port) } },
+        .{ .key = "worker_concurrency", .value = .{ .integer = @intCast(worker_concurrency) } },
+    };
 }
 
-test "agent run scored payload includes structured and flat scoring fields" {
-    const props = agentRunScoredProps(
-        "run_1",
-        "ws_1",
-        "agent_1",
-        91,
-        "ELITE",
-        "m9_v1",
-        "{\"completion\":100}",
-        "{\"completion\":0.4}",
-        1234,
-        100,
-        90,
-        80,
-        50,
-    );
-
-    try std.testing.expectEqual(@as(usize, 13), props.len);
-    try std.testing.expectEqualStrings("run_id", props[0].key);
-    try std.testing.expectEqualStrings("score_formula_version", props[5].key);
-    try std.testing.expectEqualStrings("axis_scores", props[6].key);
-    try std.testing.expectEqualStrings("weight_snapshot", props[7].key);
-    try std.testing.expectEqualStrings("scored_at", props[8].key);
-    try std.testing.expectEqualStrings("axis_resource", props[12].key);
-    try std.testing.expectEqualStrings("ELITE", props[4].value.string);
-    try std.testing.expectEqualStrings("m9_v1", props[5].value.string);
-    try std.testing.expectEqualStrings("{\"completion\":100}", props[6].value.string);
-    try std.testing.expectEqual(@as(i64, 1234), props[8].value.integer);
-    try std.testing.expectEqual(@as(i64, 50), props[12].value.integer);
+pub fn trackWorkerStarted(
+    client: ?*posthog.PostHogClient,
+    concurrency: u16,
+) void {
+    if (client) |ph| {
+        const props = [_]posthog.Property{
+            .{ .key = "concurrency", .value = .{ .integer = @intCast(concurrency) } },
+        };
+        ph.capture(.{
+            .distinct_id = "system",
+            .event = "worker_started",
+            .properties = &props,
+        }) catch {};
+    }
 }
 
-test "trust transition payload includes required event fields" {
-    const props = trustTransitionProps("run_7", "ws_7", "agent_7", 10);
+pub fn trackStartupFailed(
+    client: ?*posthog.PostHogClient,
+    command: []const u8,
+    phase: []const u8,
+    reason: []const u8,
+    error_code: []const u8,
+) void {
+    if (client) |ph| {
+        const props = startupFailedProps(command, phase, reason, error_code);
+        ph.capture(.{
+            .distinct_id = "system",
+            .event = "startup_failed",
+            .properties = &props,
+        }) catch {};
+    }
+}
 
-    try std.testing.expectEqual(@as(usize, 4), props.len);
-    try std.testing.expectEqualStrings("run_id", props[0].key);
-    try std.testing.expectEqualStrings("workspace_id", props[1].key);
-    try std.testing.expectEqualStrings("agent_id", props[2].key);
-    try std.testing.expectEqualStrings("consecutive_count_at_event", props[3].key);
-    try std.testing.expectEqualStrings("agent_7", props[2].value.string);
-    try std.testing.expectEqual(@as(i64, 10), props[3].value.integer);
+pub fn startupFailedProps(
+    command: []const u8,
+    phase: []const u8,
+    reason: []const u8,
+    error_code: []const u8,
+) [4]posthog.Property {
+    return .{
+        .{ .key = "command", .value = .{ .string = command } },
+        .{ .key = "phase", .value = .{ .string = phase } },
+        .{ .key = "reason", .value = .{ .string = reason } },
+        .{ .key = "error_code", .value = .{ .string = error_code } },
+    };
+}
+
+// ---------------------------------------------------------------------------
+// General API error tracking
+// ---------------------------------------------------------------------------
+
+pub fn trackApiError(
+    client: ?*posthog.PostHogClient,
+    distinct_id: []const u8,
+    error_code: []const u8,
+    message: []const u8,
+    request_id: []const u8,
+) void {
+    if (client) |ph| {
+        const props = [_]posthog.Property{
+            .{ .key = "error_code", .value = .{ .string = error_code } },
+            .{ .key = "message", .value = .{ .string = message } },
+            .{ .key = "request_id", .value = .{ .string = request_id } },
+        };
+        ph.capture(.{
+            .distinct_id = distinctIdOrSystem(distinct_id),
+            .event = "api_error",
+            .properties = &props,
+        }) catch {};
+    }
+}
+
+pub fn trackApiErrorWithContext(
+    client: ?*posthog.PostHogClient,
+    distinct_id: []const u8,
+    error_code: []const u8,
+    message: []const u8,
+    workspace_id: []const u8,
+    request_id: []const u8,
+) void {
+    if (client) |ph| {
+        const props = [_]posthog.Property{
+            .{ .key = "error_code", .value = .{ .string = error_code } },
+            .{ .key = "message", .value = .{ .string = message } },
+            .{ .key = "workspace_id", .value = .{ .string = workspace_id } },
+            .{ .key = "request_id", .value = .{ .string = request_id } },
+        };
+        ph.capture(.{
+            .distinct_id = distinctIdOrSystem(distinct_id),
+            .event = "api_error",
+            .properties = &props,
+        }) catch {};
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Workspace lifecycle events
+// ---------------------------------------------------------------------------
+
+pub fn trackWorkspaceCreated(
+    client: ?*posthog.PostHogClient,
+    distinct_id: []const u8,
+    workspace_id: []const u8,
+    tenant_id: []const u8,
+    repo_url: []const u8,
+    request_id: []const u8,
+) void {
+    if (client) |ph| {
+        const props = [_]posthog.Property{
+            .{ .key = "workspace_id", .value = .{ .string = workspace_id } },
+            .{ .key = "tenant_id", .value = .{ .string = tenant_id } },
+            .{ .key = "repo_url", .value = .{ .string = repo_url } },
+            .{ .key = "request_id", .value = .{ .string = request_id } },
+        };
+        ph.capture(.{
+            .distinct_id = distinctIdOrSystem(distinct_id),
+            .event = "workspace_created",
+            .properties = &props,
+        }) catch {};
+    }
+}
+
+pub fn trackWorkspaceGithubConnected(
+    client: ?*posthog.PostHogClient,
+    workspace_id: []const u8,
+    installation_id: []const u8,
+    request_id: []const u8,
+) void {
+    if (client) |ph| {
+        const props = [_]posthog.Property{
+            .{ .key = "workspace_id", .value = .{ .string = workspace_id } },
+            .{ .key = "installation_id", .value = .{ .string = installation_id } },
+            .{ .key = "request_id", .value = .{ .string = request_id } },
+        };
+        ph.capture(.{
+            .distinct_id = "system",
+            .event = "workspace_github_connected",
+            .properties = &props,
+        }) catch {};
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Auth lifecycle events
+// ---------------------------------------------------------------------------
+
+pub fn trackAuthLoginCompleted(
+    client: ?*posthog.PostHogClient,
+    session_id: []const u8,
+    request_id: []const u8,
+) void {
+    if (client) |ph| {
+        const props = [_]posthog.Property{
+            .{ .key = "session_id", .value = .{ .string = session_id } },
+            .{ .key = "request_id", .value = .{ .string = request_id } },
+        };
+        ph.capture(.{
+            .distinct_id = "system",
+            .event = "auth_login_completed",
+            .properties = &props,
+        }) catch {};
+    }
+}
+
+pub fn trackAuthRejected(
+    client: ?*posthog.PostHogClient,
+    reason: []const u8,
+    request_id: []const u8,
+) void {
+    if (client) |ph| {
+        const props = [_]posthog.Property{
+            .{ .key = "reason", .value = .{ .string = reason } },
+            .{ .key = "request_id", .value = .{ .string = request_id } },
+        };
+        ph.capture(.{
+            .distinct_id = "system",
+            .event = "auth_rejected",
+            .properties = &props,
+        }) catch {};
+    }
+}
+
+// Tests live in posthog_events_test.zig
+comptime {
+    _ = @import("posthog_events_test.zig");
 }

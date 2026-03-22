@@ -4,7 +4,7 @@
 **Workstream:** 001
 **Updated:** Mar 19, 2026
 **Owner:** Agent
-**Prerequisite:** `docs/M1_001_PLAYBOOK_BOOTSTRAP.md` Milestone 1 complete.
+**Prerequisite:** `playbooks/M1_001_BOOTSTRAP.md` Milestone 1 complete.
 **Gate:** M2_002 (PRIMING_INFRA) must not start until every check below passes.
 
 This workstream is the eval/feedback harness for Milestone 2. It validates that every
@@ -12,7 +12,7 @@ credential the agent needs is present in the correct 1Password vault and returns
 value. Run this before any infrastructure step. Fail loud — surface every missing item,
 not just the first one.
 
-Script: `scripts/checks/m2_001/run.sh` — milestone/workstream check runner that runs anywhere `op` CLI is available (local, CI, agent terminal).
+Script: `playbooks/gates/m2_001/run.sh` — milestone/workstream check runner that runs anywhere `op` CLI is available (local, CI, agent terminal).
 Vault names: set `VAULT_DEV` and `VAULT_PROD` as GitHub Actions repository variables (Settings → Variables). Scripts fall back to `ZMB_CD_DEV` / `ZMB_CD_PROD` if not set locally.
 
 ---
@@ -67,12 +67,12 @@ Every `op://` reference the agent will use across M2_002 and the deploy pipeline
 
 ## 2.0 Validation Steps (Chronological)
 
-Checks are split into ordered sections under `scripts/checks/m2_001/` and executed by `scripts/checks/m2_001/run.sh`.
+Checks are split into ordered sections under `playbooks/gates/m2_001/` and executed by `playbooks/gates/m2_001/run.sh`.
 
 | Section | Script | Purpose | Blocks startup? | Playbook dependency |
 |---|---|---|---|---|
-| `1` | `scripts/checks/m2_001/section-1-preflight.sh` | Local prerequisites (`op` binary + 1Password auth/session) | Yes | M1 complete → before any M2 work |
-| `2` | `scripts/checks/m2_001/section-2-procurement-readiness-gate.sh` | Procurement readiness gate (all required `op://` refs + API/worker DB/Redis separation) | Yes | Gate for M2_002 infra priming |
+| `1` | `playbooks/gates/m2_001/section-1-preflight.sh` | Local prerequisites (`op` binary + 1Password auth/session) | Yes | M1 complete → before any M2 work |
+| `2` | `playbooks/gates/m2_001/section-2-procurement-readiness.sh` | Procurement readiness gate (all required `op://` refs + API/worker DB/Redis separation) | Yes | Gate for M2_002 infra priming |
 
 Notes:
 - `OP_SERVICE_ACCOUNT_TOKEN` is the preferred non-interactive auth for agents/CI.
@@ -88,17 +88,17 @@ export VAULT_DEV="${VAULT_DEV:-ZMB_CD_DEV}"
 export VAULT_PROD="${VAULT_PROD:-ZMB_CD_PROD}"
 
 # Run full chronological gate (section 1 -> 2) for both envs
-./scripts/checks/m2_001/run.sh
+./playbooks/gates/m2_001/run.sh
 
 # Check a specific env (still runs section 1 -> 2)
-ENV=dev  ./scripts/checks/m2_001/run.sh
-ENV=prod ./scripts/checks/m2_001/run.sh
+ENV=dev  ./playbooks/gates/m2_001/run.sh
+ENV=prod ./playbooks/gates/m2_001/run.sh
 
 # Run only startup preflight
-SECTIONS=1 ./scripts/checks/m2_001/run.sh
+SECTIONS=1 ./playbooks/gates/m2_001/run.sh
 
 # Run only procurement readiness gate (after section 1 passes)
-SECTIONS=2 ./scripts/checks/m2_001/run.sh
+SECTIONS=2 ./playbooks/gates/m2_001/run.sh
 ```
 
 Works on: local machine, CI runner, agent session, any context with `op` CLI.
@@ -150,7 +150,7 @@ curl -sf -X POST "$WEBHOOK" \
 - [ ] 3.4 Discord webhook fires successfully
 - [ ] 3.5 No `✗ MISSING` lines in workflow output
 
-Gate: all 3.x must pass before `M2_002_PLAYBOOK_PRIMING_INFRA.md` begins.
+Gate: all 3.x must pass before `M2_002_PRIMING_INFRA.md` begins.
 
 ---
 

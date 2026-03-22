@@ -15,7 +15,7 @@ pub fn run(alloc: std.mem.Allocator) !void {
         std.process.exit(1);
     };
 
-    log.info("one-shot run spec_path={s}", .{spec_path});
+    log.info("run.start spec_path={s}", .{spec_path});
 
     const spec_content = std.fs.cwd().readFileAlloc(alloc, spec_path, 512 * 1024) catch |err| {
         std.debug.print("error reading spec: {}\n", .{err});
@@ -30,9 +30,9 @@ pub fn run(alloc: std.mem.Allocator) !void {
     defer pool.deinit();
 
     common.runCanonicalMigrations(pool) catch |err| {
-        obs_log.logWarnErr(.zombied, err, "one-shot migration run skipped", .{});
+        obs_log.logWarnErr(.zombied, err, "run.migration status=skipped", .{});
     };
 
-    log.info("spec loaded ({d} bytes) — pipeline runs via `zombied serve`", .{spec_content.len});
-    log.info("one-shot mode: POST /v1/runs to trigger pipeline", .{});
+    log.info("run.spec_loaded bytes={d}", .{spec_content.len});
+    log.info("run.hint action=POST /v1/runs to trigger pipeline", .{});
 }

@@ -67,7 +67,7 @@ Give the agent:
 
 Hand-off message:
 
-> "Milestone 1 complete. Here are the root API keys: [paste keys]. Store them in 1Password vaults `ZMB_CD_PROD` / `ZMB_CD_DEV` per `docs/M1_001_PLAYBOOK_BOOTSTRAP.md §2.0`, then run `./scripts/check-credentials.sh` and proceed with `docs/M2_001_PLAYBOOK_PREFLIGHT.md`."
+> "Milestone 1 complete. Here are the root API keys: [paste keys]. Store them in 1Password vaults `ZMB_CD_PROD` / `ZMB_CD_DEV` per `playbooks/M1_001_BOOTSTRAP.md §2.0`, then run `./playbooks/gates/check-credentials.sh` and proceed with `playbooks/M2_001_PREFLIGHT.md`."
 
 ---
 
@@ -267,9 +267,9 @@ Agent reads project IDs and API token from 1Password, sets via Vercel API (`PATC
 
 ## 3.0 Handoff to Milestone 2
 
-Once 2.4 is verified, agent runs `./scripts/check-credentials.sh` (M2_001) to confirm all vault items are present before executing `docs/M2_002_PLAYBOOK_PRIMING_INFRA.md`.
+Once 2.4 is verified, agent runs `./playbooks/gates/check-credentials.sh` (M2_001) to confirm all vault items are present before executing `playbooks/M2_002_PRIMING_INFRA.md`.
 
-All vault items the agent will need are listed in `docs/M2_001_PLAYBOOK_PREFLIGHT.md §1.0` and `§4.0`. Review that list now and create any missing items in 1Password before the handoff — it avoids mid-execution failures.
+All vault items the agent will need are listed in `playbooks/M2_001_PREFLIGHT.md §1.0` and `§4.0`. Review that list now and create any missing items in 1Password before the handoff — it avoids mid-execution failures.
 
 ---
 

@@ -67,7 +67,7 @@ pub fn metricsServerThread(port: u16) !void {
         .max_body_size = 64 * 1024,
     });
     try listener.listen();
-    log.info("reconcile metrics listening on 0.0.0.0:{d}", .{port});
+    log.info("reconcile.metrics_listening port={d}", .{port});
     zap.start(.{
         .threads = 1,
         .workers = 1,

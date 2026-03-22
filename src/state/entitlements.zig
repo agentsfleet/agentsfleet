@@ -223,7 +223,7 @@ pub fn enforceWithAudit(
 
     const policy = loadPolicy(conn, workspace_id) catch |err| {
         if (err == EnforcementError.EntitlementMissing) {
-            log.debug("entitlement_deny workspace_id={s} boundary={s} reason=missing", .{ workspace_id, boundary.label() });
+            log.debug("entitlement.deny workspace_id={s} boundary={s} reason=missing", .{ workspace_id, boundary.label() });
             try insertAuditSnapshot(conn, alloc, workspace_id, boundary, "DENY", error_codes.ERR_ENTITLEMENT_UNAVAILABLE, .unknown, null, observed, actor);
             return EnforcementError.EntitlementMissing;
         }
@@ -245,7 +245,7 @@ pub fn enforceWithAudit(
         return EnforcementError.EntitlementSkillNotAllowed;
     }
 
-    log.debug("entitlement_allow workspace_id={s} boundary={s} tier={s} profiles={d} stages={d}", .{ workspace_id, boundary.label(), policy.tier.label(), observed.profile_count, observed.stage_count });
+    log.debug("entitlement.allow workspace_id={s} boundary={s} tier={s} profiles={d} stages={d}", .{ workspace_id, boundary.label(), policy.tier.label(), observed.profile_count, observed.stage_count });
     try insertAuditSnapshot(conn, alloc, workspace_id, boundary, "ALLOW", "ALLOW", policy.tier, policy, observed, actor);
 }
 

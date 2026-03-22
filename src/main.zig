@@ -91,7 +91,7 @@ pub fn main() !void {
     initRuntimeLogLevel(alloc);
 
     if (builtin.mode == .Debug) {
-        log.warn("debug build — not for production use", .{});
+        log.warn("startup.debug_build hint=not_for_production", .{});
     }
 
     const cmd = cli_commands.parseSubcommandFromProcessArgs();

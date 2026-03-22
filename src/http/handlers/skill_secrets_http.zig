@@ -47,7 +47,7 @@ pub fn handlePutWorkspaceSkillSecret(
         return;
     }
 
-    log.debug("put skill secret request workspace_id={s}", .{workspace_id});
+    log.debug("secret.put workspace_id={s}", .{workspace_id});
 
     const out = skill_secret_handlers.put(conn, alloc, workspace_id, skill_ref_encoded, key_name_encoded, parsed.value) catch |err| {
         switch (err) {
@@ -96,7 +96,7 @@ pub fn handleDeleteWorkspaceSkillSecret(
         return;
     }
 
-    log.debug("delete skill secret request workspace_id={s}", .{workspace_id});
+    log.debug("secret.delete workspace_id={s}", .{workspace_id});
 
     const out = skill_secret_handlers.delete(conn, alloc, workspace_id, skill_ref_encoded, key_name_encoded) catch {
         common.internalOperationError(r, "Failed to delete skill secret", req_id);

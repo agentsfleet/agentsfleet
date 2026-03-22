@@ -45,7 +45,7 @@ pub const Client = struct {
             }
         }
 
-        log.info("connected host={s} port={d} tls={}", .{ cfg.host, cfg.port, cfg.use_tls });
+        log.info("redis.connected host={s} port={d} tls={}", .{ cfg.host, cfg.port, cfg.use_tls });
         return client;
     }
 
@@ -113,15 +113,15 @@ pub const Client = struct {
 
         switch (resp) {
             .bulk => |v| if (v == null) {
-                log.err("xadd_failed run_id={s} attempt={d}", .{ run_id, attempt });
+                log.err("redis.xadd_fail run_id={s} attempt={d} error_code=UZ-INTERNAL-003", .{ run_id, attempt });
                 return error.RedisXaddFailed;
             },
             else => {
-                log.err("xadd_failed run_id={s} attempt={d}", .{ run_id, attempt });
+                log.err("redis.xadd_fail run_id={s} attempt={d} error_code=UZ-INTERNAL-003", .{ run_id, attempt });
                 return error.RedisXaddFailed;
             },
         }
-        log.debug("xadd run_id={s} attempt={d} workspace_id={s}", .{ run_id, attempt, workspace_id });
+        log.debug("redis.xadd run_id={s} attempt={d} workspace_id={s}", .{ run_id, attempt, workspace_id });
     }
 
     pub fn xack(self: *Client, message_id: []const u8) !void {
@@ -135,15 +135,15 @@ pub const Client = struct {
 
         switch (resp) {
             .integer => |v| if (v < 0) {
-                log.err("xack_failed message_id={s}", .{message_id});
+                log.err("redis.xack_fail message_id={s} error_code=UZ-INTERNAL-003", .{message_id});
                 return error.RedisXackFailed;
             },
             else => {
-                log.err("xack_failed message_id={s}", .{message_id});
+                log.err("redis.xack_fail message_id={s} error_code=UZ-INTERNAL-003", .{message_id});
                 return error.RedisXackFailed;
             },
         }
-        log.debug("xack message_id={s}", .{message_id});
+        log.debug("redis.xack message_id={s}", .{message_id});
     }
 
     pub fn xreadgroupOne(self: *Client, consumer_id: []const u8) !?redis_types.QueueMessage {
@@ -182,7 +182,7 @@ pub const Client = struct {
     pub fn command(self: *Client, argv: []const []const u8) !redis_protocol.RespValue {
         var value = try self.commandAllowError(argv);
         if (value == .err) {
-            log.err("redis_command_error cmd={s}", .{if (argv.len > 0) argv[0] else "unknown"});
+            log.err("redis.command_error cmd={s} error_code=UZ-INTERNAL-003", .{if (argv.len > 0) argv[0] else "unknown"});
             value.deinit(self.alloc);
             return error.RedisCommandError;
         }

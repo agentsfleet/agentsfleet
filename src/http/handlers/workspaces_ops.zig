@@ -48,7 +48,7 @@ pub fn handlePauseWorkspace(ctx: *common.Context, r: zap.Request, workspace_id: 
     }
 
     policy.recordPolicyEvent(conn, workspace_id, null, .sensitive, .allow, "m1.pause_workspace", "api") catch |err| {
-        obs_log.logWarnErr(.http, err, "policy event insert failed (non-fatal) workspace_id={s}", .{workspace_id});
+        obs_log.logWarnErr(.http, err, "workspace.policy_event_insert_fail workspace_id={s}", .{workspace_id});
     };
 
     const now_ms = std.time.milliTimestamp();
@@ -76,7 +76,7 @@ pub fn handlePauseWorkspace(ctx: *common.Context, r: zap.Request, workspace_id: 
 
     const new_version = row.get(i64, 0) catch 0;
     upd.drain() catch {};
-    log.info("workspace {} pause={} workspace_id={s}", .{ parsed.value.pause, parsed.value.pause, workspace_id });
+    log.info("workspace.pause_updated pause={} workspace_id={s}", .{ parsed.value.pause, workspace_id });
 
     common.writeJson(r, .ok, .{
         .workspace_id = workspace_id,
@@ -162,7 +162,7 @@ pub fn handleSyncSpecs(ctx: *common.Context, r: zap.Request, workspace_id: []con
         break :blk v;
     };
 
-    log.info("sync workspace_id={s} total_pending={d}", .{ workspace_id, total_pending });
+    log.info("workspace.sync workspace_id={s} total_pending={d}", .{ workspace_id, total_pending });
 
     common.writeJson(r, .ok, .{
         .synced_count = @as(i64, 0),

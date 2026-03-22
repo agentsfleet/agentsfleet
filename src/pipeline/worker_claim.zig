@@ -93,7 +93,7 @@ pub fn processNextRun(
     _ = http_common.setTenantSessionContext(conn, tenant_id);
 
     result.drain() catch |err| {
-        obs_log.logWarnErr(.worker, err, "claim query drain failed run_id={s}", .{run_id});
+        obs_log.logWarnErr(.worker, err, "pipeline.claim_drain_fail run_id={s}", .{run_id});
     };
 
     _ = try state.transition(conn, run_id, .RUN_PLANNED, .orchestrator, .PLAN_COMPLETE, "claimed by worker");
@@ -102,14 +102,14 @@ pub fn processNextRun(
     tx_open = false;
 
     var workspace_profile: ?topology.Profile = profile_resolver.loadWorkspaceActiveProfile(alloc, conn, workspace_id) catch |err| blk: {
-        obs_log.logWarnErr(.worker, err, "active profile load failed; fallback to default workspace_id={s}", .{workspace_id});
+        obs_log.logWarnErr(.worker, err, "pipeline.profile_load_fail workspace_id={s}", .{workspace_id});
         break :blk null;
     };
     defer if (workspace_profile) |*p| p.deinit();
 
     const effective_profile: *const topology.Profile = if (workspace_profile) |*p| p else profile;
     const using_fallback = workspace_profile == null;
-    log.info("workspace profile resolved workspace_id={s} profile={s} fallback_default_v1={}", .{
+    log.info("pipeline.profile_resolved workspace_id={s} profile={s} fallback_default_v1={}", .{
         workspace_id,
         effective_profile.agent_id,
         using_fallback,
@@ -118,7 +118,7 @@ pub fn processNextRun(
     try worker_state_mod.beginRunIfActive(worker_state);
     defer worker_state.endRun();
 
-    log.info("claimed run run_id={s} request_id={s} trace_id={s} attempt={d}", .{ run_id, request_id, trace_id, attempt });
+    log.info("pipeline.run_claimed run_id={s} request_id={s} trace_id={s} attempt={d}", .{ run_id, request_id, trace_id, attempt });
     var claimed_detail: [192]u8 = undefined;
     const claimed_detail_slice = std.fmt.bufPrint(
         &claimed_detail,
@@ -181,10 +181,10 @@ pub fn processNextRun(
                 attempt,
                 .non_billable,
             ) catch |billing_err| {
-                obs_log.logWarnErr(.worker, billing_err, "billing finalize failed run_id={s}", .{run_id});
+                obs_log.logWarnErr(.worker, billing_err, "pipeline.billing_finalize_fail run_id={s}", .{run_id});
             };
             _ = state.transition(conn, run_id, .BLOCKED, .orchestrator, .AGENT_TIMEOUT, reason_note) catch |tx_err| {
-                obs_log.logWarnErr(.worker, tx_err, "shutdown transition failed run_id={s}", .{run_id});
+                obs_log.logWarnErr(.worker, tx_err, "pipeline.shutdown_transition_fail run_id={s}", .{run_id});
             };
             if (err == worker_runtime.WorkerError.RunDeadlineExceeded) {
                 events.emit("run_deadline_exceeded", run_id, reason_note);
@@ -196,7 +196,7 @@ pub fn processNextRun(
         const classified = err_classify.classify(err, null);
         var note_buf: [192]u8 = undefined;
         const note = std.fmt.bufPrint(&note_buf, "class={s} err={s}", .{ @tagName(classified.class), @errorName(err) }) catch @errorName(err);
-        log.err("run failed run_id={s} class={s} retryable={} err={s}", .{ run_id, @tagName(classified.class), classified.retryable, @errorName(err) });
+        log.err("pipeline.run_failed run_id={s} class={s} retryable={} err={s}", .{ run_id, @tagName(classified.class), classified.retryable, @errorName(err) });
         var failed_detail: [224]u8 = undefined;
         const failed_detail_slice = std.fmt.bufPrint(
             &failed_detail,
@@ -223,7 +223,7 @@ pub fn processNextRun(
             obs_log.logWarnErr(.worker, billing_err, "billing finalize failed run_id={s}", .{run_id});
         };
         _ = state.transition(conn, run_id, .BLOCKED, .orchestrator, classified.reason_code, note) catch |tx_err| {
-            obs_log.logWarnErr(.worker, tx_err, "failure transition failed run_id={s}", .{run_id});
+            obs_log.logWarnErr(.worker, tx_err, "pipeline.failure_transition_fail run_id={s}", .{run_id});
         };
         metrics.incRunsBlocked();
     };

@@ -228,7 +228,7 @@ pub fn executeRun(
                 verification_started = true;
             }
 
-            log.info("stage start run_id={s} stage_id={s} role={s} attempt={d}", .{ ctx.run_id, stage.stage_id, stage.role_id, attempt });
+            log.info("pipeline.stage_start run_id={s} stage_id={s} role={s} attempt={d}", .{ ctx.run_id, stage.stage_id, stage.role_id, attempt });
 
             try tenant_limiter.acquireCancelable(ctx.tenant_id, stage.skill_id, 1.0, running, deadline_ms);
             try worker_runtime.ensureRunActive(running, deadline_ms);
@@ -364,7 +364,7 @@ pub fn executeRun(
                 metrics.addBackoffWaitMs(delay_ms);
                 try worker_runtime.sleepCooperative(delay_ms, running, deadline_ms);
 
-                log.info("retrying run_id={s} attempt={d}", .{ ctx.run_id, attempt + 1 });
+                log.info("pipeline.retrying run_id={s} attempt={d}", .{ ctx.run_id, attempt + 1 });
             },
             .stage_index => unreachable,
         }

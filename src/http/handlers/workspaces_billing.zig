@@ -51,18 +51,19 @@ pub fn handleUpgradeWorkspaceToScale(ctx: *common.Context, r: zap.Request, works
         return;
     }
 
-    log.debug("upgrade to scale request workspace_id={s}", .{workspace_id});
+    log.debug("billing.upgrade_request workspace_id={s}", .{workspace_id});
 
     const upgraded = workspace_billing.upgradeWorkspaceToScale(conn, alloc, workspace_id, .{
         .subscription_id = parsed.value.subscription_id,
         .actor = principal.user_id orelse "api",
     }) catch |err| switch (err) {
         error.InvalidSubscriptionId => {
+            posthog_events.trackApiErrorWithContext(ctx.posthog, principal.user_id orelse "", error_codes.ERR_BILLING_INVALID_SUBSCRIPTION_ID, "subscription_id is required", workspace_id, req_id);
             common.errorResponse(r, .bad_request, error_codes.ERR_BILLING_INVALID_SUBSCRIPTION_ID, "subscription_id is required", req_id);
             return;
         },
         else => {
-            log.err("upgrade to scale failed workspace_id={s}", .{workspace_id});
+            log.err("billing.upgrade_fail error_code=UZ-INTERNAL-003 workspace_id={s}", .{workspace_id});
             common.internalOperationError(r, "Failed to upgrade workspace to Scale", req_id);
             return;
         },
@@ -70,7 +71,7 @@ pub fn handleUpgradeWorkspaceToScale(ctx: *common.Context, r: zap.Request, works
     defer alloc.free(upgraded.plan_sku);
     defer if (upgraded.subscription_id) |v| alloc.free(v);
 
-    log.info("workspace upgraded to scale workspace_id={s} plan_sku={s}", .{ workspace_id, upgraded.plan_sku });
+    log.info("billing.upgraded workspace_id={s} plan_sku={s}", .{ workspace_id, upgraded.plan_sku });
 
     common.writeJson(r, .ok, .{
         .workspace_id = workspace_id,
@@ -109,7 +110,7 @@ pub fn handleSetWorkspaceScoringConfig(ctx: *common.Context, r: zap.Request, wor
     };
     defer parsed.deinit();
 
-    log.debug("set scoring config request workspace_id={s} tokens={d}", .{ workspace_id, parsed.value.scoring_context_max_tokens });
+    log.debug("billing.set_scoring_config workspace_id={s} tokens={d}", .{ workspace_id, parsed.value.scoring_context_max_tokens });
 
     if (parsed.value.scoring_context_max_tokens < 512 or parsed.value.scoring_context_max_tokens > 8192) {
         common.errorResponse(r, .bad_request, error_codes.ERR_SCORING_CONTEXT_TOKENS_INVALID, "scoring_context_max_tokens must be between 512 and 8192", req_id);
@@ -148,7 +149,7 @@ pub fn handleSetWorkspaceScoringConfig(ctx: *common.Context, r: zap.Request, wor
         return;
     };
     q.drain() catch |err| {
-        obs_log.logWarnErr(.http, err, "workspace scoring config drain failed workspace_id={s}", .{workspace_id});
+        obs_log.logWarnErr(.http, err, "billing.scoring_config_drain_fail workspace_id={s}", .{workspace_id});
         common.internalDbError(r, req_id);
         return;
     };
@@ -203,7 +204,7 @@ pub fn handleApplyWorkspaceBillingEvent(ctx: *common.Context, r: zap.Request, wo
         return;
     }
 
-    log.debug("apply billing event request workspace_id={s} event_type={s}", .{ workspace_id, parsed.value.event_type });
+    log.debug("billing.apply_event workspace_id={s} event_type={s}", .{ workspace_id, parsed.value.event_type });
 
     const state = workspace_billing.applyBillingLifecycleEvent(conn, alloc, workspace_id, .{
         .event = event,
@@ -211,17 +212,18 @@ pub fn handleApplyWorkspaceBillingEvent(ctx: *common.Context, r: zap.Request, wo
         .actor = principal.user_id orelse "api",
     }) catch |err| {
         if (workspace_billing.errorCode(err)) |code| {
+            posthog_events.trackApiErrorWithContext(ctx.posthog, principal.user_id orelse "", code, workspace_billing.errorMessage(err) orelse "Workspace billing failure", workspace_id, req_id);
             common.errorResponse(r, .bad_request, code, workspace_billing.errorMessage(err) orelse "Workspace billing failure", req_id);
             return;
         }
-        log.err("apply billing event failed workspace_id={s} event_type={s}", .{ workspace_id, parsed.value.event_type });
+        log.err("billing.apply_event_fail error_code=UZ-INTERNAL-003 workspace_id={s} event_type={s}", .{ workspace_id, parsed.value.event_type });
         common.internalOperationError(r, "Failed to apply workspace billing event", req_id);
         return;
     };
     defer alloc.free(state.plan_sku);
     defer if (state.subscription_id) |v| alloc.free(v);
 
-    log.info("billing event applied workspace_id={s} event_type={s} plan_tier={s}", .{ workspace_id, parsed.value.event_type, state.plan_tier.label() });
+    log.info("billing.event_applied workspace_id={s} event_type={s} plan_tier={s}", .{ workspace_id, parsed.value.event_type, state.plan_tier.label() });
 
     common.writeJson(r, .ok, .{
         .workspace_id = workspace_id,

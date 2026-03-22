@@ -180,7 +180,7 @@ pub fn compileProfile(
     try commitTx(conn);
     tx_open = false;
 
-    log.info("compile ok workspace_id={s} agent_id={s} is_valid={}", .{ workspace_id, agent_id, outcome.is_valid });
+    log.info("harness.compile_ok workspace_id={s} agent_id={s} is_valid={}", .{ workspace_id, agent_id, outcome.is_valid });
 
     return .{
         .compile_job_id = compile_job_id,

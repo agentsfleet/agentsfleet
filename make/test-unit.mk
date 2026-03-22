@@ -2,7 +2,7 @@
 # TEST-UNIT — zombied, zombiectl, website, app
 # =============================================================================
 
-.PHONY: test-unit test-zombied test-unit-zombied test-unit-zombiectl test-unit-website test-unit-app test-depth test-coverage-zombied
+.PHONY: test-zombied test-unit-zombied test-unit-zombiectl test-unit-website test-unit-app test-depth test-coverage-zombied
 
 test-unit-zombied:  ## Run zombied unit tests (Zig)
 	@echo "→ [zombied] Running Zig unit tests..."
@@ -37,8 +37,6 @@ test-unit-app:  ## Run app unit tests (vitest)
 test-zombied: test-unit-zombied _test-integration-zombied  ## Run zombied tests (unit + integration)
 	@echo "✓ [zombied] Unit + integration passed"
 
-test-unit: test-zombied test-unit-zombiectl test-unit-website test-unit-app  ## Run all unit tests (zombied + zombiectl + website + app)
-	@echo "✓ All unit tests passed"
 
 test-depth:  ## Enforce minimum test depth inventory
 	@mkdir -p .tmp

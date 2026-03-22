@@ -16,5 +16,5 @@ pub fn run(alloc: std.mem.Allocator) !void {
         std.debug.print("fatal: schema migration failed: {}\n", .{err});
         std.process.exit(1);
     };
-    log.info("schema migrations completed", .{});
+    log.info("migrate.ok status=completed", .{});
 }

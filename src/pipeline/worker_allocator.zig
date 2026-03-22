@@ -9,7 +9,7 @@ pub fn finalizeWorkerAllocator(gpa: *WorkerAllocator) bool {
         .ok => false,
         .leak => blk: {
             metrics.incWorkerAllocatorLeaks();
-            log.warn("worker allocator leak detected", .{});
+            log.warn("worker.allocator_leak_detected", .{});
             break :blk true;
         },
     };

@@ -34,7 +34,7 @@ jobs:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
           VAULT_DEV: ${{ vars.VAULT_DEV }}
           VAULT_PROD: ${{ vars.VAULT_PROD }}
-        run: ./scripts/check-credentials.sh
+        run: ./playbooks/gates/check-credentials.sh
 
   # ── 1. Build and push dev-latest image to GHCR ──────────────────────────
   build-dev:
@@ -89,6 +89,7 @@ jobs:
           GITHUB_APP_PRIVATE_KEY: op://${{ vars.VAULT_DEV }}/github-app/private-key
           CLERK_PUBLISHABLE_KEY: op://${{ vars.VAULT_DEV }}/clerk-dev/publishable-key
           CLERK_SECRET_KEY: op://${{ vars.VAULT_DEV }}/clerk-dev/secret-key
+          POSTHOG_API_KEY: op://${{ vars.VAULT_DEV }}/posthog-dev/credential
 
       - uses: superfly/flyctl-actions/setup-flyctl@master
 
@@ -105,6 +106,7 @@ jobs:
             GITHUB_APP_PRIVATE_KEY="$GITHUB_APP_PRIVATE_KEY" \
             CLERK_PUBLISHABLE_KEY="$CLERK_PUBLISHABLE_KEY" \
             CLERK_SECRET_KEY="$CLERK_SECRET_KEY" \
+            POSTHOG_API_KEY="$POSTHOG_API_KEY" \
             --app ${{ vars.FLY_APP_DEV }} --stage
         env:
           FLY_API_TOKEN: ${{ env.FLY_API_TOKEN }}

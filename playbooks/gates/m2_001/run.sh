@@ -8,7 +8,7 @@
 #   2 -> procurement readiness gate (required refs + role separation checks)
 #
 # Usage:
-#   ./scripts/checks/m2_001/run.sh    # runs all sections, both environments
+#   ./playbooks/gates/m2_001/run.sh    # runs all sections, both environments
 
 set -euo pipefail
 
@@ -24,7 +24,7 @@ run_section() {
   local script=""
   case "$section" in
     1) script="$SCRIPT_DIR/section-1-preflight.sh" ;;
-    2) script="$SCRIPT_DIR/section-2-procurement-readiness-gate.sh" ;;
+    2) script="$SCRIPT_DIR/section-2-procurement-readiness.sh" ;;
     *)
       echo "Unknown section: $section (supported: 1,2)" >&2
       return 1

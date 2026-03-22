@@ -147,7 +147,7 @@ const AsyncExporter = struct {
         defer self.mutex.unlock();
         if (self.len >= QUEUE_CAPACITY) {
             metrics.incLangfuseDropped();
-            log.warn("error_code={s} langfuse queue full drop trace_id={s} run_id={s} queue_depth={d}", .{ ERR_LANGFUSE_QUEUE_DROPPED, t.trace_id, t.run_id, self.len });
+            log.warn("langfuse.queue_dropped error_code={s} trace_id={s} run_id={s} queue_depth={d}", .{ ERR_LANGFUSE_QUEUE_DROPPED, t.trace_id, t.run_id, self.len });
             return;
         }
         self.queue[self.tail] = QueuedTrace.fromTrace(t);
@@ -202,7 +202,7 @@ const AsyncExporter = struct {
                 }
                 metrics.incLangfuseExportFailed();
                 metrics.setLangfuseLastFailureAtMs(std.time.milliTimestamp());
-                obs_log.logWarnErr(.langfuse, err, "error_code={s} langfuse async emit failed trace_id={s} run_id={s} host={s}", .{ ERR_LANGFUSE_EXPORT_FAILED, t.trace_id, t.run_id, self.cfg.host });
+                obs_log.logWarnErr(.langfuse, err, "langfuse.async_emit_fail error_code={s} trace_id={s} run_id={s} host={s}", .{ ERR_LANGFUSE_EXPORT_FAILED, t.trace_id, t.run_id, self.cfg.host });
                 return;
             }
         }
@@ -290,7 +290,7 @@ pub fn renderIngestPayload(alloc: std.mem.Allocator, t: LangfuseTrace) ![]u8 {
 /// Fire-and-forget emit of a Langfuse trace. Errors are logged, never propagated.
 pub fn emitTrace(alloc: std.mem.Allocator, cfg: LangfuseConfig, t: LangfuseTrace) void {
     emitTraceInner(alloc, cfg, t) catch |err| {
-        obs_log.logWarnErr(.langfuse, err, "error_code={s} langfuse emit failed trace_id={s} run_id={s} host={s}", .{ ERR_LANGFUSE_EXPORT_FAILED, t.trace_id, t.run_id, cfg.host });
+        obs_log.logWarnErr(.langfuse, err, "langfuse.emit_fail error_code={s} trace_id={s} run_id={s} host={s}", .{ ERR_LANGFUSE_EXPORT_FAILED, t.trace_id, t.run_id, cfg.host });
     };
 }
 
@@ -307,7 +307,7 @@ fn emitTraceInner(alloc: std.mem.Allocator, cfg: LangfuseConfig, t: LangfuseTrac
     defer alloc.free(auth_header);
 
     try postJsonWithBasicAuth(alloc, url, auth_header, payload);
-    log.info("langfuse_emit_ok url={s} trace_id={s} payload_len={d}", .{ url, t.trace_id, payload.len });
+    log.info("langfuse.emit_ok url={s} trace_id={s} payload_len={d}", .{ url, t.trace_id, payload.len });
 }
 
 fn buildBasicAuthHeader(alloc: std.mem.Allocator, public_key: []const u8, secret_key: []const u8) ![]u8 {

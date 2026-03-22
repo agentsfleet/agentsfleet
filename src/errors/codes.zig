@@ -65,6 +65,13 @@ pub const ERR_PROPOSAL_GENERATION_FAILED = "UZ-PROPOSAL-016";
 pub const ERR_PROPOSAL_NOT_FOUND = "UZ-PROPOSAL-017";
 pub const ERR_HARNESS_CHANGE_NOT_FOUND = "UZ-HARNESS-001";
 
+pub const ERR_STARTUP_ENV_CHECK = "UZ-STARTUP-001";
+pub const ERR_STARTUP_CONFIG_LOAD = "UZ-STARTUP-002";
+pub const ERR_STARTUP_DB_CONNECT = "UZ-STARTUP-003";
+pub const ERR_STARTUP_REDIS_CONNECT = "UZ-STARTUP-004";
+pub const ERR_STARTUP_MIGRATION_CHECK = "UZ-STARTUP-005";
+pub const ERR_STARTUP_OIDC_INIT = "UZ-STARTUP-006";
+
 pub fn docsRef(code: []const u8) struct { base: []const u8, code: []const u8 } {
     return .{
         .base = ERROR_DOCS_BASE,

@@ -55,7 +55,7 @@ pub fn handleGetAgent(ctx: *common.Context, r: zap.Request, agent_id: []const u8
     const created_at = row.get(i64, 6) catch 0;
     const updated_at = row.get(i64, 7) catch 0;
 
-    q.drain() catch |err| obs_log.logWarnErr(.http, err, "agent query drain failed agent_id={s}", .{agent_id});
+    q.drain() catch |err| obs_log.logWarnErr(.http, err, "agent.query_drain_fail agent_id={s}", .{agent_id});
 
     if (!common.authorizeWorkspaceAndSetTenantContext(conn, principal, workspace_id)) {
         common.errorResponse(r, .forbidden, error_codes.ERR_FORBIDDEN, "Workspace access denied", req_id);
@@ -64,7 +64,7 @@ pub fn handleGetAgent(ctx: *common.Context, r: zap.Request, agent_id: []const u8
 
     const improvement_stalled_warning = proposals.hasImprovementStalledWarning(conn, agent_id) catch false;
 
-    log.debug("agent get agent_id={s} status={s}", .{ agent_id, status });
+    log.debug("agent.get agent_id={s} status={s}", .{ agent_id, status });
 
     common.writeJson(r, .ok, .{
         .agent_id = rid,

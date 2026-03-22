@@ -63,7 +63,7 @@ pub fn scoreRunIfTerminal(
         state,
         total_wall_seconds,
     ) catch |err| {
-        log.warn("scoring failed (non-fatal) run_id={s} workspace_id={s} agent_id={s} err={s}", .{ run_id, workspace_id, agent_id, @errorName(err) });
+        log.warn("scoring.score_fail run_id={s} workspace_id={s} agent_id={s} err={s}", .{ run_id, workspace_id, agent_id, @errorName(err) });
         metrics.incAgentScoringFailed();
         posthog_events.trackAgentScoringFailed(
             posthog_client,
@@ -160,7 +160,7 @@ fn scoreRunInner(
         );
     }
 
-    log.info("run scored run_id={s} score={d} tier={s}", .{ run_id, score, tier.label() });
+    log.info("scoring.run_scored run_id={s} score={d} tier={s}", .{ run_id, score, tier.label() });
 
     posthog_events.trackAgentRunScored(
         posthog_client,

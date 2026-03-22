@@ -5,21 +5,22 @@
 
 ---
 
-## Three-Layer Stack
+## Two-Layer Stack
 
-usezombie uses three complementary observability tools. They answer different questions and do not overlap.
+usezombie uses two complementary observability tools. They answer different questions and do not overlap.
 
 | Layer | Tool | Answers |
 |---|---|---|
-| Infra / ops | OpenTelemetry (M1_003, M4_005) | Is the service healthy? Latency, error rates, traces |
-| AI / LLM | Langfuse (M1_003) | Is the agent spending wisely? Token cost, run traces |
-| Product / users | PostHog (M5_001, M5_005, M5_006) | Who is using what? Funnels, retention, error attribution |
+| Infra / ops | Grafana Cloud — Prometheus metrics, Loki logs, Tempo traces (M1_003, M4_005, M12_001) | Is the service healthy? Latency, error rates, traces, token spend alerting |
+| Product / users | PostHog (M5_001, M5_005, M5_006) | Who is using what? Funnels, retention, error attribution, per-user cost |
 
-These are additive. OTel tells you p99 latency is 450ms. PostHog tells you alice@acme.com on the Pro plan has had 3 failed runs this week and is likely to churn. Langfuse tells you the Scout agent burned $0.40 on that run. You need all three.
+LLM token/cost data is dual-emitted to both layers: Grafana metrics (`zombie_agent_tokens_total`, `zombie_agent_duration_seconds`) for ops alerting, and PostHog event properties (`agent_completed.tokens`, `agent_completed.duration_ms`) for per-user cost attribution.
 
 ---
 
 ## Langfuse: LLM/Agent Tracing
+
+> **Superseded:** Langfuse is being removed in M12_001. See `docs/spec/v1/M12_001_OBSERVABILITY_CONSOLIDATION.md`. LLM token/cost data is dual-emitted to Grafana metrics and PostHog event properties. The content below is retained for historical context until M12_001 WS1 is implemented.
 
 ### Langfuse Organization & Project Structure
 
@@ -242,7 +243,7 @@ Group analytics: workspace-level events include `$groups: { workspace: "ws_abc" 
 
 | Spec | Surface | Status |
 |---|---|---|
-| M4_005 dim 1.5 | Langfuse integration (zombied worker) | PENDING |
+| M4_005 dim 1.5 | Langfuse integration (zombied worker) | Superseded by M12_001 |
 | M5_001 | posthog-zig SDK (library) | DONE |
 | M5_005 | Website PostHog integration | DONE |
 | M5_006 | zombied PostHog integration | DONE |

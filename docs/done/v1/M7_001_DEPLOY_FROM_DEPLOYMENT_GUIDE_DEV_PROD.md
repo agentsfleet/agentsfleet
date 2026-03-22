@@ -70,7 +70,7 @@ Tag-based release pipeline wired end-to-end. Worker node `deploy.sh` and PROD Ra
 - 4.1 ✅ DONE Ambiguity/drift log captured in milestone playbooks with concrete mismatches and correction policy
 - 4.2 ✅ DONE Rebuilt deployment docs into chronological no-drift execution flow (`M1_001`, `M2_001`, `M2_002`, `M3_001`, `M3_002`)
 - 4.3 ✅ DONE Vault references abstracted to `$VAULT_DEV`/`$VAULT_PROD`; human/agent split documented; redis-acl-* items removed (Upstash manages via dashboard)
-- 4.4 ✅ DONE `scripts/check-credentials.sh` — portable credential gate for all vault items; DEV vault fully green
+- 4.4 ✅ DONE `playbooks/gates/check-credentials.sh` — portable credential gate for all vault items; DEV vault fully green
 
 ---
 

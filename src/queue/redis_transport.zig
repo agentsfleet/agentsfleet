@@ -16,7 +16,7 @@ pub const PlainTransport = struct {
         const write_buffer = try alloc.alloc(u8, 16 * 1024);
         errdefer alloc.free(write_buffer);
 
-        log.debug("plain transport connected", .{});
+        log.debug("redis.transport_connected mode=plain", .{});
 
         return .{
             .stream = stream,
@@ -97,10 +97,10 @@ pub const TlsTransport = struct {
                 .allow_truncation_attacks = false,
             },
         ) catch |err| {
-            log.err("TLS handshake failed host={s}", .{host});
+            log.err("redis.tls_handshake_fail host={s}", .{host});
             return err;
         };
-        log.debug("TLS transport connected host={s}", .{host});
+        log.debug("redis.transport_connected mode=tls host={s}", .{host});
     }
 
     pub fn deinit(self: *TlsTransport, alloc: std.mem.Allocator) void {

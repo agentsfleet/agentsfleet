@@ -50,7 +50,7 @@ pub fn provisionWorkspaceCredit(
         .exhausted_at = null,
     }, now_ms);
     try store.insertAudit(conn, alloc, workspace_id, "CREDIT_GRANTED", FREE_PLAN_INITIAL_CREDIT_CENTS, FREE_PLAN_INITIAL_CREDIT_CENTS, "workspace_created", actor, "{}");
-    log.info("credit_provisioned workspace_id={s} initial_cents={d}", .{ workspace_id, FREE_PLAN_INITIAL_CREDIT_CENTS });
+    log.info("credit.provisioned workspace_id={s} initial_cents={d}", .{ workspace_id, FREE_PLAN_INITIAL_CREDIT_CENTS });
 }
 
 pub fn getOrProvisionWorkspaceCredit(

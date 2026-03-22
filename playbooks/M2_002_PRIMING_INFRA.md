@@ -4,7 +4,7 @@
 **Workstream:** 001
 **Updated:** Mar 19, 2026
 **Owner:** Agent
-**Prerequisite:** `docs/M1_001_PLAYBOOK_BOOTSTRAP.md` Milestone 1 complete — vaults created, GitHub Secrets set, API keys stored in 1Password.
+**Prerequisite:** `playbooks/M1_001_BOOTSTRAP.md` Milestone 1 complete — vaults created, GitHub Secrets set, API keys stored in 1Password.
 
 Reusable across startups. Replace `ZMB` vault prefix and service names per project.
 
@@ -15,10 +15,10 @@ export VAULT_DEV="${VAULT_DEV:-ZMB_CD_DEV}"
 export VAULT_PROD="${VAULT_PROD:-ZMB_CD_PROD}"
 
 # startup preflight (M2_001 section 1)
-SECTIONS=1 ./scripts/checks/m2_001/run.sh
+SECTIONS=1 ./playbooks/gates/m2_001/run.sh
 
 # procurement readiness gate (M2_001 section 2, must pass)
-SECTIONS=2 ./scripts/checks/m2_001/run.sh
+SECTIONS=2 ./playbooks/gates/m2_001/run.sh
 ```
 
 ---
@@ -26,7 +26,7 @@ SECTIONS=2 ./scripts/checks/m2_001/run.sh
 ## Sequence Overview
 
 ```
-Milestone 1 (M1_001_PLAYBOOK_BOOTSTRAP.md) — human + agent bootstrap
+Milestone 1 (M1_001_BOOTSTRAP.md) — human + agent bootstrap
     └── Milestone 2 (this doc) — agent infra priming
         ├── 1.0 Container pipeline (GHCR)
         ├── 2.0 Fly.io — API + Worker services (recommended)
@@ -36,8 +36,8 @@ Milestone 1 (M1_001_PLAYBOOK_BOOTSTRAP.md) — human + agent bootstrap
         ├── 3.0 Data-plane bootstrap (PlanetScale + Upstash)
         └── 4.0 Worker infrastructure (OVHCloud + Tailscale — defer to v2/scale)
             └── Milestone 3 deployment execution:
-                ├── docs/M3_001_PLAYBOOK_DEPLOY_DEV.md
-                └── docs/M3_002_PLAYBOOK_DEPLOY_PROD.md
+                ├── playbooks/M3_001_DEPLOY_DEV.md
+                └── playbooks/M3_002_DEPLOY_PROD.md
 ```
 
 **Human vs Agent split:**
@@ -113,6 +113,7 @@ for APP in zombied-dev zombied-dev-worker; do
     ENCRYPTION_MASTER_KEY="$(op read 'op://$VAULT_DEV/encryption-master-key/credential')" \
     GITHUB_APP_ID="$(op read 'op://$VAULT_DEV/github-app/app-id')" \
     GITHUB_APP_PRIVATE_KEY="$(op read 'op://$VAULT_DEV/github-app/private-key')" \
+    POSTHOG_API_KEY="$(op read 'op://$VAULT_DEV/posthog-dev/credential')" \
     OIDC_PROVIDER=clerk \
     OIDC_JWKS_URL="$(op read 'op://$VAULT_DEV/clerk-dev/publishable-key' | python3 -c 'import sys,base64; k=sys.stdin.read().strip().split("_")[2]; print(f\"https://{base64.b64decode(k+\"=\"*4).decode().rstrip(chr(36))}/.well-known/jwks.json\")')" \
     OIDC_ISSUER="$(op read 'op://$VAULT_DEV/clerk-dev/hostname' 2>/dev/null || echo 'https://winning-wombat-65.clerk.accounts.dev')" \
@@ -347,7 +348,7 @@ For local docker-compose Redis, static credentials are configured in `docker-com
 
 ## 4.0 Worker Infrastructure (OVHCloud + Tailscale)
 
-> **Full bootstrap detail is in [`docs/M4_001_PLAYBOOK_WORKER_BOOTSTRAP_DEV.md`](M4_001_PLAYBOOK_WORKER_BOOTSTRAP_DEV.md).**
+> **Full bootstrap detail is in [`playbooks/M4_001_WORKER_BOOTSTRAP_DEV.md`](M4_001_WORKER_BOOTSTRAP_DEV.md).**
 > Sections 4.1–4.8 below are a summary reference only.
 
 **DEV:** One bare-metal node (`zombie-dev-worker-ant`) — OVHCloud KS-1, Beauharnois CA. KVM required for Firecracker. SSH key stored in `ZMB_CD_DEV/zombie-dev-worker-ant/ssh-private-key`. Bootstrap follows §4.1–4.7 below using `VAULT_DEV` and the DEV image (`dev-latest`).
@@ -560,7 +561,7 @@ done
 
 After M2 infra priming is complete, execute DEV rollout using:
 
-- `docs/M3_001_PLAYBOOK_DEPLOY_DEV.md`
+- `playbooks/M3_001_DEPLOY_DEV.md`
 
 Do not duplicate DEV deploy execution here.
 
@@ -570,7 +571,7 @@ Do not duplicate DEV deploy execution here.
 
 After DEV rollout is green (M3_001), execute PROD rollout using:
 
-- `docs/M3_002_PLAYBOOK_DEPLOY_PROD.md`
+- `playbooks/M3_002_DEPLOY_PROD.md`
 
 Do not duplicate PROD deploy execution here.
 
@@ -583,4 +584,4 @@ Do not duplicate PROD deploy execution here.
 3. Replace domains (`usezombie.com`, `api.usezombie.com`, etc.)
 4. Sections 1.0–6.0 are identical — this doc is the full execution playbook
 
-**Pattern:** `M1_001_PLAYBOOK_BOOTSTRAP.md` = human identity + agent key storage. `M2_002_PLAYBOOK_PRIMING_INFRA.md` = agent infrastructure execution.
+**Pattern:** `M1_001_BOOTSTRAP.md` = human identity + agent key storage. `M2_002_PRIMING_INFRA.md` = agent infrastructure execution.

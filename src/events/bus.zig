@@ -112,11 +112,11 @@ pub const Bus = struct {
             self.mutex.unlock();
 
             if (dropped > 0) {
-                log.warn("event_drop count={d}", .{dropped});
+                log.warn("event.dropped count={d}", .{dropped});
             }
 
             const run_id = if (event.runIdSlice().len == 0) "-" else event.runIdSlice();
-            log.info("event ts_ms={d} kind={s} run_id={s} detail={s}", .{
+            log.info("event.emitted ts_ms={d} kind={s} run_id={s} detail={s}", .{
                 event.ts_ms,
                 event.kindSlice(),
                 run_id,

@@ -55,7 +55,7 @@ pub fn recordPolicyEvent(
             q.drain() catch {};
         }
     }
-    log.info("policy_event request_id={s} workspace={s} class={s} decision={s} rule={s} actor={s}", .{
+    log.info("policy.event request_id={s} workspace={s} class={s} decision={s} rule={s} actor={s}", .{
         request_id,
         workspace_id,
         @tagName(action_class),

@@ -249,4 +249,4 @@ This document is derived from the actual usezombie DEV + PROD deployment archite
 | Public hostname | `api-dev.usezombie.com` → tunnel CNAME |
 | Public port on origin | None |
 
-Playbook: `docs/M2_002_PLAYBOOK_PRIMING_INFRA.md §2.0`
+Playbook: `playbooks/M2_002_PRIMING_INFRA.md §2.0`

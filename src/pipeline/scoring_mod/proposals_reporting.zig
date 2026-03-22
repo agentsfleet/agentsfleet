@@ -95,7 +95,7 @@ pub fn loadImprovementReport(
     const baseline_avg = try loadLatestCompletedBaselineAverage(conn, agent_id);
     const current_avg = try loadCurrentAverageScore(conn, agent_id);
 
-    log.info("improvement report generated agent_id={s} applied={d}", .{ agent_id, counts.applied });
+    log.info("scoring.improvement_report_generated agent_id={s} applied={d}", .{ agent_id, counts.applied });
 
     return .{
         .agent_id = trust_row.agent_id,

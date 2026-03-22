@@ -5,6 +5,7 @@ const error_codes = @import("../../errors/codes.zig");
 const id_format = @import("../../types/id_format.zig");
 const workspace_billing = @import("../../state/workspace_billing.zig");
 const workspace_credit = @import("../../state/workspace_credit.zig");
+const posthog_events = @import("../../observability/posthog_events.zig");
 const common = @import("common.zig");
 
 const log = std.log.scoped(.http);
@@ -32,7 +33,7 @@ pub fn handleGitHubCallback(ctx: *Context, r: zap.Request) void {
     if (!common.requireUuidV7Id(r, req_id, workspace_id, "workspace_id")) return;
 
     const conn = ctx.pool.acquire() catch {
-        log.err("db pool acquire failed op=github_callback", .{});
+        log.err("workspace.db_acquire_fail error_code=UZ-INTERNAL-001 op=github_callback", .{});
         common.internalDbUnavailable(r, req_id);
         return;
     };
@@ -41,7 +42,7 @@ pub fn handleGitHubCallback(ctx: *Context, r: zap.Request) void {
     const now_ms = std.time.milliTimestamp();
     const tenant_id = blk: {
         var existing = conn.query("SELECT tenant_id FROM workspaces WHERE workspace_id = $1", .{workspace_id}) catch {
-            log.err("tenant lookup failed workspace_id={s}", .{workspace_id});
+            log.err("workspace.tenant_lookup_fail error_code=UZ-INTERNAL-002 workspace_id={s}", .{workspace_id});
             common.internalDbError(r, req_id);
             return;
         };
@@ -135,12 +136,13 @@ pub fn handleGitHubCallback(ctx: *Context, r: zap.Request) void {
         installation_id,
         1,
     ) catch {
-        log.err("store installation secret failed workspace_id={s}", .{workspace_id});
+        log.err("workspace.store_installation_secret_fail error_code=UZ-INTERNAL-003 workspace_id={s}", .{workspace_id});
         common.internalOperationError(r, "Failed to store installation secret", req_id);
         return;
     };
 
-    log.info("github callback processed workspace_id={s} installation_id={s}", .{ workspace_id, installation_id });
+    log.info("workspace.github_connected workspace_id={s} installation_id={s}", .{ workspace_id, installation_id });
+    posthog_events.trackWorkspaceGithubConnected(ctx.posthog, workspace_id, installation_id, req_id);
 
     common.writeJson(r, .ok, .{
         .workspace_id = workspace_id,

@@ -57,16 +57,16 @@ pub fn workerLoop(cfg: WorkerConfig, worker_state: *WorkerState) void {
         worker_state.running.store(false, .release);
         const inflight = worker_state.currentInFlightRuns();
         if (inflight != 0) {
-            log.warn("worker exiting with in_flight_runs={d}", .{inflight});
+            log.warn("worker.exiting_with_inflight in_flight_runs={d}", .{inflight});
         }
         _ = worker_allocator.finalizeWorkerAllocator(&gpa);
     }
     const alloc = gpa.allocator();
 
-    log.info("worker started poll_interval_ms={d}", .{cfg.poll_interval_ms});
+    log.info("worker.started poll_interval_ms={d}", .{cfg.poll_interval_ms});
 
     const prompts = agents.loadPrompts(alloc, cfg.config_dir) catch |err| {
-        obs_log.logErr(.worker, err, "failed to load agent prompts config_dir={s}", .{cfg.config_dir});
+        obs_log.logErr(.worker, err, "worker.prompts_load_fail config_dir={s}", .{cfg.config_dir});
         return;
     };
     defer {
@@ -76,11 +76,11 @@ pub fn workerLoop(cfg: WorkerConfig, worker_state: *WorkerState) void {
     }
 
     var profile = topology.defaultProfile(alloc) catch |err| {
-        obs_log.logErr(.worker, err, "failed to initialize default pipeline profile", .{});
+        obs_log.logErr(.worker, err, "worker.profile_init_fail", .{});
         return;
     };
     defer profile.deinit();
-    log.info("default pipeline profile loaded agent_id={s} stages={d}", .{ profile.agent_id, profile.stages.len });
+    log.info("worker.profile_loaded agent_id={s} stages={d}", .{ profile.agent_id, profile.stages.len });
 
     var token_cache = github_auth.TokenCache.init(alloc, cfg.github_app_id, cfg.github_app_private_key);
     defer token_cache.deinit();
@@ -88,13 +88,13 @@ pub fn workerLoop(cfg: WorkerConfig, worker_state: *WorkerState) void {
     defer tenant_limiter.deinit();
 
     var queue_client = queue_redis.Client.connectFromEnv(alloc, .worker) catch |err| {
-        obs_log.logErr(.worker, err, "redis queue unavailable; worker exiting (fail-closed)", .{});
+        obs_log.logErr(.worker, err, "worker.redis_unavailable error_code=UZ-INTERNAL-001", .{});
         return;
     };
     defer queue_client.deinit();
 
     queue_client.ensureConsumerGroup() catch |err| {
-        obs_log.logErr(.worker, err, "redis queue group setup failed; worker exiting (fail-closed)", .{});
+        obs_log.logErr(.worker, err, "worker.redis_group_fail error_code=UZ-INTERNAL-003", .{});
         return;
     };
 
@@ -109,7 +109,7 @@ pub fn workerLoop(cfg: WorkerConfig, worker_state: *WorkerState) void {
         if (now_ms - last_reclaim_ms >= queue_consts.reclaim_interval_ms) {
             last_reclaim_ms = now_ms;
             queued_message = queue_client.xautoclaimOne(consumer_id) catch |err| {
-                obs_log.logErr(.worker, err, "xautoclaim failed", .{});
+                obs_log.logErr(.worker, err, "worker.xautoclaim_fail error_code=UZ-INTERNAL-003", .{});
                 metrics.incWorkerErrors();
                 consecutive_errors += 1;
                 const max_delay_ms = std.math.mul(u64, cfg.poll_interval_ms, 8) catch cfg.poll_interval_ms;
@@ -121,7 +121,7 @@ pub fn workerLoop(cfg: WorkerConfig, worker_state: *WorkerState) void {
 
         if (queued_message == null) {
             queued_message = queue_client.xreadgroupOne(consumer_id) catch |err| {
-                obs_log.logErr(.worker, err, "xreadgroup failed", .{});
+                obs_log.logErr(.worker, err, "worker.xreadgroup_fail error_code=UZ-INTERNAL-003", .{});
                 metrics.incWorkerErrors();
                 consecutive_errors += 1;
                 const max_delay_ms = std.math.mul(u64, cfg.poll_interval_ms, 8) catch cfg.poll_interval_ms;
@@ -157,7 +157,7 @@ pub fn workerLoop(cfg: WorkerConfig, worker_state: *WorkerState) void {
             queued.run_id,
         ) catch |err| {
             if (err != worker_runtime.WorkerError.ShutdownRequested) {
-                obs_log.logErr(.worker, err, "run processing error", .{});
+                obs_log.logErr(.worker, err, "worker.run_processing_error error_code=UZ-INTERNAL-003", .{});
                 metrics.incWorkerErrors();
                 consecutive_errors += 1;
 
@@ -170,13 +170,13 @@ pub fn workerLoop(cfg: WorkerConfig, worker_state: *WorkerState) void {
         consecutive_errors = 0;
 
         queue_client.xack(queued.message_id) catch |err| {
-            obs_log.logWarnErr(.worker, err, "xack failed message_id={s}", .{queued.message_id});
+            obs_log.logWarnErr(.worker, err, "worker.xack_fail message_id={s}", .{queued.message_id});
         };
 
         if (!worker_state.running.load(.acquire)) break;
     }
 
-    log.info("worker stopped", .{});
+    log.info("worker.stopped", .{});
 }
 
 test {

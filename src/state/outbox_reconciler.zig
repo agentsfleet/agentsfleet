@@ -42,7 +42,7 @@ pub fn reconcileStartup(conn: *pg.Conn) !ReconcileResult {
     }
 
     if (total_dead_lettered > 0) {
-        log.info("startup reconcile complete dead_lettered={d} batches={d}", .{ total_dead_lettered, batches });
+        log.info("reconcile.startup_complete dead_lettered={d} batches={d}", .{ total_dead_lettered, batches });
     }
 
     return .{

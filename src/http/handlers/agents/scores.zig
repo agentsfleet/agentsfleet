@@ -77,7 +77,7 @@ pub fn handleGetAgentScores(ctx: *common.Context, r: zap.Request, agent_id: []co
         common.internalDbError(r, req_id);
         return;
     };
-    wq.drain() catch |err| obs_log.logWarnErr(.http, err, "agent workspace drain failed agent_id={s}", .{agent_id});
+    wq.drain() catch |err| obs_log.logWarnErr(.http, err, "agent.workspace_drain_fail agent_id={s}", .{agent_id});
 
     if (!common.authorizeWorkspaceAndSetTenantContext(conn, principal, workspace_id)) {
         common.errorResponse(r, .forbidden, error_codes.ERR_FORBIDDEN, "Workspace access denied", req_id);
@@ -117,7 +117,7 @@ pub fn handleGetAgentScores(ctx: *common.Context, r: zap.Request, agent_id: []co
         obj.put("scored_at", .{ .integer = scored_at }) catch continue;
         data.append(alloc, .{ .object = obj }) catch continue;
     }
-    sq.drain() catch |err| obs_log.logWarnErr(.http, err, "scores query drain failed agent_id={s}", .{agent_id});
+    sq.drain() catch |err| obs_log.logWarnErr(.http, err, "agent.scores_drain_fail agent_id={s}", .{agent_id});
 
     const result_count = @min(data.items.len, @as(usize, @intCast(limit)));
     const has_more = data.items.len > result_count;
@@ -129,7 +129,7 @@ pub fn handleGetAgentScores(ctx: *common.Context, r: zap.Request, agent_id: []co
         break :blk null;
     } else null;
 
-    log.debug("scores retrieved agent_id={s} count={d} has_more={}", .{ agent_id, result_count, has_more });
+    log.debug("agent.scores_retrieved agent_id={s} count={d} has_more={}", .{ agent_id, result_count, has_more });
 
     common.writeJson(r, .ok, .{
         .data = result_data,

@@ -86,6 +86,6 @@ pub fn saveFromWarden(
         saved += 1;
     }
 
-    if (saved > 0) log.info("saved workspace memories count={d} workspace_id={s}", .{ saved, workspace_id });
+    if (saved > 0) log.info("memory.saved count={d} workspace_id={s}", .{ saved, workspace_id });
     return saved;
 }

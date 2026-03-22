@@ -122,7 +122,7 @@ pub fn revertHarnessChange(
     _ = try conn.exec("COMMIT", .{});
     tx_open = false;
 
-    log.info("harness change reverted agent_id={s} change_id={s}", .{ agent_id, change_id });
+    log.info("scoring.harness_change_reverted agent_id={s} change_id={s}", .{ agent_id, change_id });
 
     return .{
         .change_id = revert_change_id,

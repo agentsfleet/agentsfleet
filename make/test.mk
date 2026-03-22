@@ -19,5 +19,5 @@ MEMLEAK_CPU    ?= baseline
 
 .PHONY: test
 
-test: test-unit _test_e2e  ## Run full test suite (test-unit + backend/API e2e)
-	@echo "✓ Full test suite passed"
+test: test-zombied test-unit-zombiectl test-unit-website test-unit-app  ## Run all unit tests (zombied + zombiectl + website + app)
+	@echo "✓ All unit tests passed"

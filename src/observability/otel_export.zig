@@ -122,7 +122,7 @@ pub fn exportMetricsSnapshotBestEffort(
     metrics.incOtelExportTotal();
     exportMetricsSnapshotInner(alloc, cfg, worker_running, queue_depth, oldest_queued_age_ms) catch |err| {
         metrics.incOtelExportFailed();
-        obs_log.logWarnErr(.otel_export, err, "error_code={s} otel export failed endpoint={s}", .{ exportErrorCode(err), cfg.endpoint });
+        obs_log.logWarnErr(.otel_export, err, "otel.export_fail error_code={s} endpoint={s}", .{ exportErrorCode(err), cfg.endpoint });
         return;
     };
     metrics.setOtelLastSuccessAtMs(std.time.milliTimestamp());
@@ -143,7 +143,7 @@ fn exportMetricsSnapshotInner(
     defer alloc.free(url);
 
     try postOtlpJson(alloc, url, body);
-    log.info("otel_export_ok endpoint={s} payload_len={d}", .{ url, body.len });
+    log.info("otel.export_ok endpoint={s} payload_len={d}", .{ url, body.len });
 }
 
 fn postOtlpJson(alloc: std.mem.Allocator, url: []const u8, payload: []const u8) ExportError!void {
