@@ -1,7 +1,7 @@
 # UseZombie — runtime container
 # Binary must be pre-built before docker build:
 #   CI:    binaries job produces dist/zombied-linux-{amd64,arm64}
-#   Local: zig build -Dtarget=x86_64-linux -Doptimize=ReleaseSafe
+#   Local: zig build -Dtarget=x86_64-linux-gnu -Doptimize=ReleaseSafe
 #          mkdir -p dist && cp zig-out/bin/zombied dist/zombied-linux-amd64
 
 FROM debian:trixie-slim
