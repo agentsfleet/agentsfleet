@@ -90,7 +90,6 @@ jobs:
           GITHUB_APP_PRIVATE_KEY: op://${{ vars.VAULT_DEV }}/github-app/private-key
           CLERK_PUBLISHABLE_KEY: op://${{ vars.VAULT_DEV }}/clerk-dev/publishable-key
           CLERK_SECRET_KEY: op://${{ vars.VAULT_DEV }}/clerk-dev/secret-key
-          POSTHOG_API_KEY: op://${{ vars.VAULT_DEV }}/posthog-dev/credential
           GRAFANA_OTLP_ENDPOINT: op://${{ vars.VAULT_DEV }}/grafana-dev/otlp-endpoint
           GRAFANA_OTLP_INSTANCE_ID: op://${{ vars.VAULT_DEV }}/grafana-dev/instance-id
           GRAFANA_OTLP_API_KEY: op://${{ vars.VAULT_DEV }}/grafana-dev/api-key
