@@ -31,10 +31,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - target: x86_64-linux-gnu
+          - target: x86_64-linux
             artifact: zombied-linux-amd64
             os: ubuntu-latest
-          - target: aarch64-linux-gnu
+          - target: aarch64-linux
             artifact: zombied-linux-arm64
             os: ubuntu-24.04-arm
           - target: aarch64-macos

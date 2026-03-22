@@ -27,10 +27,10 @@ endef
 
 _prepare_prebuilt_linux_binaries:
 	mkdir -p dist
-	zig build -Doptimize=ReleaseSafe -Dtarget=x86_64-linux-gnu
+	zig build -Doptimize=ReleaseSafe -Dtarget=x86_64-linux
 	cp zig-out/bin/zombied dist/zombied-linux-amd64
 	chmod +x dist/zombied-linux-amd64
-	zig build -Doptimize=ReleaseSafe -Dtarget=aarch64-linux-gnu
+	zig build -Doptimize=ReleaseSafe -Dtarget=aarch64-linux
 	cp zig-out/bin/zombied dist/zombied-linux-arm64
 	chmod +x dist/zombied-linux-arm64
 
