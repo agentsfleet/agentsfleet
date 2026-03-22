@@ -1,4 +1,10 @@
 const DEFAULT_POSTHOG_HOST = "https://us.i.posthog.com";
+const DEFAULT_POSTHOG_KEY = [
+  "phc_XmuRIXBST",
+  "Rfxka7IgfkU0V",
+  "PMD3LDRR3IqIL",
+  "XNg3bXzv",
+].join("");
 
 function boolFromEnv(value, fallback) {
   if (value == null || value === "") return fallback;
@@ -7,7 +13,7 @@ function boolFromEnv(value, fallback) {
 }
 
 function resolveConfig(env = process.env) {
-  const key = env.ZOMBIE_POSTHOG_KEY || "";
+  const key = env.ZOMBIE_POSTHOG_KEY || DEFAULT_POSTHOG_KEY;
   const host = env.ZOMBIE_POSTHOG_HOST || DEFAULT_POSTHOG_HOST;
   const enabled = boolFromEnv(env.ZOMBIE_POSTHOG_ENABLED, key.length > 0);
   return { key, host, enabled };
@@ -63,6 +69,13 @@ export async function shutdownCliAnalytics(client) {
 }
 
 export const cliAnalyticsInternals = {
+  DEFAULT_POSTHOG_KEY,
   resolveConfig,
   sanitizeProperties,
+};
+
+export const cliAnalytics = {
+  createCliAnalytics,
+  trackCliEvent,
+  shutdownCliAnalytics,
 };

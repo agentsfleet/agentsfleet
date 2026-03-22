@@ -76,6 +76,7 @@ Bus pattern remains valid if posthog-zig proves operationally painful. Revisit i
 ### 3. CLI (`zombiectl`) — implemented Mar 13, 2026
 
 **SDK:** `posthog-node`
+**Key handling:** bundled default project key in the npm package; operators may opt out with `ZOMBIE_POSTHOG_ENABLED=false` or override for local/dev testing with `ZOMBIE_POSTHOG_KEY`.
 **Key events:**
 
 | Event | Trigger |
@@ -88,6 +89,8 @@ Bus pattern remains valid if posthog-zig proves operationally painful. Revisit i
 | `cli_error` | Any command exits non-zero with error context |
 
 `distinct_id`: Clerk user ID (`sub`) parsed from stored auth token when available, otherwise `anonymous`.
+
+Threat model note: the bundled CLI key is treated as a public, write-scoped ingestion key. If extracted, the expected failure mode is polluted analytics or noisy feature-flag evaluation traffic, not control-plane compromise or historical data read access.
 
 Feature flags: `posthog-node` `/decide/` calls to gate beta CLI commands per user.
 
@@ -169,7 +172,7 @@ Group analytics: workspace-level events include `$groups: { workspace: "ws_abc" 
 | M5_001 | posthog-zig SDK (library) | DONE |
 | M5_005 | Website PostHog integration | DONE |
 | M5_006 | zombied PostHog integration | DONE |
-| — | app dashboard + zombiectl PostHog integration | DONE (implementation; spec backfill pending) |
+| M11_004 | app dashboard + zombiectl PostHog integration hardening | DONE |
 
 ---
 

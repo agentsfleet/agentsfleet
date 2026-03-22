@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 
 function resolveStatePaths() {
-  const baseDir = process.env.ZOMBIE_STATE_DIR || path.join(os.homedir(), ".zombie");
+  const baseDir = process.env.ZOMBIE_STATE_DIR || path.join(os.homedir(), ".config", "zombiectl");
   return {
     baseDir,
     credentialsPath: path.join(baseDir, "credentials.json"),
@@ -62,3 +62,6 @@ export async function saveWorkspaces(next) {
   await writeJson(workspacesPath, next);
 }
 
+export const stateInternals = {
+  resolveStatePaths,
+};

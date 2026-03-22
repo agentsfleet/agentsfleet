@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test } from "bun:test";
 import assert from "node:assert/strict";
 import { commandHarnessCompile } from "../src/commands/harness_compile.js";
 import { makeNoop, ui, AGENT_ID, PVER_ID } from "./helpers.js";

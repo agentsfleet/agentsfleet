@@ -264,7 +264,7 @@ sequenceDiagram
     Browser->>CK: User approves
     CLI->>CK: Poll POST /oauth/token (device_code)
     CK-->>CLI: JWT access token
-    CLI->>CLI: Store JWT locally (~/.zombiectl/credentials)
+    CLI->>CLI: Store JWT locally (~/.config/zombiectl/credentials.json)
 
     Note over User,API: Authenticated API call
     User->>CLI: zombiectl workspace add <repo_url>

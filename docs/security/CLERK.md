@@ -87,7 +87,7 @@ sequenceDiagram
     CLI->>Z: GET /v1/auth/sessions/<id>
     Z-->>CLI: { status: "complete", token: "jwt" }
 
-    CLI->>CLI: Store JWT to ~/.zombie/credentials
+    CLI->>CLI: Store JWT to ~/.config/zombiectl/credentials.json
 ```
 
 ## New User (First Signup)

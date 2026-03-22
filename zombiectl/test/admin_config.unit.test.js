@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test } from "bun:test";
 import assert from "node:assert/strict";
 import { commandAdmin } from "../src/commands/admin.js";
 import { makeNoop, ui, WS_ID } from "./helpers.js";

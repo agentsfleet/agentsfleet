@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test } from "bun:test";
 import assert from "node:assert/strict";
 import { commandAgentProposals } from "../src/commands/agent_proposals.js";
 import {

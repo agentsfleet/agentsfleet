@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test } from "bun:test";
 import assert from "node:assert/strict";
 import { commandHarnessActivate } from "../src/commands/harness_activate.js";
 import { makeNoop, makeBufferStream, ui, PVER_ID } from "./helpers.js";

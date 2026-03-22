@@ -1,5 +1,5 @@
 import { openUrl } from "./lib/browser.js";
-import { createCliAnalytics, shutdownCliAnalytics, trackCliEvent } from "./lib/analytics.js";
+import { cliAnalytics } from "./lib/analytics.js";
 import { findRoute } from "./program/routes.js";
 import { registerProgramCommands } from "./program/command-registry.js";
 import { commandHarness as commandHarnessModule } from "./commands/harness.js";
@@ -103,7 +103,7 @@ export async function runCli(argv, io = {}) {
     apiHeaders,
   });
 
-  const analyticsClient = await createCliAnalytics(env);
+  const analyticsClient = await cliAnalytics.createCliAnalytics(env);
   const distinctId = extractDistinctIdFromToken(ctx.token);
 
   const handlers = registerProgramCommands({
@@ -145,7 +145,7 @@ export async function runCli(argv, io = {}) {
 
   try {
     if (route && handlers[route.key]) {
-      trackCliEvent(analyticsClient, distinctId, "cli_command_started", {
+      cliAnalytics.trackCliEvent(analyticsClient, distinctId, "cli_command_started", {
         command: route.key,
         json_mode: String(ctx.jsonMode),
       });
@@ -156,28 +156,28 @@ export async function runCli(argv, io = {}) {
         const latestCreds = await loadCredentials();
         eventDistinctId = extractDistinctIdFromToken(latestCreds.token) || distinctId;
       }
-      trackCliEvent(analyticsClient, distinctId, "cli_command_finished", {
+      cliAnalytics.trackCliEvent(analyticsClient, distinctId, "cli_command_finished", {
         command: route.key,
         exit_code: String(exitCode),
       });
 
       if (exitCode === 0 && route.key === "login") {
-        trackCliEvent(analyticsClient, eventDistinctId, "user_authenticated", {
+        cliAnalytics.trackCliEvent(analyticsClient, eventDistinctId, "user_authenticated", {
           command: route.key,
         });
       }
       if (exitCode === 0 && route.key === "workspace" && args[0] === "add") {
-        trackCliEvent(analyticsClient, distinctId, "workspace_created", {
+        cliAnalytics.trackCliEvent(analyticsClient, distinctId, "workspace_created", {
           command: route.key,
         });
       }
       if (exitCode === 0 && route.key === "run" && args[0] !== "status") {
-        trackCliEvent(analyticsClient, distinctId, "run_triggered", {
+        cliAnalytics.trackCliEvent(analyticsClient, distinctId, "run_triggered", {
           command: route.key,
         });
       }
       if (exitCode !== 0) {
-        trackCliEvent(analyticsClient, distinctId, "cli_error", {
+        cliAnalytics.trackCliEvent(analyticsClient, distinctId, "cli_error", {
           command: route.key,
           exit_code: String(exitCode),
         });
@@ -200,7 +200,7 @@ export async function runCli(argv, io = {}) {
       writeLine(stderr, `Run 'zombiectl --help' for usage.`);
     }
 
-    trackCliEvent(analyticsClient, distinctId, "cli_error", {
+    cliAnalytics.trackCliEvent(analyticsClient, distinctId, "cli_error", {
       command,
       error_code: "UNKNOWN_COMMAND",
       exit_code: "2",
@@ -208,7 +208,7 @@ export async function runCli(argv, io = {}) {
     return 2;
   } catch (err) {
     const errorCode = err instanceof ApiError ? err.code || "API_ERROR" : "UNEXPECTED";
-    trackCliEvent(analyticsClient, distinctId, "cli_error", {
+    cliAnalytics.trackCliEvent(analyticsClient, distinctId, "cli_error", {
       command: route?.key || command || "unknown",
       error_code: errorCode,
       exit_code: "1",
@@ -225,6 +225,6 @@ export async function runCli(argv, io = {}) {
       return 1;
     }
   } finally {
-    await shutdownCliAnalytics(analyticsClient);
+    await cliAnalytics.shutdownCliAnalytics(analyticsClient);
   }
 }

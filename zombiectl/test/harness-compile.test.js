@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test } from "bun:test";
 import assert from "node:assert/strict";
 import { Writable } from "node:stream";
 import { runCli } from "../src/cli.js";

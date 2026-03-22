@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test } from "bun:test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import os from "node:os";
@@ -236,7 +236,7 @@ test("harness lifecycle: activate deterministically changes subsequent run snaps
     else process.env.ZOMBIE_STATE_DIR = prevStateDir;
     await fs.rm(tmpDir, { recursive: true, force: true });
   }
-});
+}, 15000);
 
 test("harness lifecycle contract: API and CLI JSON expose profile identity parity fields", async () => {
   const out = bufferStream();
@@ -336,4 +336,4 @@ test("harness lifecycle contract: API and CLI JSON expose profile identity parit
     else process.env.ZOMBIE_STATE_DIR = prevStateDir;
     await fs.rm(stateDir, { recursive: true, force: true });
   }
-});
+}, 15000);

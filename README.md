@@ -59,7 +59,7 @@ cp .env.example .env
 make up                # Start Postgres + Redis + zombied
 make down              # Stop all services
 make test              # Run all unit tests (zombied + zombiectl + website + app)
-make test-integration  # Run all integration tests (Zig + DB + Redis via docker compose)
+make test-integration  # Run Zig + DB + Redis integration tests (run `make up` first, then export DB/Redis test URLs)
 make lint              # Format + lint
 make doctor            # Check config, Postgres, LLM key
 ```

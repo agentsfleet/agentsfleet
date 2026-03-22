@@ -1,5 +1,12 @@
 import { spawn } from "node:child_process";
 
+function browserDisabled(env) {
+  const raw = env.BROWSER;
+  if (raw == null) return false;
+  const normalized = String(raw).trim().toLowerCase();
+  return normalized === "false" || normalized === "0" || normalized === "off" || normalized === "none";
+}
+
 function hasDisplay(env) {
   return Boolean(env.DISPLAY || env.WAYLAND_DISPLAY);
 }
@@ -24,6 +31,10 @@ function commandExists(command) {
 }
 
 export async function resolveBrowserCommand(env = process.env, platform = process.platform) {
+  if (browserDisabled(env)) {
+    return { argv: null, reason: "browser-disabled" };
+  }
+
   if (platform === "win32") {
     return { argv: ["cmd", "/c", "start", ""], quoteUrl: true, command: "cmd" };
   }
