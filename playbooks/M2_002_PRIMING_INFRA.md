@@ -108,6 +108,7 @@ for APP in zombied-dev zombied-dev-worker; do
   fly secrets set \
     DATABASE_URL_API="$(op read 'op://$VAULT_DEV/planetscale-dev/api-connection-string')" \
     DATABASE_URL_WORKER="$(op read 'op://$VAULT_DEV/planetscale-dev/worker-connection-string')" \
+    DATABASE_URL_MIGRATOR="$(op read 'op://$VAULT_DEV/planetscale-dev/migrator-connection-string')" \
     REDIS_URL_API="$(op read 'op://$VAULT_DEV/upstash-dev/api-url')" \
     REDIS_URL_WORKER="$(op read 'op://$VAULT_DEV/upstash-dev/worker-url')" \
     ENCRYPTION_MASTER_KEY="$(op read 'op://$VAULT_DEV/encryption-master-key/credential')" \
@@ -317,10 +318,10 @@ fly logs   --app zombied-dev
 
 ### 3.1 Postgres — Roles in Migrations
 
-Roles (`api_accessor`, `worker_accessor`, `callback_accessor`, `vault_accessor`) are already defined in `schema/002_vault_schema.sql` with `IF NOT EXISTS` guards — idempotent. All grants across tables are in subsequent migration files. Run all migrations in order:
+Roles (`db_migrator`, `api_runtime`, `worker_runtime`, `ops_readonly_human`, `ops_readonly_agent`) are defined in `schema/002_vault_schema.sql` with `IF NOT EXISTS` guards — idempotent. All grants across tables are in subsequent migration files. Run all migrations in order:
 
 ```bash
-DATABASE_URL=$(op read "op://$VAULT_DEV/planetscale-dev/api-connection-string")
+DATABASE_URL=$(op read "op://$VAULT_DEV/planetscale-dev/migrator-connection-string")
 for f in schema/*.sql; do
   echo "applying $f..."
   psql "$DATABASE_URL" -f "$f"
@@ -328,9 +329,10 @@ done
 ```
 
 Role contract (`schema/002_vault_schema.sql`):
-- `api_accessor` — read/write on public tables, no access to `vault.secrets`
-- `worker_accessor` — inherits `api_accessor`, read/write on `vault.secrets`
-- `callback_accessor` — inherits `vault_accessor`, write on callback table
+- `db_migrator` — DDL authority for `core/agent/billing/vault/audit/ops_ro`
+- `api_runtime` — runtime DML on API-owned tables only
+- `worker_runtime` — runtime DML for worker execution paths
+- `ops_readonly_human`, `ops_readonly_agent` — read-only access via `ops_ro` views only
 
 ### 3.2 Redis — Stream Bootstrap (Upstash)
 

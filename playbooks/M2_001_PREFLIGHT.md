@@ -38,6 +38,7 @@ Every `op://` reference the agent will use across M2_002 and the deploy pipeline
 | `encryption-master-key` | `credential` | Fly.io PROD `ENCRYPTION_MASTER_KEY` |
 | `planetscale-prod` | `api-connection-string` | Fly.io PROD `DATABASE_URL_API` |
 | `planetscale-prod` | `worker-connection-string` | Fly.io PROD `DATABASE_URL_WORKER` |
+| `planetscale-prod` | `migrator-connection-string` | Fly.io PROD `DATABASE_URL_MIGRATOR` (release migrations) |
 | `upstash-prod` | `api-url` | Fly.io PROD `REDIS_URL_API` |
 | `upstash-prod` | `worker-url` | Fly.io PROD `REDIS_URL_WORKER` |
 | `tailscale` | `authkey` | worker node provision |
@@ -60,6 +61,7 @@ Every `op://` reference the agent will use across M2_002 and the deploy pipeline
 | `posthog-dev` | `credential` | Website, app, zombied, worker, and CLI PostHog env injection |
 | `planetscale-dev` | `api-connection-string` | Fly.io DEV `DATABASE_URL_API` |
 | `planetscale-dev` | `worker-connection-string` | Fly.io DEV `DATABASE_URL_WORKER` |
+| `planetscale-dev` | `migrator-connection-string` | Fly.io DEV `DATABASE_URL_MIGRATOR` (`zombied migrate`) |
 | `upstash-dev` | `api-url` | Fly.io DEV `REDIS_URL_API` |
 | `upstash-dev` | `worker-url` | Fly.io DEV `REDIS_URL_WORKER` |
 | `fly-api-token` | `credential` | `deploy-dev.yml` → `fly deploy --app zombied-dev` (see M2_002 §2.6) |
@@ -74,7 +76,7 @@ Checks are split into ordered sections under `playbooks/gates/m2_001/` and execu
 | Section | Script | Purpose | Blocks startup? | Playbook dependency |
 |---|---|---|---|---|
 | `1` | `playbooks/gates/m2_001/section-1-preflight.sh` | Local prerequisites (`op` binary + 1Password auth/session) | Yes | M1 complete → before any M2 work |
-| `2` | `playbooks/gates/m2_001/section-2-procurement-readiness.sh` | Procurement readiness gate (all required `op://` refs + API/worker DB/Redis separation) | Yes | Gate for M2_002 infra priming |
+| `2` | `playbooks/gates/m2_001/section-2-procurement-readiness.sh` | Procurement readiness gate (all required `op://` refs + API/worker/migrator DB role separation + Redis separation) | Yes | Gate for M2_002 infra priming |
 
 Notes:
 - `OP_SERVICE_ACCOUNT_TOKEN` is the preferred non-interactive auth for agents/CI.
@@ -91,6 +93,9 @@ export VAULT_PROD="${VAULT_PROD:-ZMB_CD_PROD}"
 
 # Run full chronological gate (section 1 -> 2) for both envs
 ./playbooks/gates/m2_001/run.sh
+
+# Optional: be gentler with 1Password API when rate-limited
+OP_READ_RETRIES=2 OP_READ_BASE_DELAY_SECONDS=2 ./playbooks/gates/m2_001/run.sh
 
 # Check a specific env (still runs section 1 -> 2)
 ENV=dev  ./playbooks/gates/m2_001/run.sh
@@ -114,6 +119,7 @@ The workflow prints one line per item:
 ✗ MISSING: op://$VAULT_PROD/discord-ci-webhook/credential
 ✗ MISSING: op://$VAULT_DEV/planetscale-dev/api-connection-string
 ✗ MISSING: op://$VAULT_DEV/planetscale-dev/worker-connection-string
+✗ MISSING: op://$VAULT_DEV/planetscale-dev/migrator-connection-string
 ```
 
 For every `✗ MISSING` line: add the item to the vault, re-run.
@@ -126,8 +132,10 @@ After all items are present, run live connectivity checks:
 # Postgres DEV
 DB_API=$(op read "op://$VAULT_DEV/planetscale-dev/api-connection-string")
 DB_WORKER=$(op read "op://$VAULT_DEV/planetscale-dev/worker-connection-string")
+DB_MIGRATOR=$(op read "op://$VAULT_DEV/planetscale-dev/migrator-connection-string")
 psql "$DB_API" -c "SELECT 1" && echo "✓ postgres dev api"
 psql "$DB_WORKER" -c "SELECT 1" && echo "✓ postgres dev worker"
+psql "$DB_MIGRATOR" -c "SELECT 1" && echo "✓ postgres dev migrator"
 
 # Redis DEV
 REDIS_API=$(op read "op://$VAULT_DEV/upstash-dev/api-url")
@@ -166,8 +174,9 @@ Items not yet in the vault that block M2_002. Create these before re-running:
 |---|---|---|
 | `discord-ci-webhook` | `credential` | Discord → Server Settings → Integrations → Webhooks → New Webhook → Copy URL |
 | `posthog-prod` | `credential` | PostHog project API key shared by website, app, zombied, worker, and CLI |
-| `planetscale-prod` | `api-connection-string` | PlanetScale dashboard → create/get `api_accessor` connection string |
-| `planetscale-prod` | `worker-connection-string` | PlanetScale dashboard → create/get `worker_accessor` connection string |
+| `planetscale-prod` | `api-connection-string` | PlanetScale dashboard → create/get `api_runtime` connection string |
+| `planetscale-prod` | `worker-connection-string` | PlanetScale dashboard → create/get `worker_runtime` connection string |
+| `planetscale-prod` | `migrator-connection-string` | PlanetScale dashboard → create/get `db_migrator` connection string |
 | `upstash-prod` | `api-url` | Upstash dashboard → Redis → `usezombie-cache` → create/get API role URL (`rediss://...`) |
 | `upstash-prod` | `worker-url` | Upstash dashboard → Redis → `usezombie-cache` → create/get worker role URL (`rediss://...`) |
 | `tailscale` | `authkey` | Tailscale admin → Settings → Keys → Generate auth key (reusable, no expiry for CI) |
@@ -178,8 +187,9 @@ Items not yet in the vault that block M2_002. Create these before re-running:
 
 | Item name | Field | How to get the value |
 |---|---|---|
-| `planetscale-dev` | `api-connection-string` | PlanetScale → `usezombie-dev` DB → create/get `api_accessor` connection string |
-| `planetscale-dev` | `worker-connection-string` | PlanetScale → `usezombie-dev` DB → create/get `worker_accessor` connection string |
+| `planetscale-dev` | `api-connection-string` | PlanetScale → `usezombie-dev` DB → create/get `api_runtime` connection string |
+| `planetscale-dev` | `worker-connection-string` | PlanetScale → `usezombie-dev` DB → create/get `worker_runtime` connection string |
+| `planetscale-dev` | `migrator-connection-string` | PlanetScale → `usezombie-dev` DB → create/get `db_migrator` connection string |
 | `upstash-dev` | `api-url` | Upstash → Redis → `usezombie-dev` → create/get API role URL (`rediss://...`) |
 | `upstash-dev` | `worker-url` | Upstash → Redis → `usezombie-dev` → create/get worker role URL (`rediss://...`) |
 | `fly-api-token` | `credential` | `fly tokens create deploy -o <org>` — copy output. Scoped to org, used by CI to deploy. |

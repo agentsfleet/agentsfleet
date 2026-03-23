@@ -2,18 +2,21 @@ const std = @import("std");
 
 const db = @import("../db/pool.zig");
 const common = @import("common.zig");
+const error_codes = @import("../errors/codes.zig");
 
 const log = std.log.scoped(.zombied);
 
 pub fn run(alloc: std.mem.Allocator) !void {
-    const pool = db.initFromEnvForRole(alloc, .api) catch |err| {
-        std.debug.print("fatal: api database init failed: {}\n", .{err});
+    log.info("migrate.start status=connecting role=migrator", .{});
+    const pool = db.initFromEnvForRole(alloc, .migrator) catch |err| {
+        log.err("migrate.db_connect status=fail error_code={s} role=migrator err={s}", .{ error_codes.ERR_STARTUP_DB_CONNECT, @errorName(err) });
         std.process.exit(1);
     };
     defer pool.deinit();
 
+    log.info("migrate.start status=running", .{});
     common.runCanonicalMigrations(pool) catch |err| {
-        std.debug.print("fatal: schema migration failed: {}\n", .{err});
+        log.err("migrate.run status=fail error_code={s} err={s}", .{ error_codes.ERR_STARTUP_MIGRATION_CHECK, @errorName(err) });
         std.process.exit(1);
     };
     log.info("migrate.ok status=completed", .{});

@@ -1,8 +1,8 @@
 -- Entitlement source-of-truth and policy audit snapshots (UUID-only IDs)
 
-CREATE TABLE workspace_entitlements (
+CREATE TABLE billing.workspace_entitlements (
     entitlement_id       UUID PRIMARY KEY,
-    workspace_id         UUID NOT NULL UNIQUE REFERENCES workspaces(workspace_id) ON DELETE CASCADE,
+    workspace_id         UUID NOT NULL UNIQUE REFERENCES core.workspaces(workspace_id) ON DELETE CASCADE,
     plan_tier            TEXT NOT NULL,
     max_profiles         INTEGER NOT NULL CHECK (max_profiles > 0),
     max_stages           INTEGER NOT NULL CHECK (max_stages > 0),
@@ -18,11 +18,11 @@ CREATE TABLE workspace_entitlements (
         CHECK (scoring_context_max_tokens >= 512 AND scoring_context_max_tokens <= 8192)
 );
 CREATE INDEX idx_workspace_entitlements_tier
-    ON workspace_entitlements(plan_tier, updated_at DESC);
+    ON billing.workspace_entitlements(plan_tier, updated_at DESC);
 
-CREATE TABLE entitlement_policy_audit_snapshots (
+CREATE TABLE billing.entitlement_policy_audit_snapshots (
     snapshot_id        UUID PRIMARY KEY,
-    workspace_id       UUID NOT NULL REFERENCES workspaces(workspace_id) ON DELETE CASCADE,
+    workspace_id       UUID NOT NULL REFERENCES core.workspaces(workspace_id) ON DELETE CASCADE,
     boundary           TEXT NOT NULL,
     decision           TEXT NOT NULL,
     reason_code        TEXT NOT NULL,
@@ -33,10 +33,10 @@ CREATE TABLE entitlement_policy_audit_snapshots (
     created_at         BIGINT NOT NULL
 );
 CREATE INDEX idx_entitlement_policy_audit_workspace
-    ON entitlement_policy_audit_snapshots(workspace_id, created_at DESC);
+    ON billing.entitlement_policy_audit_snapshots(workspace_id, created_at DESC);
 
-GRANT SELECT, INSERT, UPDATE, DELETE ON workspace_entitlements TO api_accessor;
-GRANT SELECT ON workspace_entitlements TO worker_accessor;
+GRANT SELECT, INSERT, UPDATE, DELETE ON billing.workspace_entitlements TO api_runtime;
+GRANT SELECT ON billing.workspace_entitlements TO worker_runtime;
 
-GRANT SELECT, INSERT, UPDATE, DELETE ON entitlement_policy_audit_snapshots TO api_accessor;
-GRANT SELECT ON entitlement_policy_audit_snapshots TO worker_accessor;
+GRANT SELECT, INSERT, UPDATE, DELETE ON billing.entitlement_policy_audit_snapshots TO api_runtime;
+GRANT SELECT ON billing.entitlement_policy_audit_snapshots TO worker_runtime;

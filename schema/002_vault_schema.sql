@@ -1,39 +1,70 @@
--- UseZombie clean-state vault schema and role separation
+-- UseZombie clean-state role and schema privilege baseline
 
-CREATE SCHEMA vault;
+CREATE SCHEMA IF NOT EXISTS vault;
+CREATE SCHEMA IF NOT EXISTS ops_ro;
 
 DO $$
 BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'vault_accessor') THEN
-        CREATE ROLE vault_accessor;
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'db_migrator') THEN
+        CREATE ROLE db_migrator;
     END IF;
-    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'api_accessor') THEN
-        CREATE ROLE api_accessor;
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'api_runtime') THEN
+        CREATE ROLE api_runtime;
     END IF;
-    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'worker_accessor') THEN
-        CREATE ROLE worker_accessor;
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'worker_runtime') THEN
+        CREATE ROLE worker_runtime;
     END IF;
-    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'callback_accessor') THEN
-        CREATE ROLE callback_accessor;
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'ops_readonly_human') THEN
+        CREATE ROLE ops_readonly_human;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'ops_readonly_agent') THEN
+        CREATE ROLE ops_readonly_agent;
     END IF;
 END
 $$;
 
-GRANT USAGE ON SCHEMA public TO api_accessor;
-GRANT SELECT, INSERT, UPDATE ON
-    runs, specs, workspaces, tenants, policy_events,
-    run_transitions, artifacts, usage_ledger, workspace_memories
-TO api_accessor;
+REVOKE CREATE ON SCHEMA public FROM PUBLIC;
 
-GRANT USAGE ON SCHEMA vault TO vault_accessor;
-GRANT api_accessor TO worker_accessor;
-GRANT vault_accessor TO worker_accessor;
-GRANT vault_accessor TO callback_accessor;
+-- db_migrator: full DDL authority (control plane only)
+GRANT ALL ON SCHEMA public, core, agent, billing, vault, audit, ops_ro TO db_migrator;
+GRANT ALL ON ALL TABLES IN SCHEMA core, agent, billing, vault, audit, ops_ro TO db_migrator;
+
+-- Runtime roles: data access only
+GRANT USAGE ON SCHEMA core, agent, billing, vault, audit TO api_runtime, worker_runtime;
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON
+    core.tenants,
+    core.workspaces,
+    core.specs,
+    core.runs,
+    core.run_transitions,
+    core.artifacts,
+    core.workspace_memories,
+    core.policy_events,
+    billing.usage_ledger
+TO api_runtime;
+
+GRANT SELECT, INSERT, UPDATE ON
+    core.runs,
+    core.run_transitions,
+    core.artifacts,
+    billing.usage_ledger
+TO worker_runtime;
+GRANT SELECT ON
+    core.tenants,
+    core.workspaces,
+    core.specs,
+    core.workspace_memories,
+    core.policy_events
+TO worker_runtime;
+
+-- audit schema: runtime read-only migration state inspection
+GRANT SELECT ON audit.schema_migrations, audit.schema_migration_failures TO api_runtime, worker_runtime;
 
 CREATE TABLE vault.secrets (
     id            UUID PRIMARY KEY,
     CONSTRAINT ck_vault_secrets_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
-    workspace_id  UUID    NOT NULL REFERENCES public.workspaces(workspace_id),
+    workspace_id  UUID    NOT NULL REFERENCES core.workspaces(workspace_id),
     key_name      TEXT    NOT NULL,
     kek_version   INTEGER NOT NULL DEFAULT 1,
     encrypted_dek BYTEA   NOT NULL,
@@ -50,5 +81,30 @@ CREATE TABLE vault.secrets (
 CREATE INDEX idx_vault_secrets_workspace
     ON vault.secrets(workspace_id, key_name);
 
-GRANT SELECT, INSERT, UPDATE ON vault.secrets TO worker_accessor;
-GRANT SELECT, INSERT, UPDATE ON vault.secrets TO callback_accessor;
+GRANT SELECT, INSERT, UPDATE ON vault.secrets TO api_runtime, worker_runtime;
+
+-- Read-only principals are strictly routed to ops_ro + audit
+GRANT USAGE ON SCHEMA ops_ro, audit TO ops_readonly_human, ops_readonly_agent;
+
+-- No runtime/read-only DDL in app schemas
+REVOKE CREATE ON SCHEMA public, core, agent, billing, vault, audit, ops_ro
+FROM api_runtime, worker_runtime, ops_readonly_human, ops_readonly_agent;
+
+-- Remove default PUBLIC table visibility in authoritative app schemas.
+REVOKE ALL ON ALL TABLES IN SCHEMA core, agent, billing, vault, audit, ops_ro FROM PUBLIC;
+
+ALTER ROLE api_runtime SET search_path = core, agent, billing, vault, audit, public;
+ALTER ROLE worker_runtime SET search_path = core, agent, billing, vault, audit, public;
+ALTER ROLE ops_readonly_human SET search_path = ops_ro, audit, public;
+ALTER ROLE ops_readonly_agent SET search_path = ops_ro, audit, public;
+
+-- Keep local-superuser test connections deterministic when role-specific
+-- URLs are not used (e.g. HANDLER_DB_TEST_URL in CI/dev Docker).
+DO $$
+BEGIN
+    EXECUTE format(
+        'ALTER DATABASE %I SET search_path = core,agent,billing,vault,audit,public',
+        current_database()
+    );
+END
+$$;

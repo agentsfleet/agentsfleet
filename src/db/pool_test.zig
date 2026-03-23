@@ -78,16 +78,19 @@ test "roleEnvVarName maps db roles deterministically" {
     try std.testing.expectEqualStrings("DATABASE_URL_API", roleEnvVarName(.api));
     try std.testing.expectEqualStrings("DATABASE_URL_WORKER", roleEnvVarName(.worker));
     try std.testing.expectEqualStrings("DATABASE_URL_CALLBACK", roleEnvVarName(.callback));
+    try std.testing.expectEqualStrings("DATABASE_URL_MIGRATOR", roleEnvVarName(.migrator));
 }
 
 fn openIntegrationTestConn(alloc: std.mem.Allocator) !?struct { pool: *Pool, conn: *Conn } {
-    const url = std.process.getEnvVarOwned(alloc, "HANDLER_DB_TEST_URL") catch
-        std.process.getEnvVarOwned(alloc, "DATABASE_URL") catch return null;
+    // DB-backed integration tests must be opt-in via HANDLER_DB_TEST_URL.
+    // This avoids accidentally running against unrelated DATABASE_URL values
+    // in non-DB test lanes (e.g. CI's _test-integration-zombied target).
+    const url = std.process.getEnvVarOwned(alloc, "HANDLER_DB_TEST_URL") catch return null;
     defer alloc.free(url);
 
-    var arena = std.heap.ArenaAllocator.init(alloc);
-    defer arena.deinit();
-    const opts = try parseUrl(arena.allocator(), url);
+    // parseUrl allocates host/auth strings that must outlive the pool.
+    // Use page_allocator to keep them process-lifetime, matching production.
+    const opts = try parseUrl(std.heap.page_allocator, url);
     const pool = pg.Pool.init(alloc, opts) catch return null;
     errdefer pool.deinit();
     const conn = pool.acquire() catch {
@@ -98,50 +101,70 @@ fn openIntegrationTestConn(alloc: std.mem.Allocator) !?struct { pool: *Pool, con
 }
 
 fn createUuidContractTempSchema(conn: *Conn) !void {
-    var q = try conn.query(
-        \\CREATE TEMP TABLE runs (
+    _ = try conn.exec(
+        \\CREATE TEMP TABLE t_uuid_runs (
         \\  run_id UUID PRIMARY KEY,
         \\  run_snapshot_version UUID
-        \\) ON COMMIT DROP;
-        \\CREATE TEMP TABLE agent_profile_versions (
-        \\  profile_version_id UUID PRIMARY KEY
-        \\) ON COMMIT DROP;
-        \\CREATE TEMP TABLE profile_compile_jobs (
-        \\  compile_job_id UUID PRIMARY KEY
-        \\) ON COMMIT DROP;
-        \\CREATE TEMP TABLE run_transitions (
-        \\  id UUID PRIMARY KEY,
-        \\  run_id UUID NOT NULL REFERENCES runs(run_id)
-        \\) ON COMMIT DROP;
-        \\CREATE TEMP TABLE artifacts (
-        \\  run_id UUID NOT NULL REFERENCES runs(run_id)
-        \\) ON COMMIT DROP;
-        \\CREATE TEMP TABLE usage_ledger (
-        \\  run_id UUID NOT NULL REFERENCES runs(run_id)
-        \\) ON COMMIT DROP;
-        \\CREATE TEMP TABLE run_side_effects (
-        \\  run_id UUID NOT NULL REFERENCES runs(run_id)
-        \\) ON COMMIT DROP;
-        \\CREATE TEMP TABLE run_side_effect_outbox (
-        \\  run_id UUID NOT NULL REFERENCES runs(run_id)
-        \\) ON COMMIT DROP;
-        \\CREATE TEMP TABLE workspace_memories (
-        \\  run_id UUID NOT NULL REFERENCES runs(run_id)
-        \\) ON COMMIT DROP;
-        \\CREATE TEMP TABLE policy_events (
-        \\  run_id UUID REFERENCES runs(run_id)
-        \\) ON COMMIT DROP;
-        \\CREATE TEMP TABLE workspace_active_profile (
-        \\  profile_version_id UUID NOT NULL REFERENCES agent_profile_versions(profile_version_id)
-        \\) ON COMMIT DROP;
-        \\CREATE TEMP TABLE profile_linkage_audit_artifacts (
-        \\  profile_version_id UUID NOT NULL REFERENCES agent_profile_versions(profile_version_id),
-        \\  compile_job_id UUID REFERENCES profile_compile_jobs(compile_job_id),
-        \\  run_id UUID REFERENCES runs(run_id)
-        \\) ON COMMIT DROP
+        \\)
     , .{});
-    try q.drain();
-    q.deinit();
+    _ = try conn.exec(
+        \\CREATE TEMP TABLE t_uuid_agent_profile_versions (
+        \\  profile_version_id UUID PRIMARY KEY
+        \\)
+    , .{});
+    _ = try conn.exec(
+        \\CREATE TEMP TABLE t_uuid_profile_compile_jobs (
+        \\  compile_job_id UUID PRIMARY KEY
+        \\)
+    , .{});
+    _ = try conn.exec(
+        \\CREATE TEMP TABLE t_uuid_run_transitions (
+        \\  id UUID PRIMARY KEY,
+        \\  run_id UUID NOT NULL REFERENCES t_uuid_runs(run_id)
+        \\)
+    , .{});
+    _ = try conn.exec(
+        \\CREATE TEMP TABLE t_uuid_artifacts (
+        \\  run_id UUID NOT NULL REFERENCES t_uuid_runs(run_id)
+        \\)
+    , .{});
+    _ = try conn.exec(
+        \\CREATE TEMP TABLE t_uuid_usage_ledger (
+        \\  run_id UUID NOT NULL REFERENCES t_uuid_runs(run_id)
+        \\)
+    , .{});
+    _ = try conn.exec(
+        \\CREATE TEMP TABLE t_uuid_run_side_effects (
+        \\  run_id UUID NOT NULL REFERENCES t_uuid_runs(run_id)
+        \\)
+    , .{});
+    _ = try conn.exec(
+        \\CREATE TEMP TABLE t_uuid_run_side_effect_outbox (
+        \\  run_id UUID NOT NULL REFERENCES t_uuid_runs(run_id)
+        \\)
+    , .{});
+    _ = try conn.exec(
+        \\CREATE TEMP TABLE t_uuid_workspace_memories (
+        \\  run_id UUID NOT NULL REFERENCES t_uuid_runs(run_id)
+        \\)
+    , .{});
+    _ = try conn.exec(
+        \\CREATE TEMP TABLE t_uuid_policy_events (
+        \\  run_id UUID REFERENCES t_uuid_runs(run_id)
+        \\)
+    , .{});
+    _ = try conn.exec(
+        \\CREATE TEMP TABLE t_uuid_workspace_active_profile (
+        \\  profile_version_id UUID NOT NULL REFERENCES t_uuid_agent_profile_versions(profile_version_id)
+        \\)
+    , .{});
+    _ = try conn.exec(
+        \\CREATE TEMP TABLE t_uuid_profile_linkage_audit_artifacts (
+        \\  profile_version_id UUID NOT NULL REFERENCES t_uuid_agent_profile_versions(profile_version_id),
+        \\  compile_job_id UUID REFERENCES t_uuid_profile_compile_jobs(compile_job_id),
+        \\  run_id UUID REFERENCES t_uuid_runs(run_id)
+        \\)
+    , .{});
 }
 
 test "integration: canary pool acquire + exec + query SELECT 1" {
@@ -176,7 +199,7 @@ test "integration: uuid contract tables are UUID typed for run/profile/linkage I
         var q = try db_ctx.conn.query(
             \\SELECT table_name, column_name, data_type
             \\FROM information_schema.columns
-            \\WHERE table_name IN ('runs', 'agent_profile_versions', 'profile_compile_jobs', 'profile_linkage_audit_artifacts')
+            \\WHERE table_name IN ('t_uuid_runs', 't_uuid_agent_profile_versions', 't_uuid_profile_compile_jobs', 't_uuid_profile_linkage_audit_artifacts')
             \\  AND column_name IN ('run_id', 'run_snapshot_version', 'profile_version_id', 'compile_job_id')
             \\ORDER BY table_name, column_name
         , .{});
@@ -185,18 +208,28 @@ test "integration: uuid contract tables are UUID typed for run/profile/linkage I
         while (try q.next()) |row| {
             try std.testing.expectEqualStrings("uuid", try row.get([]const u8, 2));
         }
+        try q.drain();
     }
 
     const run_id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f99";
     const pver_id = "0195b4ba-8d3a-7f13-9abc-2b3e1e0a6f98";
     const cjob_id = "0195b4ba-8d3a-7f13-aabc-2b3e1e0a6f97";
-    var insert_q = try db_ctx.conn.query(
-        \\INSERT INTO runs (run_id, run_snapshot_version) VALUES ($1::uuid, $2::uuid);
-        \\INSERT INTO agent_profile_versions (profile_version_id) VALUES ($2::uuid);
-        \\INSERT INTO profile_compile_jobs (compile_job_id) VALUES ($3::uuid);
-        \\INSERT INTO profile_linkage_audit_artifacts (profile_version_id, compile_job_id, run_id) VALUES ($2::uuid, $3::uuid, $1::uuid)
-    , .{ run_id, pver_id, cjob_id });
-    insert_q.deinit();
+    _ = try db_ctx.conn.exec(
+        "INSERT INTO t_uuid_runs (run_id, run_snapshot_version) VALUES ($1::uuid, $2::uuid)",
+        .{ run_id, pver_id },
+    );
+    _ = try db_ctx.conn.exec(
+        "INSERT INTO t_uuid_agent_profile_versions (profile_version_id) VALUES ($1::uuid)",
+        .{pver_id},
+    );
+    _ = try db_ctx.conn.exec(
+        "INSERT INTO t_uuid_profile_compile_jobs (compile_job_id) VALUES ($1::uuid)",
+        .{cjob_id},
+    );
+    _ = try db_ctx.conn.exec(
+        "INSERT INTO t_uuid_profile_linkage_audit_artifacts (profile_version_id, compile_job_id, run_id) VALUES ($1::uuid, $2::uuid, $3::uuid)",
+        .{ pver_id, cjob_id, run_id },
+    );
 }
 
 test "T6 integration: generated UUID PKs round-trip through INSERT and SELECT" {
@@ -207,37 +240,28 @@ test "T6 integration: generated UUID PKs round-trip through INSERT and SELECT" {
     defer db_ctx.pool.release(db_ctx.conn);
 
     // Create TEMP tables with UUID PK + CHECK constraint (mirrors real schema)
-    {
-        var q = try db_ctx.conn.query(
-            \\CREATE TEMP TABLE t6_run_transitions (
-            \\  id UUID PRIMARY KEY,
-            \\  CONSTRAINT ck_t6_rt_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
-            \\  run_id TEXT NOT NULL,
-            \\  ts BIGINT NOT NULL
-            \\) ON COMMIT DROP
-        , .{});
-        q.deinit();
-    }
-    {
-        var q = try db_ctx.conn.query(
-            \\CREATE TEMP TABLE t6_usage_ledger (
-            \\  id UUID PRIMARY KEY,
-            \\  CONSTRAINT ck_t6_ul_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
-            \\  run_id TEXT NOT NULL
-            \\) ON COMMIT DROP
-        , .{});
-        q.deinit();
-    }
-    {
-        var q = try db_ctx.conn.query(
-            \\CREATE TEMP TABLE t6_policy_events (
-            \\  id UUID PRIMARY KEY,
-            \\  CONSTRAINT ck_t6_pe_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
-            \\  workspace_id TEXT NOT NULL
-            \\) ON COMMIT DROP
-        , .{});
-        q.deinit();
-    }
+    _ = try db_ctx.conn.exec(
+        \\CREATE TEMP TABLE t6_run_transitions (
+        \\  id UUID PRIMARY KEY,
+        \\  CONSTRAINT ck_t6_rt_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
+        \\  run_id TEXT NOT NULL,
+        \\  ts BIGINT NOT NULL
+        \\)
+    , .{});
+    _ = try db_ctx.conn.exec(
+        \\CREATE TEMP TABLE t6_usage_ledger (
+        \\  id UUID PRIMARY KEY,
+        \\  CONSTRAINT ck_t6_ul_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
+        \\  run_id TEXT NOT NULL
+        \\)
+    , .{});
+    _ = try db_ctx.conn.exec(
+        \\CREATE TEMP TABLE t6_policy_events (
+        \\  id UUID PRIMARY KEY,
+        \\  CONSTRAINT ck_t6_pe_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
+        \\  workspace_id TEXT NOT NULL
+        \\)
+    , .{});
 
     // INSERT with generated ids
     const tid = try id_format.generateTransitionId(alloc);
@@ -247,27 +271,18 @@ test "T6 integration: generated UUID PKs round-trip through INSERT and SELECT" {
     const pid = try id_format.generatePolicyEventId(alloc);
     defer alloc.free(pid);
 
-    {
-        var q = try db_ctx.conn.query(
-            "INSERT INTO t6_run_transitions (id, run_id, ts) VALUES ($1::uuid, 'run-1', 1000)",
-            .{tid},
-        );
-        q.deinit();
-    }
-    {
-        var q = try db_ctx.conn.query(
-            "INSERT INTO t6_usage_ledger (id, run_id) VALUES ($1::uuid, 'run-1')",
-            .{uid},
-        );
-        q.deinit();
-    }
-    {
-        var q = try db_ctx.conn.query(
-            "INSERT INTO t6_policy_events (id, workspace_id) VALUES ($1::uuid, 'ws-1')",
-            .{pid},
-        );
-        q.deinit();
-    }
+    _ = try db_ctx.conn.exec(
+        "INSERT INTO t6_run_transitions (id, run_id, ts) VALUES ($1::uuid, 'run-1', 1000)",
+        .{tid},
+    );
+    _ = try db_ctx.conn.exec(
+        "INSERT INTO t6_usage_ledger (id, run_id) VALUES ($1::uuid, 'run-1')",
+        .{uid},
+    );
+    _ = try db_ctx.conn.exec(
+        "INSERT INTO t6_policy_events (id, workspace_id) VALUES ($1::uuid, 'ws-1')",
+        .{pid},
+    );
 
     // SELECT and verify round-trip: id::text matches original string
     {
@@ -278,6 +293,7 @@ test "T6 integration: generated UUID PKs round-trip through INSERT and SELECT" {
         defer q.deinit();
         const row = (try q.next()) orelse return error.TestUnexpectedResult;
         try std.testing.expectEqualStrings(tid, try row.get([]const u8, 0));
+        try q.drain();
     }
     {
         var q = try db_ctx.conn.query(
@@ -287,6 +303,7 @@ test "T6 integration: generated UUID PKs round-trip through INSERT and SELECT" {
         defer q.deinit();
         const row = (try q.next()) orelse return error.TestUnexpectedResult;
         try std.testing.expectEqualStrings(uid, try row.get([]const u8, 0));
+        try q.drain();
     }
     {
         var q = try db_ctx.conn.query(
@@ -296,6 +313,7 @@ test "T6 integration: generated UUID PKs round-trip through INSERT and SELECT" {
         defer q.deinit();
         const row = (try q.next()) orelse return error.TestUnexpectedResult;
         try std.testing.expectEqualStrings(pid, try row.get([]const u8, 0));
+        try q.drain();
     }
 }
 
@@ -306,18 +324,15 @@ test "T6 integration: UUID CHECK constraint rejects non-v7 ids" {
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
 
-    {
-        var q = try db_ctx.conn.query(
-            \\CREATE TEMP TABLE t6_check_reject (
-            \\  id UUID PRIMARY KEY,
-            \\  CONSTRAINT ck_t6_cr_uuidv7 CHECK (substring(id::text from 15 for 1) = '7')
-            \\) ON COMMIT DROP
-        , .{});
-        q.deinit();
-    }
+    _ = try db_ctx.conn.exec(
+        \\CREATE TEMP TABLE t6_check_reject (
+        \\  id UUID PRIMARY KEY,
+        \\  CONSTRAINT ck_t6_cr_uuidv7 CHECK (substring(id::text from 15 for 1) = '7')
+        \\)
+    , .{});
 
     // v4 UUID must be rejected by the CHECK constraint
-    try std.testing.expectError(error.PgError, db_ctx.conn.query(
+    try std.testing.expectError(error.PG, db_ctx.conn.exec(
         "INSERT INTO t6_check_reject (id) VALUES ('a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'::uuid)",
         .{},
     ));
@@ -330,29 +345,231 @@ test "T6 integration: duplicate UUID PK is rejected" {
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
 
-    {
-        var q = try db_ctx.conn.query(
-            \\CREATE TEMP TABLE t6_dup_reject (
-            \\  id UUID PRIMARY KEY,
-            \\  CONSTRAINT ck_t6_dr_uuidv7 CHECK (substring(id::text from 15 for 1) = '7')
-            \\) ON COMMIT DROP
-        , .{});
-        q.deinit();
-    }
+    _ = try db_ctx.conn.exec(
+        \\CREATE TEMP TABLE t6_dup_reject (
+        \\  id UUID PRIMARY KEY,
+        \\  CONSTRAINT ck_t6_dr_uuidv7 CHECK (substring(id::text from 15 for 1) = '7')
+        \\)
+    , .{});
 
     const dup_id = try id_format.generateTransitionId(alloc);
     defer alloc.free(dup_id);
 
-    {
-        var q = try db_ctx.conn.query(
-            "INSERT INTO t6_dup_reject (id) VALUES ($1::uuid)",
-            .{dup_id},
-        );
-        q.deinit();
-    }
+    _ = try db_ctx.conn.exec(
+        "INSERT INTO t6_dup_reject (id) VALUES ($1::uuid)",
+        .{dup_id},
+    );
     // Second insert with same id must fail (PK violation)
-    try std.testing.expectError(error.PgError, db_ctx.conn.query(
+    try std.testing.expectError(error.PG, db_ctx.conn.exec(
         "INSERT INTO t6_dup_reject (id) VALUES ($1::uuid)",
         .{dup_id},
     ));
+}
+
+test "integration: audit schema exists and contains migration bookkeeping tables" {
+    if (!std.process.hasEnvVarConstant("LIVE_DB")) return error.SkipZigTest;
+    const alloc = std.testing.allocator;
+    const db_ctx = (try openIntegrationTestConn(alloc)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
+
+    // Verify audit schema exists
+    {
+        var q = try db_ctx.conn.query(
+            "SELECT 1 FROM information_schema.schemata WHERE schema_name = 'audit'",
+            .{},
+        );
+        defer q.deinit();
+        const row = try q.next();
+        try std.testing.expect(row != null);
+        try q.drain();
+    }
+
+    // Verify audit.schema_migrations exists and is queryable
+    {
+        var q = try db_ctx.conn.query(
+            "SELECT COUNT(*) FROM audit.schema_migrations",
+            .{},
+        );
+        defer q.deinit();
+        const row = (try q.next()) orelse return error.SkipZigTest;
+        const count = try row.get(i64, 0);
+        try std.testing.expect(count > 0);
+        try q.drain();
+    }
+
+    // Verify audit.schema_migration_failures exists and is queryable
+    {
+        var q = try db_ctx.conn.query(
+            "SELECT COUNT(*) FROM audit.schema_migration_failures",
+            .{},
+        );
+        defer q.deinit();
+        _ = try q.next();
+        try q.drain();
+    }
+
+    // Verify schema_migrations is NOT in public schema
+    {
+        var q = try db_ctx.conn.query(
+            \\SELECT 1 FROM information_schema.tables
+            \\WHERE table_schema = 'public' AND table_name = 'schema_migrations'
+        , .{});
+        defer q.deinit();
+        const row = try q.next();
+        try std.testing.expect(row == null);
+        try q.drain();
+    }
+}
+
+test "integration: db_migrator role exists after migration" {
+    if (!std.process.hasEnvVarConstant("LIVE_DB")) return error.SkipZigTest;
+    const alloc = std.testing.allocator;
+    const db_ctx = (try openIntegrationTestConn(alloc)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
+
+    var q = try db_ctx.conn.query(
+        "SELECT 1 FROM pg_roles WHERE rolname = 'db_migrator'",
+        .{},
+    );
+    defer q.deinit();
+    const row = try q.next();
+    try std.testing.expect(row != null);
+    try q.drain();
+}
+
+test "integration: zero-trust schema segmentation and role matrix are enforced" {
+    if (!std.process.hasEnvVarConstant("LIVE_DB")) return error.SkipZigTest;
+    const alloc = std.testing.allocator;
+    const db_ctx = (try openIntegrationTestConn(alloc)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
+
+    const schema_checks = [_][]const u8{ "core", "agent", "billing", "vault", "audit", "ops_ro" };
+    inline for (schema_checks) |schema_name| {
+        var schema_q = try db_ctx.conn.query(
+            "SELECT 1 FROM information_schema.schemata WHERE schema_name = $1",
+            .{schema_name},
+        );
+        defer schema_q.deinit();
+        try std.testing.expect((try schema_q.next()) != null);
+        try schema_q.drain();
+    }
+
+    // public should not own authoritative app tables.
+    {
+        var q = try db_ctx.conn.query(
+            \\SELECT 1
+            \\FROM information_schema.tables
+            \\WHERE table_schema = 'public'
+            \\  AND table_name IN ('tenants', 'workspaces', 'runs', 'agent_profiles', 'workspace_entitlements')
+            \\LIMIT 1
+        , .{});
+        defer q.deinit();
+        try std.testing.expect((try q.next()) == null);
+        try q.drain();
+    }
+
+    const role_checks = [_][]const u8{
+        "db_migrator",
+        "api_runtime",
+        "worker_runtime",
+        "ops_readonly_human",
+        "ops_readonly_agent",
+    };
+    inline for (role_checks) |role_name| {
+        var role_q = try db_ctx.conn.query(
+            "SELECT 1 FROM pg_roles WHERE rolname = $1",
+            .{role_name},
+        );
+        defer role_q.deinit();
+        try std.testing.expect((try role_q.next()) != null);
+        try role_q.drain();
+    }
+
+    const worker_privilege_checks = [_]struct { table_name: []const u8, privilege: []const u8 }{
+        .{ .table_name = "agent.agent_profiles", .privilege = "UPDATE" },
+        .{ .table_name = "agent.workspace_active_config", .privilege = "UPDATE" },
+        .{ .table_name = "agent.agent_config_versions", .privilege = "INSERT" },
+        .{ .table_name = "agent.harness_change_log", .privilege = "UPDATE" },
+    };
+    inline for (worker_privilege_checks) |check| {
+        var privilege_q = try db_ctx.conn.query(
+            "SELECT has_table_privilege('worker_runtime', $1, $2)",
+            .{ check.table_name, check.privilege },
+        );
+        defer privilege_q.deinit();
+        const row = (try privilege_q.next()) orelse return error.TestUnexpectedResult;
+        const has_privilege = try row.get(bool, 0);
+        try std.testing.expect(has_privilege);
+        try privilege_q.drain();
+    }
+
+    const rls_tables = [_]struct { schema_name: []const u8, table_name: []const u8 }{
+        .{ .schema_name = "agent", .table_name = "agent_profiles" },
+        .{ .schema_name = "agent", .table_name = "agent_config_versions" },
+        .{ .schema_name = "agent", .table_name = "workspace_active_config" },
+        .{ .schema_name = "agent", .table_name = "config_compile_jobs" },
+        .{ .schema_name = "agent", .table_name = "config_linkage_audit_artifacts" },
+        .{ .schema_name = "vault", .table_name = "workspace_skill_secrets" },
+    };
+    inline for (rls_tables) |table_ref| {
+        var rls_q = try db_ctx.conn.query(
+            \\SELECT c.relrowsecurity
+            \\FROM pg_class c
+            \\JOIN pg_namespace n ON n.oid = c.relnamespace
+            \\WHERE n.nspname = $1
+            \\  AND c.relname = $2
+        , .{ table_ref.schema_name, table_ref.table_name });
+        defer rls_q.deinit();
+        const row = (try rls_q.next()) orelse return error.TestUnexpectedResult;
+        const rls_enabled = try row.get(bool, 0);
+        try std.testing.expect(rls_enabled);
+        try rls_q.drain();
+    }
+}
+
+test "integration: readonly roles can only query ops_ro views, not vault" {
+    if (!std.process.hasEnvVarConstant("LIVE_DB")) return error.SkipZigTest;
+    const alloc = std.testing.allocator;
+    const db_ctx = (try openIntegrationTestConn(alloc)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
+
+    {
+        var q = try db_ctx.conn.query(
+            "SELECT has_table_privilege('ops_readonly_agent', 'vault.secrets', 'SELECT')",
+            .{},
+        );
+        defer q.deinit();
+        const row = (try q.next()) orelse return error.TestUnexpectedResult;
+        const can_read_vault = try row.get(bool, 0);
+        try std.testing.expect(!can_read_vault);
+        try q.drain();
+    }
+
+    {
+        var q = try db_ctx.conn.query(
+            "SELECT has_table_privilege('ops_readonly_agent', 'ops_ro.workspace_overview', 'SELECT')",
+            .{},
+        );
+        defer q.deinit();
+        const row = (try q.next()) orelse return error.TestUnexpectedResult;
+        const can_read_view = try row.get(bool, 0);
+        try std.testing.expect(can_read_view);
+        try q.drain();
+    }
+
+    {
+        var q = try db_ctx.conn.query(
+            "SELECT has_table_privilege('ops_readonly_human', 'ops_ro.billing_overview', 'SELECT')",
+            .{},
+        );
+        defer q.deinit();
+        const row = (try q.next()) orelse return error.TestUnexpectedResult;
+        const can_read_view = try row.get(bool, 0);
+        try std.testing.expect(can_read_view);
+        try q.drain();
+    }
 }

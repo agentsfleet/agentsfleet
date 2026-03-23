@@ -19,16 +19,17 @@ Postgres stores both control-plane state and encrypted secret material (`vault` 
 
 ## Required Configuration
 
-1. `DATABASE_URL_API=postgres://api_accessor:...`
-2. `DATABASE_URL_WORKER=postgres://worker_accessor:...`
-3. (If used) `DATABASE_URL_CALLBACK=postgres://callback_accessor:...`
+1. `DATABASE_URL_API=postgres://api_runtime:...`
+2. `DATABASE_URL_WORKER=postgres://worker_runtime:...`
+3. `DATABASE_URL_MIGRATOR=postgres://db_migrator:...`
 4. TLS required in non-local environments (`sslmode=require` policy).
 
 ## Privilege Baseline
 
-1. `api_accessor`: no `vault` schema read/write.
-2. `worker_accessor`: required `vault` access for BYOK runtime reads.
-3. `callback_accessor`: minimal callback/write scope as designed.
+1. `api_runtime`: runtime DML only; no DDL.
+2. `worker_runtime`: worker DML scope; no DDL.
+3. `db_migrator`: migration control-plane role with DDL authority.
+4. `ops_readonly_human` and `ops_readonly_agent`: `ops_ro` views only.
 
 ## Software Setup Steps
 
@@ -40,6 +41,7 @@ Postgres stores both control-plane state and encrypted secret material (`vault` 
 
 ## Verification
 
-1. As `api_accessor`, `SELECT * FROM vault.secrets` must fail.
-2. As `worker_accessor`, required vault operations must pass.
-3. Serve startup must fail when migration state is partial/failed/unsafe.
+1. As `api_runtime`, `CREATE TABLE ...` must fail.
+2. As `worker_runtime`, required runtime writes pass but DDL fails.
+3. As readonly roles, direct `SELECT` from `vault.secrets` must fail.
+4. Serve startup must fail when migration state is partial/failed/unsafe.

@@ -1,13 +1,13 @@
 -- M5_004: Usage metering and billing adapter integration
--- Extends immutable usage_ledger rows with deterministic event keys and
+-- Extends immutable billing.usage_ledger rows with deterministic event keys and
 -- billable metadata, and adds idempotent delivery outbox for billing adapters.
--- usage_ledger canonical columns and indexes now live in schema/001_initial.sql.
+-- billing.usage_ledger canonical columns and indexes now live in schema/001_initial.sql.
 
-CREATE TABLE IF NOT EXISTS billing_delivery_outbox (
+CREATE TABLE IF NOT EXISTS billing.billing_delivery_outbox (
     id                UUID PRIMARY KEY,
     CONSTRAINT ck_billing_delivery_outbox_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
-    run_id            UUID NOT NULL REFERENCES runs(run_id),
-    workspace_id      UUID NOT NULL REFERENCES workspaces(workspace_id),
+    run_id            UUID NOT NULL REFERENCES core.runs(run_id),
+    workspace_id      UUID NOT NULL REFERENCES core.workspaces(workspace_id),
     attempt           INT NOT NULL,
     idempotency_key   TEXT NOT NULL UNIQUE,
     billable_unit     TEXT NOT NULL,
@@ -24,7 +24,10 @@ CREATE TABLE IF NOT EXISTS billing_delivery_outbox (
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_billing_delivery_run_attempt_unit
-    ON billing_delivery_outbox (run_id, attempt, billable_unit);
+    ON billing.billing_delivery_outbox (run_id, attempt, billable_unit);
 
 CREATE INDEX IF NOT EXISTS idx_billing_delivery_status_retry
-    ON billing_delivery_outbox (status, next_retry_at, created_at);
+    ON billing.billing_delivery_outbox (status, next_retry_at, created_at);
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON billing.billing_delivery_outbox TO api_runtime;
+GRANT SELECT, INSERT, UPDATE ON billing.billing_delivery_outbox TO worker_runtime;

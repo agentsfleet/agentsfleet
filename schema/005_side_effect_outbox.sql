@@ -1,8 +1,8 @@
 -- Durable side-effect outbox + dead-letter baseline
-CREATE TABLE run_side_effect_outbox (
+CREATE TABLE core.run_side_effect_outbox (
     id               UUID PRIMARY KEY,
     CONSTRAINT ck_run_side_effect_outbox_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
-    run_id           UUID   NOT NULL REFERENCES runs(run_id),
+    run_id           UUID   NOT NULL REFERENCES core.runs(run_id),
     effect_key       TEXT   NOT NULL,
     status           TEXT   NOT NULL,
     last_event       TEXT   NOT NULL,
@@ -14,9 +14,9 @@ CREATE TABLE run_side_effect_outbox (
 );
 
 CREATE INDEX idx_side_effect_outbox_status_updated
-    ON run_side_effect_outbox(status, updated_at, run_id);
+    ON core.run_side_effect_outbox(status, updated_at, run_id);
 
-INSERT INTO run_side_effect_outbox (
+INSERT INTO core.run_side_effect_outbox (
     run_id,
     effect_key,
     status,
@@ -43,5 +43,8 @@ SELECT
     NULL,
     created_at,
     updated_at
-FROM run_side_effects
+FROM core.run_side_effects
 ON CONFLICT (run_id, effect_key) DO NOTHING;
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON core.run_side_effect_outbox TO api_runtime;
+GRANT SELECT, INSERT, UPDATE ON core.run_side_effect_outbox TO worker_runtime;

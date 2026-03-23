@@ -1,6 +1,6 @@
-CREATE TABLE IF NOT EXISTS workspace_credit_state (
+CREATE TABLE IF NOT EXISTS billing.workspace_credit_state (
     credit_id UUID PRIMARY KEY,
-    workspace_id UUID NOT NULL UNIQUE REFERENCES workspaces(workspace_id) ON DELETE CASCADE,
+    workspace_id UUID NOT NULL UNIQUE REFERENCES core.workspaces(workspace_id) ON DELETE CASCADE,
     currency TEXT NOT NULL,
     initial_credit_cents BIGINT NOT NULL CHECK (initial_credit_cents >= 0),
     consumed_credit_cents BIGINT NOT NULL CHECK (consumed_credit_cents >= 0),
@@ -11,11 +11,11 @@ CREATE TABLE IF NOT EXISTS workspace_credit_state (
 );
 
 CREATE INDEX IF NOT EXISTS idx_workspace_credit_state_remaining
-    ON workspace_credit_state (remaining_credit_cents, updated_at DESC);
+    ON billing.workspace_credit_state (remaining_credit_cents, updated_at DESC);
 
-CREATE TABLE IF NOT EXISTS workspace_credit_audit (
+CREATE TABLE IF NOT EXISTS billing.workspace_credit_audit (
     audit_id UUID PRIMARY KEY,
-    workspace_id UUID NOT NULL REFERENCES workspaces(workspace_id) ON DELETE CASCADE,
+    workspace_id UUID NOT NULL REFERENCES core.workspaces(workspace_id) ON DELETE CASCADE,
     event_type TEXT NOT NULL,
     delta_credit_cents BIGINT NOT NULL,
     remaining_credit_cents BIGINT NOT NULL CHECK (remaining_credit_cents >= 0),
@@ -26,9 +26,9 @@ CREATE TABLE IF NOT EXISTS workspace_credit_audit (
 );
 
 CREATE INDEX IF NOT EXISTS idx_workspace_credit_audit_workspace
-    ON workspace_credit_audit (workspace_id, created_at DESC);
+    ON billing.workspace_credit_audit (workspace_id, created_at DESC);
 
-GRANT SELECT, INSERT, UPDATE, DELETE ON workspace_credit_state TO api_accessor;
-GRANT SELECT, INSERT, UPDATE, DELETE ON workspace_credit_audit TO api_accessor;
-GRANT SELECT ON workspace_credit_state TO worker_accessor;
-GRANT SELECT ON workspace_credit_audit TO worker_accessor;
+GRANT SELECT, INSERT, UPDATE, DELETE ON billing.workspace_credit_state TO api_runtime;
+GRANT SELECT, INSERT, UPDATE, DELETE ON billing.workspace_credit_audit TO api_runtime;
+GRANT SELECT ON billing.workspace_credit_state TO worker_runtime;
+GRANT SELECT ON billing.workspace_credit_audit TO worker_runtime;

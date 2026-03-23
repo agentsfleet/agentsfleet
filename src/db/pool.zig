@@ -4,6 +4,7 @@
 const std = @import("std");
 const pg = @import("pg");
 const id_format = @import("../types/id_format.zig");
+const error_codes = @import("../errors/codes.zig");
 const log = std.log.scoped(.db);
 
 pub const Pool = pg.Pool;
@@ -15,6 +16,7 @@ pub const DbRole = enum {
     api,
     worker,
     callback,
+    migrator,
 };
 
 pub fn roleEnvVarName(role: DbRole) []const u8 {
@@ -22,6 +24,7 @@ pub fn roleEnvVarName(role: DbRole) []const u8 {
         .api => "DATABASE_URL_API",
         .worker => "DATABASE_URL_WORKER",
         .callback => "DATABASE_URL_CALLBACK",
+        .migrator => "DATABASE_URL_MIGRATOR",
         .default => "DATABASE_URL",
     };
 }
@@ -137,7 +140,7 @@ fn resolveDatabaseUrl(alloc: std.mem.Allocator, role: DbRole) ![]const u8 {
 /// Initialize a pool using DATABASE_URL for the selected role.
 pub fn initFromEnvForRole(alloc: std.mem.Allocator, role: DbRole) !*Pool {
     const url = resolveDatabaseUrl(alloc, role) catch {
-        log.err("db.url_not_set role={s} error_code=UZ-INTERNAL-001", .{@tagName(role)});
+        log.err("db.url_not_set role={s} error_code={s}", .{ @tagName(role), error_codes.ERR_INTERNAL_DB_UNAVAILABLE });
         return error.MissingDatabaseUrl;
     };
     defer alloc.free(url);
@@ -157,32 +160,33 @@ pub fn initFromEnv(alloc: std.mem.Allocator) !*Pool {
     return initFromEnvForRole(alloc, .default);
 }
 
+fn ensureAuditSchema(conn: *Conn) !void {
+    _ = try conn.exec("CREATE SCHEMA IF NOT EXISTS audit", .{});
+}
+
 fn ensureSchemaMigrationsTable(conn: *Conn) !void {
-    var result = try conn.query(
-        \\CREATE TABLE IF NOT EXISTS schema_migrations (
+    try ensureAuditSchema(conn);
+    _ = try conn.exec(
+        \\CREATE TABLE IF NOT EXISTS audit.schema_migrations (
         \\    version     INTEGER PRIMARY KEY,
         \\    applied_at  BIGINT NOT NULL
         \\)
     , .{});
-    defer result.deinit();
-    try result.drain();
 }
 
 fn ensureSchemaMigrationFailuresTable(conn: *Conn) !void {
-    var result = try conn.query(
-        \\CREATE TABLE IF NOT EXISTS schema_migration_failures (
+    _ = try conn.exec(
+        \\CREATE TABLE IF NOT EXISTS audit.schema_migration_failures (
         \\    version     INTEGER PRIMARY KEY,
         \\    failed_at   BIGINT NOT NULL,
         \\    error_text  TEXT NOT NULL
         \\)
     , .{});
-    defer result.deinit();
-    try result.drain();
 }
 
 fn isMigrationApplied(conn: *Conn, version: i32) !bool {
     var result = try conn.query(
-        "SELECT 1 FROM schema_migrations WHERE version = $1",
+        "SELECT 1 FROM audit.schema_migrations WHERE version = $1",
         .{version},
     );
     defer result.deinit();
@@ -193,7 +197,7 @@ fn isMigrationApplied(conn: *Conn, version: i32) !bool {
 
 fn hasFailedMigrationRecords(conn: *Conn) !bool {
     var result = try conn.query(
-        "SELECT 1 FROM schema_migration_failures LIMIT 1",
+        "SELECT 1 FROM audit.schema_migration_failures LIMIT 1",
         .{},
     );
     defer result.deinit();
@@ -227,25 +231,21 @@ fn releaseMigrationLock(conn: *Conn) void {
 
 fn markMigrationFailure(conn: *Conn, version: i32, err: anyerror) void {
     const ts = std.time.milliTimestamp();
-    var q = conn.query(
-        \\INSERT INTO schema_migration_failures (version, failed_at, error_text)
+    _ = conn.exec(
+        \\INSERT INTO audit.schema_migration_failures (version, failed_at, error_text)
         \\VALUES ($1, $2, $3)
         \\ON CONFLICT (version) DO UPDATE
         \\SET failed_at = EXCLUDED.failed_at,
         \\    error_text = EXCLUDED.error_text
-    , .{ version, ts, @errorName(err) }) catch return;
-    defer q.deinit();
-    q.drain() catch {};
+    , .{ version, ts, @errorName(err) }) catch {};
 }
 
 fn clearMigrationFailure(conn: *Conn, version: i32) void {
-    var q = conn.query("DELETE FROM schema_migration_failures WHERE version = $1", .{version}) catch return;
-    defer q.deinit();
-    q.drain() catch {};
+    _ = conn.exec("DELETE FROM audit.schema_migration_failures WHERE version = $1", .{version}) catch {};
 }
 
 fn maxAppliedMigrationVersion(conn: *Conn) !i32 {
-    var result = try conn.query("SELECT COALESCE(MAX(version), 0) FROM schema_migrations", .{});
+    var result = try conn.query("SELECT COALESCE(MAX(version), 0) FROM audit.schema_migrations", .{});
     defer result.deinit();
     const row = try result.next() orelse return 0;
     const version = try row.get(i32, 0);
@@ -255,7 +255,7 @@ fn maxAppliedMigrationVersion(conn: *Conn) !i32 {
 
 fn logPgErrorContext(conn: *Conn, op: []const u8) void {
     if (conn.err) |pg_err| {
-        log.err("db.pg_error op={s} code={s} message={s}", .{ op, pg_err.code, pg_err.message });
+        log.err("db.pg_error op={s} error_code={s} pg_code={s} message={s}", .{ op, error_codes.ERR_INTERNAL_DB_QUERY, pg_err.code, pg_err.message });
         if (pg_err.detail) |detail| {
             log.err("db.pg_error op={s} detail={s}", .{ op, detail });
         }
@@ -264,7 +264,7 @@ fn logPgErrorContext(conn: *Conn, op: []const u8) void {
         }
         return;
     }
-    log.err("db.pg_error op={s} message=unknown", .{op});
+    log.err("db.pg_error op={s} error_code={s} message=unknown", .{ op, error_codes.ERR_INTERNAL_DB_QUERY });
 }
 
 fn isUndefinedTablePgError(conn: *Conn) bool {
@@ -323,9 +323,7 @@ fn applySqlStatements(conn: *Conn, sql: []const u8) !u32 {
 
         const stmt = std.mem.trim(u8, sql[start..i], " \t\r\n");
         if (stmt.len > 0) {
-            var result = try conn.query(stmt, .{});
-            defer result.deinit();
-            try result.drain();
+            _ = try conn.exec(stmt, .{});
             count += 1;
         }
 
@@ -334,9 +332,7 @@ fn applySqlStatements(conn: *Conn, sql: []const u8) !u32 {
 
     const tail = std.mem.trim(u8, sql[start..], " \t\r\n");
     if (tail.len > 0) {
-        var result = try conn.query(tail, .{});
-        defer result.deinit();
-        try result.drain();
+        _ = try conn.exec(tail, .{});
         count += 1;
     }
 
@@ -344,33 +340,27 @@ fn applySqlStatements(conn: *Conn, sql: []const u8) !u32 {
 }
 
 fn beginTx(conn: *Conn) !void {
-    var tx = try conn.query("BEGIN", .{});
-    defer tx.deinit();
-    try tx.drain();
+    _ = try conn.exec("BEGIN", .{});
 }
 
 fn commitTx(conn: *Conn) !void {
-    var tx = try conn.query("COMMIT", .{});
-    defer tx.deinit();
-    try tx.drain();
+    _ = try conn.exec("COMMIT", .{});
 }
 
 fn rollbackTx(conn: *Conn) void {
-    var tx = conn.query("ROLLBACK", .{}) catch return;
-    defer tx.deinit();
-    tx.drain() catch {};
+    _ = conn.exec("ROLLBACK", .{}) catch {};
 }
 
 pub fn inspectMigrationState(pool: *Pool, migrations: []const Migration) !MigrationState {
     const conn = try pool.acquire();
     defer pool.release(conn);
 
-    const has_schema_migrations = tableExists(conn, "SELECT 1 FROM schema_migrations LIMIT 1") catch |err| {
-        if (err == error.PG) logPgErrorContext(conn, "inspect.table_exists schema_migrations");
+    const has_schema_migrations = tableExists(conn, "SELECT 1 FROM audit.schema_migrations LIMIT 1") catch |err| {
+        if (err == error.PG) logPgErrorContext(conn, "inspect.table_exists audit.schema_migrations");
         return err;
     };
-    const has_schema_migration_failures = tableExists(conn, "SELECT 1 FROM schema_migration_failures LIMIT 1") catch |err| {
-        if (err == error.PG) logPgErrorContext(conn, "inspect.table_exists schema_migration_failures");
+    const has_schema_migration_failures = tableExists(conn, "SELECT 1 FROM audit.schema_migration_failures LIMIT 1") catch |err| {
+        if (err == error.PG) logPgErrorContext(conn, "inspect.table_exists audit.schema_migration_failures");
         return err;
     };
 
@@ -464,19 +454,12 @@ pub fn runMigrations(pool: *Pool, migrations: []const Migration) !void {
             return err;
         };
 
-        var insert = conn.query(
-            "INSERT INTO schema_migrations (version, applied_at) VALUES ($1, $2)",
+        _ = conn.exec(
+            "INSERT INTO audit.schema_migrations (version, applied_at) VALUES ($1, $2)",
             .{ migration.version, std.time.milliTimestamp() },
         ) catch |err| {
             rollbackTx(conn);
             if (err == error.PG) logPgErrorContext(conn, "migrate.insert_schema_migrations");
-            markMigrationFailure(conn, migration.version, err);
-            return err;
-        };
-        defer insert.deinit();
-        insert.drain() catch |err| {
-            rollbackTx(conn);
-            if (err == error.PG) logPgErrorContext(conn, "migrate.insert_schema_migrations_drain");
             markMigrationFailure(conn, migration.version, err);
             return err;
         };

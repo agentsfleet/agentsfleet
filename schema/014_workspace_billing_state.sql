@@ -1,8 +1,8 @@
 -- M6_001: Paid Scale plan lifecycle and deterministic billing-state sync
 
-CREATE TABLE IF NOT EXISTS workspace_billing_state (
+CREATE TABLE IF NOT EXISTS billing.workspace_billing_state (
     billing_id         UUID PRIMARY KEY,
-    workspace_id       UUID NOT NULL UNIQUE REFERENCES workspaces(workspace_id) ON DELETE CASCADE,
+    workspace_id       UUID NOT NULL UNIQUE REFERENCES core.workspaces(workspace_id) ON DELETE CASCADE,
     plan_tier          TEXT NOT NULL,
     plan_sku           TEXT NOT NULL,
     billing_status     TEXT NOT NULL,
@@ -17,11 +17,11 @@ CREATE TABLE IF NOT EXISTS workspace_billing_state (
 );
 
 CREATE INDEX IF NOT EXISTS idx_workspace_billing_state_plan
-    ON workspace_billing_state (plan_tier, billing_status, updated_at DESC);
+    ON billing.workspace_billing_state (plan_tier, billing_status, updated_at DESC);
 
-CREATE TABLE IF NOT EXISTS workspace_billing_audit (
+CREATE TABLE IF NOT EXISTS billing.workspace_billing_audit (
     audit_id            UUID PRIMARY KEY,
-    workspace_id        UUID NOT NULL REFERENCES workspaces(workspace_id) ON DELETE CASCADE,
+    workspace_id        UUID NOT NULL REFERENCES core.workspaces(workspace_id) ON DELETE CASCADE,
     event_type          TEXT NOT NULL,
     previous_plan_tier  TEXT,
     new_plan_tier       TEXT NOT NULL,
@@ -34,9 +34,9 @@ CREATE TABLE IF NOT EXISTS workspace_billing_audit (
 );
 
 CREATE INDEX IF NOT EXISTS idx_workspace_billing_audit_workspace
-    ON workspace_billing_audit (workspace_id, created_at DESC);
+    ON billing.workspace_billing_audit (workspace_id, created_at DESC);
 
-GRANT SELECT, INSERT, UPDATE, DELETE ON workspace_billing_state TO api_accessor;
-GRANT SELECT, INSERT, UPDATE, DELETE ON workspace_billing_audit TO api_accessor;
-GRANT SELECT ON workspace_billing_state TO worker_accessor;
-GRANT SELECT ON workspace_billing_audit TO worker_accessor;
+GRANT SELECT, INSERT, UPDATE, DELETE ON billing.workspace_billing_state TO api_runtime;
+GRANT SELECT, INSERT, UPDATE, DELETE ON billing.workspace_billing_audit TO api_runtime;
+GRANT SELECT ON billing.workspace_billing_state TO worker_runtime;
+GRANT SELECT ON billing.workspace_billing_audit TO worker_runtime;

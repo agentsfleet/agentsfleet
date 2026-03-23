@@ -1,13 +1,13 @@
-# M12_001: Free Plan Credit Ledger, Exhaustion, And Conversion UX
+# M5_001: Free Plan Credit Ledger, Exhaustion, And Conversion UX
 
-**Prototype:** v1.0.0
-**Milestone:** M12
-**Workstream:** 1
-**Date:** Mar 16, 2026
+**Prototype:** v2.0.0
+**Milestone:** M5
+**Workstream:** 001
+**Date:** Mar 23, 2026
 **Status:** PENDING
-**Priority:** P2 — post-v1 monetization hardening; not a v1.0 launch gate
-**Batch:** B4 — after v1.0 acceptance gate and production stabilization
-**Depends on:** M11_001 (Grafana Observability Pipeline And Langfuse Async Delivery), M6_006 (Validate v1 Acceptance E2E Gate), M6_002 (Free Plan $10 Credit Pricing Contract), M6_001 (Paid Scale Plan)
+**Priority:** P2 — post-v1 monetization hardening; deferred from v1.0 launch gate
+**Batch:** B1 — first v2 monetization batch
+**Depends on:** v1/M12_002 (Zero-Trust DB Schema Segmentation), v1/M6_006 (Validate v1 Acceptance E2E Gate), v1/M6_002 (Free Plan $10 Credit Pricing Contract), v1/M6_001 (Paid Scale Plan)
 
 **v1.0 Scope Decision (Mar 16, 2026):** Deferred from v1.0 release gating. This workstream remains important for revenue protection and free-tier abuse control, but is not required to pass v1.0 acceptance.
 

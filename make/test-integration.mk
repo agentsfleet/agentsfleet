@@ -14,7 +14,8 @@ _test-integration-zombied:
 _test-integration-db:
 	@if [ -z "$$HANDLER_DB_TEST_URL" ]; then \
 	  echo "✗ HANDLER_DB_TEST_URL is not set — DB integration tests cannot run"; \
-	  echo "  Set it to a live Postgres URL, e.g.:"; \
+	  echo "  Run 'make up' to start Docker services, then run 'make test-integration'."; \
+	  echo "  Or set it to a live Postgres URL, e.g.:"; \
 	  echo "    export HANDLER_DB_TEST_URL='postgres://usezombie:usezombie@localhost:5432/usezombiedb?sslmode=disable'"; \
 	  exit 1; \
 	fi
@@ -23,11 +24,12 @@ _test-integration-db:
 	@echo "→ [zombied] Auto-migrating test database..."
 	@ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" \
 	 ZIG_LOCAL_CACHE_DIR="$(ZIG_LOCAL_CACHE_DIR)" \
-	 DATABASE_URL_API="$$HANDLER_DB_TEST_URL" \
+	 DATABASE_URL_MIGRATOR="$$HANDLER_DB_TEST_URL" \
 	 zig build run -- migrate
 	@echo "→ [zombied] Migration done, running tests..."
 	@ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" \
 	 ZIG_LOCAL_CACHE_DIR="$(ZIG_LOCAL_CACHE_DIR)" \
+	 LIVE_DB=1 \
 	 HANDLER_DB_TEST_URL="$$HANDLER_DB_TEST_URL" \
 	 zig build test -- --test-filter "integration:"
 	@echo "✓ [zombied] DB-backed integration tests passed"
@@ -35,7 +37,8 @@ _test-integration-db:
 _test-integration-redis:
 	@if [ -z "$$REDIS_TLS_TEST_URL" ]; then \
 	  echo "✗ REDIS_TLS_TEST_URL is not set — Redis integration tests cannot run"; \
-	  echo "  Set it to a live Redis TLS URL, e.g.:"; \
+	  echo "  Run 'make up' to start Docker services, then run 'make test-integration'."; \
+	  echo "  Or set it to a live Redis TLS URL, e.g.:"; \
 	  echo "    export REDIS_TLS_TEST_URL=rediss://:usezombie@localhost:6379"; \
 	  exit 1; \
 	fi

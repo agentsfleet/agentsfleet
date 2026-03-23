@@ -82,6 +82,7 @@ jobs:
           FLY_API_TOKEN: op://${{ vars.VAULT_DEV }}/fly-api-token/credential
           DATABASE_URL_API: op://${{ vars.VAULT_DEV }}/planetscale-dev/api-connection-string
           DATABASE_URL_WORKER: op://${{ vars.VAULT_DEV }}/planetscale-dev/worker-connection-string
+          DATABASE_URL_MIGRATOR: op://${{ vars.VAULT_DEV }}/planetscale-dev/migrator-connection-string
           REDIS_URL_API: op://${{ vars.VAULT_DEV }}/upstash-dev/api-url
           REDIS_URL_WORKER: op://${{ vars.VAULT_DEV }}/upstash-dev/worker-url
           ENCRYPTION_MASTER_KEY: op://${{ vars.VAULT_DEV }}/encryption-master-key/credential
@@ -102,6 +103,7 @@ jobs:
             LOG_LEVEL="debug" \
             DATABASE_URL_API="$DATABASE_URL_API" \
             DATABASE_URL_WORKER="$DATABASE_URL_WORKER" \
+            DATABASE_URL_MIGRATOR="$DATABASE_URL_MIGRATOR" \
             REDIS_URL_API="$REDIS_URL_API" \
             REDIS_URL_WORKER="$REDIS_URL_WORKER" \
             ENCRYPTION_MASTER_KEY="$ENCRYPTION_MASTER_KEY" \

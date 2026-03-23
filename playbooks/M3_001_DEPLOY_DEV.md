@@ -49,6 +49,7 @@ Symptom in Fly logs:
 
 ```text
 fatal: DATABASE_URL_API and DATABASE_URL_WORKER must differ (role separation required)
+or migration release command fails with missing/invalid `DATABASE_URL_MIGRATOR`
 ```
 
 Fix:
@@ -59,6 +60,7 @@ Fix:
 fly secrets set \
   DATABASE_URL_API='...' \
   DATABASE_URL_WORKER='...' \
+  DATABASE_URL_MIGRATOR='...' \
   --app zombied-dev
 ```
 

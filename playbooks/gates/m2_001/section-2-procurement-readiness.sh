@@ -9,25 +9,41 @@ vault_dev="${VAULT_DEV:-ZMB_CD_DEV}"
 vault_prod="${VAULT_PROD:-ZMB_CD_PROD}"
 
 missing=0
+declare -A OP_CACHE_VALUE
+declare -A OP_CACHE_STATUS
 
 op_read_with_retry() {
   local ref="$1"
-  local attempts="${OP_READ_RETRIES:-6}"
-  local delay_s=1
+  if [ -n "${OP_CACHE_STATUS[$ref]:-}" ]; then
+    if [ "${OP_CACHE_STATUS[$ref]}" = "ok" ]; then
+      printf '%s' "${OP_CACHE_VALUE[$ref]}"
+      return 0
+    fi
+    return 1
+  fi
+
+  local attempts="${OP_READ_RETRIES:-2}"
+  local delay_s="${OP_READ_BASE_DELAY_SECONDS:-1}"
+  local min_interval_s="${OP_READ_MIN_INTERVAL_SECONDS:-0.2}"
   local value=""
 
   for attempt in $(seq 1 "$attempts"); do
+    # Smooth request bursts to avoid API request spikes.
+    sleep "$min_interval_s"
     if value="$(op read "$ref" 2>/dev/null)"; then
+      OP_CACHE_STATUS["$ref"]="ok"
+      OP_CACHE_VALUE["$ref"]="$value"
       printf '%s' "$value"
       return 0
     fi
 
     if [ "$attempt" -lt "$attempts" ]; then
       sleep "$delay_s"
-      delay_s=$((delay_s * 2))
     fi
   done
 
+  OP_CACHE_STATUS["$ref"]="err"
+  OP_CACHE_VALUE["$ref"]=""
   return 1
 }
 
@@ -83,6 +99,7 @@ check_prod() {
   check_ref "op://$v/encryption-master-key/credential"
   check_ref "op://$v/planetscale-prod/api-connection-string"
   check_ref "op://$v/planetscale-prod/worker-connection-string"
+  check_ref "op://$v/planetscale-prod/migrator-connection-string"
   check_ref "op://$v/upstash-prod/api-url"
   check_ref "op://$v/upstash-prod/worker-url"
   check_ref "op://$v/tailscale/authkey"
@@ -100,6 +117,14 @@ check_prod() {
     "op://$v/planetscale-prod/api-connection-string" \
     "op://$v/planetscale-prod/worker-connection-string" \
     "prod postgres api vs worker"
+  check_distinct \
+    "op://$v/planetscale-prod/migrator-connection-string" \
+    "op://$v/planetscale-prod/api-connection-string" \
+    "prod postgres migrator vs api"
+  check_distinct \
+    "op://$v/planetscale-prod/migrator-connection-string" \
+    "op://$v/planetscale-prod/worker-connection-string" \
+    "prod postgres migrator vs worker"
 
   check_distinct \
     "op://$v/upstash-prod/api-url" \
@@ -120,6 +145,7 @@ check_dev() {
   check_ref "op://$v/posthog-dev/credential"
   check_ref "op://$v/planetscale-dev/api-connection-string"
   check_ref "op://$v/planetscale-dev/worker-connection-string"
+  check_ref "op://$v/planetscale-dev/migrator-connection-string"
   check_ref "op://$v/upstash-dev/api-url"
   check_ref "op://$v/upstash-dev/worker-url"
   check_ref "op://$v/fly-api-token/credential"
@@ -133,6 +159,14 @@ check_dev() {
     "op://$v/planetscale-dev/api-connection-string" \
     "op://$v/planetscale-dev/worker-connection-string" \
     "dev postgres api vs worker"
+  check_distinct \
+    "op://$v/planetscale-dev/migrator-connection-string" \
+    "op://$v/planetscale-dev/api-connection-string" \
+    "dev postgres migrator vs api"
+  check_distinct \
+    "op://$v/planetscale-dev/migrator-connection-string" \
+    "op://$v/planetscale-dev/worker-connection-string" \
+    "dev postgres migrator vs worker"
 
   check_distinct \
     "op://$v/upstash-dev/api-url" \
