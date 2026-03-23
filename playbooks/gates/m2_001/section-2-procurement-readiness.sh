@@ -10,10 +10,31 @@ vault_prod="${VAULT_PROD:-ZMB_CD_PROD}"
 
 missing=0
 
+op_read_with_retry() {
+  local ref="$1"
+  local attempts="${OP_READ_RETRIES:-6}"
+  local delay_s=1
+  local value=""
+
+  for attempt in $(seq 1 "$attempts"); do
+    if value="$(op read "$ref" 2>/dev/null)"; then
+      printf '%s' "$value"
+      return 0
+    fi
+
+    if [ "$attempt" -lt "$attempts" ]; then
+      sleep "$delay_s"
+      delay_s=$((delay_s * 2))
+    fi
+  done
+
+  return 1
+}
+
 check_ref() {
   local ref="$1"
   local value
-  value="$(op read "$ref" 2>/dev/null || true)"
+  value="$(op_read_with_retry "$ref" || true)"
   if [ -z "$value" ]; then
     echo "✗ MISSING: $ref"
     missing=$((missing + 1))
@@ -28,8 +49,8 @@ check_distinct() {
   local label="$3"
 
   local left right
-  left="$(op read "$left_ref" 2>/dev/null || true)"
-  right="$(op read "$right_ref" 2>/dev/null || true)"
+  left="$(op_read_with_retry "$left_ref" || true)"
+  right="$(op_read_with_retry "$right_ref" || true)"
 
   if [ -z "$left" ] || [ -z "$right" ]; then
     return

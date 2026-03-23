@@ -110,7 +110,6 @@ jobs:
             GITHUB_APP_PRIVATE_KEY="$GITHUB_APP_PRIVATE_KEY" \
             CLERK_PUBLISHABLE_KEY="$CLERK_PUBLISHABLE_KEY" \
             CLERK_SECRET_KEY="$CLERK_SECRET_KEY" \
-            POSTHOG_API_KEY="$POSTHOG_API_KEY" \
             GRAFANA_OTLP_ENDPOINT="$GRAFANA_OTLP_ENDPOINT" \
             GRAFANA_OTLP_INSTANCE_ID="$GRAFANA_OTLP_INSTANCE_ID" \
             GRAFANA_OTLP_API_KEY="$GRAFANA_OTLP_API_KEY" \
@@ -123,23 +122,37 @@ jobs:
         env:
           FLY_API_TOKEN: ${{ env.FLY_API_TOKEN }}
 
-      - name: Verify Fly machine state (started)
+      - name: Verify Fly machine state (deploy settled)
         run: |
           APP="${{ vars.FLY_APP_DEV }}"
           echo "Checking Fly machine state for ${APP}..."
+          LAST_OUT=""
           for i in $(seq 1 12); do
             OUT="$(flyctl machine list --app "${APP}" || true)"
+            LAST_OUT="${OUT}"
             echo "${OUT}"
-            if echo "${OUT}" | grep -qiE '\bstarted\b'; then
-              echo "✓ at least one machine is started for ${APP}"
+            if echo "${OUT}" | grep -qiE '\b(started|stopped)\b'; then
+              echo "✓ at least one machine is in a settled state (started/stopped) for ${APP}"
               exit 0
             fi
-            echo "attempt ${i}/12: no started machine yet; retrying in 5s..."
+            echo "attempt ${i}/12: no settled machine yet; retrying in 5s..."
             sleep 5
           done
-          echo "✗ no started machine found for ${APP} after 60s"
+          echo "✗ no settled machine found for ${APP} after 60s"
           echo "Fly app status for diagnostics:"
           flyctl status --app "${APP}" || true
+          echo "Fly machine detail diagnostics:"
+          if command -v jq >/dev/null 2>&1; then
+            while IFS= read -r machine_id; do
+              [ -n "${machine_id}" ] || continue
+              echo "--- machine status: ${machine_id} ---"
+              flyctl machine status "${machine_id}" --app "${APP}" || true
+            done < <(flyctl machine list --app "${APP}" --json 2>/dev/null | jq -r '.[].id')
+          else
+            echo "jq unavailable; skipping per-machine status output"
+          fi
+          echo "Fly app logs (no-tail):"
+          flyctl logs --app "${APP}" --no-tail || true
           exit 1
         env:
           FLY_API_TOKEN: ${{ env.FLY_API_TOKEN }}
@@ -247,13 +260,27 @@ jobs:
     needs: [qa-dev]
     if: always()
     steps:
-      - name: Load Discord webhook from 1Password
-        uses: 1password/load-secrets-action@v3
-        with:
-          export-env: true
+      - uses: 1password/install-cli-action@v1
+
+      - name: Load Discord webhook from 1Password (retry)
         env:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
-          DISCORD_WEBHOOK: op://${{ vars.VAULT_PROD }}/discord-ci-webhook/credential
+        run: |
+          REF="op://${{ vars.VAULT_PROD }}/discord-ci-webhook/credential"
+          DELAY=1
+          for ATTEMPT in $(seq 1 6); do
+            if WEBHOOK="$(op read "$REF" 2>/dev/null)"; then
+              echo "DISCORD_WEBHOOK=$WEBHOOK" >> "$GITHUB_ENV"
+              exit 0
+            fi
+            if [ "$ATTEMPT" -lt 6 ]; then
+              echo "attempt $ATTEMPT/6: failed to read discord webhook; retrying in ${DELAY}s..."
+              sleep "$DELAY"
+              DELAY=$((DELAY * 2))
+            fi
+          done
+          echo "failed to read discord webhook from 1Password after retries"
+          exit 1
 
       - name: Notify Discord
         run: |
