@@ -33,14 +33,14 @@ picking it up in 3 months understands the motivation and where to start.
 
 ## M9 Follow-On: Resource Efficiency Axis Activation
 
-**What:** Replace the stubbed resource axis (fixed score of 50) with real CPU/memory metrics from Firecracker sandbox.
+**What:** Replace the stubbed resource axis (fixed score of 50) with real CPU/memory metrics from the M4_008 execution sandbox.
 **Why:** Resource efficiency is 10% of the quality score but currently meaningless. Activating it completes the 4-axis scoring model.
 **Pros:** Full scoring model. Can optimize agents for cost-efficiency.
 **Cons:** M effort. Need to define scoring formula (actual_usage / sandbox_limit) and test boundary conditions.
-**Context:** Depends on M4_008 (Firecracker sandbox) providing per-execution CPU/memory metrics. Scoring engine already reserves the axis and weights. Formula TBD: linear degradation from 100 (used 0% of limit) to 0 (used 100%+).
+**Context:** Depends on M4_008 (bubblewrap/host kill-switch sandbox in v1, Firecracker in v2) providing per-execution CPU/memory metrics. Scoring engine already reserves the axis and weights. Formula TBD: linear degradation from 100 (used 0% of limit) to 0 (used 100%+).
 **Effort:** M
 **Priority:** P1 (after M4_008)
-**Depends on:** M4_008 (Firecracker sandbox resource governance)
+**Depends on:** M4_008 (sandbox resource governance)
 
 ---
 
@@ -109,13 +109,50 @@ picking it up in 3 months understands the motivation and where to start.
 
 ---
 
+## M4 Follow-On: Drain Mode For Worker / Executor Rollouts
+
+**What:** Add explicit drain mode so worker stops claiming new runs and waits for in-flight stages to finish before executor or worker upgrade.
+**Why:** Current contract is honest but blunt: upgrades may interrupt active stages and rely on retry from persisted stage state. Drain mode improves operator ergonomics without pretending mid-stage migration exists.
+**Pros:** Cleaner upgrades, fewer interrupted runs, better operator confidence.
+**Cons:** More lifecycle logic: claim suppression, in-flight tracking, and rollout tooling.
+**Context:** The new executor architecture separates worker orchestration from dangerous execution. That makes drain mode feasible and worth doing, but it is not required for the initial executor boundary.
+**Effort:** M
+**Priority:** P1
+**Depends on:** executor API landing after M4_008 direction work
+
+---
+
+## M4 Follow-On: Executor Lease Heartbeats
+
+**What:** Add explicit worker-to-executor lease heartbeats so executor cancels orphaned runs quickly when the worker disappears.
+**Why:** Without a lease protocol, orphan cleanup falls back to coarser timeout behavior. A lease makes failure detection faster and more deterministic.
+**Pros:** Lower orphan risk, cleaner failure classification, better restart behavior.
+**Cons:** More protocol/state handling between worker and executor.
+**Context:** Fits the new sidecar executor model. Not necessary to define the architecture, but valuable once the boundary exists.
+**Effort:** M
+**Priority:** P1
+**Depends on:** executor API and local sidecar implementation
+
+---
+
+## M4 Follow-On: Mid-Stage Checkpoint / Resume Research
+
+**What:** Research whether long-running agent stages can checkpoint enough state to resume after executor restart instead of restarting the whole stage.
+**Why:** Current contract is stage-boundary durability only. That is acceptable, but expensive for long-running sessions.
+**Pros:** Better upgrade and crash recovery for long stages.
+**Cons:** High complexity and strong coupling to NullClaw/provider session semantics; easy to overbuild.
+**Context:** This is explicitly out of scope for the current architecture decision. Treat it as research first, not an implementation commitment.
+**Effort:** L
+**Priority:** P2
+**Depends on:** stable executor boundary and real run-duration data
+
+---
+
 ## M9 Pre-Requisite: Rename profile_id → agent_id
 
 **Status:** DONE
 **Tracked in:** `docs/spec/v1/M9_000_AGENT_ID_AND_CONFIG_VERSION_RENAME.md`
 **Note:** This TODO is closed as a planning item. Implementation is now tracked in the dedicated prerequisite spec.
-
-- TODO: Define Bronze/Silver/Gold/Elite as human-coined quality tiers, then add a built-in AI Slop Inspector that reasons about the concrete criteria so the tiers measure less-sloppy agent output instead of arbitrary label drift.
 
 ---
 
@@ -168,19 +205,3 @@ picking it up in 3 months understands the motivation and where to start.
 **Effort:** S
 **Priority:** P1
 **Depends on:** None
-
----
-
-## Observability: OTLP Log Exporter for Grafana Cloud
-
-**Status:** Superseded by `docs/spec/v1/M12_001_OBSERVABILITY_CONSOLIDATION.md` WS2
-**Tracked in:** M12_001 WS2 (OTLP Log Exporter)
-
----
-
-## Observability: OTLP Trace Exporter + Trace Propagation for Grafana Cloud
-
-**Status:** DONE — Implemented in `docs/spec/v1/M12_001_OBSERVABILITY_CONSOLIDATION.md` WS3
-**Tracked in:** M12_001 WS3 (OTLP Trace Propagation + Export)
-
-

@@ -16,6 +16,7 @@ const obs_log = @import("../observability/logging.zig");
 const posthog_events = @import("../observability/posthog_events.zig");
 const preflight = @import("preflight.zig");
 const common = @import("common.zig");
+const error_codes = @import("../errors/codes.zig");
 
 const log = std.log.scoped(.zombied);
 
@@ -119,6 +120,8 @@ pub fn run(alloc: std.mem.Allocator) !void {
             runtime_config.ValidationError.InvalidApiMaxClients,
             runtime_config.ValidationError.InvalidApiMaxInFlightRequests,
             runtime_config.ValidationError.InvalidRunTimeoutMs,
+            runtime_config.ValidationError.InvalidSandboxBackend,
+            runtime_config.ValidationError.InvalidSandboxKillGraceMs,
             runtime_config.ValidationError.InvalidRateLimitCapacity,
             runtime_config.ValidationError.InvalidRateLimitRefillPerSec,
             runtime_config.ValidationError.InvalidReadyMaxQueueDepth,
@@ -136,6 +139,15 @@ pub fn run(alloc: std.mem.Allocator) !void {
         serve_cfg.port = override;
     }
     log.info("startup.config_load status=ok", .{});
+    serve_cfg.sandbox.preflight() catch |err| {
+        log.err("startup.sandbox_preflight status=fail error_code={s} backend={s} err={s}", .{
+            error_codes.ERR_SANDBOX_BACKEND_UNAVAILABLE,
+            serve_cfg.sandbox.label(),
+            @errorName(err),
+        });
+        std.process.exit(1);
+    };
+    log.info("startup.sandbox_preflight status=ok backend={s}", .{serve_cfg.sandbox.label()});
 
     const api_pool = preflight.connectDbPool(alloc, .api) catch std.process.exit(1);
     defer api_pool.deinit();
@@ -221,6 +233,7 @@ pub fn run(alloc: std.mem.Allocator) !void {
         .pipeline_profile_path = serve_cfg.pipeline_profile_path,
         .max_attempts = serve_cfg.max_attempts,
         .run_timeout_ms = serve_cfg.run_timeout_ms,
+        .sandbox = serve_cfg.sandbox,
         .rate_limit_capacity = serve_cfg.rate_limit_capacity,
         .rate_limit_refill_per_sec = serve_cfg.rate_limit_refill_per_sec,
         .posthog = ph.client,

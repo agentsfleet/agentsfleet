@@ -3,6 +3,7 @@
 
 const std = @import("std");
 const oidc = @import("../auth/oidc.zig");
+const sandbox_runtime = @import("../pipeline/sandbox_runtime.zig");
 
 pub const ValidationError = error{
     MissingApiKey,
@@ -28,6 +29,8 @@ pub const ValidationError = error{
     InvalidKekVersion,
     MissingEncryptionMasterKeyV2,
     InvalidEncryptionMasterKeyV2,
+    InvalidSandboxBackend,
+    InvalidSandboxKillGraceMs,
 };
 
 pub const ServeConfig = struct {
@@ -45,6 +48,7 @@ pub const ServeConfig = struct {
     api_max_clients: u32,
     api_max_in_flight_requests: u32,
     run_timeout_ms: u64,
+    sandbox: sandbox_runtime.Config,
     rate_limit_capacity: u32,
     rate_limit_refill_per_sec: f64,
     ready_max_queue_depth: ?i64,
@@ -70,6 +74,11 @@ pub const ServeConfig = struct {
         const api_max_clients = try parseU32Env(alloc, "API_MAX_CLIENTS", 1024, ValidationError.InvalidApiMaxClients);
         const api_max_in_flight_requests = try parseU32Env(alloc, "API_MAX_IN_FLIGHT_REQUESTS", 256, ValidationError.InvalidApiMaxInFlightRequests);
         const run_timeout_ms = try parseU64Env(alloc, "RUN_TIMEOUT_MS", 300_000, ValidationError.InvalidRunTimeoutMs);
+        const sandbox = sandbox_runtime.loadFromEnv(alloc) catch |err| switch (err) {
+            sandbox_runtime.ValidationError.InvalidSandboxBackend => return ValidationError.InvalidSandboxBackend,
+            sandbox_runtime.ValidationError.InvalidSandboxKillGraceMs => return ValidationError.InvalidSandboxKillGraceMs,
+            else => return err,
+        };
         const rate_limit_capacity = try parseU32Env(alloc, "RATE_LIMIT_CAPACITY", 30, ValidationError.InvalidRateLimitCapacity);
         const rate_limit_refill_per_sec = try parseF64Env(alloc, "RATE_LIMIT_REFILL_PER_SEC", 5.0, ValidationError.InvalidRateLimitRefillPerSec);
         const ready_max_queue_depth = try parseOptionalI64Env(alloc, "READY_MAX_QUEUE_DEPTH", ValidationError.InvalidReadyMaxQueueDepth);
@@ -173,6 +182,7 @@ pub const ServeConfig = struct {
             .api_max_clients = api_max_clients,
             .api_max_in_flight_requests = api_max_in_flight_requests,
             .run_timeout_ms = run_timeout_ms,
+            .sandbox = sandbox,
             .rate_limit_capacity = rate_limit_capacity,
             .rate_limit_refill_per_sec = rate_limit_refill_per_sec,
             .ready_max_queue_depth = ready_max_queue_depth,
@@ -223,6 +233,8 @@ pub const ServeConfig = struct {
             ValidationError.InvalidApiMaxClients => std.debug.print("fatal: invalid API_MAX_CLIENTS value\n", .{}),
             ValidationError.InvalidApiMaxInFlightRequests => std.debug.print("fatal: invalid API_MAX_IN_FLIGHT_REQUESTS value\n", .{}),
             ValidationError.InvalidRunTimeoutMs => std.debug.print("fatal: invalid RUN_TIMEOUT_MS value\n", .{}),
+            ValidationError.InvalidSandboxBackend => std.debug.print("fatal: invalid SANDBOX_BACKEND value\n", .{}),
+            ValidationError.InvalidSandboxKillGraceMs => std.debug.print("fatal: invalid SANDBOX_KILL_GRACE_MS value\n", .{}),
             ValidationError.InvalidRateLimitCapacity => std.debug.print("fatal: invalid RATE_LIMIT_CAPACITY value\n", .{}),
             ValidationError.InvalidRateLimitRefillPerSec => std.debug.print("fatal: invalid RATE_LIMIT_REFILL_PER_SEC value\n", .{}),
             ValidationError.InvalidReadyMaxQueueDepth => std.debug.print("fatal: invalid READY_MAX_QUEUE_DEPTH value\n", .{}),

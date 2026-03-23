@@ -6,7 +6,7 @@ SDKs:
 - `posthog-node` in `zombiectl`
 - [posthog-zig](https://github.com/usezombie/posthog-zig) in `zombied`
 
-> PostHog is one of two observability tools (with Grafana). Langfuse was removed in M12_001. See `docs/spec/v1/M12_001_OBSERVABILITY_CONSOLIDATION.md`.
+> PostHog is one of two observability tools (with Grafana). Langfuse was removed in M12_001. See `docs/done/v1/M12_001_OBSERVABILITY_CONSOLIDATION.md`.
 
 ## Provisioning Contract
 
@@ -175,6 +175,7 @@ Emitters live in `src/observability/posthog_events.zig`.
 | `UZ-WORKSPACE-*` | `api_error` for billing/workspace enforcement failures |
 | Browser/runtime UI failures | `ui_runtime_error` in Next.js app |
 | CLI command failures | `cli_error` in `zombiectl` |
+| `UZ-SANDBOX-*` | structured logs and metrics first; correlate with PostHog run lifecycle via `trace_id` and `run_id` |
 
 ## Adding New Events
 

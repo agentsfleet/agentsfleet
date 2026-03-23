@@ -7,8 +7,12 @@ const providers = nullclaw.providers;
 const tools_mod = nullclaw.tools;
 const memory_mod = nullclaw.memory;
 const observability = nullclaw.observability;
+const sandbox_runtime = @import("sandbox_runtime.zig");
+const sandbox_shell_tool = @import("sandbox_shell_tool.zig");
 
 const log = std.log.scoped(.agents);
+
+pub const ExecutionContext = sandbox_runtime.ToolExecutionContext;
 
 pub const AgentResult = struct {
     content: []const u8,
@@ -78,6 +82,7 @@ fn buildRestrictedTools(
     workspace_path: []const u8,
     cfg: *const Config,
     opts: RestrictedToolOptions,
+    exec_ctx: ExecutionContext,
 ) ![]tools_mod.Tool {
     var list: std.ArrayList(tools_mod.Tool) = .{};
     errdefer {
@@ -86,11 +91,21 @@ fn buildRestrictedTools(
     }
 
     if (opts.include_shell) {
-        try appendTool(alloc, &list, tools_mod.shell.ShellTool{
+        try appendTool(alloc, &list, sandbox_shell_tool.SandboxShellTool{
             .workspace_dir = workspace_path,
             .allowed_paths = cfg.autonomy.allowed_paths,
             .timeout_ns = cfg.tools.shell_timeout_secs * std.time.ns_per_s,
             .max_output_bytes = cfg.tools.shell_max_output_bytes,
+            .cancel_flag = exec_ctx.cancel_flag,
+            .deadline_ms = exec_ctx.deadline_ms,
+            .sandbox = exec_ctx.sandbox,
+            .run_id = exec_ctx.run_id,
+            .workspace_id = exec_ctx.workspace_id,
+            .request_id = exec_ctx.request_id,
+            .trace_id = exec_ctx.trace_id,
+            .stage_id = exec_ctx.stage_id,
+            .role_id = exec_ctx.role_id,
+            .skill_id = exec_ctx.skill_id,
         });
     }
 
@@ -113,14 +128,51 @@ fn buildEchoTools(alloc: std.mem.Allocator, workspace_path: []const u8, cfg: *co
     return buildRestrictedTools(alloc, workspace_path, cfg, .{
         .include_shell = false,
         .include_memory_list = true,
-    });
+    }, .{});
 }
 
-fn buildWardenTools(alloc: std.mem.Allocator, workspace_path: []const u8, cfg: *const Config) ![]tools_mod.Tool {
+fn buildWardenTools(
+    alloc: std.mem.Allocator,
+    workspace_path: []const u8,
+    cfg: *const Config,
+    exec_ctx: ExecutionContext,
+) ![]tools_mod.Tool {
     return buildRestrictedTools(alloc, workspace_path, cfg, .{
         .include_shell = true,
         .include_memory_list = false,
-    });
+    }, exec_ctx);
+}
+
+fn replaceShellTool(
+    alloc: std.mem.Allocator,
+    tools: []tools_mod.Tool,
+    workspace_path: []const u8,
+    cfg: *const Config,
+    exec_ctx: ExecutionContext,
+) !void {
+    for (tools) |*tool| {
+        if (!std.mem.eql(u8, tool.name(), "shell")) continue;
+        tool.deinit(alloc);
+        const replacement = try alloc.create(sandbox_shell_tool.SandboxShellTool);
+        replacement.* = .{
+            .workspace_dir = workspace_path,
+            .allowed_paths = cfg.autonomy.allowed_paths,
+            .timeout_ns = cfg.tools.shell_timeout_secs * std.time.ns_per_s,
+            .max_output_bytes = cfg.tools.shell_max_output_bytes,
+            .cancel_flag = exec_ctx.cancel_flag,
+            .deadline_ms = exec_ctx.deadline_ms,
+            .sandbox = exec_ctx.sandbox,
+            .run_id = exec_ctx.run_id,
+            .workspace_id = exec_ctx.workspace_id,
+            .request_id = exec_ctx.request_id,
+            .trace_id = exec_ctx.trace_id,
+            .stage_id = exec_ctx.stage_id,
+            .role_id = exec_ctx.role_id,
+            .skill_id = exec_ctx.skill_id,
+        };
+        tool.* = replacement.tool();
+        return;
+    }
 }
 
 pub fn runEcho(
@@ -129,6 +181,7 @@ pub fn runEcho(
     system_prompt: []const u8,
     spec_content: []const u8,
     memory_context: []const u8,
+    exec_ctx: ExecutionContext,
 ) !AgentResult {
     log.info("pipeline.echo_start workspace={s}", .{workspace_path});
     const start = std.time.milliTimestamp();
@@ -140,6 +193,7 @@ pub fn runEcho(
     defer runtime_provider.deinit();
     const provider_i = runtime_provider.provider();
 
+    _ = exec_ctx;
     const tools = try buildEchoTools(alloc, workspace_path, &cfg);
     defer tools_mod.deinitTools(alloc, tools);
 
@@ -188,6 +242,7 @@ pub fn runScout(
     system_prompt: []const u8,
     plan_content: []const u8,
     defects_content: ?[]const u8,
+    exec_ctx: ExecutionContext,
 ) !AgentResult {
     log.info("pipeline.scout_start workspace={s}", .{workspace_path});
     const start = std.time.milliTimestamp();
@@ -204,6 +259,7 @@ pub fn runScout(
         .tools_config = cfg.tools,
     });
     defer tools_mod.deinitTools(alloc, tools);
+    try replaceShellTool(alloc, tools, workspace_path, &cfg, exec_ctx);
 
     var mem_rt = memory_mod.initRuntime(alloc, &cfg.memory, workspace_path);
     defer if (mem_rt) |*rt| rt.deinit();
@@ -256,6 +312,7 @@ pub fn runWarden(
     spec_content: []const u8,
     plan_content: []const u8,
     implementation_summary: []const u8,
+    exec_ctx: ExecutionContext,
 ) !AgentResult {
     log.info("pipeline.warden_start workspace={s}", .{workspace_path});
     const start = std.time.milliTimestamp();
@@ -267,7 +324,7 @@ pub fn runWarden(
     defer runtime_provider.deinit();
     const provider_i = runtime_provider.provider();
 
-    const tools = try buildWardenTools(alloc, workspace_path, &cfg);
+    const tools = try buildWardenTools(alloc, workspace_path, &cfg, exec_ctx);
     defer tools_mod.deinitTools(alloc, tools);
 
     var mem_rt = memory_mod.initRuntime(alloc, &cfg.memory, workspace_path);

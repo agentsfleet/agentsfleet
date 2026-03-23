@@ -8,6 +8,7 @@ const obs_log = @import("../observability/logging.zig");
 const posthog_events = @import("../observability/posthog_events.zig");
 const error_codes = @import("../errors/codes.zig");
 const preflight = @import("preflight.zig");
+const sandbox_runtime = @import("../pipeline/sandbox_runtime.zig");
 
 const log = std.log.scoped(.worker);
 
@@ -54,6 +55,8 @@ pub fn run(alloc: std.mem.Allocator) !void {
             worker_config.ValidationError.InvalidRunTimeoutMs,
             worker_config.ValidationError.InvalidRateLimitCapacity,
             worker_config.ValidationError.InvalidRateLimitRefillPerSec,
+            worker_config.ValidationError.InvalidSandboxBackend,
+            worker_config.ValidationError.InvalidSandboxKillGraceMs,
             => {
                 worker_config.printValidationError(@errorCast(err));
                 log.err("startup.config_load status=fail error_code=UZ-STARTUP-002 err={s}", .{@errorName(err)});
@@ -67,6 +70,17 @@ pub fn run(alloc: std.mem.Allocator) !void {
 
     const ph = preflight.initPostHog(alloc);
     defer ph.deinit(alloc);
+
+    worker_cfg.sandbox.preflight() catch |err| {
+        log.err("startup.sandbox_preflight status=fail error_code={s} backend={s} err={s}", .{
+            error_codes.ERR_SANDBOX_BACKEND_UNAVAILABLE,
+            worker_cfg.sandbox.label(),
+            @errorName(err),
+        });
+        posthog_events.trackStartupFailed(ph.client, "worker", "sandbox_preflight", @errorName(err), error_codes.ERR_SANDBOX_BACKEND_UNAVAILABLE);
+        std.process.exit(1);
+    };
+    log.info("startup.sandbox_preflight status=ok backend={s}", .{worker_cfg.sandbox.label()});
 
     const worker_pool = preflight.connectDbPool(alloc, .worker) catch |err| {
         posthog_events.trackStartupFailed(ph.client, "worker", "db_connect", @errorName(err), error_codes.ERR_STARTUP_DB_CONNECT);
@@ -119,6 +133,7 @@ pub fn run(alloc: std.mem.Allocator) !void {
         .pipeline_profile_path = worker_cfg.pipeline_profile_path,
         .max_attempts = worker_cfg.max_attempts,
         .run_timeout_ms = worker_cfg.run_timeout_ms,
+        .sandbox = worker_cfg.sandbox,
         .rate_limit_capacity = worker_cfg.rate_limit_capacity,
         .rate_limit_refill_per_sec = worker_cfg.rate_limit_refill_per_sec,
         .posthog = ph.client,

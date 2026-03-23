@@ -72,6 +72,11 @@ pub fn renderPrometheus(
     try appendMetric(writer, "zombie_external_failures_unknown_total", "counter", "External failures classified as unknown.", s.external_failures_unknown_total);
     try appendMetric(writer, "zombie_retry_after_hints_total", "counter", "Retry attempts that used Retry-After guidance.", s.retry_after_hints_total);
     try appendMetric(writer, "zombie_worker_errors_total", "counter", "Total worker loop errors.", s.worker_errors_total);
+    try appendMetric(writer, "zombie_sandbox_shell_runs_total", "counter", "Total shell tool executions routed through sandbox wrapper.", s.sandbox_shell_runs_total);
+    try appendMetric(writer, "zombie_sandbox_host_runs_total", "counter", "Total sandbox shell executions using host backend.", s.sandbox_host_runs_total);
+    try appendMetric(writer, "zombie_sandbox_bubblewrap_runs_total", "counter", "Total sandbox shell executions using bubblewrap backend.", s.sandbox_bubblewrap_runs_total);
+    try appendMetric(writer, "zombie_sandbox_kill_switch_total", "counter", "Total shell executions interrupted by sandbox kill switch.", s.sandbox_kill_switch_total);
+    try appendMetric(writer, "zombie_sandbox_preflight_failures_total", "counter", "Total sandbox backend preflight failures.", s.sandbox_preflight_failures_total);
     try appendMetric(writer, "zombie_agent_echo_calls_total", "counter", "Total Echo agent invocations.", s.agent_echo_calls_total);
     try appendMetric(writer, "zombie_agent_scout_calls_total", "counter", "Total Scout agent invocations.", s.agent_scout_calls_total);
     try appendMetric(writer, "zombie_agent_warden_calls_total", "counter", "Total Warden agent invocations.", s.agent_warden_calls_total);

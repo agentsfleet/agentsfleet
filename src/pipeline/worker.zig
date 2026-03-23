@@ -15,6 +15,7 @@ const worker_allocator = @import("worker_allocator.zig");
 const worker_claim = @import("worker_claim.zig");
 const worker_runtime = @import("worker_runtime.zig");
 const worker_rate_limiter = @import("worker_rate_limiter.zig");
+const sandbox_runtime = @import("sandbox_runtime.zig");
 const metrics = @import("../observability/metrics.zig");
 const queue_consts = @import("../queue/constants.zig");
 const queue_redis = @import("../queue/redis.zig");
@@ -34,6 +35,7 @@ pub const WorkerConfig = struct {
     max_attempts: u32 = 3,
     run_timeout_ms: u64 = 300_000,
     poll_interval_ms: u64 = 2_000,
+    sandbox: sandbox_runtime.Config = .{},
     rate_limit_capacity: u32 = 30,
     rate_limit_refill_per_sec: f64 = 5.0,
     posthog: ?*posthog.PostHogClient = null,
@@ -145,6 +147,7 @@ pub fn workerLoop(cfg: WorkerConfig, worker_state: *WorkerState) void {
                     .cache_root = cfg.cache_root,
                     .max_attempts = cfg.max_attempts,
                     .run_timeout_ms = cfg.run_timeout_ms,
+                    .sandbox = cfg.sandbox,
                     .skill_registry = cfg.skill_registry,
                     .posthog = cfg.posthog,
                 },

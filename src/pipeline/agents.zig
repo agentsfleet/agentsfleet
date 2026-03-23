@@ -58,6 +58,7 @@ pub const RoleInput = struct {
     plan_content: ?[]const u8 = null,
     defects_content: ?[]const u8 = null,
     implementation_summary: ?[]const u8 = null,
+    execution_context: ?runners.ExecutionContext = null,
 };
 
 pub const CustomSkillFn = *const fn (std.mem.Allocator, []const u8, []const u8, RoleInput) anyerror!AgentResult;
@@ -179,6 +180,7 @@ pub fn runByRole(alloc: std.mem.Allocator, binding: RoleBinding, input: RoleInpu
             input.prompts.echo,
             input.spec_content orelse return RoleError.MissingRoleInput,
             input.memory_context orelse return RoleError.MissingRoleInput,
+            input.execution_context orelse .{},
         ),
         .scout => runScout(
             alloc,
@@ -186,6 +188,7 @@ pub fn runByRole(alloc: std.mem.Allocator, binding: RoleBinding, input: RoleInpu
             input.prompts.scout,
             input.plan_content orelse return RoleError.MissingRoleInput,
             input.defects_content,
+            input.execution_context orelse .{},
         ),
         .warden => runWarden(
             alloc,
@@ -194,6 +197,7 @@ pub fn runByRole(alloc: std.mem.Allocator, binding: RoleBinding, input: RoleInpu
             input.spec_content orelse return RoleError.MissingRoleInput,
             input.plan_content orelse return RoleError.MissingRoleInput,
             input.implementation_summary orelse return RoleError.MissingRoleInput,
+            input.execution_context orelse .{},
         ),
         .custom => {
             const runner = binding.custom_runner orelse return RoleError.MissingCustomRunner;

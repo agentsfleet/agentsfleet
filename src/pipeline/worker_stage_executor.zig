@@ -22,6 +22,7 @@ const scoring = @import("scoring.zig");
 const worker_stage_types = @import("worker_stage_types.zig");
 const worker_stage_helpers = @import("worker_stage_helpers.zig");
 const worker_stage_outcomes = @import("worker_stage_outcomes.zig");
+const sandbox_runtime = @import("sandbox_runtime.zig");
 const log = std.log.scoped(.worker);
 
 pub const ExecuteConfig = worker_stage_types.ExecuteConfig;
@@ -193,6 +194,18 @@ pub fn executeRun(
             .prompts = prompts,
             .spec_content = spec_content,
             .memory_context = memory_context,
+            .execution_context = .{
+                .cancel_flag = running,
+                .deadline_ms = deadline_ms,
+                .sandbox = cfg.sandbox,
+                .run_id = ctx.run_id,
+                .workspace_id = ctx.workspace_id,
+                .request_id = ctx.request_id,
+                .trace_id = ctx.trace_id,
+                .stage_id = plan_stage.stage_id,
+                .role_id = plan_stage.role_id,
+                .skill_id = plan_stage.skill_id,
+            },
         },
     }, opRunStage, worker_runtime.retryOptionsForRun(@constCast(running), deadline_ms, 1, 1_000, 8_000, plan_stage.skill_id)) catch |err| return recordScoringFailure(&scoring_state, err);
     metrics.incAgentEchoCalls();
@@ -280,6 +293,18 @@ pub fn executeRun(
                     .plan_content = plan_result.content,
                     .defects_content = defects,
                     .implementation_summary = latest_build_output,
+                    .execution_context = .{
+                        .cancel_flag = running,
+                        .deadline_ms = deadline_ms,
+                        .sandbox = cfg.sandbox,
+                        .run_id = ctx.run_id,
+                        .workspace_id = ctx.workspace_id,
+                        .request_id = ctx.request_id,
+                        .trace_id = ctx.trace_id,
+                        .stage_id = stage.stage_id,
+                        .role_id = stage.role_id,
+                        .skill_id = stage.skill_id,
+                    },
                 },
             }, opRunStage, worker_runtime.retryOptionsForRun(@constCast(running), deadline_ms, 1, 1_000, 8_000, stage.skill_id)) catch |err| return recordScoringFailure(&scoring_state, err);
 

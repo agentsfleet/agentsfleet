@@ -1,48 +1,44 @@
 # Security Model
 
-This is the primary security entrypoint for UseZombie.
-
-It explains what we protect, why specific controls exist, and where to configure each software boundary.
+This is the short policy entrypoint for UseZombie.
 
 ## Security Objectives
 
-1. Prevent unauthorized access to control-plane data and secrets.
-2. Enforce least privilege between API, worker, callback, and data stores.
-3. Fail closed on unsafe runtime posture (missing role separation, degraded queue dependencies).
-4. Keep credentials short-lived or environment-scoped, never persisted in artifacts.
+1. Keep control-plane orchestration separate from dangerous agent execution.
+2. Fail closed on missing runtime prerequisites or degraded sandbox posture.
+3. Keep automation credentials short-lived and outside agent artifacts.
+4. Make failures attributable: orchestration, sandbox, policy, or validation.
 
-## Control Boundaries
+## Core Boundaries
 
-1. Network boundary (Tailscale ACL + ingress restrictions)
-2. Data boundary (Postgres role separation + vault schema restrictions)
-3. Queue boundary (Redis ACL, TLS, role-separated credentials)
-4. Identity boundary (Clerk JWT for API and operator login path)
-5. GitHub boundary (GitHub App installation tokens, no PAT fallback)
+1. Network boundary
+2. Data boundary
+3. Queue boundary
+4. Identity boundary
+5. GitHub automation boundary
+6. Execution boundary: worker orchestrates, `sandbox-executor` executes
 
-## Software Guides
+## Sandbox Rules
 
-1. [Postgres Security](docs/security/POSTGRES.md)
-2. [Redis Security](docs/security/REDIS.md)
-3. [Tailscale Security](docs/security/TAILSCALE.md)
-4. [GitHub App Security](docs/security/GITHUB_APP.md)
-5. [Clerk Security](docs/security/CLERK.md)
+1. Worker calls a typed executor API instead of owning the entire agent runtime forever.
+2. `sandbox-executor` embeds NullClaw and owns Linux sandbox enforcement.
+3. If executor posture is unsafe, startup or run admission must fail closed.
+4. If executor dies mid-stage, the run is retried or blocked from persisted stage state.
+5. Active runs are not guaranteed to survive worker or executor upgrades.
 
-## Core Runtime Guardrails
+## Detection
 
-1. API/worker DB URLs must be explicitly role-separated (`DATABASE_URL_API`, `DATABASE_URL_WORKER`) and must differ.
-2. API/worker Redis URLs must be explicitly role-separated (`REDIS_URL_API`, `REDIS_URL_WORKER`) and must differ.
-3. Redis role URLs must use `rediss://` in hardened environments.
-4. Readiness and doctor paths fail closed when Redis dependency checks fail.
-5. Shared env fallback for role URLs is not allowed for hardened mode.
+1. `UZ-SANDBOX-001` backend or prerequisite unavailable
+2. `UZ-SANDBOX-002` forced teardown / kill-switch fired
+3. `UZ-SANDBOX-003` command blocked by policy
+4. Correlate by `trace_id` first, then `run_id`
 
-## Verification Entry Points
+## Detailed Guides
 
-1. `zombied doctor` for security posture checks.
-2. `/readyz` for runtime dependency posture.
-3. `playbooks/M3_001_DEPLOY_DEV.md` and `playbooks/M3_002_DEPLOY_PROD.md` for rollout/operator checklists.
+1. [Security Posture](docs/SECURITY.md)
+2. [Postgres Security](docs/security/POSTGRES.md)
+3. [Redis Security](docs/security/REDIS.md)
+4. [Tailscale Security](docs/security/TAILSCALE.md)
+5. [GitHub App Security](docs/security/GITHUB_APP.md)
+6. [Clerk Security](docs/security/CLERK.md)
 
-## Scope Notes
-
-1. This document is policy-level and intentionally short.
-2. Detailed software setup and rationale live in `docs/security/*.md`.
-3. Infrastructure-only controls (for example Tailscale ACL deployment) are documented here but enforced outside application code.

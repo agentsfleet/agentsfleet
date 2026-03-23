@@ -71,6 +71,9 @@ pub const ERR_STARTUP_DB_CONNECT = "UZ-STARTUP-003";
 pub const ERR_STARTUP_REDIS_CONNECT = "UZ-STARTUP-004";
 pub const ERR_STARTUP_MIGRATION_CHECK = "UZ-STARTUP-005";
 pub const ERR_STARTUP_OIDC_INIT = "UZ-STARTUP-006";
+pub const ERR_SANDBOX_BACKEND_UNAVAILABLE = "UZ-SANDBOX-001";
+pub const ERR_SANDBOX_KILL_SWITCH_TRIGGERED = "UZ-SANDBOX-002";
+pub const ERR_SANDBOX_COMMAND_BLOCKED = "UZ-SANDBOX-003";
 
 pub fn docsRef(code: []const u8) struct { base: []const u8, code: []const u8 } {
     return .{

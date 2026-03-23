@@ -34,6 +34,11 @@ pub const Snapshot = struct {
     external_failures_unknown_total: u64,
     retry_after_hints_total: u64,
     worker_errors_total: u64,
+    sandbox_shell_runs_total: u64,
+    sandbox_host_runs_total: u64,
+    sandbox_bubblewrap_runs_total: u64,
+    sandbox_kill_switch_total: u64,
+    sandbox_preflight_failures_total: u64,
     agent_echo_calls_total: u64,
     agent_scout_calls_total: u64,
     agent_warden_calls_total: u64,
@@ -85,6 +90,11 @@ var g_external_failures_server_error_total = std.atomic.Value(u64).init(0);
 var g_external_failures_unknown_total = std.atomic.Value(u64).init(0);
 var g_retry_after_hints_total = std.atomic.Value(u64).init(0);
 var g_worker_errors_total = std.atomic.Value(u64).init(0);
+var g_sandbox_shell_runs_total = std.atomic.Value(u64).init(0);
+var g_sandbox_host_runs_total = std.atomic.Value(u64).init(0);
+var g_sandbox_bubblewrap_runs_total = std.atomic.Value(u64).init(0);
+var g_sandbox_kill_switch_total = std.atomic.Value(u64).init(0);
+var g_sandbox_preflight_failures_total = std.atomic.Value(u64).init(0);
 var g_agent_echo_calls_total = std.atomic.Value(u64).init(0);
 var g_agent_scout_calls_total = std.atomic.Value(u64).init(0);
 var g_agent_warden_calls_total = std.atomic.Value(u64).init(0);
@@ -185,6 +195,26 @@ pub fn incRetryAfterHintsApplied() void {
 
 pub fn incWorkerErrors() void {
     _ = g_worker_errors_total.fetchAdd(1, .monotonic);
+}
+
+pub fn incSandboxShellRuns() void {
+    _ = g_sandbox_shell_runs_total.fetchAdd(1, .monotonic);
+}
+
+pub fn incSandboxHostRuns() void {
+    _ = g_sandbox_host_runs_total.fetchAdd(1, .monotonic);
+}
+
+pub fn incSandboxBubblewrapRuns() void {
+    _ = g_sandbox_bubblewrap_runs_total.fetchAdd(1, .monotonic);
+}
+
+pub fn incSandboxKillSwitches() void {
+    _ = g_sandbox_kill_switch_total.fetchAdd(1, .monotonic);
+}
+
+pub fn incSandboxPreflightFailures() void {
+    _ = g_sandbox_preflight_failures_total.fetchAdd(1, .monotonic);
 }
 
 pub fn incAgentEchoCalls() void {
@@ -320,6 +350,11 @@ pub fn snapshot() Snapshot {
         .external_failures_unknown_total = g_external_failures_unknown_total.load(.acquire),
         .retry_after_hints_total = g_retry_after_hints_total.load(.acquire),
         .worker_errors_total = g_worker_errors_total.load(.acquire),
+        .sandbox_shell_runs_total = g_sandbox_shell_runs_total.load(.acquire),
+        .sandbox_host_runs_total = g_sandbox_host_runs_total.load(.acquire),
+        .sandbox_bubblewrap_runs_total = g_sandbox_bubblewrap_runs_total.load(.acquire),
+        .sandbox_kill_switch_total = g_sandbox_kill_switch_total.load(.acquire),
+        .sandbox_preflight_failures_total = g_sandbox_preflight_failures_total.load(.acquire),
         .agent_echo_calls_total = g_agent_echo_calls_total.load(.acquire),
         .agent_scout_calls_total = g_agent_scout_calls_total.load(.acquire),
         .agent_warden_calls_total = g_agent_warden_calls_total.load(.acquire),
