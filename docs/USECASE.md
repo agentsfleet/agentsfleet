@@ -11,8 +11,8 @@ User or agent submits work
   -> API persists run + enqueues work
   -> worker claims run
   -> worker resolves active harness/profile
-  -> worker calls sandbox-executor
-  -> sandbox-executor runs NullClaw inside sandbox policy
+  -> worker calls zombied-executor
+  -> zombied-executor runs NullClaw inside sandbox policy
   -> worker persists artifacts, retries, or opens PR
 ```
 
@@ -30,7 +30,7 @@ Important operator expectation:
 1. Connect repo as a workspace.
 2. Sync specs.
 3. Trigger a run.
-4. Worker delegates execution to `sandbox-executor`.
+4. Worker delegates execution to `zombied-executor`.
 5. On success, a PR is opened.
 6. On executor crash or timeout, the run restarts from persisted stage state rather than trying to continue hidden process memory.
 
@@ -46,7 +46,7 @@ The builder reviews PRs instead of hand-driving a coding agent session.
 
 1. Engineers add specs to the queue.
 2. Worker processes runs deterministically.
-3. `sandbox-executor` isolates dangerous agent execution from the worker.
+3. `zombied-executor` isolates dangerous agent execution from the worker.
 4. Failures are classified clearly:
    - policy/sandbox failure
    - executor infrastructure failure
@@ -64,8 +64,8 @@ The team gets clearer operational boundaries: orchestration failures do not masq
 
 1. An external PM/planner agent writes a spec.
 2. It triggers a run through the API.
-3. Worker resolves the active harness and calls `sandbox-executor`.
-4. `sandbox-executor` runs the requested stage topology.
+3. Worker resolves the active harness and calls `zombied-executor`.
+4. `zombied-executor` runs the requested stage topology.
 5. Results are persisted and exposed back through the control plane.
 
 ### Outcome
@@ -74,7 +74,7 @@ The upstream agent depends on one stable control-plane contract and does not nee
 
 ## 4. Rollout / Upgrade Use Case
 
-**Profile:** operator upgrades `zombied worker` or `sandbox-executor`.
+**Profile:** operator upgrades `zombied worker` or `zombied-executor`.
 
 ### Safe rollout expectation
 

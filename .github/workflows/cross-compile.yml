@@ -46,5 +46,9 @@ jobs:
       - name: Ensure OpenSSL is available (macOS)
         if: runner.os == 'macOS'
         run: brew install openssl@3 || true
-      - name: Compile zombied (${{ matrix.target }})
+      - name: Compile zombied + zombied-executor (${{ matrix.target }})
         run: zig build -Doptimize=ReleaseSafe -Dtarget=${{ matrix.target }}
+      - name: Verify binaries (${{ matrix.target }})
+        run: |
+          test -f zig-out/bin/zombied
+          test -f zig-out/bin/zombied-executor

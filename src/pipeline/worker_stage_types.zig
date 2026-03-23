@@ -1,6 +1,7 @@
 const agents = @import("agents.zig");
 const posthog = @import("posthog");
 const sandbox_runtime = @import("sandbox_runtime.zig");
+const executor_client = @import("../executor/client.zig");
 
 pub const ExecuteConfig = struct {
     cache_root: []const u8,
@@ -9,6 +10,7 @@ pub const ExecuteConfig = struct {
     sandbox: sandbox_runtime.Config = .{},
     skill_registry: ?*const agents.SkillRegistry = null,
     posthog: ?*posthog.PostHogClient = null,
+    executor: ?*executor_client.ExecutorClient = null,
 };
 
 pub const RunContext = struct {

@@ -75,6 +75,18 @@ pub const ERR_SANDBOX_BACKEND_UNAVAILABLE = "UZ-SANDBOX-001";
 pub const ERR_SANDBOX_KILL_SWITCH_TRIGGERED = "UZ-SANDBOX-002";
 pub const ERR_SANDBOX_COMMAND_BLOCKED = "UZ-SANDBOX-003";
 
+pub const ERR_EXEC_SESSION_CREATE_FAILED = "UZ-EXEC-001";
+pub const ERR_EXEC_STAGE_START_FAILED = "UZ-EXEC-002";
+pub const ERR_EXEC_TIMEOUT_KILL = "UZ-EXEC-003";
+pub const ERR_EXEC_OOM_KILL = "UZ-EXEC-004";
+pub const ERR_EXEC_RESOURCE_KILL = "UZ-EXEC-005";
+pub const ERR_EXEC_TRANSPORT_LOSS = "UZ-EXEC-006";
+pub const ERR_EXEC_LEASE_EXPIRED = "UZ-EXEC-007";
+pub const ERR_EXEC_POLICY_DENY = "UZ-EXEC-008";
+pub const ERR_EXEC_STARTUP_POSTURE = "UZ-EXEC-009";
+pub const ERR_EXEC_CRASH = "UZ-EXEC-010";
+pub const ERR_EXEC_LANDLOCK_DENY = "UZ-EXEC-011";
+
 pub fn docsRef(code: []const u8) struct { base: []const u8, code: []const u8 } {
     return .{
         .base = ERROR_DOCS_BASE,

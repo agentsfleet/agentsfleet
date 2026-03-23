@@ -1,0 +1,31 @@
+# UseZombie Worker — connects to zombied-executor for agent execution.
+# Runs on the same baremetal/VM host as zombied-executor.
+#
+# Install:
+#   sudo cp zombied-worker.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now zombied-worker
+
+[Unit]
+Description=UseZombie Worker
+Documentation=docs/spec/v1/M12_002_SANDBOX_EXECUTOR_API_AND_HOST_BACKEND.md
+After=zombied-executor.service
+Requires=zombied-executor.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/zombied worker
+Restart=always
+RestartSec=5
+
+# Executor socket — must match zombied-executor.service.
+Environment=EXECUTOR_SOCKET_PATH=/run/zombie/executor.sock
+
+# Worker config (override via /etc/default/zombied-worker or drop-in).
+Environment=WORKER_CONCURRENCY=2
+Environment=RUN_TIMEOUT_MS=300000
+Environment=SANDBOX_BACKEND=bubblewrap
+EnvironmentFile=-/etc/default/zombied-worker
+
+[Install]
+WantedBy=multi-user.target

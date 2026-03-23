@@ -110,6 +110,41 @@ pub fn build(b: *std.Build) void {
 
     b.installArtifact(exe);
 
+    // ── Sandbox executor sidecar ─────────────────────────────────────────────
+    // Separate binary that serves the executor API over a Unix socket.
+    // Embeds NullClaw and owns host-level Linux sandboxing.
+    const executor_exe = b.addExecutable(.{
+        .name = "zombied-executor",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/executor/main.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "nullclaw", .module = nullclaw_mod },
+            },
+        }),
+    });
+
+    if (optimize == .ReleaseSmall) {
+        executor_exe.root_module.strip = true;
+    }
+
+    b.installArtifact(executor_exe);
+
+    // ── Executor test step ───────────────────────────────────────────────────
+    const executor_tests = b.addTest(.{
+        .name = "zombied-executor-tests",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/executor/main.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "nullclaw", .module = nullclaw_mod },
+            },
+        }),
+    });
+    b.step("test-executor", "Run executor unit tests").dependOn(&b.addRunArtifact(executor_tests).step);
+
     // ── Run step ─────────────────────────────────────────────────────────────
     const run_cmd = b.addRunArtifact(exe);
     run_cmd.step.dependOn(b.getInstallStep());

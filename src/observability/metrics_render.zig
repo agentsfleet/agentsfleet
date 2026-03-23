@@ -2,6 +2,7 @@
 
 const std = @import("std");
 const mc = @import("metrics_counters.zig");
+const em = @import("../executor/executor_metrics.zig");
 
 fn appendDurationHistogram(
     writer: anytype,
@@ -124,6 +125,21 @@ pub fn renderPrometheus(
         "Time spent in scoreRun in milliseconds.",
         s.agent_scoring_duration_ms,
     );
+
+    // Executor metrics (§5.2).
+    const es = em.executorSnapshot();
+    try appendMetric(writer, "zombie_executor_sessions_created_total", "counter", "Total executor sessions created.", es.sessions_created_total);
+    try appendMetric(writer, "zombie_executor_sessions_active", "gauge", "Current active executor sessions.", es.sessions_active);
+    try appendMetric(writer, "zombie_executor_failures_total", "counter", "Total executor RPC failures.", es.failures_total);
+    try appendMetric(writer, "zombie_executor_oom_kills_total", "counter", "Total OOM kills by executor cgroup.", es.oom_kills_total);
+    try appendMetric(writer, "zombie_executor_timeout_kills_total", "counter", "Total timeout kills through executor boundary.", es.timeout_kills_total);
+    try appendMetric(writer, "zombie_executor_landlock_denials_total", "counter", "Total Landlock filesystem denials.", es.landlock_denials_total);
+    try appendMetric(writer, "zombie_executor_resource_kills_total", "counter", "Total resource limit kills (CPU/disk).", es.resource_kills_total);
+    try appendMetric(writer, "zombie_executor_lease_expired_total", "counter", "Total executor leases expired (orphan cleanup).", es.lease_expired_total);
+    try appendMetric(writer, "zombie_executor_cancellations_total", "counter", "Total executor session cancellations.", es.cancellations_total);
+    try appendMetric(writer, "zombie_executor_cpu_throttled_ms_total", "counter", "Total CPU throttling time in milliseconds.", es.cpu_throttled_ms_total);
+    try appendMetric(writer, "zombie_executor_memory_peak_bytes", "gauge", "Peak memory usage across executor sessions.", es.memory_peak_bytes);
+
     try writer.writeAll("\n");
 
     return out.toOwnedSlice(alloc);

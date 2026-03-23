@@ -1,0 +1,38 @@
+# Zombie Executor — host-level daemon for agent sandboxing.
+# One instance per baremetal/VM host. Workers connect via Unix socket.
+#
+# Install:
+#   sudo cp zombied-executor.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now zombied-executor
+
+[Unit]
+Description=UseZombie Sandbox Executor
+Documentation=docs/spec/v1/M12_002_SANDBOX_EXECUTOR_API_AND_HOST_BACKEND.md
+After=network.target
+Before=zombied-worker.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/zombied-executor
+Restart=always
+RestartSec=2
+
+# Socket path — must match EXECUTOR_SOCKET_PATH in zombied-worker.service.
+Environment=EXECUTOR_SOCKET_PATH=/run/zombie/executor.sock
+Environment=EXECUTOR_LEASE_TIMEOUT_MS=30000
+Environment=EXECUTOR_MEMORY_LIMIT_MB=512
+Environment=EXECUTOR_CPU_LIMIT_PERCENT=100
+
+# Ensure socket directory exists.
+RuntimeDirectory=zombie
+RuntimeDirectoryMode=0755
+
+# Security hardening — executor uses bwrap user namespaces (no suid needed).
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/run/zombie /sys/fs/cgroup /tmp
+ProtectHome=yes
+
+[Install]
+WantedBy=multi-user.target

@@ -26,7 +26,7 @@ export VAULT_PROD="${VAULT_PROD:-ZMB_CD_PROD}"
 | 1.0 | Agent | Generate deploy SSH key → store in vault → authorize on server |
 | 2.0 | Agent | Verify KVM (`kvm-ok`) |
 | 3.0 | Agent | Install Tailscale + join tailnet |
-| 4.0 | Agent | Install Docker, verify GHCR pull |
+| 4.0 | Agent | Install Docker (optional, for dev tooling) |
 | 5.0 | Agent | Install Firecracker |
 | 6.0 | Agent | Bootstrap `/opt/zombie/` (deploy.sh + .env from vault) |
 | 7.0 | Agent | Smoke test + activate CI |
@@ -245,20 +245,25 @@ chown debian:debian /opt/zombie
 cat > /opt/zombie/deploy.sh << 'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
-IMAGE="ghcr.io/usezombie/zombied:dev-latest"
-echo "Pulling \$IMAGE..."
-docker pull "\$IMAGE"
-docker stop zombied-worker 2>/dev/null || true
-docker rm   zombied-worker 2>/dev/null || true
-docker run -d \
-  --name zombied-worker \
-  --restart unless-stopped \
-  --device /dev/kvm \
-  --env-file /opt/zombie/.env \
-  "\$IMAGE" \
-  zombied worker
+
+# Copy binaries (CI pushes to /opt/zombie/bin/)
+install -m 755 /opt/zombie/bin/zombied          /usr/local/bin/zombied
+install -m 755 /opt/zombie/bin/zombied-executor  /usr/local/bin/zombied-executor
+
+# Install systemd units from deploy/baremetal/
+cp /opt/zombie/deploy/zombied-executor.service /etc/systemd/system/
+cp /opt/zombie/deploy/zombied-worker.service   /etc/systemd/system/
+systemctl daemon-reload
+
+# Apply env overrides
+cp /opt/zombie/.env /etc/default/zombied-worker
+
+# Enable and start (executor first — worker Requires= it)
+systemctl enable --now zombied-executor
+systemctl enable --now zombied-worker
+
 echo "Done."
-docker ps --filter name=zombied-worker
+systemctl status zombied-executor zombied-worker --no-pager
 EOF
 chmod +x /opt/zombie/deploy.sh
 
@@ -296,14 +301,18 @@ KEY=$(op read "op://$VAULT_DEV/zombie-dev-worker-ant/ssh-private-key")
 
 # Run deploy.sh
 ssh -i <(printf '%s\n' "$KEY") zombie-dev-worker-ant \
-  "cd /opt/zombie && ./deploy.sh"
+  "cd /opt/zombie && sudo ./deploy.sh"
 
-# Verify container health
+# Verify systemd services
 ssh -i <(printf '%s\n' "$KEY") zombie-dev-worker-ant << 'REMOTE'
-sleep 5
-docker ps --filter name=zombied-worker --format "{{.Status}}" | grep -i "^Up"
-docker inspect zombied-worker --format '{{range .HostConfig.Devices}}{{.PathOnHost}}{{end}}' | grep kvm
-docker logs zombied-worker 2>&1 | tail -5
+sleep 3
+systemctl is-active zombied-executor
+systemctl is-active zombied-worker
+# Verify executor socket exists
+ls -l /run/zombie/executor.sock
+# Check logs for startup lines
+journalctl -u zombied-executor --no-pager -n 5
+journalctl -u zombied-worker   --no-pager -n 5
 REMOTE
 
 # Activate CI — set GitHub variable so deploy-dev-worker job runs
@@ -314,10 +323,12 @@ echo "CI activated. Next push to main will deploy to zombie-dev-worker-ant."
 ### Acceptance
 
 ```
-Up X seconds          ← container running
-/dev/kvm              ← KVM device passed in
-<worker log lines>    ← no crash or panic
-DEV_WORKER_READY set  ← CI guard lifted
+active                          ← zombied-executor running
+active                          ← zombied-worker running
+/run/zombie/executor.sock       ← executor socket exists
+<executor startup log lines>    ← no crash or panic
+<worker startup log lines>      ← connected to executor
+DEV_WORKER_READY set            ← CI guard lifted
 ```
 
 ---

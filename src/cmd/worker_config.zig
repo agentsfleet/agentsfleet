@@ -11,6 +11,10 @@ pub const ValidationError = error{
     InvalidRateLimitRefillPerSec,
     InvalidSandboxBackend,
     InvalidSandboxKillGraceMs,
+    InvalidExecutorStartupTimeoutMs,
+    InvalidExecutorLeaseTimeoutMs,
+    InvalidExecutorMemoryLimitMb,
+    InvalidExecutorCpuLimitPercent,
 };
 
 pub const Config = struct {
@@ -25,6 +29,11 @@ pub const Config = struct {
     sandbox: sandbox_runtime.Config,
     rate_limit_capacity: u32,
     rate_limit_refill_per_sec: f64,
+    executor_socket_path: ?[]u8 = null,
+    executor_startup_timeout_ms: u64 = 5_000,
+    executor_lease_timeout_ms: u64 = 30_000,
+    executor_memory_limit_mb: u64 = 512,
+    executor_cpu_limit_percent: u64 = 100,
     alloc: std.mem.Allocator,
 
     pub fn load(alloc: std.mem.Allocator) !Config {
@@ -60,6 +69,17 @@ pub const Config = struct {
         const pipeline_profile_path = try envOrDefaultOwned(alloc, "PIPELINE_PROFILE_PATH", "./config/pipeline-default.json");
         errdefer alloc.free(pipeline_profile_path);
 
+        // Executor config (§5.1). EXECUTOR_SOCKET_PATH is optional; when unset
+        // the worker runs in direct mode (backward compatible).
+        const executor_socket_path: ?[]u8 = std.process.getEnvVarOwned(alloc, "EXECUTOR_SOCKET_PATH") catch null;
+        errdefer if (executor_socket_path) |p| alloc.free(p);
+        const executor_startup_timeout_ms = try parseU64Env(alloc, "EXECUTOR_STARTUP_TIMEOUT_MS", 5_000, ValidationError.InvalidExecutorStartupTimeoutMs);
+        const executor_lease_timeout_ms = try parseU64Env(alloc, "EXECUTOR_LEASE_TIMEOUT_MS", 30_000, ValidationError.InvalidExecutorLeaseTimeoutMs);
+        const executor_memory_limit_mb = try parseU64Env(alloc, "EXECUTOR_MEMORY_LIMIT_MB", 512, ValidationError.InvalidExecutorMemoryLimitMb);
+        const executor_cpu_limit_percent = try parseU64Env(alloc, "EXECUTOR_CPU_LIMIT_PERCENT", 100, ValidationError.InvalidExecutorCpuLimitPercent);
+
+        if (executor_cpu_limit_percent == 0 or executor_cpu_limit_percent > 100) return ValidationError.InvalidExecutorCpuLimitPercent;
+
         return .{
             .cache_root = cache_root,
             .github_app_id = github_app_id,
@@ -72,6 +92,11 @@ pub const Config = struct {
             .sandbox = sandbox,
             .rate_limit_capacity = rate_limit_capacity,
             .rate_limit_refill_per_sec = rate_limit_refill_per_sec,
+            .executor_socket_path = executor_socket_path,
+            .executor_startup_timeout_ms = executor_startup_timeout_ms,
+            .executor_lease_timeout_ms = executor_lease_timeout_ms,
+            .executor_memory_limit_mb = executor_memory_limit_mb,
+            .executor_cpu_limit_percent = executor_cpu_limit_percent,
             .alloc = alloc,
         };
     }
@@ -82,6 +107,7 @@ pub const Config = struct {
         self.alloc.free(self.github_app_private_key);
         self.alloc.free(self.config_dir);
         self.alloc.free(self.pipeline_profile_path);
+        if (self.executor_socket_path) |p| self.alloc.free(p);
     }
 };
 
@@ -96,6 +122,10 @@ pub fn printValidationError(err: ValidationError) void {
         ValidationError.InvalidRateLimitRefillPerSec => std.debug.print("fatal: invalid RATE_LIMIT_REFILL_PER_SEC value\n", .{}),
         ValidationError.InvalidSandboxBackend => std.debug.print("fatal: invalid SANDBOX_BACKEND value\n", .{}),
         ValidationError.InvalidSandboxKillGraceMs => std.debug.print("fatal: invalid SANDBOX_KILL_GRACE_MS value\n", .{}),
+        ValidationError.InvalidExecutorStartupTimeoutMs => std.debug.print("fatal: invalid EXECUTOR_STARTUP_TIMEOUT_MS value\n", .{}),
+        ValidationError.InvalidExecutorLeaseTimeoutMs => std.debug.print("fatal: invalid EXECUTOR_LEASE_TIMEOUT_MS value\n", .{}),
+        ValidationError.InvalidExecutorMemoryLimitMb => std.debug.print("fatal: invalid EXECUTOR_MEMORY_LIMIT_MB value\n", .{}),
+        ValidationError.InvalidExecutorCpuLimitPercent => std.debug.print("fatal: invalid EXECUTOR_CPU_LIMIT_PERCENT value (must be 1-100)\n", .{}),
     }
 }
 

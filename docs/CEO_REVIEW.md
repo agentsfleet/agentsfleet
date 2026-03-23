@@ -12,9 +12,9 @@
 UseZombie will not keep the worker and NullClaw in the same runtime boundary for the long term.
 
 v1.5 direction:
-- Worker talks to a local `sandbox-executor` over a typed executor API.
+- Worker talks to a local `zombied-executor` over a typed executor API.
 - The first implementation is a Unix-socket gRPC sidecar on the same host.
-- `sandbox-executor` embeds NullClaw and owns Linux enforcement: bubblewrap, Landlock, cgroup/systemd scope management, network policy, timeout teardown, and usage reporting.
+- `zombied-executor` embeds NullClaw and owns Linux enforcement: bubblewrap, Landlock, cgroup/systemd scope management, network policy, timeout teardown, and usage reporting.
 - Worker owns orchestration, retries, billing, run state transitions, and artifact persistence.
 
 v2 direction:
@@ -50,9 +50,9 @@ UseZombie is **stage-boundary durable**, not mid-token durable.
 That means:
 - persisted run state in Postgres is durable
 - queued work in Redis is durable
-- the live agent process inside `sandbox-executor` is disposable
+- the live agent process inside `zombied-executor` is disposable
 
-If `sandbox-executor` dies mid-stage:
+If `zombied-executor` dies mid-stage:
 1. the worker treats the execution as failed or lost
 2. the run is marked with a typed infrastructure failure
 3. the worker or a restarted worker can reclaim and retry from the last persisted stage boundary

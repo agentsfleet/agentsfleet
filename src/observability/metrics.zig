@@ -4,6 +4,7 @@ const std = @import("std");
 const scoring = @import("../pipeline/scoring.zig");
 const mc = @import("metrics_counters.zig");
 const mr = @import("metrics_render.zig");
+const em = @import("../executor/executor_metrics.zig");
 
 pub const DurationBuckets = mc.DurationBuckets;
 pub const HistogramSnapshot = mc.HistogramSnapshot;
@@ -47,6 +48,20 @@ pub const incOtelExportFailed = mc.incOtelExportFailed;
 pub const setOtelLastSuccessAtMs = mc.setOtelLastSuccessAtMs;
 
 pub const renderPrometheus = mr.renderPrometheus;
+
+// Executor metrics re-exports (§5.2).
+pub const incExecutorSessionsCreated = em.incExecutorSessionsCreated;
+pub const setExecutorSessionsActive = em.setExecutorSessionsActive;
+pub const incExecutorFailures = em.incExecutorFailures;
+pub const incExecutorOomKills = em.incExecutorOomKills;
+pub const incExecutorTimeoutKills = em.incExecutorTimeoutKills;
+pub const incExecutorLandlockDenials = em.incExecutorLandlockDenials;
+pub const incExecutorResourceKills = em.incExecutorResourceKills;
+pub const incExecutorLeaseExpired = em.incExecutorLeaseExpired;
+pub const incExecutorCancellations = em.incExecutorCancellations;
+pub const addExecutorCpuThrottledMs = em.addExecutorCpuThrottledMs;
+pub const setExecutorMemoryPeakBytes = em.setExecutorMemoryPeakBytes;
+pub const executorSnapshot = em.executorSnapshot;
 
 test "prometheus render includes key metrics" {
     const alloc = std.testing.allocator;

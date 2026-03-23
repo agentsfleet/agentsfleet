@@ -134,4 +134,14 @@ test {
     _ = @import("observability/otel_logs.zig");
     _ = @import("state/outbox_reconciler.zig");
     _ = @import("state/workspace_billing.zig");
+    _ = @import("executor/types.zig");
+    _ = @import("executor/protocol.zig");
+    _ = @import("executor/transport.zig");
+    _ = @import("executor/session.zig");
+    _ = @import("executor/executor_metrics.zig");
+    _ = @import("executor/landlock.zig");
+    _ = @import("executor/cgroup.zig");
+    _ = @import("executor/network.zig");
+    _ = @import("executor/lease.zig");
+    _ = @import("executor/client.zig");
 }

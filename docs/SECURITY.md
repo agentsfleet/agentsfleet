@@ -12,7 +12,7 @@ worker/control plane
     |
     | executor API
     v
-sandbox-executor
+zombied-executor
     |
     +--> NullClaw runtime
     +--> bubblewrap / Landlock / cgroup scope / network policy
@@ -21,7 +21,7 @@ sandbox-executor
 ### Current direction
 
 1. Worker owns orchestration, retries, billing, artifact persistence, and PR creation.
-2. `sandbox-executor` owns dangerous execution, sandbox policy, timeout teardown, and resource enforcement.
+2. `zombied-executor` owns dangerous execution, sandbox policy, timeout teardown, and resource enforcement.
 3. Linux sandboxing must be enforced inside the executor boundary, not as an afterthought in worker-side shell wrapping.
 
 ### Security consequences
@@ -48,7 +48,7 @@ This is safer than pretending a hidden agent session survived an infrastructure 
 | `UZ-SANDBOX-001` | Sandbox backend or Linux prerequisite unavailable |
 | `UZ-SANDBOX-002` | Kill-switch or forced sandbox teardown fired |
 | `UZ-SANDBOX-003` | Command blocked before execution |
-| `sandbox-executor` health failure | Executor boundary unavailable |
+| `zombied-executor` health failure | Executor boundary unavailable |
 
 Correlation fields remain:
 - `trace_id`

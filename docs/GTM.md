@@ -13,7 +13,7 @@ Status: Active positioning baseline
 
 1. **Spec-driven, not chat-thread driven.** Work starts from versioned specs and deterministic run state.
 2. **Control plane, not just an agent shell.** Worker orchestration, retry policy, audit artifacts, and PR creation are first-class.
-3. **Typed execution boundary.** The worker does not directly host dangerous agent execution forever; it drives a `sandbox-executor` that can evolve from host sandboxing to Firecracker without rewriting the control plane.
+3. **Typed execution boundary.** The worker does not directly host dangerous agent execution forever; it drives a `zombied-executor` that can evolve from host sandboxing to Firecracker without rewriting the control plane.
 4. **Feedback as artifacts.** Validation failures and run outcomes are persisted, queryable, and reviewable.
 5. **Honest restart semantics.** Runs recover from persisted stage state, not hidden in-memory chat state.
 
@@ -22,7 +22,7 @@ Status: Active positioning baseline
 ### v1
 
 - CLI-first delivery
-- local worker + local `sandbox-executor`
+- local worker + local `zombied-executor`
 - host-level Linux sandboxing
 - GitHub App automation
 

@@ -29,10 +29,12 @@ _prepare_prebuilt_linux_binaries:
 	mkdir -p dist
 	zig build -Doptimize=ReleaseSafe -Dtarget=x86_64-linux
 	cp zig-out/bin/zombied dist/zombied-linux-amd64
-	chmod +x dist/zombied-linux-amd64
+	cp zig-out/bin/zombied-executor dist/zombied-executor-linux-amd64
+	chmod +x dist/zombied-linux-amd64 dist/zombied-executor-linux-amd64
 	zig build -Doptimize=ReleaseSafe -Dtarget=aarch64-linux
 	cp zig-out/bin/zombied dist/zombied-linux-arm64
-	chmod +x dist/zombied-linux-arm64
+	cp zig-out/bin/zombied-executor dist/zombied-executor-linux-arm64
+	chmod +x dist/zombied-linux-arm64 dist/zombied-executor-linux-arm64
 
 build: _prepare_prebuilt_linux_binaries ## Build production container (always uses prebuilt linux binaries)
 	$(call _buildx,Dockerfile,$(_PROD_TAGS),)

@@ -12,8 +12,8 @@ UseZombie accepts a spec request and produces a validated pull request through a
 ### v1 — Ship
 
 1. **Queue:** Redis streams for worker coordination.
-2. **Execution contract:** worker orchestrates runs through a local `sandbox-executor` API.
-3. **Execution backend:** `sandbox-executor` embeds NullClaw and applies host-level sandboxing on Linux.
+2. **Execution contract:** worker orchestrates runs through a local `zombied-executor` API.
+3. **Execution backend:** `zombied-executor` embeds NullClaw and applies host-level sandboxing on Linux.
 4. **Git:** hardened git CLI subprocess.
 5. **Auth:** Clerk for user/API auth, GitHub App for automation.
 6. **Delivery:** `zombiectl` CLI.
@@ -45,7 +45,7 @@ UseZombie accepts a spec request and produces a validated pull request through a
 1. `zombiectl`: CLI used by humans or agents to submit work and inspect runs.
 2. `zombied API`: validates requests, persists run metadata, enqueues work.
 3. `zombied worker`: claims work, resolves active harness/profile, drives stage state transitions, persists artifacts, handles retries, billing, and PR creation.
-4. `sandbox-executor`: local execution service controlled by the worker over a typed API; owns sandbox lifecycle and agent runtime execution.
+4. `zombied-executor`: local execution service controlled by the worker over a typed API; owns sandbox lifecycle and agent runtime execution.
 5. `Redis`: stream-based queue + consumer-group coordination.
 6. `Postgres`: run state, artifacts, transitions, usage, policy events, vault data.
 7. `Clerk`: identity for CLI and API.
@@ -57,7 +57,7 @@ UseZombie accepts a spec request and produces a validated pull request through a
 2. `worker scheduling`: API writes the run row and enqueues `run_id` in Redis.
 3. `profile resolution`: worker resolves the active workspace harness/profile.
 4. `execution lease`: worker opens an executor session for the active stage.
-5. `sandbox execution`: `sandbox-executor` runs the stage via embedded NullClaw inside the selected sandbox backend.
+5. `sandbox execution`: `zombied-executor` runs the stage via embedded NullClaw inside the selected sandbox backend.
 6. `result evaluation`: worker persists verdict, artifacts, metrics, and failure classification in Postgres.
 7. `iteration loop`: on retryable failure, worker re-enqueues the same `run_id`.
 8. `PR creation`: on pass, worker pushes branch and opens PR via GitHub App installation token.
@@ -72,7 +72,7 @@ zombiectl / API
       |
       | executor API
       v
- sandbox-executor
+ zombied-executor
       |
       +--> NullClaw embedded runtime
       +--> bubblewrap / Landlock / cgroup scope / network policy
@@ -93,7 +93,7 @@ UseZombie is **durable at stage boundaries**:
 - in-flight agent process state is not durable
 
 Operationally:
-- if `sandbox-executor` crashes mid-stage, the run is retried or blocked from persisted state
+- if `zombied-executor` crashes mid-stage, the run is retried or blocked from persisted state
 - if the worker crashes mid-stage, the active lease is eventually lost and the stage is restarted
 - upgrading worker or executor interrupts in-flight work unless the operator first drains active runs
 

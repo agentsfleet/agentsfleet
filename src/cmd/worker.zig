@@ -9,6 +9,7 @@ const posthog_events = @import("../observability/posthog_events.zig");
 const error_codes = @import("../errors/codes.zig");
 const preflight = @import("preflight.zig");
 const sandbox_runtime = @import("../pipeline/sandbox_runtime.zig");
+const executor_client = @import("../executor/client.zig");
 
 const log = std.log.scoped(.worker);
 
@@ -57,6 +58,10 @@ pub fn run(alloc: std.mem.Allocator) !void {
             worker_config.ValidationError.InvalidRateLimitRefillPerSec,
             worker_config.ValidationError.InvalidSandboxBackend,
             worker_config.ValidationError.InvalidSandboxKillGraceMs,
+            worker_config.ValidationError.InvalidExecutorStartupTimeoutMs,
+            worker_config.ValidationError.InvalidExecutorLeaseTimeoutMs,
+            worker_config.ValidationError.InvalidExecutorMemoryLimitMb,
+            worker_config.ValidationError.InvalidExecutorCpuLimitPercent,
             => {
                 worker_config.printValidationError(@errorCast(err));
                 log.err("startup.config_load status=fail error_code=UZ-STARTUP-002 err={s}", .{@errorName(err)});
@@ -81,6 +86,29 @@ pub fn run(alloc: std.mem.Allocator) !void {
         std.process.exit(1);
     };
     log.info("startup.sandbox_preflight status=ok backend={s}", .{worker_cfg.sandbox.label()});
+
+    // Executor client: connect to the zombied-executor daemon if configured.
+    // The zombied-executor is a separate systemd service on the host — the
+    // worker does NOT spawn it. It just connects to its Unix socket.
+    var exec_client: ?executor_client.ExecutorClient = null;
+    if (worker_cfg.executor_socket_path) |path| {
+        log.info("startup.executor_mode status=enabled socket={s}", .{path});
+        var ec = executor_client.ExecutorClient.init(alloc, path);
+        ec.connect() catch |err| {
+            log.err("startup.executor_connect status=fail error_code={s} socket={s} err={s}", .{
+                error_codes.ERR_EXEC_STARTUP_POSTURE,
+                path,
+                @errorName(err),
+            });
+            posthog_events.trackStartupFailed(ph.client, "worker", "executor_connect", @errorName(err), error_codes.ERR_EXEC_STARTUP_POSTURE);
+            std.process.exit(1);
+        };
+        exec_client = ec;
+        log.info("startup.executor_connect status=ok socket={s}", .{path});
+    } else {
+        log.info("startup.executor_mode status=direct hint=set_EXECUTOR_SOCKET_PATH_to_enable", .{});
+    }
+    defer if (exec_client) |*ec| ec.close();
 
     const worker_pool = preflight.connectDbPool(alloc, .worker) catch |err| {
         posthog_events.trackStartupFailed(ph.client, "worker", "db_connect", @errorName(err), error_codes.ERR_STARTUP_DB_CONNECT);

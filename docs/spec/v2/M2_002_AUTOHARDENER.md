@@ -13,7 +13,7 @@
 
 ## Problem
 
-Provisioned servers need a security baseline before running workloads: firewall rules, fail2ban, Debian security updates, and KVM verification (required for Firecracker in M3_001).
+Provisioned servers need a security baseline before running workloads: firewall rules, fail2ban, Debian security updates, and KVM verification (required for Firecracker).
 
 ## Decision
 

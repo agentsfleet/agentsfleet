@@ -5,7 +5,7 @@ Status: Active
 
 ## Goal
 
-Define the minimal runtime contract for API, worker, and `sandbox-executor` without stale or duplicate configuration stories.
+Define the minimal runtime contract for API, worker, and `zombied-executor` without stale or duplicate configuration stories.
 
 ## Principles
 

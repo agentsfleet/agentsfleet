@@ -41,7 +41,7 @@ worker
   -> executor.stage_finished | executor.stage_failed
   -> executor.session_destroyed
 
-sandbox-executor
+zombied-executor
   -> sandbox.preflight
   -> sandbox.policy_denied
   -> sandbox.timeout_kill

@@ -7,7 +7,7 @@
 **Status:** PENDING
 **Priority:** P1
 **Depends on:** M2_004 (autoinfraready — server marked ready)
-**Batch:** B7 — can parallel with M3_001, blocked on M2_004
+**Batch:** B7 — blocked on M2_004
 
 ---
 

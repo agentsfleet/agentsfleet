@@ -16,12 +16,12 @@ This is the short policy entrypoint for UseZombie.
 3. Queue boundary
 4. Identity boundary
 5. GitHub automation boundary
-6. Execution boundary: worker orchestrates, `sandbox-executor` executes
+6. Execution boundary: worker orchestrates, `zombied-executor` executes
 
 ## Sandbox Rules
 
 1. Worker calls a typed executor API instead of owning the entire agent runtime forever.
-2. `sandbox-executor` embeds NullClaw and owns Linux sandbox enforcement.
+2. `zombied-executor` embeds NullClaw and owns Linux sandbox enforcement.
 3. If executor posture is unsafe, startup or run admission must fail closed.
 4. If executor dies mid-stage, the run is retried or blocked from persisted stage state.
 5. Active runs are not guaranteed to survive worker or executor upgrades.

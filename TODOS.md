@@ -118,20 +118,29 @@ picking it up in 3 months understands the motivation and where to start.
 **Context:** The new executor architecture separates worker orchestration from dangerous execution. That makes drain mode feasible and worth doing, but it is not required for the initial executor boundary.
 **Effort:** M
 **Priority:** P1
-**Depends on:** executor API landing after M4_008 direction work
+**Depends on:** M12_003 (executor NullClaw invocation)
 
 ---
 
 ## M4 Follow-On: Executor Lease Heartbeats
 
-**What:** Add explicit worker-to-executor lease heartbeats so executor cancels orphaned runs quickly when the worker disappears.
-**Why:** Without a lease protocol, orphan cleanup falls back to coarser timeout behavior. A lease makes failure detection faster and more deterministic.
-**Pros:** Lower orphan risk, cleaner failure classification, better restart behavior.
-**Cons:** More protocol/state handling between worker and executor.
-**Context:** Fits the new sidecar executor model. Not necessary to define the architecture, but valuable once the boundary exists.
-**Effort:** M
-**Priority:** P1
-**Depends on:** executor API and local sidecar implementation
+**Status:** DONE
+**Implemented in:** M12_002 — `src/executor/lease.zig` LeaseManager + `session.zig` LeaseState + `Heartbeat` RPC in protocol/handler
+**Note:** This TODO is closed. Lease/heartbeat model with 5s reap interval and configurable lease timeout is shipping.
+
+---
+
+## M12_003: Executor NullClaw Invocation — Dynamic Agent Execution
+
+**What:** Wire real NullClaw invocation into the executor sidecar. Currently `StartStage` returns a placeholder — the executor accepts RPCs without executing anything.
+**Why:** Without NullClaw invocation, the entire sidecar architecture is pointless. No process isolation, no sandbox enforcement, no blast radius reduction.
+**Pros:** Completes the executor runtime boundary. Enables dynamic agent execution in a sandboxed sidecar process.
+**Cons:** Requires protocol expansion (StartStage payload), runner module, and worker pipeline switch. Touches 4-5 files.
+**Context:** M12_002 delivered the executor API, transport, sessions, lease, metrics, and sandbox stubs. M12_003 fills the gap: real execution. The executor must be agent-agnostic — no hardcoded roles. It receives a NullClaw config + tools + message and runs it. Worker falls back to in-process execution when executor is not configured (macOS dev).
+**Tracked in:** `docs/spec/v1/M12_003_EXECUTOR_NULLCLAW_INVOCATION.md`
+**Effort:** L
+**Priority:** P0
+**Depends on:** M12_002 (DONE)
 
 ---
 

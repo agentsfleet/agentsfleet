@@ -77,8 +77,10 @@ curl -sf https://api.usezombie.com/readyz | jq -e '.ready == true'
 4. SSH to `zombie-prod-worker-ant` and `zombie-prod-worker-bird` over Tailscale and run:
 
 ```bash
-cd /opt/zombie && ./deploy.sh
+cd /opt/zombie && sudo ./deploy.sh
 ```
+
+This installs/updates both `zombied-executor` and `zombied-worker` systemd services (see `deploy/baremetal/*.service`).
 
 ---
 
@@ -136,7 +138,7 @@ Confirm:
 
 - `release.yml` fully green: binaries, docker, npm, GitHub Release, deploy-prod all pass
 - PROD `/healthz` and `/readyz` green
-- workers redeployed over Tailscale SSH; run queue consumed
+- workers redeployed over Tailscale SSH; `zombied-executor` + `zombied-worker` systemd services active; run queue consumed
 - CLI PROD smoke complete (§6.0)
 - evidence recorded (see M7_003_PROD_ACCEPTANCE.md §9.0)
 
