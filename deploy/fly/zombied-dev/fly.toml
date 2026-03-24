@@ -5,7 +5,7 @@ primary_region = "iad"
   image = "ghcr.io/usezombie/zombied:dev-latest"
 
 [deploy]
-  release_command = "/app/zombied migrate"
+  release_command = "/usr/local/bin/zombied migrate"
 
 [[vm]]
   size = "shared-cpu-1x"

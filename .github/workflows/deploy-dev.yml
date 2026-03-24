@@ -115,12 +115,26 @@ jobs:
             GRAFANA_OTLP_ENDPOINT="$GRAFANA_OTLP_ENDPOINT" \
             GRAFANA_OTLP_INSTANCE_ID="$GRAFANA_OTLP_INSTANCE_ID" \
             GRAFANA_OTLP_API_KEY="$GRAFANA_OTLP_API_KEY" \
-            --app ${{ vars.FLY_APP_DEV }} --stage
+            --app "${{ vars.FLY_APP_DEV }}" --stage
         env:
           FLY_API_TOKEN: ${{ env.FLY_API_TOKEN }}
 
       - name: Deploy zombied-dev
-        run: flyctl deploy --app ${{ vars.FLY_APP_DEV }} --image ghcr.io/usezombie/zombied:dev-latest --config deploy/fly/zombied-dev/fly.toml --wait-timeout 120
+        run: |
+          flyctl deploy --app "${{ vars.FLY_APP_DEV }}" --image ghcr.io/usezombie/zombied:dev-latest --config deploy/fly/zombied-dev/fly.toml --wait-timeout 120 || STATUS=$?
+          STATUS=${STATUS:-0}
+          flyctl deploy --app "${{ vars.FLY_APP_DEV }}" --image ghcr.io/usezombie/zombied:dev-latest --config deploy/fly/zombied-dev/fly.toml --wait-timeout 120
+          STATUS=$?
+          if [ "$STATUS" -ne 0 ]; then
+            APP="${{ vars.FLY_APP_DEV }}"
+            echo "Fly deploy failed; collecting diagnostics for ${APP}..."
+            flyctl status --app "${APP}" || true
+            echo "Fly releases:"
+            flyctl releases --app "${APP}" || true
+            echo "Fly logs (bounded to 30s):"
+            timeout 30s flyctl logs --app "${APP}" || true
+          fi
+          exit "$STATUS"
         env:
           FLY_API_TOKEN: ${{ env.FLY_API_TOKEN }}
 
@@ -153,8 +167,8 @@ jobs:
           else
             echo "jq unavailable; skipping per-machine status output"
           fi
-          echo "Fly app logs (no-tail):"
-          flyctl logs --app "${APP}" --no-tail || true
+          echo "Fly app logs (bounded to 30s):"
+          timeout 30s flyctl logs --app "${APP}" || true
           exit 1
         env:
           FLY_API_TOKEN: ${{ env.FLY_API_TOKEN }}
