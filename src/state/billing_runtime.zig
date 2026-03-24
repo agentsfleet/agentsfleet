@@ -7,6 +7,13 @@ const id_format = @import("../types/id_format.zig");
 
 const log = std.log.scoped(.state);
 
+// ── Named constants for usage_ledger string fields (T10 compliance) ──────────
+// These replace string literals in SQL queries so magic values live in one place.
+pub const LEDGER_SOURCE_RUNTIME_STAGE = "runtime_stage";
+pub const LEDGER_SOURCE_RUNTIME_SUMMARY = "runtime_summary";
+pub const LEDGER_EVENT_STAGE_COMPLETED = "stage_completed";
+pub const LEDGER_ACTOR_ORCHESTRATOR = "orchestrator";
+
 pub const BillableUnit = enum {
     agent_second,
 
@@ -52,7 +59,7 @@ pub fn recordRuntimeStageUsage(
         \\INSERT INTO usage_ledger
         \\  (id, workspace_id, run_id, attempt, actor, token_count, agent_seconds, created_at,
         \\   event_key, lifecycle_event, billable_unit, billable_quantity, is_billable, source)
-        \\VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'stage_completed', $10, 0, false, 'runtime_stage')
+        \\VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 0, false, $12)
         \\ON CONFLICT (run_id, event_key) DO NOTHING
     , .{
         usage_id,
@@ -64,7 +71,9 @@ pub fn recordRuntimeStageUsage(
         @as(i64, @intCast(agent_seconds)),
         now_ms,
         event_key,
+        LEDGER_EVENT_STAGE_COMPLETED,
         BillableUnit.agent_second.label(),
+        LEDGER_SOURCE_RUNTIME_STAGE,
     });
     log.debug("billing.stage_usage_recorded run_id={s} stage_id={s} agent_seconds={d}", .{ run_id, stage_id, agent_seconds });
 }
@@ -97,7 +106,7 @@ pub fn finalizeRunForBilling(
         \\INSERT INTO usage_ledger
         \\  (id, workspace_id, run_id, attempt, actor, token_count, agent_seconds, created_at,
         \\   event_key, lifecycle_event, billable_unit, billable_quantity, is_billable, source)
-        \\VALUES ($1, $2, $3, $4, 'orchestrator', 0, 0, $5, $6, $7, $8, $9, $10, 'runtime_summary')
+        \\VALUES ($1, $2, $3, $4, $5, 0, 0, $6, $7, $8, $9, $10, $11, $12)
         \\ON CONFLICT (run_id, event_key) DO NOTHING
         \\RETURNING 1
     , .{
@@ -105,12 +114,14 @@ pub fn finalizeRunForBilling(
         workspace_id,
         run_id,
         @as(i32, @intCast(attempt)),
+        LEDGER_ACTOR_ORCHESTRATOR,
         now_ms,
         event_key,
         if (outcome == .completed) "run_completed" else "run_not_billable",
         BillableUnit.agent_second.label(),
         billable_quantity,
         is_billable,
+        LEDGER_SOURCE_RUNTIME_SUMMARY,
     });
     defer q.deinit();
     const inserted = (try q.next()) != null;
@@ -153,8 +164,8 @@ pub fn aggregateStageAgentSeconds(
         \\FROM usage_ledger
         \\WHERE run_id = $1
         \\  AND attempt = $2
-        \\  AND source = 'runtime_stage'
-    , .{ run_id, @as(i32, @intCast(attempt)) });
+        \\  AND source = $3
+    , .{ run_id, @as(i32, @intCast(attempt)), LEDGER_SOURCE_RUNTIME_STAGE });
     defer q.deinit();
 
     const row = (try q.next()) orelse return 0;

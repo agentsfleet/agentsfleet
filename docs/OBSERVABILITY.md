@@ -58,6 +58,9 @@ zombied-executor
 - `executor.stage_started`
 - `executor.stage_finished`
 - `executor.stage_failed`
+- `executor.runner.start` — NullClaw invocation begin (M12_003)
+- `executor.runner.done` — NullClaw invocation success (M12_003)
+- `executor.runner.failed` — NullClaw invocation failure with error_code (M12_003)
 - `sandbox.preflight`
 - `sandbox.policy_denied`
 - `sandbox.timeout_kill`
@@ -67,6 +70,11 @@ zombied-executor
 
 - `zombie_executor_sessions_total`
 - `zombie_executor_session_failures_total`
+- `zombie_executor_stages_started_total` — (M12_003)
+- `zombie_executor_stages_completed_total` — (M12_003)
+- `zombie_executor_stages_failed_total` — (M12_003)
+- `zombie_executor_agent_tokens_total` — (M12_003)
+- `zombie_executor_agent_duration_seconds` — histogram 1/3/5/10/30/60/120/300s (M12_003)
 - `zombie_sandbox_shell_runs_total`
 - `zombie_sandbox_kill_switch_total`
 - `zombie_sandbox_preflight_failures_total`
@@ -79,6 +87,9 @@ zombied-executor
 - `UZ-SANDBOX-001`
 - `UZ-SANDBOX-002`
 - `UZ-SANDBOX-003`
+- `UZ-EXEC-012` — runner agent init failure
+- `UZ-EXEC-013` — runner agent execution failure
+- `UZ-EXEC-014` — runner invalid config (missing model/message)
 
 ## Operational Interpretation
 

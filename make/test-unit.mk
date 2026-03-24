@@ -2,7 +2,7 @@
 # TEST-UNIT — zombied, zombiectl, website, app
 # =============================================================================
 
-.PHONY: test-zombied test-unit-zombied test-unit-zombiectl test-unit-website test-unit-app test-depth test-coverage-zombied
+.PHONY: test-zombied test-unit-zombied _test-unit-zombied-executor test-unit-zombiectl test-unit-website test-unit-app test-depth test-coverage-zombied
 
 test-unit-zombied:  ## Run zombied unit tests (Zig)
 	@echo "→ [zombied] Running Zig unit tests..."
@@ -17,7 +17,17 @@ test-unit-zombied:  ## Run zombied unit tests (Zig)
 	 ZIG_LOCAL_CACHE_DIR="$(ZIG_LOCAL_CACHE_DIR)" \
 	 REDIS_TLS_TEST_URL="$$redis_tls_test_url" \
 	 zig build test --summary all
+	@$(MAKE) _test-unit-zombied-executor
 	@$(MAKE) test-depth
+
+_test-unit-zombied-executor:  ## Run zombied-executor sidecar unit tests (Zig)
+	@echo "→ [zombied-executor] Running executor sidecar tests..."
+	@mkdir -p "$(ZIG_GLOBAL_CACHE_DIR)" "$(ZIG_LOCAL_CACHE_DIR)"
+	@ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" \
+	 ZIG_LOCAL_CACHE_DIR="$(ZIG_LOCAL_CACHE_DIR)" \
+	 zig build test-executor --summary all 2>&1 | tee /dev/stderr | grep -q "passed" \
+	   && echo "✓ [zombied-executor] Executor tests passed" \
+	   || { echo "✗ [zombied-executor] Executor tests failed"; exit 1; }
 
 test-unit-zombiectl:  ## Run zombiectl CLI unit tests (bun)
 	@echo "→ [zombiectl] Running Bun unit tests..."

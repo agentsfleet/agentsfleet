@@ -86,6 +86,9 @@ pub const ERR_EXEC_POLICY_DENY = "UZ-EXEC-008";
 pub const ERR_EXEC_STARTUP_POSTURE = "UZ-EXEC-009";
 pub const ERR_EXEC_CRASH = "UZ-EXEC-010";
 pub const ERR_EXEC_LANDLOCK_DENY = "UZ-EXEC-011";
+pub const ERR_EXEC_RUNNER_AGENT_INIT = "UZ-EXEC-012";
+pub const ERR_EXEC_RUNNER_AGENT_RUN = "UZ-EXEC-013";
+pub const ERR_EXEC_RUNNER_INVALID_CONFIG = "UZ-EXEC-014";
 
 pub fn docsRef(code: []const u8) struct { base: []const u8, code: []const u8 } {
     return .{

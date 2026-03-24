@@ -52,3 +52,4 @@ _test-integration-redis:
 
 test-integration: _test-integration-zombied _test-integration-db _test-integration-redis  ## Run all integration tests (Zig + DB + Redis)
 	@echo "✓ [zombied] All integration tests passed"
+

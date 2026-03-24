@@ -23,6 +23,7 @@ const worker_stage_types = @import("worker_stage_types.zig");
 const worker_stage_helpers = @import("worker_stage_helpers.zig");
 const worker_stage_outcomes = @import("worker_stage_outcomes.zig");
 const sandbox_runtime = @import("sandbox_runtime.zig");
+const executor_client = @import("../executor/client.zig");
 const log = std.log.scoped(.worker);
 
 pub const ExecuteConfig = worker_stage_types.ExecuteConfig;
@@ -54,10 +55,69 @@ const StageRetryCtx = struct {
     alloc: std.mem.Allocator,
     binding: agents.RoleBinding,
     input: agents.RoleInput,
+    executor: ?*executor_client.ExecutorClient = null,
+    execution_id: ?[]const u8 = null,
 };
 
 fn opRunStage(ctx: StageRetryCtx, _: u32) !agents.AgentResult {
+    // M12_003: When executor is configured, dispatch via executor sidecar.
+    if (ctx.executor) |exec| {
+        if (ctx.execution_id) |exec_id| {
+            return dispatchViaExecutor(ctx.alloc, exec, exec_id, ctx.binding, ctx.input);
+        }
+    }
+    // Fallback: direct in-process execution (dev mode, macOS).
     return agents.runByRole(ctx.alloc, ctx.binding, ctx.input);
+}
+
+/// Build StartStage payload from RoleBinding + RoleInput and dispatch
+/// via the executor sidecar (M12_003 §4.2).
+///
+/// The executor is agent-agnostic — it receives the full config and runs
+/// any dynamic agent. The worker assembles the payload; the executor
+/// does not interpret roles, tool sets, or prompts.
+fn dispatchViaExecutor(
+    alloc: std.mem.Allocator,
+    exec: *executor_client.ExecutorClient,
+    execution_id: []const u8,
+    binding: agents.RoleBinding,
+    input: agents.RoleInput,
+) !agents.AgentResult {
+    // Build context object with all stage-specific content.
+    // The executor passes these through to the agent via the composed message.
+    var context = std.json.Value{ .object = std.json.ObjectMap.init(alloc) };
+    defer context.object.deinit();
+    if (input.spec_content) |sc| if (sc.len > 0) try context.object.put("spec_content", .{ .string = sc });
+    if (input.plan_content) |pc| if (pc.len > 0) try context.object.put("plan_content", .{ .string = pc });
+    if (input.memory_context) |mc| if (mc.len > 0) try context.object.put("memory_context", .{ .string = mc });
+    if (input.defects_content) |d| try context.object.put("defects_content", .{ .string = d });
+    if (input.implementation_summary) |is| if (is.len > 0) try context.object.put("implementation_summary", .{ .string = is });
+
+    // Resolve system prompt from the binding's kind and the prompts.
+    // For custom agents, the custom_runner handles prompt resolution directly.
+    const system_prompt = resolveSystemPrompt(binding, input.prompts);
+
+    // Tools = null → executor uses allTools() (agent-agnostic, all tools available).
+    // The executor process-level sandbox (Landlock + cgroups) enforces security.
+    const exec_ctx = input.execution_context orelse sandbox_runtime.ToolExecutionContext{};
+    const stage_result = try exec.startStage(execution_id, .{
+        .stage_id = exec_ctx.stage_id,
+        .role_id = exec_ctx.role_id,
+        .skill_id = exec_ctx.skill_id,
+        .agent_config = .{
+            .system_prompt = system_prompt,
+        },
+        .message = system_prompt,
+        .tools = null,
+        .context = context,
+    });
+
+    return .{
+        .content = stage_result.content,
+        .token_count = stage_result.token_count,
+        .wall_seconds = stage_result.wall_seconds,
+        .exit_ok = stage_result.exit_ok,
+    };
 }
 
 fn emitAgentSpan(
@@ -97,6 +157,17 @@ fn emitAgentSpan(
 fn recordScoringFailure(scoring_state: *scoring.ScoringState, err: anyerror) anyerror {
     scoring_state.failure_error_name = @errorName(err);
     return err;
+}
+
+/// Resolve the system prompt for a binding from the prompt files.
+/// For custom skills, the prompt is empty — the custom runner provides it.
+fn resolveSystemPrompt(binding: agents.RoleBinding, prompts: *const agents.PromptFiles) []const u8 {
+    return switch (binding.kind) {
+        .echo => prompts.echo,
+        .scout => prompts.scout,
+        .warden => prompts.warden,
+        .custom => "",
+    };
 }
 
 fn resolveBinding(cfg: ExecuteConfig, role_id: []const u8, skill_id: []const u8) ?agents.RoleBinding {
@@ -180,6 +251,25 @@ pub fn executeRun(
         },
     );
 
+    // M12_003 §4.1: Create executor session if executor client is configured.
+    const exec_id: ?[]const u8 = if (cfg.executor) |exec| blk: {
+        const eid = exec.createExecution(wt.path, .{
+            .trace_id = ctx.trace_id,
+            .run_id = ctx.run_id,
+            .workspace_id = ctx.workspace_id,
+            .stage_id = "",
+            .role_id = "",
+            .skill_id = "",
+        }) catch |err| {
+            log.warn("executor.session_create_failed err={s} — falling back to in-process", .{@errorName(err)});
+            break :blk null;
+        };
+        break :blk eid;
+    } else null;
+    defer if (exec_id) |eid| {
+        if (cfg.executor) |exec| exec.destroyExecution(eid) catch {};
+    };
+
     const plan_stage = profile.stages[0];
     const plan_binding = resolveBinding(cfg, plan_stage.role_id, plan_stage.skill_id) orelse return worker_runtime.WorkerError.InvalidPipelineRole;
 
@@ -189,6 +279,8 @@ pub fn executeRun(
     const plan_result = reliable.call(agents.AgentResult, StageRetryCtx{
         .alloc = run_alloc,
         .binding = plan_binding,
+        .executor = if (exec_id != null) cfg.executor else null,
+        .execution_id = exec_id,
         .input = .{
             .workspace_path = wt.path,
             .prompts = prompts,
@@ -286,6 +378,8 @@ pub fn executeRun(
             const stage_result = reliable.call(agents.AgentResult, StageRetryCtx{
                 .alloc = run_alloc,
                 .binding = binding,
+                .executor = if (exec_id != null) cfg.executor else null,
+                .execution_id = exec_id,
                 .input = .{
                     .workspace_path = wt.path,
                     .prompts = prompts,

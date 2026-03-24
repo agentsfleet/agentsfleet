@@ -7,6 +7,7 @@ const posthog_events = @import("../../../observability/posthog_events.zig");
 const common = @import("../common.zig");
 const id_format = @import("../../../types/id_format.zig");
 const error_codes = @import("../../../errors/codes.zig");
+const billing_runtime = @import("../../../state/billing_runtime.zig");
 const log = std.log.scoped(.http);
 
 const queue_unavailable_code = error_codes.ERR_QUEUE_UNAVAILABLE;
@@ -103,7 +104,7 @@ pub fn handleRetryRun(ctx: *common.Context, r: zap.Request, run_id: []const u8) 
     defer alloc.free(transition_id);
     _ = conn.exec(
         \\INSERT INTO run_transitions (id, run_id, attempt, state_from, state_to, actor, reason_code, notes, ts)
-        \\VALUES ($1, $2, $3, $4, 'SPEC_QUEUED', 'orchestrator', 'MANUAL_RETRY', $5, $6)
+        \\VALUES ($1, $2, $3, $4, 'SPEC_QUEUED', $7, 'MANUAL_RETRY', $5, $6)
     , .{
         transition_id,
         run_id,
@@ -111,6 +112,7 @@ pub fn handleRetryRun(ctx: *common.Context, r: zap.Request, run_id: []const u8) 
         current.state.label(),
         parsed.value.reason,
         now_ms,
+        billing_runtime.LEDGER_ACTOR_ORCHESTRATOR,
     }) catch {
         common.internalDbError(r, req_id);
         return;

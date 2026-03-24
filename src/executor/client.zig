@@ -4,6 +4,7 @@
 //! Translates JSON responses into AgentResult and FailureClass types.
 
 const std = @import("std");
+const json = @import("json_helpers.zig");
 const transport = @import("transport.zig");
 const protocol = @import("protocol.zig");
 const types = @import("types.zig");
@@ -109,9 +110,7 @@ pub const ExecutorClient = struct {
     /// Result from a StartStage RPC call.
     ///
     /// Ownership: `.content` is allocated via the ExecutorClient's allocator.
-    /// The caller must free it when done (currently always "" from the
-    /// placeholder handler — real content arrives when NullClaw runner
-    /// is wired in the sidecar binary).
+    /// The caller must free it when done.
     pub const StageResult = struct {
         content: []const u8,
         token_count: u64,
@@ -120,20 +119,55 @@ pub const ExecutorClient = struct {
         failure: ?types.FailureClass,
     };
 
-    pub fn startStage(
-        self: *ExecutorClient,
-        execution_id: []const u8,
+    /// Agent configuration for StartStage payload (M12_003).
+    pub const AgentConfig = struct {
+        model: []const u8 = "",
+        provider: []const u8 = "anthropic",
+        system_prompt: []const u8 = "",
+        temperature: f64 = 0.7,
+        max_tokens: u64 = 16384,
+    };
+
+    /// Full StartStage payload carrying agent execution context.
+    pub const StagePayload = struct {
         stage_id: []const u8,
         role_id: []const u8,
         skill_id: []const u8,
+        agent_config: AgentConfig = .{},
+        message: []const u8 = "",
+        tools: ?std.json.Value = null,
+        context: ?std.json.Value = null,
+    };
+
+    /// Send a StartStage RPC with full agent execution payload (M12_003).
+    pub fn startStage(
+        self: *ExecutorClient,
+        execution_id: []const u8,
+        payload: StagePayload,
     ) !StageResult {
         var params = std.json.Value{ .object = std.json.ObjectMap.init(self.alloc) };
         defer params.object.deinit();
 
         try params.object.put("execution_id", .{ .string = execution_id });
-        try params.object.put("stage_id", .{ .string = stage_id });
-        try params.object.put("role_id", .{ .string = role_id });
-        try params.object.put("skill_id", .{ .string = skill_id });
+        try params.object.put("stage_id", .{ .string = payload.stage_id });
+        try params.object.put("role_id", .{ .string = payload.role_id });
+        try params.object.put("skill_id", .{ .string = payload.skill_id });
+        try params.object.put("message", .{ .string = payload.message });
+
+        // Build agent_config object.
+        // Deinit ac separately — params.object.deinit() does not recurse into nested ObjectMaps.
+        var ac = std.json.Value{ .object = std.json.ObjectMap.init(self.alloc) };
+        defer ac.object.deinit();
+        try ac.object.put("model", .{ .string = payload.agent_config.model });
+        try ac.object.put("provider", .{ .string = payload.agent_config.provider });
+        try ac.object.put("system_prompt", .{ .string = payload.agent_config.system_prompt });
+        try ac.object.put("temperature", .{ .float = payload.agent_config.temperature });
+        try ac.object.put("max_tokens", .{ .integer = @intCast(payload.agent_config.max_tokens) });
+        try params.object.put("agent_config", ac);
+
+        // Attach optional tools array and context object.
+        if (payload.tools) |t| try params.object.put("tools", t);
+        if (payload.context) |c| try params.object.put("context", c);
 
         var resp = self.transport_client.sendRequest(self.nextId(), protocol.Method.start_stage, params) catch {
             log.err("executor_client.transport_loss error_code=UZ-EXEC-006 method=StartStage execution_id={s}", .{execution_id});
@@ -157,12 +191,28 @@ pub const ExecutorClient = struct {
         if (result != .object) return ClientError.InvalidResponse;
 
         return .{
-            .content = try self.alloc.dupe(u8, getStringField(result, "content") orelse ""),
-            .token_count = getIntField(result, "token_count"),
-            .wall_seconds = getIntField(result, "wall_seconds"),
-            .exit_ok = getBoolField(result, "exit_ok"),
+            .content = try self.alloc.dupe(u8, json.getStr(result, "content") orelse ""),
+            .token_count = json.getIntOrZero(result, "token_count"),
+            .wall_seconds = json.getIntOrZero(result, "wall_seconds"),
+            .exit_ok = json.getBool(result, "exit_ok"),
             .failure = null,
         };
+    }
+
+    /// Backward-compatible startStage for tests and callers that don't
+    /// need the full agent payload (sends minimal params).
+    pub fn startStageBasic(
+        self: *ExecutorClient,
+        execution_id: []const u8,
+        stage_id: []const u8,
+        role_id: []const u8,
+        skill_id: []const u8,
+    ) !StageResult {
+        return self.startStage(execution_id, .{
+            .stage_id = stage_id,
+            .role_id = role_id,
+            .skill_id = skill_id,
+        });
     }
 
     pub fn cancelExecution(self: *ExecutorClient, execution_id: []const u8) !void {
@@ -196,9 +246,9 @@ pub const ExecutorClient = struct {
 
         return .{
             .content = "",
-            .token_count = getIntField(result, "token_count"),
-            .wall_seconds = getIntField(result, "wall_seconds"),
-            .exit_ok = getBoolField(result, "exit_ok"),
+            .token_count = json.getIntOrZero(result, "token_count"),
+            .wall_seconds = json.getIntOrZero(result, "wall_seconds"),
+            .exit_ok = json.getBool(result, "exit_ok"),
             .failure = null,
         };
     }
@@ -230,33 +280,6 @@ pub const ExecutorClient = struct {
     }
 };
 
-fn getStringField(obj: std.json.Value, key: []const u8) ?[]const u8 {
-    if (obj != .object) return null;
-    const val = obj.object.get(key) orelse return null;
-    return switch (val) {
-        .string => |s| s,
-        else => null,
-    };
-}
-
-fn getIntField(obj: std.json.Value, key: []const u8) u64 {
-    if (obj != .object) return 0;
-    const val = obj.object.get(key) orelse return 0;
-    return switch (val) {
-        .integer => |i| @intCast(@max(0, i)),
-        else => 0,
-    };
-}
-
-fn getBoolField(obj: std.json.Value, key: []const u8) bool {
-    if (obj != .object) return false;
-    const val = obj.object.get(key) orelse return false;
-    return switch (val) {
-        .bool => |b| b,
-        else => false,
-    };
-}
-
 // ── Tests ────────────────────────────────────────────────────────────────
 
 test "classifyError maps all known error codes" {
@@ -274,47 +297,47 @@ test "classifyError falls back to executor_crash for unknown codes" {
     try std.testing.expectEqual(types.FailureClass.executor_crash, classifyError(42));
 }
 
-test "getStringField returns null for missing key" {
-    const alloc = std.testing.allocator;
-    var obj = std.json.Value{ .object = std.json.ObjectMap.init(alloc) };
-    defer obj.object.deinit();
-    try std.testing.expect(getStringField(obj, "missing") == null);
+// ── StagePayload / AgentConfig default values ────────────────────────────
+
+test "StagePayload default values" {
+    const payload = ExecutorClient.StagePayload{
+        .stage_id = "plan",
+        .role_id = "coder",
+        .skill_id = "zig",
+    };
+    try std.testing.expectEqualStrings("plan", payload.stage_id);
+    try std.testing.expectEqualStrings("coder", payload.role_id);
+    try std.testing.expectEqualStrings("zig", payload.skill_id);
+    try std.testing.expectEqualStrings("", payload.message);
+    try std.testing.expect(payload.tools == null);
+    try std.testing.expect(payload.context == null);
+    // Agent config should use defaults.
+    try std.testing.expectEqualStrings("", payload.agent_config.model);
+    try std.testing.expectEqualStrings("anthropic", payload.agent_config.provider);
+    try std.testing.expectEqual(@as(f64, 0.7), payload.agent_config.temperature);
+    try std.testing.expectEqual(@as(u64, 16384), payload.agent_config.max_tokens);
 }
 
-test "getIntField returns 0 for missing key" {
-    const alloc = std.testing.allocator;
-    var obj = std.json.Value{ .object = std.json.ObjectMap.init(alloc) };
-    defer obj.object.deinit();
-    try std.testing.expectEqual(@as(u64, 0), getIntField(obj, "missing"));
+test "AgentConfig default values" {
+    const ac = ExecutorClient.AgentConfig{};
+    try std.testing.expectEqualStrings("", ac.model);
+    try std.testing.expectEqualStrings("anthropic", ac.provider);
+    try std.testing.expectEqualStrings("", ac.system_prompt);
+    try std.testing.expectEqual(@as(f64, 0.7), ac.temperature);
+    try std.testing.expectEqual(@as(u64, 16384), ac.max_tokens);
 }
 
-test "getBoolField returns false for missing key" {
-    const alloc = std.testing.allocator;
-    var obj = std.json.Value{ .object = std.json.ObjectMap.init(alloc) };
-    defer obj.object.deinit();
-    try std.testing.expectEqual(false, getBoolField(obj, "missing"));
+// ── classifyError comprehensive ──────────────────────────────────────────
+
+test "classifyError maps all known protocol error codes" {
+    // All 7 known codes (6 domain + execution_failed).
+    try std.testing.expectEqual(types.FailureClass.timeout_kill, classifyError(protocol.ErrorCode.timeout_killed));
+    try std.testing.expectEqual(types.FailureClass.oom_kill, classifyError(protocol.ErrorCode.oom_killed));
+    try std.testing.expectEqual(types.FailureClass.policy_deny, classifyError(protocol.ErrorCode.policy_denied));
+    try std.testing.expectEqual(types.FailureClass.lease_expired, classifyError(protocol.ErrorCode.lease_expired));
+    try std.testing.expectEqual(types.FailureClass.landlock_deny, classifyError(protocol.ErrorCode.landlock_denied));
+    try std.testing.expectEqual(types.FailureClass.resource_kill, classifyError(protocol.ErrorCode.resource_killed));
+    // execution_failed falls through to else => executor_crash.
+    try std.testing.expectEqual(types.FailureClass.executor_crash, classifyError(protocol.ErrorCode.execution_failed));
 }
 
-test "getStringField returns null for non-string value" {
-    const alloc = std.testing.allocator;
-    var obj = std.json.Value{ .object = std.json.ObjectMap.init(alloc) };
-    defer obj.object.deinit();
-    try obj.object.put("key", .{ .integer = 42 });
-    try std.testing.expect(getStringField(obj, "key") == null);
-}
-
-test "getIntField returns value for integer field" {
-    const alloc = std.testing.allocator;
-    var obj = std.json.Value{ .object = std.json.ObjectMap.init(alloc) };
-    defer obj.object.deinit();
-    try obj.object.put("count", .{ .integer = 7 });
-    try std.testing.expectEqual(@as(u64, 7), getIntField(obj, "count"));
-}
-
-test "getBoolField returns value for bool field" {
-    const alloc = std.testing.allocator;
-    var obj = std.json.Value{ .object = std.json.ObjectMap.init(alloc) };
-    defer obj.object.deinit();
-    try obj.object.put("ok", .{ .bool = true });
-    try std.testing.expectEqual(true, getBoolField(obj, "ok"));
-}

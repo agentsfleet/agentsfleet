@@ -140,6 +140,22 @@ pub fn renderPrometheus(
     try appendMetric(writer, "zombie_executor_cpu_throttled_ms_total", "counter", "Total CPU throttling time in milliseconds.", es.cpu_throttled_ms_total);
     try appendMetric(writer, "zombie_executor_memory_peak_bytes", "gauge", "Peak memory usage across executor sessions.", es.memory_peak_bytes);
 
+    // Executor stage metrics (M12_003 §5.3).
+    try appendMetric(writer, "zombie_executor_stages_started_total", "counter", "Total NullClaw stage invocations started.", es.stages_started_total);
+    try appendMetric(writer, "zombie_executor_stages_completed_total", "counter", "Total NullClaw stage invocations completed successfully.", es.stages_completed_total);
+    try appendMetric(writer, "zombie_executor_stages_failed_total", "counter", "Total NullClaw stage invocations failed.", es.stages_failed_total);
+    try appendMetric(writer, "zombie_executor_agent_tokens_total", "counter", "Total tokens consumed by executor agent calls.", es.agent_tokens_total);
+
+    // Executor agent duration histogram (M12_003 §5.3).
+    try writer.print("# HELP zombie_executor_agent_duration_seconds Duration of executor agent calls in seconds.\n", .{});
+    try writer.print("# TYPE zombie_executor_agent_duration_seconds histogram\n", .{});
+    for (em.DURATION_BUCKETS, 0..) |le, i| {
+        try writer.print("zombie_executor_agent_duration_seconds_bucket{{le=\"{d}\"}} {d}\n", .{ le, es.duration_buckets[i] });
+    }
+    try writer.print("zombie_executor_agent_duration_seconds_bucket{{le=\"+Inf\"}} {d}\n", .{es.duration_count});
+    try writer.print("zombie_executor_agent_duration_seconds_sum {d}\n", .{es.duration_sum});
+    try writer.print("zombie_executor_agent_duration_seconds_count {d}\n", .{es.duration_count});
+
     try writer.writeAll("\n");
 
     return out.toOwnedSlice(alloc);

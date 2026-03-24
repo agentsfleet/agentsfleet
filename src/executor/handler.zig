@@ -4,10 +4,12 @@
 //! This is the core of the executor API (§2.0).
 
 const std = @import("std");
+const json = @import("json_helpers.zig");
 const protocol = @import("protocol.zig");
 const types = @import("types.zig");
 const session_mod = @import("session.zig");
 const executor_metrics = @import("executor_metrics.zig");
+const runner = @import("runner.zig");
 
 const log = std.log.scoped(.executor_handler);
 
@@ -66,15 +68,15 @@ pub const Handler = struct {
         const p = params orelse return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, "Missing params");
         if (p != .object) return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, "Params must be object");
 
-        const workspace_path = getStringParam(p, "workspace_path") orelse return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, "Missing workspace_path");
+        const workspace_path = json.getStr(p, "workspace_path") orelse return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, "Missing workspace_path");
 
         const correlation = types.CorrelationContext{
-            .trace_id = getStringParam(p, "trace_id") orelse "",
-            .run_id = getStringParam(p, "run_id") orelse "",
-            .workspace_id = getStringParam(p, "workspace_id") orelse "",
-            .stage_id = getStringParam(p, "stage_id") orelse "",
-            .role_id = getStringParam(p, "role_id") orelse "",
-            .skill_id = getStringParam(p, "skill_id") orelse "",
+            .trace_id = json.getStr(p, "trace_id") orelse "",
+            .run_id = json.getStr(p, "run_id") orelse "",
+            .workspace_id = json.getStr(p, "workspace_id") orelse "",
+            .stage_id = json.getStr(p, "stage_id") orelse "",
+            .role_id = json.getStr(p, "role_id") orelse "",
+            .skill_id = json.getStr(p, "skill_id") orelse "",
         };
 
         const session_ptr = self.alloc.create(session_mod.Session) catch {
@@ -109,7 +111,7 @@ pub const Handler = struct {
         const p = params orelse return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, "Missing params");
         if (p != .object) return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, "Params must be object");
 
-        const exec_id_hex = getStringParam(p, "execution_id") orelse return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, "Missing execution_id");
+        const exec_id_hex = json.getStr(p, "execution_id") orelse return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, "Missing execution_id");
         const exec_id = parseExecutionId(exec_id_hex) orelse return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, "Invalid execution_id");
 
         const session = self.store.get(exec_id) orelse return self.errorResponse(alloc, id, protocol.ErrorCode.execution_failed, "Session not found");
@@ -122,37 +124,54 @@ pub const Handler = struct {
             return self.errorResponse(alloc, id, protocol.ErrorCode.lease_expired, "Lease expired");
         }
 
-        // Placeholder — returns empty result. Real NullClaw invocation is
-        // tracked in M12_003_EXECUTOR_NULLCLAW_INVOCATION. When wired:
-        // runner.execute(session, agent_config, tools, message) returns
-        // real content and the handler serializes it into the response.
-        const stage_id = getStringParam(p, "stage_id") orelse "";
-        const role_id = getStringParam(p, "role_id") orelse "";
+        const stage_id = json.getStr(p, "stage_id") orelse "";
+        const role_id = json.getStr(p, "role_id") orelse "";
         const hex = types.executionIdHex(exec_id);
-        log.info("executor.start_stage execution_id={s} stage_id={s} role_id={s}", .{ &hex, stage_id, role_id });
 
-        // Record a placeholder result. The real implementation in the sidecar
-        // binary calls the NullClaw runner here.
-        const result = types.ExecutionResult{
-            .content = "",
-            .token_count = 0,
-            .wall_seconds = 0,
-            .exit_ok = true,
-            .failure = null,
-        };
+        // Extract M12_003 payload fields.
+        const agent_config = getObjectParam(p, "agent_config");
+        const tools_spec = getArrayParam(p, "tools");
+        const message = json.getStr(p, "message");
+        const context = getObjectParam(p, "context");
+
+        const model_name = if (agent_config) |ac| json.getStr(ac, "model") orelse "default" else "default";
+        log.info("executor.runner.start execution_id={s} stage_id={s} role_id={s} model={s}", .{ &hex, stage_id, role_id, model_name });
+
+        // Invoke NullClaw runner — this blocks until agent execution completes.
+        const result = runner.execute(
+            alloc,
+            session.workspace_path,
+            agent_config,
+            tools_spec,
+            message,
+            context,
+        );
         session.recordStageResult(result);
         session.touchLease();
 
+        if (!result.exit_ok) {
+            const failure_label = if (result.failure) |f| f.label() else "unknown";
+            log.err("executor.runner.stage_failed execution_id={s} failure={s}", .{ &hex, failure_label });
+            const err_code = failureToRpcError(result.failure);
+            return self.errorResponse(alloc, id, err_code, failure_label);
+        }
+
+        // Serialize response with JSON-escaped content.
+        const escaped_content = jsonEscapeAlloc(alloc, result.content) catch {
+            return self.errorResponse(alloc, id, protocol.ErrorCode.internal_error, "Content escape failed");
+        };
+        defer alloc.free(escaped_content);
+
         return std.fmt.allocPrint(alloc,
-            \\{{"id":{d},"result":{{"content":"{s}","token_count":{d},"wall_seconds":{d},"exit_ok":{s}}}}}
-        , .{ id, result.content, result.token_count, result.wall_seconds, if (result.exit_ok) "true" else "false" });
+            \\{{"id":{d},"result":{{"content":"{s}","token_count":{d},"wall_seconds":{d},"exit_ok":true}}}}
+        , .{ id, escaped_content, result.token_count, result.wall_seconds });
     }
 
     fn handleCancelExecution(self: *Handler, alloc: std.mem.Allocator, id: u64, params: ?std.json.Value) ![]u8 {
         const p = params orelse return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, "Missing params");
         if (p != .object) return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, "Params must be object");
 
-        const exec_id_hex = getStringParam(p, "execution_id") orelse return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, "Missing execution_id");
+        const exec_id_hex = json.getStr(p, "execution_id") orelse return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, "Missing execution_id");
         const exec_id = parseExecutionId(exec_id_hex) orelse return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, "Invalid execution_id");
 
         const session = self.store.get(exec_id) orelse return self.errorResponse(alloc, id, protocol.ErrorCode.execution_failed, "Session not found");
@@ -166,7 +185,7 @@ pub const Handler = struct {
         const p = params orelse return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, "Missing params");
         if (p != .object) return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, "Params must be object");
 
-        const exec_id_hex = getStringParam(p, "execution_id") orelse return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, "Missing execution_id");
+        const exec_id_hex = json.getStr(p, "execution_id") orelse return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, "Missing execution_id");
         const exec_id = parseExecutionId(exec_id_hex) orelse return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, "Invalid execution_id");
 
         const session = self.store.get(exec_id) orelse return self.errorResponse(alloc, id, protocol.ErrorCode.execution_failed, "Session not found");
@@ -181,7 +200,7 @@ pub const Handler = struct {
         const p = params orelse return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, "Missing params");
         if (p != .object) return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, "Params must be object");
 
-        const exec_id_hex = getStringParam(p, "execution_id") orelse return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, "Missing execution_id");
+        const exec_id_hex = json.getStr(p, "execution_id") orelse return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, "Missing execution_id");
         const exec_id = parseExecutionId(exec_id_hex) orelse return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, "Invalid execution_id");
 
         const session = self.store.remove(exec_id) orelse return self.errorResponse(alloc, id, protocol.ErrorCode.execution_failed, "Session not found");
@@ -196,7 +215,7 @@ pub const Handler = struct {
         const p = params orelse return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, "Missing params");
         if (p != .object) return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, "Params must be object");
 
-        const exec_id_hex = getStringParam(p, "execution_id") orelse return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, "Missing execution_id");
+        const exec_id_hex = json.getStr(p, "execution_id") orelse return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, "Missing execution_id");
         const exec_id = parseExecutionId(exec_id_hex) orelse return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, "Invalid execution_id");
 
         const session = self.store.get(exec_id) orelse return self.errorResponse(alloc, id, protocol.ErrorCode.execution_failed, "Session not found");
@@ -215,13 +234,57 @@ pub const Handler = struct {
     }
 };
 
-fn getStringParam(obj: std.json.Value, key: []const u8) ?[]const u8 {
+fn getObjectParam(obj: std.json.Value, key: []const u8) ?std.json.Value {
     if (obj != .object) return null;
     const val = obj.object.get(key) orelse return null;
-    return switch (val) {
-        .string => |s| s,
-        else => null,
+    return if (val == .object) val else null;
+}
+
+fn getArrayParam(obj: std.json.Value, key: []const u8) ?std.json.Value {
+    if (obj != .object) return null;
+    const val = obj.object.get(key) orelse return null;
+    return if (val == .array) val else null;
+}
+
+/// Map a FailureClass to a JSON-RPC error code.
+fn failureToRpcError(failure: ?types.FailureClass) i32 {
+    const f = failure orelse return protocol.ErrorCode.execution_failed;
+    return switch (f) {
+        .timeout_kill => protocol.ErrorCode.timeout_killed,
+        .oom_kill => protocol.ErrorCode.oom_killed,
+        .policy_deny => protocol.ErrorCode.policy_denied,
+        .lease_expired => protocol.ErrorCode.lease_expired,
+        .landlock_deny => protocol.ErrorCode.landlock_denied,
+        .resource_kill => protocol.ErrorCode.resource_killed,
+        else => protocol.ErrorCode.execution_failed,
     };
+}
+
+/// Escape a string for embedding inside a JSON string literal.
+/// Caller owns returned slice.
+fn jsonEscapeAlloc(alloc: std.mem.Allocator, input: []const u8) ![]u8 {
+    var buf: std.ArrayList(u8) = .{};
+    errdefer buf.deinit(alloc);
+
+    for (input) |c| {
+        switch (c) {
+            '"' => try buf.appendSlice(alloc, "\\\""),
+            '\\' => try buf.appendSlice(alloc, "\\\\"),
+            '\n' => try buf.appendSlice(alloc, "\\n"),
+            '\r' => try buf.appendSlice(alloc, "\\r"),
+            '\t' => try buf.appendSlice(alloc, "\\t"),
+            else => {
+                if (c < 0x20) {
+                    var tmp: [6]u8 = undefined;
+                    const written = std.fmt.bufPrint(&tmp, "\\u{x:0>4}", .{c}) catch continue;
+                    try buf.appendSlice(alloc, written);
+                } else {
+                    try buf.append(alloc, c);
+                }
+            },
+        }
+    }
+    return buf.toOwnedSlice(alloc);
 }
 
 fn parseExecutionId(hex: []const u8) ?types.ExecutionId {
@@ -504,4 +567,244 @@ test "handler 100 create+destroy cycles no leak" {
         alloc.free(dresp_json);
     }
     try std.testing.expectEqual(@as(usize, 0), store.activeCount());
+}
+
+// ── jsonEscapeAlloc tests (security-critical) ────────────────────────
+
+test "jsonEscapeAlloc escapes double quotes" {
+    const alloc = std.testing.allocator;
+    const result = try jsonEscapeAlloc(alloc, "he said \"hi\"");
+    defer alloc.free(result);
+    try std.testing.expect(std.mem.indexOf(u8, result, "\\\"") != null);
+}
+
+test "jsonEscapeAlloc escapes backslashes" {
+    const alloc = std.testing.allocator;
+    const result = try jsonEscapeAlloc(alloc, "path\\to\\file");
+    defer alloc.free(result);
+    try std.testing.expect(std.mem.indexOf(u8, result, "\\\\") != null);
+}
+
+test "jsonEscapeAlloc escapes newlines and tabs" {
+    const alloc = std.testing.allocator;
+    const result = try jsonEscapeAlloc(alloc, "line1\nline2\tcol");
+    defer alloc.free(result);
+    try std.testing.expect(std.mem.indexOf(u8, result, "\\n") != null);
+    try std.testing.expect(std.mem.indexOf(u8, result, "\\t") != null);
+}
+
+test "jsonEscapeAlloc handles control characters" {
+    const alloc = std.testing.allocator;
+    const input = &[_]u8{0x01};
+    const result = try jsonEscapeAlloc(alloc, input);
+    defer alloc.free(result);
+    try std.testing.expect(std.mem.indexOf(u8, result, "\\u0001") != null);
+}
+
+test "jsonEscapeAlloc empty string returns empty" {
+    const alloc = std.testing.allocator;
+    const result = try jsonEscapeAlloc(alloc, "");
+    defer alloc.free(result);
+    try std.testing.expectEqualStrings("", result);
+}
+
+test "jsonEscapeAlloc preserves UTF-8 multibyte" {
+    const alloc = std.testing.allocator;
+    const result = try jsonEscapeAlloc(alloc, "日本語");
+    defer alloc.free(result);
+    try std.testing.expectEqualStrings("日本語", result);
+}
+
+test "jsonEscapeAlloc no leak on large input" {
+    const alloc = std.testing.allocator;
+    const input = try alloc.alloc(u8, 10 * 1024);
+    defer alloc.free(input);
+    @memset(input, 'A');
+    const result = try jsonEscapeAlloc(alloc, input);
+    defer alloc.free(result);
+    try std.testing.expectEqual(@as(usize, 10 * 1024), result.len);
+}
+
+// ── getObjectParam tests ─────────────────────────────────────────────
+
+test "getObjectParam returns object value" {
+    const alloc = std.testing.allocator;
+    var inner = std.json.ObjectMap.init(alloc);
+    defer inner.deinit();
+    try inner.put("x", .{ .integer = 1 });
+    const inner_val = std.json.Value{ .object = inner };
+
+    var outer = std.json.Value{ .object = std.json.ObjectMap.init(alloc) };
+    defer outer.object.deinit();
+    try outer.object.put("nested", inner_val);
+
+    const result = getObjectParam(outer, "nested");
+    try std.testing.expect(result != null);
+    try std.testing.expect(result.? == .object);
+}
+
+test "getObjectParam returns null for non-object" {
+    const alloc = std.testing.allocator;
+    var outer = std.json.Value{ .object = std.json.ObjectMap.init(alloc) };
+    defer outer.object.deinit();
+    try outer.object.put("name", .{ .string = "hello" });
+
+    const result = getObjectParam(outer, "name");
+    try std.testing.expect(result == null);
+}
+
+test "getObjectParam returns null for missing key" {
+    const alloc = std.testing.allocator;
+    var outer = std.json.Value{ .object = std.json.ObjectMap.init(alloc) };
+    defer outer.object.deinit();
+
+    const result = getObjectParam(outer, "nonexistent");
+    try std.testing.expect(result == null);
+}
+
+// ── getArrayParam tests ──────────────────────────────────────────────
+
+test "getArrayParam returns array value" {
+    const alloc = std.testing.allocator;
+    var arr = std.json.Array.init(alloc);
+    defer arr.deinit();
+    try arr.append(.{ .integer = 1 });
+    try arr.append(.{ .integer = 2 });
+
+    var outer = std.json.Value{ .object = std.json.ObjectMap.init(alloc) };
+    defer outer.object.deinit();
+    try outer.object.put("items", .{ .array = arr });
+
+    const result = getArrayParam(outer, "items");
+    try std.testing.expect(result != null);
+    try std.testing.expect(result.? == .array);
+}
+
+test "getArrayParam returns null for non-array" {
+    const alloc = std.testing.allocator;
+    var outer = std.json.Value{ .object = std.json.ObjectMap.init(alloc) };
+    defer outer.object.deinit();
+    try outer.object.put("name", .{ .string = "hello" });
+
+    const result = getArrayParam(outer, "name");
+    try std.testing.expect(result == null);
+}
+
+test "getArrayParam returns null for missing key" {
+    const alloc = std.testing.allocator;
+    var outer = std.json.Value{ .object = std.json.ObjectMap.init(alloc) };
+    defer outer.object.deinit();
+
+    const result = getArrayParam(outer, "nonexistent");
+    try std.testing.expect(result == null);
+}
+
+// ── failureToRpcError tests ──────────────────────────────────────────
+
+test "failureToRpcError maps all FailureClass variants" {
+    // Explicitly mapped variants.
+    try std.testing.expectEqual(@as(i32, protocol.ErrorCode.timeout_killed), failureToRpcError(.timeout_kill));
+    try std.testing.expectEqual(@as(i32, protocol.ErrorCode.oom_killed), failureToRpcError(.oom_kill));
+    try std.testing.expectEqual(@as(i32, protocol.ErrorCode.policy_denied), failureToRpcError(.policy_deny));
+    try std.testing.expectEqual(@as(i32, protocol.ErrorCode.lease_expired), failureToRpcError(.lease_expired));
+    try std.testing.expectEqual(@as(i32, protocol.ErrorCode.landlock_denied), failureToRpcError(.landlock_deny));
+    try std.testing.expectEqual(@as(i32, protocol.ErrorCode.resource_killed), failureToRpcError(.resource_kill));
+    // Variants that fall through to execution_failed.
+    try std.testing.expectEqual(@as(i32, protocol.ErrorCode.execution_failed), failureToRpcError(.startup_posture));
+    try std.testing.expectEqual(@as(i32, protocol.ErrorCode.execution_failed), failureToRpcError(.executor_crash));
+    try std.testing.expectEqual(@as(i32, protocol.ErrorCode.execution_failed), failureToRpcError(.transport_loss));
+}
+
+test "failureToRpcError maps null to execution_failed" {
+    try std.testing.expectEqual(@as(i32, protocol.ErrorCode.execution_failed), failureToRpcError(null));
+}
+
+// ── handleGetUsage test ──────────────────────────────────────────────
+
+test "handler GetUsage returns zero for fresh session" {
+    const alloc = std.testing.allocator;
+    var store = session_mod.SessionStore.init(alloc);
+    defer store.deinit();
+    var handler = Handler.init(alloc, &store, 30_000, .{});
+
+    // Create a session via handler.
+    var cparams = std.json.Value{ .object = std.json.ObjectMap.init(alloc) };
+    try cparams.object.put("workspace_path", .{ .string = "/tmp/test" });
+    try cparams.object.put("run_id", .{ .string = "r" });
+
+    const creq = try protocol.serializeRequest(alloc, 1, protocol.Method.create_execution, cparams);
+    const cresp_json = try handler.handleFrame(alloc, creq);
+    cparams.object.deinit();
+    alloc.free(creq);
+
+    // Extract execution_id.
+    var cresp = try protocol.parseResponse(alloc, cresp_json);
+    const exec_id = cresp.result.?.object.get("execution_id").?.string;
+    const exec_id_copy = try alloc.dupe(u8, exec_id);
+    cresp.deinit();
+    alloc.free(cresp_json);
+    defer alloc.free(exec_id_copy);
+
+    // GetUsage on fresh session.
+    var gparams = std.json.Value{ .object = std.json.ObjectMap.init(alloc) };
+    defer gparams.object.deinit();
+    try gparams.object.put("execution_id", .{ .string = exec_id_copy });
+
+    const greq = try protocol.serializeRequest(alloc, 2, protocol.Method.get_usage, gparams);
+    defer alloc.free(greq);
+    const gresp_json = try handler.handleFrame(alloc, greq);
+    defer alloc.free(gresp_json);
+
+    var gresp = try protocol.parseResponse(alloc, gresp_json);
+    defer gresp.deinit();
+    try std.testing.expect(gresp.rpc_error == null);
+    try std.testing.expect(gresp.result != null);
+
+    // Verify zero token_count and wall_seconds.
+    const result_obj = gresp.result.?.object;
+    const token_count = result_obj.get("token_count").?.integer;
+    const wall_seconds = result_obj.get("wall_seconds").?.integer;
+    try std.testing.expectEqual(@as(i64, 0), token_count);
+    try std.testing.expectEqual(@as(i64, 0), wall_seconds);
+}
+
+// ── handleHeartbeat test ─────────────────────────────────────────────
+
+test "handler Heartbeat refreshes lease" {
+    const alloc = std.testing.allocator;
+    var store = session_mod.SessionStore.init(alloc);
+    defer store.deinit();
+    var handler = Handler.init(alloc, &store, 30_000, .{});
+
+    // Create a session via handler.
+    var cparams = std.json.Value{ .object = std.json.ObjectMap.init(alloc) };
+    try cparams.object.put("workspace_path", .{ .string = "/tmp/test" });
+    try cparams.object.put("run_id", .{ .string = "r" });
+
+    const creq = try protocol.serializeRequest(alloc, 1, protocol.Method.create_execution, cparams);
+    const cresp_json = try handler.handleFrame(alloc, creq);
+    cparams.object.deinit();
+    alloc.free(creq);
+
+    // Extract execution_id.
+    var cresp = try protocol.parseResponse(alloc, cresp_json);
+    const exec_id = cresp.result.?.object.get("execution_id").?.string;
+    const exec_id_copy = try alloc.dupe(u8, exec_id);
+    cresp.deinit();
+    alloc.free(cresp_json);
+    defer alloc.free(exec_id_copy);
+
+    // Send Heartbeat.
+    var hparams = std.json.Value{ .object = std.json.ObjectMap.init(alloc) };
+    defer hparams.object.deinit();
+    try hparams.object.put("execution_id", .{ .string = exec_id_copy });
+
+    const hreq = try protocol.serializeRequest(alloc, 2, protocol.Method.heartbeat, hparams);
+    defer alloc.free(hreq);
+    const hresp_json = try handler.handleFrame(alloc, hreq);
+    defer alloc.free(hresp_json);
+
+    var hresp = try protocol.parseResponse(alloc, hresp_json);
+    defer hresp.deinit();
+    try std.testing.expect(hresp.rpc_error == null);
 }
