@@ -4,15 +4,14 @@
 #   Local: zig build -Dtarget=x86_64-linux -Doptimize=ReleaseSafe
 #          mkdir -p dist && cp zig-out/bin/zombied dist/zombied-linux-amd64
 
-FROM debian:bookworm-slim
+FROM alpine:3.23.3
 ARG TARGETARCH=amd64
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apk add --no-cache \
     bubblewrap \
     ca-certificates \
     git \
     openssl \
-    wget \
- && rm -rf /var/lib/apt/lists/*
+    wget
 WORKDIR /app
 COPY dist/zombied-linux-${TARGETARCH} /usr/local/bin/zombied
 RUN chmod +x /usr/local/bin/zombied
