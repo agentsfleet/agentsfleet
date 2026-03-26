@@ -437,6 +437,165 @@ test "ServeConfig.load rejects empty api key when explicitly configured with oid
     try std.testing.expectError(ValidationError.InvalidApiKeyList, ServeConfig.load(std.testing.allocator));
 }
 
+// --- T1: Defaults — ServeConfig.load applies correct defaults ---
+
+test "ServeConfig.load applies default port and concurrency" {
+    const env = [_][2][]const u8{
+        .{ "API_KEY", "dev-key" },
+        .{ "ENCRYPTION_MASTER_KEY", test_encryption_master_key },
+        .{ "GITHUB_APP_ID", "12345" },
+        .{ "GITHUB_APP_PRIVATE_KEY", "pem" },
+    };
+    try setTestEnv(&env);
+    defer unsetTestEnv(&env);
+
+    var cfg = try ServeConfig.load(std.testing.allocator);
+    defer cfg.deinit();
+
+    try std.testing.expectEqual(@as(u16, 3000), cfg.port);
+    try std.testing.expectEqual(@as(u32, 1), cfg.worker_concurrency);
+    try std.testing.expectEqual(@as(u32, 3), cfg.max_attempts);
+    try std.testing.expectEqual(@as(u64, 300_000), cfg.run_timeout_ms);
+    try std.testing.expectEqual(@as(i16, 1), cfg.api_http_threads);
+    try std.testing.expectEqual(@as(u32, 1024), cfg.api_max_clients);
+    try std.testing.expectEqualStrings("./config", cfg.config_dir);
+    try std.testing.expectEqualStrings("/tmp/zombie-git-cache", cfg.cache_root);
+    try std.testing.expectEqual(@as(u32, 1), cfg.active_kek_version);
+}
+
+// --- T2: Edge cases — zero/invalid values ---
+
+test "ServeConfig.load rejects zero worker_concurrency" {
+    const env = [_][2][]const u8{
+        .{ "API_KEY", "dev-key" },
+        .{ "ENCRYPTION_MASTER_KEY", test_encryption_master_key },
+        .{ "GITHUB_APP_ID", "12345" },
+        .{ "GITHUB_APP_PRIVATE_KEY", "pem" },
+        .{ "WORKER_CONCURRENCY", "0" },
+    };
+    try setTestEnv(&env);
+    defer unsetTestEnv(&env);
+
+    try std.testing.expectError(ValidationError.InvalidWorkerConcurrency, ServeConfig.load(std.testing.allocator));
+}
+
+test "ServeConfig.load rejects zero run_timeout_ms" {
+    const env = [_][2][]const u8{
+        .{ "API_KEY", "dev-key" },
+        .{ "ENCRYPTION_MASTER_KEY", test_encryption_master_key },
+        .{ "GITHUB_APP_ID", "12345" },
+        .{ "GITHUB_APP_PRIVATE_KEY", "pem" },
+        .{ "RUN_TIMEOUT_MS", "0" },
+    };
+    try setTestEnv(&env);
+    defer unsetTestEnv(&env);
+
+    try std.testing.expectError(ValidationError.InvalidRunTimeoutMs, ServeConfig.load(std.testing.allocator));
+}
+
+test "ServeConfig.load rejects short encryption key" {
+    const env = [_][2][]const u8{
+        .{ "API_KEY", "dev-key" },
+        .{ "ENCRYPTION_MASTER_KEY", "tooshort" },
+        .{ "GITHUB_APP_ID", "12345" },
+        .{ "GITHUB_APP_PRIVATE_KEY", "pem" },
+    };
+    try setTestEnv(&env);
+    defer unsetTestEnv(&env);
+
+    try std.testing.expectError(ValidationError.InvalidEncryptionMasterKey, ServeConfig.load(std.testing.allocator));
+}
+
+test "ServeConfig.load rejects non-hex encryption key" {
+    const env = [_][2][]const u8{
+        .{ "API_KEY", "dev-key" },
+        .{ "ENCRYPTION_MASTER_KEY", "gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg" },
+        .{ "GITHUB_APP_ID", "12345" },
+        .{ "GITHUB_APP_PRIVATE_KEY", "pem" },
+    };
+    try setTestEnv(&env);
+    defer unsetTestEnv(&env);
+
+    try std.testing.expectError(ValidationError.InvalidEncryptionMasterKey, ServeConfig.load(std.testing.allocator));
+}
+
+test "ServeConfig.load rejects empty GITHUB_APP_ID" {
+    const env = [_][2][]const u8{
+        .{ "API_KEY", "dev-key" },
+        .{ "ENCRYPTION_MASTER_KEY", test_encryption_master_key },
+        .{ "GITHUB_APP_ID", "" },
+        .{ "GITHUB_APP_PRIVATE_KEY", "pem" },
+    };
+    try setTestEnv(&env);
+    defer unsetTestEnv(&env);
+
+    try std.testing.expectError(ValidationError.MissingGitHubAppId, ServeConfig.load(std.testing.allocator));
+}
+
+// --- T3: KEK v2 path ---
+
+test "ServeConfig.load rejects KEK_VERSION=2 without v2 key" {
+    const env = [_][2][]const u8{
+        .{ "API_KEY", "dev-key" },
+        .{ "ENCRYPTION_MASTER_KEY", test_encryption_master_key },
+        .{ "GITHUB_APP_ID", "12345" },
+        .{ "GITHUB_APP_PRIVATE_KEY", "pem" },
+        .{ "KEK_VERSION", "2" },
+    };
+    try setTestEnv(&env);
+    defer unsetTestEnv(&env);
+
+    try std.testing.expectError(ValidationError.MissingEncryptionMasterKeyV2, ServeConfig.load(std.testing.allocator));
+}
+
+test "ServeConfig.load accepts KEK_VERSION=2 with valid v2 key" {
+    const v2_key = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+    const env = [_][2][]const u8{
+        .{ "API_KEY", "dev-key" },
+        .{ "ENCRYPTION_MASTER_KEY", test_encryption_master_key },
+        .{ "GITHUB_APP_ID", "12345" },
+        .{ "GITHUB_APP_PRIVATE_KEY", "pem" },
+        .{ "KEK_VERSION", "2" },
+        .{ "ENCRYPTION_MASTER_KEY_V2", v2_key },
+    };
+    try setTestEnv(&env);
+    defer unsetTestEnv(&env);
+
+    var cfg = try ServeConfig.load(std.testing.allocator);
+    defer cfg.deinit();
+
+    try std.testing.expectEqual(@as(u32, 2), cfg.active_kek_version);
+    try std.testing.expectEqualStrings(v2_key, cfg.encryption_master_key_v2.?);
+}
+
+test "ServeConfig.load rejects KEK_VERSION=0" {
+    const env = [_][2][]const u8{
+        .{ "API_KEY", "dev-key" },
+        .{ "ENCRYPTION_MASTER_KEY", test_encryption_master_key },
+        .{ "GITHUB_APP_ID", "12345" },
+        .{ "GITHUB_APP_PRIVATE_KEY", "pem" },
+        .{ "KEK_VERSION", "0" },
+    };
+    try setTestEnv(&env);
+    defer unsetTestEnv(&env);
+
+    try std.testing.expectError(ValidationError.InvalidKekVersion, ServeConfig.load(std.testing.allocator));
+}
+
+test "ServeConfig.load rejects negative READY_MAX_QUEUE_DEPTH" {
+    const env = [_][2][]const u8{
+        .{ "API_KEY", "dev-key" },
+        .{ "ENCRYPTION_MASTER_KEY", test_encryption_master_key },
+        .{ "GITHUB_APP_ID", "12345" },
+        .{ "GITHUB_APP_PRIVATE_KEY", "pem" },
+        .{ "READY_MAX_QUEUE_DEPTH", "-5" },
+    };
+    try setTestEnv(&env);
+    defer unsetTestEnv(&env);
+
+    try std.testing.expectError(ValidationError.InvalidReadyMaxQueueDepth, ServeConfig.load(std.testing.allocator));
+}
+
 fn setTestEnv(env: []const [2][]const u8) !void {
     for (env) |entry| {
         try std.posix.setenv(entry[0], entry[1], true);

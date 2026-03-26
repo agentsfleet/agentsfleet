@@ -154,3 +154,129 @@ fn parseU64Env(alloc: std.mem.Allocator, name: []const u8, default_value: u64, i
     defer alloc.free(raw);
     return std.fmt.parseInt(u64, raw, 10) catch invalid_error;
 }
+
+// --- Test helpers ---
+
+const worker_test_env = [_][2][]const u8{
+    .{ "GITHUB_APP_ID", "12345" },
+    .{ "GITHUB_APP_PRIVATE_KEY", "test-pem-key" },
+};
+
+fn setWorkerTestEnv(env: []const [2][]const u8) void {
+    for (env) |entry| {
+        std.posix.setenv(entry[0], entry[1], true) catch {};
+    }
+}
+
+fn unsetWorkerTestEnv(env: []const [2][]const u8) void {
+    for (env) |entry| {
+        std.posix.unsetenv(entry[0]);
+    }
+}
+
+// --- T1: Happy path — Config.load with required env set ---
+
+test "Config.load succeeds with required env vars" {
+    setWorkerTestEnv(&worker_test_env);
+    defer unsetWorkerTestEnv(&worker_test_env);
+
+    var cfg = try Config.load(std.testing.allocator);
+    defer cfg.deinit();
+
+    try std.testing.expectEqualStrings("12345", cfg.github_app_id);
+    try std.testing.expectEqualStrings("test-pem-key", cfg.github_app_private_key);
+    try std.testing.expectEqualStrings("./config", cfg.config_dir);
+    try std.testing.expectEqualStrings("/tmp/zombie-git-cache", cfg.cache_root);
+    try std.testing.expectEqual(@as(u32, 3), cfg.max_attempts);
+    try std.testing.expectEqual(@as(u32, 1), cfg.worker_concurrency);
+    try std.testing.expectEqual(@as(u64, 300_000), cfg.run_timeout_ms);
+    try std.testing.expect(cfg.executor_socket_path == null);
+}
+
+// --- T3: Error paths — missing required env ---
+
+test "Config.load rejects missing GITHUB_APP_ID" {
+    // Ensure clean state — unset both, defer restore
+    std.posix.unsetenv("GITHUB_APP_ID");
+    std.posix.unsetenv("GITHUB_APP_PRIVATE_KEY");
+    defer unsetWorkerTestEnv(&worker_test_env);
+
+    try std.testing.expectError(ValidationError.MissingGitHubAppId, Config.load(std.testing.allocator));
+}
+
+test "Config.load rejects empty GITHUB_APP_ID" {
+    const env = [_][2][]const u8{
+        .{ "GITHUB_APP_ID", "" },
+        .{ "GITHUB_APP_PRIVATE_KEY", "pem" },
+    };
+    setWorkerTestEnv(&env);
+    defer unsetWorkerTestEnv(&env);
+
+    try std.testing.expectError(ValidationError.MissingGitHubAppId, Config.load(std.testing.allocator));
+}
+
+test "Config.load rejects missing GITHUB_APP_PRIVATE_KEY" {
+    const env = [_][2][]const u8{
+        .{ "GITHUB_APP_ID", "12345" },
+    };
+    setWorkerTestEnv(&env);
+    std.posix.unsetenv("GITHUB_APP_PRIVATE_KEY");
+    defer unsetWorkerTestEnv(&env);
+
+    try std.testing.expectError(ValidationError.MissingGitHubAppPrivateKey, Config.load(std.testing.allocator));
+}
+
+// --- T2: Edge cases — invalid numeric env overrides ---
+
+test "Config.load rejects zero max_attempts" {
+    setWorkerTestEnv(&worker_test_env);
+    defer unsetWorkerTestEnv(&worker_test_env);
+    std.posix.setenv("DEFAULT_MAX_ATTEMPTS", "0", true) catch {};
+    defer std.posix.unsetenv("DEFAULT_MAX_ATTEMPTS");
+
+    try std.testing.expectError(ValidationError.InvalidMaxAttempts, Config.load(std.testing.allocator));
+}
+
+test "Config.load rejects zero worker_concurrency" {
+    setWorkerTestEnv(&worker_test_env);
+    defer unsetWorkerTestEnv(&worker_test_env);
+    std.posix.setenv("WORKER_CONCURRENCY", "0", true) catch {};
+    defer std.posix.unsetenv("WORKER_CONCURRENCY");
+
+    try std.testing.expectError(ValidationError.InvalidWorkerConcurrency, Config.load(std.testing.allocator));
+}
+
+test "Config.load rejects non-numeric max_attempts" {
+    setWorkerTestEnv(&worker_test_env);
+    defer unsetWorkerTestEnv(&worker_test_env);
+    std.posix.setenv("DEFAULT_MAX_ATTEMPTS", "abc", true) catch {};
+    defer std.posix.unsetenv("DEFAULT_MAX_ATTEMPTS");
+
+    try std.testing.expectError(ValidationError.InvalidMaxAttempts, Config.load(std.testing.allocator));
+}
+
+test "Config.load rejects executor CPU limit above 100" {
+    setWorkerTestEnv(&worker_test_env);
+    defer unsetWorkerTestEnv(&worker_test_env);
+    std.posix.setenv("EXECUTOR_CPU_LIMIT_PERCENT", "101", true) catch {};
+    defer std.posix.unsetenv("EXECUTOR_CPU_LIMIT_PERCENT");
+
+    try std.testing.expectError(ValidationError.InvalidExecutorCpuLimitPercent, Config.load(std.testing.allocator));
+}
+
+test "Config.load picks up custom env overrides" {
+    setWorkerTestEnv(&worker_test_env);
+    defer unsetWorkerTestEnv(&worker_test_env);
+    std.posix.setenv("WORKER_CONCURRENCY", "4", true) catch {};
+    std.posix.setenv("RUN_TIMEOUT_MS", "60000", true) catch {};
+    defer {
+        std.posix.unsetenv("WORKER_CONCURRENCY");
+        std.posix.unsetenv("RUN_TIMEOUT_MS");
+    }
+
+    var cfg = try Config.load(std.testing.allocator);
+    defer cfg.deinit();
+
+    try std.testing.expectEqual(@as(u32, 4), cfg.worker_concurrency);
+    try std.testing.expectEqual(@as(u64, 60000), cfg.run_timeout_ms);
+}

@@ -96,7 +96,7 @@ pub fn parseProfileJson(alloc: std.mem.Allocator, raw: []const u8) !Profile {
 }
 
 pub fn loadProfile(alloc: std.mem.Allocator, path: []const u8) !Profile {
-    const file = std.fs.openFileAbsolute(path, .{}) catch |err| switch (err) {
+    const file = std.fs.cwd().openFile(path, .{}) catch |err| switch (err) {
         error.FileNotFound => return defaultProfile(alloc),
         else => return err,
     };
@@ -311,6 +311,86 @@ test "integration: stage transitions validate on_pass/on_fail targets" {
     };
 
     try std.testing.expectError(TopologyError.InvalidTransitionTarget, fromDoc(alloc, bad));
+}
+
+// --- T1: Happy path — loadProfile reads valid JSON from file ---
+
+test "loadProfile reads valid profile from temp file" {
+    const alloc = std.testing.allocator;
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const json =
+        \\{"agent_id":"test-v1","stages":[
+        \\  {"stage_id":"plan","role":"echo"},
+        \\  {"stage_id":"implement","role":"scout"},
+        \\  {"stage_id":"verify","role":"warden","gate":true,"on_pass":"done","on_fail":"retry"}
+        \\]}
+    ;
+    try tmp.dir.writeFile(.{ .sub_path = "profile.json", .data = json });
+
+    const path = try tmp.dir.realpathAlloc(alloc, "profile.json");
+    defer alloc.free(path);
+
+    var profile = try loadProfile(alloc, path);
+    defer profile.deinit();
+    try std.testing.expectEqualStrings("test-v1", profile.agent_id);
+    try std.testing.expectEqual(@as(usize, 3), profile.stages.len);
+    try std.testing.expectEqualStrings("plan", profile.stages[0].stage_id);
+    try std.testing.expectEqualStrings("echo", profile.stages[0].role_id);
+}
+
+// --- T3: Error/fallback paths ---
+
+test "loadProfile falls back to default when file not found" {
+    var profile = try loadProfile(std.testing.allocator, "/tmp/nonexistent-zombie-test-profile-abc123.json");
+    defer profile.deinit();
+    try std.testing.expectEqualStrings("default-v1", profile.agent_id);
+    try std.testing.expectEqual(@as(usize, 3), profile.stages.len);
+}
+
+test "loadProfile returns error on malformed JSON" {
+    const alloc = std.testing.allocator;
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    try tmp.dir.writeFile(.{ .sub_path = "bad.json", .data = "{invalid json" });
+
+    const path = try tmp.dir.realpathAlloc(alloc, "bad.json");
+    defer alloc.free(path);
+
+    try std.testing.expectError(error.SyntaxError, loadProfile(alloc, path));
+}
+
+test "loadProfile returns error on too few stages" {
+    const alloc = std.testing.allocator;
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const json =
+        \\{"agent_id":"short","stages":[
+        \\  {"stage_id":"plan","role":"echo"},
+        \\  {"stage_id":"verify","role":"warden"}
+        \\]}
+    ;
+    try tmp.dir.writeFile(.{ .sub_path = "short.json", .data = json });
+
+    const path = try tmp.dir.realpathAlloc(alloc, "short.json");
+    defer alloc.free(path);
+
+    try std.testing.expectError(TopologyError.InvalidProfile, loadProfile(alloc, path));
+}
+
+// --- T7: Regression — loadProfile with cwd().openFile handles both path types ---
+
+test "loadProfile default fallback preserves v1 contract" {
+    // Regression: ensure the fallback default profile matches the expected v1 stages
+    var profile = try loadProfile(std.testing.allocator, "/no/such/path.json");
+    defer profile.deinit();
+    try std.testing.expectEqualStrings(STAGE_PLAN, profile.stages[0].stage_id);
+    try std.testing.expectEqualStrings(STAGE_IMPLEMENT, profile.stages[1].stage_id);
+    try std.testing.expectEqualStrings(STAGE_VERIFY, profile.stages[2].stage_id);
+    try std.testing.expect(profile.stages[2].is_gate);
 }
 
 test "profile with custom gate skill is accepted (roles are dynamic)" {

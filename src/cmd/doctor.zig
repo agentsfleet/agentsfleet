@@ -301,7 +301,7 @@ pub fn run(alloc: std.mem.Allocator) !void {
         for (required_files) |fname| {
             const path = try std.fmt.allocPrint(alloc, "{s}/{s}", .{ config_dir, fname });
             defer alloc.free(path);
-            if (std.fs.accessAbsolute(path, .{})) |_| {
+            if (std.fs.cwd().access(path, .{})) |_| {
                 const detail = try std.fmt.allocPrint(alloc, "config/{s}", .{fname});
                 defer alloc.free(detail);
                 try appendCheck(alloc, &results, "agent_config_file", true, detail, &ok);

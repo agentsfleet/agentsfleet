@@ -207,17 +207,18 @@ pub fn runByRole(alloc: std.mem.Allocator, binding: RoleBinding, input: RoleInpu
 }
 
 pub fn loadPrompts(alloc: std.mem.Allocator, config_dir: []const u8) !PromptFiles {
-    return .{
-        .echo = try readFile(alloc, config_dir, "echo-prompt.md"),
-        .scout = try readFile(alloc, config_dir, "scout-prompt.md"),
-        .warden = try readFile(alloc, config_dir, "warden-prompt.md"),
-    };
+    const echo = try readFile(alloc, config_dir, "echo-prompt.md");
+    errdefer alloc.free(echo);
+    const scout = try readFile(alloc, config_dir, "scout-prompt.md");
+    errdefer alloc.free(scout);
+    const warden = try readFile(alloc, config_dir, "warden-prompt.md");
+    return .{ .echo = echo, .scout = scout, .warden = warden };
 }
 
 fn readFile(alloc: std.mem.Allocator, dir: []const u8, name: []const u8) ![]const u8 {
     const path = try std.fmt.allocPrint(alloc, "{s}/{s}", .{ dir, name });
     defer alloc.free(path);
-    const file = try std.fs.openFileAbsolute(path, .{});
+    const file = try std.fs.cwd().openFile(path, .{});
     defer file.close();
     return file.readToEndAlloc(alloc, 512 * 1024);
 }
