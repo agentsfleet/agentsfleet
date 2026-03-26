@@ -9,6 +9,7 @@
 bc451b24ca495ca744a3fe29abb1ba24a16731c6:src/http/handlers/github_callback.zig:generic-api-key:139
 bc451b24ca495ca744a3fe29abb1ba24a16731c6:src/secrets/crypto_primitives.zig:generic-api-key:68
 a31f73aa55faed6793bbd64237699bb8e325efbe:docker-compose.yml:generic-api-key:64
+3c7678b5ef1583cf370b3d2ae45e22cfe15b6f34:docker-compose.yml:generic-api-key:64
 ca445be1d13fc95548d9053c262eee128d2d195a:src/http/rbac_http_integration_test.zig:jwt:25
 ca445be1d13fc95548d9053c262eee128d2d195a:src/http/rbac_http_integration_test.zig:jwt:27
 ca445be1d13fc95548d9053c262eee128d2d195a:src/http/rbac_http_integration_test.zig:jwt:29

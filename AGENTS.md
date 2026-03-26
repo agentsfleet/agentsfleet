@@ -35,7 +35,7 @@ ASSUMPTIONS I'M MAKING:
 - Hardware: MacBook.
 - Primary languages: Python, Go, Rust, TypeScript, Zig.
 - Runtime/tool install policy: `mise` first, `brew` fallback.
-- Password tooling: Proton Pass workflow, `pass-cli` preferred when installed.
+- Password tooling: 1Password, `op` CLI.
 - Git forges: both GitHub (`gh`) and GitLab (`glab`).
 
 ## Explicit Exclusions
@@ -568,10 +568,10 @@ gh auth status
 glab auth status
 ```
 
-If `glab` needs a token and `pass-cli` is available:
+If `glab` needs a token:
 
 ```bash
-TOKEN="$(pass-cli item view --vault-name "AGENTS_BUFFET" --item-title "GITLAB_PERSONAL_ACCESS_TOKEN" --field password)"
+TOKEN="$(op item get "gitlab-pat" --vault "E2E_WORK" --field credential)"
 glab auth login --hostname awakeninggit.e2enetworks.net --token "$TOKEN"
 ```
 

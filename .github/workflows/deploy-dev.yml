@@ -115,7 +115,7 @@ jobs:
             GRAFANA_OTLP_ENDPOINT="$GRAFANA_OTLP_ENDPOINT" \
             GRAFANA_OTLP_INSTANCE_ID="$GRAFANA_OTLP_INSTANCE_ID" \
             GRAFANA_OTLP_API_KEY="$GRAFANA_OTLP_API_KEY" \
-            --app "${{ vars.FLY_APP_DEV }}" --stage
+            --app "${{ vars.FLY_APP_DEV }}"
         env:
           FLY_API_TOKEN: ${{ env.FLY_API_TOKEN }}
 
