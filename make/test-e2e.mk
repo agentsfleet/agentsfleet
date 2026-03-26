@@ -12,15 +12,16 @@ BACKEND_E2E_SMOKE_FILTER ?= integration: beginApiRequest enforces max in-flight 
 
 _zig_test_filter:
 	@mkdir -p "$(ZIG_GLOBAL_CACHE_DIR)" "$(ZIG_LOCAL_CACHE_DIR)"
-	@redis_tls_test_url="$$REDIS_TLS_TEST_URL"; \
+	@redis_tls_test_url="$$TEST_REDIS_TLS_URL"; \
 	 if [ -z "$$redis_tls_test_url" ] && [ -n "$$REDIS_URL" ]; then \
 	   case "$$REDIS_URL" in \
 	     rediss://*) redis_tls_test_url="$$REDIS_URL" ;; \
 	   esac; \
 	 fi; \
+	 env -u TEST_REDIS_TLS_URL \
 	 ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" \
 	 ZIG_LOCAL_CACHE_DIR="$(ZIG_LOCAL_CACHE_DIR)" \
-	 REDIS_TLS_TEST_URL="$$redis_tls_test_url" \
+	 $${redis_tls_test_url:+TEST_REDIS_TLS_URL="$$redis_tls_test_url"} \
 	 zig build -Dtest-filter="$$TEST_FILTER" test
 
 _test_e2e_backend:

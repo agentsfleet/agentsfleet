@@ -95,3 +95,25 @@ test "integration: worker state in-flight run counter is balanced across threads
 
     try std.testing.expectEqual(@as(u32, 0), ws.currentInFlightRuns());
 }
+
+test "WorkerState.init starts running with zero in-flight" {
+    const ws = WorkerState.init();
+    try std.testing.expect(ws.running.load(.acquire));
+    try std.testing.expectEqual(@as(u32, 0), ws.currentInFlightRuns());
+}
+
+test "WorkerState running flag transitions from true to false" {
+    var ws = WorkerState.init();
+    try std.testing.expect(ws.running.load(.acquire));
+    ws.running.store(false, .release);
+    try std.testing.expect(!ws.running.load(.acquire));
+}
+
+test "beginRunIfActive allows multiple concurrent runs while running" {
+    var ws = WorkerState.init();
+    try beginRunIfActive(&ws);
+    try beginRunIfActive(&ws);
+    try std.testing.expectEqual(@as(u32, 2), ws.currentInFlightRuns());
+    ws.endRun();
+    ws.endRun();
+}

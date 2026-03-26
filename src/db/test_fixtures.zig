@@ -140,14 +140,14 @@ pub fn teardownSpecs(conn: *pg.Conn, workspace_id: []const u8) void {
 
 // ── Shared DB connection ────────────────────────────────────────────────
 
-/// Open a test DB connection. Returns null when HANDLER_DB_TEST_URL / DATABASE_URL
+/// Open a test DB connection. Returns null when TEST_DATABASE_URL / DATABASE_URL
 /// is unset, causing the test to be skipped via `return error.SkipZigTest`.
 ///
 /// Uses page_allocator for URL parse results so they outlive the pool. pg.Pool
 /// stores shallow references to host/auth strings — if parsed via an arena that
 /// is freed first, pool.release() crashes on non-idle connections.
 pub fn openTestConn(alloc: std.mem.Allocator) !?struct { pool: *pg.Pool, conn: *pg.Conn } {
-    const url = std.process.getEnvVarOwned(alloc, "HANDLER_DB_TEST_URL") catch
+    const url = std.process.getEnvVarOwned(alloc, "TEST_DATABASE_URL") catch
         std.process.getEnvVarOwned(alloc, "DATABASE_URL") catch return null;
     defer alloc.free(url);
 

@@ -6,7 +6,7 @@ Status: Canonical Zig source of truth for agents and commits
 ## Must
 
 - Run `make lint`, `make test`, and `gitleaks detect` before any commit that includes Zig changes.
-- Run `HANDLER_DB_TEST_URL=postgres://usezombie:usezombie@localhost:5432/usezombiedb make test-integration-db` when touching DB-backed handlers, proposal flows, or temp-table-based Zig tests.
+- Run `TEST_DATABASE_URL=postgres://usezombie:usezombie@localhost:5432/usezombiedb make test-integration-db` when touching DB-backed handlers, proposal flows, or temp-table-based Zig tests.
 - Read this file before creating any new `*.zig` file.
 - Use `conn.exec()` for INSERT / UPDATE / DDL whenever possible.
 - Drain early-exit `conn.query()` results before `deinit()`.
@@ -47,6 +47,6 @@ Status: Canonical Zig source of truth for agents and commits
 
 - `make lint`
 - `make test`
-- `HANDLER_DB_TEST_URL=postgres://usezombie:usezombie@localhost:5432/usezombiedb make test-integration-db`
+- `TEST_DATABASE_URL=postgres://usezombie:usezombie@localhost:5432/usezombiedb make test-integration-db`
 - `gitleaks detect`
 - `make check-pg-drain` — static check: every `conn.query()` must have `.drain()` in the same function. Run this when touching any file that calls `conn.query()`. See `lint-zig.py`.

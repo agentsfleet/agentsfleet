@@ -69,7 +69,7 @@ pub fn run(alloc: std.mem.Allocator) !void {
 // ---------------------------------------------------------------------------
 
 fn openReconcileTestConn(alloc: std.mem.Allocator) !?struct { pool: *db.Pool, conn: *db.Conn } {
-    const url = std.process.getEnvVarOwned(alloc, "HANDLER_DB_TEST_URL") catch
+    const url = std.process.getEnvVarOwned(alloc, "TEST_DATABASE_URL") catch
         std.process.getEnvVarOwned(alloc, "DATABASE_URL") catch return null;
     defer alloc.free(url);
 

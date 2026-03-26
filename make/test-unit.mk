@@ -7,15 +7,16 @@
 test-unit-zombied:  ## Run zombied unit tests (Zig)
 	@echo "→ [zombied] Running Zig unit tests..."
 	@mkdir -p "$(ZIG_GLOBAL_CACHE_DIR)" "$(ZIG_LOCAL_CACHE_DIR)"
-	@redis_tls_test_url="$$REDIS_TLS_TEST_URL"; \
+	@redis_tls_test_url="$$TEST_REDIS_TLS_URL"; \
 	 if [ -z "$$redis_tls_test_url" ] && [ -n "$$REDIS_URL" ]; then \
 	   case "$$REDIS_URL" in \
 	     rediss://*) redis_tls_test_url="$$REDIS_URL" ;; \
 	   esac; \
 	 fi; \
+	 env -u TEST_REDIS_TLS_URL \
 	 ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" \
 	 ZIG_LOCAL_CACHE_DIR="$(ZIG_LOCAL_CACHE_DIR)" \
-	 REDIS_TLS_TEST_URL="$$redis_tls_test_url" \
+	 $${redis_tls_test_url:+TEST_REDIS_TLS_URL="$$redis_tls_test_url"} \
 	 zig build test --summary all
 	@$(MAKE) _test-unit-zombied-executor
 	@$(MAKE) test-depth

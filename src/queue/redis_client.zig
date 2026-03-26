@@ -4,6 +4,7 @@ const redis_types = @import("redis_types.zig");
 const redis_config = @import("redis_config.zig");
 const redis_protocol = @import("redis_protocol.zig");
 const redis_transport = @import("redis_transport.zig");
+const error_codes = @import("../errors/codes.zig");
 
 const log = std.log.scoped(.redis_queue);
 
@@ -113,11 +114,11 @@ pub const Client = struct {
 
         switch (resp) {
             .bulk => |v| if (v == null) {
-                log.err("redis.xadd_fail run_id={s} attempt={d} error_code=UZ-INTERNAL-003", .{ run_id, attempt });
+                log.err("redis.xadd_fail run_id={s} attempt={d} error_code=" ++ error_codes.ERR_INTERNAL_OPERATION_FAILED, .{ run_id, attempt });
                 return error.RedisXaddFailed;
             },
             else => {
-                log.err("redis.xadd_fail run_id={s} attempt={d} error_code=UZ-INTERNAL-003", .{ run_id, attempt });
+                log.err("redis.xadd_fail run_id={s} attempt={d} error_code=" ++ error_codes.ERR_INTERNAL_OPERATION_FAILED, .{ run_id, attempt });
                 return error.RedisXaddFailed;
             },
         }
@@ -135,11 +136,11 @@ pub const Client = struct {
 
         switch (resp) {
             .integer => |v| if (v < 0) {
-                log.err("redis.xack_fail message_id={s} error_code=UZ-INTERNAL-003", .{message_id});
+                log.err("redis.xack_fail message_id={s} error_code=" ++ error_codes.ERR_INTERNAL_OPERATION_FAILED, .{message_id});
                 return error.RedisXackFailed;
             },
             else => {
-                log.err("redis.xack_fail message_id={s} error_code=UZ-INTERNAL-003", .{message_id});
+                log.err("redis.xack_fail message_id={s} error_code=" ++ error_codes.ERR_INTERNAL_OPERATION_FAILED, .{message_id});
                 return error.RedisXackFailed;
             },
         }
@@ -182,7 +183,7 @@ pub const Client = struct {
     pub fn command(self: *Client, argv: []const []const u8) !redis_protocol.RespValue {
         var value = try self.commandAllowError(argv);
         if (value == .err) {
-            log.err("redis.command_error cmd={s} error_code=UZ-INTERNAL-003", .{if (argv.len > 0) argv[0] else "unknown"});
+            log.err("redis.command_error cmd={s} error_code=" ++ error_codes.ERR_INTERNAL_OPERATION_FAILED, .{if (argv.len > 0) argv[0] else "unknown"});
             value.deinit(self.alloc);
             return error.RedisCommandError;
         }

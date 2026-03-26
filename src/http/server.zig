@@ -12,7 +12,10 @@ const log = std.log.scoped(.http);
 
 pub const ServerConfig = struct {
     port: u16 = 3000,
-    interface: []const u8 = "0.0.0.0",
+    /// Dual-stack "::" accepts both IPv4 and IPv6 connections.
+    /// Requires IPV6_V6ONLY=0 (Linux kernel default). If facilio or the OS
+    /// sets IPV6_V6ONLY=1, only IPv6 will be accepted.
+    interface: [:0]const u8 = "::",
     threads: i16 = 1,
     workers: i16 = 1,
     max_clients: ?isize = 1024,
@@ -120,6 +123,54 @@ test "dispatchMatchedRoute route matcher covers billing event endpoint" {
     }
 }
 
+// ── ServerConfig tests ───────────────────────────────────────────────────
+
+test "ServerConfig default interface is dual-stack (::)" {
+    const cfg = ServerConfig{};
+    try std.testing.expectEqualStrings("::", cfg.interface);
+}
+
+test "ServerConfig default interface is NOT IPv4-only — regression guard" {
+    const cfg = ServerConfig{};
+    // The old default "0.0.0.0" caused Fly 6PN (IPv6) tunnel connections to be refused.
+    const is_ipv4_only = std.mem.eql(u8, cfg.interface, "0.0.0.0") or
+        std.mem.eql(u8, cfg.interface, "127.0.0.1");
+    try std.testing.expect(!is_ipv4_only);
+}
+
+test "ServerConfig interface type enforces null-termination for C FFI" {
+    const cfg = ServerConfig{};
+    // The [:0]const u8 type guarantees null-termination at compile time.
+    // Zap passes interface.ptr to facilio's C http_listen() as [*c]const u8.
+    try std.testing.expectEqual(@as(u8, 0), cfg.interface.ptr[cfg.interface.len]);
+}
+
+test "ServerConfig accepts custom IPv4 interface override" {
+    const cfg = ServerConfig{ .interface = "0.0.0.0" };
+    try std.testing.expectEqualStrings("0.0.0.0", cfg.interface);
+    try std.testing.expectEqual(@as(u8, 0), cfg.interface.ptr[cfg.interface.len]);
+}
+
+test "ServerConfig accepts custom IPv6 loopback interface" {
+    const cfg = ServerConfig{ .interface = "::1" };
+    try std.testing.expectEqualStrings("::1", cfg.interface);
+    try std.testing.expectEqual(@as(u8, 0), cfg.interface.ptr[cfg.interface.len]);
+}
+
+test "ServerConfig default port is 3000" {
+    const cfg = ServerConfig{};
+    try std.testing.expectEqual(@as(u16, 3000), cfg.port);
+}
+
+test "ServerConfig defaults are stable — full struct check" {
+    const cfg = ServerConfig{};
+    try std.testing.expectEqual(@as(u16, 3000), cfg.port);
+    try std.testing.expectEqualStrings("::", cfg.interface);
+    try std.testing.expectEqual(@as(i16, 1), cfg.threads);
+    try std.testing.expectEqual(@as(i16, 1), cfg.workers);
+    try std.testing.expectEqual(@as(?isize, 1024), cfg.max_clients);
+}
+
 // ── Server lifecycle ──────────────────────────────────────────────────────
 
 /// Start the Zap HTTP server. Blocks until zap.stop() is called.
@@ -128,6 +179,7 @@ pub fn serve(ctx: *handler.Context, cfg: ServerConfig) !void {
 
     var listener = zap.HttpListener.init(.{
         .port = cfg.port,
+        .interface = cfg.interface.ptr,
         .on_request = dispatch,
         .log = false,
         .max_clients = cfg.max_clients,
@@ -135,7 +187,7 @@ pub fn serve(ctx: *handler.Context, cfg: ServerConfig) !void {
     });
     try listener.listen();
 
-    log.info("http.listening port={d}", .{cfg.port});
+    log.info("http.listening interface={s} port={d}", .{ cfg.interface, cfg.port });
 
     zap.start(.{
         .threads = cfg.threads,

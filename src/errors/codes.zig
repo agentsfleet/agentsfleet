@@ -1,6 +1,6 @@
 const std = @import("std");
 
-pub const ERROR_DOCS_BASE = "https://docs.e2enetworks.com/error-codes#";
+pub const ERROR_DOCS_BASE = "https://docs.usezombie.com/error-codes#";
 
 pub const ERR_UUIDV7_CANONICAL_FORMAT = "UZ-UUIDV7-003";
 pub const ERR_UUIDV7_ID_GENERATION_FAILED = "UZ-UUIDV7-005";
@@ -71,11 +71,15 @@ pub const ERR_STARTUP_ENV_CHECK = "UZ-STARTUP-001";
 pub const ERR_STARTUP_CONFIG_LOAD = "UZ-STARTUP-002";
 pub const ERR_STARTUP_DB_CONNECT = "UZ-STARTUP-003";
 pub const ERR_STARTUP_REDIS_CONNECT = "UZ-STARTUP-004";
+pub const ERR_STARTUP_REDIS_GROUP = "UZ-STARTUP-007";
 pub const ERR_STARTUP_MIGRATION_CHECK = "UZ-STARTUP-005";
 pub const ERR_STARTUP_OIDC_INIT = "UZ-STARTUP-006";
 pub const ERR_SANDBOX_BACKEND_UNAVAILABLE = "UZ-SANDBOX-001";
 pub const ERR_SANDBOX_KILL_SWITCH_TRIGGERED = "UZ-SANDBOX-002";
 pub const ERR_SANDBOX_COMMAND_BLOCKED = "UZ-SANDBOX-003";
+
+pub const ERR_WORKER_PROMPTS_LOAD = "UZ-WORKER-001";
+pub const ERR_WORKER_PROFILE_INIT = "UZ-WORKER-002";
 
 pub const ERR_EXEC_SESSION_CREATE_FAILED = "UZ-EXEC-001";
 pub const ERR_EXEC_STAGE_START_FAILED = "UZ-EXEC-002";
@@ -99,8 +103,46 @@ pub fn docsRef(code: []const u8) struct { base: []const u8, code: []const u8 } {
     };
 }
 
+/// Returns an actionable hint for a given error code, or null if none defined.
+/// Hints tell the operator (or admin) what to check or do next — git-style.
+pub fn hint(code: []const u8) ?[]const u8 {
+    if (std.mem.eql(u8, code, ERR_INTERNAL_DB_UNAVAILABLE))
+        return "Check that the DATABASE_URL is set and the database server is reachable. Run 'zombied doctor' to verify.";
+    if (std.mem.eql(u8, code, ERR_INTERNAL_OPERATION_FAILED))
+        return "An internal operation failed. Check the err= field for details. If persistent, check service connectivity and run 'zombied doctor'.";
+    if (std.mem.eql(u8, code, ERR_STARTUP_REDIS_CONNECT))
+        return "Redis is unreachable. Check that REDIS_URL_API and REDIS_URL_WORKER are set and the Redis server accepts connections. Run 'zombied doctor' to verify.";
+    if (std.mem.eql(u8, code, ERR_STARTUP_REDIS_GROUP))
+        return "Redis connected but consumer group creation failed. Check Redis ACL permissions allow XGROUP CREATE, or check server logs for errors.";
+    if (std.mem.eql(u8, code, ERR_STARTUP_DB_CONNECT))
+        return "Database is unreachable. Check that DATABASE_URL is set and the database server accepts connections.";
+    if (std.mem.eql(u8, code, ERR_STARTUP_CONFIG_LOAD))
+        return "Configuration failed to load. Check that all required environment variables are set. Run 'zombied doctor' to verify.";
+    if (std.mem.eql(u8, code, ERR_STARTUP_ENV_CHECK))
+        return "Required environment variables are missing. Run 'zombied doctor' to see which ones.";
+    if (std.mem.eql(u8, code, ERR_WORKER_PROMPTS_LOAD))
+        return "Agent prompt files not found. Check that AGENT_CONFIG_DIR points to a directory containing echo-prompt.md, scout-prompt.md, and warden-prompt.md.";
+    if (std.mem.eql(u8, code, ERR_WORKER_PROFILE_INIT))
+        return "Pipeline profile failed to initialize. Check that PIPELINE_PROFILE_PATH points to a valid JSON profile, or remove it to use the default.";
+    if (std.mem.eql(u8, code, ERR_SANDBOX_BACKEND_UNAVAILABLE))
+        return "Sandbox backend is not available. Check that bubblewrap (bwrap) is installed and accessible.";
+    return null;
+}
+
 test "docsRef returns single base and code tuple" {
     const ref = docsRef(ERR_UUIDV7_INVALID_ID_SHAPE);
     try std.testing.expectEqualStrings(ERROR_DOCS_BASE, ref.base);
     try std.testing.expectEqualStrings("UZ-UUIDV7-009", ref.code);
+}
+
+test "hint returns actionable text for known startup codes" {
+    try std.testing.expect(hint(ERR_STARTUP_REDIS_CONNECT) != null);
+    try std.testing.expect(hint(ERR_WORKER_PROMPTS_LOAD) != null);
+    try std.testing.expect(hint(ERR_WORKER_PROFILE_INIT) != null);
+    try std.testing.expect(hint(ERR_INTERNAL_DB_UNAVAILABLE) != null);
+}
+
+test "hint returns null for codes without hints" {
+    try std.testing.expectEqual(@as(?[]const u8, null), hint(ERR_UUIDV7_CANONICAL_FORMAT));
+    try std.testing.expectEqual(@as(?[]const u8, null), hint(ERR_RUN_NOT_FOUND));
 }

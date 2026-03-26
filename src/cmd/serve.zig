@@ -94,14 +94,14 @@ pub fn run(alloc: std.mem.Allocator) !void {
     log.info("startup.env_check status=start", .{});
     env_vars.enforceFromEnv(alloc) catch |err| {
         switch (err) {
-            env_vars.EnvVarsErrors.MissingDatabaseUrlApi => log.err("startup.env_check status=fail error_code=UZ-STARTUP-001 err=DATABASE_URL_API not set", .{}),
-            env_vars.EnvVarsErrors.MissingDatabaseUrlWorker => log.err("startup.env_check status=fail error_code=UZ-STARTUP-001 err=DATABASE_URL_WORKER not set", .{}),
-            env_vars.EnvVarsErrors.MissingRedisUrlApi => log.err("startup.env_check status=fail error_code=UZ-STARTUP-001 err=REDIS_URL_API not set", .{}),
-            env_vars.EnvVarsErrors.MissingRedisUrlWorker => log.err("startup.env_check status=fail error_code=UZ-STARTUP-001 err=REDIS_URL_WORKER not set", .{}),
-            env_vars.EnvVarsErrors.SameDatabaseUrlForApiAndWorker => log.err("startup.env_check status=fail error_code=UZ-STARTUP-001 err=DATABASE_URL_API and DATABASE_URL_WORKER must differ", .{}),
-            env_vars.EnvVarsErrors.SameRedisUrlForApiAndWorker => log.err("startup.env_check status=fail error_code=UZ-STARTUP-001 err=REDIS_URL_API and REDIS_URL_WORKER must differ", .{}),
-            env_vars.EnvVarsErrors.RedisApiTlsRequired => log.err("startup.env_check status=fail error_code=UZ-STARTUP-001 err=REDIS_URL_API must use rediss://", .{}),
-            env_vars.EnvVarsErrors.RedisWorkerTlsRequired => log.err("startup.env_check status=fail error_code=UZ-STARTUP-001 err=REDIS_URL_WORKER must use rediss://", .{}),
+            env_vars.EnvVarsErrors.MissingDatabaseUrlApi => log.err("startup.env_check status=fail error_code=" ++ error_codes.ERR_STARTUP_ENV_CHECK ++ " err=DATABASE_URL_API not set", .{}),
+            env_vars.EnvVarsErrors.MissingDatabaseUrlWorker => log.err("startup.env_check status=fail error_code=" ++ error_codes.ERR_STARTUP_ENV_CHECK ++ " err=DATABASE_URL_WORKER not set", .{}),
+            env_vars.EnvVarsErrors.MissingRedisUrlApi => log.err("startup.env_check status=fail error_code=" ++ error_codes.ERR_STARTUP_ENV_CHECK ++ " err=REDIS_URL_API not set", .{}),
+            env_vars.EnvVarsErrors.MissingRedisUrlWorker => log.err("startup.env_check status=fail error_code=" ++ error_codes.ERR_STARTUP_ENV_CHECK ++ " err=REDIS_URL_WORKER not set", .{}),
+            env_vars.EnvVarsErrors.SameDatabaseUrlForApiAndWorker => log.err("startup.env_check status=fail error_code=" ++ error_codes.ERR_STARTUP_ENV_CHECK ++ " err=DATABASE_URL_API and DATABASE_URL_WORKER must differ", .{}),
+            env_vars.EnvVarsErrors.SameRedisUrlForApiAndWorker => log.err("startup.env_check status=fail error_code=" ++ error_codes.ERR_STARTUP_ENV_CHECK ++ " err=REDIS_URL_API and REDIS_URL_WORKER must differ", .{}),
+            env_vars.EnvVarsErrors.RedisApiTlsRequired => log.err("startup.env_check status=fail error_code=" ++ error_codes.ERR_STARTUP_ENV_CHECK ++ " err=REDIS_URL_API must use rediss://", .{}),
+            env_vars.EnvVarsErrors.RedisWorkerTlsRequired => log.err("startup.env_check status=fail error_code=" ++ error_codes.ERR_STARTUP_ENV_CHECK ++ " err=REDIS_URL_WORKER must use rediss://", .{}),
         }
         std.process.exit(1);
     };
@@ -163,24 +163,24 @@ pub fn run(alloc: std.mem.Allocator) !void {
 
     log.info("startup.redis_connect role=api status=start", .{});
     var api_queue = queue_redis.Client.connectFromEnv(alloc, .api) catch |err| {
-        log.err("startup.redis_connect role=api status=fail error_code=UZ-STARTUP-004 err={s}", .{@errorName(err)});
+        log.err("startup.redis_connect role=api status=fail error_code=" ++ error_codes.ERR_STARTUP_REDIS_CONNECT ++ " err={s}", .{@errorName(err)});
         std.process.exit(1);
     };
     defer api_queue.deinit();
     api_queue.ensureConsumerGroup() catch |err| {
-        log.err("startup.redis_group role=api status=fail error_code=UZ-STARTUP-004 err={s}", .{@errorName(err)});
+        log.err("startup.redis_group role=api status=fail error_code=" ++ error_codes.ERR_STARTUP_REDIS_GROUP ++ " err={s}", .{@errorName(err)});
         std.process.exit(1);
     };
     log.info("startup.redis_connect role=api status=ok", .{});
 
     log.info("startup.redis_connect role=worker status=start", .{});
     var worker_queue_check = queue_redis.Client.connectFromEnv(alloc, .worker) catch |err| {
-        log.err("startup.redis_connect role=worker status=fail error_code=UZ-STARTUP-004 err={s}", .{@errorName(err)});
+        log.err("startup.redis_connect role=worker status=fail error_code=" ++ error_codes.ERR_STARTUP_REDIS_CONNECT ++ " err={s}", .{@errorName(err)});
         std.process.exit(1);
     };
     defer worker_queue_check.deinit();
     worker_queue_check.ensureConsumerGroup() catch |err| {
-        log.err("startup.redis_group role=worker status=fail error_code=UZ-STARTUP-004 err={s}", .{@errorName(err)});
+        log.err("startup.redis_group role=worker status=fail error_code=" ++ error_codes.ERR_STARTUP_REDIS_GROUP ++ " err={s}", .{@errorName(err)});
         std.process.exit(1);
     };
     log.info("startup.redis_connect role=worker status=ok", .{});

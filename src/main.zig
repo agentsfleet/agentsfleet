@@ -145,4 +145,7 @@ test {
     _ = @import("executor/lease.zig");
     _ = @import("executor/client.zig");
     _ = @import("http/handlers/m5_handler_changes_test.zig");
+    _ = @import("queue/redis.zig");
+    _ = @import("reliability/backoff.zig");
+    _ = @import("pipeline/worker_state.zig");
 }

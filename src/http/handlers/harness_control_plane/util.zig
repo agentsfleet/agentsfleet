@@ -40,7 +40,7 @@ pub fn normalizeAgentId(
 }
 
 pub fn openHarnessHandlerTestConn(alloc: std.mem.Allocator) !?struct { pool: *db.Pool, conn: *pg.Conn } {
-    const url = std.process.getEnvVarOwned(alloc, "HANDLER_DB_TEST_URL") catch
+    const url = std.process.getEnvVarOwned(alloc, "TEST_DATABASE_URL") catch
         std.process.getEnvVarOwned(alloc, "DATABASE_URL") catch return null;
     defer alloc.free(url);
 

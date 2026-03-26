@@ -19,6 +19,7 @@ const sandbox_runtime = @import("sandbox_runtime.zig");
 const metrics = @import("../observability/metrics.zig");
 const queue_consts = @import("../queue/constants.zig");
 const queue_redis = @import("../queue/redis.zig");
+const error_codes = @import("../errors/codes.zig");
 const obs_log = @import("../observability/logging.zig");
 const log = std.log.scoped(.worker);
 
@@ -68,7 +69,7 @@ pub fn workerLoop(cfg: WorkerConfig, worker_state: *WorkerState) void {
     log.info("worker.started poll_interval_ms={d}", .{cfg.poll_interval_ms});
 
     const prompts = agents.loadPrompts(alloc, cfg.config_dir) catch |err| {
-        obs_log.logErr(.worker, err, "worker.prompts_load_fail config_dir={s}", .{cfg.config_dir});
+        obs_log.logErrWithHint(.worker, err, error_codes.ERR_WORKER_PROMPTS_LOAD, "worker.prompts_load_fail config_dir={s}", .{cfg.config_dir});
         return;
     };
     defer {
@@ -77,8 +78,8 @@ pub fn workerLoop(cfg: WorkerConfig, worker_state: *WorkerState) void {
         alloc.free(prompts.warden);
     }
 
-    var profile = topology.defaultProfile(alloc) catch |err| {
-        obs_log.logErr(.worker, err, "worker.profile_init_fail", .{});
+    var profile = topology.loadProfile(alloc, cfg.pipeline_profile_path) catch |err| {
+        obs_log.logErrWithHint(.worker, err, error_codes.ERR_WORKER_PROFILE_INIT, "worker.profile_init_fail path={s}", .{cfg.pipeline_profile_path});
         return;
     };
     defer profile.deinit();
@@ -90,13 +91,13 @@ pub fn workerLoop(cfg: WorkerConfig, worker_state: *WorkerState) void {
     defer tenant_limiter.deinit();
 
     var queue_client = queue_redis.Client.connectFromEnv(alloc, .worker) catch |err| {
-        obs_log.logErr(.worker, err, "worker.redis_unavailable error_code=UZ-INTERNAL-001", .{});
+        obs_log.logErrWithHint(.worker, err, error_codes.ERR_STARTUP_REDIS_CONNECT, "worker.redis_unavailable", .{});
         return;
     };
     defer queue_client.deinit();
 
     queue_client.ensureConsumerGroup() catch |err| {
-        obs_log.logErr(.worker, err, "worker.redis_group_fail error_code=UZ-INTERNAL-003", .{});
+        obs_log.logErrWithHint(.worker, err, error_codes.ERR_STARTUP_REDIS_GROUP, "worker.redis_group_fail", .{});
         return;
     };
 
@@ -111,7 +112,7 @@ pub fn workerLoop(cfg: WorkerConfig, worker_state: *WorkerState) void {
         if (now_ms - last_reclaim_ms >= queue_consts.reclaim_interval_ms) {
             last_reclaim_ms = now_ms;
             queued_message = queue_client.xautoclaimOne(consumer_id) catch |err| {
-                obs_log.logErr(.worker, err, "worker.xautoclaim_fail error_code=UZ-INTERNAL-003", .{});
+                obs_log.logErr(.worker, err, "worker.xautoclaim_fail error_code=" ++ error_codes.ERR_INTERNAL_OPERATION_FAILED, .{});
                 metrics.incWorkerErrors();
                 consecutive_errors += 1;
                 const max_delay_ms = std.math.mul(u64, cfg.poll_interval_ms, 8) catch cfg.poll_interval_ms;
@@ -123,7 +124,7 @@ pub fn workerLoop(cfg: WorkerConfig, worker_state: *WorkerState) void {
 
         if (queued_message == null) {
             queued_message = queue_client.xreadgroupOne(consumer_id) catch |err| {
-                obs_log.logErr(.worker, err, "worker.xreadgroup_fail error_code=UZ-INTERNAL-003", .{});
+                obs_log.logErr(.worker, err, "worker.xreadgroup_fail error_code=" ++ error_codes.ERR_INTERNAL_OPERATION_FAILED, .{});
                 metrics.incWorkerErrors();
                 consecutive_errors += 1;
                 const max_delay_ms = std.math.mul(u64, cfg.poll_interval_ms, 8) catch cfg.poll_interval_ms;
@@ -160,7 +161,7 @@ pub fn workerLoop(cfg: WorkerConfig, worker_state: *WorkerState) void {
             queued.run_id,
         ) catch |err| {
             if (err != worker_runtime.WorkerError.ShutdownRequested) {
-                obs_log.logErr(.worker, err, "worker.run_processing_error error_code=UZ-INTERNAL-003", .{});
+                obs_log.logErr(.worker, err, "worker.run_processing_error error_code=" ++ error_codes.ERR_INTERNAL_OPERATION_FAILED, .{});
                 metrics.incWorkerErrors();
                 consecutive_errors += 1;
 

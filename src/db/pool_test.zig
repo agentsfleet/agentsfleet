@@ -82,10 +82,10 @@ test "roleEnvVarName maps db roles deterministically" {
 }
 
 fn openIntegrationTestConn(alloc: std.mem.Allocator) !?struct { pool: *Pool, conn: *Conn } {
-    // DB-backed integration tests must be opt-in via HANDLER_DB_TEST_URL.
+    // DB-backed integration tests must be opt-in via TEST_DATABASE_URL.
     // This avoids accidentally running against unrelated DATABASE_URL values
     // in non-DB test lanes (e.g. CI's _test-integration-zombied target).
-    const url = std.process.getEnvVarOwned(alloc, "HANDLER_DB_TEST_URL") catch return null;
+    const url = std.process.getEnvVarOwned(alloc, "TEST_DATABASE_URL") catch return null;
     defer alloc.free(url);
 
     // parseUrl allocates host/auth strings that must outlive the pool.
@@ -169,7 +169,7 @@ fn createUuidContractTempSchema(conn: *Conn) !void {
 
 test "integration: canary pool acquire + exec + query SELECT 1" {
     const alloc = std.testing.allocator;
-    const url = std.process.getEnvVarOwned(alloc, "HANDLER_DB_TEST_URL") catch
+    const url = std.process.getEnvVarOwned(alloc, "TEST_DATABASE_URL") catch
         std.process.getEnvVarOwned(alloc, "DATABASE_URL") catch return error.SkipZigTest;
     defer alloc.free(url);
 

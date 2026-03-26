@@ -356,7 +356,7 @@ pub fn compensateRetryQueueFailure(
 
 pub fn openHandlerTestConn(alloc: std.mem.Allocator) !?struct { pool: *db.Pool, conn: *pg.Conn } {
     // check-pg-drain: ok — no conn.query() here; checker misattributes test-block queries
-    const url = std.process.getEnvVarOwned(alloc, "HANDLER_DB_TEST_URL") catch
+    const url = std.process.getEnvVarOwned(alloc, "TEST_DATABASE_URL") catch
         std.process.getEnvVarOwned(alloc, "DATABASE_URL") catch return null;
     defer alloc.free(url);
     // Use page_allocator for opts strings so they outlive the pool. pg.Pool stores

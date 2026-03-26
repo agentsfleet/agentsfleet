@@ -35,10 +35,11 @@ const executor_metrics = @import("executor_metrics.zig");
 
 const log = std.log.scoped(.executor_runner);
 
-// Runner-specific error codes.
-// Canonical source: src/errors/codes.zig (ERR_EXEC_RUNNER_*).
-// Duplicated here because the executor binary cannot import codes.zig
-// (separate build module — only nullclaw is linked).
+// Runner-specific error codes and docs base URL.
+// Canonical source: src/errors/codes.zig (ERR_EXEC_RUNNER_*, ERROR_DOCS_BASE).
+// Duplicated here because the executor binary is a separate build module —
+// it cannot import files outside src/executor/.
+const ERROR_DOCS_BASE = "https://docs.usezombie.com/error-codes#";
 const ERR_EXEC_RUNNER_AGENT_INIT = "UZ-EXEC-012";
 const ERR_EXEC_RUNNER_AGENT_RUN = "UZ-EXEC-013";
 const ERR_EXEC_RUNNER_INVALID_CONFIG = "UZ-EXEC-014";
