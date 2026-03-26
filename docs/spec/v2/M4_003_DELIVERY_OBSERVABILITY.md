@@ -1,13 +1,13 @@
-# M13_003: Delivery Observability
+# M4_003: Delivery Observability
 
-**Prototype:** v1.0.0
-**Milestone:** M13
+**Version:** v2
+**Milestone:** M4
 **Workstream:** 003
 **Date:** Mar 23, 2026
 **Status:** PENDING
 **Priority:** P1 — observability is scope, not afterthought
-**Batch:** B2 — parallel with M13_002 after M13_001
-**Depends on:** M13_001 (delivery_state transitions to observe)
+**Batch:** B2 — parallel with M4_002 after M4_001
+**Depends on:** M4_001 (delivery_state transitions to observe)
 
 ---
 

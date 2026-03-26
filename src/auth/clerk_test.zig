@@ -35,6 +35,7 @@ test "verifyAuthorization validates RS256 token and extracts tenant" {
         if (principal.tenant_id) |v| std.testing.allocator.free(v);
         if (principal.org_id) |v| std.testing.allocator.free(v);
         if (principal.workspace_id) |v| std.testing.allocator.free(v);
+        if (principal.role) |v| std.testing.allocator.free(v);
     }
 
     try std.testing.expectEqualStrings("user_test", principal.subject);
@@ -42,6 +43,7 @@ test "verifyAuthorization validates RS256 token and extracts tenant" {
     try std.testing.expectEqualStrings("tenant_a", principal.tenant_id.?);
     try std.testing.expectEqualStrings("org_1", principal.org_id.?);
     try std.testing.expect(principal.workspace_id == null);
+    try std.testing.expect(principal.role == null);
 }
 
 test "verifyAuthorization rejects expired token" {
@@ -56,4 +58,29 @@ test "verifyAuthorization rejects audience mismatch" {
     defer verifier.deinit();
 
     try std.testing.expectError(VerifyError.AudienceMismatch, verifier.verifyAuthorization(std.testing.allocator, "Bearer " ++ TEST_VALID_TOKEN));
+}
+
+test "Principal struct exposes role field" {
+    // Verify the Principal type carries the role field introduced in this PR.
+    const p = clerk.Principal{
+        .subject = @constCast("sub"),
+        .issuer = @constCast("iss"),
+        .tenant_id = @constCast("t"),
+        .org_id = @constCast("o"),
+        .workspace_id = null,
+        .role = @constCast("admin"),
+    };
+    try std.testing.expectEqualStrings("admin", p.role.?);
+}
+
+test "Principal struct role can be null" {
+    const p = clerk.Principal{
+        .subject = @constCast("sub"),
+        .issuer = @constCast("iss"),
+        .tenant_id = null,
+        .org_id = null,
+        .workspace_id = null,
+        .role = null,
+    };
+    try std.testing.expect(p.role == null);
 }

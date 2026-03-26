@@ -16,7 +16,7 @@ pub fn loadAppliedProposalTelemetry(
     proposal_id: []const u8,
 ) !?AppliedProposalTelemetry {
     var q = try conn.query(
-        \\SELECT proposal_id, agent_id, workspace_id, trigger_reason, approval_mode
+        \\SELECT proposal_id::text, agent_id::text, workspace_id::text, trigger_reason, approval_mode
         \\FROM agent_improvement_proposals
         \\WHERE proposal_id = $1
         \\  AND status = $2
@@ -56,7 +56,7 @@ pub fn listAppliedAutoProposalTelemetryAt(
 ) ![]AppliedProposalTelemetry {
     // check-pg-drain: ok — full while loop exhausts all rows, natural drain
     var q = try conn.query(
-        \\SELECT proposal_id
+        \\SELECT proposal_id::text
         \\FROM agent_improvement_proposals
         \\WHERE status = $1
         \\  AND applied_by = $2
@@ -103,7 +103,7 @@ pub fn listOpenProposals(
     }
 
     var q = try conn.query(
-        \\SELECT proposal_id, trigger_reason, proposed_changes, config_version_id, approval_mode, status, auto_apply_at, created_at, updated_at
+        \\SELECT proposal_id::text, trigger_reason, proposed_changes, config_version_id::text, approval_mode, status, auto_apply_at, created_at, updated_at
         \\FROM agent_improvement_proposals
         \\WHERE agent_id = $1
         \\  AND generation_status = $2
@@ -150,7 +150,7 @@ pub fn listManualProposals(
     }
 
     var q = try conn.query(
-        \\SELECT proposal_id, trigger_reason, proposed_changes, config_version_id, approval_mode, status, auto_apply_at, created_at, updated_at
+        \\SELECT proposal_id::text, trigger_reason, proposed_changes, config_version_id::text, approval_mode, status, auto_apply_at, created_at, updated_at
         \\FROM agent_improvement_proposals
         \\WHERE agent_id = $1
         \\  AND approval_mode = $2
@@ -299,7 +299,7 @@ fn loadManualProposalForDecision(
     proposal_id: []const u8,
 ) !?shared.ProposalLookup {
     var q = try conn.query(
-        \\SELECT proposal_id, agent_id, workspace_id, config_version_id, proposed_changes
+        \\SELECT proposal_id::text, agent_id::text, workspace_id::text, config_version_id::text, proposed_changes
         \\FROM agent_improvement_proposals
         \\WHERE proposal_id = $1
         \\  AND agent_id = $2

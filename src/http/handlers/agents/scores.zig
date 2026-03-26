@@ -83,6 +83,7 @@ pub fn handleGetAgentScores(ctx: *common.Context, r: zap.Request, agent_id: []co
         common.errorResponse(r, .forbidden, error_codes.ERR_FORBIDDEN, "Workspace access denied", req_id);
         return;
     }
+    if (!common.requireRole(r, req_id, principal, .user)) return;
 
     // Fetch limit+1 to detect whether a next page exists.
     const fetch_limit = limit + 1;

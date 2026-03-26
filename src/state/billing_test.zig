@@ -4,6 +4,9 @@ const billing = @import("./billing_runtime.zig");
 const workspace_billing = @import("./workspace_billing.zig");
 const workspace_credit = @import("./workspace_credit.zig");
 
+const base = @import("../db/test_fixtures.zig");
+const uc3 = @import("../db/test_fixtures_uc3.zig");
+
 test "ledger replay yields identical totals regardless of ordering" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
@@ -41,20 +44,27 @@ test "duplicate events do not double-charge" {
 }
 
 test "completed runs are metered and non-billable runs are not charged" {
-    const db_ctx = (try openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
+    const db_ctx = (try base.openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
 
-    try createTempBillingTables(db_ctx.conn);
-    try seedWorkspaceBillingState(
+    const run_ids = [_][]const u8{ uc3.RUN_BT_COMPLETED, uc3.RUN_BT_NON_BILLABLE };
+    try uc3.seedWithRuns(db_ctx.conn, uc3.WS_BT_FREE, uc3.SPEC_BT_FREE, &run_ids);
+    defer uc3.teardownWithRuns(db_ctx.conn, uc3.WS_BT_FREE);
+
+    try uc3.seedBillingState(
         db_ctx.conn,
-        "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11",
+        "0195b4ba-8d3a-7f13-8abc-cc0000000041",
+        uc3.WS_BT_FREE,
         "FREE",
+        workspace_billing.FREE_PLAN_SKU,
         "ACTIVE",
     );
-    try seedWorkspaceCreditState(
+    try uc3.seedCreditState(
         db_ctx.conn,
-        "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11",
+        "0195b4ba-8d3a-7f13-8abc-cc0000000042",
+        uc3.WS_BT_FREE,
+        workspace_credit.CREDIT_CURRENCY,
         workspace_credit.FREE_PLAN_INITIAL_CREDIT_CENTS,
         0,
         workspace_credit.FREE_PLAN_INITIAL_CREDIT_CENTS,
@@ -63,8 +73,8 @@ test "completed runs are metered and non-billable runs are not charged" {
 
     try billing.recordRuntimeStageUsage(
         db_ctx.conn,
-        "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11",
-        "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f91",
+        uc3.WS_BT_FREE,
+        uc3.RUN_BT_COMPLETED,
         1,
         "plan",
         .echo,
@@ -73,8 +83,8 @@ test "completed runs are metered and non-billable runs are not charged" {
     );
     try billing.recordRuntimeStageUsage(
         db_ctx.conn,
-        "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11",
-        "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f91",
+        uc3.WS_BT_FREE,
+        uc3.RUN_BT_COMPLETED,
         1,
         "implement",
         .scout,
@@ -85,8 +95,8 @@ test "completed runs are metered and non-billable runs are not charged" {
     try billing.finalizeRunForBilling(
         std.testing.allocator,
         db_ctx.conn,
-        "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11",
-        "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f91",
+        uc3.WS_BT_FREE,
+        uc3.RUN_BT_COMPLETED,
         1,
         .completed,
     );
@@ -97,7 +107,7 @@ test "completed runs are metered and non-billable runs are not charged" {
             \\FROM usage_ledger
             \\WHERE run_id = $1 AND lifecycle_event = 'run_completed'
             \\LIMIT 1
-        , .{"0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f91"});
+        , .{uc3.RUN_BT_COMPLETED});
         defer q.deinit();
         const row = (try q.next()) orelse return error.TestExpectedEqual;
         try std.testing.expectEqual(@as(i64, 42), try row.get(i64, 0));
@@ -110,7 +120,7 @@ test "completed runs are metered and non-billable runs are not charged" {
             \\FROM workspace_credit_state
             \\WHERE workspace_id = $1
             \\LIMIT 1
-        , .{"0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11"});
+        , .{uc3.WS_BT_FREE});
         defer q.deinit();
         const row = (try q.next()) orelse return error.TestExpectedEqual;
         try std.testing.expectEqual(@as(i64, 42), try row.get(i64, 0));
@@ -120,7 +130,7 @@ test "completed runs are metered and non-billable runs are not charged" {
     {
         var q = try db_ctx.conn.query(
             "SELECT COUNT(*)::BIGINT FROM billing_delivery_outbox WHERE run_id = $1",
-            .{"0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f91"},
+            .{uc3.RUN_BT_COMPLETED},
         );
         defer q.deinit();
         const row = (try q.next()) orelse return error.TestExpectedEqual;
@@ -129,8 +139,8 @@ test "completed runs are metered and non-billable runs are not charged" {
 
     try billing.recordRuntimeStageUsage(
         db_ctx.conn,
-        "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11",
-        "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f92",
+        uc3.WS_BT_FREE,
+        uc3.RUN_BT_NON_BILLABLE,
         1,
         "plan",
         .echo,
@@ -140,8 +150,8 @@ test "completed runs are metered and non-billable runs are not charged" {
     try billing.finalizeRunForBilling(
         std.testing.allocator,
         db_ctx.conn,
-        "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11",
-        "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f92",
+        uc3.WS_BT_FREE,
+        uc3.RUN_BT_NON_BILLABLE,
         1,
         .non_billable,
     );
@@ -152,7 +162,7 @@ test "completed runs are metered and non-billable runs are not charged" {
             \\FROM usage_ledger
             \\WHERE run_id = $1 AND lifecycle_event = 'run_not_billable'
             \\LIMIT 1
-        , .{"0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f92"});
+        , .{uc3.RUN_BT_NON_BILLABLE});
         defer q.deinit();
         const row = (try q.next()) orelse return error.TestExpectedEqual;
         try std.testing.expectEqual(@as(i64, 0), try row.get(i64, 0));
@@ -162,7 +172,7 @@ test "completed runs are metered and non-billable runs are not charged" {
     {
         var q = try db_ctx.conn.query(
             "SELECT COUNT(*)::BIGINT FROM billing_delivery_outbox WHERE run_id = $1",
-            .{"0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f92"},
+            .{uc3.RUN_BT_NON_BILLABLE},
         );
         defer q.deinit();
         const row = (try q.next()) orelse return error.TestExpectedEqual;
@@ -171,20 +181,27 @@ test "completed runs are metered and non-billable runs are not charged" {
 }
 
 test "scale runs queue billing delivery without touching free-credit ledger" {
-    const db_ctx = (try openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
+    const db_ctx = (try base.openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
 
-    try createTempBillingTables(db_ctx.conn);
-    try seedWorkspaceBillingState(
+    const run_ids = [_][]const u8{uc3.RUN_BT_SCALE};
+    try uc3.seedWithRuns(db_ctx.conn, uc3.WS_BT_SCALE, uc3.SPEC_BT_SCALE, &run_ids);
+    defer uc3.teardownWithRuns(db_ctx.conn, uc3.WS_BT_SCALE);
+
+    try uc3.seedBillingState(
         db_ctx.conn,
-        "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f12",
+        "0195b4ba-8d3a-7f13-8abc-cc0000000043",
+        uc3.WS_BT_SCALE,
         "SCALE",
+        workspace_billing.SCALE_PLAN_SKU,
         "ACTIVE",
     );
-    try seedWorkspaceCreditState(
+    try uc3.seedCreditState(
         db_ctx.conn,
-        "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f12",
+        "0195b4ba-8d3a-7f13-8abc-cc0000000044",
+        uc3.WS_BT_SCALE,
+        workspace_credit.CREDIT_CURRENCY,
         workspace_credit.FREE_PLAN_INITIAL_CREDIT_CENTS,
         0,
         workspace_credit.FREE_PLAN_INITIAL_CREDIT_CENTS,
@@ -193,8 +210,8 @@ test "scale runs queue billing delivery without touching free-credit ledger" {
 
     try billing.recordRuntimeStageUsage(
         db_ctx.conn,
-        "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f12",
-        "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f95",
+        uc3.WS_BT_SCALE,
+        uc3.RUN_BT_SCALE,
         1,
         "plan",
         .echo,
@@ -205,8 +222,8 @@ test "scale runs queue billing delivery without touching free-credit ledger" {
     try billing.finalizeRunForBilling(
         std.testing.allocator,
         db_ctx.conn,
-        "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f12",
-        "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f95",
+        uc3.WS_BT_SCALE,
+        uc3.RUN_BT_SCALE,
         1,
         .completed,
     );
@@ -214,7 +231,7 @@ test "scale runs queue billing delivery without touching free-credit ledger" {
     {
         var q = try db_ctx.conn.query(
             "SELECT COUNT(*)::BIGINT FROM billing_delivery_outbox WHERE run_id = $1",
-            .{"0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f95"},
+            .{uc3.RUN_BT_SCALE},
         );
         defer q.deinit();
         const row = (try q.next()) orelse return error.TestExpectedEqual;
@@ -227,163 +244,10 @@ test "scale runs queue billing delivery without touching free-credit ledger" {
             \\FROM workspace_credit_state
             \\WHERE workspace_id = $1
             \\LIMIT 1
-        , .{"0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f12"});
+        , .{uc3.WS_BT_SCALE});
         defer q.deinit();
         const row = (try q.next()) orelse return error.TestExpectedEqual;
         try std.testing.expectEqual(@as(i64, 0), try row.get(i64, 0));
         try std.testing.expectEqual(workspace_credit.FREE_PLAN_INITIAL_CREDIT_CENTS, try row.get(i64, 1));
     }
-}
-
-fn openTestConn(alloc: std.mem.Allocator) !?struct { pool: *pg.Pool, conn: *pg.Conn } {
-    const url = std.process.getEnvVarOwned(alloc, "HANDLER_DB_TEST_URL") catch
-        std.process.getEnvVarOwned(alloc, "DATABASE_URL") catch return null;
-    defer alloc.free(url);
-
-    const db = @import("../db/pool.zig");
-    var arena = std.heap.ArenaAllocator.init(alloc);
-    defer arena.deinit();
-    const opts = try db.parseUrl(arena.allocator(), url);
-    const pool = try pg.Pool.init(alloc, opts);
-    errdefer pool.deinit();
-    const conn = try pool.acquire();
-    return .{ .pool = pool, .conn = conn };
-}
-
-fn createTempBillingTables(conn: *pg.Conn) !void {
-    {
-        _ = try conn.exec(
-            \\CREATE TEMP TABLE usage_ledger (
-            \\  id BIGSERIAL PRIMARY KEY,
-            \\  workspace_id TEXT NOT NULL,
-            \\  run_id TEXT NOT NULL,
-            \\  attempt INT NOT NULL,
-            \\  actor TEXT NOT NULL,
-            \\  token_count BIGINT NOT NULL DEFAULT 0,
-            \\  agent_seconds BIGINT NOT NULL DEFAULT 0,
-            \\  created_at BIGINT NOT NULL,
-            \\  event_key TEXT,
-            \\  lifecycle_event TEXT NOT NULL DEFAULT 'stage_completed',
-            \\  billable_unit TEXT NOT NULL DEFAULT 'agent_second',
-            \\  billable_quantity BIGINT NOT NULL DEFAULT 0,
-            \\  is_billable BOOLEAN NOT NULL DEFAULT FALSE,
-            \\  source TEXT NOT NULL DEFAULT 'runtime_stage',
-            \\  UNIQUE (run_id, event_key)
-            \\) ON COMMIT DROP
-        , .{});
-    }
-    {
-        _ = try conn.exec(
-            \\CREATE TEMP TABLE workspace_billing_state (
-            \\  billing_id TEXT PRIMARY KEY,
-            \\  workspace_id TEXT NOT NULL UNIQUE,
-            \\  plan_tier TEXT NOT NULL,
-            \\  plan_sku TEXT NOT NULL,
-            \\  billing_status TEXT NOT NULL,
-            \\  adapter TEXT NOT NULL,
-            \\  subscription_id TEXT,
-            \\  payment_failed_at BIGINT,
-            \\  grace_expires_at BIGINT,
-            \\  pending_status TEXT,
-            \\  pending_reason TEXT,
-            \\  created_at BIGINT NOT NULL,
-            \\  updated_at BIGINT NOT NULL
-            \\) ON COMMIT DROP
-        , .{});
-    }
-    {
-        _ = try conn.exec(
-            \\CREATE TEMP TABLE workspace_credit_state (
-            \\  credit_id TEXT PRIMARY KEY,
-            \\  workspace_id TEXT NOT NULL UNIQUE,
-            \\  currency TEXT NOT NULL,
-            \\  initial_credit_cents BIGINT NOT NULL,
-            \\  consumed_credit_cents BIGINT NOT NULL,
-            \\  remaining_credit_cents BIGINT NOT NULL,
-            \\  exhausted_at BIGINT,
-            \\  created_at BIGINT NOT NULL,
-            \\  updated_at BIGINT NOT NULL
-            \\) ON COMMIT DROP
-        , .{});
-    }
-    {
-        _ = try conn.exec(
-            \\CREATE TEMP TABLE workspace_credit_audit (
-            \\  audit_id TEXT PRIMARY KEY,
-            \\  workspace_id TEXT NOT NULL,
-            \\  event_type TEXT NOT NULL,
-            \\  delta_credit_cents BIGINT NOT NULL,
-            \\  remaining_credit_cents BIGINT NOT NULL,
-            \\  reason TEXT NOT NULL,
-            \\  actor TEXT NOT NULL,
-            \\  metadata_json TEXT NOT NULL,
-            \\  created_at BIGINT NOT NULL
-            \\) ON COMMIT DROP
-        , .{});
-    }
-    {
-        _ = try conn.exec(
-            \\CREATE TEMP TABLE billing_delivery_outbox (
-            \\  id BIGSERIAL PRIMARY KEY,
-            \\  run_id TEXT NOT NULL,
-            \\  workspace_id TEXT NOT NULL,
-            \\  attempt INT NOT NULL,
-            \\  idempotency_key TEXT NOT NULL UNIQUE,
-            \\  billable_unit TEXT NOT NULL,
-            \\  billable_quantity BIGINT NOT NULL,
-            \\  status TEXT NOT NULL DEFAULT 'pending',
-            \\  delivery_attempts INT NOT NULL DEFAULT 0,
-            \\  next_retry_at BIGINT NOT NULL DEFAULT 0,
-            \\  adapter TEXT NOT NULL,
-            \\  adapter_reference TEXT,
-            \\  last_error TEXT,
-            \\  created_at BIGINT NOT NULL,
-            \\  updated_at BIGINT NOT NULL,
-            \\  delivered_at BIGINT
-            \\) ON COMMIT DROP
-        , .{});
-    }
-}
-
-fn seedWorkspaceBillingState(
-    conn: *pg.Conn,
-    workspace_id: []const u8,
-    plan_tier: []const u8,
-    billing_status: []const u8,
-) !void {
-    _ = try conn.exec(
-        \\INSERT INTO workspace_billing_state
-        \\  (billing_id, workspace_id, plan_tier, plan_sku, billing_status, adapter, subscription_id,
-        \\   payment_failed_at, grace_expires_at, pending_status, pending_reason, created_at, updated_at)
-        \\VALUES ($1, $2, $3, $4, $5, 'noop', NULL, NULL, NULL, NULL, NULL, 1, 1)
-    , .{
-        if (std.mem.eql(u8, plan_tier, "FREE")) "billing-free-test-id" else "billing-scale-test-id",
-        workspace_id,
-        plan_tier,
-        if (std.mem.eql(u8, plan_tier, "FREE")) workspace_billing.FREE_PLAN_SKU else workspace_billing.SCALE_PLAN_SKU,
-        billing_status,
-    });
-}
-
-fn seedWorkspaceCreditState(
-    conn: *pg.Conn,
-    workspace_id: []const u8,
-    initial_credit_cents: i64,
-    consumed_credit_cents: i64,
-    remaining_credit_cents: i64,
-    exhausted_at: ?i64,
-) !void {
-    _ = try conn.exec(
-        \\INSERT INTO workspace_credit_state
-        \\  (credit_id, workspace_id, currency, initial_credit_cents, consumed_credit_cents, remaining_credit_cents, exhausted_at, created_at, updated_at)
-        \\VALUES ($1, $2, $3, $4, $5, $6, $7, 1, 1)
-    , .{
-        if (std.mem.eql(u8, workspace_id, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11")) "credit-free-test-id" else "credit-scale-test-id",
-        workspace_id,
-        workspace_credit.CREDIT_CURRENCY,
-        initial_credit_cents,
-        consumed_credit_cents,
-        remaining_credit_cents,
-        exhausted_at,
-    });
 }

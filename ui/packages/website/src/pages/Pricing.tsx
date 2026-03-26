@@ -1,22 +1,8 @@
-import { useState } from "react";
 import FAQ from "../components/FAQ";
-import PricingLeadCapture from "../components/PricingLeadCapture";
 import { Button } from "@usezombie/design-system";
 import { APP_BASE_URL } from "../config";
-import {
-  trackLeadCaptureClicked,
-  trackLeadCaptureOpened,
-  trackSignupCompleted,
-} from "../analytics/posthog";
+import { trackSignupCompleted, trackLeadCaptureClicked } from "../analytics/posthog";
 import { MODE_HUMANS } from "../constants/mode";
-
-type LeadIntent = {
-  ctaId: string;
-  planInterest: string;
-  title: string;
-  description: string;
-  actionLabel: string;
-};
 
 type Tier = {
   name: string;
@@ -24,11 +10,10 @@ type Tier = {
   price: string;
   audience: string;
   featured?: boolean;
-  isLive?: boolean;
+  ctaSource: string;
   ctaLabel: string;
   priceNote?: string;
   proof: string;
-  leadIntent?: LeadIntent;
   highlights: string[];
 };
 
@@ -45,7 +30,7 @@ const tiers: Tier[] = [
     availability: "Available now",
     price: "Free",
     audience: "For solo builders and early evaluation.",
-    isLive: true,
+    ctaSource: "pricing_hobby_start_free",
     ctaLabel: "Start free",
     proof: "Best for getting real PRs running without a credit card.",
     highlights: [
@@ -57,51 +42,26 @@ const tiers: Tier[] = [
   },
   {
     name: "Scale",
-    availability: "Waitlist open",
-    price: "Notify me",
+    availability: "Upgrade when ready",
+    price: "From Mission Control",
     audience: "For teams moving from trial usage to governed production delivery.",
     featured: true,
-    ctaLabel: "Notify me",
-    priceNote: "Join the waitlist for rollout pricing",
-    proof: "Built for teams running automation across shared repos with stronger governance and quality visibility.",
-    leadIntent: {
-      ctaId: "pricing_scale_notify",
-      planInterest: "Scale",
-      title: "Get notified when Scale opens",
-      description:
-        "Scale adds shared workspaces, sandbox governance, score history, failure analysis, and controlled improvement workflows for teams.",
-      actionLabel: "Notify me",
-    },
+    ctaSource: "pricing_scale_upgrade",
+    ctaLabel: "Upgrade in app",
+    priceNote: "Operator-visible upgrade path after free credit exhaustion",
+    proof: "Built for teams running automation across shared repos with stronger governance, quality visibility, and a direct Scale activation path.",
     highlights: [
       "Everything in Hobby, plus team workspaces and shared run history",
       "Longer execution windows and higher concurrency for active repos",
       "Sandbox resource governance with memory, CPU, and disk caps",
       "Agent run scoring with tier history and workspace baselines",
       "Failure analysis with deterministic context injection",
-      "Priority access to the rollout as the paid plan opens",
+      "Upgrade from the app with a workspace subscription id",
     ],
   },
 ];
 
 export default function Pricing() {
-  const [activeLeadIntent, setActiveLeadIntent] = useState<LeadIntent | null>(null);
-
-  function openLeadIntent(intent: LeadIntent) {
-    setActiveLeadIntent(intent);
-    trackLeadCaptureClicked({
-      page: "pricing",
-      surface: "pricing_card",
-      cta_id: intent.ctaId,
-      plan_interest: intent.planInterest,
-    });
-    trackLeadCaptureOpened({
-      page: "pricing",
-      surface: "pricing_lead_capture",
-      cta_id: intent.ctaId,
-      plan_interest: intent.planInterest,
-    });
-  }
-
   return (
     <section className="stack route-fade pricing-page">
       <div className="pricing-hero">
@@ -128,25 +88,20 @@ export default function Pricing() {
               <h2>{tier.name}</h2>
               <p className="pricing-card-audience">{tier.audience}</p>
               <p className="pricing-card-price">{tier.price}</p>
+              {tier.priceNote ? <p className="pricing-card-note">{tier.priceNote}</p> : null}
             </div>
-
-            {tier.isLive ? (
-                <Button
-                  to={APP_BASE_URL}
-                  className="pricing-card-cta"
-                  onClick={() => trackSignupCompleted({ source: "pricing_hobby_start_free", surface: "pricing", mode: MODE_HUMANS })}
-                >
-                {tier.ctaLabel}
-              </Button>
-            ) : (
-              <Button
-                variant={tier.featured ? "primary" : "double-border"}
-                className="pricing-card-cta"
-                onClick={() => tier.leadIntent && openLeadIntent(tier.leadIntent)}
-              >
-                {tier.ctaLabel}
-              </Button>
-            )}
+            <Button
+              to={APP_BASE_URL}
+              variant={tier.featured ? "primary" : "double-border"}
+              className="pricing-card-cta"
+              onClick={() =>
+                tier.featured
+                  ? trackLeadCaptureClicked({ page: "pricing", surface: "pricing_card", cta_id: tier.ctaSource, plan_interest: "Scale" })
+                  : trackSignupCompleted({ source: tier.ctaSource, surface: "pricing", mode: MODE_HUMANS })
+              }
+            >
+              {tier.ctaLabel}
+            </Button>
 
             <div className="pricing-card-proof">
               <span className="pricing-card-proof-label">Why this plan</span>
@@ -161,8 +116,6 @@ export default function Pricing() {
           </article>
         ))}
       </div>
-
-      <PricingLeadCapture intent={activeLeadIntent} />
 
       <div className="pricing-bottom-band">
         <div>

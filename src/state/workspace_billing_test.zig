@@ -5,16 +5,20 @@ const workspace_billing = @import("./workspace_billing.zig");
 const BillingStatus = workspace_billing.BillingStatus;
 const PlanTier = workspace_billing.PlanTier;
 
+const base = @import("../db/test_fixtures.zig");
+const uc3 = @import("../db/test_fixtures_uc3.zig");
+
 test "upgrade applies scale entitlement deterministically" {
-    const db_ctx = (try openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
+    const db_ctx = (try base.openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
 
-    try createTempWorkspaceBillingTables(db_ctx.conn);
-    try seedWorkspace(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11");
-    try workspace_billing.provisionFreeWorkspace(db_ctx.conn, std.testing.allocator, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11", "test");
+    try uc3.seed(db_ctx.conn, uc3.WS_UPGRADE);
+    defer uc3.teardown(db_ctx.conn, uc3.WS_UPGRADE);
 
-    const upgraded = try workspace_billing.upgradeWorkspaceToScale(db_ctx.conn, std.testing.allocator, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11", .{
+    try workspace_billing.provisionFreeWorkspace(db_ctx.conn, std.testing.allocator, uc3.WS_UPGRADE, "test");
+
+    const upgraded = try workspace_billing.upgradeWorkspaceToScale(db_ctx.conn, std.testing.allocator, uc3.WS_UPGRADE, .{
         .subscription_id = "sub_scale_123",
         .actor = "test",
     });
@@ -26,7 +30,7 @@ test "upgrade applies scale entitlement deterministically" {
 
     var q = try db_ctx.conn.query(
         "SELECT plan_tier, max_profiles, max_stages, max_distinct_skills, allow_custom_skills FROM workspace_entitlements WHERE workspace_id = $1",
-        .{"0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11"},
+        .{uc3.WS_UPGRADE},
     );
     defer q.deinit();
     const row = (try q.next()) orelse return error.TestExpectedEqual;
@@ -38,14 +42,15 @@ test "upgrade applies scale entitlement deterministically" {
 }
 
 test "payment failure transitions to grace then downgrade policy" {
-    const db_ctx = (try openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
+    const db_ctx = (try base.openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
 
-    try createTempWorkspaceBillingTables(db_ctx.conn);
-    try seedWorkspace(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11");
+    try uc3.seed(db_ctx.conn, uc3.WS_GRACE);
+    defer uc3.teardown(db_ctx.conn, uc3.WS_GRACE);
+
     {
-        const sv = try workspace_billing.upgradeWorkspaceToScale(db_ctx.conn, std.testing.allocator, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11", .{
+        const sv = try workspace_billing.upgradeWorkspaceToScale(db_ctx.conn, std.testing.allocator, uc3.WS_GRACE, .{
             .subscription_id = "sub_scale_123",
             .actor = "test",
         });
@@ -53,7 +58,7 @@ test "payment failure transitions to grace then downgrade policy" {
         if (sv.subscription_id) |v| std.testing.allocator.free(v);
     }
 
-    const grace = try workspace_billing.applyBillingLifecycleEvent(db_ctx.conn, std.testing.allocator, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11", .{
+    const grace = try workspace_billing.applyBillingLifecycleEvent(db_ctx.conn, std.testing.allocator, uc3.WS_GRACE, .{
         .event = .payment_failed,
         .reason = "invoice_failed",
         .actor = "billing_adapter",
@@ -64,7 +69,7 @@ test "payment failure transitions to grace then downgrade policy" {
     try std.testing.expectEqual(BillingStatus.grace, grace.billing_status);
     try std.testing.expect(grace.grace_expires_at != null);
 
-    const downgraded = try workspace_billing.reconcileWorkspaceBilling(db_ctx.conn, std.testing.allocator, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11", grace.grace_expires_at.? + 1, "sync");
+    const downgraded = try workspace_billing.reconcileWorkspaceBilling(db_ctx.conn, std.testing.allocator, uc3.WS_GRACE, grace.grace_expires_at.? + 1, "sync");
     defer std.testing.allocator.free(downgraded.plan_sku);
     try std.testing.expectEqual(PlanTier.free, downgraded.plan_tier);
     try std.testing.expectEqual(BillingStatus.downgraded, downgraded.billing_status);
@@ -72,14 +77,15 @@ test "payment failure transitions to grace then downgrade policy" {
 }
 
 test "billing sync remains stable across repeated sync cycles" {
-    const db_ctx = (try openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
+    const db_ctx = (try base.openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
 
-    try createTempWorkspaceBillingTables(db_ctx.conn);
-    try seedWorkspace(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11");
+    try uc3.seed(db_ctx.conn, uc3.WS_SYNC);
+    defer uc3.teardown(db_ctx.conn, uc3.WS_SYNC);
+
     {
-        const sv = try workspace_billing.upgradeWorkspaceToScale(db_ctx.conn, std.testing.allocator, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11", .{
+        const sv = try workspace_billing.upgradeWorkspaceToScale(db_ctx.conn, std.testing.allocator, uc3.WS_SYNC, .{
             .subscription_id = "sub_scale_123",
             .actor = "test",
         });
@@ -87,11 +93,11 @@ test "billing sync remains stable across repeated sync cycles" {
         if (sv.subscription_id) |v| std.testing.allocator.free(v);
     }
 
-    const first = try workspace_billing.reconcileWorkspaceBilling(db_ctx.conn, std.testing.allocator, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11", 200, "sync");
+    const first = try workspace_billing.reconcileWorkspaceBilling(db_ctx.conn, std.testing.allocator, uc3.WS_SYNC, 200, "sync");
     defer std.testing.allocator.free(first.plan_sku);
     defer if (first.subscription_id) |v| std.testing.allocator.free(v);
 
-    const second = try workspace_billing.reconcileWorkspaceBilling(db_ctx.conn, std.testing.allocator, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11", 201, "sync");
+    const second = try workspace_billing.reconcileWorkspaceBilling(db_ctx.conn, std.testing.allocator, uc3.WS_SYNC, 201, "sync");
     defer std.testing.allocator.free(second.plan_sku);
     defer if (second.subscription_id) |v| std.testing.allocator.free(v);
 
@@ -101,8 +107,8 @@ test "billing sync remains stable across repeated sync cycles" {
     try std.testing.expectEqual(BillingStatus.active, second.billing_status);
 
     var q = try db_ctx.conn.query(
-        "SELECT COUNT(*)::BIGINT FROM workspace_billing_audit WHERE event_type = 'SCALE_ACTIVATED'",
-        .{},
+        "SELECT COUNT(*)::BIGINT FROM workspace_billing_audit WHERE event_type = 'SCALE_ACTIVATED' AND workspace_id = $1",
+        .{uc3.WS_SYNC},
     );
     defer q.deinit();
     const row = (try q.next()) orelse return error.TestExpectedEqual;
@@ -110,14 +116,14 @@ test "billing sync remains stable across repeated sync cycles" {
 }
 
 test "missing billing state provisions free deterministically on reconcile" {
-    const db_ctx = (try openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
+    const db_ctx = (try base.openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
 
-    try createTempWorkspaceBillingTables(db_ctx.conn);
-    try seedWorkspace(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f12");
+    try uc3.seed(db_ctx.conn, uc3.WS_MISSING);
+    defer uc3.teardown(db_ctx.conn, uc3.WS_MISSING);
 
-    const state = try workspace_billing.reconcileWorkspaceBilling(db_ctx.conn, std.testing.allocator, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f12", 50, "sync");
+    const state = try workspace_billing.reconcileWorkspaceBilling(db_ctx.conn, std.testing.allocator, uc3.WS_MISSING, 50, "sync");
     defer std.testing.allocator.free(state.plan_sku);
     try std.testing.expectEqual(PlanTier.free, state.plan_tier);
     try std.testing.expectEqual(BillingStatus.active, state.billing_status);
@@ -125,7 +131,7 @@ test "missing billing state provisions free deterministically on reconcile" {
 
     var q = try db_ctx.conn.query(
         "SELECT plan_tier, billing_status FROM workspace_billing_state WHERE workspace_id = $1",
-        .{"0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f12"},
+        .{uc3.WS_MISSING},
     );
     defer q.deinit();
     const row = (try q.next()) orelse return error.TestExpectedEqual;
@@ -134,14 +140,15 @@ test "missing billing state provisions free deterministically on reconcile" {
 }
 
 test "manual scale to free downgrade is deterministic" {
-    const db_ctx = (try openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
+    const db_ctx = (try base.openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
 
-    try createTempWorkspaceBillingTables(db_ctx.conn);
-    try seedWorkspace(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f13");
+    try uc3.seed(db_ctx.conn, uc3.WS_MANUAL_DOWNGRADE);
+    defer uc3.teardown(db_ctx.conn, uc3.WS_MANUAL_DOWNGRADE);
+
     {
-        const sv = try workspace_billing.upgradeWorkspaceToScale(db_ctx.conn, std.testing.allocator, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f13", .{
+        const sv = try workspace_billing.upgradeWorkspaceToScale(db_ctx.conn, std.testing.allocator, uc3.WS_MANUAL_DOWNGRADE, .{
             .subscription_id = "sub_scale_456",
             .actor = "test",
         });
@@ -149,7 +156,7 @@ test "manual scale to free downgrade is deterministic" {
         if (sv.subscription_id) |v| std.testing.allocator.free(v);
     }
 
-    const state = try workspace_billing.applyBillingLifecycleEvent(db_ctx.conn, std.testing.allocator, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f13", .{
+    const state = try workspace_billing.applyBillingLifecycleEvent(db_ctx.conn, std.testing.allocator, uc3.WS_MANUAL_DOWNGRADE, .{
         .event = .downgrade_to_free,
         .reason = "operator_request",
         .actor = "billing_adapter",
@@ -161,14 +168,15 @@ test "manual scale to free downgrade is deterministic" {
 }
 
 test "downgraded workspace can become a paying customer again" {
-    const db_ctx = (try openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
+    const db_ctx = (try base.openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
 
-    try createTempWorkspaceBillingTables(db_ctx.conn);
-    try seedWorkspace(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f14");
+    try uc3.seed(db_ctx.conn, uc3.WS_RESUBSCRIBE);
+    defer uc3.teardown(db_ctx.conn, uc3.WS_RESUBSCRIBE);
+
     {
-        const sv = try workspace_billing.upgradeWorkspaceToScale(db_ctx.conn, std.testing.allocator, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f14", .{
+        const sv = try workspace_billing.upgradeWorkspaceToScale(db_ctx.conn, std.testing.allocator, uc3.WS_RESUBSCRIBE, .{
             .subscription_id = "sub_scale_789",
             .actor = "test",
         });
@@ -176,14 +184,14 @@ test "downgraded workspace can become a paying customer again" {
         if (sv.subscription_id) |v| std.testing.allocator.free(v);
     }
 
-    const downgraded = try workspace_billing.applyBillingLifecycleEvent(db_ctx.conn, std.testing.allocator, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f14", .{
+    const downgraded = try workspace_billing.applyBillingLifecycleEvent(db_ctx.conn, std.testing.allocator, uc3.WS_RESUBSCRIBE, .{
         .event = .downgrade_to_free,
         .reason = "operator_request",
         .actor = "billing_adapter",
     });
     defer std.testing.allocator.free(downgraded.plan_sku);
 
-    const upgraded = try workspace_billing.upgradeWorkspaceToScale(db_ctx.conn, std.testing.allocator, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f14", .{
+    const upgraded = try workspace_billing.upgradeWorkspaceToScale(db_ctx.conn, std.testing.allocator, uc3.WS_RESUBSCRIBE, .{
         .subscription_id = "sub_scale_790",
         .actor = "test",
     });
@@ -196,23 +204,24 @@ test "downgraded workspace can become a paying customer again" {
 }
 
 test "workspace deletion cascades billing state cleanup" {
-    const db_ctx = (try openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
+    const db_ctx = (try base.openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
 
-    try createTempWorkspaceBillingTables(db_ctx.conn);
-    try seedWorkspace(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f15");
-    try workspace_billing.provisionFreeWorkspace(db_ctx.conn, std.testing.allocator, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f15", "test");
+    try uc3.seed(db_ctx.conn, uc3.WS_CASCADE);
+    defer base.teardownTenant(db_ctx.conn);
+
+    try workspace_billing.provisionFreeWorkspace(db_ctx.conn, std.testing.allocator, uc3.WS_CASCADE, "test");
 
     _ = try db_ctx.conn.exec(
         "DELETE FROM workspaces WHERE workspace_id = $1",
-        .{"0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f15"},
+        .{uc3.WS_CASCADE},
     );
 
     {
         var q = try db_ctx.conn.query(
             "SELECT COUNT(*)::BIGINT FROM workspace_billing_state WHERE workspace_id = $1",
-            .{"0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f15"},
+            .{uc3.WS_CASCADE},
         );
         defer q.deinit();
         const row = (try q.next()) orelse return error.TestExpectedEqual;
@@ -222,7 +231,7 @@ test "workspace deletion cascades billing state cleanup" {
     {
         var q = try db_ctx.conn.query(
             "SELECT COUNT(*)::BIGINT FROM workspace_billing_audit WHERE workspace_id = $1",
-            .{"0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f15"},
+            .{uc3.WS_CASCADE},
         );
         defer q.deinit();
         const row = (try q.next()) orelse return error.TestExpectedEqual;
@@ -232,33 +241,35 @@ test "workspace deletion cascades billing state cleanup" {
 }
 
 test "free workspace creation limit blocks second non-scale workspace for same tenant" {
-    const db_ctx = (try openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
+    const db_ctx = (try base.openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
 
-    try createTempWorkspaceBillingTables(db_ctx.conn);
-    try seedWorkspaceWithTenant(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f16", "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fa1");
-    try workspace_billing.provisionFreeWorkspace(db_ctx.conn, std.testing.allocator, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f16", "test");
+    try uc3.seedWithTenant(db_ctx.conn, uc3.WS_LIMIT_BLOCK, uc3.TENANT_LIMIT_BLOCK, "limit-block-tenant");
+    defer uc3.teardownWithTenant(db_ctx.conn, uc3.WS_LIMIT_BLOCK, uc3.TENANT_LIMIT_BLOCK);
+
+    try workspace_billing.provisionFreeWorkspace(db_ctx.conn, std.testing.allocator, uc3.WS_LIMIT_BLOCK, "test");
 
     try std.testing.expectError(
         error.FreeWorkspaceLimitExceeded,
         workspace_billing.enforceFreeWorkspaceCreationAllowed(
             db_ctx.conn,
-            "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fa1",
+            uc3.TENANT_LIMIT_BLOCK,
             null,
         ),
     );
 }
 
 test "free workspace creation limit ignores existing scale workspace and same callback workspace" {
-    const db_ctx = (try openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
+    const db_ctx = (try base.openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
 
-    try createTempWorkspaceBillingTables(db_ctx.conn);
-    try seedWorkspaceWithTenant(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f17", "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fa2");
+    try uc3.seedWithTenant(db_ctx.conn, uc3.WS_LIMIT_IGNORE, uc3.TENANT_LIMIT_IGNORE, "limit-ignore-tenant");
+    defer uc3.teardownWithTenant(db_ctx.conn, uc3.WS_LIMIT_IGNORE, uc3.TENANT_LIMIT_IGNORE);
+
     {
-        const sv = try workspace_billing.upgradeWorkspaceToScale(db_ctx.conn, std.testing.allocator, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f17", .{
+        const sv = try workspace_billing.upgradeWorkspaceToScale(db_ctx.conn, std.testing.allocator, uc3.WS_LIMIT_IGNORE, .{
             .subscription_id = "sub_scale_999",
             .actor = "test",
         });
@@ -268,109 +279,29 @@ test "free workspace creation limit ignores existing scale workspace and same ca
 
     try workspace_billing.enforceFreeWorkspaceCreationAllowed(
         db_ctx.conn,
-        "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fa2",
+        uc3.TENANT_LIMIT_IGNORE,
         null,
     );
     try workspace_billing.enforceFreeWorkspaceCreationAllowed(
         db_ctx.conn,
-        "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fa2",
-        "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f17",
+        uc3.TENANT_LIMIT_IGNORE,
+        uc3.WS_LIMIT_IGNORE,
     );
 }
 
-fn openTestConn(alloc: std.mem.Allocator) !?struct { pool: *pg.Pool, conn: *pg.Conn } {
-    const url = std.process.getEnvVarOwned(alloc, "HANDLER_DB_TEST_URL") catch
-        std.process.getEnvVarOwned(alloc, "DATABASE_URL") catch return null;
-    defer alloc.free(url);
-
-    // Use page_allocator for opts strings so they outlive the pool. pg.Pool stores
-    // shallow references to connect.host/auth strings — if the arena they come from
-    // is freed first, pool.release() crashes when it calls newConnection() on a
-    // non-idle conn (e.g. after an internal query failure in the test body).
-    const db = @import("../db/pool.zig");
-    const opts = try db.parseUrl(std.heap.page_allocator, url);
-    const pool = try pg.Pool.init(alloc, opts);
-    errdefer pool.deinit();
-    const conn = try pool.acquire();
-    return .{ .pool = pool, .conn = conn };
-}
-
-fn createTempWorkspaceBillingTables(conn: *pg.Conn) !void {
-    {
-        _ = try conn.exec(
-            \\CREATE TEMP TABLE workspaces (
-            \\  workspace_id TEXT PRIMARY KEY,
-            \\  tenant_id TEXT
-            \\)
-        , .{});
-    }
-    {
-        _ = try conn.exec(
-            \\CREATE TEMP TABLE workspace_entitlements (
-            \\  entitlement_id TEXT PRIMARY KEY,
-            \\  workspace_id TEXT NOT NULL UNIQUE REFERENCES workspaces(workspace_id) ON DELETE CASCADE,
-            \\  plan_tier TEXT NOT NULL,
-            \\  max_profiles INTEGER NOT NULL,
-            \\  max_stages INTEGER NOT NULL,
-            \\  max_distinct_skills INTEGER NOT NULL,
-            \\  allow_custom_skills BOOLEAN NOT NULL,
-            \\  enable_agent_scoring BOOLEAN NOT NULL DEFAULT FALSE,
-            \\  agent_scoring_weights_json TEXT NOT NULL DEFAULT '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}',
-            \\  created_at BIGINT NOT NULL,
-            \\  updated_at BIGINT NOT NULL
-            \\)
-        , .{});
-    }
-    {
-        _ = try conn.exec(
-            \\CREATE TEMP TABLE workspace_billing_state (
-            \\  billing_id TEXT PRIMARY KEY,
-            \\  workspace_id TEXT NOT NULL UNIQUE REFERENCES workspaces(workspace_id) ON DELETE CASCADE,
-            \\  plan_tier TEXT NOT NULL,
-            \\  plan_sku TEXT NOT NULL,
-            \\  billing_status TEXT NOT NULL,
-            \\  adapter TEXT NOT NULL,
-            \\  subscription_id TEXT,
-            \\  payment_failed_at BIGINT,
-            \\  grace_expires_at BIGINT,
-            \\  pending_status TEXT,
-            \\  pending_reason TEXT,
-            \\  created_at BIGINT NOT NULL,
-            \\  updated_at BIGINT NOT NULL
-            \\)
-        , .{});
-    }
-    {
-        _ = try conn.exec(
-            \\CREATE TEMP TABLE workspace_billing_audit (
-            \\  audit_id TEXT PRIMARY KEY,
-            \\  workspace_id TEXT NOT NULL REFERENCES workspaces(workspace_id) ON DELETE CASCADE,
-            \\  event_type TEXT NOT NULL,
-            \\  previous_plan_tier TEXT,
-            \\  new_plan_tier TEXT NOT NULL,
-            \\  previous_status TEXT,
-            \\  new_status TEXT NOT NULL,
-            \\  reason TEXT NOT NULL,
-            \\  actor TEXT NOT NULL,
-            \\  metadata_json TEXT NOT NULL,
-            \\  created_at BIGINT NOT NULL
-            \\)
-        , .{});
-    }
-}
-
 test "upgrade with empty subscription_id returns InvalidSubscriptionId" {
-    const db_ctx = (try openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
+    const db_ctx = (try base.openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
 
-    try createTempWorkspaceBillingTables(db_ctx.conn);
-    try seedWorkspace(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f20");
-    try workspace_billing.provisionFreeWorkspace(db_ctx.conn, std.testing.allocator, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f20", "test");
+    try uc3.seed(db_ctx.conn, uc3.WS_EMPTY_SUB);
+    defer uc3.teardown(db_ctx.conn, uc3.WS_EMPTY_SUB);
+
+    try workspace_billing.provisionFreeWorkspace(db_ctx.conn, std.testing.allocator, uc3.WS_EMPTY_SUB, "test");
 
     try std.testing.expectError(
         error.InvalidSubscriptionId,
-        workspace_billing.upgradeWorkspaceToScale(db_ctx.conn, std.testing.allocator, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f20", .{
+        workspace_billing.upgradeWorkspaceToScale(db_ctx.conn, std.testing.allocator, uc3.WS_EMPTY_SUB, .{
             .subscription_id = "",
             .actor = "test",
         }),
@@ -378,17 +309,18 @@ test "upgrade with empty subscription_id returns InvalidSubscriptionId" {
 }
 
 test "upgrade with whitespace-only subscription_id returns InvalidSubscriptionId" {
-    const db_ctx = (try openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
+    const db_ctx = (try base.openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
 
-    try createTempWorkspaceBillingTables(db_ctx.conn);
-    try seedWorkspace(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f21");
-    try workspace_billing.provisionFreeWorkspace(db_ctx.conn, std.testing.allocator, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f21", "test");
+    try uc3.seed(db_ctx.conn, uc3.WS_WHITESPACE_SUB);
+    defer uc3.teardown(db_ctx.conn, uc3.WS_WHITESPACE_SUB);
+
+    try workspace_billing.provisionFreeWorkspace(db_ctx.conn, std.testing.allocator, uc3.WS_WHITESPACE_SUB, "test");
 
     try std.testing.expectError(
         error.InvalidSubscriptionId,
-        workspace_billing.upgradeWorkspaceToScale(db_ctx.conn, std.testing.allocator, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f21", .{
+        workspace_billing.upgradeWorkspaceToScale(db_ctx.conn, std.testing.allocator, uc3.WS_WHITESPACE_SUB, .{
             .subscription_id = "  \t\r\n  ",
             .actor = "test",
         }),
@@ -396,20 +328,21 @@ test "upgrade with whitespace-only subscription_id returns InvalidSubscriptionId
 }
 
 test "enforceFreeWorkspaceCreationAllowed excludes the workspace itself" {
-    const db_ctx = (try openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
+    const db_ctx = (try base.openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
 
-    try createTempWorkspaceBillingTables(db_ctx.conn);
-    try seedWorkspaceWithTenant(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f22", "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fb1");
-    try workspace_billing.provisionFreeWorkspace(db_ctx.conn, std.testing.allocator, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f22", "test");
+    try uc3.seedWithTenant(db_ctx.conn, uc3.WS_EXCLUDE_SELF, uc3.TENANT_EXCLUDE_SELF, "exclude-self-tenant");
+    defer uc3.teardownWithTenant(db_ctx.conn, uc3.WS_EXCLUDE_SELF, uc3.TENANT_EXCLUDE_SELF);
+
+    try workspace_billing.provisionFreeWorkspace(db_ctx.conn, std.testing.allocator, uc3.WS_EXCLUDE_SELF, "test");
 
     // Without exclusion: same-tenant free workspace → limit exceeded
     try std.testing.expectError(
         error.FreeWorkspaceLimitExceeded,
         workspace_billing.enforceFreeWorkspaceCreationAllowed(
             db_ctx.conn,
-            "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fb1",
+            uc3.TENANT_EXCLUDE_SELF,
             null,
         ),
     );
@@ -417,21 +350,7 @@ test "enforceFreeWorkspaceCreationAllowed excludes the workspace itself" {
     // With exclusion of that workspace itself → allowed (T7 regression parity for update path)
     try workspace_billing.enforceFreeWorkspaceCreationAllowed(
         db_ctx.conn,
-        "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6fb1",
-        "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f22",
-    );
-}
-
-fn seedWorkspace(conn: *pg.Conn, workspace_id: []const u8) !void {
-    _ = try conn.exec(
-        "INSERT INTO workspaces (workspace_id, tenant_id) VALUES ($1, 'tenant-test-default')",
-        .{workspace_id},
-    );
-}
-
-fn seedWorkspaceWithTenant(conn: *pg.Conn, workspace_id: []const u8, tenant_id: []const u8) !void {
-    _ = try conn.exec(
-        "INSERT INTO workspaces (workspace_id, tenant_id) VALUES ($1, $2)",
-        .{ workspace_id, tenant_id },
+        uc3.TENANT_EXCLUDE_SELF,
+        uc3.WS_EXCLUDE_SELF,
     );
 }

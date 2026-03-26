@@ -143,7 +143,7 @@ fn loadLoggedChange(
     change_id: []const u8,
 ) !?LoggedChange {
     var q = try conn.query(
-        \\SELECT proposal_id, workspace_id, field_name, old_value, new_value
+        \\SELECT proposal_id::text, workspace_id::text, field_name, old_value, new_value
         \\FROM harness_change_log
         \\WHERE change_id = $1
         \\  AND agent_id = $2
@@ -172,7 +172,7 @@ fn loadCurrentActiveConfigVersionId(
     workspace_id: []const u8,
 ) !?[]u8 {
     var q = try conn.query(
-        \\SELECT config_version_id
+        \\SELECT config_version_id::text
         \\FROM workspace_active_config
         \\WHERE workspace_id = $1
         \\LIMIT 1

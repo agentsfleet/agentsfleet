@@ -202,12 +202,12 @@ test "provisionWorkspaceCredit grants initial free credit deterministically" {
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
 
-    try createTempCreditTables(db_ctx.conn);
-    try seedWorkspace(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f21");
+    try uc1.seed(db_ctx.conn, uc1.WS_PROVISION);
+    defer uc1.teardown(db_ctx.conn, uc1.WS_PROVISION);
 
-    try provisionWorkspaceCredit(db_ctx.conn, std.testing.allocator, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f21", "test");
+    try provisionWorkspaceCredit(db_ctx.conn, std.testing.allocator, uc1.WS_PROVISION, "test");
 
-    const credit = try getOrProvisionWorkspaceCredit(db_ctx.conn, std.testing.allocator, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f21");
+    const credit = try getOrProvisionWorkspaceCredit(db_ctx.conn, std.testing.allocator, uc1.WS_PROVISION);
     defer std.testing.allocator.free(credit.currency);
     try std.testing.expectEqual(FREE_PLAN_INITIAL_CREDIT_CENTS, credit.initial_credit_cents);
     try std.testing.expectEqual(@as(i64, 0), credit.consumed_credit_cents);
@@ -219,9 +219,10 @@ test "enforceExecutionAllowed blocks exhausted free plan and allows scale" {
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
 
-    try createTempCreditTables(db_ctx.conn);
-    try seedWorkspace(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f22");
-    try store.upsertCreditState(db_ctx.conn, std.testing.allocator, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f22", .{
+    try uc1.seed(db_ctx.conn, uc1.WS_ENFORCE);
+    defer uc1.teardown(db_ctx.conn, uc1.WS_ENFORCE);
+
+    try store.upsertCreditState(db_ctx.conn, std.testing.allocator, uc1.WS_ENFORCE, .{
         .currency = CREDIT_CURRENCY,
         .initial_credit_cents = FREE_PLAN_INITIAL_CREDIT_CENTS,
         .consumed_credit_cents = FREE_PLAN_INITIAL_CREDIT_CENTS,
@@ -229,9 +230,9 @@ test "enforceExecutionAllowed blocks exhausted free plan and allows scale" {
         .exhausted_at = 123,
     }, 123);
 
-    try std.testing.expectError(error.CreditExhausted, enforceExecutionAllowed(db_ctx.conn, std.testing.allocator, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f22", .free));
+    try std.testing.expectError(error.CreditExhausted, enforceExecutionAllowed(db_ctx.conn, std.testing.allocator, uc1.WS_ENFORCE, .free));
 
-    const scale_credit = try enforceExecutionAllowed(db_ctx.conn, std.testing.allocator, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f22", .scale);
+    const scale_credit = try enforceExecutionAllowed(db_ctx.conn, std.testing.allocator, uc1.WS_ENFORCE, .scale);
     defer std.testing.allocator.free(scale_credit.currency);
     try std.testing.expectEqual(@as(i64, 0), scale_credit.remaining_credit_cents);
 }
@@ -241,15 +242,16 @@ test "deductCompletedRuntimeUsage debits free-plan credit once per completed run
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
 
-    try createTempCreditTables(db_ctx.conn);
-    try seedWorkspace(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f23");
-    try provisionWorkspaceCredit(db_ctx.conn, std.testing.allocator, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f23", "test");
+    try uc1.seed(db_ctx.conn, uc1.WS_DEDUCT);
+    defer uc1.teardown(db_ctx.conn, uc1.WS_DEDUCT);
+
+    try provisionWorkspaceCredit(db_ctx.conn, std.testing.allocator, uc1.WS_DEDUCT, "test");
 
     const first = try deductCompletedRuntimeUsage(
         db_ctx.conn,
         std.testing.allocator,
-        "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f23",
-        "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f93",
+        uc1.WS_DEDUCT,
+        "0195b4ba-8d3a-7f13-8abc-aa0000000093",
         1,
         42,
         "worker",
@@ -261,8 +263,8 @@ test "deductCompletedRuntimeUsage debits free-plan credit once per completed run
     const second = try deductCompletedRuntimeUsage(
         db_ctx.conn,
         std.testing.allocator,
-        "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f23",
-        "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f93",
+        uc1.WS_DEDUCT,
+        "0195b4ba-8d3a-7f13-8abc-aa0000000093",
         1,
         42,
         "worker",
@@ -277,7 +279,7 @@ test "deductCompletedRuntimeUsage debits free-plan credit once per completed run
             \\FROM workspace_credit_audit
             \\WHERE workspace_id = $1
             \\  AND event_type = 'CREDIT_DEDUCTED'
-        , .{"0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f23"});
+        , .{uc1.WS_DEDUCT});
         defer q.deinit();
         const row = (try q.next()) orelse return error.TestExpectedEqual;
         const cnt = try row.get(i64, 0);
@@ -291,9 +293,10 @@ test "deductCompletedRuntimeUsage clamps to zero and records exhaustion" {
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
 
-    try createTempCreditTables(db_ctx.conn);
-    try seedWorkspace(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f24");
-    try store.upsertCreditState(db_ctx.conn, std.testing.allocator, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f24", .{
+    try uc1.seed(db_ctx.conn, uc1.WS_CLAMP);
+    defer uc1.teardown(db_ctx.conn, uc1.WS_CLAMP);
+
+    try store.upsertCreditState(db_ctx.conn, std.testing.allocator, uc1.WS_CLAMP, .{
         .currency = CREDIT_CURRENCY,
         .initial_credit_cents = FREE_PLAN_INITIAL_CREDIT_CENTS,
         .consumed_credit_cents = 995,
@@ -304,8 +307,8 @@ test "deductCompletedRuntimeUsage clamps to zero and records exhaustion" {
     const credit = try deductCompletedRuntimeUsage(
         db_ctx.conn,
         std.testing.allocator,
-        "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f24",
-        "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f94",
+        uc1.WS_CLAMP,
+        "0195b4ba-8d3a-7f13-8abc-aa0000000094",
         1,
         30,
         "worker",
@@ -321,7 +324,7 @@ test "deductCompletedRuntimeUsage clamps to zero and records exhaustion" {
             \\FROM workspace_credit_audit
             \\WHERE workspace_id = $1
             \\  AND event_type = 'CREDIT_EXHAUSTED'
-        , .{"0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f24"});
+        , .{uc1.WS_CLAMP});
         defer q.deinit();
         const row = (try q.next()) orelse return error.TestExpectedEqual;
         const cnt = try row.get(i64, 0);
@@ -330,64 +333,6 @@ test "deductCompletedRuntimeUsage clamps to zero and records exhaustion" {
     }
 }
 
-fn openTestConn(alloc: std.mem.Allocator) !?struct { pool: *pg.Pool, conn: *pg.Conn } {
-    const url = std.process.getEnvVarOwned(alloc, "HANDLER_DB_TEST_URL") catch
-        std.process.getEnvVarOwned(alloc, "DATABASE_URL") catch return null;
-    defer alloc.free(url);
-
-    const db = @import("../db/pool.zig");
-    var arena = std.heap.ArenaAllocator.init(alloc);
-    defer arena.deinit();
-    const opts = try db.parseUrl(arena.allocator(), url);
-    const pool = try pg.Pool.init(alloc, opts);
-    errdefer pool.deinit();
-    const conn = try pool.acquire();
-    return .{ .pool = pool, .conn = conn };
-}
-
-fn createTempCreditTables(conn: *pg.Conn) !void {
-    {
-        _ = try conn.exec(
-            \\CREATE TEMP TABLE workspaces (
-            \\  workspace_id TEXT PRIMARY KEY
-            \\) ON COMMIT DROP
-        , .{});
-    }
-    {
-        _ = try conn.exec(
-            \\CREATE TEMP TABLE workspace_credit_state (
-            \\  credit_id TEXT PRIMARY KEY,
-            \\  workspace_id TEXT NOT NULL UNIQUE REFERENCES workspaces(workspace_id) ON DELETE CASCADE,
-            \\  currency TEXT NOT NULL,
-            \\  initial_credit_cents BIGINT NOT NULL,
-            \\  consumed_credit_cents BIGINT NOT NULL,
-            \\  remaining_credit_cents BIGINT NOT NULL,
-            \\  exhausted_at BIGINT,
-            \\  created_at BIGINT NOT NULL,
-            \\  updated_at BIGINT NOT NULL
-            \\) ON COMMIT DROP
-        , .{});
-    }
-    {
-        _ = try conn.exec(
-            \\CREATE TEMP TABLE workspace_credit_audit (
-            \\  audit_id TEXT PRIMARY KEY,
-            \\  workspace_id TEXT NOT NULL REFERENCES workspaces(workspace_id) ON DELETE CASCADE,
-            \\  event_type TEXT NOT NULL,
-            \\  delta_credit_cents BIGINT NOT NULL,
-            \\  remaining_credit_cents BIGINT NOT NULL,
-            \\  reason TEXT NOT NULL,
-            \\  actor TEXT NOT NULL,
-            \\  metadata_json TEXT NOT NULL,
-            \\  created_at BIGINT NOT NULL
-            \\) ON COMMIT DROP
-        , .{});
-    }
-}
-
-fn seedWorkspace(conn: *pg.Conn, workspace_id: []const u8) !void {
-    _ = try conn.exec(
-        "INSERT INTO workspaces (workspace_id) VALUES ($1)",
-        .{workspace_id},
-    );
-}
+const base = @import("../db/test_fixtures.zig");
+const uc1 = @import("../db/test_fixtures_uc1.zig");
+const openTestConn = base.openTestConn;

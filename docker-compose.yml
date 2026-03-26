@@ -10,11 +10,7 @@ services:
       - sh
       - -c
       - |
-        apk add --no-cache openssl &&
-        mkdir -p /tls && cd /tls &&
-        openssl req -x509 -newkey rsa:2048 -nodes -keyout server.key -out server.crt -days 3650 -subj "/CN=postgres" 2>/dev/null &&
-        chown postgres:postgres server.key server.crt && chmod 600 server.key &&
-        exec docker-entrypoint.sh postgres -c ssl=on -c ssl_cert_file=/tls/server.crt -c ssl_key_file=/tls/server.key
+        exec docker-entrypoint.sh postgres
     environment:
       POSTGRES_USER: usezombie
       POSTGRES_PASSWORD: usezombie
@@ -23,6 +19,11 @@ services:
       - "5432:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U usezombie -d usezombiedb"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
 
   redis:
     image: redis:7-alpine
@@ -37,7 +38,13 @@ services:
     ports:
       - "6379:6379"
     volumes:
+      - redis-tls:/tls
       - redis-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli --tls --insecure -a usezombie ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
 
   zombied:
     build:
@@ -51,12 +58,25 @@ services:
       - path: .env
         required: false
     environment:
-      # Override DB/Redis to use compose service names instead of localhost
-      DATABASE_URL: postgresql://usezombie:usezombie@postgres:5432/usezombiedb
-      REDIS_URL: rediss://:usezombie@redis:6379
+      # Local dev defaults: satisfy role-separated startup checks without
+      # requiring a checked-in .env file.
+      API_KEY: local-dev-api-key
+      ENCRYPTION_MASTER_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+      GITHUB_APP_ID: "12345"
+      GITHUB_APP_PRIVATE_KEY: local-dev-private-key
+      # Override DB/Redis to use compose service names instead of localhost.
+      DATABASE_URL_API: postgresql://usezombie:usezombie@postgres:5432/usezombiedb?application_name=api&sslmode=disable
+      DATABASE_URL_WORKER: postgresql://usezombie:usezombie@postgres:5432/usezombiedb?application_name=worker&sslmode=disable
+      REDIS_URL_API: rediss://:usezombie@redis:6379/api
+      REDIS_URL_WORKER: rediss://:usezombie@redis:6379/worker
+      REDIS_TLS_CA_CERT_FILE: /tls/server.crt
     depends_on:
-      - postgres
-      - redis
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - redis-tls:/tls:ro
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:3000/healthz"]
       interval: 10s
@@ -66,3 +86,4 @@ services:
 volumes:
   postgres-data:
   redis-data:
+  redis-tls:

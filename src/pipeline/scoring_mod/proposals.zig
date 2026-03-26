@@ -91,7 +91,7 @@ pub fn reconcilePendingProposalGenerations(
     }
 
     var q = try conn.query(
-        \\SELECT proposal_id, agent_id, workspace_id, config_version_id, trigger_reason
+        \\SELECT proposal_id::text, agent_id::text, workspace_id::text, config_version_id::text, trigger_reason
         \\FROM agent_improvement_proposals
         \\WHERE generation_status = $1
         \\ORDER BY created_at ASC, proposal_id ASC

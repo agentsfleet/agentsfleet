@@ -16,6 +16,7 @@ pub const Principal = struct {
     tenant_id: ?[]u8,
     org_id: ?[]u8,
     workspace_id: ?[]u8,
+    role: ?[]u8,
 };
 
 pub const Config = struct {
@@ -63,6 +64,7 @@ pub const Verifier = struct {
             .tenant_id = clerk_claims.tenant_id,
             .org_id = clerk_claims.org_id,
             .workspace_id = clerk_claims.workspace_id,
+            .role = clerk_claims.role,
         };
     }
 

@@ -1,12 +1,12 @@
 const std = @import("std");
 const zap = @import("zap");
-const workspace_billing = @import("../../state/workspace_billing.zig");
-const workspace_credit = @import("../../state/workspace_credit.zig");
 const policy = @import("../../state/policy.zig");
 const obs_log = @import("../../observability/logging.zig");
 const error_codes = @import("../../errors/codes.zig");
 const common = @import("common.zig");
+const workspace_guards = @import("../workspace_guards.zig");
 const log = std.log.scoped(.http);
+const API_ACTOR = "api";
 
 pub fn handlePauseWorkspace(ctx: *common.Context, r: zap.Request, workspace_id: []const u8) void {
     var arena = std.heap.ArenaAllocator.init(ctx.alloc);
@@ -30,6 +30,7 @@ pub fn handlePauseWorkspace(ctx: *common.Context, r: zap.Request, workspace_id: 
         common.errorResponse(r, .bad_request, error_codes.ERR_INVALID_REQUEST, "Request body required", req_id);
         return;
     };
+    if (!common.checkBodySize(r, body, req_id)) return;
     const parsed = std.json.parseFromSlice(Req, alloc, body, .{}) catch {
         common.errorResponse(r, .bad_request, error_codes.ERR_INVALID_REQUEST, "Malformed JSON", req_id);
         return;
@@ -42,10 +43,11 @@ pub fn handlePauseWorkspace(ctx: *common.Context, r: zap.Request, workspace_id: 
     };
     defer ctx.pool.release(conn);
 
-    if (!common.authorizeWorkspaceAndSetTenantContext(conn, principal, workspace_id)) {
-        common.errorResponse(r, .forbidden, error_codes.ERR_FORBIDDEN, "Workspace access denied", req_id);
-        return;
-    }
+    const actor = principal.user_id orelse API_ACTOR;
+    const access = workspace_guards.enforce(r, req_id, conn, alloc, principal, workspace_id, actor, .{
+        .minimum_role = .operator,
+    }) orelse return;
+    defer access.deinit(alloc);
 
     policy.recordPolicyEvent(conn, workspace_id, null, .sensitive, .allow, "m1.pause_workspace", "api") catch |err| {
         obs_log.logWarnErr(.http, err, "workspace.policy_event_insert_fail workspace_id={s}", .{workspace_id});
@@ -104,30 +106,16 @@ pub fn handleSyncSpecs(ctx: *common.Context, r: zap.Request, workspace_id: []con
     };
     defer ctx.pool.release(conn);
 
-    if (!common.authorizeWorkspaceAndSetTenantContext(conn, principal, workspace_id)) {
-        common.errorResponse(r, .forbidden, error_codes.ERR_FORBIDDEN, "Workspace access denied", req_id);
-        return;
-    }
+    const actor = principal.user_id orelse API_ACTOR;
+    const access = workspace_guards.enforce(r, req_id, conn, alloc, principal, workspace_id, actor, .{
+        .credit_policy = .execution_required,
+    }) orelse return;
+    defer access.deinit(alloc);
 
-    const billing_state = workspace_billing.reconcileWorkspaceBilling(conn, alloc, workspace_id, std.time.milliTimestamp(), "api") catch |err| {
-        if (workspace_billing.errorCode(err)) |code| {
-            common.errorResponse(r, .internal_server_error, code, workspace_billing.errorMessage(err) orelse "Workspace billing failure", req_id);
-            return;
-        }
-        common.internalOperationError(r, "Failed to reconcile workspace billing state", req_id);
+    const billing_state = access.billing_state orelse {
+        common.internalOperationError(r, "billing_state missing after execution guard", req_id);
         return;
     };
-    defer alloc.free(billing_state.plan_sku);
-    defer if (billing_state.subscription_id) |v| alloc.free(v);
-    const credit = workspace_credit.enforceExecutionAllowed(conn, alloc, workspace_id, billing_state.plan_tier) catch |err| {
-        if (workspace_credit.errorCode(err)) |code| {
-            common.errorResponse(r, .forbidden, code, workspace_credit.errorMessage(err) orelse "Workspace credit failure", req_id);
-            return;
-        }
-        common.internalOperationError(r, "Failed to validate workspace credit balance", req_id);
-        return;
-    };
-    defer alloc.free(credit.currency);
 
     var ws = conn.query(
         "SELECT repo_url, default_branch FROM workspaces WHERE workspace_id = $1",
@@ -160,6 +148,11 @@ pub fn handleSyncSpecs(ctx: *common.Context, r: zap.Request, workspace_id: []con
         const v = crow.get(i64, 0) catch @as(i64, 0);
         count_result.drain() catch {};
         break :blk v;
+    };
+
+    const credit = access.credit orelse {
+        common.internalOperationError(r, "credit missing after execution guard", req_id);
+        return;
     };
 
     log.info("workspace.sync workspace_id={s} total_pending={d}", .{ workspace_id, total_pending });

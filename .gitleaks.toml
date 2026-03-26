@@ -8,9 +8,16 @@ paths = [
 ]
 
 [[allowlists]]
-description = "Ignore deterministic JWT fixtures in jwks unit tests"
+description = "Ignore deterministic JWT fixtures and test tokens in Zig test files"
 paths = [
-  '''(^|/)src/auth/jwks_test\.zig$''',
+  '''(^|/).*_test\.zig$''',
+]
+
+[[allowlists]]
+description = "Ignore test JWT tokens in RBAC integration test (deterministic, not real credentials)"
+regexTarget = "match"
+regexes = [
+  '''eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6InJiYWMtdGVzdC1raWQifQ\..*''',
 ]
 
 [[allowlists]]

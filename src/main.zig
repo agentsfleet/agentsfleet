@@ -144,4 +144,5 @@ test {
     _ = @import("executor/network.zig");
     _ = @import("executor/lease.zig");
     _ = @import("executor/client.zig");
+    _ = @import("http/handlers/m5_handler_changes_test.zig");
 }

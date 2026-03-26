@@ -84,7 +84,7 @@ pub fn enforceFreeWorkspaceCreationAllowed(
         \\FROM workspaces w
         \\LEFT JOIN workspace_billing_state s ON s.workspace_id = w.workspace_id
         \\WHERE w.tenant_id = $1
-        \\  AND ($2::TEXT IS NULL OR w.workspace_id <> $2)
+        \\  AND ($2::TEXT IS NULL OR w.workspace_id <> $2::uuid)
         \\  AND COALESCE(s.plan_tier, 'FREE') <> 'SCALE'
     , .{ tenant_id, exclude_workspace_id });
     defer q.deinit();

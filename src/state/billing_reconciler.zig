@@ -14,7 +14,7 @@ pub const ReconcileResult = struct {
 };
 
 const PendingRow = struct {
-    id: i64,
+    id: []u8,
     run_id: []u8,
     workspace_id: []u8,
     attempt: u32,
@@ -35,7 +35,7 @@ pub fn reconcilePending(
     const now_ms = std.time.milliTimestamp();
 
     var query = try conn.query(
-        \\SELECT id, run_id::TEXT, workspace_id::TEXT, attempt, idempotency_key, billable_unit, billable_quantity
+        \\SELECT id::TEXT, run_id::TEXT, workspace_id::TEXT, attempt, idempotency_key, billable_unit, billable_quantity
         \\FROM billing_delivery_outbox
         \\WHERE status = 'pending' AND next_retry_at <= $1
         \\ORDER BY created_at ASC
@@ -46,7 +46,7 @@ pub fn reconcilePending(
 
     while (try query.next()) |row| {
         const pending = PendingRow{
-            .id = try row.get(i64, 0),
+            .id = try row.get([]u8, 0),
             .run_id = try row.get([]u8, 1),
             .workspace_id = try row.get([]u8, 2),
             .attempt = @as(u32, @intCast(try row.get(i32, 3))),
@@ -55,6 +55,7 @@ pub fn reconcilePending(
             .billable_quantity = @as(u64, @intCast(@max(try row.get(i64, 6), 0))),
         };
         defer {
+            alloc.free(pending.id);
             alloc.free(pending.run_id);
             alloc.free(pending.workspace_id);
             alloc.free(pending.idempotency_key);
@@ -91,7 +92,7 @@ pub fn reconcilePending(
     return result;
 }
 
-fn markDelivered(conn: *pg.Conn, row_id: i64, now_ms: i64, adapter_reference: []const u8) !void {
+fn markDelivered(conn: *pg.Conn, row_id: []const u8, now_ms: i64, adapter_reference: []const u8) !void {
     _ = try conn.exec(
         \\UPDATE billing_delivery_outbox
         \\SET status = 'delivered',
@@ -99,11 +100,11 @@ fn markDelivered(conn: *pg.Conn, row_id: i64, now_ms: i64, adapter_reference: []
         \\    delivered_at = $2,
         \\    delivery_attempts = delivery_attempts + 1,
         \\    updated_at = $2
-        \\WHERE id = $3
+        \\WHERE id = $3::uuid
     , .{ adapter_reference, now_ms, row_id });
 }
 
-fn markRetry(conn: *pg.Conn, row_id: i64, now_ms: i64, err_name: []const u8) !void {
+fn markRetry(conn: *pg.Conn, row_id: []const u8, now_ms: i64, err_name: []const u8) !void {
     const backoff_ms = @as(i64, 5_000);
     _ = try conn.exec(
         \\UPDATE billing_delivery_outbox
@@ -112,28 +113,67 @@ fn markRetry(conn: *pg.Conn, row_id: i64, now_ms: i64, err_name: []const u8) !vo
         \\    next_retry_at = $1,
         \\    last_error = $2,
         \\    updated_at = $3
-        \\WHERE id = $4
+        \\WHERE id = $4::uuid
     , .{ now_ms + backoff_ms, err_name, now_ms, row_id });
 }
 
-fn markDeadLetter(conn: *pg.Conn, row_id: i64, now_ms: i64, err_name: []const u8) !void {
+fn markDeadLetter(conn: *pg.Conn, row_id: []const u8, now_ms: i64, err_name: []const u8) !void {
     _ = try conn.exec(
         \\UPDATE billing_delivery_outbox
         \\SET status = 'dead_letter',
         \\    delivery_attempts = delivery_attempts + 1,
         \\    last_error = $1,
         \\    updated_at = $2
-        \\WHERE id = $3
+        \\WHERE id = $3::uuid
     , .{ err_name, now_ms, row_id });
 }
 
+const base = @import("../db/test_fixtures.zig");
+const uc3 = @import("../db/test_fixtures_uc3.zig");
+
+fn seedBillingOutboxRow(conn: *pg.Conn, outbox_id: []const u8, quantity: u64) !void {
+    _ = try conn.exec(
+        \\INSERT INTO billing_delivery_outbox
+        \\  (id, run_id, workspace_id, attempt, idempotency_key, billable_unit, billable_quantity,
+        \\   status, delivery_attempts, next_retry_at, adapter, created_at, updated_at)
+        \\VALUES
+        \\  ($1::uuid, $2::uuid, $3::uuid,
+        \\   1, 'billing:reconciler:test:1', 'agent_second', $4,
+        \\   'pending', 0, 0, 'provider_stub', 1, 1)
+        \\ON CONFLICT DO NOTHING
+    , .{ outbox_id, uc3.RUN_RECONCILER, uc3.WS_RECONCILER, @as(i64, @intCast(quantity)) });
+}
+
+fn assertOutboxRow(conn: *pg.Conn, outbox_id: []const u8, expected_status: []const u8, expected_quantity: u64, expected_attempts: u32) !void {
+    var q = try conn.query(
+        \\SELECT status, billable_quantity, delivery_attempts
+        \\FROM billing_delivery_outbox
+        \\WHERE id = $1::uuid
+    , .{outbox_id});
+    defer q.deinit();
+    const row = (try q.next()) orelse return error.TestExpectedEqual;
+    const status = try row.get([]const u8, 0);
+    const qty = try row.get(i64, 1);
+    const attempts = try row.get(i32, 2);
+    try q.drain();
+    try std.testing.expectEqualStrings(expected_status, status);
+    try std.testing.expectEqual(@as(i64, @intCast(expected_quantity)), qty);
+    try std.testing.expectEqual(@as(i32, @intCast(expected_attempts)), attempts);
+}
+
 test "integration: adapter outage preserves accounting state and retries safely" {
-    const db_ctx = (try openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
+    const db_ctx = (try base.openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
 
-    try createTempBillingOutboxTable(db_ctx.conn);
-    try seedPendingCharge(db_ctx.conn, 42);
+    uc3.teardownWithRuns(db_ctx.conn, uc3.WS_RECONCILER);
+    defer uc3.teardownWithRuns(db_ctx.conn, uc3.WS_RECONCILER);
+
+    try base.seedTenant(db_ctx.conn);
+    try base.seedWorkspace(db_ctx.conn, uc3.WS_RECONCILER);
+    try base.seedSpec(db_ctx.conn, uc3.SPEC_RECONCILER, uc3.WS_RECONCILER);
+    try base.seedRun(db_ctx.conn, uc3.RUN_RECONCILER, uc3.WS_RECONCILER, uc3.SPEC_RECONCILER);
+    try seedBillingOutboxRow(db_ctx.conn, uc3.OUTBOX_RECONCILER, 42);
 
     try std.posix.setenv("BILLING_ADAPTER_MODE", "provider_stub", true);
     try std.posix.setenv("BILLING_PROVIDER_API_KEY", "test-secret", true);
@@ -149,77 +189,10 @@ test "integration: adapter outage preserves accounting state and retries safely"
     try std.testing.expectEqual(@as(u32, 1), first.retried);
     try std.testing.expectEqual(@as(u32, 0), first.delivered);
 
-    try assertOutboxRow(db_ctx.conn, "pending", 42, 1);
+    try assertOutboxRow(db_ctx.conn, uc3.OUTBOX_RECONCILER, "pending", 42, 1);
 
     try std.posix.setenv("BILLING_PROVIDER_STUB_OUTAGE", "0", true);
     const second = try reconcilePending(std.testing.allocator, db_ctx.conn, adapter, 16);
     try std.testing.expectEqual(@as(u32, 1), second.delivered);
-    try assertOutboxRow(db_ctx.conn, "delivered", 42, 2);
-}
-
-fn openTestConn(alloc: std.mem.Allocator) !?struct { pool: *pg.Pool, conn: *pg.Conn } {
-    const url = std.process.getEnvVarOwned(alloc, "HANDLER_DB_TEST_URL") catch
-        std.process.getEnvVarOwned(alloc, "DATABASE_URL") catch return null;
-    defer alloc.free(url);
-
-    const db = @import("../db/pool.zig");
-    var arena = std.heap.ArenaAllocator.init(alloc);
-    defer arena.deinit();
-    const opts = try db.parseUrl(arena.allocator(), url);
-    const pool = try pg.Pool.init(alloc, opts);
-    errdefer pool.deinit();
-    const conn = try pool.acquire();
-    return .{ .pool = pool, .conn = conn };
-}
-
-fn createTempBillingOutboxTable(conn: *pg.Conn) !void {
-    _ = try conn.exec(
-        \\CREATE TEMP TABLE billing_delivery_outbox (
-        \\  id BIGSERIAL PRIMARY KEY,
-        \\  run_id TEXT NOT NULL,
-        \\  workspace_id TEXT NOT NULL,
-        \\  attempt INT NOT NULL,
-        \\  idempotency_key TEXT NOT NULL UNIQUE,
-        \\  billable_unit TEXT NOT NULL,
-        \\  billable_quantity BIGINT NOT NULL,
-        \\  status TEXT NOT NULL DEFAULT 'pending',
-        \\  delivery_attempts INT NOT NULL DEFAULT 0,
-        \\  next_retry_at BIGINT NOT NULL DEFAULT 0,
-        \\  adapter TEXT NOT NULL,
-        \\  adapter_reference TEXT,
-        \\  last_error TEXT,
-        \\  created_at BIGINT NOT NULL,
-        \\  updated_at BIGINT NOT NULL,
-        \\  delivered_at BIGINT
-        \\) ON COMMIT DROP
-    , .{});
-}
-
-fn seedPendingCharge(conn: *pg.Conn, quantity: u64) !void {
-    _ = try conn.exec(
-        \\INSERT INTO billing_delivery_outbox
-        \\  (run_id, workspace_id, attempt, idempotency_key, billable_unit, billable_quantity,
-        \\   status, delivery_attempts, next_retry_at, adapter, created_at, updated_at)
-        \\VALUES
-        \\  ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f91', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11',
-        \\   1, 'billing:run:1', 'agent_second', $1, 'pending', 0, 0, 'provider_stub', 1, 1)
-    , .{@as(i64, @intCast(quantity))});
-}
-
-fn assertOutboxRow(conn: *pg.Conn, expected_status: []const u8, expected_quantity: u64, expected_attempts: u32) !void {
-    var q = try conn.query(
-        \\SELECT status, billable_quantity, delivery_attempts
-        \\FROM billing_delivery_outbox
-        \\ORDER BY id DESC
-        \\LIMIT 1
-    , .{});
-    defer q.deinit();
-    const row = (try q.next()) orelse return error.TestExpectedEqual;
-    const status = try row.get([]const u8, 0);
-    const qty = try row.get(i64, 1);
-    const attempts = try row.get(i32, 2);
-    try q.drain();
-    try std.testing.expectEqualStrings(expected_status, status);
-    try std.testing.expectEqual(@as(i64, @intCast(expected_quantity)), qty);
-    try std.testing.expectEqual(@as(i32, @intCast(expected_attempts)), attempts);
+    try assertOutboxRow(db_ctx.conn, uc3.OUTBOX_RECONCILER, "delivered", 42, 2);
 }

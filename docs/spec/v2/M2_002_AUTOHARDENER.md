@@ -13,11 +13,11 @@
 
 ## Problem
 
-Provisioned servers need a security baseline before running workloads: firewall rules, fail2ban, Debian security updates, and KVM verification (required for Firecracker).
+Provisioned servers need a security baseline before running workloads: firewall rules, fail2ban, Debian security updates, and KVM verification (required for Firecracker). After hardening, the server's final state must be recorded in 1Password so downstream agents can consume it.
 
 ## Decision
 
-Build an autohardener agent that SSHes to the server via Tailscale and applies the hardening baseline.
+Build an autohardener agent that SSHes to the server via Tailscale, applies the hardening baseline, and writes the finalized server record to vault.
 
 ---
 
@@ -44,9 +44,23 @@ Build an autohardener agent that SSHes to the server via Tailscale and applies t
 
 ---
 
-## 3.0 Acceptance Criteria
+## 3.0 Vault Finalization
 
-- [ ] 3.1 UFW active with correct rules
-- [ ] 3.2 fail2ban running
-- [ ] 3.3 KVM accessible to non-root user
-- [ ] 3.4 Handoff to autovaultsaver triggered
+**Status:** PENDING
+
+Update the vault item (created by M1_003) with the post-hardening state. This is the canonical record downstream agents read.
+
+**Dimensions:**
+- 3.1 PENDING Update 1Password item `zombie-{env}-worker-{name}` with: `hardened-at`, KVM status, UFW confirmation
+- 3.2 PENDING Required fields must all be present before marking complete: `ssh-private-key`, `hostname`, `tailscale-ip`, `provider`, `provider-server-id`, `region`, `provisioned-at`, `hardened-at`
+- 3.3 PENDING Validate all fields present; fail loudly if any are missing
+
+---
+
+## 4.0 Acceptance Criteria
+
+- [ ] 4.1 UFW active with correct rules
+- [ ] 4.2 fail2ban running
+- [ ] 4.3 KVM accessible to non-root user
+- [ ] 4.4 Vault item fully populated and readable by downstream agents (autoworkerstandup, autoupgrader)
+- [ ] 4.5 Handoff to autoworkerstandup (M3_002) triggered

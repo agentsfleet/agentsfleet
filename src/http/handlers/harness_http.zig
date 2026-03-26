@@ -2,10 +2,12 @@ const std = @import("std");
 const zap = @import("zap");
 const posthog_events = @import("../../observability/posthog_events.zig");
 const error_codes = @import("../../errors/codes.zig");
+const workspace_guards = @import("../workspace_guards.zig");
 const harness_handlers = @import("harness_control_plane.zig");
 const common = @import("common.zig");
 
 const log = std.log.scoped(.http);
+const API_ACTOR = "api";
 
 pub const Context = common.Context;
 
@@ -38,10 +40,14 @@ pub fn handlePutHarnessSource(ctx: *Context, r: zap.Request, workspace_id: []con
         return;
     };
     defer ctx.pool.release(conn);
-    if (!common.authorizeWorkspaceAndSetTenantContext(conn, principal, workspace_id)) {
-        common.errorResponse(r, .forbidden, error_codes.ERR_FORBIDDEN, "Workspace access denied", req_id);
-        return;
-    }
+    // putSource is the ingestion step that costs credits — it writes new harness
+    // data into the workspace.  compile and activate operate on already-ingested
+    // data, so they use the default credit_policy (.none).
+    const access = workspace_guards.enforce(r, req_id, conn, alloc, principal, workspace_id, principal.user_id orelse API_ACTOR, .{
+        .minimum_role = .operator,
+        .credit_policy = .execution_required,
+    }) orelse return;
+    defer access.deinit(alloc);
 
     const out = harness_handlers.putSource(conn, alloc, workspace_id, parsed.value) catch |err| {
         switch (err) {
@@ -83,6 +89,7 @@ pub fn handleCompileHarness(ctx: *Context, r: zap.Request, workspace_id: []const
         common.errorResponse(r, .bad_request, error_codes.ERR_INVALID_REQUEST, "Request body required", req_id);
         return;
     };
+    if (!common.checkBodySize(r, body, req_id)) return;
     const parsed = std.json.parseFromSlice(Req, alloc, body, .{}) catch {
         common.errorResponse(r, .bad_request, error_codes.ERR_INVALID_REQUEST, "Malformed JSON", req_id);
         return;
@@ -94,11 +101,10 @@ pub fn handleCompileHarness(ctx: *Context, r: zap.Request, workspace_id: []const
         return;
     };
     defer ctx.pool.release(conn);
-
-    if (!common.authorizeWorkspaceAndSetTenantContext(conn, principal, workspace_id)) {
-        common.errorResponse(r, .forbidden, error_codes.ERR_FORBIDDEN, "Workspace access denied", req_id);
-        return;
-    }
+    const access = workspace_guards.enforce(r, req_id, conn, alloc, principal, workspace_id, principal.user_id orelse API_ACTOR, .{
+        .minimum_role = .operator,
+    }) orelse return;
+    defer access.deinit(alloc);
 
     log.debug("harness.compile workspace_id={s}", .{workspace_id});
 
@@ -160,6 +166,7 @@ pub fn handleActivateHarness(ctx: *Context, r: zap.Request, workspace_id: []cons
         common.errorResponse(r, .bad_request, error_codes.ERR_INVALID_REQUEST, "Request body required", req_id);
         return;
     };
+    if (!common.checkBodySize(r, body, req_id)) return;
     const parsed = std.json.parseFromSlice(Req, alloc, body, .{}) catch {
         common.errorResponse(r, .bad_request, error_codes.ERR_INVALID_REQUEST, "Malformed JSON", req_id);
         return;
@@ -171,11 +178,10 @@ pub fn handleActivateHarness(ctx: *Context, r: zap.Request, workspace_id: []cons
         return;
     };
     defer ctx.pool.release(conn);
-
-    if (!common.authorizeWorkspaceAndSetTenantContext(conn, principal, workspace_id)) {
-        common.errorResponse(r, .forbidden, error_codes.ERR_FORBIDDEN, "Workspace access denied", req_id);
-        return;
-    }
+    const access = workspace_guards.enforce(r, req_id, conn, alloc, principal, workspace_id, principal.user_id orelse API_ACTOR, .{
+        .minimum_role = .operator,
+    }) orelse return;
+    defer access.deinit(alloc);
 
     log.debug("harness.activate workspace_id={s}", .{workspace_id});
 
@@ -247,11 +253,10 @@ pub fn handleGetHarnessActive(ctx: *Context, r: zap.Request, workspace_id: []con
         return;
     };
     defer ctx.pool.release(conn);
-
-    if (!common.authorizeWorkspaceAndSetTenantContext(conn, principal, workspace_id)) {
-        common.errorResponse(r, .forbidden, error_codes.ERR_FORBIDDEN, "Workspace access denied", req_id);
-        return;
-    }
+    const access = workspace_guards.enforce(r, req_id, conn, alloc, principal, workspace_id, principal.user_id orelse API_ACTOR, .{
+        .minimum_role = .operator,
+    }) orelse return;
+    defer access.deinit(alloc);
 
     log.debug("harness.get_active workspace_id={s}", .{workspace_id});
 

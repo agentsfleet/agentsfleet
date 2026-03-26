@@ -110,4 +110,121 @@ describe("commandWorkspace", () => {
     expect(code).toBe(2);
     expect(err.read()).toContain("workspace remove requires");
   });
+
+  test("upgrade-scale requires workspace id", async () => {
+    const err = makeBufferStream();
+    const deps = makeDeps();
+    const ctx = { stdout: makeNoop(), stderr: err.stream, jsonMode: false, env: {} };
+    const workspaces = { current_workspace_id: null, items: [] };
+    const core = createCoreHandlers(ctx, workspaces, deps);
+    const code = await core.commandWorkspace(["upgrade-scale"]);
+    expect(code).toBe(2);
+    expect(err.read()).toContain("workspace upgrade-scale requires --workspace-id");
+  });
+
+  test("upgrade-scale requires subscription id", async () => {
+    const err = makeBufferStream();
+    const deps = makeDeps();
+    const ctx = { stdout: makeNoop(), stderr: err.stream, jsonMode: false, env: {} };
+    const workspaces = { current_workspace_id: WS_ID, items: [] };
+    const core = createCoreHandlers(ctx, workspaces, deps);
+    const code = await core.commandWorkspace(["upgrade-scale", "--workspace-id", WS_ID]);
+    expect(code).toBe(2);
+    expect(err.read()).toContain("workspace upgrade-scale requires --subscription-id");
+  });
+
+  test("upgrade-scale calls billing endpoint", async () => {
+    const out = makeBufferStream();
+    let called = null;
+    const deps = makeDeps({
+      request: async (_ctx, reqPath, options) => {
+        called = { reqPath, options };
+        return { plan_tier: "scale", billing_status: "active", subscription_id: "sub_scale_123" };
+      },
+    });
+    const ctx = { stdout: out.stream, stderr: makeNoop(), jsonMode: false, env: {} };
+    const workspaces = { current_workspace_id: WS_ID, items: [] };
+    const core = createCoreHandlers(ctx, workspaces, deps);
+    const code = await core.commandWorkspace(["upgrade-scale", "--workspace-id", WS_ID, "--subscription-id", "sub_scale_123"]);
+    expect(code).toBe(0);
+    expect(called.reqPath).toContain(`/v1/workspaces/${WS_ID}/billing/scale`);
+    expect(JSON.parse(called.options.body).subscription_id).toBe("sub_scale_123");
+    expect(out.read()).toContain("workspace upgraded to scale");
+  });
+
+  test("upgrade-scale with subscription_id as second positional (both positional)", async () => {
+    const out = makeBufferStream();
+    let called = null;
+    const deps = makeDeps({
+      request: async (_ctx, reqPath, options) => {
+        called = { reqPath, options };
+        return { plan_tier: "scale", billing_status: "active", subscription_id: "sub_pos_456" };
+      },
+    });
+    const ctx = { stdout: out.stream, stderr: makeNoop(), jsonMode: false, env: {} };
+    const workspaces = { current_workspace_id: WS_ID, items: [] };
+    const core = createCoreHandlers(ctx, workspaces, deps);
+    const code = await core.commandWorkspace(["upgrade-scale", WS_ID, "sub_pos_456"]);
+    expect(code).toBe(0);
+    expect(called.reqPath).toContain(`/v1/workspaces/${WS_ID}/billing/scale`);
+    expect(JSON.parse(called.options.body).subscription_id).toBe("sub_pos_456");
+    const output = out.read();
+    expect(output).toContain("workspace upgraded to scale");
+    expect(output).toContain("subscription_id: sub_pos_456");
+  });
+
+  test("upgrade-scale with --workspace-id flag and bare positional requires --subscription-id", async () => {
+    const err = makeBufferStream();
+    const deps = makeDeps();
+    const ctx = { stdout: makeNoop(), stderr: err.stream, jsonMode: false, env: {} };
+    const workspaces = { current_workspace_id: WS_ID, items: [] };
+    const core = createCoreHandlers(ctx, workspaces, deps);
+    const code = await core.commandWorkspace(["upgrade-scale", "--workspace-id", WS_ID, "sub_pos_456"]);
+    expect(code).toBe(2);
+    expect(err.read()).toContain("requires --subscription-id");
+  });
+
+  test("upgrade-scale with null subscription_id in response omits subscription_id line", async () => {
+    const out = makeBufferStream();
+    const deps = makeDeps({
+      request: async () => ({ plan_tier: "scale", billing_status: "active", subscription_id: null }),
+    });
+    const ctx = { stdout: out.stream, stderr: makeNoop(), jsonMode: false, env: {} };
+    const workspaces = { current_workspace_id: WS_ID, items: [] };
+    const core = createCoreHandlers(ctx, workspaces, deps);
+    const code = await core.commandWorkspace(["upgrade-scale", "--workspace-id", WS_ID, "--subscription-id", "sub_input_789"]);
+    expect(code).toBe(0);
+    const output = out.read();
+    expect(output).toContain("workspace upgraded to scale");
+    expect(output).toContain("plan_tier: scale");
+    expect(output).toContain("billing_status: active");
+    expect(output).not.toContain("subscription_id:");
+  });
+
+  test("upgrade-scale in JSON mode prints JSON output", async () => {
+    const apiResponse = { plan_tier: "scale", billing_status: "active", subscription_id: "sub_json_001" };
+    let jsonOutput = null;
+    const deps = makeDeps({
+      request: async () => apiResponse,
+      printJson: (_s, v) => { jsonOutput = v; },
+    });
+    const ctx = { stdout: makeNoop(), stderr: makeNoop(), jsonMode: true, env: {} };
+    const workspaces = { current_workspace_id: WS_ID, items: [] };
+    const core = createCoreHandlers(ctx, workspaces, deps);
+    const code = await core.commandWorkspace(["upgrade-scale", "--workspace-id", WS_ID, "--subscription-id", "sub_json_001"]);
+    expect(code).toBe(0);
+    expect(jsonOutput).toEqual(apiResponse);
+  });
+
+  test("upgrade-scale when API request throws propagates error", async () => {
+    const deps = makeDeps({
+      request: async () => { throw new Error("network failure"); },
+    });
+    const ctx = { stdout: makeNoop(), stderr: makeNoop(), jsonMode: false, env: {} };
+    const workspaces = { current_workspace_id: WS_ID, items: [] };
+    const core = createCoreHandlers(ctx, workspaces, deps);
+    await expect(
+      core.commandWorkspace(["upgrade-scale", "--workspace-id", WS_ID, "--subscription-id", "sub_err_999"]),
+    ).rejects.toThrow("network failure");
+  });
 });

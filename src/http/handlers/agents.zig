@@ -7,8 +7,10 @@ const obs_log = @import("../../observability/logging.zig");
 const posthog_events = @import("../../observability/posthog_events.zig");
 const proposals = @import("../../pipeline/scoring_mod/proposals.zig");
 const error_codes = @import("../../errors/codes.zig");
+const workspace_guards = @import("../workspace_guards.zig");
 
 const log = std.log.scoped(.http);
+const API_ACTOR = "api";
 
 pub const handleGetAgent = get.handleGetAgent;
 pub const handleGetAgentScores = scores.handleGetAgentScores;
@@ -36,10 +38,10 @@ pub fn handleListAgentProposals(ctx: *common.Context, r: zap.Request, agent_id: 
     defer ctx.pool.release(conn);
 
     const workspace_id = resolveAgentWorkspace(conn, alloc, agent_id, req_id, r) orelse return;
-    if (!common.authorizeWorkspaceAndSetTenantContext(conn, principal, workspace_id)) {
-        common.errorResponse(r, .forbidden, error_codes.ERR_FORBIDDEN, "Workspace access denied", req_id);
-        return;
-    }
+    const access = workspace_guards.enforce(r, req_id, conn, alloc, principal, workspace_id, principal.user_id orelse API_ACTOR, .{
+        .minimum_role = .operator,
+    }) orelse return;
+    defer access.deinit(alloc);
 
     log.debug("agent.list_proposals agent_id={s}", .{agent_id});
 
@@ -95,10 +97,8 @@ pub fn handleGetAgentImprovementReport(ctx: *common.Context, r: zap.Request, age
     defer ctx.pool.release(conn);
 
     const workspace_id = resolveAgentWorkspace(conn, alloc, agent_id, req_id, r) orelse return;
-    if (!common.authorizeWorkspaceAndSetTenantContext(conn, principal, workspace_id)) {
-        common.errorResponse(r, .forbidden, error_codes.ERR_FORBIDDEN, "Workspace access denied", req_id);
-        return;
-    }
+    const access = workspace_guards.enforce(r, req_id, conn, alloc, principal, workspace_id, principal.user_id orelse API_ACTOR, .{}) orelse return;
+    defer access.deinit(alloc);
 
     log.debug("agent.get_improvement_report agent_id={s}", .{agent_id});
 
@@ -160,12 +160,13 @@ pub fn handleRevertAgentHarnessChange(ctx: *common.Context, r: zap.Request, agen
     defer ctx.pool.release(conn);
 
     const workspace_id = resolveAgentWorkspace(conn, alloc, agent_id, req_id, r) orelse return;
-    if (!common.authorizeWorkspaceAndSetTenantContext(conn, principal, workspace_id)) {
-        common.errorResponse(r, .forbidden, error_codes.ERR_FORBIDDEN, "Workspace access denied", req_id);
-        return;
-    }
+    const actor = principal.user_id orelse API_ACTOR;
+    const access = workspace_guards.enforce(r, req_id, conn, alloc, principal, workspace_id, actor, .{
+        .minimum_role = .operator,
+    }) orelse return;
+    defer access.deinit(alloc);
 
-    const operator_identity = principal.user_id orelse "api";
+    const operator_identity = actor;
     log.debug("agent.revert_harness_change agent_id={s} change_id={s}", .{ agent_id, change_id });
 
     var outcome = proposals.revertHarnessChange(
@@ -232,16 +233,16 @@ fn handleManualProposalDecision(
     defer ctx.pool.release(conn);
 
     const workspace_id = resolveAgentWorkspace(conn, alloc, agent_id, req_id, r) orelse return;
-    if (!common.authorizeWorkspaceAndSetTenantContext(conn, principal, workspace_id)) {
-        common.errorResponse(r, .forbidden, error_codes.ERR_FORBIDDEN, "Workspace access denied", req_id);
-        return;
-    }
+    const access = workspace_guards.enforce(r, req_id, conn, alloc, principal, workspace_id, principal.user_id orelse API_ACTOR, .{
+        .minimum_role = .operator,
+    }) orelse return;
+    defer access.deinit(alloc);
 
     log.debug("agent.proposal_decision agent_id={s} proposal_id={s} action={s}", .{ agent_id, proposal_id, @tagName(action) });
 
     switch (action) {
         .approve => {
-            const operator_identity = principal.user_id orelse "api";
+            const operator_identity = principal.user_id orelse API_ACTOR;
             const outcome = proposals.approveManualProposal(conn, alloc, agent_id, proposal_id, operator_identity, std.time.milliTimestamp()) catch {
                 log.err("agent.approve_proposal_fail error_code=UZ-INTERNAL-003 agent_id={s} proposal_id={s}", .{ agent_id, proposal_id });
                 common.internalOperationError(r, "Failed to approve proposal", req_id);

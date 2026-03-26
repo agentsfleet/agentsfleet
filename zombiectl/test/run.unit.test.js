@@ -47,7 +47,7 @@ describe("commandRun", () => {
         if (reqPath.includes("/v1/specs")) {
           return { specs: [{ spec_id: "spec_1" }] };
         }
-        return { run_id: RUN_ID_1, state: "SPEC_QUEUED", attempt: 1 };
+        return { run_id: RUN_ID_1, state: "SPEC_QUEUED", attempt: 1, plan_tier: "free", credit_remaining_cents: 958, credit_currency: "USD" };
       },
     });
     const ctx = { stdout: out.stream, stderr: makeNoop(), jsonMode: false, env: {} };
@@ -57,6 +57,7 @@ describe("commandRun", () => {
     expect(code).toBe(0);
     expect(out.read()).toContain("Run queued");
     expect(out.read()).toContain(RUN_ID_1);
+    expect(out.read()).toContain("credit_remaining_cents: 958");
   });
 
   test("auto-picks first spec when no --spec-id", async () => {
@@ -124,5 +125,25 @@ describe("commandRun", () => {
     const code = await core.commandRun(["status"]);
     expect(code).toBe(2);
     expect(err.read()).toContain("run status requires <run_id>");
+  });
+
+  test("successful run output includes plan_tier and credit_currency", async () => {
+    const out = makeBufferStream();
+    const deps = makeDeps({
+      request: async (_ctx, reqPath) => {
+        if (reqPath.includes("/v1/specs")) {
+          return { specs: [{ spec_id: "spec_1" }] };
+        }
+        return { run_id: RUN_ID_1, state: "SPEC_QUEUED", attempt: 1, plan_tier: "scale", credit_remaining_cents: 5000, credit_currency: "EUR" };
+      },
+    });
+    const ctx = { stdout: out.stream, stderr: makeNoop(), jsonMode: false, env: {} };
+    const workspaces = { current_workspace_id: WS_ID, items: [] };
+    const core = createCoreHandlers(ctx, workspaces, deps);
+    const code = await core.commandRun(["--workspace-id", WS_ID]);
+    expect(code).toBe(0);
+    const output = out.read();
+    expect(output).toContain("plan_tier: scale");
+    expect(output).toContain("credit_currency: EUR");
   });
 });

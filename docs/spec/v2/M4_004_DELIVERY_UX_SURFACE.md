@@ -1,19 +1,19 @@
-# M13_004: Delivery UX Surface
+# M4_004: Delivery UX Surface
 
-**Prototype:** v1.0.0
-**Milestone:** M13
+**Version:** v2
+**Milestone:** M4
 **Workstream:** 004
 **Date:** Mar 23, 2026
 **Status:** PENDING
 **Priority:** P1 — makes delivery state visible to operators and PR reviewers
-**Batch:** B2 — parallel with M13_002, M13_003 after M13_001
-**Depends on:** M13_001 (delivery_state column), M9_001 (scoring engine for PR badge)
+**Batch:** B2 — parallel with M4_002, M4_003 after M4_001
+**Depends on:** M4_001 (delivery_state column), M9_001 (scoring engine for PR badge)
 
 ---
 
 ## Problem
 
-Delivery state data flows into the system (M13_001) and out to external agents (M13_002) but is not visible to operators using the CLI or humans reviewing PRs on GitHub. The control plane sees delivery outcomes — operators should too.
+Delivery state data flows into the system (M4_001) and out to external agents (M4_002) but is not visible to operators using the CLI or humans reviewing PRs on GitHub. The control plane sees delivery outcomes — operators should too.
 
 ---
 

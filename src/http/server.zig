@@ -146,3 +146,7 @@ pub fn serve(ctx: *handler.Context, cfg: ServerConfig) !void {
 pub fn stop() void {
     zap.stop();
 }
+
+test {
+    _ = @import("rbac_http_integration_test.zig");
+}

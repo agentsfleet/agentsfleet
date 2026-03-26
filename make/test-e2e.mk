@@ -21,7 +21,7 @@ _zig_test_filter:
 	 ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" \
 	 ZIG_LOCAL_CACHE_DIR="$(ZIG_LOCAL_CACHE_DIR)" \
 	 REDIS_TLS_TEST_URL="$$redis_tls_test_url" \
-	 zig build test -- --test-filter "$$TEST_FILTER"
+	 zig build -Dtest-filter="$$TEST_FILTER" test
 
 _test_e2e_backend:
 	@echo "→ [zombied] Running backend/API e2e integration lane..."

@@ -6,7 +6,7 @@
 **Date:** Mar 20, 2026
 **Status:** PENDING
 **Priority:** P0 — DEV release gate; blocks M7_003 (PROD Acceptance)
-**Depends on:** M7_001_DEPLOY (deploy pipeline wired), M6_006 (CLI hardened, DB gate passing)
+**Depends on:** M12_003 (NullClaw invocation — executor runtime complete)
 **Successor:** M7_003_PROD_ACCEPTANCE.md
 
 > **Status (Mar 21, 2026):** GHCR package set to public ✅. Cloudflare Tunnel wired ✅. Fly.io DEV deployed ✅. `deploy-dev.yml` updated to use `fly deploy` + Cloudflare Tunnel verification. Railway fully removed.

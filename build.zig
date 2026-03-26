@@ -5,6 +5,8 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
     const with_bench_tools = b.option(bool, "with-bench-tools", "Enable benchmark tooling (zBench)") orelse false;
+    const test_filter = b.option([]const u8, "test-filter", "Restrict Zig tests to names containing this substring");
+    const test_filters: []const []const u8 = if (test_filter) |filter| &.{filter} else &.{};
 
     // ── NullClaw dependency ──────────────────────────────────────────────────
     // Use base engines (sqlite for per-run memory) + no channels (we don't
@@ -166,6 +168,7 @@ pub fn build(b: *std.Build) void {
                 .{ .name = "schema", .module = schema_mod },
             },
         }),
+        .filters = test_filters,
     });
     b.step("test", "Run unit tests").dependOn(&b.addRunArtifact(tests).step);
 

@@ -43,6 +43,8 @@ pub const observeAgentScoringDurationMs = mc.observeAgentScoringDurationMs;
 pub const observeAgentDurationSeconds = mc.observeAgentDurationSeconds;
 pub const observeRunTotalWallSeconds = mc.observeRunTotalWallSeconds;
 pub const snapshot = mc.snapshot;
+
+// OTel exporter metrics.
 pub const incOtelExportTotal = mc.incOtelExportTotal;
 pub const incOtelExportFailed = mc.incOtelExportFailed;
 pub const setOtelLastSuccessAtMs = mc.setOtelLastSuccessAtMs;

@@ -21,7 +21,7 @@ import {
 } from "./lib/state.js";
 import { ApiError, apiHeaders, printApiError, request } from "./program/http-client.js";
 import { parseFlags, parseGlobalArgs, normalizeApiUrl, DEFAULT_API_URL } from "./program/args.js";
-import { extractDistinctIdFromToken } from "./program/auth-token.js";
+import { extractDistinctIdFromToken, extractRoleFromToken } from "./program/auth-token.js";
 import { printHelp, printJson, writeLine } from "./program/io.js";
 import { printBanner } from "./program/banner.js";
 import { suggestCommand } from "./program/suggest.js";
@@ -52,18 +52,27 @@ export async function runCli(argv, io = {}) {
     return 0;
   }
 
+  const creds = await loadCredentials().catch(() => ({}));
+  const workspaces = await loadWorkspaces().catch(() => ({ items: [], current_workspace_id: null }));
+  const resolvedToken = creds.token || env.ZOMBIE_TOKEN || null;
+  const resolvedApiKey = env.API_KEY || env.ZOMBIE_API_KEY || null;
+  const resolvedAuthRole = extractRoleFromToken(resolvedToken) || (resolvedApiKey ? "admin" : null);
+
   if (global.help || rest.length === 0) {
-    printHelp(stdout, ui, { version: VERSION, env, jsonMode: global.json });
+    printHelp(stdout, ui, {
+      version: VERSION,
+      env,
+      jsonMode: global.json,
+      authRole: resolvedAuthRole,
+    });
     return 0;
   }
 
-  const creds = await loadCredentials();
-  const workspaces = await loadWorkspaces();
-
   const ctx = {
     apiUrl: normalizeApiUrl(global.apiUrl || creds.api_url || DEFAULT_API_URL),
-    token: creds.token || env.ZOMBIE_TOKEN || null,
-    apiKey: env.API_KEY || env.ZOMBIE_API_KEY || null,
+    token: resolvedToken,
+    apiKey: resolvedApiKey,
+    authRole: resolvedAuthRole,
     jsonMode: global.json,
     noOpen: global.noOpen,
     noInput: global.noInput,

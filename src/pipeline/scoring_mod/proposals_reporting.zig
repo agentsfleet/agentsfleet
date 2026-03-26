@@ -235,7 +235,7 @@ fn hasThreeConsecutiveNegativeDeltas(conn: *pg.Conn, agent_id: []const u8) !bool
 
 fn loadAgentTrustLevel(conn: *pg.Conn, alloc: std.mem.Allocator, agent_id: []const u8) !?AgentTrustRow {
     var q = try conn.query(
-        \\SELECT agent_id, trust_level
+        \\SELECT agent_id::text, trust_level
         \\FROM agent_profiles
         \\WHERE agent_id = $1
         \\LIMIT 1

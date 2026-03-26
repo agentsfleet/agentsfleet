@@ -14,6 +14,8 @@ const profile_linkage = @import("../../../audit/profile_linkage.zig");
 const id_format = @import("../../../types/id_format.zig");
 const error_codes = @import("../../../errors/codes.zig");
 const log = std.log.scoped(.http);
+const API_ACTOR = "api";
+const uc4 = @import("../../../db/test_fixtures_uc4.zig");
 
 const queue_unavailable_code = error_codes.ERR_QUEUE_UNAVAILABLE;
 const queue_unavailable_message = "Queue unavailable";
@@ -101,7 +103,7 @@ pub fn handleStartRun(ctx: *common.Context, r: zap.Request) void {
         return;
     }
 
-    const billing_state = workspace_billing.reconcileWorkspaceBilling(conn, alloc, req.workspace_id, std.time.milliTimestamp(), principal.user_id orelse "api") catch |err| {
+    const billing_state = workspace_billing.reconcileWorkspaceBilling(conn, alloc, req.workspace_id, std.time.milliTimestamp(), principal.user_id orelse API_ACTOR) catch |err| {
         if (workspace_billing.errorCode(err)) |code| {
             common.errorResponse(r, .internal_server_error, code, workspace_billing.errorMessage(err) orelse "Workspace billing failure", req_id);
             return;
@@ -284,6 +286,10 @@ pub fn handleStartRun(ctx: *common.Context, r: zap.Request) void {
         .state = final_state,
         .attempt = @as(u32, @intCast(final_attempt)),
         .run_snapshot_version = run_snapshot_version,
+        .plan_tier = billing_state.plan_tier.label(),
+        .billing_status = billing_state.billing_status.label(),
+        .credit_remaining_cents = credit.remaining_credit_cents,
+        .credit_currency = credit.currency,
         .request_id = req_id,
         .trace_id = trace_id,
     });
@@ -294,80 +300,20 @@ test "runtime entitlement enforcement rejects downgraded free workspace using sc
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
 
-    _ = try db_ctx.conn.exec(
-        \\CREATE TEMP TABLE workspace_entitlements (
-        \\  entitlement_id TEXT PRIMARY KEY,
-        \\  workspace_id TEXT NOT NULL UNIQUE,
-        \\  plan_tier TEXT NOT NULL,
-        \\  max_profiles INTEGER NOT NULL,
-        \\  max_stages INTEGER NOT NULL,
-        \\  max_distinct_skills INTEGER NOT NULL,
-        \\  allow_custom_skills BOOLEAN NOT NULL,
-        \\  enable_agent_scoring BOOLEAN NOT NULL DEFAULT FALSE,
-        \\  agent_scoring_weights_json TEXT NOT NULL DEFAULT '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}',
-        \\  created_at BIGINT NOT NULL,
-        \\  updated_at BIGINT NOT NULL
-        \\) ON COMMIT DROP
-    , .{});
-    _ = try db_ctx.conn.exec(
-        \\CREATE TEMP TABLE entitlement_policy_audit_snapshots (
-        \\  snapshot_id TEXT PRIMARY KEY,
-        \\  workspace_id TEXT NOT NULL,
-        \\  boundary TEXT NOT NULL,
-        \\  decision TEXT NOT NULL,
-        \\  reason_code TEXT NOT NULL,
-        \\  plan_tier TEXT NOT NULL,
-        \\  policy_json TEXT NOT NULL,
-        \\  observed_json TEXT NOT NULL,
-        \\  actor TEXT NOT NULL,
-        \\  created_at BIGINT NOT NULL
-        \\) ON COMMIT DROP
-    , .{});
-    _ = try db_ctx.conn.exec(
-        \\CREATE TEMP TABLE agent_profiles (
-        \\  agent_id TEXT PRIMARY KEY,
-        \\  workspace_id TEXT NOT NULL
-        \\) ON COMMIT DROP
-    , .{});
-    _ = try db_ctx.conn.exec(
-        \\CREATE TEMP TABLE workspace_active_config (
-        \\  workspace_id TEXT PRIMARY KEY,
-        \\  config_version_id TEXT NOT NULL
-        \\) ON COMMIT DROP
-    , .{});
-    _ = try db_ctx.conn.exec(
-        \\CREATE TEMP TABLE agent_config_versions (
-        \\  config_version_id TEXT PRIMARY KEY,
-        \\  compiled_profile_json TEXT
-        \\) ON COMMIT DROP
-    , .{});
-    _ = try db_ctx.conn.exec(
-        \\INSERT INTO workspace_entitlements
-        \\  (entitlement_id, workspace_id, plan_tier, max_profiles, max_stages, max_distinct_skills, allow_custom_skills, created_at, updated_at)
-        \\VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6faa', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11', 'FREE', 1, 3, 3, false, 0, 0)
-    , .{});
-    _ = try db_ctx.conn.exec(
-        "INSERT INTO agent_profiles (agent_id, workspace_id) VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f41', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11')",
-        .{},
-    );
-    _ = try db_ctx.conn.exec(
-        \\INSERT INTO agent_config_versions (config_version_id, compiled_profile_json)
-        \\VALUES (
-        \\  '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f91',
-        \\  '{"agent_id":"0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f41","stages":[{"stage_id":"plan","role":"echo","skill":"echo"},{"stage_id":"implement","role":"scout","skill":"scout"},{"stage_id":"verify","role":"warden","skill":"warden","gate":true,"on_pass":"done","on_fail":"retry"},{"stage_id":"extra","role":"scout","skill":"scout","gate":false}]}'
-        \\)
-    , .{});
-    _ = try db_ctx.conn.exec(
-        "INSERT INTO workspace_active_config (workspace_id, config_version_id) VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f91')",
-        .{},
-    );
+    // donald-duck has a 4-stage scale profile but scrooges free-plan cap is 3 stages.
+    try uc4.seed(db_ctx.conn);
+    defer uc4.teardown(db_ctx.conn);
+
+    // Arena ensures internal allocations are freed even when the function returns an error.
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
 
     try std.testing.expectError(
         entitlements.EnforcementError.EntitlementStageLimit,
         enforceRuntimeActiveProfile(
             db_ctx.conn,
-            std.testing.allocator,
-            "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11",
+            arena.allocator(),
+            uc4.WS_ID,
             "test",
         ),
     );

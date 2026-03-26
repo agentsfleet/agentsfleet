@@ -1,18 +1,18 @@
-# M4_001: Delivery Intelligence
+# M4_005: Delivery Intelligence
 
 **Version:** v2
 **Milestone:** M4
-**Workstream:** 001
+**Workstream:** 005
 **Date:** Mar 23, 2026
 **Status:** PENDING
-**Priority:** P2 — builds on v1 M13 delivery observation layer
-**Depends on:** v1/M13_001 (delivery state), v1/M13_002 (outbound webhooks), v1/M13_003 (delivery observability), v1/M9_001 (scoring engine)
+**Priority:** P2 — builds on v2 M4 delivery observation layer
+**Depends on:** M4_001 (delivery state), M4_002 (outbound webhooks), M4_003 (delivery observability), M9_001 (scoring engine)
 
 ---
 
 ## Problem
 
-The v1 M13 milestone establishes delivery *observation* — the control plane knows whether PRs are merged, closed, or revised. This milestone adds delivery *intelligence* — autonomous actions and scoring based on delivery outcomes. These capabilities were explicitly deferred during the M13 CEO Review (Mar 23, 2026) to ship the observation layer first and design actions from real usage data.
+The M4_001–M4_004 workstreams establish delivery *observation* — the control plane knows whether PRs are merged, closed, or revised. This milestone adds delivery *intelligence* — autonomous actions and scoring based on delivery outcomes. These capabilities were explicitly deferred during the M13 CEO Review (Mar 23, 2026) to ship the observation layer first and design actions from real usage data.
 
 ---
 
@@ -22,14 +22,14 @@ The v1 M13 milestone establishes delivery *observation* — the control plane kn
 
 **Origin:** CEO Review Issue 19, Option A — deferred because payload shape should be designed once and documented in `openapi.json` before shipping.
 
-**Scope:** When constructing outbound webhook payloads (M13_002 §3.3), include the M9 agent score: `{ "score": { "total": 87, "tier": "Gold", "formula_version": "v3" } }`. Requires joining `agent_run_scores` during payload construction. Non-breaking addition to payload contract.
+**Scope:** When constructing outbound webhook payloads (M4_002 §3.3), include the M9 agent score: `{ "score": { "total": 87, "tier": "Gold", "formula_version": "v3" } }`. Requires joining `agent_run_scores` during payload construction. Non-breaking addition to payload contract.
 
 ### 2. Auto-Revision on CHANGES_REQUESTED
 
 **Origin:** CEO Review Issue 6, Option C — deferred because review comments may be conversational rather than actionable, and the revision run input format needs design.
 
 **Scope:** When `delivery_state` transitions to `CHANGES_REQUESTED`, the control plane:
-1. Extracts review comments via GitHub API (already best-effort enriched in M13_002 §3.3)
+1. Extracts review comments via GitHub API (already best-effort enriched in M4_002 §3.3)
 2. Constructs a revision spec: original spec + review comments as structured defects
 3. Enqueues a new run with `parent_run_id` linking to the original
 4. New run's Scout receives review comments as context (similar to Warden defect injection in retry loop)
@@ -105,15 +105,15 @@ The v1 M13 milestone establishes delivery *observation* — the control plane kn
 ## Sequencing
 
 ```
-  v1/M13 (observation)          v2/M4_001 (intelligence)
-  ──────────────────            ────────────────────────
-  Delivery state tracking  ──►  Delivery scoring axis
-  Outbound webhooks        ──►  Webhook payload with score
-  PostHog pr.* events      ──►  Auto-revision on CHANGES_REQUESTED
-  Time-to-merge metric     ──►  Auto-merge for trusted agents
-  CLI delivery state       ──►  Staleness detector
-                           ──►  Spec chaining
-                           ──►  API-served discovery
+  v2/M4_001–M4_004 (observation)   v2/M4_005 (intelligence)
+  ──────────────────────────────    ────────────────────────
+  Delivery state tracking      ──►  Delivery scoring axis
+  Outbound webhooks            ──►  Webhook payload with score
+  PostHog pr.* events          ──►  Auto-revision on CHANGES_REQUESTED
+  Time-to-merge metric         ──►  Auto-merge for trusted agents
+  CLI delivery state           ──►  Staleness detector
+                               ──►  Spec chaining
+                               ──►  API-served discovery
 ```
 
 Each capability in this spec can be shipped independently. No ordering constraints between items except: delivery scoring axis (§4) should precede auto-merge (§5) so that trust decisions include delivery quality.

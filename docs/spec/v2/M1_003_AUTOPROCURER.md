@@ -6,8 +6,8 @@
 **Date:** Mar 21, 2026
 **Status:** PENDING
 **Priority:** P1
-**Depends on:** M1_001 (autoforecaster), M1_002 (autoprocurer provider)
-**Batch:** B2 — blocked on M1_001 + M1_002
+**Depends on:** None (OVHCloud is the sole provider; no provider abstraction required)
+**Batch:** B1
 
 ---
 
@@ -17,38 +17,58 @@ Server procurement is manual (M4_001 playbook). The human buys a server from OVH
 
 ## Decision
 
-Build an autoprocurer agent that receives scaling recommendations from autoforecaster and provisions servers via the provider abstraction defined in M1_002.
+Build an autoprocurer agent that provisions servers from OVHCloud on demand, writes the server's IP and credentials to vault, and hands off to autoprovisioner (M2_001).
+
+Provider abstraction (multi-vendor plugin system, YAML playbook, autoreviewer) is deferred — OVHCloud is the only approved provider today, and the abstraction cost is not justified until a second provider is actually needed.
 
 ---
 
-## 1.0 Procurement Execution
+## 1.0 Procurement Trigger
 
 **Status:** PENDING
 
 **Dimensions:**
-- 1.1 PENDING Receive scaling recommendation from autoforecaster
-- 1.2 PENDING Select provider and machine type using M1_002 selection logic (KVM required, region affinity, cost, availability)
-- 1.3 PENDING Call `provision(spec)` on selected provider plugin
-- 1.4 PENDING Poll `status(handle)` until ready or timeout
-- 1.5 PENDING On success: write `{ ip, credential_type, credential_value }` to vault and hand off to autoprovisioner (M2_001)
-- 1.6 PENDING On failure: try next provider in rank order; if all fail, alert
+- 1.1 PENDING Receive scaling trigger (manual operator signal or future autoforecaster recommendation)
+- 1.2 PENDING Select OVHCloud region and machine type: prefer `has_kvm: true`, lowest cost that meets spec (KVM required for Firecracker)
 
 ---
 
-## 2.0 Decision Logging
+## 2.0 OVHCloud Provisioning
 
 **Status:** PENDING
 
 **Dimensions:**
-- 2.1 PENDING Record provider selection rationale in vault item
-- 2.2 PENDING Record provisioning duration and cost
-- 2.3 PENDING Discord notification on successful procurement
+- 2.1 PENDING Call OVHCloud API to order server: `{ region, machine_type, os, hostname }`
+- 2.2 PENDING Poll OVHCloud API until server is `ready` or timeout
+- 2.3 PENDING On success: extract `{ ip, root_password }` from OVHCloud response
+- 2.4 PENDING On failure: alert operator; do not proceed
 
 ---
 
-## 3.0 Acceptance Criteria
+## 3.0 Vault Handoff
 
-- [ ] 3.1 Server provisioned without human intervention
-- [ ] 3.2 Vault item created with all required fields (ip, credentials, provider metadata)
-- [ ] 3.3 Handoff to autoprovisioner triggered automatically
-- [ ] 3.4 Fallback to next provider on failure
+**Status:** PENDING
+
+**Dimensions:**
+- 3.1 PENDING Create 1Password item `zombie-{env}-worker-{name}` in `ZMB_CD_PROD` (or `ZMB_CD_DEV`)
+- 3.2 PENDING Required fields at creation: `ip`, `root-password` (initial credential), `hostname`, `provider=ovhcloud`, `provider-server-id`, `region`, `provisioned-at`
+- 3.3 PENDING Trigger autoprovisioner (M2_001) — reads from this vault item
+
+---
+
+## 4.0 Decision Logging
+
+**Status:** PENDING
+
+**Dimensions:**
+- 4.1 PENDING Record provisioning duration and OVHCloud server ID in vault item
+- 4.2 PENDING Discord notification on successful procurement
+
+---
+
+## 5.0 Acceptance Criteria
+
+- [ ] 5.1 Server provisioned without human intervention
+- [ ] 5.2 Vault item created with all required fields
+- [ ] 5.3 Handoff to autoprovisioner triggered automatically
+- [ ] 5.4 Operator alerted on failure

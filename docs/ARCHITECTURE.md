@@ -47,7 +47,7 @@ UseZombie accepts a spec request and produces a validated pull request through a
 3. `zombied worker`: claims work, resolves active harness/profile, drives stage state transitions, persists artifacts, handles retries, billing, and PR creation.
 4. `zombied-executor`: local execution service controlled by the worker over a typed API; owns sandbox lifecycle and agent runtime execution.
 5. `Redis`: stream-based queue + consumer-group coordination.
-6. `Postgres`: run state, artifacts, transitions, usage, policy events, vault data.
+6. `Postgres`: run state, artifacts, transitions, usage, policy events, vault data, billing state, and free-credit ledger state.
 7. `Clerk`: identity for CLI and API.
 8. `GitHub App`: automation credential source for git push and PR creation.
 
@@ -59,8 +59,9 @@ UseZombie accepts a spec request and produces a validated pull request through a
 4. `execution lease`: worker opens an executor session for the active stage.
 5. `sandbox execution`: `zombied-executor` runs the stage via embedded NullClaw inside the selected sandbox backend.
 6. `result evaluation`: worker persists verdict, artifacts, metrics, and failure classification in Postgres.
-7. `iteration loop`: on retryable failure, worker re-enqueues the same `run_id`.
-8. `PR creation`: on pass, worker pushes branch and opens PR via GitHub App installation token.
+7. `billing finalization`: completed runs finalize billable usage; free-plan work deducts from the workspace credit ledger only at this point.
+8. `iteration loop`: on retryable failure, worker re-enqueues the same `run_id`.
+9. `PR creation`: on pass, worker pushes branch and opens PR via GitHub App installation token.
 
 ## Runtime Boundary
 
@@ -310,6 +311,11 @@ Operationally:
 
 This is deliberate. We prefer honest restart semantics over pretending we support mid-session migration.
 
+The same honesty applies to free-plan billing:
+- admission checks stop new free-plan execution once credit is exhausted
+- in-flight work is not killed mid-stage on a speculative credit boundary
+- free credit is deducted only for completed billable runtime
+
 ## Dynamic Harness/Profile Model
 
 Harnesses are workspace-scoped and profile-driven:
@@ -319,6 +325,16 @@ Harnesses are workspace-scoped and profile-driven:
 - worker resolves the active version before execution
 
 Stages are defined in the active profile (JSON topology) — not hardcoded. Built-in skill kinds (`echo`, `scout`, `warden`) provide defaults, but custom skills can be registered via `SkillRegistry` and referenced by any profile stage. The executor is agent-agnostic: it receives a NullClaw config + tool spec + message from the worker and runs it without interpreting roles.
+
+## RBAC And Policy Guards
+
+Workspace-scoped HTTP handlers now declare two policy dimensions explicitly:
+
+1. minimum role (`user`, `operator`, `admin`)
+2. credit policy (`none`, `execution_required`)
+
+That policy is enforced through typed workspace guards rather than repeated ad hoc `if/else` ladders in handlers. The architecture goal is to keep authorization and billing admission as declarative handler requirements, not scattered business logic.
+Live HTTP integration tests pin the contract at the route boundary so role failures are proven at the handler surface, not just in helper-unit tests.
 
 ## v2 Firecracker Model
 

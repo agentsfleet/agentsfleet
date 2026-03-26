@@ -9,6 +9,7 @@ const types = @import("types.zig");
 const util = @import("util.zig");
 
 const log = std.log.scoped(.harness);
+const API_ACTOR = "api";
 
 fn beginTx(conn: *pg.Conn) !void {
     _ = try conn.exec("BEGIN", .{});
@@ -46,7 +47,7 @@ pub fn activateProfile(
     const compiled_profile_json = try row.get(?[]const u8, 3);
     try q.drain();
     if (!is_valid) return types.ControlPlaneError.ProfileInvalid;
-    const billing_state = try workspace_billing.reconcileWorkspaceBilling(conn, alloc, workspace_id, std.time.milliTimestamp(), input.activated_by orelse "api");
+    const billing_state = try workspace_billing.reconcileWorkspaceBilling(conn, alloc, workspace_id, std.time.milliTimestamp(), input.activated_by orelse API_ACTOR);
     defer alloc.free(billing_state.plan_sku);
     defer if (billing_state.subscription_id) |v| alloc.free(v);
     const credit = workspace_credit.enforceExecutionAllowed(conn, alloc, workspace_id, billing_state.plan_tier) catch |err| switch (err) {
@@ -61,7 +62,7 @@ pub fn activateProfile(
         input.config_version_id,
         compiled_profile_json,
         .activate,
-        input.activated_by orelse "api",
+        input.activated_by orelse API_ACTOR,
     ) catch |err| switch (err) {
         entitlements.EnforcementError.EntitlementMissing => return types.ControlPlaneError.EntitlementMissing,
         entitlements.EnforcementError.EntitlementProfileLimit => return types.ControlPlaneError.EntitlementProfileLimit,
@@ -72,7 +73,7 @@ pub fn activateProfile(
     };
 
     const now_ms = std.time.milliTimestamp();
-    const activated_by = input.activated_by orelse "api";
+    const activated_by = input.activated_by orelse API_ACTOR;
 
     try beginTx(conn);
     var tx_open = true;

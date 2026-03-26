@@ -1,13 +1,13 @@
-# M13_002: Outbound Webhook Event Subscriptions
+# M4_002: Outbound Webhook Event Subscriptions
 
-**Prototype:** v1.0.0
-**Milestone:** M13
+**Version:** v2
+**Milestone:** M4
 **Workstream:** 002
 **Date:** Mar 23, 2026
 **Status:** PENDING
 **Priority:** P0 — fulfills the Agents page webhook promise; enables agent-to-agent use case
-**Batch:** B2 — after M13_001 (delivery state must exist)
-**Depends on:** M13_001 (delivery_state column and webhook handler)
+**Batch:** B2 — after M4_001 (delivery state must exist)
+**Depends on:** M4_001 (delivery_state column and webhook handler)
 
 ---
 
@@ -61,7 +61,7 @@ Prevent outbound webhook URLs from targeting internal services.
 Outbound webhooks use the existing `run_side_effect_outbox` pattern. New effect types are inserted when delivery state changes.
 
 **Dimensions:**
-- 3.1 When `delivery_state` changes (M13_001 §3.3), query `webhook_subscriptions` for subscriptions matching the workspace and event type. For each matching subscription, insert an outbox row with `effect_key = 'webhook:{event_type}:{subscription_id}'`. Idempotency: `ON CONFLICT (run_id, effect_key) DO UPDATE` — same pattern as existing outbox.
+- 3.1 When `delivery_state` changes (M4_001 §3.3), query `webhook_subscriptions` for subscriptions matching the workspace and event type. For each matching subscription, insert an outbox row with `effect_key = 'webhook:{event_type}:{subscription_id}'`. Idempotency: `ON CONFLICT (run_id, effect_key) DO UPDATE` — same pattern as existing outbox.
 - 3.2 If no matching subscriptions exist for the event type, no outbox rows are inserted. No log, no error — this is the normal case for workspaces without subscriptions.
 - 3.3 Outbox payload (stored as JSON in `payload` column): `{ "event": "{event_type}", "run_id": "...", "workspace_id": "...", "delivery_state": "...", "pr_url": "...", "artifacts": {...}, "attempts": N, "duration_seconds": N, "timestamp": "..." }`. For `pr.changes_requested`, include `review_comments` array extracted from GitHub API (best-effort enrichment; empty array if API call fails).
 

@@ -2,150 +2,10 @@ const std = @import("std");
 const pg = @import("pg");
 const topology = @import("topology.zig");
 
-fn execSql(conn: *pg.Conn, sql: []const u8) !void {
-    // Rule 1: exec() for DDL/DML — internal drain loop, always leaves _state=.idle
-    _ = try conn.exec(sql, .{});
-}
+pub const base = @import("../db/test_fixtures.zig");
 
-pub fn createTempProposalTables(conn: *pg.Conn) !void {
-    try execSql(conn,
-        \\CREATE TEMP TABLE workspace_entitlements (
-        \\  entitlement_id TEXT PRIMARY KEY,
-        \\  workspace_id TEXT NOT NULL UNIQUE,
-        \\  plan_tier TEXT NOT NULL,
-        \\  max_profiles INTEGER NOT NULL,
-        \\  max_stages INTEGER NOT NULL,
-        \\  max_distinct_skills INTEGER NOT NULL,
-        \\  allow_custom_skills BOOLEAN NOT NULL,
-        \\  enable_agent_scoring BOOLEAN NOT NULL DEFAULT FALSE,
-        \\  agent_scoring_weights_json TEXT NOT NULL DEFAULT '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}',
-        \\  enable_score_context_injection BOOLEAN NOT NULL DEFAULT TRUE,
-        \\  scoring_context_max_tokens INTEGER NOT NULL DEFAULT 2048,
-        \\  created_at BIGINT NOT NULL,
-        \\  updated_at BIGINT NOT NULL
-        \\)
-    );
-    try execSql(conn,
-        \\CREATE TEMP TABLE workspace_latency_baseline (
-        \\  workspace_id TEXT PRIMARY KEY,
-        \\  p50_seconds BIGINT NOT NULL,
-        \\  p95_seconds BIGINT NOT NULL,
-        \\  sample_count INTEGER NOT NULL,
-        \\  computed_at BIGINT NOT NULL
-        \\)
-    );
-    try execSql(conn,
-        \\CREATE TEMP TABLE agent_profiles (
-        \\  agent_id TEXT PRIMARY KEY,
-        \\  tenant_id TEXT NOT NULL DEFAULT 'tenant_test',
-        \\  workspace_id TEXT NOT NULL,
-        \\  name TEXT NOT NULL DEFAULT 'Agent',
-        \\  status TEXT NOT NULL DEFAULT 'DRAFT',
-        \\  trust_streak_runs INTEGER NOT NULL,
-        \\  trust_level TEXT NOT NULL,
-        \\  last_scored_at BIGINT,
-        \\  created_at BIGINT NOT NULL DEFAULT 0,
-        \\  updated_at BIGINT NOT NULL DEFAULT 0
-        \\)
-    );
-    try execSql(conn,
-        \\CREATE TEMP TABLE agent_config_versions (
-        \\  config_version_id TEXT PRIMARY KEY,
-        \\  tenant_id TEXT NOT NULL,
-        \\  agent_id TEXT NOT NULL,
-        \\  version INTEGER NOT NULL,
-        \\  source_markdown TEXT NOT NULL,
-        \\  compiled_profile_json TEXT,
-        \\  compile_engine TEXT NOT NULL,
-        \\  validation_report_json TEXT NOT NULL DEFAULT '{}',
-        \\  is_valid BOOLEAN NOT NULL DEFAULT FALSE,
-        \\  created_at BIGINT NOT NULL DEFAULT 0,
-        \\  updated_at BIGINT NOT NULL DEFAULT 0
-        \\)
-    );
-    try execSql(conn,
-        \\CREATE TEMP TABLE workspace_active_config (
-        \\  workspace_id TEXT PRIMARY KEY,
-        \\  tenant_id TEXT NOT NULL DEFAULT 'tenant_test',
-        \\  config_version_id TEXT NOT NULL,
-        \\  activated_by TEXT NOT NULL DEFAULT 'test',
-        \\  activated_at BIGINT NOT NULL DEFAULT 0
-        \\)
-    );
-    try execSql(conn,
-        \\CREATE TEMP TABLE agent_run_analysis (
-        \\  analysis_id TEXT PRIMARY KEY,
-        \\  run_id TEXT NOT NULL UNIQUE,
-        \\  agent_id TEXT NOT NULL,
-        \\  workspace_id TEXT NOT NULL,
-        \\  failure_class TEXT,
-        \\  failure_is_infra BOOLEAN NOT NULL DEFAULT FALSE,
-        \\  failure_signals JSONB NOT NULL DEFAULT '[]'::jsonb,
-        \\  improvement_hints JSONB NOT NULL DEFAULT '[]'::jsonb,
-        \\  stderr_tail TEXT,
-        \\  analyzed_at BIGINT NOT NULL
-        \\)
-    );
-    try execSql(conn,
-        \\CREATE TEMP TABLE agent_run_scores (
-        \\  score_id TEXT PRIMARY KEY,
-        \\  run_id TEXT NOT NULL UNIQUE,
-        \\  agent_id TEXT NOT NULL,
-        \\  workspace_id TEXT NOT NULL,
-        \\  proposal_id TEXT,
-        \\  score INTEGER NOT NULL,
-        \\  axis_scores TEXT NOT NULL,
-        \\  weight_snapshot TEXT NOT NULL,
-        \\  scored_at BIGINT NOT NULL
-        \\)
-    );
-    try execSql(conn,
-        \\CREATE TEMP TABLE entitlement_policy_audit_snapshots (
-        \\  snapshot_id TEXT PRIMARY KEY,
-        \\  workspace_id TEXT NOT NULL,
-        \\  boundary TEXT NOT NULL,
-        \\  decision TEXT NOT NULL,
-        \\  reason_code TEXT NOT NULL,
-        \\  plan_tier TEXT NOT NULL,
-        \\  policy_json TEXT NOT NULL,
-        \\  observed_json TEXT NOT NULL,
-        \\  actor TEXT NOT NULL,
-        \\  created_at BIGINT NOT NULL
-        \\)
-    );
-    try execSql(conn,
-        \\CREATE TEMP TABLE agent_improvement_proposals (
-        \\  proposal_id TEXT PRIMARY KEY,
-        \\  agent_id TEXT NOT NULL,
-        \\  workspace_id TEXT NOT NULL,
-        \\  trigger_reason TEXT NOT NULL,
-        \\  proposed_changes TEXT NOT NULL,
-        \\  config_version_id TEXT NOT NULL,
-        \\  approval_mode TEXT NOT NULL,
-        \\  generation_status TEXT NOT NULL,
-        \\  status TEXT NOT NULL,
-        \\  rejection_reason TEXT,
-        \\  auto_apply_at BIGINT,
-        \\  applied_by TEXT,
-        \\  created_at BIGINT NOT NULL,
-        \\  updated_at BIGINT NOT NULL
-        \\)
-    );
-    try execSql(conn,
-        \\CREATE TEMP TABLE harness_change_log (
-        \\  change_id TEXT PRIMARY KEY,
-        \\  agent_id TEXT NOT NULL,
-        \\  proposal_id TEXT NOT NULL,
-        \\  workspace_id TEXT NOT NULL,
-        \\  field_name TEXT NOT NULL,
-        \\  old_value TEXT NOT NULL,
-        \\  new_value TEXT NOT NULL,
-        \\  applied_at BIGINT NOT NULL,
-        \\  applied_by TEXT NOT NULL,
-        \\  reverted_from TEXT,
-        \\  score_delta DOUBLE PRECISION
-        \\)
-    );
+pub fn allocTestUuid(alloc: std.mem.Allocator, seed: u64) ![]u8 {
+    return std.fmt.allocPrint(alloc, "0195b4ba-8d3a-7f13-8abc-{x:0>12}", .{seed});
 }
 
 pub fn insertAgentProfile(conn: *pg.Conn, agent_id: []const u8, workspace_id: []const u8) !void {
@@ -162,8 +22,9 @@ pub fn insertAgentProfileWithTrust(
     _ = try conn.exec(
         \\INSERT INTO agent_profiles
         \\  (agent_id, tenant_id, workspace_id, name, status, trust_streak_runs, trust_level, last_scored_at, created_at, updated_at)
-        \\VALUES ($1, 'tenant_test', $2, 'Agent', 'ACTIVE', $3, $4, NULL, 0, 0)
-    , .{ agent_id, workspace_id, trust_streak_runs, trust_level });
+        \\VALUES ($1, $2, $3, 'Agent', 'ACTIVE', $4, $5, NULL, 0, 0)
+        \\ON CONFLICT DO NOTHING
+    , .{ agent_id, base.TEST_TENANT_ID, workspace_id, trust_streak_runs, trust_level });
 }
 
 pub fn insertActiveConfig(
@@ -186,12 +47,14 @@ pub fn insertActiveConfigWithProfile(
         \\INSERT INTO agent_config_versions
         \\  (config_version_id, tenant_id, agent_id, version, source_markdown, compiled_profile_json,
         \\   compile_engine, validation_report_json, is_valid, created_at, updated_at)
-        \\VALUES ($1, 'tenant_test', $2, 1, $3, $3, 'deterministic-v1', '{}', TRUE, 0, 0)
-    , .{ config_version_id, agent_id, profile_json });
+        \\VALUES ($1, $2, $3, 1, $4, $4, 'deterministic-v1', '{}', TRUE, 0, 0)
+        \\ON CONFLICT DO NOTHING
+    , .{ config_version_id, base.TEST_TENANT_ID, agent_id, profile_json });
     _ = try conn.exec(
         \\INSERT INTO workspace_active_config (workspace_id, tenant_id, config_version_id, activated_by, activated_at)
-        \\VALUES ($1, 'tenant_test', $2, 'test', 0)
-    , .{ workspace_id, config_version_id });
+        \\VALUES ($1, $2, $3, 'test', 0)
+        \\ON CONFLICT DO NOTHING
+    , .{ workspace_id, base.TEST_TENANT_ID, config_version_id });
 }
 
 pub fn insertConfigVersionOnly(
@@ -205,8 +68,19 @@ pub fn insertConfigVersionOnly(
         \\INSERT INTO agent_config_versions
         \\  (config_version_id, tenant_id, agent_id, version, source_markdown, compiled_profile_json,
         \\   compile_engine, validation_report_json, is_valid, created_at, updated_at)
-        \\VALUES ($1, 'tenant_test', $2, $3, $4, $4, 'deterministic-v1', '{}', TRUE, 0, 0)
-    , .{ config_version_id, agent_id, version, profile_json });
+        \\VALUES ($1, $2, $3, $4, $5, $5, 'deterministic-v1', '{}', TRUE, 0, 0)
+        \\ON CONFLICT DO NOTHING
+    , .{ config_version_id, base.TEST_TENANT_ID, agent_id, version, profile_json });
+}
+
+pub fn seedRunWithSpec(
+    conn: *pg.Conn,
+    spec_id: []const u8,
+    run_id: []const u8,
+    workspace_id: []const u8,
+) !void {
+    try base.seedSpec(conn, spec_id, workspace_id);
+    try base.seedRun(conn, run_id, workspace_id, spec_id);
 }
 
 pub fn insertScoreRow(
@@ -221,7 +95,21 @@ pub fn insertScoreRow(
         \\INSERT INTO agent_run_scores
         \\  (score_id, run_id, agent_id, workspace_id, score, axis_scores, weight_snapshot, scored_at)
         \\VALUES ($1, $2, $3, $4, $5, '{}', '{}', $6)
+        \\ON CONFLICT DO NOTHING
     , .{ run_id, run_id, agent_id, workspace_id, score, scored_at });
+}
+
+pub fn insertScoreWithRun(
+    conn: *pg.Conn,
+    spec_id: []const u8,
+    run_id: []const u8,
+    agent_id: []const u8,
+    workspace_id: []const u8,
+    score: i32,
+    scored_at: i64,
+) !void {
+    try seedRunWithSpec(conn, spec_id, run_id, workspace_id);
+    try insertScoreRow(conn, run_id, agent_id, workspace_id, score, scored_at);
 }
 
 pub const ExpectedStage = struct {

@@ -1,6 +1,14 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { BrowserRouter } from "react-router-dom";
-import { describe, it, expect } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const analytics = vi.hoisted(() => ({
+  trackNavigationClicked: vi.fn(),
+  trackSignupStarted: vi.fn(),
+}));
+
+vi.mock("../analytics/posthog", () => analytics);
+
 import Hero from "./Hero";
 import { APP_BASE_URL } from "../config";
 
@@ -13,6 +21,11 @@ function renderHero() {
 }
 
 describe("Hero", () => {
+  beforeEach(() => {
+    analytics.trackNavigationClicked.mockReset();
+    analytics.trackSignupStarted.mockReset();
+  });
+
   it("renders h1 with both headline lines", () => {
     const { container } = renderHero();
     const h1 = container.querySelector("h1");
@@ -37,6 +50,26 @@ describe("Hero", () => {
     const { container } = renderHero();
     const cta = Array.from(container.querySelectorAll("a")).find((link) => link.textContent?.match(/see pricing/i));
     expect(cta).toHaveAttribute("href", "/pricing");
+  });
+
+  it("tracks clicks on the primary CTA", () => {
+    renderHero();
+    fireEvent.click(screen.getByRole("link", { name: /connect github, automate prs/i }));
+    expect(analytics.trackSignupStarted).toHaveBeenCalledWith({
+      source: "hero_primary",
+      surface: "hero",
+      mode: "humans",
+    });
+  });
+
+  it("tracks clicks on the pricing CTA", () => {
+    renderHero();
+    fireEvent.click(screen.getByRole("link", { name: /see pricing/i }));
+    expect(analytics.trackNavigationClicked).toHaveBeenCalledWith({
+      source: "hero_secondary_pricing",
+      surface: "hero",
+      target: "pricing",
+    });
   });
 
   it("renders the terminal with quick start label", () => {

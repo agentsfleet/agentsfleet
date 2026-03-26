@@ -4,24 +4,37 @@ const std = @import("std");
 const proposals = @import("scoring_mod/proposals.zig");
 const common = @import("../http/handlers/common.zig");
 const support = @import("proposals_test_support.zig");
+const base = @import("../db/test_fixtures.zig");
+const uc2 = @import("../db/test_fixtures_uc2.zig");
+
+const WS_IDEM_REJ_1 = "0195b4ba-8d3a-7f13-8abc-cc0000000502";
+const WS_IDEM_VETO_1 = "0195b4ba-8d3a-7f13-8abc-cc0000000504";
+const WS_IDEM_REJ_APPLIED_1 = "0195b4ba-8d3a-7f13-8abc-cc0000000503";
+const WS_IDEM_LIST_1 = "0195b4ba-8d3a-7f13-8abc-cc0000000501";
 
 test "rejectManualProposal returns false on second call — no double mutation" {
     const db_ctx = (try common.openHandlerTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
 
-    try support.createTempProposalTables(db_ctx.conn);
-    try support.insertAgentProfile(db_ctx.conn, "agent_idem_rej_1", "0195b4ba-8d3a-7f13-8abc-cc0000000502");
-    try support.insertActiveConfig(db_ctx.conn, "agent_idem_rej_1", "0195b4ba-8d3a-7f13-8abc-cc0000000502", "0195b4ba-8d3a-7f13-8abc-2b3e1e0b0001");
+    uc2.teardownWorkspace(db_ctx.conn, WS_IDEM_REJ_1);
+    try base.seedTenant(db_ctx.conn);
+    try base.seedWorkspace(db_ctx.conn, WS_IDEM_REJ_1);
+    defer uc2.teardownWorkspace(db_ctx.conn, WS_IDEM_REJ_1);
+    defer base.teardownTenant(db_ctx.conn);
+
+    try support.insertAgentProfile(db_ctx.conn, uc2.AGENT_IDEM_REJ_1, WS_IDEM_REJ_1);
+    try support.insertActiveConfig(db_ctx.conn, uc2.AGENT_IDEM_REJ_1, WS_IDEM_REJ_1, "0195b4ba-8d3a-7f13-8abc-2b3e1e0b0001");
     _ = try db_ctx.conn.exec(
         \\INSERT INTO agent_improvement_proposals
         \\  (proposal_id, agent_id, workspace_id, trigger_reason, proposed_changes, config_version_id, approval_mode, generation_status, status, auto_apply_at, created_at, updated_at)
-        \\VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0b0002', 'agent_idem_rej_1', '0195b4ba-8d3a-7f13-8abc-cc0000000502', 'DECLINING_SCORE', '[]', '0195b4ba-8d3a-7f13-8abc-2b3e1e0b0001', 'MANUAL', 'READY', 'PENDING_REVIEW', NULL, 100, 101)
-    , .{});
+        \\VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0b0002', $1, $2, 'DECLINING_SCORE', '[]', '0195b4ba-8d3a-7f13-8abc-2b3e1e0b0001', 'MANUAL', 'READY', 'PENDING_REVIEW', NULL, 100, 101)
+        \\ON CONFLICT DO NOTHING
+    , .{ uc2.AGENT_IDEM_REJ_1, WS_IDEM_REJ_1 });
 
     const first = try proposals.rejectManualProposal(
         db_ctx.conn,
-        "agent_idem_rej_1",
+        uc2.AGENT_IDEM_REJ_1,
         "0195b4ba-8d3a-7f13-8abc-2b3e1e0b0002",
         "OPERATOR_REJECTED",
         1_000,
@@ -30,7 +43,7 @@ test "rejectManualProposal returns false on second call — no double mutation" 
 
     const second = try proposals.rejectManualProposal(
         db_ctx.conn,
-        "agent_idem_rej_1",
+        uc2.AGENT_IDEM_REJ_1,
         "0195b4ba-8d3a-7f13-8abc-2b3e1e0b0002",
         "OPERATOR_REJECTED",
         2_000,
@@ -57,18 +70,24 @@ test "vetoAutoProposal returns false on already-vetoed proposal — no double mu
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
 
-    try support.createTempProposalTables(db_ctx.conn);
-    try support.insertAgentProfileWithTrust(db_ctx.conn, "agent_idem_veto_1", "0195b4ba-8d3a-7f13-8abc-cc0000000504", 10, "TRUSTED");
-    try support.insertActiveConfig(db_ctx.conn, "agent_idem_veto_1", "0195b4ba-8d3a-7f13-8abc-cc0000000504", "0195b4ba-8d3a-7f13-8abc-2b3e1e0b0003");
+    uc2.teardownWorkspace(db_ctx.conn, WS_IDEM_VETO_1);
+    try base.seedTenant(db_ctx.conn);
+    try base.seedWorkspace(db_ctx.conn, WS_IDEM_VETO_1);
+    defer uc2.teardownWorkspace(db_ctx.conn, WS_IDEM_VETO_1);
+    defer base.teardownTenant(db_ctx.conn);
+
+    try support.insertAgentProfileWithTrust(db_ctx.conn, uc2.AGENT_IDEM_VETO_1, WS_IDEM_VETO_1, 10, "TRUSTED");
+    try support.insertActiveConfig(db_ctx.conn, uc2.AGENT_IDEM_VETO_1, WS_IDEM_VETO_1, "0195b4ba-8d3a-7f13-8abc-2b3e1e0b0003");
     _ = try db_ctx.conn.exec(
         \\INSERT INTO agent_improvement_proposals
         \\  (proposal_id, agent_id, workspace_id, trigger_reason, proposed_changes, config_version_id, approval_mode, generation_status, status, auto_apply_at, created_at, updated_at)
-        \\VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0b0004', 'agent_idem_veto_1', '0195b4ba-8d3a-7f13-8abc-cc0000000504', 'DECLINING_SCORE', '[]', '0195b4ba-8d3a-7f13-8abc-2b3e1e0b0003', 'AUTO', 'READY', 'VETO_WINDOW', 20_000, 100, 101)
-    , .{});
+        \\VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0b0004', $1, $2, 'DECLINING_SCORE', '[]', '0195b4ba-8d3a-7f13-8abc-2b3e1e0b0003', 'AUTO', 'READY', 'VETO_WINDOW', 20_000, 100, 101)
+        \\ON CONFLICT DO NOTHING
+    , .{ uc2.AGENT_IDEM_VETO_1, WS_IDEM_VETO_1 });
 
     const first = try proposals.vetoAutoProposal(
         db_ctx.conn,
-        "agent_idem_veto_1",
+        uc2.AGENT_IDEM_VETO_1,
         "0195b4ba-8d3a-7f13-8abc-2b3e1e0b0004",
         "OPERATOR_VETOED",
         1_000,
@@ -78,7 +97,7 @@ test "vetoAutoProposal returns false on already-vetoed proposal — no double mu
     // Proposal is now VETOED, not VETO_WINDOW — second call must return false.
     const second = try proposals.vetoAutoProposal(
         db_ctx.conn,
-        "agent_idem_veto_1",
+        uc2.AGENT_IDEM_VETO_1,
         "0195b4ba-8d3a-7f13-8abc-2b3e1e0b0004",
         "OPERATOR_VETOED",
         2_000,
@@ -101,18 +120,24 @@ test "rejectManualProposal returns false when proposal is already applied" {
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
 
-    try support.createTempProposalTables(db_ctx.conn);
-    try support.insertAgentProfile(db_ctx.conn, "agent_idem_rej_applied_1", "0195b4ba-8d3a-7f13-8abc-cc0000000503");
-    try support.insertActiveConfig(db_ctx.conn, "agent_idem_rej_applied_1", "0195b4ba-8d3a-7f13-8abc-cc0000000503", "0195b4ba-8d3a-7f13-8abc-2b3e1e0b0005");
+    uc2.teardownWorkspace(db_ctx.conn, WS_IDEM_REJ_APPLIED_1);
+    try base.seedTenant(db_ctx.conn);
+    try base.seedWorkspace(db_ctx.conn, WS_IDEM_REJ_APPLIED_1);
+    defer uc2.teardownWorkspace(db_ctx.conn, WS_IDEM_REJ_APPLIED_1);
+    defer base.teardownTenant(db_ctx.conn);
+
+    try support.insertAgentProfile(db_ctx.conn, uc2.AGENT_IDEM_REJ_APPLIED_1, WS_IDEM_REJ_APPLIED_1);
+    try support.insertActiveConfig(db_ctx.conn, uc2.AGENT_IDEM_REJ_APPLIED_1, WS_IDEM_REJ_APPLIED_1, "0195b4ba-8d3a-7f13-8abc-2b3e1e0b0005");
     _ = try db_ctx.conn.exec(
         \\INSERT INTO agent_improvement_proposals
         \\  (proposal_id, agent_id, workspace_id, trigger_reason, proposed_changes, config_version_id, approval_mode, generation_status, status, applied_by, auto_apply_at, created_at, updated_at)
-        \\VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0b0006', 'agent_idem_rej_applied_1', '0195b4ba-8d3a-7f13-8abc-cc0000000503', 'DECLINING_SCORE', '[]', '0195b4ba-8d3a-7f13-8abc-2b3e1e0b0005', 'MANUAL', 'READY', 'APPLIED', 'operator:kishore', NULL, 100, 101)
-    , .{});
+        \\VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0b0006', $1, $2, 'DECLINING_SCORE', '[]', '0195b4ba-8d3a-7f13-8abc-2b3e1e0b0005', 'MANUAL', 'READY', 'APPLIED', 'operator:kishore', NULL, 100, 101)
+        \\ON CONFLICT DO NOTHING
+    , .{ uc2.AGENT_IDEM_REJ_APPLIED_1, WS_IDEM_REJ_APPLIED_1 });
 
     const result = try proposals.rejectManualProposal(
         db_ctx.conn,
-        "agent_idem_rej_applied_1",
+        uc2.AGENT_IDEM_REJ_APPLIED_1,
         "0195b4ba-8d3a-7f13-8abc-2b3e1e0b0006",
         "OPERATOR_REJECTED",
         3_000,
@@ -136,18 +161,24 @@ test "listOpenProposals excludes proposals with generation_status not READY" {
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
 
-    try support.createTempProposalTables(db_ctx.conn);
-    try support.insertAgentProfile(db_ctx.conn, "agent_idem_list_1", "0195b4ba-8d3a-7f13-8abc-cc0000000501");
-    try support.insertActiveConfig(db_ctx.conn, "agent_idem_list_1", "0195b4ba-8d3a-7f13-8abc-cc0000000501", "0195b4ba-8d3a-7f13-8abc-2b3e1e0b0007");
+    uc2.teardownWorkspace(db_ctx.conn, WS_IDEM_LIST_1);
+    try base.seedTenant(db_ctx.conn);
+    try base.seedWorkspace(db_ctx.conn, WS_IDEM_LIST_1);
+    defer uc2.teardownWorkspace(db_ctx.conn, WS_IDEM_LIST_1);
+    defer base.teardownTenant(db_ctx.conn);
+
+    try support.insertAgentProfile(db_ctx.conn, uc2.AGENT_IDEM_LIST_1, WS_IDEM_LIST_1);
+    try support.insertActiveConfig(db_ctx.conn, uc2.AGENT_IDEM_LIST_1, WS_IDEM_LIST_1, "0195b4ba-8d3a-7f13-8abc-2b3e1e0b0007");
     _ = try db_ctx.conn.exec(
         \\INSERT INTO agent_improvement_proposals
         \\  (proposal_id, agent_id, workspace_id, trigger_reason, proposed_changes, config_version_id, approval_mode, generation_status, status, auto_apply_at, created_at, updated_at)
         \\VALUES
-        \\  ('0195b4ba-8d3a-7f13-8abc-2b3e1e0b0008', 'agent_idem_list_1', '0195b4ba-8d3a-7f13-8abc-cc0000000501', 'DECLINING_SCORE', '[]', '0195b4ba-8d3a-7f13-8abc-2b3e1e0b0007', 'MANUAL', 'PENDING', 'PENDING_REVIEW', NULL, 100, 100),
-        \\  ('0195b4ba-8d3a-7f13-8abc-2b3e1e0b0009', 'agent_idem_list_1', '0195b4ba-8d3a-7f13-8abc-cc0000000501', 'DECLINING_SCORE', '[{"target_field":"stage_insert","current_value":null,"proposed_value":{"agent_id":"agent_idem_list_1","insert_before_stage_id":"verify","stage_id":"verify-precheck","role":"autoworkerready","skill":"clawhub://usezombie/autoworkerready@1.0.0","artifact_name":"verify-precheck.md","commit_message":"agent: add verify-precheck.md","gate":false,"on_pass":"verify","on_fail":"retry"},"rationale":"quality"}]', '0195b4ba-8d3a-7f13-8abc-2b3e1e0b0007', 'MANUAL', 'READY', 'PENDING_REVIEW', NULL, 101, 101)
-    , .{});
+        \\  ('0195b4ba-8d3a-7f13-8abc-2b3e1e0b0008', $1, $2, 'DECLINING_SCORE', '[]', '0195b4ba-8d3a-7f13-8abc-2b3e1e0b0007', 'MANUAL', 'PENDING', 'PENDING_REVIEW', NULL, 100, 100),
+        \\  ('0195b4ba-8d3a-7f13-8abc-2b3e1e0b0009', $1, $2, 'DECLINING_SCORE', '[{"target_field":"stage_insert","current_value":null,"proposed_value":{"agent_id":"0195b4ba-8d3a-7f13-8abc-dd000000000c","insert_before_stage_id":"verify","stage_id":"verify-precheck","role":"autoworkerready","skill":"clawhub://usezombie/autoworkerready@1.0.0","artifact_name":"verify-precheck.md","commit_message":"agent: add verify-precheck.md","gate":false,"on_pass":"verify","on_fail":"retry"},"rationale":"quality"}]', '0195b4ba-8d3a-7f13-8abc-2b3e1e0b0007', 'MANUAL', 'READY', 'PENDING_REVIEW', NULL, 101, 101)
+        \\ON CONFLICT DO NOTHING
+    , .{ uc2.AGENT_IDEM_LIST_1, WS_IDEM_LIST_1 });
 
-    const items = try proposals.listOpenProposals(db_ctx.conn, std.testing.allocator, "agent_idem_list_1", 0);
+    const items = try proposals.listOpenProposals(db_ctx.conn, std.testing.allocator, uc2.AGENT_IDEM_LIST_1, 0);
     defer {
         for (items) |*item| item.deinit(std.testing.allocator);
         std.testing.allocator.free(items);

@@ -65,7 +65,7 @@ pub fn loadCurrentActiveConfigVersionId(
     workspace_id: []const u8,
 ) !?[]u8 {
     var q = try conn.query(
-        \\SELECT config_version_id
+        \\SELECT config_version_id::text
         \\FROM workspace_active_config
         \\WHERE workspace_id = $1
         \\LIMIT 1
@@ -230,7 +230,11 @@ pub fn insertHarnessChangeLog(
 
 pub fn markProposalApprovedIfExpected(
     conn: *pg.Conn,
+    agent_id: []const u8,
+    workspace_id: []const u8,
     proposal_id: []const u8,
+    config_version_id: []const u8,
+    proposed_changes: []const u8,
     expected_status: []const u8,
     now_ms: i64,
 ) !bool {
@@ -239,12 +243,20 @@ pub fn markProposalApprovedIfExpected(
         \\SET status = $2,
         \\    updated_at = $3
         \\WHERE proposal_id = $1
-        \\  AND status = $4
+        \\  AND agent_id = $4
+        \\  AND workspace_id = $5
+        \\  AND config_version_id = $6
+        \\  AND proposed_changes = $7
+        \\  AND status = $8
         \\RETURNING proposal_id
     , .{
         proposal_id,
         shared.STATUS_APPROVED,
         now_ms,
+        agent_id,
+        workspace_id,
+        config_version_id,
+        proposed_changes,
         expected_status,
     });
 

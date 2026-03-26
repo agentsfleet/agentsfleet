@@ -14,8 +14,8 @@ test.describe("Pricing page", () => {
     await expect(page.getByRole("heading", { name: "Scale", exact: true, level: 2 })).toBeVisible();
   });
 
-  test("pricing page highlights the launch-now tier", async ({ page }) => {
-    await expect(page.getByText("Waitlist open")).toBeVisible();
+  test("pricing page highlights the direct-upgrade tier", async ({ page }) => {
+    await expect(page.getByText("Upgrade when ready")).toBeVisible();
     await expect(page.getByRole("heading", { name: "Scale", exact: true, level: 2 })).toBeVisible();
   });
 
@@ -56,8 +56,10 @@ test.describe("Pricing page", () => {
     await expect(cta).toHaveAttribute("href", "https://app.dev.usezombie.com");
   });
 
-  test("paid tier exposes a single notify action", async ({ page }) => {
-    await expect(page.getByRole("button", { name: "Notify me" })).toBeVisible();
+  test("paid tier exposes an app upgrade action", async ({ page }) => {
+    const cta = page.getByRole("link", { name: "Upgrade in app" });
+    await expect(cta).toBeVisible();
+    await expect(page.getByText(/operator-visible upgrade path after free credit exhaustion/i)).toBeVisible();
   });
 
   test("footer renders on pricing page", async ({ page }) => {

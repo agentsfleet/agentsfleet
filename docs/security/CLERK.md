@@ -41,7 +41,7 @@ sequenceDiagram
     Z->>Z: Verify RS256 signature
     Z->>Z: Parse claims (sub, iss, aud, exp)
     Z->>Z: Check issuer, audience, expiry
-    Z->>Z: Normalize provider claims (tenant_id, workspace_id, org_id, aud, scopes)
+    Z->>Z: Normalize provider claims (tenant_id, workspace_id, org_id, role, aud, scopes)
     Z->>Z: Authorize workspace via tenant_id
     Z-->>C: 200 OK / 401 Unauthorized
 ```
@@ -55,7 +55,7 @@ Step-by-step:
 5. Verify RS256 signature against JWKS public key
 6. Parse standard claims: `sub`, `iss`, `aud`, `exp`
 7. Check issuer match, audience match, token not expired
-8. Normalize provider claims into a canonical identity contract: `tenant_id`, `workspace_id`, `org_id`, `audience`, `scopes`
+8. Normalize provider claims into a canonical identity contract: `tenant_id`, `workspace_id`, `org_id`, `role`, `audience`, `scopes`
 9. Authorize workspace access: query DB for workspace ownership by `tenant_id`
 
 ## Authentication Flow: CLI Login (signup or signin)
@@ -142,6 +142,50 @@ Auth accepts two user auth types:
 - OIDC JWT via the configured provider
 - bearer `API_KEY` for users/operators issued API keys
 
+## Role Claim Contract
+
+JWTs used against workspace control-plane endpoints must normalize a `role` claim with one of:
+
+- `user`
+- `operator`
+- `admin`
+
+Accepted source locations are provider-specific but normalize into one contract:
+
+- Clerk top-level `role`
+- Clerk `metadata.role`
+- custom OIDC top-level `role`
+- custom OIDC nested or namespaced `role` (e.g. `custom_claims.role`, `app_metadata.role`, `https://usezombie.dev/role`)
+
+Server-side authorization consumes the normalized value and rejects unknown roles with 403 `ERR_UNSUPPORTED_ROLE`. API-key auth maps to `admin`.
+
+### RBAC Hierarchy
+
+```
+admin > operator > user
+```
+
+| Role | Assigned when | What it can do |
+|------|--------------|----------------|
+| `user` | Default — JWT has no role claim | Read-only. Authenticated but blocked from all mutations (403 on any `workspace_guards.enforce` call). |
+| `operator` | Clerk admin sets `metadata.role = "operator"` | All workspace mutations: harness changes, skill secrets, billing upgrade, run sync, proposal decisions. |
+| `admin` | Clerk admin sets `metadata.role = "admin"`, or via API key | Everything operator can do, plus admin-only endpoints (billing lifecycle events like `PAYMENT_FAILED`, `DOWNGRADE_TO_FREE`). |
+
+### How Roles Are Assigned
+
+Roles are managed in the **identity provider (Clerk)**, not in the UseZombie backend. The backend only reads and enforces — it never writes roles.
+
+- **JWT auth**: Role comes from the token claims. If absent, defaults to `user`.
+- **API key auth**: Always maps to `admin` (API keys are issued to trusted operators/automation).
+
+To grant `operator` or `admin` to a user, a Clerk org admin sets `role` in the user's metadata via the Clerk dashboard or Clerk API.
+
+### Self-Serve Gap (Known Friction)
+
+Today, a new user who signs up gets `user` by default and cannot perform any mutations until a Clerk admin manually upgrades their role. This creates onboarding friction for self-serve signups.
+
+A future improvement should auto-assign `operator` to workspace creators or provide a self-serve role upgrade path tied to workspace ownership, removing the dependency on manual Clerk admin intervention.
+
 ## New User (First Signup)
 
 1. User has no account. Runs `zombiectl login`.
@@ -171,6 +215,7 @@ Auth accepts two user auth types:
 6. Missing `kid` bypass — tokens without kid are rejected before key lookup.
 7. JWKS poisoning — only RSA keys with valid kid/n/e are accepted.
 8. Session hijacking — session IDs are 96-bit CSPRNG, 5-min TTL.
+9. Role confusion via hidden CLI commands — authorization now depends on server-side role checks, not help-text visibility.
 
 ## Required Configuration
 
@@ -195,7 +240,9 @@ Auth coverage includes `jwks.zig`, `claims.zig`, `oidc.zig`, `clerk.zig`, and `s
 - JWKS parsing (truncated, empty modulus, null keys, duplicate kids)
 - RS256 edge cases (wrong modulus, empty sig, length mismatch)
 - Clerk claim normalization (metadata.tenant_id, top-level, missing, non-JSON)
+- Clerk and custom provider role normalization (`user`/`operator`/`admin`)
 - Custom provider claim normalization (nested and namespaced tenant/workspace claims, aud arrays, scope arrays)
+- Live HTTP RBAC enforcement for `harness`, `skill-secret`, and admin billing-event endpoints, including deterministic `403 INSUFFICIENT_ROLE` rejection for non-operator/non-admin tokens
 - Runtime config parsing for supported and invalid `OIDC_PROVIDER` values
 - Session store (create, poll, complete, max limit, double complete, injection payloads, independence)
 
@@ -207,3 +254,4 @@ Auth coverage includes `jwks.zig`, `claims.zig`, `oidc.zig`, `clerk.zig`, and `s
 4. New user with no tenant_id authenticates but cannot access workspace endpoints.
 5. Session complete with empty token is rejected with `INVALID_REQUEST`.
 6. Session complete without auth is rejected with `UNAUTHORIZED`.
+7. Unknown or malformed role claims are rejected before operator/admin endpoints execute.

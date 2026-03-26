@@ -61,6 +61,7 @@ pub fn handleGetAgent(ctx: *common.Context, r: zap.Request, agent_id: []const u8
         common.errorResponse(r, .forbidden, error_codes.ERR_FORBIDDEN, "Workspace access denied", req_id);
         return;
     }
+    if (!common.requireRole(r, req_id, principal, .user)) return;
 
     const improvement_stalled_warning = proposals.hasImprovementStalledWarning(conn, agent_id) catch false;
 

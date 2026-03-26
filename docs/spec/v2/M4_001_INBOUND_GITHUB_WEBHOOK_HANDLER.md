@@ -1,12 +1,12 @@
-# M13_001: Inbound GitHub Webhook Handler
+# M4_001: Inbound GitHub Webhook Handler
 
-**Prototype:** v1.0.0
-**Milestone:** M13
+**Version:** v2
+**Milestone:** M4
 **Workstream:** 001
 **Date:** Mar 23, 2026
 **Status:** PENDING
-**Priority:** P0 — foundation layer; all other M13 workstreams depend on delivery state
-**Batch:** B1 — first to ship; unblocks M13_002, M13_003, M13_004
+**Priority:** P0 — foundation layer; all other M4 workstreams depend on delivery state
+**Batch:** B1 — first to ship; unblocks M4_002, M4_003, M4_004
 **Depends on:** M9_001 (scoring engine), M7_001 (deploy acceptance)
 
 ---

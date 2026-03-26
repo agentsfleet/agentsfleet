@@ -1,10 +1,12 @@
 const std = @import("std");
 const zap = @import("zap");
 const error_codes = @import("../../errors/codes.zig");
+const workspace_guards = @import("../workspace_guards.zig");
 const skill_secret_handlers = @import("skill_secrets.zig");
 const common = @import("common.zig");
 
 const log = std.log.scoped(.http);
+const API_ACTOR = "api";
 
 pub const Context = common.Context;
 
@@ -41,11 +43,10 @@ pub fn handlePutWorkspaceSkillSecret(
         return;
     };
     defer ctx.pool.release(conn);
-
-    if (!common.authorizeWorkspaceAndSetTenantContext(conn, principal, workspace_id)) {
-        common.errorResponse(r, .forbidden, error_codes.ERR_FORBIDDEN, "Workspace access denied", req_id);
-        return;
-    }
+    const access = workspace_guards.enforce(r, req_id, conn, alloc, principal, workspace_id, principal.user_id orelse API_ACTOR, .{
+        .minimum_role = .operator,
+    }) orelse return;
+    defer access.deinit(alloc);
 
     log.debug("secret.put workspace_id={s}", .{workspace_id});
 
@@ -90,11 +91,10 @@ pub fn handleDeleteWorkspaceSkillSecret(
         return;
     };
     defer ctx.pool.release(conn);
-
-    if (!common.authorizeWorkspaceAndSetTenantContext(conn, principal, workspace_id)) {
-        common.errorResponse(r, .forbidden, error_codes.ERR_FORBIDDEN, "Workspace access denied", req_id);
-        return;
-    }
+    const access = workspace_guards.enforce(r, req_id, conn, alloc, principal, workspace_id, principal.user_id orelse API_ACTOR, .{
+        .minimum_role = .operator,
+    }) orelse return;
+    defer access.deinit(alloc);
 
     log.debug("secret.delete workspace_id={s}", .{workspace_id});
 
