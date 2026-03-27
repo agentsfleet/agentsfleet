@@ -258,6 +258,7 @@ jobs:
           DELAY=1
           for ATTEMPT in $(seq 1 6); do
             if SECRET_VALUE="$(op read "$SECRET_REF" 2>/dev/null)"; then
+              echo "::add-mask::$SECRET_VALUE"
               echo "VERCEL_BYPASS_SECRET=$SECRET_VALUE" >> "$GITHUB_ENV"
               exit 0
             fi
@@ -282,7 +283,7 @@ jobs:
         run: bun run test:e2e:smoke
         working-directory: ui/packages/app
         env:
-          BASE_URL: https://app.usezombie.com
+          BASE_URL: https://usezombie-app.vercel.app
           VERCEL_BYPASS_SECRET: ${{ env.VERCEL_BYPASS_SECRET }}
 
       - name: Upload Playwright report
