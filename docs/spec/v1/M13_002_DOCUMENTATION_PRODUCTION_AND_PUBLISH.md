@@ -1,7 +1,7 @@
-# M7_002: Documentation Production And Publish
+# M13_002: Documentation Production And Publish
 
 **Prototype:** v1.0.0
-**Milestone:** M7
+**Milestone:** M13
 **Workstream:** 002
 **Date:** Mar 08, 2026
 **Status:** PENDING

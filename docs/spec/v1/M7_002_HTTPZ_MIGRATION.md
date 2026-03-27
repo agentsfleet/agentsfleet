@@ -1,12 +1,12 @@
-# M7_005: Migrate HTTP Server from Zap (C FFI) to httpz (Pure Zig)
+# M7_002: Migrate HTTP Server from Zap (C FFI) to httpz (Pure Zig)
 
 **Prototype:** v1.0.0
 **Milestone:** M7
-**Workstream:** 005
+**Workstream:** 002
 **Date:** Mar 26, 2026
 **Status:** PENDING
 **Priority:** P1 — Eliminates C FFI boundary; simplifies build, IPv6, and TLS
-**Batch:** B3 — after M7_001 (DEV Acceptance) and M7_004 (Config Alignment)
+**Batch:** B2 — after M7_001 (DEV Acceptance)
 **Depends on:** M7_001 (DEV Acceptance Gate passing)
 
 ---

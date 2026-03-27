@@ -6,7 +6,8 @@
 **Date:** Mar 20, 2026
 **Status:** PENDING
 **Priority:** P0 — PROD release gate
-**Depends on:** M7_001_DEV_ACCEPTANCE (DEV gate must be green before PROD rollout)
+**Batch:** B3 — after M7_002 (HTTPZ Migration) and M7_005 (Network Connectivity)
+**Depends on:** M7_001_DEV_ACCEPTANCE (DEV gate must be green before PROD rollout), M7_005_NETWORK_CONNECTIVITY (PROD tunnel + database + cache access), M7_002_HTTPZ_MIGRATION
 
 > **Pre-condition (Mar 20, 2026):** M7_001 §1.1 (Fly.io DEV setup + Cloudflare Tunnel) is the immediate unblocking action. PROD work cannot start until DEV acceptance gate is green.
 

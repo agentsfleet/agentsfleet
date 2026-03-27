@@ -6,8 +6,8 @@
 **Date:** Mar 26, 2026
 **Status:** PENDING
 **Priority:** P1 — Post-acceptance hygiene; ensures operator docs match shipped code
-**Batch:** B2 — after M7_001 DEV Acceptance Gate
-**Depends on:** M7_001 (DEV Acceptance Gate)
+**Batch:** B4 — after M7_003 PROD Acceptance Gate
+**Depends on:** M7_003 (PROD Acceptance Gate)
 
 ---
 

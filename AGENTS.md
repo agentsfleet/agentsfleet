@@ -200,8 +200,9 @@ Dimension examples:
 
 ### Workstream Count Guardrail
 
-- Hard limit: each milestone may define at most **4 workstreams**.
-- If more than 4 are needed, split into a new milestone.
+- Default limit: each milestone may define at most **4 workstreams**.
+- A **5th workstream** is allowed when it is a cross-cutting concern (e.g., network connectivity) that feeds into multiple existing workstreams and would lose coherence if split to a separate milestone.
+- Beyond 5 is never allowed — split into a new milestone.
 - Goal: keep milestones small enough to demo and close quickly.
 
 ### Dimension Count Guardrail
