@@ -81,7 +81,7 @@ Vercel preview smoke tests fire automatically via `smoke-post-deploy.yml` on eac
 
 **Status:** PENDING
 
-`qa-dev` step in `deploy-dev.yml` runs Playwright smoke suite against `https://api-dev.usezombie.com` after Fly.io DEV goes green.
+`qa-dev` step in `deploy-dev.yml` runs Playwright smoke suite against `https://app.usezombie.com` (Vercel app) after Fly.io DEV goes green.
 
 **Dimensions:**
 - 5.1 PENDING `qa-dev` CI step passes end-to-end against live DEV API
