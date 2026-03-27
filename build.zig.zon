@@ -8,10 +8,6 @@
             .url = "git+https://github.com/nullclaw/nullclaw.git#v2026.3.21",
             .hash = "nullclaw-2026.3.21-wlZZySsRJQGY1kFGdkM1JJuI5vlJpMNmhvAutUCP-716",
         },
-        .zap = .{
-            .url = "git+https://github.com/zigzap/zap#76679f308c702cd8880201e6e93914e1d836a54b",
-            .hash = "zap-0.10.6-GoeB8w-EJABTkxyoGH_Z8oMBYMxTBvn7YWk-DrJOHuDO",
-        },
         .pg = .{
             .url = "git+https://github.com/karlseguin/pg.zig#master",
             .hash = "pg-0.0.0-Wp_7gXFoBgD0fQ72WICKa-bxLga03AXXQ3BbIsjjohQ3",
@@ -23,6 +19,10 @@
         .zbench = .{
             .url = "git+https://github.com/hendriknielaender/zBench#feaf455d9f8efa7a95b75b52ac3efe0c52549691",
             .hash = "zbench-0.11.1-YTdc7zkmAQBWI99esNFueJc9GuzK-KaU6Nfr1ZXhNGmc",
+        },
+        .httpz = .{
+            .url = "git+https://github.com/karlseguin/http.zig#86ec1ae5fca398a58dfb06ae7fd8395b8ab2ab76",
+            .hash = "httpz-0.0.0-PNVzrOlMBwDf2xnpIPCRXuFtO-qK6h2Vrl8n7_UjXZI1",
         },
     },
     .paths = .{

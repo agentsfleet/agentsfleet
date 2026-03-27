@@ -1,5 +1,5 @@
 const std = @import("std");
-const zap = @import("zap");
+const httpz = @import("httpz");
 const common = @import("../common.zig");
 const obs_log = @import("../../../observability/logging.zig");
 const profile_linkage = @import("../../../audit/profile_linkage.zig");
@@ -71,26 +71,26 @@ fn buildRunResponse(
     };
 }
 
-pub fn handleGetRun(ctx: *common.Context, r: zap.Request, run_id: []const u8) void {
+pub fn handleGetRun(ctx: *common.Context, req: *httpz.Request, res: *httpz.Response, run_id: []const u8) void {
     var arena = std.heap.ArenaAllocator.init(ctx.alloc);
     defer arena.deinit();
     const alloc = arena.allocator();
     const req_id = common.requestId(alloc);
 
-    const principal = common.authenticate(alloc, r, ctx) catch |err| {
-        common.writeAuthError(r, req_id, err);
+    const principal = common.authenticate(alloc, req, ctx) catch |err| {
+        common.writeAuthError(res, req_id, err);
         return;
     };
 
     log.debug("run.get run_id={s}", .{run_id});
 
     if (!id_format.isSupportedRunId(run_id)) {
-        common.errorResponse(r, .bad_request, error_codes.ERR_UUIDV7_INVALID_ID_SHAPE, "Invalid run_id format", req_id);
+        common.errorResponse(res, .bad_request, error_codes.ERR_UUIDV7_INVALID_ID_SHAPE, "Invalid run_id format", req_id);
         return;
     }
 
     const conn = ctx.pool.acquire() catch {
-        common.internalDbUnavailable(r, req_id);
+        common.internalDbUnavailable(res, req_id);
         return;
     };
     defer ctx.pool.release(conn);
@@ -100,13 +100,13 @@ pub fn handleGetRun(ctx: *common.Context, r: zap.Request, run_id: []const u8) vo
         \\       requested_by, branch, pr_url, request_id, run_snapshot_version, created_at, updated_at
         \\FROM runs WHERE run_id = $1
     , .{run_id}) catch {
-        common.internalDbError(r, req_id);
+        common.internalDbError(res, req_id);
         return;
     };
     defer run_result.deinit();
 
     const row = run_result.next() catch null orelse {
-        common.errorResponse(r, .not_found, error_codes.ERR_RUN_NOT_FOUND, "Run not found", req_id);
+        common.errorResponse(res, .not_found, error_codes.ERR_RUN_NOT_FOUND, "Run not found", req_id);
         return;
     };
 
@@ -125,7 +125,7 @@ pub fn handleGetRun(ctx: *common.Context, r: zap.Request, run_id: []const u8) vo
     const updated_at = row.get(i64, 12) catch 0;
 
     if (!common.authorizeWorkspaceAndSetTenantContext(conn, principal, workspace_id)) {
-        common.errorResponse(r, .forbidden, error_codes.ERR_FORBIDDEN, "Workspace access denied", req_id);
+        common.errorResponse(res, .forbidden, error_codes.ERR_FORBIDDEN, "Workspace access denied", req_id);
         return;
     }
 
@@ -135,7 +135,7 @@ pub fn handleGetRun(ctx: *common.Context, r: zap.Request, run_id: []const u8) vo
         \\SELECT state_from, state_to, actor, reason_code, ts
         \\FROM run_transitions WHERE run_id = $1 ORDER BY ts ASC
     , .{run_id}) catch {
-        common.internalDbError(r, req_id);
+        common.internalDbError(res, req_id);
         return;
     };
     defer trans_result.deinit();
@@ -212,7 +212,7 @@ pub fn handleGetRun(ctx: *common.Context, r: zap.Request, run_id: []const u8) vo
     var linkage: ?profile_linkage.RunLinkage = profile_linkage.fetchRunLinkage(conn, alloc, run_id) catch null;
     defer if (linkage) |*value| profile_linkage.freeRunLinkage(alloc, value);
 
-    common.writeJson(r, .ok, buildRunResponse(
+    common.writeJson(res, .ok, buildRunResponse(
         rid,
         workspace_id,
         spec_id,

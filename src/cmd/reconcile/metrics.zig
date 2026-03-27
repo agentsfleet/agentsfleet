@@ -1,77 +1,91 @@
 //! HTTP metrics and health server for daemon mode.
 //!
 //! Exports:
-//!   - `daemonDispatch`      — zap request handler for /healthz and /metrics.
-//!   - `metricsServerThread` — thread entry point; starts the zap listener.
+//!   - `metricsServerThread` — thread entry point; starts the httpz listener.
+//!   - `stopMetricsServer`   — signal the metrics server to stop.
 //!   - `appendMetric`        — write a single Prometheus text-format metric block.
 //!   - `renderDaemonMetrics` — render full Prometheus exposition with daemon counters.
 //!
 //! Ownership:
 //!   - `renderDaemonMetrics` returns a caller-owned `[]u8`; call `alloc.free` on it.
-//!   - `daemonDispatch` and `metricsServerThread` do not allocate retained memory.
+//!   - `metricsServerThread` does not allocate retained memory.
 
 const std = @import("std");
-const zap = @import("zap");
+const httpz = @import("httpz");
 const metrics = @import("../../observability/metrics.zig");
 const state_mod = @import("state.zig");
 
 const log = std.log.scoped(.reconcile);
 
-pub fn daemonDispatch(r: zap.Request) !void {
-    const path = r.path orelse {
-        r.setStatus(.bad_request);
-        r.sendBody("") catch {};
-        return;
-    };
-    const s = state_mod.g_daemon_state orelse {
-        r.setStatus(.service_unavailable);
-        r.sendBody("") catch {};
-        return;
-    };
-
-    if (std.mem.eql(u8, path, "/healthz")) {
-        const healthy = state_mod.daemonHealthy(s, std.time.milliTimestamp());
-        if (healthy) {
-            r.setStatus(.ok);
-            r.sendBody("{\"status\":\"ok\",\"service\":\"reconcile\"}") catch {};
-        } else {
-            r.setStatus(.service_unavailable);
-            r.sendBody("{\"status\":\"degraded\",\"service\":\"reconcile\"}") catch {};
-        }
-        return;
-    }
-
-    if (std.mem.eql(u8, path, "/metrics")) {
-        const body = renderDaemonMetrics(s.alloc, s) catch {
-            r.setStatus(.internal_server_error);
-            r.sendBody("") catch {};
+/// httpz handler struct for the daemon metrics server.
+const DaemonApp = struct {
+    pub fn handle(_: DaemonApp, req: *httpz.Request, res: *httpz.Response) void {
+        const path = req.url.path;
+        const s = state_mod.g_daemon_state orelse {
+            res.status = @intFromEnum(std.http.Status.service_unavailable);
+            res.body = "";
             return;
         };
-        defer s.alloc.free(body);
-        r.setStatus(.ok);
-        r.setContentType(.TEXT) catch {};
-        r.sendBody(body) catch {};
-        return;
+
+        if (std.mem.eql(u8, path, "/healthz")) {
+            const healthy = state_mod.daemonHealthy(s, std.time.milliTimestamp());
+            if (healthy) {
+                res.status = @intFromEnum(std.http.Status.ok);
+                res.body = "{\"status\":\"ok\",\"service\":\"reconcile\"}";
+            } else {
+                res.status = @intFromEnum(std.http.Status.service_unavailable);
+                res.body = "{\"status\":\"degraded\",\"service\":\"reconcile\"}";
+            }
+            return;
+        }
+
+        if (std.mem.eql(u8, path, "/metrics")) {
+            // Use the request arena so the body stays valid until httpz sends the response.
+            const body = renderDaemonMetrics(req.arena, s) catch {
+                res.status = @intFromEnum(std.http.Status.internal_server_error);
+                res.body = "";
+                return;
+            };
+            res.status = @intFromEnum(std.http.Status.ok);
+            res.header("content-type", "text/plain; charset=utf-8");
+            res.body = body;
+            return;
+        }
+
+        res.status = @intFromEnum(std.http.Status.not_found);
+        res.body = "{\"error\":\"NOT_FOUND\"}";
     }
 
-    r.setStatus(.not_found);
-    r.sendBody("{\"error\":\"NOT_FOUND\"}") catch {};
-}
+    pub fn uncaughtError(_: DaemonApp, _: *httpz.Request, res: *httpz.Response, _: anyerror) void {
+        res.status = 500;
+        res.body = "";
+    }
+};
+
+/// Module-level server pointer for cross-thread stop.
+var g_daemon_server: ?*httpz.Server(DaemonApp) = null;
 
 pub fn metricsServerThread(port: u16) !void {
-    var listener = zap.HttpListener.init(.{
-        .port = port,
-        .on_request = daemonDispatch,
-        .log = false,
-        .max_clients = 128,
-        .max_body_size = 64 * 1024,
-    });
-    try listener.listen();
+    var server = try httpz.Server(DaemonApp).init(std.heap.page_allocator, .{
+        .address = .{ .ip = .{ .host = "::", .port = port } },
+        .workers = .{
+            .max_conn = 128,
+        },
+        .request = .{
+            .max_body_size = 64 * 1024,
+        },
+    }, .{});
+    defer server.deinit();
+
+    g_daemon_server = &server;
+    defer g_daemon_server = null;
+
     log.info("reconcile.metrics_listening port={d}", .{port});
-    zap.start(.{
-        .threads = 1,
-        .workers = 1,
-    });
+    try server.listen();
+}
+
+pub fn stopMetricsServer() void {
+    if (g_daemon_server) |s| s.stop();
 }
 
 pub fn appendMetric(writer: anytype, name: []const u8, metric_type: []const u8, help: []const u8, value: anytype) !void {

@@ -2,7 +2,7 @@
 //! External importers (e.g. src/http/handler.zig) see an unchanged surface.
 
 const std = @import("std");
-const zap = @import("zap");
+const httpz = @import("httpz");
 const policy = @import("../../state/policy.zig");
 const workspace_billing = @import("../../state/workspace_billing.zig");
 const workspace_credit = @import("../../state/workspace_credit.zig");

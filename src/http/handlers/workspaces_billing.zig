@@ -1,5 +1,5 @@
 const std = @import("std");
-const zap = @import("zap");
+const httpz = @import("httpz");
 const workspace_billing = @import("../../state/workspace_billing.zig");
 const posthog_events = @import("../../observability/posthog_events.zig");
 const obs_log = @import("../../observability/logging.zig");
@@ -18,41 +18,41 @@ fn parseBillingLifecycleEvent(raw: []const u8) ?workspace_billing.BillingLifecyc
     return null;
 }
 
-pub fn handleUpgradeWorkspaceToScale(ctx: *common.Context, r: zap.Request, workspace_id: []const u8) void {
+pub fn handleUpgradeWorkspaceToScale(ctx: *common.Context, req: *httpz.Request, res: *httpz.Response, workspace_id: []const u8) void {
     var arena = std.heap.ArenaAllocator.init(ctx.alloc);
     defer arena.deinit();
     const alloc = arena.allocator();
     const req_id = common.requestId(alloc);
 
-    const principal = common.authenticate(alloc, r, ctx) catch |err| {
-        common.writeAuthError(r, req_id, err);
+    const principal = common.authenticate(alloc, req, ctx) catch |err| {
+        common.writeAuthError(res, req_id, err);
         return;
     };
-    if (!common.requireUuidV7Id(r, req_id, workspace_id, "workspace_id")) return;
+    if (!common.requireUuidV7Id(res, req_id, workspace_id, "workspace_id")) return;
 
     const Req = struct {
         subscription_id: []const u8,
     };
 
-    const body = r.body orelse {
-        common.errorResponse(r, .bad_request, error_codes.ERR_INVALID_REQUEST, ERR_REQUEST_BODY_REQUIRED, req_id);
+    const body = req.body() orelse {
+        common.errorResponse(res, .bad_request, error_codes.ERR_INVALID_REQUEST, ERR_REQUEST_BODY_REQUIRED, req_id);
         return;
     };
-    if (!common.checkBodySize(r, body, req_id)) return;
+    if (!common.checkBodySize(req, res, body, req_id)) return;
     const parsed = std.json.parseFromSlice(Req, alloc, body, .{}) catch {
-        common.errorResponse(r, .bad_request, error_codes.ERR_INVALID_REQUEST, ERR_MALFORMED_JSON, req_id);
+        common.errorResponse(res, .bad_request, error_codes.ERR_INVALID_REQUEST, ERR_MALFORMED_JSON, req_id);
         return;
     };
     defer parsed.deinit();
 
     const conn = ctx.pool.acquire() catch {
-        common.internalDbUnavailable(r, req_id);
+        common.internalDbUnavailable(res, req_id);
         return;
     };
     defer ctx.pool.release(conn);
 
     const actor = principal.user_id orelse API_ACTOR;
-    const access = workspace_guards.enforce(r, req_id, conn, alloc, principal, workspace_id, actor, .{
+    const access = workspace_guards.enforce(res, req_id, conn, alloc, principal, workspace_id, actor, .{
         .minimum_role = .operator,
     }) orelse return;
     defer access.deinit(alloc);
@@ -65,12 +65,12 @@ pub fn handleUpgradeWorkspaceToScale(ctx: *common.Context, r: zap.Request, works
     }) catch |err| switch (err) {
         error.InvalidSubscriptionId => {
             posthog_events.trackApiErrorWithContext(ctx.posthog, principal.user_id orelse "", error_codes.ERR_BILLING_INVALID_SUBSCRIPTION_ID, "subscription_id is required", workspace_id, req_id);
-            common.errorResponse(r, .bad_request, error_codes.ERR_BILLING_INVALID_SUBSCRIPTION_ID, "subscription_id is required", req_id);
+            common.errorResponse(res, .bad_request, error_codes.ERR_BILLING_INVALID_SUBSCRIPTION_ID, "subscription_id is required", req_id);
             return;
         },
         else => {
             log.err("billing.upgrade_fail error_code=UZ-INTERNAL-003 workspace_id={s}", .{workspace_id});
-            common.internalOperationError(r, "Failed to upgrade workspace to Scale", req_id);
+            common.internalOperationError(res, "Failed to upgrade workspace to Scale", req_id);
             return;
         },
     };
@@ -79,7 +79,7 @@ pub fn handleUpgradeWorkspaceToScale(ctx: *common.Context, r: zap.Request, works
 
     log.info("billing.upgraded workspace_id={s} plan_sku={s}", .{ workspace_id, upgraded.plan_sku });
 
-    common.writeJson(r, .ok, .{
+    common.writeJson(res, .ok, .{
         .workspace_id = workspace_id,
         .plan_tier = upgraded.plan_tier.label(),
         .billing_status = upgraded.billing_status.label(),
@@ -89,29 +89,29 @@ pub fn handleUpgradeWorkspaceToScale(ctx: *common.Context, r: zap.Request, works
     });
 }
 
-pub fn handleSetWorkspaceScoringConfig(ctx: *common.Context, r: zap.Request, workspace_id: []const u8) void {
+pub fn handleSetWorkspaceScoringConfig(ctx: *common.Context, req: *httpz.Request, res: *httpz.Response, workspace_id: []const u8) void {
     var arena = std.heap.ArenaAllocator.init(ctx.alloc);
     defer arena.deinit();
     const alloc = arena.allocator();
     const req_id = common.requestId(alloc);
 
-    const principal = common.authenticate(alloc, r, ctx) catch |err| {
-        common.writeAuthError(r, req_id, err);
+    const principal = common.authenticate(alloc, req, ctx) catch |err| {
+        common.writeAuthError(res, req_id, err);
         return;
     };
-    if (!common.requireUuidV7Id(r, req_id, workspace_id, "workspace_id")) return;
+    if (!common.requireUuidV7Id(res, req_id, workspace_id, "workspace_id")) return;
 
     const Req = struct {
         scoring_context_max_tokens: i32,
     };
 
-    const body = r.body orelse {
-        common.errorResponse(r, .bad_request, error_codes.ERR_INVALID_REQUEST, ERR_REQUEST_BODY_REQUIRED, req_id);
+    const body = req.body() orelse {
+        common.errorResponse(res, .bad_request, error_codes.ERR_INVALID_REQUEST, ERR_REQUEST_BODY_REQUIRED, req_id);
         return;
     };
-    if (!common.checkBodySize(r, body, req_id)) return;
+    if (!common.checkBodySize(req, res, body, req_id)) return;
     const parsed = std.json.parseFromSlice(Req, alloc, body, .{}) catch {
-        common.errorResponse(r, .bad_request, error_codes.ERR_INVALID_REQUEST, ERR_MALFORMED_JSON, req_id);
+        common.errorResponse(res, .bad_request, error_codes.ERR_INVALID_REQUEST, ERR_MALFORMED_JSON, req_id);
         return;
     };
     defer parsed.deinit();
@@ -119,18 +119,18 @@ pub fn handleSetWorkspaceScoringConfig(ctx: *common.Context, r: zap.Request, wor
     log.debug("billing.set_scoring_config workspace_id={s} tokens={d}", .{ workspace_id, parsed.value.scoring_context_max_tokens });
 
     if (parsed.value.scoring_context_max_tokens < 512 or parsed.value.scoring_context_max_tokens > 8192) {
-        common.errorResponse(r, .bad_request, error_codes.ERR_SCORING_CONTEXT_TOKENS_INVALID, "scoring_context_max_tokens must be between 512 and 8192", req_id);
+        common.errorResponse(res, .bad_request, error_codes.ERR_SCORING_CONTEXT_TOKENS_INVALID, "scoring_context_max_tokens must be between 512 and 8192", req_id);
         return;
     }
 
     const conn = ctx.pool.acquire() catch {
-        common.internalDbUnavailable(r, req_id);
+        common.internalDbUnavailable(res, req_id);
         return;
     };
     defer ctx.pool.release(conn);
 
     const actor = principal.user_id orelse API_ACTOR;
-    const access = workspace_guards.enforce(r, req_id, conn, alloc, principal, workspace_id, actor, .{
+    const access = workspace_guards.enforce(res, req_id, conn, alloc, principal, workspace_id, actor, .{
         .minimum_role = .operator,
     }) orelse return;
     defer access.deinit(alloc);
@@ -142,73 +142,73 @@ pub fn handleSetWorkspaceScoringConfig(ctx: *common.Context, r: zap.Request, wor
         \\WHERE workspace_id = $1
         \\RETURNING scoring_context_max_tokens
     , .{ workspace_id, parsed.value.scoring_context_max_tokens, std.time.milliTimestamp() }) catch {
-        common.internalDbError(r, req_id);
+        common.internalDbError(res, req_id);
         return;
     };
     defer q.deinit();
 
     const row = (q.next() catch null) orelse {
-        common.errorResponse(r, .not_found, error_codes.ERR_WORKSPACE_NOT_FOUND, "Workspace not found", req_id);
+        common.errorResponse(res, .not_found, error_codes.ERR_WORKSPACE_NOT_FOUND, "Workspace not found", req_id);
         return;
     };
     const configured_tokens = row.get(i32, 0) catch {
-        common.internalDbError(r, req_id);
+        common.internalDbError(res, req_id);
         return;
     };
     q.drain() catch |err| {
         obs_log.logWarnErr(.http, err, "billing.scoring_config_drain_fail workspace_id={s}", .{workspace_id});
-        common.internalDbError(r, req_id);
+        common.internalDbError(res, req_id);
         return;
     };
 
-    common.writeJson(r, .ok, .{
+    common.writeJson(res, .ok, .{
         .workspace_id = workspace_id,
         .scoring_context_max_tokens = configured_tokens,
         .request_id = req_id,
     });
 }
 
-pub fn handleApplyWorkspaceBillingEvent(ctx: *common.Context, r: zap.Request, workspace_id: []const u8) void {
+pub fn handleApplyWorkspaceBillingEvent(ctx: *common.Context, req: *httpz.Request, res: *httpz.Response, workspace_id: []const u8) void {
     var arena = std.heap.ArenaAllocator.init(ctx.alloc);
     defer arena.deinit();
     const alloc = arena.allocator();
     const req_id = common.requestId(alloc);
 
-    const principal = common.authenticate(alloc, r, ctx) catch |err| {
-        common.writeAuthError(r, req_id, err);
+    const principal = common.authenticate(alloc, req, ctx) catch |err| {
+        common.writeAuthError(res, req_id, err);
         return;
     };
-    if (!common.requireUuidV7Id(r, req_id, workspace_id, "workspace_id")) return;
+    if (!common.requireUuidV7Id(res, req_id, workspace_id, "workspace_id")) return;
 
     const Req = struct {
         event_type: []const u8,
         reason: []const u8,
     };
 
-    const body = r.body orelse {
-        common.errorResponse(r, .bad_request, error_codes.ERR_INVALID_REQUEST, ERR_REQUEST_BODY_REQUIRED, req_id);
+    const body = req.body() orelse {
+        common.errorResponse(res, .bad_request, error_codes.ERR_INVALID_REQUEST, ERR_REQUEST_BODY_REQUIRED, req_id);
         return;
     };
-    if (!common.checkBodySize(r, body, req_id)) return;
+    if (!common.checkBodySize(req, res, body, req_id)) return;
     const parsed = std.json.parseFromSlice(Req, alloc, body, .{}) catch {
-        common.errorResponse(r, .bad_request, error_codes.ERR_INVALID_REQUEST, ERR_MALFORMED_JSON, req_id);
+        common.errorResponse(res, .bad_request, error_codes.ERR_INVALID_REQUEST, ERR_MALFORMED_JSON, req_id);
         return;
     };
     defer parsed.deinit();
 
     const event = parseBillingLifecycleEvent(parsed.value.event_type) orelse {
-        common.errorResponse(r, .bad_request, error_codes.ERR_BILLING_INVALID_EVENT, "Unsupported billing event_type", req_id);
+        common.errorResponse(res, .bad_request, error_codes.ERR_BILLING_INVALID_EVENT, "Unsupported billing event_type", req_id);
         return;
     };
 
     const conn = ctx.pool.acquire() catch {
-        common.internalDbUnavailable(r, req_id);
+        common.internalDbUnavailable(res, req_id);
         return;
     };
     defer ctx.pool.release(conn);
 
     const actor = principal.user_id orelse API_ACTOR;
-    const access = workspace_guards.enforce(r, req_id, conn, alloc, principal, workspace_id, actor, .{
+    const access = workspace_guards.enforce(res, req_id, conn, alloc, principal, workspace_id, actor, .{
         .minimum_role = .admin,
     }) orelse return;
     defer access.deinit(alloc);
@@ -222,11 +222,11 @@ pub fn handleApplyWorkspaceBillingEvent(ctx: *common.Context, r: zap.Request, wo
     }) catch |err| {
         if (workspace_billing.errorCode(err)) |code| {
             posthog_events.trackApiErrorWithContext(ctx.posthog, principal.user_id orelse "", code, workspace_billing.errorMessage(err) orelse "Workspace billing failure", workspace_id, req_id);
-            common.errorResponse(r, .bad_request, code, workspace_billing.errorMessage(err) orelse "Workspace billing failure", req_id);
+            common.errorResponse(res, .bad_request, code, workspace_billing.errorMessage(err) orelse "Workspace billing failure", req_id);
             return;
         }
         log.err("billing.apply_event_fail error_code=UZ-INTERNAL-003 workspace_id={s} event_type={s}", .{ workspace_id, parsed.value.event_type });
-        common.internalOperationError(r, "Failed to apply workspace billing event", req_id);
+        common.internalOperationError(res, "Failed to apply workspace billing event", req_id);
         return;
     };
     defer alloc.free(state.plan_sku);
@@ -234,7 +234,7 @@ pub fn handleApplyWorkspaceBillingEvent(ctx: *common.Context, r: zap.Request, wo
 
     log.info("billing.event_applied workspace_id={s} event_type={s} plan_tier={s}", .{ workspace_id, parsed.value.event_type, state.plan_tier.label() });
 
-    common.writeJson(r, .ok, .{
+    common.writeJson(res, .ok, .{
         .workspace_id = workspace_id,
         .event_type = parsed.value.event_type,
         .plan_tier = state.plan_tier.label(),

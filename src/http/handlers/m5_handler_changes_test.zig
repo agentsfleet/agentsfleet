@@ -3,7 +3,7 @@
 // Most handler changes in this milestone are integration-level wiring:
 // replacing inline `authorizeWorkspaceAndSetTenantContext` calls with
 // `workspace_guards.enforce`, adding `requireRole` gates, and extracting
-// an `API_ACTOR` constant. Those code paths require a zap.Request and
+// an `API_ACTOR` constant. Those code paths require an httpz Request/Response and
 // pg.Conn, so they are covered by `rbac_http_integration_test.zig`.
 //
 // This file covers the pure/compile-time-verifiable aspects of the changes:

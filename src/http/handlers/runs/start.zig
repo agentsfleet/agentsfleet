@@ -1,6 +1,6 @@
 const std = @import("std");
 const pg = @import("pg");
-const zap = @import("zap");
+const httpz = @import("httpz");
 const common = @import("../common.zig");
 const policy = @import("../../../state/policy.zig");
 const entitlements = @import("../../../state/entitlements.zig");
@@ -52,20 +52,20 @@ fn enforceRuntimeActiveProfile(
     );
 }
 
-pub fn handleStartRun(ctx: *common.Context, r: zap.Request) void {
+pub fn handleStartRun(ctx: *common.Context, req: *httpz.Request, res: *httpz.Response) void {
     var arena = std.heap.ArenaAllocator.init(ctx.alloc);
     defer arena.deinit();
     const alloc = arena.allocator();
 
     const req_id = common.requestId(alloc);
 
-    const principal = common.authenticate(alloc, r, ctx) catch |err| {
-        common.writeAuthErrorWithTracking(r, req_id, err, ctx.posthog);
+    const principal = common.authenticate(alloc, req, ctx) catch |err| {
+        common.writeAuthErrorWithTracking(res, req_id, err, ctx.posthog);
         return;
     };
 
-    const body = r.body orelse {
-        common.errorResponse(r, .bad_request, error_codes.ERR_INVALID_REQUEST, "Request body required", req_id);
+    const body = req.body() orelse {
+        common.errorResponse(res, .bad_request, error_codes.ERR_INVALID_REQUEST, "Request body required", req_id);
         return;
     };
 
@@ -78,47 +78,47 @@ pub fn handleStartRun(ctx: *common.Context, r: zap.Request) void {
     };
 
     const parsed = std.json.parseFromSlice(Req, alloc, body, .{}) catch {
-        common.errorResponse(r, .bad_request, error_codes.ERR_INVALID_REQUEST, "Malformed JSON or missing required fields", req_id);
+        common.errorResponse(res, .bad_request, error_codes.ERR_INVALID_REQUEST, "Malformed JSON or missing required fields", req_id);
         return;
     };
     defer parsed.deinit();
-    const req = parsed.value;
-    if (!common.requireUuidV7Id(r, req_id, req.workspace_id, "workspace_id")) return;
-    if (!common.requireUuidV7Id(r, req_id, req.spec_id, "spec_id")) return;
+    const rval = parsed.value;
+    if (!common.requireUuidV7Id(res, req_id, rval.workspace_id, "workspace_id")) return;
+    if (!common.requireUuidV7Id(res, req_id, rval.spec_id, "spec_id")) return;
 
     if (!common.beginApiRequest(ctx)) {
-        common.errorResponse(r, .service_unavailable, error_codes.ERR_API_SATURATED, "Server overloaded; retry shortly", req_id);
+        common.errorResponse(res, .service_unavailable, error_codes.ERR_API_SATURATED, "Server overloaded; retry shortly", req_id);
         return;
     }
     defer common.endApiRequest(ctx);
 
     const conn = ctx.pool.acquire() catch {
-        common.internalDbUnavailable(r, req_id);
+        common.internalDbUnavailable(res, req_id);
         return;
     };
     defer ctx.pool.release(conn);
 
-    if (!common.authorizeWorkspaceAndSetTenantContext(conn, principal, req.workspace_id)) {
-        common.errorResponse(r, .forbidden, error_codes.ERR_FORBIDDEN, "Workspace access denied", req_id);
+    if (!common.authorizeWorkspaceAndSetTenantContext(conn, principal, rval.workspace_id)) {
+        common.errorResponse(res, .forbidden, error_codes.ERR_FORBIDDEN, "Workspace access denied", req_id);
         return;
     }
 
-    const billing_state = workspace_billing.reconcileWorkspaceBilling(conn, alloc, req.workspace_id, std.time.milliTimestamp(), principal.user_id orelse API_ACTOR) catch |err| {
+    const billing_state = workspace_billing.reconcileWorkspaceBilling(conn, alloc, rval.workspace_id, std.time.milliTimestamp(), principal.user_id orelse API_ACTOR) catch |err| {
         if (workspace_billing.errorCode(err)) |code| {
-            common.errorResponse(r, .internal_server_error, code, workspace_billing.errorMessage(err) orelse "Workspace billing failure", req_id);
+            common.errorResponse(res, .internal_server_error, code, workspace_billing.errorMessage(err) orelse "Workspace billing failure", req_id);
             return;
         }
-        common.internalOperationError(r, "Failed to reconcile workspace billing state", req_id);
+        common.internalOperationError(res, "Failed to reconcile workspace billing state", req_id);
         return;
     };
     defer alloc.free(billing_state.plan_sku);
     defer if (billing_state.subscription_id) |v| alloc.free(v);
-    const credit = workspace_credit.enforceExecutionAllowed(conn, alloc, req.workspace_id, billing_state.plan_tier) catch |err| {
+    const credit = workspace_credit.enforceExecutionAllowed(conn, alloc, rval.workspace_id, billing_state.plan_tier) catch |err| {
         if (workspace_credit.errorCode(err)) |code| {
-            common.errorResponse(r, .forbidden, code, workspace_credit.errorMessage(err) orelse "Workspace credit failure", req_id);
+            common.errorResponse(res, .forbidden, code, workspace_credit.errorMessage(err) orelse "Workspace credit failure", req_id);
             return;
         }
-        common.internalOperationError(r, "Failed to validate workspace credit balance", req_id);
+        common.internalOperationError(res, "Failed to validate workspace credit balance", req_id);
         return;
     };
     defer alloc.free(credit.currency);
@@ -126,22 +126,22 @@ pub fn handleStartRun(ctx: *common.Context, r: zap.Request) void {
     {
         var ws_check = conn.query(
             "SELECT paused FROM workspaces WHERE workspace_id = $1",
-            .{req.workspace_id},
+            .{rval.workspace_id},
         ) catch {
-            common.internalDbError(r, req_id);
+            common.internalDbError(res, req_id);
             return;
         };
         defer ws_check.deinit();
 
         const ws_row = ws_check.next() catch null orelse {
-            common.errorResponse(r, .not_found, error_codes.ERR_WORKSPACE_NOT_FOUND, "Workspace not found", req_id);
+            common.errorResponse(res, .not_found, error_codes.ERR_WORKSPACE_NOT_FOUND, "Workspace not found", req_id);
             return;
         };
 
         const paused = ws_row.get(bool, 0) catch false;
         ws_check.drain() catch {};
         if (paused) {
-            common.errorResponse(r, .conflict, error_codes.ERR_WORKSPACE_PAUSED, "Workspace is paused", req_id);
+            common.errorResponse(res, .conflict, error_codes.ERR_WORKSPACE_PAUSED, "Workspace is paused", req_id);
             return;
         }
     }
@@ -149,9 +149,9 @@ pub fn handleStartRun(ctx: *common.Context, r: zap.Request) void {
     {
         var spec_check = conn.query(
             "SELECT spec_id FROM specs WHERE spec_id = $1 AND workspace_id = $2",
-            .{ req.spec_id, req.workspace_id },
+            .{ rval.spec_id, rval.workspace_id },
         ) catch {
-            common.internalDbError(r, req_id);
+            common.internalDbError(res, req_id);
             return;
         };
         defer spec_check.deinit();
@@ -159,46 +159,46 @@ pub fn handleStartRun(ctx: *common.Context, r: zap.Request) void {
         const spec_exists = (spec_check.next() catch null) != null;
         spec_check.drain() catch {};
         if (!spec_exists) {
-            common.errorResponse(r, .not_found, error_codes.ERR_SPEC_NOT_FOUND, "Spec not found", req_id);
+            common.errorResponse(res, .not_found, error_codes.ERR_SPEC_NOT_FOUND, "Spec not found", req_id);
             return;
         }
     }
 
-    enforceRuntimeActiveProfile(conn, alloc, req.workspace_id, req.requested_by) catch |err| switch (err) {
+    enforceRuntimeActiveProfile(conn, alloc, rval.workspace_id, rval.requested_by) catch |err| switch (err) {
         entitlements.EnforcementError.EntitlementMissing => {
-            common.errorResponse(r, .forbidden, error_codes.ERR_ENTITLEMENT_UNAVAILABLE, "Workspace entitlement missing; request denied", req_id);
+            common.errorResponse(res, .forbidden, error_codes.ERR_ENTITLEMENT_UNAVAILABLE, "Workspace entitlement missing; request denied", req_id);
             return;
         },
         entitlements.EnforcementError.EntitlementProfileLimit => {
-            common.errorResponse(r, .forbidden, error_codes.ERR_ENTITLEMENT_PROFILE_LIMIT, "Workspace profile limit exceeded", req_id);
+            common.errorResponse(res, .forbidden, error_codes.ERR_ENTITLEMENT_PROFILE_LIMIT, "Workspace profile limit exceeded", req_id);
             return;
         },
         entitlements.EnforcementError.EntitlementStageLimit => {
-            common.errorResponse(r, .forbidden, error_codes.ERR_ENTITLEMENT_STAGE_LIMIT, "Plan stage limit exceeded", req_id);
+            common.errorResponse(res, .forbidden, error_codes.ERR_ENTITLEMENT_STAGE_LIMIT, "Plan stage limit exceeded", req_id);
             return;
         },
         entitlements.EnforcementError.EntitlementSkillNotAllowed => {
-            common.errorResponse(r, .forbidden, error_codes.ERR_ENTITLEMENT_SKILL_NOT_ALLOWED, "Plan does not allow one or more profile skills", req_id);
+            common.errorResponse(res, .forbidden, error_codes.ERR_ENTITLEMENT_SKILL_NOT_ALLOWED, "Plan does not allow one or more profile skills", req_id);
             return;
         },
         entitlements.EnforcementError.InvalidCompiledProfile => {
-            common.errorResponse(r, .conflict, error_codes.ERR_PROFILE_INVALID, "Active profile is invalid", req_id);
+            common.errorResponse(res, .conflict, error_codes.ERR_PROFILE_INVALID, "Active profile is invalid", req_id);
             return;
         },
         else => {
-            common.internalOperationError(r, "Failed to enforce runtime entitlement", req_id);
+            common.internalOperationError(res, "Failed to enforce runtime entitlement", req_id);
             return;
         },
     };
 
     const run_id = id_format.generateRunId(alloc) catch |err| {
         obs_log.logWarnErr(.http, err, "run.id_generation_fail error_code={s}", .{error_codes.ERR_UUIDV7_ID_GENERATION_FAILED});
-        common.errorResponse(r, .internal_server_error, error_codes.ERR_UUIDV7_ID_GENERATION_FAILED, "Failed to generate run identifier", req_id);
+        common.errorResponse(res, .internal_server_error, error_codes.ERR_UUIDV7_ID_GENERATION_FAILED, "Failed to generate run identifier", req_id);
         return;
     };
 
     // Parse W3C traceparent header or generate new trace context
-    const tc = if (r.getHeader("traceparent")) |tp|
+    const tc = if (req.header("traceparent")) |tp|
         trace_ctx.TraceContext.fromW3CHeader(tp) orelse trace_ctx.TraceContext.generate()
     else
         trace_ctx.TraceContext.generate();
@@ -217,14 +217,14 @@ pub fn handleStartRun(ctx: *common.Context, r: zap.Request) void {
         \\ON CONFLICT (workspace_id, idempotency_key) DO UPDATE
         \\SET updated_at = runs.updated_at
         \\RETURNING run_id, state, attempt, run_snapshot_version, tenant_id, (xmax = 0) AS inserted
-    , .{ run_id, req.workspace_id, req.spec_id, req.mode, req.requested_by, req.idempotency_key, req_id, trace_id, branch, now_ms }) catch {
-        common.internalOperationError(r, "Failed to create run", req_id);
+    , .{ run_id, rval.workspace_id, rval.spec_id, rval.mode, rval.requested_by, rval.idempotency_key, req_id, trace_id, branch, now_ms }) catch {
+        common.internalOperationError(res, "Failed to create run", req_id);
         return;
     };
     defer insert.deinit();
 
     const inserted_row = insert.next() catch null orelse {
-        common.internalOperationError(r, "Failed to upsert run", req_id);
+        common.internalOperationError(res, "Failed to upsert run", req_id);
         return;
     };
     // Copy row-backed slices before drain so subsequent conn queries don't hit ConnectionBusy.
@@ -238,50 +238,50 @@ pub fn handleStartRun(ctx: *common.Context, r: zap.Request) void {
     insert.drain() catch {};
 
     if (!id_format.isSupportedRunId(final_run_id)) {
-        common.errorResponse(r, .internal_server_error, error_codes.ERR_UUIDV7_CANONICAL_FORMAT, "Non-canonical run_id persisted", req_id);
+        common.errorResponse(res, .internal_server_error, error_codes.ERR_UUIDV7_CANONICAL_FORMAT, "Non-canonical run_id persisted", req_id);
         return;
     }
 
     if (was_inserted) {
-        policy.recordPolicyEvent(conn, req.workspace_id, final_run_id, .sensitive, .allow, "m1.start_run", req.requested_by) catch |err| {
+        policy.recordPolicyEvent(conn, rval.workspace_id, final_run_id, .sensitive, .allow, "m1.start_run", rval.requested_by) catch |err| {
             obs_log.logWarnErr(.http, err, "run.policy_event_insert_fail run_id={s}", .{final_run_id});
         };
 
         log.info("run.created run_id={s} workspace_id={s} spec_id={s}", .{
-            final_run_id, req.workspace_id, req.spec_id,
+            final_run_id, rval.workspace_id, rval.spec_id,
         });
         if (run_snapshot_version) |snapshot| {
-            profile_linkage.insertRunArtifact(conn, tenant_id, req.workspace_id, final_run_id, snapshot, now_ms) catch |err| {
+            profile_linkage.insertRunArtifact(conn, tenant_id, rval.workspace_id, final_run_id, snapshot, now_ms) catch |err| {
                 obs_log.logWarnErr(.http, err, "run.linkage_artifact_fail run_id={s}", .{final_run_id});
                 common.compensateStartRunQueueFailure(conn, final_run_id);
-                common.internalOperationError(r, "Failed to persist run linkage artifact", req_id);
+                common.internalOperationError(res, "Failed to persist run linkage artifact", req_id);
                 return;
             };
         }
-        ctx.queue.xaddRun(final_run_id, 0, req.workspace_id) catch |err| {
+        ctx.queue.xaddRun(final_run_id, 0, rval.workspace_id) catch |err| {
             obs_log.logWarnErr(.http, err, "run.queue_enqueue_fail run_id={s} workspace_id={s}", .{
                 final_run_id,
-                req.workspace_id,
+                rval.workspace_id,
             });
             common.compensateStartRunQueueFailure(conn, final_run_id);
-            common.errorResponse(r, .service_unavailable, queue_unavailable_code, queue_unavailable_message, req_id);
+            common.errorResponse(res, .service_unavailable, queue_unavailable_code, queue_unavailable_message, req_id);
             return;
         };
         posthog_events.trackRunStarted(
             ctx.posthog,
             posthog_events.distinctIdOrSystem(principal.user_id orelse ""),
             final_run_id,
-            req.workspace_id,
-            req.spec_id,
-            req.mode,
+            rval.workspace_id,
+            rval.spec_id,
+            rval.mode,
             req_id,
         );
         metrics.incRunsCreated();
     } else {
-        log.info("run.idempotent_replay run_id={s} workspace_id={s}", .{ final_run_id, req.workspace_id });
+        log.info("run.idempotent_replay run_id={s} workspace_id={s}", .{ final_run_id, rval.workspace_id });
     }
 
-    common.writeJson(r, .accepted, .{
+    common.writeJson(res, .accepted, .{
         .run_id = final_run_id,
         .state = final_state,
         .attempt = @as(u32, @intCast(final_attempt)),

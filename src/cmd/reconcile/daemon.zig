@@ -16,7 +16,6 @@
 //!     is set to point at it and cleared on exit via defer.
 
 const std = @import("std");
-const zap = @import("zap");
 const db = @import("../../db/pool.zig");
 const posthog = @import("posthog");
 const tick_mod = @import("tick.zig");
@@ -122,7 +121,7 @@ pub fn runDaemon(alloc: std.mem.Allocator, pool: *db.Pool, posthog_client: ?*pos
     }
 
     daemon_state.running.store(false, .release);
-    zap.stop();
+    metrics_mod.stopMetricsServer();
     log.info("reconcile.daemon_stopped uptime_ms={d} ticks={d}", .{
         std.time.milliTimestamp() - daemon_state.started_ms,
         daemon_state.total_ticks.load(.acquire),

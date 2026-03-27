@@ -1,5 +1,5 @@
 const std = @import("std");
-const zap = @import("zap");
+const httpz = @import("httpz");
 const pg = @import("pg");
 const posthog = @import("posthog");
 const oidc = @import("../../auth/oidc.zig");
@@ -34,8 +34,8 @@ pub const Context = struct {
 };
 
 /// Parse traceparent header from request, or generate a root trace context.
-pub fn resolveTraceContext(r: zap.Request) TraceContext {
-    if (r.getHeader("traceparent")) |header| {
+pub fn resolveTraceContext(req: *httpz.Request) TraceContext {
+    if (req.header("traceparent")) |header| {
         if (TraceContext.fromW3CHeader(header)) |parsed| {
             return parsed.child();
         }
@@ -69,27 +69,22 @@ pub const AuthError = error{
     AuthServiceUnavailable,
 };
 
-pub fn writeJson(r: zap.Request, status: zap.http.StatusCode, value: anytype) void {
-    var buf: [64 * 1024]u8 = undefined;
-    var fba = std.heap.FixedBufferAllocator.init(&buf);
-    const json = std.json.Stringify.valueAlloc(fba.allocator(), value, .{}) catch {
-        r.setStatus(.internal_server_error);
-        r.sendBody("{}") catch |err| obs_log.logWarnErr(.http, err, "writeJson fallback send failed", .{});
-        return;
+pub fn writeJson(res: *httpz.Response, status: std.http.Status, value: anytype) void {
+    res.status = @intFromEnum(status);
+    res.json(value, .{}) catch {
+        res.status = 500;
+        res.body = "{}";
     };
-    r.setStatus(status);
-    r.setContentType(.JSON) catch |err| obs_log.logWarnErr(.http, err, "setContentType failed", .{});
-    r.sendBody(json) catch |err| obs_log.logWarnErr(.http, err, "sendBody failed", .{});
 }
 
 pub fn errorResponse(
-    r: zap.Request,
-    status: zap.http.StatusCode,
+    res: *httpz.Response,
+    status: std.http.Status,
     code: []const u8,
     message: []const u8,
     request_id: []const u8,
 ) void {
-    writeJson(r, status, .{
+    writeJson(res, status, .{
         .@"error" = .{
             .code = code,
             .message = message,
@@ -98,16 +93,16 @@ pub fn errorResponse(
     });
 }
 
-pub fn internalDbUnavailable(r: zap.Request, request_id: []const u8) void {
-    errorResponse(r, .service_unavailable, error_codes.ERR_INTERNAL_DB_UNAVAILABLE, "Database unavailable", request_id);
+pub fn internalDbUnavailable(res: *httpz.Response, request_id: []const u8) void {
+    errorResponse(res, .service_unavailable, error_codes.ERR_INTERNAL_DB_UNAVAILABLE, "Database unavailable", request_id);
 }
 
-pub fn internalDbError(r: zap.Request, request_id: []const u8) void {
-    errorResponse(r, .internal_server_error, error_codes.ERR_INTERNAL_DB_QUERY, "Database error", request_id);
+pub fn internalDbError(res: *httpz.Response, request_id: []const u8) void {
+    errorResponse(res, .internal_server_error, error_codes.ERR_INTERNAL_DB_QUERY, "Database error", request_id);
 }
 
-pub fn internalOperationError(r: zap.Request, message: []const u8, request_id: []const u8) void {
-    errorResponse(r, .internal_server_error, error_codes.ERR_INTERNAL_OPERATION_FAILED, message, request_id);
+pub fn internalOperationError(res: *httpz.Response, message: []const u8, request_id: []const u8) void {
+    errorResponse(res, .internal_server_error, error_codes.ERR_INTERNAL_OPERATION_FAILED, message, request_id);
 }
 
 pub const MAX_BODY_SIZE: usize = 2 * 1024 * 1024; // 2MB — must match server.zig max_body_size
@@ -115,17 +110,17 @@ pub const MAX_BODY_SIZE: usize = 2 * 1024 * 1024; // 2MB — must match server.z
 /// Returns true if the body size is within the allowed limit.
 /// Sends a 413 response and returns false if the Content-Length header
 /// indicates the payload exceeds MAX_BODY_SIZE, or if the received body
-/// itself exceeds the limit after facil.io truncation.
-pub fn checkBodySize(r: zap.Request, body: []const u8, request_id: []const u8) bool {
-    if (r.getHeader("content-length")) |cl_str| {
+/// itself exceeds the limit.
+pub fn checkBodySize(req: *httpz.Request, res: *httpz.Response, body: []const u8, request_id: []const u8) bool {
+    if (req.header("content-length")) |cl_str| {
         const cl = std.fmt.parseInt(usize, cl_str, 10) catch 0;
         if (cl > MAX_BODY_SIZE) {
-            errorResponse(r, .content_too_large, error_codes.ERR_PAYLOAD_TOO_LARGE, "Payload too large: max 2MB", request_id);
+            errorResponse(res, .payload_too_large, error_codes.ERR_PAYLOAD_TOO_LARGE, "Payload too large: max 2MB", request_id);
             return false;
         }
     }
     if (body.len >= MAX_BODY_SIZE) {
-        errorResponse(r, .content_too_large, error_codes.ERR_PAYLOAD_TOO_LARGE, "Payload too large: max 2MB", request_id);
+        errorResponse(res, .payload_too_large, error_codes.ERR_PAYLOAD_TOO_LARGE, "Payload too large: max 2MB", request_id);
         return false;
     }
     return true;
@@ -138,8 +133,8 @@ pub fn requestId(alloc: std.mem.Allocator) []const u8 {
     return std.fmt.allocPrint(alloc, "req_{s}", .{hex[0..12]}) catch "req_unknown";
 }
 
-fn parseBearerToken(r: zap.Request) ?[]const u8 {
-    const auth = r.getHeader("authorization") orelse return null;
+fn parseBearerToken(req: *httpz.Request) ?[]const u8 {
+    const auth = req.header("authorization") orelse return null;
     const prefix = "Bearer ";
     if (!std.mem.startsWith(u8, auth, prefix)) return null;
     const provided = auth[prefix.len..];
@@ -168,8 +163,8 @@ fn authenticateApiKey(provided: []const u8, ctx: *Context) AuthError!AuthPrincip
     };
 }
 
-pub fn authenticate(alloc: std.mem.Allocator, r: zap.Request, ctx: *Context) AuthError!AuthPrincipal {
-    const provided = parseBearerToken(r) orelse return AuthError.Unauthorized;
+pub fn authenticate(alloc: std.mem.Allocator, req: *httpz.Request, ctx: *Context) AuthError!AuthPrincipal {
+    const provided = parseBearerToken(req) orelse return AuthError.Unauthorized;
     if (authenticateApiKey(provided, ctx)) |principal| {
         return principal;
     } else |err| switch (err) {
@@ -178,7 +173,7 @@ pub fn authenticate(alloc: std.mem.Allocator, r: zap.Request, ctx: *Context) Aut
     }
 
     if (ctx.oidc) |verifier| {
-        const auth = r.getHeader("authorization") orelse return AuthError.Unauthorized;
+        const auth = req.header("authorization") orelse return AuthError.Unauthorized;
         const principal = verifier.verifyAuthorization(alloc, auth) catch |err| switch (err) {
             error.TokenExpired => return AuthError.TokenExpired,
             error.JwksFetchFailed, error.JwksParseFailed => return AuthError.AuthServiceUnavailable,
@@ -219,7 +214,7 @@ test "matchApiKey rejects empty and non-matching candidates" {
 }
 
 pub fn requireUuidV7Id(
-    r: zap.Request,
+    res: *httpz.Response,
     req_id: []const u8,
     id: []const u8,
     id_label: []const u8,
@@ -227,15 +222,15 @@ pub fn requireUuidV7Id(
     if (id_format.isUuidV7(id)) return true;
     var msg_buf: [96]u8 = undefined;
     const message = std.fmt.bufPrint(&msg_buf, "Invalid {s} format", .{id_label}) catch "Invalid identifier format";
-    errorResponse(r, .bad_request, error_codes.ERR_UUIDV7_INVALID_ID_SHAPE, message, req_id);
+    errorResponse(res, .bad_request, error_codes.ERR_UUIDV7_INVALID_ID_SHAPE, message, req_id);
     return false;
 }
 
-pub fn writeAuthError(r: zap.Request, req_id: []const u8, err: AuthError) void {
-    writeAuthErrorWithTracking(r, req_id, err, null);
+pub fn writeAuthError(res: *httpz.Response, req_id: []const u8, err: AuthError) void {
+    writeAuthErrorWithTracking(res, req_id, err, null);
 }
 
-pub fn writeAuthErrorWithTracking(r: zap.Request, req_id: []const u8, err: AuthError, ph_client: ?*posthog.PostHogClient) void {
+pub fn writeAuthErrorWithTracking(res: *httpz.Response, req_id: []const u8, err: AuthError, ph_client: ?*posthog.PostHogClient) void {
     const reason: []const u8 = switch (err) {
         AuthError.TokenExpired => "token_expired",
         AuthError.Unauthorized => "unauthorized",
@@ -244,18 +239,18 @@ pub fn writeAuthErrorWithTracking(r: zap.Request, req_id: []const u8, err: AuthE
     };
     posthog_events.trackAuthRejected(ph_client, reason, req_id);
     switch (err) {
-        AuthError.TokenExpired => errorResponse(r, .unauthorized, error_codes.ERR_TOKEN_EXPIRED, "token expired", req_id),
-        AuthError.Unauthorized => errorResponse(r, .unauthorized, error_codes.ERR_UNAUTHORIZED, "Invalid or missing token", req_id),
-        AuthError.UnsupportedRole => errorResponse(r, .forbidden, error_codes.ERR_UNSUPPORTED_ROLE, "Unsupported role in token", req_id),
-        AuthError.AuthServiceUnavailable => errorResponse(r, .service_unavailable, error_codes.ERR_AUTH_UNAVAILABLE, "Authentication service unavailable", req_id),
+        AuthError.TokenExpired => errorResponse(res, .unauthorized, error_codes.ERR_TOKEN_EXPIRED, "token expired", req_id),
+        AuthError.Unauthorized => errorResponse(res, .unauthorized, error_codes.ERR_UNAUTHORIZED, "Invalid or missing token", req_id),
+        AuthError.UnsupportedRole => errorResponse(res, .forbidden, error_codes.ERR_UNSUPPORTED_ROLE, "Unsupported role in token", req_id),
+        AuthError.AuthServiceUnavailable => errorResponse(res, .service_unavailable, error_codes.ERR_AUTH_UNAVAILABLE, "Authentication service unavailable", req_id),
     }
 }
 
-pub fn requireRole(r: zap.Request, req_id: []const u8, principal: AuthPrincipal, required: AuthRole) bool {
+pub fn requireRole(res: *httpz.Response, req_id: []const u8, principal: AuthPrincipal, required: AuthRole) bool {
     if (principal.role.allows(required)) return true;
     var msg_buf: [64]u8 = undefined;
     const message = std.fmt.bufPrint(&msg_buf, "{s} role required", .{required.label()}) catch "Insufficient role";
-    errorResponse(r, .forbidden, error_codes.ERR_INSUFFICIENT_ROLE, message, req_id);
+    errorResponse(res, .forbidden, error_codes.ERR_INSUFFICIENT_ROLE, message, req_id);
     return false;
 }
 

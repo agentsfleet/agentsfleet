@@ -19,13 +19,12 @@ pub fn build(b: *std.Build) void {
     });
     const nullclaw_mod = nullclaw_dep.module("nullclaw");
 
-    // ── Zap HTTP dependency ──────────────────────────────────────────────────
-    const zap_dep = b.dependency("zap", .{
+    // ── httpz (pure-Zig HTTP server, karlseguin) ─────────────────────────────
+    const httpz_dep = b.dependency("httpz", .{
         .target = target,
         .optimize = optimize,
-        .openssl = false,
     });
-    const zap_mod = zap_dep.module("zap");
+    const httpz_mod = httpz_dep.module("httpz");
 
     // ── pg.zig (pure-Zig Postgres driver) ────────────────────────────────────
     // OpenSSL is required for TLS connections to PlanetScale / hosted Postgres.
@@ -96,7 +95,7 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
             .imports = &.{
                 .{ .name = "nullclaw", .module = nullclaw_mod },
-                .{ .name = "zap", .module = zap_mod },
+                .{ .name = "httpz", .module = httpz_mod },
                 .{ .name = "pg", .module = pg_mod },
                 .{ .name = "posthog", .module = posthog_mod },
                 .{ .name = "schema", .module = schema_mod },
@@ -162,7 +161,7 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
             .imports = &.{
                 .{ .name = "nullclaw", .module = nullclaw_mod },
-                .{ .name = "zap", .module = zap_mod },
+                .{ .name = "httpz", .module = httpz_mod },
                 .{ .name = "pg", .module = pg_mod },
                 .{ .name = "posthog", .module = posthog_mod },
                 .{ .name = "schema", .module = schema_mod },

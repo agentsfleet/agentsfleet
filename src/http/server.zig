@@ -1,8 +1,8 @@
-//! Zap HTTP server setup and request routing.
+//! httpz HTTP server setup and request routing.
 //! Thread 1 — all endpoint handlers run here. Never blocks on agent execution.
 
 const std = @import("std");
-const zap = @import("zap");
+const httpz = @import("httpz");
 const handler = @import("handler.zig");
 const router = @import("router.zig");
 const common = @import("handlers/common.zig");
@@ -13,37 +13,45 @@ const log = std.log.scoped(.http);
 pub const ServerConfig = struct {
     port: u16 = 3000,
     /// Dual-stack "::" accepts both IPv4 and IPv6 connections.
-    /// Requires IPV6_V6ONLY=0 (Linux kernel default). If facilio or the OS
-    /// sets IPV6_V6ONLY=1, only IPv6 will be accepted.
-    interface: [:0]const u8 = "::",
+    /// httpz (pure Zig) uses std.posix — no C-layer IPV6_V6ONLY concern.
+    interface: []const u8 = "::",
     threads: i16 = 1,
     workers: i16 = 1,
     max_clients: ?isize = 1024,
 };
 
-/// Single global context pointer used by the Zap callbacks.
-/// Zap's C event loop doesn't support closures, so we use a module-level var.
-var g_ctx: *handler.Context = undefined;
+/// httpz handler struct — carries Context and owns dispatch.
+const App = struct {
+    ctx: *handler.Context,
+
+    pub fn handle(self: App, req: *httpz.Request, res: *httpz.Response) void {
+        dispatch(self.ctx, req, res);
+    }
+
+    pub fn uncaughtError(_: App, _: *httpz.Request, res: *httpz.Response, _: anyerror) void {
+        res.status = 500;
+        res.body = "{\"error\":{\"code\":\"INTERNAL\",\"message\":\"Internal server error\"}}";
+    }
+};
+
+/// Module-level server pointer for cross-thread stop().
+var g_server: ?*httpz.Server(App) = null;
 
 // ── Request dispatch ──────────────────────────────────────────────────────
 
 /// Top-level request handler — dispatches based on method + path prefix.
-fn dispatch(r: zap.Request) !void {
-    const path = r.path orelse {
-        r.setStatus(.bad_request);
-        r.sendBody("") catch {};
-        return;
-    };
+fn dispatch(ctx: *handler.Context, req: *httpz.Request, res: *httpz.Response) void {
+    const path = req.url.path;
 
     // Resolve trace context from inbound traceparent header or generate root.
-    const tctx = common.resolveTraceContext(r);
+    const tctx = common.resolveTraceContext(req);
     const start_ns: u64 = @intCast(std.time.nanoTimestamp());
 
-    if (dispatchMatchedRoute(r, path)) {
+    if (dispatchMatchedRoute(ctx, req, res, path)) {
         emitRequestSpan(tctx, path, start_ns);
         return;
     }
-    respondNotFound(r);
+    respondNotFound(res);
 }
 
 fn emitRequestSpan(tctx: common.TraceContext, path: []const u8, start_ns: u64) void {
@@ -53,66 +61,66 @@ fn emitRequestSpan(tctx: common.TraceContext, path: []const u8, start_ns: u64) v
     otel_traces.enqueueSpan(span);
 }
 
-fn dispatchMatchedRoute(r: zap.Request, path: []const u8) bool {
+fn dispatchMatchedRoute(ctx: *handler.Context, req: *httpz.Request, res: *httpz.Response, path: []const u8) bool {
     if (handler.parseSkillSecretRoute(path)) |route| {
-        switch (r.methodAsEnum()) {
-            .PUT => handler.handlePutWorkspaceSkillSecret(g_ctx, r, route.workspace_id, route.skill_ref_encoded, route.key_name_encoded),
-            .DELETE => handler.handleDeleteWorkspaceSkillSecret(g_ctx, r, route.workspace_id, route.skill_ref_encoded, route.key_name_encoded),
-            else => respondMethodNotAllowed(r),
+        switch (req.method) {
+            .PUT => handler.handlePutWorkspaceSkillSecret(ctx, req, res, route.workspace_id, route.skill_ref_encoded, route.key_name_encoded),
+            .DELETE => handler.handleDeleteWorkspaceSkillSecret(ctx, req, res, route.workspace_id, route.skill_ref_encoded, route.key_name_encoded),
+            else => respondMethodNotAllowed(res),
         }
         return true;
     }
 
     const matched = router.match(path) orelse return false;
     switch (matched) {
-        .healthz => handler.handleHealthz(g_ctx, r),
-        .readyz => handler.handleReadyz(g_ctx, r),
-        .metrics => handler.handleMetrics(g_ctx, r),
-        .create_auth_session => if (r.methodAsEnum() == .POST) handler.handleCreateAuthSession(g_ctx, r) else respondMethodNotAllowed(r),
-        .complete_auth_session => |session_id| if (r.methodAsEnum() == .POST) handler.handleCompleteAuthSession(g_ctx, r, session_id) else respondMethodNotAllowed(r),
-        .poll_auth_session => |session_id| if (r.methodAsEnum() == .GET) handler.handlePollAuthSession(g_ctx, r, session_id) else respondMethodNotAllowed(r),
-        .github_callback => if (r.methodAsEnum() == .GET) handler.handleGitHubCallback(g_ctx, r) else respondMethodNotAllowed(r),
-        .create_workspace => if (r.methodAsEnum() == .POST) handler.handleCreateWorkspace(g_ctx, r) else respondMethodNotAllowed(r),
-        .start_run => switch (r.methodAsEnum()) {
-            .POST => handler.handleStartRun(g_ctx, r),
-            .GET => handler.handleListRuns(g_ctx, r),
-            else => respondMethodNotAllowed(r),
+        .healthz => handler.handleHealthz(ctx, req, res),
+        .readyz => handler.handleReadyz(ctx, req, res),
+        .metrics => handler.handleMetrics(ctx, req, res),
+        .create_auth_session => if (req.method == .POST) handler.handleCreateAuthSession(ctx, req, res) else respondMethodNotAllowed(res),
+        .complete_auth_session => |session_id| if (req.method == .POST) handler.handleCompleteAuthSession(ctx, req, res, session_id) else respondMethodNotAllowed(res),
+        .poll_auth_session => |session_id| if (req.method == .GET) handler.handlePollAuthSession(ctx, req, res, session_id) else respondMethodNotAllowed(res),
+        .github_callback => if (req.method == .GET) handler.handleGitHubCallback(ctx, req, res) else respondMethodNotAllowed(res),
+        .create_workspace => if (req.method == .POST) handler.handleCreateWorkspace(ctx, req, res) else respondMethodNotAllowed(res),
+        .start_run => switch (req.method) {
+            .POST => handler.handleStartRun(ctx, req, res),
+            .GET => handler.handleListRuns(ctx, req, res),
+            else => respondMethodNotAllowed(res),
         },
-        .list_runs => if (r.methodAsEnum() == .GET) handler.handleListRuns(g_ctx, r) else respondMethodNotAllowed(r),
-        .list_specs => if (r.methodAsEnum() == .GET) handler.handleListSpecs(g_ctx, r) else respondMethodNotAllowed(r),
-        .retry_run => |run_id| if (r.methodAsEnum() == .POST) handler.handleRetryRun(g_ctx, r, run_id) else respondMethodNotAllowed(r),
-        .get_run => |run_id| if (r.methodAsEnum() == .GET) handler.handleGetRun(g_ctx, r, run_id) else respondMethodNotAllowed(r),
-        .pause_workspace => |workspace_id| if (r.methodAsEnum() == .POST) handler.handlePauseWorkspace(g_ctx, r, workspace_id) else respondMethodNotAllowed(r),
-        .upgrade_workspace_to_scale => |workspace_id| if (r.methodAsEnum() == .POST) handler.handleUpgradeWorkspaceToScale(g_ctx, r, workspace_id) else respondMethodNotAllowed(r),
-        .apply_workspace_billing_event => |workspace_id| if (r.methodAsEnum() == .POST) handler.handleApplyWorkspaceBillingEvent(g_ctx, r, workspace_id) else respondMethodNotAllowed(r),
-        .set_workspace_scoring_config => |workspace_id| if (r.methodAsEnum() == .POST) handler.handleSetWorkspaceScoringConfig(g_ctx, r, workspace_id) else respondMethodNotAllowed(r),
-        .put_harness_source => |workspace_id| if (r.methodAsEnum() == .PUT) handler.handlePutHarnessSource(g_ctx, r, workspace_id) else respondMethodNotAllowed(r),
-        .compile_harness => |workspace_id| if (r.methodAsEnum() == .POST) handler.handleCompileHarness(g_ctx, r, workspace_id) else respondMethodNotAllowed(r),
-        .activate_harness => |workspace_id| if (r.methodAsEnum() == .POST) handler.handleActivateHarness(g_ctx, r, workspace_id) else respondMethodNotAllowed(r),
-        .get_harness_active => |workspace_id| if (r.methodAsEnum() == .GET) handler.handleGetHarnessActive(g_ctx, r, workspace_id) else respondMethodNotAllowed(r),
-        .sync_workspace => |workspace_id| if (r.methodAsEnum() == .POST) handler.handleSyncSpecs(g_ctx, r, workspace_id) else respondMethodNotAllowed(r),
-        .get_agent => |agent_id| if (r.methodAsEnum() == .GET) handler.handleGetAgent(g_ctx, r, agent_id) else respondMethodNotAllowed(r),
-        .get_agent_scores => |agent_id| if (r.methodAsEnum() == .GET) handler.handleGetAgentScores(g_ctx, r, agent_id) else respondMethodNotAllowed(r),
-        .get_agent_improvement_report => |agent_id| if (r.methodAsEnum() == .GET) handler.handleGetAgentImprovementReport(g_ctx, r, agent_id) else respondMethodNotAllowed(r),
-        .list_agent_proposals => |agent_id| if (r.methodAsEnum() == .GET) handler.handleListAgentProposals(g_ctx, r, agent_id) else respondMethodNotAllowed(r),
-        .approve_agent_proposal => |route| if (r.methodAsEnum() == .POST) handler.handleApproveAgentProposal(g_ctx, r, route.agent_id, route.proposal_id) else respondMethodNotAllowed(r),
-        .reject_agent_proposal => |route| if (r.methodAsEnum() == .POST) handler.handleRejectAgentProposal(g_ctx, r, route.agent_id, route.proposal_id) else respondMethodNotAllowed(r),
-        .veto_agent_proposal => |route| if (r.methodAsEnum() == .POST) handler.handleVetoAgentProposal(g_ctx, r, route.agent_id, route.proposal_id) else respondMethodNotAllowed(r),
-        .revert_agent_harness_change => |route| if (r.methodAsEnum() == .POST) handler.handleRevertAgentHarnessChange(g_ctx, r, route.agent_id, route.change_id) else respondMethodNotAllowed(r),
+        .list_runs => if (req.method == .GET) handler.handleListRuns(ctx, req, res) else respondMethodNotAllowed(res),
+        .list_specs => if (req.method == .GET) handler.handleListSpecs(ctx, req, res) else respondMethodNotAllowed(res),
+        .retry_run => |run_id| if (req.method == .POST) handler.handleRetryRun(ctx, req, res, run_id) else respondMethodNotAllowed(res),
+        .get_run => |run_id| if (req.method == .GET) handler.handleGetRun(ctx, req, res, run_id) else respondMethodNotAllowed(res),
+        .pause_workspace => |workspace_id| if (req.method == .POST) handler.handlePauseWorkspace(ctx, req, res, workspace_id) else respondMethodNotAllowed(res),
+        .upgrade_workspace_to_scale => |workspace_id| if (req.method == .POST) handler.handleUpgradeWorkspaceToScale(ctx, req, res, workspace_id) else respondMethodNotAllowed(res),
+        .apply_workspace_billing_event => |workspace_id| if (req.method == .POST) handler.handleApplyWorkspaceBillingEvent(ctx, req, res, workspace_id) else respondMethodNotAllowed(res),
+        .set_workspace_scoring_config => |workspace_id| if (req.method == .POST) handler.handleSetWorkspaceScoringConfig(ctx, req, res, workspace_id) else respondMethodNotAllowed(res),
+        .put_harness_source => |workspace_id| if (req.method == .PUT) handler.handlePutHarnessSource(ctx, req, res, workspace_id) else respondMethodNotAllowed(res),
+        .compile_harness => |workspace_id| if (req.method == .POST) handler.handleCompileHarness(ctx, req, res, workspace_id) else respondMethodNotAllowed(res),
+        .activate_harness => |workspace_id| if (req.method == .POST) handler.handleActivateHarness(ctx, req, res, workspace_id) else respondMethodNotAllowed(res),
+        .get_harness_active => |workspace_id| if (req.method == .GET) handler.handleGetHarnessActive(ctx, req, res, workspace_id) else respondMethodNotAllowed(res),
+        .sync_workspace => |workspace_id| if (req.method == .POST) handler.handleSyncSpecs(ctx, req, res, workspace_id) else respondMethodNotAllowed(res),
+        .get_agent => |agent_id| if (req.method == .GET) handler.handleGetAgent(ctx, req, res, agent_id) else respondMethodNotAllowed(res),
+        .get_agent_scores => |agent_id| if (req.method == .GET) handler.handleGetAgentScores(ctx, req, res, agent_id) else respondMethodNotAllowed(res),
+        .get_agent_improvement_report => |agent_id| if (req.method == .GET) handler.handleGetAgentImprovementReport(ctx, req, res, agent_id) else respondMethodNotAllowed(res),
+        .list_agent_proposals => |agent_id| if (req.method == .GET) handler.handleListAgentProposals(ctx, req, res, agent_id) else respondMethodNotAllowed(res),
+        .approve_agent_proposal => |route| if (req.method == .POST) handler.handleApproveAgentProposal(ctx, req, res, route.agent_id, route.proposal_id) else respondMethodNotAllowed(res),
+        .reject_agent_proposal => |route| if (req.method == .POST) handler.handleRejectAgentProposal(ctx, req, res, route.agent_id, route.proposal_id) else respondMethodNotAllowed(res),
+        .veto_agent_proposal => |route| if (req.method == .POST) handler.handleVetoAgentProposal(ctx, req, res, route.agent_id, route.proposal_id) else respondMethodNotAllowed(res),
+        .revert_agent_harness_change => |route| if (req.method == .POST) handler.handleRevertAgentHarnessChange(ctx, req, res, route.agent_id, route.change_id) else respondMethodNotAllowed(res),
     }
     return true;
 }
 
-fn respondMethodNotAllowed(r: zap.Request) void {
-    r.setStatus(.method_not_allowed);
-    r.sendBody("") catch {};
+fn respondMethodNotAllowed(res: *httpz.Response) void {
+    res.status = @intFromEnum(std.http.Status.method_not_allowed);
+    res.body = "";
 }
 
-fn respondNotFound(r: zap.Request) void {
-    r.setStatus(.not_found);
-    r.sendBody(
+fn respondNotFound(res: *httpz.Response) void {
+    res.status = @intFromEnum(std.http.Status.not_found);
+    res.body =
         \\{"error":{"code":"NOT_FOUND","message":"No such route"}}
-    ) catch {};
+    ;
 }
 
 test "dispatchMatchedRoute route matcher covers billing event endpoint" {
@@ -138,23 +146,14 @@ test "ServerConfig default interface is NOT IPv4-only — regression guard" {
     try std.testing.expect(!is_ipv4_only);
 }
 
-test "ServerConfig interface type enforces null-termination for C FFI" {
-    const cfg = ServerConfig{};
-    // The [:0]const u8 type guarantees null-termination at compile time.
-    // Zap passes interface.ptr to facilio's C http_listen() as [*c]const u8.
-    try std.testing.expectEqual(@as(u8, 0), cfg.interface.ptr[cfg.interface.len]);
-}
-
 test "ServerConfig accepts custom IPv4 interface override" {
     const cfg = ServerConfig{ .interface = "0.0.0.0" };
     try std.testing.expectEqualStrings("0.0.0.0", cfg.interface);
-    try std.testing.expectEqual(@as(u8, 0), cfg.interface.ptr[cfg.interface.len]);
 }
 
 test "ServerConfig accepts custom IPv6 loopback interface" {
     const cfg = ServerConfig{ .interface = "::1" };
     try std.testing.expectEqualStrings("::1", cfg.interface);
-    try std.testing.expectEqual(@as(u8, 0), cfg.interface.ptr[cfg.interface.len]);
 }
 
 test "ServerConfig default port is 3000" {
@@ -173,30 +172,33 @@ test "ServerConfig defaults are stable — full struct check" {
 
 // ── Server lifecycle ──────────────────────────────────────────────────────
 
-/// Start the Zap HTTP server. Blocks until zap.stop() is called.
+/// Start the httpz HTTP server. Blocks until stop() is called.
 pub fn serve(ctx: *handler.Context, cfg: ServerConfig) !void {
-    g_ctx = ctx;
+    var server = try httpz.Server(App).init(ctx.alloc, .{
+        .address = .{ .ip = .{ .host = cfg.interface, .port = cfg.port } },
+        .workers = .{
+            .count = @intCast(cfg.workers),
+            .max_conn = if (cfg.max_clients) |mc| @intCast(mc) else null,
+        },
+        .thread_pool = .{
+            .count = @intCast(cfg.threads),
+        },
+        .request = .{
+            .max_body_size = 2 * 1024 * 1024, // 2MB
+        },
+    }, .{ .ctx = ctx });
+    defer server.deinit();
 
-    var listener = zap.HttpListener.init(.{
-        .port = cfg.port,
-        .interface = cfg.interface.ptr,
-        .on_request = dispatch,
-        .log = false,
-        .max_clients = cfg.max_clients,
-        .max_body_size = 2 * 1024 * 1024, // 2MB
-    });
-    try listener.listen();
+    g_server = &server;
+    defer g_server = null;
 
     log.info("http.listening interface={s} port={d}", .{ cfg.interface, cfg.port });
 
-    zap.start(.{
-        .threads = cfg.threads,
-        .workers = cfg.workers,
-    });
+    try server.listen();
 }
 
 pub fn stop() void {
-    zap.stop();
+    if (g_server) |s| s.stop();
 }
 
 test {

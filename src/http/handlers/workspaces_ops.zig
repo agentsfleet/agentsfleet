@@ -1,5 +1,5 @@
 const std = @import("std");
-const zap = @import("zap");
+const httpz = @import("httpz");
 const policy = @import("../../state/policy.zig");
 const obs_log = @import("../../observability/logging.zig");
 const error_codes = @import("../../errors/codes.zig");
@@ -8,17 +8,17 @@ const workspace_guards = @import("../workspace_guards.zig");
 const log = std.log.scoped(.http);
 const API_ACTOR = "api";
 
-pub fn handlePauseWorkspace(ctx: *common.Context, r: zap.Request, workspace_id: []const u8) void {
+pub fn handlePauseWorkspace(ctx: *common.Context, req: *httpz.Request, res: *httpz.Response, workspace_id: []const u8) void {
     var arena = std.heap.ArenaAllocator.init(ctx.alloc);
     defer arena.deinit();
     const alloc = arena.allocator();
     const req_id = common.requestId(alloc);
 
-    const principal = common.authenticate(alloc, r, ctx) catch |err| {
-        common.writeAuthError(r, req_id, err);
+    const principal = common.authenticate(alloc, req, ctx) catch |err| {
+        common.writeAuthError(res, req_id, err);
         return;
     };
-    if (!common.requireUuidV7Id(r, req_id, workspace_id, "workspace_id")) return;
+    if (!common.requireUuidV7Id(res, req_id, workspace_id, "workspace_id")) return;
 
     const Req = struct {
         pause: bool,
@@ -26,25 +26,25 @@ pub fn handlePauseWorkspace(ctx: *common.Context, r: zap.Request, workspace_id: 
         version: i64,
     };
 
-    const body = r.body orelse {
-        common.errorResponse(r, .bad_request, error_codes.ERR_INVALID_REQUEST, "Request body required", req_id);
+    const body = req.body() orelse {
+        common.errorResponse(res, .bad_request, error_codes.ERR_INVALID_REQUEST, "Request body required", req_id);
         return;
     };
-    if (!common.checkBodySize(r, body, req_id)) return;
+    if (!common.checkBodySize(req, res, body, req_id)) return;
     const parsed = std.json.parseFromSlice(Req, alloc, body, .{}) catch {
-        common.errorResponse(r, .bad_request, error_codes.ERR_INVALID_REQUEST, "Malformed JSON", req_id);
+        common.errorResponse(res, .bad_request, error_codes.ERR_INVALID_REQUEST, "Malformed JSON", req_id);
         return;
     };
     defer parsed.deinit();
 
     const conn = ctx.pool.acquire() catch {
-        common.internalDbUnavailable(r, req_id);
+        common.internalDbUnavailable(res, req_id);
         return;
     };
     defer ctx.pool.release(conn);
 
     const actor = principal.user_id orelse API_ACTOR;
-    const access = workspace_guards.enforce(r, req_id, conn, alloc, principal, workspace_id, actor, .{
+    const access = workspace_guards.enforce(res, req_id, conn, alloc, principal, workspace_id, actor, .{
         .minimum_role = .operator,
     }) orelse return;
     defer access.deinit(alloc);
@@ -66,13 +66,13 @@ pub fn handlePauseWorkspace(ctx: *common.Context, r: zap.Request, workspace_id: 
         workspace_id,
         parsed.value.version,
     }) catch {
-        common.internalDbError(r, req_id);
+        common.internalDbError(res, req_id);
         return;
     };
     defer upd.deinit();
 
     const row = upd.next() catch null orelse {
-        common.errorResponse(r, .conflict, error_codes.ERR_WORKSPACE_NOT_FOUND, "Workspace not found or version conflict", req_id);
+        common.errorResponse(res, .conflict, error_codes.ERR_WORKSPACE_NOT_FOUND, "Workspace not found or version conflict", req_id);
         return;
     };
 
@@ -80,7 +80,7 @@ pub fn handlePauseWorkspace(ctx: *common.Context, r: zap.Request, workspace_id: 
     upd.drain() catch {};
     log.info("workspace.pause_updated pause={} workspace_id={s}", .{ parsed.value.pause, workspace_id });
 
-    common.writeJson(r, .ok, .{
+    common.writeJson(res, .ok, .{
         .workspace_id = workspace_id,
         .paused = parsed.value.pause,
         .version = new_version,
@@ -88,32 +88,32 @@ pub fn handlePauseWorkspace(ctx: *common.Context, r: zap.Request, workspace_id: 
     });
 }
 
-pub fn handleSyncSpecs(ctx: *common.Context, r: zap.Request, workspace_id: []const u8) void {
+pub fn handleSyncSpecs(ctx: *common.Context, req: *httpz.Request, res: *httpz.Response, workspace_id: []const u8) void {
     var arena = std.heap.ArenaAllocator.init(ctx.alloc);
     defer arena.deinit();
     const alloc = arena.allocator();
     const req_id = common.requestId(alloc);
 
-    const principal = common.authenticate(alloc, r, ctx) catch |err| {
-        common.writeAuthError(r, req_id, err);
+    const principal = common.authenticate(alloc, req, ctx) catch |err| {
+        common.writeAuthError(res, req_id, err);
         return;
     };
-    if (!common.requireUuidV7Id(r, req_id, workspace_id, "workspace_id")) return;
+    if (!common.requireUuidV7Id(res, req_id, workspace_id, "workspace_id")) return;
 
     const conn = ctx.pool.acquire() catch {
-        common.internalDbUnavailable(r, req_id);
+        common.internalDbUnavailable(res, req_id);
         return;
     };
     defer ctx.pool.release(conn);
 
     const actor = principal.user_id orelse API_ACTOR;
-    const access = workspace_guards.enforce(r, req_id, conn, alloc, principal, workspace_id, actor, .{
+    const access = workspace_guards.enforce(res, req_id, conn, alloc, principal, workspace_id, actor, .{
         .credit_policy = .execution_required,
     }) orelse return;
     defer access.deinit(alloc);
 
     const billing_state = access.billing_state orelse {
-        common.internalOperationError(r, "billing_state missing after execution guard", req_id);
+        common.internalOperationError(res, "billing_state missing after execution guard", req_id);
         return;
     };
 
@@ -121,13 +121,13 @@ pub fn handleSyncSpecs(ctx: *common.Context, r: zap.Request, workspace_id: []con
         "SELECT repo_url, default_branch FROM workspaces WHERE workspace_id = $1",
         .{workspace_id},
     ) catch {
-        common.internalDbError(r, req_id);
+        common.internalDbError(res, req_id);
         return;
     };
     defer ws.deinit();
 
     const ws_row = ws.next() catch null orelse {
-        common.errorResponse(r, .not_found, error_codes.ERR_WORKSPACE_NOT_FOUND, "Workspace not found", req_id);
+        common.errorResponse(res, .not_found, error_codes.ERR_WORKSPACE_NOT_FOUND, "Workspace not found", req_id);
         return;
     };
 
@@ -138,7 +138,7 @@ pub fn handleSyncSpecs(ctx: *common.Context, r: zap.Request, workspace_id: []con
         "SELECT COUNT(*) FROM specs WHERE workspace_id = $1 AND status = 'pending'",
         .{workspace_id},
     ) catch {
-        common.internalDbError(r, req_id);
+        common.internalDbError(res, req_id);
         return;
     };
     defer count_result.deinit();
@@ -151,13 +151,13 @@ pub fn handleSyncSpecs(ctx: *common.Context, r: zap.Request, workspace_id: []con
     };
 
     const credit = access.credit orelse {
-        common.internalOperationError(r, "credit missing after execution guard", req_id);
+        common.internalOperationError(res, "credit missing after execution guard", req_id);
         return;
     };
 
     log.info("workspace.sync workspace_id={s} total_pending={d}", .{ workspace_id, total_pending });
 
-    common.writeJson(r, .ok, .{
+    common.writeJson(res, .ok, .{
         .synced_count = @as(i64, 0),
         .total_pending = total_pending,
         .specs = &[_]u8{},

@@ -1,44 +1,46 @@
 const std = @import("std");
-const zap = @import("zap");
+const httpz = @import("httpz");
 const common = @import("common.zig");
 const error_codes = @import("../../errors/codes.zig");
 
 const log = std.log.scoped(.http);
 
-pub fn handleListSpecs(ctx: *common.Context, r: zap.Request) void {
+pub fn handleListSpecs(ctx: *common.Context, req: *httpz.Request, res: *httpz.Response) void {
     var arena = std.heap.ArenaAllocator.init(ctx.alloc);
     defer arena.deinit();
     const alloc = arena.allocator();
     const req_id = common.requestId(alloc);
 
-    const principal = common.authenticate(alloc, r, ctx) catch |err| {
-        common.writeAuthError(r, req_id, err);
+    const principal = common.authenticate(alloc, req, ctx) catch |err| {
+        common.writeAuthError(res, req_id, err);
         return;
     };
 
-    const workspace_id = r.getParamStr(alloc, "workspace_id") catch null orelse {
-        common.errorResponse(r, .bad_request, error_codes.ERR_INVALID_REQUEST, "workspace_id query param required", req_id);
+    const qs = req.query() catch {
+        common.errorResponse(res, .bad_request, error_codes.ERR_INVALID_REQUEST, "workspace_id query param required", req_id);
         return;
     };
-    defer alloc.free(workspace_id);
+    const workspace_id = qs.get("workspace_id") orelse {
+        common.errorResponse(res, .bad_request, error_codes.ERR_INVALID_REQUEST, "workspace_id query param required", req_id);
+        return;
+    };
     const wid = workspace_id;
-    if (!common.requireUuidV7Id(r, req_id, wid, "workspace_id")) return;
+    if (!common.requireUuidV7Id(res, req_id, wid, "workspace_id")) return;
 
-    const limit_str = r.getParamStr(alloc, "limit") catch null;
-    defer if (limit_str) |ls| alloc.free(ls);
+    const limit_str = qs.get("limit");
     const limit: i32 = if (limit_str) |ls|
         std.fmt.parseInt(i32, ls, 10) catch 50
     else
         50;
 
     const conn = ctx.pool.acquire() catch {
-        common.internalDbUnavailable(r, req_id);
+        common.internalDbUnavailable(res, req_id);
         return;
     };
     defer ctx.pool.release(conn);
 
     if (!common.authorizeWorkspaceAndSetTenantContext(conn, principal, wid)) {
-        common.errorResponse(r, .forbidden, error_codes.ERR_FORBIDDEN, "Workspace access denied", req_id);
+        common.errorResponse(res, .forbidden, error_codes.ERR_FORBIDDEN, "Workspace access denied", req_id);
         return;
     }
 
@@ -50,7 +52,7 @@ pub fn handleListSpecs(ctx: *common.Context, r: zap.Request) void {
         \\FROM specs WHERE workspace_id = $1
         \\ORDER BY created_at DESC LIMIT $2
     , .{ wid, limit }) catch {
-        common.internalDbError(r, req_id);
+        common.internalDbError(res, req_id);
         return;
     };
     defer result.deinit();
@@ -77,7 +79,7 @@ pub fn handleListSpecs(ctx: *common.Context, r: zap.Request) void {
 
     log.info("spec.listed workspace_id={s} count={d}", .{ wid, specs.items.len });
 
-    common.writeJson(r, .ok, .{
+    common.writeJson(res, .ok, .{
         .specs = specs.items,
         .total = specs.items.len,
         .request_id = req_id,

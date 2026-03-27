@@ -1,5 +1,5 @@
 const std = @import("std");
-const zap = @import("zap");
+const httpz = @import("httpz");
 const error_codes = @import("../../errors/codes.zig");
 const posthog_events = @import("../../observability/posthog_events.zig");
 const common = @import("common.zig");
@@ -8,7 +8,8 @@ const log = std.log.scoped(.http);
 
 pub const Context = common.Context;
 
-pub fn handleCreateAuthSession(ctx: *Context, r: zap.Request) void {
+pub fn handleCreateAuthSession(ctx: *Context, req: *httpz.Request, res: *httpz.Response) void {
+    _ = req;
     var arena = std.heap.ArenaAllocator.init(ctx.alloc);
     defer arena.deinit();
     const alloc = arena.allocator();
@@ -18,24 +19,25 @@ pub fn handleCreateAuthSession(ctx: *Context, r: zap.Request) void {
 
     const session_id = ctx.auth_sessions.create() catch {
         log.err("auth.session_create_fail error_code=UZ-AUTH-008 err=too_many_pending_sessions req_id={s}", .{req_id});
-        common.errorResponse(r, .service_unavailable, error_codes.ERR_SESSION_LIMIT, "Too many pending sessions", req_id);
+        common.errorResponse(res, .service_unavailable, error_codes.ERR_SESSION_LIMIT, "Too many pending sessions", req_id);
         return;
     };
 
     const login_url = std.fmt.allocPrint(alloc, "{s}/auth/cli?session_id={s}", .{ ctx.app_url, session_id }) catch {
-        common.internalOperationError(r, "Failed to build login URL", req_id);
+        common.internalOperationError(res, "Failed to build login URL", req_id);
         return;
     };
 
     log.info("auth.session_created session_id={s} req_id={s}", .{ session_id, req_id });
-    common.writeJson(r, .created, .{
+    common.writeJson(res, .created, .{
         .session_id = session_id,
         .login_url = login_url,
         .request_id = req_id,
     });
 }
 
-pub fn handlePollAuthSession(ctx: *Context, r: zap.Request, session_id: []const u8) void {
+pub fn handlePollAuthSession(ctx: *Context, req: *httpz.Request, res: *httpz.Response, session_id: []const u8) void {
+    _ = req;
     const result = ctx.auth_sessions.poll(session_id);
     const status_str: []const u8 = switch (result.status) {
         .pending => "pending",
@@ -43,10 +45,10 @@ pub fn handlePollAuthSession(ctx: *Context, r: zap.Request, session_id: []const 
         .expired => "expired",
     };
     log.debug("auth.session_poll session_id={s} status={s}", .{ session_id, status_str });
-    common.writeJson(r, .ok, .{ .status = status_str, .token = result.token });
+    common.writeJson(res, .ok, .{ .status = status_str, .token = result.token });
 }
 
-pub fn handleCompleteAuthSession(ctx: *Context, r: zap.Request, session_id: []const u8) void {
+pub fn handleCompleteAuthSession(ctx: *Context, req: *httpz.Request, res: *httpz.Response, session_id: []const u8) void {
     var arena = std.heap.ArenaAllocator.init(ctx.alloc);
     defer arena.deinit();
     const alloc = arena.allocator();
@@ -54,25 +56,25 @@ pub fn handleCompleteAuthSession(ctx: *Context, r: zap.Request, session_id: []co
 
     log.debug("auth.session_complete session_id={s} req_id={s}", .{ session_id, req_id });
 
-    const principal = common.authenticate(alloc, r, ctx) catch |err| {
+    const principal = common.authenticate(alloc, req, ctx) catch |err| {
         log.debug("auth.session_complete_auth_fail session_id={s} err={s}", .{ session_id, @errorName(err) });
-        common.writeAuthErrorWithTracking(r, req_id, err, ctx.posthog);
+        common.writeAuthErrorWithTracking(res, req_id, err, ctx.posthog);
         return;
     };
     _ = principal;
 
-    const body = r.body orelse {
-        common.errorResponse(r, .bad_request, error_codes.ERR_INVALID_REQUEST, "Request body required", req_id);
+    const body = req.body() orelse {
+        common.errorResponse(res, .bad_request, error_codes.ERR_INVALID_REQUEST, "Request body required", req_id);
         return;
     };
     const parsed = std.json.parseFromSlice(struct { token: []const u8 }, alloc, body, .{}) catch {
-        common.errorResponse(r, .bad_request, error_codes.ERR_INVALID_REQUEST, "Malformed JSON or missing token field", req_id);
+        common.errorResponse(res, .bad_request, error_codes.ERR_INVALID_REQUEST, "Malformed JSON or missing token field", req_id);
         return;
     };
     defer parsed.deinit();
 
     if (parsed.value.token.len == 0) {
-        common.errorResponse(r, .bad_request, error_codes.ERR_INVALID_REQUEST, "Token must not be empty", req_id);
+        common.errorResponse(res, .bad_request, error_codes.ERR_INVALID_REQUEST, "Token must not be empty", req_id);
         return;
     }
 
@@ -84,11 +86,11 @@ pub fn handleCompleteAuthSession(ctx: *Context, r: zap.Request, session_id: []co
             error.SessionAlreadyComplete => error_codes.ERR_SESSION_ALREADY_COMPLETE,
             else => error_codes.ERR_INTERNAL_OPERATION_FAILED,
         };
-        common.errorResponse(r, .bad_request, code, @errorName(err), req_id);
+        common.errorResponse(res, .bad_request, code, @errorName(err), req_id);
         return;
     };
 
     log.info("auth.session_completed session_id={s} req_id={s}", .{ session_id, req_id });
     posthog_events.trackAuthLoginCompleted(ctx.posthog, session_id, req_id);
-    common.writeJson(r, .ok, .{ .status = "complete", .request_id = req_id });
+    common.writeJson(res, .ok, .{ .status = "complete", .request_id = req_id });
 }

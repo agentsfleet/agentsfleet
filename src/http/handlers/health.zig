@@ -1,5 +1,5 @@
 const std = @import("std");
-const zap = @import("zap");
+const httpz = @import("httpz");
 const metrics = @import("../../observability/metrics.zig");
 const obs_log = @import("../../observability/logging.zig");
 const common = @import("common.zig");
@@ -87,10 +87,11 @@ pub fn readyDecision(inputs: ReadyInputs) bool {
         !inputs.queue_age_breached;
 }
 
-pub fn handleHealthz(ctx: *Context, r: zap.Request) void {
+pub fn handleHealthz(ctx: *Context, req: *httpz.Request, res: *httpz.Response) void {
+    _ = req;
     const db_ok = databaseHealthy(ctx);
     if (!db_ok) {
-        common.writeJson(r, .service_unavailable, .{
+        common.writeJson(res, .service_unavailable, .{
             .status = "degraded",
             .service = "zombied",
             .database = "down",
@@ -98,14 +99,15 @@ pub fn handleHealthz(ctx: *Context, r: zap.Request) void {
         return;
     }
 
-    common.writeJson(r, .ok, .{
+    common.writeJson(res, .ok, .{
         .status = "ok",
         .service = "zombied",
         .database = "up",
     });
 }
 
-pub fn handleReadyz(ctx: *Context, r: zap.Request) void {
+pub fn handleReadyz(ctx: *Context, req: *httpz.Request, res: *httpz.Response) void {
+    _ = req;
     const db_ok = databaseHealthy(ctx);
     const worker_ok = ctx.worker_state.running.load(.acquire);
     const queue_dependency_ok = queueDependencyHealthy(ctx);
@@ -119,7 +121,7 @@ pub fn handleReadyz(ctx: *Context, r: zap.Request) void {
         .queue_depth_breached = breaches.depth,
         .queue_age_breached = breaches.age,
     })) {
-        common.writeJson(r, .service_unavailable, .{
+        common.writeJson(res, .service_unavailable, .{
             .ready = false,
             .database = db_ok,
             .worker = worker_ok,
@@ -134,7 +136,7 @@ pub fn handleReadyz(ctx: *Context, r: zap.Request) void {
         return;
     }
 
-    common.writeJson(r, .ok, .{
+    common.writeJson(res, .ok, .{
         .ready = true,
         .database = true,
         .worker = true,
@@ -148,23 +150,23 @@ pub fn handleReadyz(ctx: *Context, r: zap.Request) void {
     });
 }
 
-pub fn handleMetrics(ctx: *Context, r: zap.Request) void {
+pub fn handleMetrics(ctx: *Context, req: *httpz.Request, res: *httpz.Response) void {
     const qh = queueHealth(ctx);
+    // Use the request arena so the body stays valid until httpz sends the response.
     const body = metrics.renderPrometheus(
-        ctx.alloc,
+        req.arena,
         ctx.worker_state.running.load(.acquire),
         if (qh) |v| v.queued_count else null,
         if (qh) |v| v.oldest_queued_age_ms else null,
     ) catch {
-        r.setStatus(.internal_server_error);
-        r.sendBody("") catch |err| obs_log.logWarnErr(.http, err, "metrics send failed", .{});
+        res.status = @intFromEnum(std.http.Status.internal_server_error);
+        res.body = "";
         return;
     };
-    defer ctx.alloc.free(body);
 
-    r.setStatus(.ok);
-    r.setContentType(.TEXT) catch |err| obs_log.logWarnErr(.http, err, "setContentType TEXT failed", .{});
-    r.sendBody(body) catch |err| obs_log.logWarnErr(.http, err, "metrics body send failed", .{});
+    res.status = @intFromEnum(std.http.Status.ok);
+    res.header("content-type", "text/plain; charset=utf-8");
+    res.body = body;
 }
 
 test "integration: ready decision fails closed when redis queue dependency is degraded" {

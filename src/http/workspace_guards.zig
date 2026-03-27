@@ -1,5 +1,5 @@
 const std = @import("std");
-const zap = @import("zap");
+const httpz = @import("httpz");
 const pg = @import("pg");
 const common = @import("handlers/common.zig");
 const error_codes = @import("../errors/codes.zig");
@@ -30,14 +30,14 @@ pub const Access = struct {
 };
 
 fn authorizeWorkspace(
-    r: zap.Request,
+    res: *httpz.Response,
     req_id: []const u8,
     conn: *pg.Conn,
     principal: common.AuthPrincipal,
     workspace_id: []const u8,
 ) bool {
     if (common.authorizeWorkspaceAndSetTenantContext(conn, principal, workspace_id)) return true;
-    common.errorResponse(r, .forbidden, error_codes.ERR_FORBIDDEN, "Workspace access denied", req_id);
+    common.errorResponse(res, .forbidden, error_codes.ERR_FORBIDDEN, "Workspace access denied", req_id);
     return false;
 }
 
@@ -47,7 +47,7 @@ const ExecutionResult = struct {
 };
 
 fn requireExecutionAllowed(
-    r: zap.Request,
+    res: *httpz.Response,
     req_id: []const u8,
     conn: *pg.Conn,
     alloc: std.mem.Allocator,
@@ -56,10 +56,10 @@ fn requireExecutionAllowed(
 ) ?ExecutionResult {
     const billing_state = workspace_billing.reconcileWorkspaceBilling(conn, alloc, workspace_id, std.time.milliTimestamp(), actor) catch |err| {
         if (workspace_billing.errorCode(err)) |code| {
-            common.errorResponse(r, .internal_server_error, code, workspace_billing.errorMessage(err) orelse "Workspace billing failure", req_id);
+            common.errorResponse(res, .internal_server_error, code, workspace_billing.errorMessage(err) orelse "Workspace billing failure", req_id);
             return null;
         }
-        common.internalOperationError(r, "Failed to reconcile workspace billing state", req_id);
+        common.internalOperationError(res, "Failed to reconcile workspace billing state", req_id);
         return null;
     };
 
@@ -67,10 +67,10 @@ fn requireExecutionAllowed(
         alloc.free(billing_state.plan_sku);
         if (billing_state.subscription_id) |v| alloc.free(v);
         if (workspace_credit.errorCode(err)) |code| {
-            common.errorResponse(r, .forbidden, code, workspace_credit.errorMessage(err) orelse "Workspace credit failure", req_id);
+            common.errorResponse(res, .forbidden, code, workspace_credit.errorMessage(err) orelse "Workspace credit failure", req_id);
             return null;
         }
-        common.internalOperationError(r, "Failed to validate workspace credit balance", req_id);
+        common.internalOperationError(res, "Failed to validate workspace credit balance", req_id);
         return null;
     };
 
@@ -78,7 +78,7 @@ fn requireExecutionAllowed(
 }
 
 pub fn enforce(
-    r: zap.Request,
+    res: *httpz.Response,
     req_id: []const u8,
     conn: *pg.Conn,
     alloc: std.mem.Allocator,
@@ -90,13 +90,13 @@ pub fn enforce(
     // Role check is stateless — run it before workspace auth to avoid DB
     // side-effects (SET LOCAL tenant context) on connections returned to the
     // pool when the role check fails.
-    if (!common.requireRole(r, req_id, principal, requirement.minimum_role)) return null;
-    if (!authorizeWorkspace(r, req_id, conn, principal, workspace_id)) return null;
+    if (!common.requireRole(res, req_id, principal, requirement.minimum_role)) return null;
+    if (!authorizeWorkspace(res, req_id, conn, principal, workspace_id)) return null;
 
     return switch (requirement.credit_policy) {
         .none => .{},
         .execution_required => blk: {
-            const result = requireExecutionAllowed(r, req_id, conn, alloc, workspace_id, actor) orelse return null;
+            const result = requireExecutionAllowed(res, req_id, conn, alloc, workspace_id, actor) orelse return null;
             break :blk .{
                 .credit = result.credit,
                 .billing_state = result.billing_state,

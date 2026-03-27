@@ -1,5 +1,5 @@
 //! HTTP request handlers for all control-plane endpoints.
-//! Uses Zap's request/response API. All responses follow the M1_002 error contract.
+//! Uses httpz request/response API. All responses follow the M1_002 error contract.
 
 const std = @import("std");
 const common = @import("handlers/common.zig");

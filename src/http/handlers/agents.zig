@@ -1,5 +1,5 @@
 const std = @import("std");
-const zap = @import("zap");
+const httpz = @import("httpz");
 const get = @import("agents/get.zig");
 const scores = @import("agents/scores.zig");
 const common = @import("common.zig");
@@ -19,26 +19,26 @@ const sql_resolve_agent_workspace =
     \\SELECT workspace_id FROM agent_profiles WHERE agent_id = $1
 ;
 
-pub fn handleListAgentProposals(ctx: *common.Context, r: zap.Request, agent_id: []const u8) void {
+pub fn handleListAgentProposals(ctx: *common.Context, req: *httpz.Request, res: *httpz.Response, agent_id: []const u8) void {
     var arena = std.heap.ArenaAllocator.init(ctx.alloc);
     defer arena.deinit();
     const alloc = arena.allocator();
     const req_id = common.requestId(alloc);
 
-    const principal = common.authenticate(alloc, r, ctx) catch |err| {
-        common.writeAuthError(r, req_id, err);
+    const principal = common.authenticate(alloc, req, ctx) catch |err| {
+        common.writeAuthError(res, req_id, err);
         return;
     };
-    if (!common.requireUuidV7Id(r, req_id, agent_id, "agent_id")) return;
+    if (!common.requireUuidV7Id(res, req_id, agent_id, "agent_id")) return;
 
     const conn = ctx.pool.acquire() catch {
-        common.internalDbUnavailable(r, req_id);
+        common.internalDbUnavailable(res, req_id);
         return;
     };
     defer ctx.pool.release(conn);
 
-    const workspace_id = resolveAgentWorkspace(conn, alloc, agent_id, req_id, r) orelse return;
-    const access = workspace_guards.enforce(r, req_id, conn, alloc, principal, workspace_id, principal.user_id orelse API_ACTOR, .{
+    const workspace_id = resolveAgentWorkspace(conn, alloc, agent_id, req_id, res) orelse return;
+    const access = workspace_guards.enforce(res, req_id, conn, alloc, principal, workspace_id, principal.user_id orelse API_ACTOR, .{
         .minimum_role = .operator,
     }) orelse return;
     defer access.deinit(alloc);
@@ -47,7 +47,7 @@ pub fn handleListAgentProposals(ctx: *common.Context, r: zap.Request, agent_id: 
 
     const items = proposals.listOpenProposals(conn, alloc, agent_id, 0) catch {
         log.err("agent.list_proposals_fail error_code=UZ-INTERNAL-002 agent_id={s}", .{agent_id});
-        common.internalDbError(r, req_id);
+        common.internalDbError(res, req_id);
         return;
     };
 
@@ -72,47 +72,47 @@ pub fn handleListAgentProposals(ctx: *common.Context, r: zap.Request, agent_id: 
 
     log.info("agent.proposals_listed agent_id={s} count={d}", .{ agent_id, data.items.len });
 
-    common.writeJson(r, .ok, .{
+    common.writeJson(res, .ok, .{
         .data = data.items,
         .request_id = req_id,
     });
 }
 
-pub fn handleGetAgentImprovementReport(ctx: *common.Context, r: zap.Request, agent_id: []const u8) void {
+pub fn handleGetAgentImprovementReport(ctx: *common.Context, req: *httpz.Request, res: *httpz.Response, agent_id: []const u8) void {
     var arena = std.heap.ArenaAllocator.init(ctx.alloc);
     defer arena.deinit();
     const alloc = arena.allocator();
     const req_id = common.requestId(alloc);
 
-    const principal = common.authenticate(alloc, r, ctx) catch |err| {
-        common.writeAuthError(r, req_id, err);
+    const principal = common.authenticate(alloc, req, ctx) catch |err| {
+        common.writeAuthError(res, req_id, err);
         return;
     };
-    if (!common.requireUuidV7Id(r, req_id, agent_id, "agent_id")) return;
+    if (!common.requireUuidV7Id(res, req_id, agent_id, "agent_id")) return;
 
     const conn = ctx.pool.acquire() catch {
-        common.internalDbUnavailable(r, req_id);
+        common.internalDbUnavailable(res, req_id);
         return;
     };
     defer ctx.pool.release(conn);
 
-    const workspace_id = resolveAgentWorkspace(conn, alloc, agent_id, req_id, r) orelse return;
-    const access = workspace_guards.enforce(r, req_id, conn, alloc, principal, workspace_id, principal.user_id orelse API_ACTOR, .{}) orelse return;
+    const workspace_id = resolveAgentWorkspace(conn, alloc, agent_id, req_id, res) orelse return;
+    const access = workspace_guards.enforce(res, req_id, conn, alloc, principal, workspace_id, principal.user_id orelse API_ACTOR, .{}) orelse return;
     defer access.deinit(alloc);
 
     log.debug("agent.get_improvement_report agent_id={s}", .{agent_id});
 
     var report = proposals.loadImprovementReport(conn, alloc, agent_id) catch {
         log.err("agent.get_improvement_report_fail error_code=UZ-INTERNAL-002 agent_id={s}", .{agent_id});
-        common.internalDbError(r, req_id);
+        common.internalDbError(res, req_id);
         return;
     } orelse {
-        common.errorResponse(r, .not_found, error_codes.ERR_AGENT_NOT_FOUND, "Agent not found", req_id);
+        common.errorResponse(res, .not_found, error_codes.ERR_AGENT_NOT_FOUND, "Agent not found", req_id);
         return;
     };
     defer report.deinit(alloc);
 
-    common.writeJson(r, .ok, .{
+    common.writeJson(res, .ok, .{
         .agent_id = report.agent_id,
         .trust_level = report.trust_level,
         .improvement_stalled_warning = report.improvement_stalled_warning,
@@ -128,40 +128,40 @@ pub fn handleGetAgentImprovementReport(ctx: *common.Context, r: zap.Request, age
     });
 }
 
-pub fn handleApproveAgentProposal(ctx: *common.Context, r: zap.Request, agent_id: []const u8, proposal_id: []const u8) void {
-    handleManualProposalDecision(ctx, r, agent_id, proposal_id, .approve);
+pub fn handleApproveAgentProposal(ctx: *common.Context, req: *httpz.Request, res: *httpz.Response, agent_id: []const u8, proposal_id: []const u8) void {
+    handleManualProposalDecision(ctx, req, res, agent_id, proposal_id, .approve);
 }
 
-pub fn handleRejectAgentProposal(ctx: *common.Context, r: zap.Request, agent_id: []const u8, proposal_id: []const u8) void {
-    handleManualProposalDecision(ctx, r, agent_id, proposal_id, .reject);
+pub fn handleRejectAgentProposal(ctx: *common.Context, req: *httpz.Request, res: *httpz.Response, agent_id: []const u8, proposal_id: []const u8) void {
+    handleManualProposalDecision(ctx, req, res, agent_id, proposal_id, .reject);
 }
 
-pub fn handleVetoAgentProposal(ctx: *common.Context, r: zap.Request, agent_id: []const u8, proposal_id: []const u8) void {
-    handleManualProposalDecision(ctx, r, agent_id, proposal_id, .veto);
+pub fn handleVetoAgentProposal(ctx: *common.Context, req: *httpz.Request, res: *httpz.Response, agent_id: []const u8, proposal_id: []const u8) void {
+    handleManualProposalDecision(ctx, req, res, agent_id, proposal_id, .veto);
 }
 
-pub fn handleRevertAgentHarnessChange(ctx: *common.Context, r: zap.Request, agent_id: []const u8, change_id: []const u8) void {
+pub fn handleRevertAgentHarnessChange(ctx: *common.Context, req: *httpz.Request, res: *httpz.Response, agent_id: []const u8, change_id: []const u8) void {
     var arena = std.heap.ArenaAllocator.init(ctx.alloc);
     defer arena.deinit();
     const alloc = arena.allocator();
     const req_id = common.requestId(alloc);
 
-    const principal = common.authenticate(alloc, r, ctx) catch |err| {
-        common.writeAuthError(r, req_id, err);
+    const principal = common.authenticate(alloc, req, ctx) catch |err| {
+        common.writeAuthError(res, req_id, err);
         return;
     };
-    if (!common.requireUuidV7Id(r, req_id, agent_id, "agent_id")) return;
-    if (!common.requireUuidV7Id(r, req_id, change_id, "change_id")) return;
+    if (!common.requireUuidV7Id(res, req_id, agent_id, "agent_id")) return;
+    if (!common.requireUuidV7Id(res, req_id, change_id, "change_id")) return;
 
     const conn = ctx.pool.acquire() catch {
-        common.internalDbUnavailable(r, req_id);
+        common.internalDbUnavailable(res, req_id);
         return;
     };
     defer ctx.pool.release(conn);
 
-    const workspace_id = resolveAgentWorkspace(conn, alloc, agent_id, req_id, r) orelse return;
+    const workspace_id = resolveAgentWorkspace(conn, alloc, agent_id, req_id, res) orelse return;
     const actor = principal.user_id orelse API_ACTOR;
-    const access = workspace_guards.enforce(r, req_id, conn, alloc, principal, workspace_id, actor, .{
+    const access = workspace_guards.enforce(res, req_id, conn, alloc, principal, workspace_id, actor, .{
         .minimum_role = .operator,
     }) orelse return;
     defer access.deinit(alloc);
@@ -178,17 +178,17 @@ pub fn handleRevertAgentHarnessChange(ctx: *common.Context, r: zap.Request, agen
         std.time.milliTimestamp(),
     ) catch {
         log.err("agent.revert_harness_change_fail error_code=UZ-INTERNAL-003 agent_id={s} change_id={s}", .{ agent_id, change_id });
-        common.internalOperationError(r, "Failed to revert harness change", req_id);
+        common.internalOperationError(res, "Failed to revert harness change", req_id);
         return;
     } orelse {
-        common.errorResponse(r, .not_found, error_codes.ERR_HARNESS_CHANGE_NOT_FOUND, "Harness change not found", req_id);
+        common.errorResponse(res, .not_found, error_codes.ERR_HARNESS_CHANGE_NOT_FOUND, "Harness change not found", req_id);
         return;
     };
     defer outcome.deinit(alloc);
 
     log.info("agent.harness_change_reverted agent_id={s} change_id={s}", .{ agent_id, change_id });
 
-    common.writeJson(r, .ok, .{
+    common.writeJson(res, .ok, .{
         .agent_id = outcome.agent_id,
         .proposal_id = outcome.proposal_id,
         .change_id = outcome.change_id,
@@ -209,7 +209,8 @@ const DecisionAction = enum {
 
 fn handleManualProposalDecision(
     ctx: *common.Context,
-    r: zap.Request,
+    req: *httpz.Request,
+    res: *httpz.Response,
     agent_id: []const u8,
     proposal_id: []const u8,
     action: DecisionAction,
@@ -219,21 +220,21 @@ fn handleManualProposalDecision(
     const alloc = arena.allocator();
     const req_id = common.requestId(alloc);
 
-    const principal = common.authenticate(alloc, r, ctx) catch |err| {
-        common.writeAuthError(r, req_id, err);
+    const principal = common.authenticate(alloc, req, ctx) catch |err| {
+        common.writeAuthError(res, req_id, err);
         return;
     };
-    if (!common.requireUuidV7Id(r, req_id, agent_id, "agent_id")) return;
-    if (!common.requireUuidV7Id(r, req_id, proposal_id, "proposal_id")) return;
+    if (!common.requireUuidV7Id(res, req_id, agent_id, "agent_id")) return;
+    if (!common.requireUuidV7Id(res, req_id, proposal_id, "proposal_id")) return;
 
     const conn = ctx.pool.acquire() catch {
-        common.internalDbUnavailable(r, req_id);
+        common.internalDbUnavailable(res, req_id);
         return;
     };
     defer ctx.pool.release(conn);
 
-    const workspace_id = resolveAgentWorkspace(conn, alloc, agent_id, req_id, r) orelse return;
-    const access = workspace_guards.enforce(r, req_id, conn, alloc, principal, workspace_id, principal.user_id orelse API_ACTOR, .{
+    const workspace_id = resolveAgentWorkspace(conn, alloc, agent_id, req_id, res) orelse return;
+    const access = workspace_guards.enforce(res, req_id, conn, alloc, principal, workspace_id, principal.user_id orelse API_ACTOR, .{
         .minimum_role = .operator,
     }) orelse return;
     defer access.deinit(alloc);
@@ -245,13 +246,13 @@ fn handleManualProposalDecision(
             const operator_identity = principal.user_id orelse API_ACTOR;
             const outcome = proposals.approveManualProposal(conn, alloc, agent_id, proposal_id, operator_identity, std.time.milliTimestamp()) catch {
                 log.err("agent.approve_proposal_fail error_code=UZ-INTERNAL-003 agent_id={s} proposal_id={s}", .{ agent_id, proposal_id });
-                common.internalOperationError(r, "Failed to approve proposal", req_id);
+                common.internalOperationError(res, "Failed to approve proposal", req_id);
                 return;
             } orelse {
-                common.errorResponse(r, .not_found, error_codes.ERR_PROPOSAL_NOT_FOUND, "Proposal not found", req_id);
+                common.errorResponse(res, .not_found, error_codes.ERR_PROPOSAL_NOT_FOUND, "Proposal not found", req_id);
                 return;
             };
-            common.writeJson(r, .ok, .{
+            common.writeJson(res, .ok, .{
                 .agent_id = agent_id,
                 .proposal_id = proposal_id,
                 .status = switch (outcome) {
@@ -279,16 +280,16 @@ fn handleManualProposalDecision(
             }
         },
         .reject => {
-            const reason = parseRejectReason(alloc, r, req_id) orelse return;
+            const reason = parseRejectReason(alloc, req, res, req_id) orelse return;
             const changed = proposals.rejectManualProposal(conn, agent_id, proposal_id, reason, std.time.milliTimestamp()) catch {
-                common.internalOperationError(r, "Failed to reject proposal", req_id);
+                common.internalOperationError(res, "Failed to reject proposal", req_id);
                 return;
             };
             if (!changed) {
-                common.errorResponse(r, .not_found, error_codes.ERR_PROPOSAL_NOT_FOUND, "Proposal not found", req_id);
+                common.errorResponse(res, .not_found, error_codes.ERR_PROPOSAL_NOT_FOUND, "Proposal not found", req_id);
                 return;
             }
-            common.writeJson(r, .ok, .{
+            common.writeJson(res, .ok, .{
                 .agent_id = agent_id,
                 .proposal_id = proposal_id,
                 .status = "REJECTED",
@@ -297,16 +298,16 @@ fn handleManualProposalDecision(
             });
         },
         .veto => {
-            const reason = parseVetoReason(alloc, r, req_id) orelse return;
+            const reason = parseVetoReason(alloc, req, res, req_id) orelse return;
             const changed = proposals.vetoAutoProposal(conn, agent_id, proposal_id, reason, std.time.milliTimestamp()) catch {
-                common.internalOperationError(r, "Failed to veto proposal", req_id);
+                common.internalOperationError(res, "Failed to veto proposal", req_id);
                 return;
             };
             if (!changed) {
-                common.errorResponse(r, .not_found, error_codes.ERR_PROPOSAL_NOT_FOUND, "Proposal not found", req_id);
+                common.errorResponse(res, .not_found, error_codes.ERR_PROPOSAL_NOT_FOUND, "Proposal not found", req_id);
                 return;
             }
-            common.writeJson(r, .ok, .{
+            common.writeJson(res, .ok, .{
                 .agent_id = agent_id,
                 .proposal_id = proposal_id,
                 .status = "VETOED",
@@ -317,15 +318,15 @@ fn handleManualProposalDecision(
     }
 }
 
-fn parseRejectReason(alloc: std.mem.Allocator, r: zap.Request, req_id: []const u8) ?[]const u8 {
+fn parseRejectReason(alloc: std.mem.Allocator, req: *httpz.Request, res: *httpz.Response, req_id: []const u8) ?[]const u8 {
     const Req = struct {
         reason: ?[]const u8 = null,
     };
 
-    const body = r.body orelse return "OPERATOR_REJECTED";
-    if (!common.checkBodySize(r, body, req_id)) return null;
+    const body = req.body() orelse return "OPERATOR_REJECTED";
+    if (!common.checkBodySize(req, res, body, req_id)) return null;
     const parsed = std.json.parseFromSlice(Req, alloc, body, .{}) catch {
-        common.errorResponse(r, .bad_request, error_codes.ERR_INVALID_REQUEST, "Malformed JSON", req_id);
+        common.errorResponse(res, .bad_request, error_codes.ERR_INVALID_REQUEST, "Malformed JSON", req_id);
         return null;
     };
     defer parsed.deinit();
@@ -336,8 +337,8 @@ fn parseRejectReason(alloc: std.mem.Allocator, r: zap.Request, req_id: []const u
     return trimmed;
 }
 
-fn parseVetoReason(alloc: std.mem.Allocator, r: zap.Request, req_id: []const u8) ?[]const u8 {
-    const parsed = parseRejectReason(alloc, r, req_id) orelse return null;
+fn parseVetoReason(alloc: std.mem.Allocator, req: *httpz.Request, res: *httpz.Response, req_id: []const u8) ?[]const u8 {
+    const parsed = parseRejectReason(alloc, req, res, req_id) orelse return null;
     if (std.mem.eql(u8, parsed, "OPERATOR_REJECTED")) return "OPERATOR_VETOED";
     return parsed;
 }
@@ -347,31 +348,31 @@ fn resolveAgentWorkspace(
     alloc: std.mem.Allocator,
     agent_id: []const u8,
     req_id: []const u8,
-    r: zap.Request,
+    res: *httpz.Response,
 ) ?[]const u8 {
     var q = conn.query(sql_resolve_agent_workspace, .{agent_id}) catch {
-        common.internalDbError(r, req_id);
+        common.internalDbError(res, req_id);
         return null;
     };
     defer q.deinit();
 
     const row = q.next() catch {
-        common.internalDbError(r, req_id);
+        common.internalDbError(res, req_id);
         return null;
     } orelse {
-        common.errorResponse(r, .not_found, error_codes.ERR_AGENT_NOT_FOUND, "Agent not found", req_id);
+        common.errorResponse(res, .not_found, error_codes.ERR_AGENT_NOT_FOUND, "Agent not found", req_id);
         return null;
     };
     const workspace_id = alloc.dupe(u8, row.get([]u8, 0) catch {
-        common.internalDbError(r, req_id);
+        common.internalDbError(res, req_id);
         return null;
     }) catch {
-        common.internalOperationError(r, "Failed to allocate workspace lookup", req_id);
+        common.internalOperationError(res, "Failed to allocate workspace lookup", req_id);
         return null;
     };
     q.drain() catch |err| {
         obs_log.logWarnErr(.http, err, "agent.workspace_drain_fail agent_id={s}", .{agent_id});
-        common.internalDbError(r, req_id);
+        common.internalDbError(res, req_id);
         return null;
     };
     return workspace_id;
