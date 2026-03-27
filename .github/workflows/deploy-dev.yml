@@ -53,7 +53,7 @@ jobs:
 
       - name: Build linux/amd64 binaries
         run: |
-          zig build -Doptimize=ReleaseSafe -Dtarget=x86_64-linux
+          zig build -Doptimize=ReleaseSafe -Dtarget=x86_64-linux-gnu
           mkdir -p dist
           cp zig-out/bin/zombied          dist/zombied-linux-amd64
           cp zig-out/bin/zombied-executor dist/zombied-executor-linux-amd64
@@ -237,6 +237,9 @@ jobs:
           $SCP deploy/baremetal/deploy.sh         "$TARGET:/opt/zombie/deploy/deploy.sh"
           $SCP deploy/baremetal/*.service          "$TARGET:/opt/zombie/deploy/"
           $SSH "$TARGET" "chmod +x /opt/zombie/deploy/deploy.sh /opt/zombie/bin/*"
+
+          # Log binary type and shared library deps for diagnostics
+          $SSH "$TARGET" "file /opt/zombie/bin/zombied /opt/zombie/bin/zombied-executor && ldd /opt/zombie/bin/zombied /opt/zombie/bin/zombied-executor 2>&1 || true"
 
           # Write Discord webhook to server env file (avoids exposing in ps output)
           $SSH "$TARGET" "printf 'DISCORD_WEBHOOK_URL=%s\n' '$DISCORD_WEBHOOK_URL' > /opt/zombie/.discord-env && chmod 600 /opt/zombie/.discord-env"

@@ -8,7 +8,7 @@
 
 [Unit]
 Description=UseZombie Worker
-Documentation=docs/spec/v1/M12_002_SANDBOX_EXECUTOR_API_AND_HOST_BACKEND.md
+Documentation=https://docs.usezombie.com
 After=zombied-executor.service
 Requires=zombied-executor.service
 

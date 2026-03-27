@@ -18,7 +18,7 @@ jobs:
   memleak:
     runs-on: ubuntu-latest
     container:
-      image: debian:trixie-slim
+      image: mirror.gcr.io/library/debian:trixie-slim
       options: --security-opt seccomp=unconfined
     steps:
       - name: Install valgrind and toolchain deps

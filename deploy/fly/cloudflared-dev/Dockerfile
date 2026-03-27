@@ -1,4 +1,4 @@
-FROM cloudflare/cloudflared:latest
+FROM mirror.gcr.io/cloudflare/cloudflared:latest
 
 # config.yml defines ingress rules (hostname → internal service).
 # cloudflared reads TUNNEL_TOKEN env var natively — no --token flag, no shell needed.
