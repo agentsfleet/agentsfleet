@@ -203,7 +203,7 @@ ssh -i <(printf '%s\n' "$KEY") -o StrictHostKeyChecking=no zombie-dev-worker-ant
 
 ```bash
 KEY=$(op read "op://$VAULT_DEV/zombie-dev-worker-ant/ssh-private-key")
-HOST=$(op read "op://$VAULT_DEV/zombie-dev-worker-ant/hostname")
+HOST=$(op read "op://$VAULT_DEV/zombie-dev-worker-ant/tailscale-hostname")
 USER=$(op read "op://$VAULT_DEV/zombie-dev-worker-ant/deploy-user")
 SSH_OPTS="-i <(printf '%s\n' \"\$KEY\") -o StrictHostKeyChecking=no"
 

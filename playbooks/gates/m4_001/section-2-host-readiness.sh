@@ -53,7 +53,7 @@ op_read_with_retry() {
 
 # Establish SSH connection details from vault
 ssh_key="$(op_read_with_retry "op://$vault_dev/zombie-dev-worker-ant/ssh-private-key" || true)"
-ssh_host="$(op_read_with_retry "op://$vault_dev/zombie-dev-worker-ant/hostname" || true)"
+ssh_host="$(op_read_with_retry "op://$vault_dev/zombie-dev-worker-ant/tailscale-hostname" || true)"
 ssh_user="$(op_read_with_retry "op://$vault_dev/zombie-dev-worker-ant/deploy-user" || true)"
 
 if [ -z "$ssh_key" ] || [ -z "$ssh_host" ] || [ -z "$ssh_user" ]; then

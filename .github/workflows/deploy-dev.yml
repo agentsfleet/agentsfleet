@@ -205,7 +205,7 @@ jobs:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
           TAILSCALE_AUTHKEY: op://${{ vars.VAULT_PROD }}/tailscale/authkey
           WORKER_ANT_SSH_KEY: op://${{ vars.VAULT_DEV }}/zombie-dev-worker-ant/ssh-private-key
-          WORKER_ANT_HOST: op://${{ vars.VAULT_DEV }}/zombie-dev-worker-ant/hostname
+          WORKER_ANT_HOST: op://${{ vars.VAULT_DEV }}/zombie-dev-worker-ant/tailscale-hostname
           WORKER_ANT_USER: op://${{ vars.VAULT_DEV }}/zombie-dev-worker-ant/deploy-user
           DISCORD_WEBHOOK_URL: op://${{ vars.VAULT_PROD }}/discord-ci-webhook/credential
 

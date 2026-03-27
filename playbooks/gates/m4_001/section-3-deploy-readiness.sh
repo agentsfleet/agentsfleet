@@ -51,18 +51,25 @@ op_read_with_retry() {
   return 1
 }
 
-# Establish SSH connection details from vault
+# SSH connection details from vault.
+# Vault hostname field should be the Tailscale hostname (CI joins tailnet before this step).
 ssh_key="$(op_read_with_retry "op://$vault_dev/zombie-dev-worker-ant/ssh-private-key" || true)"
-ssh_host="$(op_read_with_retry "op://$vault_dev/zombie-dev-worker-ant/hostname" || true)"
+ssh_host="$(op_read_with_retry "op://$vault_dev/zombie-dev-worker-ant/tailscale-hostname" || true)"
 ssh_user="$(op_read_with_retry "op://$vault_dev/zombie-dev-worker-ant/deploy-user" || true)"
 
 if [ -z "$ssh_key" ] || [ -z "$ssh_host" ] || [ -z "$ssh_user" ]; then
-  echo "  ✗ Cannot establish SSH — missing vault refs. Run section 1 first."
+  echo "  ✗ Cannot establish SSH — missing vault refs or env vars. Run section 1 first."
   exit 1
 fi
 
+# Write key to temp file (process substitution may not work in all CI shells)
+_ssh_key_file=$(mktemp)
+printf '%s\n' "$ssh_key" > "$_ssh_key_file"
+chmod 600 "$_ssh_key_file"
+trap 'rm -f "$_ssh_key_file"' EXIT
+
 remote_cmd() {
-  ssh -i <(printf '%s\n' "$ssh_key") \
+  ssh -i "$_ssh_key_file" \
     -o StrictHostKeyChecking=no \
     -o ConnectTimeout=10 \
     -o BatchMode=yes \

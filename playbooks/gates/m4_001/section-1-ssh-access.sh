@@ -66,17 +66,14 @@ echo "-- checking vault refs in: $vault_dev"
 
 check_ref "op://$vault_dev/zombie-dev-worker-ant/ssh-private-key"
 check_ref "op://$vault_dev/zombie-dev-worker-ant/hostname"
+check_ref "op://$vault_dev/zombie-dev-worker-ant/tailscale-hostname"
 check_ref "op://$vault_dev/zombie-dev-worker-ant/deploy-user"
 
-# SSH connectivity test using vault key + hostname
+# SSH connectivity test using vault key + tailscale-hostname
 echo "-- checking SSH connectivity"
-ssh_key_ref="op://$vault_dev/zombie-dev-worker-ant/ssh-private-key"
-hostname_ref="op://$vault_dev/zombie-dev-worker-ant/hostname"
-user_ref="op://$vault_dev/zombie-dev-worker-ant/deploy-user"
-
-ssh_key="$(op_read_with_retry "$ssh_key_ref" || true)"
-ssh_host="$(op_read_with_retry "$hostname_ref" || true)"
-ssh_user="$(op_read_with_retry "$user_ref" || true)"
+ssh_key="$(op_read_with_retry "op://$vault_dev/zombie-dev-worker-ant/ssh-private-key" || true)"
+ssh_host="$(op_read_with_retry "op://$vault_dev/zombie-dev-worker-ant/tailscale-hostname" || true)"
+ssh_user="$(op_read_with_retry "op://$vault_dev/zombie-dev-worker-ant/deploy-user" || true)"
 
 if [ -z "$ssh_key" ] || [ -z "$ssh_host" ] || [ -z "$ssh_user" ]; then
   echo "  ✗ SSH connectivity: skipped (missing vault refs)"
