@@ -248,28 +248,13 @@ jobs:
         with:
           bun-version: 1.3.10
 
-      - uses: 1password/install-cli-action@v1
-
-      - name: Load Vercel bypass secret from 1Password (retry)
+      - name: Load Vercel bypass secret from 1Password
+        uses: 1password/load-secrets-action@v3
+        with:
+          export-env: true
         env:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
-        run: |
-          SECRET_REF="op://${{ vars.VAULT_PROD }}/vercel-bypass-app/credential"
-          DELAY=1
-          for ATTEMPT in $(seq 1 6); do
-            if SECRET_VALUE="$(op read "$SECRET_REF" 2>/dev/null)"; then
-              echo "::add-mask::$SECRET_VALUE"
-              echo "VERCEL_BYPASS_SECRET=$SECRET_VALUE" >> "$GITHUB_ENV"
-              exit 0
-            fi
-            if [ "$ATTEMPT" -lt 6 ]; then
-              echo "attempt $ATTEMPT/6: failed to read bypass secret; retrying in ${DELAY}s..."
-              sleep "$DELAY"
-              DELAY=$((DELAY * 2))
-            fi
-          done
-          echo "failed to read Vercel bypass secret from 1Password after retries"
-          exit 1
+          VERCEL_BYPASS_SECRET: op://${{ vars.VAULT_PROD }}/vercel-bypass-app/credential
 
       - name: Install dependencies
         run: bun install --frozen-lockfile

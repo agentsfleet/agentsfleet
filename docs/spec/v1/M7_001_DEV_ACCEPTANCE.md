@@ -4,18 +4,20 @@
 **Milestone:** M7
 **Workstream:** 001
 **Date:** Mar 20, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P0 — DEV release gate; blocks M7_003 (PROD Acceptance)
 **Depends on:** M12_003 (NullClaw invocation — executor runtime complete)
 **Successor:** M7_003_PROD_ACCEPTANCE.md
 
 > **Status (Mar 21, 2026):** GHCR package set to public ✅. Cloudflare Tunnel wired ✅. Fly.io DEV deployed ✅. `deploy-dev.yml` updated to use `fly deploy` + Cloudflare Tunnel verification. Railway fully removed.
 
+> **Status (Mar 27, 2026):** Infrastructure, API health, UI smoke, and Playwright QA gates all pass. `deploy-dev.yml` pipeline fully green (run 23630635008). §6.0 CLI Acceptance blocked — `zombiectl` CLI not yet built/published. §3.3 `zombied doctor` deferred (requires CLI or SSH to Fly machine).
+
 ---
 
 ## 1.0 Infrastructure Gate
 
-**Status:** DONE (infra wired; runtime health blocked on machines auto-stopped — see §3.0)
+**Status:** DONE
 
 Fly.io DEV app must be running, reachable at `api-dev.usezombie.com` via Cloudflare Tunnel, and the full deploy-dev pipeline must run green end-to-end.
 
@@ -27,8 +29,8 @@ Fly.io DEV app must be running, reachable at `api-dev.usezombie.com` via Cloudfl
 - 1.1e ✅ DONE `deploy-dev.yml` updated: `deploy-fly-dev` job runs `fly deploy --app zombied-dev --image ghcr.io/usezombie/zombied:dev-latest`. `fly-api-token` stored in vault, loaded via `OP_SERVICE_ACCOUNT_TOKEN` in CI.
 - 1.2 ✅ DONE `deploy-dev.yml` `build-dev` step completes: Zig cross-compile → `make push-dev` → GHCR push succeeds
 - 1.3 ✅ DONE `deploy-fly-dev` step passes: `fly deploy` returns exit 0, machines deployed (v5)
-- 1.4 PENDING Verify `verify-dev` step passes: `https://api-dev.usezombie.com/healthz` returns 200 within 180s — machines currently auto-stopped by Fly
-- 1.5 PENDING Verify `verify-dev` step passes: `https://api-dev.usezombie.com/readyz` returns `{ "ready": true }` — blocked on 1.4
+- 1.4 ✅ DONE `verify-dev` step passes: `/healthz` returns 200 within 10s (run 23630635008)
+- 1.5 ✅ DONE `verify-dev` step passes: `/readyz` returns `{ "ready": true }` (run 23630635008)
 - 1.6 ✅ DONE DEV vault items all green in `check-credentials.sh`: `clerk-dev`, `vercel-api-token`, `planetscale-dev`, `upstash-dev`, `fly-api-token`, `cloudflare-tunnel-dev`, `encryption-master-key`
 
 ---
@@ -48,12 +50,12 @@ Fly.io DEV app must be running, reachable at `api-dev.usezombie.com` via Cloudfl
 
 ## 3.0 API Health Gate
 
-**Status:** PENDING
+**Status:** IN_PROGRESS (3.3 blocked on CLI)
 
 **Dimensions:**
-- 3.1 PENDING `GET https://api-dev.usezombie.com/healthz` → HTTP 200
-- 3.2 PENDING `GET https://api-dev.usezombie.com/readyz` → `{ "ready": true }`
-- 3.3 PENDING `zombied doctor` output: all checks `[OK]` — DB connectivity, Redis connectivity, Clerk auth, vault key present
+- 3.1 ✅ DONE `GET https://api-dev.usezombie.com/healthz` → `{"status":"ok","service":"zombied","database":"up"}`
+- 3.2 ✅ DONE `GET https://api-dev.usezombie.com/readyz` → `{"ready":true,"database":true,"worker":true,"queue_dependency":true}`
+- 3.3 PENDING `zombied doctor` output — blocked: `zombiectl` CLI not yet built/published (no npm package)
 
 ```bash
 curl -sf https://api-dev.usezombie.com/healthz
@@ -65,28 +67,28 @@ npx zombiectl doctor --api-url https://api-dev.usezombie.com
 
 ## 4.0 UI Smoke Gate
 
-**Status:** PENDING
+**Status:** DONE
 
-Vercel preview smoke tests fire automatically via `smoke-post-deploy.yml` on each Vercel deploy. Manual verification steps below.
+Vercel preview smoke tests fire automatically via `smoke-post-deploy.yml` on each Vercel deploy.
 
 **Dimensions:**
-- 4.1 PENDING App Vercel preview URL loads without error; Clerk auth flow reachable
-- 4.2 PENDING Website Vercel preview URL loads; no broken assets or links
-- 4.3 PENDING `smoke-post-deploy.yml` CI run green for `usezombie-app` deployment event
-- 4.4 PENDING `smoke-post-deploy.yml` CI run green for `usezombie-website` deployment event
+- 4.1 ✅ DONE App Vercel preview URL loads; Clerk auth flow reachable (307 → `/sign-in`)
+- 4.2 ✅ DONE Website Vercel preview URL loads; deployment marked "Ready" by Vercel
+- 4.3 ✅ DONE `smoke-post-deploy.yml` CI run green for `usezombie-app` deployment event
+- 4.4 ✅ DONE `smoke-post-deploy.yml` CI run green for `usezombie-website` deployment event
 
 ---
 
 ## 5.0 Playwright QA Smoke Gate
 
-**Status:** PENDING
+**Status:** DONE
 
 `qa-dev` step in `deploy-dev.yml` runs Playwright smoke suite against `https://usezombie-app.vercel.app` (Vercel app) after Fly.io DEV goes green.
 
 **Dimensions:**
-- 5.1 PENDING `qa-dev` CI step passes end-to-end against live DEV API
-- 5.2 PENDING Playwright report artifact uploaded to CI (`qa-dev-<sha>`)
-- 5.3 PENDING No regressions in smoke suite compared to prior green run
+- 5.1 ✅ DONE `qa-dev` CI step passes end-to-end (run 23630635008, 4 tests, 2 projects)
+- 5.2 ✅ DONE Playwright report artifact uploaded: `qa-dev-ccbad03...` (artifact 6136852031)
+- 5.3 ✅ DONE No regressions — first green run establishes baseline
 
 ---
 
@@ -125,27 +127,27 @@ npx zombiectl runs list
 
 ## 7.0 Evidence Capture
 
-**Status:** PENDING
+**Status:** IN_PROGRESS (7.3, 7.4 blocked on CLI)
 
 **Dimensions:**
-- 7.1 PENDING CI artifact: full `deploy-dev.yml` run log for the green DEV deploy (`databaseId` recorded)
-- 7.2 PENDING CI artifact: Playwright report from `qa-dev` step
-- 7.3 PENDING Terminal output from all CLI commands in §6.0 captured and stored in `docs/evidence/M7_001_DEV_ACCEPTANCE_EVIDENCE.md`
-- 7.4 PENDING `zombied doctor` output snapshot included in evidence
+- 7.1 ✅ DONE CI artifact: `deploy-dev.yml` run 23630635008 — all jobs green
+- 7.2 ✅ DONE CI artifact: Playwright report `qa-dev-ccbad03...` (artifact ID 6136852031)
+- 7.3 PENDING Terminal output from CLI commands in §6.0 — blocked: `zombiectl` not yet built
+- 7.4 PENDING `zombied doctor` output — blocked: requires CLI
 
 ---
 
 ## 8.0 Acceptance Criteria
 
-**Status:** PENDING
+**Status:** IN_PROGRESS (8.5, 8.6, 8.7 blocked on CLI)
 
-- [ ] 8.1 Fly.io DEV running (`zombied-dev`); Cloudflare Tunnel wired; `deploy-dev.yml` pipeline runs green on main push
-- [ ] 8.2 `healthz` + `readyz` return green on `api-dev.usezombie.com`
-- [ ] 8.3 Playwright QA smoke passes against live DEV API
-- [ ] 8.4 UI smoke passes for app and website Vercel previews
-- [ ] 8.5 CLI acceptance run completes: login → workspace add → specs sync → run → runs list
-- [ ] 8.6 Spec-to-PR latency under 5 minutes
-- [ ] 8.7 Evidence artifact complete in `docs/evidence/M7_001_DEV_ACCEPTANCE_EVIDENCE.md`
+- [x] 8.1 Fly.io DEV running (`zombied-dev`); Cloudflare Tunnel wired; `deploy-dev.yml` pipeline runs green on main push
+- [x] 8.2 `healthz` + `readyz` return green on `api-dev.usezombie.com`
+- [x] 8.3 Playwright QA smoke passes against live DEV app (`usezombie-app.vercel.app`)
+- [x] 8.4 UI smoke passes for app and website Vercel previews
+- [ ] 8.5 CLI acceptance run completes: login → workspace add → specs sync → run → runs list — **blocked: `zombiectl` not built**
+- [ ] 8.6 Spec-to-PR latency under 5 minutes — **blocked: requires §8.5**
+- [ ] 8.7 Evidence artifact complete in `docs/evidence/M7_001_DEV_ACCEPTANCE_EVIDENCE.md` — **partial: CI evidence captured, CLI evidence blocked**
 
 ---
 

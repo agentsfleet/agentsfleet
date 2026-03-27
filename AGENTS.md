@@ -423,6 +423,8 @@ Exit criteria:
 - No branch mutation outside lifecycle transitions.
 - No cross-worktree edits.
 - No secrets in commits/docs.
+- Never resolve or print credential values in conversation, code, docs, playbooks, or evidence files. This includes values seen in CI logs, error messages, or debug output — once seen, do not copy them anywhere. Check effects (health endpoints, connectivity status), not raw secrets. Use `op://` references and vault item names only.
+- When writing verification steps that reference credentials, always use `op read 'op://...'` at runtime. Never paste a literal value, even as an "example" or "old value to test against."
 - Prefer CLI and text artifacts. Do not require GUI-only tooling when a CLI path exists.
 
 ## Cognitive Discipline
