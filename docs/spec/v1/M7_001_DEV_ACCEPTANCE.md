@@ -13,6 +13,8 @@
 
 > **Status (Mar 27, 2026):** Infrastructure, API health, UI smoke, and Playwright QA gates all pass. `deploy-dev.yml` pipeline fully green (run 23630635008). §6.0 CLI Acceptance blocked — `zombiectl` CLI not yet built/published. §3.3 `zombied doctor` deferred (requires CLI or SSH to Fly machine).
 
+> **Status (Mar 27, 2026 — credential rotation + deploy script):** Vercel bypass secrets rotated in ZMB_CD_PROD vault. Upstash DEV Redis password rotated; agent derived `api-url`/`worker-url` from base URL in ZMB_CD_DEV vault. `deploy/baremetal/deploy.sh` built with dual-mode binary acquisition and Discord notifications. CI `deploy-dev-worker` job updated to scp compiled binaries and use deploy.sh. `zombied-executor` binary added to build-dev artifact upload. Worker fleet drain design deferred to M13_001.
+
 ---
 
 ## 1.0 Infrastructure Gate
@@ -32,6 +34,7 @@ Fly.io DEV app must be running, reachable at `api-dev.usezombie.com` via Cloudfl
 - 1.4 ✅ DONE `verify-dev` step passes: `/healthz` returns 200 within 10s (run 23630635008)
 - 1.5 ✅ DONE `verify-dev` step passes: `/readyz` returns `{ "ready": true }` (run 23630635008)
 - 1.6 ✅ DONE DEV vault items all green in `check-credentials.sh`: `clerk-dev`, `vercel-api-token`, `planetscale-dev`, `upstash-dev`, `fly-api-token`, `cloudflare-tunnel-dev`, `encryption-master-key`
+- 1.7 ✅ DONE `deploy/baremetal/deploy.sh` built: function-based, dual-mode (local binary or GitHub Release download), Discord notification, idempotent version check. CI `deploy-dev-worker` job updated to scp binaries + call deploy.sh with local path.
 
 ---
 

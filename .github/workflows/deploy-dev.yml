@@ -51,11 +51,20 @@ jobs:
       - name: Install OpenSSL dev headers (required for pg.zig TLS)
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libssl-dev
 
-      - name: Build linux/amd64 binary
+      - name: Build linux/amd64 binaries
         run: |
           zig build -Doptimize=ReleaseSafe -Dtarget=x86_64-linux
           mkdir -p dist
-          cp zig-out/bin/zombied dist/zombied-linux-amd64
+          cp zig-out/bin/zombied          dist/zombied-linux-amd64
+          cp zig-out/bin/zombied-executor dist/zombied-executor-linux-amd64
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dev-binaries
+          path: |
+            dist/zombied-linux-amd64
+            dist/zombied-executor-linux-amd64
+          retention-days: 3
 
       - uses: docker/setup-buildx-action@v4
 
@@ -181,6 +190,13 @@ jobs:
     needs: build-dev
     if: vars.DEV_WORKER_READY == 'true'
     steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: dev-binaries
+          path: dist
+
       - name: Load DEV worker secrets from 1Password
         uses: 1password/load-secrets-action@v3
         with:
@@ -189,6 +205,9 @@ jobs:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
           TAILSCALE_AUTHKEY: op://${{ vars.VAULT_PROD }}/tailscale/authkey
           WORKER_ANT_SSH_KEY: op://${{ vars.VAULT_DEV }}/zombie-dev-worker-ant/ssh-private-key
+          WORKER_ANT_HOST: op://${{ vars.VAULT_DEV }}/zombie-dev-worker-ant/hostname
+          WORKER_ANT_USER: op://${{ vars.VAULT_DEV }}/zombie-dev-worker-ant/deploy-user
+          DISCORD_WEBHOOK_URL: op://${{ vars.VAULT_PROD }}/discord-ci-webhook/credential
 
       - name: Join Tailscale network
         uses: tailscale/github-action@v3
@@ -196,14 +215,38 @@ jobs:
           authkey: ${{ env.TAILSCALE_AUTHKEY }}
           tags: tag:ci
 
-      - name: Deploy zombie-dev-worker-ant
+      - name: Verify worker host readiness
+        run: SECTIONS=3 VAULT_DEV="${{ vars.VAULT_DEV }}" ./playbooks/gates/m4_001/run.sh
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+
+      - name: Deploy executor + worker to bare-metal
         run: |
-          install -m 700 -d ~/.ssh
           ANT_KEY="$RUNNER_TEMP/dev-worker-ant.key"
           printf '%s\n' "$WORKER_ANT_SSH_KEY" > "$ANT_KEY"
           chmod 600 "$ANT_KEY"
-          ssh -i "$ANT_KEY" -o StrictHostKeyChecking=no zombie-dev-worker-ant \
-            "cd /opt/zombie && ./deploy.sh"
+          SSH="ssh -i $ANT_KEY -o StrictHostKeyChecking=no"
+          SCP="scp -i $ANT_KEY -o StrictHostKeyChecking=no"
+          TARGET="${WORKER_ANT_USER}@${WORKER_ANT_HOST}"
+          VERSION="dev-${GITHUB_SHA::7}"
+
+          # Stage binaries, deploy script, and systemd units on the server
+          $SSH "$TARGET" "mkdir -p /opt/zombie/bin /opt/zombie/deploy"
+          $SCP dist/zombied-linux-amd64          "$TARGET:/opt/zombie/bin/zombied"
+          $SCP dist/zombied-executor-linux-amd64  "$TARGET:/opt/zombie/bin/zombied-executor"
+          $SCP deploy/baremetal/deploy.sh         "$TARGET:/opt/zombie/deploy/deploy.sh"
+          $SCP deploy/baremetal/*.service          "$TARGET:/opt/zombie/deploy/"
+          $SSH "$TARGET" "chmod +x /opt/zombie/deploy/deploy.sh /opt/zombie/bin/*"
+
+          # Write Discord webhook to server env file (avoids exposing in ps output)
+          $SSH "$TARGET" "printf 'DISCORD_WEBHOOK_URL=%s\n' '$DISCORD_WEBHOOK_URL' > /opt/zombie/.discord-env && chmod 600 /opt/zombie/.discord-env"
+
+          # Deploy executor first (worker Requires= it), then worker
+          $SSH "$TARGET" \
+            "sudo bash -c 'source /opt/zombie/.discord-env && /opt/zombie/deploy/deploy.sh executor $VERSION /opt/zombie/bin/zombied-executor'"
+          $SSH "$TARGET" \
+            "sudo bash -c 'source /opt/zombie/.discord-env && /opt/zombie/deploy/deploy.sh worker $VERSION /opt/zombie/bin/zombied'"
+          $SSH "$TARGET" "rm -f /opt/zombie/.discord-env"
 
   # ── 4. Wait for Fly DEV to go green (via Cloudflare Tunnel) ─────────────
   verify-dev:

@@ -8,8 +8,12 @@ on:
 
 jobs:
   smoke:
-    # Only run when Vercel marks the deployment as success
-    if: github.event.deployment_status.state == 'success'
+    # Only run on main branch when Vercel marks the deployment as success.
+    # Preview deploys on feature branches skip smoke tests — they run via
+    # deploy-dev.yml qa-dev job after merge to main instead.
+    if: >-
+      github.event.deployment_status.state == 'success' &&
+      github.event.deployment.ref == 'main'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6

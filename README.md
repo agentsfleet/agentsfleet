@@ -39,13 +39,15 @@ You can swap any layer — start with the playbooks below to understand the seam
 
 ## Playbooks
 
-Step-by-step guides for bootstrapping, credentials, and deployment:
+Step-by-step guides for bootstrapping, credentials, and deployment. See [playbooks/README.md](playbooks/README.md) for the playbook vs gate pattern and gate script conventions.
 
 - [M1 — Bootstrap](playbooks/M1_001_BOOTSTRAP.md)
 - [M2 — Preflight](playbooks/M2_001_PREFLIGHT.md)
 - [M2 — Priming Infra](playbooks/M2_002_PRIMING_INFRA.md)
 - [M3 — Deploy Dev](playbooks/M3_001_DEPLOY_DEV.md)
 - [M3 — Deploy Prod](playbooks/M3_002_DEPLOY_PROD.md)
+- [M4 — Worker Bootstrap Dev](playbooks/M4_001_WORKER_BOOTSTRAP_DEV.md)
+- [M7 — Credential Rotation Dev](playbooks/M7_002_CREDENTIAL_ROTATION_DEV.md)
 
 ## Local Development
 

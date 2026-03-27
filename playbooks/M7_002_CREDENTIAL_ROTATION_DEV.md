@@ -22,7 +22,7 @@
 4. Update 1Password:
 
 ```
-Vault: ZOMBIE_PROD
+Vault: ZMB_CD_PROD
 Item: vercel-bypass-app
 Field: credential → paste new value
 ```
@@ -33,25 +33,44 @@ Field: credential → paste new value
 
 ## 2.0 Upstash Redis Password Rotation
 
-**Who:** Human
+**Who:** Human (step 1–3) + Agent (step 4)
 **Why:** Upstash password appeared in a prior agent conversation session.
 
-### Steps
+### Human Steps
 
 1. Open Upstash console → `helped-hookworm-64126` database → Settings
 2. Reset password (Upstash generates a new one)
-3. Copy the new Redis URL (password is embedded in the URL)
-4. Update 1Password:
+3. Update 1Password base URL field:
 
 ```
-Vault: ZOMBIE_DEV
+Vault: ZMB_CD_DEV
 Item: upstash-dev
-Fields:
-  api-url → new URL with updated password
-  worker-url → new URL with updated password
+Field: url → paste new Redis URL (password is embedded)
 ```
 
-5. Signal agent: "Upstash password rotated"
+4. Signal agent: "Upstash password rotated"
+
+### Agent Steps
+
+5. Derive `api-url` and `worker-url` from the rotated base `url`:
+
+```bash
+BASE_URL=$(op read 'op://ZMB_CD_DEV/upstash-dev/url')
+op item edit upstash-dev --vault ZMB_CD_DEV "api-url=${BASE_URL}/0?role=api"
+op item edit upstash-dev --vault ZMB_CD_DEV "worker-url=${BASE_URL}/0?role=worker"
+```
+
+6. Verify all three fields have the same password:
+
+```bash
+extract_pass() { echo "$1" | sed 's|rediss://[^:]*:\([^@]*\)@.*|\1|'; }
+BASE=$(op read 'op://ZMB_CD_DEV/upstash-dev/url')
+API=$(op read 'op://ZMB_CD_DEV/upstash-dev/api-url')
+WORKER=$(op read 'op://ZMB_CD_DEV/upstash-dev/worker-url')
+[ "$(extract_pass "$BASE" | shasum)" = "$(extract_pass "$API" | shasum)" ] && \
+[ "$(extract_pass "$BASE" | shasum)" = "$(extract_pass "$WORKER" | shasum)" ] && \
+echo "ALL FIELDS IN SYNC" || echo "MISMATCH — check manually"
+```
 
 ---
 
@@ -65,7 +84,7 @@ Fields:
 1. Read the current (pre-rotation) bypass secret from vault and store locally for rejection testing:
 
 ```bash
-OLD_BYPASS="$(op read 'op://ZOMBIE_PROD/vercel-bypass-app/credential')"
+OLD_BYPASS="$(op read 'op://ZMB_CD_PROD/vercel-bypass-app/credential')"
 echo "$OLD_BYPASS" > /tmp/old-bypass-secret.txt
 echo "Old bypass secret saved for post-rotation rejection test"
 ```
@@ -106,7 +125,7 @@ curl -sf https://api-dev.usezombie.com/readyz | jq -e '.ready == true'
 4. Verify Vercel bypass works with the new (rotated) secret from vault:
 
 ```bash
-NEW_SECRET="$(op read 'op://ZOMBIE_PROD/vercel-bypass-app/credential')"
+NEW_SECRET="$(op read 'op://ZMB_CD_PROD/vercel-bypass-app/credential')"
 curl -sf -o /dev/null -w '%{http_code}' \
   -H "x-vercel-protection-bypass: $NEW_SECRET" \
   "https://usezombie-app.vercel.app/sign-in"
@@ -124,6 +143,12 @@ curl -sf -o /dev/null -w '%{http_code}' \
 rm /tmp/old-bypass-secret.txt
 ```
 
+6. Run vault sync gate to verify all credentials are consistent:
+
+```bash
+./playbooks/gates/m7_002/run.sh
+```
+
 ---
 
 ## 5.0 Agent Verification — CI Masking
@@ -139,6 +164,12 @@ gh run view <run-id> --log --job <qa-dev-job-id> | grep -i "VERCEL_BYPASS"
 
 2. If the secret still appears in plaintext, the `::add-mask::` step needs debugging.
 
+3. Run full gate check to confirm rotation is complete:
+
+```bash
+./playbooks/gates/m7_002/run.sh
+```
+
 ---
 
 ## 6.0 Exit Criteria
@@ -149,3 +180,4 @@ gh run view <run-id> --log --job <qa-dev-job-id> | grep -i "VERCEL_BYPASS"
 - [ ] Redis worker `WriteFailed` loop resolved (or confirmed as separate ACL issue)
 - [ ] CI logs show `***` for `VERCEL_BYPASS_SECRET`
 - [ ] Update evidence doc: mark P0 security items as resolved
+- [ ] Gate passes: `./playbooks/gates/m7_002/run.sh` exits 0
