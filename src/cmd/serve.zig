@@ -71,7 +71,7 @@ fn signalWatcher(wstate: *worker.WorkerState) void {
         std.Thread.sleep(100 * std.time.ns_per_ms);
     }
 
-    wstate.running.store(false, .release);
+    wstate.completeDrain();
     stop_server_fn();
 }
 
@@ -259,7 +259,7 @@ pub fn run(alloc: std.mem.Allocator) !void {
     var signal_thread: ?std.Thread = null;
     var event_thread: ?std.Thread = null;
     errdefer {
-        wstate.running.store(false, .release);
+        wstate.completeDrain();
         shutdown_requested.store(true, .release);
         event_bus.stop();
         if (signal_thread) |*t| t.join();
@@ -294,7 +294,7 @@ pub fn run(alloc: std.mem.Allocator) !void {
         obs_log.logErr(.zombied, err, "http.server_exit status=fail", .{});
     };
 
-    wstate.running.store(false, .release);
+    wstate.completeDrain();
     shutdown_requested.store(true, .release);
     event_bus.stop();
     for (worker_threads) |*t| t.join();
@@ -311,7 +311,6 @@ fn testStopServerHook() void {
 
 test "integration: signalWatcher stops worker and invokes server stop hook" {
     var ws = worker.WorkerState.init();
-    ws.running.store(true, .release);
     shutdown_requested.store(false, .release);
 
     var stop_calls = std.atomic.Value(u32).init(0);

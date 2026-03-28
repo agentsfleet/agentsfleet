@@ -59,7 +59,7 @@ jobs:
 
       - name: Build linux/amd64 binaries
         run: |
-          zig build -Doptimize=ReleaseSafe -Dtarget=x86_64-linux-gnu
+          zig build -Doptimize=ReleaseSafe -Dtarget=x86_64-linux
           mkdir -p dist
           cp zig-out/bin/zombied          dist/zombied-linux-amd64
           cp zig-out/bin/zombied-executor dist/zombied-executor-linux-amd64

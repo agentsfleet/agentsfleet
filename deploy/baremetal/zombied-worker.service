@@ -17,6 +17,8 @@ Type=simple
 ExecStart=/usr/local/bin/zombied worker
 Restart=always
 RestartSec=5
+TimeoutStopSec=300
+KillMode=mixed
 
 # Executor socket — must match zombied-executor.service.
 Environment=EXECUTOR_SOCKET_PATH=/run/zombie/executor.sock

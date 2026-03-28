@@ -57,7 +57,6 @@ pub fn workerLoop(cfg: WorkerConfig, worker_state: *WorkerState) void {
     metrics.setWorkerInFlightRuns(worker_state.currentInFlightRuns());
     var gpa = WorkerAllocator{};
     defer {
-        worker_state.running.store(false, .release);
         const inflight = worker_state.currentInFlightRuns();
         if (inflight != 0) {
             log.warn("worker.exiting_with_inflight in_flight_runs={d}", .{inflight});
@@ -107,6 +106,10 @@ pub fn workerLoop(cfg: WorkerConfig, worker_state: *WorkerState) void {
 
     var consecutive_errors: u32 = 0;
     while (worker_state.running.load(.acquire)) {
+        if (!worker_state.isAcceptingWork()) {
+            break;
+        }
+
         var queued_message: ?queue_redis.QueueMessage = null;
         const now_ms = std.time.milliTimestamp();
         if (now_ms - last_reclaim_ms >= queue_consts.reclaim_interval_ms) {
@@ -177,7 +180,7 @@ pub fn workerLoop(cfg: WorkerConfig, worker_state: *WorkerState) void {
             obs_log.logWarnErr(.worker, err, "worker.xack_fail message_id={s}", .{queued.message_id});
         };
 
-        if (!worker_state.running.load(.acquire)) break;
+        if (!worker_state.isAcceptingWork()) break;
     }
 
     log.info("worker.stopped", .{});

@@ -2,7 +2,7 @@
 # QUALITY — code quality, formatting, analysis
 # =============================================================================
 
-.PHONY: lint lint-zig lint-website lint-apps lint-ci doctor check-pg-drain _fmt _fmt_check _zlint_check _pg_drain_check _website_lint _app_lint _zombiectl_lint _actionlint_check
+.PHONY: lint lint-zig lint-website lint-apps lint-ci doctor check-pg-drain _fmt _fmt_check _zlint_check _pg_drain_check _zig_target_lint _website_lint _app_lint _zombiectl_lint _actionlint_check
 
 ZLINT ?= zlint
 ACTIONLINT ?= actionlint
@@ -43,6 +43,24 @@ _pg_drain_check:
 	@python3 lint-zig.py src
 	@echo "✓ [zombied] pg-drain check passed"
 
+_zig_target_lint:
+	@echo "→ [ci] Checking Zig target triples for -gnu suffix..."
+	@FAIL=0; \
+	for f in .github/workflows/*.yml; do \
+		[ -f "$$f" ] || continue; \
+		if grep -nE -- '-Dtarget=\S+-gnu\b' "$$f" >/dev/null 2>&1; then \
+			echo "✗ $$f: found -gnu suffix (causes GLIBC mismatch):"; \
+			grep -nE -- '-Dtarget=\S+-gnu\b' "$$f" | sed 's/^/    /'; \
+			FAIL=1; \
+		fi; \
+	done; \
+	if [ "$$FAIL" = "1" ]; then \
+		echo "  Fix: use -Dtarget=x86_64-linux (not x86_64-linux-gnu)."; \
+		echo "  Why: explicit -gnu makes Zig target GLIBC 2.17; system libssl needs 2.34+."; \
+		exit 1; \
+	fi; \
+	echo "✓ [ci] No -gnu suffixes in Zig target triples"
+
 _actionlint_check:
 	@echo "→ [ci] Running actionlint on GitHub Actions workflows..."
 	@command -v $(ACTIONLINT) >/dev/null 2>&1 || { echo "actionlint not found. Install via: mise install actionlint"; exit 1; }
@@ -51,7 +69,7 @@ _actionlint_check:
 
 check-pg-drain: _pg_drain_check  ## Check that all conn.query() calls have a .drain()
 
-lint-zig: _fmt_check _zlint_check _pg_drain_check  ## Lint zombied only (Zig fmt check + ZLint + pg-drain)
+lint-zig: _fmt_check _zlint_check _pg_drain_check _zig_target_lint  ## Lint zombied (Zig)
 	@echo "✓ [zombied] Lint passed"
 
 lint-website: _website_lint  ## Lint website only (ESLint + tsc)

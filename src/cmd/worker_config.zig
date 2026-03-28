@@ -7,6 +7,7 @@ pub const ValidationError = error{
     InvalidMaxAttempts,
     InvalidWorkerConcurrency,
     InvalidRunTimeoutMs,
+    InvalidDrainTimeoutMs,
     InvalidRateLimitCapacity,
     InvalidRateLimitRefillPerSec,
     InvalidSandboxBackend,
@@ -26,6 +27,7 @@ pub const Config = struct {
     max_attempts: u32,
     worker_concurrency: u32,
     run_timeout_ms: u64,
+    drain_timeout_ms: u64,
     sandbox: sandbox_runtime.Config,
     rate_limit_capacity: u32,
     rate_limit_refill_per_sec: f64,
@@ -40,6 +42,7 @@ pub const Config = struct {
         const max_attempts = try parseU32Env(alloc, "DEFAULT_MAX_ATTEMPTS", 3, ValidationError.InvalidMaxAttempts);
         const worker_concurrency = try parseU32Env(alloc, "WORKER_CONCURRENCY", 1, ValidationError.InvalidWorkerConcurrency);
         const run_timeout_ms = try parseU64Env(alloc, "RUN_TIMEOUT_MS", 300_000, ValidationError.InvalidRunTimeoutMs);
+        const drain_timeout_ms = try parseU64Env(alloc, "DRAIN_TIMEOUT_MS", 270_000, ValidationError.InvalidDrainTimeoutMs);
         const rate_limit_capacity = try parseU32Env(alloc, "RATE_LIMIT_CAPACITY", 30, ValidationError.InvalidRateLimitCapacity);
         const rate_limit_refill_per_sec = try parseF64Env(alloc, "RATE_LIMIT_REFILL_PER_SEC", 5.0, ValidationError.InvalidRateLimitRefillPerSec);
         const sandbox = sandbox_runtime.loadFromEnv(alloc) catch |err| switch (err) {
@@ -89,6 +92,7 @@ pub const Config = struct {
             .max_attempts = max_attempts,
             .worker_concurrency = worker_concurrency,
             .run_timeout_ms = run_timeout_ms,
+            .drain_timeout_ms = drain_timeout_ms,
             .sandbox = sandbox,
             .rate_limit_capacity = rate_limit_capacity,
             .rate_limit_refill_per_sec = rate_limit_refill_per_sec,
@@ -118,6 +122,7 @@ pub fn printValidationError(err: ValidationError) void {
         ValidationError.InvalidMaxAttempts => std.debug.print("fatal: invalid DEFAULT_MAX_ATTEMPTS value\n", .{}),
         ValidationError.InvalidWorkerConcurrency => std.debug.print("fatal: invalid WORKER_CONCURRENCY value\n", .{}),
         ValidationError.InvalidRunTimeoutMs => std.debug.print("fatal: invalid RUN_TIMEOUT_MS value\n", .{}),
+        ValidationError.InvalidDrainTimeoutMs => std.debug.print("fatal: invalid DRAIN_TIMEOUT_MS value\n", .{}),
         ValidationError.InvalidRateLimitCapacity => std.debug.print("fatal: invalid RATE_LIMIT_CAPACITY value\n", .{}),
         ValidationError.InvalidRateLimitRefillPerSec => std.debug.print("fatal: invalid RATE_LIMIT_REFILL_PER_SEC value\n", .{}),
         ValidationError.InvalidSandboxBackend => std.debug.print("fatal: invalid SANDBOX_BACKEND value\n", .{}),
@@ -279,4 +284,50 @@ test "Config.load picks up custom env overrides" {
 
     try std.testing.expectEqual(@as(u32, 4), cfg.worker_concurrency);
     try std.testing.expectEqual(@as(u64, 60000), cfg.run_timeout_ms);
+}
+
+// --- drain_timeout_ms tests ---
+
+test "Config.load default drain_timeout_ms is 270000" {
+    setWorkerTestEnv(&worker_test_env);
+    defer unsetWorkerTestEnv(&worker_test_env);
+    std.posix.unsetenv("DRAIN_TIMEOUT_MS");
+
+    var cfg = try Config.load(std.testing.allocator);
+    defer cfg.deinit();
+
+    try std.testing.expectEqual(@as(u64, 270_000), cfg.drain_timeout_ms);
+}
+
+test "Config.load picks up custom DRAIN_TIMEOUT_MS" {
+    setWorkerTestEnv(&worker_test_env);
+    defer unsetWorkerTestEnv(&worker_test_env);
+    std.posix.setenv("DRAIN_TIMEOUT_MS", "120000", true) catch {};
+    defer std.posix.unsetenv("DRAIN_TIMEOUT_MS");
+
+    var cfg = try Config.load(std.testing.allocator);
+    defer cfg.deinit();
+
+    try std.testing.expectEqual(@as(u64, 120_000), cfg.drain_timeout_ms);
+}
+
+test "Config.load accepts DRAIN_TIMEOUT_MS=0 for immediate drain" {
+    setWorkerTestEnv(&worker_test_env);
+    defer unsetWorkerTestEnv(&worker_test_env);
+    std.posix.setenv("DRAIN_TIMEOUT_MS", "0", true) catch {};
+    defer std.posix.unsetenv("DRAIN_TIMEOUT_MS");
+
+    var cfg = try Config.load(std.testing.allocator);
+    defer cfg.deinit();
+
+    try std.testing.expectEqual(@as(u64, 0), cfg.drain_timeout_ms);
+}
+
+test "Config.load rejects non-numeric DRAIN_TIMEOUT_MS" {
+    setWorkerTestEnv(&worker_test_env);
+    defer unsetWorkerTestEnv(&worker_test_env);
+    std.posix.setenv("DRAIN_TIMEOUT_MS", "abc", true) catch {};
+    defer std.posix.unsetenv("DRAIN_TIMEOUT_MS");
+
+    try std.testing.expectError(ValidationError.InvalidDrainTimeoutMs, Config.load(std.testing.allocator));
 }

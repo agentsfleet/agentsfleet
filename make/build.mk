@@ -2,7 +2,7 @@
 # BUILD & REGISTRY — container builds and pushes
 # =============================================================================
 
-.PHONY: build build-dev push-dev push _prepare_prebuilt_linux_binaries
+.PHONY: build build-dev push-dev push build-linux-bookworm _prepare_prebuilt_linux_binaries
 
 VERSION ?= $(shell cat VERSION 2>/dev/null || echo "0.1.0")
 GIT_COMMIT := $(if $(GITHUB_SHA),$(shell echo $(GITHUB_SHA) | cut -c1-7),$(shell git rev-parse --short HEAD 2>/dev/null || echo "dev"))
@@ -36,13 +36,32 @@ _prepare_prebuilt_linux_binaries:
 	cp zig-out/bin/zombied-executor dist/zombied-executor-linux-arm64
 	chmod +x dist/zombied-linux-arm64 dist/zombied-executor-linux-arm64
 
-build: _prepare_prebuilt_linux_binaries ## Build production container (always uses prebuilt linux binaries)
+build: _prepare_prebuilt_linux_binaries ## Build production container (uses prebuilt linux binaries)
 	$(call _buildx,Dockerfile,$(_PROD_TAGS),)
 
 build-dev:  ## Build development container (multi-arch)
 	$(call _buildx,Dockerfile.dev,$(_DEV_TAGS),)
 
-push: _docker_login _prepare_prebuilt_linux_binaries ## Push production image (always uses prebuilt linux binaries)
+build-linux-bookworm:  ## Compile inside bookworm with OpenSSL (mirrors CI)
+	@echo "→ Building aarch64-linux inside bookworm (native ARM, OpenSSL enabled)..."
+	@docker run --rm --platform linux/arm64 \
+		-v "$(CURDIR):/src:ro" -w /tmp/build \
+		mirror.gcr.io/library/debian:bookworm-slim \
+		sh -c '\
+			apt-get update -qq && \
+			apt-get install -y -qq --no-install-recommends libssl-dev ca-certificates xz-utils wget >/dev/null 2>&1 && \
+			cp -a /src/. . && \
+			ARCH=$$(uname -m); \
+			case $$ARCH in x86_64) ZIG_ARCH=x86_64;; aarch64) ZIG_ARCH=aarch64;; *) echo "unsupported arch $$ARCH"; exit 1;; esac; \
+			ZIG_URL="https://ziglang.org/download/0.15.2/zig-$$ZIG_ARCH-linux-0.15.2.tar.xz"; \
+			echo "  fetching zig 0.15.2 for $$ZIG_ARCH..." && \
+			(cd /tmp && wget -q "$$ZIG_URL" -O zig.tar.xz && tar xf zig.tar.xz && cp zig-*/zig /usr/local/bin/ && cp -r zig-*/lib /usr/local/lib/zig) && \
+			echo "  compiling zombied (aarch64-linux, OpenSSL enabled)..." && \
+			zig build -Doptimize=ReleaseSafe -Dtarget=aarch64-linux && \
+			test -f zig-out/bin/zombied && test -f zig-out/bin/zombied-executor && \
+			echo "✓ build-linux-bookworm passed (OpenSSL link verified)"'
+
+push: _docker_login _prepare_prebuilt_linux_binaries ## Push production image (uses prebuilt linux binaries)
 	$(call _buildx,Dockerfile,$(_PROD_TAGS),--push)
 
 push-dev: _docker_login  ## Push development image to registry (uses prebuilt linux binaries)

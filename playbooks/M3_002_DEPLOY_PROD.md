@@ -57,30 +57,51 @@ Expected order:
 4. `npm`
 5. `create-release`
 6. `verify-dev-gate`
-7. `deploy-prod`
+7. `deploy-prod-api` — Fly.io API deploy + healthz/readyz verification
+8. `deploy-prod-canary` — first worker host from `PROD_WORKER_HOSTS` (drain + deploy)
+9. `deploy-prod-fleet` — remaining hosts (requires `production-fleet` environment approval)
 
 ---
 
 ## 3.0 Deploy-Prod Behavior
 
-`deploy-prod` must execute all of:
+The release pipeline deploys in three stages:
 
-1. Load secrets from 1Password (`tailscale/authkey`, per-node worker keys)
-2. Join tailnet in CI (`tailscale/github-action@v3`)
-3. Verify PROD API rollout:
+### 3.1 `deploy-prod-api` — Fly.io API
 
-```bash
-curl -sf https://api.usezombie.com/healthz
-curl -sf https://api.usezombie.com/readyz | jq -e '.ready == true'
+1. Load secrets from 1Password (Fly token, DB URLs, Redis, etc.)
+2. Sync secrets to Fly.io, deploy image, verify `/healthz` + `/readyz`
+
+### 3.2 `deploy-prod-canary` — First Worker Host
+
+1. Load tailscale authkey + Discord webhook from 1Password
+2. Parse the first entry from `PROD_WORKER_HOSTS` GitHub variable
+3. Load that host's SSH key dynamically from vault (`op://$VAULT_PROD/<vault_key>/ssh-private-key`)
+4. Join tailnet, SSH to canary host, run `deploy.sh executor` then `deploy.sh worker`
+5. `deploy.sh` now **drains the worker gracefully** before restart: sends SIGTERM, watches journalctl for `worker.drain_complete` or `worker.drain_timeout` log lines (up to 300s), then restarts
+
+### 3.3 `deploy-prod-fleet` — Remaining Hosts (Approval Gate)
+
+1. Requires manual approval via the `production-fleet` GitHub environment
+2. Loops sequentially over remaining hosts in `PROD_WORKER_HOSTS` (index 1+)
+3. Each host: load SSH key from vault → drain → deploy executor → deploy worker → verify healthy
+4. Posts fleet-level Discord summary with per-host ✅/❌ status
+
+### 3.4 `PROD_WORKER_HOSTS` Variable Format
+
+Set in GitHub → Settings → Variables → `PROD_WORKER_HOSTS`:
+
+```json
+[
+  {"name":"ant","host":"zombie-prod-worker-ant","vault_key":"zombie-prod-worker-ant"},
+  {"name":"bird","host":"zombie-prod-worker-bird","vault_key":"zombie-prod-worker-bird"}
+]
 ```
 
-4. SSH to `zombie-prod-worker-ant` and `zombie-prod-worker-bird` over Tailscale and run:
+### 3.5 Prerequisites
 
-```bash
-cd /opt/zombie && sudo ./deploy.sh
-```
-
-This installs/updates both `zombied-executor` and `zombied-worker` systemd services (see `deploy/baremetal/*.service`).
+- Create the `production-fleet` GitHub environment (Settings → Environments) with required reviewers
+- Set `PROD_WORKER_HOSTS` GitHub variable with the JSON array above
 
 ---
 
@@ -136,9 +157,10 @@ Confirm:
 
 ## 7.0 Exit Criteria
 
-- `release.yml` fully green: binaries, docker, npm, GitHub Release, deploy-prod all pass
+- `release.yml` fully green: binaries, docker, npm, GitHub Release, deploy-prod-api, deploy-prod-canary, deploy-prod-fleet all pass
 - PROD `/healthz` and `/readyz` green
-- workers redeployed over Tailscale SSH; `zombied-executor` + `zombied-worker` systemd services active; run queue consumed
+- workers drained gracefully then redeployed over Tailscale SSH; `zombied-executor` + `zombied-worker` systemd services active; run queue consumed
+- canary host verified healthy before fleet approval gate
 - CLI PROD smoke complete (§6.0)
 - evidence recorded (see M7_003_PROD_ACCEPTANCE.md §9.0)
 

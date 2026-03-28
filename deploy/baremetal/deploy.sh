@@ -111,13 +111,49 @@ sync_env() {
 
 # ── Service restart ──────────────────────────────────────────────────────────
 
+drain_worker() {
+  local timeout="${DRAIN_TIMEOUT:-300}"
+
+  if ! systemctl is-active --quiet zombied-worker.service; then
+    log "Worker not running — skipping drain."
+    return 0
+  fi
+
+  log "Draining worker (timeout=${timeout}s) ..."
+  systemctl kill --signal=SIGTERM zombied-worker.service || true
+
+  local elapsed=0
+  while [ "$elapsed" -lt "$timeout" ]; do
+    if ! systemctl is-active --quiet zombied-worker.service; then
+      log "✓ Worker drained and stopped after ${elapsed}s."
+      return 0
+    fi
+
+    if journalctl -u zombied-worker.service --since "${timeout} seconds ago" --no-pager -q 2>/dev/null \
+        | grep -qE 'worker\.drain_complete|worker\.drain_timeout'; then
+      log "✓ Worker drain signal detected after ${elapsed}s."
+      systemctl stop zombied-worker.service 2>/dev/null || true
+      return 0
+    fi
+
+    sleep 5
+    elapsed=$((elapsed + 5))
+  done
+
+  log "⚠ Drain timeout (${timeout}s) — stopping worker forcefully."
+  systemctl stop zombied-worker.service || true
+}
+
 restart_services() {
   if [[ "$COMPONENT" == "executor" ]]; then
-    log "Restarting executor (worker follows via Requires= dependency) ..."
+    log "Draining worker before executor restart (Requires= dependency) ..."
+    drain_worker
+    log "Restarting executor ..."
     systemctl restart zombied-executor.service
     sleep 2
     systemctl restart zombied-worker.service || true
   else
+    drain_worker
     log "Restarting worker ..."
     systemctl restart zombied-worker.service
   fi

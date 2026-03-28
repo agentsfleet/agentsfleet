@@ -109,7 +109,7 @@ pub fn handleHealthz(ctx: *Context, req: *httpz.Request, res: *httpz.Response) v
 pub fn handleReadyz(ctx: *Context, req: *httpz.Request, res: *httpz.Response) void {
     _ = req;
     const db_ok = databaseHealthy(ctx);
-    const worker_ok = ctx.worker_state.running.load(.acquire);
+    const worker_ok = ctx.worker_state.isAcceptingWork();
     const queue_dependency_ok = queueDependencyHealthy(ctx);
     const qh = if (db_ok) queueHealth(ctx) else null;
     const breaches = evaluateQueueBreaches(ctx, qh);
@@ -155,7 +155,7 @@ pub fn handleMetrics(ctx: *Context, req: *httpz.Request, res: *httpz.Response) v
     // Use the request arena so the body stays valid until httpz sends the response.
     const body = metrics.renderPrometheus(
         req.arena,
-        ctx.worker_state.running.load(.acquire),
+        ctx.worker_state.isAcceptingWork(),
         if (qh) |v| v.queued_count else null,
         if (qh) |v| v.oldest_queued_age_ms else null,
     ) catch {

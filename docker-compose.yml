@@ -5,7 +5,7 @@
 #   docker compose up zombied
 services:
   postgres:
-    image: postgres:18-alpine
+    image: mirror.gcr.io/library/postgres:18-alpine
     command:
       - sh
       - -c
@@ -26,7 +26,7 @@ services:
       retries: 20
 
   redis:
-    image: redis:7-alpine
+    image: mirror.gcr.io/library/redis:7-alpine
     command:
       - sh
       - -c

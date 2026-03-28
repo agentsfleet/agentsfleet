@@ -203,8 +203,8 @@ jobs:
           curl -sf https://api-dev.usezombie.com/readyz | jq -e '.ready == true' >/dev/null
           echo "✓ DEV readiness gate passed"
 
-  # ── 6. Deploy: prod API + worker rollout ────────────────────────────────
-  deploy-prod:
+  # ── 6. Deploy: prod API ───────────────────────────────────────────────
+  deploy-prod-api:
     runs-on: ubuntu-latest
     needs: verify-dev-gate
     permissions:
@@ -219,9 +219,6 @@ jobs:
         env:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
           FLY_API_TOKEN: op://${{ vars.VAULT_PROD }}/fly-api-token/credential
-          TAILSCALE_AUTHKEY: op://${{ vars.VAULT_PROD }}/tailscale/authkey
-          WORKER_ANT_SSH_KEY: op://${{ vars.VAULT_PROD }}/zombie-prod-worker-ant/ssh-private-key
-          WORKER_BIRD_SSH_KEY: op://${{ vars.VAULT_PROD }}/zombie-prod-worker-bird/ssh-private-key
           DATABASE_URL_API: op://${{ vars.VAULT_PROD }}/planetscale-prod/api-connection-string
           DATABASE_URL_WORKER: op://${{ vars.VAULT_PROD }}/planetscale-prod/worker-connection-string
           DATABASE_URL_MIGRATOR: op://${{ vars.VAULT_PROD }}/planetscale-prod/migrator-connection-string
@@ -290,22 +287,139 @@ jobs:
           fi
           curl -sf https://api.usezombie.com/readyz | jq -e '.ready == true'
 
-      - name: Join Tailscale network for private worker SSH
+  # ── 7. Deploy: canary worker (first host) ───────────────────────────────
+  deploy-prod-canary:
+    runs-on: ubuntu-latest
+    needs: deploy-prod-api
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Load PROD worker secrets from 1Password
+        uses: 1password/load-secrets-action@v3
+        with:
+          export-env: true
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          TAILSCALE_AUTHKEY: op://${{ vars.VAULT_PROD }}/tailscale/authkey
+          DISCORD_WEBHOOK_URL: op://${{ vars.VAULT_PROD }}/discord-ci-webhook/credential
+
+      - name: Parse canary host from fleet config
+        id: canary
+        run: |
+          HOSTS='${{ vars.PROD_WORKER_HOSTS }}'
+          CANARY=$(echo "$HOSTS" | jq -r '.[0]')
+          {
+            echo "name=$(echo "$CANARY" | jq -r '.name')"
+            echo "host=$(echo "$CANARY" | jq -r '.host')"
+            echo "vault_key=$(echo "$CANARY" | jq -r '.vault_key')"
+            echo "fleet_count=$(echo "$HOSTS" | jq 'length')"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Load canary SSH key
+        uses: 1password/load-secrets-action@v3
+        with:
+          export-env: true
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          WORKER_SSH_KEY: op://${{ vars.VAULT_PROD }}/${{ steps.canary.outputs.vault_key }}/ssh-private-key
+
+      - name: Join Tailscale network
         uses: tailscale/github-action@v4
         with:
           authkey: ${{ env.TAILSCALE_AUTHKEY }}
           tags: tag:ci
 
-      - name: Deploy worker nodes over Tailscale SSH
+      - name: Deploy canary worker
         run: |
-          install -m 700 -d ~/.ssh
-          ANT_KEY="$RUNNER_TEMP/worker-ant.key"
-          BIRD_KEY="$RUNNER_TEMP/worker-bird.key"
-          printf '%s\n' "$WORKER_ANT_SSH_KEY" > "$ANT_KEY"
-          printf '%s\n' "$WORKER_BIRD_SSH_KEY" > "$BIRD_KEY"
-          chmod 600 "$ANT_KEY" "$BIRD_KEY"
+          KEY_FILE="$RUNNER_TEMP/worker-canary.key"
+          printf '%s\n' "$WORKER_SSH_KEY" > "$KEY_FILE"
+          chmod 600 "$KEY_FILE"
+          VERSION="${GITHUB_REF#refs/tags/}"
+          HOST="${{ steps.canary.outputs.host }}"
+          NAME="${{ steps.canary.outputs.name }}"
 
-          ssh -i "$ANT_KEY" -o StrictHostKeyChecking=no zombie-prod-worker-ant \
-            "cd /opt/zombie && ./deploy.sh"
-          ssh -i "$BIRD_KEY" -o StrictHostKeyChecking=no zombie-prod-worker-bird \
-            "cd /opt/zombie && ./deploy.sh"
+          echo "Deploying canary: $NAME ($HOST) ..."
+          ssh -i "$KEY_FILE" -o StrictHostKeyChecking=no "$HOST" \
+            "cd /opt/zombie/deploy && sudo DISCORD_WEBHOOK_URL='$DISCORD_WEBHOOK_URL' ./deploy.sh executor $VERSION && sudo DISCORD_WEBHOOK_URL='$DISCORD_WEBHOOK_URL' ./deploy.sh worker $VERSION"
+          echo "✓ Canary $NAME deployed"
+
+  # ── 8. Deploy: remaining fleet (with approval gate) ─────────────────────
+  deploy-prod-fleet:
+    runs-on: ubuntu-latest
+    needs: deploy-prod-canary
+    environment: production-fleet
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Load PROD worker secrets from 1Password
+        uses: 1password/load-secrets-action@v3
+        with:
+          export-env: true
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          TAILSCALE_AUTHKEY: op://${{ vars.VAULT_PROD }}/tailscale/authkey
+          DISCORD_WEBHOOK_URL: op://${{ vars.VAULT_PROD }}/discord-ci-webhook/credential
+
+      - name: Join Tailscale network
+        uses: tailscale/github-action@v3
+        with:
+          authkey: ${{ env.TAILSCALE_AUTHKEY }}
+          tags: tag:ci
+
+      - name: Deploy remaining fleet sequentially
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+        run: |
+          HOSTS='${{ vars.PROD_WORKER_HOSTS }}'
+          TOTAL=$(echo "$HOSTS" | jq 'length')
+          VERSION="${GITHUB_REF#refs/tags/}"
+          SUMMARY=""
+          FAILED=0
+
+          # Skip index 0 (canary, already deployed)
+          for i in $(seq 1 $((TOTAL - 1))); do
+            ENTRY=$(echo "$HOSTS" | jq -r ".[$i]")
+            NAME=$(echo "$ENTRY" | jq -r '.name')
+            HOST=$(echo "$ENTRY" | jq -r '.host')
+            VAULT_KEY=$(echo "$ENTRY" | jq -r '.vault_key')
+
+            echo "Deploying $NAME ($HOST) [$((i+1))/$TOTAL] ..."
+            KEY_FILE="$RUNNER_TEMP/worker-${NAME}.key"
+            SSH_KEY=$(op read "op://${{ vars.VAULT_PROD }}/${VAULT_KEY}/ssh-private-key")
+            printf '%s\n' "$SSH_KEY" > "$KEY_FILE"
+            chmod 600 "$KEY_FILE"
+
+            if ssh -i "$KEY_FILE" -o StrictHostKeyChecking=no "$HOST" \
+              "cd /opt/zombie/deploy && sudo DISCORD_WEBHOOK_URL='$DISCORD_WEBHOOK_URL' ./deploy.sh executor $VERSION && sudo DISCORD_WEBHOOK_URL='$DISCORD_WEBHOOK_URL' ./deploy.sh worker $VERSION"; then
+              echo "✓ $NAME deployed"
+              SUMMARY="${SUMMARY}✅ ${NAME}\\n"
+            else
+              echo "✗ $NAME deploy failed"
+              SUMMARY="${SUMMARY}❌ ${NAME}\\n"
+              FAILED=$((FAILED + 1))
+            fi
+            rm -f "$KEY_FILE"
+          done
+
+          # Post fleet-level Discord summary
+          if [[ -n "${DISCORD_WEBHOOK_URL:-}" ]]; then
+            if [[ "$FAILED" -eq 0 ]]; then
+              COLOR=3066993
+              MSG="✅ **Fleet rollout complete** — ${VERSION}\\n${SUMMARY}"
+            else
+              COLOR=15158332
+              MSG="⚠️ **Fleet rollout partial** — ${VERSION} (${FAILED} failed)\\n${SUMMARY}"
+            fi
+            curl -sf -X POST "$DISCORD_WEBHOOK_URL" \
+              -H "Content-Type: application/json" \
+              -d "{\"embeds\":[{\"description\":\"$MSG\",\"color\":$COLOR}]}" \
+              || echo "Warning: Discord fleet summary failed (non-fatal)"
+          fi
+
+          if [[ "$FAILED" -gt 0 ]]; then
+            exit 1
+          fi

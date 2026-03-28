@@ -521,6 +521,26 @@ NEWLY UNREACHABLE AFTER THIS CHANGE:
 → Remove these? Confirm before I proceed.
 ```
 
+### Error Surfacing — Design for Autonomous Recovery
+
+Every error must be visible, actionable, and self-diagnosing. Silent hangs and opaque failures are unacceptable in software designed for autonomous operation.
+
+Rules:
+
+- **No silent hangs.** If an operation depends on an external service (DB, queue, API, peer node), it must have a timeout and must surface a clear error when the dependency is unreachable. NFS-style "hang until the server comes back" is never acceptable — always fail with a diagnostic message.
+- **Errors must name the dependency and suggest the fix.** `"connection refused"` is bad. `"Redis TLS handshake failed: CA bundle not found at /etc/ssl/certs — set REDIS_TLS_CA_FILE"` is good.
+- **Build and CI errors must be reproducible locally.** If a CI step can fail with an error that cannot be reproduced on a developer's machine, add a local verification target (`make build-linux-bookworm`, etc.) that exercises the same code path.
+- **Closed feedback loops over open-ended CI.** Prefer `make` targets that verify in seconds locally over pushing to CI and waiting minutes/hours. Every CI gate should have a local equivalent.
+- **Fail loud, fail early, fail with context.** When designing error paths, include: what failed, why it failed, what the operator should do next. If the system cannot self-heal, it must tell the operator exactly how to heal it.
+
+```
+❌ Bad: process hangs waiting for unreachable NFS server (no timeout, no error)
+✅ Good: "storage: mount failed after 10s — NFS server 10.0.0.5:2049 unreachable. Check network connectivity and server status."
+
+❌ Bad: CI fails with "ld.lld: undefined reference" (no local repro path)
+✅ Good: CI fails → `make build-linux-bookworm` reproduces locally in seconds → fix → verify → push
+```
+
 ## Memory Boundaries
 
 Treat model memory as ephemeral and untrusted.
