@@ -34,33 +34,21 @@ jobs:
           echo "target_url=$URL"
 
           if echo "$DEPLOY_ENV" | grep -qi "usezombie-app"; then
-            echo "package=app" >> "$GITHUB_OUTPUT"
-            echo "workdir=ui/packages/app" >> "$GITHUB_OUTPUT"
-            echo "bypass_item=vercel-bypass-app" >> "$GITHUB_OUTPUT"
+            { echo "package=app"; echo "workdir=ui/packages/app"; echo "bypass_item=vercel-bypass-app"; } >> "$GITHUB_OUTPUT"
           elif echo "$DEPLOY_ENV" | grep -qi "usezombie-agents"; then
-            echo "package=agents" >> "$GITHUB_OUTPUT"
-            echo "workdir=ui/packages/website" >> "$GITHUB_OUTPUT"
-            echo "bypass_item=vercel-bypass-agents" >> "$GITHUB_OUTPUT"
+            { echo "package=agents"; echo "workdir=ui/packages/website"; echo "bypass_item=vercel-bypass-agents"; } >> "$GITHUB_OUTPUT"
           elif echo "$DEPLOY_ENV" | grep -qi "usezombie-website"; then
-            echo "package=website" >> "$GITHUB_OUTPUT"
-            echo "workdir=ui/packages/website" >> "$GITHUB_OUTPUT"
-            echo "bypass_item=vercel-bypass-website" >> "$GITHUB_OUTPUT"
+            { echo "package=website"; echo "workdir=ui/packages/website"; echo "bypass_item=vercel-bypass-website"; } >> "$GITHUB_OUTPUT"
           elif echo "$URL" | grep -qi "usezombie-app\|app\.usezombie"; then
-            echo "package=app" >> "$GITHUB_OUTPUT"
-            echo "workdir=ui/packages/app" >> "$GITHUB_OUTPUT"
-            echo "bypass_item=vercel-bypass-app" >> "$GITHUB_OUTPUT"
+            { echo "package=app"; echo "workdir=ui/packages/app"; echo "bypass_item=vercel-bypass-app"; } >> "$GITHUB_OUTPUT"
           elif echo "$URL" | grep -qi "usezombie-agents"; then
-            echo "package=agents" >> "$GITHUB_OUTPUT"
-            echo "workdir=ui/packages/website" >> "$GITHUB_OUTPUT"
-            echo "bypass_item=vercel-bypass-agents" >> "$GITHUB_OUTPUT"
+            { echo "package=agents"; echo "workdir=ui/packages/website"; echo "bypass_item=vercel-bypass-agents"; } >> "$GITHUB_OUTPUT"
           else
-            echo "package=website" >> "$GITHUB_OUTPUT"
-            echo "workdir=ui/packages/website" >> "$GITHUB_OUTPUT"
-            echo "bypass_item=vercel-bypass-website" >> "$GITHUB_OUTPUT"
+            { echo "package=website"; echo "workdir=ui/packages/website"; echo "bypass_item=vercel-bypass-website"; } >> "$GITHUB_OUTPUT"
           fi
 
       - name: Load Vercel bypass secret from 1Password
-        uses: 1password/load-secrets-action@v3
+        uses: 1password/load-secrets-action@v4
         with:
           export-env: true
         env:

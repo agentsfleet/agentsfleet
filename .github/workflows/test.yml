@@ -51,7 +51,7 @@ jobs:
         run: bun run test:coverage
         working-directory: ui/packages/website
       - name: Upload website coverage
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v6
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           slug: usezombie/usezombie
@@ -64,7 +64,7 @@ jobs:
         run: bun run test:coverage
         working-directory: ui/packages/app
       - name: Upload app coverage
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v6
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           slug: usezombie/usezombie

@@ -19,6 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       ZLINT_VERSION: v0.7.9
+      ACTIONLINT_VERSION: 1.7.11
     steps:
       - uses: actions/checkout@v6
       - uses: mlugg/setup-zig@v2
@@ -38,11 +39,13 @@ jobs:
       - name: Install zombiectl dependencies
         run: bun install --frozen-lockfile
         working-directory: zombiectl
-      - name: Install ZLint
+      - name: Install lint tools (ZLint, actionlint)
         run: |
           mkdir -p "$RUNNER_TEMP/bin"
           curl -fsSL "https://github.com/DonIsaac/zlint/releases/download/${ZLINT_VERSION}/zlint-linux-x86_64" -o "$RUNNER_TEMP/bin/zlint"
           chmod +x "$RUNNER_TEMP/bin/zlint"
+          curl -fsSL "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz" \
+            | tar xz -C "$RUNNER_TEMP/bin" actionlint
           echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
       - name: Run lint gate
         run: make lint

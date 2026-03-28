@@ -25,7 +25,10 @@ jobs:
           echo "✓ tag v$TAG matches VERSION $VERSION"
 
   # ── 1. Standalone binaries: cross-compile with Zig ─────────────────────
-  binaries:
+  # Linux targets run inside debian:bookworm-slim so system libssl-dev matches
+  # the production runtime (GLIBC 2.36).  Eliminates --no-allow-shlib-undefined
+  # failures from Ubuntu runners shipping OpenSSL built against newer GLIBC.
+  binaries-linux:
     needs: verify-tag
     strategy:
       fail-fast: false
@@ -37,22 +40,18 @@ jobs:
           - target: aarch64-linux
             artifact: zombied-linux-arm64
             os: ubuntu-24.04-arm
-          - target: aarch64-macos
-            artifact: zombied-darwin-arm64
-            os: macos-latest
     runs-on: ${{ matrix.os }}
+    container:
+      image: mirror.gcr.io/library/debian:bookworm-slim
     steps:
+      - name: Install build dependencies
+        run: apt-get update && apt-get install -y --no-install-recommends git libssl-dev ca-certificates xz-utils
+
       - uses: actions/checkout@v6
 
       - uses: mlugg/setup-zig@v2
         with:
           version: 0.15.2
-      - name: Install OpenSSL dev headers (Linux)
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libssl-dev
-      - name: Ensure OpenSSL is available (macOS)
-        if: runner.os == 'macOS'
-        run: brew install openssl@3 || true
 
       - name: Build
         run: zig build -Doptimize=ReleaseSafe -Dtarget=${{ matrix.target }}
@@ -69,10 +68,38 @@ jobs:
           name: ${{ matrix.artifact }}
           path: dist/${{ matrix.artifact }}.tar.gz
 
+  binaries-macos:
+    needs: verify-tag
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.15.2
+
+      - name: Ensure OpenSSL is available (macOS)
+        run: brew install openssl@3 || true
+
+      - name: Build
+        run: zig build -Doptimize=ReleaseSafe -Dtarget=aarch64-macos
+
+      - name: Package
+        run: |
+          mkdir -p dist
+          cp zig-out/bin/zombied dist/zombied-darwin-arm64
+          chmod +x dist/zombied-darwin-arm64
+          tar czf dist/zombied-darwin-arm64.tar.gz -C dist zombied-darwin-arm64
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: zombied-darwin-arm64
+          path: dist/zombied-darwin-arm64.tar.gz
+
   # ── 2. Docker: multi-arch build + push stable to GHCR ──────────────────
   docker:
     runs-on: ubuntu-latest
-    needs: [verify-tag, binaries]
+    needs: [verify-tag, binaries-linux, binaries-macos]
     permissions:
       packages: write
     steps:
@@ -124,7 +151,7 @@ jobs:
           registry-url: https://registry.npmjs.org
 
       - name: Load npm token from 1Password
-        uses: 1password/load-secrets-action@v3
+        uses: 1password/load-secrets-action@v4
         with:
           export-env: true
         env:
@@ -140,7 +167,7 @@ jobs:
   # ── 4. GitHub Release: changelog + attach binaries ─────────────────────
   create-release:
     runs-on: ubuntu-latest
-    needs: binaries
+    needs: [binaries-linux, binaries-macos]
     permissions:
       contents: write
     steps:
@@ -186,7 +213,7 @@ jobs:
       - uses: actions/checkout@v6
 
       - name: Load PROD deploy secrets from 1Password
-        uses: 1password/load-secrets-action@v3
+        uses: 1password/load-secrets-action@v4
         with:
           export-env: true
         env:
@@ -210,7 +237,7 @@ jobs:
           GRAFANA_OTLP_INSTANCE_ID: op://${{ vars.VAULT_PROD }}/grafana-prod/instance-id
           GRAFANA_OTLP_API_KEY: op://${{ vars.VAULT_PROD }}/grafana-prod/api-key
 
-      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - uses: superfly/flyctl-actions/setup-flyctl@v1.5
 
       - name: Sync Fly secrets from vault
         run: |
@@ -235,7 +262,6 @@ jobs:
 
       - name: Deploy PROD API to Fly.io
         run: |
-          VERSION=$(cat VERSION)
           flyctl deploy \
             --app ${{ vars.FLY_APP_PROD }} \
             --image ghcr.io/usezombie/zombied:latest \
@@ -265,7 +291,7 @@ jobs:
           curl -sf https://api.usezombie.com/readyz | jq -e '.ready == true'
 
       - name: Join Tailscale network for private worker SSH
-        uses: tailscale/github-action@v3
+        uses: tailscale/github-action@v4
         with:
           authkey: ${{ env.TAILSCALE_AUTHKEY }}
           tags: tag:ci

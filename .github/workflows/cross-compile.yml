@@ -8,12 +8,14 @@ on:
       - 'src/**'
       - 'build.zig'
       - 'build.zig.zon'
+      - '.github/workflows/cross-compile.yml'
   pull_request:
     types: [opened, synchronize, reopened]
     paths:
       - 'src/**'
       - 'build.zig'
       - 'build.zig.zon'
+      - '.github/workflows/cross-compile.yml'
 
 permissions:
   contents: read
@@ -23,7 +25,10 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  cross-compile:
+  # Linux targets run inside debian:bookworm-slim so system libssl-dev matches
+  # the production runtime (GLIBC 2.36).  Eliminates --no-allow-shlib-undefined
+  # failures from Ubuntu runners shipping OpenSSL built against newer GLIBC.
+  cross-compile-linux:
     strategy:
       fail-fast: false
       matrix:
@@ -32,23 +37,43 @@ jobs:
             os: ubuntu-latest
           - target: aarch64-linux
             os: ubuntu-24.04-arm
-          - target: aarch64-macos
-            os: macos-latest
     runs-on: ${{ matrix.os }}
+    container:
+      image: mirror.gcr.io/library/debian:bookworm-slim
     steps:
+      - name: Install build dependencies
+        run: apt-get update && apt-get install -y --no-install-recommends git libssl-dev ca-certificates xz-utils
+
       - uses: actions/checkout@v6
+
       - uses: mlugg/setup-zig@v2
         with:
           version: 0.15.2
-      - name: Install OpenSSL dev headers (Linux)
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libssl-dev
-      - name: Ensure OpenSSL is available (macOS)
-        if: runner.os == 'macOS'
-        run: brew install openssl@3 || true
+
       - name: Compile zombied + zombied-executor (${{ matrix.target }})
         run: zig build -Doptimize=ReleaseSafe -Dtarget=${{ matrix.target }}
+
       - name: Verify binaries (${{ matrix.target }})
+        run: |
+          test -f zig-out/bin/zombied
+          test -f zig-out/bin/zombied-executor
+
+  cross-compile-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.15.2
+
+      - name: Ensure OpenSSL is available (macOS)
+        run: brew install openssl@3 || true
+
+      - name: Compile zombied + zombied-executor (aarch64-macos)
+        run: zig build -Doptimize=ReleaseSafe -Dtarget=aarch64-macos
+
+      - name: Verify binaries (aarch64-macos)
         run: |
           test -f zig-out/bin/zombied
           test -f zig-out/bin/zombied-executor

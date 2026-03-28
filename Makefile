@@ -17,7 +17,7 @@ help:  ## Show all available Makefile targets
 	@echo "  dev                Alias for 'make up'"
 	@echo ""
 	@echo "Quality & Testing:"
-	@echo "  lint                  Run code quality checks (zombied Zig fmt check + ZLint + website + app + zombiectl)"
+	@echo "  lint                  Run code quality checks (zombied Zig fmt check + ZLint + website + app + zombiectl + actionlint)"
 	@echo "  test-unit             Run unit lanes: zombied (Zig unit only) + zombiectl + website + app"
 	@echo "  test-integration      Run full real integration suite once (DB + Redis, CI canonical gate)"
 	@echo "  test-integration-db   Run DB-backed integration suite only (local debugging helper)"
