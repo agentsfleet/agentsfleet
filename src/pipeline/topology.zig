@@ -23,6 +23,12 @@ pub const TopologyError = error{
     InvalidTransitionTarget,
 };
 
+pub const GateTool = struct {
+    name: []u8,
+    command: []u8,
+    timeout_ms: u64,
+};
+
 pub const Stage = struct {
     stage_id: []u8,
     role_id: []u8,
@@ -37,11 +43,14 @@ pub const Stage = struct {
 pub const Profile = struct {
     agent_id: []u8,
     stages: []Stage,
+    gate_tools: []GateTool,
+    max_repair_loops: u32,
     alloc: std.mem.Allocator,
 
     pub fn deinit(self: *Profile) void {
         self.alloc.free(self.agent_id);
         freeStages(self.alloc, self.stages);
+        freeGateTools(self.alloc, self.gate_tools);
     }
 
     pub fn gateStage(self: *const Profile) Stage {
@@ -73,6 +82,20 @@ fn freeStages(alloc: std.mem.Allocator, stages: []Stage) void {
     alloc.free(stages);
 }
 
+fn freeGateTools(alloc: std.mem.Allocator, tools: []GateTool) void {
+    for (tools) |tool| {
+        alloc.free(tool.name);
+        alloc.free(tool.command);
+    }
+    alloc.free(tools);
+}
+
+const GateToolDoc = struct {
+    name: []const u8,
+    command: []const u8,
+    timeout_ms: ?u64 = null,
+};
+
 const StageDoc = struct {
     stage_id: []const u8,
     role: []const u8,
@@ -87,6 +110,8 @@ const StageDoc = struct {
 const ProfileDoc = struct {
     agent_id: []const u8,
     stages: []const StageDoc,
+    gate_tools: ?[]const GateToolDoc = null,
+    max_repair_loops: ?u32 = null,
 };
 
 pub fn parseProfileJson(alloc: std.mem.Allocator, raw: []const u8) !Profile {
@@ -111,6 +136,8 @@ pub fn loadProfile(alloc: std.mem.Allocator, path: []const u8) !Profile {
 pub fn defaultProfile(alloc: std.mem.Allocator) !Profile {
     return Profile{
         .agent_id = try alloc.dupe(u8, "default-v1"),
+        .gate_tools = try alloc.dupe(GateTool, &[_]GateTool{}),
+        .max_repair_loops = 3,
         .stages = try alloc.dupe(Stage, &[_]Stage{
             .{
                 .stage_id = try alloc.dupe(u8, STAGE_PLAN),
@@ -205,9 +232,33 @@ fn fromDoc(alloc: std.mem.Allocator, doc: ProfileDoc) !Profile {
 
     try validateProfile(built);
 
+    // Parse gate tools from profile doc.
+    var gate_tools_list: std.ArrayList(GateTool) = .{};
+    errdefer {
+        for (gate_tools_list.items) |gt| {
+            alloc.free(gt.name);
+            alloc.free(gt.command);
+        }
+        gate_tools_list.deinit(alloc);
+    }
+    if (doc.gate_tools) |gts| {
+        for (gts) |gt_doc| {
+            if (gt_doc.name.len == 0 or gt_doc.command.len == 0) return TopologyError.InvalidProfile;
+            try gate_tools_list.append(alloc, .{
+                .name = try alloc.dupe(u8, gt_doc.name),
+                .command = try alloc.dupe(u8, gt_doc.command),
+                .timeout_ms = gt_doc.timeout_ms orelse 300_000,
+            });
+        }
+    }
+    const gate_tools_built = try gate_tools_list.toOwnedSlice(alloc);
+    errdefer freeGateTools(alloc, gate_tools_built);
+
     return .{
         .agent_id = agent_id,
         .stages = built,
+        .gate_tools = gate_tools_built,
+        .max_repair_loops = doc.max_repair_loops orelse 3,
         .alloc = alloc,
     };
 }

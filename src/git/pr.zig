@@ -238,6 +238,68 @@ pub fn findOpenPullRequestByHead(
     return url_copy;
 }
 
+/// Post a comment on an existing pull request (identified by its html_url).
+/// Best-effort: logs and returns on failure instead of propagating errors.
+/// NOTE: Auth header is passed via curl argv (same as createPullRequest/findOpenPullRequestByHead).
+/// Migration to std.http.Client to avoid /proc/pid/cmdline exposure is tracked as a follow-up.
+pub fn postPrComment(
+    alloc: std.mem.Allocator,
+    repo_url: []const u8,
+    pr_url: []const u8,
+    github_token: []const u8,
+    body: []const u8,
+) void {
+    // Extract PR number from html_url (e.g., https://github.com/owner/repo/pull/42)
+    const pr_number = extractPrNumber(pr_url) orelse {
+        log.warn("git.pr_comment_skip reason=cannot_parse_pr_number url={s}", .{pr_url});
+        return;
+    };
+    const owner_repo = parseGitHubOwnerRepo(alloc, repo_url) catch {
+        log.warn("git.pr_comment_skip reason=invalid_repo_url url={s}", .{repo_url});
+        return;
+    };
+    defer alloc.free(owner_repo);
+
+    const api_url = std.fmt.allocPrint(alloc, "https://api.github.com/repos/{s}/issues/{s}/comments", .{ owner_repo, pr_number }) catch return;
+    defer alloc.free(api_url);
+
+    const payload = std.json.Stringify.valueAlloc(alloc, .{ .body = body }, .{}) catch return;
+    defer alloc.free(payload);
+
+    const auth_header = std.fmt.allocPrint(alloc, "Authorization: Bearer {s}", .{github_token}) catch return;
+    defer alloc.free(auth_header);
+
+    const result = command.run(alloc, &.{
+        "curl",                                "-sS",
+        "--connect-timeout",                   "10",
+        "--max-time",                          "30",
+        "-X",                                  "POST",
+        "-H",                                  "Content-Type: application/json",
+        "-H",                                  "Accept: application/vnd.github+json",
+        "-H",                                  auth_header,
+        "-d",                                  payload,
+        api_url,
+    }, null, 30_000) catch {
+        log.warn("git.pr_comment_fail pr_url={s}", .{pr_url});
+        return;
+    };
+    alloc.free(result);
+    log.info("git.pr_comment_posted pr_url={s}", .{pr_url});
+}
+
+pub fn extractPrNumber(pr_url: []const u8) ?[]const u8 {
+    // Format: https://github.com/owner/repo/pull/42
+    const pull_marker = "/pull/";
+    const idx = std.mem.lastIndexOf(u8, pr_url, pull_marker) orelse return null;
+    const after = pr_url[idx + pull_marker.len ..];
+    if (after.len == 0) return null;
+    // Validate it's all digits.
+    for (after) |c| {
+        if (!std.ascii.isDigit(c)) return null;
+    }
+    return after;
+}
+
 // ---------------------------------------------------------------------------
 // Tests (moved from ops.zig)
 // ---------------------------------------------------------------------------

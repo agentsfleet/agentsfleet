@@ -13,6 +13,8 @@ const scoring = @import("scoring.zig");
 const types = @import("../types.zig");
 const github_auth = @import("../auth/github.zig");
 const worker_stage_helpers = @import("worker_stage_helpers.zig");
+const worker_gate_loop = @import("worker_gate_loop.zig");
+const codes = @import("../errors/codes.zig");
 const wst = @import("worker_stage_types.zig");
 const log = std.log.scoped(.worker);
 
@@ -33,6 +35,8 @@ pub const DoneOutcomeCtx = struct {
     total_tokens: u64,
     total_wall_seconds: u64,
     scoring_state: *scoring.ScoringState,
+    gate_results: ?[]const worker_gate_loop.GateToolResult = null,
+    gate_loop_count: u32 = 0,
 };
 
 pub const BlockedOutcomeCtx = struct {
@@ -82,6 +86,19 @@ pub fn handleDoneOutcome(o: DoneOutcomeCtx) !void {
     {
         const now_ms = std.time.milliTimestamp();
         _ = try o.conn.exec("UPDATE runs SET pr_url = $1, updated_at = $2 WHERE run_id = $3", .{ pr_final, now_ms, o.ctx.run_id });
+    }
+
+    // M16_001 §3.4: Post gate scorecard comment on the PR.
+    if (o.gate_results) |results| {
+        const scorecard = worker_gate_loop.formatScorecard(o.alloc, results, o.gate_loop_count, o.ctx.run_id) catch null;
+        if (scorecard) |card| {
+            defer o.alloc.free(card);
+            const token = o.token_cache.getInstallationToken(o.alloc, o.ctx.workspace_id) catch null;
+            if (token) |t| {
+                defer o.alloc.free(t);
+                git.postPrComment(o.alloc, o.ctx.repo_url, pr_final, t, card);
+            }
+        }
     }
 
     _ = try state.transition(o.conn, o.ctx.run_id, .PR_OPENED, .orchestrator, .PR_CREATED, pr_final);
@@ -155,6 +172,40 @@ pub fn handleRetriesExhaustedOutcome(o: RetriesExhaustedCtx) !void {
     const blocked_detail_slice = std.fmt.bufPrint(&blocked_detail, "request_id={s} trace_id={s} state=blocked reason=retries_exhausted total_wall_seconds={d}", .{ o.ctx.request_id, o.ctx.trace_id, o.total_wall_seconds }) catch "run_blocked";
     events.emit("run_blocked", o.ctx.run_id, blocked_detail_slice);
     posthog_events.trackRunFailed(o.cfg.posthog, posthog_events.distinctIdOrSystem(o.ctx.requested_by), o.ctx.run_id, o.ctx.workspace_id, "retries_exhausted", o.total_wall_seconds * 1000);
+    metrics.observeRunTotalWallSeconds(o.total_wall_seconds);
+    metrics.incRunsBlocked();
+}
+
+pub const GateExhaustedCtx = struct {
+    alloc: std.mem.Allocator,
+    conn: *pg.Conn,
+    ctx: wst.RunContext,
+    cfg: wst.ExecuteConfig,
+    gate_results: []const worker_gate_loop.GateToolResult,
+    total_repair_loops: u32,
+    attempt: u32,
+    total_wall_seconds: u64,
+    scoring_state: *scoring.ScoringState,
+};
+
+/// Handles gate repair exhaustion. Caller must `return` after this.
+pub fn handleGateExhaustedOutcome(o: GateExhaustedCtx) !void {
+    o.scoring_state.outcome = .blocked_gate_exhausted;
+    try billing.finalizeRunForBilling(o.alloc, o.conn, o.ctx.workspace_id, o.ctx.run_id, o.attempt, .non_billable);
+    _ = try state.transition(o.conn, o.ctx.run_id, .BLOCKED, .orchestrator, .RETRIES_EXHAUSTED, "gate repair loops exhausted");
+    _ = try state.transition(o.conn, o.ctx.run_id, .NOTIFIED_BLOCKED, .orchestrator, .NOTIFICATION_SENT, null);
+    log.warn("pipeline.run_blocked error_code={s} reason=gate_exhausted run_id={s} loops={d}", .{
+        codes.ERR_GATE_REPAIR_EXHAUSTED, o.ctx.run_id, o.total_repair_loops,
+    });
+    events.emit("run_blocked", o.ctx.run_id, "gate_repair_exhausted");
+    posthog_events.trackRunFailed(
+        o.cfg.posthog,
+        posthog_events.distinctIdOrSystem(o.ctx.requested_by),
+        o.ctx.run_id,
+        o.ctx.workspace_id,
+        "gate_exhausted",
+        o.total_wall_seconds * 1000,
+    );
     metrics.observeRunTotalWallSeconds(o.total_wall_seconds);
     metrics.incRunsBlocked();
 }

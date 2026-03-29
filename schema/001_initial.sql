@@ -58,6 +58,7 @@ CREATE TABLE core.runs (
     trace_id              TEXT,
     branch                TEXT,
     pr_url                TEXT,
+    base_commit_sha       TEXT,
     run_snapshot_config_version  UUID,
     created_at            BIGINT NOT NULL,
     updated_at            BIGINT NOT NULL,
@@ -98,6 +99,20 @@ CREATE TABLE core.artifacts (
     UNIQUE (run_id, attempt, artifact_name)
 );
 CREATE INDEX idx_artifacts_run ON core.artifacts(run_id, attempt DESC, artifact_name);
+
+CREATE TABLE core.gate_results (
+    id               UUID PRIMARY KEY,
+    CONSTRAINT ck_gate_results_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
+    run_id           UUID NOT NULL REFERENCES core.runs(run_id) ON DELETE CASCADE,
+    gate_name        TEXT NOT NULL,
+    attempt          INT  NOT NULL,
+    exit_code        INT  NOT NULL,
+    stdout_tail      TEXT,
+    stderr_tail      TEXT,
+    wall_ms          BIGINT NOT NULL,
+    created_at       BIGINT NOT NULL
+);
+CREATE INDEX idx_gate_results_run ON core.gate_results(run_id, gate_name, attempt);
 
 CREATE TABLE billing.usage_ledger (
     id            UUID PRIMARY KEY,

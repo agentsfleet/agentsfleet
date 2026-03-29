@@ -60,6 +60,8 @@ pub const Snapshot = struct {
     agent_score_computed_elite: u64,
     agent_scoring_failed_total: u64,
     agent_score_latest: u64,
+    gate_repair_loops_total: u64,
+    gate_repair_exhausted_total: u64,
     otel_export_total: u64,
     otel_export_failed_total: u64,
     otel_last_success_at_ms: i64,
@@ -119,6 +121,8 @@ var g_agent_score_computed_gold = std.atomic.Value(u64).init(0);
 var g_agent_score_computed_elite = std.atomic.Value(u64).init(0);
 var g_agent_scoring_failed_total = std.atomic.Value(u64).init(0);
 var g_agent_score_latest = std.atomic.Value(u64).init(0);
+var g_gate_repair_loops_total = std.atomic.Value(u64).init(0);
+var g_gate_repair_exhausted_total = std.atomic.Value(u64).init(0);
 var g_otel_export_total = std.atomic.Value(u64).init(0);
 var g_otel_export_failed_total = std.atomic.Value(u64).init(0);
 var g_otel_last_success_at_ms = std.atomic.Value(i64).init(0);
@@ -294,6 +298,14 @@ pub fn setAgentScoreLatest(score: u8) void {
     g_agent_score_latest.store(@as(u64, score), .release);
 }
 
+pub fn incGateRepairLoops() void {
+    _ = g_gate_repair_loops_total.fetchAdd(1, .monotonic);
+}
+
+pub fn incGateRepairExhausted() void {
+    _ = g_gate_repair_exhausted_total.fetchAdd(1, .monotonic);
+}
+
 pub fn incOtelExportTotal() void {
     _ = g_otel_export_total.fetchAdd(1, .monotonic);
 }
@@ -394,6 +406,8 @@ pub fn snapshot() Snapshot {
         .agent_score_computed_elite = g_agent_score_computed_elite.load(.acquire),
         .agent_scoring_failed_total = g_agent_scoring_failed_total.load(.acquire),
         .agent_score_latest = g_agent_score_latest.load(.acquire),
+        .gate_repair_loops_total = g_gate_repair_loops_total.load(.acquire),
+        .gate_repair_exhausted_total = g_gate_repair_exhausted_total.load(.acquire),
         .otel_export_total = g_otel_export_total.load(.acquire),
         .otel_export_failed_total = g_otel_export_failed_total.load(.acquire),
         .otel_last_success_at_ms = g_otel_last_success_at_ms.load(.acquire),

@@ -42,6 +42,7 @@ pub const cleanupRuntimeArtifacts = repo_mod.cleanupRuntimeArtifacts;
 pub const commitFile = repo_mod.commitFile;
 pub const push = repo_mod.push;
 pub const remoteBranchExists = repo_mod.remoteBranchExists;
+pub const getHeadSha = repo_mod.getHeadSha;
 
 // pr.zig exports
 pub const HttpResponseParts = pr_mod.HttpResponseParts;
@@ -50,3 +51,4 @@ pub const parseHttpStatus = pr_mod.parseHttpStatus;
 pub const parseGitHubOwnerRepo = pr_mod.parseGitHubOwnerRepo;
 pub const createPullRequest = pr_mod.createPullRequest;
 pub const findOpenPullRequestByHead = pr_mod.findOpenPullRequestByHead;
+pub const postPrComment = pr_mod.postPrComment;

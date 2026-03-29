@@ -150,9 +150,27 @@ pub fn applyProposalChangesToConfig(
         try applySingleChange(alloc, &stages, change);
     }
 
+    // Deep-clone gate_tools to avoid double-free (each GateTool owns name/command slices).
+    var gt_cloned: std.ArrayList(topology.GateTool) = .{};
+    errdefer {
+        for (gt_cloned.items) |gt| {
+            alloc.free(gt.name);
+            alloc.free(gt.command);
+        }
+        gt_cloned.deinit(alloc);
+    }
+    for (profile.gate_tools) |gt| {
+        try gt_cloned.append(alloc, .{
+            .name = try alloc.dupe(u8, gt.name),
+            .command = try alloc.dupe(u8, gt.command),
+            .timeout_ms = gt.timeout_ms,
+        });
+    }
     var candidate = topology.Profile{
         .agent_id = try alloc.dupe(u8, profile.agent_id),
         .stages = try stages.toOwnedSlice(alloc),
+        .gate_tools = try gt_cloned.toOwnedSlice(alloc),
+        .max_repair_loops = profile.max_repair_loops,
         .alloc = alloc,
     };
     defer candidate.deinit();

@@ -23,6 +23,7 @@ pub const TerminalOutcome = enum {
     done,
     blocked_stage_graph,
     blocked_retries_exhausted,
+    blocked_gate_exhausted,
     error_propagation,
 };
 

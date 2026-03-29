@@ -84,6 +84,10 @@ pub fn generateScoreId(alloc: std.mem.Allocator) ![]const u8 {
     return allocUuidV7(alloc);
 }
 
+pub fn generateGateResultId(alloc: std.mem.Allocator) ![]const u8 {
+    return allocUuidV7(alloc);
+}
+
 pub fn isSupportedAgentId(id: []const u8) bool {
     return isUuidV7(id);
 }

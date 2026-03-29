@@ -31,6 +31,7 @@ pub const ValidationError = error{
     InvalidEncryptionMasterKeyV2,
     InvalidSandboxBackend,
     InvalidSandboxKillGraceMs,
+    InvalidGateToolTimeoutMs,
 };
 
 pub const ServeConfig = struct {
@@ -48,6 +49,7 @@ pub const ServeConfig = struct {
     api_max_clients: u32,
     api_max_in_flight_requests: u32,
     run_timeout_ms: u64,
+    gate_tool_timeout_ms: u64,
     sandbox: sandbox_runtime.Config,
     rate_limit_capacity: u32,
     rate_limit_refill_per_sec: f64,
@@ -74,6 +76,7 @@ pub const ServeConfig = struct {
         const api_max_clients = try parseU32Env(alloc, "API_MAX_CLIENTS", 1024, ValidationError.InvalidApiMaxClients);
         const api_max_in_flight_requests = try parseU32Env(alloc, "API_MAX_IN_FLIGHT_REQUESTS", 256, ValidationError.InvalidApiMaxInFlightRequests);
         const run_timeout_ms = try parseU64Env(alloc, "RUN_TIMEOUT_MS", 300_000, ValidationError.InvalidRunTimeoutMs);
+        const gate_tool_timeout_ms = try parseU64Env(alloc, "GATE_TOOL_TIMEOUT_MS", 300_000, ValidationError.InvalidGateToolTimeoutMs);
         const sandbox = sandbox_runtime.loadFromEnv(alloc) catch |err| switch (err) {
             sandbox_runtime.ValidationError.InvalidSandboxBackend => return ValidationError.InvalidSandboxBackend,
             sandbox_runtime.ValidationError.InvalidSandboxKillGraceMs => return ValidationError.InvalidSandboxKillGraceMs,
@@ -182,6 +185,7 @@ pub const ServeConfig = struct {
             .api_max_clients = api_max_clients,
             .api_max_in_flight_requests = api_max_in_flight_requests,
             .run_timeout_ms = run_timeout_ms,
+            .gate_tool_timeout_ms = gate_tool_timeout_ms,
             .sandbox = sandbox,
             .rate_limit_capacity = rate_limit_capacity,
             .rate_limit_refill_per_sec = rate_limit_refill_per_sec,
@@ -235,6 +239,7 @@ pub const ServeConfig = struct {
             ValidationError.InvalidRunTimeoutMs => std.debug.print("fatal: invalid RUN_TIMEOUT_MS value\n", .{}),
             ValidationError.InvalidSandboxBackend => std.debug.print("fatal: invalid SANDBOX_BACKEND value\n", .{}),
             ValidationError.InvalidSandboxKillGraceMs => std.debug.print("fatal: invalid SANDBOX_KILL_GRACE_MS value\n", .{}),
+            ValidationError.InvalidGateToolTimeoutMs => std.debug.print("fatal: invalid GATE_TOOL_TIMEOUT_MS value\n", .{}),
             ValidationError.InvalidRateLimitCapacity => std.debug.print("fatal: invalid RATE_LIMIT_CAPACITY value\n", .{}),
             ValidationError.InvalidRateLimitRefillPerSec => std.debug.print("fatal: invalid RATE_LIMIT_REFILL_PER_SEC value\n", .{}),
             ValidationError.InvalidReadyMaxQueueDepth => std.debug.print("fatal: invalid READY_MAX_QUEUE_DEPTH value\n", .{}),

@@ -128,6 +128,17 @@ pub fn removeWorktree(
     alloc.free(out2);
 }
 
+/// Get the HEAD commit SHA of a worktree.
+pub fn getHeadSha(alloc: std.mem.Allocator, wt_path: []const u8) ![]const u8 {
+    const out = try command.run(alloc, &.{ "git", "rev-parse", "HEAD" }, wt_path, 10_000);
+    // Trim trailing newline.
+    const trimmed = std.mem.trimRight(u8, out, "\n\r ");
+    if (trimmed.len == out.len) return out;
+    const result = try alloc.dupe(u8, trimmed);
+    alloc.free(out);
+    return result;
+}
+
 pub fn cleanupRuntimeArtifacts(
     alloc: std.mem.Allocator,
     cache_root: []const u8,

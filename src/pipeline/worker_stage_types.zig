@@ -7,6 +7,7 @@ pub const ExecuteConfig = struct {
     cache_root: []const u8,
     max_attempts: u32,
     run_timeout_ms: u64,
+    gate_tool_timeout_ms: u64 = 300_000,
     sandbox: sandbox_runtime.Config = .{},
     skill_registry: ?*const agents.SkillRegistry = null,
     posthog: ?*posthog.PostHogClient = null,

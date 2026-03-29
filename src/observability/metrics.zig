@@ -42,6 +42,8 @@ pub const setAgentScoreLatest = mc.setAgentScoreLatest;
 pub const observeAgentScoringDurationMs = mc.observeAgentScoringDurationMs;
 pub const observeAgentDurationSeconds = mc.observeAgentDurationSeconds;
 pub const observeRunTotalWallSeconds = mc.observeRunTotalWallSeconds;
+pub const incGateRepairLoops = mc.incGateRepairLoops;
+pub const incGateRepairExhausted = mc.incGateRepairExhausted;
 pub const snapshot = mc.snapshot;
 
 // OTel exporter metrics.

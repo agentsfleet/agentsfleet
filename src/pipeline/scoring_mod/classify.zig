@@ -99,6 +99,7 @@ pub fn classifyFailure(state: *const types.ScoringState) ?types.FailureClass {
     const result: ?types.FailureClass = switch (state.outcome) {
         .done => null,
         .blocked_retries_exhausted => .timeout,
+        .blocked_gate_exhausted => .tool_call_failure,
         .blocked_stage_graph => .bad_output_format,
         .error_propagation => .unhandled_exception,
         .pending => .unknown,

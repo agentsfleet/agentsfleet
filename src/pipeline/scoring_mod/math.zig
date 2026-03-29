@@ -5,6 +5,7 @@ pub fn computeCompletionScore(outcome: types.TerminalOutcome) u8 {
     return switch (outcome) {
         .done => 100,
         .blocked_retries_exhausted => 30,
+        .blocked_gate_exhausted => 20,
         .blocked_stage_graph => 10,
         .error_propagation => 0,
         .pending => 0,

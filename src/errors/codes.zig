@@ -67,6 +67,11 @@ pub const ERR_PROPOSAL_GENERATION_FAILED = "UZ-PROPOSAL-016";
 pub const ERR_PROPOSAL_NOT_FOUND = "UZ-PROPOSAL-017";
 pub const ERR_HARNESS_CHANGE_NOT_FOUND = "UZ-HARNESS-001";
 
+pub const ERR_GATE_COMMAND_FAILED = "UZ-GATE-001";
+pub const ERR_GATE_COMMAND_TIMEOUT = "UZ-GATE-002";
+pub const ERR_GATE_REPAIR_EXHAUSTED = "UZ-GATE-003";
+pub const ERR_GATE_PERSIST_FAILED = "UZ-GATE-004";
+
 pub const ERR_STARTUP_ENV_CHECK = "UZ-STARTUP-001";
 pub const ERR_STARTUP_CONFIG_LOAD = "UZ-STARTUP-002";
 pub const ERR_STARTUP_DB_CONNECT = "UZ-STARTUP-003";
@@ -126,6 +131,14 @@ pub fn hint(code: []const u8) ?[]const u8 {
         return "Pipeline profile failed to initialize. Check that PIPELINE_PROFILE_PATH points to a valid JSON profile, or remove it to use the default.";
     if (std.mem.eql(u8, code, ERR_SANDBOX_BACKEND_UNAVAILABLE))
         return "Sandbox backend is not available. Check that bubblewrap (bwrap) is installed and accessible.";
+    if (std.mem.eql(u8, code, ERR_GATE_COMMAND_FAILED))
+        return "A gate command (make lint/test/build) failed. Check the gate results for stdout/stderr output.";
+    if (std.mem.eql(u8, code, ERR_GATE_COMMAND_TIMEOUT))
+        return "A gate command exceeded its timeout. Increase GATE_TOOL_TIMEOUT_MS or optimize the gate command.";
+    if (std.mem.eql(u8, code, ERR_GATE_REPAIR_EXHAUSTED))
+        return "Agent exhausted all repair attempts without passing gates. Review gate results for the repeated failure pattern.";
+    if (std.mem.eql(u8, code, ERR_GATE_PERSIST_FAILED))
+        return "Gate results could not be written to the database. Check DB connectivity and that the gate_results table exists.";
     return null;
 }
 
