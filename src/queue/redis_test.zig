@@ -55,8 +55,7 @@ test "integration: rediss ping via TEST_REDIS_TLS_URL" {
 
 test "integration: ensureConsumerGroup is idempotent for readiness checks" {
     const alloc = std.testing.allocator;
-    const redis_url = std.process.getEnvVarOwned(alloc, "REDIS_READY_TEST_URL") catch
-        std.process.getEnvVarOwned(alloc, "TEST_REDIS_TLS_URL") catch return error.SkipZigTest;
+    const redis_url = std.process.getEnvVarOwned(alloc, "TEST_REDIS_TLS_URL") catch return error.SkipZigTest;
     defer alloc.free(redis_url);
 
     var client = try redis.testing.connectFromUrl(alloc, redis_url);

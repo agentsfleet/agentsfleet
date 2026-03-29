@@ -73,3 +73,27 @@ These variables are used by both the Worker and Executor processes.
 | `EXECUTOR_CPU_LIMIT_PERCENT` | Worker, Executor | `100` | CPU limit as a percentage of one core. |
 | `SANDBOX_KILL_GRACE_MS` | Worker, Executor | `250` | Grace period (ms) before force-killing a sandbox after timeout. |
 | `LOG_LEVEL` | All | `info` | Log verbosity: `debug`, `info`, `warn`, `error`. |
+| `REDIS_TLS_CA_CERT_FILE` | No | — | Path to CA certificate file for custom or self-signed TLS Redis connections. Must be absolute path. Required when `rediss://` URLs point to a Redis instance with a non-public CA. |
+
+## Test environment variables
+
+Variables used only during integration testing. These are not required for production runtime.
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `TEST_DATABASE_URL` | Test only | — | PostgreSQL connection string for DB-backed integration tests. |
+| `TEST_REDIS_TLS_URL` | Test only | — | Redis TLS URL (rediss://) for testing TLS Redis connections. |
+
+## Observability and telemetry
+
+Variables for monitoring, analytics, and distributed tracing.
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `POSTHOG_API_KEY` | No | — | PostHog project API key for product analytics. |
+| `POSTHOG_HOST` | No | `https://us.i.posthog.com` | PostHog API endpoint. |
+| `GRAFANA_OTLP_ENDPOINT` | No | — | Grafana OTLP endpoint for trace/metric export. |
+| `GRAFANA_OTLP_INSTANCE_ID` | No | — | Grafana Cloud instance ID for authentication. |
+| `GRAFANA_OTLP_API_KEY` | No | — | Grafana Cloud API key for OTLP export. |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | No | — | Generic OTLP endpoint for OpenTelemetry. |
+| `OTEL_EXPORTER_OTLP_HEADERS` | No | — | Headers for OTLP export (e.g., API keys). |
