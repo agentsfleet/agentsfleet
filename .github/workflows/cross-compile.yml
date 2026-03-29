@@ -25,9 +25,9 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Linux targets run inside debian:bookworm-slim so system libssl-dev matches
-  # the production runtime (GLIBC 2.36).  Eliminates --no-allow-shlib-undefined
-  # failures from Ubuntu runners shipping OpenSSL built against newer GLIBC.
+  # Linux targets build inside Alpine (musl-native) so static OpenSSL archives
+  # are musl-compatible.  Produces fully static binaries (zero dynamic deps)
+  # that run on any Linux: bookworm containers (Fly.io) and Trixie bare-metal.
   cross-compile-linux:
     strategy:
       fail-fast: false
@@ -35,13 +35,27 @@ jobs:
         include:
           - target: x86_64-linux
             os: ubuntu-latest
+            arch: x86_64
+            container: mirror.gcr.io/library/alpine:3.21
           - target: aarch64-linux
             os: ubuntu-24.04-arm
+            arch: aarch64
+            container: mirror.gcr.io/library/debian:bookworm-slim
     runs-on: ${{ matrix.os }}
     container:
-      image: mirror.gcr.io/library/debian:bookworm-slim
+      image: ${{ matrix.container }}
     steps:
-      - name: Install build dependencies
+      - name: Install build dependencies (Alpine)
+        if: contains(matrix.container, 'alpine')
+        run: |
+          apk add --no-cache git openssl-dev openssl-libs-static ca-certificates xz
+          mkdir -p /usr/lib/${{ matrix.arch }}-linux-gnu /usr/include/${{ matrix.arch }}-linux-gnu
+          ln -sf /usr/lib/libssl.a /usr/lib/${{ matrix.arch }}-linux-gnu/libssl.a
+          ln -sf /usr/lib/libcrypto.a /usr/lib/${{ matrix.arch }}-linux-gnu/libcrypto.a
+          ln -sf /usr/include/openssl /usr/include/${{ matrix.arch }}-linux-gnu/openssl
+
+      - name: Install build dependencies (Debian)
+        if: contains(matrix.container, 'debian')
         run: apt-get update && apt-get install -y --no-install-recommends git libssl-dev ca-certificates xz-utils
 
       - uses: actions/checkout@v6

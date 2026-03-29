@@ -37,19 +37,22 @@ jobs:
           VAULT_PROD: ${{ vars.VAULT_PROD }}
         run: ./playbooks/gates/check-credentials.sh
 
-  # ── 1a. Compile linux/amd64 binaries (Debian bookworm — matches runtime) ─
-  # Run inside debian:bookworm-slim so system libssl-dev matches the
-  # production container (GLIBC 2.36).  Avoids --no-allow-shlib-undefined
-  # failures caused by Ubuntu runners shipping OpenSSL built against newer
-  # GLIBC versions.
+  # ── 1a. Compile linux/amd64 binaries (Alpine — musl-native static OpenSSL) ─
+  # Build inside Alpine so static OpenSSL archives are musl-compatible.
+  # Produces fully static binaries that run on bookworm (Fly.io) and Trixie (bare-metal).
   compile-dev:
     needs: check-credentials
     runs-on: ubuntu-latest
     container:
-      image: mirror.gcr.io/library/debian:bookworm-slim
+      image: mirror.gcr.io/library/alpine:3.21
     steps:
       - name: Install build dependencies
-        run: apt-get update && apt-get install -y --no-install-recommends git libssl-dev ca-certificates xz-utils
+        run: |
+          apk add --no-cache git openssl-dev openssl-libs-static ca-certificates xz
+          mkdir -p /usr/lib/x86_64-linux-gnu /usr/include/x86_64-linux-gnu
+          ln -sf /usr/lib/libssl.a /usr/lib/x86_64-linux-gnu/libssl.a
+          ln -sf /usr/lib/libcrypto.a /usr/lib/x86_64-linux-gnu/libcrypto.a
+          ln -sf /usr/include/openssl /usr/include/x86_64-linux-gnu/openssl
 
       - uses: actions/checkout@v6
 
@@ -98,6 +101,7 @@ jobs:
   # ── 2. Deploy to Fly.io DEV ─────────────────────────────────────────────
   deploy-fly-dev:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     needs: push-dev
     steps:
       - uses: actions/checkout@v6
@@ -206,6 +210,7 @@ jobs:
   # Enable by setting DEV_WORKER_READY=true in GitHub → Settings → Variables.
   deploy-dev-worker:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     # needs push-dev so the bare-metal worker and Fly.io API always move together:
     # if Docker push fails the worker binary is not updated either, keeping DEV consistent.
     needs: [compile-dev, push-dev]
@@ -349,7 +354,7 @@ jobs:
   # ── 5. Discord notify ────────────────────────────────────────────────────
   notify:
     runs-on: ubuntu-latest
-    needs: [qa-dev]
+    needs: [qa-dev, deploy-dev-worker]
     if: always()
     steps:
       - uses: 1password/install-cli-action@v3
@@ -380,12 +385,15 @@ jobs:
           SHORT="${SHA:0:7}"
           REF="${{ github.ref_name }}"
 
-          if [ "${{ needs.qa-dev.result }}" = "success" ]; then
+          QA="${{ needs.qa-dev.result }}"
+          WORKER="${{ needs.deploy-dev-worker.result }}"
+
+          if [ "$QA" = "success" ] && { [ "$WORKER" = "success" ] || [ "$WORKER" = "skipped" ]; }; then
             COLOR=3066993
-            MSG="✅ DEV deploy green — \`$REF\` @ \`$SHORT\`\\n/healthz: ok | QA: passed\\n→ ready for tag release"
+            MSG="✅ DEV deploy green — \`$REF\` @ \`$SHORT\`\\n/healthz: ok | QA: passed | worker: ${WORKER}\\n→ ready for tag release"
           else
             COLOR=15158332
-            MSG="❌ DEV deploy failed — \`$REF\` @ \`$SHORT\`\\nCheck: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            MSG="❌ DEV deploy failed — \`$REF\` @ \`$SHORT\`\\nQA: ${QA} | worker: ${WORKER}\\nCheck: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           fi
 
           curl -sf -X POST "$DISCORD_WEBHOOK" \
