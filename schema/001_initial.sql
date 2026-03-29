@@ -24,6 +24,7 @@ CREATE TABLE core.workspaces (
     default_branch  TEXT NOT NULL,
     paused          BOOLEAN NOT NULL DEFAULT FALSE,
     paused_reason   TEXT,
+    created_by      TEXT,
     version         BIGINT NOT NULL DEFAULT 1,
     created_at      BIGINT NOT NULL,
     updated_at      BIGINT NOT NULL

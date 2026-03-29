@@ -58,12 +58,12 @@ Fly.io DEV app must be running, reachable at `api-dev.usezombie.com` via Cloudfl
 **Dimensions:**
 - 3.1 ✅ DONE `GET https://api-dev.usezombie.com/healthz` → `{"status":"ok","service":"zombied","database":"up"}`
 - 3.2 ✅ DONE `GET https://api-dev.usezombie.com/readyz` → `{"ready":true,"database":true,"worker":true,"queue_dependency":true}`
-- 3.3 PENDING `zombied doctor` output — blocked: `zombiectl` CLI not yet built/published (no npm package)
+- 3.3 PENDING `zombied doctor` output — run via `./zombiectl/bin/zombiectl.js doctor --api-url https://api-dev.usezombie.com`
 
 ```bash
 curl -sf https://api-dev.usezombie.com/healthz
 curl -sf https://api-dev.usezombie.com/readyz | jq -e '.ready == true'
-npx zombiectl doctor --api-url https://api-dev.usezombie.com
+./zombiectl/bin/zombiectl.js doctor --api-url https://api-dev.usezombie.com
 ```
 
 ---
@@ -112,18 +112,24 @@ Full CLI-driven end-to-end acceptance run against DEV. Commands run in order; ea
 ```bash
 export ZOMBIE_API_URL=https://api-dev.usezombie.com
 
-npx zombiectl login
-npx zombiectl workspace add <ACCEPTANCE_REPO_URL>
-npx zombiectl specs sync docs/spec/
-npx zombiectl run
-npx zombiectl runs list
+# Run from repo root — no npm publish needed
+./zombiectl/bin/zombiectl.js login
+./zombiectl/bin/zombiectl.js workspace add <ACCEPTANCE_REPO_URL>
+./zombiectl/bin/zombiectl.js specs sync docs/spec/
+./zombiectl/bin/zombiectl.js run --spec docs/spec/v1/M15_001_SELF_SERVE_ROLE_ASSIGNMENT.md
+./zombiectl/bin/zombiectl.js runs list
+```
+
+**Local test suite (run before acceptance):**
+```bash
+cd zombiectl && bun run test
 ```
 
 **Expected outcomes:**
 - `login` → Clerk auth token stored in local config
 - `workspace add` → workspace created, GitHub app installed on acceptance repo
 - `specs sync` → spec files uploaded, sync confirmation with spec count
-- `run` → run ID returned, status transitions to `running` then `completed`
+- `run --spec` → run ID returned, status transitions to `running` then `completed`
 - `runs list` → run appears with `status: completed`, `pr_url` present
 
 ---
@@ -135,8 +141,8 @@ npx zombiectl runs list
 **Dimensions:**
 - 7.1 ✅ DONE CI artifact: `deploy-dev.yml` run 23630635008 — all jobs green
 - 7.2 ✅ DONE CI artifact: Playwright report `qa-dev-ccbad03...` (artifact ID 6136852031)
-- 7.3 PENDING Terminal output from CLI commands in §6.0 — blocked: `zombiectl` not yet built
-- 7.4 PENDING `zombied doctor` output — blocked: requires CLI
+- 7.3 PENDING Terminal output from CLI commands in §6.0 — run via `./zombiectl/bin/zombiectl.js`
+- 7.4 PENDING `zombied doctor` output — run via `./zombiectl/bin/zombiectl.js doctor`
 
 ---
 
@@ -148,9 +154,9 @@ npx zombiectl runs list
 - [x] 8.2 `healthz` + `readyz` return green on `api-dev.usezombie.com`
 - [x] 8.3 Playwright QA smoke passes against live DEV app (`usezombie-app.vercel.app`)
 - [x] 8.4 UI smoke passes for app and website Vercel previews
-- [ ] 8.5 CLI acceptance run completes: login → workspace add → specs sync → run → runs list — **blocked: `zombiectl` not built**
-- [ ] 8.6 Spec-to-PR latency under 5 minutes — **blocked: requires §8.5**
-- [ ] 8.7 Evidence artifact complete in `docs/evidence/M7_001_DEV_ACCEPTANCE_EVIDENCE.md` — **partial: CI evidence captured, CLI evidence blocked**
+- [ ] 8.5 CLI acceptance run completes: login → workspace add → specs sync → run → runs list — via `./zombiectl/bin/zombiectl.js`
+- [ ] 8.6 Spec-to-PR latency under 5 minutes
+- [ ] 8.7 Evidence artifact complete in `docs/evidence/M7_001_DEV_ACCEPTANCE_EVIDENCE.md`
 
 ---
 

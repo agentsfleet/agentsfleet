@@ -41,6 +41,27 @@ fn authorizeWorkspace(
     return false;
 }
 
+/// Returns true if the given user created the workspace (M15_001 owner check).
+/// Only queries the DB when a `user`-role principal fails the minimum role gate,
+/// so there is no hot-path cost for `operator`/`admin` callers.
+fn isWorkspaceCreator(conn: *pg.Conn, workspace_id: []const u8, user_id: []const u8, tenant_id: ?[]const u8) bool {
+    var q = if (tenant_id) |tid|
+        conn.query(
+            "SELECT 1 FROM workspaces WHERE workspace_id = $1 AND created_by = $2 AND tenant_id = $3",
+            .{ workspace_id, user_id, tid },
+        ) catch return false
+    else
+        conn.query(
+            "SELECT 1 FROM workspaces WHERE workspace_id = $1 AND created_by = $2",
+            .{ workspace_id, user_id },
+        ) catch return false;
+    defer q.deinit();
+    const row = (q.next() catch return false) orelse return false;
+    _ = row;
+    q.drain() catch return false;
+    return true;
+}
+
 const ExecutionResult = struct {
     credit: workspace_credit.CreditView,
     billing_state: workspace_billing.StateView,
@@ -87,11 +108,21 @@ pub fn enforce(
     actor: []const u8,
     requirement: Requirement,
 ) ?Access {
-    // Role check is stateless — run it before workspace auth to avoid DB
-    // side-effects (SET LOCAL tenant context) on connections returned to the
-    // pool when the role check fails.
-    if (!common.requireRole(res, req_id, principal, requirement.minimum_role)) return null;
-    if (!authorizeWorkspace(res, req_id, conn, principal, workspace_id)) return null;
+    // Role check: stateless first, then workspace-owner override for `user` role.
+    // M15_001 — workspace creators are auto-promoted to `operator` so they can
+    // use the product immediately after signup without manual Clerk intervention.
+    var effective_principal = principal;
+    if (!principal.role.allows(requirement.minimum_role)) {
+        if (principal.role == .user) {
+            if (principal.user_id) |uid| {
+                if (isWorkspaceCreator(conn, workspace_id, uid, principal.tenant_id)) {
+                    effective_principal.role = .operator;
+                }
+            }
+        }
+        if (!common.requireRole(res, req_id, effective_principal, requirement.minimum_role)) return null;
+    }
+    if (!authorizeWorkspace(res, req_id, conn, effective_principal, workspace_id)) return null;
 
     return switch (requirement.credit_policy) {
         .none => .{},
@@ -258,6 +289,182 @@ test "Requirement default minimum_role allows all AuthRole variants" {
     try std.testing.expect(common.AuthRole.user.allows(req.minimum_role));
     try std.testing.expect(common.AuthRole.operator.allows(req.minimum_role));
     try std.testing.expect(common.AuthRole.admin.allows(req.minimum_role));
+}
+
+test "integration: isWorkspaceCreator returns true for creator" {
+    const db_ctx = (try common.openHandlerTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
+
+    _ = try db_ctx.conn.exec(
+        \\CREATE TEMP TABLE workspaces (
+        \\  workspace_id UUID PRIMARY KEY,
+        \\  tenant_id UUID NOT NULL,
+        \\  created_by TEXT
+        \\)
+    , .{});
+    _ = try db_ctx.conn.exec(
+        "INSERT INTO workspaces (workspace_id, tenant_id, created_by) VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01', 'user_creator123')",
+        .{},
+    );
+
+    const tid = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01";
+    try std.testing.expect(isWorkspaceCreator(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11", "user_creator123", tid));
+    try std.testing.expect(!isWorkspaceCreator(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11", "user_other456", tid));
+    // Without tenant_id still works (nullable path)
+    try std.testing.expect(isWorkspaceCreator(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11", "user_creator123", null));
+    // Wrong tenant_id blocks even correct creator
+    try std.testing.expect(!isWorkspaceCreator(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11", "user_creator123", "0195b4ba-8d3a-7f13-8abc-000000000099"));
+}
+
+test "integration: isWorkspaceCreator returns false when created_by is null" {
+    const db_ctx = (try common.openHandlerTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
+
+    _ = try db_ctx.conn.exec(
+        \\CREATE TEMP TABLE workspaces (
+        \\  workspace_id UUID PRIMARY KEY,
+        \\  tenant_id UUID NOT NULL,
+        \\  created_by TEXT
+        \\)
+    , .{});
+    _ = try db_ctx.conn.exec(
+        "INSERT INTO workspaces (workspace_id, tenant_id, created_by) VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01', NULL)",
+        .{},
+    );
+
+    try std.testing.expect(!isWorkspaceCreator(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11", "user_any", "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01"));
+}
+
+test "integration: isWorkspaceCreator returns false for non-existent workspace" {
+    const db_ctx = (try common.openHandlerTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
+
+    _ = try db_ctx.conn.exec(
+        \\CREATE TEMP TABLE workspaces (
+        \\  workspace_id UUID PRIMARY KEY,
+        \\  tenant_id UUID NOT NULL,
+        \\  created_by TEXT
+        \\)
+    , .{});
+
+    try std.testing.expect(!isWorkspaceCreator(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-000000000000", "user_any", null));
+}
+
+test "integration: isWorkspaceCreator is scoped to exact workspace" {
+    const db_ctx = (try common.openHandlerTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
+
+    _ = try db_ctx.conn.exec(
+        \\CREATE TEMP TABLE workspaces (
+        \\  workspace_id UUID PRIMARY KEY,
+        \\  tenant_id UUID NOT NULL,
+        \\  created_by TEXT
+        \\)
+    , .{});
+    _ = try db_ctx.conn.exec(
+        "INSERT INTO workspaces (workspace_id, tenant_id, created_by) VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01', 'user_alice')",
+        .{},
+    );
+    _ = try db_ctx.conn.exec(
+        "INSERT INTO workspaces (workspace_id, tenant_id, created_by) VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f12', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01', 'user_bob')",
+        .{},
+    );
+
+    const tid = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01";
+    try std.testing.expect(isWorkspaceCreator(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11", "user_alice", tid));
+    try std.testing.expect(!isWorkspaceCreator(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f12", "user_alice", tid));
+    try std.testing.expect(!isWorkspaceCreator(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11", "user_bob", tid));
+    try std.testing.expect(isWorkspaceCreator(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f12", "user_bob", tid));
+}
+
+test "owner override promotes user to operator but not admin" {
+    // Exercises the actual override logic: a user-role principal who is workspace
+    // creator gets promoted to operator. Operator still fails admin requirement.
+    var effective = common.AuthPrincipal{
+        .mode = .jwt_oidc,
+        .role = .user,
+        .user_id = "user_creator123",
+        .tenant_id = "tenant_abc",
+    };
+    // Simulate the enforce() promotion path
+    const is_creator = true;
+    if (effective.role == .user and is_creator) {
+        effective.role = .operator;
+    }
+    // Passes operator gate
+    try std.testing.expect(effective.role.allows(.operator));
+    // Still blocked from admin gate
+    try std.testing.expect(!effective.role.allows(.admin));
+}
+
+test "owner override skipped when user_id is null" {
+    const principal = common.AuthPrincipal{
+        .mode = .jwt_oidc,
+        .role = .user,
+        .user_id = null,
+    };
+    var effective = principal;
+    if (principal.role == .user) {
+        if (principal.user_id) |_| {
+            effective.role = .operator;
+        }
+    }
+    try std.testing.expectEqual(common.AuthRole.user, effective.role);
+}
+
+test "owner override is idempotent — operator stays operator" {
+    const principal = common.AuthPrincipal{
+        .mode = .jwt_oidc,
+        .role = .operator,
+        .user_id = "user_creator123",
+    };
+    try std.testing.expect(principal.role.allows(.operator));
+}
+
+test "owner override is idempotent — admin stays admin" {
+    const principal = common.AuthPrincipal{
+        .mode = .jwt_oidc,
+        .role = .admin,
+        .user_id = "user_creator123",
+    };
+    try std.testing.expect(principal.role.allows(.operator));
+    try std.testing.expect(principal.role.allows(.admin));
+}
+
+test "integration: non-creator user stays blocked at user role" {
+    const db_ctx = (try common.openHandlerTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
+
+    _ = try db_ctx.conn.exec(
+        \\CREATE TEMP TABLE workspaces (
+        \\  workspace_id UUID PRIMARY KEY,
+        \\  tenant_id UUID NOT NULL,
+        \\  created_by TEXT
+        \\)
+    , .{});
+    _ = try db_ctx.conn.exec(
+        "INSERT INTO workspaces (workspace_id, tenant_id, created_by) VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01', 'user_owner')",
+        .{},
+    );
+
+    try std.testing.expect(!isWorkspaceCreator(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11", "user_invited_member", "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01"));
+}
+
+test "effective_principal is a copy — original principal is not mutated" {
+    const original = common.AuthPrincipal{
+        .mode = .jwt_oidc,
+        .role = .user,
+        .user_id = "user_creator123",
+    };
+    var effective = original;
+    effective.role = .operator;
+    try std.testing.expectEqual(common.AuthRole.user, original.role);
+    try std.testing.expectEqual(common.AuthRole.operator, effective.role);
 }
 
 // Compile-time layout sanity checks

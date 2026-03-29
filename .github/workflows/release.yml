@@ -236,7 +236,7 @@ jobs:
 
       - uses: superfly/flyctl-actions/setup-flyctl@master
 
-      - name: Sync Fly secrets from vault
+      - name: Stage Fly secrets from vault (applied on next deploy)
         run: |
           flyctl secrets set \
             DATABASE_URL_API="$DATABASE_URL_API" \
@@ -253,6 +253,7 @@ jobs:
             GRAFANA_OTLP_ENDPOINT="$GRAFANA_OTLP_ENDPOINT" \
             GRAFANA_OTLP_INSTANCE_ID="$GRAFANA_OTLP_INSTANCE_ID" \
             GRAFANA_OTLP_API_KEY="$GRAFANA_OTLP_API_KEY" \
+            --stage \
             --app "${{ vars.FLY_APP_PROD }}"
         env:
           FLY_API_TOKEN: ${{ env.FLY_API_TOKEN }}

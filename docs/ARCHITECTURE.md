@@ -1,6 +1,6 @@
 # UseZombie Architecture (v1 Canonical)
 
-Date: Mar 24, 2026
+Date: Mar 28, 2026
 Status: Canonical architecture baseline for current implementation and near-term direction
 
 ## Goal
@@ -16,7 +16,10 @@ UseZombie accepts a spec request and produces a validated pull request through a
 3. **Execution backend:** `zombied-executor` embeds NullClaw and applies host-level sandboxing on Linux.
 4. **Git:** hardened git CLI subprocess.
 5. **Auth:** Clerk for user/API auth, GitHub App for automation.
-6. **Delivery:** `zombiectl` CLI.
+6. **Delivery:** `zombiectl` TypeScript CLI (published via npm) used by humans or agents to submit specs, manage runs, stream progress, and inspect scorecards.
+7. **Gate loop:** self-repair execution cycle — agent runs `make lint` → `make test` → `make build`, self-repairs on failure up to `max_repair_loops`, opens PR with scorecard on pass.
+8. **Spec validation:** reject malformed specs before execution (file reference checking, dedup by spec_hash + repo + base_commit_sha).
+9. **Cost control:** per-run token budget, wall time limit, repair loop cap, workspace budget, run cancellation.
 
 ### v2 — Harden
 
@@ -42,7 +45,7 @@ UseZombie accepts a spec request and produces a validated pull request through a
 
 ## System Components
 
-1. `zombiectl`: CLI used by humans or agents to submit work and inspect runs.
+1. `zombiectl`: TypeScript CLI (published via npm) used by humans or agents to submit specs, manage runs, stream progress, and inspect scorecards.
 2. `zombied API`: validates requests, persists run metadata, enqueues work.
 3. `zombied worker`: claims work, resolves active harness/profile, drives stage state transitions, persists artifacts, handles retries, billing, and PR creation.
 4. `zombied-executor`: local execution service controlled by the worker over a typed API; owns sandbox lifecycle and agent runtime execution.
@@ -58,10 +61,12 @@ UseZombie accepts a spec request and produces a validated pull request through a
 3. `profile resolution`: worker resolves the active workspace harness/profile.
 4. `execution lease`: worker opens an executor session for the active stage.
 5. `sandbox execution`: `zombied-executor` runs the stage via embedded NullClaw inside the selected sandbox backend.
+5a. `gate loop`: after agent implementation, worker triggers gate tools (`make lint`, `make test`, `make build`) inside the sandbox. On gate failure, stderr/stdout is fed back to the agent as a new conversation turn. Agent self-repairs. Loop repeats up to `max_repair_loops` (default 3, from agent profile).
+5b. `gate exhaustion`: if all repair loops are exhausted, worker marks run as `FAILED` with structured gate failure record (gate name, loop count, final stderr).
 6. `result evaluation`: worker persists verdict, artifacts, metrics, and failure classification in Postgres.
 7. `billing finalization`: completed runs finalize billable usage; free-plan work deducts from the workspace credit ledger only at this point.
 8. `iteration loop`: on retryable failure, worker re-enqueues the same `run_id`.
-9. `PR creation`: on pass, worker pushes branch and opens PR via GitHub App installation token.
+9. `PR creation`: on all gates passing, worker pushes branch (`zombie/<run_id_short>/<spec_slug>`) and opens PR via GitHub App installation token. PR body contains agent-generated plain-english explanation of changes. Scorecard (gate results, loop counts, wall time, tokens) posted as a separate PR comment.
 
 ## Runtime Boundary
 
@@ -325,6 +330,44 @@ Harnesses are workspace-scoped and profile-driven:
 - worker resolves the active version before execution
 
 Stages are defined in the active profile (JSON topology) — not hardcoded. Built-in skill kinds (`echo`, `scout`, `warden`) provide defaults, but custom skills can be registered via `SkillRegistry` and referenced by any profile stage. The executor is agent-agnostic: it receives a NullClaw config + tool spec + message from the worker and runs it without interpreting roles.
+
+## Gate Loop Architecture
+
+The gate loop is the self-repair cycle that validates agent output before PR creation.
+
+```text
+Agent implements spec
+  |
+  v
+Gate: make lint
+  |-- PASS --> Gate: make test
+  |-- FAIL --> feed stderr to agent, agent repairs, retry (loop N of max_repair_loops)
+                |-- PASS --> Gate: make test
+                |-- EXHAUSTED --> run FAILED (gate=lint, loops=max_repair_loops)
+  |
+Gate: make test
+  |-- same pattern as lint
+  |
+Gate: make build
+  |-- same pattern as test
+  |
+All gates PASS --> push branch, open PR with scorecard
+```
+
+Gate tools are NullClaw tool definitions passed via the executor `StartStage` RPC payload. The executor remains agent-agnostic — it runs the tools specified in the stage config. The gate loop counter is tracked by the worker, not the executor.
+
+### Run Dedup
+
+Duplicate spec submissions are deduplicated by composite key: `sha256(spec_markdown) + repo + base_commit_sha`. If a run with the same key exists in a non-terminal state (PLANNED, RUNNING), the API returns the existing run ID. Terminal runs (COMPLETED, FAILED) do not block resubmission.
+
+### Worktree Isolation
+
+Each run gets an isolated git worktree created from the target repo's base branch HEAD:
+- Bare repo cache: `/tmp/zombie/repos/<repo_id>/`
+- Per-run worktree: `/tmp/zombie/worktrees/<run_id>/`
+- Base commit SHA recorded on run row before execution
+- Landlock policy scoped to the run's worktree path
+- Worktree cleaned up after run completes (pass or fail)
 
 ## RBAC And Policy Guards
 

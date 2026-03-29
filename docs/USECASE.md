@@ -1,6 +1,6 @@
 # UseZombie Use Cases
 
-Date: Mar 22, 2026
+Date: Mar 28, 2026
 
 ## Shared Runtime Contract
 
@@ -22,6 +22,10 @@ Important operator expectation:
 - active runs should be drained before worker/executor rollout if interruption is unacceptable
 - Free plan admission is checked before run/sync/harness execution starts; completed runtime is billed after finalization only
 - If free credit reaches `$0`, new execution attempts are rejected with an explicit credit exhaustion error and a Scale upgrade path
+- **Self-repair gate loop:** after execution, the agent runs `make lint`, `make test`, and `make build`; if any gate fails, the agent attempts to fix the errors and retries up to `max_repair_loops`; runs that exhaust repair attempts without passing all gates are failed, not opened as PRs
+- **Spec validation before execution:** malformed or structurally invalid specs are rejected at submission time before any worker claims the run, preventing token burn on specs that cannot produce a valid result
+- **Run dedup:** submitting the same spec + repo + base commit combination returns the existing run instead of creating a duplicate; idempotent for both human and agent callers
+- **Cost control:** each run carries a per-run token budget and a wall time limit; runs that exceed either limit are cancelled with a deterministic budget exhaustion error and the partial scorecard is persisted
 
 ## 1. Solo Builder
 
@@ -30,15 +34,15 @@ Important operator expectation:
 ### Workflow
 
 1. Connect repo as a workspace.
-2. Sync specs.
-3. Trigger a run.
-4. Worker delegates execution to `zombied-executor`.
-5. On success, a PR is opened.
-6. On executor crash or timeout, the run restarts from persisted stage state rather than trying to continue hidden process memory.
+2. Write a spec, or use `zombiectl spec init` to generate a template.
+3. Submit via `zombiectl run --spec <file>`.
+4. Agent implements the spec, then runs `make lint`, `make test`, and `make build` gate loop with self-repair.
+5. On all gates passing: a PR is opened with an agent-generated explanation and scorecard.
+6. Builder reviews one PR instead of babysitting agent sessions.
 
 ### Outcome
 
-The builder reviews PRs instead of hand-driving a coding agent session.
+The builder writes specs and reviews PRs. Everything between is autonomous.
 
 ## 2. Small Team
 
@@ -47,16 +51,14 @@ The builder reviews PRs instead of hand-driving a coding agent session.
 ### Workflow
 
 1. Engineers add specs to the queue.
-2. Worker processes runs deterministically.
-3. `zombied-executor` isolates dangerous agent execution from the worker.
-4. Failures are classified clearly:
-   - policy/sandbox failure
-   - executor infrastructure failure
-   - code/test validation failure
+2. Each spec runs through the autonomous gate loop: implement, then `make lint` / `make test` / `make build` with self-repair.
+3. PRs include a scorecard: gate results, repair loop count, wall time, and tokens consumed.
+4. Team reviews scored PRs, not raw agent output.
+5. Cost control prevents runaway token usage: per-run budgets are enforced before the run reaches the PR stage.
 
 ### Outcome
 
-The team gets clearer operational boundaries: orchestration failures do not masquerade as agent-quality failures.
+The team gets clearer operational boundaries: orchestration failures do not masquerade as agent-quality failures, and every PR arrives with evidence of what the agent actually did.
 
 ## 3. Agent-To-Agent
 
@@ -64,11 +66,12 @@ The team gets clearer operational boundaries: orchestration failures do not masq
 
 ### Workflow
 
-1. An external PM/planner agent writes a spec.
+1. An external PM/planner agent writes a spec and optionally validates it via the API before submitting; malformed specs are rejected immediately without burning tokens.
 2. It triggers a run through the API.
-3. Worker resolves the active harness and calls `zombied-executor`.
-4. `zombied-executor` runs the requested stage topology.
-5. Results are persisted and exposed back through the control plane.
+3. Run dedup is applied: if the same spec + repo + base commit was already submitted, the existing run ID is returned and no duplicate work is created.
+4. Worker resolves the active harness and calls `zombied-executor`.
+5. `zombied-executor` runs the requested stage topology.
+6. Results, scorecard, and gate outcomes are persisted and exposed back through the control plane; the upstream agent can assess quality from the scorecard without re-running the code.
 
 ### Outcome
 
@@ -120,3 +123,19 @@ The free tier stays abuse-resistant without pretending mid-run interruption exis
 ### Outcome
 
 Workspace collaboration remains safe by default: normal users can consume the product, operators can manage workspace control-plane surfaces, and admin-only billing mutations stay fenced.
+
+## 7. Scored Agent Selection (Phase 2)
+
+**Profile:** a workspace operator runs multiple agent profiles competing on the same spec to select the best result by evidence.
+
+### Workflow
+
+1. Workspace operator defines two or three agent profiles as markdown files, each describing a different implementation strategy or model configuration.
+2. When a spec is submitted, the runtime spawns each agent profile in an isolated worktree; profiles run concurrently.
+3. Each agent is scored on completion: gate pass rate, repair loop count, wall time, tokens consumed, and diff quality.
+4. The highest-scoring agent's branch is opened as the PR. Losing branches are abandoned without opening PRs.
+5. Score history accumulates per agent profile over time. Profiles that consistently underperform can be retired by the operator.
+
+### Outcome
+
+The best agent for the job is selected by evidence, not by configuration preference. Score history makes agent quality legible and improvable over time.

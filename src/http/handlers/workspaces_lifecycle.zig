@@ -104,9 +104,9 @@ pub fn handleCreateWorkspace(ctx: *common.Context, req: *httpz.Request, res: *ht
 
     _ = conn.exec(
         \\INSERT INTO workspaces
-        \\  (workspace_id, tenant_id, repo_url, default_branch, paused, version, created_at, updated_at)
-        \\VALUES ($1, $2, $3, $4, false, 1, $5, $5)
-    , .{ workspace_id, tenant_id, repo_url, default_branch, now_ms }) catch {
+        \\  (workspace_id, tenant_id, repo_url, default_branch, paused, created_by, version, created_at, updated_at)
+        \\VALUES ($1, $2, $3, $4, false, $5, 1, $6, $6)
+    , .{ workspace_id, tenant_id, repo_url, default_branch, principal.user_id, now_ms }) catch {
         common.internalOperationError(res, "Failed to create workspace", req_id);
         return;
     };

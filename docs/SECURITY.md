@@ -1,6 +1,6 @@
 # Security Posture & Cryptographic Risk Assessment
 
-**Date:** Mar 22, 2026
+**Date:** Mar 28, 2026
 **Status:** Living document
 
 ## Security Boundary For Agent Execution
@@ -32,6 +32,29 @@ zombied-executor
 - free-plan billing enforcement happens at admission and finalization boundaries, not by unsafe mid-session kill heuristics
 - operator/admin control-plane endpoints can now be fenced by normalized role claims instead of relying on hidden CLI help
 
+## Credential Injection Model
+
+Agent execution requires three credential types, each with distinct injection paths:
+
+### Anthropic API Key
+- Stored in 1Password vault (`op://ZMB_CD_DEV/anthropic-dev/credential`)
+- Deployed to worker via `.env` at deploy time
+- Passed to executor via `StartStage` RPC payload `agent_config.api_key` field
+- Never exposed as executor process environment variable
+- Worker halts startup if absent (`UZ-CRED-001`)
+
+### GitHub App Installation Token
+- Worker signs JWT using GitHub App private key (already in vault)
+- Requests short-lived installation token per-run, scoped to target repo
+- Token TTL: 1 hour (GitHub default), refreshed if run approaches 55-minute mark
+- Held in memory only, never persisted to database
+- Token request failure classifies as `policy_deny` (`UZ-CRED-002`)
+
+### Package Registry Network Allowlist
+- Phase 1: executor network policy extended from `deny_all` to allowlist for known registries (npmjs.org, pypi.org, crates.io, pkg.go.dev)
+- Phase 2: internal package mirror replaces allowlist for supply chain security
+- Controlled by `EXECUTOR_NETWORK_POLICY` env var; default: `deny_all`
+
 ## Failure Semantics
 
 The security model is fail-closed, but not mid-session durable.
@@ -51,6 +74,8 @@ This is safer than pretending a hidden agent session survived an infrastructure 
 | `UZ-SANDBOX-002` | Kill-switch or forced sandbox teardown fired |
 | `UZ-SANDBOX-003` | Command blocked before execution |
 | `zombied-executor` health failure | Executor boundary unavailable |
+| `UZ-CRED-001` | Anthropic API key missing at worker startup |
+| `UZ-CRED-002` | GitHub App installation token request failed |
 
 Correlation fields remain:
 - `trace_id`
@@ -70,6 +95,20 @@ UseZombie now treats role as part of the authenticated identity contract:
 
 Enforcement is server-side. Hidden CLI commands are not treated as a security boundary.
 The contract is pinned by live HTTP integration tests that prove `harness`, `skill-secret`, and admin billing-event routes reject under-scoped JWTs with `INSUFFICIENT_ROLE`.
+
+## Spec Injection Threat Model
+
+A malicious or compromised spec could instruct the agent to write backdoor code. The sandbox prevents data exfiltration during execution (network deny, Landlock filesystem restriction), but the generated code merges via PR.
+
+Mitigations:
+- Spec validation rejects specs referencing files outside the repo
+- Gate loop (lint/test/build) catches compilation and test failures but NOT semantic security issues
+- Phase 1: all PRs require human review (no auto-merge)
+- Phase 2: score-gated merge with configurable threshold; low-score PRs require human review
+- Future: static analysis gate (semgrep, gitleaks) added to the gate loop
+- Future: secret scanning on PR diff before merge
+
+This is an acknowledged gap. No complete solution exists today for semantic code review by agents. The primary mitigation in Phase 1 is human review of every PR.
 
 ## Free Plan Billing Boundary
 

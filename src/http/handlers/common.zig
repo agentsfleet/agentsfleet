@@ -248,8 +248,12 @@ pub fn writeAuthErrorWithTracking(res: *httpz.Response, req_id: []const u8, err:
 
 pub fn requireRole(res: *httpz.Response, req_id: []const u8, principal: AuthPrincipal, required: AuthRole) bool {
     if (principal.role.allows(required)) return true;
-    var msg_buf: [64]u8 = undefined;
-    const message = std.fmt.bufPrint(&msg_buf, "{s} role required", .{required.label()}) catch "Insufficient role";
+    var msg_buf: [128]u8 = undefined;
+    const message = std.fmt.bufPrint(
+        &msg_buf,
+        "Your role is '{s}'. {s} role required.",
+        .{ principal.role.label(), required.label() },
+    ) catch "Insufficient role";
     errorResponse(res, .forbidden, error_codes.ERR_INSUFFICIENT_ROLE, message, req_id);
     return false;
 }
@@ -363,6 +367,30 @@ pub fn openHandlerTestConn(alloc: std.mem.Allocator) !?struct { pool: *db.Pool, 
     errdefer pool.deinit();
     const conn = try pool.acquire();
     return .{ .pool = pool, .conn = conn };
+}
+
+test "requireRole error message includes current role and required role" {
+    var msg_buf: [128]u8 = undefined;
+    const user_msg = std.fmt.bufPrint(
+        &msg_buf,
+        "Your role is '{s}'. {s} role required.",
+        .{ AuthRole.user.label(), AuthRole.operator.label() },
+    ) catch unreachable;
+    try std.testing.expectEqualStrings("Your role is 'user'. operator role required.", user_msg);
+}
+
+test "requireRole error message fits all role combinations in 128-byte buffer" {
+    const roles = [_]AuthRole{ .user, .operator, .admin };
+    for (roles) |current| {
+        for (roles) |required| {
+            var msg_buf: [128]u8 = undefined;
+            _ = try std.fmt.bufPrint(
+                &msg_buf,
+                "Your role is '{s}'. {s} role required.",
+                .{ current.label(), required.label() },
+            );
+        }
+    }
 }
 
 test "mapOidcVerifyError maps expired token to token_expired response path" {
