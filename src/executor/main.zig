@@ -134,4 +134,10 @@ test {
     _ = @import("integration_test.zig");
     _ = @import("crash_test.zig");
     _ = @import("runner_test.zig");
+    _ = @import("sandbox_edge_test.zig");
+    _ = @import("executor_limits_test.zig");
+    _ = @import("crash_concurrent_test.zig");
+    _ = @import("crash_recovery_test.zig");
+    _ = @import("handler_edge_test.zig");
+    _ = @import("handler_negative_test.zig");
 }
