@@ -107,6 +107,11 @@ pub fn renderPrometheus(
     try appendMetric(writer, "zombie_otel_export_failed_total", "counter", "Total OTEL metric export failures.", s.otel_export_failed_total);
     try appendMetric(writer, "zombie_otel_last_success_at_ms", "gauge", "Timestamp of last successful OTEL export in epoch ms.", s.otel_last_success_at_ms);
 
+    // Orphan recovery metrics (M14_001).
+    try appendMetric(writer, "zombie_reconcile_orphan_runs_recovered_total", "counter", "Total orphaned runs recovered by reconciler.", s.orphan_runs_recovered_total);
+    try appendMetric(writer, "zombie_reconcile_orphan_no_agent_profile_total", "counter", "Orphan recoveries skipped scoring because workspace had no active agent profile.", s.orphan_no_agent_profile_total);
+    try appendMetric(writer, "zombie_reconcile_running", "gauge", "Reconcile daemon liveness gauge (1 running, 0 stopped).", s.reconcile_running);
+
     try appendDurationHistogram(
         writer,
         "zombie_agent_duration_seconds",

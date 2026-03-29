@@ -63,6 +63,9 @@ pub const Snapshot = struct {
     otel_export_total: u64,
     otel_export_failed_total: u64,
     otel_last_success_at_ms: i64,
+    orphan_runs_recovered_total: u64,
+    orphan_no_agent_profile_total: u64,
+    reconcile_running: u64,
     agent_duration_seconds: HistogramSnapshot,
     run_total_wall_seconds: HistogramSnapshot,
     agent_scoring_duration_ms: HistogramSnapshot,
@@ -119,6 +122,9 @@ var g_agent_score_latest = std.atomic.Value(u64).init(0);
 var g_otel_export_total = std.atomic.Value(u64).init(0);
 var g_otel_export_failed_total = std.atomic.Value(u64).init(0);
 var g_otel_last_success_at_ms = std.atomic.Value(i64).init(0);
+var g_orphan_runs_recovered_total = std.atomic.Value(u64).init(0);
+var g_orphan_no_agent_profile_total = std.atomic.Value(u64).init(0);
+var g_reconcile_running = std.atomic.Value(u64).init(0);
 var g_histograms_mu: std.Thread.Mutex = .{};
 var g_agent_duration_seconds = HistogramSnapshot{};
 var g_run_total_wall_seconds = HistogramSnapshot{};
@@ -300,6 +306,18 @@ pub fn setOtelLastSuccessAtMs(ms: i64) void {
     g_otel_last_success_at_ms.store(ms, .release);
 }
 
+pub fn incOrphanRunsRecovered() void {
+    _ = g_orphan_runs_recovered_total.fetchAdd(1, .monotonic);
+}
+
+pub fn incOrphanNoAgentProfile() void {
+    _ = g_orphan_no_agent_profile_total.fetchAdd(1, .monotonic);
+}
+
+pub fn setReconcileRunning(v: bool) void {
+    g_reconcile_running.store(if (v) 1 else 0, .release);
+}
+
 pub fn observeAgentScoringDurationMs(ms: u64) void {
     g_histograms_mu.lock();
     defer g_histograms_mu.unlock();
@@ -379,6 +397,9 @@ pub fn snapshot() Snapshot {
         .otel_export_total = g_otel_export_total.load(.acquire),
         .otel_export_failed_total = g_otel_export_failed_total.load(.acquire),
         .otel_last_success_at_ms = g_otel_last_success_at_ms.load(.acquire),
+        .orphan_runs_recovered_total = g_orphan_runs_recovered_total.load(.acquire),
+        .orphan_no_agent_profile_total = g_orphan_no_agent_profile_total.load(.acquire),
+        .reconcile_running = g_reconcile_running.load(.acquire),
         .agent_duration_seconds = .{},
         .run_total_wall_seconds = .{},
         .agent_scoring_duration_ms = .{},

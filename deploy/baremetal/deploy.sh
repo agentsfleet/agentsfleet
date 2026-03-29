@@ -112,7 +112,8 @@ sync_env() {
 # ── Service restart ──────────────────────────────────────────────────────────
 
 drain_worker() {
-  local timeout="${DRAIN_TIMEOUT:-300}"
+  # 120s is safely within zombied-worker.service TimeoutStopSec=300.
+  local timeout="${DRAIN_TIMEOUT:-120}"
 
   if ! systemctl is-active --quiet zombied-worker.service; then
     log "Worker not running — skipping drain."
@@ -120,19 +121,24 @@ drain_worker() {
   fi
 
   log "Draining worker (timeout=${timeout}s) ..."
-  systemctl kill --signal=SIGTERM zombied-worker.service || true
+  # Use 'stop' not 'kill': stop tells systemd to deactivate the unit
+  # (prevents Restart=always from respawning), while kill only signals the
+  # process and systemd immediately restarts it.
+  systemctl stop zombied-worker.service &
+  local stop_pid=$!
 
   local elapsed=0
   while [ "$elapsed" -lt "$timeout" ]; do
     if ! systemctl is-active --quiet zombied-worker.service; then
       log "✓ Worker drained and stopped after ${elapsed}s."
+      wait "$stop_pid" 2>/dev/null || true
       return 0
     fi
 
     if journalctl -u zombied-worker.service --since "${timeout} seconds ago" --no-pager -q 2>/dev/null \
         | grep -qE 'worker\.drain_complete|worker\.drain_timeout'; then
       log "✓ Worker drain signal detected after ${elapsed}s."
-      systemctl stop zombied-worker.service 2>/dev/null || true
+      wait "$stop_pid" 2>/dev/null || true
       return 0
     fi
 
@@ -140,8 +146,9 @@ drain_worker() {
     elapsed=$((elapsed + 5))
   done
 
-  log "⚠ Drain timeout (${timeout}s) — stopping worker forcefully."
-  systemctl stop zombied-worker.service || true
+  log "⚠ Drain timeout (${timeout}s) — killing worker forcefully."
+  systemctl kill --signal=SIGKILL zombied-worker.service 2>/dev/null || true
+  wait "$stop_pid" 2>/dev/null || true
 }
 
 restart_services() {

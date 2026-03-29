@@ -18,6 +18,7 @@ const billing_adapter = @import("../../state/billing_adapter.zig");
 const billing_reconciler = @import("../../state/billing_reconciler.zig");
 const proposals = @import("../../pipeline/scoring_mod/proposals.zig");
 const posthog_events = @import("../../observability/posthog_events.zig");
+const orphan_recovery = @import("../../state/orphan_recovery.zig");
 const emit_mod = @import("emit.zig");
 
 const log = std.log.scoped(.reconcile);
@@ -59,6 +60,31 @@ pub fn reconcileTick(pool: *db.Pool, posthog_client: ?*posthog.PostHogClient) !o
                 item.fields_changed,
             );
         }
+    }
+
+    // M14_001: Orphan run recovery — uses a per-tick arena to avoid
+    // page_allocator mmap/munmap syscalls on the hot path.
+    var orphan_arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer orphan_arena.deinit();
+    const orphan_alloc = orphan_arena.allocator();
+    const orphan_config = orphan_recovery.loadConfig(orphan_alloc);
+    // NOTE: Redis client not yet plumbed to reconciler. Pass null — re-queue
+    // falls back to blocking. To enable re-queue, thread a Redis client from
+    // reconcile.zig → daemon.zig → tick.zig and pass it here.
+    const orphan_result = orphan_recovery.recoverOrphanedRuns(
+        orphan_alloc,
+        conn,
+        posthog_client,
+        null, // queue: ?*redis_client.Client — not available in reconciler yet
+        orphan_config,
+    ) catch |err| blk: {
+        log.warn("reconcile.orphan_recovery_fail err={s}", .{@errorName(err)});
+        break :blk orphan_recovery.OrphanRecoveryResult{};
+    };
+    if (orphan_result.blocked > 0 or orphan_result.requeued > 0) {
+        log.info("reconcile.orphan_recovery blocked={d} requeued={d}", .{
+            orphan_result.blocked, orphan_result.requeued,
+        });
     }
 
     return .{

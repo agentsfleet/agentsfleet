@@ -76,6 +76,8 @@ pub const ReasonCode = enum {
     RATE_LIMITED,
     MISSING_TESTS,
     SPEC_MISMATCH,
+    WORKER_CRASH_ORPHAN,
+    ORPHAN_REQUEUED,
 
     pub fn label(self: ReasonCode) []const u8 {
         return @tagName(self);

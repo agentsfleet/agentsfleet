@@ -251,8 +251,8 @@ jobs:
           ANT_KEY="$RUNNER_TEMP/dev-worker-ant.key"
           printf '%s\n' "$WORKER_ANT_SSH_KEY" > "$ANT_KEY"
           chmod 600 "$ANT_KEY"
-          SSH="ssh -i $ANT_KEY -o StrictHostKeyChecking=no"
-          SCP="scp -i $ANT_KEY -o StrictHostKeyChecking=no"
+          SSH="ssh -i $ANT_KEY -o StrictHostKeyChecking=no -o ConnectTimeout=15 -o ServerAliveInterval=30 -o ServerAliveCountMax=6"
+          SCP="scp -i $ANT_KEY -o StrictHostKeyChecking=no -o ConnectTimeout=15"
           TARGET="${WORKER_ANT_USER}@${WORKER_ANT_HOST}"
           VERSION="dev-${GITHUB_SHA::7}"
 

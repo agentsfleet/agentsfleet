@@ -21,6 +21,7 @@ const posthog = @import("posthog");
 const tick_mod = @import("tick.zig");
 const metrics_mod = @import("metrics.zig");
 const state_mod = @import("state.zig");
+const obs_metrics = @import("../../observability/metrics.zig");
 
 pub const DaemonState = state_mod.DaemonState;
 pub const daemonHealthy = state_mod.daemonHealthy;
@@ -93,6 +94,10 @@ pub fn runDaemon(alloc: std.mem.Allocator, pool: *db.Pool, posthog_client: ?*pos
     };
     state_mod.g_daemon_state = &daemon_state;
     defer state_mod.g_daemon_state = null;
+
+    // §4.3: Set reconcile_running gauge to 1 on start, 0 on exit.
+    obs_metrics.setReconcileRunning(true);
+    defer obs_metrics.setReconcileRunning(false);
 
     var metrics_thread = try std.Thread.spawn(.{}, metrics_mod.metricsServerThread, .{metrics_port});
     defer metrics_thread.join();
