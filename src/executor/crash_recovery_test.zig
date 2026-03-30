@@ -26,7 +26,7 @@ test "T5: concurrent cancel and destroy on same session does not crash" {
     var store = session_mod.SessionStore.init(alloc);
     defer store.deinit();
 
-    var rpc_handler = handler_mod.Handler.init(alloc, &store, 30_000, .{});
+    var rpc_handler = handler_mod.Handler.init(alloc, &store, 30_000, .{}, .deny_all);
 
     var create_p = std.json.Value{ .object = std.json.ObjectMap.init(alloc) };
     defer create_p.object.deinit();
@@ -74,7 +74,7 @@ test "T5: concurrent GetUsage from 8 threads returns consistent results" {
     var store = session_mod.SessionStore.init(alloc);
     defer store.deinit();
 
-    var rpc_handler = handler_mod.Handler.init(alloc, &store, 30_000, .{});
+    var rpc_handler = handler_mod.Handler.init(alloc, &store, 30_000, .{}, .deny_all);
 
     var create_p = std.json.Value{ .object = std.json.ObjectMap.init(alloc) };
     defer create_p.object.deinit();
@@ -136,7 +136,7 @@ test "T5: concurrent StartStage on cancelled session all return execution_failed
     var store = session_mod.SessionStore.init(alloc);
     defer store.deinit();
 
-    var rpc_handler = handler_mod.Handler.init(alloc, &store, 30_000, .{});
+    var rpc_handler = handler_mod.Handler.init(alloc, &store, 30_000, .{}, .deny_all);
 
     var create_p = std.json.Value{ .object = std.json.ObjectMap.init(alloc) };
     defer create_p.object.deinit();
@@ -208,7 +208,7 @@ test "T5: session store count is correct after 16 parallel create+destroy cycles
     var store = session_mod.SessionStore.init(alloc);
     defer store.deinit();
 
-    var rpc_handler = handler_mod.Handler.init(alloc, &store, 30_000, .{});
+    var rpc_handler = handler_mod.Handler.init(alloc, &store, 30_000, .{}, .deny_all);
     var completed = std.atomic.Value(u32).init(0);
     const N = 16;
 
@@ -264,7 +264,7 @@ test "T5: sessions_created metric increments for each concurrent CreateExecution
     var store = session_mod.SessionStore.init(alloc);
     defer store.deinit();
 
-    var rpc_handler = handler_mod.Handler.init(alloc, &store, 30_000, .{});
+    var rpc_handler = handler_mod.Handler.init(alloc, &store, 30_000, .{}, .deny_all);
     const snap_before = executor_metrics.executorSnapshot();
     const N = 5;
 

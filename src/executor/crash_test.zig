@@ -61,7 +61,7 @@ test "crash: executor stops mid-session, client RPC returns TransportLoss" {
     var store = session_mod.SessionStore.init(alloc);
     defer store.deinit();
 
-    var rpc_handler = handler_mod.Handler.init(alloc, &store, 30_000, .{});
+    var rpc_handler = handler_mod.Handler.init(alloc, &store, 30_000, .{}, .deny_all);
 
     const Wrapper = struct {
         var g_handler: *handler_mod.Handler = undefined;
@@ -162,7 +162,7 @@ test "crash: executor restart, worker reconnects to new socket" {
     // Start first executor.
     var store1 = session_mod.SessionStore.init(alloc);
 
-    var handler1 = handler_mod.Handler.init(alloc, &store1, 30_000, .{});
+    var handler1 = handler_mod.Handler.init(alloc, &store1, 30_000, .{}, .deny_all);
 
     const Wrapper1 = struct {
         var g_handler: *handler_mod.Handler = undefined;
@@ -199,7 +199,7 @@ test "crash: executor restart, worker reconnects to new socket" {
     var store2 = session_mod.SessionStore.init(alloc);
     defer store2.deinit();
 
-    var handler2 = handler_mod.Handler.init(alloc, &store2, 30_000, .{});
+    var handler2 = handler_mod.Handler.init(alloc, &store2, 30_000, .{}, .deny_all);
 
     const Wrapper2 = struct {
         var g_handler: *handler_mod.Handler = undefined;
@@ -251,7 +251,7 @@ test "crash: metrics increment on executor failure responses" {
     var store = session_mod.SessionStore.init(alloc);
     defer store.deinit();
 
-    var rpc_handler = handler_mod.Handler.init(alloc, &store, 30_000, .{});
+    var rpc_handler = handler_mod.Handler.init(alloc, &store, 30_000, .{}, .deny_all);
 
     const before = executor_metrics.executorSnapshot();
 
@@ -276,7 +276,7 @@ test "crash: cancelled session returns error on StartStage" {
     var store = session_mod.SessionStore.init(alloc);
     defer store.deinit();
 
-    var rpc_handler = handler_mod.Handler.init(alloc, &store, 30_000, .{});
+    var rpc_handler = handler_mod.Handler.init(alloc, &store, 30_000, .{}, .deny_all);
 
     // Create a session, then cancel it.
     var create_params = std.json.Value{ .object = std.json.ObjectMap.init(alloc) };

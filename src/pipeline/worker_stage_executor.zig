@@ -25,6 +25,8 @@ const worker_stage_outcomes = @import("worker_stage_outcomes.zig");
 const worker_gate_loop = @import("worker_gate_loop.zig");
 const sandbox_runtime = @import("sandbox_runtime.zig");
 const executor_client = @import("../executor/client.zig");
+const crypto_store = @import("../secrets/crypto_store.zig");
+const error_codes = @import("../errors/codes.zig");
 const log = std.log.scoped(.worker);
 
 pub const ExecuteConfig = worker_stage_types.ExecuteConfig;
@@ -58,13 +60,25 @@ const StageRetryCtx = struct {
     input: agents.RoleInput,
     executor: ?*executor_client.ExecutorClient = null,
     execution_id: ?[]const u8 = null,
+    /// LLM API key fetched from vault.secrets for this workspace (M16_003 §1).
+    llm_api_key: []const u8 = "",
+    /// GitHub installation token for this run (M16_003 §2).
+    github_token: []const u8 = "",
 };
 
 fn opRunStage(ctx: StageRetryCtx, _: u32) !agents.AgentResult {
     // M12_003: When executor is configured, dispatch via executor sidecar.
     if (ctx.executor) |exec| {
         if (ctx.execution_id) |exec_id| {
-            return dispatchViaExecutor(ctx.alloc, exec, exec_id, ctx.binding, ctx.input);
+            return dispatchViaExecutor(
+                ctx.alloc,
+                exec,
+                exec_id,
+                ctx.binding,
+                ctx.input,
+                ctx.llm_api_key,
+                ctx.github_token,
+            );
         }
     }
     // Fallback: direct in-process execution (dev mode, macOS).
@@ -83,6 +97,8 @@ fn dispatchViaExecutor(
     execution_id: []const u8,
     binding: agents.RoleBinding,
     input: agents.RoleInput,
+    llm_api_key: []const u8,
+    github_token: []const u8,
 ) !agents.AgentResult {
     // Build context object with all stage-specific content.
     // The executor passes these through to the agent via the composed message.
@@ -107,6 +123,10 @@ fn dispatchViaExecutor(
         .skill_id = exec_ctx.skill_id,
         .agent_config = .{
             .system_prompt = system_prompt,
+            // M16_003 §1: workspace LLM API key from vault.secrets.
+            .api_key = llm_api_key,
+            // M16_003 §2: GitHub installation token for git push / PR creation.
+            .github_token = github_token,
         },
         .message = system_prompt,
         .tools = null,
@@ -262,6 +282,35 @@ pub fn executeRun(
         },
     );
 
+    // M16_003 §1: Fetch LLM API key from vault.secrets for this workspace.
+    // M16_003 supports Anthropic only; vault key is always "anthropic_api_key".
+    // Multi-provider dynamic lookup ({provider}_api_key) is M16_004.
+    // Soft failure: if not found, pass empty string — executor falls back to its
+    // own env (dev mode). Hard failure (DB error) propagates.
+    const llm_api_key: []const u8 = crypto_store.load(run_alloc, conn, ctx.workspace_id, "anthropic_api_key") catch |err| blk: {
+        if (err == error.NotFound) {
+            log.warn(
+                "worker.llm_key_not_found workspace_id={s} api_key_source=env error_code={s}",
+                .{ ctx.workspace_id, error_codes.ERR_CRED_ANTHROPIC_KEY_MISSING },
+            );
+            break :blk "";
+        }
+        return err;
+    };
+
+    // M16_003 §2: Fetch GitHub installation token before stages that need git access.
+    // Token is per-run, held in memory, never written to Postgres.
+    // On failure, classify as policy_deny (UZ-CRED-002) and transition run to BLOCKED.
+    const github_token: []const u8 = if (ctx.github_installation_id.len > 0) blk: {
+        break :blk token_cache.getInstallationToken(run_alloc, ctx.github_installation_id) catch |err| {
+            log.err(
+                "worker.github_token_failed workspace_id={s} installation_id={s} err={s} error_code={s}",
+                .{ ctx.workspace_id, ctx.github_installation_id, @errorName(err), error_codes.ERR_CRED_GITHUB_TOKEN_FAILED },
+            );
+            return worker_runtime.WorkerError.CredentialDenied;
+        };
+    } else "";
+
     // M12_003 §4.1: Create executor session if executor client is configured.
     const exec_id: ?[]const u8 = if (cfg.executor) |exec| blk: {
         const eid = exec.createExecution(wt.path, .{
@@ -292,6 +341,8 @@ pub fn executeRun(
         .binding = plan_binding,
         .executor = if (exec_id != null) cfg.executor else null,
         .execution_id = exec_id,
+        .llm_api_key = llm_api_key,
+        .github_token = github_token,
         .input = .{
             .workspace_path = wt.path,
             .prompts = prompts,
@@ -391,6 +442,8 @@ pub fn executeRun(
                 .binding = binding,
                 .executor = if (exec_id != null) cfg.executor else null,
                 .execution_id = exec_id,
+                .llm_api_key = llm_api_key,
+                .github_token = github_token,
                 .input = .{
                     .workspace_path = wt.path,
                     .prompts = prompts,

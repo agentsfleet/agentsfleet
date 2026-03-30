@@ -17,6 +17,7 @@ const lease_mod = @import("lease.zig");
 const types = @import("types.zig");
 const landlock = @import("landlock.zig");
 const cgroup = @import("cgroup.zig");
+const network = @import("network.zig");
 
 const log = std.log.scoped(.sandbox_executor);
 
@@ -34,8 +35,13 @@ pub fn main() !void {
     const lease_timeout_ms = parseU64Env(alloc, "EXECUTOR_LEASE_TIMEOUT_MS", DEFAULT_LEASE_TIMEOUT_MS);
     const memory_limit_mb = parseU64Env(alloc, "EXECUTOR_MEMORY_LIMIT_MB", DEFAULT_MEMORY_LIMIT_MB);
     const cpu_limit_percent = parseU64Env(alloc, "EXECUTOR_CPU_LIMIT_PERCENT", DEFAULT_CPU_LIMIT_PERCENT);
+    const net_policy = network.policyFromEnv(alloc);
 
-    log.info("startup.executor socket={s} lease_timeout_ms={d}", .{ socket_path, lease_timeout_ms });
+    log.info("startup.executor socket={s} lease_timeout_ms={d} network_policy={s}", .{
+        socket_path,
+        lease_timeout_ms,
+        @tagName(net_policy),
+    });
 
     // Report host backend capabilities.
     if (builtin.os.tag == .linux) {
@@ -56,7 +62,7 @@ pub fn main() !void {
     var rpc_handler = handler_mod.Handler.init(alloc, &store, lease_timeout_ms, .{
         .memory_limit_mb = memory_limit_mb,
         .cpu_limit_percent = cpu_limit_percent,
-    });
+    }, net_policy);
 
     // Wrap the handler method for the transport layer.
     const frame_handler = struct {
@@ -127,6 +133,7 @@ test {
     _ = @import("landlock.zig");
     _ = @import("cgroup.zig");
     _ = @import("network.zig");
+    _ = @import("executor_network_policy.zig");
     _ = @import("executor_metrics.zig");
     _ = @import("json_helpers.zig");
     _ = @import("client.zig");
@@ -140,4 +147,6 @@ test {
     _ = @import("crash_recovery_test.zig");
     _ = @import("handler_edge_test.zig");
     _ = @import("handler_negative_test.zig");
+    _ = @import("runner_security_test.zig");
+    _ = @import("client_credentials_test.zig");
 }

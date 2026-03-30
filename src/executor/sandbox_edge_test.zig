@@ -11,7 +11,7 @@
 //! - Atomic cancel propagation (T5 concurrency)
 //! - Concurrent lease touch from multiple threads (T5)
 //! - Mixed expired/active sessions — partial reap only clears expired (T3)
-//! - NetworkPolicy.allowlist falls back to deny_all (no args appended)
+//! - NetworkPolicy.registry_allowlist adds --share-net bwrap arg
 //! - incFailureMetric covers resource_kill, landlock_deny, lease_expired paths
 //! (cgroup guards + protocol/metric constants live in executor_limits_test.zig)
 
@@ -354,34 +354,32 @@ test "T3: SessionStore.reapExpired only removes expired sessions, leaves active 
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Network policy — T3 allowlist fallback, T2 edge cases
+// Network policy — T3 registry_allowlist adds --share-net, T2 edge cases
 // ─────────────────────────────────────────────────────────────────────────────
 
-test "T3: NetworkPolicy.allowlist does not append bwrap args (falls back to deny_all)" {
+test "T3: NetworkPolicy.registry_allowlist appends --share-net bwrap arg" {
     const alloc = std.testing.allocator;
     var argv = std.ArrayList([]const u8){};
     defer argv.deinit(alloc);
 
-    const config = network.NetworkConfig{ .policy = .allowlist };
-    try network.appendBwrapNetworkArgs(alloc, &argv, config);
+    const config = network.NetworkConfig{ .policy = .registry_allowlist };
+    try network.appendBwrapNetworkArgs(alloc, &argv, config, "test-exec-id");
 
-    // allowlist falls back to deny_all in v1 — no args added.
-    try std.testing.expectEqual(@as(usize, 0), argv.items.len);
+    // registry_allowlist adds --share-net to allow package registry access.
+    try std.testing.expectEqual(@as(usize, 1), argv.items.len);
+    try std.testing.expectEqualStrings("--share-net", argv.items[0]);
 }
 
-test "T2: NetworkConfig with empty allowed_destinations is representable" {
+test "T2: NetworkConfig deny_all policy is representable" {
     const config = network.NetworkConfig{
         .policy = .deny_all,
-        .allowed_destinations = &.{},
     };
-    try std.testing.expectEqual(@as(usize, 0), config.allowed_destinations.len);
     try std.testing.expectEqual(network.NetworkPolicy.deny_all, config.policy);
 }
 
-test "T2: NetworkConfig default is deny_all with no destinations" {
+test "T2: NetworkConfig default is deny_all" {
     const config = network.NetworkConfig{};
     try std.testing.expectEqual(network.NetworkPolicy.deny_all, config.policy);
-    try std.testing.expectEqual(@as(usize, 0), config.allowed_destinations.len);
 }
 
 // (cgroup platform guards, errorCodeForFailure, and protocol constants

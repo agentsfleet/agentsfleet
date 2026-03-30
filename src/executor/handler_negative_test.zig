@@ -13,7 +13,7 @@ const session_mod = @import("session.zig");
 const protocol = @import("protocol.zig");
 
 fn makeHandler(alloc: std.mem.Allocator, store: *session_mod.SessionStore) handler_mod.Handler {
-    return handler_mod.Handler.init(alloc, store, 30_000, .{});
+    return handler_mod.Handler.init(alloc, store, 30_000, .{}, .deny_all);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

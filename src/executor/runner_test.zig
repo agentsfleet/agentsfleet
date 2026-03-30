@@ -218,7 +218,7 @@ test "T3: handler StartStage without agent_config processes request" {
     const alloc = std.testing.allocator;
     var store = session_mod.SessionStore.init(alloc);
     defer store.deinit();
-    var handler = handler_mod.Handler.init(alloc, &store, 30_000, .{});
+    var handler = handler_mod.Handler.init(alloc, &store, 30_000, .{}, .deny_all);
 
     // First create a session.
     var create_params = std.json.Value{ .object = std.json.ObjectMap.init(alloc) };
@@ -262,7 +262,7 @@ test "T3: handler StartStage without execution_id returns invalid_params" {
     const alloc = std.testing.allocator;
     var store = session_mod.SessionStore.init(alloc);
     defer store.deinit();
-    var handler = handler_mod.Handler.init(alloc, &store, 30_000, .{});
+    var handler = handler_mod.Handler.init(alloc, &store, 30_000, .{}, .deny_all);
 
     var params = std.json.Value{ .object = std.json.ObjectMap.init(alloc) };
     defer params.object.deinit();
@@ -471,28 +471,4 @@ test "T7: incFailureMetric for all failure classes" {
     }
 }
 
-// ── T9: DRY — getFloat returns null for missing key ──────────────────
-test "T9: getFloat returns null for missing key" {
-    const alloc = std.testing.allocator;
-    var obj = std.json.Value{ .object = std.json.ObjectMap.init(alloc) };
-    defer obj.object.deinit();
-    try std.testing.expect(json.getFloat(obj, "nope") == null);
-}
-
-// ── T9: DRY — getFloat returns float for float value ─────────────────
-test "T9: getFloat returns float for float value" {
-    const alloc = std.testing.allocator;
-    var obj = std.json.Value{ .object = std.json.ObjectMap.init(alloc) };
-    defer obj.object.deinit();
-    try obj.object.put("temp", .{ .float = 0.42 });
-    try std.testing.expectEqual(@as(f64, 0.42), json.getFloat(obj, "temp").?);
-}
-
-// ── T9: DRY — getFloat returns null for string value ──────────────────
-test "T9: getFloat returns null for string value" {
-    const alloc = std.testing.allocator;
-    var obj = std.json.Value{ .object = std.json.ObjectMap.init(alloc) };
-    defer obj.object.deinit();
-    try obj.object.put("temp", .{ .string = "not a float" });
-    try std.testing.expect(json.getFloat(obj, "temp") == null);
-}
+// T9 and T8 OWASP security tests are in runner_security_test.zig.

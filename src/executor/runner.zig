@@ -157,9 +157,26 @@ fn executeInner(
     defer cfg.deinit();
     cfg.workspace_dir = workspace_path;
 
-    // Apply agent_config overrides (model, temperature, max_tokens).
+    // Apply agent_config overrides (model, temperature, max_tokens, api_key).
     if (agent_config) |ac| {
         applyAgentConfig(&cfg, ac);
+        // M16_003 §1.4: inject api_key from RPC payload into NullClaw Config.
+        // This ensures the executor never reads ANTHROPIC_API_KEY (or any other
+        // provider key) from the process environment.
+        if (json.getStr(ac, "api_key")) |key| {
+            injectProviderApiKey(&cfg, key) catch {
+                log.err("executor.runner.api_key_inject_failed error_code={s}", .{ERR_EXEC_RUNNER_INVALID_CONFIG});
+                return RunnerError.InvalidConfig;
+            };
+        }
+        // M16_003 §2: configure git credentials in workspace for github_token.
+        if (json.getStr(ac, "github_token")) |token| {
+            configureGitCredentials(alloc, workspace_path, token) catch |err| {
+                log.warn("executor.runner.git_cred_configure_failed err={s}", .{@errorName(err)});
+                // Non-fatal: git operations will fail at push time if token is needed
+                // but missing. The worker re-requests before PR creation (§2.3).
+            };
+        }
     }
 
     // 2. Build provider.
@@ -230,6 +247,97 @@ fn applyAgentConfig(cfg: *Config, ac: std.json.Value) void {
     if (json.getInt(ac, "max_tokens")) |mt| cfg.max_tokens = @intCast(mt);
     // system_prompt is not a Config field — it's passed via the message.
     // The agent receives it as part of the composed message from composeMessage().
+}
+
+/// Inject an LLM API key into NullClaw Config for cfg.default_provider (M16_003 §1.4).
+///
+/// Strategy:
+/// 1. Scan cfg.providers for an entry matching cfg.default_provider.
+///    If found, overwrite its api_key using cfg.allocator (arena-backed).
+///    The old pointer remains in the arena and is freed with it on cfg.deinit().
+/// 2. If no matching entry exists, prepend a new ProviderEntry to cfg.providers.
+///    Both the new entry slice and its api_key string are allocated from cfg.allocator,
+///    so cfg.deinit() (arena.deinit) frees them automatically.
+///
+/// After this call, RuntimeProviderBundle.init() finds the injected key via
+/// resolveApiKeyFromConfig() and never falls through to the process environment.
+fn injectProviderApiKey(cfg: *Config, api_key: []const u8) !void {
+    const owned_key = try cfg.allocator.dupe(u8, api_key);
+
+    // Try to update an existing provider entry.
+    for (@constCast(cfg.providers)) |*entry| {
+        if (std.mem.eql(u8, entry.name, cfg.default_provider)) {
+            // Old api_key lives in the arena — overwriting the pointer is safe.
+            entry.api_key = owned_key;
+            return;
+        }
+    }
+
+    // No existing entry for default_provider — prepend one to the slice.
+    // cfg.allocator is the arena so all allocations are freed by cfg.deinit().
+    const nullclaw_config = @import("nullclaw").config;
+    const new_providers = try cfg.allocator.alloc(nullclaw_config.ProviderEntry, cfg.providers.len + 1);
+    new_providers[0] = .{
+        .name = cfg.default_provider,
+        .api_key = owned_key,
+    };
+    @memcpy(new_providers[1..], cfg.providers);
+    // Replace the slice pointer. The old slice is still in the arena and
+    // will be freed when the arena deinits — no double-free, no leak.
+    cfg.providers = new_providers;
+}
+
+/// Write a git credential config inside the workspace so that git push and
+/// GitHub API calls can authenticate using the installation token (M16_003 §2).
+///
+/// Writes `.git/config` credential helper pointing to a per-workspace credential
+/// script, and the credential value itself. The workspace is a temporary worktree
+/// that is deleted after the run, so these credentials have run-scoped lifetime.
+fn configureGitCredentials(
+    alloc: std.mem.Allocator,
+    workspace_path: []const u8,
+    github_token: []const u8,
+) !void {
+    // Write the credentials file inside .git/ so it is never exposed to the
+    // working tree (agent diffs, file listings, LLM context).
+    // Format: https://x-access-token:{token}@github.com
+    const creds_path = try std.fs.path.join(alloc, &.{ workspace_path, ".git", "credentials" });
+    defer alloc.free(creds_path);
+
+    const creds_content = try std.fmt.allocPrint(
+        alloc,
+        "https://x-access-token:{s}@github.com\n",
+        .{github_token},
+    );
+    defer alloc.free(creds_content);
+
+    const file = try std.fs.createFileAbsolute(creds_path, .{ .truncate = true, .mode = 0o600 });
+    defer file.close();
+    try file.writeAll(creds_content);
+
+    // Configure git to use the credentials file.
+    // We write into .git/config (local to the workspace) so it does not leak
+    // to the system git config.
+    const git_config_path = try std.fs.path.join(alloc, &.{ workspace_path, ".git", "config" });
+    defer alloc.free(git_config_path);
+
+    // Append the credential store config if the file exists; otherwise skip.
+    // The worktree .git/config is managed by libgit2 — we append our section.
+    const git_config_file = std.fs.openFileAbsolute(git_config_path, .{ .mode = .read_write }) catch return;
+    defer git_config_file.close();
+
+    // Quote creds_path in the git config value so paths with spaces parse correctly.
+    const cred_section = try std.fmt.allocPrint(
+        alloc,
+        "\n[credential]\n\thelper = store --file=\"{s}\"\n",
+        .{creds_path},
+    );
+    defer alloc.free(cred_section);
+
+    try git_config_file.seekFromEnd(0);
+    try git_config_file.writeAll(cred_section);
+
+    log.debug("executor.runner.git_cred_configured workspace={s}", .{workspace_path});
 }
 
 /// Build tools from the RPC tools array, or fall back to allTools.
@@ -370,95 +478,4 @@ fn elapsedSeconds(start_ms: i64) u64 {
     return @as(u64, @intCast(@max(0, elapsed_ms))) / 1000;
 }
 
-// ── Tests ────────────────────────────────────────────────────────────────────
-
-test "mapError covers all RunnerError variants" {
-    try std.testing.expectEqual(types.FailureClass.startup_posture, mapError(RunnerError.InvalidConfig));
-    try std.testing.expectEqual(types.FailureClass.startup_posture, mapError(RunnerError.AgentInitFailed));
-    try std.testing.expectEqual(types.FailureClass.executor_crash, mapError(RunnerError.AgentRunFailed));
-    try std.testing.expectEqual(types.FailureClass.timeout_kill, mapError(RunnerError.Timeout));
-    try std.testing.expectEqual(types.FailureClass.oom_kill, mapError(RunnerError.OutOfMemory));
-}
-
-test "mapError returns executor_crash for unknown errors" {
-    try std.testing.expectEqual(types.FailureClass.executor_crash, mapError(error.Unexpected));
-}
-
-test "composeMessage returns original when context is null" {
-    const alloc = std.testing.allocator;
-    const msg = "Hello agent";
-    const composed = try composeMessage(alloc, msg, null);
-    // When no context, returns the original pointer (no allocation).
-    try std.testing.expectEqualStrings("Hello agent", composed);
-}
-
-test "composeMessage appends context fields" {
-    const alloc = std.testing.allocator;
-    var ctx = std.json.Value{ .object = std.json.ObjectMap.init(alloc) };
-    defer ctx.object.deinit();
-    try ctx.object.put("spec_content", .{ .string = "Feature X spec" });
-    try ctx.object.put("plan_content", .{ .string = "Step 1, Step 2" });
-
-    const composed = try composeMessage(alloc, "Analyze this", ctx);
-    defer alloc.free(composed);
-
-    // Should contain the original message.
-    try std.testing.expect(std.mem.indexOf(u8, composed, "Analyze this") != null);
-    // Should contain the spec section.
-    try std.testing.expect(std.mem.indexOf(u8, composed, "## Spec") != null);
-    try std.testing.expect(std.mem.indexOf(u8, composed, "Feature X spec") != null);
-    // Should contain the plan section.
-    try std.testing.expect(std.mem.indexOf(u8, composed, "## Plan") != null);
-    try std.testing.expect(std.mem.indexOf(u8, composed, "Step 1, Step 2") != null);
-}
-
-test "composeMessage skips empty context fields" {
-    const alloc = std.testing.allocator;
-    var ctx = std.json.Value{ .object = std.json.ObjectMap.init(alloc) };
-    defer ctx.object.deinit();
-    try ctx.object.put("spec_content", .{ .string = "" });
-    try ctx.object.put("plan_content", .{ .string = "Plan data" });
-
-    const composed = try composeMessage(alloc, "msg", ctx);
-    defer alloc.free(composed);
-
-    // Empty spec_content should be skipped.
-    try std.testing.expect(std.mem.indexOf(u8, composed, "## Spec") == null);
-    // Plan should be present.
-    try std.testing.expect(std.mem.indexOf(u8, composed, "## Plan") != null);
-}
-
-test "composeMessage with non-object context returns original" {
-    const alloc = std.testing.allocator;
-    const composed = try composeMessage(alloc, "msg", .{ .integer = 42 });
-    try std.testing.expectEqualStrings("msg", composed);
-}
-
-test "execute returns failure for null message" {
-    const alloc = std.testing.allocator;
-    const result = execute(alloc, "/tmp/ws", null, null, null, null);
-    try std.testing.expect(!result.exit_ok);
-    try std.testing.expect(result.failure != null);
-    try std.testing.expectEqual(types.FailureClass.startup_posture, result.failure.?);
-}
-
-test "errorCodeForFailure returns correct codes" {
-    try std.testing.expectEqualStrings("UZ-EXEC-012", errorCodeForFailure(.startup_posture));
-    try std.testing.expectEqualStrings("UZ-EXEC-003", errorCodeForFailure(.timeout_kill));
-    try std.testing.expectEqualStrings("UZ-EXEC-004", errorCodeForFailure(.oom_kill));
-    try std.testing.expectEqualStrings("UZ-EXEC-013", errorCodeForFailure(.executor_crash));
-}
-
-test "incFailureMetric increments oom counter" {
-    const before = executor_metrics.executorSnapshot().oom_kills_total;
-    incFailureMetric(.oom_kill);
-    const after = executor_metrics.executorSnapshot().oom_kills_total;
-    try std.testing.expect(after > before);
-}
-
-test "incFailureMetric increments timeout counter" {
-    const before = executor_metrics.executorSnapshot().timeout_kills_total;
-    incFailureMetric(.timeout_kill);
-    const after = executor_metrics.executorSnapshot().timeout_kills_total;
-    try std.testing.expect(after > before);
-}
+// Tests live in runner_test.zig and runner_security_test.zig.

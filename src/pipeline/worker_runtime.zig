@@ -9,6 +9,8 @@ pub const WorkerError = error{
     InvalidPipelineRole,
     InvalidPipelineProfile,
     SideEffectClaimedNoResult,
+    /// GitHub App installation token request failed (UZ-CRED-002). Run → BLOCKED.
+    CredentialDenied,
 };
 
 pub fn ensureBeforeDeadline(deadline_ms: i64) WorkerError!void {

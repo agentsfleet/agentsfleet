@@ -119,13 +119,19 @@ pub const ExecutorClient = struct {
         failure: ?types.FailureClass,
     };
 
-    /// Agent configuration for StartStage payload (M12_003).
+    /// Agent configuration for StartStage payload (M12_003, M16_003).
     pub const AgentConfig = struct {
         model: []const u8 = "",
         provider: []const u8 = "anthropic",
         system_prompt: []const u8 = "",
         temperature: f64 = 0.7,
         max_tokens: u64 = 16384,
+        /// LLM provider API key fetched from vault.secrets per workspace (M16_003 §1).
+        /// Injected into NullClaw Config by the executor runner — never read from environ.
+        api_key: []const u8 = "",
+        /// GitHub App installation token for branch push and PR creation (M16_003 §2).
+        /// Per-run, held in worker memory only, never persisted.
+        github_token: []const u8 = "",
     };
 
     /// Full StartStage payload carrying agent execution context.
@@ -163,6 +169,13 @@ pub const ExecutorClient = struct {
         try ac.object.put("system_prompt", .{ .string = payload.agent_config.system_prompt });
         try ac.object.put("temperature", .{ .float = payload.agent_config.temperature });
         try ac.object.put("max_tokens", .{ .integer = @intCast(payload.agent_config.max_tokens) });
+        // M16_003 §1: pass workspace LLM API key; omit field when empty so executor
+        // falls back to its own env (dev mode).
+        if (payload.agent_config.api_key.len > 0)
+            try ac.object.put("api_key", .{ .string = payload.agent_config.api_key });
+        // M16_003 §2: pass GitHub installation token; omit when empty.
+        if (payload.agent_config.github_token.len > 0)
+            try ac.object.put("github_token", .{ .string = payload.agent_config.github_token });
         try params.object.put("agent_config", ac);
 
         // Attach optional tools array and context object.
@@ -341,3 +354,4 @@ test "classifyError maps all known protocol error codes" {
     try std.testing.expectEqual(types.FailureClass.executor_crash, classifyError(protocol.ErrorCode.execution_failed));
 }
 
+// M16_003 §1/§2 credential field tests live in client_credentials_test.zig.

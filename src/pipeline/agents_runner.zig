@@ -91,6 +91,14 @@ fn buildRestrictedTools(
     }
 
     if (opts.include_shell) {
+        // Read EXECUTOR_NETWORK_POLICY to determine whether the bwrap sandbox
+        // should retain host network access for package registry installs.
+        const net_raw = std.process.getEnvVarOwned(alloc, "EXECUTOR_NETWORK_POLICY") catch null;
+        defer if (net_raw) |v| alloc.free(v);
+        const share_net = if (net_raw) |v|
+            std.ascii.eqlIgnoreCase(v, "registry_allowlist")
+        else
+            false;
         try appendTool(alloc, &list, sandbox_shell_tool.SandboxShellTool{
             .workspace_dir = workspace_path,
             .allowed_paths = cfg.autonomy.allowed_paths,
@@ -106,6 +114,7 @@ fn buildRestrictedTools(
             .stage_id = exec_ctx.stage_id,
             .role_id = exec_ctx.role_id,
             .skill_id = exec_ctx.skill_id,
+            .share_net = share_net,
         });
     }
 

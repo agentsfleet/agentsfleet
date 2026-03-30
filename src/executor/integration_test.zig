@@ -22,7 +22,7 @@ test "integration: full RPC lifecycle over Unix socket" {
     var store = session_mod.SessionStore.init(alloc);
     defer store.deinit();
 
-    var rpc_handler = handler_mod.Handler.init(alloc, &store, 30_000, .{});
+    var rpc_handler = handler_mod.Handler.init(alloc, &store, 30_000, .{}, .deny_all);
 
     // Wrap handler for transport.
     const Wrapper = struct {
@@ -162,7 +162,7 @@ test "integration: unknown method returns method_not_found" {
     var store = session_mod.SessionStore.init(alloc);
     defer store.deinit();
 
-    var rpc_handler = handler_mod.Handler.init(alloc, &store, 30_000, .{});
+    var rpc_handler = handler_mod.Handler.init(alloc, &store, 30_000, .{}, .deny_all);
 
     // Directly test handler without socket.
     const req_json = try protocol.serializeRequest(alloc, 99, "BogusMethod", null);
@@ -185,7 +185,7 @@ test "integration: create_execution without params returns invalid_params" {
     var store = session_mod.SessionStore.init(alloc);
     defer store.deinit();
 
-    var rpc_handler = handler_mod.Handler.init(alloc, &store, 30_000, .{});
+    var rpc_handler = handler_mod.Handler.init(alloc, &store, 30_000, .{}, .deny_all);
 
     const req_json = try protocol.serializeRequest(alloc, 1, protocol.Method.create_execution, null);
     defer alloc.free(req_json);
@@ -207,7 +207,7 @@ test "integration: start_stage with invalid execution_id returns error" {
     var store = session_mod.SessionStore.init(alloc);
     defer store.deinit();
 
-    var rpc_handler = handler_mod.Handler.init(alloc, &store, 30_000, .{});
+    var rpc_handler = handler_mod.Handler.init(alloc, &store, 30_000, .{}, .deny_all);
 
     var params = std.json.Value{ .object = std.json.ObjectMap.init(alloc) };
     defer params.object.deinit();

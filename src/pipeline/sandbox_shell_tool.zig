@@ -54,6 +54,10 @@ pub const SandboxShellTool = struct {
     role_id: []const u8 = "",
     skill_id: []const u8 = "",
     policy: ?*const SecurityPolicy = null,
+    /// When true, passes --share-net to bwrap so the sandbox retains host network
+    /// access (used with EXECUTOR_NETWORK_POLICY=registry_allowlist for package
+    /// manager installs). Default false = full network isolation via --unshare-all.
+    share_net: bool = false,
 
     pub const tool_name = "shell";
     pub const tool_description = "Execute a shell command in the workspace directory";
@@ -260,6 +264,9 @@ pub const SandboxShellTool = struct {
 
         if (self.sandbox.backend == .bubblewrap) {
             try argv.appendSlice(allocator, &.{ "bwrap", "--die-with-parent", "--unshare-all", "--dev", "/dev", "--proc", "/proc", "--tmpfs", "/tmp" });
+            // --share-net re-enables host network access after --unshare-all.
+            // Only set when the operator has enabled registry_allowlist policy.
+            if (self.share_net) try argv.append(allocator, "--share-net");
             try appendBindIfExists(allocator, &argv, "/usr", true);
             try appendBindIfExists(allocator, &argv, "/bin", true);
             try appendBindIfExists(allocator, &argv, "/sbin", true);
@@ -387,4 +394,79 @@ fn appendBindIfExists(
 test "effectiveTimeoutNs respects nearest deadline" {
     const deadline_ms = std.time.milliTimestamp() + 100;
     try std.testing.expect(effectiveTimeoutNs(5 * std.time.ns_per_s, deadline_ms) <= 100 * std.time.ns_per_ms);
+}
+
+// ── Network policy wiring — T1/T2 ────────────────────────────────────────────
+
+test "T1: buildArgv with bubblewrap and share_net=false does not include --share-net" {
+    if (builtin.os.tag != .linux) return error.SkipZigTest;
+    const alloc = std.testing.allocator;
+
+    var tool_instance = SandboxShellTool{
+        .workspace_dir = "/tmp",
+        .sandbox = .{ .backend = .bubblewrap },
+        .share_net = false,
+    };
+    const argv = try tool_instance.buildArgv(alloc, "/tmp", "echo hi");
+    defer alloc.free(argv);
+
+    // --share-net must NOT appear when deny_all (default).
+    for (argv) |arg| {
+        try std.testing.expect(!std.mem.eql(u8, arg, "--share-net"));
+    }
+    // --unshare-all must always be present for isolation.
+    var found_unshare = false;
+    for (argv) |arg| {
+        if (std.mem.eql(u8, arg, "--unshare-all")) found_unshare = true;
+    }
+    try std.testing.expect(found_unshare);
+}
+
+test "T1: buildArgv with bubblewrap and share_net=true includes --share-net after --unshare-all" {
+    if (builtin.os.tag != .linux) return error.SkipZigTest;
+    const alloc = std.testing.allocator;
+
+    var tool_instance = SandboxShellTool{
+        .workspace_dir = "/tmp",
+        .sandbox = .{ .backend = .bubblewrap },
+        .share_net = true,
+    };
+    const argv = try tool_instance.buildArgv(alloc, "/tmp", "echo hi");
+    defer alloc.free(argv);
+
+    // Both --unshare-all and --share-net must be present.
+    var idx_unshare: ?usize = null;
+    var idx_share_net: ?usize = null;
+    for (argv, 0..) |arg, i| {
+        if (std.mem.eql(u8, arg, "--unshare-all")) idx_unshare = i;
+        if (std.mem.eql(u8, arg, "--share-net")) idx_share_net = i;
+    }
+    try std.testing.expect(idx_unshare != null);
+    try std.testing.expect(idx_share_net != null);
+    // --share-net must appear after --unshare-all so bwrap re-enables network.
+    try std.testing.expect(idx_share_net.? > idx_unshare.?);
+}
+
+test "T2: SandboxShellTool share_net defaults to false" {
+    const tool_instance = SandboxShellTool{ .workspace_dir = "/tmp" };
+    try std.testing.expect(!tool_instance.share_net);
+}
+
+test "T2: buildArgv with host backend never includes bwrap args" {
+    const alloc = std.testing.allocator;
+
+    var tool_instance = SandboxShellTool{
+        .workspace_dir = "/tmp",
+        .sandbox = .{ .backend = .host },
+        .share_net = true, // irrelevant for host backend
+    };
+    const argv = try tool_instance.buildArgv(alloc, "/tmp", "echo hi");
+    defer alloc.free(argv);
+
+    // No bwrap args for host backend regardless of share_net.
+    for (argv) |arg| {
+        try std.testing.expect(!std.mem.eql(u8, arg, "bwrap"));
+        try std.testing.expect(!std.mem.eql(u8, arg, "--share-net"));
+        try std.testing.expect(!std.mem.eql(u8, arg, "--unshare-all"));
+    }
 }

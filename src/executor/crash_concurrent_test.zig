@@ -35,7 +35,7 @@ test "T5: concurrent CreateExecution from 8 workers produces unique execution ID
     var store = session_mod.SessionStore.init(alloc);
     defer store.deinit();
 
-    var rpc_handler = handler_mod.Handler.init(alloc, &store, 30_000, .{});
+    var rpc_handler = handler_mod.Handler.init(alloc, &store, 30_000, .{}, .deny_all);
 
     const N = 8;
     var ids: [N][32]u8 = undefined;
@@ -150,7 +150,7 @@ test "T5: 10 parallel worker lifecycle runs leave the session store empty" {
     var store = session_mod.SessionStore.init(alloc);
     defer store.deinit();
 
-    var rpc_handler = handler_mod.Handler.init(alloc, &store, 30_000, .{});
+    var rpc_handler = handler_mod.Handler.init(alloc, &store, 30_000, .{}, .deny_all);
 
     const N = 10;
 
@@ -288,13 +288,13 @@ test "T3: executor restart: new SessionStore starts empty regardless of prior se
 
     // First store with sessions.
     var store1 = session_mod.SessionStore.init(alloc);
-    const rpc_handler1 = handler_mod.Handler.init(alloc, &store1, 30_000, .{});
+    const rpc_handler1 = handler_mod.Handler.init(alloc, &store1, 30_000, .{}, .deny_all);
     _ = rpc_handler1;
 
     var create_p = std.json.Value{ .object = std.json.ObjectMap.init(alloc) };
     defer create_p.object.deinit();
     try create_p.object.put("workspace_path", .{ .string = "/tmp/ws" });
-    var handler1 = handler_mod.Handler.init(alloc, &store1, 30_000, .{});
+    var handler1 = handler_mod.Handler.init(alloc, &store1, 30_000, .{}, .deny_all);
     const req = try protocol.serializeRequest(alloc, 1, protocol.Method.create_execution, create_p);
     defer alloc.free(req);
     const resp = try handler1.handleFrame(alloc, req);

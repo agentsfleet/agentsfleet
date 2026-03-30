@@ -101,6 +101,9 @@ pub const ERR_EXEC_RUNNER_AGENT_INIT = "UZ-EXEC-012";
 pub const ERR_EXEC_RUNNER_AGENT_RUN = "UZ-EXEC-013";
 pub const ERR_EXEC_RUNNER_INVALID_CONFIG = "UZ-EXEC-014";
 
+pub const ERR_CRED_ANTHROPIC_KEY_MISSING = "UZ-CRED-001";
+pub const ERR_CRED_GITHUB_TOKEN_FAILED = "UZ-CRED-002";
+
 pub fn docsRef(code: []const u8) struct { base: []const u8, code: []const u8 } {
     return .{
         .base = ERROR_DOCS_BASE,
@@ -139,6 +142,10 @@ pub fn hint(code: []const u8) ?[]const u8 {
         return "Agent exhausted all repair attempts without passing gates. Review gate results for the repeated failure pattern.";
     if (std.mem.eql(u8, code, ERR_GATE_PERSIST_FAILED))
         return "Gate results could not be written to the database. Check DB connectivity and that the gate_results table exists.";
+    if (std.mem.eql(u8, code, ERR_CRED_ANTHROPIC_KEY_MISSING))
+        return "Workspace LLM API key not found in vault.secrets (key: anthropic_api_key). Set it via the workspace credentials API. Executor fell back to its process environment — check ANTHROPIC_API_KEY on the worker if this is dev mode.";
+    if (std.mem.eql(u8, code, ERR_CRED_GITHUB_TOKEN_FAILED))
+        return "GitHub App installation token request failed. Check GITHUB_APP_ID and GITHUB_APP_PRIVATE_KEY, verify the installation_id is valid, and inspect GitHub API status.";
     return null;
 }
 
@@ -158,4 +165,46 @@ test "hint returns actionable text for known startup codes" {
 test "hint returns null for codes without hints" {
     try std.testing.expectEqual(@as(?[]const u8, null), hint(ERR_UUIDV7_CANONICAL_FORMAT));
     try std.testing.expectEqual(@as(?[]const u8, null), hint(ERR_RUN_NOT_FOUND));
+}
+
+// ── T8 — OWASP Agent Security: credential error codes (M16_003) ──────
+
+// T8.1 — M16_003 credential error codes exist and follow UZ-CRED- naming.
+test "T8: ERR_CRED_* codes follow UZ-CRED- prefix naming (M16_003)" {
+    try std.testing.expect(std.mem.startsWith(u8, ERR_CRED_ANTHROPIC_KEY_MISSING, "UZ-CRED-"));
+    try std.testing.expect(std.mem.startsWith(u8, ERR_CRED_GITHUB_TOKEN_FAILED, "UZ-CRED-"));
+}
+
+// T8.2 — Both credential codes have distinct values (no code collision).
+test "T8: ERR_CRED_ANTHROPIC_KEY_MISSING and ERR_CRED_GITHUB_TOKEN_FAILED are distinct (M16_003)" {
+    try std.testing.expect(!std.mem.eql(u8, ERR_CRED_ANTHROPIC_KEY_MISSING, ERR_CRED_GITHUB_TOKEN_FAILED));
+}
+
+// T8.3 — Credential error hints exist and are actionable but do not expose raw secret values.
+// The hint must tell the operator WHERE to look (vault item name, env var name) but must
+// never contain a literal credential value, a resolved secret, or a raw token prefix.
+test "T8: credential error hints are actionable and contain no raw secret values (M16_003)" {
+    const anthropic_hint = hint(ERR_CRED_ANTHROPIC_KEY_MISSING).?;
+    try std.testing.expect(anthropic_hint.len > 0);
+    // Must NOT contain a literal Anthropic key prefix (sk-ant- is a live credential prefix).
+    try std.testing.expect(std.mem.indexOf(u8, anthropic_hint, "sk-ant-api") == null);
+    // Must NOT contain a literal Bearer token header value.
+    try std.testing.expect(std.mem.indexOf(u8, anthropic_hint, "Bearer ") == null);
+
+    const github_hint = hint(ERR_CRED_GITHUB_TOKEN_FAILED).?;
+    try std.testing.expect(github_hint.len > 0);
+    // Must NOT contain a raw GitHub installation token prefix.
+    try std.testing.expect(std.mem.indexOf(u8, github_hint, "ghs_") == null);
+    try std.testing.expect(std.mem.indexOf(u8, github_hint, "ghp_") == null);
+}
+
+// T8.4 — ERR_CRED_GITHUB_TOKEN_FAILED hint references GitHub App auth (not PAT fallback).
+// Guards against a hint that silently suggests a less-secure auth method.
+test "T8: ERR_CRED_GITHUB_TOKEN_FAILED hint references GitHub App — no PAT fallback (M16_003)" {
+    const h = hint(ERR_CRED_GITHUB_TOKEN_FAILED).?;
+    // Must mention GitHub App concepts (GITHUB_APP_ID, private key, or installation).
+    const mentions_app = std.mem.indexOf(u8, h, "App") != null or
+        std.mem.indexOf(u8, h, "installation") != null or
+        std.mem.indexOf(u8, h, "GITHUB_APP") != null;
+    try std.testing.expect(mentions_app);
 }

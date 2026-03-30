@@ -17,6 +17,7 @@ const prompt_events = @import("../observability/prompt_events.zig");
 const posthog_events = @import("../observability/posthog_events.zig");
 const http_common = @import("../http/handlers/common.zig");
 const obs_log = @import("../observability/logging.zig");
+const secrets = @import("../secrets/crypto.zig");
 const log = std.log.scoped(.worker);
 
 pub const ProcessConfig = struct {
@@ -136,6 +137,18 @@ pub fn processNextRun(
         .ts_ms = std.time.milliTimestamp(),
     });
 
+    // M16_003 §2: load GitHub App installation ID for this workspace.
+    // Soft failure: if not found, pass "" — worker skips token fetch and
+    // git push will fail only if the stage actually needs credentials.
+    const github_installation_id: []const u8 = secrets.load(claim_alloc, conn, workspace_id, "github_app_installation_id") catch |err| blk: {
+        if (err == error.NotFound) {
+            log.debug("pipeline.no_github_installation workspace_id={s}", .{workspace_id});
+            break :blk "";
+        }
+        log.warn("pipeline.github_installation_load_fail workspace_id={s} err={s}", .{ workspace_id, @errorName(err) });
+        break :blk "";
+    };
+
     var run_failed = false;
     worker_stage_executor.executeRun(
         alloc,
@@ -158,6 +171,8 @@ pub fn processNextRun(
             .spec_path = spec_path,
             .attempt = attempt,
             .agent_id = effective_profile.agent_id,
+            // M16_003 §2: installation ID drives per-run token fetch in executeRun.
+            .github_installation_id = github_installation_id,
         },
         tenant_limiter,
     ) catch |err| {

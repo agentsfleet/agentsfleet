@@ -29,7 +29,7 @@ const executor_metrics = @import("executor_metrics.zig");
 // ─────────────────────────────────────────────────────────────────────────────
 
 fn makeHandler(alloc: std.mem.Allocator, store: *session_mod.SessionStore) handler_mod.Handler {
-    return handler_mod.Handler.init(alloc, store, 30_000, .{});
+    return handler_mod.Handler.init(alloc, store, 30_000, .{}, .deny_all);
 }
 
 fn createSession(alloc: std.mem.Allocator, h: *handler_mod.Handler) ![]u8 {
@@ -89,7 +89,7 @@ test "T3: StartStage on lease-expired session returns lease_expired" {
     try std.testing.expect(s.isLeaseExpired());
 
     // Now try to start a stage on the expired session.
-    var h = handler_mod.Handler.init(page, &store, 1, .{});
+    var h = handler_mod.Handler.init(page, &store, 1, .{}, .deny_all);
 
     var p = std.json.Value{ .object = std.json.ObjectMap.init(page) };
     defer p.object.deinit();

@@ -10,6 +10,7 @@ const types = @import("types.zig");
 const session_mod = @import("session.zig");
 const executor_metrics = @import("executor_metrics.zig");
 const runner = @import("runner.zig");
+const network = @import("network.zig");
 
 const log = std.log.scoped(.executor_handler);
 
@@ -17,6 +18,7 @@ pub const Handler = struct {
     store: *session_mod.SessionStore,
     lease_timeout_ms: u64,
     resource_limits: types.ResourceLimits,
+    network_policy: network.NetworkPolicy,
     alloc: std.mem.Allocator,
 
     pub fn init(
@@ -24,11 +26,13 @@ pub const Handler = struct {
         store: *session_mod.SessionStore,
         lease_timeout_ms: u64,
         resource_limits: types.ResourceLimits,
+        net_policy: network.NetworkPolicy,
     ) Handler {
         return .{
             .store = store,
             .lease_timeout_ms = lease_timeout_ms,
             .resource_limits = resource_limits,
+            .network_policy = net_policy,
             .alloc = alloc,
         };
     }
@@ -135,7 +139,7 @@ pub const Handler = struct {
         const context = getObjectParam(p, "context");
 
         const model_name = if (agent_config) |ac| json.getStr(ac, "model") orelse "default" else "default";
-        log.info("executor.runner.start execution_id={s} stage_id={s} role_id={s} model={s}", .{ &hex, stage_id, role_id, model_name });
+        log.info("executor.runner.start execution_id={s} stage_id={s} role_id={s} model={s} network_policy={s}", .{ &hex, stage_id, role_id, model_name, @tagName(self.network_policy) });
 
         // Invoke NullClaw runner — this blocks until agent execution completes.
         const result = runner.execute(
@@ -317,7 +321,7 @@ test "handler dispatch returns error for malformed JSON frame" {
     const alloc = std.testing.allocator;
     var store = session_mod.SessionStore.init(alloc);
     defer store.deinit();
-    var handler = Handler.init(alloc, &store, 30_000, .{});
+    var handler = Handler.init(alloc, &store, 30_000, .{}, .deny_all);
 
     const resp_json = try handler.handleFrame(alloc, "{{bad json");
     defer alloc.free(resp_json);
@@ -332,7 +336,7 @@ test "handler dispatch returns method_not_found for unknown method" {
     const alloc = std.testing.allocator;
     var store = session_mod.SessionStore.init(alloc);
     defer store.deinit();
-    var handler = Handler.init(alloc, &store, 30_000, .{});
+    var handler = Handler.init(alloc, &store, 30_000, .{}, .deny_all);
 
     const req = try protocol.serializeRequest(alloc, 1, "NoSuchMethod", null);
     defer alloc.free(req);
@@ -349,7 +353,7 @@ test "handler CreateExecution returns execution_id" {
     const alloc = std.testing.allocator;
     var store = session_mod.SessionStore.init(alloc);
     defer store.deinit();
-    var handler = Handler.init(alloc, &store, 30_000, .{});
+    var handler = Handler.init(alloc, &store, 30_000, .{}, .deny_all);
 
     var params = std.json.Value{ .object = std.json.ObjectMap.init(alloc) };
     defer params.object.deinit();
@@ -378,7 +382,7 @@ test "handler CreateExecution without params returns invalid_params" {
     const alloc = std.testing.allocator;
     var store = session_mod.SessionStore.init(alloc);
     defer store.deinit();
-    var handler = Handler.init(alloc, &store, 30_000, .{});
+    var handler = Handler.init(alloc, &store, 30_000, .{}, .deny_all);
 
     const req = try protocol.serializeRequest(alloc, 1, protocol.Method.create_execution, null);
     defer alloc.free(req);
@@ -395,7 +399,7 @@ test "handler StreamEvents returns empty array" {
     const alloc = std.testing.allocator;
     var store = session_mod.SessionStore.init(alloc);
     defer store.deinit();
-    var handler = Handler.init(alloc, &store, 30_000, .{});
+    var handler = Handler.init(alloc, &store, 30_000, .{}, .deny_all);
 
     const req = try protocol.serializeRequest(alloc, 1, protocol.Method.stream_events, null);
     defer alloc.free(req);
@@ -412,7 +416,7 @@ test "handler CreateExecution with unicode correlation fields" {
     const alloc = std.testing.allocator;
     var store = session_mod.SessionStore.init(alloc);
     defer store.deinit();
-    var handler = Handler.init(alloc, &store, 30_000, .{});
+    var handler = Handler.init(alloc, &store, 30_000, .{}, .deny_all);
 
     var params = std.json.Value{ .object = std.json.ObjectMap.init(alloc) };
     defer params.object.deinit();
@@ -436,7 +440,7 @@ test "handler StartStage with unknown execution_id returns execution_failed" {
     const alloc = std.testing.allocator;
     var store = session_mod.SessionStore.init(alloc);
     defer store.deinit();
-    var handler = Handler.init(alloc, &store, 30_000, .{});
+    var handler = Handler.init(alloc, &store, 30_000, .{}, .deny_all);
 
     const fake_id = types.executionIdHex(types.generateExecutionId());
     var params = std.json.Value{ .object = std.json.ObjectMap.init(alloc) };
@@ -460,7 +464,7 @@ test "handler DestroyExecution with unknown execution_id returns error" {
     const alloc = std.testing.allocator;
     var store = session_mod.SessionStore.init(alloc);
     defer store.deinit();
-    var handler = Handler.init(alloc, &store, 30_000, .{});
+    var handler = Handler.init(alloc, &store, 30_000, .{}, .deny_all);
 
     const fake_id = types.executionIdHex(types.generateExecutionId());
     var params = std.json.Value{ .object = std.json.ObjectMap.init(alloc) };
@@ -483,7 +487,7 @@ test "handler errorResponse output is valid parseable JSON-RPC" {
     const alloc = std.testing.allocator;
     var store = session_mod.SessionStore.init(alloc);
     defer store.deinit();
-    var handler = Handler.init(alloc, &store, 30_000, .{});
+    var handler = Handler.init(alloc, &store, 30_000, .{}, .deny_all);
 
     // Trigger a known error path.
     const resp_json = try handler.handleFrame(alloc, "{}");
@@ -512,7 +516,7 @@ test "handler CreateExecution accepts path traversal without crashing" {
     const alloc = std.testing.allocator;
     var store = session_mod.SessionStore.init(alloc);
     defer store.deinit();
-    var handler = Handler.init(alloc, &store, 30_000, .{});
+    var handler = Handler.init(alloc, &store, 30_000, .{}, .deny_all);
 
     var params = std.json.Value{ .object = std.json.ObjectMap.init(alloc) };
     defer params.object.deinit();
@@ -535,7 +539,7 @@ test "handler 100 create+destroy cycles no leak" {
     const alloc = std.testing.allocator;
     var store = session_mod.SessionStore.init(alloc);
     defer store.deinit();
-    var handler = Handler.init(alloc, &store, 30_000, .{});
+    var handler = Handler.init(alloc, &store, 30_000, .{}, .deny_all);
 
     for (0..100) |i| {
         // Create.
@@ -725,7 +729,7 @@ test "handler GetUsage returns zero for fresh session" {
     const alloc = std.testing.allocator;
     var store = session_mod.SessionStore.init(alloc);
     defer store.deinit();
-    var handler = Handler.init(alloc, &store, 30_000, .{});
+    var handler = Handler.init(alloc, &store, 30_000, .{}, .deny_all);
 
     // Create a session via handler.
     var cparams = std.json.Value{ .object = std.json.ObjectMap.init(alloc) };
@@ -774,7 +778,7 @@ test "handler Heartbeat refreshes lease" {
     const alloc = std.testing.allocator;
     var store = session_mod.SessionStore.init(alloc);
     defer store.deinit();
-    var handler = Handler.init(alloc, &store, 30_000, .{});
+    var handler = Handler.init(alloc, &store, 30_000, .{}, .deny_all);
 
     // Create a session via handler.
     var cparams = std.json.Value{ .object = std.json.ObjectMap.init(alloc) };
