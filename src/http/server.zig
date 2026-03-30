@@ -89,6 +89,8 @@ fn dispatchMatchedRoute(ctx: *handler.Context, req: *httpz.Request, res: *httpz.
         .list_runs => if (req.method == .GET) handler.handleListRuns(ctx, req, res) else respondMethodNotAllowed(res),
         .list_specs => if (req.method == .GET) handler.handleListSpecs(ctx, req, res) else respondMethodNotAllowed(res),
         .retry_run => |run_id| if (req.method == .POST) handler.handleRetryRun(ctx, req, res, run_id) else respondMethodNotAllowed(res),
+        .replay_run => |run_id| if (req.method == .GET) handler.handleGetRunReplay(ctx, req, res, run_id) else respondMethodNotAllowed(res),
+        .stream_run => |run_id| if (req.method == .GET) handler.handleStreamRun(ctx, req, res, run_id) else respondMethodNotAllowed(res),
         .get_run => |run_id| if (req.method == .GET) handler.handleGetRun(ctx, req, res, run_id) else respondMethodNotAllowed(res),
         .pause_workspace => |workspace_id| if (req.method == .POST) handler.handlePauseWorkspace(ctx, req, res, workspace_id) else respondMethodNotAllowed(res),
         .upgrade_workspace_to_scale => |workspace_id| if (req.method == .POST) handler.handleUpgradeWorkspaceToScale(ctx, req, res, workspace_id) else respondMethodNotAllowed(res),

@@ -18,6 +18,7 @@ const cmd_serve = @import("cmd/serve.zig");
 const cmd_worker = @import("cmd/worker.zig");
 const cmd_doctor = @import("cmd/doctor.zig");
 const cmd_run = @import("cmd/run.zig");
+const cmd_runs = @import("cmd/runs.zig");
 const cmd_migrate = @import("cmd/migrate.zig");
 const cmd_reconcile = @import("cmd/reconcile.zig");
 const config_load = @import("config/load.zig");
@@ -104,6 +105,7 @@ pub fn main() !void {
         .worker => try cmd_worker.run(alloc),
         .doctor => try cmd_doctor.run(alloc),
         .run => try cmd_run.run(alloc),
+        .runs => try cmd_runs.run(alloc),
         .migrate => try cmd_migrate.run(alloc),
         .reconcile => try cmd_reconcile.run(alloc),
     }

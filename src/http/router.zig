@@ -23,6 +23,8 @@ pub const Route = union(enum) {
     list_runs,
     list_specs,
     retry_run: []const u8,
+    replay_run: []const u8,
+    stream_run: []const u8,
     get_run: []const u8,
     pause_workspace: []const u8,
     upgrade_workspace_to_scale: []const u8,
@@ -71,6 +73,16 @@ pub fn match(path: []const u8) ?Route {
     if (std.mem.startsWith(u8, path, prefix_runs) and std.mem.endsWith(u8, path, ":retry")) {
         const inner = path[prefix_runs.len .. path.len - ":retry".len];
         if (inner.len > 0) return .{ .retry_run = inner };
+    }
+
+    if (std.mem.startsWith(u8, path, prefix_runs) and std.mem.endsWith(u8, path, ":replay")) {
+        const inner = path[prefix_runs.len .. path.len - ":replay".len];
+        if (inner.len > 0) return .{ .replay_run = inner };
+    }
+
+    if (std.mem.startsWith(u8, path, prefix_runs) and std.mem.endsWith(u8, path, ":stream")) {
+        const inner = path[prefix_runs.len .. path.len - ":stream".len];
+        if (inner.len > 0) return .{ .stream_run = inner };
     }
 
     if (std.mem.startsWith(u8, path, prefix_runs)) {

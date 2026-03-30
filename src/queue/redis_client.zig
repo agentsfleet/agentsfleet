@@ -54,6 +54,16 @@ pub const Client = struct {
         self.transport.deinit(self.alloc);
     }
 
+    pub fn publish(self: *Client, channel: []const u8, data: []const u8) !void {
+        var resp = try self.command(&.{ "PUBLISH", channel, data });
+        defer resp.deinit(self.alloc);
+        switch (resp) {
+            .integer => {},
+            else => return error.RedisPublishFailed,
+        }
+        log.debug("redis.publish channel={s} data_len={d}", .{ channel, data.len });
+    }
+
     pub fn ping(self: *Client) !void {
         var resp = try self.command(&.{"PING"});
         defer resp.deinit(self.alloc);
@@ -283,4 +293,3 @@ pub fn makeConsumerId(alloc: std.mem.Allocator) ![]u8 {
     const now = std.time.nanoTimestamp();
     return std.fmt.allocPrint(alloc, "{s}-{s}-{d}", .{ queue_consts.consumer_prefix, host, now });
 }
-

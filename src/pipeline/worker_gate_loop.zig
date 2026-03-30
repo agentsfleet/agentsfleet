@@ -14,6 +14,7 @@ const metrics = @import("../observability/metrics.zig");
 const id_format = @import("../types/id_format.zig");
 const codes = @import("../errors/codes.zig");
 const worker_runtime = @import("worker_runtime.zig");
+const queue_redis = @import("../queue/redis.zig");
 
 const log = std.log.scoped(.gate_loop);
 
@@ -61,6 +62,7 @@ pub const GateLoopConfig = struct {
     repair_stage_id: []const u8,
     repair_role_id: []const u8,
     repair_skill_id: []const u8,
+    redis: ?*queue_redis.Client = null,
 };
 
 pub fn runGateLoop(cfg: GateLoopConfig) !GateLoopOutcome {
@@ -75,6 +77,8 @@ pub fn runGateLoop(cfg: GateLoopConfig) !GateLoopOutcome {
             const timeout = effectiveTimeout(gate.timeout_ms, cfg.gate_tool_timeout_ms, cfg.deadline_ms);
             const result = try executeGateCommand(cfg.alloc, cfg.wt_path, gate.name, gate.command, timeout);
             try results.append(cfg.alloc, result);
+
+            publishGateEvent(cfg, result, repair);
 
             if (!result.passed) {
                 failed_result = result;
@@ -280,6 +284,20 @@ pub fn buildRepairMessage(alloc: std.mem.Allocator, result: GateToolResult) ![]c
         \\
         \\Fix the issue and re-run the gate.
     , .{ result.gate_name, result.exit_code, result.stdout, result.stderr });
+}
+
+fn publishGateEvent(cfg: GateLoopConfig, result: GateToolResult, loop: u32) void {
+    const redis_client = cfg.redis orelse return;
+    const channel = std.fmt.allocPrint(cfg.alloc, "run:{s}:events", .{cfg.run_id}) catch return;
+    defer cfg.alloc.free(channel);
+    const outcome_str = if (result.passed) "PASS" else "FAIL";
+    const event_json = std.fmt.allocPrint(cfg.alloc,
+        \\{{"gate_name":"{s}","outcome":"{s}","exit_code":{d},"loop":{d},"wall_ms":{d}}}
+    , .{ result.gate_name, outcome_str, result.exit_code, loop, result.wall_ms }) catch return;
+    defer cfg.alloc.free(event_json);
+    redis_client.publish(channel, event_json) catch |err| {
+        log.warn("gate_loop.pubsub_fail err={s} run_id={s}", .{ @errorName(err), cfg.run_id });
+    };
 }
 
 fn persistGateResults(
