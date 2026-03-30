@@ -296,6 +296,26 @@ For any generated artifacts (PDF, HTML, CSV, images, binary formats, CLI output,
 | Perl | Taint mode (`-T`) for CGI; `use strict; use warnings;`; parameterized DBI queries |
 | Ruby | `ActiveRecord` parameterized queries; `Rails.application.credentials` not hardcoded; `Brakeman` passes |
 
+**OWASP Agent Security — data sent to or propagated through agents:**
+
+When any code path sends data directly to an agent (LLM, tool-calling agent, autonomous workflow) or indirectly propagates data to an agent through intermediate systems (queues, databases, APIs, event buses), the following checks apply:
+
+- [ ] **Prompt injection resistance:** User-controlled input is never concatenated raw into agent prompts; use structured message formats, system/user role separation, or parameterized templates
+- [ ] **Untrusted input handling:** All external input reaching an agent is validated, type-checked, and length-bounded before inclusion; reject or sanitize payloads that contain instruction-like content (`ignore previous`, `you are now`, XML/JSON injection markers)
+- [ ] **Least privilege for tools/actions:** Agents have access only to the minimum set of tools required for the task; tool permissions are scoped per-invocation, not globally granted
+- [ ] **Data minimization and secret redaction:** Only the data necessary for the agent's task is included in the prompt/context; secrets, credentials, PII, and internal identifiers are stripped or replaced with opaque references before reaching the agent
+- [ ] **Output validation before execution:** Agent-generated outputs (code, commands, API calls, file writes) are validated against an allowlist or schema before any side effect executes; never `eval()` or `exec()` raw agent output
+- [ ] **Authorization at every hop:** Each system in the data flow (caller → intermediary → agent → tool) independently verifies authorization; an agent inherits the caller's permissions, not elevated service-level permissions
+- [ ] **Audit logging and traceability:** Every agent invocation logs: who triggered it, what input was provided, what tools were called, what output was produced, and what side effects occurred; logs are tamper-resistant and queryable
+- [ ] **Fail-closed on trust/safety failure:** If any trust check (input validation, output validation, authorization, rate limit) fails, the agent call is rejected — never fall back to a permissive path or silently proceed with partial validation
+
+**Direct vs. indirect data flow checks:**
+
+| Data flow | What to test |
+|-----------|-------------|
+| Direct (caller → agent) | Input sanitization at call site; prompt template immutability; tool scope matches caller intent |
+| Indirect (caller → queue/DB/API → agent) | Data integrity preserved through intermediary; no injection via stored fields; agent re-validates input regardless of upstream checks |
+
 ### TIER 9 — CODE DUPLICATION & DRY COMPLIANCE
 
 - [ ] No copy-pasted logic across test files — extract shared fixtures/helpers/builders

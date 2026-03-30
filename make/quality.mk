@@ -2,7 +2,7 @@
 # QUALITY — code quality, formatting, analysis
 # =============================================================================
 
-.PHONY: lint lint-zig lint-website lint-apps lint-ci doctor check-pg-drain _fmt _fmt_check _zlint_check _pg_drain_check _zig_target_lint _website_lint _app_lint _zombiectl_lint _actionlint_check
+.PHONY: lint lint-zig lint-website lint-apps lint-ci doctor check-pg-drain _fmt _fmt_check _zlint_check _pg_drain_check _zig_target_lint _zig_line_limit_check _website_lint _app_lint _zombiectl_lint _actionlint_check
 
 ZLINT ?= zlint
 ACTIONLINT ?= actionlint
@@ -61,6 +61,46 @@ _zig_target_lint:
 	fi; \
 	echo "✓ [ci] No -gnu suffixes in Zig target triples"
 
+# Files that already exceed 500 lines before this gate was introduced.
+# Do NOT add new entries — shrink this list over time.
+# Policy: docs/contributing/testing.md
+ZIG_LINE_LIMIT_ALLOWLIST := \
+	src/auth/claims.zig \
+	src/auth/jwks_test.zig \
+	src/cmd/reconcile.zig \
+	src/config/runtime.zig \
+	src/db/pool_test.zig \
+	src/executor/handler.zig \
+	src/http/handlers/common.zig \
+	src/observability/posthog_events.zig \
+	src/pipeline/gate_loop_integration_test.zig \
+	src/pipeline/proposals_lifecycle_manual_test.zig \
+	src/pipeline/scoring_test.zig \
+	src/pipeline/worker_stage_executor.zig \
+	src/state/orphan_recovery.zig
+
+_zig_line_limit_check:
+	@echo "→ [zombied] Checking Zig file line limit (max 500 lines)..."
+	@FAIL=0; \
+	for f in $$(find src -name '*.zig' ! -path '*/.zig-cache/*' | sort); do \
+		lines=$$(wc -l < "$$f"); \
+		if [ "$$lines" -gt 500 ]; then \
+			allowed=0; \
+			for a in $(ZIG_LINE_LIMIT_ALLOWLIST); do \
+				[ "$$f" = "$$a" ] && allowed=1 && break; \
+			done; \
+			if [ "$$allowed" = "0" ]; then \
+				echo "✗ $$f: $$lines lines (limit 500 — see docs/contributing/testing.md)"; \
+				FAIL=1; \
+			fi; \
+		fi; \
+	done; \
+	if [ "$$FAIL" = "1" ]; then \
+		echo "  Fix: split the file into focused modules under 500 lines."; \
+		exit 1; \
+	fi; \
+	echo "✓ [zombied] All new Zig files within 500-line limit"
+
 _actionlint_check:
 	@echo "→ [ci] Running actionlint on GitHub Actions workflows..."
 	@command -v $(ACTIONLINT) >/dev/null 2>&1 || { echo "actionlint not found. Install via: mise install actionlint"; exit 1; }
@@ -69,7 +109,7 @@ _actionlint_check:
 
 check-pg-drain: _pg_drain_check  ## Check that all conn.query() calls have a .drain()
 
-lint-zig: _fmt_check _zlint_check _pg_drain_check _zig_target_lint  ## Lint zombied (Zig)
+lint-zig: _fmt_check _zlint_check _pg_drain_check _zig_target_lint _zig_line_limit_check  ## Lint zombied (Zig)
 	@echo "✓ [zombied] Lint passed"
 
 lint-website: _website_lint  ## Lint website only (ESLint + tsc)

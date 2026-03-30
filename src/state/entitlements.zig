@@ -295,3 +295,143 @@ test "unit: evaluateProfile rejects stage limits deterministically" {
     try std.testing.expect(reason != null);
     try std.testing.expectEqualStrings(error_codes.ERR_ENTITLEMENT_STAGE_LIMIT, reason.?);
 }
+
+// --- T6: Integration — evaluateProfile ALLOW paths ---
+
+test "T6: evaluateProfile returns null (ALLOW) for SCALE tier with custom skill" {
+    const raw =
+        \\{
+        \\  "agent_id":"prof_scale",
+        \\  "stages":[
+        \\    {"stage_id":"plan","role":"planner","skill":"echo"},
+        \\    {"stage_id":"implement","role":"coder","skill":"custom_skill"},
+        \\    {"stage_id":"verify","role":"reviewer","skill":"warden","gate":true,"on_pass":"done","on_fail":"retry"}
+        \\  ]
+        \\}
+    ;
+    var observed: Observed = .{};
+    const reason = try evaluateProfile(std.testing.allocator, .{
+        .tier = .scale,
+        .max_profiles = 5,
+        .max_stages = 10,
+        .max_distinct_skills = 10,
+        .allow_custom_skills = true,
+    }, raw, &observed);
+    try std.testing.expectEqual(@as(?[]const u8, null), reason);
+    try std.testing.expectEqual(@as(u16, 3), observed.stage_count);
+    try std.testing.expectEqual(@as(u16, 3), observed.distinct_skill_count);
+}
+
+test "T6: evaluateProfile returns null (ALLOW) when compiled_profile_json is null" {
+    var observed: Observed = .{};
+    const reason = try evaluateProfile(std.testing.allocator, .{
+        .tier = .free,
+        .max_profiles = 1,
+        .max_stages = 3,
+        .max_distinct_skills = 3,
+        .allow_custom_skills = false,
+    }, null, &observed);
+    // No profile to evaluate — allow (caller controls whether null is valid in context)
+    try std.testing.expectEqual(@as(?[]const u8, null), reason);
+}
+
+test "T6: evaluateProfile reports correct distinct_skill_count with repeated skills" {
+    const raw =
+        \\{
+        \\  "agent_id":"dup-skills",
+        \\  "stages":[
+        \\    {"stage_id":"plan","role":"echo","skill":"echo"},
+        \\    {"stage_id":"implement","role":"scout","skill":"scout"},
+        \\    {"stage_id":"extra","role":"scout2","skill":"scout"},
+        \\    {"stage_id":"verify","role":"warden","skill":"warden","gate":true,"on_pass":"done","on_fail":"retry"}
+        \\  ]
+        \\}
+    ;
+    var observed: Observed = .{};
+    _ = try evaluateProfile(std.testing.allocator, .{
+        .tier = .free,
+        .max_profiles = 1,
+        .max_stages = 4,
+        .max_distinct_skills = 3,
+        .allow_custom_skills = false,
+    }, raw, &observed);
+    // echo + scout + warden = 3 distinct (scout appears twice but counts once)
+    try std.testing.expectEqual(@as(u16, 3), observed.distinct_skill_count);
+}
+
+// --- T8: OWASP Agent Security — entitlement guard after M20_001 isCoreSkill() removal ---
+
+test "T8: free tier ALLOWS all three default skills (invariant before and after M20_001)" {
+    // This invariant MUST hold before and after M20_001 removes isCoreSkill():
+    // a FREE workspace with allow_custom_skills=false must allow echo/scout/warden.
+    const raw =
+        \\{
+        \\  "agent_id":"free-default",
+        \\  "stages":[
+        \\    {"stage_id":"plan","role":"echo","skill":"echo"},
+        \\    {"stage_id":"implement","role":"scout","skill":"scout"},
+        \\    {"stage_id":"verify","role":"warden","skill":"warden","gate":true,"on_pass":"done","on_fail":"retry"}
+        \\  ]
+        \\}
+    ;
+    var observed: Observed = .{};
+    const reason = try evaluateProfile(std.testing.allocator, .{
+        .tier = .free,
+        .max_profiles = 1,
+        .max_stages = 3,
+        .max_distinct_skills = 3,
+        .allow_custom_skills = false,
+    }, raw, &observed);
+    try std.testing.expectEqual(@as(?[]const u8, null), reason);
+}
+
+test "T8: free tier DENIES when custom skill is added alongside default skills" {
+    // Regression: adding one custom skill to a free-tier profile must be rejected,
+    // even if all other skills are default built-ins.
+    const raw =
+        \\{
+        \\  "agent_id":"free-plus-custom",
+        \\  "stages":[
+        \\    {"stage_id":"plan","role":"echo","skill":"echo"},
+        \\    {"stage_id":"implement","role":"scout","skill":"custom-injection-skill"},
+        \\    {"stage_id":"verify","role":"warden","skill":"warden","gate":true,"on_pass":"done","on_fail":"retry"}
+        \\  ]
+        \\}
+    ;
+    var observed: Observed = .{};
+    const reason = try evaluateProfile(std.testing.allocator, .{
+        .tier = .free,
+        .max_profiles = 1,
+        .max_stages = 3,
+        .max_distinct_skills = 3,
+        .allow_custom_skills = false,
+    }, raw, &observed);
+    try std.testing.expect(reason != null);
+    try std.testing.expectEqualStrings(error_codes.ERR_ENTITLEMENT_SKILL_NOT_ALLOWED, reason.?);
+}
+
+test "T8: free tier DENIES skill_id with surrounding whitespace (no bypass via padding)" {
+    // "echo " (trailing space) is NOT equal to "echo" under eqlIgnoreCase (length mismatch).
+    // This pins the behavior: no whitespace normalization bypass in isCoreSkill.
+    const raw =
+        \\{
+        \\  "agent_id":"ws-bypass",
+        \\  "stages":[
+        \\    {"stage_id":"plan","role":"echo","skill":"echo "},
+        \\    {"stage_id":"implement","role":"scout","skill":"scout"},
+        \\    {"stage_id":"verify","role":"warden","skill":"warden","gate":true,"on_pass":"done","on_fail":"retry"}
+        \\  ]
+        \\}
+    ;
+    var observed: Observed = .{};
+    const reason = try evaluateProfile(std.testing.allocator, .{
+        .tier = .free,
+        .max_profiles = 1,
+        .max_stages = 3,
+        .max_distinct_skills = 3,
+        .allow_custom_skills = false,
+    }, raw, &observed);
+    // "echo " != "echo" → treated as custom skill → denied on free tier
+    try std.testing.expect(reason != null);
+    try std.testing.expectEqualStrings(error_codes.ERR_ENTITLEMENT_SKILL_NOT_ALLOWED, reason.?);
+}

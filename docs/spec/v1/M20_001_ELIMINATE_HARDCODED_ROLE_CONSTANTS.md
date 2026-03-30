@@ -60,8 +60,8 @@ A CI lint check ensures no future code reintroduces hardcoded role references. T
 All docs must stop referring to scout/echo/warden as built-in or special roles. They are default agent_ids loaded from config when a workspace is created.
 
 **Dimensions:**
-- 4.1 PENDING Update `docs/ARCHITECTURE.md` to describe the profile-driven role model: workspaces get a default profile with three stages (plan, implement, verify) whose role_ids and skill_ids come from config — not hardcoded constants
-- 4.2 PENDING Update `docs/ZIG_RULES.md` with "No Hardcoded Roles" rule: never use string literals for role/skill identification in production code; always read from the profile
+- 4.1 PENDING Update `docs/contributing/architecture.md` to describe the profile-driven role model: workspaces get a default profile with three stages (plan, implement, verify) whose role_ids and skill_ids come from config — not hardcoded constants
+- 4.2 PENDING Update `docs/contributing/ZIG_RULES.md` with "No Hardcoded Roles" rule: never use string literals for role/skill identification in production code; always read from the profile
 - 4.3 PENDING Scrub `docs/done/v1/*.md` completed specs: replace references to "the scout stage" or "the warden stage" with "the implement stage" or "the verification stage" (role-neutral language)
 - 4.4 PENDING Scrub `docs/spec/v1/*.md` pending specs for the same pattern
 
