@@ -32,6 +32,60 @@ const log = std.log.scoped(.worker);
 pub const ExecuteConfig = worker_stage_types.ExecuteConfig;
 pub const RunContext = worker_stage_types.RunContext;
 
+/// Resolve the LLM API key for a run (M16_004).
+/// Resolution order:
+///   1. Workspace BYOK: {provider}_api_key from vault.secrets.
+///   2. Platform default: platform_llm_keys → admin workspace vault.secrets.
+///   3. CredentialDenied — no env fallback.
+fn resolveLlmApiKey(alloc: std.mem.Allocator, conn: *pg.Conn, workspace_id: []const u8) ![]const u8 {
+    const provider: []const u8 = crypto_store.load(alloc, conn, workspace_id, "llm_provider_preference") catch |e| p: {
+        if (e != error.NotFound) return e;
+        break :p "anthropic";
+    };
+    const key_name = try std.fmt.allocPrint(alloc, "{s}_api_key", .{provider});
+
+    // Step 1: workspace BYOK
+    if (crypto_store.load(alloc, conn, workspace_id, key_name)) |ws_key| {
+        log.info("worker.llm_key_resolved api_key_source=workspace provider={s} workspace_id={s}", .{ provider, workspace_id });
+        return ws_key;
+    } else |ws_err| if (ws_err != error.NotFound) return ws_err;
+
+    // Step 2: platform default
+    const maybe_src: ?[]u8 = plat: {
+        var pq = conn.query(
+            "SELECT source_workspace_id FROM platform_llm_keys WHERE provider = $1 AND active = true LIMIT 1",
+            .{provider},
+        ) catch |qe| {
+            log.warn("worker.platform_key_query_failed provider={s} err={s}", .{ provider, @errorName(qe) });
+            break :plat null;
+        };
+        defer pq.deinit();
+        const prow = (pq.next() catch null) orelse {
+            pq.drain() catch {};
+            break :plat null;
+        };
+        const raw = prow.get([]u8, 0) catch {
+            pq.drain() catch {};
+            break :plat null;
+        };
+        const dup = alloc.dupe(u8, raw) catch {
+            pq.drain() catch {};
+            break :plat null;
+        };
+        pq.drain() catch {};
+        break :plat dup;
+    };
+    if (maybe_src) |src_ws| {
+        if (crypto_store.load(alloc, conn, src_ws, key_name)) |platform_key| {
+            log.info("worker.llm_key_resolved api_key_source=platform provider={s} source_workspace_id={s}", .{ provider, src_ws });
+            return platform_key;
+        } else |pe| if (pe != error.NotFound) return pe;
+    }
+
+    log.err("worker.llm_key_missing workspace_id={s} provider={s} error_code={s}", .{ workspace_id, provider, error_codes.ERR_CRED_PLATFORM_KEY_MISSING });
+    return worker_runtime.WorkerError.CredentialDenied;
+}
+
 const BareCloneRetryCtx = struct {
     alloc: std.mem.Allocator,
     cache_root: []const u8,
@@ -282,21 +336,8 @@ pub fn executeRun(
         },
     );
 
-    // M16_003 §1: Fetch LLM API key from vault.secrets for this workspace.
-    // M16_003 supports Anthropic only; vault key is always "anthropic_api_key".
-    // Multi-provider dynamic lookup ({provider}_api_key) is M16_004.
-    // Soft failure: if not found, pass empty string — executor falls back to its
-    // own env (dev mode). Hard failure (DB error) propagates.
-    const llm_api_key: []const u8 = crypto_store.load(run_alloc, conn, ctx.workspace_id, "anthropic_api_key") catch |err| blk: {
-        if (err == error.NotFound) {
-            log.warn(
-                "worker.llm_key_not_found workspace_id={s} api_key_source=env error_code={s}",
-                .{ ctx.workspace_id, error_codes.ERR_CRED_ANTHROPIC_KEY_MISSING },
-            );
-            break :blk "";
-        }
-        return err;
-    };
+    // M16_004: Multi-step LLM API key resolution (workspace BYOK → platform default → CredentialDenied).
+    const llm_api_key = try resolveLlmApiKey(run_alloc, conn, ctx.workspace_id);
 
     // M16_003 §2: Fetch GitHub installation token before stages that need git access.
     // Token is per-run, held in memory, never written to Postgres.
@@ -555,10 +596,14 @@ pub fn executeRun(
                     }
                     if (!gate_outcome.all_passed) {
                         try worker_stage_outcomes.handleGateExhaustedOutcome(.{
-                            .alloc = run_alloc, .conn = conn, .ctx = ctx, .cfg = cfg,
+                            .alloc = run_alloc,
+                            .conn = conn,
+                            .ctx = ctx,
+                            .cfg = cfg,
                             .gate_results = gate_outcome.results.items,
                             .total_repair_loops = gate_outcome.total_repair_loops,
-                            .attempt = attempt, .total_wall_seconds = total_wall_seconds,
+                            .attempt = attempt,
+                            .total_wall_seconds = total_wall_seconds,
                             .scoring_state = &scoring_state,
                         });
                         return;
@@ -566,13 +611,20 @@ pub fn executeRun(
                     // Call handleDoneOutcome inside the if block so gate results
                     // are accessed before defer frees the ArrayList backing.
                     try worker_stage_outcomes.handleDoneOutcome(.{
-                        .alloc = run_alloc, .conn = conn, .ctx = ctx, .cfg = cfg,
-                        .wt = &wt, .branch = branch, .running = running,
-                        .deadline_ms = deadline_ms, .token_cache = token_cache,
+                        .alloc = run_alloc,
+                        .conn = conn,
+                        .ctx = ctx,
+                        .cfg = cfg,
+                        .wt = &wt,
+                        .branch = branch,
+                        .running = running,
+                        .deadline_ms = deadline_ms,
+                        .token_cache = token_cache,
                         .tenant_limiter = tenant_limiter,
                         .final_stage_output = final_stage_output,
                         .final_stage_actor = final_stage_actor,
-                        .attempt = attempt, .total_tokens = total_tokens,
+                        .attempt = attempt,
+                        .total_tokens = total_tokens,
                         .total_wall_seconds = total_wall_seconds,
                         .scoring_state = &scoring_state,
                         .gate_results = gate_outcome.results.items,
@@ -581,13 +633,20 @@ pub fn executeRun(
                     return;
                 }
                 try worker_stage_outcomes.handleDoneOutcome(.{
-                    .alloc = run_alloc, .conn = conn, .ctx = ctx, .cfg = cfg,
-                    .wt = &wt, .branch = branch, .running = running,
-                    .deadline_ms = deadline_ms, .token_cache = token_cache,
+                    .alloc = run_alloc,
+                    .conn = conn,
+                    .ctx = ctx,
+                    .cfg = cfg,
+                    .wt = &wt,
+                    .branch = branch,
+                    .running = running,
+                    .deadline_ms = deadline_ms,
+                    .token_cache = token_cache,
                     .tenant_limiter = tenant_limiter,
                     .final_stage_output = final_stage_output,
                     .final_stage_actor = final_stage_actor,
-                    .attempt = attempt, .total_tokens = total_tokens,
+                    .attempt = attempt,
+                    .total_tokens = total_tokens,
                     .total_wall_seconds = total_wall_seconds,
                     .scoring_state = &scoring_state,
                 });
@@ -646,4 +705,131 @@ pub fn executeRun(
         .total_wall_seconds = total_wall_seconds,
         .scoring_state = &scoring_state,
     });
+}
+
+// ── M16_004 integration tests — resolveLlmApiKey ─────────────────────────────
+// Three tests covering the complete key resolution chain:
+//   1. Workspace BYOK key found → return it.
+//   2. No workspace key, platform_llm_keys row exists → return admin workspace key.
+//   3. No key anywhere → CredentialDenied.
+//
+// Require DATABASE_URL (with full schema applied). Skipped when not available.
+// ENCRYPTION_MASTER_KEY is set to a deterministic test value by setupTestKek().
+//
+// All DB writes are wrapped in BEGIN/ROLLBACK so nothing is committed.
+// vault.secrets FK (→ core.workspaces) is satisfied by insertTestFixtures().
+// platform_llm_keys is a TEMP TABLE that shadows the permanent table for the
+// duration of the test connection (unqualified name, pg_temp is first in path).
+
+const _test_tenant_id = "00000000-0000-4000-8000-000000000001";
+const _test_ws_id = "00000000-0000-4000-8000-000000000002";
+const _test_admin_ws_id = "00000000-0000-4000-8000-000000000003";
+
+fn testOpenConn(alloc: std.mem.Allocator) !?struct { pool: *pg.Pool, conn: *pg.Conn } {
+    const db = @import("../db/pool.zig");
+    const url = std.process.getEnvVarOwned(alloc, "DATABASE_URL") catch return null;
+    defer alloc.free(url);
+    var arena = std.heap.ArenaAllocator.init(alloc);
+    defer arena.deinit();
+    const opts = db.parseUrl(arena.allocator(), url) catch return null;
+    const pool = pg.Pool.init(alloc, opts) catch return null;
+    errdefer pool.deinit();
+    const conn = pool.acquire() catch {
+        pool.deinit();
+        return null;
+    };
+    return .{ .pool = pool, .conn = conn };
+}
+
+fn testSetKek() void {
+    const c = @cImport(@cInclude("stdlib.h"));
+    _ = c.setenv("ENCRYPTION_MASTER_KEY", "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20", 1);
+}
+
+fn testInsertFixtures(conn: *pg.Conn) !void {
+    _ = try conn.exec(
+        "INSERT INTO core.tenants (tenant_id, name, api_key_hash, created_at) VALUES ($1, 'test-tenant', 'x', 0) ON CONFLICT (tenant_id) DO NOTHING",
+        .{_test_tenant_id},
+    );
+    _ = try conn.exec(
+        \\INSERT INTO core.workspaces (workspace_id, tenant_id, repo_url, default_branch, created_at, updated_at)
+        \\VALUES ($1, $2, 'https://example.com/test', 'main', 0, 0) ON CONFLICT (workspace_id) DO NOTHING
+    , .{ _test_ws_id, _test_tenant_id });
+    _ = try conn.exec(
+        \\INSERT INTO core.workspaces (workspace_id, tenant_id, repo_url, default_branch, created_at, updated_at)
+        \\VALUES ($1, $2, 'https://example.com/admin', 'main', 0, 0) ON CONFLICT (workspace_id) DO NOTHING
+    , .{ _test_admin_ws_id, _test_tenant_id });
+}
+
+fn testCreatePlatformKeysTable(conn: *pg.Conn) !void {
+    // Temp table shadows core.platform_llm_keys for unqualified queries in this session.
+    _ = try conn.exec(
+        \\CREATE TEMP TABLE IF NOT EXISTS platform_llm_keys (
+        \\    provider TEXT NOT NULL,
+        \\    source_workspace_id TEXT NOT NULL,
+        \\    active BOOLEAN NOT NULL
+        \\) ON COMMIT DELETE ROWS
+    , .{});
+}
+
+test "M16_004: resolveLlmApiKey returns workspace BYOK key" {
+    const alloc = std.testing.allocator;
+    const db_ctx = (try testOpenConn(alloc)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
+    testSetKek();
+
+    const conn = db_ctx.conn;
+    _ = try conn.exec("BEGIN", .{});
+    defer _ = conn.exec("ROLLBACK", .{}) catch {};
+
+    try testInsertFixtures(conn);
+    try testCreatePlatformKeysTable(conn);
+    try crypto_store.store(alloc, conn, _test_ws_id, "anthropic_api_key", "sk-byok-test", 1);
+
+    const key = try resolveLlmApiKey(alloc, conn, _test_ws_id);
+    try std.testing.expectEqualStrings("sk-byok-test", key);
+}
+
+test "M16_004: resolveLlmApiKey falls through to platform default" {
+    const alloc = std.testing.allocator;
+    const db_ctx = (try testOpenConn(alloc)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
+    testSetKek();
+
+    const conn = db_ctx.conn;
+    _ = try conn.exec("BEGIN", .{});
+    defer _ = conn.exec("ROLLBACK", .{}) catch {};
+
+    try testInsertFixtures(conn);
+    try testCreatePlatformKeysTable(conn);
+    // No workspace key; platform row points to admin workspace.
+    _ = try conn.exec(
+        "INSERT INTO platform_llm_keys (provider, source_workspace_id, active) VALUES ('anthropic', $1, true)",
+        .{_test_admin_ws_id},
+    );
+    try crypto_store.store(alloc, conn, _test_admin_ws_id, "anthropic_api_key", "sk-platform-test", 1);
+
+    const key = try resolveLlmApiKey(alloc, conn, _test_ws_id);
+    try std.testing.expectEqualStrings("sk-platform-test", key);
+}
+
+test "M16_004: resolveLlmApiKey returns CredentialDenied with no key" {
+    const alloc = std.testing.allocator;
+    const db_ctx = (try testOpenConn(alloc)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
+    testSetKek();
+
+    const conn = db_ctx.conn;
+    _ = try conn.exec("BEGIN", .{});
+    defer _ = conn.exec("ROLLBACK", .{}) catch {};
+
+    try testCreatePlatformKeysTable(conn);
+    // No fixtures, no vault entry, no platform row.
+    try std.testing.expectError(
+        worker_runtime.WorkerError.CredentialDenied,
+        resolveLlmApiKey(alloc, conn, _test_ws_id),
+    );
 }

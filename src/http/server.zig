@@ -109,6 +109,20 @@ fn dispatchMatchedRoute(ctx: *handler.Context, req: *httpz.Request, res: *httpz.
         .reject_agent_proposal => |route| if (req.method == .POST) handler.handleRejectAgentProposal(ctx, req, res, route.agent_id, route.proposal_id) else respondMethodNotAllowed(res),
         .veto_agent_proposal => |route| if (req.method == .POST) handler.handleVetoAgentProposal(ctx, req, res, route.agent_id, route.proposal_id) else respondMethodNotAllowed(res),
         .revert_agent_harness_change => |route| if (req.method == .POST) handler.handleRevertAgentHarnessChange(ctx, req, res, route.agent_id, route.change_id) else respondMethodNotAllowed(res),
+        // M16_004: admin platform key management
+        .admin_platform_keys => switch (req.method) {
+            .GET => handler.handleGetAdminPlatformKeys(ctx, req, res),
+            .PUT => handler.handlePutAdminPlatformKey(ctx, req, res),
+            else => respondMethodNotAllowed(res),
+        },
+        .delete_admin_platform_key => |provider| if (req.method == .DELETE) handler.handleDeleteAdminPlatformKey(ctx, req, res, provider) else respondMethodNotAllowed(res),
+        // M16_004: workspace BYOK LLM credentials
+        .workspace_llm_credential => |workspace_id| switch (req.method) {
+            .PUT => handler.handlePutWorkspaceLlmCredential(ctx, req, res, workspace_id),
+            .DELETE => handler.handleDeleteWorkspaceLlmCredential(ctx, req, res, workspace_id),
+            .GET => handler.handleGetWorkspaceLlmCredential(ctx, req, res, workspace_id),
+            else => respondMethodNotAllowed(res),
+        },
     }
     return true;
 }
@@ -205,4 +219,5 @@ pub fn stop() void {
 
 test {
     _ = @import("rbac_http_integration_test.zig");
+    _ = @import("m16_004_http_integration_test.zig");
 }

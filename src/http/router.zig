@@ -43,6 +43,11 @@ pub const Route = union(enum) {
     reject_agent_proposal: AgentProposalRoute,
     veto_agent_proposal: AgentProposalRoute,
     revert_agent_harness_change: AgentHarnessChangeRoute,
+    // M16_004: admin platform key management
+    admin_platform_keys, // GET + PUT /v1/admin/platform-keys (method-dispatched in server.zig)
+    delete_admin_platform_key: []const u8, // DELETE /v1/admin/platform-keys/{provider}
+    // M16_004: workspace BYOK LLM credentials
+    workspace_llm_credential: []const u8, // PUT|DELETE|GET /v1/workspaces/{id}/credentials/llm
 };
 
 const prefix_workspaces = "/v1/workspaces/";
@@ -94,6 +99,16 @@ pub fn match(path: []const u8) ?Route {
         const inner = path[prefix_workspaces.len .. path.len - ":pause".len];
         if (inner.len > 0) return .{ .pause_workspace = inner };
     }
+
+    // M16_004: admin platform key routes (before workspace prefix to avoid false match)
+    if (std.mem.eql(u8, path, "/v1/admin/platform-keys")) return .admin_platform_keys;
+    if (std.mem.startsWith(u8, path, "/v1/admin/platform-keys/")) {
+        const provider = path["/v1/admin/platform-keys/".len..];
+        if (isSingleSegment(provider)) return .{ .delete_admin_platform_key = provider };
+    }
+
+    // M16_004: workspace BYOK credential route
+    if (matchWorkspaceSuffix(path, "/credentials/llm")) |workspace_id| return .{ .workspace_llm_credential = workspace_id };
 
     if (matchWorkspaceSuffix(path, "/billing/scale")) |workspace_id| return .{ .upgrade_workspace_to_scale = workspace_id };
     if (matchWorkspaceSuffix(path, "/billing/events")) |workspace_id| return .{ .apply_workspace_billing_event = workspace_id };
@@ -278,4 +293,36 @@ test "match resolves auth and run routes" {
             else => return error.TestExpectedEqual,
         },
     );
+}
+
+// ── M16_004 route tests ───────────────────────────────────────────────────────
+
+test "match resolves admin platform key routes (M16_004)" {
+    // GET and PUT share the same path — distinguished by method in server.zig
+    try std.testing.expectEqualDeep(Route.admin_platform_keys, match("/v1/admin/platform-keys").?);
+    // DELETE carries the provider segment
+    try std.testing.expectEqualStrings(
+        "anthropic",
+        switch (match("/v1/admin/platform-keys/anthropic").?) {
+            .delete_admin_platform_key => |provider| provider,
+            else => return error.TestExpectedEqual,
+        },
+    );
+    // Multi-segment provider is rejected
+    try std.testing.expect(match("/v1/admin/platform-keys/a/b") == null);
+    // Empty provider segment is rejected
+    try std.testing.expect(match("/v1/admin/platform-keys/") == null);
+}
+
+test "match resolves workspace LLM credential route (M16_004)" {
+    const ws_id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
+    try std.testing.expectEqualStrings(
+        ws_id,
+        switch (match("/v1/workspaces/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/credentials/llm").?) {
+            .workspace_llm_credential => |id| id,
+            else => return error.TestExpectedEqual,
+        },
+    );
+    // Extra segments not matched
+    try std.testing.expect(match("/v1/workspaces/ws_1/extra/credentials/llm") == null);
 }

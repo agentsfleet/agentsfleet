@@ -13,6 +13,8 @@ const harness_http = @import("handlers/harness_http.zig");
 const skill_secrets_http = @import("handlers/skill_secrets_http.zig");
 const auth_sessions_http = @import("handlers/auth_sessions_http.zig");
 const github_callback = @import("handlers/github_callback.zig");
+const admin_platform_keys_http = @import("handlers/admin_platform_keys_http.zig");
+const workspace_credentials_http = @import("handlers/workspace_credentials_http.zig");
 
 pub const Context = common.Context;
 pub const SkillSecretRoute = skill_secret_handlers.Route;
@@ -56,6 +58,14 @@ pub const handlePollAuthSession = auth_sessions_http.handlePollAuthSession;
 pub const handleCompleteAuthSession = auth_sessions_http.handleCompleteAuthSession;
 
 pub const handleGitHubCallback = github_callback.handleGitHubCallback;
+
+pub const handlePutAdminPlatformKey = admin_platform_keys_http.handlePutAdminPlatformKey;
+pub const handleDeleteAdminPlatformKey = admin_platform_keys_http.handleDeleteAdminPlatformKey;
+pub const handleGetAdminPlatformKeys = admin_platform_keys_http.handleGetAdminPlatformKeys;
+
+pub const handlePutWorkspaceLlmCredential = workspace_credentials_http.handlePutWorkspaceLlmCredential;
+pub const handleDeleteWorkspaceLlmCredential = workspace_credentials_http.handleDeleteWorkspaceLlmCredential;
+pub const handleGetWorkspaceLlmCredential = workspace_credentials_http.handleGetWorkspaceLlmCredential;
 
 pub fn parseSkillSecretRoute(path: []const u8) ?SkillSecretRoute {
     return skill_secret_handlers.parseRoute(path);

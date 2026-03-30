@@ -103,6 +103,7 @@ pub const ERR_EXEC_RUNNER_INVALID_CONFIG = "UZ-EXEC-014";
 
 pub const ERR_CRED_ANTHROPIC_KEY_MISSING = "UZ-CRED-001";
 pub const ERR_CRED_GITHUB_TOKEN_FAILED = "UZ-CRED-002";
+pub const ERR_CRED_PLATFORM_KEY_MISSING = "UZ-CRED-003";
 
 pub fn docsRef(code: []const u8) struct { base: []const u8, code: []const u8 } {
     return .{
@@ -146,6 +147,8 @@ pub fn hint(code: []const u8) ?[]const u8 {
         return "Workspace LLM API key not found in vault.secrets (key: anthropic_api_key). Set it via the workspace credentials API. Executor fell back to its process environment — check ANTHROPIC_API_KEY on the worker if this is dev mode.";
     if (std.mem.eql(u8, code, ERR_CRED_GITHUB_TOKEN_FAILED))
         return "GitHub App installation token request failed. Check GITHUB_APP_ID and GITHUB_APP_PRIVATE_KEY, verify the installation_id is valid, and inspect GitHub API status.";
+    if (std.mem.eql(u8, code, ERR_CRED_PLATFORM_KEY_MISSING))
+        return "No active platform LLM key for this provider. Admin must set one via PUT /v1/admin/platform-keys, or the workspace must add its own key via PUT /v1/workspaces/{id}/credentials/llm.";
     return null;
 }
 
@@ -169,15 +172,18 @@ test "hint returns null for codes without hints" {
 
 // ── T8 — OWASP Agent Security: credential error codes (M16_003) ──────
 
-// T8.1 — M16_003 credential error codes exist and follow UZ-CRED- naming.
-test "T8: ERR_CRED_* codes follow UZ-CRED- prefix naming (M16_003)" {
+// T8.1 — M16_003/M16_004 credential error codes exist and follow UZ-CRED- naming.
+test "T8: ERR_CRED_* codes follow UZ-CRED- prefix naming (M16_003/M16_004)" {
     try std.testing.expect(std.mem.startsWith(u8, ERR_CRED_ANTHROPIC_KEY_MISSING, "UZ-CRED-"));
     try std.testing.expect(std.mem.startsWith(u8, ERR_CRED_GITHUB_TOKEN_FAILED, "UZ-CRED-"));
+    try std.testing.expect(std.mem.startsWith(u8, ERR_CRED_PLATFORM_KEY_MISSING, "UZ-CRED-"));
 }
 
-// T8.2 — Both credential codes have distinct values (no code collision).
-test "T8: ERR_CRED_ANTHROPIC_KEY_MISSING and ERR_CRED_GITHUB_TOKEN_FAILED are distinct (M16_003)" {
+// T8.2 — All credential codes have distinct values (no code collision).
+test "T8: ERR_CRED_* codes are distinct — no collision (M16_003/M16_004)" {
     try std.testing.expect(!std.mem.eql(u8, ERR_CRED_ANTHROPIC_KEY_MISSING, ERR_CRED_GITHUB_TOKEN_FAILED));
+    try std.testing.expect(!std.mem.eql(u8, ERR_CRED_ANTHROPIC_KEY_MISSING, ERR_CRED_PLATFORM_KEY_MISSING));
+    try std.testing.expect(!std.mem.eql(u8, ERR_CRED_GITHUB_TOKEN_FAILED, ERR_CRED_PLATFORM_KEY_MISSING));
 }
 
 // T8.3 — Credential error hints exist and are actionable but do not expose raw secret values.
@@ -207,4 +213,24 @@ test "T8: ERR_CRED_GITHUB_TOKEN_FAILED hint references GitHub App — no PAT fal
         std.mem.indexOf(u8, h, "installation") != null or
         std.mem.indexOf(u8, h, "GITHUB_APP") != null;
     try std.testing.expect(mentions_app);
+}
+
+// ── T8 M16_004 — platform key error code ────────────────────────────────────
+
+// T8.5 — ERR_CRED_PLATFORM_KEY_MISSING hint is actionable and names the admin endpoint.
+test "T8: ERR_CRED_PLATFORM_KEY_MISSING hint names admin endpoint and BYOK path (M16_004)" {
+    const h = hint(ERR_CRED_PLATFORM_KEY_MISSING).?;
+    try std.testing.expect(h.len > 0);
+    // Must reference the admin API path so operators know where to go.
+    const mentions_admin = std.mem.indexOf(u8, h, "platform-keys") != null or
+        std.mem.indexOf(u8, h, "admin") != null;
+    try std.testing.expect(mentions_admin);
+    // Must reference the workspace BYOK path as the alternative.
+    const mentions_byok = std.mem.indexOf(u8, h, "credentials/llm") != null or
+        std.mem.indexOf(u8, h, "BYOK") != null or
+        std.mem.indexOf(u8, h, "own key") != null;
+    try std.testing.expect(mentions_byok);
+    // Must not expose any raw key material.
+    try std.testing.expect(std.mem.indexOf(u8, h, "sk-ant-") == null);
+    try std.testing.expect(std.mem.indexOf(u8, h, "Bearer ") == null);
 }
