@@ -19,9 +19,19 @@
 
 set -euo pipefail
 
-# Force line-buffered stdout so log output streams through SSH in real time.
+# Force line-buffered stdout/stderr so log output streams through SSH in real time.
 if [ -z "${_DEPLOY_UNBUFFERED:-}" ] && command -v stdbuf >/dev/null 2>&1; then
-  _DEPLOY_UNBUFFERED=1 exec stdbuf -oL "$0" "$@"
+  export _DEPLOY_UNBUFFERED=1
+  exec stdbuf -oL -eL "$0" "$@"
+fi
+
+# Load Discord webhook from the env file when not already in the environment.
+# Reading the file here keeps the value out of sudo's argument list and therefore
+# out of ps/cmdline output.
+readonly _DISCORD_ENV_FILE="/opt/zombie/.discord-env"
+if [[ -z "${DISCORD_WEBHOOK_URL:-}" && -r "${_DISCORD_ENV_FILE}" ]]; then
+  # shellcheck source=/dev/null
+  source "${_DISCORD_ENV_FILE}"
 fi
 
 readonly REPO="usezombie/usezombie"

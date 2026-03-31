@@ -48,7 +48,7 @@ jobs:
     steps:
       - name: Install build dependencies
         run: |
-          apk add --no-cache git openssl-dev openssl-libs-static ca-certificates xz
+          apk add --no-cache git openssl-dev openssl-libs-static ca-certificates xz tar
           mkdir -p /usr/lib/x86_64-linux-gnu /usr/include/x86_64-linux-gnu
           ln -sf /usr/lib/libssl.a /usr/lib/x86_64-linux-gnu/libssl.a
           ln -sf /usr/lib/libcrypto.a /usr/lib/x86_64-linux-gnu/libcrypto.a
@@ -247,11 +247,12 @@ jobs:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
 
       - name: Deploy executor + worker to bare-metal
+        timeout-minutes: 8
         run: |
           ANT_KEY="$RUNNER_TEMP/dev-worker-ant.key"
           printf '%s\n' "$WORKER_ANT_SSH_KEY" > "$ANT_KEY"
           chmod 600 "$ANT_KEY"
-          SSH="ssh -i $ANT_KEY -o StrictHostKeyChecking=no -o ConnectTimeout=15 -o ServerAliveInterval=30 -o ServerAliveCountMax=6 -o RequestTTY=force"
+          SSH="ssh -i $ANT_KEY -o StrictHostKeyChecking=no -o ConnectTimeout=15 -o ServerAliveInterval=30 -o ServerAliveCountMax=6"
           SCP="scp -i $ANT_KEY -o StrictHostKeyChecking=no -o ConnectTimeout=15"
           TARGET="${WORKER_ANT_USER}@${WORKER_ANT_HOST}"
           VERSION="dev-${GITHUB_SHA::7}"
@@ -267,16 +268,37 @@ jobs:
           # Log binary type and shared library deps for diagnostics
           $SSH "$TARGET" "file /opt/zombie/bin/zombied /opt/zombie/bin/zombied-executor && ldd /opt/zombie/bin/zombied /opt/zombie/bin/zombied-executor 2>&1 || true"
 
-          # Write Discord webhook to server env file (avoids exposing in ps output)
+          # Write Discord webhook to server env file. deploy.sh sources this file
+          # at startup so the value never appears in sudo's argument list and stays
+          # out of ps/cmdline output. Cleanup runs in a separate always step below.
           $SSH "$TARGET" "printf 'DISCORD_WEBHOOK_URL=%s\n' '$DISCORD_WEBHOOK_URL' > /opt/zombie/.discord-env && chmod 600 /opt/zombie/.discord-env"
 
-          # Deploy executor first (worker Requires= it), then worker
-          # DRAIN_TIMEOUT=60 keeps drain within CI budget (15min total job timeout)
+          # ── Diagnostics: verify sudo works without password prompt ──
+          echo "::group::sudo diagnostics"
+          $SSH "$TARGET" "echo 'ssh ok'; sudo -n true && echo 'sudo NOPASSWD ok' || echo 'FAIL: sudo requires password'"
+          $SSH "$TARGET" "sudo -n id && echo 'sudo id ok' || echo 'FAIL: sudo -n id failed'"
+          $SSH "$TARGET" "systemctl is-active zombied-executor.service 2>&1 || echo 'executor: not active (first deploy?)'"
+          $SSH "$TARGET" "systemctl is-active zombied-worker.service 2>&1 || echo 'worker: not active (first deploy?)'"
+          echo "::endgroup::"
+
+          # Deploy executor first (worker Requires= it), then worker.
+          # DRAIN_TIMEOUT=60 keeps drain within CI budget.
+          # deploy.sh sources /opt/zombie/.discord-env for DISCORD_WEBHOOK_URL.
+          echo ">>> deploying executor..."
           $SSH "$TARGET" \
-            "sudo bash -c 'source /opt/zombie/.discord-env && DRAIN_TIMEOUT=60 /opt/zombie/deploy/deploy.sh executor $VERSION /opt/zombie/bin/zombied-executor'"
+            "sudo DRAIN_TIMEOUT=60 /opt/zombie/deploy/deploy.sh executor $VERSION /opt/zombie/bin/zombied-executor"
+          echo ">>> deploying worker..."
           $SSH "$TARGET" \
-            "sudo bash -c 'source /opt/zombie/.discord-env && DRAIN_TIMEOUT=60 /opt/zombie/deploy/deploy.sh worker $VERSION /opt/zombie/bin/zombied'"
-          $SSH "$TARGET" "rm -f /opt/zombie/.discord-env"
+            "sudo DRAIN_TIMEOUT=60 /opt/zombie/deploy/deploy.sh worker $VERSION /opt/zombie/bin/zombied"
+
+      - name: Clean up Discord env file on server
+        if: always()
+        run: |
+          ANT_KEY="$RUNNER_TEMP/dev-worker-ant.key"
+          if [ -f "$ANT_KEY" ] && [ -n "${WORKER_ANT_USER:-}" ] && [ -n "${WORKER_ANT_HOST:-}" ]; then
+            ssh -i "$ANT_KEY" -o StrictHostKeyChecking=no -o ConnectTimeout=10 \
+              "${WORKER_ANT_USER}@${WORKER_ANT_HOST}" "rm -f /opt/zombie/.discord-env" || true
+          fi
 
   # ── 4. Wait for Fly DEV to go green (via Cloudflare Tunnel) ─────────────
   verify-dev:
