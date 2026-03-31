@@ -35,7 +35,7 @@ jobs:
     steps:
       - name: Install build dependencies
         run: |
-          apk add --no-cache git openssl-dev openssl-libs-static ca-certificates xz binutils
+          apk add --no-cache git openssl-dev openssl-libs-static ca-certificates xz binutils tar
           mkdir -p /usr/lib/x86_64-linux-gnu /usr/include/x86_64-linux-gnu
           ln -sf /usr/lib/libssl.a    /usr/lib/x86_64-linux-gnu/libssl.a
           ln -sf /usr/lib/libcrypto.a /usr/lib/x86_64-linux-gnu/libcrypto.a
