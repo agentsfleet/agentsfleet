@@ -13,12 +13,16 @@ const posthog_events = @import("../../../observability/posthog_events.zig");
 const profile_linkage = @import("../../../audit/profile_linkage.zig");
 const id_format = @import("../../../types/id_format.zig");
 const error_codes = @import("../../../errors/codes.zig");
+const start_dedup = @import("start_dedup.zig");
 const log = std.log.scoped(.http);
 const API_ACTOR = "api";
 const uc4 = @import("../../../db/test_fixtures_uc4.zig");
 
 const queue_unavailable_code = error_codes.ERR_QUEUE_UNAVAILABLE;
 const queue_unavailable_message = "Queue unavailable";
+
+/// Re-export so callers that import start.zig directly can use computeDedupKey.
+pub const computeDedupKey = start_dedup.computeDedupKey;
 
 fn enforceRuntimeActiveProfile(
     conn: *pg.Conn,
@@ -52,6 +56,44 @@ fn enforceRuntimeActiveProfile(
     );
 }
 
+/// Upsert inline spec markdown into the specs table and return the spec_id.
+/// file_path is `inline:<first 16 chars of content_hash>`.
+/// Caller owns returned slice.
+fn upsertInlineSpec(
+    conn: *pg.Conn,
+    alloc: std.mem.Allocator,
+    workspace_id: []const u8,
+    spec_markdown: []const u8,
+    now_ms: i64,
+) ![]u8 {
+    var content_hash_hasher = std.crypto.hash.sha2.Sha256.init(.{});
+    content_hash_hasher.update(spec_markdown);
+    const content_digest = content_hash_hasher.finalResult();
+    const content_hash_hex = std.fmt.bytesToHex(content_digest, .lower);
+
+    const file_path = try std.fmt.allocPrint(alloc, "inline:{s}", .{content_hash_hex[0..16]});
+
+    // Title = first 80 chars of spec (trim whitespace, take first line if long).
+    const first_line_end = std.mem.indexOfScalar(u8, spec_markdown, '\n') orelse spec_markdown.len;
+    const raw_title = std.mem.trim(u8, spec_markdown[0..first_line_end], " \t#");
+    const title = if (raw_title.len > 80) raw_title[0..80] else raw_title;
+
+    var q = try conn.query(
+        \\INSERT INTO specs (spec_id, workspace_id, tenant_id, file_path, title, status, created_at, updated_at)
+        \\SELECT gen_random_uuid(), $1, tenant_id, $2, $3, 'active', $4, $4
+        \\FROM workspaces WHERE workspace_id = $1
+        \\ON CONFLICT (workspace_id, file_path) DO UPDATE SET updated_at = $4
+        \\RETURNING spec_id
+    , .{ workspace_id, file_path, title, now_ms });
+    defer q.deinit();
+    // check-pg-drain: ok — RETURNING 1 row; drained implicitly by deinit after we read it.
+
+    const row = (try q.next()) orelse return error.InlineSpecUpsertFailed;
+    const spec_id = try alloc.dupe(u8, try row.get([]u8, 0));
+    try q.drain();
+    return spec_id;
+}
+
 pub fn handleStartRun(ctx: *common.Context, req: *httpz.Request, res: *httpz.Response) void {
     var arena = std.heap.ArenaAllocator.init(ctx.alloc);
     defer arena.deinit();
@@ -69,22 +111,38 @@ pub fn handleStartRun(ctx: *common.Context, req: *httpz.Request, res: *httpz.Res
         return;
     };
 
+    // M16_002: Extended request struct — spec_id OR spec_markdown may be provided.
+    // base_commit_sha is used for dedup key computation.
     const Req = struct {
         workspace_id: []const u8,
-        spec_id: []const u8,
+        spec_id: ?[]const u8 = null,
+        spec_markdown: ?[]const u8 = null,
         mode: []const u8,
         requested_by: []const u8,
         idempotency_key: []const u8,
+        base_commit_sha: ?[]const u8 = null,
     };
 
-    const parsed = std.json.parseFromSlice(Req, alloc, body, .{}) catch {
+    const parsed = std.json.parseFromSlice(Req, alloc, body, .{ .ignore_unknown_fields = true }) catch {
         common.errorResponse(res, .bad_request, error_codes.ERR_INVALID_REQUEST, "Malformed JSON or missing required fields", req_id);
         return;
     };
     defer parsed.deinit();
     const rval = parsed.value;
     if (!common.requireUuidV7Id(res, req_id, rval.workspace_id, "workspace_id")) return;
-    if (!common.requireUuidV7Id(res, req_id, rval.spec_id, "spec_id")) return;
+
+    // Exactly one of spec_id or spec_markdown must be provided.
+    if (rval.spec_id == null and rval.spec_markdown == null) {
+        common.errorResponse(res, .bad_request, error_codes.ERR_INVALID_REQUEST, "Either spec_id or spec_markdown is required", req_id);
+        return;
+    }
+    if (rval.spec_id != null and rval.spec_markdown != null) {
+        common.errorResponse(res, .bad_request, error_codes.ERR_INVALID_REQUEST, "Provide spec_id or spec_markdown, not both", req_id);
+        return;
+    }
+    if (rval.spec_id) |sid| {
+        if (!common.requireUuidV7Id(res, req_id, sid, "spec_id")) return;
+    }
 
     if (!common.beginApiRequest(ctx)) {
         common.errorResponse(res, .service_unavailable, error_codes.ERR_API_SATURATED, "Server overloaded; retry shortly", req_id);
@@ -146,23 +204,36 @@ pub fn handleStartRun(ctx: *common.Context, req: *httpz.Request, res: *httpz.Res
         }
     }
 
-    {
-        var spec_check = conn.query(
-            "SELECT spec_id FROM specs WHERE spec_id = $1 AND workspace_id = $2",
-            .{ rval.spec_id, rval.workspace_id },
-        ) catch {
-            common.internalDbError(res, req_id);
-            return;
-        };
-        defer spec_check.deinit();
+    // Resolve spec_id: either provided directly or upserted from inline markdown.
+    const now_ms = std.time.milliTimestamp();
+    const resolved_spec_id: []const u8 = blk: {
+        if (rval.spec_id) |sid| {
+            // Validate existing spec.
+            var spec_check = conn.query(
+                "SELECT spec_id FROM specs WHERE spec_id = $1 AND workspace_id = $2",
+                .{ sid, rval.workspace_id },
+            ) catch {
+                common.internalDbError(res, req_id);
+                return;
+            };
+            defer spec_check.deinit();
 
-        const spec_exists = (spec_check.next() catch null) != null;
-        spec_check.drain() catch {};
-        if (!spec_exists) {
-            common.errorResponse(res, .not_found, error_codes.ERR_SPEC_NOT_FOUND, "Spec not found", req_id);
-            return;
+            const spec_exists = (spec_check.next() catch null) != null;
+            spec_check.drain() catch {};
+            if (!spec_exists) {
+                common.errorResponse(res, .not_found, error_codes.ERR_SPEC_NOT_FOUND, "Spec not found", req_id);
+                return;
+            }
+            break :blk sid;
+        } else {
+            // Upsert inline spec.
+            const spec_id = upsertInlineSpec(conn, alloc, rval.workspace_id, rval.spec_markdown.?, now_ms) catch {
+                common.internalOperationError(res, "Failed to upsert inline spec", req_id);
+                return;
+            };
+            break :blk spec_id;
         }
-    }
+    };
 
     enforceRuntimeActiveProfile(conn, alloc, rval.workspace_id, rval.requested_by) catch |err| switch (err) {
         entitlements.EnforcementError.EntitlementMissing => {
@@ -191,33 +262,66 @@ pub fn handleStartRun(ctx: *common.Context, req: *httpz.Request, res: *httpz.Res
         },
     };
 
+    // M16_002 §2.1-2.3: Compute dedup key and check for in-flight duplicate.
+    const dedup_key: ?[]u8 = if (rval.spec_markdown) |sm|
+        computeDedupKey(alloc, sm, rval.workspace_id, rval.base_commit_sha) catch null
+    else
+        null;
+
+    if (dedup_key) |dk| {
+        const dedup_q = conn.query(
+            \\SELECT run_id FROM runs
+            \\WHERE dedup_key = $1
+            \\  AND state IN ('SPEC_QUEUED', 'RUNNING', 'PLANNED')
+            \\LIMIT 1
+        , .{dk}) catch null;
+        if (dedup_q) |dq| {
+            defer dq.deinit();
+            // check-pg-drain: ok — at most 1 row; drained in the else branch or by deinit.
+            if (dq.next() catch null) |dup_row| {
+                const existing_id = alloc.dupe(u8, dup_row.get([]u8, 0) catch "") catch "";
+                dq.drain() catch {};
+                log.info("run.dedup_hit dedup_key={s} existing_run_id={s}", .{ dk, existing_id });
+                res.header("X-Dedup-Run", "existing");
+                common.writeJson(res, .ok, .{
+                    .run_id = existing_id,
+                    .dedup_hit = true,
+                    .request_id = req_id,
+                });
+                return;
+            }
+            dq.drain() catch {};
+        }
+    }
+
     const run_id = id_format.generateRunId(alloc) catch |err| {
         obs_log.logWarnErr(.http, err, "run.id_generation_fail error_code={s}", .{error_codes.ERR_UUIDV7_ID_GENERATION_FAILED});
         common.errorResponse(res, .internal_server_error, error_codes.ERR_UUIDV7_ID_GENERATION_FAILED, "Failed to generate run identifier", req_id);
         return;
     };
 
-    // Parse W3C traceparent header or generate new trace context
+    // Parse W3C traceparent header or generate new trace context.
     const tc = if (req.header("traceparent")) |tp|
         trace_ctx.TraceContext.fromW3CHeader(tp) orelse trace_ctx.TraceContext.generate()
     else
         trace_ctx.TraceContext.generate();
     const trace_id: []const u8 = tc.traceIdSlice();
 
-    const now_ms = std.time.milliTimestamp();
     const branch = std.fmt.allocPrint(alloc, "zombie/run-{s}", .{run_id}) catch "zombie/run-unknown";
 
     var insert = conn.query(
         \\INSERT INTO runs
         \\  (run_id, workspace_id, spec_id, tenant_id, state, attempt, mode,
-        \\   requested_by, idempotency_key, request_id, trace_id, branch, run_snapshot_version, created_at, updated_at)
+        \\   requested_by, idempotency_key, request_id, trace_id, branch, run_snapshot_version,
+        \\   dedup_key, created_at, updated_at)
         \\SELECT $1, $2, $3, tenant_id, 'SPEC_QUEUED', 1, $4, $5, $6, $7,
-        \\       $8, $9, (SELECT wap.config_version_id FROM workspace_active_config wap WHERE wap.workspace_id = $2), $10, $10
+        \\       $8, $9, (SELECT wap.config_version_id FROM workspace_active_config wap WHERE wap.workspace_id = $2),
+        \\       $10, $11, $11
         \\FROM workspaces WHERE workspace_id = $2
         \\ON CONFLICT (workspace_id, idempotency_key) DO UPDATE
         \\SET updated_at = runs.updated_at
         \\RETURNING run_id, state, attempt, run_snapshot_version, tenant_id, (xmax = 0) AS inserted
-    , .{ run_id, rval.workspace_id, rval.spec_id, rval.mode, rval.requested_by, rval.idempotency_key, req_id, trace_id, branch, now_ms }) catch {
+    , .{ run_id, rval.workspace_id, resolved_spec_id, rval.mode, rval.requested_by, rval.idempotency_key, req_id, trace_id, branch, dedup_key, now_ms }) catch {
         common.internalOperationError(res, "Failed to create run", req_id);
         return;
     };
@@ -248,7 +352,7 @@ pub fn handleStartRun(ctx: *common.Context, req: *httpz.Request, res: *httpz.Res
         };
 
         log.info("run.created run_id={s} workspace_id={s} spec_id={s}", .{
-            final_run_id, rval.workspace_id, rval.spec_id,
+            final_run_id, rval.workspace_id, resolved_spec_id,
         });
         if (run_snapshot_version) |snapshot| {
             profile_linkage.insertRunArtifact(conn, tenant_id, rval.workspace_id, final_run_id, snapshot, now_ms) catch |err| {
@@ -272,7 +376,7 @@ pub fn handleStartRun(ctx: *common.Context, req: *httpz.Request, res: *httpz.Res
             posthog_events.distinctIdOrSystem(principal.user_id orelse ""),
             final_run_id,
             rval.workspace_id,
-            rval.spec_id,
+            resolved_spec_id,
             rval.mode,
             req_id,
         );
@@ -294,6 +398,8 @@ pub fn handleStartRun(ctx: *common.Context, req: *httpz.Request, res: *httpz.Res
         .trace_id = trace_id,
     });
 }
+
+// T7/T8 computeDedupKey unit tests live in start_dedup.zig.
 
 test "runtime entitlement enforcement rejects downgraded free workspace using scale-only active profile" {
     const db_ctx = (try common.openHandlerTestConn(std.testing.allocator)) orelse return error.SkipZigTest;

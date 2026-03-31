@@ -7,6 +7,9 @@ primary_region = "iad"
 [deploy]
   release_command = "/usr/local/bin/zombied migrate"
 
+[processes]
+  app = "/usr/local/bin/zombied serve"
+
 [[vm]]
   size = "shared-cpu-1x"
   memory = "512mb"

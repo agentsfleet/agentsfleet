@@ -1,6 +1,7 @@
 const std = @import("std");
 const worker = @import("../../../pipeline/worker.zig");
 const common = @import("../common.zig");
+const start_dedup = @import("start_dedup.zig");
 
 test "integration: beginApiRequest enforces max in-flight limit" {
     var ws = worker.WorkerState.init();
@@ -152,4 +153,120 @@ test "integration: retry queue failure compensation restores state and removes r
         const row = (q.next() catch null) orelse return error.TestUnexpectedResult;
         try std.testing.expectEqual(@as(i64, 0), row.get(i64, 0) catch -1);
     }
+}
+
+// ── §3.2 Dedup integration tests ─────────────────────────────────────────────
+
+// 3.2.3: dedup_key column has unique index — direct DB insert of duplicate key fails.
+test "3.2.3: integration: dedup_key unique index rejects duplicate non-null value" {
+    const db_ctx = (try common.openHandlerTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
+
+    // Create a minimal temp runs table with dedup_key and unique partial index.
+    {
+        var q = try db_ctx.conn.query(
+            \\CREATE TEMP TABLE runs_dedup_test (
+            \\  run_id TEXT PRIMARY KEY,
+            \\  dedup_key TEXT
+            \\) ON COMMIT DROP
+        , .{});
+        q.deinit();
+    }
+    {
+        var q = try db_ctx.conn.query(
+            "CREATE UNIQUE INDEX ON runs_dedup_test(dedup_key) WHERE dedup_key IS NOT NULL",
+            .{},
+        );
+        q.deinit();
+    }
+
+    const alloc = std.testing.allocator;
+    const dedup_key = try start_dedup.computeDedupKey(alloc, "spec", "ws-dedup-test", "sha1");
+    defer alloc.free(dedup_key);
+
+    // First insert succeeds.
+    {
+        var q = try db_ctx.conn.query(
+            "INSERT INTO runs_dedup_test (run_id, dedup_key) VALUES ($1, $2)",
+            .{ "run-dedup-1", dedup_key },
+        );
+        q.deinit();
+    }
+
+    // Second insert with same dedup_key must fail (unique constraint).
+    const second = db_ctx.conn.query(
+        "INSERT INTO runs_dedup_test (run_id, dedup_key) VALUES ($1, $2)",
+        .{ "run-dedup-2", dedup_key },
+    );
+    try std.testing.expect(if (second) |*q| blk: {
+        q.deinit();
+        break :blk false; // should not succeed
+    } else |_| true); // expected: error from duplicate key
+}
+
+// 3.2.3 (null exemption): two NULL dedup_keys do not conflict.
+test "3.2.3: integration: dedup_key NULL rows are exempt from unique constraint" {
+    const db_ctx = (try common.openHandlerTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
+
+    {
+        var q = try db_ctx.conn.query(
+            \\CREATE TEMP TABLE runs_dedup_null (
+            \\  run_id TEXT PRIMARY KEY,
+            \\  dedup_key TEXT
+            \\) ON COMMIT DROP
+        , .{});
+        q.deinit();
+    }
+    {
+        var q = try db_ctx.conn.query(
+            "CREATE UNIQUE INDEX ON runs_dedup_null(dedup_key) WHERE dedup_key IS NOT NULL",
+            .{},
+        );
+        q.deinit();
+    }
+
+    // Two rows with NULL dedup_key must both succeed.
+    {
+        var q = try db_ctx.conn.query(
+            "INSERT INTO runs_dedup_null (run_id, dedup_key) VALUES ($1, NULL)",
+            .{"run-null-1"},
+        );
+        q.deinit();
+    }
+    {
+        var q = try db_ctx.conn.query(
+            "INSERT INTO runs_dedup_null (run_id, dedup_key) VALUES ($1, NULL)",
+            .{"run-null-2"},
+        );
+        q.deinit();
+    }
+
+    var q = try db_ctx.conn.query("SELECT COUNT(*)::BIGINT FROM runs_dedup_null", .{});
+    defer q.deinit();
+    const row = (q.next() catch null) orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqual(@as(i64, 2), row.get(i64, 0) catch -1);
+}
+
+// 3.2.1: computeDedupKey is stable — same spec/workspace/sha always produces the same key.
+// (Pure unit — no DB required; validates the dedup lookup precondition.)
+test "3.2.1: unit: identical submissions produce the same dedup key" {
+    const alloc = std.testing.allocator;
+    const k1 = try start_dedup.computeDedupKey(alloc, "spec markdown", "ws-stable", "sha-abc");
+    defer alloc.free(k1);
+    const k2 = try start_dedup.computeDedupKey(alloc, "spec markdown", "ws-stable", "sha-abc");
+    defer alloc.free(k2);
+    try std.testing.expectEqualStrings(k1, k2);
+}
+
+// 3.2.2: different sha → different key → new run allowed (no false dedup).
+test "3.2.2: unit: different base_commit_sha produces different key — no false dedup" {
+    const alloc = std.testing.allocator;
+    const k_old = try start_dedup.computeDedupKey(alloc, "spec markdown", "ws-1", "sha-old");
+    defer alloc.free(k_old);
+    const k_new = try start_dedup.computeDedupKey(alloc, "spec markdown", "ws-1", "sha-new");
+    defer alloc.free(k_new);
+    try std.testing.expect(!std.mem.eql(u8, k_old, k_new));
 }

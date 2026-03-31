@@ -75,20 +75,9 @@ pub fn match(path: []const u8) ?Route {
         if (isSingleSegment(session_id)) return .{ .poll_auth_session = session_id };
     }
 
-    if (std.mem.startsWith(u8, path, prefix_runs) and std.mem.endsWith(u8, path, ":retry")) {
-        const inner = path[prefix_runs.len .. path.len - ":retry".len];
-        if (inner.len > 0) return .{ .retry_run = inner };
-    }
-
-    if (std.mem.startsWith(u8, path, prefix_runs) and std.mem.endsWith(u8, path, ":replay")) {
-        const inner = path[prefix_runs.len .. path.len - ":replay".len];
-        if (inner.len > 0) return .{ .replay_run = inner };
-    }
-
-    if (std.mem.startsWith(u8, path, prefix_runs) and std.mem.endsWith(u8, path, ":stream")) {
-        const inner = path[prefix_runs.len .. path.len - ":stream".len];
-        if (inner.len > 0) return .{ .stream_run = inner };
-    }
+    if (matchRunAction(path, ":retry")) |run_id| return .{ .retry_run = run_id };
+    if (matchRunAction(path, ":replay")) |run_id| return .{ .replay_run = run_id };
+    if (matchRunAction(path, ":stream")) |run_id| return .{ .stream_run = run_id };
 
     if (std.mem.startsWith(u8, path, prefix_runs)) {
         const run_id = path[prefix_runs.len..];
@@ -149,6 +138,17 @@ pub fn match(path: []const u8) ?Route {
     }
 
     return null;
+}
+
+/// M16_002: Match /v1/runs/<run_id><action> routes generically.
+/// Returns the run_id segment when the path has the expected prefix and action suffix,
+/// and the inner segment (run_id) contains no additional slashes.
+fn matchRunAction(path: []const u8, action: []const u8) ?[]const u8 {
+    if (!std.mem.startsWith(u8, path, prefix_runs)) return null;
+    if (!std.mem.endsWith(u8, path, action)) return null;
+    const inner = path[prefix_runs.len .. path.len - action.len];
+    if (!isSingleSegment(inner)) return null;
+    return inner;
 }
 
 fn matchWorkspaceSuffix(path: []const u8, suffix: []const u8) ?[]const u8 {
@@ -325,4 +325,116 @@ test "match resolves workspace LLM credential route (M16_004)" {
     );
     // Extra segments not matched
     try std.testing.expect(match("/v1/workspaces/ws_1/extra/credentials/llm") == null);
+}
+
+// ── M16_002 matchRunAction tests ──────────────────────────────────────────────
+
+test "matchRunAction resolves :retry, :replay, :stream with single-segment run_id" {
+    const run_id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
+    try std.testing.expectEqualStrings(run_id, matchRunAction("/v1/runs/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11:retry", ":retry").?);
+    try std.testing.expectEqualStrings(run_id, matchRunAction("/v1/runs/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11:replay", ":replay").?);
+    try std.testing.expectEqualStrings(run_id, matchRunAction("/v1/runs/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11:stream", ":stream").?);
+}
+
+test "matchRunAction rejects multi-segment run_id (path traversal)" {
+    try std.testing.expect(matchRunAction("/v1/runs/foo/bar:retry", ":retry") == null);
+    try std.testing.expect(matchRunAction("/v1/runs//bar:retry", ":retry") == null);
+}
+
+test "matchRunAction rejects empty run_id" {
+    try std.testing.expect(matchRunAction("/v1/runs/:retry", ":retry") == null);
+}
+
+test "matchRunAction rejects wrong prefix" {
+    try std.testing.expect(matchRunAction("/v1/workspaces/ws1:retry", ":retry") == null);
+}
+
+test "match uses matchRunAction — run action routes resolve correctly" {
+    try std.testing.expectEqualStrings(
+        "run_1",
+        switch (match("/v1/runs/run_1:retry").?) {
+            .retry_run => |id| id,
+            else => return error.TestExpectedEqual,
+        },
+    );
+    try std.testing.expectEqualStrings(
+        "run_1",
+        switch (match("/v1/runs/run_1:replay").?) {
+            .replay_run => |id| id,
+            else => return error.TestExpectedEqual,
+        },
+    );
+    try std.testing.expectEqualStrings(
+        "run_1",
+        switch (match("/v1/runs/run_1:stream").?) {
+            .stream_run => |id| id,
+            else => return error.TestExpectedEqual,
+        },
+    );
+}
+
+// ── T1: matchRunAction resolves all three actions with UUID run_id ─────────────
+
+test "T1: matchRunAction resolves :retry with UUID run_id" {
+    const id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
+    const result = matchRunAction("/v1/runs/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11:retry", ":retry");
+    try std.testing.expectEqualStrings(id, result.?);
+}
+
+test "T1: matchRunAction resolves :replay with UUID run_id" {
+    const id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f22";
+    const result = matchRunAction("/v1/runs/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f22:replay", ":replay");
+    try std.testing.expectEqualStrings(id, result.?);
+}
+
+test "T1: matchRunAction resolves :stream with UUID run_id" {
+    const id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f33";
+    const result = matchRunAction("/v1/runs/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f33:stream", ":stream");
+    try std.testing.expectEqualStrings(id, result.?);
+}
+
+// ── T2: matchRunAction rejects invalid paths ──────────────────────────────────
+
+test "T2: matchRunAction returns null when action suffix absent" {
+    try std.testing.expect(matchRunAction("/v1/runs/run_1", ":retry") == null);
+}
+
+test "T2: matchRunAction returns null when prefix is wrong" {
+    try std.testing.expect(matchRunAction("/v1/workspaces/ws_1:retry", ":retry") == null);
+}
+
+test "T2: matchRunAction returns null for multi-segment run_id (path traversal)" {
+    try std.testing.expect(matchRunAction("/v1/runs/foo/bar:retry", ":retry") == null);
+}
+
+test "T2: matchRunAction returns null for double-slash run_id" {
+    try std.testing.expect(matchRunAction("/v1/runs//bar:retry", ":retry") == null);
+}
+
+test "T2: matchRunAction returns null when run_id segment contains slash" {
+    try std.testing.expect(matchRunAction("/v1/runs/run1/extra:stream", ":stream") == null);
+}
+
+// ── T3: matchRunAction edge cases ────────────────────────────────────────────
+
+test "T3: matchRunAction returns null for action with no run_id segment" {
+    try std.testing.expect(matchRunAction("/v1/runs/:retry", ":retry") == null);
+}
+
+test "T3: matchRunAction returns null for empty path" {
+    try std.testing.expect(matchRunAction("", ":retry") == null);
+}
+
+test "T3: matchRunAction returns null for prefix-only path" {
+    try std.testing.expect(matchRunAction("/v1/runs/", ":retry") == null);
+}
+
+test "T3: matchRunAction returns null when action is wrong" {
+    try std.testing.expect(matchRunAction("/v1/runs/run_1:retry", ":stream") == null);
+}
+
+test "T3: match rejects runs action path with extra path segment" {
+    try std.testing.expect(match("/v1/runs/a/b:retry") == null);
+    try std.testing.expect(match("/v1/runs/a/b:stream") == null);
+    try std.testing.expect(match("/v1/runs/a/b:replay") == null);
 }

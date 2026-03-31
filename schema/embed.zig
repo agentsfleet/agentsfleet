@@ -15,3 +15,5 @@ pub const workspace_free_credit_sql = @embedFile("015_workspace_free_credit.sql"
 pub const agent_scoring_baseline_sql = @embedFile("016_agent_scoring_baseline.sql");
 pub const agent_score_persistence_api_sql = @embedFile("017_agent_score_persistence_and_api.sql");
 pub const agent_failure_analysis_context_sql = @embedFile("018_agent_failure_analysis_and_context_injection.sql");
+pub const platform_llm_keys_sql = @embedFile("019_platform_llm_keys.sql");
+pub const run_dedup_key_sql = @embedFile("020_run_dedup_key.sql");
