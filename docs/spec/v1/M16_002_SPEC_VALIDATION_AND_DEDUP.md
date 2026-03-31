@@ -4,7 +4,8 @@
 **Milestone:** M16
 **Workstream:** 002
 **Date:** Mar 28, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
+**Branch:** feat/m16-002-spec-validation-dedup
 **Priority:** P1 — Spec submissions are not validated before agent execution; duplicate runs waste compute and produce confusing parallel results
 **Batch:** B2
 **Depends on:** M16_001 (Gate Loop — needs the run submission path)

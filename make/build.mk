@@ -42,13 +42,13 @@ build: _prepare_prebuilt_linux_binaries ## Build production container (uses preb
 build-dev:  ## Build development container (multi-arch)
 	$(call _buildx,Dockerfile.dev,$(_DEV_TAGS),)
 
-build-linux-alpine:  ## Compile inside Alpine with musl-native OpenSSL (mirrors CI)
+build-linux-alpine:  ## Compile inside Alpine with musl-native OpenSSL; asserts zero NEEDED + no INTERP (mirrors CI)
 	@echo "→ Building aarch64-linux inside Alpine (native ARM, static OpenSSL)..."
 	@docker run --rm --platform linux/arm64 \
 		-v "$(CURDIR):/src:ro" -w /tmp/build \
 		mirror.gcr.io/library/alpine:3.21 \
 		sh -c '\
-			apk add --no-cache openssl-dev openssl-libs-static ca-certificates xz wget >/dev/null 2>&1 && \
+			apk add --no-cache openssl-dev openssl-libs-static ca-certificates xz wget binutils >/dev/null 2>&1 && \
 			ARCH=$$(uname -m); \
 			mkdir -p /usr/lib/$${ARCH}-linux-gnu /usr/include/$${ARCH}-linux-gnu && \
 			ln -sf /usr/lib/libssl.a /usr/lib/$${ARCH}-linux-gnu/libssl.a && \
@@ -61,8 +61,19 @@ build-linux-alpine:  ## Compile inside Alpine with musl-native OpenSSL (mirrors 
 			(cd /tmp && wget -q "$$ZIG_URL" -O zig.tar.xz && tar xf zig.tar.xz && cp zig-*/zig /usr/local/bin/ && cp -r zig-*/lib /usr/local/lib/zig) && \
 			echo "  compiling zombied (aarch64-linux, static OpenSSL)..." && \
 			zig build -Doptimize=ReleaseSafe -Dtarget=aarch64-linux && \
-			test -f zig-out/bin/zombied && test -f zig-out/bin/zombied-executor && \
-			echo "✓ build-linux-alpine passed (fully static, zero NEEDED)"'
+			for bin in zig-out/bin/zombied zig-out/bin/zombied-executor; do \
+				test -f "$$bin" || { echo "FAIL: $$bin not found"; exit 1; }; \
+				if readelf -d "$$bin" 2>/dev/null | grep -q " (NEEDED)"; then \
+					echo "FAIL: $$bin has dynamic NEEDED entries"; \
+					readelf -d "$$bin" | grep NEEDED; \
+					exit 1; \
+				fi; \
+				if readelf -l "$$bin" 2>/dev/null | grep -q "INTERP"; then \
+					echo "FAIL: $$bin has INTERP (dynamic linker) section"; \
+					exit 1; \
+				fi; \
+				echo "✓ $$bin: fully static (zero NEEDED, no INTERP)"; \
+			done'
 
 push: _docker_login _prepare_prebuilt_linux_binaries ## Push production image (uses prebuilt linux binaries)
 	$(call _buildx,Dockerfile,$(_PROD_TAGS),--push)

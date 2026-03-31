@@ -4,7 +4,8 @@
 **Milestone:** M17
 **Workstream:** 001
 **Date:** Mar 28, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
+**Branch:** feat/m17-001-run-cost-control
 **Priority:** P1 — A single malformed spec can burn unlimited tokens or wall time today; no enforcement boundary exists at the run or workspace level
 **Batch:** B3
 **Depends on:** M16_001 (Gate Loop — runs must exist before budgeting them)

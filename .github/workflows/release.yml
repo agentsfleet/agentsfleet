@@ -24,41 +24,22 @@ jobs:
           fi
           echo "✓ tag v$TAG matches VERSION $VERSION"
 
-  # ── 1. Standalone binaries: cross-compile with Zig ─────────────────────
-  # Build inside Alpine (musl-native) so static OpenSSL archives are musl-
-  # compatible.  Produces fully static binaries that run on any Linux.
-  binaries-linux:
+  # ── 1a. x86_64 binary: build inside Alpine container ──────────────────
+  # JS actions work inside Alpine on x86_64 runners.
+  # Alpine's openssl-libs-static provides musl-native .a — fully static output.
+  binaries-linux-x86:
     needs: verify-tag
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - target: x86_64-linux
-            artifact: zombied-linux-amd64
-            os: ubuntu-latest
-            arch: x86_64
-            container: mirror.gcr.io/library/alpine:3.21
-          - target: aarch64-linux
-            artifact: zombied-linux-arm64
-            os: ubuntu-24.04-arm
-            arch: aarch64
-            container: mirror.gcr.io/library/debian:bookworm-slim
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     container:
-      image: ${{ matrix.container }}
+      image: mirror.gcr.io/library/alpine:3.21
     steps:
-      - name: Install build dependencies (Alpine)
-        if: contains(matrix.container, 'alpine')
+      - name: Install build dependencies
         run: |
-          apk add --no-cache git openssl-dev openssl-libs-static ca-certificates xz
-          mkdir -p /usr/lib/${{ matrix.arch }}-linux-gnu /usr/include/${{ matrix.arch }}-linux-gnu
-          ln -sf /usr/lib/libssl.a /usr/lib/${{ matrix.arch }}-linux-gnu/libssl.a
-          ln -sf /usr/lib/libcrypto.a /usr/lib/${{ matrix.arch }}-linux-gnu/libcrypto.a
-          ln -sf /usr/include/openssl /usr/include/${{ matrix.arch }}-linux-gnu/openssl
-
-      - name: Install build dependencies (Debian)
-        if: contains(matrix.container, 'debian')
-        run: apt-get update && apt-get install -y --no-install-recommends git libssl-dev ca-certificates xz-utils
+          apk add --no-cache git openssl-dev openssl-libs-static ca-certificates xz binutils
+          mkdir -p /usr/lib/x86_64-linux-gnu /usr/include/x86_64-linux-gnu
+          ln -sf /usr/lib/libssl.a    /usr/lib/x86_64-linux-gnu/libssl.a
+          ln -sf /usr/lib/libcrypto.a /usr/lib/x86_64-linux-gnu/libcrypto.a
+          ln -sf /usr/include/openssl /usr/include/x86_64-linux-gnu/openssl
 
       - uses: actions/checkout@v6
 
@@ -66,20 +47,99 @@ jobs:
         with:
           version: 0.15.2
 
-      - name: Build
-        run: zig build -Doptimize=ReleaseSafe -Dtarget=${{ matrix.target }}
+      - name: Build (x86_64-linux)
+        run: zig build -Doptimize=ReleaseSafe -Dtarget=x86_64-linux
+
+      - name: Verify static ELF — zero NEEDED, no INTERP (x86_64-linux)
+        run: |
+          for bin in zig-out/bin/zombied zig-out/bin/zombied-executor; do
+            test -f "$bin"
+            if readelf -d "$bin" 2>/dev/null | grep -q " (NEEDED)"; then
+              echo "FAIL: $bin has dynamic NEEDED entries"
+              readelf -d "$bin" | grep NEEDED
+              exit 1
+            fi
+            if readelf -l "$bin" 2>/dev/null | grep -q "INTERP"; then
+              echo "FAIL: $bin has INTERP (dynamic linker) section"
+              exit 1
+            fi
+            echo "✓ $bin: fully static (zero NEEDED, no INTERP)"
+          done
 
       - name: Package
         run: |
           mkdir -p dist
-          cp zig-out/bin/zombied dist/${{ matrix.artifact }}
-          chmod +x dist/${{ matrix.artifact }}
-          tar czf dist/${{ matrix.artifact }}.tar.gz -C dist ${{ matrix.artifact }}
+          cp zig-out/bin/zombied dist/zombied-linux-amd64
+          chmod +x dist/zombied-linux-amd64
+          tar czf dist/zombied-linux-amd64.tar.gz -C dist zombied-linux-amd64
 
       - uses: actions/upload-artifact@v7
         with:
-          name: ${{ matrix.artifact }}
-          path: dist/${{ matrix.artifact }}.tar.gz
+          name: zombied-linux-amd64
+          path: dist/zombied-linux-amd64.tar.gz
+
+  # ── 1b. aarch64 binary: bare runner + docker run alpine ───────────────
+  # JS actions cannot run inside Alpine containers on ARM64 runners.
+  # Solution: use the bare ubuntu-24.04-arm runner and invoke docker run
+  # to execute the Zig build inside Alpine — same approach as `make build-linux-alpine`.
+  binaries-linux-aarch64:
+    needs: verify-tag
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Build aarch64-linux inside Alpine (musl-native static OpenSSL)
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/zig-out/bin"
+          docker run --rm \
+            --platform linux/arm64 \
+            -v "$GITHUB_WORKSPACE:/src:ro" \
+            -v "$GITHUB_WORKSPACE/zig-out:/zig-out" \
+            mirror.gcr.io/library/alpine:3.21 \
+            sh -c '
+              set -e
+              apk add --no-cache openssl-dev openssl-libs-static ca-certificates xz wget binutils >/dev/null 2>&1
+              mkdir -p /usr/lib/aarch64-linux-gnu /usr/include/aarch64-linux-gnu
+              ln -sf /usr/lib/libssl.a    /usr/lib/aarch64-linux-gnu/libssl.a
+              ln -sf /usr/lib/libcrypto.a /usr/lib/aarch64-linux-gnu/libcrypto.a
+              ln -sf /usr/include/openssl /usr/include/aarch64-linux-gnu/openssl
+              cp -a /src/. /build
+              cd /build
+              echo "  fetching zig 0.15.2 for aarch64..."
+              wget -q https://ziglang.org/download/0.15.2/zig-aarch64-linux-0.15.2.tar.xz -O /tmp/zig.tar.xz
+              echo "958ed7d1e00d0ea76590d27666efbf7a932281b3d7ba0c6b01b0ff26498f667f  /tmp/zig.tar.xz" | sha256sum -c -
+              (cd /tmp && tar xf zig.tar.xz)
+              export PATH="/tmp/zig-aarch64-linux-0.15.2:$PATH"
+              echo "  compiling zombied + zombied-executor (aarch64-linux)..."
+              zig build -Doptimize=ReleaseSafe -Dtarget=aarch64-linux
+              for bin in zig-out/bin/zombied zig-out/bin/zombied-executor; do
+                test -f "$bin"
+                if readelf -d "$bin" 2>/dev/null | grep -q " (NEEDED)"; then
+                  echo "FAIL: $bin has dynamic NEEDED entries"
+                  readelf -d "$bin" | grep NEEDED
+                  exit 1
+                fi
+                if readelf -l "$bin" 2>/dev/null | grep -q "INTERP"; then
+                  echo "FAIL: $bin has INTERP (dynamic linker) section"
+                  exit 1
+                fi
+                echo "  ✓ $bin: fully static (zero NEEDED, no INTERP)"
+              done
+              cp zig-out/bin/zombied          /zig-out/bin/zombied
+              cp zig-out/bin/zombied-executor /zig-out/bin/zombied-executor
+            '
+
+      - name: Package
+        run: |
+          mkdir -p dist
+          cp zig-out/bin/zombied dist/zombied-linux-arm64
+          chmod +x dist/zombied-linux-arm64
+          tar czf dist/zombied-linux-arm64.tar.gz -C dist zombied-linux-arm64
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: zombied-linux-arm64
+          path: dist/zombied-linux-arm64.tar.gz
 
   binaries-macos:
     needs: verify-tag
@@ -112,7 +172,7 @@ jobs:
   # ── 2. Docker: multi-arch build + push stable to GHCR ──────────────────
   docker:
     runs-on: ubuntu-latest
-    needs: [verify-tag, binaries-linux, binaries-macos]
+    needs: [verify-tag, binaries-linux-x86, binaries-linux-aarch64, binaries-macos]
     permissions:
       packages: write
     steps:
@@ -180,7 +240,7 @@ jobs:
   # ── 4. GitHub Release: changelog + attach binaries ─────────────────────
   create-release:
     runs-on: ubuntu-latest
-    needs: [binaries-linux, binaries-macos]
+    needs: [binaries-linux-x86, binaries-linux-aarch64, binaries-macos]
     permissions:
       contents: write
     steps:
