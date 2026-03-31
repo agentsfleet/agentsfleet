@@ -4,6 +4,7 @@ export function registerProgramCommands(handlers) {
     logout: handlers.logout,
     workspace: handlers.workspace,
     "specs.sync": handlers.specsSync,
+    "spec.init": handlers.specInit,
     run: handlers.run,
     "runs.list": handlers.runsList,
     doctor: handlers.doctor,

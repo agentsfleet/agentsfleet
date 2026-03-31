@@ -16,26 +16,28 @@ function printHelp(stdout, ui, opts = {}) {
 
   printBanner(stdout, version, { noColor, jsonMode });
   writeLine(stdout);
-  writeLine(stdout, ui.head("zombiectl - UseZombie CLI"));
+  writeLine(stdout, "  " + ui.head("UseZombie CLI") + ui.dim("  —  autonomous agent platform"));
   writeLine(stdout);
-  writeLine(stdout, "USAGE:");
+  writeLine(stdout, ui.head("USAGE"));
   writeLine(stdout, "  zombiectl [--api URL] [--json] <command> [subcommand] [flags]");
   writeLine(stdout);
-  writeLine(stdout, "USER COMMANDS:");
+  writeLine(stdout, ui.head("USER COMMANDS"));
   writeLine(stdout, "  login [--timeout-sec N] [--poll-ms N] [--no-open]");
   writeLine(stdout, "  logout");
   writeLine(stdout, "  workspace add <repo_url> [--default-branch BRANCH]");
   writeLine(stdout, "  workspace list");
   writeLine(stdout, "  workspace remove <workspace_id>");
+  writeLine(stdout, "  spec init [--path DIR] [--output PATH]");
   writeLine(stdout, "  specs sync [--workspace-id ID]");
   writeLine(stdout, "  run [--workspace-id ID] [--spec-id ID] [--mode MODE] [--requested-by USER] [--idempotency-key KEY]");
+  writeLine(stdout, "  run [--spec FILE] [--preview] [--preview-only] [--path DIR]");
   writeLine(stdout, "  run status <run_id>");
   writeLine(stdout, "  runs list [--workspace-id ID]");
   writeLine(stdout, "  doctor");
 
   if (showOperator) {
     writeLine(stdout);
-    writeLine(stdout, "OPERATOR COMMANDS:");
+    writeLine(stdout, ui.head("OPERATOR COMMANDS"));
     writeLine(stdout, "  harness source put --workspace-id ID --file PATH [--agent-id ID] [--name NAME]");
     writeLine(stdout, "  harness compile --workspace-id ID [--agent-id ID] [--config-version-id ID]");
     writeLine(stdout, "  harness activate --workspace-id ID --config-version-id ID [--activated-by USER]");
@@ -55,7 +57,7 @@ function printHelp(stdout, ui, opts = {}) {
   }
 
   writeLine(stdout);
-  writeLine(stdout, "GLOBAL FLAGS:");
+  writeLine(stdout, ui.head("GLOBAL FLAGS"));
   writeLine(stdout, "  --api URL        API base URL");
   writeLine(stdout, "  --json           Machine-readable JSON output");
   writeLine(stdout, "  --no-input       Disable interactive prompts");
@@ -64,7 +66,7 @@ function printHelp(stdout, ui, opts = {}) {
   writeLine(stdout, "  --help, -h       Show this help");
 
   writeLine(stdout);
-  writeLine(stdout, "ENVIRONMENT VARIABLES:");
+  writeLine(stdout, ui.head("ENVIRONMENT VARIABLES"));
   writeLine(stdout, "  ZOMBIE_API_URL   API base URL (overridden by --api)");
   writeLine(stdout, "  ZOMBIE_TOKEN     Auth token (overridden by login)");
   writeLine(stdout, "  ZOMBIE_API_KEY   API key for service auth");

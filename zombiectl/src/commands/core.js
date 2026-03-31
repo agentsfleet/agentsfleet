@@ -4,6 +4,8 @@ import { queueCliAnalyticsEvent, setCliAnalyticsContext } from "../lib/analytics
 import { validateRequiredId } from "../program/validate.js";
 import { ERR_BILLING_CREDIT_EXHAUSTED } from "../constants/error-codes.js";
 import { ApiError } from "../lib/http.js";
+import { commandSpecInit } from "./spec_init.js";
+import { runPreview } from "./run_preview.js";
 
 function createCoreHandlers(ctx, workspaces, deps) {
   const {
@@ -385,6 +387,33 @@ function createCoreHandlers(ctx, workspaces, deps) {
     }
 
     const parsed = parseFlags(args);
+
+    // Preview: parse spec file, show predicted file impact
+    const specFile = parsed.options["spec"];
+    const previewOnly = Boolean(parsed.options["preview-only"]);
+    const preview = previewOnly || Boolean(parsed.options["preview"]);
+
+    if (preview) {
+      if (!specFile) {
+        writeLine(ctx.stderr, ui.err("--preview requires --spec <file>"));
+        return 2;
+      }
+      const repoPath = parsed.options["path"] || ".";
+      const result = await runPreview(specFile, repoPath, ctx, {
+        writeLine,
+        ui,
+        parseFlags,
+        printJson,
+        printSection,
+        printKeyValue,
+        printTable,
+        request,
+        apiHeaders,
+      });
+      if (!result) return 1;
+      if (previewOnly) return 0;
+    }
+
     const workspaceId = await ensureWorkspaceId(parsed.options["workspace-id"]);
     if (!workspaceId) {
       writeLine(ctx.stderr, ui.err("workspace_id required (set one with workspace add or pass --workspace-id)"));
@@ -499,6 +528,7 @@ function createCoreHandlers(ctx, workspaces, deps) {
     commandRun,
     commandRunsList,
     commandSkillSecret: ops.commandSkillSecret,
+    commandSpecInit: (args) => commandSpecInit(args, ctx, { parseFlags, writeLine, ui, printJson }),
     commandSpecsSync,
     commandWorkspace,
   };

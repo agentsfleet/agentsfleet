@@ -6,6 +6,7 @@ const KNOWN_COMMANDS = [
   "login",
   "logout",
   "workspace",
+  "spec",
   "specs",
   "run",
   "runs",
@@ -17,6 +18,7 @@ const KNOWN_COMMANDS = [
 
 const KNOWN_SUBCOMMANDS = {
   workspace: ["add", "list", "remove"],
+  spec: ["init"],
   specs: ["sync"],
   runs: ["list"],
   run: ["status"],

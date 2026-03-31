@@ -32,7 +32,7 @@ export const VERSION = "0.1.0";
 
 export { parseGlobalArgs };
 
-const AUTH_EXEMPT_ROUTES = new Set(["login", "doctor"]);
+const AUTH_EXEMPT_ROUTES = new Set(["login", "doctor", "spec.init"]);
 
 export async function runCli(argv, io = {}) {
   const stdout = io.stdout || process.stdout;
@@ -124,6 +124,7 @@ export async function runCli(argv, io = {}) {
     login: (routeArgs) => core.commandLogin(routeArgs),
     logout: () => core.commandLogout(),
     workspace: (routeArgs) => core.commandWorkspace(routeArgs),
+    specInit: (routeArgs) => core.commandSpecInit(routeArgs.slice(1)),
     specsSync: (routeArgs) => core.commandSpecsSync(routeArgs.slice(1)),
     run: (routeArgs) => core.commandRun(routeArgs),
     runsList: (routeArgs) => core.commandRunsList(routeArgs.slice(1)),
