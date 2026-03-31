@@ -15,6 +15,7 @@ primary_region = "iad"
 # All inbound traffic enters via Cloudflare Tunnel only (cloudflared-prod).
 # Internal access: zombied-prod.internal:3000 over Fly 6PN.
 
-[metrics]
+[[metrics]]
   port = 9091
   path = "/metrics"
+  processes = ["app"]

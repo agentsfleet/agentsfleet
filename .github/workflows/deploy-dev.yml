@@ -251,7 +251,7 @@ jobs:
           ANT_KEY="$RUNNER_TEMP/dev-worker-ant.key"
           printf '%s\n' "$WORKER_ANT_SSH_KEY" > "$ANT_KEY"
           chmod 600 "$ANT_KEY"
-          SSH="ssh -i $ANT_KEY -o StrictHostKeyChecking=no -o ConnectTimeout=15 -o ServerAliveInterval=30 -o ServerAliveCountMax=6"
+          SSH="ssh -i $ANT_KEY -o StrictHostKeyChecking=no -o ConnectTimeout=15 -o ServerAliveInterval=30 -o ServerAliveCountMax=6 -o RequestTTY=force"
           SCP="scp -i $ANT_KEY -o StrictHostKeyChecking=no -o ConnectTimeout=15"
           TARGET="${WORKER_ANT_USER}@${WORKER_ANT_HOST}"
           VERSION="dev-${GITHUB_SHA::7}"
@@ -271,10 +271,11 @@ jobs:
           $SSH "$TARGET" "printf 'DISCORD_WEBHOOK_URL=%s\n' '$DISCORD_WEBHOOK_URL' > /opt/zombie/.discord-env && chmod 600 /opt/zombie/.discord-env"
 
           # Deploy executor first (worker Requires= it), then worker
+          # DRAIN_TIMEOUT=60 keeps drain within CI budget (15min total job timeout)
           $SSH "$TARGET" \
-            "sudo bash -c 'source /opt/zombie/.discord-env && /opt/zombie/deploy/deploy.sh executor $VERSION /opt/zombie/bin/zombied-executor'"
+            "sudo bash -c 'source /opt/zombie/.discord-env && DRAIN_TIMEOUT=60 /opt/zombie/deploy/deploy.sh executor $VERSION /opt/zombie/bin/zombied-executor'"
           $SSH "$TARGET" \
-            "sudo bash -c 'source /opt/zombie/.discord-env && /opt/zombie/deploy/deploy.sh worker $VERSION /opt/zombie/bin/zombied'"
+            "sudo bash -c 'source /opt/zombie/.discord-env && DRAIN_TIMEOUT=60 /opt/zombie/deploy/deploy.sh worker $VERSION /opt/zombie/bin/zombied'"
           $SSH "$TARGET" "rm -f /opt/zombie/.discord-env"
 
   # ── 4. Wait for Fly DEV to go green (via Cloudflare Tunnel) ─────────────

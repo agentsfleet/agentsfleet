@@ -19,6 +19,11 @@
 
 set -euo pipefail
 
+# Force line-buffered stdout so log output streams through SSH in real time.
+if [ -z "${_DEPLOY_UNBUFFERED:-}" ] && command -v stdbuf >/dev/null 2>&1; then
+  _DEPLOY_UNBUFFERED=1 exec stdbuf -oL "$0" "$@"
+fi
+
 readonly REPO="usezombie/usezombie"
 readonly INSTALL_DIR="/usr/local/bin"
 readonly SYSTEMD_DIR="/etc/systemd/system"
