@@ -50,6 +50,14 @@ Status: Canonical Zig source of truth for agents and commits
 - Decide ownership before writing helpers: allocator, free/deinit path, and whether data is owned or borrowed.
 - If the file touches `pg`, apply the query lifecycle rules above before writing the first helper.
 
+## No Hardcoded Roles
+
+- Never use `ROLE_ECHO`, `ROLE_SCOUT`, or `ROLE_WARDEN` string constants in production code. These constants were removed in M20_001.
+- Never string-compare against `"echo"`, `"scout"`, or `"warden"` to identify roles or skills in dispatch logic. Roles and skills are loaded from the active pipeline profile at runtime.
+- The active profile's `skill_ids` are the source of truth for what skills are valid. Use `topology.defaultProfile()` to load the default skill set for entitlement and policy checks.
+- The `SkillKind` enum has a single variant `.custom` — all skills are equal from the registry's perspective. The execution backend is determined by which runner was registered for a skill_id.
+- Lint gate: `make lint-zig` runs `_hardcoded_role_check` to enforce this rule on every commit.
+
 ## Commands
 
 - `make lint`

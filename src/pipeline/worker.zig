@@ -32,7 +32,6 @@ pub const WorkerConfig = struct {
     github_app_id: []const u8,
     github_app_private_key: []const u8,
     pipeline_profile_path: []const u8,
-    skill_registry: ?*const agents.SkillRegistry = null,
     max_attempts: u32 = 3,
     run_timeout_ms: u64 = 300_000,
     poll_interval_ms: u64 = 2_000,
@@ -83,6 +82,14 @@ pub fn workerLoop(cfg: WorkerConfig, worker_state: *WorkerState) void {
     };
     defer profile.deinit();
     log.info("worker.profile_loaded agent_id={s} stages={d}", .{ profile.agent_id, profile.stages.len });
+
+    var skill_registry = agents.SkillRegistry.init(alloc);
+    defer skill_registry.deinit();
+    agents.populateRegistryFromProfile(&skill_registry, &profile) catch |err| {
+        obs_log.logErrWithHint(.worker, err, error_codes.ERR_WORKER_PROFILE_INIT, "worker.registry_init_fail", .{});
+        return;
+    };
+    log.info("worker.registry_built skills={d}", .{skill_registry.skills.items.len});
 
     var token_cache = github_auth.TokenCache.init(alloc, cfg.github_app_id, cfg.github_app_private_key);
     defer token_cache.deinit();
@@ -152,7 +159,7 @@ pub fn workerLoop(cfg: WorkerConfig, worker_state: *WorkerState) void {
                     .max_attempts = cfg.max_attempts,
                     .run_timeout_ms = cfg.run_timeout_ms,
                     .sandbox = cfg.sandbox,
-                    .skill_registry = cfg.skill_registry,
+                    .skill_registry = &skill_registry,
                     .posthog = cfg.posthog,
                 },
             },

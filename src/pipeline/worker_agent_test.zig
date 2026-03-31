@@ -189,10 +189,14 @@ test "integration: switching active profile changes worker-resolved profile dete
 }
 
 test "integration: default topology roles resolve through registry" {
-    var profile = try topology.defaultProfile(std.testing.allocator);
+    const alloc = std.testing.allocator;
+    var profile = try topology.defaultProfile(alloc);
     defer profile.deinit();
+    var registry = agents.SkillRegistry.init(alloc);
+    defer registry.deinit();
+    try agents.populateRegistryFromProfile(&registry, &profile);
 
     for (profile.stages) |stage| {
-        try std.testing.expect(agents.resolveRole(stage.role_id, stage.skill_id) != null);
+        try std.testing.expect(agents.resolveRoleWithRegistry(&registry, stage.role_id, stage.skill_id) != null);
     }
 }

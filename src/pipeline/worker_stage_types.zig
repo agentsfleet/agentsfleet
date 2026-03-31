@@ -10,7 +10,7 @@ pub const ExecuteConfig = struct {
     run_timeout_ms: u64,
     gate_tool_timeout_ms: u64 = 300_000,
     sandbox: sandbox_runtime.Config = .{},
-    skill_registry: ?*const agents.SkillRegistry = null,
+    skill_registry: *const agents.SkillRegistry,
     posthog: ?*posthog.PostHogClient = null,
     executor: ?*executor_client.ExecutorClient = null,
 };

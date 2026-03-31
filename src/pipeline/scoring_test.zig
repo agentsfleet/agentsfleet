@@ -245,7 +245,7 @@ fn runTimeoutDemoCohort(memory_context: []const u8) !u32 {
     // check-pg-drain: ok — no conn.query() here; checker misattributes test-block queries
     var registry = agents.SkillRegistry.init(std.testing.allocator);
     defer registry.deinit();
-    try registry.registerCustomSkill("timeout-demo", .echo, demoTimeoutReductionSkill);
+    try registry.registerCustomSkill("timeout-demo", .echo, demoTimeoutReductionSkill, null);
 
     const binding = agents.resolveRoleWithRegistry(&registry, "planner", "timeout-demo") orelse return error.TestExpectedRole;
     const prompts = agents.PromptFiles{

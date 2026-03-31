@@ -2,7 +2,7 @@
 # QUALITY — code quality, formatting, analysis
 # =============================================================================
 
-.PHONY: lint lint-zig lint-website lint-apps lint-ci doctor check-pg-drain _fmt _fmt_check _zlint_check _pg_drain_check _zig_target_lint _zig_line_limit_check _website_lint _app_lint _zombiectl_lint _actionlint_check
+.PHONY: lint lint-zig lint-website lint-apps lint-ci doctor check-pg-drain _fmt _fmt_check _zlint_check _pg_drain_check _zig_target_lint _zig_line_limit_check _hardcoded_role_check _website_lint _app_lint _zombiectl_lint _actionlint_check
 
 ZLINT ?= zlint
 ACTIONLINT ?= actionlint
@@ -101,6 +101,27 @@ _zig_line_limit_check:
 	fi; \
 	echo "✓ [zombied] All new Zig files within 500-line limit"
 
+_hardcoded_role_check:
+	@echo "→ [zombied] Checking for banned hardcoded role constants..."
+	@FAIL=0; \
+	if grep -rn 'ROLE_SCOUT\|ROLE_ECHO\|ROLE_WARDEN' src/ --include='*.zig' | grep -v '_test\.zig' | grep -q .; then \
+		echo "✗ Banned role constants found (ROLE_SCOUT/ROLE_ECHO/ROLE_WARDEN). Remove them — roles are loaded from config."; \
+		grep -rn 'ROLE_SCOUT\|ROLE_ECHO\|ROLE_WARDEN' src/ --include='*.zig' | grep -v '_test\.zig'; \
+		FAIL=1; \
+	fi; \
+	if grep -rn 'eqlIgnoreCase.*"echo"\|eqlIgnoreCase.*"scout"\|eqlIgnoreCase.*"warden"' src/ --include='*.zig' | grep -v '_test\.zig' | grep -q .; then \
+		echo "✗ Hardcoded role string comparison found. Use the active profile skill list instead."; \
+		grep -rn 'eqlIgnoreCase.*"echo"\|eqlIgnoreCase.*"scout"\|eqlIgnoreCase.*"warden"' src/ --include='*.zig' | grep -v '_test\.zig'; \
+		FAIL=1; \
+	fi; \
+	if grep -rn 'mem\.eql.*"echo"\|mem\.eql.*"scout"\|mem\.eql.*"warden"' src/ --include='*.zig' | grep -v '_test\.zig' | grep -q .; then \
+		echo "✗ Hardcoded role string comparison (mem.eql) found. Use the active profile skill list instead."; \
+		grep -rn 'mem\.eql.*"echo"\|mem\.eql.*"scout"\|mem\.eql.*"warden"' src/ --include='*.zig' | grep -v '_test\.zig'; \
+		FAIL=1; \
+	fi; \
+	if [ "$$FAIL" = "1" ]; then exit 1; fi; \
+	echo "✓ [zombied] No hardcoded role constants found"
+
 _actionlint_check:
 	@echo "→ [ci] Running actionlint on GitHub Actions workflows..."
 	@command -v $(ACTIONLINT) >/dev/null 2>&1 || { echo "actionlint not found. Install via: mise install actionlint"; exit 1; }
@@ -109,7 +130,7 @@ _actionlint_check:
 
 check-pg-drain: _pg_drain_check  ## Check that all conn.query() calls have a .drain()
 
-lint-zig: _fmt_check _zlint_check _pg_drain_check _zig_target_lint _zig_line_limit_check  ## Lint zombied (Zig)
+lint-zig: _fmt_check _zlint_check _pg_drain_check _zig_target_lint _zig_line_limit_check _hardcoded_role_check  ## Lint zombied (Zig)
 	@echo "✓ [zombied] Lint passed"
 
 lint-website: _website_lint  ## Lint website only (ESLint + tsc)

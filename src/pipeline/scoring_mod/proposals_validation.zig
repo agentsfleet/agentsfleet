@@ -22,11 +22,17 @@ pub fn validateProposedChanges(
 
     log.debug("validating proposed changes workspace_id={s} config_version_id={s}", .{ workspace_id, config_version_id });
 
+    var default_prof = try topology.defaultProfile(alloc);
+    defer default_prof.deinit();
+    var default_skills = std.StringHashMap(void).init(alloc);
+    defer default_skills.deinit();
+    for (default_prof.stages) |stage| try default_skills.put(stage.skill_id, {});
+
     switch (parsed.value) {
         .array => |items| {
             log.debug("validating {d} proposal changes", .{items.items.len});
             for (items.items) |item| {
-                try validateProposalChange(conn, workspace_id, item);
+                try validateProposalChange(conn, alloc, workspace_id, item, &default_skills);
             }
             const candidate_profile_json = try applyProposalChangesToConfig(conn, alloc, config_version_id, items.items);
             defer alloc.free(candidate_profile_json);
@@ -36,7 +42,7 @@ pub fn validateProposedChanges(
                 return ProposalValidationError.ProposalWouldNotCompile;
             };
             defer candidate_profile.deinit();
-            try validateCandidateProfileSkills(conn, workspace_id, &candidate_profile);
+            try validateCandidateProfileSkills(conn, workspace_id, &candidate_profile, &default_skills);
 
             entitlements.enforceWithAudit(
                 conn,
@@ -80,9 +86,12 @@ pub fn buildCandidateProfileJson(
 
 fn validateProposalChange(
     conn: *pg.Conn,
+    alloc: std.mem.Allocator,
     workspace_id: []const u8,
     item: std.json.Value,
-) ProposalValidationError!void {
+    default_skills: *const std.StringHashMap(void),
+) (ProposalValidationError || anyerror)!void {
+    _ = alloc;
     const obj = switch (item) {
         .object => |value| value,
         else => return ProposalValidationError.ProposalChangeNotObject,
@@ -127,7 +136,7 @@ fn validateProposalChange(
     }
 
     const skill_ref = stringField(proposed_obj, shared.JSON_KEY_SKILL) orelse stringField(proposed_obj, shared.JSON_KEY_SKILL_ID) orelse return ProposalValidationError.InvalidSkillRef;
-    try validateSkillRef(conn, workspace_id, skill_ref);
+    try validateSkillRef(conn, workspace_id, skill_ref, default_skills);
 }
 
 pub fn applyProposalChangesToConfig(
@@ -245,9 +254,10 @@ fn validateCandidateProfileSkills(
     conn: *pg.Conn,
     workspace_id: []const u8,
     profile: *const topology.Profile,
+    default_skills: *const std.StringHashMap(void),
 ) ProposalValidationError!void {
     for (profile.stages) |stage| {
-        try validateSkillRef(conn, workspace_id, stage.skill_id);
+        try validateSkillRef(conn, workspace_id, stage.skill_id, default_skills);
     }
 }
 
@@ -255,8 +265,9 @@ fn validateSkillRef(
     conn: *pg.Conn,
     workspace_id: []const u8,
     skill_ref: []const u8,
+    default_skills: *const std.StringHashMap(void),
 ) ProposalValidationError!void {
-    if (isCoreSkill(skill_ref)) return;
+    if (default_skills.contains(skill_ref)) return;
     if (!std.mem.startsWith(u8, skill_ref, "clawhub://") or !isPinnedSkillRef(skill_ref)) {
         return ProposalValidationError.InvalidSkillRef;
     }
@@ -294,12 +305,6 @@ fn workspaceAllowsCustomSkills(conn: *pg.Conn, workspace_id: []const u8) bool {
     q.drain() catch {}; // Rule 2: drain remaining 'C'+'Z' → _state=.idle
     q.deinit();
     return result;
-}
-
-fn isCoreSkill(skill_ref: []const u8) bool {
-    return std.ascii.eqlIgnoreCase(skill_ref, topology.ROLE_ECHO) or
-        std.ascii.eqlIgnoreCase(skill_ref, topology.ROLE_SCOUT) or
-        std.ascii.eqlIgnoreCase(skill_ref, topology.ROLE_WARDEN);
 }
 
 fn isPinnedSkillRef(skill_ref: []const u8) bool {

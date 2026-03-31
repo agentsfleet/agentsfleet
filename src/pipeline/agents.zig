@@ -1,9 +1,10 @@
-//! NullClaw agent runner for Echo → Scout → Warden pipeline.
+//! Agent skill runner and registry. Dispatches profile-loaded skill_ids to execution backends.
 
 const std = @import("std");
 const types = @import("../types.zig");
 const events = @import("../events/bus.zig");
 const runners = @import("agents_runner.zig");
+const topology = @import("topology.zig");
 
 const log = std.log.scoped(.agents);
 
@@ -44,9 +45,6 @@ pub const PromptFiles = struct {
 };
 
 pub const SkillKind = enum {
-    echo,
-    scout,
-    warden,
     custom,
 };
 
@@ -68,6 +66,9 @@ pub const SkillBinding = struct {
     actor: types.Actor,
     kind: SkillKind,
     custom_runner: ?CustomSkillFn = null,
+    /// Pre-loaded prompt content for this skill. Null means use actor-dispatch
+    /// against PromptFiles (default echo/scout/warden backends).
+    prompt_content: ?[]const u8 = null,
 };
 
 pub const RoleBinding = struct {
@@ -76,13 +77,65 @@ pub const RoleBinding = struct {
     actor: types.Actor,
     kind: SkillKind,
     custom_runner: ?CustomSkillFn = null,
+    /// Pre-loaded prompt content for this skill. Null means use actor-dispatch
+    /// against PromptFiles (default echo/scout/warden backends).
+    prompt_content: ?[]const u8 = null,
 };
 
-const BUILTIN_SKILLS = [_]SkillBinding{
-    .{ .skill_id = "echo", .actor = .echo, .kind = .echo },
-    .{ .skill_id = "scout", .actor = .scout, .kind = .scout },
-    .{ .skill_id = "warden", .actor = .warden, .kind = .warden },
+// ── Default execution backend wrappers ───────────────────────────────────────
+// These are the compiled runners for the default skills (echo/scout/warden).
+// They are registered into the SkillRegistry at worker startup via
+// populateRegistryFromProfile — not via a hardcoded static table.
+
+fn echoRunner(alloc: std.mem.Allocator, _: []const u8, _: []const u8, input: RoleInput) anyerror!AgentResult {
+    return runEcho(
+        alloc,
+        input.workspace_path,
+        input.prompts.echo,
+        input.spec_content orelse return RoleError.MissingRoleInput,
+        input.memory_context orelse return RoleError.MissingRoleInput,
+        input.execution_context orelse .{},
+    );
+}
+
+fn scoutRunner(alloc: std.mem.Allocator, _: []const u8, _: []const u8, input: RoleInput) anyerror!AgentResult {
+    return runScout(
+        alloc,
+        input.workspace_path,
+        input.prompts.scout,
+        input.plan_content orelse return RoleError.MissingRoleInput,
+        input.defects_content,
+        input.execution_context orelse .{},
+    );
+}
+
+fn wardenRunner(alloc: std.mem.Allocator, _: []const u8, _: []const u8, input: RoleInput) anyerror!AgentResult {
+    return runWarden(
+        alloc,
+        input.workspace_path,
+        input.prompts.warden,
+        input.spec_content orelse return RoleError.MissingRoleInput,
+        input.plan_content orelse return RoleError.MissingRoleInput,
+        input.implementation_summary orelse return RoleError.MissingRoleInput,
+        input.execution_context orelse .{},
+    );
+}
+
+// ── Default skill table (local, not exported) ─────────────────────────────────
+// Maps the three default skill_ids to their compiled runners and actors.
+// Used only by populateRegistryFromProfile — not a public dispatch table.
+const DefaultSkillEntry = struct {
+    skill_id: []const u8,
+    actor: types.Actor,
+    runner: CustomSkillFn,
 };
+const DEFAULT_SKILL_ENTRIES = [_]DefaultSkillEntry{
+    .{ .skill_id = "echo",   .actor = .echo,   .runner = echoRunner },
+    .{ .skill_id = "scout",  .actor = .scout,  .runner = scoutRunner },
+    .{ .skill_id = "warden", .actor = .warden, .runner = wardenRunner },
+};
+
+// ── Errors ────────────────────────────────────────────────────────────────────
 
 pub const RoleError = error{
     UnknownRole,
@@ -90,71 +143,96 @@ pub const RoleError = error{
     MissingCustomRunner,
 };
 
-pub fn lookupRole(role_id: []const u8) ?RoleBinding {
-    return resolveRole(role_id, role_id);
-}
-
-pub fn resolveRole(role_id: []const u8, skill_id: []const u8) ?RoleBinding {
-    for (BUILTIN_SKILLS) |skill| {
-        if (!std.ascii.eqlIgnoreCase(skill_id, skill.skill_id)) continue;
-        return .{
-            .role_id = role_id,
-            .skill_id = skill.skill_id,
-            .actor = skill.actor,
-            .kind = skill.kind,
-            .custom_runner = null,
-        };
-    }
-    return null;
-}
-
 pub const SkillRegistryError = error{
     InvalidSkillId,
     DuplicateSkillId,
     OutOfMemory,
 };
 
+// ── SkillRegistry ─────────────────────────────────────────────────────────────
+
 pub const SkillRegistry = struct {
     alloc: std.mem.Allocator,
-    custom_skills: std.ArrayList(SkillBinding),
+    skills: std.ArrayList(SkillBinding),
 
     pub fn init(alloc: std.mem.Allocator) SkillRegistry {
-        return .{ .alloc = alloc, .custom_skills = std.ArrayList(SkillBinding){} };
+        return .{ .alloc = alloc, .skills = std.ArrayList(SkillBinding){} };
     }
 
     pub fn deinit(self: *SkillRegistry) void {
-        for (self.custom_skills.items) |skill| self.alloc.free(skill.skill_id);
-        self.custom_skills.deinit(self.alloc);
+        for (self.skills.items) |skill| {
+            self.alloc.free(skill.skill_id);
+            if (skill.prompt_content) |pc| self.alloc.free(pc);
+        }
+        self.skills.deinit(self.alloc);
     }
 
+    /// Register a skill in the registry. Dupes skill_id and prompt_content (if non-null).
+    /// Returns DuplicateSkillId if the skill_id is already registered.
     pub fn registerCustomSkill(
         self: *SkillRegistry,
         skill_id: []const u8,
         actor: types.Actor,
         runner: CustomSkillFn,
+        prompt_content: ?[]const u8,
     ) SkillRegistryError!void {
         if (skill_id.len == 0) return SkillRegistryError.InvalidSkillId;
-        if (resolveBuiltInSkill(skill_id) != null) return SkillRegistryError.DuplicateSkillId;
         if (self.resolveSkill(skill_id) != null) return SkillRegistryError.DuplicateSkillId;
 
-        try self.custom_skills.append(self.alloc, .{
-            .skill_id = try self.alloc.dupe(u8, skill_id),
+        const owned_id = try self.alloc.dupe(u8, skill_id);
+        errdefer self.alloc.free(owned_id);
+        const owned_prompt = if (prompt_content) |pc| try self.alloc.dupe(u8, pc) else null;
+        errdefer if (owned_prompt) |pc| self.alloc.free(pc);
+
+        try self.skills.append(self.alloc, .{
+            .skill_id = owned_id,
             .actor = actor,
             .kind = .custom,
             .custom_runner = runner,
+            .prompt_content = owned_prompt,
         });
     }
 
     pub fn resolveSkill(self: *const SkillRegistry, skill_id: []const u8) ?SkillBinding {
-        for (self.custom_skills.items) |skill| {
+        for (self.skills.items) |skill| {
             if (std.ascii.eqlIgnoreCase(skill_id, skill.skill_id)) return skill;
         }
         return null;
     }
 };
 
-pub fn resolveRoleWithRegistry(registry: *const SkillRegistry, role_id: []const u8, skill_id: []const u8) ?RoleBinding {
-    if (resolveRole(role_id, skill_id)) |built_in| return built_in;
+// ── Registry population ───────────────────────────────────────────────────────
+
+/// Populate a SkillRegistry from a loaded profile.
+/// For each stage skill_id that matches a known default backend (echo/scout/warden),
+/// registers the compiled runner with null prompt_content (actor dispatch handles prompts).
+/// Skill_ids with no known backend are skipped — custom runners must be registered
+/// separately before this call (or via clawhub registry integration, future milestone).
+pub fn populateRegistryFromProfile(
+    registry: *SkillRegistry,
+    profile: *const topology.Profile,
+) !void {
+    for (profile.stages) |stage| {
+        if (registry.resolveSkill(stage.skill_id) != null) continue;
+        for (DEFAULT_SKILL_ENTRIES) |e| {
+            if (std.ascii.eqlIgnoreCase(stage.skill_id, e.skill_id)) {
+                try registry.registerCustomSkill(stage.skill_id, e.actor, e.runner, null);
+                break;
+            }
+        }
+    }
+}
+
+// ── Resolution ────────────────────────────────────────────────────────────────
+
+/// Resolve a role_id + skill_id pair against the registry.
+/// Returns null if the skill_id is not registered — callers must handle this
+/// (InvalidPipelineRole at the executor level).
+pub fn resolveRoleWithRegistry(
+    registry: *const SkillRegistry,
+    role_id: []const u8,
+    skill_id: []const u8,
+) ?RoleBinding {
     const skill = registry.resolveSkill(skill_id) orelse return null;
     return .{
         .role_id = role_id,
@@ -162,49 +240,22 @@ pub fn resolveRoleWithRegistry(registry: *const SkillRegistry, role_id: []const 
         .actor = skill.actor,
         .kind = skill.kind,
         .custom_runner = skill.custom_runner,
+        .prompt_content = skill.prompt_content,
     };
 }
 
-fn resolveBuiltInSkill(skill_id: []const u8) ?SkillBinding {
-    for (BUILTIN_SKILLS) |skill| {
-        if (std.ascii.eqlIgnoreCase(skill_id, skill.skill_id)) return skill;
-    }
-    return null;
-}
+// ── Dispatch ─────────────────────────────────────────────────────────────────
 
 pub fn runByRole(alloc: std.mem.Allocator, binding: RoleBinding, input: RoleInput) !AgentResult {
     return switch (binding.kind) {
-        .echo => runEcho(
-            alloc,
-            input.workspace_path,
-            input.prompts.echo,
-            input.spec_content orelse return RoleError.MissingRoleInput,
-            input.memory_context orelse return RoleError.MissingRoleInput,
-            input.execution_context orelse .{},
-        ),
-        .scout => runScout(
-            alloc,
-            input.workspace_path,
-            input.prompts.scout,
-            input.plan_content orelse return RoleError.MissingRoleInput,
-            input.defects_content,
-            input.execution_context orelse .{},
-        ),
-        .warden => runWarden(
-            alloc,
-            input.workspace_path,
-            input.prompts.warden,
-            input.spec_content orelse return RoleError.MissingRoleInput,
-            input.plan_content orelse return RoleError.MissingRoleInput,
-            input.implementation_summary orelse return RoleError.MissingRoleInput,
-            input.execution_context orelse .{},
-        ),
         .custom => {
             const runner = binding.custom_runner orelse return RoleError.MissingCustomRunner;
             return runner(alloc, binding.role_id, binding.skill_id, input);
         },
     };
 }
+
+// ── Prompt loading ────────────────────────────────────────────────────────────
 
 pub fn loadPrompts(alloc: std.mem.Allocator, config_dir: []const u8) !PromptFiles {
     const echo = try readFile(alloc, config_dir, "echo-prompt.md");
@@ -222,6 +273,8 @@ fn readFile(alloc: std.mem.Allocator, dir: []const u8, name: []const u8) ![]cons
     defer file.close();
     return file.readToEndAlloc(alloc, 512 * 1024);
 }
+
+// ── Output parsing ────────────────────────────────────────────────────────────
 
 pub fn parseWardenVerdict(content: []const u8) bool {
     if (std.mem.containsAtLeast(u8, content, 1, "verdict: PASS") or

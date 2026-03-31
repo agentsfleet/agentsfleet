@@ -258,3 +258,92 @@ test "T7 regression: identical source produces identical compiled_profile_json o
     try std.testing.expectEqualStrings(a.compiled_profile_json.?, b.compiled_profile_json.?);
     try std.testing.expectEqualStrings(a.agent_id.?, b.agent_id.?);
 }
+
+// --- M20_001 T1: Default profile skills compile clean (no SKILL_NOT_ALLOWLISTED) ---
+
+test "M20_001 T1: profile with only default skills (echo/scout/warden) produces no SKILL_NOT_ALLOWLISTED" {
+    // After M20_001: validateSkillPolicies loads the default profile dynamically.
+    // echo/scout/warden must continue to be accepted after isCoreSkill() removal.
+    const alloc = std.testing.allocator;
+    const source =
+        \\{"agent_id":"defaults-only","stages":[
+        \\  {"stage_id":"plan","role":"planner","skill":"echo"},
+        \\  {"stage_id":"implement","role":"coder","skill":"scout"},
+        \\  {"stage_id":"verify","role":"reviewer","skill":"warden","gate":true,"on_pass":"done","on_fail":"retry"}
+        \\]}
+    ;
+    var outcome = try cp.compileHarnessMarkdown(alloc, source);
+    defer outcome.deinit(alloc);
+    try std.testing.expect(outcome.is_valid);
+    try std.testing.expect(outcome.compiled_profile_json != null);
+    // No SKILL_NOT_ALLOWLISTED in the report.
+    if (outcome.validation_report_json.len > 0) {
+        try std.testing.expect(!std.mem.containsAtLeast(u8, outcome.validation_report_json, 1, "SKILL_NOT_ALLOWLISTED"));
+    }
+}
+
+test "M20_001 T1: custom role_id 'security-auditor' with skill 'echo' compiles clean" {
+    // Role IDs are opaque identifiers — only the skill matters for policy validation.
+    const alloc = std.testing.allocator;
+    const source =
+        \\{"agent_id":"custom-roles","stages":[
+        \\  {"stage_id":"plan","role":"security-auditor","skill":"echo"},
+        \\  {"stage_id":"implement","role":"code-reviewer","skill":"scout"},
+        \\  {"stage_id":"verify","role":"gate-bot","skill":"warden","gate":true,"on_pass":"done","on_fail":"retry"}
+        \\]}
+    ;
+    var outcome = try cp.compileHarnessMarkdown(alloc, source);
+    defer outcome.deinit(alloc);
+    try std.testing.expect(outcome.is_valid);
+}
+
+// --- M20_001 T3: Non-default non-clawhub skill → SKILL_NOT_ALLOWLISTED ---
+
+test "M20_001 T3: non-default non-clawhub skill produces SKILL_NOT_ALLOWLISTED" {
+    // After isCoreSkill() removal: 'my-custom-skill' is not in the default profile
+    // and is not a clawhub:// ref → must be rejected by validateSkillPolicies.
+    const alloc = std.testing.allocator;
+    const source =
+        \\{"agent_id":"custom-skill","stages":[
+        \\  {"stage_id":"plan","role":"planner","skill":"echo"},
+        \\  {"stage_id":"implement","role":"coder","skill":"my-custom-skill"},
+        \\  {"stage_id":"verify","role":"reviewer","skill":"warden","gate":true,"on_pass":"done","on_fail":"retry"}
+        \\]}
+    ;
+    var outcome = try cp.compileHarnessMarkdown(alloc, source);
+    defer outcome.deinit(alloc);
+    try std.testing.expect(!outcome.is_valid);
+    try std.testing.expect(std.mem.containsAtLeast(u8, outcome.validation_report_json, 1, "SKILL_NOT_ALLOWLISTED"));
+}
+
+test "M20_001 T3: clawhub:// pinned ref is valid alongside default skills" {
+    const alloc = std.testing.allocator;
+    const source =
+        \\{"agent_id":"mixed-valid","stages":[
+        \\  {"stage_id":"plan","role":"planner","skill":"echo"},
+        \\  {"stage_id":"implement","role":"coder","skill":"clawhub://usezombie/go-reviewer@2.1.0"},
+        \\  {"stage_id":"verify","role":"reviewer","skill":"warden","gate":true,"on_pass":"done","on_fail":"retry"}
+        \\]}
+    ;
+    var outcome = try cp.compileHarnessMarkdown(alloc, source);
+    defer outcome.deinit(alloc);
+    try std.testing.expect(outcome.is_valid);
+}
+
+// --- M20_001 T7 Regression: ROLE_* constants no longer in topology namespace ---
+
+test "M20_001 T7 regression: topology does not export ROLE_ECHO ROLE_SCOUT ROLE_WARDEN" {
+    comptime {
+        if (@hasDecl(topology, "ROLE_ECHO")) @compileError("ROLE_ECHO must not be exported from topology");
+        if (@hasDecl(topology, "ROLE_SCOUT")) @compileError("ROLE_SCOUT must not be exported from topology");
+        if (@hasDecl(topology, "ROLE_WARDEN")) @compileError("ROLE_WARDEN must not be exported from topology");
+    }
+}
+
+// --- M20_001 T8 OWASP: isBuiltInSkill no longer exported (removed) ---
+
+test "M20_001 T8: control_plane does not export isBuiltInSkill (function was removed)" {
+    comptime {
+        if (@hasDecl(cp, "isBuiltInSkill")) @compileError("isBuiltInSkill must not be exported after M20_001");
+    }
+}

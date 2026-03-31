@@ -63,12 +63,6 @@ fn parseTier(raw: []const u8) ?PolicyTier {
     return null;
 }
 
-fn isCoreSkill(skill_id: []const u8) bool {
-    return std.ascii.eqlIgnoreCase(skill_id, topology.ROLE_ECHO) or
-        std.ascii.eqlIgnoreCase(skill_id, topology.ROLE_SCOUT) or
-        std.ascii.eqlIgnoreCase(skill_id, topology.ROLE_WARDEN);
-}
-
 fn loadPolicy(conn: *pg.Conn, workspace_id: []const u8) !EntitlementPolicy {
     var q = try conn.query(
         \\SELECT plan_tier, max_profiles, max_stages, max_distinct_skills, allow_custom_skills
@@ -139,12 +133,23 @@ fn evaluateProfile(
     observed.stage_count = @intCast(profile.stages.len);
     if (profile.stages.len > policy.max_stages) return error_codes.ERR_ENTITLEMENT_STAGE_LIMIT;
 
+    // default_prof must be declared BEFORE default_skill_ids so Zig's LIFO defer
+    // order frees the HashMap first (releasing its structure) then the profile
+    // (releasing the skill_id strings that serve as borrowed keys).
+    var default_prof_opt: ?topology.Profile = null;
+    defer if (default_prof_opt) |*p| p.deinit();
+    var default_skill_ids = std.StringHashMap(void).init(alloc);
+    defer default_skill_ids.deinit();
+    if (!policy.allow_custom_skills) {
+        default_prof_opt = try topology.defaultProfile(alloc);
+        for (default_prof_opt.?.stages) |ds| try default_skill_ids.put(ds.skill_id, {});
+    }
+
     var distinct_skills = std.StringHashMap(void).init(alloc);
     defer distinct_skills.deinit();
-
     for (profile.stages) |stage| {
         try distinct_skills.put(stage.skill_id, {});
-        if (!policy.allow_custom_skills and !isCoreSkill(stage.skill_id)) {
+        if (!policy.allow_custom_skills and !default_skill_ids.contains(stage.skill_id)) {
             return error_codes.ERR_ENTITLEMENT_SKILL_NOT_ALLOWED;
         }
     }
@@ -432,6 +437,57 @@ test "T8: free tier DENIES skill_id with surrounding whitespace (no bypass via p
         .allow_custom_skills = false,
     }, raw, &observed);
     // "echo " != "echo" → treated as custom skill → denied on free tier
+    try std.testing.expect(reason != null);
+    try std.testing.expectEqualStrings(error_codes.ERR_ENTITLEMENT_SKILL_NOT_ALLOWED, reason.?);
+}
+
+test "M20_001 T1: SCALE tier with allow_custom_skills=true ALLOWS clawhub:// skill" {
+    const raw =
+        \\{"agent_id":"sc","stages":[
+        \\  {"stage_id":"plan","role":"r","skill":"echo"},
+        \\  {"stage_id":"implement","role":"r","skill":"clawhub://usezombie/go-reviewer@1.0.0"},
+        \\  {"stage_id":"verify","role":"r","skill":"warden","gate":true,"on_pass":"done","on_fail":"retry"}
+        \\]}
+    ;
+    var observed: Observed = .{};
+    const reason = try evaluateProfile(std.testing.allocator, .{
+        .tier = .scale, .max_profiles = 10, .max_stages = 5,
+        .max_distinct_skills = 5, .allow_custom_skills = true,
+    }, raw, &observed);
+    try std.testing.expectEqual(@as(?[]const u8, null), reason);
+    try std.testing.expectEqual(@as(u16, 3), observed.distinct_skill_count);
+}
+
+test "M20_001 T6 integration: custom role_ids (planner/coder/reviewer) with default skills ALLOWED on free tier" {
+    // AC 5.5: skills matter for entitlement checks, not role names.
+    const raw =
+        \\{"agent_id":"cr","stages":[
+        \\  {"stage_id":"plan","role":"planner","skill":"echo"},
+        \\  {"stage_id":"implement","role":"coder","skill":"scout"},
+        \\  {"stage_id":"verify","role":"reviewer","skill":"warden","gate":true,"on_pass":"done","on_fail":"retry"}
+        \\]}
+    ;
+    var observed: Observed = .{};
+    const reason = try evaluateProfile(std.testing.allocator, .{
+        .tier = .free, .max_profiles = 1, .max_stages = 3,
+        .max_distinct_skills = 3, .allow_custom_skills = false,
+    }, raw, &observed);
+    try std.testing.expectEqual(@as(?[]const u8, null), reason);
+}
+
+test "M20_001 T6 integration: custom role_ids with one custom skill DENIED on free tier" {
+    const raw =
+        \\{"agent_id":"ms","stages":[
+        \\  {"stage_id":"plan","role":"planner","skill":"echo"},
+        \\  {"stage_id":"implement","role":"coder","skill":"custom-analyzer"},
+        \\  {"stage_id":"verify","role":"reviewer","skill":"warden","gate":true,"on_pass":"done","on_fail":"retry"}
+        \\]}
+    ;
+    var observed: Observed = .{};
+    const reason = try evaluateProfile(std.testing.allocator, .{
+        .tier = .free, .max_profiles = 1, .max_stages = 3,
+        .max_distinct_skills = 3, .allow_custom_skills = false,
+    }, raw, &observed);
     try std.testing.expect(reason != null);
     try std.testing.expectEqualStrings(error_codes.ERR_ENTITLEMENT_SKILL_NOT_ALLOWED, reason.?);
 }

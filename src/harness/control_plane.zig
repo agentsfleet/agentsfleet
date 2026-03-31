@@ -227,12 +227,18 @@ fn validateSkillPolicies(
     issues: *std.ArrayList(ValidationIssue),
     stages: []const topology.Stage,
 ) !void {
+    var default_prof = try topology.defaultProfile(alloc);
+    defer default_prof.deinit();
+    var default_skills = std.StringHashMap(void).init(alloc);
+    defer default_skills.deinit();
+    for (default_prof.stages) |stage| try default_skills.put(stage.skill_id, {});
+
     for (stages) |stage| {
-        if (isBuiltInSkill(stage.skill_id)) continue;
+        if (default_skills.contains(stage.skill_id)) continue;
         if (!std.mem.startsWith(u8, stage.skill_id, "clawhub://")) {
             try issues.append(alloc, .{
                 .code = "SKILL_NOT_ALLOWLISTED",
-                .message = "Skill must be built-in (echo/scout/warden) or clawhub:// registry ref.",
+                .message = "Skill must be in active profile or a clawhub:// registry ref.",
             });
             continue;
         }
@@ -257,12 +263,6 @@ fn indexOfIgnoreCase(haystack: []const u8, needle: []const u8) ?usize {
         if (std.ascii.eqlIgnoreCase(haystack[i .. i + needle.len], needle)) return i;
     }
     return null;
-}
-
-fn isBuiltInSkill(skill: []const u8) bool {
-    return std.ascii.eqlIgnoreCase(skill, topology.ROLE_ECHO) or
-        std.ascii.eqlIgnoreCase(skill, topology.ROLE_SCOUT) or
-        std.ascii.eqlIgnoreCase(skill, topology.ROLE_WARDEN);
 }
 
 fn isPinnedSkillRef(skill_ref: []const u8) bool {
