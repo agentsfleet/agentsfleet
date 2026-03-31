@@ -64,6 +64,28 @@ pub const Client = struct {
         log.debug("redis.publish channel={s} data_len={d}", .{ channel, data.len });
     }
 
+    /// SET key value EX ttl_seconds — used for cancellation signals (M17_001 §3.1).
+    pub fn setEx(self: *Client, key: []const u8, value: []const u8, ttl_seconds: u32) !void {
+        var ttl_buf: [16]u8 = undefined;
+        const ttl_str = try std.fmt.bufPrint(&ttl_buf, "{d}", .{ttl_seconds});
+        var resp = try self.command(&.{ "SET", key, value, "EX", ttl_str });
+        defer resp.deinit(self.alloc);
+        switch (resp) {
+            .simple => |v| if (!std.mem.eql(u8, v, "OK")) return error.RedisSetExFailed,
+            else => return error.RedisSetExFailed,
+        }
+    }
+
+    /// EXISTS key — returns true if the key exists (M17_001 §3.2).
+    pub fn exists(self: *Client, key: []const u8) !bool {
+        var resp = try self.command(&.{ "EXISTS", key });
+        defer resp.deinit(self.alloc);
+        return switch (resp) {
+            .integer => |n| n > 0,
+            else => error.RedisExistsFailed,
+        };
+    }
+
     pub fn ping(self: *Client) !void {
         var resp = try self.command(&.{"PING"});
         defer resp.deinit(self.alloc);

@@ -25,6 +25,7 @@ pub const handleListRuns = runs_handlers.handleListRuns;
 pub const handleRetryRun = runs_handlers.handleRetryRun;
 pub const handleGetRunReplay = runs_handlers.handleGetRunReplay;
 pub const handleStreamRun = runs_handlers.handleStreamRun;
+pub const handleCancelRun = runs_handlers.handleCancelRun;
 pub const handleCreateWorkspace = workspace_handlers.handleCreateWorkspace;
 pub const handlePauseWorkspace = workspace_handlers.handlePauseWorkspace;
 pub const handleSyncSpecs = workspace_handlers.handleSyncSpecs;

@@ -47,6 +47,12 @@ pub const ERR_SPEC_NO_ACTIONABLE_CONTENT = "UZ-SPEC-003";
 pub const ERR_SPEC_UNRESOLVED_FILE_REF = "UZ-SPEC-004";
 pub const ERR_RUN_NOT_FOUND = "UZ-RUN-001";
 pub const ERR_INVALID_STATE_TRANSITION = "UZ-RUN-002";
+// M17_001: run budget and cancellation error codes
+pub const ERR_RUN_TOKEN_BUDGET_EXCEEDED = "UZ-RUN-003";
+pub const ERR_RUN_WALL_TIME_EXCEEDED = "UZ-RUN-004";
+pub const ERR_WORKSPACE_MONTHLY_BUDGET_EXCEEDED = "UZ-RUN-005";
+pub const ERR_RUN_ALREADY_TERMINAL = "UZ-RUN-006";
+pub const ERR_RUN_CANCEL_SIGNAL_FAILED = "UZ-RUN-007";
 pub const ERR_AGENT_NOT_FOUND = "UZ-AGENT-001";
 pub const ERR_AGENT_SCORES_UNAVAILABLE = "UZ-AGENT-002";
 pub const ERR_PROFILE_NOT_FOUND = "UZ-PROFILE-001";
@@ -152,6 +158,16 @@ pub fn hint(code: []const u8) ?[]const u8 {
         return "GitHub App installation token request failed. Check GITHUB_APP_ID and GITHUB_APP_PRIVATE_KEY, verify the installation_id is valid, and inspect GitHub API status.";
     if (std.mem.eql(u8, code, ERR_CRED_PLATFORM_KEY_MISSING))
         return "No active platform LLM key for this provider. Admin must set one via PUT /v1/admin/platform-keys, or the workspace must add its own key via PUT /v1/workspaces/{id}/credentials/llm.";
+    if (std.mem.eql(u8, code, ERR_RUN_TOKEN_BUDGET_EXCEEDED))
+        return "Run exceeded its token budget (max_tokens). The run has been terminated. Adjust max_tokens in the agent profile or reduce prompt complexity.";
+    if (std.mem.eql(u8, code, ERR_RUN_WALL_TIME_EXCEEDED))
+        return "Run exceeded its wall-clock time limit (max_wall_time_seconds). The run has been terminated. Increase the limit in the agent profile or reduce workload.";
+    if (std.mem.eql(u8, code, ERR_WORKSPACE_MONTHLY_BUDGET_EXCEEDED))
+        return "Workspace monthly token budget exhausted. Upgrade the workspace plan or wait for the next calendar month to reset the budget.";
+    if (std.mem.eql(u8, code, ERR_RUN_ALREADY_TERMINAL))
+        return "The run is already in a terminal state (DONE, BLOCKED, CANCELLED). No further state changes are allowed.";
+    if (std.mem.eql(u8, code, ERR_RUN_CANCEL_SIGNAL_FAILED))
+        return "Cancel signal could not be published. Check Redis connectivity and retry.";
     return null;
 }
 

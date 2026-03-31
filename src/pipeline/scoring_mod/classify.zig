@@ -103,6 +103,8 @@ pub fn classifyFailure(state: *const types.ScoringState) ?types.FailureClass {
         .blocked_stage_graph => .bad_output_format,
         .error_propagation => .unhandled_exception,
         .pending => .unknown,
+        // M17_001 §1.2: cancelled by operator or resource limit — not an agent failure.
+        .cancelled => null,
     };
     if (result) |fc| {
         log.debug("classify outcome_fallback class={s}", .{fc.label()});

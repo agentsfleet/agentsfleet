@@ -583,15 +583,39 @@ pub fn executeRun(
                         .executor = if (exec_id != null) cfg.executor else null,
                         .execution_id = exec_id,
                         .gate_tools = profile.gate_tools,
-                        .max_repair_loops = profile.max_repair_loops,
+                        // M17_001 §1.2: repair loop cap from DB claim (overrides profile default).
+                        .max_repair_loops = ctx.max_repair_loops,
                         .gate_tool_timeout_ms = cfg.gate_tool_timeout_ms,
                         .repair_stage_id = repair_stage.stage_id,
                         .repair_role_id = repair_stage.role_id,
                         .repair_skill_id = repair_stage.skill_id,
+                        // M17_001 §3.2: Redis client for cancel signal polling.
+                        .redis = cfg.redis,
+                        // M17_001 §1.2: per-run limits
+                        .max_tokens = ctx.max_tokens,
+                        .max_wall_time_seconds = ctx.max_wall_time_seconds,
+                        .run_created_at_ms = ctx.run_created_at_ms,
+                        .attempt = ctx.attempt,
                     });
                     defer {
                         for (gate_outcome.results.items) |r| r.deinit(run_alloc);
                         gate_outcome.results.deinit(run_alloc);
+                    }
+                    if (!gate_outcome.all_passed and gate_outcome.state_written) {
+                        // Limit exceeded or cancelled — state already transitioned by gate loop.
+                        // M17_001 §1.2: record scoring outcome and finalize billing.
+                        scoring_state.outcome = .cancelled;
+                        billing.finalizeRunForBilling(
+                            run_alloc,
+                            conn,
+                            ctx.workspace_id,
+                            ctx.run_id,
+                            ctx.attempt,
+                            .non_billable,
+                        ) catch |err| {
+                            log.warn("pipeline.billing_finalize_fail run_id={s} err={s}", .{ ctx.run_id, @errorName(err) });
+                        };
+                        return;
                     }
                     if (!gate_outcome.all_passed) {
                         try worker_stage_outcomes.handleGateExhaustedOutcome(.{

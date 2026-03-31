@@ -12,3 +12,7 @@ pub const xautoclaim_min_idle_ms = "300000";
 pub const xautoclaim_start = "0-0";
 pub const xautoclaim_count = "1";
 pub const reclaim_interval_ms: i64 = 60_000;
+
+/// Redis key prefix for run cancellation signals (M17_001 §3.1).
+/// Full key: cancel_key_prefix ++ run_id, TTL 1h.
+pub const cancel_key_prefix = "run:cancel:";

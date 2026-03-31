@@ -98,3 +98,85 @@ test "atomic counters tolerate concurrent increments without loss" {
     const after = mc.snapshot();
     try std.testing.expectEqual(before.runs_created_total + N, after.runs_created_total);
 }
+
+// ── M17_001 — run limit counter tests ────────────────────────────────────
+
+// T1: incRunLimitTokenBudgetExceeded increments the dedicated counter.
+test "M17: incRunLimitTokenBudgetExceeded increments by 1" {
+    const before = mc.snapshot();
+    mc.incRunLimitTokenBudgetExceeded();
+    const after = mc.snapshot();
+    try std.testing.expectEqual(before.run_limit_token_budget_exceeded_total + 1, after.run_limit_token_budget_exceeded_total);
+}
+
+// T1: incRunLimitWallTimeExceeded increments the dedicated counter.
+test "M17: incRunLimitWallTimeExceeded increments by 1" {
+    const before = mc.snapshot();
+    mc.incRunLimitWallTimeExceeded();
+    const after = mc.snapshot();
+    try std.testing.expectEqual(before.run_limit_wall_time_exceeded_total + 1, after.run_limit_wall_time_exceeded_total);
+}
+
+// T1: incRunLimitRepairLoopsExhausted increments the dedicated counter.
+test "M17: incRunLimitRepairLoopsExhausted increments by 1" {
+    const before = mc.snapshot();
+    mc.incRunLimitRepairLoopsExhausted();
+    const after = mc.snapshot();
+    try std.testing.expectEqual(before.run_limit_repair_loops_exhausted_total + 1, after.run_limit_repair_loops_exhausted_total);
+}
+
+// T2: the three M17 counters are independent — incrementing one does not
+//     change the other two.
+test "M17: run limit counters are independent" {
+    const before = mc.snapshot();
+    mc.incRunLimitTokenBudgetExceeded();
+    const after = mc.snapshot();
+    try std.testing.expectEqual(before.run_limit_wall_time_exceeded_total, after.run_limit_wall_time_exceeded_total);
+    try std.testing.expectEqual(before.run_limit_repair_loops_exhausted_total, after.run_limit_repair_loops_exhausted_total);
+}
+
+// T5: all three M17 counters are race-safe under concurrent writes.
+test "M17: run limit counters tolerate concurrent increments without loss" {
+    const N = 50;
+    const before = mc.snapshot();
+    var threads: [N]std.Thread = undefined;
+    for (&threads) |*t| {
+        t.* = try std.Thread.spawn(.{}, struct {
+            fn run() void {
+                mc.incRunLimitTokenBudgetExceeded();
+                mc.incRunLimitWallTimeExceeded();
+                mc.incRunLimitRepairLoopsExhausted();
+            }
+        }.run, .{});
+    }
+    for (&threads) |t| t.join();
+    const after = mc.snapshot();
+    try std.testing.expectEqual(before.run_limit_token_budget_exceeded_total + N, after.run_limit_token_budget_exceeded_total);
+    try std.testing.expectEqual(before.run_limit_wall_time_exceeded_total + N, after.run_limit_wall_time_exceeded_total);
+    try std.testing.expectEqual(before.run_limit_repair_loops_exhausted_total + N, after.run_limit_repair_loops_exhausted_total);
+}
+
+// T4: Prometheus output contains all three M17 run_limit reason labels.
+test "M17: renderPrometheus includes all three run_limit reason labels" {
+    const alloc = std.testing.allocator;
+    const render = @import("metrics_render.zig");
+    const output = try render.renderPrometheus(alloc, false, null, null);
+    defer alloc.free(output);
+    try std.testing.expect(std.mem.indexOf(u8, output, "zombied_run_limit_exceeded_total{reason=\"token_budget\"}") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "zombied_run_limit_exceeded_total{reason=\"wall_time\"}") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "zombied_run_limit_exceeded_total{reason=\"repair_loops\"}") != null);
+}
+
+// T4: Prometheus output for run_limit counters reflects the current snapshot value.
+test "M17: renderPrometheus run_limit values match snapshot" {
+    const alloc = std.testing.allocator;
+    const render = @import("metrics_render.zig");
+    mc.incRunLimitTokenBudgetExceeded();
+    const snap = mc.snapshot();
+    const output = try render.renderPrometheus(alloc, false, null, null);
+    defer alloc.free(output);
+    // Build the expected line and search for it.
+    var buf: [256]u8 = undefined;
+    const expected = try std.fmt.bufPrint(&buf, "zombied_run_limit_exceeded_total{{reason=\"token_budget\"}} {d}", .{snap.run_limit_token_budget_exceeded_total});
+    try std.testing.expect(std.mem.indexOf(u8, output, expected) != null);
+}

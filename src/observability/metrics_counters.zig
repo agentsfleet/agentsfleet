@@ -62,6 +62,10 @@ pub const Snapshot = struct {
     agent_score_latest: u64,
     gate_repair_loops_total: u64,
     gate_repair_exhausted_total: u64,
+    // M17_001 §1.3: per-limit-type termination counters
+    run_limit_token_budget_exceeded_total: u64,
+    run_limit_wall_time_exceeded_total: u64,
+    run_limit_repair_loops_exhausted_total: u64,
     otel_export_total: u64,
     otel_export_failed_total: u64,
     otel_last_success_at_ms: i64,
@@ -123,6 +127,10 @@ var g_agent_scoring_failed_total = std.atomic.Value(u64).init(0);
 var g_agent_score_latest = std.atomic.Value(u64).init(0);
 var g_gate_repair_loops_total = std.atomic.Value(u64).init(0);
 var g_gate_repair_exhausted_total = std.atomic.Value(u64).init(0);
+// M17_001 §1.3
+var g_run_limit_token_budget_exceeded_total = std.atomic.Value(u64).init(0);
+var g_run_limit_wall_time_exceeded_total = std.atomic.Value(u64).init(0);
+var g_run_limit_repair_loops_exhausted_total = std.atomic.Value(u64).init(0);
 var g_otel_export_total = std.atomic.Value(u64).init(0);
 var g_otel_export_failed_total = std.atomic.Value(u64).init(0);
 var g_otel_last_success_at_ms = std.atomic.Value(i64).init(0);
@@ -306,6 +314,19 @@ pub fn incGateRepairExhausted() void {
     _ = g_gate_repair_exhausted_total.fetchAdd(1, .monotonic);
 }
 
+// M17_001 §1.3: limit-type counters (zombied_run_limit_exceeded_total{reason=...})
+pub fn incRunLimitTokenBudgetExceeded() void {
+    _ = g_run_limit_token_budget_exceeded_total.fetchAdd(1, .monotonic);
+}
+
+pub fn incRunLimitWallTimeExceeded() void {
+    _ = g_run_limit_wall_time_exceeded_total.fetchAdd(1, .monotonic);
+}
+
+pub fn incRunLimitRepairLoopsExhausted() void {
+    _ = g_run_limit_repair_loops_exhausted_total.fetchAdd(1, .monotonic);
+}
+
 pub fn incOtelExportTotal() void {
     _ = g_otel_export_total.fetchAdd(1, .monotonic);
 }
@@ -408,6 +429,9 @@ pub fn snapshot() Snapshot {
         .agent_score_latest = g_agent_score_latest.load(.acquire),
         .gate_repair_loops_total = g_gate_repair_loops_total.load(.acquire),
         .gate_repair_exhausted_total = g_gate_repair_exhausted_total.load(.acquire),
+        .run_limit_token_budget_exceeded_total = g_run_limit_token_budget_exceeded_total.load(.acquire),
+        .run_limit_wall_time_exceeded_total = g_run_limit_wall_time_exceeded_total.load(.acquire),
+        .run_limit_repair_loops_exhausted_total = g_run_limit_repair_loops_exhausted_total.load(.acquire),
         .otel_export_total = g_otel_export_total.load(.acquire),
         .otel_export_failed_total = g_otel_export_failed_total.load(.acquire),
         .otel_last_success_at_ms = g_otel_last_success_at_ms.load(.acquire),

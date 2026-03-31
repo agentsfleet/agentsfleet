@@ -25,6 +25,7 @@ pub const Route = union(enum) {
     retry_run: []const u8,
     replay_run: []const u8,
     stream_run: []const u8,
+    cancel_run: []const u8,
     get_run: []const u8,
     pause_workspace: []const u8,
     upgrade_workspace_to_scale: []const u8,
@@ -78,6 +79,11 @@ pub fn match(path: []const u8) ?Route {
     if (matchRunAction(path, ":retry")) |run_id| return .{ .retry_run = run_id };
     if (matchRunAction(path, ":replay")) |run_id| return .{ .replay_run = run_id };
     if (matchRunAction(path, ":stream")) |run_id| return .{ .stream_run = run_id };
+
+    if (std.mem.startsWith(u8, path, prefix_runs) and std.mem.endsWith(u8, path, ":cancel")) {
+        const inner = path[prefix_runs.len .. path.len - ":cancel".len];
+        if (inner.len > 0) return .{ .cancel_run = inner };
+    }
 
     if (std.mem.startsWith(u8, path, prefix_runs)) {
         const run_id = path[prefix_runs.len..];
@@ -437,4 +443,55 @@ test "T3: match rejects runs action path with extra path segment" {
     try std.testing.expect(match("/v1/runs/a/b:retry") == null);
     try std.testing.expect(match("/v1/runs/a/b:stream") == null);
     try std.testing.expect(match("/v1/runs/a/b:replay") == null);
+}
+
+// ── M17_001 router tests ──────────────────────────────────────────────────
+
+test "M17: match resolves cancel_run route and extracts run_id" {
+    const run_id = "0195b4ba-8d3a-7f13-8abc-cc0000000001";
+    const route = match("/v1/runs/0195b4ba-8d3a-7f13-8abc-cc0000000001:cancel") orelse
+        return error.TestExpectedMatch;
+    try std.testing.expectEqualStrings(run_id, switch (route) {
+        .cancel_run => |id| id,
+        else => return error.TestExpectedEqual,
+    });
+}
+
+test "M17: match cancel_run accepts short run_id" {
+    const route = match("/v1/runs/run-42:cancel") orelse return error.TestExpectedMatch;
+    try std.testing.expectEqualStrings("run-42", switch (route) {
+        .cancel_run => |id| id,
+        else => return error.TestExpectedEqual,
+    });
+}
+
+test "M17: match rejects cancel_run with empty run_id" {
+    try std.testing.expect(match("/v1/runs/:cancel") == null);
+}
+
+test "M17: wrong suffix does not match cancel_run" {
+    try std.testing.expect(match("/v1/runs/run-1:cancelX") == null);
+    try std.testing.expect(match("/v1/runs/run-1:CANCEL") == null);
+    try std.testing.expect(match("/v1/runs/run-1/cancel") == null);
+}
+
+test "M17: cancel route does not interfere with retry and replay" {
+    const retry_route = match("/v1/runs/run-1:retry") orelse return error.TestExpectedMatch;
+    switch (retry_route) {
+        .retry_run => {},
+        else => return error.TestExpectedEqual,
+    }
+    const replay_route = match("/v1/runs/run-1:replay") orelse return error.TestExpectedMatch;
+    switch (replay_route) {
+        .replay_run => {},
+        else => return error.TestExpectedEqual,
+    }
+}
+
+test "M17: bare run path resolves to get_run not cancel_run" {
+    const route = match("/v1/runs/run-99") orelse return error.TestExpectedMatch;
+    switch (route) {
+        .get_run => |id| try std.testing.expectEqualStrings("run-99", id),
+        else => return error.TestExpectedEqual,
+    }
 }

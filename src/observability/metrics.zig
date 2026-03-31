@@ -44,6 +44,10 @@ pub const observeAgentDurationSeconds = mc.observeAgentDurationSeconds;
 pub const observeRunTotalWallSeconds = mc.observeRunTotalWallSeconds;
 pub const incGateRepairLoops = mc.incGateRepairLoops;
 pub const incGateRepairExhausted = mc.incGateRepairExhausted;
+// M17_001 §1.3
+pub const incRunLimitTokenBudgetExceeded = mc.incRunLimitTokenBudgetExceeded;
+pub const incRunLimitWallTimeExceeded = mc.incRunLimitWallTimeExceeded;
+pub const incRunLimitRepairLoopsExhausted = mc.incRunLimitRepairLoopsExhausted;
 pub const snapshot = mc.snapshot;
 
 // OTel exporter metrics.

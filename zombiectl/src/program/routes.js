@@ -6,6 +6,8 @@ const routes = [
   { key: "spec.init", match: (cmd, args) => cmd === "spec" && args[0] === "init" },
   { key: "run", match: (cmd) => cmd === "run" },
   { key: "runs.list", match: (cmd, args) => cmd === "runs" && args[0] === "list" },
+  // M17_001 §3: runs cancel
+  { key: "runs.cancel", match: (cmd, args) => cmd === "runs" && args[0] === "cancel" },
   { key: "doctor", match: (cmd) => cmd === "doctor" },
   { key: "harness", match: (cmd) => cmd === "harness" },
   { key: "skill-secret", match: (cmd) => cmd === "skill-secret" },

@@ -18,6 +18,9 @@ pub const RunState = enum {
     DONE,
     BLOCKED,
     NOTIFIED_BLOCKED,
+    /// M17_001 §3.3: operator-requested cancellation — distinct from BLOCKED;
+    /// billing finalises as non-billable, scoring records outcome=cancelled.
+    CANCELLED,
 
     pub fn label(self: RunState) []const u8 {
         return switch (self) {
@@ -33,6 +36,7 @@ pub const RunState = enum {
             .DONE => "DONE",
             .BLOCKED => "BLOCKED",
             .NOTIFIED_BLOCKED => "NOTIFIED_BLOCKED",
+            .CANCELLED => "CANCELLED",
         };
     }
 
@@ -51,7 +55,7 @@ pub const RunState = enum {
     /// Returns true if the run is in a terminal state.
     pub fn isTerminal(self: RunState) bool {
         return switch (self) {
-            .DONE, .NOTIFIED_BLOCKED => true,
+            .DONE, .NOTIFIED_BLOCKED, .CANCELLED => true,
             else => false,
         };
     }
@@ -78,6 +82,11 @@ pub const ReasonCode = enum {
     SPEC_MISMATCH,
     WORKER_CRASH_ORPHAN,
     ORPHAN_REQUEUED,
+    // M17_001 §1.2 / §3 — budget and cancellation reasons
+    TOKEN_BUDGET_EXCEEDED,
+    WALL_TIME_EXCEEDED,
+    REPAIR_LOOPS_EXHAUSTED,
+    RUN_CANCELLED,
 
     pub fn label(self: ReasonCode) []const u8 {
         return @tagName(self);
@@ -297,4 +306,83 @@ test {
 
     const done = RunState.DONE;
     try std.testing.expect(done.isTerminal());
+}
+
+// ── M17_001 — CANCELLED state and new reason codes ───────────────────────
+
+// T1: CANCELLED label is exactly "CANCELLED" (no typo, no case variation).
+test "M17: RunState.CANCELLED label is CANCELLED" {
+    try std.testing.expectEqualStrings("CANCELLED", RunState.CANCELLED.label());
+}
+
+// T1: CANCELLED is terminal — billing finalises as non-billable.
+test "M17: RunState.CANCELLED isTerminal returns true" {
+    try std.testing.expect(RunState.CANCELLED.isTerminal());
+}
+
+// T2: CANCELLED must NOT be retryable — once cancelled, no retry path.
+test "M17: RunState.CANCELLED isRetryable returns false" {
+    try std.testing.expect(!RunState.CANCELLED.isRetryable());
+}
+
+// T2: DONE and NOTIFIED_BLOCKED remain terminal to catch regressions.
+test "M17: existing terminal states still terminal after CANCELLED added" {
+    try std.testing.expect(RunState.DONE.isTerminal());
+    try std.testing.expect(RunState.NOTIFIED_BLOCKED.isTerminal());
+}
+
+// T2: Active states must NOT be terminal (regression guard).
+test "M17: active states are not terminal" {
+    const active = [_]RunState{
+        .SPEC_QUEUED, .RUN_PLANNED,              .PATCH_IN_PROGRESS,
+        .PATCH_READY, .VERIFICATION_IN_PROGRESS, .VERIFICATION_FAILED,
+        .PR_PREPARED, .PR_OPENED,                .NOTIFIED,
+        .BLOCKED,
+    };
+    for (active) |st| {
+        try std.testing.expect(!st.isTerminal());
+    }
+}
+
+// T1: fromStr round-trips "CANCELLED" back to the correct enum value.
+test "M17: RunState fromStr CANCELLED round-trips" {
+    const state = try RunState.fromStr("CANCELLED");
+    try std.testing.expectEqual(RunState.CANCELLED, state);
+}
+
+// T3: fromStr returns error on unknown state string.
+test "M17: RunState fromStr rejects unknown string" {
+    try std.testing.expectError(error.UnknownState, RunState.fromStr("DELETED"));
+    try std.testing.expectError(error.UnknownState, RunState.fromStr("cancelled"));
+    try std.testing.expectError(error.UnknownState, RunState.fromStr(""));
+}
+
+// T1: new M17_001 ReasonCode labels are stable (used in audit logs / DB).
+test "M17: ReasonCode M17 labels are stable" {
+    try std.testing.expectEqualStrings("TOKEN_BUDGET_EXCEEDED", ReasonCode.TOKEN_BUDGET_EXCEEDED.label());
+    try std.testing.expectEqualStrings("WALL_TIME_EXCEEDED", ReasonCode.WALL_TIME_EXCEEDED.label());
+    try std.testing.expectEqualStrings("REPAIR_LOOPS_EXHAUSTED", ReasonCode.REPAIR_LOOPS_EXHAUSTED.label());
+    try std.testing.expectEqualStrings("RUN_CANCELLED", ReasonCode.RUN_CANCELLED.label());
+}
+
+// T2: all M17 reason codes are distinct from each other and from existing codes.
+test "M17: ReasonCode M17 values are distinct" {
+    const m17 = [_]ReasonCode{
+        .TOKEN_BUDGET_EXCEEDED,  .WALL_TIME_EXCEEDED,
+        .REPAIR_LOOPS_EXHAUSTED, .RUN_CANCELLED,
+    };
+    for (m17, 0..) |a, i| {
+        for (m17, 0..) |b, j| {
+            if (i != j) {
+                try std.testing.expect(a != b);
+            }
+        }
+    }
+}
+
+// T4: BLOCKED is retryable (existing invariant must survive M17 additions).
+test "M17: BLOCKED and VERIFICATION_FAILED remain retryable" {
+    try std.testing.expect(RunState.BLOCKED.isRetryable());
+    try std.testing.expect(RunState.VERIFICATION_FAILED.isRetryable());
+    try std.testing.expect(RunState.NOTIFIED_BLOCKED.isRetryable());
 }

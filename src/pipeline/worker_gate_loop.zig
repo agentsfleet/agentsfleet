@@ -15,6 +15,9 @@ const id_format = @import("../types/id_format.zig");
 const codes = @import("../errors/codes.zig");
 const worker_runtime = @import("worker_runtime.zig");
 const queue_redis = @import("../queue/redis.zig");
+const queue_consts = @import("../queue/constants.zig");
+const state_machine = @import("../state/machine.zig");
+const types = @import("../types.zig");
 
 const log = std.log.scoped(.gate_loop);
 
@@ -44,6 +47,9 @@ pub const GateLoopOutcome = struct {
     results: std.ArrayList(GateToolResult),
     total_repair_loops: u32,
     exhausted: bool,
+    /// True when the gate loop itself wrote the terminal state transition
+    /// (limit exceeded or cancelled). Caller must skip outcome handling.
+    state_written: bool = false,
 };
 
 pub const GateLoopConfig = struct {
@@ -63,7 +69,82 @@ pub const GateLoopConfig = struct {
     repair_role_id: []const u8,
     repair_skill_id: []const u8,
     redis: ?*queue_redis.Client = null,
+    // M17_001 §1.2: per-run limits (0 = unlimited)
+    max_tokens: u64 = 0,
+    max_wall_time_seconds: u64 = 0,
+    run_created_at_ms: i64 = 0,
+    attempt: u32 = 1,
 };
+
+/// Check token budget: query usage_ledger for sum of tokens used this run.
+/// Returns true if the limit is breached (transition written, metric incremented).
+fn checkTokenBudget(cfg: GateLoopConfig) !bool {
+    if (cfg.max_tokens == 0) return false;
+    var q = try cfg.conn.query(
+        \\SELECT COALESCE(SUM(token_count), 0) FROM billing.usage_ledger
+        \\WHERE run_id = $1 AND attempt = $2
+    , .{ cfg.run_id, @as(i32, @intCast(cfg.attempt)) });
+    defer q.deinit();
+    const row = (try q.next()) orelse return false;
+    const used: i64 = row.get(i64, 0) catch 0;
+    try q.drain();
+    if (@as(u64, @intCast(@max(0, used))) < cfg.max_tokens) return false;
+    log.warn("gate_loop.token_budget_exceeded error_code={s} run_id={s} used={d} max={d}", .{
+        codes.ERR_RUN_TOKEN_BUDGET_EXCEEDED, cfg.run_id, used, cfg.max_tokens,
+    });
+    _ = state_machine.transition(cfg.conn, cfg.run_id, .CANCELLED, .orchestrator, .TOKEN_BUDGET_EXCEEDED, "token budget exceeded during gate loop") catch |err| {
+        log.warn("gate_loop.token_budget_transition_fail err={s} run_id={s}", .{ @errorName(err), cfg.run_id });
+    };
+    metrics.incRunLimitTokenBudgetExceeded();
+    return true;
+}
+
+/// Check wall-time limit. Returns true if breached (transition written).
+fn checkWallTime(cfg: GateLoopConfig) !bool {
+    if (cfg.max_wall_time_seconds == 0 or cfg.run_created_at_ms == 0) return false;
+    const elapsed_ms = std.time.milliTimestamp() - cfg.run_created_at_ms;
+    if (elapsed_ms < 0) return false;
+    const elapsed_s: u64 = @intCast(@divTrunc(elapsed_ms, 1000));
+    if (elapsed_s < cfg.max_wall_time_seconds) return false;
+    log.warn("gate_loop.wall_time_exceeded error_code={s} run_id={s} elapsed_s={d} max_s={d}", .{
+        codes.ERR_RUN_WALL_TIME_EXCEEDED, cfg.run_id, elapsed_s, cfg.max_wall_time_seconds,
+    });
+    _ = state_machine.transition(cfg.conn, cfg.run_id, .CANCELLED, .orchestrator, .WALL_TIME_EXCEEDED, "wall-time limit exceeded during gate loop") catch |err| {
+        log.warn("gate_loop.wall_time_transition_fail err={s} run_id={s}", .{ @errorName(err), cfg.run_id });
+    };
+    metrics.incRunLimitWallTimeExceeded();
+    return true;
+}
+
+/// Check Redis cancellation signal. Returns true if signal found (transition written).
+fn checkCancelSignal(cfg: GateLoopConfig) !bool {
+    const redis = cfg.redis orelse return false;
+    const key = try std.fmt.allocPrint(cfg.alloc, queue_consts.cancel_key_prefix ++ "{s}", .{cfg.run_id});
+    defer cfg.alloc.free(key);
+    const found = redis.exists(key) catch false;
+    if (!found) return false;
+    log.info("gate_loop.cancel_signal run_id={s}", .{cfg.run_id});
+    if (cfg.executor) |exec| {
+        if (cfg.execution_id) |exec_id| {
+            exec.destroyExecution(exec_id) catch |err| {
+                log.warn("gate_loop.destroy_execution_fail err={s} run_id={s}", .{ @errorName(err), cfg.run_id });
+            };
+        }
+    }
+    _ = state_machine.transition(cfg.conn, cfg.run_id, .CANCELLED, .orchestrator, .RUN_CANCELLED, "operator cancel signal received") catch |err| {
+        log.warn("gate_loop.cancel_transition_fail err={s} run_id={s}", .{ @errorName(err), cfg.run_id });
+    };
+    return true;
+}
+
+/// After each gate loop iteration: check cancel signal, token budget, wall time.
+/// Returns true if any limit was breached and `state_written` should be set.
+fn checkPostIterationLimits(cfg: GateLoopConfig) !bool {
+    if (try checkCancelSignal(cfg)) return true;
+    if (try checkTokenBudget(cfg)) return true;
+    if (try checkWallTime(cfg)) return true;
+    return false;
+}
 
 pub fn runGateLoop(cfg: GateLoopConfig) !GateLoopOutcome {
     var results = std.ArrayList(GateToolResult){};
@@ -84,6 +165,20 @@ pub fn runGateLoop(cfg: GateLoopConfig) !GateLoopOutcome {
                 failed_result = result;
                 break;
             }
+        }
+
+        // M17_001 §1.2 / §3.2: check limits and cancel signal after each iteration.
+        if (try checkPostIterationLimits(cfg)) {
+            persistGateResults(cfg.alloc, cfg.conn, cfg.run_id, results.items) catch |err| {
+                log.warn("gate_loop.persist_failed error_code={s} err={s} run_id={s}", .{ codes.ERR_GATE_PERSIST_FAILED, @errorName(err), cfg.run_id });
+            };
+            return .{
+                .all_passed = false,
+                .results = results,
+                .total_repair_loops = repair,
+                .exhausted = false,
+                .state_written = true,
+            };
         }
 
         if (failed_result == null) {
@@ -124,11 +219,16 @@ pub fn runGateLoop(cfg: GateLoopConfig) !GateLoopOutcome {
         }
     }
 
-    // Repair loops exhausted.
+    // Repair loops exhausted — transition directly to CANCELLED so the caller
+    // skips handleGateExhaustedOutcome (which would land the run in BLOCKED).
     log.warn("gate_loop.exhausted error_code={s} run_id={s} attempts={d}", .{
         codes.ERR_GATE_REPAIR_EXHAUSTED, cfg.run_id, cfg.max_repair_loops,
     });
     metrics.incGateRepairExhausted();
+    metrics.incRunLimitRepairLoopsExhausted();
+    _ = state_machine.transition(cfg.conn, cfg.run_id, .CANCELLED, .orchestrator, .REPAIR_LOOPS_EXHAUSTED, "gate repair loops exhausted") catch |err| {
+        log.warn("gate_loop.exhausted_transition_fail err={s} run_id={s}", .{ @errorName(err), cfg.run_id });
+    };
 
     persistGateResults(cfg.alloc, cfg.conn, cfg.run_id, results.items) catch |err| {
         log.warn("gate_loop.persist_failed error_code={s} err={s} run_id={s}", .{ codes.ERR_GATE_PERSIST_FAILED, @errorName(err), cfg.run_id });
@@ -139,6 +239,7 @@ pub fn runGateLoop(cfg: GateLoopConfig) !GateLoopOutcome {
         .results = results,
         .total_repair_loops = cfg.max_repair_loops,
         .exhausted = true,
+        .state_written = true,
     };
 }
 

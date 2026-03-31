@@ -7,6 +7,7 @@ export function registerProgramCommands(handlers) {
     "spec.init": handlers.specInit,
     run: handlers.run,
     "runs.list": handlers.runsList,
+    "runs.cancel": handlers.runsCancel,
     doctor: handlers.doctor,
     harness: handlers.harness,
     "skill-secret": handlers.skillSecret,

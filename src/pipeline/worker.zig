@@ -161,6 +161,8 @@ pub fn workerLoop(cfg: WorkerConfig, worker_state: *WorkerState) void {
                     .sandbox = cfg.sandbox,
                     .skill_registry = &skill_registry,
                     .posthog = cfg.posthog,
+                    // M17_001 §3.2: wire Redis for cancel signal polling in gate loop.
+                    .redis = &queue_client,
                 },
             },
             worker_state,

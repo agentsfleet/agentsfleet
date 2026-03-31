@@ -18,16 +18,18 @@ CREATE TABLE core.tenants (
 );
 
 CREATE TABLE core.workspaces (
-    workspace_id    UUID PRIMARY KEY,
-    tenant_id       UUID NOT NULL REFERENCES core.tenants(tenant_id),
-    repo_url        TEXT NOT NULL,
-    default_branch  TEXT NOT NULL,
-    paused          BOOLEAN NOT NULL DEFAULT FALSE,
-    paused_reason   TEXT,
-    created_by      TEXT,
-    version         BIGINT NOT NULL DEFAULT 1,
-    created_at      BIGINT NOT NULL,
-    updated_at      BIGINT NOT NULL
+    workspace_id              UUID PRIMARY KEY,
+    tenant_id                 UUID NOT NULL REFERENCES core.tenants(tenant_id),
+    repo_url                  TEXT NOT NULL,
+    default_branch            TEXT NOT NULL,
+    paused                    BOOLEAN NOT NULL DEFAULT FALSE,
+    paused_reason             TEXT,
+    created_by                TEXT,
+    version                   BIGINT NOT NULL DEFAULT 1,
+    -- M17_001 §2.1: monthly token budget (tokens per calendar month)
+    monthly_token_budget      BIGINT NOT NULL DEFAULT 10000000,
+    created_at                BIGINT NOT NULL,
+    updated_at                BIGINT NOT NULL
 );
 CREATE INDEX idx_workspaces_tenant ON core.workspaces(tenant_id);
 
@@ -60,6 +62,11 @@ CREATE TABLE core.runs (
     pr_url                TEXT,
     base_commit_sha       TEXT,
     run_snapshot_config_version  UUID,
+    -- M17_001 §1.1: per-run enforcement limits (immutable once enqueued)
+    max_repair_loops      INT NOT NULL DEFAULT 3,
+    max_tokens            BIGINT NOT NULL DEFAULT 100000,
+    max_wall_time_seconds BIGINT NOT NULL DEFAULT 600,
+    tokens_used           BIGINT NOT NULL DEFAULT 0,
     created_at            BIGINT NOT NULL,
     updated_at            BIGINT NOT NULL,
     UNIQUE (workspace_id, idempotency_key),

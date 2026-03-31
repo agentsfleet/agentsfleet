@@ -9,6 +9,7 @@ import { registerProgramCommands } from "./program/command-registry.js";
 import { commandHarness as commandHarnessModule } from "./commands/harness.js";
 import { commandAgent as commandAgentModule } from "./commands/agent.js";
 import { commandAdmin as commandAdminModule } from "./commands/admin.js";
+import { commandRuns as commandRunsModule } from "./commands/runs.js";
 import { ui, printKeyValue, printSection, printTable } from "./ui-theme.js";
 import { createSpinner } from "./ui-progress.js";
 import {
@@ -158,6 +159,14 @@ export async function runCli(argv, io = {}) {
       ui,
       printJson,
       printSection,
+      writeLine,
+    }),
+    runsCancel: (routeArgs) => commandRunsModule(ctx, routeArgs, {
+      parseFlags,
+      request,
+      apiHeaders,
+      ui,
+      printJson,
       writeLine,
     }),
   });

@@ -3,6 +3,7 @@ const agents = @import("agents.zig");
 const posthog = @import("posthog");
 const sandbox_runtime = @import("sandbox_runtime.zig");
 const executor_client = @import("../executor/client.zig");
+const queue_redis = @import("../queue/redis.zig");
 
 pub const ExecuteConfig = struct {
     cache_root: []const u8,
@@ -13,6 +14,8 @@ pub const ExecuteConfig = struct {
     skill_registry: *const agents.SkillRegistry,
     posthog: ?*posthog.PostHogClient = null,
     executor: ?*executor_client.ExecutorClient = null,
+    /// M17_001 §3.2: Redis client for cancel signal polling in gate loop.
+    redis: ?*queue_redis.Client = null,
 };
 
 pub const RunContext = struct {
@@ -29,9 +32,13 @@ pub const RunContext = struct {
     attempt: u32,
     agent_id: []const u8 = "",
     /// GitHub App installation ID for this workspace (M16_003 §2).
-    /// When set, the worker fetches a short-lived installation token before
-    /// any stage that requires git access. Never written to Postgres.
     github_installation_id: []const u8 = "",
+    // M17_001 §1.2: per-run limits loaded at claim time (0 = unlimited)
+    max_tokens: u64 = 0,
+    max_wall_time_seconds: u64 = 0,
+    run_created_at_ms: i64 = 0,
+    /// M17_001 §1.2: repair loop cap from DB column; overrides profile default.
+    max_repair_loops: u32 = 3,
 };
 
 // ── Tests ─────────────────────────────────────────────────────────────────────

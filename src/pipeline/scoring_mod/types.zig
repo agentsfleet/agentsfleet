@@ -25,6 +25,8 @@ pub const TerminalOutcome = enum {
     blocked_retries_exhausted,
     blocked_gate_exhausted,
     error_propagation,
+    /// M17_001 §1.2: run cancelled by operator signal or resource limit.
+    cancelled,
 };
 
 pub const FailureClass = enum {

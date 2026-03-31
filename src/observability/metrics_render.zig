@@ -105,6 +105,10 @@ pub fn renderPrometheus(
     try appendMetric(writer, "zombie_agent_score_latest", "gauge", "Most recently computed agent score.", s.agent_score_latest);
     try appendMetric(writer, "zombie_gate_repair_loops_total", "counter", "Total gate repair loop iterations.", s.gate_repair_loops_total);
     try appendMetric(writer, "zombie_gate_repair_exhausted_total", "counter", "Total gate repair exhaustions (max loops reached).", s.gate_repair_exhausted_total);
+    // M17_001 §1.3: per-limit-type counters
+    try appendMetric(writer, "zombied_run_limit_exceeded_total{reason=\"token_budget\"}", "counter", "Runs terminated by token budget limit.", s.run_limit_token_budget_exceeded_total);
+    try appendMetric(writer, "zombied_run_limit_exceeded_total{reason=\"wall_time\"}", "counter", "Runs terminated by wall-time limit.", s.run_limit_wall_time_exceeded_total);
+    try appendMetric(writer, "zombied_run_limit_exceeded_total{reason=\"repair_loops\"}", "counter", "Runs terminated by repair-loop exhaustion.", s.run_limit_repair_loops_exhausted_total);
     try appendMetric(writer, "zombie_otel_export_total", "counter", "Total OTEL metric export attempts.", s.otel_export_total);
     try appendMetric(writer, "zombie_otel_export_failed_total", "counter", "Total OTEL metric export failures.", s.otel_export_failed_total);
     try appendMetric(writer, "zombie_otel_last_success_at_ms", "gauge", "Timestamp of last successful OTEL export in epoch ms.", s.otel_last_success_at_ms);

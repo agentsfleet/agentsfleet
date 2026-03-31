@@ -9,6 +9,7 @@ pub fn computeCompletionScore(outcome: types.TerminalOutcome) u8 {
         .blocked_stage_graph => 10,
         .error_propagation => 0,
         .pending => 0,
+        .cancelled => 0,
     };
 }
 
