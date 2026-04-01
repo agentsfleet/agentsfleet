@@ -14,43 +14,11 @@ const profile_linkage = @import("../../../audit/profile_linkage.zig");
 const id_format = @import("../../../types/id_format.zig");
 const error_codes = @import("../../../errors/codes.zig");
 const start_dedup = @import("start_dedup.zig");
+const start_budget = @import("start_budget.zig");
 const log = std.log.scoped(.http);
 const API_ACTOR = "api";
 const uc4 = @import("../../../db/test_fixtures_uc4.zig");
 
-// M17_001 §2: default per-run token ceiling used for workspace budget projection.
-const DEFAULT_RUN_MAX_TOKENS: i64 = 100_000;
-
-/// Check workspace monthly token budget. Caller must hold an open transaction.
-/// Returns true if the budget would be exceeded (run should be rejected).
-/// Returns false if budget is unlimited (0) or within limit.
-/// M17_001 §2.3-2.4: called within the same tx as the run INSERT to close
-/// the TOCTOU window — FOR UPDATE lock held until INSERT commits.
-fn enforceWorkspaceMonthlyBudget(conn: *pg.Conn, workspace_id: []const u8) !bool {
-    var lock_q = try conn.query(
-        \\SELECT monthly_token_budget FROM workspaces WHERE workspace_id = $1 FOR UPDATE
-    , .{workspace_id});
-    defer lock_q.deinit();
-    const lock_row = (try lock_q.next()) orelse return false;
-    const budget: i64 = lock_row.get(i64, 0) catch 0;
-    try lock_q.drain();
-    if (budget <= 0) return false; // 0 = unlimited
-
-    var usage_q = try conn.query(
-        \\SELECT COALESCE(SUM(ul.token_count), 0)
-        \\FROM billing.usage_ledger ul
-        \\WHERE ul.workspace_id = $1
-        \\  AND ul.created_at >= (
-        \\      EXTRACT(EPOCH FROM date_trunc('month', now() AT TIME ZONE 'UTC')) * 1000
-        \\  )::bigint
-    , .{workspace_id});
-    defer usage_q.deinit();
-    const usage_row = (try usage_q.next()) orelse return false;
-    const used: i64 = usage_row.get(i64, 0) catch 0;
-    try usage_q.drain();
-
-    return used + DEFAULT_RUN_MAX_TOKENS > budget;
-}
 
 const queue_unavailable_code = error_codes.ERR_QUEUE_UNAVAILABLE;
 const queue_unavailable_message = "Queue unavailable";
@@ -218,7 +186,7 @@ pub fn handleStartRun(ctx: *common.Context, req: *httpz.Request, res: *httpz.Res
     // M17_001 §2.3-2.4: early budget check (unlocked) before expensive guards.
     // Rejects obviously overbudget workspaces without paying lock costs.
     // The definitive locked check runs inside the INSERT transaction below.
-    const budget_early = enforceWorkspaceMonthlyBudget(conn, rval.workspace_id) catch {
+    const budget_early = start_budget.enforceWorkspaceMonthlyBudget(conn, rval.workspace_id) catch {
         common.internalOperationError(res, "Failed to check workspace budget", req_id);
         return;
     };
@@ -362,7 +330,7 @@ pub fn handleStartRun(ctx: *common.Context, req: *httpz.Request, res: *httpz.Res
         common.internalDbError(res, req_id);
         return;
     };
-    const budget_final = enforceWorkspaceMonthlyBudget(conn, rval.workspace_id) catch {
+    const budget_final = start_budget.enforceWorkspaceMonthlyBudget(conn, rval.workspace_id) catch {
         _ = conn.exec("ROLLBACK", .{}) catch {};
         common.internalOperationError(res, "Failed to check workspace budget", req_id);
         return;
