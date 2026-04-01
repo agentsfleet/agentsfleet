@@ -372,6 +372,11 @@ Exit criteria:
 Required outputs:
 
 - Run lint/tests/build checks relevant to touched files.
+- If touched files include `*.zig`: additionally run `make check-pg-drain`.
+- Scan the diff against the greptile anti-pattern catalog (`make lint` does this automatically via `_greptile_patterns_check`; also run manually when needed):
+  ```bash
+  git diff origin/main | grep '^+[^+]' | grep -Ef docs/greptile-learnings/.greptile-patterns && echo "❌ known anti-pattern matched" || true
+  ```
 - Capture failures with exact command and error text.
 
 Restrictions:
@@ -856,6 +861,19 @@ cp ~/.config/opencode/opencode.json "$DST/.config/opencode/opencode.json"
 ```
 
 **Note:** `README.md` is excluded from sync (repo-specific).
+
+## Greptile Learnings Catalog
+
+Agent-first. One file only: `docs/greptile-learnings/.greptile-patterns`. No category files.
+
+`make lint` scans every PR diff against this file automatically (`_greptile_patterns_check`).
+
+**When asked to resolve greptile PR comments:**
+1. Fetch inline comments: `gh api repos/OWNER/REPO/pulls/N/reviews/ID/comments`
+2. Fix each finding in the worktree.
+3. For every P0/P1 finding: derive a grep-E regex for the anti-pattern and append it to `.greptile-patterns`.
+4. Verify: `echo 'bad example' | grep -Ef docs/greptile-learnings/.greptile-patterns` must match; the fix must not.
+5. Commit fix + pattern append together.
 
 ## Skills Policy
 
