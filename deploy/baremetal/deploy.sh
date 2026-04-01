@@ -170,10 +170,23 @@ restart_services() {
   if [[ "$COMPONENT" == "executor" ]]; then
     log "Draining worker before executor restart (Requires= dependency) ..."
     drain_worker
+    # Unconditionally stop the worker — drain checks is-active which returns
+    # false for "activating (auto-restart)" crash-loops, so drain skips them.
+    # A bare stop here catches every state (active, activating, failed).
+    # Timeout prevents hanging on TimeoutStopSec=300; SIGKILL as fallback.
+    timeout 15 systemctl stop zombied-worker.service 2>/dev/null \
+      || systemctl kill --signal=SIGKILL zombied-worker.service 2>/dev/null \
+      || true
     log "Restarting executor ..."
     systemctl restart zombied-executor.service
-    sleep 2
-    systemctl restart zombied-worker.service || true
+    # Only restart the worker if its binary is installed. CI deploys executor
+    # before worker, so on first deploy the worker binary does not exist yet.
+    if [[ -x "${INSTALL_DIR}/zombied" ]]; then
+      sleep 2
+      systemctl restart zombied-worker.service || true
+    else
+      log "Worker binary not installed yet — skipping worker start."
+    fi
   else
     drain_worker
     log "Restarting worker ..."
@@ -182,14 +195,23 @@ restart_services() {
 }
 
 verify_healthy() {
-  sleep 3
-  if systemctl is-active --quiet "$SERVICE_NAME"; then
-    log "✓ ${SERVICE_NAME} is active."
-    return 0
-  fi
-  log "✗ ${SERVICE_NAME} failed to start."
+  local attempts=5
+  local delay=2
+  for i in $(seq 1 "$attempts"); do
+    sleep "$delay"
+    if systemctl is-active --quiet "$SERVICE_NAME"; then
+      log "✓ ${SERVICE_NAME} is active (attempt ${i}/${attempts})."
+      return 0
+    fi
+    # Fail fast: if systemd already marked it failed, don't keep waiting.
+    if systemctl is-failed --quiet "$SERVICE_NAME" 2>/dev/null; then
+      log "✗ ${SERVICE_NAME} entered failed state."
+      break
+    fi
+  done
+  log "✗ ${SERVICE_NAME} failed to start. Dumping diagnostics:"
   systemctl status "$SERVICE_NAME" --no-pager || true
-  journalctl -u "$SERVICE_NAME" --no-pager -n 20 || true
+  journalctl -u "$SERVICE_NAME" --no-pager -n 30 || true
   return 1
 }
 
@@ -231,7 +253,9 @@ main() {
 
   resolve_component "$COMPONENT"
 
-  if is_already_installed; then
+  # Skip version check when CI provides a local binary — always do a full
+  # install+restart cycle. The shortcut is only for release-download mode.
+  if [[ -z "$LOCAL_BINARY" ]] && is_already_installed; then
     notify_discord "ok"
     return 0
   fi

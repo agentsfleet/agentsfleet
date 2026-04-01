@@ -82,7 +82,7 @@ A milestone is not complete until demo evidence is captured (commands, logs, scr
 ```
 docs/spec/v1/{pending|active|done}/M{Milestone}_{Workstream}_{DESCRIPTIVE_NAME}.md
 
-Example: docs/spec/v1/pending/M3_006_CLERK_AUTH.md
+Example: docs/spec/v1/pending/M3_007_CLERK_AUTH.md
          └─┬─┘ └──┬──┘ └┬─┘ └──────┬────────┘
            │      │     │           └─ Descriptive name (UPPERCASE_SNAKE_CASE)
            │      │     └─ Workstream (3-digit zero-padded: 001–009)
