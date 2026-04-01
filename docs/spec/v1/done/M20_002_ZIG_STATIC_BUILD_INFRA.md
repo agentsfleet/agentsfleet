@@ -1,8 +1,8 @@
-# M20_001: Zig Static Build Infrastructure & Knowledge Base
+# M20_002: Zig Static Build Infrastructure & Knowledge Base
 
 **Prototype:** v1.0.0
 **Milestone:** M20
-**Workstream:** 001
+**Workstream:** 002
 **Date:** Mar 29, 2026
 **Status:** DONE
 **Branch:** feat/m20-001-zig-static-build

@@ -2,7 +2,7 @@
 
 **Date:** Mar 31, 2026
 **Purpose:** Personal handoff — continue the discovery session for M18_003
-**Spec:** `docs/spec/v1/M18_003_API_BACKED_SPEC_PREVIEW.md` Section 0.0
+**Spec:** `docs/spec/v1/pending/M18_003_API_BACKED_SPEC_PREVIEW.md` Section 0.0
 **Branch:** m18-002-spec-templates-diff-preview (spec lives here until M18_003 branch is cut)
 
 ---

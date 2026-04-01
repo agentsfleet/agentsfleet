@@ -4,7 +4,7 @@
 **Milestone:** M20
 **Workstream:** 001
 **Date:** Mar 29, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Branch:** feat/m20-001-eliminate-hardcoded-role-constants
 **Priority:** P0 — Hardcoded scout/echo/warden roles prevent custom agent profiles from working end-to-end; blocks workspace-level agent customization
 **Batch:** B3

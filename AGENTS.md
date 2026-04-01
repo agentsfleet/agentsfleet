@@ -290,7 +290,7 @@ When a spec is fully implemented:
 
 1. Mark all sections and dimensions as `DONE` or `✅`
 2. Update **Status:** to `DONE`
-3. Move file from `docs/spec/v1/` to `docs/done/v1/`
+3. Move file from `docs/spec/v1/active/` to `docs/spec/v1/done/`
 4. Create handoff notes if work continues
 
 ### Prohibited
