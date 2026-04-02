@@ -3,6 +3,7 @@
 **Milestone:** M4
 **Workstream:** 002
 **Updated:** Apr 02, 2026
+**Status:** ✅ DONE — `zombie-prod-worker-ant` provisioned and vault-ready Apr 02, 2026; `PROD_WORKER_READY=true` set; first deploy deferred to CI on `v0.3.0` tag. `zombie-prod-worker-bird` is a placeholder (same hostname as ant — provision a second server to activate).
 **Prerequisite:** Vault items exist (`ZMB_CD_PROD`). Tailscale authkey in `ZMB_CD_PROD/tailscale/authkey`. 1Password service account token available as `OP_SERVICE_ACCOUNT_TOKEN`.
 
 Bootstrap one or more PROD bare-metal worker nodes so CI can deploy the `zombied worker` + `zombied-executor` processes autonomously. After step 0 (human buys the servers), every remaining step is agent-executable — no human interaction required.
@@ -32,14 +33,14 @@ export WORKER_NAME="zombie-prod-worker-1"
 
 ## Human vs Agent Split
 
-| Step | Owner | What |
-|------|-------|------|
-| 0.0 | Human | Buy server(s) from provider, get IP + initial root credentials |
-| 1.0 | Agent | Verify deploy SSH key from vault works |
-| 2.0 | Agent | Install Tailscale + join tailnet |
-| 3.0 | Agent | Install runtime dependencies (bubblewrap, git, openssl, ca-certificates) |
-| 4.0 | Agent | Bootstrap `/opt/zombie/` (deploy.sh + .env from vault) |
-| 5.0 | Agent | First deploy + activate CI |
+| Step | Owner | What | Status |
+|------|-------|------|--------|
+| 0.0 | Human | Buy server(s) from provider, get IP + initial root credentials | ✅ DONE |
+| 1.0 | Agent | Verify deploy SSH key from vault works | ✅ DONE |
+| 2.0 | Agent | Install Tailscale + join tailnet | ✅ DONE — `zombie-prod-worker-ant` at `100.127.12.111` |
+| 3.0 | Agent | Install runtime dependencies (bubblewrap, git, openssl, ca-certificates) | ✅ DONE |
+| 4.0 | Agent | Bootstrap `/opt/zombie/` (deploy.sh + .env from vault) | ✅ DONE |
+| 5.0 | Agent | First deploy + activate CI | ⏭ DEFERRED — CI executes first deploy on `v0.3.0` tag; `PROD_WORKER_READY=true` set |
 
 After step 0 the agent runs steps 1–5 in sequence without human intervention.
 After step 5 and after all nodes pass, CI handles all future deploys automatically via `release.yml`.
