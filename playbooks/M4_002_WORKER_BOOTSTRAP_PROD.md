@@ -3,7 +3,7 @@
 **Milestone:** M4
 **Workstream:** 002
 **Updated:** Apr 02, 2026
-**Status:** ✅ DONE — `zombie-prod-worker-ant` fully bootstrapped Apr 02, 2026; `PROD_WORKER_READY=true` set; CI will execute first deploy on `v0.3.0` tag. `zombie-prod-worker-bird` is a placeholder (same hostname as ant — provision a second server to activate).
+**Status:** ✅ DONE — `zombie-prod-worker-ant` provisioned and vault-ready Apr 02, 2026; `PROD_WORKER_READY=true` set; first deploy deferred to CI on `v0.3.0` tag. `zombie-prod-worker-bird` is a placeholder (same hostname as ant — provision a second server to activate).
 **Prerequisite:** Vault items exist (`ZMB_CD_PROD`). Tailscale authkey in `ZMB_CD_PROD/tailscale/authkey`. 1Password service account token available as `OP_SERVICE_ACCOUNT_TOKEN`.
 
 Bootstrap one or more PROD bare-metal worker nodes so CI can deploy the `zombied worker` + `zombied-executor` processes autonomously. After step 0 (human buys the servers), every remaining step is agent-executable — no human interaction required.
