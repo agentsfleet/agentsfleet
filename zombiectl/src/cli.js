@@ -24,12 +24,12 @@ import { ApiError, apiHeaders, printApiError, request } from "./program/http-cli
 import { parseFlags, parseGlobalArgs, normalizeApiUrl, DEFAULT_API_URL } from "./program/args.js";
 import { extractDistinctIdFromToken, extractRoleFromToken } from "./program/auth-token.js";
 import { printHelp, printJson, writeLine } from "./program/io.js";
-import { printBanner } from "./program/banner.js";
+import { printBanner, printPreReleaseWarning } from "./program/banner.js";
 import { suggestCommand } from "./program/suggest.js";
 import { requireAuth, AUTH_FAIL_MESSAGE } from "./program/auth-guard.js";
 import { createCoreHandlers } from "./commands/core.js";
 
-export const VERSION = "0.1.0";
+export const VERSION = "0.3.0";
 
 export { parseGlobalArgs };
 
@@ -43,6 +43,8 @@ export async function runCli(argv, io = {}) {
 
   const { global, rest } = parseGlobalArgs(argv, env);
   const noColor = Boolean(env.NO_COLOR === "1" || env.NO_COLOR === "true");
+
+  printPreReleaseWarning(stderr, { noColor, jsonMode: global.json, ttyOnly: !stderr.isTTY });
 
   if (global.version) {
     if (global.json) {

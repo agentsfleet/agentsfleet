@@ -245,7 +245,7 @@ describe("version output", () => {
       env: { ...process.env },
     });
     expect(code).toBe(0);
-    expect(out.read()).toContain("zombiectl v0.1.0");
+    expect(out.read()).toContain("zombiectl v0.3.0");
   });
 
   test("--version --json suppresses banner", async () => {
@@ -258,7 +258,7 @@ describe("version output", () => {
     });
     expect(code).toBe(0);
     const parsed = JSON.parse(out.read());
-    expect(parsed.version).toBe("0.1.0");
+    expect(parsed.version).toBe("0.3.0");
   });
 
   test("--version with NO_COLOR shows plain text", async () => {
@@ -271,6 +271,6 @@ describe("version output", () => {
     });
     expect(code).toBe(0);
     const output = out.read();
-    expect(output).toContain("zombiectl v0.1.0");
+    expect(output).toContain("zombiectl v0.3.0");
   });
 });

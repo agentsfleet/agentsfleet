@@ -9,9 +9,25 @@ permissions:
   contents: read
 
 jobs:
-  # ── 0. Tag / version contract ──────────────────────────────────────────
+  # ── 0a. Credential gate — all PROD vault items must exist ─────────────────
+  check-credentials:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: 1password/install-cli-action@v3
+
+      - name: Check vault credentials
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          VAULT_DEV: ${{ vars.VAULT_DEV }}
+          VAULT_PROD: ${{ vars.VAULT_PROD }}
+        run: ./playbooks/gates/check-credentials.sh
+
+  # ── 0b. Tag / version contract ─────────────────────────────────────────
   verify-tag:
     runs-on: ubuntu-latest
+    needs: check-credentials
     steps:
       - uses: actions/checkout@v6
       - name: Verify tag matches VERSION file
@@ -78,7 +94,50 @@ jobs:
           name: zombied-linux-amd64
           path: dist/zombied-linux-amd64.tar.gz
 
-  # ── 1b. aarch64 binary: bare runner + docker run alpine ───────────────
+      # Upload unpackaged binary for runtime compat verification job below.
+      - uses: actions/upload-artifact@v7
+        with:
+          name: zombied-linux-amd64-ci
+          path: dist/zombied-linux-amd64
+          retention-days: 1
+
+  # ── 1b. Runtime compat: verify release x86_64 binary runs on all target envs ──
+  # Mirrors verify-runtime-compat from cross-compile.yml.
+  # Release binaries must pass before Docker image is pushed to GHCR.
+  verify-runtime-compat:
+    runs-on: ubuntu-latest
+    needs: binaries-linux-x86
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: zombied-linux-amd64-ci
+          path: dist
+
+      - name: Make binary executable
+        run: chmod +x dist/zombied-linux-amd64
+
+      - name: Verify in debian:bookworm-slim (Fly.io target)
+        run: |
+          docker run --rm \
+            -v "${{ github.workspace }}/dist:/test:ro" \
+            debian:bookworm-slim \
+            sh -c 'ldd /test/zombied-linux-amd64 2>&1 | grep -q "not a dynamic executable" && echo "✓ bookworm-slim: static binary confirmed" || (echo "FAIL: dynamic deps found in bookworm-slim"; ldd /test/zombied-linux-amd64 2>&1; exit 1)'
+
+      - name: Verify in alpine:3.21 (musl-native)
+        run: |
+          docker run --rm \
+            -v "${{ github.workspace }}/dist:/test:ro" \
+            mirror.gcr.io/library/alpine:3.21 \
+            sh -c 'ldd /test/zombied-linux-amd64 2>&1 | grep -qiE "not a dynamic|Not a valid dynamic" && echo "✓ alpine: static binary confirmed" || (echo "FAIL: dynamic deps found in alpine"; ldd /test/zombied-linux-amd64 2>&1; exit 1)'
+
+      - name: Verify in debian:trixie-slim (bare-metal worker target)
+        run: |
+          docker run --rm \
+            -v "${{ github.workspace }}/dist:/test:ro" \
+            debian:trixie-slim \
+            sh -c 'ldd /test/zombied-linux-amd64 2>&1 | grep -q "not a dynamic executable" && echo "✓ trixie-slim: static binary confirmed" || (echo "FAIL: dynamic deps found in trixie-slim"; ldd /test/zombied-linux-amd64 2>&1; exit 1)'
+
+  # ── 1c. aarch64 binary: bare runner + docker run alpine ───────────────
   # JS actions cannot run inside Alpine containers on ARM64 runners.
   # Solution: use the bare ubuntu-24.04-arm runner and invoke docker run
   # to execute the Zig build inside Alpine — same approach as `make build-linux-alpine`.
@@ -172,7 +231,7 @@ jobs:
   # ── 2. Docker: multi-arch build + push stable to GHCR ──────────────────
   docker:
     runs-on: ubuntu-latest
-    needs: [verify-tag, binaries-linux-x86, binaries-linux-aarch64, binaries-macos]
+    needs: [verify-tag, binaries-linux-x86, binaries-linux-aarch64, binaries-macos, verify-runtime-compat]
     permissions:
       packages: write
     steps:
@@ -233,7 +292,7 @@ jobs:
 
       - run: npm ci
       - run: npm run build
-      - run: npm publish --provenance --access public
+      - run: npm publish --provenance --access public --tag next
         env:
           NODE_AUTH_TOKEN: ${{ env.NPM_TOKEN }}
 
@@ -341,6 +400,28 @@ jobs:
         env:
           FLY_API_TOKEN: ${{ env.FLY_API_TOKEN }}
 
+      - name: Verify Fly machine state (deploy settled)
+        run: |
+          APP="${{ vars.FLY_APP_PROD }}"
+          echo "Checking Fly machine state for ${APP}..."
+          for i in $(seq 1 12); do
+            OUT="$(flyctl machine list --app "${APP}" || true)"
+            echo "${OUT}"
+            if echo "${OUT}" | grep -qiE '\bstarted\b'; then
+              echo "✓ at least one machine is in started state for ${APP}"
+              exit 0
+            fi
+            echo "attempt ${i}/12: no settled machine yet; retrying in 5s..."
+            sleep 5
+          done
+          echo "✗ no settled machine found for ${APP} after 60s"
+          echo "Fly app status for diagnostics:"
+          flyctl status --app "${APP}" || true
+          timeout 30s flyctl logs --app "${APP}" || true
+          exit 1
+        env:
+          FLY_API_TOKEN: ${{ env.FLY_API_TOKEN }}
+
       - name: Ensure restart-policy always on prod machines
         # Set restart-policy=always so Fly self-heals the machine on crash.
         run: |
@@ -403,9 +484,12 @@ jobs:
           curl -sf https://api.usezombie.com/readyz | jq -e '.ready == true'
 
   # ── 7. Deploy: canary worker (first host) ───────────────────────────────
+  # Skips until production worker bootstrap is complete (M4_002).
+  # Enable by setting PROD_WORKER_READY=true in GitHub → Settings → Variables.
   deploy-prod-canary:
     runs-on: ubuntu-latest
     needs: deploy-prod-api
+    if: vars.PROD_WORKER_READY == 'true'
     permissions:
       contents: read
     steps:

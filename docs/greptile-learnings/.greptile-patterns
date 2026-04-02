@@ -4,3 +4,4 @@ install -m [0-9]+ .*/usr/local/bin
 systemctl start [a-z]+-[a-z]+\.service.*\|
 std\.process\.exit\(1\)
 flyctl deploy .* \|\| true
+grep -qiE '\\b\(started\|stopped\)\\b'

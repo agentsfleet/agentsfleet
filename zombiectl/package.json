@@ -1,7 +1,7 @@
 {
   "name": "zombiectl",
-  "version": "0.1.0",
-  "description": "UseZombie operator CLI",
+  "version": "0.3.0",
+  "description": "UseZombie CLI",
   "type": "module",
   "bin": {
     "zombiectl": "./bin/zombiectl.js"

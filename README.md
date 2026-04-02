@@ -16,7 +16,7 @@
 
 ---
 
-> **In Development** — APIs, CLI, and behavior may change without notice.
+> **Pre-release: April 5, 2026** — UseZombie is launching April 5. APIs, CLI, and behavior may change without notice before general availability.
 
 ## What it does
 
