@@ -2,3 +2,4 @@
 expectEqual.*day_index
 install -m [0-9]+ .*/usr/local/bin
 systemctl start [a-z]+-[a-z]+\.service.*\|
+std\.process\.exit\(1\)

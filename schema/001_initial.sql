@@ -62,6 +62,7 @@ CREATE TABLE core.runs (
     pr_url                TEXT,
     base_commit_sha       TEXT,
     run_snapshot_config_version  UUID,
+    dedup_key             TEXT,
     -- M17_001 §1.1: per-run enforcement limits (immutable once enqueued)
     max_repair_loops      INT NOT NULL DEFAULT 3,
     max_tokens            BIGINT NOT NULL DEFAULT 100000,
@@ -78,6 +79,7 @@ CREATE INDEX idx_runs_workspace ON core.runs(workspace_id, state);
 CREATE INDEX idx_runs_request_id ON core.runs(request_id);
 CREATE INDEX idx_runs_trace_id ON core.runs(trace_id);
 CREATE INDEX idx_runs_snapshot_config_version ON core.runs(run_snapshot_config_version, created_at DESC);
+CREATE UNIQUE INDEX idx_runs_dedup_key ON core.runs(dedup_key) WHERE dedup_key IS NOT NULL;
 
 CREATE TABLE core.run_transitions (
     id           UUID PRIMARY KEY,
