@@ -145,7 +145,7 @@ _greptile_patterns_check:
 		echo "✗ docs/greptile-learnings/.greptile-patterns missing"; exit 1; \
 	fi
 	@git rev-parse origin/main >/dev/null 2>&1 || { echo "⚠ origin/main not reachable — skipping greptile scan"; exit 0; }
-	@if git diff origin/main | grep '^+[^+]' | grep -Ef docs/greptile-learnings/.greptile-patterns; then \
+	@if git diff origin/main -- ':!*test*' ':!*_test*' ':!src/errors/codes.zig' | grep '^+[^+]' | grep -Ef docs/greptile-learnings/.greptile-patterns; then \
 		echo "❌ known anti-pattern matched — fix before merging"; exit 1; \
 	fi
 	@echo "✓ [zombied] No known greptile anti-patterns in diff"

@@ -117,6 +117,9 @@ fn dispatchMatchedRoute(ctx: *handler.Context, req: *httpz.Request, res: *httpz.
             else => respondMethodNotAllowed(res),
         },
         .delete_admin_platform_key => |provider| if (req.method == .DELETE) handler.handleDeleteAdminPlatformKey(ctx, req, res, provider) else respondMethodNotAllowed(res),
+        // M18_003: agent relay endpoints
+        .spec_template => |workspace_id| if (req.method == .POST) handler.handleSpecTemplate(ctx, req, res, workspace_id) else respondMethodNotAllowed(res),
+        .spec_preview => |workspace_id| if (req.method == .POST) handler.handleSpecPreview(ctx, req, res, workspace_id) else respondMethodNotAllowed(res),
         // M16_004: workspace BYOK LLM credentials
         .workspace_llm_credential => |workspace_id| switch (req.method) {
             .PUT => handler.handlePutWorkspaceLlmCredential(ctx, req, res, workspace_id),

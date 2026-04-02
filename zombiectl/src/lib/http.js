@@ -65,6 +65,72 @@ export async function apiRequest(url, options = {}) {
   }
 }
 
+/**
+ * POST with SSE streaming response. Calls onEvent for each parsed SSE event.
+ * Returns when the stream ends or an error occurs.
+ */
+export async function streamFetch(url, payload, headers, onEvent, options = {}) {
+  const timeoutMs = options.timeoutMs ?? 30000;
+  const fetchImpl = options.fetchImpl || globalThis.fetch;
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+
+  try {
+    const res = await fetchImpl(url, {
+      method: "POST",
+      headers: { ...headers, "Content-Type": "application/json", "Accept": "text/event-stream" },
+      body: JSON.stringify(payload),
+      signal: ctrl.signal,
+    });
+
+    if (!res.ok) {
+      const text = await res.text();
+      let json = null;
+      try { json = JSON.parse(text); } catch { /* ignore */ }
+      const errorCode = json?.error?.code || `HTTP_${res.status}`;
+      const message = json?.error?.message || res.statusText || "request failed";
+      throw new ApiError(message, { status: res.status, code: errorCode, body: json ?? text });
+    }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = "";
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+
+      let boundary;
+      while ((boundary = buf.indexOf("\n\n")) !== -1) {
+        const frame = buf.slice(0, boundary);
+        buf = buf.slice(boundary + 2);
+        const event = parseSseFrame(frame);
+        if (event) onEvent(event);
+      }
+    }
+  } catch (err) {
+    if (err.name === "AbortError") {
+      throw new ApiError(`stream timed out after ${timeoutMs}ms`, { status: 408, code: "TIMEOUT" });
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function parseSseFrame(frame) {
+  let type = "message";
+  let data = "";
+  for (const line of frame.split("\n")) {
+    if (line.startsWith("event: ")) type = line.slice(7);
+    else if (line.startsWith("data: ")) data = line.slice(6);
+    else if (line.startsWith(":")) continue; // comment/heartbeat
+  }
+  if (!data) return null;
+  try { return { type, data: JSON.parse(data) }; } catch { return { type, data }; }
+}
+
 export function authHeaders(auth) {
     const headers = {
         "Content-Type": "application/json",

@@ -1,6 +1,7 @@
 import { readFileSync, existsSync, statSync, writeFileSync, mkdirSync } from "node:fs";
-import { join, dirname } from "node:path";
+import { join, dirname, resolve } from "node:path";
 import { walkDir } from "../lib/walk-dir.js";
+import { agentLoop } from "../lib/agent-loop.js";
 
 /**
  * Parse Makefile and return list of target names.
@@ -52,9 +53,6 @@ export function detectProjectStructure(repoPath) {
 
 /**
  * Scan a repo and return detected context.
- * Language detection is intentionally omitted — an agent reads manifest files
- * (go.mod, Cargo.toml, package.json, pyproject.toml) and knows instantly.
- * Deferred to a future milestone.
  */
 export function scanRepo(repoPath) {
   const files = walkDir(repoPath);
@@ -64,6 +62,142 @@ export function scanRepo(repoPath) {
     projectStructure: detectProjectStructure(repoPath),
     fileCount: files.length,
   };
+}
+
+/**
+ * commandSpecInit: implement `zombiectl spec init [--path DIR] [--output PATH] [--describe TEXT]`
+ *
+ * With --describe: uses agent relay to generate a spec from intent (requires auth).
+ * Without --describe: falls back to local template generation (no auth required).
+ */
+export async function commandSpecInit(args, ctx, deps) {
+  const { parseFlags, writeLine, ui } = deps;
+  const parsed = parseFlags(args);
+  const repoPath = resolve(parsed.options.path || ".");
+  const outputPath = parsed.options.output || "docs/spec/new-feature.md";
+  const describe = parsed.options.describe;
+
+  if (!existsSync(repoPath)) {
+    writeLine(ctx.stderr, ui.err(`path not found: ${repoPath}`));
+    return 2;
+  }
+  if (!statSync(repoPath).isDirectory()) {
+    writeLine(ctx.stderr, ui.err(`path is not a directory: ${repoPath}`));
+    return 2;
+  }
+
+  // Agent-backed generation when --describe is provided
+  if (describe && ctx.workspaceId) {
+    return agentSpecInit(describe, repoPath, outputPath, ctx, deps);
+  }
+
+  // Fallback: local template generation (no auth required)
+  return localSpecInit(repoPath, outputPath, ctx, deps);
+}
+
+async function agentSpecInit(describe, repoPath, outputPath, ctx, deps) {
+  const { writeLine, ui, printJson } = deps;
+  const endpoint = `/v1/workspaces/${ctx.workspaceId}/spec/template`;
+
+  if (!ctx.jsonMode) {
+    writeLine(ctx.stdout, "");
+    writeLine(ctx.stdout, ui.dim("  \u{1F9DF} analyzing your repo..."));
+  }
+
+  const result = await agentLoop(endpoint, `Generate a spec template for: ${describe}`, repoPath, ctx, {
+    onToolCall: (tc) => {
+      if (!ctx.jsonMode) {
+        const label = tc.name === "read_file" ? `read ${tc.input.path}`
+          : tc.name === "list_dir" ? `listed ${tc.input.path || "./"}`
+          : `glob ${tc.input.pattern}`;
+        writeLine(ctx.stdout, ui.dim(`  \u{2192} ${label}`));
+      }
+    },
+    onError: (msg) => {
+      writeLine(ctx.stderr, ui.err(msg));
+    },
+  });
+
+  if (!result.text) {
+    writeLine(ctx.stderr, ui.err("agent returned no content"));
+    return 1;
+  }
+
+  if (!ctx.jsonMode) {
+    writeLine(ctx.stdout, "");
+    writeLine(ctx.stdout, ui.dim("  \u{1F9DF} drafting spec..."));
+  }
+
+  const outDir = dirname(outputPath);
+  try {
+    mkdirSync(outDir, { recursive: true });
+    writeFileSync(outputPath, result.text, "utf8");
+  } catch (err) {
+    writeLine(ctx.stderr, ui.err(`failed to write spec: ${err.message}`));
+    return 1;
+  }
+
+  if (ctx.jsonMode) {
+    printJson(ctx.stdout, {
+      output: outputPath,
+      tool_calls: result.toolCalls,
+      wall_ms: result.wallMs,
+      usage: result.usage,
+    });
+  } else {
+    writeLine(ctx.stdout, "");
+    writeLine(ctx.stdout, ui.ok(`\u{2713} wrote ${outputPath}`));
+    const secs = (result.wallMs / 1000).toFixed(1);
+    const tokens = result.usage?.total_tokens ?? "?";
+    writeLine(ctx.stdout, ui.dim(`    ${secs}s | ${result.toolCalls} reads | ${tokens} tokens`));
+  }
+
+  return 0;
+}
+
+function localSpecInit(repoPath, outputPath, ctx, deps) {
+  const { writeLine, ui, printJson } = deps;
+  const scan = scanRepo(repoPath);
+  const template = generateTemplate(scan);
+
+  const outDir = dirname(outputPath);
+  try {
+    mkdirSync(outDir, { recursive: true });
+    writeFileSync(outputPath, template, "utf8");
+  } catch (err) {
+    writeLine(ctx.stderr, ui.err(`failed to write template: ${err.message}`));
+    return 1;
+  }
+
+  if (ctx.jsonMode) {
+    printJson(ctx.stdout, {
+      output: outputPath,
+      detected: {
+        make_targets: scan.makeTargets,
+        test_patterns: scan.testPatterns,
+        project_structure: scan.projectStructure,
+        file_count: scan.fileCount,
+      },
+    });
+  } else {
+    writeLine(ctx.stdout, ui.ok(`template written \u{2192} ${outputPath}`));
+    writeLine(ctx.stdout);
+    const rows = [];
+    if (scan.makeTargets.length > 0)      rows.push(["make targets", scan.makeTargets.join(", ")]);
+    if (scan.testPatterns.length > 0)     rows.push(["test patterns", scan.testPatterns.join(", ")]);
+    if (scan.projectStructure.length > 0) rows.push(["structure",     scan.projectStructure.join("  ")]);
+    if (rows.length > 0) {
+      const w = Math.max(...rows.map(([k]) => k.length));
+      const sep = ui.dim("  \u{00B7}  ");
+      for (const [k, v] of rows) {
+        writeLine(ctx.stdout, `  ${ui.dim(k.padEnd(w))}${sep}${v}`);
+      }
+      writeLine(ctx.stdout);
+    }
+    writeLine(ctx.stdout, ui.dim(`${scan.fileCount} file(s) scanned`));
+  }
+
+  return 0;
 }
 
 function currentDateStr() {
@@ -96,9 +230,9 @@ export function generateTemplate(scan) {
 **Workstream:** 001
 **Date:** ${currentDateStr()}
 **Status:** PENDING
-**Priority:** P1 — {one-line description of what this workstream delivers}
+**Priority:** P1 \u{2014} {one-line description of what this workstream delivers}
 **Batch:** B1
-**Depends on:** —
+**Depends on:** \u{2014}
 
 ---
 
@@ -150,65 +284,4 @@ ${gatesBlock}
 - {Item not in scope}
 - {Another out of scope item}
 `;
-}
-
-/**
- * commandSpecInit: implement `zombiectl spec init [--path DIR] [--output PATH]`
- */
-export async function commandSpecInit(args, ctx, deps) {
-  const { parseFlags, writeLine, ui, printJson } = deps;
-  const parsed = parseFlags(args);
-  const repoPath = parsed.options.path || ".";
-  const outputPath = parsed.options.output || "docs/spec/new-feature.md";
-
-  if (!existsSync(repoPath)) {
-    writeLine(ctx.stderr, ui.err(`path not found: ${repoPath}`));
-    return 2;
-  }
-  if (!statSync(repoPath).isDirectory()) {
-    writeLine(ctx.stderr, ui.err(`path is not a directory: ${repoPath}`));
-    return 2;
-  }
-
-  const scan = scanRepo(repoPath);
-  const template = generateTemplate(scan);
-
-  const outDir = dirname(outputPath);
-  try {
-    mkdirSync(outDir, { recursive: true });
-    writeFileSync(outputPath, template, "utf8");
-  } catch (err) {
-    writeLine(ctx.stderr, ui.err(`failed to write template: ${err.message}`));
-    return 1;
-  }
-
-  if (ctx.jsonMode) {
-    printJson(ctx.stdout, {
-      output: outputPath,
-      detected: {
-        make_targets: scan.makeTargets,
-        test_patterns: scan.testPatterns,
-        project_structure: scan.projectStructure,
-        file_count: scan.fileCount,
-      },
-    });
-  } else {
-    writeLine(ctx.stdout, ui.ok(`template written → ${outputPath}`));
-    writeLine(ctx.stdout);
-    const rows = [];
-    if (scan.makeTargets.length > 0)      rows.push(["make targets", scan.makeTargets.join(", ")]);
-    if (scan.testPatterns.length > 0)     rows.push(["test patterns", scan.testPatterns.join(", ")]);
-    if (scan.projectStructure.length > 0) rows.push(["structure",     scan.projectStructure.join("  ")]);
-    if (rows.length > 0) {
-      const w = Math.max(...rows.map(([k]) => k.length));
-      const sep = ui.dim("  ·  ");
-      for (const [k, v] of rows) {
-        writeLine(ctx.stdout, `  ${ui.dim(k.padEnd(w))}${sep}${v}`);
-      }
-      writeLine(ctx.stdout);
-    }
-    writeLine(ctx.stdout, ui.dim(`${scan.fileCount} file(s) scanned`));
-  }
-
-  return 0;
 }

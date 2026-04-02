@@ -15,6 +15,7 @@ const auth_sessions_http = @import("handlers/auth_sessions_http.zig");
 const github_callback = @import("handlers/github_callback.zig");
 const admin_platform_keys_http = @import("handlers/admin_platform_keys_http.zig");
 const workspace_credentials_http = @import("handlers/workspace_credentials_http.zig");
+const agent_relay_http = @import("handlers/agent_relay.zig");
 
 pub const Context = common.Context;
 pub const SkillSecretRoute = skill_secret_handlers.Route;
@@ -67,6 +68,9 @@ pub const handleGetAdminPlatformKeys = admin_platform_keys_http.handleGetAdminPl
 pub const handlePutWorkspaceLlmCredential = workspace_credentials_http.handlePutWorkspaceLlmCredential;
 pub const handleDeleteWorkspaceLlmCredential = workspace_credentials_http.handleDeleteWorkspaceLlmCredential;
 pub const handleGetWorkspaceLlmCredential = workspace_credentials_http.handleGetWorkspaceLlmCredential;
+
+pub const handleSpecTemplate = agent_relay_http.handleSpecTemplate;
+pub const handleSpecPreview = agent_relay_http.handleSpecPreview;
 
 pub fn parseSkillSecretRoute(path: []const u8) ?SkillSecretRoute {
     return skill_secret_handlers.parseRoute(path);
