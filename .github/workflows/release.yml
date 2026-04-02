@@ -282,6 +282,10 @@ jobs:
           node-version: 25
           registry-url: https://registry.npmjs.org
 
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
       - name: Load npm token from 1Password
         uses: 1password/load-secrets-action@v4
         with:
@@ -290,8 +294,8 @@ jobs:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
           NPM_TOKEN: op://${{ vars.VAULT_PROD }}/npm-publish-token/credential
 
-      - run: npm ci
-      - run: npm run build
+      - run: bun install --frozen-lockfile
+      - run: bun run build
       - run: npm publish --provenance --access public --tag next
         env:
           NODE_AUTH_TOKEN: ${{ env.NPM_TOKEN }}
