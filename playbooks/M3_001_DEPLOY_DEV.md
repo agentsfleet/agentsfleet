@@ -29,6 +29,21 @@ make test
 
 3. Ensure `deploy-dev.yml` is present and healthy in `main`.
 
+4. Ensure `cloudflared-dev` Fly app is deployed (one-time prerequisite):
+
+```bash
+# Check if machines exist
+flyctl machine list --app cloudflared-dev
+
+# If no machines — deploy once; CI handles restarts after this
+flyctl deploy --app cloudflared-dev --config deploy/fly/cloudflared-dev/fly.toml
+
+# Verify TUNNEL_TOKEN secret is set
+flyctl secrets list --app cloudflared-dev | grep TUNNEL_TOKEN
+```
+
+> After the first deploy, CI's `verify-dev` job automatically restarts or redeploys `cloudflared-dev` if machines are down. No manual intervention needed on subsequent runs.
+
 ---
 
 ## 2.0 Trigger DEV Deploy

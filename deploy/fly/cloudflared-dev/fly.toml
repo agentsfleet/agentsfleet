@@ -8,6 +8,8 @@ primary_region = "iad"
   size = "shared-cpu-1x"
   memory = "256mb"
 
+# cloudflared is an outbound tunnel agent — no inbound HTTP service.
+# min_machines_running is enforced via CI (verify-dev job restarts/deploys if down).
 # TUNNEL_TOKEN secret set via: fly secrets set TUNNEL_TOKEN=... --app cloudflared-dev
 # Token encodes tunnel ID + credentials — no credentials file needed.
 # Ingress: api-dev.usezombie.com → zombied-dev.internal:3000 (Fly 6PN)

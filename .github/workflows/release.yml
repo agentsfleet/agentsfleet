@@ -48,7 +48,7 @@ jobs:
           version: 0.15.2
 
       - name: Build (x86_64-linux)
-        run: zig build -Doptimize=ReleaseSafe -Dtarget=x86_64-linux
+        run: zig build -Doptimize=ReleaseSafe -Dtarget=x86_64-linux -Dgit-commit="${GITHUB_SHA::7}"
 
       - name: Verify static ELF — zero NEEDED, no INTERP (x86_64-linux)
         run: |
@@ -111,7 +111,7 @@ jobs:
               (cd /tmp && tar xf zig.tar.xz)
               export PATH="/tmp/zig-aarch64-linux-0.15.2:$PATH"
               echo "  compiling zombied + zombied-executor (aarch64-linux)..."
-              zig build -Doptimize=ReleaseSafe -Dtarget=aarch64-linux
+              zig build -Doptimize=ReleaseSafe -Dtarget=aarch64-linux -Dgit-commit="${GITHUB_SHA::7}"
               for bin in zig-out/bin/zombied zig-out/bin/zombied-executor; do
                 test -f "$bin"
                 if readelf -d "$bin" 2>/dev/null | grep -q " (NEEDED)"; then
@@ -155,7 +155,7 @@ jobs:
         run: brew install openssl@3 || true
 
       - name: Build
-        run: zig build -Doptimize=ReleaseSafe -Dtarget=aarch64-macos
+        run: zig build -Doptimize=ReleaseSafe -Dtarget=aarch64-macos -Dgit-commit="${GITHUB_SHA::7}"
 
       - name: Package
         run: |
@@ -338,6 +338,47 @@ jobs:
             --image ghcr.io/usezombie/zombied:latest \
             --config deploy/fly/zombied-prod/fly.toml \
             --wait-timeout 120
+        env:
+          FLY_API_TOKEN: ${{ env.FLY_API_TOKEN }}
+
+      - name: Ensure restart-policy always on prod machines
+        # Set restart-policy=always so Fly self-heals the machine on crash.
+        run: |
+          APP="${{ vars.FLY_APP_PROD }}"
+          for MID in $(flyctl machine list --app "$APP" --json | jq -r '.[].id'); do
+            flyctl machine update "$MID" --restart-policy always --app "$APP" --yes
+          done
+        env:
+          FLY_API_TOKEN: ${{ env.FLY_API_TOKEN }}
+
+      - name: Ensure cloudflared-prod tunnel is running
+        # cloudflared-prod bridges Cloudflare Edge to zombied-prod.internal:3000 over 6PN.
+        # If its machines are stopped/crashed, every /healthz poll returns status=000.
+        # Restart stopped machines or deploy from scratch if no machines exist.
+        run: |
+          TUNNEL_APP="cloudflared-prod"
+          TUNNEL_CONFIG="deploy/fly/cloudflared-prod/fly.toml"
+          echo "Checking tunnel connector ($TUNNEL_APP)..."
+          MACHINES="$(flyctl machine list --app "$TUNNEL_APP" --json 2>/dev/null || echo '[]')"
+          RUNNING="$(echo "$MACHINES" | jq '[.[] | select(.state == "started")] | length')"
+          TOTAL="$(echo "$MACHINES" | jq 'length')"
+          echo "  machines: $RUNNING/$TOTAL running"
+          if [ "$RUNNING" -eq 0 ] && [ "$TOTAL" -gt 0 ]; then
+            echo "  ▲ no running machines — restarting..."
+            for MID in $(echo "$MACHINES" | jq -r '.[].id'); do
+              flyctl machine start "$MID" --app "$TUNNEL_APP" || true
+            done
+            echo "  waiting 15s for tunnel reconnect..."
+            sleep 15
+          elif [ "$TOTAL" -eq 0 ]; then
+            echo "  ▲ no machines found — deploying $TUNNEL_APP from scratch..."
+            flyctl deploy --app "$TUNNEL_APP" --config "$TUNNEL_CONFIG" --wait-timeout 60 \
+              || { echo "  ✗ flyctl deploy failed for $TUNNEL_APP — check logs above"; true; }
+            echo "  waiting 15s for tunnel reconnect..."
+            sleep 15
+          else
+            echo "  ✓ tunnel is running"
+          fi
         env:
           FLY_API_TOKEN: ${{ env.FLY_API_TOKEN }}
 

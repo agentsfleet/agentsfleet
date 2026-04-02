@@ -6,6 +6,9 @@ pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
     const with_bench_tools = b.option(bool, "with-bench-tools", "Enable benchmark tooling (zBench)") orelse false;
     const test_filter = b.option([]const u8, "test-filter", "Restrict Zig tests to names containing this substring");
+    const git_commit = b.option([]const u8, "git-commit", "Git commit SHA embedded in the binary (passed from CI via GITHUB_SHA)") orelse "unknown";
+    const build_opts = b.addOptions();
+    build_opts.addOption([]const u8, "git_commit", git_commit);
     const test_filters: []const []const u8 = if (test_filter) |filter| &.{filter} else &.{};
 
     // ── NullClaw dependency ──────────────────────────────────────────────────
@@ -99,6 +102,7 @@ pub fn build(b: *std.Build) void {
                 .{ .name = "pg", .module = pg_mod },
                 .{ .name = "posthog", .module = posthog_mod },
                 .{ .name = "schema", .module = schema_mod },
+                .{ .name = "build_options", .module = build_opts.createModule() },
             },
         }),
     });
@@ -165,6 +169,7 @@ pub fn build(b: *std.Build) void {
                 .{ .name = "pg", .module = pg_mod },
                 .{ .name = "posthog", .module = posthog_mod },
                 .{ .name = "schema", .module = schema_mod },
+                .{ .name = "build_options", .module = build_opts.createModule() },
             },
         }),
         .filters = test_filters,

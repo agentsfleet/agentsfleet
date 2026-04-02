@@ -19,7 +19,24 @@ ENV=prod ./playbooks/gates/check-credentials.sh
 ```
 
 2. Confirm DEV is green (M3_001 complete with CLI acceptance evidence).
-3. Confirm `VERSION` file matches intended release tag:
+
+3. Ensure `cloudflared-prod` Fly app is deployed (one-time prerequisite):
+
+```bash
+# Check if machines exist
+flyctl machine list --app cloudflared-prod
+
+# If no machines — deploy once; CI handles restarts after this
+flyctl deploy --app cloudflared-prod --config deploy/fly/cloudflared-prod/fly.toml
+
+# Verify TUNNEL_TOKEN secret is set (get token from Cloudflare dashboard)
+flyctl secrets list --app cloudflared-prod | grep TUNNEL_TOKEN
+# To set: flyctl secrets set TUNNEL_TOKEN=<token> --app cloudflared-prod
+```
+
+> After the first deploy, the `deploy-prod-api` CI job automatically restarts or redeploys `cloudflared-prod` if machines are down before polling `/healthz`.
+
+4. Confirm `VERSION` file matches intended release tag:
 ```bash
 cat VERSION   # must match the tag you're about to push, e.g. 0.2.0
 ```
@@ -70,7 +87,10 @@ The release pipeline deploys in three stages:
 ### 3.1 `deploy-prod-api` — Fly.io API
 
 1. Load secrets from 1Password (Fly token, DB URLs, Redis, etc.)
-2. Sync secrets to Fly.io, deploy image, verify `/healthz` + `/readyz`
+2. Sync secrets to Fly.io, deploy image (`shared-cpu-1x`, 1gb, rolling strategy)
+3. Set `restart-policy=always` on the machine (self-heals on crash)
+4. Ensure `cloudflared-prod` tunnel is running (restart or deploy from scratch)
+5. Verify `/healthz` + `/readyz`
 
 ### 3.2 `deploy-prod-canary` — First Worker Host
 

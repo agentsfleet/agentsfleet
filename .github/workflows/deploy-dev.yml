@@ -62,7 +62,7 @@ jobs:
 
       - name: Build linux/amd64 binaries
         run: |
-          zig build -Doptimize=ReleaseSafe -Dtarget=x86_64-linux
+          zig build -Doptimize=ReleaseSafe -Dtarget=x86_64-linux -Dgit-commit="${GITHUB_SHA::7}"
           mkdir -p dist
           cp zig-out/bin/zombied          dist/zombied-linux-amd64
           cp zig-out/bin/zombied-executor dist/zombied-executor-linux-amd64
@@ -317,9 +317,10 @@ jobs:
       - name: Ensure cloudflared-dev tunnel is running
         # cloudflared-dev is a separate Fly app that bridges Cloudflare Edge to
         # zombied-dev.internal:3000 over 6PN. If its machines are stopped/crashed
-        # every /healthz poll returns status=000 (no route). Restart if needed.
+        # every /healthz poll returns status=000 (no route). Restart or deploy if needed.
         run: |
           TUNNEL_APP="cloudflared-dev"
+          TUNNEL_CONFIG="deploy/fly/cloudflared-dev/fly.toml"
           echo "Checking tunnel connector ($TUNNEL_APP)..."
           MACHINES="$(flyctl machine list --app "$TUNNEL_APP" --json 2>/dev/null || echo '[]')"
           RUNNING="$(echo "$MACHINES" | jq '[.[] | select(.state == "started")] | length')"
@@ -333,8 +334,13 @@ jobs:
             echo "  waiting 15s for tunnel reconnect..."
             sleep 15
           elif [ "$TOTAL" -eq 0 ]; then
-            echo "  ✗ no machines found for $TUNNEL_APP — tunnel may need manual deploy"
-            echo "    run: flyctl deploy --app $TUNNEL_APP --config deploy/fly/cloudflared-dev/fly.toml"
+            echo "  ▲ no machines found — deploying $TUNNEL_APP from scratch..."
+            flyctl deploy --app "$TUNNEL_APP" --config "$TUNNEL_CONFIG" --wait-timeout 60 \
+              || { echo "  ✗ flyctl deploy failed for $TUNNEL_APP — check logs above"; true; }
+            echo "  waiting 15s for tunnel reconnect..."
+            sleep 15
+          else
+            echo "  ✓ tunnel is running"
           fi
         env:
           FLY_API_TOKEN: ${{ env.FLY_API_TOKEN }}

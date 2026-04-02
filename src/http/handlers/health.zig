@@ -3,6 +3,7 @@ const httpz = @import("httpz");
 const metrics = @import("../../observability/metrics.zig");
 const obs_log = @import("../../observability/logging.zig");
 const common = @import("common.zig");
+const build_options = @import("build_options");
 
 pub const Context = common.Context;
 
@@ -103,6 +104,7 @@ pub fn handleHealthz(ctx: *Context, req: *httpz.Request, res: *httpz.Response) v
         .status = "ok",
         .service = "zombied",
         .database = "up",
+        .commit = build_options.git_commit,
     });
 }
 

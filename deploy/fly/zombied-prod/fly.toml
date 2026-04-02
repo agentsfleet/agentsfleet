@@ -11,9 +11,14 @@ primary_region = "iad"
   size = "shared-cpu-1x"
   memory = "1gb"
 
+[deploy]
+  strategy = "rolling"
+
 # NO [http_service] block — no public Fly port, no *.fly.dev domain.
 # All inbound traffic enters via Cloudflare Tunnel only (cloudflared-prod).
 # Internal access: zombied-prod.internal:3000 over Fly 6PN.
+# Machine count (1) and restart-policy (always) are enforced by the release
+# pipeline after deploy — see deploy-prod-api job in release.yml.
 
 [[metrics]]
   port = 9091
