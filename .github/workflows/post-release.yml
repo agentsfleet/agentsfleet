@@ -31,15 +31,29 @@ jobs:
       - name: Install @usezombie/zombiectl from npm
         run: npm install -g @usezombie/zombiectl@next
 
-      - name: Verify --version
+      - name: Verify --version matches published version
         run: |
+          EXPECTED=$(npm view @usezombie/zombiectl@next version)
           VERSION=$(zombiectl --version 2>&1 | head -1)
           echo "zombiectl version: $VERSION"
-          echo "$VERSION" | grep -qE '[0-9]+\.[0-9]+\.[0-9]+'
+          echo "expected (npm @next): $EXPECTED"
+          echo "$VERSION" | grep -qF "$EXPECTED"
         shell: bash
 
       - name: Verify --help exits 0
         run: zombiectl --help
+        shell: bash
+
+      - name: Write per-platform summary row
+        if: always()
+        run: |
+          if [ "${{ job.status }}" = "success" ]; then
+            ICON="✅"
+          else
+            ICON="❌"
+          fi
+          echo "| ${{ matrix.name }} | npm | $ICON |" >> "$GITHUB_STEP_SUMMARY"
+        shell: bash
 
   summary:
     needs: verify-npm
@@ -47,26 +61,13 @@ jobs:
     runs-on: ubuntu-latest
     name: Post-Release Summary
     steps:
-      - name: Generate summary table
+      - name: Generate summary header
         run: |
           cat >> "$GITHUB_STEP_SUMMARY" << 'EOF'
           ## Post-Release Verification Results
 
           | Platform | Method | Status |
           |----------|--------|--------|
-          EOF
 
-          RESULTS='${{ toJSON(needs.verify-npm) }}'
-          STATUS=$(echo "$RESULTS" | jq -r '.result')
-          if [ "$STATUS" = "success" ]; then
-            ICON="✅"
-          else
-            ICON="❌"
-          fi
-
-          cat >> "$GITHUB_STEP_SUMMARY" << EOF
-          | macOS (arm64) | npm | $ICON |
-          | Linux (x64) | npm | $ICON |
-          | Linux (arm64) | npm | $ICON |
-          | Windows (x64) | npm | $ICON |
+          > Per-platform results are written by each matrix runner above.
           EOF
