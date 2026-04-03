@@ -1,0 +1,72 @@
+name: Post-Release Verification
+
+on:
+  workflow_run:
+    workflows: [Release]
+    types: [completed]
+
+jobs:
+  verify-npm:
+    # Only run when the release workflow succeeded
+    if: github.event.workflow_run.conclusion == 'success'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-latest
+            name: macOS (arm64)
+          - runner: ubuntu-latest
+            name: Linux (x64)
+          - runner: ubuntu-24.04-arm
+            name: Linux (arm64)
+          - runner: windows-latest
+            name: Windows (x64)
+    runs-on: ${{ matrix.runner }}
+    name: npm — ${{ matrix.name }}
+    steps:
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
+      - name: Install @usezombie/zombiectl from npm
+        run: npm install -g @usezombie/zombiectl@next
+
+      - name: Verify --version
+        run: |
+          VERSION=$(zombiectl --version 2>&1 | head -1)
+          echo "zombiectl version: $VERSION"
+          echo "$VERSION" | grep -qE '[0-9]+\.[0-9]+\.[0-9]+'
+        shell: bash
+
+      - name: Verify --help exits 0
+        run: zombiectl --help
+
+  summary:
+    needs: verify-npm
+    if: always()
+    runs-on: ubuntu-latest
+    name: Post-Release Summary
+    steps:
+      - name: Generate summary table
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" << 'EOF'
+          ## Post-Release Verification Results
+
+          | Platform | Method | Status |
+          |----------|--------|--------|
+          EOF
+
+          RESULTS='${{ toJSON(needs.verify-npm) }}'
+          STATUS=$(echo "$RESULTS" | jq -r '.result')
+          if [ "$STATUS" = "success" ]; then
+            ICON="✅"
+          else
+            ICON="❌"
+          fi
+
+          cat >> "$GITHUB_STEP_SUMMARY" << EOF
+          | macOS (arm64) | npm | $ICON |
+          | Linux (x64) | npm | $ICON |
+          | Linux (arm64) | npm | $ICON |
+          | Windows (x64) | npm | $ICON |
+          EOF
