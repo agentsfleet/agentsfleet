@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "prebuild": "cp ../../public/openapi.json public/openapi.json",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "lint": "eslint src tests/e2e playwright.config.ts",
