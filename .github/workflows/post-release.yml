@@ -1,0 +1,73 @@
+name: Post-Release Verification
+
+on:
+  workflow_run:
+    workflows: [Release]
+    types: [completed]
+
+jobs:
+  verify-npm:
+    # Only run when the release workflow succeeded
+    if: github.event.workflow_run.conclusion == 'success'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-latest
+            name: macOS (arm64)
+          - runner: ubuntu-latest
+            name: Linux (x64)
+          - runner: ubuntu-24.04-arm
+            name: Linux (arm64)
+          - runner: windows-latest
+            name: Windows (x64)
+    runs-on: ${{ matrix.runner }}
+    name: npm — ${{ matrix.name }}
+    steps:
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
+      - name: Install @usezombie/zombiectl from npm
+        run: npm install -g @usezombie/zombiectl@next
+
+      - name: Verify --version matches published version
+        run: |
+          EXPECTED=$(npm view @usezombie/zombiectl@next version)
+          VERSION=$(zombiectl --version 2>&1 | head -1)
+          echo "zombiectl version: $VERSION"
+          echo "expected (npm @next): $EXPECTED"
+          echo "$VERSION" | grep -qF "$EXPECTED"
+        shell: bash
+
+      - name: Verify --help exits 0
+        run: zombiectl --help
+        shell: bash
+
+      - name: Write per-platform summary row
+        if: always()
+        run: |
+          if [ "${{ job.status }}" = "success" ]; then
+            ICON="✅"
+          else
+            ICON="❌"
+          fi
+          echo "| ${{ matrix.name }} | npm | $ICON |" >> "$GITHUB_STEP_SUMMARY"
+        shell: bash
+
+  summary:
+    needs: verify-npm
+    if: always()
+    runs-on: ubuntu-latest
+    name: Post-Release Summary
+    steps:
+      - name: Generate summary header
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" << 'EOF'
+          ## Post-Release Verification Results
+
+          | Platform | Method | Status |
+          |----------|--------|--------|
+
+          > Per-platform results are written by each matrix runner above.
+          EOF
