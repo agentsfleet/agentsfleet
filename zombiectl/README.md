@@ -1,76 +1,88 @@
 # zombiectl
 
-JavaScript CLI for UseZombie operator workflows.
+The official CLI for [UseZombie](https://usezombie.com).
 
-Local state lives in `~/.config/zombiectl/` by default:
-- `credentials.json` — auth/session state
-- `workspaces.json` — current workspace selection and local cache
-- `ZOMBIE_STATE_DIR` overrides the base directory for tests or custom automation
+Manage workspaces, trigger runs, monitor agents, and operate your UseZombie deployment from the terminal.
+
+> **Pre-release** — UseZombie is in pre-release. APIs, CLI, and behavior may change without notice before general availability. This package is published under the `next` dist-tag.
 
 ## Install
 
 ```bash
-npm install -g @usezombie/zombiectl
-zombiectl --help
+npm install -g @usezombie/zombiectl@next
 ```
 
-## Usage
-
-Common flows (installed binary):
+## Quick start
 
 ```bash
+# Authenticate with your UseZombie account
 zombiectl login
+
+# Add a GitHub repository as a workspace
 zombiectl workspace add https://github.com/org/repo
+
+# Sync specs and trigger a run
 zombiectl specs sync
 zombiectl run
-zombiectl run status <run_id>
-zombiectl doctor --json
+
+# Check your environment
+zombiectl doctor
 ```
 
-Operator trajectory flow:
+## Features
 
-```bash
-zombiectl agent profile <agent-id>
-zombiectl agent improvement-report <agent-id>
-zombiectl agent proposals <agent-id>
-zombiectl agent proposals <agent-id> veto <proposal-id> --reason "operator pause"
-```
+- **Workspaces** — add, switch, and manage GitHub-connected workspaces
+- **Runs** — trigger, list, and cancel agent runs
+- **Specs** — sync and initialize specifications
+- **Agent operations** — view profiles, improvement reports, and proposals
+- **Diagnostics** — `doctor` command validates your environment
+- **JSON output** — `--json` flag for scripts and CI/CD pipelines
 
-`workspace add` opens the UseZombie GitHub App install page and binds workspace via callback automatically.
-Global flags:
-- `--api <url>` API base URL (default `http://localhost:3000`)
-- `--json` machine-readable output
-- `--no-open` do not auto-open browser on login
-- `--no-input` disable prompts (reserved for non-interactive flows)
-- `--help`
-- `--version`
+## Commands
 
-Analytics env vars (optional):
-- `ZOMBIE_POSTHOG_KEY` override the bundled PostHog project API key (`phc_...`) for local/dev testing
-- `ZOMBIE_POSTHOG_ENABLED` set `false`/`0` to disable telemetry even when the bundled key exists
-- `ZOMBIE_POSTHOG_HOST` override PostHog host (default `https://us.i.posthog.com`)
+| Command | Description |
+|---------|-------------|
+| `login` | Authenticate with UseZombie |
+| `logout` | Clear stored credentials |
+| `workspace add <url>` | Connect a GitHub repository |
+| `specs sync` | Sync specifications from the API |
+| `spec init` | Initialize a new spec |
+| `run` | Trigger a run |
+| `runs list` | List run history |
+| `runs cancel <id>` | Cancel an in-flight run |
+| `agent profile <id>` | View agent profile |
+| `agent improvement-report <id>` | View improvement report |
+| `agent proposals <id>` | List agent proposals |
+| `doctor` | Run environment diagnostics |
+| `doctor --json` | Diagnostics in JSON format |
 
-Standard operator path:
+## Global flags
 
-```bash
-# DEV
-export ZOMBIE_POSTHOG_KEY="$(op read 'op://ZMB_CD_DEV/posthog-dev/credential')"
+| Flag | Description |
+|------|-------------|
+| `--api <url>` | API base URL |
+| `--json` | Machine-readable JSON output |
+| `--no-open` | Do not auto-open browser on login |
+| `--no-input` | Disable interactive prompts |
+| `--version` | Print version and exit |
+| `--help` | Show help text |
 
-# PROD
-export ZOMBIE_POSTHOG_KEY="$(op read 'op://ZMB_CD_PROD/posthog-prod/credential')"
-```
+## Configuration
 
-This follows the same milestone playbook and `scripts/check-credentials.sh` contract as the other deploy/runtime keys.
+| Item | Path |
+|------|------|
+| Credentials | `~/.config/zombiectl/credentials.json` |
+| Workspaces | `~/.config/zombiectl/workspaces.json` |
 
-Analytics key policy:
-- `zombiectl` ships with a bundled default PostHog project key so end users do not need analytics setup after `npm install -g`.
-- The bundled key is not an auth secret; it is a write-scoped ingestion key.
-- Do not persist analytics keys in CLI auth/session state such as `credentials.json`.
-- If exposed, the expected risk is analytics pollution or noisy metrics, not control-plane access.
+Override the config directory with `ZOMBIE_STATE_DIR`.
 
-## Verify
+## Links
 
-```bash
-bun test
-bun run build
-```
+- [Documentation](https://docs.usezombie.com)
+- [Website](https://usezombie.com)
+- [GitHub](https://github.com/usezombie/usezombie)
+- [Discord](https://discord.gg/H9hH2nqQjh)
+
+## License
+
+MIT

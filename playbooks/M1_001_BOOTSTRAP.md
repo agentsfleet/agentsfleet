@@ -77,33 +77,21 @@ Agent executes these steps immediately after receiving the hand-off from 1.3.
 
 ### 2.1 Store Keys in 1Password Vaults
 
-**Vault: `ZMB_CD_PROD`** — production and CI secrets
+See [M2_001_PREFLIGHT.md](./M2_001_PREFLIGHT.md) §1.1 and §1.2 for the full vault inventory (items, fields, and consumers).
 
-| Item | Field | Value source |
-|---|---|---|
-| `cloudflare-api-token` | `credential` | CF API token from human |
-| `npm-publish-token` | `credential` | npm token from human |
-| `vercel-bypass-website` | `credential` | Vercel → `usezombie-website` → Deployment Protection → Bypass |
-| `vercel-bypass-agents` | `credential` | Vercel → `usezombie-agents-sh` → Deployment Protection → Bypass |
-| `vercel-bypass-app` | `credential` | Vercel → `usezombie-app` → Deployment Protection → Bypass |
-| `posthog-prod` | `credential` | PostHog project API key shared by website, app, zombied, worker, and CLI |
-| `clerk-prod` | `publishable-key`, `secret-key` | Clerk PROD instance API Keys |
-| `github-app` | `app-id` | GitHub App → App ID (numeric) |
-| `github-app` | `private-key` | GitHub App → Generate a private key → PEM contents |
-| `encryption-master-key` | `credential` | `openssl rand -hex 32` — PROD key (see §1.3a) |
-| `zombied-prod-server-1` | `hostname`, `ssh-private-key`, `deploy-user` | on server provision |
-| `zombied-prod-server-2` | `hostname`, `ssh-private-key`, `deploy-user` | on server provision |
+Create each item listed there. Value sources for items that require human provisioning:
 
-**Vault: `ZMB_CD_DEV`** — dev secrets
-
-| Item | Field | Value source |
-|---|---|---|
-| `clerk-dev` | `publishable-key`, `secret-key` | Clerk DEV instance API Keys |
-| `vercel-api-token` | `credential` | Vercel Account Settings → Tokens |
-| `posthog-dev` | `credential` | PostHog project API key shared by website, app, zombied, worker, and CLI |
-| `github-app` | `app-id` | Same GitHub App — reuse PROD app-id for DEV |
-| `github-app` | `private-key` | Same GitHub App PEM |
-| `encryption-master-key` | `credential` | `openssl rand -hex 32` — DEV key (must differ from PROD) |
+| Item | Where to get the value |
+|---|---|
+| `cloudflare-api-token` | Cloudflare dashboard → API Tokens |
+| `npm-publish-token` | npmjs.com → Access Tokens → Granular (automation) |
+| `vercel-bypass-*` | Vercel → Project → Deployment Protection → Bypass |
+| `vercel-api-token` | Vercel Account Settings → Tokens |
+| `posthog-{dev,prod}` | PostHog project → Settings → Project API Key |
+| `clerk-{dev,prod}` | Clerk dashboard → API Keys (publishable + secret); JWKS URL and issuer derived from Clerk domain |
+| `github-app` | GitHub App → Settings → App ID + Generate private key |
+| `encryption-master-key` | `openssl rand -hex 32` (DEV and PROD must differ) |
+| `zombied-prod-server-*` | Created on server provision |
 
 ### 2.2 Set GitHub Secrets and Variables
 

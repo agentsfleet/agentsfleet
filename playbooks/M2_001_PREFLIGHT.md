@@ -32,8 +32,10 @@ Every `op://` reference the agent will use across M2_002 and the deploy pipeline
 | `vercel-bypass-agents` | `credential` | `smoke-post-deploy.yml` |
 | `vercel-bypass-app` | `credential` | `smoke-post-deploy.yml` |
 | `posthog-prod` | `credential` | Website, app, zombied, worker, and CLI PostHog env injection |
-| `clerk-prod` | `publishable-key` | Fly.io PROD `OIDC_JWKS_URL` + `OIDC_ISSUER` |
-| `clerk-prod` | `secret-key` | Fly.io PROD env var |
+| `clerk-prod` | `publishable-key` | Fly.io PROD `CLERK_PUBLISHABLE_KEY` |
+| `clerk-prod` | `secret-key` | Fly.io PROD `CLERK_SECRET_KEY` |
+| `clerk-prod` | `jwks-url` | Fly.io PROD `OIDC_JWKS_URL` |
+| `clerk-prod` | `issuer` | Fly.io PROD `OIDC_ISSUER` |
 | `github-app` | `app-id` | Fly.io PROD + DEV `GITHUB_APP_ID` |
 | `github-app` | `private-key` | Fly.io PROD + DEV `GITHUB_APP_PRIVATE_KEY` |
 | `encryption-master-key` | `credential` | Fly.io PROD `ENCRYPTION_MASTER_KEY` |
@@ -53,8 +55,10 @@ Every `op://` reference the agent will use across M2_002 and the deploy pipeline
 
 | Item | Field | Used by |
 |---|---|---|
-| `clerk-dev` | `publishable-key` | Fly.io DEV `OIDC_JWKS_URL` + `OIDC_ISSUER` |
-| `clerk-dev` | `secret-key` | Fly.io DEV env var |
+| `clerk-dev` | `publishable-key` | Fly.io DEV `CLERK_PUBLISHABLE_KEY` |
+| `clerk-dev` | `secret-key` | Fly.io DEV `CLERK_SECRET_KEY` |
+| `clerk-dev` | `jwks-url` | Fly.io DEV `OIDC_JWKS_URL` |
+| `clerk-dev` | `issuer` | Fly.io DEV `OIDC_ISSUER` |
 | `github-app` | `app-id` | Fly.io DEV `GITHUB_APP_ID` |
 | `github-app` | `private-key` | Fly.io DEV `GITHUB_APP_PRIVATE_KEY` |
 | `encryption-master-key` | `credential` | Fly.io DEV `ENCRYPTION_MASTER_KEY` |

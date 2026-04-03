@@ -375,6 +375,8 @@ jobs:
           GRAFANA_OTLP_ENDPOINT: op://${{ vars.VAULT_PROD }}/grafana-prod/otlp-endpoint
           GRAFANA_OTLP_INSTANCE_ID: op://${{ vars.VAULT_PROD }}/grafana-prod/instance-id
           GRAFANA_OTLP_API_KEY: op://${{ vars.VAULT_PROD }}/grafana-prod/api-key
+          OIDC_JWKS_URL: op://${{ vars.VAULT_PROD }}/clerk-prod/jwks-url
+          OIDC_ISSUER: op://${{ vars.VAULT_PROD }}/clerk-prod/issuer
 
       - uses: superfly/flyctl-actions/setup-flyctl@master
 
@@ -392,6 +394,9 @@ jobs:
             GITHUB_APP_PRIVATE_KEY="$GITHUB_APP_PRIVATE_KEY" \
             CLERK_PUBLISHABLE_KEY="$CLERK_PUBLISHABLE_KEY" \
             CLERK_SECRET_KEY="$CLERK_SECRET_KEY" \
+            OIDC_JWKS_URL="$OIDC_JWKS_URL" \
+            OIDC_ISSUER="$OIDC_ISSUER" \
+            OIDC_PROVIDER="clerk" \
             GRAFANA_OTLP_ENDPOINT="$GRAFANA_OTLP_ENDPOINT" \
             GRAFANA_OTLP_INSTANCE_ID="$GRAFANA_OTLP_INSTANCE_ID" \
             GRAFANA_OTLP_API_KEY="$GRAFANA_OTLP_API_KEY" \
