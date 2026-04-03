@@ -4,10 +4,12 @@ The official CLI for [UseZombie](https://usezombie.com).
 
 Manage workspaces, trigger runs, monitor agents, and operate your UseZombie deployment from the terminal.
 
+> **Pre-release** — UseZombie is in pre-release. APIs, CLI, and behavior may change without notice before general availability. This package is published under the `next` dist-tag.
+
 ## Install
 
 ```bash
-npm install -g @usezombie/zombiectl
+npm install -g @usezombie/zombiectl@next
 ```
 
 ## Quick start
