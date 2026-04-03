@@ -2,6 +2,10 @@
   "name": "@usezombie/zombiectl",
   "version": "0.3.0",
   "description": "UseZombie CLI",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/usezombie/usezombie"
+  },
   "type": "module",
   "publishConfig": {
     "access": "public"
