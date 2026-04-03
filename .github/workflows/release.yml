@@ -229,7 +229,7 @@ jobs:
           path: dist/zombied-darwin-arm64.tar.gz
 
   # ── 2. Docker: multi-arch build + push stable to GHCR ──────────────────
-  docker:
+  push-prod:
     runs-on: ubuntu-latest
     needs: [verify-tag, binaries-linux-x86, binaries-linux-aarch64, binaries-macos, verify-runtime-compat]
     permissions:
@@ -336,7 +336,7 @@ jobs:
   # ── 5. Verify: DEV gate before PROD rollout ──────────────────────────────
   verify-dev-gate:
     runs-on: ubuntu-latest
-    needs: [create-release, docker]
+    needs: [create-release, push-prod]
     steps:
       - name: Verify DEV readiness gate
         run: |

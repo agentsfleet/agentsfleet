@@ -75,7 +75,7 @@ build-linux-alpine:  ## Compile inside Alpine with musl-native OpenSSL; asserts 
 				echo "✓ $$bin: fully static (zero NEEDED, no INTERP)"; \
 			done'
 
-push: _docker_login _prepare_prebuilt_linux_binaries ## Push production image (uses prebuilt linux binaries)
+push: _docker_login ## Push production image (expects prebuilt binaries in dist/)
 	$(call _buildx,Dockerfile,$(_PROD_TAGS),--push)
 
 push-dev: _docker_login  ## Push development image to registry (uses prebuilt linux binaries)
