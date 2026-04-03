@@ -14,17 +14,17 @@
 
 ---
 
-## Design Note: No Native Binary for zombiectl
+## Design Note: Two Distinct Binary Types
 
-`zombiectl` is pure JavaScript. There is no per-platform compilation step for the CLI — the same npm package works on all platforms where Node.js runs. The Zig binaries (`zombied`, `zombied-executor`) are server-side only and are not part of the CLI distribution.
+M23 involves two independent sets of binaries with different purposes:
 
-This simplifies the matrix significantly compared to resend-cli:
-- No `pkg` bundling step
-- No platform binary build jobs in `release.yml`
-- No binary hash verification
-- Windows support is `npm install -g @usezombie/zombiectl` — no `.exe` needed
+| Binary | Built by | Used by | Platform build needed |
+|---|---|---|---|
+| `zombiectl-<platform>` | `bun build --compile` (M23_003) | cURL/PowerShell install path | Yes — 4 platforms |
+| `zombied`, `zombied-executor` | Zig (existing `release.yml`) | Server daemon | Already built |
+| `@usezombie/zombiectl` npm package | `bun run build` (M23_001) | npm install path | No — pure JS |
 
-The Windows Zig binary (`zombied-windows-amd64`) is out of scope for M23 — it is a server daemon, not the CLI.
+The CI matrix in this workstream must verify all three distribution channels. The `bun build --compile` step from M23_003 adds a new parallel build job to `release.yml`; this workstream validates its output across platforms.
 
 ---
 
@@ -49,18 +49,40 @@ Following the resend-cli `post-release.yml` pattern: a separate workflow that tr
 Install `@usezombie/zombiectl@next` from the real npm registry on all four supported platforms. Because the package is pure JS, the same tarball runs everywhere — this validates Node.js compatibility and PATH wiring across OSes.
 
 Matrix:
-| Runner | Node version | Install command |
-|---|---|---|
-| `macos-latest` | system (via `actions/setup-node`) | `npm install -g @usezombie/zombiectl@next` |
-| `ubuntu-latest` | system | `npm install -g @usezombie/zombiectl@next` |
-| `ubuntu-24.04-arm` | system | `npm install -g @usezombie/zombiectl@next` |
-| `windows-latest` | system | `npm install -g @usezombie/zombiectl@next` |
+| Runner | Install command |
+|---|---|
+| `macos-latest` | `npm install -g @usezombie/zombiectl@next` |
+| `ubuntu-latest` | `npm install -g @usezombie/zombiectl@next` |
+| `ubuntu-24.04-arm` | `npm install -g @usezombie/zombiectl@next` |
+| `windows-latest` | `npm install -g @usezombie/zombiectl@next` |
 
 **Dimensions:**
 - 2.1 PENDING `npm install -g @usezombie/zombiectl@next` succeeds on all four runners
 - 2.2 PENDING `zombiectl --version` output matches the tag version on all four runners
 - 2.3 PENDING `zombiectl doctor --json` exits 0 (CLI version check only; no auth required)
 - 2.4 PENDING `fail-fast: false` on the matrix so all platform results are visible even if one fails
+
+---
+
+## 2b.0 cURL Binary Verification Matrix
+
+**Status:** PENDING
+
+Verify the `bun build --compile` binaries (from M23_003 §1.0) run correctly on each target platform. This mirrors resend-cli's `test-binary` matrix in `release.yml` — build on the target runner, assert `--version`/`--help` pass before upload.
+
+Matrix:
+| Runner | Binary | Verification |
+|---|---|---|
+| `macos-latest` | `zombiectl-darwin-arm64` | `./zombiectl-darwin-arm64 --version` |
+| `ubuntu-latest` | `zombiectl-linux-x64` | `./zombiectl-linux-x64 --version` |
+| `ubuntu-24.04-arm` | `zombiectl-linux-arm64` | `./zombiectl-linux-arm64 --version` |
+| `windows-latest` | `zombiectl-windows-x64.exe` | `.\zombiectl-windows-x64.exe --version` |
+
+**Dimensions:**
+- 2b.1 PENDING Each binary is built and verified in the same `release.yml` job step before artifact upload
+- 2b.2 PENDING `--version` and `--help` both exit 0 on all four runners
+- 2b.3 PENDING macOS binary passes `xattr -d com.apple.quarantine` + `--version` in the build job
+- 2b.4 PENDING SHA256 sidecar (`.sha256` file) generated and uploaded alongside each binary
 
 ---
 
@@ -110,9 +132,9 @@ A fast PR-scoped workflow (separate from `post-release.yml`) that runs when `zom
 
 **Status:** PENDING
 
-- [ ] 6.1 `post-release.yml` is green across all methods (npm × 4 platforms, cURL × 2, PowerShell × 2 shells) after a release tag
+- [ ] 6.1 `post-release.yml` is green across all methods (npm × 4 platforms, cURL binary × 2, PowerShell × 2 shells) after a release tag
 - [ ] 6.2 `install-check.yml` gates PRs touching `zombiectl/` and installer scripts
-- [ ] 6.3 No platform-specific code changes required in `zombiectl/src/` — pure JS runs everywhere
+- [ ] 6.3 All four `zombiectl-<platform>` binaries appear in the GitHub Release assets with `.sha256` sidecars
 - [ ] 6.4 GitHub Actions job summary shows a clear pass/fail table per platform and install method
 
 ---
@@ -120,6 +142,7 @@ A fast PR-scoped workflow (separate from `post-release.yml`) that runs when `zom
 ## 7.0 Out of Scope
 
 - Windows Zig binary (`zombied-windows-amd64`) — server daemon, not CLI distribution
+- Code signing for `zombiectl` binaries (macOS notarization, Windows Authenticode) — post-launch; SmartScreen/Gatekeeper warnings acceptable at v0
 - Code signing for npm packages or shell scripts — not required at launch
 - Linux aarch64 cURL installer test — Ubuntu ARM runner available but deprioritised; npm path covers it
 - macOS Intel (x86_64) — `macos-latest` is Apple Silicon; Intel is end-of-life
