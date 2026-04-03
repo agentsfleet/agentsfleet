@@ -87,7 +87,7 @@ Agent executes these steps immediately after receiving the hand-off from 1.3.
 | `vercel-bypass-agents` | `credential` | Vercel → `usezombie-agents-sh` → Deployment Protection → Bypass |
 | `vercel-bypass-app` | `credential` | Vercel → `usezombie-app` → Deployment Protection → Bypass |
 | `posthog-prod` | `credential` | PostHog project API key shared by website, app, zombied, worker, and CLI |
-| `clerk-prod` | `publishable-key`, `secret-key` | Clerk PROD instance API Keys |
+| `clerk-prod` | `publishable-key`, `secret-key`, `jwks-url`, `issuer` | Clerk PROD instance API Keys + OIDC endpoints |
 | `github-app` | `app-id` | GitHub App → App ID (numeric) |
 | `github-app` | `private-key` | GitHub App → Generate a private key → PEM contents |
 | `encryption-master-key` | `credential` | `openssl rand -hex 32` — PROD key (see §1.3a) |
@@ -98,7 +98,7 @@ Agent executes these steps immediately after receiving the hand-off from 1.3.
 
 | Item | Field | Value source |
 |---|---|---|
-| `clerk-dev` | `publishable-key`, `secret-key` | Clerk DEV instance API Keys |
+| `clerk-dev` | `publishable-key`, `secret-key`, `jwks-url`, `issuer` | Clerk DEV instance API Keys + OIDC endpoints |
 | `vercel-api-token` | `credential` | Vercel Account Settings → Tokens |
 | `posthog-dev` | `credential` | PostHog project API key shared by website, app, zombied, worker, and CLI |
 | `github-app` | `app-id` | Same GitHub App — reuse PROD app-id for DEV |

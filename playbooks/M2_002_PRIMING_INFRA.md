@@ -119,8 +119,8 @@ for APP in zombied-dev zombied-dev-worker; do
     GRAFANA_OTLP_INSTANCE_ID="$(op read 'op://$VAULT_DEV/grafana-dev/instance-id')" \
     GRAFANA_OTLP_API_KEY="$(op read 'op://$VAULT_DEV/grafana-dev/api-key')" \
     OIDC_PROVIDER=clerk \
-    OIDC_JWKS_URL="$(op read 'op://$VAULT_DEV/clerk-dev/publishable-key' | python3 -c 'import sys,base64; k=sys.stdin.read().strip().split("_")[2]; print(f\"https://{base64.b64decode(k+\"=\"*4).decode().rstrip(chr(36))}/.well-known/jwks.json\")')" \
-    OIDC_ISSUER="$(op read 'op://$VAULT_DEV/clerk-dev/hostname' 2>/dev/null || echo 'https://winning-wombat-65.clerk.accounts.dev')" \
+    OIDC_JWKS_URL="$(op read 'op://$VAULT_DEV/clerk-dev/jwks-url')" \
+    OIDC_ISSUER="$(op read 'op://$VAULT_DEV/clerk-dev/issuer')" \
     PORT=3000 \
     ENVIRONMENT=dev \
     MIGRATE_ON_START=0 \

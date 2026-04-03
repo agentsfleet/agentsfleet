@@ -86,6 +86,8 @@ check_prod() {
   local v="$vault_prod"
   echo "-- checking PROD vault: $v"
 
+  check_ref "op://$v/clerk-prod/jwks-url"
+  check_ref "op://$v/clerk-prod/issuer"
   check_ref "op://$v/cloudflare-api-token/credential"
   check_ref "op://$v/npm-publish-token/credential"
   check_ref "op://$v/vercel-bypass-website/credential"
@@ -136,6 +138,8 @@ check_dev() {
   local v="$vault_dev"
   echo "-- checking DEV vault: $v"
 
+  check_ref "op://$v/clerk-dev/jwks-url"
+  check_ref "op://$v/clerk-dev/issuer"
   check_ref "op://$v/clerk-dev/publishable-key"
   check_ref "op://$v/clerk-dev/secret-key"
   check_ref "op://$v/github-app/app-id"
