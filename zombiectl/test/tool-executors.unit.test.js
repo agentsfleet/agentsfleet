@@ -111,6 +111,15 @@ describe("executeTool — glob", () => {
     expect(result).toContain("a/top.js");
   });
 
+  test("** matches root-level files", () => {
+    mkdirSync(join(tmp, "src"), { recursive: true });
+    writeFileSync(join(tmp, "jest.config.js"), "");
+    writeFileSync(join(tmp, "src", "nested.js"), "");
+    const result = executeTool("glob", { pattern: "**/*.js" }, tmp);
+    expect(result).toContain("jest.config.js");
+    expect(result).toContain("src/nested.js");
+  });
+
   test("? matches single character", () => {
     writeFileSync(join(tmp, "a.js"), "");
     writeFileSync(join(tmp, "ab.js"), "");

@@ -66,11 +66,13 @@ function executeListDir(path, repoRoot) {
 
 function micromatch(filePath, pattern) {
   const regex = pattern
+    .replace(/\*\*\//g, "\x00/")
+    .replace(/\*\*/g, "\x01")
     .replace(/\./g, "\\.")
-    .replace(/\*\*/g, "\0")
     .replace(/\*/g, "[^/]*")
-    .replace(/\0/g, ".*")
-    .replace(/\?/g, "[^/]");
+    .replace(/\?/g, "[^/]")
+    .replace(/\x00\//g, "(?:.*/)?")
+    .replace(/\x01/g, ".*");
   return new RegExp(`^${regex}$`).test(filePath);
 }
 
