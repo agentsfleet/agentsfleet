@@ -85,19 +85,82 @@ Modelled on `resend-cli/install.ps1`: TLS 1.2 enforcement for PowerShell 5.1, pr
 
 **Status:** PENDING
 
-`install.sh` must be served from `https://usezombie.sh/install.sh`. The `usezombie.sh` domain is already registered and configured in Cloudflare. The fix is a Cloudflare Pages deployment that serves `install.sh` as a static file, or a Cloudflare Worker that redirects to the raw GitHub URL.
+`install.sh` must be served from `https://usezombie.sh/install.sh`. The `usezombie.sh` domain is already on Cloudflare. The approach is a Cloudflare Redirect Rule (single-redirect, no Pages deploy needed): `usezombie.sh/install.sh` → `https://raw.githubusercontent.com/usezombie/usezombie/main/install.sh` (301). Same for `usezombie.com/install.ps1`.
 
-**Recommended approach:** Cloudflare Pages redirect rule — `usezombie.sh/install.sh` → `https://raw.githubusercontent.com/usezombie/usezombie/main/install.sh` (301 permanent). This avoids a separate Pages deployment and keeps the canonical file in the main repo. `install.ps1` is served similarly from `usezombie.com/install.ps1` via Cloudflare Pages redirect.
+**Cloudflare token status:** The token at `op://ZMB_CD_PROD/cloudflare-api-token/credential` is currently **invalid** (API returns `code 1000: Invalid API Token`). It must be rotated before the agent steps below can run.
 
-**Human steps (one-time):**
-1. In Cloudflare dashboard → `usezombie.sh` → Rules → Redirect Rules: add rule `URI path equals /install.sh` → Static redirect → `https://raw.githubusercontent.com/usezombie/usezombie/main/install.sh` (301)
-2. In Cloudflare dashboard → `usezombie.com` → Rules → Redirect Rules: add rule `URI path equals /install.ps1` → Static redirect → `https://raw.githubusercontent.com/usezombie/usezombie/main/install.ps1` (301)
+### H1 — Rotate the Cloudflare API token (human, one-time)
+
+1. Log in to [dash.cloudflare.com](https://dash.cloudflare.com) → My Profile → API Tokens
+2. Create a new token with **Custom Token** template:
+   - Permission: `Zone → Redirect Rules → Edit` for zones `usezombie.sh` and `usezombie.com`
+   - TTL: set an expiry (1 year)
+3. Update the vault:
+   ```bash
+   op item edit cloudflare-api-token --vault ZMB_CD_PROD credential=<new-token>
+   ```
+4. Verify:
+   ```bash
+   curl -s -H "Authorization: Bearer $(op read 'op://ZMB_CD_PROD/cloudflare-api-token/credential')" \
+     "https://api.cloudflare.com/client/v4/user/tokens/verify" | jq '.success'
+   # => true
+   ```
+
+### A1 — Create redirect rules via Cloudflare API (agent)
+
+Run after H1. Requires zone IDs for `usezombie.sh` and `usezombie.com`.
+
+```bash
+TOKEN=$(op read "op://ZMB_CD_PROD/cloudflare-api-token/credential")
+
+# Get zone IDs
+ZONE_SH=$(curl -s -H "Authorization: Bearer $TOKEN" \
+  "https://api.cloudflare.com/client/v4/zones?name=usezombie.sh" | jq -r '.result[0].id')
+ZONE_COM=$(curl -s -H "Authorization: Bearer $TOKEN" \
+  "https://api.cloudflare.com/client/v4/zones?name=usezombie.com" | jq -r '.result[0].id')
+
+# Create redirect rule: usezombie.sh/install.sh -> raw GitHub
+curl -s -X POST "https://api.cloudflare.com/client/v4/zones/$ZONE_SH/rulesets/phases/http_request_redirect/entrypoint" \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{
+    "name": "install.sh redirect",
+    "rules": [{
+      "expression": "(http.request.uri.path eq \"/install.sh\")",
+      "action": "redirect",
+      "action_parameters": {
+        "from_value": {
+          "target_url": {"value": "https://raw.githubusercontent.com/usezombie/usezombie/main/install.sh"},
+          "status_code": 301,
+          "preserve_query_string": false
+        }
+      }
+    }]
+  }' | jq '.success'
+
+# Create redirect rule: usezombie.com/install.ps1 -> raw GitHub
+curl -s -X POST "https://api.cloudflare.com/client/v4/zones/$ZONE_COM/rulesets/phases/http_request_redirect/entrypoint" \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{
+    "name": "install.ps1 redirect",
+    "rules": [{
+      "expression": "(http.request.uri.path eq \"/install.ps1\")",
+      "action": "redirect",
+      "action_parameters": {
+        "from_value": {
+          "target_url": {"value": "https://raw.githubusercontent.com/usezombie/usezombie/main/install.ps1"},
+          "status_code": 301,
+          "preserve_query_string": false
+        }
+      }
+    }]
+  }' | jq '.success'
+```
 
 **Dimensions:**
-- 4.1 PENDING `https://usezombie.sh/install.sh` returns HTTP 200 (after redirect) with `Content-Type: text/plain`
-- 4.2 PENDING `https://usezombie.com/install.ps1` returns HTTP 200 (after redirect) with appropriate content-type
-- 4.3 PENDING Both URLs are added to `smoke-post-deploy.yml` health check list
-- 4.4 PENDING Cloudflare redirect rules are documented in `playbooks/M23_003_SHELL_INSTALLERS.md` for future operators
+- 4.1 PENDING Cloudflare API token rotated in vault; `tokens/verify` returns `success: true`
+- 4.2 PENDING `https://usezombie.sh/install.sh` returns HTTP 200 (after redirect) with `Content-Type: text/plain`
+- 4.3 PENDING `https://usezombie.com/install.ps1` returns HTTP 200 (after redirect)
+- 4.4 PENDING Both URLs added to `smoke-post-deploy.yml` health check list
 
 ---
 

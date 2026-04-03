@@ -139,11 +139,25 @@ A fast PR-scoped workflow (separate from `post-release.yml`) that runs when `zom
 
 ---
 
-## 7.0 Out of Scope
+## 7.0 Supply Chain Integrity
+
+**Status:** PENDING
+
+Supply chain attacks on CLIs are an active threat category. npm provenance (Sigstore) is already required by M23_001. This section adds keyless binary signing using `cosign` with GitHub OIDC — free, no hardware token, no paid certificate.
+
+**Dimensions:**
+- 7.1 PENDING `release.yml` `cli-binaries` job runs `cosign sign-blob` on each platform binary using GitHub OIDC (`id-token: write` permission already set); `.sig` and `.pem` certificate files uploaded as release assets alongside each binary
+- 7.2 PENDING `install.sh` documents the optional verify step: `cosign verify-blob zombiectl-<target> --signature zombiectl-<target>.sig --certificate zombiectl-<target>.pem --certificate-identity-regexp usezombie --certificate-oidc-issuer https://token.actions.githubusercontent.com`
+- 7.3 PENDING `post-release.yml` asserts `.sig` sidecars are present in the release assets for all four platform binaries
+- 7.4 PENDING `install.sh` and `install.ps1` enforce HTTPS-only download sources; `GITHUB_BASE` override validated as `https://` prefix before any fetch
+
+---
+
+## 8.0 Out of Scope
 
 - Windows Zig binary (`zombied-windows-amd64`) — server daemon, not CLI distribution
-- Code signing for `zombiectl` binaries (macOS notarization, Windows Authenticode) — post-launch; SmartScreen/Gatekeeper warnings acceptable at v0
-- Code signing for npm packages or shell scripts — not required at launch
-- Linux aarch64 cURL installer test — Ubuntu ARM runner available but deprioritised; npm path covers it
+- macOS notarization — not doing this
+- Windows Authenticode / Microsoft Trusted Signing — post-launch if SmartScreen friction becomes user-reported issue
+- Linux aarch64 cURL installer test — npm path covers it; deprioritised
 - macOS Intel (x86_64) — `macos-latest` is Apple Silicon; Intel is end-of-life
-- Alpine / musl Linux — rejected by `install.sh` with a message; npm install works if Node.js is present
+- Alpine / musl Linux — rejected by `install.sh` with message pointing to npm
