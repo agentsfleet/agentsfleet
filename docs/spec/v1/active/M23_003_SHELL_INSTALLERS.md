@@ -4,10 +4,10 @@
 **Milestone:** M23
 **Workstream:** 003
 **Date:** Apr 03, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — Required by quickstart.mdx and install.mdx; cURL path explicitly promises "no Node.js required"
 **Batch:** B2 — Starts after M23_001 (npm release exists); binary bundling runs in parallel with npm
-**Branch:** feat/m23-cli-distribution
+**Branch:** feat/m23-shell-installers
 **Depends on:** M23_001 (GitHub Release must exist with platform binaries attached)
 
 **Reference implementation:** `~/Projects/oss/resend-cli/install.sh` (302 lines), `install.ps1` (147 lines)
