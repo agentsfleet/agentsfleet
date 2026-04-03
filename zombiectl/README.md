@@ -10,7 +10,7 @@ Local state lives in `~/.config/zombiectl/` by default:
 ## Install
 
 ```bash
-npm install -g zombiectl
+npm install -g @usezombie/zombiectl
 zombiectl --help
 ```
 

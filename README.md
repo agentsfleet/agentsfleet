@@ -27,7 +27,7 @@ Write a spec. An agent implements it, runs `make lint` / `make test` / `make bui
 ## Quick start
 
 ```bash
-npm install -g zombiectl
+npm install -g @usezombie/zombiectl
 zombiectl login
 zombiectl workspace add https://github.com/your-org/your-repo
 zombiectl run --spec docs/spec/my-feature.md

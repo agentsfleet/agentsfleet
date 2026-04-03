@@ -264,7 +264,13 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_ACTOR: ${{ github.actor }}
 
-  # ── 3. CLI: publish zombiectl to npm ────────────────────────────────────
+  # ── 3. CLI: publish @usezombie/zombiectl to npm ─────────────────────────
+  # Tag lifecycle:
+  #   - Release publishes to `next` dist-tag (--tag next)
+  #   - After acceptance testing, promote manually:
+  #     npm dist-tag add @usezombie/zombiectl@<ver> latest
+  #   - Users installing without a tag pin (`npm install -g @usezombie/zombiectl`)
+  #     resolve `latest`, not `next`
   npm:
     runs-on: ubuntu-latest
     needs: verify-tag

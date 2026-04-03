@@ -1,5 +1,5 @@
 {
-  "name": "zombiectl",
+  "name": "@usezombie/zombiectl",
   "version": "0.3.0",
   "description": "UseZombie CLI",
   "type": "module",
