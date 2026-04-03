@@ -59,6 +59,21 @@ check_ref() {
   fi
 }
 
+check_url_ref() {
+  local ref="$1"
+  local value
+  value="$(op_read_with_retry "$ref" || true)"
+  if [ -z "$value" ]; then
+    echo "✗ MISSING: $ref"
+    missing=$((missing + 1))
+  elif ! echo "$value" | grep -qE '^https://[^[:space:]]+$'; then
+    echo "✗ INVALID URL: $ref"
+    missing=$((missing + 1))
+  else
+    echo "✓ $ref"
+  fi
+}
+
 check_distinct() {
   local left_ref="$1"
   local right_ref="$2"
@@ -86,8 +101,8 @@ check_prod() {
   local v="$vault_prod"
   echo "-- checking PROD vault: $v"
 
-  check_ref "op://$v/clerk-prod/jwks-url"
-  check_ref "op://$v/clerk-prod/issuer"
+  check_url_ref "op://$v/clerk-prod/jwks-url"
+  check_url_ref "op://$v/clerk-prod/issuer"
   check_ref "op://$v/cloudflare-api-token/credential"
   check_ref "op://$v/npm-publish-token/credential"
   check_ref "op://$v/vercel-bypass-website/credential"
@@ -138,8 +153,8 @@ check_dev() {
   local v="$vault_dev"
   echo "-- checking DEV vault: $v"
 
-  check_ref "op://$v/clerk-dev/jwks-url"
-  check_ref "op://$v/clerk-dev/issuer"
+  check_url_ref "op://$v/clerk-dev/jwks-url"
+  check_url_ref "op://$v/clerk-dev/issuer"
   check_ref "op://$v/clerk-dev/publishable-key"
   check_ref "op://$v/clerk-dev/secret-key"
   check_ref "op://$v/github-app/app-id"
