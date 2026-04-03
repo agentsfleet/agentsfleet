@@ -42,9 +42,9 @@ jobs:
         run: bun run build
 
       - name: Verify --version
-        run: node bin/zombiectl.js --version
+        run: bun bin/zombiectl.js --version
         shell: bash
 
       - name: Verify --help
-        run: node bin/zombiectl.js --help
+        run: bun bin/zombiectl.js --help
         shell: bash
