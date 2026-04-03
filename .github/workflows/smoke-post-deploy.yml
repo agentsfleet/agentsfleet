@@ -8,12 +8,12 @@ on:
 
 jobs:
   smoke:
-    # Only run on main branch when Vercel marks the deployment as success.
-    # Preview deploys on feature branches skip smoke tests — they run via
-    # deploy-dev.yml qa-dev job after merge to main instead.
+    # Only run on production deploys when Vercel marks the deployment as success.
+    # Vercel sets deployment.ref to the commit SHA (not branch name), so we match
+    # on the environment name instead. Production deploys use "Production – <project>".
     if: >-
       github.event.deployment_status.state == 'success' &&
-      github.event.deployment.ref == 'main'
+      startsWith(github.event.deployment.environment, 'Production')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
