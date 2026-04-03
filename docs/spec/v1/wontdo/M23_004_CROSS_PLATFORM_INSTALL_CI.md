@@ -4,10 +4,10 @@
 **Milestone:** M23
 **Workstream:** 004
 **Date:** Apr 03, 2026
-**Status:** PENDING
-**Priority:** P0 — No Windows or Linux aarch64 machine locally; CI is the only validation path
+**Status:** DEFERRED (Apr 03, 2026 — blocked on M23_003 which is deferred; shell installers not needed for launch)
+**Priority:** P3 — Deferred with M23_003
 **Batch:** B3 — Runs after M23_001 (npm) and M23_003 (shell installers) are implemented
-**Branch:** feat/m23-cli-distribution
+**Branch:** —
 **Depends on:** M23_001, M23_003
 
 **Reference implementation:** `~/Projects/oss/resend-cli/.github/workflows/release.yml` and `post-release.yml`
