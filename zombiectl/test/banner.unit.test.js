@@ -257,19 +257,19 @@ describe("printPreReleaseWarning — T7: regression guards", () => {
 describe("printBanner — T1: happy path", () => {
   test("color mode writes version to stream", () => {
     const out = makeBufferStream();
-    printBanner(out.stream, "0.3.0", {});
-    expect(stripAnsi(out.read())).toContain("zombiectl v0.3.0");
+    printBanner(out.stream, "0.3.1", {});
+    expect(stripAnsi(out.read())).toContain("zombiectl v0.3.1");
   });
 
   test("noColor mode writes plain version line", () => {
     const out = makeBufferStream();
-    printBanner(out.stream, "0.3.0", { noColor: true });
-    expect(out.read()).toBe("zombiectl v0.3.0\n");
+    printBanner(out.stream, "0.3.1", { noColor: true });
+    expect(out.read()).toBe("zombiectl v0.3.1\n");
   });
 
   test("jsonMode suppresses all output", () => {
     const out = makeBufferStream();
-    printBanner(out.stream, "0.3.0", { jsonMode: true });
+    printBanner(out.stream, "0.3.1", { jsonMode: true });
     expect(out.read()).toBe("");
   });
 });
@@ -289,13 +289,13 @@ describe("printBanner — T2: edge cases", () => {
 
   test("no opts argument uses defaults (color mode)", () => {
     const out = makeBufferStream();
-    printBanner(out.stream, "0.3.0");
+    printBanner(out.stream, "0.3.1");
     expect(out.read().length).toBeGreaterThan(0);
   });
 
   test("empty opts uses defaults (color mode)", () => {
     const out = makeBufferStream();
-    printBanner(out.stream, "0.3.0", {});
+    printBanner(out.stream, "0.3.1", {});
     expect(out.read().length).toBeGreaterThan(0);
   });
 });
@@ -303,45 +303,45 @@ describe("printBanner — T2: edge cases", () => {
 describe("printBanner — T4: output fidelity", () => {
   test("color mode output contains ANSI escape codes", () => {
     const out = makeBufferStream();
-    printBanner(out.stream, "0.3.0", {});
+    printBanner(out.stream, "0.3.1", {});
     expect(out.read()).toMatch(/\x1b\[/);
   });
 
   test("color mode output contains box-drawing character", () => {
     const out = makeBufferStream();
-    printBanner(out.stream, "0.3.0", {});
+    printBanner(out.stream, "0.3.1", {});
     expect(out.read()).toContain("\u2500"); // ─ horizontal bar
   });
 
   test("color mode output contains tagline 'autonomous agent cli'", () => {
     const out = makeBufferStream();
-    printBanner(out.stream, "0.3.0", {});
+    printBanner(out.stream, "0.3.1", {});
     expect(stripAnsi(out.read())).toContain("autonomous agent cli");
   });
 
   test("noColor mode output contains no ANSI codes", () => {
     const out = makeBufferStream();
-    printBanner(out.stream, "0.3.0", { noColor: true });
+    printBanner(out.stream, "0.3.1", { noColor: true });
     expect(out.read()).not.toMatch(/\x1b\[/);
   });
 
   test("noColor mode output is exactly 'zombiectl v{version}\\n'", () => {
     const out = makeBufferStream();
-    printBanner(out.stream, "0.3.0", { noColor: true });
-    expect(out.read()).toBe("zombiectl v0.3.0\n");
+    printBanner(out.stream, "0.3.1", { noColor: true });
+    expect(out.read()).toBe("zombiectl v0.3.1\n");
   });
 });
 
 describe("printBanner — T7: regression guards", () => {
   test("noColor plain format pinned — regression guard", () => {
     const out = makeBufferStream();
-    printBanner(out.stream, "0.3.0", { noColor: true });
-    expect(out.read()).toBe("zombiectl v0.3.0\n");
+    printBanner(out.stream, "0.3.1", { noColor: true });
+    expect(out.read()).toBe("zombiectl v0.3.1\n");
   });
 
   test("color mode contains zombie emoji 🧟", () => {
     const out = makeBufferStream();
-    printBanner(out.stream, "0.3.0", {});
+    printBanner(out.stream, "0.3.1", {});
     expect(out.read()).toContain("\u{1F9DF}");
   });
 });
@@ -356,8 +356,8 @@ describe("VERSION — T7 + T12: constant matches package.json", () => {
     expect(VERSION).toBe(pkg.version);
   });
 
-  test("VERSION is 0.3.0", () => {
-    expect(VERSION).toBe("0.3.0");
+  test("VERSION is 0.3.1", () => {
+    expect(VERSION).toBe("0.3.1");
   });
 });
 
@@ -413,8 +413,8 @@ describe("ttyOnly flag — T6: integration via runCli", () => {
       stderr: makeTtyBufferStream().stream,
       env: { NO_COLOR: "1" },
     });
-    expect(out1.read()).toContain("zombiectl v0.3.0");
-    expect(out2.read()).toContain("zombiectl v0.3.0");
+    expect(out1.read()).toContain("zombiectl v0.3.1");
+    expect(out2.read()).toContain("zombiectl v0.3.1");
   });
 });
 
