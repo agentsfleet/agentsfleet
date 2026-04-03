@@ -5,3 +5,4 @@ systemctl start [a-z]+-[a-z]+\.service.*\|
 std\.process\.exit\(1\)
 flyctl deploy .* \|\| true
 grep -qiE '\\b\(started\|stopped\)\\b'
+replace.*\\\*\\\*.*"\.\*"
