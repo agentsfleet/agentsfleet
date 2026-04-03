@@ -1,6 +1,5 @@
 import { readFileSync, readdirSync, statSync } from "node:fs";
-import { resolve, sep } from "node:path";
-import { Glob } from "bun";
+import { resolve, sep, relative } from "node:path";
 
 const MAX_GLOB_RESULTS = 500;
 const MAX_FILE_SIZE = 256 * 1024; // 256KB
@@ -65,14 +64,41 @@ function executeListDir(path, repoRoot) {
   }
 }
 
+function micromatch(filePath, pattern) {
+  const regex = pattern
+    .replace(/\./g, "\\.")
+    .replace(/\*\*/g, "\0")
+    .replace(/\*/g, "[^/]*")
+    .replace(/\0/g, ".*")
+    .replace(/\?/g, "[^/]");
+  return new RegExp(`^${regex}$`).test(filePath);
+}
+
+function walkSync(dir, root, results, limit) {
+  let entries;
+  try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return; }
+  for (const entry of entries) {
+    if (results.length >= limit) return;
+    if (entry.name === ".git") continue;
+    const full = resolve(dir, entry.name);
+    if (entry.isDirectory()) {
+      walkSync(full, root, results, limit);
+    } else {
+      results.push(relative(root, full));
+    }
+  }
+}
+
 function executeGlob(pattern, repoRoot) {
   try {
-    const glob = new Glob(pattern);
+    const allFiles = [];
+    walkSync(repoRoot, repoRoot, allFiles, MAX_GLOB_RESULTS * 10);
     const results = [];
-    for (const match of glob.scanSync({ cwd: repoRoot, dot: false })) {
-      if (match.includes(".git/") || match.startsWith(".git")) continue;
-      results.push(match);
-      if (results.length >= MAX_GLOB_RESULTS) break;
+    for (const f of allFiles) {
+      if (micromatch(f, pattern)) {
+        results.push(f);
+        if (results.length >= MAX_GLOB_RESULTS) break;
+      }
     }
     if (results.length === 0) return "(no matches)";
     return results.sort().join("\n");
