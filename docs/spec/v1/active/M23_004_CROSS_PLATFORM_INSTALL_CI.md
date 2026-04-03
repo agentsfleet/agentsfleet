@@ -4,10 +4,10 @@
 **Milestone:** M23
 **Workstream:** 004
 **Date:** Apr 03, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P0 — No Windows or Linux aarch64 machine locally; CI is the only validation path
 **Batch:** B3 — Runs after M23_001 (npm release exists)
-**Branch:** —
+**Branch:** feat/m23-shell-installers
 **Depends on:** M23_001
 
 **Reference implementation:** `~/Projects/oss/resend-cli/.github/workflows/release.yml` and `post-release.yml`
