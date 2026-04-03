@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { Writable } from "node:stream";
-import { runCli } from "../src/cli.js";
+import { runCli, VERSION } from "../src/cli.js";
 
 function bufferStream() {
   let data = "";
@@ -245,7 +245,7 @@ describe("version output", () => {
       env: { ...process.env },
     });
     expect(code).toBe(0);
-    expect(out.read()).toContain("zombiectl v0.3.1");
+    expect(out.read()).toContain(`zombiectl v${VERSION}`);
   });
 
   test("--version --json suppresses banner", async () => {
@@ -258,7 +258,7 @@ describe("version output", () => {
     });
     expect(code).toBe(0);
     const parsed = JSON.parse(out.read());
-    expect(parsed.version).toBe("0.3.1");
+    expect(parsed.version).toBe(VERSION);
   });
 
   test("--version with NO_COLOR shows plain text", async () => {
@@ -271,6 +271,6 @@ describe("version output", () => {
     });
     expect(code).toBe(0);
     const output = out.read();
-    expect(output).toContain("zombiectl v0.3.1");
+    expect(output).toContain(`zombiectl v${VERSION}`);
   });
 });
