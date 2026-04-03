@@ -1,0 +1,79 @@
+name: smoke (post-deploy)
+
+# Vercel creates a GitHub deployment and marks it "success" after each deploy.
+# This workflow fires once per Vercel project (website, agents-site, app).
+# The deployment URL is used to route to the correct smoke suite.
+on:
+  deployment_status:
+
+jobs:
+  smoke:
+    # Only run on production deploys when Vercel marks the deployment as success.
+    # Vercel sets deployment.ref to the commit SHA (not branch name), so we match
+    # on the environment name instead. Production deploys use "Production – <project>".
+    if: >-
+      github.event.deployment_status.state == 'success' &&
+      startsWith(github.event.deployment.environment, 'Production')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.10
+
+      # Detect which Vercel project deployed based on GitHub deployment metadata first.
+      # URL-shape fallback remains for safety, but deployment.environment is the stable source.
+      - name: Detect project
+        id: detect
+        run: |
+          URL="${{ github.event.deployment_status.target_url }}"
+          DEPLOY_ENV="${{ github.event.deployment.original_environment || github.event.deployment.environment }}"
+
+          echo "deployment_environment=$DEPLOY_ENV"
+          echo "target_url=$URL"
+
+          if echo "$DEPLOY_ENV" | grep -qi "usezombie-app"; then
+            { echo "package=app"; echo "workdir=ui/packages/app"; echo "bypass_item=vercel-bypass-app"; } >> "$GITHUB_OUTPUT"
+          elif echo "$DEPLOY_ENV" | grep -qi "usezombie-agents"; then
+            { echo "package=agents"; echo "workdir=ui/packages/website"; echo "bypass_item=vercel-bypass-agents"; } >> "$GITHUB_OUTPUT"
+          elif echo "$DEPLOY_ENV" | grep -qi "usezombie-website"; then
+            { echo "package=website"; echo "workdir=ui/packages/website"; echo "bypass_item=vercel-bypass-website"; } >> "$GITHUB_OUTPUT"
+          elif echo "$URL" | grep -qi "usezombie-app\|app\.usezombie"; then
+            { echo "package=app"; echo "workdir=ui/packages/app"; echo "bypass_item=vercel-bypass-app"; } >> "$GITHUB_OUTPUT"
+          elif echo "$URL" | grep -qi "usezombie-agents"; then
+            { echo "package=agents"; echo "workdir=ui/packages/website"; echo "bypass_item=vercel-bypass-agents"; } >> "$GITHUB_OUTPUT"
+          else
+            { echo "package=website"; echo "workdir=ui/packages/website"; echo "bypass_item=vercel-bypass-website"; } >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Load Vercel bypass secret from 1Password
+        uses: 1password/load-secrets-action@v4
+        with:
+          export-env: true
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          VERCEL_BYPASS_SECRET: op://${{ vars.VAULT_PROD }}/${{ steps.detect.outputs.bypass_item }}/credential
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+        working-directory: ${{ steps.detect.outputs.workdir }}
+
+      - name: Install Playwright browsers
+        run: bunx playwright install --with-deps chromium
+        working-directory: ${{ steps.detect.outputs.workdir }}
+
+      - name: Run smoke tests against deployed URL
+        run: bun run test:e2e:smoke
+        working-directory: ${{ steps.detect.outputs.workdir }}
+        env:
+          BASE_URL: ${{ github.event.deployment_status.target_url }}
+          VERCEL_BYPASS_SECRET: ${{ env.VERCEL_BYPASS_SECRET }}
+
+      - name: Upload Playwright report
+        uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: smoke-post-deploy-${{ steps.detect.outputs.package }}-${{ github.sha }}
+          path: ${{ steps.detect.outputs.workdir }}/playwright-report/
+          retention-days: 7
