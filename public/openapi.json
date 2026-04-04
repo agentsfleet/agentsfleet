@@ -456,12 +456,10 @@
       "get": {
         "operationId": "list_specs",
         "summary": "List specs",
-        "description": "Lists specs for a workspace with optional status filtering and cursor-based pagination.",
+        "description": "Lists specs for a workspace. Returns up to `limit` results ordered by creation date descending.",
         "tags": ["Specs"],
         "parameters": [
           { "name": "workspace_id", "in": "query", "required": true, "description": "Filter by workspace", "schema": { "type": "string", "format": "uuid" } },
-          { "name": "status", "in": "query", "required": false, "description": "Filter by spec status", "schema": { "type": "string", "enum": ["pending", "in_progress", "done", "failed"] } },
-          { "name": "cursor", "in": "query", "required": false, "description": "Pagination cursor from a previous response", "schema": { "type": "string" } },
           { "name": "limit", "in": "query", "required": false, "description": "Maximum number of specs to return", "schema": { "type": "integer", "default": 50 } }
         ],
         "responses": {
@@ -1955,10 +1953,9 @@
       },
       "AgentRelayRequest": {
         "type": "object",
-        "description": "Request body for Agent Relay LLM endpoints (spec template and preview)",
-        "required": ["workspace_id", "messages"],
+        "description": "Request body for Agent Relay LLM endpoints (spec template and preview). The workspace_id is provided via the path parameter.",
+        "required": ["messages"],
         "properties": {
-          "workspace_id": { "type": "string", "format": "uuid", "description": "Workspace context for the generation" },
           "messages": {
             "type": "array",
             "description": "Conversation messages for the LLM",
