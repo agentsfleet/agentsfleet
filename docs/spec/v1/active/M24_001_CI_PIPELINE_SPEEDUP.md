@@ -4,7 +4,8 @@
 **Milestone:** M24
 **Workstream:** 001
 **Date:** Apr 03, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
+**Branch:** feat/m24-ci-pipeline-speedup
 **Priority:** P1 — Reduce CI feedback loop to improve developer velocity
 **Batch:** B1
 **Depends on:** —
