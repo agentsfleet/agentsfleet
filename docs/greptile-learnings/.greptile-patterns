@@ -6,3 +6,4 @@ std\.process\.exit\(1\)
 flyctl deploy .* \|\| true
 grep -qiE '\\b\(started\|stopped\)\\b'
 replace.*\\\*\\\*.*"\.\*"
+\.object\.get\([^)]+\)\) \|v\| break :blk v\.string

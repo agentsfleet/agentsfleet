@@ -293,7 +293,9 @@ pub fn derivePaginationResult(
 
     const next_cursor: ?[]const u8 = if (has_more and result_count > 0) blk: {
         const last = result_data[result_count - 1];
-        if (last.object.get(id_field)) |v| break :blk v.string;
+        if (last.object.get(id_field)) |v| {
+            if (v == .string) break :blk v.string;
+        }
         break :blk null;
     } else null;
 
