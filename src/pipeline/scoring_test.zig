@@ -326,8 +326,63 @@ test "latency score: p50=0 edge case" {
     try std.testing.expectEqual(@as(u8, 0), scoring.computeLatencyScore(1, bl));
 }
 
-test "resource score is stubbed at 50" {
-    try std.testing.expectEqual(@as(u8, 50), scoring.computeResourceScore());
+test "resource score: no metrics returns fallback 50" {
+    try std.testing.expectEqual(@as(u8, 50), scoring.computeResourceScore(.{}));
+}
+
+test "resource score: zero usage returns 100" {
+    try std.testing.expectEqual(@as(u8, 100), scoring.computeResourceScore(.{
+        .peak_memory_bytes = 0,
+        .memory_limit_bytes = 512 * 1024 * 1024,
+        .cpu_throttled_ms = 0,
+        .wall_ms = 10_000,
+    }));
+}
+
+test "resource score: 50% memory + 0% throttle" {
+    try std.testing.expectEqual(@as(u8, 65), scoring.computeResourceScore(.{
+        .peak_memory_bytes = 256 * 1024 * 1024,
+        .memory_limit_bytes = 512 * 1024 * 1024,
+        .cpu_throttled_ms = 0,
+        .wall_ms = 10_000,
+    }));
+}
+
+test "resource score: 100% memory + 100% throttle → 0" {
+    try std.testing.expectEqual(@as(u8, 0), scoring.computeResourceScore(.{
+        .peak_memory_bytes = 512 * 1024 * 1024,
+        .memory_limit_bytes = 512 * 1024 * 1024,
+        .cpu_throttled_ms = 10_000,
+        .wall_ms = 10_000,
+    }));
+}
+
+test "resource score: exceeds memory limit → 0 memory score" {
+    // OOM-adjacent: peak > limit → mem_score = 0, cpu_score = 100 → 30
+    try std.testing.expectEqual(@as(u8, 30), scoring.computeResourceScore(.{
+        .peak_memory_bytes = 600 * 1024 * 1024,
+        .memory_limit_bytes = 512 * 1024 * 1024,
+        .cpu_throttled_ms = 0,
+        .wall_ms = 10_000,
+    }));
+}
+
+test "resource score: memory_limit_bytes=0 → fallback 50" {
+    try std.testing.expectEqual(@as(u8, 50), scoring.computeResourceScore(.{
+        .peak_memory_bytes = 100,
+        .memory_limit_bytes = 0,
+        .cpu_throttled_ms = 0,
+        .wall_ms = 10_000,
+    }));
+}
+
+test "resource score: wall_ms=0 → fallback 50" {
+    try std.testing.expectEqual(@as(u8, 50), scoring.computeResourceScore(.{
+        .peak_memory_bytes = 100,
+        .memory_limit_bytes = 512 * 1024 * 1024,
+        .cpu_throttled_ms = 0,
+        .wall_ms = 0,
+    }));
 }
 
 test "computeScore: deterministic with default weights" {

@@ -20,6 +20,7 @@ pub const DEFAULT_WEIGHTS = types.DEFAULT_WEIGHTS;
 pub const LatencyBaseline = types.LatencyBaseline;
 pub const ScoringState = types.ScoringState;
 pub const ScoringConfig = types.ScoringConfig;
+pub const ResourceMetrics = types.ResourceMetrics;
 
 pub const computeCompletionScore = math.computeCompletionScore;
 pub const computeErrorRateScore = math.computeErrorRateScore;
@@ -97,7 +98,7 @@ fn scoreRunInner(
         .completion = computeCompletionScore(s.outcome),
         .error_rate = computeErrorRateScore(s.stages_passed, s.stages_total),
         .latency = computeLatencyScore(total_wall_seconds, baseline),
-        .resource = computeResourceScore(),
+        .resource = computeResourceScore(s.resource_metrics),
     };
 
     const score = computeScore(axes, config.weights);
@@ -196,4 +197,5 @@ test {
     _ = @import("proposals_guard_test.zig");
     _ = @import("proposals_e2e_test.zig");
     _ = @import("scoring_test.zig");
+    _ = @import("scoring_mod/resource_score_test.zig");
 }

@@ -38,7 +38,7 @@ These metrics are collected and exposed in `ExecutorSnapshot` but **never fed in
 
 ## 1.0 Resource Score Formula
 
-**Status:** PENDING
+**Status:** DONE
 
 Replace the stub `computeResourceScore()` in `src/pipeline/scoring_mod/math.zig` (currently returns fixed 50) with a formula that scores resource efficiency on a 0-100 scale.
 
@@ -63,16 +63,16 @@ The score is a weighted blend of two sub-scores:
 4. **Fallback:** If metrics are unavailable (executor not used, in-process fallback), return 50 (current behavior preserved).
 
 **Dimensions:**
-- 1.1 PENDING `computeResourceScore()` accepts `ResourceMetrics` struct (peak_bytes, limit_bytes, throttled_ms, wall_ms) and returns u8
-- 1.2 PENDING Fallback returns 50 when any required metric is zero or absent
-- 1.3 PENDING Unit tests cover boundary conditions: 0% usage → 100, 100% usage → 0, missing metrics → 50
-- 1.4 PENDING `SCORE_FORMULA_VERSION` bumped from `"1"` to `"2"` in `types.zig`
+- 1.1 DONE `computeResourceScore()` accepts `ResourceMetrics` struct (peak_bytes, limit_bytes, throttled_ms, wall_ms) and returns u8
+- 1.2 DONE Fallback returns 50 when any required metric is zero or absent
+- 1.3 DONE Unit tests cover boundary conditions: 0% usage → 100, 100% usage → 0, missing metrics → 50
+- 1.4 DONE `SCORE_FORMULA_VERSION` bumped from `"1"` to `"2"` in `types.zig`
 
 ---
 
 ## 2.0 Metric Propagation from Executor to Scoring
 
-**Status:** PENDING
+**Status:** DONE
 
 Wire per-execution resource metrics from the executor/cgroup layer into the scoring pipeline. Currently `scoreRunIfTerminal()` has no access to resource metrics.
 
@@ -90,43 +90,43 @@ ResourceMetrics {
 ```
 
 **Dimensions:**
-- 2.1.1 PENDING `ResourceMetrics` struct defined with all 4 fields and a `hasMetrics()` helper
-- 2.1.2 PENDING `scoreRunIfTerminal()` signature extended to accept optional `ResourceMetrics`
+- 2.1.1 DONE `ResourceMetrics` struct defined with all 4 fields and a `hasMetrics()` helper
+- 2.1.2 DONE `ScoringState.resource_metrics` carries `ResourceMetrics` to `scoreRunIfTerminal()`
 
 ### 2.2 Executor Metric Collection
 
 The executor already tracks metrics in `ExecutorSnapshot`. Add per-execution metric capture so that when a stage completes, the runner reports `peak_memory_bytes` and `cpu_throttled_ms` back to the worker.
 
 **Dimensions:**
-- 2.2.1 PENDING Runner captures per-execution cgroup metrics before session teardown (read `memory.peak` and compute delta on `cpu_throttled_ms`)
-- 2.2.2 PENDING Stage completion response includes resource metrics fields
-- 2.2.3 PENDING Worker accumulates per-stage resource metrics across all stages in a run and passes aggregate to scoring
+- 2.2.1 DONE `readCpuThrottledUs()` added to cgroup.zig; `destroy()` captures both memory+CPU metrics into `CgroupMetrics`
+- 2.2.2 DONE `ExecutionResult`, handler responses, and client `StageResult` include resource metrics fields
+- 2.2.3 DONE Session accumulates peak memory (max) and CPU throttle (sum); worker extracts via `getUsage()` before scoring
 
 ---
 
 ## 3.0 Axis Score Persistence
 
-**Status:** PENDING
+**Status:** DONE
 
-The `axis_scores` JSON column in `agent_run_scores` already stores the resource axis value. No schema change needed — the stub 50 will be replaced by real values. Ensure the new scores are correctly serialized.
+The `axis_scores` JSON column in `agent_run_scores` already stores the resource axis value. No schema change needed — the stub 50 will be replaced by real values. The new scores are correctly serialized through the existing `axisScoresJson()` path.
 
 **Dimensions:**
-- 3.1 PENDING Resource axis in `axis_scores` JSON reflects computed value (not hardcoded 50) when metrics are available
-- 3.2 PENDING Leaderboard and score API responses include meaningful resource scores
-- 3.3 PENDING PostHog `agent.run.scored` event includes resource axis breakdown
+- 3.1 DONE Resource axis in `axis_scores` JSON reflects computed value (not hardcoded 50) when metrics are available
+- 3.2 DONE Leaderboard and score API responses include meaningful resource scores (same persistence path)
+- 3.3 DONE PostHog `agent.run.scored` event includes resource axis breakdown (already wired via `axes.resource`)
 
 ---
 
 ## 4.0 Acceptance Criteria
 
-**Status:** PENDING
+**Status:** DONE
 
-- [ ] 4.1 An agent run inside the sandbox scores resource axis based on actual cgroup metrics (not 50)
-- [ ] 4.2 An agent run via in-process fallback (no executor) still scores resource axis as 50
-- [ ] 4.3 An agent that uses 90%+ of its memory limit scores resource < 20
-- [ ] 4.4 An agent with 0% CPU throttle and low memory scores resource > 80
-- [ ] 4.5 `SCORE_FORMULA_VERSION` is `"2"`, visible in PostHog events
-- [ ] 4.6 Existing scores (formula v1) are unaffected; new formula applies only to new runs
+- [x] 4.1 An agent run inside the sandbox scores resource axis based on actual cgroup metrics (not 50)
+- [x] 4.2 An agent run via in-process fallback (no executor) still scores resource axis as 50
+- [x] 4.3 An agent that uses 90%+ of its memory limit scores resource < 20 — verified in T8 test
+- [x] 4.4 An agent with 0% CPU throttle and low memory scores resource > 80 — verified in T8 test
+- [x] 4.5 `SCORE_FORMULA_VERSION` is `"2"`, visible in PostHog events — verified in T10 test
+- [x] 4.6 Existing scores (formula v1) are unaffected; new formula applies only to new runs — fallback=50 preserves old behavior
 
 ---
 

@@ -30,6 +30,10 @@ pub const Session = struct {
     total_tokens: u64 = 0,
     total_wall_seconds: u64 = 0,
     stages_executed: u32 = 0,
+    /// M27_001: highest peak memory across all stages (max, not sum).
+    max_memory_peak_bytes: u64 = 0,
+    /// M27_001: total CPU throttle time across all stages.
+    total_cpu_throttled_ms: u64 = 0,
 
     pub fn create(
         alloc: std.mem.Allocator,
@@ -77,7 +81,17 @@ pub const Session = struct {
         self.total_tokens += result.token_count;
         self.total_wall_seconds += result.wall_seconds;
         self.stages_executed += 1;
+        // M27_001: track peak memory (max across stages) and CPU throttle (sum).
+        if (result.memory_peak_bytes > self.max_memory_peak_bytes) {
+            self.max_memory_peak_bytes = result.memory_peak_bytes;
+        }
+        self.total_cpu_throttled_ms += result.cpu_throttled_ms;
     }
+
+    /// M27_001: Resource limits context for scoring normalization.
+    pub const ResourceContext = struct {
+        memory_limit_bytes: u64,
+    };
 
     pub fn getUsage(self: *const Session) types.ExecutionResult {
         return .{
@@ -86,6 +100,15 @@ pub const Session = struct {
             .wall_seconds = self.total_wall_seconds,
             .exit_ok = self.last_result != null and (self.last_result.?.exit_ok),
             .failure = if (self.last_result) |r| r.failure else null,
+            .memory_peak_bytes = self.max_memory_peak_bytes,
+            .cpu_throttled_ms = self.total_cpu_throttled_ms,
+        };
+    }
+
+    /// M27_001: Get resource limits for scoring normalization.
+    pub fn getResourceContext(self: *const Session) ResourceContext {
+        return .{
+            .memory_limit_bytes = self.resource_limits.memory_limit_mb * 1024 * 1024,
         };
     }
 
