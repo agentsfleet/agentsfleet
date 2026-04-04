@@ -4,10 +4,10 @@
 **Milestone:** M7
 **Workstream:** 001
 **Date:** Mar 20, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE — environment verified; CLI acceptance moved to M26_001_ACCEPTANCE.md
 **Priority:** P0 — DEV release gate; blocks M7_003 (PROD Acceptance)
 **Depends on:** M12_003 (NullClaw invocation — executor runtime complete)
-**Successor:** M7_003_PROD_ACCEPTANCE.md
+**Successor:** M26_001_ACCEPTANCE.md
 
 > **Status (Mar 21, 2026):** GHCR package set to public ✅. Cloudflare Tunnel wired ✅. Fly.io DEV deployed ✅. `deploy-dev.yml` updated to use `fly deploy` + Cloudflare Tunnel verification. Railway fully removed.
 
