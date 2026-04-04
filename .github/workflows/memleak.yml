@@ -27,6 +27,5 @@ jobs:
       - uses: mlugg/setup-zig@v2
         with:
           version: 0.15.2
-          use-cache: false
       - name: Run memleak gate
         run: make memleak

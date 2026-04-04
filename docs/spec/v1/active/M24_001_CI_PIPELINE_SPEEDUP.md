@@ -90,26 +90,25 @@ The audit shows why this matters as more worker hosts are added.
 Audit results show that Zig cache persistence is not uniformly valuable.
 
 - `compile-dev` latest run spent 121s in `Post Run mlugg/setup-zig@v2`.
-- `memleak` latest run spent 61s in `Post Run mlugg/setup-zig@v2`.
+- `memleak` latest audit sample spent 61s in `Post Run mlugg/setup-zig@v2`, but the first PR run with cache disabled stretched the memleak gate itself to about 4 minutes.
 - `release` x86 build spent 36s in the same post step.
 - PR jobs like `lint` and `test` do not show a comparable cache tax in the audit, so this pass leaves them unchanged.
 
 Implemented in this execution pass:
 
 - Disabled `setup-zig` cache for `.github/workflows/deploy-dev.yml`
-- Disabled `setup-zig` cache for `.github/workflows/memleak.yml`
 - Disabled `setup-zig` cache for the heavy release Zig jobs in `.github/workflows/release.yml`
 
 Projected impact from audit timings:
 
 - `compile-dev`: 5.40 min latest -> approximately 3.4 min if the 121s cache upload is removed
-- `memleak`: 2.13 min latest -> approximately 1.1 min if the 61s cache upload is removed
+- `memleak`: first PR run disproved the no-cache projection; cache was re-enabled because the cold compile cost dominated the saved post-step time
 - `release` x86 lane: 3.75 min latest -> approximately 3.15 min if the 36s cache upload is removed
 
 **Dimensions:**
 - 2.1 IN_PROGRESS Measured cache-related cost from audit data; follow-up CI runs still needed for before/after confirmation
 - 2.2 PENDING Cache-key deduplication not implemented in this pass
-- 2.3 DONE Disabled Zig cache in jobs where cache persistence was clearly slower than the observed benefit
+- 2.3 IN_PROGRESS Disabled Zig cache only in jobs where the first measured run supported it; memleak was reverted after regression evidence
 - 2.4 PENDING `.zig-cache` size trimming not implemented in this pass
 
 ---
@@ -134,8 +133,8 @@ Audit conclusions:
 Projected PR wall-clock improvement from audit data:
 
 - Before: critical path p50 = `qa` at 2.23 min
-- After: the slowest PR workflow should become either split `qa` or uncached `memleak`, both projected around 1.1–1.4 min
-- **Projected PR wall-clock reduction: roughly 35%–50%**, depending on post-change runner queue time and Playwright cache hit rate
+- After the first PR run, `qa` dropped to about 1.55 min, but uncached `memleak` regressed to about 4.67 min, so memleak cache was restored
+- **Projected PR wall-clock reduction remains achievable, but only with memleak cache restored; the first no-cache experiment regressed total PR wall clock**
 
 **Dimensions:**
 - 3.1 DONE Audited `deploy-dev.yml` dependency graph
