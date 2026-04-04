@@ -255,7 +255,7 @@ pub fn persistScore(
 ) !PersistScoreOutcome {
     if (agent_id.len == 0) return .{};
     const inserted = try persistScoreRecord(conn, alloc, run_id, workspace_id, agent_id, score, axis_scores_json, weight_snapshot_json, scored_at);
-    if (!inserted) return .{};
+    if (!inserted) return .{ .inserted = false };
     try persistRunAnalysis(conn, alloc, run_id, workspace_id, agent_id, scoring_state, stages_passed, stages_total, total_wall_seconds);
     const trust_update = try trust.refreshAgentTrustState(conn, agent_id, scored_at);
     try proposals.maybePersistTriggerProposal(conn, alloc, workspace_id, agent_id, scored_at);
@@ -263,12 +263,15 @@ pub fn persistScore(
     return .{
         .trust_update = trust_update,
         .stalled_alert = stalled_alert,
+        .inserted = true,
     };
 }
 
 pub const PersistScoreOutcome = struct {
     trust_update: ?trust.TrustUpdate = null,
     stalled_alert: ?proposals.ImprovementStalledAlert = null,
+    /// True when the score row was freshly inserted; false when the run was already scored.
+    inserted: bool = false,
 
     pub fn deinit(self: *PersistScoreOutcome, alloc: std.mem.Allocator) void {
         if (self.stalled_alert) |*alert| alert.deinit(alloc);

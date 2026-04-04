@@ -53,13 +53,48 @@ pub const BlockedOutcomeCtx = struct {
 /// Handles the .done terminal outcome. Caller must `return` after this.
 pub fn handleDoneOutcome(o: DoneOutcomeCtx) !void {
     o.scoring_state.outcome = .done;
+
+    // M27_002 §1.1: score synchronously before billing so the gate can check quality.
+    // scoreRunForBillingGate sets the score row; the defer scoreRunIfTerminal in the executor
+    // becomes a no-op for this run (PersistScoreOutcome.inserted = false on second call).
+    const maybe_score = scoring.scoreRunForBillingGate(
+        o.conn,
+        o.cfg.posthog,
+        o.ctx.run_id,
+        o.ctx.workspace_id,
+        o.ctx.agent_id,
+        o.ctx.requested_by,
+        o.scoring_state,
+        o.total_wall_seconds,
+    );
+    const billing_outcome: billing.FinalizeOutcome = blk: {
+        if (maybe_score) |score| {
+            if (score < scoring.BILLING_QUALITY_THRESHOLD) {
+                log.info("billing.score_gate run_id={s} score={d} threshold={d} outcome=non_billable", .{
+                    o.ctx.run_id, score, scoring.BILLING_QUALITY_THRESHOLD,
+                });
+                posthog_events.trackRunBillingGated(
+                    o.cfg.posthog,
+                    posthog_events.distinctIdOrSystem(o.ctx.requested_by),
+                    o.ctx.run_id,
+                    o.ctx.workspace_id,
+                    o.ctx.agent_id,
+                    score,
+                    scoring.BILLING_QUALITY_THRESHOLD,
+                );
+                break :blk .score_gated;
+            }
+        }
+        break :blk .completed;
+    };
+
     try billing.finalizeRunForBilling(
         o.alloc,
         o.conn,
         o.ctx.workspace_id,
         o.ctx.run_id,
         o.attempt,
-        .completed,
+        billing_outcome,
     );
     _ = try state.transition(o.conn, o.ctx.run_id, .PR_PREPARED, o.final_stage_actor, .VALIDATION_PASSED, null);
 
@@ -123,7 +158,7 @@ pub fn handleDoneOutcome(o: DoneOutcomeCtx) !void {
         .{ o.ctx.run_id, o.ctx.spec_id, o.attempt, pr_final, o.total_tokens, o.total_wall_seconds },
     ) catch |err| {
         obs_log.logWarnErr(.worker, err, "pipeline.run_summary_alloc_fail run_id={s}", .{o.ctx.run_id});
-        try billing.finalizeRunForBilling(o.alloc, o.conn, o.ctx.workspace_id, o.ctx.run_id, o.attempt, .completed);
+        try billing.finalizeRunForBilling(o.alloc, o.conn, o.ctx.workspace_id, o.ctx.run_id, o.attempt, billing_outcome);
         log.info("pipeline.run_completed run_id={s} pr_url={s}", .{ o.ctx.run_id, pr_final });
         var done_detail: [160]u8 = undefined;
         const done_detail_slice = std.fmt.bufPrint(&done_detail, "request_id={s} trace_id={s} state=done total_wall_seconds={d}", .{ o.ctx.request_id, o.ctx.trace_id, o.total_wall_seconds }) catch "run_done";
