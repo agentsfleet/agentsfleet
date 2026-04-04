@@ -19,15 +19,15 @@
   },
   "dependencies": {
     "@usezombie/design-system": "workspace:*",
-    "posthog-js": "1.360.1",
+    "posthog-js": "1.364.7",
     "react": "19.2.4",
     "react-dom": "19.2.4",
-    "react-router-dom": "7.13.1"
+    "react-router-dom": "7.14.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@playwright/test": "^1.58.2",
-    "@tailwindcss/vite": "^4.2.1",
+    "@tailwindcss/vite": "4.2.2",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",
@@ -35,16 +35,16 @@
     "@types/react-dom": "19.2.3",
     "@typescript-eslint/eslint-plugin": "^8.56.1",
     "@typescript-eslint/parser": "^8.56.1",
-    "@vitejs/plugin-react": "^5.0.0",
-    "@vitest/coverage-v8": "4.1.0",
+    "@vitejs/plugin-react": "6.0.1",
+    "@vitest/coverage-v8": "4.1.2",
     "eslint": "^10.0.2",
     "eslint-plugin-react": "^7.37.5",
     "eslint-plugin-react-hooks": "^7.0.1",
     "globals": "^17.4.0",
-    "jsdom": "^28.1.0",
-    "tailwindcss": "4.2.1",
-    "typescript": "6.0.1-rc",
-    "vite": "8.0.0",
-    "vitest": "4.1.0"
+    "jsdom": "29.0.1",
+    "tailwindcss": "4.2.2",
+    "typescript": "6.0.2",
+    "vite": "8.0.3",
+    "vitest": "4.1.2"
   }
 }

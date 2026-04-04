@@ -59,6 +59,7 @@ jobs:
       - uses: mlugg/setup-zig@v2
         with:
           version: 0.15.2
+          use-cache: false
 
       - name: Build linux/amd64 binaries
         run: |
@@ -414,8 +415,22 @@ jobs:
         run: bun install --frozen-lockfile
         working-directory: ui/packages/app
 
+      - name: Restore Playwright browser cache
+        id: playwright-cache-app
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-app-${{ hashFiles('ui/packages/app/bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-playwright-app-
+
       - name: Install Playwright browsers
-        run: bunx playwright install --with-deps chromium
+        run: |
+          if [ "${{ steps.playwright-cache-app.outputs.cache-hit }}" = "true" ]; then
+            bunx playwright install chromium
+          else
+            bunx playwright install --with-deps chromium
+          fi
         working-directory: ui/packages/app
 
       - name: Run smoke tests against DEV

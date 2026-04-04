@@ -1,0 +1,3 @@
+{
+  "ignorePatterns": "**/node_modules/**\n.zig-cache/**\nzig-out/**\n.tmp/**\n**/coverage/**\n**/playwright-report/**\n**/playwright-results/**\n**/dist/**"
+}

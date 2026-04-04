@@ -22,7 +22,7 @@
     "build": "node --check ./src/cli.js && node --check ./bin/zombiectl.js"
   },
   "dependencies": {
-    "posthog-node": "^5.10.0"
+    "posthog-node": "^5.28.11"
   },
   "license": "MIT"
 }
