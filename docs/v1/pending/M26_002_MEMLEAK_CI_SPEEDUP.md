@@ -1,8 +1,8 @@
-# M26_001: Memleak CI Job Speedup
+# M26_002: Memleak CI Job Speedup
 
 **Prototype:** v1.0.0
 **Milestone:** M26
-**Workstream:** 001
+**Workstream:** 002
 **Date:** Apr 04, 2026
 **Status:** PENDING
 **Priority:** P2 — Complete the PR wall-clock reduction started in M24
