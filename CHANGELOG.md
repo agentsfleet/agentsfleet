@@ -6,6 +6,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-04-05
+
+### Added
+
+- `@usezombie/zombiectl` scoped npm package — published to npm registry with public access
+- Complete OpenAPI 3.1 spec covering all 43 endpoints
+- Post-release npm verification CI job: confirms published package installs and runs correctly
+- Install-check PR gate: verifies npm install on every PR touching `zombiectl`
+- OIDC secrets wired into CI deploy pipelines
+
+### Changed
+
+- Playbooks `M2_001` and `M4_002` marked done — credential gate and prod worker bootstrap verified
+- `zombiectl` README rewritten with install instructions and pre-release caveat
+
+### Fixed
+
+- `smoke-post-deploy` workflow trigger restored with correct Production environment condition
+- `zombiectl` glob `**` pattern now matches root-level files (replaced `bun Glob` with node-compatible implementation)
+- npm publish job switched to bun runtime — resolves install failures in CI
+- Website prebuild path corrected from `../../` to `../../../` for monorepo root layout
+
 ## [0.3.0] - 2026-04-05
 
 ### Added
