@@ -4,10 +4,10 @@
 **Milestone:** M27
 **Workstream:** 001
 **Date:** Apr 04, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — Completes the 4-axis scoring model; resource axis is currently a meaningless stub
 **Batch:** B1
-**Branch:**
+**Branch:** feat/m27-resource-efficiency-axis
 **Depends on:** M4_008 (sandbox cgroup metrics — DONE), M9_001 (scoring engine — DONE)
 
 ---
