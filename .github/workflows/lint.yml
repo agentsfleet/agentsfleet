@@ -18,7 +18,7 @@ jobs:
       ZLINT_VERSION: v0.7.9
     steps:
       - uses: actions/checkout@v6
-      - uses: ./.github/actions/setup-zig
+      - uses: mlugg/setup-zig@v2
         with:
           version: 0.15.2
       - name: Install OpenSSL dev headers

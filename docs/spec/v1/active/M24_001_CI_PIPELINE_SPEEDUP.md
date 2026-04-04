@@ -98,8 +98,7 @@ Implemented in this execution pass:
 
 - Disabled `setup-zig` cache for `.github/workflows/deploy-dev.yml`
 - Disabled `setup-zig` cache for the heavy release Zig jobs in `.github/workflows/release.yml`
-- Vendored `setup-zig` into `./.github/actions/setup-zig` and migrated workflows to the local action path, with `scripts/vendor-setup-zig.sh` as the periodic refresh path from `~/Projects/oss/setup-zig`
-- Force-vendored the local action's `node_modules` because GitHub local JavaScript actions do not install dependencies at runtime and the repo-level `node_modules/` ignore rule would otherwise omit them from CI
+- Rolled back vendored local setup-zig action and restored workflows to `mlugg/setup-zig` to avoid carrying third-party action payload in-repo
 
 Projected impact from audit timings:
 

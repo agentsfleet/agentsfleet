@@ -24,7 +24,7 @@ jobs:
           apt-get install -y --no-install-recommends \
             valgrind git curl xz-utils ca-certificates make gpg libssl-dev
       - uses: actions/checkout@v6
-      - uses: ./.github/actions/setup-zig
+      - uses: mlugg/setup-zig@v2
         with:
           version: 0.15.2
       - name: Run memleak gate
