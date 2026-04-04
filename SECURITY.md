@@ -33,12 +33,3 @@ This is the short policy entrypoint for UseZombie.
 3. `UZ-SANDBOX-003` command blocked by policy
 4. Correlate by `trace_id` first, then `run_id`
 
-## Detailed Guides
-
-1. [Security Posture](docs/SECURITY.md)
-2. [Postgres Security](docs/security/POSTGRES.md)
-3. [Redis Security](docs/security/REDIS.md)
-4. [Tailscale Security](docs/security/TAILSCALE.md)
-5. [GitHub App Security](docs/security/GITHUB_APP.md)
-6. [Clerk Security](docs/security/CLERK.md)
-
