@@ -4,8 +4,7 @@
 **Milestone:** M7
 **Workstream:** 003
 **Date:** Mar 20, 2026
-**Status:** IN_PROGRESS
-**Branch:** v0.3.1-prerelease-readiness
+**Status:** DONE — environment verified; CLI/worker/UI acceptance moved to M26_001_ACCEPTANCE.md
 **Priority:** P0 — PROD release gate
 **Batch:** B3 — after M7_002 (HTTPZ Migration) and M7_005 (Network Connectivity)
 **Depends on:** M7_001_DEV_ACCEPTANCE (DEV gate must be green before PROD rollout), M7_005_NETWORK_CONNECTIVITY (PROD tunnel + database + cache access), M7_002_HTTPZ_MIGRATION

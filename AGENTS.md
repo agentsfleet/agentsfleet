@@ -209,9 +209,9 @@ Dimension examples:
 ### File Naming
 
 ```
-docs/spec/v1/M{Milestone}_{Workstream}_{DESCRIPTIVE_NAME}.md
+docs/v1/M{Milestone}_{Workstream}_{DESCRIPTIVE_NAME}.md
 
-Example: docs/spec/v1/M3_007_CLERK_AUTH.md
+Example: docs/v1/M3_007_CLERK_AUTH.md
          └─┬─┘ └──┬──┘ └┬─┘ └──────┬────────┘
            │      │     │           └─ Descriptive name (UPPERCASE_SNAKE_CASE)
            │      │     └─ Workstream (3-digit zero-padded: 001–009)
@@ -289,7 +289,7 @@ Description.
 Specs follow a directory-based lifecycle. These moves are **mandatory gates**, not bookkeeping.
 
 ```
-docs/spec/
+docs/
 ├── TEMPLATE.md          ← canonical milestone template
 └── v1/
     ├── pending/         ← spec created, not yet started
@@ -309,7 +309,7 @@ docs/spec/
 2. Update spec header: `Status: DONE`
 3. Move spec: `active/` → `done/`
 4. Commit the spec move on the feature branch
-5. **Gate:** Do not open PR until `docs/spec/v1/done/` contains the spec in the branch diff.
+5. **Gate:** Do not open PR until `docs/v1/done/` contains the spec in the branch diff.
 
 ### Prohibited
 
@@ -350,11 +350,11 @@ Every non-trivial task must follow this exact state machine:
 
 `PLAN → EXECUTE → VERIFY → DOCUMENT → COMMIT`
 
-**How to decide:** If the work creates a new spec, or continues work on an existing spec in `docs/spec/v1/active/` or `docs/spec/v1/pending/`, use the full lifecycle with CHORE bookends. Otherwise, skip CHORE steps.
+**How to decide:** If the work creates a new spec, or continues work on an existing spec in `docs/v1/active/` or `docs/v1/pending/`, use the full lifecycle with CHORE bookends. Otherwise, skip CHORE steps.
 
-**Trigger detection (CHORE open):** Before starting any work on a branch, scan for spec files in the diff (`git log --oneline --name-only`) and in `docs/spec/v1/pending/`. If a spec relates to the current work and is still in `pending/`, CHORE(open) is the mandatory first action — before research, before pushes, before PRs. The user's phrasing does not matter; the presence of a spec is the trigger.
+**Trigger detection (CHORE open):** Before starting any work on a branch, scan for spec files in the diff (`git log --oneline --name-only`) and in `docs/v1/pending/`. If a spec relates to the current work and is still in `pending/`, CHORE(open) is the mandatory first action — before research, before pushes, before PRs. The user's phrasing does not matter; the presence of a spec is the trigger.
 
-**Trigger detection (CHORE close):** After any COMMIT on a branch with a spec in `docs/spec/v1/active/`, immediately proceed to CHORE(close) — do not stop, do not wait for the user to ask. The completion of COMMIT is the trigger. Check: `ls docs/spec/v1/active/`. If a spec file exists there, CHORE(close) is the mandatory next action before reporting completion.
+**Trigger detection (CHORE close):** After any COMMIT on a branch with a spec in `docs/v1/active/`, immediately proceed to CHORE(close) — do not stop, do not wait for the user to ask. The completion of COMMIT is the trigger. Check: `ls docs/v1/active/`. If a spec file exists there, CHORE(close) is the mandatory next action before reporting completion.
 
 ### CHORE (open)
 
@@ -485,7 +485,7 @@ Required outputs:
 
 Gate:
 
-- Verify `docs/spec/v1/done/` contains the spec file in the branch diff.
+- Verify `docs/v1/done/` contains the spec file in the branch diff.
 - If the spec is not in `done/` — do not open the PR.
 
 Exit criteria:
