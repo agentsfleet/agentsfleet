@@ -416,6 +416,7 @@ jobs:
         working-directory: ui/packages/app
 
       - name: Restore Playwright browser cache
+        id: playwright-cache-app
         uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
@@ -424,7 +425,12 @@ jobs:
             ${{ runner.os }}-playwright-app-
 
       - name: Install Playwright browsers
-        run: bunx playwright install --with-deps chromium
+        run: |
+          if [ "${{ steps.playwright-cache-app.outputs.cache-hit }}" = "true" ]; then
+            bunx playwright install chromium
+          else
+            bunx playwright install --with-deps chromium
+          fi
         working-directory: ui/packages/app
 
       - name: Run smoke tests against DEV
