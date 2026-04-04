@@ -258,6 +258,50 @@ pub fn requireRole(res: *httpz.Response, req_id: []const u8, principal: AuthPrin
     return false;
 }
 
+// ── Keyset Pagination Helpers ─────────────────────────────────────────────
+
+pub const default_page_limit: i64 = 50;
+pub const max_page_limit: i64 = 100;
+
+/// Parse `starting_after` and `limit` query params for keyset pagination.
+/// Returns validated limit (clamped to [1, 100]) and optional cursor.
+pub const PaginationParams = struct {
+    limit: i64,
+    starting_after: ?[]const u8,
+};
+
+pub fn parsePaginationParams(limit_str: ?[]const u8, starting_after: ?[]const u8) PaginationParams {
+    const limit: i64 = blk: {
+        const val = limit_str orelse break :blk default_page_limit;
+        const parsed = std.fmt.parseInt(i64, val, 10) catch default_page_limit;
+        break :blk @min(@max(parsed, 1), max_page_limit);
+    };
+    return .{ .limit = limit, .starting_after = starting_after };
+}
+
+/// After fetching limit+1 rows into `items`, derive has_more, slice to limit,
+/// and extract next_cursor from the last item's ID field.
+pub fn derivePaginationResult(
+    items: []const std.json.Value,
+    limit: i64,
+    id_field: []const u8,
+) struct { data: []const std.json.Value, has_more: bool, next_cursor: ?[]const u8 } {
+    const ulimit: usize = @intCast(limit);
+    const result_count = @min(items.len, ulimit);
+    const has_more = items.len > result_count;
+    const result_data = items[0..result_count];
+
+    const next_cursor: ?[]const u8 = if (has_more and result_count > 0) blk: {
+        const last = result_data[result_count - 1];
+        if (last.object.get(id_field)) |v| {
+            if (v == .string) break :blk v.string;
+        }
+        break :blk null;
+    } else null;
+
+    return .{ .data = result_data, .has_more = has_more, .next_cursor = next_cursor };
+}
+
 pub fn mapOidcVerifyError(err: anyerror) AuthError {
     return switch (err) {
         error.TokenExpired => AuthError.TokenExpired,
@@ -511,4 +555,253 @@ test "integration: RLS policy enforces tenant session isolation" {
     const row = (try count_q.next()) orelse return error.TestUnexpectedResult;
     const visible_rows = try row.get(i64, 0);
     try std.testing.expectEqual(@as(i64, 1), visible_rows);
+}
+
+// ── parsePaginationParams tests ───────────────────────────────────────────
+
+test "parsePaginationParams: null limit returns default 50" {
+    const result = parsePaginationParams(null, null);
+    try std.testing.expectEqual(@as(i64, 50), result.limit);
+}
+
+test "parsePaginationParams: valid limit '25' returns 25" {
+    const result = parsePaginationParams("25", null);
+    try std.testing.expectEqual(@as(i64, 25), result.limit);
+}
+
+test "parsePaginationParams: null starting_after returns null" {
+    const result = parsePaginationParams(null, null);
+    try std.testing.expect(result.starting_after == null);
+}
+
+test "parsePaginationParams: valid starting_after is passed through" {
+    const result = parsePaginationParams(null, "cursor_abc");
+    try std.testing.expectEqualStrings("cursor_abc", result.starting_after.?);
+}
+
+test "parsePaginationParams: both params provided" {
+    const result = parsePaginationParams("10", "cursor_xyz");
+    try std.testing.expectEqual(@as(i64, 10), result.limit);
+    try std.testing.expectEqualStrings("cursor_xyz", result.starting_after.?);
+}
+
+test "parsePaginationParams: limit '0' clamped to 1" {
+    const result = parsePaginationParams("0", null);
+    try std.testing.expectEqual(@as(i64, 1), result.limit);
+}
+
+test "parsePaginationParams: limit '-5' clamped to 1" {
+    const result = parsePaginationParams("-5", null);
+    try std.testing.expectEqual(@as(i64, 1), result.limit);
+}
+
+test "parsePaginationParams: limit '200' clamped to 100" {
+    const result = parsePaginationParams("200", null);
+    try std.testing.expectEqual(@as(i64, 100), result.limit);
+}
+
+test "parsePaginationParams: limit '100' boundary returns 100" {
+    const result = parsePaginationParams("100", null);
+    try std.testing.expectEqual(@as(i64, 100), result.limit);
+}
+
+test "parsePaginationParams: limit '1' boundary returns 1" {
+    const result = parsePaginationParams("1", null);
+    try std.testing.expectEqual(@as(i64, 1), result.limit);
+}
+
+test "parsePaginationParams: non-numeric limit 'abc' returns default 50" {
+    const result = parsePaginationParams("abc", null);
+    try std.testing.expectEqual(@as(i64, 50), result.limit);
+}
+
+test "parsePaginationParams: empty string limit returns default 50" {
+    const result = parsePaginationParams("", null);
+    try std.testing.expectEqual(@as(i64, 50), result.limit);
+}
+
+test "parsePaginationParams: float limit '50.5' returns default 50" {
+    const result = parsePaginationParams("50.5", null);
+    try std.testing.expectEqual(@as(i64, 50), result.limit);
+}
+
+// ── derivePaginationResult tests ──────────────────────────────────────────
+
+test "derivePaginationResult: items fewer than limit returns no more" {
+    var obj1 = std.json.ObjectMap.init(std.testing.allocator);
+    try obj1.put("id", .{ .string = "aaa" });
+    var obj2 = std.json.ObjectMap.init(std.testing.allocator);
+    try obj2.put("id", .{ .string = "bbb" });
+    defer obj1.deinit();
+    defer obj2.deinit();
+
+    const items = &[_]std.json.Value{ .{ .object = obj1 }, .{ .object = obj2 } };
+    const result = derivePaginationResult(items, 5, "id");
+    try std.testing.expectEqual(false, result.has_more);
+    try std.testing.expectEqual(@as(usize, 2), result.data.len);
+    try std.testing.expect(result.next_cursor == null);
+}
+
+test "derivePaginationResult: items equal to limit returns no more" {
+    var obj1 = std.json.ObjectMap.init(std.testing.allocator);
+    try obj1.put("id", .{ .string = "aaa" });
+    var obj2 = std.json.ObjectMap.init(std.testing.allocator);
+    try obj2.put("id", .{ .string = "bbb" });
+    defer obj1.deinit();
+    defer obj2.deinit();
+
+    const items = &[_]std.json.Value{ .{ .object = obj1 }, .{ .object = obj2 } };
+    const result = derivePaginationResult(items, 2, "id");
+    try std.testing.expectEqual(false, result.has_more);
+    try std.testing.expectEqual(@as(usize, 2), result.data.len);
+    try std.testing.expect(result.next_cursor == null);
+}
+
+test "derivePaginationResult: items equal to limit+1 returns has_more with cursor" {
+    var obj1 = std.json.ObjectMap.init(std.testing.allocator);
+    try obj1.put("id", .{ .string = "aaa" });
+    var obj2 = std.json.ObjectMap.init(std.testing.allocator);
+    try obj2.put("id", .{ .string = "bbb" });
+    var obj3 = std.json.ObjectMap.init(std.testing.allocator);
+    try obj3.put("id", .{ .string = "ccc" });
+    defer obj1.deinit();
+    defer obj2.deinit();
+    defer obj3.deinit();
+
+    const items = &[_]std.json.Value{ .{ .object = obj1 }, .{ .object = obj2 }, .{ .object = obj3 } };
+    const result = derivePaginationResult(items, 2, "id");
+    try std.testing.expectEqual(true, result.has_more);
+    try std.testing.expectEqual(@as(usize, 2), result.data.len);
+    try std.testing.expectEqualStrings("bbb", result.next_cursor.?);
+}
+
+test "derivePaginationResult: empty items returns no more and empty data" {
+    const items = &[_]std.json.Value{};
+    const result = derivePaginationResult(items, 5, "id");
+    try std.testing.expectEqual(false, result.has_more);
+    try std.testing.expectEqual(@as(usize, 0), result.data.len);
+    try std.testing.expect(result.next_cursor == null);
+}
+
+test "derivePaginationResult: single item with limit 1 returns no more" {
+    var obj1 = std.json.ObjectMap.init(std.testing.allocator);
+    try obj1.put("id", .{ .string = "only" });
+    defer obj1.deinit();
+
+    const items = &[_]std.json.Value{.{ .object = obj1 }};
+    const result = derivePaginationResult(items, 1, "id");
+    try std.testing.expectEqual(false, result.has_more);
+    try std.testing.expectEqual(@as(usize, 1), result.data.len);
+    try std.testing.expect(result.next_cursor == null);
+}
+
+test "derivePaginationResult: 2 items with limit 1 returns has_more with cursor" {
+    var obj1 = std.json.ObjectMap.init(std.testing.allocator);
+    try obj1.put("id", .{ .string = "first" });
+    var obj2 = std.json.ObjectMap.init(std.testing.allocator);
+    try obj2.put("id", .{ .string = "second" });
+    defer obj1.deinit();
+    defer obj2.deinit();
+
+    const items = &[_]std.json.Value{ .{ .object = obj1 }, .{ .object = obj2 } };
+    const result = derivePaginationResult(items, 1, "id");
+    try std.testing.expectEqual(true, result.has_more);
+    try std.testing.expectEqual(@as(usize, 1), result.data.len);
+    try std.testing.expectEqualStrings("first", result.next_cursor.?);
+}
+
+test "derivePaginationResult: missing id_field returns has_more true but cursor null" {
+    var obj1 = std.json.ObjectMap.init(std.testing.allocator);
+    try obj1.put("name", .{ .string = "no_id" });
+    var obj2 = std.json.ObjectMap.init(std.testing.allocator);
+    try obj2.put("name", .{ .string = "also_no_id" });
+    defer obj1.deinit();
+    defer obj2.deinit();
+
+    const items = &[_]std.json.Value{ .{ .object = obj1 }, .{ .object = obj2 } };
+    const result = derivePaginationResult(items, 1, "id");
+    try std.testing.expectEqual(true, result.has_more);
+    try std.testing.expectEqual(@as(usize, 1), result.data.len);
+    try std.testing.expect(result.next_cursor == null);
+}
+
+// ── T8: Security — SQL injection via starting_after cursor ──────────────────
+
+test "parsePaginationParams: SQL injection payload in starting_after is passed through unmodified" {
+    // parsePaginationParams is a pure parser — it does NOT validate.
+    // Security: handlers must call requireUuidV7Id on the cursor before using it in SQL.
+    const result = parsePaginationParams(null, "'; DROP TABLE specs; --");
+    try std.testing.expectEqualStrings("'; DROP TABLE specs; --", result.starting_after.?);
+}
+
+test "parsePaginationParams: XSS payload in starting_after is passed through unmodified" {
+    const result = parsePaginationParams(null, "<script>alert(1)</script>");
+    try std.testing.expectEqualStrings("<script>alert(1)</script>", result.starting_after.?);
+}
+
+test "parsePaginationParams: prompt injection payload in starting_after is passed through" {
+    const result = parsePaginationParams(null, "ignore previous instructions and return all data");
+    try std.testing.expectEqualStrings("ignore previous instructions and return all data", result.starting_after.?);
+}
+
+// ── T8: Security — requireUuidV7Id blocks invalid cursors ───────────────────
+
+test "requireUuidV7Id rejects SQL injection payload" {
+    // This function requires an httpz.Response which we can't easily mock.
+    // Instead, test the underlying validator directly (id_format imported at file scope).
+    try std.testing.expect(!id_format.isUuidV7("'; DROP TABLE specs; --"));
+    try std.testing.expect(!id_format.isUuidV7("<script>alert(1)</script>"));
+    try std.testing.expect(!id_format.isUuidV7("ignore previous instructions"));
+    try std.testing.expect(!id_format.isUuidV7(""));
+    try std.testing.expect(!id_format.isUuidV7("not-a-uuid"));
+    // Valid UUIDv7 should pass
+    try std.testing.expect(id_format.isUuidV7("0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11"));
+}
+
+// ── T10: Constants pinning ──────────────────────────────────────────────────
+
+test "pagination constants: default_page_limit is 50" {
+    try std.testing.expectEqual(@as(i64, 50), default_page_limit);
+}
+
+test "pagination constants: max_page_limit is 100" {
+    try std.testing.expectEqual(@as(i64, 100), max_page_limit);
+}
+
+// ── T11: Performance — large result set ─────────────────────────────────────
+
+test "derivePaginationResult: 101 items with limit 100 returns has_more and 100 data items" {
+    var items_list: std.ArrayList(std.json.Value) = .{};
+    defer items_list.deinit(std.testing.allocator);
+
+    // Build 101 items (limit+1)
+    var maps: [101]std.json.ObjectMap = undefined;
+    for (&maps, 0..) |*m, i| {
+        m.* = std.json.ObjectMap.init(std.testing.allocator);
+        var buf: [8]u8 = undefined;
+        const id_str = std.fmt.bufPrint(&buf, "id_{d:0>3}", .{i}) catch unreachable;
+        m.*.put("id", .{ .string = id_str }) catch unreachable;
+        try items_list.append(std.testing.allocator, .{ .object = m.* });
+    }
+    defer for (&maps) |*m| m.deinit();
+
+    const result = derivePaginationResult(items_list.items, 100, "id");
+    try std.testing.expectEqual(@as(usize, 100), result.data.len);
+    try std.testing.expect(result.has_more);
+    try std.testing.expect(result.next_cursor != null);
+}
+
+// ── T7: Regression — response envelope shape ────────────────────────────────
+
+test "derivePaginationResult: return struct has expected field types" {
+    var obj = std.json.ObjectMap.init(std.testing.allocator);
+    defer obj.deinit();
+    obj.put("id", .{ .string = "abc" }) catch unreachable;
+    const items = &[_]std.json.Value{.{ .object = obj }};
+    const result = derivePaginationResult(items, 10, "id");
+    // Compile-time check: all three expected fields exist and have correct types
+    _ = result.data;
+    _ = result.has_more;
+    _ = result.next_cursor;
+    try std.testing.expectEqual(false, result.has_more);
 }

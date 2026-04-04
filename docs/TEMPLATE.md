@@ -1,14 +1,14 @@
 # Milestone Specification Template
 
 > **CANONICAL TEMPLATE** — Copy this file when creating new milestone specs.
-> Place the copy in `docs/spec/v1/pending/M{N}_{WS}_{NAME}.md`.
+> Place the copy in `docs/v1/pending/M{N}_{WS}_{NAME}.md`.
 > See `AGENTS.md → Specification Standards → Spec Lifecycle` for the full workflow.
 
 ---
 
 ## How to Use This Template
 
-1. Copy this file to `docs/spec/v1/pending/M{N}_{WS}_{DESCRIPTIVE_NAME}.md`.
+1. Copy this file to `docs/v1/pending/M{N}_{WS}_{DESCRIPTIVE_NAME}.md`.
 2. Replace all `{placeholder}` values with real content.
 3. Fill in **every** section, dimension, and acceptance criterion — no skeletons.
 4. Set `Status: PENDING` and commit to `main`.
@@ -80,9 +80,9 @@ A milestone is not complete until demo evidence is captured (commands, logs, scr
 ## File Naming
 
 ```
-docs/spec/v1/{pending|active|done}/M{Milestone}_{Workstream}_{DESCRIPTIVE_NAME}.md
+docs/v1/{pending|active|done}/M{Milestone}_{Workstream}_{DESCRIPTIVE_NAME}.md
 
-Example: docs/spec/v1/pending/M3_007_CLERK_AUTH.md
+Example: docs/v1/pending/M3_007_CLERK_AUTH.md
          └─┬─┘ └──┬──┘ └┬─┘ └──────┬────────┘
            │      │     │           └─ Descriptive name (UPPERCASE_SNAKE_CASE)
            │      │     └─ Workstream (3-digit zero-padded: 001–009)

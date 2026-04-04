@@ -14,9 +14,9 @@ describe("app api client", () => {
       ok: true,
       json: async () => ({
         data: [{ id: "ws_1" }],
-        total: 1,
-        page: 1,
-        per_page: 20,
+        has_more: false,
+        next_cursor: null,
+        request_id: "req_test",
       }),
     });
 
@@ -32,7 +32,7 @@ describe("app api client", () => {
         }),
       }),
     );
-    expect(res.total).toBe(1);
+    expect(res.has_more).toBe(false);
     expect(res.data[0]?.id).toBe("ws_1");
   });
 
@@ -74,7 +74,7 @@ describe("app api client", () => {
   it("requests workspace runs, single run, transitions, and specs", async () => {
     fetchMock.mockResolvedValue({
       ok: true,
-      json: async () => ({ data: [], total: 0, page: 1, per_page: 20 }),
+      json: async () => ({ data: [], has_more: false, next_cursor: null, request_id: "req_test" }),
     });
 
     const mod = await import("../lib/api");
@@ -121,6 +121,61 @@ describe("app api client", () => {
       status: 403,
       code: "FORBIDDEN",
     });
+  });
+
+  it("pagination response shape has_more=true includes next_cursor", async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        data: [{ id: "r1" }],
+        has_more: true,
+        next_cursor: "cursor_abc",
+        request_id: "req_1",
+      }),
+    });
+
+    const mod = await import("../lib/api");
+    const res = await mod.listRuns("ws_1", "token");
+
+    expect(res.has_more).toBe(true);
+    expect(res.next_cursor).toBe("cursor_abc");
+    expect(res.data.length).toBe(1);
+  });
+
+  it("pagination response shape has_more=false has null next_cursor", async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        data: [],
+        has_more: false,
+        next_cursor: null,
+        request_id: "req_1",
+      }),
+    });
+
+    const mod = await import("../lib/api");
+    const res = await mod.listSpecs("ws_1", "token");
+
+    expect(res.has_more).toBe(false);
+    expect(res.next_cursor).toBeNull();
+    expect(res.data.length).toBe(0);
+  });
+
+  it("pagination response includes request_id", async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        data: [{ id: "r1" }],
+        has_more: false,
+        next_cursor: null,
+        request_id: "req_test_123",
+      }),
+    });
+
+    const mod = await import("../lib/api");
+    const res = await mod.listRuns("ws_1", "token");
+
+    expect(res.request_id).toBe("req_test_123");
   });
 
   it("falls back to status text when error response JSON is unavailable", async () => {

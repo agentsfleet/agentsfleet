@@ -3,7 +3,7 @@
   "info": {
     "title": "UseZombie Control Plane API",
     "version": "1.0.0",
-    "description": "Agent Delivery Control Plane — spec-to-PR automation via Echo -> Scout -> Warden pipeline.",
+    "description": "Agent Delivery Control Plane \u2014 spec-to-PR automation via Echo -> Scout -> Warden pipeline.",
     "contact": {
       "name": "UseZombie",
       "url": "https://usezombie.com"
@@ -24,62 +24,86 @@
     {
       "name": "Health",
       "description": "System status and readiness probes",
-      "x-mintlify": { "navigation": "Health" }
+      "x-mintlify": {
+        "navigation": "Health"
+      }
     },
     {
       "name": "Authentication",
       "description": "CLI login flow via device-code style sessions and GitHub OAuth",
-      "x-mintlify": { "navigation": "Authentication" }
+      "x-mintlify": {
+        "navigation": "Authentication"
+      }
     },
     {
       "name": "Workspaces",
       "description": "Create and manage workspaces (one workspace per repo)",
-      "x-mintlify": { "navigation": "Workspaces" }
+      "x-mintlify": {
+        "navigation": "Workspaces"
+      }
     },
     {
       "name": "Specs",
-      "description": "Spec lifecycle — list, sync, and manage specification documents",
-      "x-mintlify": { "navigation": "Specs" }
+      "description": "Spec lifecycle \u2014 list, sync, and manage specification documents",
+      "x-mintlify": {
+        "navigation": "Specs"
+      }
     },
     {
       "name": "Runs",
-      "description": "Core spec-to-PR pipeline — queue, monitor, stream, retry, and cancel runs",
-      "x-mintlify": { "navigation": "Runs" }
+      "description": "Core spec-to-PR pipeline \u2014 queue, monitor, stream, retry, and cancel runs",
+      "x-mintlify": {
+        "navigation": "Runs"
+      }
     },
     {
       "name": "Agents",
       "description": "Agent profiles, trust scores, improvement reports, and self-tuning proposals",
-      "x-mintlify": { "navigation": "Agents" }
+      "x-mintlify": {
+        "navigation": "Agents"
+      }
     },
     {
       "name": "Harness",
-      "description": "Agent runtime configuration — author, compile, and activate harness configs",
-      "x-mintlify": { "navigation": "Harness" }
+      "description": "Agent runtime configuration \u2014 author, compile, and activate harness configs",
+      "x-mintlify": {
+        "navigation": "Harness"
+      }
     },
     {
       "name": "Credentials",
       "description": "BYOK (Bring Your Own Key) LLM provider credentials",
-      "x-mintlify": { "navigation": "Credentials" }
+      "x-mintlify": {
+        "navigation": "Credentials"
+      }
     },
     {
       "name": "Skill Secrets",
       "description": "Per-skill secret storage for agent skill integrations",
-      "x-mintlify": { "navigation": "Skill Secrets" }
+      "x-mintlify": {
+        "navigation": "Skill Secrets"
+      }
     },
     {
       "name": "Agent Relay",
-      "description": "Spec generation and preview via LLM — streaming endpoints for interactive authoring",
-      "x-mintlify": { "navigation": "Agent Relay" }
+      "description": "Spec generation and preview via LLM \u2014 streaming endpoints for interactive authoring",
+      "x-mintlify": {
+        "navigation": "Agent Relay"
+      }
     },
     {
       "name": "Admin",
-      "description": "Platform-wide configuration — manage shared LLM provider keys",
-      "x-mintlify": { "navigation": "Admin" }
+      "description": "Platform-wide configuration \u2014 manage shared LLM provider keys",
+      "x-mintlify": {
+        "navigation": "Admin"
+      }
     },
     {
       "name": "Billing",
       "description": "Plan upgrades, billing events, and scoring configuration",
-      "x-mintlify": { "navigation": "Billing" }
+      "x-mintlify": {
+        "navigation": "Billing"
+      }
     }
   ],
   "paths": {
@@ -88,7 +112,9 @@
         "operationId": "healthz",
         "summary": "Health check",
         "description": "Returns service health status including database connectivity and current commit SHA.",
-        "tags": ["Health"],
+        "tags": [
+          "Health"
+        ],
         "security": [],
         "responses": {
           "200": {
@@ -97,13 +123,44 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": ["status", "service", "database", "commit", "request_id"],
+                  "required": [
+                    "status",
+                    "service",
+                    "database",
+                    "commit",
+                    "request_id"
+                  ],
                   "properties": {
-                    "status": { "type": "string", "enum": ["ok", "degraded"], "description": "Overall service health" },
-                    "service": { "type": "string", "const": "zombied", "description": "Service identifier" },
-                    "database": { "type": "string", "enum": ["up", "down"], "description": "Database connectivity status" },
-                    "commit": { "type": "string", "description": "Git commit SHA of the running build" },
-                    "request_id": { "type": "string", "format": "uuid", "description": "Unique request identifier" }
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ok",
+                        "degraded"
+                      ],
+                      "description": "Overall service health"
+                    },
+                    "service": {
+                      "type": "string",
+                      "const": "zombied",
+                      "description": "Service identifier"
+                    },
+                    "database": {
+                      "type": "string",
+                      "enum": [
+                        "up",
+                        "down"
+                      ],
+                      "description": "Database connectivity status"
+                    },
+                    "commit": {
+                      "type": "string",
+                      "description": "Git commit SHA of the running build"
+                    },
+                    "request_id": {
+                      "type": "string",
+                      "format": "uuid",
+                      "description": "Unique request identifier"
+                    }
                   }
                 }
               }
@@ -117,7 +174,9 @@
         "operationId": "readyz",
         "summary": "Readiness probe",
         "description": "Kubernetes-style readiness probe. Returns detailed status of all dependencies including queue health metrics.",
-        "tags": ["Health"],
+        "tags": [
+          "Health"
+        ],
         "security": [],
         "responses": {
           "200": {
@@ -126,19 +185,71 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": ["ready", "database", "worker", "queue_dependency", "queue_depth", "queue_depth_breached", "queue_age_breached", "request_id"],
+                  "required": [
+                    "ready",
+                    "database",
+                    "worker",
+                    "queue_dependency",
+                    "queue_depth",
+                    "queue_depth_breached",
+                    "queue_age_breached",
+                    "request_id"
+                  ],
                   "properties": {
-                    "ready": { "type": "boolean", "description": "Overall readiness — true only when all dependencies are healthy" },
-                    "database": { "type": "boolean", "description": "Database connection pool is healthy" },
-                    "worker": { "type": "boolean", "description": "Background worker process is responsive" },
-                    "queue_dependency": { "type": "boolean", "description": "Queue backend is reachable" },
-                    "queue_depth": { "type": "integer", "description": "Current number of items in the work queue" },
-                    "oldest_queued_age_ms": { "type": ["integer", "null"], "description": "Age in milliseconds of the oldest queued item, null if queue is empty" },
-                    "queue_depth_breached": { "type": "boolean", "description": "True if queue depth exceeds the configured limit" },
-                    "queue_age_breached": { "type": "boolean", "description": "True if oldest queued item exceeds the configured age limit" },
-                    "queue_depth_limit": { "type": ["integer", "null"], "description": "Configured queue depth threshold, null if unconfigured" },
-                    "queue_age_limit_ms": { "type": ["integer", "null"], "description": "Configured queue age threshold in milliseconds, null if unconfigured" },
-                    "request_id": { "type": "string", "format": "uuid", "description": "Unique request identifier" }
+                    "ready": {
+                      "type": "boolean",
+                      "description": "Overall readiness \u2014 true only when all dependencies are healthy"
+                    },
+                    "database": {
+                      "type": "boolean",
+                      "description": "Database connection pool is healthy"
+                    },
+                    "worker": {
+                      "type": "boolean",
+                      "description": "Background worker process is responsive"
+                    },
+                    "queue_dependency": {
+                      "type": "boolean",
+                      "description": "Queue backend is reachable"
+                    },
+                    "queue_depth": {
+                      "type": "integer",
+                      "description": "Current number of items in the work queue"
+                    },
+                    "oldest_queued_age_ms": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ],
+                      "description": "Age in milliseconds of the oldest queued item, null if queue is empty"
+                    },
+                    "queue_depth_breached": {
+                      "type": "boolean",
+                      "description": "True if queue depth exceeds the configured limit"
+                    },
+                    "queue_age_breached": {
+                      "type": "boolean",
+                      "description": "True if oldest queued item exceeds the configured age limit"
+                    },
+                    "queue_depth_limit": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ],
+                      "description": "Configured queue depth threshold, null if unconfigured"
+                    },
+                    "queue_age_limit_ms": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ],
+                      "description": "Configured queue age threshold in milliseconds, null if unconfigured"
+                    },
+                    "request_id": {
+                      "type": "string",
+                      "format": "uuid",
+                      "description": "Unique request identifier"
+                    }
                   }
                 }
               }
@@ -152,7 +263,9 @@
         "operationId": "metrics",
         "summary": "Prometheus metrics",
         "description": "Returns Prometheus-format metrics for scraping by monitoring infrastructure.",
-        "tags": ["Health"],
+        "tags": [
+          "Health"
+        ],
         "security": [],
         "responses": {
           "200": {
@@ -173,7 +286,9 @@
         "operationId": "create_auth_session",
         "summary": "Start a CLI login session",
         "description": "Creates a device-code style auth session. Returns a session ID and a login URL to present to the user in their browser.",
-        "tags": ["Authentication"],
+        "tags": [
+          "Authentication"
+        ],
         "security": [],
         "responses": {
           "201": {
@@ -182,17 +297,35 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": ["session_id", "login_url", "request_id"],
+                  "required": [
+                    "session_id",
+                    "login_url",
+                    "request_id"
+                  ],
                   "properties": {
-                    "session_id": { "type": "string", "format": "uuid", "description": "Session identifier for polling" },
-                    "login_url": { "type": "string", "format": "uri", "description": "URL to open in the user's browser to complete authentication" },
-                    "request_id": { "type": "string", "format": "uuid", "description": "Unique request identifier" }
+                    "session_id": {
+                      "type": "string",
+                      "format": "uuid",
+                      "description": "Session identifier for polling"
+                    },
+                    "login_url": {
+                      "type": "string",
+                      "format": "uri",
+                      "description": "URL to open in the user's browser to complete authentication"
+                    },
+                    "request_id": {
+                      "type": "string",
+                      "format": "uuid",
+                      "description": "Unique request identifier"
+                    }
                   }
                 }
               }
             }
           },
-          "default": { "$ref": "#/components/responses/Error" }
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
         }
       }
     },
@@ -201,7 +334,9 @@
         "operationId": "poll_auth_session",
         "summary": "Poll auth session status",
         "description": "Polls a pending auth session. The CLI calls this repeatedly until status transitions to 'complete' (token available) or 'expired'.",
-        "tags": ["Authentication"],
+        "tags": [
+          "Authentication"
+        ],
         "security": [],
         "parameters": [
           {
@@ -209,7 +344,10 @@
             "in": "path",
             "required": true,
             "description": "Auth session identifier",
-            "schema": { "type": "string", "format": "uuid" }
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         ],
         "responses": {
@@ -219,17 +357,40 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": ["status", "request_id"],
+                  "required": [
+                    "status",
+                    "request_id"
+                  ],
                   "properties": {
-                    "status": { "type": "string", "enum": ["pending", "complete", "expired"], "description": "Current session status" },
-                    "token": { "type": ["string", "null"], "description": "Bearer token, present only when status is 'complete'" },
-                    "request_id": { "type": "string", "format": "uuid", "description": "Unique request identifier" }
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "pending",
+                        "complete",
+                        "expired"
+                      ],
+                      "description": "Current session status"
+                    },
+                    "token": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "Bearer token, present only when status is 'complete'"
+                    },
+                    "request_id": {
+                      "type": "string",
+                      "format": "uuid",
+                      "description": "Unique request identifier"
+                    }
                   }
                 }
               }
             }
           },
-          "default": { "$ref": "#/components/responses/Error" }
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
         }
       }
     },
@@ -238,7 +399,9 @@
         "operationId": "complete_auth_session",
         "summary": "Complete an auth session",
         "description": "Called by the web frontend after successful OAuth to attach a token to the pending session. The CLI's next poll will receive the token.",
-        "tags": ["Authentication"],
+        "tags": [
+          "Authentication"
+        ],
         "security": [],
         "parameters": [
           {
@@ -246,7 +409,10 @@
             "in": "path",
             "required": true,
             "description": "Auth session identifier",
-            "schema": { "type": "string", "format": "uuid" }
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         ],
         "requestBody": {
@@ -255,9 +421,14 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["token"],
+                "required": [
+                  "token"
+                ],
                 "properties": {
-                  "token": { "type": "string", "description": "Bearer token from OAuth flow" }
+                  "token": {
+                    "type": "string",
+                    "description": "Bearer token from OAuth flow"
+                  }
                 }
               }
             }
@@ -270,16 +441,28 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": ["status", "request_id"],
+                  "required": [
+                    "status",
+                    "request_id"
+                  ],
                   "properties": {
-                    "status": { "type": "string", "const": "complete" },
-                    "request_id": { "type": "string", "format": "uuid", "description": "Unique request identifier" }
+                    "status": {
+                      "type": "string",
+                      "const": "complete"
+                    },
+                    "request_id": {
+                      "type": "string",
+                      "format": "uuid",
+                      "description": "Unique request identifier"
+                    }
                   }
                 }
               }
             }
           },
-          "default": { "$ref": "#/components/responses/Error" }
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
         }
       }
     },
@@ -288,7 +471,9 @@
         "operationId": "github_oauth_callback",
         "summary": "GitHub OAuth callback",
         "description": "Handles the GitHub OAuth redirect. Exchanges the authorization code for an access token and redirects the user back to the app.",
-        "tags": ["Authentication"],
+        "tags": [
+          "Authentication"
+        ],
         "security": [],
         "parameters": [
           {
@@ -296,21 +481,27 @@
             "in": "query",
             "required": true,
             "description": "OAuth authorization code from GitHub",
-            "schema": { "type": "string" }
+            "schema": {
+              "type": "string"
+            }
           },
           {
             "name": "state",
             "in": "query",
             "required": true,
             "description": "CSRF state parameter",
-            "schema": { "type": "string" }
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
           "302": {
             "description": "Redirect to application after successful OAuth exchange"
           },
-          "default": { "$ref": "#/components/responses/Error" }
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
         }
       }
     },
@@ -319,17 +510,28 @@
         "operationId": "create_workspace",
         "summary": "Create a workspace",
         "description": "Creates a new workspace linked to a GitHub repository. Returns the workspace ID and a GitHub App install URL if the app is not yet installed on the repo.",
-        "tags": ["Workspaces"],
+        "tags": [
+          "Workspaces"
+        ],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["repo_url"],
+                "required": [
+                  "repo_url"
+                ],
                 "properties": {
-                  "repo_url": { "type": "string", "format": "uri", "description": "Full GitHub repository URL (e.g. https://github.com/org/repo)" },
-                  "default_branch": { "type": "string", "description": "Default branch name, defaults to 'main' if omitted" }
+                  "repo_url": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "Full GitHub repository URL (e.g. https://github.com/org/repo)"
+                  },
+                  "default_branch": {
+                    "type": "string",
+                    "description": "Default branch name, defaults to 'main' if omitted"
+                  }
                 }
               }
             }
@@ -342,19 +544,46 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": ["workspace_id", "repo_url", "default_branch", "install_url", "request_id"],
+                  "required": [
+                    "workspace_id",
+                    "repo_url",
+                    "default_branch",
+                    "install_url",
+                    "request_id"
+                  ],
                   "properties": {
-                    "workspace_id": { "type": "string", "format": "uuid", "description": "Unique workspace identifier" },
-                    "repo_url": { "type": "string", "format": "uri", "description": "Repository URL" },
-                    "default_branch": { "type": "string", "description": "Default branch for the workspace" },
-                    "install_url": { "type": "string", "format": "uri", "description": "GitHub App installation URL — direct user here if the app is not yet installed" },
-                    "request_id": { "type": "string", "format": "uuid", "description": "Unique request identifier" }
+                    "workspace_id": {
+                      "type": "string",
+                      "format": "uuid",
+                      "description": "Unique workspace identifier"
+                    },
+                    "repo_url": {
+                      "type": "string",
+                      "format": "uri",
+                      "description": "Repository URL"
+                    },
+                    "default_branch": {
+                      "type": "string",
+                      "description": "Default branch for the workspace"
+                    },
+                    "install_url": {
+                      "type": "string",
+                      "format": "uri",
+                      "description": "GitHub App installation URL \u2014 direct user here if the app is not yet installed"
+                    },
+                    "request_id": {
+                      "type": "string",
+                      "format": "uuid",
+                      "description": "Unique request identifier"
+                    }
                   }
                 }
               }
             }
           },
-          "default": { "$ref": "#/components/responses/Error" }
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
         }
       }
     },
@@ -363,14 +592,19 @@
         "operationId": "pause_workspace",
         "summary": "Pause or unpause a workspace",
         "description": "Toggles the paused state of a workspace. When paused, no new runs will be started and queued runs will be held. Uses optimistic concurrency via the version field.",
-        "tags": ["Workspaces"],
+        "tags": [
+          "Workspaces"
+        ],
         "parameters": [
           {
             "name": "workspace_id",
             "in": "path",
             "required": true,
             "description": "Workspace identifier",
-            "schema": { "type": "string", "format": "uuid" }
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         ],
         "requestBody": {
@@ -379,11 +613,24 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["pause", "reason", "version"],
+                "required": [
+                  "pause",
+                  "reason",
+                  "version"
+                ],
                 "properties": {
-                  "pause": { "type": "boolean", "description": "True to pause, false to unpause" },
-                  "reason": { "type": "string", "description": "Human-readable reason for the state change" },
-                  "version": { "type": "integer", "description": "Optimistic concurrency version — must match current workspace version" }
+                  "pause": {
+                    "type": "boolean",
+                    "description": "True to pause, false to unpause"
+                  },
+                  "reason": {
+                    "type": "string",
+                    "description": "Human-readable reason for the state change"
+                  },
+                  "version": {
+                    "type": "integer",
+                    "description": "Optimistic concurrency version \u2014 must match current workspace version"
+                  }
                 }
               }
             }
@@ -396,18 +643,35 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": ["workspace_id", "paused", "version", "request_id"],
+                  "required": [
+                    "workspace_id",
+                    "paused",
+                    "version",
+                    "request_id"
+                  ],
                   "properties": {
-                    "workspace_id": { "type": "string", "format": "uuid" },
-                    "paused": { "type": "boolean" },
-                    "version": { "type": "integer" },
-                    "request_id": { "type": "string", "format": "uuid" }
+                    "workspace_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "paused": {
+                      "type": "boolean"
+                    },
+                    "version": {
+                      "type": "integer"
+                    },
+                    "request_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    }
                   }
                 }
               }
             }
           },
-          "default": { "$ref": "#/components/responses/Error" }
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
         }
       }
     },
@@ -416,14 +680,19 @@
         "operationId": "sync_specs",
         "summary": "Sync specs from repo",
         "description": "Reads PENDING_*.md spec files from the repository's default branch and upserts them into the control plane. Returns the count of newly synced specs.",
-        "tags": ["Workspaces"],
+        "tags": [
+          "Workspaces"
+        ],
         "parameters": [
           {
             "name": "workspace_id",
             "in": "path",
             "required": true,
             "description": "Workspace identifier",
-            "schema": { "type": "string", "format": "uuid" }
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         ],
         "responses": {
@@ -433,22 +702,40 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": ["synced_count", "total_pending", "specs", "request_id"],
+                  "required": [
+                    "synced_count",
+                    "total_pending",
+                    "specs",
+                    "request_id"
+                  ],
                   "properties": {
-                    "synced_count": { "type": "integer", "description": "Number of specs synced in this request" },
-                    "total_pending": { "type": "integer", "description": "Total pending specs after sync" },
+                    "synced_count": {
+                      "type": "integer",
+                      "description": "Number of specs synced in this request"
+                    },
+                    "total_pending": {
+                      "type": "integer",
+                      "description": "Total pending specs after sync"
+                    },
                     "specs": {
                       "type": "array",
-                      "items": { "$ref": "#/components/schemas/SpecSummary" },
+                      "items": {
+                        "$ref": "#/components/schemas/SpecSummary"
+                      },
                       "description": "List of synced spec summaries"
                     },
-                    "request_id": { "type": "string", "format": "uuid" }
+                    "request_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    }
                   }
                 }
               }
             }
           },
-          "default": { "$ref": "#/components/responses/Error" }
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
         }
       }
     },
@@ -456,11 +743,52 @@
       "get": {
         "operationId": "list_specs",
         "summary": "List specs",
-        "description": "Lists specs for a workspace. Returns up to `limit` results ordered by creation date descending.",
-        "tags": ["Specs"],
+        "description": "Lists specs for a workspace using Stripe-style keyset pagination. Pass starting_after (spec_id of last item) to page forward.",
+        "tags": [
+          "Specs"
+        ],
         "parameters": [
-          { "name": "workspace_id", "in": "query", "required": true, "description": "Filter by workspace", "schema": { "type": "string", "format": "uuid" } },
-          { "name": "limit", "in": "query", "required": false, "description": "Maximum number of specs to return", "schema": { "type": "integer", "default": 50 } }
+          {
+            "name": "workspace_id",
+            "in": "query",
+            "required": true,
+            "description": "Filter by workspace",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "Maximum number of specs to return",
+            "schema": {
+              "type": "integer",
+              "default": 50,
+              "minimum": 1,
+              "maximum": 100
+            }
+          },
+          {
+            "name": "starting_after",
+            "in": "query",
+            "required": false,
+            "description": "Cursor for keyset pagination. Pass the spec_id of the last item on the previous page.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "description": "Filter specs by status",
+            "schema": {
+              "type": "string"
+            }
+          }
         ],
         "responses": {
           "200": {
@@ -469,20 +797,41 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": ["specs", "total", "request_id"],
+                  "required": [
+                    "data",
+                    "has_more",
+                    "request_id"
+                  ],
                   "properties": {
-                    "specs": {
+                    "data": {
                       "type": "array",
-                      "items": { "$ref": "#/components/schemas/SpecSummary" }
+                      "items": {
+                        "$ref": "#/components/schemas/SpecSummary"
+                      }
                     },
-                    "total": { "type": "integer", "description": "Total matching specs (before pagination)" },
-                    "request_id": { "type": "string", "format": "uuid" }
+                    "has_more": {
+                      "type": "boolean",
+                      "description": "Whether more results exist beyond this page"
+                    },
+                    "next_cursor": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "Cursor to pass as starting_after for the next page"
+                    },
+                    "request_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    }
                   }
                 }
               }
             }
           },
-          "default": { "$ref": "#/components/responses/Error" }
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
         }
       }
     },
@@ -491,22 +840,64 @@
         "operationId": "start_run",
         "summary": "Start a spec-to-PR run",
         "description": "Queues a new run for the given workspace. Provide either spec_id (reference an existing spec) or spec_markdown (inline spec content), but not both. The idempotency_key ensures at-most-once execution.",
-        "tags": ["Runs"],
+        "tags": [
+          "Runs"
+        ],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["workspace_id", "mode", "requested_by", "idempotency_key"],
+                "required": [
+                  "workspace_id",
+                  "mode",
+                  "requested_by",
+                  "idempotency_key"
+                ],
                 "properties": {
-                  "workspace_id": { "type": "string", "format": "uuid", "description": "Target workspace" },
-                  "spec_id": { "type": ["string", "null"], "format": "uuid", "description": "Reference to an existing spec. Mutually exclusive with spec_markdown." },
-                  "spec_markdown": { "type": ["string", "null"], "description": "Inline spec content in Markdown. Mutually exclusive with spec_id." },
-                  "mode": { "type": "string", "enum": ["pull_request"], "description": "Run mode — currently only pull_request is supported" },
-                  "requested_by": { "type": "string", "description": "Identity of the user or system that requested the run" },
-                  "idempotency_key": { "type": "string", "description": "Client-generated key for at-most-once execution" },
-                  "base_commit_sha": { "type": ["string", "null"], "description": "Pin the run to a specific base commit. Uses HEAD of default branch if null." }
+                  "workspace_id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "Target workspace"
+                  },
+                  "spec_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "uuid",
+                    "description": "Reference to an existing spec. Mutually exclusive with spec_markdown."
+                  },
+                  "spec_markdown": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "Inline spec content in Markdown. Mutually exclusive with spec_id."
+                  },
+                  "mode": {
+                    "type": "string",
+                    "enum": [
+                      "pull_request"
+                    ],
+                    "description": "Run mode \u2014 currently only pull_request is supported"
+                  },
+                  "requested_by": {
+                    "type": "string",
+                    "description": "Identity of the user or system that requested the run"
+                  },
+                  "idempotency_key": {
+                    "type": "string",
+                    "description": "Client-generated key for at-most-once execution"
+                  },
+                  "base_commit_sha": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "Pin the run to a specific base commit. Uses HEAD of default branch if null."
+                  }
                 }
               }
             }
@@ -519,30 +910,90 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": ["run_id", "workspace_id", "idempotency_key", "status", "request_id"],
+                  "required": [
+                    "run_id",
+                    "workspace_id",
+                    "idempotency_key",
+                    "status",
+                    "request_id"
+                  ],
                   "properties": {
-                    "run_id": { "type": "string", "format": "uuid" },
-                    "workspace_id": { "type": "string", "format": "uuid" },
-                    "spec_id": { "type": ["string", "null"], "format": "uuid" },
-                    "idempotency_key": { "type": "string" },
-                    "status": { "type": "string", "const": "queued" },
-                    "request_id": { "type": "string", "format": "uuid" }
+                    "run_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "workspace_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "spec_id": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "format": "uuid"
+                    },
+                    "idempotency_key": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string",
+                      "const": "queued"
+                    },
+                    "request_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    }
                   }
                 }
               }
             }
           },
-          "default": { "$ref": "#/components/responses/Error" }
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
         }
       },
       "get": {
         "operationId": "list_runs",
         "summary": "List runs",
-        "description": "Lists runs with optional workspace filtering. Returns most recent runs first.",
-        "tags": ["Runs"],
+        "description": "Lists runs using Stripe-style keyset pagination. Pass starting_after (run_id of last item) to page forward.",
+        "tags": [
+          "Runs"
+        ],
         "parameters": [
-          { "name": "workspace_id", "in": "query", "required": false, "description": "Filter by workspace", "schema": { "type": "string", "format": "uuid" } },
-          { "name": "limit", "in": "query", "required": false, "description": "Maximum number of runs to return", "schema": { "type": "integer", "default": 50 } }
+          {
+            "name": "workspace_id",
+            "in": "query",
+            "required": false,
+            "description": "Filter by workspace",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "Maximum number of runs to return",
+            "schema": {
+              "type": "integer",
+              "default": 50,
+              "minimum": 1,
+              "maximum": 100
+            }
+          },
+          {
+            "name": "starting_after",
+            "in": "query",
+            "required": false,
+            "description": "Cursor for keyset pagination. Pass the run_id of the last item on the previous page.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
         ],
         "responses": {
           "200": {
@@ -551,20 +1002,41 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": ["runs", "total", "request_id"],
+                  "required": [
+                    "data",
+                    "has_more",
+                    "request_id"
+                  ],
                   "properties": {
-                    "runs": {
+                    "data": {
                       "type": "array",
-                      "items": { "$ref": "#/components/schemas/RunSummary" }
+                      "items": {
+                        "$ref": "#/components/schemas/RunSummary"
+                      }
                     },
-                    "total": { "type": "integer", "description": "Total matching runs" },
-                    "request_id": { "type": "string", "format": "uuid" }
+                    "has_more": {
+                      "type": "boolean",
+                      "description": "Whether more results exist beyond this page"
+                    },
+                    "next_cursor": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "Cursor to pass as starting_after for the next page"
+                    },
+                    "request_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    }
                   }
                 }
               }
             }
           },
-          "default": { "$ref": "#/components/responses/Error" }
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
         }
       }
     },
@@ -573,14 +1045,19 @@
         "operationId": "get_run",
         "summary": "Get run details",
         "description": "Returns full run details including state transitions, artifacts produced by each pipeline stage, and policy events.",
-        "tags": ["Runs"],
+        "tags": [
+          "Runs"
+        ],
         "parameters": [
           {
             "name": "run_id",
             "in": "path",
             "required": true,
             "description": "Run identifier",
-            "schema": { "type": "string", "format": "uuid" }
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         ],
         "responses": {
@@ -590,41 +1067,105 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": ["run_id", "workspace_id", "spec_id", "current_state", "attempt", "mode", "requested_by", "branch", "created_at", "updated_at", "transitions", "artifacts", "policy_events", "request_id"],
+                  "required": [
+                    "run_id",
+                    "workspace_id",
+                    "spec_id",
+                    "current_state",
+                    "attempt",
+                    "mode",
+                    "requested_by",
+                    "branch",
+                    "created_at",
+                    "updated_at",
+                    "transitions",
+                    "artifacts",
+                    "policy_events",
+                    "request_id"
+                  ],
                   "properties": {
-                    "run_id": { "type": "string", "format": "uuid" },
-                    "workspace_id": { "type": "string", "format": "uuid" },
-                    "spec_id": { "type": "string", "format": "uuid" },
-                    "current_state": { "type": "string", "description": "Current pipeline state (e.g. SPEC_QUEUED, ECHO_RUNNING, PR_OPENED, FAILED)" },
-                    "attempt": { "type": "integer", "description": "Current attempt number (increments on retry)" },
-                    "mode": { "type": "string", "enum": ["pull_request"] },
-                    "requested_by": { "type": "string" },
-                    "branch": { "type": "string", "description": "Git branch created for this run" },
-                    "pr_url": { "type": ["string", "null"], "format": "uri", "description": "Pull request URL, null until PR is opened" },
-                    "created_at": { "type": "integer", "description": "Unix timestamp in milliseconds" },
-                    "updated_at": { "type": "integer", "description": "Unix timestamp in milliseconds" },
+                    "run_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "workspace_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "spec_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "current_state": {
+                      "type": "string",
+                      "description": "Current pipeline state (e.g. SPEC_QUEUED, ECHO_RUNNING, PR_OPENED, FAILED)"
+                    },
+                    "attempt": {
+                      "type": "integer",
+                      "description": "Current attempt number (increments on retry)"
+                    },
+                    "mode": {
+                      "type": "string",
+                      "enum": [
+                        "pull_request"
+                      ]
+                    },
+                    "requested_by": {
+                      "type": "string"
+                    },
+                    "branch": {
+                      "type": "string",
+                      "description": "Git branch created for this run"
+                    },
+                    "pr_url": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "format": "uri",
+                      "description": "Pull request URL, null until PR is opened"
+                    },
+                    "created_at": {
+                      "type": "integer",
+                      "description": "Unix timestamp in milliseconds"
+                    },
+                    "updated_at": {
+                      "type": "integer",
+                      "description": "Unix timestamp in milliseconds"
+                    },
                     "transitions": {
                       "type": "array",
-                      "items": { "$ref": "#/components/schemas/Transition" },
+                      "items": {
+                        "$ref": "#/components/schemas/Transition"
+                      },
                       "description": "Ordered list of state transitions"
                     },
                     "artifacts": {
                       "type": "array",
-                      "items": { "$ref": "#/components/schemas/Artifact" },
+                      "items": {
+                        "$ref": "#/components/schemas/Artifact"
+                      },
                       "description": "Artifacts produced during the run"
                     },
                     "policy_events": {
                       "type": "array",
-                      "items": { "$ref": "#/components/schemas/PolicyEvent" },
+                      "items": {
+                        "$ref": "#/components/schemas/PolicyEvent"
+                      },
                       "description": "Policy evaluation events"
                     },
-                    "request_id": { "type": "string", "format": "uuid" }
+                    "request_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    }
                   }
                 }
               }
             }
           },
-          "default": { "$ref": "#/components/responses/Error" }
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
         }
       }
     },
@@ -633,14 +1174,19 @@
         "operationId": "retry_run",
         "summary": "Retry a run",
         "description": "Retries a blocked or failed run. Increments the attempt counter and re-queues from the last checkpoint.",
-        "tags": ["Runs"],
+        "tags": [
+          "Runs"
+        ],
         "parameters": [
           {
             "name": "run_id",
             "in": "path",
             "required": true,
             "description": "Run identifier",
-            "schema": { "type": "string", "format": "uuid" }
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         ],
         "requestBody": {
@@ -649,10 +1195,19 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["reason", "retry_token"],
+                "required": [
+                  "reason",
+                  "retry_token"
+                ],
                 "properties": {
-                  "reason": { "type": "string", "description": "Human-readable reason for the retry" },
-                  "retry_token": { "type": "string", "description": "Idempotency token for the retry operation" }
+                  "reason": {
+                    "type": "string",
+                    "description": "Human-readable reason for the retry"
+                  },
+                  "retry_token": {
+                    "type": "string",
+                    "description": "Idempotency token for the retry operation"
+                  }
                 }
               }
             }
@@ -665,18 +1220,36 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": ["run_id", "state", "attempt", "request_id"],
+                  "required": [
+                    "run_id",
+                    "state",
+                    "attempt",
+                    "request_id"
+                  ],
                   "properties": {
-                    "run_id": { "type": "string", "format": "uuid" },
-                    "state": { "type": "string", "example": "SPEC_QUEUED" },
-                    "attempt": { "type": "integer" },
-                    "request_id": { "type": "string", "format": "uuid" }
+                    "run_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "state": {
+                      "type": "string",
+                      "example": "SPEC_QUEUED"
+                    },
+                    "attempt": {
+                      "type": "integer"
+                    },
+                    "request_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    }
                   }
                 }
               }
             }
           },
-          "default": { "$ref": "#/components/responses/Error" }
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
         }
       }
     },
@@ -685,14 +1258,19 @@
         "operationId": "replay_run",
         "summary": "Replay run events",
         "description": "Streams the complete event history of a finished run as Server-Sent Events. Useful for replaying a run's timeline in the UI.",
-        "tags": ["Runs"],
+        "tags": [
+          "Runs"
+        ],
         "parameters": [
           {
             "name": "run_id",
             "in": "path",
             "required": true,
             "description": "Run identifier",
-            "schema": { "type": "string", "format": "uuid" }
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         ],
         "responses": {
@@ -700,11 +1278,16 @@
             "description": "SSE event stream of run history",
             "content": {
               "text/event-stream": {
-                "schema": { "type": "string", "description": "Server-Sent Events stream" }
+                "schema": {
+                  "type": "string",
+                  "description": "Server-Sent Events stream"
+                }
               }
             }
           },
-          "default": { "$ref": "#/components/responses/Error" }
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
         }
       }
     },
@@ -713,14 +1296,19 @@
         "operationId": "stream_run",
         "summary": "Stream live run events",
         "description": "Streams live events for an in-progress run as Server-Sent Events. Connection stays open until the run completes or the client disconnects.",
-        "tags": ["Runs"],
+        "tags": [
+          "Runs"
+        ],
         "parameters": [
           {
             "name": "run_id",
             "in": "path",
             "required": true,
             "description": "Run identifier",
-            "schema": { "type": "string", "format": "uuid" }
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         ],
         "responses": {
@@ -728,11 +1316,16 @@
             "description": "SSE event stream of live run progress",
             "content": {
               "text/event-stream": {
-                "schema": { "type": "string", "description": "Server-Sent Events stream" }
+                "schema": {
+                  "type": "string",
+                  "description": "Server-Sent Events stream"
+                }
               }
             }
           },
-          "default": { "$ref": "#/components/responses/Error" }
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
         }
       }
     },
@@ -741,14 +1334,19 @@
         "operationId": "cancel_run",
         "summary": "Cancel a run",
         "description": "Cancels a queued or in-progress run. The run transitions to CANCELLED state and any active pipeline stage is aborted.",
-        "tags": ["Runs"],
+        "tags": [
+          "Runs"
+        ],
         "parameters": [
           {
             "name": "run_id",
             "in": "path",
             "required": true,
             "description": "Run identifier",
-            "schema": { "type": "string", "format": "uuid" }
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         ],
         "responses": {
@@ -758,17 +1356,32 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": ["run_id", "state", "request_id"],
+                  "required": [
+                    "run_id",
+                    "state",
+                    "request_id"
+                  ],
                   "properties": {
-                    "run_id": { "type": "string", "format": "uuid" },
-                    "state": { "type": "string", "const": "CANCELLED" },
-                    "request_id": { "type": "string", "format": "uuid" }
+                    "run_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "state": {
+                      "type": "string",
+                      "const": "CANCELLED"
+                    },
+                    "request_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    }
                   }
                 }
               }
             }
           },
-          "default": { "$ref": "#/components/responses/Error" }
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
         }
       }
     },
@@ -777,14 +1390,19 @@
         "operationId": "get_agent",
         "summary": "Get agent profile",
         "description": "Returns the agent's profile including trust level, streak data, and improvement status.",
-        "tags": ["Agents"],
+        "tags": [
+          "Agents"
+        ],
         "parameters": [
           {
             "name": "agent_id",
             "in": "path",
             "required": true,
             "description": "Agent identifier",
-            "schema": { "type": "string", "format": "uuid" }
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         ],
         "responses": {
@@ -794,12 +1412,19 @@
               "application/json": {
                 "schema": {
                   "allOf": [
-                    { "$ref": "#/components/schemas/AgentProfile" },
+                    {
+                      "$ref": "#/components/schemas/AgentProfile"
+                    },
                     {
                       "type": "object",
-                      "required": ["request_id"],
+                      "required": [
+                        "request_id"
+                      ],
                       "properties": {
-                        "request_id": { "type": "string", "format": "uuid" }
+                        "request_id": {
+                          "type": "string",
+                          "format": "uuid"
+                        }
                       }
                     }
                   ]
@@ -807,7 +1432,9 @@
               }
             }
           },
-          "default": { "$ref": "#/components/responses/Error" }
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
         }
       }
     },
@@ -815,15 +1442,42 @@
       "get": {
         "operationId": "get_agent_scores",
         "summary": "Get agent scores",
-        "description": "Returns the agent's current scoring data across all evaluated dimensions.",
-        "tags": ["Agents"],
+        "description": "Returns paginated agent scores using Stripe-style keyset pagination. Pass starting_after (score_id of last item) to page forward.",
+        "tags": [
+          "Agents"
+        ],
         "parameters": [
           {
             "name": "agent_id",
             "in": "path",
             "required": true,
             "description": "Agent identifier",
-            "schema": { "type": "string", "format": "uuid" }
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "starting_after",
+            "in": "query",
+            "required": false,
+            "description": "Cursor for keyset pagination. Pass the score_id of the last item on the previous page.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "Maximum number of scores to return (default 50, max 100)",
+            "schema": {
+              "type": "integer",
+              "default": 50,
+              "minimum": 1,
+              "maximum": 100
+            }
           }
         ],
         "responses": {
@@ -833,17 +1487,63 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": ["agent_id", "scores", "request_id"],
+                  "required": [
+                    "data",
+                    "has_more",
+                    "request_id"
+                  ],
                   "properties": {
-                    "agent_id": { "type": "string", "format": "uuid" },
-                    "scores": { "type": "object", "additionalProperties": true, "description": "Score values keyed by dimension name" },
-                    "request_id": { "type": "string", "format": "uuid" }
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "score_id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "run_id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "score": {
+                            "type": "integer"
+                          },
+                          "axis_scores": {
+                            "type": "string"
+                          },
+                          "weight_snapshot": {
+                            "type": "string"
+                          },
+                          "scored_at": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    },
+                    "has_more": {
+                      "type": "boolean",
+                      "description": "Whether more results exist beyond this page"
+                    },
+                    "next_cursor": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "Cursor to pass as starting_after for the next page"
+                    },
+                    "request_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    }
                   }
                 }
               }
             }
           },
-          "default": { "$ref": "#/components/responses/Error" }
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
         }
       }
     },
@@ -852,14 +1552,19 @@
         "operationId": "get_agent_improvement_report",
         "summary": "Get agent improvement report",
         "description": "Returns a detailed improvement report including proposal counts, approval rates, and score trends. Used to assess whether the agent's self-tuning is making progress.",
-        "tags": ["Agents"],
+        "tags": [
+          "Agents"
+        ],
         "parameters": [
           {
             "name": "agent_id",
             "in": "path",
             "required": true,
             "description": "Agent identifier",
-            "schema": { "type": "string", "format": "uuid" }
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         ],
         "responses": {
@@ -869,26 +1574,77 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": ["agent_id", "trust_level", "improvement_stalled_warning", "proposals_generated", "proposals_approved", "proposals_vetoed", "proposals_rejected", "proposals_applied", "avg_score_delta_per_applied_change", "current_tier", "baseline_tier", "request_id"],
+                  "required": [
+                    "agent_id",
+                    "trust_level",
+                    "improvement_stalled_warning",
+                    "proposals_generated",
+                    "proposals_approved",
+                    "proposals_vetoed",
+                    "proposals_rejected",
+                    "proposals_applied",
+                    "avg_score_delta_per_applied_change",
+                    "current_tier",
+                    "baseline_tier",
+                    "request_id"
+                  ],
                   "properties": {
-                    "agent_id": { "type": "string", "format": "uuid" },
-                    "trust_level": { "type": "string", "description": "Current trust level" },
-                    "improvement_stalled_warning": { "type": "boolean", "description": "True if the agent's improvement has plateaued" },
-                    "proposals_generated": { "type": "integer", "description": "Total proposals generated by the agent" },
-                    "proposals_approved": { "type": "integer", "description": "Proposals approved by the user" },
-                    "proposals_vetoed": { "type": "integer", "description": "Proposals vetoed by the user" },
-                    "proposals_rejected": { "type": "integer", "description": "Proposals rejected by the system or user" },
-                    "proposals_applied": { "type": "integer", "description": "Proposals successfully applied to the harness" },
-                    "avg_score_delta_per_applied_change": { "type": "number", "description": "Average score improvement per applied proposal" },
-                    "current_tier": { "type": "string", "description": "Current agent performance tier" },
-                    "baseline_tier": { "type": "string", "description": "Baseline tier the agent started at" },
-                    "request_id": { "type": "string", "format": "uuid" }
+                    "agent_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "trust_level": {
+                      "type": "string",
+                      "description": "Current trust level"
+                    },
+                    "improvement_stalled_warning": {
+                      "type": "boolean",
+                      "description": "True if the agent's improvement has plateaued"
+                    },
+                    "proposals_generated": {
+                      "type": "integer",
+                      "description": "Total proposals generated by the agent"
+                    },
+                    "proposals_approved": {
+                      "type": "integer",
+                      "description": "Proposals approved by the user"
+                    },
+                    "proposals_vetoed": {
+                      "type": "integer",
+                      "description": "Proposals vetoed by the user"
+                    },
+                    "proposals_rejected": {
+                      "type": "integer",
+                      "description": "Proposals rejected by the system or user"
+                    },
+                    "proposals_applied": {
+                      "type": "integer",
+                      "description": "Proposals successfully applied to the harness"
+                    },
+                    "avg_score_delta_per_applied_change": {
+                      "type": "number",
+                      "description": "Average score improvement per applied proposal"
+                    },
+                    "current_tier": {
+                      "type": "string",
+                      "description": "Current agent performance tier"
+                    },
+                    "baseline_tier": {
+                      "type": "string",
+                      "description": "Baseline tier the agent started at"
+                    },
+                    "request_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    }
                   }
                 }
               }
             }
           },
-          "default": { "$ref": "#/components/responses/Error" }
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
         }
       }
     },
@@ -897,14 +1653,19 @@
         "operationId": "list_agent_proposals",
         "summary": "List agent proposals",
         "description": "Lists self-tuning proposals generated by the agent. Each proposal represents a suggested change to the agent's harness configuration.",
-        "tags": ["Agents"],
+        "tags": [
+          "Agents"
+        ],
         "parameters": [
           {
             "name": "agent_id",
             "in": "path",
             "required": true,
             "description": "Agent identifier",
-            "schema": { "type": "string", "format": "uuid" }
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         ],
         "responses": {
@@ -914,19 +1675,29 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": ["data", "request_id"],
+                  "required": [
+                    "data",
+                    "request_id"
+                  ],
                   "properties": {
                     "data": {
                       "type": "array",
-                      "items": { "$ref": "#/components/schemas/Proposal" }
+                      "items": {
+                        "$ref": "#/components/schemas/Proposal"
+                      }
                     },
-                    "request_id": { "type": "string", "format": "uuid" }
+                    "request_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    }
                   }
                 }
               }
             }
           },
-          "default": { "$ref": "#/components/responses/Error" }
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
         }
       }
     },
@@ -934,22 +1705,30 @@
       "post": {
         "operationId": "approve_proposal",
         "summary": "Approve a proposal",
-        "description": "Approves a pending proposal, applying the proposed changes to the agent's harness configuration. Returns the resulting status — APPLIED if successful, CONFIG_CHANGED if there was a conflict, or REJECTED on validation failure.",
-        "tags": ["Agents"],
+        "description": "Approves a pending proposal, applying the proposed changes to the agent's harness configuration. Returns the resulting status \u2014 APPLIED if successful, CONFIG_CHANGED if there was a conflict, or REJECTED on validation failure.",
+        "tags": [
+          "Agents"
+        ],
         "parameters": [
           {
             "name": "agent_id",
             "in": "path",
             "required": true,
             "description": "Agent identifier",
-            "schema": { "type": "string", "format": "uuid" }
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           },
           {
             "name": "proposal_id",
             "in": "path",
             "required": true,
             "description": "Proposal identifier",
-            "schema": { "type": "string", "format": "uuid" }
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         ],
         "responses": {
@@ -959,18 +1738,42 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": ["agent_id", "proposal_id", "status", "request_id"],
+                  "required": [
+                    "agent_id",
+                    "proposal_id",
+                    "status",
+                    "request_id"
+                  ],
                   "properties": {
-                    "agent_id": { "type": "string", "format": "uuid" },
-                    "proposal_id": { "type": "string", "format": "uuid" },
-                    "status": { "type": "string", "enum": ["APPLIED", "CONFIG_CHANGED", "REJECTED"], "description": "Outcome of the approval" },
-                    "request_id": { "type": "string", "format": "uuid" }
+                    "agent_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "proposal_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "APPLIED",
+                        "CONFIG_CHANGED",
+                        "REJECTED"
+                      ],
+                      "description": "Outcome of the approval"
+                    },
+                    "request_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    }
                   }
                 }
               }
             }
           },
-          "default": { "$ref": "#/components/responses/Error" }
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
         }
       }
     },
@@ -979,21 +1782,29 @@
         "operationId": "reject_proposal",
         "summary": "Reject a proposal",
         "description": "Rejects a pending proposal with a reason. The agent uses rejection reasons to improve future proposals.",
-        "tags": ["Agents"],
+        "tags": [
+          "Agents"
+        ],
         "parameters": [
           {
             "name": "agent_id",
             "in": "path",
             "required": true,
             "description": "Agent identifier",
-            "schema": { "type": "string", "format": "uuid" }
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           },
           {
             "name": "proposal_id",
             "in": "path",
             "required": true,
             "description": "Proposal identifier",
-            "schema": { "type": "string", "format": "uuid" }
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         ],
         "requestBody": {
@@ -1002,9 +1813,14 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["rejection_reason"],
+                "required": [
+                  "rejection_reason"
+                ],
                 "properties": {
-                  "rejection_reason": { "type": "string", "description": "Why the proposal was rejected — fed back to the agent for learning" }
+                  "rejection_reason": {
+                    "type": "string",
+                    "description": "Why the proposal was rejected \u2014 fed back to the agent for learning"
+                  }
                 }
               }
             }
@@ -1017,19 +1833,41 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": ["agent_id", "proposal_id", "status", "rejection_reason", "request_id"],
+                  "required": [
+                    "agent_id",
+                    "proposal_id",
+                    "status",
+                    "rejection_reason",
+                    "request_id"
+                  ],
                   "properties": {
-                    "agent_id": { "type": "string", "format": "uuid" },
-                    "proposal_id": { "type": "string", "format": "uuid" },
-                    "status": { "type": "string", "const": "REJECTED" },
-                    "rejection_reason": { "type": "string" },
-                    "request_id": { "type": "string", "format": "uuid" }
+                    "agent_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "proposal_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "status": {
+                      "type": "string",
+                      "const": "REJECTED"
+                    },
+                    "rejection_reason": {
+                      "type": "string"
+                    },
+                    "request_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    }
                   }
                 }
               }
             }
           },
-          "default": { "$ref": "#/components/responses/Error" }
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
         }
       }
     },
@@ -1038,21 +1876,29 @@
         "operationId": "veto_proposal",
         "summary": "Veto a proposal",
         "description": "Vetoes a proposal. Unlike rejection, a veto signals strong disagreement and has a larger negative weight on the agent's proposal scoring.",
-        "tags": ["Agents"],
+        "tags": [
+          "Agents"
+        ],
         "parameters": [
           {
             "name": "agent_id",
             "in": "path",
             "required": true,
             "description": "Agent identifier",
-            "schema": { "type": "string", "format": "uuid" }
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           },
           {
             "name": "proposal_id",
             "in": "path",
             "required": true,
             "description": "Proposal identifier",
-            "schema": { "type": "string", "format": "uuid" }
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         ],
         "responses": {
@@ -1062,18 +1908,37 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": ["agent_id", "proposal_id", "status", "request_id"],
+                  "required": [
+                    "agent_id",
+                    "proposal_id",
+                    "status",
+                    "request_id"
+                  ],
                   "properties": {
-                    "agent_id": { "type": "string", "format": "uuid" },
-                    "proposal_id": { "type": "string", "format": "uuid" },
-                    "status": { "type": "string", "const": "VETOED" },
-                    "request_id": { "type": "string", "format": "uuid" }
+                    "agent_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "proposal_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "status": {
+                      "type": "string",
+                      "const": "VETOED"
+                    },
+                    "request_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    }
                   }
                 }
               }
             }
           },
-          "default": { "$ref": "#/components/responses/Error" }
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
         }
       }
     },
@@ -1082,21 +1947,29 @@
         "operationId": "revert_harness_change",
         "summary": "Revert a harness change",
         "description": "Reverts a previously applied harness configuration change. Creates a new config version that undoes the specified change.",
-        "tags": ["Agents"],
+        "tags": [
+          "Agents"
+        ],
         "parameters": [
           {
             "name": "agent_id",
             "in": "path",
             "required": true,
             "description": "Agent identifier",
-            "schema": { "type": "string", "format": "uuid" }
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           },
           {
             "name": "change_id",
             "in": "path",
             "required": true,
             "description": "Change identifier to revert",
-            "schema": { "type": "string", "format": "uuid" }
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         ],
         "responses": {
@@ -1106,23 +1979,67 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": ["agent_id", "proposal_id", "change_id", "reverted_from", "config_version_id", "status", "applied_by", "applied_at", "request_id"],
+                  "required": [
+                    "agent_id",
+                    "proposal_id",
+                    "change_id",
+                    "reverted_from",
+                    "config_version_id",
+                    "status",
+                    "applied_by",
+                    "applied_at",
+                    "request_id"
+                  ],
                   "properties": {
-                    "agent_id": { "type": "string", "format": "uuid" },
-                    "proposal_id": { "type": "string", "format": "uuid", "description": "Proposal that originally produced this change" },
-                    "change_id": { "type": "string", "format": "uuid", "description": "The change that was reverted" },
-                    "reverted_from": { "type": "string", "format": "uuid", "description": "Config version that contained the change" },
-                    "config_version_id": { "type": "string", "format": "uuid", "description": "New config version after revert" },
-                    "status": { "type": "string", "const": "APPLIED" },
-                    "applied_by": { "type": "string", "description": "Identity that performed the revert" },
-                    "applied_at": { "type": "string", "format": "date-time", "description": "Timestamp of the revert" },
-                    "request_id": { "type": "string", "format": "uuid" }
+                    "agent_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "proposal_id": {
+                      "type": "string",
+                      "format": "uuid",
+                      "description": "Proposal that originally produced this change"
+                    },
+                    "change_id": {
+                      "type": "string",
+                      "format": "uuid",
+                      "description": "The change that was reverted"
+                    },
+                    "reverted_from": {
+                      "type": "string",
+                      "format": "uuid",
+                      "description": "Config version that contained the change"
+                    },
+                    "config_version_id": {
+                      "type": "string",
+                      "format": "uuid",
+                      "description": "New config version after revert"
+                    },
+                    "status": {
+                      "type": "string",
+                      "const": "APPLIED"
+                    },
+                    "applied_by": {
+                      "type": "string",
+                      "description": "Identity that performed the revert"
+                    },
+                    "applied_at": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "Timestamp of the revert"
+                    },
+                    "request_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    }
                   }
                 }
               }
             }
           },
-          "default": { "$ref": "#/components/responses/Error" }
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
         }
       }
     },
@@ -1130,15 +2047,20 @@
       "put": {
         "operationId": "put_harness_source",
         "summary": "Set harness source config",
-        "description": "Creates or updates the harness source configuration for an agent in a workspace. This is the authoring step — the config must be compiled and activated before it takes effect.",
-        "tags": ["Harness"],
+        "description": "Creates or updates the harness source configuration for an agent in a workspace. This is the authoring step \u2014 the config must be compiled and activated before it takes effect.",
+        "tags": [
+          "Harness"
+        ],
         "parameters": [
           {
             "name": "workspace_id",
             "in": "path",
             "required": true,
             "description": "Workspace identifier",
-            "schema": { "type": "string", "format": "uuid" }
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         ],
         "requestBody": {
@@ -1147,11 +2069,28 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["agent_id", "skills", "instructions"],
+                "required": [
+                  "agent_id",
+                  "skills",
+                  "instructions"
+                ],
                 "properties": {
-                  "agent_id": { "type": "string", "format": "uuid", "description": "Agent this config applies to" },
-                  "skills": { "type": "array", "items": { "type": "string" }, "description": "List of skill identifiers to enable" },
-                  "instructions": { "type": "string", "description": "System-level instructions for the agent" }
+                  "agent_id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "Agent this config applies to"
+                  },
+                  "skills": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "List of skill identifiers to enable"
+                  },
+                  "instructions": {
+                    "type": "string",
+                    "description": "System-level instructions for the agent"
+                  }
                 }
               }
             }
@@ -1164,20 +2103,48 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": ["workspace_id", "agent_id", "config_version_id", "version", "status", "request_id"],
+                  "required": [
+                    "workspace_id",
+                    "agent_id",
+                    "config_version_id",
+                    "version",
+                    "status",
+                    "request_id"
+                  ],
                   "properties": {
-                    "workspace_id": { "type": "string", "format": "uuid" },
-                    "agent_id": { "type": "string", "format": "uuid" },
-                    "config_version_id": { "type": "string", "format": "uuid", "description": "Version ID for this draft config" },
-                    "version": { "type": "integer", "description": "Monotonically increasing version number" },
-                    "status": { "type": "string", "const": "DRAFT" },
-                    "request_id": { "type": "string", "format": "uuid" }
+                    "workspace_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "agent_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "config_version_id": {
+                      "type": "string",
+                      "format": "uuid",
+                      "description": "Version ID for this draft config"
+                    },
+                    "version": {
+                      "type": "integer",
+                      "description": "Monotonically increasing version number"
+                    },
+                    "status": {
+                      "type": "string",
+                      "const": "DRAFT"
+                    },
+                    "request_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    }
                   }
                 }
               }
             }
           },
-          "default": { "$ref": "#/components/responses/Error" }
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
         }
       }
     },
@@ -1186,14 +2153,19 @@
         "operationId": "compile_harness",
         "summary": "Compile harness config",
         "description": "Validates and compiles a draft harness config. The compiled config is checked for skill compatibility, instruction validity, and resource constraints.",
-        "tags": ["Harness"],
+        "tags": [
+          "Harness"
+        ],
         "parameters": [
           {
             "name": "workspace_id",
             "in": "path",
             "required": true,
             "description": "Workspace identifier",
-            "schema": { "type": "string", "format": "uuid" }
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         ],
         "requestBody": {
@@ -1202,9 +2174,15 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["config_version_id"],
+                "required": [
+                  "config_version_id"
+                ],
                 "properties": {
-                  "config_version_id": { "type": "string", "format": "uuid", "description": "Draft config version to compile" }
+                  "config_version_id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "Draft config version to compile"
+                  }
                 }
               }
             }
@@ -1217,21 +2195,55 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": ["compile_job_id", "workspace_id", "agent_id", "config_version_id", "is_valid", "request_id"],
+                  "required": [
+                    "compile_job_id",
+                    "workspace_id",
+                    "agent_id",
+                    "config_version_id",
+                    "is_valid",
+                    "request_id"
+                  ],
                   "properties": {
-                    "compile_job_id": { "type": "string", "format": "uuid", "description": "Compilation job identifier" },
-                    "workspace_id": { "type": "string", "format": "uuid" },
-                    "agent_id": { "type": "string", "format": "uuid" },
-                    "config_version_id": { "type": "string", "format": "uuid" },
-                    "is_valid": { "type": "boolean", "description": "True if compilation succeeded without errors" },
-                    "validation_report_json": { "type": ["string", "null"], "description": "JSON-encoded validation report with warnings and errors, null if fully valid" },
-                    "request_id": { "type": "string", "format": "uuid" }
+                    "compile_job_id": {
+                      "type": "string",
+                      "format": "uuid",
+                      "description": "Compilation job identifier"
+                    },
+                    "workspace_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "agent_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "config_version_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "is_valid": {
+                      "type": "boolean",
+                      "description": "True if compilation succeeded without errors"
+                    },
+                    "validation_report_json": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "JSON-encoded validation report with warnings and errors, null if fully valid"
+                    },
+                    "request_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    }
                   }
                 }
               }
             }
           },
-          "default": { "$ref": "#/components/responses/Error" }
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
         }
       }
     },
@@ -1240,14 +2252,19 @@
         "operationId": "activate_harness",
         "summary": "Activate harness config",
         "description": "Activates a compiled harness config version, making it the active configuration for the agent. Only compiled configs can be activated.",
-        "tags": ["Harness"],
+        "tags": [
+          "Harness"
+        ],
         "parameters": [
           {
             "name": "workspace_id",
             "in": "path",
             "required": true,
             "description": "Workspace identifier",
-            "schema": { "type": "string", "format": "uuid" }
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         ],
         "requestBody": {
@@ -1256,9 +2273,15 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["config_version_id"],
+                "required": [
+                  "config_version_id"
+                ],
                 "properties": {
-                  "config_version_id": { "type": "string", "format": "uuid", "description": "Compiled config version to activate" }
+                  "config_version_id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "Compiled config version to activate"
+                  }
                 }
               }
             }
@@ -1271,19 +2294,42 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": ["workspace_id", "agent_id", "config_version_id", "status", "request_id"],
+                  "required": [
+                    "workspace_id",
+                    "agent_id",
+                    "config_version_id",
+                    "status",
+                    "request_id"
+                  ],
                   "properties": {
-                    "workspace_id": { "type": "string", "format": "uuid" },
-                    "agent_id": { "type": "string", "format": "uuid" },
-                    "config_version_id": { "type": "string", "format": "uuid" },
-                    "status": { "type": "string", "const": "ACTIVE" },
-                    "request_id": { "type": "string", "format": "uuid" }
+                    "workspace_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "agent_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "config_version_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "status": {
+                      "type": "string",
+                      "const": "ACTIVE"
+                    },
+                    "request_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    }
                   }
                 }
               }
             }
           },
-          "default": { "$ref": "#/components/responses/Error" }
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
         }
       }
     },
@@ -1292,14 +2338,19 @@
         "operationId": "get_active_harness",
         "summary": "Get active harness config",
         "description": "Returns the currently active harness configuration for the workspace, including the compiled agent profile.",
-        "tags": ["Harness"],
+        "tags": [
+          "Harness"
+        ],
         "parameters": [
           {
             "name": "workspace_id",
             "in": "path",
             "required": true,
             "description": "Workspace identifier",
-            "schema": { "type": "string", "format": "uuid" }
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         ],
         "responses": {
@@ -1309,19 +2360,42 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": ["workspace_id", "agent_id", "config_version_id", "compiled_profile_json", "request_id"],
+                  "required": [
+                    "workspace_id",
+                    "agent_id",
+                    "config_version_id",
+                    "compiled_profile_json",
+                    "request_id"
+                  ],
                   "properties": {
-                    "workspace_id": { "type": "string", "format": "uuid" },
-                    "agent_id": { "type": "string", "format": "uuid" },
-                    "config_version_id": { "type": "string", "format": "uuid" },
-                    "compiled_profile_json": { "type": "string", "description": "JSON-encoded compiled agent profile" },
-                    "request_id": { "type": "string", "format": "uuid" }
+                    "workspace_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "agent_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "config_version_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "compiled_profile_json": {
+                      "type": "string",
+                      "description": "JSON-encoded compiled agent profile"
+                    },
+                    "request_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    }
                   }
                 }
               }
             }
           },
-          "default": { "$ref": "#/components/responses/Error" }
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
         }
       }
     },
@@ -1330,14 +2404,19 @@
         "operationId": "put_llm_credential",
         "summary": "Set LLM credential",
         "description": "Stores or replaces the BYOK LLM API key for a workspace. The key is encrypted at rest and never returned in API responses.",
-        "tags": ["Credentials"],
+        "tags": [
+          "Credentials"
+        ],
         "parameters": [
           {
             "name": "workspace_id",
             "in": "path",
             "required": true,
             "description": "Workspace identifier",
-            "schema": { "type": "string", "format": "uuid" }
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         ],
         "requestBody": {
@@ -1346,10 +2425,19 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["provider", "api_key"],
+                "required": [
+                  "provider",
+                  "api_key"
+                ],
                 "properties": {
-                  "provider": { "type": "string", "description": "LLM provider name (e.g. openai, anthropic)" },
-                  "api_key": { "type": "string", "description": "API key for the provider — encrypted at rest, never echoed" }
+                  "provider": {
+                    "type": "string",
+                    "description": "LLM provider name (e.g. openai, anthropic)"
+                  },
+                  "api_key": {
+                    "type": "string",
+                    "description": "API key for the provider \u2014 encrypted at rest, never echoed"
+                  }
                 }
               }
             }
@@ -1359,21 +2447,28 @@
           "204": {
             "description": "Credential stored"
           },
-          "default": { "$ref": "#/components/responses/Error" }
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
         }
       },
       "get": {
         "operationId": "get_llm_credential",
         "summary": "Get LLM credential status",
         "description": "Returns whether a BYOK LLM key is configured for the workspace and which provider it belongs to. Never returns the actual key.",
-        "tags": ["Credentials"],
+        "tags": [
+          "Credentials"
+        ],
         "parameters": [
           {
             "name": "workspace_id",
             "in": "path",
             "required": true,
             "description": "Workspace identifier",
-            "schema": { "type": "string", "format": "uuid" }
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         ],
         "responses": {
@@ -1383,38 +2478,60 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": ["provider", "has_key", "request_id"],
+                  "required": [
+                    "provider",
+                    "has_key",
+                    "request_id"
+                  ],
                   "properties": {
-                    "provider": { "type": "string", "description": "Configured LLM provider name" },
-                    "has_key": { "type": "boolean", "description": "True if an API key is stored" },
-                    "request_id": { "type": "string", "format": "uuid" }
+                    "provider": {
+                      "type": "string",
+                      "description": "Configured LLM provider name"
+                    },
+                    "has_key": {
+                      "type": "boolean",
+                      "description": "True if an API key is stored"
+                    },
+                    "request_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    }
                   }
                 }
               }
             }
           },
-          "default": { "$ref": "#/components/responses/Error" }
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
         }
       },
       "delete": {
         "operationId": "delete_llm_credential",
         "summary": "Delete LLM credential",
         "description": "Removes the stored BYOK LLM API key for the workspace. Future runs will fall back to platform-provided keys if available.",
-        "tags": ["Credentials"],
+        "tags": [
+          "Credentials"
+        ],
         "parameters": [
           {
             "name": "workspace_id",
             "in": "path",
             "required": true,
             "description": "Workspace identifier",
-            "schema": { "type": "string", "format": "uuid" }
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         ],
         "responses": {
           "204": {
             "description": "Credential deleted"
           },
-          "default": { "$ref": "#/components/responses/Error" }
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
         }
       }
     },
@@ -1423,28 +2540,37 @@
         "operationId": "put_skill_secret",
         "summary": "Set a skill secret",
         "description": "Stores a secret value for a specific skill in a workspace. Secrets are scoped to the skill and can be further scoped to host-only or sandbox-only access.",
-        "tags": ["Skill Secrets"],
+        "tags": [
+          "Skill Secrets"
+        ],
         "parameters": [
           {
             "name": "workspace_id",
             "in": "path",
             "required": true,
             "description": "Workspace identifier",
-            "schema": { "type": "string", "format": "uuid" }
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           },
           {
             "name": "skill_ref",
             "in": "path",
             "required": true,
             "description": "Skill reference identifier",
-            "schema": { "type": "string" }
+            "schema": {
+              "type": "string"
+            }
           },
           {
             "name": "key_name",
             "in": "path",
             "required": true,
             "description": "Secret key name",
-            "schema": { "type": "string" }
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -1453,11 +2579,26 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["value"],
+                "required": [
+                  "value"
+                ],
                 "properties": {
-                  "value": { "type": "string", "description": "Secret value — encrypted at rest, never echoed" },
-                  "scope": { "type": "string", "enum": ["host", "sandbox"], "description": "Where the secret is available. Defaults to both if omitted." },
-                  "meta_json": { "type": "string", "description": "Optional JSON metadata for the secret (e.g. expiry, rotation info)" }
+                  "value": {
+                    "type": "string",
+                    "description": "Secret value \u2014 encrypted at rest, never echoed"
+                  },
+                  "scope": {
+                    "type": "string",
+                    "enum": [
+                      "host",
+                      "sandbox"
+                    ],
+                    "description": "Where the secret is available. Defaults to both if omitted."
+                  },
+                  "meta_json": {
+                    "type": "string",
+                    "description": "Optional JSON metadata for the secret (e.g. expiry, rotation info)"
+                  }
                 }
               }
             }
@@ -1467,42 +2608,55 @@
           "204": {
             "description": "Secret stored"
           },
-          "default": { "$ref": "#/components/responses/Error" }
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
         }
       },
       "delete": {
         "operationId": "delete_skill_secret",
         "summary": "Delete a skill secret",
         "description": "Removes a specific secret for a skill in a workspace.",
-        "tags": ["Skill Secrets"],
+        "tags": [
+          "Skill Secrets"
+        ],
         "parameters": [
           {
             "name": "workspace_id",
             "in": "path",
             "required": true,
             "description": "Workspace identifier",
-            "schema": { "type": "string", "format": "uuid" }
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           },
           {
             "name": "skill_ref",
             "in": "path",
             "required": true,
             "description": "Skill reference identifier",
-            "schema": { "type": "string" }
+            "schema": {
+              "type": "string"
+            }
           },
           {
             "name": "key_name",
             "in": "path",
             "required": true,
             "description": "Secret key name",
-            "schema": { "type": "string" }
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
           "204": {
             "description": "Secret deleted"
           },
-          "default": { "$ref": "#/components/responses/Error" }
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
         }
       }
     },
@@ -1511,21 +2665,28 @@
         "operationId": "generate_spec_template",
         "summary": "Generate spec via LLM",
         "description": "Streams an LLM-generated spec template based on the conversation messages. Supports tool use for interactive spec authoring. Returns Server-Sent Events.",
-        "tags": ["Agent Relay"],
+        "tags": [
+          "Agent Relay"
+        ],
         "parameters": [
           {
             "name": "workspace_id",
             "in": "path",
             "required": true,
             "description": "Workspace identifier",
-            "schema": { "type": "string", "format": "uuid" }
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         ],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
-              "schema": { "$ref": "#/components/schemas/AgentRelayRequest" }
+              "schema": {
+                "$ref": "#/components/schemas/AgentRelayRequest"
+              }
             }
           }
         },
@@ -1534,11 +2695,16 @@
             "description": "SSE stream of LLM-generated spec content",
             "content": {
               "text/event-stream": {
-                "schema": { "type": "string", "description": "Server-Sent Events stream with spec template content" }
+                "schema": {
+                  "type": "string",
+                  "description": "Server-Sent Events stream with spec template content"
+                }
               }
             }
           },
-          "default": { "$ref": "#/components/responses/Error" }
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
         }
       }
     },
@@ -1547,21 +2713,28 @@
         "operationId": "preview_spec",
         "summary": "Preview spec via LLM",
         "description": "Streams an LLM-generated preview of a spec, showing what the agent would produce before committing. Returns Server-Sent Events.",
-        "tags": ["Agent Relay"],
+        "tags": [
+          "Agent Relay"
+        ],
         "parameters": [
           {
             "name": "workspace_id",
             "in": "path",
             "required": true,
             "description": "Workspace identifier",
-            "schema": { "type": "string", "format": "uuid" }
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         ],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
-              "schema": { "$ref": "#/components/schemas/AgentRelayRequest" }
+              "schema": {
+                "$ref": "#/components/schemas/AgentRelayRequest"
+              }
             }
           }
         },
@@ -1570,11 +2743,16 @@
             "description": "SSE stream of LLM-generated spec preview",
             "content": {
               "text/event-stream": {
-                "schema": { "type": "string", "description": "Server-Sent Events stream with spec preview content" }
+                "schema": {
+                  "type": "string",
+                  "description": "Server-Sent Events stream with spec preview content"
+                }
               }
             }
           },
-          "default": { "$ref": "#/components/responses/Error" }
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
         }
       }
     },
@@ -1583,7 +2761,9 @@
         "operationId": "list_platform_keys",
         "summary": "List platform LLM keys",
         "description": "Lists all configured platform-wide LLM provider keys. These are shared keys that workspaces fall back to when no BYOK key is configured.",
-        "tags": ["Admin"],
+        "tags": [
+          "Admin"
+        ],
         "responses": {
           "200": {
             "description": "Platform key list",
@@ -1591,36 +2771,58 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": ["keys", "request_id"],
+                  "required": [
+                    "keys",
+                    "request_id"
+                  ],
                   "properties": {
                     "keys": {
                       "type": "array",
-                      "items": { "$ref": "#/components/schemas/PlatformKey" }
+                      "items": {
+                        "$ref": "#/components/schemas/PlatformKey"
+                      }
                     },
-                    "request_id": { "type": "string", "format": "uuid" }
+                    "request_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    }
                   }
                 }
               }
             }
           },
-          "default": { "$ref": "#/components/responses/Error" }
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
         }
       },
       "put": {
         "operationId": "put_platform_key",
         "summary": "Set a platform LLM key",
         "description": "Configures a platform-wide LLM provider key by referencing a workspace that has a BYOK key stored. The platform key proxies through the referenced workspace's credential.",
-        "tags": ["Admin"],
+        "tags": [
+          "Admin"
+        ],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["provider", "source_workspace_id"],
+                "required": [
+                  "provider",
+                  "source_workspace_id"
+                ],
                 "properties": {
-                  "provider": { "type": "string", "description": "LLM provider name (e.g. openai, anthropic)" },
-                  "source_workspace_id": { "type": "string", "format": "uuid", "description": "Workspace whose BYOK key to use as the platform key" }
+                  "provider": {
+                    "type": "string",
+                    "description": "LLM provider name (e.g. openai, anthropic)"
+                  },
+                  "source_workspace_id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "Workspace whose BYOK key to use as the platform key"
+                  }
                 }
               }
             }
@@ -1633,18 +2835,35 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": ["provider", "source_workspace_id", "active", "request_id"],
+                  "required": [
+                    "provider",
+                    "source_workspace_id",
+                    "active",
+                    "request_id"
+                  ],
                   "properties": {
-                    "provider": { "type": "string" },
-                    "source_workspace_id": { "type": "string", "format": "uuid" },
-                    "active": { "type": "boolean" },
-                    "request_id": { "type": "string", "format": "uuid" }
+                    "provider": {
+                      "type": "string"
+                    },
+                    "source_workspace_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "active": {
+                      "type": "boolean"
+                    },
+                    "request_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    }
                   }
                 }
               }
             }
           },
-          "default": { "$ref": "#/components/responses/Error" }
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
         }
       }
     },
@@ -1653,14 +2872,18 @@
         "operationId": "delete_platform_key",
         "summary": "Delete a platform LLM key",
         "description": "Removes a platform-wide LLM provider key. Workspaces without BYOK keys will no longer be able to use this provider.",
-        "tags": ["Admin"],
+        "tags": [
+          "Admin"
+        ],
         "parameters": [
           {
             "name": "provider",
             "in": "path",
             "required": true,
             "description": "LLM provider name",
-            "schema": { "type": "string" }
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -1670,17 +2893,31 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": ["provider", "active", "request_id"],
+                  "required": [
+                    "provider",
+                    "active",
+                    "request_id"
+                  ],
                   "properties": {
-                    "provider": { "type": "string" },
-                    "active": { "type": "boolean", "const": false },
-                    "request_id": { "type": "string", "format": "uuid" }
+                    "provider": {
+                      "type": "string"
+                    },
+                    "active": {
+                      "type": "boolean",
+                      "const": false
+                    },
+                    "request_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    }
                   }
                 }
               }
             }
           },
-          "default": { "$ref": "#/components/responses/Error" }
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
         }
       }
     },
@@ -1689,14 +2926,19 @@
         "operationId": "scale_billing",
         "summary": "Upgrade billing plan",
         "description": "Upgrades a workspace's billing plan by linking a payment provider subscription. The workspace's plan tier and billing status are updated immediately.",
-        "tags": ["Billing"],
+        "tags": [
+          "Billing"
+        ],
         "parameters": [
           {
             "name": "workspace_id",
             "in": "path",
             "required": true,
             "description": "Workspace identifier",
-            "schema": { "type": "string", "format": "uuid" }
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         ],
         "requestBody": {
@@ -1705,9 +2947,14 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["subscription_id"],
+                "required": [
+                  "subscription_id"
+                ],
                 "properties": {
-                  "subscription_id": { "type": "string", "description": "Payment provider subscription identifier" }
+                  "subscription_id": {
+                    "type": "string",
+                    "description": "Payment provider subscription identifier"
+                  }
                 }
               }
             }
@@ -1720,20 +2967,47 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": ["workspace_id", "plan_tier", "billing_status", "plan_sku", "subscription_id", "request_id"],
+                  "required": [
+                    "workspace_id",
+                    "plan_tier",
+                    "billing_status",
+                    "plan_sku",
+                    "subscription_id",
+                    "request_id"
+                  ],
                   "properties": {
-                    "workspace_id": { "type": "string", "format": "uuid" },
-                    "plan_tier": { "type": "string", "description": "New plan tier (e.g. free, pro, enterprise)" },
-                    "billing_status": { "type": "string", "description": "Current billing status" },
-                    "plan_sku": { "type": "string", "description": "Plan SKU identifier" },
-                    "subscription_id": { "type": "string", "description": "Payment provider subscription ID" },
-                    "request_id": { "type": "string", "format": "uuid" }
+                    "workspace_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "plan_tier": {
+                      "type": "string",
+                      "description": "New plan tier (e.g. free, pro, enterprise)"
+                    },
+                    "billing_status": {
+                      "type": "string",
+                      "description": "Current billing status"
+                    },
+                    "plan_sku": {
+                      "type": "string",
+                      "description": "Plan SKU identifier"
+                    },
+                    "subscription_id": {
+                      "type": "string",
+                      "description": "Payment provider subscription ID"
+                    },
+                    "request_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    }
                   }
                 }
               }
             }
           },
-          "default": { "$ref": "#/components/responses/Error" }
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
         }
       }
     },
@@ -1742,14 +3016,19 @@
         "operationId": "billing_event",
         "summary": "Record a billing event",
         "description": "Records a billing lifecycle event such as a payment failure or downgrade. The workspace's billing status is updated accordingly.",
-        "tags": ["Billing"],
+        "tags": [
+          "Billing"
+        ],
         "parameters": [
           {
             "name": "workspace_id",
             "in": "path",
             "required": true,
             "description": "Workspace identifier",
-            "schema": { "type": "string", "format": "uuid" }
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         ],
         "requestBody": {
@@ -1758,10 +3037,23 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["event_type", "reason"],
+                "required": [
+                  "event_type",
+                  "reason"
+                ],
                 "properties": {
-                  "event_type": { "type": "string", "enum": ["PAYMENT_FAILED", "DOWNGRADE_TO_FREE"], "description": "Type of billing event" },
-                  "reason": { "type": "string", "description": "Human-readable reason for the event" }
+                  "event_type": {
+                    "type": "string",
+                    "enum": [
+                      "PAYMENT_FAILED",
+                      "DOWNGRADE_TO_FREE"
+                    ],
+                    "description": "Type of billing event"
+                  },
+                  "reason": {
+                    "type": "string",
+                    "description": "Human-readable reason for the event"
+                  }
                 }
               }
             }
@@ -1774,17 +3066,32 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": ["workspace_id", "billing_status", "request_id"],
+                  "required": [
+                    "workspace_id",
+                    "billing_status",
+                    "request_id"
+                  ],
                   "properties": {
-                    "workspace_id": { "type": "string", "format": "uuid" },
-                    "billing_status": { "type": "string", "description": "Updated billing status" },
-                    "request_id": { "type": "string", "format": "uuid" }
+                    "workspace_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "billing_status": {
+                      "type": "string",
+                      "description": "Updated billing status"
+                    },
+                    "request_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    }
                   }
                 }
               }
             }
           },
-          "default": { "$ref": "#/components/responses/Error" }
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
         }
       }
     },
@@ -1793,14 +3100,19 @@
         "operationId": "set_scoring_config",
         "summary": "Set scoring configuration",
         "description": "Configures the scoring context window size for a workspace. This controls how many tokens of context are sent to the scoring model when evaluating agent output quality.",
-        "tags": ["Billing"],
+        "tags": [
+          "Billing"
+        ],
         "parameters": [
           {
             "name": "workspace_id",
             "in": "path",
             "required": true,
             "description": "Workspace identifier",
-            "schema": { "type": "string", "format": "uuid" }
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         ],
         "requestBody": {
@@ -1809,9 +3121,16 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["scoring_context_max_tokens"],
+                "required": [
+                  "scoring_context_max_tokens"
+                ],
                 "properties": {
-                  "scoring_context_max_tokens": { "type": "integer", "minimum": 512, "maximum": 8192, "description": "Maximum tokens for scoring context window (512-8192)" }
+                  "scoring_context_max_tokens": {
+                    "type": "integer",
+                    "minimum": 512,
+                    "maximum": 8192,
+                    "description": "Maximum tokens for scoring context window (512-8192)"
+                  }
                 }
               }
             }
@@ -1824,17 +3143,31 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": ["workspace_id", "scoring_context_max_tokens", "request_id"],
+                  "required": [
+                    "workspace_id",
+                    "scoring_context_max_tokens",
+                    "request_id"
+                  ],
                   "properties": {
-                    "workspace_id": { "type": "string", "format": "uuid" },
-                    "scoring_context_max_tokens": { "type": "integer" },
-                    "request_id": { "type": "string", "format": "uuid" }
+                    "workspace_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "scoring_context_max_tokens": {
+                      "type": "integer"
+                    },
+                    "request_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    }
                   }
                 }
               }
             }
           },
-          "default": { "$ref": "#/components/responses/Error" }
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
         }
       }
     }
@@ -1853,118 +3186,330 @@
         "type": "object",
         "description": "A state transition in the run pipeline",
         "properties": {
-          "state_from": { "type": "string", "description": "State before the transition" },
-          "state_to": { "type": "string", "description": "State after the transition" },
-          "actor": { "type": "string", "description": "Pipeline stage or user that triggered the transition" },
-          "reason_code": { "type": "string", "description": "Machine-readable reason for the transition" },
-          "ts": { "type": "integer", "description": "Unix timestamp in milliseconds" }
+          "state_from": {
+            "type": "string",
+            "description": "State before the transition"
+          },
+          "state_to": {
+            "type": "string",
+            "description": "State after the transition"
+          },
+          "actor": {
+            "type": "string",
+            "description": "Pipeline stage or user that triggered the transition"
+          },
+          "reason_code": {
+            "type": "string",
+            "description": "Machine-readable reason for the transition"
+          },
+          "ts": {
+            "type": "integer",
+            "description": "Unix timestamp in milliseconds"
+          }
         }
       },
       "Artifact": {
         "type": "object",
         "description": "An artifact produced during a run (e.g. plan, diff, review)",
         "properties": {
-          "artifact_name": { "type": "string", "description": "Human-readable artifact name" },
-          "object_key": { "type": "string", "description": "Git path: docs/runs/<run_id>/<name>" },
-          "checksum_sha256": { "type": "string", "description": "SHA-256 checksum of the artifact content" },
-          "producer": { "type": "string", "enum": ["echo", "scout", "warden", "orchestrator"], "description": "Pipeline stage that produced the artifact" },
-          "attempt": { "type": "integer", "description": "Run attempt number that produced this artifact" },
-          "created_at": { "type": "integer", "description": "Unix timestamp in milliseconds" }
+          "artifact_name": {
+            "type": "string",
+            "description": "Human-readable artifact name"
+          },
+          "object_key": {
+            "type": "string",
+            "description": "Git path: docs/runs/<run_id>/<name>"
+          },
+          "checksum_sha256": {
+            "type": "string",
+            "description": "SHA-256 checksum of the artifact content"
+          },
+          "producer": {
+            "type": "string",
+            "enum": [
+              "echo",
+              "scout",
+              "warden",
+              "orchestrator"
+            ],
+            "description": "Pipeline stage that produced the artifact"
+          },
+          "attempt": {
+            "type": "integer",
+            "description": "Run attempt number that produced this artifact"
+          },
+          "created_at": {
+            "type": "integer",
+            "description": "Unix timestamp in milliseconds"
+          }
         }
       },
       "PolicyEvent": {
         "type": "object",
         "description": "A policy evaluation event from the Warden stage",
         "properties": {
-          "action_class": { "type": "string", "enum": ["safe", "sensitive", "critical"], "description": "Classification of the action being evaluated" },
-          "decision": { "type": "string", "enum": ["allow", "deny", "require_confirmation"], "description": "Policy decision" },
-          "rule_id": { "type": "string", "description": "Identifier of the policy rule that matched" },
-          "actor": { "type": "string", "description": "Pipeline stage that triggered the policy check" },
-          "ts": { "type": "integer", "description": "Unix timestamp in milliseconds" }
+          "action_class": {
+            "type": "string",
+            "enum": [
+              "safe",
+              "sensitive",
+              "critical"
+            ],
+            "description": "Classification of the action being evaluated"
+          },
+          "decision": {
+            "type": "string",
+            "enum": [
+              "allow",
+              "deny",
+              "require_confirmation"
+            ],
+            "description": "Policy decision"
+          },
+          "rule_id": {
+            "type": "string",
+            "description": "Identifier of the policy rule that matched"
+          },
+          "actor": {
+            "type": "string",
+            "description": "Pipeline stage that triggered the policy check"
+          },
+          "ts": {
+            "type": "integer",
+            "description": "Unix timestamp in milliseconds"
+          }
         }
       },
       "SpecSummary": {
         "type": "object",
         "description": "Summary of a spec document",
         "properties": {
-          "spec_id": { "type": "string", "format": "uuid", "description": "Unique spec identifier" },
-          "file_path": { "type": "string", "description": "Path to the spec file in the repository" },
-          "title": { "type": "string", "description": "Spec title extracted from the document" },
-          "status": { "type": "string", "enum": ["pending", "in_progress", "done", "failed"], "description": "Current spec lifecycle status" },
-          "created_at": { "type": "integer", "description": "Unix timestamp in milliseconds" },
-          "updated_at": { "type": "integer", "description": "Unix timestamp in milliseconds" }
+          "spec_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Unique spec identifier"
+          },
+          "file_path": {
+            "type": "string",
+            "description": "Path to the spec file in the repository"
+          },
+          "title": {
+            "type": "string",
+            "description": "Spec title extracted from the document"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "in_progress",
+              "done",
+              "failed"
+            ],
+            "description": "Current spec lifecycle status"
+          },
+          "created_at": {
+            "type": "integer",
+            "description": "Unix timestamp in milliseconds"
+          },
+          "updated_at": {
+            "type": "integer",
+            "description": "Unix timestamp in milliseconds"
+          }
         }
       },
       "RunSummary": {
         "type": "object",
         "description": "Summary of a run for list views",
         "properties": {
-          "run_id": { "type": "string", "format": "uuid" },
-          "workspace_id": { "type": "string", "format": "uuid" },
-          "spec_id": { "type": "string", "format": "uuid" },
-          "state": { "type": "string", "description": "Current pipeline state" },
-          "attempt": { "type": "integer", "description": "Current attempt number" },
-          "mode": { "type": "string", "enum": ["pull_request"] },
-          "requested_by": { "type": "string" },
-          "pr_url": { "type": ["string", "null"], "format": "uri", "description": "Pull request URL, null until PR is opened" },
-          "created_at": { "type": "integer", "description": "Unix timestamp in milliseconds" },
-          "updated_at": { "type": "integer", "description": "Unix timestamp in milliseconds" }
+          "run_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "workspace_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "spec_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "state": {
+            "type": "string",
+            "description": "Current pipeline state"
+          },
+          "attempt": {
+            "type": "integer",
+            "description": "Current attempt number"
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "pull_request"
+            ]
+          },
+          "requested_by": {
+            "type": "string"
+          },
+          "pr_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uri",
+            "description": "Pull request URL, null until PR is opened"
+          },
+          "created_at": {
+            "type": "integer",
+            "description": "Unix timestamp in milliseconds"
+          },
+          "updated_at": {
+            "type": "integer",
+            "description": "Unix timestamp in milliseconds"
+          }
         }
       },
       "AgentProfile": {
         "type": "object",
         "description": "Agent profile including trust and improvement metadata",
         "properties": {
-          "agent_id": { "type": "string", "format": "uuid" },
-          "name": { "type": "string", "description": "Human-readable agent name" },
-          "status": { "type": "string", "description": "Agent operational status" },
-          "workspace_id": { "type": "string", "format": "uuid" },
-          "trust_level": { "type": "string", "description": "Current trust level (e.g. low, medium, high)" },
-          "trust_streak_runs": { "type": "integer", "description": "Number of consecutive successful runs contributing to trust" },
-          "improvement_stalled_warning": { "type": "boolean", "description": "True if the agent's self-improvement has plateaued" },
-          "created_at": { "type": "string", "format": "date-time" },
-          "updated_at": { "type": "string", "format": "date-time" }
+          "agent_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string",
+            "description": "Human-readable agent name"
+          },
+          "status": {
+            "type": "string",
+            "description": "Agent operational status"
+          },
+          "workspace_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "trust_level": {
+            "type": "string",
+            "description": "Current trust level (e.g. low, medium, high)"
+          },
+          "trust_streak_runs": {
+            "type": "integer",
+            "description": "Number of consecutive successful runs contributing to trust"
+          },
+          "improvement_stalled_warning": {
+            "type": "boolean",
+            "description": "True if the agent's self-improvement has plateaued"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
         }
       },
       "Proposal": {
         "type": "object",
-        "description": "An agent self-tuning proposal — a suggested change to the harness configuration",
+        "description": "An agent self-tuning proposal \u2014 a suggested change to the harness configuration",
         "properties": {
-          "proposal_id": { "type": "string", "format": "uuid" },
-          "trigger_reason": { "type": "string", "description": "Why the agent generated this proposal" },
-          "proposed_changes": { "type": "string", "description": "Description of the proposed configuration changes" },
-          "config_version_id": { "type": "string", "format": "uuid", "description": "Config version this proposal targets" },
-          "approval_mode": { "type": "string", "description": "Whether the proposal requires manual approval or can auto-apply" },
-          "status": { "type": "string", "description": "Proposal lifecycle status (e.g. PENDING, APPLIED, REJECTED, VETOED)" },
-          "auto_apply_at": { "type": ["string", "null"], "format": "date-time", "description": "Timestamp when the proposal will auto-apply, null if manual approval required" },
-          "created_at": { "type": "string", "format": "date-time" },
-          "updated_at": { "type": "string", "format": "date-time" }
+          "proposal_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "trigger_reason": {
+            "type": "string",
+            "description": "Why the agent generated this proposal"
+          },
+          "proposed_changes": {
+            "type": "string",
+            "description": "Description of the proposed configuration changes"
+          },
+          "config_version_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Config version this proposal targets"
+          },
+          "approval_mode": {
+            "type": "string",
+            "description": "Whether the proposal requires manual approval or can auto-apply"
+          },
+          "status": {
+            "type": "string",
+            "description": "Proposal lifecycle status (e.g. PENDING, APPLIED, REJECTED, VETOED)"
+          },
+          "auto_apply_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Timestamp when the proposal will auto-apply, null if manual approval required"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
         }
       },
       "PlatformKey": {
         "type": "object",
         "description": "A platform-wide LLM provider key configuration",
         "properties": {
-          "provider": { "type": "string", "description": "LLM provider name" },
-          "source_workspace_id": { "type": "string", "format": "uuid", "description": "Workspace whose BYOK key is used" },
-          "active": { "type": "boolean", "description": "Whether this platform key is active" },
-          "updated_at": { "type": "string", "format": "date-time" }
+          "provider": {
+            "type": "string",
+            "description": "LLM provider name"
+          },
+          "source_workspace_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Workspace whose BYOK key is used"
+          },
+          "active": {
+            "type": "boolean",
+            "description": "Whether this platform key is active"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
         }
       },
       "AgentRelayRequest": {
         "type": "object",
         "description": "Request body for Agent Relay LLM endpoints (spec template and preview). The workspace_id is provided via the path parameter.",
-        "required": ["messages"],
+        "required": [
+          "messages"
+        ],
         "properties": {
           "messages": {
             "type": "array",
             "description": "Conversation messages for the LLM",
             "items": {
               "type": "object",
-              "required": ["role", "content"],
+              "required": [
+                "role",
+                "content"
+              ],
               "properties": {
-                "role": { "type": "string", "enum": ["user", "assistant", "system"], "description": "Message role" },
-                "content": { "type": "string", "description": "Message content" }
+                "role": {
+                  "type": "string",
+                  "enum": [
+                    "user",
+                    "assistant",
+                    "system"
+                  ],
+                  "description": "Message role"
+                },
+                "content": {
+                  "type": "string",
+                  "description": "Message content"
+                }
               }
             }
           },
@@ -1973,11 +3518,25 @@
             "description": "Optional tool definitions for the LLM to use during generation",
             "items": {
               "type": "object",
-              "required": ["name", "description", "input_schema"],
+              "required": [
+                "name",
+                "description",
+                "input_schema"
+              ],
               "properties": {
-                "name": { "type": "string", "description": "Tool name" },
-                "description": { "type": "string", "description": "What the tool does" },
-                "input_schema": { "type": "object", "additionalProperties": true, "description": "JSON Schema for the tool's input" }
+                "name": {
+                  "type": "string",
+                  "description": "Tool name"
+                },
+                "description": {
+                  "type": "string",
+                  "description": "What the tool does"
+                },
+                "input_schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "JSON Schema for the tool's input"
+                }
               }
             }
           }
@@ -1986,18 +3545,37 @@
       "Error": {
         "type": "object",
         "description": "Standard error response",
-        "required": ["error", "request_id"],
+        "required": [
+          "error",
+          "request_id"
+        ],
         "properties": {
           "error": {
             "type": "object",
-            "required": ["code", "message"],
+            "required": [
+              "code",
+              "message"
+            ],
             "properties": {
-              "code": { "type": "string", "description": "Machine-readable error code" },
-              "message": { "type": "string", "description": "Human-readable error message" },
-              "details": { "type": "object", "additionalProperties": true, "description": "Additional error context" }
+              "code": {
+                "type": "string",
+                "description": "Machine-readable error code"
+              },
+              "message": {
+                "type": "string",
+                "description": "Human-readable error message"
+              },
+              "details": {
+                "type": "object",
+                "additionalProperties": true,
+                "description": "Additional error context"
+              }
             }
           },
-          "request_id": { "type": "string", "format": "uuid" }
+          "request_id": {
+            "type": "string",
+            "format": "uuid"
+          }
         }
       }
     },
@@ -2006,7 +3584,9 @@
         "description": "Error response",
         "content": {
           "application/json": {
-            "schema": { "$ref": "#/components/schemas/Error" }
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
           }
         }
       }

@@ -4,7 +4,7 @@
 **Milestone:** M7
 **Workstream:** 003
 **Date:** Mar 20, 2026
-**Status:** PENDING
+**Status:** DONE — environment verified; CLI/worker/UI acceptance moved to M26_001_ACCEPTANCE.md
 **Priority:** P0 — PROD release gate
 **Batch:** B3 — after M7_002 (HTTPZ Migration) and M7_005 (Network Connectivity)
 **Depends on:** M7_001_DEV_ACCEPTANCE (DEV gate must be green before PROD rollout), M7_005_NETWORK_CONNECTIVITY (PROD tunnel + database + cache access), M7_002_HTTPZ_MIGRATION
@@ -20,15 +20,15 @@
 A git tag matching the `VERSION` file triggers `release.yml`. The tag is the single source of truth for the release version.
 
 **Dimensions:**
-- 1.1 PENDING Bump `VERSION` file to target release version (e.g. `0.2.0`)
-- 1.2 PENDING Update `CHANGELOG.md` with release section `## [0.2.0]`
-- 1.3 PENDING Push git tag `v0.2.0` — `release.yml` verifies tag matches `VERSION` exactly and fails fast if not
-- 1.4 PENDING `verify-tag` CI job passes: `tag v0.2.0 matches VERSION 0.2.0`
+- 1.1 PENDING Bump `VERSION` file to target release version (e.g. `0.4.0`)
+- 1.2 PENDING Update `CHANGELOG.md` with release section `## [0.4.0]`
+- 1.3 PENDING Push git tag `v0.4.0` — `release.yml` verifies tag matches `VERSION` exactly and fails fast if not
+- 1.4 PENDING `verify-tag` CI job passes: `tag v0.4.0 matches VERSION 0.4.0`
 
 ```bash
 # After VERSION and CHANGELOG updated and committed:
-git tag v0.2.0
-git push origin v0.2.0
+git tag v0.4.0
+git push origin v0.4.0
 ```
 
 ---
@@ -41,22 +41,31 @@ git push origin v0.2.0
 
 **Dimensions:**
 - 2.1 PENDING `binaries` CI job passes for all 4 targets: `zombied-linux-amd64`, `zombied-linux-arm64`, `zombied-darwin-amd64`, `zombied-darwin-arm64`
-- 2.2 PENDING `docker` CI job passes: `ghcr.io/usezombie/zombied:latest`, `zombied:0.2.0`, `zombied:0.2.0-<sha>` pushed to GHCR
+- 2.2 PENDING `docker` CI job passes: `ghcr.io/usezombie/zombied:latest`, `zombied:0.4.0`, `zombied:0.4.0-<sha>` pushed to GHCR
 - 2.3 PENDING GitHub Release created with CHANGELOG excerpt and all 4 binary tarballs attached
-- 2.4 PENDING `zombiectl` published to npm with provenance: `npm install -g zombiectl@0.2.0` installs correctly
+- 2.4 PENDING `zombiectl` published to npm with provenance: `npm install -g zombiectl@0.4.0` installs correctly
 
 ---
 
 ## 3.0 DEV Readiness Gate
 
-**Status:** PENDING
+**Status:** DONE
 
 `verify-dev-gate` in `release.yml` blocks PROD rollout until DEV is healthy. M7_001_DEV_ACCEPTANCE must be complete before this gate can pass.
 
 **Dimensions:**
-- 3.1 PENDING `https://api-dev.usezombie.com/healthz` returns 200
-- 3.2 PENDING `https://api-dev.usezombie.com/readyz` returns `{ "ready": true }`
+- 3.1 DONE `https://api-dev.usezombie.com/healthz` returns 200
+- 3.2 DONE `https://api-dev.usezombie.com/readyz` returns `{ "ready": true }`
 - 3.3 PENDING `verify-dev-gate` CI job green — PROD rollout unblocked
+
+**Evidence (Apr 02, 2026):**
+```
+$ curl -sf https://api-dev.usezombie.com/healthz
+{"status":"ok","service":"zombied","database":"up","commit":"f5f3194"}
+
+$ curl -sf https://api-dev.usezombie.com/readyz | jq '.ready'
+true
+```
 
 ---
 
@@ -67,7 +76,7 @@ git push origin v0.2.0
 | Service | URL | Image / Deployable |
 |---------|-----|--------------------|
 | API | `https://api.usezombie.com` | `ghcr.io/usezombie/zombied:latest` (Fly.io `zombied-prod`) |
-| API (version-pinned) | same | `ghcr.io/usezombie/zombied:0.2.0` |
+| API (version-pinned) | same | `ghcr.io/usezombie/zombied:0.4.0` |
 | Worker ant | Tailscale only | same `latest` pulled on node |
 | Worker bird | Tailscale only | same `latest` pulled on node |
 | App / Dashboard | `https://app.usezombie.com` | `usezombie-app` Vercel project |
@@ -78,13 +87,22 @@ git push origin v0.2.0
 
 ## 5.0 Fly.io PROD API Gate
 
-**Status:** PENDING
+**Status:** IN_PROGRESS — API healthy, vault verified; CI deploy job not yet run
 
 **Dimensions:**
-- 5.1 PENDING Fly.io PROD app (`zombied-prod`) deployed from `ghcr.io/usezombie/zombied:latest`; Cloudflare Tunnel `zombied-prod` routes `api.usezombie.com` → Fly private network. See M2_002 §2.0.
+- 5.1 DONE Fly.io PROD app (`zombied-prod`) deployed from `ghcr.io/usezombie/zombied:latest`; Cloudflare Tunnel `zombied-prod` routes `api.usezombie.com` → Fly private network. See M2_002 §2.0.
 - 5.2 PENDING `deploy-prod` CI job polls `https://api.usezombie.com/healthz` (24 attempts × 10s); must return 200. Print HTTP status + response body per attempt so Fly-not-deployed vs zombied-crashed are distinguishable.
-- 5.3 PENDING `https://api.usezombie.com/readyz` returns `{ "ready": true }`
-- 5.4 PENDING PROD vault items green: `planetscale-prod`, `tailscale`, `zombie-prod-worker-{ant,bird}/ssh-private-key`, `clerk-prod`, `fly-api-token`, `cloudflare-tunnel-prod`
+- 5.3 DONE `https://api.usezombie.com/readyz` returns `{ "ready": true }`
+- 5.4 DONE PROD vault items green: `planetscale-prod`, `tailscale`, `zombie-prod-worker-{ant,bird}/ssh-private-key`, `clerk-prod`, `fly-api-token`, `cloudflare-tunnel-prod`
+
+**Evidence (Apr 04, 2026):**
+```
+$ curl -sf https://api.usezombie.com/healthz
+{"status":"ok","service":"zombied","database":"up","commit":"7eee364"}
+
+$ curl -sf https://api.usezombie.com/readyz | jq '{ready, database, queue_dependency}'
+{"ready":true,"database":true,"queue_dependency":true}
+```
 
 ```bash
 curl -sf https://api.usezombie.com/healthz
@@ -109,7 +127,7 @@ Worker nodes `zombie-prod-worker-ant` and `zombie-prod-worker-bird` are bare-met
 
 ## 7.0 UI PROD Smoke Gate
 
-**Status:** PENDING
+**Status:** PENDING — Vercel PROD deployments not yet live
 
 `smoke-post-deploy.yml` fires automatically on Vercel `deployment_status` events for each PROD project.
 
@@ -163,8 +181,8 @@ npx zombiectl runs list
 
 **Status:** PENDING
 
-- [ ] 10.1 `release.yml` runs green on `v0.2.0` tag: binaries, docker, npm, GitHub Release all pass
-- [ ] 10.2 Fly.io PROD API healthy (`zombied-prod`); Cloudflare Tunnel wired; `healthz` + `readyz` green
+- [ ] 10.1 `release.yml` runs green on `v0.4.0` tag: binaries, docker, npm, GitHub Release all pass
+- [x] 10.2 Fly.io PROD API healthy (`zombied-prod`); Cloudflare Tunnel wired; `healthz` + `readyz` green
 - [ ] 10.3 Worker nodes deployed via Tailscale SSH; run queue consumed
 - [ ] 10.4 UI PROD smoke passes: app and website Vercel deployments green
 - [ ] 10.5 CLI PROD smoke completes: login → workspace add → specs sync → run → runs list
