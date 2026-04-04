@@ -21,15 +21,15 @@
 A git tag matching the `VERSION` file triggers `release.yml`. The tag is the single source of truth for the release version.
 
 **Dimensions:**
-- 1.1 PENDING Bump `VERSION` file to target release version (e.g. `0.2.0`)
-- 1.2 PENDING Update `CHANGELOG.md` with release section `## [0.2.0]`
-- 1.3 PENDING Push git tag `v0.2.0` — `release.yml` verifies tag matches `VERSION` exactly and fails fast if not
-- 1.4 PENDING `verify-tag` CI job passes: `tag v0.2.0 matches VERSION 0.2.0`
+- 1.1 PENDING Bump `VERSION` file to target release version (e.g. `0.4.0`)
+- 1.2 PENDING Update `CHANGELOG.md` with release section `## [0.4.0]`
+- 1.3 PENDING Push git tag `v0.4.0` — `release.yml` verifies tag matches `VERSION` exactly and fails fast if not
+- 1.4 PENDING `verify-tag` CI job passes: `tag v0.4.0 matches VERSION 0.4.0`
 
 ```bash
 # After VERSION and CHANGELOG updated and committed:
-git tag v0.2.0
-git push origin v0.2.0
+git tag v0.4.0
+git push origin v0.4.0
 ```
 
 ---
@@ -42,9 +42,9 @@ git push origin v0.2.0
 
 **Dimensions:**
 - 2.1 PENDING `binaries` CI job passes for all 4 targets: `zombied-linux-amd64`, `zombied-linux-arm64`, `zombied-darwin-amd64`, `zombied-darwin-arm64`
-- 2.2 PENDING `docker` CI job passes: `ghcr.io/usezombie/zombied:latest`, `zombied:0.2.0`, `zombied:0.2.0-<sha>` pushed to GHCR
+- 2.2 PENDING `docker` CI job passes: `ghcr.io/usezombie/zombied:latest`, `zombied:0.4.0`, `zombied:0.4.0-<sha>` pushed to GHCR
 - 2.3 PENDING GitHub Release created with CHANGELOG excerpt and all 4 binary tarballs attached
-- 2.4 PENDING `zombiectl` published to npm with provenance: `npm install -g zombiectl@0.2.0` installs correctly
+- 2.4 PENDING `zombiectl` published to npm with provenance: `npm install -g zombiectl@0.4.0` installs correctly
 
 ---
 
@@ -77,7 +77,7 @@ true
 | Service | URL | Image / Deployable |
 |---------|-----|--------------------|
 | API | `https://api.usezombie.com` | `ghcr.io/usezombie/zombied:latest` (Fly.io `zombied-prod`) |
-| API (version-pinned) | same | `ghcr.io/usezombie/zombied:0.2.0` |
+| API (version-pinned) | same | `ghcr.io/usezombie/zombied:0.4.0` |
 | Worker ant | Tailscale only | same `latest` pulled on node |
 | Worker bird | Tailscale only | same `latest` pulled on node |
 | App / Dashboard | `https://app.usezombie.com` | `usezombie-app` Vercel project |
@@ -182,7 +182,7 @@ npx zombiectl runs list
 
 **Status:** PENDING
 
-- [ ] 10.1 `release.yml` runs green on `v0.2.0` tag: binaries, docker, npm, GitHub Release all pass
+- [ ] 10.1 `release.yml` runs green on `v0.4.0` tag: binaries, docker, npm, GitHub Release all pass
 - [x] 10.2 Fly.io PROD API healthy (`zombied-prod`); Cloudflare Tunnel wired; `healthz` + `readyz` green
 - [ ] 10.3 Worker nodes deployed via Tailscale SSH; run queue consumed
 - [ ] 10.4 UI PROD smoke passes: app and website Vercel deployments green
