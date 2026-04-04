@@ -27,6 +27,7 @@ pub const incAgentEchoCalls = mc.incAgentEchoCalls;
 pub const incAgentScoutCalls = mc.incAgentScoutCalls;
 pub const incAgentWardenCalls = mc.incAgentWardenCalls;
 pub const addAgentTokens = mc.addAgentTokens;
+pub const addAgentTokensByActor = mc.addAgentTokensByActor;
 pub const addBackoffWaitMs = mc.addBackoffWaitMs;
 pub const addRateLimitWaitMs = mc.addRateLimitWaitMs;
 pub const incOutboxEnqueued = mc.incOutboxEnqueued;

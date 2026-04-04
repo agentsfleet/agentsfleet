@@ -70,8 +70,8 @@ pub fn handleDoneOutcome(o: DoneOutcomeCtx) !void {
     const billing_outcome: billing.FinalizeOutcome = blk: {
         if (maybe_score) |score| {
             if (score < scoring.BILLING_QUALITY_THRESHOLD) {
-                log.info("billing.score_gate run_id={s} score={d} threshold={d} outcome=non_billable", .{
-                    o.ctx.run_id, score, scoring.BILLING_QUALITY_THRESHOLD,
+                log.info("billing.score_gate run_id={s} agent_id={s} trace_id={s} score={d} threshold={d} outcome=non_billable", .{
+                    o.ctx.run_id, o.ctx.agent_id, o.ctx.trace_id, score, scoring.BILLING_QUALITY_THRESHOLD,
                 });
                 posthog_events.trackRunBillingGated(
                     o.cfg.posthog,
