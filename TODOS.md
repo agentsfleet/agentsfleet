@@ -31,19 +31,6 @@ picking it up in 3 months understands the motivation and where to start.
 
 ---
 
-## M9 Follow-On: Resource Efficiency Axis Activation
-
-**What:** Replace the stubbed resource axis (fixed score of 50) with real CPU/memory metrics from the M4_008 execution sandbox.
-**Why:** Resource efficiency is 10% of the quality score but currently meaningless. Activating it completes the 4-axis scoring model.
-**Pros:** Full scoring model. Can optimize agents for cost-efficiency.
-**Cons:** M effort. Need to define scoring formula (actual_usage / sandbox_limit) and test boundary conditions.
-**Context:** Depends on M4_008 (bubblewrap/host kill-switch sandbox in v1, Firecracker in v2) providing per-execution CPU/memory metrics. Scoring engine already reserves the axis and weights. Formula TBD: linear degradation from 100 (used 0% of limit) to 0 (used 100%+).
-**Effort:** M
-**Priority:** P1 (after M4_008)
-**Depends on:** M4_008 (sandbox resource governance)
-
----
-
 ## M9 Delight: Score Badge in PR Description
 
 **What:** Append agent quality badge to PR description body: "This PR was produced by a Gold-tier agent (87/100)."
@@ -67,19 +54,6 @@ picking it up in 3 months understands the motivation and where to start.
 **Effort:** S (30 min)
 **Priority:** P3
 **Depends on:** M9_002 CLI surface
-
----
-
-## M9 Delight: Score-Gated Billing Credit
-
-**What:** Runs scoring below Bronze (score < 40) are automatically marked `non_billable` in the credit lifecycle.
-**Why:** Operators should never pay for garbage output. This is a powerful trust signal — "we only charge for quality."
-**Pros:** Direct revenue signal. Ties scoring to billing, making M9 a revenue-relevant feature. Differentiator.
-**Cons:** Revenue impact — some runs that currently bill would become free. Need to model the financial impact.
-**Context:** Hook into `billing.finalizeRunForBilling()` in `worker_stage_executor.zig`. If score < 40, change `FinalizeOutcome` to `.non_billable`. Score is computed synchronously before billing finalization.
-**Effort:** S (1 hour)
-**Priority:** P1
-**Depends on:** M9_001 + M6_002 (credit lifecycle)
 
 ---
 
@@ -109,35 +83,6 @@ picking it up in 3 months understands the motivation and where to start.
 
 ---
 
-## M4 Follow-On: Drain Mode For Worker / Executor Rollouts
-
-**What:** Add explicit drain mode so worker stops claiming new runs and waits for in-flight stages to finish before executor or worker upgrade.
-**Why:** Current contract is honest but blunt: upgrades may interrupt active stages and rely on retry from persisted stage state. Drain mode improves operator ergonomics without pretending mid-stage migration exists.
-**Pros:** Cleaner upgrades, fewer interrupted runs, better operator confidence.
-**Cons:** More lifecycle logic: claim suppression, in-flight tracking, and rollout tooling.
-**Context:** The new executor architecture separates worker orchestration from dangerous execution. That makes drain mode feasible and worth doing, but it is not required for the initial executor boundary.
-**Effort:** M
-**Priority:** P1
-**Depends on:** M12_003 (executor NullClaw invocation)
-
----
-
-## M4 Follow-On: Executor Lease Heartbeats
-
-**Status:** DONE
-**Implemented in:** M12_002 — `src/executor/lease.zig` LeaseManager + `session.zig` LeaseState + `Heartbeat` RPC in protocol/handler
-**Note:** This TODO is closed. Lease/heartbeat model with 5s reap interval and configurable lease timeout is shipping.
-
----
-
-## M12_003: Executor NullClaw Invocation — Dynamic Agent Execution
-
-**Status:** DONE
-**Implemented in:** M12_003 — `src/executor/runner.zig`, handler.zig StartStage wiring, client.zig payload extension, worker_stage_executor.zig dispatch switch, executor_metrics.zig stage counters/histogram, error codes UZ-EXEC-012/013/014.
-**Note:** This TODO is closed. Runner module bridges handler to NullClaw, executor is agent-agnostic, worker falls back to in-process when executor unavailable.
-
----
-
 ## M4 Follow-On: Mid-Stage Checkpoint / Resume Research
 
 **What:** Research whether long-running agent stages can checkpoint enough state to resume after executor restart instead of restarting the whole stage.
@@ -149,13 +94,6 @@ picking it up in 3 months understands the motivation and where to start.
 **Priority:** P2
 **Depends on:** stable executor boundary and real run-duration data
 
----
-
-## M9 Pre-Requisite: Rename profile_id → agent_id
-
-**Status:** DONE
-**Tracked in:** `docs/spec/v1/M9_000_AGENT_ID_AND_CONFIG_VERSION_RENAME.md`
-**Note:** This TODO is closed as a planning item. Implementation is now tracked in the dedicated prerequisite spec.
 
 ---
 
@@ -195,19 +133,3 @@ picking it up in 3 months understands the motivation and where to start.
 **Effort:** S (config only)
 **Priority:** P2
 **Depends on:** M7_001 green (Fly.io deploy pipeline green)
-
----
-
-## M12_003 Follow-On: Audit for Hardcoded echo/scout/warden Assumptions
-
-**Status:** DONE
-**Implemented in:** M12_003 — executor dispatch is agent-agnostic (no actor-specific tool building), `resolveSystemPrompt` uses binding.kind to select prompt files (matches existing `runByRole` pattern). Custom skills get `""` — custom runners handle their own prompts. No echo/scout/warden hardcodes in executor or dispatch path.
-**Note:** `PromptFiles` struct still has 3 fixed fields (echo/scout/warden) — this is the prompt file loading mechanism, not an agent restriction. Dynamic prompt loading via SkillBinding.system_prompt is a future enhancement tracked in profile evolution.
-
----
-
-## M12_003 Follow-On: Audit for Hardcoded Strings in Database Tables
-
-**Status:** DONE
-**Implemented in:** M12_003 — replaced hardcoded `'orchestrator'`, `'runtime_stage'`, `'runtime_summary'`, `'stage_completed'` SQL literals with named constants in `billing_runtime.zig` (LEDGER_SOURCE_RUNTIME_STAGE, LEDGER_SOURCE_RUNTIME_SUMMARY, LEDGER_EVENT_STAGE_COMPLETED, LEDGER_ACTOR_ORCHESTRATOR) and parameterized queries ($N placeholders). Fixed `retry.zig` to use the constant instead of `'orchestrator'` literal. DB schema uses TEXT columns for actor/role fields — no ENUM or CHECK constraints that restrict to static values.
-
