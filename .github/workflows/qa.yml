@@ -12,24 +12,65 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  qa:
+  qa-backend:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
       - uses: mlugg/setup-zig@v2
         with:
           version: 0.15.2
+      - name: Run backend QA gate
+        run: make _test_e2e
+
+  qa-website:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.3.10
       - name: Install website dependencies
         run: bun install --frozen-lockfile
         working-directory: ui/packages/website
-      - name: Install app dependencies
-        run: bun install --frozen-lockfile
-        working-directory: ui/packages/app
+      - name: Restore Playwright browser cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-website-${{ hashFiles('ui/packages/website/bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-playwright-website-
       - name: Install Playwright browsers
         run: bunx playwright install --with-deps chromium
         working-directory: ui/packages/website
-      - name: Run full QA gate
-        run: make qa
+      - name: Run website QA gate
+        run: make _qa_website
+
+  qa-app:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.10
+      - name: Install app dependencies
+        run: bun install --frozen-lockfile
+        working-directory: ui/packages/app
+      - name: Restore Playwright browser cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-app-${{ hashFiles('ui/packages/app/bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-playwright-app-
+      - name: Install Playwright browsers
+        run: bunx playwright install --with-deps chromium
+        working-directory: ui/packages/app
+      - name: Run app QA gate
+        run: make qa_app
+
+  qa:
+    runs-on: ubuntu-latest
+    needs: [qa-backend, qa-website, qa-app]
+    steps:
+      - name: Preserve legacy qa check name
+        run: echo "All qa lanes passed"
