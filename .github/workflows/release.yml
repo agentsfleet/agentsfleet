@@ -346,7 +346,7 @@ jobs:
           echo "✓ DEV readiness gate passed"
 
   # ── 6. Deploy: prod API ───────────────────────────────────────────────
-  deploy-prod-api:
+  deploy-fly-prod:
     runs-on: ubuntu-latest
     needs: verify-dev-gate
     permissions:
@@ -501,9 +501,9 @@ jobs:
   # ── 7. Deploy: canary worker (first host) ───────────────────────────────
   # Skips until production worker bootstrap is complete (M4_002).
   # Enable by setting PROD_WORKER_READY=true in GitHub → Settings → Variables.
-  deploy-prod-canary:
+  deploy-worker-canary-prod:
     runs-on: ubuntu-latest
-    needs: deploy-prod-api
+    needs: deploy-fly-prod
     if: vars.PROD_WORKER_READY == 'true'
     permissions:
       contents: read
@@ -560,9 +560,9 @@ jobs:
           echo "✓ Canary $NAME deployed"
 
   # ── 8. Deploy: remaining fleet (with approval gate) ─────────────────────
-  deploy-prod-fleet:
+  deploy-worker-fleet-prod:
     runs-on: ubuntu-latest
-    needs: deploy-prod-canary
+    needs: deploy-worker-canary-prod
     environment: production-fleet
     permissions:
       contents: read
