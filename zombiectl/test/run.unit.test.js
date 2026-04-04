@@ -45,7 +45,7 @@ describe("commandRun", () => {
       request: async (_ctx, reqPath) => {
         calledPath = reqPath;
         if (reqPath.includes("/v1/specs")) {
-          return { specs: [{ spec_id: "spec_1" }] };
+          return { data: [{ spec_id: "spec_1" }], has_more: false, next_cursor: null };
         }
         return { run_id: RUN_ID_1, state: "SPEC_QUEUED", attempt: 1, plan_tier: "free", credit_remaining_cents: 958, credit_currency: "USD" };
       },
@@ -65,7 +65,7 @@ describe("commandRun", () => {
     const deps = makeDeps({
       request: async (_ctx, reqPath, opts) => {
         if (reqPath.includes("/v1/specs")) {
-          return { specs: [{ spec_id: "auto_spec" }] };
+          return { data: [{ spec_id: "auto_spec" }], has_more: false, next_cursor: null };
         }
         if (reqPath === "/v1/runs") {
           runPayload = JSON.parse(opts.body);
@@ -132,7 +132,7 @@ describe("commandRun", () => {
     const deps = makeDeps({
       request: async (_ctx, reqPath) => {
         if (reqPath.includes("/v1/specs")) {
-          return { specs: [{ spec_id: "spec_1" }] };
+          return { data: [{ spec_id: "spec_1" }], has_more: false, next_cursor: null };
         }
         return { run_id: RUN_ID_1, state: "SPEC_QUEUED", attempt: 1, plan_tier: "scale", credit_remaining_cents: 5000, credit_currency: "EUR" };
       },

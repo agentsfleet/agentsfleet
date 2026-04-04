@@ -7,9 +7,6 @@ const error_codes = @import("../../../errors/codes.zig");
 
 const log = std.log.scoped(.http);
 
-const default_limit: i64 = 50;
-const max_limit: i64 = 100;
-
 const sql_resolve_agent_workspace =
     \\SELECT workspace_id FROM agent_profiles WHERE agent_id = $1
 ;
@@ -49,15 +46,10 @@ pub fn handleGetAgentScores(ctx: *common.Context, req: *httpz.Request, res: *htt
     }
 
     const qs = req.query() catch null;
-    const limit: i64 = blk: {
-        const param = if (qs) |q| q.get("limit") else null;
-        const val = param orelse break :blk default_limit;
-        const parsed = std.fmt.parseInt(i64, val, 10) catch default_limit;
-        break :blk @min(@max(parsed, 1), max_limit);
-    };
-
-    // Stripe-style cursor: score_id of the last item on the previous page.
-    const starting_after: ?[]const u8 = if (qs) |q| q.get("starting_after") else null;
+    const pg = common.parsePaginationParams(
+        if (qs) |q| q.get("limit") else null,
+        if (qs) |q| q.get("starting_after") else null,
+    );
 
     const conn = ctx.pool.acquire() catch {
         common.internalDbUnavailable(res, req_id);
@@ -88,9 +80,9 @@ pub fn handleGetAgentScores(ctx: *common.Context, req: *httpz.Request, res: *htt
     if (!common.requireRole(res, req_id, principal, .user)) return;
 
     // Fetch limit+1 to detect whether a next page exists.
-    const fetch_limit = limit + 1;
+    const fetch_limit = pg.limit + 1;
 
-    var sq = if (starting_after) |cursor|
+    var sq = if (pg.starting_after) |cursor|
         conn.query(sql_scores_after_cursor, .{ agent_id, workspace_id, cursor, fetch_limit }) catch {
             common.internalDbError(res, req_id);
             return;
@@ -122,22 +114,14 @@ pub fn handleGetAgentScores(ctx: *common.Context, req: *httpz.Request, res: *htt
     }
     sq.drain() catch |err| obs_log.logWarnErr(.http, err, "agent.scores_drain_fail agent_id={s}", .{agent_id});
 
-    const result_count = @min(data.items.len, @as(usize, @intCast(limit)));
-    const has_more = data.items.len > result_count;
-    const result_data = data.items[0..result_count];
+    const pag = common.derivePaginationResult(data.items, pg.limit, "score_id");
 
-    const next_cursor: ?[]const u8 = if (has_more and result_count > 0) blk: {
-        const last = result_data[result_count - 1];
-        if (last.object.get("score_id")) |v| break :blk v.string;
-        break :blk null;
-    } else null;
-
-    log.debug("agent.scores_retrieved agent_id={s} count={d} has_more={}", .{ agent_id, result_count, has_more });
+    log.debug("agent.scores_retrieved agent_id={s} count={d} has_more={}", .{ agent_id, pag.data.len, pag.has_more });
 
     common.writeJson(res, .ok, .{
-        .data = result_data,
-        .has_more = has_more,
-        .next_cursor = next_cursor,
+        .data = pag.data,
+        .has_more = pag.has_more,
+        .next_cursor = pag.next_cursor,
         .request_id = req_id,
     });
 }

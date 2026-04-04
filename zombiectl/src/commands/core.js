@@ -430,7 +430,7 @@ function createCoreHandlers(ctx, workspaces, deps) {
           headers: apiHeaders(ctx),
         },
       );
-      const first = Array.isArray(listed.specs) ? listed.specs[0] : null;
+      const first = Array.isArray(listed.data) ? listed.data[0] : null;
       specId = first?.spec_id;
     }
 
@@ -486,16 +486,19 @@ function createCoreHandlers(ctx, workspaces, deps) {
   async function commandRunsList(args) {
     const parsed = parseFlags(args);
     const workspaceId = parsed.options["workspace-id"] || workspaces.current_workspace_id;
+    const limit = parsed.options.limit || 50;
+    const startingAfter = parsed.options["starting-after"] || null;
 
-    let url = "/v1/runs";
-    if (workspaceId) url += `?workspace_id=${encodeURIComponent(workspaceId)}`;
+    let url = `/v1/runs?limit=${limit}`;
+    if (workspaceId) url += `&workspace_id=${encodeURIComponent(workspaceId)}`;
+    if (startingAfter) url += `&starting_after=${encodeURIComponent(startingAfter)}`;
 
     const res = await request(ctx, url, {
       method: "GET",
       headers: apiHeaders(ctx),
     });
 
-    const items = Array.isArray(res.runs) ? res.runs : [];
+    const items = Array.isArray(res.data) ? res.data : [];
     setCliAnalyticsContext(ctx, {
       workspace_id: workspaceId,
       run_count: items.length,
@@ -505,7 +508,7 @@ function createCoreHandlers(ctx, workspaces, deps) {
       run_count: items.length,
     });
 
-    if (ctx.jsonMode) printJson(ctx.stdout, { runs: items, total: items.length });
+    if (ctx.jsonMode) printJson(ctx.stdout, res);
     else {
       if (items.length === 0) writeLine(ctx.stdout, ui.info("no runs"));
       printTable(
@@ -517,6 +520,9 @@ function createCoreHandlers(ctx, workspaces, deps) {
         ],
         items,
       );
+      if (res.has_more && res.next_cursor) {
+        writeLine(ctx.stdout, ui.dim(`next: --starting-after ${res.next_cursor}`));
+      }
     }
     return 0;
   }
