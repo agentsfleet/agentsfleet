@@ -213,7 +213,7 @@ jobs:
   # ── 3. Deploy DEV worker to bare-metal via Tailscale SSH ─────────────────
   # Skips until zombie-dev-worker-ant bootstrap is complete (M4_001).
   # Enable by setting DEV_WORKER_READY=true in GitHub → Settings → Variables.
-  deploy-dev-worker:
+  deploy-worker-dev:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     # needs push-dev so the bare-metal worker and Fly.io API always move together:
@@ -436,7 +436,7 @@ jobs:
   # ── 5. Discord notify ────────────────────────────────────────────────────
   notify:
     runs-on: ubuntu-latest
-    needs: [qa-dev, deploy-dev-worker]
+    needs: [qa-dev, deploy-worker-dev]
     if: always()
     steps:
       - uses: 1password/install-cli-action@v3
@@ -468,7 +468,7 @@ jobs:
           REF="${{ github.ref_name }}"
 
           QA="${{ needs.qa-dev.result }}"
-          WORKER="${{ needs.deploy-dev-worker.result }}"
+          WORKER="${{ needs.deploy-worker-dev.result }}"
 
           if [ "$QA" = "success" ] && { [ "$WORKER" = "success" ] || [ "$WORKER" = "skipped" ]; }; then
             COLOR=3066993

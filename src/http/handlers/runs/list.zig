@@ -2,8 +2,37 @@ const std = @import("std");
 const httpz = @import("httpz");
 const common = @import("../common.zig");
 const error_codes = @import("../../../errors/codes.zig");
+const obs_log = @import("../../../observability/logging.zig");
 
 const log = std.log.scoped(.http);
+
+const sql_runs_first_page_ws =
+    \\SELECT run_id, workspace_id, spec_id, state, attempt, mode,
+    \\       requested_by, pr_url, created_at, updated_at
+    \\FROM runs WHERE workspace_id = $1
+    \\ORDER BY run_id DESC LIMIT $2
+;
+
+const sql_runs_after_cursor_ws =
+    \\SELECT run_id, workspace_id, spec_id, state, attempt, mode,
+    \\       requested_by, pr_url, created_at, updated_at
+    \\FROM runs WHERE workspace_id = $1 AND run_id < $2
+    \\ORDER BY run_id DESC LIMIT $3
+;
+
+const sql_runs_first_page_all =
+    \\SELECT run_id, workspace_id, spec_id, state, attempt, mode,
+    \\       requested_by, pr_url, created_at, updated_at
+    \\FROM runs
+    \\ORDER BY run_id DESC LIMIT $1
+;
+
+const sql_runs_after_cursor_all =
+    \\SELECT run_id, workspace_id, spec_id, state, attempt, mode,
+    \\       requested_by, pr_url, created_at, updated_at
+    \\FROM runs WHERE run_id < $1
+    \\ORDER BY run_id DESC LIMIT $2
+;
 
 pub fn handleListRuns(ctx: *common.Context, req: *httpz.Request, res: *httpz.Response) void {
     var arena = std.heap.ArenaAllocator.init(ctx.alloc);
@@ -23,11 +52,14 @@ pub fn handleListRuns(ctx: *common.Context, req: *httpz.Request, res: *httpz.Res
         if (!common.requireUuidV7Id(res, req_id, wid, "workspace_id")) return;
     }
 
-    const limit_str = if (qs) |q| q.get("limit") else null;
-    const limit: i32 = if (limit_str) |ls|
-        std.fmt.parseInt(i32, ls, 10) catch 50
-    else
-        50;
+    const pg = common.parsePaginationParams(
+        if (qs) |q| q.get("limit") else null,
+        if (qs) |q| q.get("starting_after") else null,
+    );
+
+    if (pg.starting_after) |cursor| {
+        if (!common.requireUuidV7Id(res, req_id, cursor, "starting_after")) return;
+    }
 
     const conn = ctx.pool.acquire() catch {
         common.internalDbUnavailable(res, req_id);
@@ -42,42 +74,50 @@ pub fn handleListRuns(ctx: *common.Context, req: *httpz.Request, res: *httpz.Res
         }
     }
 
-    log.debug("run.list workspace_id={?s} limit={d}", .{ workspace_id, limit });
+    const fetch_limit = pg.limit + 1;
 
-    // check-pg-drain: ok — full while loop exhausts all rows, natural drain
+    log.debug("run.list workspace_id={?s} limit={d} cursor={?s}", .{ workspace_id, pg.limit, pg.starting_after });
+
     var runs: std.ArrayList(std.json.Value) = .{};
 
     if (workspace_id) |wid| {
-        var result = conn.query(
-            \\SELECT run_id, workspace_id, spec_id, state, attempt, mode,
-            \\       requested_by, pr_url, created_at, updated_at
-            \\FROM runs WHERE workspace_id = $1
-            \\ORDER BY created_at DESC LIMIT $2
-        , .{ wid, limit }) catch {
-            common.internalDbError(res, req_id);
-            return;
-        };
+        var result = if (pg.starting_after) |cursor|
+            conn.query(sql_runs_after_cursor_ws, .{ wid, cursor, fetch_limit }) catch {
+                common.internalDbError(res, req_id);
+                return;
+            }
+        else
+            conn.query(sql_runs_first_page_ws, .{ wid, fetch_limit }) catch {
+                common.internalDbError(res, req_id);
+                return;
+            };
         defer result.deinit();
         appendRows(alloc, &runs, &result);
+        result.drain() catch |err| obs_log.logWarnErr(.http, err, "run.list_drain_fail workspace_id={s}", .{wid});
     } else {
-        var result = conn.query(
-            \\SELECT run_id, workspace_id, spec_id, state, attempt, mode,
-            \\       requested_by, pr_url, created_at, updated_at
-            \\FROM runs
-            \\ORDER BY created_at DESC LIMIT $1
-        , .{limit}) catch {
-            common.internalDbError(res, req_id);
-            return;
-        };
+        var result = if (pg.starting_after) |cursor|
+            conn.query(sql_runs_after_cursor_all, .{ cursor, fetch_limit }) catch {
+                common.internalDbError(res, req_id);
+                return;
+            }
+        else
+            conn.query(sql_runs_first_page_all, .{fetch_limit}) catch {
+                common.internalDbError(res, req_id);
+                return;
+            };
         defer result.deinit();
         appendRows(alloc, &runs, &result);
+        result.drain() catch |err| obs_log.logWarnErr(.http, err, "run.list_drain_fail_all", .{});
     }
 
-    log.info("run.listed workspace_id={?s} count={d}", .{ workspace_id, runs.items.len });
+    const pag = common.derivePaginationResult(runs.items, pg.limit, "run_id");
+
+    log.info("run.listed workspace_id={?s} count={d} has_more={}", .{ workspace_id, pag.data.len, pag.has_more });
 
     common.writeJson(res, .ok, .{
-        .runs = runs.items,
-        .total = runs.items.len,
+        .data = pag.data,
+        .has_more = pag.has_more,
+        .next_cursor = pag.next_cursor,
         .request_id = req_id,
     });
 }

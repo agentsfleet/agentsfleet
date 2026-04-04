@@ -74,7 +74,7 @@ export type ApiError = {
 
 export type PaginatedResponse<T> = {
   data: T[];
-  total: number;
-  page: number;
-  per_page: number;
+  has_more: boolean;
+  next_cursor: string | null;
+  request_id: string;
 };

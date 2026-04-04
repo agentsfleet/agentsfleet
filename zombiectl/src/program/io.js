@@ -32,7 +32,7 @@ function printHelp(stdout, ui, opts = {}) {
   writeLine(stdout, "  run [--workspace-id ID] [--spec-id ID] [--mode MODE] [--requested-by USER] [--idempotency-key KEY]");
   writeLine(stdout, "  run [--spec FILE] [--preview] [--preview-only] [--path DIR]");
   writeLine(stdout, "  run status <run_id>");
-  writeLine(stdout, "  runs list [--workspace-id ID]");
+  writeLine(stdout, "  runs list [--workspace-id ID] [--limit N] [--starting-after ID]");
   writeLine(stdout, "  doctor");
 
   if (showOperator) {
