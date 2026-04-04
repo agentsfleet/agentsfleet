@@ -4,12 +4,31 @@
 **Milestone:** M26
 **Workstream:** 001
 **Date:** Apr 04, 2026
-**Status:** IN_PROGRESS
-**Branch:** v0.3.1-prerelease-readiness
+**Status:** PENDING
 **Priority:** P0 — Release gate
 **Depends on:** M7_001_DEV_ACCEPTANCE_ENVIRONMENT (DONE), M7_003_PROD_ACCEPTANCE_ENVIRONMENT (DONE), M7_005_NETWORK_CONNECTIVITY (DONE)
 
 > Consolidates the remaining acceptance items from M7_001 (DEV CLI) and M7_003 (PROD CLI, workers, UI) into a single spec now that both environments are verified green.
+
+---
+
+## 0.0 Active Worker Observability via /metrics
+
+**Status:** PENDING
+
+The API `/metrics` endpoint must expose the count of active bare-metal workers connected to the queue. Currently `zombie_worker_running` is a local gauge (1/0 for the API's own worker thread). It does not reflect bare-metal fleet connectivity. A new metric (e.g. `zombie_active_workers`) should report how many distinct worker nodes are polling the queue, so operator verification doesn't require SSH to each node.
+
+Tracked per greptile feedback on PR #147 (M7_005 §2.2, §3.2, §5.2, §6.2 lack direct bare-metal evidence).
+
+**Dimensions:**
+- 0.1 PENDING `/metrics` exposes `zombie_active_workers` gauge showing connected worker count
+- 0.2 PENDING DEV: metric shows ≥1 active worker
+- 0.3 PENDING PROD: metric shows ≥2 active workers (ant + bird)
+
+```bash
+curl -sf https://api-dev.usezombie.com/metrics | grep zombie_active_workers
+curl -sf https://api.usezombie.com/metrics | grep zombie_active_workers
+```
 
 ---
 
