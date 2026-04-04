@@ -4,7 +4,7 @@
 **Milestone:** M25
 **Workstream:** 001
 **Date:** Apr 04, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — API consumers cannot page through large result sets; list endpoints silently truncate at LIMIT
 **Batch:** B1
 **Branch:** feat/m25-keyset-pagination
