@@ -98,6 +98,7 @@ Implemented in this execution pass:
 
 - Disabled `setup-zig` cache for `.github/workflows/deploy-dev.yml`
 - Disabled `setup-zig` cache for the heavy release Zig jobs in `.github/workflows/release.yml`
+- Vendored `setup-zig` into `./.github/actions/setup-zig` and migrated workflows to the local action path, with `scripts/vendor-setup-zig.sh` as the periodic refresh path from `~/Projects/oss/setup-zig`
 
 Projected impact from audit timings:
 

@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - uses: mlugg/setup-zig@v2
+      - uses: ./.github/actions/setup-zig
         with:
           version: 0.15.2
       - name: Run backend QA gate
