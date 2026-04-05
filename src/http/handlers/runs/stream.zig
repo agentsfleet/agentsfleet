@@ -59,7 +59,9 @@ pub fn handleStreamRun(ctx: *common.Context, req: *httpz.Request, res: *httpz.Re
     };
 
     const workspace_id = row.get([]u8, 1) catch "?";
-    const initial_state = row.get([]u8, 2) catch "unknown";
+    // Dupe initial_state before drain — row slices are dangling after drain/deinit (ZIG_RULES).
+    const initial_state_raw = row.get([]u8, 2) catch "unknown";
+    const initial_state = alloc.dupe(u8, initial_state_raw) catch "unknown";
 
     if (!common.authorizeWorkspaceAndSetTenantContext(conn, principal, workspace_id)) {
         common.errorResponse(res, .forbidden, error_codes.ERR_FORBIDDEN, "Workspace access denied", req_id);
@@ -124,9 +126,10 @@ pub fn handleStreamRun(ctx: *common.Context, req: *httpz.Request, res: *httpz.Re
         };
         defer post_state.deinit();
         if (post_state.next() catch null) |psrow| {
-            const post_sub_state = psrow.get([]u8, 0) catch "unknown";
+            const post_sub_state_raw = psrow.get([]u8, 0) catch "unknown";
+            const post_sub_state = alloc.dupe(u8, post_sub_state_raw) catch "unknown";
+            post_state.drain() catch {};
             if (isTerminalState(post_sub_state)) {
-                post_state.drain() catch {};
                 streamStoredEvents(alloc, conn, res, run_id, last_event_id);
                 const term_event = std.fmt.allocPrint(
                     alloc,
@@ -136,8 +139,9 @@ pub fn handleStreamRun(ctx: *common.Context, req: *httpz.Request, res: *httpz.Re
                 _ = res.chunk(term_event) catch {};
                 return;
             }
+        } else {
+            post_state.drain() catch {};
         }
-        post_state.drain() catch {};
     }
 
     // §2: Event loop with SO_RCVTIMEO-based heartbeat.
@@ -176,9 +180,17 @@ pub fn handleStreamRun(ctx: *common.Context, req: *httpz.Request, res: *httpz.Re
         var state_result = conn.query("SELECT state FROM runs WHERE run_id = $1", .{run_id}) catch continue;
         defer state_result.deinit();
         if (state_result.next() catch null) |srow| {
-            const state = srow.get([]u8, 0) catch continue;
-            if (isTerminalState(state)) {
+            const state_raw = srow.get([]u8, 0) catch {
                 state_result.drain() catch {};
+                continue;
+            };
+            // Dupe before drain — row slices dangle after drain/deinit (ZIG_RULES).
+            const state = alloc.dupe(u8, state_raw) catch {
+                state_result.drain() catch {};
+                continue;
+            };
+            state_result.drain() catch {};
+            if (isTerminalState(state)) {
                 const term_event = std.fmt.allocPrint(
                     alloc,
                     "event: run_complete\ndata: {{\"state\":\"{s}\"}}\n\n",
@@ -187,8 +199,9 @@ pub fn handleStreamRun(ctx: *common.Context, req: *httpz.Request, res: *httpz.Re
                 _ = res.chunk(term_event) catch {};
                 break;
             }
+        } else {
+            state_result.drain() catch {};
         }
-        state_result.drain() catch {};
     }
 }
 
