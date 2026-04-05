@@ -170,6 +170,40 @@ test "T8: extractCreatedAt skips escaped injection in gate_name field" {
     try std.testing.expectEqual(@as(i64, 42), result);
 }
 
+test "T8: extractCreatedAt skips multiple escaped matches before real key" {
+    const alloc = std.testing.allocator;
+    // Two escaped occurrences then the real key.
+    const json = "{\"a\":\"\\\"created_at\\\":1\",\"b\":\"\\\"created_at\\\":2\",\"created_at\":99}";
+    const result = stream.extractCreatedAt(alloc, json);
+    try std.testing.expectEqual(@as(i64, 99), result);
+}
+
+test "T8: extractCreatedAt with only escaped matches falls back to milliTimestamp" {
+    const alloc = std.testing.allocator;
+    // No real key — only an escaped one inside a string value.
+    const json = "{\"name\":\"\\\"created_at\\\":777\"}";
+    const before = std.time.milliTimestamp();
+    const result = stream.extractCreatedAt(alloc, json);
+    const after = std.time.milliTimestamp();
+    try std.testing.expect(result >= before and result <= after);
+}
+
+test "T8: extractCreatedAt non-escaped match at position 0 works" {
+    const alloc = std.testing.allocator;
+    // "created_at" is the very first key — position 0 has no preceding char.
+    const json = "{\"created_at\":123}";
+    const result = stream.extractCreatedAt(alloc, json);
+    try std.testing.expectEqual(@as(i64, 123), result);
+}
+
+test "T8: extractCreatedAt with backslash NOT preceding quote is not skipped" {
+    const alloc = std.testing.allocator;
+    // Backslash is two chars before the quote, not immediately preceding — should match.
+    const json = "{\"x\\y\":1,\"created_at\":55}";
+    const result = stream.extractCreatedAt(alloc, json);
+    try std.testing.expectEqual(@as(i64, 55), result);
+}
+
 test "T8: extractCreatedAt with XSS payload in JSON does not crash" {
     const alloc = std.testing.allocator;
     const json = "{\"gate_name\":\"<script>alert(1)</script>\",\"created_at\":1743000000000}";
