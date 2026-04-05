@@ -11,8 +11,8 @@ const git = @import("../git/ops.zig");
 const topology = @import("topology.zig");
 const executor_client = @import("../executor/client.zig");
 const metrics = @import("../observability/metrics.zig");
-const otel_traces = @import("../observability/otel_traces.zig");
 const trace_mod = @import("../observability/trace.zig");
+const gate_spans = @import("worker_gate_spans.zig");
 const id_format = @import("../types/id_format.zig");
 const codes = @import("../errors/codes.zig");
 const worker_runtime = @import("worker_runtime.zig");
@@ -82,40 +82,6 @@ pub const GateLoopConfig = struct {
     root_span_id: [trace_mod.SPAN_ID_HEX_LEN]u8 = [_]u8{0} ** trace_mod.SPAN_ID_HEX_LEN,
     trace_id: []const u8 = "",
 };
-
-/// M28_001 §1.4: Emit a gate tool span as a child of the root run span.
-fn emitGateSpan(cfg: GateLoopConfig, result: GateToolResult, repair_attempt: u32) void {
-    if (cfg.trace_id.len == 0) return;
-    var tc: trace_mod.TraceContext = undefined;
-    const tid_len = @min(cfg.trace_id.len, trace_mod.TRACE_ID_HEX_LEN);
-    @memcpy(tc.trace_id[0..tid_len], cfg.trace_id[0..tid_len]);
-    if (tid_len < trace_mod.TRACE_ID_HEX_LEN) @memset(tc.trace_id[tid_len..], '0');
-    const child = trace_mod.TraceContext.generate();
-    tc.span_id = child.span_id;
-    tc.parent_span_id = cfg.root_span_id;
-
-    const now_ns: u64 = @intCast(std.time.nanoTimestamp());
-    const start_ns = if (now_ns > result.wall_ms * std.time.ns_per_ms)
-        now_ns - result.wall_ms * std.time.ns_per_ms
-    else
-        now_ns;
-
-    var span = otel_traces.buildSpan(tc, "gate.check", start_ns, now_ns);
-    _ = otel_traces.addAttr(&span, "run.id", cfg.run_id);
-    _ = otel_traces.addAttr(&span, "workspace.id", cfg.workspace_id);
-    _ = otel_traces.addAttr(&span, "gate.name", result.gate_name);
-    var attempt_buf: [10]u8 = undefined;
-    const attempt_str = std.fmt.bufPrint(&attempt_buf, "{d}", .{repair_attempt}) catch "0";
-    _ = otel_traces.addAttr(&span, "gate.attempt", attempt_str);
-    var exit_buf: [10]u8 = undefined;
-    const exit_str = std.fmt.bufPrint(&exit_buf, "{d}", .{result.exit_code}) catch "0";
-    _ = otel_traces.addAttr(&span, "gate.exit_code", exit_str);
-    var dur_buf: [20]u8 = undefined;
-    const dur_str = std.fmt.bufPrint(&dur_buf, "{d}", .{result.wall_ms}) catch "0";
-    _ = otel_traces.addAttr(&span, "gate.duration_ms", dur_str);
-    _ = otel_traces.addAttr(&span, "gate.passed", if (result.passed) "true" else "false");
-    otel_traces.enqueueSpan(span);
-}
 
 /// Check token budget: query usage_ledger for sum of tokens used this run.
 /// Returns true if the limit is breached (transition written, metric incremented).
@@ -234,7 +200,11 @@ pub fn runGateLoop(cfg: GateLoopConfig) !GateLoopOutcome {
             try results.append(cfg.alloc, result);
 
             publishGateEvent(cfg, result, repair);
-            emitGateSpan(cfg, result, repair);
+            gate_spans.emit(
+                .{ .run_id = cfg.run_id, .workspace_id = cfg.workspace_id, .trace_id = cfg.trace_id, .root_span_id = cfg.root_span_id },
+                .{ .gate_name = result.gate_name, .exit_code = result.exit_code, .wall_ms = result.wall_ms, .passed = result.passed },
+                repair,
+            );
 
             if (!result.passed) {
                 failed_result = result;

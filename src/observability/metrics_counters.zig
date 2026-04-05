@@ -4,21 +4,15 @@ const std = @import("std");
 const error_classify = @import("../reliability/error_classify.zig");
 
 pub const DurationBuckets = [_]u64{ 1, 3, 5, 10, 30, 60, 120, 300 };
-// M28_001 §4.1: gate loop count buckets (small discrete values, not durations).
-pub const GateLoopBuckets = [_]u64{ 0, 1, 2, 3, 5, 10 };
-
 pub const HistogramSnapshot = struct {
     buckets: [DurationBuckets.len]u64 = [_]u64{0} ** DurationBuckets.len,
     count: u64 = 0,
     sum: u64 = 0,
 };
 
-// M28_001 §4.1: histogram for gate repair loops per run.
-pub const GateLoopHistogramSnapshot = struct {
-    buckets: [GateLoopBuckets.len]u64 = [_]u64{0} ** GateLoopBuckets.len,
-    count: u64 = 0,
-    sum: u64 = 0,
-};
+const gate_hist = @import("metrics_gate_histogram.zig");
+pub const GateLoopBuckets = gate_hist.GateLoopBuckets;
+pub const GateLoopHistogramSnapshot = gate_hist.GateLoopHistogramSnapshot;
 
 pub const Snapshot = struct {
     runs_created_total: u64,
@@ -127,7 +121,6 @@ var g_agent_echo_calls_total = std.atomic.Value(u64).init(0);
 var g_agent_scout_calls_total = std.atomic.Value(u64).init(0);
 var g_agent_warden_calls_total = std.atomic.Value(u64).init(0);
 var g_agent_tokens_total = std.atomic.Value(u64).init(0);
-// M27_002 obs: per-actor token breakdown for Grafana/Prometheus.
 var g_agent_echo_tokens_total = std.atomic.Value(u64).init(0);
 var g_agent_scout_tokens_total = std.atomic.Value(u64).init(0);
 var g_agent_warden_tokens_total = std.atomic.Value(u64).init(0);
@@ -151,7 +144,6 @@ var g_agent_scoring_failed_total = std.atomic.Value(u64).init(0);
 var g_agent_score_latest = std.atomic.Value(u64).init(0);
 var g_gate_repair_loops_total = std.atomic.Value(u64).init(0);
 var g_gate_repair_exhausted_total = std.atomic.Value(u64).init(0);
-// M17_001 §1.3
 var g_run_limit_token_budget_exceeded_total = std.atomic.Value(u64).init(0);
 var g_run_limit_wall_time_exceeded_total = std.atomic.Value(u64).init(0);
 var g_run_limit_repair_loops_exhausted_total = std.atomic.Value(u64).init(0);
@@ -169,9 +161,6 @@ var g_histograms_mu: std.Thread.Mutex = .{};
 var g_agent_duration_seconds = HistogramSnapshot{};
 var g_run_total_wall_seconds = HistogramSnapshot{};
 var g_agent_scoring_duration_ms = HistogramSnapshot{};
-// M28_001 §4.1
-var g_gate_repair_loops_per_run = GateLoopHistogramSnapshot{};
-
 pub fn incRunsCreated() void {
     _ = g_runs_created_total.fetchAdd(1, .monotonic);
 }
@@ -347,24 +336,18 @@ pub fn incAgentScoringFailed() void {
 pub fn setAgentScoreLatest(score: u8) void {
     g_agent_score_latest.store(@as(u64, score), .release);
 }
-
 pub fn incGateRepairLoops() void {
     _ = g_gate_repair_loops_total.fetchAdd(1, .monotonic);
 }
-
 pub fn incGateRepairExhausted() void {
     _ = g_gate_repair_exhausted_total.fetchAdd(1, .monotonic);
 }
-
-// M17_001 §1.3: limit-type counters (zombied_run_limit_exceeded_total{reason=...})
 pub fn incRunLimitTokenBudgetExceeded() void {
     _ = g_run_limit_token_budget_exceeded_total.fetchAdd(1, .monotonic);
 }
-
 pub fn incRunLimitWallTimeExceeded() void {
     _ = g_run_limit_wall_time_exceeded_total.fetchAdd(1, .monotonic);
 }
-
 pub fn incRunLimitRepairLoopsExhausted() void {
     _ = g_run_limit_repair_loops_exhausted_total.fetchAdd(1, .monotonic);
 }
@@ -380,15 +363,12 @@ pub fn incInterruptFallback() void {
 pub fn incRunAborted() void {
     _ = g_run_aborted_total.fetchAdd(1, .monotonic);
 }
-
 pub fn incOtelExportTotal() void {
     _ = g_otel_export_total.fetchAdd(1, .monotonic);
 }
-
 pub fn incOtelExportFailed() void {
     _ = g_otel_export_failed_total.fetchAdd(1, .monotonic);
 }
-
 pub fn setOtelLastSuccessAtMs(ms: i64) void {
     g_otel_last_success_at_ms.store(ms, .release);
 }
@@ -433,14 +413,7 @@ fn observeHistogram(hist: *HistogramSnapshot, value_seconds: u64) void {
 
 /// M28_001 §4.2: Record gate repair loop count for a run.
 pub fn observeGateRepairLoopsPerRun(loops: u32) void {
-    g_histograms_mu.lock();
-    defer g_histograms_mu.unlock();
-    const v: u64 = @intCast(loops);
-    g_gate_repair_loops_per_run.count += 1;
-    g_gate_repair_loops_per_run.sum += v;
-    for (GateLoopBuckets, 0..) |le, i| {
-        if (v <= le) g_gate_repair_loops_per_run.buckets[i] += 1;
-    }
+    gate_hist.observe(&g_histograms_mu, loops);
 }
 
 pub fn snapshot() Snapshot {
@@ -522,6 +495,6 @@ pub fn snapshot() Snapshot {
     s.agent_duration_seconds = g_agent_duration_seconds;
     s.run_total_wall_seconds = g_run_total_wall_seconds;
     s.agent_scoring_duration_ms = g_agent_scoring_duration_ms;
-    s.gate_repair_loops_per_run = g_gate_repair_loops_per_run;
+    s.gate_repair_loops_per_run = gate_hist.snapshot();
     return s;
 }
