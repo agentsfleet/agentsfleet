@@ -55,10 +55,14 @@ async function streamRunWatch(ctx, runId, { apiHeaders: getHeaders, ui, writeLin
 
       if (!response.ok) {
         writeLine(ctx.stderr, ui.err(`watch: stream returned ${response.status}`));
+        if (response.status >= 500 && attempt < WATCH_MAX_RETRIES) {
+          await new Promise((r) => setTimeout(r, WATCH_RETRY_DELAY_MS));
+          continue;
+        }
         return;
       }
 
-      const result = await readSseStream(response, ctx, lastEventId, aborted, {
+      const result = await readSseStream(response, ctx, lastEventId, {
         ui, writeLine,
       });
       lastEventId = result.lastEventId;
@@ -81,7 +85,7 @@ async function streamRunWatch(ctx, runId, { apiHeaders: getHeaders, ui, writeLin
   }
 }
 
-async function readSseStream(response, ctx, lastEventIdIn, abortedRef, { ui, writeLine }) {
+async function readSseStream(response, ctx, lastEventIdIn, { ui, writeLine }) {
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
@@ -150,7 +154,7 @@ async function readSseStream(response, ctx, lastEventIdIn, abortedRef, { ui, wri
       if (streamDone) break;
     }
   } catch (err) {
-    if (!abortedRef && err.name !== "AbortError") streamError = err;
+    if (err.name !== "AbortError") streamError = err;
   } finally {
     clearTimeout(heartbeatTimer);
     reader.cancel().catch(() => {});

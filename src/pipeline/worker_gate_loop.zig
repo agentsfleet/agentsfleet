@@ -427,9 +427,12 @@ fn publishGateEvent(cfg: GateLoopConfig, result: GateToolResult, loop: u32) void
     const channel = std.fmt.allocPrint(cfg.alloc, "run:{s}:events", .{cfg.run_id}) catch return;
     defer cfg.alloc.free(channel);
     const outcome_str = if (result.passed) "PASS" else "FAIL";
+    // §3.1: include created_at (Unix ms) so the SSE stream handler can use it
+    // as the event ID — unifying the ID namespace between stored and live events.
+    const created_at = std.time.milliTimestamp();
     const event_json = std.fmt.allocPrint(cfg.alloc,
-        \\{{"gate_name":"{s}","outcome":"{s}","exit_code":{d},"loop":{d},"wall_ms":{d}}}
-    , .{ result.gate_name, outcome_str, result.exit_code, loop, result.wall_ms }) catch return;
+        \\{{"gate_name":"{s}","outcome":"{s}","exit_code":{d},"loop":{d},"wall_ms":{d},"created_at":{d}}}
+    , .{ result.gate_name, outcome_str, result.exit_code, loop, result.wall_ms, created_at }) catch return;
     defer cfg.alloc.free(event_json);
     redis_client.publish(channel, event_json) catch |err| {
         log.warn("gate_loop.pubsub_fail err={s} run_id={s}", .{ @errorName(err), cfg.run_id });

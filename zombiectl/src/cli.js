@@ -171,6 +171,14 @@ export async function runCli(argv, io = {}) {
       printJson,
       writeLine,
     }),
+    runsReplay: (routeArgs) => commandRunsModule(ctx, routeArgs, {
+      parseFlags,
+      request,
+      apiHeaders,
+      ui,
+      printJson,
+      writeLine,
+    }),
   });
 
   try {
