@@ -130,8 +130,8 @@ const DefaultSkillEntry = struct {
     runner: CustomSkillFn,
 };
 const DEFAULT_SKILL_ENTRIES = [_]DefaultSkillEntry{
-    .{ .skill_id = "echo",   .actor = .echo,   .runner = echoRunner },
-    .{ .skill_id = "scout",  .actor = .scout,  .runner = scoutRunner },
+    .{ .skill_id = "echo", .actor = .echo, .runner = echoRunner },
+    .{ .skill_id = "scout", .actor = .scout, .runner = scoutRunner },
     .{ .skill_id = "warden", .actor = .warden, .runner = wardenRunner },
 };
 

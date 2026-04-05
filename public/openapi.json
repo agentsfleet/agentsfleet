@@ -3095,6 +3095,75 @@
         }
       }
     },
+    "/v1/workspaces/{workspace_id}/billing/summary": {
+      "get": {
+        "operationId": "get_billing_summary",
+        "summary": "Get billing summary",
+        "description": "Returns a billing breakdown for a workspace: run counts grouped by lifecycle event (completed, non-billable, score-gated), plus total agent seconds and average score for gated runs. Filterable by period.",
+        "tags": [
+          "Billing"
+        ],
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          },
+          {
+            "name": "period",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string", "enum": ["7d", "30d", "90d"], "default": "30d" },
+            "description": "Time period for the summary window"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Billing summary for the workspace",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["workspace_id", "period_days", "period_start_ms", "period_end_ms", "completed", "non_billable", "non_billable_score_gated", "total_runs", "request_id"],
+                  "properties": {
+                    "workspace_id": { "type": "string" },
+                    "period_days": { "type": "integer" },
+                    "period_start_ms": { "type": "integer", "format": "int64" },
+                    "period_end_ms": { "type": "integer", "format": "int64" },
+                    "completed": {
+                      "type": "object",
+                      "properties": {
+                        "count": { "type": "integer" },
+                        "agent_seconds": { "type": "integer" }
+                      }
+                    },
+                    "non_billable": {
+                      "type": "object",
+                      "properties": {
+                        "count": { "type": "integer" }
+                      }
+                    },
+                    "non_billable_score_gated": {
+                      "type": "object",
+                      "properties": {
+                        "count": { "type": "integer" },
+                        "avg_score": { "type": "integer" }
+                      }
+                    },
+                    "total_runs": { "type": "integer" },
+                    "request_id": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/v1/workspaces/{workspace_id}/scoring/config": {
       "post": {
         "operationId": "set_scoring_config",

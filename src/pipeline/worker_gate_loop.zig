@@ -11,6 +11,8 @@ const git = @import("../git/ops.zig");
 const topology = @import("topology.zig");
 const executor_client = @import("../executor/client.zig");
 const metrics = @import("../observability/metrics.zig");
+const trace_mod = @import("../observability/trace.zig");
+const gate_spans = @import("worker_gate_spans.zig");
 const id_format = @import("../types/id_format.zig");
 const codes = @import("../errors/codes.zig");
 const worker_runtime = @import("worker_runtime.zig");
@@ -76,6 +78,9 @@ pub const GateLoopConfig = struct {
     max_wall_time_seconds: u64 = 0,
     run_created_at_ms: i64 = 0,
     attempt: u32 = 1,
+    // M28_001 §1.4: root span ID for gate tool child spans.
+    root_span_id: [trace_mod.SPAN_ID_HEX_LEN]u8 = [_]u8{0} ** trace_mod.SPAN_ID_HEX_LEN,
+    trace_id: []const u8 = "",
 };
 
 /// Check token budget: query usage_ledger for sum of tokens used this run.
@@ -195,6 +200,11 @@ pub fn runGateLoop(cfg: GateLoopConfig) !GateLoopOutcome {
             try results.append(cfg.alloc, result);
 
             publishGateEvent(cfg, result, repair);
+            gate_spans.emit(
+                .{ .run_id = cfg.run_id, .workspace_id = cfg.workspace_id, .trace_id = cfg.trace_id, .root_span_id = cfg.root_span_id },
+                .{ .gate_name = result.gate_name, .exit_code = result.exit_code, .wall_ms = result.wall_ms, .passed = result.passed },
+                repair,
+            );
 
             if (!result.passed) {
                 failed_result = result;
@@ -236,6 +246,7 @@ pub fn runGateLoop(cfg: GateLoopConfig) !GateLoopOutcome {
                 codes.ERR_GATE_COMMAND_FAILED, cfg.run_id, fr.gate_name, repair + 1, fr.exit_code,
             });
             metrics.incGateRepairLoops();
+            metrics.wsIncGateRepairLoops(cfg.workspace_id);
 
             if (cfg.executor) |exec| {
                 if (cfg.execution_id) |exec_id| {

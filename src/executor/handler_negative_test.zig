@@ -127,11 +127,11 @@ test "T3: Heartbeat with null params returns invalid_params" {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const MALFORMED_IDS = [_][]const u8{
-    "",                                    // empty
-    "not-hex",                             // too short, non-hex
-    "GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",    // 32 chars but invalid hex chars
-    "0000000000000000000000000000000",     // 31 chars (one short)
-    "000000000000000000000000000000000",   // 33 chars (one long)
+    "", // empty
+    "not-hex", // too short, non-hex
+    "GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG", // 32 chars but invalid hex chars
+    "0000000000000000000000000000000", // 31 chars (one short)
+    "000000000000000000000000000000000", // 33 chars (one long)
 };
 
 test "T3: StartStage with malformed execution_id returns invalid_params" {
@@ -304,8 +304,8 @@ test "T3: unknown method returns method_not_found" {
     const methods = [_][]const u8{
         "SomeUnknownMethod",
         "createExecution", // wrong case
-        "StartStage_v2",   // future variant not yet implemented
-        "",                // empty method name
+        "StartStage_v2", // future variant not yet implemented
+        "", // empty method name
     };
 
     for (methods, 0..) |method, i| {

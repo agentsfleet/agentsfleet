@@ -451,8 +451,11 @@ test "M20_001 T1: SCALE tier with allow_custom_skills=true ALLOWS clawhub:// ski
     ;
     var observed: Observed = .{};
     const reason = try evaluateProfile(std.testing.allocator, .{
-        .tier = .scale, .max_profiles = 10, .max_stages = 5,
-        .max_distinct_skills = 5, .allow_custom_skills = true,
+        .tier = .scale,
+        .max_profiles = 10,
+        .max_stages = 5,
+        .max_distinct_skills = 5,
+        .allow_custom_skills = true,
     }, raw, &observed);
     try std.testing.expectEqual(@as(?[]const u8, null), reason);
     try std.testing.expectEqual(@as(u16, 3), observed.distinct_skill_count);
@@ -469,25 +472,21 @@ test "M20_001 T6 integration: custom role_ids (planner/coder/reviewer) with defa
     ;
     var observed: Observed = .{};
     const reason = try evaluateProfile(std.testing.allocator, .{
-        .tier = .free, .max_profiles = 1, .max_stages = 3,
-        .max_distinct_skills = 3, .allow_custom_skills = false,
+        .tier = .free,
+        .max_profiles = 1,
+        .max_stages = 3,
+        .max_distinct_skills = 3,
+        .allow_custom_skills = false,
     }, raw, &observed);
     try std.testing.expectEqual(@as(?[]const u8, null), reason);
 }
 
-test "M20_001 T6 integration: custom role_ids with one custom skill DENIED on free tier" {
+test "M20_001 T6 integration: custom skill DENIED on free tier" {
     const raw =
-        \\{"agent_id":"ms","stages":[
-        \\  {"stage_id":"plan","role":"planner","skill":"echo"},
-        \\  {"stage_id":"implement","role":"coder","skill":"custom-analyzer"},
-        \\  {"stage_id":"verify","role":"reviewer","skill":"warden","gate":true,"on_pass":"done","on_fail":"retry"}
-        \\]}
+        \\{"agent_id":"ms","stages":[{"stage_id":"plan","role":"planner","skill":"echo"},{"stage_id":"implement","role":"coder","skill":"custom-analyzer"},{"stage_id":"verify","role":"reviewer","skill":"warden","gate":true,"on_pass":"done","on_fail":"retry"}]}
     ;
     var observed: Observed = .{};
-    const reason = try evaluateProfile(std.testing.allocator, .{
-        .tier = .free, .max_profiles = 1, .max_stages = 3,
-        .max_distinct_skills = 3, .allow_custom_skills = false,
-    }, raw, &observed);
+    const reason = try evaluateProfile(std.testing.allocator, .{ .tier = .free, .max_profiles = 1, .max_stages = 3, .max_distinct_skills = 3, .allow_custom_skills = false }, raw, &observed);
     try std.testing.expect(reason != null);
     try std.testing.expectEqualStrings(error_codes.ERR_ENTITLEMENT_SKILL_NOT_ALLOWED, reason.?);
 }

@@ -1,5 +1,6 @@
 import { createCoreOpsHandlers } from "./core-ops.js";
 import { commandWorkspaceUpgradeScale } from "./workspace_billing.js";
+import { commandWorkspaceBillingSummary } from "./workspace_billing_summary.js";
 import { queueCliAnalyticsEvent, setCliAnalyticsContext } from "../lib/analytics.js";
 import { validateRequiredId } from "../program/validate.js";
 import { ERR_BILLING_CREDIT_EXHAUSTED } from "../constants/error-codes.js";
@@ -265,6 +266,24 @@ function createCoreHandlers(ctx, workspaces, deps) {
       });
     }
 
+    if (action === "billing") {
+      const parsed = parseFlags(tail);
+      const workspaceId = await ensureWorkspaceId(parsed.options["workspace-id"] || parsed.positionals[0]);
+      if (!workspaceId) {
+        writeLine(ctx.stderr, ui.err("workspace billing requires --workspace-id"));
+        return 2;
+      }
+      const check = validateRequiredId(workspaceId, "workspace_id");
+      if (!check.ok) {
+        writeLine(ctx.stderr, ui.err(check.message));
+        return 2;
+      }
+      setCliAnalyticsContext(ctx, { workspace_id: workspaceId });
+      return commandWorkspaceBillingSummary(ctx, parsed, workspaceId, {
+        request, apiHeaders, ui, printJson, writeLine,
+      });
+    }
+
     if (action === "remove") {
       const parsed = parseFlags(tail);
       const workspaceId = parsed.positionals[0] || parsed.options["workspace-id"];
@@ -292,7 +311,7 @@ function createCoreHandlers(ctx, workspaces, deps) {
       return 0;
     }
 
-    writeLine(ctx.stderr, ui.err("usage: workspace add|list|remove"));
+    writeLine(ctx.stderr, ui.err("usage: workspace add|list|remove|billing|upgrade-scale"));
     return 2;
   }
 

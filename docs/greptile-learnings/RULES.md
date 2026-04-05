@@ -224,3 +224,16 @@ Do: Use `client.open()` + `req.reader().read()` loop for SSE/streaming endpoints
 Don't: Use `client.fetch()` with a response_writer and assume incremental delivery.
 
 Incident: M22_001 greptile P1 — Zig CLI buffered entire SSE response, printing all events at once after run completion.
+
+---
+
+## Lock-Free Hash Maps — Never Read After CAS Failure
+
+**RULE: When a CAS (compare-and-swap) fails in a lock-free data structure, do NOT read the slot's fields. The winning thread may still be writing them. Continue probing or spin on a ready flag.**
+
+Why: TOCTOU race — between losing the CAS and reading the field, the winner thread is still initializing. You read partially-written data (wrong hash, truncated ID, zero-length string).
+
+Do: Use a two-phase init: `occupied` (CAS claim) + `ready` (fields written). Losers continue probing. Readers check `ready.load(.acquire) == 1` before accessing fields.
+Don't: Read `slot.hash` or `slot.ws_id` immediately after losing a CAS on `slot.occupied`.
+
+Incident: M28_001 greptile P1 — `resolveSlot` in `metrics_workspace.zig` read slot fields after CAS failure, causing potential duplicate workspace slots and corrupted metric labels.

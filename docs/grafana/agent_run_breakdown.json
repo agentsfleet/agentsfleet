@@ -1,0 +1,129 @@
+{
+  "__inputs": [
+    { "name": "DS_PROMETHEUS", "label": "Prometheus", "type": "datasource", "pluginId": "prometheus" },
+    { "name": "DS_POSTGRES", "label": "zombie-postgres", "type": "datasource", "pluginId": "postgres" }
+  ],
+  "title": "Agent Run Breakdown",
+  "uid": "zombie-run-breakdown",
+  "version": 1,
+  "time": { "from": "now-24h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "workspace_id",
+        "type": "query",
+        "datasource": "${DS_PROMETHEUS}",
+        "query": "label_values(zombie_agent_tokens_by_workspace_total, workspace_id)",
+        "refresh": 2,
+        "includeAll": true,
+        "current": { "text": "All", "value": "$__all" }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Token Consumption by Workspace",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "datasource": "${DS_PROMETHEUS}",
+      "targets": [
+        {
+          "expr": "rate(zombie_agent_tokens_by_workspace_total{workspace_id=~\"$workspace_id\"}[5m])",
+          "legendFormat": "{{workspace_id}}"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Run Outcomes by Workspace",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "datasource": "${DS_PROMETHEUS}",
+      "targets": [
+        {
+          "expr": "increase(zombie_runs_completed_by_workspace_total{workspace_id=~\"$workspace_id\"}[1h])",
+          "legendFormat": "completed {{workspace_id}}"
+        },
+        {
+          "expr": "increase(zombie_runs_blocked_by_workspace_total{workspace_id=~\"$workspace_id\"}[1h])",
+          "legendFormat": "blocked {{workspace_id}}"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Gate Repair Loop Distribution (p50/p95/p99)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "datasource": "${DS_PROMETHEUS}",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, rate(zombie_gate_repair_loops_per_run_bucket[1h]))",
+          "legendFormat": "p50"
+        },
+        {
+          "expr": "histogram_quantile(0.95, rate(zombie_gate_repair_loops_per_run_bucket[1h]))",
+          "legendFormat": "p95"
+        },
+        {
+          "expr": "histogram_quantile(0.99, rate(zombie_gate_repair_loops_per_run_bucket[1h]))",
+          "legendFormat": "p99"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Score-Gated Run Rate",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "datasource": "${DS_POSTGRES}",
+      "targets": [
+        {
+          "rawSql": "SELECT date_trunc('hour', to_timestamp(created_at / 1000.0)) AS time, COUNT(*) AS score_gated FROM billing.usage_ledger WHERE lifecycle_event = 'run_not_billable_score_gated' AND source = 'runtime_summary' AND ($__timeFilter(to_timestamp(created_at / 1000.0))) GROUP BY 1 ORDER BY 1",
+          "format": "time_series"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Top 10 Runs by Token Consumption (24h)",
+      "type": "table",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "datasource": "${DS_POSTGRES}",
+      "targets": [
+        {
+          "rawSql": "SELECT run_id, workspace_id, SUM(token_count) AS total_tokens, SUM(agent_seconds) AS total_seconds FROM billing.usage_ledger WHERE source = 'runtime_stage' AND created_at >= EXTRACT(EPOCH FROM now() - interval '24 hours') * 1000 GROUP BY run_id, workspace_id ORDER BY total_tokens DESC LIMIT 10",
+          "format": "table"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Per-Stage Token Breakdown by Actor",
+      "type": "barchart",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "datasource": "${DS_POSTGRES}",
+      "targets": [
+        {
+          "rawSql": "SELECT actor, SUM(token_count) AS tokens FROM billing.usage_ledger WHERE source = 'runtime_stage' AND ($__timeFilter(to_timestamp(created_at / 1000.0))) GROUP BY actor ORDER BY tokens DESC",
+          "format": "table"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Workspace Metrics Overflow",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 24 },
+      "datasource": "${DS_PROMETHEUS}",
+      "targets": [
+        {
+          "expr": "zombie_workspace_metrics_overflow_total",
+          "legendFormat": "overflow"
+        }
+      ],
+      "description": "Non-zero means workspace cardinality exceeds metrics capacity (4096). Increments routed to _other bucket."
+    }
+  ]
+}

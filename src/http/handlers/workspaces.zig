@@ -13,12 +13,14 @@ const id_format = @import("../../types/id_format.zig");
 const common = @import("common.zig");
 
 const wb = @import("workspaces_billing.zig");
+const wbs = @import("workspaces_billing_summary.zig");
 const wl = @import("workspaces_lifecycle.zig");
 const wo = @import("workspaces_ops.zig");
 
 pub const handleUpgradeWorkspaceToScale = wb.handleUpgradeWorkspaceToScale;
 pub const handleSetWorkspaceScoringConfig = wb.handleSetWorkspaceScoringConfig;
 pub const handleApplyWorkspaceBillingEvent = wb.handleApplyWorkspaceBillingEvent;
+pub const handleGetWorkspaceBillingSummary = wbs.handleGetWorkspaceBillingSummary;
 pub const handleCreateWorkspace = wl.handleCreateWorkspace;
 pub const handlePauseWorkspace = wo.handlePauseWorkspace;
 pub const handleSyncSpecs = wo.handleSyncSpecs;

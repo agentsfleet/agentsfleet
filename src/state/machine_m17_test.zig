@@ -10,8 +10,8 @@ const isAllowed = machine.isAllowed;
 // T1: all seven active states can transition to CANCELLED.
 test "M17: CANCELLED reachable from all active non-terminal states" {
     const sources = [_]types.RunState{
-        .SPEC_QUEUED,  .RUN_PLANNED,              .PATCH_IN_PROGRESS,
-        .PATCH_READY,  .VERIFICATION_IN_PROGRESS, .VERIFICATION_FAILED,
+        .SPEC_QUEUED, .RUN_PLANNED,              .PATCH_IN_PROGRESS,
+        .PATCH_READY, .VERIFICATION_IN_PROGRESS, .VERIFICATION_FAILED,
         .PR_PREPARED,
     };
     for (sources) |from| {

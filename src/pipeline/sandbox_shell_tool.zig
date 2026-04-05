@@ -137,13 +137,13 @@ pub const SandboxShellTool = struct {
         var watcher: ?std.Thread = null;
 
         if (self.cancel_flag != null or self.deadline_ms != null) {
-            watcher = std.Thread.spawn(.{}, cancelWatcherMain, .{ CancelWatcherCtx{
+            watcher = std.Thread.spawn(.{}, cancelWatcherMain, .{CancelWatcherCtx{
                 .parent_cancel = self.cancel_flag,
                 .deadline_ms = self.deadline_ms,
                 .deadline_cancel = &deadline_cancel,
                 .cancel_reason = &cancel_reason,
                 .done = &watcher_done,
-            } }) catch null;
+            }}) catch null;
         }
         defer {
             watcher_done.store(true, .release);
@@ -157,12 +157,12 @@ pub const SandboxShellTool = struct {
 
         var timeout_thread: ?std.Thread = null;
         if (timeout_ns > 0) {
-            timeout_thread = std.Thread.spawn(.{}, timeoutMain, .{ TimeoutCtx{
+            timeout_thread = std.Thread.spawn(.{}, timeoutMain, .{TimeoutCtx{
                 .cancel_flag = &deadline_cancel,
                 .cancel_reason = &cancel_reason,
                 .done = &watcher_done,
                 .timeout_ns = timeout_ns,
-            } }) catch null;
+            }}) catch null;
         }
         defer if (timeout_thread) |thread| thread.join();
 

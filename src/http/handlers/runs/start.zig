@@ -19,7 +19,6 @@ const log = std.log.scoped(.http);
 const API_ACTOR = "api";
 const uc4 = @import("../../../db/test_fixtures_uc4.zig");
 
-
 const queue_unavailable_code = error_codes.ERR_QUEUE_UNAVAILABLE;
 const queue_unavailable_message = "Queue unavailable";
 

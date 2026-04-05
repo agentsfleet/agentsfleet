@@ -77,8 +77,12 @@ test "T3: StartStage on lease-expired session returns lease_expired" {
     // Create a session with 1ms lease that will expire quickly.
     const s = try page.create(session_mod.Session);
     s.* = session_mod.Session.create(page, "/tmp/ws", .{
-        .trace_id = "t", .run_id = "r", .workspace_id = "w",
-        .stage_id = "s", .role_id = "echo", .skill_id = "echo",
+        .trace_id = "t",
+        .run_id = "r",
+        .workspace_id = "w",
+        .stage_id = "s",
+        .role_id = "echo",
+        .skill_id = "echo",
     }, .{}, 1); // 1ms lease
     try store.put(s);
 

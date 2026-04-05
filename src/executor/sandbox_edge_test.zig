@@ -191,8 +191,12 @@ test "T1: Session.recordStageResult accumulates tokens and wall_seconds" {
 test "T1: Session.getUsage reflects last_result failure" {
     const page = std.heap.page_allocator;
     var session = session_mod.Session.create(page, "/tmp/ws", .{
-        .trace_id = "t", .run_id = "r", .workspace_id = "w",
-        .stage_id = "s", .role_id = "echo", .skill_id = "echo",
+        .trace_id = "t",
+        .run_id = "r",
+        .workspace_id = "w",
+        .stage_id = "s",
+        .role_id = "echo",
+        .skill_id = "echo",
     }, .{}, 30_000);
     defer session.destroy();
 
@@ -208,8 +212,12 @@ test "T1: Session.getUsage reflects last_result failure" {
 test "T2: Session.getUsage with no stages returns safe defaults" {
     const page = std.heap.page_allocator;
     var session = session_mod.Session.create(page, "/tmp/ws", .{
-        .trace_id = "t", .run_id = "r", .workspace_id = "w",
-        .stage_id = "s", .role_id = "echo", .skill_id = "echo",
+        .trace_id = "t",
+        .run_id = "r",
+        .workspace_id = "w",
+        .stage_id = "s",
+        .role_id = "echo",
+        .skill_id = "echo",
     }, .{}, 30_000);
     defer session.destroy();
 
@@ -226,8 +234,12 @@ test "T2: Session.getUsage with no stages returns safe defaults" {
 test "T5: Session.cancel is atomic — concurrent cancel from 8 threads" {
     const page = std.heap.page_allocator;
     var session = session_mod.Session.create(page, "/tmp/ws", .{
-        .trace_id = "t", .run_id = "r", .workspace_id = "w",
-        .stage_id = "s", .role_id = "echo", .skill_id = "echo",
+        .trace_id = "t",
+        .run_id = "r",
+        .workspace_id = "w",
+        .stage_id = "s",
+        .role_id = "echo",
+        .skill_id = "echo",
     }, .{}, 30_000);
     defer session.destroy();
 
@@ -250,8 +262,12 @@ test "T5: Session.cancel is atomic — concurrent cancel from 8 threads" {
 test "T5: Concurrent lease touch from 8 threads — no data race" {
     const page = std.heap.page_allocator;
     var session = session_mod.Session.create(page, "/tmp/ws", .{
-        .trace_id = "t", .run_id = "r", .workspace_id = "w",
-        .stage_id = "s", .role_id = "echo", .skill_id = "echo",
+        .trace_id = "t",
+        .run_id = "r",
+        .workspace_id = "w",
+        .stage_id = "s",
+        .role_id = "echo",
+        .skill_id = "echo",
     }, .{}, 30_000);
     defer session.destroy();
 
@@ -327,8 +343,12 @@ test "T3: SessionStore.reapExpired only removes expired sessions, leaves active 
     for (0..3) |_| {
         const s = try page.create(session_mod.Session);
         s.* = session_mod.Session.create(page, "/tmp/ws", .{
-            .trace_id = "t", .run_id = "r", .workspace_id = "w",
-            .stage_id = "exp", .role_id = "echo", .skill_id = "echo",
+            .trace_id = "t",
+            .run_id = "r",
+            .workspace_id = "w",
+            .stage_id = "exp",
+            .role_id = "echo",
+            .skill_id = "echo",
         }, .{}, 1); // 1ms — will expire
         try store.put(s);
     }
@@ -337,8 +357,12 @@ test "T3: SessionStore.reapExpired only removes expired sessions, leaves active 
     for (0..2) |_| {
         const s = try page.create(session_mod.Session);
         s.* = session_mod.Session.create(page, "/tmp/ws", .{
-            .trace_id = "t", .run_id = "r", .workspace_id = "w",
-            .stage_id = "act", .role_id = "echo", .skill_id = "echo",
+            .trace_id = "t",
+            .run_id = "r",
+            .workspace_id = "w",
+            .stage_id = "act",
+            .role_id = "echo",
+            .skill_id = "echo",
         }, .{}, 30_000); // 30s — will NOT expire
         try store.put(s);
     }
