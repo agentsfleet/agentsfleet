@@ -286,9 +286,17 @@ pub fn executeRun(
     var total_wall_seconds: u64 = 0;
     var total_tokens: u64 = 0;
     // M28_001 §1.3: Close root span on every exit path with final attrs.
+    // Root span must use ctx.trace_id (same as children), not root_tc.trace_id,
+    // so Tempo groups them in the same waterfall.
     defer {
         const run_end_ns: u64 = @intCast(std.time.nanoTimestamp());
-        var root_span = otel_traces.buildSpan(root_tc, "run.execute", run_start_ns, run_end_ns);
+        var root_span_tc: trace_mod.TraceContext = undefined;
+        const rtid_len = @min(ctx.trace_id.len, trace_mod.TRACE_ID_HEX_LEN);
+        @memcpy(root_span_tc.trace_id[0..rtid_len], ctx.trace_id[0..rtid_len]);
+        if (rtid_len < trace_mod.TRACE_ID_HEX_LEN) @memset(root_span_tc.trace_id[rtid_len..], '0');
+        root_span_tc.span_id = root_tc.span_id;
+        root_span_tc.parent_span_id = null;
+        var root_span = otel_traces.buildSpan(root_span_tc, "run.execute", run_start_ns, run_end_ns);
         _ = otel_traces.addAttr(&root_span, "run.id", ctx.run_id);
         _ = otel_traces.addAttr(&root_span, "workspace.id", ctx.workspace_id);
         _ = otel_traces.addAttr(&root_span, "agent.id", ctx.agent_id);
