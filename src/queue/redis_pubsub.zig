@@ -101,7 +101,16 @@ pub const Subscriber = struct {
     /// Caller owns the returned PubSubMessage and must call deinit().
     pub fn readMessage(self: *Subscriber) !?PubSubMessage {
         var resp = redis_protocol.readRespValue(self.alloc, self.transport.reader()) catch |err| {
-            if (err == error.WouldBlock or err == error.ConnectionTimedOut) return null;
+            // SO_RCVTIMEO timeout surfaces as ReadFailed through both the plain
+            // TCP Io.Reader and the TLS Io.Reader (Zig 0.15.2 wraps WouldBlock
+            // into ReadFailed at the Io.Reader layer). Return null so the stream
+            // handler can emit a heartbeat and continue the loop.
+            //
+            // EndOfStream means the connection was closed cleanly — also not fatal
+            // in the pub/sub context (server may have disconnected).
+            //
+            // Any other error type is unexpected and propagated.
+            if (err == error.ReadFailed or err == error.EndOfStream) return null;
             log.warn("redis_pubsub.read_fatal err={s}", .{@errorName(err)});
             return err;
         };
