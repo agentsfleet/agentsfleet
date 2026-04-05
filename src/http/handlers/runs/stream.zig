@@ -1,4 +1,4 @@
-//! SSE stream handler for M18_001.
+//! SSE stream handler for M18_001 + M22_001 correctness fixes.
 //! Subscribes to Redis pub/sub channel run:{id}:events and emits SSE events.
 //! Sends a heartbeat comment every 30 seconds to prevent proxy timeouts.
 //! Supports Last-Event-ID for reconnect replay from gate_results table.
@@ -13,9 +13,9 @@ const error_codes = @import("../../../errors/codes.zig");
 
 const log = std.log.scoped(.http);
 
-const TERMINAL_STATES = &[_][]const u8{ "DONE", "BLOCKED", "FAILED", "CANCELLED" };
+pub const TERMINAL_STATES = &[_][]const u8{ "DONE", "BLOCKED", "FAILED", "CANCELLED" };
 
-fn isTerminalState(state: []const u8) bool {
+pub fn isTerminalState(state: []const u8) bool {
     for (TERMINAL_STATES) |ts| {
         if (std.mem.eql(u8, state, ts)) return true;
     }
@@ -86,7 +86,7 @@ pub fn handleStreamRun(ctx: *common.Context, req: *httpz.Request, res: *httpz.Re
         return;
     }
 
-    // Get Last-Event-ID for reconnect replay
+    // §3.3: Get Last-Event-ID for reconnect replay (unified Unix ms namespace)
     const last_event_id: i64 = blk: {
         const header = req.header("last-event-id") orelse break :blk 0;
         break :blk std.fmt.parseInt(i64, header, 10) catch 0;
@@ -116,34 +116,60 @@ pub fn handleStreamRun(ctx: *common.Context, req: *httpz.Request, res: *httpz.Re
         return;
     };
 
-    // Event loop: relay pub/sub messages as SSE events, heartbeat every 30s
-    var event_seq: i64 = 0;
+    // §4: Post-subscribe race fix — re-query run state after subscribe returns.
+    {
+        var post_state = conn.query("SELECT state FROM runs WHERE run_id = $1", .{run_id}) catch {
+            streamViaPoll(alloc, conn, res, run_id);
+            return;
+        };
+        defer post_state.deinit();
+        if (post_state.next() catch null) |psrow| {
+            const post_sub_state = psrow.get([]u8, 0) catch "unknown";
+            if (isTerminalState(post_sub_state)) {
+                post_state.drain() catch {};
+                streamStoredEvents(alloc, conn, res, run_id, last_event_id);
+                const term_event = std.fmt.allocPrint(
+                    alloc,
+                    "event: run_complete\ndata: {{\"state\":\"{s}\"}}\n\n",
+                    .{post_sub_state},
+                ) catch return;
+                _ = res.chunk(term_event) catch {};
+                return;
+            }
+        }
+        post_state.drain() catch {};
+    }
+
+    // §2: Event loop with SO_RCVTIMEO-based heartbeat.
+    // readMessage() returns null on timeout (25s) — we check elapsed time
+    // and emit a heartbeat if ≥30s have passed, then continue the loop.
     const heartbeat_interval_ns: u64 = 30 * std.time.ns_per_s;
     var last_heartbeat = std.time.nanoTimestamp();
 
     while (true) {
-        const now = std.time.nanoTimestamp();
-        const elapsed: u64 = @intCast(@max(0, now - last_heartbeat));
-
-        if (elapsed >= heartbeat_interval_ns) {
-            res.chunk(": heartbeat\n\n") catch break;
-            last_heartbeat = std.time.nanoTimestamp();
-        }
-
         const msg_opt = subscriber.readMessage() catch break;
 
         if (msg_opt) |msg_val| {
             var msg = msg_val;
             defer msg.deinit();
 
-            event_seq += 1;
+            // §3.2: extract created_at from pub/sub JSON for the SSE id.
+            const event_id = extractCreatedAt(alloc, msg.data);
             const event = std.fmt.allocPrint(
                 alloc,
                 "id: {d}\nevent: gate_result\ndata: {s}\n\n",
-                .{ event_seq, msg.data },
+                .{ event_id, msg.data },
             ) catch continue;
 
             res.chunk(event) catch break;
+            last_heartbeat = std.time.nanoTimestamp();
+        } else {
+            const now = std.time.nanoTimestamp();
+            const elapsed: u64 = @intCast(@max(0, now - last_heartbeat));
+            if (elapsed >= heartbeat_interval_ns) {
+                res.chunk(": heartbeat\n\n") catch break;
+                last_heartbeat = std.time.nanoTimestamp();
+            }
         }
 
         // Check if run reached terminal state
@@ -166,20 +192,33 @@ pub fn handleStreamRun(ctx: *common.Context, req: *httpz.Request, res: *httpz.Re
     }
 }
 
+/// §3: Extract "created_at" integer from a JSON string. Falls back to milliTimestamp.
+pub fn extractCreatedAt(alloc: std.mem.Allocator, json_data: []const u8) i64 {
+    _ = alloc;
+    const needle = "\"created_at\":";
+    const pos = std.mem.indexOf(u8, json_data, needle) orelse return std.time.milliTimestamp();
+    const start = pos + needle.len;
+    if (start >= json_data.len) return std.time.milliTimestamp();
+    var end = start;
+    while (end < json_data.len and (json_data[end] >= '0' and json_data[end] <= '9')) : (end += 1) {}
+    if (end == start) return std.time.milliTimestamp();
+    return std.fmt.parseInt(i64, json_data[start..end], 10) catch std.time.milliTimestamp();
+}
+
 /// Emit SSE events for gate results already in the DB (replay / terminal runs).
-/// `after_created_at` is 0 to emit all, or a timestamp for partial replay.
+/// `after_event_id` is 0 to emit all, or a Unix ms timestamp for partial replay (§3.3).
 fn streamStoredEvents(
     alloc: std.mem.Allocator,
     conn: anytype,
     res: *httpz.Response,
     run_id: []const u8,
-    after_created_at: i64,
+    after_event_id: i64,
 ) void {
     var q = conn.query(
         \\SELECT gate_name, attempt, exit_code, wall_ms, created_at
         \\FROM gate_results WHERE run_id = $1 AND created_at > $2
         \\ORDER BY attempt ASC, created_at ASC
-    , .{ run_id, after_created_at }) catch return;
+    , .{ run_id, after_event_id }) catch return;
     defer q.deinit();
 
     while (q.next() catch null) |qrow| {
@@ -213,7 +252,6 @@ fn streamViaPoll(
     run_id: []const u8,
 ) void {
     var last_created_at: i64 = 0;
-    var seq: i64 = 0;
 
     while (true) {
         std.Thread.sleep(2 * std.time.ns_per_s);
@@ -233,17 +271,17 @@ fn streamViaPoll(
             const created_at = qrow.get(i64, 4) catch 0;
 
             last_created_at = @max(last_created_at, created_at);
-            seq += 1;
 
             const outcome = if (exit_code == 0) "PASS" else "FAIL";
             const data = std.fmt.allocPrint(alloc,
                 \\{{"gate_name":"{s}","outcome":"{s}","exit_code":{d},"loop":{d},"wall_ms":{d}}}
             , .{ gate_name, outcome, exit_code, attempt, wall_ms }) catch continue;
 
+            // §3.4: use created_at (Unix ms) as SSE id — unified namespace.
             const event = std.fmt.allocPrint(
                 alloc,
                 "id: {d}\nevent: gate_result\ndata: {s}\n\n",
-                .{ seq, data },
+                .{ created_at, data },
             ) catch continue;
 
             res.chunk(event) catch return;

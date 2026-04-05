@@ -316,48 +316,68 @@ fn streamRunOutput(
     var client = std.http.Client{ .allocator = alloc };
     defer client.deinit();
 
-    var response_body: std.ArrayList(u8) = .{};
-    defer response_body.deinit(alloc);
-    var aw: std.Io.Writer.Allocating = .fromArrayList(alloc, &response_body);
-
     const uri = try std.Uri.parse(url);
-    const result = try client.fetch(.{
-        .method = .GET,
-        .location = .{ .uri = uri },
+
+    var header_buf: [4096]u8 = undefined;
+    var req = try client.open(.GET, uri, .{
         .extra_headers = &.{
             .{ .name = "Authorization", .value = auth_header },
             .{ .name = "Accept", .value = "text/event-stream" },
         },
-        .response_writer = &aw.writer,
+        .server_header_buffer = &header_buf,
     });
+    defer req.deinit();
 
-    if (result.status != .ok) {
-        std.debug.print("error: stream returned {d}\n", .{@intFromEnum(result.status)});
+    try req.send();
+    try req.wait();
+
+    if (req.status != .ok) {
+        std.debug.print("error: stream returned {d}\n", .{@intFromEnum(req.status)});
         return error.StreamFailed;
     }
 
-    // Parse and render SSE lines.
-    var it = std.mem.splitScalar(u8, response_body.items, '\n');
+    // §1: Incremental SSE read loop — read line-by-line from streaming response.
+    var line_buf: std.ArrayList(u8) = .{};
+    defer line_buf.deinit(alloc);
     var current_data: ?[]const u8 = null;
     var current_event: []const u8 = "message";
+    var data_owned: ?[]u8 = null;
+    defer if (data_owned) |d| alloc.free(d);
+    var event_owned: ?[]u8 = null;
+    defer if (event_owned) |e| alloc.free(e);
 
-    while (it.next()) |line| {
-        const trimmed = std.mem.trimRight(u8, line, "\r");
+    const reader = req.reader();
+    while (true) {
+        line_buf.clearRetainingCapacity();
+        reader.streamUntilDelimiter(line_buf.writer(alloc), '\n', 64 * 1024) catch |err| switch (err) {
+            error.EndOfStream => break,
+            else => return err,
+        };
+        const raw = line_buf.items;
+        const trimmed = std.mem.trimRight(u8, raw, "\r");
+
         if (trimmed.len == 0) {
-            // Empty line = event boundary.
             if (current_data) |data| {
                 renderSseEvent(alloc, current_event, data);
+                if (std.mem.eql(u8, current_event, "run_complete")) return;
             }
+            if (data_owned) |d| alloc.free(d);
+            data_owned = null;
             current_data = null;
+            if (event_owned) |e| alloc.free(e);
+            event_owned = null;
             current_event = "message";
             continue;
         }
         if (std.mem.startsWith(u8, trimmed, "data: ")) {
-            current_data = trimmed["data: ".len..];
+            if (data_owned) |d| alloc.free(d);
+            data_owned = try alloc.dupe(u8, trimmed["data: ".len..]);
+            current_data = data_owned;
         } else if (std.mem.startsWith(u8, trimmed, "event: ")) {
-            current_event = trimmed["event: ".len..];
+            if (event_owned) |e| alloc.free(e);
+            event_owned = try alloc.dupe(u8, trimmed["event: ".len..]);
+            current_event = event_owned.?;
         }
-        // id: and comment lines are ignored for rendering.
     }
 }
 

@@ -8,6 +8,8 @@ const routes = [
   { key: "runs.list", match: (cmd, args) => cmd === "runs" && args[0] === "list" },
   // M17_001 §3: runs cancel
   { key: "runs.cancel", match: (cmd, args) => cmd === "runs" && args[0] === "cancel" },
+  // M22_001 §5: runs replay
+  { key: "runs.replay", match: (cmd, args) => cmd === "runs" && args[0] === "replay" },
   { key: "doctor", match: (cmd) => cmd === "doctor" },
   { key: "harness", match: (cmd) => cmd === "harness" },
   { key: "skill-secret", match: (cmd) => cmd === "skill-secret" },
