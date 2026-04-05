@@ -146,14 +146,18 @@ pub fn handleStreamRun(ctx: *common.Context, req: *httpz.Request, res: *httpz.Re
 
     // §2: Event loop with SO_RCVTIMEO-based heartbeat.
     // readMessage() returns null on timeout (25s) or connection failure — we check
-    // elapsed time and emit a heartbeat if ≥30s have passed, then continue the loop.
+    // elapsed time and emit a heartbeat if ≥20s have passed, then continue the loop.
     // DB state is the ground truth for termination, not Redis connection health.
+    //
+    // heartbeat_interval_ns must be < SO_RCVTIMEO (25s) so the first wakeup at t=25s
+    // satisfies elapsed≥20s and fires the heartbeat before the 30s proxy idle cutoff.
+    // With 30s the first heartbeat fires at t=50s — after the proxy drops the stream.
     //
     // Known edge: if Redis is down AND the run is not terminal, this loop polls
     // DB every ~25s indefinitely. This is liveness degradation (1 query/25s), not
     // a bug — resolved by run completion or external recovery. Do NOT add retry/
     // backoff inside this loop; the streamViaPoll fallback handles Redis-down cases.
-    const heartbeat_interval_ns: u64 = 30 * std.time.ns_per_s;
+    const heartbeat_interval_ns: u64 = 20 * std.time.ns_per_s;
     var last_heartbeat = std.time.nanoTimestamp();
 
     while (true) {

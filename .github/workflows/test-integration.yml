@@ -51,6 +51,12 @@ jobs:
             || { echo "✗ Redis did not become ready in time"; exit 1; }
           echo "✓ Redis is ready"
 
+      - name: Extract Redis TLS CA cert
+        run: |
+          mkdir -p .tmp
+          docker compose cp redis:/tls/server.crt .tmp/redis-ca.crt
+          echo "TEST_REDIS_TLS_CA_CERT=$(pwd)/.tmp/redis-ca.crt" >> "$GITHUB_ENV"
+
       - name: Run all integration tests
         env:
           TEST_DATABASE_URL: postgres://usezombie:usezombie@localhost:5432/usezombiedb

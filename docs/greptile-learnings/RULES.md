@@ -170,6 +170,29 @@ Incident: M22_001 greptile P1 — `readMessage()` returned null for ConnectionRe
 
 ---
 
+## SSE Heartbeat — Interval Must Be Less Than Socket Timeout
+
+**RULE: Set the SSE heartbeat interval below `SO_RCVTIMEO` so the first socket wakeup fires the heartbeat before the proxy idle timeout.**
+
+Why: With `SO_RCVTIMEO = 25s` and `heartbeat_interval = 30s`, the first wakeup at t=25s has elapsed=25s < 30s → no heartbeat. The second wakeup is at t=50s — after a 30s proxy has already killed the connection. The invariant `heartbeat_interval < SO_RCVTIMEO < proxy_idle_timeout` ensures the first wakeup always emits a heartbeat.
+
+Do:
+```zig
+// SO_RCVTIMEO = 25s, proxy_idle_timeout = 30s
+// heartbeat at t=25s: elapsed=25s ≥ 20s → fires within the proxy window
+const heartbeat_interval_ns: u64 = 20 * std.time.ns_per_s;
+```
+
+Don't:
+```zig
+// heartbeat_interval > SO_RCVTIMEO — first heartbeat at t=50s, proxy drops at t=30s
+const heartbeat_interval_ns: u64 = 30 * std.time.ns_per_s;
+```
+
+Incident: M22_001 greptile P1 — `heartbeat_interval_ns = 30s` with `SO_RCVTIMEO = 25s` meant the first heartbeat fired at ~50s, after the 30s proxy had already dropped the stream.
+
+---
+
 ## Streaming — Never Buffer Then Parse
 
 **RULE: If the goal is real-time output, verify the transport delivers bytes incrementally. A buffered HTTP client defeats streaming regardless of how the parser works.**
