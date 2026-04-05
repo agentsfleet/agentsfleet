@@ -152,6 +152,7 @@ test {
     _ = @import("http/handlers/runs/stream_integration_test.zig");
     _ = @import("cmd/run_watch_test.zig");
     _ = @import("queue/redis.zig");
+    _ = @import("queue/redis_pubsub_test.zig");
     _ = @import("reliability/backoff.zig");
     _ = @import("pipeline/worker_state.zig");
 }
