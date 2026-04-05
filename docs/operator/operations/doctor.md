@@ -77,3 +77,40 @@ $ zombied doctor worker
 |------|---------|
 | `0` | All checks passed |
 | `1` | One or more checks failed |
+
+## Schema Gate (Operator Validation)
+
+Use schema gate mode to verify binary/schema compatibility during local triage and deploy diagnostics:
+
+```bash
+zombied doctor --schema-gate --format json
+```
+
+Schema gate checks use the migrator connection (`DATABASE_URL_MIGRATOR`) and compare:
+- expected migration count from binary (`common.canonicalMigrations()`)
+- applied migration count from DB (`audit.schema_migrations`)
+
+`schema_gate_compat.detail` includes:
+- `expected_versions=<n>`
+- `applied_versions=<n>`
+- `reason_code=<SCHEMA_...>`
+
+Reason codes:
+- `SCHEMA_COMPATIBLE`
+- `SCHEMA_BEHIND_BINARY`
+- `SCHEMA_AHEAD_OF_BINARY`
+- `SCHEMA_FAILED_MIGRATIONS`
+
+Local triage flow:
+
+```bash
+# 1) Run gate in JSON mode
+zombied doctor --schema-gate --format json
+
+# 2) If behind, apply migrations
+zombied migrate
+
+# 3) Re-run gate and readiness
+zombied doctor --schema-gate --format json
+curl -sf https://api-dev.usezombie.com/readyz | jq -e '.ready == true'
+```
