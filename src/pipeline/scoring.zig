@@ -96,6 +96,8 @@ pub fn scoreRunForBillingGate(
     if (state.outcome == .pending) return null;
     const result = scoreRunInner(conn, posthog_client, run_id, workspace_id, agent_id, requested_by, state, total_wall_seconds) catch |err| {
         log.warn("scoring.gate_score_fail run_id={s} err={s}", .{ run_id, @errorName(err) });
+        metrics.incAgentScoringFailed();
+        posthog_events.trackAgentScoringFailed(posthog_client, posthog_events.distinctIdOrSystem(requested_by), run_id, workspace_id, @errorName(err));
         return null;
     };
     return result; // null if unscored (disabled/no profile), else the computed score
