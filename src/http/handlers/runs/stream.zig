@@ -307,9 +307,17 @@ fn streamViaPoll(
         var state_q = conn.query("SELECT state FROM runs WHERE run_id = $1", .{run_id}) catch continue;
         defer state_q.deinit();
         if (state_q.next() catch null) |srow| {
-            const state = srow.get([]u8, 0) catch continue;
-            if (isTerminalState(state)) {
+            const state_raw = srow.get([]u8, 0) catch {
                 state_q.drain() catch {};
+                continue;
+            };
+            // Dupe before drain — row slices dangle after drain/deinit (ZIG_RULES).
+            const state = alloc.dupe(u8, state_raw) catch {
+                state_q.drain() catch {};
+                continue;
+            };
+            state_q.drain() catch {};
+            if (isTerminalState(state)) {
                 const term = std.fmt.allocPrint(
                     alloc,
                     "event: run_complete\ndata: {{\"state\":\"{s}\"}}\n\n",
@@ -318,7 +326,8 @@ fn streamViaPoll(
                 _ = res.chunk(term) catch {};
                 break;
             }
+        } else {
+            state_q.drain() catch {};
         }
-        state_q.drain() catch {};
     }
 }
