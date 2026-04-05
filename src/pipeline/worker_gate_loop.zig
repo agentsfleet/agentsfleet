@@ -59,6 +59,8 @@ pub const GateLoopConfig = struct {
     conn: *pg.Conn,
     run_id: []const u8,
     workspace_id: []const u8,
+    /// M21_001 A09: agent identity for observability (interrupt + gate logs).
+    agent_id: []const u8 = "",
     wt_path: []const u8,
     running: *const std.atomic.Value(bool),
     deadline_ms: i64,
@@ -176,6 +178,22 @@ fn checkCancelSignal(cfg: GateLoopConfig) !bool {
     return true;
 }
 
+/// M21_001 §2.1: Check Redis for a pending interrupt message (GETDEL).
+fn checkInterruptSignal(cfg: GateLoopConfig) ?[]const u8 {
+    const redis = cfg.redis orelse return null;
+    const key = std.fmt.allocPrint(cfg.alloc, queue_consts.interrupt_key_prefix ++ "{s}", .{cfg.run_id}) catch return null;
+    defer cfg.alloc.free(key);
+    const argv = [_][]const u8{ "GETDEL", key };
+    var resp = redis.command(&argv) catch return null;
+    return switch (resp) {
+        .bulk => |s| s,
+        else => blk: {
+            resp.deinit(cfg.alloc);
+            break :blk null;
+        },
+    };
+}
+
 /// After each gate loop iteration: check cancel signal, token budget, wall time.
 /// Returns true if any limit was breached and `state_written` should be set.
 fn checkPostIterationLimits(cfg: GateLoopConfig) !bool {
@@ -191,6 +209,23 @@ pub fn runGateLoop(cfg: GateLoopConfig) !GateLoopOutcome {
     var repair: u32 = 0;
     while (repair < cfg.max_repair_loops) : (repair += 1) {
         try worker_runtime.ensureRunActive(cfg.running, cfg.deadline_ms);
+
+        // M21_001 §2.1: poll for pending interrupt before running gates.
+        if (checkInterruptSignal(cfg)) |interrupt_msg| {
+            log.info("gate_loop.interrupt_received run_id={s} workspace_id={s} agent_id={s} msg_len={d}", .{ cfg.run_id, cfg.workspace_id, cfg.agent_id, interrupt_msg.len });
+            if (cfg.executor) |exec| {
+                if (cfg.execution_id) |exec_id| {
+                    _ = exec.startStage(exec_id, .{
+                        .stage_id = cfg.repair_stage_id,
+                        .role_id = cfg.repair_role_id,
+                        .skill_id = cfg.repair_skill_id,
+                        .message = interrupt_msg,
+                    }) catch |err| {
+                        log.warn("gate_loop.interrupt_inject_fail err={s} run_id={s}", .{ @errorName(err), cfg.run_id });
+                    };
+                }
+            }
+        }
 
         var failed_result: ?GateToolResult = null;
         for (cfg.gate_tools) |gate| {
@@ -433,9 +468,12 @@ fn publishGateEvent(cfg: GateLoopConfig, result: GateToolResult, loop: u32) void
     const channel = std.fmt.allocPrint(cfg.alloc, "run:{s}:events", .{cfg.run_id}) catch return;
     defer cfg.alloc.free(channel);
     const outcome_str = if (result.passed) "PASS" else "FAIL";
+    // §3.1: include created_at (Unix ms) so the SSE stream handler can use it
+    // as the event ID — unifying the ID namespace between stored and live events.
+    const created_at = std.time.milliTimestamp();
     const event_json = std.fmt.allocPrint(cfg.alloc,
-        \\{{"gate_name":"{s}","outcome":"{s}","exit_code":{d},"loop":{d},"wall_ms":{d}}}
-    , .{ result.gate_name, outcome_str, result.exit_code, loop, result.wall_ms }) catch return;
+        \\{{"gate_name":"{s}","outcome":"{s}","exit_code":{d},"loop":{d},"wall_ms":{d},"created_at":{d}}}
+    , .{ result.gate_name, outcome_str, result.exit_code, loop, result.wall_ms, created_at }) catch return;
     defer cfg.alloc.free(event_json);
     redis_client.publish(channel, event_json) catch |err| {
         log.warn("gate_loop.pubsub_fail err={s} run_id={s}", .{ @errorName(err), cfg.run_id });

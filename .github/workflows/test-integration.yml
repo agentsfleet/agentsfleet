@@ -14,6 +14,7 @@ concurrency:
 jobs:
   test-integration:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
 
@@ -49,6 +50,12 @@ jobs:
           docker compose exec -T redis redis-cli --tls --insecure -a usezombie ping 2>/dev/null | grep -q PONG \
             || { echo "✗ Redis did not become ready in time"; exit 1; }
           echo "✓ Redis is ready"
+
+      - name: Extract Redis TLS CA cert
+        run: |
+          mkdir -p .tmp
+          docker compose cp redis:/tls/server.crt .tmp/redis-ca.crt
+          echo "TEST_REDIS_TLS_CA_CERT=$(pwd)/.tmp/redis-ca.crt" >> "$GITHUB_ENV"
 
       - name: Run all integration tests
         env:

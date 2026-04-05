@@ -52,6 +52,11 @@ pub const incRunLimitWallTimeExceeded = mc.incRunLimitWallTimeExceeded;
 pub const incRunLimitRepairLoopsExhausted = mc.incRunLimitRepairLoopsExhausted;
 // M28_001 §4.2
 pub const observeGateRepairLoopsPerRun = mc.observeGateRepairLoopsPerRun;
+// M21_001
+pub const incInterruptQueued = mc.incInterruptQueued;
+pub const incInterruptInstant = mc.incInterruptInstant;
+pub const incInterruptFallback = mc.incInterruptFallback;
+pub const incRunAborted = mc.incRunAborted;
 pub const snapshot = mc.snapshot;
 
 // OTel exporter metrics.

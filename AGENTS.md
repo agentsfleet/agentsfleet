@@ -228,17 +228,27 @@ Runs before PLAN. Sets up the spec and workspace. **Required when a spec is invo
 Required outputs:
 
 - If this is a milestone: create or move spec per Spec Lifecycle above.
-- If starting work: spec moved to `active/`, status `IN_PROGRESS`, worktree created.
+- If starting work: spec moved to `active/`, status `IN_PROGRESS`.
+- **Worktree created.** Use `git worktree add ../<repo>-<branch-suffix> <branch>`. Never work directly on the main repo working directory — other branches may have uncommitted state that contaminates the build. All subsequent lifecycle phases (PLAN through CHORE close) run inside the worktree.
+
+Worktree creation sequence:
+```bash
+git checkout main                             # start from main
+git branch feat/mNN-name                      # create branch
+git worktree add ../usezombie-mNN-name feat/mNN-name
+cd ../usezombie-mNN-name                      # all work happens here
+```
 
 Restrictions:
 
 - No code changes yet.
 - Spec must be committed before proceeding.
+- **Worktree must exist before any code or test runs.** If `git worktree list` shows only the main repo, stop and create one.
 
 Exit criteria:
 
 - Spec exists in correct directory (`pending/` if just planning, `active/` if starting work).
-- Worktree and branch ready (if starting work).
+- Worktree created and agent CWD is inside it (verify with `pwd` and `git worktree list`).
 
 ### PLAN
 
@@ -249,6 +259,11 @@ Required outputs:
 - File/task impact list.
 - Verification plan (commands/tests).
 - Read existing docs before coding when behavior is unclear.
+- **Surface area checklist** — for each item, state "yes (reason)" or "no (reason)":
+  - [ ] **OpenAPI spec update** — does this change add/modify/remove API endpoints, request/response shapes, or error codes? If yes, list affected paths.
+  - [ ] **`zombiectl` CLI changes** — does this change require new subcommands, flags, or output format changes in the npm CLI? If yes, note that the project manager must approve CLI surface changes (create a skill ticket if needed).
+  - [ ] **User-facing doc changes** — do docs at `docs.usezombie.com` need updating? If yes, list pages.
+  - [ ] **Release notes** — will this ship as a version bump? If yes, note the version (minor for features, patch for fixes) and draft the `docs/v1/release/{version}.md` entry during DOCUMENT phase.
 
 Restrictions:
 
@@ -258,8 +273,11 @@ Restrictions:
 Exit criteria:
 
 - Scope, constraints, and success criteria are concrete.
+- Surface area checklist completed with yes/no for each item.
 
 ### EXECUTE
+
+**Before writing any code**, read `docs/greptile-learnings/RULES.md` and follow every rule. If a rule conflicts with the task, state the conflict and ask — never silently skip.
 
 Required outputs:
 
@@ -275,6 +293,7 @@ Restrictions:
 Exit criteria:
 
 - Requested behavior implemented.
+- No violations of `docs/greptile-learnings/RULES.md`.
 
 ### VERIFY
 
@@ -282,11 +301,13 @@ Required outputs:
 
 - Run lint/tests/build checks relevant to touched files.
 - If touched files include `*.zig`: additionally run `make check-pg-drain`.
-- Scan the diff against the greptile anti-pattern catalog (`make lint` does this automatically via `_greptile_patterns_check`; also run manually when needed):
-  ```bash
-  git diff origin/main | grep '^+[^+]' | grep -Ef docs/greptile-learnings/.greptile-patterns && echo "❌ known anti-pattern matched" || true
-  ```
+- Scan the diff against `docs/greptile-learnings/RULES.md` — verify no rule is violated by the changes.
 - Capture failures with exact command and error text.
+- **500-line gate on every touched file.** For each file you created or modified, run `wc -l <file>`. If any file exceeds 500 lines, you must split it before proceeding to DOCUMENT. This is a hard gate — do not defer, do not ask, do not rationalize. Split the file.
+  ```bash
+  # Run on all files in the diff:
+  git diff --name-only origin/main | xargs wc -l | awk '$1 > 500 { print "❌ " $2 ": " $1 " lines (limit 500)" }'
+  ```
 - After any refactor: list newly dead code explicitly. Never silently remove without user confirmation:
   ```
   NEWLY UNREACHABLE AFTER THIS CHANGE:
@@ -341,21 +362,64 @@ Exit criteria:
 
 Runs after the last COMMIT, before opening a PR. **Required when a spec is involved.**
 
+This step also runs when work is **parked midway** — if the agent is stopping before full completion, still run CHORE(close) with partial status (mark completed dimensions as `DONE`, leave in-progress ones as `IN_PROGRESS`, update the spec header accordingly). This ensures the next agent can pick up cleanly.
+
 Required outputs:
 
-- All spec dimensions and sections marked `DONE` or `✅`.
-- Spec header `Status: DONE`.
-- Spec moved from `docs/v1/active/` to `docs/v1/done/`.
+- All spec dimensions and sections marked `DONE` or `✅` (or `IN_PROGRESS` if parked midway).
+- Spec header `Status: DONE` (or `Status: IN_PROGRESS` if parked).
+- Spec moved from `docs/v1/active/` to `docs/v1/done/` (only if fully complete).
 - Spec move committed on the feature branch.
+- **Release doc generated** at `docs/v1/release/{version}.md` for every milestone/workstream completion.
+
+#### Release Doc Generation
+
+On every CHORE(close) where the spec is fully `DONE`, generate a release doc:
+
+1. **Version bump rule:**
+   - Feature milestone → minor bump (e.g., `0.3.1` → `0.4.0`)
+   - Bug fix workstream → patch bump (e.g., `0.4.0` → `0.4.1`)
+   - Breaking change → major bump (e.g., `0.x` → `1.0.0`)
+
+2. **File:** `docs/v1/release/{next_version}.md`
+
+3. **Format:** Changelog-style, suitable for an agent to transform into the public changelog at `docs.usezombie.com/changelog`. Structure:
+
+```markdown
+# v{version}
+
+**Date:** {date}
+**Milestone:** M{N}_{WS}
+**Spec:** {spec_file_name}
+
+## What changed
+
+- {bullet: user-visible change with context}
+
+## Technical details
+
+- {bullet: implementation detail relevant to operators/developers}
+
+## Breaking changes
+
+- {bullet or "None"}
+
+## Migration
+
+- {bullet or "None — tables rebuilt from scratch" / "No migration needed"}
+```
+
+4. Commit the release doc on the feature branch alongside the spec move.
 
 Gate:
 
-- Verify `docs/v1/done/` contains the spec file in the branch diff.
-- If the spec is not in `done/` — do not open the PR.
+- Verify `docs/v1/done/` contains the spec file in the branch diff (skip if parked midway).
+- Verify `docs/v1/release/{version}.md` exists in the branch diff (skip if parked midway).
+- If the spec is not in `done/` and status is `DONE` — do not open the PR.
 
 Exit criteria:
 
-- PR opened with spec in `done/` directory.
+- PR opened with spec in `done/` directory and release doc in `release/`.
 
 ## Hard Safety Rules
 
@@ -557,17 +621,23 @@ qmd query "sandbox architecture" --json -n 10            # JSON for LLM
 
 **Workflow:** Run `qmd query` or `qmd search` first when researching or comparing implementations.
 
-## Greptile Learnings Catalog
+## Greptile Learnings
 
-Agent-first. One file only: `docs/greptile-learnings/.greptile-patterns`. No category files.
+Two files:
+
+| File | Purpose | When read |
+|------|---------|-----------|
+| `docs/greptile-learnings/RULES.md` | Natural-language do's and don'ts | EXECUTE start, `/review`, greptile fixes |
+
+New learnings go into `RULES.md` as natural-language rules.
 
 **Full process documentation:** [`docs/greptile-learnings/README.md`](./docs/greptile-learnings/README.md)
 
-**Pre-PR (automatic):** `make lint` runs `_greptile_patterns_check` which scans `git diff origin/main` additions against `.greptile-patterns`. No separate step needed.
+**Pre-PR:** Agents read `RULES.md` during EXECUTE. `make lint` runs standard lint checks.
 
 **Post-PR — triggered by ANY mention of greptile/reptile feedback, review comments, or "fix greptile":**
 
-Execute ALL steps below as a single workflow. Do not stop after fixing code — the reply, pattern, and report steps are mandatory.
+Execute ALL steps below as a single workflow. Do not stop after fixing code — the reply, rule, and report steps are mandatory.
 
 1. Fetch greptile review ID and inline comments:
    ```bash
@@ -576,14 +646,13 @@ Execute ALL steps below as a single workflow. Do not stop after fixing code — 
    ```
 2. Fix each finding in the worktree (P0/P1 required; P2 at discretion)
 3. Run `make lint && make test` and `make test-integration-db` if DB-backed files were touched
-4. For every P0/P1 finding: derive a grep-E regex and append to `docs/greptile-learnings/.greptile-patterns`. Verify no self-match (see README.md)
-5. Verify: bad example matches the pattern, fix does not
-6. **Reply to each greptile thread** with what was fixed and which commit:
+4. For every P0/P1 finding: add a natural-language rule to `docs/greptile-learnings/RULES.md` following the template (rule, why, do, don't, incident)
+5. **Reply to each greptile thread** with what was fixed and which commit:
    ```bash
    gh api repos/OWNER/REPO/pulls/N/comments/{comment_id}/replies -f body="Fixed in <sha>: <what changed>"
    ```
-7. Commit fix + pattern append together, push the branch
-8. **Report to user**: table with each finding, severity, fix applied, pattern added (or why not), and thread reply ID
+6. Commit fix + rule together, push the branch
+7. **Report to user**: table with each finding, severity, fix applied, rule added (or why not), and thread reply ID
 
 ## Web-to-Markdown Workflow
 

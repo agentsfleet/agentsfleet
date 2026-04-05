@@ -9,6 +9,10 @@ const redis_types = @import("redis_types.zig");
 
 const log = std.log.scoped(.redis_pubsub);
 
+/// Read timeout for pub/sub subscriber socket (ms). Must fire before the
+/// 30-second proxy idle timeout so the heartbeat loop can emit `: heartbeat`.
+pub const PUBSUB_READ_TIMEOUT_MS: u32 = 25_000;
+
 pub const PubSubMessage = struct {
     channel: []u8,
     data: []u8,
@@ -68,15 +72,47 @@ pub const Subscriber = struct {
         try self.sendCommand(&.{ "SUBSCRIBE", channel });
         var resp = try redis_protocol.readRespValue(self.alloc, self.transport.reader());
         defer resp.deinit(self.alloc);
+
+        // Set SO_RCVTIMEO after subscription confirmation so readMessage()
+        // returns periodically, allowing the heartbeat loop to fire.
+        self.setReadTimeout(PUBSUB_READ_TIMEOUT_MS);
         log.debug("redis_pubsub.subscribed channel={s}", .{channel});
     }
 
-    /// Block until the next pub/sub message arrives. Returns null on transient error.
+    /// Set SO_RCVTIMEO on the underlying socket so reads time out after `ms` milliseconds.
+    pub fn setReadTimeout(self: *Subscriber, ms: u32) void {
+        const fd = switch (self.transport) {
+            .plain => |p| p.stream.handle,
+            .tls => |t| t.stream.handle,
+        };
+        const timeout = std.posix.timeval{
+            .sec = @intCast(ms / 1000),
+            .usec = @intCast((ms % 1000) * 1000),
+        };
+        std.posix.setsockopt(fd, std.posix.SOL.SOCKET, std.posix.SO.RCVTIMEO, std.mem.asBytes(&timeout)) catch |err| {
+            log.warn("redis_pubsub.setsockopt_fail err={s}", .{@errorName(err)});
+        };
+    }
+
+    /// Block until the next pub/sub message arrives or the socket read times out.
+    /// Returns null on timeout (WouldBlock / ConnectionTimedOut) — not a fatal error.
+    /// Propagates fatal errors (ConnectionResetByPeer, BrokenPipe) so the caller
+    /// can break the loop and fall back to DB polling.
     /// Caller owns the returned PubSubMessage and must call deinit().
     pub fn readMessage(self: *Subscriber) !?PubSubMessage {
         var resp = redis_protocol.readRespValue(self.alloc, self.transport.reader()) catch |err| {
-            log.warn("redis_pubsub.read_error err={s}", .{@errorName(err)});
-            return null;
+            // SO_RCVTIMEO timeout surfaces as ReadFailed through both the plain
+            // TCP Io.Reader and the TLS Io.Reader (Zig 0.15.2 wraps WouldBlock
+            // into ReadFailed at the Io.Reader layer). Return null so the stream
+            // handler can emit a heartbeat and continue the loop.
+            //
+            // EndOfStream means the connection was closed cleanly — also not fatal
+            // in the pub/sub context (server may have disconnected).
+            //
+            // Any other error type is unexpected and propagated.
+            if (err == error.ReadFailed or err == error.EndOfStream) return null;
+            log.warn("redis_pubsub.read_fatal err={s}", .{@errorName(err)});
+            return err;
         };
         defer resp.deinit(self.alloc);
 
@@ -107,5 +143,9 @@ pub const Subscriber = struct {
             try writer.writeAll("\r\n");
         }
         try writer.flush();
+        // For TLS: writer.flush() encrypts into stream_writer's buffer but does not
+        // send it to the socket. Must flush the underlying socket writer explicitly.
+        // Plain transport: writer.flush() goes directly to the socket — no extra step.
+        if (self.transport == .tls) try self.transport.tls.stream_writer.interface.flush();
     }
 };

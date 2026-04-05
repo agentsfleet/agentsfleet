@@ -7,6 +7,7 @@ import { ERR_BILLING_CREDIT_EXHAUSTED } from "../constants/error-codes.js";
 import { ApiError } from "../lib/http.js";
 import { commandSpecInit } from "./spec_init.js";
 import { runPreview } from "./run_preview.js";
+import { streamRunWatch } from "./run_watch.js";
 
 function createCoreHandlers(ctx, workspaces, deps) {
   const {
@@ -498,6 +499,11 @@ function createCoreHandlers(ctx, workspaces, deps) {
         credit_remaining_cents: res.credit_remaining_cents ?? "unknown",
         credit_currency: res.credit_currency ?? "USD",
       });
+    }
+
+    // §5: --watch streams SSE events in real time.
+    if (parsed.options.watch) {
+      await streamRunWatch(ctx, res.run_id, { apiHeaders, ui, writeLine });
     }
     return 0;
   }

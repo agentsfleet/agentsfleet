@@ -79,6 +79,10 @@ pub const Snapshot = struct {
     run_limit_token_budget_exceeded_total: u64,
     run_limit_wall_time_exceeded_total: u64,
     run_limit_repair_loops_exhausted_total: u64,
+    interrupt_queued_total: u64,
+    interrupt_instant_total: u64,
+    interrupt_fallback_total: u64,
+    run_aborted_total: u64,
     otel_export_total: u64,
     otel_export_failed_total: u64,
     otel_last_success_at_ms: i64,
@@ -151,6 +155,10 @@ var g_gate_repair_exhausted_total = std.atomic.Value(u64).init(0);
 var g_run_limit_token_budget_exceeded_total = std.atomic.Value(u64).init(0);
 var g_run_limit_wall_time_exceeded_total = std.atomic.Value(u64).init(0);
 var g_run_limit_repair_loops_exhausted_total = std.atomic.Value(u64).init(0);
+var g_interrupt_queued_total = std.atomic.Value(u64).init(0);
+var g_interrupt_instant_total = std.atomic.Value(u64).init(0);
+var g_interrupt_fallback_total = std.atomic.Value(u64).init(0);
+var g_run_aborted_total = std.atomic.Value(u64).init(0);
 var g_otel_export_total = std.atomic.Value(u64).init(0);
 var g_otel_export_failed_total = std.atomic.Value(u64).init(0);
 var g_otel_last_success_at_ms = std.atomic.Value(i64).init(0);
@@ -360,6 +368,18 @@ pub fn incRunLimitWallTimeExceeded() void {
 pub fn incRunLimitRepairLoopsExhausted() void {
     _ = g_run_limit_repair_loops_exhausted_total.fetchAdd(1, .monotonic);
 }
+pub fn incInterruptQueued() void {
+    _ = g_interrupt_queued_total.fetchAdd(1, .monotonic);
+}
+pub fn incInterruptInstant() void {
+    _ = g_interrupt_instant_total.fetchAdd(1, .monotonic);
+}
+pub fn incInterruptFallback() void {
+    _ = g_interrupt_fallback_total.fetchAdd(1, .monotonic);
+}
+pub fn incRunAborted() void {
+    _ = g_run_aborted_total.fetchAdd(1, .monotonic);
+}
 
 pub fn incOtelExportTotal() void {
     _ = g_otel_export_total.fetchAdd(1, .monotonic);
@@ -482,6 +502,10 @@ pub fn snapshot() Snapshot {
         .run_limit_token_budget_exceeded_total = g_run_limit_token_budget_exceeded_total.load(.acquire),
         .run_limit_wall_time_exceeded_total = g_run_limit_wall_time_exceeded_total.load(.acquire),
         .run_limit_repair_loops_exhausted_total = g_run_limit_repair_loops_exhausted_total.load(.acquire),
+        .interrupt_queued_total = g_interrupt_queued_total.load(.acquire),
+        .interrupt_instant_total = g_interrupt_instant_total.load(.acquire),
+        .interrupt_fallback_total = g_interrupt_fallback_total.load(.acquire),
+        .run_aborted_total = g_run_aborted_total.load(.acquire),
         .otel_export_total = g_otel_export_total.load(.acquire),
         .otel_export_failed_total = g_otel_export_failed_total.load(.acquire),
         .otel_last_success_at_ms = g_otel_last_success_at_ms.load(.acquire),
