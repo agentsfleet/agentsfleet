@@ -57,6 +57,8 @@ pub const GateLoopConfig = struct {
     conn: *pg.Conn,
     run_id: []const u8,
     workspace_id: []const u8,
+    /// M21_001 A09: agent identity for observability (interrupt + gate logs).
+    agent_id: []const u8 = "",
     wt_path: []const u8,
     running: *const std.atomic.Value(bool),
     deadline_ms: i64,
@@ -137,6 +139,19 @@ fn checkCancelSignal(cfg: GateLoopConfig) !bool {
     return true;
 }
 
+/// M21_001 §2.1: Check Redis for a pending interrupt message (GETDEL).
+fn checkInterruptSignal(cfg: GateLoopConfig) ?[]const u8 {
+    const redis = cfg.redis orelse return null;
+    const key = std.fmt.allocPrint(cfg.alloc, queue_consts.interrupt_key_prefix ++ "{s}", .{cfg.run_id}) catch return null;
+    defer cfg.alloc.free(key);
+    const argv = [_][]const u8{ "GETDEL", key };
+    const resp = redis.command(&argv) catch return null;
+    return switch (resp) {
+        .bulk_string => |s| s,
+        else => null,
+    };
+}
+
 /// After each gate loop iteration: check cancel signal, token budget, wall time.
 /// Returns true if any limit was breached and `state_written` should be set.
 fn checkPostIterationLimits(cfg: GateLoopConfig) !bool {
@@ -152,6 +167,23 @@ pub fn runGateLoop(cfg: GateLoopConfig) !GateLoopOutcome {
     var repair: u32 = 0;
     while (repair < cfg.max_repair_loops) : (repair += 1) {
         try worker_runtime.ensureRunActive(cfg.running, cfg.deadline_ms);
+
+        // M21_001 §2.1: poll for pending interrupt before running gates.
+        if (checkInterruptSignal(cfg)) |interrupt_msg| {
+            log.info("gate_loop.interrupt_received run_id={s} workspace_id={s} agent_id={s} msg_len={d}", .{ cfg.run_id, cfg.workspace_id, cfg.agent_id, interrupt_msg.len });
+            if (cfg.executor) |exec| {
+                if (cfg.execution_id) |exec_id| {
+                    _ = exec.startStage(exec_id, .{
+                        .stage_id = cfg.repair_stage_id,
+                        .role_id = cfg.repair_role_id,
+                        .skill_id = cfg.repair_skill_id,
+                        .message = interrupt_msg,
+                    }) catch |err| {
+                        log.warn("gate_loop.interrupt_inject_fail err={s} run_id={s}", .{ @errorName(err), cfg.run_id });
+                    };
+                }
+            }
+        }
 
         var failed_result: ?GateToolResult = null;
         for (cfg.gate_tools) |gate| {

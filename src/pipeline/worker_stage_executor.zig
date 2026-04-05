@@ -506,6 +506,7 @@ pub fn executeRun(
                         .sandbox = cfg.sandbox,
                         .run_id = ctx.run_id,
                         .workspace_id = ctx.workspace_id,
+                        .agent_id = ctx.agent_id,
                         .request_id = ctx.request_id,
                         .trace_id = ctx.trace_id,
                         .stage_id = stage.stage_id,

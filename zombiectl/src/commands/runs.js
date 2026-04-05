@@ -1,4 +1,5 @@
 // M17_001 §3: zombiectl runs cancel <run_id>
+import { commandRunsInterrupt } from "./run_interrupt.js";
 
 function commandRuns(ctx, args, deps) {
   const { parseFlags, printJson, request, apiHeaders, ui, writeLine } = deps;
@@ -26,9 +27,10 @@ function commandRuns(ctx, args, deps) {
 
   const action = args[0];
   if (action === "cancel") return cancel(args.slice(1));
+  if (action === "interrupt") return commandRunsInterrupt(ctx, args.slice(1), deps);
 
   writeLine(ctx.stderr, ui.err(`unknown runs subcommand: ${action}`));
-  writeLine(ctx.stderr, ui.err("available: cancel"));
+  writeLine(ctx.stderr, ui.err("available: cancel, interrupt"));
   return Promise.resolve(2);
 }
 

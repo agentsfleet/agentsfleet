@@ -13,7 +13,7 @@ const error_codes = @import("../../../errors/codes.zig");
 
 const log = std.log.scoped(.http);
 
-const TERMINAL_STATES = &[_][]const u8{ "DONE", "BLOCKED", "FAILED", "CANCELLED" };
+const TERMINAL_STATES = &[_][]const u8{ "DONE", "BLOCKED", "FAILED", "CANCELLED", "ABORTED" };
 
 fn isTerminalState(state: []const u8) bool {
     for (TERMINAL_STATES) |ts| {

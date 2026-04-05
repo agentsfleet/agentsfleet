@@ -34,7 +34,7 @@ fn outboxStatusLabel(status: OutboxStatus) []const u8 {
 
 fn shouldReconcileSideEffectsForState(to: types.RunState) bool {
     return switch (to) {
-        .SPEC_QUEUED, .BLOCKED, .NOTIFIED_BLOCKED, .DONE, .CANCELLED => true,
+        .SPEC_QUEUED, .BLOCKED, .NOTIFIED_BLOCKED, .DONE, .CANCELLED, .ABORTED => true,
         else => false,
     };
 }
@@ -46,6 +46,7 @@ fn deadLetterReasonForState(to: types.RunState) []const u8 {
         .NOTIFIED_BLOCKED => "reconciled_on_notified_blocked",
         .DONE => "reconciled_on_done",
         .CANCELLED => "reconciled_on_cancelled",
+        .ABORTED => "reconciled_on_aborted",
         else => "reconciled",
     };
 }
@@ -154,6 +155,14 @@ const ALLOWED = [_][2]types.RunState{
     .{ .VERIFICATION_IN_PROGRESS, .CANCELLED },
     .{ .VERIFICATION_FAILED, .CANCELLED },
     .{ .PR_PREPARED, .CANCELLED },
+    // M21_001: abort transitions
+    .{ .SPEC_QUEUED, .ABORTED },
+    .{ .RUN_PLANNED, .ABORTED },
+    .{ .PATCH_IN_PROGRESS, .ABORTED },
+    .{ .PATCH_READY, .ABORTED },
+    .{ .VERIFICATION_IN_PROGRESS, .ABORTED },
+    .{ .VERIFICATION_FAILED, .ABORTED },
+    .{ .PR_PREPARED, .ABORTED },
 };
 
 pub fn isAllowed(from: types.RunState, to: types.RunState) bool {
