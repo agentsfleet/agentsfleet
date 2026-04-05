@@ -2,7 +2,7 @@
 // Shows billing breakdown for a workspace.
 
 export async function commandWorkspaceBillingSummary(ctx, parsed, workspaceId, deps) {
-  const { request, apiHeaders, ui, printJson, writeLine } = deps;
+  const { request, apiHeaders, printJson, writeLine } = deps;
   const period = parsed.options["period"] || "30d";
 
   const url = `/v1/workspaces/${encodeURIComponent(workspaceId)}/billing/summary?period=${encodeURIComponent(period)}`;
