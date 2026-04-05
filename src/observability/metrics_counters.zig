@@ -355,7 +355,6 @@ pub fn incRunLimitWallTimeExceeded() void {
 pub fn incRunLimitRepairLoopsExhausted() void {
     _ = g_run_limit_repair_loops_exhausted_total.fetchAdd(1, .monotonic);
 }
-
 pub fn incInterruptQueued() void {
     _ = g_interrupt_queued_total.fetchAdd(1, .monotonic);
 }

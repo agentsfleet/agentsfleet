@@ -193,18 +193,17 @@ pub fn handleInterruptRun(
         if (transition_id.len > 0) {
             defer alloc.free(transition_id);
             const notes_str = std.fmt.allocPrint(alloc, "interrupt:{s}:{s}", .{ effective_mode, rval.message[0..@min(rval.message.len, 128)] }) catch null;
+            // state_to is NULL — interrupt is an annotation, not a state change.
             _ = conn.exec(
                 \\INSERT INTO core.run_transitions
                 \\  (id, run_id, attempt, state_from, state_to, actor, reason_code, notes, ts)
-                \\VALUES ($1, $2, (SELECT attempt FROM core.runs WHERE run_id = $2), $3, $3, 'orchestrator', $4, $5, $6)
+                \\VALUES ($1, $2, (SELECT attempt FROM core.runs WHERE run_id = $2), $3, NULL, 'orchestrator', $4, $5, $6)
             , .{
                 transition_id,
                 run_id,
                 state_str,
-                if (std.mem.eql(u8, effective_mode, "instant"))
-                    types.ReasonCode.INTERRUPT_DELIVERED.label()
-                else
-                    types.ReasonCode.INTERRUPT_QUEUED.label(),
+                // v1: always queued; INTERRUPT_DELIVERED reserved for v2 instant IPC.
+                types.ReasonCode.INTERRUPT_QUEUED.label(),
                 notes_str,
                 std.time.milliTimestamp(),
             }) catch |err| {

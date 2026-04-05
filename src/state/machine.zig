@@ -24,7 +24,7 @@ const OutboxStatus = enum {
     dead_letter,
 };
 
-fn outboxStatusLabel(status: OutboxStatus) []const u8 {
+pub fn outboxStatusLabel(status: OutboxStatus) []const u8 {
     return switch (status) {
         .pending => "pending",
         .delivered => "delivered",
@@ -32,14 +32,14 @@ fn outboxStatusLabel(status: OutboxStatus) []const u8 {
     };
 }
 
-fn shouldReconcileSideEffectsForState(to: types.RunState) bool {
+pub fn shouldReconcileSideEffectsForState(to: types.RunState) bool {
     return switch (to) {
         .SPEC_QUEUED, .BLOCKED, .NOTIFIED_BLOCKED, .DONE, .CANCELLED, .ABORTED => true,
         else => false,
     };
 }
 
-fn deadLetterReasonForState(to: types.RunState) []const u8 {
+pub fn deadLetterReasonForState(to: types.RunState) []const u8 {
     return switch (to) {
         .SPEC_QUEUED => "reconciled_on_requeue",
         .BLOCKED => "reconciled_on_blocked",
@@ -471,36 +471,9 @@ test "isAllowed covers all configured transitions" {
     try std.testing.expect(!isAllowed(.SPEC_QUEUED, .DONE));
 }
 
-test "reconciliation trigger states include blocked terminal and requeue edges" {
-    try std.testing.expect(shouldReconcileSideEffectsForState(.SPEC_QUEUED));
-    try std.testing.expect(shouldReconcileSideEffectsForState(.BLOCKED));
-    try std.testing.expect(shouldReconcileSideEffectsForState(.NOTIFIED_BLOCKED));
-    try std.testing.expect(shouldReconcileSideEffectsForState(.DONE));
-    try std.testing.expect(shouldReconcileSideEffectsForState(.CANCELLED)); // M17_001
-    try std.testing.expect(!shouldReconcileSideEffectsForState(.PATCH_IN_PROGRESS));
-    try std.testing.expect(!shouldReconcileSideEffectsForState(.PR_OPENED));
-}
-
-test "integration: dead-letter reconciliation reasons are stable" {
-    try std.testing.expectEqualStrings("reconciled_on_requeue", deadLetterReasonForState(.SPEC_QUEUED));
-    try std.testing.expectEqualStrings("reconciled_on_blocked", deadLetterReasonForState(.BLOCKED));
-    try std.testing.expectEqualStrings("reconciled_on_notified_blocked", deadLetterReasonForState(.NOTIFIED_BLOCKED));
-    try std.testing.expectEqualStrings("reconciled_on_done", deadLetterReasonForState(.DONE));
-    try std.testing.expectEqualStrings("reconciled_on_cancelled", deadLetterReasonForState(.CANCELLED)); // M17_001
-}
-
-test "dead-letter reconciliation reason falls back for non-reconcile target states" {
-    try std.testing.expectEqualStrings("reconciled", deadLetterReasonForState(.PR_OPENED));
-    try std.testing.expectEqualStrings("reconciled", deadLetterReasonForState(.RUN_PLANNED));
-}
-
-test "outbox status labels are stable" {
-    try std.testing.expectEqualStrings("pending", outboxStatusLabel(.pending));
-    try std.testing.expectEqualStrings("delivered", outboxStatusLabel(.delivered));
-    try std.testing.expectEqualStrings("dead_letter", outboxStatusLabel(.dead_letter));
-}
-
-// M17_001 transition tests extracted to machine_m17_test.zig (500-line limit).
+// Reconciliation + outbox tests extracted to machine_reconcile_test.zig (500-line limit).
+// M17_001 transition tests extracted to machine_m17_test.zig.
 comptime {
     _ = @import("machine_m17_test.zig");
+    _ = @import("machine_reconcile_test.zig");
 }
