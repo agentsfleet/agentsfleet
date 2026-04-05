@@ -41,7 +41,7 @@ function commandRuns(ctx, args, deps) {
     if (ctx.jsonMode) {
       printJson(ctx.stdout, result);
     } else {
-      const gates = Array.isArray(result.gates) ? result.gates : [];
+      const gates = Array.isArray(result.gate_results) ? result.gate_results : [];
       if (gates.length === 0) {
         writeLine(ctx.stdout, ui.info("no gate results"));
       } else {

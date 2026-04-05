@@ -50,7 +50,7 @@ function makeDeps(overrides = {}) {
     },
     printJson: (_s, v) => { _s.write(JSON.stringify(v) + "\n"); },
     request: async () => ({
-      gates: [
+      gate_results: [
         { gate_name: "run_lint", exit_code: 0, attempt: 1, wall_ms: 150, stdout_tail: "", stderr_tail: "" },
         { gate_name: "run_test", exit_code: 1, attempt: 2, wall_ms: 3200, stdout_tail: "1 failed", stderr_tail: "assert failed" },
       ],
@@ -108,7 +108,7 @@ describe("commandRuns replay — happy path", () => {
     const deps = makeDeps({
       request: async (_ctx, path) => {
         calledPath = path;
-        return { gates: [] };
+        return { gate_results: [] };
       },
     });
     const ctx = makeCtx();
@@ -122,7 +122,7 @@ describe("commandRuns replay — happy path", () => {
     const deps = makeDeps({
       request: async (_ctx, _path, opts) => {
         calledMethod = opts?.method;
-        return { gates: [] };
+        return { gate_results: [] };
       },
     });
     const ctx = makeCtx();
@@ -142,28 +142,28 @@ describe("commandRuns replay — happy path", () => {
     expect(output).toContain("loop 2");
   });
 
-  test("T1: JSON mode writes valid JSON with gates array", async () => {
+  test("T1: JSON mode writes valid JSON with gate_results array", async () => {
     const { stream: stdout, read } = makeBufferStream();
     const ctx = makeCtx({ stdout, jsonMode: true });
     await commandRuns(ctx, ["replay", RUN_ID_1], makeDeps());
     const parsed = JSON.parse(read().trim());
-    expect(parsed.gates).toBeInstanceOf(Array);
-    expect(parsed.gates.length).toBe(2);
+    expect(parsed.gate_results).toBeInstanceOf(Array);
+    expect(parsed.gate_results.length).toBe(2);
   });
 });
 
 // ── T2: edge cases ─────────────────────────────────────────────────────────
 
 describe("commandRuns replay — edge cases", () => {
-  test("T2: empty gates array prints 'no gate results'", async () => {
+  test("T2: empty gate_results array prints 'no gate results'", async () => {
     const { stream: stdout, read } = makeBufferStream();
-    const deps = makeDeps({ request: async () => ({ gates: [] }) });
+    const deps = makeDeps({ request: async () => ({ gate_results: [] }) });
     const ctx = makeCtx({ stdout });
     await commandRuns(ctx, ["replay", RUN_ID_1], deps);
     expect(read()).toContain("no gate results");
   });
 
-  test("T2: missing gates field treats as empty", async () => {
+  test("T2: missing gate_results field treats as empty", async () => {
     const { stream: stdout, read } = makeBufferStream();
     const deps = makeDeps({ request: async () => ({}) });
     const ctx = makeCtx({ stdout });
@@ -176,7 +176,7 @@ describe("commandRuns replay — edge cases", () => {
     const { stream: stdout, read } = makeBufferStream();
     const deps = makeDeps({
       request: async () => ({
-        gates: [{ gate_name: "テスト_lint_🔍", exit_code: 0, attempt: 1, wall_ms: 50 }],
+        gate_results: [{ gate_name: "テスト_lint_🔍", exit_code: 0, attempt: 1, wall_ms: 50 }],
       }),
     });
     const ctx = makeCtx({ stdout });
@@ -188,7 +188,7 @@ describe("commandRuns replay — edge cases", () => {
     const { stream: stdout, read } = makeBufferStream();
     const deps = makeDeps({
       request: async () => ({
-        gates: [{ gate_name: "build", exit_code: 0 }], // missing attempt, wall_ms
+        gate_results: [{ gate_name: "build", exit_code: 0 }], // missing attempt, wall_ms
       }),
     });
     const ctx = makeCtx({ stdout });
@@ -203,7 +203,7 @@ describe("commandRuns replay — edge cases", () => {
     const deps = makeDeps({
       request: async (_ctx, path) => {
         calledPath = path;
-        return { gates: [] };
+        return { gate_results: [] };
       },
     });
     const ctx = makeCtx();
@@ -271,7 +271,7 @@ describe("commandRuns replay — output fidelity", () => {
     const { stream: stdout, read } = makeBufferStream();
     const deps = makeDeps({
       request: async () => ({
-        gates: [{ gate_name: "lint", exit_code: 0, attempt: 1, wall_ms: 10, stdout_tail: "", stderr_tail: "" }],
+        gate_results: [{ gate_name: "lint", exit_code: 0, attempt: 1, wall_ms: 10, stdout_tail: "", stderr_tail: "" }],
       }),
     });
     const ctx = makeCtx({ stdout });
@@ -289,14 +289,14 @@ describe("commandRuns replay — output fidelity", () => {
     const text = read().trim();
     expect(() => JSON.parse(text)).not.toThrow();
     const parsed = JSON.parse(text);
-    expect(parsed.gates[0].gate_name).toBe("run_lint");
+    expect(parsed.gate_results[0].gate_name).toBe("run_lint");
   });
 
   test("T4: PASS/FAIL outcome derived from exit_code correctly", async () => {
     const { stream: stdout, read } = makeBufferStream();
     const deps = makeDeps({
       request: async () => ({
-        gates: [
+        gate_results: [
           { gate_name: "g1", exit_code: 0, attempt: 1, wall_ms: 1 },
           { gate_name: "g2", exit_code: 127, attempt: 1, wall_ms: 1 },
         ],
@@ -314,7 +314,7 @@ describe("commandRuns replay — output fidelity", () => {
     const longOutput = "x".repeat(500);
     const deps = makeDeps({
       request: async () => ({
-        gates: [{ gate_name: "g", exit_code: 1, attempt: 1, wall_ms: 1, stdout_tail: longOutput, stderr_tail: "" }],
+        gate_results: [{ gate_name: "g", exit_code: 1, attempt: 1, wall_ms: 1, stdout_tail: longOutput, stderr_tail: "" }],
       }),
     });
     const ctx = makeCtx({ stdout });
@@ -349,7 +349,7 @@ describe("commandRuns replay — OWASP Agentic security", () => {
     const deps = makeDeps({
       request: async (_ctx, path) => {
         calledPath = path;
-        return { gates: [] };
+        return { gate_results: [] };
       },
     });
     const ctx = makeCtx();
@@ -365,7 +365,7 @@ describe("commandRuns replay — OWASP Agentic security", () => {
     const deps = makeDeps({
       request: async (_ctx, path) => {
         calledPath = path;
-        return { gates: [] };
+        return { gate_results: [] };
       },
     });
     const ctx = makeCtx();
@@ -378,7 +378,7 @@ describe("commandRuns replay — OWASP Agentic security", () => {
     const { stream: stdout, read } = makeBufferStream();
     const deps = makeDeps({
       request: async () => ({
-        gates: [{ gate_name: "<script>alert(1)</script>", exit_code: 0, attempt: 1, wall_ms: 10 }],
+        gate_results: [{ gate_name: "<script>alert(1)</script>", exit_code: 0, attempt: 1, wall_ms: 10 }],
       }),
     });
     const ctx = makeCtx({ stdout });
@@ -392,7 +392,7 @@ describe("commandRuns replay — OWASP Agentic security", () => {
     const { stream: stdout, read } = makeBufferStream();
     const deps = makeDeps({
       request: async () => ({
-        gates: [{ gate_name: "'; DROP TABLE runs; --", exit_code: 0, attempt: 1, wall_ms: 10 }],
+        gate_results: [{ gate_name: "'; DROP TABLE runs; --", exit_code: 0, attempt: 1, wall_ms: 10 }],
       }),
     });
     const ctx = makeCtx({ stdout });
@@ -404,7 +404,7 @@ describe("commandRuns replay — OWASP Agentic security", () => {
     const { stream: stdout, read } = makeBufferStream();
     const deps = makeDeps({
       request: async () => ({
-        gates: [{
+        gate_results: [{
           gate_name: "test",
           exit_code: 1,
           attempt: 1,
@@ -426,7 +426,7 @@ describe("commandRuns replay — OWASP Agentic security", () => {
     const deps = makeDeps({
       request: async (_ctx, _path, opts) => {
         capturedHeaders = opts?.headers;
-        return { gates: [] };
+        return { gate_results: [] };
       },
     });
     const ctx = makeCtx();
