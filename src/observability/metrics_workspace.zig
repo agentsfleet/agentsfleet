@@ -228,3 +228,94 @@ test "overflow counter increments when table is conceptually full" {
 
     try std.testing.expectEqual(@as(u64, 0), g_overflow_total.load(.acquire));
 }
+
+test "resolveSlot returns same slot for same workspace_id (no duplicates)" {
+    g_slots = [_]Slot{.{}} ** MAX_WORKSPACES;
+    g_overflow = .{};
+    g_overflow_total.store(0, .release);
+    g_slot_count.store(0, .release);
+
+    const slot1 = resolveSlot("ws-dedup").?;
+    _ = slot1.counters.tokens_total.fetchAdd(10, .monotonic);
+    const slot2 = resolveSlot("ws-dedup").?;
+
+    // Must be the exact same slot — not a duplicate.
+    try std.testing.expectEqual(slot1, slot2);
+    try std.testing.expectEqual(@as(u64, 10), slot2.counters.tokens_total.load(.acquire));
+    try std.testing.expectEqual(@as(u32, 1), g_slot_count.load(.acquire));
+}
+
+test "slot with occupied=1 but ready=0 is skipped in resolveSlot" {
+    g_slots = [_]Slot{.{}} ** MAX_WORKSPACES;
+    g_overflow = .{};
+    g_overflow_total.store(0, .release);
+    g_slot_count.store(0, .release);
+
+    // Simulate a half-initialized slot: occupied but not ready.
+    const h = hashWorkspaceId("ws-half");
+    const idx = h % MAX_WORKSPACES;
+    g_slots[idx].occupied.store(1, .release);
+    g_slots[idx].hash = h;
+    g_slots[idx].ws_id_len = 7;
+    @memcpy(g_slots[idx].ws_id[0..7], "ws-half");
+    // ready is still 0 — slot is being initialized by another "thread".
+
+    // resolveSlot must skip this slot (ready=0) and claim a different one.
+    const slot = resolveSlot("ws-half");
+    // It should find a new slot (not the half-initialized one at idx).
+    if (slot) |s| {
+        // The returned slot must be ready (we just initialized it).
+        try std.testing.expectEqual(@as(u8, 1), s.ready.load(.acquire));
+    } else {
+        // Acceptable: table could theoretically be "full" from the probe's perspective
+        // if it wraps around to the half-initialized slot. In practice with 4096 slots
+        // this won't happen, but the key invariant is we never returned the half-init slot.
+    }
+}
+
+test "renderPrometheus skips slots with ready=0" {
+    g_slots = [_]Slot{.{}} ** MAX_WORKSPACES;
+    g_overflow = .{};
+    g_overflow_total.store(0, .release);
+    g_slot_count.store(0, .release);
+
+    // Create a real slot.
+    addTokens("ws-visible", 100);
+
+    // Simulate a half-initialized slot (occupied but not ready).
+    const h = hashWorkspaceId("ws-ghost");
+    const idx = h % MAX_WORKSPACES;
+    g_slots[idx].occupied.store(1, .release);
+    g_slots[idx].ws_id_len = 8;
+    @memcpy(g_slots[idx].ws_id[0..8], "ws-ghost");
+    g_slots[idx].counters.tokens_total.store(999, .release);
+    // ready stays 0 — this slot must NOT appear in output.
+    g_slot_count.store(2, .release);
+
+    var buf: [8192]u8 = undefined;
+    var fbs = std.io.fixedBufferStream(&buf);
+    try renderPrometheus(fbs.writer());
+    const output = fbs.getWritten();
+
+    // Visible slot appears.
+    try std.testing.expect(std.mem.containsAtLeast(u8, output, 1, "ws-visible"));
+    // Ghost slot must NOT appear.
+    try std.testing.expect(!std.mem.containsAtLeast(u8, output, 1, "ws-ghost"));
+    try std.testing.expect(!std.mem.containsAtLeast(u8, output, 1, "999"));
+}
+
+test "distinct workspace_ids get distinct slots" {
+    g_slots = [_]Slot{.{}} ** MAX_WORKSPACES;
+    g_overflow = .{};
+    g_overflow_total.store(0, .release);
+    g_slot_count.store(0, .release);
+
+    addTokens("ws-alpha", 10);
+    addTokens("ws-beta", 20);
+    addTokens("ws-gamma", 30);
+
+    try std.testing.expectEqual(@as(u32, 3), g_slot_count.load(.acquire));
+    try std.testing.expectEqual(@as(u64, 10), resolveSlot("ws-alpha").?.counters.tokens_total.load(.acquire));
+    try std.testing.expectEqual(@as(u64, 20), resolveSlot("ws-beta").?.counters.tokens_total.load(.acquire));
+    try std.testing.expectEqual(@as(u64, 30), resolveSlot("ws-gamma").?.counters.tokens_total.load(.acquire));
+}

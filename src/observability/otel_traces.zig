@@ -350,3 +350,49 @@ test "SpanEntry truncates oversized name" {
     const entry = buildSpan(ctx, long_name, 0, 0);
     try std.testing.expectEqual(@as(u8, MAX_NAME_LEN), entry.name_len);
 }
+
+// M28_001: Root and child spans must share the same trace_id for Tempo waterfall.
+test "child span shares parent trace_id (Tempo waterfall invariant)" {
+    const root = trace.TraceContext.generate();
+    const child = root.child();
+
+    const root_span = buildSpan(root, "run.execute", 100, 200);
+    const child_span = buildSpan(child, "agent.call", 110, 190);
+
+    // Both spans must have the same trace_id.
+    try std.testing.expectEqualSlices(u8, &root_span.trace_id, &child_span.trace_id);
+    // Child must reference root as parent.
+    try std.testing.expect(child_span.has_parent);
+    try std.testing.expectEqualSlices(u8, &root_span.span_id, &child_span.parent_span_id);
+    // Root must NOT have a parent.
+    try std.testing.expect(!root_span.has_parent);
+}
+
+// M28_001: Manually constructed TraceContext (like root span fix) preserves trace_id.
+test "manual TraceContext with external trace_id produces aligned spans" {
+    // Simulate what the root span defer block does:
+    // use ctx.trace_id (external) + root_tc.span_id (generated).
+    const external_trace_id = "abcdef0123456789abcdef0123456789";
+    const root_tc = trace.TraceContext.generate();
+
+    var manual_tc: trace.TraceContext = undefined;
+    @memcpy(&manual_tc.trace_id, external_trace_id);
+    manual_tc.span_id = root_tc.span_id;
+    manual_tc.parent_span_id = null;
+
+    const root_span = buildSpan(manual_tc, "run.execute", 0, 100);
+
+    // Now build a child the way emitAgentSpan does:
+    var child_tc: trace.TraceContext = undefined;
+    @memcpy(&child_tc.trace_id, external_trace_id);
+    const child_gen = trace.TraceContext.generate();
+    child_tc.span_id = child_gen.span_id;
+    child_tc.parent_span_id = root_tc.span_id;
+
+    const child_span = buildSpan(child_tc, "agent.call", 10, 90);
+
+    // Invariant: same trace_id, child points to root.
+    try std.testing.expectEqualSlices(u8, &root_span.trace_id, &child_span.trace_id);
+    try std.testing.expectEqualSlices(u8, &root_span.span_id, &child_span.parent_span_id);
+    try std.testing.expectEqualStrings(external_trace_id, &root_span.trace_id);
+}
