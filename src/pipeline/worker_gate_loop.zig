@@ -145,10 +145,13 @@ fn checkInterruptSignal(cfg: GateLoopConfig) ?[]const u8 {
     const key = std.fmt.allocPrint(cfg.alloc, queue_consts.interrupt_key_prefix ++ "{s}", .{cfg.run_id}) catch return null;
     defer cfg.alloc.free(key);
     const argv = [_][]const u8{ "GETDEL", key };
-    const resp = redis.command(&argv) catch return null;
+    var resp = redis.command(&argv) catch return null;
     return switch (resp) {
-        .bulk_string => |s| s,
-        else => null,
+        .bulk => |s| s,
+        else => blk: {
+            resp.deinit(cfg.alloc);
+            break :blk null;
+        },
     };
 }
 
