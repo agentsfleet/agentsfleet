@@ -166,7 +166,7 @@ pub fn handleDoneOutcome(o: DoneOutcomeCtx) !void {
         posthog_events.trackRunCompleted(o.cfg.posthog, posthog_events.distinctIdOrSystem(o.ctx.requested_by), o.ctx.run_id, o.ctx.workspace_id, "passed", o.total_wall_seconds * 1000);
         metrics.observeRunTotalWallSeconds(o.total_wall_seconds);
         metrics.incRunsCompleted();
-    metrics.wsIncRunsCompleted(o.ctx.workspace_id);
+        metrics.wsIncRunsCompleted(o.ctx.workspace_id);
         return;
     };
 

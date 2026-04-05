@@ -23,8 +23,10 @@ const Counters = struct {
 };
 
 const Slot = struct {
-    /// 0 = empty, 1 = occupied. CAS from 0→1 claims the slot.
+    /// 0 = empty, 1 = claimed (being initialized). CAS from 0→1 claims the slot.
     occupied: std.atomic.Value(u8) = std.atomic.Value(u8).init(0),
+    /// 0 = not ready, 1 = fields written and safe to read. Set after ws_id/hash init.
+    ready: std.atomic.Value(u8) = std.atomic.Value(u8).init(0),
     ws_id: [WS_ID_LEN]u8 = [_]u8{0} ** WS_ID_LEN,
     ws_id_len: u8 = 0,
     hash: u64 = 0,
@@ -51,7 +53,8 @@ fn resolveSlot(ws_id: []const u8) ?*Slot {
 
         const occ = slot.occupied.load(.acquire);
         if (occ == 1) {
-            // Occupied — check if it's ours.
+            // Slot claimed — only read fields if the owner has finished writing.
+            if (slot.ready.load(.acquire) != 1) continue; // still initializing, skip
             if (slot.hash == h and slot.ws_id_len == @min(ws_id.len, WS_ID_LEN)) {
                 if (std.mem.eql(u8, slot.ws_id[0..slot.ws_id_len], ws_id[0..@min(ws_id.len, WS_ID_LEN)])) {
                     return slot;
@@ -60,22 +63,22 @@ fn resolveSlot(ws_id: []const u8) ?*Slot {
             continue; // hash collision, linear probe
         }
 
-        // Empty slot — try to claim it.
+        // Empty slot — try to claim it via CAS.
         if (slot.occupied.cmpxchgStrong(0, 1, .acq_rel, .acquire)) |_| {
-            // Another thread claimed it — re-check.
-            if (slot.hash == h and slot.ws_id_len == @min(ws_id.len, WS_ID_LEN)) {
-                if (std.mem.eql(u8, slot.ws_id[0..slot.ws_id_len], ws_id[0..@min(ws_id.len, WS_ID_LEN)])) {
-                    return slot;
-                }
-            }
+            // Lost the race — another thread is initializing this slot.
+            // Don't read slot fields (TOCTOU: winner may still be writing).
+            // Continue probing; we'll find it occupied on the next pass or
+            // claim a later slot.
             continue;
         }
 
-        // We claimed it — initialize.
+        // We won the CAS — initialize slot fields, then publish via ready flag.
         const len: u8 = @intCast(@min(ws_id.len, WS_ID_LEN));
         @memcpy(slot.ws_id[0..len], ws_id[0..len]);
         slot.ws_id_len = len;
         slot.hash = h;
+        // Release fence: ensure ws_id/hash are visible before ready is set.
+        slot.ready.store(1, .release);
         _ = g_slot_count.fetchAdd(1, .monotonic);
         return slot;
     }
@@ -145,7 +148,7 @@ fn renderFamily(writer: anytype, name: []const u8, metric_type: []const u8, help
     try writer.print("# TYPE {s} {s}\n", .{ name, metric_type });
 
     for (&g_slots) |*slot| {
-        if (slot.occupied.load(.acquire) != 1) continue;
+        if (slot.occupied.load(.acquire) != 1 or slot.ready.load(.acquire) != 1) continue;
         const val = switch (field) {
             .tokens_total => slot.counters.tokens_total.load(.acquire),
             .runs_completed_total => slot.counters.runs_completed_total.load(.acquire),

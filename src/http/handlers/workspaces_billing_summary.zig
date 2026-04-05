@@ -21,17 +21,6 @@ fn parsePeriodDays(raw: ?[]const u8) u32 {
     return 30;
 }
 
-const SummaryRow = struct {
-    lifecycle_event: []const u8,
-    run_count: i64,
-    total_agent_seconds: i64,
-    total_billable_quantity: i64,
-};
-
-const ScoreRow = struct {
-    avg_score: i64,
-};
-
 pub fn handleGetWorkspaceBillingSummary(ctx: *common.Context, req: *httpz.Request, res: *httpz.Response, workspace_id: []const u8) void {
     var arena = std.heap.ArenaAllocator.init(ctx.alloc);
     defer arena.deinit();
@@ -115,7 +104,7 @@ pub fn handleGetWorkspaceBillingSummary(ctx: *common.Context, req: *httpz.Reques
     const avg_gated_score: i64 = blk: {
         if (score_gated_count == 0) break :blk 0;
         var sq = conn.query(
-            \\SELECT COALESCE(AVG(s.score), 0)::bigint
+            \\SELECT COALESCE(ROUND(AVG(s.score)), 0)::bigint
             \\FROM billing.usage_ledger u
             \\JOIN scoring.agent_run_scores s ON s.run_id = u.run_id
             \\WHERE u.workspace_id = $1
