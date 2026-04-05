@@ -317,7 +317,9 @@ jobs:
         env:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
         run: |
-          echo "FLY_API_TOKEN=$(op read 'op://${{ vars.VAULT_DEV }}/fly-api-token/credential')" >> "$GITHUB_ENV"
+          TOKEN="$(op read 'op://${{ vars.VAULT_DEV }}/fly-api-token/credential')"
+          echo "::add-mask::${TOKEN}"
+          echo "FLY_API_TOKEN=${TOKEN}" >> "$GITHUB_ENV"
 
       - uses: superfly/flyctl-actions/setup-flyctl@master
 

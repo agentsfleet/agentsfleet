@@ -469,6 +469,17 @@ test "parseDoctorArgs supports schema gate and json format" {
     try std.testing.expectEqual(OutputFormat.json, parsed.format);
 }
 
+test "parseDoctorArgs rejects invalid arguments" {
+    const invalid_format = [_][]const u8{ "--format", "yaml" };
+    try std.testing.expectError(DoctorArgError.InvalidFormatValue, parseDoctorArgs(&invalid_format));
+
+    const missing_format_value = [_][]const u8{"--format"};
+    try std.testing.expectError(DoctorArgError.MissingFormatValue, parseDoctorArgs(&missing_format_value));
+
+    const unknown_arg = [_][]const u8{"--unknown"};
+    try std.testing.expectError(DoctorArgError.InvalidDoctorArgument, parseDoctorArgs(&unknown_arg));
+}
+
 test "schema gate reason and compatibility mapping are deterministic" {
     try std.testing.expectEqualStrings("SCHEMA_COMPATIBLE", schemaGateReasonCode(null));
     try std.testing.expectEqualStrings("SCHEMA_BEHIND_BINARY", schemaGateReasonCode(MigrationSchemaGateError.PendingMigrations));
