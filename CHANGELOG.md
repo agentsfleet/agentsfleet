@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-04-05
+
+### Added
+
+- Root run span (`run.execute`) in OTel traces — all agent/gate spans are children, queryable by `{run.id}` in Tempo
+- Per-workspace Prometheus metrics: `zombie_agent_tokens_by_workspace_total`, `zombie_runs_completed_by_workspace_total`, `zombie_runs_blocked_by_workspace_total`, `zombie_gate_repair_loops_by_workspace_total`
+- Gate repair loop distribution histogram: `zombie_gate_repair_loops_per_run` (buckets: 0,1,2,3,5,10)
+- `GET /v1/workspaces/{id}/billing/summary` endpoint — billing breakdown by lifecycle event with period filter
+- `zombiectl workspace billing` CLI command with `--period` and `--json` flags
+- Grafana dashboard JSON (`docs/grafana/agent_run_breakdown.json`) — 7 panels, importable with template variables
+- Grafana observability playbook (`playbooks/M28_001_GRAFANA_OBSERVABILITY.md`) with gate scripts
+- `zombie_workspace_metrics_overflow_total` counter for cardinality overflow alerting
+
 ## [0.3.1] - 2026-04-05
 
 ### Added
