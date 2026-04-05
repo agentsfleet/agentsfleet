@@ -241,6 +241,7 @@ pub fn runGateLoop(cfg: GateLoopConfig) !GateLoopOutcome {
                 codes.ERR_GATE_COMMAND_FAILED, cfg.run_id, fr.gate_name, repair + 1, fr.exit_code,
             });
             metrics.incGateRepairLoops();
+            metrics.wsIncGateRepairLoops(cfg.workspace_id);
 
             if (cfg.executor) |exec| {
                 if (cfg.execution_id) |exec_id| {

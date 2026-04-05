@@ -446,6 +446,7 @@ pub fn executeRun(
     }, opRunStage, worker_runtime.retryOptionsForRun(@constCast(running), deadline_ms, 1, 1_000, 8_000, plan_stage.skill_id)) catch |err| return recordScoringFailure(&scoring_state, err);
     metrics.incAgentEchoCalls();
     metrics.addAgentTokensByActor(plan_binding.actor, plan_result.token_count);
+    metrics.wsAddTokens(ctx.workspace_id, plan_result.token_count);
     metrics.observeAgentDurationSeconds(plan_result.wall_seconds);
     emitAgentSpan(ctx, root_tc.span_id, plan_stage.stage_id, plan_binding.actor.label(), plan_result, plan_stage_start_ns);
 
@@ -555,6 +556,7 @@ pub fn executeRun(
                 .orchestrator => {},
             }
             metrics.addAgentTokensByActor(binding.actor, stage_result.token_count);
+            metrics.wsAddTokens(ctx.workspace_id, stage_result.token_count);
             metrics.observeAgentDurationSeconds(stage_result.wall_seconds);
             emitAgentSpan(ctx, root_tc.span_id, stage.stage_id, binding.actor.label(), stage_result, stage_start_ns);
             agents.emitNullclawRunEvent(ctx.run_id, ctx.request_id, ctx.trace_id, attempt, stage.stage_id, stage.role_id, binding.actor, stage_result);

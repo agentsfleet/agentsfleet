@@ -2,6 +2,7 @@
 
 const std = @import("std");
 const mc = @import("metrics_counters.zig");
+const mw = @import("metrics_workspace.zig");
 const em = @import("../executor/executor_metrics.zig");
 
 fn appendDurationHistogram(
@@ -183,6 +184,9 @@ pub fn renderPrometheus(
     try writer.print("zombie_executor_agent_duration_seconds_bucket{{le=\"+Inf\"}} {d}\n", .{es.duration_count});
     try writer.print("zombie_executor_agent_duration_seconds_sum {d}\n", .{es.duration_sum});
     try writer.print("zombie_executor_agent_duration_seconds_count {d}\n", .{es.duration_count});
+
+    // M28_001 §2.5: per-workspace metrics.
+    try mw.renderPrometheus(writer);
 
     try writer.writeAll("\n");
 
