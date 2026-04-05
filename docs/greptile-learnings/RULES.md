@@ -170,6 +170,27 @@ Incident: M22_001 greptile P1 — `readMessage()` returned null for ConnectionRe
 
 ---
 
+## Zig TLS Transport — Flush Socket Writer After TLS Writer Flush
+
+**RULE: After calling `tls_writer.flush()`, always call `stream_writer.interface.flush()` to actually send the encrypted bytes to the socket.**
+
+Why: Zig 0.15.2's `std.crypto.tls.Client.writer.flush()` encrypts the plaintext and writes ciphertext into the `stream_writer`'s internal buffer — it does NOT flush that buffer to the socket. Without the second flush, Redis never receives the command and `readRespValue` blocks forever with no timeout.
+
+Do:
+```zig
+try writer.flush();  // TLS encrypt → into stream_writer buffer
+if (self.transport == .tls) try self.transport.tls.stream_writer.interface.flush();  // send to socket
+```
+
+Don't:
+```zig
+try writer.flush();  // TLS flush only — data sits in socket writer buffer, never sent
+```
+
+Incident: M22_001 — `sendCommand` in `redis_pubsub.zig` was missing the socket writer flush. AUTH and SUBSCRIBE commands were encrypted but never sent, causing `readRespValue` to block indefinitely with no error or timeout.
+
+---
+
 ## SSE Heartbeat — Interval Must Be Less Than Socket Timeout
 
 **RULE: Set the SSE heartbeat interval below `SO_RCVTIMEO` so the first socket wakeup fires the heartbeat before the proxy idle timeout.**

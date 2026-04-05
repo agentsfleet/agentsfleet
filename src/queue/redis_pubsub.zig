@@ -143,5 +143,9 @@ pub const Subscriber = struct {
             try writer.writeAll("\r\n");
         }
         try writer.flush();
+        // For TLS: writer.flush() encrypts into stream_writer's buffer but does not
+        // send it to the socket. Must flush the underlying socket writer explicitly.
+        // Plain transport: writer.flush() goes directly to the socket — no extra step.
+        if (self.transport == .tls) try self.transport.tls.stream_writer.interface.flush();
     }
 };
