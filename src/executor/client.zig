@@ -278,6 +278,28 @@ pub const ExecutorClient = struct {
         };
     }
 
+    /// M21_001 §1.3: inject a user message into the active executor turn.
+    /// TODO(M21 v2): wire this into the gate loop for true instant delivery.
+    /// v1 uses startStage via the repair mechanism; this method has no call site yet.
+    pub fn injectUserMessage(self: *ExecutorClient, execution_id: []const u8, message: []const u8) !void {
+        var params = std.json.Value{ .object = std.json.ObjectMap.init(self.alloc) };
+        defer params.object.deinit();
+        try params.object.put("execution_id", .{ .string = execution_id });
+        try params.object.put("message", .{ .string = message });
+
+        var resp = self.transport_client.sendRequest(self.nextId(), protocol.Method.inject_user_message, params) catch {
+            log.err("executor_client.transport_loss error_code=UZ-EXEC-006 method=InjectUserMessage execution_id={s}", .{execution_id});
+            executor_metrics.incExecutorFailures();
+            return ClientError.TransportLoss;
+        };
+        defer resp.deinit();
+
+        if (resp.rpc_error) |err| {
+            log.err("executor_client.inject_msg_failed code={d} msg={s}", .{ err.code, err.message });
+            return ClientError.ExecutionFailed;
+        }
+    }
+
     pub fn destroyExecution(self: *ExecutorClient, execution_id: []const u8) !void {
         var params = std.json.Value{ .object = std.json.ObjectMap.init(self.alloc) };
         defer params.object.deinit();

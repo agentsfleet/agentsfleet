@@ -8,6 +8,7 @@ grep -qiE '\\b\(started\|stopped\)\\b'
 replace.*\\\*\\\*.*"\.\*"
 \.object\.get\([^)]+\)\) \|v\| break :blk v\.string
 memory_limit_bytes > 0 and self\.wall_ms > 0[^a]*;$
-std\.mem\.indexOf.*created_at.*[^P]
-abortedRef
+std\.mem\.indexOf.*json.*needle
 response\.status.*return;$
+defer alloc\.free\((detail|ok_detail)\);
+\$3, \$3,.*orchestrator.*reason_code

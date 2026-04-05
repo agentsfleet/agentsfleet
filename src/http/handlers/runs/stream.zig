@@ -13,7 +13,7 @@ const error_codes = @import("../../../errors/codes.zig");
 
 const log = std.log.scoped(.http);
 
-pub const TERMINAL_STATES = &[_][]const u8{ "DONE", "BLOCKED", "FAILED", "CANCELLED" };
+pub const TERMINAL_STATES = &[_][]const u8{ "DONE", "BLOCKED", "FAILED", "CANCELLED", "ABORTED" };
 
 pub fn isTerminalState(state: []const u8) bool {
     for (TERMINAL_STATES) |ts| {
@@ -192,28 +192,20 @@ pub fn handleStreamRun(ctx: *common.Context, req: *httpz.Request, res: *httpz.Re
     }
 }
 
-/// §3: Extract "created_at" integer from a JSON string. Falls back to milliTimestamp.
-/// Skips matches preceded by backslash (escaped inside a JSON string value).
+/// §3: Extract "created_at" integer from a JSON object. Falls back to milliTimestamp.
 pub fn extractCreatedAt(alloc: std.mem.Allocator, json_data: []const u8) i64 {
-    _ = alloc;
-    const needle = "\"created_at\":";
-    var search_pos: usize = 0;
-    const pos = blk: {
-        while (std.mem.indexOfPos(u8, json_data, search_pos, needle)) |p| {
-            if (p > 0 and json_data[p - 1] == '\\') {
-                search_pos = p + needle.len;
-                continue;
-            }
-            break :blk p;
-        }
+    const parsed = std.json.parseFromSlice(std.json.Value, alloc, json_data, .{}) catch
         return std.time.milliTimestamp();
+    defer parsed.deinit();
+    const obj = switch (parsed.value) {
+        .object => |o| o,
+        else => return std.time.milliTimestamp(),
     };
-    const start = pos + needle.len;
-    if (start >= json_data.len) return std.time.milliTimestamp();
-    var end = start;
-    while (end < json_data.len and (json_data[end] >= '0' and json_data[end] <= '9')) : (end += 1) {}
-    if (end == start) return std.time.milliTimestamp();
-    return std.fmt.parseInt(i64, json_data[start..end], 10) catch std.time.milliTimestamp();
+    const val = obj.get("created_at") orelse return std.time.milliTimestamp();
+    return switch (val) {
+        .integer => |i| i,
+        else => std.time.milliTimestamp(),
+    };
 }
 
 /// Emit SSE events for gate results already in the DB (replay / terminal runs).

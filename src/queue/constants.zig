@@ -16,3 +16,7 @@ pub const reclaim_interval_ms: i64 = 60_000;
 /// Redis key prefix for run cancellation signals (M17_001 §3.1).
 /// Full key: cancel_key_prefix ++ run_id, TTL 1h.
 pub const cancel_key_prefix = "run:cancel:";
+
+/// M21_001 §1.2: Redis key for queued interrupt messages.
+pub const interrupt_key_prefix = "run:interrupt:";
+pub const interrupt_ttl_seconds: u32 = 300;

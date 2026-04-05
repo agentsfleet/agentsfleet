@@ -160,46 +160,43 @@ test "T3: extractCreatedAt with nested object containing created_at" {
 // T8 — Security: OWASP Agentic + SSE-specific
 // ---------------------------------------------------------------------------
 
-test "T8: extractCreatedAt skips escaped injection in gate_name field" {
+test "T8: extractCreatedAt ignores injection in gate_name string value" {
     const alloc = std.testing.allocator;
-    // Attacker puts \"created_at\":666 inside a JSON string value.
-    // The backslash before the quote means this match is inside a string — skip it.
-    // The real "created_at":42 key follows after.
-    const json = "{\"gate_name\":\"\\\"created_at\\\":666\",\"created_at\":42}";
+    // JSON parser reads structural keys, not string contents — immune to injection.
+    const json = "{\"gate_name\":\"created_at:666\",\"created_at\":42}";
     const result = stream.extractCreatedAt(alloc, json);
     try std.testing.expectEqual(@as(i64, 42), result);
 }
 
-test "T8: extractCreatedAt skips multiple escaped matches before real key" {
+test "T8: extractCreatedAt with no created_at key falls back" {
     const alloc = std.testing.allocator;
-    // Two escaped occurrences then the real key.
-    const json = "{\"a\":\"\\\"created_at\\\":1\",\"b\":\"\\\"created_at\\\":2\",\"created_at\":99}";
-    const result = stream.extractCreatedAt(alloc, json);
-    try std.testing.expectEqual(@as(i64, 99), result);
-}
-
-test "T8: extractCreatedAt with only escaped matches falls back to milliTimestamp" {
-    const alloc = std.testing.allocator;
-    // No real key — only an escaped one inside a string value.
-    const json = "{\"name\":\"\\\"created_at\\\":777\"}";
+    const json = "{\"gate_name\":\"lint\",\"outcome\":\"PASS\"}";
     const before = std.time.milliTimestamp();
     const result = stream.extractCreatedAt(alloc, json);
     const after = std.time.milliTimestamp();
     try std.testing.expect(result >= before and result <= after);
 }
 
-test "T8: extractCreatedAt non-escaped match at position 0 works" {
+test "T8: extractCreatedAt with created_at as string value falls back" {
     const alloc = std.testing.allocator;
-    // "created_at" is the very first key — position 0 has no preceding char.
-    const json = "{\"created_at\":123}";
+    const json = "{\"created_at\":\"not_an_integer\"}";
+    const before = std.time.milliTimestamp();
     const result = stream.extractCreatedAt(alloc, json);
-    try std.testing.expectEqual(@as(i64, 123), result);
+    const after = std.time.milliTimestamp();
+    try std.testing.expect(result >= before and result <= after);
 }
 
-test "T8: extractCreatedAt with backslash NOT preceding quote is not skipped" {
+test "T8: extractCreatedAt with nested object does not confuse keys" {
     const alloc = std.testing.allocator;
-    // Backslash is two chars before the quote, not immediately preceding — should match.
-    const json = "{\"x\\y\":1,\"created_at\":55}";
+    // Only top-level created_at is read.
+    const json = "{\"nested\":{\"created_at\":999},\"created_at\":42}";
+    const result = stream.extractCreatedAt(alloc, json);
+    try std.testing.expectEqual(@as(i64, 42), result);
+}
+
+test "T8: extractCreatedAt with whitespace around colon parses correctly" {
+    const alloc = std.testing.allocator;
+    const json = "{ \"created_at\" : 55 }";
     const result = stream.extractCreatedAt(alloc, json);
     try std.testing.expectEqual(@as(i64, 55), result);
 }
@@ -270,8 +267,9 @@ test "T8: Last-Event-ID with event: prefix injection returns 0" {
 // T10 — Constants
 // ---------------------------------------------------------------------------
 
-test "T10: TERMINAL_STATES contains exactly 4 states" {
-    try std.testing.expectEqual(@as(usize, 4), stream.TERMINAL_STATES.len);
+test "T10: TERMINAL_STATES contains exactly 5 states" {
+    // DONE, BLOCKED, FAILED, CANCELLED, ABORTED (M21_001)
+    try std.testing.expectEqual(@as(usize, 5), stream.TERMINAL_STATES.len);
 }
 
 // ---------------------------------------------------------------------------

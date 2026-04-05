@@ -4,10 +4,10 @@
 **Milestone:** M28
 **Workstream:** 001
 **Date:** Apr 05, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — Operational necessity; without this, production incidents (slow runs, token overuse, agent loops) cannot be diagnosed without direct DB access
 **Batch:** B1
-**Branch:**
+**Branch:** feat/m28-001-agent-run-observability
 **Depends on:** M27_002 (score-gated billing — DONE, quick wins already landed)
 
 ---

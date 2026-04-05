@@ -454,27 +454,13 @@ jobs:
     needs: [qa-dev, deploy-worker-dev]
     if: always()
     steps:
-      - uses: 1password/install-cli-action@v3
-
-      - name: Load Discord webhook from 1Password (retry)
+      - name: Load Discord webhook from 1Password
+        uses: 1password/load-secrets-action@v4
+        with:
+          export-env: true
         env:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
-        run: |
-          REF="op://${{ vars.VAULT_PROD }}/discord-ci-webhook/credential"
-          DELAY=1
-          for ATTEMPT in $(seq 1 6); do
-            if WEBHOOK="$(op read "$REF" 2>/dev/null)"; then
-              echo "DISCORD_WEBHOOK=$WEBHOOK" >> "$GITHUB_ENV"
-              exit 0
-            fi
-            if [ "$ATTEMPT" -lt 6 ]; then
-              echo "attempt $ATTEMPT/6: failed to read discord webhook; retrying in ${DELAY}s..."
-              sleep "$DELAY"
-              DELAY=$((DELAY * 2))
-            fi
-          done
-          echo "failed to read discord webhook from 1Password after retries"
-          exit 1
+          DISCORD_WEBHOOK: op://${{ vars.VAULT_PROD }}/discord-ci-webhook/credential
 
       - name: Notify Discord
         run: |
