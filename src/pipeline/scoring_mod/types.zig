@@ -104,8 +104,11 @@ pub const ResourceMetrics = struct {
     wall_ms: u64 = 0,
 
     /// Returns true if sufficient metrics exist for a real resource score.
+    /// Requires peak_memory_bytes > 0 to distinguish real cgroup data from
+    /// the default-zero case where the executor is connected but cgroup
+    /// metrics were never populated (e.g., runner.execute() path).
     pub fn hasMetrics(self: ResourceMetrics) bool {
-        return self.memory_limit_bytes > 0 and self.wall_ms > 0;
+        return self.memory_limit_bytes > 0 and self.wall_ms > 0 and self.peak_memory_bytes > 0;
     }
 };
 

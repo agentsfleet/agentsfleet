@@ -60,8 +60,17 @@ test "T1: heavy-usage agent scores low" {
 // T2: Edge cases — boundary conditions
 // ─────────────────────────────────────────────────────────────────────────────
 
-test "T2: zero usage → 100" {
+test "T2: minimal usage → 100" {
     try std.testing.expectEqual(@as(u8, 100), math.computeResourceScore(.{
+        .peak_memory_bytes = 1, // 1 byte — effectively zero
+        .memory_limit_bytes = 512 * 1024 * 1024,
+        .cpu_throttled_ms = 0,
+        .wall_ms = 10_000,
+    }));
+}
+
+test "T2: zero peak_memory_bytes → fallback 50 (no cgroup data)" {
+    try std.testing.expectEqual(@as(u8, 50), math.computeResourceScore(.{
         .peak_memory_bytes = 0,
         .memory_limit_bytes = 512 * 1024 * 1024,
         .cpu_throttled_ms = 0,
@@ -89,9 +98,9 @@ test "T2: peak exceeds limit (OOM-adjacent) clamps to 0 mem_score" {
 }
 
 test "T2: throttled exceeds wall (ratio > 1) clamps to 0 cpu_score" {
-    // mem_score = 100, cpu_score = 0 → 100 * 0.7 + 0 * 0.3 = 70
+    // mem_score ≈ 100 (1 byte), cpu_score = 0 → 100 * 0.7 + 0 * 0.3 = 70
     try std.testing.expectEqual(@as(u8, 70), math.computeResourceScore(.{
-        .peak_memory_bytes = 0,
+        .peak_memory_bytes = 1,
         .memory_limit_bytes = 512 * 1024 * 1024,
         .cpu_throttled_ms = 20_000,
         .wall_ms = 10_000,
@@ -169,10 +178,10 @@ test "T4: 50% memory + 0% throttle = 65" {
     }));
 }
 
-test "T4: 0% memory + 50% throttle = 85" {
-    // mem_score = 100, cpu_score = 50 → 100*0.7 + 50*0.3 = 70 + 15 = 85
+test "T4: minimal memory + 50% throttle = 85" {
+    // mem_score ≈ 100 (1 byte), cpu_score = 50 → 100*0.7 + 50*0.3 = 70 + 15 = 85
     try std.testing.expectEqual(@as(u8, 85), math.computeResourceScore(.{
-        .peak_memory_bytes = 0,
+        .peak_memory_bytes = 1,
         .memory_limit_bytes = 512 * 1024 * 1024,
         .cpu_throttled_ms = 5_000,
         .wall_ms = 10_000,
@@ -200,11 +209,11 @@ const FidelityCase = struct {
 };
 
 const fidelity_cases = [_]FidelityCase{
-    .{ .peak_pct = 0, .throttle_pct = 0, .expected = 100 },
+    .{ .peak_pct = 1, .throttle_pct = 0, .expected = 99 },
     .{ .peak_pct = 10, .throttle_pct = 0, .expected = 93 },
     .{ .peak_pct = 50, .throttle_pct = 50, .expected = 50 },
     .{ .peak_pct = 100, .throttle_pct = 0, .expected = 30 },
-    .{ .peak_pct = 0, .throttle_pct = 100, .expected = 70 },
+    .{ .peak_pct = 1, .throttle_pct = 100, .expected = 69 },
     .{ .peak_pct = 100, .throttle_pct = 100, .expected = 0 },
 };
 
@@ -282,20 +291,22 @@ test "T10: SCORE_FORMULA_VERSION is 2" {
 // T2: hasMetrics edge cases
 // ─────────────────────────────────────────────────────────────────────────────
 
-test "T2: hasMetrics requires both memory_limit_bytes and wall_ms" {
+test "T2: hasMetrics requires peak_memory_bytes, memory_limit_bytes, and wall_ms" {
     try std.testing.expect(!(RM{}).hasMetrics());
     try std.testing.expect(!(RM{ .memory_limit_bytes = 100 }).hasMetrics());
     try std.testing.expect(!(RM{ .wall_ms = 100 }).hasMetrics());
-    try std.testing.expect((RM{ .memory_limit_bytes = 100, .wall_ms = 100 }).hasMetrics());
+    try std.testing.expect(!(RM{ .memory_limit_bytes = 100, .wall_ms = 100 }).hasMetrics());
+    try std.testing.expect(!(RM{ .peak_memory_bytes = 100, .wall_ms = 100 }).hasMetrics());
+    try std.testing.expect((RM{ .peak_memory_bytes = 1, .memory_limit_bytes = 100, .wall_ms = 100 }).hasMetrics());
 }
 
-test "T2: hasMetrics ignores peak_memory_bytes and cpu_throttled_ms" {
-    // Even with zero peak/throttle, if limit+wall are set, hasMetrics = true.
-    try std.testing.expect((RM{
+test "T2: hasMetrics returns false when peak_memory_bytes is zero (no cgroup data)" {
+    // This is the P1 fix: executor connected but no cgroup metrics → fallback 50.
+    try std.testing.expect(!(RM{
         .peak_memory_bytes = 0,
-        .memory_limit_bytes = 1,
+        .memory_limit_bytes = 512 * 1024 * 1024,
         .cpu_throttled_ms = 0,
-        .wall_ms = 1,
+        .wall_ms = 10_000,
     }).hasMetrics());
 }
 
@@ -386,11 +397,11 @@ test "T8: OOM-adjacent agent (100% memory) is visible as low resource score" {
 
 test "T8: CPU-starved agent (100% throttled) is visible" {
     const score = math.computeResourceScore(.{
-        .peak_memory_bytes = 0,
+        .peak_memory_bytes = 1, // minimal memory, but present
         .memory_limit_bytes = 512 * 1024 * 1024,
         .cpu_throttled_ms = 10_000,
         .wall_ms = 10_000,
     });
-    // mem_score = 100, cpu_score = 0 → 70 — CPU-only issue less severe
+    // mem_score ≈ 100, cpu_score = 0 → ~70 — CPU-only issue less severe
     try std.testing.expectEqual(@as(u8, 70), score);
 }

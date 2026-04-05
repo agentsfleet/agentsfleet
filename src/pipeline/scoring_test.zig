@@ -330,8 +330,8 @@ test "resource score: no metrics returns fallback 50" {
     try std.testing.expectEqual(@as(u8, 50), scoring.computeResourceScore(.{}));
 }
 
-test "resource score: zero usage returns 100" {
-    try std.testing.expectEqual(@as(u8, 100), scoring.computeResourceScore(.{
+test "resource score: zero peak memory (no cgroup data) returns fallback 50" {
+    try std.testing.expectEqual(@as(u8, 50), scoring.computeResourceScore(.{
         .peak_memory_bytes = 0,
         .memory_limit_bytes = 512 * 1024 * 1024,
         .cpu_throttled_ms = 0,

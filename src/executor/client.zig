@@ -121,7 +121,8 @@ pub const ExecutorClient = struct {
         memory_peak_bytes: u64 = 0,
         /// M27_001: CPU throttle time in ms (0 = not available).
         cpu_throttled_ms: u64 = 0,
-        /// M27_001: memory limit in bytes for scoring normalization (0 = not available).
+        /// M27_001: memory limit in bytes for scoring normalization.
+        /// Only populated via getUsage() — start_stage response does not include it.
         memory_limit_bytes: u64 = 0,
     };
 

@@ -114,7 +114,7 @@ pub const CgroupScope = struct {
 
         const file = std.fs.openFileAbsolute(stat_path, .{}) catch return 0;
         defer file.close();
-        var buf: [512]u8 = undefined;
+        var buf: [2048]u8 = undefined;
         const len = file.readAll(&buf) catch return 0;
         const content = buf[0..len];
 
