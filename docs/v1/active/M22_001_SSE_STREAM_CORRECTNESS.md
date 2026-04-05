@@ -4,7 +4,8 @@
 **Milestone:** M22
 **Workstream:** 001
 **Date:** Mar 30, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
+**Branch:** feat/m22-001-sse-stream-correctness
 **Priority:** P0 — SSE stream is behaviorally broken in four ways; real-time watching and reconnect are non-functional
 **Batch:** B1
 **Depends on:** M18_001 (SSE stream and --watch must exist before these fixes apply)

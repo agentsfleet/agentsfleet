@@ -49,6 +49,10 @@ pub const incGateRepairExhausted = mc.incGateRepairExhausted;
 pub const incRunLimitTokenBudgetExceeded = mc.incRunLimitTokenBudgetExceeded;
 pub const incRunLimitWallTimeExceeded = mc.incRunLimitWallTimeExceeded;
 pub const incRunLimitRepairLoopsExhausted = mc.incRunLimitRepairLoopsExhausted;
+pub const incInterruptQueued = mc.incInterruptQueued;
+pub const incInterruptInstant = mc.incInterruptInstant;
+pub const incInterruptFallback = mc.incInterruptFallback;
+pub const incRunAborted = mc.incRunAborted;
 pub const snapshot = mc.snapshot;
 
 // OTel exporter metrics.

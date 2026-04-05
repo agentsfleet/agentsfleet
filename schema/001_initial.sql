@@ -161,6 +161,24 @@ CREATE TABLE core.workspace_memories (
 );
 CREATE INDEX idx_memories_workspace ON core.workspace_memories(workspace_id, created_at DESC);
 
+
+-- M21_001: interrupt event log (not a state transition — dedicated table)
+CREATE TABLE core.run_interrupts (
+    id           UUID PRIMARY KEY,
+    CONSTRAINT ck_run_interrupts_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
+    run_id       UUID NOT NULL REFERENCES core.runs(run_id),
+    workspace_id UUID NOT NULL REFERENCES core.workspaces(workspace_id),
+    agent_id     UUID,
+    attempt      INT  NOT NULL,
+    mode         TEXT NOT NULL,
+    message      TEXT NOT NULL,
+    delivered    BOOLEAN NOT NULL DEFAULT FALSE,
+    actor        TEXT NOT NULL,
+    created_at   BIGINT NOT NULL
+);
+CREATE INDEX idx_run_interrupts_run ON core.run_interrupts(run_id, created_at DESC);
+CREATE INDEX idx_run_interrupts_workspace ON core.run_interrupts(workspace_id, created_at DESC);
+
 CREATE TABLE core.policy_events (
     id           UUID PRIMARY KEY,
     CONSTRAINT ck_policy_events_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
