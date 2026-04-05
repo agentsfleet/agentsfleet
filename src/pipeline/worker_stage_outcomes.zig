@@ -181,6 +181,8 @@ pub fn handleDoneOutcome(o: DoneOutcomeCtx) !void {
     events.emit("run_done", o.ctx.run_id, done_detail_slice);
     posthog_events.trackRunCompleted(o.cfg.posthog, posthog_events.distinctIdOrSystem(o.ctx.requested_by), o.ctx.run_id, o.ctx.workspace_id, "passed", o.total_wall_seconds * 1000);
     metrics.observeRunTotalWallSeconds(o.total_wall_seconds);
+    // M28_001 §4.2: record gate loop distribution for runs that entered gate repair.
+    if (o.gate_loop_count > 0) metrics.observeGateRepairLoopsPerRun(o.gate_loop_count);
     metrics.incRunsCompleted();
 }
 
@@ -242,6 +244,8 @@ pub fn handleGateExhaustedOutcome(o: GateExhaustedCtx) !void {
         o.total_wall_seconds * 1000,
     );
     metrics.observeRunTotalWallSeconds(o.total_wall_seconds);
+    // M28_001 §4.2: record gate loop distribution for exhausted runs.
+    if (o.total_repair_loops > 0) metrics.observeGateRepairLoopsPerRun(o.total_repair_loops);
     metrics.incRunsBlocked();
 }
 

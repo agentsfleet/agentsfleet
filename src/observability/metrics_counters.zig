@@ -4,9 +4,18 @@ const std = @import("std");
 const error_classify = @import("../reliability/error_classify.zig");
 
 pub const DurationBuckets = [_]u64{ 1, 3, 5, 10, 30, 60, 120, 300 };
+// M28_001 §4.1: gate loop count buckets (small discrete values, not durations).
+pub const GateLoopBuckets = [_]u64{ 0, 1, 2, 3, 5, 10 };
 
 pub const HistogramSnapshot = struct {
     buckets: [DurationBuckets.len]u64 = [_]u64{0} ** DurationBuckets.len,
+    count: u64 = 0,
+    sum: u64 = 0,
+};
+
+// M28_001 §4.1: histogram for gate repair loops per run.
+pub const GateLoopHistogramSnapshot = struct {
+    buckets: [GateLoopBuckets.len]u64 = [_]u64{0} ** GateLoopBuckets.len,
     count: u64 = 0,
     sum: u64 = 0,
 };
@@ -79,6 +88,8 @@ pub const Snapshot = struct {
     agent_duration_seconds: HistogramSnapshot,
     run_total_wall_seconds: HistogramSnapshot,
     agent_scoring_duration_ms: HistogramSnapshot,
+    // M28_001 §4.1
+    gate_repair_loops_per_run: GateLoopHistogramSnapshot,
 };
 
 var g_runs_created_total = std.atomic.Value(u64).init(0);
@@ -150,6 +161,8 @@ var g_histograms_mu: std.Thread.Mutex = .{};
 var g_agent_duration_seconds = HistogramSnapshot{};
 var g_run_total_wall_seconds = HistogramSnapshot{};
 var g_agent_scoring_duration_ms = HistogramSnapshot{};
+// M28_001 §4.1
+var g_gate_repair_loops_per_run = GateLoopHistogramSnapshot{};
 
 pub fn incRunsCreated() void {
     _ = g_runs_created_total.fetchAdd(1, .monotonic);
@@ -398,6 +411,18 @@ fn observeHistogram(hist: *HistogramSnapshot, value_seconds: u64) void {
     }
 }
 
+/// M28_001 §4.2: Record gate repair loop count for a run.
+pub fn observeGateRepairLoopsPerRun(loops: u32) void {
+    g_histograms_mu.lock();
+    defer g_histograms_mu.unlock();
+    const v: u64 = @intCast(loops);
+    g_gate_repair_loops_per_run.count += 1;
+    g_gate_repair_loops_per_run.sum += v;
+    for (GateLoopBuckets, 0..) |le, i| {
+        if (v <= le) g_gate_repair_loops_per_run.buckets[i] += 1;
+    }
+}
+
 pub fn snapshot() Snapshot {
     var s = Snapshot{
         .runs_created_total = g_runs_created_total.load(.acquire),
@@ -466,11 +491,13 @@ pub fn snapshot() Snapshot {
         .agent_duration_seconds = .{},
         .run_total_wall_seconds = .{},
         .agent_scoring_duration_ms = .{},
+        .gate_repair_loops_per_run = .{},
     };
     g_histograms_mu.lock();
     defer g_histograms_mu.unlock();
     s.agent_duration_seconds = g_agent_duration_seconds;
     s.run_total_wall_seconds = g_run_total_wall_seconds;
     s.agent_scoring_duration_ms = g_agent_scoring_duration_ms;
+    s.gate_repair_loops_per_run = g_gate_repair_loops_per_run;
     return s;
 }

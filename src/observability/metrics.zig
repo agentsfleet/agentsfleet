@@ -49,6 +49,8 @@ pub const incGateRepairExhausted = mc.incGateRepairExhausted;
 pub const incRunLimitTokenBudgetExceeded = mc.incRunLimitTokenBudgetExceeded;
 pub const incRunLimitWallTimeExceeded = mc.incRunLimitWallTimeExceeded;
 pub const incRunLimitRepairLoopsExhausted = mc.incRunLimitRepairLoopsExhausted;
+// M28_001 §4.2
+pub const observeGateRepairLoopsPerRun = mc.observeGateRepairLoopsPerRun;
 pub const snapshot = mc.snapshot;
 
 // OTel exporter metrics.

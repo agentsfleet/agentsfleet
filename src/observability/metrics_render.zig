@@ -141,6 +141,19 @@ pub fn renderPrometheus(
         s.agent_scoring_duration_ms,
     );
 
+    // M28_001 §4.1: gate repair loops per run histogram (custom buckets).
+    {
+        const glh = s.gate_repair_loops_per_run;
+        try writer.print("# HELP zombie_gate_repair_loops_per_run Distribution of gate repair loops per run.\n", .{});
+        try writer.print("# TYPE zombie_gate_repair_loops_per_run histogram\n", .{});
+        for (mc.GateLoopBuckets, 0..) |le, i| {
+            try writer.print("zombie_gate_repair_loops_per_run_bucket{{le=\"{d}\"}} {d}\n", .{ le, glh.buckets[i] });
+        }
+        try writer.print("zombie_gate_repair_loops_per_run_bucket{{le=\"+Inf\"}} {d}\n", .{glh.count});
+        try writer.print("zombie_gate_repair_loops_per_run_sum {d}\n", .{glh.sum});
+        try writer.print("zombie_gate_repair_loops_per_run_count {d}\n", .{glh.count});
+    }
+
     // Executor metrics (§5.2).
     const es = em.executorSnapshot();
     try appendMetric(writer, "zombie_executor_sessions_created_total", "counter", "Total executor sessions created.", es.sessions_created_total);
