@@ -228,17 +228,27 @@ Runs before PLAN. Sets up the spec and workspace. **Required when a spec is invo
 Required outputs:
 
 - If this is a milestone: create or move spec per Spec Lifecycle above.
-- If starting work: spec moved to `active/`, status `IN_PROGRESS`, worktree created.
+- If starting work: spec moved to `active/`, status `IN_PROGRESS`.
+- **Worktree created.** Use `git worktree add ../<repo>-<branch-suffix> <branch>`. Never work directly on the main repo working directory — other branches may have uncommitted state that contaminates the build. All subsequent lifecycle phases (PLAN through CHORE close) run inside the worktree.
+
+Worktree creation sequence:
+```bash
+git checkout main                             # start from main
+git branch feat/mNN-name                      # create branch
+git worktree add ../usezombie-mNN-name feat/mNN-name
+cd ../usezombie-mNN-name                      # all work happens here
+```
 
 Restrictions:
 
 - No code changes yet.
 - Spec must be committed before proceeding.
+- **Worktree must exist before any code or test runs.** If `git worktree list` shows only the main repo, stop and create one.
 
 Exit criteria:
 
 - Spec exists in correct directory (`pending/` if just planning, `active/` if starting work).
-- Worktree and branch ready (if starting work).
+- Worktree created and agent CWD is inside it (verify with `pwd` and `git worktree list`).
 
 ### PLAN
 
@@ -249,6 +259,11 @@ Required outputs:
 - File/task impact list.
 - Verification plan (commands/tests).
 - Read existing docs before coding when behavior is unclear.
+- **Surface area checklist** — for each item, state "yes (reason)" or "no (reason)":
+  - [ ] **OpenAPI spec update** — does this change add/modify/remove API endpoints, request/response shapes, or error codes? If yes, list affected paths.
+  - [ ] **`zombiectl` CLI changes** — does this change require new subcommands, flags, or output format changes in the npm CLI? If yes, note that the project manager must approve CLI surface changes (create a skill ticket if needed).
+  - [ ] **User-facing doc changes** — do docs at `docs.usezombie.com` need updating? If yes, list pages.
+  - [ ] **Release notes** — will this ship as a version bump? If yes, note the version (minor for features, patch for fixes) and draft the `docs/v1/release/{version}.md` entry during DOCUMENT phase.
 
 Restrictions:
 
@@ -258,6 +273,7 @@ Restrictions:
 Exit criteria:
 
 - Scope, constraints, and success criteria are concrete.
+- Surface area checklist completed with yes/no for each item.
 
 ### EXECUTE
 
@@ -287,6 +303,11 @@ Required outputs:
   git diff origin/main | grep '^+[^+]' | grep -Ef docs/greptile-learnings/.greptile-patterns && echo "❌ known anti-pattern matched" || true
   ```
 - Capture failures with exact command and error text.
+- **500-line gate on every touched file.** For each file you created or modified, run `wc -l <file>`. If any file exceeds 500 lines, you must split it before proceeding to DOCUMENT. This is a hard gate — do not defer, do not ask, do not rationalize. Split the file.
+  ```bash
+  # Run on all files in the diff:
+  git diff --name-only origin/main | xargs wc -l | awk '$1 > 500 { print "❌ " $2 ": " $1 " lines (limit 500)" }'
+  ```
 - After any refactor: list newly dead code explicitly. Never silently remove without user confirmation:
   ```
   NEWLY UNREACHABLE AFTER THIS CHANGE:
@@ -341,21 +362,78 @@ Exit criteria:
 
 Runs after the last COMMIT, before opening a PR. **Required when a spec is involved.**
 
+This step also runs when work is **parked midway** — if the agent is stopping before full completion, still run CHORE(close) with partial status (mark completed dimensions as `DONE`, leave in-progress ones as `IN_PROGRESS`, update the spec header accordingly). This ensures the next agent can pick up cleanly.
+
+**HARD GATE: Do NOT `git push` or `gh pr create` until every item below is committed on the feature branch. If the user says "commit and push" or "ship it", COMMIT is one step — then STOP, run this checklist, THEN push.**
+
 Required outputs:
 
-- All spec dimensions and sections marked `DONE` or `✅`.
-- Spec header `Status: DONE`.
-- Spec moved from `docs/v1/active/` to `docs/v1/done/`.
+- All spec dimensions and sections marked `DONE` or `✅` (or `IN_PROGRESS` if parked midway).
+- Spec header `Status: DONE` (or `Status: IN_PROGRESS` if parked).
+- Spec moved from `docs/v1/active/` to `docs/v1/done/` (only if fully complete).
 - Spec move committed on the feature branch.
+- **Release doc generated** at `docs/v1/release/{version}.md` for every milestone/workstream completion.
+- **API spec updated**: if any HTTP endpoint was added, modified, or removed, update `public/openapi.json` (or equivalent) with the new route, request/response schemas, and error codes.
+
+#### Release Doc Generation
+
+On every CHORE(close) where the spec is fully `DONE`, generate a release doc:
+
+1. **Version bump rule:**
+   - Feature milestone → minor bump (e.g., `0.3.1` → `0.4.0`)
+   - Bug fix workstream → patch bump (e.g., `0.4.0` → `0.4.1`)
+   - Breaking change → major bump (e.g., `0.x` → `1.0.0`)
+
+2. **File:** `docs/v1/release/{next_version}.md`
+
+3. **Format:** Changelog-style, suitable for an agent to transform into the public changelog at `docs.usezombie.com/changelog`. Structure:
+
+```markdown
+# v{version}
+
+**Date:** {date}
+**Milestone:** M{N}_{WS}
+**Spec:** {spec_file_name}
+
+## What changed
+
+- {bullet: user-visible change with context}
+
+## Technical details
+
+- {bullet: implementation detail relevant to operators/developers}
+
+## Breaking changes
+
+- {bullet or "None"}
+
+## Migration
+
+- {bullet or "None — tables rebuilt from scratch" / "No migration needed"}
+```
+
+4. Commit the release doc on the feature branch alongside the spec move.
 
 Gate:
 
-- Verify `docs/v1/done/` contains the spec file in the branch diff.
-- If the spec is not in `done/` — do not open the PR.
+- Verify `docs/v1/done/` contains the spec file in the branch diff (skip if parked midway).
+- Verify `docs/v1/release/{version}.md` exists in the branch diff (skip if parked midway).
+- If any API endpoint was added/changed: verify `public/openapi.json` diff includes the new route.
+- If the spec is not in `done/` and status is `DONE` — do not open the PR.
+
+**Pre-push checklist (run mentally before every `git push` on a spec branch):**
+
+```
+□ Spec in done/ (or active/ if parked)?
+□ Release doc in release/?
+□ openapi.json updated (if API changed)?
+□ All three committed on the feature branch?
+→ Only now: git push + gh pr create
+```
 
 Exit criteria:
 
-- PR opened with spec in `done/` directory.
+- PR opened with spec in `done/` directory, release doc in `release/`, and API spec current.
 
 ## Hard Safety Rules
 
