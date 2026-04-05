@@ -96,12 +96,14 @@ pub const Subscriber = struct {
 
     /// Block until the next pub/sub message arrives or the socket read times out.
     /// Returns null on timeout (WouldBlock / ConnectionTimedOut) — not a fatal error.
+    /// Propagates fatal errors (ConnectionResetByPeer, BrokenPipe) so the caller
+    /// can break the loop and fall back to DB polling.
     /// Caller owns the returned PubSubMessage and must call deinit().
     pub fn readMessage(self: *Subscriber) !?PubSubMessage {
         var resp = redis_protocol.readRespValue(self.alloc, self.transport.reader()) catch |err| {
             if (err == error.WouldBlock or err == error.ConnectionTimedOut) return null;
-            log.warn("redis_pubsub.read_error err={s}", .{@errorName(err)});
-            return null;
+            log.warn("redis_pubsub.read_fatal err={s}", .{@errorName(err)});
+            return err;
         };
         defer resp.deinit(self.alloc);
 

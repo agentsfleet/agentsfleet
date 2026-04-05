@@ -144,3 +144,39 @@ Why: Prompt injection via user-controlled fields (gate names, run IDs, error mes
 
 Do: Validate, type-check, length-bound all external input. Use parameterized templates.
 Don't: `prompt = "Fix this error: " + user_error_message`
+
+---
+
+## Error Handling — Timeout vs Fatal
+
+**RULE: When a function handles both timeout and fatal errors, return null for timeouts and propagate fatal errors. Never swallow all errors into the same return value.**
+
+Why: If both timeout (expected) and connection-reset (fatal) return null, the caller has no way to distinguish them. A tight loop that expects null-on-timeout will busy-loop on fatal errors, hammering downstream systems with no backoff.
+
+Do:
+```zig
+if (err == error.WouldBlock or err == error.ConnectionTimedOut) return null;
+return err; // fatal — propagate so caller can break/fallback
+```
+
+Don't:
+```zig
+// All errors return null — caller's catch-break is dead code
+log.warn("read_error err={s}", .{@errorName(err)});
+return null;
+```
+
+Incident: M22_001 greptile P1 — `readMessage()` returned null for ConnectionResetByPeer, causing a busy-loop in the stream handler.
+
+---
+
+## Streaming — Never Buffer Then Parse
+
+**RULE: If the goal is real-time output, verify the transport delivers bytes incrementally. A buffered HTTP client defeats streaming regardless of how the parser works.**
+
+Why: `client.fetch()` + `response_writer` may buffer the entire response before calling the writer. `client.open()` + `req.reader().read()` delivers bytes as they arrive. Testing the parser with `feedBytes()` only validates parsing, not transport — the bug is invisible to unit tests.
+
+Do: Use `client.open()` + `req.reader().read()` loop for SSE/streaming endpoints.
+Don't: Use `client.fetch()` with a response_writer and assume incremental delivery.
+
+Incident: M22_001 greptile P1 — Zig CLI buffered entire SSE response, printing all events at once after run completion.

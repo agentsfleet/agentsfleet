@@ -79,29 +79,41 @@ pub fn streamRunOutput(
     var client = std.http.Client{ .allocator = alloc };
     defer client.deinit();
 
-    var response_body: std.ArrayList(u8) = .{};
-    defer response_body.deinit(alloc);
-    var aw: std.Io.Writer.Allocating = .fromArrayList(alloc, &response_body);
-
     const uri = try std.Uri.parse(url);
-    const result = try client.fetch(.{
-        .method = .GET,
-        .location = .{ .uri = uri },
+
+    // §1: Use client.open() for true incremental streaming.
+    // client.fetch() buffers the entire response before returning — defeats SSE real-time.
+    // client.open() + req.reader().read() delivers bytes as they arrive from the server.
+    var header_buf: [4096]u8 = undefined;
+    var req = try client.open(.GET, uri, .{
         .extra_headers = &.{
             .{ .name = "Authorization", .value = auth_header },
             .{ .name = "Accept", .value = "text/event-stream" },
         },
-        .response_writer = &aw.writer,
+        .server_header_buffer = &header_buf,
     });
+    defer req.deinit();
 
-    if (result.status != .ok) {
-        std.debug.print("error: stream returned {d}\n", .{@intFromEnum(result.status)});
+    try req.send();
+    try req.wait();
+
+    if (req.status != .ok) {
+        std.debug.print("error: stream returned {d}\n", .{@intFromEnum(req.status)});
         return error.StreamFailed;
     }
 
     var sse = SseState.init(alloc);
     defer sse.deinit();
-    sse.feedBytes(response_body.items);
+    var buf: [4096]u8 = undefined;
+    while (true) {
+        const n = req.reader().read(&buf) catch |err| {
+            std.debug.print("error: stream read failed: {s}\n", .{@errorName(err)});
+            break;
+        };
+        if (n == 0) break;
+        sse.feedBytes(buf[0..n]);
+        if (sse.done) break;
+    }
 }
 
 pub fn renderSseEvent(alloc: std.mem.Allocator, event_type: []const u8, data: []const u8) void {
