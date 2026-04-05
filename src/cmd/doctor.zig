@@ -110,6 +110,10 @@ fn appendCheck(alloc: std.mem.Allocator, results: *std.ArrayList(CheckResult), i
     if (!ok) overall_ok.* = false;
 }
 
+fn appendFmtCheck(alloc: std.mem.Allocator, results: *std.ArrayList(CheckResult), id: []const u8, ok: bool, overall_ok: *bool, comptime fmt: []const u8, args: anytype) !void {
+    try appendCheck(alloc, results, id, ok, try std.fmt.allocPrint(alloc, fmt, args), overall_ok);
+}
+
 fn renderText(stdout: *std.Io.Writer, results: []const CheckResult, overall_ok: bool) !void {
     try stdout.print("zombied doctor\n\n", .{});
     for (results) |c| {
@@ -149,8 +153,7 @@ fn renderJson(stdout: *std.Io.Writer, results: []const CheckResult, overall_ok: 
 }
 
 pub fn run(alloc: std.mem.Allocator) !void {
-    // Allocator contract: callers must provide an arena-style allocator for run().
-    // CheckResult.detail slices are retained until renderText/renderJson completes.
+    // Allocator contract: callers must provide an arena-style allocator; CheckResult.detail slices are retained until renderText/renderJson completes.
     log.info("doctor.start status=start", .{});
     var ok = true;
     var stdout_buf: [8192]u8 = undefined;
@@ -243,22 +246,28 @@ pub fn run(alloc: std.mem.Allocator) !void {
 
         ensureSchemaCompatible(state) catch |err| {
             const reason = schemaGateReasonCode(err);
-            const detail = try std.fmt.allocPrint(
+            try appendFmtCheck(
                 alloc,
+                &results,
+                "schema_gate_compat",
+                false,
+                &ok,
                 "schema_gate status=fail expected_versions={d} applied_versions={d} reason_code={s}",
                 .{ state.expected_versions, state.applied_versions, reason },
             );
-            try appendCheck(alloc, &results, "schema_gate_compat", false, detail, &ok);
             break :schema_gate_check;
         };
 
         log.info("doctor.schema_gate status=ok expected={d} applied={d}", .{ state.expected_versions, state.applied_versions });
-        const ok_detail = try std.fmt.allocPrint(
+        try appendFmtCheck(
             alloc,
+            &results,
+            "schema_gate_compat",
+            true,
+            &ok,
             "schema_gate status=ok expected_versions={d} applied_versions={d} reason_code={s}",
             .{ state.expected_versions, state.applied_versions, schemaGateReasonCode(null) },
         );
-        try appendCheck(alloc, &results, "schema_gate_compat", true, ok_detail, &ok);
     }
 
     redis_api_check: {
@@ -373,13 +382,9 @@ pub fn run(alloc: std.mem.Allocator) !void {
             const path = try std.fmt.allocPrint(alloc, "{s}/{s}", .{ config_dir, fname });
             defer alloc.free(path);
             if (std.fs.cwd().access(path, .{})) |_| {
-                const detail = try std.fmt.allocPrint(alloc, "config/{s}", .{fname});
-                defer alloc.free(detail);
-                try appendCheck(alloc, &results, "agent_config_file", true, detail, &ok);
+                try appendFmtCheck(alloc, &results, "agent_config_file", true, &ok, "config/{s}", .{fname});
             } else |_| {
-                const detail = try std.fmt.allocPrint(alloc, "config/{s} missing", .{fname});
-                defer alloc.free(detail);
-                try appendCheck(alloc, &results, "agent_config_file", false, detail, &ok);
+                try appendFmtCheck(alloc, &results, "agent_config_file", false, &ok, "config/{s} missing", .{fname});
             }
         }
     }
@@ -406,9 +411,7 @@ pub fn run(alloc: std.mem.Allocator) !void {
             } else {
                 if (oidc_provider) |provider| {
                     const provider_name = @tagName(provider);
-                    const detail = try std.fmt.allocPrint(alloc, "OIDC_PROVIDER={s}", .{provider_name});
-                    defer alloc.free(detail);
-                    try appendCheck(alloc, &results, "oidc_provider", true, detail, &ok);
+                    try appendFmtCheck(alloc, &results, "oidc_provider", true, &ok, "OIDC_PROVIDER={s}", .{provider_name});
                 }
 
                 var verifier = oidc_auth.Verifier.init(alloc, .{
@@ -468,28 +471,29 @@ test "parseDoctorArgs supports schema gate and json format" {
     try std.testing.expect(parsed.schema_gate);
     try std.testing.expectEqual(OutputFormat.json, parsed.format);
 }
-
 test "parseDoctorArgs rejects invalid arguments" {
-    const invalid_format = [_][]const u8{ "--format", "yaml" };
-    try std.testing.expectError(DoctorArgError.InvalidFormatValue, parseDoctorArgs(&invalid_format));
-
-    const missing_format_value = [_][]const u8{"--format"};
-    try std.testing.expectError(DoctorArgError.MissingFormatValue, parseDoctorArgs(&missing_format_value));
-
-    const unknown_arg = [_][]const u8{"--unknown"};
-    try std.testing.expectError(DoctorArgError.InvalidDoctorArgument, parseDoctorArgs(&unknown_arg));
+    try std.testing.expectError(DoctorArgError.InvalidFormatValue, parseDoctorArgs(&[_][]const u8{ "--format", "yaml" }));
+    try std.testing.expectError(DoctorArgError.MissingFormatValue, parseDoctorArgs(&[_][]const u8{"--format"}));
+    try std.testing.expectError(DoctorArgError.InvalidDoctorArgument, parseDoctorArgs(&[_][]const u8{"--unknown"}));
 }
 
+test "dynamic check details stay valid through render with GPA" {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer std.debug.assert(gpa.deinit() == .ok);
+    const alloc = gpa.allocator();
+    var ok = true;
+    var results: std.ArrayList(CheckResult) = .{};
+    defer results.deinit(alloc);
+    try appendFmtCheck(alloc, &results, "schema_gate_compat", false, &ok, "schema_gate status=fail expected_versions={d} applied_versions={d} reason_code={s}", .{ 3, 2, "SCHEMA_BEHIND_BINARY" });
+    var output_buf: [1024]u8 = undefined;
+    var fbs = std.io.fixedBufferStream(&output_buf);
+    try renderJson(fbs.writer().any(), results.items, ok);
+    const out = fbs.getWritten();
+    try std.testing.expect(std.mem.indexOf(u8, out, "\"schema_gate_compat\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out, "SCHEMA_BEHIND_BINARY") != null);
+}
 test "schema gate reason and compatibility mapping are deterministic" {
     try std.testing.expectEqualStrings("SCHEMA_COMPATIBLE", schemaGateReasonCode(null));
     try std.testing.expectEqualStrings("SCHEMA_BEHIND_BINARY", schemaGateReasonCode(MigrationSchemaGateError.PendingMigrations));
-    try std.testing.expectError(MigrationSchemaGateError.PendingMigrations, ensureSchemaCompatible(.{
-        .expected_versions = 3,
-        .applied_versions = 2,
-        .latest_expected_version = 3,
-        .latest_applied_version = 2,
-        .has_failed_migrations = false,
-        .lock_available = true,
-        .has_newer_schema_version = false,
-    }));
+    try std.testing.expectError(MigrationSchemaGateError.PendingMigrations, ensureSchemaCompatible(.{ .expected_versions = 3, .applied_versions = 2, .latest_expected_version = 3, .latest_applied_version = 2, .has_failed_migrations = false, .lock_available = true, .has_newer_schema_version = false }));
 }
