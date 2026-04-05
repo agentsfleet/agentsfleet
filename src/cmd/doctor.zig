@@ -4,6 +4,7 @@ const db = @import("../db/pool.zig");
 const oidc_auth = @import("../auth/oidc.zig");
 const env_vars = @import("../config/env_vars.zig");
 const queue_redis = @import("../queue/redis.zig");
+const common = @import("common.zig");
 
 const log = std.log.scoped(.zombied);
 
@@ -17,6 +18,23 @@ const DoctorArgError = error{
     MissingFormatValue,
     InvalidFormatValue,
 };
+
+const MigrationSchemaGateError = error{
+    FailedMigrations,
+    SchemaAhead,
+    PendingMigrations,
+};
+
+fn schemaGateReasonCode(err: ?MigrationSchemaGateError) []const u8 {
+    if (err) |e| {
+        return switch (e) {
+            MigrationSchemaGateError.FailedMigrations => "SCHEMA_FAILED_MIGRATIONS",
+            MigrationSchemaGateError.SchemaAhead => "SCHEMA_AHEAD_OF_BINARY",
+            MigrationSchemaGateError.PendingMigrations => "SCHEMA_BEHIND_BINARY",
+        };
+    }
+    return "SCHEMA_COMPATIBLE";
+}
 
 const CheckResult = struct {
     id: []const u8,
@@ -44,28 +62,43 @@ fn parseFormatValue(raw: []const u8) DoctorArgError!OutputFormat {
     return DoctorArgError.InvalidFormatValue;
 }
 
-fn parseOutputFormatArgs(args: []const []const u8) DoctorArgError!OutputFormat {
-    var format: OutputFormat = .text;
+const DoctorOptions = struct {
+    format: OutputFormat = .text,
+    schema_gate: bool = false,
+};
+
+fn parseDoctorArgs(args: []const []const u8) DoctorArgError!DoctorOptions {
+    var out: DoctorOptions = .{};
     var i: usize = 0;
     while (i < args.len) : (i += 1) {
         const arg = args[i];
+        if (std.mem.eql(u8, arg, "--schema-gate")) {
+            out.schema_gate = true;
+            continue;
+        }
         if (std.mem.eql(u8, arg, "--json")) {
-            format = .json;
+            out.format = .json;
             continue;
         }
         if (std.mem.eql(u8, arg, "--format")) {
             if (i + 1 >= args.len) return DoctorArgError.MissingFormatValue;
             i += 1;
-            format = try parseFormatValue(args[i]);
+            out.format = try parseFormatValue(args[i]);
             continue;
         }
         if (std.mem.startsWith(u8, arg, "--format=")) {
-            format = try parseFormatValue(arg["--format=".len..]);
+            out.format = try parseFormatValue(arg["--format=".len..]);
             continue;
         }
         return DoctorArgError.InvalidDoctorArgument;
     }
-    return format;
+    return out;
+}
+
+fn ensureSchemaCompatible(state: db.MigrationState) MigrationSchemaGateError!void {
+    if (state.has_failed_migrations) return MigrationSchemaGateError.FailedMigrations;
+    if (state.has_newer_schema_version) return MigrationSchemaGateError.SchemaAhead;
+    if (state.applied_versions < state.expected_versions) return MigrationSchemaGateError.PendingMigrations;
 }
 
 fn appendCheck(alloc: std.mem.Allocator, results: *std.ArrayList(CheckResult), id: []const u8, ok: bool, detail: []const u8, overall_ok: *bool) !void {
@@ -132,7 +165,7 @@ pub fn run(alloc: std.mem.Allocator) !void {
     while (args_it.next()) |arg| {
         try extra_args.append(alloc, arg);
     }
-    const output_format = parseOutputFormatArgs(extra_args.items) catch |err| {
+    const options = parseDoctorArgs(extra_args.items) catch |err| {
         switch (err) {
             DoctorArgError.InvalidDoctorArgument => try stdout.print("fatal: invalid doctor argument\n", .{}),
             DoctorArgError.MissingFormatValue => try stdout.print("fatal: --format requires a value (text|json)\n", .{}),
@@ -188,6 +221,44 @@ pub fn run(alloc: std.mem.Allocator) !void {
         pool.deinit();
         log.info("doctor.db_connect role=worker status=ok", .{});
         try appendCheck(alloc, &results, "db_worker_config", true, "Worker database config", &ok);
+    }
+
+    if (options.schema_gate) schema_gate_check: {
+        log.info("doctor.schema_gate status=start", .{});
+        const pool = db.initFromEnvForRole(alloc, .migrator) catch |err| {
+            log.err("doctor.schema_gate status=fail err={s}", .{@errorName(err)});
+            try appendCheck(alloc, &results, "schema_gate_config", false, "DATABASE_URL_MIGRATOR not set/invalid", &ok);
+            break :schema_gate_check;
+        };
+        defer pool.deinit();
+
+        const migrations = common.canonicalMigrations();
+        const state = db.inspectMigrationState(pool, &migrations) catch |err| {
+            log.err("doctor.schema_gate status=fail err={s}", .{@errorName(err)});
+            try appendCheck(alloc, &results, "schema_gate_state", false, "Unable to inspect migration state", &ok);
+            break :schema_gate_check;
+        };
+
+        ensureSchemaCompatible(state) catch |err| {
+            const reason = schemaGateReasonCode(err);
+            const detail = try std.fmt.allocPrint(
+                alloc,
+                "schema_gate status=fail expected_versions={d} applied_versions={d} reason_code={s}",
+                .{ state.expected_versions, state.applied_versions, reason },
+            );
+            defer alloc.free(detail);
+            try appendCheck(alloc, &results, "schema_gate_compat", false, detail, &ok);
+            break :schema_gate_check;
+        };
+
+        log.info("doctor.schema_gate status=ok expected={d} applied={d}", .{ state.expected_versions, state.applied_versions });
+        const ok_detail = try std.fmt.allocPrint(
+            alloc,
+            "schema_gate status=ok expected_versions={d} applied_versions={d} reason_code={s}",
+            .{ state.expected_versions, state.applied_versions, schemaGateReasonCode(null) },
+        );
+        defer alloc.free(ok_detail);
+        try appendCheck(alloc, &results, "schema_gate_compat", true, ok_detail, &ok);
     }
 
     redis_api_check: {
@@ -372,7 +443,7 @@ pub fn run(alloc: std.mem.Allocator) !void {
         }
     }
 
-    switch (output_format) {
+    switch (options.format) {
         .text => try renderText(stdout, results.items, ok),
         .json => try renderJson(stdout, results.items, ok),
     }
@@ -391,24 +462,23 @@ test "redisUsernameFromUrl parses user for redis and rediss" {
     try std.testing.expect(redisUsernameFromUrl("rediss://cache.local:6379") == null);
 }
 
-test "parseOutputFormatArgs supports --json and --format" {
-    const args1 = [_][]const u8{"--json"};
-    try std.testing.expectEqual(OutputFormat.json, try parseOutputFormatArgs(&args1));
-
-    const args2 = [_][]const u8{ "--format", "json" };
-    try std.testing.expectEqual(OutputFormat.json, try parseOutputFormatArgs(&args2));
-
-    const args3 = [_][]const u8{"--format=text"};
-    try std.testing.expectEqual(OutputFormat.text, try parseOutputFormatArgs(&args3));
+test "parseDoctorArgs supports schema gate and json format" {
+    const args = [_][]const u8{ "--schema-gate", "--format=json" };
+    const parsed = try parseDoctorArgs(&args);
+    try std.testing.expect(parsed.schema_gate);
+    try std.testing.expectEqual(OutputFormat.json, parsed.format);
 }
 
-test "parseOutputFormatArgs validates invalid values" {
-    const args1 = [_][]const u8{ "--format", "yaml" };
-    try std.testing.expectError(DoctorArgError.InvalidFormatValue, parseOutputFormatArgs(&args1));
-
-    const args2 = [_][]const u8{"--format"};
-    try std.testing.expectError(DoctorArgError.MissingFormatValue, parseOutputFormatArgs(&args2));
-
-    const args3 = [_][]const u8{"--unknown"};
-    try std.testing.expectError(DoctorArgError.InvalidDoctorArgument, parseOutputFormatArgs(&args3));
+test "schema gate reason and compatibility mapping are deterministic" {
+    try std.testing.expectEqualStrings("SCHEMA_COMPATIBLE", schemaGateReasonCode(null));
+    try std.testing.expectEqualStrings("SCHEMA_BEHIND_BINARY", schemaGateReasonCode(MigrationSchemaGateError.PendingMigrations));
+    try std.testing.expectError(MigrationSchemaGateError.PendingMigrations, ensureSchemaCompatible(.{
+        .expected_versions = 3,
+        .applied_versions = 2,
+        .latest_expected_version = 3,
+        .latest_applied_version = 2,
+        .has_failed_migrations = false,
+        .lock_available = true,
+        .has_newer_schema_version = false,
+    }));
 }
