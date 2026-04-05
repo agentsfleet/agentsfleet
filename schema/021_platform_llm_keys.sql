@@ -7,12 +7,13 @@
 --   3. WorkerError.CredentialDenied — no env fallback in any mode
 
 CREATE TABLE core.platform_llm_keys (
-    id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id                  UUID PRIMARY KEY,
+    CONSTRAINT ck_platform_llm_keys_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
     provider            TEXT NOT NULL,
     source_workspace_id UUID NOT NULL REFERENCES core.workspaces(workspace_id),
     active              BOOLEAN NOT NULL DEFAULT true,
-    created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+    created_at          BIGINT NOT NULL,
+    updated_at          BIGINT NOT NULL,
     CONSTRAINT uq_platform_llm_keys_provider UNIQUE (provider)
 );
 

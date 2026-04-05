@@ -89,8 +89,8 @@ fn setupSeedData(conn: *pg.Conn) !void {
     _ = try conn.exec("DELETE FROM tenants WHERE tenant_id = $1", .{TEST_TENANT_ID});
 
     _ = try conn.exec(
-        \\INSERT INTO tenants (tenant_id, name, api_key_hash, created_at)
-        \\VALUES ($1, 'RBAC Test Tenant', 'managed', $2)
+        \\INSERT INTO tenants (tenant_id, name, api_key_hash, created_at, updated_at)
+        \\VALUES ($1, 'RBAC Test Tenant', 'managed', $2, $2)
     , .{ TEST_TENANT_ID, now_ms });
     _ = try conn.exec(
         \\INSERT INTO workspaces

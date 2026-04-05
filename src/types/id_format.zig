@@ -88,6 +88,10 @@ pub fn generateGateResultId(alloc: std.mem.Allocator) ![]const u8 {
     return allocUuidV7(alloc);
 }
 
+pub fn generatePlatformLlmKeyId(alloc: std.mem.Allocator) ![]const u8 {
+    return allocUuidV7(alloc);
+}
+
 pub fn isSupportedAgentId(id: []const u8) bool {
     return isUuidV7(id);
 }
@@ -236,7 +240,7 @@ test "all new id generators produce valid uuidv7" {
         generateTransitionId,      generateArtifactId,             generateUsageLedgerId,
         generateWorkspaceMemoryId, generatePolicyEventId,          generateSideEffectId,
         generateOutboxId,          generateBillingDeliveryId,      generateVaultSecretId,
-        generateSkillSecretId,     generatePromptLifecycleEventId,
+        generateSkillSecretId,     generatePromptLifecycleEventId, generatePlatformLlmKeyId,
     }) |gen| {
         const id = try gen(alloc);
         defer alloc.free(id);
@@ -266,7 +270,7 @@ test "T2: version nibble and variant bits are correctly set across all generator
         generateTransitionId,      generateArtifactId,             generateUsageLedgerId,
         generateWorkspaceMemoryId, generatePolicyEventId,          generateSideEffectId,
         generateOutboxId,          generateBillingDeliveryId,      generateVaultSecretId,
-        generateSkillSecretId,     generatePromptLifecycleEventId,
+        generateSkillSecretId,     generatePromptLifecycleEventId, generatePlatformLlmKeyId,
     }) |gen| {
         const id = try gen(alloc);
         defer alloc.free(id);
