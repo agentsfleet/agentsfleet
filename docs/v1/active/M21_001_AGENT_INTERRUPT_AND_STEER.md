@@ -4,7 +4,8 @@
 **Milestone:** M21
 **Workstream:** 001
 **Date:** Mar 30, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
+**Branch:** feat/m21-001-interrupt-steer
 **Priority:** P1 — No way to redirect a running agent without aborting it; user must kill the run and restart from scratch
 **Batch:** B1
 **Depends on:** M18_001 (SSE stream must be live before interrupt UX can be built on top); `stream.zig` must patch `TERMINAL_STATES` to include `"ABORTED"` — without this, acceptance criteria 5.4 cannot pass (stream hangs indefinitely after abort instead of closing with `run_complete`)
