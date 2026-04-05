@@ -117,6 +117,13 @@ pub const ExecutorClient = struct {
         wall_seconds: u64,
         exit_ok: bool,
         failure: ?types.FailureClass,
+        /// M27_001: peak RSS bytes from cgroup (0 = not available).
+        memory_peak_bytes: u64 = 0,
+        /// M27_001: CPU throttle time in ms (0 = not available).
+        cpu_throttled_ms: u64 = 0,
+        /// M27_001: memory limit in bytes for scoring normalization.
+        /// Only populated via getUsage() — start_stage response does not include it.
+        memory_limit_bytes: u64 = 0,
     };
 
     /// Agent configuration for StartStage payload (M12_003, M16_003).
@@ -209,6 +216,8 @@ pub const ExecutorClient = struct {
             .wall_seconds = json.getIntOrZero(result, "wall_seconds"),
             .exit_ok = json.getBool(result, "exit_ok"),
             .failure = null,
+            .memory_peak_bytes = json.getIntOrZero(result, "memory_peak_bytes"),
+            .cpu_throttled_ms = json.getIntOrZero(result, "cpu_throttled_ms"),
         };
     }
 
@@ -263,6 +272,9 @@ pub const ExecutorClient = struct {
             .wall_seconds = json.getIntOrZero(result, "wall_seconds"),
             .exit_ok = json.getBool(result, "exit_ok"),
             .failure = null,
+            .memory_peak_bytes = json.getIntOrZero(result, "memory_peak_bytes"),
+            .cpu_throttled_ms = json.getIntOrZero(result, "cpu_throttled_ms"),
+            .memory_limit_bytes = json.getIntOrZero(result, "memory_limit_bytes"),
         };
     }
 

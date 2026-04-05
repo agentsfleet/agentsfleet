@@ -45,6 +45,10 @@ pub const ExecutionResult = struct {
     wall_seconds: u64 = 0,
     exit_ok: bool = false,
     failure: ?FailureClass = null,
+    /// M27_001: peak RSS bytes from cgroup memory.peak (0 = not available).
+    memory_peak_bytes: u64 = 0,
+    /// M27_001: CPU throttle time in ms from cgroup cpu.stat (0 = not available).
+    cpu_throttled_ms: u64 = 0,
 };
 
 /// Lease state for heartbeat-based orphan cleanup.

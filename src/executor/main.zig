@@ -149,4 +149,6 @@ test {
     _ = @import("handler_negative_test.zig");
     _ = @import("runner_security_test.zig");
     _ = @import("client_credentials_test.zig");
+    _ = @import("resource_metrics_test.zig");
+    _ = @import("resource_security_test.zig");
 }

@@ -35,8 +35,30 @@ pub fn computeLatencyScore(wall_seconds: u64, baseline: ?types.LatencyBaseline) 
     return @intCast(100 - @divFloor(excess * 100, range));
 }
 
-pub fn computeResourceScore() u8 {
-    return 50;
+/// M27_001: Compute resource efficiency score (0-100) from cgroup metrics.
+/// Returns 50 (neutral) when metrics are unavailable (in-process fallback).
+///
+/// Formula: resource_score = round(mem_score * 0.7 + cpu_score * 0.3)
+///   mem_score = 100 - clamp((peak / limit) * 100, 0, 100)
+///   cpu_score = 100 - clamp((throttled_ms / wall_ms) * 100, 0, 100)
+pub fn computeResourceScore(rm: types.ResourceMetrics) u8 {
+    if (!rm.hasMetrics()) return 50;
+
+    // Memory efficiency (70% weight).
+    const mem_ratio = @as(f64, @floatFromInt(rm.peak_memory_bytes)) /
+        @as(f64, @floatFromInt(rm.memory_limit_bytes));
+    const mem_score = 100.0 - std.math.clamp(mem_ratio * 100.0, 0.0, 100.0);
+
+    // CPU efficiency (30% weight).
+    const cpu_score: f64 = if (rm.wall_ms == 0) 100.0 else blk: {
+        const throttle_ratio = @as(f64, @floatFromInt(rm.cpu_throttled_ms)) /
+            @as(f64, @floatFromInt(rm.wall_ms));
+        break :blk 100.0 - std.math.clamp(throttle_ratio * 100.0, 0.0, 100.0);
+    };
+
+    const combined = @round(mem_score * 0.7 + cpu_score * 0.3);
+    const clamped = std.math.clamp(@as(i64, @intFromFloat(combined)), 0, 100);
+    return @intCast(@as(u64, @intCast(clamped)));
 }
 
 pub fn computeScore(axes: types.AxisScores, weights: types.Weights) u8 {

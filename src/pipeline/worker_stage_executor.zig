@@ -273,6 +273,8 @@ pub fn executeRun(
     var total_wall_seconds: u64 = 0;
     var total_tokens: u64 = 0;
     defer {
+        // M27_001: populate resource metrics from executor before scoring.
+        scoring_state.resource_metrics.wall_ms = total_wall_seconds * 1000;
         scoring.scoreRunIfTerminal(
             conn,
             cfg.posthog,
@@ -367,7 +369,15 @@ pub fn executeRun(
         break :blk eid;
     } else null;
     defer if (exec_id) |eid| {
-        if (cfg.executor) |exec| exec.destroyExecution(eid) catch {};
+        // M27_001: extract resource metrics from executor session before destroy.
+        if (cfg.executor) |exec| {
+            if (exec.getUsage(eid)) |usage| {
+                scoring_state.resource_metrics.peak_memory_bytes = usage.memory_peak_bytes;
+                scoring_state.resource_metrics.cpu_throttled_ms = usage.cpu_throttled_ms;
+                scoring_state.resource_metrics.memory_limit_bytes = usage.memory_limit_bytes;
+            } else |_| {}
+            exec.destroyExecution(eid) catch {};
+        }
     };
 
     const plan_stage = profile.stages[0];

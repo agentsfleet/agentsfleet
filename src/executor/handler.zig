@@ -167,8 +167,8 @@ pub const Handler = struct {
         defer alloc.free(escaped_content);
 
         return std.fmt.allocPrint(alloc,
-            \\{{"id":{d},"result":{{"content":"{s}","token_count":{d},"wall_seconds":{d},"exit_ok":true}}}}
-        , .{ id, escaped_content, result.token_count, result.wall_seconds });
+            \\{{"id":{d},"result":{{"content":"{s}","token_count":{d},"wall_seconds":{d},"exit_ok":true,"memory_peak_bytes":{d},"cpu_throttled_ms":{d}}}}}
+        , .{ id, escaped_content, result.token_count, result.wall_seconds, result.memory_peak_bytes, result.cpu_throttled_ms });
     }
 
     fn handleCancelExecution(self: *Handler, alloc: std.mem.Allocator, id: u64, params: ?std.json.Value) ![]u8 {
@@ -194,10 +194,11 @@ pub const Handler = struct {
 
         const session = self.store.get(exec_id) orelse return self.errorResponse(alloc, id, protocol.ErrorCode.execution_failed, "Session not found");
         const usage = session.getUsage();
+        const res_ctx = session.getResourceContext();
 
         return std.fmt.allocPrint(alloc,
-            \\{{"id":{d},"result":{{"token_count":{d},"wall_seconds":{d},"exit_ok":{s}}}}}
-        , .{ id, usage.token_count, usage.wall_seconds, if (usage.exit_ok) "true" else "false" });
+            \\{{"id":{d},"result":{{"token_count":{d},"wall_seconds":{d},"exit_ok":{s},"memory_peak_bytes":{d},"cpu_throttled_ms":{d},"memory_limit_bytes":{d}}}}}
+        , .{ id, usage.token_count, usage.wall_seconds, if (usage.exit_ok) "true" else "false", usage.memory_peak_bytes, usage.cpu_throttled_ms, res_ctx.memory_limit_bytes });
     }
 
     fn handleDestroyExecution(self: *Handler, alloc: std.mem.Allocator, id: u64, params: ?std.json.Value) ![]u8 {
