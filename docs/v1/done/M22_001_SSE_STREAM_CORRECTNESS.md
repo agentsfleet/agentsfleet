@@ -4,7 +4,7 @@
 **Milestone:** M22
 **Workstream:** 001
 **Date:** Mar 30, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Branch:** feat/m22-001-sse-stream-correctness
 **Priority:** P0 — SSE stream is behaviorally broken in four ways; real-time watching and reconnect are non-functional
 **Batch:** B1
@@ -27,7 +27,7 @@ All four must be fixed before M18_001 features can be considered production-read
 
 ## 1.0 CLI Streaming Fix (`--watch` real-time output)
 
-**Status:** PENDING
+**Status:** DONE
 
 `streamRunOutput` in `src/cmd/run.zig` uses `std.http.Client.fetch()` with `response_writer`, which buffers the entire response body before returning. For an SSE stream that holds the connection open until `run_complete`, this means all events are delivered in one batch after the run finishes — defeating the purpose of `--watch`.
 
@@ -43,7 +43,7 @@ The fix is to use `std.http.Client.open()` + `request.reader()` in an incrementa
 
 ## 2.0 Heartbeat Socket Timeout
 
-**Status:** PENDING
+**Status:** DONE
 
 In `src/http/handlers/runs/stream.zig`, the heartbeat guard checks elapsed time, then immediately blocks on `subscriber.readMessage()` — a synchronous socket read with no timeout. If a gate takes longer than 30 seconds without emitting a pub/sub event, `readMessage()` never returns, the heartbeat check never executes again, and proxy/load-balancer idle timeouts drop the connection.
 
@@ -59,7 +59,7 @@ The fix is a read timeout on the pub/sub subscriber socket, set to 25 seconds �
 
 ## 3.0 Unified SSE Event ID Namespace
 
-**Status:** PENDING
+**Status:** DONE
 
 `streamStoredEvents` assigns `id: {created_at}` (Unix timestamp in ms, e.g. `1743000000000`). The live pub/sub loop assigns `id: {event_seq}` which resets to `0` on every new connection and increments by `1` per event.
 
@@ -77,7 +77,7 @@ The fix is a single ID namespace: use `created_at` (Unix ms) for both stored rep
 
 ## 4.0 Post-Subscribe Race Fix
 
-**Status:** PENDING
+**Status:** DONE
 
 In `stream.zig`, the handler checks `isTerminalState(initial_state)` at line 78, then connects and subscribes to Redis pub/sub at lines 101–116 — a window of at least one network round-trip. If the run transitions to a terminal state and publishes its last event during this window, the subscriber is set up but never receives the event. `readMessage()` blocks indefinitely: the stream hangs open without emitting `run_complete`, and the client never knows the run finished.
 
@@ -93,7 +93,7 @@ The fix is a second terminal-state check immediately after `subscriber.subscribe
 
 ## 5.0 `zombiectl` npm CLI — `--watch` and `runs replay`
 
-**Status:** PENDING
+**Status:** DONE
 
 The `--watch` flag and `zombiectl runs replay` command exist only in the Zig `zombied` binary (M18_001). The `@usezombie/zombiectl` npm package (JavaScript) has no implementation of either. These must be ported so users installing from npm get the same capability.
 
@@ -119,7 +119,7 @@ The `--watch` flag and `zombiectl runs replay` command exist only in the Zig `zo
 
 ## 6.0 Acceptance Criteria
 
-**Status:** PENDING
+**Status:** DONE
 
 - [ ] 6.1 `zombied run <spec> --watch` prints each gate result to stdout as it completes — not after the run finishes
 - [ ] 6.2 SSE stream sends a heartbeat comment within 30 seconds when no gate events arrive (gate takes >30s)
