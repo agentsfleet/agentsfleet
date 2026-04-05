@@ -32,6 +32,7 @@ pub const handlePauseWorkspace = workspace_handlers.handlePauseWorkspace;
 pub const handleSyncSpecs = workspace_handlers.handleSyncSpecs;
 pub const handleUpgradeWorkspaceToScale = workspace_handlers.handleUpgradeWorkspaceToScale;
 pub const handleApplyWorkspaceBillingEvent = workspace_handlers.handleApplyWorkspaceBillingEvent;
+pub const handleGetWorkspaceBillingSummary = workspace_handlers.handleGetWorkspaceBillingSummary;
 pub const handleSetWorkspaceScoringConfig = workspace_handlers.handleSetWorkspaceScoringConfig;
 pub const handleListSpecs = specs_handlers.handleListSpecs;
 pub const handleGetAgent = agents_handlers.handleGetAgent;

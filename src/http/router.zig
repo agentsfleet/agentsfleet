@@ -30,6 +30,7 @@ pub const Route = union(enum) {
     pause_workspace: []const u8,
     upgrade_workspace_to_scale: []const u8,
     apply_workspace_billing_event: []const u8,
+    get_workspace_billing_summary: []const u8,
     set_workspace_scoring_config: []const u8,
     put_harness_source: []const u8,
     compile_harness: []const u8,
@@ -114,6 +115,7 @@ pub fn match(path: []const u8) ?Route {
 
     if (matchWorkspaceSuffix(path, "/billing/scale")) |workspace_id| return .{ .upgrade_workspace_to_scale = workspace_id };
     if (matchWorkspaceSuffix(path, "/billing/events")) |workspace_id| return .{ .apply_workspace_billing_event = workspace_id };
+    if (matchWorkspaceSuffix(path, "/billing/summary")) |workspace_id| return .{ .get_workspace_billing_summary = workspace_id };
     if (matchWorkspaceSuffix(path, "/scoring/config")) |workspace_id| return .{ .set_workspace_scoring_config = workspace_id };
     if (matchWorkspaceSuffix(path, "/harness/source")) |workspace_id| return .{ .put_harness_source = workspace_id };
     if (matchWorkspaceSuffix(path, "/harness/compile")) |workspace_id| return .{ .compile_harness = workspace_id };

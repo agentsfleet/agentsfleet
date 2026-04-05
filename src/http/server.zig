@@ -96,6 +96,7 @@ fn dispatchMatchedRoute(ctx: *handler.Context, req: *httpz.Request, res: *httpz.
         .pause_workspace => |workspace_id| if (req.method == .POST) handler.handlePauseWorkspace(ctx, req, res, workspace_id) else respondMethodNotAllowed(res),
         .upgrade_workspace_to_scale => |workspace_id| if (req.method == .POST) handler.handleUpgradeWorkspaceToScale(ctx, req, res, workspace_id) else respondMethodNotAllowed(res),
         .apply_workspace_billing_event => |workspace_id| if (req.method == .POST) handler.handleApplyWorkspaceBillingEvent(ctx, req, res, workspace_id) else respondMethodNotAllowed(res),
+        .get_workspace_billing_summary => |workspace_id| if (req.method == .GET) handler.handleGetWorkspaceBillingSummary(ctx, req, res, workspace_id) else respondMethodNotAllowed(res),
         .set_workspace_scoring_config => |workspace_id| if (req.method == .POST) handler.handleSetWorkspaceScoringConfig(ctx, req, res, workspace_id) else respondMethodNotAllowed(res),
         .put_harness_source => |workspace_id| if (req.method == .PUT) handler.handlePutHarnessSource(ctx, req, res, workspace_id) else respondMethodNotAllowed(res),
         .compile_harness => |workspace_id| if (req.method == .POST) handler.handleCompileHarness(ctx, req, res, workspace_id) else respondMethodNotAllowed(res),
