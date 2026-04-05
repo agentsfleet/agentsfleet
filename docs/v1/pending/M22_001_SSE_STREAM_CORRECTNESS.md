@@ -90,19 +90,47 @@ The fix is a second terminal-state check immediately after `subscriber.subscribe
 
 ---
 
-## 5.0 Acceptance Criteria
+## 5.0 `zombiectl` npm CLI — `--watch` and `runs replay`
 
 **Status:** PENDING
 
-- [ ] 5.1 `zombied run <spec> --watch` prints each gate result to stdout as it completes — not after the run finishes
-- [ ] 5.2 SSE stream sends a heartbeat comment within 30 seconds when no gate events arrive (gate takes >30s)
-- [ ] 5.3 Client disconnects after receiving 3 live events, reconnects with `Last-Event-ID` equal to the last received event's `id`; server replays exactly the missed events — no duplicates, no gaps
-- [ ] 5.4 Run completes between initial state check and pub/sub subscribe; handler detects this, replays missed gate results (from `last_event_id`, or from `0` for fresh connections), emits `run_complete`, and closes — no indefinite hang, no duplicate events on reconnect
-- [ ] 5.5 Cross-compile passes on all three CI targets (no regression)
+The `--watch` flag and `zombiectl runs replay` command exist only in the Zig `zombied` binary (M18_001). The `@usezombie/zombiectl` npm package (JavaScript) has no implementation of either. These must be ported so users installing from npm get the same capability.
+
+**`--watch` (src/commands/core.js or a new src/commands/run-watch.js):**
+
+- 5.1 PENDING After posting to `/v1/runs`, if `--watch` is passed, open an SSE connection to `GET /v1/runs/{run_id}:stream` using Node.js `fetch()` with a streaming response body reader (not buffered — read incrementally with `response.body.getReader()`)
+- 5.2 PENDING Parse SSE lines: accumulate `event:` and `data:` fields, dispatch on blank-line boundary; on `gate_result` print `[{gate_name}] {outcome} (loop {n}, {ms}ms)` immediately
+- 5.3 PENDING Exit the read loop and resolve when a `run_complete` event is received or when the server closes the stream
+- 5.4 PENDING Pass `Authorization: Bearer $ZOMBIE_TOKEN` header on the SSE request (same auth as other API calls)
+
+**`runs replay` (src/commands/runs.js):**
+
+- 5.5 PENDING Add `runs replay <run_id>` subcommand that calls `GET /v1/runs/{run_id}:replay`
+- 5.6 PENDING Render the structured gate narrative: for each gate entry print gate name, outcome, loop count, wall time, and stdout/stderr tail (mirror the Zig CLI output format from `src/cmd/runs.zig`)
+- 5.7 PENDING Wire the subcommand into the CLI entry point (same pattern as existing `runs list`, `runs status`)
+
+**Acceptance:**
+- 5.8 PENDING `zombiectl run --spec <file> --watch` prints gate results in real time (not after the run completes)
+- 5.9 PENDING `zombiectl runs replay <run_id>` prints a per-gate narrative for a completed run
+- 5.10 PENDING Both commands work against the same API base URL and token as the rest of the CLI
 
 ---
 
-## 6.0 Out of Scope
+## 6.0 Acceptance Criteria
+
+**Status:** PENDING
+
+- [ ] 6.1 `zombied run <spec> --watch` prints each gate result to stdout as it completes — not after the run finishes
+- [ ] 6.2 SSE stream sends a heartbeat comment within 30 seconds when no gate events arrive (gate takes >30s)
+- [ ] 6.3 Client disconnects after receiving 3 live events, reconnects with `Last-Event-ID` equal to the last received event's `id`; server replays exactly the missed events — no duplicates, no gaps
+- [ ] 6.4 Run completes between initial state check and pub/sub subscribe; handler detects this, replays missed gate results (from `last_event_id`, or from `0` for fresh connections), emits `run_complete`, and closes — no indefinite hang, no duplicate events on reconnect
+- [ ] 6.5 `zombiectl run --spec <file> --watch` (npm CLI) prints gate results in real time
+- [ ] 6.6 `zombiectl runs replay <run_id>` (npm CLI) prints a per-gate narrative for a completed run
+- [ ] 6.7 Cross-compile passes on all three CI targets (no regression)
+
+---
+
+## 7.0 Out of Scope
 
 - Replacing Redis pub/sub with a different transport
 - Horizontal SSE fan-out across multiple API instances (requires a shared broker; v2)

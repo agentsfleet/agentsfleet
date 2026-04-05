@@ -105,6 +105,28 @@ pub const CgroupScope = struct {
         return self.readControlValue("memory.current") catch 0;
     }
 
+    /// Read CPU throttled time in microseconds from cpu.stat.
+    /// Returns 0 if not on Linux or if the file cannot be read.
+    pub fn readCpuThrottledUs(self: *const CgroupScope) u64 {
+        if (builtin.os.tag != .linux) return 0;
+        const stat_path = std.fmt.allocPrint(self.alloc, "{s}/cpu.stat", .{self.path}) catch return 0;
+        defer self.alloc.free(stat_path);
+
+        const file = std.fs.openFileAbsolute(stat_path, .{}) catch return 0;
+        defer file.close();
+        var buf: [2048]u8 = undefined;
+        const len = file.readAll(&buf) catch return 0;
+        const content = buf[0..len];
+
+        // Look for "throttled_usec N" in cpu.stat output.
+        if (std.mem.indexOf(u8, content, "throttled_usec ")) |pos| {
+            const after = content[pos + "throttled_usec ".len ..];
+            const end = std.mem.indexOfScalar(u8, after, '\n') orelse after.len;
+            return std.fmt.parseInt(u64, after[0..end], 10) catch 0;
+        }
+        return 0;
+    }
+
     /// Check if the cgroup was OOM-killed.
     pub fn wasOomKilled(self: *const CgroupScope) bool {
         if (builtin.os.tag != .linux) return false;
@@ -127,12 +149,33 @@ pub const CgroupScope = struct {
         return false;
     }
 
-    /// Destroy the cgroup scope and clean up.
-    pub fn destroy(self: *CgroupScope) void {
-        if (builtin.os.tag != .linux) return;
+    /// Resource metrics captured at cgroup teardown.
+    pub const CgroupMetrics = struct {
+        memory_peak_bytes: u64,
+        memory_limit_bytes: u64,
+        cpu_throttled_ms: u64,
+    };
+
+    /// Destroy the cgroup scope, capture metrics, and clean up.
+    pub fn destroy(self: *CgroupScope, limits: types.ResourceLimits) CgroupMetrics {
+        var result = CgroupMetrics{
+            .memory_peak_bytes = 0,
+            .memory_limit_bytes = limits.memory_limit_mb * 1024 * 1024,
+            .cpu_throttled_ms = 0,
+        };
+        if (builtin.os.tag != .linux) return result;
+
         const peak = self.readMemoryPeak();
         if (peak > 0) {
             executor_metrics.setExecutorMemoryPeakBytes(peak);
+            result.memory_peak_bytes = peak;
+        }
+
+        const throttled_us = self.readCpuThrottledUs();
+        if (throttled_us > 0) {
+            const throttled_ms = throttled_us / 1000;
+            executor_metrics.addExecutorCpuThrottledMs(throttled_ms);
+            result.cpu_throttled_ms = throttled_ms;
         }
 
         // Remove the cgroup directory (must be empty of processes first).
@@ -140,8 +183,9 @@ pub const CgroupScope = struct {
             log.warn("cgroup.cleanup_failed path={s} err={s}", .{ self.path, @errorName(err) });
         };
 
-        log.info("cgroup.destroyed path={s} peak_bytes={d}", .{ self.path, peak });
+        log.info("cgroup.destroyed path={s} peak_bytes={d} cpu_throttled_ms={d}", .{ self.path, peak, result.cpu_throttled_ms });
         self.alloc.free(self.path);
+        return result;
     }
 
     fn writeControl(self: *const CgroupScope, control_file: []const u8, value: u64) !void {
