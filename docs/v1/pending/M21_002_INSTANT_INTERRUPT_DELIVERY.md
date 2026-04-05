@@ -1,4 +1,4 @@
-# M21_002: Instant Interrupt Delivery via Executor IPC
+# M21_002: Instant Interrupt Delivery
 
 **Prototype:** v1.0.0
 **Milestone:** M21
@@ -7,7 +7,7 @@
 **Status:** PENDING
 **Priority:** P0 — Queued-only interrupts force users to wait up to 60s (full gate duration) before the agent sees a steer; tokens burn on the wrong path the entire time. Financial and DX impact.
 **Batch:** B1
-**Depends on:** M21_001 (interrupt API, gate loop polling, Redis key, SSE ack — all shipped in PR #152)
+**Depends on:** M21_001 (interrupt API, gate loop polling, Redis key, SSE ack — shipped in PR #152)
 
 ---
 
@@ -15,61 +15,63 @@
 
 M21_001 shipped queued interrupt delivery: the message sits in Redis until the gate loop polls it at the next checkpoint. If a gate command (`make build`, `make test`) takes 60 seconds, the user waits 60 seconds while the agent burns tokens on the wrong path.
 
-This workstream adds **instant delivery**: the interrupt handler looks up the active executor session for the run and injects the message directly via `InjectUserMessage` IPC. The agent sees it mid-turn — within seconds, not minutes. Falls back to queued if IPC fails (TOCTOU: executor terminated between DB read and IPC call).
+This workstream eliminates that wait. The agent must see the interrupt within seconds, not minutes.
 
 **User impact without this fix:**
 - User sends "stop, wrong branch" while `make build` runs for 5 minutes → waits 5 minutes
 - Token burn continues on wrong path until gate checkpoint
 - DX feels like email (eventual) not chat (real-time)
-- Admin cannot distinguish queued vs instant delivery in audit trail (`INTERRUPT_DELIVERED` reason code is dead)
+- Admin cannot distinguish instant vs queued delivery in audit trail
 
 ---
 
-## 1.0 Schema: `active_execution_id` on `core.runs`
+## 1.0 Architecture Discovery: Why is the executor separate?
 
 **Status:** PENDING
 
-Add a nullable column to `core.runs` that tracks the currently active executor session. Set by the worker when it creates an execution, cleared on completion/abort/crash.
+Before choosing a delivery mechanism, document the executor isolation decision and evaluate whether it constrains interrupt delivery.
 
 **Dimensions:**
-- 1.1 PENDING Add `active_execution_id TEXT` (nullable) to `core.runs` in `schema/001_initial.sql` (tear-down rebuild, no ALTER)
-- 1.2 PENDING Add `executor_socket_addr TEXT` (nullable) to `core.runs` — the worker's IPC socket address so the API handler can reach the executor. Without this, the API process cannot call `InjectUserMessage` because it doesn't know which socket to connect to.
-
-**Design note:** The API server and worker run in separate processes. The API handler needs to reach the executor via its Unix socket. Two options:
-- (A) Store the socket path in the DB alongside execution_id — API handler connects directly
-- (B) API handler writes to Redis, worker polls and calls IPC — this is just queued mode with extra steps
-
-Option (A) is the only path to true instant delivery. The socket path is worker-local, so this only works when API and worker are co-located (same host or shared filesystem). For distributed deployments, a worker-side HTTP sidecar or Redis pub/sub command channel would be needed (out of scope for this workstream).
+- 1.1 PENDING Document why the executor runs as a separate process (sandbox security: bubblewrap/landlock isolation, OOM kill containment, resource cgroup limits, untrusted agent code execution). Reference the original design decision and M-number.
+- 1.2 PENDING Document the current IPC boundary: worker ↔ executor via Unix socket JSON-RPC. Methods: CreateExecution, StartStage, CancelExecution, DestroyExecution, GetUsage, Heartbeat, InjectUserMessage (added M21_001, no call site yet).
+- 1.3 PENDING Evaluate: can the executor be co-located in-process for trusted workloads (no sandbox needed)? What would that unlock for interrupt latency? What security guarantees would be lost?
+- 1.4 PENDING Decision record: keep executor separate, merge for trusted mode, or hybrid. Document the trade-off and commit to one path.
 
 ---
 
-## 2.0 Worker: Set/Clear `active_execution_id`
+## 2.0 Delivery Mechanism Evaluation
 
 **Status:** PENDING
 
-The worker pipeline sets the column when it creates an executor session, clears it when the session ends (success, failure, crash, cancel, abort).
+Evaluate four options for reducing interrupt delivery latency. Pick one. The spec must justify the choice with latency, complexity, and failure mode analysis.
+
+**Options:**
+
+| Option | How | Latency | Complexity | Failure mode |
+|--------|-----|---------|------------|-------------|
+| A. Status quo (queued) | GETDEL at top of gate loop | Up to 60s | Already shipped | None — works today |
+| B. Worker timer thread | Spawn a thread that polls Redis every 2s while gate command runs; on interrupt found, kill gate child + inject | ~2s | Low — one thread, same Redis pattern | Thread lifecycle; must not outlive gate command |
+| C. Worker pub/sub listener | Worker SUBSCRIBE to `run:{id}:interrupt_signal`; on message, kill gate child + inject | <1s | Medium — new pub/sub subscription per run, must handle reconnect | Pub/sub disconnect during gate; message lost if worker not listening |
+| D. API → executor direct IPC | Store `active_execution_id` + `executor_socket_addr` in DB; API handler connects to executor socket, calls InjectUserMessage | <500ms | High — cross-process socket, DB column, connection management, timeout | TOCTOU (executor dies between read and connect); API process needs filesystem access to socket |
 
 **Dimensions:**
-- 2.1 PENDING After `executor.createExecution()` succeeds in `worker_stage_executor.zig`, UPDATE `core.runs SET active_execution_id = $1, executor_socket_addr = $2 WHERE run_id = $3`
-- 2.2 PENDING On execution completion (success or failure), UPDATE `core.runs SET active_execution_id = NULL, executor_socket_addr = NULL WHERE run_id = $1`
-- 2.3 PENDING On cancel/abort/crash, same NULL clear — must be in a `defer` or error path to avoid stale execution_id after crash
-- 2.4 PENDING Orphan recovery (`worker_claim.zig` reconciler): clear `active_execution_id` for runs that are orphaned (worker crashed without clearing)
+- 2.1 PENDING Evaluate Option B: timer thread that polls Redis every 2s during `executeGateCommand`. On interrupt found, send SIGTERM to gate child process, then inject message via `startStage`. Measure: how much does a 2s poll add to Redis load per active run?
+- 2.2 PENDING Evaluate Option C: worker subscribes to interrupt pub/sub channel alongside the existing event pub/sub. On message, same kill+inject flow. Measure: pub/sub reconnect reliability under network partitions.
+- 2.3 PENDING Evaluate Option D: API handler reads `active_execution_id` from DB, connects to executor socket. Measure: is the socket path accessible from the API process in dev (same host) and prod (container)?
+- 2.4 PENDING Pick one option. Document why. Reject the others with specific reasons.
 
 ---
 
-## 3.0 Interrupt Handler: Instant IPC Path
+## 3.0 Implementation (depends on §2 decision)
 
 **Status:** PENDING
 
-When `mode: "instant"` is requested, the handler reads `active_execution_id` and `executor_socket_addr` from the run row. If both are non-null, it connects to the executor socket and calls `InjectUserMessage`. On success, logs `INTERRUPT_DELIVERED` and returns `mode: "instant"` in the response. On any failure (null execution_id, IPC error, TOCTOU), falls back to queued.
+Implement the chosen option. Dimensions TBD after §2.4 decision.
 
-**Dimensions:**
-- 3.1 PENDING Read `active_execution_id, executor_socket_addr` from `core.runs` in the same query that fetches `state, workspace_id`
-- 3.2 PENDING If both non-null and `mode == "instant"`: create a short-lived `ExecutorClient`, connect to socket, call `injectUserMessage(execution_id, message)`
-- 3.3 PENDING On IPC success: set `effective_mode = "instant"`, increment `metrics.incInterruptInstant()`, log `INTERRUPT_DELIVERED` in `run_transitions`
-- 3.4 PENDING On IPC failure (connection refused, transport loss, execution not found): fall back to queued path (Redis SETEX), increment `metrics.incInterruptFallback()`, log warning with error detail
-- 3.5 PENDING TOCTOU guard: the execution may terminate between the DB read and the IPC call. The fallback to queued handles this — the gate loop will pick it up if the executor already exited. Never silently drop.
-- 3.6 PENDING Connection timeout: the IPC connect must have a short timeout (500ms) — user is waiting for the HTTP response. If connect takes longer, fall back to queued immediately.
+**Known dimensions regardless of option chosen:**
+- 3.1 PENDING Wire `INTERRUPT_DELIVERED` reason code to the success path (currently dead — always logs `INTERRUPT_QUEUED`)
+- 3.2 PENDING `effective_mode` in interrupt handler response reflects actual delivery: `"instant"` when message reached executor mid-turn, `"queued"` when fell back
+- 3.3 PENDING Gate child process termination: when an interrupt arrives during a running gate command, the gate command must be killed (SIGTERM → SIGKILL after 5s) so the agent can absorb the steer immediately, not after the gate finishes
 
 ---
 
@@ -77,15 +79,11 @@ When `mode: "instant"` is requested, the handler reads `active_execution_id` and
 
 **Status:** PENDING
 
-Operators need to see: how often instant succeeds vs falls back, what the IPC latency is, and which runs have active executors.
-
-**Dimensions:**
-- 4.1 PENDING `metrics.incInterruptInstant()` — already defined, currently never incremented. Wire it to the success path in §3.3
-- 4.2 PENDING `metrics.incInterruptFallback()` — already wired for all instant requests. Change to only increment on IPC *failure*, not on every instant request
-- 4.3 PENDING New metric: `zombie_interrupt_ipc_duration_ms` histogram — measures the IPC round-trip time for instant delivery
-- 4.4 PENDING Structured log: `interrupt.instant_delivered run_id={s} agent_id={s} ipc_ms={d}` on success
-- 4.5 PENDING Structured log: `interrupt.instant_fallback run_id={s} agent_id={s} err={s}` on IPC failure with error class
-- 4.6 PENDING Grafana dashboard: interrupt delivery mode breakdown (instant vs queued vs fallback) per workspace
+- 4.1 PENDING `metrics.incInterruptInstant()` — wire to success path (currently defined but never incremented)
+- 4.2 PENDING `metrics.incInterruptFallback()` — only increment on actual IPC/delivery failure, not on every instant request
+- 4.3 PENDING New histogram: `zombie_interrupt_delivery_latency_ms` — time from POST :interrupt to message reaching executor
+- 4.4 PENDING Structured logs with `run_id`, `workspace_id`, `agent_id`, delivery mode, latency
+- 4.5 PENDING Grafana panel: instant vs queued vs fallback breakdown per workspace
 
 ---
 
@@ -93,18 +91,18 @@ Operators need to see: how often instant succeeds vs falls back, what the IPC la
 
 **Status:** PENDING
 
-- [ ] 5.1 User sends `mode: "instant"` while executor is active; message is injected mid-turn within 1s of POST; `interrupt_ack` SSE event shows `mode: "instant"`
-- [ ] 5.2 User sends `mode: "instant"` but executor has already exited (TOCTOU); falls back to queued; `interrupt_ack` shows `mode: "queued"`; message delivered at next gate checkpoint
-- [ ] 5.3 `run_transitions` row shows `INTERRUPT_DELIVERED` reason code when instant succeeds, `INTERRUPT_QUEUED` when it falls back
-- [ ] 5.4 IPC connect timeout (500ms) does not block the HTTP response — user gets ack within 1s regardless
-- [ ] 5.5 Orphan recovery clears stale `active_execution_id` for crashed workers
-- [ ] 5.6 `zombie_interrupt_ipc_duration_ms` histogram visible in Prometheus/Grafana
+- [ ] 5.1 User sends `mode: "instant"` while a gate command is running; agent sees the message within 5s (not 60s)
+- [ ] 5.2 Gate command is killed on interrupt; agent does not wait for it to finish
+- [ ] 5.3 `run_transitions` shows `INTERRUPT_DELIVERED` on instant success, `INTERRUPT_QUEUED` on fallback
+- [ ] 5.4 Fallback to queued works when executor is unavailable (TOCTOU, crash, etc.)
+- [ ] 5.5 Token burn stops within 5s of interrupt (not 60s)
+- [ ] 5.6 `zombie_interrupt_delivery_latency_ms` histogram visible in Prometheus
 
 ---
 
 ## 6.0 Out of Scope
 
-- Distributed instant delivery (API and worker on different hosts) — requires worker sidecar or command channel
-- Rate limiting interrupts per run (v3 concern)
-- Batching multiple interrupts into one IPC call
 - Desktop/Voice UI (M21_001 §4, separate workstream)
+- Rate limiting interrupts per run
+- Batching multiple interrupts into one delivery
+- Distributed deployment (API and worker on different hosts with no shared filesystem)
