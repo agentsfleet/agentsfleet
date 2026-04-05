@@ -4,7 +4,7 @@
 **Milestone:** M30
 **Workstream:** 001
 **Date:** Apr 05, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 - prevent silent deploy failures from binary/schema mismatch
 **Batch:** B2
 **Branch:** feat/m30-001-db-schema-gate
