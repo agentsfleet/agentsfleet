@@ -193,10 +193,21 @@ pub fn handleStreamRun(ctx: *common.Context, req: *httpz.Request, res: *httpz.Re
 }
 
 /// §3: Extract "created_at" integer from a JSON string. Falls back to milliTimestamp.
+/// Skips matches preceded by backslash (escaped inside a JSON string value).
 pub fn extractCreatedAt(alloc: std.mem.Allocator, json_data: []const u8) i64 {
     _ = alloc;
     const needle = "\"created_at\":";
-    const pos = std.mem.indexOf(u8, json_data, needle) orelse return std.time.milliTimestamp();
+    var search_pos: usize = 0;
+    const pos = blk: {
+        while (std.mem.indexOfPos(u8, json_data, search_pos, needle)) |p| {
+            if (p > 0 and json_data[p - 1] == '\\') {
+                search_pos = p + needle.len;
+                continue;
+            }
+            break :blk p;
+        }
+        return std.time.milliTimestamp();
+    };
     const start = pos + needle.len;
     if (start >= json_data.len) return std.time.milliTimestamp();
     var end = start;

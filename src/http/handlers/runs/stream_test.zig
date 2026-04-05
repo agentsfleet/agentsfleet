@@ -160,19 +160,14 @@ test "T3: extractCreatedAt with nested object containing created_at" {
 // T8 — Security: OWASP Agentic + SSE-specific
 // ---------------------------------------------------------------------------
 
-test "T8: extractCreatedAt ignores injection in gate_name field" {
+test "T8: extractCreatedAt skips escaped injection in gate_name field" {
     const alloc = std.testing.allocator;
-    // Attacker puts "created_at" in gate_name — parser finds the real field first
-    // if the real field comes first, or returns the injected value if it comes first.
-    // We test that the REAL created_at field is parsed correctly when present.
+    // Attacker puts \"created_at\":666 inside a JSON string value.
+    // The backslash before the quote means this match is inside a string — skip it.
+    // The real "created_at":42 key follows after.
     const json = "{\"gate_name\":\"\\\"created_at\\\":666\",\"created_at\":42}";
     const result = stream.extractCreatedAt(alloc, json);
-    // The naive string search will find the first occurrence — this is the escaped one.
-    // In real production, gate_name cannot contain raw quotes (JSON-escaped).
-    // The actual JSON bytes: "created_at":666 inside a string value vs "created_at":42 as a key.
-    // Since the impl does substring search, it finds the first match. This test
-    // documents the behavior for security review.
-    _ = result; // just ensure no crash or UB
+    try std.testing.expectEqual(@as(i64, 42), result);
 }
 
 test "T8: extractCreatedAt with XSS payload in JSON does not crash" {
