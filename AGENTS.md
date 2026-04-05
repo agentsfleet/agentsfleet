@@ -277,6 +277,8 @@ Exit criteria:
 
 ### EXECUTE
 
+**Before writing any code**, read `docs/greptile-learnings/RULES.md` and follow every rule. If a rule conflicts with the task, state the conflict and ask — never silently skip.
+
 Required outputs:
 
 - Minimal, scoped file edits.
@@ -291,6 +293,7 @@ Restrictions:
 Exit criteria:
 
 - Requested behavior implemented.
+- No violations of `docs/greptile-learnings/RULES.md`.
 
 ### VERIFY
 
@@ -298,10 +301,7 @@ Required outputs:
 
 - Run lint/tests/build checks relevant to touched files.
 - If touched files include `*.zig`: additionally run `make check-pg-drain`.
-- Scan the diff against the greptile anti-pattern catalog (`make lint` does this automatically via `_greptile_patterns_check`; also run manually when needed):
-  ```bash
-  git diff origin/main | grep '^+[^+]' | grep -Ef docs/greptile-learnings/.greptile-patterns && echo "❌ known anti-pattern matched" || true
-  ```
+- Scan the diff against `docs/greptile-learnings/RULES.md` — verify no rule is violated by the changes.
 - Capture failures with exact command and error text.
 - **500-line gate on every touched file.** For each file you created or modified, run `wc -l <file>`. If any file exceeds 500 lines, you must split it before proceeding to DOCUMENT. This is a hard gate — do not defer, do not ask, do not rationalize. Split the file.
   ```bash
@@ -621,17 +621,23 @@ qmd query "sandbox architecture" --json -n 10            # JSON for LLM
 
 **Workflow:** Run `qmd query` or `qmd search` first when researching or comparing implementations.
 
-## Greptile Learnings Catalog
+## Greptile Learnings
 
-Agent-first. One file only: `docs/greptile-learnings/.greptile-patterns`. No category files.
+Two files:
+
+| File | Purpose | When read |
+|------|---------|-----------|
+| `docs/greptile-learnings/RULES.md` | Natural-language do's and don'ts | EXECUTE start, `/review`, greptile fixes |
+
+New learnings go into `RULES.md` as natural-language rules.
 
 **Full process documentation:** [`docs/greptile-learnings/README.md`](./docs/greptile-learnings/README.md)
 
-**Pre-PR (automatic):** `make lint` runs `_greptile_patterns_check` which scans `git diff origin/main` additions against `.greptile-patterns`. No separate step needed.
+**Pre-PR:** Agents read `RULES.md` during EXECUTE. `make lint` runs standard lint checks.
 
 **Post-PR — triggered by ANY mention of greptile/reptile feedback, review comments, or "fix greptile":**
 
-Execute ALL steps below as a single workflow. Do not stop after fixing code — the reply, pattern, and report steps are mandatory.
+Execute ALL steps below as a single workflow. Do not stop after fixing code — the reply, rule, and report steps are mandatory.
 
 1. Fetch greptile review ID and inline comments:
    ```bash
@@ -640,14 +646,13 @@ Execute ALL steps below as a single workflow. Do not stop after fixing code — 
    ```
 2. Fix each finding in the worktree (P0/P1 required; P2 at discretion)
 3. Run `make lint && make test` and `make test-integration-db` if DB-backed files were touched
-4. For every P0/P1 finding: derive a grep-E regex and append to `docs/greptile-learnings/.greptile-patterns`. Verify no self-match (see README.md)
-5. Verify: bad example matches the pattern, fix does not
-6. **Reply to each greptile thread** with what was fixed and which commit:
+4. For every P0/P1 finding: add a natural-language rule to `docs/greptile-learnings/RULES.md` following the template (rule, why, do, don't, incident)
+5. **Reply to each greptile thread** with what was fixed and which commit:
    ```bash
    gh api repos/OWNER/REPO/pulls/N/comments/{comment_id}/replies -f body="Fixed in <sha>: <what changed>"
    ```
-7. Commit fix + pattern append together, push the branch
-8. **Report to user**: table with each finding, severity, fix applied, pattern added (or why not), and thread reply ID
+6. Commit fix + rule together, push the branch
+7. **Report to user**: table with each finding, severity, fix applied, rule added (or why not), and thread reply ID
 
 ## Web-to-Markdown Workflow
 

@@ -78,18 +78,9 @@ jobs:
       - name: Run CI lint gate
         run: make lint-ci
 
-  lint-greptile:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-      - name: Run greptile diff scan
-        run: make _greptile_patterns_check
-
   lint:
     runs-on: ubuntu-latest
-    needs: [lint-zig, lint-website, lint-apps, lint-ci, lint-greptile]
+    needs: [lint-zig, lint-website, lint-apps, lint-ci]
     steps:
       - name: Preserve legacy lint check name
         run: echo "All lint lanes passed"
