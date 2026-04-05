@@ -196,36 +196,35 @@ fn dispatchViaExecutor(
 }
 
 fn emitAgentSpan(
-    trace_id: []const u8,
+    run_ctx: worker_stage_types.RunContext,
+    stage_id: []const u8,
     actor_label: []const u8,
     result: agents.AgentResult,
     start_ns: u64,
 ) void {
     const end_ns: u64 = @intCast(std.time.nanoTimestamp());
-    // Build a trace context for this span using the run's trace_id
     var tc: trace_mod.TraceContext = undefined;
-    const tid_len = @min(trace_id.len, trace_mod.TRACE_ID_HEX_LEN);
-    @memcpy(tc.trace_id[0..tid_len], trace_id[0..tid_len]);
-    if (tid_len < trace_mod.TRACE_ID_HEX_LEN) {
-        @memset(tc.trace_id[tid_len..], '0');
-    }
+    const tid_len = @min(run_ctx.trace_id.len, trace_mod.TRACE_ID_HEX_LEN);
+    @memcpy(tc.trace_id[0..tid_len], run_ctx.trace_id[0..tid_len]);
+    if (tid_len < trace_mod.TRACE_ID_HEX_LEN) @memset(tc.trace_id[tid_len..], '0');
     const child = trace_mod.TraceContext.generate();
     tc.span_id = child.span_id;
     tc.parent_span_id = null;
 
     var span = otel_traces.buildSpan(tc, "agent.call", start_ns, end_ns);
+    // M27_002 obs: run/workspace/agent/stage context for Tempo drill-down.
+    _ = otel_traces.addAttr(&span, "run.id", run_ctx.run_id);
+    _ = otel_traces.addAttr(&span, "workspace.id", run_ctx.workspace_id);
+    _ = otel_traces.addAttr(&span, "agent.id", run_ctx.agent_id);
+    _ = otel_traces.addAttr(&span, "stage.id", stage_id);
     _ = otel_traces.addAttr(&span, "agent.actor", actor_label);
-
     var tokens_buf: [20]u8 = undefined;
     const tokens_str = std.fmt.bufPrint(&tokens_buf, "{d}", .{result.token_count}) catch "0";
     _ = otel_traces.addAttr(&span, "agent.tokens", tokens_str);
-
     var dur_buf: [20]u8 = undefined;
     const dur_str = std.fmt.bufPrint(&dur_buf, "{d}", .{result.wall_seconds * 1000}) catch "0";
     _ = otel_traces.addAttr(&span, "agent.duration_ms", dur_str);
-
     _ = otel_traces.addAttr(&span, "agent.exit_ok", if (result.exit_ok) "true" else "false");
-
     otel_traces.enqueueSpan(span);
 }
 
@@ -413,9 +412,9 @@ pub fn executeRun(
         },
     }, opRunStage, worker_runtime.retryOptionsForRun(@constCast(running), deadline_ms, 1, 1_000, 8_000, plan_stage.skill_id)) catch |err| return recordScoringFailure(&scoring_state, err);
     metrics.incAgentEchoCalls();
-    metrics.addAgentTokens(plan_result.token_count);
+    metrics.addAgentTokensByActor(plan_binding.actor, plan_result.token_count);
     metrics.observeAgentDurationSeconds(plan_result.wall_seconds);
-    emitAgentSpan(ctx.trace_id, plan_binding.actor.label(), plan_result, plan_stage_start_ns);
+    emitAgentSpan(ctx, plan_stage.stage_id, plan_binding.actor.label(), plan_result, plan_stage_start_ns);
 
     agents.emitNullclawRunEvent(
         ctx.run_id,
@@ -522,9 +521,9 @@ pub fn executeRun(
                 .warden => metrics.incAgentWardenCalls(),
                 .orchestrator => {},
             }
-            metrics.addAgentTokens(stage_result.token_count);
+            metrics.addAgentTokensByActor(binding.actor, stage_result.token_count);
             metrics.observeAgentDurationSeconds(stage_result.wall_seconds);
-            emitAgentSpan(ctx.trace_id, binding.actor.label(), stage_result, stage_start_ns);
+            emitAgentSpan(ctx, stage.stage_id, binding.actor.label(), stage_result, stage_start_ns);
             agents.emitNullclawRunEvent(ctx.run_id, ctx.request_id, ctx.trace_id, attempt, stage.stage_id, stage.role_id, binding.actor, stage_result);
             posthog_events.trackAgentCompleted(
                 cfg.posthog,

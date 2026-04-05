@@ -1,5 +1,9 @@
 pub const SCORE_FORMULA_VERSION = "2";
 
+/// M27_002 §1.1.1: Runs scoring below this threshold are marked non-billable.
+/// Matches the Bronze tier floor in math.tierFromScore().
+pub const BILLING_QUALITY_THRESHOLD: u8 = 40;
+
 pub const Tier = enum {
     unranked,
     bronze,

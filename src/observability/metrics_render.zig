@@ -82,6 +82,10 @@ pub fn renderPrometheus(
     try appendMetric(writer, "zombie_agent_scout_calls_total", "counter", "Total Scout agent invocations.", s.agent_scout_calls_total);
     try appendMetric(writer, "zombie_agent_warden_calls_total", "counter", "Total Warden agent invocations.", s.agent_warden_calls_total);
     try appendMetric(writer, "zombie_agent_tokens_total", "counter", "Total tokens consumed by agent calls.", s.agent_tokens_total);
+    try appendMetric(writer, "zombie_agent_echo_tokens_total", "counter", "Tokens consumed by Echo (plan) agent calls.", s.agent_echo_tokens_total);
+    try appendMetric(writer, "zombie_agent_scout_tokens_total", "counter", "Tokens consumed by Scout (implement) agent calls.", s.agent_scout_tokens_total);
+    try appendMetric(writer, "zombie_agent_warden_tokens_total", "counter", "Tokens consumed by Warden (validate) agent calls.", s.agent_warden_tokens_total);
+    try appendMetric(writer, "zombie_agent_orchestrator_tokens_total", "counter", "Tokens consumed by Orchestrator agent calls.", s.agent_orchestrator_tokens_total);
     try appendMetric(writer, "zombie_backoff_wait_ms_total", "counter", "Total backoff wait time in milliseconds.", s.backoff_wait_ms_total);
     try appendMetric(writer, "zombie_rate_limit_wait_ms_total", "counter", "Total wait time due to rate limiting in milliseconds.", s.rate_limit_wait_ms_total);
     try appendMetric(writer, "zombie_side_effect_outbox_enqueued_total", "counter", "Total side-effect outbox entries enqueued.", s.side_effect_outbox_enqueued_total);

@@ -27,7 +27,7 @@ pub const ERR_OTEL_TRACE_CONNECT_FAILED = "UZ-OBS-OTEL-TRACE-002";
 // ---------------------------------------------------------------------------
 
 const MAX_NAME_LEN: usize = 128;
-const MAX_ATTR_COUNT: usize = 8;
+const MAX_ATTR_COUNT: usize = 12; // M27_002: expanded for run.id, workspace.id, agent.id, stage.id
 const MAX_ATTR_KEY_LEN: usize = 32;
 const MAX_ATTR_VAL_LEN: usize = 64;
 

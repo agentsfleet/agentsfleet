@@ -11,4 +11,5 @@ pub const aggregateBillableQuantityFromSnapshots = runtime.aggregateBillableQuan
 
 test {
     _ = @import("./billing_test.zig");
+    _ = @import("./billing_gate_test.zig");
 }

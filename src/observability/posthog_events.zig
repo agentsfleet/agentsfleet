@@ -297,6 +297,32 @@ pub fn trackAgentScoringFailed(
     }
 }
 
+/// M27_002 §2.2: emitted when a completed run is score-gated (marked non-billable due to low score).
+pub fn trackRunBillingGated(
+    client: ?*posthog.PostHogClient,
+    distinct_id: []const u8,
+    run_id: []const u8,
+    workspace_id: []const u8,
+    agent_id: []const u8,
+    score: u8,
+    threshold: u8,
+) void {
+    if (client) |ph| {
+        const props = [_]posthog.Property{
+            .{ .key = "run_id", .value = .{ .string = run_id } },
+            .{ .key = "workspace_id", .value = .{ .string = workspace_id } },
+            .{ .key = "agent_id", .value = .{ .string = agent_id } },
+            .{ .key = "score", .value = .{ .integer = @intCast(score) } },
+            .{ .key = "threshold", .value = .{ .integer = @intCast(threshold) } },
+        };
+        ph.capture(.{
+            .distinct_id = distinct_id,
+            .event = "agent.run.billing_gated",
+            .properties = &props,
+        }) catch {};
+    }
+}
+
 pub fn trackAgentTrustEarned(
     client: ?*posthog.PostHogClient,
     distinct_id: []const u8,

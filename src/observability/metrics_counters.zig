@@ -43,6 +43,10 @@ pub const Snapshot = struct {
     agent_scout_calls_total: u64,
     agent_warden_calls_total: u64,
     agent_tokens_total: u64,
+    agent_echo_tokens_total: u64,
+    agent_scout_tokens_total: u64,
+    agent_warden_tokens_total: u64,
+    agent_orchestrator_tokens_total: u64,
     backoff_wait_ms_total: u64,
     rate_limit_wait_ms_total: u64,
     side_effect_outbox_enqueued_total: u64,
@@ -108,6 +112,11 @@ var g_agent_echo_calls_total = std.atomic.Value(u64).init(0);
 var g_agent_scout_calls_total = std.atomic.Value(u64).init(0);
 var g_agent_warden_calls_total = std.atomic.Value(u64).init(0);
 var g_agent_tokens_total = std.atomic.Value(u64).init(0);
+// M27_002 obs: per-actor token breakdown for Grafana/Prometheus.
+var g_agent_echo_tokens_total = std.atomic.Value(u64).init(0);
+var g_agent_scout_tokens_total = std.atomic.Value(u64).init(0);
+var g_agent_warden_tokens_total = std.atomic.Value(u64).init(0);
+var g_agent_orchestrator_tokens_total = std.atomic.Value(u64).init(0);
 var g_backoff_wait_ms_total = std.atomic.Value(u64).init(0);
 var g_rate_limit_wait_ms_total = std.atomic.Value(u64).init(0);
 var g_side_effect_outbox_enqueued_total = std.atomic.Value(u64).init(0);
@@ -249,6 +258,18 @@ pub fn incAgentWardenCalls() void {
 
 pub fn addAgentTokens(tokens: u64) void {
     _ = g_agent_tokens_total.fetchAdd(tokens, .monotonic);
+}
+
+/// M27_002 obs: increment both global total and per-actor counter.
+/// Use this in the worker pipeline where the actor is known.
+pub fn addAgentTokensByActor(actor: @import("../types.zig").Actor, tokens: u64) void {
+    _ = g_agent_tokens_total.fetchAdd(tokens, .monotonic);
+    switch (actor) {
+        .echo => _ = g_agent_echo_tokens_total.fetchAdd(tokens, .monotonic),
+        .scout => _ = g_agent_scout_tokens_total.fetchAdd(tokens, .monotonic),
+        .warden => _ = g_agent_warden_tokens_total.fetchAdd(tokens, .monotonic),
+        .orchestrator => _ = g_agent_orchestrator_tokens_total.fetchAdd(tokens, .monotonic),
+    }
 }
 
 pub fn addBackoffWaitMs(ms: u64) void {
@@ -410,6 +431,10 @@ pub fn snapshot() Snapshot {
         .agent_scout_calls_total = g_agent_scout_calls_total.load(.acquire),
         .agent_warden_calls_total = g_agent_warden_calls_total.load(.acquire),
         .agent_tokens_total = g_agent_tokens_total.load(.acquire),
+        .agent_echo_tokens_total = g_agent_echo_tokens_total.load(.acquire),
+        .agent_scout_tokens_total = g_agent_scout_tokens_total.load(.acquire),
+        .agent_warden_tokens_total = g_agent_warden_tokens_total.load(.acquire),
+        .agent_orchestrator_tokens_total = g_agent_orchestrator_tokens_total.load(.acquire),
         .backoff_wait_ms_total = g_backoff_wait_ms_total.load(.acquire),
         .rate_limit_wait_ms_total = g_rate_limit_wait_ms_total.load(.acquire),
         .side_effect_outbox_enqueued_total = g_side_effect_outbox_enqueued_total.load(.acquire),

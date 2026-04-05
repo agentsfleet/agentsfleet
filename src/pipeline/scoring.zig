@@ -12,6 +12,7 @@ const math = @import("scoring_mod/math.zig");
 const persistence = @import("scoring_mod/persistence.zig");
 
 pub const SCORE_FORMULA_VERSION = types.SCORE_FORMULA_VERSION;
+pub const BILLING_QUALITY_THRESHOLD = types.BILLING_QUALITY_THRESHOLD;
 pub const Tier = types.Tier;
 pub const TerminalOutcome = types.TerminalOutcome;
 pub const AxisScores = types.AxisScores;
@@ -54,7 +55,7 @@ pub fn scoreRunIfTerminal(
     if (state.outcome == .pending) return;
 
     const start_ns = std.time.nanoTimestamp();
-    scoreRunInner(
+    _ = scoreRunInner(
         conn,
         posthog_client,
         run_id,
@@ -80,6 +81,29 @@ pub fn scoreRunIfTerminal(
     metrics.observeAgentScoringDurationMs(elapsed_ms);
 }
 
+/// M27_002 §1.1: Score the run synchronously and return the score for billing gate decisions.
+/// Returns null when scoring is disabled, state is pending, or an error occurs (safe to call
+/// before finalizeRunForBilling — the defer scoreRunIfTerminal call becomes a no-op for this run).
+pub fn scoreRunForBillingGate(
+    conn: *pg.Conn,
+    posthog_client: ?*posthog.PostHogClient,
+    run_id: []const u8,
+    workspace_id: []const u8,
+    agent_id: []const u8,
+    requested_by: []const u8,
+    state: *const ScoringState,
+    total_wall_seconds: u64,
+) ?u8 {
+    if (state.outcome == .pending) return null;
+    const result = scoreRunInner(conn, posthog_client, run_id, workspace_id, agent_id, requested_by, state, total_wall_seconds) catch |err| {
+        log.warn("scoring.gate_score_fail run_id={s} err={s}", .{ run_id, @errorName(err) });
+        metrics.incAgentScoringFailed();
+        posthog_events.trackAgentScoringFailed(posthog_client, posthog_events.distinctIdOrSystem(requested_by), run_id, workspace_id, @errorName(err));
+        return null;
+    };
+    return result; // null if unscored (disabled/no profile), else the computed score
+}
+
 fn scoreRunInner(
     conn: *pg.Conn,
     posthog_client: ?*posthog.PostHogClient,
@@ -89,9 +113,9 @@ fn scoreRunInner(
     requested_by: []const u8,
     s: *const ScoringState,
     total_wall_seconds: u64,
-) !void {
+) !?u8 {
     const config = try queryScoringConfig(conn, std.heap.page_allocator, workspace_id);
-    if (!config.enabled) return;
+    if (!config.enabled) return null; // scoring disabled — run is unscored, not gated
 
     const baseline = queryLatencyBaseline(conn, workspace_id);
     const axes = AxisScores{
@@ -126,6 +150,11 @@ fn scoreRunInner(
         total_wall_seconds,
     );
     defer persist_outcome.deinit(std.heap.page_allocator);
+
+    // No agent profile — spec §1.1.4: unscored runs follow normal billing path.
+    if (agent_id.len == 0) return null;
+    // M27_002: if already scored (double-call via defer), skip side-effects; return score.
+    if (!persist_outcome.inserted) return score;
 
     if (persist_outcome.trust_update) |trust_update| {
         if (trust_update.earned()) {
@@ -184,6 +213,7 @@ fn scoreRunInner(
     metrics.incAgentScoreComputed(tier);
     metrics.setAgentScoreLatest(score);
     updateLatencyBaseline(conn, workspace_id);
+    return score; // ?u8
 }
 
 test {
@@ -197,5 +227,6 @@ test {
     _ = @import("proposals_guard_test.zig");
     _ = @import("proposals_e2e_test.zig");
     _ = @import("scoring_test.zig");
+    _ = @import("billing_gate_scoring_test.zig");
     _ = @import("scoring_mod/resource_score_test.zig");
 }

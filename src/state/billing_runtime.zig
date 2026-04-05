@@ -27,6 +27,8 @@ pub const BillableUnit = enum {
 pub const FinalizeOutcome = enum {
     completed,
     non_billable,
+    /// M27_002: run scored below BILLING_QUALITY_THRESHOLD; non-billable with distinct ledger reason.
+    score_gated,
 };
 
 pub const UsageSnapshot = struct {
@@ -92,6 +94,7 @@ pub fn finalizeRunForBilling(
         switch (outcome) {
             .completed => "completed",
             .non_billable => "non_billable",
+            .score_gated => "score_gated",
         },
     });
     defer alloc.free(event_key);
@@ -117,7 +120,11 @@ pub fn finalizeRunForBilling(
         LEDGER_ACTOR_ORCHESTRATOR,
         now_ms,
         event_key,
-        if (outcome == .completed) "run_completed" else "run_not_billable",
+        switch (outcome) {
+            .completed => "run_completed",
+            .non_billable => "run_not_billable",
+            .score_gated => "run_not_billable_score_gated",
+        },
         BillableUnit.agent_second.label(),
         billable_quantity,
         is_billable,
