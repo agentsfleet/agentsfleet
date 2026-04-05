@@ -187,27 +187,26 @@ pub fn handleInterruptRun(
         }
     }
 
-    // §2.4: Log the interrupt as a run_transitions annotation.
+    // §2.4: Log the interrupt in dedicated run_interrupts table (not run_transitions).
     {
-        const transition_id = id_format.generateTransitionId(alloc) catch "";
-        if (transition_id.len > 0) {
-            defer alloc.free(transition_id);
-            const notes_str = std.fmt.allocPrint(alloc, "interrupt:{s}:{s}", .{ effective_mode, rval.message[0..@min(rval.message.len, 128)] }) catch null;
-            // state_to is NULL — interrupt is an annotation, not a state change.
+        const interrupt_id = id_format.generateTransitionId(alloc) catch "";
+        if (interrupt_id.len > 0) {
+            defer alloc.free(interrupt_id);
             _ = conn.exec(
-                \\INSERT INTO core.run_transitions
-                \\  (id, run_id, attempt, state_from, state_to, actor, reason_code, notes, ts)
-                \\VALUES ($1, $2, (SELECT attempt FROM core.runs WHERE run_id = $2), $3, NULL, 'orchestrator', $4, $5, $6)
+                \\INSERT INTO core.run_interrupts
+                \\  (id, run_id, workspace_id, agent_id, attempt, mode, message, delivered, actor, created_at)
+                \\VALUES ($1, $2, $3, NULLIF($4, '-')::uuid, (SELECT attempt FROM core.runs WHERE run_id = $2), $5, $6, $7, 'orchestrator', $8)
             , .{
-                transition_id,
+                interrupt_id,
                 run_id,
-                state_str,
-                // v1: always queued; INTERRUPT_DELIVERED reserved for v2 instant IPC.
-                types.ReasonCode.INTERRUPT_QUEUED.label(),
-                notes_str,
+                ws_id,
+                agent_id,
+                effective_mode,
+                rval.message[0..@min(rval.message.len, 4096)],
+                false,
                 std.time.milliTimestamp(),
             }) catch |err| {
-                obs_log.logWarnErr(.http, err, "interrupt.transition_log_fail run_id={s}", .{run_id});
+                obs_log.logWarnErr(.http, err, "interrupt.persist_fail run_id={s}", .{run_id});
             };
         }
     }
