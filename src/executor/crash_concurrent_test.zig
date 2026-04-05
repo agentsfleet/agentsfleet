@@ -110,8 +110,12 @@ test "T5: concurrent CreateExecution from 8 workers produces unique execution ID
 test "T5: concurrent heartbeat and cancel race — session is cancelled" {
     const page = std.heap.page_allocator;
     var session = session_mod.Session.create(page, "/tmp/ws", .{
-        .trace_id = "t", .run_id = "r", .workspace_id = "w",
-        .stage_id = "s", .role_id = "echo", .skill_id = "echo",
+        .trace_id = "t",
+        .run_id = "r",
+        .workspace_id = "w",
+        .stage_id = "s",
+        .role_id = "echo",
+        .skill_id = "echo",
     }, .{}, 30_000);
     defer session.destroy();
 
@@ -213,8 +217,12 @@ test "T5: 20 sessions all expire simultaneously — reapExpired clears all" {
         // iteration and produce dangling pointers since Session stores the slice
         // header without copying the bytes.
         s.* = session_mod.Session.create(page, "/tmp/ws", .{
-            .trace_id = "t", .run_id = "r", .workspace_id = "w",
-            .stage_id = "mass", .role_id = "echo", .skill_id = "echo",
+            .trace_id = "t",
+            .run_id = "r",
+            .workspace_id = "w",
+            .stage_id = "mass",
+            .role_id = "echo",
+            .skill_id = "echo",
         }, .{}, 1); // 1ms — expires immediately
         try store.put(s);
     }
@@ -239,8 +247,12 @@ test "T3: reapExpired does not remove session with fresh heartbeat" {
 
     const s = try page.create(session_mod.Session);
     s.* = session_mod.Session.create(page, "/tmp/ws", .{
-        .trace_id = "t", .run_id = "r", .workspace_id = "w",
-        .stage_id = "active", .role_id = "echo", .skill_id = "echo",
+        .trace_id = "t",
+        .run_id = "r",
+        .workspace_id = "w",
+        .stage_id = "active",
+        .role_id = "echo",
+        .skill_id = "echo",
     }, .{}, 30_000); // 30s lease
     try store.put(s);
 
@@ -264,8 +276,12 @@ test "T3: worker crash simulation — no heartbeat → session reaped as orphan"
     // Worker creates a session but then crashes — never sends heartbeat or destroy.
     const s = try page.create(session_mod.Session);
     s.* = session_mod.Session.create(page, "/tmp/ws", .{
-        .trace_id = "t", .run_id = "r", .workspace_id = "w",
-        .stage_id = "orphan-1", .role_id = "echo", .skill_id = "echo",
+        .trace_id = "t",
+        .run_id = "r",
+        .workspace_id = "w",
+        .stage_id = "orphan-1",
+        .role_id = "echo",
+        .skill_id = "echo",
     }, .{}, 5); // 5ms lease — simulates worker crash timeout
     try store.put(s);
 

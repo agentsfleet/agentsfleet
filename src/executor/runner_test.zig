@@ -173,8 +173,8 @@ test "T5: concurrent duration observations are safe" {
 // ── T7: Regression — FailureClass mapping covers all variants ────────
 test "T7: all FailureClass variants produce non-empty labels" {
     const variants = [_]types.FailureClass{
-        .startup_posture, .policy_deny, .timeout_kill, .oom_kill,
-        .resource_kill, .executor_crash, .transport_loss, .landlock_deny,
+        .startup_posture, .policy_deny,    .timeout_kill,   .oom_kill,
+        .resource_kill,   .executor_crash, .transport_loss, .landlock_deny,
         .lease_expired,
     };
     for (variants) |fc| {
@@ -448,8 +448,8 @@ test "T5: execute concurrent calls are safe" {
 // ── T7: Regression — errorCodeForFailure all FailureClass variants ────
 test "T7: errorCodeForFailure all FailureClass variants" {
     const variants = [_]types.FailureClass{
-        .startup_posture, .policy_deny, .timeout_kill, .oom_kill,
-        .resource_kill, .executor_crash, .transport_loss, .landlock_deny,
+        .startup_posture, .policy_deny,    .timeout_kill,   .oom_kill,
+        .resource_kill,   .executor_crash, .transport_loss, .landlock_deny,
         .lease_expired,
     };
     for (variants) |fc| {
@@ -461,8 +461,8 @@ test "T7: errorCodeForFailure all FailureClass variants" {
 // ── T7: Regression — incFailureMetric for all failure classes ─────────
 test "T7: incFailureMetric for all failure classes" {
     const variants = [_]types.FailureClass{
-        .startup_posture, .policy_deny, .timeout_kill, .oom_kill,
-        .resource_kill, .executor_crash, .transport_loss, .landlock_deny,
+        .startup_posture, .policy_deny,    .timeout_kill,   .oom_kill,
+        .resource_kill,   .executor_crash, .transport_loss, .landlock_deny,
         .lease_expired,
     };
     for (variants) |fc| {

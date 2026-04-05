@@ -659,6 +659,11 @@ pub fn executeRun(
                     if (!gate_outcome.all_passed and gate_outcome.state_written) {
                         run_outcome_label = RUN_OUTCOME_CANCELLED;
                         scoring_state.outcome = .cancelled;
+                        // M28_001 §4.2: record histogram for exhausted gate runs
+                        // (handleGateExhaustedOutcome is skipped on this path).
+                        if (gate_outcome.total_repair_loops > 0) {
+                            metrics.observeGateRepairLoopsPerRun(gate_outcome.total_repair_loops);
+                        }
                         billing.finalizeRunForBilling(
                             run_alloc,
                             conn,

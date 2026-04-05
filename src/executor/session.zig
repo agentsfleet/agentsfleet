@@ -270,8 +270,12 @@ test "SessionStore remove returns null for unknown id" {
 test "Session getUsage returns cumulative results" {
     const alloc = std.testing.allocator;
     var session = Session.create(alloc, "/tmp/ws", .{
-        .trace_id = "t", .run_id = "r", .workspace_id = "w",
-        .stage_id = "s", .role_id = "echo", .skill_id = "echo",
+        .trace_id = "t",
+        .run_id = "r",
+        .workspace_id = "w",
+        .stage_id = "s",
+        .role_id = "echo",
+        .skill_id = "echo",
     }, .{}, 30_000);
     defer session.destroy();
 
@@ -287,8 +291,12 @@ test "Session getUsage returns cumulative results" {
 test "Session touchLease refreshes lease" {
     const alloc = std.testing.allocator;
     var session = Session.create(alloc, "/tmp/ws", .{
-        .trace_id = "t", .run_id = "r", .workspace_id = "w",
-        .stage_id = "s", .role_id = "echo", .skill_id = "echo",
+        .trace_id = "t",
+        .run_id = "r",
+        .workspace_id = "w",
+        .stage_id = "s",
+        .role_id = "echo",
+        .skill_id = "echo",
     }, .{}, 50); // 50ms lease
     defer session.destroy();
 
@@ -304,8 +312,12 @@ test "SessionStore reapExpired returns 0 when no expired sessions" {
 
     const session = try alloc.create(Session);
     session.* = Session.create(alloc, "/tmp/ws", .{
-        .trace_id = "t", .run_id = "r", .workspace_id = "w",
-        .stage_id = "s", .role_id = "echo", .skill_id = "echo",
+        .trace_id = "t",
+        .run_id = "r",
+        .workspace_id = "w",
+        .stage_id = "s",
+        .role_id = "echo",
+        .skill_id = "echo",
     }, .{}, 300_000); // 5 minute lease — won't expire
 
     try store.put(session);
@@ -329,8 +341,12 @@ test "SessionStore concurrent put/get from multiple threads" {
             for (0..10) |_| {
                 const sess = a.create(Session) catch return;
                 sess.* = Session.create(a, "/tmp/conc", .{
-                    .trace_id = "t", .run_id = "r", .workspace_id = "w",
-                    .stage_id = "s", .role_id = "echo", .skill_id = "echo",
+                    .trace_id = "t",
+                    .run_id = "r",
+                    .workspace_id = "w",
+                    .stage_id = "s",
+                    .role_id = "echo",
+                    .skill_id = "echo",
                 }, .{}, 30_000);
                 s.put(sess) catch return;
             }
@@ -351,8 +367,12 @@ test "SessionStore concurrent put/get from multiple threads" {
 test "Session create initializes all fields correctly" {
     const alloc = std.testing.allocator;
     var session = Session.create(alloc, "/tmp/ws", .{
-        .trace_id = "trace-abc", .run_id = "run-123", .workspace_id = "ws-456",
-        .stage_id = "stg-1", .role_id = "echo", .skill_id = "echo",
+        .trace_id = "trace-abc",
+        .run_id = "run-123",
+        .workspace_id = "ws-456",
+        .stage_id = "stg-1",
+        .role_id = "echo",
+        .skill_id = "echo",
     }, .{ .memory_limit_mb = 256, .cpu_limit_percent = 50 }, 5_000);
     defer session.destroy();
 
@@ -372,8 +392,12 @@ test "Session create initializes all fields correctly" {
 test "Session getUsage with no stages returns zero values" {
     const alloc = std.testing.allocator;
     var session = Session.create(alloc, "/tmp/ws", .{
-        .trace_id = "t", .run_id = "r", .workspace_id = "w",
-        .stage_id = "s", .role_id = "echo", .skill_id = "echo",
+        .trace_id = "t",
+        .run_id = "r",
+        .workspace_id = "w",
+        .stage_id = "s",
+        .role_id = "echo",
+        .skill_id = "echo",
     }, .{}, 30_000);
     defer session.destroy();
 
@@ -388,8 +412,12 @@ test "Session getUsage with no stages returns zero values" {
 test "Session cancel is idempotent" {
     const alloc = std.testing.allocator;
     var session = Session.create(alloc, "/tmp/ws", .{
-        .trace_id = "t", .run_id = "r", .workspace_id = "w",
-        .stage_id = "s", .role_id = "echo", .skill_id = "echo",
+        .trace_id = "t",
+        .run_id = "r",
+        .workspace_id = "w",
+        .stage_id = "s",
+        .role_id = "echo",
+        .skill_id = "echo",
     }, .{}, 30_000);
     defer session.destroy();
 

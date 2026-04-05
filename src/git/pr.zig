@@ -270,14 +270,14 @@ pub fn postPrComment(
     defer alloc.free(auth_header);
 
     const result = command.run(alloc, &.{
-        "curl",                                "-sS",
-        "--connect-timeout",                   "10",
-        "--max-time",                          "30",
-        "-X",                                  "POST",
-        "-H",                                  "Content-Type: application/json",
-        "-H",                                  "Accept: application/vnd.github+json",
-        "-H",                                  auth_header,
-        "-d",                                  payload,
+        "curl",              "-sS",
+        "--connect-timeout", "10",
+        "--max-time",        "30",
+        "-X",                "POST",
+        "-H",                "Content-Type: application/json",
+        "-H",                "Accept: application/vnd.github+json",
+        "-H",                auth_header,
+        "-d",                payload,
         api_url,
     }, null, 30_000) catch {
         log.warn("git.pr_comment_fail pr_url={s}", .{pr_url});

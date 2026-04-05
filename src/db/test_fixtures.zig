@@ -18,7 +18,6 @@
 ///
 /// All seed inserts use ON CONFLICT DO NOTHING — safe to call multiple times
 /// even if a prior test run panicked before teardown.
-
 const std = @import("std");
 const pg = @import("pg");
 const db = @import("pool.zig");

@@ -425,7 +425,11 @@ test "executeGateCommand concurrent invocations are isolated" {
 
         fn worker(self: *@This(), idx: usize) void {
             self.results[idx] = worker_gate_loop.executeGateCommand(
-                alloc, "/tmp", "concurrent_gate", "true", 10_000,
+                alloc,
+                "/tmp",
+                "concurrent_gate",
+                "true",
+                10_000,
             ) catch {
                 self.errors[idx] = true;
                 return;
@@ -465,7 +469,11 @@ test "executeGateCommand concurrent timeouts are isolated" {
 
         fn worker(self: *@This(), idx: usize) void {
             self.results[idx] = worker_gate_loop.executeGateCommand(
-                alloc, "/tmp", "concurrent_timeout", "sleep 60", 100,
+                alloc,
+                "/tmp",
+                "concurrent_timeout",
+                "sleep 60",
+                100,
             ) catch {
                 self.errors[idx] = true;
                 return;

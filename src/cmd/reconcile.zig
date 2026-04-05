@@ -424,7 +424,11 @@ test "integration: orphan recovery detects stale RUN_PLANNED and transitions to 
         .batch_limit = 32,
     };
     const result = try orphan_recovery.recoverOrphanedRuns(
-        std.testing.allocator, db_ctx.conn, null, null, config,
+        std.testing.allocator,
+        db_ctx.conn,
+        null,
+        null,
+        config,
     );
 
     try std.testing.expectEqual(@as(u32, 1), result.blocked);
@@ -451,7 +455,11 @@ test "integration: orphan recovery skips runs below staleness threshold" {
 
     const config = orphan_recovery.OrphanRecoveryConfig{ .staleness_ms = 600_000 };
     const result = try orphan_recovery.recoverOrphanedRuns(
-        std.testing.allocator, db_ctx.conn, null, null, config,
+        std.testing.allocator,
+        db_ctx.conn,
+        null,
+        null,
+        config,
     );
 
     try std.testing.expectEqual(@as(u32, 0), result.blocked);
@@ -481,7 +489,11 @@ test "integration: orphan recovery skips terminal and queued states" {
 
     const config = orphan_recovery.OrphanRecoveryConfig{ .staleness_ms = 600_000 };
     const result = try orphan_recovery.recoverOrphanedRuns(
-        std.testing.allocator, db_ctx.conn, null, null, config,
+        std.testing.allocator,
+        db_ctx.conn,
+        null,
+        null,
+        config,
     );
 
     try std.testing.expectEqual(@as(u32, 0), result.blocked);
@@ -513,7 +525,11 @@ test "integration: orphan recovery re-queues when enabled and attempts remain" {
         .batch_limit = 32,
     };
     const result = try orphan_recovery.recoverOrphanedRuns(
-        std.testing.allocator, db_ctx.conn, null, null, config,
+        std.testing.allocator,
+        db_ctx.conn,
+        null,
+        null,
+        config,
     );
 
     try std.testing.expectEqual(@as(u32, 0), result.blocked);
@@ -549,7 +565,11 @@ test "integration: orphan recovery blocks when max_attempts reached even with re
         .batch_limit = 32,
     };
     const result = try orphan_recovery.recoverOrphanedRuns(
-        std.testing.allocator, db_ctx.conn, null, null, config,
+        std.testing.allocator,
+        db_ctx.conn,
+        null,
+        null,
+        config,
     );
 
     try std.testing.expectEqual(@as(u32, 1), result.blocked);
@@ -585,7 +605,11 @@ test "integration: orphan recovery circuit breaker prevents re-queue of recently
         .batch_limit = 32,
     };
     const result = try orphan_recovery.recoverOrphanedRuns(
-        std.testing.allocator, db_ctx.conn, null, null, config,
+        std.testing.allocator,
+        db_ctx.conn,
+        null,
+        null,
+        config,
     );
 
     // Circuit breaker fires — blocks instead of re-queuing
@@ -612,7 +636,11 @@ test "integration: orphan recovery handles multiple candidate states in one batc
 
     const config = orphan_recovery.OrphanRecoveryConfig{ .staleness_ms = 600_000 };
     const result = try orphan_recovery.recoverOrphanedRuns(
-        std.testing.allocator, db_ctx.conn, null, null, config,
+        std.testing.allocator,
+        db_ctx.conn,
+        null,
+        null,
+        config,
     );
 
     try std.testing.expectEqual(@as(u32, 4), result.blocked);
@@ -646,7 +674,11 @@ test "integration: orphan recovery batch limit caps rows processed per tick" {
         .batch_limit = 2,
     };
     const result = try orphan_recovery.recoverOrphanedRuns(
-        std.testing.allocator, db_ctx.conn, null, null, config,
+        std.testing.allocator,
+        db_ctx.conn,
+        null,
+        null,
+        config,
     );
 
     // Only 2 processed due to batch limit
@@ -669,13 +701,21 @@ test "integration: orphan recovery is idempotent — second tick finds nothing" 
 
     // First tick recovers it
     const r1 = try orphan_recovery.recoverOrphanedRuns(
-        std.testing.allocator, db_ctx.conn, null, null, config,
+        std.testing.allocator,
+        db_ctx.conn,
+        null,
+        null,
+        config,
     );
     try std.testing.expectEqual(@as(u32, 1), r1.blocked);
 
     // Second tick finds nothing — BLOCKED is not an orphan candidate state
     const r2 = try orphan_recovery.recoverOrphanedRuns(
-        std.testing.allocator, db_ctx.conn, null, null, config,
+        std.testing.allocator,
+        db_ctx.conn,
+        null,
+        null,
+        config,
     );
     try std.testing.expectEqual(@as(u32, 0), r2.blocked);
     try std.testing.expectEqual(@as(u32, 0), r2.requeued);
@@ -697,7 +737,11 @@ test "integration: orphan recovery boundary — run at exact threshold is NOT re
 
     const config = orphan_recovery.OrphanRecoveryConfig{ .staleness_ms = 600_000 };
     const result = try orphan_recovery.recoverOrphanedRuns(
-        std.testing.allocator, db_ctx.conn, null, null, config,
+        std.testing.allocator,
+        db_ctx.conn,
+        null,
+        null,
+        config,
     );
     // Exactly at boundary — not stale enough (< is strict, not <=)
     try std.testing.expectEqual(@as(u32, 0), result.blocked);
@@ -716,7 +760,11 @@ test "integration: orphan recovery boundary — run 1ms past threshold IS recove
 
     const config = orphan_recovery.OrphanRecoveryConfig{ .staleness_ms = 600_000 };
     const result = try orphan_recovery.recoverOrphanedRuns(
-        std.testing.allocator, db_ctx.conn, null, null, config,
+        std.testing.allocator,
+        db_ctx.conn,
+        null,
+        null,
+        config,
     );
     try std.testing.expectEqual(@as(u32, 1), result.blocked);
 }
@@ -746,11 +794,19 @@ test "integration: orphan recovery SKIP LOCKED prevents double-processing across
 
     // First connection recovers 1 run
     const r1 = try orphan_recovery.recoverOrphanedRuns(
-        std.testing.allocator, db_ctx.conn, null, null, config,
+        std.testing.allocator,
+        db_ctx.conn,
+        null,
+        null,
+        config,
     );
     // Second connection gets the other row (SKIP LOCKED)
     const r2 = try orphan_recovery.recoverOrphanedRuns(
-        std.testing.allocator, conn2, null, null, config,
+        std.testing.allocator,
+        conn2,
+        null,
+        null,
+        config,
     );
 
     // Total across both connections = 2, no duplicates
@@ -780,7 +836,11 @@ test "integration: orphan recovery requeue with null Redis falls back to BLOCKED
         .batch_limit = 32,
     };
     const result = try orphan_recovery.recoverOrphanedRuns(
-        std.testing.allocator, db_ctx.conn, null, null, config,
+        std.testing.allocator,
+        db_ctx.conn,
+        null,
+        null,
+        config,
     );
 
     // Must be BLOCKED, not SPEC_QUEUED (no Redis to publish to)
@@ -814,25 +874,41 @@ test "integration: orphan recovery multi-tick progressive drain" {
 
     // Tick 1: drain 2
     const r1 = try orphan_recovery.recoverOrphanedRuns(
-        std.testing.allocator, db_ctx.conn, null, null, config,
+        std.testing.allocator,
+        db_ctx.conn,
+        null,
+        null,
+        config,
     );
     try std.testing.expectEqual(@as(u32, 2), r1.blocked);
 
     // Tick 2: drain 2 more
     const r2 = try orphan_recovery.recoverOrphanedRuns(
-        std.testing.allocator, db_ctx.conn, null, null, config,
+        std.testing.allocator,
+        db_ctx.conn,
+        null,
+        null,
+        config,
     );
     try std.testing.expectEqual(@as(u32, 2), r2.blocked);
 
     // Tick 3: drain last 1
     const r3 = try orphan_recovery.recoverOrphanedRuns(
-        std.testing.allocator, db_ctx.conn, null, null, config,
+        std.testing.allocator,
+        db_ctx.conn,
+        null,
+        null,
+        config,
     );
     try std.testing.expectEqual(@as(u32, 1), r3.blocked);
 
     // Tick 4: nothing left
     const r4 = try orphan_recovery.recoverOrphanedRuns(
-        std.testing.allocator, db_ctx.conn, null, null, config,
+        std.testing.allocator,
+        db_ctx.conn,
+        null,
+        null,
+        config,
     );
     try std.testing.expectEqual(@as(u32, 0), r4.blocked);
 }
@@ -852,7 +928,11 @@ test "integration: orphan recovery transition record has orchestrator actor" {
 
     const config = orphan_recovery.OrphanRecoveryConfig{ .staleness_ms = 600_000 };
     _ = try orphan_recovery.recoverOrphanedRuns(
-        std.testing.allocator, db_ctx.conn, null, null, config,
+        std.testing.allocator,
+        db_ctx.conn,
+        null,
+        null,
+        config,
     );
 
     // Verify transition record details
@@ -901,7 +981,11 @@ test "integration: orphan recovery CAS guard prevents double-transition" {
     // (idempotent — duplicate transitions are harmless in the audit log).
     const config = orphan_recovery.OrphanRecoveryConfig{ .staleness_ms = 600_000 };
     const result = try orphan_recovery.recoverOrphanedRuns(
-        std.testing.allocator, db_ctx.conn, null, null, config,
+        std.testing.allocator,
+        db_ctx.conn,
+        null,
+        null,
+        config,
     );
 
     // Run was already BLOCKED before the scan — not in candidate states
@@ -941,7 +1025,11 @@ test "integration: orphan recovery rollback preserves original state on mid-row 
     // Now verify: a real recovery tick picks it up and completes
     const config = orphan_recovery.OrphanRecoveryConfig{ .staleness_ms = 600_000 };
     const result = try orphan_recovery.recoverOrphanedRuns(
-        std.testing.allocator, db_ctx.conn, null, null, config,
+        std.testing.allocator,
+        db_ctx.conn,
+        null,
+        null,
+        config,
     );
     try std.testing.expectEqual(@as(u32, 1), result.blocked);
     try std.testing.expectEqualStrings("BLOCKED", try getRunState(db_ctx.conn, "rollback-run"));
@@ -972,7 +1060,11 @@ test "integration: orphan recovery null queue never produces SPEC_QUEUED state" 
         .batch_limit = 32,
     };
     const result = try orphan_recovery.recoverOrphanedRuns(
-        std.testing.allocator, db_ctx.conn, null, null, config,
+        std.testing.allocator,
+        db_ctx.conn,
+        null,
+        null,
+        config,
     );
 
     try std.testing.expectEqual(@as(u32, 3), result.blocked);

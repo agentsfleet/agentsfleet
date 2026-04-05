@@ -17,7 +17,6 @@
 ///
 ///   try uc4.seed(conn, std.testing.allocator);
 ///   defer uc4.teardown(conn);
-
 const std = @import("std");
 const base = @import("test_fixtures.zig");
 const pg = @import("pg");
@@ -25,8 +24,8 @@ const pg = @import("pg");
 pub const TEST_TENANT_ID = base.TEST_TENANT_ID;
 
 // UC4 identifiers — segment 5 prefix bb01 marks these as UC4 fixtures.
-pub const WS_ID         = "0195b4ba-8d3a-7f13-8abc-bb0000000001";
-pub const AGENT_ID      = "0195b4ba-8d3a-7f13-8abc-bb0000000011";
+pub const WS_ID = "0195b4ba-8d3a-7f13-8abc-bb0000000001";
+pub const AGENT_ID = "0195b4ba-8d3a-7f13-8abc-bb0000000011";
 pub const CONFIG_VER_ID = "0195b4ba-8d3a-7f13-8abc-bb0000000021";
 pub const ENTITLEMENT_ID = "0195b4ba-8d3a-7f13-8abc-bb0000000031";
 

@@ -119,8 +119,8 @@ test "executionIdHex round trips" {
 
 test "FailureClass.label returns non-empty strings for all variants" {
     const variants = [_]FailureClass{
-        .startup_posture, .policy_deny, .timeout_kill, .oom_kill,
-        .resource_kill, .executor_crash, .transport_loss, .landlock_deny,
+        .startup_posture, .policy_deny,    .timeout_kill,   .oom_kill,
+        .resource_kill,   .executor_crash, .transport_loss, .landlock_deny,
         .lease_expired,
     };
     for (variants) |fc| {

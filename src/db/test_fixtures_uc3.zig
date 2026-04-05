@@ -13,7 +13,6 @@
 ///
 ///   try uc3.seed(conn, uc3.WS_UPGRADE);
 ///   defer uc3.teardown(conn, uc3.WS_UPGRADE);
-
 const std = @import("std");
 const base = @import("test_fixtures.zig");
 const pg = @import("pg");
@@ -23,43 +22,43 @@ pub const TEST_TENANT_ID = base.TEST_TENANT_ID;
 // ── Workspace IDs for workspace_billing_test.zig ────────────────────────
 // Segment 5 prefix cc01–cc0c identifies UC3 billing-lifecycle workspaces.
 
-pub const WS_UPGRADE           = "0195b4ba-8d3a-7f13-8abc-cc0000000001";
-pub const WS_GRACE             = "0195b4ba-8d3a-7f13-8abc-cc0000000002";
-pub const WS_SYNC              = "0195b4ba-8d3a-7f13-8abc-cc0000000003";
-pub const WS_MISSING           = "0195b4ba-8d3a-7f13-8abc-cc0000000004";
-pub const WS_MANUAL_DOWNGRADE  = "0195b4ba-8d3a-7f13-8abc-cc0000000005";
-pub const WS_RESUBSCRIBE       = "0195b4ba-8d3a-7f13-8abc-cc0000000006";
-pub const WS_CASCADE           = "0195b4ba-8d3a-7f13-8abc-cc0000000007";
-pub const WS_LIMIT_BLOCK       = "0195b4ba-8d3a-7f13-8abc-cc0000000008";
-pub const WS_LIMIT_IGNORE      = "0195b4ba-8d3a-7f13-8abc-cc0000000009";
-pub const WS_EMPTY_SUB         = "0195b4ba-8d3a-7f13-8abc-cc000000000a";
-pub const WS_WHITESPACE_SUB    = "0195b4ba-8d3a-7f13-8abc-cc000000000b";
-pub const WS_EXCLUDE_SELF      = "0195b4ba-8d3a-7f13-8abc-cc000000000c";
+pub const WS_UPGRADE = "0195b4ba-8d3a-7f13-8abc-cc0000000001";
+pub const WS_GRACE = "0195b4ba-8d3a-7f13-8abc-cc0000000002";
+pub const WS_SYNC = "0195b4ba-8d3a-7f13-8abc-cc0000000003";
+pub const WS_MISSING = "0195b4ba-8d3a-7f13-8abc-cc0000000004";
+pub const WS_MANUAL_DOWNGRADE = "0195b4ba-8d3a-7f13-8abc-cc0000000005";
+pub const WS_RESUBSCRIBE = "0195b4ba-8d3a-7f13-8abc-cc0000000006";
+pub const WS_CASCADE = "0195b4ba-8d3a-7f13-8abc-cc0000000007";
+pub const WS_LIMIT_BLOCK = "0195b4ba-8d3a-7f13-8abc-cc0000000008";
+pub const WS_LIMIT_IGNORE = "0195b4ba-8d3a-7f13-8abc-cc0000000009";
+pub const WS_EMPTY_SUB = "0195b4ba-8d3a-7f13-8abc-cc000000000a";
+pub const WS_WHITESPACE_SUB = "0195b4ba-8d3a-7f13-8abc-cc000000000b";
+pub const WS_EXCLUDE_SELF = "0195b4ba-8d3a-7f13-8abc-cc000000000c";
 
 // ── Tenant IDs for multi-tenant free-workspace-limit tests ──────────────
 
-pub const TENANT_LIMIT_BLOCK   = "0195b4ba-8d3a-7f13-8abc-cc0000000051";
-pub const TENANT_LIMIT_IGNORE  = "0195b4ba-8d3a-7f13-8abc-cc0000000052";
-pub const TENANT_EXCLUDE_SELF  = "0195b4ba-8d3a-7f13-8abc-cc0000000053";
+pub const TENANT_LIMIT_BLOCK = "0195b4ba-8d3a-7f13-8abc-cc0000000051";
+pub const TENANT_LIMIT_IGNORE = "0195b4ba-8d3a-7f13-8abc-cc0000000052";
+pub const TENANT_EXCLUDE_SELF = "0195b4ba-8d3a-7f13-8abc-cc0000000053";
 
 // ── Workspace IDs for billing_test.zig ──────────────────────────────────
 // Prefix cc11–cc12 identifies UC3 metering workspaces.
 
-pub const WS_BT_FREE           = "0195b4ba-8d3a-7f13-8abc-cc0000000011";
-pub const WS_BT_SCALE          = "0195b4ba-8d3a-7f13-8abc-cc0000000012";
+pub const WS_BT_FREE = "0195b4ba-8d3a-7f13-8abc-cc0000000011";
+pub const WS_BT_SCALE = "0195b4ba-8d3a-7f13-8abc-cc0000000012";
 
 // Spec + run IDs for billing_test (usage_ledger + billing_delivery_outbox have FK to runs).
-pub const SPEC_BT_FREE         = "0195b4ba-8d3a-7f13-8abc-cc0000000021";
-pub const SPEC_BT_SCALE        = "0195b4ba-8d3a-7f13-8abc-cc0000000022";
-pub const RUN_BT_COMPLETED     = "0195b4ba-8d3a-7f13-8abc-cc0000000031";
-pub const RUN_BT_NON_BILLABLE  = "0195b4ba-8d3a-7f13-8abc-cc0000000032";
-pub const RUN_BT_SCALE         = "0195b4ba-8d3a-7f13-8abc-cc0000000033";
+pub const SPEC_BT_FREE = "0195b4ba-8d3a-7f13-8abc-cc0000000021";
+pub const SPEC_BT_SCALE = "0195b4ba-8d3a-7f13-8abc-cc0000000022";
+pub const RUN_BT_COMPLETED = "0195b4ba-8d3a-7f13-8abc-cc0000000031";
+pub const RUN_BT_NON_BILLABLE = "0195b4ba-8d3a-7f13-8abc-cc0000000032";
+pub const RUN_BT_SCALE = "0195b4ba-8d3a-7f13-8abc-cc0000000033";
 
 // IDs for billing_reconciler.zig test (prefix cc13/cc23/cc34/cc44).
-pub const WS_RECONCILER        = "0195b4ba-8d3a-7f13-8abc-cc0000000013";
-pub const SPEC_RECONCILER      = "0195b4ba-8d3a-7f13-8abc-cc0000000023";
-pub const RUN_RECONCILER       = "0195b4ba-8d3a-7f13-8abc-cc0000000034";
-pub const OUTBOX_RECONCILER    = "0195b4ba-8d3a-7f13-8abc-cc0000000044";
+pub const WS_RECONCILER = "0195b4ba-8d3a-7f13-8abc-cc0000000013";
+pub const SPEC_RECONCILER = "0195b4ba-8d3a-7f13-8abc-cc0000000023";
+pub const RUN_RECONCILER = "0195b4ba-8d3a-7f13-8abc-cc0000000034";
+pub const OUTBOX_RECONCILER = "0195b4ba-8d3a-7f13-8abc-cc0000000044";
 
 // ── Seed / teardown ─────────────────────────────────────────────────────
 

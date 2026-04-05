@@ -183,8 +183,12 @@ test "crash: executor restart, worker reconnects to new socket" {
     try ec1.connect();
 
     const exec_id1 = try ec1.createExecution("/tmp/ws", .{
-        .trace_id = "t", .run_id = "r", .workspace_id = "w",
-        .stage_id = "s", .role_id = "echo", .skill_id = "echo",
+        .trace_id = "t",
+        .run_id = "r",
+        .workspace_id = "w",
+        .stage_id = "s",
+        .role_id = "echo",
+        .skill_id = "echo",
     });
     defer alloc.free(exec_id1);
     try std.testing.expectEqual(@as(usize, 1), store1.activeCount());
@@ -224,8 +228,12 @@ test "crash: executor restart, worker reconnects to new socket" {
     // Old execution_id no longer exists on the new executor.
     // But worker can create a new session successfully.
     const exec_id2 = try ec2.createExecution("/tmp/ws", .{
-        .trace_id = "t2", .run_id = "r2", .workspace_id = "w2",
-        .stage_id = "s2", .role_id = "echo", .skill_id = "echo",
+        .trace_id = "t2",
+        .run_id = "r2",
+        .workspace_id = "w2",
+        .stage_id = "s2",
+        .role_id = "echo",
+        .skill_id = "echo",
     });
     defer alloc.free(exec_id2);
 
