@@ -311,15 +311,12 @@ jobs:
     runs-on: ubuntu-latest
     needs: deploy-fly-dev
     steps:
-      - uses: 1password/install-cli-action@v3
-
-      - name: Read Fly token from 1Password
+      - uses: 1password/load-secrets-action@v4
+        with:
+          export-env: true
         env:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
-        run: |
-          TOKEN="$(op read 'op://${{ vars.VAULT_DEV }}/fly-api-token/credential')"
-          echo "::add-mask::${TOKEN}"
-          echo "FLY_API_TOKEN=${TOKEN}" >> "$GITHUB_ENV"
+          FLY_API_TOKEN: op://${{ vars.VAULT_DEV }}/fly-api-token/credential
 
       - uses: superfly/flyctl-actions/setup-flyctl@master
 
