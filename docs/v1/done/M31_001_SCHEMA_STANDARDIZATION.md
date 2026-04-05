@@ -4,7 +4,7 @@
 **Milestone:** M31
 **Workstream:** 001
 **Date:** Apr 05, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Branch:** feat/m31-schema-standardization
 **Priority:** P2 — consistency debt, no production breakage
 **Batch:** B2
