@@ -81,32 +81,37 @@ pub fn streamRunOutput(
 
     const uri = try std.Uri.parse(url);
 
-    // §1: Use client.open() for true incremental streaming.
-    // client.fetch() buffers the entire response before returning — defeats SSE real-time.
-    // client.open() + req.reader().read() delivers bytes as they arrive from the server.
-    var header_buf: [4096]u8 = undefined;
-    var req = try client.open(.GET, uri, .{
+    // §1: Use client.request() for true incremental streaming.
+    // client.fetch() buffers the entire response — defeats SSE real-time.
+    // client.request() + response.reader().read() delivers bytes as they arrive.
+    // This is the cross-platform API (works on macOS, x86_64-linux, aarch64-linux).
+    var req = try client.request(.GET, uri, .{
         .extra_headers = &.{
             .{ .name = "Authorization", .value = auth_header },
             .{ .name = "Accept", .value = "text/event-stream" },
         },
-        .server_header_buffer = &header_buf,
     });
     defer req.deinit();
 
-    try req.send();
-    try req.wait();
+    try req.sendBodiless();
+    var redirect_buf: [4096]u8 = undefined;
+    var response = try req.receiveHead(&redirect_buf);
 
-    if (req.status != .ok) {
-        std.debug.print("error: stream returned {d}\n", .{@intFromEnum(req.status)});
+    if (response.head.status != .ok) {
+        std.debug.print("error: stream returned {d}\n", .{@intFromEnum(response.head.status)});
         return error.StreamFailed;
     }
+
+    var transfer_buf: [8192]u8 = undefined;
+    const rdr = response.reader(&transfer_buf);
 
     var sse = SseState.init(alloc);
     defer sse.deinit();
     var buf: [4096]u8 = undefined;
     while (true) {
-        const n = req.reader().read(&buf) catch |err| {
+        var iov = [_][]u8{&buf};
+        const n = rdr.readVec(&iov) catch |err| {
+            if (err == error.EndOfStream) break;
             std.debug.print("error: stream read failed: {s}\n", .{@errorName(err)});
             break;
         };
