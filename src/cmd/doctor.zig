@@ -149,6 +149,8 @@ fn renderJson(stdout: *std.Io.Writer, results: []const CheckResult, overall_ok: 
 }
 
 pub fn run(alloc: std.mem.Allocator) !void {
+    // Allocator contract: callers must provide an arena-style allocator for run().
+    // CheckResult.detail slices are retained until renderText/renderJson completes.
     log.info("doctor.start status=start", .{});
     var ok = true;
     var stdout_buf: [8192]u8 = undefined;
@@ -246,7 +248,6 @@ pub fn run(alloc: std.mem.Allocator) !void {
                 "schema_gate status=fail expected_versions={d} applied_versions={d} reason_code={s}",
                 .{ state.expected_versions, state.applied_versions, reason },
             );
-            defer alloc.free(detail);
             try appendCheck(alloc, &results, "schema_gate_compat", false, detail, &ok);
             break :schema_gate_check;
         };
@@ -257,7 +258,6 @@ pub fn run(alloc: std.mem.Allocator) !void {
             "schema_gate status=ok expected_versions={d} applied_versions={d} reason_code={s}",
             .{ state.expected_versions, state.applied_versions, schemaGateReasonCode(null) },
         );
-        defer alloc.free(ok_detail);
         try appendCheck(alloc, &results, "schema_gate_compat", true, ok_detail, &ok);
     }
 
