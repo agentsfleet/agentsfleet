@@ -3,7 +3,7 @@
   "info": {
     "title": "UseZombie Control Plane API",
     "version": "1.0.0",
-    "description": "Agent Delivery Control Plane \u2014 spec-to-PR automation via Echo -> Scout -> Warden pipeline.",
+    "description": "Agent Delivery Control Plane — spec-to-PR automation via Echo -> Scout -> Warden pipeline.",
     "contact": {
       "name": "UseZombie",
       "url": "https://usezombie.com"
@@ -44,14 +44,14 @@
     },
     {
       "name": "Specs",
-      "description": "Spec lifecycle \u2014 list, sync, and manage specification documents",
+      "description": "Spec lifecycle — list, sync, and manage specification documents",
       "x-mintlify": {
         "navigation": "Specs"
       }
     },
     {
       "name": "Runs",
-      "description": "Core spec-to-PR pipeline \u2014 queue, monitor, stream, retry, and cancel runs",
+      "description": "Core spec-to-PR pipeline — queue, monitor, stream, retry, and cancel runs",
       "x-mintlify": {
         "navigation": "Runs"
       }
@@ -65,7 +65,7 @@
     },
     {
       "name": "Harness",
-      "description": "Agent runtime configuration \u2014 author, compile, and activate harness configs",
+      "description": "Agent runtime configuration — author, compile, and activate harness configs",
       "x-mintlify": {
         "navigation": "Harness"
       }
@@ -86,14 +86,14 @@
     },
     {
       "name": "Agent Relay",
-      "description": "Spec generation and preview via LLM \u2014 streaming endpoints for interactive authoring",
+      "description": "Spec generation and preview via LLM — streaming endpoints for interactive authoring",
       "x-mintlify": {
         "navigation": "Agent Relay"
       }
     },
     {
       "name": "Admin",
-      "description": "Platform-wide configuration \u2014 manage shared LLM provider keys",
+      "description": "Platform-wide configuration — manage shared LLM provider keys",
       "x-mintlify": {
         "navigation": "Admin"
       }
@@ -198,7 +198,7 @@
                   "properties": {
                     "ready": {
                       "type": "boolean",
-                      "description": "Overall readiness \u2014 true only when all dependencies are healthy"
+                      "description": "Overall readiness — true only when all dependencies are healthy"
                     },
                     "database": {
                       "type": "boolean",
@@ -569,7 +569,7 @@
                     "install_url": {
                       "type": "string",
                       "format": "uri",
-                      "description": "GitHub App installation URL \u2014 direct user here if the app is not yet installed"
+                      "description": "GitHub App installation URL — direct user here if the app is not yet installed"
                     },
                     "request_id": {
                       "type": "string",
@@ -629,7 +629,7 @@
                   },
                   "version": {
                     "type": "integer",
-                    "description": "Optimistic concurrency version \u2014 must match current workspace version"
+                    "description": "Optimistic concurrency version — must match current workspace version"
                   }
                 }
               }
@@ -881,7 +881,7 @@
                     "enum": [
                       "pull_request"
                     ],
-                    "description": "Run mode \u2014 currently only pull_request is supported"
+                    "description": "Run mode — currently only pull_request is supported"
                   },
                   "requested_by": {
                     "type": "string",
@@ -1705,7 +1705,7 @@
       "post": {
         "operationId": "approve_proposal",
         "summary": "Approve a proposal",
-        "description": "Approves a pending proposal, applying the proposed changes to the agent's harness configuration. Returns the resulting status \u2014 APPLIED if successful, CONFIG_CHANGED if there was a conflict, or REJECTED on validation failure.",
+        "description": "Approves a pending proposal, applying the proposed changes to the agent's harness configuration. Returns the resulting status — APPLIED if successful, CONFIG_CHANGED if there was a conflict, or REJECTED on validation failure.",
         "tags": [
           "Agents"
         ],
@@ -1819,7 +1819,7 @@
                 "properties": {
                   "rejection_reason": {
                     "type": "string",
-                    "description": "Why the proposal was rejected \u2014 fed back to the agent for learning"
+                    "description": "Why the proposal was rejected — fed back to the agent for learning"
                   }
                 }
               }
@@ -2047,7 +2047,7 @@
       "put": {
         "operationId": "put_harness_source",
         "summary": "Set harness source config",
-        "description": "Creates or updates the harness source configuration for an agent in a workspace. This is the authoring step \u2014 the config must be compiled and activated before it takes effect.",
+        "description": "Creates or updates the harness source configuration for an agent in a workspace. This is the authoring step — the config must be compiled and activated before it takes effect.",
         "tags": [
           "Harness"
         ],
@@ -2436,7 +2436,7 @@
                   },
                   "api_key": {
                     "type": "string",
-                    "description": "API key for the provider \u2014 encrypted at rest, never echoed"
+                    "description": "API key for the provider — encrypted at rest, never echoed"
                   }
                 }
               }
@@ -2585,7 +2585,7 @@
                 "properties": {
                   "value": {
                     "type": "string",
-                    "description": "Secret value \u2014 encrypted at rest, never echoed"
+                    "description": "Secret value — encrypted at rest, never echoed"
                   },
                   "scope": {
                     "type": "string",
@@ -3170,6 +3170,110 @@
           }
         }
       }
+    },
+    "/v1/runs/{run_id}:interrupt": {
+      "post": {
+        "operationId": "interrupt_run",
+        "summary": "Interrupt a running agent",
+        "description": "Sends a steering message to a running agent without aborting it. The agent absorbs the message and adjusts course at the next gate checkpoint (queued) or mid-turn (instant). Last-write-wins: if two interrupts arrive before the next checkpoint, the second overwrites the first.",
+        "tags": [
+          "Runs"
+        ],
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "description": "Run identifier",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "message"
+                ],
+                "properties": {
+                  "message": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 4096,
+                    "description": "The steering message to deliver to the agent"
+                  },
+                  "mode": {
+                    "type": "string",
+                    "enum": [
+                      "queued",
+                      "instant"
+                    ],
+                    "default": "queued",
+                    "description": "Delivery mode. queued: picked up at next gate checkpoint. instant: injected mid-turn via executor IPC (falls back to queued if executor is unavailable)."
+                  }
+                }
+              },
+              "example": {
+                "message": "Focus on the billing endpoint, skip auth refactor",
+                "mode": "queued"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Interrupt acknowledged",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "ack",
+                    "mode",
+                    "request_id"
+                  ],
+                  "properties": {
+                    "ack": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "mode": {
+                      "type": "string",
+                      "enum": [
+                        "queued",
+                        "instant"
+                      ],
+                      "description": "The effective delivery mode (may differ from requested if instant fell back to queued)"
+                    },
+                    "request_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Run is not in an interruptible state (terminal, BLOCKED, PR_OPENED, or NOTIFIED)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -3412,7 +3516,7 @@
       },
       "Proposal": {
         "type": "object",
-        "description": "An agent self-tuning proposal \u2014 a suggested change to the harness configuration",
+        "description": "An agent self-tuning proposal — a suggested change to the harness configuration",
         "properties": {
           "proposal_id": {
             "type": "string",

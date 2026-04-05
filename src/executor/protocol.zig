@@ -14,6 +14,8 @@ pub const Method = struct {
     pub const get_usage = "GetUsage";
     pub const destroy_execution = "DestroyExecution";
     pub const heartbeat = "Heartbeat";
+    /// M21_001 §1.3
+    pub const inject_user_message = "InjectUserMessage";
 };
 
 pub const RpcError = struct {

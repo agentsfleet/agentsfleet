@@ -53,6 +53,8 @@ pub const ERR_RUN_WALL_TIME_EXCEEDED = "UZ-RUN-004";
 pub const ERR_WORKSPACE_MONTHLY_BUDGET_EXCEEDED = "UZ-RUN-005";
 pub const ERR_RUN_ALREADY_TERMINAL = "UZ-RUN-006";
 pub const ERR_RUN_CANCEL_SIGNAL_FAILED = "UZ-RUN-007";
+pub const ERR_RUN_INTERRUPT_SIGNAL_FAILED = "UZ-RUN-008";
+pub const ERR_RUN_NOT_INTERRUPTIBLE = "UZ-RUN-009";
 pub const ERR_AGENT_NOT_FOUND = "UZ-AGENT-001";
 pub const ERR_AGENT_SCORES_UNAVAILABLE = "UZ-AGENT-002";
 pub const ERR_PROFILE_NOT_FOUND = "UZ-PROFILE-001";
@@ -171,6 +173,10 @@ pub fn hint(code: []const u8) ?[]const u8 {
         return "The run is already in a terminal state (DONE, BLOCKED, CANCELLED). No further state changes are allowed.";
     if (std.mem.eql(u8, code, ERR_RUN_CANCEL_SIGNAL_FAILED))
         return "Cancel signal could not be published. Check Redis connectivity and retry.";
+    if (std.mem.eql(u8, code, ERR_RUN_INTERRUPT_SIGNAL_FAILED))
+        return "Interrupt message could not be stored in Redis. Check Redis connectivity and retry.";
+    if (std.mem.eql(u8, code, ERR_RUN_NOT_INTERRUPTIBLE))
+        return "Run is not in an interruptible state. Check the run state and retry.";
     return null;
 }
 

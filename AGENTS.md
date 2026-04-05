@@ -115,8 +115,6 @@ Execution pattern:
 
 - Workspace root is `~/Projects`.
 - Use `gh`/`glab` CLI for PR/MR/CI operations, not browser-first workflows.
-- GitHub Actions secret-loading policy is **NON-NEGOTIABLE**: workflows **MUST** use `1password/load-secrets-action@v4` with `export-env: true`. Any deviation is policy-violating unless explicitly approved by the owner in the same PR. Approved deviations **MUST** add inline rationale and **MUST** call `::add-mask::` for every resolved secret before writing to `GITHUB_ENV`.
-- CLI machine-interface policy is **NON-NEGOTIABLE**: agent-facing/automation-facing commands **MUST** provide `--json` output with stable keys and deterministic structure. New CLI surfaces that lack `--json` are considered incomplete and **MUST NOT** be merged.
 - If asked to "make a note", update `AGENTS.md` or relevant repo docs.
 - Before updating dotfiles (`.*` files like `.zshrc`, `.gitconfig`, agent configs), create a timestamped backup first and keep edits minimal.
 - Use `trash` for file deletes. `rm` is not auto-allowed — agents will be prompted for approval before `rm` executes.
@@ -266,7 +264,6 @@ Required outputs:
   - [ ] **`zombiectl` CLI changes** — does this change require new subcommands, flags, or output format changes in the npm CLI? If yes, note that the project manager must approve CLI surface changes (create a skill ticket if needed).
   - [ ] **User-facing doc changes** — do docs at `docs.usezombie.com` need updating? If yes, list pages.
   - [ ] **Release notes** — will this ship as a version bump? If yes, note the version (minor for features, patch for fixes) and draft the `docs/v1/release/{version}.md` entry during DOCUMENT phase.
-  - [ ] **Schema changes** — does this change add/modify/remove database tables, columns, or constraints? If yes: (a) each new SQL file must be ≤100 lines and single-concern (one table or one logical group), (b) update `schema/embed.zig` and `src/cmd/common.zig` migration array, (c) verify `docs/contributing/SCHEMA_CONVENTIONS.md` is followed. Full teardown-rebuild is allowed until v0.5.0 — no ALTER migrations needed.
 
 Restrictions:
 

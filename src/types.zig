@@ -21,6 +21,8 @@ pub const RunState = enum {
     /// M17_001 §3.3: operator-requested cancellation — distinct from BLOCKED;
     /// billing finalises as non-billable, scoring records outcome=cancelled.
     CANCELLED,
+    /// M21_001 §5.4: abort via CLI /stop or UI — terminal.
+    ABORTED,
 
     pub fn label(self: RunState) []const u8 {
         return switch (self) {
@@ -37,6 +39,7 @@ pub const RunState = enum {
             .BLOCKED => "BLOCKED",
             .NOTIFIED_BLOCKED => "NOTIFIED_BLOCKED",
             .CANCELLED => "CANCELLED",
+            .ABORTED => "ABORTED",
         };
     }
 
@@ -55,7 +58,7 @@ pub const RunState = enum {
     /// Returns true if the run is in a terminal state.
     pub fn isTerminal(self: RunState) bool {
         return switch (self) {
-            .DONE, .NOTIFIED_BLOCKED, .CANCELLED => true,
+            .DONE, .NOTIFIED_BLOCKED, .CANCELLED, .ABORTED => true,
             else => false,
         };
     }
@@ -87,6 +90,10 @@ pub const ReasonCode = enum {
     WALL_TIME_EXCEEDED,
     REPAIR_LOOPS_EXHAUSTED,
     RUN_CANCELLED,
+    // M21_001
+    INTERRUPT_DELIVERED,
+    INTERRUPT_QUEUED,
+    RUN_ABORTED,
 
     pub fn label(self: ReasonCode) []const u8 {
         return @tagName(self);
