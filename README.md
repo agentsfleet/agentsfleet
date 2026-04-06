@@ -16,15 +16,17 @@
 
 ---
 
-UseZombie is in a product pivot. The focus is practical operator leverage, not tunnel-vision optimization around one narrow bottleneck that frontier models may erase soon.
+> 🧟 **Early Access Preview** · Pre-release — revised release coming up by April 11. APIs, CLI, and behavior may change without notice before general availability.
+>
+> UseZombie is in a product pivot. The focus is practical operator leverage, not tunnel-vision optimization around one narrow bottleneck that frontier models may erase soon.
+>
+> Write a spec. An agent implements it, runs `make lint` / `make test` / `make build` with self-repair, scores the output, and opens a PR with a scorecard. You review one PR instead of babysitting ten agent sessions.
 
 ## What it does
 
-UseZombie turns markdown specs into validated pull requests with self-repairing agents, run quality scoring, and evidence-backed scorecards. No babysitting.
-
-Write a spec. An agent implements it, runs `make lint` / `make test` / `make build` with self-repair, scores the output, and opens a PR with a scorecard. You review one PR instead of babysitting ten agent sessions.
-
-Getting started, quickstart, and CLI reference live at [docs.usezombie.com](https://docs.usezombie.com).
+- **Agent sandboxes** — spin isolated sandboxes attached to your git repo, one per run
+- **Spec to PR** — submit a markdown spec, an agent implements it, self-repairs until lint/test/build pass, and opens a PR
+- **Scorecards** — every run produces an evidence-backed scorecard so you know exactly what passed, what was repaired, and why
 
 ## Stack
 
@@ -46,7 +48,9 @@ Getting started, quickstart, and CLI reference live at [docs.usezombie.com](http
 
 ## Playbooks
 
-For the canonical playbook structure, execution order, and gate contracts, see [playbooks/README.md](playbooks/README.md).
+Playbooks are written to be understandable and executable by both humans and agents — each directory contains a markdown doc (`001_playbook.md`) and numbered shell scripts (`00_gate.sh`, `01_*.sh`, `02_*.sh`) that run in order.
+
+See [playbooks/README.md](playbooks/README.md) for the full index and execution order.
 
 ## Local development
 
