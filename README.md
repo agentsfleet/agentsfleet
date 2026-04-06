@@ -37,7 +37,7 @@ The harder problem nobody is solving: **operators are still babysitting agents l
 
 So we pivoted. Code is cattle now — stamp a spec, spin a sandbox, get a PR. If it fails, kill it and respawn. No coddling.
 
-## What it does
+## What zombies do now
 
 - **Sandboxed runs** — isolated sandbox per run, attached to your repo, nuked after
 - **Spec to PR** — submit a markdown spec, an agent implements it, self-repairs until `make lint` / `make test` / `make build` pass, and opens a PR
