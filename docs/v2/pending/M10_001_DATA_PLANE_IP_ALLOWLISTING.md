@@ -1,14 +1,14 @@
-# M29_001: Data-Plane IP Allowlisting
+# M10_001: Data-Plane IP Allowlisting
 
-**Prototype:** v1.0.0
-**Milestone:** M29
+**Prototype:** v2.0.0
+**Milestone:** M10
 **Workstream:** 001
-**Date:** Apr 05, 2026
-**Status:** IN_PROGRESS
-**Branch:** feat/m29-data-plane-ip-allowlisting
+**Date:** Apr 06, 2026
+**Status:** PENDING
+**Branch:** —
 **Priority:** P1 — close a high-impact credential-exposure gap on the production data plane
 **Batch:** B1
-**Depends on:** M7_001 (Fly.io deploy pipeline green), M7_005 (network connectivity baseline)
+**Depends on:** v2 credential firewall (M1), Fly.io deploy pipeline green, network connectivity baseline
 
 ---
 
@@ -21,6 +21,12 @@
 **Solution summary:** Define a deterministic IP allowlist contract backed by 1Password vault, implement an idempotent CLI-first apply+verify workflow for both PlanetScale and Upstash (with strict dev/prod separation), and harden with break-glass and rotation runbooks. The outcome is that only known infrastructure egress IPs can reach data-plane services.
 
 ---
+
+## 0.0 Credential Gate
+
+**Status:** DONE
+
+Gate scripts for egress IP inventory and provider target separation implemented at `playbooks/010_data_plane_ip_allowlisting/` (`00_gate.sh`, `01_egress_inventory.sh`, `02_provider_targets.sh`). Playbook refactor complete — all gates migrated to numbered directory convention, `playbooks/gates/` removed, CI updated.
 
 ## 1.0 Provider Allowlist Contract
 
@@ -90,7 +96,7 @@ Harden operator workflow to prevent lockout and make recovery explicit.
 
 **Dimensions (test blueprints):**
 - 3.1 PENDING
-  - target: `docs/runbooks/allowlist-break-glass.md`
+  - target: `docs/operator/operations/allowlist-break-glass.md`
   - input: emergency access scenario (e.g., new IP needed immediately)
   - expected: runbook defines: temporary one-time IP entry with mandatory expiration/removal, audit trail via vault, and post-incident cleanup steps
   - test_type: contract
@@ -105,7 +111,7 @@ Harden operator workflow to prevent lockout and make recovery explicit.
   - expected: evidence file contains: successful connection logs from allowlisted hosts, denied connection logs from non-allowlisted source, timestamps, and provider names
   - test_type: contract
 - 3.4 PENDING
-  - target: `docs/runbooks/allowlist-ip-rotation.md`
+  - target: `docs/operator/operations/allowlist-ip-rotation.md`
   - input: IP change scenario (Fly egress change, worker host replacement, DR failover)
   - expected: runbook covers: vault update → apply → verify cycle for each rotation scenario; no manual provider console steps
   - test_type: contract

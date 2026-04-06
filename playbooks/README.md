@@ -11,7 +11,8 @@ playbooks/
 │   ├── 001_playbook.md
 │   └── 001_gate.sh
 ├── 003_priming_infra/
-│   └── 001_playbook.md
+│   ├── 001_playbook.md
+│   └── 002_workers_and_handoff.md
 ├── 004_deploy_dev/
 │   └── 001_playbook.md
 ├── 005_deploy_prod/
@@ -45,10 +46,15 @@ playbooks/
     │   ├── section-1-ssh-access.sh
     │   ├── section-2-host-readiness.sh
     │   └── section-3-deploy-readiness.sh
-    └── m7_002/
+    ├── m7_002/
+    │   ├── run.sh
+    │   ├── section-1-vault-sync.sh
+    │   └── section-2-service-health.sh
+    └── m28_001/
         ├── run.sh
-        ├── section-1-vault-sync.sh
-        └── section-2-service-health.sh
+        ├── section-1-credentials.sh
+        ├── section-2-prometheus.sh
+        └── section-3-dashboard.sh
 ```
 
 ## Playbooks vs Gates

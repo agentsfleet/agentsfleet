@@ -35,7 +35,7 @@ jobs:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
           VAULT_DEV: ${{ vars.VAULT_DEV }}
           VAULT_PROD: ${{ vars.VAULT_PROD }}
-        run: ./playbooks/gates/check-credentials.sh
+        run: ./playbooks/002_preflight/00_gate.sh
 
   # ── 1a. Compile linux/amd64 binaries (Alpine — musl-native static OpenSSL) ─
   # Build inside Alpine so static OpenSSL archives are musl-compatible.
@@ -248,7 +248,7 @@ jobs:
           tags: tag:ci
 
       - name: Verify worker host readiness
-        run: SECTIONS=3 VAULT_DEV="${{ vars.VAULT_DEV }}" ./playbooks/gates/m4_001/run.sh
+        run: VAULT_DEV="${{ vars.VAULT_DEV }}" ./playbooks/006_worker_bootstrap_dev/03_deploy_readiness.sh
         env:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
 

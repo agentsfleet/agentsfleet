@@ -46,16 +46,7 @@ Getting started, quickstart, and CLI reference live at [docs.usezombie.com](http
 
 ## Playbooks
 
-- [001 Bootstrap](playbooks/001_bootstrap/001_playbook.md)
-- [002 Preflight](playbooks/002_preflight/001_playbook.md)
-- [003 Priming Infra](playbooks/003_priming_infra/001_playbook.md)
-- [004 Deploy Dev](playbooks/004_deploy_dev/001_playbook.md)
-- [005 Deploy Prod](playbooks/005_deploy_prod/001_playbook.md)
-- [006 Worker Bootstrap Dev](playbooks/006_worker_bootstrap_dev/001_playbook.md)
-- [007 Worker Bootstrap Prod](playbooks/007_worker_bootstrap_prod/001_playbook.md)
-- [008 Credential Rotation Dev](playbooks/008_credential_rotation_dev/001_playbook.md)
-- [009 Grafana Observability](playbooks/009_grafana_observability/001_playbook.md)
-- [010 Data Plane IP Allowlisting](playbooks/010_data_plane_ip_allowlisting/001_playbook.md)
+For the canonical playbook structure, execution order, and gate contracts, see [playbooks/README.md](playbooks/README.md).
 
 ## Local development
 
