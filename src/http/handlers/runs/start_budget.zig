@@ -5,9 +5,7 @@
 /// is package-private and tested here.
 const std = @import("std");
 const pg = @import("pg");
-
-// M17_001 §2: default per-run token ceiling used for workspace budget projection.
-const DEFAULT_RUN_MAX_TOKENS: i64 = 100_000;
+const defaults = @import("../../../types/defaults.zig");
 
 /// Core computation: given any epoch-ms timestamp, return the epoch-ms for
 /// midnight UTC on the first day of that timestamp's calendar month.
@@ -56,7 +54,7 @@ pub fn enforceWorkspaceMonthlyBudget(conn: *pg.Conn, workspace_id: []const u8) !
     const used: i64 = usage_row.get(i64, 0) catch 0;
     try usage_q.drain();
 
-    return used + DEFAULT_RUN_MAX_TOKENS > budget;
+    return used + @as(i64, @intCast(defaults.DEFAULT_RUN_MAX_TOKENS)) > budget;
 }
 
 // M17_002 §2.3: epoch boundary unit tests — no DB required.

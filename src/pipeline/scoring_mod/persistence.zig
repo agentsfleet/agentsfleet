@@ -1,6 +1,7 @@
 const std = @import("std");
 const pg = @import("pg");
 const obs_log = @import("../../observability/logging.zig");
+const defaults = @import("../../types/defaults.zig");
 const id_format = @import("../../types/id_format.zig");
 const types = @import("types.zig");
 const math = @import("math.zig");
@@ -11,7 +12,6 @@ const context = @import("context.zig");
 
 const log = std.log.scoped(.scoring);
 
-const DEFAULT_SCORING_CONTEXT_MAX_TOKENS: u32 = 2048;
 const MIN_SCORING_CONTEXT_MAX_TOKENS: u32 = 512;
 const MAX_SCORING_CONTEXT_MAX_TOKENS: u32 = 8192;
 
@@ -97,7 +97,7 @@ pub fn queryScoringConfig(
 }
 
 fn clampScoringContextMaxTokens(raw_value: i32) u32 {
-    if (raw_value <= 0) return DEFAULT_SCORING_CONTEXT_MAX_TOKENS;
+    if (raw_value <= 0) return defaults.DEFAULT_SCORING_CONTEXT_MAX_TOKENS;
     const normalized: u32 = @intCast(raw_value);
     return @min(MAX_SCORING_CONTEXT_MAX_TOKENS, @max(MIN_SCORING_CONTEXT_MAX_TOKENS, normalized));
 }

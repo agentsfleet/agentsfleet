@@ -30,6 +30,7 @@ CREATE TABLE core.workspaces (
     created_by                TEXT,
     version                   BIGINT NOT NULL DEFAULT 1,
     -- M17_001 §2.1: monthly token budget (tokens per calendar month)
+    -- Canonical constant: src/types/defaults.zig#DEFAULT_WORKSPACE_MONTHLY_TOKEN_BUDGET
     monthly_token_budget      BIGINT NOT NULL DEFAULT 10000000,
     created_at                BIGINT NOT NULL,
     updated_at                BIGINT NOT NULL

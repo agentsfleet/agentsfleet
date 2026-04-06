@@ -11,6 +11,7 @@ const trace_ctx = @import("../../../observability/trace.zig");
 const obs_log = @import("../../../observability/logging.zig");
 const posthog_events = @import("../../../observability/posthog_events.zig");
 const profile_linkage = @import("../../../audit/profile_linkage.zig");
+const defaults = @import("../../../types/defaults.zig");
 const id_format = @import("../../../types/id_format.zig");
 const error_codes = @import("../../../errors/codes.zig");
 const start_dedup = @import("start_dedup.zig");
@@ -347,12 +348,27 @@ pub fn handleStartRun(ctx: *common.Context, req: *httpz.Request, res: *httpz.Res
         \\   dedup_key, max_repair_loops, max_tokens, max_wall_time_seconds, created_at, updated_at)
         \\SELECT $1, $2, $3, tenant_id, 'SPEC_QUEUED', 1, $4, $5, $6, $7,
         \\       $8, $9, (SELECT wap.config_version_id FROM workspace_active_config wap WHERE wap.workspace_id = $2),
-        \\       $10, 3, 100000, 600, $11, $11
+        \\       $10, $11, $12, $13, $14, $14
         \\FROM workspaces WHERE workspace_id = $2
         \\ON CONFLICT (workspace_id, idempotency_key) DO UPDATE
         \\SET updated_at = runs.updated_at
         \\RETURNING run_id, state, attempt, run_snapshot_version, tenant_id, (xmax = 0) AS inserted
-    , .{ run_id, rval.workspace_id, resolved_spec_id, rval.mode, rval.requested_by, rval.idempotency_key, req_id, trace_id, branch, dedup_key, now_ms }) catch {
+    , .{
+        run_id,
+        rval.workspace_id,
+        resolved_spec_id,
+        rval.mode,
+        rval.requested_by,
+        rval.idempotency_key,
+        req_id,
+        trace_id,
+        branch,
+        dedup_key,
+        defaults.DEFAULT_RUN_MAX_REPAIR_LOOPS,
+        defaults.DEFAULT_RUN_MAX_TOKENS,
+        defaults.DEFAULT_RUN_MAX_WALL_TIME_SECONDS,
+        now_ms,
+    }) catch {
         _ = conn.exec("ROLLBACK", .{}) catch {};
         common.internalOperationError(res, "Failed to create run", req_id);
         return;

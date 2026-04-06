@@ -4,7 +4,7 @@
 **Milestone:** M31
 **Workstream:** 002
 **Date:** Apr 06, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Branch:** feat/m31-schema-default-constants
 **Priority:** P2 — consistency debt; wrong default drift would silently change runtime behavior at enqueue/provision time
 **Batch:** B2
@@ -24,27 +24,27 @@
 
 ## 1.0 Consolidate Run Execution Defaults
 
-**Status:** PENDING
+**Status:** DONE
 
 The run-enforcement defaults currently live in `schema/002_core_workflow.sql` and are also duplicated in runtime code paths that enqueue runs or recover values from the database. This section centralizes them.
 
 **Dimensions (test blueprints):**
-- 1.1 PENDING
+- 1.1 DONE
   - target: `src/types/defaults.zig`
   - input: `none`
   - expected: `exports named constants for run defaults with exact values: max_repair_loops=3, max_tokens=100000, max_wall_time_seconds=600`
   - test_type: unit
-- 1.2 PENDING
+- 1.2 DONE
   - target: `src/http/handlers/runs/start.zig:handleStartRun`
   - input: `run creation request that relies on DB defaults for run enforcement fields`
   - expected: `any literal 3/100000/600 tied to run defaults is replaced by named constants from the shared defaults module`
   - test_type: contract
-- 1.3 PENDING
+- 1.3 DONE
   - target: `src/pipeline/worker_claim.zig:processNextRun`
   - input: `row decoding where max_wall_time_seconds or max_repair_loops fallback path is exercised`
   - expected: `fallback path uses the shared constants instead of numeric literals`
   - test_type: unit
-- 1.4 PENDING
+- 1.4 DONE
   - target: `schema/002_core_workflow.sql`
   - input: `DDL review of core.runs defaults`
   - expected: `DEFAULT 3`, `DEFAULT 100000`, and `DEFAULT 600` remain unchanged but each has an adjacent comment naming the Zig constant source of truth`
@@ -54,22 +54,22 @@ The run-enforcement defaults currently live in `schema/002_core_workflow.sql` an
 
 ## 2.0 Consolidate Workspace Budget Default
 
-**Status:** PENDING
+**Status:** DONE
 
 The free-tier monthly token budget default now lives in `schema/001_core_foundation.sql` after the `M31_001` split. Runtime budget/provisioning code must reference the same default name.
 
 **Dimensions (test blueprints):**
-- 2.1 PENDING
+- 2.1 DONE
   - target: `src/types/defaults.zig`
   - input: `none`
   - expected: `exports named constant for workspace monthly token budget with exact value 10000000`
   - test_type: unit
-- 2.2 PENDING
+- 2.2 DONE
   - target: `schema/001_core_foundation.sql`
   - input: `DDL review of core.workspaces.monthly_token_budget`
   - expected: `DEFAULT 10000000` remains unchanged and has an adjacent comment naming the Zig constant source of truth`
   - test_type: contract
-- 2.3 PENDING
+- 2.3 DONE
   - target: `src/http/handlers/workspaces_lifecycle.zig` or other provisioning path that creates workspaces
   - input: `workspace creation path review`
   - expected: `if the budget is set in application code, it uses the shared constant; if the DB default is relied on, no duplicate literal remains in touched runtime code`
@@ -79,22 +79,22 @@ The free-tier monthly token budget default now lives in `schema/001_core_foundat
 
 ## 3.0 Consolidate Entitlement Scoring Context Default
 
-**Status:** PENDING
+**Status:** DONE
 
 The entitlement scoring context default is partially centralized today, but the spec must reflect the actual file after schema partitioning and close the remaining duplication gap.
 
 **Dimensions (test blueprints):**
-- 3.1 PENDING
+- 3.1 DONE
   - target: `src/types/defaults.zig` and `src/pipeline/scoring_mod/persistence.zig`
   - input: `none`
   - expected: `scoring_context_max_tokens default is defined once in the shared defaults module and consumed by scoring persistence instead of maintaining a private duplicate constant`
   - test_type: unit
-- 3.2 PENDING
+- 3.2 DONE
   - target: `schema/014_workspace_entitlements.sql`
   - input: `DDL review of billing.workspace_entitlements.scoring_context_max_tokens`
   - expected: `DEFAULT 2048` remains unchanged and has an adjacent comment naming the Zig constant source of truth`
   - test_type: contract
-- 3.3 PENDING
+- 3.3 DONE
   - target: `src/http/handlers/workspaces_billing.zig`, `src/pipeline/scoring_mod/types.zig`, and touched tests`
   - input: `paths that assume default scoring context token count`
   - expected: `new default usage points reference the shared constant or intentionally rely on DB state; no new magic 2048 literals are introduced in application code`
@@ -104,22 +104,22 @@ The entitlement scoring context default is partially centralized today, but the 
 
 ## 4.0 Drift Detection and Documentation
 
-**Status:** PENDING
+**Status:** DONE
 
 This workstream is only complete if future edits cannot silently change one side without the other.
 
 **Dimensions (test blueprints):**
-- 4.1 PENDING
+- 4.1 DONE
   - target: `src/* test module for defaults parity`
   - input: `compile-time or unit-level assertions over shared constants`
   - expected: `tests fail if any shared constant value changes without updating the parity expectations`
   - test_type: unit
-- 4.2 PENDING
+- 4.2 DONE
   - target: `docs/contributing/SCHEMA_CONVENTIONS.md`
   - input: `schema default policy review`
   - expected: `document states that schema-backed numeric defaults require a named Zig constant when reused in runtime logic`
   - test_type: contract
-- 4.3 PENDING
+- 4.3 DONE
   - target: `repo-wide grep over touched default values`
   - input: `search for bare literals 3, 100000, 600, 10000000, 2048 in context-specific code paths`
   - expected: `only schema DDL, the shared defaults module, and test fixtures with intentional local override cases retain these values`
@@ -129,7 +129,7 @@ This workstream is only complete if future edits cannot silently change one side
 
 ## 5.0 Interfaces
 
-**Status:** PENDING
+**Status:** DONE
 
 Lock the shared default API surface before implementation.
 
@@ -172,7 +172,7 @@ pub const DEFAULT_SCORING_CONTEXT_MAX_TOKENS: u32 = 2048;
 
 ## 6.0 Failure Modes
 
-**Status:** PENDING
+**Status:** DONE
 
 | Failure | Trigger | System behavior | User observes |
 |---------|---------|----------------|---------------|
@@ -189,7 +189,7 @@ pub const DEFAULT_SCORING_CONTEXT_MAX_TOKENS: u32 = 2048;
 
 ## 7.0 Implementation Constraints (Enforceable)
 
-**Status:** PENDING
+**Status:** DONE
 
 | Constraint | How to verify |
 |-----------|---------------|
@@ -203,7 +203,7 @@ pub const DEFAULT_SCORING_CONTEXT_MAX_TOKENS: u32 = 2048;
 
 ## 8.0 Test Specification
 
-**Status:** PENDING
+**Status:** DONE
 
 ### Unit Tests
 
@@ -245,23 +245,23 @@ pub const DEFAULT_SCORING_CONTEXT_MAX_TOKENS: u32 = 2048;
 
 | Command | Purpose | Evidence placeholder |
 |---------|---------|----------------------|
-| `make test` | unit/integration validation | PENDING |
-| `make test-integration-db` | DB-backed default behavior validation | PENDING |
-| `make lint` | compile/lint validation | PENDING |
-| `rg -n "Canonical constant:" schema/001_core_foundation.sql schema/002_core_workflow.sql schema/014_workspace_entitlements.sql` | DDL linkage verification | PENDING |
+| `make test` | unit/integration validation | PASS |
+| `make test-integration-db` | DB-backed default behavior validation | PASS |
+| `make lint` | compile/lint validation | PASS |
+| `rg -n "Canonical constant:" schema/001_core_foundation.sql schema/002_core_workflow.sql schema/014_workspace_entitlements.sql` | DDL linkage verification | PASS — 5 canonical comment references found |
 
 ---
 
 ## 10.0 Acceptance Criteria
 
-**Status:** PENDING
+**Status:** DONE
 
-- [ ] 10.1 Active schema defaults in `schema/001_core_foundation.sql`, `schema/002_core_workflow.sql`, and `schema/014_workspace_entitlements.sql` are the only DDL files referenced by this workstream
-- [ ] 10.2 All five tracked schema-backed numeric defaults have named Zig constants in one shared module
-- [ ] 10.3 Touched runtime code paths use the shared constants instead of raw literals
-- [ ] 10.4 Active DDL defaults include comments naming the canonical Zig constant location
-- [ ] 10.5 Tests prove the Zig constants still match the schema defaults
-- [ ] 10.6 `make test` and `make test-integration-db` pass
+- [x] 10.1 Active schema defaults in `schema/001_core_foundation.sql`, `schema/002_core_workflow.sql`, and `schema/014_workspace_entitlements.sql` are the only DDL files referenced by this workstream
+- [x] 10.2 All five tracked schema-backed numeric defaults have named Zig constants in one shared module
+- [x] 10.3 Touched runtime code paths use the shared constants instead of raw literals
+- [x] 10.4 Active DDL defaults include comments naming the canonical Zig constant location
+- [x] 10.5 Tests prove the Zig constants still match the schema defaults
+- [x] 10.6 `make test` and `make test-integration-db` pass
 
 ---
 

@@ -227,6 +227,7 @@ test {
     _ = @import("proposals_guard_test.zig");
     _ = @import("proposals_e2e_test.zig");
     _ = @import("scoring_test.zig");
+    _ = @import("scoring_defaults_test.zig");
     _ = @import("billing_gate_scoring_test.zig");
     _ = @import("scoring_mod/resource_score_test.zig");
 }
