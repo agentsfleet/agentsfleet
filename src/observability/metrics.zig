@@ -4,6 +4,7 @@ const std = @import("std");
 const scoring = @import("../pipeline/scoring.zig");
 const mc = @import("metrics_counters.zig");
 const mr = @import("metrics_render.zig");
+const mw = @import("metrics_workspace.zig");
 const em = @import("../executor/executor_metrics.zig");
 
 pub const DurationBuckets = mc.DurationBuckets;
@@ -49,6 +50,9 @@ pub const incGateRepairExhausted = mc.incGateRepairExhausted;
 pub const incRunLimitTokenBudgetExceeded = mc.incRunLimitTokenBudgetExceeded;
 pub const incRunLimitWallTimeExceeded = mc.incRunLimitWallTimeExceeded;
 pub const incRunLimitRepairLoopsExhausted = mc.incRunLimitRepairLoopsExhausted;
+// M28_001 §4.2
+pub const observeGateRepairLoopsPerRun = mc.observeGateRepairLoopsPerRun;
+// M21_001
 pub const incInterruptQueued = mc.incInterruptQueued;
 pub const incInterruptInstant = mc.incInterruptInstant;
 pub const incInterruptFallback = mc.incInterruptFallback;
@@ -66,6 +70,13 @@ pub const incOrphanNoAgentProfile = mc.incOrphanNoAgentProfile;
 pub const setReconcileRunning = mc.setReconcileRunning;
 
 pub const renderPrometheus = mr.renderPrometheus;
+
+// M28_001 §2.0: Per-workspace metrics.
+pub const wsAddTokens = mw.addTokens;
+pub const wsIncRunsCompleted = mw.incRunsCompleted;
+pub const wsIncRunsBlocked = mw.incRunsBlocked;
+pub const wsIncGateRepairLoops = mw.incGateRepairLoops;
+pub const wsRenderPrometheus = mw.renderPrometheus;
 
 // Executor metrics re-exports (§5.2).
 pub const incExecutorSessionsCreated = em.incExecutorSessionsCreated;

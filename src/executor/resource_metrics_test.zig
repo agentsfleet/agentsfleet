@@ -19,8 +19,12 @@ const Session = session_mod.Session;
 
 fn testCorrelation() types.CorrelationContext {
     return .{
-        .trace_id = "t", .run_id = "r", .workspace_id = "w",
-        .stage_id = "s", .role_id = "echo", .skill_id = "echo",
+        .trace_id = "t",
+        .run_id = "r",
+        .workspace_id = "w",
+        .stage_id = "s",
+        .role_id = "echo",
+        .skill_id = "echo",
     };
 }
 

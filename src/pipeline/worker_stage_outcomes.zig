@@ -166,6 +166,7 @@ pub fn handleDoneOutcome(o: DoneOutcomeCtx) !void {
         posthog_events.trackRunCompleted(o.cfg.posthog, posthog_events.distinctIdOrSystem(o.ctx.requested_by), o.ctx.run_id, o.ctx.workspace_id, "passed", o.total_wall_seconds * 1000);
         metrics.observeRunTotalWallSeconds(o.total_wall_seconds);
         metrics.incRunsCompleted();
+        metrics.wsIncRunsCompleted(o.ctx.workspace_id);
         return;
     };
 
@@ -181,7 +182,10 @@ pub fn handleDoneOutcome(o: DoneOutcomeCtx) !void {
     events.emit("run_done", o.ctx.run_id, done_detail_slice);
     posthog_events.trackRunCompleted(o.cfg.posthog, posthog_events.distinctIdOrSystem(o.ctx.requested_by), o.ctx.run_id, o.ctx.workspace_id, "passed", o.total_wall_seconds * 1000);
     metrics.observeRunTotalWallSeconds(o.total_wall_seconds);
+    // M28_001 §4.2: record gate loop distribution for runs that entered gate repair.
+    if (o.gate_loop_count > 0) metrics.observeGateRepairLoopsPerRun(o.gate_loop_count);
     metrics.incRunsCompleted();
+    metrics.wsIncRunsCompleted(o.ctx.workspace_id);
 }
 
 pub const RetriesExhaustedCtx = struct {
@@ -209,6 +213,7 @@ pub fn handleRetriesExhaustedOutcome(o: RetriesExhaustedCtx) !void {
     posthog_events.trackRunFailed(o.cfg.posthog, posthog_events.distinctIdOrSystem(o.ctx.requested_by), o.ctx.run_id, o.ctx.workspace_id, "retries_exhausted", o.total_wall_seconds * 1000);
     metrics.observeRunTotalWallSeconds(o.total_wall_seconds);
     metrics.incRunsBlocked();
+    metrics.wsIncRunsBlocked(o.ctx.workspace_id);
 }
 
 pub const GateExhaustedCtx = struct {
@@ -242,7 +247,10 @@ pub fn handleGateExhaustedOutcome(o: GateExhaustedCtx) !void {
         o.total_wall_seconds * 1000,
     );
     metrics.observeRunTotalWallSeconds(o.total_wall_seconds);
+    // M28_001 §4.2: record gate loop distribution for exhausted runs.
+    if (o.total_repair_loops > 0) metrics.observeGateRepairLoopsPerRun(o.total_repair_loops);
     metrics.incRunsBlocked();
+    metrics.wsIncRunsBlocked(o.ctx.workspace_id);
 }
 
 /// Handles the .blocked terminal outcome. Caller must `return` after this.
@@ -269,4 +277,5 @@ pub fn handleBlockedOutcome(o: BlockedOutcomeCtx) !void {
     );
     metrics.observeRunTotalWallSeconds(o.total_wall_seconds);
     metrics.incRunsBlocked();
+    metrics.wsIncRunsBlocked(o.ctx.workspace_id);
 }

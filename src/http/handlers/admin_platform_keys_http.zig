@@ -3,6 +3,7 @@ const httpz = @import("httpz");
 const pg = @import("pg");
 const common = @import("common.zig");
 const error_codes = @import("../../errors/codes.zig");
+const id_format = @import("../../types/id_format.zig");
 
 const log = std.log.scoped(.http);
 
@@ -14,7 +15,7 @@ const PlatformKeyRow = struct {
     provider: []const u8,
     source_workspace_id: []const u8,
     active: bool,
-    updated_at: []const u8,
+    updated_at: i64,
 };
 
 // ── PUT /v1/admin/platform-keys ─────────────────────────────────────────────
@@ -60,6 +61,12 @@ pub fn handlePutAdminPlatformKey(
     }
     if (!common.requireUuidV7Id(res, req_id, input.source_workspace_id, "source_workspace_id")) return;
 
+    const key_id = id_format.generatePlatformLlmKeyId(alloc) catch {
+        common.internalOperationError(res, "Failed to generate platform key id", req_id);
+        return;
+    };
+    const now_ms = std.time.milliTimestamp();
+
     const conn = ctx.pool.acquire() catch {
         common.internalDbUnavailable(res, req_id);
         return;
@@ -84,13 +91,13 @@ pub fn handlePutAdminPlatformKey(
     }
 
     _ = conn.exec(
-        \\INSERT INTO platform_llm_keys (provider, source_workspace_id, active, updated_at)
-        \\VALUES ($1, $2, true, now())
+        \\INSERT INTO core.platform_llm_keys (id, provider, source_workspace_id, active, created_at, updated_at)
+        \\VALUES ($1, $2, $3, true, $4, $4)
         \\ON CONFLICT (provider) DO UPDATE
         \\SET source_workspace_id = EXCLUDED.source_workspace_id,
         \\    active = true,
-        \\    updated_at = now()
-    , .{ input.provider, input.source_workspace_id }) catch {
+        \\    updated_at = EXCLUDED.updated_at
+    , .{ key_id, input.provider, input.source_workspace_id, now_ms }) catch {
         common.internalOperationError(res, "Failed to upsert platform key", req_id);
         return;
     };
@@ -137,8 +144,8 @@ pub fn handleDeleteAdminPlatformKey(
     defer ctx.pool.release(conn);
 
     _ = conn.exec(
-        "UPDATE platform_llm_keys SET active = false, updated_at = now() WHERE provider = $1",
-        .{provider},
+        "UPDATE core.platform_llm_keys SET active = false, updated_at = $1 WHERE provider = $2",
+        .{ std.time.milliTimestamp(), provider },
     ) catch {
         common.internalOperationError(res, "Failed to deactivate platform key", req_id);
         return;
@@ -179,7 +186,7 @@ pub fn handleGetAdminPlatformKeys(
     defer ctx.pool.release(conn);
 
     var q = conn.query(
-        "SELECT provider, source_workspace_id, active, updated_at FROM platform_llm_keys ORDER BY provider",
+        "SELECT provider, source_workspace_id, active, updated_at FROM core.platform_llm_keys ORDER BY provider",
         .{},
     ) catch {
         common.internalOperationError(res, "Failed to query platform keys", req_id);
@@ -198,7 +205,7 @@ pub fn handleGetAdminPlatformKeys(
         const prov = alloc.dupe(u8, row.get([]u8, 0) catch continue) catch continue;
         const src_ws = alloc.dupe(u8, row.get([]u8, 1) catch continue) catch continue;
         const active = row.get(bool, 2) catch continue;
-        const updated_at = alloc.dupe(u8, row.get([]u8, 3) catch continue) catch continue;
+        const updated_at = row.get(i64, 3) catch continue;
         rows.append(alloc, .{
             .provider = prov,
             .source_workspace_id = src_ws,

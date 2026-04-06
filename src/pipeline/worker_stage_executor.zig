@@ -32,6 +32,12 @@ const log = std.log.scoped(.worker);
 pub const ExecuteConfig = worker_stage_types.ExecuteConfig;
 pub const RunContext = worker_stage_types.RunContext;
 
+// M28_001: OTel span attribute values for run.outcome.
+const RUN_OUTCOME_DONE = "done";
+const RUN_OUTCOME_BLOCKED = "blocked";
+const RUN_OUTCOME_CANCELLED = "cancelled";
+const RUN_OUTCOME_ERROR = "error";
+
 /// Resolve the LLM API key for a run (M16_004).
 /// Resolution order:
 ///   1. Workspace BYOK: {provider}_api_key from vault.secrets.
@@ -195,8 +201,10 @@ fn dispatchViaExecutor(
     };
 }
 
+/// M28_001 §1.2: Emit a child span under the root run span.
 fn emitAgentSpan(
     run_ctx: worker_stage_types.RunContext,
+    root_span_id: [trace_mod.SPAN_ID_HEX_LEN]u8,
     stage_id: []const u8,
     actor_label: []const u8,
     result: agents.AgentResult,
@@ -209,7 +217,8 @@ fn emitAgentSpan(
     if (tid_len < trace_mod.TRACE_ID_HEX_LEN) @memset(tc.trace_id[tid_len..], '0');
     const child = trace_mod.TraceContext.generate();
     tc.span_id = child.span_id;
-    tc.parent_span_id = null;
+    // M28_001 §1.2: parent is the root run span, not null.
+    tc.parent_span_id = root_span_id;
 
     var span = otel_traces.buildSpan(tc, "agent.call", start_ns, end_ns);
     // M27_002 obs: run/workspace/agent/stage context for Tempo drill-down.
@@ -264,6 +273,11 @@ pub fn executeRun(
     const deadline_ms = std.time.milliTimestamp() + @as(i64, @intCast(cfg.run_timeout_ms));
     try worker_runtime.ensureRunActive(running, deadline_ms);
 
+    // M28_001 §1.1: Root span for the entire run — all agent/gate spans are children.
+    const run_start_ns: u64 = @intCast(std.time.nanoTimestamp());
+    const root_tc = trace_mod.TraceContext.generate();
+    var run_outcome_label: []const u8 = RUN_OUTCOME_ERROR;
+
     var run_arena = std.heap.ArenaAllocator.init(alloc);
     defer run_arena.deinit();
     const run_alloc = run_arena.allocator();
@@ -271,6 +285,33 @@ pub fn executeRun(
     var scoring_state = scoring.ScoringState{};
     var total_wall_seconds: u64 = 0;
     var total_tokens: u64 = 0;
+    // M28_001 §1.3: Close root span on every exit path with final attrs.
+    // Root span must use ctx.trace_id (same as children), not root_tc.trace_id,
+    // so Tempo groups them in the same waterfall.
+    defer {
+        const run_end_ns: u64 = @intCast(std.time.nanoTimestamp());
+        var root_span_tc: trace_mod.TraceContext = undefined;
+        const rtid_len = @min(ctx.trace_id.len, trace_mod.TRACE_ID_HEX_LEN);
+        @memcpy(root_span_tc.trace_id[0..rtid_len], ctx.trace_id[0..rtid_len]);
+        if (rtid_len < trace_mod.TRACE_ID_HEX_LEN) @memset(root_span_tc.trace_id[rtid_len..], '0');
+        root_span_tc.span_id = root_tc.span_id;
+        root_span_tc.parent_span_id = null;
+        var root_span = otel_traces.buildSpan(root_span_tc, "run.execute", run_start_ns, run_end_ns);
+        _ = otel_traces.addAttr(&root_span, "run.id", ctx.run_id);
+        _ = otel_traces.addAttr(&root_span, "workspace.id", ctx.workspace_id);
+        _ = otel_traces.addAttr(&root_span, "agent.id", ctx.agent_id);
+        var attempt_buf: [10]u8 = undefined;
+        const attempt_str = std.fmt.bufPrint(&attempt_buf, "{d}", .{ctx.attempt}) catch "0";
+        _ = otel_traces.addAttr(&root_span, "run.attempt", attempt_str);
+        _ = otel_traces.addAttr(&root_span, "run.outcome", run_outcome_label);
+        var tok_buf: [20]u8 = undefined;
+        const tok_str = std.fmt.bufPrint(&tok_buf, "{d}", .{total_tokens}) catch "0";
+        _ = otel_traces.addAttr(&root_span, "run.total_tokens", tok_str);
+        var wall_buf: [20]u8 = undefined;
+        const wall_str = std.fmt.bufPrint(&wall_buf, "{d}", .{total_wall_seconds}) catch "0";
+        _ = otel_traces.addAttr(&root_span, "run.total_wall_seconds", wall_str);
+        otel_traces.enqueueSpan(root_span);
+    }
     defer {
         // M27_001: populate resource metrics from executor before scoring.
         scoring_state.resource_metrics.wall_ms = total_wall_seconds * 1000;
@@ -413,8 +454,9 @@ pub fn executeRun(
     }, opRunStage, worker_runtime.retryOptionsForRun(@constCast(running), deadline_ms, 1, 1_000, 8_000, plan_stage.skill_id)) catch |err| return recordScoringFailure(&scoring_state, err);
     metrics.incAgentEchoCalls();
     metrics.addAgentTokensByActor(plan_binding.actor, plan_result.token_count);
+    metrics.wsAddTokens(ctx.workspace_id, plan_result.token_count);
     metrics.observeAgentDurationSeconds(plan_result.wall_seconds);
-    emitAgentSpan(ctx, plan_stage.stage_id, plan_binding.actor.label(), plan_result, plan_stage_start_ns);
+    emitAgentSpan(ctx, root_tc.span_id, plan_stage.stage_id, plan_binding.actor.label(), plan_result, plan_stage_start_ns);
 
     agents.emitNullclawRunEvent(
         ctx.run_id,
@@ -522,8 +564,9 @@ pub fn executeRun(
                 .orchestrator => {},
             }
             metrics.addAgentTokensByActor(binding.actor, stage_result.token_count);
+            metrics.wsAddTokens(ctx.workspace_id, stage_result.token_count);
             metrics.observeAgentDurationSeconds(stage_result.wall_seconds);
-            emitAgentSpan(ctx, stage.stage_id, binding.actor.label(), stage_result, stage_start_ns);
+            emitAgentSpan(ctx, root_tc.span_id, stage.stage_id, binding.actor.label(), stage_result, stage_start_ns);
             agents.emitNullclawRunEvent(ctx.run_id, ctx.request_id, ctx.trace_id, attempt, stage.stage_id, stage.role_id, binding.actor, stage_result);
             posthog_events.trackAgentCompleted(
                 cfg.posthog,
@@ -576,6 +619,7 @@ pub fn executeRun(
 
         switch (terminal) {
             .done => {
+                run_outcome_label = RUN_OUTCOME_DONE;
                 // M16_001: Run gate tools if profile defines them.
                 if (profile.gate_tools.len > 0) {
                     // Resolve the implement stage for repair turns (profile-driven, not hardcoded).
@@ -605,15 +649,21 @@ pub fn executeRun(
                         .max_wall_time_seconds = ctx.max_wall_time_seconds,
                         .run_created_at_ms = ctx.run_created_at_ms,
                         .attempt = ctx.attempt,
+                        .root_span_id = root_tc.span_id,
+                        .trace_id = ctx.trace_id,
                     });
                     defer {
                         for (gate_outcome.results.items) |r| r.deinit(run_alloc);
                         gate_outcome.results.deinit(run_alloc);
                     }
                     if (!gate_outcome.all_passed and gate_outcome.state_written) {
-                        // Limit exceeded or cancelled — state already transitioned by gate loop.
-                        // M17_001 §1.2: record scoring outcome and finalize billing.
+                        run_outcome_label = RUN_OUTCOME_CANCELLED;
                         scoring_state.outcome = .cancelled;
+                        // M28_001 §4.2: record histogram for exhausted gate runs
+                        // (handleGateExhaustedOutcome is skipped on this path).
+                        if (gate_outcome.total_repair_loops > 0) {
+                            metrics.observeGateRepairLoopsPerRun(gate_outcome.total_repair_loops);
+                        }
                         billing.finalizeRunForBilling(
                             run_alloc,
                             conn,
@@ -627,6 +677,7 @@ pub fn executeRun(
                         return;
                     }
                     if (!gate_outcome.all_passed) {
+                        run_outcome_label = RUN_OUTCOME_BLOCKED;
                         try worker_stage_outcomes.handleGateExhaustedOutcome(.{
                             .alloc = run_alloc,
                             .conn = conn,
@@ -685,6 +736,7 @@ pub fn executeRun(
                 return;
             },
             .blocked => {
+                run_outcome_label = RUN_OUTCOME_BLOCKED;
                 try worker_stage_outcomes.handleBlockedOutcome(.{
                     .alloc = run_alloc,
                     .conn = conn,
@@ -727,6 +779,7 @@ pub fn executeRun(
         }
     }
 
+    run_outcome_label = RUN_OUTCOME_BLOCKED;
     try worker_stage_outcomes.handleRetriesExhaustedOutcome(.{
         .alloc = run_alloc,
         .conn = conn,
@@ -780,7 +833,7 @@ fn testSetKek() void {
 
 fn testInsertFixtures(conn: *pg.Conn) !void {
     _ = try conn.exec(
-        "INSERT INTO core.tenants (tenant_id, name, api_key_hash, created_at) VALUES ($1, 'test-tenant', 'x', 0) ON CONFLICT (tenant_id) DO NOTHING",
+        "INSERT INTO core.tenants (tenant_id, name, api_key_hash, created_at, updated_at) VALUES ($1, 'test-tenant', 'x', 0, 0) ON CONFLICT (tenant_id) DO NOTHING",
         .{_test_tenant_id},
     );
     _ = try conn.exec(

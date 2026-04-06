@@ -127,7 +127,10 @@ fn startTestServer(alloc: std.mem.Allocator) !*TestServer {
     srv.ctx.auth_sessions = &srv.session_store;
     srv.ctx.worker_state = &srv.worker_state;
     srv.thread = try std.Thread.spawn(.{}, serverThread, .{ &srv.ctx, port });
-    errdefer { http_server.stop(); srv.thread.join(); }
+    errdefer {
+        http_server.stop();
+        srv.thread.join();
+    }
     try waitForServer(alloc, port);
     return srv;
 }
@@ -137,7 +140,10 @@ fn waitForServer(alloc: std.mem.Allocator, port: u16) !void {
     defer alloc.free(url);
     var i: usize = 0;
     while (i < 40) : (i += 1) {
-        const r = sendReq(alloc, url, .GET, null, null) catch { std.Thread.sleep(25 * std.time.ns_per_ms); continue; };
+        const r = sendReq(alloc, url, .GET, null, null) catch {
+            std.Thread.sleep(25 * std.time.ns_per_ms);
+            continue;
+        };
         defer r.deinit(alloc);
         if (r.status == 200) return;
         std.Thread.sleep(25 * std.time.ns_per_ms);
@@ -187,7 +193,7 @@ fn setupSeedData(conn: *pg.Conn) !void {
     _ = try conn.exec("DELETE FROM workspaces WHERE workspace_id IN ($1, $2)", .{ TEST_WS_ID, TEST_ADMIN_WS_ID });
     _ = try conn.exec("DELETE FROM tenants WHERE tenant_id = $1", .{TEST_TENANT_ID});
     _ = try conn.exec(
-        "INSERT INTO tenants (tenant_id, name, api_key_hash, created_at) VALUES ($1, 'M16_004 Test', 'x', $2)",
+        "INSERT INTO tenants (tenant_id, name, api_key_hash, created_at, updated_at) VALUES ($1, 'M16_004 Test', 'x', $2, $2)",
         .{ TEST_TENANT_ID, now_ms },
     );
     _ = try conn.exec(
@@ -212,7 +218,10 @@ fn cleanupSeedData(conn: *pg.Conn) void {
 test "integration: M16_004 admin platform key PUT→GET→DELETE lifecycle" {
     const alloc = std.testing.allocator;
     const srv = try startTestServer(alloc);
-    defer { srv.deinit(); alloc.destroy(srv); }
+    defer {
+        srv.deinit();
+        alloc.destroy(srv);
+    }
 
     const base = try std.fmt.allocPrint(alloc, "http://127.0.0.1:{d}/v1/admin/platform-keys", .{srv.port});
     defer alloc.free(base);
@@ -261,7 +270,10 @@ test "integration: M16_004 admin platform key PUT→GET→DELETE lifecycle" {
 test "integration: M16_004 admin platform key enforces admin role and validates input" {
     const alloc = std.testing.allocator;
     const srv = try startTestServer(alloc);
-    defer { srv.deinit(); alloc.destroy(srv); }
+    defer {
+        srv.deinit();
+        alloc.destroy(srv);
+    }
 
     const url = try std.fmt.allocPrint(alloc, "http://127.0.0.1:{d}/v1/admin/platform-keys", .{srv.port});
     defer alloc.free(url);
@@ -269,39 +281,74 @@ test "integration: M16_004 admin platform key enforces admin role and validates 
     defer alloc.free(valid_body);
 
     // T3: no token → 401
-    { const r = try sendReq(alloc, url, .PUT, null, valid_body); defer r.deinit(alloc); try std.testing.expectEqual(@as(u16, 401), r.status); }
+    {
+        const r = try sendReq(alloc, url, .PUT, null, valid_body);
+        defer r.deinit(alloc);
+        try std.testing.expectEqual(@as(u16, 401), r.status);
+    }
     // T3: user role → 403
-    { const r = try sendReq(alloc, url, .PUT, TOKEN_USER, valid_body); defer r.deinit(alloc); try std.testing.expectEqual(@as(u16, 403), r.status); try std.testing.expect(std.mem.indexOf(u8, r.body, error_codes.ERR_INSUFFICIENT_ROLE) != null); }
+    {
+        const r = try sendReq(alloc, url, .PUT, TOKEN_USER, valid_body);
+        defer r.deinit(alloc);
+        try std.testing.expectEqual(@as(u16, 403), r.status);
+        try std.testing.expect(std.mem.indexOf(u8, r.body, error_codes.ERR_INSUFFICIENT_ROLE) != null);
+    }
     // T3: operator role → 403 (admin-only endpoint)
-    { const r = try sendReq(alloc, url, .PUT, TOKEN_OPERATOR, valid_body); defer r.deinit(alloc); try std.testing.expectEqual(@as(u16, 403), r.status); }
+    {
+        const r = try sendReq(alloc, url, .PUT, TOKEN_OPERATOR, valid_body);
+        defer r.deinit(alloc);
+        try std.testing.expectEqual(@as(u16, 403), r.status);
+    }
     // T2: empty provider → 400
-    { const r = try sendReq(alloc, url, .PUT, TOKEN_ADMIN, "{\"provider\":\"\",\"source_workspace_id\":\"0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11\"}"); defer r.deinit(alloc); try std.testing.expectEqual(@as(u16, 400), r.status); }
+    {
+        const r = try sendReq(alloc, url, .PUT, TOKEN_ADMIN, "{\"provider\":\"\",\"source_workspace_id\":\"0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11\"}");
+        defer r.deinit(alloc);
+        try std.testing.expectEqual(@as(u16, 400), r.status);
+    }
     // T2: 33-char provider (over limit) → 400
-    { const long = "a" ** 33; const b = try std.fmt.allocPrint(alloc, "{{\"provider\":\"{s}\",\"source_workspace_id\":\"{s}\"}}", .{ long, TEST_WS_ID }); defer alloc.free(b); const r = try sendReq(alloc, url, .PUT, TOKEN_ADMIN, b); defer r.deinit(alloc); try std.testing.expectEqual(@as(u16, 400), r.status); }
+    {
+        const long = "a" ** 33;
+        const b = try std.fmt.allocPrint(alloc, "{{\"provider\":\"{s}\",\"source_workspace_id\":\"{s}\"}}", .{ long, TEST_WS_ID });
+        defer alloc.free(b);
+        const r = try sendReq(alloc, url, .PUT, TOKEN_ADMIN, b);
+        defer r.deinit(alloc);
+        try std.testing.expectEqual(@as(u16, 400), r.status);
+    }
     // T2: non-UUIDv7 source_workspace_id → 400
-    { const r = try sendReq(alloc, url, .PUT, TOKEN_ADMIN, "{\"provider\":\"kimi\",\"source_workspace_id\":\"not-a-uuid\"}"); defer r.deinit(alloc); try std.testing.expectEqual(@as(u16, 400), r.status); }
+    {
+        const r = try sendReq(alloc, url, .PUT, TOKEN_ADMIN, "{\"provider\":\"kimi\",\"source_workspace_id\":\"not-a-uuid\"}");
+        defer r.deinit(alloc);
+        try std.testing.expectEqual(@as(u16, 400), r.status);
+    }
     // T3: malformed JSON → 400
-    { const r = try sendReq(alloc, url, .PUT, TOKEN_ADMIN, "{bad json"); defer r.deinit(alloc); try std.testing.expectEqual(@as(u16, 400), r.status); }
+    {
+        const r = try sendReq(alloc, url, .PUT, TOKEN_ADMIN, "{bad json");
+        defer r.deinit(alloc);
+        try std.testing.expectEqual(@as(u16, 400), r.status);
+    }
     // T3: GET also enforces admin-only
-    { const r = try sendReq(alloc, url, .GET, TOKEN_OPERATOR, null); defer r.deinit(alloc); try std.testing.expectEqual(@as(u16, 403), r.status); }
+    {
+        const r = try sendReq(alloc, url, .GET, TOKEN_OPERATOR, null);
+        defer r.deinit(alloc);
+        try std.testing.expectEqual(@as(u16, 403), r.status);
+    }
 
     const conn = try srv.pool.acquire();
     defer srv.pool.release(conn);
     cleanupSeedData(conn);
 }
 
-// ── T1 + T8 + T12: Workspace BYOK lifecycle and key safety ───────────────────
-
 test "integration: M16_004 workspace BYOK credential lifecycle and key never in response" {
     setTestEncryptionKey();
     const alloc = std.testing.allocator;
     const srv = try startTestServer(alloc);
-    defer { srv.deinit(); alloc.destroy(srv); }
-
+    defer {
+        srv.deinit();
+        alloc.destroy(srv);
+    }
     const url = try std.fmt.allocPrint(alloc, "http://127.0.0.1:{d}/v1/workspaces/{s}/credentials/llm", .{ srv.port, TEST_WS_ID });
     defer alloc.free(url);
     const secret_key = "sk-ant-SUPER-SECRET-DO-NOT-LEAK-1234";
-
     // PUT: store key — T1
     {
         const b = try std.fmt.allocPrint(alloc, "{{\"provider\":\"anthropic\",\"api_key\":\"{s}\"}}", .{secret_key});
@@ -313,33 +360,26 @@ test "integration: M16_004 workspace BYOK credential lifecycle and key never in 
         try std.testing.expectEqual(@as(usize, 0), r.body.len);
     }
 
-    // GET: has_key=true, provider correct — T1 + T12
-    // T8: secret_key must NEVER appear in the response body
-    {
+    { // GET: has_key=true, provider correct, key never in response (T1+T8+T12)
         const r = try sendReq(alloc, url, .GET, TOKEN_OPERATOR, null);
         defer r.deinit(alloc);
         try std.testing.expectEqual(@as(u16, 200), r.status);
         try std.testing.expect(std.mem.indexOf(u8, r.body, "true") != null);
         try std.testing.expect(std.mem.indexOf(u8, r.body, "anthropic") != null);
-        // T8: the actual key value must not be in the response
         try std.testing.expect(std.mem.indexOf(u8, r.body, secret_key) == null);
         try std.testing.expect(std.mem.indexOf(u8, r.body, "sk-ant-") == null);
     }
 
-    // DELETE: remove key — T1
-    {
+    { // DELETE: remove key — T1
         const r = try sendReq(alloc, url, .DELETE, TOKEN_OPERATOR, null);
         defer r.deinit(alloc);
         try std.testing.expectEqual(@as(u16, 204), r.status);
     }
-
-    // GET after DELETE: has_key=false — T1 (fallback to platform / CredentialDenied path)
-    {
+    { // GET after DELETE: has_key=false — T1
         const r = try sendReq(alloc, url, .GET, TOKEN_OPERATOR, null);
         defer r.deinit(alloc);
         try std.testing.expectEqual(@as(u16, 200), r.status);
         try std.testing.expect(std.mem.indexOf(u8, r.body, "false") != null);
-        // T8: still no key material
         try std.testing.expect(std.mem.indexOf(u8, r.body, secret_key) == null);
     }
 
@@ -353,7 +393,10 @@ test "integration: M16_004 workspace BYOK credential lifecycle and key never in 
 test "integration: M16_004 workspace BYOK enforces operator role and workspace boundary" {
     const alloc = std.testing.allocator;
     const srv = try startTestServer(alloc);
-    defer { srv.deinit(); alloc.destroy(srv); }
+    defer {
+        srv.deinit();
+        alloc.destroy(srv);
+    }
 
     const url = try std.fmt.allocPrint(alloc, "http://127.0.0.1:{d}/v1/workspaces/{s}/credentials/llm", .{ srv.port, TEST_WS_ID });
     defer alloc.free(url);
@@ -363,32 +406,57 @@ test "integration: M16_004 workspace BYOK enforces operator role and workspace b
     const valid_body = "{\"provider\":\"anthropic\",\"api_key\":\"sk-test-1234\"}";
 
     // T3: no token → 401
-    { const r = try sendReq(alloc, url, .PUT, null, valid_body); defer r.deinit(alloc); try std.testing.expectEqual(@as(u16, 401), r.status); }
-    // T3: user role → 403
-    { const r = try sendReq(alloc, url, .PUT, TOKEN_USER, valid_body); defer r.deinit(alloc); try std.testing.expectEqual(@as(u16, 403), r.status); }
-    // T8 (cross-workspace): operator token scoped to TEST_WS_ID cannot access TEST_ADMIN_WS_ID
-    { const r = try sendReq(alloc, other_url, .PUT, TOKEN_OPERATOR, valid_body); defer r.deinit(alloc); try std.testing.expect(r.status == 403 or r.status == 400); }
+    {
+        const r = try sendReq(alloc, url, .PUT, null, valid_body);
+        defer r.deinit(alloc);
+        try std.testing.expectEqual(@as(u16, 401), r.status);
+    }
+    { // T3: user role → 403
+        const r = try sendReq(alloc, url, .PUT, TOKEN_USER, valid_body);
+        defer r.deinit(alloc);
+        try std.testing.expectEqual(@as(u16, 403), r.status);
+    }
+    { // T8: cross-workspace → 403 or 400
+        const r = try sendReq(alloc, other_url, .PUT, TOKEN_OPERATOR, valid_body);
+        defer r.deinit(alloc);
+        try std.testing.expect(r.status == 403 or r.status == 400);
+    }
     // T2: provider too long → 400
-    { const long = "a" ** 33; const b = try std.fmt.allocPrint(alloc, "{{\"provider\":\"{s}\",\"api_key\":\"sk-x\"}}", .{long}); defer alloc.free(b); const r = try sendReq(alloc, url, .PUT, TOKEN_OPERATOR, b); defer r.deinit(alloc); try std.testing.expectEqual(@as(u16, 400), r.status); }
-    // T2: api_key too long (257 chars) → 400
-    { const long_key = "sk-" ++ ("a" ** 254); const b = try std.fmt.allocPrint(alloc, "{{\"provider\":\"anthropic\",\"api_key\":\"{s}\"}}", .{long_key}); defer alloc.free(b); const r = try sendReq(alloc, url, .PUT, TOKEN_OPERATOR, b); defer r.deinit(alloc); try std.testing.expectEqual(@as(u16, 400), r.status); }
-    // T2: empty api_key → 400
-    { const r = try sendReq(alloc, url, .PUT, TOKEN_OPERATOR, "{\"provider\":\"anthropic\",\"api_key\":\"\"}"); defer r.deinit(alloc); try std.testing.expectEqual(@as(u16, 400), r.status); }
-    // T3: GET also enforces minimum operator role
-    { const r = try sendReq(alloc, url, .GET, TOKEN_USER, null); defer r.deinit(alloc); try std.testing.expectEqual(@as(u16, 403), r.status); }
+    {
+        const long = "a" ** 33;
+        const b = try std.fmt.allocPrint(alloc, "{{\"provider\":\"{s}\",\"api_key\":\"sk-x\"}}", .{long});
+        defer alloc.free(b);
+        const r = try sendReq(alloc, url, .PUT, TOKEN_OPERATOR, b);
+        defer r.deinit(alloc);
+        try std.testing.expectEqual(@as(u16, 400), r.status);
+    }
+    { // T2: api_key too long (257 chars) → 400
+        const long_key = "sk-" ++ ("a" ** 254);
+        const b = try std.fmt.allocPrint(alloc, "{{\"provider\":\"anthropic\",\"api_key\":\"{s}\"}}", .{long_key});
+        defer alloc.free(b);
+        const r = try sendReq(alloc, url, .PUT, TOKEN_OPERATOR, b);
+        defer r.deinit(alloc);
+        try std.testing.expectEqual(@as(u16, 400), r.status);
+    }
+    { // T2: empty api_key → 400
+        const r = try sendReq(alloc, url, .PUT, TOKEN_OPERATOR, "{\"provider\":\"anthropic\",\"api_key\":\"\"}");
+        defer r.deinit(alloc);
+        try std.testing.expectEqual(@as(u16, 400), r.status);
+    }
+    { // T3: GET enforces operator role
+        const r = try sendReq(alloc, url, .GET, TOKEN_USER, null);
+        defer r.deinit(alloc);
+        try std.testing.expectEqual(@as(u16, 403), r.status);
+    }
 
     const conn = try srv.pool.acquire();
     defer srv.pool.release(conn);
     cleanupSeedData(conn);
 }
-
-// ── T5: Concurrent admin platform key upserts are idempotent ──────────────────
-
 const ConcurrentPutCtx = struct {
     url: []const u8,
     body: []const u8,
     result: *u16,
-
     fn run(self: ConcurrentPutCtx) void {
         const r = sendReq(std.heap.page_allocator, self.url, .PUT, TOKEN_ADMIN, self.body) catch {
             self.result.* = 0;
@@ -399,32 +467,24 @@ const ConcurrentPutCtx = struct {
     }
 };
 
-test "integration: M16_004 concurrent platform key upserts are safe and idempotent" {
+test "integration: M16_004 concurrent platform key upserts are idempotent" {
     const alloc = std.testing.allocator;
     const srv = try startTestServer(alloc);
-    defer { srv.deinit(); alloc.destroy(srv); }
-
+    defer {
+        srv.deinit();
+        alloc.destroy(srv);
+    }
     const url = try std.fmt.allocPrint(alloc, "http://127.0.0.1:{d}/v1/admin/platform-keys", .{srv.port});
     defer alloc.free(url);
     const body = try std.fmt.allocPrint(alloc, "{{\"provider\":\"{s}\",\"source_workspace_id\":\"{s}\"}}", .{ TEST_PROVIDER, TEST_WS_ID });
     defer alloc.free(body);
-
-    // 5 concurrent PUTs for the same provider — ON CONFLICT upsert must handle all cleanly.
     var results = [_]u16{0} ** 5;
     var threads: [5]std.Thread = undefined;
     for (&threads, 0..) |*t, i| {
-        t.* = try std.Thread.spawn(.{}, ConcurrentPutCtx.run, .{ConcurrentPutCtx{
-            .url = url,
-            .body = body,
-            .result = &results[i],
-        }});
+        t.* = try std.Thread.spawn(.{}, ConcurrentPutCtx.run, .{ConcurrentPutCtx{ .url = url, .body = body, .result = &results[i] }});
     }
     for (&threads) |*t| t.join();
-
-    // T5: all requests must succeed (200), no partial failures or 500s
     for (results) |status| try std.testing.expectEqual(@as(u16, 200), status);
-
-    // T5: exactly one row should exist in the DB for this provider
     const conn = try srv.pool.acquire();
     defer srv.pool.release(conn);
     var q = try conn.query("SELECT COUNT(*) FROM platform_llm_keys WHERE provider = $1 AND active = true", .{TEST_PROVIDER});
@@ -433,10 +493,8 @@ test "integration: M16_004 concurrent platform key upserts are safe and idempote
     const count = try row.get(i64, 0);
     try q.drain();
     try std.testing.expectEqual(@as(i64, 1), count);
-
     cleanupSeedData(conn);
 }
-
 test {
     _ = @import("handlers/m16_004_handler_unit_test.zig");
 }

@@ -279,7 +279,8 @@ test "T10: TERMINAL_STATES contains exactly 5 states" {
 test "T11: extractCreatedAt has no leaks over repeated calls" {
     const alloc = std.testing.allocator;
     for (0..100) |i| {
-        const json = std.fmt.allocPrint(alloc,
+        const json = std.fmt.allocPrint(
+            alloc,
             "{{\"gate_name\":\"g{d}\",\"created_at\":{d}}}",
             .{ i, 1700000000000 + @as(i64, @intCast(i)) },
         ) catch continue;

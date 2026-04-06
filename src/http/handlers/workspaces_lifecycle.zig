@@ -76,8 +76,8 @@ pub fn handleCreateWorkspace(ctx: *common.Context, req: *httpz.Request, res: *ht
     const now_ms = std.time.milliTimestamp();
     _ = common.setTenantSessionContext(conn, tenant_id);
     _ = conn.exec(
-        \\INSERT INTO tenants (tenant_id, name, api_key_hash, created_at)
-        \\VALUES ($1, $2, 'managed', $3)
+        \\INSERT INTO tenants (tenant_id, name, api_key_hash, created_at, updated_at)
+        \\VALUES ($1, $2, 'managed', $3, $3)
         \\ON CONFLICT (tenant_id) DO NOTHING
     , .{ tenant_id, "Workspace Tenant", now_ms }) catch {
         log.err("workspace.tenant_upsert_fail error_code=UZ-INTERNAL-003 tenant_id={s}", .{tenant_id});
