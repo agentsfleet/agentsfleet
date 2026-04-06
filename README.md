@@ -6,7 +6,7 @@
 
 [![CI](https://github.com/usezombie/usezombie/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/usezombie/usezombie/actions/workflows/test.yml?query=branch%3Amain)
 [![Coverage](https://codecov.io/gh/usezombie/usezombie/flags/apps/graph/badge.svg)](https://codecov.io/gh/usezombie/usezombie/flags/apps)
-[![Version](https://img.shields.io/badge/version-0.1.0-blue?style=flat-square)](https://github.com/usezombie/usezombie/releases)
+[![Version](https://img.shields.io/badge/version-0.4.0-blue?style=flat-square)](https://github.com/usezombie/usezombie/releases)
 
 [![Try Free](https://img.shields.io/badge/UseZombie-Try_Free-brightgreen?style=for-the-badge)](https://usezombie.com)
 [![Docs](https://img.shields.io/badge/UseZombie-Docs-blue?style=for-the-badge)](https://docs.usezombie.com)
@@ -41,10 +41,8 @@
 
 | Resource | Description |
 |----------|-------------|
-| [docs.usezombie.com](https://docs.usezombie.com) | User-facing docs (guides, API reference) |
-| [docs/operator/](docs/operator/) | Internal operator guide (deployment, config, observability, security) |
-| [docs/contributing/](docs/contributing/) | Contributor guide (setup, architecture, testing, [website content](docs/contributing/website-content.md)) |
-| [playbooks/](playbooks/) | Step-by-step deployment playbooks |
+| [docs.usezombie.com](https://docs.usezombie.com) | User-facing docs (guides, API reference, operator guide, contributing) |
+| [playbooks/](playbooks/) | Agent-readable deployment playbooks and gate scripts |
 
 ## Playbooks
 
@@ -64,7 +62,7 @@ make lint      # Format + lint
 make doctor    # Check config, Postgres, LLM key
 ```
 
-See [docs/contributing/development.md](docs/contributing/development.md) for full setup.
+See [docs.usezombie.com/contributing/development](https://docs.usezombie.com/contributing/development) for full setup.
 
 ## Agent support
 
