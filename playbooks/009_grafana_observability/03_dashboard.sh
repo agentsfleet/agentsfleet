@@ -8,7 +8,7 @@ GRAFANA_TOKEN=$(op read "op://$VAULT/grafana-observability/grafana-sa-token")
 DB_URL=$(op read "op://$VAULT/grafana-observability/db-readonly-url")
 
 REPO_ROOT="$(git rev-parse --show-toplevel)"
-DASHBOARD_JSON="$REPO_ROOT/docs/grafana/agent_run_breakdown.json"
+DASHBOARD_JSON="$REPO_ROOT/deploy/grafana/agent_run_breakdown.json"
 
 echo "=== Step 1: Ensure PostgreSQL datasource ==="
 

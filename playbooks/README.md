@@ -1,35 +1,56 @@
 # Playbooks
 
+Canonical layout uses ordered directories so agents can run lexically from `001` upward.
+
 ```
 playbooks/
 ├── README.md                          ← this file
-├── M1_001_BOOTSTRAP.md                ← playbook (human-readable)
-├── M2_001_PREFLIGHT.md
-├── M2_002_PRIMING_INFRA.md
-├── M3_001_DEPLOY_DEV.md
-├── M3_002_DEPLOY_PROD.md
-├── M4_001_WORKER_BOOTSTRAP_DEV.md
-├── M7_002_CREDENTIAL_ROTATION_DEV.md
-└── gates/
-    ├── check-credentials.sh           ← legacy shim → m2_001/run.sh
-    ├── m2_001/
-    │   ├── run.sh                     ← runner (dispatches sections)
-    │   ├── section-1-preflight.sh     ← checks op CLI + auth
-    │   └── section-2-procurement-readiness.sh  ← checks all vault items
-    ├── m4_001/
-    │   ├── run.sh
-    │   ├── section-1-ssh-access.sh
-    │   ├── section-2-host-readiness.sh
-    │   └── section-3-deploy-readiness.sh
-    └── m7_002/
-        ├── run.sh
-        ├── section-1-vault-sync.sh
-        └── section-2-service-health.sh
+├── 001_bootstrap/
+│   └── 001_playbook.md
+├── 002_preflight/
+│   ├── 001_playbook.md
+│   ├── 00_gate.sh                    ← dispatcher (globs 01_*, 02_*, etc.)
+│   ├── 01_tools_and_auth.sh
+│   └── 02_credentials.sh
+├── 003_priming_infra/
+│   ├── 001_playbook.md
+│   └── 002_workers_and_handoff.md
+├── 004_deploy_dev/
+│   └── 001_playbook.md
+├── 005_deploy_prod/
+│   └── 001_playbook.md
+├── 006_worker_bootstrap_dev/
+│   ├── 001_playbook.md
+│   ├── 00_gate.sh
+│   ├── 01_ssh_access.sh
+│   ├── 02_host_readiness.sh
+│   └── 03_deploy_readiness.sh
+├── 007_worker_bootstrap_prod/
+│   └── 001_playbook.md
+├── 008_credential_rotation_dev/
+│   ├── 001_playbook.md
+│   ├── 00_gate.sh
+│   ├── 01_vault_sync.sh
+│   └── 02_service_health.sh
+├── 009_grafana_observability/
+│   ├── 001_playbook.md
+│   ├── 002_grafana_setup.md
+│   ├── 00_gate.sh
+│   ├── 01_credentials.sh
+│   ├── 02_prometheus.sh
+│   └── 03_dashboard.sh
+├── 010_data_plane_ip_allowlisting/
+│   ├── 001_playbook.md
+│   ├── 00_gate.sh
+│   ├── 01_egress_inventory.sh
+│   └── 02_provider_targets.sh
+└── lib/
+    └── common.sh
 ```
 
 ## Playbooks vs Gates
 
-**Playbooks** (`playbooks/M{N}_{NNN}_*.md`) are human-readable runbooks. They describe:
+**Playbooks** (`playbooks/NNN_name/001_playbook.md`) are human-readable runbooks. They describe:
 
 - Who does what (human vs agent)
 - Step-by-step procedures with context and rationale
@@ -38,10 +59,10 @@ playbooks/
 
 Playbooks are documentation. They are NOT executable.
 
-**Gates** (`playbooks/gates/m{n}_{nnn}/*.sh`) are machine-executable verification scripts. They:
+**Gates** (`playbooks/NNN_name/00_gate.sh` + numbered sections) are machine-executable verification scripts. They:
 
 - Validate that a playbook's acceptance criteria are met
-- Run in CI as pipeline prerequisites (e.g. `deploy-dev.yml` runs `check-credentials.sh` as job 0)
+- Run in CI as pipeline prerequisites (e.g. `deploy-dev.yml` runs `002_preflight/00_gate.sh` as job 0)
 - Run locally by agents to verify state before proceeding
 - Exit non-zero on any failure — fail loud, fail all items (not just the first)
 
@@ -49,12 +70,14 @@ Gates are executable. They are NOT documentation.
 
 ## Gate Script Convention
 
-Each gate follows the m2_001 pattern:
+Each gate lives inside its ordered playbook directory.
 
-- `run.sh` — top-level runner, dispatches to section scripts. Accepts `SECTIONS=1,2,3` env var.
-- `section-N-*.sh` — one script per playbook section that has verifiable criteria.
+- `00_gate.sh` — dispatcher. Globs `01_*.sh`, `02_*.sh`, etc. and runs them in order.
+- `01_name.sh`, `02_name.sh` — numbered section scripts. Two-digit prefix, descriptive snake_case name.
 - All scripts are `set -euo pipefail`, print per check, exit 1 if any check fails.
 - Environment: `VAULT_DEV`, `VAULT_PROD`, `ENV` (all/dev/prod).
+- Shared helpers live in `playbooks/lib/common.sh`.
+- If a gate reads from vault, it must require explicit approval via `ALLOW_VAULT_READS=1`.
 
 ## When to Add a Gate
 
@@ -64,4 +87,4 @@ Add a gate when:
 - CI needs to block on a precondition (credential check, host readiness, service health)
 - An agent needs to verify state before executing the next playbook step
 
-Not every playbook needs a gate. M1_001 (Bootstrap) is human-only with manual verification.
+Not every playbook needs a gate. 001_bootstrap is human-only with manual verification.

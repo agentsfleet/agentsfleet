@@ -67,7 +67,7 @@ Give the agent:
 
 Hand-off message:
 
-> "Milestone 1 complete. Here are the root API keys: [paste keys]. Store them in 1Password vaults `ZMB_CD_PROD` / `ZMB_CD_DEV` per `playbooks/M1_001_BOOTSTRAP.md §2.0`, then run `./playbooks/gates/check-credentials.sh` and proceed with `playbooks/M2_001_PREFLIGHT.md`."
+> "Milestone 1 complete. Here are the root API keys: [paste keys]. Store them in 1Password vaults `ZMB_CD_PROD` / `ZMB_CD_DEV` per `playbooks/001_bootstrap/001_playbook.md §2.0`, then run `./playbooks/002_preflight/001_gate.sh` and proceed with `playbooks/002_preflight/001_playbook.md`."
 
 ---
 
@@ -77,7 +77,7 @@ Agent executes these steps immediately after receiving the hand-off from 1.3.
 
 ### 2.1 Store Keys in 1Password Vaults
 
-See [M2_001_PREFLIGHT.md](./M2_001_PREFLIGHT.md) §1.1 and §1.2 for the full vault inventory (items, fields, and consumers).
+See [002 preflight playbook](../002_preflight/001_playbook.md) §1.1 and §1.2 for the full vault inventory (items, fields, and consumers).
 
 Create each item listed there. Value sources for items that require human provisioning:
 
@@ -267,9 +267,9 @@ Agent reads project IDs and API token from 1Password, sets via Vercel API (`PATC
 
 ## 3.0 Handoff to Milestone 2
 
-Once 2.4 is verified, agent runs `./playbooks/gates/check-credentials.sh` (M2_001) to confirm all vault items are present before executing `playbooks/M2_002_PRIMING_INFRA.md`.
+Once 2.4 is verified, agent runs `./playbooks/002_preflight/001_gate.sh` (`002_preflight`) to confirm all vault items are present before executing `playbooks/003_priming_infra/001_playbook.md`.
 
-All vault items the agent will need are listed in `playbooks/M2_001_PREFLIGHT.md §1.0` and `§4.0`. Review that list now and create any missing items in 1Password before the handoff — it avoids mid-execution failures.
+All vault items the agent will need are listed in `playbooks/002_preflight/001_playbook.md §1.0` and `§4.0`. Review that list now and create any missing items in 1Password before the handoff — it avoids mid-execution failures.
 
 ---
 

@@ -4,7 +4,7 @@
 **Workstream:** 002
 **Updated:** Mar 20, 2026
 **Owner:** Agent
-**Prerequisite:** `playbooks/M3_001_DEPLOY_DEV.md` completed with evidence
+**Prerequisite:** `playbooks/004_deploy_dev/001_playbook.md` completed with evidence
 
 This is the canonical step-by-step PROD deployment runbook.
 
@@ -15,7 +15,7 @@ This is the canonical step-by-step PROD deployment runbook.
 1. Validate PROD credentials:
 
 ```bash
-ENV=prod ./playbooks/gates/check-credentials.sh
+ENV=prod ./playbooks/002_preflight/001_gate.sh
 ```
 
 2. Confirm DEV is green (M3_001 complete with CLI acceptance evidence).

@@ -22,7 +22,7 @@ jobs:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
           VAULT_DEV: ${{ vars.VAULT_DEV }}
           VAULT_PROD: ${{ vars.VAULT_PROD }}
-        run: ./playbooks/gates/check-credentials.sh
+        run: ./playbooks/002_preflight/00_gate.sh
 
   # ── 0b. Tag / version contract ─────────────────────────────────────────
   verify-tag:

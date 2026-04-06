@@ -2,7 +2,7 @@
 set -euo pipefail
 
 echo ""
-echo "== M2_001 Section 2: procurement readiness gate =="
+echo "== 002_preflight Section 2: procurement readiness gate =="
 
 env_mode="${ENV:-all}"
 vault_dev="${VAULT_DEV:-ZMB_CD_DEV}"
@@ -28,7 +28,6 @@ op_read_with_retry() {
   local value=""
 
   for attempt in $(seq 1 "$attempts"); do
-    # Smooth request bursts to avoid API request spikes.
     sleep "$min_interval_s"
     if value="$(op read "$ref" 2>/dev/null)"; then
       OP_CACHE_STATUS["$ref"]="ok"

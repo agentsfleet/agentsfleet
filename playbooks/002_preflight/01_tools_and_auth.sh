@@ -2,7 +2,7 @@
 set -euo pipefail
 
 echo ""
-echo "== M2_001 Section 1: startup preflight =="
+echo "== 002_preflight Section 1: startup preflight =="
 echo "  ENV=${ENV:-all}  VAULT_DEV=${VAULT_DEV:-ZMB_CD_DEV}  VAULT_PROD=${VAULT_PROD:-ZMB_CD_PROD}"
 
 if ! command -v op >/dev/null 2>&1; then
@@ -29,4 +29,3 @@ if command -v gh >/dev/null 2>&1; then
     echo "  ! gh installed but not authenticated (non-blocking)"
   fi
 fi
-

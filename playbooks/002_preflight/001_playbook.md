@@ -5,7 +5,7 @@
 **Updated:** Apr 02, 2026
 **Owner:** Agent
 **Status:** ✅ DONE — credential gate passed Apr 02, 2026; all vault items present; M2_002 gate lifted.
-**Prerequisite:** `playbooks/M1_001_BOOTSTRAP.md` Milestone 1 complete.
+**Prerequisite:** `playbooks/001_bootstrap/001_playbook.md` complete.
 **Gate:** M2_002 (PRIMING_INFRA) must not start until every check below passes.
 
 This workstream is the eval/feedback harness for Milestone 2. It validates that every
@@ -165,7 +165,7 @@ curl -sf -X POST "$WEBHOOK" \
 - [x] 3.4 Discord webhook fires successfully (CI notify jobs active)
 - [x] 3.5 No `✗ MISSING` lines in workflow output
 
-Gate: all 3.x must pass before `M2_002_PRIMING_INFRA.md` begins.
+Gate: all 3.x must pass before `playbooks/003_priming_infra/001_playbook.md` begins.
 
 ---
 

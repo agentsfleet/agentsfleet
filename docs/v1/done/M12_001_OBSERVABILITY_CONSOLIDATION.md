@@ -38,7 +38,7 @@ Verified against GitHub PR `#73` (`feat(m12): OTLP trace export + docs — M12_0
 
 - Updated `docs/observability/SIGNAL_CONTRACT.md`
 - Updated `docs/OBSERVABILITY.md`
-- Updated `playbooks/M2_002_PRIMING_INFRA.md`
+- Updated `playbooks/003_priming_infra/001_playbook.md`
 - Updated procurement/vault readiness checks
 - Updated deploy configuration
 

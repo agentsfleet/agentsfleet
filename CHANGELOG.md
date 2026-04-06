@@ -16,7 +16,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `GET /v1/workspaces/{id}/billing/summary` endpoint — billing breakdown by lifecycle event with period filter
 - `zombiectl workspace billing` CLI command with `--period` and `--json` flags
 - Grafana dashboard JSON (`docs/grafana/agent_run_breakdown.json`) — 7 panels, importable with template variables
-- Grafana observability playbook (`playbooks/M28_001_GRAFANA_OBSERVABILITY.md`) with gate scripts
+- Grafana observability playbook (`playbooks/009_grafana_observability/001_playbook.md`) with gate scripts
 - `zombie_workspace_metrics_overflow_total` counter for cardinality overflow alerting
 
 ## [0.3.1] - 2026-04-05
@@ -51,7 +51,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `PROD_WORKER_READY` guard on `deploy-prod-canary` — bare-metal worker fleet deploy gated until bootstrapped
 - Fly machine-state verification step in prod deploy pipeline
 - `cross-compile.yml` `workflow_call` trigger with `skip_build` input for caller-controlled build skipping
-- `playbooks/M4_002_WORKER_BOOTSTRAP_PROD.md` — prod bare-metal worker bootstrap runbook
+- `playbooks/007_worker_bootstrap_prod/001_playbook.md` — prod bare-metal worker bootstrap runbook
 
 ### Changed
 

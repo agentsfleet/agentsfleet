@@ -4,7 +4,7 @@
 **Workstream:** 001
 **Updated:** Mar 27, 2026
 **Owner:** Agent
-**Prerequisite:** `playbooks/M1_001_BOOTSTRAP.md`, `playbooks/M2_001_PREFLIGHT.md`, `playbooks/M2_002_PRIMING_INFRA.md`
+**Prerequisite:** `playbooks/001_bootstrap/001_playbook.md`, `playbooks/002_preflight/001_playbook.md`, `playbooks/003_priming_infra/001_playbook.md`
 
 This is the canonical step-by-step DEV deployment runbook.
 
@@ -17,7 +17,7 @@ This is the canonical step-by-step DEV deployment runbook.
 1. Ensure required credentials exist:
 
 ```bash
-ENV=dev ./playbooks/gates/check-credentials.sh
+ENV=dev ./playbooks/002_preflight/001_gate.sh
 ```
 
 2. Ensure branch is clean and validated:
@@ -186,4 +186,4 @@ Spec-to-PR latency must be under 5 minutes. Record the actual time in evidence.
 - ⏳ CLI acceptance run complete (§6.0) — **blocked on `zombiectl`**
 - ✅ evidence recorded (see M7_001_DEV_ACCEPTANCE.md §7.0)
 
-When all pass, continue to `playbooks/M3_002_DEPLOY_PROD.md`.
+When all pass, continue to `playbooks/005_deploy_prod/001_playbook.md`.
