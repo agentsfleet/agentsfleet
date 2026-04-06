@@ -122,8 +122,8 @@ Execution pattern:
 - Keep edits small and reviewable; split large files before they become hard to review.
 - Use Conventional Commits when committing is requested.
 - Before any `git commit` or `git push`, run `gitleaks` and ensure it passes (no leaked secrets).
-- Before any `git commit` that includes Zig changes, check and run the canonical Zig workflow in `docs/contributing/ZIG_RULES.md`.
-- Before creating any new `*.zig` file, read `docs/contributing/ZIG_RULES.md` and follow its rules first.
+- Before any `git commit` that includes Zig changes, check and run the canonical Zig workflow in `docs/ZIG_RULES.md`.
+- Before creating any new `*.zig` file, read `docs/ZIG_RULES.md` and follow its rules first.
 - When writing or reviewing any Zig code that calls `conn.query()`: verify `.drain()` is present in the same function before `deinit()`. Run `make check-pg-drain` to confirm. Use `conn.exec()` instead whenever no result rows are needed.
 - For date-time entries in docs/notes, use format `Feb 02, 2026: 10:30 AM`.
 
@@ -264,7 +264,7 @@ Required outputs:
   - [ ] **`zombiectl` CLI changes** — does this change require new subcommands, flags, or output format changes in the npm CLI? If yes, note that the project manager must approve CLI surface changes (create a skill ticket if needed).
   - [ ] **User-facing doc changes** — do docs at `docs.usezombie.com` need updating? If yes, list pages.
   - [ ] **Release notes** — will this ship as a version bump? If yes, note the version (minor for features, patch for fixes) and draft the `docs/v1/ship/{version}.md` entry during DOCUMENT phase.
-  - [ ] **Schema changes** — does this change add/modify/remove database tables, columns, or constraints? If yes: (a) each new SQL file must be ≤100 lines and single-concern (one table or one logical group), (b) update `schema/embed.zig` and `src/cmd/common.zig` migration array, (c) verify `docs/contributing/SCHEMA_CONVENTIONS.md` is followed. Full teardown-rebuild is allowed until v0.5.0 — no ALTER migrations needed.
+  - [ ] **Schema changes** — does this change add/modify/remove database tables, columns, or constraints? If yes: (a) each new SQL file must be ≤100 lines and single-concern (one table or one logical group), (b) update `schema/embed.zig` and `src/cmd/common.zig` migration array, (c) verify `docs/SCHEMA_CONVENTIONS.md` is followed. Full teardown-rebuild is allowed until v0.5.0 — no ALTER migrations needed.
 
 Restrictions:
 
@@ -280,7 +280,7 @@ Exit criteria:
 
 **Before writing any code**, read `docs/greptile-learnings/RULES.md` and follow every rule. If a rule conflicts with the task, state the conflict and ask — never silently skip.
 
-**Before writing any Zig code**, additionally read `docs/contributing/ZIG_RULES.md`. It contains Zig-specific patterns (drain/dupe lifecycle, cross-compile verification, TLS transport, memory safety) that RULES.md references but does not duplicate.
+**Before writing any Zig code**, additionally read `docs/ZIG_RULES.md`. It contains Zig-specific patterns (drain/dupe lifecycle, cross-compile verification, TLS transport, memory safety) that RULES.md references but does not duplicate.
 
 Required outputs:
 

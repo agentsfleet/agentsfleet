@@ -44,7 +44,7 @@ Before operator acceptance can be trusted, the platform must expose worker-fleet
   - expected: `fleet-level worker gauge reports >= 2 connected workers or documented current production target`
   - test_type: contract
 - 1.4 PENDING
-  - target: `docs/operator/observability/overview.md`
+  - target: `docs/observability/overview — see docs/grafana.md and docs.usezombie.com/operator/observability/overview`
   - input: `worker metric documentation review`
   - expected: `fleet-level worker metric name, semantics, and operator interpretation are documented`
   - test_type: contract
