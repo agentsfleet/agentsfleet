@@ -9,6 +9,7 @@ export function registerProgramCommands(handlers) {
     "runs.list": handlers.runsList,
     "runs.cancel": handlers.runsCancel,
     "runs.replay": handlers.runsReplay,
+    "runs.interrupt": handlers.runsInterrupt,
     doctor: handlers.doctor,
     harness: handlers.harness,
     "skill-secret": handlers.skillSecret,

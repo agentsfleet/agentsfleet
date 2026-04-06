@@ -1,18 +1,19 @@
 import { AGENTS_PATH } from "../lib/api-paths.js";
 import { queueCliAnalyticsEvent, setCliAnalyticsContext } from "../lib/analytics.js";
+import { writeError } from "../program/io.js";
 
 export async function commandAgentHarness(ctx, parsed, agentId, deps) {
   const { request, apiHeaders, printJson, ui, writeLine } = deps;
 
   const subaction = parsed.positionals[0] || null;
   if (subaction !== "revert") {
-    writeLine(ctx.stderr, ui.err("usage: agent harness revert <agent-id> --to-change <change-id>"));
+    writeError(ctx, "UNKNOWN_COMMAND", "usage: agent harness revert <agent-id> --to-change <change-id>", deps);
     return 2;
   }
 
   const changeId = parsed.options["to-change"] || null;
   if (!changeId) {
-    writeLine(ctx.stderr, ui.err("agent harness revert requires --to-change <change-id>"));
+    writeError(ctx, "USAGE_ERROR", "agent harness revert requires --to-change <change-id>", deps);
     return 2;
   }
 

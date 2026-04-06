@@ -4,9 +4,10 @@ import { commandHarnessCompile } from "./harness_compile.js";
 import { commandHarnessActivate } from "./harness_activate.js";
 import { commandHarnessActive } from "./harness_active.js";
 import { validateRequiredId } from "../program/validate.js";
+import { writeError } from "../program/io.js";
 
 export async function commandHarness(ctx, args, workspaces, deps) {
-  const { parseFlags, ui, writeLine } = deps;
+  const { parseFlags, printJson, ui, writeLine } = deps;
 
   const group = args[0];
   const action = group === "source" ? args[1] : null;
@@ -14,13 +15,13 @@ export async function commandHarness(ctx, args, workspaces, deps) {
 
   const workspaceId = parsed.options["workspace-id"] || workspaces.current_workspace_id;
   if (!workspaceId) {
-    writeLine(ctx.stderr, ui.err("workspace_id required"));
+    writeError(ctx, "USAGE_ERROR", "workspace_id required", deps);
     return 2;
   }
 
   const wsCheck = validateRequiredId(workspaceId, "workspace_id");
   if (!wsCheck.ok) {
-    writeLine(ctx.stderr, ui.err(wsCheck.message));
+    writeError(ctx, "VALIDATION_ERROR", wsCheck.message, deps);
     return 2;
   }
   setCliAnalyticsContext(ctx, { workspace_id: workspaceId });
@@ -30,6 +31,6 @@ export async function commandHarness(ctx, args, workspaces, deps) {
   if (group === "activate") return commandHarnessActivate(ctx, parsed, workspaceId, deps);
   if (group === "active") return commandHarnessActive(ctx, parsed, workspaceId, deps);
 
-  writeLine(ctx.stderr, ui.err("usage: harness source put|compile|activate|active"));
+  writeError(ctx, "UNKNOWN_COMMAND", "usage: harness source put|compile|activate|active", deps);
   return 2;
 }
