@@ -50,7 +50,7 @@ Do not add or recommend workflows around:
 When starting a new project or when asked to "set up infrastructure", follow this sequence — do not invent steps:
 
 1. Human completes `playbooks/001_bootstrap/001_playbook.md` (accounts + root API keys).
-2. Agent runs `./playbooks/002_preflight/001_gate.sh` (`playbooks/002_preflight/001_playbook.md`) — validates every required vault item is present and non-empty. Runs anywhere `op` CLI is available — no CI dependency. **Do not proceed to step 3 until this passes with zero missing items.**
+2. Agent runs `./playbooks/002_preflight/00_gate.sh` (`playbooks/002_preflight/001_playbook.md`) — validates every required vault item is present and non-empty. Runs anywhere `op` CLI is available — no CI dependency. **Do not proceed to step 3 until this passes with zero missing items.**
 3. Agent executes `playbooks/003_priming_infra/001_playbook.md` in order (container pipeline → Fly.io → Cloudflare Tunnel → data-plane → workers → CI → first release).
 4. Milestones proceed only after PRIMING_INFRA is verified end-to-end.
 

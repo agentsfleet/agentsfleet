@@ -450,3 +450,19 @@ return used + @as(i64, @intCast(defaults.DEFAULT_RUN_MAX_TOKENS)) > budget;
 ```
 
 Incident: M31_002 greptile P2 — `src/http/handlers/runs/start_budget.zig` and `src/pipeline/worker_claim.zig` cast `u64` defaults to `i64`/`i32` without comptime guards.
+
+### Gate dispatcher must not glob itself
+
+The `00_gate.sh` dispatcher runs section scripts via glob. The glob pattern must exclude `00_*` to prevent infinite recursion. Use `0[1-9]_*.sh` + `[1-9][0-9]_*.sh` instead of `[0-9][0-9]_*.sh`.
+
+**Do:**
+```bash
+for script in "$SCRIPT_DIR"/0[1-9]_*.sh "$SCRIPT_DIR"/[1-9][0-9]_*.sh; do
+```
+
+**Don't:**
+```bash
+for script in "$SCRIPT_DIR"/[0-9][0-9]_*.sh; do
+```
+
+Incident: PR #162 greptile P1 — `00_gate.sh` glob matched itself, causing fork bomb in CI.

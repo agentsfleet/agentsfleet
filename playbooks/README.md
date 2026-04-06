@@ -9,7 +9,9 @@ playbooks/
 │   └── 001_playbook.md
 ├── 002_preflight/
 │   ├── 001_playbook.md
-│   └── 001_gate.sh
+│   ├── 00_gate.sh                    ← dispatcher (globs 01_*, 02_*, etc.)
+│   ├── 01_tools_and_auth.sh
+│   └── 02_credentials.sh
 ├── 003_priming_infra/
 │   ├── 001_playbook.md
 │   └── 002_workers_and_handoff.md
@@ -19,42 +21,31 @@ playbooks/
 │   └── 001_playbook.md
 ├── 006_worker_bootstrap_dev/
 │   ├── 001_playbook.md
-│   └── 001_gate.sh
+│   ├── 00_gate.sh
+│   ├── 01_ssh_access.sh
+│   ├── 02_host_readiness.sh
+│   └── 03_deploy_readiness.sh
 ├── 007_worker_bootstrap_prod/
 │   └── 001_playbook.md
 ├── 008_credential_rotation_dev/
 │   ├── 001_playbook.md
-│   └── 001_gate.sh
+│   ├── 00_gate.sh
+│   ├── 01_vault_sync.sh
+│   └── 02_service_health.sh
 ├── 009_grafana_observability/
 │   ├── 001_playbook.md
-│   └── 001_gate.sh
+│   ├── 002_grafana_setup.md
+│   ├── 00_gate.sh
+│   ├── 01_credentials.sh
+│   ├── 02_prometheus.sh
+│   └── 03_dashboard.sh
 ├── 010_data_plane_ip_allowlisting/
 │   ├── 001_playbook.md
-│   ├── 001_gate.sh
-│   ├── 001_gate_section_1.sh
-│   └── 002_gate_section_2.sh
-├── lib/
-│   └── common.sh
-└── gates/
-    ├── check-credentials.sh           ← credentials gate entrypoint
-    ├── m2_001/
-    │   ├── run.sh                     ← runner (dispatches sections)
-    │   ├── section-1-preflight.sh     ← checks op CLI + auth
-    │   └── section-2-procurement-readiness.sh  ← checks all vault items
-    ├── m4_001/
-    │   ├── run.sh
-    │   ├── section-1-ssh-access.sh
-    │   ├── section-2-host-readiness.sh
-    │   └── section-3-deploy-readiness.sh
-    ├── m7_002/
-    │   ├── run.sh
-    │   ├── section-1-vault-sync.sh
-    │   └── section-2-service-health.sh
-    └── m28_001/
-        ├── run.sh
-        ├── section-1-credentials.sh
-        ├── section-2-prometheus.sh
-        └── section-3-dashboard.sh
+│   ├── 00_gate.sh
+│   ├── 01_egress_inventory.sh
+│   └── 02_provider_targets.sh
+└── lib/
+    └── common.sh
 ```
 
 ## Playbooks vs Gates
@@ -68,10 +59,10 @@ playbooks/
 
 Playbooks are documentation. They are NOT executable.
 
-**Gates** (`playbooks/gates/m{n}_{nnn}/*.sh`) are machine-executable verification scripts. They:
+**Gates** (`playbooks/NNN_name/00_gate.sh` + numbered sections) are machine-executable verification scripts. They:
 
 - Validate that a playbook's acceptance criteria are met
-- Run in CI as pipeline prerequisites (e.g. `deploy-dev.yml` runs `check-credentials.sh` as job 0)
+- Run in CI as pipeline prerequisites (e.g. `deploy-dev.yml` runs `002_preflight/00_gate.sh` as job 0)
 - Run locally by agents to verify state before proceeding
 - Exit non-zero on any failure — fail loud, fail all items (not just the first)
 
@@ -79,10 +70,10 @@ Gates are executable. They are NOT documentation.
 
 ## Gate Script Convention
 
-Each gate should be runnable from an ordered playbook directory (`playbooks/NNN_name/001_gate.sh`).
+Each gate lives inside its ordered playbook directory.
 
-- `001_gate.sh` — top-level runner, optionally dispatches to section scripts.
-- `001_gate_section_*.sh` — one script per section when needed.
+- `00_gate.sh` — dispatcher. Globs `01_*.sh`, `02_*.sh`, etc. and runs them in order.
+- `01_name.sh`, `02_name.sh` — numbered section scripts. Two-digit prefix, descriptive snake_case name.
 - All scripts are `set -euo pipefail`, print per check, exit 1 if any check fails.
 - Environment: `VAULT_DEV`, `VAULT_PROD`, `ENV` (all/dev/prod).
 - Shared helpers live in `playbooks/lib/common.sh`.
@@ -96,6 +87,4 @@ Add a gate when:
 - CI needs to block on a precondition (credential check, host readiness, service health)
 - An agent needs to verify state before executing the next playbook step
 
-Not every playbook needs a gate. M1_001 (Bootstrap) is human-only with manual verification.
-
-New references should always use the canonical ordered paths (`playbooks/NNN_name/...`).
+Not every playbook needs a gate. 001_bootstrap is human-only with manual verification.
