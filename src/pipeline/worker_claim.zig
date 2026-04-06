@@ -21,6 +21,14 @@ const secrets = @import("../secrets/crypto.zig");
 const defaults = @import("../types/defaults.zig");
 const log = std.log.scoped(.worker);
 
+// Guards: u64 defaults are cast to i64/i32 in the normalize functions below.
+// These assertions catch overflow at compile time if the constants are ever raised.
+comptime {
+    std.debug.assert(defaults.DEFAULT_RUN_MAX_TOKENS <= std.math.maxInt(i64));
+    std.debug.assert(defaults.DEFAULT_RUN_MAX_WALL_TIME_SECONDS <= std.math.maxInt(i64));
+    std.debug.assert(defaults.DEFAULT_RUN_MAX_REPAIR_LOOPS <= std.math.maxInt(i32));
+}
+
 pub const ProcessConfig = struct {
     pool: *pg.Pool,
     execute: worker_stage_executor.ExecuteConfig,

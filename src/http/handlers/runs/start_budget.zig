@@ -7,6 +7,12 @@ const std = @import("std");
 const pg = @import("pg");
 const defaults = @import("../../../types/defaults.zig");
 
+// Guard: DEFAULT_RUN_MAX_TOKENS is u64 but is cast to i64 at line 57.
+// This assertion ensures the value will never exceed i64 max at compile time.
+comptime {
+    std.debug.assert(defaults.DEFAULT_RUN_MAX_TOKENS <= std.math.maxInt(i64));
+}
+
 /// Core computation: given any epoch-ms timestamp, return the epoch-ms for
 /// midnight UTC on the first day of that timestamp's calendar month.
 /// Extracted so tests can drive it with statically known anchor values.
