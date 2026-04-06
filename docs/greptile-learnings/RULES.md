@@ -279,3 +279,30 @@ SELECT provider FROM platform_llm_keys ORDER BY provider;
 ```
 
 Incident: M31_001 greptile P2 — `admin_platform_keys_http.zig` used unqualified `platform_llm_keys`; fixed to `core.platform_llm_keys` and documented in `SCHEMA_CONVENTIONS.md`.
+
+---
+
+## Atomics — Use cmpxchgStrong When Spurious Failure Is Not Acceptable
+
+**RULE: Use `cmpxchgStrong` (not `cmpxchgWeak`) when a failed CAS causes the code to skip a critical side effect. Reserve `cmpxchgWeak` for retry loops and best-effort paths where a spurious miss is harmless.**
+
+Why: `cmpxchgWeak` is permitted to fail spuriously — it may return non-null even when the current value matches the expected value. If the code path after CAS failure skips a critical action (e.g., killing a child process, delivering a message), a spurious failure silently drops that action.
+
+Do:
+```zig
+// Interrupt delivery — must not be dropped.
+if (exit_reason.cmpxchgStrong(running, interrupted, .acq_rel, .acquire) == null) {
+    killWithEscalation(child);
+}
+```
+
+Don't:
+```zig
+// Spurious failure → interrupt silently dropped, gate keeps running.
+if (exit_reason.cmpxchgWeak(running, interrupted, .acq_rel, .acquire) == null) {
+    killWithEscalation(child);
+}
+return; // Falls through on spurious failure.
+```
+
+Incident: M21_002 greptile P1 — `cmpxchgWeak` on interrupt detection path could spuriously fail, causing the timer thread to exit without killing the gate child. Interrupt message consumed by GETDEL but never injected.

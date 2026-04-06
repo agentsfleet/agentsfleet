@@ -155,6 +155,19 @@ pub fn renderPrometheus(
         try writer.print("zombie_gate_repair_loops_per_run_count {d}\n", .{glh.count});
     }
 
+    // M21_002 §4.3: interrupt delivery latency histogram (custom buckets).
+    {
+        const ilh = s.interrupt_delivery_latency_ms;
+        try writer.print("# HELP zombie_interrupt_delivery_latency_ms Time from gate start to interrupt detection in milliseconds.\n", .{});
+        try writer.print("# TYPE zombie_interrupt_delivery_latency_ms histogram\n", .{});
+        for (mc.InterruptLatencyBuckets, 0..) |le, i| {
+            try writer.print("zombie_interrupt_delivery_latency_ms_bucket{{le=\"{d}\"}} {d}\n", .{ le, ilh.buckets[i] });
+        }
+        try writer.print("zombie_interrupt_delivery_latency_ms_bucket{{le=\"+Inf\"}} {d}\n", .{ilh.count});
+        try writer.print("zombie_interrupt_delivery_latency_ms_sum {d}\n", .{ilh.sum});
+        try writer.print("zombie_interrupt_delivery_latency_ms_count {d}\n", .{ilh.count});
+    }
+
     // Executor metrics (§5.2).
     const es = em.executorSnapshot();
     try appendMetric(writer, "zombie_executor_sessions_created_total", "counter", "Total executor sessions created.", es.sessions_created_total);
