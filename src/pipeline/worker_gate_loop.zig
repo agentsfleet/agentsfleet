@@ -130,7 +130,7 @@ pub fn runGateLoop(cfg: GateLoopConfig) !GateLoopOutcome {
         // M21_001 §2.1: poll for pending interrupt before running gates.
         if (checkInterruptSignal(cfg)) |interrupt_msg| {
             log.info("gate_loop.interrupt_received run_id={s} workspace_id={s} agent_id={s} msg_len={d}", .{ cfg.run_id, cfg.workspace_id, cfg.agent_id, interrupt_msg.len });
-            metrics.incInterruptInstant();
+            metrics.incInterruptQueued();
             if (cfg.executor) |exec| {
                 if (cfg.execution_id) |exec_id| {
                     _ = exec.startStage(exec_id, .{
@@ -197,6 +197,8 @@ pub fn runGateLoop(cfg: GateLoopConfig) !GateLoopOutcome {
             log.info("gate_loop.interrupt_killed_gate run_id={s} workspace_id={s} agent_id={s} delivery_mode=instant wall_ms={d}", .{
                 cfg.run_id, cfg.workspace_id, cfg.agent_id, failed_result.?.wall_ms,
             });
+            // M21_002 §4.1: Only count as instant when timer thread actually killed the gate.
+            metrics.incInterruptInstant();
             // M21_002 §4.3: Record delivery latency (gate wall time until interrupt).
             metrics.observeInterruptDeliveryLatencyMs(failed_result.?.wall_ms);
             continue;
@@ -274,25 +276,26 @@ const TimerContext = struct {
     alloc: std.mem.Allocator,
 
     fn run(ctx: TimerContext) void {
-        var elapsed_ms: u64 = 0;
-        while (elapsed_ms < ctx.timeout_ms) {
+        const start_ms: i64 = std.time.milliTimestamp();
+        const deadline_ms: i64 = start_ms + @as(i64, @intCast(ctx.timeout_ms));
+        while (std.time.milliTimestamp() < deadline_ms) {
             std.Thread.sleep(INTERRUPT_POLL_INTERVAL_MS * std.time.ns_per_ms);
-            elapsed_ms += INTERRUPT_POLL_INTERVAL_MS;
 
             // M21_002: Check for interrupt signal in Redis.
             if (ctx.redis) |redis| {
                 if (interruptExists(redis, ctx.run_id, ctx.alloc)) {
                     // CAS: claim exit reason as interrupted (0 → 2).
-                    if (ctx.exit_reason.cmpxchgWeak(
+                    // Use cmpxchgStrong — spurious failure from Weak would
+                    // silently drop the interrupt delivery.
+                    if (ctx.exit_reason.cmpxchgStrong(
                         @intFromEnum(ExitReason.running),
                         @intFromEnum(ExitReason.interrupted),
                         .acq_rel,
                         .acquire,
                     ) == null) {
                         killWithEscalation(ctx.child);
-                        return;
                     }
-                    return; // Someone else claimed — exit.
+                    return;
                 }
             }
         }
@@ -374,7 +377,10 @@ pub fn executeGateCommand(
         .redis = redis,
         .run_id = run_id,
         .alloc = alloc,
-    }}) catch null;
+    }}) catch |err| blk: {
+        log.warn("gate_loop.timer_spawn_failed err={s} gate={s}", .{ @errorName(err), gate_name });
+        break :blk null;
+    };
 
     const term = resources.child.wait() catch |err| {
         // Claim done so timer thread won't kill a reaped PID.
