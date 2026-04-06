@@ -22,6 +22,12 @@ Canonical reference for UseZombie database schema patterns. All new tables **mus
 - Do not rely on session `search_path` defaults for correctness.
 - Legacy unqualified queries may remain temporarily, but touched paths should be migrated to schema-qualified names.
 
+## Schema-Backed Runtime Defaults
+
+- If a numeric schema default is also used in runtime fallback or provisioning logic, define it once in Zig as a named constant and import that constant in runtime code.
+- Keep the database DDL value unchanged unless the product default is intentionally changing; the Zig constant mirrors the schema default for drift detection.
+- Add an adjacent `Canonical constant:` SQL comment next to each shared numeric default so reviewers can verify the linkage quickly.
+
 ## ID Format
 
 - **Type:** `UUID PRIMARY KEY`

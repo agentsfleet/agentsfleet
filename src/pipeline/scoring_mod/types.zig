@@ -1,3 +1,5 @@
+const defaults = @import("../../types/defaults.zig");
+
 pub const SCORE_FORMULA_VERSION = "2";
 
 /// M27_002 §1.1.1: Runs scoring below this threshold are marked non-billable.
@@ -84,7 +86,7 @@ pub const ScoringConfig = struct {
     enabled: bool = false,
     weights: Weights = DEFAULT_WEIGHTS,
     enable_score_context_injection: bool = true,
-    scoring_context_max_tokens: u32 = 2048,
+    scoring_context_max_tokens: u32 = defaults.DEFAULT_SCORING_CONTEXT_MAX_TOKENS,
 };
 
 pub const WeightsDoc = struct {

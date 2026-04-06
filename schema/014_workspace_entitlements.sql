@@ -11,6 +11,7 @@ CREATE TABLE billing.workspace_entitlements (
     enable_agent_scoring BOOLEAN NOT NULL,
     agent_scoring_weights_json TEXT NOT NULL,
     enable_score_context_injection BOOLEAN NOT NULL DEFAULT TRUE,
+    -- Canonical constant: src/types/defaults.zig#DEFAULT_SCORING_CONTEXT_MAX_TOKENS
     scoring_context_max_tokens INTEGER NOT NULL DEFAULT 2048,
     created_at           BIGINT NOT NULL,
     updated_at           BIGINT NOT NULL,

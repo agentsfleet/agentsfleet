@@ -33,8 +33,11 @@ CREATE TABLE core.runs (
     run_snapshot_config_version  UUID,
     dedup_key             TEXT,
     -- M17_001 §1.1: per-run enforcement limits (immutable once enqueued)
+    -- Canonical constant: src/types/defaults.zig#DEFAULT_RUN_MAX_REPAIR_LOOPS
     max_repair_loops      INT NOT NULL DEFAULT 3,
+    -- Canonical constant: src/types/defaults.zig#DEFAULT_RUN_MAX_TOKENS
     max_tokens            BIGINT NOT NULL DEFAULT 100000,
+    -- Canonical constant: src/types/defaults.zig#DEFAULT_RUN_MAX_WALL_TIME_SECONDS
     max_wall_time_seconds BIGINT NOT NULL DEFAULT 600,
     tokens_used           BIGINT NOT NULL DEFAULT 0,
     created_at            BIGINT NOT NULL,

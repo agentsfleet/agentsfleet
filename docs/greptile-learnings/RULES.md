@@ -381,3 +381,72 @@ if (ctx.jsonMode) {
 ```
 
 Incident: M30_002 greptile P2 — `agent.js` and `agent_proposals.js` had dual-branch guards without explanation.
+
+---
+
+## Drift-Detection Tests — Use an Independent Schema Snapshot
+
+**RULE: Tests that verify Zig constants match SQL schema defaults must compare against a separate `SchemaSpec` struct, not against inline literals that mirror the constant definition.**
+
+Why: A test like `expectEqual(@as(u32, 3), DEFAULT_RUN_MAX_REPAIR_LOOPS)` is tautological — it asserts `3 == 3` and cannot detect drift. An independent `SchemaSpec` struct holds the raw SQL DEFAULT values; if either the constant or the spec diverges, the test fails.
+
+Do:
+```zig
+const SchemaSpec = struct { run_max_repair_loops: u32 = 3 };
+const schema_spec = SchemaSpec{};
+try std.testing.expectEqual(schema_spec.run_max_repair_loops, DEFAULT_RUN_MAX_REPAIR_LOOPS);
+```
+
+Don't:
+```zig
+try std.testing.expectEqual(@as(u32, 3), DEFAULT_RUN_MAX_REPAIR_LOOPS);
+```
+
+Incident: M31_002 greptile P2 — `src/types/defaults.zig` had tautological drift tests; replaced with `SchemaSpec` struct as independent source of truth.
+
+---
+
+## Integration Tests — Only Test DB-Reachable Code Paths
+
+**RULE: Integration tests must not insert values that violate real table CHECK constraints via temp tables without constraints. Test only values reachable from the actual schema.**
+
+Why: The real `billing.workspace_entitlements` table has `CHECK (scoring_context_max_tokens >= 512 AND <= 8192)`. Inserting `0` via an unconstrained temp table tests a dead-code branch (`<= 0` fallback) that can never be triggered from real DB data.
+
+Do:
+```zig
+// Insert 512 — the minimum valid value under the CHECK constraint
+// Tests that the clamp boundary is honoured correctly.
+VALUES (..., 512, ...);
+try std.testing.expectEqual(@as(u32, 512), cfg.scoring_context_max_tokens);
+```
+
+Don't:
+```zig
+// 0 is impossible in production — CHECK constraint prevents it
+VALUES (..., 0, ...);
+```
+
+Incident: M31_002 greptile P2 — `src/pipeline/scoring_defaults_test.zig` tested the non-positive fallback branch using a value the real schema makes impossible.
+
+---
+
+## Comptime Guards for u64→i64 Casts
+
+**RULE: Whenever a `u64` constant from `src/types/defaults.zig` is cast to `i64` or `i32`, add a `comptime std.debug.assert` at the top of the file to catch overflow if the constant is ever raised.**
+
+Why: The cast `@as(i64, @intCast(DEFAULT_RUN_MAX_TOKENS))` is safe for current values but would panic at runtime if the constant ever exceeded `std.math.maxInt(i64)`. A comptime assert converts that latent runtime panic into a compile-time error.
+
+Do:
+```zig
+comptime {
+    std.debug.assert(defaults.DEFAULT_RUN_MAX_TOKENS <= std.math.maxInt(i64));
+}
+```
+
+Don't:
+```zig
+// Silent @intCast with no guard — panics at runtime if constant grows
+return used + @as(i64, @intCast(defaults.DEFAULT_RUN_MAX_TOKENS)) > budget;
+```
+
+Incident: M31_002 greptile P2 — `src/http/handlers/runs/start_budget.zig` and `src/pipeline/worker_claim.zig` cast `u64` defaults to `i64`/`i32` without comptime guards.

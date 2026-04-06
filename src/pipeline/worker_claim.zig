@@ -18,12 +18,33 @@ const posthog_events = @import("../observability/posthog_events.zig");
 const http_common = @import("../http/handlers/common.zig");
 const obs_log = @import("../observability/logging.zig");
 const secrets = @import("../secrets/crypto.zig");
+const defaults = @import("../types/defaults.zig");
 const log = std.log.scoped(.worker);
+
+// Guards: u64 defaults are cast to i64/i32 in the normalize functions below.
+// These assertions catch overflow at compile time if the constants are ever raised.
+comptime {
+    std.debug.assert(defaults.DEFAULT_RUN_MAX_TOKENS <= std.math.maxInt(i64));
+    std.debug.assert(defaults.DEFAULT_RUN_MAX_WALL_TIME_SECONDS <= std.math.maxInt(i64));
+    std.debug.assert(defaults.DEFAULT_RUN_MAX_REPAIR_LOOPS <= std.math.maxInt(i32));
+}
 
 pub const ProcessConfig = struct {
     pool: *pg.Pool,
     execute: worker_stage_executor.ExecuteConfig,
 };
+
+fn normalizeRunMaxTokens(raw_value: ?i64) u64 {
+    return @as(u64, @intCast(@max(0, raw_value orelse @as(i64, @intCast(defaults.DEFAULT_RUN_MAX_TOKENS)))));
+}
+
+fn normalizeRunMaxWallTimeSeconds(raw_value: ?i64) u64 {
+    return @as(u64, @intCast(@max(0, raw_value orelse @as(i64, @intCast(defaults.DEFAULT_RUN_MAX_WALL_TIME_SECONDS)))));
+}
+
+fn normalizeRunMaxRepairLoops(raw_value: ?i32) u32 {
+    return @as(u32, @intCast(@max(1, raw_value orelse @as(i32, @intCast(defaults.DEFAULT_RUN_MAX_REPAIR_LOOPS)))));
+}
 
 fn beginTx(conn: *pg.Conn) !void {
     _ = try conn.exec("BEGIN", .{});
@@ -92,11 +113,11 @@ pub fn processNextRun(
     const repo_url = try claim_alloc.dupe(u8, try row.get([]u8, 8));
     const default_branch = try claim_alloc.dupe(u8, try row.get([]u8, 9));
     const spec_path = try claim_alloc.dupe(u8, try row.get([]u8, 10));
-    const max_tokens = @as(u64, @intCast(@max(0, row.get(i64, 11) catch 100_000)));
-    const max_wall_time_seconds = @as(u64, @intCast(@max(0, row.get(i64, 12) catch 600)));
+    const max_tokens = normalizeRunMaxTokens(row.get(i64, 11) catch null);
+    const max_wall_time_seconds = normalizeRunMaxWallTimeSeconds(row.get(i64, 12) catch null);
     const run_created_at_ms = row.get(i64, 13) catch 0;
     // M17_001 §1.2: repair loop cap from DB (default 3 matches INSERT default).
-    const max_repair_loops = @as(u32, @intCast(@max(1, row.get(i32, 14) catch 3)));
+    const max_repair_loops = normalizeRunMaxRepairLoops(row.get(i32, 14) catch null);
     _ = http_common.setTenantSessionContext(conn, tenant_id);
 
     result.drain() catch |err| {
@@ -264,4 +285,16 @@ pub fn processNextRun(
             .ts_ms = std.time.milliTimestamp(),
         });
     }
+}
+
+test "normalize run defaults fall back to shared schema constants" {
+    try std.testing.expectEqual(defaults.DEFAULT_RUN_MAX_TOKENS, normalizeRunMaxTokens(null));
+    try std.testing.expectEqual(defaults.DEFAULT_RUN_MAX_WALL_TIME_SECONDS, normalizeRunMaxWallTimeSeconds(null));
+    try std.testing.expectEqual(defaults.DEFAULT_RUN_MAX_REPAIR_LOOPS, normalizeRunMaxRepairLoops(null));
+}
+
+test "normalize run defaults clamp invalid values without magic literals" {
+    try std.testing.expectEqual(@as(u64, 0), normalizeRunMaxTokens(-1));
+    try std.testing.expectEqual(@as(u64, 0), normalizeRunMaxWallTimeSeconds(-5));
+    try std.testing.expectEqual(@as(u32, 1), normalizeRunMaxRepairLoops(0));
 }

@@ -4,6 +4,7 @@ const posthog = @import("posthog");
 const sandbox_runtime = @import("sandbox_runtime.zig");
 const executor_client = @import("../executor/client.zig");
 const queue_redis = @import("../queue/redis.zig");
+const defaults = @import("../types/defaults.zig");
 
 pub const ExecuteConfig = struct {
     cache_root: []const u8,
@@ -38,7 +39,7 @@ pub const RunContext = struct {
     max_wall_time_seconds: u64 = 0,
     run_created_at_ms: i64 = 0,
     /// M17_001 §1.2: repair loop cap from DB column; overrides profile default.
-    max_repair_loops: u32 = 3,
+    max_repair_loops: u32 = defaults.DEFAULT_RUN_MAX_REPAIR_LOOPS,
 };
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
