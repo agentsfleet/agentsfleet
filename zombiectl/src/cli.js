@@ -23,7 +23,7 @@ import {
 import { ApiError, apiHeaders, printApiError, request } from "./program/http-client.js";
 import { parseFlags, parseGlobalArgs, normalizeApiUrl, DEFAULT_API_URL } from "./program/args.js";
 import { extractDistinctIdFromToken, extractRoleFromToken } from "./program/auth-token.js";
-import { printHelp, printJson, writeLine } from "./program/io.js";
+import { printHelp, printJson, writeError, writeLine } from "./program/io.js";
 import { printBanner, printPreReleaseWarning } from "./program/banner.js";
 import { suggestCommand } from "./program/suggest.js";
 import { requireAuth, AUTH_FAIL_MESSAGE } from "./program/auth-guard.js";
@@ -93,11 +93,7 @@ export async function runCli(argv, io = {}) {
   if (route && !AUTH_EXEMPT_ROUTES.has(route.key)) {
     const auth = requireAuth(ctx);
     if (!auth.ok) {
-      if (ctx.jsonMode) {
-        printJson(stderr, { error: { code: "AUTH_REQUIRED", message: AUTH_FAIL_MESSAGE } });
-      } else {
-        writeLine(stderr, ui.err(AUTH_FAIL_MESSAGE));
-      }
+      writeError(ctx, "AUTH_REQUIRED", AUTH_FAIL_MESSAGE, { printJson, writeLine, ui });
       return 1;
     }
   }
@@ -179,6 +175,14 @@ export async function runCli(argv, io = {}) {
       printJson,
       writeLine,
     }),
+    runsInterrupt: (routeArgs) => commandRunsModule(ctx, routeArgs, {
+      parseFlags,
+      request,
+      apiHeaders,
+      ui,
+      printJson,
+      writeLine,
+    }),
   });
 
   try {
@@ -239,7 +243,9 @@ export async function runCli(argv, io = {}) {
     // "Did you mean?" suggestion for unknown commands
     const fullInput = [command, ...args].join(" ");
     const suggestions = suggestCommand(fullInput);
-    if (suggestions.length > 0) {
+    if (ctx.jsonMode) {
+      writeError(ctx, "UNKNOWN_COMMAND", `unknown command: ${command}`, { printJson, writeLine, ui });
+    } else if (suggestions.length > 0) {
       writeLine(stderr, ui.err(`unknown command: ${command}`));
       writeLine(stderr);
       writeLine(stderr, "The most similar commands are");

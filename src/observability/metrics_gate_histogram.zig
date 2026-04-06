@@ -25,6 +25,8 @@ pub fn observe(mu: *std.Thread.Mutex, loops: u32) void {
     }
 }
 
+/// Returns a point-in-time copy of the histogram state.
+/// Caller MUST hold the external mutex used in `observe()` before calling this.
 pub fn snapshot() GateLoopHistogramSnapshot {
     return g_gate_repair_loops_per_run;
 }

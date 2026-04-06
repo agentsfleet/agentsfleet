@@ -1,3 +1,5 @@
+import { writeError } from "../program/io.js";
+
 function createCoreOpsHandlers(ctx, workspaces, deps) {
   const {
     apiHeaders,
@@ -59,7 +61,7 @@ function createCoreOpsHandlers(ctx, workspaces, deps) {
     const key = parsed.options.key;
 
     if (!workspaceId || !skillRef || !key) {
-      writeLine(ctx.stderr, ui.err("skill-secret requires --workspace-id --skill-ref --key"));
+      writeError(ctx, "USAGE_ERROR", "skill-secret requires --workspace-id --skill-ref --key", deps);
       return 2;
     }
 
@@ -67,7 +69,7 @@ function createCoreOpsHandlers(ctx, workspaces, deps) {
 
     if (action === "put") {
       if (!parsed.options.value) {
-        writeLine(ctx.stderr, ui.err("skill-secret put requires --value"));
+        writeError(ctx, "USAGE_ERROR", "skill-secret put requires --value", deps);
         return 2;
       }
       const body = {
@@ -95,7 +97,7 @@ function createCoreOpsHandlers(ctx, workspaces, deps) {
       return 0;
     }
 
-    writeLine(ctx.stderr, ui.err("usage: skill-secret put|delete ..."));
+    writeError(ctx, "UNKNOWN_COMMAND", `unknown skill-secret action: ${action ?? "(none)"}`, deps);
     return 2;
   }
 

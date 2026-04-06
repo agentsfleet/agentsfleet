@@ -14,6 +14,7 @@ const types = @import("../types.zig");
 const github_auth = @import("../auth/github.zig");
 const worker_stage_helpers = @import("worker_stage_helpers.zig");
 const worker_gate_loop = @import("worker_gate_loop.zig");
+const worker_gate_helpers = @import("worker_gate_helpers.zig");
 const codes = @import("../errors/codes.zig");
 const wst = @import("worker_stage_types.zig");
 const log = std.log.scoped(.worker);
@@ -125,7 +126,7 @@ pub fn handleDoneOutcome(o: DoneOutcomeCtx) !void {
 
     // M16_001 §3.4: Post gate scorecard comment on the PR.
     if (o.gate_results) |results| {
-        const scorecard = worker_gate_loop.formatScorecard(o.alloc, results, o.gate_loop_count, o.ctx.run_id) catch null;
+        const scorecard = worker_gate_helpers.formatScorecard(o.alloc, results, o.gate_loop_count, o.ctx.run_id) catch null;
         if (scorecard) |card| {
             defer o.alloc.free(card);
             const token = o.token_cache.getInstallationToken(o.alloc, o.ctx.workspace_id) catch null;

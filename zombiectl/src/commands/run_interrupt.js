@@ -8,6 +8,8 @@
 //   - Prints the effective mode (queued/instant) and ack status
 //   - Exit 0 on success, 1 on error
 
+import { writeError } from "../program/io.js";
+
 const MAX_MESSAGE_BYTES = 4096;
 
 function commandRunsInterrupt(ctx, args, deps) {
@@ -18,22 +20,19 @@ function commandRunsInterrupt(ctx, args, deps) {
   const messageParts = parsed.positionals.slice(1);
 
   if (!runId || messageParts.length === 0) {
-    writeLine(ctx.stderr, ui.err("usage: zombiectl runs interrupt <run_id> <message> [--mode=queued|instant]"));
-    writeLine(ctx.stderr, ui.dim("  Sends a steering message to a running agent without stopping it."));
-    writeLine(ctx.stderr, ui.dim("  --mode=queued   (default) delivered at next gate checkpoint"));
-    writeLine(ctx.stderr, ui.dim("  --mode=instant  delivered mid-turn if executor is active"));
+    writeError(ctx, "USAGE_ERROR", "runs interrupt requires <run_id> <message>", deps);
     return Promise.resolve(2);
   }
 
   const message = messageParts.join(" ");
   if (message.length > MAX_MESSAGE_BYTES) {
-    writeLine(ctx.stderr, ui.err(`Message too long (${message.length} bytes, max ${MAX_MESSAGE_BYTES})`));
+    writeError(ctx, "USAGE_ERROR", `Message too long (${message.length} bytes, max ${MAX_MESSAGE_BYTES})`, deps);
     return Promise.resolve(2);
   }
 
   const mode = parsed.flags.mode || "queued";
   if (mode !== "queued" && mode !== "instant") {
-    writeLine(ctx.stderr, ui.err("--mode must be 'queued' or 'instant'"));
+    writeError(ctx, "USAGE_ERROR", "--mode must be 'queued' or 'instant'", deps);
     return Promise.resolve(2);
   }
 

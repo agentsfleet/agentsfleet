@@ -1,3 +1,5 @@
+import { writeError } from "../program/io.js";
+
 export async function commandAdmin(ctx, args, workspaces, deps) {
   const { parseFlags, ui, writeLine } = deps;
   const group = args[0];
@@ -9,16 +11,16 @@ export async function commandAdmin(ctx, args, workspaces, deps) {
     const workspaceId = parsed.options["workspace-id"];
     const rawValue = parsed.positionals[0] || parsed.options.value;
     if (!workspaceId) {
-      writeLine(ctx.stderr, ui.err("admin config set scoring_context_max_tokens requires --workspace-id"));
+      writeError(ctx, "USAGE_ERROR", "admin config set scoring_context_max_tokens requires --workspace-id", deps);
       return 2;
     }
     if (!rawValue) {
-      writeLine(ctx.stderr, ui.err("admin config set scoring_context_max_tokens requires <value>"));
+      writeError(ctx, "USAGE_ERROR", "admin config set scoring_context_max_tokens requires <value>", deps);
       return 2;
     }
     const parsedValue = Number.parseInt(rawValue, 10);
     if (!Number.isInteger(parsedValue) || parsedValue < 512 || parsedValue > 8192) {
-      writeLine(ctx.stderr, ui.err("scoring_context_max_tokens must be an integer between 512 and 8192"));
+      writeError(ctx, "VALIDATION_ERROR", "scoring_context_max_tokens must be an integer between 512 and 8192", deps);
       return 2;
     }
     const res = await deps.request(ctx, `/v1/workspaces/${encodeURIComponent(workspaceId)}/scoring/config`, {
@@ -34,6 +36,6 @@ export async function commandAdmin(ctx, args, workspaces, deps) {
     return 0;
   }
 
-  writeLine(ctx.stderr, ui.err("usage: admin config set scoring_context_max_tokens <value> --workspace-id ID"));
+  writeError(ctx, "UNKNOWN_COMMAND", `unknown admin command: ${group ?? "(none)"}`, deps);
   return 2;
 }

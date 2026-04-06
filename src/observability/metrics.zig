@@ -56,6 +56,8 @@ pub const observeGateRepairLoopsPerRun = mc.observeGateRepairLoopsPerRun;
 pub const incInterruptQueued = mc.incInterruptQueued;
 pub const incInterruptInstant = mc.incInterruptInstant;
 pub const incInterruptFallback = mc.incInterruptFallback;
+// M21_002 §4.3
+pub const observeInterruptDeliveryLatencyMs = mc.observeInterruptDeliveryLatencyMs;
 pub const incRunAborted = mc.incRunAborted;
 pub const snapshot = mc.snapshot;
 

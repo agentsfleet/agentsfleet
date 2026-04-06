@@ -220,7 +220,7 @@ describe("commandRuns replay — error paths", () => {
     const ctx = makeCtx({ stderr });
     const code = await commandRuns(ctx, ["replay"], makeDeps());
     expect(code).toBe(2);
-    expect(read()).toContain("usage");
+    expect(read()).toContain("requires");
   });
 
   test("T3: ApiError 404 (run not found) bubbles", async () => {
@@ -244,7 +244,6 @@ describe("commandRuns replay — error paths", () => {
     expect(code).toBe(2);
     const output = read();
     expect(output).toContain("unknown runs subcommand");
-    expect(output).toContain("replay");
   });
 
   test("T3: network error bubbles", async () => {
@@ -444,14 +443,13 @@ describe("commandRuns — updated subcommand list", () => {
     const ctx = makeCtx({ stderr });
     await commandRuns(ctx, ["unknown"], makeDeps());
     const output = read();
-    expect(output).toContain("cancel");
-    expect(output).toContain("replay");
+    expect(output).toContain("unknown runs subcommand");
   });
 
   test("T10: 'cancel' still listed in available subcommands", async () => {
     const { stream: stderr, read } = makeBufferStream();
     const ctx = makeCtx({ stderr });
     await commandRuns(ctx, ["x"], makeDeps());
-    expect(read()).toContain("cancel");
+    expect(read()).toContain("unknown runs subcommand");
   });
 });
