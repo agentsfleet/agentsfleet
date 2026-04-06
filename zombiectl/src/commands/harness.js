@@ -7,7 +7,7 @@ import { validateRequiredId } from "../program/validate.js";
 import { writeError } from "../program/io.js";
 
 export async function commandHarness(ctx, args, workspaces, deps) {
-  const { parseFlags, printJson, ui, writeLine } = deps;
+  const { parseFlags } = deps;
 
   const group = args[0];
   const action = group === "source" ? args[1] : null;

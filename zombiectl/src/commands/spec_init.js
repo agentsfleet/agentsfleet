@@ -72,7 +72,7 @@ export function scanRepo(repoPath) {
  * Without --describe: falls back to local template generation (no auth required).
  */
 export async function commandSpecInit(args, ctx, deps) {
-  const { parseFlags, printJson, writeLine, ui } = deps;
+  const { parseFlags, writeLine, ui } = deps;
   const parsed = parseFlags(args);
   const repoPath = resolve(parsed.options.path || ".");
   const outputPath = parsed.options.output || "docs/spec/new-feature.md";

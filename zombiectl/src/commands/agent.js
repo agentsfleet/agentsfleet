@@ -8,7 +8,7 @@ import { validateRequiredId } from "../program/validate.js";
 import { writeError } from "../program/io.js";
 
 export async function commandAgent(ctx, args, workspaces, deps) {
-  const { parseFlags, printJson, ui, writeLine } = deps;
+  const { parseFlags, ui, writeLine } = deps;
 
   const action = args[0];
   const parsed = parseFlags(args.slice(1));
