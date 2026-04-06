@@ -49,9 +49,9 @@ Do not add or recommend workflows around:
 
 When starting a new project or when asked to "set up infrastructure", follow this sequence — do not invent steps:
 
-1. Human completes `playbooks/M1_001_BOOTSTRAP.md` Milestone 1 (accounts + root API keys).
-2. Agent runs `./playbooks/gates/check-credentials.sh` (`M2_001_PREFLIGHT.md`) — validates every required vault item is present and non-empty. Runs anywhere `op` CLI is available — no CI dependency. **Do not proceed to step 3 until this passes with zero missing items.**
-3. Agent executes `playbooks/M2_002_PRIMING_INFRA.md` in order (container pipeline → Fly.io → Cloudflare Tunnel → data-plane → workers → CI → first release).
+1. Human completes `playbooks/001_bootstrap/001_playbook.md` (accounts + root API keys).
+2. Agent runs `./playbooks/002_preflight/001_gate.sh` (`playbooks/002_preflight/001_playbook.md`) — validates every required vault item is present and non-empty. Runs anywhere `op` CLI is available — no CI dependency. **Do not proceed to step 3 until this passes with zero missing items.**
+3. Agent executes `playbooks/003_priming_infra/001_playbook.md` in order (container pipeline → Fly.io → Cloudflare Tunnel → data-plane → workers → CI → first release).
 4. Milestones proceed only after PRIMING_INFRA is verified end-to-end.
 
 **Do not skip steps or reorder.** Each step has a verify command — run it before proceeding to the next.
@@ -75,7 +75,7 @@ When designing any multi-step operation that involves both a human and an agent:
 
 Applied to playbooks: number steps so human steps come first (and are as few as possible), then agent steps run in sequence to completion. If the playbook completes, no manual activation or follow-up is needed.
 
-Reference implementation: `playbooks/M4_001_WORKER_BOOTSTRAP_DEV.md`.
+Reference implementation: `playbooks/006_worker_bootstrap_dev/001_playbook.md`.
 
 ---
 
@@ -422,270 +422,23 @@ Exit criteria:
 
 - PR opened with spec in `done/` directory and release doc in `release/`.
 
-## Hard Safety Rules
-
-- Never use destructive commands without explicit user approval: `reset --hard`, `clean -fd`, `checkout --`, `restore --source`, broad `rm`.
-- Never revert changes you did not create unless explicitly instructed.
-- If unexpected changes appear in files you are actively editing, stop and ask.
-- No branch mutation outside lifecycle transitions.
-- No cross-worktree edits.
-- No secrets in commits/docs.
-- Never resolve or print credential values in conversation, code, docs, playbooks, or evidence files. This includes values seen in CI logs, error messages, or debug output — once seen, do not copy them anywhere. Check effects (health endpoints, connectivity status), not raw secrets. Use `op://` references and vault item names only.
-- When writing verification steps that reference credentials, always use `op read 'op://...'` at runtime. Never paste a literal value, even as an "example" or "old value to test against."
-- Prefer CLI and text artifacts. Do not require GUI-only tooling when a CLI path exists.
-
-## Cognitive Discipline
-
-These rules apply to every task, not just second-model reviews. Non-negotiable.
-
-### Confusion Management (Critical)
-
-When encountering inconsistencies, conflicting requirements, or unclear specifications:
-
-1. **STOP** — do not proceed with a guess.
-2. **Name the specific confusion.**
-3. **Present the tradeoff or ask one precise question.**
-4. **Wait for resolution.**
-
-```
-❌ Bad: Silently picking one interpretation and hoping it's right
-✅ Good: "I see X in file A but Y in file B. Which takes precedence?"
-```
-
-Never silently fill in ambiguous requirements. The most common failure mode is making wrong assumptions and running with them unchecked.
-
-### Simplicity Enforcement
-
-Actively resist overcomplication. Before finishing any implementation, ask:
-
-- Can this be done in fewer lines?
-- Are these abstractions earning their complexity?
-- Would a senior dev say "why didn't you just…"?
-
-Prefer the boring, obvious solution. Cleverness is expensive. If 100 lines suffice, 1000 lines is a failure.
-
-### No Insecure Fallbacks
-
-Never add a "fallback" auth path, credential mechanism, or compatibility shim that is less secure than the primary path.
-
-- **One auth path.** Design the secure path. Ship only that.
-- **No deferred security.** Do not spread a security fix across milestones.
-- **No throwaway code.** If code will be replaced next milestone, do not write it.
-- **No backward-compatibility shims for unreleased software.**
-
-```
-❌ Bad: "Primary: GitHub App. Fallback: GITHUB_PAT env var for self-hosted."
-✅ Good: "Auth: GitHub App OAuth. No other path."
-```
-
-### No Process Launches — Native SDK Only
-
-Never shell out to external processes for core functionality. If a capability exists as a native library or SDK, use it.
-
-- **Git operations:** Use libgit2, not `git` CLI subprocess.
-- **HTTP/File/Build:** Use native APIs and Zig build system, not subprocess.
-- **Exception:** Personal developer tools (`op`, `gh`, `glab`, `oracle`) are allowed.
-
-### Error Surfacing — Design for Autonomous Recovery
-
-Every error must be visible, actionable, and self-diagnosing.
-
-- **No silent hangs.** Always timeout and surface diagnostics when dependencies are unreachable.
-- **Errors must name the dependency and suggest the fix.**
-- **Build and CI errors must be reproducible locally.**
-- **Closed feedback loops over open-ended CI.** Prefer `make` targets that verify locally in seconds.
-- **Fail loud, fail early, fail with context.**
-
-## Memory Boundaries
-
-Persist durable project decisions in repo docs, not conversation memory. Auto-memory (`MEMORY.md`) is for cross-session agent context (user preferences, feedback, project state) — but architectural decisions, process rules, and runbooks belong in repo files.
-
-- Process decisions: repo docs (`docs/*.md`).
-- Runbooks: `runbooks/docs/*.md`.
-
-Never rely on prior chat context when a file can hold canonical state.
-
-## Git Forge Policy (`gh` vs `glab`)
-
-Detect the forge from `git remote -v` output **before** running any forge command.
-
-| Remote host contains | Forge tool |
-|---|---|
-| `gitlab.com` | `glab` |
-| `github.com` | `gh` |
-
-Quick checks:
-
-```bash
-git remote -v
-gh auth status
-glab auth status
-```
-
-## PR And CI Workflow
-
-- For GitHub PR checks, use:
-
-```bash
-gh pr view --json number,title,url
-gh pr diff
-gh run list
-gh run view <run-id>
-```
-
-- For GitLab MR/pipeline checks, use:
-
-```bash
-glab mr view
-glab mr diff
-glab ci status
-glab pipeline view
-```
-
-- If CI is red, iterate until green: inspect logs, fix, push, re-check.
-
-## Standard Make Target Taxonomy
-
-Every repo must expose these targets. Agents use these as the canonical entry points — never raw `bun run`/`cargo`/`go` commands unless a Make target does not exist.
-
-| Target        | Applies to        | Purpose                                             |
-|---------------|-------------------|-----------------------------------------------------|
-| `make dev`    | all               | Start local dev server or run binary in dev mode    |
-| `make up`     | services          | Start background services (Docker Compose)          |
-| `make down`   | services          | Stop background services                            |
-| `make lint`   | all               | Run all linters and type checks (never `quality`)   |
-| `make test`   | all               | Run all unit tests                                  |
-| `make build`  | all               | Compile / bundle for production                     |
-| `make _clean` | all               | Remove generated artefacts (dist, coverage, .tmp)   |
-| `make push`   | services/packages | Push image/package to registry                      |
-| `make qa`     | web               | Playwright e2e full suite (headless)                |
-| `make qa-smoke` | web             | Playwright smoke tests (fast CI gate)               |
-
-Rules:
-- `make quality` is **banned** — use `make lint`.
-- `make qa-headed` is **not a shared target** — agents are headless; headed runs use `bunx playwright test --headed` directly.
-- Multi-component repos split targets: `make lint-<component>` feeds into `make lint` aggregate. Example: `lint-zig` + `lint-website` → `lint`.
-- `make test` runs unit tests only. E2e is always a separate `make qa` / `make qa-smoke`.
-
-## Screenshot Workflow
-
-When asked to "use a screenshot":
-
-- Pick the newest PNG from `~/Desktop` or `~/Downloads`.
-- Validate dimensions: `sips -g pixelWidth -g pixelHeight <file>`
-- Optimize before commit: `imageoptim <file>`
-
-## Multi-Agent Execution Model
-
-Use worktrees for isolation and tmux for orchestration.
-
-Rules:
-
-- One worktree per active agent/task stream.
-- One tmux pane per agent role (Oracle/Codex/Claude/tests).
-- No file edits outside current worktree.
-- Merge only after `VERIFY` passes.
-
-Session orchestration:
-
-```bash
-tmux new -s agents
-tmux list-sessions
-tmux attach -t agents
-```
-
-## QA Testing Decision
-
-Default browser E2E stack is **Playwright CLI**.
-
-```bash
-bun add -d @playwright/test
-bunx playwright install --with-deps
-bunx playwright test --reporter=line                    # CI/headless
-bunx playwright test tests/e2e/login.spec.ts --project=chromium  # targeted
-```
-
-Playwright MCP may be used for exploratory automation, but CLI is the source of truth for pass/fail gates.
-
-## Knowledge Base (QMD)
-
-Use `qmd` to search indexed reference material for sandbox agents, infrastructure patterns, and prior research.
-
-**Collection:** `clawable` → `~/notes/clawable/`
-
-```bash
-qmd search "actor model implementation" -c clawable     # BM25 keyword
-qmd vsearch "sandbox isolation patterns" -c clawable     # semantic
-qmd query "how to deploy sandbox agents" -c clawable     # hybrid + re-rank
-qmd query "sandbox architecture" --json -n 10            # JSON for LLM
-```
-
-**Workflow:** Run `qmd query` or `qmd search` first when researching or comparing implementations.
-
-## Greptile Learnings
-
-Two files:
-
-| File | Purpose | When read |
-|------|---------|-----------|
-| `docs/greptile-learnings/RULES.md` | Natural-language do's and don'ts | EXECUTE start, `/review`, greptile fixes |
-
-New learnings go into `RULES.md` as natural-language rules.
-
-**Full process documentation:** [`docs/greptile-learnings/README.md`](./docs/greptile-learnings/README.md)
-
-**Pre-PR:** Agents read `RULES.md` during EXECUTE. `make lint` runs standard lint checks.
-
-**Post-PR — triggered by ANY mention of greptile/reptile feedback, review comments, or "fix greptile":**
-
-Execute ALL steps below as a single workflow. Do not stop after fixing code — the reply, rule, and report steps are mandatory.
-
-1. Fetch greptile review ID and inline comments:
-   ```bash
-   gh api repos/OWNER/REPO/pulls/N/reviews --jq '.[] | select(.user.login | test("greptile")) | .id'
-   gh api repos/OWNER/REPO/pulls/N/reviews/{ID}/comments --jq '.[] | {id, path, body: .body[:150]}'
-   ```
-2. Fix each finding in the worktree (P0/P1 required; P2 at discretion)
-3. Run `make lint && make test` and `make test-integration-db` if DB-backed files were touched
-4. For every P0/P1 finding: add a natural-language rule to `docs/greptile-learnings/RULES.md` following the template (rule, why, do, don't, incident)
-5. **Reply to each greptile thread** with what was fixed and which commit:
-   ```bash
-   gh api repos/OWNER/REPO/pulls/N/comments/{comment_id}/replies -f body="Fixed in <sha>: <what changed>"
-   ```
-6. Commit fix + rule together, push the branch
-7. **Report to user**: table with each finding, severity, fix applied, rule added (or why not), and thread reply ID
-
-## Web-to-Markdown Workflow
-
-| Approach | Use When | Command |
-|----------|----------|---------|
-| Cloudflare header | Site uses Cloudflare + enabled | `curl -H "Accept: text/markdown" URL` |
-| html2text | Any other site | `curl -s URL \| html2text` |
-| webfetch tool | Quick extraction via agent | `webfetch URL --format markdown` |
-
-## Code Structure Policies
-
-- `Mar 07, 2026: 11:55 PM` — Code line-limit policy: write deep modules with fewer than 500 lines to keep testing and review simpler.
-- `Mar 07, 2026: 11:55 PM` — Constant policy: if a string is used more than once, extract a constant.
-- `Mar 07, 2026: 11:55 PM` — Constant scope rule: if reuse is across modules, place constants in a shared global constants file.
-- `Mar 07, 2026: 11:55 PM` — Anti-pattern guardrail: do not create unnecessary constants; within a single file, declare constants only when reused more than once.
-
-## Skill Routing
-
-When the user's request matches an available skill, ALWAYS invoke it using the Skill
-tool as your FIRST action. Do NOT answer directly, do NOT use other tools first.
-The skill has specialized workflows that produce better results than ad-hoc answers.
-
-Key routing rules:
-- Product ideas, "is this worth building", brainstorming → invoke office-hours
-- Bugs, errors, "why is this broken", 500 errors → invoke investigate
-- Ship, deploy, push, create PR → invoke ship
-- QA, test the site, find bugs → invoke qa
-- Code review, check my diff → invoke review
-- Update docs after shipping → invoke document-release
-- Weekly retro → invoke retro
-- Design system, brand → invoke design-consultation
-- Visual audit, design polish → invoke design-review
-- Architecture review → invoke plan-eng-review
-- Save progress, checkpoint, resume → invoke checkpoint
-- Code quality, health check → invoke health
+## Safety and Policy Appendix
+
+The detailed policy sections were split into [AGENTS_POLICY_APPENDIX.md](/Users/kishore/Projects/usezombie-m29-data-plane-ip-allowlisting/AGENTS_POLICY_APPENDIX.md) to keep this primary file under the repository line-limit gate.
+
+The appendix contains:
+
+- hard safety rules
+- cognitive discipline rules
+- memory boundaries
+- forge/PR/CI workflow
+- make target taxonomy
+- screenshot and multi-agent workflow
+- QA testing decision
+- QMD usage
+- greptile workflow
+- web-to-markdown workflow
+- code structure policies
+- skill routing
+
+Core requirements still apply. Read and follow both files.

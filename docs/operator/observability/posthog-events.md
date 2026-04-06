@@ -18,9 +18,9 @@ One PostHog project key is stored per environment:
 | `ZMB_CD_PROD` | `posthog-prod` | `credential` |
 
 These values are propagated through the standard playbook/check flow:
-- bootstrap: `playbooks/M1_001_BOOTSTRAP.md`
-- preflight: `playbooks/M2_001_PREFLIGHT.md`
-- credential gate: `playbooks/gates/check-credentials.sh`
+- bootstrap: `playbooks/001_bootstrap/001_playbook.md`
+- preflight: `playbooks/002_preflight/001_playbook.md`
+- credential gate: `playbooks/002_preflight/001_gate.sh`
 - M2 gate section: `playbooks/gates/m2_001/section-2-procurement-readiness.sh`
 
 ## Surface Configuration

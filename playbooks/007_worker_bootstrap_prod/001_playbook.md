@@ -386,4 +386,4 @@ No manual steps after bootstrap — the fleet is fully CI-managed.
 --- CI-automated after this point ---
 ```
 
-**DEV worker** bootstrap follows the same pattern. See `playbooks/M4_001_WORKER_BOOTSTRAP_DEV.md`.
+**DEV worker** bootstrap follows the same pattern. See `playbooks/006_worker_bootstrap_dev/001_playbook.md`.

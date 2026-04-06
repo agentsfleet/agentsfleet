@@ -32,9 +32,9 @@ Updated `docs/operator/configuration/environment.md` to reflect the current runt
 Cross-referenced all playbooks in `playbooks/` against current code and deployed infrastructure.
 
 **Dimensions:**
-- 2.1 DONE Reviewed `playbooks/M2_002_PRIMING_INFRA.md` — Fly, Cloudflare, Redis, DB steps match current deploy
-- 2.2 DONE Reviewed `playbooks/gates/check-credentials.sh` — redirects to `m2_001/run.sh`, vault items current
-- 2.3 DONE Reviewed `playbooks/M4_001_WORKER_BOOTSTRAP_DEV.md` — worker deploy matches baremetal/Tailscale setup
+- 2.1 DONE Reviewed `playbooks/003_priming_infra/001_playbook.md` — Fly, Cloudflare, Redis, DB steps match current deploy
+- 2.2 DONE Reviewed `playbooks/002_preflight/001_gate.sh` — redirects to `m2_001/run.sh`, vault items current
+- 2.3 DONE Reviewed `playbooks/006_worker_bootstrap_dev/001_playbook.md` — worker deploy matches baremetal/Tailscale setup
 - 2.4 DONE Verified `.env.example` references correct env var names post-rename
 
 ---

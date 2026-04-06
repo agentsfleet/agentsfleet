@@ -59,7 +59,7 @@ Read these docs in order:
 4) docs/spec/v1/M1_003_OBSERVABILITY_AND_POLICY.md
    - Event taxonomy, SLOs, policy guardrails (safe/sensitive/critical)
 
-5) playbooks/M2_002_PRIMING_INFRA.md + playbooks/M3_001_DEPLOY_DEV.md + playbooks/M3_002_DEPLOY_PROD.md
+5) playbooks/003_priming_infra/001_playbook.md + playbooks/004_deploy_dev/001_playbook.md + playbooks/005_deploy_prod/001_playbook.md
    - Stack, env vars, service keys
 
 Task:

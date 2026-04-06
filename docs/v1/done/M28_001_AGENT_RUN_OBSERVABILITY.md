@@ -70,7 +70,7 @@ Every run should have a **root span** (`run.execute`) with all agent call spans 
 - 3.1 DONE Grafana datasource config documented in `docs/grafana/README.md`
 - 3.2 DONE Reference dashboard JSON (`docs/grafana/agent_run_breakdown.json`) with 7 panels
 - 3.3 DONE Dashboard importable via Grafana API with template variables (workspace_id, time range)
-- 3.4 DONE Playbook: `playbooks/M28_001_GRAFANA_OBSERVABILITY.md` with gates in `playbooks/gates/m28_001/`
+- 3.4 DONE Playbook: `playbooks/009_grafana_observability/001_playbook.md` with gates in `playbooks/gates/m28_001/`
 
 ---
 
