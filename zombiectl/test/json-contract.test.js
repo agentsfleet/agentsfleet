@@ -9,7 +9,7 @@
 //   3.3     Supported JSON errors parse with jq-equivalent
 
 import { describe, test, expect } from "bun:test";
-import { makeBufferStream, makeNoop, ui, RUN_ID_1, WS_ID } from "./helpers.js";
+import { makeBufferStream, makeNoop, ui, RUN_ID_1 } from "./helpers.js";
 import { findRoute } from "../src/program/routes.js";
 import { registerProgramCommands } from "../src/program/command-registry.js";
 import { runCli } from "../src/cli.js";
@@ -26,15 +26,6 @@ function tryParseJson(str) {
   } catch {
     return null;
   }
-}
-
-function makeFetch(responseBody = {}) {
-  return async (url) => ({
-    ok: true,
-    status: 200,
-    text: async () => JSON.stringify(responseBody),
-    json: async () => responseBody,
-  });
 }
 
 function makeRunsDeps(overrides = {}) {
