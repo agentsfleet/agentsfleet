@@ -20,11 +20,22 @@ const queue_redis = @import("../queue/redis.zig");
 const queue_consts = @import("../queue/constants.zig");
 const state_machine = @import("../state/machine.zig");
 const types = @import("../types.zig");
+const helpers = @import("worker_gate_helpers.zig");
+const limits = @import("worker_gate_limits.zig");
 
 const log = std.log.scoped(.gate_loop);
 
 /// Maximum bytes captured per stdout/stderr stream.
 pub const MAX_OUTPUT_BYTES: usize = 4096;
+
+/// M21_002 §2.4: Interrupt poll interval inside gate commands (Option B).
+const INTERRUPT_POLL_INTERVAL_MS: u64 = 2000;
+
+/// M21_002 §3.3: Grace period after SIGTERM before SIGKILL.
+const SIGTERM_GRACE_MS: u64 = 5000;
+
+/// M21_002: Exit reason for gate child process.
+const ExitReason = enum(u8) { running = 0, timed_out = 1, interrupted = 2, done = 3 };
 
 pub const GateToolResult = struct {
     gate_name: []const u8,
@@ -34,6 +45,8 @@ pub const GateToolResult = struct {
     wall_ms: u64,
     passed: bool,
     owned: bool = false,
+    /// M21_002 §3.3: true when gate was killed by an interrupt signal.
+    interrupted: bool = false,
 
     /// Free owned stdout/stderr. No-op for borrowed (test-constructed) results.
     pub fn deinit(self: GateToolResult, alloc: std.mem.Allocator) void {
@@ -83,67 +96,6 @@ pub const GateLoopConfig = struct {
     trace_id: []const u8 = "",
 };
 
-/// Check token budget: query usage_ledger for sum of tokens used this run.
-/// Returns true if the limit is breached (transition written, metric incremented).
-fn checkTokenBudget(cfg: GateLoopConfig) !bool {
-    if (cfg.max_tokens == 0) return false;
-    var q = try cfg.conn.query(
-        \\SELECT COALESCE(SUM(token_count), 0) FROM billing.usage_ledger
-        \\WHERE run_id = $1 AND attempt = $2
-    , .{ cfg.run_id, @as(i32, @intCast(cfg.attempt)) });
-    defer q.deinit();
-    const row = (try q.next()) orelse return false;
-    const used: i64 = row.get(i64, 0) catch 0;
-    try q.drain();
-    if (@as(u64, @intCast(@max(0, used))) < cfg.max_tokens) return false;
-    log.warn("gate_loop.token_budget_exceeded error_code={s} run_id={s} used={d} max={d}", .{
-        codes.ERR_RUN_TOKEN_BUDGET_EXCEEDED, cfg.run_id, used, cfg.max_tokens,
-    });
-    _ = state_machine.transition(cfg.conn, cfg.run_id, .CANCELLED, .orchestrator, .TOKEN_BUDGET_EXCEEDED, "token budget exceeded during gate loop") catch |err| {
-        log.warn("gate_loop.token_budget_transition_fail err={s} run_id={s}", .{ @errorName(err), cfg.run_id });
-    };
-    metrics.incRunLimitTokenBudgetExceeded();
-    return true;
-}
-
-/// Check wall-time limit. Returns true if breached (transition written).
-fn checkWallTime(cfg: GateLoopConfig) !bool {
-    if (cfg.max_wall_time_seconds == 0 or cfg.run_created_at_ms == 0) return false;
-    const elapsed_ms = std.time.milliTimestamp() - cfg.run_created_at_ms;
-    if (elapsed_ms < 0) return false;
-    const elapsed_s: u64 = @intCast(@divTrunc(elapsed_ms, 1000));
-    if (elapsed_s < cfg.max_wall_time_seconds) return false;
-    log.warn("gate_loop.wall_time_exceeded error_code={s} run_id={s} elapsed_s={d} max_s={d}", .{
-        codes.ERR_RUN_WALL_TIME_EXCEEDED, cfg.run_id, elapsed_s, cfg.max_wall_time_seconds,
-    });
-    _ = state_machine.transition(cfg.conn, cfg.run_id, .CANCELLED, .orchestrator, .WALL_TIME_EXCEEDED, "wall-time limit exceeded during gate loop") catch |err| {
-        log.warn("gate_loop.wall_time_transition_fail err={s} run_id={s}", .{ @errorName(err), cfg.run_id });
-    };
-    metrics.incRunLimitWallTimeExceeded();
-    return true;
-}
-
-/// Check Redis cancellation signal. Returns true if signal found (transition written).
-fn checkCancelSignal(cfg: GateLoopConfig) !bool {
-    const redis = cfg.redis orelse return false;
-    const key = try std.fmt.allocPrint(cfg.alloc, queue_consts.cancel_key_prefix ++ "{s}", .{cfg.run_id});
-    defer cfg.alloc.free(key);
-    const found = redis.exists(key) catch false;
-    if (!found) return false;
-    log.info("gate_loop.cancel_signal run_id={s}", .{cfg.run_id});
-    if (cfg.executor) |exec| {
-        if (cfg.execution_id) |exec_id| {
-            exec.destroyExecution(exec_id) catch |err| {
-                log.warn("gate_loop.destroy_execution_fail err={s} run_id={s}", .{ @errorName(err), cfg.run_id });
-            };
-        }
-    }
-    _ = state_machine.transition(cfg.conn, cfg.run_id, .CANCELLED, .orchestrator, .RUN_CANCELLED, "operator cancel signal received") catch |err| {
-        log.warn("gate_loop.cancel_transition_fail err={s} run_id={s}", .{ @errorName(err), cfg.run_id });
-    };
-    return true;
-}
-
 /// M21_001 §2.1: Check Redis for a pending interrupt message (GETDEL).
 fn checkInterruptSignal(cfg: GateLoopConfig) ?[]const u8 {
     const redis = cfg.redis orelse return null;
@@ -160,13 +112,12 @@ fn checkInterruptSignal(cfg: GateLoopConfig) ?[]const u8 {
     };
 }
 
-/// After each gate loop iteration: check cancel signal, token budget, wall time.
-/// Returns true if any limit was breached and `state_written` should be set.
-fn checkPostIterationLimits(cfg: GateLoopConfig) !bool {
-    if (try checkCancelSignal(cfg)) return true;
-    if (try checkTokenBudget(cfg)) return true;
-    if (try checkWallTime(cfg)) return true;
-    return false;
+/// M21_002 §2.1: Check Redis for interrupt existence (EXISTS, non-destructive).
+/// Used by the timer thread during gate command execution.
+fn interruptExists(redis: *queue_redis.Client, run_id: []const u8, alloc: std.mem.Allocator) bool {
+    const key = std.fmt.allocPrint(alloc, queue_consts.interrupt_key_prefix ++ "{s}", .{run_id}) catch return false;
+    defer alloc.free(key);
+    return redis.exists(key) catch false;
 }
 
 pub fn runGateLoop(cfg: GateLoopConfig) !GateLoopOutcome {
@@ -179,6 +130,7 @@ pub fn runGateLoop(cfg: GateLoopConfig) !GateLoopOutcome {
         // M21_001 §2.1: poll for pending interrupt before running gates.
         if (checkInterruptSignal(cfg)) |interrupt_msg| {
             log.info("gate_loop.interrupt_received run_id={s} workspace_id={s} agent_id={s} msg_len={d}", .{ cfg.run_id, cfg.workspace_id, cfg.agent_id, interrupt_msg.len });
+            metrics.incInterruptInstant();
             if (cfg.executor) |exec| {
                 if (cfg.execution_id) |exec_id| {
                     _ = exec.startStage(exec_id, .{
@@ -196,10 +148,10 @@ pub fn runGateLoop(cfg: GateLoopConfig) !GateLoopOutcome {
         var failed_result: ?GateToolResult = null;
         for (cfg.gate_tools) |gate| {
             const timeout = effectiveTimeout(gate.timeout_ms, cfg.gate_tool_timeout_ms, cfg.deadline_ms);
-            const result = try executeGateCommand(cfg.alloc, cfg.wt_path, gate.name, gate.command, timeout);
+            const result = try executeGateCommand(cfg.alloc, cfg.wt_path, gate.name, gate.command, timeout, cfg.redis, cfg.run_id);
             try results.append(cfg.alloc, result);
 
-            publishGateEvent(cfg, result, repair);
+            helpers.publishGateEvent(cfg, result, repair);
             gate_spans.emit(
                 .{ .run_id = cfg.run_id, .workspace_id = cfg.workspace_id, .trace_id = cfg.trace_id, .root_span_id = cfg.root_span_id },
                 .{ .gate_name = result.gate_name, .exit_code = result.exit_code, .wall_ms = result.wall_ms, .passed = result.passed },
@@ -213,8 +165,8 @@ pub fn runGateLoop(cfg: GateLoopConfig) !GateLoopOutcome {
         }
 
         // M17_001 §1.2 / §3.2: check limits and cancel signal after each iteration.
-        if (try checkPostIterationLimits(cfg)) {
-            persistGateResults(cfg.alloc, cfg.conn, cfg.run_id, results.items) catch |err| {
+        if (try limits.checkPostIterationLimits(cfg)) {
+            helpers.persistGateResults(cfg.alloc, cfg.conn, cfg.run_id, results.items) catch |err| {
                 log.warn("gate_loop.persist_failed error_code={s} err={s} run_id={s}", .{ codes.ERR_GATE_PERSIST_FAILED, @errorName(err), cfg.run_id });
             };
             return .{
@@ -228,7 +180,7 @@ pub fn runGateLoop(cfg: GateLoopConfig) !GateLoopOutcome {
 
         if (failed_result == null) {
             // All gates passed.
-            persistGateResults(cfg.alloc, cfg.conn, cfg.run_id, results.items) catch |err| {
+            helpers.persistGateResults(cfg.alloc, cfg.conn, cfg.run_id, results.items) catch |err| {
                 log.warn("gate_loop.persist_failed error_code={s} err={s} run_id={s}", .{ codes.ERR_GATE_PERSIST_FAILED, @errorName(err), cfg.run_id });
             };
             return .{
@@ -237,6 +189,17 @@ pub fn runGateLoop(cfg: GateLoopConfig) !GateLoopOutcome {
                 .total_repair_loops = repair,
                 .exhausted = false,
             };
+        }
+
+        // M21_002 §3.3: If the gate was killed by an interrupt, skip repair.
+        // The next iteration's checkInterruptSignal will GETDEL and inject the message.
+        if (failed_result.?.interrupted) {
+            log.info("gate_loop.interrupt_killed_gate run_id={s} workspace_id={s} agent_id={s} delivery_mode=instant wall_ms={d}", .{
+                cfg.run_id, cfg.workspace_id, cfg.agent_id, failed_result.?.wall_ms,
+            });
+            // M21_002 §4.3: Record delivery latency (gate wall time until interrupt).
+            metrics.observeInterruptDeliveryLatencyMs(failed_result.?.wall_ms);
+            continue;
         }
 
         // Gate failed — attempt repair if loops remain.
@@ -250,7 +213,7 @@ pub fn runGateLoop(cfg: GateLoopConfig) !GateLoopOutcome {
 
             if (cfg.executor) |exec| {
                 if (cfg.execution_id) |exec_id| {
-                    const repair_msg = try buildRepairMessage(cfg.alloc, fr);
+                    const repair_msg = try helpers.buildRepairMessage(cfg.alloc, fr);
                     defer cfg.alloc.free(repair_msg);
                     _ = exec.startStage(exec_id, .{
                         .stage_id = cfg.repair_stage_id,
@@ -276,7 +239,7 @@ pub fn runGateLoop(cfg: GateLoopConfig) !GateLoopOutcome {
         log.warn("gate_loop.exhausted_transition_fail err={s} run_id={s}", .{ @errorName(err), cfg.run_id });
     };
 
-    persistGateResults(cfg.alloc, cfg.conn, cfg.run_id, results.items) catch |err| {
+    helpers.persistGateResults(cfg.alloc, cfg.conn, cfg.run_id, results.items) catch |err| {
         log.warn("gate_loop.persist_failed error_code={s} err={s} run_id={s}", .{ codes.ERR_GATE_PERSIST_FAILED, @errorName(err), cfg.run_id });
     };
 
@@ -298,12 +261,73 @@ pub fn effectiveTimeout(gate_timeout: u64, global_timeout: u64, deadline_ms: i64
     return @min(base, remaining);
 }
 
+/// M21_002 §2.1 (Option B): Timer thread context for interrupt-aware gate execution.
+/// Polls Redis every 2s for interrupt signals while enforcing the gate timeout.
+/// On interrupt: SIGTERM → SIGKILL after 5s grace period.
+/// On timeout: SIGKILL (existing behavior).
+const TimerContext = struct {
+    child: *std.process.Child,
+    timeout_ms: u64,
+    exit_reason: *std.atomic.Value(u8),
+    redis: ?*queue_redis.Client,
+    run_id: []const u8,
+    alloc: std.mem.Allocator,
+
+    fn run(ctx: TimerContext) void {
+        var elapsed_ms: u64 = 0;
+        while (elapsed_ms < ctx.timeout_ms) {
+            std.Thread.sleep(INTERRUPT_POLL_INTERVAL_MS * std.time.ns_per_ms);
+            elapsed_ms += INTERRUPT_POLL_INTERVAL_MS;
+
+            // M21_002: Check for interrupt signal in Redis.
+            if (ctx.redis) |redis| {
+                if (interruptExists(redis, ctx.run_id, ctx.alloc)) {
+                    // CAS: claim exit reason as interrupted (0 → 2).
+                    if (ctx.exit_reason.cmpxchgWeak(
+                        @intFromEnum(ExitReason.running),
+                        @intFromEnum(ExitReason.interrupted),
+                        .acq_rel,
+                        .acquire,
+                    ) == null) {
+                        killWithEscalation(ctx.child);
+                        return;
+                    }
+                    return; // Someone else claimed — exit.
+                }
+            }
+        }
+        // Timeout: CAS 0 → 1.
+        if (ctx.exit_reason.cmpxchgWeak(
+            @intFromEnum(ExitReason.running),
+            @intFromEnum(ExitReason.timed_out),
+            .acq_rel,
+            .acquire,
+        ) == null) {
+            _ = ctx.child.kill() catch {};
+        }
+    }
+};
+
+/// M21_002 §3.3: Send SIGTERM, wait grace period, then SIGKILL if still alive.
+fn killWithEscalation(child: *std.process.Child) void {
+    std.posix.kill(child.id, std.posix.SIG.TERM) catch {
+        // SIGTERM failed (child already dead?) — try SIGKILL as fallback.
+        _ = child.kill() catch {};
+        return;
+    };
+    std.Thread.sleep(SIGTERM_GRACE_MS * std.time.ns_per_ms);
+    // SIGKILL if child is still alive after grace period.
+    _ = child.kill() catch {};
+}
+
 pub fn executeGateCommand(
     alloc: std.mem.Allocator,
     wt_path: []const u8,
     gate_name: []const u8,
     command_str: []const u8,
     timeout_ms: u64,
+    redis: ?*queue_redis.Client,
+    run_id: []const u8,
 ) !GateToolResult {
     const start_ms: u64 = @intCast(@max(0, std.time.milliTimestamp()));
 
@@ -339,24 +363,22 @@ pub fn executeGateCommand(
     };
     defer resources.deinit();
 
-    // Enforce timeout: spawn a timer thread that kills the child if it exceeds the deadline.
-    // Main thread blocks on wait(); timer thread sleeps then kills.
-    // Both sides use CAS to atomically claim the "done" flag — exactly one side wins.
-    // This prevents SIGKILL on a recycled PID after waitpid() has reaped the child.
-    var timed_out = std.atomic.Value(bool).init(false);
-    const timer_thread = std.Thread.spawn(.{}, struct {
-        fn run(child: *std.process.Child, timeout_ns: u64, flag: *std.atomic.Value(bool)) void {
-            std.Thread.sleep(timeout_ns);
-            // CAS: only kill if we successfully change false → true (we win the race).
-            if (flag.cmpxchgWeak(false, true, .acq_rel, .acquire) == null) {
-                _ = child.kill() catch {};
-            }
-        }
-    }.run, .{ &resources.child, timeout_ms * std.time.ns_per_ms, &timed_out }) catch null;
+    // M21_002: Interrupt-aware timer thread. Polls Redis every 2s for interrupt
+    // signals while enforcing the gate timeout. Replaces the simple sleep-then-kill
+    // timer from M16_001.
+    var exit_reason = std.atomic.Value(u8).init(@intFromEnum(ExitReason.running));
+    const timer_thread = std.Thread.spawn(.{}, TimerContext.run, .{TimerContext{
+        .child = &resources.child,
+        .timeout_ms = timeout_ms,
+        .exit_reason = &exit_reason,
+        .redis = redis,
+        .run_id = run_id,
+        .alloc = alloc,
+    }}) catch null;
 
     const term = resources.child.wait() catch |err| {
-        // Atomically claim the flag so timer thread won't kill a reaped PID.
-        _ = timed_out.swap(true, .acq_rel);
+        // Claim done so timer thread won't kill a reaped PID.
+        _ = exit_reason.swap(@intFromEnum(ExitReason.done), .acq_rel);
         if (timer_thread) |t| t.join();
         const end_ms: u64 = @intCast(@max(0, std.time.milliTimestamp()));
         return .{
@@ -370,10 +392,12 @@ pub fn executeGateCommand(
         };
     };
 
-    // Atomically claim the flag: swap returns the old value.
-    // If old=false, we won — child exited naturally. If old=true, timer won — it was a timeout.
-    const was_timed_out = timed_out.swap(true, .acq_rel);
+    // Swap to done — old value tells us what happened.
+    const old_reason = exit_reason.swap(@intFromEnum(ExitReason.done), .acq_rel);
     if (timer_thread) |t| t.join();
+
+    const was_timed_out = old_reason == @intFromEnum(ExitReason.timed_out);
+    const was_interrupted = old_reason == @intFromEnum(ExitReason.interrupted);
 
     if (was_timed_out) {
         log.warn("gate_loop.command_timeout error_code={s} gate={s} timeout_ms={d}", .{
@@ -388,6 +412,21 @@ pub fn executeGateCommand(
             .wall_ms = end_ms - start_ms,
             .passed = false,
             .owned = true,
+        };
+    }
+
+    if (was_interrupted) {
+        log.info("gate_loop.command_interrupted gate={s} run_id={s}", .{ gate_name, run_id });
+        const end_ms: u64 = @intCast(@max(0, std.time.milliTimestamp()));
+        return .{
+            .gate_name = gate_name,
+            .exit_code = 130,
+            .stdout = try alloc.dupe(u8, ""),
+            .stderr = try alloc.dupe(u8, "gate command interrupted by user"),
+            .wall_ms = end_ms - start_ms,
+            .passed = false,
+            .owned = true,
+            .interrupted = true,
         };
     }
 
@@ -419,79 +458,8 @@ pub fn truncateOutput(s: []const u8, max: usize) []const u8 {
     return if (s.len > max) s[s.len - max ..] else s;
 }
 
-pub fn buildRepairMessage(alloc: std.mem.Allocator, result: GateToolResult) ![]const u8 {
-    return std.fmt.allocPrint(alloc,
-        \\Gate '{s}' failed (exit code {d}).
-        \\
-        \\stdout:
-        \\{s}
-        \\
-        \\stderr:
-        \\{s}
-        \\
-        \\Fix the issue and re-run the gate.
-    , .{ result.gate_name, result.exit_code, result.stdout, result.stderr });
-}
-
-fn publishGateEvent(cfg: GateLoopConfig, result: GateToolResult, loop: u32) void {
-    const redis_client = cfg.redis orelse return;
-    const channel = std.fmt.allocPrint(cfg.alloc, "run:{s}:events", .{cfg.run_id}) catch return;
-    defer cfg.alloc.free(channel);
-    const outcome_str = if (result.passed) "PASS" else "FAIL";
-    // §3.1: include created_at (Unix ms) so the SSE stream handler can use it
-    // as the event ID — unifying the ID namespace between stored and live events.
-    const created_at = std.time.milliTimestamp();
-    const event_json = std.fmt.allocPrint(cfg.alloc,
-        \\{{"gate_name":"{s}","outcome":"{s}","exit_code":{d},"loop":{d},"wall_ms":{d},"created_at":{d}}}
-    , .{ result.gate_name, outcome_str, result.exit_code, loop, result.wall_ms, created_at }) catch return;
-    defer cfg.alloc.free(event_json);
-    redis_client.publish(channel, event_json) catch |err| {
-        log.warn("gate_loop.pubsub_fail err={s} run_id={s}", .{ @errorName(err), cfg.run_id });
-    };
-}
-
-fn persistGateResults(
-    alloc: std.mem.Allocator,
-    conn: *pg.Conn,
-    run_id: []const u8,
-    results: []const GateToolResult,
-) !void {
-    const now_ms = std.time.milliTimestamp();
-    for (results, 0..) |r, i| {
-        const gate_id = try id_format.generateGateResultId(alloc);
-        defer alloc.free(gate_id);
-        _ = try conn.exec(
-            "INSERT INTO gate_results (id, run_id, gate_name, attempt, exit_code, stdout_tail, stderr_tail, wall_ms, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
-            .{ gate_id, run_id, r.gate_name, @as(i32, @intCast(i + 1)), @as(i32, @intCast(r.exit_code)), r.stdout, r.stderr, @as(i64, @intCast(r.wall_ms)), now_ms },
-        );
-    }
-}
-
-/// Format a markdown scorecard table from gate results.
-pub fn formatScorecard(
-    alloc: std.mem.Allocator,
-    results: []const GateToolResult,
-    total_repair_loops: u32,
-    run_id: []const u8,
-) ![]const u8 {
-    var buf: std.ArrayList(u8) = .{};
-    const w = buf.writer(alloc);
-    try w.writeAll("## Gate Results\n\n");
-    try w.writeAll("| Gate | Result | Wall Time |\n");
-    try w.writeAll("|------|--------|-----------|\n");
-    var total_wall: u64 = 0;
-    for (results) |r| {
-        total_wall += r.wall_ms;
-        try w.print("| {s} | {s} | {d}ms |\n", .{
-            r.gate_name,
-            if (r.passed) "PASS" else "FAIL",
-            r.wall_ms,
-        });
-    }
-    try w.print("\n**Repair loops:** {d} | **Total wall time:** {d}ms | **Run ID:** {s}\n", .{
-        total_repair_loops, total_wall, run_id,
-    });
-    return buf.toOwnedSlice(alloc);
-}
+// Re-export helpers for backward compatibility with tests and external callers.
+pub const buildRepairMessage = helpers.buildRepairMessage;
+pub const formatScorecard = helpers.formatScorecard;
 
 // Tests in worker_gate_loop_test.zig

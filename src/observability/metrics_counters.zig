@@ -14,6 +14,10 @@ const gate_hist = @import("metrics_gate_histogram.zig");
 pub const GateLoopBuckets = gate_hist.GateLoopBuckets;
 pub const GateLoopHistogramSnapshot = gate_hist.GateLoopHistogramSnapshot;
 
+const interrupt_hist = @import("metrics_interrupt_histogram.zig");
+pub const InterruptLatencyBuckets = interrupt_hist.InterruptLatencyBuckets;
+pub const InterruptLatencySnapshot = interrupt_hist.InterruptLatencySnapshot;
+
 pub const Snapshot = struct {
     runs_created_total: u64,
     runs_completed_total: u64,
@@ -88,6 +92,8 @@ pub const Snapshot = struct {
     agent_scoring_duration_ms: HistogramSnapshot,
     // M28_001 §4.1
     gate_repair_loops_per_run: GateLoopHistogramSnapshot,
+    // M21_002 §4.3
+    interrupt_delivery_latency_ms: InterruptLatencySnapshot,
 };
 
 var g_runs_created_total = std.atomic.Value(u64).init(0);
@@ -157,10 +163,7 @@ var g_otel_last_success_at_ms = std.atomic.Value(i64).init(0);
 var g_orphan_runs_recovered_total = std.atomic.Value(u64).init(0);
 var g_orphan_no_agent_profile_total = std.atomic.Value(u64).init(0);
 var g_reconcile_running = std.atomic.Value(u64).init(0);
-var g_histograms_mu: std.Thread.Mutex = .{};
-var g_agent_duration_seconds = HistogramSnapshot{};
-var g_run_total_wall_seconds = HistogramSnapshot{};
-var g_agent_scoring_duration_ms = HistogramSnapshot{};
+const mh = @import("metrics_histograms.zig");
 pub fn incRunsCreated() void {
     _ = g_runs_created_total.fetchAdd(1, .monotonic);
 }
@@ -385,36 +388,11 @@ pub fn setReconcileRunning(v: bool) void {
     g_reconcile_running.store(if (v) 1 else 0, .release);
 }
 
-pub fn observeAgentScoringDurationMs(ms: u64) void {
-    g_histograms_mu.lock();
-    defer g_histograms_mu.unlock();
-    observeHistogram(&g_agent_scoring_duration_ms, ms);
-}
-
-pub fn observeAgentDurationSeconds(seconds: u64) void {
-    g_histograms_mu.lock();
-    defer g_histograms_mu.unlock();
-    observeHistogram(&g_agent_duration_seconds, seconds);
-}
-
-pub fn observeRunTotalWallSeconds(seconds: u64) void {
-    g_histograms_mu.lock();
-    defer g_histograms_mu.unlock();
-    observeHistogram(&g_run_total_wall_seconds, seconds);
-}
-
-fn observeHistogram(hist: *HistogramSnapshot, value_seconds: u64) void {
-    hist.count += 1;
-    hist.sum += value_seconds;
-    for (DurationBuckets, 0..) |le, i| {
-        if (value_seconds <= le) hist.buckets[i] += 1;
-    }
-}
-
-/// M28_001 §4.2: Record gate repair loop count for a run.
-pub fn observeGateRepairLoopsPerRun(loops: u32) void {
-    gate_hist.observe(&g_histograms_mu, loops);
-}
+pub const observeAgentScoringDurationMs = mh.observeAgentScoringDurationMs;
+pub const observeAgentDurationSeconds = mh.observeAgentDurationSeconds;
+pub const observeRunTotalWallSeconds = mh.observeRunTotalWallSeconds;
+pub const observeGateRepairLoopsPerRun = mh.observeGateRepairLoopsPerRun;
+pub const observeInterruptDeliveryLatencyMs = mh.observeInterruptDeliveryLatencyMs;
 
 pub fn snapshot() Snapshot {
     var s = Snapshot{
@@ -489,12 +467,8 @@ pub fn snapshot() Snapshot {
         .run_total_wall_seconds = .{},
         .agent_scoring_duration_ms = .{},
         .gate_repair_loops_per_run = .{},
+        .interrupt_delivery_latency_ms = .{},
     };
-    g_histograms_mu.lock();
-    defer g_histograms_mu.unlock();
-    s.agent_duration_seconds = g_agent_duration_seconds;
-    s.run_total_wall_seconds = g_run_total_wall_seconds;
-    s.agent_scoring_duration_ms = g_agent_scoring_duration_ms;
-    s.gate_repair_loops_per_run = gate_hist.snapshot();
+    mh.snapshotHistograms(&s);
     return s;
 }
