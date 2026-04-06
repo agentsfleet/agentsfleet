@@ -293,7 +293,7 @@ const TimerContext = struct {
                         .acq_rel,
                         .acquire,
                     ) == null) {
-                        killWithEscalation(ctx.child);
+                        killWithEscalation(ctx.child, ctx.exit_reason);
                     }
                     return;
                 }
@@ -311,15 +311,20 @@ const TimerContext = struct {
     }
 };
 
-/// M21_002 §3.3: Send SIGTERM, wait grace period, then SIGKILL if still alive.
-fn killWithEscalation(child: *std.process.Child) void {
+/// M21_002 §3.3: Send SIGTERM, poll exit_reason during grace period, then SIGKILL.
+/// Polls every 50ms so t.join() unblocks promptly when the child exits after SIGTERM,
+/// keeping total delivery latency within the 5s spec.
+fn killWithEscalation(child: *std.process.Child, exit_reason: *std.atomic.Value(u8)) void {
     std.posix.kill(child.id, std.posix.SIG.TERM) catch {
-        // SIGTERM failed (child already dead?) — try SIGKILL as fallback.
         _ = child.kill() catch {};
         return;
     };
-    std.Thread.sleep(SIGTERM_GRACE_MS * std.time.ns_per_ms);
-    // SIGKILL if child is still alive after grace period.
+    const grace_deadline = std.time.milliTimestamp() + @as(i64, @intCast(SIGTERM_GRACE_MS));
+    while (std.time.milliTimestamp() < grace_deadline) {
+        std.Thread.sleep(50 * std.time.ns_per_ms);
+        // Main thread sets done after child.wait() returns — exit early.
+        if (exit_reason.load(.acquire) == @intFromEnum(ExitReason.done)) return;
+    }
     _ = child.kill() catch {};
 }
 
