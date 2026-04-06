@@ -16,6 +16,12 @@ Canonical reference for UseZombie database schema patterns. All new tables **mus
 - Every SQL file must be registered in `schema/embed.zig` (compile-time embed) and `src/cmd/common.zig` (migration version array).
 - No-op stub files (e.g., columns folded into earlier files) are kept for version history but excluded from the migrations array.
 
+## SQL Qualification
+
+- Use schema-qualified table names in SQL (`core.platform_llm_keys`, `core.workspaces`, etc.) for new queries and handlers.
+- Do not rely on session `search_path` defaults for correctness.
+- Legacy unqualified queries may remain temporarily, but touched paths should be migrated to schema-qualified names.
+
 ## ID Format
 
 - **Type:** `UUID PRIMARY KEY`

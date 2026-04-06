@@ -237,3 +237,45 @@ Do: Use a two-phase init: `occupied` (CAS claim) + `ready` (fields written). Los
 Don't: Read `slot.hash` or `slot.ws_id` immediately after losing a CAS on `slot.occupied`.
 
 Incident: M28_001 greptile P1 — `resolveSlot` in `metrics_workspace.zig` read slot fields after CAS failure, causing potential duplicate workspace slots and corrupted metric labels.
+
+---
+
+## Migrations — Assert by Embedded Symbol, Not Stale Index Assumption
+
+**RULE: When migration files are inserted or split, update every index-based migration assertion in tests to the new canonical position.**
+
+Why: Index-coupled assertions silently point at the wrong SQL file after a reorder/split. Tests then pass or fail for the wrong reason, hiding schema regressions.
+
+Do:
+```zig
+// 008_harness_control_plane.sql moved to migrations[6] after 001/002/003 split
+try std.testing.expect(std.mem.containsAtLeast(u8, migrations[6].sql, 1, "trust_level   TEXT NOT NULL"));
+```
+
+Don't:
+```zig
+// stale index after migration ordering changed
+try std.testing.expect(std.mem.containsAtLeast(u8, migrations[7].sql, 1, "trust_level   TEXT NOT NULL"));
+```
+
+Incident: M31_001 greptile P1 — `src/cmd/common.zig` checked `migrations[7]` for symbols that live in `008_harness_control_plane.sql` (`migrations[6]` after the split).
+
+---
+
+## SQL Qualification — Prefer Explicit Schema in Handler Queries
+
+**RULE: New or touched SQL in application handlers must use schema-qualified table names (`core.*`, `billing.*`, etc.) instead of relying on `search_path`.**
+
+Why: Unqualified names depend on session defaults and can resolve differently across tools, tests, or future role configuration changes.
+
+Do:
+```sql
+SELECT provider FROM core.platform_llm_keys ORDER BY provider;
+```
+
+Don't:
+```sql
+SELECT provider FROM platform_llm_keys ORDER BY provider;
+```
+
+Incident: M31_001 greptile P2 — `admin_platform_keys_http.zig` used unqualified `platform_llm_keys`; fixed to `core.platform_llm_keys` and documented in `SCHEMA_CONVENTIONS.md`.

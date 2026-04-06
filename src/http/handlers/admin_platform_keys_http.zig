@@ -91,7 +91,7 @@ pub fn handlePutAdminPlatformKey(
     }
 
     _ = conn.exec(
-        \\INSERT INTO platform_llm_keys (id, provider, source_workspace_id, active, created_at, updated_at)
+        \\INSERT INTO core.platform_llm_keys (id, provider, source_workspace_id, active, created_at, updated_at)
         \\VALUES ($1, $2, $3, true, $4, $4)
         \\ON CONFLICT (provider) DO UPDATE
         \\SET source_workspace_id = EXCLUDED.source_workspace_id,
@@ -144,7 +144,7 @@ pub fn handleDeleteAdminPlatformKey(
     defer ctx.pool.release(conn);
 
     _ = conn.exec(
-        "UPDATE platform_llm_keys SET active = false, updated_at = $1 WHERE provider = $2",
+        "UPDATE core.platform_llm_keys SET active = false, updated_at = $1 WHERE provider = $2",
         .{ std.time.milliTimestamp(), provider },
     ) catch {
         common.internalOperationError(res, "Failed to deactivate platform key", req_id);
@@ -186,7 +186,7 @@ pub fn handleGetAdminPlatformKeys(
     defer ctx.pool.release(conn);
 
     var q = conn.query(
-        "SELECT provider, source_workspace_id, active, updated_at FROM platform_llm_keys ORDER BY provider",
+        "SELECT provider, source_workspace_id, active, updated_at FROM core.platform_llm_keys ORDER BY provider",
         .{},
     ) catch {
         common.internalOperationError(res, "Failed to query platform keys", req_id);
