@@ -466,3 +466,23 @@ for script in "$SCRIPT_DIR"/[0-9][0-9]_*.sh; do
 ```
 
 Incident: PR #162 greptile P1 — `00_gate.sh` glob matched itself, causing fork bomb in CI.
+
+---
+
+## Zig — Cross-Compile API Verification
+
+**RULE: Before using any stdlib API, verify it exists on all cross-compile targets. Do NOT assume an API that works on macOS exists on Linux.**
+
+Why: Zig 0.15.2 `std.http.Client` has `open()` on macOS (native) but not on `x86_64-linux` or `aarch64-linux`. The correct cross-platform API is `client.request()` + `response.reader()` + `readVec()`. Compilation succeeds locally but fails in CI.
+
+Do:
+```bash
+# Before commit, verify cross-compile:
+zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux
+# Or grep stdlib source to check API exists:
+grep -n "pub fn request\|pub fn open\|pub fn fetch" ~/.local/share/mise/installs/zig/*/lib/std/http/Client.zig
+```
+
+Don't: Assume `client.open()` exists because it compiled on macOS. Ship without cross-compile check.
+
+Incident: M22_001 — `client.open()` used for SSE streaming compiled on macOS but failed on x86_64-linux and aarch64-linux CI. Required 3 rounds of fixes to find `client.request()` as the cross-platform alternative.

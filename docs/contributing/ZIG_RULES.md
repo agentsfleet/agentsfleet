@@ -3,6 +3,8 @@
 Date: Mar 17, 2026
 Status: Canonical Zig source of truth for agents and commits
 
+**Also read:** `docs/greptile-learnings/RULES.md` for cross-language rules including Zig-specific patterns learned from reviews.
+
 ## Must
 
 - Run `make lint`, `make test`, and `gitleaks detect` before any commit that includes Zig changes.
@@ -65,3 +67,21 @@ Status: Canonical Zig source of truth for agents and commits
 - `TEST_DATABASE_URL=postgres://usezombie:usezombie@localhost:5432/usezombiedb make test-integration-db`
 - `gitleaks detect`
 - `make check-pg-drain` — static check: every `conn.query()` must have `.drain()` in the same function. Run this when touching any file that calls `conn.query()`. See `lint-zig.py`.
+
+## Cross-Compile Verification (M22_001)
+
+- Run `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` before every commit that touches Zig files. Do not rely on macOS-only compilation.
+- `std.http.Client.open()` does not exist on Linux targets in Zig 0.15.2. Use `client.request()` + `response.reader()` + `readVec()` for cross-platform HTTP streaming.
+- `std.Io.Reader` on Linux has `readVec()`, not `read()`. Use `readVec(&[_][]u8{&buf})` for single-buffer reads.
+- Verify stdlib API existence by grepping: `grep -n "pub fn" ~/.local/share/mise/installs/zig/*/lib/std/http/Client.zig`
+
+## TLS Transport (M22_001)
+
+- After `tls_writer.flush()`, call `stream_writer.interface.flush()` to actually send encrypted bytes to the socket. The TLS flush only encrypts into the stream writer buffer — it does not send.
+- `SO_RCVTIMEO` on a socket fires `WouldBlock` at the socket level, but `Io.Reader` converts it to `ReadFailed` on both plain and TLS transports. Handle `ReadFailed` as timeout.
+- `EndOfStream` means clean disconnect — also return null (not fatal) in pub/sub readers.
+
+## SSE Heartbeat Timing (M22_001)
+
+- The heartbeat interval must be LESS than `SO_RCVTIMEO` (socket read timeout). If `SO_RCVTIMEO = 25s` and heartbeat check is at `30s`, the first wakeup at `t=25s` skips the heartbeat (25 < 30) and the proxy drops the connection at `t=30s` before the second wakeup.
+- Correct invariant: `heartbeat_interval < SO_RCVTIMEO < proxy_idle_timeout`.
