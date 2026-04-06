@@ -1,8 +1,6 @@
 # UseZombie local dev — Postgres + Redis + zombied API
-# zombied binary must be pre-built for linux before starting zombied service:
-#   zig build -Dtarget=x86_64-linux -Doptimize=ReleaseSafe
-#   mkdir -p dist && cp zig-out/bin/zombied dist/zombied-linux-amd64
-#   docker compose up zombied
+# `make up` prepares the matching local linux binary in `dist/` and passes
+# `TARGETARCH` to docker compose. CI does not use this path.
 services:
   postgres:
     image: mirror.gcr.io/library/postgres:18-alpine
@@ -51,7 +49,7 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
-        TARGETARCH: amd64
+        TARGETARCH: ${TARGETARCH:-amd64}
     ports:
       - "3000:3000"
     env_file:
