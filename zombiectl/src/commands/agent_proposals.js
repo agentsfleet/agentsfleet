@@ -135,6 +135,7 @@ export async function commandAgentProposals(ctx, parsed, agentId, deps) {
     return 0;
   }
 
+  // non-JSON: preserve multi-line usage text not expressible as a single message
   if (ctx.jsonMode) {
     writeError(ctx, "UNKNOWN_COMMAND", `unknown proposals subaction: ${subaction}`, deps);
   } else {

@@ -7,7 +7,7 @@ export async function commandAgentHarness(ctx, parsed, agentId, deps) {
 
   const subaction = parsed.positionals[0] || null;
   if (subaction !== "revert") {
-    writeError(ctx, "UNKNOWN_COMMAND", "usage: agent harness revert <agent-id> --to-change <change-id>", deps);
+    writeError(ctx, "UNKNOWN_COMMAND", `unknown agent harness subcommand: ${subaction ?? "(none)"}`, deps);
     return 2;
   }
 

@@ -306,3 +306,78 @@ return; // Falls through on spurious failure.
 ```
 
 Incident: M21_002 greptile P1 — `cmpxchgWeak` on interrupt detection path could spuriously fail, causing the timer thread to exit without killing the gate child. Interrupt message consumed by GETDEL but never injected.
+
+---
+
+## CLI JSON Contract — Error Codes Must Belong to the Stable Set
+
+**RULE: Every error code emitted in `--json` mode must appear in the stable error code table (§5.4 of the spec). Never introduce ad-hoc codes like `AGENT_ERROR` or `IO_ERROR` that are not in the contract.**
+
+Why: Automation consumers branch on `error.code`. Undocumented codes create silent contract breaks — a consumer that handles the documented 5 codes will silently fail to handle an unknown code, causing brittle or incorrect error handling.
+
+Do:
+```js
+// Map internal failure categories to stable contract codes
+writeError(ctx, "API_ERROR", "agent returned no content", deps);
+writeError(ctx, "API_ERROR", `failed to write spec: ${err.message}`, deps);
+```
+
+Don't:
+```js
+writeError(ctx, "AGENT_ERROR", "agent returned no content", deps);  // not in stable table
+writeError(ctx, "IO_ERROR", `failed to write spec: ${err.message}`, deps);  // not in stable table
+```
+
+Incident: M30_002 greptile P1 — `spec_init.js` emitted `AGENT_ERROR` and `IO_ERROR` which were not in the 5-code stable table. Fixed to `API_ERROR` and covered by contract tests.
+
+---
+
+## CLI JSON Contract — UNKNOWN_COMMAND Messages Must Identify the Token
+
+**RULE: `UNKNOWN_COMMAND` error messages must name the actual unrecognized value, not print usage text.**
+
+Why: Automation consumers need to extract what was unknown to provide actionable error reporting. Usage text as a message is not machine-parseable.
+
+Do:
+```js
+writeError(ctx, "UNKNOWN_COMMAND", `unknown skill-secret action: ${action ?? "(none)"}`, deps);
+writeError(ctx, "UNKNOWN_COMMAND", `unknown harness command: ${group ?? "(none)"}`, deps);
+```
+
+Don't:
+```js
+writeError(ctx, "UNKNOWN_COMMAND", "usage: skill-secret put|delete ...", deps);
+writeError(ctx, "UNKNOWN_COMMAND", "usage: harness source put|compile|activate|active", deps);
+```
+
+Incident: M30_002 greptile P2 — `core-ops.js`, `admin.js`, `agent_harness.js`, `harness.js` used usage text as the UNKNOWN_COMMAND message instead of identifying the unknown token.
+
+---
+
+## CLI JSON Contract — Dual-Branch jsonMode Guard Must Have a Comment
+
+**RULE: When a command uses `if (ctx.jsonMode) { writeError(...) } else { multi-line prose }`, add a comment explaining why the else branch cannot use `writeError` directly.**
+
+Why: `writeError` already handles jsonMode internally, so the outer guard looks redundant to future readers. Without a comment, they may refactor it away, losing the multi-line human output.
+
+Do:
+```js
+// non-JSON: preserve multi-line usage text not expressible as a single message
+if (ctx.jsonMode) {
+  writeError(ctx, "UNKNOWN_COMMAND", `unknown agent subcommand: ${action}`, deps);
+} else {
+  writeLine(ctx.stderr, ui.err("usage: agent scores ..."));
+  writeLine(ctx.stderr, ui.err("       agent profile ..."));
+}
+```
+
+Don't:
+```js
+if (ctx.jsonMode) {
+  writeError(ctx, "UNKNOWN_COMMAND", `unknown agent subcommand: ${action}`, deps);
+} else {
+  writeLine(ctx.stderr, ui.err("usage: agent scores ..."));  // looks like redundant guard
+}
+```
+
+Incident: M30_002 greptile P2 — `agent.js` and `agent_proposals.js` had dual-branch guards without explanation.

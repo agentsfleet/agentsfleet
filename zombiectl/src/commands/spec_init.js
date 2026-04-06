@@ -120,7 +120,7 @@ async function agentSpecInit(describe, repoPath, outputPath, ctx, deps) {
   });
 
   if (!result.text) {
-    writeError(ctx, "AGENT_ERROR", "agent returned no content", deps);
+    writeError(ctx, "API_ERROR", "agent returned no content", deps);
     return 1;
   }
 
@@ -134,7 +134,7 @@ async function agentSpecInit(describe, repoPath, outputPath, ctx, deps) {
     mkdirSync(outDir, { recursive: true });
     writeFileSync(outputPath, result.text, "utf8");
   } catch (err) {
-    writeError(ctx, "IO_ERROR", `failed to write spec: ${err.message}`, deps);
+    writeError(ctx, "API_ERROR", `failed to write spec: ${err.message}`, deps);
     return 1;
   }
 
@@ -166,7 +166,7 @@ function localSpecInit(repoPath, outputPath, ctx, deps) {
     mkdirSync(outDir, { recursive: true });
     writeFileSync(outputPath, template, "utf8");
   } catch (err) {
-    writeError(ctx, "IO_ERROR", `failed to write template: ${err.message}`, deps);
+    writeError(ctx, "API_ERROR", `failed to write template: ${err.message}`, deps);
     return 1;
   }
 

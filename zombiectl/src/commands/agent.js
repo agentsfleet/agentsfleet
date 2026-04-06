@@ -90,6 +90,7 @@ export async function commandAgent(ctx, args, workspaces, deps) {
     return commandAgentHarness(ctx, parsed, agentId, deps);
   }
 
+  // non-JSON: preserve multi-line usage text not expressible as a single message
   if (ctx.jsonMode) {
     writeError(ctx, "UNKNOWN_COMMAND", `unknown agent subcommand: ${action}`, deps);
   } else {

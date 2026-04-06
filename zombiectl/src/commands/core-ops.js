@@ -97,7 +97,7 @@ function createCoreOpsHandlers(ctx, workspaces, deps) {
       return 0;
     }
 
-    writeError(ctx, "UNKNOWN_COMMAND", "usage: skill-secret put|delete ...", deps);
+    writeError(ctx, "UNKNOWN_COMMAND", `unknown skill-secret action: ${action ?? "(none)"}`, deps);
     return 2;
   }
 

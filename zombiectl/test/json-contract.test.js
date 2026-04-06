@@ -15,6 +15,7 @@ import { registerProgramCommands } from "../src/program/command-registry.js";
 import { runCli } from "../src/cli.js";
 import { commandRuns } from "../src/commands/runs.js";
 import { commandRunsInterrupt } from "../src/commands/run_interrupt.js";
+import { commandSpecInit } from "../src/commands/spec_init.js";
 import { writeError } from "../src/program/io.js";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -407,5 +408,46 @@ describe("M30 §3.5 — harness JSON errors", () => {
     const parsed = tryParseJson(err.read());
     expect(parsed).not.toBeNull();
     expect(parsed.error.code).toBe("UNKNOWN_COMMAND");
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════
+// §3.6 — spec init JSON error paths (API_ERROR contract)
+// ═══════════════════════════════════════════════════════════════════════
+
+describe("M30 §3.6 — spec init JSON error contract", () => {
+  test("spec init IO failure emits API_ERROR in JSON mode", async () => {
+    const { stream: stderr, read } = makeBufferStream();
+    const ctx = {
+      stdout: makeNoop(), stderr, jsonMode: true,
+      token: null, apiKey: null, apiUrl: "http://localhost:3000", env: {},
+    };
+    // /dev/null is a special file — mkdirSync on a path beneath it must fail
+    const code = await commandSpecInit(
+      ["--path=.", "--output=/dev/null/nested/out.md"],
+      ctx,
+      makeRunsDeps()
+    );
+    expect(code).toBe(1);
+    const parsed = tryParseJson(read());
+    expect(parsed).not.toBeNull();
+    expect(parsed.error.code).toBe("API_ERROR");
+  });
+
+  test("spec init path-not-found emits USAGE_ERROR in JSON mode", async () => {
+    const { stream: stderr, read } = makeBufferStream();
+    const ctx = {
+      stdout: makeNoop(), stderr, jsonMode: true,
+      token: null, apiKey: null, apiUrl: "http://localhost:3000", env: {},
+    };
+    const code = await commandSpecInit(
+      ["--path=/nonexistent-path-zombie-test"],
+      ctx,
+      makeRunsDeps()
+    );
+    expect(code).toBe(2);
+    const parsed = tryParseJson(read());
+    expect(parsed).not.toBeNull();
+    expect(parsed.error.code).toBe("USAGE_ERROR");
   });
 });

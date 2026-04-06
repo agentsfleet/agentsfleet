@@ -31,6 +31,6 @@ export async function commandHarness(ctx, args, workspaces, deps) {
   if (group === "activate") return commandHarnessActivate(ctx, parsed, workspaceId, deps);
   if (group === "active") return commandHarnessActive(ctx, parsed, workspaceId, deps);
 
-  writeError(ctx, "UNKNOWN_COMMAND", "usage: harness source put|compile|activate|active", deps);
+  writeError(ctx, "UNKNOWN_COMMAND", `unknown harness command: ${group ?? "(none)"}`, deps);
   return 2;
 }

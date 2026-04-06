@@ -36,6 +36,6 @@ export async function commandAdmin(ctx, args, workspaces, deps) {
     return 0;
   }
 
-  writeError(ctx, "UNKNOWN_COMMAND", "usage: admin config set scoring_context_max_tokens <value> --workspace-id ID", deps);
+  writeError(ctx, "UNKNOWN_COMMAND", `unknown admin command: ${group ?? "(none)"}`, deps);
   return 2;
 }
