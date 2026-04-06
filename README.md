@@ -16,17 +16,33 @@
 
 ---
 
-> 🧟 **Early Access Preview** · Pre-release — revised release coming up by April 11. APIs, CLI, and behavior may change without notice before general availability.
->
-> 🔄 UseZombie is in a product pivot. The focus is practical operator leverage, not tunnel-vision optimization around one narrow bottleneck that frontier models may erase soon.
->
-> Write a spec. An agent implements it, runs `make lint` / `make test` / `make build` with self-repair, scores the output, and opens a PR with a scorecard. You review one PR instead of babysitting ten agent sessions.
+> **Early Access Preview** · Pre-release — revised release coming up by April 11. APIs, CLI, and behavior may change without notice before general availability.
+
+## Why we pivoted
+
+We started by obsessing over one thing: making AI-generated code *correct*. Self-repair loops, quality scoring, scorecard evidence. Good problems — but narrow ones. Frontier models get better every quarter, and the gap we were optimizing for keeps shrinking on its own.
+
+The harder problem nobody is solving: **operators are still babysitting agents like pets.**
+
+```
+          ____________________________
+         < code(human) === cattle now >
+          ----------------------------
+                 \   ^__^
+                  \  (oo)\_______
+                     (__)\       )\/\
+                         ||----w |
+                         ||     ||
+```
+
+So we pivoted. Code is cattle now — stamp a spec, spin a sandbox, get a PR. If it fails, kill it and respawn. No coddling.
 
 ## What it does
 
-- **Agent sandboxes** — spin isolated sandboxes attached to your git repo, one per run
-- **Spec to PR** — submit a markdown spec, an agent implements it, self-repairs until lint/test/build pass, and opens a PR
-- **Scorecards** — every run produces an evidence-backed scorecard so you know exactly what passed, what was repaired, and why
+- **Sandboxed runs** — isolated sandbox per run, attached to your repo, nuked after
+- **Spec to PR** — submit a markdown spec, an agent implements it, self-repairs until `make lint` / `make test` / `make build` pass, and opens a PR
+- **Scorecards** — every run produces an evidence-backed scorecard so you know what passed, what was repaired, and why
+- **No babysitting** — you review one PR instead of hovering over ten agent sessions
 
 ## Stack
 
