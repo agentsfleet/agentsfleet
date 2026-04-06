@@ -115,7 +115,7 @@ This workstream is only complete if future edits cannot silently change one side
   - expected: `tests fail if any shared constant value changes without updating the parity expectations`
   - test_type: unit
 - 4.2 DONE
-  - target: `docs/contributing/SCHEMA_CONVENTIONS.md`
+  - target: `docs/SCHEMA_CONVENTIONS.md`
   - input: `schema default policy review`
   - expected: `document states that schema-backed numeric defaults require a named Zig constant when reused in runtime logic`
   - test_type: contract

@@ -114,11 +114,18 @@ Use **Priority** (P0/P1/P2) and **Dependencies** for sequencing.
 
 ## Spec Template
 
-Copy everything below this line when creating a new spec:
+Copy everything below this line when creating a new spec.
+
+**Rules for filling in:**
+- Every section is mandatory. If a section doesn't apply, write "N/A — {reason}".
+- Dimensions must be machine-readable test blueprints, not prose descriptions.
+- Interfaces must specify exact function signatures, input shapes, and output shapes.
+- Failure modes must enumerate every error path and what happens on each.
+- Constraints must be measurable (not "fast" — "< 5ms per message").
 
 ---
 
-# M{Milestone}_{Workstream}: {Title}
+# M{Milestone}_{Workstream}: {Title — must be testable, not vague}
 
 **Prototype:** v{major}.{minor}.{patch}
 **Milestone:** M{Number}
@@ -132,16 +139,33 @@ Copy everything below this line when creating a new spec:
 
 ---
 
+## Overview
+
+**Goal (testable):** {One sentence that could be a test name. Bad: "Implement streaming." Good: "SSE handler streams Redis pubsub messages as text/event-stream with stable ordering and reconnection support."}
+
+**Problem:** {What is broken or missing — observable symptoms, not implementation details.}
+
+**Solution summary:** {One paragraph. What changes, at what layer, and what the user-visible outcome is.}
+
+---
+
 ## 1.0 {Section Title}
 
 **Status:** PENDING
 
 Description of this section. Explain what will be built and why.
 
-**Dimensions:**
-- 1.1 PENDING First dimension
-- 1.2 PENDING Second dimension
-- 1.3 PENDING Third dimension
+**Dimensions (test blueprints):**
+- 1.1 PENDING
+  - target: `{file}:{function_or_struct}`
+  - input: `{structured input — types, shapes, examples}`
+  - expected: `{structured output — exact return value, side effect, or state change}`
+  - test_type: unit | integration | contract
+- 1.2 PENDING
+  - target: `{file}:{function_or_struct}`
+  - input: `{structured input}`
+  - expected: `{structured output}`
+  - test_type: unit | integration | contract
 
 ---
 
@@ -149,27 +173,155 @@ Description of this section. Explain what will be built and why.
 
 **Status:** PENDING
 
-### 2.1 {Subsection}
-
-Description.
-
-**Dimensions:**
-- 2.1.1 PENDING Dimension item
-- 2.1.2 PENDING Dimension item
+{Same pattern as 1.0 — sections are implementation slices, dimensions are test blueprints.}
 
 ---
 
-## 3.0 Acceptance Criteria
+## N.0 Interfaces
 
 **Status:** PENDING
 
-- [ ] 3.1 Criteria item one
-- [ ] 3.2 Criteria item two
-- [ ] 3.3 Criteria item three
+Lock the API surface. Every public function, endpoint, and data shape that this workstream introduces or modifies.
+
+### N.1 Public Functions
+
+```
+{language}
+{exact function signature — not pseudocode}
+```
+
+### N.2 Input Contracts
+
+| Field | Type | Constraints | Example |
+|-------|------|-------------|---------|
+| {name} | {type} | {validation rules} | {example value} |
+
+### N.3 Output Contracts
+
+| Field | Type | When | Example |
+|-------|------|------|---------|
+| {name} | {type} | {condition} | {example value} |
+
+### N.4 Error Contracts
+
+| Error condition | Behavior | Caller sees |
+|----------------|----------|-------------|
+| Timeout | {what happens} | {return value or error code} |
+| Connection lost | {what happens} | {return value or error code} |
+| Malformed input | {what happens} | {return value or error code} |
+| Auth failure | {what happens} | {return value or error code} |
 
 ---
 
-## 4.0 Out of Scope
+## N+1.0 Failure Modes
 
-- Item not in scope
-- Another out of scope item
+**Status:** PENDING
+
+Enumerate every failure path. For each: what triggers it, what the system does, and what the user/caller observes.
+
+| Failure | Trigger | System behavior | User observes |
+|---------|---------|----------------|---------------|
+| {name} | {condition} | {action taken} | {output/error} |
+
+**Platform constraints:**
+- {e.g., "SO_RCVTIMEO does not propagate through TLS record layer on Linux — timeout fires ReadFailed, not WouldBlock"}
+- {e.g., "client.open() does not exist on x86_64-linux in Zig 0.15.2 — use client.request()"}
+
+---
+
+## N+2.0 Implementation Constraints (Enforceable)
+
+**Status:** PENDING
+
+Each constraint must be measurable — not "fast" or "efficient" but a number or a verification command.
+
+| Constraint | How to verify |
+|-----------|---------------|
+| {e.g., "Zero heap allocations in hot path"} | {e.g., "std.testing.allocator detects leaks; grep for alloc in loop body"} |
+| {e.g., "Max latency per message < 5ms"} | {e.g., "benchmark test with 1000 messages"} |
+| {e.g., "File under 500 lines"} | {e.g., "wc -l < 500"} |
+| {e.g., "Cross-compiles on x86_64-linux, aarch64-linux"} | {e.g., "zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux"} |
+
+---
+
+## N+3.0 Test Specification
+
+**Status:** PENDING
+
+Every dimension from sections 1.0–N.0 must map to a test case here. This section is the input to `/write-unit-test`.
+
+### Unit Tests
+
+| Test name | Dimension | Target | Input | Expected |
+|-----------|-----------|--------|-------|----------|
+| {name} | {1.1} | {file:fn} | {input} | {output} |
+
+### Integration Tests
+
+| Test name | Dimension | Infra needed | Input | Expected |
+|-----------|-----------|-------------|-------|----------|
+| {name} | {2.1} | {DB / Redis / both} | {input} | {output} |
+
+### Contract Tests
+
+| Test name | Dimension | What it proves |
+|-----------|-----------|---------------|
+| {name} | {N.3} | {output matches exact format} |
+
+### Spec-Claim Tracing
+
+| Spec claim (from Overview/Goal) | Test that proves it | Test type |
+|--------------------------------|-------------------|-----------|
+| {e.g., "streams in real time"} | {e.g., "bytes arrive before connection closes"} | integration |
+| {e.g., "reconnect replays only missed events"} | {e.g., "Last-Event-ID filters correctly"} | integration (DB) |
+
+---
+
+## N+4.0 Execution Plan (Ordered)
+
+**Status:** PENDING
+
+Ordered steps. Agent executes top-to-bottom. Each step has a verification command.
+
+| Step | Action | Verify |
+|------|--------|--------|
+| 1 | {Define interfaces} | {Compiles with no impl} |
+| 2 | {Implement core logic} | {make test passes} |
+| 3 | {Add failure handling} | {make test passes} |
+| 4 | {Generate tests via /write-unit-test} | {all tests pass} |
+| 5 | {Cross-compile check} | {zig build -Dtarget=x86_64-linux} |
+
+---
+
+## N+5.0 Acceptance Criteria
+
+**Status:** PENDING
+
+Each criterion must be verifiable by running a command or inspecting output — not "works correctly".
+
+- [ ] {Criterion} — verify: `{command}`
+- [ ] {Criterion} — verify: `{command}`
+- [ ] {Criterion} — verify: `{command}`
+
+---
+
+## N+6.0 Verification Evidence
+
+**Status:** PENDING
+
+Filled in during VERIFY phase. Proves the spec claims are met.
+
+| Check | Command | Result | Pass? |
+|-------|---------|--------|-------|
+| Unit tests | `make test` | {output} | |
+| Integration tests | `make test-integration` | {output} | |
+| Cross-compile | `zig build -Dtarget=x86_64-linux` | {output} | |
+| Lint | `make lint` | {output} | |
+| 500L gate | `wc -l` | {output} | |
+
+---
+
+## N+7.0 Out of Scope
+
+- {Item not in scope}
+- {Another out of scope item}
