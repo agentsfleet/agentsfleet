@@ -1,4 +1,5 @@
 import { queueCliAnalyticsEvent, setCliAnalyticsContext } from "../lib/analytics.js";
+import { writeError } from "../program/io.js";
 
 export async function commandHarnessActivate(ctx, parsed, workspaceId, deps) {
   const {
@@ -13,7 +14,7 @@ export async function commandHarnessActivate(ctx, parsed, workspaceId, deps) {
 
   const profileVersionId = parsed.options["config-version-id"];
   if (!profileVersionId) {
-    writeLine(ctx.stderr, ui.err("harness activate requires --config-version-id"));
+    writeError(ctx, "USAGE_ERROR", "harness activate requires --config-version-id", deps);
     return 2;
   }
 

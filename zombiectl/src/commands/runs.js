@@ -1,5 +1,6 @@
 // M17_001 §3: zombiectl runs cancel <run_id>
 import { commandRunsInterrupt } from "./run_interrupt.js";
+import { writeError } from "../program/io.js";
 
 function commandRuns(ctx, args, deps) {
   const { parseFlags, printJson, request, apiHeaders, ui, writeLine } = deps;
@@ -8,7 +9,7 @@ function commandRuns(ctx, args, deps) {
     const parsed = parseFlags(subArgs);
     const runId = parsed.positionals[0];
     if (!runId) {
-      writeLine(ctx.stderr, ui.err("usage: zombiectl runs cancel <run_id>"));
+      writeError(ctx, "USAGE_ERROR", "runs cancel requires <run_id>", deps);
       return 2;
     }
 
@@ -29,7 +30,7 @@ function commandRuns(ctx, args, deps) {
     const parsed = parseFlags(subArgs);
     const runId = parsed.positionals[0];
     if (!runId) {
-      writeLine(ctx.stderr, ui.err("usage: zombiectl runs replay <run_id>"));
+      writeError(ctx, "USAGE_ERROR", "runs replay requires <run_id>", deps);
       return 2;
     }
 
@@ -61,8 +62,7 @@ function commandRuns(ctx, args, deps) {
   if (action === "replay") return replay(args.slice(1));
   if (action === "interrupt") return commandRunsInterrupt(ctx, args.slice(1), deps);
 
-  writeLine(ctx.stderr, ui.err(`unknown runs subcommand: ${action}`));
-  writeLine(ctx.stderr, ui.err("available: cancel, replay, interrupt"));
+  writeError(ctx, "UNKNOWN_COMMAND", `unknown runs subcommand: ${action}`, deps);
   return Promise.resolve(2);
 }
 

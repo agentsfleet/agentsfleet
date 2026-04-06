@@ -138,7 +138,7 @@ describe("commandRuns cancel — edge cases", () => {
     const ctx = makeCtx({ stderr });
     const code = await commandRuns(ctx, ["cancel"], makeDeps());
     expect(code).toBe(2);
-    expect(read()).toContain("usage");
+    expect(read()).toContain("requires");
   });
 
   test("T2: run_id with special characters is URL-encoded in path", async () => {

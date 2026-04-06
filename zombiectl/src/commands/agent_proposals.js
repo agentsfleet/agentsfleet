@@ -1,5 +1,6 @@
 import { AGENTS_PATH } from "../lib/api-paths.js";
 import { queueCliAnalyticsEvent, setCliAnalyticsContext } from "../lib/analytics.js";
+import { writeError } from "../program/io.js";
 
 export async function commandAgentProposals(ctx, parsed, agentId, deps) {
   const { request, apiHeaders, printJson, printSection = () => {}, printTable, ui, writeLine } = deps;
@@ -46,7 +47,7 @@ export async function commandAgentProposals(ctx, parsed, agentId, deps) {
   }
 
   if (!proposalId) {
-    writeLine(ctx.stderr, ui.err(`agent proposals ${subaction} requires <proposal-id>`));
+    writeError(ctx, "USAGE_ERROR", `agent proposals ${subaction} requires <proposal-id>`, deps);
     return 2;
   }
 
@@ -134,10 +135,15 @@ export async function commandAgentProposals(ctx, parsed, agentId, deps) {
     return 0;
   }
 
-  writeLine(ctx.stderr, ui.err("usage: agent proposals <agent-id>"));
-  writeLine(ctx.stderr, ui.err("       agent proposals <agent-id> approve <proposal-id>"));
-  writeLine(ctx.stderr, ui.err("       agent proposals <agent-id> reject <proposal-id> [--reason TEXT]"));
-  writeLine(ctx.stderr, ui.err("       agent proposals <agent-id> veto <proposal-id> [--reason TEXT]"));
+  // non-JSON: preserve multi-line usage text not expressible as a single message
+  if (ctx.jsonMode) {
+    writeError(ctx, "UNKNOWN_COMMAND", `unknown proposals subaction: ${subaction}`, deps);
+  } else {
+    writeLine(ctx.stderr, ui.err("usage: agent proposals <agent-id>"));
+    writeLine(ctx.stderr, ui.err("       agent proposals <agent-id> approve <proposal-id>"));
+    writeLine(ctx.stderr, ui.err("       agent proposals <agent-id> reject <proposal-id> [--reason TEXT]"));
+    writeLine(ctx.stderr, ui.err("       agent proposals <agent-id> veto <proposal-id> [--reason TEXT]"));
+  }
   return 2;
 }
 

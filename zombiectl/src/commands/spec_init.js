@@ -2,6 +2,7 @@ import { readFileSync, existsSync, statSync, writeFileSync, mkdirSync } from "no
 import { join, dirname, resolve } from "node:path";
 import { walkDir } from "../lib/walk-dir.js";
 import { agentLoop } from "../lib/agent-loop.js";
+import { writeError } from "../program/io.js";
 
 /**
  * Parse Makefile and return list of target names.
@@ -78,11 +79,11 @@ export async function commandSpecInit(args, ctx, deps) {
   const describe = parsed.options.describe;
 
   if (!existsSync(repoPath)) {
-    writeLine(ctx.stderr, ui.err(`path not found: ${repoPath}`));
+    writeError(ctx, "USAGE_ERROR", `path not found: ${repoPath}`, deps);
     return 2;
   }
   if (!statSync(repoPath).isDirectory()) {
-    writeLine(ctx.stderr, ui.err(`path is not a directory: ${repoPath}`));
+    writeError(ctx, "USAGE_ERROR", `path is not a directory: ${repoPath}`, deps);
     return 2;
   }
 
@@ -119,7 +120,7 @@ async function agentSpecInit(describe, repoPath, outputPath, ctx, deps) {
   });
 
   if (!result.text) {
-    writeLine(ctx.stderr, ui.err("agent returned no content"));
+    writeError(ctx, "API_ERROR", "agent returned no content", deps);
     return 1;
   }
 
@@ -133,7 +134,7 @@ async function agentSpecInit(describe, repoPath, outputPath, ctx, deps) {
     mkdirSync(outDir, { recursive: true });
     writeFileSync(outputPath, result.text, "utf8");
   } catch (err) {
-    writeLine(ctx.stderr, ui.err(`failed to write spec: ${err.message}`));
+    writeError(ctx, "API_ERROR", `failed to write spec: ${err.message}`, deps);
     return 1;
   }
 
@@ -165,7 +166,7 @@ function localSpecInit(repoPath, outputPath, ctx, deps) {
     mkdirSync(outDir, { recursive: true });
     writeFileSync(outputPath, template, "utf8");
   } catch (err) {
-    writeLine(ctx.stderr, ui.err(`failed to write template: ${err.message}`));
+    writeError(ctx, "API_ERROR", `failed to write template: ${err.message}`, deps);
     return 1;
   }
 

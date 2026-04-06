@@ -1,9 +1,11 @@
+import { writeError } from "../program/io.js";
+
 export async function commandWorkspaceUpgradeScale(ctx, parsed, workspaceId, deps) {
   const { request, apiHeaders, ui, printJson, writeLine } = deps;
   const subscriptionId = parsed.options["subscription-id"] || parsed.positionals[1];
 
   if (!subscriptionId) {
-    writeLine(ctx.stderr, ui.err("workspace upgrade-scale requires --subscription-id"));
+    writeError(ctx, "USAGE_ERROR", "workspace upgrade-scale requires --subscription-id", deps);
     return 2;
   }
 

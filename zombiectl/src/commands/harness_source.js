@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { queueCliAnalyticsEvent, setCliAnalyticsContext } from "../lib/analytics.js";
+import { writeError } from "../program/io.js";
 
 export async function commandHarnessSourcePut(ctx, parsed, workspaceId, deps) {
   const {
@@ -17,7 +18,7 @@ export async function commandHarnessSourcePut(ctx, parsed, workspaceId, deps) {
 
   const file = parsed.options.file;
   if (!file) {
-    writeLine(ctx.stderr, ui.err("harness source put requires --file"));
+    writeError(ctx, "USAGE_ERROR", "harness source put requires --file", deps);
     return 2;
   }
 
@@ -26,7 +27,7 @@ export async function commandHarnessSourcePut(ctx, parsed, workspaceId, deps) {
   const MAX_SIZE = 2 * 1024 * 1024;
   const sizeBytes = Buffer.byteLength(fileContent, "utf8");
   if (sizeBytes > MAX_SIZE) {
-    writeLine(ctx.stderr, ui.err(`file too large: ${sizeBytes} bytes (max 2MB)`));
+    writeError(ctx, "VALIDATION_ERROR", `file too large: ${sizeBytes} bytes (max 2MB)`, deps);
     return 2;
   }
 

@@ -1,6 +1,5 @@
 import { createCoreOpsHandlers } from "./core-ops.js";
-import { commandWorkspaceUpgradeScale } from "./workspace_billing.js";
-import { commandWorkspaceBillingSummary } from "./workspace_billing_summary.js";
+import { commandWorkspace as commandWorkspaceModule } from "./workspace.js";
 import { queueCliAnalyticsEvent, setCliAnalyticsContext } from "../lib/analytics.js";
 import { validateRequiredId } from "../program/validate.js";
 import { ERR_BILLING_CREDIT_EXHAUSTED } from "../constants/error-codes.js";
@@ -8,6 +7,7 @@ import { ApiError } from "../lib/http.js";
 import { commandSpecInit } from "./spec_init.js";
 import { runPreview } from "./run_preview.js";
 import { streamRunWatch } from "./run_watch.js";
+import { writeError } from "../program/io.js";
 
 function createCoreHandlers(ctx, workspaces, deps) {
   const {
@@ -142,184 +142,15 @@ function createCoreHandlers(ctx, workspaces, deps) {
     return 0;
   }
 
-  async function commandWorkspace(args) {
-    const action = args[0];
-    const tail = args.slice(1);
-
-    if (action === "add") {
-      const parsed = parseFlags(tail);
-      const repoUrl = parsed.positionals[0];
-      if (!repoUrl) {
-        writeLine(ctx.stderr, ui.err("workspace add requires <repo_url>"));
-        return 2;
-      }
-
-      const branch = parsed.options["default-branch"] || "main";
-      const created = await request(ctx, "/v1/workspaces", {
-        method: "POST",
-        headers: apiHeaders(ctx),
-        body: JSON.stringify({
-          repo_url: repoUrl,
-          default_branch: branch,
-        }),
-      });
-      const workspaceId = created.workspace_id;
-      const installUrl = created.install_url;
-
-      const existing = workspaces.items.find((x) => x.workspace_id === workspaceId);
-      if (!existing) {
-        workspaces.items.push({
-          workspace_id: workspaceId,
-          repo_url: repoUrl,
-          default_branch: branch,
-          created_at: Date.now(),
-        });
-      }
-      workspaces.current_workspace_id = workspaceId;
-      await saveWorkspaces(workspaces);
-
-      const out = {
-        workspace_id: workspaceId,
-        repo_url: repoUrl,
-        install_url: installUrl,
-        next_step: "open install_url and complete GitHub App install to bind server-side",
-      };
-      setCliAnalyticsContext(ctx, {
-        workspace_id: workspaceId,
-        repo_url: repoUrl,
-        branch,
-      });
-      queueCliAnalyticsEvent(ctx, "workspace_add_completed", {
-        workspace_id: workspaceId,
-      });
-      if (ctx.jsonMode) {
-        printJson(ctx.stdout, out);
-      } else {
-        printSection(ctx.stdout, "Workspace added");
-        printKeyValue(ctx.stdout, {
-          workspace_id: workspaceId,
-          repo_url: repoUrl,
-          branch,
-        });
-        writeLine(ctx.stdout);
-        const opened = ctx.noOpen ? false : await openUrl(installUrl, { env: ctx.env });
-        writeLine(ctx.stdout, ui.info(`github_app_install_url: ${installUrl}`));
-        if (opened) {
-          writeLine(ctx.stdout, ui.ok("opened GitHub App install page in browser"));
-        } else {
-          writeLine(ctx.stdout, ui.warn("could not auto-open browser; open URL above manually"));
-        }
-        writeLine(ctx.stdout, ui.dim("After install, GitHub calls /v1/github/callback and binds workspace automatically."));
-      }
-      return 0;
-    }
-
-    if (action === "list") {
-      setCliAnalyticsContext(ctx, {
-        workspace_id: workspaces.current_workspace_id,
-        workspace_count: workspaces.items.length,
-      });
-      queueCliAnalyticsEvent(ctx, "workspace_list_viewed", {
-        workspace_count: workspaces.items.length,
-      });
-      if (ctx.jsonMode) {
-        printJson(ctx.stdout, {
-          current_workspace_id: workspaces.current_workspace_id,
-          workspaces: workspaces.items,
-        });
-      } else {
-        if (workspaces.items.length === 0) {
-          writeLine(ctx.stdout, ui.info("no workspaces"));
-        }
-        printTable(
-          ctx.stdout,
-          [
-            { key: "active", label: "ACTIVE" },
-            { key: "workspace_id", label: "WORKSPACE" },
-            { key: "repo_url", label: "REPO" },
-          ],
-          workspaces.items.map((item) => ({
-            active: item.workspace_id === workspaces.current_workspace_id ? "*" : "",
-            workspace_id: item.workspace_id,
-            repo_url: item.repo_url,
-          })),
-        );
-      }
-      return 0;
-    }
-
-    if (action === "upgrade-scale") {
-      const parsed = parseFlags(tail);
-      const workspaceId = await ensureWorkspaceId(parsed.options["workspace-id"] || parsed.positionals[0]);
-      if (!workspaceId) {
-        writeLine(ctx.stderr, ui.err("workspace upgrade-scale requires --workspace-id"));
-        return 2;
-      }
-      const check = validateRequiredId(workspaceId, "workspace_id");
-      if (!check.ok) {
-        writeLine(ctx.stderr, ui.err(check.message));
-        return 2;
-      }
-      setCliAnalyticsContext(ctx, { workspace_id: workspaceId });
-      return commandWorkspaceUpgradeScale(ctx, parsed, workspaceId, {
-        request, apiHeaders, ui, printJson, writeLine,
-      });
-    }
-
-    if (action === "billing") {
-      const parsed = parseFlags(tail);
-      const workspaceId = await ensureWorkspaceId(parsed.options["workspace-id"] || parsed.positionals[0]);
-      if (!workspaceId) {
-        writeLine(ctx.stderr, ui.err("workspace billing requires --workspace-id"));
-        return 2;
-      }
-      const check = validateRequiredId(workspaceId, "workspace_id");
-      if (!check.ok) {
-        writeLine(ctx.stderr, ui.err(check.message));
-        return 2;
-      }
-      setCliAnalyticsContext(ctx, { workspace_id: workspaceId });
-      return commandWorkspaceBillingSummary(ctx, parsed, workspaceId, {
-        request, apiHeaders, ui, printJson, writeLine,
-      });
-    }
-
-    if (action === "remove") {
-      const parsed = parseFlags(tail);
-      const workspaceId = parsed.positionals[0] || parsed.options["workspace-id"];
-      if (!workspaceId) {
-        writeLine(ctx.stderr, ui.err("workspace remove requires <workspace_id>"));
-        return 2;
-      }
-
-      const check = validateRequiredId(workspaceId, "workspace_id");
-      if (!check.ok) {
-        writeLine(ctx.stderr, ui.err(check.message));
-        return 2;
-      }
-
-      workspaces.items = workspaces.items.filter((x) => x.workspace_id !== workspaceId);
-      if (workspaces.current_workspace_id === workspaceId) {
-        workspaces.current_workspace_id = workspaces.items[0]?.workspace_id || null;
-      }
-      await saveWorkspaces(workspaces);
-
-      setCliAnalyticsContext(ctx, { workspace_id: workspaceId });
-      queueCliAnalyticsEvent(ctx, "workspace_removed", { workspace_id: workspaceId });
-      if (ctx.jsonMode) printJson(ctx.stdout, { removed: workspaceId });
-      else writeLine(ctx.stdout, ui.ok(`workspace removed: ${workspaceId}`));
-      return 0;
-    }
-
-    writeLine(ctx.stderr, ui.err("usage: workspace add|list|remove|billing|upgrade-scale"));
-    return 2;
+  function commandWorkspace(args) {
+    return commandWorkspaceModule(ctx, workspaces, args, deps);
   }
 
   async function commandSpecsSync(args) {
     const parsed = parseFlags(args);
     const workspaceId = await ensureWorkspaceId(parsed.options["workspace-id"]);
     if (!workspaceId) {
-      writeLine(ctx.stderr, ui.err("workspace_id required (set one with workspace add or pass --workspace-id)"));
+      writeError(ctx, "USAGE_ERROR", "workspace_id required (set one with workspace add or pass --workspace-id)", deps);
       return 2;
     }
 
@@ -369,13 +200,13 @@ function createCoreHandlers(ctx, workspaces, deps) {
     if (args[0] === "status") {
       const runId = args[1];
       if (!runId) {
-        writeLine(ctx.stderr, ui.err("run status requires <run_id>"));
+        writeError(ctx, "USAGE_ERROR", "run status requires <run_id>", deps);
         return 2;
       }
 
       const check = validateRequiredId(runId, "run_id");
       if (!check.ok) {
-        writeLine(ctx.stderr, ui.err(check.message));
+        writeError(ctx, "VALIDATION_ERROR", check.message, deps);
         return 2;
       }
 
@@ -415,7 +246,7 @@ function createCoreHandlers(ctx, workspaces, deps) {
 
     if (preview) {
       if (!specFile) {
-        writeLine(ctx.stderr, ui.err("--preview requires --spec <file>"));
+        writeError(ctx, "USAGE_ERROR", "--preview requires --spec <file>", deps);
         return 2;
       }
       const repoPath = parsed.options["path"] || ".";
@@ -436,7 +267,7 @@ function createCoreHandlers(ctx, workspaces, deps) {
 
     const workspaceId = await ensureWorkspaceId(parsed.options["workspace-id"]);
     if (!workspaceId) {
-      writeLine(ctx.stderr, ui.err("workspace_id required (set one with workspace add or pass --workspace-id)"));
+      writeError(ctx, "USAGE_ERROR", "workspace_id required (set one with workspace add or pass --workspace-id)", deps);
       return 2;
     }
 
@@ -455,7 +286,7 @@ function createCoreHandlers(ctx, workspaces, deps) {
     }
 
     if (!specId) {
-      writeLine(ctx.stderr, ui.err("spec_id required (no specs found)"));
+      writeError(ctx, "USAGE_ERROR", "spec_id required (no specs found)", deps);
       return 1;
     }
 

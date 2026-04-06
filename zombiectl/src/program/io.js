@@ -8,6 +8,14 @@ function printJson(stream, value) {
   writeLine(stream, JSON.stringify(value, null, 2));
 }
 
+function writeError(ctx, code, message, { printJson: pj, writeLine: wl, ui: u }) {
+  if (ctx.jsonMode) {
+    (pj || printJson)(ctx.stderr, { error: { code, message } });
+  } else {
+    (wl || writeLine)(ctx.stderr, (u || { err: (s) => s }).err(message));
+  }
+}
+
 function printHelp(stdout, ui, opts = {}) {
   const version = opts.version || "0.1.0";
   const noColor = Boolean(opts.env?.NO_COLOR === "1" || opts.env?.NO_COLOR === "true");
@@ -79,5 +87,6 @@ function printHelp(stdout, ui, opts = {}) {
 export {
   printHelp,
   printJson,
+  writeError,
   writeLine,
 };

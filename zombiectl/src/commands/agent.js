@@ -5,6 +5,7 @@ import { commandAgentImprovementReport } from "./agent_improvement_report.js";
 import { commandAgentProposals } from "./agent_proposals.js";
 import { commandAgentHarness } from "./agent_harness.js";
 import { validateRequiredId } from "../program/validate.js";
+import { writeError } from "../program/io.js";
 
 export async function commandAgent(ctx, args, workspaces, deps) {
   const { parseFlags, ui, writeLine } = deps;
@@ -16,12 +17,12 @@ export async function commandAgent(ctx, args, workspaces, deps) {
 
   if (action === "scores") {
     if (!agentId) {
-      writeLine(ctx.stderr, ui.err("agent scores requires <agent-id>"));
+      writeError(ctx, "USAGE_ERROR", "agent scores requires <agent-id>", deps);
       return 2;
     }
     const check = validateRequiredId(agentId, "agent-id");
     if (!check.ok) {
-      writeLine(ctx.stderr, ui.err(check.message));
+      writeError(ctx, "VALIDATION_ERROR", check.message, deps);
       return 2;
     }
     return commandAgentScores(ctx, parsed, agentId, deps);
@@ -29,12 +30,12 @@ export async function commandAgent(ctx, args, workspaces, deps) {
 
   if (action === "profile") {
     if (!agentId) {
-      writeLine(ctx.stderr, ui.err("agent profile requires <agent-id>"));
+      writeError(ctx, "USAGE_ERROR", "agent profile requires <agent-id>", deps);
       return 2;
     }
     const check = validateRequiredId(agentId, "agent-id");
     if (!check.ok) {
-      writeLine(ctx.stderr, ui.err(check.message));
+      writeError(ctx, "VALIDATION_ERROR", check.message, deps);
       return 2;
     }
     return commandAgentProfile(ctx, parsed, agentId, deps);
@@ -42,12 +43,12 @@ export async function commandAgent(ctx, args, workspaces, deps) {
 
   if (action === "improvement-report") {
     if (!agentId) {
-      writeLine(ctx.stderr, ui.err("agent improvement-report requires <agent-id>"));
+      writeError(ctx, "USAGE_ERROR", "agent improvement-report requires <agent-id>", deps);
       return 2;
     }
     const check = validateRequiredId(agentId, "agent-id");
     if (!check.ok) {
-      writeLine(ctx.stderr, ui.err(check.message));
+      writeError(ctx, "VALIDATION_ERROR", check.message, deps);
       return 2;
     }
     return commandAgentImprovementReport(ctx, parsed, agentId, deps);
@@ -55,12 +56,12 @@ export async function commandAgent(ctx, args, workspaces, deps) {
 
   if (action === "proposals") {
     if (!agentId) {
-      writeLine(ctx.stderr, ui.err("agent proposals requires <agent-id>"));
+      writeError(ctx, "USAGE_ERROR", "agent proposals requires <agent-id>", deps);
       return 2;
     }
     const check = validateRequiredId(agentId, "agent-id");
     if (!check.ok) {
-      writeLine(ctx.stderr, ui.err(check.message));
+      writeError(ctx, "VALIDATION_ERROR", check.message, deps);
       return 2;
     }
     return commandAgentProposals(ctx, parsed, agentId, deps);
@@ -68,31 +69,36 @@ export async function commandAgent(ctx, args, workspaces, deps) {
 
   if (action === "harness") {
     if (!agentId) {
-      writeLine(ctx.stderr, ui.err("agent harness revert requires <agent-id>"));
+      writeError(ctx, "USAGE_ERROR", "agent harness revert requires <agent-id>", deps);
       return 2;
     }
     const check = validateRequiredId(agentId, "agent-id");
     if (!check.ok) {
-      writeLine(ctx.stderr, ui.err(check.message));
+      writeError(ctx, "VALIDATION_ERROR", check.message, deps);
       return 2;
     }
     const changeId = parsed.options["to-change"];
     if (!changeId) {
-      writeLine(ctx.stderr, ui.err("agent harness revert requires --to-change <change-id>"));
+      writeError(ctx, "USAGE_ERROR", "agent harness revert requires --to-change <change-id>", deps);
       return 2;
     }
     const changeCheck = validateRequiredId(changeId, "change-id");
     if (!changeCheck.ok) {
-      writeLine(ctx.stderr, ui.err(changeCheck.message));
+      writeError(ctx, "VALIDATION_ERROR", changeCheck.message, deps);
       return 2;
     }
     return commandAgentHarness(ctx, parsed, agentId, deps);
   }
 
-  writeLine(ctx.stderr, ui.err("usage: agent scores <agent-id> [--limit N] [--starting-after ID] [--json]"));
-  writeLine(ctx.stderr, ui.err("       agent profile <agent-id> [--json]"));
-  writeLine(ctx.stderr, ui.err("       agent improvement-report <agent-id> [--json]"));
-  writeLine(ctx.stderr, ui.err("       agent proposals <agent-id> [approve <proposal-id> | reject <proposal-id> [--reason TEXT] | veto <proposal-id> [--reason TEXT] | --json]"));
-  writeLine(ctx.stderr, ui.err("       agent harness revert <agent-id> --to-change <change-id>"));
+  // non-JSON: preserve multi-line usage text not expressible as a single message
+  if (ctx.jsonMode) {
+    writeError(ctx, "UNKNOWN_COMMAND", `unknown agent subcommand: ${action}`, deps);
+  } else {
+    writeLine(ctx.stderr, ui.err("usage: agent scores <agent-id> [--limit N] [--starting-after ID] [--json]"));
+    writeLine(ctx.stderr, ui.err("       agent profile <agent-id> [--json]"));
+    writeLine(ctx.stderr, ui.err("       agent improvement-report <agent-id> [--json]"));
+    writeLine(ctx.stderr, ui.err("       agent proposals <agent-id> [approve <proposal-id> | reject <proposal-id> [--reason TEXT] | veto <proposal-id> [--reason TEXT] | --json]"));
+    writeLine(ctx.stderr, ui.err("       agent harness revert <agent-id> --to-change <change-id>"));
+  }
   return 2;
 }

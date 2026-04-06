@@ -141,14 +141,14 @@ describe("runs interrupt — edge cases", () => {
     const { stream: stderr, read } = makeBufferStream();
     const code = await commandRunsInterrupt(makeCtx({ stderr }), [], makeDeps());
     expect(code).toBe(2);
-    expect(read()).toContain("usage");
+    expect(read()).toContain("requires");
   });
 
   test("T2: missing message exits 2 with usage", async () => {
     const { stream: stderr, read } = makeBufferStream();
     const code = await commandRunsInterrupt(makeCtx({ stderr }), [RUN_ID_1], makeDeps());
     expect(code).toBe(2);
-    expect(read()).toContain("usage");
+    expect(read()).toContain("requires");
   });
 
   test("T2: oversized message exits 2", async () => {
