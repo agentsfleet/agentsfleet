@@ -77,8 +77,8 @@ pub fn handleGitHubCallback(ctx: *Context, req: *httpz.Request, res: *httpz.Resp
 
     {
         var t = conn.query(
-            \\INSERT INTO tenants (tenant_id, name, api_key_hash, created_at)
-            \\VALUES ($1, 'GitHub App', 'callback', $2)
+            \\INSERT INTO tenants (tenant_id, name, api_key_hash, created_at, updated_at)
+            \\VALUES ($1, 'GitHub App', 'callback', $2, $2)
             \\ON CONFLICT (tenant_id) DO NOTHING
         , .{ tenant_id, now_ms }) catch {
             common.internalOperationError(res, "Failed to upsert tenant", req_id);

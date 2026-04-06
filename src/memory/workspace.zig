@@ -73,8 +73,8 @@ pub fn saveFromWarden(
         defer conn._allocator.free(memory_id);
         _ = try conn.exec(
             \\INSERT INTO workspace_memories
-            \\  (id, workspace_id, run_id, content, tags, created_at, expires_at)
-            \\VALUES ($1, $2, $3, $4, '[]', $5, $6)
+            \\  (id, workspace_id, run_id, content, tags, created_at, updated_at, expires_at)
+            \\VALUES ($1, $2, $3, $4, '[]', $5, $5, $6)
         , .{
             memory_id,
             workspace_id,

@@ -193,7 +193,7 @@ fn setupSeedData(conn: *pg.Conn) !void {
     _ = try conn.exec("DELETE FROM workspaces WHERE workspace_id IN ($1, $2)", .{ TEST_WS_ID, TEST_ADMIN_WS_ID });
     _ = try conn.exec("DELETE FROM tenants WHERE tenant_id = $1", .{TEST_TENANT_ID});
     _ = try conn.exec(
-        "INSERT INTO tenants (tenant_id, name, api_key_hash, created_at) VALUES ($1, 'M16_004 Test', 'x', $2)",
+        "INSERT INTO tenants (tenant_id, name, api_key_hash, created_at, updated_at) VALUES ($1, 'M16_004 Test', 'x', $2, $2)",
         .{ TEST_TENANT_ID, now_ms },
     );
     _ = try conn.exec(

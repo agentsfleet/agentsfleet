@@ -15,24 +15,26 @@ const ServeMigrationDecision = enum {
     run_required,
 };
 
-pub fn canonicalMigrations() [15]db.Migration {
+pub fn canonicalMigrations() [17]db.Migration {
     const schema = @import("schema");
     return .{
-        .{ .version = 1, .sql = schema.initial_sql },
-        .{ .version = 2, .sql = schema.vault_sql },
-        .{ .version = 4, .sql = schema.side_effect_ledger_sql },
-        .{ .version = 5, .sql = schema.side_effect_outbox_sql },
-        .{ .version = 6, .sql = schema.harness_control_plane_sql },
-        .{ .version = 7, .sql = schema.rls_tenant_isolation_sql },
-        .{ .version = 9, .sql = schema.profile_linkage_audit_sql },
-        .{ .version = 12, .sql = schema.workspace_entitlements_sql },
-        .{ .version = 13, .sql = schema.usage_metering_billing_sql },
-        .{ .version = 14, .sql = schema.workspace_billing_state_sql },
-        .{ .version = 15, .sql = schema.workspace_free_credit_sql },
-        .{ .version = 16, .sql = schema.agent_scoring_baseline_sql },
-        .{ .version = 17, .sql = schema.agent_score_persistence_api_sql },
-        .{ .version = 18, .sql = schema.agent_failure_analysis_context_sql },
-        .{ .version = 19, .sql = schema.platform_llm_keys_sql },
+        .{ .version = 1, .sql = schema.core_foundation_sql },
+        .{ .version = 2, .sql = schema.core_workflow_sql },
+        .{ .version = 3, .sql = schema.core_results_events_sql },
+        .{ .version = 4, .sql = schema.vault_sql },
+        .{ .version = 6, .sql = schema.side_effect_ledger_sql },
+        .{ .version = 7, .sql = schema.side_effect_outbox_sql },
+        .{ .version = 8, .sql = schema.harness_control_plane_sql },
+        .{ .version = 9, .sql = schema.rls_tenant_isolation_sql },
+        .{ .version = 11, .sql = schema.profile_linkage_audit_sql },
+        .{ .version = 14, .sql = schema.workspace_entitlements_sql },
+        .{ .version = 15, .sql = schema.usage_metering_billing_sql },
+        .{ .version = 16, .sql = schema.workspace_billing_state_sql },
+        .{ .version = 17, .sql = schema.workspace_free_credit_sql },
+        .{ .version = 18, .sql = schema.agent_scoring_baseline_sql },
+        .{ .version = 19, .sql = schema.agent_score_persistence_api_sql },
+        .{ .version = 20, .sql = schema.agent_failure_analysis_context_sql },
+        .{ .version = 21, .sql = schema.platform_llm_keys_sql },
     };
 }
 
@@ -184,23 +186,23 @@ test "integration: startup with pending migrations proceeds when enabled and loc
 
 test "canonical schema bootstrap includes scoring config in base schema" {
     const migrations = canonicalMigrations();
-    try std.testing.expectEqual(@as(i32, 19), migrations[migrations.len - 1].version);
-    try std.testing.expect(std.mem.containsAtLeast(u8, migrations[5].sql, 1, "trust_streak_runs INTEGER NOT NULL"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, migrations[5].sql, 1, "trust_level   TEXT NOT NULL"));
-    try std.testing.expect(!std.mem.containsAtLeast(u8, migrations[5].sql, 1, "trust_streak_runs INTEGER NOT NULL DEFAULT 0"));
-    try std.testing.expect(!std.mem.containsAtLeast(u8, migrations[5].sql, 1, "trust_level   TEXT NOT NULL DEFAULT 'UNEARNED'"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, migrations[5].sql, 1, "CREATE TABLE agent_improvement_proposals"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, migrations[5].sql, 1, "generation_status   TEXT NOT NULL"));
-    try std.testing.expect(!std.mem.containsAtLeast(u8, migrations[5].sql, 1, "CHECK (trigger_reason IN"));
-    try std.testing.expect(!std.mem.containsAtLeast(u8, migrations[5].sql, 1, "CHECK (approval_mode IN"));
-    try std.testing.expect(!std.mem.containsAtLeast(u8, migrations[5].sql, 1, "CHECK (generation_status IN"));
-    try std.testing.expect(!std.mem.containsAtLeast(u8, migrations[5].sql, 1, "CHECK (status IN"));
-    try std.testing.expect(!std.mem.containsAtLeast(u8, migrations[5].sql, 1, "WHERE status ="));
-    try std.testing.expect(std.mem.containsAtLeast(u8, migrations[5].sql, 1, "CREATE TABLE harness_change_log"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, migrations[7].sql, 1, "enable_agent_scoring BOOLEAN NOT NULL"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, migrations[7].sql, 1, "agent_scoring_weights_json TEXT NOT NULL"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, migrations[11].sql, 1, "CREATE TABLE workspace_latency_baseline"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, migrations[12].sql, 1, "CREATE TABLE agent_run_scores"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, migrations[13].sql, 1, "CREATE TABLE agent_run_analysis"));
-    try std.testing.expect(!std.mem.containsAtLeast(u8, migrations[12].sql, 1, "tier             TEXT"));
+    try std.testing.expectEqual(@as(i32, 21), migrations[migrations.len - 1].version);
+    try std.testing.expect(std.mem.containsAtLeast(u8, migrations[6].sql, 1, "trust_streak_runs INTEGER NOT NULL"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, migrations[6].sql, 1, "trust_level   TEXT NOT NULL"));
+    try std.testing.expect(!std.mem.containsAtLeast(u8, migrations[6].sql, 1, "trust_streak_runs INTEGER NOT NULL DEFAULT 0"));
+    try std.testing.expect(!std.mem.containsAtLeast(u8, migrations[6].sql, 1, "trust_level   TEXT NOT NULL DEFAULT 'UNEARNED'"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, migrations[6].sql, 1, "CREATE TABLE agent_improvement_proposals"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, migrations[6].sql, 1, "generation_status   TEXT NOT NULL"));
+    try std.testing.expect(!std.mem.containsAtLeast(u8, migrations[6].sql, 1, "CHECK (trigger_reason IN"));
+    try std.testing.expect(!std.mem.containsAtLeast(u8, migrations[6].sql, 1, "CHECK (approval_mode IN"));
+    try std.testing.expect(!std.mem.containsAtLeast(u8, migrations[6].sql, 1, "CHECK (generation_status IN"));
+    try std.testing.expect(!std.mem.containsAtLeast(u8, migrations[6].sql, 1, "CHECK (status IN"));
+    try std.testing.expect(!std.mem.containsAtLeast(u8, migrations[6].sql, 1, "WHERE status ="));
+    try std.testing.expect(std.mem.containsAtLeast(u8, migrations[6].sql, 1, "CREATE TABLE harness_change_log"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, migrations[9].sql, 1, "enable_agent_scoring BOOLEAN NOT NULL"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, migrations[9].sql, 1, "agent_scoring_weights_json TEXT NOT NULL"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, migrations[13].sql, 1, "CREATE TABLE workspace_latency_baseline"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, migrations[14].sql, 1, "CREATE TABLE agent_run_scores"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, migrations[15].sql, 1, "CREATE TABLE agent_run_analysis"));
+    try std.testing.expect(!std.mem.containsAtLeast(u8, migrations[14].sql, 1, "tier             TEXT"));
 }

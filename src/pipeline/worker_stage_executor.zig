@@ -833,7 +833,7 @@ fn testSetKek() void {
 
 fn testInsertFixtures(conn: *pg.Conn) !void {
     _ = try conn.exec(
-        "INSERT INTO core.tenants (tenant_id, name, api_key_hash, created_at) VALUES ($1, 'test-tenant', 'x', 0) ON CONFLICT (tenant_id) DO NOTHING",
+        "INSERT INTO core.tenants (tenant_id, name, api_key_hash, created_at, updated_at) VALUES ($1, 'test-tenant', 'x', 0, 0) ON CONFLICT (tenant_id) DO NOTHING",
         .{_test_tenant_id},
     );
     _ = try conn.exec(
