@@ -61,7 +61,7 @@ TO worker_runtime;
 -- audit schema: runtime read-only migration state inspection
 GRANT SELECT ON audit.schema_migrations, audit.schema_migration_failures TO api_runtime, worker_runtime;
 
-CREATE TABLE vault.secrets (
+CREATE TABLE IF NOT EXISTS vault.secrets (
     id            UUID PRIMARY KEY,
     CONSTRAINT ck_vault_secrets_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
     workspace_id  UUID    NOT NULL REFERENCES core.workspaces(workspace_id),
@@ -78,7 +78,7 @@ CREATE TABLE vault.secrets (
     UNIQUE (workspace_id, key_name)
 );
 
-CREATE INDEX idx_vault_secrets_workspace
+CREATE INDEX IF NOT EXISTS idx_vault_secrets_workspace
     ON vault.secrets(workspace_id, key_name);
 
 GRANT SELECT, INSERT, UPDATE ON vault.secrets TO api_runtime, worker_runtime;

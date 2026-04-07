@@ -3,7 +3,7 @@
 -- workspace_memories, and policy_events.
 -- Split from the original monolithic 001_initial.sql.
 
-CREATE TABLE core.gate_results (
+CREATE TABLE IF NOT EXISTS core.gate_results (
     id               UUID PRIMARY KEY,
     CONSTRAINT ck_gate_results_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
     run_id           UUID NOT NULL REFERENCES core.runs(run_id) ON DELETE CASCADE,
@@ -15,7 +15,7 @@ CREATE TABLE core.gate_results (
     wall_ms          BIGINT NOT NULL,
     created_at       BIGINT NOT NULL
 );
-CREATE INDEX idx_gate_results_run ON core.gate_results(run_id, gate_name, attempt);
+CREATE INDEX IF NOT EXISTS idx_gate_results_run ON core.gate_results(run_id, gate_name, attempt);
 
 -- gate_results is append-only: block UPDATE/DELETE via trigger.
 CREATE OR REPLACE FUNCTION core.gate_results_append_only() RETURNS trigger AS $$
@@ -28,7 +28,7 @@ CREATE TRIGGER trg_gate_results_append_only
     BEFORE UPDATE OR DELETE ON core.gate_results
     FOR EACH ROW EXECUTE FUNCTION core.gate_results_append_only();
 
-CREATE TABLE billing.usage_ledger (
+CREATE TABLE IF NOT EXISTS billing.usage_ledger (
     id            UUID PRIMARY KEY,
     CONSTRAINT ck_usage_ledger_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
     run_id        UUID NOT NULL REFERENCES core.runs(run_id),
@@ -45,16 +45,16 @@ CREATE TABLE billing.usage_ledger (
     agent_seconds BIGINT NOT NULL DEFAULT 0,
     created_at    BIGINT NOT NULL
 );
-CREATE UNIQUE INDEX idx_usage_ledger_run_event_key
+CREATE UNIQUE INDEX IF NOT EXISTS idx_usage_ledger_run_event_key
     ON billing.usage_ledger (run_id, event_key)
     WHERE event_key IS NOT NULL;
-CREATE INDEX idx_usage_ledger_workspace
+CREATE INDEX IF NOT EXISTS idx_usage_ledger_workspace
     ON billing.usage_ledger (workspace_id, created_at DESC);
-CREATE INDEX idx_usage_ledger_billable
+CREATE INDEX IF NOT EXISTS idx_usage_ledger_billable
     ON billing.usage_ledger (run_id, attempt, is_billable, billable_unit);
-CREATE INDEX idx_usage_run ON billing.usage_ledger(run_id, attempt, source);
+CREATE INDEX IF NOT EXISTS idx_usage_run ON billing.usage_ledger(run_id, attempt, source);
 
-CREATE TABLE core.workspace_memories (
+CREATE TABLE IF NOT EXISTS core.workspace_memories (
     id           UUID PRIMARY KEY,
     CONSTRAINT ck_workspace_memories_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
     workspace_id UUID NOT NULL REFERENCES core.workspaces(workspace_id),
@@ -65,10 +65,10 @@ CREATE TABLE core.workspace_memories (
     updated_at   BIGINT NOT NULL,
     expires_at   BIGINT
 );
-CREATE INDEX idx_memories_workspace ON core.workspace_memories(workspace_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_memories_workspace ON core.workspace_memories(workspace_id, created_at DESC);
 
 -- M21_001: interrupt event log (not a state transition — dedicated table)
-CREATE TABLE core.run_interrupts (
+CREATE TABLE IF NOT EXISTS core.run_interrupts (
     id           UUID PRIMARY KEY,
     CONSTRAINT ck_run_interrupts_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
     run_id       UUID NOT NULL REFERENCES core.runs(run_id),
@@ -81,10 +81,10 @@ CREATE TABLE core.run_interrupts (
     actor        TEXT NOT NULL,
     created_at   BIGINT NOT NULL
 );
-CREATE INDEX idx_run_interrupts_run ON core.run_interrupts(run_id, created_at DESC);
-CREATE INDEX idx_run_interrupts_workspace ON core.run_interrupts(workspace_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_run_interrupts_run ON core.run_interrupts(run_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_run_interrupts_workspace ON core.run_interrupts(workspace_id, created_at DESC);
 
-CREATE TABLE core.policy_events (
+CREATE TABLE IF NOT EXISTS core.policy_events (
     id           UUID PRIMARY KEY,
     CONSTRAINT ck_policy_events_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
     run_id       UUID REFERENCES core.runs(run_id),
@@ -95,4 +95,4 @@ CREATE TABLE core.policy_events (
     actor        TEXT NOT NULL,
     ts           BIGINT NOT NULL
 );
-CREATE INDEX idx_policy_workspace ON core.policy_events(workspace_id, ts DESC) INCLUDE (action_class, decision);
+CREATE INDEX IF NOT EXISTS idx_policy_workspace ON core.policy_events(workspace_id, ts DESC) INCLUDE (action_class, decision);

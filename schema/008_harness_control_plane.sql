@@ -1,6 +1,6 @@
 -- UseZombie harness control plane schema (UUID-only IDs)
 
-CREATE TABLE agent.agent_profiles (
+CREATE TABLE IF NOT EXISTS agent.agent_profiles (
     agent_id      UUID PRIMARY KEY,
     tenant_id     UUID NOT NULL REFERENCES core.tenants(tenant_id),
     workspace_id  UUID NOT NULL REFERENCES core.workspaces(workspace_id),
@@ -13,9 +13,9 @@ CREATE TABLE agent.agent_profiles (
     updated_at    BIGINT NOT NULL,
     CONSTRAINT ck_agent_profiles_trust_level CHECK (trust_level IN ('UNEARNED', 'TRUSTED'))
 );
-CREATE INDEX idx_agent_profiles_workspace_agent ON agent.agent_profiles(workspace_id, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_agent_profiles_workspace_agent ON agent.agent_profiles(workspace_id, updated_at DESC);
 
-CREATE TABLE agent.agent_config_versions (
+CREATE TABLE IF NOT EXISTS agent.agent_config_versions (
     config_version_id       UUID PRIMARY KEY,
     tenant_id               UUID NOT NULL REFERENCES core.tenants(tenant_id),
     agent_id                UUID NOT NULL REFERENCES agent.agent_profiles(agent_id) ON DELETE CASCADE,
@@ -30,19 +30,19 @@ CREATE TABLE agent.agent_config_versions (
     UNIQUE (agent_id, version),
     CONSTRAINT ck_agent_config_versions_uuidv7 CHECK (substring(config_version_id::text from 15 for 1) = '7')
 );
-CREATE INDEX idx_agent_config_versions_agent ON agent.agent_config_versions(agent_id, version DESC);
-CREATE INDEX idx_agent_config_versions_tenant ON agent.agent_config_versions(tenant_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_agent_config_versions_agent ON agent.agent_config_versions(agent_id, version DESC);
+CREATE INDEX IF NOT EXISTS idx_agent_config_versions_tenant ON agent.agent_config_versions(tenant_id, created_at DESC);
 
-CREATE TABLE agent.workspace_active_config (
+CREATE TABLE IF NOT EXISTS agent.workspace_active_config (
     workspace_id       UUID PRIMARY KEY REFERENCES core.workspaces(workspace_id) ON DELETE CASCADE,
     tenant_id          UUID NOT NULL REFERENCES core.tenants(tenant_id),
     config_version_id  UUID NOT NULL REFERENCES agent.agent_config_versions(config_version_id),
     activated_by       TEXT NOT NULL,
     activated_at       BIGINT NOT NULL
 );
-CREATE INDEX idx_workspace_active_config_tenant ON agent.workspace_active_config(tenant_id, activated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_workspace_active_config_tenant ON agent.workspace_active_config(tenant_id, activated_at DESC);
 
-CREATE TABLE agent.agent_improvement_proposals (
+CREATE TABLE IF NOT EXISTS agent.agent_improvement_proposals (
     proposal_id         UUID PRIMARY KEY,
     agent_id            UUID NOT NULL REFERENCES agent.agent_profiles(agent_id) ON DELETE CASCADE,
     workspace_id        UUID NOT NULL REFERENCES core.workspaces(workspace_id) ON DELETE CASCADE,
@@ -59,12 +59,12 @@ CREATE TABLE agent.agent_improvement_proposals (
     updated_at          BIGINT NOT NULL,
     CONSTRAINT ck_agent_improvement_proposals_uuidv7 CHECK (substring(proposal_id::text from 15 for 1) = '7')
 );
-CREATE INDEX idx_agent_improvement_proposals_agent
+CREATE INDEX IF NOT EXISTS idx_agent_improvement_proposals_agent
     ON agent.agent_improvement_proposals(agent_id, created_at DESC);
-CREATE INDEX idx_agent_improvement_proposals_veto_window
+CREATE INDEX IF NOT EXISTS idx_agent_improvement_proposals_veto_window
     ON agent.agent_improvement_proposals(status, auto_apply_at);
 
-CREATE TABLE agent.harness_change_log (
+CREATE TABLE IF NOT EXISTS agent.harness_change_log (
     change_id      UUID PRIMARY KEY,
     agent_id       UUID NOT NULL REFERENCES agent.agent_profiles(agent_id) ON DELETE CASCADE,
     proposal_id    UUID NOT NULL REFERENCES agent.agent_improvement_proposals(proposal_id),
@@ -78,9 +78,9 @@ CREATE TABLE agent.harness_change_log (
     score_delta    DOUBLE PRECISION,
     CONSTRAINT ck_harness_change_log_uuidv7 CHECK (substring(change_id::text from 15 for 1) = '7')
 );
-CREATE INDEX idx_harness_change_log_agent ON agent.harness_change_log(agent_id, applied_at DESC);
+CREATE INDEX IF NOT EXISTS idx_harness_change_log_agent ON agent.harness_change_log(agent_id, applied_at DESC);
 
-CREATE TABLE agent.config_compile_jobs (
+CREATE TABLE IF NOT EXISTS agent.config_compile_jobs (
     compile_job_id        UUID PRIMARY KEY,
     tenant_id             UUID NOT NULL REFERENCES core.tenants(tenant_id),
     workspace_id          UUID NOT NULL REFERENCES core.workspaces(workspace_id) ON DELETE CASCADE,
@@ -93,10 +93,10 @@ CREATE TABLE agent.config_compile_jobs (
     updated_at            BIGINT NOT NULL,
     CONSTRAINT ck_config_compile_jobs_uuidv7 CHECK (substring(compile_job_id::text from 15 for 1) = '7')
 );
-CREATE INDEX idx_config_compile_jobs_workspace ON agent.config_compile_jobs(workspace_id, created_at DESC);
-CREATE INDEX idx_config_compile_jobs_tenant ON agent.config_compile_jobs(tenant_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_config_compile_jobs_workspace ON agent.config_compile_jobs(workspace_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_config_compile_jobs_tenant ON agent.config_compile_jobs(tenant_id, created_at DESC);
 
-CREATE TABLE vault.workspace_skill_secrets (
+CREATE TABLE IF NOT EXISTS vault.workspace_skill_secrets (
     id               UUID PRIMARY KEY,
     CONSTRAINT ck_workspace_skill_secrets_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
     tenant_id        UUID NOT NULL REFERENCES core.tenants(tenant_id),
@@ -116,9 +116,9 @@ CREATE TABLE vault.workspace_skill_secrets (
     updated_at       BIGINT NOT NULL,
     UNIQUE (workspace_id, skill_ref, key_name)
 );
-CREATE INDEX idx_workspace_skill_secrets_lookup
+CREATE INDEX IF NOT EXISTS idx_workspace_skill_secrets_lookup
     ON vault.workspace_skill_secrets(workspace_id, skill_ref, key_name);
-CREATE INDEX idx_workspace_skill_secrets_tenant
+CREATE INDEX IF NOT EXISTS idx_workspace_skill_secrets_tenant
     ON vault.workspace_skill_secrets(tenant_id, workspace_id, created_at DESC);
 
 GRANT SELECT, INSERT, UPDATE, DELETE ON

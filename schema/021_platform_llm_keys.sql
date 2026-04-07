@@ -6,7 +6,7 @@
 --   2. platform_llm_keys active row → admin workspace vault.secrets  → platform default
 --   3. WorkerError.CredentialDenied — no env fallback in any mode
 
-CREATE TABLE core.platform_llm_keys (
+CREATE TABLE IF NOT EXISTS core.platform_llm_keys (
     id                  UUID PRIMARY KEY,
     CONSTRAINT ck_platform_llm_keys_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
     provider            TEXT NOT NULL,

@@ -1,6 +1,6 @@
 -- Immutable compile/activate/run linkage artifacts (UUID-only IDs)
 
-CREATE TABLE agent.config_linkage_audit_artifacts (
+CREATE TABLE IF NOT EXISTS agent.config_linkage_audit_artifacts (
     artifact_id          UUID PRIMARY KEY,
     tenant_id            UUID NOT NULL REFERENCES core.tenants(tenant_id) ON DELETE CASCADE,
     workspace_id         UUID NOT NULL REFERENCES core.workspaces(workspace_id) ON DELETE CASCADE,
@@ -13,11 +13,11 @@ CREATE TABLE agent.config_linkage_audit_artifacts (
     created_at           BIGINT NOT NULL
 );
 
-CREATE INDEX idx_config_linkage_workspace
+CREATE INDEX IF NOT EXISTS idx_config_linkage_workspace
     ON agent.config_linkage_audit_artifacts(workspace_id, created_at DESC);
-CREATE INDEX idx_config_linkage_config_version
+CREATE INDEX IF NOT EXISTS idx_config_linkage_config_version
     ON agent.config_linkage_audit_artifacts(config_version_id, created_at DESC);
-CREATE UNIQUE INDEX uq_config_linkage_run_artifact
+CREATE UNIQUE INDEX IF NOT EXISTS uq_config_linkage_run_artifact
     ON agent.config_linkage_audit_artifacts(run_id)
     WHERE run_id IS NOT NULL;
 

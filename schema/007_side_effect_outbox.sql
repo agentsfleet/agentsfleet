@@ -1,5 +1,5 @@
 -- Durable side-effect outbox + dead-letter baseline
-CREATE TABLE core.run_side_effect_outbox (
+CREATE TABLE IF NOT EXISTS core.run_side_effect_outbox (
     id               UUID PRIMARY KEY,
     CONSTRAINT ck_run_side_effect_outbox_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
     run_id           UUID   NOT NULL REFERENCES core.runs(run_id),
@@ -13,7 +13,7 @@ CREATE TABLE core.run_side_effect_outbox (
     UNIQUE (run_id, effect_key)
 );
 
-CREATE INDEX idx_side_effect_outbox_status_updated
+CREATE INDEX IF NOT EXISTS idx_side_effect_outbox_status_updated
     ON core.run_side_effect_outbox(status, updated_at, run_id);
 
 INSERT INTO core.run_side_effect_outbox (

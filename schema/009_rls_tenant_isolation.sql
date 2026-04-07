@@ -1,6 +1,6 @@
 -- Tenant isolation hardening + prompt lifecycle observability (clean-state)
 
-CREATE TABLE core.prompt_lifecycle_events (
+CREATE TABLE IF NOT EXISTS core.prompt_lifecycle_events (
     id                  UUID PRIMARY KEY,
     CONSTRAINT ck_prompt_lifecycle_events_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
     event_id            TEXT NOT NULL UNIQUE,
@@ -12,9 +12,9 @@ CREATE TABLE core.prompt_lifecycle_events (
     metadata_json       TEXT NOT NULL DEFAULT '{}',
     created_at          BIGINT NOT NULL
 );
-CREATE INDEX idx_prompt_lifecycle_events_workspace
+CREATE INDEX IF NOT EXISTS idx_prompt_lifecycle_events_workspace
     ON core.prompt_lifecycle_events(workspace_id, created_at DESC);
-CREATE INDEX idx_prompt_lifecycle_events_tenant
+CREATE INDEX IF NOT EXISTS idx_prompt_lifecycle_events_tenant
     ON core.prompt_lifecycle_events(tenant_id, created_at DESC);
 
 CREATE OR REPLACE FUNCTION reject_prompt_lifecycle_event_mutation()

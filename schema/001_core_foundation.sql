@@ -12,7 +12,7 @@ CREATE SCHEMA IF NOT EXISTS billing;
 -- migration runner in pool.zig before any SQL files execute.
 CREATE SCHEMA IF NOT EXISTS audit;
 
-CREATE TABLE core.tenants (
+CREATE TABLE IF NOT EXISTS core.tenants (
     tenant_id    UUID PRIMARY KEY,
     name         TEXT NOT NULL,
     api_key_hash TEXT NOT NULL,
@@ -20,7 +20,7 @@ CREATE TABLE core.tenants (
     updated_at   BIGINT NOT NULL
 );
 
-CREATE TABLE core.workspaces (
+CREATE TABLE IF NOT EXISTS core.workspaces (
     workspace_id              UUID PRIMARY KEY,
     tenant_id                 UUID NOT NULL REFERENCES core.tenants(tenant_id),
     repo_url                  TEXT NOT NULL,
@@ -35,4 +35,4 @@ CREATE TABLE core.workspaces (
     created_at                BIGINT NOT NULL,
     updated_at                BIGINT NOT NULL
 );
-CREATE INDEX idx_workspaces_tenant ON core.workspaces(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_workspaces_tenant ON core.workspaces(tenant_id);

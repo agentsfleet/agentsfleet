@@ -1,6 +1,6 @@
 -- Entitlement source-of-truth and policy audit snapshots (UUID-only IDs)
 
-CREATE TABLE billing.workspace_entitlements (
+CREATE TABLE IF NOT EXISTS billing.workspace_entitlements (
     entitlement_id       UUID PRIMARY KEY,
     workspace_id         UUID NOT NULL UNIQUE REFERENCES core.workspaces(workspace_id) ON DELETE CASCADE,
     plan_tier            TEXT NOT NULL,
@@ -18,10 +18,10 @@ CREATE TABLE billing.workspace_entitlements (
     CONSTRAINT ck_workspace_entitlements_scoring_context_max_tokens
         CHECK (scoring_context_max_tokens >= 512 AND scoring_context_max_tokens <= 8192)
 );
-CREATE INDEX idx_workspace_entitlements_tier
+CREATE INDEX IF NOT EXISTS idx_workspace_entitlements_tier
     ON billing.workspace_entitlements(plan_tier, updated_at DESC);
 
-CREATE TABLE billing.entitlement_policy_audit_snapshots (
+CREATE TABLE IF NOT EXISTS billing.entitlement_policy_audit_snapshots (
     snapshot_id        UUID PRIMARY KEY,
     workspace_id       UUID NOT NULL REFERENCES core.workspaces(workspace_id) ON DELETE CASCADE,
     boundary           TEXT NOT NULL,
@@ -33,7 +33,7 @@ CREATE TABLE billing.entitlement_policy_audit_snapshots (
     actor              TEXT NOT NULL,
     created_at         BIGINT NOT NULL
 );
-CREATE INDEX idx_entitlement_policy_audit_workspace
+CREATE INDEX IF NOT EXISTS idx_entitlement_policy_audit_workspace
     ON billing.entitlement_policy_audit_snapshots(workspace_id, created_at DESC);
 
 GRANT SELECT, INSERT, UPDATE, DELETE ON billing.workspace_entitlements TO api_runtime;
