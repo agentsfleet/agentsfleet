@@ -42,6 +42,8 @@ ALTER TABLE agent.workspace_active_config ENABLE ROW LEVEL SECURITY;
 ALTER TABLE agent.config_compile_jobs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE vault.workspace_skill_secrets ENABLE ROW LEVEL SECURITY;
 
+-- NOTE: EXCEPTION WHEN duplicate_object silently skips if the policy already exists.
+-- To change a policy definition, write a new migration that DROPs the old policy first.
 DO $$ BEGIN CREATE POLICY agent_profiles_select_tenant ON agent.agent_profiles FOR SELECT USING (tenant_id::text = current_setting('app.current_tenant_id', true)); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 DO $$ BEGIN CREATE POLICY agent_profiles_insert_tenant ON agent.agent_profiles FOR INSERT WITH CHECK (tenant_id::text = current_setting('app.current_tenant_id', true)); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 DO $$ BEGIN CREATE POLICY agent_profiles_update_tenant ON agent.agent_profiles FOR UPDATE USING (tenant_id::text = current_setting('app.current_tenant_id', true)) WITH CHECK (tenant_id::text = current_setting('app.current_tenant_id', true)); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
