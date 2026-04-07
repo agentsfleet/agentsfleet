@@ -241,6 +241,8 @@ The frontmatter is the machine-readable policy. The markdown body is the agent's
 
 A workspace is a **project** — a group of agents that share an activity stream and can be managed together. One workspace = one use case, multiple agents working together.
 
+The workspaces below are **sample use cases, not the product boundary**. The platform doesn't care what the agent does — it cares that credentials are hidden, requests are inspected, actions are logged, and spend is capped. Any OpenClaw skill on ClawHub becomes a UseZombie skill with one addition: the trust layer (credential policy, network scope, spend ceiling, AI firewall). The skill registry already exists. The agent code already exists. UseZombie is the missing runtime.
+
 ### Trigger types
 
 ```
