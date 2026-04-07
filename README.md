@@ -35,14 +35,15 @@ The harder problem nobody is solving: **operators are still babysitting agents l
                          ||     ||
 ```
 
-So we pivoted. Code is cattle now — stamp a spec, spin a sandbox, get a PR. If it fails, kill it and respawn. No coddling.
+So we pivoted. UseZombie is now a runtime for always-on agents — you bring your agent, we handle the credentials (hidden from the sandbox, injected at the firewall), webhooks (wired automatically), audit logs (every action timestamped), and a kill switch. Your agent runs 24/7 without ever seeing a password.
 
 ## What zombies do now
 
-- **Sandboxed runs** — isolated sandbox per run, attached to your repo, nuked after
-- **Spec to PR** — submit a markdown spec, an agent implements it, self-repairs until `make lint` / `make test` / `make build` pass, and opens a PR
-- **Scorecards** — every run produces an evidence-backed scorecard so you know what passed, what was repaired, and why
-- **No babysitting** — you review one PR instead of hovering over ten agent sessions
+- **Always-on agents** — your agent runs continuously in a sandboxed process, restarts on crash
+- **Credentials hidden** — agents never see tokens; the firewall injects them per-request, outside the sandbox boundary
+- **Webhooks wired** — receive events from email, Slack, GitHub, etc. without ngrok or custom servers
+- **Audit everything** — every request, webhook, and credential use is timestamped and replayable
+- **Kill switch** — stop any agent mid-action from the CLI or web UI
 
 ## Stack
 
