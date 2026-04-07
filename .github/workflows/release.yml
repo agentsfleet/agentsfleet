@@ -363,6 +363,7 @@ jobs:
         env:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
           FLY_API_TOKEN: op://${{ vars.VAULT_PROD }}/fly-api-token/credential
+          TUNNEL_TOKEN: op://${{ vars.VAULT_PROD }}/cloudflare-tunnel-prod/credential
           DATABASE_URL_API: op://${{ vars.VAULT_PROD }}/planetscale-prod/api-connection-string
           DATABASE_URL_WORKER: op://${{ vars.VAULT_PROD }}/planetscale-prod/worker-connection-string
           DATABASE_URL_MIGRATOR: op://${{ vars.VAULT_PROD }}/planetscale-prod/migrator-connection-string
@@ -453,9 +454,13 @@ jobs:
         # cloudflared-prod bridges Cloudflare Edge to zombied-prod.internal:3000 over 6PN.
         # If its machines are stopped/crashed, every /healthz poll returns status=000.
         # Restart stopped machines or deploy from scratch if no machines exist.
+        # Sync TUNNEL_TOKEN from vault on every deploy so a rotated secret is always
+        # pushed before we check tunnel health — prevents "Invalid tunnel secret" failures.
         run: |
           TUNNEL_APP="cloudflared-prod"
           TUNNEL_CONFIG="deploy/fly/cloudflared-prod/fly.toml"
+          echo "Syncing tunnel token from vault..."
+          flyctl secrets set TUNNEL_TOKEN="$TUNNEL_TOKEN" --app "$TUNNEL_APP"
           echo "Checking tunnel connector ($TUNNEL_APP)..."
           MACHINES="$(flyctl machine list --app "$TUNNEL_APP" --json 2>/dev/null || echo '[]')"
           RUNNING="$(echo "$MACHINES" | jq '[.[] | select(.state == "started")] | length')"

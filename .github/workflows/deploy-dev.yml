@@ -317,6 +317,7 @@ jobs:
         env:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
           FLY_API_TOKEN: op://${{ vars.VAULT_DEV }}/fly-api-token/credential
+          TUNNEL_TOKEN: op://${{ vars.VAULT_DEV }}/cloudflare-tunnel-dev/credential
 
       - uses: superfly/flyctl-actions/setup-flyctl@master
 
@@ -324,9 +325,13 @@ jobs:
         # cloudflared-dev is a separate Fly app that bridges Cloudflare Edge to
         # zombied-dev.internal:3000 over 6PN. If its machines are stopped/crashed
         # every /healthz poll returns status=000 (no route). Restart or deploy if needed.
+        # Sync TUNNEL_TOKEN from vault on every deploy so a rotated secret is always
+        # pushed before we check tunnel health — prevents "Invalid tunnel secret" failures.
         run: |
           TUNNEL_APP="cloudflared-dev"
           TUNNEL_CONFIG="deploy/fly/cloudflared-dev/fly.toml"
+          echo "Syncing tunnel token from vault..."
+          flyctl secrets set TUNNEL_TOKEN="$TUNNEL_TOKEN" --app "$TUNNEL_APP"
           echo "Checking tunnel connector ($TUNNEL_APP)..."
           MACHINES="$(flyctl machine list --app "$TUNNEL_APP" --json 2>/dev/null || echo '[]')"
           RUNNING="$(echo "$MACHINES" | jq '[.[] | select(.state == "started")] | length')"
