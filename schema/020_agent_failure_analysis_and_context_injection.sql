@@ -22,7 +22,7 @@ CREATE INDEX IF NOT EXISTS idx_agent_run_analysis_hints_gin
 GRANT SELECT, INSERT ON agent.agent_run_analysis TO worker_runtime;
 GRANT SELECT ON agent.agent_run_analysis TO api_runtime;
 
-CREATE TABLE IF NOT EXISTS IF NOT EXISTS audit.ops_ro_access_events (
+CREATE TABLE IF NOT EXISTS audit.ops_ro_access_events (
     event_id          UUID PRIMARY KEY,
     principal_role    TEXT NOT NULL,
     principal_session TEXT NOT NULL,

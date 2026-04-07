@@ -1,4 +1,4 @@
-CREATE TABLE IF NOT EXISTS IF NOT EXISTS billing.workspace_credit_state (
+CREATE TABLE IF NOT EXISTS billing.workspace_credit_state (
     credit_id UUID PRIMARY KEY,
     workspace_id UUID NOT NULL UNIQUE REFERENCES core.workspaces(workspace_id) ON DELETE CASCADE,
     currency TEXT NOT NULL,
@@ -10,10 +10,10 @@ CREATE TABLE IF NOT EXISTS IF NOT EXISTS billing.workspace_credit_state (
     updated_at BIGINT NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS IF NOT EXISTS idx_workspace_credit_state_remaining
+CREATE INDEX IF NOT EXISTS idx_workspace_credit_state_remaining
     ON billing.workspace_credit_state (remaining_credit_cents, updated_at DESC);
 
-CREATE TABLE IF NOT EXISTS IF NOT EXISTS billing.workspace_credit_audit (
+CREATE TABLE IF NOT EXISTS billing.workspace_credit_audit (
     audit_id UUID PRIMARY KEY,
     workspace_id UUID NOT NULL REFERENCES core.workspaces(workspace_id) ON DELETE CASCADE,
     event_type TEXT NOT NULL,
@@ -25,7 +25,7 @@ CREATE TABLE IF NOT EXISTS IF NOT EXISTS billing.workspace_credit_audit (
     created_at BIGINT NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS IF NOT EXISTS idx_workspace_credit_audit_workspace
+CREATE INDEX IF NOT EXISTS idx_workspace_credit_audit_workspace
     ON billing.workspace_credit_audit (workspace_id, created_at DESC);
 
 GRANT SELECT, INSERT, UPDATE, DELETE ON billing.workspace_credit_state TO api_runtime;
