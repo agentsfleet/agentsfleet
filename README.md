@@ -42,7 +42,8 @@ So we killed the old approach and pivoted. UseZombie is now a runtime for always
 - **Always-on agents** — your agent runs continuously in a sandboxed process, restarts on crash
 - **Credentials hidden** — agents never see tokens; the firewall injects them per-request, outside the sandbox boundary
 - **Webhooks wired** — receive events from email, Slack, GitHub, etc. without ngrok or custom servers
-- **Audit everything** — every request, webhook, and credential use is timestamped and replayable
+- **Observability** — see what your agent did, when, why, and how much it cost — before the invoice surprises you
+- **Spend ceiling** — per-run token budgets and wall time limits; one bad prompt never becomes an infinite burn
 - **Kill switch** — stop any agent mid-action from the CLI or web UI
 
 ## Stack

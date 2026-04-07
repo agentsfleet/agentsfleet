@@ -281,10 +281,36 @@ plans:
 - Spec validation and run deduplication
 - Cost control (token budgets, wall time limits, cancellation)
 
-### v2 (next)
+### v2 (pivot — always-on agent runtime)
 
-- Multi-agent competition with scored selection
+**One line:** Heroku for agents, but the agent never sees your keys.
+
+**Flat tire problems we solve:**
+
+1. **Runaway costs** — agents burn tokens unbounded at 3am; UseZombie adds per-run spend ceilings and kill-on-budget
+2. **Unexplainable actions** — "what did my agent do?" becomes answerable with timestamped audit trail and replay
+3. **Trust gap** — operators can't give agents more access because it's all-or-nothing; UseZombie injects credentials at the firewall, scoped per-service, invisible to the agent
+
+**What ships:**
+
+- Always-on agent runtime with process supervision and crash restart
+- Credential store + firewall proxy (encrypted, outside sandbox, per-request injection)
+- Webhook router (agentmail, Slack, GitHub events routed to agent processes)
+- Skill spec format (clawhub) — YAML declaring services, credentials, network policy
+- Web UI — dashboard, activity stream, credential management, kill switch
+- Chat panel — talk to running agents ("how many leads today?", "pause")
+
+**What carries over from v1:**
+
+- Sandboxed execution (bubblewrap + landlock)
+- Observability and audit logging
+- CLI (`zombiectl`)
+- Cost control (token budgets, wall time limits)
+
+**What gets deferred:**
+
+- Multi-agent competition / scored selection
 - Score-gated auto-merge
-- Progress streaming (SSE)
-- Failure replay narratives
 - Firecracker sandbox backend
+- Marketplace / third-party skills
+- Compliance / SOC 2 reporting

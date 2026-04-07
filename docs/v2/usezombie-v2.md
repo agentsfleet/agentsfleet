@@ -269,6 +269,40 @@ usezombie sits between "I built an agent" and "it runs safely in production, alw
 
 ---
 
+## The Flat Tire Test
+
+A flat tire problem is one where the user stops what they're doing and pays to fix it *today*. Not "nice to have." Not "we should look into that." The tire is flat. You can't drive.
+
+Three flat tires we're targeting:
+
+### 1. "My agent burned $400 at 3am and I didn't know until the invoice"
+
+Every agent hosting today (Docker, Railway, Fly) lets agents run unbounded. No spend ceiling, no kill-on-budget, no alert. This happens once and the user never trusts unsupervised agents again — unless someone gives them a hard ceiling with a kill switch.
+
+**UsZombie answer:** Per-run token budgets, wall time limits, and a kill switch. One bad prompt never becomes an infinite burn. You set the ceiling before the agent runs.
+
+### 2. "My agent did something at 3am and I can't explain what or why"
+
+This isn't observability as a feature — it's observability as *liability cover*. When your agent opens a PR, replies to a customer, or posts in Slack, someone will ask "why did it do that?" If you can't answer, you pull the plug on all agents.
+
+**UseZombie answer:** Every request, webhook, credential use, and decision is timestamped and replayable. Full audit trail. You can explain exactly what happened, to your manager, your customer, or your auditor.
+
+### 3. "I want to let my agent do more, but I can't trust it with unsupervised access"
+
+Today you either give an agent full access (all your tokens, all your repos, all your APIs) or no access. There's no middle ground. So operators keep agents on a short leash — supervised, limited, manual. The agent is capable of more, but trust is the bottleneck.
+
+**UseZombie answer:** Scoped credential injection. The agent declares which services it needs. UseZombie injects credentials per-request at the firewall — the agent never sees a token. Network deny-by-default blocks everything else. You trust the boundary, not the agent.
+
+### The positioning
+
+Not "Zapier for agents" — Zapier chains no-code triggers. UseZombie runs YOUR agent code.
+
+Closer to: **"Heroku for agents, but the agent never sees your keys."**
+
+Zapier's flat tire was "I need these two tools to talk." UseZombie's flat tire is "I want to let my agent do more, but I don't trust it unsupervised." The trust gap is the market.
+
+---
+
 ## What Exists Today
 
 - `zombied` — Zig daemon. Workspace runtime, process supervisor.
