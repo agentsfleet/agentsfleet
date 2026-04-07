@@ -1,9 +1,9 @@
 <div align="center">
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="assets/logo-light.svg" />
-  <source media="(prefers-color-scheme: light)" srcset="assets/logo-dark.svg" />
-  <img src="assets/logo-dark.svg" width="200" alt="UseZombie" />
+  <source media="(prefers-color-scheme: dark)" srcset="ui/packages/design-system/src/assets/logo-light.svg" />
+  <source media="(prefers-color-scheme: light)" srcset="ui/packages/design-system/src/assets/logo-dark.svg" />
+  <img src="ui/packages/design-system/src/assets/logo-dark.svg" width="200" alt="UseZombie" />
 </picture>
 
 # UseZombie
