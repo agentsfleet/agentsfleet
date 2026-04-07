@@ -1,9 +1,9 @@
 <div align="center">
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="assets/light.svg" />
-  <source media="(prefers-color-scheme: light)" srcset="assets/dark.svg" />
-  <img src="assets/dark.svg" width="200" alt="UseZombie" />
+  <source media="(prefers-color-scheme: dark)" srcset="assets/logo-light.svg" />
+  <source media="(prefers-color-scheme: light)" srcset="assets/logo-dark.svg" />
+  <img src="assets/logo-dark.svg" width="200" alt="UseZombie" />
 </picture>
 
 # UseZombie
@@ -22,7 +22,7 @@
 
 ---
 
-> 🧟 **Early Access Preview** · Pre-release — revised release coming up by April 11. APIs, CLI, and behavior may change without notice before general availability.
+> 🧟 **Early Access Preview** · Pre-release. APIs, CLI, and behavior may change without notice before general availability.
 >
 > 🔄 UseZombie is in a product pivot. The focus is practical operator leverage, not tunnel-vision optimization around one narrow bottleneck that frontier models may erase soon.
 >

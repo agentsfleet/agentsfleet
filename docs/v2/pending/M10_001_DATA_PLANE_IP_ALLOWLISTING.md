@@ -7,6 +7,7 @@
 **Status:** PENDING
 **Branch:** —
 **Priority:** P1 — close a high-impact credential-exposure gap on the production data plane
+**Supersedes:** `docs/v1/pending/M29_001_DATA_PLANE_IP_ALLOWLISTING.md` (retired with v1 milestone numbering; credentials rotated Apr 2026)
 **Batch:** B1
 **Depends on:** v2 credential firewall (M1), Fly.io deploy pipeline green, network connectivity baseline
 

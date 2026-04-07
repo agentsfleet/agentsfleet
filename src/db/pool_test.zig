@@ -530,6 +530,62 @@ test "integration: zero-trust schema segmentation and role matrix are enforced" 
     }
 }
 
+test "integration: runMigrations is idempotent when table exists but migration record is absent" {
+    if (!std.process.hasEnvVarConstant("LIVE_DB")) return error.SkipZigTest;
+    const alloc = std.testing.allocator;
+    const db_ctx = (try openIntegrationTestConn(alloc)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
+
+    // Version well above all real migrations to avoid collisions.
+    const test_version: i32 = 99998;
+    const test_sql =
+        \\CREATE TABLE IF NOT EXISTS public.test_migration_idempotency_fixture (id BIGINT PRIMARY KEY);
+    ;
+    const test_migrations = [_]pool_mod.Migration{
+        .{ .version = test_version, .sql = test_sql },
+    };
+
+    // Clean slate from any previous interrupted test run.
+    _ = db_ctx.conn.exec("DELETE FROM audit.schema_migrations WHERE version = $1", .{test_version}) catch {};
+    _ = db_ctx.conn.exec("DROP TABLE IF EXISTS public.test_migration_idempotency_fixture", .{}) catch {};
+
+    // First run: applies normally, table and record created.
+    try pool_mod.runMigrations(db_ctx.pool, &test_migrations);
+
+    // Verify table exists.
+    {
+        var q = try db_ctx.conn.query(
+            "SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='test_migration_idempotency_fixture'",
+            .{},
+        );
+        defer q.deinit();
+        try std.testing.expect((try q.next()) != null);
+        try q.drain();
+    }
+
+    // Simulate state inconsistency: drop the migration record, leave the table.
+    _ = try db_ctx.conn.exec("DELETE FROM audit.schema_migrations WHERE version = $1", .{test_version});
+
+    // Second run: table exists, record absent. Must succeed and re-insert the record.
+    try pool_mod.runMigrations(db_ctx.pool, &test_migrations);
+
+    // Verify the migration record was re-inserted.
+    {
+        var q = try db_ctx.conn.query(
+            "SELECT 1 FROM audit.schema_migrations WHERE version = $1",
+            .{test_version},
+        );
+        defer q.deinit();
+        try std.testing.expect((try q.next()) != null);
+        try q.drain();
+    }
+
+    // Cleanup.
+    _ = db_ctx.conn.exec("DELETE FROM audit.schema_migrations WHERE version = $1", .{test_version}) catch {};
+    _ = db_ctx.conn.exec("DROP TABLE IF EXISTS public.test_migration_idempotency_fixture", .{}) catch {};
+}
+
 test "integration: readonly roles can only query ops_ro views, not vault" {
     if (!std.process.hasEnvVarConstant("LIVE_DB")) return error.SkipZigTest;
     const alloc = std.testing.allocator;

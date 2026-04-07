@@ -1,9 +1,12 @@
 # UseZombie — Website Content Map
 
 Date: Mar 28, 2026
-Status: Active content source for `ui/packages/website/`
+Status: SUPERSEDED — canonical source of truth is now `docs/v2/usezombie-v2.md`
 
 Maps to: `Hero.tsx`, `FeatureSection.tsx`, `FeatureFlow.tsx`, `HowItWorks.tsx`, `Home.tsx`, `Agents.tsx`, `Pricing.tsx`
+
+> This file describes the spec-to-PR product surface. For the current product strategy and
+> pricing, see `docs/v2/usezombie-v2.md`. Website components should be updated to match the v2 doc.
 
 ---
 
