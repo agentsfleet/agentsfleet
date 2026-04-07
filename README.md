@@ -1,8 +1,12 @@
 <div align="center">
 
+<img src="assets/logo_mascot.png" width="36" height="36" alt="UseZombie mascot" />
+
 # UseZombie
 
-**Submit a spec. Get a validated PR.**
+**Heroku for agents, but the agent never sees your keys.**
+
+**Run your agents 24/7. Walled, watched, killable.**
 
 [![CI](https://github.com/usezombie/usezombie/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/usezombie/usezombie/actions/workflows/test.yml?query=branch%3Amain)
 [![Coverage](https://codecov.io/gh/usezombie/usezombie/flags/apps/graph/badge.svg)](https://codecov.io/gh/usezombie/usezombie/flags/apps)
@@ -22,7 +26,7 @@
 
 We started by obsessing over one thing: making AI-generated code *correct*. Self-repair loops, quality scoring, scorecard evidence. Good problems — but narrow ones. Frontier models get better every quarter, and the gap we were optimizing for keeps shrinking on its own.
 
-The harder problem nobody is solving: **operators are still babysitting agents like pets.**
+The tempting move is to double down — we built it, so we stick with it. But code is cattle, not pets. You don't keep a solution alive just because you wrote it.
 
 ```
           ____________________________
@@ -35,14 +39,16 @@ The harder problem nobody is solving: **operators are still babysitting agents l
                          ||     ||
 ```
 
-So we pivoted. Code is cattle now — stamp a spec, spin a sandbox, get a PR. If it fails, kill it and respawn. No coddling.
+So we killed the old approach and pivoted. UseZombie is now a runtime for always-on agents — you bring your agent, we handle the credentials (hidden from the sandbox, injected at the firewall), webhooks (wired automatically), audit logs (every action timestamped), and a kill switch. Your agent runs 24/7 without ever seeing a password.
 
 ## What zombies do now
 
-- **Sandboxed runs** — isolated sandbox per run, attached to your repo, nuked after
-- **Spec to PR** — submit a markdown spec, an agent implements it, self-repairs until `make lint` / `make test` / `make build` pass, and opens a PR
-- **Scorecards** — every run produces an evidence-backed scorecard so you know what passed, what was repaired, and why
-- **No babysitting** — you review one PR instead of hovering over ten agent sessions
+- **Always-on agents** — your agent runs continuously in a sandboxed process, restarts on crash
+- **Credentials hidden** — agents never see tokens; the firewall injects them per-request, outside the sandbox boundary
+- **Webhooks wired** — receive events from email, Slack, GitHub, etc. without ngrok or custom servers
+- **Observability** — see what your agent did, when, why, and how much it cost — before the invoice surprises you
+- **Spend ceiling** — per-run token budgets and wall time limits; one bad prompt never becomes an infinite burn
+- **Kill switch** — stop any agent mid-action from the CLI or web UI
 
 ## Stack
 
