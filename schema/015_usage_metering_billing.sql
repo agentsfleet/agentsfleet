@@ -3,7 +3,7 @@
 -- billable metadata, and adds idempotent delivery outbox for billing adapters.
 -- billing.usage_ledger canonical columns and indexes now live in schema/001_initial.sql.
 
-CREATE TABLE IF NOT EXISTS billing.billing_delivery_outbox (
+CREATE TABLE IF NOT EXISTS IF NOT EXISTS billing.billing_delivery_outbox (
     id                UUID PRIMARY KEY,
     CONSTRAINT ck_billing_delivery_outbox_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
     run_id            UUID NOT NULL REFERENCES core.runs(run_id),
@@ -23,10 +23,10 @@ CREATE TABLE IF NOT EXISTS billing.billing_delivery_outbox (
     delivered_at      BIGINT
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_billing_delivery_run_attempt_unit
+CREATE UNIQUE INDEX IF NOT EXISTS IF NOT EXISTS idx_billing_delivery_run_attempt_unit
     ON billing.billing_delivery_outbox (run_id, attempt, billable_unit);
 
-CREATE INDEX IF NOT EXISTS idx_billing_delivery_status_retry
+CREATE INDEX IF NOT EXISTS IF NOT EXISTS idx_billing_delivery_status_retry
     ON billing.billing_delivery_outbox (status, next_retry_at, created_at);
 
 GRANT SELECT, INSERT, UPDATE, DELETE ON billing.billing_delivery_outbox TO api_runtime;

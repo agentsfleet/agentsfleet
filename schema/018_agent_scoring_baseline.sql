@@ -1,6 +1,6 @@
 -- Agent scoring: workspace latency baseline (M9_001)
 
-CREATE TABLE agent.workspace_latency_baseline (
+CREATE TABLE IF NOT EXISTS agent.workspace_latency_baseline (
     workspace_id    UUID PRIMARY KEY REFERENCES core.workspaces(workspace_id) ON DELETE CASCADE,
     p50_seconds     BIGINT NOT NULL DEFAULT 0,
     p95_seconds     BIGINT NOT NULL DEFAULT 0,

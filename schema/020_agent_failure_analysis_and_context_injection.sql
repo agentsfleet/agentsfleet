@@ -1,4 +1,4 @@
-CREATE TABLE agent.agent_run_analysis (
+CREATE TABLE IF NOT EXISTS agent.agent_run_analysis (
     analysis_id        UUID PRIMARY KEY,
     run_id             UUID NOT NULL UNIQUE REFERENCES core.runs(run_id) ON DELETE CASCADE,
     agent_id           UUID NOT NULL REFERENCES agent.agent_profiles(agent_id) ON DELETE CASCADE,
@@ -14,15 +14,15 @@ CREATE TABLE agent.agent_run_analysis (
     CONSTRAINT ck_improvement_hints_array CHECK (jsonb_typeof(improvement_hints) = 'array')
 );
 
-CREATE INDEX idx_agent_run_analysis_agent
+CREATE INDEX IF NOT EXISTS idx_agent_run_analysis_agent
     ON agent.agent_run_analysis(agent_id, analyzed_at DESC);
-CREATE INDEX idx_agent_run_analysis_hints_gin
+CREATE INDEX IF NOT EXISTS idx_agent_run_analysis_hints_gin
     ON agent.agent_run_analysis USING GIN (improvement_hints);
 
 GRANT SELECT, INSERT ON agent.agent_run_analysis TO worker_runtime;
 GRANT SELECT ON agent.agent_run_analysis TO api_runtime;
 
-CREATE TABLE IF NOT EXISTS audit.ops_ro_access_events (
+CREATE TABLE IF NOT EXISTS IF NOT EXISTS audit.ops_ro_access_events (
     event_id          UUID PRIMARY KEY,
     principal_role    TEXT NOT NULL,
     principal_session TEXT NOT NULL,

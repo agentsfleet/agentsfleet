@@ -1,6 +1,6 @@
 -- Agent scoring persistence and read API support (M9_002)
 
-CREATE TABLE agent.agent_run_scores (
+CREATE TABLE IF NOT EXISTS agent.agent_run_scores (
     score_id         UUID PRIMARY KEY,
     run_id           UUID NOT NULL REFERENCES core.runs(run_id) ON DELETE CASCADE,
     agent_id         UUID NOT NULL REFERENCES agent.agent_profiles(agent_id) ON DELETE CASCADE,
@@ -14,11 +14,11 @@ CREATE TABLE agent.agent_run_scores (
     CONSTRAINT ck_agent_run_scores_uuidv7 CHECK (substring(score_id::text from 15 for 1) = '7')
 );
 
-CREATE INDEX idx_agent_run_scores_agent
+CREATE INDEX IF NOT EXISTS idx_agent_run_scores_agent
     ON agent.agent_run_scores(agent_id, scored_at DESC);
-CREATE INDEX idx_agent_run_scores_workspace
+CREATE INDEX IF NOT EXISTS idx_agent_run_scores_workspace
     ON agent.agent_run_scores(workspace_id, score DESC, scored_at DESC);
-CREATE INDEX idx_agent_run_scores_proposal
+CREATE INDEX IF NOT EXISTS idx_agent_run_scores_proposal
     ON agent.agent_run_scores(proposal_id, scored_at DESC)
     WHERE proposal_id IS NOT NULL;
 

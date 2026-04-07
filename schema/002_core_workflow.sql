@@ -2,7 +2,7 @@
 -- Core workflow: specs, runs, run_transitions, and artifacts.
 -- Split from the original monolithic 001_initial.sql.
 
-CREATE TABLE core.specs (
+CREATE TABLE IF NOT EXISTS core.specs (
     spec_id      UUID PRIMARY KEY,
     workspace_id UUID NOT NULL REFERENCES core.workspaces(workspace_id),
     tenant_id    UUID NOT NULL REFERENCES core.tenants(tenant_id),
@@ -13,9 +13,9 @@ CREATE TABLE core.specs (
     updated_at   BIGINT NOT NULL,
     UNIQUE (workspace_id, file_path)
 );
-CREATE INDEX idx_specs_workspace ON core.specs(workspace_id, status);
+CREATE INDEX IF NOT EXISTS idx_specs_workspace ON core.specs(workspace_id, status);
 
-CREATE TABLE core.runs (
+CREATE TABLE IF NOT EXISTS core.runs (
     run_id                UUID PRIMARY KEY,
     workspace_id          UUID NOT NULL REFERENCES core.workspaces(workspace_id),
     spec_id               UUID NOT NULL REFERENCES core.specs(spec_id),
@@ -46,14 +46,14 @@ CREATE TABLE core.runs (
     CONSTRAINT ck_runs_run_id_uuidv7 CHECK (substring(run_id::text from 15 for 1) = '7'),
     CONSTRAINT ck_runs_snapshot_config_uuidv7 CHECK (run_snapshot_config_version IS NULL OR substring(run_snapshot_config_version::text from 15 for 1) = '7')
 );
-CREATE INDEX idx_runs_state ON core.runs(state, created_at);
-CREATE INDEX idx_runs_workspace ON core.runs(workspace_id, state);
-CREATE INDEX idx_runs_request_id ON core.runs(request_id);
-CREATE INDEX idx_runs_trace_id ON core.runs(trace_id);
-CREATE INDEX idx_runs_snapshot_config_version ON core.runs(run_snapshot_config_version, created_at DESC);
-CREATE UNIQUE INDEX idx_runs_dedup_key ON core.runs(dedup_key) WHERE dedup_key IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_runs_state ON core.runs(state, created_at);
+CREATE INDEX IF NOT EXISTS idx_runs_workspace ON core.runs(workspace_id, state);
+CREATE INDEX IF NOT EXISTS idx_runs_request_id ON core.runs(request_id);
+CREATE INDEX IF NOT EXISTS idx_runs_trace_id ON core.runs(trace_id);
+CREATE INDEX IF NOT EXISTS idx_runs_snapshot_config_version ON core.runs(run_snapshot_config_version, created_at DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_runs_dedup_key ON core.runs(dedup_key) WHERE dedup_key IS NOT NULL;
 
-CREATE TABLE core.run_transitions (
+CREATE TABLE IF NOT EXISTS core.run_transitions (
     id           UUID PRIMARY KEY,
     CONSTRAINT ck_run_transitions_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
     run_id       UUID NOT NULL REFERENCES core.runs(run_id),
@@ -65,9 +65,9 @@ CREATE TABLE core.run_transitions (
     notes        TEXT,
     ts           BIGINT NOT NULL
 );
-CREATE INDEX idx_transitions_run ON core.run_transitions(run_id, ts ASC) INCLUDE (state_from, state_to, actor, reason_code);
+CREATE INDEX IF NOT EXISTS idx_transitions_run ON core.run_transitions(run_id, ts ASC) INCLUDE (state_from, state_to, actor, reason_code);
 
-CREATE TABLE core.artifacts (
+CREATE TABLE IF NOT EXISTS core.artifacts (
     id               UUID PRIMARY KEY,
     CONSTRAINT ck_artifacts_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
     run_id           UUID NOT NULL REFERENCES core.runs(run_id),
@@ -79,4 +79,4 @@ CREATE TABLE core.artifacts (
     created_at       BIGINT NOT NULL,
     UNIQUE (run_id, attempt, artifact_name)
 );
-CREATE INDEX idx_artifacts_run ON core.artifacts(run_id, attempt DESC, artifact_name);
+CREATE INDEX IF NOT EXISTS idx_artifacts_run ON core.artifacts(run_id, attempt DESC, artifact_name);
