@@ -449,7 +449,7 @@ jobs:
         run: |
           APP="${{ vars.FLY_APP_PROD }}"
           for MID in $(flyctl machine list --app "$APP" --json | jq -r '.[].id'); do
-            flyctl machine update "$MID" --restart-policy always --app "$APP" --yes
+            flyctl machine update "$MID" --restart always --app "$APP" --yes
           done
         env:
           FLY_API_TOKEN: ${{ env.FLY_API_TOKEN }}
