@@ -4,7 +4,7 @@
 
 **One sentence:** UseZombie runs your AI agent 24/7 without giving it your passwords.
 
-**Positioning:** Heroku for agents, but the agent never sees your keys.
+**Positioning:** Run your agents 24/7. Walled, watched, killable.
 
 ---
 

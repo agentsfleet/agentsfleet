@@ -9,7 +9,7 @@ Status: Draft — content source for v2 website, app, CLI, and API surfaces
 
 | Surface | URL | User | Purpose |
 |---------|-----|------|---------|
-| **Marketing site** | `usezombie.com` | Everyone | Why UseZombie exists. Flat tire story. Trust the boundary, not the agent. |
+| **Marketing site** | `usezombie.com` | Everyone | Why UseZombie exists. Flat tire story. Walled, watched, killable. |
 | **App** | `app.usezombie.com` | Operators (human-facing) | Configure workspaces, manage agents, view firewall metrics, chat with agents, kill switch. |
 | **CLI + API** | `zombiectl` / `api.usezombie.sh` | Developers, agents, CI | Programmatic control. Install skills, manage credentials, start/stop agents, query audit trail. |
 
@@ -22,7 +22,7 @@ Status: Draft — content source for v2 website, app, CLI, and API surfaces
 ```yaml
 badge: "Zero-trust agent runtime · BYOK · Your agent, your rules"
 line1: "Run your agents 24/7."
-line2: "They never see your passwords."
+line2: "Walled, watched, killable."
 kicker: >
   UseZombie is a zero-trust runtime for always-on AI agents.
   Credentials hidden at the firewall. Every action logged.
@@ -471,7 +471,7 @@ new_endpoints:
 
 | v1 message | v2 message |
 |-----------|-----------|
-| "Submit a spec. Get a validated PR." | "Run your agents 24/7. They never see your passwords." |
+| "Submit a spec. Get a validated PR." | "Run your agents 24/7. Walled, watched, killable." |
 | Spec-driven workflow | Skill-driven, event-driven workflow |
 | Self-repair gate loop | AI firewall + credential isolation |
 | Scored PRs with evidence | Full audit trail with firewall metrics |
