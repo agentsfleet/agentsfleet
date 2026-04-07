@@ -28,12 +28,6 @@
 >
 > Write a spec. An agent implements it, runs `make lint` / `make test` / `make build` with self-repair, scores the output, and opens a PR with a scorecard. You review one PR instead of babysitting ten agent sessions.
 
-## What it does
-
-- **Agent sandboxes** — spin isolated sandboxes attached to your git repo, one per run
-- **Spec to PR** — submit a markdown spec, an agent implements it, self-repairs until lint/test/build pass, and opens a PR
-- **Scorecards** — every run produces an evidence-backed scorecard so you know exactly what passed, what was repaired, and why
-
 ## Stack
 
 - **Auth** — [Clerk](https://clerk.com)
