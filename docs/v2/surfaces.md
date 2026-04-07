@@ -20,7 +20,7 @@ Status: Draft — content source for v2 website, app, CLI, and API surfaces
 ### Hero
 
 ```yaml
-badge: "Zero-trust agent runtime · BYOK · Your agent, your rules"
+badge: "Heroku for agents, but the agent never sees your keys"
 line1: "Run your agents 24/7."
 line2: "Walled, watched, killable."
 kicker: >

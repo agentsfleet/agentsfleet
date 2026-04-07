@@ -4,6 +4,8 @@
 
 # UseZombie
 
+**Heroku for agents, but the agent never sees your keys.**
+
 **Run your agents 24/7. Walled, watched, killable.**
 
 [![CI](https://github.com/usezombie/usezombie/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/usezombie/usezombie/actions/workflows/test.yml?query=branch%3Amain)
