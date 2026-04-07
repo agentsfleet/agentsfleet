@@ -549,6 +549,7 @@ jobs:
         env:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
           WORKER_SSH_KEY: op://${{ vars.VAULT_PROD }}/${{ steps.canary.outputs.vault_key }}/ssh-private-key
+          WORKER_DEPLOY_USER: op://${{ vars.VAULT_PROD }}/${{ steps.canary.outputs.vault_key }}/deploy-user
 
       - name: Join Tailscale network
         uses: tailscale/github-action@v4
@@ -566,7 +567,7 @@ jobs:
           NAME="${{ steps.canary.outputs.name }}"
 
           echo "Deploying canary: $NAME ($HOST) ..."
-          ssh -i "$KEY_FILE" -o StrictHostKeyChecking=no "$HOST" \
+          ssh -i "$KEY_FILE" -o StrictHostKeyChecking=no "$WORKER_DEPLOY_USER@$HOST" \
             "cd /opt/zombie/deploy && sudo DISCORD_WEBHOOK_URL='$DISCORD_WEBHOOK_URL' ./deploy.sh executor $VERSION && sudo DISCORD_WEBHOOK_URL='$DISCORD_WEBHOOK_URL' ./deploy.sh worker $VERSION"
           echo "✓ Canary $NAME deployed"
 
@@ -615,10 +616,11 @@ jobs:
             echo "Deploying $NAME ($HOST) [$((i+1))/$TOTAL] ..."
             KEY_FILE="$RUNNER_TEMP/worker-${NAME}.key"
             SSH_KEY=$(op read "op://${{ vars.VAULT_PROD }}/${VAULT_KEY}/ssh-private-key")
+            DEPLOY_USER=$(op read "op://${{ vars.VAULT_PROD }}/${VAULT_KEY}/deploy-user")
             printf '%s\n' "$SSH_KEY" > "$KEY_FILE"
             chmod 600 "$KEY_FILE"
 
-            if ssh -i "$KEY_FILE" -o StrictHostKeyChecking=no "$HOST" \
+            if ssh -i "$KEY_FILE" -o StrictHostKeyChecking=no "$DEPLOY_USER@$HOST" \
               "cd /opt/zombie/deploy && sudo DISCORD_WEBHOOK_URL='$DISCORD_WEBHOOK_URL' ./deploy.sh executor $VERSION && sudo DISCORD_WEBHOOK_URL='$DISCORD_WEBHOOK_URL' ./deploy.sh worker $VERSION"; then
               echo "✓ $NAME deployed"
               SUMMARY="${SUMMARY}✅ ${NAME}\\n"
