@@ -313,6 +313,9 @@ fn applySqlStatements(conn: *Conn, sql: []const u8) !u32 {
             continue;
         }
 
+        // NOTE: Only bare $$ dollar-quoting is supported.
+        // Tagged dollar-quotes (e.g. $body$...$body$) are not handled.
+        // All schema files must use plain $$ — do not use tagged variants.
         if (!in_single_quote and i + 1 < sql.len and sql[i] == '$' and sql[i + 1] == '$') {
             in_dollar_quote = !in_dollar_quote;
             i += 1;
@@ -323,6 +326,8 @@ fn applySqlStatements(conn: *Conn, sql: []const u8) !u32 {
 
         const stmt = std.mem.trim(u8, sql[start..i], " \t\r\n");
         if (stmt.len > 0) {
+            const preview_len = @min(stmt.len, 120);
+            log.debug("migrate.stmt index={d} preview={s}", .{ count + 1, stmt[0..preview_len] });
             _ = try conn.exec(stmt, .{});
             count += 1;
         }
@@ -332,6 +337,8 @@ fn applySqlStatements(conn: *Conn, sql: []const u8) !u32 {
 
     const tail = std.mem.trim(u8, sql[start..], " \t\r\n");
     if (tail.len > 0) {
+        const preview_len = @min(tail.len, 120);
+        log.debug("migrate.stmt index={d} preview={s}", .{ count + 1, tail[0..preview_len] });
         _ = try conn.exec(tail, .{});
         count += 1;
     }

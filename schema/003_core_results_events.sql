@@ -24,9 +24,11 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE TRIGGER trg_gate_results_append_only
-    BEFORE UPDATE OR DELETE ON core.gate_results
-    FOR EACH ROW EXECUTE FUNCTION core.gate_results_append_only();
+DO $$ BEGIN
+    CREATE TRIGGER trg_gate_results_append_only
+        BEFORE UPDATE OR DELETE ON core.gate_results
+        FOR EACH ROW EXECUTE FUNCTION core.gate_results_append_only();
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 CREATE TABLE IF NOT EXISTS billing.usage_ledger (
     id            UUID PRIMARY KEY,
