@@ -1,8 +1,10 @@
 <div align="center">
 
+<img src="assets/logo_mascot.png" width="36" height="36" alt="UseZombie mascot" />
+
 # UseZombie
 
-**Submit a spec. Get a validated PR.**
+**Run your agents 24/7. They never see your passwords.**
 
 [![CI](https://github.com/usezombie/usezombie/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/usezombie/usezombie/actions/workflows/test.yml?query=branch%3Amain)
 [![Coverage](https://codecov.io/gh/usezombie/usezombie/flags/apps/graph/badge.svg)](https://codecov.io/gh/usezombie/usezombie/flags/apps)
