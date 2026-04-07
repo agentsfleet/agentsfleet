@@ -569,6 +569,7 @@ jobs:
           echo "Deploying canary: $NAME ($HOST) ..."
           ssh -i "$KEY_FILE" -o StrictHostKeyChecking=no "$WORKER_DEPLOY_USER@$HOST" \
             "cd /opt/zombie/deploy && sudo DISCORD_WEBHOOK_URL='$DISCORD_WEBHOOK_URL' ./deploy.sh executor $VERSION && sudo DISCORD_WEBHOOK_URL='$DISCORD_WEBHOOK_URL' ./deploy.sh worker $VERSION"
+          rm -f "$KEY_FILE"
           echo "✓ Canary $NAME deployed"
 
   # ── 8. Deploy: remaining fleet (with approval gate) ─────────────────────

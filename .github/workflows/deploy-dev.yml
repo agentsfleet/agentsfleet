@@ -305,6 +305,7 @@ jobs:
             ssh -i "$ANT_KEY" -o StrictHostKeyChecking=no -o ConnectTimeout=10 \
               "${WORKER_ANT_USER}@${WORKER_ANT_HOST}" "rm -f /opt/zombie/.discord-env" || true
           fi
+          rm -f "$ANT_KEY"
 
   # ── 4. Wait for Fly DEV to go green (via Cloudflare Tunnel) ─────────────
   verify-dev:
