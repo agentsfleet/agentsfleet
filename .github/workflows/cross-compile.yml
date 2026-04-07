@@ -57,7 +57,7 @@ jobs:
           version: 0.15.2
 
       - name: Compile zombied + zombied-executor (x86_64-linux)
-        run: zig build -Doptimize=ReleaseSafe -Dtarget=x86_64-linux
+        run: zig build -Doptimize=ReleaseSafe -Dtarget=x86_64-linux-musl
 
       - name: Verify static ELF — zero NEEDED, no INTERP (x86_64-linux)
         run: |
