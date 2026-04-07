@@ -22,7 +22,7 @@
 
 We started by obsessing over one thing: making AI-generated code *correct*. Self-repair loops, quality scoring, scorecard evidence. Good problems — but narrow ones. Frontier models get better every quarter, and the gap we were optimizing for keeps shrinking on its own.
 
-The harder problem nobody is solving: **operators are still babysitting agents like pets.**
+The tempting move is to double down — we built it, so we stick with it. But code is cattle, not pets. You don't keep a solution alive just because you wrote it.
 
 ```
           ____________________________
@@ -35,7 +35,7 @@ The harder problem nobody is solving: **operators are still babysitting agents l
                          ||     ||
 ```
 
-So we pivoted. UseZombie is now a runtime for always-on agents — you bring your agent, we handle the credentials (hidden from the sandbox, injected at the firewall), webhooks (wired automatically), audit logs (every action timestamped), and a kill switch. Your agent runs 24/7 without ever seeing a password.
+So we killed the old approach and pivoted. UseZombie is now a runtime for always-on agents — you bring your agent, we handle the credentials (hidden from the sandbox, injected at the firewall), webhooks (wired automatically), audit logs (every action timestamped), and a kill switch. Your agent runs 24/7 without ever seeing a password.
 
 ## What zombies do now
 
