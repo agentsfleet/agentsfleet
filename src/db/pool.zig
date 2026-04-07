@@ -313,6 +313,9 @@ fn applySqlStatements(conn: *Conn, sql: []const u8) !u32 {
             continue;
         }
 
+        // NOTE: Only bare $$ dollar-quoting is supported.
+        // Tagged dollar-quotes (e.g. $body$...$body$) are not handled.
+        // All schema files must use plain $$ — do not use tagged variants.
         if (!in_single_quote and i + 1 < sql.len and sql[i] == '$' and sql[i + 1] == '$') {
             in_dollar_quote = !in_dollar_quote;
             i += 1;
