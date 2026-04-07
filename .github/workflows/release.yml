@@ -308,7 +308,14 @@ jobs:
 
       - run: bun install --frozen-lockfile
       - run: bun run build
-      - run: npm publish --provenance --access public --tag next
+      - name: Publish to npm (skip if version already exists)
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          if npm view "@usezombie/zombiectl@${VERSION}" version 2>/dev/null | grep -qF "${VERSION}"; then
+            echo "✓ @usezombie/zombiectl@${VERSION} already published — skipping"
+          else
+            npm publish --provenance --access public --tag next
+          fi
         env:
           NODE_AUTH_TOKEN: ${{ env.NPM_TOKEN }}
 
