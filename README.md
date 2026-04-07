@@ -1,5 +1,11 @@
 <div align="center">
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/light.svg" />
+  <source media="(prefers-color-scheme: light)" srcset="assets/dark.svg" />
+  <img src="assets/dark.svg" width="200" alt="UseZombie" />
+</picture>
+
 # UseZombie
 
 **Submit a spec. Get a validated PR.**
