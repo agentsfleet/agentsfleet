@@ -88,13 +88,20 @@ jobs:
         run: |
           mkdir -p dist
           cp zig-out/bin/zombied dist/zombied-linux-amd64
-          chmod +x dist/zombied-linux-amd64
+          cp zig-out/bin/zombied-executor dist/zombied-executor-linux-amd64
+          chmod +x dist/zombied-linux-amd64 dist/zombied-executor-linux-amd64
           tar czf dist/zombied-linux-amd64.tar.gz -C dist zombied-linux-amd64
+          tar czf dist/zombied-executor-linux-amd64.tar.gz -C dist zombied-executor-linux-amd64
 
       - uses: actions/upload-artifact@v7
         with:
           name: zombied-linux-amd64
           path: dist/zombied-linux-amd64.tar.gz
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: zombied-executor-linux-amd64
+          path: dist/zombied-executor-linux-amd64.tar.gz
 
       # Upload unpackaged binary for runtime compat verification job below.
       - uses: actions/upload-artifact@v7
@@ -194,13 +201,20 @@ jobs:
         run: |
           mkdir -p dist
           cp zig-out/bin/zombied dist/zombied-linux-arm64
-          chmod +x dist/zombied-linux-arm64
+          cp zig-out/bin/zombied-executor dist/zombied-executor-linux-arm64
+          chmod +x dist/zombied-linux-arm64 dist/zombied-executor-linux-arm64
           tar czf dist/zombied-linux-arm64.tar.gz -C dist zombied-linux-arm64
+          tar czf dist/zombied-executor-linux-arm64.tar.gz -C dist zombied-executor-linux-arm64
 
       - uses: actions/upload-artifact@v7
         with:
           name: zombied-linux-arm64
           path: dist/zombied-linux-arm64.tar.gz
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: zombied-executor-linux-arm64
+          path: dist/zombied-executor-linux-arm64.tar.gz
 
   binaries-macos:
     needs: verify-tag
@@ -599,7 +613,7 @@ jobs:
           DISCORD_WEBHOOK_URL: op://${{ vars.VAULT_PROD }}/discord-ci-webhook/credential
 
       - name: Join Tailscale network
-        uses: tailscale/github-action@v3
+        uses: tailscale/github-action@v4
         with:
           authkey: ${{ env.TAILSCALE_AUTHKEY }}
           tags: tag:ci
