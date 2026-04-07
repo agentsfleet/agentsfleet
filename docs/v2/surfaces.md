@@ -1,6 +1,6 @@
 # UseZombie v2 — Product Surfaces
 
-Date: Apr 07, 2026
+Date: Apr 07, 2026: 10:00 AM
 Status: Draft — content source for v2 website, app, CLI, and API surfaces
 
 ---
