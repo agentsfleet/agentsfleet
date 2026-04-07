@@ -51,9 +51,9 @@ jobs:
     steps:
       - name: Install build dependencies
         run: |
-          apk add --no-cache git openssl-dev openssl-libs-static ca-certificates xz binutils tar
+          apk add --no-cache git openssl-dev openssl-libs-static ca-certificates xz tar
           mkdir -p /usr/lib/x86_64-linux-gnu /usr/include/x86_64-linux-gnu
-          ln -sf /usr/lib/libssl.a    /usr/lib/x86_64-linux-gnu/libssl.a
+          ln -sf /usr/lib/libssl.a /usr/lib/x86_64-linux-gnu/libssl.a
           ln -sf /usr/lib/libcrypto.a /usr/lib/x86_64-linux-gnu/libcrypto.a
           ln -sf /usr/include/openssl /usr/include/x86_64-linux-gnu/openssl
 
@@ -65,7 +65,8 @@ jobs:
           use-cache: false
 
       - name: Build (x86_64-linux)
-        run: zig build -Doptimize=ReleaseSafe -Dtarget=x86_64-linux -Dgit-commit="${GITHUB_SHA::7}"
+        run: |
+          zig build -Doptimize=ReleaseSafe -Dtarget=x86_64-linux-musl -Dgit-commit="${GITHUB_SHA::7}"
 
       - name: Verify static ELF — zero NEEDED, no INTERP (x86_64-linux)
         run: |
@@ -171,7 +172,7 @@ jobs:
               (cd /tmp && tar xf zig.tar.xz)
               export PATH="/tmp/zig-aarch64-linux-0.15.2:$PATH"
               echo "  compiling zombied + zombied-executor (aarch64-linux)..."
-              zig build -Doptimize=ReleaseSafe -Dtarget=aarch64-linux -Dgit-commit="${GITHUB_SHA::7}"
+              zig build -Doptimize=ReleaseSafe -Dtarget=aarch64-linux-musl -Dgit-commit="${GITHUB_SHA::7}"
               for bin in zig-out/bin/zombied zig-out/bin/zombied-executor; do
                 test -f "$bin"
                 if readelf -d "$bin" 2>/dev/null | grep -q " (NEEDED)"; then
@@ -301,6 +302,9 @@ jobs:
         env:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
           NPM_TOKEN: op://${{ vars.VAULT_PROD }}/npm-publish-token/credential
+
+      - name: Sync package.json version from git tag
+        run: npm version "${GITHUB_REF#refs/tags/v}" --no-git-tag-version
 
       - run: bun install --frozen-lockfile
       - run: bun run build

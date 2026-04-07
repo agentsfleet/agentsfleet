@@ -63,7 +63,7 @@ jobs:
 
       - name: Build linux/amd64 binaries
         run: |
-          zig build -Doptimize=ReleaseSafe -Dtarget=x86_64-linux -Dgit-commit="${GITHUB_SHA::7}"
+          zig build -Doptimize=ReleaseSafe -Dtarget=x86_64-linux-musl -Dgit-commit="${GITHUB_SHA::7}"
           mkdir -p dist
           cp zig-out/bin/zombied          dist/zombied-linux-amd64
           cp zig-out/bin/zombied-executor dist/zombied-executor-linux-amd64

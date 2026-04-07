@@ -486,3 +486,21 @@ grep -n "pub fn request\|pub fn open\|pub fn fetch" ~/.local/share/mise/installs
 Don't: Assume `client.open()` exists because it compiled on macOS. Ship without cross-compile check.
 
 Incident: M22_001 — `client.open()` used for SSE streaming compiled on macOS but failed on x86_64-linux and aarch64-linux CI. Required 3 rounds of fixes to find `client.request()` as the cross-platform alternative.
+
+---
+
+## CI — Always Qualify Zig Linux Target with Explicit ABI
+
+**RULE: Never use `-Dtarget=x86_64-linux` or `-Dtarget=aarch64-linux` in CI. Always append `-musl` (e.g. `-Dtarget=x86_64-linux-musl`, `-Dtarget=aarch64-linux-musl`).**
+
+Why: Without an explicit ABI, Zig detects the host kernel version via `uname -r` and embeds it in the LLVM triple (e.g. `x86_64-unknown-linux5.10.0-musl`). LLVM in Zig 0.15.2 cannot parse this format, failing with "No available targets are compatible with triple". Alpine containers do not insulate against this — `uname -r` returns the host Ubuntu runner's kernel. The failure only surfaces on fresh compiles; `.zig-cache` hits bypass it entirely, making dev appear to pass while CI release builds fail.
+
+Do:
+```yaml
+zig build -Doptimize=ReleaseSafe -Dtarget=x86_64-linux-musl
+zig build -Doptimize=ReleaseSafe -Dtarget=aarch64-linux-musl
+```
+
+Don't: Use `-Dtarget=x86_64-linux` or `-Dtarget=aarch64-linux` in any CI workflow.
+
+Incident: v0.4.0 release — `zombied-executor` failed to compile in `binaries-linux-x86` and would have failed in `binaries-linux-aarch64`. All prod deploy jobs skipped. Dev appeared green only because the Zig build cache served pre-built artifacts, hiding the bug.
