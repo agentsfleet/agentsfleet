@@ -28,20 +28,28 @@ BEGIN
 END;
 $$;
 
-CREATE TRIGGER trg_config_linkage_no_update
-    BEFORE UPDATE ON agent.config_linkage_audit_artifacts
-    FOR EACH ROW EXECUTE FUNCTION reject_config_linkage_mutation();
+DO $$ BEGIN
+    CREATE TRIGGER trg_config_linkage_no_update
+        BEFORE UPDATE ON agent.config_linkage_audit_artifacts
+        FOR EACH ROW EXECUTE FUNCTION reject_config_linkage_mutation();
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
-CREATE TRIGGER trg_config_linkage_no_delete
-    BEFORE DELETE ON agent.config_linkage_audit_artifacts
-    FOR EACH ROW EXECUTE FUNCTION reject_config_linkage_mutation();
+DO $$ BEGIN
+    CREATE TRIGGER trg_config_linkage_no_delete
+        BEFORE DELETE ON agent.config_linkage_audit_artifacts
+        FOR EACH ROW EXECUTE FUNCTION reject_config_linkage_mutation();
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 ALTER TABLE agent.config_linkage_audit_artifacts ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY config_linkage_select_tenant ON agent.config_linkage_audit_artifacts
-    FOR SELECT USING (tenant_id::text = current_setting('app.current_tenant_id', true));
-CREATE POLICY config_linkage_insert_tenant ON agent.config_linkage_audit_artifacts
-    FOR INSERT WITH CHECK (tenant_id::text = current_setting('app.current_tenant_id', true));
+DO $$ BEGIN
+    CREATE POLICY config_linkage_select_tenant ON agent.config_linkage_audit_artifacts
+        FOR SELECT USING (tenant_id::text = current_setting('app.current_tenant_id', true));
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN
+    CREATE POLICY config_linkage_insert_tenant ON agent.config_linkage_audit_artifacts
+        FOR INSERT WITH CHECK (tenant_id::text = current_setting('app.current_tenant_id', true));
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 GRANT SELECT, INSERT ON agent.config_linkage_audit_artifacts TO api_runtime;
 GRANT SELECT ON agent.config_linkage_audit_artifacts TO worker_runtime;
