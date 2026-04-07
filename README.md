@@ -4,7 +4,7 @@
 
 # UseZombie
 
-**Run your agents 24/7. They never see your passwords.**
+**Run your agents 24/7. Trust the boundary, not the agent.**
 
 [![CI](https://github.com/usezombie/usezombie/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/usezombie/usezombie/actions/workflows/test.yml?query=branch%3Amain)
 [![Coverage](https://codecov.io/gh/usezombie/usezombie/flags/apps/graph/badge.svg)](https://codecov.io/gh/usezombie/usezombie/flags/apps)
