@@ -1,14 +1,14 @@
 <div align="center">
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="ui/packages/design-system/src/assets/logo-light.svg" />
-  <source media="(prefers-color-scheme: light)" srcset="ui/packages/design-system/src/assets/logo-dark.svg" />
-  <img src="ui/packages/design-system/src/assets/logo-dark.svg" width="200" alt="UseZombie" />
+  <source media="(prefers-color-scheme: dark)" srcset="assets/logo-light.svg" />
+  <source media="(prefers-color-scheme: light)" srcset="assets/logo-dark.svg" />
+  <img src="assets/logo-dark.svg" width="200" alt="usezombie" />
 </picture>
 
-# UseZombie
+**Heroku for agents, but the agent never sees your keys.**
 
-**Submit a spec. Get a validated PR.**
+**Run your agents 24/7. Walled, watched, killable.**
 
 [![CI](https://github.com/usezombie/usezombie/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/usezombie/usezombie/actions/workflows/test.yml?query=branch%3Amain)
 [![Coverage](https://codecov.io/gh/usezombie/usezombie/flags/apps/graph/badge.svg)](https://codecov.io/gh/usezombie/usezombie/flags/apps)
@@ -22,11 +22,35 @@
 
 ---
 
-> 🧟 **Early Access Preview** · Pre-release. APIs, CLI, and behavior may change without notice before general availability.
->
-> 🔄 UseZombie is in a product pivot. The focus is practical operator leverage, not tunnel-vision optimization around one narrow bottleneck that frontier models may erase soon.
->
-> Write a spec. An agent implements it, runs `make lint` / `make test` / `make build` with self-repair, scores the output, and opens a PR with a scorecard. You review one PR instead of babysitting ten agent sessions.
+> **Early Access Preview** · Pre-release — revised release coming up by April 11. APIs, CLI, and behavior may change without notice before general availability.
+
+## Why we pivoted
+
+We started by obsessing over one thing: making AI-generated code *correct*. Self-repair loops, quality scoring, scorecard evidence. Good problems — but narrow ones. Frontier models get better every quarter, and the gap we were optimizing for keeps shrinking on its own.
+
+The tempting move is to double down — we built it, so we stick with it. But code is cattle, not pets. You don't keep a solution alive just because you wrote it.
+
+```
+          ____________________________
+         < code(human) === cattle now >
+          ----------------------------
+                 \   ^__^
+                  \  (oo)\_______
+                     (__)\       )\/\
+                         ||----w |
+                         ||     ||
+```
+
+So we killed the old approach and pivoted. UseZombie is now a runtime for always-on agents — you bring your agent, we handle the credentials (hidden from the sandbox, injected at the firewall), webhooks (wired automatically), audit logs (every action timestamped), and a kill switch. Your agent runs 24/7 without ever seeing a password.
+
+## What zombies do now
+
+- **Always-on agents** — your agent runs continuously in a sandboxed process, restarts on crash
+- **Credentials hidden** — agents never see tokens; the firewall injects them per-request, outside the sandbox boundary
+- **Webhooks wired** — receive events from email, Slack, GitHub, etc. without ngrok or custom servers
+- **Observability** — see what your agent did, when, why, and how much it cost — before the invoice surprises you
+- **Spend ceiling** — per-run token budgets and wall time limits; one bad prompt never becomes an infinite burn
+- **Kill switch** — stop any agent mid-action from the CLI or web UI
 
 ## Stack
 
