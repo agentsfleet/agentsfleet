@@ -613,7 +613,7 @@ jobs:
           DISCORD_WEBHOOK_URL: op://${{ vars.VAULT_PROD }}/discord-ci-webhook/credential
 
       - name: Join Tailscale network
-        uses: tailscale/github-action@v3
+        uses: tailscale/github-action@v4
         with:
           authkey: ${{ env.TAILSCALE_AUTHKEY }}
           tags: tag:ci
