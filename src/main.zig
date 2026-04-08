@@ -127,6 +127,7 @@ test {
     _ = @import("config/env_vars.zig");
     _ = @import("config/load.zig");
     _ = @import("harness/control_plane.zig");
+    _ = @import("zombie/config.zig");
     _ = @import("cli/commands.zig");
     _ = @import("auth/sessions.zig");
     _ = @import("auth/claims.zig");
