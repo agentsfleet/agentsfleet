@@ -175,9 +175,19 @@ pub fn extractZombieInstructions(source_markdown: []const u8) []const u8 {
     const trimmed = std.mem.trim(u8, source_markdown, " \t\r\n");
     if (!std.mem.startsWith(u8, trimmed, "---")) return "";
 
-    // Find the closing --- on its own line
+    // Find the closing --- on its own line.
+    // Require the match is followed by \n, \r, or end-of-input so that a YAML
+    // value like "foo: ---bar" cannot match.
     const after_open = trimmed[3..];
-    const close = std.mem.indexOf(u8, after_open, "\n---") orelse return "";
+    const close = blk: {
+        var search_from: usize = 0;
+        while (std.mem.indexOfPos(u8, after_open, search_from, "\n---")) |pos| {
+            const rest = after_open[pos + 4 ..];
+            if (rest.len == 0 or rest[0] == '\n' or rest[0] == '\r') break :blk pos;
+            search_from = pos + 1;
+        }
+        return "";
+    };
     const after_close = after_open[close + 4 ..];
 
     // Skip the newline immediately following the closing ---

@@ -168,8 +168,7 @@ pub const Client = struct {
         return switch (resp) {
             // Redis returns "+OK" when the key was set (new).
             .simple => |s| std.mem.eql(u8, s, "OK"),
-            // Redis returns a null bulk string when NX condition failed (duplicate).
-            .bulk => |b| b != null,
+            // Any other response (null bulk = duplicate; unexpected = treat as duplicate).
             else => false,
         };
     }

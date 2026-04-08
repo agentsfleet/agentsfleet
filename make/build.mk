@@ -81,14 +81,15 @@ push: _docker_login ## Push production image (expects prebuilt binaries in dist/
 push-dev: _docker_login  ## Push development image to registry (uses prebuilt linux binaries)
 	$(call _buildx,Dockerfile,$(_DEV_TAGS),--push)
 
-sync-version: ## Propagate VERSION → build.zig.zon and zombiectl/package.json
+sync-version: ## Propagate VERSION → build.zig.zon, zombiectl/package.json, zombiectl/src/cli.js
 	@set -e; \
 	V="$$(cat VERSION)"; \
 	perl -i -pe 's/\.version = "[^"]+"/.version = "'"$$V"'"/;' build.zig.zon; \
 	perl -i -pe 's/"version": "[^"]+"/"version": "'"$$V"'"/;' zombiectl/package.json; \
-	echo "✓ version $$V synced → build.zig.zon, zombiectl/package.json"
+	perl -i -pe 's/^(export const VERSION = ")[^"]+"/$${1}'"$$V"'";/' zombiectl/src/cli.js; \
+	echo "✓ version $$V synced → build.zig.zon, zombiectl/package.json, zombiectl/src/cli.js"
 
-check-version: ## Verify build.zig.zon and zombiectl/package.json match VERSION
+check-version: ## Verify build.zig.zon, zombiectl/package.json, and zombiectl/src/cli.js match VERSION
 	@set -e; \
 	V="$$(cat VERSION)"; \
 	FAIL=0; \
@@ -96,6 +97,8 @@ check-version: ## Verify build.zig.zon and zombiectl/package.json match VERSION
 		|| { printf 'DRIFT  build.zig.zon: %s\n' "$$(grep '\.version' build.zig.zon | head -1 | xargs)"; FAIL=1; }; \
 	grep -q "\"version\": \"$$V\"" zombiectl/package.json \
 		|| { printf 'DRIFT  zombiectl/package.json: %s\n' "$$(grep '"version"' zombiectl/package.json | head -1 | xargs)"; FAIL=1; }; \
+	grep -q "^export const VERSION = \"$$V\"" zombiectl/src/cli.js \
+		|| { printf 'DRIFT  zombiectl/src/cli.js: %s\n' "$$(grep '^export const VERSION' zombiectl/src/cli.js | head -1 | xargs)"; FAIL=1; }; \
 	[ "$$FAIL" = "0" ] && echo "✓ all versions match $$V" || { echo "Run: make sync-version"; exit 1; }
 
 _docker_login:

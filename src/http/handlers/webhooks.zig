@@ -150,7 +150,14 @@ pub fn handleReceiveWebhook(
             return;
         }
         const provided = auth_header[bearer_prefix.len..];
-        if (!std.mem.eql(u8, provided, expected_token)) {
+        // XOR accumulation: constant-time comparison to prevent timing attacks.
+        // Length inequality is safe to short-circuit — length is not a secret.
+        const token_valid = provided.len == expected_token.len and ct: {
+            var diff: u8 = 0;
+            for (provided, expected_token) |a, b| diff |= a ^ b;
+            break :ct diff == 0;
+        };
+        if (!token_valid) {
             common.errorResponse(res, .unauthorized, "UZ-AUTH-001", "Invalid token", req_id);
             return;
         }

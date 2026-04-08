@@ -160,25 +160,32 @@ fn fetchActivityPage(
     cursor: []const u8,
     limit: u32,
 ) !ActivityPage {
-    const cursor_ts = std.fmt.parseInt(i64, cursor, 10) catch return error.InvalidCursor;
+    // Cursor format: "{created_at}:{id}" — composite keyset prevents silent skips
+    // when multiple events land on the same millisecond timestamp.
+    const sep = std.mem.indexOf(u8, cursor, ":") orelse return error.InvalidCursor;
+    const cursor_ts = std.fmt.parseInt(i64, cursor[0..sep], 10) catch return error.InvalidCursor;
+    const cursor_id = cursor[sep + 1 ..];
+    if (cursor_id.len == 0) return error.InvalidCursor;
 
     const sql_zombie =
         \\SELECT id, zombie_id, workspace_id, event_type, detail, created_at
         \\FROM core.activity_events
-        \\WHERE zombie_id = $1 AND created_at < $2
+        \\WHERE zombie_id = $1
+        \\  AND (created_at < $2 OR (created_at = $2 AND id < $3))
         \\ORDER BY created_at DESC, id DESC
-        \\LIMIT $3
+        \\LIMIT $4
     ;
     const sql_workspace =
         \\SELECT id, zombie_id, workspace_id, event_type, detail, created_at
         \\FROM core.activity_events
-        \\WHERE workspace_id = $1 AND created_at < $2
+        \\WHERE workspace_id = $1
+        \\  AND (created_at < $2 OR (created_at = $2 AND id < $3))
         \\ORDER BY created_at DESC, id DESC
-        \\LIMIT $3
+        \\LIMIT $4
     ;
     const sql = if (kind == .zombie) sql_zombie else sql_workspace;
 
-    var q = try conn.query(sql, .{ filter_id, cursor_ts, @as(i64, @intCast(limit)) }); // check-pg-drain: ok — drain is called inside collectActivityPage
+    var q = try conn.query(sql, .{ filter_id, cursor_ts, cursor_id, @as(i64, @intCast(limit)) }); // check-pg-drain: ok — drain is called inside collectActivityPage
     defer q.deinit();
     return collectActivityPage(alloc, &q, limit);
 }
@@ -220,10 +227,12 @@ fn collectActivityPage(alloc: Allocator, q: anytype, limit: u32) !ActivityPage {
         alloc.free(events);
     }
 
-    // If we got a full page there may be more — produce a cursor from the last row.
+    // If we got a full page there may be more — produce a composite cursor from the
+    // last row: "{created_at}:{id}". The composite keyset prevents silent skips when
+    // multiple events share the same millisecond timestamp.
     const next_cursor: ?[]const u8 = if (events.len == limit) blk: {
-        const last_ts = events[events.len - 1].created_at;
-        break :blk try std.fmt.allocPrint(alloc, "{d}", .{last_ts});
+        const last = events[events.len - 1];
+        break :blk try std.fmt.allocPrint(alloc, "{d}:{s}", .{ last.created_at, last.id });
     } else null;
 
     return ActivityPage{ .events = events, .next_cursor = next_cursor };
@@ -243,7 +252,7 @@ test "ActivityPage.deinit frees all rows and cursor" {
     };
     const page = ActivityPage{
         .events = events,
-        .next_cursor = try alloc.dupe(u8, "1744000000000"),
+        .next_cursor = try alloc.dupe(u8, "1744000000000:019abc"),
     };
     page.deinit(alloc);
     // leak detector will catch any missed free
@@ -274,7 +283,7 @@ test "collectActivityPage: full page sets next_cursor; partial page sets null" {
         }
         const events = try rows.toOwnedSlice(alloc);
         const next_cursor = if (events.len == 2) blk: {
-            break :blk try std.fmt.allocPrint(alloc, "{d}", .{events[1].created_at});
+            break :blk try std.fmt.allocPrint(alloc, "{d}:{s}", .{ events[1].created_at, events[1].id });
         } else null;
         const page = ActivityPage{ .events = events, .next_cursor = next_cursor };
         defer page.deinit(alloc);
