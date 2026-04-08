@@ -1,13 +1,13 @@
-# M27_001: Lead Zombie — 2-command hero: install, up, agent is live
+# M1_001: Lead Zombie — 2-command hero: install, up, agent is live
 
 **Prototype:** v0.5.0
-**Milestone:** M27
+**Milestone:** M1
 **Workstream:** 001
 **Date:** Apr 08, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P0 — First v2 Zombie, proves core architecture
 **Batch:** B1 — no dependencies
-**Branch:**
+**Branch:** feat/m1-lead-zombie
 **Depends on:** None (v1 executor, vault, and worker fleet are already shipped)
 
 ---
@@ -202,17 +202,17 @@ Three new tables following `docs/SCHEMA_CONVENTIONS.md`: UUIDv7 IDs, BIGINT time
 
 **Dimensions (test blueprints):**
 - 6.1 PENDING
-  - target: `schema/021_core_zombies.sql`
+  - target: `schema/022_core_zombies.sql`
   - input: `INSERT valid Zombie row with UUIDv7 id, workspace_id FK, name, config JSONB, status='active'`
   - expected: `Row inserted, UUIDv7 check passes, FK constraint holds`
   - test_type: integration (DB)
 - 6.2 PENDING
-  - target: `schema/022_core_zombie_sessions.sql`
+  - target: `schema/023_core_zombie_sessions.sql`
   - input: `INSERT session with zombie_id FK, context JSONB, checkpoint_at BIGINT`
   - expected: `Row inserted; UPSERT on zombie_id updates context and checkpoint_at`
   - test_type: integration (DB)
 - 6.3 PENDING
-  - target: `schema/023_core_activity_events.sql`
+  - target: `schema/024_core_activity_events.sql`
   - input: `INSERT activity event; attempt UPDATE on existing row`
   - expected: `INSERT succeeds; UPDATE raises exception (append-only trigger)`
   - test_type: integration (DB)
@@ -317,14 +317,14 @@ pub fn receiveWebhook(ctx: *RequestContext) !void
 | Constraint | How to verify |
 |-----------|---------------|
 | Every new file < 500 lines | `wc -l src/zombie/*.zig \| awk '$1 > 500 {print "FAIL:" $2}'` |
-| Each schema file ≤ 100 lines, single-concern | `wc -l schema/02[1-3]*.sql` |
-| Schema files registered in embed.zig + common.zig | `grep -c '02[1-3]' schema/embed.zig src/cmd/common.zig` |
+| Each schema file ≤ 100 lines, single-concern | `wc -l schema/02[2-4]*.sql` |
+| Schema files registered in embed.zig + common.zig | `grep -c '02[2-4]' schema/embed.zig src/cmd/common.zig` |
 | Cross-compiles on x86_64-linux, aarch64-linux | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` |
 | No heap allocations in webhook hot path (receive → enqueue) | Benchmark: `make bench` with webhook load |
 | drain() before deinit() on all pg query results | `make check-pg-drain` |
-| Schema-qualified table names in all new SQL | `grep -c 'core\.' schema/02[1-3]*.sql` |
-| UUIDv7 CHECK constraint on every new table | `grep 'ck_.*uuidv7' schema/02[1-3]*.sql` |
-| BIGINT NOT NULL for all timestamps | `grep -c 'TIMESTAMPTZ\|TIMESTAMP\|DEFAULT now' schema/02[1-3]*.sql` (must be 0) |
+| Schema-qualified table names in all new SQL | `grep -c 'core\.' schema/02[2-4]*.sql` |
+| UUIDv7 CHECK constraint on every new table | `grep 'ck_.*uuidv7' schema/02[2-4]*.sql` |
+| BIGINT NOT NULL for all timestamps | `grep -c 'TIMESTAMPTZ\|TIMESTAMP\|DEFAULT now' schema/02[2-4]*.sql` (must be 0) |
 | Activity events table is append-only (trigger) | Dimension 5.3 test |
 | At-least-once delivery: Redis XACK after processing only | Code review of event_loop.zig |
 | Budget in dollars, not tokens (user-facing) | Config schema validation |
@@ -390,7 +390,7 @@ pub fn receiveWebhook(ctx: *RequestContext) !void
 
 | Step | Action | Verify |
 |------|--------|--------|
-| 1 | Create schema files (021, 022, 023) + register in embed.zig + common.zig | `zig build` compiles |
+| 1 | Create schema files (022, 023, 024) + register in embed.zig + common.zig | `zig build` compiles |
 | 2 | Implement ZombieConfig parser (src/zombie/config.zig) | Unit tests 1.1-1.4 pass |
 | 3 | Implement ActivityStream writer + query (src/zombie/activity_stream.zig) | Integration tests 4.1-4.4 pass |
 | 4 | Implement webhook handler (src/http/handlers/webhooks.zig) + register route | Integration tests 2.1-2.4 pass |
