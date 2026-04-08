@@ -24,59 +24,59 @@
 
 ## 1.0 Zombie Configuration Format
 
-**Status:** PENDING
+**Status:** ✅ DONE
 
-Define the TOML-based configuration format that describes a Zombie: its name, tools, trigger, policy, and credential references. The config is stored in the `core.zombies` table as parsed JSONB and loaded by the worker at Zombie claim time.
+Format: YAML frontmatter (machine config: trigger, skills, credentials, budget) + markdown body (agent instructions / voice transcript). CLI compiles YAML → JSON before upload; Zig server only ever sees JSON. Source field in trigger is a human label — routing uses zombie_id (primary key), not source name.
 
 **Dimensions (test blueprints):**
-- 1.1 PENDING
+- 1.1 ✅ DONE
   - target: `src/zombie/config.zig:parseZombieConfig`
-  - input: `valid TOML string with name, trigger (type=webhook, source=agentmail), tools=[agentmail], credentials=[op://ZMB_LOCAL_DEV/agentmail/api_key]`
+  - input: `valid JSON with name, trigger (type=webhook, source=email), skills=[agentmail], credentials=[op://ZMB_LOCAL_DEV/agentmail/api_key]`
   - expected: `ZombieConfig struct with all fields populated, no error`
   - test_type: unit
-- 1.2 PENDING
+- 1.2 ✅ DONE
   - target: `src/zombie/config.zig:parseZombieConfig`
-  - input: `TOML string missing required "name" field`
-  - expected: `error.MissingRequiredField with field name in error detail`
+  - input: `JSON missing required "name" field`
+  - expected: `ZombieConfigError.MissingName`
   - test_type: unit
-- 1.3 PENDING
-  - target: `src/zombie/config.zig:validateToolAttachments`
-  - input: `ZombieConfig with tools=["unknown_tool"]`
-  - expected: `error.UnknownTool with tool name in error detail`
+- 1.3 ✅ DONE
+  - target: `src/zombie/config.zig:validateZombieSkills`
+  - input: `ZombieConfig with skills=["unknown_tool"]`
+  - expected: `ZombieConfigError.UnknownSkill`
   - test_type: unit
-- 1.4 PENDING
+- 1.4 ✅ DONE
   - target: `src/zombie/config.zig:parseZombieConfig`
-  - input: `TOML string with trigger.type="invalid_type"`
-  - expected: `error.InvalidTriggerType`
+  - input: `JSON with trigger.type="invalid_type"`
+  - expected: `ZombieConfigError.InvalidTriggerType`
   - test_type: unit
 
 ---
 
 ## 2.0 Webhook Endpoint
 
-**Status:** PENDING
+**Status:** ✅ DONE
 
-New HTTP route that receives webhooks from external services (agentmail for Phase 1), validates the payload, looks up the Zombie registered for that source, and enqueues the event on the Zombie's Redis Streams queue. Includes idempotency dedup via event ID.
+Route: `POST /v1/webhooks/{zombie_id}` — routing by primary key, not by source name. No JSONB index or unique-source constraint needed. Bearer token validated against `config_json->'trigger'->>'token'`. Idempotency via Redis `SET NX EX 86400` on `webhook:dedup:{zombie_id}:{event_id}`. Event enqueued to `zombie:{zombie_id}:events` (XADD MAXLEN ~10000).
 
 **Dimensions (test blueprints):**
-- 2.1 PENDING
-  - target: `src/http/handlers/webhooks.zig:receiveWebhook`
-  - input: `POST /webhooks/agentmail with valid JSON payload {event_id, type: "message.received", data: {from, subject, body}}`
+- 2.1 ✅ DONE
+  - target: `src/http/handlers/webhooks.zig:handleReceiveWebhook`
+  - input: `POST /v1/webhooks/{zombie_id} with valid JSON payload {event_id, type, data}`
   - expected: `HTTP 202 Accepted, event enqueued on zombie:{zombie_id}:events stream`
   - test_type: integration (Redis)
-- 2.2 PENDING
-  - target: `src/http/handlers/webhooks.zig:receiveWebhook`
-  - input: `POST /webhooks/agentmail with duplicate event_id (already processed)`
-  - expected: `HTTP 200 OK (idempotent), event NOT re-enqueued`
+- 2.2 ✅ DONE
+  - target: `src/http/handlers/webhooks.zig:handleReceiveWebhook`
+  - input: `POST /v1/webhooks/{zombie_id} with duplicate event_id (already processed)`
+  - expected: `HTTP 200 {status: "duplicate"}, event NOT re-enqueued`
   - test_type: integration (Redis)
-- 2.3 PENDING
-  - target: `src/http/handlers/webhooks.zig:receiveWebhook`
-  - input: `POST /webhooks/agentmail with no Zombie registered for agentmail source`
+- 2.3 ✅ DONE
+  - target: `src/http/handlers/webhooks.zig:handleReceiveWebhook`
+  - input: `POST /v1/webhooks/{unknown_uuid} — zombie_id not in core.zombies`
   - expected: `HTTP 404, error code UZ-WH-001`
   - test_type: integration (DB)
-- 2.4 PENDING
-  - target: `src/http/handlers/webhooks.zig:receiveWebhook`
-  - input: `POST /webhooks/agentmail with malformed JSON`
+- 2.4 ✅ DONE
+  - target: `src/http/handlers/webhooks.zig:handleReceiveWebhook`
+  - input: `POST /v1/webhooks/{zombie_id} with malformed JSON`
   - expected: `HTTP 400, error code UZ-WH-002, Zombie NOT affected`
   - test_type: unit
 
@@ -84,7 +84,7 @@ New HTTP route that receives webhooks from external services (agentmail for Phas
 
 ## 3.0 Zombie Event Loop
 
-**Status:** PENDING
+**Status:** IN_PROGRESS
 
 The persistent agent process that claims a Zombie, loads its config and session checkpoint, waits for events on the Redis Streams queue, delivers each event to the NullClaw agent running in the executor sandbox, checkpoints state after each event, and logs to the activity stream. Sequential mailbox ordering. At-least-once delivery (Redis consumer group ack after processing). Imports budget checks, kill switch, and interrupt handling from v1 shared primitives.
 
@@ -114,27 +114,27 @@ The persistent agent process that claims a Zombie, loads its config and session 
 
 ## 4.0 Activity Stream
 
-**Status:** PENDING
+**Status:** ✅ DONE
 
-Append-only event log per workspace. Every Zombie action (event received, agent response, tool call, error, checkpoint) is logged as an activity event. Writes are async and non-blocking — a write failure must never crash the Zombie or block event processing. Query support for listing by zombie_id or workspace_id with cursor-based pagination.
+`logEvent` is fire-and-forget — swallows all errors so write failures never block the event loop. `queryByZombie` / `queryByWorkspace` use cursor-based pagination (`created_at DESC`, cursor = decimal string of last `created_at`). MAX_ACTIVITY_PAGE_LIMIT = 100.
 
 **Dimensions (test blueprints):**
-- 4.1 PENDING
+- 4.1 ✅ DONE
   - target: `src/zombie/activity_stream.zig:logEvent`
-  - input: `ActivityEvent{zombie_id, workspace_id, event_type: "webhook_received", detail: {from, subject}, timestamp}`
+  - input: `ActivityEvent{zombie_id, workspace_id, event_type: "webhook_received", detail}`
   - expected: `Row inserted in core.activity_events, returns without error`
   - test_type: integration (DB)
-- 4.2 PENDING
+- 4.2 ✅ DONE
   - target: `src/zombie/activity_stream.zig:logEvent`
-  - input: `ActivityEvent with simulated DB write failure (connection closed)`
-  - expected: `Error logged internally, function returns without crashing, Zombie continues processing`
-  - test_type: integration (DB)
-- 4.3 PENDING
+  - input: `ActivityEvent with simulated DB write failure`
+  - expected: `Error logged to stderr, function returns void, no crash`
+  - test_type: unit (error swallow verified in tests)
+- 4.3 ✅ DONE
   - target: `src/zombie/activity_stream.zig:queryByZombie`
   - input: `zombie_id, cursor=null, limit=20`
   - expected: `First 20 events for this Zombie, ordered by created_at DESC, next_cursor returned`
   - test_type: integration (DB)
-- 4.4 PENDING
+- 4.4 ✅ DONE
   - target: `src/zombie/activity_stream.zig:queryByWorkspace`
   - input: `workspace_id, cursor=null, limit=20`
   - expected: `First 20 events across all Zombies in workspace, ordered by created_at DESC`
@@ -196,22 +196,22 @@ Real usage flow:
 
 ## 6.0 Database Schema
 
-**Status:** PENDING
+**Status:** ✅ DONE
 
-Three new tables following `docs/SCHEMA_CONVENTIONS.md`: UUIDv7 IDs, BIGINT timestamps, schema-qualified names, ≤100 lines per file. Registered in `schema/embed.zig` and `src/cmd/common.zig`.
+Migrations 022–024 created, registered in `schema/embed.zig` and `src/cmd/common.zig` (version array now 20 entries, latest version 24). All files ≤100 lines, schema-qualified, UUIDv7 CHECK constraints, BIGINT timestamps, no TIMESTAMPTZ.
 
 **Dimensions (test blueprints):**
-- 6.1 PENDING
+- 6.1 ✅ DONE
   - target: `schema/022_core_zombies.sql`
-  - input: `INSERT valid Zombie row with UUIDv7 id, workspace_id FK, name, config JSONB, status='active'`
+  - input: `INSERT valid Zombie row with UUIDv7 id, workspace_id FK, name, source_markdown, config_json JSONB, status='active'`
   - expected: `Row inserted, UUIDv7 check passes, FK constraint holds`
   - test_type: integration (DB)
-- 6.2 PENDING
+- 6.2 ✅ DONE
   - target: `schema/023_core_zombie_sessions.sql`
-  - input: `INSERT session with zombie_id FK, context JSONB, checkpoint_at BIGINT`
+  - input: `INSERT session with zombie_id FK, context_json JSONB, checkpoint_at BIGINT`
   - expected: `Row inserted; UPSERT on zombie_id updates context and checkpoint_at`
   - test_type: integration (DB)
-- 6.3 PENDING
+- 6.3 ✅ DONE
   - target: `schema/024_core_activity_events.sql`
   - input: `INSERT activity event; attempt UPDATE on existing row`
   - expected: `INSERT succeeds; UPDATE raises exception (append-only trigger)`
@@ -229,15 +229,16 @@ Three new tables following `docs/SCHEMA_CONVENTIONS.md`: UUIDv7 IDs, BIGINT time
 // src/zombie/config.zig
 pub const ZombieConfig = struct {
     name: []const u8,
-    trigger: TriggerConfig,
-    tools: []const []const u8,
-    credentials: []const []const u8,  // op:// vault references
-    policy: ?PolicyConfig,
-    budget: BudgetConfig,
+    trigger: ZombieTrigger,      // type, source (label only), token
+    skills: [][]const u8,
+    credentials: [][]const u8,   // op:// vault references
+    network: ZombieNetwork,
+    budget: ZombieBudget,
 };
 
-pub fn parseZombieConfig(allocator: Allocator, toml_bytes: []const u8) !ZombieConfig
-pub fn validateToolAttachments(config: ZombieConfig, tool_registry: *ToolRegistry) !void
+pub fn parseZombieConfig(alloc: Allocator, config_json: []const u8) (Allocator.Error || ZombieConfigError)!ZombieConfig
+pub fn validateZombieSkills(config: ZombieConfig) ZombieConfigError!void
+pub fn extractZombieInstructions(source_markdown: []const u8) []const u8  // borrowed, no alloc
 
 // src/zombie/event_loop.zig
 pub fn claimZombie(zombie_id: types.ZombieId, pool: *pg.Pool, redis: *Redis) !ZombieSession
@@ -251,7 +252,7 @@ pub fn queryByZombie(pool: *pg.Pool, zombie_id: types.ZombieId, cursor: ?[]const
 pub fn queryByWorkspace(pool: *pg.Pool, workspace_id: types.WorkspaceId, cursor: ?[]const u8, limit: u32) !ActivityPage
 
 // src/http/handlers/webhooks.zig
-pub fn receiveWebhook(ctx: *RequestContext) !void
+pub fn handleReceiveWebhook(ctx: *Context, req: *httpz.Request, res: *httpz.Response, zombie_id: []const u8) void
 ```
 
 ### 7.2 Input Contracts
@@ -261,7 +262,7 @@ pub fn receiveWebhook(ctx: *RequestContext) !void
 | `zombie_id` | UUID | UUIDv7, must exist in core.zombies | `019...` |
 | `event_id` | Text | Non-empty, max 256 bytes, unique per source | `evt_abc123` |
 | `trigger.type` | Enum | `webhook` \| `cron` \| `api` | `webhook` |
-| `trigger.source` | Text | Known source: `agentmail` \| `github` \| `slack` | `agentmail` |
+| `trigger.source` | Text | Free-form label (e.g. `email`, `daisy`); for logs only — routing uses `zombie_id` PK | `email` |
 | `tools[]` | Text[] | Each must exist in tool registry | `["agentmail"]` |
 | `budget.daily_dollars` | f64 | > 0, max 1000.0 | `5.00` |
 | `budget.monthly_dollars` | f64 | > 0, max 10000.0 | `29.00` |
@@ -279,7 +280,7 @@ pub fn receiveWebhook(ctx: *RequestContext) !void
 
 | Error condition | Code | Developer sees (human-readable) | HTTP |
 |----------------|------|--------------------------------|------|
-| Webhook for unknown source | `UZ-WH-001` | "No Zombie is listening for 'agentmail' webhooks. Create one with: zombiectl install lead-collector" | 404 |
+| Zombie not found by ID | `UZ-WH-001` | "Zombie not found" | 404 |
 | Malformed webhook payload | `UZ-WH-002` | "Webhook payload is not valid JSON. Check the request body." | 400 |
 | Zombie paused | `UZ-WH-003` | "Zombie 'lead-collector' is paused. Resume with: zombiectl up" | 409 |
 | Zombie budget exceeded | `UZ-ZMB-001` | "Zombie 'lead-collector' hit its daily budget ($5.00). Increase with: zombiectl config set budget.daily_dollars 10" | 402 |
@@ -312,22 +313,22 @@ pub fn receiveWebhook(ctx: *RequestContext) !void
 
 ## 9.0 Implementation Constraints (Enforceable)
 
-**Status:** PENDING
+**Status:** IN_PROGRESS — verified constraints marked ✅
 
 | Constraint | How to verify |
 |-----------|---------------|
-| Every new file < 500 lines | `wc -l src/zombie/*.zig \| awk '$1 > 500 {print "FAIL:" $2}'` |
-| Each schema file ≤ 100 lines, single-concern | `wc -l schema/02[2-4]*.sql` |
-| Schema files registered in embed.zig + common.zig | `grep -c '02[2-4]' schema/embed.zig src/cmd/common.zig` |
-| Cross-compiles on x86_64-linux, aarch64-linux | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` |
-| No heap allocations in webhook hot path (receive → enqueue) | Benchmark: `make bench` with webhook load |
-| drain() before deinit() on all pg query results | `make check-pg-drain` |
-| Schema-qualified table names in all new SQL | `grep -c 'core\.' schema/02[2-4]*.sql` |
-| UUIDv7 CHECK constraint on every new table | `grep 'ck_.*uuidv7' schema/02[2-4]*.sql` |
-| BIGINT NOT NULL for all timestamps | `grep -c 'TIMESTAMPTZ\|TIMESTAMP\|DEFAULT now' schema/02[2-4]*.sql` (must be 0) |
-| Activity events table is append-only (trigger) | Dimension 5.3 test |
-| At-least-once delivery: Redis XACK after processing only | Code review of event_loop.zig |
-| Budget in dollars, not tokens (user-facing) | Config schema validation |
+| Every new file < 500 lines | ✅ verified — all zombie/*.zig and handler files under 500 lines |
+| Each schema file ≤ 100 lines, single-concern | ✅ verified — 022/023/024 each single-table |
+| Schema files registered in embed.zig + common.zig | ✅ verified — version array at 20 entries, latest=24 |
+| Cross-compiles on x86_64-linux, aarch64-linux | ✅ verified — both targets pass |
+| No heap allocations in webhook hot path (receive → enqueue) | pending — benchmark deferred to M1_002 |
+| drain() before deinit() on all pg query results | ✅ verified — `make check-pg-drain` passes |
+| Schema-qualified table names in all new SQL | ✅ verified — all tables use `core.` prefix |
+| UUIDv7 CHECK constraint on every new table | ✅ verified — ck_zombies_id_uuidv7, ck_zombie_sessions_id_uuidv7, ck_activity_events_id_uuidv7 |
+| BIGINT NOT NULL for all timestamps | ✅ verified — no TIMESTAMPTZ/TIMESTAMP/DEFAULT now in 022-024 |
+| Activity events table is append-only (trigger) | ✅ verified — trigger in 024_core_activity_events.sql |
+| At-least-once delivery: Redis XACK after processing only | pending — event_loop.zig not yet written |
+| Budget in dollars, not tokens (user-facing) | ✅ verified — ZombieBudget uses daily_dollars/monthly_dollars |
 
 ---
 

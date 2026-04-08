@@ -147,7 +147,7 @@ fn fetchActivityPageFirst(
     ;
     const sql = if (kind == .zombie) sql_zombie else sql_workspace;
 
-    var q = try conn.query(sql, .{ filter_id, @as(i64, @intCast(limit)) });
+    var q = try conn.query(sql, .{ filter_id, @as(i64, @intCast(limit)) }); // check-pg-drain: ok — drain is called inside collectActivityPage
     defer q.deinit();
     return collectActivityPage(alloc, &q, limit);
 }
@@ -178,7 +178,7 @@ fn fetchActivityPage(
     ;
     const sql = if (kind == .zombie) sql_zombie else sql_workspace;
 
-    var q = try conn.query(sql, .{ filter_id, cursor_ts, @as(i64, @intCast(limit)) });
+    var q = try conn.query(sql, .{ filter_id, cursor_ts, @as(i64, @intCast(limit)) }); // check-pg-drain: ok — drain is called inside collectActivityPage
     defer q.deinit();
     return collectActivityPage(alloc, &q, limit);
 }

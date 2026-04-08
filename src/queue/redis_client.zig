@@ -157,6 +157,56 @@ pub const Client = struct {
         log.debug("redis.xadd run_id={s} attempt={d} workspace_id={s}", .{ run_id, attempt, workspace_id });
     }
 
+    // setNx sets key=value with ttl only if key does not exist.
+    // Returns true if key was set (new), false if key already existed (duplicate).
+    pub fn setNx(self: *Client, key: []const u8, value: []const u8, ttl_seconds: u32) !bool {
+        var ttl_buf: [12]u8 = undefined;
+        const ttl_str = try std.fmt.bufPrint(&ttl_buf, "{d}", .{ttl_seconds});
+        // Use commandAllowError so a nil bulk reply (duplicate) doesn't error.
+        var resp = try self.commandAllowError(&.{ "SET", key, value, "NX", "EX", ttl_str });
+        defer resp.deinit(self.alloc);
+        return switch (resp) {
+            // Redis returns "+OK" when the key was set (new).
+            .simple => |s| std.mem.eql(u8, s, "OK"),
+            // Redis returns a null bulk string when NX condition failed (duplicate).
+            .bulk => |b| b != null,
+            else => false,
+        };
+    }
+
+    // xaddZombieEvent appends a webhook event to the Zombie's Redis Stream.
+    // Stream key: zombie:{zombie_id}:events. MAXLEN ~ 10000 (approximate trim).
+    pub fn xaddZombieEvent(
+        self: *Client,
+        zombie_id: []const u8,
+        event_id: []const u8,
+        event_type: []const u8,
+        source: []const u8,
+        data_json: []const u8,
+    ) !void {
+        var stream_key_buf: [128]u8 = undefined;
+        const stream_key = try std.fmt.bufPrint(&stream_key_buf, "zombie:{s}:events", .{zombie_id});
+        var resp = try self.command(&.{
+            "XADD", stream_key, "MAXLEN", "~", "10000", "*",
+            "event_id", event_id,
+            "type",     event_type,
+            "source",   source,
+            "data",     data_json,
+        });
+        defer resp.deinit(self.alloc);
+        switch (resp) {
+            .bulk => |v| if (v == null) {
+                log.err("redis.xadd_zombie_event_fail zombie_id={s} event_id={s}", .{ zombie_id, event_id });
+                return error.RedisXaddFailed;
+            },
+            else => {
+                log.err("redis.xadd_zombie_event_fail zombie_id={s} event_id={s}", .{ zombie_id, event_id });
+                return error.RedisXaddFailed;
+            },
+        }
+        log.debug("redis.xadd_zombie_event zombie_id={s} event_id={s} type={s}", .{ zombie_id, event_id, event_type });
+    }
+
     pub fn xack(self: *Client, message_id: []const u8) !void {
         var resp = try self.command(&.{
             "XACK",

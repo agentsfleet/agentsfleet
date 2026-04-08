@@ -129,6 +129,8 @@ fn dispatchMatchedRoute(ctx: *handler.Context, req: *httpz.Request, res: *httpz.
             .GET => handler.handleGetWorkspaceLlmCredential(ctx, req, res, workspace_id),
             else => respondMethodNotAllowed(res),
         },
+        // M1_001: Zombie webhook ingestion
+        .receive_webhook => |source| if (req.method == .POST) handler.handleReceiveWebhook(ctx, req, res, source) else respondMethodNotAllowed(res),
     }
     return true;
 }

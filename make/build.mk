@@ -2,7 +2,7 @@
 # BUILD & REGISTRY — container builds and pushes
 # =============================================================================
 
-.PHONY: build build-dev push-dev push build-linux-alpine _prepare_prebuilt_linux_binaries
+.PHONY: build build-dev push-dev push build-linux-alpine _prepare_prebuilt_linux_binaries sync-version check-version
 
 VERSION ?= $(shell cat VERSION 2>/dev/null || echo "0.1.0")
 GIT_COMMIT := $(if $(GITHUB_SHA),$(shell echo $(GITHUB_SHA) | cut -c1-7),$(shell git rev-parse --short HEAD 2>/dev/null || echo "dev"))
@@ -80,6 +80,23 @@ push: _docker_login ## Push production image (expects prebuilt binaries in dist/
 
 push-dev: _docker_login  ## Push development image to registry (uses prebuilt linux binaries)
 	$(call _buildx,Dockerfile,$(_DEV_TAGS),--push)
+
+sync-version: ## Propagate VERSION → build.zig.zon and zombiectl/package.json
+	@set -e; \
+	V="$$(cat VERSION)"; \
+	perl -i -pe 's/\.version = "[^"]+"/.version = "'"$$V"'"/;' build.zig.zon; \
+	perl -i -pe 's/"version": "[^"]+"/"version": "'"$$V"'"/;' zombiectl/package.json; \
+	echo "✓ version $$V synced → build.zig.zon, zombiectl/package.json"
+
+check-version: ## Verify build.zig.zon and zombiectl/package.json match VERSION
+	@set -e; \
+	V="$$(cat VERSION)"; \
+	FAIL=0; \
+	grep -q "\.version = \"$$V\"" build.zig.zon \
+		|| { printf 'DRIFT  build.zig.zon: %s\n' "$$(grep '\.version' build.zig.zon | head -1 | xargs)"; FAIL=1; }; \
+	grep -q "\"version\": \"$$V\"" zombiectl/package.json \
+		|| { printf 'DRIFT  zombiectl/package.json: %s\n' "$$(grep '"version"' zombiectl/package.json | head -1 | xargs)"; FAIL=1; }; \
+	[ "$$FAIL" = "0" ] && echo "✓ all versions match $$V" || { echo "Run: make sync-version"; exit 1; }
 
 _docker_login:
 	@if [ -n "$(GITHUB_TOKEN)" ]; then \
