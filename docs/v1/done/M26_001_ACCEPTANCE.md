@@ -6,7 +6,7 @@
 **Date:** Apr 06, 2026
 **Status:** DONE
 **Disposition:** PIVOTED TO V2 — not verified. Acceptance gate superseded by v2 product pivot. CLI flows, worker fleet observability, and evidence capture will be re-scoped under v2 acceptance milestone. No dimensions were executed against production surfaces.
-**Priority:** P0 — release gate; v1 cannot be considered operator-ready until DEV and PROD flows are executed with evidence
+**Priority:** P0 — release gate; superseded by v2 product pivot (see Disposition above). Original gate required DEV and PROD flows with evidence; deferred to v2 acceptance milestone.
 **Batch:** B1
 **Depends on:** M7_001_DEV_ACCEPTANCE_ENVIRONMENT (DONE), M7_003_PROD_ACCEPTANCE_ENVIRONMENT (DONE), M7_005_NETWORK_CONNECTIVITY (DONE), M21_001 (interrupt flow), M22_001 (watch/replay), M28_001 (billing/observability)
 
