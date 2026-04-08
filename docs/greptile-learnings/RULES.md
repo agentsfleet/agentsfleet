@@ -504,3 +504,45 @@ zig build -Doptimize=ReleaseSafe -Dtarget=aarch64-linux-musl
 Don't: Use `-Dtarget=x86_64-linux` or `-Dtarget=aarch64-linux` in any CI workflow.
 
 Incident: v0.4.0 release — `zombied-executor` failed to compile in `binaries-linux-x86` and would have failed in `binaries-linux-aarch64`. All prod deploy jobs skipped. Dev appeared green only because the Zig build cache served pre-built artifacts, hiding the bug.
+
+---
+
+## Pagination — Always Use Composite Keyset Cursors (Never Timestamp-Only)
+
+**RULE: Cursor-based pagination must encode both `created_at` AND `id`. Never use a bare timestamp as the only cursor component.**
+
+Why: Multiple rows can share the same millisecond timestamp under moderate load. A `WHERE created_at < $cursor` condition silently excludes all events at the boundary — they are permanently dropped from the paginated view without any error. The activity stream uses this pattern; losing events from `zombiectl logs` is a correctness failure.
+
+Do:
+```zig
+// cursor format: "{created_at}:{id}"  e.g. "1744000000000:019abc12-..."
+WHERE (created_at < $2 OR (created_at = $2 AND id < $3))
+ORDER BY created_at DESC, id DESC
+```
+
+Don't: `WHERE created_at < $cursor` with a scalar timestamp cursor.
+
+Incident: M1_001 greptile P1 — activity_stream cursor was timestamp-only, silently dropping events at millisecond boundaries.
+
+---
+
+## Security — Constant-Time Comparison for Bearer Tokens
+
+**RULE: Never use `std.mem.eql` (or any short-circuit equality) to compare Bearer tokens or other secrets. Use XOR accumulation.**
+
+Why: `std.mem.eql` short-circuits on the first differing byte, leaking how many leading bytes the attacker guessed correctly. An attacker can recover the token one byte at a time using timing measurements.
+
+Do:
+```zig
+const token_valid = provided.len == expected_token.len and ct: {
+    var diff: u8 = 0;
+    for (provided, expected_token) |a, b| diff |= a ^ b;
+    break :ct diff == 0;
+};
+```
+
+Don't: `if (!std.mem.eql(u8, provided, expected_token)) return error.Unauthorized;`
+
+Note: `std.crypto.utils.timingSafeEql` only accepts arrays — not slices. Use the XOR pattern for runtime-length slices.
+
+Incident: M1_001 greptile P2 security — webhook Bearer token comparison used std.mem.eql.
