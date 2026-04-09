@@ -114,7 +114,7 @@ Create `samples/lead-collector/` with a pre-configured workspace that enables th
 
 ## 4.0 Activity Stream CLI Route
 
-**Status:** PENDING
+**Status:** DONE
 
 Add `zombiectl activity list` (aliased as `zombiectl logs`) server-side route. Currently `zombiectl logs` calls the API but there's no server handler. Implement `GET /v1/zombies/activity` with cursor-based pagination, returning the last N activity events. Wire the existing `activity_stream.zig:queryByZombie` to the HTTP handler.
 
@@ -134,7 +134,7 @@ Add `zombiectl activity list` (aliased as `zombiectl logs`) server-side route. C
   - input: `GET /v1/zombies/activity?zombie_id={unknown_id}`
   - expected: `Empty array (not 404 — Zombie may exist with no events)`
   - test_type: integration (DB)
-- 4.4 PENDING
+- 4.4 DONE
   - target: `src/http/router.zig`
   - input: `GET /v1/zombies/activity` registered in router`
   - expected: `Route matches, auth required, workspace scoped`
@@ -144,7 +144,7 @@ Add `zombiectl activity list` (aliased as `zombiectl logs`) server-side route. C
 
 ## 5.0 Zombie CRUD API
 
-**Status:** PENDING
+**Status:** DONE
 
 Server-side handlers for `zombiectl up`, `zombiectl status`, `zombiectl kill`, and `zombiectl credential add/list`. The CLI commands already call these endpoints; implement the handlers. `POST /v1/zombies/` creates a Zombie from config JSON + source markdown. `GET /v1/zombies/` lists Zombies for workspace. `DELETE /v1/zombies/{id}` kills a Zombie. `POST /v1/zombies/credentials` stores a credential in vault. `GET /v1/zombies/credentials` lists credential names (not values).
 
