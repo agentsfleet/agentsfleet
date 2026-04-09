@@ -17,6 +17,13 @@ const routes = [
   { key: "skill-secret", match: (cmd) => cmd === "skill-secret" },
   { key: "agent", match: (cmd) => cmd === "agent" },
   { key: "admin", match: (cmd) => cmd === "admin" },
+  // M1_001 §5: Zombie commands — flat top-level for common ops
+  { key: "zombie.install", match: (cmd) => cmd === "install" },
+  { key: "zombie.up", match: (cmd) => cmd === "up" },
+  { key: "zombie.status", match: (cmd) => cmd === "status" },
+  { key: "zombie.kill", match: (cmd) => cmd === "kill" },
+  { key: "zombie.logs", match: (cmd) => cmd === "logs" },
+  { key: "zombie.credential", match: (cmd) => cmd === "credential" },
 ];
 
 export function findRoute(command, args) {

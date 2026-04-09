@@ -9,6 +9,7 @@ import { registerProgramCommands } from "./program/command-registry.js";
 import { commandHarness as commandHarnessModule } from "./commands/harness.js";
 import { commandAgent as commandAgentModule } from "./commands/agent.js";
 import { commandAdmin as commandAdminModule } from "./commands/admin.js";
+import { commandZombie as commandZombieModule } from "./commands/zombie.js";
 import { commandRuns as commandRunsModule } from "./commands/runs.js";
 import { ui, printKeyValue, printSection, printTable } from "./ui-theme.js";
 import { createSpinner } from "./ui-progress.js";
@@ -33,7 +34,7 @@ export const VERSION = "0.5.0";
 
 export { parseGlobalArgs };
 
-const AUTH_EXEMPT_ROUTES = new Set(["login", "doctor", "spec.init"]);
+const AUTH_EXEMPT_ROUTES = new Set(["login", "doctor", "spec.init", "zombie.install"]);
 
 export async function runCli(argv, io = {}) {
   const stdout = io.stdout || process.stdout;
@@ -182,6 +183,25 @@ export async function runCli(argv, io = {}) {
       ui,
       printJson,
       writeLine,
+    }),
+    // M1_001 §5: Zombie commands
+    zombieInstall: (routeArgs) => commandZombieModule(ctx, ["install", ...routeArgs], workspaces, {
+      parseFlags, request, apiHeaders, ui, printJson, printKeyValue, printSection, writeLine, writeError,
+    }),
+    zombieUp: (routeArgs) => commandZombieModule(ctx, ["up", ...routeArgs], workspaces, {
+      parseFlags, request, apiHeaders, ui, printJson, printKeyValue, printSection, writeLine, writeError,
+    }),
+    zombieStatus: (routeArgs) => commandZombieModule(ctx, ["status", ...routeArgs], workspaces, {
+      parseFlags, request, apiHeaders, ui, printJson, printKeyValue, printSection, writeLine, writeError,
+    }),
+    zombieKill: (routeArgs) => commandZombieModule(ctx, ["kill", ...routeArgs], workspaces, {
+      parseFlags, request, apiHeaders, ui, printJson, printKeyValue, printSection, writeLine, writeError,
+    }),
+    zombieLogs: (routeArgs) => commandZombieModule(ctx, ["logs", ...routeArgs], workspaces, {
+      parseFlags, request, apiHeaders, ui, printJson, printKeyValue, printSection, writeLine, writeError,
+    }),
+    zombieCredential: (routeArgs) => commandZombieModule(ctx, ["credential", ...routeArgs], workspaces, {
+      parseFlags, request, apiHeaders, ui, printJson, printKeyValue, printSection, writeLine, writeError,
     }),
   });
 

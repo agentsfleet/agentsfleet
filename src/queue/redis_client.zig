@@ -271,7 +271,7 @@ pub const Client = struct {
         return value;
     }
 
-    fn commandAllowError(self: *Client, argv: []const []const u8) !redis_protocol.RespValue {
+    pub fn commandAllowError(self: *Client, argv: []const []const u8) !redis_protocol.RespValue {
         self.lock.lock();
         defer self.lock.unlock();
         return self.commandUnlocked(argv);

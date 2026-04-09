@@ -129,6 +129,7 @@ test {
     _ = @import("harness/control_plane.zig");
     _ = @import("zombie/config.zig");
     _ = @import("zombie/activity_stream.zig");
+    _ = @import("zombie/event_loop.zig");
     _ = @import("cli/commands.zig");
     _ = @import("auth/sessions.zig");
     _ = @import("auth/claims.zig");
