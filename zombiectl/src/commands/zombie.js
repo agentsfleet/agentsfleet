@@ -4,7 +4,7 @@
 // Namespaced for less common: credential add, credential list.
 
 import { readFileSync } from "node:fs";
-import { writeFileSync, mkdirSync } from "node:fs";
+import { writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { ZOMBIES_PATH } from "../lib/api-paths.js";
@@ -16,7 +16,7 @@ const BUNDLED_TEMPLATES = ["lead-collector"];
 
 export async function commandZombie(ctx, args, workspaces, deps) {
   const action = args[0];
-  const { parseFlags, request, apiHeaders, ui, printJson, printKeyValue, printSection, writeLine, writeError } = deps;
+  const { ui, writeLine, writeError } = deps;
 
   if (action === "install") return commandInstall(ctx, args.slice(1), deps);
   if (action === "up") return commandUp(ctx, args.slice(1), workspaces, deps);
@@ -111,7 +111,7 @@ async function commandInstall(ctx, args, deps) {
 // ── up ───────────────────────────────────────────────────────────────────
 
 async function commandUp(ctx, args, workspaces, deps) {
-  const { parseFlags, request, apiHeaders, ui, printJson, printKeyValue, writeLine, writeError } = deps;
+  const { request, apiHeaders, ui, printJson, writeLine, writeError } = deps;
 
   // Find the zombie config in the current directory
   const configPath = findZombieConfig(process.cwd());
@@ -421,8 +421,6 @@ function parseZombieMarkdown(content) {
 function simpleYamlParse(yaml) {
   const result = {};
   let currentKey = null;
-  let currentObj = null;
-  let inArray = false;
   let arrayKey = null;
 
   for (const rawLine of yaml.split("\n")) {
@@ -432,11 +430,10 @@ function simpleYamlParse(yaml) {
     // Array item: "  - value"
     if (/^\s+-\s+/.test(line)) {
       const value = line.replace(/^\s+-\s+/, "").trim();
-      if (arrayKey && result[arrayKey]) {
+      if (currentKey && arrayKey && result[currentKey] && Array.isArray(result[currentKey][arrayKey])) {
+        result[currentKey][arrayKey].push(value);
+      } else if (arrayKey && Array.isArray(result[arrayKey])) {
         result[arrayKey].push(value);
-      } else if (currentObj && arrayKey) {
-        currentObj[arrayKey] = currentObj[arrayKey] || [];
-        currentObj[arrayKey].push(value);
       }
       continue;
     }
@@ -446,7 +443,7 @@ function simpleYamlParse(yaml) {
       const match = line.match(/^\s+(\w[\w_]*)\s*:\s*(.*)$/);
       if (match) {
         const [, k, v] = match;
-        if (!result[currentKey]) result[currentKey] = {};
+        if (!result[currentKey] || Array.isArray(result[currentKey])) result[currentKey] = {};
         if (v.trim() === "") {
           arrayKey = k;
           result[currentKey][k] = [];
@@ -464,8 +461,8 @@ function simpleYamlParse(yaml) {
       const [, k, v] = topMatch;
       if (v.trim() === "") {
         currentKey = k;
-        currentObj = null;
-        arrayKey = null;
+        result[k] = [];
+        arrayKey = k;
       } else {
         result[k] = parseYamlValue(v.trim());
         currentKey = null;

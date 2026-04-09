@@ -111,8 +111,8 @@ pub fn claimZombie(
 
     if (!is_active) {
         log.warn("zombie_event_loop.claim_skipped zombie_id={s}", .{zombie_id_input});
-        alloc.free(workspace_id);
-        alloc.free(source_markdown);
+        // errdefer on workspace_id and source_markdown fires automatically —
+        // no manual free here (would be a double-free).
         return error.ZombieNotActive;
     }
 

@@ -546,3 +546,40 @@ Don't: `if (!std.mem.eql(u8, provided, expected_token)) return error.Unauthorize
 Note: `std.crypto.utils.timingSafeEql` only accepts arrays — not slices. Use the XOR pattern for runtime-length slices.
 
 Incident: M1_001 greptile P2 security — webhook Bearer token comparison used std.mem.eql.
+
+---
+
+## Zig — Never Manual Free When errdefer Is Active
+
+**RULE: Never call `alloc.free(ptr)` before `return error.*` if `errdefer alloc.free(ptr)` is already in scope. The errdefer fires automatically on error return — manual free causes a double-free.**
+
+Why: Zig's errdefer is guaranteed to run on any error return from the enclosing function. Manually freeing before the error return means the pointer is freed twice — undefined behavior (heap corruption in release, crash under debug allocator).
+
+Do:
+```zig
+const buf = try alloc.dupe(u8, data);
+errdefer alloc.free(buf);
+if (!valid) return error.Invalid;  // errdefer handles cleanup
+```
+
+Don't:
+```zig
+const buf = try alloc.dupe(u8, data);
+errdefer alloc.free(buf);
+if (!valid) {
+    alloc.free(buf);  // double-free: errdefer also fires
+    return error.Invalid;
+}
+```
+
+Incident: M1_001 greptile P1 — `claimZombie` manually freed `workspace_id` and `source_markdown` before `return error.ZombieNotActive`, but errdefer on both was already in scope.
+
+---
+
+## JS — Remove Dead Destructured Variables
+
+**RULE: Only destructure dependencies that the function actually uses. Remove unused bindings from `const { ... } = deps` immediately.**
+
+Why: Unused destructured variables accumulate silently and trigger CodeQL/code-quality warnings. They also mislead readers about what the function depends on.
+
+Incident: M1_001 github-code-quality — `commandZombie` destructured 8 deps but only used 3; `commandUp` destructured 8 but only used 6.
