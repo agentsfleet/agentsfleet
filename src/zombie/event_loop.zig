@@ -159,97 +159,81 @@ pub fn runEventLoop(
     const consumer_id = queue_redis.makeConsumerId(alloc) catch "zombie-local";
     defer if (!std.mem.eql(u8, consumer_id, "zombie-local")) alloc.free(consumer_id);
 
+    log.info("zombie_event_loop.started zombie_id={s} name={s}", .{ session.zombie_id, session.config.name });
+    logActivity(cfg.pool, alloc, session, "zombie_started", "Event loop started");
+
     var last_reclaim_ms: i64 = std.time.milliTimestamp();
     var consecutive_errors: u32 = 0;
 
-    log.info("zombie_event_loop.started zombie_id={s} name={s}", .{ session.zombie_id, session.config.name });
-
-    activity_stream.logEvent(cfg.pool, alloc, .{
-        .zombie_id = session.zombie_id,
-        .workspace_id = session.workspace_id,
-        .event_type = "zombie_started",
-        .detail = "Event loop started",
-    });
-
     while (cfg.running.load(.acquire)) {
-        // Try XAUTOCLAIM for stale messages first (every 60s)
-        var event: ?redis_zombie.ZombieEvent = null;
-        const now_ms = std.time.milliTimestamp();
-        if (now_ms - last_reclaim_ms >= queue_consts.zombie_reclaim_interval_ms) {
-            last_reclaim_ms = now_ms;
-            event = redis_zombie.xautoclaimZombie(cfg.redis, session.zombie_id, consumer_id) catch |err| {
-                obs_log.logErr(.zombie_event_loop, err, "zombie_event_loop.xautoclaim_fail zombie_id={s}", .{session.zombie_id});
-                consecutive_errors += 1;
-                sleepWithBackoff(cfg, consecutive_errors);
-                continue;
-            };
-        }
-
-        // If no reclaimed message, do a blocking read
-        if (event == null) {
-            event = redis_zombie.xreadgroupZombie(cfg.redis, session.zombie_id, consumer_id) catch |err| {
-                obs_log.logErr(.zombie_event_loop, err, "zombie_event_loop.xreadgroup_fail zombie_id={s}", .{session.zombie_id});
-                consecutive_errors += 1;
-                sleepWithBackoff(cfg, consecutive_errors);
-                continue;
-            };
-        }
-
-        // No message — loop back (XREADGROUP timeout is the sleep)
-        var evt = event orelse {
-            consecutive_errors = 0;
-            continue;
-        };
-        defer evt.deinit(alloc);
-
-        // Deliver event to executor
-        var result = deliverEvent(alloc, session, &evt, cfg) catch |err| {
-            obs_log.logErr(.zombie_event_loop, err, "zombie_event_loop.deliver_fail zombie_id={s} event_id={s}", .{ session.zombie_id, evt.event_id });
+        const poll_result = pollNextEvent(cfg, session, consumer_id, &last_reclaim_ms);
+        if (poll_result.err) {
             consecutive_errors += 1;
-
-            activity_stream.logEvent(cfg.pool, alloc, .{
-                .zombie_id = session.zombie_id,
-                .workspace_id = session.workspace_id,
-                .event_type = "event_error",
-                .detail = evt.event_id,
-            });
-
             sleepWithBackoff(cfg, consecutive_errors);
             continue;
-        };
-        defer result.deinit(alloc);
+        }
+        var evt = poll_result.event orelse { consecutive_errors = 0; continue; };
+        defer evt.deinit(alloc);
 
-        // Checkpoint state after successful processing
-        checkpointState(alloc, session, cfg.pool) catch |err| {
-            obs_log.logWarnErr(.zombie_event_loop, err, "zombie_event_loop.checkpoint_fail zombie_id={s} error_code=" ++ error_codes.ERR_ZOMBIE_CHECKPOINT_FAILED, .{session.zombie_id});
-            // Don't XACK — crash recovery will redeliver
-            consecutive_errors += 1;
-            continue;
-        };
-
-        // XACK after checkpoint — at-least-once delivery guarantee
-        redis_zombie.xackZombie(cfg.redis, session.zombie_id, evt.message_id) catch |err| {
-            obs_log.logWarnErr(.zombie_event_loop, err, "zombie_event_loop.xack_fail zombie_id={s} message_id={s}", .{ session.zombie_id, evt.message_id });
-        };
-
-        consecutive_errors = 0;
-
+        consecutive_errors = processEvent(alloc, session, &evt, cfg, &consecutive_errors);
         if (!cfg.running.load(.acquire)) break;
     }
 
     log.info("zombie_event_loop.stopped zombie_id={s}", .{session.zombie_id});
+    logActivity(cfg.pool, alloc, session, "zombie_stopped", "Event loop stopped (shutdown signal)");
+}
 
-    activity_stream.logEvent(cfg.pool, alloc, .{
+const PollResult = struct { event: ?redis_zombie.ZombieEvent, err: bool };
+
+fn pollNextEvent(cfg: EventLoopConfig, session: *ZombieSession, consumer_id: []const u8, last_reclaim_ms: *i64) PollResult {
+    const now_ms = std.time.milliTimestamp();
+    if (now_ms - last_reclaim_ms.* >= queue_consts.zombie_reclaim_interval_ms) {
+        last_reclaim_ms.* = now_ms;
+        if (redis_zombie.xautoclaimZombie(cfg.redis, session.zombie_id, consumer_id)) |evt| {
+            return .{ .event = evt, .err = false };
+        } else |err| {
+            obs_log.logErr(.zombie_event_loop, err, "zombie_event_loop.xautoclaim_fail zombie_id={s}", .{session.zombie_id});
+            return .{ .event = null, .err = true };
+        }
+    }
+    if (redis_zombie.xreadgroupZombie(cfg.redis, session.zombie_id, consumer_id)) |evt| {
+        return .{ .event = evt, .err = false };
+    } else |err| {
+        obs_log.logErr(.zombie_event_loop, err, "zombie_event_loop.xreadgroup_fail zombie_id={s}", .{session.zombie_id});
+        return .{ .event = null, .err = true };
+    }
+}
+
+fn processEvent(alloc: Allocator, session: *ZombieSession, evt: *redis_zombie.ZombieEvent, cfg: EventLoopConfig, consecutive_errors: *u32) u32 {
+    var result = deliverEvent(alloc, session, evt, cfg) catch |err| {
+        obs_log.logErr(.zombie_event_loop, err, "zombie_event_loop.deliver_fail zombie_id={s} event_id={s}", .{ session.zombie_id, evt.event_id });
+        logActivity(cfg.pool, alloc, session, "event_error", evt.event_id);
+        sleepWithBackoff(cfg, consecutive_errors.* + 1);
+        return consecutive_errors.* + 1;
+    };
+    defer result.deinit(alloc);
+
+    checkpointState(alloc, session, cfg.pool) catch |err| {
+        obs_log.logWarnErr(.zombie_event_loop, err, "zombie_event_loop.checkpoint_fail zombie_id={s} error_code=" ++ error_codes.ERR_ZOMBIE_CHECKPOINT_FAILED, .{session.zombie_id});
+        return consecutive_errors.* + 1;
+    };
+
+    redis_zombie.xackZombie(cfg.redis, session.zombie_id, evt.message_id) catch |err| {
+        obs_log.logWarnErr(.zombie_event_loop, err, "zombie_event_loop.xack_fail zombie_id={s} message_id={s}", .{ session.zombie_id, evt.message_id });
+    };
+    return 0;
+}
+
+fn logActivity(pool: *pg.Pool, alloc: Allocator, session: *ZombieSession, event_type: []const u8, detail: []const u8) void {
+    activity_stream.logEvent(pool, alloc, .{
         .zombie_id = session.zombie_id,
         .workspace_id = session.workspace_id,
-        .event_type = "zombie_stopped",
-        .detail = "Event loop stopped (shutdown signal)",
+        .event_type = event_type,
+        .detail = detail,
     });
 }
 
 /// Deliver a single event to the executor agent.
-/// Creates an execution, runs a single stage with the zombie's instructions
-/// as system prompt and the event data as the user message.
 pub fn deliverEvent(
     alloc: Allocator,
     session: *ZombieSession,
@@ -259,38 +243,49 @@ pub fn deliverEvent(
     log.info("zombie_event_loop.deliver zombie_id={s} event_id={s} type={s}", .{
         session.zombie_id, event.event_id, event.event_type,
     });
+    logActivity(cfg.pool, alloc, session, "event_received", event.event_id);
 
-    activity_stream.logEvent(cfg.pool, alloc, .{
-        .zombie_id = session.zombie_id,
-        .workspace_id = session.workspace_id,
-        .event_type = "event_received",
-        .detail = event.event_id,
-    });
+    const stage_result = try executeInSandbox(alloc, session, event, cfg);
 
-    // Build context JSON from session checkpoint.
-    // Keep parsed_ctx alive until after startStage — context_val borrows from its arena.
-    var parsed_ctx: ?std.json.Parsed(std.json.Value) = null;
-    defer if (parsed_ctx) |*p| p.deinit();
+    const response_owned = try alloc.dupe(u8, stage_result.content);
+    errdefer alloc.free(response_owned);
 
-    const context_val: ?std.json.Value = if (session.context_json.len > 2) blk: {
-        parsed_ctx = std.json.parseFromSlice(std.json.Value, alloc, session.context_json, .{}) catch break :blk null;
-        break :blk parsed_ctx.?.value;
-    } else null;
+    updateSessionContext(alloc, session, event.event_id, stage_result.content) catch |err| {
+        log.warn("zombie_event_loop.context_update_fail zombie_id={s} err={s}", .{ session.zombie_id, @errorName(err) });
+    };
 
-    // Create execution in sandbox
-    const correlation = executor_types.CorrelationContext{
+    logDeliveryResult(cfg.pool, alloc, session, event, &stage_result);
+
+    return EventResult{
+        .status = if (stage_result.exit_ok) .processed else .agent_error,
+        .agent_response = response_owned,
+        .token_count = stage_result.token_count,
+        .wall_seconds = stage_result.wall_seconds,
+    };
+}
+
+fn parseSessionContext(alloc: Allocator, json: []const u8) ?std.json.Value {
+    if (json.len <= 2) return null;
+    const parsed = std.json.parseFromSlice(std.json.Value, alloc, json, .{}) catch return null;
+    return parsed.value;
+}
+
+fn executeInSandbox(
+    alloc: Allocator,
+    session: *ZombieSession,
+    event: *const redis_zombie.ZombieEvent,
+    cfg: EventLoopConfig,
+) !executor_client.StageResult {
+    const context_val = parseSessionContext(alloc, session.context_json);
+
+    const execution_id = cfg.executor.createExecution(cfg.workspace_path, .{
         .trace_id = event.event_id,
         .run_id = event.event_id,
         .workspace_id = session.workspace_id,
         .stage_id = "zombie",
         .role_id = "agent",
         .skill_id = session.config.name,
-    };
-
-    const execution_id = cfg.executor.createExecution(
-        cfg.workspace_path,
-        correlation,
-    ) catch |err| {
+    }) catch |err| {
         log.err("zombie_event_loop.exec_create_fail zombie_id={s} event_id={s} error_code=" ++ error_codes.ERR_EXEC_SESSION_CREATE_FAILED, .{ session.zombie_id, event.event_id });
         return err;
     };
@@ -299,61 +294,31 @@ pub fn deliverEvent(
         alloc.free(execution_id);
     }
 
-    // Start stage: instructions as system_prompt, event data as message
-    const stage_result = cfg.executor.startStage(execution_id, .{
+    return cfg.executor.startStage(execution_id, .{
         .stage_id = "zombie",
         .role_id = "agent",
         .skill_id = session.config.name,
-        .agent_config = .{
-            .system_prompt = session.instructions,
-        },
+        .agent_config = .{ .system_prompt = session.instructions },
         .message = event.data_json,
         .context = context_val,
     }) catch |err| {
         log.err("zombie_event_loop.stage_fail zombie_id={s} event_id={s} error_code=" ++ error_codes.ERR_EXEC_STAGE_START_FAILED, .{ session.zombie_id, event.event_id });
         return err;
     };
+}
 
-    // Update session context with the agent's response for conversation memory
-    const response_owned = try alloc.dupe(u8, stage_result.content);
-    errdefer alloc.free(response_owned);
-
-    updateSessionContext(alloc, session, event.event_id, stage_result.content) catch |err| {
-        log.warn("zombie_event_loop.context_update_fail zombie_id={s} err={s}", .{ session.zombie_id, @errorName(err) });
-    };
-
-    const status: EventResult.Status = if (stage_result.exit_ok) .processed else .agent_error;
-
+fn logDeliveryResult(pool: *pg.Pool, alloc: Allocator, session: *ZombieSession, event: *const redis_zombie.ZombieEvent, stage_result: anytype) void {
     if (stage_result.failure) |failure| {
         log.warn("zombie_event_loop.agent_failure zombie_id={s} event_id={s} failure={s}", .{
             session.zombie_id, event.event_id, failure.label(),
         });
-
-        activity_stream.logEvent(cfg.pool, alloc, .{
-            .zombie_id = session.zombie_id,
-            .workspace_id = session.workspace_id,
-            .event_type = "agent_error",
-            .detail = failure.label(),
-        });
+        logActivity(pool, alloc, session, "agent_error", failure.label());
     } else {
         log.info("zombie_event_loop.delivered zombie_id={s} event_id={s} tokens={d} wall_s={d}", .{
             session.zombie_id, event.event_id, stage_result.token_count, stage_result.wall_seconds,
         });
-
-        activity_stream.logEvent(cfg.pool, alloc, .{
-            .zombie_id = session.zombie_id,
-            .workspace_id = session.workspace_id,
-            .event_type = "agent_response",
-            .detail = event.event_id,
-        });
+        logActivity(pool, alloc, session, "agent_response", event.event_id);
     }
-
-    return EventResult{
-        .status = status,
-        .agent_response = response_owned,
-        .token_count = stage_result.token_count,
-        .wall_seconds = stage_result.wall_seconds,
-    };
 }
 
 /// Checkpoint session state to Postgres (UPSERT on zombie_id).

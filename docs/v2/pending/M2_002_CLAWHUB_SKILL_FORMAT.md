@@ -390,7 +390,47 @@ POST /v1/zombies/
 
 ---
 
-## 10.0 Out of Scope
+## 10.0 Webhook Auth — Slack-Style URL Secret (from M1_001 security review)
+
+**Status:** PENDING
+
+M1_001 shipped Bearer token auth for webhooks. Greptile flagged that templates without
+a `token` field leave the endpoint unauthenticated. The M1_001 fix rejects requests when
+no token is configured (fail-closed). But Bearer headers are awkward — most webhook sources
+(agentmail, GitHub, Slack) only let you configure a URL, not custom headers.
+
+**M2_002 change:** Switch to Slack-style URL-embedded secret:
+
+```
+# Before (M1_001):
+POST /v1/webhooks/{zombie_id}  + Authorization: Bearer {token}
+
+# After (M2_002):
+POST /v1/webhooks/{zombie_id}/{webhook_secret}
+```
+
+The `webhook_secret` is generated at `zombiectl up` time (crypto-random, 32 bytes, base64url).
+Stored in `core.zombies.webhook_secret` (new column). Returned to the user at deploy time:
+
+```
+$ zombiectl up
+  lead-collector is live.
+  Webhook URL: https://api.usezombie.com/v1/webhooks/019abc.../kR7x2mN...
+  Configure this URL in agentmail's webhook settings.
+```
+
+No Authorization header needed. The URL itself is the auth (same as Slack incoming webhooks).
+Bearer auth remains as a fallback for sources that support custom headers.
+
+**Dimensions:**
+- 10.1 PENDING — Router accepts `POST /v1/webhooks/{zombie_id}/{secret}`
+- 10.2 PENDING — `zombiectl up` generates and stores webhook_secret
+- 10.3 PENDING — Existing Bearer auth still works as fallback
+- 10.4 PENDING — Schema migration adds `webhook_secret` column to `core.zombies`
+
+---
+
+## 11.0 Out of Scope
 
 - ClaHub registry resolution (M3 — `skill:` field is stored but not fetched)
 - Chain event routing at runtime (M2_001 — worker integration)

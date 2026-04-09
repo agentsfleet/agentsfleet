@@ -157,9 +157,14 @@ pub fn handleReceiveWebhook(ctx: *Context, req: *httpz.Request, res: *httpz.Resp
     };
     defer deinitZombieRow(&zombie, alloc);
 
-    if (zombie.token) |expected_token| {
-        if (!verifyBearerToken(expected_token, req, res, req_id)) return;
-    }
+    // Auth: Bearer token is always required. Token is generated at deploy time
+    // and stored in config_json. No token = reject (zombiectl up must set one).
+    const expected_token = zombie.token orelse {
+        log.warn("webhook.no_token_configured zombie_id={s} req_id={s}", .{ zombie_id, req_id });
+        common.errorResponse(res, .forbidden, ec.ERR_FORBIDDEN, ec.MSG_AUTH_REQUIRED, req_id);
+        return;
+    };
+    if (!verifyBearerToken(expected_token, req, res, req_id)) return;
 
     if (!std.mem.eql(u8, zombie.status, ec.ZOMBIE_STATUS_ACTIVE)) {
         log.warn("webhook.zombie_not_active zombie_id={s} status={s} req_id={s}", .{ zombie_id, zombie.status, req_id });
