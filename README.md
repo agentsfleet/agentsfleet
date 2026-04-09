@@ -6,9 +6,9 @@
   <img src="assets/logo-dark.svg" width="200" alt="usezombie" />
 </picture>
 
-**Heroku for agents, but the agent never sees your keys.**
+**Your agent is ready. You're not ready to trust it. We fix that.**
 
-**Run your agents 24/7. Walled, watched, killable.**
+**Run your agents 24/7. Credentials hidden. Every action logged. Big moves approved.**
 
 [![CI](https://github.com/usezombie/usezombie/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/usezombie/usezombie/actions/workflows/test.yml?query=branch%3Amain)
 [![Coverage](https://codecov.io/gh/usezombie/usezombie/flags/apps/graph/badge.svg)](https://codecov.io/gh/usezombie/usezombie/flags/apps)
@@ -22,57 +22,65 @@
 
 ---
 
-> **Early Access Preview** · Pre-release — revised release coming up by April 11. APIs, CLI, and behavior may change without notice before general availability.
+> **Early Access Preview** · Pre-release — APIs, CLI, and behavior may change without notice before general availability.
 
-## Why we pivoted
+## The problem
 
-We started by obsessing over one thing: making AI-generated code *correct*. Self-repair loops, quality scoring, scorecard evidence. Good problems — but narrow ones. Frontier models get better every quarter, and the gap we were optimizing for keeps shrinking on its own.
+You have a working agent. It can reply to emails, fix bugs, process payments, review PRs. But you won't let it run unsupervised because:
 
-The tempting move is to double down — we built it, so we stick with it. But code is cattle, not pets. You don't keep a solution alive just because you wrote it.
+- It has your API keys (what if it goes rogue?)
+- You can't see what it did (what if the CEO asks?)
+- There's no spend ceiling (what if one bad prompt burns $500?)
+- There's no kill switch (what if it starts replying to every email in your inbox?)
+
+So you babysit it. Or you don't run it at all.
+
+## What Zombies are
+
+A **Zombie** is a preconfigured agent workflow that does one job and runs forever.
 
 ```
-          ____________________________
-         < code(human) === cattle now >
-          ----------------------------
-                 \   ^__^
-                  \  (oo)\_______
-                     (__)\       )\/\
-                         ||----w |
-                         ||     ||
+"Install the Lead Zombie"       → handles inbound email, replies, logs leads
+"Install the Slack Bug Fixer"   → monitors #bugs, opens PRs, replies in thread
+"Install the PR Zombie"         → reviews every PR, posts feedback, alerts on critical
+"Install the Ops Zombie"        → watches infra, alerts on incidents
+"Install the Hiring Zombie"     → receives candidate profile (resume PDF, GitHub PRs,
+                                   Gmail), analyzes attachments for merit, sends you
+                                   a decision report on Discord
 ```
 
-So we killed the old approach and pivoted. UseZombie is now a runtime for always-on agents — you bring your agent, we handle the credentials (hidden from the sandbox, injected at the firewall), webhooks (wired automatically), audit logs (every action timestamped), and a kill switch. Your agent runs 24/7 without ever seeing a password.
+You don't code a Zombie. You configure it: what tools it attaches, what credentials it uses, what budget it has, what triggers it. The agent intelligence is built in.
 
-## What zombies do now
+## How it works
 
-- **Always-on agents** — your agent runs continuously in a sandboxed process, restarts on crash
-- **Credentials hidden** — agents never see tokens; the firewall injects them per-request, outside the sandbox boundary
-- **Webhooks wired** — receive events from email, Slack, GitHub, etc. without ngrok or custom servers
-- **Observability** — see what your agent did, when, why, and how much it cost — before the invoice surprises you
-- **Spend ceiling** — per-run token budgets and wall time limits; one bad prompt never becomes an infinite burn
-- **Kill switch** — stop any agent mid-action from the CLI or web UI
+- **Sandboxed runtime** — bwrap + landlock isolation. Your agent runs in a locked-down process. Network deny-by-default. Only allowlisted domains reachable.
+- **Credentials hidden** — agents never see API keys. The vault injects credentials at the sandbox boundary, outside the agent's process. The agent makes a tool call, UseZombie makes the real API request with the real credential.
+- **Webhooks wired** — receive events from email, Slack, GitHub without ngrok or custom servers. `POST /v1/webhooks/{zombie_id}` with idempotent dedup.
+- **Activity stream** — every action timestamped and queryable. `zombiectl logs` shows what happened, when, and why.
+- **Spend ceiling** — per-day and per-month dollar budgets. One bad prompt never becomes an infinite burn.
+- **Kill switch** — `zombiectl kill` stops any agent mid-action. Checkpoint saved, no data lost.
+- **Crash recovery** — Zombie state checkpointed to Postgres after every event. Worker crashes, restarts, picks up where it left off.
 
 ## Stack
 
-- **Auth** — [Clerk](https://clerk.com)
-- **Hosting** — [Fly.io](https://fly.io) + bare-metal workers
-- **Database** — [PlanetScale](https://planetscale.com) (Postgres)
-- **Queue** — [Upstash](https://upstash.com) Redis Streams
-- **Analytics** — [PostHog](https://posthog.com)
-- **Email** — [Resend](https://resend.com)
+| Layer | Technology |
+|-------|-----------|
+| Runtime | Zig 0.15.2 (zombied server) |
+| Sandbox | bwrap + landlock (Linux) |
+| Agent engine | NullClaw (built-in LLM agent) |
+| Database | Postgres (PlanetScale) |
+| Queue | Redis Streams (Upstash) |
+| Auth | Clerk |
+| CLI | Node.js / Bun (zombiectl, npm package) |
+| Analytics | PostHog |
+| Hosting | Fly.io + bare-metal workers |
 
 ## Documentation
 
 | Resource | Description |
 |----------|-------------|
-| [docs.usezombie.com](https://docs.usezombie.com) | User-facing docs (guides, API reference, operator guide, contributing) |
+| [docs.usezombie.com](https://docs.usezombie.com) | User-facing docs (guides, API reference, operator guide) |
 | [playbooks/](playbooks/) | Agent-readable deployment playbooks and gate scripts |
-
-## Playbooks
-
-Playbooks are written to be understandable and executable by both humans and agents — each directory contains a markdown doc (`001_playbook.md`) and numbered shell scripts (`00_gate.sh`, `01_*.sh`, `02_*.sh`) that run in order.
-
-See [playbooks/README.md](playbooks/README.md) for the full index and execution order.
 
 ## Local development
 
@@ -85,8 +93,6 @@ make test      # Run all unit tests
 make lint      # Format + lint
 make doctor    # Check config, Postgres, LLM key
 ```
-
-See [docs.usezombie.com/contributing/development](https://docs.usezombie.com/contributing/development) for full setup.
 
 ## Agent support
 
