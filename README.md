@@ -71,18 +71,6 @@ You don't code a Zombie. You configure it: what tools it attaches, what credenti
 - **Kill switch** — `zombiectl kill` stops any agent mid-action. Checkpoint saved, no data lost.
 - **Crash recovery** — Zombie state checkpointed to Postgres after every event. Worker crashes, restarts, picks up where it left off.
 
-## CLI
-
-```bash
-zombiectl install lead-collector    # Write Zombie config to current dir
-zombiectl up                        # Deploy to UseZombie cloud
-zombiectl status                    # Name, status, events processed, budget used
-zombiectl logs                      # Activity stream
-zombiectl kill                      # Stop the Zombie
-zombiectl credential add agentmail  # Store API key in vault
-zombiectl credential list           # List stored credentials
-```
-
 ## Stack
 
 | Layer | Technology |
