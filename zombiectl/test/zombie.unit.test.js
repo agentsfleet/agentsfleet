@@ -9,7 +9,7 @@
 import { test } from "bun:test";
 import assert from "node:assert/strict";
 import { commandZombie } from "../src/commands/zombie.js";
-import { makeNoop, makeBufferStream, ui, WS_ID } from "./helpers.js";
+import { makeNoop, ui, WS_ID } from "./helpers.js";
 import { parseFlags } from "../src/program/args.js";
 import { tmpdir } from "node:os";
 import { mkdtempSync, readFileSync, existsSync } from "node:fs";

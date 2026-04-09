@@ -304,7 +304,7 @@ async function commandLogs(ctx, args, workspaces, deps) {
 // ── credential ───────────────────────────────────────────────────────────
 
 async function commandCredential(ctx, args, workspaces, deps) {
-  const { parseFlags, request, apiHeaders, ui, printJson, printKeyValue, writeLine, writeError } = deps;
+  const { parseFlags, request, apiHeaders, ui, printJson, writeLine, writeError } = deps;
   const action = args[0];
 
   const wsId = workspaces.current_workspace_id;
@@ -335,7 +335,7 @@ async function commandCredential(ctx, args, workspaces, deps) {
       return 1;
     }
 
-    const res = await request(ctx, `${ZOMBIES_PATH}credentials`, {
+    await request(ctx, `${ZOMBIES_PATH}credentials`, {
       method: "POST",
       headers: { ...apiHeaders(ctx), "Content-Type": "application/json" },
       body: JSON.stringify({
