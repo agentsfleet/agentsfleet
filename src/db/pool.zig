@@ -303,6 +303,13 @@ fn applySqlStatements(conn: *Conn, sql: []const u8) !u32 {
     while (i < sql.len) : (i += 1) {
         const ch = sql[i];
 
+        // Skip -- line comments: advance past everything until newline.
+        // Semicolons inside comments must not split statements.
+        if (!in_single_quote and !in_dollar_quote and ch == '-' and i + 1 < sql.len and sql[i + 1] == '-') {
+            while (i < sql.len and sql[i] != '\n') : (i += 1) {}
+            continue;
+        }
+
         if (!in_dollar_quote and ch == '\'') {
             // Skip escaped single quote inside string literal.
             if (in_single_quote and i + 1 < sql.len and sql[i + 1] == '\'') {

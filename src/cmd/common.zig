@@ -209,3 +209,24 @@ test "canonical schema bootstrap includes scoring config in base schema" {
     try std.testing.expect(std.mem.containsAtLeast(u8, migrations[15].sql, 1, "CREATE TABLE agent_run_analysis"));
     try std.testing.expect(!std.mem.containsAtLeast(u8, migrations[14].sql, 1, "tier             TEXT"));
 }
+
+test "migration SQL has no semicolons inside line comments" {
+    // The migration statement splitter splits on `;` but does not track `-- line comments`.
+    // A semicolon inside a comment breaks the splitter, producing invalid SQL fragments.
+    const migrations = canonicalMigrations();
+    for (migrations) |migration| {
+        var iter = std.mem.splitScalar(u8, migration.sql, '\n');
+        while (iter.next()) |line| {
+            const trimmed = std.mem.trimLeft(u8, line, " \t");
+            if (std.mem.startsWith(u8, trimmed, "--")) {
+                // Skip the leading "-- " prefix before checking for `;`
+                // to avoid false positives on the `--` itself.
+                const comment_body = trimmed[2..];
+                if (std.mem.indexOfScalar(u8, comment_body, ';') != null) {
+                    std.debug.print("\nFAIL: migration v{d} has ';' in comment: {s}\n", .{ migration.version, trimmed });
+                    return error.SemicolonInComment;
+                }
+            }
+        }
+    }
+}
