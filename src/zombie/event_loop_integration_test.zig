@@ -13,6 +13,11 @@ const event_loop = @import("event_loop.zig");
 const zombie_config = @import("config.zig");
 const base = @import("../db/test_fixtures.zig");
 
+// Suppress log.err during tests that exercise expected error paths
+// (e.g. ZombieNotFound). Without this, Zig 0.15.2's test runner
+// treats any log.err output as a test failure.
+pub const std_options: std.Options = .{ .log_level = .warn };
+
 const TEST_WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-000000000099";
 const TEST_ZOMBIE_ID = "0195b4ba-8d3a-7f13-8abc-000000000100";
 const TEST_SESSION_ID = "0195b4ba-8d3a-7f13-8abc-000000000101";
