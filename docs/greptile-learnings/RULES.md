@@ -197,7 +197,46 @@ into two "statements" — the second half is invalid SQL.
 
 ---
 
-## 20. No prompt injection from user input
+## 20. Functions ≤ 50 lines, methods ≤ 70 lines
+
+Keep functions short enough to read without scrolling. If a function exceeds
+50 lines (70 for methods with setup/teardown), split it into named helpers.
+Each helper should do one thing and be independently testable.
+
+> M1_001: `handleReceiveWebhook` was 120+ lines — 8 steps inlined into one function.
+
+---
+
+## 21. All user-facing strings are constants
+
+Error messages, status values, HTTP header prefixes, Redis key patterns, TTLs —
+if a string appears in a response or is compared against input, it must be a named
+constant in a shared constants file. No inline string literals for values that cross
+a module boundary.
+
+Group by domain: `webhook_constants.zig`, `error_messages.zig`, or add to the
+existing `src/errors/codes.zig` for error codes.
+
+> M1_001: `handleReceiveWebhook` had inline `"Bearer "`, `"active"`, `"duplicate"`,
+> `"accepted"`, `"webhook_received"`, `86400`, `"UZ-AUTH-001"`.
+
+---
+
+## 22. Error messages follow a standard structure
+
+Every error response uses `error_codes.ERR_*` for the code and a constant for the
+human message. Error messages must be:
+- Actionable: tell the developer what to do
+- Consistent: same structure everywhere
+- Constant: defined once, not duplicated as inline strings
+
+Pattern: `common.errorResponse(res, status, error_codes.ERR_*, error_messages.MSG_*, req_id)`
+
+> M1_001: webhook handler mixed `error_codes.ERR_*` constants with inline message strings.
+
+---
+
+## 23. No prompt injection from user input
 
 Never concatenate raw user input into agent prompts or tool calls.
 Validate, type-check, length-bound all external input. Use parameterized templates.

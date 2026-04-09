@@ -105,7 +105,7 @@ pub fn claimZombie(
     const source_markdown = try alloc.dupe(u8, try row.get([]const u8, 2));
     errdefer alloc.free(source_markdown);
     // Check status before drain — row-backed slices are invalid after drain.
-    const is_active = std.mem.eql(u8, try row.get([]const u8, 3), "active");
+    const is_active = std.mem.eql(u8, try row.get([]const u8, 3), error_codes.ZOMBIE_STATUS_ACTIVE);
 
     q.drain() catch {};
 
