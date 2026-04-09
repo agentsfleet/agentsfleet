@@ -110,6 +110,34 @@ test "T2: truncateForJson handles 2049 bytes (one over)" {
     try std.testing.expectEqual(@as(usize, 2048), result.len);
 }
 
+test "T2: truncateForJson does not split multi-byte UTF-8 codepoint" {
+    // Build a buffer: 2046 ASCII bytes + one 3-byte UTF-8 char (e.g. U+3042 'あ' = E3 81 82).
+    // Total = 2049. Naive slice at 2048 would cut between bytes 2 and 3 of the codepoint,
+    // producing invalid UTF-8. The fix must walk back to 2046.
+    var buf: [2049]u8 = undefined;
+    @memset(&buf, 'a');
+    buf[2046] = 0xE3; // 'あ' byte 1
+    buf[2047] = 0x81; // 'あ' byte 2
+    buf[2048] = 0x82; // 'あ' byte 3
+    const result = event_loop.truncateForJson(&buf);
+    // Must stop before the 3-byte char — at 2046, not 2048 (mid-sequence).
+    try std.testing.expectEqual(@as(usize, 2046), result.len);
+    try std.testing.expect(std.unicode.utf8ValidateSlice(result));
+}
+
+test "T2: truncateForJson preserves complete multi-byte char before boundary" {
+    // 2045 ASCII + one 3-byte char at [2045..2048] = exactly 2048 bytes total.
+    var buf: [2048]u8 = undefined;
+    @memset(&buf, 'a');
+    buf[2045] = 0xE3;
+    buf[2046] = 0x81;
+    buf[2047] = 0x82;
+    const result = event_loop.truncateForJson(&buf);
+    // The 3-byte char fits entirely within 2048 — no truncation needed.
+    try std.testing.expectEqual(@as(usize, 2048), result.len);
+    try std.testing.expect(std.unicode.utf8ValidateSlice(result));
+}
+
 // ── T3: Error paths / JSON injection regression ─────────────────────────
 
 test "T3: updateSessionContext escapes double quotes in agent_response" {
