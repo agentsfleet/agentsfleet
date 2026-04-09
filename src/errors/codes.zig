@@ -108,6 +108,27 @@ pub const ERR_ZOMBIE_CREDENTIAL_MISSING = "UZ-ZMB-003";
 pub const ERR_ZOMBIE_CLAIM_FAILED = "UZ-ZMB-004";
 pub const ERR_ZOMBIE_CHECKPOINT_FAILED = "UZ-ZMB-005";
 
+// M2_001: Zombie CRUD API error codes
+pub const ERR_ZOMBIE_NAME_EXISTS = "UZ-ZMB-006";
+pub const ERR_ZOMBIE_CREDENTIAL_VALUE_TOO_LONG = "UZ-ZMB-007";
+pub const ERR_ZOMBIE_INVALID_CONFIG = "UZ-ZMB-008";
+pub const ERR_ZOMBIE_NOT_FOUND = "UZ-ZMB-009";
+
+// M2_001: Zombie CRUD API user-facing messages
+pub const MSG_ZOMBIE_NAME_EXISTS = "Zombie already exists in this workspace. Use `zombiectl kill` first.";
+pub const MSG_ZOMBIE_CREDENTIAL_TOO_LONG = "Credential value exceeds 4KB limit.";
+pub const MSG_ZOMBIE_INVALID_CONFIG = "Config JSON is not valid. Check trigger, skills, and budget fields.";
+pub const MSG_ZOMBIE_NAME_REQUIRED = "name is required (max 64 chars, slug-safe)";
+pub const MSG_ZOMBIE_SOURCE_REQUIRED = "source_markdown is required (max 64KB)";
+pub const MSG_ZOMBIE_CONFIG_REQUIRED = "config_json is required";
+pub const MSG_WORKSPACE_ID_REQUIRED = "workspace_id is required (UUIDv7)";
+pub const MSG_CREDENTIAL_NAME_REQUIRED = "credential name is required (max 64 chars)";
+pub const MSG_CREDENTIAL_VALUE_REQUIRED = "credential value is required";
+
+// M2_001: Zombie CRUD status constants
+pub const ZOMBIE_STATUS_KILLED = "killed";
+pub const ZOMBIE_STATUS_PAUSED = "paused";
+
 pub const ERR_GATE_COMMAND_FAILED = "UZ-GATE-001";
 pub const ERR_GATE_COMMAND_TIMEOUT = "UZ-GATE-002";
 pub const ERR_GATE_REPAIR_EXHAUSTED = "UZ-GATE-003";

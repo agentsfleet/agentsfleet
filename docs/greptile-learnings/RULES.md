@@ -77,7 +77,7 @@ Multiple rows can share the same millisecond; a scalar cursor silently skips the
 
 ---
 
-## 8. Files under 500 lines
+## 8. Files under 400 lines
 
 Split before proceeding. Extract a cohesive function group into a new module.
 Enforced in CI (Zig) and VERIFY gate (all languages).

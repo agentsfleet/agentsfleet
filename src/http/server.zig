@@ -131,6 +131,19 @@ fn dispatchMatchedRoute(ctx: *handler.Context, req: *httpz.Request, res: *httpz.
         },
         // M1_001: Zombie webhook ingestion
         .receive_webhook => |zombie_id| if (req.method == .POST) handler.handleReceiveWebhook(ctx, req, res, zombie_id) else respondMethodNotAllowed(res),
+        // M2_001: Zombie CRUD + activity + credentials
+        .list_or_create_zombies => switch (req.method) {
+            .POST => handler.handleCreateZombie(ctx, req, res),
+            .GET => handler.handleListZombies(ctx, req, res),
+            else => respondMethodNotAllowed(res),
+        },
+        .delete_zombie => |zombie_id| if (req.method == .DELETE) handler.handleDeleteZombie(ctx, req, res, zombie_id) else respondMethodNotAllowed(res),
+        .zombie_activity => if (req.method == .GET) handler.handleListActivity(ctx, req, res) else respondMethodNotAllowed(res),
+        .zombie_credentials => switch (req.method) {
+            .POST => handler.handleStoreCredential(ctx, req, res),
+            .GET => handler.handleListCredentials(ctx, req, res),
+            else => respondMethodNotAllowed(res),
+        },
     }
     return true;
 }

@@ -318,10 +318,10 @@ Required outputs:
 - If touched files include `*.zig`: run cross-compile check: `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux`.
 - Scan the diff against `docs/greptile-learnings/RULES.md` — verify no rule is violated by the changes.
 - Capture failures with exact command and error text.
-- **500-line gate on every touched file.** For each file you created or modified, run `wc -l <file>`. If any file exceeds 500 lines, you must split it before proceeding to DOCUMENT. This is a hard gate — do not defer, do not ask, do not rationalize. Split the file.
+- **400-line gate on every touched file.** For each file you created or modified, run `wc -l <file>`. If any file exceeds 400 lines, you must split it before proceeding to DOCUMENT. This is a hard gate — do not defer, do not ask, do not rationalize. Split the file.
   ```bash
   # Run on all files in the diff:
-  git diff --name-only origin/main | xargs wc -l | awk '$1 > 500 { print "❌ " $2 ": " $1 " lines (limit 500)" }'
+  git diff --name-only origin/main | xargs wc -l | awk '$1 > 400 { print "❌ " $2 ": " $1 " lines (limit 400)" }'
   ```
 - **Spec-claim verification.** If the spec has a Test Specification section, verify every row in the Spec-Claim Tracing table has a passing test. If a claim says "real-time" or "incremental", verify the *transport* delivers bytes incrementally — a unit test on a parser does NOT prove transport behavior.
 - **Verification Evidence table.** If the spec has a Verification Evidence section, fill it in with actual command output. This is the proof that the spec claims are met.

@@ -239,7 +239,7 @@ Each constraint must be measurable — not "fast" or "efficient" but a number or
 |-----------|---------------|
 | {e.g., "Zero heap allocations in hot path"} | {e.g., "std.testing.allocator detects leaks; grep for alloc in loop body"} |
 | {e.g., "Max latency per message < 5ms"} | {e.g., "benchmark test with 1000 messages"} |
-| {e.g., "File under 500 lines"} | {e.g., "wc -l < 500"} |
+| {e.g., "File under 400 lines"} | {e.g., "wc -l < 400"} |
 | {e.g., "Cross-compiles on x86_64-linux, aarch64-linux"} | {e.g., "zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux"} |
 
 ---
@@ -317,7 +317,7 @@ Filled in during VERIFY phase. Proves the spec claims are met.
 | Integration tests | `make test-integration` | {output} | |
 | Cross-compile | `zig build -Dtarget=x86_64-linux` | {output} | |
 | Lint | `make lint` | {output} | |
-| 500L gate | `wc -l` | {output} | |
+| 400L gate | `wc -l` | {output} | |
 
 ---
 
