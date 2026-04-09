@@ -94,7 +94,7 @@ pub fn claimZombie(
     defer q.deinit();
 
     const row = try q.next() orelse {
-        log.err("zombie_event_loop.claim_failed zombie_id={s} error_code=" ++ error_codes.ERR_ZOMBIE_CLAIM_FAILED ++ " reason=not_found", .{zombie_id_input});
+        log.warn("zombie_event_loop.claim_not_found zombie_id={s} error_code=" ++ error_codes.ERR_ZOMBIE_CLAIM_FAILED ++ " reason=not_found", .{zombie_id_input});
         return error.ZombieNotFound;
     };
 
