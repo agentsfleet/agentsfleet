@@ -1,8 +1,8 @@
 <div align="center">
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="assets/logo-light.svg" />
-  <source media="(prefers-color-scheme: light)" srcset="assets/logo-dark.svg" />
+  <source media="(prefers-color-scheme: dark)" srcset="assets/logo-dark.svg" />
+  <source media="(prefers-color-scheme: light)" srcset="assets/logo-light.svg" />
   <img src="assets/logo-dark.svg" width="200" alt="usezombie" />
 </picture>
 
@@ -35,28 +35,18 @@ You have a working agent. It can reply to emails, fix bugs, process payments, re
 
 So you babysit it. Or you don't run it at all.
 
-## The fix
-
-```bash
-$ zombiectl install lead-collector
-  Lead Collector installed.
-
-$ zombiectl up
-  lead-collector is live.
-  Listening for emails at you@mail.usezombie.com
-```
-
-That's it. Your agent is running 24/7 in a sandboxed process. It never sees your credentials. Every action is logged. You set the budget. You hold the kill switch.
-
 ## What Zombies are
 
-A **Zombie** is a pre-built, configurable agent workflow that does one job and runs forever.
+A **Zombie** is a preconfigured agent workflow that does one job and runs forever.
 
 ```
-"Install the Lead Zombie"      → handles inbound email, replies, logs leads
-"Install the Slack Bug Fixer"  → monitors #bugs, opens PRs, replies in thread
-"Install the PR Zombie"        → reviews every PR, posts feedback, alerts on critical
-"Install the Ops Zombie"       → watches infra, alerts on incidents
+"Install the Lead Zombie"       → handles inbound email, replies, logs leads
+"Install the Slack Bug Fixer"   → monitors #bugs, opens PRs, replies in thread
+"Install the PR Zombie"         → reviews every PR, posts feedback, alerts on critical
+"Install the Ops Zombie"        → watches infra, alerts on incidents
+"Install the Hiring Zombie"     → receives candidate profile (resume PDF, GitHub PRs,
+                                   Gmail), analyzes attachments for merit, sends you
+                                   a decision report on Discord
 ```
 
 You don't code a Zombie. You configure it: what tools it attaches, what credentials it uses, what budget it has, what triggers it. The agent intelligence is built in.
