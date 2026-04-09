@@ -186,10 +186,8 @@ pub const Client = struct {
         var stream_key_buf: [128]u8 = undefined;
         const stream_key = try std.fmt.bufPrint(&stream_key_buf, "zombie:{s}:events", .{zombie_id});
         var resp = try self.command(&.{
-            "XADD", stream_key, "MAXLEN", "~", "10000", "*",
-            "event_id", event_id,
-            "type",     event_type,
-            "source",   source,
+            "XADD",     stream_key, "MAXLEN", "~",        "10000",  "*",
+            "event_id", event_id,   "type",   event_type, "source", source,
             "data",     data_json,
         });
         defer resp.deinit(self.alloc);

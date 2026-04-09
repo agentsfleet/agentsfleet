@@ -29,7 +29,7 @@ pub const Context = common.Context;
 // Inbound webhook payload shape: {"event_id": "...", "type": "...", "data": {...}}
 const WebhookPayload = struct {
     event_id: []const u8,
-    @"type": []const u8,
+    type: []const u8,
     data: std.json.Value,
 };
 
@@ -37,8 +37,8 @@ const WebhookPayload = struct {
 const ZombieRow = struct {
     workspace_id: []u8,
     status: []u8,
-    token: ?[]u8,   // config_json->'trigger'->>'token' — null means open (no auth)
-    source: ?[]u8,  // config_json->'trigger'->>'source' — label for logs/stream, not routing key
+    token: ?[]u8, // config_json->'trigger'->>'token' — null means open (no auth)
+    source: ?[]u8, // config_json->'trigger'->>'source' — label for logs/stream, not routing key
 };
 
 fn deinitZombieRow(row: *ZombieRow, alloc: std.mem.Allocator) void {
@@ -121,7 +121,7 @@ pub fn handleReceiveWebhook(
     defer parsed.deinit();
     const payload = parsed.value;
 
-    if (payload.event_id.len == 0 or payload.@"type".len == 0) {
+    if (payload.event_id.len == 0 or payload.type.len == 0) {
         common.errorResponse(res, .bad_request, error_codes.ERR_WEBHOOK_MALFORMED, "event_id and type are required", req_id);
         return;
     }
@@ -198,7 +198,7 @@ pub fn handleReceiveWebhook(
     // ── 7. Enqueue to zombie event stream ──────────────────────────────────
     // source label is from config (human-readable, e.g. "email") — falls back to empty.
     const source_label = zombie.source orelse "";
-    ctx.queue.xaddZombieEvent(zombie_id, payload.event_id, payload.@"type", source_label, data_json) catch |err| {
+    ctx.queue.xaddZombieEvent(zombie_id, payload.event_id, payload.type, source_label, data_json) catch |err| {
         log.err("webhook.enqueue_failed zombie_id={s} event_id={s} err={s}", .{ zombie_id, payload.event_id, @errorName(err) });
         common.internalOperationError(res, "Failed to enqueue event", req_id);
         return;
@@ -209,7 +209,7 @@ pub fn handleReceiveWebhook(
     const detail = std.fmt.bufPrint(
         &detail_buf,
         "webhook_received source={s} event_id={s} type={s}",
-        .{ source_label, payload.event_id, payload.@"type" },
+        .{ source_label, payload.event_id, payload.type },
     ) catch "webhook_received";
     activity_stream.logEvent(ctx.pool, alloc, .{
         .zombie_id = zombie_id,
@@ -219,7 +219,7 @@ pub fn handleReceiveWebhook(
     });
 
     log.info("webhook.accepted zombie_id={s} event_id={s} type={s} source={s}", .{
-        zombie_id, payload.event_id, payload.@"type", source_label,
+        zombie_id, payload.event_id, payload.type, source_label,
     });
 
     res.status = 202;
@@ -234,12 +234,13 @@ test "WebhookPayload parses valid event" {
     const parsed = try std.json.parseFromSlice(WebhookPayload, alloc, body, .{ .ignore_unknown_fields = true });
     defer parsed.deinit();
     try std.testing.expectEqualStrings("evt_001", parsed.value.event_id);
-    try std.testing.expectEqualStrings("email.received", parsed.value.@"type");
+    try std.testing.expectEqualStrings("email.received", parsed.value.type);
 }
 
 test "WebhookPayload rejects missing event_id" {
     const alloc = std.testing.allocator;
-    const body = \\{"type":"email.received","data":{}}
+    const body =
+        \\{"type":"email.received","data":{}}
     ;
     const result = std.json.parseFromSlice(WebhookPayload, alloc, body, .{});
     try std.testing.expect(if (result) |_| false else |_| true);

@@ -14,7 +14,7 @@ const log = std.log.scoped(.zombie_config);
 
 // Built-in skills. clawhub:// registry refs are also accepted (must be pinned).
 const KNOWN_ZOMBIE_SKILLS = [_][]const u8{
-    "agentmail", "slack", "github", "git",
+    "agentmail", "slack",      "github",    "git",
     "linear",    "cloudflare", "pagerduty",
 };
 

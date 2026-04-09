@@ -42,9 +42,8 @@ pub fn ensureZombieConsumerGroup(client: *redis_client.Client, zombie_id: []cons
     var key_buf: [128]u8 = undefined;
     const stream_key = try zombieStreamKey(&key_buf, zombie_id);
     var resp = try client.commandAllowError(&.{
-        "XGROUP", "CREATE", stream_key,
-        queue_consts.zombie_consumer_group,
-        "0", "MKSTREAM",
+        "XGROUP",                           "CREATE", stream_key,
+        queue_consts.zombie_consumer_group, "0",      "MKSTREAM",
     });
     defer resp.deinit(client.alloc);
     switch (resp) {
@@ -66,12 +65,12 @@ pub fn xreadgroupZombie(
     var key_buf: [128]u8 = undefined;
     const stream_key = try zombieStreamKey(&key_buf, zombie_id);
     var resp = try client.command(&.{
-        "XREADGROUP", "GROUP",
-        queue_consts.zombie_consumer_group,
-        consumer_id,
-        "COUNT", queue_consts.zombie_xread_count,
-        "BLOCK", queue_consts.zombie_xread_block_ms,
-        "STREAMS", stream_key, ">",
+        "XREADGROUP",                       "GROUP",
+        queue_consts.zombie_consumer_group, consumer_id,
+        "COUNT",                            queue_consts.zombie_xread_count,
+        "BLOCK",                            queue_consts.zombie_xread_block_ms,
+        "STREAMS",                          stream_key,
+        ">",
     });
     defer resp.deinit(client.alloc);
     return decodeSingleZombieEvent(client.alloc, resp);
@@ -86,12 +85,10 @@ pub fn xautoclaimZombie(
     var key_buf: [128]u8 = undefined;
     const stream_key = try zombieStreamKey(&key_buf, zombie_id);
     var resp = try client.command(&.{
-        "XAUTOCLAIM", stream_key,
-        queue_consts.zombie_consumer_group,
-        consumer_id,
-        queue_consts.zombie_xautoclaim_min_idle_ms,
-        queue_consts.xautoclaim_start,
-        "COUNT", queue_consts.xautoclaim_count,
+        "XAUTOCLAIM",                               stream_key,
+        queue_consts.zombie_consumer_group,         consumer_id,
+        queue_consts.zombie_xautoclaim_min_idle_ms, queue_consts.xautoclaim_start,
+        "COUNT",                                    queue_consts.xautoclaim_count,
     });
     defer resp.deinit(client.alloc);
     return decodeAutoClaimZombieEvent(client.alloc, resp);
@@ -102,9 +99,8 @@ pub fn xackZombie(client: *redis_client.Client, zombie_id: []const u8, message_i
     var key_buf: [128]u8 = undefined;
     const stream_key = try zombieStreamKey(&key_buf, zombie_id);
     var resp = try client.command(&.{
-        "XACK", stream_key,
-        queue_consts.zombie_consumer_group,
-        message_id,
+        "XACK",                             stream_key,
+        queue_consts.zombie_consumer_group, message_id,
     });
     defer resp.deinit(client.alloc);
     switch (resp) {

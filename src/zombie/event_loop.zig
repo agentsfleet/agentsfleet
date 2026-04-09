@@ -88,7 +88,7 @@ pub fn claimZombie(
     defer pool.release(conn);
 
     var q = try conn.query(
-        \\SELECT workspace_id, config_json, source_markdown, status
+        \\SELECT workspace_id::text, config_json::text, source_markdown, status
         \\FROM core.zombies WHERE id = $1
     , .{zombie_id_input}); // check-pg-drain: ok — drain in collectZombieRow
     defer q.deinit();
@@ -389,7 +389,7 @@ fn loadSessionCheckpoint(alloc: Allocator, pool: *pg.Pool, zombie_id: []const u8
     defer pool.release(conn);
 
     var q = try conn.query(
-        \\SELECT context_json FROM core.zombie_sessions WHERE zombie_id = $1
+        \\SELECT context_json::text FROM core.zombie_sessions WHERE zombie_id = $1
     , .{zombie_id}); // check-pg-drain: ok — drain after next()
     defer q.deinit();
 
