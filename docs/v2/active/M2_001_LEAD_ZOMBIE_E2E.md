@@ -4,7 +4,7 @@
 **Milestone:** M2
 **Workstream:** 001
 **Date:** Apr 09, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P0 — First live Zombie; proves the pitch works
 **Batch:** B1 — no dependencies
 **Branch:** feat/m2-lead-zombie-e2e
