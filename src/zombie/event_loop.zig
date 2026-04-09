@@ -428,9 +428,13 @@ pub fn updateSessionContext(
 }
 
 /// Truncate a string for safe inclusion in a JSON value (max 2048 bytes).
+/// Walks backward from the cut point to avoid splitting a multi-byte UTF-8 sequence.
 pub fn truncateForJson(s: []const u8) []const u8 {
     const max_len: usize = 2048;
-    return if (s.len > max_len) s[0..max_len] else s;
+    if (s.len <= max_len) return s;
+    var end = max_len;
+    while (end > 0 and (s[end] & 0xC0) == 0x80) end -= 1; // skip continuation bytes
+    return s[0..end];
 }
 
 fn sleepWithBackoff(cfg: EventLoopConfig, consecutive_errors: u32) void {
