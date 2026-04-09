@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS core.zombie_sessions (
     CONSTRAINT uq_zombie_sessions_zombie UNIQUE (zombie_id)
 );
 
--- Worker reads session at claim; upserts (INSERT OR REPLACE by zombie_id) after each event.
+-- Worker reads session at claim, upserts (INSERT OR REPLACE by zombie_id) after each event.
 -- API reads session for status display.
 GRANT SELECT, INSERT, UPDATE ON core.zombie_sessions TO worker_runtime;
 GRANT SELECT ON core.zombie_sessions TO api_runtime;

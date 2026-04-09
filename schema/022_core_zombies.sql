@@ -1,6 +1,6 @@
 -- M1_001 §6.1: Zombie entity table.
 -- source_markdown: raw .md file (YAML frontmatter + freeform instructions/voice transcript).
--- config_json: CLI-parsed frontmatter as JSON; Zig server reads this only — never parses YAML.
+-- config_json: CLI-parsed frontmatter as JSON. Zig server reads this only, never parses YAML.
 -- Status transitions: active → paused → active | active → stopped (terminal).
 
 CREATE TABLE IF NOT EXISTS core.zombies (

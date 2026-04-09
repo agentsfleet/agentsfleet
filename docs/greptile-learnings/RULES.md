@@ -172,7 +172,18 @@ Stale indices silently point at the wrong SQL file.
 
 ---
 
-## 18. Gate dispatcher must not glob itself
+## 18. No semicolons in SQL comments
+
+The migration statement splitter splits on `;` but doesn't track `-- line comments`.
+A `;` inside a comment (e.g. `-- reads at claim; upserts after`) splits the comment
+into two "statements" — the second half is invalid SQL.
+
+> M1_001: `022_core_zombies.sql` and `023_core_zombie_sessions.sql` had `;` in comments,
+> breaking the migration runner with `UnexpectedDBMessage`.
+
+---
+
+## 19. Gate dispatcher must not glob itself
 
 `00_gate.sh` glob pattern must exclude `00_*`. Use `0[1-9]_*.sh` + `[1-9][0-9]_*.sh`.
 
@@ -180,7 +191,7 @@ Stale indices silently point at the wrong SQL file.
 
 ---
 
-## 19. No prompt injection from user input
+## 20. No prompt injection from user input
 
 Never concatenate raw user input into agent prompts or tool calls.
 Validate, type-check, length-bound all external input. Use parameterized templates.
