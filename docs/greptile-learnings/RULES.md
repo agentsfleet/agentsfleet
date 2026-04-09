@@ -103,7 +103,13 @@ TLS flush encrypts into the buffer; socket flush actually sends the bytes.
 **Postgres:** `conn.exec()` for writes. `q.drain()` before `q.deinit()` on reads.
 Copy row data before drain — slices become dangling. Enforced by `make check-pg-drain`.
 
+**Postgres UUID/JSONB reads:** Cast UUID and JSONB columns to `::text` in SELECT queries.
+The `pg` library has no native UUID type — it returns raw binary bytes on Linux but text on
+macOS. `::text` forces text format regardless of wire protocol. Fix opportunistically when
+touching any query that reads UUID or JSONB columns with `row.get([]const u8, ...)`.
+
 > M22_001: missing socket flush → Redis commands encrypted but never sent → infinite hang.
+> M1_001: `claimZombie` read `workspace_id` UUID as binary on Linux CI, text on macOS dev.
 
 ---
 
