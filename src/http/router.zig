@@ -34,6 +34,7 @@ pub const Route = union(enum) {
     get_workspace_billing_summary: []const u8,
     set_workspace_scoring_config: []const u8,
     put_harness_source: []const u8,
+    receive_webhook: []const u8,
     compile_harness: []const u8,
     activate_harness: []const u8,
     get_harness_active: []const u8,
@@ -120,6 +121,9 @@ pub fn match(path: []const u8) ?Route {
     if (matchWorkspaceSuffix(path, "/billing/summary")) |workspace_id| return .{ .get_workspace_billing_summary = workspace_id };
     if (matchWorkspaceSuffix(path, "/scoring/config")) |workspace_id| return .{ .set_workspace_scoring_config = workspace_id };
     if (matchWorkspaceSuffix(path, "/harness/source")) |workspace_id| return .{ .put_harness_source = workspace_id };
+
+    // M1_001: Zombie webhook endpoint — /v1/webhooks/{zombie_id}
+    if (matchWebhookZombieId(path)) |zombie_id| return .{ .receive_webhook = zombie_id };
     if (matchWorkspaceSuffix(path, "/harness/compile")) |workspace_id| return .{ .compile_harness = workspace_id };
     if (matchWorkspaceSuffix(path, "/harness/activate")) |workspace_id| return .{ .activate_harness = workspace_id };
     if (matchWorkspaceSuffix(path, "/harness/active")) |workspace_id| return .{ .get_harness_active = workspace_id };
@@ -202,6 +206,16 @@ fn matchAgentHarnessChangeAction(path: []const u8, suffix: []const u8) ?AgentHar
 
 fn isSingleSegment(value: []const u8) bool {
     return value.len > 0 and std.mem.indexOfScalar(u8, value, '/') == null;
+}
+
+// matchWebhookZombieId matches /v1/webhooks/{zombie_id} and returns the zombie_id segment.
+// zombie_id must be a single path segment (no slashes, non-empty).
+fn matchWebhookZombieId(path: []const u8) ?[]const u8 {
+    const prefix = "/v1/webhooks/";
+    if (!std.mem.startsWith(u8, path, prefix)) return null;
+    const zombie_id = path[prefix.len..];
+    if (!isSingleSegment(zombie_id)) return null;
+    return zombie_id;
 }
 
 test "match resolves workspace billing and harness routes" {
@@ -380,18 +394,10 @@ test "matchRunAction resolves :retry, :replay, :stream with single-segment run_i
     try std.testing.expectEqualStrings(run_id, matchRunAction("/v1/runs/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11:retry", ":retry").?);
     try std.testing.expectEqualStrings(run_id, matchRunAction("/v1/runs/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11:replay", ":replay").?);
     try std.testing.expectEqualStrings(run_id, matchRunAction("/v1/runs/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11:stream", ":stream").?);
-}
-
-test "matchRunAction rejects multi-segment run_id (path traversal)" {
+    // Reject invalid inputs
     try std.testing.expect(matchRunAction("/v1/runs/foo/bar:retry", ":retry") == null);
     try std.testing.expect(matchRunAction("/v1/runs//bar:retry", ":retry") == null);
-}
-
-test "matchRunAction rejects empty run_id" {
     try std.testing.expect(matchRunAction("/v1/runs/:retry", ":retry") == null);
-}
-
-test "matchRunAction rejects wrong prefix" {
     try std.testing.expect(matchRunAction("/v1/workspaces/ws1:retry", ":retry") == null);
 }
 
@@ -468,4 +474,22 @@ test "M17: bare run path resolves to get_run not cancel_run" {
         .get_run => |id| try std.testing.expectEqualStrings("run-99", id),
         else => return error.TestExpectedEqual,
     }
+}
+
+// ── M1_001 webhook route tests ────────────────────────────────────────────
+
+test "M1_001: webhook routes resolve and reject correctly" {
+    const zombie_id = "019abc12-8d3a-7f13-8abc-2b3e1e0a6f11";
+    // Valid zombie_id segment
+    try std.testing.expectEqualStrings(zombie_id, matchWebhookZombieId("/v1/webhooks/019abc12-8d3a-7f13-8abc-2b3e1e0a6f11").?);
+    // Invalid: empty, multi-segment, missing prefix
+    try std.testing.expect(matchWebhookZombieId("/v1/webhooks/") == null);
+    try std.testing.expect(matchWebhookZombieId("/v1/webhooks/a/b") == null);
+    try std.testing.expect(matchWebhookZombieId("/v1/webhooks") == null);
+    // match() integration
+    const route = match("/v1/webhooks/019abc12-8d3a-7f13-8abc-2b3e1e0a6f11") orelse return error.TestExpectedMatch;
+    try std.testing.expectEqualStrings(zombie_id, switch (route) {
+        .receive_webhook => |id| id,
+        else => return error.TestExpectedEqual,
+    });
 }

@@ -165,12 +165,16 @@ Primary rules file: `docs/greptile-learnings/RULES.md`.
 
 Read it at EXECUTE start and before review/fix cycles.
 
+RULES.md contains generic principles, not per-incident entries. Most findings are instances
+of existing rules (unused code, missing parser, double-free, etc.).
+
 Post-PR greptile fix workflow:
 
 1. Fetch review ID/comments.
 2. Fix findings.
 3. Run verification (`make lint`, `make test`, and DB integration when needed).
-4. Add new rules for P0/P1 findings.
+4. For each P0/P1 finding: check if an existing rule in RULES.md covers it.
+   If yes — append the incident reference. If no — add a new generic principle.
 5. Reply to greptile threads with fix commit SHA.
 6. Commit and push.
 7. Report findings/fixes/rules/reply IDs.

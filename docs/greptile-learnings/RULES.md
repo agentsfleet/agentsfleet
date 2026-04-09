@@ -1,506 +1,242 @@
 # Code Rules — Learned from Review
 
-Rules derived from greptile reviews, PR feedback, and production incidents.
-Each rule has: the rule, why it exists, and what to do instead.
+Generic principles derived from greptile reviews, PR feedback, and production incidents.
+Each rule is a universal principle. Incident references show where it bit us.
 
-**When to read this file:**
-- At the start of EXECUTE phase (before writing code)
-- When `/review` skill is invoked (before reviewing code)
-- When fixing greptile/review feedback
-
-**When to ignore a rule:** Only when the user explicitly overrides it for a specific case with a stated reason. Never silently skip.
+**Read this:** at EXECUTE start, during `/review`, when fixing review feedback.
+**Ignore a rule:** only when the user explicitly overrides it with a stated reason.
 
 ---
 
-## Parsing & Data Extraction
+## 1. No dead code
 
-**RULE: Use the language's standard JSON/XML/YAML parser. Never scan raw bytes for structured data.**
+Remove unused variables, imports, parameters, and unreachable branches immediately.
+Don't leave them for later. Linters and reviewers will flag them, and they mislead readers
+about what the code actually depends on.
 
-Why: String scanning (`indexOf`, `grep`, regex) on structured data is injection-prone. A value containing the search pattern causes misparsing. Escape-checking hacks just move the bug.
-
-Do:
-```zig
-const parsed = std.json.parseFromSlice(std.json.Value, alloc, data, .{}) catch return fallback;
-defer parsed.deinit();
-const val = parsed.value.object.get("field") orelse return fallback;
-```
-
-Don't:
-```zig
-const pos = std.mem.indexOf(u8, data, "\"field\":") orelse return fallback;
-```
-
-Incident: M22_001 greptile P2 — `extractCreatedAt` used `std.mem.indexOf` to find `"created_at":` in JSON. A crafted `gate_name` containing that string could cause misparsing.
+> M1_001: unused destructured deps in zombie.js; dead `currentObj` branch in simpleYamlParse.
+> M30_002: unused variables across CLI commands.
 
 ---
 
-## JavaScript — Reference vs Value
+## 2. Use standard parsers — never hand-roll
 
-**RULE: Never pass a mutable boolean/number to a function expecting to observe later changes. Use an object, closure, or the AbortController pattern.**
+Use the language's built-in or battle-tested parser for structured data (JSON, YAML, TOML, XML).
+Never use `indexOf`, regex, or line-by-line string scanning on structured formats.
 
-Why: JavaScript passes primitives by value. The called function gets a frozen snapshot, not a live reference. If the outer scope changes the value after the call, the function never sees the update.
-
-Do:
-```javascript
-// Use AbortController — its .signal is an object reference
-const ac = new AbortController();
-process.on("SIGINT", () => ac.abort());
-// In the called function, check: err.name === "AbortError"
-```
-
-Don't:
-```javascript
-let aborted = false;
-process.on("SIGINT", () => { aborted = true; });
-readStream(response, aborted); // aborted is frozen at false inside readStream
-```
-
-Incident: M22_001 greptile P2 — `abortedRef` parameter was stale; only `AbortError` name check saved correctness.
+> M22_001: `extractCreatedAt` used `indexOf` on JSON — injection-prone.
+> M1_001: custom `simpleYamlParse` silently dropped all arrays.
 
 ---
 
-## HTTP Error Handling
+## 3. One owner per resource — no double cleanup
 
-**RULE: Distinguish retryable from non-retryable HTTP errors. Never treat all non-2xx the same.**
+Every allocation must have exactly one cleanup path. If `errdefer` owns it, don't also
+free manually. If a `defer` owns it, don't free in a catch block.
 
-Why: A blanket `return` on any HTTP error means transient 5xx (server overload, deploy in progress) kills the operation permanently. A retry would have succeeded.
-
-Do:
-```javascript
-if (!response.ok) {
-  if (response.status >= 500 && attempt < maxRetries) { retry; continue; }
-  return; // 4xx: permanent, don't retry
-}
-```
-
-Don't:
-```javascript
-if (!response.ok) { return; } // 503 and 404 treated identically
-```
-
-Incident: M22_001 greptile P2 — `streamRunWatch` returned immediately on any non-2xx, including 503.
+> M1_001: manual `alloc.free()` + `errdefer` on the same pointer = double-free on error path.
 
 ---
 
-## Zig — Query Results
+## 4. Constant-time comparison for secrets
 
-**RULE: Call `conn.exec()` for writes. Call `q.drain()` before `q.deinit()` on reads. Copy row data before drain.**
+Never use short-circuit equality (`==`, `eql`, `===`) to compare tokens, keys, or passwords.
+Use XOR accumulation or a constant-time library function. Length mismatch can short-circuit
+(length is not secret), but byte comparison must not.
 
-Why: `pg.Conn` cannot issue new commands while a result set is open. Forgetting `drain()` causes silent hangs. Row slices point into the result buffer — they become dangling after drain/deinit.
-
-Do:
-```zig
-var q = try conn.query("SELECT ...", .{});
-defer q.deinit();
-const val = try alloc.dupe(u8, row.get([]u8, 0) catch "");
-q.drain() catch {};
-```
-
-Don't:
-```zig
-var q = try conn.query("SELECT ...", .{});
-defer q.deinit();
-const val = row.get([]u8, 0) catch ""; // dangling after deinit
-// missing drain before deinit
-```
-
-Source: ZIG_RULES.md, enforced by `make check-pg-drain`.
+> M1_001: webhook Bearer token used `std.mem.eql` — timing side-channel.
 
 ---
 
-## Constants & Magic Values
+## 5. Distinguish error classes — timeout ≠ fatal ≠ retryable
 
-**RULE: If a timeout, retry count, or threshold appears in code, it must be a named constant. If it's used across modules, put it in a shared constants file.**
+Never collapse all errors into one return value. Timeouts are expected (return null/retry).
+Fatal errors must propagate. Retryable HTTP 5xx must retry; permanent 4xx must not.
 
-Why: Magic numbers hide intent and make tuning impossible without reading the implementation. Named constants document the contract.
-
-Do:
-```zig
-pub const PUBSUB_READ_TIMEOUT_MS: u32 = 25_000;
-```
-
-Don't:
-```zig
-std.posix.setsockopt(fd, ..., 25000);
-```
+> M22_001: `readMessage()` returned null for ConnectionResetByPeer → busy-loop.
+> M22_001: `streamRunWatch` treated 503 and 404 identically.
 
 ---
 
-## File Size
+## 6. Named constants, schema-qualified SQL
 
-**RULE: Keep code files under 500 lines. If a file exceeds 500 lines after your changes, split it before proceeding.**
+No magic numbers. Timeouts, retry counts, thresholds → named constants.
+If used across modules → shared constants file.
+SQL in handlers → always schema-qualified (`core.table`, not `table`).
 
-Why: Large files are hard to review, test, and reason about. The 500L limit is enforced in CI for Zig and as a VERIFY gate for all languages.
-
-Split strategy: Extract a cohesive function group into a new module (e.g., `streamRunWatch` → `run_watch.js`).
-
----
-
-## Security — Input to Agents/LLMs
-
-**RULE: Never concatenate raw user input into agent prompts, tool calls, or structured data that flows to an agent. Use structured message formats.**
-
-Why: Prompt injection via user-controlled fields (gate names, run IDs, error messages) can manipulate agent behavior. Even if the current code doesn't send data to an LLM, data flows change — defensive coding prevents future injection.
-
-Do: Validate, type-check, length-bound all external input. Use parameterized templates.
-Don't: `prompt = "Fix this error: " + user_error_message`
+> M31_001: unqualified `platform_llm_keys` in handler query.
 
 ---
 
-## Error Handling — Timeout vs Fatal
+## 7. Composite keyset cursors for pagination
 
-**RULE: When a function handles both timeout and fatal errors, return null for timeouts and propagate fatal errors. Never swallow all errors into the same return value.**
+Cursor-based pagination must encode `(sort_column, id)` — never a bare timestamp.
+Multiple rows can share the same millisecond; a scalar cursor silently skips them.
 
-Why: If both timeout (expected) and connection-reset (fatal) return null, the caller has no way to distinguish them. A tight loop that expects null-on-timeout will busy-loop on fatal errors, hammering downstream systems with no backoff.
-
-Do:
-```zig
-if (err == error.WouldBlock or err == error.ConnectionTimedOut) return null;
-return err; // fatal — propagate so caller can break/fallback
-```
-
-Don't:
-```zig
-// All errors return null — caller's catch-break is dead code
-log.warn("read_error err={s}", .{@errorName(err)});
-return null;
-```
-
-Incident: M22_001 greptile P1 — `readMessage()` returned null for ConnectionResetByPeer, causing a busy-loop in the stream handler.
+> M1_001: activity_stream cursor was timestamp-only, dropping events at ms boundaries.
 
 ---
 
-## Zig TLS Transport — Flush Socket Writer After TLS Writer Flush
+## 8. Files under 500 lines
 
-**RULE: After calling `tls_writer.flush()`, always call `stream_writer.interface.flush()` to actually send the encrypted bytes to the socket.**
-
-Why: Zig 0.15.2's `std.crypto.tls.Client.writer.flush()` encrypts the plaintext and writes ciphertext into the `stream_writer`'s internal buffer — it does NOT flush that buffer to the socket. Without the second flush, Redis never receives the command and `readRespValue` blocks forever with no timeout.
-
-Do:
-```zig
-try writer.flush();  // TLS encrypt → into stream_writer buffer
-if (self.transport == .tls) try self.transport.tls.stream_writer.interface.flush();  // send to socket
-```
-
-Don't:
-```zig
-try writer.flush();  // TLS flush only — data sits in socket writer buffer, never sent
-```
-
-Incident: M22_001 — `sendCommand` in `redis_pubsub.zig` was missing the socket writer flush. AUTH and SUBSCRIBE commands were encrypted but never sent, causing `readRespValue` to block indefinitely with no error or timeout.
+Split before proceeding. Extract a cohesive function group into a new module.
+Enforced in CI (Zig) and VERIFY gate (all languages).
 
 ---
 
-## SSE Heartbeat — Interval Must Be Less Than Socket Timeout
+## 9. Cross-compile before commit (Zig)
 
-**RULE: Set the SSE heartbeat interval below `SO_RCVTIMEO` so the first socket wakeup fires the heartbeat before the proxy idle timeout.**
+`zig build -Dtarget=x86_64-linux-musl && zig build -Dtarget=aarch64-linux-musl`.
+Always explicit ABI (`-musl`). Never assume a macOS-compiling API exists on Linux.
+Never use bare `-Dtarget=x86_64-linux` in CI — LLVM can't parse host kernel versions.
 
-Why: With `SO_RCVTIMEO = 25s` and `heartbeat_interval = 30s`, the first wakeup at t=25s has elapsed=25s < 30s → no heartbeat. The second wakeup is at t=50s — after a 30s proxy has already killed the connection. The invariant `heartbeat_interval < SO_RCVTIMEO < proxy_idle_timeout` ensures the first wakeup always emits a heartbeat.
-
-Do:
-```zig
-// SO_RCVTIMEO = 25s, proxy_idle_timeout = 30s
-// heartbeat at t=25s: elapsed=25s ≥ 20s → fires within the proxy window
-const heartbeat_interval_ns: u64 = 20 * std.time.ns_per_s;
-```
-
-Don't:
-```zig
-// heartbeat_interval > SO_RCVTIMEO — first heartbeat at t=50s, proxy drops at t=30s
-const heartbeat_interval_ns: u64 = 30 * std.time.ns_per_s;
-```
-
-Incident: M22_001 greptile P1 — `heartbeat_interval_ns = 30s` with `SO_RCVTIMEO = 25s` meant the first heartbeat fired at ~50s, after the 30s proxy had already dropped the stream.
+> M22_001: `client.open()` compiled on macOS, missing on Linux. 3 rounds to fix.
+> v0.4.0: bare `-Dtarget=x86_64-linux` failed in CI; cache hid the bug in dev.
 
 ---
 
-## Streaming — Never Buffer Then Parse
+## 10. Flush all layers — drain all results
 
-**RULE: If the goal is real-time output, verify the transport delivers bytes incrementally. A buffered HTTP client defeats streaming regardless of how the parser works.**
+**TLS:** After `tls_writer.flush()`, also call `stream_writer.interface.flush()`.
+TLS flush encrypts into the buffer; socket flush actually sends the bytes.
 
-Why: `client.fetch()` + `response_writer` may buffer the entire response before calling the writer. `client.open()` + `req.reader().read()` delivers bytes as they arrive. Testing the parser with `feedBytes()` only validates parsing, not transport — the bug is invisible to unit tests.
+**Postgres:** `conn.exec()` for writes. `q.drain()` before `q.deinit()` on reads.
+Copy row data before drain — slices become dangling. Enforced by `make check-pg-drain`.
 
-Do: Use `client.open()` + `req.reader().read()` loop for SSE/streaming endpoints.
-Don't: Use `client.fetch()` with a response_writer and assume incremental delivery.
+**Postgres UUID/JSONB reads:** Cast UUID and JSONB columns to `::text` in SELECT queries.
+The `pg` library has no native UUID type — it returns raw binary bytes on Linux but text on
+macOS. `::text` forces text format regardless of wire protocol. Fix opportunistically when
+touching any query that reads UUID or JSONB columns with `row.get([]const u8, ...)`.
 
-Incident: M22_001 greptile P1 — Zig CLI buffered entire SSE response, printing all events at once after run completion.
-
----
-
-## Lock-Free Hash Maps — Never Read After CAS Failure
-
-**RULE: When a CAS (compare-and-swap) fails in a lock-free data structure, do NOT read the slot's fields. The winning thread may still be writing them. Continue probing or spin on a ready flag.**
-
-Why: TOCTOU race — between losing the CAS and reading the field, the winner thread is still initializing. You read partially-written data (wrong hash, truncated ID, zero-length string).
-
-Do: Use a two-phase init: `occupied` (CAS claim) + `ready` (fields written). Losers continue probing. Readers check `ready.load(.acquire) == 1` before accessing fields.
-Don't: Read `slot.hash` or `slot.ws_id` immediately after losing a CAS on `slot.occupied`.
-
-Incident: M28_001 greptile P1 — `resolveSlot` in `metrics_workspace.zig` read slot fields after CAS failure, causing potential duplicate workspace slots and corrupted metric labels.
+> M22_001: missing socket flush → Redis commands encrypted but never sent → infinite hang.
+> M1_001: `claimZombie` read `workspace_id` UUID as binary on Linux CI, text on macOS dev.
 
 ---
 
-## Migrations — Assert by Embedded Symbol, Not Stale Index Assumption
+## 11. Timing invariants must be explicit
 
-**RULE: When migration files are inserted or split, update every index-based migration assertion in tests to the new canonical position.**
+When multiple timeouts interact (heartbeat, socket, proxy), the ordering invariant
+must be documented and enforced: `heartbeat < socket_timeout < proxy_idle_timeout`.
 
-Why: Index-coupled assertions silently point at the wrong SQL file after a reorder/split. Tests then pass or fail for the wrong reason, hiding schema regressions.
-
-Do:
-```zig
-// 008_harness_control_plane.sql moved to migrations[6] after 001/002/003 split
-try std.testing.expect(std.mem.containsAtLeast(u8, migrations[6].sql, 1, "trust_level   TEXT NOT NULL"));
-```
-
-Don't:
-```zig
-// stale index after migration ordering changed
-try std.testing.expect(std.mem.containsAtLeast(u8, migrations[7].sql, 1, "trust_level   TEXT NOT NULL"));
-```
-
-Incident: M31_001 greptile P1 — `src/cmd/common.zig` checked `migrations[7]` for symbols that live in `008_harness_control_plane.sql` (`migrations[6]` after the split).
+> M22_001: heartbeat 30s > socket timeout 25s → first heartbeat at t=50s, proxy dropped at t=30s.
 
 ---
 
-## SQL Qualification — Prefer Explicit Schema in Handler Queries
+## 12. Streaming must verify transport, not just parser
 
-**RULE: New or touched SQL in application handlers must use schema-qualified table names (`core.*`, `billing.*`, etc.) instead of relying on `search_path`.**
+If the goal is real-time delivery, test that bytes arrive incrementally at the transport layer.
+Unit-testing a parser with `feedBytes()` doesn't prove the HTTP client isn't buffering.
 
-Why: Unqualified names depend on session defaults and can resolve differently across tools, tests, or future role configuration changes.
-
-Do:
-```sql
-SELECT provider FROM core.platform_llm_keys ORDER BY provider;
-```
-
-Don't:
-```sql
-SELECT provider FROM platform_llm_keys ORDER BY provider;
-```
-
-Incident: M31_001 greptile P2 — `admin_platform_keys_http.zig` used unqualified `platform_llm_keys`; fixed to `core.platform_llm_keys` and documented in `SCHEMA_CONVENTIONS.md`.
+> M22_001: Zig CLI buffered entire SSE response, printing all events at once.
 
 ---
 
-## Atomics — Use cmpxchgStrong When Spurious Failure Is Not Acceptable
+## 13. Primitives are pass-by-value in JS
 
-**RULE: Use `cmpxchgStrong` (not `cmpxchgWeak`) when a failed CAS causes the code to skip a critical side effect. Reserve `cmpxchgWeak` for retry loops and best-effort paths where a spurious miss is harmless.**
+Never pass a mutable `boolean`/`number` to a function expecting to observe later changes.
+Use an object, closure, or `AbortController`.
 
-Why: `cmpxchgWeak` is permitted to fail spuriously — it may return non-null even when the current value matches the expected value. If the code path after CAS failure skips a critical action (e.g., killing a child process, delivering a message), a spurious failure silently drops that action.
-
-Do:
-```zig
-// Interrupt delivery — must not be dropped.
-if (exit_reason.cmpxchgStrong(running, interrupted, .acq_rel, .acquire) == null) {
-    killWithEscalation(child);
-}
-```
-
-Don't:
-```zig
-// Spurious failure → interrupt silently dropped, gate keeps running.
-if (exit_reason.cmpxchgWeak(running, interrupted, .acq_rel, .acquire) == null) {
-    killWithEscalation(child);
-}
-return; // Falls through on spurious failure.
-```
-
-Incident: M21_002 greptile P1 — `cmpxchgWeak` on interrupt detection path could spuriously fail, causing the timer thread to exit without killing the gate child. Interrupt message consumed by GETDEL but never injected.
+> M22_001: `abortedRef` boolean was frozen at `false` inside the called function.
 
 ---
 
-## CLI JSON Contract — Error Codes Must Belong to the Stable Set
+## 14. Lock-free CAS: never read after failure
 
-**RULE: Every error code emitted in `--json` mode must appear in the stable error code table (§5.4 of the spec). Never introduce ad-hoc codes like `AGENT_ERROR` or `IO_ERROR` that are not in the contract.**
+When a CAS fails, the winning thread may still be writing. Don't read the slot's fields.
+Use a two-phase init: `occupied` (CAS claim) + `ready` flag (fields written).
 
-Why: Automation consumers branch on `error.code`. Undocumented codes create silent contract breaks — a consumer that handles the documented 5 codes will silently fail to handle an unknown code, causing brittle or incorrect error handling.
-
-Do:
-```js
-// Map internal failure categories to stable contract codes
-writeError(ctx, "API_ERROR", "agent returned no content", deps);
-writeError(ctx, "API_ERROR", `failed to write spec: ${err.message}`, deps);
-```
-
-Don't:
-```js
-writeError(ctx, "AGENT_ERROR", "agent returned no content", deps);  // not in stable table
-writeError(ctx, "IO_ERROR", `failed to write spec: ${err.message}`, deps);  // not in stable table
-```
-
-Incident: M30_002 greptile P1 — `spec_init.js` emitted `AGENT_ERROR` and `IO_ERROR` which were not in the 5-code stable table. Fixed to `API_ERROR` and covered by contract tests.
+> M28_001: `resolveSlot` read partially-written fields after losing CAS.
 
 ---
 
-## CLI JSON Contract — UNKNOWN_COMMAND Messages Must Identify the Token
+## 15. Test only reachable values
 
-**RULE: `UNKNOWN_COMMAND` error messages must name the actual unrecognized value, not print usage text.**
+Integration tests must not insert values that violate real schema CHECK constraints.
+Drift-detection tests must compare against an independent schema spec, not inline literals.
+Comptime guards must protect narrowing casts (`u64` → `i64`).
 
-Why: Automation consumers need to extract what was unknown to provide actionable error reporting. Usage text as a message is not machine-parseable.
-
-Do:
-```js
-writeError(ctx, "UNKNOWN_COMMAND", `unknown skill-secret action: ${action ?? "(none)"}`, deps);
-writeError(ctx, "UNKNOWN_COMMAND", `unknown harness command: ${group ?? "(none)"}`, deps);
-```
-
-Don't:
-```js
-writeError(ctx, "UNKNOWN_COMMAND", "usage: skill-secret put|delete ...", deps);
-writeError(ctx, "UNKNOWN_COMMAND", "usage: harness source put|compile|activate|active", deps);
-```
-
-Incident: M30_002 greptile P2 — `core-ops.js`, `admin.js`, `agent_harness.js`, `harness.js` used usage text as the UNKNOWN_COMMAND message instead of identifying the unknown token.
+> M31_002: tested `0` for a column with `CHECK >= 512`; tautological drift tests.
 
 ---
 
-## CLI JSON Contract — Dual-Branch jsonMode Guard Must Have a Comment
+## 16. CLI JSON contract discipline
 
-**RULE: When a command uses `if (ctx.jsonMode) { writeError(...) } else { multi-line prose }`, add a comment explaining why the else branch cannot use `writeError` directly.**
+- Error codes must belong to the stable set — no ad-hoc codes.
+- `UNKNOWN_COMMAND` messages must name the unrecognized token, not print usage.
+- Dual-branch `jsonMode` guards need a comment explaining why.
 
-Why: `writeError` already handles jsonMode internally, so the outer guard looks redundant to future readers. Without a comment, they may refactor it away, losing the multi-line human output.
-
-Do:
-```js
-// non-JSON: preserve multi-line usage text not expressible as a single message
-if (ctx.jsonMode) {
-  writeError(ctx, "UNKNOWN_COMMAND", `unknown agent subcommand: ${action}`, deps);
-} else {
-  writeLine(ctx.stderr, ui.err("usage: agent scores ..."));
-  writeLine(ctx.stderr, ui.err("       agent profile ..."));
-}
-```
-
-Don't:
-```js
-if (ctx.jsonMode) {
-  writeError(ctx, "UNKNOWN_COMMAND", `unknown agent subcommand: ${action}`, deps);
-} else {
-  writeLine(ctx.stderr, ui.err("usage: agent scores ..."));  // looks like redundant guard
-}
-```
-
-Incident: M30_002 greptile P2 — `agent.js` and `agent_proposals.js` had dual-branch guards without explanation.
+> M30_002: undocumented `AGENT_ERROR`/`IO_ERROR` codes; usage text as error message.
 
 ---
 
-## Drift-Detection Tests — Use an Independent Schema Snapshot
+## 17. Migration index assertions track position
 
-**RULE: Tests that verify Zig constants match SQL schema defaults must compare against a separate `SchemaSpec` struct, not against inline literals that mirror the constant definition.**
+When migration files are inserted or split, update every index-based assertion.
+Stale indices silently point at the wrong SQL file.
 
-Why: A test like `expectEqual(@as(u32, 3), DEFAULT_RUN_MAX_REPAIR_LOOPS)` is tautological — it asserts `3 == 3` and cannot detect drift. An independent `SchemaSpec` struct holds the raw SQL DEFAULT values; if either the constant or the spec diverges, the test fails.
-
-Do:
-```zig
-const SchemaSpec = struct { run_max_repair_loops: u32 = 3 };
-const schema_spec = SchemaSpec{};
-try std.testing.expectEqual(schema_spec.run_max_repair_loops, DEFAULT_RUN_MAX_REPAIR_LOOPS);
-```
-
-Don't:
-```zig
-try std.testing.expectEqual(@as(u32, 3), DEFAULT_RUN_MAX_REPAIR_LOOPS);
-```
-
-Incident: M31_002 greptile P2 — `src/types/defaults.zig` had tautological drift tests; replaced with `SchemaSpec` struct as independent source of truth.
+> M31_001: `migrations[7]` pointed at wrong file after split; should have been `[6]`.
 
 ---
 
-## Integration Tests — Only Test DB-Reachable Code Paths
+## 18. No semicolons in SQL comments
 
-**RULE: Integration tests must not insert values that violate real table CHECK constraints via temp tables without constraints. Test only values reachable from the actual schema.**
+The migration statement splitter splits on `;` but doesn't track `-- line comments`.
+A `;` inside a comment (e.g. `-- reads at claim; upserts after`) splits the comment
+into two "statements" — the second half is invalid SQL.
 
-Why: The real `billing.workspace_entitlements` table has `CHECK (scoring_context_max_tokens >= 512 AND <= 8192)`. Inserting `0` via an unconstrained temp table tests a dead-code branch (`<= 0` fallback) that can never be triggered from real DB data.
-
-Do:
-```zig
-// Insert 512 — the minimum valid value under the CHECK constraint
-// Tests that the clamp boundary is honoured correctly.
-VALUES (..., 512, ...);
-try std.testing.expectEqual(@as(u32, 512), cfg.scoring_context_max_tokens);
-```
-
-Don't:
-```zig
-// 0 is impossible in production — CHECK constraint prevents it
-VALUES (..., 0, ...);
-```
-
-Incident: M31_002 greptile P2 — `src/pipeline/scoring_defaults_test.zig` tested the non-positive fallback branch using a value the real schema makes impossible.
+> M1_001: `022_core_zombies.sql` and `023_core_zombie_sessions.sql` had `;` in comments,
+> breaking the migration runner with `UnexpectedDBMessage`.
 
 ---
 
-## Comptime Guards for u64→i64 Casts
+## 19. Gate dispatcher must not glob itself
 
-**RULE: Whenever a `u64` constant from `src/types/defaults.zig` is cast to `i64` or `i32`, add a `comptime std.debug.assert` at the top of the file to catch overflow if the constant is ever raised.**
+`00_gate.sh` glob pattern must exclude `00_*`. Use `0[1-9]_*.sh` + `[1-9][0-9]_*.sh`.
 
-Why: The cast `@as(i64, @intCast(DEFAULT_RUN_MAX_TOKENS))` is safe for current values but would panic at runtime if the constant ever exceeded `std.math.maxInt(i64)`. A comptime assert converts that latent runtime panic into a compile-time error.
-
-Do:
-```zig
-comptime {
-    std.debug.assert(defaults.DEFAULT_RUN_MAX_TOKENS <= std.math.maxInt(i64));
-}
-```
-
-Don't:
-```zig
-// Silent @intCast with no guard — panics at runtime if constant grows
-return used + @as(i64, @intCast(defaults.DEFAULT_RUN_MAX_TOKENS)) > budget;
-```
-
-Incident: M31_002 greptile P2 — `src/http/handlers/runs/start_budget.zig` and `src/pipeline/worker_claim.zig` cast `u64` defaults to `i64`/`i32` without comptime guards.
-
-### Gate dispatcher must not glob itself
-
-The `00_gate.sh` dispatcher runs section scripts via glob. The glob pattern must exclude `00_*` to prevent infinite recursion. Use `0[1-9]_*.sh` + `[1-9][0-9]_*.sh` instead of `[0-9][0-9]_*.sh`.
-
-**Do:**
-```bash
-for script in "$SCRIPT_DIR"/0[1-9]_*.sh "$SCRIPT_DIR"/[1-9][0-9]_*.sh; do
-```
-
-**Don't:**
-```bash
-for script in "$SCRIPT_DIR"/[0-9][0-9]_*.sh; do
-```
-
-Incident: PR #162 greptile P1 — `00_gate.sh` glob matched itself, causing fork bomb in CI.
+> PR #162: glob matched itself → fork bomb in CI.
 
 ---
 
-## Zig — Cross-Compile API Verification
+## 20. Functions ≤ 50 lines, methods ≤ 70 lines
 
-**RULE: Before using any stdlib API, verify it exists on all cross-compile targets. Do NOT assume an API that works on macOS exists on Linux.**
+Keep functions short enough to read without scrolling. If a function exceeds
+50 lines (70 for methods with setup/teardown), split it into named helpers.
+Each helper should do one thing and be independently testable.
 
-Why: Zig 0.15.2 `std.http.Client` has `open()` on macOS (native) but not on `x86_64-linux` or `aarch64-linux`. The correct cross-platform API is `client.request()` + `response.reader()` + `readVec()`. Compilation succeeds locally but fails in CI.
-
-Do:
-```bash
-# Before commit, verify cross-compile:
-zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux
-# Or grep stdlib source to check API exists:
-grep -n "pub fn request\|pub fn open\|pub fn fetch" ~/.local/share/mise/installs/zig/*/lib/std/http/Client.zig
-```
-
-Don't: Assume `client.open()` exists because it compiled on macOS. Ship without cross-compile check.
-
-Incident: M22_001 — `client.open()` used for SSE streaming compiled on macOS but failed on x86_64-linux and aarch64-linux CI. Required 3 rounds of fixes to find `client.request()` as the cross-platform alternative.
+> M1_001: `handleReceiveWebhook` was 120+ lines — 8 steps inlined into one function.
 
 ---
 
-## CI — Always Qualify Zig Linux Target with Explicit ABI
+## 21. All user-facing strings are constants
 
-**RULE: Never use `-Dtarget=x86_64-linux` or `-Dtarget=aarch64-linux` in CI. Always append `-musl` (e.g. `-Dtarget=x86_64-linux-musl`, `-Dtarget=aarch64-linux-musl`).**
+Error messages, status values, HTTP header prefixes, Redis key patterns, TTLs —
+if a string appears in a response or is compared against input, it must be a named
+constant in a shared constants file. No inline string literals for values that cross
+a module boundary.
 
-Why: Without an explicit ABI, Zig detects the host kernel version via `uname -r` and embeds it in the LLVM triple (e.g. `x86_64-unknown-linux5.10.0-musl`). LLVM in Zig 0.15.2 cannot parse this format, failing with "No available targets are compatible with triple". Alpine containers do not insulate against this — `uname -r` returns the host Ubuntu runner's kernel. The failure only surfaces on fresh compiles; `.zig-cache` hits bypass it entirely, making dev appear to pass while CI release builds fail.
+Group by domain: `webhook_constants.zig`, `error_messages.zig`, or add to the
+existing `src/errors/codes.zig` for error codes.
 
-Do:
-```yaml
-zig build -Doptimize=ReleaseSafe -Dtarget=x86_64-linux-musl
-zig build -Doptimize=ReleaseSafe -Dtarget=aarch64-linux-musl
-```
+> M1_001: `handleReceiveWebhook` had inline `"Bearer "`, `"active"`, `"duplicate"`,
+> `"accepted"`, `"webhook_received"`, `86400`, `"UZ-AUTH-001"`.
 
-Don't: Use `-Dtarget=x86_64-linux` or `-Dtarget=aarch64-linux` in any CI workflow.
+---
 
-Incident: v0.4.0 release — `zombied-executor` failed to compile in `binaries-linux-x86` and would have failed in `binaries-linux-aarch64`. All prod deploy jobs skipped. Dev appeared green only because the Zig build cache served pre-built artifacts, hiding the bug.
+## 22. Error messages follow a standard structure
+
+Every error response uses `error_codes.ERR_*` for the code and a constant for the
+human message. Error messages must be:
+- Actionable: tell the developer what to do
+- Consistent: same structure everywhere
+- Constant: defined once, not duplicated as inline strings
+
+Pattern: `common.errorResponse(res, status, error_codes.ERR_*, error_messages.MSG_*, req_id)`
+
+> M1_001: webhook handler mixed `error_codes.ERR_*` constants with inline message strings.
+
+---
+
+## 23. No prompt injection from user input
+
+Never concatenate raw user input into agent prompts or tool calls.
+Validate, type-check, length-bound all external input. Use parameterized templates.

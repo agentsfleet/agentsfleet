@@ -15,3 +15,6 @@ pub const agent_scoring_baseline_sql = @embedFile("018_agent_scoring_baseline.sq
 pub const agent_score_persistence_api_sql = @embedFile("019_agent_score_persistence_and_api.sql");
 pub const agent_failure_analysis_context_sql = @embedFile("020_agent_failure_analysis_and_context_injection.sql");
 pub const platform_llm_keys_sql = @embedFile("021_platform_llm_keys.sql");
+pub const core_zombies_sql = @embedFile("022_core_zombies.sql");
+pub const core_zombie_sessions_sql = @embedFile("023_core_zombie_sessions.sql");
+pub const core_activity_events_sql = @embedFile("024_core_activity_events.sql");

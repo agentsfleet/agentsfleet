@@ -264,7 +264,7 @@ describe("printBanner — T1: happy path", () => {
   test("noColor mode writes plain version line", () => {
     const out = makeBufferStream();
     printBanner(out.stream, VERSION, { noColor: true });
-    expect(out.read()).toBe("zombiectl v0.3.1\n");
+    expect(out.read()).toBe(`zombiectl v${VERSION}\n`);
   });
 
   test("jsonMode suppresses all output", () => {
@@ -328,7 +328,7 @@ describe("printBanner — T4: output fidelity", () => {
   test("noColor mode output is exactly 'zombiectl v{version}\\n'", () => {
     const out = makeBufferStream();
     printBanner(out.stream, VERSION, { noColor: true });
-    expect(out.read()).toBe("zombiectl v0.3.1\n");
+    expect(out.read()).toBe(`zombiectl v${VERSION}\n`);
   });
 });
 
@@ -336,7 +336,7 @@ describe("printBanner — T7: regression guards", () => {
   test("noColor plain format pinned — regression guard", () => {
     const out = makeBufferStream();
     printBanner(out.stream, VERSION, { noColor: true });
-    expect(out.read()).toBe("zombiectl v0.3.1\n");
+    expect(out.read()).toBe(`zombiectl v${VERSION}\n`);
   });
 
   test("color mode contains zombie emoji 🧟", () => {

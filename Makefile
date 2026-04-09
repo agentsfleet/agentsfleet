@@ -34,3 +34,5 @@ help:  ## Show all available Makefile targets
 	@echo "  build-dev          Build development container"
 	@echo "  push-dev           Push development image to registry"
 	@echo "  push                  Push production image (uses prebuilt linux binaries)"
+	@echo "  sync-version          Propagate VERSION → build.zig.zon + zombiectl/package.json"
+	@echo "  check-version         Verify all version files match VERSION (CI drift gate)"

@@ -92,6 +92,18 @@ pub fn generatePlatformLlmKeyId(alloc: std.mem.Allocator) ![]const u8 {
     return allocUuidV7(alloc);
 }
 
+pub fn generateZombieId(alloc: std.mem.Allocator) ![]const u8 {
+    return allocUuidV7(alloc);
+}
+
+pub fn generateZombieSessionId(alloc: std.mem.Allocator) ![]const u8 {
+    return allocUuidV7(alloc);
+}
+
+pub fn generateActivityEventId(alloc: std.mem.Allocator) ![]const u8 {
+    return allocUuidV7(alloc);
+}
+
 pub fn isSupportedAgentId(id: []const u8) bool {
     return isUuidV7(id);
 }

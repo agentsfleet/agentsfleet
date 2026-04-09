@@ -3,7 +3,7 @@
   "info": {
     "title": "UseZombie Control Plane API",
     "version": "1.0.0",
-    "description": "Agent Delivery Control Plane — spec-to-PR automation via Echo -> Scout -> Warden pipeline.",
+    "description": "Zombie automation control plane — webhook-driven agent execution in a bwrap+landlock sandbox.",
     "contact": {
       "name": "UseZombie",
       "url": "https://usezombie.com"
@@ -43,13 +43,6 @@
       }
     },
     {
-      "name": "Specs",
-      "description": "Spec lifecycle — list, sync, and manage specification documents",
-      "x-mintlify": {
-        "navigation": "Specs"
-      }
-    },
-    {
       "name": "Runs",
       "description": "Core spec-to-PR pipeline — queue, monitor, stream, retry, and cancel runs",
       "x-mintlify": {
@@ -57,17 +50,10 @@
       }
     },
     {
-      "name": "Agents",
-      "description": "Agent profiles, trust scores, improvement reports, and self-tuning proposals",
+      "name": "Zombies",
+      "description": "Zombie management and webhook ingestion — create, configure, and operate event-driven Zombies",
       "x-mintlify": {
-        "navigation": "Agents"
-      }
-    },
-    {
-      "name": "Harness",
-      "description": "Agent runtime configuration — author, compile, and activate harness configs",
-      "x-mintlify": {
-        "navigation": "Harness"
+        "navigation": "Zombies"
       }
     },
     {
@@ -85,13 +71,6 @@
       }
     },
     {
-      "name": "Agent Relay",
-      "description": "Spec generation and preview via LLM — streaming endpoints for interactive authoring",
-      "x-mintlify": {
-        "navigation": "Agent Relay"
-      }
-    },
-    {
       "name": "Admin",
       "description": "Platform-wide configuration — manage shared LLM provider keys",
       "x-mintlify": {
@@ -100,7 +79,7 @@
     },
     {
       "name": "Billing",
-      "description": "Plan upgrades, billing events, and scoring configuration",
+      "description": "Plan upgrades and billing events",
       "x-mintlify": {
         "navigation": "Billing"
       }
@@ -739,102 +718,6 @@
         }
       }
     },
-    "/v1/specs": {
-      "get": {
-        "operationId": "list_specs",
-        "summary": "List specs",
-        "description": "Lists specs for a workspace using Stripe-style keyset pagination. Pass starting_after (spec_id of last item) to page forward.",
-        "tags": [
-          "Specs"
-        ],
-        "parameters": [
-          {
-            "name": "workspace_id",
-            "in": "query",
-            "required": true,
-            "description": "Filter by workspace",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          {
-            "name": "limit",
-            "in": "query",
-            "required": false,
-            "description": "Maximum number of specs to return",
-            "schema": {
-              "type": "integer",
-              "default": 50,
-              "minimum": 1,
-              "maximum": 100
-            }
-          },
-          {
-            "name": "starting_after",
-            "in": "query",
-            "required": false,
-            "description": "Cursor for keyset pagination. Pass the spec_id of the last item on the previous page.",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          {
-            "name": "status",
-            "in": "query",
-            "required": false,
-            "description": "Filter specs by status",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Spec list",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "required": [
-                    "data",
-                    "has_more",
-                    "request_id"
-                  ],
-                  "properties": {
-                    "data": {
-                      "type": "array",
-                      "items": {
-                        "$ref": "#/components/schemas/SpecSummary"
-                      }
-                    },
-                    "has_more": {
-                      "type": "boolean",
-                      "description": "Whether more results exist beyond this page"
-                    },
-                    "next_cursor": {
-                      "type": [
-                        "string",
-                        "null"
-                      ],
-                      "description": "Cursor to pass as starting_after for the next page"
-                    },
-                    "request_id": {
-                      "type": "string",
-                      "format": "uuid"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "default": {
-            "$ref": "#/components/responses/Error"
-          }
-        }
-      }
-    },
     "/v1/runs": {
       "post": {
         "operationId": "start_run",
@@ -1385,1020 +1268,6 @@
         }
       }
     },
-    "/v1/agents/{agent_id}": {
-      "get": {
-        "operationId": "get_agent",
-        "summary": "Get agent profile",
-        "description": "Returns the agent's profile including trust level, streak data, and improvement status.",
-        "tags": [
-          "Agents"
-        ],
-        "parameters": [
-          {
-            "name": "agent_id",
-            "in": "path",
-            "required": true,
-            "description": "Agent identifier",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Agent profile",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "allOf": [
-                    {
-                      "$ref": "#/components/schemas/AgentProfile"
-                    },
-                    {
-                      "type": "object",
-                      "required": [
-                        "request_id"
-                      ],
-                      "properties": {
-                        "request_id": {
-                          "type": "string",
-                          "format": "uuid"
-                        }
-                      }
-                    }
-                  ]
-                }
-              }
-            }
-          },
-          "default": {
-            "$ref": "#/components/responses/Error"
-          }
-        }
-      }
-    },
-    "/v1/agents/{agent_id}/scores": {
-      "get": {
-        "operationId": "get_agent_scores",
-        "summary": "Get agent scores",
-        "description": "Returns paginated agent scores using Stripe-style keyset pagination. Pass starting_after (score_id of last item) to page forward.",
-        "tags": [
-          "Agents"
-        ],
-        "parameters": [
-          {
-            "name": "agent_id",
-            "in": "path",
-            "required": true,
-            "description": "Agent identifier",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          {
-            "name": "starting_after",
-            "in": "query",
-            "required": false,
-            "description": "Cursor for keyset pagination. Pass the score_id of the last item on the previous page.",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          {
-            "name": "limit",
-            "in": "query",
-            "required": false,
-            "description": "Maximum number of scores to return (default 50, max 100)",
-            "schema": {
-              "type": "integer",
-              "default": 50,
-              "minimum": 1,
-              "maximum": 100
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Agent scores",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "required": [
-                    "data",
-                    "has_more",
-                    "request_id"
-                  ],
-                  "properties": {
-                    "data": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "properties": {
-                          "score_id": {
-                            "type": "string",
-                            "format": "uuid"
-                          },
-                          "run_id": {
-                            "type": "string",
-                            "format": "uuid"
-                          },
-                          "score": {
-                            "type": "integer"
-                          },
-                          "axis_scores": {
-                            "type": "string"
-                          },
-                          "weight_snapshot": {
-                            "type": "string"
-                          },
-                          "scored_at": {
-                            "type": "integer"
-                          }
-                        }
-                      }
-                    },
-                    "has_more": {
-                      "type": "boolean",
-                      "description": "Whether more results exist beyond this page"
-                    },
-                    "next_cursor": {
-                      "type": [
-                        "string",
-                        "null"
-                      ],
-                      "description": "Cursor to pass as starting_after for the next page"
-                    },
-                    "request_id": {
-                      "type": "string",
-                      "format": "uuid"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "default": {
-            "$ref": "#/components/responses/Error"
-          }
-        }
-      }
-    },
-    "/v1/agents/{agent_id}/improvement-report": {
-      "get": {
-        "operationId": "get_agent_improvement_report",
-        "summary": "Get agent improvement report",
-        "description": "Returns a detailed improvement report including proposal counts, approval rates, and score trends. Used to assess whether the agent's self-tuning is making progress.",
-        "tags": [
-          "Agents"
-        ],
-        "parameters": [
-          {
-            "name": "agent_id",
-            "in": "path",
-            "required": true,
-            "description": "Agent identifier",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Improvement report",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "required": [
-                    "agent_id",
-                    "trust_level",
-                    "improvement_stalled_warning",
-                    "proposals_generated",
-                    "proposals_approved",
-                    "proposals_vetoed",
-                    "proposals_rejected",
-                    "proposals_applied",
-                    "avg_score_delta_per_applied_change",
-                    "current_tier",
-                    "baseline_tier",
-                    "request_id"
-                  ],
-                  "properties": {
-                    "agent_id": {
-                      "type": "string",
-                      "format": "uuid"
-                    },
-                    "trust_level": {
-                      "type": "string",
-                      "description": "Current trust level"
-                    },
-                    "improvement_stalled_warning": {
-                      "type": "boolean",
-                      "description": "True if the agent's improvement has plateaued"
-                    },
-                    "proposals_generated": {
-                      "type": "integer",
-                      "description": "Total proposals generated by the agent"
-                    },
-                    "proposals_approved": {
-                      "type": "integer",
-                      "description": "Proposals approved by the user"
-                    },
-                    "proposals_vetoed": {
-                      "type": "integer",
-                      "description": "Proposals vetoed by the user"
-                    },
-                    "proposals_rejected": {
-                      "type": "integer",
-                      "description": "Proposals rejected by the system or user"
-                    },
-                    "proposals_applied": {
-                      "type": "integer",
-                      "description": "Proposals successfully applied to the harness"
-                    },
-                    "avg_score_delta_per_applied_change": {
-                      "type": "number",
-                      "description": "Average score improvement per applied proposal"
-                    },
-                    "current_tier": {
-                      "type": "string",
-                      "description": "Current agent performance tier"
-                    },
-                    "baseline_tier": {
-                      "type": "string",
-                      "description": "Baseline tier the agent started at"
-                    },
-                    "request_id": {
-                      "type": "string",
-                      "format": "uuid"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "default": {
-            "$ref": "#/components/responses/Error"
-          }
-        }
-      }
-    },
-    "/v1/agents/{agent_id}/proposals": {
-      "get": {
-        "operationId": "list_agent_proposals",
-        "summary": "List agent proposals",
-        "description": "Lists self-tuning proposals generated by the agent. Each proposal represents a suggested change to the agent's harness configuration.",
-        "tags": [
-          "Agents"
-        ],
-        "parameters": [
-          {
-            "name": "agent_id",
-            "in": "path",
-            "required": true,
-            "description": "Agent identifier",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Proposal list",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "required": [
-                    "data",
-                    "request_id"
-                  ],
-                  "properties": {
-                    "data": {
-                      "type": "array",
-                      "items": {
-                        "$ref": "#/components/schemas/Proposal"
-                      }
-                    },
-                    "request_id": {
-                      "type": "string",
-                      "format": "uuid"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "default": {
-            "$ref": "#/components/responses/Error"
-          }
-        }
-      }
-    },
-    "/v1/agents/{agent_id}/proposals/{proposal_id}:approve": {
-      "post": {
-        "operationId": "approve_proposal",
-        "summary": "Approve a proposal",
-        "description": "Approves a pending proposal, applying the proposed changes to the agent's harness configuration. Returns the resulting status — APPLIED if successful, CONFIG_CHANGED if there was a conflict, or REJECTED on validation failure.",
-        "tags": [
-          "Agents"
-        ],
-        "parameters": [
-          {
-            "name": "agent_id",
-            "in": "path",
-            "required": true,
-            "description": "Agent identifier",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          {
-            "name": "proposal_id",
-            "in": "path",
-            "required": true,
-            "description": "Proposal identifier",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Proposal approved",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "required": [
-                    "agent_id",
-                    "proposal_id",
-                    "status",
-                    "request_id"
-                  ],
-                  "properties": {
-                    "agent_id": {
-                      "type": "string",
-                      "format": "uuid"
-                    },
-                    "proposal_id": {
-                      "type": "string",
-                      "format": "uuid"
-                    },
-                    "status": {
-                      "type": "string",
-                      "enum": [
-                        "APPLIED",
-                        "CONFIG_CHANGED",
-                        "REJECTED"
-                      ],
-                      "description": "Outcome of the approval"
-                    },
-                    "request_id": {
-                      "type": "string",
-                      "format": "uuid"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "default": {
-            "$ref": "#/components/responses/Error"
-          }
-        }
-      }
-    },
-    "/v1/agents/{agent_id}/proposals/{proposal_id}:reject": {
-      "post": {
-        "operationId": "reject_proposal",
-        "summary": "Reject a proposal",
-        "description": "Rejects a pending proposal with a reason. The agent uses rejection reasons to improve future proposals.",
-        "tags": [
-          "Agents"
-        ],
-        "parameters": [
-          {
-            "name": "agent_id",
-            "in": "path",
-            "required": true,
-            "description": "Agent identifier",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          {
-            "name": "proposal_id",
-            "in": "path",
-            "required": true,
-            "description": "Proposal identifier",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "rejection_reason"
-                ],
-                "properties": {
-                  "rejection_reason": {
-                    "type": "string",
-                    "description": "Why the proposal was rejected — fed back to the agent for learning"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Proposal rejected",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "required": [
-                    "agent_id",
-                    "proposal_id",
-                    "status",
-                    "rejection_reason",
-                    "request_id"
-                  ],
-                  "properties": {
-                    "agent_id": {
-                      "type": "string",
-                      "format": "uuid"
-                    },
-                    "proposal_id": {
-                      "type": "string",
-                      "format": "uuid"
-                    },
-                    "status": {
-                      "type": "string",
-                      "const": "REJECTED"
-                    },
-                    "rejection_reason": {
-                      "type": "string"
-                    },
-                    "request_id": {
-                      "type": "string",
-                      "format": "uuid"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "default": {
-            "$ref": "#/components/responses/Error"
-          }
-        }
-      }
-    },
-    "/v1/agents/{agent_id}/proposals/{proposal_id}:veto": {
-      "post": {
-        "operationId": "veto_proposal",
-        "summary": "Veto a proposal",
-        "description": "Vetoes a proposal. Unlike rejection, a veto signals strong disagreement and has a larger negative weight on the agent's proposal scoring.",
-        "tags": [
-          "Agents"
-        ],
-        "parameters": [
-          {
-            "name": "agent_id",
-            "in": "path",
-            "required": true,
-            "description": "Agent identifier",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          {
-            "name": "proposal_id",
-            "in": "path",
-            "required": true,
-            "description": "Proposal identifier",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Proposal vetoed",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "required": [
-                    "agent_id",
-                    "proposal_id",
-                    "status",
-                    "request_id"
-                  ],
-                  "properties": {
-                    "agent_id": {
-                      "type": "string",
-                      "format": "uuid"
-                    },
-                    "proposal_id": {
-                      "type": "string",
-                      "format": "uuid"
-                    },
-                    "status": {
-                      "type": "string",
-                      "const": "VETOED"
-                    },
-                    "request_id": {
-                      "type": "string",
-                      "format": "uuid"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "default": {
-            "$ref": "#/components/responses/Error"
-          }
-        }
-      }
-    },
-    "/v1/agents/{agent_id}/harness/changes/{change_id}:revert": {
-      "post": {
-        "operationId": "revert_harness_change",
-        "summary": "Revert a harness change",
-        "description": "Reverts a previously applied harness configuration change. Creates a new config version that undoes the specified change.",
-        "tags": [
-          "Agents"
-        ],
-        "parameters": [
-          {
-            "name": "agent_id",
-            "in": "path",
-            "required": true,
-            "description": "Agent identifier",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          {
-            "name": "change_id",
-            "in": "path",
-            "required": true,
-            "description": "Change identifier to revert",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Change reverted",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "required": [
-                    "agent_id",
-                    "proposal_id",
-                    "change_id",
-                    "reverted_from",
-                    "config_version_id",
-                    "status",
-                    "applied_by",
-                    "applied_at",
-                    "request_id"
-                  ],
-                  "properties": {
-                    "agent_id": {
-                      "type": "string",
-                      "format": "uuid"
-                    },
-                    "proposal_id": {
-                      "type": "string",
-                      "format": "uuid",
-                      "description": "Proposal that originally produced this change"
-                    },
-                    "change_id": {
-                      "type": "string",
-                      "format": "uuid",
-                      "description": "The change that was reverted"
-                    },
-                    "reverted_from": {
-                      "type": "string",
-                      "format": "uuid",
-                      "description": "Config version that contained the change"
-                    },
-                    "config_version_id": {
-                      "type": "string",
-                      "format": "uuid",
-                      "description": "New config version after revert"
-                    },
-                    "status": {
-                      "type": "string",
-                      "const": "APPLIED"
-                    },
-                    "applied_by": {
-                      "type": "string",
-                      "description": "Identity that performed the revert"
-                    },
-                    "applied_at": {
-                      "type": "string",
-                      "format": "date-time",
-                      "description": "Timestamp of the revert"
-                    },
-                    "request_id": {
-                      "type": "string",
-                      "format": "uuid"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "default": {
-            "$ref": "#/components/responses/Error"
-          }
-        }
-      }
-    },
-    "/v1/workspaces/{workspace_id}/harness/source": {
-      "put": {
-        "operationId": "put_harness_source",
-        "summary": "Set harness source config",
-        "description": "Creates or updates the harness source configuration for an agent in a workspace. This is the authoring step — the config must be compiled and activated before it takes effect.",
-        "tags": [
-          "Harness"
-        ],
-        "parameters": [
-          {
-            "name": "workspace_id",
-            "in": "path",
-            "required": true,
-            "description": "Workspace identifier",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "agent_id",
-                  "skills",
-                  "instructions"
-                ],
-                "properties": {
-                  "agent_id": {
-                    "type": "string",
-                    "format": "uuid",
-                    "description": "Agent this config applies to"
-                  },
-                  "skills": {
-                    "type": "array",
-                    "items": {
-                      "type": "string"
-                    },
-                    "description": "List of skill identifiers to enable"
-                  },
-                  "instructions": {
-                    "type": "string",
-                    "description": "System-level instructions for the agent"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Harness source saved as draft",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "required": [
-                    "workspace_id",
-                    "agent_id",
-                    "config_version_id",
-                    "version",
-                    "status",
-                    "request_id"
-                  ],
-                  "properties": {
-                    "workspace_id": {
-                      "type": "string",
-                      "format": "uuid"
-                    },
-                    "agent_id": {
-                      "type": "string",
-                      "format": "uuid"
-                    },
-                    "config_version_id": {
-                      "type": "string",
-                      "format": "uuid",
-                      "description": "Version ID for this draft config"
-                    },
-                    "version": {
-                      "type": "integer",
-                      "description": "Monotonically increasing version number"
-                    },
-                    "status": {
-                      "type": "string",
-                      "const": "DRAFT"
-                    },
-                    "request_id": {
-                      "type": "string",
-                      "format": "uuid"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "default": {
-            "$ref": "#/components/responses/Error"
-          }
-        }
-      }
-    },
-    "/v1/workspaces/{workspace_id}/harness/compile": {
-      "post": {
-        "operationId": "compile_harness",
-        "summary": "Compile harness config",
-        "description": "Validates and compiles a draft harness config. The compiled config is checked for skill compatibility, instruction validity, and resource constraints.",
-        "tags": [
-          "Harness"
-        ],
-        "parameters": [
-          {
-            "name": "workspace_id",
-            "in": "path",
-            "required": true,
-            "description": "Workspace identifier",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "config_version_id"
-                ],
-                "properties": {
-                  "config_version_id": {
-                    "type": "string",
-                    "format": "uuid",
-                    "description": "Draft config version to compile"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Compilation result",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "required": [
-                    "compile_job_id",
-                    "workspace_id",
-                    "agent_id",
-                    "config_version_id",
-                    "is_valid",
-                    "request_id"
-                  ],
-                  "properties": {
-                    "compile_job_id": {
-                      "type": "string",
-                      "format": "uuid",
-                      "description": "Compilation job identifier"
-                    },
-                    "workspace_id": {
-                      "type": "string",
-                      "format": "uuid"
-                    },
-                    "agent_id": {
-                      "type": "string",
-                      "format": "uuid"
-                    },
-                    "config_version_id": {
-                      "type": "string",
-                      "format": "uuid"
-                    },
-                    "is_valid": {
-                      "type": "boolean",
-                      "description": "True if compilation succeeded without errors"
-                    },
-                    "validation_report_json": {
-                      "type": [
-                        "string",
-                        "null"
-                      ],
-                      "description": "JSON-encoded validation report with warnings and errors, null if fully valid"
-                    },
-                    "request_id": {
-                      "type": "string",
-                      "format": "uuid"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "default": {
-            "$ref": "#/components/responses/Error"
-          }
-        }
-      }
-    },
-    "/v1/workspaces/{workspace_id}/harness/activate": {
-      "post": {
-        "operationId": "activate_harness",
-        "summary": "Activate harness config",
-        "description": "Activates a compiled harness config version, making it the active configuration for the agent. Only compiled configs can be activated.",
-        "tags": [
-          "Harness"
-        ],
-        "parameters": [
-          {
-            "name": "workspace_id",
-            "in": "path",
-            "required": true,
-            "description": "Workspace identifier",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "config_version_id"
-                ],
-                "properties": {
-                  "config_version_id": {
-                    "type": "string",
-                    "format": "uuid",
-                    "description": "Compiled config version to activate"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Harness config activated",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "required": [
-                    "workspace_id",
-                    "agent_id",
-                    "config_version_id",
-                    "status",
-                    "request_id"
-                  ],
-                  "properties": {
-                    "workspace_id": {
-                      "type": "string",
-                      "format": "uuid"
-                    },
-                    "agent_id": {
-                      "type": "string",
-                      "format": "uuid"
-                    },
-                    "config_version_id": {
-                      "type": "string",
-                      "format": "uuid"
-                    },
-                    "status": {
-                      "type": "string",
-                      "const": "ACTIVE"
-                    },
-                    "request_id": {
-                      "type": "string",
-                      "format": "uuid"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "default": {
-            "$ref": "#/components/responses/Error"
-          }
-        }
-      }
-    },
-    "/v1/workspaces/{workspace_id}/harness/active": {
-      "get": {
-        "operationId": "get_active_harness",
-        "summary": "Get active harness config",
-        "description": "Returns the currently active harness configuration for the workspace, including the compiled agent profile.",
-        "tags": [
-          "Harness"
-        ],
-        "parameters": [
-          {
-            "name": "workspace_id",
-            "in": "path",
-            "required": true,
-            "description": "Workspace identifier",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Active harness configuration",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "required": [
-                    "workspace_id",
-                    "agent_id",
-                    "config_version_id",
-                    "compiled_profile_json",
-                    "request_id"
-                  ],
-                  "properties": {
-                    "workspace_id": {
-                      "type": "string",
-                      "format": "uuid"
-                    },
-                    "agent_id": {
-                      "type": "string",
-                      "format": "uuid"
-                    },
-                    "config_version_id": {
-                      "type": "string",
-                      "format": "uuid"
-                    },
-                    "compiled_profile_json": {
-                      "type": "string",
-                      "description": "JSON-encoded compiled agent profile"
-                    },
-                    "request_id": {
-                      "type": "string",
-                      "format": "uuid"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "default": {
-            "$ref": "#/components/responses/Error"
-          }
-        }
-      }
-    },
     "/v1/workspaces/{workspace_id}/credentials/llm": {
       "put": {
         "operationId": "put_llm_credential",
@@ -2653,102 +1522,6 @@
         "responses": {
           "204": {
             "description": "Secret deleted"
-          },
-          "default": {
-            "$ref": "#/components/responses/Error"
-          }
-        }
-      }
-    },
-    "/v1/workspaces/{workspace_id}/spec/template": {
-      "post": {
-        "operationId": "generate_spec_template",
-        "summary": "Generate spec via LLM",
-        "description": "Streams an LLM-generated spec template based on the conversation messages. Supports tool use for interactive spec authoring. Returns Server-Sent Events.",
-        "tags": [
-          "Agent Relay"
-        ],
-        "parameters": [
-          {
-            "name": "workspace_id",
-            "in": "path",
-            "required": true,
-            "description": "Workspace identifier",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/AgentRelayRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "SSE stream of LLM-generated spec content",
-            "content": {
-              "text/event-stream": {
-                "schema": {
-                  "type": "string",
-                  "description": "Server-Sent Events stream with spec template content"
-                }
-              }
-            }
-          },
-          "default": {
-            "$ref": "#/components/responses/Error"
-          }
-        }
-      }
-    },
-    "/v1/workspaces/{workspace_id}/spec/preview": {
-      "post": {
-        "operationId": "preview_spec",
-        "summary": "Preview spec via LLM",
-        "description": "Streams an LLM-generated preview of a spec, showing what the agent would produce before committing. Returns Server-Sent Events.",
-        "tags": [
-          "Agent Relay"
-        ],
-        "parameters": [
-          {
-            "name": "workspace_id",
-            "in": "path",
-            "required": true,
-            "description": "Workspace identifier",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/AgentRelayRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "SSE stream of LLM-generated spec preview",
-            "content": {
-              "text/event-stream": {
-                "schema": {
-                  "type": "string",
-                  "description": "Server-Sent Events stream with spec preview content"
-                }
-              }
-            }
           },
           "default": {
             "$ref": "#/components/responses/Error"
@@ -3108,13 +1881,24 @@
             "name": "workspace_id",
             "in": "path",
             "required": true,
-            "schema": { "type": "string", "format": "uuid" }
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           },
           {
             "name": "period",
             "in": "query",
             "required": false,
-            "schema": { "type": "string", "enum": ["7d", "30d", "90d"], "default": "30d" },
+            "schema": {
+              "type": "string",
+              "enum": [
+                "7d",
+                "30d",
+                "90d"
+              ],
+              "default": "30d"
+            },
             "description": "Time period for the summary window"
           }
         ],
@@ -3125,109 +1909,67 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": ["workspace_id", "period_days", "period_start_ms", "period_end_ms", "completed", "non_billable", "non_billable_score_gated", "total_runs", "request_id"],
+                  "required": [
+                    "workspace_id",
+                    "period_days",
+                    "period_start_ms",
+                    "period_end_ms",
+                    "completed",
+                    "non_billable",
+                    "non_billable_score_gated",
+                    "total_runs",
+                    "request_id"
+                  ],
                   "properties": {
-                    "workspace_id": { "type": "string" },
-                    "period_days": { "type": "integer" },
-                    "period_start_ms": { "type": "integer", "format": "int64" },
-                    "period_end_ms": { "type": "integer", "format": "int64" },
+                    "workspace_id": {
+                      "type": "string"
+                    },
+                    "period_days": {
+                      "type": "integer"
+                    },
+                    "period_start_ms": {
+                      "type": "integer",
+                      "format": "int64"
+                    },
+                    "period_end_ms": {
+                      "type": "integer",
+                      "format": "int64"
+                    },
                     "completed": {
                       "type": "object",
                       "properties": {
-                        "count": { "type": "integer" },
-                        "agent_seconds": { "type": "integer" }
+                        "count": {
+                          "type": "integer"
+                        },
+                        "agent_seconds": {
+                          "type": "integer"
+                        }
                       }
                     },
                     "non_billable": {
                       "type": "object",
                       "properties": {
-                        "count": { "type": "integer" }
+                        "count": {
+                          "type": "integer"
+                        }
                       }
                     },
                     "non_billable_score_gated": {
                       "type": "object",
                       "properties": {
-                        "count": { "type": "integer" },
-                        "avg_score": { "type": "integer" }
+                        "count": {
+                          "type": "integer"
+                        },
+                        "avg_score": {
+                          "type": "integer"
+                        }
                       }
                     },
-                    "total_runs": { "type": "integer" },
-                    "request_id": { "type": "string" }
-                  }
-                }
-              }
-            }
-          },
-          "default": {
-            "$ref": "#/components/responses/Error"
-          }
-        }
-      }
-    },
-    "/v1/workspaces/{workspace_id}/scoring/config": {
-      "post": {
-        "operationId": "set_scoring_config",
-        "summary": "Set scoring configuration",
-        "description": "Configures the scoring context window size for a workspace. This controls how many tokens of context are sent to the scoring model when evaluating agent output quality.",
-        "tags": [
-          "Billing"
-        ],
-        "parameters": [
-          {
-            "name": "workspace_id",
-            "in": "path",
-            "required": true,
-            "description": "Workspace identifier",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "scoring_context_max_tokens"
-                ],
-                "properties": {
-                  "scoring_context_max_tokens": {
-                    "type": "integer",
-                    "minimum": 512,
-                    "maximum": 8192,
-                    "description": "Maximum tokens for scoring context window (512-8192)"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Scoring config updated",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "required": [
-                    "workspace_id",
-                    "scoring_context_max_tokens",
-                    "request_id"
-                  ],
-                  "properties": {
-                    "workspace_id": {
-                      "type": "string",
-                      "format": "uuid"
-                    },
-                    "scoring_context_max_tokens": {
+                    "total_runs": {
                       "type": "integer"
                     },
                     "request_id": {
-                      "type": "string",
-                      "format": "uuid"
+                      "type": "string"
                     }
                   }
                 }
@@ -3342,6 +2084,150 @@
             "$ref": "#/components/responses/Error"
           }
         }
+      }
+    },
+    "/v1/webhooks/{zombie_id}": {
+      "post": {
+        "operationId": "receive_webhook",
+        "summary": "Deliver an inbound webhook event to a Zombie",
+        "description": "Delivers an inbound event to the Zombie identified by `zombie_id`. The Zombie is looked up by primary key — no JSONB traversal, no source-name uniqueness required. Bearer token is validated against the Zombie's `trigger.token` (omit if no token configured). Duplicate events (same `event_id` within 24 h) return 200 `{status: \"duplicate\"}`. A new event is enqueued to the Zombie's Redis stream and returns 202.",
+        "tags": [
+          "Zombies"
+        ],
+        "parameters": [
+          {
+            "name": "zombie_id",
+            "in": "path",
+            "required": true,
+            "description": "UUIDv7 of the target Zombie. Obtained from `POST /v1/zombies` or `zombiectl up`.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "event_id",
+                  "type",
+                  "data"
+                ],
+                "properties": {
+                  "event_id": {
+                    "type": "string",
+                    "description": "Unique identifier for this event. Used for idempotency deduplication (24-hour window)."
+                  },
+                  "type": {
+                    "type": "string",
+                    "description": "Event type label (e.g. `email.received`, `push`, `payment.succeeded`)."
+                  },
+                  "data": {
+                    "type": "object",
+                    "additionalProperties": true,
+                    "description": "Event payload — any JSON object. Passed as-is into the Zombie event loop."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Event accepted and enqueued for the Zombie.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "status",
+                    "event_id"
+                  ],
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "const": "accepted"
+                    },
+                    "event_id": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Duplicate event — already processed within the 24-hour dedup window.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "status"
+                  ],
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "const": "duplicate"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed payload — missing `event_id` or `type`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid Bearer token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No active Zombie is configured for this source (UZ-WH-001).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Zombie exists but is paused or stopped (UZ-WH-003).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
       }
     }
   },

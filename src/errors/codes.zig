@@ -78,6 +78,36 @@ pub const ERR_PROPOSAL_GENERATION_FAILED = "UZ-PROPOSAL-016";
 pub const ERR_PROPOSAL_NOT_FOUND = "UZ-PROPOSAL-017";
 pub const ERR_HARNESS_CHANGE_NOT_FOUND = "UZ-HARNESS-001";
 
+// M1_001: Zombie webhook error codes
+pub const ERR_WEBHOOK_NO_ZOMBIE = "UZ-WH-001";
+pub const ERR_WEBHOOK_MALFORMED = "UZ-WH-002";
+pub const ERR_WEBHOOK_ZOMBIE_PAUSED = "UZ-WH-003";
+
+// M1_001: Webhook user-facing error messages (rule 22: no inline strings)
+pub const MSG_BODY_REQUIRED = "Request body required";
+pub const MSG_MALFORMED_JSON = "Malformed JSON";
+pub const MSG_MISSING_FIELDS = "event_id and type are required";
+pub const MSG_ZOMBIE_NOT_FOUND = "Zombie not found";
+pub const MSG_AUTH_REQUIRED = "Authorization required";
+pub const MSG_BEARER_REQUIRED = "Bearer token required";
+pub const MSG_INVALID_TOKEN = "Invalid token";
+pub const MSG_ZOMBIE_NOT_ACTIVE = "Zombie is not active";
+
+// Webhook constants
+pub const BEARER_PREFIX = "Bearer ";
+pub const DEDUP_TTL_SECONDS: u32 = 86400;
+pub const ZOMBIE_STATUS_ACTIVE = "active";
+pub const WEBHOOK_EVENT_TYPE = "webhook_received";
+pub const STATUS_DUPLICATE = "duplicate";
+pub const STATUS_ACCEPTED = "accepted";
+
+// M1_001: Zombie event loop error codes
+pub const ERR_ZOMBIE_BUDGET_EXCEEDED = "UZ-ZMB-001";
+pub const ERR_ZOMBIE_AGENT_TIMEOUT = "UZ-ZMB-002";
+pub const ERR_ZOMBIE_CREDENTIAL_MISSING = "UZ-ZMB-003";
+pub const ERR_ZOMBIE_CLAIM_FAILED = "UZ-ZMB-004";
+pub const ERR_ZOMBIE_CHECKPOINT_FAILED = "UZ-ZMB-005";
+
 pub const ERR_GATE_COMMAND_FAILED = "UZ-GATE-001";
 pub const ERR_GATE_COMMAND_TIMEOUT = "UZ-GATE-002";
 pub const ERR_GATE_REPAIR_EXHAUSTED = "UZ-GATE-003";
@@ -177,6 +207,16 @@ pub fn hint(code: []const u8) ?[]const u8 {
         return "Interrupt message could not be stored in Redis. Check Redis connectivity and retry.";
     if (std.mem.eql(u8, code, ERR_RUN_NOT_INTERRUPTIBLE))
         return "Run is not in an interruptible state. Check the run state and retry.";
+    if (std.mem.eql(u8, code, ERR_ZOMBIE_BUDGET_EXCEEDED))
+        return "Zombie hit its daily budget. Increase with: zombiectl config set budget.daily_dollars <amount>";
+    if (std.mem.eql(u8, code, ERR_ZOMBIE_AGENT_TIMEOUT))
+        return "Agent timed out processing an event. Check activity stream for details: zombiectl logs";
+    if (std.mem.eql(u8, code, ERR_ZOMBIE_CREDENTIAL_MISSING))
+        return "A required credential is not in the vault. Add it with: zombiectl credential add <name>";
+    if (std.mem.eql(u8, code, ERR_ZOMBIE_CLAIM_FAILED))
+        return "Zombie could not be claimed from the database. Check that the zombie_id exists and status is 'active'.";
+    if (std.mem.eql(u8, code, ERR_ZOMBIE_CHECKPOINT_FAILED))
+        return "Session checkpoint write to Postgres failed. Check database connectivity.";
     return null;
 }
 

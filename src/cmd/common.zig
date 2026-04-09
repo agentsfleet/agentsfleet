@@ -15,7 +15,7 @@ const ServeMigrationDecision = enum {
     run_required,
 };
 
-pub fn canonicalMigrations() [17]db.Migration {
+pub fn canonicalMigrations() [20]db.Migration {
     const schema = @import("schema");
     return .{
         .{ .version = 1, .sql = schema.core_foundation_sql },
@@ -35,6 +35,9 @@ pub fn canonicalMigrations() [17]db.Migration {
         .{ .version = 19, .sql = schema.agent_score_persistence_api_sql },
         .{ .version = 20, .sql = schema.agent_failure_analysis_context_sql },
         .{ .version = 21, .sql = schema.platform_llm_keys_sql },
+        .{ .version = 22, .sql = schema.core_zombies_sql },
+        .{ .version = 23, .sql = schema.core_zombie_sessions_sql },
+        .{ .version = 24, .sql = schema.core_activity_events_sql },
     };
 }
 
@@ -186,7 +189,7 @@ test "integration: startup with pending migrations proceeds when enabled and loc
 
 test "canonical schema bootstrap includes scoring config in base schema" {
     const migrations = canonicalMigrations();
-    try std.testing.expectEqual(@as(i32, 21), migrations[migrations.len - 1].version);
+    try std.testing.expectEqual(@as(i32, 24), migrations[migrations.len - 1].version);
     try std.testing.expect(std.mem.containsAtLeast(u8, migrations[6].sql, 1, "trust_streak_runs INTEGER NOT NULL"));
     try std.testing.expect(std.mem.containsAtLeast(u8, migrations[6].sql, 1, "trust_level   TEXT NOT NULL"));
     try std.testing.expect(!std.mem.containsAtLeast(u8, migrations[6].sql, 1, "trust_streak_runs INTEGER NOT NULL DEFAULT 0"));
@@ -205,4 +208,25 @@ test "canonical schema bootstrap includes scoring config in base schema" {
     try std.testing.expect(std.mem.containsAtLeast(u8, migrations[14].sql, 1, "CREATE TABLE agent_run_scores"));
     try std.testing.expect(std.mem.containsAtLeast(u8, migrations[15].sql, 1, "CREATE TABLE agent_run_analysis"));
     try std.testing.expect(!std.mem.containsAtLeast(u8, migrations[14].sql, 1, "tier             TEXT"));
+}
+
+test "migration SQL has no semicolons inside line comments" {
+    // The migration statement splitter splits on `;` but does not track `-- line comments`.
+    // A semicolon inside a comment breaks the splitter, producing invalid SQL fragments.
+    const migrations = canonicalMigrations();
+    for (migrations) |migration| {
+        var iter = std.mem.splitScalar(u8, migration.sql, '\n');
+        while (iter.next()) |line| {
+            const trimmed = std.mem.trimLeft(u8, line, " \t");
+            if (std.mem.startsWith(u8, trimmed, "--")) {
+                // Skip the leading "-- " prefix before checking for `;`
+                // to avoid false positives on the `--` itself.
+                const comment_body = trimmed[2..];
+                if (std.mem.indexOfScalar(u8, comment_body, ';') != null) {
+                    std.debug.print("\nFAIL: migration v{d} has ';' in comment: {s}\n", .{ migration.version, trimmed });
+                    return error.SemicolonInComment;
+                }
+            }
+        }
+    }
 }

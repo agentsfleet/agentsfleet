@@ -1,12 +1,12 @@
 .{
     .name = .zombied,
-    .version = "0.4.0",
+    .version = "0.5.0",
     .minimum_zig_version = "0.15.2",
     .fingerprint = 0xc908abec9a0e1bf3,
     .dependencies = .{
         .nullclaw = .{
-            .url = "git+https://github.com/nullclaw/nullclaw.git#v2026.3.21",
-            .hash = "nullclaw-2026.3.21-wlZZySsRJQGY1kFGdkM1JJuI5vlJpMNmhvAutUCP-716",
+            .url = "git+https://github.com/nullclaw/nullclaw.git?ref=v2026.4.7#e636f14ad4e38c8209ddd1f6ed00588d38be69ed",
+            .hash = "nullclaw-2026.4.7-wlZZyR5QKgGXOl0gnQyMmRyf9pOIl9aYKSbaWNVTmU-8",
         },
         .pg = .{
             .url = "git+https://github.com/karlseguin/pg.zig#master",

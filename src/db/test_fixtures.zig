@@ -137,6 +137,57 @@ pub fn teardownSpecs(conn: *pg.Conn, workspace_id: []const u8) void {
     ) catch {};
 }
 
+// ── Zombie helpers (M1_001 — event loop integration tests) ─────────────
+
+/// Insert a minimal zombie row. Workspace must exist. Idempotent.
+pub fn seedZombie(
+    conn: *pg.Conn,
+    zombie_id: []const u8,
+    workspace_id: []const u8,
+    name: []const u8,
+    config_json: []const u8,
+    source_markdown: []const u8,
+) !void {
+    _ = try conn.exec(
+        \\INSERT INTO core.zombies
+        \\  (id, workspace_id, name, source_markdown, config_json, status, created_at, updated_at)
+        \\VALUES ($1, $2, $3, $4, $5, 'active', 0, 0)
+        \\ON CONFLICT DO NOTHING
+    , .{ zombie_id, workspace_id, name, source_markdown, config_json });
+}
+
+/// Insert a zombie session checkpoint. Zombie must exist. Idempotent.
+pub fn seedZombieSession(
+    conn: *pg.Conn,
+    session_id: []const u8,
+    zombie_id: []const u8,
+    context_json: []const u8,
+) !void {
+    _ = try conn.exec(
+        \\INSERT INTO core.zombie_sessions
+        \\  (id, zombie_id, context_json, checkpoint_at, created_at, updated_at)
+        \\VALUES ($1, $2, $3, 0, 0, 0)
+        \\ON CONFLICT (zombie_id) DO UPDATE
+        \\  SET context_json = EXCLUDED.context_json
+    , .{ session_id, zombie_id, context_json });
+}
+
+/// Delete zombies for a workspace. Cascades to zombie_sessions (FK).
+pub fn teardownZombies(conn: *pg.Conn, workspace_id: []const u8) void {
+    // Sessions first (FK to zombies), then zombies.
+    _ = conn.exec(
+        \\DELETE FROM core.zombie_sessions WHERE zombie_id IN
+        \\  (SELECT id FROM core.zombies WHERE workspace_id = $1)
+    , .{workspace_id}) catch {};
+    _ = conn.exec(
+        \\DELETE FROM core.activity_events WHERE workspace_id = $1
+    , .{workspace_id}) catch {};
+    _ = conn.exec(
+        "DELETE FROM core.zombies WHERE workspace_id = $1",
+        .{workspace_id},
+    ) catch {};
+}
+
 // ── Shared DB connection ────────────────────────────────────────────────
 
 /// Open a test DB connection. Returns null when TEST_DATABASE_URL / DATABASE_URL
