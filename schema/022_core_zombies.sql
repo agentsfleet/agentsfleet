@@ -2,7 +2,7 @@
 -- source_markdown: raw SKILL.md (agent instructions)
 -- trigger_markdown: raw TRIGGER.md (deployment manifest)
 -- config_json: server-computed from trigger_markdown frontmatter
--- webhook_secret: crypto-random URL-embedded secret for webhook auth
+-- webhook_secret_ref: vault key_name for the webhook secret (stored in vault.secrets)
 -- Status transitions: active → paused → active | active → stopped (terminal)
 
 CREATE TABLE IF NOT EXISTS core.zombies (
@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS core.zombies (
     source_markdown TEXT NOT NULL,
     trigger_markdown TEXT,
     config_json     JSONB NOT NULL,
-    webhook_secret  TEXT,  -- TODO(M3): encrypt via crypto_store before INSERT
+    webhook_secret_ref TEXT,
     status          TEXT NOT NULL DEFAULT 'active',
     created_at      BIGINT NOT NULL,
     updated_at      BIGINT NOT NULL,
