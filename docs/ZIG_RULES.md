@@ -46,6 +46,13 @@ Status: Canonical Zig source of truth for agents and commits
 - Always free heap-allocated return values (`formatX`, `buildX`, `getToken`) with `defer alloc.free(result)` immediately after the call. Do not rely on arena allocators to mask leaks — arena-freed code may later be called outside an arena.
 - Test allocation-heavy functions with `std.testing.allocator` (not an arena) so the leak detector fires on missed frees.
 
+## Type Design Rules
+
+- Use tagged unions (`union(enum)`) when a type has mutually-exclusive variants. Do not use structs with optional fields to represent variant data. The compiler enforces exhaustive switches on tagged unions, catching missing cases at compile time.
+- Use `[]const u8` for all immutable data (DB results, parsed input, config values). Reserve `[]u8` for data the function intends to mutate. Mutable slices mislead readers about ownership intent.
+- When a struct carries data from different sources (e.g. vault ref + Bearer token), consider whether a tagged union better represents the "exactly one of these" constraint.
+- `deinit()` methods on tagged union types must switch on all variants and free only what that variant owns.
+
 ## New File Rules
 
 - Prefer extending an existing Zig module unless a new file clearly reduces coupling or keeps module size reviewable.

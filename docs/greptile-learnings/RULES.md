@@ -240,3 +240,70 @@ Pattern: `common.errorResponse(res, status, error_codes.ERR_*, error_messages.MS
 
 Never concatenate raw user input into agent prompts or tool calls.
 Validate, type-check, length-bound all external input. Use parameterized templates.
+
+---
+
+## 24. Tagged unions over optional-field structs
+
+When a type has mutually-exclusive variants (e.g. trigger types, auth methods),
+use a Zig tagged union, not a struct with optional fields. The compiler enforces
+exhaustive switches, making invalid states unrepresentable.
+
+> M2_002: ZombieTrigger was a struct with `source: ?[]const u8`, `schedule: ?[]const u8`.
+> Webhook-without-source was representable but semantically invalid. Refactored to
+> `union(ZombieTriggerType)` with per-variant fields.
+
+---
+
+## 25. Secrets belong in vault, not in entity tables
+
+Never store plaintext secrets (tokens, API keys, webhook secrets) in core entity tables.
+Store a vault reference (key_name) in the entity table. Resolve via `crypto_store.load()`
+at runtime. This keeps secrets encrypted at rest and out of query results, backups, and logs.
+
+> M2_002: webhook_secret was initially a TEXT column in core.zombies. Refactored to
+> webhook_secret_ref (vault key_name). Resolved via crypto_store.load() in the webhook handler.
+
+---
+
+## 26. No static strings in SQL schema
+
+Do not use DEFAULT or CHECK constraints with hardcoded string values in SQL.
+Enforce value constraints in application code via named constants (e.g. `ZOMBIE_STATUS_ACTIVE`).
+SQL cannot reference Zig/JS constants, so hardcoded strings in schema drift from code.
+
+> M2_002: `DEFAULT 'active'` and `CHECK (status IN ('active', 'paused', 'stopped'))` removed
+> from core.zombies. Status enforcement moved to application-level constants.
+
+---
+
+## 27. Escape control characters in JSON string emission
+
+When writing a JSON string encoder, escape all ASCII control characters (0x00-0x1F)
+per RFC 8259 section 7. Missing escapes for `\n`, `\r`, `\t`, or null bytes produce
+malformed JSON and enable injection if the input contains attacker-influenced content.
+
+> M2_002: writeJsonString in yaml_frontmatter.zig initially only escaped `"` and `\`.
+> Review caught that `\n` in a YAML value could inject keys into the JSON output.
+
+---
+
+## 28. Constant-time comparison must not short-circuit on length
+
+When comparing secrets (tokens, webhook secrets), always run the XOR loop over
+`@min(a.len, b.len)` bytes, then fold the length mismatch into the result after
+the loop. Short-circuiting on `a.len == b.len` leaks the expected secret's length.
+
+> M2_002: constantTimeEq used `a.len == b.len and ct: { ... }` which skipped the
+> XOR loop entirely on length mismatch. Fixed to always run the loop.
+
+---
+
+## 29. Use `[]const u8` for immutable data, not `[]u8`
+
+When a struct holds data read from a database or parsed from input that will not be
+modified, declare fields as `[]const u8`. Mutable `[]u8` signals the data can be changed,
+which misleads readers and prevents the compiler from catching unintended mutation.
+
+> M2_002: ZombieRow used `[]u8` for workspace_id, status, token — all immutable DB data.
+> Refactored to `[]const u8` to match semantic ownership.
