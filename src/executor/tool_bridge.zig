@@ -146,7 +146,10 @@ pub fn buildTools(
             log.err("tool_bridge.build_failed name={s} err={s}", .{ tool_name, @errorName(err) });
             continue;
         };
-        try list.append(alloc, t);
+        list.append(alloc, t) catch |err| {
+            t.deinit(alloc);
+            return err;
+        };
     }
 
     return list.toOwnedSlice(alloc);
