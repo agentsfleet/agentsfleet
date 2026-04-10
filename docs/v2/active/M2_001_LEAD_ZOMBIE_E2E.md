@@ -84,7 +84,7 @@ Add agentmail API domain (`api.agentmail.dev`) to the executor's network allowli
 
 ## 3.0 Sample Workspace + Hero Flow
 
-**Status:** PENDING
+**Status:** DONE
 
 Create `samples/lead-collector/` with a pre-configured workspace that enables the hero demo with zero credential setup. Demo mode uses a sandbox agentmail account. `zombiectl up` detects demo credentials and prints "demo mode" banner. The full hero flow runs in under 2 minutes.
 
