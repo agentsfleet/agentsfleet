@@ -105,11 +105,11 @@ pub fn claimZombie(
     const source_markdown = try alloc.dupe(u8, try row.get([]const u8, 2));
     errdefer alloc.free(source_markdown);
     // Check status before drain — row-backed slices are invalid after drain.
-    const is_active = std.mem.eql(u8, try row.get([]const u8, 3), error_codes.ZOMBIE_STATUS_ACTIVE);
+    const status = zombie_config.ZombieStatus.fromSlice(try row.get([]const u8, 3)) orelse .stopped;
 
     q.drain() catch {};
 
-    if (!is_active) {
+    if (!status.isRunnable()) {
         log.warn("zombie_event_loop.claim_skipped zombie_id={s}", .{zombie_id_input});
         // errdefer on workspace_id and source_markdown fires automatically —
         // no manual free here (would be a double-free).

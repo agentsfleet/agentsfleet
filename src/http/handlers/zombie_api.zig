@@ -100,7 +100,7 @@ pub fn handleCreateZombie(ctx: *Context, req: *httpz.Request, res: *httpz.Respon
 
     log.info("zombie.created id={s} name={s} workspace={s}", .{ zombie_id, body.name, body.workspace_id });
     res.status = 201;
-    res.json(.{ .zombie_id = zombie_id, .status = ec.ZOMBIE_STATUS_ACTIVE }, .{}) catch {};
+    res.json(.{ .zombie_id = zombie_id, .status = zombie_config.ZombieStatus.active.toSlice() }, .{}) catch {};
 }
 
 fn insertZombie(pool: *pg.Pool, body: CreateBody, zombie_id: []const u8, now_ms: i64) !void {
@@ -110,7 +110,7 @@ fn insertZombie(pool: *pg.Pool, body: CreateBody, zombie_id: []const u8, now_ms:
         \\INSERT INTO core.zombies
         \\  (id, workspace_id, name, source_markdown, config_json, status, created_at, updated_at)
         \\VALUES ($1::uuid, $2::uuid, $3, $4, $5::jsonb, $6, $7, $8)
-    , .{ zombie_id, body.workspace_id, body.name, body.source_markdown, body.config_json, ec.ZOMBIE_STATUS_ACTIVE, now_ms, now_ms });
+    , .{ zombie_id, body.workspace_id, body.name, body.source_markdown, body.config_json, zombie_config.ZombieStatus.active.toSlice(), now_ms, now_ms });
 }
 
 fn isUniqueViolation(err: anyerror) bool {
@@ -228,7 +228,7 @@ pub fn handleDeleteZombie(ctx: *Context, req: *httpz.Request, res: *httpz.Respon
 
     log.info("zombie.killed id={s}", .{zombie_id});
     res.status = 200;
-    res.json(.{ .zombie_id = zombie_id, .status = ec.ZOMBIE_STATUS_KILLED }, .{}) catch {};
+    res.json(.{ .zombie_id = zombie_id, .status = zombie_config.ZombieStatus.killed.toSlice() }, .{}) catch {};
 }
 
 fn killZombie(pool: *pg.Pool, zombie_id: []const u8) !bool {
@@ -240,7 +240,7 @@ fn killZombie(pool: *pg.Pool, zombie_id: []const u8) !bool {
         \\UPDATE core.zombies SET status = $1, updated_at = $2
         \\WHERE id = $3::uuid AND status != $1
         \\RETURNING id
-    , .{ ec.ZOMBIE_STATUS_KILLED, now_ms, zombie_id });
+    , .{ zombie_config.ZombieStatus.killed.toSlice(), now_ms, zombie_id });
     defer q.deinit();
     const has_row = try q.next() != null;
     q.drain() catch {};

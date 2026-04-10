@@ -2,6 +2,7 @@
 -- source_markdown: raw .md file (YAML frontmatter + freeform instructions/voice transcript).
 -- config_json: CLI-parsed frontmatter as JSON. Zig server reads this only, never parses YAML.
 -- Status transitions: active → paused → active | active → stopped (soft) | active → killed (terminal).
+-- Status validation is enforced by ZombieStatus enum in src/zombie/config.zig, not by CHECK constraint.
 
 CREATE TABLE IF NOT EXISTS core.zombies (
     id              UUID PRIMARY KEY,
@@ -13,8 +14,7 @@ CREATE TABLE IF NOT EXISTS core.zombies (
     status          TEXT NOT NULL DEFAULT 'active',
     created_at      BIGINT NOT NULL,
     updated_at      BIGINT NOT NULL,
-    CONSTRAINT uq_zombies_workspace_name UNIQUE (workspace_id, name),
-    CONSTRAINT ck_zombies_status CHECK (status IN ('active', 'paused', 'stopped', 'killed'))
+    CONSTRAINT uq_zombies_workspace_name UNIQUE (workspace_id, name)
 );
 
 -- Worker reads config and status at claim time.

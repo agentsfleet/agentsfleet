@@ -11,6 +11,7 @@ const pg = @import("pg");
 const queue_redis = @import("../queue/redis_client.zig");
 const event_loop = @import("../zombie/event_loop.zig");
 const executor_client = @import("../executor/client.zig");
+const zombie_config = @import("../zombie/config.zig");
 const error_codes = @import("../errors/codes.zig");
 const obs_log = @import("../observability/logging.zig");
 
@@ -78,7 +79,7 @@ pub fn listActiveZombieIds(pool: *pg.Pool, alloc: std.mem.Allocator) ![][]const 
         \\SELECT id::text FROM core.zombies
         \\WHERE status = $1
         \\ORDER BY created_at ASC
-    , .{error_codes.ZOMBIE_STATUS_ACTIVE});
+    , .{zombie_config.ZombieStatus.active.toSlice()});
     defer q.deinit();
 
     var ids: std.ArrayList([]const u8) = .{};

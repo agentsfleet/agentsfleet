@@ -3,17 +3,17 @@ name: lead-collector
 trigger:
   type: webhook
   source: agentmail
-  event: email.received
+  event: message.received
 skills:
   - agentmail
 credentials:
   - agentmail
 network:
   allow:
-    - api.agentmail.dev
+    - api.agentmail.to
 budget:
   daily_dollars: 5.00
-  monthly_dollars: 50.00
+  monthly_dollars: 29.00
 ---
 
 You are Lead Collector, a Zombie agent that processes inbound emails.

@@ -9,6 +9,7 @@ const httpz = @import("httpz");
 const pg = @import("pg");
 const common = @import("common.zig");
 const ec = @import("../../errors/codes.zig");
+const zombie_config = @import("../../zombie/config.zig");
 const activity_stream = @import("../../zombie/activity_stream.zig");
 
 const log = std.log.scoped(.http_webhook);
@@ -166,7 +167,8 @@ pub fn handleReceiveWebhook(ctx: *Context, req: *httpz.Request, res: *httpz.Resp
     };
     if (!verifyBearerToken(expected_token, req, res, req_id)) return;
 
-    if (!std.mem.eql(u8, zombie.status, ec.ZOMBIE_STATUS_ACTIVE)) {
+    const status = zombie_config.ZombieStatus.fromSlice(zombie.status) orelse .stopped;
+    if (!status.isRunnable()) {
         log.warn("webhook.zombie_not_active zombie_id={s} status={s} req_id={s}", .{ zombie_id, zombie.status, req_id });
         common.errorResponse(res, .conflict, ec.ERR_WEBHOOK_ZOMBIE_PAUSED, ec.MSG_ZOMBIE_NOT_ACTIVE, req_id);
         return;

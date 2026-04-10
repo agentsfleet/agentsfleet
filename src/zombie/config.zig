@@ -27,6 +27,38 @@ pub const ZombieConfigError = error{
     InvalidBudget,
 };
 
+pub const ZombieStatus = enum {
+    active,
+    paused,
+    stopped,
+    killed,
+
+    pub fn toSlice(self: ZombieStatus) []const u8 {
+        return switch (self) {
+            .active => "active",
+            .paused => "paused",
+            .stopped => "stopped",
+            .killed => "killed",
+        };
+    }
+
+    pub fn fromSlice(s: []const u8) ?ZombieStatus {
+        if (std.mem.eql(u8, s, "active")) return .active;
+        if (std.mem.eql(u8, s, "paused")) return .paused;
+        if (std.mem.eql(u8, s, "stopped")) return .stopped;
+        if (std.mem.eql(u8, s, "killed")) return .killed;
+        return null;
+    }
+
+    pub fn isTerminal(self: ZombieStatus) bool {
+        return self == .killed;
+    }
+
+    pub fn isRunnable(self: ZombieStatus) bool {
+        return self == .active;
+    }
+};
+
 pub const ZombieTriggerType = enum { webhook, cron, api };
 
 pub const ZombieTrigger = struct {
