@@ -327,6 +327,65 @@ test "T11: invalid Luhn number is NOT flagged as credit card" {
 
 // ── T11: Resource safety — allocator leak detection ───────────────────────
 
+// ── Content scanner precedence: credential echo > API key > credit card > SSN
+
+test "T2: credential echo takes precedence over API key pattern" {
+    const creds = &[_][]const u8{"sk-proj-secret"};
+    const result = content_scanner.scanResponse("key: sk-proj-secret here", creds);
+    switch (result) {
+        .flagged => |f| try std.testing.expect(f.flag_type == .credential_echo),
+        else => return error.ExpectedFlagged,
+    }
+}
+
+test "T2: API key takes precedence over credit card" {
+    // Body has both an API key prefix and a valid Luhn card number
+    const result = content_scanner.scanResponse("sk-proj-abc and 4111 1111 1111 1111", &.{});
+    switch (result) {
+        .flagged => |f| try std.testing.expect(f.flag_type == .api_key_leak),
+        else => return error.ExpectedFlagged,
+    }
+}
+
+test "T2: credit card takes precedence over SSN" {
+    // Body has both a Luhn-valid card and an SSN
+    const result = content_scanner.scanResponse("card 4111111111111111 ssn 123-45-6789", &.{});
+    switch (result) {
+        .flagged => |f| try std.testing.expect(f.flag_type == .pii_credit_card),
+        else => return error.ExpectedFlagged,
+    }
+}
+
+// ── Event type coverage: every decision variant has an event type
+
+test "T9: eventTypeForScan maps flagged to content_flagged" {
+    const flagged = content_scanner.ScanResult{ .flagged = .{
+        .flag_type = .pii_credit_card,
+        .detail = "test",
+    } };
+    try std.testing.expect(firewall.Firewall.eventTypeForScan(flagged) != null);
+    try std.testing.expectEqualStrings(firewall.EVT_CONTENT_FLAGGED, firewall.Firewall.eventTypeForScan(flagged).?);
+}
+
+test "T9: eventTypeForScan returns null for clean and truncated" {
+    try std.testing.expect(firewall.Firewall.eventTypeForScan(.{ .clean = {} }) == null);
+    try std.testing.expect(firewall.Firewall.eventTypeForScan(.{ .truncated = .{ .scanned_bytes = 100, .total_bytes = 200 } }) == null);
+}
+
+// ── extractDigits zero-init safety
+
+test "T11: extractDigits with fewer than 16 digit chars produces zero-padded result" {
+    // "12 34" has only 4 digits — remaining 12 bytes should be zero, not undefined
+    const digits = content_scanner.extractDigitsForTest("12 34");
+    try std.testing.expectEqual(@as(u8, '1'), digits[0]);
+    try std.testing.expectEqual(@as(u8, '2'), digits[1]);
+    try std.testing.expectEqual(@as(u8, '3'), digits[2]);
+    try std.testing.expectEqual(@as(u8, '4'), digits[3]);
+    // Zero-initialized remainder
+    try std.testing.expectEqual(@as(u8, 0), digits[4]);
+    try std.testing.expectEqual(@as(u8, 0), digits[15]);
+}
+
 test "T11: parseEndpointRules + freeRules has no leaks" {
     const alloc = std.testing.allocator;
     const json =

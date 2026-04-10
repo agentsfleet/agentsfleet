@@ -117,9 +117,12 @@ fn checkCreditCardPattern(body: []const u8) bool {
     return false;
 }
 
+/// Test-only accessor for extractDigits.
+pub const extractDigitsForTest = extractDigits;
+
 /// Extract only digit characters from a card-formatted string (skip spaces/dashes).
 fn extractDigits(s: []const u8) [16]u8 {
-    var digits: [16]u8 = undefined;
+    var digits: [16]u8 = .{0} ** 16;
     var count: usize = 0;
     for (s) |c| {
         if (isDigit(c) and count < 16) {
