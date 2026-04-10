@@ -96,14 +96,11 @@ make doctor    # Check config, Postgres, LLM key
 
 ## Agent support
 
-This repo is configured for Claude Code, Codex, OpenCode, and Amp. All agents read the canonical [AGENTS.md](AGENTS.md) operating model.
+All agents read the canonical [AGENTS.md](AGENTS.md) operating model.
 
 | Agent | Config |
 |-------|--------|
 | Claude Code | `CLAUDE.md` → `AGENTS.md` |
-| Codex | `.codex/instructions.md` |
-| OpenCode | `.opencode/instructions.md` → `AGENTS.md` |
-| Amp | `.amp/instructions.md` → `AGENTS.md` |
 
 ## License
 
