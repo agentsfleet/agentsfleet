@@ -1,7 +1,9 @@
--- M1_001 §6.1: Zombie entity table.
--- source_markdown: raw .md file (YAML frontmatter + freeform instructions/voice transcript).
--- config_json: CLI-parsed frontmatter as JSON. Zig server reads this only, never parses YAML.
--- Status transitions: active → paused → active | active → stopped (terminal).
+-- M1_001 §6.1 + M2_002: Zombie entity table.
+-- source_markdown: raw SKILL.md (agent instructions)
+-- trigger_markdown: raw TRIGGER.md (deployment manifest)
+-- config_json: server-computed from trigger_markdown frontmatter
+-- webhook_secret: crypto-random URL-embedded secret for webhook auth
+-- Status transitions: active → paused → active | active → stopped (terminal)
 
 CREATE TABLE IF NOT EXISTS core.zombies (
     id              UUID PRIMARY KEY,
@@ -9,7 +11,9 @@ CREATE TABLE IF NOT EXISTS core.zombies (
     workspace_id    UUID NOT NULL REFERENCES core.workspaces(workspace_id),
     name            TEXT NOT NULL,
     source_markdown TEXT NOT NULL,
+    trigger_markdown TEXT,
     config_json     JSONB NOT NULL,
+    webhook_secret  TEXT,
     status          TEXT NOT NULL DEFAULT 'active',
     created_at      BIGINT NOT NULL,
     updated_at      BIGINT NOT NULL,

@@ -17,7 +17,7 @@ pub const Context = common.Context;
 
 const WebhookPayload = struct {
     event_id: []const u8,
-    @"type": []const u8,
+    type: []const u8,
     data: std.json.Value,
 };
 
@@ -25,6 +25,7 @@ const ZombieRow = struct {
     workspace_id: []u8,
     status: []u8,
     token: ?[]u8,
+    webhook_secret: ?[]u8,
     source: ?[]u8,
 };
 
@@ -32,6 +33,7 @@ fn deinitZombieRow(row: *ZombieRow, alloc: std.mem.Allocator) void {
     alloc.free(row.workspace_id);
     alloc.free(row.status);
     if (row.token) |t| alloc.free(t);
+    if (row.webhook_secret) |s| alloc.free(s);
     if (row.source) |s| alloc.free(s);
 }
 
@@ -39,8 +41,9 @@ fn fetchZombieById(pool: *pg.Pool, alloc: std.mem.Allocator, zombie_id: []const 
     const conn = try pool.acquire();
     defer pool.release(conn);
     var q = try conn.query( // check-pg-drain: ok — drain called below
-        \\SELECT workspace_id, status,
+        \\SELECT workspace_id::text, status,
         \\       config_json->'trigger'->>'token',
+        \\       webhook_secret,
         \\       config_json->'trigger'->>'source'
         \\FROM core.zombies WHERE id = $1::uuid
     , .{zombie_id});
@@ -56,10 +59,13 @@ fn fetchZombieById(pool: *pg.Pool, alloc: std.mem.Allocator, zombie_id: []const 
     const token_raw = row.get([]const u8, 2) catch null;
     const token: ?[]u8 = if (token_raw) |t| try alloc.dupe(u8, t) else null;
     errdefer if (token) |t| alloc.free(t);
-    const source_raw = row.get([]const u8, 3) catch null;
+    const ws_raw = row.get([]const u8, 3) catch null;
+    const webhook_secret: ?[]u8 = if (ws_raw) |s| try alloc.dupe(u8, s) else null;
+    errdefer if (webhook_secret) |s| alloc.free(s);
+    const source_raw = row.get([]const u8, 4) catch null;
     const source: ?[]u8 = if (source_raw) |s| try alloc.dupe(u8, s) else null;
     q.drain() catch {};
-    return .{ .workspace_id = workspace_id, .status = status, .token = token, .source = source };
+    return .{ .workspace_id = workspace_id, .status = status, .token = token, .webhook_secret = webhook_secret, .source = source };
 }
 
 // ── Helpers (each ≤ 20 lines) ──────────────────────────────────────────────
@@ -77,12 +83,43 @@ fn parseBody(alloc: std.mem.Allocator, req: *httpz.Request, res: *httpz.Response
         return null;
     };
     const payload = parsed.value;
-    if (payload.event_id.len == 0 or payload.@"type".len == 0) {
+    if (payload.event_id.len == 0 or payload.type.len == 0) {
         common.errorResponse(res, .bad_request, ec.ERR_WEBHOOK_MALFORMED, ec.MSG_MISSING_FIELDS, req_id);
         parsed.deinit();
         return null;
     }
     return payload;
+}
+
+// M2_002: Unified webhook auth — URL secret first, Bearer token fallback.
+fn verifyWebhookAuth(url_secret: ?[]const u8, zombie: *const ZombieRow, req: *httpz.Request, res: *httpz.Response, req_id: []const u8) bool {
+    // Path 1: URL-embedded secret (Slack-style)
+    if (url_secret) |provided_secret| {
+        const expected = zombie.webhook_secret orelse {
+            common.errorResponse(res, .forbidden, ec.ERR_FORBIDDEN, ec.MSG_AUTH_REQUIRED, req_id);
+            return false;
+        };
+        return constantTimeEq(provided_secret, expected, res, req_id);
+    }
+    // Path 2: Bearer token fallback
+    const expected_token = zombie.token orelse {
+        common.errorResponse(res, .forbidden, ec.ERR_FORBIDDEN, ec.MSG_AUTH_REQUIRED, req_id);
+        return false;
+    };
+    return verifyBearerToken(expected_token, req, res, req_id);
+}
+
+fn constantTimeEq(a: []const u8, b: []const u8, res: *httpz.Response, req_id: []const u8) bool {
+    const valid = a.len == b.len and ct: {
+        var diff: u8 = 0;
+        for (a, b) |x, y| diff |= x ^ y;
+        break :ct diff == 0;
+    };
+    if (!valid) {
+        common.errorResponse(res, .unauthorized, ec.ERR_FORBIDDEN, ec.MSG_INVALID_TOKEN, req_id);
+        return false;
+    }
+    return true;
 }
 
 fn verifyBearerToken(expected_token: []const u8, req: *httpz.Request, res: *httpz.Response, req_id: []const u8) bool {
@@ -128,7 +165,7 @@ fn dedupAndEnqueue(ctx: *Context, alloc: std.mem.Allocator, res: *httpz.Response
         common.internalOperationError(res, "Failed to serialize event data", req_id);
         return false;
     };
-    ctx.queue.xaddZombieEvent(zombie_id, payload.event_id, payload.@"type", source_label, data_json) catch |err| {
+    ctx.queue.xaddZombieEvent(zombie_id, payload.event_id, payload.type, source_label, data_json) catch |err| {
         log.err("webhook.enqueue_failed zombie_id={s} event_id={s} err={s}", .{ zombie_id, payload.event_id, @errorName(err) });
         common.internalOperationError(res, "Failed to enqueue event", req_id);
         return false;
@@ -138,7 +175,7 @@ fn dedupAndEnqueue(ctx: *Context, alloc: std.mem.Allocator, res: *httpz.Response
 
 // ── Main handler ───────────────────────────────────────────────────────────
 
-pub fn handleReceiveWebhook(ctx: *Context, req: *httpz.Request, res: *httpz.Response, zombie_id: []const u8) void {
+pub fn handleReceiveWebhook(ctx: *Context, req: *httpz.Request, res: *httpz.Response, zombie_id: []const u8, url_secret: ?[]const u8) void {
     var arena = std.heap.ArenaAllocator.init(ctx.alloc);
     defer arena.deinit();
     const alloc = arena.allocator();
@@ -157,14 +194,10 @@ pub fn handleReceiveWebhook(ctx: *Context, req: *httpz.Request, res: *httpz.Resp
     };
     defer deinitZombieRow(&zombie, alloc);
 
-    // Auth: Bearer token is always required. Token is generated at deploy time
-    // and stored in config_json. No token = reject (zombiectl up must set one).
-    const expected_token = zombie.token orelse {
-        log.warn("webhook.no_token_configured zombie_id={s} req_id={s}", .{ zombie_id, req_id });
-        common.errorResponse(res, .forbidden, ec.ERR_FORBIDDEN, ec.MSG_AUTH_REQUIRED, req_id);
-        return;
-    };
-    if (!verifyBearerToken(expected_token, req, res, req_id)) return;
+    // M2_002: URL-embedded secret auth (preferred). Bearer token auth (fallback).
+    // If URL secret is provided, verify against webhook_secret column.
+    // Otherwise, fall back to Bearer token from config_json.
+    if (!verifyWebhookAuth(url_secret, &zombie, req, res, req_id)) return;
 
     if (!std.mem.eql(u8, zombie.status, ec.ZOMBIE_STATUS_ACTIVE)) {
         log.warn("webhook.zombie_not_active zombie_id={s} status={s} req_id={s}", .{ zombie_id, zombie.status, req_id });
@@ -182,7 +215,7 @@ pub fn handleReceiveWebhook(ctx: *Context, req: *httpz.Request, res: *httpz.Resp
         .detail = payload.event_id,
     });
 
-    log.info("webhook.accepted zombie_id={s} event_id={s} type={s}", .{ zombie_id, payload.event_id, payload.@"type" });
+    log.info("webhook.accepted zombie_id={s} event_id={s} type={s}", .{ zombie_id, payload.event_id, payload.type });
     res.status = 202;
     res.json(.{ .status = ec.STATUS_ACCEPTED, .event_id = payload.event_id }, .{}) catch {};
 }
@@ -195,12 +228,13 @@ test "WebhookPayload parses valid event" {
     const parsed = try std.json.parseFromSlice(WebhookPayload, alloc, body, .{ .ignore_unknown_fields = true });
     defer parsed.deinit();
     try std.testing.expectEqualStrings("evt_001", parsed.value.event_id);
-    try std.testing.expectEqualStrings("email.received", parsed.value.@"type");
+    try std.testing.expectEqualStrings("email.received", parsed.value.type);
 }
 
 test "WebhookPayload rejects missing event_id" {
     const alloc = std.testing.allocator;
-    const body = \\{"type":"email.received","data":{}}
+    const body = 
+        \\{"type":"email.received","data":{}}
     ;
     const result = std.json.parseFromSlice(WebhookPayload, alloc, body, .{});
     try std.testing.expect(if (result) |_| false else |_| true);

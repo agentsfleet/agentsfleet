@@ -1,13 +1,20 @@
 const std = @import("std");
+const matchers = @import("route_matchers.zig");
 
-const AgentProposalRoute = struct {
+pub const AgentProposalRoute = struct {
     agent_id: []const u8,
     proposal_id: []const u8,
 };
 
-const AgentHarnessChangeRoute = struct {
+pub const AgentHarnessChangeRoute = struct {
     agent_id: []const u8,
     change_id: []const u8,
+};
+
+// M2_002: webhook route carries zombie_id and optional URL-embedded secret
+pub const WebhookRoute = struct {
+    zombie_id: []const u8,
+    secret: ?[]const u8,
 };
 
 pub const Route = union(enum) {
@@ -34,7 +41,7 @@ pub const Route = union(enum) {
     get_workspace_billing_summary: []const u8,
     set_workspace_scoring_config: []const u8,
     put_harness_source: []const u8,
-    receive_webhook: []const u8,
+    receive_webhook: WebhookRoute,
     compile_harness: []const u8,
     activate_harness: []const u8,
     get_harness_active: []const u8,
@@ -56,6 +63,13 @@ pub const Route = union(enum) {
     spec_template: []const u8, // POST /v1/workspaces/{id}/spec/template
     spec_preview: []const u8, // POST /v1/workspaces/{id}/spec/preview
 };
+
+const matchRunAction = matchers.matchRunAction;
+const matchWorkspaceSuffix = matchers.matchWorkspaceSuffix;
+const matchAgentProposalAction = matchers.matchAgentProposalAction;
+const matchAgentHarnessChangeAction = matchers.matchAgentHarnessChangeAction;
+const isSingleSegment = matchers.isSingleSegment;
+const matchWebhookRoute = matchers.matchWebhookRoute;
 
 const prefix_workspaces = "/v1/workspaces/";
 const prefix_runs = "/v1/runs/";
@@ -123,7 +137,7 @@ pub fn match(path: []const u8) ?Route {
     if (matchWorkspaceSuffix(path, "/harness/source")) |workspace_id| return .{ .put_harness_source = workspace_id };
 
     // M1_001: Zombie webhook endpoint — /v1/webhooks/{zombie_id}
-    if (matchWebhookZombieId(path)) |zombie_id| return .{ .receive_webhook = zombie_id };
+    if (matchWebhookRoute(path)) |route| return .{ .receive_webhook = route };
     if (matchWorkspaceSuffix(path, "/harness/compile")) |workspace_id| return .{ .compile_harness = workspace_id };
     if (matchWorkspaceSuffix(path, "/harness/activate")) |workspace_id| return .{ .activate_harness = workspace_id };
     if (matchWorkspaceSuffix(path, "/harness/active")) |workspace_id| return .{ .get_harness_active = workspace_id };
@@ -159,63 +173,6 @@ pub fn match(path: []const u8) ?Route {
     }
 
     return null;
-}
-
-/// M16_002: Match /v1/runs/<run_id><action> routes generically.
-/// Returns the run_id segment when the path has the expected prefix and action suffix,
-/// and the inner segment (run_id) contains no additional slashes.
-fn matchRunAction(path: []const u8, action: []const u8) ?[]const u8 {
-    if (!std.mem.startsWith(u8, path, prefix_runs)) return null;
-    if (!std.mem.endsWith(u8, path, action)) return null;
-    const inner = path[prefix_runs.len .. path.len - action.len];
-    if (!isSingleSegment(inner)) return null;
-    return inner;
-}
-
-fn matchWorkspaceSuffix(path: []const u8, suffix: []const u8) ?[]const u8 {
-    if (!std.mem.startsWith(u8, path, prefix_workspaces)) return null;
-    if (!std.mem.endsWith(u8, path, suffix)) return null;
-    const inner = path[prefix_workspaces.len .. path.len - suffix.len];
-    if (!isSingleSegment(inner)) return null;
-    return inner;
-}
-
-fn matchAgentProposalAction(path: []const u8, suffix: []const u8) ?AgentProposalRoute {
-    if (!std.mem.startsWith(u8, path, prefix_agents)) return null;
-    if (!std.mem.endsWith(u8, path, suffix)) return null;
-    const inner = path[prefix_agents.len .. path.len - suffix.len];
-    const marker = "/proposals/";
-    const marker_idx = std.mem.indexOf(u8, inner, marker) orelse return null;
-    const agent_id = inner[0..marker_idx];
-    const proposal_id = inner[marker_idx + marker.len ..];
-    if (!isSingleSegment(agent_id) or !isSingleSegment(proposal_id)) return null;
-    return .{ .agent_id = agent_id, .proposal_id = proposal_id };
-}
-
-fn matchAgentHarnessChangeAction(path: []const u8, suffix: []const u8) ?AgentHarnessChangeRoute {
-    if (!std.mem.startsWith(u8, path, prefix_agents)) return null;
-    if (!std.mem.endsWith(u8, path, suffix)) return null;
-    const inner = path[prefix_agents.len .. path.len - suffix.len];
-    const marker = "/harness/changes/";
-    const marker_idx = std.mem.indexOf(u8, inner, marker) orelse return null;
-    const agent_id = inner[0..marker_idx];
-    const change_id = inner[marker_idx + marker.len ..];
-    if (!isSingleSegment(agent_id) or !isSingleSegment(change_id)) return null;
-    return .{ .agent_id = agent_id, .change_id = change_id };
-}
-
-fn isSingleSegment(value: []const u8) bool {
-    return value.len > 0 and std.mem.indexOfScalar(u8, value, '/') == null;
-}
-
-// matchWebhookZombieId matches /v1/webhooks/{zombie_id} and returns the zombie_id segment.
-// zombie_id must be a single path segment (no slashes, non-empty).
-fn matchWebhookZombieId(path: []const u8) ?[]const u8 {
-    const prefix = "/v1/webhooks/";
-    if (!std.mem.startsWith(u8, path, prefix)) return null;
-    const zombie_id = path[prefix.len..];
-    if (!isSingleSegment(zombie_id)) return null;
-    return zombie_id;
 }
 
 test "match resolves workspace billing and harness routes" {
@@ -387,20 +344,6 @@ test "match resolves workspace LLM credential route (M16_004)" {
     try std.testing.expect(match("/v1/workspaces/ws_1/extra/credentials/llm") == null);
 }
 
-// ── M16_002 matchRunAction tests ──────────────────────────────────────────────
-
-test "matchRunAction resolves :retry, :replay, :stream with single-segment run_id" {
-    const run_id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
-    try std.testing.expectEqualStrings(run_id, matchRunAction("/v1/runs/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11:retry", ":retry").?);
-    try std.testing.expectEqualStrings(run_id, matchRunAction("/v1/runs/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11:replay", ":replay").?);
-    try std.testing.expectEqualStrings(run_id, matchRunAction("/v1/runs/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11:stream", ":stream").?);
-    // Reject invalid inputs
-    try std.testing.expect(matchRunAction("/v1/runs/foo/bar:retry", ":retry") == null);
-    try std.testing.expect(matchRunAction("/v1/runs//bar:retry", ":retry") == null);
-    try std.testing.expect(matchRunAction("/v1/runs/:retry", ":retry") == null);
-    try std.testing.expect(matchRunAction("/v1/workspaces/ws1:retry", ":retry") == null);
-}
-
 test "match uses matchRunAction — run action routes resolve correctly" {
     try std.testing.expectEqualStrings(
         "run_1",
@@ -478,18 +421,13 @@ test "M17: bare run path resolves to get_run not cancel_run" {
 
 // ── M1_001 webhook route tests ────────────────────────────────────────────
 
-test "M1_001: webhook routes resolve and reject correctly" {
+test "M2_002: match resolves webhook with URL secret" {
     const zombie_id = "019abc12-8d3a-7f13-8abc-2b3e1e0a6f11";
-    // Valid zombie_id segment
-    try std.testing.expectEqualStrings(zombie_id, matchWebhookZombieId("/v1/webhooks/019abc12-8d3a-7f13-8abc-2b3e1e0a6f11").?);
-    // Invalid: empty, multi-segment, missing prefix
-    try std.testing.expect(matchWebhookZombieId("/v1/webhooks/") == null);
-    try std.testing.expect(matchWebhookZombieId("/v1/webhooks/a/b") == null);
-    try std.testing.expect(matchWebhookZombieId("/v1/webhooks") == null);
-    // match() integration
-    const route = match("/v1/webhooks/019abc12-8d3a-7f13-8abc-2b3e1e0a6f11") orelse return error.TestExpectedMatch;
-    try std.testing.expectEqualStrings(zombie_id, switch (route) {
-        .receive_webhook => |id| id,
+    const route = match("/v1/webhooks/019abc12-8d3a-7f13-8abc-2b3e1e0a6f11/mysecret") orelse return error.TestExpectedMatch;
+    const wr = switch (route) {
+        .receive_webhook => |r| r,
         else => return error.TestExpectedEqual,
-    });
+    };
+    try std.testing.expectEqualStrings(zombie_id, wr.zombie_id);
+    try std.testing.expectEqualStrings("mysecret", wr.secret.?);
 }

@@ -1,8 +1,12 @@
-// M1_001 §5.0 — Zombie CLI command unit tests.
+// M2_002 — Zombie CLI command unit tests.
 //
 // Covers spec dimensions:
-//   5.1 zombiectl install lead-collector
-//   5.2 zombiectl up (mocked API)
+//   1.1 SKILL.md template exists with ClaHub frontmatter
+//   1.2 TRIGGER.md template exists with trigger config
+//   2.1 zombiectl install creates directory with both files
+//   2.2 zombiectl up reads both files, sends raw to API
+//   2.3 zombiectl up with no zombie directory returns error
+//   2.4 simpleYamlParse deleted (grep check, not test)
 //   5.3 zombiectl credential add (mocked API)
 //   5.4 zombiectl status (mocked API)
 
@@ -42,25 +46,58 @@ function makeCtx(overrides = {}) {
 
 const workspaces = { current_workspace_id: WS_ID, items: [] };
 
-// ── 5.1: install ─────────────────────────────────────────────────────────
+// ── 2.1: install creates directory ──────────────────────────────────────
 
-test("5.1: install lead-collector writes config to current dir", async () => {
+test("2.1: install lead-collector creates directory with SKILL.md and TRIGGER.md", async () => {
   const tmpDir = mkdtempSync(join(tmpdir(), "zombie-test-"));
   const origCwd = process.cwd();
   process.chdir(tmpDir);
   try {
     const code = await commandZombie(makeCtx(), ["install", "lead-collector"], workspaces, makeDeps());
     assert.equal(code, 0);
-    assert.ok(existsSync(join(tmpDir, "lead-collector.md")));
-    const content = readFileSync(join(tmpDir, "lead-collector.md"), "utf-8");
-    assert.ok(content.includes("lead-collector"));
-    assert.ok(content.includes("agentmail"));
+    assert.ok(existsSync(join(tmpDir, "lead-collector", "SKILL.md")));
+    assert.ok(existsSync(join(tmpDir, "lead-collector", "TRIGGER.md")));
   } finally {
     process.chdir(origCwd);
   }
 });
 
-test("5.1: install with --json outputs JSON", async () => {
+test("1.1: SKILL.md contains ClaHub frontmatter", async () => {
+  const tmpDir = mkdtempSync(join(tmpdir(), "zombie-test-"));
+  const origCwd = process.cwd();
+  process.chdir(tmpDir);
+  try {
+    await commandZombie(makeCtx(), ["install", "lead-collector"], workspaces, makeDeps());
+    const content = readFileSync(join(tmpDir, "lead-collector", "SKILL.md"), "utf-8");
+    assert.ok(content.startsWith("---"));
+    assert.ok(content.includes("name: lead-collector"));
+    assert.ok(content.includes("description:"));
+    assert.ok(content.includes("tags:"));
+    assert.ok(content.includes("author:"));
+    assert.ok(content.includes("version:"));
+  } finally {
+    process.chdir(origCwd);
+  }
+});
+
+test("1.2: TRIGGER.md contains trigger config", async () => {
+  const tmpDir = mkdtempSync(join(tmpdir(), "zombie-test-"));
+  const origCwd = process.cwd();
+  process.chdir(tmpDir);
+  try {
+    await commandZombie(makeCtx(), ["install", "lead-collector"], workspaces, makeDeps());
+    const content = readFileSync(join(tmpDir, "lead-collector", "TRIGGER.md"), "utf-8");
+    assert.ok(content.startsWith("---"));
+    assert.ok(content.includes("trigger:"));
+    assert.ok(content.includes("credentials:"));
+    assert.ok(content.includes("budget:"));
+    assert.ok(content.includes("chain:"));
+  } finally {
+    process.chdir(origCwd);
+  }
+});
+
+test("2.1: install with --json outputs JSON", async () => {
   const tmpDir = mkdtempSync(join(tmpdir(), "zombie-test-"));
   const origCwd = process.cwd();
   process.chdir(tmpDir);
@@ -80,34 +117,19 @@ test("5.1: install with --json outputs JSON", async () => {
   }
 });
 
-test("5.1: install unknown template returns exit 2", async () => {
+test("2.1: install unknown template returns exit 2", async () => {
   const code = await commandZombie(makeCtx(), ["install", "nonexistent"], workspaces, makeDeps());
   assert.equal(code, 2);
 });
 
-test("5.1: install without template name returns exit 2", async () => {
+test("2.1: install without template name returns exit 2", async () => {
   const code = await commandZombie(makeCtx(), ["install"], workspaces, makeDeps());
   assert.equal(code, 2);
 });
 
-test("5.1: install template contains YAML frontmatter", async () => {
-  const tmpDir = mkdtempSync(join(tmpdir(), "zombie-test-"));
-  const origCwd = process.cwd();
-  process.chdir(tmpDir);
-  try {
-    await commandZombie(makeCtx(), ["install", "lead-collector"], workspaces, makeDeps());
-    const content = readFileSync(join(tmpDir, "lead-collector.md"), "utf-8");
-    assert.ok(content.startsWith("---"));
-    assert.ok(content.includes("trigger:"));
-    assert.ok(content.includes("budget:"));
-  } finally {
-    process.chdir(origCwd);
-  }
-});
+// ── 2.2: up sends both files raw ────────────────────────────────────────
 
-// ── 5.2: up ──────────────────────────────────────────────────────────────
-
-test("5.2: up deploys zombie to cloud via API", async () => {
+test("2.2: up sends source_markdown and trigger_markdown to API", async () => {
   const tmpDir = mkdtempSync(join(tmpdir(), "zombie-test-"));
   const origCwd = process.cwd();
   process.chdir(tmpDir);
@@ -129,14 +151,17 @@ test("5.2: up deploys zombie to cloud via API", async () => {
     const code = await commandZombie(makeCtx(), ["up"], workspaces, deps);
     assert.equal(code, 0);
     assert.ok(requestUrl.includes("/v1/zombies/"));
-    assert.equal(requestBody.name, "lead-collector");
+    // M2_002: no config_json — server parses trigger_markdown
+    assert.ok(requestBody.source_markdown);
+    assert.ok(requestBody.trigger_markdown);
+    assert.equal(requestBody.config_json, undefined);
     assert.equal(requestBody.workspace_id, WS_ID);
   } finally {
     process.chdir(origCwd);
   }
 });
 
-test("5.2: up without config returns exit 1", async () => {
+test("2.3: up without zombie directory returns exit 1", async () => {
   const tmpDir = mkdtempSync(join(tmpdir(), "zombie-test-"));
   const origCwd = process.cwd();
   process.chdir(tmpDir);
@@ -148,7 +173,7 @@ test("5.2: up without config returns exit 1", async () => {
   }
 });
 
-test("5.2: up without workspace returns exit 1", async () => {
+test("2.2: up without workspace returns exit 1", async () => {
   const tmpDir = mkdtempSync(join(tmpdir(), "zombie-test-"));
   const origCwd = process.cwd();
   process.chdir(tmpDir);
@@ -161,7 +186,7 @@ test("5.2: up without workspace returns exit 1", async () => {
   }
 });
 
-// ── 5.3: credential add ──────────────────────────────────────────────────
+// ── 5.3: credential add ────────────────────────────────────────────────
 
 test("5.3: credential add stores via API", async () => {
   let requestUrl = null;
@@ -218,7 +243,7 @@ test("5.3: credential list returns credentials", async () => {
   assert.ok(printed.credentials.length > 0);
 });
 
-// ── 5.4: status ──────────────────────────────────────────────────────────
+// ── 5.4: status ────────────────────────────────────────────────────────
 
 test("5.4: status shows zombie info", async () => {
   let printed = null;
@@ -258,7 +283,7 @@ test("5.4: status without workspace returns exit 1", async () => {
   assert.equal(code, 1);
 });
 
-// ── kill ─────────────────────────────────────────────────────────────────
+// ── kill ───────────────────────────────────────────────────────────────
 
 test("kill sends DELETE to API", async () => {
   let requestMethod = null;
@@ -274,7 +299,7 @@ test("kill sends DELETE to API", async () => {
   assert.equal(requestMethod, "DELETE");
 });
 
-// ── logs ─────────────────────────────────────────────────────────────────
+// ── logs ───────────────────────────────────────────────────────────────
 
 test("logs fetches activity stream", async () => {
   let requestUrl = null;
@@ -290,7 +315,7 @@ test("logs fetches activity stream", async () => {
   assert.ok(requestUrl.includes("/v1/zombies/activity"));
 });
 
-// ── unknown subcommand ───────────────────────────────────────────────────
+// ── unknown subcommand ─────────────────────────────────────────────────
 
 test("unknown subcommand returns exit 2", async () => {
   const code = await commandZombie(makeCtx(), ["badcmd"], workspaces, makeDeps());
