@@ -122,7 +122,7 @@ fn handleApprovalFlow(
     // Store the notification payload in Redis for the provider to pick up
     storeNotificationPayload(redis, session.zombie_id, action_id, slack_msg);
 
-    approval_gate.recordGateDecision(
+    approval_gate.recordGatePending(
         pool,
         alloc,
         session.zombie_id,
@@ -130,9 +130,6 @@ fn handleApprovalFlow(
         action_id,
         event.event_type,
         event.source,
-        "pending",
-        "",
-        false, // not resolved yet — pending
     );
 
     const result = approval_gate.waitForDecision(redis, action_id, gates.timeout_ms);

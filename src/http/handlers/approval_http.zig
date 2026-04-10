@@ -89,17 +89,11 @@ pub fn handleApprovalCallback(
         .deny => ec.GATE_EVENT_DENIED,
     };
 
-    approval_gate.recordGateDecision(
+    approval_gate.resolveGateDecision(
         ctx.pool,
-        alloc,
-        zombie_id,
-        workspace_id,
         payload.action_id,
-        "",
-        "",
         decision_str,
-        "",
-        true, // resolved — final decision from operator
+        "", // detail
     );
 
     // Log to activity stream

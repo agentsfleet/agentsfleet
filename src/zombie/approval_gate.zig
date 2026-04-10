@@ -327,9 +327,9 @@ pub fn resolveApproval(
     log.info("approval_gate.resolved action_id={s} decision={s}", .{ action_id, decision });
 }
 
-/// Record a gate decision in the audit table (Postgres).
-/// Pass resolved = true for final decisions (approve/deny/timeout), false for initial pending.
-pub fn recordGateDecision(
+/// Insert a pending gate row into the audit table (Postgres).
+/// Called once when the gate fires. Resolution updates this row via resolveGateDecision.
+pub fn recordGatePending(
     pool: *pg.Pool,
     alloc: Allocator,
     zombie_id: []const u8,
@@ -337,16 +337,26 @@ pub fn recordGateDecision(
     action_id: []const u8,
     tool_name: []const u8,
     action_name: []const u8,
-    status: []const u8,
-    detail: []const u8,
-    resolved: bool,
 ) void {
-    writeGateRow(pool, alloc, zombie_id, workspace_id, action_id, tool_name, action_name, status, detail, resolved) catch |err| {
-        log.err("approval_gate.record_fail err={s} action_id={s}", .{ @errorName(err), action_id });
+    insertPendingRow(pool, alloc, zombie_id, workspace_id, action_id, tool_name, action_name) catch |err| {
+        log.err("approval_gate.record_pending_fail err={s} action_id={s}", .{ @errorName(err), action_id });
     };
 }
 
-fn writeGateRow(
+/// Update a pending gate row with the final decision (approve/deny/timeout).
+/// Sets status, detail, and updated_at. The schema trigger permits UPDATE only on pending rows.
+pub fn resolveGateDecision(
+    pool: *pg.Pool,
+    action_id: []const u8,
+    status: []const u8,
+    detail: []const u8,
+) void {
+    updateGateRow(pool, action_id, status, detail) catch |err| {
+        log.err("approval_gate.resolve_fail err={s} action_id={s}", .{ @errorName(err), action_id });
+    };
+}
+
+fn insertPendingRow(
     pool: *pg.Pool,
     alloc: Allocator,
     zombie_id: []const u8,
@@ -354,9 +364,6 @@ fn writeGateRow(
     action_id: []const u8,
     tool_name: []const u8,
     action_name: []const u8,
-    status: []const u8,
-    detail: []const u8,
-    resolved: bool,
 ) !void {
     const gate_id = try id_format.generateActivityEventId(alloc);
     defer alloc.free(gate_id);
@@ -365,21 +372,29 @@ fn writeGateRow(
     defer pool.release(conn);
 
     const now_ms = std.time.milliTimestamp();
-    if (resolved) {
-        _ = try conn.exec(
-            \\INSERT INTO core.zombie_approval_gates
-            \\  (id, zombie_id, workspace_id, action_id, tool_name, action_name,
-            \\   status, detail, requested_at, updated_at, created_at)
-            \\VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9, $9)
-        , .{ gate_id, zombie_id, workspace_id, action_id, tool_name, action_name, status, detail, now_ms });
-    } else {
-        _ = try conn.exec(
-            \\INSERT INTO core.zombie_approval_gates
-            \\  (id, zombie_id, workspace_id, action_id, tool_name, action_name,
-            \\   status, detail, requested_at, created_at)
-            \\VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9)
-        , .{ gate_id, zombie_id, workspace_id, action_id, tool_name, action_name, status, detail, now_ms });
-    }
+    _ = try conn.exec(
+        \\INSERT INTO core.zombie_approval_gates
+        \\  (id, zombie_id, workspace_id, action_id, tool_name, action_name,
+        \\   status, detail, requested_at, created_at)
+        \\VALUES ($1, $2, $3, $4, $5, $6, 'pending', '', $7, $7)
+    , .{ gate_id, zombie_id, workspace_id, action_id, tool_name, action_name, now_ms });
+}
+
+fn updateGateRow(
+    pool: *pg.Pool,
+    action_id: []const u8,
+    status: []const u8,
+    detail: []const u8,
+) !void {
+    const conn = try pool.acquire();
+    defer pool.release(conn);
+
+    const now_ms = std.time.milliTimestamp();
+    _ = try conn.exec(
+        \\UPDATE core.zombie_approval_gates
+        \\SET status = $1, detail = $2, updated_at = $3
+        \\WHERE action_id = $4 AND status = 'pending'
+    , .{ status, detail, now_ms, action_id });
 }
 
 // Re-export Slack message builder from separate module
