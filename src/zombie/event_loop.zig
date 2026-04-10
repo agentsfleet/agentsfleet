@@ -161,7 +161,7 @@ pub fn runEventLoop(
     defer if (!std.mem.eql(u8, consumer_id, "zombie-local")) alloc.free(consumer_id);
 
     log.info("zombie_event_loop.started zombie_id={s} name={s}", .{ session.zombie_id, session.config.name });
-    logActivity(cfg.pool, alloc, session, "zombie_started", "Event loop started");
+    logActivity(cfg.pool, alloc, session, activity_stream.EVT_ZOMBIE_STARTED, "Event loop started");
 
     var last_reclaim_ms: i64 = std.time.milliTimestamp();
     var consecutive_errors: u32 = 0;
@@ -184,7 +184,7 @@ pub fn runEventLoop(
     }
 
     log.info("zombie_event_loop.stopped zombie_id={s}", .{session.zombie_id});
-    logActivity(cfg.pool, alloc, session, "zombie_stopped", "Event loop stopped (shutdown signal)");
+    logActivity(cfg.pool, alloc, session, activity_stream.EVT_ZOMBIE_STOPPED, "Event loop stopped (shutdown signal)");
 }
 
 const PollResult = struct { event: ?redis_zombie.ZombieEvent, err: bool };
@@ -211,7 +211,7 @@ fn pollNextEvent(cfg: EventLoopConfig, session: *ZombieSession, consumer_id: []c
 fn processEvent(alloc: Allocator, session: *ZombieSession, evt: *redis_zombie.ZombieEvent, cfg: EventLoopConfig, consecutive_errors: *u32) u32 {
     var result = deliverEvent(alloc, session, evt, cfg) catch |err| {
         obs_log.logErr(.zombie_event_loop, err, "zombie_event_loop.deliver_fail zombie_id={s} event_id={s}", .{ session.zombie_id, evt.event_id });
-        logActivity(cfg.pool, alloc, session, "event_error", evt.event_id);
+        logActivity(cfg.pool, alloc, session, activity_stream.EVT_EVENT_ERROR, evt.event_id);
         sleepWithBackoff(cfg, consecutive_errors.* + 1);
         return consecutive_errors.* + 1;
     };
@@ -247,7 +247,7 @@ pub fn deliverEvent(
     log.info("zombie_event_loop.deliver zombie_id={s} event_id={s} type={s}", .{
         session.zombie_id, event.event_id, event.event_type,
     });
-    logActivity(cfg.pool, alloc, session, "event_received", event.event_id);
+    logActivity(cfg.pool, alloc, session, activity_stream.EVT_EVENT_RECEIVED, event.event_id);
 
     // M4_001: Approval gate — check before tool execution
     const gate_check = event_loop_gate.checkApprovalGate(alloc, session, event, cfg.pool, cfg.redis);
@@ -349,12 +349,12 @@ fn logDeliveryResult(pool: *pg.Pool, alloc: Allocator, session: *ZombieSession, 
         log.warn("zombie_event_loop.agent_failure zombie_id={s} event_id={s} failure={s}", .{
             session.zombie_id, event.event_id, failure.label(),
         });
-        logActivity(pool, alloc, session, "agent_error", failure.label());
+        logActivity(pool, alloc, session, activity_stream.EVT_AGENT_ERROR, failure.label());
     } else {
         log.info("zombie_event_loop.delivered zombie_id={s} event_id={s} tokens={d} wall_s={d}", .{
             session.zombie_id, event.event_id, stage_result.token_count, stage_result.wall_seconds,
         });
-        logActivity(pool, alloc, session, "agent_response", event.event_id);
+        logActivity(pool, alloc, session, activity_stream.EVT_AGENT_RESPONSE, event.event_id);
     }
 }
 

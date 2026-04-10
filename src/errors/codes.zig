@@ -122,24 +122,6 @@ pub const SLACK_TS_HEADER = "x-slack-request-timestamp";
 pub const SLACK_MAX_TS_DRIFT_SECONDS: i64 = 300; // 5 minutes replay protection
 pub const MSG_WEBHOOK_SIG_INVALID = "Webhook signature verification failed. Check signing secret.";
 pub const MSG_WEBHOOK_TS_STALE = "Webhook request too old (>5 min). Replay attack rejected.";
-pub const MSG_TOOL_CREDENTIAL_MISSING = "Credential not found. Add with: zombiectl credential add";
-pub const MSG_TOOL_NOT_ATTACHED = "Tool not attached to this Zombie. Add to TRIGGER.md skills.";
-pub const MSG_TOOL_UNKNOWN = "Unknown tool. Available: agentmail, slack, git, github, linear, cloudflare, pagerduty";
-
-// M3_001: Tool registry — skill-to-domain mapping
-pub const SKILL_DOMAINS_SLACK = [_][]const u8{"api.slack.com"};
-pub const SKILL_DOMAINS_GITHUB = [_][]const u8{ "api.github.com", "github.com" };
-pub const SKILL_DOMAINS_GIT = [_][]const u8{"github.com"};
-pub const SKILL_DOMAINS_AGENTMAIL = [_][]const u8{"api.agentmail.to"};
-pub const SKILL_DOMAINS_LINEAR = [_][]const u8{"api.linear.app"};
-pub const SKILL_DOMAINS_CLOUDFLARE = [_][]const u8{"api.cloudflare.com"};
-pub const SKILL_DOMAINS_PAGERDUTY = [_][]const u8{"api.pagerduty.com"};
-
-// Activity stream event types for tools
-pub const ACTIVITY_TOOL_INVOKED = "tool_invoked";
-pub const ACTIVITY_TOOL_SUCCESS = "tool_success";
-pub const ACTIVITY_TOOL_ERROR = "tool_error";
-
 // M1_001: Zombie event loop error codes
 pub const ERR_ZOMBIE_BUDGET_EXCEEDED = "UZ-ZMB-001";
 pub const ERR_ZOMBIE_AGENT_TIMEOUT = "UZ-ZMB-002";

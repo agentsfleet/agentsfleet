@@ -19,6 +19,16 @@ const log = std.log.scoped(.activity_stream);
 pub const MAX_ACTIVITY_PAGE_LIMIT: u32 = 100;
 pub const DEFAULT_ACTIVITY_PAGE_LIMIT: u32 = 20;
 
+// Event types written to core.activity_events.
+// Used by the event loop (write path) and zombiectl logs (filter path).
+// All strings that appear in event_type column must be declared here.
+pub const EVT_ZOMBIE_STARTED = "zombie_started";
+pub const EVT_ZOMBIE_STOPPED = "zombie_stopped";
+pub const EVT_EVENT_RECEIVED = "event_received";
+pub const EVT_EVENT_ERROR = "event_error";
+pub const EVT_AGENT_RESPONSE = "agent_response";
+pub const EVT_AGENT_ERROR = "agent_error";
+
 pub const ActivityEvent = struct {
     zombie_id: []const u8,
     workspace_id: []const u8,

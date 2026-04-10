@@ -1,11 +1,11 @@
-# M2_002: ClaHub-Compatible Skill Format — SKILL.md + TRIGGER.md
+# M2_002: ClawHub-Compatible Skill Format — SKILL.md + TRIGGER.md
 
 **Prototype:** v0.6.0
 **Milestone:** M2
 **Workstream:** 002
 **Date:** Apr 09, 2026
 **Status:** DONE
-**Priority:** P0 — Fixes P1 greptile finding (simpleYamlParse drops arrays), aligns with ClaHub ecosystem
+**Priority:** P0 — Fixes P1 greptile finding (simpleYamlParse drops arrays), aligns with ClawHub ecosystem
 **Batch:** B1
 **Branch:** feat/m2-clawhub-skill-format
 **Depends on:** M1_001 (zombie config, CLI, templates)
@@ -14,11 +14,11 @@
 
 ## Overview
 
-**Goal (testable):** A zombie is a directory containing `SKILL.md` (ClaHub-compatible agent instructions) and `TRIGGER.md` (UseZombie deployment manifest). `zombiectl install lead-collector` creates this directory. `zombiectl up` reads both files and deploys. ClaHub skills work via `skill:` reference in TRIGGER.md. The custom `simpleYamlParse` is deleted — SKILL.md is sent raw, TRIGGER.md frontmatter uses the existing Zig YAML-frontmatter extractor + JSON for structured fields. Chaining is declared in TRIGGER.md.
+**Goal (testable):** A zombie is a directory containing `SKILL.md` (ClawHub-compatible agent instructions) and `TRIGGER.md` (UseZombie deployment manifest). `zombiectl install lead-collector` creates this directory. `zombiectl up` reads both files and deploys. ClawHub skills work via `skill:` reference in TRIGGER.md. The custom `simpleYamlParse` is deleted — SKILL.md is sent raw, TRIGGER.md frontmatter uses the existing Zig YAML-frontmatter extractor + JSON for structured fields. Chaining is declared in TRIGGER.md.
 
-**Problem:** M1_001 shipped a custom YAML parser (`simpleYamlParse`) that silently drops all array items (P1 greptile finding). The single-file `.md` format mixes agent instructions with platform config (trigger, budget, network). This prevents publishing skills to ClaHub and prevents using ClaHub skills in zombies. The parser is unfixable without a proper library — but we don't need a parser at all if we separate concerns correctly.
+**Problem:** M1_001 shipped a custom YAML parser (`simpleYamlParse`) that silently drops all array items (P1 greptile finding). The single-file `.md` format mixes agent instructions with platform config (trigger, budget, network). This prevents publishing skills to ClawHub and prevents using ClawHub skills in zombies. The parser is unfixable without a proper library — but we don't need a parser at all if we separate concerns correctly.
 
-**Solution summary:** Split the single `lead-collector.md` into a directory with two files. `SKILL.md` follows the ClaHub standard (YAML frontmatter with name/description/tags + markdown body as agent instructions). `TRIGGER.md` carries platform config (trigger routing, chain, budget, network, credential references). The CLI sends `SKILL.md` raw to the server. `TRIGGER.md` frontmatter is parsed server-side by the existing Zig frontmatter extractor. Delete `simpleYamlParse`, `parseZombieMarkdown`, and `parseYamlValue` from the CLI. Add `skill:` field in TRIGGER.md for referencing ClaHub registry skills. Add `chain:` field for declaring downstream zombies.
+**Solution summary:** Split the single `lead-collector.md` into a directory with two files. `SKILL.md` follows the ClawHub standard (YAML frontmatter with name/description/tags + markdown body as agent instructions). `TRIGGER.md` carries platform config (trigger routing, chain, budget, network, credential references). The CLI sends `SKILL.md` raw to the server. `TRIGGER.md` frontmatter is parsed server-side by the existing Zig frontmatter extractor. Delete `simpleYamlParse`, `parseZombieMarkdown`, and `parseYamlValue` from the CLI. Add `skill:` field in TRIGGER.md for referencing ClawHub registry skills. Add `chain:` field for declaring downstream zombies.
 
 ---
 
@@ -30,11 +30,11 @@ A zombie is a directory, not a single file. Two files:
 
 ```
 lead-collector/
-├── SKILL.md      ← ClaHub-compatible: agent instructions
+├── SKILL.md      ← ClawHub-compatible: agent instructions
 └── TRIGGER.md    ← UseZombie-specific: deployment manifest
 ```
 
-### SKILL.md (ClaHub standard)
+### SKILL.md (ClawHub standard)
 
 ```yaml
 ---
@@ -98,10 +98,10 @@ When the agent scores a lead >= 7, the event is forwarded to `lead-enricher`.
 - Budget hard-capped at $29/month
 ```
 
-### Using a ClaHub skill (no local SKILL.md needed)
+### Using a ClawHub skill (no local SKILL.md needed)
 
 ```yaml
-# TRIGGER.md — references ClaHub skill instead of local SKILL.md
+# TRIGGER.md — references ClawHub skill instead of local SKILL.md
 ---
 name: lead-enricher
 skill: clawhub://queen/lead-hunter@1.0.1
@@ -116,7 +116,7 @@ budget:
 **Dimensions:**
 - 1.1 PENDING
   - target: `zombiectl/templates/lead-collector/SKILL.md`
-  - input: Template file exists with valid ClaHub frontmatter
+  - input: Template file exists with valid ClawHub frontmatter
   - expected: `name`, `description`, `tags` in frontmatter; markdown body contains agent instructions
   - test_type: unit (file exists, frontmatter parseable)
 - 1.2 PENDING
@@ -275,7 +275,7 @@ $ zombiectl credential add agentmail_api_key --value=sk-xxx
   Stored in vault.
 ```
 
-No `op://` paths in TRIGGER.md. No `requires.env` (that's ClaHub's pattern for env vars — our credentials are vault-backed, not env-var-backed).
+No `op://` paths in TRIGGER.md. No `requires.env` (that's ClawHub's pattern for env vars — our credentials are vault-backed, not env-var-backed).
 
 **Dimensions:**
 - 5.1 PENDING
@@ -299,12 +299,12 @@ No `op://` paths in TRIGGER.md. No `requires.env` (that's ClaHub's pattern for e
 
 | File | Required | Format | Purpose |
 |------|----------|--------|---------|
-| `SKILL.md` | Yes (unless `skill:` in TRIGGER.md) | ClaHub standard: YAML frontmatter + markdown | Agent instructions |
+| `SKILL.md` | Yes (unless `skill:` in TRIGGER.md) | ClawHub standard: YAML frontmatter + markdown | Agent instructions |
 | `TRIGGER.md` | Yes | YAML frontmatter + markdown | Deployment manifest |
 
 ### 6.2 SKILL.md Frontmatter Fields
 
-| Field | Type | Required | ClaHub standard | Example |
+| Field | Type | Required | ClawHub standard | Example |
 |-------|------|----------|----------------|---------|
 | `name` | string | yes | yes | `lead-collector` |
 | `description` | string | yes | yes | `Qualifies inbound email leads` |
@@ -349,7 +349,7 @@ POST /v1/zombies/
 | Constraint | How to verify |
 |-----------|---------------|
 | No custom YAML/TOML parser in JS | `grep -r 'simpleYaml\|parseZombieMarkdown\|parseYamlValue' zombiectl/` returns empty |
-| SKILL.md publishable to ClaHub as-is | Frontmatter matches ClaHub standard (name, description, tags, author, version) |
+| SKILL.md publishable to ClawHub as-is | Frontmatter matches ClawHub standard (name, description, tags, author, version) |
 | Server computes config_json, not client | API handler extracts config from trigger_markdown, ignores any client config_json |
 | Credential names only, no vault paths | `grep 'op://' zombiectl/templates/` returns empty |
 | Every new file < 500 lines | `wc -l` check |
@@ -379,7 +379,7 @@ POST /v1/zombies/
 - [ ] `zombiectl install lead-collector` creates `lead-collector/SKILL.md` + `lead-collector/TRIGGER.md`
 - [ ] `zombiectl up` reads both files, sends raw to API (no client-side YAML parsing)
 - [ ] `simpleYamlParse` deleted from codebase
-- [ ] SKILL.md follows ClaHub standard (publishable as-is)
+- [ ] SKILL.md follows ClawHub standard (publishable as-is)
 - [ ] TRIGGER.md `skill:` field accepted (registry resolution deferred to M3)
 - [ ] TRIGGER.md `chain:` field accepted (routing deferred to M2_001)
 - [ ] Credentials are names, not vault paths
@@ -432,9 +432,9 @@ Bearer auth remains as a fallback for sources that support custom headers.
 
 ## 11.0 Out of Scope
 
-- ClaHub registry resolution (M3 — `skill:` field is stored but not fetched)
+- ClawHub registry resolution (M3 — `skill:` field is stored but not fetched)
 - Chain event routing at runtime (M2_001 — worker integration)
 - Credential vault resolution at runtime (M2_001 — executor integration)
 - Multi-zombie `zombiectl up` (deploys all directories in cwd) — future
 - Pipeline visualization (`zombiectl status` showing chain graph) — future
-- TRIGGER.md validation against ClaHub skill's declared requirements — future
+- TRIGGER.md validation against ClawHub skill's declared requirements — future
