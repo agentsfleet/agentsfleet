@@ -59,13 +59,13 @@ fn fetchZombieById(pool: *pg.Pool, alloc: std.mem.Allocator, zombie_id: []const 
     const status = try alloc.dupe(u8, try row.get([]const u8, 1));
     errdefer alloc.free(status);
     const token_raw = row.get([]const u8, 2) catch null;
-    const token: ?[]u8 = if (token_raw) |t| try alloc.dupe(u8, t) else null;
+    const token: ?[]const u8 = if (token_raw) |t| try alloc.dupe(u8, t) else null;
     errdefer if (token) |t| alloc.free(t);
     const ref_raw = row.get([]const u8, 3) catch null;
-    const webhook_secret_ref: ?[]u8 = if (ref_raw) |s| try alloc.dupe(u8, s) else null;
+    const webhook_secret_ref: ?[]const u8 = if (ref_raw) |s| try alloc.dupe(u8, s) else null;
     errdefer if (webhook_secret_ref) |s| alloc.free(s);
     const source_raw = row.get([]const u8, 4) catch null;
-    const source: ?[]u8 = if (source_raw) |s| try alloc.dupe(u8, s) else null;
+    const source: ?[]const u8 = if (source_raw) |s| try alloc.dupe(u8, s) else null;
     q.drain() catch {};
     return .{ .workspace_id = workspace_id, .status = status, .token = token, .webhook_secret_ref = webhook_secret_ref, .source = source };
 }
@@ -218,9 +218,7 @@ pub fn handleReceiveWebhook(ctx: *Context, req: *httpz.Request, res: *httpz.Resp
     };
     defer deinitZombieRow(&zombie, alloc);
 
-    // M2_002: URL-embedded secret auth (preferred). Bearer token auth (fallback).
-    // If URL secret is provided, verify against webhook_secret column.
-    // Otherwise, fall back to Bearer token from config_json.
+    // M2_002: URL secret (vault-backed via webhook_secret_ref) or Bearer token fallback.
     if (!verifyWebhookAuth(url_secret, &zombie, ctx.pool, alloc, req, res, req_id)) return;
 
     if (!std.mem.eql(u8, zombie.status, ec.ZOMBIE_STATUS_ACTIVE)) {

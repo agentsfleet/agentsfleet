@@ -323,8 +323,6 @@ Required outputs:
   # Run on all files in the diff:
   git diff --name-only origin/main | xargs wc -l | awk '$1 > 400 { print "❌ " $2 ": " $1 " lines (limit 400)" }'
   ```
-- **Spec-claim verification.** If the spec has a Test Specification section, verify every row in the Spec-Claim Tracing table has a passing test. If a claim says "real-time" or "incremental", verify the *transport* delivers bytes incrementally — a unit test on a parser does NOT prove transport behavior.
-- **Verification Evidence table.** If the spec has a Verification Evidence section, fill it in with actual command output. This is the proof that the spec claims are met.
 - **`make test-integration` must pass** if the spec has integration test dimensions. Run it, not just `make test`.
 - After any refactor: list newly dead code explicitly. Never silently remove without user confirmation:
   ```
@@ -441,7 +439,7 @@ Exit criteria:
 
 ## Safety and Policy Appendix
 
-The detailed policy sections were split into [AGENTS_POLICY_APPENDIX.md](/Users/kishore/Projects/usezombie-m29-data-plane-ip-allowlisting/AGENTS_POLICY_APPENDIX.md) to keep this primary file under the repository line-limit gate.
+The detailed policy sections were split into [AGENTS_POLICY_APPENDIX.md](./AGENTS_POLICY_APPENDIX.md) to keep this primary file under the repository line-limit gate.
 
 The appendix contains:
 
