@@ -4,7 +4,7 @@
 **Milestone:** M6
 **Workstream:** 001
 **Date:** Apr 09, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P0 — Core security product; the "firewall" in every marketing message
 **Batch:** B3 — after M4 (approval gate) and M5 (tool architecture)
 **Branch:** feat/m6-firewall-policy-engine
@@ -356,7 +356,7 @@ pub fn scanResponse(body: []const u8, credentials: []const []const u8) ScanResul
 | Integration tests | `make test-integration` | | |
 | Cross-compile | both targets | | |
 | Lint | `make lint` | | |
-| 500L gate | `wc -l` | | |
+| 400L gate and 60L for functons, use structs and union as appropriate | `wc -l` | | |
 | Benchmark | injection_detector benchmark | | |
 
 ---
