@@ -5,7 +5,7 @@
 **Workstream:** 001
 **Date:** Apr 09, 2026
 **Status:** DONE
-**Priority:** P0 — v2 architecture rule; enables every future Zombie and ClawHub skill
+**Priority:** P0 — v2 architecture rule; enables every future Zombie and ClawHub (clawhub.ai/skills) skill
 **Batch:** B2 — parallel with M4 (shares tool registry from M3, but no execution dependency)
 **Branch:** feat/m5-tools-as-attachments
 **Depends on:** M3_001 (tool registry, initial tool implementations)
@@ -426,7 +426,7 @@ make down
 
 ## 13.0 Out of Scope
 
-- Dynamic tool loading from ClawHub registry (Phase 3 — tools are compiled-in for now)
+- Dynamic tool loading from ClawHub (clawhub.ai/skills) registry (Phase 3 — tools are compiled-in for now)
 - Tool sandboxing (each tool runs inside the same bwrap sandbox — no per-tool isolation)
 - Tool versioning (all tools at v1, no version negotiation)
 - Tool composition (tools can't call other tools — agent orchestrates)

@@ -191,3 +191,4 @@ test "all registry entries have non-empty name and domains" {
         try std.testing.expect(entry.description.len > 0);
     }
 }
+

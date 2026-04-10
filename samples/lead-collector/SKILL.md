@@ -1,19 +1,12 @@
 ---
 name: lead-collector
-trigger:
-  type: webhook
-  source: agentmail
-  event: message.received
-skills:
+description: Processes inbound emails — classifies intent, replies to leads
+tags:
+  - email
+  - lead-gen
   - agentmail
-credentials:
-  - agentmail
-network:
-  allow:
-    - api.agentmail.to
-budget:
-  daily_dollars: 5.00
-  monthly_dollars: 29.00
+author: usezombie
+version: 1.0.0
 ---
 
 You are Lead Collector, a Zombie agent that processes inbound emails.
