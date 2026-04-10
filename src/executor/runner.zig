@@ -32,6 +32,8 @@ const observability = nullclaw.observability;
 const json = @import("json_helpers.zig");
 const types = @import("types.zig");
 const executor_metrics = @import("executor_metrics.zig");
+const tool_bridge = @import("tool_bridge.zig");
+const runner_credentials = @import("runner_credentials.zig");
 
 const log = std.log.scoped(.executor_runner);
 
@@ -171,7 +173,7 @@ fn executeInner(
         }
         // M16_003 §2: configure git credentials in workspace for github_token.
         if (json.getStr(ac, "github_token")) |token| {
-            configureGitCredentials(alloc, workspace_path, token) catch |err| {
+            runner_credentials.prepareGitCredential(alloc, workspace_path, token) catch |err| {
                 log.warn("executor.runner.git_cred_configure_failed err={s}", .{@errorName(err)});
                 // Non-fatal: git operations will fail at push time if token is needed
                 // but missing. The worker re-requests before PR creation (§2.3).
@@ -287,118 +289,28 @@ fn injectProviderApiKey(cfg: *Config, api_key: []const u8) !void {
     cfg.providers = new_providers;
 }
 
-/// Write a git credential config inside the workspace so that git push and
-/// GitHub API calls can authenticate using the installation token (M16_003 §2).
-///
-/// Writes `.git/config` credential helper pointing to a per-workspace credential
-/// script, and the credential value itself. The workspace is a temporary worktree
-/// that is deleted after the run, so these credentials have run-scoped lifetime.
-fn configureGitCredentials(
-    alloc: std.mem.Allocator,
-    workspace_path: []const u8,
-    github_token: []const u8,
-) !void {
-    // Write the credentials file inside .git/ so it is never exposed to the
-    // working tree (agent diffs, file listings, LLM context).
-    // Format: https://x-access-token:{token}@github.com
-    const creds_path = try std.fs.path.join(alloc, &.{ workspace_path, ".git", "credentials" });
-    defer alloc.free(creds_path);
-
-    const creds_content = try std.fmt.allocPrint(
-        alloc,
-        "https://x-access-token:{s}@github.com\n",
-        .{github_token},
-    );
-    defer alloc.free(creds_content);
-
-    const file = try std.fs.createFileAbsolute(creds_path, .{ .truncate = true, .mode = 0o600 });
-    defer file.close();
-    try file.writeAll(creds_content);
-
-    // Configure git to use the credentials file.
-    // We write into .git/config (local to the workspace) so it does not leak
-    // to the system git config.
-    const git_config_path = try std.fs.path.join(alloc, &.{ workspace_path, ".git", "config" });
-    defer alloc.free(git_config_path);
-
-    // Append the credential store config if the file exists; otherwise skip.
-    // The worktree .git/config is managed by libgit2 — we append our section.
-    const git_config_file = std.fs.openFileAbsolute(git_config_path, .{ .mode = .read_write }) catch return;
-    defer git_config_file.close();
-
-    // Quote creds_path in the git config value so paths with spaces parse correctly.
-    const cred_section = try std.fmt.allocPrint(
-        alloc,
-        "\n[credential]\n\thelper = store --file=\"{s}\"\n",
-        .{creds_path},
-    );
-    defer alloc.free(cred_section);
-
-    try git_config_file.seekFromEnd(0);
-    try git_config_file.writeAll(cred_section);
-
-    log.debug("executor.runner.git_cred_configured workspace={s}", .{workspace_path});
-}
 
 /// Build tools from the RPC tools array, or fall back to allTools.
+///
+/// Null spec or non-array spec → allTools() (agent gets everything).
+/// Array spec → tool_bridge.buildTools() resolves each entry by name.
+/// Unknown names are logged and skipped; they do not trigger a fallback.
 fn buildToolsFromSpec(
     alloc: std.mem.Allocator,
     workspace_path: []const u8,
     tools_spec: ?std.json.Value,
     cfg: *const Config,
 ) ![]tools_mod.Tool {
-    // If no tools spec provided, create all available tools.
-    const spec = tools_spec orelse {
-        return try tools_mod.allTools(alloc, workspace_path, .{
-            .allowed_paths = &.{workspace_path},
-            .tools_config = cfg.tools,
-        });
-    };
-    if (spec != .array) {
-        return try tools_mod.allTools(alloc, workspace_path, .{
-            .allowed_paths = &.{workspace_path},
-            .tools_config = cfg.tools,
-        });
-    }
+    const spec = tools_spec orelse return try tools_mod.allTools(alloc, workspace_path, .{
+        .allowed_paths = &.{workspace_path},
+        .tools_config = cfg.tools,
+    });
+    if (spec != .array) return try tools_mod.allTools(alloc, workspace_path, .{
+        .allowed_paths = &.{workspace_path},
+        .tools_config = cfg.tools,
+    });
 
-    var list: std.ArrayList(tools_mod.Tool) = .{};
-    errdefer {
-        for (list.items) |t| t.deinit(alloc);
-        list.deinit(alloc);
-    }
-
-    for (spec.array.items) |item| {
-        if (item != .object) continue;
-        const name = json.getStr(item, "name") orelse continue;
-        const enabled = json.getBoolDefaultTrue(item, "enabled");
-        if (!enabled) continue;
-
-        if (std.mem.eql(u8, name, "file_read")) {
-            const ptr = try alloc.create(tools_mod.file_read.FileReadTool);
-            ptr.* = .{
-                .workspace_dir = workspace_path,
-                .allowed_paths = cfg.autonomy.allowed_paths,
-                .max_file_size = cfg.tools.max_file_size_bytes,
-            };
-            try list.append(alloc, ptr.tool());
-        } else if (std.mem.eql(u8, name, "memory_read") or std.mem.eql(u8, name, "memory_recall")) {
-            const ptr = try alloc.create(tools_mod.memory_recall.MemoryRecallTool);
-            ptr.* = .{};
-            try list.append(alloc, ptr.tool());
-        } else if (std.mem.eql(u8, name, "memory_write") or std.mem.eql(u8, name, "memory_list")) {
-            const ptr = try alloc.create(tools_mod.memory_list.MemoryListTool);
-            ptr.* = .{};
-            try list.append(alloc, ptr.tool());
-        } else {
-            // Unknown tool name (shell, file_write, or future tools).
-            // Fall back to allTools() for the entire request — selective
-            // per-tool extraction from allTools is unsafe (use-after-free
-            // on deinit). The caller should send tools=null to get allTools.
-            log.warn("executor.runner.unknown_tool name={s} — falling back to allTools()", .{name});
-        }
-    }
-
-    return list.toOwnedSlice(alloc);
+    return try tool_bridge.buildTools(alloc, spec, workspace_path, cfg);
 }
 
 /// Compose the agent message by appending context fields.
