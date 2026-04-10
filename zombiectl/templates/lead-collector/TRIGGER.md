@@ -4,6 +4,8 @@ trigger:
   type: webhook
   source: agentmail
   event: message.received
+chain:
+  - lead-enricher
 credentials:
   - agentmail_api_key
 budget:

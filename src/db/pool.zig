@@ -491,4 +491,6 @@ test "hasSslModeDisable detects disable in query string" {
     try std.testing.expect(!hasSslModeDisable(""));
     try std.testing.expect(!hasSslModeDisable("application_name=test"));
 }
-test { _ = @import("./pool_test.zig"); }
+test {
+    _ = @import("./pool_test.zig");
+}

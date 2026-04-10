@@ -3,14 +3,16 @@
 // Flat top-level for common ops: install, up, status, kill, logs.
 // Namespaced for less common: credential add, credential list.
 
-import { readFileSync } from "node:fs";
-import { writeFileSync } from "node:fs";
-import { join, dirname } from "node:path";
+import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
+import { join, dirname, basename } from "node:path";
 import { fileURLToPath } from "node:url";
 import { ZOMBIES_PATH } from "../lib/api-paths.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const TEMPLATES_DIR = join(__dirname, "../../templates");
+
+const SKILL_FILENAME = "SKILL.md";
+const TRIGGER_FILENAME = "TRIGGER.md";
 
 const BUNDLED_TEMPLATES = ["lead-collector"];
 
@@ -71,22 +73,23 @@ async function commandInstall(ctx, args, deps) {
     return 2;
   }
 
-  const templatePath = join(TEMPLATES_DIR, `${templateName}.md`);
-  let templateContent;
+  const templateDir = join(TEMPLATES_DIR, templateName);
+  let skillContent, triggerContent;
   try {
-    templateContent = readFileSync(templatePath, "utf-8");
+    skillContent = readFileSync(join(templateDir, SKILL_FILENAME), "utf-8");
+    triggerContent = readFileSync(join(templateDir, TRIGGER_FILENAME), "utf-8");
   } catch {
-    writeError(ctx, "TEMPLATE_NOT_FOUND", `template file not found: ${templateName}.md`, deps);
+    writeError(ctx, "TEMPLATE_NOT_FOUND", `template directory not found: ${templateName}/`, deps);
     return 1;
   }
 
-  const outputDir = process.cwd();
-  const outputPath = join(outputDir, `${templateName}.md`);
-
+  const outputDir = join(process.cwd(), templateName);
   try {
-    writeFileSync(outputPath, templateContent, "utf-8");
+    mkdirSync(outputDir, { recursive: true });
+    writeFileSync(join(outputDir, SKILL_FILENAME), skillContent, "utf-8");
+    writeFileSync(join(outputDir, TRIGGER_FILENAME), triggerContent, "utf-8");
   } catch (err) {
-    writeError(ctx, "IO_ERROR", `failed to write ${templateName}.md: ${err.message}`, deps);
+    writeError(ctx, "IO_ERROR", `failed to write ${templateName}/: ${err.message}`, deps);
     return 1;
   }
 
@@ -94,11 +97,13 @@ async function commandInstall(ctx, args, deps) {
     printJson(ctx.stdout, {
       status: "installed",
       template: templateName,
-      path: outputPath,
+      path: outputDir,
     });
   } else {
     writeLine(ctx.stdout, ui.ok(`${templateName} installed.`));
-    writeLine(ctx.stdout, `  Config: ${outputPath}`);
+    writeLine(ctx.stdout, `  Created ${templateName}/`);
+    writeLine(ctx.stdout, `    ${SKILL_FILENAME}   — agent instructions (edit this)`);
+    writeLine(ctx.stdout, `    ${TRIGGER_FILENAME} — deployment config`);
     writeLine(ctx.stdout);
     writeLine(ctx.stdout, "Next steps:");
     writeLine(ctx.stdout, `  zombiectl up              Start the zombie`);
@@ -113,32 +118,30 @@ async function commandInstall(ctx, args, deps) {
 async function commandUp(ctx, args, workspaces, deps) {
   const { request, apiHeaders, ui, printJson, writeLine, writeError } = deps;
 
-  // Find the zombie config in the current directory
-  const configPath = findZombieConfig(process.cwd());
-  if (!configPath) {
+  // Find a zombie directory in the current directory
+  const zombieDir = findZombieDir(process.cwd());
+  if (!zombieDir) {
     if (ctx.jsonMode) {
-      writeError(ctx, "NO_CONFIG", "no zombie config found in current directory. Run: zombiectl install <template>", deps);
+      writeError(ctx, "NO_CONFIG", "no zombie directory found. Run: zombiectl install <template>", deps);
     } else {
-      writeLine(ctx.stderr, ui.err("No zombie config found in current directory."));
+      writeLine(ctx.stderr, ui.err("No zombie directory found in current directory."));
       writeLine(ctx.stderr, "Run: zombiectl install <template>");
     }
     return 1;
   }
 
-  let configContent;
+  let skillMd, triggerMd;
   try {
-    configContent = readFileSync(configPath, "utf-8");
+    skillMd = readFileSync(join(zombieDir, SKILL_FILENAME), "utf-8");
+    triggerMd = readFileSync(join(zombieDir, TRIGGER_FILENAME), "utf-8");
   } catch (err) {
-    writeError(ctx, "IO_ERROR", `failed to read config: ${err.message}`, deps);
+    writeError(ctx, "IO_ERROR", `failed to read zombie files: ${err.message}`, deps);
     return 1;
   }
 
-  // Parse YAML frontmatter to JSON (simple extraction)
-  const config = parseZombieMarkdown(configContent);
-  if (!config) {
-    writeError(ctx, "INVALID_CONFIG", "failed to parse zombie config. Check YAML frontmatter format.", deps);
-    return 1;
-  }
+  // Extract name from TRIGGER.md frontmatter (minimal: just the name line)
+  const nameMatch = triggerMd.match(/^name:\s*(.+)$/m);
+  const zombieName = nameMatch ? nameMatch[1].trim() : basename(zombieDir);
 
   const wsId = workspaces.current_workspace_id;
   if (!wsId) {
@@ -146,27 +149,26 @@ async function commandUp(ctx, args, workspaces, deps) {
     return 1;
   }
 
-  // Deploy to UseZombie cloud
+  // Deploy to UseZombie cloud — server parses TRIGGER.md, no client-side YAML parsing
   const res = await request(ctx, ZOMBIES_PATH, {
     method: "POST",
     headers: { ...apiHeaders(ctx), "Content-Type": "application/json" },
     body: JSON.stringify({
       workspace_id: wsId,
-      name: config.name,
-      source_markdown: configContent,
-      config_json: config,
+      source_markdown: skillMd,
+      trigger_markdown: triggerMd,
     }),
   });
 
   if (ctx.jsonMode) {
     printJson(ctx.stdout, res);
   } else {
-    writeLine(ctx.stdout, ui.ok(`${config.name} is live.`));
+    writeLine(ctx.stdout, ui.ok(`${zombieName} is live.`));
     if (res.zombie_id) {
       writeLine(ctx.stdout, `  Zombie ID: ${res.zombie_id}`);
     }
-    if (config.trigger?.source === "agentmail") {
-      writeLine(ctx.stdout, `  Send a test email to see it work.`);
+    if (res.webhook_url) {
+      writeLine(ctx.stdout, `  Webhook URL: ${res.webhook_url}`);
     }
     writeLine(ctx.stdout);
     writeLine(ctx.stdout, "Commands:");
@@ -386,98 +388,14 @@ async function commandCredential(ctx, args, workspaces, deps) {
 
 // ── helpers ──────────────────────────────────────────────────────────────
 
-function findZombieConfig(dir) {
+// M2: only bundled template names are searched.
+// M3 will add support for arbitrary directory names via TRIGGER.md discovery.
+function findZombieDir(dir) {
   for (const name of BUNDLED_TEMPLATES) {
-    const path = join(dir, `${name}.md`);
-    try {
-      readFileSync(path, "utf-8");
-      return path;
-    } catch {
-      continue;
+    const candidate = join(dir, name);
+    if (existsSync(join(candidate, SKILL_FILENAME)) && existsSync(join(candidate, TRIGGER_FILENAME))) {
+      return candidate;
     }
   }
   return null;
-}
-
-function parseZombieMarkdown(content) {
-  // Extract YAML frontmatter between --- delimiters
-  const trimmed = content.trim();
-  if (!trimmed.startsWith("---")) return null;
-
-  const endIdx = trimmed.indexOf("\n---", 3);
-  if (endIdx === -1) return null;
-
-  const yamlBlock = trimmed.slice(3, endIdx).trim();
-
-  // Simple YAML-to-JSON parser for flat/nested config.
-  // Full YAML parsing deferred to a proper library when needed.
-  try {
-    return simpleYamlParse(yamlBlock);
-  } catch {
-    return null;
-  }
-}
-
-function simpleYamlParse(yaml) {
-  const result = {};
-  let currentKey = null;
-  let arrayKey = null;
-
-  for (const rawLine of yaml.split("\n")) {
-    const line = rawLine.trimEnd();
-    if (line.trim() === "" || line.trim().startsWith("#")) continue;
-
-    // Array item: "  - value"
-    if (/^\s+-\s+/.test(line)) {
-      const value = line.replace(/^\s+-\s+/, "").trim();
-      if (currentKey && arrayKey && result[currentKey] && Array.isArray(result[currentKey][arrayKey])) {
-        result[currentKey][arrayKey].push(value);
-      } else if (arrayKey && Array.isArray(result[arrayKey])) {
-        result[arrayKey].push(value);
-      }
-      continue;
-    }
-
-    // Nested key: "  key: value"
-    if (/^\s+\w/.test(line) && currentKey) {
-      const match = line.match(/^\s+(\w[\w_]*)\s*:\s*(.*)$/);
-      if (match) {
-        const [, k, v] = match;
-        if (!result[currentKey] || Array.isArray(result[currentKey])) result[currentKey] = {};
-        if (v.trim() === "") {
-          arrayKey = k;
-          result[currentKey][k] = [];
-        } else {
-          result[currentKey][k] = parseYamlValue(v.trim());
-          arrayKey = null;
-        }
-      }
-      continue;
-    }
-
-    // Top-level key: "key: value"
-    const topMatch = line.match(/^(\w[\w_]*)\s*:\s*(.*)$/);
-    if (topMatch) {
-      const [, k, v] = topMatch;
-      if (v.trim() === "") {
-        currentKey = k;
-        result[k] = [];
-        arrayKey = k;
-      } else {
-        result[k] = parseYamlValue(v.trim());
-        currentKey = null;
-      }
-      continue;
-    }
-  }
-
-  return result;
-}
-
-function parseYamlValue(v) {
-  if (v === "true") return true;
-  if (v === "false") return false;
-  const num = Number(v);
-  if (!isNaN(num) && v !== "") return num;
-  return v;
 }

@@ -240,3 +240,113 @@ Pattern: `common.errorResponse(res, status, error_codes.ERR_*, error_messages.MS
 
 Never concatenate raw user input into agent prompts or tool calls.
 Validate, type-check, length-bound all external input. Use parameterized templates.
+
+---
+
+## 24. Tagged unions over optional-field structs
+
+When a type has mutually-exclusive variants (e.g. trigger types, auth methods),
+use a Zig tagged union, not a struct with optional fields. The compiler enforces
+exhaustive switches, making invalid states unrepresentable.
+
+> M2_002: ZombieTrigger was a struct with `source: ?[]const u8`, `schedule: ?[]const u8`.
+> Webhook-without-source was representable but semantically invalid. Refactored to
+> `union(ZombieTriggerType)` with per-variant fields.
+
+---
+
+## 25. Secrets belong in vault, not in entity tables
+
+Never store plaintext secrets (tokens, API keys, webhook secrets) in core entity tables.
+Store a vault reference (key_name) in the entity table. Resolve via `crypto_store.load()`
+at runtime. This keeps secrets encrypted at rest and out of query results, backups, and logs.
+
+> M2_002: webhook_secret was initially a TEXT column in core.zombies. Refactored to
+> webhook_secret_ref (vault key_name). Resolved via crypto_store.load() in the webhook handler.
+
+---
+
+## 26. No static strings in SQL schema
+
+Do not use DEFAULT or CHECK constraints with hardcoded string values in SQL.
+Enforce value constraints in application code via named constants (e.g. `ZOMBIE_STATUS_ACTIVE`).
+SQL cannot reference Zig/JS constants, so hardcoded strings in schema drift from code.
+
+> M2_002: `DEFAULT 'active'` and `CHECK (status IN ('active', 'paused', 'stopped'))` removed
+> from core.zombies. Status enforcement moved to application-level constants.
+
+---
+
+## 27. Escape control characters in JSON string emission
+
+When writing a JSON string encoder, escape all ASCII control characters (0x00-0x1F)
+per RFC 8259 section 7. Missing escapes for `\n`, `\r`, `\t`, or null bytes produce
+malformed JSON and enable injection if the input contains attacker-influenced content.
+
+> M2_002: writeJsonString in yaml_frontmatter.zig initially only escaped `"` and `\`.
+> Review caught that `\n` in a YAML value could inject keys into the JSON output.
+
+---
+
+## 28. Constant-time comparison must not short-circuit on length
+
+When comparing secrets (tokens, webhook secrets), always run the XOR loop over
+`@min(a.len, b.len)` bytes, then fold the length mismatch into the result after
+the loop. Short-circuiting on `a.len == b.len` leaks the expected secret's length.
+
+> M2_002: constantTimeEq used `a.len == b.len and ct: { ... }` which skipped the
+> XOR loop entirely on length mismatch. Fixed to always run the loop.
+
+---
+
+## 29. Use `[]const u8` for immutable data, not `[]u8`
+
+When a struct holds data read from a database or parsed from input that will not be
+modified, declare fields as `[]const u8`. Mutable `[]u8` signals the data can be changed,
+which misleads readers and prevents the compiler from catching unintended mutation.
+
+> M2_002: ZombieRow used `[]u8` for workspace_id, status, token — all immutable DB data.
+> Refactored to `[]const u8` to match semantic ownership.
+
+---
+
+## 30. Cross-layer orphan sweep on every rename, delete, or format change
+
+When you rename a column, delete a function, change a struct, or migrate a file format,
+grep for the OLD name/pattern across ALL layers before committing. The layers are:
+
+1. **Schema** (SQL): column names, DEFAULT values, CHECK constraints
+2. **Server** (Zig): struct fields, query strings, constants, error messages
+3. **CLI** (JS): function calls, imports, template references, output strings
+4. **Tests** (Zig + JS): assertions, fixtures, mock data, test helper functions
+5. **Docs** (MD): comments, spec references, AGENTS.md, RULES.md, release notes
+
+The sweep command for any renamed symbol `OLD_NAME`:
+```bash
+grep -rn 'OLD_NAME' src/ schema/ zombiectl/ docs/ AGENTS*.md --include='*.zig' --include='*.js' --include='*.sql' --include='*.md' | grep -v '.zig-cache' | grep -v node_modules
+```
+
+A rename is not done until this grep returns zero hits in non-historical files
+(completed specs in `docs/v*/done/` and learning docs are exempt — they document history).
+
+> M2_002: webhook_secret renamed to webhook_secret_ref but stale comments still said
+> "webhook_secret column." ZombieTrigger changed from struct to union but integration
+> test still accessed `.trigger_type`. simpleYamlParse deleted but stale config.zig
+> comments still described the old client-parsed flow. Each required a separate fix commit.
+
+---
+
+## 31. CHORE(close) must include orphan verification gate
+
+Before opening a PR, run a mandatory orphan sweep for every symbol that was renamed,
+deleted, or changed format in the branch. This is part of CHORE(close), not a separate step.
+
+The verification is:
+```bash
+# For each deleted/renamed symbol, confirm zero non-historical references:
+git diff origin/main --name-only | xargs grep -l 'OLD_PATTERN' 2>/dev/null
+# Must return empty for production code. Historical docs are exempt.
+```
+
+If the sweep finds hits, fix them before opening the PR. Do not defer orphan cleanup
+to a follow-up — the PR that changes the symbol owns the full cleanup.

@@ -4,7 +4,7 @@
 **Milestone:** M2
 **Workstream:** 002
 **Date:** Apr 09, 2026
-**Status:** PENDING
+**Status:** DONE
 **Priority:** P0 — Fixes P1 greptile finding (simpleYamlParse drops arrays), aligns with ClaHub ecosystem
 **Batch:** B1
 **Branch:** feat/m2-clawhub-skill-format
