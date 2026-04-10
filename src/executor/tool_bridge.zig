@@ -111,17 +111,32 @@ pub fn resolve(tool_name: []const u8) ?*const ToolEntry {
     return null;
 }
 
+/// Result of buildTools — tools plus any names that could not be resolved.
+pub const BuildResult = struct {
+    tools: []tools_mod.Tool,
+    /// Tool names from the spec that were not in BRIDGE_REGISTRY.
+    /// Caller should log these to the activity stream for observability.
+    skipped: []const []const u8,
+
+    pub fn deinit(self: *const BuildResult, alloc: std.mem.Allocator) void {
+        for (self.tools) |t| t.deinit(alloc);
+        alloc.free(self.tools);
+        for (self.skipped) |s| alloc.free(s);
+        alloc.free(self.skipped);
+    }
+};
+
 /// Build NullClaw tools from a JSON tools-spec array.
 ///
-/// Unknown names are logged and skipped. Disabled tools are skipped.
-/// Callers that need allTools() fallback (null/non-array spec) handle
-/// that logic themselves — the bridge only processes arrays.
+/// Unknown names are logged and collected in `result.skipped`.
+/// Disabled tools are skipped silently. Callers that need allTools()
+/// fallback (null/non-array spec) handle that logic themselves.
 pub fn buildTools(
     alloc: std.mem.Allocator,
     spec: std.json.Value,
     workspace_path: []const u8,
     cfg: *const Config,
-) ![]tools_mod.Tool {
+) !BuildResult {
     const ctx = BuildCtx{ .alloc = alloc, .workspace_path = workspace_path, .cfg = cfg };
 
     var list: std.ArrayList(tools_mod.Tool) = .{};
@@ -130,7 +145,16 @@ pub fn buildTools(
         list.deinit(alloc);
     }
 
-    if (spec != .array) return list.toOwnedSlice(alloc);
+    var skipped: std.ArrayList([]const u8) = .{};
+    errdefer {
+        for (skipped.items) |s| alloc.free(s);
+        skipped.deinit(alloc);
+    }
+
+    if (spec != .array) return .{
+        .tools = try list.toOwnedSlice(alloc),
+        .skipped = try skipped.toOwnedSlice(alloc),
+    };
 
     for (spec.array.items) |item| {
         if (item != .object) continue;
@@ -139,6 +163,8 @@ pub fn buildTools(
 
         const entry = resolve(tool_name) orelse {
             log.warn("tool_bridge.unknown_tool error_code={s} name={s}", .{ ERR_TOOL_UNKNOWN, tool_name });
+            const duped = try alloc.dupe(u8, tool_name);
+            try skipped.append(alloc, duped);
             continue;
         };
 
@@ -152,7 +178,10 @@ pub fn buildTools(
         };
     }
 
-    return list.toOwnedSlice(alloc);
+    return .{
+        .tools = try list.toOwnedSlice(alloc),
+        .skipped = try skipped.toOwnedSlice(alloc),
+    };
 }
 
 // ── JSON helpers ───────────────────────────────────────────────────────────
@@ -205,19 +234,20 @@ test "buildTools: empty array returns empty slice" {
     const alloc = std.testing.allocator;
     var arr = std.json.Value{ .array = std.json.Array.init(alloc) };
     defer arr.array.deinit();
-    const tools = try buildTools(alloc, arr, "/tmp", undefined);
-    defer alloc.free(tools);
-    try std.testing.expectEqual(@as(usize, 0), tools.len);
+    const result = try buildTools(alloc, arr, "/tmp", undefined);
+    defer result.deinit(alloc);
+    try std.testing.expectEqual(@as(usize, 0), result.tools.len);
+    try std.testing.expectEqual(@as(usize, 0), result.skipped.len);
 }
 
 test "buildTools: non-array value returns empty slice" {
     const alloc = std.testing.allocator;
-    const tools = try buildTools(alloc, .{ .integer = 42 }, "/tmp", undefined);
-    defer alloc.free(tools);
-    try std.testing.expectEqual(@as(usize, 0), tools.len);
+    const result = try buildTools(alloc, .{ .integer = 42 }, "/tmp", undefined);
+    defer result.deinit(alloc);
+    try std.testing.expectEqual(@as(usize, 0), result.tools.len);
 }
 
-test "buildTools: unknown tool name skipped without error" {
+test "buildTools: unknown tool name skipped and reported" {
     const alloc = std.testing.allocator;
     var arr = std.json.Value{ .array = std.json.Array.init(alloc) };
     defer arr.array.deinit();
@@ -225,9 +255,11 @@ test "buildTools: unknown tool name skipped without error" {
     defer obj.deinit();
     try obj.put("name", .{ .string = "unknown_future_tool" });
     try arr.array.append(.{ .object = obj });
-    const tools = try buildTools(alloc, arr, "/tmp", undefined);
-    defer alloc.free(tools);
-    try std.testing.expectEqual(@as(usize, 0), tools.len);
+    const result = try buildTools(alloc, arr, "/tmp", undefined);
+    defer result.deinit(alloc);
+    try std.testing.expectEqual(@as(usize, 0), result.tools.len);
+    try std.testing.expectEqual(@as(usize, 1), result.skipped.len);
+    try std.testing.expectEqualStrings("unknown_future_tool", result.skipped[0]);
 }
 
 test "buildTools: disabled tool skipped" {
@@ -239,7 +271,8 @@ test "buildTools: disabled tool skipped" {
     try obj.put("name", .{ .string = "file_read" });
     try obj.put("enabled", .{ .bool = false });
     try arr.array.append(.{ .object = obj });
-    const tools = try buildTools(alloc, arr, "/tmp", undefined);
-    defer alloc.free(tools);
-    try std.testing.expectEqual(@as(usize, 0), tools.len);
+    const result = try buildTools(alloc, arr, "/tmp", undefined);
+    defer result.deinit(alloc);
+    try std.testing.expectEqual(@as(usize, 0), result.tools.len);
+    try std.testing.expectEqual(@as(usize, 0), result.skipped.len);
 }

@@ -290,11 +290,8 @@ fn injectProviderApiKey(cfg: *Config, api_key: []const u8) !void {
 }
 
 
-/// Build tools from the RPC tools array, or fall back to allTools.
-///
-/// Null spec or non-array spec → allTools() (agent gets everything).
-/// Array spec → tool_bridge.buildTools() resolves each entry by name.
-/// Unknown names are logged and skipped; they do not trigger a fallback.
+/// Build tools from RPC tools array, or fall back to allTools.
+/// Unknown names are logged to stderr and collected in BuildResult.skipped.
 fn buildToolsFromSpec(
     alloc: std.mem.Allocator,
     workspace_path: []const u8,
@@ -310,7 +307,13 @@ fn buildToolsFromSpec(
         .tools_config = cfg.tools,
     });
 
-    return try tool_bridge.buildTools(alloc, spec, workspace_path, cfg);
+    const result = try tool_bridge.buildTools(alloc, spec, workspace_path, cfg);
+    for (result.skipped) |name| {
+        log.warn("executor.runner.tool_skipped name={s}", .{name});
+        alloc.free(name);
+    }
+    alloc.free(result.skipped);
+    return result.tools;
 }
 
 /// Compose the agent message by appending context fields.
