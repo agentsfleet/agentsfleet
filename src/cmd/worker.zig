@@ -241,7 +241,9 @@ pub fn run(alloc: std.mem.Allocator) !void {
             log.err("worker.zombie_thread_spawn_fail zombie_id={s} err={s}", .{ zombie_id, @errorName(err) });
             continue;
         };
-        zombie_threads.append(alloc, zt) catch {};
+        zombie_threads.append(alloc, zt) catch |err| {
+            log.err("worker.zombie_thread_track_fail zombie_id={s} err={s} hint=thread_untracked", .{ zombie_id, @errorName(err) });
+        };
     }
     if (zombie_ids.len > 0)
         log.info("worker.zombie_threads_started count={d}", .{zombie_ids.len});

@@ -42,6 +42,10 @@ pub fn handleListActivity(ctx: *Context, req: *httpz.Request, res: *httpz.Respon
         common.errorResponse(res, .bad_request, ec.ERR_INVALID_REQUEST, "zombie_id query parameter required", req_id);
         return;
     };
+    if (!id_format.isSupportedWorkspaceId(zombie_id)) {
+        common.errorResponse(res, .bad_request, ec.ERR_INVALID_REQUEST, "zombie_id must be a valid UUIDv7", req_id);
+        return;
+    }
 
     const limit = parseLimitFromQs(qs);
     const cursor = qs.get("cursor");
@@ -174,6 +178,10 @@ pub fn handleListCredentials(ctx: *Context, req: *httpz.Request, res: *httpz.Res
         common.errorResponse(res, .bad_request, ec.ERR_INVALID_REQUEST, ec.MSG_WORKSPACE_ID_REQUIRED, req_id);
         return;
     };
+    if (!id_format.isSupportedWorkspaceId(workspace_id)) {
+        common.errorResponse(res, .bad_request, ec.ERR_INVALID_REQUEST, ec.MSG_WORKSPACE_ID_REQUIRED, req_id);
+        return;
+    }
 
     const creds = fetchCredentialList(ctx.pool, alloc, workspace_id) catch |err| {
         log.err("credential.list_failed err={s} req_id={s}", .{ @errorName(err), req_id });

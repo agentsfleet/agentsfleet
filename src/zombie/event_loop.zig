@@ -294,8 +294,9 @@ fn executeInSandbox(
         alloc.free(execution_id);
     }
 
-    // M2_001: Resolve credentials from core.zombie_credentials for this workspace.
-    const api_key = resolveCredential(alloc, cfg.pool, session.workspace_id, "agentmail") catch "";
+    // M2_001: Resolve credentials from vault.secrets for this workspace.
+    const api_key: []const u8 = resolveCredential(alloc, cfg.pool, session.workspace_id, "agentmail") catch "";
+    defer if (api_key.len > 0) alloc.free(api_key);
 
     return cfg.executor.startStage(execution_id, .{
         .stage_id = "zombie",

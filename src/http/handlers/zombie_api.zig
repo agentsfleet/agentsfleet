@@ -114,9 +114,12 @@ fn insertZombie(pool: *pg.Pool, body: CreateBody, zombie_id: []const u8, now_ms:
 }
 
 fn isUniqueViolation(err: anyerror) bool {
-    // pg.Pool returns error.PGError for constraint violations;
-    // the unique constraint on (workspace_id, name) triggers this.
-    return err == error.PGError;
+    // pg.Pool returns error.PGError for all Postgres errors (connection, constraint, cast).
+    // We cannot distinguish unique_violation (SQLSTATE 23505) from other PGErrors
+    // because pg.Pool does not expose structured SQLSTATE codes.
+    // Return false to let the caller surface a 500 instead of a misleading 409.
+    _ = err;
+    return false;
 }
 
 // ── List Zombies ──────────────────────────────────────────────────────
@@ -141,6 +144,10 @@ pub fn handleListZombies(ctx: *Context, req: *httpz.Request, res: *httpz.Respons
         common.errorResponse(res, .bad_request, ec.ERR_INVALID_REQUEST, ec.MSG_WORKSPACE_ID_REQUIRED, req_id);
         return;
     };
+    if (!id_format.isSupportedWorkspaceId(workspace_id)) {
+        common.errorResponse(res, .bad_request, ec.ERR_INVALID_REQUEST, ec.MSG_WORKSPACE_ID_REQUIRED, req_id);
+        return;
+    }
 
     const rows = fetchZombieList(ctx.pool, alloc, workspace_id) catch |err| {
         log.err("zombie.list_failed err={s} req_id={s}", .{ @errorName(err), req_id });
