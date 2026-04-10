@@ -43,8 +43,6 @@ pub const BuildFn = *const fn (ctx: BuildCtx) anyerror!tools_mod.Tool;
 pub const ToolEntry = struct {
     /// Canonical tool name (matches RPC "name" field).
     name: []const u8,
-    /// Optional backward-compat aliases resolved to this entry.
-    aliases: []const []const u8 = &.{},
     /// Factory — instantiates the NullClaw Tool.
     buildFn: BuildFn,
 };
@@ -78,8 +76,8 @@ fn buildMemoryList(ctx: BuildCtx) anyerror!tools_mod.Tool {
 
 const BRIDGE_REGISTRY = [_]ToolEntry{
     .{ .name = "file_read", .buildFn = buildFileRead },
-    .{ .name = "memory_recall", .aliases = &.{"memory_read"}, .buildFn = buildMemoryRecall },
-    .{ .name = "memory_list", .aliases = &.{"memory_write"}, .buildFn = buildMemoryList },
+    .{ .name = "memory_recall", .buildFn = buildMemoryRecall },
+    .{ .name = "memory_list", .buildFn = buildMemoryList },
 };
 
 // ── Public API ─────────────────────────────────────────────────────────────
@@ -88,9 +86,6 @@ const BRIDGE_REGISTRY = [_]ToolEntry{
 pub fn resolve(tool_name: []const u8) ?*const ToolEntry {
     for (&BRIDGE_REGISTRY) |*entry| {
         if (std.mem.eql(u8, entry.name, tool_name)) return entry;
-        for (entry.aliases) |alias| {
-            if (std.mem.eql(u8, alias, tool_name)) return entry;
-        }
     }
     return null;
 }
@@ -158,19 +153,11 @@ test "resolve: canonical name found" {
     try std.testing.expectEqualStrings("file_read", entry.name);
 }
 
-test "resolve: alias resolved to canonical" {
-    const entry = resolve("memory_read").?;
-    try std.testing.expectEqualStrings("memory_recall", entry.name);
-}
-
-test "resolve: alias memory_write resolves to memory_list" {
-    const entry = resolve("memory_write").?;
-    try std.testing.expectEqualStrings("memory_list", entry.name);
-}
-
 test "resolve: unknown name returns null" {
     try std.testing.expect(resolve("linear") == null);
     try std.testing.expect(resolve("slack") == null);
+    try std.testing.expect(resolve("memory_read") == null);
+    try std.testing.expect(resolve("memory_write") == null);
     try std.testing.expect(resolve("") == null);
 }
 
