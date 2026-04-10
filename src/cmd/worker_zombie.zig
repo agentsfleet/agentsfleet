@@ -34,50 +34,39 @@ pub fn zombieWorkerLoop(alloc: std.mem.Allocator, cfg: ZombieWorkerConfig) void 
     var redis = connectRedis(alloc) orelse return;
     defer redis.deinit();
 
-    var session = event_loop.claimZombie(alloc, cfg.zombie_id, cfg.pool) catch |err| {
-        obs_log.logErrWithHint(
-            .zombie_worker,
-            err,
-            error_codes.ERR_ZOMBIE_CLAIM_FAILED,
-            "zombie_worker.claim_fail zombie_id={s}",
-            .{cfg.zombie_id},
-        );
-        return;
-    };
+    var session = claimOrReturn(alloc, cfg) orelse return;
     defer session.deinit(alloc);
 
-    log.info("zombie_worker.claimed zombie_id={s} name={s}", .{ cfg.zombie_id, session.config.name });
-
     const exec_ref = cfg.executor orelse {
-        log.err("zombie_worker.no_executor zombie_id={s} error_code={s}", .{
-            cfg.zombie_id,
-            error_codes.ERR_EXEC_STARTUP_POSTURE,
-        });
+        log.err("zombie_worker.no_executor zombie_id={s} error_code={s}", .{ cfg.zombie_id, error_codes.ERR_EXEC_STARTUP_POSTURE });
         return;
     };
 
-    // Event loop expects running=true to keep running.
-    // We have shutdown_requested=true to stop. Create a derived "running" view.
+    // shutdown_requested=true means stop; event loop expects running=true to continue.
     var running = std.atomic.Value(bool).init(true);
-    const running_watcher = std.Thread.spawn(.{}, watchShutdown, .{ cfg.shutdown_requested, &running }) catch {
+    const watcher = std.Thread.spawn(.{}, watchShutdown, .{ cfg.shutdown_requested, &running }) catch {
         log.err("zombie_worker.watcher_spawn_fail zombie_id={s}", .{cfg.zombie_id});
         return;
     };
-    defer {
-        running.store(false, .release);
-        running_watcher.join();
-    }
+    defer { running.store(false, .release); watcher.join(); }
 
-    const loop_cfg = event_loop.EventLoopConfig{
+    event_loop.runEventLoop(alloc, &session, .{
         .pool = cfg.pool,
         .redis = &redis,
         .executor = exec_ref,
         .running = &running,
         .workspace_path = cfg.workspace_path,
-    };
-
-    event_loop.runEventLoop(alloc, &session, loop_cfg);
+    });
     log.info("zombie_worker.stopped zombie_id={s}", .{cfg.zombie_id});
+}
+
+fn claimOrReturn(alloc: std.mem.Allocator, cfg: ZombieWorkerConfig) ?event_loop.ZombieSession {
+    const session = event_loop.claimZombie(alloc, cfg.zombie_id, cfg.pool) catch |err| {
+        obs_log.logErrWithHint(.zombie_worker, err, error_codes.ERR_ZOMBIE_CLAIM_FAILED, "zombie_worker.claim_fail zombie_id={s}", .{cfg.zombie_id});
+        return null;
+    };
+    log.info("zombie_worker.claimed zombie_id={s} name={s}", .{ cfg.zombie_id, session.config.name });
+    return session;
 }
 
 /// Query core.zombies for active zombies and return their IDs.

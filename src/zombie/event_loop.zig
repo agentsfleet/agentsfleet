@@ -20,6 +20,7 @@ const redis_zombie = @import("../queue/redis_zombie.zig");
 const queue_consts = @import("../queue/constants.zig");
 const executor_client = @import("../executor/client.zig");
 const error_codes = @import("../errors/codes.zig");
+const crypto_store = @import("../secrets/crypto_store.zig");
 const obs_log = @import("../observability/logging.zig");
 const backoff = @import("../reliability/backoff.zig");
 const id_format = @import("../types/id_format.zig");
@@ -352,24 +353,18 @@ pub fn checkpointState(
     log.debug("zombie_event_loop.checkpointed zombie_id={s} context_len={d}", .{ session.zombie_id, session.context_json.len });
 }
 
-/// M2_001: Resolve a credential from core.zombie_credentials by name.
-/// Returns the value or error if not found. Caller owns returned slice.
+/// M2_001: Resolve a zombie credential from vault.secrets via crypto_store.
+/// Key naming: "zombie:{name}" in vault.secrets. Returns decrypted value.
 fn resolveCredential(alloc: Allocator, pool: *pg.Pool, workspace_id: []const u8, name: []const u8) ![]const u8 {
+    const key_name = try std.fmt.allocPrint(alloc, "zombie:{s}", .{name});
+    defer alloc.free(key_name);
+
     const conn = try pool.acquire();
     defer pool.release(conn);
-    var q = try conn.query( // check-pg-drain: ok — drain called below
-        \\SELECT value_encrypted FROM core.zombie_credentials
-        \\WHERE workspace_id = $1::uuid AND name = $2
-    , .{ workspace_id, name });
-    defer q.deinit();
-    const row = try q.next() orelse {
-        q.drain() catch {};
+    return crypto_store.load(alloc, conn, workspace_id, key_name) catch |err| {
         log.warn("zombie_event_loop.credential_not_found workspace_id={s} name={s} error_code=" ++ error_codes.ERR_ZOMBIE_CREDENTIAL_MISSING, .{ workspace_id, name });
-        return error.CredentialNotFound;
+        return err;
     };
-    const value = try alloc.dupe(u8, try row.get([]const u8, 0));
-    q.drain() catch {};
-    return value;
 }
 
 // ── Internal helpers ─────────────────────────────────────────────────────

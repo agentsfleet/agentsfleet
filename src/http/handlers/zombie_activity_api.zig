@@ -11,6 +11,7 @@ const common = @import("common.zig");
 const ec = @import("../../errors/codes.zig");
 const id_format = @import("../../types/id_format.zig");
 const activity_stream = @import("../../zombie/activity_stream.zig");
+const crypto_store = @import("../../secrets/crypto_store.zig");
 
 const log = std.log.scoped(.zombie_activity_api);
 
@@ -110,7 +111,7 @@ pub fn handleStoreCredential(ctx: *Context, req: *httpz.Request, res: *httpz.Res
 
     if (!validateCredential(cred, res, req_id)) return;
 
-    insertCredential(ctx.pool, alloc, cred) catch |err| {
+    storeCredentialEncrypted(ctx.pool, alloc, cred) catch |err| {
         log.err("credential.store_failed err={s} name={s} req_id={s}", .{ @errorName(err), cred.name, req_id });
         common.internalDbError(res, req_id);
         return;
@@ -141,20 +142,14 @@ fn validateCredential(cred: CredentialBody, res: *httpz.Response, req_id: []cons
     return true;
 }
 
-fn insertCredential(pool: *pg.Pool, alloc: std.mem.Allocator, cred: CredentialBody) !void {
-    const cred_id = try id_format.generateVaultSecretId(alloc);
-    defer alloc.free(cred_id);
+fn storeCredentialEncrypted(pool: *pg.Pool, alloc: std.mem.Allocator, cred: CredentialBody) !void {
     const conn = try pool.acquire();
     defer pool.release(conn);
-    const now_ms = std.time.milliTimestamp();
-    // Upsert: if credential name already exists for workspace, update value
-    _ = try conn.exec(
-        \\INSERT INTO core.zombie_credentials
-        \\  (id, workspace_id, name, value_encrypted, created_at, updated_at)
-        \\VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6)
-        \\ON CONFLICT (workspace_id, name) DO UPDATE
-        \\  SET value_encrypted = EXCLUDED.value_encrypted, updated_at = EXCLUDED.updated_at
-    , .{ cred_id, cred.workspace_id, cred.name, cred.value, now_ms, now_ms });
+    const key_name = try std.fmt.allocPrint(alloc, "zombie:{s}", .{cred.name});
+    defer alloc.free(key_name);
+    // Use envelope encryption via crypto_store (vault.secrets table).
+    // KEK version 1 is the default master key.
+    try crypto_store.store(alloc, conn, cred.workspace_id, key_name, cred.value, 1);
 }
 
 // ── List Credentials ──────────────────────────────────────────────────
@@ -198,10 +193,11 @@ const CredentialListRow = struct {
 fn fetchCredentialList(pool: *pg.Pool, alloc: std.mem.Allocator, workspace_id: []const u8) ![]CredentialListRow {
     const conn = try pool.acquire();
     defer pool.release(conn);
-    var q = try conn.query( // check-pg-drain: ok — drain called in loop below
-        \\SELECT name, created_at FROM core.zombie_credentials
-        \\WHERE workspace_id = $1::uuid
-        \\ORDER BY name ASC
+    // Query vault.secrets for zombie-prefixed keys (zombie:{name}).
+    var q = try conn.query( // check-pg-drain: ok — drain called below
+        \\SELECT key_name, created_at FROM vault.secrets
+        \\WHERE workspace_id = $1::uuid AND key_name LIKE 'zombie:%'
+        \\ORDER BY key_name ASC
     , .{workspace_id});
     defer q.deinit();
 
@@ -211,7 +207,13 @@ fn fetchCredentialList(pool: *pg.Pool, alloc: std.mem.Allocator, workspace_id: [
         rows.deinit(alloc);
     }
     while (try q.*.next()) |row| {
-        const name = try alloc.dupe(u8, try row.get([]const u8, 0));
+        const raw_name = try row.get([]const u8, 0);
+        // Strip "zombie:" prefix for display
+        const display_name = if (std.mem.startsWith(u8, raw_name, "zombie:"))
+            raw_name["zombie:".len..]
+        else
+            raw_name;
+        const name = try alloc.dupe(u8, display_name);
         try rows.append(alloc, .{
             .name = name,
             .created_at = try row.get(i64, 1),
