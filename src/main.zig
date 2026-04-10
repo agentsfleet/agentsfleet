@@ -133,7 +133,6 @@ test {
     _ = @import("http/route_matchers.zig");
     _ = @import("zombie/activity_stream.zig");
     _ = @import("zombie/event_loop.zig");
-    _ = @import("zombie/tool_registry.zig");
     _ = @import("zombie/webhook_verify.zig");
     _ = @import("cli/commands.zig");
     _ = @import("auth/sessions.zig");
