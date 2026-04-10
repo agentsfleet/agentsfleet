@@ -25,12 +25,12 @@ pub fn handlePutHarnessSource(ctx: *Context, req: *httpz.Request, res: *httpz.Re
 
     const Req = harness_handlers.PutSourceInput;
     const body = req.body() orelse {
-        common.errorResponse(res, .bad_request, error_codes.ERR_INVALID_REQUEST, "Request body required", req_id);
+        common.errorResponse(res, error_codes.ERR_INVALID_REQUEST, "Request body required", req_id);
         return;
     };
     if (!common.checkBodySize(req, res, body, req_id)) return;
     const parsed = std.json.parseFromSlice(Req, alloc, body, .{}) catch {
-        common.errorResponse(res, .bad_request, error_codes.ERR_INVALID_REQUEST, "Malformed JSON", req_id);
+        common.errorResponse(res, error_codes.ERR_INVALID_REQUEST, "Malformed JSON", req_id);
         return;
     };
     defer parsed.deinit();
@@ -51,9 +51,9 @@ pub fn handlePutHarnessSource(ctx: *Context, req: *httpz.Request, res: *httpz.Re
 
     const out = harness_handlers.putSource(conn, alloc, workspace_id, parsed.value) catch |err| {
         switch (err) {
-            error.InvalidRequest => common.errorResponse(res, .bad_request, error_codes.ERR_INVALID_REQUEST, "Invalid harness source payload", req_id),
-            error.InvalidIdShape => common.errorResponse(res, .bad_request, error_codes.ERR_UUIDV7_INVALID_ID_SHAPE, "Invalid agent_id format", req_id),
-            error.WorkspaceNotFound => common.errorResponse(res, .not_found, error_codes.ERR_WORKSPACE_NOT_FOUND, "Workspace not found", req_id),
+            error.InvalidRequest => common.errorResponse(res, error_codes.ERR_INVALID_REQUEST, "Invalid harness source payload", req_id),
+            error.InvalidIdShape => common.errorResponse(res, error_codes.ERR_UUIDV7_INVALID_ID_SHAPE, "Invalid agent_id format", req_id),
+            error.WorkspaceNotFound => common.errorResponse(res, error_codes.ERR_WORKSPACE_NOT_FOUND, "Workspace not found", req_id),
             else => common.internalOperationError(res, "Failed to store harness source", req_id),
         }
         log.err("harness.put_source_fail error_code=UZ-INTERNAL-003 workspace_id={s}", .{workspace_id});
@@ -86,12 +86,12 @@ pub fn handleCompileHarness(ctx: *Context, req: *httpz.Request, res: *httpz.Resp
 
     const Req = harness_handlers.CompileInput;
     const body = req.body() orelse {
-        common.errorResponse(res, .bad_request, error_codes.ERR_INVALID_REQUEST, "Request body required", req_id);
+        common.errorResponse(res, error_codes.ERR_INVALID_REQUEST, "Request body required", req_id);
         return;
     };
     if (!common.checkBodySize(req, res, body, req_id)) return;
     const parsed = std.json.parseFromSlice(Req, alloc, body, .{}) catch {
-        common.errorResponse(res, .bad_request, error_codes.ERR_INVALID_REQUEST, "Malformed JSON", req_id);
+        common.errorResponse(res, error_codes.ERR_INVALID_REQUEST, "Malformed JSON", req_id);
         return;
     };
     defer parsed.deinit();
@@ -110,26 +110,26 @@ pub fn handleCompileHarness(ctx: *Context, req: *httpz.Request, res: *httpz.Resp
 
     const out = harness_handlers.compileProfile(conn, alloc, workspace_id, parsed.value) catch |err| {
         switch (err) {
-            error.InvalidIdShape => common.errorResponse(res, .bad_request, error_codes.ERR_UUIDV7_INVALID_ID_SHAPE, "Invalid config_version_id format", req_id),
-            error.ProfileNotFound => common.errorResponse(res, .not_found, error_codes.ERR_PROFILE_NOT_FOUND, "No harness profile source found for workspace", req_id),
+            error.InvalidIdShape => common.errorResponse(res, error_codes.ERR_UUIDV7_INVALID_ID_SHAPE, "Invalid config_version_id format", req_id),
+            error.ProfileNotFound => common.errorResponse(res, error_codes.ERR_PROFILE_NOT_FOUND, "No harness profile source found for workspace", req_id),
             error.CompileFailed => common.internalOperationError(res, "Harness compile failed", req_id),
             error.EntitlementMissing => {
                 posthog_events.trackEntitlementRejected(ctx.posthog, posthog_events.distinctIdOrSystem(principal.user_id orelse ""), workspace_id, "COMPILE", error_codes.ERR_ENTITLEMENT_UNAVAILABLE, req_id);
-                common.errorResponse(res, .forbidden, error_codes.ERR_ENTITLEMENT_UNAVAILABLE, "Workspace entitlement missing; request denied", req_id);
+                common.errorResponse(res, error_codes.ERR_ENTITLEMENT_UNAVAILABLE, "Workspace entitlement missing; request denied", req_id);
             },
             error.EntitlementProfileLimit => {
                 posthog_events.trackEntitlementRejected(ctx.posthog, posthog_events.distinctIdOrSystem(principal.user_id orelse ""), workspace_id, "COMPILE", error_codes.ERR_ENTITLEMENT_PROFILE_LIMIT, req_id);
-                common.errorResponse(res, .forbidden, error_codes.ERR_ENTITLEMENT_PROFILE_LIMIT, "Workspace profile limit exceeded", req_id);
+                common.errorResponse(res, error_codes.ERR_ENTITLEMENT_PROFILE_LIMIT, "Workspace profile limit exceeded", req_id);
             },
             error.EntitlementStageLimit => {
                 posthog_events.trackEntitlementRejected(ctx.posthog, posthog_events.distinctIdOrSystem(principal.user_id orelse ""), workspace_id, "COMPILE", error_codes.ERR_ENTITLEMENT_STAGE_LIMIT, req_id);
-                common.errorResponse(res, .forbidden, error_codes.ERR_ENTITLEMENT_STAGE_LIMIT, "Plan stage limit exceeded", req_id);
+                common.errorResponse(res, error_codes.ERR_ENTITLEMENT_STAGE_LIMIT, "Plan stage limit exceeded", req_id);
             },
             error.EntitlementSkillNotAllowed => {
                 posthog_events.trackEntitlementRejected(ctx.posthog, posthog_events.distinctIdOrSystem(principal.user_id orelse ""), workspace_id, "COMPILE", error_codes.ERR_ENTITLEMENT_SKILL_NOT_ALLOWED, req_id);
-                common.errorResponse(res, .forbidden, error_codes.ERR_ENTITLEMENT_SKILL_NOT_ALLOWED, "Plan does not allow one or more profile skills", req_id);
+                common.errorResponse(res, error_codes.ERR_ENTITLEMENT_SKILL_NOT_ALLOWED, "Plan does not allow one or more profile skills", req_id);
             },
-            error.CreditExhausted => common.errorResponse(res, .forbidden, error_codes.ERR_CREDIT_EXHAUSTED, "Free plan credit exhausted. Upgrade to Scale to continue.", req_id),
+            error.CreditExhausted => common.errorResponse(res, error_codes.ERR_CREDIT_EXHAUSTED, "Free plan credit exhausted. Upgrade to Scale to continue.", req_id),
             else => common.internalOperationError(res, "Failed to compile harness profile", req_id),
         }
         log.err("harness.compile_fail error_code=UZ-INTERNAL-003 workspace_id={s}", .{workspace_id});
@@ -163,12 +163,12 @@ pub fn handleActivateHarness(ctx: *Context, req: *httpz.Request, res: *httpz.Res
 
     const Req = harness_handlers.ActivateInput;
     const body = req.body() orelse {
-        common.errorResponse(res, .bad_request, error_codes.ERR_INVALID_REQUEST, "Request body required", req_id);
+        common.errorResponse(res, error_codes.ERR_INVALID_REQUEST, "Request body required", req_id);
         return;
     };
     if (!common.checkBodySize(req, res, body, req_id)) return;
     const parsed = std.json.parseFromSlice(Req, alloc, body, .{}) catch {
-        common.errorResponse(res, .bad_request, error_codes.ERR_INVALID_REQUEST, "Malformed JSON", req_id);
+        common.errorResponse(res, error_codes.ERR_INVALID_REQUEST, "Malformed JSON", req_id);
         return;
     };
     defer parsed.deinit();
@@ -187,26 +187,26 @@ pub fn handleActivateHarness(ctx: *Context, req: *httpz.Request, res: *httpz.Res
 
     const out = harness_handlers.activateProfile(conn, alloc, workspace_id, parsed.value) catch |err| {
         switch (err) {
-            error.InvalidIdShape => common.errorResponse(res, .bad_request, error_codes.ERR_UUIDV7_INVALID_ID_SHAPE, "Invalid config_version_id format", req_id),
-            error.ProfileNotFound => common.errorResponse(res, .not_found, error_codes.ERR_PROFILE_NOT_FOUND, "Profile version not found", req_id),
-            error.ProfileInvalid => common.errorResponse(res, .conflict, error_codes.ERR_PROFILE_INVALID, "Invalid profile cannot be activated", req_id),
+            error.InvalidIdShape => common.errorResponse(res, error_codes.ERR_UUIDV7_INVALID_ID_SHAPE, "Invalid config_version_id format", req_id),
+            error.ProfileNotFound => common.errorResponse(res, error_codes.ERR_PROFILE_NOT_FOUND, "Profile version not found", req_id),
+            error.ProfileInvalid => common.errorResponse(res, error_codes.ERR_PROFILE_INVALID, "Invalid profile cannot be activated", req_id),
             error.EntitlementMissing => {
                 posthog_events.trackEntitlementRejected(ctx.posthog, posthog_events.distinctIdOrSystem(principal.user_id orelse ""), workspace_id, "ACTIVATE", error_codes.ERR_ENTITLEMENT_UNAVAILABLE, req_id);
-                common.errorResponse(res, .forbidden, error_codes.ERR_ENTITLEMENT_UNAVAILABLE, "Workspace entitlement missing; request denied", req_id);
+                common.errorResponse(res, error_codes.ERR_ENTITLEMENT_UNAVAILABLE, "Workspace entitlement missing; request denied", req_id);
             },
             error.EntitlementProfileLimit => {
                 posthog_events.trackEntitlementRejected(ctx.posthog, posthog_events.distinctIdOrSystem(principal.user_id orelse ""), workspace_id, "ACTIVATE", error_codes.ERR_ENTITLEMENT_PROFILE_LIMIT, req_id);
-                common.errorResponse(res, .forbidden, error_codes.ERR_ENTITLEMENT_PROFILE_LIMIT, "Workspace profile limit exceeded", req_id);
+                common.errorResponse(res, error_codes.ERR_ENTITLEMENT_PROFILE_LIMIT, "Workspace profile limit exceeded", req_id);
             },
             error.EntitlementStageLimit => {
                 posthog_events.trackEntitlementRejected(ctx.posthog, posthog_events.distinctIdOrSystem(principal.user_id orelse ""), workspace_id, "ACTIVATE", error_codes.ERR_ENTITLEMENT_STAGE_LIMIT, req_id);
-                common.errorResponse(res, .forbidden, error_codes.ERR_ENTITLEMENT_STAGE_LIMIT, "Plan stage limit exceeded", req_id);
+                common.errorResponse(res, error_codes.ERR_ENTITLEMENT_STAGE_LIMIT, "Plan stage limit exceeded", req_id);
             },
             error.EntitlementSkillNotAllowed => {
                 posthog_events.trackEntitlementRejected(ctx.posthog, posthog_events.distinctIdOrSystem(principal.user_id orelse ""), workspace_id, "ACTIVATE", error_codes.ERR_ENTITLEMENT_SKILL_NOT_ALLOWED, req_id);
-                common.errorResponse(res, .forbidden, error_codes.ERR_ENTITLEMENT_SKILL_NOT_ALLOWED, "Plan does not allow one or more profile skills", req_id);
+                common.errorResponse(res, error_codes.ERR_ENTITLEMENT_SKILL_NOT_ALLOWED, "Plan does not allow one or more profile skills", req_id);
             },
-            error.CreditExhausted => common.errorResponse(res, .forbidden, error_codes.ERR_CREDIT_EXHAUSTED, "Free plan credit exhausted. Upgrade to Scale to continue.", req_id),
+            error.CreditExhausted => common.errorResponse(res, error_codes.ERR_CREDIT_EXHAUSTED, "Free plan credit exhausted. Upgrade to Scale to continue.", req_id),
             else => common.internalOperationError(res, "Failed to activate profile", req_id),
         }
         log.err("harness.activate_fail error_code=UZ-INTERNAL-003 workspace_id={s}", .{workspace_id});

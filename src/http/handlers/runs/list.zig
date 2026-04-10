@@ -69,7 +69,7 @@ pub fn handleListRuns(ctx: *common.Context, req: *httpz.Request, res: *httpz.Res
 
     if (workspace_id) |wid| {
         if (!common.authorizeWorkspaceAndSetTenantContext(conn, principal, wid)) {
-            common.errorResponse(res, .forbidden, error_codes.ERR_FORBIDDEN, "Workspace access denied", req_id);
+            common.errorResponse(res, error_codes.ERR_FORBIDDEN, "Workspace access denied", req_id);
             return;
         }
     }

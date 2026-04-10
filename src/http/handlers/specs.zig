@@ -42,11 +42,11 @@ pub fn handleListSpecs(ctx: *common.Context, req: *httpz.Request, res: *httpz.Re
     };
 
     const qs = req.query() catch {
-        common.errorResponse(res, .bad_request, error_codes.ERR_INVALID_REQUEST, "workspace_id query param required", req_id);
+        common.errorResponse(res, error_codes.ERR_INVALID_REQUEST, "workspace_id query param required", req_id);
         return;
     };
     const workspace_id = qs.get("workspace_id") orelse {
-        common.errorResponse(res, .bad_request, error_codes.ERR_INVALID_REQUEST, "workspace_id query param required", req_id);
+        common.errorResponse(res, error_codes.ERR_INVALID_REQUEST, "workspace_id query param required", req_id);
         return;
     };
     const wid = workspace_id;
@@ -66,7 +66,7 @@ pub fn handleListSpecs(ctx: *common.Context, req: *httpz.Request, res: *httpz.Re
     defer ctx.pool.release(conn);
 
     if (!common.authorizeWorkspaceAndSetTenantContext(conn, principal, wid)) {
-        common.errorResponse(res, .forbidden, error_codes.ERR_FORBIDDEN, "Workspace access denied", req_id);
+        common.errorResponse(res, error_codes.ERR_FORBIDDEN, "Workspace access denied", req_id);
         return;
     }
 

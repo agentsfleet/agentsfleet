@@ -69,7 +69,7 @@ pub fn handleApprovalCallback(
         return;
     };
     if (!exists) {
-        common.errorResponse(res, .not_found, ec.ERR_APPROVAL_NOT_FOUND, ec.MSG_APPROVAL_NOT_FOUND, req_id);
+        common.errorResponse(res, ec.ERR_APPROVAL_NOT_FOUND, ec.MSG_APPROVAL_NOT_FOUND, req_id);
         return;
     }
 
@@ -134,17 +134,17 @@ fn parseApprovalBody(
     req_id: []const u8,
 ) ?ApprovalPayload {
     const body = req.body() orelse {
-        common.errorResponse(res, .bad_request, ec.ERR_APPROVAL_PARSE_FAILED, ec.MSG_APPROVAL_INVALID_BODY, req_id);
+        common.errorResponse(res, ec.ERR_APPROVAL_PARSE_FAILED, ec.MSG_APPROVAL_INVALID_BODY, req_id);
         return null;
     };
     if (!common.checkBodySize(req, res, body, req_id)) return null;
     const parsed = std.json.parseFromSlice(RawApprovalPayload, alloc, body, .{ .ignore_unknown_fields = true }) catch {
-        common.errorResponse(res, .bad_request, ec.ERR_APPROVAL_PARSE_FAILED, ec.MSG_APPROVAL_INVALID_BODY, req_id);
+        common.errorResponse(res, ec.ERR_APPROVAL_PARSE_FAILED, ec.MSG_APPROVAL_INVALID_BODY, req_id);
         return null;
     };
     const raw = parsed.value;
     if (raw.action_id.len == 0 or raw.decision.len == 0) {
-        common.errorResponse(res, .bad_request, ec.ERR_APPROVAL_PARSE_FAILED, ec.MSG_APPROVAL_INVALID_BODY, req_id);
+        common.errorResponse(res, ec.ERR_APPROVAL_PARSE_FAILED, ec.MSG_APPROVAL_INVALID_BODY, req_id);
         return null;
     }
     const decision: ApprovalDecision = if (std.mem.eql(u8, raw.decision, ec.GATE_DECISION_APPROVE))
@@ -152,7 +152,7 @@ fn parseApprovalBody(
     else if (std.mem.eql(u8, raw.decision, ec.GATE_DECISION_DENY))
         .deny
     else {
-        common.errorResponse(res, .bad_request, ec.ERR_APPROVAL_PARSE_FAILED, ec.MSG_APPROVAL_INVALID_DECISION, req_id);
+        common.errorResponse(res, ec.ERR_APPROVAL_PARSE_FAILED, ec.MSG_APPROVAL_INVALID_DECISION, req_id);
         return null;
     };
     return ApprovalPayload{ .action_id = raw.action_id, .decision = decision };
@@ -166,30 +166,30 @@ fn verifyRequestSignature(req: *httpz.Request, res: *httpz.Response, req_id: []c
     const secret = std.process.getEnvVarOwned(std.heap.page_allocator, "APPROVAL_SIGNING_SECRET") catch {
         // No signing secret configured — reject (fail-closed, no insecure fallback)
         log.warn("approval.no_signing_secret_configured req_id={s}", .{req_id});
-        common.errorResponse(res, .forbidden, ec.ERR_APPROVAL_INVALID_SIGNATURE, "Signing secret not configured", req_id);
+        common.errorResponse(res, ec.ERR_APPROVAL_INVALID_SIGNATURE, "Signing secret not configured", req_id);
         return false;
     };
     defer std.heap.page_allocator.free(secret);
 
     const timestamp = req.header("x-signature-timestamp") orelse {
-        common.errorResponse(res, .unauthorized, ec.ERR_APPROVAL_INVALID_SIGNATURE, "Missing signature timestamp", req_id);
+        common.errorResponse(res, ec.ERR_APPROVAL_INVALID_SIGNATURE, "Missing signature timestamp", req_id);
         return false;
     };
     const provided_sig = req.header("x-signature") orelse {
-        common.errorResponse(res, .unauthorized, ec.ERR_APPROVAL_INVALID_SIGNATURE, "Missing signature", req_id);
+        common.errorResponse(res, ec.ERR_APPROVAL_INVALID_SIGNATURE, "Missing signature", req_id);
         return false;
     };
 
     // Reject timestamps older than 5 minutes to prevent replay attacks
     const SIGNATURE_MAX_AGE_S: i64 = 300;
     const ts = std.fmt.parseInt(i64, timestamp, 10) catch {
-        common.errorResponse(res, .unauthorized, ec.ERR_APPROVAL_INVALID_SIGNATURE, "Invalid timestamp", req_id);
+        common.errorResponse(res, ec.ERR_APPROVAL_INVALID_SIGNATURE, "Invalid timestamp", req_id);
         return false;
     };
     const now_s = @divTrunc(std.time.milliTimestamp(), 1000);
     if (@abs(now_s - ts) > SIGNATURE_MAX_AGE_S) {
         log.warn("approval.timestamp_too_old ts={d} now={d} req_id={s}", .{ ts, now_s, req_id });
-        common.errorResponse(res, .unauthorized, ec.ERR_APPROVAL_INVALID_SIGNATURE, "Timestamp too old", req_id);
+        common.errorResponse(res, ec.ERR_APPROVAL_INVALID_SIGNATURE, "Timestamp too old", req_id);
         return false;
     }
 
@@ -217,13 +217,13 @@ fn verifyRequestSignature(req: *httpz.Request, res: *httpz.Response, req_id: []c
 
     // Constant-time comparison (Rule 4: no short-circuit for secrets)
     if (provided_sig.len != expected.len) {
-        common.errorResponse(res, .unauthorized, ec.ERR_APPROVAL_INVALID_SIGNATURE, "Invalid signature", req_id);
+        common.errorResponse(res, ec.ERR_APPROVAL_INVALID_SIGNATURE, "Invalid signature", req_id);
         return false;
     }
     var diff: u8 = 0;
     for (provided_sig, expected) |a, b| diff |= a ^ b;
     if (diff != 0) {
-        common.errorResponse(res, .unauthorized, ec.ERR_APPROVAL_INVALID_SIGNATURE, "Invalid signature", req_id);
+        common.errorResponse(res, ec.ERR_APPROVAL_INVALID_SIGNATURE, "Invalid signature", req_id);
         return false;
     }
 

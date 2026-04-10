@@ -12,6 +12,7 @@ const posthog_events = @import("../../observability/posthog_events.zig");
 const trace_ctx = @import("../../observability/trace.zig");
 const db = @import("../../db/pool.zig");
 const error_codes = @import("../../errors/codes.zig");
+const error_table = @import("../../errors/error_table.zig");
 const id_format = @import("../../types/id_format.zig");
 const rbac = @import("../rbac.zig");
 
@@ -77,32 +78,43 @@ pub fn writeJson(res: *httpz.Response, status: std.http.Status, value: anytype) 
     };
 }
 
+/// RFC 7807 error response. Looks up http_status and title from error_table.
+/// Content-Type is set to application/problem+json.
+/// Callers no longer pass std.http.Status — the error code owns its status.
 pub fn errorResponse(
     res: *httpz.Response,
-    status: std.http.Status,
     code: []const u8,
-    message: []const u8,
+    detail: []const u8,
     request_id: []const u8,
 ) void {
-    writeJson(res, status, .{
-        .@"error" = .{
-            .code = code,
-            .message = message,
-        },
+    const entry = error_table.lookup(code) orelse error_table.UNKNOWN_ENTRY;
+    res.status = @intFromEnum(entry.http_status);
+    // Use res.header() for application/problem+json — not in httpz.ContentType enum.
+    res.header("Content-Type", "application/problem+json");
+    const body = .{
+        .docs_uri = entry.docs_uri,
+        .title = entry.title,
+        .detail = detail,
+        .error_code = code,
         .request_id = request_id,
-    });
+    };
+    const json_formatter = std.json.fmt(body, .{});
+    json_formatter.format(&res.buffer.writer) catch {
+        res.status = 500;
+        res.body = "{}";
+    };
 }
 
 pub fn internalDbUnavailable(res: *httpz.Response, request_id: []const u8) void {
-    errorResponse(res, .service_unavailable, error_codes.ERR_INTERNAL_DB_UNAVAILABLE, "Database unavailable", request_id);
+    errorResponse(res, error_codes.ERR_INTERNAL_DB_UNAVAILABLE, "Database unavailable", request_id);
 }
 
 pub fn internalDbError(res: *httpz.Response, request_id: []const u8) void {
-    errorResponse(res, .internal_server_error, error_codes.ERR_INTERNAL_DB_QUERY, "Database error", request_id);
+    errorResponse(res, error_codes.ERR_INTERNAL_DB_QUERY, "Database error", request_id);
 }
 
-pub fn internalOperationError(res: *httpz.Response, message: []const u8, request_id: []const u8) void {
-    errorResponse(res, .internal_server_error, error_codes.ERR_INTERNAL_OPERATION_FAILED, message, request_id);
+pub fn internalOperationError(res: *httpz.Response, detail: []const u8, request_id: []const u8) void {
+    errorResponse(res, error_codes.ERR_INTERNAL_OPERATION_FAILED, detail, request_id);
 }
 
 pub const MAX_BODY_SIZE: usize = 2 * 1024 * 1024; // 2MB — must match server.zig max_body_size
@@ -115,12 +127,12 @@ pub fn checkBodySize(req: *httpz.Request, res: *httpz.Response, body: []const u8
     if (req.header("content-length")) |cl_str| {
         const cl = std.fmt.parseInt(usize, cl_str, 10) catch 0;
         if (cl > MAX_BODY_SIZE) {
-            errorResponse(res, .payload_too_large, error_codes.ERR_PAYLOAD_TOO_LARGE, "Payload too large: max 2MB", request_id);
+            errorResponse(res, error_codes.ERR_PAYLOAD_TOO_LARGE, "Payload too large: max 2MB", request_id);
             return false;
         }
     }
     if (body.len >= MAX_BODY_SIZE) {
-        errorResponse(res, .payload_too_large, error_codes.ERR_PAYLOAD_TOO_LARGE, "Payload too large: max 2MB", request_id);
+        errorResponse(res, error_codes.ERR_PAYLOAD_TOO_LARGE, "Payload too large: max 2MB", request_id);
         return false;
     }
     return true;
@@ -222,7 +234,7 @@ pub fn requireUuidV7Id(
     if (id_format.isUuidV7(id)) return true;
     var msg_buf: [96]u8 = undefined;
     const message = std.fmt.bufPrint(&msg_buf, "Invalid {s} format", .{id_label}) catch "Invalid identifier format";
-    errorResponse(res, .bad_request, error_codes.ERR_UUIDV7_INVALID_ID_SHAPE, message, req_id);
+    errorResponse(res, error_codes.ERR_UUIDV7_INVALID_ID_SHAPE, message, req_id);
     return false;
 }
 
@@ -239,10 +251,10 @@ pub fn writeAuthErrorWithTracking(res: *httpz.Response, req_id: []const u8, err:
     };
     posthog_events.trackAuthRejected(ph_client, reason, req_id);
     switch (err) {
-        AuthError.TokenExpired => errorResponse(res, .unauthorized, error_codes.ERR_TOKEN_EXPIRED, "token expired", req_id),
-        AuthError.Unauthorized => errorResponse(res, .unauthorized, error_codes.ERR_UNAUTHORIZED, "Invalid or missing token", req_id),
-        AuthError.UnsupportedRole => errorResponse(res, .forbidden, error_codes.ERR_UNSUPPORTED_ROLE, "Unsupported role in token", req_id),
-        AuthError.AuthServiceUnavailable => errorResponse(res, .service_unavailable, error_codes.ERR_AUTH_UNAVAILABLE, "Authentication service unavailable", req_id),
+        AuthError.TokenExpired => errorResponse(res, error_codes.ERR_TOKEN_EXPIRED, "token expired", req_id),
+        AuthError.Unauthorized => errorResponse(res, error_codes.ERR_UNAUTHORIZED, "Invalid or missing token", req_id),
+        AuthError.UnsupportedRole => errorResponse(res, error_codes.ERR_UNSUPPORTED_ROLE, "Unsupported role in token", req_id),
+        AuthError.AuthServiceUnavailable => errorResponse(res, error_codes.ERR_AUTH_UNAVAILABLE, "Authentication service unavailable", req_id),
     }
 }
 
@@ -254,7 +266,7 @@ pub fn requireRole(res: *httpz.Response, req_id: []const u8, principal: AuthPrin
         "Your role is '{s}'. {s} role required.",
         .{ principal.role.label(), required.label() },
     ) catch "Insufficient role";
-    errorResponse(res, .forbidden, error_codes.ERR_INSUFFICIENT_ROLE, message, req_id);
+    errorResponse(res, error_codes.ERR_INSUFFICIENT_ROLE, message, req_id);
     return false;
 }
 

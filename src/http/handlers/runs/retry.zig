@@ -25,7 +25,7 @@ pub fn handleRetryRun(ctx: *common.Context, req: *httpz.Request, res: *httpz.Res
     };
 
     if (!id_format.isSupportedRunId(run_id)) {
-        common.errorResponse(res, .bad_request, error_codes.ERR_UUIDV7_INVALID_ID_SHAPE, "Invalid run_id format", req_id);
+        common.errorResponse(res, error_codes.ERR_UUIDV7_INVALID_ID_SHAPE, "Invalid run_id format", req_id);
         return;
     }
 
@@ -35,11 +35,11 @@ pub fn handleRetryRun(ctx: *common.Context, req: *httpz.Request, res: *httpz.Res
     };
 
     const body = req.body() orelse {
-        common.errorResponse(res, .bad_request, error_codes.ERR_INVALID_REQUEST, "Request body required", req_id);
+        common.errorResponse(res, error_codes.ERR_INVALID_REQUEST, "Request body required", req_id);
         return;
     };
     const parsed = std.json.parseFromSlice(Req, alloc, body, .{}) catch {
-        common.errorResponse(res, .bad_request, error_codes.ERR_INVALID_REQUEST, "Malformed JSON", req_id);
+        common.errorResponse(res, error_codes.ERR_INVALID_REQUEST, "Malformed JSON", req_id);
         return;
     };
     defer parsed.deinit();
@@ -64,13 +64,13 @@ pub fn handleRetryRun(ctx: *common.Context, req: *httpz.Request, res: *httpz.Res
     };
 
     if (workspace_id_for_policy.len > 0 and !common.authorizeWorkspaceAndSetTenantContext(conn, principal, workspace_id_for_policy)) {
-        common.errorResponse(res, .forbidden, error_codes.ERR_FORBIDDEN, "Workspace access denied", req_id);
+        common.errorResponse(res, error_codes.ERR_FORBIDDEN, "Workspace access denied", req_id);
         return;
     }
 
     const current = state.getRunState(conn, run_id) catch |err| switch (err) {
         state.TransitionError.RunNotFound => {
-            common.errorResponse(res, .not_found, error_codes.ERR_RUN_NOT_FOUND, "Run not found", req_id);
+            common.errorResponse(res, error_codes.ERR_RUN_NOT_FOUND, "Run not found", req_id);
             return;
         },
         else => {
@@ -80,7 +80,7 @@ pub fn handleRetryRun(ctx: *common.Context, req: *httpz.Request, res: *httpz.Res
     };
 
     if (!current.state.isRetryable()) {
-        common.errorResponse(res, .unprocessable_entity, error_codes.ERR_INVALID_STATE_TRANSITION, "Run is not in a retryable state", req_id);
+        common.errorResponse(res, error_codes.ERR_INVALID_STATE_TRANSITION, "Run is not in a retryable state", req_id);
         return;
     }
 
@@ -122,7 +122,7 @@ pub fn handleRetryRun(ctx: *common.Context, req: *httpz.Request, res: *httpz.Res
     ctx.queue.xaddRun(run_id, current.attempt + 1, workspace_id_for_policy) catch |err| {
         obs_log.logWarnErr(.http, err, "run.queue_enqueue_fail run_id={s}", .{run_id});
         common.compensateRetryQueueFailure(conn, run_id, current.state.label(), now_ms);
-        common.errorResponse(res, .service_unavailable, queue_unavailable_code, queue_unavailable_message, req_id);
+        common.errorResponse(res, queue_unavailable_code, queue_unavailable_message, req_id);
         return;
     };
     posthog_events.trackRunRetried(

@@ -37,18 +37,18 @@ pub fn handleInterruptRun(
     };
 
     if (!common.beginApiRequest(ctx)) {
-        common.errorResponse(res, .service_unavailable, error_codes.ERR_API_SATURATED, "Server overloaded; retry shortly", req_id);
+        common.errorResponse(res, error_codes.ERR_API_SATURATED, "Server overloaded; retry shortly", req_id);
         return;
     }
     defer common.endApiRequest(ctx);
 
     if (!id_format.isSupportedRunId(run_id)) {
-        common.errorResponse(res, .bad_request, error_codes.ERR_UUIDV7_INVALID_ID_SHAPE, "Invalid run_id format", req_id);
+        common.errorResponse(res, error_codes.ERR_UUIDV7_INVALID_ID_SHAPE, "Invalid run_id format", req_id);
         return;
     }
 
     const body = req.body() orelse {
-        common.errorResponse(res, .bad_request, error_codes.ERR_INVALID_REQUEST, "Request body required", req_id);
+        common.errorResponse(res, error_codes.ERR_INVALID_REQUEST, "Request body required", req_id);
         return;
     };
 
@@ -58,7 +58,7 @@ pub fn handleInterruptRun(
     };
 
     const parsed = std.json.parseFromSlice(Req, alloc, body, .{ .ignore_unknown_fields = true }) catch {
-        common.errorResponse(res, .bad_request, error_codes.ERR_INVALID_REQUEST, "Malformed JSON or missing 'message' field", req_id);
+        common.errorResponse(res, error_codes.ERR_INVALID_REQUEST, "Malformed JSON or missing 'message' field", req_id);
         return;
     };
     defer parsed.deinit();
@@ -66,7 +66,7 @@ pub fn handleInterruptRun(
 
     // OWASP A03: Input validation — reject oversized messages.
     if (rval.message.len == 0 or rval.message.len > MAX_MESSAGE_BYTES) {
-        common.errorResponse(res, .bad_request, error_codes.ERR_INVALID_REQUEST, "message must be 1–4096 bytes", req_id);
+        common.errorResponse(res, error_codes.ERR_INVALID_REQUEST, "message must be 1–4096 bytes", req_id);
         return;
     }
 
@@ -74,7 +74,7 @@ pub fn handleInterruptRun(
     const is_instant = std.mem.eql(u8, rval.mode, "instant");
     const is_queued = std.mem.eql(u8, rval.mode, "queued");
     if (!is_instant and !is_queued) {
-        common.errorResponse(res, .bad_request, error_codes.ERR_INVALID_REQUEST, "mode must be 'instant' or 'queued'", req_id);
+        common.errorResponse(res, error_codes.ERR_INVALID_REQUEST, "mode must be 'instant' or 'queued'", req_id);
         return;
     }
 
@@ -95,7 +95,7 @@ pub fn handleInterruptRun(
     defer run_q.deinit();
 
     const row = run_q.next() catch null orelse {
-        common.errorResponse(res, .not_found, error_codes.ERR_RUN_NOT_FOUND, "Run not found", req_id);
+        common.errorResponse(res, error_codes.ERR_RUN_NOT_FOUND, "Run not found", req_id);
         return;
     };
     const state_str = alloc.dupe(u8, row.get([]u8, 0) catch "") catch "";
@@ -103,7 +103,7 @@ pub fn handleInterruptRun(
     run_q.drain() catch {};
 
     if (!common.authorizeWorkspaceAndSetTenantContext(conn, principal, ws_id)) {
-        common.errorResponse(res, .forbidden, error_codes.ERR_FORBIDDEN, "Workspace access denied", req_id);
+        common.errorResponse(res, error_codes.ERR_FORBIDDEN, "Workspace access denied", req_id);
         return;
     }
 
@@ -133,7 +133,7 @@ pub fn handleInterruptRun(
     // Only accept interrupts for active (non-terminal) states where the gate
     // loop is running and will consume the message.
     if (current.isTerminal() or current == .BLOCKED or current == .PR_OPENED or current == .NOTIFIED) {
-        common.errorResponse(res, .conflict, error_codes.ERR_RUN_NOT_INTERRUPTIBLE, "Run is not in an interruptible state", req_id);
+        common.errorResponse(res, error_codes.ERR_RUN_NOT_INTERRUPTIBLE, "Run is not in an interruptible state", req_id);
         return;
     }
 
@@ -147,7 +147,7 @@ pub fn handleInterruptRun(
         obs_log.logWarnErr(.http, err, "interrupt.redis_setex_fail run_id={s} error_code={s}", .{
             run_id, error_codes.ERR_RUN_INTERRUPT_SIGNAL_FAILED,
         });
-        common.errorResponse(res, .service_unavailable, error_codes.ERR_RUN_INTERRUPT_SIGNAL_FAILED, "Failed to store interrupt message", req_id);
+        common.errorResponse(res, error_codes.ERR_RUN_INTERRUPT_SIGNAL_FAILED, "Failed to store interrupt message", req_id);
         return;
     };
 

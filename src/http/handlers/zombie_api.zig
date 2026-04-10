@@ -8,6 +8,7 @@ const std = @import("std");
 const httpz = @import("httpz");
 const pg = @import("pg");
 const common = @import("common.zig");
+const hx_mod = @import("hx.zig");
 const ec = @import("../../errors/codes.zig");
 const id_format = @import("../../types/id_format.zig");
 const zombie_config = @import("../../zombie/config.zig");
@@ -15,6 +16,7 @@ const zombie_config = @import("../../zombie/config.zig");
 const log = std.log.scoped(.zombie_api);
 
 pub const Context = common.Context;
+const Hx = hx_mod.Hx;
 
 const MAX_NAME_LEN: usize = 64;
 const MAX_SOURCE_LEN: usize = 64 * 1024; // 64KB
@@ -30,12 +32,12 @@ const CreateBody = struct {
 
 fn parseCreateBody(alloc: std.mem.Allocator, req: *httpz.Request, res: *httpz.Response, req_id: []const u8) ?CreateBody {
     const body = req.body() orelse {
-        common.errorResponse(res, .bad_request, ec.ERR_INVALID_REQUEST, ec.MSG_BODY_REQUIRED, req_id);
+        common.errorResponse(res, ec.ERR_INVALID_REQUEST, ec.MSG_BODY_REQUIRED, req_id);
         return null;
     };
     if (!common.checkBodySize(req, res, body, req_id)) return null;
     const parsed = std.json.parseFromSlice(CreateBody, alloc, body, .{ .ignore_unknown_fields = true }) catch {
-        common.errorResponse(res, .bad_request, ec.ERR_INVALID_REQUEST, ec.MSG_MALFORMED_JSON, req_id);
+        common.errorResponse(res, ec.ERR_INVALID_REQUEST, ec.MSG_MALFORMED_JSON, req_id);
         return null;
     };
     return parsed.value;
@@ -43,65 +45,54 @@ fn parseCreateBody(alloc: std.mem.Allocator, req: *httpz.Request, res: *httpz.Re
 
 fn validateCreateFields(b: CreateBody, res: *httpz.Response, req_id: []const u8) bool {
     if (b.name.len == 0 or b.name.len > MAX_NAME_LEN) {
-        common.errorResponse(res, .bad_request, ec.ERR_INVALID_REQUEST, ec.MSG_ZOMBIE_NAME_REQUIRED, req_id);
+        common.errorResponse(res, ec.ERR_INVALID_REQUEST, ec.MSG_ZOMBIE_NAME_REQUIRED, req_id);
         return false;
     }
     if (b.source_markdown.len == 0 or b.source_markdown.len > MAX_SOURCE_LEN) {
-        common.errorResponse(res, .bad_request, ec.ERR_INVALID_REQUEST, ec.MSG_ZOMBIE_SOURCE_REQUIRED, req_id);
+        common.errorResponse(res, ec.ERR_INVALID_REQUEST, ec.MSG_ZOMBIE_SOURCE_REQUIRED, req_id);
         return false;
     }
     if (b.config_json.len == 0) {
-        common.errorResponse(res, .bad_request, ec.ERR_INVALID_REQUEST, ec.MSG_ZOMBIE_CONFIG_REQUIRED, req_id);
+        common.errorResponse(res, ec.ERR_INVALID_REQUEST, ec.MSG_ZOMBIE_CONFIG_REQUIRED, req_id);
         return false;
     }
     if (b.workspace_id.len == 0 or !id_format.isSupportedWorkspaceId(b.workspace_id)) {
-        common.errorResponse(res, .bad_request, ec.ERR_INVALID_REQUEST, ec.MSG_WORKSPACE_ID_REQUIRED, req_id);
+        common.errorResponse(res, ec.ERR_INVALID_REQUEST, ec.MSG_WORKSPACE_ID_REQUIRED, req_id);
         return false;
     }
     return true;
 }
 
-pub fn handleCreateZombie(ctx: *Context, req: *httpz.Request, res: *httpz.Response) void {
-    var arena = std.heap.ArenaAllocator.init(ctx.alloc);
-    defer arena.deinit();
-    const alloc = arena.allocator();
-    const req_id = common.requestId(alloc);
+fn innerCreateZombie(hx: Hx, req: *httpz.Request) void {
+    const body = parseCreateBody(hx.alloc, req, hx.res, hx.req_id) orelse return;
+    if (!validateCreateFields(body, hx.res, hx.req_id)) return;
 
-    const principal = common.authenticate(alloc, req, ctx) catch {
-        common.errorResponse(res, .unauthorized, ec.ERR_UNAUTHORIZED, ec.MSG_AUTH_REQUIRED, req_id);
-        return;
-    };
-    _ = principal;
-
-    const body = parseCreateBody(alloc, req, res, req_id) orelse return;
-    if (!validateCreateFields(body, res, req_id)) return;
-
-    // Validate config JSON parses correctly
-    _ = zombie_config.parseZombieConfig(alloc, body.config_json) catch {
-        common.errorResponse(res, .bad_request, ec.ERR_ZOMBIE_INVALID_CONFIG, ec.MSG_ZOMBIE_INVALID_CONFIG, req_id);
+    _ = zombie_config.parseZombieConfig(hx.alloc, body.config_json) catch {
+        common.errorResponse(hx.res, ec.ERR_ZOMBIE_INVALID_CONFIG, ec.MSG_ZOMBIE_INVALID_CONFIG, hx.req_id);
         return;
     };
 
-    const zombie_id = id_format.generateZombieId(alloc) catch {
-        common.internalOperationError(res, "ID generation failed", req_id);
+    const zombie_id = id_format.generateZombieId(hx.alloc) catch {
+        common.internalOperationError(hx.res, "ID generation failed", hx.req_id);
         return;
     };
     const now_ms = std.time.milliTimestamp();
 
-    insertZombie(ctx.pool, body, zombie_id, now_ms) catch |err| {
+    insertZombie(hx.ctx.pool, body, zombie_id, now_ms) catch |err| {
         if (isUniqueViolation(err)) {
-            common.errorResponse(res, .conflict, ec.ERR_ZOMBIE_NAME_EXISTS, ec.MSG_ZOMBIE_NAME_EXISTS, req_id);
+            common.errorResponse(hx.res, ec.ERR_ZOMBIE_NAME_EXISTS, ec.MSG_ZOMBIE_NAME_EXISTS, hx.req_id);
             return;
         }
-        log.err("zombie.create_failed err={s} req_id={s}", .{ @errorName(err), req_id });
-        common.internalDbError(res, req_id);
+        log.err("zombie.create_failed err={s} req_id={s}", .{ @errorName(err), hx.req_id });
+        common.internalDbError(hx.res, hx.req_id);
         return;
     };
 
     log.info("zombie.created id={s} name={s} workspace={s}", .{ zombie_id, body.name, body.workspace_id });
-    res.status = 201;
-    res.json(.{ .zombie_id = zombie_id, .status = zombie_config.ZombieStatus.active.toSlice() }, .{}) catch {};
+    hx.res.status = 201;
+    hx.res.json(.{ .zombie_id = zombie_id, .status = zombie_config.ZombieStatus.active.toSlice() }, .{}) catch {};
 }
+pub const handleCreateZombie = hx_mod.authenticated(innerCreateZombie);
 
 fn insertZombie(pool: *pg.Pool, body: CreateBody, zombie_id: []const u8, now_ms: i64) !void {
     const conn = try pool.acquire();
@@ -123,40 +114,30 @@ fn isUniqueViolation(_: anyerror) bool {
 
 // ── List Zombies ──────────────────────────────────────────────────────
 
-pub fn handleListZombies(ctx: *Context, req: *httpz.Request, res: *httpz.Response) void {
-    var arena = std.heap.ArenaAllocator.init(ctx.alloc);
-    defer arena.deinit();
-    const alloc = arena.allocator();
-    const req_id = common.requestId(alloc);
-
-    const principal = common.authenticate(alloc, req, ctx) catch {
-        common.errorResponse(res, .unauthorized, ec.ERR_UNAUTHORIZED, ec.MSG_AUTH_REQUIRED, req_id);
-        return;
-    };
-    _ = principal;
-
+fn innerListZombies(hx: Hx, req: *httpz.Request) void {
     const qs = req.query() catch {
-        common.errorResponse(res, .bad_request, ec.ERR_INVALID_REQUEST, ec.MSG_WORKSPACE_ID_REQUIRED, req_id);
+        common.errorResponse(hx.res, ec.ERR_INVALID_REQUEST, ec.MSG_WORKSPACE_ID_REQUIRED, hx.req_id);
         return;
     };
     const workspace_id = qs.get("workspace_id") orelse {
-        common.errorResponse(res, .bad_request, ec.ERR_INVALID_REQUEST, ec.MSG_WORKSPACE_ID_REQUIRED, req_id);
+        common.errorResponse(hx.res, ec.ERR_INVALID_REQUEST, ec.MSG_WORKSPACE_ID_REQUIRED, hx.req_id);
         return;
     };
     if (!id_format.isSupportedWorkspaceId(workspace_id)) {
-        common.errorResponse(res, .bad_request, ec.ERR_INVALID_REQUEST, ec.MSG_WORKSPACE_ID_REQUIRED, req_id);
+        common.errorResponse(hx.res, ec.ERR_INVALID_REQUEST, ec.MSG_WORKSPACE_ID_REQUIRED, hx.req_id);
         return;
     }
 
-    const rows = fetchZombieList(ctx.pool, alloc, workspace_id) catch |err| {
-        log.err("zombie.list_failed err={s} req_id={s}", .{ @errorName(err), req_id });
-        common.internalDbError(res, req_id);
+    const rows = fetchZombieList(hx.ctx.pool, hx.alloc, workspace_id) catch |err| {
+        log.err("zombie.list_failed err={s} req_id={s}", .{ @errorName(err), hx.req_id });
+        common.internalDbError(hx.res, hx.req_id);
         return;
     };
 
-    res.status = 200;
-    res.json(.{ .zombies = rows }, .{}) catch {};
+    hx.res.status = 200;
+    hx.res.json(.{ .zombies = rows }, .{}) catch {};
 }
+pub const handleListZombies = hx_mod.authenticated(innerListZombies);
 
 const ZombieListRow = struct {
     id: []const u8,
@@ -209,38 +190,28 @@ fn collectZombieRows(alloc: std.mem.Allocator, q: anytype) ![]ZombieListRow {
 
 // ── Delete Zombie ─────────────────────────────────────────────────────
 
-pub fn handleDeleteZombie(ctx: *Context, req: *httpz.Request, res: *httpz.Response, zombie_id: []const u8) void {
-    var arena = std.heap.ArenaAllocator.init(ctx.alloc);
-    defer arena.deinit();
-    const alloc = arena.allocator();
-    const req_id = common.requestId(alloc);
-
-    const principal = common.authenticate(alloc, req, ctx) catch {
-        common.errorResponse(res, .unauthorized, ec.ERR_UNAUTHORIZED, ec.MSG_AUTH_REQUIRED, req_id);
-        return;
-    };
-    _ = principal;
-
+fn innerDeleteZombie(hx: Hx, _: *httpz.Request, zombie_id: []const u8) void {
     if (!id_format.isSupportedWorkspaceId(zombie_id)) {
-        common.errorResponse(res, .bad_request, ec.ERR_INVALID_REQUEST, "zombie_id must be a valid UUIDv7", req_id);
+        common.errorResponse(hx.res, ec.ERR_INVALID_REQUEST, "zombie_id must be a valid UUIDv7", hx.req_id);
         return;
     }
 
-    const updated = killZombie(ctx.pool, zombie_id) catch |err| {
-        log.err("zombie.delete_failed err={s} zombie_id={s} req_id={s}", .{ @errorName(err), zombie_id, req_id });
-        common.internalDbError(res, req_id);
+    const updated = killZombie(hx.ctx.pool, zombie_id) catch |err| {
+        log.err("zombie.delete_failed err={s} zombie_id={s} req_id={s}", .{ @errorName(err), zombie_id, hx.req_id });
+        common.internalDbError(hx.res, hx.req_id);
         return;
     };
 
     if (!updated) {
-        common.errorResponse(res, .not_found, ec.ERR_ZOMBIE_NOT_FOUND, ec.MSG_ZOMBIE_NOT_FOUND, req_id);
+        common.errorResponse(hx.res, ec.ERR_ZOMBIE_NOT_FOUND, ec.MSG_ZOMBIE_NOT_FOUND, hx.req_id);
         return;
     }
 
     log.info("zombie.killed id={s}", .{zombie_id});
-    res.status = 200;
-    res.json(.{ .zombie_id = zombie_id, .status = zombie_config.ZombieStatus.killed.toSlice() }, .{}) catch {};
+    hx.res.status = 200;
+    hx.res.json(.{ .zombie_id = zombie_id, .status = zombie_config.ZombieStatus.killed.toSlice() }, .{}) catch {};
 }
+pub const handleDeleteZombie = hx_mod.authenticatedWithParam(innerDeleteZombie);
 
 fn killZombie(pool: *pg.Pool, zombie_id: []const u8) !bool {
     const conn = try pool.acquire();

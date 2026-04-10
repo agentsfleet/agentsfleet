@@ -28,7 +28,7 @@ pub fn handleCancelRun(ctx: *common.Context, req: *httpz.Request, res: *httpz.Re
     };
 
     if (!common.beginApiRequest(ctx)) {
-        common.errorResponse(res, .service_unavailable, error_codes.ERR_API_SATURATED, "Server overloaded; retry shortly", req_id);
+        common.errorResponse(res, error_codes.ERR_API_SATURATED, "Server overloaded; retry shortly", req_id);
         return;
     }
     defer common.endApiRequest(ctx);
@@ -50,7 +50,7 @@ pub fn handleCancelRun(ctx: *common.Context, req: *httpz.Request, res: *httpz.Re
     defer run_q.deinit();
 
     const row = run_q.next() catch null orelse {
-        common.errorResponse(res, .not_found, error_codes.ERR_RUN_NOT_FOUND, "Run not found", req_id);
+        common.errorResponse(res, error_codes.ERR_RUN_NOT_FOUND, "Run not found", req_id);
         return;
     };
     const state_str = alloc.dupe(u8, row.get([]u8, 0) catch "") catch "";
@@ -58,7 +58,7 @@ pub fn handleCancelRun(ctx: *common.Context, req: *httpz.Request, res: *httpz.Re
     run_q.drain() catch {};
 
     if (!common.authorizeWorkspaceAndSetTenantContext(conn, principal, ws_id)) {
-        common.errorResponse(res, .forbidden, error_codes.ERR_FORBIDDEN, "Workspace access denied", req_id);
+        common.errorResponse(res, error_codes.ERR_FORBIDDEN, "Workspace access denied", req_id);
         return;
     }
 
@@ -71,7 +71,7 @@ pub fn handleCancelRun(ctx: *common.Context, req: *httpz.Request, res: *httpz.Re
     // gate loop consumer is no longer running (BLOCKED, PR_OPENED, NOTIFIED).
     // In those states the Redis signal would expire without any consumer.
     if (current.isTerminal() or current == .BLOCKED or current == .PR_OPENED or current == .NOTIFIED) {
-        common.errorResponse(res, .conflict, error_codes.ERR_RUN_ALREADY_TERMINAL, "Run is already in a terminal state", req_id);
+        common.errorResponse(res, error_codes.ERR_RUN_ALREADY_TERMINAL, "Run is already in a terminal state", req_id);
         return;
     }
 
@@ -83,7 +83,7 @@ pub fn handleCancelRun(ctx: *common.Context, req: *httpz.Request, res: *httpz.Re
     };
     redis.setEx(key, "1", CANCEL_TTL_SECONDS) catch |err| {
         obs_log.logWarnErr(.http, err, "cancel.redis_setex_fail run_id={s} error_code={s}", .{ run_id, error_codes.ERR_RUN_CANCEL_SIGNAL_FAILED });
-        common.errorResponse(res, .service_unavailable, error_codes.ERR_RUN_CANCEL_SIGNAL_FAILED, "Failed to publish cancel signal", req_id);
+        common.errorResponse(res, error_codes.ERR_RUN_CANCEL_SIGNAL_FAILED, "Failed to publish cancel signal", req_id);
         return;
     };
 

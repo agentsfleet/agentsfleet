@@ -34,7 +34,7 @@ pub fn handleStreamRun(ctx: *common.Context, req: *httpz.Request, res: *httpz.Re
     };
 
     if (!id_format.isSupportedRunId(run_id)) {
-        common.errorResponse(res, .bad_request, error_codes.ERR_UUIDV7_INVALID_ID_SHAPE, "Invalid run_id format", req_id);
+        common.errorResponse(res, error_codes.ERR_UUIDV7_INVALID_ID_SHAPE, "Invalid run_id format", req_id);
         return;
     }
 
@@ -54,7 +54,7 @@ pub fn handleStreamRun(ctx: *common.Context, req: *httpz.Request, res: *httpz.Re
     defer run_result.deinit();
 
     const row = run_result.next() catch null orelse {
-        common.errorResponse(res, .not_found, error_codes.ERR_RUN_NOT_FOUND, "Run not found", req_id);
+        common.errorResponse(res, error_codes.ERR_RUN_NOT_FOUND, "Run not found", req_id);
         return;
     };
 
@@ -64,7 +64,7 @@ pub fn handleStreamRun(ctx: *common.Context, req: *httpz.Request, res: *httpz.Re
     const initial_state = alloc.dupe(u8, initial_state_raw) catch "unknown";
 
     if (!common.authorizeWorkspaceAndSetTenantContext(conn, principal, workspace_id)) {
-        common.errorResponse(res, .forbidden, error_codes.ERR_FORBIDDEN, "Workspace access denied", req_id);
+        common.errorResponse(res, error_codes.ERR_FORBIDDEN, "Workspace access denied", req_id);
         return;
     }
 

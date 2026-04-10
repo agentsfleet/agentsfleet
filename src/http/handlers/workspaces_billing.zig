@@ -35,12 +35,12 @@ pub fn handleUpgradeWorkspaceToScale(ctx: *common.Context, req: *httpz.Request, 
     };
 
     const body = req.body() orelse {
-        common.errorResponse(res, .bad_request, error_codes.ERR_INVALID_REQUEST, ERR_REQUEST_BODY_REQUIRED, req_id);
+        common.errorResponse(res, error_codes.ERR_INVALID_REQUEST, ERR_REQUEST_BODY_REQUIRED, req_id);
         return;
     };
     if (!common.checkBodySize(req, res, body, req_id)) return;
     const parsed = std.json.parseFromSlice(Req, alloc, body, .{}) catch {
-        common.errorResponse(res, .bad_request, error_codes.ERR_INVALID_REQUEST, ERR_MALFORMED_JSON, req_id);
+        common.errorResponse(res, error_codes.ERR_INVALID_REQUEST, ERR_MALFORMED_JSON, req_id);
         return;
     };
     defer parsed.deinit();
@@ -65,7 +65,7 @@ pub fn handleUpgradeWorkspaceToScale(ctx: *common.Context, req: *httpz.Request, 
     }) catch |err| switch (err) {
         error.InvalidSubscriptionId => {
             posthog_events.trackApiErrorWithContext(ctx.posthog, principal.user_id orelse "", error_codes.ERR_BILLING_INVALID_SUBSCRIPTION_ID, "subscription_id is required", workspace_id, req_id);
-            common.errorResponse(res, .bad_request, error_codes.ERR_BILLING_INVALID_SUBSCRIPTION_ID, "subscription_id is required", req_id);
+            common.errorResponse(res, error_codes.ERR_BILLING_INVALID_SUBSCRIPTION_ID, "subscription_id is required", req_id);
             return;
         },
         else => {
@@ -106,12 +106,12 @@ pub fn handleSetWorkspaceScoringConfig(ctx: *common.Context, req: *httpz.Request
     };
 
     const body = req.body() orelse {
-        common.errorResponse(res, .bad_request, error_codes.ERR_INVALID_REQUEST, ERR_REQUEST_BODY_REQUIRED, req_id);
+        common.errorResponse(res, error_codes.ERR_INVALID_REQUEST, ERR_REQUEST_BODY_REQUIRED, req_id);
         return;
     };
     if (!common.checkBodySize(req, res, body, req_id)) return;
     const parsed = std.json.parseFromSlice(Req, alloc, body, .{}) catch {
-        common.errorResponse(res, .bad_request, error_codes.ERR_INVALID_REQUEST, ERR_MALFORMED_JSON, req_id);
+        common.errorResponse(res, error_codes.ERR_INVALID_REQUEST, ERR_MALFORMED_JSON, req_id);
         return;
     };
     defer parsed.deinit();
@@ -119,7 +119,7 @@ pub fn handleSetWorkspaceScoringConfig(ctx: *common.Context, req: *httpz.Request
     log.debug("billing.set_scoring_config workspace_id={s} tokens={d}", .{ workspace_id, parsed.value.scoring_context_max_tokens });
 
     if (parsed.value.scoring_context_max_tokens < 512 or parsed.value.scoring_context_max_tokens > 8192) {
-        common.errorResponse(res, .bad_request, error_codes.ERR_SCORING_CONTEXT_TOKENS_INVALID, "scoring_context_max_tokens must be between 512 and 8192", req_id);
+        common.errorResponse(res, error_codes.ERR_SCORING_CONTEXT_TOKENS_INVALID, "scoring_context_max_tokens must be between 512 and 8192", req_id);
         return;
     }
 
@@ -148,7 +148,7 @@ pub fn handleSetWorkspaceScoringConfig(ctx: *common.Context, req: *httpz.Request
     defer q.deinit();
 
     const row = (q.next() catch null) orelse {
-        common.errorResponse(res, .not_found, error_codes.ERR_WORKSPACE_NOT_FOUND, "Workspace not found", req_id);
+        common.errorResponse(res, error_codes.ERR_WORKSPACE_NOT_FOUND, "Workspace not found", req_id);
         return;
     };
     const configured_tokens = row.get(i32, 0) catch {
@@ -186,18 +186,18 @@ pub fn handleApplyWorkspaceBillingEvent(ctx: *common.Context, req: *httpz.Reques
     };
 
     const body = req.body() orelse {
-        common.errorResponse(res, .bad_request, error_codes.ERR_INVALID_REQUEST, ERR_REQUEST_BODY_REQUIRED, req_id);
+        common.errorResponse(res, error_codes.ERR_INVALID_REQUEST, ERR_REQUEST_BODY_REQUIRED, req_id);
         return;
     };
     if (!common.checkBodySize(req, res, body, req_id)) return;
     const parsed = std.json.parseFromSlice(Req, alloc, body, .{}) catch {
-        common.errorResponse(res, .bad_request, error_codes.ERR_INVALID_REQUEST, ERR_MALFORMED_JSON, req_id);
+        common.errorResponse(res, error_codes.ERR_INVALID_REQUEST, ERR_MALFORMED_JSON, req_id);
         return;
     };
     defer parsed.deinit();
 
     const event = parseBillingLifecycleEvent(parsed.value.event_type) orelse {
-        common.errorResponse(res, .bad_request, error_codes.ERR_BILLING_INVALID_EVENT, "Unsupported billing event_type", req_id);
+        common.errorResponse(res, error_codes.ERR_BILLING_INVALID_EVENT, "Unsupported billing event_type", req_id);
         return;
     };
 
@@ -222,7 +222,7 @@ pub fn handleApplyWorkspaceBillingEvent(ctx: *common.Context, req: *httpz.Reques
     }) catch |err| {
         if (workspace_billing.errorCode(err)) |code| {
             posthog_events.trackApiErrorWithContext(ctx.posthog, principal.user_id orelse "", code, workspace_billing.errorMessage(err) orelse "Workspace billing failure", workspace_id, req_id);
-            common.errorResponse(res, .bad_request, code, workspace_billing.errorMessage(err) orelse "Workspace billing failure", req_id);
+            common.errorResponse(res, code, workspace_billing.errorMessage(err) orelse "Workspace billing failure", req_id);
             return;
         }
         log.err("billing.apply_event_fail error_code=UZ-INTERNAL-003 workspace_id={s} event_type={s}", .{ workspace_id, parsed.value.event_type });

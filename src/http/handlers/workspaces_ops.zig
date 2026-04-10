@@ -27,12 +27,12 @@ pub fn handlePauseWorkspace(ctx: *common.Context, req: *httpz.Request, res: *htt
     };
 
     const body = req.body() orelse {
-        common.errorResponse(res, .bad_request, error_codes.ERR_INVALID_REQUEST, "Request body required", req_id);
+        common.errorResponse(res, error_codes.ERR_INVALID_REQUEST, "Request body required", req_id);
         return;
     };
     if (!common.checkBodySize(req, res, body, req_id)) return;
     const parsed = std.json.parseFromSlice(Req, alloc, body, .{}) catch {
-        common.errorResponse(res, .bad_request, error_codes.ERR_INVALID_REQUEST, "Malformed JSON", req_id);
+        common.errorResponse(res, error_codes.ERR_INVALID_REQUEST, "Malformed JSON", req_id);
         return;
     };
     defer parsed.deinit();
@@ -72,7 +72,7 @@ pub fn handlePauseWorkspace(ctx: *common.Context, req: *httpz.Request, res: *htt
     defer upd.deinit();
 
     const row = upd.next() catch null orelse {
-        common.errorResponse(res, .conflict, error_codes.ERR_WORKSPACE_NOT_FOUND, "Workspace not found or version conflict", req_id);
+        common.errorResponse(res, error_codes.ERR_WORKSPACE_NOT_FOUND, "Workspace not found or version conflict", req_id);
         return;
     };
 
@@ -127,7 +127,7 @@ pub fn handleSyncSpecs(ctx: *common.Context, req: *httpz.Request, res: *httpz.Re
     defer ws.deinit();
 
     const ws_row = ws.next() catch null orelse {
-        common.errorResponse(res, .not_found, error_codes.ERR_WORKSPACE_NOT_FOUND, "Workspace not found", req_id);
+        common.errorResponse(res, error_codes.ERR_WORKSPACE_NOT_FOUND, "Workspace not found", req_id);
         return;
     };
 
