@@ -207,6 +207,14 @@ pub fn hint(code: []const u8) ?[]const u8 {
         return "Interrupt message could not be stored in Redis. Check Redis connectivity and retry.";
     if (std.mem.eql(u8, code, ERR_RUN_NOT_INTERRUPTIBLE))
         return "Run is not in an interruptible state. Check the run state and retry.";
+    if (std.mem.eql(u8, code, ERR_APPROVAL_PARSE_FAILED))
+        return "Gate policy in TRIGGER.md config_json has invalid syntax. Check the 'gates' section for valid JSON structure.";
+    if (std.mem.eql(u8, code, ERR_APPROVAL_NOT_FOUND))
+        return "Approval action not found or already resolved. The action may have timed out or been handled by another click.";
+    if (std.mem.eql(u8, code, ERR_APPROVAL_REDIS_UNAVAILABLE))
+        return "Gate service unavailable — default-deny applied. Check Redis connectivity.";
+    if (std.mem.eql(u8, code, ERR_APPROVAL_CONDITION_INVALID))
+        return "Gate condition expression is invalid. Supported operators: == and != with single-quoted string values.";
     if (std.mem.eql(u8, code, ERR_ZOMBIE_BUDGET_EXCEEDED))
         return "Zombie hit its daily budget. Increase with: zombiectl config set budget.daily_dollars <amount>";
     if (std.mem.eql(u8, code, ERR_ZOMBIE_AGENT_TIMEOUT))
@@ -237,6 +245,35 @@ test "hint returns null for codes without hints" {
     try std.testing.expectEqual(@as(?[]const u8, null), hint(ERR_UUIDV7_CANONICAL_FORMAT));
     try std.testing.expectEqual(@as(?[]const u8, null), hint(ERR_RUN_NOT_FOUND));
 }
+
+// M4_001: Approval gate error codes
+pub const ERR_APPROVAL_PARSE_FAILED = "UZ-APPROVAL-001";
+pub const ERR_APPROVAL_NOT_FOUND = "UZ-APPROVAL-002";
+pub const ERR_APPROVAL_INVALID_SIGNATURE = "UZ-APPROVAL-003";
+pub const ERR_APPROVAL_REDIS_UNAVAILABLE = "UZ-APPROVAL-004";
+pub const ERR_APPROVAL_CONDITION_INVALID = "UZ-APPROVAL-005";
+
+// M4_001: Approval gate user-facing messages
+pub const MSG_APPROVAL_NOT_FOUND = "Approval action not found or already resolved";
+pub const MSG_APPROVAL_INVALID_BODY = "Invalid approval payload";
+pub const MSG_APPROVAL_INVALID_DECISION = "Decision must be 'approve' or 'deny'";
+
+// M4_001: Approval gate constants
+pub const GATE_DEFAULT_TIMEOUT_MS: u64 = 3_600_000; // 1 hour
+pub const GATE_ANOMALY_KEY_PREFIX = "zombie:anomaly:";
+pub const GATE_PENDING_KEY_PREFIX = "zombie:gate:pending:";
+pub const GATE_RESPONSE_KEY_PREFIX = "zombie:gate:response:";
+pub const GATE_PENDING_TTL_SECONDS: u32 = 7200; // 2h (covers 1h timeout + buffer)
+pub const GATE_DECISION_APPROVE = "approve";
+pub const GATE_DECISION_DENY = "deny";
+
+// M4_001: Gate activity event types
+pub const GATE_EVENT_REQUIRED = "gate_approval_required";
+pub const GATE_EVENT_APPROVED = "gate_approved";
+pub const GATE_EVENT_DENIED = "gate_denied";
+pub const GATE_EVENT_TIMEOUT = "gate_timeout";
+pub const GATE_EVENT_AUTO_KILL = "gate_auto_kill";
+pub const GATE_EVENT_AUTO_APPROVE = "gate_auto_approve";
 
 // ── T8 — OWASP Agent Security: credential error codes (M16_003) ──────
 

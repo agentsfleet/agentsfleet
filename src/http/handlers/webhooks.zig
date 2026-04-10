@@ -17,7 +17,7 @@ pub const Context = common.Context;
 
 const WebhookPayload = struct {
     event_id: []const u8,
-    @"type": []const u8,
+    type: []const u8,
     data: std.json.Value,
 };
 
@@ -77,7 +77,7 @@ fn parseBody(alloc: std.mem.Allocator, req: *httpz.Request, res: *httpz.Response
         return null;
     };
     const payload = parsed.value;
-    if (payload.event_id.len == 0 or payload.@"type".len == 0) {
+    if (payload.event_id.len == 0 or payload.type.len == 0) {
         common.errorResponse(res, .bad_request, ec.ERR_WEBHOOK_MALFORMED, ec.MSG_MISSING_FIELDS, req_id);
         parsed.deinit();
         return null;
@@ -128,7 +128,7 @@ fn dedupAndEnqueue(ctx: *Context, alloc: std.mem.Allocator, res: *httpz.Response
         common.internalOperationError(res, "Failed to serialize event data", req_id);
         return false;
     };
-    ctx.queue.xaddZombieEvent(zombie_id, payload.event_id, payload.@"type", source_label, data_json) catch |err| {
+    ctx.queue.xaddZombieEvent(zombie_id, payload.event_id, payload.type, source_label, data_json) catch |err| {
         log.err("webhook.enqueue_failed zombie_id={s} event_id={s} err={s}", .{ zombie_id, payload.event_id, @errorName(err) });
         common.internalOperationError(res, "Failed to enqueue event", req_id);
         return false;
@@ -182,7 +182,7 @@ pub fn handleReceiveWebhook(ctx: *Context, req: *httpz.Request, res: *httpz.Resp
         .detail = payload.event_id,
     });
 
-    log.info("webhook.accepted zombie_id={s} event_id={s} type={s}", .{ zombie_id, payload.event_id, payload.@"type" });
+    log.info("webhook.accepted zombie_id={s} event_id={s} type={s}", .{ zombie_id, payload.event_id, payload.type });
     res.status = 202;
     res.json(.{ .status = ec.STATUS_ACCEPTED, .event_id = payload.event_id }, .{}) catch {};
 }
@@ -195,12 +195,13 @@ test "WebhookPayload parses valid event" {
     const parsed = try std.json.parseFromSlice(WebhookPayload, alloc, body, .{ .ignore_unknown_fields = true });
     defer parsed.deinit();
     try std.testing.expectEqualStrings("evt_001", parsed.value.event_id);
-    try std.testing.expectEqualStrings("email.received", parsed.value.@"type");
+    try std.testing.expectEqualStrings("email.received", parsed.value.type);
 }
 
 test "WebhookPayload rejects missing event_id" {
     const alloc = std.testing.allocator;
-    const body = \\{"type":"email.received","data":{}}
+    const body = 
+        \\{"type":"email.received","data":{}}
     ;
     const result = std.json.parseFromSlice(WebhookPayload, alloc, body, .{});
     try std.testing.expect(if (result) |_| false else |_| true);

@@ -48,6 +48,13 @@ pub const ZombieNetwork = struct {
     allow: []const []const u8,
 };
 
+const config_gates = @import("config_gates.zig");
+pub const GateBehavior = config_gates.GateBehavior;
+pub const GateRule = config_gates.GateRule;
+pub const AnomalyPattern = config_gates.AnomalyPattern;
+pub const AnomalyRule = config_gates.AnomalyRule;
+pub const GatePolicy = config_gates.GatePolicy;
+
 pub const ZombieConfig = struct {
     name: []const u8,
     trigger: ZombieTrigger,
@@ -55,6 +62,7 @@ pub const ZombieConfig = struct {
     credentials: []const []const u8,
     network: ?ZombieNetwork,
     budget: ZombieBudget,
+    gates: ?GatePolicy,
 
     pub fn deinit(self: *const ZombieConfig, alloc: Allocator) void {
         alloc.free(self.name);
@@ -64,6 +72,7 @@ pub const ZombieConfig = struct {
         freeStringSlice(alloc, self.skills);
         freeStringSlice(alloc, self.credentials);
         if (self.network) |net| freeStringSlice(alloc, net.allow);
+        if (self.gates) |gates| config_gates.freeGatePolicy(alloc, gates);
     }
 };
 
@@ -148,6 +157,17 @@ pub fn parseZombieConfig(alloc: Allocator, config_json: []const u8) (Allocator.E
         break :blk try parseZombieBudget(obj);
     };
 
+    // gates — optional
+    const gates: ?config_gates.GatePolicy = blk: {
+        const val = root.get("gates") orelse break :blk null;
+        const obj = switch (val) {
+            .object => |o| o,
+            else => return ZombieConfigError.MissingRequiredField,
+        };
+        break :blk config_gates.parseGatePolicy(alloc, obj) catch return ZombieConfigError.MissingRequiredField;
+    };
+    errdefer if (gates) |g| config_gates.freeGatePolicy(alloc, g);
+
     // validate skills against known registry
     for (skills) |skill| {
         if (!isKnownZombieSkill(skill)) return ZombieConfigError.UnknownSkill;
@@ -164,6 +184,7 @@ pub fn parseZombieConfig(alloc: Allocator, config_json: []const u8) (Allocator.E
         .credentials = credentials,
         .network = network,
         .budget = budget,
+        .gates = gates,
     };
 }
 

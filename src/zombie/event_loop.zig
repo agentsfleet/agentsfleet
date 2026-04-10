@@ -24,6 +24,7 @@ const error_codes = @import("../errors/codes.zig");
 const obs_log = @import("../observability/logging.zig");
 const backoff = @import("../reliability/backoff.zig");
 const id_format = @import("../types/id_format.zig");
+const event_loop_gate = @import("event_loop_gate.zig");
 
 const log = std.log.scoped(.zombie_event_loop);
 
@@ -172,7 +173,10 @@ pub fn runEventLoop(
             sleepWithBackoff(cfg, consecutive_errors);
             continue;
         }
-        var evt = poll_result.event orelse { consecutive_errors = 0; continue; };
+        var evt = poll_result.event orelse {
+            consecutive_errors = 0;
+            continue;
+        };
         defer evt.deinit(alloc);
 
         consecutive_errors = processEvent(alloc, session, &evt, cfg, &consecutive_errors);
@@ -244,6 +248,31 @@ pub fn deliverEvent(
         session.zombie_id, event.event_id, event.event_type,
     });
     logActivity(cfg.pool, alloc, session, "event_received", event.event_id);
+
+    // M4_001: Approval gate — check before tool execution
+    const gate_check = event_loop_gate.checkApprovalGate(alloc, session, event, cfg.pool, cfg.redis);
+    switch (gate_check) {
+        .blocked => |reason| return EventResult{
+            .status = .agent_error,
+            .agent_response = try alloc.dupe(u8, switch (reason) {
+                .approval_denied => "Action denied by operator",
+                .timeout => "Approval timed out — action denied (default-deny)",
+                .unavailable => "Gate service unavailable — action denied (default-deny)",
+            }),
+            .token_count = 0,
+            .wall_seconds = 0,
+        },
+        .auto_killed => |trigger| return EventResult{
+            .status = .agent_error,
+            .agent_response = try alloc.dupe(u8, switch (trigger) {
+                .anomaly => "Zombie auto-killed: anomaly pattern detected",
+                .policy => "Zombie auto-killed: gate policy triggered",
+            }),
+            .token_count = 0,
+            .wall_seconds = 0,
+        },
+        .passed => {},
+    }
 
     const stage_result = try executeInSandbox(alloc, session, event, cfg);
 

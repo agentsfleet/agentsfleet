@@ -85,3 +85,18 @@ Status: Canonical Zig source of truth for agents and commits
 
 - The heartbeat interval must be LESS than `SO_RCVTIMEO` (socket read timeout). If `SO_RCVTIMEO = 25s` and heartbeat check is at `30s`, the first wakeup at `t=25s` skips the heartbeat (25 < 30) and the proxy drops the connection at `t=30s` before the second wakeup.
 - Correct invariant: `heartbeat_interval < SO_RCVTIMEO < proxy_idle_timeout`.
+
+## Tagged Unions for Result Types (M4_001)
+
+- When a function returns a decision or outcome with distinct failure modes, use `union(enum)` with payloads — not a bare `enum`. Callers need the *reason*, not just the verdict.
+- Bare enums are fine for input classification (e.g., `GateDecision = enum { auto_approve, requires_approval, auto_kill }`) where every variant is handled identically. But for return values where callers branch on failure details, carry the context in the union.
+- Example: `GateCheckResult = union(enum) { passed: void, blocked: BlockReason, auto_killed: AutoKillTrigger }` — callers can produce specific error messages without re-deriving context.
+
+## Module Split Pattern (M4_001)
+
+- When a module hits the line limit, split by concern — not arbitrarily. Preferred extraction order:
+  1. Types + parsing → `foo_types.zig` or `foo_config.zig` (re-exported by `foo.zig`)
+  2. Tests → `foo_test.zig` (imported via `test { _ = @import("foo_test.zig"); }`)
+  3. Integration with other modules → `foo_integration.zig` (thin adapter)
+- The original module remains the public API. Extracted modules are implementation details imported only by the parent.
+- Do not split into `foo_part1.zig` / `foo_part2.zig` — names must describe the concern, not the split order.
