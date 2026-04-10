@@ -294,8 +294,9 @@ fn executeInSandbox(
         alloc.free(execution_id);
     }
 
-    // M2_001: Resolve credentials from vault.secrets for this workspace.
-    const api_key: []const u8 = resolveCredential(alloc, cfg.pool, session.workspace_id, "agentmail") catch "";
+    // Resolve the first credential from the zombie's config as the api_key.
+    // Each entry is an op:// ref; we extract the credential name and look it up.
+    const api_key: []const u8 = resolveFirstCredential(alloc, cfg.pool, session) catch "";
     defer if (api_key.len > 0) alloc.free(api_key);
 
     return cfg.executor.startStage(execution_id, .{
@@ -352,6 +353,28 @@ pub fn checkpointState(
     , .{ session_id, session.zombie_id, session.context_json, now_ms });
 
     log.debug("zombie_event_loop.checkpointed zombie_id={s} context_len={d}", .{ session.zombie_id, session.context_json.len });
+}
+
+/// Iterate session.config.credentials, extract the name from each op:// ref,
+/// and return the first successfully resolved value from vault.secrets.
+fn resolveFirstCredential(alloc: Allocator, pool: *pg.Pool, session: *ZombieSession) ![]const u8 {
+    for (session.config.credentials) |cred_ref| {
+        const name = extractCredentialName(cred_ref) orelse continue;
+        return resolveCredential(alloc, pool, session.workspace_id, name) catch continue;
+    }
+    return error.CredentialNotFound;
+}
+
+/// Extract credential name from an op:// ref. E.g., "op://vault/agentmail/key" → "agentmail".
+fn extractCredentialName(ref: []const u8) ?[]const u8 {
+    // Format: op://{vault}/{name}/{field} — we want the second segment.
+    const prefix = "op://";
+    if (!std.mem.startsWith(u8, ref, prefix)) return null;
+    const rest = ref[prefix.len..];
+    const first_slash = std.mem.indexOfScalar(u8, rest, '/') orelse return null;
+    const after_vault = rest[first_slash + 1 ..];
+    const second_slash = std.mem.indexOfScalar(u8, after_vault, '/');
+    return if (second_slash) |s| after_vault[0..s] else after_vault;
 }
 
 /// M2_001: Resolve a zombie credential from vault.secrets via crypto_store.
@@ -440,6 +463,14 @@ fn sleepWithBackoff(cfg: EventLoopConfig, consecutive_errors: u32) void {
 }
 
 // ── Tests ────────────────────────────────────────────────────────────────
+
+test "extractCredentialName parses op:// refs" {
+    try std.testing.expectEqualStrings("agentmail", extractCredentialName("op://ZMB_LOCAL_DEV/agentmail/api_key").?);
+    try std.testing.expectEqualStrings("slack", extractCredentialName("op://vault/slack/token").?);
+    try std.testing.expectEqualStrings("github", extractCredentialName("op://v/github").?);
+    try std.testing.expect(extractCredentialName("not-op-ref") == null);
+    try std.testing.expect(extractCredentialName("op://no-slash") == null);
+}
 
 test {
     _ = @import("event_loop_test.zig");
