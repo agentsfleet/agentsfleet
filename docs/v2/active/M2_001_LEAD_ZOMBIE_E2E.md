@@ -24,7 +24,7 @@
 
 ## 1.0 Worker Integration
 
-**Status:** PENDING
+**Status:** DONE
 
 Wire `event_loop.zig` into the worker fleet's main run loop. The worker already claims specs via Redis; extend it to also claim Zombies. Worker process starts → checks for Zombie assignments → calls `claimZombie` → enters `runEventLoop`. One worker instance handles one Zombie (1:1 for v0.6.0; multiplexing is M3).
 
@@ -54,7 +54,7 @@ Wire `event_loop.zig` into the worker fleet's main run loop. The worker already 
 
 ## 2.0 Executor Network Allowlist + Credential Injection
 
-**Status:** PENDING
+**Status:** DONE
 
 Add agentmail API domain (`api.agentmail.dev`) to the executor's network allowlist for Lead Zombie. Verify credential injection from vault into the sandbox environment (the executor already supports this via M16_003; this wires it for the Zombie use case). The Zombie's `credentials` array in config maps to `op://` vault paths; the executor resolves them at sandbox start, not at config parse time.
 
