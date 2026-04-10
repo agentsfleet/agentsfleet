@@ -113,12 +113,11 @@ fn insertZombie(pool: *pg.Pool, body: CreateBody, zombie_id: []const u8, now_ms:
     , .{ zombie_id, body.workspace_id, body.name, body.source_markdown, body.config_json, zombie_config.ZombieStatus.active.toSlice(), now_ms, now_ms });
 }
 
-fn isUniqueViolation(err: anyerror) bool {
+fn isUniqueViolation(_: anyerror) bool {
     // pg.Pool returns error.PGError for all Postgres errors (connection, constraint, cast).
     // We cannot distinguish unique_violation (SQLSTATE 23505) from other PGErrors
     // because pg.Pool does not expose structured SQLSTATE codes.
     // Return false to let the caller surface a 500 instead of a misleading 409.
-    _ = err;
     return false;
 }
 
@@ -257,7 +256,7 @@ fn killZombie(pool: *pg.Pool, zombie_id: []const u8) !bool {
 // validateCreateFields is tested via integration tests (DB-backed).
 // It requires a fully initialized httpz.Response which cannot be mocked in unit tests.
 
-test "isUniqueViolation recognizes PGError" {
-    try std.testing.expect(isUniqueViolation(error.PGError));
+test "isUniqueViolation always returns false (no SQLSTATE introspection)" {
+    try std.testing.expect(!isUniqueViolation(error.PGError));
     try std.testing.expect(!isUniqueViolation(error.OutOfMemory));
 }
