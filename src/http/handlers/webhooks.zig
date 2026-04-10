@@ -110,12 +110,14 @@ fn verifyWebhookAuth(url_secret: ?[]const u8, zombie: *const ZombieRow, req: *ht
 }
 
 fn constantTimeEq(a: []const u8, b: []const u8, res: *httpz.Response, req_id: []const u8) bool {
-    const valid = a.len == b.len and ct: {
-        var diff: u8 = 0;
-        for (a, b) |x, y| diff |= x ^ y;
-        break :ct diff == 0;
-    };
-    if (!valid) {
+    // Always run XOR loop over min length to avoid leaking secret length via timing.
+    const min_len = @min(a.len, b.len);
+    var diff: u8 = 0;
+    for (a[0..min_len], b[0..min_len]) |x, y| diff |= x ^ y;
+    // Length mismatch is not secret (attacker controls input length), but fold it
+    // into the result after the constant-time loop to prevent short-circuit.
+    diff |= @as(u8, @intFromBool(a.len != b.len));
+    if (diff != 0) {
         common.errorResponse(res, .unauthorized, ec.ERR_FORBIDDEN, ec.MSG_INVALID_TOKEN, req_id);
         return false;
     }

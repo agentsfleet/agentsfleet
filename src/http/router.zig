@@ -431,3 +431,14 @@ test "M2_002: match resolves webhook with URL secret" {
     try std.testing.expectEqualStrings(zombie_id, wr.zombie_id);
     try std.testing.expectEqualStrings("mysecret", wr.secret.?);
 }
+
+test "M2_002: match resolves webhook without secret (Bearer fallback)" {
+    const zombie_id = "019abc12-8d3a-7f13-8abc-2b3e1e0a6f11";
+    const route = match("/v1/webhooks/019abc12-8d3a-7f13-8abc-2b3e1e0a6f11") orelse return error.TestExpectedMatch;
+    const wr = switch (route) {
+        .receive_webhook => |r| r,
+        else => return error.TestExpectedEqual,
+    };
+    try std.testing.expectEqualStrings(zombie_id, wr.zombie_id);
+    try std.testing.expect(wr.secret == null);
+}

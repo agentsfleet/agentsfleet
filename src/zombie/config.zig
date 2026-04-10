@@ -181,8 +181,9 @@ fn validateSkillsAndCredentials(skills: []const []const u8, credentials: []const
     for (skills) |skill_name| {
         if (!isKnownZombieSkill(skill_name)) return ZombieConfigError.UnknownSkill;
     }
+    const MAX_CREDENTIAL_NAME_LEN = 128;
     for (credentials) |cred| {
-        if (cred.len == 0) return ZombieConfigError.InvalidCredentialRef;
+        if (cred.len == 0 or cred.len > MAX_CREDENTIAL_NAME_LEN) return ZombieConfigError.InvalidCredentialRef;
         for (cred) |c| {
             if (!std.ascii.isAlphanumeric(c) and c != '_') return ZombieConfigError.InvalidCredentialRef;
         }

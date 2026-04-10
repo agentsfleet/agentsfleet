@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS core.zombies (
     source_markdown TEXT NOT NULL,
     trigger_markdown TEXT,
     config_json     JSONB NOT NULL,
-    webhook_secret  TEXT,
+    webhook_secret  TEXT,  -- TODO(M3): encrypt via crypto_store before INSERT
     status          TEXT NOT NULL DEFAULT 'active',
     created_at      BIGINT NOT NULL,
     updated_at      BIGINT NOT NULL,

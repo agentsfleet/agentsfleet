@@ -151,3 +151,12 @@ fn isPinnedZombieSkillRef(ref: []const u8) bool {
     if (std.ascii.eqlIgnoreCase(version, "latest")) return false;
     return std.ascii.isDigit(version[0]);
 }
+
+test "isKnownZombieSkill: built-in and clawhub refs" {
+    try std.testing.expect(isKnownZombieSkill("agentmail"));
+    try std.testing.expect(isKnownZombieSkill("slack"));
+    try std.testing.expect(!isKnownZombieSkill("unknown_tool"));
+    try std.testing.expect(isKnownZombieSkill("clawhub://queen/lead-hunter@1.0.1"));
+    try std.testing.expect(!isKnownZombieSkill("clawhub://queen/lead-hunter@latest"));
+    try std.testing.expect(!isKnownZombieSkill("clawhub://queen/lead-hunter"));
+}

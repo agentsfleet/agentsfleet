@@ -161,6 +161,15 @@ fn writeJsonString(w: anytype, s: []const u8) !void {
             try w.writeAll("\\\"");
         } else if (c == '\\') {
             try w.writeAll("\\\\");
+        } else if (c == '\n') {
+            try w.writeAll("\\n");
+        } else if (c == '\r') {
+            try w.writeAll("\\r");
+        } else if (c == '\t') {
+            try w.writeAll("\\t");
+        } else if (c < 0x20) {
+            // Escape remaining ASCII control chars per RFC 8259 §7
+            try w.print("\\u{X:0>4}", .{c});
         } else {
             try w.writeByte(c);
         }
