@@ -242,3 +242,74 @@ test "parseGatePolicy: missing tool in rule returns error" {
         parseGatePolicy(alloc, parsed.value.object),
     );
 }
+
+test "parseGatePolicy: invalid behavior string returns error (RULES.md #36)" {
+    const alloc = std.testing.allocator;
+    const json =
+        \\{"rules":[{"tool":"git","action":"push","behavior":"autokill"}]}
+    ;
+    const parsed = std.json.parseFromSlice(std.json.Value, alloc, json, .{}) catch unreachable;
+    defer parsed.deinit();
+    try std.testing.expectError(
+        GateConfigError.MissingRequiredField,
+        parseGatePolicy(alloc, parsed.value.object),
+    );
+}
+
+test "parseGatePolicy: unknown anomaly pattern returns error" {
+    const alloc = std.testing.allocator;
+    const json =
+        \\{"anomaly_rules":[{"pattern":"unknown_pattern","threshold_count":5,"threshold_window_s":30}]}
+    ;
+    const parsed = std.json.parseFromSlice(std.json.Value, alloc, json, .{}) catch unreachable;
+    defer parsed.deinit();
+    try std.testing.expectError(
+        GateConfigError.MissingRequiredField,
+        parseGatePolicy(alloc, parsed.value.object),
+    );
+}
+
+test "parseGatePolicy: anomaly threshold_count zero returns error" {
+    const alloc = std.testing.allocator;
+    const json =
+        \\{"anomaly_rules":[{"pattern":"same_action","threshold_count":0,"threshold_window_s":60}]}
+    ;
+    const parsed = std.json.parseFromSlice(std.json.Value, alloc, json, .{}) catch unreachable;
+    defer parsed.deinit();
+    try std.testing.expectError(
+        GateConfigError.InvalidBudget,
+        parseGatePolicy(alloc, parsed.value.object),
+    );
+}
+
+test "parseGatePolicy: anomaly threshold_window_s exceeds max returns error" {
+    const alloc = std.testing.allocator;
+    const json =
+        \\{"anomaly_rules":[{"pattern":"same_action","threshold_count":10,"threshold_window_s":100000}]}
+    ;
+    const parsed = std.json.parseFromSlice(std.json.Value, alloc, json, .{}) catch unreachable;
+    defer parsed.deinit();
+    try std.testing.expectError(
+        GateConfigError.InvalidBudget,
+        parseGatePolicy(alloc, parsed.value.object),
+    );
+}
+
+test "parseGatePolicy: auto_kill behavior parses correctly" {
+    const alloc = std.testing.allocator;
+    const json =
+        \\{"rules":[{"tool":"stripe","action":"charge","behavior":"auto_kill"}]}
+    ;
+    const parsed = std.json.parseFromSlice(std.json.Value, alloc, json, .{}) catch unreachable;
+    defer parsed.deinit();
+    const policy = try parseGatePolicy(alloc, parsed.value.object);
+    defer freeGatePolicy(alloc, policy);
+    try std.testing.expectEqual(GateBehavior.auto_kill, policy.rules[0].behavior);
+}
+
+test "AnomalyPattern.fromString: valid and invalid patterns" {
+    try std.testing.expectEqual(AnomalyPattern.same_action, AnomalyPattern.fromString("same_action").?);
+    try std.testing.expect(AnomalyPattern.fromString("unknown") == null);
+    try std.testing.expect(AnomalyPattern.fromString("") == null);
+    try std.testing.expect(AnomalyPattern.fromString("SAME_ACTION") == null);
+}
