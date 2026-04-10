@@ -124,18 +124,18 @@ fn testSig(
 // ── Tests ─────────────────────────────────────────────────────────────────
 
 test "Slack: valid signature accepted" {
-    const secret = "8f742231b10e8888abcd99yyyzzz85a5";
+    const secret = "test_signing_secret_not_real_00";
     const ts = "1531420618";
-    const body = "token=xyzz0WbapA4vBCDEFasx0q6G";
+    const body = "payload=test_webhook_body_data";
     var buf: [67]u8 = undefined;
     const sig = testSig(&buf, secret, &.{ "v0:", ts, ":", body }, "v0=");
     try std.testing.expect(verifySignature(SLACK, secret, ts, body, sig));
 }
 
 test "Slack: tampered body rejected" {
-    const secret = "8f742231b10e8888abcd99yyyzzz85a5";
+    const secret = "test_signing_secret_not_real_00";
     const ts = "1531420618";
-    const body = "token=xyzz0WbapA4vBCDEFasx0q6G";
+    const body = "payload=test_webhook_body_data";
     var buf: [67]u8 = undefined;
     const sig = testSig(&buf, secret, &.{ "v0:", ts, ":", body }, "v0=");
     try std.testing.expect(!verifySignature(SLACK, secret, ts, "tampered", sig));

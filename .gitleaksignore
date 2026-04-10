@@ -16,3 +16,7 @@ ca445be1d13fc95548d9053c262eee128d2d195a:src/http/rbac_http_integration_test.zig
 3cd5afb84d4fec9b38f527b4b0e92583eb686a2b:src/http/m16_004_http_integration_test.zig:jwt:43
 3cd5afb84d4fec9b38f527b4b0e92583eb686a2b:src/http/m16_004_http_integration_test.zig:jwt:45
 3cd5afb84d4fec9b38f527b4b0e92583eb686a2b:src/http/m16_004_http_integration_test.zig:jwt:47
+6fb23f0f5bd8f5cfcc9a0d75d589d4337a96122c:src/zombie/webhook_verify.zig:generic-api-key:126
+6fb23f0f5bd8f5cfcc9a0d75d589d4337a96122c:src/zombie/webhook_verify.zig:generic-api-key:128
+6fb23f0f5bd8f5cfcc9a0d75d589d4337a96122c:src/zombie/webhook_verify.zig:generic-api-key:135
+6fb23f0f5bd8f5cfcc9a0d75d589d4337a96122c:src/zombie/webhook_verify.zig:generic-api-key:137
