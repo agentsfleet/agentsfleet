@@ -26,7 +26,7 @@ pub const REGISTRY_ALLOWLIST = [_][]const u8{
 /// The executor merges these with the Zombie's config.network.allow list.
 pub const ZOMBIE_SKILL_ALLOWLIST = struct {
     pub const agentmail = [_][]const u8{
-        "api.agentmail.dev",
+        "api.agentmail.to",
     };
 };
 

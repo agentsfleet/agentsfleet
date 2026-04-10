@@ -19,7 +19,6 @@ const queue_redis = @import("../queue/redis_client.zig");
 const redis_zombie = @import("../queue/redis_zombie.zig");
 const queue_consts = @import("../queue/constants.zig");
 const executor_client = @import("../executor/client.zig");
-const executor_types = @import("../executor/types.zig");
 const error_codes = @import("../errors/codes.zig");
 const obs_log = @import("../observability/logging.zig");
 const backoff = @import("../reliability/backoff.zig");
@@ -294,11 +293,17 @@ fn executeInSandbox(
         alloc.free(execution_id);
     }
 
+    // M2_001: Resolve credentials from core.zombie_credentials for this workspace.
+    const api_key = resolveCredential(alloc, cfg.pool, session.workspace_id, "agentmail") catch "";
+
     return cfg.executor.startStage(execution_id, .{
         .stage_id = "zombie",
         .role_id = "agent",
         .skill_id = session.config.name,
-        .agent_config = .{ .system_prompt = session.instructions },
+        .agent_config = .{
+            .system_prompt = session.instructions,
+            .api_key = api_key,
+        },
         .message = event.data_json,
         .context = context_val,
     }) catch |err| {
@@ -345,6 +350,26 @@ pub fn checkpointState(
     , .{ session_id, session.zombie_id, session.context_json, now_ms });
 
     log.debug("zombie_event_loop.checkpointed zombie_id={s} context_len={d}", .{ session.zombie_id, session.context_json.len });
+}
+
+/// M2_001: Resolve a credential from core.zombie_credentials by name.
+/// Returns the value or error if not found. Caller owns returned slice.
+fn resolveCredential(alloc: Allocator, pool: *pg.Pool, workspace_id: []const u8, name: []const u8) ![]const u8 {
+    const conn = try pool.acquire();
+    defer pool.release(conn);
+    var q = try conn.query( // check-pg-drain: ok — drain called below
+        \\SELECT value_encrypted FROM core.zombie_credentials
+        \\WHERE workspace_id = $1::uuid AND name = $2
+    , .{ workspace_id, name });
+    defer q.deinit();
+    const row = try q.next() orelse {
+        q.drain() catch {};
+        log.warn("zombie_event_loop.credential_not_found workspace_id={s} name={s} error_code=" ++ error_codes.ERR_ZOMBIE_CREDENTIAL_MISSING, .{ workspace_id, name });
+        return error.CredentialNotFound;
+    };
+    const value = try alloc.dupe(u8, try row.get([]const u8, 0));
+    q.drain() catch {};
+    return value;
 }
 
 // ── Internal helpers ─────────────────────────────────────────────────────
