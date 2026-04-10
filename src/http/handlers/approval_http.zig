@@ -84,6 +84,10 @@ pub fn handleApprovalCallback(
     const workspace_id = fetchWorkspaceId(ctx.pool, alloc, zombie_id) catch "";
 
     // Record in audit table
+    const gate_status: approval_gate.GateStatus = switch (payload.decision) {
+        .approve => .approved,
+        .deny => .denied,
+    };
     const event_type: []const u8 = switch (payload.decision) {
         .approve => ec.GATE_EVENT_APPROVED,
         .deny => ec.GATE_EVENT_DENIED,
@@ -92,7 +96,7 @@ pub fn handleApprovalCallback(
     approval_gate.resolveGateDecision(
         ctx.pool,
         payload.action_id,
-        decision_str,
+        gate_status,
         "", // detail
     );
 

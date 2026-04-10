@@ -21,6 +21,26 @@ pub const GateDecision = enum { auto_approve, requires_approval, auto_kill };
 
 pub const GateResult = enum { approved, denied, timed_out };
 
+/// Status values stored in core.zombie_approval_gates.status column.
+/// Typed enum — no raw strings for gate status (RULES.md #36).
+pub const GateStatus = enum {
+    pending,
+    approved,
+    denied,
+    timed_out,
+    auto_killed,
+
+    pub fn toSlice(self: GateStatus) []const u8 {
+        return switch (self) {
+            .pending => "pending",
+            .approved => "approved",
+            .denied => "denied",
+            .timed_out => "timed_out",
+            .auto_killed => "auto_killed",
+        };
+    }
+};
+
 pub const AnomalyResult = enum { normal, auto_kill };
 
 pub const ActionDetail = struct {

@@ -144,7 +144,7 @@ fn handleApprovalFlow(
         },
         .timed_out => blk: {
             logGateActivity(pool, alloc, session, error_codes.GATE_EVENT_TIMEOUT, action_id);
-            approval_gate.resolveGateDecision(pool, action_id, "timed_out", "");
+            approval_gate.resolveGateDecision(pool, action_id, .timed_out, "");
             cleanupPendingKey(redis, session.zombie_id, action_id);
             break :blk .{ .blocked = .timeout };
         },
