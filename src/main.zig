@@ -158,4 +158,9 @@ test {
     _ = @import("queue/redis_pubsub_test.zig");
     _ = @import("reliability/backoff.zig");
     _ = @import("pipeline/worker_state.zig");
+    // M2_001: Zombie CRUD, activity, router, worker
+    _ = @import("http/handlers/zombie_api.zig");
+    _ = @import("http/handlers/zombie_activity_api.zig");
+    _ = @import("http/router_test.zig");
+    _ = @import("cmd/worker_zombie.zig");
 }

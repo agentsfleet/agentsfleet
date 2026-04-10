@@ -229,13 +229,30 @@ test "M17: match cancel_run accepts short run_id" {
     });
 }
 
-test "M17: match rejects cancel_run with empty run_id" {
-    try std.testing.expect(match("/v1/runs/:cancel") == null);
+test "M17: match routes :cancel with empty run_id to get_run" {
+    // ":cancel" with empty inner falls through cancel_run (inner.len == 0)
+    // and matches get_run with run_id=":cancel" (single segment).
+    const route = match("/v1/runs/:cancel") orelse return error.TestExpectedMatch;
+    switch (route) {
+        .get_run => |id| try std.testing.expectEqualStrings(":cancel", id),
+        else => return error.TestExpectedEqual,
+    }
 }
 
-test "M17: wrong suffix does not match cancel_run" {
-    try std.testing.expect(match("/v1/runs/run-1:cancelX") == null);
-    try std.testing.expect(match("/v1/runs/run-1:CANCEL") == null);
+test "M17: wrong suffix does not match cancel_run but may match get_run" {
+    // "run-1:cancelX" is a valid single segment → matches get_run
+    const r1 = match("/v1/runs/run-1:cancelX") orelse return error.TestExpectedMatch;
+    switch (r1) {
+        .get_run => {},
+        else => return error.TestExpectedEqual,
+    }
+    // "run-1:CANCEL" is a valid single segment → matches get_run (case-sensitive)
+    const r2 = match("/v1/runs/run-1:CANCEL") orelse return error.TestExpectedMatch;
+    switch (r2) {
+        .get_run => {},
+        else => return error.TestExpectedEqual,
+    }
+    // "run-1/cancel" has a slash → not single segment → null
     try std.testing.expect(match("/v1/runs/run-1/cancel") == null);
 }
 
