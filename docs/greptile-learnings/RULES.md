@@ -307,3 +307,46 @@ which misleads readers and prevents the compiler from catching unintended mutati
 
 > M2_002: ZombieRow used `[]u8` for workspace_id, status, token — all immutable DB data.
 > Refactored to `[]const u8` to match semantic ownership.
+
+---
+
+## 30. Cross-layer orphan sweep on every rename, delete, or format change
+
+When you rename a column, delete a function, change a struct, or migrate a file format,
+grep for the OLD name/pattern across ALL layers before committing. The layers are:
+
+1. **Schema** (SQL): column names, DEFAULT values, CHECK constraints
+2. **Server** (Zig): struct fields, query strings, constants, error messages
+3. **CLI** (JS): function calls, imports, template references, output strings
+4. **Tests** (Zig + JS): assertions, fixtures, mock data, test helper functions
+5. **Docs** (MD): comments, spec references, AGENTS.md, RULES.md, release notes
+
+The sweep command for any renamed symbol `OLD_NAME`:
+```bash
+grep -rn 'OLD_NAME' src/ schema/ zombiectl/ docs/ AGENTS*.md --include='*.zig' --include='*.js' --include='*.sql' --include='*.md' | grep -v '.zig-cache' | grep -v node_modules
+```
+
+A rename is not done until this grep returns zero hits in non-historical files
+(completed specs in `docs/v*/done/` and learning docs are exempt — they document history).
+
+> M2_002: webhook_secret renamed to webhook_secret_ref but stale comments still said
+> "webhook_secret column." ZombieTrigger changed from struct to union but integration
+> test still accessed `.trigger_type`. simpleYamlParse deleted but stale config.zig
+> comments still described the old client-parsed flow. Each required a separate fix commit.
+
+---
+
+## 31. CHORE(close) must include orphan verification gate
+
+Before opening a PR, run a mandatory orphan sweep for every symbol that was renamed,
+deleted, or changed format in the branch. This is part of CHORE(close), not a separate step.
+
+The verification is:
+```bash
+# For each deleted/renamed symbol, confirm zero non-historical references:
+git diff origin/main --name-only | xargs grep -l 'OLD_PATTERN' 2>/dev/null
+# Must return empty for production code. Historical docs are exempt.
+```
+
+If the sweep finds hits, fix them before opening the PR. Do not defer orphan cleanup
+to a follow-up — the PR that changes the symbol owns the full cleanup.

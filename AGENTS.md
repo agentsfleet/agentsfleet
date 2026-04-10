@@ -330,6 +330,7 @@ Required outputs:
   - [symbol/file]: [why it's now dead]
   → Remove these? Confirm before I proceed.
   ```
+- **Cross-layer orphan sweep** (Rule 30). For every symbol renamed, deleted, or format-changed in this branch, grep the OLD name across all layers (schema, Zig, JS, tests, docs). Zero hits in non-historical files required before proceeding. See `docs/greptile-learnings/RULES.md` Rule 30 for the sweep command.
 
 Restrictions:
 
@@ -387,6 +388,7 @@ Required outputs:
 - Spec moved from `docs/v1/active/` to `docs/v1/done/` (only if fully complete).
 - Spec move committed on the feature branch.
 - **Release doc generated** at `docs/v1/ship/{version}.md` for every milestone/workstream completion.
+- **Orphan sweep completed** (Rule 30). For every renamed/deleted/changed symbol in the branch, verify zero non-historical references remain across schema, Zig, JS, tests, and docs. This is a hard gate — do not open the PR with stale references.
 
 #### Release Doc Generation
 
