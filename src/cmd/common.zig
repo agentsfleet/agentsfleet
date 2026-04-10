@@ -15,7 +15,7 @@ const ServeMigrationDecision = enum {
     run_required,
 };
 
-pub fn canonicalMigrations() [20]db.Migration {
+pub fn canonicalMigrations() [21]db.Migration {
     const schema = @import("schema");
     return .{
         .{ .version = 1, .sql = schema.core_foundation_sql },
@@ -38,6 +38,7 @@ pub fn canonicalMigrations() [20]db.Migration {
         .{ .version = 22, .sql = schema.core_zombies_sql },
         .{ .version = 23, .sql = schema.core_zombie_sessions_sql },
         .{ .version = 24, .sql = schema.core_activity_events_sql },
+        .{ .version = 25, .sql = schema.core_zombie_approval_gates_sql },
     };
 }
 
@@ -189,7 +190,7 @@ test "integration: startup with pending migrations proceeds when enabled and loc
 
 test "canonical schema bootstrap includes scoring config in base schema" {
     const migrations = canonicalMigrations();
-    try std.testing.expectEqual(@as(i32, 24), migrations[migrations.len - 1].version);
+    try std.testing.expectEqual(@as(i32, 25), migrations[migrations.len - 1].version);
     try std.testing.expect(std.mem.containsAtLeast(u8, migrations[6].sql, 1, "trust_streak_runs INTEGER NOT NULL"));
     try std.testing.expect(std.mem.containsAtLeast(u8, migrations[6].sql, 1, "trust_level   TEXT NOT NULL"));
     try std.testing.expect(!std.mem.containsAtLeast(u8, migrations[6].sql, 1, "trust_streak_runs INTEGER NOT NULL DEFAULT 0"));

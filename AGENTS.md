@@ -318,13 +318,11 @@ Required outputs:
 - If touched files include `*.zig`: run cross-compile check: `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux`.
 - Scan the diff against `docs/greptile-learnings/RULES.md` — verify no rule is violated by the changes.
 - Capture failures with exact command and error text.
-- **500-line gate on every touched file.** For each file you created or modified, run `wc -l <file>`. If any file exceeds 500 lines, you must split it before proceeding to DOCUMENT. This is a hard gate — do not defer, do not ask, do not rationalize. Split the file.
+- **400-line gate on every touched file.** For each file you created or modified, run `wc -l <file>`. If any file exceeds 400 lines, you must split it before proceeding to DOCUMENT. This is a hard gate — do not defer, do not ask, do not rationalize. Split the file.
   ```bash
   # Run on all files in the diff:
-  git diff --name-only origin/main | xargs wc -l | awk '$1 > 500 { print "❌ " $2 ": " $1 " lines (limit 500)" }'
+  git diff --name-only origin/main | xargs wc -l | awk '$1 > 400 { print "❌ " $2 ": " $1 " lines (limit 400)" }'
   ```
-- **Spec-claim verification.** If the spec has a Test Specification section, verify every row in the Spec-Claim Tracing table has a passing test. If a claim says "real-time" or "incremental", verify the *transport* delivers bytes incrementally — a unit test on a parser does NOT prove transport behavior.
-- **Verification Evidence table.** If the spec has a Verification Evidence section, fill it in with actual command output. This is the proof that the spec claims are met.
 - **`make test-integration` must pass** if the spec has integration test dimensions. Run it, not just `make test`.
 - After any refactor: list newly dead code explicitly. Never silently remove without user confirmation:
   ```
@@ -332,6 +330,7 @@ Required outputs:
   - [symbol/file]: [why it's now dead]
   → Remove these? Confirm before I proceed.
   ```
+- **Cross-layer orphan sweep** (Rule 30). For every symbol renamed, deleted, or format-changed in this branch, grep the OLD name across all layers (schema, Zig, JS, tests, docs). Zero hits in non-historical files required before proceeding. See `docs/greptile-learnings/RULES.md` Rule 30 for the sweep command.
 
 Restrictions:
 
@@ -389,6 +388,7 @@ Required outputs:
 - Spec moved from `docs/v1/active/` to `docs/v1/done/` (only if fully complete).
 - Spec move committed on the feature branch.
 - **Release doc generated** at `docs/v1/ship/{version}.md` for every milestone/workstream completion.
+- **Orphan sweep completed** (Rule 30). For every renamed/deleted/changed symbol in the branch, verify zero non-historical references remain across schema, Zig, JS, tests, and docs. This is a hard gate — do not open the PR with stale references.
 
 #### Release Doc Generation
 
@@ -441,7 +441,7 @@ Exit criteria:
 
 ## Safety and Policy Appendix
 
-The detailed policy sections were split into [AGENTS_POLICY_APPENDIX.md](/Users/kishore/Projects/usezombie-m29-data-plane-ip-allowlisting/AGENTS_POLICY_APPENDIX.md) to keep this primary file under the repository line-limit gate.
+The detailed policy sections were split into [AGENTS_POLICY_APPENDIX.md](./AGENTS_POLICY_APPENDIX.md) to keep this primary file under the repository line-limit gate.
 
 The appendix contains:
 

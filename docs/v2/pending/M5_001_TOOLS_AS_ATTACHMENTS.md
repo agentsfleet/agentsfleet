@@ -373,6 +373,33 @@ pub fn stripCredentialEcho(output: []const u8, credential: []const u8) StripResu
 - [ ] `make check-pg-drain` passes
 - [ ] All new files < 500 lines
 
+### Integration Test Prerequisites
+
+Integration tests (`make test-integration`) require local services running. Sequence:
+
+```bash
+# 1. Start Postgres + Redis (docker compose)
+make up
+
+# 2. Wait for services to be healthy (~10s)
+docker compose ps   # verify STATUS = running
+
+# 3. Run integration tests (DB + Redis)
+#    Env vars auto-resolved from make/test-integration.mk:
+#      TEST_DATABASE_URL_LOCAL = postgres://usezombie:usezombie@localhost:5432/usezombiedb
+#      TEST_REDIS_TLS_URL_LOCAL = rediss://:usezombie@localhost:6379
+#    TLS CA cert extracted from Redis container automatically.
+make test-integration
+
+# 4. Individual suites (when debugging):
+make test-integration-db      # DB-backed only
+make test-integration-redis   # Redis-backed only
+
+# 5. Tear down after
+make down
+```
+
+**CI note:** GitHub Actions runs `make up` in the workflow before `make test-integration`. Local dev must do the same manually. Tests will fail with connection errors if services are not running.
 ---
 
 ## 12.0 Verification Evidence
@@ -381,8 +408,11 @@ pub fn stripCredentialEcho(output: []const u8, credential: []const u8) StripResu
 
 | Check | Command | Result | Pass? |
 |-------|---------|--------|-------|
+| Services up | `make up && docker compose ps` | | |
 | Unit tests | `make test` | | |
-| Integration tests | `make test-integration` | | |
+| Integration tests (DB) | `make test-integration-db` | | |
+| Integration tests (Redis) | `make test-integration-redis` | | |
+| Integration tests (full) | `make test-integration` | | |
 | Cross-compile x86_64 | `zig build -Dtarget=x86_64-linux` | | |
 | Cross-compile aarch64 | `zig build -Dtarget=aarch64-linux` | | |
 | Lint | `make lint` | | |
@@ -390,11 +420,16 @@ pub fn stripCredentialEcho(output: []const u8, credential: []const u8) StripResu
 | pg-drain | `make check-pg-drain` | | |
 | Extensibility proof | `git diff --stat` after linear_tool addition | | |
 | Credential isolation | grep agent conversation for credential values | | |
+| Services down | `make down` | | |
 
 ---
 
 ## 13.0 Out of Scope
 
-- Dynamic tool loading from ClawHub registry (Phase 3)
-- Tool sandboxing, versioning, composition, marketplace (future)
+- Dynamic tool loading from ClawHub registry (Phase 3 — tools are compiled-in for now)
+- Tool sandboxing (each tool runs inside the same bwrap sandbox — no per-tool isolation)
+- Tool versioning (all tools at v1, no version negotiation)
+- Tool composition (tools can't call other tools — agent orchestrates)
+- Tool marketplace / third-party tool authoring
+- Tool telemetry / per-tool metrics (activity stream logs are sufficient for now)
 - MCP server integration (tools use native Zig, not MCP protocol)

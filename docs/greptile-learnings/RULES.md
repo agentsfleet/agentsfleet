@@ -243,7 +243,175 @@ Validate, type-check, length-bound all external input. Use parameterized templat
 
 ---
 
-## 24. Config-driven over enum-driven for multi-provider patterns
+## 24. Tagged unions over optional-field structs
+
+When a type has mutually-exclusive variants (e.g. trigger types, auth methods),
+use a Zig tagged union, not a struct with optional fields. The compiler enforces
+exhaustive switches, making invalid states unrepresentable.
+
+> M2_002: ZombieTrigger was a struct with `source: ?[]const u8`, `schedule: ?[]const u8`.
+> Webhook-without-source was representable but semantically invalid. Refactored to
+> `union(ZombieTriggerType)` with per-variant fields.
+
+---
+
+## 25. Secrets belong in vault, not in entity tables
+
+Never store plaintext secrets (tokens, API keys, webhook secrets) in core entity tables.
+Store a vault reference (key_name) in the entity table. Resolve via `crypto_store.load()`
+at runtime. This keeps secrets encrypted at rest and out of query results, backups, and logs.
+
+> M2_002: webhook_secret was initially a TEXT column in core.zombies. Refactored to
+> webhook_secret_ref (vault key_name). Resolved via crypto_store.load() in the webhook handler.
+
+---
+
+## 26. No static strings in SQL schema
+
+Do not use DEFAULT or CHECK constraints with hardcoded string values in SQL.
+Enforce value constraints in application code via named constants (e.g. `ZOMBIE_STATUS_ACTIVE`).
+SQL cannot reference Zig/JS constants, so hardcoded strings in schema drift from code.
+
+> M2_002: `DEFAULT 'active'` and `CHECK (status IN ('active', 'paused', 'stopped'))` removed
+> from core.zombies. Status enforcement moved to application-level constants.
+
+---
+
+## 27. Escape control characters in JSON string emission
+
+When writing a JSON string encoder, escape all ASCII control characters (0x00-0x1F)
+per RFC 8259 section 7. Missing escapes for `\n`, `\r`, `\t`, or null bytes produce
+malformed JSON and enable injection if the input contains attacker-influenced content.
+
+> M2_002: writeJsonString in yaml_frontmatter.zig initially only escaped `"` and `\`.
+> Review caught that `\n` in a YAML value could inject keys into the JSON output.
+
+---
+
+## 28. Constant-time comparison must not short-circuit on length
+
+When comparing secrets (tokens, webhook secrets), always run the XOR loop over
+`@min(a.len, b.len)` bytes, then fold the length mismatch into the result after
+the loop. Short-circuiting on `a.len == b.len` leaks the expected secret's length.
+
+> M2_002: constantTimeEq used `a.len == b.len and ct: { ... }` which skipped the
+> XOR loop entirely on length mismatch. Fixed to always run the loop.
+
+---
+
+## 29. Use `[]const u8` for immutable data, not `[]u8`
+
+When a struct holds data read from a database or parsed from input that will not be
+modified, declare fields as `[]const u8`. Mutable `[]u8` signals the data can be changed,
+which misleads readers and prevents the compiler from catching unintended mutation.
+
+> M2_002: ZombieRow used `[]u8` for workspace_id, status, token — all immutable DB data.
+> Refactored to `[]const u8` to match semantic ownership.
+
+---
+
+## 30. Cross-layer orphan sweep on every rename, delete, or format change
+
+When you rename a column, delete a function, change a struct, or migrate a file format,
+grep for the OLD name/pattern across ALL layers before committing. The layers are:
+
+1. **Schema** (SQL): column names, DEFAULT values, CHECK constraints
+2. **Server** (Zig): struct fields, query strings, constants, error messages
+3. **CLI** (JS): function calls, imports, template references, output strings
+4. **Tests** (Zig + JS): assertions, fixtures, mock data, test helper functions
+5. **Docs** (MD): comments, spec references, AGENTS.md, RULES.md, release notes
+
+The sweep command for any renamed symbol `OLD_NAME`:
+```bash
+grep -rn 'OLD_NAME' src/ schema/ zombiectl/ docs/ AGENTS*.md --include='*.zig' --include='*.js' --include='*.sql' --include='*.md' | grep -v '.zig-cache' | grep -v node_modules
+```
+
+A rename is not done until this grep returns zero hits in non-historical files
+(completed specs in `docs/v*/done/` and learning docs are exempt — they document history).
+
+> M2_002: webhook_secret renamed to webhook_secret_ref but stale comments still said
+> "webhook_secret column." ZombieTrigger changed from struct to union but integration
+> test still accessed `.trigger_type`. simpleYamlParse deleted but stale config.zig
+> comments still described the old client-parsed flow. Each required a separate fix commit.
+
+---
+
+## 31. CHORE(close) must include orphan verification gate
+
+Before opening a PR, run a mandatory orphan sweep for every symbol that was renamed,
+deleted, or changed format in the branch. This is part of CHORE(close), not a separate step.
+
+The verification is:
+```bash
+# For each deleted/renamed symbol, confirm zero non-historical references:
+git diff origin/main --name-only | xargs grep -l 'OLD_PATTERN' 2>/dev/null
+# Must return empty for production code. Historical docs are exempt.
+```
+
+If the sweep finds hits, fix them before opening the PR. Do not defer orphan cleanup
+to a follow-up — the PR that changes the symbol owns the full cleanup.
+
+---
+
+## 32. Test discovery requires explicit import in main.zig
+
+Inline `test` blocks in Zig files are only compiled and run if the file is
+reachable from the test root (`main.zig`'s `comptime` test block). A file
+can have tests for years that never execute if nobody imports it.
+
+When creating a new file with tests, add `_ = @import("path/to/file.zig");`
+to `main.zig`'s test discovery block.
+
+> M2_001: Router tests existed inline since M16 but were never discovered.
+> When imported in `main.zig`, two pre-existing test bugs surfaced.
+
+---
+
+## 33. Pointer dereference for anytype query params
+
+When passing a `pg` query result to a function via `anytype` as `&q` (pointer),
+the function must use `q.*.next()` and `q.*.drain()`, not `q.next()`.
+Direct local variables use `q.next()` without dereference.
+
+> M2_001: `collectActivityPage` received `&q` but called `q.next()`.
+> Adding a new caller forced instantiation and exposed the error.
+
+---
+
+## 34. Zig 0.15 ArrayList API
+
+`ArrayList.init(alloc)` does not exist in Zig 0.15. Use `var rows: std.ArrayList(T) = .{};`
+and pass the allocator per-operation: `rows.append(alloc, item)`,
+`rows.toOwnedSlice(alloc)`, `rows.deinit(alloc)`.
+
+---
+
+## 35. No dead struct fields
+
+If a struct field always holds the same value across all construction sites, remove it.
+A field that is never varied is not configuration — it is dead weight that misleads readers
+into thinking it can change. Inline the constant at the usage site instead.
+
+> M4_001: `AnomalyRule.behavior` was always `.auto_kill` at every construction site.
+> Removed the field; anomaly rules always auto-kill by definition.
+
+---
+
+## 36. Narrow types at parse boundaries
+
+When external input (JSON, env vars, CLI flags) can only hold a known finite set of values,
+parse into an enum immediately — never store the raw string. This catches invalid values
+at the boundary instead of deep in business logic.
+
+Applies to: config parsing, HTTP payload deserialization, Redis value decoding.
+
+> M4_001: `AnomalyRule.pattern` was `[]const u8` but only `"same_action"` was valid.
+> `ApprovalPayload.decision` was `[]const u8` validated later by a separate function.
+> Both replaced with enums; invalid values now fail at parse time.
+
+---
+
+## 37. Config-driven over enum-driven for multi-provider patterns
 
 When supporting multiple providers (webhook signatures, API clients, auth schemes),
 use a configuration struct with data fields, not an enum with per-variant switch arms.
@@ -255,19 +423,18 @@ Adding a new provider should be one new const, not new functions or switch cases
 
 ---
 
-## 25. Test fixtures must use the same constants as production code
+## 38. Test fixtures must use the same constants as production code
 
 Never use inline string literals in test fixtures for values that have named constants.
 If `codes.zig` defines `SKILL_DOMAINS_AGENTMAIL = "api.agentmail.to"`, tests must use
 that constant, not a hardcoded `"api.agentmail.dev"`.
 
 > M3_001: agentmail domain was `api.agentmail.to` in production, `api.agentmail.dev`
-> in test fixtures, and `api.agentmail.com` in spec docs. Three different values for
-> the same thing.
+> in test fixtures, and `api.agentmail.com` in spec docs. Three different values.
 
 ---
 
-## 26. Every ERR_* code must have a hint() entry
+## 39. Every ERR_* code must have a hint() entry
 
 When adding a new error code to `codes.zig`, always add a corresponding entry in the
 `hint()` function. The hint must be actionable: tell the operator what to check and
@@ -278,12 +445,11 @@ what command to run. Omitting the hint means the error code is useless to operat
 
 ---
 
-## 27. Don't derive values by slicing related fields
+## 40. Don't derive values by slicing related fields
 
 When one value is logically independent of another, give it its own field. Don't
 compute it by string-slicing a related field. This creates invisible coupling that
 breaks when either field changes independently.
 
 > M3_001: Derived Slack HMAC version `"v0"` by slicing prefix `"v0="[0..len-1]`.
-> If a future provider has a prefix without `=`, this silently produces wrong HMAC.
 > Fixed by adding explicit `hmac_version` field to `VerifyConfig`.

@@ -147,6 +147,23 @@ pub const ERR_ZOMBIE_CREDENTIAL_MISSING = "UZ-ZMB-003";
 pub const ERR_ZOMBIE_CLAIM_FAILED = "UZ-ZMB-004";
 pub const ERR_ZOMBIE_CHECKPOINT_FAILED = "UZ-ZMB-005";
 
+// M2_001: Zombie CRUD API error codes
+pub const ERR_ZOMBIE_NAME_EXISTS = "UZ-ZMB-006";
+pub const ERR_ZOMBIE_CREDENTIAL_VALUE_TOO_LONG = "UZ-ZMB-007";
+pub const ERR_ZOMBIE_INVALID_CONFIG = "UZ-ZMB-008";
+pub const ERR_ZOMBIE_NOT_FOUND = "UZ-ZMB-009";
+
+// M2_001: Zombie CRUD API user-facing messages
+pub const MSG_ZOMBIE_NAME_EXISTS = "Zombie already exists in this workspace. Use `zombiectl kill` first.";
+pub const MSG_ZOMBIE_CREDENTIAL_TOO_LONG = "Credential value exceeds 4KB limit.";
+pub const MSG_ZOMBIE_INVALID_CONFIG = "Config JSON is not valid. Check trigger, skills, and budget fields.";
+pub const MSG_ZOMBIE_NAME_REQUIRED = "name is required (max 64 chars, slug-safe)";
+pub const MSG_ZOMBIE_SOURCE_REQUIRED = "source_markdown is required (max 64KB)";
+pub const MSG_ZOMBIE_CONFIG_REQUIRED = "config_json is required";
+pub const MSG_WORKSPACE_ID_REQUIRED = "workspace_id is required (UUIDv7)";
+pub const MSG_CREDENTIAL_NAME_REQUIRED = "credential name is required (max 64 chars)";
+pub const MSG_CREDENTIAL_VALUE_REQUIRED = "credential value is required";
+
 pub const ERR_GATE_COMMAND_FAILED = "UZ-GATE-001";
 pub const ERR_GATE_COMMAND_TIMEOUT = "UZ-GATE-002";
 pub const ERR_GATE_REPAIR_EXHAUSTED = "UZ-GATE-003";
@@ -246,6 +263,14 @@ pub fn hint(code: []const u8) ?[]const u8 {
         return "Interrupt message could not be stored in Redis. Check Redis connectivity and retry.";
     if (std.mem.eql(u8, code, ERR_RUN_NOT_INTERRUPTIBLE))
         return "Run is not in an interruptible state. Check the run state and retry.";
+    if (std.mem.eql(u8, code, ERR_APPROVAL_PARSE_FAILED))
+        return "Gate policy in TRIGGER.md config_json has invalid syntax. Check the 'gates' section for valid JSON structure.";
+    if (std.mem.eql(u8, code, ERR_APPROVAL_NOT_FOUND))
+        return "Approval action not found or already resolved. The action may have timed out or been handled by another click.";
+    if (std.mem.eql(u8, code, ERR_APPROVAL_REDIS_UNAVAILABLE))
+        return "Gate service unavailable — default-deny applied. Check Redis connectivity.";
+    if (std.mem.eql(u8, code, ERR_APPROVAL_CONDITION_INVALID))
+        return "Gate condition expression is invalid. Supported operators: == and != with single-quoted string values.";
     if (std.mem.eql(u8, code, ERR_ZOMBIE_BUDGET_EXCEEDED))
         return "Zombie hit its daily budget. Increase with: zombiectl config set budget.daily_dollars <amount>";
     if (std.mem.eql(u8, code, ERR_ZOMBIE_AGENT_TIMEOUT))
@@ -256,6 +281,14 @@ pub fn hint(code: []const u8) ?[]const u8 {
         return "Zombie could not be claimed from the database. Check that the zombie_id exists and status is 'active'.";
     if (std.mem.eql(u8, code, ERR_ZOMBIE_CHECKPOINT_FAILED))
         return "Session checkpoint write to Postgres failed. Check database connectivity.";
+    if (std.mem.eql(u8, code, ERR_ZOMBIE_NAME_EXISTS))
+        return "A Zombie with this name already exists. Use 'zombiectl kill <name>' first, then deploy again.";
+    if (std.mem.eql(u8, code, ERR_ZOMBIE_CREDENTIAL_VALUE_TOO_LONG))
+        return "Credential value exceeds 4KB. Check that the secret is not corrupted or padded.";
+    if (std.mem.eql(u8, code, ERR_ZOMBIE_INVALID_CONFIG))
+        return "Config JSON is malformed. Verify trigger, skills, credentials, and budget fields. Run 'zombiectl install <template>' for a valid template.";
+    if (std.mem.eql(u8, code, ERR_ZOMBIE_NOT_FOUND))
+        return "Zombie not found. Verify the zombie_id and that it has not been killed.";
     if (std.mem.eql(u8, code, ERR_WEBHOOK_SLACK_SIG_INVALID))
         return "Slack signature verification failed. Check that the signing secret in the vault matches the one in Slack App settings.";
     if (std.mem.eql(u8, code, ERR_WEBHOOK_SLACK_TIMESTAMP_STALE))
@@ -292,6 +325,35 @@ test "hint returns null for codes without hints" {
     try std.testing.expectEqual(@as(?[]const u8, null), hint(ERR_UUIDV7_CANONICAL_FORMAT));
     try std.testing.expectEqual(@as(?[]const u8, null), hint(ERR_RUN_NOT_FOUND));
 }
+
+// M4_001: Approval gate error codes
+pub const ERR_APPROVAL_PARSE_FAILED = "UZ-APPROVAL-001";
+pub const ERR_APPROVAL_NOT_FOUND = "UZ-APPROVAL-002";
+pub const ERR_APPROVAL_INVALID_SIGNATURE = "UZ-APPROVAL-003";
+pub const ERR_APPROVAL_REDIS_UNAVAILABLE = "UZ-APPROVAL-004";
+pub const ERR_APPROVAL_CONDITION_INVALID = "UZ-APPROVAL-005";
+
+// M4_001: Approval gate user-facing messages
+pub const MSG_APPROVAL_NOT_FOUND = "Approval action not found or already resolved";
+pub const MSG_APPROVAL_INVALID_BODY = "Invalid approval payload";
+pub const MSG_APPROVAL_INVALID_DECISION = "Decision must be 'approve' or 'deny'";
+
+// M4_001: Approval gate constants
+pub const GATE_DEFAULT_TIMEOUT_MS: u64 = 3_600_000; // 1 hour
+pub const GATE_ANOMALY_KEY_PREFIX = "zombie:anomaly:";
+pub const GATE_PENDING_KEY_PREFIX = "zombie:gate:pending:";
+pub const GATE_RESPONSE_KEY_PREFIX = "zombie:gate:response:";
+pub const GATE_PENDING_TTL_SECONDS: u32 = 7200; // 2h (covers 1h timeout + buffer)
+pub const GATE_DECISION_APPROVE = "approve";
+pub const GATE_DECISION_DENY = "deny";
+
+// M4_001: Gate activity event types
+pub const GATE_EVENT_REQUIRED = "gate_approval_required";
+pub const GATE_EVENT_APPROVED = "gate_approved";
+pub const GATE_EVENT_DENIED = "gate_denied";
+pub const GATE_EVENT_TIMEOUT = "gate_timeout";
+pub const GATE_EVENT_AUTO_KILL = "gate_auto_kill";
+pub const GATE_EVENT_AUTO_APPROVE = "gate_auto_approve";
 
 // ── T8 — OWASP Agent Security: credential error codes (M16_003) ──────
 

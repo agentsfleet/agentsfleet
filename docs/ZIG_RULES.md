@@ -15,6 +15,10 @@ Status: Canonical Zig source of truth for agents and commits
 - Copy row-backed slices before `q.drain()` or `q.deinit()`.
 - Materialize rows into owned memory before issuing writes on the same `pg.Conn`.
 - Keep temp-table fixtures aligned with the real production write contract.
+- Use `var rows: std.ArrayList(T) = .{};` for ArrayList init (Zig 0.15). Pass alloc per-operation: `append(alloc, ...)`, `toOwnedSlice(alloc)`, `deinit(alloc)`.
+- Use `q.*.next()` and `q.*.drain()` when the query result is passed through `anytype` as a pointer (`&q`). Direct local vars use `q.next()`.
+- Reference nested struct types with the full path: `Module.Struct.NestedType`, not `Module.NestedType`.
+- Add `_ = @import("path/to/new_file.zig");` to `main.zig` test discovery block for every new file with tests.
 
 ## Must Not
 
@@ -24,6 +28,10 @@ Status: Canonical Zig source of truth for agents and commits
 - Do not use `ON COMMIT DROP` in temp-table setup driven by `conn.exec()`.
 - Do not create ad-hoc DB pool helpers that free parsed URL storage before the pool lifetime ends.
 - Do not add a new `.zig` file when an existing module can be extended cleanly.
+- Do not use `ArrayList.init(alloc)` — it does not exist in Zig 0.15. Use `= .{}`.
+- Do not use `q.next()` on a query result passed via `anytype` pointer — use `q.*.next()`.
+- Do not create test files without adding them to `main.zig` test discovery — tests won't run.
+- Do not store credentials in plaintext tables — use `crypto_store.store()/load()` with `vault.secrets`.
 
 ## Allowed Exceptions
 
@@ -45,6 +53,13 @@ Status: Canonical Zig source of truth for agents and commits
 - For child process timeout enforcement, use a timer thread + `child.kill()`, not a poll loop around `child.wait()`. `child.wait()` blocks the calling thread — the timeout check after it is dead code.
 - Always free heap-allocated return values (`formatX`, `buildX`, `getToken`) with `defer alloc.free(result)` immediately after the call. Do not rely on arena allocators to mask leaks — arena-freed code may later be called outside an arena.
 - Test allocation-heavy functions with `std.testing.allocator` (not an arena) so the leak detector fires on missed frees.
+
+## Type Design Rules
+
+- Use tagged unions (`union(enum)`) when a type has mutually-exclusive variants. Do not use structs with optional fields to represent variant data. The compiler enforces exhaustive switches on tagged unions, catching missing cases at compile time.
+- Use `[]const u8` for all immutable data (DB results, parsed input, config values). Reserve `[]u8` for data the function intends to mutate. Mutable slices mislead readers about ownership intent.
+- When a struct carries data from different sources (e.g. vault ref + Bearer token), consider whether a tagged union better represents the "exactly one of these" constraint.
+- `deinit()` methods on tagged union types must switch on all variants and free only what that variant owns.
 
 ## New File Rules
 
@@ -92,3 +107,18 @@ Status: Canonical Zig source of truth for agents and commits
 
 - The heartbeat interval must be LESS than `SO_RCVTIMEO` (socket read timeout). If `SO_RCVTIMEO = 25s` and heartbeat check is at `30s`, the first wakeup at `t=25s` skips the heartbeat (25 < 30) and the proxy drops the connection at `t=30s` before the second wakeup.
 - Correct invariant: `heartbeat_interval < SO_RCVTIMEO < proxy_idle_timeout`.
+
+## Tagged Unions for Result Types (M4_001)
+
+- When a function returns a decision or outcome with distinct failure modes, use `union(enum)` with payloads — not a bare `enum`. Callers need the *reason*, not just the verdict.
+- Bare enums are fine for input classification (e.g., `GateDecision = enum { auto_approve, requires_approval, auto_kill }`) where every variant is handled identically. But for return values where callers branch on failure details, carry the context in the union.
+- Example: `GateCheckResult = union(enum) { passed: void, blocked: BlockReason, auto_killed: AutoKillTrigger }` — callers can produce specific error messages without re-deriving context.
+
+## Module Split Pattern (M4_001)
+
+- When a module hits the line limit, split by concern — not arbitrarily. Preferred extraction order:
+  1. Types + parsing → `foo_types.zig` or `foo_config.zig` (re-exported by `foo.zig`)
+  2. Tests → `foo_test.zig` (imported via `test { _ = @import("foo_test.zig"); }`)
+  3. Integration with other modules → `foo_integration.zig` (thin adapter)
+- The original module remains the public API. Extracted modules are implementation details imported only by the parent.
+- Do not split into `foo_part1.zig` / `foo_part2.zig` — names must describe the concern, not the split order.

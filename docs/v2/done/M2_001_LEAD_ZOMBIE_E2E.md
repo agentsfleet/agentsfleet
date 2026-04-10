@@ -4,7 +4,7 @@
 **Milestone:** M2
 **Workstream:** 001
 **Date:** Apr 09, 2026
-**Status:** PENDING
+**Status:** DONE
 **Priority:** P0 — First live Zombie; proves the pitch works
 **Batch:** B1 — no dependencies
 **Branch:** feat/m2-lead-zombie-e2e
@@ -24,7 +24,7 @@
 
 ## 1.0 Worker Integration
 
-**Status:** PENDING
+**Status:** DONE
 
 Wire `event_loop.zig` into the worker fleet's main run loop. The worker already claims specs via Redis; extend it to also claim Zombies. Worker process starts → checks for Zombie assignments → calls `claimZombie` → enters `runEventLoop`. One worker instance handles one Zombie (1:1 for v0.6.0; multiplexing is M3).
 
@@ -54,7 +54,7 @@ Wire `event_loop.zig` into the worker fleet's main run loop. The worker already 
 
 ## 2.0 Executor Network Allowlist + Credential Injection
 
-**Status:** PENDING
+**Status:** DONE
 
 Add agentmail API domain (`api.agentmail.dev`) to the executor's network allowlist for Lead Zombie. Verify credential injection from vault into the sandbox environment (the executor already supports this via M16_003; this wires it for the Zombie use case). The Zombie's `credentials` array in config maps to `op://` vault paths; the executor resolves them at sandbox start, not at config parse time.
 
@@ -84,7 +84,7 @@ Add agentmail API domain (`api.agentmail.dev`) to the executor's network allowli
 
 ## 3.0 Sample Workspace + Hero Flow
 
-**Status:** PENDING
+**Status:** DONE
 
 Create `samples/lead-collector/` with a pre-configured workspace that enables the hero demo with zero credential setup. Demo mode uses a sandbox agentmail account. `zombiectl up` detects demo credentials and prints "demo mode" banner. The full hero flow runs in under 2 minutes.
 
@@ -114,7 +114,7 @@ Create `samples/lead-collector/` with a pre-configured workspace that enables th
 
 ## 4.0 Activity Stream CLI Route
 
-**Status:** PENDING
+**Status:** DONE
 
 Add `zombiectl activity list` (aliased as `zombiectl logs`) server-side route. Currently `zombiectl logs` calls the API but there's no server handler. Implement `GET /v1/zombies/activity` with cursor-based pagination, returning the last N activity events. Wire the existing `activity_stream.zig:queryByZombie` to the HTTP handler.
 
@@ -134,7 +134,7 @@ Add `zombiectl activity list` (aliased as `zombiectl logs`) server-side route. C
   - input: `GET /v1/zombies/activity?zombie_id={unknown_id}`
   - expected: `Empty array (not 404 — Zombie may exist with no events)`
   - test_type: integration (DB)
-- 4.4 PENDING
+- 4.4 DONE
   - target: `src/http/router.zig`
   - input: `GET /v1/zombies/activity` registered in router`
   - expected: `Route matches, auth required, workspace scoped`
@@ -144,7 +144,7 @@ Add `zombiectl activity list` (aliased as `zombiectl logs`) server-side route. C
 
 ## 5.0 Zombie CRUD API
 
-**Status:** PENDING
+**Status:** DONE
 
 Server-side handlers for `zombiectl up`, `zombiectl status`, `zombiectl kill`, and `zombiectl credential add/list`. The CLI commands already call these endpoints; implement the handlers. `POST /v1/zombies/` creates a Zombie from config JSON + source markdown. `GET /v1/zombies/` lists Zombies for workspace. `DELETE /v1/zombies/{id}` kills a Zombie. `POST /v1/zombies/credentials` stores a credential in vault. `GET /v1/zombies/credentials` lists credential names (not values).
 

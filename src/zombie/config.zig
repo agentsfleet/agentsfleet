@@ -1,22 +1,26 @@
 // Zombie configuration parser.
 //
-// The developer writes a .md file with YAML frontmatter + freeform instructions.
-// zombiectl up parses the YAML frontmatter → JSON and uploads both to the API.
-// The API stores source_markdown (raw .md) and config_json (compiled JSON) in core.zombies.
+// M2_002: directory-based zombie format (SKILL.md + TRIGGER.md).
+// zombiectl up sends both files raw. The server parses TRIGGER.md frontmatter
+// into config_json via parseZombieFromTriggerMarkdown. SKILL.md is stored as-is.
 // At claim time, the worker calls:
 //   - parseZombieConfig(alloc, config_json_bytes)  → ZombieConfig struct
 //   - extractZombieInstructions(source_markdown)    → system prompt slice (borrowed)
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
+const yaml_frontmatter = @import("yaml_frontmatter.zig");
+const helpers = @import("config_helpers.zig");
 
 const log = std.log.scoped(.zombie_config);
 
-// Built-in skills. clawhub:// registry refs are also accepted (must be pinned).
-const KNOWN_ZOMBIE_SKILLS = [_][]const u8{
-    "agentmail", "slack",      "github",    "git",
-    "linear",    "cloudflare", "pagerduty",
-};
+const parseZombieTrigger = helpers.parseZombieTrigger;
+const parseZombieNetwork = helpers.parseZombieNetwork;
+const parseZombieBudget = helpers.parseZombieBudget;
+const dupeStringArray = helpers.dupeStringArray;
+const freeStringSlice = helpers.freeStringSlice;
+const freeZombieTrigger = helpers.freeZombieTrigger;
+const isKnownZombieSkill = helpers.isKnownZombieSkill;
 
 pub const ZombieConfigError = error{
     MissingRequiredField,
@@ -27,16 +31,47 @@ pub const ZombieConfigError = error{
     InvalidBudget,
 };
 
-pub const ZombieTriggerType = enum { webhook, cron, api };
+pub const ZombieStatus = enum {
+    active,
+    paused,
+    stopped,
+    killed,
 
-pub const ZombieTrigger = struct {
-    trigger_type: ZombieTriggerType,
-    // webhook: required. cron/api: null.
-    source: ?[]const u8,
-    // optional event filter, e.g. "message.received"
-    event: ?[]const u8,
-    // cron: required. webhook/api: null.
-    schedule: ?[]const u8,
+    pub fn toSlice(self: ZombieStatus) []const u8 {
+        return switch (self) {
+            .active => "active",
+            .paused => "paused",
+            .stopped => "stopped",
+            .killed => "killed",
+        };
+    }
+
+    pub fn fromSlice(s: []const u8) ?ZombieStatus {
+        if (std.mem.eql(u8, s, "active")) return .active;
+        if (std.mem.eql(u8, s, "paused")) return .paused;
+        if (std.mem.eql(u8, s, "stopped")) return .stopped;
+        if (std.mem.eql(u8, s, "killed")) return .killed;
+        return null;
+    }
+
+    pub fn isTerminal(self: ZombieStatus) bool {
+        return self == .killed;
+    }
+
+    pub fn isRunnable(self: ZombieStatus) bool {
+        return self == .active;
+    }
+};
+
+pub const ZombieTriggerType = enum { webhook, cron, api, chain };
+
+/// Tagged union for trigger config. Each variant carries only the fields it needs,
+/// making invalid states (e.g. webhook without source) unrepresentable.
+pub const ZombieTrigger = union(ZombieTriggerType) {
+    webhook: struct { source: []const u8, event: ?[]const u8 },
+    cron: struct { schedule: []const u8 },
+    api: void,
+    chain: struct { source: []const u8 },
 };
 
 pub const ZombieBudget = struct {
@@ -48,6 +83,13 @@ pub const ZombieNetwork = struct {
     allow: []const []const u8,
 };
 
+const config_gates = @import("config_gates.zig");
+pub const GateBehavior = config_gates.GateBehavior;
+pub const GateRule = config_gates.GateRule;
+pub const AnomalyPattern = config_gates.AnomalyPattern;
+pub const AnomalyRule = config_gates.AnomalyRule;
+pub const GatePolicy = config_gates.GatePolicy;
+
 pub const ZombieConfig = struct {
     name: []const u8,
     trigger: ZombieTrigger,
@@ -55,20 +97,35 @@ pub const ZombieConfig = struct {
     credentials: []const []const u8,
     network: ?ZombieNetwork,
     budget: ZombieBudget,
+    gates: ?GatePolicy,
+    // M2_002: ClaHub skill reference (e.g. "clawhub://queen/lead-hunter@1.0.1")
+    // Resolution deferred to M3 — stored but not fetched.
+    skill: ?[]const u8,
+    // M2_002: Downstream zombies to chain events to.
+    chain: []const []const u8,
 
     pub fn deinit(self: *const ZombieConfig, alloc: Allocator) void {
         alloc.free(self.name);
-        if (self.trigger.source) |s| alloc.free(s);
-        if (self.trigger.event) |e| alloc.free(e);
-        if (self.trigger.schedule) |s| alloc.free(s);
+        switch (self.trigger) {
+            .webhook => |w| {
+                alloc.free(w.source);
+                if (w.event) |e| alloc.free(e);
+            },
+            .cron => |c| alloc.free(c.schedule),
+            .chain => |ch| alloc.free(ch.source),
+            .api => {},
+        }
         freeStringSlice(alloc, self.skills);
         freeStringSlice(alloc, self.credentials);
         if (self.network) |net| freeStringSlice(alloc, net.allow);
+        if (self.gates) |gates| config_gates.freeGatePolicy(alloc, gates);
+        if (self.skill) |s| alloc.free(s);
+        freeStringSlice(alloc, self.chain);
     }
 };
 
 // parseZombieConfig parses the config_json column from core.zombies into a ZombieConfig.
-// config_json was produced by zombiectl: YAML frontmatter → JSON conversion.
+// config_json is server-computed from TRIGGER.md frontmatter (M2_002).
 // Caller owns the returned ZombieConfig and must call deinit.
 pub fn parseZombieConfig(alloc: Allocator, config_json: []const u8) (Allocator.Error || ZombieConfigError)!ZombieConfig {
     const parsed = std.json.parseFromSlice(std.json.Value, alloc, config_json, .{}) catch {
@@ -148,14 +205,20 @@ pub fn parseZombieConfig(alloc: Allocator, config_json: []const u8) (Allocator.E
         break :blk try parseZombieBudget(obj);
     };
 
-    // validate skills against known registry
-    for (skills) |skill| {
-        if (!isKnownZombieSkill(skill)) return ZombieConfigError.UnknownSkill;
-    }
-    // validate credentials are op:// vault refs
-    for (credentials) |cred| {
-        if (!std.mem.startsWith(u8, cred, "op://")) return ZombieConfigError.InvalidCredentialRef;
-    }
+    // gates — optional
+    const gates: ?config_gates.GatePolicy = blk: {
+        const val = root.get("gates") orelse break :blk null;
+        const obj = switch (val) {
+            .object => |o| o,
+            else => return ZombieConfigError.MissingRequiredField,
+        };
+        break :blk config_gates.parseGatePolicy(alloc, obj) catch return ZombieConfigError.MissingRequiredField;
+    };
+    errdefer if (gates) |g| config_gates.freeGatePolicy(alloc, g);
+
+    try validateSkillsAndCredentials(skills, credentials);
+
+    const extended = try parseExtendedFields(alloc, root);
 
     return ZombieConfig{
         .name = name,
@@ -164,7 +227,49 @@ pub fn parseZombieConfig(alloc: Allocator, config_json: []const u8) (Allocator.E
         .credentials = credentials,
         .network = network,
         .budget = budget,
+        .gates = gates,
+        .skill = extended.skill,
+        .chain = extended.chain,
     };
+}
+
+const ExtendedFields = struct { skill: ?[]const u8, chain: []const []const u8 };
+
+fn validateSkillsAndCredentials(skills: []const []const u8, credentials: []const []const u8) ZombieConfigError!void {
+    for (skills) |skill_name| {
+        if (!isKnownZombieSkill(skill_name)) return ZombieConfigError.UnknownSkill;
+    }
+    const MAX_CREDENTIAL_NAME_LEN = 128;
+    for (credentials) |cred| {
+        if (cred.len == 0 or cred.len > MAX_CREDENTIAL_NAME_LEN) return ZombieConfigError.InvalidCredentialRef;
+        for (cred) |c| {
+            if (!std.ascii.isAlphanumeric(c) and c != '_') return ZombieConfigError.InvalidCredentialRef;
+        }
+    }
+}
+
+fn parseExtendedFields(alloc: Allocator, root: std.json.ObjectMap) (Allocator.Error || ZombieConfigError)!ExtendedFields {
+    const skill_ref: ?[]const u8 = blk: {
+        const val = root.get("skill") orelse break :blk null;
+        const s = switch (val) {
+            .string => |str| str,
+            else => break :blk null,
+        };
+        if (s.len == 0) break :blk null;
+        break :blk try alloc.dupe(u8, s);
+    };
+    errdefer if (skill_ref) |s| alloc.free(s);
+
+    const chain_arr: []const []const u8 = blk: {
+        const val = root.get("chain") orelse break :blk try alloc.alloc([]const u8, 0);
+        const arr = switch (val) {
+            .array => |a| a,
+            else => break :blk try alloc.alloc([]const u8, 0),
+        };
+        break :blk try dupeStringArray(alloc, arr.items);
+    };
+
+    return .{ .skill = skill_ref, .chain = chain_arr };
 }
 
 // extractZombieInstructions returns the markdown body from source_markdown after
@@ -210,160 +315,48 @@ pub fn validateZombieSkills(config: ZombieConfig) ZombieConfigError!void {
     }
 }
 
-// --- internal helpers ---
+// parseZombieFromTriggerMarkdown extracts YAML frontmatter from TRIGGER.md,
+// converts it to JSON via the Zig JSON parser, and returns a ZombieConfig.
+// The frontmatter is expected between --- delimiters. The body after the
+// closing --- is ignored (it's human-readable documentation).
+// Caller owns the returned ZombieConfig and must call deinit.
+pub fn parseZombieFromTriggerMarkdown(alloc: Allocator, trigger_markdown: []const u8) (Allocator.Error || ZombieConfigError)!ZombieConfig {
+    const trimmed = std.mem.trim(u8, trigger_markdown, " \t\r\n");
+    if (!std.mem.startsWith(u8, trimmed, "---")) return ZombieConfigError.MissingRequiredField;
 
-fn parseZombieTrigger(alloc: Allocator, obj: std.json.ObjectMap) (Allocator.Error || ZombieConfigError)!ZombieTrigger {
-    const type_val = obj.get("type") orelse return ZombieConfigError.MissingRequiredField;
-    const type_str = switch (type_val) {
-        .string => |s| s,
-        else => return ZombieConfigError.MissingRequiredField,
+    const after_open = trimmed[3..];
+    const close = blk: {
+        var search_from: usize = 0;
+        while (std.mem.indexOfPos(u8, after_open, search_from, "\n---")) |pos| {
+            const rest = after_open[pos + 4 ..];
+            if (rest.len == 0 or rest[0] == '\n' or rest[0] == '\r') break :blk pos;
+            search_from = pos + 1;
+        }
+        return ZombieConfigError.MissingRequiredField;
     };
-    const trigger_type = if (std.mem.eql(u8, type_str, "webhook"))
-        ZombieTriggerType.webhook
-    else if (std.mem.eql(u8, type_str, "cron"))
-        ZombieTriggerType.cron
-    else if (std.mem.eql(u8, type_str, "api"))
-        ZombieTriggerType.api
-    else
-        return ZombieConfigError.InvalidTriggerType;
+    const yaml_block = after_open[0..close];
 
-    const source: ?[]const u8 = blk: {
-        const val = obj.get("source") orelse break :blk null;
-        const s = switch (val) {
-            .string => |str| str,
-            else => return ZombieConfigError.InvalidTriggerSource,
-        };
-        break :blk try alloc.dupe(u8, s);
+    // Convert simple YAML frontmatter to JSON using line-by-line conversion.
+    // This handles the flat/nested structure of TRIGGER.md frontmatter.
+    const json = yaml_frontmatter.yamlFrontmatterToJson(alloc, yaml_block) catch {
+        return ZombieConfigError.MissingRequiredField;
     };
-    errdefer if (source) |s| alloc.free(s);
+    defer alloc.free(json);
 
-    // webhook requires source
-    if (trigger_type == .webhook and source == null) return ZombieConfigError.InvalidTriggerSource;
-
-    const event: ?[]const u8 = blk: {
-        const val = obj.get("event") orelse break :blk null;
-        const s = switch (val) {
-            .string => |str| str,
-            else => break :blk null,
-        };
-        break :blk try alloc.dupe(u8, s);
-    };
-    errdefer if (event) |e| alloc.free(e);
-
-    const schedule: ?[]const u8 = blk: {
-        const val = obj.get("schedule") orelse break :blk null;
-        const s = switch (val) {
-            .string => |str| str,
-            else => break :blk null,
-        };
-        break :blk try alloc.dupe(u8, s);
-    };
-
-    return ZombieTrigger{
-        .trigger_type = trigger_type,
-        .source = source,
-        .event = event,
-        .schedule = schedule,
-    };
-}
-
-fn parseZombieNetwork(alloc: Allocator, obj: std.json.ObjectMap) (Allocator.Error || ZombieConfigError)!ZombieNetwork {
-    const allow_val = obj.get("allow") orelse return ZombieNetwork{ .allow = &.{} };
-    const allow_arr = switch (allow_val) {
-        .array => |a| a,
-        else => return ZombieConfigError.MissingRequiredField,
-    };
-    return ZombieNetwork{ .allow = try dupeStringArray(alloc, allow_arr.items) };
-}
-
-fn parseZombieBudget(obj: std.json.ObjectMap) ZombieConfigError!ZombieBudget {
-    const daily_val = obj.get("daily_dollars") orelse return ZombieConfigError.MissingRequiredField;
-    const daily = switch (daily_val) {
-        .float => |f| f,
-        .integer => |i| @as(f64, @floatFromInt(i)),
-        else => return ZombieConfigError.InvalidBudget,
-    };
-    if (daily <= 0.0 or daily > 1000.0) return ZombieConfigError.InvalidBudget;
-
-    const monthly: ?f64 = blk: {
-        const val = obj.get("monthly_dollars") orelse break :blk null;
-        const f: f64 = switch (val) {
-            .float => |fv| fv,
-            .integer => |i| @as(f64, @floatFromInt(i)),
-            else => return ZombieConfigError.InvalidBudget,
-        };
-        if (f <= 0.0 or f > 10000.0) return ZombieConfigError.InvalidBudget;
-        break :blk f;
-    };
-
-    return ZombieBudget{ .daily_dollars = daily, .monthly_dollars = monthly };
-}
-
-fn dupeStringArray(alloc: Allocator, items: []const std.json.Value) ![]const []const u8 {
-    const out = try alloc.alloc([]const u8, items.len);
-    var i: usize = 0;
-    errdefer {
-        for (out[0..i]) |s| alloc.free(s);
-        alloc.free(out);
-    }
-    for (items) |item| {
-        const s = switch (item) {
-            .string => |str| str,
-            else => return ZombieConfigError.MissingRequiredField,
-        };
-        out[i] = try alloc.dupe(u8, s);
-        i += 1;
-    }
-    return out;
-}
-
-fn freeStringSlice(alloc: Allocator, slice: []const []const u8) void {
-    for (slice) |s| alloc.free(s);
-    alloc.free(slice);
-}
-
-fn freeZombieTrigger(alloc: Allocator, t: ZombieTrigger) void {
-    if (t.source) |s| alloc.free(s);
-    if (t.event) |e| alloc.free(e);
-    if (t.schedule) |s| alloc.free(s);
-}
-
-fn isKnownZombieSkill(skill: []const u8) bool {
-    if (std.mem.startsWith(u8, skill, "clawhub://")) return isPinnedZombieSkillRef(skill);
-    for (KNOWN_ZOMBIE_SKILLS) |known| {
-        if (std.mem.eql(u8, skill, known)) return true;
-    }
-    return false;
-}
-
-fn isPinnedZombieSkillRef(ref: []const u8) bool {
-    const at = std.mem.lastIndexOfScalar(u8, ref, '@') orelse return false;
-    if (at + 1 >= ref.len) return false;
-    const version = ref[at + 1 ..];
-    if (std.ascii.eqlIgnoreCase(version, "latest")) return false;
-    return std.ascii.isDigit(version[0]);
+    return parseZombieConfig(alloc, json);
 }
 
 test "parseZombieConfig: valid config parses all fields" {
     const alloc = std.testing.allocator;
-    const json =
-        \\{
-        \\  "name": "lead-collector",
-        \\  "trigger": {"type": "webhook", "source": "agentmail", "event": "message.received"},
-        \\  "skills": ["agentmail"],
-        \\  "credentials": ["op://ZMB_LOCAL_DEV/agentmail/api_key"],
-        \\  "network": {"allow": ["api.agentmail.to"]},
-        \\  "budget": {"daily_dollars": 5.0}
-        \\}
-    ;
+    const json = "{\"name\":\"lead-collector\",\"trigger\":{\"type\":\"webhook\",\"source\":\"agentmail\",\"event\":\"message.received\"},\"skills\":[\"agentmail\"],\"credentials\":[\"agentmail_api_key\"],\"network\":{\"allow\":[\"api.agentmail.to\"]},\"budget\":{\"daily_dollars\":5.0},\"chain\":[\"lead-enricher\"]}";
     var cfg = try parseZombieConfig(alloc, json);
     defer cfg.deinit(alloc);
     try std.testing.expectEqualStrings("lead-collector", cfg.name);
-    try std.testing.expectEqual(ZombieTriggerType.webhook, cfg.trigger.trigger_type);
-    try std.testing.expectEqualStrings("agentmail", cfg.trigger.source.?);
-    try std.testing.expectEqual(@as(usize, 1), cfg.skills.len);
-    try std.testing.expectEqualStrings("agentmail", cfg.skills[0]);
+    try std.testing.expectEqualStrings("agentmail", cfg.trigger.webhook.source);
     try std.testing.expectApproxEqAbs(@as(f64, 5.0), cfg.budget.daily_dollars, 0.001);
+    try std.testing.expectEqual(@as(usize, 1), cfg.chain.len);
+    try std.testing.expectEqualStrings("lead-enricher", cfg.chain[0]);
+    try std.testing.expect(cfg.skill == null);
 }
 
 test "parseZombieConfig: missing name returns MissingRequiredField" {
@@ -388,6 +381,37 @@ test "validateZombieSkills: unknown skill returns UnknownSkill" {
         \\{"name": "x", "trigger": {"type": "api"}, "skills": ["unknown_tool"], "budget": {"daily_dollars": 1.0}}
     ;
     try std.testing.expectError(ZombieConfigError.UnknownSkill, parseZombieConfig(alloc, json));
+}
+
+test "parseZombieConfig: skill field parsed from JSON" {
+    const alloc = std.testing.allocator;
+    const json = "{\"name\":\"enricher\",\"trigger\":{\"type\":\"chain\",\"source\":\"lead-collector\"},\"skills\":[\"agentmail\"],\"skill\":\"clawhub://queen/lead-hunter@1.0.1\",\"budget\":{\"daily_dollars\":2.0}}";
+    var cfg = try parseZombieConfig(alloc, json);
+    defer cfg.deinit(alloc);
+    try std.testing.expectEqualStrings("clawhub://queen/lead-hunter@1.0.1", cfg.skill.?);
+    try std.testing.expectEqualStrings("lead-collector", cfg.trigger.chain.source);
+}
+
+test "parseZombieConfig: credential names validated (no op:// paths)" {
+    const alloc = std.testing.allocator;
+    const json = "{\"name\":\"x\",\"trigger\":{\"type\":\"api\"},\"skills\":[\"agentmail\"],\"credentials\":[\"op://ZMB_LOCAL_DEV/agentmail/api_key\"],\"budget\":{\"daily_dollars\":1.0}}";
+    try std.testing.expectError(ZombieConfigError.InvalidCredentialRef, parseZombieConfig(alloc, json));
+}
+
+test "parseZombieFromTriggerMarkdown: parses frontmatter into config" {
+    const alloc = std.testing.allocator;
+    const trigger_md = "---\nname: lead-collector\ntrigger:\n  type: webhook\n  source: agentmail\nchain:\n  - lead-enricher\ncredentials:\n  - agentmail_api_key\nbudget:\n  daily_dollars: 5.0\nskills:\n  - agentmail\n---\n\n## Trigger Logic\n";
+    var cfg = try parseZombieFromTriggerMarkdown(alloc, trigger_md);
+    defer cfg.deinit(alloc);
+    try std.testing.expectEqualStrings("lead-collector", cfg.name);
+    try std.testing.expectEqualStrings("agentmail", cfg.trigger.webhook.source);
+    try std.testing.expectEqual(@as(usize, 1), cfg.chain.len);
+    try std.testing.expectEqualStrings("lead-enricher", cfg.chain[0]);
+}
+
+test "parseZombieFromTriggerMarkdown: no frontmatter returns error" {
+    const alloc = std.testing.allocator;
+    try std.testing.expectError(ZombieConfigError.MissingRequiredField, parseZombieFromTriggerMarkdown(alloc, "No frontmatter."));
 }
 
 test "extractZombieInstructions: returns body after frontmatter" {
