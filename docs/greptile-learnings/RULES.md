@@ -240,3 +240,69 @@ Pattern: `common.errorResponse(res, status, error_codes.ERR_*, error_messages.MS
 
 Never concatenate raw user input into agent prompts or tool calls.
 Validate, type-check, length-bound all external input. Use parameterized templates.
+
+---
+
+## 24. App-layer enums over DB CHECK constraints
+
+Do not hardcode allowed status/type values in SQL CHECK constraints.
+Use a Zig enum with `toSlice()`/`fromSlice()` and semantic methods like
+`isRunnable()` / `isTerminal()`. This centralizes the state machine,
+makes exhaustive switch enforce new states, and avoids schema changes
+when adding values.
+
+> M2_001: `ck_zombies_status CHECK (status IN ('active','paused','stopped'))` blocked
+> the new `killed` status. Replaced with `ZombieStatus` enum in `config.zig`.
+
+---
+
+## 25. Never create plaintext credential tables
+
+Reuse the existing `vault.secrets` table with `crypto_store.store()/load()` for
+envelope encryption. Use a key naming convention (e.g., `zombie:{name}`) to
+namespace per-feature. Never store raw secrets in a custom table.
+
+> M2_001: Initial `core.zombie_credentials` stored `value_encrypted` as plaintext.
+> Replaced with `crypto_store` + `vault.secrets` using `zombie:{name}` key prefix.
+
+---
+
+## 26. Test discovery requires explicit import in main.zig
+
+Inline `test` blocks in Zig files are only compiled and run if the file is
+reachable from the test root (`main.zig`'s `comptime` test block). A file
+can have tests for years that never execute if nobody imports it.
+
+When creating a new file with tests, add `_ = @import("path/to/file.zig");`
+to `main.zig`'s test discovery block. When extracting tests to a separate
+file, verify the original file has a `comptime { _ = @import("test_file.zig"); }`
+reference.
+
+> M2_001: Router tests existed inline since M16 but were never discovered.
+> When extracted to `router_test.zig` and imported in `main.zig`, two
+> pre-existing test bugs surfaced (M17 cancel route expectations).
+
+---
+
+## 27. Pointer dereference for anytype query params
+
+When passing a `pg` query result to a function via `anytype` as `&q` (pointer),
+the function must use `q.*.next()` and `q.*.drain()`, not `q.next()`.
+Direct local variables use `q.next()` without dereference.
+
+Rule: if the function parameter is `anytype` and callers pass `&q`, use `q.*`.
+
+> M2_001: `collectActivityPage` received `&q` but called `q.next()`.
+> Compiled on main because the code path was never instantiated.
+> Adding `zombie_activity_api.zig` forced instantiation and exposed the error.
+
+---
+
+## 28. Zig 0.15 ArrayList API
+
+`ArrayList.init(alloc)` does not exist in Zig 0.15. Use `var rows: std.ArrayList(T) = .{};`
+and pass the allocator per-operation: `rows.append(alloc, item)`,
+`rows.toOwnedSlice(alloc)`, `rows.deinit(alloc)`.
+
+> M2_001: `std.ArrayList(Row).init(alloc)` failed to compile.
+> Pattern found in existing code: `var rows: std.ArrayList(T) = .{};`

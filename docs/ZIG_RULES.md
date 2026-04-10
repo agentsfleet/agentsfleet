@@ -15,6 +15,10 @@ Status: Canonical Zig source of truth for agents and commits
 - Copy row-backed slices before `q.drain()` or `q.deinit()`.
 - Materialize rows into owned memory before issuing writes on the same `pg.Conn`.
 - Keep temp-table fixtures aligned with the real production write contract.
+- Use `var rows: std.ArrayList(T) = .{};` for ArrayList init (Zig 0.15). Pass alloc per-operation: `append(alloc, ...)`, `toOwnedSlice(alloc)`, `deinit(alloc)`.
+- Use `q.*.next()` and `q.*.drain()` when the query result is passed through `anytype` as a pointer (`&q`). Direct local vars use `q.next()`.
+- Reference nested struct types with the full path: `Module.Struct.NestedType`, not `Module.NestedType`.
+- Add `_ = @import("path/to/new_file.zig");` to `main.zig` test discovery block for every new file with tests.
 
 ## Must Not
 
@@ -24,6 +28,10 @@ Status: Canonical Zig source of truth for agents and commits
 - Do not use `ON COMMIT DROP` in temp-table setup driven by `conn.exec()`.
 - Do not create ad-hoc DB pool helpers that free parsed URL storage before the pool lifetime ends.
 - Do not add a new `.zig` file when an existing module can be extended cleanly.
+- Do not use `ArrayList.init(alloc)` — it does not exist in Zig 0.15. Use `= .{}`.
+- Do not use `q.next()` on a query result passed via `anytype` pointer — use `q.*.next()`.
+- Do not create test files without adding them to `main.zig` test discovery — tests won't run.
+- Do not store credentials in plaintext tables — use `crypto_store.store()/load()` with `vault.secrets`.
 
 ## Allowed Exceptions
 
