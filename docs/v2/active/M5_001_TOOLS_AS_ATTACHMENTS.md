@@ -4,7 +4,7 @@
 **Milestone:** M5
 **Workstream:** 001
 **Date:** Apr 09, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P0 — v2 architecture rule; enables every future Zombie and ClawHub skill
 **Batch:** B2 — parallel with M4 (shares tool registry from M3, but no execution dependency)
 **Branch:** feat/m5-tools-as-attachments
