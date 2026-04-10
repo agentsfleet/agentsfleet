@@ -83,6 +83,18 @@ pub const ERR_WEBHOOK_NO_ZOMBIE = "UZ-WH-001";
 pub const ERR_WEBHOOK_MALFORMED = "UZ-WH-002";
 pub const ERR_WEBHOOK_ZOMBIE_PAUSED = "UZ-WH-003";
 
+// M3_001: Slack webhook error codes
+pub const ERR_WEBHOOK_SLACK_SIG_INVALID = "UZ-WH-010";
+pub const ERR_WEBHOOK_SLACK_TIMESTAMP_STALE = "UZ-WH-011";
+
+// M3_001: Tool error codes
+pub const ERR_TOOL_CREDENTIAL_MISSING = "UZ-TOOL-001";
+pub const ERR_TOOL_API_FAILED = "UZ-TOOL-002";
+pub const ERR_TOOL_GIT_FAILED = "UZ-TOOL-003";
+pub const ERR_TOOL_NOT_ATTACHED = "UZ-TOOL-004";
+pub const ERR_TOOL_UNKNOWN = "UZ-TOOL-005";
+pub const ERR_TOOL_TIMEOUT = "UZ-TOOL-006";
+
 // M1_001: Webhook user-facing error messages (rule 22: no inline strings)
 pub const MSG_BODY_REQUIRED = "Request body required";
 pub const MSG_MALFORMED_JSON = "Malformed JSON";
@@ -102,6 +114,31 @@ pub const ZOMBIE_STATUS_STOPPED = "stopped";
 pub const WEBHOOK_EVENT_TYPE = "webhook_received";
 pub const STATUS_DUPLICATE = "duplicate";
 pub const STATUS_ACCEPTED = "accepted";
+
+// M3_001: Webhook provider signature constants
+pub const SLACK_SIG_VERSION = "v0";
+pub const SLACK_SIG_HEADER = "x-slack-signature";
+pub const SLACK_TS_HEADER = "x-slack-request-timestamp";
+pub const SLACK_MAX_TS_DRIFT_SECONDS: i64 = 300; // 5 minutes replay protection
+pub const MSG_WEBHOOK_SIG_INVALID = "Webhook signature verification failed. Check signing secret.";
+pub const MSG_WEBHOOK_TS_STALE = "Webhook request too old (>5 min). Replay attack rejected.";
+pub const MSG_TOOL_CREDENTIAL_MISSING = "Credential not found. Add with: zombiectl credential add";
+pub const MSG_TOOL_NOT_ATTACHED = "Tool not attached to this Zombie. Add to TRIGGER.md skills.";
+pub const MSG_TOOL_UNKNOWN = "Unknown tool. Available: agentmail, slack, git, github, linear, cloudflare, pagerduty";
+
+// M3_001: Tool registry — skill-to-domain mapping
+pub const SKILL_DOMAINS_SLACK = [_][]const u8{"api.slack.com"};
+pub const SKILL_DOMAINS_GITHUB = [_][]const u8{ "api.github.com", "github.com" };
+pub const SKILL_DOMAINS_GIT = [_][]const u8{"github.com"};
+pub const SKILL_DOMAINS_AGENTMAIL = [_][]const u8{"api.agentmail.to"};
+pub const SKILL_DOMAINS_LINEAR = [_][]const u8{"api.linear.app"};
+pub const SKILL_DOMAINS_CLOUDFLARE = [_][]const u8{"api.cloudflare.com"};
+pub const SKILL_DOMAINS_PAGERDUTY = [_][]const u8{"api.pagerduty.com"};
+
+// Activity stream event types for tools
+pub const ACTIVITY_TOOL_INVOKED = "tool_invoked";
+pub const ACTIVITY_TOOL_SUCCESS = "tool_success";
+pub const ACTIVITY_TOOL_ERROR = "tool_error";
 
 // M1_001: Zombie event loop error codes
 pub const ERR_ZOMBIE_BUDGET_EXCEEDED = "UZ-ZMB-001";
@@ -167,6 +204,35 @@ pub const ERR_RELAY_NO_PROVIDER = "UZ-RELAY-001";
 pub const ERR_CRED_ANTHROPIC_KEY_MISSING = "UZ-CRED-001";
 pub const ERR_CRED_GITHUB_TOKEN_FAILED = "UZ-CRED-002";
 pub const ERR_CRED_PLATFORM_KEY_MISSING = "UZ-CRED-003";
+
+// M4_001: Approval gate error codes
+pub const ERR_APPROVAL_PARSE_FAILED = "UZ-APPROVAL-001";
+pub const ERR_APPROVAL_NOT_FOUND = "UZ-APPROVAL-002";
+pub const ERR_APPROVAL_INVALID_SIGNATURE = "UZ-APPROVAL-003";
+pub const ERR_APPROVAL_REDIS_UNAVAILABLE = "UZ-APPROVAL-004";
+pub const ERR_APPROVAL_CONDITION_INVALID = "UZ-APPROVAL-005";
+
+// M4_001: Approval gate user-facing messages
+pub const MSG_APPROVAL_NOT_FOUND = "Approval action not found or already resolved";
+pub const MSG_APPROVAL_INVALID_BODY = "Invalid approval payload";
+pub const MSG_APPROVAL_INVALID_DECISION = "Decision must be 'approve' or 'deny'";
+
+// M4_001: Approval gate constants
+pub const GATE_DEFAULT_TIMEOUT_MS: u64 = 3_600_000;
+pub const GATE_ANOMALY_KEY_PREFIX = "zombie:anomaly:";
+pub const GATE_PENDING_KEY_PREFIX = "zombie:gate:pending:";
+pub const GATE_RESPONSE_KEY_PREFIX = "zombie:gate:response:";
+pub const GATE_PENDING_TTL_SECONDS: u32 = 7200;
+pub const GATE_DECISION_APPROVE = "approve";
+pub const GATE_DECISION_DENY = "deny";
+
+// M4_001: Gate activity event types
+pub const GATE_EVENT_REQUIRED = "gate_approval_required";
+pub const GATE_EVENT_APPROVED = "gate_approved";
+pub const GATE_EVENT_DENIED = "gate_denied";
+pub const GATE_EVENT_TIMEOUT = "gate_timeout";
+pub const GATE_EVENT_AUTO_KILL = "gate_auto_kill";
+pub const GATE_EVENT_AUTO_APPROVE = "gate_auto_approve";
 
 pub fn docsRef(code: []const u8) struct { base: []const u8, code: []const u8 } {
     return .{
@@ -252,117 +318,26 @@ pub fn hint(code: []const u8) ?[]const u8 {
         return "Config JSON is malformed. Verify trigger, skills, credentials, and budget fields. Run 'zombiectl install <template>' for a valid template.";
     if (std.mem.eql(u8, code, ERR_ZOMBIE_NOT_FOUND))
         return "Zombie not found. Verify the zombie_id and that it has not been killed.";
+    if (std.mem.eql(u8, code, ERR_WEBHOOK_SLACK_SIG_INVALID))
+        return "Slack signature verification failed. Check that the signing secret in the vault matches the one in Slack App settings.";
+    if (std.mem.eql(u8, code, ERR_WEBHOOK_SLACK_TIMESTAMP_STALE))
+        return "Slack request timestamp is more than 5 minutes old. This may indicate a replay attack or clock skew.";
+    if (std.mem.eql(u8, code, ERR_TOOL_CREDENTIAL_MISSING))
+        return "A required credential is not in the vault. Add it with: zombiectl credential add <skill_name>";
+    if (std.mem.eql(u8, code, ERR_TOOL_NOT_ATTACHED))
+        return "The tool is not in this Zombie's skills list. Add it to the TRIGGER.md skills: section.";
+    if (std.mem.eql(u8, code, ERR_TOOL_UNKNOWN))
+        return "Unknown tool name. Check spelling against the known skills list.";
+    if (std.mem.eql(u8, code, ERR_TOOL_API_FAILED))
+        return "Tool API call failed. Check the target service status and credential permissions.";
+    if (std.mem.eql(u8, code, ERR_TOOL_GIT_FAILED))
+        return "Git operation failed. Check repo URL, branch name, and credential permissions.";
+    if (std.mem.eql(u8, code, ERR_TOOL_TIMEOUT))
+        return "Tool call timed out. Check network connectivity and target service status.";
     return null;
 }
 
-test "docsRef returns single base and code tuple" {
-    const ref = docsRef(ERR_UUIDV7_INVALID_ID_SHAPE);
-    try std.testing.expectEqualStrings(ERROR_DOCS_BASE, ref.base);
-    try std.testing.expectEqualStrings("UZ-UUIDV7-009", ref.code);
-}
-
-test "hint returns actionable text for known startup codes" {
-    try std.testing.expect(hint(ERR_STARTUP_REDIS_CONNECT) != null);
-    try std.testing.expect(hint(ERR_WORKER_PROMPTS_LOAD) != null);
-    try std.testing.expect(hint(ERR_WORKER_PROFILE_INIT) != null);
-    try std.testing.expect(hint(ERR_INTERNAL_DB_UNAVAILABLE) != null);
-}
-
-test "hint returns null for codes without hints" {
-    try std.testing.expectEqual(@as(?[]const u8, null), hint(ERR_UUIDV7_CANONICAL_FORMAT));
-    try std.testing.expectEqual(@as(?[]const u8, null), hint(ERR_RUN_NOT_FOUND));
-}
-
-// M4_001: Approval gate error codes
-pub const ERR_APPROVAL_PARSE_FAILED = "UZ-APPROVAL-001";
-pub const ERR_APPROVAL_NOT_FOUND = "UZ-APPROVAL-002";
-pub const ERR_APPROVAL_INVALID_SIGNATURE = "UZ-APPROVAL-003";
-pub const ERR_APPROVAL_REDIS_UNAVAILABLE = "UZ-APPROVAL-004";
-pub const ERR_APPROVAL_CONDITION_INVALID = "UZ-APPROVAL-005";
-
-// M4_001: Approval gate user-facing messages
-pub const MSG_APPROVAL_NOT_FOUND = "Approval action not found or already resolved";
-pub const MSG_APPROVAL_INVALID_BODY = "Invalid approval payload";
-pub const MSG_APPROVAL_INVALID_DECISION = "Decision must be 'approve' or 'deny'";
-
-// M4_001: Approval gate constants
-pub const GATE_DEFAULT_TIMEOUT_MS: u64 = 3_600_000; // 1 hour
-pub const GATE_ANOMALY_KEY_PREFIX = "zombie:anomaly:";
-pub const GATE_PENDING_KEY_PREFIX = "zombie:gate:pending:";
-pub const GATE_RESPONSE_KEY_PREFIX = "zombie:gate:response:";
-pub const GATE_PENDING_TTL_SECONDS: u32 = 7200; // 2h (covers 1h timeout + buffer)
-pub const GATE_DECISION_APPROVE = "approve";
-pub const GATE_DECISION_DENY = "deny";
-
-// M4_001: Gate activity event types
-pub const GATE_EVENT_REQUIRED = "gate_approval_required";
-pub const GATE_EVENT_APPROVED = "gate_approved";
-pub const GATE_EVENT_DENIED = "gate_denied";
-pub const GATE_EVENT_TIMEOUT = "gate_timeout";
-pub const GATE_EVENT_AUTO_KILL = "gate_auto_kill";
-pub const GATE_EVENT_AUTO_APPROVE = "gate_auto_approve";
-
-// ── T8 — OWASP Agent Security: credential error codes (M16_003) ──────
-
-// T8.1 — M16_003/M16_004 credential error codes exist and follow UZ-CRED- naming.
-test "T8: ERR_CRED_* codes follow UZ-CRED- prefix naming (M16_003/M16_004)" {
-    try std.testing.expect(std.mem.startsWith(u8, ERR_CRED_ANTHROPIC_KEY_MISSING, "UZ-CRED-"));
-    try std.testing.expect(std.mem.startsWith(u8, ERR_CRED_GITHUB_TOKEN_FAILED, "UZ-CRED-"));
-    try std.testing.expect(std.mem.startsWith(u8, ERR_CRED_PLATFORM_KEY_MISSING, "UZ-CRED-"));
-}
-
-// T8.2 — All credential codes have distinct values (no code collision).
-test "T8: ERR_CRED_* codes are distinct — no collision (M16_003/M16_004)" {
-    try std.testing.expect(!std.mem.eql(u8, ERR_CRED_ANTHROPIC_KEY_MISSING, ERR_CRED_GITHUB_TOKEN_FAILED));
-    try std.testing.expect(!std.mem.eql(u8, ERR_CRED_ANTHROPIC_KEY_MISSING, ERR_CRED_PLATFORM_KEY_MISSING));
-    try std.testing.expect(!std.mem.eql(u8, ERR_CRED_GITHUB_TOKEN_FAILED, ERR_CRED_PLATFORM_KEY_MISSING));
-}
-
-// T8.3 — Credential error hints exist and are actionable but do not expose raw secret values.
-// The hint must tell the operator WHERE to look (vault item name, env var name) but must
-// never contain a literal credential value, a resolved secret, or a raw token prefix.
-test "T8: credential error hints are actionable and contain no raw secret values (M16_003)" {
-    const anthropic_hint = hint(ERR_CRED_ANTHROPIC_KEY_MISSING).?;
-    try std.testing.expect(anthropic_hint.len > 0);
-    // Must NOT contain a literal Anthropic key prefix (sk-ant- is a live credential prefix).
-    try std.testing.expect(std.mem.indexOf(u8, anthropic_hint, "sk-ant-api") == null);
-    // Must NOT contain a literal Bearer token header value.
-    try std.testing.expect(std.mem.indexOf(u8, anthropic_hint, "Bearer ") == null);
-
-    const github_hint = hint(ERR_CRED_GITHUB_TOKEN_FAILED).?;
-    try std.testing.expect(github_hint.len > 0);
-    // Must NOT contain a raw GitHub installation token prefix.
-    try std.testing.expect(std.mem.indexOf(u8, github_hint, "ghs_") == null);
-    try std.testing.expect(std.mem.indexOf(u8, github_hint, "ghp_") == null);
-}
-
-// T8.4 — ERR_CRED_GITHUB_TOKEN_FAILED hint references GitHub App auth (not PAT fallback).
-// Guards against a hint that silently suggests a less-secure auth method.
-test "T8: ERR_CRED_GITHUB_TOKEN_FAILED hint references GitHub App — no PAT fallback (M16_003)" {
-    const h = hint(ERR_CRED_GITHUB_TOKEN_FAILED).?;
-    // Must mention GitHub App concepts (GITHUB_APP_ID, private key, or installation).
-    const mentions_app = std.mem.indexOf(u8, h, "App") != null or
-        std.mem.indexOf(u8, h, "installation") != null or
-        std.mem.indexOf(u8, h, "GITHUB_APP") != null;
-    try std.testing.expect(mentions_app);
-}
-
-// ── T8 M16_004 — platform key error code ────────────────────────────────────
-
-// T8.5 — ERR_CRED_PLATFORM_KEY_MISSING hint is actionable and names the admin endpoint.
-test "T8: ERR_CRED_PLATFORM_KEY_MISSING hint names admin endpoint and BYOK path (M16_004)" {
-    const h = hint(ERR_CRED_PLATFORM_KEY_MISSING).?;
-    try std.testing.expect(h.len > 0);
-    // Must reference the admin API path so operators know where to go.
-    const mentions_admin = std.mem.indexOf(u8, h, "platform-keys") != null or
-        std.mem.indexOf(u8, h, "admin") != null;
-    try std.testing.expect(mentions_admin);
-    // Must reference the workspace BYOK path as the alternative.
-    const mentions_byok = std.mem.indexOf(u8, h, "credentials/llm") != null or
-        std.mem.indexOf(u8, h, "BYOK") != null or
-        std.mem.indexOf(u8, h, "own key") != null;
-    try std.testing.expect(mentions_byok);
-    // Must not expose any raw key material.
-    try std.testing.expect(std.mem.indexOf(u8, h, "sk-ant-") == null);
-    try std.testing.expect(std.mem.indexOf(u8, h, "Bearer ") == null);
+// Tests extracted to codes_test.zig (Rule 8: 400-line gate)
+test {
+    _ = @import("codes_test.zig");
 }

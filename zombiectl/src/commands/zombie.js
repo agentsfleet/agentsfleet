@@ -14,7 +14,7 @@ const TEMPLATES_DIR = join(__dirname, "../../templates");
 const SKILL_FILENAME = "SKILL.md";
 const TRIGGER_FILENAME = "TRIGGER.md";
 
-const BUNDLED_TEMPLATES = ["lead-collector"];
+const BUNDLED_TEMPLATES = ["lead-collector", "slack-bug-fixer"];
 
 export async function commandZombie(ctx, args, workspaces, deps) {
   const action = args[0];

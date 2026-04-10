@@ -400,7 +400,6 @@ make down
 ```
 
 **CI note:** GitHub Actions runs `make up` in the workflow before `make test-integration`. Local dev must do the same manually. Tests will fail with connection errors if services are not running.
-
 ---
 
 ## 12.0 Verification Evidence
