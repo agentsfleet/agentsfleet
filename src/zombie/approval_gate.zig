@@ -19,7 +19,7 @@ const log = std.log.scoped(.approval_gate);
 
 pub const GateDecision = enum { auto_approve, requires_approval, auto_kill };
 
-pub const GateResult = enum { approved, denied, timed_out, auto_killed };
+pub const GateResult = enum { approved, denied, timed_out };
 
 pub const AnomalyResult = enum { normal, auto_kill };
 
@@ -242,10 +242,18 @@ pub fn requestApproval(
         ec.GATE_PENDING_KEY_PREFIX, zombie_id, action_id,
     });
 
-    var detail_buf: [512]u8 = undefined;
-    const detail_json = try std.fmt.bufPrint(&detail_buf, "{{\"tool\":\"{s}\",\"action\":\"{s}\",\"summary\":\"{s}\"}}", .{
-        detail.tool, detail.action, detail.params_summary,
-    });
+    // JSON-escape user-supplied fields to prevent injection (RULES.md #23)
+    var detail_list = std.ArrayList(u8).init(alloc);
+    defer detail_list.deinit();
+    const dw = detail_list.writer();
+    try dw.writeAll("{\"tool\":");
+    try std.json.stringify(detail.tool, .{}, dw);
+    try dw.writeAll(",\"action\":");
+    try std.json.stringify(detail.action, .{}, dw);
+    try dw.writeAll(",\"summary\":");
+    try std.json.stringify(detail.params_summary, .{}, dw);
+    try dw.writeAll("}");
+    const detail_json = detail_list.items;
 
     try redis.setEx(pending_key, detail_json, ec.GATE_PENDING_TTL_SECONDS);
 

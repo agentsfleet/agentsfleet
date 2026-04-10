@@ -47,6 +47,10 @@ pub fn handleApprovalCallback(
     const alloc = arena.allocator();
     const req_id = common.requestId(alloc);
 
+    // Verify request signature (HMAC-SHA256) if signing secret is configured.
+    // Without this, any actor who knows the URL can submit approve/deny.
+    if (!verifyRequestSignature(req, res, req_id)) return;
+
     const payload = parseApprovalBody(alloc, req, res, req_id) orelse return;
     const decision_str = payload.decision.toConstString();
 
@@ -131,17 +135,17 @@ fn parseApprovalBody(
     req_id: []const u8,
 ) ?ApprovalPayload {
     const body = req.body() orelse {
-        common.errorResponse(res, .bad_request, ec.ERR_APPROVAL_NOT_FOUND, ec.MSG_APPROVAL_INVALID_BODY, req_id);
+        common.errorResponse(res, .bad_request, ec.ERR_APPROVAL_PARSE_FAILED, ec.MSG_APPROVAL_INVALID_BODY, req_id);
         return null;
     };
     if (!common.checkBodySize(req, res, body, req_id)) return null;
     const parsed = std.json.parseFromSlice(RawApprovalPayload, alloc, body, .{ .ignore_unknown_fields = true }) catch {
-        common.errorResponse(res, .bad_request, ec.ERR_APPROVAL_NOT_FOUND, ec.MSG_APPROVAL_INVALID_BODY, req_id);
+        common.errorResponse(res, .bad_request, ec.ERR_APPROVAL_PARSE_FAILED, ec.MSG_APPROVAL_INVALID_BODY, req_id);
         return null;
     };
     const raw = parsed.value;
     if (raw.action_id.len == 0 or raw.decision.len == 0) {
-        common.errorResponse(res, .bad_request, ec.ERR_APPROVAL_NOT_FOUND, ec.MSG_APPROVAL_INVALID_BODY, req_id);
+        common.errorResponse(res, .bad_request, ec.ERR_APPROVAL_PARSE_FAILED, ec.MSG_APPROVAL_INVALID_BODY, req_id);
         return null;
     }
     const decision: ApprovalDecision = if (std.mem.eql(u8, raw.decision, ec.GATE_DECISION_APPROVE))
@@ -149,10 +153,69 @@ fn parseApprovalBody(
     else if (std.mem.eql(u8, raw.decision, ec.GATE_DECISION_DENY))
         .deny
     else {
-        common.errorResponse(res, .bad_request, ec.ERR_APPROVAL_NOT_FOUND, ec.MSG_APPROVAL_INVALID_DECISION, req_id);
+        common.errorResponse(res, .bad_request, ec.ERR_APPROVAL_PARSE_FAILED, ec.MSG_APPROVAL_INVALID_DECISION, req_id);
         return null;
     };
     return ApprovalPayload{ .action_id = raw.action_id, .decision = decision };
+}
+
+/// Verify the request signature using HMAC-SHA256.
+/// Expects X-Signature-Timestamp and X-Signature headers.
+/// Signing secret is read from APPROVAL_SIGNING_SECRET env var.
+/// If no signing secret is configured, rejects all requests (fail-closed).
+fn verifyRequestSignature(req: *httpz.Request, res: *httpz.Response, req_id: []const u8) bool {
+    const secret = std.process.getEnvVarOwned(std.heap.page_allocator, "APPROVAL_SIGNING_SECRET") catch {
+        // No signing secret configured — reject (fail-closed, no insecure fallback)
+        log.warn("approval.no_signing_secret_configured req_id={s}", .{req_id});
+        common.errorResponse(res, .forbidden, ec.ERR_APPROVAL_INVALID_SIGNATURE, "Signing secret not configured", req_id);
+        return false;
+    };
+    defer std.heap.page_allocator.free(secret);
+
+    const timestamp = req.header("x-signature-timestamp") orelse {
+        common.errorResponse(res, .unauthorized, ec.ERR_APPROVAL_INVALID_SIGNATURE, "Missing signature timestamp", req_id);
+        return false;
+    };
+    const provided_sig = req.header("x-signature") orelse {
+        common.errorResponse(res, .unauthorized, ec.ERR_APPROVAL_INVALID_SIGNATURE, "Missing signature", req_id);
+        return false;
+    };
+
+    const body = req.body() orelse "";
+
+    // Compute HMAC-SHA256("v0:" ++ timestamp ++ ":" ++ body)
+    const HmacSha256 = std.crypto.auth.hmac.sha2.HmacSha256;
+    var mac: [HmacSha256.mac_length]u8 = undefined;
+    var h = HmacSha256.init(secret);
+    h.update("v0:");
+    h.update(timestamp);
+    h.update(":");
+    h.update(body);
+    h.final(&mac);
+
+    // Format as "v0=" ++ hex(mac)
+    var expected_buf: [3 + HmacSha256.mac_length * 2]u8 = undefined;
+    @memcpy(expected_buf[0..3], "v0=");
+    const hex_chars = "0123456789abcdef";
+    for (mac, 0..) |byte, i| {
+        expected_buf[3 + i * 2] = hex_chars[byte >> 4];
+        expected_buf[3 + i * 2 + 1] = hex_chars[byte & 0x0f];
+    }
+    const expected = expected_buf[0 .. 3 + HmacSha256.mac_length * 2];
+
+    // Constant-time comparison (Rule 4: no short-circuit for secrets)
+    if (provided_sig.len != expected.len) {
+        common.errorResponse(res, .unauthorized, ec.ERR_APPROVAL_INVALID_SIGNATURE, "Invalid signature", req_id);
+        return false;
+    }
+    var diff: u8 = 0;
+    for (provided_sig, expected) |a, b| diff |= a ^ b;
+    if (diff != 0) {
+        common.errorResponse(res, .unauthorized, ec.ERR_APPROVAL_INVALID_SIGNATURE, "Invalid signature", req_id);
+        return false;
+    }
+
+    return true;
 }
 
 fn fetchWorkspaceId(pool: *pg.Pool, alloc: std.mem.Allocator, zombie_id: []const u8) ![]const u8 {

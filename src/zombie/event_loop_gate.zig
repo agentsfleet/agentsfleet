@@ -51,8 +51,10 @@ pub fn checkApprovalGate(
         return .{ .auto_killed = .anomaly };
     }
 
-    // 2. Gate evaluation
-    const context = parseEventContext(alloc, event.data_json);
+    // 2. Gate evaluation — parsed context must be deinit'd to avoid leak
+    var context_parsed = parseEventContext(alloc, event.data_json);
+    defer if (context_parsed) |*p| p.deinit();
+    const context: ?std.json.Value = if (context_parsed) |p| p.value else null;
     const decision = approval_gate.evaluateGate(
         gates,
         event.event_type,
@@ -123,11 +125,6 @@ fn handleApprovalFlow(
             logGateActivity(pool, alloc, session, error_codes.GATE_EVENT_TIMEOUT, action_id);
             break :blk .{ .blocked = .timeout };
         },
-        .auto_killed => blk: {
-            logGateActivity(pool, alloc, session, error_codes.GATE_EVENT_AUTO_KILL, action_id);
-            pauseZombie(pool, session.zombie_id);
-            break :blk .{ .auto_killed = .anomaly };
-        },
     };
 }
 
@@ -148,8 +145,7 @@ fn pauseZombie(pool: *pg.Pool, zombie_id: []const u8) void {
     , .{ std.time.milliTimestamp(), zombie_id }) catch {};
 }
 
-fn parseEventContext(alloc: Allocator, json: []const u8) ?std.json.Value {
+fn parseEventContext(alloc: Allocator, json: []const u8) ?std.json.Parsed(std.json.Value) {
     if (json.len <= 2) return null;
-    const parsed = std.json.parseFromSlice(std.json.Value, alloc, json, .{}) catch return null;
-    return parsed.value;
+    return std.json.parseFromSlice(std.json.Value, alloc, json, .{}) catch null;
 }
