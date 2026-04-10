@@ -175,4 +175,5 @@ test {
     _ = @import("zombie/firewall/content_scanner.zig");
     _ = @import("zombie/firewall/firewall.zig");
     _ = @import("zombie/firewall/firewall_test.zig");
+    _ = @import("zombie/firewall/firewall_robustness_test.zig");
 }

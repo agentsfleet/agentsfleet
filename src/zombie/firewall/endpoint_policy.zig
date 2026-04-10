@@ -8,6 +8,7 @@
 const std = @import("std");
 const domain_policy = @import("domain_policy.zig");
 const FirewallDecision = domain_policy.FirewallDecision;
+const asciiEqlIgnoreCase = domain_policy.asciiEqlIgnoreCase;
 const Allocator = std.mem.Allocator;
 
 pub const EndpointAction = enum {
@@ -69,14 +70,24 @@ pub fn parseEndpointRules(alloc: Allocator, json_bytes: []const u8) ![]EndpointR
 
     for (rules_val.array.items) |item| {
         if (item != .object) continue;
-        const rule = EndpointRule{
-            .domain = try dupeJsonStr(alloc, item, "domain"),
-            .method = try dupeJsonStr(alloc, item, "method"),
-            .path = try dupeJsonStr(alloc, item, "path"),
-            .action = parseAction(jsonStr(item, "action") orelse return error.FirewallPolicyParseError),
-            .reason = try dupeJsonStr(alloc, item, "reason"),
-        };
-        try result.append(alloc, rule);
+
+        const domain = try dupeJsonStr(alloc, item, "domain");
+        errdefer alloc.free(domain);
+        const method = try dupeJsonStr(alloc, item, "method");
+        errdefer alloc.free(method);
+        const path = try dupeJsonStr(alloc, item, "path");
+        errdefer alloc.free(path);
+        const action_str = jsonStr(item, "action") orelse return error.FirewallPolicyParseError;
+        const reason = try dupeJsonStr(alloc, item, "reason");
+        errdefer alloc.free(reason);
+
+        try result.append(alloc, .{
+            .domain = domain,
+            .method = method,
+            .path = path,
+            .action = parseAction(action_str),
+            .reason = reason,
+        });
     }
     return try result.toOwnedSlice(alloc);
 }
@@ -131,14 +142,6 @@ fn globMatch(pattern: []const u8, text: []const u8) bool {
     }
 
     return std.mem.eql(u8, pattern, text);
-}
-
-fn asciiEqlIgnoreCase(a: []const u8, b: []const u8) bool {
-    if (a.len != b.len) return false;
-    for (a, b) |ca, cb| {
-        if (std.ascii.toLower(ca) != std.ascii.toLower(cb)) return false;
-    }
-    return true;
 }
 
 // ── Tests ──────────────────────────────────────────────────────────────────

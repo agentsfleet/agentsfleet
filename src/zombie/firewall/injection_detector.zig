@@ -63,7 +63,7 @@ const PATTERNS = [_]PatternEntry{
 pub fn scanRequestBody(body: []const u8) InjectionResult {
     // Normalize: decode common unicode escapes (\uXXXX) into ASCII,
     // then lowercase the result for case-insensitive matching.
-    var buf: [16384]u8 = undefined;
+    var buf: [65536]u8 = undefined;
     const normalized = normalizeAndLower(body, &buf);
 
     for (&PATTERNS) |*entry| {
@@ -79,8 +79,8 @@ pub fn scanRequestBody(body: []const u8) InjectionResult {
 }
 
 /// Decode `\uXXXX` sequences to ASCII bytes and lowercase everything.
-/// If the body is larger than the buffer, scan only what fits.
-fn normalizeAndLower(body: []const u8, buf: *[16384]u8) []const u8 {
+/// Scans up to 64KB of body. Bodies larger than 64KB are truncated for scanning.
+fn normalizeAndLower(body: []const u8, buf: *[65536]u8) []const u8 {
     var out_len: usize = 0;
     var i: usize = 0;
     const limit = @min(body.len, buf.len - 1);

@@ -96,21 +96,58 @@ fn checkApiKeyPatterns(body: []const u8) ?[]const u8 {
     return null;
 }
 
-/// Detect credit card number patterns: 4 groups of 4 digits separated by spaces or dashes.
-/// Also detects 16 consecutive digits.
+/// Detect credit card number patterns: 4 groups of 4 digits separated by spaces or dashes,
+/// or 16 consecutive digits. Validates with Luhn checksum to reduce false positives.
 fn checkCreditCardPattern(body: []const u8) bool {
-    // Pattern: 4 groups of 4 digits separated by space or dash (e.g., "4111 1111 1111 1111")
     var i: usize = 0;
     while (i + 18 < body.len) : (i += 1) {
-        if (isDigit(body[i]) and matchCardPattern(body[i..])) return true;
-        // Also check 16 consecutive digits
-        if (i + 15 < body.len and isDigit(body[i]) and allDigits(body[i .. i + 16])) return true;
+        if (isDigit(body[i]) and matchCardPattern(body[i..])) {
+            const digits = extractDigits(body[i .. i + 19]);
+            if (luhnCheck(&digits)) return true;
+        }
+        if (i + 15 < body.len and isDigit(body[i]) and allDigits(body[i .. i + 16])) {
+            if (luhnCheck(body[i .. i + 16])) return true;
+        }
     }
-    // Check remaining positions for 16 consecutive digits
     while (i + 15 < body.len) : (i += 1) {
-        if (isDigit(body[i]) and allDigits(body[i .. i + 16])) return true;
+        if (isDigit(body[i]) and allDigits(body[i .. i + 16])) {
+            if (luhnCheck(body[i .. i + 16])) return true;
+        }
     }
     return false;
+}
+
+/// Extract only digit characters from a card-formatted string (skip spaces/dashes).
+fn extractDigits(s: []const u8) [16]u8 {
+    var digits: [16]u8 = undefined;
+    var count: usize = 0;
+    for (s) |c| {
+        if (isDigit(c) and count < 16) {
+            digits[count] = c;
+            count += 1;
+        }
+    }
+    return digits;
+}
+
+/// Luhn checksum validation. Returns true if the digit sequence passes.
+fn luhnCheck(digits: []const u8) bool {
+    if (digits.len < 13 or digits.len > 19) return false;
+    var sum: u32 = 0;
+    var alt = false;
+    var idx = digits.len;
+    while (idx > 0) {
+        idx -= 1;
+        if (!isDigit(digits[idx])) return false;
+        var n: u32 = digits[idx] - '0';
+        if (alt) {
+            n *= 2;
+            if (n > 9) n -= 9;
+        }
+        sum += n;
+        alt = !alt;
+    }
+    return sum % 10 == 0;
 }
 
 fn matchCardPattern(s: []const u8) bool {

@@ -22,7 +22,7 @@ pub fn checkDomain(allowed_domains: []const []const u8, target: []const u8) Fire
     return .{ .block = .{ .reason = "Domain not in allowlist" } };
 }
 
-fn asciiEqlIgnoreCase(a: []const u8, b: []const u8) bool {
+pub fn asciiEqlIgnoreCase(a: []const u8, b: []const u8) bool {
     if (a.len != b.len) return false;
     for (a, b) |ca, cb| {
         if (std.ascii.toLower(ca) != std.ascii.toLower(cb)) return false;
