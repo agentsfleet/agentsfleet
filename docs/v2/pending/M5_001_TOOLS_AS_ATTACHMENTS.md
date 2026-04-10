@@ -395,10 +395,6 @@ pub fn stripCredentialEcho(output: []const u8, credential: []const u8) StripResu
 
 ## 13.0 Out of Scope
 
-- Dynamic tool loading from ClawHub registry (Phase 3 — tools are compiled-in for now)
-- Tool sandboxing (each tool runs inside the same bwrap sandbox — no per-tool isolation)
-- Tool versioning (all tools at v1, no version negotiation)
-- Tool composition (tools can't call other tools — agent orchestrates)
-- Tool marketplace / third-party tool authoring
-- Tool telemetry / per-tool metrics (activity stream logs are sufficient for now)
+- Dynamic tool loading from ClawHub registry (Phase 3)
+- Tool sandboxing, versioning, composition, marketplace (future)
 - MCP server integration (tools use native Zig, not MCP protocol)

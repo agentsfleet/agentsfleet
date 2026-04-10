@@ -240,3 +240,50 @@ Pattern: `common.errorResponse(res, status, error_codes.ERR_*, error_messages.MS
 
 Never concatenate raw user input into agent prompts or tool calls.
 Validate, type-check, length-bound all external input. Use parameterized templates.
+
+---
+
+## 24. Config-driven over enum-driven for multi-provider patterns
+
+When supporting multiple providers (webhook signatures, API clients, auth schemes),
+use a configuration struct with data fields, not an enum with per-variant switch arms.
+Adding a new provider should be one new const, not new functions or switch cases.
+
+> M3_001: Built `slack_verify.zig` with Provider enum + per-provider verify functions,
+> then rewrote as `webhook_verify.zig` with `VerifyConfig` struct. Adding GitHub/Linear
+> was one const each, zero new functions.
+
+---
+
+## 25. Test fixtures must use the same constants as production code
+
+Never use inline string literals in test fixtures for values that have named constants.
+If `codes.zig` defines `SKILL_DOMAINS_AGENTMAIL = "api.agentmail.to"`, tests must use
+that constant, not a hardcoded `"api.agentmail.dev"`.
+
+> M3_001: agentmail domain was `api.agentmail.to` in production, `api.agentmail.dev`
+> in test fixtures, and `api.agentmail.com` in spec docs. Three different values for
+> the same thing.
+
+---
+
+## 26. Every ERR_* code must have a hint() entry
+
+When adding a new error code to `codes.zig`, always add a corresponding entry in the
+`hint()` function. The hint must be actionable: tell the operator what to check and
+what command to run. Omitting the hint means the error code is useless to operators.
+
+> M3_001: Added `ERR_TOOL_API_FAILED`, `ERR_TOOL_GIT_FAILED`, `ERR_TOOL_TIMEOUT`
+> without hints. Caught in review.
+
+---
+
+## 27. Don't derive values by slicing related fields
+
+When one value is logically independent of another, give it its own field. Don't
+compute it by string-slicing a related field. This creates invisible coupling that
+breaks when either field changes independently.
+
+> M3_001: Derived Slack HMAC version `"v0"` by slicing prefix `"v0="[0..len-1]`.
+> If a future provider has a prefix without `=`, this silently produces wrong HMAC.
+> Fixed by adding explicit `hmac_version` field to `VerifyConfig`.

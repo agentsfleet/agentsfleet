@@ -83,6 +83,18 @@ pub const ERR_WEBHOOK_NO_ZOMBIE = "UZ-WH-001";
 pub const ERR_WEBHOOK_MALFORMED = "UZ-WH-002";
 pub const ERR_WEBHOOK_ZOMBIE_PAUSED = "UZ-WH-003";
 
+// M3_001: Slack webhook error codes
+pub const ERR_WEBHOOK_SLACK_SIG_INVALID = "UZ-WH-010";
+pub const ERR_WEBHOOK_SLACK_TIMESTAMP_STALE = "UZ-WH-011";
+
+// M3_001: Tool error codes
+pub const ERR_TOOL_CREDENTIAL_MISSING = "UZ-TOOL-001";
+pub const ERR_TOOL_API_FAILED = "UZ-TOOL-002";
+pub const ERR_TOOL_GIT_FAILED = "UZ-TOOL-003";
+pub const ERR_TOOL_NOT_ATTACHED = "UZ-TOOL-004";
+pub const ERR_TOOL_UNKNOWN = "UZ-TOOL-005";
+pub const ERR_TOOL_TIMEOUT = "UZ-TOOL-006";
+
 // M1_001: Webhook user-facing error messages (rule 22: no inline strings)
 pub const MSG_BODY_REQUIRED = "Request body required";
 pub const MSG_MALFORMED_JSON = "Malformed JSON";
@@ -97,9 +109,35 @@ pub const MSG_ZOMBIE_NOT_ACTIVE = "Zombie is not active";
 pub const BEARER_PREFIX = "Bearer ";
 pub const DEDUP_TTL_SECONDS: u32 = 86400;
 pub const ZOMBIE_STATUS_ACTIVE = "active";
+pub const ZOMBIE_STATUS_PAUSED = "paused";
+pub const ZOMBIE_STATUS_STOPPED = "stopped";
 pub const WEBHOOK_EVENT_TYPE = "webhook_received";
 pub const STATUS_DUPLICATE = "duplicate";
 pub const STATUS_ACCEPTED = "accepted";
+
+// M3_001: Webhook provider signature constants
+pub const SLACK_SIG_VERSION = "v0";
+pub const SLACK_SIG_HEADER = "x-slack-signature";
+pub const SLACK_TS_HEADER = "x-slack-request-timestamp";
+pub const SLACK_MAX_TS_DRIFT_SECONDS: i64 = 300; // 5 minutes replay protection
+pub const MSG_WEBHOOK_SIG_INVALID = "Webhook signature verification failed. Check signing secret.";
+pub const MSG_WEBHOOK_TS_STALE = "Webhook request too old (>5 min). Replay attack rejected.";
+pub const MSG_TOOL_CREDENTIAL_MISSING = "Credential not found. Add with: zombiectl credential add";
+pub const MSG_TOOL_NOT_ATTACHED = "Tool not attached to this Zombie. Add to TRIGGER.md skills.";
+pub const MSG_TOOL_UNKNOWN = "Unknown tool. Available: agentmail, slack, git, github, linear, cloudflare, pagerduty";
+
+// M3_001: Tool registry — skill-to-domain mapping
+pub const SKILL_DOMAINS_SLACK = [_][]const u8{"api.slack.com"};
+pub const SKILL_DOMAINS_GITHUB = [_][]const u8{ "api.github.com", "github.com" };
+pub const SKILL_DOMAINS_AGENTMAIL = [_][]const u8{"api.agentmail.to"};
+pub const SKILL_DOMAINS_LINEAR = [_][]const u8{"api.linear.app"};
+pub const SKILL_DOMAINS_CLOUDFLARE = [_][]const u8{"api.cloudflare.com"};
+pub const SKILL_DOMAINS_PAGERDUTY = [_][]const u8{"api.pagerduty.com"};
+
+// Activity stream event types for tools
+pub const ACTIVITY_TOOL_INVOKED = "tool_invoked";
+pub const ACTIVITY_TOOL_SUCCESS = "tool_success";
+pub const ACTIVITY_TOOL_ERROR = "tool_error";
 
 // M1_001: Zombie event loop error codes
 pub const ERR_ZOMBIE_BUDGET_EXCEEDED = "UZ-ZMB-001";
@@ -217,6 +255,22 @@ pub fn hint(code: []const u8) ?[]const u8 {
         return "Zombie could not be claimed from the database. Check that the zombie_id exists and status is 'active'.";
     if (std.mem.eql(u8, code, ERR_ZOMBIE_CHECKPOINT_FAILED))
         return "Session checkpoint write to Postgres failed. Check database connectivity.";
+    if (std.mem.eql(u8, code, ERR_WEBHOOK_SLACK_SIG_INVALID))
+        return "Slack signature verification failed. Check that the signing secret in the vault matches the one in Slack App settings.";
+    if (std.mem.eql(u8, code, ERR_WEBHOOK_SLACK_TIMESTAMP_STALE))
+        return "Slack request timestamp is more than 5 minutes old. This may indicate a replay attack or clock skew.";
+    if (std.mem.eql(u8, code, ERR_TOOL_CREDENTIAL_MISSING))
+        return "A required credential is not in the vault. Add it with: zombiectl credential add <skill_name>";
+    if (std.mem.eql(u8, code, ERR_TOOL_NOT_ATTACHED))
+        return "The tool is not in this Zombie's skills list. Add it to the TRIGGER.md skills: section.";
+    if (std.mem.eql(u8, code, ERR_TOOL_UNKNOWN))
+        return "Unknown tool name. Check spelling against the known skills list.";
+    if (std.mem.eql(u8, code, ERR_TOOL_API_FAILED))
+        return "Tool API call failed. Check the target service status and credential permissions.";
+    if (std.mem.eql(u8, code, ERR_TOOL_GIT_FAILED))
+        return "Git operation failed. Check repo URL, branch name, and credential permissions.";
+    if (std.mem.eql(u8, code, ERR_TOOL_TIMEOUT))
+        return "Tool call timed out. Check network connectivity and target service status.";
     return null;
 }
 

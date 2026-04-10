@@ -12,7 +12,7 @@ import { ZOMBIES_PATH } from "../lib/api-paths.js";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const TEMPLATES_DIR = join(__dirname, "../../templates");
 
-const BUNDLED_TEMPLATES = ["lead-collector"];
+const BUNDLED_TEMPLATES = ["lead-collector", "slack-bug-fixer"];
 
 export async function commandZombie(ctx, args, workspaces, deps) {
   const action = args[0];

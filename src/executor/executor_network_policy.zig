@@ -21,9 +21,52 @@ pub const REGISTRY_ALLOWLIST = [_][]const u8{
     "sum.golang.org",
 };
 
-// ── Tests ─────────────────────────────────────────────────────────────────────
+// ── M3_001: Per-Zombie domain merging ─────────────────────────────────────────
 
 const std = @import("std");
+const Allocator = std.mem.Allocator;
+
+/// Merge static registry allowlist with per-Zombie skill domains.
+/// Returns a deduplicated slice of all allowed domains. Caller owns.
+pub fn mergeAllowlists(
+    alloc: Allocator,
+    zombie_domains: []const []const u8,
+) ![]const []const u8 {
+    var seen = std.StringHashMap(void).init(alloc);
+    defer seen.deinit();
+
+    var result: std.ArrayList([]const u8) = .{};
+    errdefer result.deinit(alloc);
+
+    // Add static registry hosts first
+    for (&REGISTRY_ALLOWLIST) |host| {
+        try seen.put(host, {});
+        try result.append(alloc, host);
+    }
+
+    // Add per-Zombie domains, dedup, validate
+    for (zombie_domains) |domain| {
+        if (!isValidDomain(domain)) return error.InvalidDomain;
+        const gop = try seen.getOrPut(domain);
+        if (!gop.found_existing) {
+            try result.append(alloc, domain);
+        }
+    }
+    return result.toOwnedSlice(alloc);
+}
+
+/// Validate a domain string: no injection chars, no whitespace, min length 3.
+fn isValidDomain(domain: []const u8) bool {
+    if (domain.len < 3) return false;
+    for (domain) |ch| {
+        if (std.ascii.isWhitespace(ch)) return false;
+        if (ch == ';' or ch == '|' or ch == '&') return false;
+        if (ch == '\n' or ch == '\r' or ch == 0) return false;
+    }
+    return true;
+}
+
+// ── Tests ─────────────────────────────────────────────────────────────────────
 
 // T1 — Happy path
 
@@ -91,4 +134,61 @@ test "REGISTRY_ALLOWLIST entries are non-empty and contain no whitespace" {
 test "REGISTRY_ALLOWLIST length is exactly 8 (spec §3.1 pinned count)" {
     // If this fails the spec §3.1 list changed — update this test intentionally.
     try std.testing.expectEqual(@as(usize, 8), REGISTRY_ALLOWLIST.len);
+}
+
+// ── M3_001: mergeAllowlists tests ──────────────────────────────────────────
+
+test "mergeAllowlists with empty zombie domains returns registry only" {
+    const alloc = std.testing.allocator;
+    const merged = try mergeAllowlists(alloc, &.{});
+    defer alloc.free(merged);
+    try std.testing.expectEqual(@as(usize, 8), merged.len);
+}
+
+test "mergeAllowlists adds zombie domains without duplicates" {
+    const alloc = std.testing.allocator;
+    const zombie_domains = &[_][]const u8{ "api.slack.com", "api.github.com" };
+    const merged = try mergeAllowlists(alloc, zombie_domains);
+    defer alloc.free(merged);
+    // 8 registry + 2 new = 10
+    try std.testing.expectEqual(@as(usize, 10), merged.len);
+}
+
+test "mergeAllowlists deduplicates zombie domains that overlap" {
+    const alloc = std.testing.allocator;
+    const zombie_domains = &[_][]const u8{ "api.slack.com", "api.slack.com" };
+    const merged = try mergeAllowlists(alloc, zombie_domains);
+    defer alloc.free(merged);
+    // 8 registry + 1 unique new = 9
+    try std.testing.expectEqual(@as(usize, 9), merged.len);
+}
+
+test "mergeAllowlists rejects injection attempt" {
+    const alloc = std.testing.allocator;
+    const bad = &[_][]const u8{"evil.com; rm -rf /"};
+    try std.testing.expectError(error.InvalidDomain, mergeAllowlists(alloc, bad));
+}
+
+test "mergeAllowlists rejects null byte domain" {
+    const alloc = std.testing.allocator;
+    const bad = &[_][]const u8{"evil\x00.com"};
+    try std.testing.expectError(error.InvalidDomain, mergeAllowlists(alloc, bad));
+}
+
+test "mergeAllowlists rejects too-short domain" {
+    const alloc = std.testing.allocator;
+    const bad = &[_][]const u8{"ab"};
+    try std.testing.expectError(error.InvalidDomain, mergeAllowlists(alloc, bad));
+}
+
+test "isValidDomain accepts normal domains" {
+    try std.testing.expect(isValidDomain("api.slack.com"));
+    try std.testing.expect(isValidDomain("github.com"));
+}
+
+test "isValidDomain rejects whitespace and metacharacters" {
+    try std.testing.expect(!isValidDomain("evil .com"));
+    try std.testing.expect(!isValidDomain("evil|com"));
+    try std.testing.expect(!isValidDomain("evil&com"));
+    try std.testing.expect(!isValidDomain(""));
 }

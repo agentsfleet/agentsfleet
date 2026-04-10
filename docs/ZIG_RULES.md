@@ -68,6 +68,13 @@ Status: Canonical Zig source of truth for agents and commits
 - `gitleaks detect`
 - `make check-pg-drain` — static check: every `conn.query()` must have `.drain()` in the same function. Run this when touching any file that calls `conn.query()`. See `lint-zig.py`.
 
+## Zig 0.15.2 API Gotchas (M3_001)
+
+- `std.ArrayList(T).init(alloc)` does not compile. Use `var list: std.ArrayList(T) = .{};` and pass `alloc` per-method: `.append(alloc, item)`, `.deinit(alloc)`, `.toOwnedSlice(alloc)`.
+- `std.fmt.parseHex` does not exist. Use `std.fmt.hexToBytes(&out, hex_str)` to decode hex to bytes.
+- `std.fmt.fmtSliceHexLower` does not exist. Use `std.fmt.bytesToHex(bytes, .lower)` to encode bytes to hex.
+- When unsure about an API, check the codebase first: `grep -rn "ArrayList\|hexToBytes" src/ --include="*.zig"` to see how existing code uses it.
+
 ## Cross-Compile Verification (M22_001)
 
 - Run `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` before every commit that touches Zig files. Do not rely on macOS-only compilation.
