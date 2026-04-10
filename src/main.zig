@@ -156,6 +156,7 @@ test {
     _ = @import("executor/client.zig");
     _ = @import("http/handlers/m5_handler_changes_test.zig");
     _ = @import("http/handlers/m16_004_handler_unit_test.zig");
+    _ = @import("http/handlers/m11_001_error_response_test.zig");
     _ = @import("http/handlers/runs/stream_test.zig");
     _ = @import("http/handlers/runs/stream_integration_test.zig");
     _ = @import("cmd/run_watch_test.zig");

@@ -17,11 +17,15 @@ pub const ErrorEntry = struct {
     docs_uri: []const u8,
 };
 
+/// Sentinel returned when lookup() finds no matching TABLE entry.
+/// .code is a distinct sentinel — it is never in TABLE.
+/// errorResponse() uses the caller-supplied code in the response body,
+/// not UNKNOWN_ENTRY.code, so the sentinel never leaks into wire output.
 pub const UNKNOWN_ENTRY = ErrorEntry{
-    .code = "UZ-INTERNAL-001",
+    .code = "UZ-UNKNOWN",
     .http_status = .internal_server_error,
-    .title = "Internal error",
-    .docs_uri = ERROR_DOCS_BASE ++ "UZ-INTERNAL-001",
+    .title = "Unregistered error code",
+    .docs_uri = ERROR_DOCS_BASE ++ "UZ-INTERNAL-003",
 };
 
 pub const TABLE = [_]ErrorEntry{
@@ -228,6 +232,13 @@ test "lookup returns null for unknown code" {
 
 test "UNKNOWN_ENTRY is 500 internal_server_error" {
     try std.testing.expectEqual(std.http.Status.internal_server_error, UNKNOWN_ENTRY.http_status);
+}
+
+test "UNKNOWN_ENTRY sentinel code is not in TABLE — no collision with registered codes" {
+    for (TABLE) |entry| {
+        const collides = std.mem.eql(u8, entry.code, UNKNOWN_ENTRY.code);
+        try std.testing.expect(!collides);
+    }
 }
 
 test "every entry has non-empty title and docs_uri starting with base" {
