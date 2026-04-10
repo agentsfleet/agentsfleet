@@ -257,7 +257,7 @@ test "WebhookPayload parses valid event" {
 
 test "WebhookPayload rejects missing event_id" {
     const alloc = std.testing.allocator;
-    const body = 
+    const body =
         \\{"type":"email.received","data":{}}
     ;
     const result = std.json.parseFromSlice(WebhookPayload, alloc, body, .{});

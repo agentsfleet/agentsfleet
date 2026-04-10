@@ -17,6 +17,7 @@ const admin_platform_keys_http = @import("handlers/admin_platform_keys_http.zig"
 const workspace_credentials_http = @import("handlers/workspace_credentials_http.zig");
 const agent_relay_http = @import("handlers/agent_relay.zig");
 const webhooks_http = @import("handlers/webhooks.zig");
+const approval_http = @import("handlers/approval_http.zig");
 const zombie_api_http = @import("handlers/zombie_api.zig");
 const zombie_activity_api_http = @import("handlers/zombie_activity_api.zig");
 
@@ -78,6 +79,7 @@ pub const handleSpecTemplate = agent_relay_http.handleSpecTemplate;
 pub const handleSpecPreview = agent_relay_http.handleSpecPreview;
 
 pub const handleReceiveWebhook = webhooks_http.handleReceiveWebhook;
+pub const handleApprovalCallback = approval_http.handleApprovalCallback;
 
 // M2_001: Zombie CRUD + activity + credentials
 pub const handleCreateZombie = zombie_api_http.handleCreateZombie;

@@ -49,7 +49,10 @@ pub fn zombieWorkerLoop(alloc: std.mem.Allocator, cfg: ZombieWorkerConfig) void 
         log.err("zombie_worker.watcher_spawn_fail zombie_id={s}", .{cfg.zombie_id});
         return;
     };
-    defer { running.store(false, .release); watcher.join(); }
+    defer {
+        running.store(false, .release);
+        watcher.join();
+    }
 
     event_loop.runEventLoop(alloc, &session, .{
         .pool = cfg.pool,

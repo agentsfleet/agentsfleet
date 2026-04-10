@@ -87,6 +87,16 @@ test "matchRunAction resolves actions with single-segment run_id" {
     try std.testing.expect(matchRunAction("/v1/runs/:retry", ":retry") == null);
 }
 
+// M4_001: matchWebhookAction matches /v1/webhooks/{zombie_id}{action} and returns the zombie_id.
+pub fn matchWebhookAction(path: []const u8, action: []const u8) ?[]const u8 {
+    const prefix = "/v1/webhooks/";
+    if (!std.mem.startsWith(u8, path, prefix)) return null;
+    if (!std.mem.endsWith(u8, path, action)) return null;
+    const inner = path[prefix.len .. path.len - action.len];
+    if (!isSingleSegment(inner)) return null;
+    return inner;
+}
+
 // M2_001: matchZombieId matches /v1/zombies/{zombie_id} for DELETE.
 pub fn matchZombieId(path: []const u8) ?[]const u8 {
     const prefix = "/v1/zombies/";

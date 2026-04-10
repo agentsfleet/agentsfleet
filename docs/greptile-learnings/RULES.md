@@ -383,3 +383,28 @@ Direct local variables use `q.next()` without dereference.
 `ArrayList.init(alloc)` does not exist in Zig 0.15. Use `var rows: std.ArrayList(T) = .{};`
 and pass the allocator per-operation: `rows.append(alloc, item)`,
 `rows.toOwnedSlice(alloc)`, `rows.deinit(alloc)`.
+
+---
+
+## 35. No dead struct fields
+
+If a struct field always holds the same value across all construction sites, remove it.
+A field that is never varied is not configuration — it is dead weight that misleads readers
+into thinking it can change. Inline the constant at the usage site instead.
+
+> M4_001: `AnomalyRule.behavior` was always `.auto_kill` at every construction site.
+> Removed the field; anomaly rules always auto-kill by definition.
+
+---
+
+## 36. Narrow types at parse boundaries
+
+When external input (JSON, env vars, CLI flags) can only hold a known finite set of values,
+parse into an enum immediately — never store the raw string. This catches invalid values
+at the boundary instead of deep in business logic.
+
+Applies to: config parsing, HTTP payload deserialization, Redis value decoding.
+
+> M4_001: `AnomalyRule.pattern` was `[]const u8` but only `"same_action"` was valid.
+> `ApprovalPayload.decision` was `[]const u8` validated later by a separate function.
+> Both replaced with enums; invalid values now fail at parse time.

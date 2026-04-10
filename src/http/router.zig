@@ -42,6 +42,8 @@ pub const Route = union(enum) {
     set_workspace_scoring_config: []const u8,
     put_harness_source: []const u8,
     receive_webhook: WebhookRoute,
+    // M4_001: Zombie approval gate callback
+    approval_webhook: []const u8,
     compile_harness: []const u8,
     activate_harness: []const u8,
     get_harness_active: []const u8,
@@ -145,6 +147,8 @@ pub fn match(path: []const u8) ?Route {
     if (std.mem.eql(u8, path, "/v1/zombies/credentials")) return .zombie_credentials;
     if (matchers.matchZombieId(path)) |zombie_id| return .{ .delete_zombie = zombie_id };
 
+    // M4_001: Zombie approval gate callback — /v1/webhooks/{zombie_id}:approval
+    if (matchers.matchWebhookAction(path, ":approval")) |zombie_id| return .{ .approval_webhook = zombie_id };
     // M1_001: Zombie webhook endpoint — /v1/webhooks/{zombie_id}
     if (matchWebhookRoute(path)) |route| return .{ .receive_webhook = route };
     if (matchWorkspaceSuffix(path, "/harness/compile")) |workspace_id| return .{ .compile_harness = workspace_id };
@@ -428,26 +432,7 @@ test "M17: bare run path resolves to get_run not cancel_run" {
     }
 }
 
-// ── M1_001 webhook route tests ────────────────────────────────────────────
-
-test "M2_002: match resolves webhook with URL secret" {
-    const zombie_id = "019abc12-8d3a-7f13-8abc-2b3e1e0a6f11";
-    const route = match("/v1/webhooks/019abc12-8d3a-7f13-8abc-2b3e1e0a6f11/mysecret") orelse return error.TestExpectedMatch;
-    const wr = switch (route) {
-        .receive_webhook => |r| r,
-        else => return error.TestExpectedEqual,
-    };
-    try std.testing.expectEqualStrings(zombie_id, wr.zombie_id);
-    try std.testing.expectEqualStrings("mysecret", wr.secret.?);
-}
-
-test "M2_002: match resolves webhook without secret (Bearer fallback)" {
-    const zombie_id = "019abc12-8d3a-7f13-8abc-2b3e1e0a6f11";
-    const route = match("/v1/webhooks/019abc12-8d3a-7f13-8abc-2b3e1e0a6f11") orelse return error.TestExpectedMatch;
-    const wr = switch (route) {
-        .receive_webhook => |r| r,
-        else => return error.TestExpectedEqual,
-    };
-    try std.testing.expectEqualStrings(zombie_id, wr.zombie_id);
-    try std.testing.expect(wr.secret == null);
+// Webhook + approval route tests are in router_test.zig.
+test {
+    _ = @import("router_test.zig");
 }

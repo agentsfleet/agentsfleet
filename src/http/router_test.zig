@@ -299,3 +299,37 @@ test "M2_001: matchZombieId excludes sub-paths" {
     try std.testing.expect(matchZombieId("/v1/zombies/credentials") == null);
     try std.testing.expectEqualStrings("z1", matchZombieId("/v1/zombies/z1").?);
 }
+
+// ── M4_001 approval gate route tests ────────────────────────────────────
+
+test "M4_001: approval webhook route resolves correctly" {
+    const zombie_id = "019abc12-8d3a-7f13-8abc-2b3e1e0a6f11";
+    const route = match("/v1/webhooks/019abc12-8d3a-7f13-8abc-2b3e1e0a6f11:approval") orelse return error.TestExpectedMatch;
+    try std.testing.expectEqualStrings(zombie_id, switch (route) {
+        .approval_webhook => |id| id,
+        else => return error.TestExpectedEqual,
+    });
+}
+
+test "M4_001: approval route does not interfere with regular webhook" {
+    const route = match("/v1/webhooks/z1") orelse return error.TestExpectedMatch;
+    switch (route) {
+        .receive_webhook => {},
+        else => return error.TestExpectedEqual,
+    }
+}
+
+test "M4_001: approval route resolves before webhook route" {
+    // :approval suffix is matched before the generic webhook route
+    const route = match("/v1/webhooks/z1:approval") orelse return error.TestExpectedMatch;
+    switch (route) {
+        .approval_webhook => {},
+        else => return error.TestExpectedEqual,
+    }
+    // Without :approval suffix, goes to receive_webhook
+    const route2 = match("/v1/webhooks/z1") orelse return error.TestExpectedMatch;
+    switch (route2) {
+        .receive_webhook => {},
+        else => return error.TestExpectedEqual,
+    }
+}
