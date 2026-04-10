@@ -2,11 +2,11 @@
 //!
 //! Replaces the hardcoded if/else chain in runner.buildToolsFromSpec().
 //! The bridge owns a static registry of {name, builderFn} entries for
-//! NullClaw's built-in tools (file_read, memory, etc.).
+//! every NullClaw built-in tool.
 //!
 //! To add a new executor-side NullClaw tool:
-//!   1. Write a builder function below.
-//!   2. Add one ToolEntry to BRIDGE_REGISTRY.
+//!   1. Write a builder function in tool_builders.zig.
+//!   2. Add one ToolEntry to BRIDGE_REGISTRY below.
 //!   Zero other changes required.
 //!
 //! This file is NOT about skill tools (Slack, GitHub, AgentMail). Skills are
@@ -20,6 +20,7 @@ const std = @import("std");
 const nullclaw = @import("nullclaw");
 const tools_mod = nullclaw.tools;
 const Config = nullclaw.config.Config;
+const builders = @import("tool_builders.zig");
 
 const log = std.log.scoped(.tool_bridge);
 
@@ -47,40 +48,60 @@ pub const ToolEntry = struct {
     buildFn: BuildFn,
 };
 
-// ── Builder functions ──────────────────────────────────────────────────────
-
-fn buildFileRead(ctx: BuildCtx) anyerror!tools_mod.Tool {
-    const ptr = try ctx.alloc.create(tools_mod.file_read.FileReadTool);
-    ptr.* = .{
-        .workspace_dir = ctx.workspace_path,
-        .allowed_paths = ctx.cfg.autonomy.allowed_paths,
-        .max_file_size = ctx.cfg.tools.max_file_size_bytes,
-    };
-    return ptr.tool();
-}
-
-fn buildMemoryRecall(ctx: BuildCtx) anyerror!tools_mod.Tool {
-    const ptr = try ctx.alloc.create(tools_mod.memory_recall.MemoryRecallTool);
-    ptr.* = .{};
-    return ptr.tool();
-}
-
-fn buildMemoryList(ctx: BuildCtx) anyerror!tools_mod.Tool {
-    const ptr = try ctx.alloc.create(tools_mod.memory_list.MemoryListTool);
-    ptr.* = .{};
-    return ptr.tool();
-}
-
 // ── Static registry ────────────────────────────────────────────────────────
-// NullClaw built-in tools only. Skills are dynamic — no entries here.
+// Every NullClaw built-in tool. Skills are dynamic — no entries here.
+//
+// When tools: null → allTools() gives the agent everything (default).
+// When tools: ["shell", "file_read"] → the bridge resolves only those.
 
 const BRIDGE_REGISTRY = [_]ToolEntry{
-    .{ .name = "file_read", .buildFn = buildFileRead },
-    .{ .name = "memory_recall", .buildFn = buildMemoryRecall },
-    .{ .name = "memory_list", .buildFn = buildMemoryList },
+    // Core file tools
+    .{ .name = "shell", .buildFn = builders.buildShell },
+    .{ .name = "file_read", .buildFn = builders.buildFileRead },
+    .{ .name = "file_write", .buildFn = builders.buildFileWrite },
+    .{ .name = "file_edit", .buildFn = builders.buildFileEdit },
+    .{ .name = "file_append", .buildFn = builders.buildFileAppend },
+    .{ .name = "file_delete", .buildFn = builders.buildFileDelete },
+    .{ .name = "file_read_hashed", .buildFn = builders.buildFileReadHashed },
+    .{ .name = "file_edit_hashed", .buildFn = builders.buildFileEditHashed },
+    // Git
+    .{ .name = "git", .buildFn = builders.buildGit },
+    // Stateless
+    .{ .name = "image", .buildFn = builders.buildImage },
+    .{ .name = "calculator", .buildFn = builders.buildCalculator },
+    // Memory
+    .{ .name = "memory_store", .buildFn = builders.buildMemoryStore },
+    .{ .name = "memory_recall", .buildFn = builders.buildMemoryRecall },
+    .{ .name = "memory_list", .buildFn = builders.buildMemoryList },
+    .{ .name = "memory_forget", .buildFn = builders.buildMemoryForget },
+    // Agent orchestration
+    .{ .name = "delegate", .buildFn = builders.buildDelegate },
+    .{ .name = "schedule", .buildFn = builders.buildSchedule },
+    .{ .name = "spawn", .buildFn = builders.buildSpawn },
+    // Network (HTTP/search/fetch)
+    .{ .name = "http_request", .buildFn = builders.buildHttpRequest },
+    .{ .name = "web_search", .buildFn = builders.buildWebSearch },
+    .{ .name = "web_fetch", .buildFn = builders.buildWebFetch },
+    .{ .name = "pushover", .buildFn = builders.buildPushover },
+    // Browser
+    .{ .name = "browser", .buildFn = builders.buildBrowser },
+    .{ .name = "screenshot", .buildFn = builders.buildScreenshot },
+    .{ .name = "browser_open", .buildFn = builders.buildBrowserOpen },
+    // Cron
+    .{ .name = "cron_add", .buildFn = builders.buildCronAdd },
+    .{ .name = "cron_list", .buildFn = builders.buildCronList },
+    .{ .name = "cron_remove", .buildFn = builders.buildCronRemove },
+    .{ .name = "cron_run", .buildFn = builders.buildCronRun },
+    .{ .name = "cron_runs", .buildFn = builders.buildCronRuns },
+    .{ .name = "cron_update", .buildFn = builders.buildCronUpdate },
+    // Misc
+    .{ .name = "message", .buildFn = builders.buildMessage },
 };
 
 // ── Public API ─────────────────────────────────────────────────────────────
+
+/// Total number of registered tools.
+pub const TOOL_COUNT = BRIDGE_REGISTRY.len;
 
 /// Resolve a tool name to its registry entry.
 pub fn resolve(tool_name: []const u8) ?*const ToolEntry {
@@ -153,11 +174,27 @@ test "resolve: canonical name found" {
     try std.testing.expectEqualStrings("file_read", entry.name);
 }
 
+test "resolve: all core tools resolvable" {
+    const core = [_][]const u8{
+        "shell",     "file_read",      "file_write",    "file_edit",
+        "file_append", "file_delete",  "file_read_hashed", "file_edit_hashed",
+        "git",       "image",          "calculator",
+        "memory_store", "memory_recall", "memory_list", "memory_forget",
+        "delegate",  "schedule",       "spawn",
+        "http_request", "web_search",  "web_fetch",     "pushover",
+        "browser",   "screenshot",     "browser_open",
+        "cron_add",  "cron_list",      "cron_remove",   "cron_run",
+        "cron_runs", "cron_update",    "message",
+    };
+    for (core) |name| {
+        try std.testing.expect(resolve(name) != null);
+    }
+    try std.testing.expectEqual(@as(usize, core.len), TOOL_COUNT);
+}
+
 test "resolve: unknown name returns null" {
     try std.testing.expect(resolve("linear") == null);
     try std.testing.expect(resolve("slack") == null);
-    try std.testing.expect(resolve("memory_read") == null);
-    try std.testing.expect(resolve("memory_write") == null);
     try std.testing.expect(resolve("") == null);
 }
 
