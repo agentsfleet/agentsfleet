@@ -275,7 +275,7 @@ fn executeInSandbox(
     session: *ZombieSession,
     event: *const redis_zombie.ZombieEvent,
     cfg: EventLoopConfig,
-) !executor_client.StageResult {
+) !executor_client.ExecutorClient.StageResult {
     const context_val = parseSessionContext(alloc, session.context_json);
 
     const execution_id = cfg.executor.createExecution(cfg.workspace_path, .{

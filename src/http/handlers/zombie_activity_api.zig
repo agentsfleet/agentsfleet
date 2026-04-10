@@ -212,7 +212,7 @@ fn fetchCredentialList(pool: *pg.Pool, alloc: std.mem.Allocator, workspace_id: [
     }
     while (try q.*.next()) |row| {
         const name = try alloc.dupe(u8, try row.get([]const u8, 0));
-        try rows.append(.{
+        try rows.append(alloc, .{
             .name = name,
             .created_at = try row.get(i64, 1),
         });

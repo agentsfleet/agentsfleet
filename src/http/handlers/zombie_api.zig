@@ -189,7 +189,7 @@ fn collectZombieRows(alloc: std.mem.Allocator, q: anytype) ![]ZombieListRow {
         const name = try alloc.dupe(u8, try row.get([]const u8, 1));
         errdefer alloc.free(name);
         const status = try alloc.dupe(u8, try row.get([]const u8, 2));
-        try rows.append(.{
+        try rows.append(alloc, .{
             .id = id,
             .name = name,
             .status = status,

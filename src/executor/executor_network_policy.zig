@@ -21,6 +21,15 @@ pub const REGISTRY_ALLOWLIST = [_][]const u8{
     "sum.golang.org",
 };
 
+/// M2_001: Zombie skill-specific domain allowlists.
+/// Keyed by skill name from ZombieConfig.skills[].
+/// The executor merges these with the Zombie's config.network.allow list.
+pub const ZOMBIE_SKILL_ALLOWLIST = struct {
+    pub const agentmail = [_][]const u8{
+        "api.agentmail.dev",
+    };
+};
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 const std = @import("std");
