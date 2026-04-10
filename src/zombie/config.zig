@@ -1,8 +1,8 @@
 // Zombie configuration parser.
 //
-// The developer writes a .md file with YAML frontmatter + freeform instructions.
-// zombiectl up parses the YAML frontmatter → JSON and uploads both to the API.
-// The API stores source_markdown (raw .md) and config_json (compiled JSON) in core.zombies.
+// M2_002: directory-based zombie format (SKILL.md + TRIGGER.md).
+// zombiectl up sends both files raw. The server parses TRIGGER.md frontmatter
+// into config_json via parseZombieFromTriggerMarkdown. SKILL.md is stored as-is.
 // At claim time, the worker calls:
 //   - parseZombieConfig(alloc, config_json_bytes)  → ZombieConfig struct
 //   - extractZombieInstructions(source_markdown)    → system prompt slice (borrowed)
@@ -79,7 +79,7 @@ pub const ZombieConfig = struct {
 };
 
 // parseZombieConfig parses the config_json column from core.zombies into a ZombieConfig.
-// config_json was produced by zombiectl: YAML frontmatter → JSON conversion.
+// config_json is server-computed from TRIGGER.md frontmatter (M2_002).
 // Caller owns the returned ZombieConfig and must call deinit.
 pub fn parseZombieConfig(alloc: Allocator, config_json: []const u8) (Allocator.Error || ZombieConfigError)!ZombieConfig {
     const parsed = std.json.parseFromSlice(std.json.Value, alloc, config_json, .{}) catch {
