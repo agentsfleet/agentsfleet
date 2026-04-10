@@ -100,15 +100,13 @@ pub fn match(path: []const u8) ?Route {
     if (matchRunAction(path, ":replay")) |run_id| return .{ .replay_run = run_id };
     if (matchRunAction(path, ":stream")) |run_id| return .{ .stream_run = run_id };
     if (matchRunAction(path, ":interrupt")) |run_id| return .{ .interrupt_run = run_id };
-
-    if (std.mem.startsWith(u8, path, prefix_runs) and std.mem.endsWith(u8, path, ":cancel")) {
-        const inner = path[prefix_runs.len .. path.len - ":cancel".len];
-        if (inner.len > 0) return .{ .cancel_run = inner };
-    }
+    if (matchRunAction(path, ":cancel")) |run_id| return .{ .cancel_run = run_id };
 
     if (std.mem.startsWith(u8, path, prefix_runs)) {
         const run_id = path[prefix_runs.len..];
-        if (isSingleSegment(run_id)) return .{ .get_run = run_id };
+        // Reject run_ids with ':' — those are unrecognized action suffixes
+        if (isSingleSegment(run_id) and std.mem.indexOfScalar(u8, run_id, ':') == null)
+            return .{ .get_run = run_id };
     }
 
     if (std.mem.startsWith(u8, path, prefix_workspaces) and std.mem.endsWith(u8, path, ":pause")) {

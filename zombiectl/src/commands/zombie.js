@@ -4,7 +4,7 @@
 // Namespaced for less common: credential add, credential list.
 
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
-import { join, dirname } from "node:path";
+import { join, dirname, basename } from "node:path";
 import { fileURLToPath } from "node:url";
 import { ZOMBIES_PATH } from "../lib/api-paths.js";
 
@@ -141,7 +141,7 @@ async function commandUp(ctx, args, workspaces, deps) {
 
   // Extract name from TRIGGER.md frontmatter (minimal: just the name line)
   const nameMatch = triggerMd.match(/^name:\s*(.+)$/m);
-  const zombieName = nameMatch ? nameMatch[1].trim() : dirname(zombieDir).split("/").pop();
+  const zombieName = nameMatch ? nameMatch[1].trim() : basename(zombieDir);
 
   const wsId = workspaces.current_workspace_id;
   if (!wsId) {
@@ -388,6 +388,8 @@ async function commandCredential(ctx, args, workspaces, deps) {
 
 // ── helpers ──────────────────────────────────────────────────────────────
 
+// M2: only bundled template names are searched.
+// M3 will add support for arbitrary directory names via TRIGGER.md discovery.
 function findZombieDir(dir) {
   for (const name of BUNDLED_TEMPLATES) {
     const candidate = join(dir, name);
