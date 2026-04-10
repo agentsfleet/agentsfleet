@@ -358,26 +358,13 @@ pub fn checkpointState(
     log.debug("zombie_event_loop.checkpointed zombie_id={s} context_len={d}", .{ session.zombie_id, session.context_json.len });
 }
 
-/// Iterate session.config.credentials, extract the name from each op:// ref,
-/// and return the first successfully resolved value from vault.secrets.
+/// Iterate session.config.credentials and return the first successfully
+/// resolved value from vault.secrets. Credentials are plain names (e.g. "agentmail").
 fn resolveFirstCredential(alloc: Allocator, pool: *pg.Pool, session: *ZombieSession) ![]const u8 {
-    for (session.config.credentials) |cred_ref| {
-        const name = extractCredentialName(cred_ref) orelse continue;
-        return resolveCredential(alloc, pool, session.workspace_id, name) catch continue;
+    for (session.config.credentials) |cred_name| {
+        return resolveCredential(alloc, pool, session.workspace_id, cred_name) catch continue;
     }
     return error.CredentialNotFound;
-}
-
-/// Extract credential name from an op:// ref. E.g., "op://vault/agentmail/key" → "agentmail".
-fn extractCredentialName(ref: []const u8) ?[]const u8 {
-    // Format: op://{vault}/{name}/{field} — we want the second segment.
-    const prefix = "op://";
-    if (!std.mem.startsWith(u8, ref, prefix)) return null;
-    const rest = ref[prefix.len..];
-    const first_slash = std.mem.indexOfScalar(u8, rest, '/') orelse return null;
-    const after_vault = rest[first_slash + 1 ..];
-    const second_slash = std.mem.indexOfScalar(u8, after_vault, '/');
-    return if (second_slash) |s| after_vault[0..s] else after_vault;
 }
 
 /// M2_001: Resolve a zombie credential from vault.secrets via crypto_store.
@@ -466,14 +453,6 @@ fn sleepWithBackoff(cfg: EventLoopConfig, consecutive_errors: u32) void {
 }
 
 // ── Tests ────────────────────────────────────────────────────────────────
-
-test "extractCredentialName parses op:// refs" {
-    try std.testing.expectEqualStrings("agentmail", extractCredentialName("op://ZMB_LOCAL_DEV/agentmail/api_key").?);
-    try std.testing.expectEqualStrings("slack", extractCredentialName("op://vault/slack/token").?);
-    try std.testing.expectEqualStrings("github", extractCredentialName("op://v/github").?);
-    try std.testing.expect(extractCredentialName("not-op-ref") == null);
-    try std.testing.expect(extractCredentialName("op://no-slash") == null);
-}
 
 test {
     _ = @import("event_loop_test.zig");
