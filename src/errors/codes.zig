@@ -129,6 +129,7 @@ pub const MSG_TOOL_UNKNOWN = "Unknown tool. Available: agentmail, slack, git, gi
 // M3_001: Tool registry — skill-to-domain mapping
 pub const SKILL_DOMAINS_SLACK = [_][]const u8{"api.slack.com"};
 pub const SKILL_DOMAINS_GITHUB = [_][]const u8{ "api.github.com", "github.com" };
+pub const SKILL_DOMAINS_GIT = [_][]const u8{"github.com"};
 pub const SKILL_DOMAINS_AGENTMAIL = [_][]const u8{"api.agentmail.to"};
 pub const SKILL_DOMAINS_LINEAR = [_][]const u8{"api.linear.app"};
 pub const SKILL_DOMAINS_CLOUDFLARE = [_][]const u8{"api.cloudflare.com"};

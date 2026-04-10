@@ -40,7 +40,7 @@ pub const SKILL_REGISTRY = [_]SkillEntry{
     },
     .{
         .name = "git",
-        .domains = &ec.SKILL_DOMAINS_GITHUB,
+        .domains = &ec.SKILL_DOMAINS_GIT,
         .description = "Clone, branch, commit, and push git repositories",
     },
     .{
@@ -138,12 +138,12 @@ test "resolveSkillDomains returns unique domains for multiple skills" {
 
 test "resolveSkillDomains deduplicates shared domains (git + github)" {
     const alloc = std.testing.allocator;
-    // git and github share the same domains
+    // git = github.com only, github = api.github.com + github.com
     const skills = &[_][]const u8{ "git", "github" };
     const domains = try resolveSkillDomains(alloc, skills);
     defer alloc.free(domains);
 
-    // Should be deduplicated: api.github.com + github.com = 2, not 4
+    // git adds github.com, github adds api.github.com + github.com (deduped) = 2
     try std.testing.expectEqual(@as(usize, 2), domains.len);
 }
 

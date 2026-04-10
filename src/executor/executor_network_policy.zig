@@ -58,12 +58,14 @@ pub fn mergeAllowlists(
 /// Validate a domain string: no injection chars, no whitespace, min length 3.
 fn isValidDomain(domain: []const u8) bool {
     if (domain.len < 3) return false;
+    var has_dot = false;
     for (domain) |ch| {
         if (std.ascii.isWhitespace(ch)) return false;
-        if (ch == ';' or ch == '|' or ch == '&') return false;
+        if (ch == ';' or ch == '|' or ch == '&' or ch == '*') return false;
         if (ch == '\n' or ch == '\r' or ch == 0) return false;
+        if (ch == '.') has_dot = true;
     }
-    return true;
+    return has_dot;
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -191,4 +193,15 @@ test "isValidDomain rejects whitespace and metacharacters" {
     try std.testing.expect(!isValidDomain("evil|com"));
     try std.testing.expect(!isValidDomain("evil&com"));
     try std.testing.expect(!isValidDomain(""));
+}
+
+test "isValidDomain rejects wildcards and dotless strings" {
+    try std.testing.expect(!isValidDomain("*.evil.com"));
+    try std.testing.expect(!isValidDomain("localhost"));
+    try std.testing.expect(!isValidDomain("no-dot-here"));
+}
+
+test "isValidDomain allows IP addresses with dots" {
+    // IPs pass the dot check — nftables Phase 2 handles IP restriction
+    try std.testing.expect(isValidDomain("1.2.3.4"));
 }

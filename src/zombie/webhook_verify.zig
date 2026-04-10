@@ -82,6 +82,7 @@ pub fn verifySignature(
 /// Check if a timestamp string is within the allowed drift window.
 pub fn isTimestampFresh(timestamp: []const u8, max_drift: i64) bool {
     const ts = std.fmt.parseInt(i64, timestamp, 10) catch return false;
+    if (ts <= 0) return false;
     const now = std.time.timestamp();
     const diff = if (now > ts) now - ts else ts - now;
     return diff <= max_drift;
@@ -185,6 +186,12 @@ test "isTimestampFresh: old rejected" {
 test "isTimestampFresh: garbage rejected" {
     try std.testing.expect(!isTimestampFresh("not_a_number", 300));
     try std.testing.expect(!isTimestampFresh("", 300));
+}
+
+test "isTimestampFresh: negative timestamp rejected (overflow protection)" {
+    try std.testing.expect(!isTimestampFresh("-9223372036854775808", 300));
+    try std.testing.expect(!isTimestampFresh("-1", 300));
+    try std.testing.expect(!isTimestampFresh("0", 300));
 }
 
 test "wrong prefix rejected" {
