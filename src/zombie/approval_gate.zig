@@ -243,16 +243,17 @@ pub fn requestApproval(
     });
 
     // JSON-escape user-supplied fields to prevent injection (RULES.md #23)
-    var detail_list = std.ArrayList(u8).init(alloc);
-    defer detail_list.deinit();
-    const dw = detail_list.writer();
-    try dw.writeAll("{\"tool\":");
-    try std.json.stringify(detail.tool, .{}, dw);
-    try dw.writeAll(",\"action\":");
-    try std.json.stringify(detail.action, .{}, dw);
-    try dw.writeAll(",\"summary\":");
-    try std.json.stringify(detail.params_summary, .{}, dw);
-    try dw.writeAll("}");
+    const slack = @import("approval_gate_slack.zig");
+    var detail_list: std.ArrayList(u8) = .{};
+    defer detail_list.deinit(alloc);
+    const dw = detail_list.writer(alloc);
+    try dw.writeAll("{\"tool\":\"");
+    try slack.writeJsonEscaped(dw, detail.tool);
+    try dw.writeAll("\",\"action\":\"");
+    try slack.writeJsonEscaped(dw, detail.action);
+    try dw.writeAll("\",\"summary\":\"");
+    try slack.writeJsonEscaped(dw, detail.params_summary);
+    try dw.writeAll("\"}");
     const detail_json = detail_list.items;
 
     try redis.setEx(pending_key, detail_json, ec.GATE_PENDING_TTL_SECONDS);
@@ -294,7 +295,7 @@ pub fn waitForDecision(
         };
         if (decision) |d| return d;
 
-        std.time.sleep(poll_interval_ns);
+        std.Thread.sleep(poll_interval_ns);
     }
 }
 

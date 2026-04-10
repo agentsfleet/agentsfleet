@@ -197,7 +197,7 @@ fn collectActivityPage(alloc: Allocator, q: anytype, limit: u32) !ActivityPage {
         rows.deinit(alloc);
     }
 
-    while (try q.next()) |row| {
+    while (try q.*.next()) |row| {
         const id = try alloc.dupe(u8, try row.get([]const u8, 0));
         errdefer alloc.free(id);
         const zombie_id = try alloc.dupe(u8, try row.get([]const u8, 1));
@@ -219,9 +219,9 @@ fn collectActivityPage(alloc: Allocator, q: anytype, limit: u32) !ActivityPage {
             .created_at = created_at,
         });
     }
-    q.drain() catch {};
+    q.*.drain() catch {};
 
-    const events = try rows.toOwnedSlice();
+    const events = try rows.toOwnedSlice(alloc);
     errdefer {
         for (events) |*e| e.deinit(alloc);
         alloc.free(events);

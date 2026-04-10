@@ -28,45 +28,30 @@ pub fn buildSlackApprovalMessage(
     });
     defer alloc.free(fallback);
 
-    // Use std.json.stringify for the full payload to ensure valid JSON output
-    const payload = .{
-        .blocks = [_]@TypeOf(sectionBlock(desc)){sectionBlock(desc)} ++
-            [_]@TypeOf(actionsBlock(action_id)){actionsBlock(action_id)},
-        .text = fallback,
-    };
-    _ = payload;
     _ = callback_url;
 
-    // Build via allocPrint with JSON-escaped strings for safety
-    var buf = std.ArrayList(u8).init(alloc);
-    errdefer buf.deinit();
-    const w = buf.writer();
+    // Build via ArrayList writer with JSON-escaped strings for safety
+    var buf: std.ArrayList(u8) = .{};
+    errdefer buf.deinit(alloc);
+    const w = buf.writer(alloc);
 
-    try w.writeAll("{\"blocks\":[{\"type\":\"section\",\"text\":{\"type\":\"mrkdwn\",\"text\":");
-    try std.json.stringify(desc, .{}, w);
-    try w.writeAll("}},{\"type\":\"actions\",\"block_id\":\"gate_");
+    try w.writeAll("{\"blocks\":[{\"type\":\"section\",\"text\":{\"type\":\"mrkdwn\",\"text\":\"");
+    try writeJsonEscaped(w, desc);
+    try w.writeAll("\"}},{\"type\":\"actions\",\"block_id\":\"gate_");
     try writeJsonEscaped(w, action_id);
-    try w.writeAll("\",\"elements\":[{\"type\":\"button\",\"text\":{\"type\":\"plain_text\",\"text\":\"Approve\"},\"style\":\"primary\",\"action_id\":\"gate_approve\",\"value\":");
-    try std.json.stringify(action_id, .{}, w);
-    try w.writeAll("},{\"type\":\"button\",\"text\":{\"type\":\"plain_text\",\"text\":\"Deny\"},\"style\":\"danger\",\"action_id\":\"gate_deny\",\"value\":");
-    try std.json.stringify(action_id, .{}, w);
-    try w.writeAll("}]}],\"text\":");
-    try std.json.stringify(fallback, .{}, w);
-    try w.writeAll("}");
+    try w.writeAll("\",\"elements\":[{\"type\":\"button\",\"text\":{\"type\":\"plain_text\",\"text\":\"Approve\"},\"style\":\"primary\",\"action_id\":\"gate_approve\",\"value\":\"");
+    try writeJsonEscaped(w, action_id);
+    try w.writeAll("\"},{\"type\":\"button\",\"text\":{\"type\":\"plain_text\",\"text\":\"Deny\"},\"style\":\"danger\",\"action_id\":\"gate_deny\",\"value\":\"");
+    try writeJsonEscaped(w, action_id);
+    try w.writeAll("\"}]}],\"text\":\"");
+    try writeJsonEscaped(w, fallback);
+    try w.writeAll("\"}");
 
-    return buf.toOwnedSlice();
-}
-
-fn sectionBlock(text: []const u8) struct { type: []const u8, text: []const u8 } {
-    return .{ .type = "section", .text = text };
-}
-
-fn actionsBlock(action_id: []const u8) struct { type: []const u8, block_id: []const u8 } {
-    return .{ .type = "actions", .block_id = action_id };
+    return buf.toOwnedSlice(alloc);
 }
 
 /// Write a string with JSON-unsafe characters escaped (for embedding in JSON keys).
-fn writeJsonEscaped(writer: anytype, s: []const u8) !void {
+pub fn writeJsonEscaped(writer: anytype, s: []const u8) !void {
     for (s) |c| {
         switch (c) {
             '"' => try writer.writeAll("\\\""),

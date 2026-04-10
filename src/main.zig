@@ -128,6 +128,9 @@ test {
     _ = @import("config/load.zig");
     _ = @import("harness/control_plane.zig");
     _ = @import("zombie/config.zig");
+    _ = @import("zombie/config_helpers.zig");
+    _ = @import("zombie/yaml_frontmatter.zig");
+    _ = @import("http/route_matchers.zig");
     _ = @import("zombie/activity_stream.zig");
     _ = @import("zombie/event_loop.zig");
     _ = @import("cli/commands.zig");
@@ -158,4 +161,9 @@ test {
     _ = @import("queue/redis_pubsub_test.zig");
     _ = @import("reliability/backoff.zig");
     _ = @import("pipeline/worker_state.zig");
+    // M2_001: Zombie CRUD, activity, router, worker
+    _ = @import("http/handlers/zombie_api.zig");
+    _ = @import("http/handlers/zombie_activity_api.zig");
+    _ = @import("http/router_test.zig");
+    _ = @import("cmd/worker_zombie.zig");
 }

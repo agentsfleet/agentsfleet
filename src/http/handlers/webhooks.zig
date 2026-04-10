@@ -1,6 +1,7 @@
-// POST /v1/webhooks/{zombie_id} — inbound event delivery for Zombies.
+// POST /v1/webhooks/{zombie_id} or /v1/webhooks/{zombie_id}/{secret}
 //
-// Auth: Bearer token matched against core.zombies.config_json->'trigger'->>'token'.
+// Auth: URL-embedded secret (resolved from vault via webhook_secret_ref)
+//       or Bearer token (config_json->'trigger'->>'token') as fallback.
 // Idempotency: Redis SET NX EX on "webhook:dedup:{zombie_id}:{event_id}".
 // On success: event enqueued to zombie:{zombie_id}:events stream, returns 202.
 
@@ -9,7 +10,9 @@ const httpz = @import("httpz");
 const pg = @import("pg");
 const common = @import("common.zig");
 const ec = @import("../../errors/codes.zig");
+const zombie_config = @import("../../zombie/config.zig");
 const activity_stream = @import("../../zombie/activity_stream.zig");
+const crypto_store = @import("../../secrets/crypto_store.zig");
 
 const log = std.log.scoped(.http_webhook);
 
@@ -22,16 +25,18 @@ const WebhookPayload = struct {
 };
 
 const ZombieRow = struct {
-    workspace_id: []u8,
-    status: []u8,
-    token: ?[]u8,
-    source: ?[]u8,
+    workspace_id: []const u8,
+    status: []const u8,
+    token: ?[]const u8,
+    webhook_secret_ref: ?[]const u8,
+    source: ?[]const u8,
 };
 
-fn deinitZombieRow(row: *ZombieRow, alloc: std.mem.Allocator) void {
+fn deinitZombieRow(row: *const ZombieRow, alloc: std.mem.Allocator) void {
     alloc.free(row.workspace_id);
     alloc.free(row.status);
     if (row.token) |t| alloc.free(t);
+    if (row.webhook_secret_ref) |s| alloc.free(s);
     if (row.source) |s| alloc.free(s);
 }
 
@@ -39,8 +44,9 @@ fn fetchZombieById(pool: *pg.Pool, alloc: std.mem.Allocator, zombie_id: []const 
     const conn = try pool.acquire();
     defer pool.release(conn);
     var q = try conn.query( // check-pg-drain: ok — drain called below
-        \\SELECT workspace_id, status,
+        \\SELECT workspace_id::text, status,
         \\       config_json->'trigger'->>'token',
+        \\       webhook_secret_ref,
         \\       config_json->'trigger'->>'source'
         \\FROM core.zombies WHERE id = $1::uuid
     , .{zombie_id});
@@ -54,12 +60,15 @@ fn fetchZombieById(pool: *pg.Pool, alloc: std.mem.Allocator, zombie_id: []const 
     const status = try alloc.dupe(u8, try row.get([]const u8, 1));
     errdefer alloc.free(status);
     const token_raw = row.get([]const u8, 2) catch null;
-    const token: ?[]u8 = if (token_raw) |t| try alloc.dupe(u8, t) else null;
+    const token: ?[]const u8 = if (token_raw) |t| try alloc.dupe(u8, t) else null;
     errdefer if (token) |t| alloc.free(t);
-    const source_raw = row.get([]const u8, 3) catch null;
-    const source: ?[]u8 = if (source_raw) |s| try alloc.dupe(u8, s) else null;
+    const ref_raw = row.get([]const u8, 3) catch null;
+    const webhook_secret_ref: ?[]const u8 = if (ref_raw) |s| try alloc.dupe(u8, s) else null;
+    errdefer if (webhook_secret_ref) |s| alloc.free(s);
+    const source_raw = row.get([]const u8, 4) catch null;
+    const source: ?[]const u8 = if (source_raw) |s| try alloc.dupe(u8, s) else null;
     q.drain() catch {};
-    return .{ .workspace_id = workspace_id, .status = status, .token = token, .source = source };
+    return .{ .workspace_id = workspace_id, .status = status, .token = token, .webhook_secret_ref = webhook_secret_ref, .source = source };
 }
 
 // ── Helpers (each ≤ 20 lines) ──────────────────────────────────────────────
@@ -83,6 +92,59 @@ fn parseBody(alloc: std.mem.Allocator, req: *httpz.Request, res: *httpz.Response
         return null;
     }
     return payload;
+}
+
+// M2_002: Unified webhook auth — URL secret (vault-backed) first, Bearer token fallback.
+fn verifyWebhookAuth(
+    url_secret: ?[]const u8,
+    zombie: *const ZombieRow,
+    pool: *pg.Pool,
+    alloc: std.mem.Allocator,
+    req: *httpz.Request,
+    res: *httpz.Response,
+    req_id: []const u8,
+) bool {
+    // Path 1: URL-embedded secret — resolve from vault via webhook_secret_ref
+    if (url_secret) |provided_secret| {
+        const ref = zombie.webhook_secret_ref orelse {
+            common.errorResponse(res, .forbidden, ec.ERR_FORBIDDEN, ec.MSG_AUTH_REQUIRED, req_id);
+            return false;
+        };
+        const conn = pool.acquire() catch {
+            log.err("webhook.vault_pool_acquire_failed req_id={s}", .{req_id});
+            common.errorResponse(res, .forbidden, ec.ERR_FORBIDDEN, ec.MSG_AUTH_REQUIRED, req_id);
+            return false;
+        };
+        defer pool.release(conn);
+        const expected = crypto_store.load(alloc, conn, zombie.workspace_id, ref) catch {
+            log.err("webhook.vault_load_failed ref={s} req_id={s}", .{ ref, req_id });
+            common.errorResponse(res, .forbidden, ec.ERR_FORBIDDEN, ec.MSG_AUTH_REQUIRED, req_id);
+            return false;
+        };
+        defer alloc.free(expected);
+        return constantTimeEq(provided_secret, expected, res, req_id);
+    }
+    // Path 2: Bearer token fallback
+    const expected_token = zombie.token orelse {
+        common.errorResponse(res, .forbidden, ec.ERR_FORBIDDEN, ec.MSG_AUTH_REQUIRED, req_id);
+        return false;
+    };
+    return verifyBearerToken(expected_token, req, res, req_id);
+}
+
+fn constantTimeEq(a: []const u8, b: []const u8, res: *httpz.Response, req_id: []const u8) bool {
+    // Always run XOR loop over min length to avoid leaking secret length via timing.
+    const min_len = @min(a.len, b.len);
+    var diff: u8 = 0;
+    for (a[0..min_len], b[0..min_len]) |x, y| diff |= x ^ y;
+    // Length mismatch is not secret (attacker controls input length), but fold it
+    // into the result after the constant-time loop to prevent short-circuit.
+    diff |= @as(u8, @intFromBool(a.len != b.len));
+    if (diff != 0) {
+        common.errorResponse(res, .unauthorized, ec.ERR_FORBIDDEN, ec.MSG_INVALID_TOKEN, req_id);
+        return false;
+    }
+    return true;
 }
 
 fn verifyBearerToken(expected_token: []const u8, req: *httpz.Request, res: *httpz.Response, req_id: []const u8) bool {
@@ -138,7 +200,7 @@ fn dedupAndEnqueue(ctx: *Context, alloc: std.mem.Allocator, res: *httpz.Response
 
 // ── Main handler ───────────────────────────────────────────────────────────
 
-pub fn handleReceiveWebhook(ctx: *Context, req: *httpz.Request, res: *httpz.Response, zombie_id: []const u8) void {
+pub fn handleReceiveWebhook(ctx: *Context, req: *httpz.Request, res: *httpz.Response, zombie_id: []const u8, url_secret: ?[]const u8) void {
     var arena = std.heap.ArenaAllocator.init(ctx.alloc);
     defer arena.deinit();
     const alloc = arena.allocator();
@@ -157,16 +219,11 @@ pub fn handleReceiveWebhook(ctx: *Context, req: *httpz.Request, res: *httpz.Resp
     };
     defer deinitZombieRow(&zombie, alloc);
 
-    // Auth: Bearer token is always required. Token is generated at deploy time
-    // and stored in config_json. No token = reject (zombiectl up must set one).
-    const expected_token = zombie.token orelse {
-        log.warn("webhook.no_token_configured zombie_id={s} req_id={s}", .{ zombie_id, req_id });
-        common.errorResponse(res, .forbidden, ec.ERR_FORBIDDEN, ec.MSG_AUTH_REQUIRED, req_id);
-        return;
-    };
-    if (!verifyBearerToken(expected_token, req, res, req_id)) return;
+    // M2_002: URL secret (vault-backed via webhook_secret_ref) or Bearer token fallback.
+    if (!verifyWebhookAuth(url_secret, &zombie, ctx.pool, alloc, req, res, req_id)) return;
 
-    if (!std.mem.eql(u8, zombie.status, ec.ZOMBIE_STATUS_ACTIVE)) {
+    const status = zombie_config.ZombieStatus.fromSlice(zombie.status) orelse .stopped;
+    if (!status.isRunnable()) {
         log.warn("webhook.zombie_not_active zombie_id={s} status={s} req_id={s}", .{ zombie_id, zombie.status, req_id });
         common.errorResponse(res, .conflict, ec.ERR_WEBHOOK_ZOMBIE_PAUSED, ec.MSG_ZOMBIE_NOT_ACTIVE, req_id);
         return;
@@ -200,7 +257,7 @@ test "WebhookPayload parses valid event" {
 
 test "WebhookPayload rejects missing event_id" {
     const alloc = std.testing.allocator;
-    const body = 
+    const body =
         \\{"type":"email.received","data":{}}
     ;
     const result = std.json.parseFromSlice(WebhookPayload, alloc, body, .{});

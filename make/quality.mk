@@ -61,45 +61,74 @@ _zig_target_lint:
 	fi; \
 	echo "✓ [ci] No -gnu suffixes in Zig target triples"
 
-# Files that already exceed 500 lines before this gate was introduced.
+# Files that already exceed 400 lines before this gate was tightened.
 # Do NOT add new entries — shrink this list over time.
 # Policy: docs/contributing/testing.md
 ZIG_LINE_LIMIT_ALLOWLIST := \
 	src/auth/claims.zig \
+	src/auth/github.zig \
 	src/auth/jwks_test.zig \
+	src/cmd/doctor.zig \
 	src/cmd/reconcile.zig \
+	src/cmd/serve.zig \
 	src/config/runtime.zig \
+	src/db/pool.zig \
 	src/db/pool_test.zig \
 	src/executor/handler.zig \
+	src/executor/handler_edge_test.zig \
+	src/executor/resource_security_test.zig \
+	src/executor/runner.zig \
+	src/executor/runner_test.zig \
+	src/executor/sandbox_edge_test.zig \
+	src/executor/session.zig \
 	src/http/handlers/common.zig \
+	src/http/handlers/runs/interrupt_test.zig \
+	src/http/handlers/runs/start.zig \
+	src/http/m16_004_http_integration_test.zig \
+	src/http/router.zig \
+	src/http/workspace_guards.zig \
+	src/observability/metrics_counters.zig \
 	src/observability/posthog_events.zig \
 	src/pipeline/gate_loop_integration_test.zig \
+	src/pipeline/proposals_e2e_test.zig \
+	src/pipeline/proposals_guard_test.zig \
 	src/pipeline/proposals_lifecycle_manual_test.zig \
+	src/pipeline/proposals_trigger_reporting_test.zig \
+	src/pipeline/sandbox_shell_tool.zig \
+	src/pipeline/scoring_mod/proposals_validation.zig \
+	src/pipeline/scoring_mod/resource_score_test.zig \
 	src/pipeline/scoring_test.zig \
+	src/pipeline/worker_gate_loop.zig \
 	src/pipeline/worker_stage_executor.zig \
-	src/state/orphan_recovery.zig
+	src/state/entitlements.zig \
+	src/state/machine.zig \
+	src/state/orphan_recovery.zig \
+	src/tools/api_bench_runner.zig \
+	src/zombie/config.zig \
+	src/zombie/event_loop.zig \
+	src/zombie/event_loop_test.zig
 
 _zig_line_limit_check:
-	@echo "→ [zombied] Checking Zig file line limit (max 500 lines)..."
+	@echo "→ [zombied] Checking Zig file line limit (max 400 lines)..."
 	@FAIL=0; \
 	for f in $$(find src -name '*.zig' ! -path '*/.zig-cache/*' | sort); do \
 		lines=$$(wc -l < "$$f"); \
-		if [ "$$lines" -gt 500 ]; then \
+		if [ "$$lines" -gt 400 ]; then \
 			allowed=0; \
 			for a in $(ZIG_LINE_LIMIT_ALLOWLIST); do \
 				[ "$$f" = "$$a" ] && allowed=1 && break; \
 			done; \
 			if [ "$$allowed" = "0" ]; then \
-				echo "✗ $$f: $$lines lines (limit 500 — see docs/contributing/testing.md)"; \
+				echo "✗ $$f: $$lines lines (limit 400 — see docs/contributing/testing.md)"; \
 				FAIL=1; \
 			fi; \
 		fi; \
 	done; \
 	if [ "$$FAIL" = "1" ]; then \
-		echo "  Fix: split the file into focused modules under 500 lines."; \
+		echo "  Fix: split the file into focused modules under 400 lines."; \
 		exit 1; \
 	fi; \
-	echo "✓ [zombied] All new Zig files within 500-line limit"
+	echo "✓ [zombied] All new Zig files within 400-line limit"
 
 _hardcoded_role_check:
 	@echo "→ [zombied] Checking for banned hardcoded role constants..."

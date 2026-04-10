@@ -99,6 +99,29 @@ fn handleApprovalFlow(
 
     logGateActivity(pool, alloc, session, error_codes.GATE_EVENT_REQUIRED, action_id);
 
+    // Build and store the approval message (Slack/provider sends it via the skill tool).
+    // The message payload is stored in Redis alongside the pending action so the
+    // notification delivery layer (M8 Slack Plugin) can retrieve and POST it.
+    const detail = approval_gate.ActionDetail{
+        .tool = event.event_type,
+        .action = event.source,
+        .params_summary = event.event_id,
+    };
+    const slack_msg = approval_gate.buildSlackApprovalMessage(
+        alloc,
+        session.config.name,
+        action_id,
+        detail,
+        "", // callback_url resolved at delivery time by the notification provider
+    ) catch |err| {
+        log.warn("approval_gate.slack_msg_build_fail err={s}", .{@errorName(err)});
+        return .{ .blocked = .unavailable };
+    };
+    defer alloc.free(slack_msg);
+
+    // Store the notification payload in Redis for the provider to pick up
+    storeNotificationPayload(redis, session.zombie_id, action_id, slack_msg);
+
     approval_gate.recordGateDecision(
         pool,
         alloc,
@@ -143,6 +166,16 @@ fn pauseZombie(pool: *pg.Pool, zombie_id: []const u8) void {
     _ = conn.exec(
         \\UPDATE core.zombies SET status = 'paused', updated_at = $1 WHERE id = $2::uuid
     , .{ std.time.milliTimestamp(), zombie_id }) catch {};
+}
+
+fn storeNotificationPayload(redis: *queue_redis.Client, zombie_id: []const u8, action_id: []const u8, payload: []const u8) void {
+    var key_buf: [256]u8 = undefined;
+    const key = std.fmt.bufPrint(&key_buf, "zombie:gate:notify:{s}:{s}", .{
+        zombie_id, action_id,
+    }) catch return;
+    redis.setEx(key, payload, error_codes.GATE_PENDING_TTL_SECONDS) catch |err| {
+        log.warn("approval_gate.notify_store_fail err={s}", .{@errorName(err)});
+    };
 }
 
 fn parseEventContext(alloc: Allocator, json: []const u8) ?std.json.Parsed(std.json.Value) {
