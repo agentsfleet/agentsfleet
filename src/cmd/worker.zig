@@ -10,6 +10,7 @@ const error_codes = @import("../errors/codes.zig");
 const preflight = @import("preflight.zig");
 const sandbox_runtime = @import("../pipeline/sandbox_runtime.zig");
 const executor_client = @import("../executor/client.zig");
+const worker_zombie = @import("worker_zombie.zig");
 
 const log = std.log.scoped(.worker);
 
@@ -215,7 +216,40 @@ pub fn run(alloc: std.mem.Allocator) !void {
     log.info("worker.threads_started concurrency={d}", .{thread_count});
     posthog_events.trackWorkerStarted(ph.client, @intCast(thread_count));
 
+    // M2_001: Spawn Zombie worker threads (1 per active Zombie).
+    const zombie_ids: [][]const u8 = worker_zombie.listActiveZombieIds(worker_pool, alloc) catch |err| blk: {
+        log.warn("worker.zombie_discovery_failed err={s} hint=no_zombies_will_run", .{@errorName(err)});
+        break :blk &.{};
+    };
+    defer {
+        for (zombie_ids) |id| alloc.free(id);
+        if (zombie_ids.len > 0) alloc.free(zombie_ids);
+    }
+
+    var zombie_threads: std.ArrayList(std.Thread) = .{};
+    defer zombie_threads.deinit(alloc);
+    for (zombie_ids) |zombie_id| {
+        const zt = std.Thread.spawn(.{}, worker_zombie.zombieWorkerLoop, .{
+            alloc,
+            worker_zombie.ZombieWorkerConfig{
+                .pool = worker_pool,
+                .zombie_id = zombie_id,
+                .shutdown_requested = &shutdown_requested,
+                .executor = if (exec_client) |*ec| ec else null,
+            },
+        }) catch |err| {
+            log.err("worker.zombie_thread_spawn_fail zombie_id={s} err={s}", .{ zombie_id, @errorName(err) });
+            continue;
+        };
+        zombie_threads.append(alloc, zt) catch |err| {
+            log.err("worker.zombie_thread_track_fail zombie_id={s} err={s} hint=thread_untracked", .{ zombie_id, @errorName(err) });
+        };
+    }
+    if (zombie_ids.len > 0)
+        log.info("worker.zombie_threads_started count={d}", .{zombie_ids.len});
+
     for (worker_threads) |*t| t.join();
+    for (zombie_threads.items) |*t| t.join();
     shutdown_requested.store(true, .release);
     event_bus.stop();
     if (signal_thread) |*t| t.join();

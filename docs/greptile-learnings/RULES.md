@@ -350,3 +350,36 @@ git diff origin/main --name-only | xargs grep -l 'OLD_PATTERN' 2>/dev/null
 
 If the sweep finds hits, fix them before opening the PR. Do not defer orphan cleanup
 to a follow-up — the PR that changes the symbol owns the full cleanup.
+
+---
+
+## 32. Test discovery requires explicit import in main.zig
+
+Inline `test` blocks in Zig files are only compiled and run if the file is
+reachable from the test root (`main.zig`'s `comptime` test block). A file
+can have tests for years that never execute if nobody imports it.
+
+When creating a new file with tests, add `_ = @import("path/to/file.zig");`
+to `main.zig`'s test discovery block.
+
+> M2_001: Router tests existed inline since M16 but were never discovered.
+> When imported in `main.zig`, two pre-existing test bugs surfaced.
+
+---
+
+## 33. Pointer dereference for anytype query params
+
+When passing a `pg` query result to a function via `anytype` as `&q` (pointer),
+the function must use `q.*.next()` and `q.*.drain()`, not `q.next()`.
+Direct local variables use `q.next()` without dereference.
+
+> M2_001: `collectActivityPage` received `&q` but called `q.next()`.
+> Adding a new caller forced instantiation and exposed the error.
+
+---
+
+## 34. Zig 0.15 ArrayList API
+
+`ArrayList.init(alloc)` does not exist in Zig 0.15. Use `var rows: std.ArrayList(T) = .{};`
+and pass the allocator per-operation: `rows.append(alloc, item)`,
+`rows.toOwnedSlice(alloc)`, `rows.deinit(alloc)`.

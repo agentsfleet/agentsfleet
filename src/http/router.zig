@@ -62,6 +62,11 @@ pub const Route = union(enum) {
     // M18_003: agent relay endpoints
     spec_template: []const u8, // POST /v1/workspaces/{id}/spec/template
     spec_preview: []const u8, // POST /v1/workspaces/{id}/spec/preview
+    // M2_001: Zombie CRUD + activity + credentials
+    list_or_create_zombies, // GET|POST /v1/zombies/
+    delete_zombie: []const u8, // DELETE /v1/zombies/{id}
+    zombie_activity, // GET /v1/zombies/activity
+    zombie_credentials, // GET|POST /v1/zombies/credentials
 };
 
 const matchRunAction = matchers.matchRunAction;
@@ -133,6 +138,12 @@ pub fn match(path: []const u8) ?Route {
     if (matchWorkspaceSuffix(path, "/billing/summary")) |workspace_id| return .{ .get_workspace_billing_summary = workspace_id };
     if (matchWorkspaceSuffix(path, "/scoring/config")) |workspace_id| return .{ .set_workspace_scoring_config = workspace_id };
     if (matchWorkspaceSuffix(path, "/harness/source")) |workspace_id| return .{ .put_harness_source = workspace_id };
+
+    // M2_001: Zombie CRUD + activity + credentials
+    if (std.mem.eql(u8, path, "/v1/zombies/")) return .list_or_create_zombies;
+    if (std.mem.eql(u8, path, "/v1/zombies/activity")) return .zombie_activity;
+    if (std.mem.eql(u8, path, "/v1/zombies/credentials")) return .zombie_credentials;
+    if (matchers.matchZombieId(path)) |zombie_id| return .{ .delete_zombie = zombie_id };
 
     // M1_001: Zombie webhook endpoint — /v1/webhooks/{zombie_id}
     if (matchWebhookRoute(path)) |route| return .{ .receive_webhook = route };

@@ -1,3 +1,0 @@
--- UseZombie M5_008 run snapshot linkage
--- Clean-state note: canonical schema now defines `core.runs.run_snapshot_config_version`
--- directly in schema/001_initial.sql, so this file intentionally remains a no-op.

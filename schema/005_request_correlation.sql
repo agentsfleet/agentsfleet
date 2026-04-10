@@ -1,2 +1,0 @@
--- Correlation metadata for end-to-end API request to worker lifecycle tracing.
--- Canonicalized into schema/001_initial.sql for clean-state installs.

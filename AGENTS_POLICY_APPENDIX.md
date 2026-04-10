@@ -207,10 +207,14 @@ Post-PR greptile fix workflow:
 
 ## Code Structure Policies
 
-- Keep files under 500 lines.
+- Keep files under 400 lines.
 - Extract repeated strings to constants.
 - Shared constants go in shared files.
 - Avoid unnecessary constants.
+- Use typed enums with serialization methods (toSlice/fromSlice) instead of DB CHECK constraints for status/type values.
+- Never create plaintext credential/secret tables — reuse vault.secrets with crypto_store.
+- When extracting tests to a new file, verify test discovery by adding import to main.zig.
+- Single source of truth for templates/configs — if two copies exist, one will drift.
 
 ## Skill Routing
 

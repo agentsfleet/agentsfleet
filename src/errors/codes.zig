@@ -110,6 +110,23 @@ pub const ERR_ZOMBIE_CREDENTIAL_MISSING = "UZ-ZMB-003";
 pub const ERR_ZOMBIE_CLAIM_FAILED = "UZ-ZMB-004";
 pub const ERR_ZOMBIE_CHECKPOINT_FAILED = "UZ-ZMB-005";
 
+// M2_001: Zombie CRUD API error codes
+pub const ERR_ZOMBIE_NAME_EXISTS = "UZ-ZMB-006";
+pub const ERR_ZOMBIE_CREDENTIAL_VALUE_TOO_LONG = "UZ-ZMB-007";
+pub const ERR_ZOMBIE_INVALID_CONFIG = "UZ-ZMB-008";
+pub const ERR_ZOMBIE_NOT_FOUND = "UZ-ZMB-009";
+
+// M2_001: Zombie CRUD API user-facing messages
+pub const MSG_ZOMBIE_NAME_EXISTS = "Zombie already exists in this workspace. Use `zombiectl kill` first.";
+pub const MSG_ZOMBIE_CREDENTIAL_TOO_LONG = "Credential value exceeds 4KB limit.";
+pub const MSG_ZOMBIE_INVALID_CONFIG = "Config JSON is not valid. Check trigger, skills, and budget fields.";
+pub const MSG_ZOMBIE_NAME_REQUIRED = "name is required (max 64 chars, slug-safe)";
+pub const MSG_ZOMBIE_SOURCE_REQUIRED = "source_markdown is required (max 64KB)";
+pub const MSG_ZOMBIE_CONFIG_REQUIRED = "config_json is required";
+pub const MSG_WORKSPACE_ID_REQUIRED = "workspace_id is required (UUIDv7)";
+pub const MSG_CREDENTIAL_NAME_REQUIRED = "credential name is required (max 64 chars)";
+pub const MSG_CREDENTIAL_VALUE_REQUIRED = "credential value is required";
+
 pub const ERR_GATE_COMMAND_FAILED = "UZ-GATE-001";
 pub const ERR_GATE_COMMAND_TIMEOUT = "UZ-GATE-002";
 pub const ERR_GATE_REPAIR_EXHAUSTED = "UZ-GATE-003";
@@ -219,6 +236,14 @@ pub fn hint(code: []const u8) ?[]const u8 {
         return "Zombie could not be claimed from the database. Check that the zombie_id exists and status is 'active'.";
     if (std.mem.eql(u8, code, ERR_ZOMBIE_CHECKPOINT_FAILED))
         return "Session checkpoint write to Postgres failed. Check database connectivity.";
+    if (std.mem.eql(u8, code, ERR_ZOMBIE_NAME_EXISTS))
+        return "A Zombie with this name already exists. Use 'zombiectl kill <name>' first, then deploy again.";
+    if (std.mem.eql(u8, code, ERR_ZOMBIE_CREDENTIAL_VALUE_TOO_LONG))
+        return "Credential value exceeds 4KB. Check that the secret is not corrupted or padded.";
+    if (std.mem.eql(u8, code, ERR_ZOMBIE_INVALID_CONFIG))
+        return "Config JSON is malformed. Verify trigger, skills, credentials, and budget fields. Run 'zombiectl install <template>' for a valid template.";
+    if (std.mem.eql(u8, code, ERR_ZOMBIE_NOT_FOUND))
+        return "Zombie not found. Verify the zombie_id and that it has not been killed.";
     return null;
 }
 

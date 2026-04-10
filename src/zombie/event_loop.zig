@@ -19,8 +19,8 @@ const queue_redis = @import("../queue/redis_client.zig");
 const redis_zombie = @import("../queue/redis_zombie.zig");
 const queue_consts = @import("../queue/constants.zig");
 const executor_client = @import("../executor/client.zig");
-const executor_types = @import("../executor/types.zig");
 const error_codes = @import("../errors/codes.zig");
+const crypto_store = @import("../secrets/crypto_store.zig");
 const obs_log = @import("../observability/logging.zig");
 const backoff = @import("../reliability/backoff.zig");
 const id_format = @import("../types/id_format.zig");
@@ -105,11 +105,11 @@ pub fn claimZombie(
     const source_markdown = try alloc.dupe(u8, try row.get([]const u8, 2));
     errdefer alloc.free(source_markdown);
     // Check status before drain — row-backed slices are invalid after drain.
-    const is_active = std.mem.eql(u8, try row.get([]const u8, 3), error_codes.ZOMBIE_STATUS_ACTIVE);
+    const status = zombie_config.ZombieStatus.fromSlice(try row.get([]const u8, 3)) orelse .stopped;
 
     q.drain() catch {};
 
-    if (!is_active) {
+    if (!status.isRunnable()) {
         log.warn("zombie_event_loop.claim_skipped zombie_id={s}", .{zombie_id_input});
         // errdefer on workspace_id and source_markdown fires automatically —
         // no manual free here (would be a double-free).
@@ -278,7 +278,7 @@ fn executeInSandbox(
     session: *ZombieSession,
     event: *const redis_zombie.ZombieEvent,
     cfg: EventLoopConfig,
-) !executor_client.StageResult {
+) !executor_client.ExecutorClient.StageResult {
     const context_val = parseSessionContext(alloc, session.context_json);
 
     const execution_id = cfg.executor.createExecution(cfg.workspace_path, .{
@@ -297,11 +297,19 @@ fn executeInSandbox(
         alloc.free(execution_id);
     }
 
+    // Resolve the first credential from the zombie's config as the api_key.
+    // Each entry is an op:// ref; we extract the credential name and look it up.
+    const api_key: []const u8 = resolveFirstCredential(alloc, cfg.pool, session) catch "";
+    defer if (api_key.len > 0) alloc.free(api_key);
+
     return cfg.executor.startStage(execution_id, .{
         .stage_id = "zombie",
         .role_id = "agent",
         .skill_id = session.config.name,
-        .agent_config = .{ .system_prompt = session.instructions },
+        .agent_config = .{
+            .system_prompt = session.instructions,
+            .api_key = api_key,
+        },
         .message = event.data_json,
         .context = context_val,
     }) catch |err| {
@@ -348,6 +356,29 @@ pub fn checkpointState(
     , .{ session_id, session.zombie_id, session.context_json, now_ms });
 
     log.debug("zombie_event_loop.checkpointed zombie_id={s} context_len={d}", .{ session.zombie_id, session.context_json.len });
+}
+
+/// Iterate session.config.credentials and return the first successfully
+/// resolved value from vault.secrets. Credentials are plain names (e.g. "agentmail").
+fn resolveFirstCredential(alloc: Allocator, pool: *pg.Pool, session: *ZombieSession) ![]const u8 {
+    for (session.config.credentials) |cred_name| {
+        return resolveCredential(alloc, pool, session.workspace_id, cred_name) catch continue;
+    }
+    return error.CredentialNotFound;
+}
+
+/// M2_001: Resolve a zombie credential from vault.secrets via crypto_store.
+/// Key naming: "zombie:{name}" in vault.secrets. Returns decrypted value.
+fn resolveCredential(alloc: Allocator, pool: *pg.Pool, workspace_id: []const u8, name: []const u8) ![]const u8 {
+    const key_name = try std.fmt.allocPrint(alloc, "zombie:{s}", .{name});
+    defer alloc.free(key_name);
+
+    const conn = try pool.acquire();
+    defer pool.release(conn);
+    return crypto_store.load(alloc, conn, workspace_id, key_name) catch |err| {
+        log.warn("zombie_event_loop.credential_not_found workspace_id={s} name={s} error_code=" ++ error_codes.ERR_ZOMBIE_CREDENTIAL_MISSING, .{ workspace_id, name });
+        return err;
+    };
 }
 
 // ── Internal helpers ─────────────────────────────────────────────────────

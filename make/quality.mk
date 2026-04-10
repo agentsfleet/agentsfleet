@@ -104,6 +104,7 @@ ZIG_LINE_LIMIT_ALLOWLIST := \
 	src/state/machine.zig \
 	src/state/orphan_recovery.zig \
 	src/tools/api_bench_runner.zig \
+	src/zombie/config.zig \
 	src/zombie/event_loop.zig \
 	src/zombie/event_loop_test.zig
 

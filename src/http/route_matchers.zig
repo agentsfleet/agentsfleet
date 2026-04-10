@@ -87,6 +87,23 @@ test "matchRunAction resolves actions with single-segment run_id" {
     try std.testing.expect(matchRunAction("/v1/runs/:retry", ":retry") == null);
 }
 
+// M2_001: matchZombieId matches /v1/zombies/{zombie_id} for DELETE.
+pub fn matchZombieId(path: []const u8) ?[]const u8 {
+    const prefix = "/v1/zombies/";
+    if (!std.mem.startsWith(u8, path, prefix)) return null;
+    const zombie_id = path[prefix.len..];
+    if (std.mem.eql(u8, zombie_id, "activity") or std.mem.eql(u8, zombie_id, "credentials")) return null;
+    if (!isSingleSegment(zombie_id)) return null;
+    return zombie_id;
+}
+
+test "matchZombieId: excludes sub-paths" {
+    try std.testing.expect(matchZombieId("/v1/zombies/activity") == null);
+    try std.testing.expect(matchZombieId("/v1/zombies/credentials") == null);
+    try std.testing.expectEqualStrings("z1", matchZombieId("/v1/zombies/z1").?);
+    try std.testing.expect(matchZombieId("/v1/zombies/a/b") == null);
+}
+
 test "matchWebhookRoute: id only and id+secret" {
     const id = "019abc12-8d3a-7f13-8abc-2b3e1e0a6f11";
     const r1 = matchWebhookRoute("/v1/webhooks/019abc12-8d3a-7f13-8abc-2b3e1e0a6f11").?;
