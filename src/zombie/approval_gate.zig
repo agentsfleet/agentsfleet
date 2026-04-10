@@ -328,6 +328,7 @@ pub fn resolveApproval(
 }
 
 /// Record a gate decision in the audit table (Postgres).
+/// Pass resolved = true for final decisions (approve/deny/timeout), false for initial pending.
 pub fn recordGateDecision(
     pool: *pg.Pool,
     alloc: Allocator,
@@ -338,8 +339,9 @@ pub fn recordGateDecision(
     action_name: []const u8,
     status: []const u8,
     detail: []const u8,
+    resolved: bool,
 ) void {
-    writeGateRow(pool, alloc, zombie_id, workspace_id, action_id, tool_name, action_name, status, detail) catch |err| {
+    writeGateRow(pool, alloc, zombie_id, workspace_id, action_id, tool_name, action_name, status, detail, resolved) catch |err| {
         log.err("approval_gate.record_fail err={s} action_id={s}", .{ @errorName(err), action_id });
     };
 }
@@ -354,6 +356,7 @@ fn writeGateRow(
     action_name: []const u8,
     status: []const u8,
     detail: []const u8,
+    resolved: bool,
 ) !void {
     const gate_id = try id_format.generateActivityEventId(alloc);
     defer alloc.free(gate_id);
@@ -362,11 +365,21 @@ fn writeGateRow(
     defer pool.release(conn);
 
     const now_ms = std.time.milliTimestamp();
-    _ = try conn.exec(
-        \\INSERT INTO core.zombie_approval_gates
-        \\  (id, zombie_id, workspace_id, action_id, tool_name, action_name, status, detail, requested_at, created_at)
-        \\VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9)
-    , .{ gate_id, zombie_id, workspace_id, action_id, tool_name, action_name, status, detail, now_ms });
+    if (resolved) {
+        _ = try conn.exec(
+            \\INSERT INTO core.zombie_approval_gates
+            \\  (id, zombie_id, workspace_id, action_id, tool_name, action_name,
+            \\   status, detail, requested_at, updated_at, created_at)
+            \\VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9, $9)
+        , .{ gate_id, zombie_id, workspace_id, action_id, tool_name, action_name, status, detail, now_ms });
+    } else {
+        _ = try conn.exec(
+            \\INSERT INTO core.zombie_approval_gates
+            \\  (id, zombie_id, workspace_id, action_id, tool_name, action_name,
+            \\   status, detail, requested_at, created_at)
+            \\VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9)
+        , .{ gate_id, zombie_id, workspace_id, action_id, tool_name, action_name, status, detail, now_ms });
+    }
 }
 
 // Re-export Slack message builder from separate module

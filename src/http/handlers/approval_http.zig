@@ -99,6 +99,7 @@ pub fn handleApprovalCallback(
         "",
         decision_str,
         "",
+        true, // resolved — final decision from operator
     );
 
     // Log to activity stream
@@ -180,6 +181,19 @@ fn verifyRequestSignature(req: *httpz.Request, res: *httpz.Response, req_id: []c
         common.errorResponse(res, .unauthorized, ec.ERR_APPROVAL_INVALID_SIGNATURE, "Missing signature", req_id);
         return false;
     };
+
+    // Reject timestamps older than 5 minutes to prevent replay attacks
+    const SIGNATURE_MAX_AGE_S: i64 = 300;
+    const ts = std.fmt.parseInt(i64, timestamp, 10) catch {
+        common.errorResponse(res, .unauthorized, ec.ERR_APPROVAL_INVALID_SIGNATURE, "Invalid timestamp", req_id);
+        return false;
+    };
+    const now_s = @divTrunc(std.time.milliTimestamp(), 1000);
+    if (@abs(now_s - ts) > SIGNATURE_MAX_AGE_S) {
+        log.warn("approval.timestamp_too_old ts={d} now={d} req_id={s}", .{ ts, now_s, req_id });
+        common.errorResponse(res, .unauthorized, ec.ERR_APPROVAL_INVALID_SIGNATURE, "Timestamp too old", req_id);
+        return false;
+    }
 
     const body = req.body() orelse "";
 

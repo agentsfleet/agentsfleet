@@ -132,6 +132,7 @@ fn handleApprovalFlow(
         event.source,
         "pending",
         "",
+        false, // not resolved yet — pending
     );
 
     const result = approval_gate.waitForDecision(redis, action_id, gates.timeout_ms);

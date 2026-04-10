@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS core.zombie_approval_gates (
     status          TEXT NOT NULL DEFAULT 'pending',
     detail          TEXT NOT NULL DEFAULT '',
     requested_at    BIGINT NOT NULL,
-    resolved_at     BIGINT,
+    updated_at      BIGINT,
     created_at      BIGINT NOT NULL
 );
 
