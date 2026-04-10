@@ -33,14 +33,13 @@ pub const ZombieConfigError = error{
 
 pub const ZombieTriggerType = enum { webhook, cron, api, chain };
 
-pub const ZombieTrigger = struct {
-    trigger_type: ZombieTriggerType,
-    // webhook: required. cron/api: null.
-    source: ?[]const u8,
-    // optional event filter, e.g. "message.received"
-    event: ?[]const u8,
-    // cron: required. webhook/api: null.
-    schedule: ?[]const u8,
+/// Tagged union for trigger config. Each variant carries only the fields it needs,
+/// making invalid states (e.g. webhook without source) unrepresentable.
+pub const ZombieTrigger = union(ZombieTriggerType) {
+    webhook: struct { source: []const u8, event: ?[]const u8 },
+    cron: struct { schedule: []const u8 },
+    api: void,
+    chain: struct { source: []const u8 },
 };
 
 pub const ZombieBudget = struct {
@@ -67,9 +66,15 @@ pub const ZombieConfig = struct {
 
     pub fn deinit(self: *const ZombieConfig, alloc: Allocator) void {
         alloc.free(self.name);
-        if (self.trigger.source) |s| alloc.free(s);
-        if (self.trigger.event) |e| alloc.free(e);
-        if (self.trigger.schedule) |s| alloc.free(s);
+        switch (self.trigger) {
+            .webhook => |w| {
+                alloc.free(w.source);
+                if (w.event) |e| alloc.free(e);
+            },
+            .cron => |c| alloc.free(c.schedule),
+            .chain => |ch| alloc.free(ch.source),
+            .api => {},
+        }
         freeStringSlice(alloc, self.skills);
         freeStringSlice(alloc, self.credentials);
         if (self.network) |net| freeStringSlice(alloc, net.allow);
@@ -294,8 +299,7 @@ test "parseZombieConfig: valid config parses all fields" {
     var cfg = try parseZombieConfig(alloc, json);
     defer cfg.deinit(alloc);
     try std.testing.expectEqualStrings("lead-collector", cfg.name);
-    try std.testing.expectEqual(ZombieTriggerType.webhook, cfg.trigger.trigger_type);
-    try std.testing.expectEqualStrings("agentmail", cfg.trigger.source.?);
+    try std.testing.expectEqualStrings("agentmail", cfg.trigger.webhook.source);
     try std.testing.expectApproxEqAbs(@as(f64, 5.0), cfg.budget.daily_dollars, 0.001);
     try std.testing.expectEqual(@as(usize, 1), cfg.chain.len);
     try std.testing.expectEqualStrings("lead-enricher", cfg.chain[0]);
@@ -332,7 +336,7 @@ test "parseZombieConfig: skill field parsed from JSON" {
     var cfg = try parseZombieConfig(alloc, json);
     defer cfg.deinit(alloc);
     try std.testing.expectEqualStrings("clawhub://queen/lead-hunter@1.0.1", cfg.skill.?);
-    try std.testing.expectEqual(ZombieTriggerType.chain, cfg.trigger.trigger_type);
+    try std.testing.expectEqualStrings("lead-collector", cfg.trigger.chain.source);
 }
 
 test "parseZombieConfig: credential names validated (no op:// paths)" {
@@ -347,7 +351,7 @@ test "parseZombieFromTriggerMarkdown: parses frontmatter into config" {
     var cfg = try parseZombieFromTriggerMarkdown(alloc, trigger_md);
     defer cfg.deinit(alloc);
     try std.testing.expectEqualStrings("lead-collector", cfg.name);
-    try std.testing.expectEqual(ZombieTriggerType.webhook, cfg.trigger.trigger_type);
+    try std.testing.expectEqualStrings("agentmail", cfg.trigger.webhook.source);
     try std.testing.expectEqual(@as(usize, 1), cfg.chain.len);
     try std.testing.expectEqualStrings("lead-enricher", cfg.chain[0]);
 }

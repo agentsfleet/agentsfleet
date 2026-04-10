@@ -50,7 +50,7 @@ test "integration 3.1: claimZombie loads config from core.zombies" {
     try std.testing.expectEqualStrings("lead-collector", session.config.name);
     try std.testing.expectEqualStrings(TEST_ZOMBIE_ID, session.zombie_id);
     try std.testing.expectEqualStrings(TEST_WORKSPACE_ID, session.workspace_id);
-    try std.testing.expectEqual(zombie_config.ZombieTriggerType.webhook, session.config.trigger.trigger_type);
+    try std.testing.expectEqualStrings("email", session.config.trigger.webhook.source);
 }
 
 test "integration 3.1: claimZombie extracts instructions from source_markdown" {

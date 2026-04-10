@@ -24,14 +24,14 @@ const WebhookPayload = struct {
 };
 
 const ZombieRow = struct {
-    workspace_id: []u8,
-    status: []u8,
-    token: ?[]u8,
-    webhook_secret_ref: ?[]u8,
-    source: ?[]u8,
+    workspace_id: []const u8,
+    status: []const u8,
+    token: ?[]const u8,
+    webhook_secret_ref: ?[]const u8,
+    source: ?[]const u8,
 };
 
-fn deinitZombieRow(row: *ZombieRow, alloc: std.mem.Allocator) void {
+fn deinitZombieRow(row: *const ZombieRow, alloc: std.mem.Allocator) void {
     alloc.free(row.workspace_id);
     alloc.free(row.status);
     if (row.token) |t| alloc.free(t);

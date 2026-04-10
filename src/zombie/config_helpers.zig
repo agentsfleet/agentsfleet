@@ -20,59 +20,48 @@ const KNOWN_ZOMBIE_SKILLS = [_][]const u8{
 };
 
 pub fn parseZombieTrigger(alloc: Allocator, obj: std.json.ObjectMap) (Allocator.Error || ZombieConfigError)!ZombieTrigger {
-    const type_val = obj.get("type") orelse return ZombieConfigError.MissingRequiredField;
-    const type_str = switch (type_val) {
-        .string => |s| s,
-        else => return ZombieConfigError.MissingRequiredField,
-    };
-    const trigger_type = if (std.mem.eql(u8, type_str, "webhook"))
-        ZombieTriggerType.webhook
-    else if (std.mem.eql(u8, type_str, "cron"))
-        ZombieTriggerType.cron
-    else if (std.mem.eql(u8, type_str, "api"))
-        ZombieTriggerType.api
-    else if (std.mem.eql(u8, type_str, "chain"))
-        ZombieTriggerType.chain
-    else
-        return ZombieConfigError.InvalidTriggerType;
-
-    const source: ?[]const u8 = blk: {
-        const val = obj.get("source") orelse break :blk null;
-        const s = switch (val) {
-            .string => |str| str,
-            else => return ZombieConfigError.InvalidTriggerSource,
+    const type_str = blk: {
+        const val = obj.get("type") orelse return ZombieConfigError.MissingRequiredField;
+        break :blk switch (val) {
+            .string => |s| s,
+            else => return ZombieConfigError.MissingRequiredField,
         };
-        break :blk try alloc.dupe(u8, s);
-    };
-    errdefer if (source) |s| alloc.free(s);
-
-    if (trigger_type == .webhook and source == null) return ZombieConfigError.InvalidTriggerSource;
-
-    const event: ?[]const u8 = blk: {
-        const val = obj.get("event") orelse break :blk null;
-        const s = switch (val) {
-            .string => |str| str,
-            else => break :blk null,
-        };
-        break :blk try alloc.dupe(u8, s);
-    };
-    errdefer if (event) |e| alloc.free(e);
-
-    const schedule: ?[]const u8 = blk: {
-        const val = obj.get("schedule") orelse break :blk null;
-        const s = switch (val) {
-            .string => |str| str,
-            else => break :blk null,
-        };
-        break :blk try alloc.dupe(u8, s);
     };
 
-    return ZombieTrigger{
-        .trigger_type = trigger_type,
-        .source = source,
-        .event = event,
-        .schedule = schedule,
+    if (std.mem.eql(u8, type_str, "webhook")) {
+        const source = try requireString(alloc, obj, "source") orelse return ZombieConfigError.InvalidTriggerSource;
+        errdefer alloc.free(source);
+        const event = try optionalString(alloc, obj, "event");
+        return .{ .webhook = .{ .source = source, .event = event } };
+    }
+    if (std.mem.eql(u8, type_str, "cron")) {
+        const schedule = try requireString(alloc, obj, "schedule") orelse return ZombieConfigError.MissingRequiredField;
+        return .{ .cron = .{ .schedule = schedule } };
+    }
+    if (std.mem.eql(u8, type_str, "chain")) {
+        const source = try requireString(alloc, obj, "source") orelse return ZombieConfigError.InvalidTriggerSource;
+        return .{ .chain = .{ .source = source } };
+    }
+    if (std.mem.eql(u8, type_str, "api")) return .{ .api = {} };
+    return ZombieConfigError.InvalidTriggerType;
+}
+
+fn requireString(alloc: Allocator, obj: std.json.ObjectMap, key: []const u8) !?[]const u8 {
+    const val = obj.get(key) orelse return null;
+    const s = switch (val) {
+        .string => |str| str,
+        else => return null,
     };
+    return try alloc.dupe(u8, s);
+}
+
+fn optionalString(alloc: Allocator, obj: std.json.ObjectMap, key: []const u8) !?[]const u8 {
+    const val = obj.get(key) orelse return null;
+    const s = switch (val) {
+        .string => |str| str,
+        else => return null,
+    };
+    return try alloc.dupe(u8, s);
 }
 
 pub fn parseZombieNetwork(alloc: Allocator, obj: std.json.ObjectMap) (Allocator.Error || ZombieConfigError)!ZombieNetwork {
@@ -131,9 +120,15 @@ pub fn freeStringSlice(alloc: Allocator, slice: []const []const u8) void {
 }
 
 pub fn freeZombieTrigger(alloc: Allocator, t: ZombieTrigger) void {
-    if (t.source) |s| alloc.free(s);
-    if (t.event) |e| alloc.free(e);
-    if (t.schedule) |s| alloc.free(s);
+    switch (t) {
+        .webhook => |w| {
+            alloc.free(w.source);
+            if (w.event) |e| alloc.free(e);
+        },
+        .cron => |c| alloc.free(c.schedule),
+        .chain => |ch| alloc.free(ch.source),
+        .api => {},
+    }
 }
 
 pub fn isKnownZombieSkill(skill: []const u8) bool {

@@ -4,6 +4,7 @@
 -- config_json: server-computed from trigger_markdown frontmatter
 -- webhook_secret_ref: vault key_name for the webhook secret (stored in vault.secrets)
 -- Status transitions: active → paused → active | active → stopped (terminal)
+-- Status values enforced in application code (error_codes.ZOMBIE_STATUS_*)
 
 CREATE TABLE IF NOT EXISTS core.zombies (
     id              UUID PRIMARY KEY,
@@ -14,11 +15,10 @@ CREATE TABLE IF NOT EXISTS core.zombies (
     trigger_markdown TEXT,
     config_json     JSONB NOT NULL,
     webhook_secret_ref TEXT,
-    status          TEXT NOT NULL DEFAULT 'active',
+    status          TEXT NOT NULL,
     created_at      BIGINT NOT NULL,
     updated_at      BIGINT NOT NULL,
-    CONSTRAINT uq_zombies_workspace_name UNIQUE (workspace_id, name),
-    CONSTRAINT ck_zombies_status CHECK (status IN ('active', 'paused', 'stopped'))
+    CONSTRAINT uq_zombies_workspace_name UNIQUE (workspace_id, name)
 );
 
 -- Worker reads config and status at claim time.
