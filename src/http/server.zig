@@ -130,7 +130,7 @@ fn dispatchMatchedRoute(ctx: *handler.Context, req: *httpz.Request, res: *httpz.
             else => respondMethodNotAllowed(res),
         },
         // M1_001: Zombie webhook ingestion
-        .receive_webhook => |zombie_id| if (req.method == .POST) handler.handleReceiveWebhook(ctx, req, res, zombie_id) else respondMethodNotAllowed(res),
+        .receive_webhook => |route| if (req.method == .POST) handler.handleReceiveWebhook(ctx, req, res, route.zombie_id, route.secret) else respondMethodNotAllowed(res),
         // M2_001: Zombie CRUD + activity + credentials
         .list_or_create_zombies => switch (req.method) {
             .POST => handler.handleCreateZombie(ctx, req, res),

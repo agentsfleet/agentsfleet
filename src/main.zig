@@ -128,6 +128,9 @@ test {
     _ = @import("config/load.zig");
     _ = @import("harness/control_plane.zig");
     _ = @import("zombie/config.zig");
+    _ = @import("zombie/config_helpers.zig");
+    _ = @import("zombie/yaml_frontmatter.zig");
+    _ = @import("http/route_matchers.zig");
     _ = @import("zombie/activity_stream.zig");
     _ = @import("zombie/event_loop.zig");
     _ = @import("cli/commands.zig");

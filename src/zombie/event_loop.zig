@@ -172,7 +172,10 @@ pub fn runEventLoop(
             sleepWithBackoff(cfg, consecutive_errors);
             continue;
         }
-        var evt = poll_result.event orelse { consecutive_errors = 0; continue; };
+        var evt = poll_result.event orelse {
+            consecutive_errors = 0;
+            continue;
+        };
         defer evt.deinit(alloc);
 
         consecutive_errors = processEvent(alloc, session, &evt, cfg, &consecutive_errors);

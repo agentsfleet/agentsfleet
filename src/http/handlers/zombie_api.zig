@@ -221,6 +221,11 @@ pub fn handleDeleteZombie(ctx: *Context, req: *httpz.Request, res: *httpz.Respon
     };
     _ = principal;
 
+    if (!id_format.isSupportedWorkspaceId(zombie_id)) {
+        common.errorResponse(res, .bad_request, ec.ERR_INVALID_REQUEST, "zombie_id must be a valid UUIDv7", req_id);
+        return;
+    }
+
     const updated = killZombie(ctx.pool, zombie_id) catch |err| {
         log.err("zombie.delete_failed err={s} zombie_id={s} req_id={s}", .{ @errorName(err), zombie_id, req_id });
         common.internalDbError(res, req_id);

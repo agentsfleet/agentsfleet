@@ -2,11 +2,11 @@
 
 const std = @import("std");
 const router = @import("router.zig");
+const matchers = @import("route_matchers.zig");
 const Route = router.Route;
 const match = router.match;
-const matchRunAction = router.matchRunAction;
-const matchZombieId = router.matchZombieId;
-const matchWebhookZombieId = router.matchWebhookZombieId;
+const matchRunAction = matchers.matchRunAction;
+const matchZombieId = matchers.matchZombieId;
 
 test "match resolves workspace billing and harness routes" {
     try std.testing.expectEqualStrings(
@@ -229,30 +229,15 @@ test "M17: match cancel_run accepts short run_id" {
     });
 }
 
-test "M17: match routes :cancel with empty run_id to get_run" {
-    // ":cancel" with empty inner falls through cancel_run (inner.len == 0)
-    // and matches get_run with run_id=":cancel" (single segment).
-    const route = match("/v1/runs/:cancel") orelse return error.TestExpectedMatch;
-    switch (route) {
-        .get_run => |id| try std.testing.expectEqualStrings(":cancel", id),
-        else => return error.TestExpectedEqual,
-    }
+test "M17: match rejects cancel_run with empty run_id" {
+    // M2_002 fixed: `:cancel` with empty inner is now rejected (null).
+    try std.testing.expect(match("/v1/runs/:cancel") == null);
 }
 
-test "M17: wrong suffix does not match cancel_run but may match get_run" {
-    // "run-1:cancelX" is a valid single segment → matches get_run
-    const r1 = match("/v1/runs/run-1:cancelX") orelse return error.TestExpectedMatch;
-    switch (r1) {
-        .get_run => {},
-        else => return error.TestExpectedEqual,
-    }
-    // "run-1:CANCEL" is a valid single segment → matches get_run (case-sensitive)
-    const r2 = match("/v1/runs/run-1:CANCEL") orelse return error.TestExpectedMatch;
-    switch (r2) {
-        .get_run => {},
-        else => return error.TestExpectedEqual,
-    }
-    // "run-1/cancel" has a slash → not single segment → null
+test "M17: wrong suffix does not match cancel_run" {
+    // M2_002: run_ids with ':' are rejected by get_run to prevent false matches.
+    try std.testing.expect(match("/v1/runs/run-1:cancelX") == null);
+    try std.testing.expect(match("/v1/runs/run-1:CANCEL") == null);
     try std.testing.expect(match("/v1/runs/run-1/cancel") == null);
 }
 
@@ -281,13 +266,11 @@ test "M17: bare run path resolves to get_run not cancel_run" {
 
 test "M1_001: webhook routes resolve and reject correctly" {
     const zombie_id = "019abc12-8d3a-7f13-8abc-2b3e1e0a6f11";
-    try std.testing.expectEqualStrings(zombie_id, matchWebhookZombieId("/v1/webhooks/019abc12-8d3a-7f13-8abc-2b3e1e0a6f11").?);
-    try std.testing.expect(matchWebhookZombieId("/v1/webhooks/") == null);
-    try std.testing.expect(matchWebhookZombieId("/v1/webhooks/a/b") == null);
-    try std.testing.expect(matchWebhookZombieId("/v1/webhooks") == null);
+    // Webhook tests for matchWebhookRoute are in route_matchers.zig.
+    // Test via match() integration:
     const route = match("/v1/webhooks/019abc12-8d3a-7f13-8abc-2b3e1e0a6f11") orelse return error.TestExpectedMatch;
     try std.testing.expectEqualStrings(zombie_id, switch (route) {
-        .receive_webhook => |id| id,
+        .receive_webhook => |r| r.zombie_id,
         else => return error.TestExpectedEqual,
     });
 }

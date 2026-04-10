@@ -96,6 +96,9 @@ pub const MSG_ZOMBIE_NOT_ACTIVE = "Zombie is not active";
 // Webhook constants
 pub const BEARER_PREFIX = "Bearer ";
 pub const DEDUP_TTL_SECONDS: u32 = 86400;
+pub const ZOMBIE_STATUS_ACTIVE = "active";
+pub const ZOMBIE_STATUS_PAUSED = "paused";
+pub const ZOMBIE_STATUS_STOPPED = "stopped";
 pub const WEBHOOK_EVENT_TYPE = "webhook_received";
 pub const STATUS_DUPLICATE = "duplicate";
 pub const STATUS_ACCEPTED = "accepted";
