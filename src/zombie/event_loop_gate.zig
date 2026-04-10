@@ -144,6 +144,8 @@ fn handleApprovalFlow(
         },
         .timed_out => blk: {
             logGateActivity(pool, alloc, session, error_codes.GATE_EVENT_TIMEOUT, action_id);
+            approval_gate.resolveGateDecision(pool, action_id, "timed_out", "");
+            cleanupPendingKey(redis, session.zombie_id, action_id);
             break :blk .{ .blocked = .timeout };
         },
     };
@@ -164,6 +166,15 @@ fn pauseZombie(pool: *pg.Pool, zombie_id: []const u8) void {
     _ = conn.exec(
         \\UPDATE core.zombies SET status = 'paused', updated_at = $1 WHERE id = $2::uuid
     , .{ std.time.milliTimestamp(), zombie_id }) catch {};
+}
+
+fn cleanupPendingKey(redis: *queue_redis.Client, zombie_id: []const u8, action_id: []const u8) void {
+    var key_buf: [256]u8 = undefined;
+    const key = std.fmt.bufPrint(&key_buf, "{s}{s}:{s}", .{
+        error_codes.GATE_PENDING_KEY_PREFIX, zombie_id, action_id,
+    }) catch return;
+    var resp = redis.commandAllowError(&.{ "DEL", key }) catch return;
+    resp.deinit(redis.alloc);
 }
 
 fn storeNotificationPayload(redis: *queue_redis.Client, zombie_id: []const u8, action_id: []const u8, payload: []const u8) void {
