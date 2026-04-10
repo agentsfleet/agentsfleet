@@ -121,8 +121,9 @@ fn parseOneGateRule(alloc: Allocator, obj: std.json.ObjectMap) (Allocator.Error 
 
     const behavior = blk: {
         const s = jsonStr(obj, "behavior") orelse break :blk GateBehavior.approve;
+        if (std.mem.eql(u8, s, "approve")) break :blk GateBehavior.approve;
         if (std.mem.eql(u8, s, "auto_kill")) break :blk GateBehavior.auto_kill;
-        break :blk GateBehavior.approve;
+        return GateConfigError.MissingRequiredField;
     };
 
     return GateRule{

@@ -130,7 +130,7 @@ pub fn checkAnomaly(
             log.warn("approval_gate.anomaly_redis_fail zombie_id={s}", .{zombie_id});
             return .normal;
         };
-        if (count > rule.threshold_count) {
+        if (count >= rule.threshold_count) {
             log.err("approval_gate.anomaly_auto_kill zombie_id={s} tool={s} action={s} count={d} threshold={d}", .{
                 zombie_id, tool, action, count, rule.threshold_count,
             });
