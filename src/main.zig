@@ -169,4 +169,13 @@ test {
     _ = @import("http/handlers/zombie_activity_api.zig");
     _ = @import("http/router_test.zig");
     _ = @import("cmd/worker_zombie.zig");
+    // M6_001: AI Firewall Policy Engine
+    _ = @import("zombie/firewall/domain_policy.zig");
+    _ = @import("zombie/firewall/endpoint_policy.zig");
+    _ = @import("zombie/firewall/injection_detector.zig");
+    _ = @import("zombie/firewall/content_scanner.zig");
+    _ = @import("zombie/firewall/firewall.zig");
+    _ = @import("zombie/firewall/firewall_test.zig");
+    _ = @import("zombie/firewall/firewall_robustness_test.zig");
+    _ = @import("zombie/firewall/firewall_greptile_test.zig");
 }
