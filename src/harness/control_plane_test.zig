@@ -1,6 +1,6 @@
 const std = @import("std");
 const cp = @import("control_plane.zig");
-const topology = @import("../pipeline/topology.zig");
+const topology = @import("../state/topology.zig");
 
 // --- T1: Happy path ---
 

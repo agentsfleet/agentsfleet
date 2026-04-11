@@ -114,6 +114,13 @@ Status: Canonical Zig source of truth for agents and commits
 - Bare enums are fine for input classification (e.g., `GateDecision = enum { auto_approve, requires_approval, auto_kill }`) where every variant is handled identically. But for return values where callers branch on failure details, carry the context in the union.
 - Example: `GateCheckResult = union(enum) { passed: void, blocked: BlockReason, auto_killed: AutoKillTrigger }` — callers can produce specific error messages without re-deriving context.
 
+## Removed Endpoint Stubs (M10_001)
+
+- When a handler's backing table is dropped, replace it with a 410 stub — do not delete the function unless the route is also removed from the router.
+- Use `common.errorResponse(res, .gone, error_codes.ERR_*, "...", req_id)` as the entire body. No arena, no auth, no DB.
+- If the route is removed from the router at the same time (pre-production), delete the handler file too and remove all re-exports from `handler.zig`.
+- When removing a handler file, also remove it from `m5_handler_changes_test.zig` (or equivalent import-resolution test) — stale `@import` will break the build.
+
 ## Module Split Pattern (M4_001)
 
 - When a module hits the line limit, split by concern — not arbitrarily. Preferred extraction order:
@@ -122,3 +129,15 @@ Status: Canonical Zig source of truth for agents and commits
   3. Integration with other modules → `foo_integration.zig` (thin adapter)
 - The original module remains the public API. Extracted modules are implementation details imported only by the parent.
 - Do not split into `foo_part1.zig` / `foo_part2.zig` — names must describe the concern, not the split order.
+
+## Struct Init Partial Leak (M6_001)
+
+- Never build a struct literal with multiple `try dupeJsonStr()` calls in a single expression. If a later field's dupe fails, the already-duped fields leak.
+- Build field-by-field with `errdefer alloc.free(field)` after each dupe. Only assemble the struct after all fields are successfully allocated.
+- The `errdefer` chain unwinds in reverse order, freeing exactly what was allocated.
+
+## Stack Buffer Return Safety (M6_001)
+
+- Never return a `[]const u8` slice that points into a stack-allocated buffer (`var buf: [N]u8`). The stack frame is deallocated when the function returns. The caller reads garbage.
+- If you need to return a substring from a stack buffer: either `alloc.dupe()` it, or remove the field from the return type.
+- This applies to any function-local array used as a normalization/scratch buffer.

@@ -265,6 +265,7 @@ Required outputs:
   - [ ] **User-facing doc changes** — do docs at `docs.usezombie.com` need updating? If yes, list pages.
   - [ ] **Release notes** — will this ship as a version bump? If yes, note the version (minor for features, patch for fixes) and draft the `docs/v1/ship/{version}.md` entry during DOCUMENT phase.
   - [ ] **Schema changes** — does this change add/modify/remove database tables, columns, or constraints? If yes: (a) each new SQL file must be ≤100 lines and single-concern (one table or one logical group), (b) update `schema/embed.zig` and `src/cmd/common.zig` migration array, (c) verify `docs/SCHEMA_CONVENTIONS.md` is followed. Full teardown-rebuild is allowed until v0.5.0 — no ALTER migrations needed.
+  - [ ] **Schema teardown (pre-production only)** — if removing tables before first production deploy: edit `CREATE TABLE` source files directly (no DROP migrations). When all tables in a file are removed, keep the file as a version marker with a comment (`-- MN_WS: removed. Kept as version marker.`). Never delete migration files — later migrations depend on slot numbering. See `docs/greptile-learnings/RULES.md` rule 41.
 
 Restrictions:
 

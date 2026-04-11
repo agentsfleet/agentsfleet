@@ -15,7 +15,6 @@ const std = @import("std");
 const pg = @import("pg");
 const auth_sessions = @import("../auth/sessions.zig");
 const oidc = @import("../auth/oidc.zig");
-const worker = @import("../pipeline/worker.zig");
 const queue_redis = @import("../queue/redis.zig");
 const common = @import("handlers/common.zig");
 const handler = @import("handler.zig");
@@ -62,7 +61,6 @@ const TestServer = struct {
     pool: *pg.Pool,
     session_store: auth_sessions.SessionStore,
     verifier: oidc.Verifier,
-    worker_state: worker.WorkerState,
     queue: queue_redis.Client = undefined,
     ctx: handler.Context,
     thread: std.Thread,
@@ -95,7 +93,6 @@ fn startTestServer(alloc: std.mem.Allocator) !*TestServer {
         .audience = TEST_AUDIENCE,
         .inline_jwks_json = TEST_JWKS,
     });
-    var wstate = worker.WorkerState.init();
     const port = next_port.fetchAdd(1, .acq_rel);
 
     const srv = try alloc.create(TestServer);
@@ -103,7 +100,6 @@ fn startTestServer(alloc: std.mem.Allocator) !*TestServer {
         .pool = db_ctx.pool,
         .session_store = session_store,
         .verifier = verifier,
-        .worker_state = wstate,
         .ctx = .{
             .pool = db_ctx.pool,
             .queue = &undefined,
@@ -112,7 +108,6 @@ fn startTestServer(alloc: std.mem.Allocator) !*TestServer {
             .oidc = &verifier,
             .auth_sessions = &session_store,
             .app_url = "http://127.0.0.1",
-            .worker_state = &wstate,
             .api_in_flight_requests = std.atomic.Value(u32).init(0),
             .api_max_in_flight_requests = 64,
             .ready_max_queue_depth = null,
@@ -125,7 +120,6 @@ fn startTestServer(alloc: std.mem.Allocator) !*TestServer {
     srv.ctx.queue = &srv.queue;
     srv.ctx.oidc = &srv.verifier;
     srv.ctx.auth_sessions = &srv.session_store;
-    srv.ctx.worker_state = &srv.worker_state;
     srv.thread = try std.Thread.spawn(.{}, serverThread, .{ &srv.ctx, port });
     errdefer {
         http_server.stop();

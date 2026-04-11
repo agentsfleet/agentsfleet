@@ -18,7 +18,6 @@ const cmd_serve = @import("cmd/serve.zig");
 const cmd_worker = @import("cmd/worker.zig");
 const cmd_doctor = @import("cmd/doctor.zig");
 const cmd_run = @import("cmd/run.zig");
-const cmd_runs = @import("cmd/runs.zig");
 const cmd_migrate = @import("cmd/migrate.zig");
 const cmd_reconcile = @import("cmd/reconcile.zig");
 const config_load = @import("config/load.zig");
@@ -105,7 +104,6 @@ pub fn main() !void {
         .worker => try cmd_worker.run(alloc),
         .doctor => try cmd_doctor.run(alloc),
         .run => try cmd_run.run(alloc),
-        .runs => try cmd_runs.run(alloc),
         .migrate => try cmd_migrate.run(alloc),
         .reconcile => try cmd_reconcile.run(alloc),
     }
@@ -121,7 +119,6 @@ test "parseLogLevel accepts common values" {
 
 test {
     _ = @import("types.zig");
-    _ = @import("state/machine.zig");
     _ = @import("secrets/crypto.zig");
     _ = @import("db/pool.zig");
     _ = @import("config/env_vars.zig");
@@ -156,13 +153,10 @@ test {
     _ = @import("executor/client.zig");
     _ = @import("http/handlers/m5_handler_changes_test.zig");
     _ = @import("http/handlers/m16_004_handler_unit_test.zig");
-    _ = @import("http/handlers/runs/stream_test.zig");
-    _ = @import("http/handlers/runs/stream_integration_test.zig");
     _ = @import("cmd/run_watch_test.zig");
     _ = @import("queue/redis.zig");
     _ = @import("queue/redis_pubsub_test.zig");
     _ = @import("reliability/backoff.zig");
-    _ = @import("pipeline/worker_state.zig");
     // M2_001: Zombie CRUD, activity, router, worker
     _ = @import("http/handlers/zombie_api.zig");
     _ = @import("http/handlers/zombie_activity_api.zig");

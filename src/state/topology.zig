@@ -288,12 +288,7 @@ fn validateTransitionTarget(stages: []const Stage, target: []const u8) !void {
     return TopologyError.InvalidTransitionTarget;
 }
 
-// Public-API tests live in topology_test.zig (imported below).
-// Inline tests here cover private types (ProfileDoc, StageDoc, fromDoc) only.
-
-test {
-    _ = @import("topology_test.zig");
-}
+// Inline tests cover private types (ProfileDoc, StageDoc, fromDoc).
 
 test "integration: custom profile with non built-in role and built-in skill is accepted" {
     const alloc = std.testing.allocator;

@@ -1,5 +1,5 @@
 const std = @import("std");
-const topology = @import("../pipeline/topology.zig");
+const topology = @import("../state/topology.zig");
 
 const log = std.log.scoped(.harness);
 

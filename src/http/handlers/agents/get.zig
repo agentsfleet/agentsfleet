@@ -4,7 +4,6 @@ const common = @import("../common.zig");
 const obs_log = @import("../../../observability/logging.zig");
 const id_format = @import("../../../types/id_format.zig");
 const error_codes = @import("../../../errors/codes.zig");
-const proposals = @import("../../../pipeline/scoring_mod/proposals.zig");
 
 const log = std.log.scoped(.http);
 
@@ -63,7 +62,8 @@ pub fn handleGetAgent(ctx: *common.Context, req: *httpz.Request, res: *httpz.Res
     }
     if (!common.requireRole(res, req_id, principal, .user)) return;
 
-    const improvement_stalled_warning = proposals.hasImprovementStalledWarning(conn, agent_id) catch false;
+    // Pipeline v1 removed — improvement stalled warnings are no longer generated.
+    const improvement_stalled_warning = false;
 
     log.debug("agent.get agent_id={s} status={s}", .{ agent_id, status });
 

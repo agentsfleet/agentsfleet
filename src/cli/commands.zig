@@ -5,7 +5,6 @@ pub const Subcommand = enum {
     worker,
     doctor,
     run,
-    runs,
     migrate,
     reconcile,
 };
@@ -26,7 +25,6 @@ test "parseSubcommandName returns known subcommands" {
     try std.testing.expectEqual(Subcommand.worker, parseSubcommandName("worker"));
     try std.testing.expectEqual(Subcommand.doctor, parseSubcommandName("doctor"));
     try std.testing.expectEqual(Subcommand.run, parseSubcommandName("run"));
-    try std.testing.expectEqual(Subcommand.runs, parseSubcommandName("runs"));
     try std.testing.expectEqual(Subcommand.migrate, parseSubcommandName("migrate"));
     try std.testing.expectEqual(Subcommand.reconcile, parseSubcommandName("reconcile"));
 }

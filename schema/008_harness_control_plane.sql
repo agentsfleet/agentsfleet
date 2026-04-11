@@ -42,43 +42,7 @@ CREATE TABLE IF NOT EXISTS agent.workspace_active_config (
 );
 CREATE INDEX IF NOT EXISTS idx_workspace_active_config_tenant ON agent.workspace_active_config(tenant_id, activated_at DESC);
 
-CREATE TABLE IF NOT EXISTS agent.agent_improvement_proposals (
-    proposal_id         UUID PRIMARY KEY,
-    agent_id            UUID NOT NULL REFERENCES agent.agent_profiles(agent_id) ON DELETE CASCADE,
-    workspace_id        UUID NOT NULL REFERENCES core.workspaces(workspace_id) ON DELETE CASCADE,
-    trigger_reason      TEXT NOT NULL,
-    proposed_changes    TEXT NOT NULL,
-    config_version_id   UUID NOT NULL REFERENCES agent.agent_config_versions(config_version_id),
-    approval_mode       TEXT NOT NULL,
-    generation_status   TEXT NOT NULL,
-    status              TEXT NOT NULL,
-    rejection_reason    TEXT,
-    auto_apply_at       BIGINT,
-    applied_by          TEXT,
-    created_at          BIGINT NOT NULL,
-    updated_at          BIGINT NOT NULL,
-    CONSTRAINT ck_agent_improvement_proposals_uuidv7 CHECK (substring(proposal_id::text from 15 for 1) = '7')
-);
-CREATE INDEX IF NOT EXISTS idx_agent_improvement_proposals_agent
-    ON agent.agent_improvement_proposals(agent_id, created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_agent_improvement_proposals_veto_window
-    ON agent.agent_improvement_proposals(status, auto_apply_at);
-
-CREATE TABLE IF NOT EXISTS agent.harness_change_log (
-    change_id      UUID PRIMARY KEY,
-    agent_id       UUID NOT NULL REFERENCES agent.agent_profiles(agent_id) ON DELETE CASCADE,
-    proposal_id    UUID NOT NULL REFERENCES agent.agent_improvement_proposals(proposal_id),
-    workspace_id   UUID NOT NULL REFERENCES core.workspaces(workspace_id) ON DELETE CASCADE,
-    field_name     TEXT NOT NULL,
-    old_value      TEXT NOT NULL,
-    new_value      TEXT NOT NULL,
-    applied_at     BIGINT NOT NULL,
-    applied_by     TEXT NOT NULL,
-    reverted_from  UUID REFERENCES agent.harness_change_log(change_id),
-    score_delta    DOUBLE PRECISION,
-    CONSTRAINT ck_harness_change_log_uuidv7 CHECK (substring(change_id::text from 15 for 1) = '7')
-);
-CREATE INDEX IF NOT EXISTS idx_harness_change_log_agent ON agent.harness_change_log(agent_id, applied_at DESC);
+-- M10_001: agent_improvement_proposals and harness_change_log removed (pipeline v1 scoring).
 
 CREATE TABLE IF NOT EXISTS agent.config_compile_jobs (
     compile_job_id        UUID PRIMARY KEY,
@@ -126,27 +90,11 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON
 TO api_runtime;
 
 GRANT SELECT, UPDATE ON
-    agent.agent_improvement_proposals
-TO api_runtime;
-
-GRANT SELECT, INSERT ON
-    agent.harness_change_log
-TO api_runtime;
-
-GRANT SELECT, UPDATE ON
     agent.agent_profiles, agent.workspace_active_config
 TO worker_runtime;
 
 GRANT SELECT, INSERT ON
     agent.agent_config_versions
-TO worker_runtime;
-
-GRANT SELECT, INSERT, UPDATE ON
-    agent.agent_improvement_proposals
-TO worker_runtime;
-
-GRANT SELECT, INSERT, UPDATE ON
-    agent.harness_change_log
 TO worker_runtime;
 
 GRANT SELECT, INSERT, UPDATE, DELETE ON vault.workspace_skill_secrets TO api_runtime;

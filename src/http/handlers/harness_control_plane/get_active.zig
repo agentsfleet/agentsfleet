@@ -1,6 +1,6 @@
 const std = @import("std");
 const pg = @import("pg");
-const topology = @import("../../../pipeline/topology.zig");
+const topology = @import("../../../state/topology.zig");
 const harness = @import("../../../harness/control_plane.zig");
 const types = @import("types.zig");
 
