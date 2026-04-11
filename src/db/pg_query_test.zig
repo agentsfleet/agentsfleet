@@ -3,12 +3,8 @@ const pg = @import("pg");
 const PgQuery = @import("pg_query.zig").PgQuery;
 const base = @import("test_fixtures.zig");
 
-fn openTestConn(alloc: std.mem.Allocator) !?struct { pool: *pg.Pool, conn: *pg.Conn } {
-    return base.openTestConn(alloc);
-}
-
 test "integration: PgQuery.from wraps conn.query result and next() returns rows" {
-    const db_ctx = (try openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
+    const db_ctx = (try base.openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
 
@@ -19,7 +15,7 @@ test "integration: PgQuery.from wraps conn.query result and next() returns rows"
 }
 
 test "integration: PgQuery.next returns null when no rows match" {
-    const db_ctx = (try openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
+    const db_ctx = (try base.openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
 
@@ -30,7 +26,7 @@ test "integration: PgQuery.next returns null when no rows match" {
 }
 
 test "integration: PgQuery.deinit auto-drains unconsumed rows" {
-    const db_ctx = (try openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
+    const db_ctx = (try base.openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
 
@@ -50,7 +46,7 @@ test "integration: PgQuery.deinit auto-drains unconsumed rows" {
 }
 
 test "integration: PgQuery works with multi-row result iteration" {
-    const db_ctx = (try openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
+    const db_ctx = (try base.openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
 
@@ -70,7 +66,7 @@ test "integration: PgQuery works with multi-row result iteration" {
 }
 
 test "integration: PgQuery.drain is idempotent" {
-    const db_ctx = (try openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
+    const db_ctx = (try base.openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
 
@@ -82,7 +78,7 @@ test "integration: PgQuery.drain is idempotent" {
 }
 
 test "integration: PgQuery allows sequential queries on same connection" {
-    const db_ctx = (try openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
+    const db_ctx = (try base.openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
 
@@ -102,7 +98,7 @@ test "integration: PgQuery allows sequential queries on same connection" {
 }
 
 test "integration: PgQuery works with early return (defer deinit covers cleanup)" {
-    const db_ctx = (try openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
+    const db_ctx = (try base.openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
 
@@ -124,7 +120,7 @@ test "integration: PgQuery works with early return (defer deinit covers cleanup)
 }
 
 test "integration: PgQuery with nullable column" {
-    const db_ctx = (try openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
+    const db_ctx = (try base.openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
 
@@ -136,7 +132,7 @@ test "integration: PgQuery with nullable column" {
 }
 
 test "integration: PgQuery with RETURNING clause from DML" {
-    const db_ctx = (try openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
+    const db_ctx = (try base.openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
 
