@@ -114,6 +114,15 @@ Status: Canonical Zig source of truth for agents and commits
 - Bare enums are fine for input classification (e.g., `GateDecision = enum { auto_approve, requires_approval, auto_kill }`) where every variant is handled identically. But for return values where callers branch on failure details, carry the context in the union.
 - Example: `GateCheckResult = union(enum) { passed: void, blocked: BlockReason, auto_killed: AutoKillTrigger }` — callers can produce specific error messages without re-deriving context.
 
+## Comptime Eval Quota + Package Boundary (M11_001)
+
+- Comptime loops over large tables (e.g. 130 codes × 131 TABLE entries × `std.mem.eql`) need `@setEvalBranchQuota(N)` as the first line. Default is 1000. Formula: `N ≈ code_count × table_size × avg_string_len`. Round to next power-of-ten; comment the math.
+- `@embedFile` is sandboxed to `src/`. Any path escaping it (`../../public/openapi.json`) is a compile error. For files outside `src/`, write a Python/shell validator invoked via a `make` target wired into `lint-zig`.
+
+## Sentinel Values Must Not Collide With Real Registry Codes (M11_001)
+
+- In any code registry with a fallback sentinel (e.g. `UNKNOWN_ENTRY` in `error_table.zig`), the sentinel's `.code` must NOT match any real registered entry. Use a visually distinct value like `"UZ-UNKNOWN"`. Collision causes tests to pass with wrong semantics and the comptime coverage gate to fail. Add a test that verifies the sentinel is absent from TABLE.
+
 ## Module Split Pattern (M4_001)
 
 - When a module hits the line limit, split by concern — not arbitrarily. Preferred extraction order:
