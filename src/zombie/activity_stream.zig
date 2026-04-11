@@ -13,6 +13,7 @@ const std = @import("std");
 const pg = @import("pg");
 const Allocator = std.mem.Allocator;
 const id_format = @import("../types/id_format.zig");
+const PgQuery = @import("../db/pg_query.zig").PgQuery;
 
 const log = std.log.scoped(.activity_stream);
 
@@ -157,7 +158,7 @@ fn fetchActivityPageFirst(
     ;
     const sql = if (kind == .zombie) sql_zombie else sql_workspace;
 
-    var q = try conn.query(sql, .{ filter_id, @as(i64, @intCast(limit)) }); // check-pg-drain: ok — drain is called inside collectActivityPage
+    var q = PgQuery.from(try conn.query(sql, .{ filter_id, @as(i64, @intCast(limit)) }));
     defer q.deinit();
     return collectActivityPage(alloc, &q, limit);
 }
@@ -195,19 +196,19 @@ fn fetchActivityPage(
     ;
     const sql = if (kind == .zombie) sql_zombie else sql_workspace;
 
-    var q = try conn.query(sql, .{ filter_id, cursor_ts, cursor_id, @as(i64, @intCast(limit)) }); // check-pg-drain: ok — drain is called inside collectActivityPage
+    var q = PgQuery.from(try conn.query(sql, .{ filter_id, cursor_ts, cursor_id, @as(i64, @intCast(limit)) }));
     defer q.deinit();
     return collectActivityPage(alloc, &q, limit);
 }
 
-fn collectActivityPage(alloc: Allocator, q: anytype, limit: u32) !ActivityPage {
+fn collectActivityPage(alloc: Allocator, q: *PgQuery, limit: u32) !ActivityPage {
     var rows: std.ArrayList(ActivityEventRow) = .{};
     errdefer {
         for (rows.items) |*r| r.deinit(alloc);
         rows.deinit(alloc);
     }
 
-    while (try q.*.next()) |row| {
+    while (try q.next()) |row| {
         const id = try alloc.dupe(u8, try row.get([]const u8, 0));
         errdefer alloc.free(id);
         const zombie_id = try alloc.dupe(u8, try row.get([]const u8, 1));
@@ -229,7 +230,7 @@ fn collectActivityPage(alloc: Allocator, q: anytype, limit: u32) !ActivityPage {
             .created_at = created_at,
         });
     }
-    q.*.drain() catch {};
+    q.drain();
 
     const events = try rows.toOwnedSlice(alloc);
     errdefer {

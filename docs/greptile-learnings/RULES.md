@@ -25,10 +25,10 @@ Reference a rule as `RULE NDC`, `RULE OWN`, etc.
 
 ## RULE OWN — One owner per resource — no double cleanup
 
-**Rule:** Every allocation has exactly one cleanup path — errdefer OR manual free, never both on the same pointer.
-**Why:** Two cleanup paths = double-free on the error path.
+**Rule:** Every allocation has exactly one cleanup path — errdefer OR manual free, never both on the same pointer. For multi-step init, use the sequential errdefer chain (see ZIG_RULES.md "Multi-Step Init"). For shared ownership, use `ref()`/`unref()` with an atomic refcount — `unref()` destroys when count hits zero. Raw pointer field = borrowed (caller owns); refcounted field = owned (self manages).
+**Why:** Two cleanup paths = double-free on the error path. The bvisor encoding (raw ptr = borrowed, refcount = owned) makes the ownership contract readable from the type alone.
 **Tags:** zig, memory
-**Ref:** M1_001 manual alloc.free() + errdefer on same pointer = double-free.
+**Ref:** M1_001 manual alloc.free() + errdefer on same pointer = double-free. bvisor Thread.zig, ThreadGroup.zig for ref/unref pattern.
 
 ## RULE CTM — Constant-time comparison for secrets
 
@@ -74,10 +74,10 @@ Reference a rule as `RULE NDC`, `RULE OWN`, etc.
 
 ## RULE FLS — Flush all layers — drain all results
 
-**Rule:** After TLS flush, also flush the socket layer; drain pg results before deinit; cast UUID/JSONB to ::text in SELECT.
+**Rule:** After TLS flush, also flush the socket layer. Cast UUID/JSONB to ::text in SELECT. For pg results: use `PgQuery` (see ZIG_RULES.md "Pg Query Wrapper") — `defer q.deinit()` auto-drains. Manual `q.drain() catch {}; q.deinit()` on early-exit paths is eliminated by the wrapper.
 **Why:** TLS flush only encrypts into buffer; undrained slices dangle; ::text prevents binary/text divergence across OS.
 **Tags:** zig, tls, postgres
-**Ref:** M22_001 missing socket flush → infinite hang. M1_001 UUID read as binary on Linux CI, text on macOS.
+**Ref:** M22_001 missing socket flush → infinite hang. M1_001 UUID read as binary on Linux CI, text on macOS. M10_004 PgQuery wraps drain into deinit.
 
 ## RULE TIM — Timing invariants must be explicit
 
@@ -232,12 +232,13 @@ Reference a rule as `RULE NDC`, `RULE OWN`, etc.
 **Tags:** zig, testing
 **Ref:** M2_001 router tests existed since M16 but never ran; two pre-existing bugs surfaced on import.
 
-## RULE PTR — Pointer dereference for anytype query params
+## RULE PTR — ~~Pointer dereference for anytype query params~~ ELIMINATED by PgQuery wrapper
 
-**Rule:** Use q.*.next() and q.*.drain() when a pg query result is passed as &q via anytype.
-**Why:** q.next() on a pointer type compiles but calls the wrong dispatch.
+**Rule:** ~~Use q.*.next() and q.*.drain() when a pg query result is passed as &q via anytype.~~
+**Status:** Eliminated in M10_004. Use `src/db/pg_query.zig` — helpers take `*PgQuery`, not `anytype`. `q.next()` always works; the `q.*.next()` footgun is structurally impossible.
+**Why the old rule existed:** q.next() on a pointer type compiles but calls the wrong dispatch.
 **Tags:** zig, postgres
-**Ref:** M2_001 collectActivityPage received &q but called q.next() — silent wrong dispatch.
+**Ref:** M2_001 original bug. M10_004 PgQuery wrapper eliminates this class.
 
 ## RULE ZAL — Zig 0.15 ArrayList API
 

@@ -152,3 +152,86 @@ Status: Canonical Zig source of truth for agents and commits
 - Never return a `[]const u8` slice that points into a stack-allocated buffer (`var buf: [N]u8`). The stack frame is deallocated when the function returns. The caller reads garbage.
 - If you need to return a substring from a stack buffer: either `alloc.dupe()` it, or remove the field from the return type.
 - This applies to any function-local array used as a normalization/scratch buffer.
+
+## Multi-Step Init: errdefer Chain Pattern (bvisor)
+
+Every init function that allocates more than one resource must use a sequential errdefer chain — one errdefer immediately after each allocation:
+
+```zig
+pub fn init(alloc: Allocator, shared: ?*SharedThing) !*Self {
+    // Step 1: resolve or allocate shared dependency
+    const thing = shared orelse try SharedThing.init(alloc);
+    errdefer if (shared == null) thing.unref(); // only free if WE allocated it
+
+    // Step 2: allocate self
+    const self = try alloc.create(Self);
+    errdefer alloc.destroy(self);
+
+    // Step 3: allocate inner resources
+    const buf = try alloc.alloc(u8, 256);
+    errdefer alloc.free(buf);
+
+    self.* = .{ .alloc = alloc, .thing = thing, .buf = buf };
+    return self;
+}
+```
+
+Rules:
+- Return `!*Self` for heap-allocated; `!Self` for stack-returned with fallible setup.
+- `deinit()` always `pub fn deinit(self: *Self) void` — pointer receiver, void return.
+- Conditional ownership: if the caller may have pre-allocated a dependency, the `?*T` + `errdefer if (param == null)` pattern encodes "we own it only when we created it."
+- If deinit owns nothing (all fields borrowed), it's still defined — it just calls nothing. Presence of deinit signals "this type has a cleanup contract."
+
+## Ownership Encoding: raw pointer = borrowed, ref/unref = owned (bvisor)
+
+Zig has no borrow checker. Encode ownership in the type, not in documentation:
+
+```zig
+// Borrowed — caller owns the lifetime, self never frees it
+parent: *ThreadGroup,
+
+// Owned — self manages lifetime via refcount
+ref_count: std.atomic.Value(usize),
+
+pub fn ref(self: *Self) *Self {
+    _ = self.ref_count.fetchAdd(1, .monotonic);
+    return self;
+}
+
+pub fn unref(self: *Self) void {
+    const prev = self.ref_count.fetchSub(1, .acq_rel);
+    if (prev == 1) {
+        if (self.parent) |p| p.unref(); // cascade before self-destroy
+        self.children.deinit(self.alloc);
+        self.alloc.destroy(self);
+    }
+}
+```
+
+When a raw pointer field DOES need a comment (rare — borrowed from a peer, not an ancestor), write: `// borrowed from X, freed by X.deinit()`. Silence implies the pointer is an ancestor/caller lifetime.
+
+## Pg Query Wrapper: use PgQuery, not anytype (M10_004)
+
+**Do not pass `pg.Result` via `anytype` to helper functions.** The `anytype` pattern requires callers to remember `q.*.next()` vs `q.next()` depending on how the value was passed — a compile-silent footgun.
+
+Instead, use the `PgQuery` wrapper in `src/db/pg_query.zig`:
+
+```zig
+// caller
+var q = PgQuery.from(try conn.query(sql, args));
+defer q.deinit(); // auto-drains, then deinits
+
+return someHelper(alloc, &q);
+
+// helper — takes *PgQuery, never anytype
+fn someHelper(alloc: Allocator, q: *PgQuery) !Result {
+    while (try q.next()) |row| { ... }
+}
+```
+
+Rules:
+- Always `PgQuery.from(conn.query(...))` — never store `pg.Result` directly.
+- Use `defer q.deinit()` in the owner. `deinit()` auto-drains idempotently.
+- Helpers take `*PgQuery`, never `anytype` — `q.next()` always works, no `q.*.next()`.
+- On early exit (parse failure, missing row), just `return` — the `defer` handles drain + deinit.
+- `check-pg-drain` lint still runs but now targets only `PgQuery.from()` call sites.
