@@ -51,6 +51,9 @@ def check_file(path: Path):
             continue
         if ".drain(" in body:
             continue
+        # PgQuery wraps the result and auto-drains in deinit().
+        if "PgQuery.from(" in body:
+            continue
         if "// check-pg-drain: ok" in body:
             continue
         errors.append(

@@ -2,7 +2,8 @@
 Milestone: M10
 Workstream: M10_004
 Name: SCORING_AND_BILLING_SUMMARY_CLEANUP
-Status: PENDING
+Status: DONE
+Branch: feat/m10-004-scoring-billing-cleanup
 Priority: P0 — billing summary handler queries dropped tables (will 500)
 Created: Apr 11, 2026
 Depends on: M10_001 (pipeline v1 removal)
@@ -62,9 +63,9 @@ dynamically. All scoring infrastructure is dead:
 
 ## Acceptance Criteria
 
-- [ ] GET /v1/workspaces/:id/billing/summary returns 200 with zeros (not 500)
-- [ ] `grep -rn incAgentScoreComputed src/ | grep -v test | grep -v metrics` returns 0
-- [ ] `grep -rn trackAgentRunScored src/ | grep -v test` returns 0
-- [ ] `make test` passes
-- [ ] `make lint` passes
-- [ ] Cross-compiles
+- [x] GET /v1/workspaces/:id/billing/summary returns 200 with zeros (not 500)
+- [x] `grep -rn incAgentScoreComputed src/ | grep -v test | grep -v metrics` returns 0
+- [x] `grep -rn trackAgentRunScored src/ | grep -v test` returns 0
+- [x] `make test` passes
+- [x] `make lint` passes
+- [x] Cross-compiles

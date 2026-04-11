@@ -244,7 +244,68 @@ GET /v1/workspaces/{ws}/firewall/events?type={type}&tool={tool}&cursor={cursor}&
 
 ---
 
-## 9.0 Out of Scope
+## Applicable Rules
+
+RULE XCC (cross-compile), RULE FLL (350-line gate), RULE FLS (drain all results), RULE ORP (orphan sweep).
+
+---
+
+## Invariants
+
+N/A — no compile-time guardrails.
+
+---
+
+## Eval Commands
+
+```bash
+# E1: Build
+zig build 2>&1 | head -5; echo "build=$?"
+
+# E2: Tests
+make test 2>&1 | tail -5; echo "test=$?"
+
+# E3: Lint
+make lint 2>&1 | grep -E "✓|FAIL"
+
+# E4: Gitleaks
+gitleaks detect 2>&1 | tail -3; echo "gitleaks=$?"
+
+# E5: 350-line gate (exempts .md)
+git diff --name-only origin/main | grep -v '\.md$' | xargs wc -l 2>/dev/null | awk '$1 > 350 { print "OVER: " $2 ": " $1 }'
+
+# E6: Cross-compile
+zig build -Dtarget=x86_64-linux 2>&1 | tail -3; echo "xc_x86=$?"
+zig build -Dtarget=aarch64-linux 2>&1 | tail -3; echo "xc_arm=$?"
+
+# E7: Memory leak check
+make check-pg-drain 2>&1 | tail -3; echo "drain=$?"
+```
+
+---
+
+## Dead Code Sweep
+
+N/A — no files deleted.
+
+---
+
+## Verification Evidence
+
+| Check | Command | Result | Pass? |
+|-------|---------|--------|-------|
+| Unit tests | `make test` | | |
+| Integration tests | `make test-integration` | | |
+| Cross-compile x86 | `zig build -Dtarget=x86_64-linux` | | |
+| Cross-compile arm | `zig build -Dtarget=aarch64-linux` | | |
+| Lint | `make lint` | | |
+| 350L gate | see E5 | | |
+| drain check | `make check-pg-drain` | | |
+| Gitleaks | `gitleaks detect` | | |
+
+---
+
+## Out of Scope
 
 - Real-time WebSocket streaming of firewall events (API polling is sufficient for v1)
 - Historical trend storage beyond activity_events retention (30 days default)

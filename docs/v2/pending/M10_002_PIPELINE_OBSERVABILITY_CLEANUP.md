@@ -46,6 +46,73 @@ observability layer still references pipeline concepts:
 | Dead metrics tests for run counters | `metrics.zig` tests | Update assertions |
 | Dead metrics histogram tests | `metrics_histograms.zig` | Remove run histograms |
 
+## Applicable Rules
+
+- RULE NDC — no dead code (primary driver)
+- RULE ORP — cross-layer orphan sweep after deletion
+- RULE XCC — cross-compile before commit
+- RULE FLL — 350-line gate on touched files
+
+## Invariants
+
+N/A — deletion-only spec, no new compile-time guardrails.
+
+## Eval Commands
+
+```bash
+# E1: Zero run counters in metrics output
+grep -c "runs_created_total\|runs_completed_total\|runs_blocked_total\|run_retries_total" src/observability/metrics_counters.zig
+echo "E1: run counter refs (should be 0)"
+
+# E2: Zero trackRun* PostHog functions
+grep -rn "trackRunStarted\|trackRunRetried\|trackRunCompleted\|trackRunBlocked" src/ --include="*.zig" | grep -v _test | head -5
+echo "E2: trackRun refs (empty = pass)"
+
+# E3: Zero queue_depth/queue_age gauge refs
+grep -rn "queue_depth\|oldest_queued_age" src/observability/ --include="*.zig" | head -5
+echo "E3: queue gauge refs (empty = pass)"
+
+# E4: Build + test + lint + cross-compile
+zig build 2>&1 | head -5; echo "build=$?"
+zig build test 2>&1 | tail -5; echo "test=$?"
+make lint 2>&1 | grep -E "✓|FAIL"
+zig build -Dtarget=x86_64-linux 2>&1 | tail -3; echo "x86=$?"
+zig build -Dtarget=aarch64-linux 2>&1 | tail -3; echo "arm=$?"
+
+# E5: Memory leak check
+zig build test 2>&1 | grep -i "leak" | head -5
+echo "E5: leak check (empty = pass)"
+
+# E6: Gitleaks
+gitleaks detect 2>&1 | tail -3; echo "gitleaks=$?"
+
+# E7: 350-line gate
+git diff --name-only origin/main | grep -v '\.md$' | xargs wc -l 2>/dev/null | awk '$1 > 350 { print "OVER: " $2 ": " $1 }'
+```
+
+## Dead Code Sweep
+
+| Deleted symbol | Grep command | Expected |
+|---------------|--------------|----------|
+| `runs_created_total` | `grep -rn "runs_created_total" src/ --include="*.zig"` | 0 matches |
+| `trackRunStarted` | `grep -rn "trackRunStarted" src/ --include="*.zig"` | 0 matches |
+| `trackRunCompleted` | `grep -rn "trackRunCompleted" src/ --include="*.zig"` | 0 matches |
+| `trackRunRetried` | `grep -rn "trackRunRetried" src/ --include="*.zig"` | 0 matches |
+| `trackRunFailed` | `grep -rn "trackRunFailed" src/ --include="*.zig"` | 0 matches |
+| `queue_depth` param | `grep -rn "queue_depth" src/observability/ --include="*.zig"` | 0 matches |
+
+## Verification Evidence
+
+| Check | Command | Result | Pass? |
+|-------|---------|--------|-------|
+| Unit tests | `make test` | | |
+| Leak detection | `zig build test \| grep leak` | | |
+| Cross-compile | `zig build -Dtarget=x86_64-linux` | | |
+| Lint | `make lint` | | |
+| Gitleaks | `gitleaks detect` | | |
+| 350L gate | `wc -l` (exempts .md) | | |
+| Dead code sweep | eval E1–E3 | | |
+
 ## Out of Scope
 
 - Agent scoring system — still active in zombie executor; separate evaluation

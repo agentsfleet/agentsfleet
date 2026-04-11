@@ -40,6 +40,76 @@ and routes inflate the codebase without value.
 | handler.zig re-exports | `handler.zig` | Remove dead re-exports |
 | Router tests for proposal/harness | `router_test.zig` | Remove test cases |
 
+## Applicable Rules
+
+- RULE NDC — no dead code (primary driver)
+- RULE ORP — cross-layer orphan sweep after deletion
+- RULE EP4 — removed endpoints return 410 (these are being fully removed now)
+- RULE XCC — cross-compile before commit
+- RULE FLL — 350-line gate on touched files
+
+## Invariants
+
+N/A — deletion-only spec, no new compile-time guardrails.
+
+## Eval Commands
+
+```bash
+# E1: Zero ERR_PROPOSAL_* constants
+grep -rn "ERR_PROPOSAL" src/ --include="*.zig" | head -5
+echo "E1: proposal code refs (empty = pass)"
+
+# E2: Zero proposal handler functions
+grep -rn "handleListAgentProposals\|handleGetAgentProposal\|handleApproveProposal" src/ --include="*.zig" | head -5
+echo "E2: proposal handler refs (empty = pass)"
+
+# E3: Zero proposal route types
+grep -rn "AgentProposalRoute\|AgentHarnessChangeRoute" src/ --include="*.zig" | head -5
+echo "E3: proposal route refs (empty = pass)"
+
+# E4: Zero route matchers for removed routes
+grep -rn "matchAgentProposalAction\|matchAgentHarnessChangeAction" src/ --include="*.zig" | head -5
+echo "E4: route matcher refs (empty = pass)"
+
+# E5: Build + test + lint + cross-compile + gitleaks
+zig build 2>&1 | head -5; echo "build=$?"
+zig build test 2>&1 | tail -5; echo "test=$?"
+make lint 2>&1 | grep -E "✓|FAIL"
+zig build -Dtarget=x86_64-linux 2>&1 | tail -3; echo "x86=$?"
+zig build -Dtarget=aarch64-linux 2>&1 | tail -3; echo "arm=$?"
+gitleaks detect 2>&1 | tail -3; echo "gitleaks=$?"
+
+# E6: Memory leak check
+zig build test 2>&1 | grep -i "leak" | head -5
+echo "E6: leak check (empty = pass)"
+
+# E7: 350-line gate
+git diff --name-only origin/main | grep -v '\.md$' | xargs wc -l 2>/dev/null | awk '$1 > 350 { print "OVER: " $2 ": " $1 }'
+```
+
+## Dead Code Sweep
+
+| Deleted symbol | Grep command | Expected |
+|---------------|--------------|----------|
+| `ERR_PROPOSAL_*` | `grep -rn "ERR_PROPOSAL" src/ --include="*.zig"` | 0 matches |
+| `ERR_HARNESS_CHANGE_NOT_FOUND` | `grep -rn "ERR_HARNESS_CHANGE" src/ --include="*.zig"` | 0 matches |
+| `AgentProposalRoute` | `grep -rn "AgentProposalRoute" src/ --include="*.zig"` | 0 matches |
+| `AgentHarnessChangeRoute` | `grep -rn "AgentHarnessChangeRoute" src/ --include="*.zig"` | 0 matches |
+| `matchAgentProposalAction` | `grep -rn "matchAgentProposalAction" src/ --include="*.zig"` | 0 matches |
+| `handleListAgentProposals` | `grep -rn "handleListAgentProposals" src/ --include="*.zig"` | 0 matches |
+
+## Verification Evidence
+
+| Check | Command | Result | Pass? |
+|-------|---------|--------|-------|
+| Unit tests | `make test` | | |
+| Leak detection | `zig build test \| grep leak` | | |
+| Cross-compile | `zig build -Dtarget=x86_64-linux` | | |
+| Lint | `make lint` | | |
+| Gitleaks | `gitleaks detect` | | |
+| 350L gate | `wc -l` (exempts .md) | | |
+| Dead code sweep | eval E1–E4 | | |
+
 ## Out of Scope
 
 - `handleGetAgent` — still active (agent profile viewer)

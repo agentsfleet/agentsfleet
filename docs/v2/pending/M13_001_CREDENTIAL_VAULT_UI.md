@@ -225,7 +225,73 @@ DELETE /v1/workspaces/{ws}/credentials/{name}       — delete
 
 ---
 
-## 9.0 Out of Scope
+## Applicable Rules
+
+RULE XCC (cross-compile — Zig handler), RULE FLL (350-line gate), RULE FLS (drain all results — Zig handler), RULE ORP (orphan sweep). Standard set for Next.js components.
+
+---
+
+## Invariants
+
+N/A — no compile-time guardrails.
+
+---
+
+## Eval Commands
+
+```bash
+# E1: Build (Zig backend)
+zig build 2>&1 | head -5; echo "zig_build=$?"
+
+# E2: Build (Next.js frontend)
+npm run build 2>&1 | head -5; echo "next_build=$?"
+
+# E3: Tests
+make test 2>&1 | tail -5; echo "test=$?"
+
+# E4: Lint
+make lint 2>&1 | grep -E "✓|FAIL"
+
+# E5: Gitleaks
+gitleaks detect 2>&1 | tail -3; echo "gitleaks=$?"
+
+# E6: 350-line gate (exempts .md)
+git diff --name-only origin/main | grep -v '\.md$' | xargs wc -l 2>/dev/null | awk '$1 > 350 { print "OVER: " $2 ": " $1 }'
+
+# E7: Cross-compile (Zig handler)
+zig build -Dtarget=x86_64-linux 2>&1 | tail -3; echo "xc_x86=$?"
+zig build -Dtarget=aarch64-linux 2>&1 | tail -3; echo "xc_arm=$?"
+
+# E8: Memory leak check
+make check-pg-drain 2>&1 | tail -3; echo "drain=$?"
+```
+
+---
+
+## Dead Code Sweep
+
+N/A — no files deleted.
+
+---
+
+## Verification Evidence
+
+| Check | Command | Result | Pass? |
+|-------|---------|--------|-------|
+| Zig build | `zig build` | | |
+| Next.js build | `npm run build` | | |
+| Unit tests | `make test` | | |
+| Integration tests | `make test-integration` | | |
+| Cross-compile x86 | `zig build -Dtarget=x86_64-linux` | | |
+| Cross-compile arm | `zig build -Dtarget=aarch64-linux` | | |
+| Lint | `make lint` | | |
+| 350L gate | see E6 | | |
+| drain check | `make check-pg-drain` | | |
+| Gitleaks | `gitleaks detect` | | |
+
+---
+
+## Out of Scope
 
 - Credential rotation (revoke + re-add for v1)
 - Credential sharing across workspaces (workspace-scoped only)

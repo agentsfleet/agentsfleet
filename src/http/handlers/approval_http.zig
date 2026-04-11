@@ -218,7 +218,7 @@ fn verifyRequestSignature(req: *httpz.Request, res: *httpz.Response, req_id: []c
     }
     const expected = expected_buf[0 .. 3 + HmacSha256.mac_length * 2];
 
-    // Constant-time comparison (Rule 4: no short-circuit for secrets)
+    // Constant-time comparison (RULE CTM: no short-circuit for secrets)
     if (provided_sig.len != expected.len) {
         common.errorResponse(res, ec.ERR_APPROVAL_INVALID_SIGNATURE, "Invalid signature", req_id);
         return false;

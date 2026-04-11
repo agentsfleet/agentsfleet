@@ -207,7 +207,7 @@ Post-PR greptile fix workflow:
 
 ## Code Structure Policies
 
-- Keep files under 400 lines.
+- Keep .zig/.js files under 350 lines (RULE FLL). Markdown files are exempt.
 - Extract repeated strings to constants.
 - Shared constants go in shared files.
 - Avoid unnecessary constants.

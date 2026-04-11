@@ -122,6 +122,9 @@ Copy everything below this line when creating a new spec.
 - Interfaces must specify exact function signatures, input shapes, and output shapes.
 - Failure modes must enumerate every error path and what happens on each.
 - Constraints must be measurable (not "fast" — "< 5ms per message").
+- Invariants are compile-time or lint-time guardrails — violations must be build failures, not review comments.
+- Eval commands are executable scripts run post-implementation — every one must pass before PR.
+- Dead code sweep is mandatory for any spec that deletes or replaces files.
 
 ---
 
@@ -149,60 +152,84 @@ Copy everything below this line when creating a new spec.
 
 ---
 
-## 1.0 {Section Title}
+## Files Changed (blast radius)
+
+List every file that will be created, modified, or deleted. This scopes
+the 350-line gate, `pub` audit, orphan sweep, and domain lint checks.
+
+| File | Action | Why |
+|------|--------|-----|
+| {e.g., `src/errors/error_registry.zig`} | CREATE | {single source of truth for error codes} |
+| {e.g., `src/http/handlers/common.zig`} | MODIFY | {update import from error_table → error_registry} |
+| {e.g., `src/errors/error_table.zig`} | DELETE | {replaced by error_registry.zig} |
+
+## Applicable Rules
+
+List RULES.md rule IDs that apply to this spec's scope. The agent MUST
+re-read these before EXECUTE and verify no violations during VERIFY.
+
+- {e.g., RULE FLS — flush all layers (if touching pg queries)}
+- {e.g., RULE OWN — one owner per resource (if adding init/deinit)}
+- {e.g., RULE XCC — cross-compile before commit (always for Zig)}
+- {e.g., RULE ORP — cross-layer orphan sweep (if renaming/deleting symbols)}
+
+If no specific rules apply beyond the universal set (XCC, FLL, ORP): write
+"Standard set only — no domain-specific rules."
+
+---
+
+## Sections (implementation slices)
+
+Add as many `## §N — {Title}` sections as needed. Each section is an
+implementation slice — what will be built. Max 4 dimensions per section.
+
+### §1 — {Section Title}
 
 **Status:** PENDING
 
 Description of this section. Explain what will be built and why.
 
 **Dimensions (test blueprints):**
-- 1.1 PENDING
-  - target: `{file}:{function_or_struct}`
-  - input: `{structured input — types, shapes, examples}`
-  - expected: `{structured output — exact return value, side effect, or state change}`
-  - test_type: unit | integration | contract
-- 1.2 PENDING
-  - target: `{file}:{function_or_struct}`
-  - input: `{structured input}`
-  - expected: `{structured output}`
-  - test_type: unit | integration | contract
 
----
+| Dim | Status | Target | Input | Expected | Test type |
+|-----|--------|--------|-------|----------|-----------|
+| 1.1 | PENDING | `{file}:{fn_or_struct}` | `{structured input}` | `{exact output or state change}` | unit / integration / contract |
+| 1.2 | PENDING | `{file}:{fn_or_struct}` | `{structured input}` | `{exact output}` | unit / integration / contract |
 
-## 2.0 {Next Section}
+### §2 — {Next Section}
 
 **Status:** PENDING
 
-{Same pattern as 1.0 — sections are implementation slices, dimensions are test blueprints.}
+{Same pattern as §1 — sections are implementation slices, dimensions are test blueprints.}
 
 ---
 
-## N.0 Interfaces
+## Interfaces
 
 **Status:** PENDING
 
 Lock the API surface. Every public function, endpoint, and data shape that this workstream introduces or modifies.
 
-### N.1 Public Functions
+### Public Functions
 
 ```
 {language}
 {exact function signature — not pseudocode}
 ```
 
-### N.2 Input Contracts
+### Input Contracts
 
 | Field | Type | Constraints | Example |
 |-------|------|-------------|---------|
 | {name} | {type} | {validation rules} | {example value} |
 
-### N.3 Output Contracts
+### Output Contracts
 
 | Field | Type | When | Example |
 |-------|------|------|---------|
 | {name} | {type} | {condition} | {example value} |
 
-### N.4 Error Contracts
+### Error Contracts
 
 | Error condition | Behavior | Caller sees |
 |----------------|----------|-------------|
@@ -213,7 +240,7 @@ Lock the API surface. Every public function, endpoint, and data shape that this 
 
 ---
 
-## N+1.0 Failure Modes
+## Failure Modes
 
 **Status:** PENDING
 
@@ -229,7 +256,7 @@ Enumerate every failure path. For each: what triggers it, what the system does, 
 
 ---
 
-## N+2.0 Implementation Constraints (Enforceable)
+## Implementation Constraints (Enforceable)
 
 **Status:** PENDING
 
@@ -238,62 +265,107 @@ Each constraint must be measurable — not "fast" or "efficient" but a number or
 | Constraint | How to verify |
 |-----------|---------------|
 | {e.g., "Zero heap allocations in hot path"} | {e.g., "std.testing.allocator detects leaks; grep for alloc in loop body"} |
-| {e.g., "Max latency per message < 5ms"} | {e.g., "benchmark test with 1000 messages"} |
-| {e.g., "File under 400 lines"} | {e.g., "wc -l < 400"} |
+| {e.g., "File under 350 lines"} | {e.g., "wc -l < 350"} |
 | {e.g., "Cross-compiles on x86_64-linux, aarch64-linux"} | {e.g., "zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux"} |
 
 ---
 
-## N+3.0 Test Specification
+## Invariants (Hard Guardrails)
 
 **Status:** PENDING
 
-Every dimension from sections 1.0–N.0 must map to a test case here. This section is the input to `/write-unit-test`.
+Each invariant MUST be enforced by the compiler, a lint check, or a comptime
+assertion — NOT by documentation or code review. If a human can violate it
+silently, it is not an invariant.
+
+| # | Invariant | Enforcement mechanism |
+|---|-----------|----------------------|
+| 1 | {e.g., "Every Entry has a non-empty hint field"} | {e.g., "comptime loop asserts hint.len > 0"} |
+| 2 | {e.g., "No duplicate error codes"} | {e.g., "comptime loop checks pair-wise equality"} |
+
+If the spec has no compile-time guardrails: write "N/A — no invariants."
+
+---
+
+## Test Specification
+
+**Status:** PENDING
+
+Every dimension from the §N sections must map to a test case here. This section is the input to `/write-unit-test`.
 
 ### Unit Tests
 
-| Test name | Dimension | Target | Input | Expected |
-|-----------|-----------|--------|-------|----------|
+| Test name | Dim | Target | Input | Expected |
+|-----------|-----|--------|-------|----------|
 | {name} | {1.1} | {file:fn} | {input} | {output} |
 
 ### Integration Tests
 
-| Test name | Dimension | Infra needed | Input | Expected |
-|-----------|-----------|-------------|-------|----------|
+| Test name | Dim | Infra needed | Input | Expected |
+|-----------|-----|-------------|-------|----------|
 | {name} | {2.1} | {DB / Redis / both} | {input} | {output} |
 
-### Contract Tests
+### Negative Tests (error paths that MUST fail)
 
-| Test name | Dimension | What it proves |
-|-----------|-----------|---------------|
-| {name} | {N.3} | {output matches exact format} |
+| Test name | Dim | Input | Expected error |
+|-----------|-----|-------|---------------|
+| {e.g., "lookup returns UNKNOWN for empty string"} | {N.N} | `""` | `UNKNOWN` entry returned |
+| {e.g., "reject malformed UUID"} | {N.N} | `"not-a-uuid"` | `ERR_UUIDV7_CANONICAL_FORMAT` |
+
+### Edge Case Tests (boundary values)
+
+| Test name | Dim | Input | Expected |
+|-----------|-----|-------|----------|
+| {e.g., "max-length code string"} | {N.N} | 256-char string | `UNKNOWN` (not crash) |
+| {e.g., "zero-count query"} | {N.N} | workspace with 0 profiles | returns 0 (not error) |
+
+### Regression Tests (pre-existing behavior that MUST NOT change)
+
+| Test name | What it guards | File |
+|-----------|---------------|------|
+| {e.g., "UZ-AUTH-002 stays 401"} | Auth error = 401, not 403 | `error_registry_test.zig` |
+
+If no pre-existing behavior is at risk: write "N/A — greenfield."
+
+### Leak Detection Tests
+
+| Test name | Dim | What it proves |
+|-----------|-----|---------------|
+| {name} | {N.N} | {std.testing.allocator detects zero leaks for this operation} |
+
+Use `std.testing.allocator` (not an arena) so the built-in leak detector fires
+on missed frees. Any test that constructs or destroys owned resources must
+appear here.
 
 ### Spec-Claim Tracing
 
 | Spec claim (from Overview/Goal) | Test that proves it | Test type |
 |--------------------------------|-------------------|-----------|
 | {e.g., "streams in real time"} | {e.g., "bytes arrive before connection closes"} | integration |
-| {e.g., "reconnect replays only missed events"} | {e.g., "Last-Event-ID filters correctly"} | integration (DB) |
 
 ---
 
-## N+4.0 Execution Plan (Ordered)
+## Execution Plan (Ordered)
 
 **Status:** PENDING
 
-Ordered steps. Agent executes top-to-bottom. Each step has a verification command.
+Ordered steps. Agent executes top-to-bottom. Each step has a verification
+command. **The codebase MUST build AND pass tests after every step.** If a
+step leaves the code in a broken state, fix it before proceeding — do not
+carry forward compile errors.
 
-| Step | Action | Verify |
-|------|--------|--------|
-| 1 | {Define interfaces} | {Compiles with no impl} |
-| 2 | {Implement core logic} | {make test passes} |
-| 3 | {Add failure handling} | {make test passes} |
-| 4 | {Generate tests via /write-unit-test} | {all tests pass} |
-| 5 | {Cross-compile check} | {zig build -Dtarget=x86_64-linux} |
+| Step | Action | Verify (must pass before next step) |
+|------|--------|--------------------------------------|
+| 1 | {Define interfaces} | `zig build` compiles |
+| 2 | {Implement core logic} | `zig build && zig build test` |
+| 3 | {Add failure handling} | `zig build test` |
+| 4 | {Write tests via /write-unit-test} | `zig build test` (all pass) |
+| 5 | {Delete old files + orphan sweep} | `zig build && grep -rn {old_sym} src/` returns 0 |
+| 6 | {Cross-compile + lint + gitleaks} | `zig build -Dtarget=x86_64-linux && make lint && gitleaks detect` |
 
 ---
 
-## N+5.0 Acceptance Criteria
+## Acceptance Criteria
 
 **Status:** PENDING
 
@@ -305,7 +377,85 @@ Each criterion must be verifiable by running a command or inspecting output — 
 
 ---
 
-## N+6.0 Verification Evidence
+## Eval Commands (Post-Implementation Verification)
+
+**Status:** PENDING
+
+Executable script. Run every command after implementation. ALL must pass
+before opening the PR. Copy-paste this block into the terminal.
+
+```bash
+# E1: {description}
+{command} && echo "PASS" || echo "FAIL"
+
+# E2: Dead code sweep — zero orphaned references to deleted/renamed symbols
+grep -rn "{old_symbol}" src/ --include="*.zig" | head -5
+echo "E2: orphan sweep (empty = pass)"
+
+# E3: Memory leak test (std.testing.allocator detects leaks)
+zig build test 2>&1 | grep -i "leak" | head -5
+echo "E3: leak check (empty = pass)"
+
+# E4: Build
+zig build 2>&1 | head -5; echo "build=$?"
+
+# E5: Tests
+zig build test 2>&1 | tail -5; echo "test=$?"
+
+# E6: Lint
+make lint 2>&1 | grep -E "✓|FAIL"
+
+# E7: Cross-compile
+zig build -Dtarget=x86_64-linux 2>&1 | tail -3; echo "x86=$?"
+zig build -Dtarget=aarch64-linux 2>&1 | tail -3; echo "arm=$?"
+
+# E8: Gitleaks — no secrets in diff
+gitleaks detect 2>&1 | tail -3; echo "gitleaks=$?"
+
+# E9: 350-line gate (exempts .md files — RULE FLL)
+git diff --name-only origin/main | grep -v '\.md$' | xargs wc -l 2>/dev/null | awk '$1 > 350 { print "OVER: " $2 ": " $1 " lines (limit 350)" }'
+
+# E10: Domain-specific lints (uncomment applicable ones)
+# make check-pg-drain    # if touching pg query code
+# make check-openapi-errors  # if touching error codes or HTTP endpoints
+```
+
+---
+
+## Dead Code Sweep
+
+**Status:** PENDING
+
+Mandatory when the spec deletes or replaces files. Two checks:
+
+**1. Orphaned files — must be deleted from disk and git.**
+Every replaced or superseded file must be `git rm`'d. Verify with `test ! -f`.
+
+| File to delete | Verify deleted |
+|---------------|----------------|
+| {e.g., `src/errors/error_table.zig`} | `test ! -f src/errors/error_table.zig` |
+| {e.g., `src/errors/codes.zig`} | `test ! -f src/errors/codes.zig` |
+
+**2. Orphaned references — zero remaining imports or uses.**
+For every deleted file and every removed/renamed public symbol, grep the
+entire `src/` tree. Any non-zero result = stale reference that will compile
+(Zig won't catch it if behind a `comptime` or test-only path) but fail at
+runtime or confuse future maintainers.
+
+| Deleted symbol or import | Grep command | Expected |
+|-------------------------|--------------|----------|
+| {e.g., `error_table`} | `grep -rn "error_table" src/ --include="*.zig"` | 0 matches |
+| {e.g., `UNKNOWN_ENTRY`} | `grep -rn "UNKNOWN_ENTRY" src/ --include="*.zig"` | 0 matches |
+| {e.g., `posthog_events`} | `grep -rn "posthog_events" src/ --include="*.zig"` | 0 matches |
+
+**3. main.zig test discovery — update imports.**
+Remove `_ = @import("deleted_file.zig");` lines. Add imports for new files.
+
+If a spec does not delete files: write "N/A — no files deleted."
+
+---
+
+## Verification Evidence
 
 **Status:** PENDING
 
@@ -315,13 +465,16 @@ Filled in during VERIFY phase. Proves the spec claims are met.
 |-------|---------|--------|-------|
 | Unit tests | `make test` | {output} | |
 | Integration tests | `make test-integration` | {output} | |
+| Leak detection | `zig build test \| grep leak` | {output} | |
 | Cross-compile | `zig build -Dtarget=x86_64-linux` | {output} | |
 | Lint | `make lint` | {output} | |
-| 400L gate | `wc -l` | {output} | |
+| Gitleaks | `gitleaks detect` | {output} | |
+| 350L gate | `wc -l` (exempts .md — RULE FLL) | {output} | |
+| Dead code sweep | `grep -rn {symbol} src/` | {output} | |
 
 ---
 
-## N+7.0 Out of Scope
+## Out of Scope
 
 - {Item not in scope}
 - {Another out of scope item}

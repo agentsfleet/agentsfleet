@@ -269,7 +269,59 @@ All data comes from existing APIs. The app is a pure frontend consumer.
 
 ---
 
-## 11.0 Out of Scope
+## Applicable Rules
+
+Standard set only.
+
+---
+
+## Invariants
+
+N/A — no compile-time guardrails.
+
+---
+
+## Eval Commands
+
+```bash
+# E1: Build
+npm run build 2>&1 | head -5; echo "build=$?"
+
+# E2: Tests
+npm run test 2>&1 | tail -5; echo "test=$?"
+
+# E3: Lint
+npm run lint 2>&1 | grep -E "✓|FAIL"
+
+# E4: Gitleaks
+gitleaks detect 2>&1 | tail -3; echo "gitleaks=$?"
+
+# E5: 350-line gate (exempts .md)
+git diff --name-only origin/main | grep -v '\.md$' | xargs wc -l 2>/dev/null | awk '$1 > 350 { print "OVER: " $2 ": " $1 }'
+```
+
+---
+
+## Dead Code Sweep
+
+N/A — no files deleted.
+
+---
+
+## Verification Evidence
+
+| Check | Command | Result | Pass? |
+|-------|---------|--------|-------|
+| Build | `npm run build` | | |
+| Tests | `npm run test` | | |
+| Lint | `npm run lint` | | |
+| 350L gate | see E5 | | |
+| Gitleaks | `gitleaks detect` | | |
+| Vercel deploy | `vercel deploy` | | |
+
+---
+
+## Out of Scope
 
 - Real-time WebSocket updates (SSE polling at 5s interval for v1)
 - Chat with running agent (deferred — CLI-only for now)

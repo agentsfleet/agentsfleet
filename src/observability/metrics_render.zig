@@ -100,14 +100,6 @@ pub fn renderPrometheus(
     try appendMetric(writer, "zombie_queue_depth", "gauge", "Current queued runs in SPEC_QUEUED.", queue_depth_gauge);
     try appendMetric(writer, "zombie_oldest_queued_age_ms", "gauge", "Oldest queued run age in milliseconds.", oldest_age_gauge);
 
-    try appendMetric(writer, "zombie_agent_score_computed_total", "counter", "Total scored runs across all tiers.", s.agent_score_computed_total);
-    try appendMetric(writer, "zombie_agent_score_computed_unranked_total", "counter", "Scored runs with UNRANKED tier.", s.agent_score_computed_unranked);
-    try appendMetric(writer, "zombie_agent_score_computed_bronze_total", "counter", "Scored runs with BRONZE tier.", s.agent_score_computed_bronze);
-    try appendMetric(writer, "zombie_agent_score_computed_silver_total", "counter", "Scored runs with SILVER tier.", s.agent_score_computed_silver);
-    try appendMetric(writer, "zombie_agent_score_computed_gold_total", "counter", "Scored runs with GOLD tier.", s.agent_score_computed_gold);
-    try appendMetric(writer, "zombie_agent_score_computed_elite_total", "counter", "Scored runs with ELITE tier.", s.agent_score_computed_elite);
-    try appendMetric(writer, "zombie_agent_scoring_failed_total", "counter", "Total scoring failures caught by fail-safe.", s.agent_scoring_failed_total);
-    try appendMetric(writer, "zombie_agent_score_latest", "gauge", "Most recently computed agent score.", s.agent_score_latest);
     try appendMetric(writer, "zombie_gate_repair_loops_total", "counter", "Total gate repair loop iterations.", s.gate_repair_loops_total);
     try appendMetric(writer, "zombie_gate_repair_exhausted_total", "counter", "Total gate repair exhaustions (max loops reached).", s.gate_repair_exhausted_total);
     // M17_001 §1.3: per-limit-type counters
@@ -120,7 +112,7 @@ pub fn renderPrometheus(
 
     // Orphan recovery metrics (M14_001).
     try appendMetric(writer, "zombie_reconcile_orphan_runs_recovered_total", "counter", "Total orphaned runs recovered by reconciler.", s.orphan_runs_recovered_total);
-    try appendMetric(writer, "zombie_reconcile_orphan_no_agent_profile_total", "counter", "Orphan recoveries skipped scoring because workspace had no active agent profile.", s.orphan_no_agent_profile_total);
+    try appendMetric(writer, "zombie_reconcile_orphan_no_agent_profile_total", "counter", "Orphan recoveries where workspace had no active agent profile.", s.orphan_no_agent_profile_total);
     try appendMetric(writer, "zombie_reconcile_running", "gauge", "Reconcile daemon liveness gauge (1 running, 0 stopped).", s.reconcile_running);
 
     try appendDurationHistogram(
@@ -135,13 +127,6 @@ pub fn renderPrometheus(
         "End-to-end run wall-clock duration in seconds.",
         s.run_total_wall_seconds,
     );
-    try appendDurationHistogram(
-        writer,
-        "zombie_agent_scoring_duration_ms",
-        "Time spent in scoreRun in milliseconds.",
-        s.agent_scoring_duration_ms,
-    );
-
     // M28_001 §4.1: gate repair loops per run histogram (custom buckets).
     {
         const glh = s.gate_repair_loops_per_run;

@@ -319,10 +319,10 @@ Required outputs:
 - If touched files include `*.zig`: run cross-compile check: `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux`.
 - Scan the diff against `docs/greptile-learnings/RULES.md` — verify no rule is violated by the changes.
 - Capture failures with exact command and error text.
-- **400-line gate on every touched file.** For each file you created or modified, run `wc -l <file>`. If any file exceeds 400 lines, you must split it before proceeding to DOCUMENT. This is a hard gate — do not defer, do not ask, do not rationalize. Split the file.
+- **350-line gate on every touched .zig/.js file (RULE FLL).** For each code file you created or modified, run `wc -l <file>`. If any .zig or .js file exceeds 350 lines, you must split it before proceeding to DOCUMENT. This is a hard gate — do not defer, do not ask, do not rationalize. Split the file. Markdown files (.md) are exempt.
   ```bash
-  # Run on all files in the diff:
-  git diff --name-only origin/main | xargs wc -l | awk '$1 > 400 { print "❌ " $2 ": " $1 " lines (limit 400)" }'
+  # Run on all code files in the diff (exempts .md):
+  git diff --name-only origin/main | grep -v '\.md$' | xargs wc -l | awk '$1 > 350 { print "❌ " $2 ": " $1 " lines (limit 350)" }'
   ```
 - **`make test-integration` must pass** if the spec has integration test dimensions. Run it, not just `make test`.
 - After any refactor: list newly dead code explicitly. Never silently remove without user confirmation:

@@ -257,7 +257,53 @@ pub const MemoryBackendConfig = struct {
 
 ---
 
-## 10.0 Verification Evidence
+## Applicable Rules
+
+RULE XCC (cross-compile check), RULE FLL (350-line gate), RULE ORP (cross-layer orphan sweep), RULE FLS (drain all results), RULE FLL (350-line gate).
+
+---
+
+## Invariants
+
+N/A — no compile-time guardrails.
+
+---
+
+## Eval Commands
+
+```bash
+# E1: Build
+zig build 2>&1 | head -5; echo "build=$?"
+
+# E2: Tests
+make test 2>&1 | tail -5; echo "test=$?"
+
+# E3: Lint
+make lint 2>&1 | grep -E "✓|FAIL"
+
+# E4: Gitleaks
+gitleaks detect 2>&1 | tail -3; echo "gitleaks=$?"
+
+# E5: 350-line gate (exempts .md)
+git diff --name-only origin/main | grep -v '\.md$' | xargs wc -l 2>/dev/null | awk '$1 > 350 { print "OVER: " $2 ": " $1 }'
+
+# E6: Cross-compile
+zig build -Dtarget=x86_64-linux 2>&1 | tail -3; echo "xc_x86=$?"
+zig build -Dtarget=aarch64-linux 2>&1 | tail -3; echo "xc_arm=$?"
+
+# E7: Memory leak check
+make check-pg-drain 2>&1 | tail -3; echo "drain=$?"
+```
+
+---
+
+## Dead Code Sweep
+
+N/A — no files deleted.
+
+---
+
+## Verification Evidence
 
 **Status:** PENDING
 
@@ -272,7 +318,7 @@ pub const MemoryBackendConfig = struct {
 
 ---
 
-## 11.0 Out of Scope
+## Out of Scope
 
 - Vector/semantic search optimization (use whatever NullClaw's selected profile provides out of the box)
 - Cross-zombie shared memory (knowledge sharing between zombies in a workspace) — future milestone

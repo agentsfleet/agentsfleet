@@ -49,8 +49,7 @@ pub fn seedWorkspace(conn: *pg.Conn, workspace_id: []const u8) !void {
 ///   workspace_credit_state, workspace_credit_audit, workspace_billing_state,
 ///   workspace_billing_audit, usage_ledger, workspace_entitlements,
 ///   workspace_active_config, entitlement_policy_audit_snapshots,
-///   agent_improvement_proposals, harness_change_log,
-///   agent_run_analysis, agent_run_scores.
+///   agent_improvement_proposals, harness_change_log.
 ///
 /// Does NOT cascade: agent_profiles — but MUST be called before deleting agent_profiles
 /// because workspace_active_config holds a FK to agent_config_versions (NO ACTION).

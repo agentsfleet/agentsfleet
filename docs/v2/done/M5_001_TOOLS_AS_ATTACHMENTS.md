@@ -4,15 +4,26 @@
 **Milestone:** M5
 **Workstream:** 001
 **Date:** Apr 09, 2026
-**Status:** DONE
-**Priority:** P0 — v2 architecture rule; enables every future Zombie and ClawHub (clawhub.ai/skills) skill
+**Status:** SUPERSEDED
+**Priority:** P0 — v2 architecture rule; enables every future Zombie and ClawHub skill
 **Batch:** B2 — parallel with M4 (shares tool registry from M3, but no execution dependency)
 **Branch:** feat/m5-tools-as-attachments
 **Depends on:** M3_001 (tool registry, initial tool implementations)
 
+> **SUPERSEDED — Apr 11, 2026**
+> The vtable-per-tool architecture planned here was replaced by a simpler model:
+> skills are config-driven (SKILL.md + TRIGGER.md), not compiled Zig. The executor
+> uses a table-driven NullClaw built-in tool resolver (`src/executor/tool_bridge.zig`)
+> and injects credentials at runtime via the NullClaw shell/HTTP tools. No `src/zombie/tools/`
+> directory, no per-skill Zig struct, no SandboxShellTool refactor.
+> The goal (sandbox-agnostic tool invocation, per-Zombie scoping, credential isolation)
+> was achieved via this different path in M6_001. Closing without spec-dimension match.
+
 ---
 
 ## Overview
+
+**Status:** IN_PROGRESS
 
 **Goal (testable):** The sandbox (`src/executor/`) has zero knowledge of specific tools (git, Slack, GitHub). All tool-specific logic lives in `src/zombie/tools/`. The executor provides a generic tool invocation interface: receive tool call from NullClaw agent → resolve tool via registry → inject credential from vault → execute tool → return result → strip credential echo from response. A Zombie's TRIGGER.md declares exactly which tools it needs; the agent can only call those tools. Adding a new tool requires only: (1) implement `Tool` interface in `src/zombie/tools/`, (2) register in tool registry, (3) add domain to skill-domain map. Zero changes to the executor, event loop, or sandbox.
 
@@ -426,7 +437,7 @@ make down
 
 ## 13.0 Out of Scope
 
-- Dynamic tool loading from ClawHub (clawhub.ai/skills) registry (Phase 3 — tools are compiled-in for now)
+- Dynamic tool loading from ClawHub registry (Phase 3 — tools are compiled-in for now)
 - Tool sandboxing (each tool runs inside the same bwrap sandbox — no per-tool isolation)
 - Tool versioning (all tools at v1, no version negotiation)
 - Tool composition (tools can't call other tools — agent orchestrates)

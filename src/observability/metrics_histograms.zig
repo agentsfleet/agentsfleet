@@ -9,7 +9,6 @@ const interrupt_hist = @import("metrics_interrupt_histogram.zig");
 var g_histograms_mu: std.Thread.Mutex = .{};
 var g_agent_duration_seconds = mc.HistogramSnapshot{};
 var g_run_total_wall_seconds = mc.HistogramSnapshot{};
-var g_agent_scoring_duration_ms = mc.HistogramSnapshot{};
 
 fn observeHistogram(hist: *mc.HistogramSnapshot, value: u64) void {
     hist.count += 1;
@@ -17,12 +16,6 @@ fn observeHistogram(hist: *mc.HistogramSnapshot, value: u64) void {
     for (mc.DurationBuckets, 0..) |le, i| {
         if (value <= le) hist.buckets[i] += 1;
     }
-}
-
-pub fn observeAgentScoringDurationMs(ms: u64) void {
-    g_histograms_mu.lock();
-    defer g_histograms_mu.unlock();
-    observeHistogram(&g_agent_scoring_duration_ms, ms);
 }
 
 pub fn observeAgentDurationSeconds(seconds: u64) void {
@@ -53,7 +46,6 @@ pub fn snapshotHistograms(s: *mc.Snapshot) void {
     defer g_histograms_mu.unlock();
     s.agent_duration_seconds = g_agent_duration_seconds;
     s.run_total_wall_seconds = g_run_total_wall_seconds;
-    s.agent_scoring_duration_ms = g_agent_scoring_duration_ms;
     s.gate_repair_loops_per_run = gate_hist.snapshot();
     s.interrupt_delivery_latency_ms = interrupt_hist.snapshot();
 }
