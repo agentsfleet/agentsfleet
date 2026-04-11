@@ -1,5 +1,6 @@
 const std = @import("std");
 const httpz = @import("httpz");
+const PgQuery = @import("../../db/pg_query.zig").PgQuery;
 const workspace_billing = @import("../../state/workspace_billing.zig");
 const posthog_events = @import("../../observability/posthog_events.zig");
 const obs_log = @import("../../observability/logging.zig");
@@ -120,7 +121,7 @@ fn innerSetWorkspaceScoringConfig(hx: hx_mod.Hx, req: *httpz.Request, workspace_
     }) orelse return;
     defer access.deinit(hx.alloc);
 
-    var q = conn.query(
+    var q = PgQuery.from(conn.query(
         \\UPDATE workspace_entitlements
         \\SET scoring_context_max_tokens = $2,
         \\    updated_at = $3
@@ -129,7 +130,7 @@ fn innerSetWorkspaceScoringConfig(hx: hx_mod.Hx, req: *httpz.Request, workspace_
     , .{ workspace_id, parsed.value.scoring_context_max_tokens, std.time.milliTimestamp() }) catch {
         common.internalDbError(hx.res, hx.req_id);
         return;
-    };
+    });
     defer q.deinit();
 
     const row = (q.next() catch null) orelse {
@@ -137,11 +138,6 @@ fn innerSetWorkspaceScoringConfig(hx: hx_mod.Hx, req: *httpz.Request, workspace_
         return;
     };
     const configured_tokens = row.get(i32, 0) catch {
-        common.internalDbError(hx.res, hx.req_id);
-        return;
-    };
-    q.drain() catch |err| {
-        obs_log.logWarnErr(.http, err, "billing.scoring_config_drain_fail workspace_id={s}", .{workspace_id});
         common.internalDbError(hx.res, hx.req_id);
         return;
     };

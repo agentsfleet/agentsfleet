@@ -7,6 +7,7 @@
 
 const std = @import("std");
 const pg = @import("pg");
+const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const error_codes = @import("../errors/codes.zig");
 const model = @import("./workspace_billing_model.zig");
 const transition = @import("./workspace_billing_transition.zig");
@@ -79,18 +80,17 @@ pub fn enforceFreeWorkspaceCreationAllowed(
     tenant_id: []const u8,
     exclude_workspace_id: ?[]const u8,
 ) !void {
-    var q = try conn.query(
+    var q = PgQuery.from(try conn.query(
         \\SELECT COUNT(*)::BIGINT
         \\FROM workspaces w
         \\LEFT JOIN workspace_billing_state s ON s.workspace_id = w.workspace_id
         \\WHERE w.tenant_id = $1
         \\  AND ($2::TEXT IS NULL OR w.workspace_id <> $2::uuid)
         \\  AND COALESCE(s.plan_tier, 'FREE') <> 'SCALE'
-    , .{ tenant_id, exclude_workspace_id });
+    , .{ tenant_id, exclude_workspace_id }));
     defer q.deinit();
     const row = (try q.next()) orelse return error.InvalidWorkspaceBillingState;
     const count = try row.get(i64, 0);
-    try q.drain();
     if (count > 0) {
         log.warn("billing.free_workspace_limit_exceeded tenant_id={s} existing_count={d}", .{ tenant_id, count });
         return error.FreeWorkspaceLimitExceeded;

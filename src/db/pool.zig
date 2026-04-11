@@ -3,6 +3,7 @@
 
 const std = @import("std");
 const pg = @import("pg");
+const PgQuery = @import("pg_query.zig").PgQuery;
 const id_format = @import("../types/id_format.zig");
 const error_codes = @import("../errors/codes.zig");
 const sql_splitter = @import("sql_splitter.zig");
@@ -186,48 +187,39 @@ fn ensureSchemaMigrationFailuresTable(conn: *Conn) !void {
 }
 
 fn isMigrationApplied(conn: *Conn, version: i32) !bool {
-    var result = try conn.query(
+    var result = PgQuery.from(try conn.query(
         "SELECT 1 FROM audit.schema_migrations WHERE version = $1",
         .{version},
-    );
+    ));
     defer result.deinit();
-    const applied = (try result.next()) != null;
-    try result.drain();
-    return applied;
+    return (try result.next()) != null;
 }
 
 fn hasFailedMigrationRecords(conn: *Conn) !bool {
-    var result = try conn.query(
+    var result = PgQuery.from(try conn.query(
         "SELECT 1 FROM audit.schema_migration_failures LIMIT 1",
         .{},
-    );
+    ));
     defer result.deinit();
-    const failed = (try result.next()) != null;
-    try result.drain();
-    return failed;
+    return (try result.next()) != null;
 }
 
 fn tryAcquireMigrationLock(conn: *Conn) !bool {
-    var result = try conn.query("SELECT pg_try_advisory_lock($1)", .{MigrationAdvisoryLockKey});
+    var result = PgQuery.from(try conn.query("SELECT pg_try_advisory_lock($1)", .{MigrationAdvisoryLockKey}));
     defer result.deinit();
     const row = try result.next() orelse return false;
-    const acquired = try row.get(bool, 0);
-    try result.drain();
-    return acquired;
+    return try row.get(bool, 0);
 }
 
 fn acquireMigrationLock(conn: *Conn) !void {
-    var result = try conn.query("SELECT pg_advisory_lock($1)", .{MigrationAdvisoryLockKey});
+    var result = PgQuery.from(try conn.query("SELECT pg_advisory_lock($1)", .{MigrationAdvisoryLockKey}));
     defer result.deinit();
     _ = try result.next();
-    try result.drain();
 }
 
 fn releaseMigrationLock(conn: *Conn) void {
-    var result = conn.query("SELECT pg_advisory_unlock($1)", .{MigrationAdvisoryLockKey}) catch return;
-    defer result.deinit();
-    _ = result.next() catch {};
-    result.drain() catch {};
+    var result = PgQuery.from(conn.query("SELECT pg_advisory_unlock($1)", .{MigrationAdvisoryLockKey}) catch return);
+    result.deinit();
 }
 
 fn markMigrationFailure(conn: *Conn, version: i32, err: anyerror) void {
@@ -246,12 +238,10 @@ fn clearMigrationFailure(conn: *Conn, version: i32) void {
 }
 
 fn maxAppliedMigrationVersion(conn: *Conn) !i32 {
-    var result = try conn.query("SELECT COALESCE(MAX(version), 0) FROM audit.schema_migrations", .{});
+    var result = PgQuery.from(try conn.query("SELECT COALESCE(MAX(version), 0) FROM audit.schema_migrations", .{}));
     defer result.deinit();
     const row = try result.next() orelse return 0;
-    const version = try row.get(i32, 0);
-    try result.drain();
-    return version;
+    return try row.get(i32, 0);
 }
 
 fn logPgErrorContext(conn: *Conn, op: []const u8) void {
@@ -276,18 +266,13 @@ fn isUndefinedTablePgError(conn: *Conn) bool {
 }
 
 fn tableExists(conn: *Conn, query_sql: []const u8) !bool {
-    var result = conn.query(query_sql, .{}) catch |err| {
+    var result = PgQuery.from(conn.query(query_sql, .{}) catch |err| {
         if (err == error.PG and isUndefinedTablePgError(conn)) return false;
         return err;
-    };
+    });
     defer result.deinit();
 
     _ = result.next() catch |err| {
-        if (err == error.PG and isUndefinedTablePgError(conn)) return false;
-        return err;
-    };
-
-    result.drain() catch |err| {
         if (err == error.PG and isUndefinedTablePgError(conn)) return false;
         return err;
     };

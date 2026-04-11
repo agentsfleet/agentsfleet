@@ -1,5 +1,6 @@
 const std = @import("std");
 const pg = @import("pg");
+const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
 const harness = @import("../../../harness/control_plane.zig");
 const prompt_events = @import("../../../observability/prompt_events.zig");
 const profile_linkage = @import("../../../audit/profile_linkage.zig");
@@ -67,10 +68,10 @@ pub fn compileProfile(
     ;
 
     const selector_arg = input.config_version_id orelse input.agent_id orelse "";
-    var pick = if (input.config_version_id == null and input.agent_id == null)
+    var pick = PgQuery.from(if (input.config_version_id == null and input.agent_id == null)
         try conn.query(selection_sql, .{workspace_id})
     else
-        try conn.query(selection_sql, .{ workspace_id, selector_arg });
+        try conn.query(selection_sql, .{ workspace_id, selector_arg }));
     defer pick.deinit();
 
     const row = (try pick.next()) orelse return types.ControlPlaneError.ProfileNotFound;
@@ -79,7 +80,6 @@ pub fn compileProfile(
     const version = try row.get(i32, 2);
     const source_markdown = try row.get([]const u8, 3);
     const tenant_id = try row.get([]const u8, 4);
-    try pick.drain();
 
     const compile_job_id = try util.generateCompileJobId(alloc);
     if (!util.isSupportedCompileJobId(compile_job_id)) return types.ControlPlaneError.InvalidIdShape;

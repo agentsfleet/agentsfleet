@@ -50,3 +50,7 @@ test "PgQuery: from + deinit API compiles" {
     _ = T.next;
     _ = T.drain;
 }
+
+test {
+    _ = @import("pg_query_test.zig");
+}

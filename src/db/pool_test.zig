@@ -1,5 +1,6 @@
 const std = @import("std");
 const pg = @import("pg");
+const PgQuery = @import("pg_query.zig").PgQuery;
 const id_format = @import("../types/id_format.zig");
 const pool_mod = @import("pool.zig");
 
@@ -183,8 +184,7 @@ test "integration: canary pool acquire + exec + query SELECT 1" {
     // Simple query protocol
     _ = try conn.exec("SELECT 1", .{});
     // Extended query protocol (no params)
-    var q = try conn.query("SELECT 1", .{});
-    q.deinit();
+    _ = try conn.exec("SELECT 1", .{});
 }
 
 test "integration: uuid contract tables are UUID typed for run/profile/linkage IDs" {
@@ -196,19 +196,18 @@ test "integration: uuid contract tables are UUID typed for run/profile/linkage I
     try createUuidContractTempSchema(db_ctx.conn);
 
     {
-        var q = try db_ctx.conn.query(
+        var q = PgQuery.from(try db_ctx.conn.query(
             \\SELECT table_name, column_name, data_type
             \\FROM information_schema.columns
             \\WHERE table_name IN ('t_uuid_runs', 't_uuid_agent_profile_versions', 't_uuid_profile_compile_jobs', 't_uuid_profile_linkage_audit_artifacts')
             \\  AND column_name IN ('run_id', 'run_snapshot_version', 'profile_version_id', 'compile_job_id')
             \\ORDER BY table_name, column_name
-        , .{});
+        , .{}));
         defer q.deinit();
 
         while (try q.next()) |row| {
             try std.testing.expectEqualStrings("uuid", try row.get([]const u8, 2));
         }
-        try q.drain();
     }
 
     const run_id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f99";
@@ -286,34 +285,31 @@ test "T6 integration: generated UUID PKs round-trip through INSERT and SELECT" {
 
     // SELECT and verify round-trip: id::text matches original string
     {
-        var q = try db_ctx.conn.query(
+        var q = PgQuery.from(try db_ctx.conn.query(
             "SELECT id::text FROM t6_run_transitions WHERE id = $1::uuid",
             .{tid},
-        );
+        ));
         defer q.deinit();
         const row = (try q.next()) orelse return error.TestUnexpectedResult;
         try std.testing.expectEqualStrings(tid, try row.get([]const u8, 0));
-        try q.drain();
     }
     {
-        var q = try db_ctx.conn.query(
+        var q = PgQuery.from(try db_ctx.conn.query(
             "SELECT id::text FROM t6_usage_ledger WHERE id = $1::uuid",
             .{uid},
-        );
+        ));
         defer q.deinit();
         const row = (try q.next()) orelse return error.TestUnexpectedResult;
         try std.testing.expectEqualStrings(uid, try row.get([]const u8, 0));
-        try q.drain();
     }
     {
-        var q = try db_ctx.conn.query(
+        var q = PgQuery.from(try db_ctx.conn.query(
             "SELECT id::text FROM t6_policy_events WHERE id = $1::uuid",
             .{pid},
-        );
+        ));
         defer q.deinit();
         const row = (try q.next()) orelse return error.TestUnexpectedResult;
         try std.testing.expectEqualStrings(pid, try row.get([]const u8, 0));
-        try q.drain();
     }
 }
 
@@ -375,50 +371,46 @@ test "integration: audit schema exists and contains migration bookkeeping tables
 
     // Verify audit schema exists
     {
-        var q = try db_ctx.conn.query(
+        var q = PgQuery.from(try db_ctx.conn.query(
             "SELECT 1 FROM information_schema.schemata WHERE schema_name = 'audit'",
             .{},
-        );
+        ));
         defer q.deinit();
         const row = try q.next();
         try std.testing.expect(row != null);
-        try q.drain();
     }
 
     // Verify audit.schema_migrations exists and is queryable
     {
-        var q = try db_ctx.conn.query(
+        var q = PgQuery.from(try db_ctx.conn.query(
             "SELECT COUNT(*) FROM audit.schema_migrations",
             .{},
-        );
+        ));
         defer q.deinit();
         const row = (try q.next()) orelse return error.SkipZigTest;
         const count = try row.get(i64, 0);
         try std.testing.expect(count > 0);
-        try q.drain();
     }
 
     // Verify audit.schema_migration_failures exists and is queryable
     {
-        var q = try db_ctx.conn.query(
+        var q = PgQuery.from(try db_ctx.conn.query(
             "SELECT COUNT(*) FROM audit.schema_migration_failures",
             .{},
-        );
+        ));
         defer q.deinit();
         _ = try q.next();
-        try q.drain();
     }
 
     // Verify schema_migrations is NOT in public schema
     {
-        var q = try db_ctx.conn.query(
+        var q = PgQuery.from(try db_ctx.conn.query(
             \\SELECT 1 FROM information_schema.tables
             \\WHERE table_schema = 'public' AND table_name = 'schema_migrations'
-        , .{});
+        , .{}));
         defer q.deinit();
         const row = try q.next();
         try std.testing.expect(row == null);
-        try q.drain();
     }
 }
 
@@ -429,14 +421,13 @@ test "integration: db_migrator role exists after migration" {
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
 
-    var q = try db_ctx.conn.query(
+    var q = PgQuery.from(try db_ctx.conn.query(
         "SELECT 1 FROM pg_roles WHERE rolname = 'db_migrator'",
         .{},
-    );
+    ));
     defer q.deinit();
     const row = try q.next();
     try std.testing.expect(row != null);
-    try q.drain();
 }
 
 test "integration: zero-trust schema segmentation and role matrix are enforced" {
@@ -448,27 +439,25 @@ test "integration: zero-trust schema segmentation and role matrix are enforced" 
 
     const schema_checks = [_][]const u8{ "core", "agent", "billing", "vault", "audit", "ops_ro" };
     inline for (schema_checks) |schema_name| {
-        var schema_q = try db_ctx.conn.query(
+        var schema_q = PgQuery.from(try db_ctx.conn.query(
             "SELECT 1 FROM information_schema.schemata WHERE schema_name = $1",
             .{schema_name},
-        );
+        ));
         defer schema_q.deinit();
         try std.testing.expect((try schema_q.next()) != null);
-        try schema_q.drain();
     }
 
     // public should not own authoritative app tables.
     {
-        var q = try db_ctx.conn.query(
+        var q = PgQuery.from(try db_ctx.conn.query(
             \\SELECT 1
             \\FROM information_schema.tables
             \\WHERE table_schema = 'public'
             \\  AND table_name IN ('tenants', 'workspaces', 'runs', 'agent_profiles', 'workspace_entitlements')
             \\LIMIT 1
-        , .{});
+        , .{}));
         defer q.deinit();
         try std.testing.expect((try q.next()) == null);
-        try q.drain();
     }
 
     const role_checks = [_][]const u8{
@@ -479,13 +468,12 @@ test "integration: zero-trust schema segmentation and role matrix are enforced" 
         "ops_readonly_agent",
     };
     inline for (role_checks) |role_name| {
-        var role_q = try db_ctx.conn.query(
+        var role_q = PgQuery.from(try db_ctx.conn.query(
             "SELECT 1 FROM pg_roles WHERE rolname = $1",
             .{role_name},
-        );
+        ));
         defer role_q.deinit();
         try std.testing.expect((try role_q.next()) != null);
-        try role_q.drain();
     }
 
     const worker_privilege_checks = [_]struct { table_name: []const u8, privilege: []const u8 }{
@@ -495,15 +483,14 @@ test "integration: zero-trust schema segmentation and role matrix are enforced" 
         // M10_001: agent.harness_change_log removed (pipeline v1 scoring).
     };
     inline for (worker_privilege_checks) |check| {
-        var privilege_q = try db_ctx.conn.query(
+        var privilege_q = PgQuery.from(try db_ctx.conn.query(
             "SELECT has_table_privilege('worker_runtime', $1, $2)",
             .{ check.table_name, check.privilege },
-        );
+        ));
         defer privilege_q.deinit();
         const row = (try privilege_q.next()) orelse return error.TestUnexpectedResult;
         const has_privilege = try row.get(bool, 0);
         try std.testing.expect(has_privilege);
-        try privilege_q.drain();
     }
 
     const rls_tables = [_]struct { schema_name: []const u8, table_name: []const u8 }{
@@ -515,18 +502,17 @@ test "integration: zero-trust schema segmentation and role matrix are enforced" 
         .{ .schema_name = "vault", .table_name = "workspace_skill_secrets" },
     };
     inline for (rls_tables) |table_ref| {
-        var rls_q = try db_ctx.conn.query(
+        var rls_q = PgQuery.from(try db_ctx.conn.query(
             \\SELECT c.relrowsecurity
             \\FROM pg_class c
             \\JOIN pg_namespace n ON n.oid = c.relnamespace
             \\WHERE n.nspname = $1
             \\  AND c.relname = $2
-        , .{ table_ref.schema_name, table_ref.table_name });
+        , .{ table_ref.schema_name, table_ref.table_name }));
         defer rls_q.deinit();
         const row = (try rls_q.next()) orelse return error.TestUnexpectedResult;
         const rls_enabled = try row.get(bool, 0);
         try std.testing.expect(rls_enabled);
-        try rls_q.drain();
     }
 }
 
@@ -555,13 +541,12 @@ test "integration: runMigrations is idempotent when table exists but migration r
 
     // Verify table exists.
     {
-        var q = try db_ctx.conn.query(
+        var q = PgQuery.from(try db_ctx.conn.query(
             "SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='test_migration_idempotency_fixture'",
             .{},
-        );
+        ));
         defer q.deinit();
         try std.testing.expect((try q.next()) != null);
-        try q.drain();
     }
 
     // Simulate state inconsistency: drop the migration record, leave the table.
@@ -572,13 +557,12 @@ test "integration: runMigrations is idempotent when table exists but migration r
 
     // Verify the migration record was re-inserted.
     {
-        var q = try db_ctx.conn.query(
+        var q = PgQuery.from(try db_ctx.conn.query(
             "SELECT 1 FROM audit.schema_migrations WHERE version = $1",
             .{test_version},
-        );
+        ));
         defer q.deinit();
         try std.testing.expect((try q.next()) != null);
-        try q.drain();
     }
 
     // Cleanup.
@@ -594,38 +578,35 @@ test "integration: readonly roles can only query ops_ro views, not vault" {
     defer db_ctx.pool.release(db_ctx.conn);
 
     {
-        var q = try db_ctx.conn.query(
+        var q = PgQuery.from(try db_ctx.conn.query(
             "SELECT has_table_privilege('ops_readonly_agent', 'vault.secrets', 'SELECT')",
             .{},
-        );
+        ));
         defer q.deinit();
         const row = (try q.next()) orelse return error.TestUnexpectedResult;
         const can_read_vault = try row.get(bool, 0);
         try std.testing.expect(!can_read_vault);
-        try q.drain();
     }
 
     {
-        var q = try db_ctx.conn.query(
+        var q = PgQuery.from(try db_ctx.conn.query(
             "SELECT has_table_privilege('ops_readonly_agent', 'ops_ro.workspace_overview', 'SELECT')",
             .{},
-        );
+        ));
         defer q.deinit();
         const row = (try q.next()) orelse return error.TestUnexpectedResult;
         const can_read_view = try row.get(bool, 0);
         try std.testing.expect(can_read_view);
-        try q.drain();
     }
 
     {
-        var q = try db_ctx.conn.query(
+        var q = PgQuery.from(try db_ctx.conn.query(
             "SELECT has_table_privilege('ops_readonly_human', 'ops_ro.billing_overview', 'SELECT')",
             .{},
-        );
+        ));
         defer q.deinit();
         const row = (try q.next()) orelse return error.TestUnexpectedResult;
         const can_read_view = try row.get(bool, 0);
         try std.testing.expect(can_read_view);
-        try q.drain();
     }
 }

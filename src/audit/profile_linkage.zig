@@ -1,5 +1,6 @@
 const std = @import("std");
 const pg = @import("pg");
+const PgQuery = @import("../db/pg_query.zig").PgQuery;
 
 const log = std.log.scoped(.audit);
 
@@ -43,13 +44,13 @@ pub fn insertActivateArtifact(
     var artifact_id_buf: [36]u8 = undefined;
     const artifact_id = generateUuidV7(&artifact_id_buf);
 
-    var compile_q = try conn.query(
+    var compile_q = PgQuery.from(try conn.query(
         \\SELECT artifact_id, compile_job_id
         \\FROM config_linkage_audit_artifacts
         \\WHERE workspace_id = $1 AND config_version_id = $2 AND artifact_type = 'COMPILE'
         \\ORDER BY created_at DESC
         \\LIMIT 1
-    , .{ workspace_id, config_version_id });
+    , .{ workspace_id, config_version_id }));
     defer compile_q.deinit();
 
     var parent_artifact_id: ?[]const u8 = null;
@@ -58,7 +59,6 @@ pub fn insertActivateArtifact(
         parent_artifact_id = try row.get([]const u8, 0);
         compile_job_id = try row.get(?[]const u8, 1);
     }
-    try compile_q.drain();
 
     _ = try conn.exec(
         \\INSERT INTO config_linkage_audit_artifacts
@@ -79,13 +79,13 @@ pub fn insertRunArtifact(
     var artifact_id_buf: [36]u8 = undefined;
     const artifact_id = generateUuidV7(&artifact_id_buf);
 
-    var act_q = try conn.query(
+    var act_q = PgQuery.from(try conn.query(
         \\SELECT artifact_id, compile_job_id
         \\FROM config_linkage_audit_artifacts
         \\WHERE workspace_id = $1 AND config_version_id = $2 AND artifact_type = 'ACTIVATE' AND created_at <= $3
         \\ORDER BY created_at DESC
         \\LIMIT 1
-    , .{ workspace_id, config_version_id, created_at });
+    , .{ workspace_id, config_version_id, created_at }));
     defer act_q.deinit();
 
     var parent_artifact_id: ?[]const u8 = null;
@@ -94,7 +94,6 @@ pub fn insertRunArtifact(
         parent_artifact_id = try row.get([]const u8, 0);
         compile_job_id = try row.get(?[]const u8, 1);
     }
-    try act_q.drain();
 
     _ = try conn.exec(
         \\INSERT INTO config_linkage_audit_artifacts
@@ -105,7 +104,7 @@ pub fn insertRunArtifact(
 }
 
 pub fn fetchRunLinkage(conn: *pg.Conn, alloc: std.mem.Allocator, run_id: []const u8) !?RunLinkage {
-    var q = try conn.query(
+    var q = PgQuery.from(try conn.query(
         \\SELECT run_art.artifact_id,
         \\       run_art.config_version_id,
         \\       run_art.compile_job_id,
@@ -117,20 +116,28 @@ pub fn fetchRunLinkage(conn: *pg.Conn, alloc: std.mem.Allocator, run_id: []const
         \\WHERE run_art.run_id = $1 AND run_art.artifact_type = 'RUN'
         \\ORDER BY run_art.created_at DESC
         \\LIMIT 1
-    , .{run_id});
+    , .{run_id}));
     defer q.deinit();
 
     const row = (try q.next()) orelse return null;
 
-    const result: RunLinkage = .{
-        .run_artifact_id = if (try row.get(?[]const u8, 0)) |v| try alloc.dupe(u8, v) else null,
-        .config_version_id = if (try row.get(?[]const u8, 1)) |v| try alloc.dupe(u8, v) else null,
-        .compile_job_id = if (try row.get(?[]const u8, 2)) |v| try alloc.dupe(u8, v) else null,
-        .activate_artifact_id = if (try row.get(?[]const u8, 3)) |v| try alloc.dupe(u8, v) else null,
-        .compile_artifact_id = if (try row.get(?[]const u8, 4)) |v| try alloc.dupe(u8, v) else null,
+    const run_artifact_id = if (try row.get(?[]const u8, 0)) |v| try alloc.dupe(u8, v) else null;
+    errdefer if (run_artifact_id) |v| alloc.free(v);
+    const config_version_id = if (try row.get(?[]const u8, 1)) |v| try alloc.dupe(u8, v) else null;
+    errdefer if (config_version_id) |v| alloc.free(v);
+    const compile_job_id = if (try row.get(?[]const u8, 2)) |v| try alloc.dupe(u8, v) else null;
+    errdefer if (compile_job_id) |v| alloc.free(v);
+    const activate_artifact_id = if (try row.get(?[]const u8, 3)) |v| try alloc.dupe(u8, v) else null;
+    errdefer if (activate_artifact_id) |v| alloc.free(v);
+    const compile_artifact_id = if (try row.get(?[]const u8, 4)) |v| try alloc.dupe(u8, v) else null;
+
+    return .{
+        .run_artifact_id = run_artifact_id,
+        .config_version_id = config_version_id,
+        .compile_job_id = compile_job_id,
+        .activate_artifact_id = activate_artifact_id,
+        .compile_artifact_id = compile_artifact_id,
     };
-    try q.drain();
-    return result;
 }
 
 pub fn freeRunLinkage(alloc: std.mem.Allocator, linkage: *RunLinkage) void {
@@ -172,23 +179,20 @@ test "integration: linkage chain is queryable for run" {
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
 
-    {
-        var q = try db_ctx.conn.query(
-            \\CREATE TEMP TABLE config_linkage_audit_artifacts (
-            \\  artifact_id TEXT PRIMARY KEY,
-            \\  tenant_id TEXT NOT NULL,
-            \\  workspace_id TEXT NOT NULL,
-            \\  artifact_type TEXT NOT NULL,
-            \\  config_version_id TEXT NOT NULL,
-            \\  compile_job_id TEXT,
-            \\  run_id TEXT,
-            \\  parent_artifact_id TEXT,
-            \\  metadata_json TEXT NOT NULL DEFAULT '{}',
-            \\  created_at BIGINT NOT NULL
-            \\) ON COMMIT DROP
-        , .{});
-        q.deinit();
-    }
+    _ = try db_ctx.conn.exec(
+        \\CREATE TEMP TABLE config_linkage_audit_artifacts (
+        \\  artifact_id TEXT PRIMARY KEY,
+        \\  tenant_id TEXT NOT NULL,
+        \\  workspace_id TEXT NOT NULL,
+        \\  artifact_type TEXT NOT NULL,
+        \\  config_version_id TEXT NOT NULL,
+        \\  compile_job_id TEXT,
+        \\  run_id TEXT,
+        \\  parent_artifact_id TEXT,
+        \\  metadata_json TEXT NOT NULL DEFAULT '{}',
+        \\  created_at BIGINT NOT NULL
+        \\) ON COMMIT DROP
+    , .{});
 
     try insertCompileArtifact(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01", "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11", "0195b4ba-8d3a-7f13-9abc-2b3e1e0a6f98", "0195b4ba-8d3a-7f13-aabc-2b3e1e0a6f97", true, 10);
     try insertActivateArtifact(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01", "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11", "0195b4ba-8d3a-7f13-9abc-2b3e1e0a6f98", "operator", 20);
@@ -211,43 +215,34 @@ test "integration: linkage artifacts are immutable and reject updates" {
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
 
-    {
-        var q = try db_ctx.conn.query(
-            \\CREATE TEMP TABLE config_linkage_audit_artifacts (
-            \\  artifact_id TEXT PRIMARY KEY,
-            \\  tenant_id TEXT NOT NULL,
-            \\  workspace_id TEXT NOT NULL,
-            \\  artifact_type TEXT NOT NULL,
-            \\  config_version_id TEXT NOT NULL,
-            \\  compile_job_id TEXT,
-            \\  run_id TEXT,
-            \\  parent_artifact_id TEXT,
-            \\  metadata_json TEXT NOT NULL DEFAULT '{}',
-            \\  created_at BIGINT NOT NULL
-            \\) ON COMMIT DROP
-        , .{});
-        q.deinit();
-    }
+    _ = try db_ctx.conn.exec(
+        \\CREATE TEMP TABLE config_linkage_audit_artifacts (
+        \\  artifact_id TEXT PRIMARY KEY,
+        \\  tenant_id TEXT NOT NULL,
+        \\  workspace_id TEXT NOT NULL,
+        \\  artifact_type TEXT NOT NULL,
+        \\  config_version_id TEXT NOT NULL,
+        \\  compile_job_id TEXT,
+        \\  run_id TEXT,
+        \\  parent_artifact_id TEXT,
+        \\  metadata_json TEXT NOT NULL DEFAULT '{}',
+        \\  created_at BIGINT NOT NULL
+        \\) ON COMMIT DROP
+    , .{});
 
-    {
-        var q = try db_ctx.conn.query(
-            \\CREATE OR REPLACE FUNCTION reject_profile_linkage_mutation_test()
-            \\RETURNS trigger LANGUAGE plpgsql AS $$
-            \\BEGIN
-            \\    RAISE EXCEPTION 'config_linkage_audit_artifacts is append-only';
-            \\END;
-            \\$$
-        , .{});
-        q.deinit();
-    }
-    {
-        var q = try db_ctx.conn.query(
-            \\CREATE TRIGGER trg_profile_linkage_no_update_test
-            \\BEFORE UPDATE ON config_linkage_audit_artifacts
-            \\FOR EACH ROW EXECUTE FUNCTION reject_profile_linkage_mutation_test()
-        , .{});
-        q.deinit();
-    }
+    _ = try db_ctx.conn.exec(
+        \\CREATE OR REPLACE FUNCTION reject_profile_linkage_mutation_test()
+        \\RETURNS trigger LANGUAGE plpgsql AS $$
+        \\BEGIN
+        \\    RAISE EXCEPTION 'config_linkage_audit_artifacts is append-only';
+        \\END;
+        \\$$
+    , .{});
+    _ = try db_ctx.conn.exec(
+        \\CREATE TRIGGER trg_profile_linkage_no_update_test
+        \\BEFORE UPDATE ON config_linkage_audit_artifacts
+        \\FOR EACH ROW EXECUTE FUNCTION reject_profile_linkage_mutation_test()
+    , .{});
 
     try insertCompileArtifact(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01", "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11", "0195b4ba-8d3a-7f13-9abc-2b3e1e0a6f98", "0195b4ba-8d3a-7f13-aabc-2b3e1e0a6f97", true, 10);
 
@@ -264,32 +259,29 @@ test "integration: activate linkage metadata preserves escaped activated_by valu
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
 
-    {
-        var q = try db_ctx.conn.query(
-            \\CREATE TEMP TABLE config_linkage_audit_artifacts (
-            \\  artifact_id TEXT PRIMARY KEY,
-            \\  tenant_id TEXT NOT NULL,
-            \\  workspace_id TEXT NOT NULL,
-            \\  artifact_type TEXT NOT NULL,
-            \\  config_version_id TEXT NOT NULL,
-            \\  compile_job_id TEXT,
-            \\  run_id TEXT,
-            \\  parent_artifact_id TEXT,
-            \\  metadata_json TEXT NOT NULL DEFAULT '{}',
-            \\  created_at BIGINT NOT NULL
-            \\) ON COMMIT DROP
-        , .{});
-        q.deinit();
-    }
+    _ = try db_ctx.conn.exec(
+        \\CREATE TEMP TABLE config_linkage_audit_artifacts (
+        \\  artifact_id TEXT PRIMARY KEY,
+        \\  tenant_id TEXT NOT NULL,
+        \\  workspace_id TEXT NOT NULL,
+        \\  artifact_type TEXT NOT NULL,
+        \\  config_version_id TEXT NOT NULL,
+        \\  compile_job_id TEXT,
+        \\  run_id TEXT,
+        \\  parent_artifact_id TEXT,
+        \\  metadata_json TEXT NOT NULL DEFAULT '{}',
+        \\  created_at BIGINT NOT NULL
+        \\) ON COMMIT DROP
+    , .{});
 
     try insertCompileArtifact(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01", "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11", "0195b4ba-8d3a-7f13-9abc-2b3e1e0a6f98", "0195b4ba-8d3a-7f13-aabc-2b3e1e0a6f97", true, 10);
     const activated_by = "operator \"alpha\" \\ slash";
     try insertActivateArtifact(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01", "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11", "0195b4ba-8d3a-7f13-9abc-2b3e1e0a6f98", activated_by, 20);
 
-    var q = try db_ctx.conn.query(
+    var q = PgQuery.from(try db_ctx.conn.query(
         "SELECT metadata_json FROM config_linkage_audit_artifacts WHERE artifact_type = 'ACTIVATE' LIMIT 1",
         .{},
-    );
+    ));
     defer q.deinit();
     const row = (try q.next()) orelse return error.TestUnexpectedResult;
     const metadata_json = try row.get([]const u8, 0);
@@ -308,43 +300,31 @@ test "integration: run linkage insert fails closed when snapshot profile version
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
 
-    {
-        var q = try db_ctx.conn.query(
-            \\CREATE TEMP TABLE agent_config_versions (
-            \\  config_version_id TEXT PRIMARY KEY
-            \\) ON COMMIT DROP
-        , .{});
-        q.deinit();
-    }
-    {
-        var q = try db_ctx.conn.query(
-            \\CREATE TEMP TABLE runs (
-            \\  run_id TEXT PRIMARY KEY
-            \\) ON COMMIT DROP
-        , .{});
-        q.deinit();
-    }
-    {
-        var q = try db_ctx.conn.query(
-            \\CREATE TEMP TABLE config_linkage_audit_artifacts (
-            \\  artifact_id TEXT PRIMARY KEY,
-            \\  tenant_id TEXT NOT NULL,
-            \\  workspace_id TEXT NOT NULL,
-            \\  artifact_type TEXT NOT NULL,
-            \\  config_version_id TEXT NOT NULL REFERENCES agent_config_versions(config_version_id),
-            \\  compile_job_id TEXT,
-            \\  run_id TEXT REFERENCES runs(run_id),
-            \\  parent_artifact_id TEXT,
-            \\  metadata_json TEXT NOT NULL DEFAULT '{}',
-            \\  created_at BIGINT NOT NULL
-            \\) ON COMMIT DROP
-        , .{});
-        q.deinit();
-    }
-    {
-        var q = try db_ctx.conn.query("INSERT INTO runs (run_id) VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f99')", .{});
-        q.deinit();
-    }
+    _ = try db_ctx.conn.exec(
+        \\CREATE TEMP TABLE agent_config_versions (
+        \\  config_version_id TEXT PRIMARY KEY
+        \\) ON COMMIT DROP
+    , .{});
+    _ = try db_ctx.conn.exec(
+        \\CREATE TEMP TABLE runs (
+        \\  run_id TEXT PRIMARY KEY
+        \\) ON COMMIT DROP
+    , .{});
+    _ = try db_ctx.conn.exec(
+        \\CREATE TEMP TABLE config_linkage_audit_artifacts (
+        \\  artifact_id TEXT PRIMARY KEY,
+        \\  tenant_id TEXT NOT NULL,
+        \\  workspace_id TEXT NOT NULL,
+        \\  artifact_type TEXT NOT NULL,
+        \\  config_version_id TEXT NOT NULL REFERENCES agent_config_versions(config_version_id),
+        \\  compile_job_id TEXT,
+        \\  run_id TEXT REFERENCES runs(run_id),
+        \\  parent_artifact_id TEXT,
+        \\  metadata_json TEXT NOT NULL DEFAULT '{}',
+        \\  created_at BIGINT NOT NULL
+        \\) ON COMMIT DROP
+    , .{});
+    _ = try db_ctx.conn.exec("INSERT INTO runs (run_id) VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f99')", .{});
 
     try std.testing.expectError(error.PgError, insertRunArtifact(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01", "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11", "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f99", "0195b4ba-8d3a-7f13-9abc-2b3e1e0a6fff", 30));
 }

@@ -1,6 +1,7 @@
 const std = @import("std");
 const httpz = @import("httpz");
 const pg = @import("pg");
+const PgQuery = @import("../../db/pg_query.zig").PgQuery;
 const posthog = @import("posthog");
 const oidc = @import("../../auth/oidc.zig");
 const auth_sessions = @import("../../auth/sessions.zig");
@@ -321,7 +322,7 @@ pub fn mapOidcVerifyError(err: anyerror) AuthError {
 }
 
 pub fn authorizeWorkspace(conn: *pg.Conn, principal: AuthPrincipal, workspace_id: []const u8) bool {
-    var q = blk: {
+    var q = PgQuery.from(blk: {
         if (principal.tenant_id) |tenant_id| {
             break :blk conn.query(
                 "SELECT 1 FROM workspaces WHERE workspace_id = $1 AND tenant_id = $2",
@@ -332,11 +333,10 @@ pub fn authorizeWorkspace(conn: *pg.Conn, principal: AuthPrincipal, workspace_id
             "SELECT 1 FROM workspaces WHERE workspace_id = $1",
             .{workspace_id},
         ) catch return false;
-    };
+    });
     defer q.deinit();
     const row = (q.next() catch return false) orelse return false;
     _ = row;
-    q.drain() catch return false;
 
     if (principal.workspace_scope_id) |scoped_workspace_id| {
         if (!std.mem.eql(u8, scoped_workspace_id, workspace_id)) return false;
@@ -354,12 +354,10 @@ pub fn setTenantSessionContext(conn: *pg.Conn, tenant_id: []const u8) bool {
 
 pub fn authorizeWorkspaceAndSetTenantContext(conn: *pg.Conn, principal: AuthPrincipal, workspace_id: []const u8) bool {
     const tenant_id = principal.tenant_id orelse blk: {
-        var lookup = conn.query("SELECT tenant_id FROM workspaces WHERE workspace_id = $1", .{workspace_id}) catch return false;
+        var lookup = PgQuery.from(conn.query("SELECT tenant_id FROM workspaces WHERE workspace_id = $1", .{workspace_id}) catch return false);
         defer lookup.deinit();
         const row = (lookup.next() catch return false) orelse return false;
-        const tid = row.get([]u8, 0) catch return false;
-        lookup.drain() catch return false;
-        break :blk tid;
+        break :blk row.get([]u8, 0) catch return false;
     };
     if (!setTenantSessionContext(conn, tenant_id)) return false;
     return authorizeWorkspace(conn, principal, workspace_id);
@@ -496,10 +494,10 @@ test "integration: tenant context helper writes app.current_tenant_id" {
     defer db_ctx.pool.release(db_ctx.conn);
 
     try std.testing.expect(setTenantSessionContext(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f21"));
-    var q = try db_ctx.conn.query(
+    var q = PgQuery.from(try db_ctx.conn.query(
         "SELECT current_setting('app.current_tenant_id', true)",
         .{},
-    );
+    ));
     defer q.deinit();
     const row = (try q.next()) orelse return error.TestUnexpectedResult;
     const current_tenant = try row.get(?[]const u8, 0);
@@ -540,7 +538,7 @@ test "integration: RLS policy enforces tenant session isolation" {
     _ = try db_ctx.conn.exec("INSERT INTO rls_probe (tenant_id, value) VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f32', 'b1')", .{});
 
     try std.testing.expect(setTenantSessionContext(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f31"));
-    var count_q = try db_ctx.conn.query("SELECT COUNT(*)::BIGINT FROM rls_probe", .{});
+    var count_q = PgQuery.from(try db_ctx.conn.query("SELECT COUNT(*)::BIGINT FROM rls_probe", .{}));
     defer count_q.deinit();
     const row = (try count_q.next()) orelse return error.TestUnexpectedResult;
     const visible_rows = try row.get(i64, 0);

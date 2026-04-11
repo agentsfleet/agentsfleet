@@ -4,6 +4,7 @@
 
 const std = @import("std");
 const pg = @import("pg");
+const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const types = @import("../types.zig");
 const log = std.log.scoped(.memory);
 const id_format = @import("../types/id_format.zig");
@@ -17,8 +18,7 @@ pub fn loadForEcho(
     workspace_id: []const u8,
     limit: u32,
 ) ![]const u8 {
-    // check-pg-drain: ok — full while loop exhausts all rows, natural drain
-    var result = try conn.query(
+    var result = PgQuery.from(try conn.query(
         \\SELECT content FROM workspace_memories
         \\WHERE workspace_id = $1
         \\  AND (expires_at IS NULL OR expires_at > $2)
@@ -28,7 +28,7 @@ pub fn loadForEcho(
         workspace_id,
         std.time.milliTimestamp(),
         @as(i32, @intCast(limit)),
-    });
+    }));
     defer result.deinit();
 
     var list: std.ArrayList([]const u8) = .{};

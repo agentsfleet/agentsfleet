@@ -5,6 +5,7 @@
 
 const std = @import("std");
 const pg = @import("pg");
+const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const metrics = @import("../observability/metrics.zig");
 const obs_log = @import("../observability/logging.zig");
 const log = std.log.scoped(.outbox_reconciler);
@@ -62,8 +63,7 @@ fn reconcileBatch(conn: *pg.Conn) !u32 {
         _ = conn.exec("ROLLBACK", .{}) catch {};
     };
 
-    // check-pg-drain: ok — full while loop exhausts all rows, natural drain
-    var result = try conn.query(
+    var result = PgQuery.from(try conn.query(
         \\UPDATE run_side_effect_outbox
         \\SET status = 'dead_letter',
         \\    reconciled_state = 'startup_reconcile',
@@ -76,7 +76,7 @@ fn reconcileBatch(conn: *pg.Conn) !u32 {
         \\    FOR UPDATE SKIP LOCKED
         \\)
         \\RETURNING run_id, effect_key
-    , .{ now_ms, @as(i32, @intCast(RECONCILE_BATCH_LIMIT)) });
+    , .{ now_ms, @as(i32, @intCast(RECONCILE_BATCH_LIMIT)) }));
     defer result.deinit();
 
     var dead_lettered: u32 = 0;

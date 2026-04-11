@@ -2,9 +2,11 @@
 Milestone: M10
 Workstream: M10_005
 Name: PGQUERY_MIGRATION
-Status: PENDING
+Status: IN_PROGRESS
 Priority: P2 — progressive cleanup, not blocking
 Created: Apr 11, 2026
+Started: Apr 11, 2026
+Branch: feat/m10-005-pgquery-migration
 Depends on: M10_004 (PgQuery wrapper created)
 ---
 

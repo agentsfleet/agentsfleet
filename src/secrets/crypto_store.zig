@@ -3,6 +3,7 @@
 
 const std = @import("std");
 const pg = @import("pg");
+const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const id_format = @import("../types/id_format.zig");
 const cp = @import("crypto_primitives.zig");
 
@@ -74,11 +75,11 @@ pub fn load(
     workspace_id: []const u8,
     key_name: []const u8,
 ) ![]u8 {
-    var result = try conn.query(
+    var result = PgQuery.from(try conn.query(
         \\SELECT kek_version, encrypted_dek, dek_nonce, dek_tag, nonce, ciphertext, tag
         \\FROM vault.secrets
         \\WHERE workspace_id = $1 AND key_name = $2
-    , .{ workspace_id, key_name });
+    , .{ workspace_id, key_name }));
     defer result.deinit();
 
     const row = try result.next() orelse {
@@ -102,7 +103,6 @@ pub fn load(
     defer alloc.free(ciphertext_copy);
     const dek_copy = try alloc.dupe(u8, encrypted_dek);
     defer alloc.free(dek_copy);
-    try result.drain();
 
     const kek = try cp.loadKekByVersion(alloc, kek_version);
 
@@ -147,19 +147,16 @@ pub fn storeWorkspaceSkillSecret(
 ) !void {
     const kek = try cp.loadKekByVersion(alloc, kek_version);
 
-    var ws = try conn.query(
-        "SELECT tenant_id FROM workspaces WHERE workspace_id = $1 LIMIT 1",
-        .{workspace_id},
-    );
-    const ws_row = (try ws.next()) orelse {
-        ws.deinit();
-        return error.NotFound;
+    const tenant_id = blk: {
+        var ws = PgQuery.from(try conn.query(
+            "SELECT tenant_id FROM workspaces WHERE workspace_id = $1 LIMIT 1",
+            .{workspace_id},
+        ));
+        defer ws.deinit();
+        const ws_row = (try ws.next()) orelse return error.NotFound;
+        break :blk try alloc.dupe(u8, try ws_row.get([]const u8, 0));
     };
-    const tenant_id_raw = try ws_row.get([]const u8, 0);
-    const tenant_id = try alloc.dupe(u8, tenant_id_raw);
     defer alloc.free(tenant_id);
-    ws.drain() catch {};
-    ws.deinit();
 
     var dek: [KEY_LEN]u8 = undefined;
     std.crypto.random.bytes(&dek);

@@ -16,6 +16,7 @@
 //!     is set to point at it and cleared on exit via defer.
 
 const std = @import("std");
+const PgQuery = @import("../../db/pg_query.zig").PgQuery;
 const db = @import("../../db/pool.zig");
 const posthog = @import("posthog");
 const tick_mod = @import("tick.zig");
@@ -32,17 +33,14 @@ const ReconcileLeaderLockKey: i64 = 0x7A6F6D6269651001;
 pub var daemon_shutdown_requested = std.atomic.Value(bool).init(false);
 
 pub fn tryAcquireLeaderLock(conn: *db.Conn) !bool {
-    var q = try conn.query("SELECT pg_try_advisory_lock($1)", .{ReconcileLeaderLockKey});
+    var q = PgQuery.from(try conn.query("SELECT pg_try_advisory_lock($1)", .{ReconcileLeaderLockKey}));
     defer q.deinit();
     const row = (try q.next()) orelse return false;
-    const acquired = try row.get(bool, 0);
-    try q.drain();
-    return acquired;
+    return try row.get(bool, 0);
 }
 
 pub fn releaseLeaderLock(conn: *db.Conn) void {
-    var q = conn.query("SELECT pg_advisory_unlock($1)", .{ReconcileLeaderLockKey}) catch return;
-    q.drain() catch {};
+    var q = PgQuery.from(conn.query("SELECT pg_advisory_unlock($1)", .{ReconcileLeaderLockKey}) catch return);
     q.deinit();
 }
 

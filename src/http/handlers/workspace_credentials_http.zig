@@ -1,5 +1,6 @@
 const std = @import("std");
 const httpz = @import("httpz");
+const PgQuery = @import("../../db/pg_query.zig").PgQuery;
 const common = @import("common.zig");
 const error_codes = @import("../../errors/codes.zig");
 const workspace_guards = @import("../workspace_guards.zig");
@@ -100,16 +101,17 @@ fn innerDeleteWorkspaceLlmCredential(hx: hx_mod.Hx, req: *httpz.Request, workspa
         return;
     };
 
-    var pref_lock = conn.query(
-        "SELECT 1 FROM vault.secrets WHERE workspace_id = $1 AND key_name = 'llm_provider_preference' FOR UPDATE",
-        .{workspace_id},
-    ) catch {
-        _ = conn.exec("ROLLBACK", .{}) catch {};
-        common.internalOperationError(hx.res, "Failed to lock provider preference", hx.req_id);
-        return;
-    };
-    pref_lock.drain() catch {};
-    pref_lock.deinit();
+    {
+        var pref_lock = PgQuery.from(conn.query(
+            "SELECT 1 FROM vault.secrets WHERE workspace_id = $1 AND key_name = 'llm_provider_preference' FOR UPDATE",
+            .{workspace_id},
+        ) catch {
+            _ = conn.exec("ROLLBACK", .{}) catch {};
+            common.internalOperationError(hx.res, "Failed to lock provider preference", hx.req_id);
+            return;
+        });
+        pref_lock.deinit();
+    }
 
     const provider: []const u8 = crypto_store.load(hx.alloc, conn, workspace_id, "llm_provider_preference") catch |e| p: {
         if (e != error.NotFound) {
@@ -178,16 +180,14 @@ fn innerGetWorkspaceLlmCredential(hx: hx_mod.Hx, req: *httpz.Request, workspace_
         return;
     };
 
-    var has_key = false;
-    var ck = conn.query(
-        "SELECT 1 FROM vault.secrets WHERE workspace_id = $1 AND key_name = $2 LIMIT 1",
-        .{ workspace_id, key_name },
-    ) catch null;
-    if (ck) |*q| {
-        defer q.*.deinit();
-        has_key = (q.*.next() catch null) != null;
-        q.*.drain() catch {};
-    }
+    const has_key = blk: {
+        var q = PgQuery.from(conn.query(
+            "SELECT 1 FROM vault.secrets WHERE workspace_id = $1 AND key_name = $2 LIMIT 1",
+            .{ workspace_id, key_name },
+        ) catch break :blk false);
+        defer q.deinit();
+        break :blk (q.next() catch null) != null;
+    };
 
     hx.ok(.ok, .{
         .provider = provider,
