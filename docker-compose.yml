@@ -47,7 +47,7 @@ services:
       retries: 20
 
   zombied:
-    container_name: zombie-api
+    container_name: zombied-api
     build:
       context: .
       dockerfile: Dockerfile
