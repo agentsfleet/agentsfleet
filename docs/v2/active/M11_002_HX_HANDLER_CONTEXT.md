@@ -3,7 +3,7 @@ Milestone: M11
 Workstream: M11_002
 Name: HX_HANDLER_CONTEXT
 Status: IN_PROGRESS
-Branch: feat/m11-api-error-standardization
+Branch: feat/m11-hx-handler-context
 Depends-on: M11_001
 Created: Apr 10, 2026
 ---
