@@ -159,7 +159,12 @@ _actionlint_check:
 
 check-pg-drain: _pg_drain_check  ## Check that all conn.query() calls have a .drain()
 
-lint-zig: _fmt_check _zlint_check _pg_drain_check _zig_target_lint _zig_line_limit_check _hardcoded_role_check  ## Lint zombied (Zig)
+check-openapi-errors:  ## M11_001 §3.1 — Verify openapi.json uses ErrorBody for all 4xx/5xx responses
+	@echo "→ [openapi] Checking error response schema (M11_001 §3.1)..."
+	@python3 scripts/check_openapi_errors.py
+	@echo "✓ [openapi] ErrorBody + application/problem+json verified"
+
+lint-zig: _fmt_check _zlint_check _pg_drain_check _zig_target_lint _zig_line_limit_check _hardcoded_role_check check-openapi-errors  ## Lint zombied (Zig)
 	@echo "✓ [zombied] Lint passed"
 
 lint-website: _website_lint  ## Lint website only (ESLint + tsc)

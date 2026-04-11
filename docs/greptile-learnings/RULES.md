@@ -453,3 +453,38 @@ breaks when either field changes independently.
 
 > M3_001: Derived Slack HMAC version `"v0"` by slicing prefix `"v0="[0..len-1]`.
 > Fixed by adding explicit `hmac_version` field to `VerifyConfig`.
+
+**Rule:** Add `@setEvalBranchQuota(N)` as the first line of any `comptime {}` block that iterates over a registry table with string comparison. Formula: `N ≈ code_count × table_size × avg_string_len`, round to next power-of-ten. Add a comment with the math.
+**Why:** Default quota is 1000. 130 codes × 131 entries × char-by-char `std.mem.eql` = ~2.2M comparisons — blows the quota silently with "evaluation exceeded 1000 backwards branches".
+**Tags:** zig, comptime, testing
+**Ref:** M11_001 m11_001_coverage_test.zig — comptime exhaustive coverage for error code registry
+
+**Rule:** Never use `@embedFile` to reach files outside `src/`. For external files (OpenAPI specs, config fixtures), write a Python/shell validator and wire it into a `make` target under `lint-zig`.
+**Why:** Zig's embed security model restricts `@embedFile` to the package directory. `@embedFile("../../public/openapi.json")` is a hard compile error, not a runtime failure. There is no workaround except an external script.
+**Tags:** zig, comptime, testing
+**Ref:** M11_001 §3.1 — OpenAPI ErrorBody validation moved to scripts/check_openapi_errors.py + make check-openapi-errors
+
+**Rule:** In any code registry with a fallback sentinel (e.g. `UNKNOWN_ENTRY`), the sentinel's key field must NOT match any real registered entry. Use a distinct value that cannot appear in the real table. Add a test that verifies the sentinel is absent from the table.
+**Why:** A sentinel whose code matches a real entry causes tests to silently pass with wrong semantics and breaks comptime coverage gates that assume the sentinel is outside the table.
+**Tags:** zig, error-handling, design
+**Ref:** M11_001 error_table.zig — UNKNOWN_ENTRY.code was "UZ-INTERNAL-001" (real 503 entry), renamed to "UZ-UNKNOWN" (distinct sentinel)
+
+**Rule:** Use `std.StaticStringMap` for comptime-generated O(1) lookup on static string→value registries. Build the map from the existing TABLE array at comptime with a `const LOOKUP_MAP = blk: { ... }` block.
+**Why:** Linear scan over 130+ entries on every error response is unnecessary when the table is known at compile time. `StaticStringMap.initComptime()` generates a perfect hash at zero runtime cost.
+**Tags:** zig, performance, comptime
+**Ref:** M11_001 error_table.zig — lookup() replaced O(n) for-loop with StaticStringMap(usize) mapping code→TABLE index
+
+**Rule:** Do not ship convenience helpers without at least one consumer. Remove dead API surface (unused pub fns) before merge.
+**Why:** Unused helpers invite misuse. A `db()`/`releaseDb()` pair with no consumer trains future devs to use it, but without a `defer`-friendly wrapper, they'll leak pool connections.
+**Tags:** zig, api-design
+**Ref:** M11_001 hx.zig — db()/releaseDb() shipped with zero callers, all handlers used ctx.pool directly. Removed in greptile fix.
+
+**Rule:** CI validators must verify `$ref` targets, not silently skip them. When a response has no inline `content`, check that its `$ref` points to the expected shared response.
+**Why:** A `$ref` to `LegacyError` (using `application/json`) passes the validator undetected if the script only checks inline content blocks.
+**Tags:** python, ci, openapi
+**Ref:** M11_001 check_openapi_errors.py — $ref responses were silently skipped; added target validation.
+
+**Rule:** Test names must state what they verify, not narrate the author's reasoning. No mid-sentence corrections ("does not X — wait, it does").
+**Why:** When a test fails, the name is the first thing an engineer reads. A self-contradicting name wastes investigation time.
+**Tags:** zig, testing
+**Ref:** M11_001 error_registry_test.zig — renamed "does not start with UZ- — wait, it does" to "has sentinel code UZ-UNKNOWN and is 500"

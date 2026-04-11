@@ -114,7 +114,7 @@ fn handleRelay(
     if (!common.requireUuidV7Id(res, req_id, workspace_id, "workspace_id")) return;
 
     const body = req.body() orelse {
-        common.errorResponse(res, .bad_request, error_codes.ERR_INVALID_REQUEST, "Request body required", req_id);
+        common.errorResponse(res, error_codes.ERR_INVALID_REQUEST, "Request body required", req_id);
         return;
     };
     if (!common.checkBodySize(req, res, body, req_id)) return;
@@ -122,14 +122,14 @@ fn handleRelay(
     const parsed = std.json.parseFromSlice(RelayRequest, alloc, body, .{
         .ignore_unknown_fields = true,
     }) catch {
-        common.errorResponse(res, .bad_request, error_codes.ERR_INVALID_REQUEST, "Malformed JSON", req_id);
+        common.errorResponse(res, error_codes.ERR_INVALID_REQUEST, "Malformed JSON", req_id);
         return;
     };
     defer parsed.deinit();
     const rval = parsed.value;
 
     if (rval.messages.len == 0) {
-        common.errorResponse(res, .bad_request, error_codes.ERR_INVALID_REQUEST, "messages array is required and must not be empty", req_id);
+        common.errorResponse(res, error_codes.ERR_INVALID_REQUEST, "messages array is required and must not be empty", req_id);
         return;
     }
 
@@ -141,13 +141,13 @@ fn handleRelay(
     defer ctx.pool.release(conn);
 
     if (!common.authorizeWorkspaceAndSetTenantContext(conn, principal, workspace_id)) {
-        common.errorResponse(res, .forbidden, error_codes.ERR_FORBIDDEN, "Workspace access denied", req_id);
+        common.errorResponse(res, error_codes.ERR_FORBIDDEN, "Workspace access denied", req_id);
         return;
     }
 
     // Resolve workspace LLM provider credentials
     const provider_name = crypto_store.load(alloc, conn, workspace_id, "llm_provider_preference") catch {
-        common.errorResponse(res, .bad_request, error_codes.ERR_RELAY_NO_PROVIDER, "No LLM provider configured for workspace. Set credentials via PUT /v1/workspaces/{id}/credentials/llm", req_id);
+        common.errorResponse(res, error_codes.ERR_RELAY_NO_PROVIDER, "No LLM provider configured for workspace. Set credentials via PUT /v1/workspaces/{id}/credentials/llm", req_id);
         return;
     };
 
@@ -157,7 +157,7 @@ fn handleRelay(
     };
 
     const api_key = crypto_store.load(alloc, conn, workspace_id, api_key_name) catch {
-        common.errorResponse(res, .bad_request, error_codes.ERR_CRED_PLATFORM_KEY_MISSING, "LLM API key not found for workspace provider", req_id);
+        common.errorResponse(res, error_codes.ERR_CRED_PLATFORM_KEY_MISSING, "LLM API key not found for workspace provider", req_id);
         return;
     };
 

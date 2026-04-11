@@ -107,7 +107,7 @@ pub fn handleGetAgentImprovementReport(ctx: *common.Context, req: *httpz.Request
         common.internalDbError(res, req_id);
         return;
     } orelse {
-        common.errorResponse(res, .not_found, error_codes.ERR_AGENT_NOT_FOUND, "Agent not found", req_id);
+        common.errorResponse(res, error_codes.ERR_AGENT_NOT_FOUND, "Agent not found", req_id);
         return;
     };
     defer report.deinit(alloc);
@@ -181,7 +181,7 @@ pub fn handleRevertAgentHarnessChange(ctx: *common.Context, req: *httpz.Request,
         common.internalOperationError(res, "Failed to revert harness change", req_id);
         return;
     } orelse {
-        common.errorResponse(res, .not_found, error_codes.ERR_HARNESS_CHANGE_NOT_FOUND, "Harness change not found", req_id);
+        common.errorResponse(res, error_codes.ERR_HARNESS_CHANGE_NOT_FOUND, "Harness change not found", req_id);
         return;
     };
     defer outcome.deinit(alloc);
@@ -249,7 +249,7 @@ fn handleManualProposalDecision(
                 common.internalOperationError(res, "Failed to approve proposal", req_id);
                 return;
             } orelse {
-                common.errorResponse(res, .not_found, error_codes.ERR_PROPOSAL_NOT_FOUND, "Proposal not found", req_id);
+                common.errorResponse(res, error_codes.ERR_PROPOSAL_NOT_FOUND, "Proposal not found", req_id);
                 return;
             };
             common.writeJson(res, .ok, .{
@@ -286,7 +286,7 @@ fn handleManualProposalDecision(
                 return;
             };
             if (!changed) {
-                common.errorResponse(res, .not_found, error_codes.ERR_PROPOSAL_NOT_FOUND, "Proposal not found", req_id);
+                common.errorResponse(res, error_codes.ERR_PROPOSAL_NOT_FOUND, "Proposal not found", req_id);
                 return;
             }
             common.writeJson(res, .ok, .{
@@ -304,7 +304,7 @@ fn handleManualProposalDecision(
                 return;
             };
             if (!changed) {
-                common.errorResponse(res, .not_found, error_codes.ERR_PROPOSAL_NOT_FOUND, "Proposal not found", req_id);
+                common.errorResponse(res, error_codes.ERR_PROPOSAL_NOT_FOUND, "Proposal not found", req_id);
                 return;
             }
             common.writeJson(res, .ok, .{
@@ -326,7 +326,7 @@ fn parseRejectReason(alloc: std.mem.Allocator, req: *httpz.Request, res: *httpz.
     const body = req.body() orelse return "OPERATOR_REJECTED";
     if (!common.checkBodySize(req, res, body, req_id)) return null;
     const parsed = std.json.parseFromSlice(Req, alloc, body, .{}) catch {
-        common.errorResponse(res, .bad_request, error_codes.ERR_INVALID_REQUEST, "Malformed JSON", req_id);
+        common.errorResponse(res, error_codes.ERR_INVALID_REQUEST, "Malformed JSON", req_id);
         return null;
     };
     defer parsed.deinit();
@@ -360,7 +360,7 @@ fn resolveAgentWorkspace(
         common.internalDbError(res, req_id);
         return null;
     } orelse {
-        common.errorResponse(res, .not_found, error_codes.ERR_AGENT_NOT_FOUND, "Agent not found", req_id);
+        common.errorResponse(res, error_codes.ERR_AGENT_NOT_FOUND, "Agent not found", req_id);
         return null;
     };
     const workspace_id = alloc.dupe(u8, row.get([]u8, 0) catch {

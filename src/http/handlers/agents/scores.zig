@@ -41,7 +41,7 @@ pub fn handleGetAgentScores(ctx: *common.Context, req: *httpz.Request, res: *htt
     };
 
     if (!id_format.isSupportedAgentId(agent_id)) {
-        common.errorResponse(res, .bad_request, error_codes.ERR_UUIDV7_INVALID_ID_SHAPE, "Invalid agent_id format", req_id);
+        common.errorResponse(res, error_codes.ERR_UUIDV7_INVALID_ID_SHAPE, "Invalid agent_id format", req_id);
         return;
     }
 
@@ -64,7 +64,7 @@ pub fn handleGetAgentScores(ctx: *common.Context, req: *httpz.Request, res: *htt
     defer wq.deinit();
 
     const wrow = wq.next() catch null orelse {
-        common.errorResponse(res, .not_found, error_codes.ERR_AGENT_NOT_FOUND, "Agent not found", req_id);
+        common.errorResponse(res, error_codes.ERR_AGENT_NOT_FOUND, "Agent not found", req_id);
         return;
     };
     const workspace_id = wrow.get([]u8, 0) catch {
@@ -74,7 +74,7 @@ pub fn handleGetAgentScores(ctx: *common.Context, req: *httpz.Request, res: *htt
     wq.drain() catch |err| obs_log.logWarnErr(.http, err, "agent.workspace_drain_fail agent_id={s}", .{agent_id});
 
     if (!common.authorizeWorkspaceAndSetTenantContext(conn, principal, workspace_id)) {
-        common.errorResponse(res, .forbidden, error_codes.ERR_FORBIDDEN, "Workspace access denied", req_id);
+        common.errorResponse(res, error_codes.ERR_FORBIDDEN, "Workspace access denied", req_id);
         return;
     }
     if (!common.requireRole(res, req_id, principal, .user)) return;

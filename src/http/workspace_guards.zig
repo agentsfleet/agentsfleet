@@ -37,7 +37,7 @@ fn authorizeWorkspace(
     workspace_id: []const u8,
 ) bool {
     if (common.authorizeWorkspaceAndSetTenantContext(conn, principal, workspace_id)) return true;
-    common.errorResponse(res, .forbidden, error_codes.ERR_FORBIDDEN, "Workspace access denied", req_id);
+    common.errorResponse(res, error_codes.ERR_FORBIDDEN, "Workspace access denied", req_id);
     return false;
 }
 
@@ -77,7 +77,7 @@ fn requireExecutionAllowed(
 ) ?ExecutionResult {
     const billing_state = workspace_billing.reconcileWorkspaceBilling(conn, alloc, workspace_id, std.time.milliTimestamp(), actor) catch |err| {
         if (workspace_billing.errorCode(err)) |code| {
-            common.errorResponse(res, .internal_server_error, code, workspace_billing.errorMessage(err) orelse "Workspace billing failure", req_id);
+            common.errorResponse(res, code, workspace_billing.errorMessage(err) orelse "Workspace billing failure", req_id);
             return null;
         }
         common.internalOperationError(res, "Failed to reconcile workspace billing state", req_id);
@@ -88,7 +88,7 @@ fn requireExecutionAllowed(
         alloc.free(billing_state.plan_sku);
         if (billing_state.subscription_id) |v| alloc.free(v);
         if (workspace_credit.errorCode(err)) |code| {
-            common.errorResponse(res, .forbidden, code, workspace_credit.errorMessage(err) orelse "Workspace credit failure", req_id);
+            common.errorResponse(res, code, workspace_credit.errorMessage(err) orelse "Workspace credit failure", req_id);
             return null;
         }
         common.internalOperationError(res, "Failed to validate workspace credit balance", req_id);

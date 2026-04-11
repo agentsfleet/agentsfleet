@@ -331,6 +331,7 @@ Required outputs:
   → Remove these? Confirm before I proceed.
   ```
 - **Cross-layer orphan sweep** (Rule 30). For every symbol renamed, deleted, or format-changed in this branch, grep the OLD name across all layers (schema, Zig, JS, tests, docs). Zero hits in non-historical files required before proceeding. See `docs/greptile-learnings/RULES.md` Rule 30 for the sweep command.
+- **Greptile learning capture.** After fixing greptile or review findings, before committing the fix: for each finding, ask "Is this a pattern that could recur in other files?" If yes, add a compact rule (Rule/Why/Tags/Ref) to `docs/greptile-learnings/RULES.md` in the same commit as the fix. The fix and the rule ship together — never defer the rule to a follow-up.
 
 Restrictions:
 

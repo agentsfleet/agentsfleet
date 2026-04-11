@@ -8,6 +8,7 @@ const std = @import("std");
 const httpz = @import("httpz");
 const pg = @import("pg");
 const common = @import("common.zig");
+const hx_mod = @import("hx.zig");
 const ec = @import("../../errors/codes.zig");
 const id_format = @import("../../types/id_format.zig");
 const activity_stream = @import("../../zombie/activity_stream.zig");
@@ -22,47 +23,37 @@ const MAX_CREDENTIAL_NAME_LEN: usize = 64;
 
 // ── List Activity ─────────────────────────────────────────────────────
 
-pub fn handleListActivity(ctx: *Context, req: *httpz.Request, res: *httpz.Response) void {
-    var arena = std.heap.ArenaAllocator.init(ctx.alloc);
-    defer arena.deinit();
-    const alloc = arena.allocator();
-    const req_id = common.requestId(alloc);
-
-    const principal = common.authenticate(alloc, req, ctx) catch {
-        common.errorResponse(res, .unauthorized, ec.ERR_UNAUTHORIZED, ec.MSG_AUTH_REQUIRED, req_id);
-        return;
-    };
-    _ = principal;
-
+fn innerListActivity(hx: hx_mod.Hx, req: *httpz.Request) void {
     const qs = req.query() catch {
-        common.errorResponse(res, .bad_request, ec.ERR_INVALID_REQUEST, "zombie_id query parameter required", req_id);
+        common.errorResponse(hx.res, ec.ERR_INVALID_REQUEST, "zombie_id query parameter required", hx.req_id);
         return;
     };
     const zombie_id = qs.get("zombie_id") orelse {
-        common.errorResponse(res, .bad_request, ec.ERR_INVALID_REQUEST, "zombie_id query parameter required", req_id);
+        common.errorResponse(hx.res, ec.ERR_INVALID_REQUEST, "zombie_id query parameter required", hx.req_id);
         return;
     };
     if (!id_format.isSupportedWorkspaceId(zombie_id)) {
-        common.errorResponse(res, .bad_request, ec.ERR_INVALID_REQUEST, "zombie_id must be a valid UUIDv7", req_id);
+        common.errorResponse(hx.res, ec.ERR_INVALID_REQUEST, "zombie_id must be a valid UUIDv7", hx.req_id);
         return;
     }
 
     const limit = parseLimitFromQs(qs);
     const cursor = qs.get("cursor");
 
-    const page = activity_stream.queryByZombie(ctx.pool, alloc, zombie_id, cursor, limit) catch |err| {
+    const page = activity_stream.queryByZombie(hx.ctx.pool, hx.alloc, zombie_id, cursor, limit) catch |err| {
         if (err == error.InvalidCursor) {
-            common.errorResponse(res, .bad_request, ec.ERR_INVALID_REQUEST, "Invalid cursor format", req_id);
+            common.errorResponse(hx.res, ec.ERR_INVALID_REQUEST, "Invalid cursor format", hx.req_id);
             return;
         }
-        log.err("activity.list_failed err={s} zombie_id={s} req_id={s}", .{ @errorName(err), zombie_id, req_id });
-        common.internalDbError(res, req_id);
+        log.err("activity.list_failed err={s} zombie_id={s} req_id={s}", .{ @errorName(err), zombie_id, hx.req_id });
+        common.internalDbError(hx.res, hx.req_id);
         return;
     };
-    defer page.deinit(alloc);
+    defer page.deinit(hx.alloc);
 
-    writeActivityResponse(res, page);
+    writeActivityResponse(hx.res, page);
 }
+pub const handleListActivity = hx_mod.authenticated(innerListActivity);
 
 fn parseLimitFromQs(qs: anytype) u32 {
     const limit_str = qs.get("limit") orelse return activity_stream.DEFAULT_ACTIVITY_PAGE_LIMIT;
@@ -89,58 +80,48 @@ const CredentialBody = struct {
     workspace_id: []const u8,
 };
 
-pub fn handleStoreCredential(ctx: *Context, req: *httpz.Request, res: *httpz.Response) void {
-    var arena = std.heap.ArenaAllocator.init(ctx.alloc);
-    defer arena.deinit();
-    const alloc = arena.allocator();
-    const req_id = common.requestId(alloc);
-
-    const principal = common.authenticate(alloc, req, ctx) catch {
-        common.errorResponse(res, .unauthorized, ec.ERR_UNAUTHORIZED, ec.MSG_AUTH_REQUIRED, req_id);
-        return;
-    };
-    _ = principal;
-
+fn innerStoreCredential(hx: hx_mod.Hx, req: *httpz.Request) void {
     const body = req.body() orelse {
-        common.errorResponse(res, .bad_request, ec.ERR_INVALID_REQUEST, ec.MSG_BODY_REQUIRED, req_id);
+        common.errorResponse(hx.res, ec.ERR_INVALID_REQUEST, ec.MSG_BODY_REQUIRED, hx.req_id);
         return;
     };
-    if (!common.checkBodySize(req, res, body, req_id)) return;
+    if (!common.checkBodySize(req, hx.res, body, hx.req_id)) return;
 
-    const parsed = std.json.parseFromSlice(CredentialBody, alloc, body, .{ .ignore_unknown_fields = true }) catch {
-        common.errorResponse(res, .bad_request, ec.ERR_INVALID_REQUEST, ec.MSG_MALFORMED_JSON, req_id);
+    const parsed = std.json.parseFromSlice(CredentialBody, hx.alloc, body, .{ .ignore_unknown_fields = true }) catch {
+        common.errorResponse(hx.res, ec.ERR_INVALID_REQUEST, ec.MSG_MALFORMED_JSON, hx.req_id);
         return;
     };
     const cred = parsed.value;
 
-    if (!validateCredential(cred, res, req_id)) return;
+    if (!validateCredential(cred, hx.res, hx.req_id)) return;
 
-    storeCredentialEncrypted(ctx.pool, alloc, cred) catch |err| {
-        log.err("credential.store_failed err={s} name={s} req_id={s}", .{ @errorName(err), cred.name, req_id });
-        common.internalDbError(res, req_id);
+    storeCredentialEncrypted(hx.ctx.pool, hx.alloc, cred) catch |err| {
+        log.err("credential.store_failed err={s} name={s} req_id={s}", .{ @errorName(err), cred.name, hx.req_id });
+        common.internalDbError(hx.res, hx.req_id);
         return;
     };
 
     log.info("credential.stored name={s} workspace={s}", .{ cred.name, cred.workspace_id });
-    res.status = 201;
-    res.json(.{ .name = cred.name }, .{}) catch {};
+    hx.res.status = 201;
+    hx.res.json(.{ .name = cred.name }, .{}) catch {};
 }
+pub const handleStoreCredential = hx_mod.authenticated(innerStoreCredential);
 
 fn validateCredential(cred: CredentialBody, res: *httpz.Response, req_id: []const u8) bool {
     if (cred.name.len == 0 or cred.name.len > MAX_CREDENTIAL_NAME_LEN) {
-        common.errorResponse(res, .bad_request, ec.ERR_INVALID_REQUEST, ec.MSG_CREDENTIAL_NAME_REQUIRED, req_id);
+        common.errorResponse(res, ec.ERR_INVALID_REQUEST, ec.MSG_CREDENTIAL_NAME_REQUIRED, req_id);
         return false;
     }
     if (cred.value.len == 0) {
-        common.errorResponse(res, .bad_request, ec.ERR_INVALID_REQUEST, ec.MSG_CREDENTIAL_VALUE_REQUIRED, req_id);
+        common.errorResponse(res, ec.ERR_INVALID_REQUEST, ec.MSG_CREDENTIAL_VALUE_REQUIRED, req_id);
         return false;
     }
     if (cred.value.len > MAX_CREDENTIAL_VALUE_LEN) {
-        common.errorResponse(res, .bad_request, ec.ERR_ZOMBIE_CREDENTIAL_VALUE_TOO_LONG, ec.MSG_ZOMBIE_CREDENTIAL_TOO_LONG, req_id);
+        common.errorResponse(res, ec.ERR_ZOMBIE_CREDENTIAL_VALUE_TOO_LONG, ec.MSG_ZOMBIE_CREDENTIAL_TOO_LONG, req_id);
         return false;
     }
     if (cred.workspace_id.len == 0 or !id_format.isSupportedWorkspaceId(cred.workspace_id)) {
-        common.errorResponse(res, .bad_request, ec.ERR_INVALID_REQUEST, ec.MSG_WORKSPACE_ID_REQUIRED, req_id);
+        common.errorResponse(res, ec.ERR_INVALID_REQUEST, ec.MSG_WORKSPACE_ID_REQUIRED, req_id);
         return false;
     }
     return true;
@@ -158,40 +139,30 @@ fn storeCredentialEncrypted(pool: *pg.Pool, alloc: std.mem.Allocator, cred: Cred
 
 // ── List Credentials ──────────────────────────────────────────────────
 
-pub fn handleListCredentials(ctx: *Context, req: *httpz.Request, res: *httpz.Response) void {
-    var arena = std.heap.ArenaAllocator.init(ctx.alloc);
-    defer arena.deinit();
-    const alloc = arena.allocator();
-    const req_id = common.requestId(alloc);
-
-    const principal = common.authenticate(alloc, req, ctx) catch {
-        common.errorResponse(res, .unauthorized, ec.ERR_UNAUTHORIZED, ec.MSG_AUTH_REQUIRED, req_id);
-        return;
-    };
-    _ = principal;
-
+fn innerListCredentials(hx: hx_mod.Hx, req: *httpz.Request) void {
     const qs = req.query() catch {
-        common.errorResponse(res, .bad_request, ec.ERR_INVALID_REQUEST, ec.MSG_WORKSPACE_ID_REQUIRED, req_id);
+        common.errorResponse(hx.res, ec.ERR_INVALID_REQUEST, ec.MSG_WORKSPACE_ID_REQUIRED, hx.req_id);
         return;
     };
     const workspace_id = qs.get("workspace_id") orelse {
-        common.errorResponse(res, .bad_request, ec.ERR_INVALID_REQUEST, ec.MSG_WORKSPACE_ID_REQUIRED, req_id);
+        common.errorResponse(hx.res, ec.ERR_INVALID_REQUEST, ec.MSG_WORKSPACE_ID_REQUIRED, hx.req_id);
         return;
     };
     if (!id_format.isSupportedWorkspaceId(workspace_id)) {
-        common.errorResponse(res, .bad_request, ec.ERR_INVALID_REQUEST, ec.MSG_WORKSPACE_ID_REQUIRED, req_id);
+        common.errorResponse(hx.res, ec.ERR_INVALID_REQUEST, ec.MSG_WORKSPACE_ID_REQUIRED, hx.req_id);
         return;
     }
 
-    const creds = fetchCredentialList(ctx.pool, alloc, workspace_id) catch |err| {
-        log.err("credential.list_failed err={s} req_id={s}", .{ @errorName(err), req_id });
-        common.internalDbError(res, req_id);
+    const creds = fetchCredentialList(hx.ctx.pool, hx.alloc, workspace_id) catch |err| {
+        log.err("credential.list_failed err={s} req_id={s}", .{ @errorName(err), hx.req_id });
+        common.internalDbError(hx.res, hx.req_id);
         return;
     };
 
-    res.status = 200;
-    res.json(.{ .credentials = creds }, .{}) catch {};
+    hx.res.status = 200;
+    hx.res.json(.{ .credentials = creds }, .{}) catch {};
 }
+pub const handleListCredentials = hx_mod.authenticated(innerListCredentials);
 
 const CredentialListRow = struct {
     name: []const u8,

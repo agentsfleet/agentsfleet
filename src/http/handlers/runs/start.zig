@@ -109,7 +109,7 @@ pub fn handleStartRun(ctx: *common.Context, req: *httpz.Request, res: *httpz.Res
     };
 
     const body = req.body() orelse {
-        common.errorResponse(res, .bad_request, error_codes.ERR_INVALID_REQUEST, "Request body required", req_id);
+        common.errorResponse(res, error_codes.ERR_INVALID_REQUEST, "Request body required", req_id);
         return;
     };
 
@@ -126,7 +126,7 @@ pub fn handleStartRun(ctx: *common.Context, req: *httpz.Request, res: *httpz.Res
     };
 
     const parsed = std.json.parseFromSlice(Req, alloc, body, .{ .ignore_unknown_fields = true }) catch {
-        common.errorResponse(res, .bad_request, error_codes.ERR_INVALID_REQUEST, "Malformed JSON or missing required fields", req_id);
+        common.errorResponse(res, error_codes.ERR_INVALID_REQUEST, "Malformed JSON or missing required fields", req_id);
         return;
     };
     defer parsed.deinit();
@@ -135,11 +135,11 @@ pub fn handleStartRun(ctx: *common.Context, req: *httpz.Request, res: *httpz.Res
 
     // Exactly one of spec_id or spec_markdown must be provided.
     if (rval.spec_id == null and rval.spec_markdown == null) {
-        common.errorResponse(res, .bad_request, error_codes.ERR_INVALID_REQUEST, "Either spec_id or spec_markdown is required", req_id);
+        common.errorResponse(res, error_codes.ERR_INVALID_REQUEST, "Either spec_id or spec_markdown is required", req_id);
         return;
     }
     if (rval.spec_id != null and rval.spec_markdown != null) {
-        common.errorResponse(res, .bad_request, error_codes.ERR_INVALID_REQUEST, "Provide spec_id or spec_markdown, not both", req_id);
+        common.errorResponse(res, error_codes.ERR_INVALID_REQUEST, "Provide spec_id or spec_markdown, not both", req_id);
         return;
     }
     if (rval.spec_id) |sid| {
@@ -147,7 +147,7 @@ pub fn handleStartRun(ctx: *common.Context, req: *httpz.Request, res: *httpz.Res
     }
 
     if (!common.beginApiRequest(ctx)) {
-        common.errorResponse(res, .service_unavailable, error_codes.ERR_API_SATURATED, "Server overloaded; retry shortly", req_id);
+        common.errorResponse(res, error_codes.ERR_API_SATURATED, "Server overloaded; retry shortly", req_id);
         return;
     }
     defer common.endApiRequest(ctx);
@@ -159,13 +159,13 @@ pub fn handleStartRun(ctx: *common.Context, req: *httpz.Request, res: *httpz.Res
     defer ctx.pool.release(conn);
 
     if (!common.authorizeWorkspaceAndSetTenantContext(conn, principal, rval.workspace_id)) {
-        common.errorResponse(res, .forbidden, error_codes.ERR_FORBIDDEN, "Workspace access denied", req_id);
+        common.errorResponse(res, error_codes.ERR_FORBIDDEN, "Workspace access denied", req_id);
         return;
     }
 
     const billing_state = workspace_billing.reconcileWorkspaceBilling(conn, alloc, rval.workspace_id, std.time.milliTimestamp(), principal.user_id orelse API_ACTOR) catch |err| {
         if (workspace_billing.errorCode(err)) |code| {
-            common.errorResponse(res, .internal_server_error, code, workspace_billing.errorMessage(err) orelse "Workspace billing failure", req_id);
+            common.errorResponse(res, code, workspace_billing.errorMessage(err) orelse "Workspace billing failure", req_id);
             return;
         }
         common.internalOperationError(res, "Failed to reconcile workspace billing state", req_id);
@@ -175,7 +175,7 @@ pub fn handleStartRun(ctx: *common.Context, req: *httpz.Request, res: *httpz.Res
     defer if (billing_state.subscription_id) |v| alloc.free(v);
     const credit = workspace_credit.enforceExecutionAllowed(conn, alloc, rval.workspace_id, billing_state.plan_tier) catch |err| {
         if (workspace_credit.errorCode(err)) |code| {
-            common.errorResponse(res, .forbidden, code, workspace_credit.errorMessage(err) orelse "Workspace credit failure", req_id);
+            common.errorResponse(res, code, workspace_credit.errorMessage(err) orelse "Workspace credit failure", req_id);
             return;
         }
         common.internalOperationError(res, "Failed to validate workspace credit balance", req_id);
@@ -191,7 +191,7 @@ pub fn handleStartRun(ctx: *common.Context, req: *httpz.Request, res: *httpz.Res
         return;
     };
     if (budget_early) {
-        common.errorResponse(res, .payment_required, error_codes.ERR_WORKSPACE_MONTHLY_BUDGET_EXCEEDED, "Workspace monthly token budget exceeded", req_id);
+        common.errorResponse(res, error_codes.ERR_WORKSPACE_MONTHLY_BUDGET_EXCEEDED, "Workspace monthly token budget exceeded", req_id);
         return;
     }
 
@@ -206,14 +206,14 @@ pub fn handleStartRun(ctx: *common.Context, req: *httpz.Request, res: *httpz.Res
         defer ws_check.deinit();
 
         const ws_row = ws_check.next() catch null orelse {
-            common.errorResponse(res, .not_found, error_codes.ERR_WORKSPACE_NOT_FOUND, "Workspace not found", req_id);
+            common.errorResponse(res, error_codes.ERR_WORKSPACE_NOT_FOUND, "Workspace not found", req_id);
             return;
         };
 
         const paused = ws_row.get(bool, 0) catch false;
         ws_check.drain() catch {};
         if (paused) {
-            common.errorResponse(res, .conflict, error_codes.ERR_WORKSPACE_PAUSED, "Workspace is paused", req_id);
+            common.errorResponse(res, error_codes.ERR_WORKSPACE_PAUSED, "Workspace is paused", req_id);
             return;
         }
     }
@@ -235,7 +235,7 @@ pub fn handleStartRun(ctx: *common.Context, req: *httpz.Request, res: *httpz.Res
             const spec_exists = (spec_check.next() catch null) != null;
             spec_check.drain() catch {};
             if (!spec_exists) {
-                common.errorResponse(res, .not_found, error_codes.ERR_SPEC_NOT_FOUND, "Spec not found", req_id);
+                common.errorResponse(res, error_codes.ERR_SPEC_NOT_FOUND, "Spec not found", req_id);
                 return;
             }
             break :blk sid;
@@ -251,23 +251,23 @@ pub fn handleStartRun(ctx: *common.Context, req: *httpz.Request, res: *httpz.Res
 
     enforceRuntimeActiveProfile(conn, alloc, rval.workspace_id, rval.requested_by) catch |err| switch (err) {
         entitlements.EnforcementError.EntitlementMissing => {
-            common.errorResponse(res, .forbidden, error_codes.ERR_ENTITLEMENT_UNAVAILABLE, "Workspace entitlement missing; request denied", req_id);
+            common.errorResponse(res, error_codes.ERR_ENTITLEMENT_UNAVAILABLE, "Workspace entitlement missing; request denied", req_id);
             return;
         },
         entitlements.EnforcementError.EntitlementProfileLimit => {
-            common.errorResponse(res, .forbidden, error_codes.ERR_ENTITLEMENT_PROFILE_LIMIT, "Workspace profile limit exceeded", req_id);
+            common.errorResponse(res, error_codes.ERR_ENTITLEMENT_PROFILE_LIMIT, "Workspace profile limit exceeded", req_id);
             return;
         },
         entitlements.EnforcementError.EntitlementStageLimit => {
-            common.errorResponse(res, .forbidden, error_codes.ERR_ENTITLEMENT_STAGE_LIMIT, "Plan stage limit exceeded", req_id);
+            common.errorResponse(res, error_codes.ERR_ENTITLEMENT_STAGE_LIMIT, "Plan stage limit exceeded", req_id);
             return;
         },
         entitlements.EnforcementError.EntitlementSkillNotAllowed => {
-            common.errorResponse(res, .forbidden, error_codes.ERR_ENTITLEMENT_SKILL_NOT_ALLOWED, "Plan does not allow one or more profile skills", req_id);
+            common.errorResponse(res, error_codes.ERR_ENTITLEMENT_SKILL_NOT_ALLOWED, "Plan does not allow one or more profile skills", req_id);
             return;
         },
         entitlements.EnforcementError.InvalidCompiledProfile => {
-            common.errorResponse(res, .conflict, error_codes.ERR_PROFILE_INVALID, "Active profile is invalid", req_id);
+            common.errorResponse(res, error_codes.ERR_PROFILE_INVALID, "Active profile is invalid", req_id);
             return;
         },
         else => {
@@ -310,7 +310,7 @@ pub fn handleStartRun(ctx: *common.Context, req: *httpz.Request, res: *httpz.Res
 
     const run_id = id_format.generateRunId(alloc) catch |err| {
         obs_log.logWarnErr(.http, err, "run.id_generation_fail error_code={s}", .{error_codes.ERR_UUIDV7_ID_GENERATION_FAILED});
-        common.errorResponse(res, .internal_server_error, error_codes.ERR_UUIDV7_ID_GENERATION_FAILED, "Failed to generate run identifier", req_id);
+        common.errorResponse(res, error_codes.ERR_UUIDV7_ID_GENERATION_FAILED, "Failed to generate run identifier", req_id);
         return;
     };
 
@@ -337,7 +337,7 @@ pub fn handleStartRun(ctx: *common.Context, req: *httpz.Request, res: *httpz.Res
     };
     if (budget_final) {
         _ = conn.exec("ROLLBACK", .{}) catch {};
-        common.errorResponse(res, .payment_required, error_codes.ERR_WORKSPACE_MONTHLY_BUDGET_EXCEEDED, "Workspace monthly token budget exceeded", req_id);
+        common.errorResponse(res, error_codes.ERR_WORKSPACE_MONTHLY_BUDGET_EXCEEDED, "Workspace monthly token budget exceeded", req_id);
         return;
     }
 
@@ -396,7 +396,7 @@ pub fn handleStartRun(ctx: *common.Context, req: *httpz.Request, res: *httpz.Res
     };
 
     if (!id_format.isSupportedRunId(final_run_id)) {
-        common.errorResponse(res, .internal_server_error, error_codes.ERR_UUIDV7_CANONICAL_FORMAT, "Non-canonical run_id persisted", req_id);
+        common.errorResponse(res, error_codes.ERR_UUIDV7_CANONICAL_FORMAT, "Non-canonical run_id persisted", req_id);
         return;
     }
 
@@ -422,7 +422,7 @@ pub fn handleStartRun(ctx: *common.Context, req: *httpz.Request, res: *httpz.Res
                 rval.workspace_id,
             });
             common.compensateStartRunQueueFailure(conn, final_run_id);
-            common.errorResponse(res, .service_unavailable, queue_unavailable_code, queue_unavailable_message, req_id);
+            common.errorResponse(res, queue_unavailable_code, queue_unavailable_message, req_id);
             return;
         };
         posthog_events.trackRunStarted(

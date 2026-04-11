@@ -3,7 +3,7 @@
   "info": {
     "title": "UseZombie Control Plane API",
     "version": "1.0.0",
-    "description": "Zombie automation control plane — webhook-driven agent execution in a bwrap+landlock sandbox.",
+    "description": "Zombie automation control plane \u2014 webhook-driven agent execution in a bwrap+landlock sandbox.",
     "contact": {
       "name": "UseZombie",
       "url": "https://usezombie.com"
@@ -44,14 +44,14 @@
     },
     {
       "name": "Runs",
-      "description": "Core spec-to-PR pipeline — queue, monitor, stream, retry, and cancel runs",
+      "description": "Core spec-to-PR pipeline \u2014 queue, monitor, stream, retry, and cancel runs",
       "x-mintlify": {
         "navigation": "Runs"
       }
     },
     {
       "name": "Zombies",
-      "description": "Zombie management and webhook ingestion — create, configure, and operate event-driven Zombies",
+      "description": "Zombie management and webhook ingestion \u2014 create, configure, and operate event-driven Zombies",
       "x-mintlify": {
         "navigation": "Zombies"
       }
@@ -72,7 +72,7 @@
     },
     {
       "name": "Admin",
-      "description": "Platform-wide configuration — manage shared LLM provider keys",
+      "description": "Platform-wide configuration \u2014 manage shared LLM provider keys",
       "x-mintlify": {
         "navigation": "Admin"
       }
@@ -177,7 +177,7 @@
                   "properties": {
                     "ready": {
                       "type": "boolean",
-                      "description": "Overall readiness — true only when all dependencies are healthy"
+                      "description": "Overall readiness \u2014 true only when all dependencies are healthy"
                     },
                     "database": {
                       "type": "boolean",
@@ -548,7 +548,7 @@
                     "install_url": {
                       "type": "string",
                       "format": "uri",
-                      "description": "GitHub App installation URL — direct user here if the app is not yet installed"
+                      "description": "GitHub App installation URL \u2014 direct user here if the app is not yet installed"
                     },
                     "request_id": {
                       "type": "string",
@@ -608,7 +608,7 @@
                   },
                   "version": {
                     "type": "integer",
-                    "description": "Optimistic concurrency version — must match current workspace version"
+                    "description": "Optimistic concurrency version \u2014 must match current workspace version"
                   }
                 }
               }
@@ -764,7 +764,7 @@
                     "enum": [
                       "pull_request"
                     ],
-                    "description": "Run mode — currently only pull_request is supported"
+                    "description": "Run mode \u2014 currently only pull_request is supported"
                   },
                   "requested_by": {
                     "type": "string",
@@ -1305,7 +1305,7 @@
                   },
                   "api_key": {
                     "type": "string",
-                    "description": "API key for the provider — encrypted at rest, never echoed"
+                    "description": "API key for the provider \u2014 encrypted at rest, never echoed"
                   }
                 }
               }
@@ -1454,7 +1454,7 @@
                 "properties": {
                   "value": {
                     "type": "string",
-                    "description": "Secret value — encrypted at rest, never echoed"
+                    "description": "Secret value \u2014 encrypted at rest, never echoed"
                   },
                   "scope": {
                     "type": "string",
@@ -2073,9 +2073,9 @@
           "409": {
             "description": "Run is not in an interruptible state (terminal, BLOCKED, PR_OPENED, or NOTIFIED)",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Error"
+                  "$ref": "#/components/schemas/ErrorBody"
                 }
               }
             }
@@ -2090,7 +2090,7 @@
       "post": {
         "operationId": "receive_webhook",
         "summary": "Deliver an inbound webhook event to a Zombie",
-        "description": "Delivers an inbound event to the Zombie identified by `zombie_id`. The Zombie is looked up by primary key — no JSONB traversal, no source-name uniqueness required. Bearer token is validated against the Zombie's `trigger.token` (omit if no token configured). Duplicate events (same `event_id` within 24 h) return 200 `{status: \"duplicate\"}`. A new event is enqueued to the Zombie's Redis stream and returns 202.",
+        "description": "Delivers an inbound event to the Zombie identified by `zombie_id`. The Zombie is looked up by primary key \u2014 no JSONB traversal, no source-name uniqueness required. Bearer token is validated against the Zombie's `trigger.token` (omit if no token configured). Duplicate events (same `event_id` within 24 h) return 200 `{status: \"duplicate\"}`. A new event is enqueued to the Zombie's Redis stream and returns 202.",
         "tags": [
           "Zombies"
         ],
@@ -2129,7 +2129,7 @@
                   "data": {
                     "type": "object",
                     "additionalProperties": true,
-                    "description": "Event payload — any JSON object. Passed as-is into the Zombie event loop."
+                    "description": "Event payload \u2014 any JSON object. Passed as-is into the Zombie event loop."
                   }
                 }
               }
@@ -2161,7 +2161,7 @@
             }
           },
           "200": {
-            "description": "Duplicate event — already processed within the 24-hour dedup window.",
+            "description": "Duplicate event \u2014 already processed within the 24-hour dedup window.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2180,11 +2180,11 @@
             }
           },
           "400": {
-            "description": "Malformed payload — missing `event_id` or `type`.",
+            "description": "Malformed payload \u2014 missing `event_id` or `type`.",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Error"
+                  "$ref": "#/components/schemas/ErrorBody"
                 }
               }
             }
@@ -2192,9 +2192,9 @@
           "401": {
             "description": "Missing or invalid Bearer token.",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Error"
+                  "$ref": "#/components/schemas/ErrorBody"
                 }
               }
             }
@@ -2202,9 +2202,9 @@
           "404": {
             "description": "No active Zombie is configured for this source (UZ-WH-001).",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Error"
+                  "$ref": "#/components/schemas/ErrorBody"
                 }
               }
             }
@@ -2212,9 +2212,9 @@
           "409": {
             "description": "Zombie exists but is paused or stopped (UZ-WH-003).",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Error"
+                  "$ref": "#/components/schemas/ErrorBody"
                 }
               }
             }
@@ -2471,7 +2471,7 @@
       },
       "Proposal": {
         "type": "object",
-        "description": "An agent self-tuning proposal — a suggested change to the harness configuration",
+        "description": "An agent self-tuning proposal \u2014 a suggested change to the harness configuration",
         "properties": {
           "proposal_id": {
             "type": "string",
@@ -2601,50 +2601,52 @@
           }
         }
       },
-      "Error": {
+      "ErrorBody": {
         "type": "object",
-        "description": "Standard error response",
+        "description": "RFC 7807 problem detail error response (application/problem+json)",
         "required": [
-          "error",
+          "docs_uri",
+          "title",
+          "detail",
+          "error_code",
           "request_id"
         ],
         "properties": {
-          "error": {
-            "type": "object",
-            "required": [
-              "code",
-              "message"
-            ],
-            "properties": {
-              "code": {
-                "type": "string",
-                "description": "Machine-readable error code"
-              },
-              "message": {
-                "type": "string",
-                "description": "Human-readable error message"
-              },
-              "details": {
-                "type": "object",
-                "additionalProperties": true,
-                "description": "Additional error context"
-              }
-            }
+          "docs_uri": {
+            "type": "string",
+            "format": "uri",
+            "description": "Stable link to documentation for this error code",
+            "example": "https://docs.usezombie.com/error-codes#UZ-ZMB-009"
+          },
+          "title": {
+            "type": "string",
+            "description": "Short human-readable label, same for every occurrence of this code",
+            "example": "Zombie not found"
+          },
+          "detail": {
+            "type": "string",
+            "description": "Instance-specific context describing what went wrong",
+            "example": "No zombie with id 'abc123' in this workspace."
+          },
+          "error_code": {
+            "type": "string",
+            "description": "Machine-readable error code",
+            "example": "UZ-ZMB-009"
           },
           "request_id": {
             "type": "string",
-            "format": "uuid"
+            "description": "Correlation ID for this request"
           }
         }
       }
     },
     "responses": {
       "Error": {
-        "description": "Error response",
+        "description": "RFC 7807 problem detail error response",
         "content": {
-          "application/json": {
+          "application/problem+json": {
             "schema": {
-              "$ref": "#/components/schemas/Error"
+              "$ref": "#/components/schemas/ErrorBody"
             }
           }
         }
