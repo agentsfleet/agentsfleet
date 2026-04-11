@@ -2,8 +2,11 @@
 //! posthog_events.zig for the 350-line limit (M10_002).
 
 const posthog = @import("posthog");
-const posthog_events = @import("posthog_events.zig");
-const distinctIdOrSystem = posthog_events.distinctIdOrSystem;
+
+fn distinctIdOrSystem(raw: []const u8) []const u8 {
+    if (raw.len == 0) return "system";
+    return raw;
+}
 
 // ---------------------------------------------------------------------------
 // Workspace lifecycle events
