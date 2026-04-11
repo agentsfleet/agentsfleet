@@ -152,60 +152,58 @@ Copy everything below this line when creating a new spec.
 
 ---
 
-## 1.0 {Section Title}
+## Sections (implementation slices)
+
+Add as many `## §N — {Title}` sections as needed. Each section is an
+implementation slice — what will be built. Max 4 dimensions per section.
+
+### §1 — {Section Title}
 
 **Status:** PENDING
 
 Description of this section. Explain what will be built and why.
 
 **Dimensions (test blueprints):**
-- 1.1 PENDING
-  - target: `{file}:{function_or_struct}`
-  - input: `{structured input — types, shapes, examples}`
-  - expected: `{structured output — exact return value, side effect, or state change}`
-  - test_type: unit | integration | contract
-- 1.2 PENDING
-  - target: `{file}:{function_or_struct}`
-  - input: `{structured input}`
-  - expected: `{structured output}`
-  - test_type: unit | integration | contract
 
----
+| Dim | Status | Target | Input | Expected | Test type |
+|-----|--------|--------|-------|----------|-----------|
+| 1.1 | PENDING | `{file}:{fn_or_struct}` | `{structured input}` | `{exact output or state change}` | unit / integration / contract |
+| 1.2 | PENDING | `{file}:{fn_or_struct}` | `{structured input}` | `{exact output}` | unit / integration / contract |
 
-## 2.0 {Next Section}
+### §2 — {Next Section}
 
 **Status:** PENDING
 
-{Same pattern as 1.0 — sections are implementation slices, dimensions are test blueprints.}
+{Same pattern as §1 — sections are implementation slices, dimensions are test blueprints.}
 
 ---
 
-## N.0 Interfaces
+## Interfaces
 
 **Status:** PENDING
 
 Lock the API surface. Every public function, endpoint, and data shape that this workstream introduces or modifies.
 
-### N.1 Public Functions
+### Public Functions
 
 ```
 {language}
 {exact function signature — not pseudocode}
 ```
 
-### N.2 Input Contracts
+### Input Contracts
 
 | Field | Type | Constraints | Example |
 |-------|------|-------------|---------|
 | {name} | {type} | {validation rules} | {example value} |
 
-### N.3 Output Contracts
+### Output Contracts
 
 | Field | Type | When | Example |
 |-------|------|------|---------|
 | {name} | {type} | {condition} | {example value} |
 
-### N.4 Error Contracts
+### Error Contracts
 
 | Error condition | Behavior | Caller sees |
 |----------------|----------|-------------|
@@ -216,7 +214,7 @@ Lock the API surface. Every public function, endpoint, and data shape that this 
 
 ---
 
-## N+1.0 Failure Modes
+## Failure Modes
 
 **Status:** PENDING
 
@@ -232,7 +230,7 @@ Enumerate every failure path. For each: what triggers it, what the system does, 
 
 ---
 
-## N+2.0 Implementation Constraints (Enforceable)
+## Implementation Constraints (Enforceable)
 
 **Status:** PENDING
 
@@ -241,46 +239,65 @@ Each constraint must be measurable — not "fast" or "efficient" but a number or
 | Constraint | How to verify |
 |-----------|---------------|
 | {e.g., "Zero heap allocations in hot path"} | {e.g., "std.testing.allocator detects leaks; grep for alloc in loop body"} |
-| {e.g., "Max latency per message < 5ms"} | {e.g., "benchmark test with 1000 messages"} |
 | {e.g., "File under 400 lines"} | {e.g., "wc -l < 400"} |
 | {e.g., "Cross-compiles on x86_64-linux, aarch64-linux"} | {e.g., "zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux"} |
 
 ---
 
-## N+3.0 Test Specification
+## Invariants (Hard Guardrails)
 
 **Status:** PENDING
 
-Every dimension from sections 1.0–N.0 must map to a test case here. This section is the input to `/write-unit-test`.
+Each invariant MUST be enforced by the compiler, a lint check, or a comptime
+assertion — NOT by documentation or code review. If a human can violate it
+silently, it is not an invariant.
+
+| # | Invariant | Enforcement mechanism |
+|---|-----------|----------------------|
+| 1 | {e.g., "Every Entry has a non-empty hint field"} | {e.g., "comptime loop asserts hint.len > 0"} |
+| 2 | {e.g., "No duplicate error codes"} | {e.g., "comptime loop checks pair-wise equality"} |
+
+If the spec has no compile-time guardrails: write "N/A — no invariants."
+
+---
+
+## Test Specification
+
+**Status:** PENDING
+
+Every dimension from the §N sections must map to a test case here. This section is the input to `/write-unit-test`.
 
 ### Unit Tests
 
-| Test name | Dimension | Target | Input | Expected |
-|-----------|-----------|--------|-------|----------|
+| Test name | Dim | Target | Input | Expected |
+|-----------|-----|--------|-------|----------|
 | {name} | {1.1} | {file:fn} | {input} | {output} |
 
 ### Integration Tests
 
-| Test name | Dimension | Infra needed | Input | Expected |
-|-----------|-----------|-------------|-------|----------|
+| Test name | Dim | Infra needed | Input | Expected |
+|-----------|-----|-------------|-------|----------|
 | {name} | {2.1} | {DB / Redis / both} | {input} | {output} |
 
-### Contract Tests
+### Leak Detection Tests
 
-| Test name | Dimension | What it proves |
-|-----------|-----------|---------------|
-| {name} | {N.3} | {output matches exact format} |
+| Test name | Dim | What it proves |
+|-----------|-----|---------------|
+| {name} | {N.N} | {std.testing.allocator detects zero leaks for this operation} |
+
+Use `std.testing.allocator` (not an arena) so the built-in leak detector fires
+on missed frees. Any test that constructs or destroys owned resources must
+appear here.
 
 ### Spec-Claim Tracing
 
 | Spec claim (from Overview/Goal) | Test that proves it | Test type |
 |--------------------------------|-------------------|-----------|
 | {e.g., "streams in real time"} | {e.g., "bytes arrive before connection closes"} | integration |
-| {e.g., "reconnect replays only missed events"} | {e.g., "Last-Event-ID filters correctly"} | integration (DB) |
 
 ---
 
-## N+4.0 Execution Plan (Ordered)
+## Execution Plan (Ordered)
 
 **Status:** PENDING
 
@@ -296,7 +313,7 @@ Ordered steps. Agent executes top-to-bottom. Each step has a verification comman
 
 ---
 
-## N+5.0 Acceptance Criteria
+## Acceptance Criteria
 
 **Status:** PENDING
 
@@ -308,23 +325,7 @@ Each criterion must be verifiable by running a command or inspecting output — 
 
 ---
 
-## N+6.0 Invariants (Hard Guardrails)
-
-**Status:** PENDING
-
-Each invariant MUST be enforced by the compiler, a lint check, or a comptime
-assertion — NOT by documentation or code review. If a human can violate it
-silently, it is not an invariant.
-
-| # | Invariant | Enforcement mechanism |
-|---|-----------|----------------------|
-| 1 | {e.g., "Every Entry has a non-empty hint field"} | {e.g., "comptime loop asserts hint.len > 0"} |
-| 2 | {e.g., "No duplicate error codes"} | {e.g., "comptime loop checks pair-wise equality"} |
-| 3 | {e.g., "UNKNOWN sentinel not in REGISTRY"} | {e.g., "comptime assertion"} |
-
----
-
-## N+7.0 Eval Commands (Post-Implementation Verification)
+## Eval Commands (Post-Implementation Verification)
 
 **Status:** PENDING
 
@@ -335,55 +336,67 @@ before opening the PR. Copy-paste this block into the terminal.
 # E1: {description}
 {command} && echo "PASS" || echo "FAIL"
 
-# E2: {description}
-{command} && echo "PASS" || echo "FAIL"
-
-# E3: Dead code sweep — zero orphaned references to deleted/renamed symbols
+# E2: Dead code sweep — zero orphaned references to deleted/renamed symbols
 grep -rn "{old_symbol}" src/ --include="*.zig" | head -5
-echo "E3: orphan sweep (empty = pass)"
+echo "E2: orphan sweep (empty = pass)"
 
-# E4: Memory leak test (std.testing.allocator detects leaks; any leaked bytes = test failure)
+# E3: Memory leak test (std.testing.allocator detects leaks)
 zig build test 2>&1 | grep -i "leak" | head -5
-echo "E4: leak check (empty = pass)"
+echo "E3: leak check (empty = pass)"
 
-# E5: Build
+# E4: Build
 zig build 2>&1 | head -5; echo "build=$?"
 
-# E6: Tests
+# E5: Tests
 zig build test 2>&1 | tail -5; echo "test=$?"
 
-# E7: Lint
+# E6: Lint
 make lint 2>&1 | grep -E "✓|FAIL"
 
-# E8: Cross-compile
+# E7: Cross-compile
 zig build -Dtarget=x86_64-linux 2>&1 | tail -3; echo "x86=$?"
 zig build -Dtarget=aarch64-linux 2>&1 | tail -3; echo "arm=$?"
 
-# E9: 400-line gate
+# E8: 400-line gate
 git diff --name-only origin/main | xargs wc -l 2>/dev/null | awk '$1 > 400 && $2 !~ /\.md$/ { print "OVER: " $2 ": " $1 " lines" }'
 ```
 
 ---
 
-## N+8.0 Dead Code Sweep
+## Dead Code Sweep
 
 **Status:** PENDING
 
-Mandatory when the spec deletes or replaces files. List every file deleted
-and every symbol renamed/removed. The eval commands above must grep for
-each and confirm zero remaining references.
+Mandatory when the spec deletes or replaces files. Two checks:
 
-| Deleted file or symbol | Grep command | Expected result |
-|-----------------------|--------------|-----------------|
-| {e.g., `error_table.zig`} | `grep -rn "error_table" src/ --include="*.zig"` | 0 matches |
+**1. Orphaned files — must be deleted from disk and git.**
+Every replaced or superseded file must be `git rm`'d. Verify with `test ! -f`.
+
+| File to delete | Verify deleted |
+|---------------|----------------|
+| {e.g., `src/errors/error_table.zig`} | `test ! -f src/errors/error_table.zig` |
+| {e.g., `src/errors/codes.zig`} | `test ! -f src/errors/codes.zig` |
+
+**2. Orphaned references — zero remaining imports or uses.**
+For every deleted file and every removed/renamed public symbol, grep the
+entire `src/` tree. Any non-zero result = stale reference that will compile
+(Zig won't catch it if behind a `comptime` or test-only path) but fail at
+runtime or confuse future maintainers.
+
+| Deleted symbol or import | Grep command | Expected |
+|-------------------------|--------------|----------|
+| {e.g., `error_table`} | `grep -rn "error_table" src/ --include="*.zig"` | 0 matches |
 | {e.g., `UNKNOWN_ENTRY`} | `grep -rn "UNKNOWN_ENTRY" src/ --include="*.zig"` | 0 matches |
-| {e.g., `posthog_events.zig`} | `grep -rn "posthog_events" src/ --include="*.zig"` | 0 matches |
+| {e.g., `posthog_events`} | `grep -rn "posthog_events" src/ --include="*.zig"` | 0 matches |
+
+**3. main.zig test discovery — update imports.**
+Remove `_ = @import("deleted_file.zig");` lines. Add imports for new files.
 
 If a spec does not delete files: write "N/A — no files deleted."
 
 ---
 
-## N+9.0 Verification Evidence
+## Verification Evidence
 
 **Status:** PENDING
 
@@ -401,7 +414,7 @@ Filled in during VERIFY phase. Proves the spec claims are met.
 
 ---
 
-## N+10.0 Out of Scope
+## Out of Scope
 
 - {Item not in scope}
 - {Another out of scope item}
