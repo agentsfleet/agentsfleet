@@ -43,7 +43,7 @@ test "match rejects multi-segment workspace suffix routes" {
     try std.testing.expect(match("/v1/workspaces//billing/events") == null);
 }
 
-test "match resolves agent profile and scores routes" {
+test "match resolves agent profile route" {
     const agent_id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
     try std.testing.expectEqualStrings(
         agent_id,
@@ -52,49 +52,14 @@ test "match resolves agent profile and scores routes" {
             else => return error.TestExpectedEqual,
         },
     );
-    try std.testing.expectEqualStrings(
-        agent_id,
-        switch (match("/v1/agents/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/scores").?) {
-            .get_agent_scores => |id| id,
-            else => return error.TestExpectedEqual,
-        },
-    );
-    try std.testing.expectEqualStrings(
-        agent_id,
-        switch (match("/v1/agents/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/improvement-report").?) {
-            .get_agent_improvement_report => |id| id,
-            else => return error.TestExpectedEqual,
-        },
-    );
-    try std.testing.expectEqualStrings(
-        agent_id,
-        switch (match("/v1/agents/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/proposals").?) {
-            .list_agent_proposals => |id| id,
-            else => return error.TestExpectedEqual,
-        },
-    );
-    const approve = switch (match("/v1/agents/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/proposals/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f21:approve").?) {
-        .approve_agent_proposal => |route| route,
-        else => return error.TestExpectedEqual,
-    };
-    try std.testing.expectEqualStrings(agent_id, approve.agent_id);
-    try std.testing.expectEqualStrings("0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f21", approve.proposal_id);
-    const veto = switch (match("/v1/agents/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/proposals/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f21:veto").?) {
-        .veto_agent_proposal => |route| route,
-        else => return error.TestExpectedEqual,
-    };
-    try std.testing.expectEqualStrings(agent_id, veto.agent_id);
-    try std.testing.expectEqualStrings("0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f21", veto.proposal_id);
-    const revert = switch (match("/v1/agents/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/harness/changes/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f31:revert").?) {
-        .revert_agent_harness_change => |route| route,
-        else => return error.TestExpectedEqual,
-    };
-    try std.testing.expectEqualStrings(agent_id, revert.agent_id);
-    try std.testing.expectEqualStrings("0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f31", revert.change_id);
+    try std.testing.expect(match("/v1/agents/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/scores") == null);
+    try std.testing.expect(match("/v1/agents/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/improvement-report") == null);
+    try std.testing.expect(match("/v1/agents/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/proposals") == null);
+    try std.testing.expect(match("/v1/agents/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/proposals/p1:approve") == null);
+    try std.testing.expect(match("/v1/agents/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/proposals/p1:veto") == null);
+    try std.testing.expect(match("/v1/agents/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/harness/changes/c1:revert") == null);
     try std.testing.expect(match("/v1/agents/") == null);
     try std.testing.expect(match("/v1/agents/foo/bar/scores") == null);
-    try std.testing.expect(match("/v1/agents/foo/proposals/bar/baz:approve") == null);
-    try std.testing.expect(match("/v1/agents/foo/harness/changes/bar/baz:revert") == null);
 }
 
 test "match resolves auth routes" {
