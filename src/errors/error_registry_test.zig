@@ -296,3 +296,78 @@ test "T7: error_registry.zig exports REGISTRY (not TABLE)" {
     const e: reg.Entry = reg.REGISTRY[0];
     try std.testing.expect(e.code.len > 0);
 }
+
+// ── M10_006: ErrorMapping + validateErrorTable (bvisor pattern) ───────────
+
+test "M10_006: ErrorMapping struct has 3 fields (err, code, message)" {
+    const fields = @typeInfo(reg.ErrorMapping).@"struct".fields;
+    try std.testing.expectEqual(@as(usize, 3), fields.len);
+}
+
+test "M10_006: validateErrorTable accepts valid single-entry table" {
+    const table = [_]reg.ErrorMapping{
+        .{ .err = error.OutOfMemory, .code = "UZ-TEST-001", .message = "test message" },
+    };
+    // comptime validation — if it compiles, it passes
+    comptime {
+        reg.validateErrorTable(&table);
+    }
+}
+
+test "M10_006: validateErrorTable accepts valid multi-entry table" {
+    const table = [_]reg.ErrorMapping{
+        .{ .err = error.OutOfMemory, .code = "UZ-TEST-001", .message = "oom" },
+        .{ .err = error.Overflow, .code = "UZ-TEST-002", .message = "overflow" },
+        .{ .err = error.InvalidCharacter, .code = "UZ-TEST-003", .message = "bad char" },
+    };
+    comptime {
+        reg.validateErrorTable(&table);
+    }
+}
+
+test "M10_006: billing error table passes validateErrorTable at comptime" {
+    // Verifies the actual billing table is valid (imported transitively via build)
+    // The comptime block in workspace_billing.zig enforces this, but this test
+    // makes the dependency explicit in the test suite.
+    comptime {
+        const billing = @import("../state/workspace_billing.zig");
+        _ = billing; // comptime validation runs on import
+    }
+}
+
+test "M10_006: credit error table passes validateErrorTable at comptime" {
+    comptime {
+        const credit = @import("../state/workspace_credit.zig");
+        _ = credit;
+    }
+}
+
+// T7: Regression — comptime size assertions pin struct layouts
+test "M10_006 T7: StateRow size pinned at 104 bytes" {
+    const StateRow = @import("../state/workspace_billing/row.zig").StateRow;
+    try std.testing.expectEqual(@as(usize, 104), @sizeOf(StateRow));
+}
+
+test "M10_006 T7: CreditRow size pinned at 56 bytes" {
+    const CreditRow = @import("../state/workspace_credit_store.zig").CreditRow;
+    try std.testing.expectEqual(@as(usize, 56), @sizeOf(CreditRow));
+}
+
+test "M10_006 T7: PgQuery size pinned at 8 bytes (single pointer)" {
+    const PgQuery = @import("../db/pg_query.zig").PgQuery;
+    try std.testing.expectEqual(@as(usize, 8), @sizeOf(PgQuery));
+}
+
+test "M10_006 T7: ZombieSession size pinned at 296 bytes" {
+    const ZombieSession = @import("../zombie/event_loop_types.zig").ZombieSession;
+    try std.testing.expectEqual(@as(usize, 296), @sizeOf(ZombieSession));
+}
+
+// T7: Regression — ErrorMapping field count and types
+test "M10_006 T7: ErrorMapping.err field is anyerror" {
+    const fields = @typeInfo(reg.ErrorMapping).@"struct".fields;
+    // First field is 'err' of type anyerror
+    try std.testing.expectEqualStrings("err", fields[0].name);
+    try std.testing.expectEqualStrings("code", fields[1].name);
+    try std.testing.expectEqualStrings("message", fields[2].name);
+}

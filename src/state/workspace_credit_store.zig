@@ -10,6 +10,12 @@ pub const CreditRow = struct {
     remaining_credit_cents: i64,
     exhausted_at: ?i64,
 
+    // bvisor pattern: comptime size assertion catches silent field drift.
+    // 5 fields: 1 slice + 3 i64 + 1 optional i64
+    comptime {
+        std.debug.assert(@sizeOf(CreditRow) == 56);
+    }
+
     pub fn deinit(self: *CreditRow, alloc: std.mem.Allocator) void {
         alloc.free(self.currency);
     }

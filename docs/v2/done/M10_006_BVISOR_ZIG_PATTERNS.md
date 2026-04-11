@@ -2,9 +2,10 @@
 Milestone: M10
 Workstream: M10_006
 Name: BVISOR_ZIG_PATTERNS
-Status: PENDING
+Status: DONE
 Priority: P3 — progressive improvement, apply when touching files
 Created: Apr 11, 2026
+Branch: feat/m10-006-bvisor-zig-patterns
 Depends on: M10_005 (PgQuery migration complete)
 ---
 
@@ -126,9 +127,9 @@ zig build -Dtarget=aarch64-linux 2>&1 | tail -3; echo "arm=$?"
 
 ## Acceptance Criteria
 
-- [ ] At least 4 structs have comptime size assertions
-- [ ] Conditional errdefer applied where ownership is optional
-- [ ] At least one manual error switch replaced with comptime-validated mapping
-- [ ] `make test` passes
-- [ ] `make lint` passes
-- [ ] Cross-compiles
+- [x] At least 4 structs have comptime size assertions (StateRow=104, CreditRow=56, PgQuery=8, ZombieSession=296)
+- [x] Conditional errdefer applied where ownership is optional (already satisfied by M10_005 in row.zig:78-86; no new conditional ownership sites found in test_fixtures/crypto_store)
+- [x] At least one manual error switch replaced with comptime-validated mapping (workspace_billing + workspace_credit error tables)
+- [x] `make test` passes
+- [x] `make lint` passes (Zig gate; website eslint pre-existing missing binary)
+- [x] Cross-compiles (x86_64-linux + aarch64-linux)

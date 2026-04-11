@@ -31,25 +31,31 @@ pub const BillingLifecycleEventInput = model.BillingLifecycleEventInput;
 
 const EMPTY_JSON = "{}";
 
+// bvisor pattern: comptime-validated error mapping table.
+// Adding/removing an error requires updating ONE table.
+const billing_error_table = [_]error_codes.ErrorMapping{
+    .{ .err = error.FreeWorkspaceLimitExceeded, .code = error_codes.ERR_WORKSPACE_FREE_LIMIT, .message = "Free plan is limited to one workspace. Upgrade an existing workspace to Scale before creating another." },
+    .{ .err = error.InvalidSubscriptionId, .code = error_codes.ERR_BILLING_INVALID_SUBSCRIPTION_ID, .message = "subscription_id is required" },
+    .{ .err = error.InvalidBillingEventReason, .code = error_codes.ERR_BILLING_INVALID_EVENT, .message = "billing event reason is required" },
+    .{ .err = error.WorkspaceBillingStateMissing, .code = error_codes.ERR_BILLING_STATE_MISSING, .message = "Workspace billing state missing" },
+    .{ .err = error.InvalidWorkspaceBillingState, .code = error_codes.ERR_BILLING_STATE_INVALID, .message = "Workspace billing state invalid" },
+};
+comptime {
+    error_codes.validateErrorTable(&billing_error_table);
+}
+
 pub fn errorCode(err: anyerror) ?[]const u8 {
-    return switch (err) {
-        error.FreeWorkspaceLimitExceeded => error_codes.ERR_WORKSPACE_FREE_LIMIT,
-        error.InvalidSubscriptionId => error_codes.ERR_BILLING_INVALID_SUBSCRIPTION_ID,
-        error.WorkspaceBillingStateMissing => error_codes.ERR_BILLING_STATE_MISSING,
-        error.InvalidWorkspaceBillingState => error_codes.ERR_BILLING_STATE_INVALID,
-        else => null,
-    };
+    inline for (billing_error_table) |entry| {
+        if (err == entry.err) return entry.code;
+    }
+    return null;
 }
 
 pub fn errorMessage(err: anyerror) ?[]const u8 {
-    return switch (err) {
-        error.FreeWorkspaceLimitExceeded => "Free plan is limited to one workspace. Upgrade an existing workspace to Scale before creating another.",
-        error.InvalidSubscriptionId => "subscription_id is required",
-        error.InvalidBillingEventReason => "billing event reason is required",
-        error.WorkspaceBillingStateMissing => "Workspace billing state missing",
-        error.InvalidWorkspaceBillingState => "Workspace billing state invalid",
-        else => null,
-    };
+    inline for (billing_error_table) |entry| {
+        if (err == entry.err) return entry.message;
+    }
+    return null;
 }
 
 pub fn provisionFreeWorkspace(

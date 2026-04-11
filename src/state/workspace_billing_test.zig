@@ -1,6 +1,7 @@
 const std = @import("std");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const workspace_billing = @import("./workspace_billing.zig");
+const error_codes = @import("../errors/error_registry.zig");
 
 const BillingStatus = workspace_billing.BillingStatus;
 const PlanTier = workspace_billing.PlanTier;
@@ -351,4 +352,59 @@ test "enforceFreeWorkspaceCreationAllowed excludes the workspace itself" {
         uc3.TENANT_EXCLUDE_SELF,
         uc3.WS_EXCLUDE_SELF,
     );
+}
+
+// ── M10_006: errorCode / errorMessage table-driven mapping ────────────────
+
+// T1: happy path — each billing error maps to its expected UZ-* code
+test "M10_006 T1: errorCode maps all billing errors to correct codes" {
+    try std.testing.expectEqualStrings(error_codes.ERR_WORKSPACE_FREE_LIMIT, workspace_billing.errorCode(error.FreeWorkspaceLimitExceeded).?);
+    try std.testing.expectEqualStrings(error_codes.ERR_BILLING_INVALID_SUBSCRIPTION_ID, workspace_billing.errorCode(error.InvalidSubscriptionId).?);
+    try std.testing.expectEqualStrings(error_codes.ERR_BILLING_INVALID_EVENT, workspace_billing.errorCode(error.InvalidBillingEventReason).?);
+    try std.testing.expectEqualStrings(error_codes.ERR_BILLING_STATE_MISSING, workspace_billing.errorCode(error.WorkspaceBillingStateMissing).?);
+    try std.testing.expectEqualStrings(error_codes.ERR_BILLING_STATE_INVALID, workspace_billing.errorCode(error.InvalidWorkspaceBillingState).?);
+}
+
+// T1: happy path — each billing error maps to a non-empty message
+test "M10_006 T1: errorMessage returns non-empty for all billing errors" {
+    const errors = [_]anyerror{
+        error.FreeWorkspaceLimitExceeded,
+        error.InvalidSubscriptionId,
+        error.InvalidBillingEventReason,
+        error.WorkspaceBillingStateMissing,
+        error.InvalidWorkspaceBillingState,
+    };
+    inline for (errors) |err| {
+        const msg = workspace_billing.errorMessage(err);
+        try std.testing.expect(msg != null);
+        try std.testing.expect(msg.?.len > 0);
+    }
+}
+
+// T2: edge case — unknown errors return null (not panic, not wrong code)
+test "M10_006 T2: errorCode returns null for unknown errors" {
+    try std.testing.expectEqual(@as(?[]const u8, null), workspace_billing.errorCode(error.OutOfMemory));
+    try std.testing.expectEqual(@as(?[]const u8, null), workspace_billing.errorCode(error.Overflow));
+}
+
+test "M10_006 T2: errorMessage returns null for unknown errors" {
+    try std.testing.expectEqual(@as(?[]const u8, null), workspace_billing.errorMessage(error.OutOfMemory));
+    try std.testing.expectEqual(@as(?[]const u8, null), workspace_billing.errorMessage(error.Overflow));
+}
+
+// T7: regression — errorCode and errorMessage are symmetric (same errors handled in both)
+test "M10_006 T7: errorCode and errorMessage handle identical error sets" {
+    const errors = [_]anyerror{
+        error.FreeWorkspaceLimitExceeded,
+        error.InvalidSubscriptionId,
+        error.InvalidBillingEventReason,
+        error.WorkspaceBillingStateMissing,
+        error.InvalidWorkspaceBillingState,
+        error.OutOfMemory, // unknown — both must return null
+    };
+    inline for (errors) |err| {
+        const has_code = workspace_billing.errorCode(err) != null;
+        const has_msg = workspace_billing.errorMessage(err) != null;
+        try std.testing.expectEqual(has_code, has_msg);
+    }
 }
