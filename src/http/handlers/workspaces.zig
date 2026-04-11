@@ -7,7 +7,7 @@ const httpz = @import("httpz");
 const workspace_billing = @import("../../state/workspace_billing.zig");
 const workspace_credit = @import("../../state/workspace_credit.zig");
 const obs_log = @import("../../observability/logging.zig");
-const error_codes = @import("../../errors/codes.zig");
+const error_codes = @import("../../errors/error_registry.zig");
 const id_format = @import("../../types/id_format.zig");
 const common = @import("common.zig");
 

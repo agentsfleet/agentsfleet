@@ -6,7 +6,7 @@
 
 const std = @import("std");
 const HmacSha256 = std.crypto.auth.hmac.sha2.HmacSha256;
-const ec = @import("../errors/codes.zig");
+const ec = @import("../errors/error_registry.zig");
 
 /// Configuration for verifying a webhook provider's signature.
 pub const VerifyConfig = struct {

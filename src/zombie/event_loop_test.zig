@@ -335,7 +335,7 @@ test "T7: EventLoopConfig has sensible defaults" {
 
 // ── T10: Constants — zombie error codes ─────────────────────────────────
 
-const error_codes = @import("../errors/codes.zig");
+const error_codes = @import("../errors/error_registry.zig");
 
 test "T10: UZ-ZMB error codes follow naming convention" {
     try std.testing.expect(std.mem.startsWith(u8, error_codes.ERR_ZOMBIE_BUDGET_EXCEEDED, "UZ-ZMB-"));
@@ -362,24 +362,24 @@ test "T10: UZ-ZMB error codes are distinct" {
 }
 
 test "T10: all UZ-ZMB error codes have hints" {
-    try std.testing.expect(error_codes.hint(error_codes.ERR_ZOMBIE_BUDGET_EXCEEDED) != null);
-    try std.testing.expect(error_codes.hint(error_codes.ERR_ZOMBIE_AGENT_TIMEOUT) != null);
-    try std.testing.expect(error_codes.hint(error_codes.ERR_ZOMBIE_CREDENTIAL_MISSING) != null);
-    try std.testing.expect(error_codes.hint(error_codes.ERR_ZOMBIE_CLAIM_FAILED) != null);
-    try std.testing.expect(error_codes.hint(error_codes.ERR_ZOMBIE_CHECKPOINT_FAILED) != null);
+    try std.testing.expect(error_codes.hint(error_codes.ERR_ZOMBIE_BUDGET_EXCEEDED).len > 0);
+    try std.testing.expect(error_codes.hint(error_codes.ERR_ZOMBIE_AGENT_TIMEOUT).len > 0);
+    try std.testing.expect(error_codes.hint(error_codes.ERR_ZOMBIE_CREDENTIAL_MISSING).len > 0);
+    try std.testing.expect(error_codes.hint(error_codes.ERR_ZOMBIE_CLAIM_FAILED).len > 0);
+    try std.testing.expect(error_codes.hint(error_codes.ERR_ZOMBIE_CHECKPOINT_FAILED).len > 0);
 }
 
 test "T10: UZ-ZMB hints are actionable with CLI commands" {
     // Budget hint must suggest zombiectl command
-    const budget_hint = error_codes.hint(error_codes.ERR_ZOMBIE_BUDGET_EXCEEDED).?;
+    const budget_hint = error_codes.hint(error_codes.ERR_ZOMBIE_BUDGET_EXCEEDED);
     try std.testing.expect(std.mem.indexOf(u8, budget_hint, "zombiectl") != null);
 
     // Credential hint must suggest zombiectl credential add
-    const cred_hint = error_codes.hint(error_codes.ERR_ZOMBIE_CREDENTIAL_MISSING).?;
+    const cred_hint = error_codes.hint(error_codes.ERR_ZOMBIE_CREDENTIAL_MISSING);
     try std.testing.expect(std.mem.indexOf(u8, cred_hint, "credential add") != null);
 
     // Claim hint must mention zombie_id and status
-    const claim_hint = error_codes.hint(error_codes.ERR_ZOMBIE_CLAIM_FAILED).?;
+    const claim_hint = error_codes.hint(error_codes.ERR_ZOMBIE_CLAIM_FAILED);
     try std.testing.expect(std.mem.indexOf(u8, claim_hint, "zombie_id") != null);
 }
 
@@ -392,7 +392,7 @@ test "T10: UZ-ZMB hints do not leak secrets" {
         error_codes.ERR_ZOMBIE_CHECKPOINT_FAILED,
     };
     for (codes) |code| {
-        const h = error_codes.hint(code).?;
+        const h = error_codes.hint(code);
         // Must not contain credential prefixes or raw tokens
         try std.testing.expect(std.mem.indexOf(u8, h, "sk-ant-") == null);
         try std.testing.expect(std.mem.indexOf(u8, h, "Bearer ") == null);

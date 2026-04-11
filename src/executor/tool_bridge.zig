@@ -24,7 +24,7 @@ const builders = @import("tool_builders.zig");
 
 const log = std.log.scoped(.tool_bridge);
 
-// Duplicated from src/errors/codes.zig — executor cannot cross the binary
+// Duplicated from src/errors/error_registry.zig — executor cannot cross the binary
 // boundary to import from src/errors/.
 const ERR_TOOL_UNKNOWN = "UZ-TOOL-005";
 

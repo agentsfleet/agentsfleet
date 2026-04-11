@@ -1,6 +1,6 @@
 const std = @import("std");
 const httpz = @import("httpz");
-const error_codes = @import("../../errors/codes.zig");
+const error_codes = @import("../../errors/error_registry.zig");
 const telemetry_mod = @import("../../observability/telemetry.zig");
 const common = @import("common.zig");
 const hx_mod = @import("hx.zig");

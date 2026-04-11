@@ -12,7 +12,7 @@ const approval_gate = @import("approval_gate.zig");
 const activity_stream = @import("activity_stream.zig");
 const queue_redis = @import("../queue/redis_client.zig");
 const redis_zombie = @import("../queue/redis_zombie.zig");
-const error_codes = @import("../errors/codes.zig");
+const error_codes = @import("../errors/error_registry.zig");
 const event_loop = @import("event_loop.zig");
 
 const log = std.log.scoped(.zombie_event_loop_gate);

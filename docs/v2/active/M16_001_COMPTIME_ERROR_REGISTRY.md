@@ -2,9 +2,11 @@
 Milestone: M16
 Workstream: M16_001
 Name: COMPTIME_ERROR_REGISTRY
-Status: PENDING
+Status: IN_PROGRESS
 Priority: P1 — eliminates 3 rules and the sentinel collision class
 Created: Apr 11, 2026
+Started: Apr 11, 2026
+Branch: feat/m16-001-comptime-error-registry
 Depends on: none
 ---
 

@@ -275,12 +275,10 @@ Reference a rule as `RULE NDC`, `RULE OWN`, etc.
 **Tags:** zig, js, testing
 **Ref:** M3_001 agentmail domain was .to in prod, .dev in tests, .com in spec docs.
 
-## RULE ERH — Every ERR_* code must have a hint() entry
+## RULE ERH — ~~Every ERR_* code must have a hint() entry~~ ELIMINATED (M16_001)
 
-**Rule:** When adding an error code to codes.zig, add a corresponding hint() entry with actionable operator guidance.
-**Why:** Error codes without hints are useless in production diagnostics.
+**Status:** ELIMINATED by M16_001 — Entry struct requires `.hint` field; comptime asserts `hint.len > 0`.
 **Tags:** zig
-**Ref:** M3_001 ERR_TOOL_API_FAILED and others added without hints — caught in review.
 
 ## RULE DRV — Don't derive values by slicing related fields
 
@@ -324,12 +322,10 @@ Reference a rule as `RULE NDC`, `RULE OWN`, etc.
 **Tags:** zig
 **Ref:** M6_001 content scanner returned .truncated but eventTypeForScan mapped it to null — no event fired.
 
-## RULE BRQ — Large comptime loops need @setEvalBranchQuota
+## RULE BRQ — ~~Large comptime loops need @setEvalBranchQuota~~ ELIMINATED (M16_001)
 
-**Rule:** Add `@setEvalBranchQuota(N)` as the first line of any `comptime {}` block that iterates over a registry table with string comparison. Formula: `N ≈ code_count × table_size × avg_string_len`, round to next power-of-ten. Add a comment with the math.
-**Why:** Default quota is 1000. 130 codes × 131 entries × char-by-char `std.mem.eql` = ~2.2M comparisons — blows the quota silently with "evaluation exceeded 1000 backwards branches".
-**Tags:** zig, comptime, testing
-**Ref:** M11_001 m11_001_coverage_test.zig — comptime exhaustive coverage for error code registry.
+**Status:** ELIMINATED by M16_001 — no cross-file comptime loop. Validation is inside error_registry.zig with its own quota.
+**Tags:** zig, comptime
 
 ## RULE EMB — @embedFile cannot cross src/ boundary
 
@@ -338,12 +334,10 @@ Reference a rule as `RULE NDC`, `RULE OWN`, etc.
 **Tags:** zig, comptime, testing
 **Ref:** M11_001 §3.1 — OpenAPI ErrorBody validation moved to scripts/check_openapi_errors.py + make check-openapi-errors.
 
-## RULE SNT — Registry sentinels must be distinct from real entries
+## RULE SNT — ~~Registry sentinels must be distinct from real entries~~ ELIMINATED (M16_001)
 
-**Rule:** In any code registry with a fallback sentinel (e.g. `UNKNOWN_ENTRY`), the sentinel's key field must NOT match any real registered entry. Use a distinct value that cannot appear in the real table. Add a test that verifies the sentinel is absent from the table.
-**Why:** A sentinel whose code matches a real entry causes tests to silently pass with wrong semantics and breaks comptime coverage gates that assume the sentinel is outside the table.
-**Tags:** zig, error-handling, design
-**Ref:** M11_001 error_table.zig — UNKNOWN_ENTRY.code was "UZ-INTERNAL-001" (real 503 entry), renamed to "UZ-UNKNOWN" (distinct sentinel).
+**Status:** ELIMINATED by M16_001 — UNKNOWN sentinel is defined outside REGISTRY; comptime assertion prevents collision.
+**Tags:** zig, error-handling
 
 ## RULE SSM — Use StaticStringMap for O(1) static registry lookup
 

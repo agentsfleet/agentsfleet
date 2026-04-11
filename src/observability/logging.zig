@@ -2,7 +2,7 @@
 //! Use logErrWithHint for fatal/startup errors where the operator needs guidance.
 
 const std = @import("std");
-const error_codes = @import("../errors/codes.zig");
+const error_codes = @import("../errors/error_registry.zig");
 
 pub fn logErr(
     comptime scope: @TypeOf(.enum_literal),
@@ -24,9 +24,7 @@ pub fn logErrWithHint(
 ) void {
     const log = std.log.scoped(scope);
     log.err(fmt ++ " error_code=" ++ code ++ " err={s}", args ++ .{@errorName(err)});
-    if (comptime error_codes.hint(code)) |h| {
-        log.err("  hint: " ++ h, .{});
-    }
+    log.err("  hint: " ++ comptime error_codes.hint(code), .{});
     log.err("  see: " ++ error_codes.ERROR_DOCS_BASE ++ code, .{});
 }
 
