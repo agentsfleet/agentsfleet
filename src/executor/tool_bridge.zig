@@ -208,15 +208,14 @@ test "resolve: canonical name found" {
 
 test "resolve: all core tools resolvable" {
     const core = [_][]const u8{
-        "shell",     "file_read",      "file_write",    "file_edit",
-        "file_append", "file_delete",  "file_read_hashed", "file_edit_hashed",
-        "git",       "image",          "calculator",
-        "memory_store", "memory_recall", "memory_list", "memory_forget",
-        "delegate",  "schedule",       "spawn",
-        "http_request", "web_search",  "web_fetch",     "pushover",
-        "browser",   "screenshot",     "browser_open",
-        "cron_add",  "cron_list",      "cron_remove",   "cron_run",
-        "cron_runs", "cron_update",    "message",
+        "shell",         "file_read",   "file_write",       "file_edit",
+        "file_append",   "file_delete", "file_read_hashed", "file_edit_hashed",
+        "git",           "image",       "calculator",       "memory_store",
+        "memory_recall", "memory_list", "memory_forget",    "delegate",
+        "schedule",      "spawn",       "http_request",     "web_search",
+        "web_fetch",     "pushover",    "browser",          "screenshot",
+        "browser_open",  "cron_add",    "cron_list",        "cron_remove",
+        "cron_run",      "cron_runs",   "cron_update",      "message",
     };
     for (core) |name| {
         try std.testing.expect(resolve(name) != null);

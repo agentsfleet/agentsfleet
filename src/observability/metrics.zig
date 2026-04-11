@@ -1,7 +1,6 @@
 //! In-process metrics registry exposed in Prometheus text format.
 
 const std = @import("std");
-const scoring = @import("../pipeline/scoring.zig");
 const mc = @import("metrics_counters.zig");
 const mr = @import("metrics_render.zig");
 const mw = @import("metrics_workspace.zig");
@@ -168,7 +167,7 @@ test "integration: otel exporter metrics are exposed in prometheus output" {
 
 test "scoring metrics remain low-cardinality without agent labels" {
     const alloc = std.testing.allocator;
-    incAgentScoreComputed(scoring.Tier.gold);
+    incAgentScoreComputed((enum { unranked, bronze, silver, gold, elite }).gold);
     setAgentScoreLatest(87);
 
     const body = try renderPrometheus(alloc, true, 0, 0);

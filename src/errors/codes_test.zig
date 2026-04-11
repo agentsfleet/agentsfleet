@@ -11,14 +11,12 @@ test "docsRef returns single base and code tuple" {
 
 test "hint returns actionable text for known startup codes" {
     try std.testing.expect(ec.hint(ec.ERR_STARTUP_REDIS_CONNECT) != null);
-    try std.testing.expect(ec.hint(ec.ERR_WORKER_PROMPTS_LOAD) != null);
-    try std.testing.expect(ec.hint(ec.ERR_WORKER_PROFILE_INIT) != null);
     try std.testing.expect(ec.hint(ec.ERR_INTERNAL_DB_UNAVAILABLE) != null);
+    try std.testing.expect(ec.hint(ec.ERR_PIPELINE_V1_REMOVED) != null);
 }
 
 test "hint returns null for codes without hints" {
     try std.testing.expectEqual(@as(?[]const u8, null), ec.hint(ec.ERR_UUIDV7_CANONICAL_FORMAT));
-    try std.testing.expectEqual(@as(?[]const u8, null), ec.hint(ec.ERR_RUN_NOT_FOUND));
 }
 
 // ── T8 — OWASP Agent Security: credential error codes (M16_003) ──────

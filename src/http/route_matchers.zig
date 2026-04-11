@@ -11,17 +11,9 @@ const AgentHarnessChangeRoute = router.AgentHarnessChangeRoute;
 pub const WebhookRoute = router.WebhookRoute;
 
 const prefix_workspaces = "/v1/workspaces/";
-const prefix_runs = "/v1/runs/";
 const prefix_agents = "/v1/agents/";
 
-/// M16_002: Match /v1/runs/<run_id><action> routes generically.
-pub fn matchRunAction(path: []const u8, action: []const u8) ?[]const u8 {
-    if (!std.mem.startsWith(u8, path, prefix_runs)) return null;
-    if (!std.mem.endsWith(u8, path, action)) return null;
-    const inner = path[prefix_runs.len .. path.len - action.len];
-    if (!isSingleSegment(inner)) return null;
-    return inner;
-}
+// M10_001: matchRunAction removed — /v1/runs/* routes deleted.
 
 pub fn matchWorkspaceSuffix(path: []const u8, suffix: []const u8) ?[]const u8 {
     if (!std.mem.startsWith(u8, path, prefix_workspaces)) return null;
@@ -79,13 +71,7 @@ pub fn matchWebhookRoute(path: []const u8) ?WebhookRoute {
 
 // ── Tests ──────────────────────────────────────────────────────────────
 
-test "matchRunAction resolves actions with single-segment run_id" {
-    const run_id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
-    try std.testing.expectEqualStrings(run_id, matchRunAction("/v1/runs/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11:retry", ":retry").?);
-    try std.testing.expectEqualStrings(run_id, matchRunAction("/v1/runs/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11:replay", ":replay").?);
-    try std.testing.expect(matchRunAction("/v1/runs/foo/bar:retry", ":retry") == null);
-    try std.testing.expect(matchRunAction("/v1/runs/:retry", ":retry") == null);
-}
+// M10_001: matchRunAction test removed — function deleted.
 
 // M4_001: matchWebhookAction matches /v1/webhooks/{zombie_id}{action} and returns the zombie_id.
 pub fn matchWebhookAction(path: []const u8, action: []const u8) ?[]const u8 {

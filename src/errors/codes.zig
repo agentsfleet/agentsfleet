@@ -41,20 +41,7 @@ pub const ERR_ENTITLEMENT_UNAVAILABLE = "UZ-ENTL-001";
 pub const ERR_ENTITLEMENT_PROFILE_LIMIT = "UZ-ENTL-002";
 pub const ERR_ENTITLEMENT_STAGE_LIMIT = "UZ-ENTL-003";
 pub const ERR_ENTITLEMENT_SKILL_NOT_ALLOWED = "UZ-ENTL-004";
-pub const ERR_SPEC_NOT_FOUND = "UZ-SPEC-001";
-pub const ERR_SPEC_EMPTY = "UZ-SPEC-002";
-pub const ERR_SPEC_NO_ACTIONABLE_CONTENT = "UZ-SPEC-003";
-pub const ERR_SPEC_UNRESOLVED_FILE_REF = "UZ-SPEC-004";
-pub const ERR_RUN_NOT_FOUND = "UZ-RUN-001";
-pub const ERR_INVALID_STATE_TRANSITION = "UZ-RUN-002";
-// M17_001: run budget and cancellation error codes
-pub const ERR_RUN_TOKEN_BUDGET_EXCEEDED = "UZ-RUN-003";
-pub const ERR_RUN_WALL_TIME_EXCEEDED = "UZ-RUN-004";
-pub const ERR_WORKSPACE_MONTHLY_BUDGET_EXCEEDED = "UZ-RUN-005";
-pub const ERR_RUN_ALREADY_TERMINAL = "UZ-RUN-006";
-pub const ERR_RUN_CANCEL_SIGNAL_FAILED = "UZ-RUN-007";
-pub const ERR_RUN_INTERRUPT_SIGNAL_FAILED = "UZ-RUN-008";
-pub const ERR_RUN_NOT_INTERRUPTIBLE = "UZ-RUN-009";
+// M10_001: ERR_SPEC_*, ERR_RUN_* codes removed — pipeline v1 tables dropped.
 pub const ERR_AGENT_NOT_FOUND = "UZ-AGENT-001";
 pub const ERR_AGENT_SCORES_UNAVAILABLE = "UZ-AGENT-002";
 pub const ERR_PROFILE_NOT_FOUND = "UZ-PROFILE-001";
@@ -77,6 +64,9 @@ pub const ERR_PROPOSAL_NO_VALID_TEMPLATE = "UZ-PROPOSAL-015";
 pub const ERR_PROPOSAL_GENERATION_FAILED = "UZ-PROPOSAL-016";
 pub const ERR_PROPOSAL_NOT_FOUND = "UZ-PROPOSAL-017";
 pub const ERR_HARNESS_CHANGE_NOT_FOUND = "UZ-HARNESS-001";
+
+// M10_001: Pipeline v1 removed
+pub const ERR_PIPELINE_V1_REMOVED = "UZ-RUNS-410";
 
 // M1_001: Zombie webhook error codes
 pub const ERR_WEBHOOK_NO_ZOMBIE = "UZ-WH-001";
@@ -162,8 +152,7 @@ pub const ERR_SANDBOX_BACKEND_UNAVAILABLE = "UZ-SANDBOX-001";
 pub const ERR_SANDBOX_KILL_SWITCH_TRIGGERED = "UZ-SANDBOX-002";
 pub const ERR_SANDBOX_COMMAND_BLOCKED = "UZ-SANDBOX-003";
 
-pub const ERR_WORKER_PROMPTS_LOAD = "UZ-WORKER-001";
-pub const ERR_WORKER_PROFILE_INIT = "UZ-WORKER-002";
+// M10_001: ERR_WORKER_PROMPTS_LOAD, ERR_WORKER_PROFILE_INIT removed — pipeline worker deleted.
 
 pub const ERR_EXEC_SESSION_CREATE_FAILED = "UZ-EXEC-001";
 pub const ERR_EXEC_STAGE_START_FAILED = "UZ-EXEC-002";
@@ -240,10 +229,7 @@ pub fn hint(code: []const u8) ?[]const u8 {
         return "Configuration failed to load. Check that all required environment variables are set. Run 'zombied doctor' to verify.";
     if (std.mem.eql(u8, code, ERR_STARTUP_ENV_CHECK))
         return "Required environment variables are missing. Run 'zombied doctor' to see which ones.";
-    if (std.mem.eql(u8, code, ERR_WORKER_PROMPTS_LOAD))
-        return "Agent prompt files not found. Check that AGENT_CONFIG_DIR points to a directory containing echo-prompt.md, scout-prompt.md, and warden-prompt.md.";
-    if (std.mem.eql(u8, code, ERR_WORKER_PROFILE_INIT))
-        return "Pipeline profile failed to initialize. Check that PIPELINE_PROFILE_PATH points to a valid JSON profile, or remove it to use the default.";
+    // M10_001: ERR_WORKER_PROMPTS_LOAD + ERR_WORKER_PROFILE_INIT hints removed (codes deleted).
     if (std.mem.eql(u8, code, ERR_SANDBOX_BACKEND_UNAVAILABLE))
         return "Sandbox backend is not available. Check that bubblewrap (bwrap) is installed and accessible.";
     if (std.mem.eql(u8, code, ERR_GATE_COMMAND_FAILED))
@@ -260,20 +246,9 @@ pub fn hint(code: []const u8) ?[]const u8 {
         return "GitHub App installation token request failed. Check GITHUB_APP_ID and GITHUB_APP_PRIVATE_KEY, verify the installation_id is valid, and inspect GitHub API status.";
     if (std.mem.eql(u8, code, ERR_CRED_PLATFORM_KEY_MISSING))
         return "No active platform LLM key for this provider. Admin must set one via PUT /v1/admin/platform-keys, or the workspace must add its own key via PUT /v1/workspaces/{id}/credentials/llm.";
-    if (std.mem.eql(u8, code, ERR_RUN_TOKEN_BUDGET_EXCEEDED))
-        return "Run exceeded its token budget (max_tokens). The run has been terminated. Adjust max_tokens in the agent profile or reduce prompt complexity.";
-    if (std.mem.eql(u8, code, ERR_RUN_WALL_TIME_EXCEEDED))
-        return "Run exceeded its wall-clock time limit (max_wall_time_seconds). The run has been terminated. Increase the limit in the agent profile or reduce workload.";
-    if (std.mem.eql(u8, code, ERR_WORKSPACE_MONTHLY_BUDGET_EXCEEDED))
-        return "Workspace monthly token budget exhausted. Upgrade the workspace plan or wait for the next calendar month to reset the budget.";
-    if (std.mem.eql(u8, code, ERR_RUN_ALREADY_TERMINAL))
-        return "The run is already in a terminal state (DONE, BLOCKED, CANCELLED). No further state changes are allowed.";
-    if (std.mem.eql(u8, code, ERR_RUN_CANCEL_SIGNAL_FAILED))
-        return "Cancel signal could not be published. Check Redis connectivity and retry.";
-    if (std.mem.eql(u8, code, ERR_RUN_INTERRUPT_SIGNAL_FAILED))
-        return "Interrupt message could not be stored in Redis. Check Redis connectivity and retry.";
-    if (std.mem.eql(u8, code, ERR_RUN_NOT_INTERRUPTIBLE))
-        return "Run is not in an interruptible state. Check the run state and retry.";
+    // M10_001: ERR_RUN_* hints removed (codes deleted).
+    if (std.mem.eql(u8, code, ERR_PIPELINE_V1_REMOVED))
+        return "Pipeline v1 has been permanently removed. All /v1/runs/* and /v1/specs endpoints return 410 Gone. Use the zombie event model instead.";
     if (std.mem.eql(u8, code, ERR_APPROVAL_PARSE_FAILED))
         return "Gate policy in TRIGGER.md config_json has invalid syntax. Check the 'gates' section for valid JSON structure.";
     if (std.mem.eql(u8, code, ERR_APPROVAL_NOT_FOUND))

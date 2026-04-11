@@ -7,7 +7,8 @@ CREATE TABLE IF NOT EXISTS agent.config_linkage_audit_artifacts (
     artifact_type        TEXT NOT NULL,
     config_version_id    UUID NOT NULL REFERENCES agent.agent_config_versions(config_version_id) ON DELETE RESTRICT,
     compile_job_id       UUID REFERENCES agent.config_compile_jobs(compile_job_id) ON DELETE RESTRICT,
-    run_id               UUID REFERENCES core.runs(run_id) ON DELETE CASCADE,
+    -- M10_001: run_id FK to core.runs removed (table dropped). Column kept nullable for history.
+    run_id               UUID,
     parent_artifact_id   UUID REFERENCES agent.config_linkage_audit_artifacts(artifact_id) ON DELETE RESTRICT,
     metadata_json        TEXT NOT NULL DEFAULT '{}',
     created_at           BIGINT NOT NULL
