@@ -57,6 +57,27 @@ Three RULES.md entries exist solely to paper over this fragility:
 7. **lookup() never returns null.** The new `lookup()` returns `Entry` (not `?Entry`).
    Unknown codes return `UNKNOWN` — no optional unwrapping at call sites.
 
+## Files Changed (blast radius)
+
+| File | Action | Why |
+|------|--------|-----|
+| `src/errors/error_registry.zig` | CREATE | Single source of truth — REGISTRY + LOOKUP + ERR_* constants |
+| `src/errors/error_table.zig` | DELETE | Replaced by error_registry.zig |
+| `src/errors/codes.zig` | DELETE | Constants now generated from REGISTRY |
+| `src/errors/codes_test.zig` | MODIFY or DELETE | Tests reference new registry |
+| `src/errors/error_registry_test.zig` | MODIFY | Simplify — iterate REGISTRY directly, no @setEvalBranchQuota |
+| `src/http/handlers/common.zig` | MODIFY | Import error_registry instead of error_table |
+| `src/main.zig` | MODIFY | Update test discovery imports |
+| `docs/greptile-learnings/RULES.md` | MODIFY | Mark RULE SNT, BRQ, ERH as ELIMINATED |
+| 43 files importing codes.zig | MODIFY | Switch import path |
+
+## Applicable Rules
+
+- RULE ORP — cross-layer orphan sweep (deleting 2 files + renaming imports)
+- RULE XCC — cross-compile before commit
+- RULE FLL — 350-line gate on touched files
+- RULE TST — test discovery requires explicit import in main.zig
+
 ## Design
 
 ### `src/errors/error_registry.zig`

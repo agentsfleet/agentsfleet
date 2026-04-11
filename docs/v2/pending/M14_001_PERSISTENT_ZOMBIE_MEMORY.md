@@ -257,7 +257,53 @@ pub const MemoryBackendConfig = struct {
 
 ---
 
-## 10.0 Verification Evidence
+## 10.0 Applicable Rules
+
+RULE XCC (cross-compile check), RULE FLL (full lint gate), RULE ORP (cross-layer orphan sweep), RULE DRN (drain before deinit), RULE 350L (line-length gate).
+
+---
+
+## 10.1 Invariants
+
+N/A — no compile-time guardrails.
+
+---
+
+## 10.2 Eval Commands
+
+```bash
+# E1: Build
+zig build 2>&1 | head -5; echo "build=$?"
+
+# E2: Tests
+make test 2>&1 | tail -5; echo "test=$?"
+
+# E3: Lint
+make lint 2>&1 | grep -E "✓|FAIL"
+
+# E4: Gitleaks
+gitleaks detect 2>&1 | tail -3; echo "gitleaks=$?"
+
+# E5: 350-line gate (exempts .md)
+git diff --name-only origin/main | grep -v '\.md$' | xargs wc -l 2>/dev/null | awk '$1 > 350 { print "OVER: " $2 ": " $1 }'
+
+# E6: Cross-compile
+zig build -Dtarget=x86_64-linux 2>&1 | tail -3; echo "xc_x86=$?"
+zig build -Dtarget=aarch64-linux 2>&1 | tail -3; echo "xc_arm=$?"
+
+# E7: Memory leak check
+make check-pg-drain 2>&1 | tail -3; echo "drain=$?"
+```
+
+---
+
+## 10.3 Dead Code Sweep
+
+N/A — no files deleted.
+
+---
+
+## 10.4 Verification Evidence
 
 **Status:** PENDING
 

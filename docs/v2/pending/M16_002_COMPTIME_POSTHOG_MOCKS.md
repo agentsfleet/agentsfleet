@@ -83,6 +83,30 @@ Issues:
    changes from `?*posthog.PostHogClient` to `*Telemetry`. Every file that
    accesses `ctx.posthog` or `hx.ctx.posthog` is updated.
 
+## Files Changed (blast radius)
+
+| File | Action | Why |
+|------|--------|-----|
+| `src/observability/telemetry.zig` | CREATE | Comptime-conditional backend + typed event structs |
+| `src/observability/telemetry_events.zig` | CREATE (if needed) | Split if telemetry.zig > 350L |
+| `src/observability/telemetry_test.zig` | CREATE | TestBackend assertion tests |
+| `src/observability/posthog_events.zig` | DELETE | Replaced by telemetry.zig |
+| `src/observability/posthog_events_test.zig` | DELETE | Replaced by telemetry_test.zig |
+| `src/http/handlers/common.zig` | MODIFY | SharedCtx.posthog → telemetry |
+| `src/http/hx.zig` | MODIFY | If it stores posthog ref |
+| `src/cmd/serve.zig` | MODIFY | Telemetry.initProd() at startup |
+| `src/cmd/worker.zig` | MODIFY | Same |
+| `src/cmd/reconcile/daemon.zig` | MODIFY | posthog_client → *Telemetry |
+| `src/cmd/reconcile/tick.zig` | MODIFY | posthog_client → *Telemetry |
+| `src/cmd/preflight.zig` | MODIFY | client field → *Telemetry |
+| `src/http/handlers/auth_sessions_http.zig` | MODIFY | Migrate track*() calls |
+| `src/http/handlers/github_callback.zig` | MODIFY | Same |
+| `src/http/handlers/harness_http.zig` | MODIFY | Same |
+| `src/http/handlers/workspaces_billing.zig` | MODIFY | Same |
+| `src/http/handlers/workspaces_lifecycle.zig` | MODIFY | Same |
+| `src/http/handlers/workspaces.zig` | MODIFY | Same |
+| `src/main.zig` | MODIFY | Update test discovery imports |
+
 ## Design
 
 ### `src/observability/telemetry.zig`
