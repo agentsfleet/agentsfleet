@@ -37,10 +37,6 @@ pub const incApiBackpressureRejections = mc.incApiBackpressureRejections;
 pub const setApiInFlightRequests = mc.setApiInFlightRequests;
 pub const setWorkerInFlightRuns = mc.setWorkerInFlightRuns;
 pub const incWorkerAllocatorLeaks = mc.incWorkerAllocatorLeaks;
-pub const incAgentScoreComputed = mc.incAgentScoreComputed;
-pub const incAgentScoringFailed = mc.incAgentScoringFailed;
-pub const setAgentScoreLatest = mc.setAgentScoreLatest;
-pub const observeAgentScoringDurationMs = mc.observeAgentScoringDurationMs;
 pub const observeAgentDurationSeconds = mc.observeAgentDurationSeconds;
 pub const observeRunTotalWallSeconds = mc.observeRunTotalWallSeconds;
 pub const incGateRepairLoops = mc.incGateRepairLoops;
@@ -108,7 +104,6 @@ test "prometheus render includes key metrics" {
     try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_side_effect_outbox_dead_letter_total"));
     try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_api_backpressure_rejections_total"));
     try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_api_in_flight_requests"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_agent_score_computed_unranked_total"));
     try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_agent_duration_seconds_bucket"));
     try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_run_total_wall_seconds_bucket"));
 }
@@ -163,19 +158,6 @@ test "integration: otel exporter metrics are exposed in prometheus output" {
     try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_otel_export_total"));
     try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_otel_export_failed_total"));
     try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_otel_last_success_at_ms"));
-}
-
-test "scoring metrics remain low-cardinality without agent labels" {
-    const alloc = std.testing.allocator;
-    incAgentScoreComputed((enum { unranked, bronze, silver, gold, elite }).gold);
-    setAgentScoreLatest(87);
-
-    const body = try renderPrometheus(alloc, true, 0, 0);
-    defer alloc.free(body);
-
-    try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_agent_score_latest 87"));
-    try std.testing.expect(!std.mem.containsAtLeast(u8, body, 1, "zombie_agent_score_latest{"));
-    try std.testing.expect(!std.mem.containsAtLeast(u8, body, 1, "agent_id="));
 }
 
 // T3 — worker_running=false path; guards against the gauge always emitting 1

@@ -63,14 +63,6 @@ pub const Snapshot = struct {
     api_in_flight_requests: u64,
     worker_in_flight_runs: u64,
     worker_allocator_leaks_total: u64,
-    agent_score_computed_total: u64,
-    agent_score_computed_unranked: u64,
-    agent_score_computed_bronze: u64,
-    agent_score_computed_silver: u64,
-    agent_score_computed_gold: u64,
-    agent_score_computed_elite: u64,
-    agent_scoring_failed_total: u64,
-    agent_score_latest: u64,
     gate_repair_loops_total: u64,
     gate_repair_exhausted_total: u64,
     // M17_001 §1.3: per-limit-type termination counters
@@ -89,7 +81,6 @@ pub const Snapshot = struct {
     reconcile_running: u64,
     agent_duration_seconds: HistogramSnapshot,
     run_total_wall_seconds: HistogramSnapshot,
-    agent_scoring_duration_ms: HistogramSnapshot,
     // M28_001 §4.1
     gate_repair_loops_per_run: GateLoopHistogramSnapshot,
     // M21_002 §4.3
@@ -140,14 +131,6 @@ var g_api_backpressure_rejections_total = std.atomic.Value(u64).init(0);
 var g_api_in_flight_requests = std.atomic.Value(u64).init(0);
 var g_worker_in_flight_runs = std.atomic.Value(u64).init(0);
 var g_worker_allocator_leaks_total = std.atomic.Value(u64).init(0);
-var g_agent_score_computed_total = std.atomic.Value(u64).init(0);
-var g_agent_score_computed_unranked = std.atomic.Value(u64).init(0);
-var g_agent_score_computed_bronze = std.atomic.Value(u64).init(0);
-var g_agent_score_computed_silver = std.atomic.Value(u64).init(0);
-var g_agent_score_computed_gold = std.atomic.Value(u64).init(0);
-var g_agent_score_computed_elite = std.atomic.Value(u64).init(0);
-var g_agent_scoring_failed_total = std.atomic.Value(u64).init(0);
-var g_agent_score_latest = std.atomic.Value(u64).init(0);
 var g_gate_repair_loops_total = std.atomic.Value(u64).init(0);
 var g_gate_repair_exhausted_total = std.atomic.Value(u64).init(0);
 var g_run_limit_token_budget_exceeded_total = std.atomic.Value(u64).init(0);
@@ -321,24 +304,6 @@ pub fn incWorkerAllocatorLeaks() void {
     _ = g_worker_allocator_leaks_total.fetchAdd(1, .monotonic);
 }
 
-pub fn incAgentScoreComputed(tier: anytype) void {
-    _ = g_agent_score_computed_total.fetchAdd(1, .monotonic);
-    switch (tier) {
-        .unranked => _ = g_agent_score_computed_unranked.fetchAdd(1, .monotonic),
-        .bronze => _ = g_agent_score_computed_bronze.fetchAdd(1, .monotonic),
-        .silver => _ = g_agent_score_computed_silver.fetchAdd(1, .monotonic),
-        .gold => _ = g_agent_score_computed_gold.fetchAdd(1, .monotonic),
-        .elite => _ = g_agent_score_computed_elite.fetchAdd(1, .monotonic),
-    }
-}
-
-pub fn incAgentScoringFailed() void {
-    _ = g_agent_scoring_failed_total.fetchAdd(1, .monotonic);
-}
-
-pub fn setAgentScoreLatest(score: u8) void {
-    g_agent_score_latest.store(@as(u64, score), .release);
-}
 pub fn incGateRepairLoops() void {
     _ = g_gate_repair_loops_total.fetchAdd(1, .monotonic);
 }
@@ -388,7 +353,6 @@ pub fn setReconcileRunning(v: bool) void {
     g_reconcile_running.store(if (v) 1 else 0, .release);
 }
 
-pub const observeAgentScoringDurationMs = mh.observeAgentScoringDurationMs;
 pub const observeAgentDurationSeconds = mh.observeAgentDurationSeconds;
 pub const observeRunTotalWallSeconds = mh.observeRunTotalWallSeconds;
 pub const observeGateRepairLoopsPerRun = mh.observeGateRepairLoopsPerRun;
@@ -440,14 +404,6 @@ pub fn snapshot() Snapshot {
         .api_in_flight_requests = g_api_in_flight_requests.load(.acquire),
         .worker_in_flight_runs = g_worker_in_flight_runs.load(.acquire),
         .worker_allocator_leaks_total = g_worker_allocator_leaks_total.load(.acquire),
-        .agent_score_computed_total = g_agent_score_computed_total.load(.acquire),
-        .agent_score_computed_unranked = g_agent_score_computed_unranked.load(.acquire),
-        .agent_score_computed_bronze = g_agent_score_computed_bronze.load(.acquire),
-        .agent_score_computed_silver = g_agent_score_computed_silver.load(.acquire),
-        .agent_score_computed_gold = g_agent_score_computed_gold.load(.acquire),
-        .agent_score_computed_elite = g_agent_score_computed_elite.load(.acquire),
-        .agent_scoring_failed_total = g_agent_scoring_failed_total.load(.acquire),
-        .agent_score_latest = g_agent_score_latest.load(.acquire),
         .gate_repair_loops_total = g_gate_repair_loops_total.load(.acquire),
         .gate_repair_exhausted_total = g_gate_repair_exhausted_total.load(.acquire),
         .run_limit_token_budget_exceeded_total = g_run_limit_token_budget_exceeded_total.load(.acquire),
@@ -465,7 +421,6 @@ pub fn snapshot() Snapshot {
         .reconcile_running = g_reconcile_running.load(.acquire),
         .agent_duration_seconds = .{},
         .run_total_wall_seconds = .{},
-        .agent_scoring_duration_ms = .{},
         .gate_repair_loops_per_run = .{},
         .interrupt_delivery_latency_ms = .{},
     };
