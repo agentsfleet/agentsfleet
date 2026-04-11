@@ -4,7 +4,7 @@ const redis_types = @import("redis_types.zig");
 const redis_config = @import("redis_config.zig");
 const redis_protocol = @import("redis_protocol.zig");
 const redis_transport = @import("redis_transport.zig");
-const error_codes = @import("../errors/codes.zig");
+const error_codes = @import("../errors/error_registry.zig");
 
 const log = std.log.scoped(.redis_queue);
 

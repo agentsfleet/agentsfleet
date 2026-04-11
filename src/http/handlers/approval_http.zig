@@ -15,7 +15,7 @@ const httpz = @import("httpz");
 const pg = @import("pg");
 const PgQuery = @import("../../db/pg_query.zig").PgQuery;
 const common = @import("common.zig");
-const ec = @import("../../errors/codes.zig");
+const ec = @import("../../errors/error_registry.zig");
 const approval_gate = @import("../../zombie/approval_gate.zig");
 const activity_stream = @import("../../zombie/activity_stream.zig");
 

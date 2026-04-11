@@ -3,7 +3,7 @@ const httpz = @import("httpz");
 const pg = @import("pg");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const common = @import("handlers/common.zig");
-const error_codes = @import("../errors/codes.zig");
+const error_codes = @import("../errors/error_registry.zig");
 const workspace_billing = @import("../state/workspace_billing.zig");
 const workspace_credit = @import("../state/workspace_credit.zig");
 

@@ -10,7 +10,7 @@ const pg = @import("pg");
 const PgQuery = @import("../../db/pg_query.zig").PgQuery;
 const common = @import("common.zig");
 const hx_mod = @import("hx.zig");
-const ec = @import("../../errors/codes.zig");
+const ec = @import("../../errors/error_registry.zig");
 const id_format = @import("../../types/id_format.zig");
 const zombie_config = @import("../../zombie/config.zig");
 

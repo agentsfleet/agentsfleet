@@ -20,7 +20,7 @@ const queue_redis = @import("../queue/redis.zig");
 const common = @import("handlers/common.zig");
 const handler = @import("handler.zig");
 const http_server = @import("server.zig");
-const error_codes = @import("../errors/codes.zig");
+const error_codes = @import("../errors/error_registry.zig");
 
 // ── Test constants ────────────────────────────────────────────────────────────
 // Workspace + tenant UUIDs match the role claims in the JWT tokens below.

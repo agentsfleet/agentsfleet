@@ -8,7 +8,7 @@
 const std = @import("std");
 const pg = @import("pg");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
-const error_codes = @import("../errors/codes.zig");
+const error_codes = @import("../errors/error_registry.zig");
 const model = @import("./workspace_billing_model.zig");
 const transition = @import("./workspace_billing_transition.zig");
 

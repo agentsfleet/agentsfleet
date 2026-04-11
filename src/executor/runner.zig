@@ -38,7 +38,7 @@ const runner_credentials = @import("runner_credentials.zig");
 const log = std.log.scoped(.executor_runner);
 
 // Runner-specific error codes and docs base URL.
-// Canonical source: src/errors/codes.zig (ERR_EXEC_RUNNER_*, ERROR_DOCS_BASE).
+// Canonical source: src/errors/error_registry.zig (ERR_EXEC_RUNNER_*, ERROR_DOCS_BASE).
 // Duplicated here because the executor binary is a separate build module —
 // it cannot import files outside src/executor/.
 const ERROR_DOCS_BASE = "https://docs.usezombie.com/error-codes#";

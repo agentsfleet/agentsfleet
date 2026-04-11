@@ -18,7 +18,7 @@ const std = @import("std");
 const common = @import("common.zig");
 const rbac = @import("../rbac.zig");
 const workspace_guards = @import("../workspace_guards.zig");
-const error_codes = @import("../../errors/codes.zig");
+const error_codes = @import("../../errors/error_registry.zig");
 
 // --- AuthPrincipal default role field ---
 

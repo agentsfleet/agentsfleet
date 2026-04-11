@@ -4,7 +4,7 @@
 
 const std = @import("std");
 const httpz = @import("httpz");
-const error_codes = @import("../../errors/codes.zig");
+const error_codes = @import("../../errors/error_registry.zig");
 const workspace_guards = @import("../workspace_guards.zig");
 const skill_secret_handlers = @import("skill_secrets.zig");
 const common = @import("common.zig");

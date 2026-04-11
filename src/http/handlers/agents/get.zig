@@ -4,7 +4,7 @@ const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
 const common = @import("../common.zig");
 const obs_log = @import("../../../observability/logging.zig");
 const id_format = @import("../../../types/id_format.zig");
-const error_codes = @import("../../../errors/codes.zig");
+const error_codes = @import("../../../errors/error_registry.zig");
 const hx_mod = @import("../hx.zig");
 
 const log = std.log.scoped(.http);

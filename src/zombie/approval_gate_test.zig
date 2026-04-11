@@ -12,7 +12,7 @@
 const std = @import("std");
 const approval_gate = @import("approval_gate.zig");
 const config_gates = @import("config_gates.zig");
-const ec = @import("../errors/codes.zig");
+const ec = @import("../errors/error_registry.zig");
 
 const GateDecision = approval_gate.GateDecision;
 
@@ -307,10 +307,10 @@ test "T10: approval error codes are distinct — no collision" {
 }
 
 test "T10: approval error hints exist and are actionable" {
-    try std.testing.expect(ec.hint(ec.ERR_APPROVAL_PARSE_FAILED) != null);
-    try std.testing.expect(ec.hint(ec.ERR_APPROVAL_NOT_FOUND) != null);
-    try std.testing.expect(ec.hint(ec.ERR_APPROVAL_REDIS_UNAVAILABLE) != null);
-    try std.testing.expect(ec.hint(ec.ERR_APPROVAL_CONDITION_INVALID) != null);
+    try std.testing.expect(ec.hint(ec.ERR_APPROVAL_PARSE_FAILED).len > 0);
+    try std.testing.expect(ec.hint(ec.ERR_APPROVAL_NOT_FOUND).len > 0);
+    try std.testing.expect(ec.hint(ec.ERR_APPROVAL_REDIS_UNAVAILABLE).len > 0);
+    try std.testing.expect(ec.hint(ec.ERR_APPROVAL_CONDITION_INVALID).len > 0);
 }
 
 // ── T10: Constants — gate event types and decision strings ──────────────

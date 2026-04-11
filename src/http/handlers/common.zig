@@ -11,8 +11,7 @@ const obs_log = @import("../../observability/logging.zig");
 const posthog_events = @import("../../observability/posthog_events.zig");
 const trace_ctx = @import("../../observability/trace.zig");
 const db = @import("../../db/pool.zig");
-const error_codes = @import("../../errors/codes.zig");
-const error_table = @import("../../errors/error_table.zig");
+const error_codes = @import("../../errors/error_registry.zig");
 const id_format = @import("../../types/id_format.zig");
 const rbac = @import("../rbac.zig");
 
@@ -77,7 +76,7 @@ pub fn writeJson(res: *httpz.Response, status: std.http.Status, value: anytype) 
     };
 }
 
-/// RFC 7807 error response. Looks up http_status and title from error_table.
+/// RFC 7807 error response. Looks up http_status and title from error_registry.
 /// Content-Type is set to application/problem+json.
 /// Callers no longer pass std.http.Status — the error code owns its status.
 pub fn errorResponse(
@@ -86,7 +85,7 @@ pub fn errorResponse(
     detail: []const u8,
     request_id: []const u8,
 ) void {
-    const entry = error_table.lookup(code) orelse error_table.UNKNOWN_ENTRY;
+    const entry = error_codes.lookup(code);
     res.status = @intFromEnum(entry.http_status);
     // Use res.header() for application/problem+json — not in httpz.ContentType enum.
     res.header("Content-Type", "application/problem+json");
