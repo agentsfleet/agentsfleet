@@ -26,6 +26,8 @@ test "integration: telemetry helpers are no-op when posthog client is disabled" 
     posthog_events.trackAuthRejected(disabled, "token_expired", "req_1");
     posthog_events.trackApiError(disabled, "u", "UZ-BILLING-001", "invalid subscription", "req_1");
     posthog_events.trackApiErrorWithContext(disabled, "u", "UZ-ENTL-003", "stage limit reached", "ws_1", "req_1");
+    posthog_events.trackRunOrphanRecovered(disabled, "u", "run_1", "ws_1", 5000);
+    posthog_events.trackRunOrphanNoAgentProfile(disabled, "u", "run_1", "ws_1");
     try std.testing.expect(true);
 }
 

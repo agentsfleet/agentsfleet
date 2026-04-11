@@ -440,9 +440,9 @@ pub fn trackRunOrphanRecovered(
     }
 }
 
-/// Emitted when an orphan run's scoring is skipped because the workspace has no
-/// active agent profile. The run is still transitioned to BLOCKED; only scoring
-/// is skipped. Useful for detecting workspaces that crash before profile creation.
+/// Emitted when an orphan run's workspace has no active agent profile.
+/// The run is still transitioned to BLOCKED. Useful for detecting
+/// workspaces that crash before profile creation.
 pub fn trackRunOrphanNoAgentProfile(
     client: ?*posthog.PostHogClient,
     distinct_id: []const u8,
