@@ -22,7 +22,6 @@ pub const InjectionResult = union(enum) {
     clean: void,
     detected: struct {
         pattern: InjectionCategory,
-        snippet: []const u8,
     },
 };
 
@@ -58,22 +57,30 @@ const PATTERNS = [_]PatternEntry{
     .{ .category = .jailbreak, .needle = "do anything now" },
 };
 
+const CHUNK_SIZE: usize = 65536;
+const OVERLAP: usize = 256; // longest pattern is ~40 chars; 256 covers any boundary straddle
+
 /// Scan a request body for prompt injection patterns.
 /// Normalizes unicode escapes and lowercases before matching.
+/// For bodies > 64KB, scans in overlapping chunks to prevent bypass via padding.
 pub fn scanRequestBody(body: []const u8) InjectionResult {
-    // Normalize: decode common unicode escapes (\uXXXX) into ASCII,
-    // then lowercase the result for case-insensitive matching.
-    var buf: [65536]u8 = undefined;
-    const normalized = normalizeAndLower(body, &buf);
+    var buf: [CHUNK_SIZE]u8 = undefined;
+    var offset: usize = 0;
 
-    for (&PATTERNS) |*entry| {
-        if (std.mem.indexOf(u8, normalized, entry.needle)) |pos| {
-            const snippet_end = @min(pos + entry.needle.len + 20, normalized.len);
-            return .{ .detected = .{
-                .pattern = entry.category,
-                .snippet = normalized[pos..snippet_end],
-            } };
+    while (offset < body.len) {
+        const end = @min(offset + CHUNK_SIZE, body.len);
+        const chunk = body[offset..end];
+        const normalized = normalizeAndLower(chunk, &buf);
+
+        for (&PATTERNS) |*entry| {
+            if (std.mem.indexOf(u8, normalized, entry.needle) != null) {
+                return .{ .detected = .{ .pattern = entry.category } };
+            }
         }
+
+        if (end >= body.len) break;
+        // Advance past chunk minus overlap to catch patterns straddling boundaries
+        offset += CHUNK_SIZE - OVERLAP;
     }
     return .{ .clean = {} };
 }

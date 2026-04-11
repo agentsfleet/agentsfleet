@@ -30,6 +30,7 @@ pub const EVT_REQUEST_BLOCKED = "firewall_request_blocked";
 pub const EVT_INJECTION_DETECTED = "firewall_injection_detected";
 pub const EVT_CONTENT_FLAGGED = "firewall_content_flagged";
 pub const EVT_APPROVAL_TRIGGERED = "firewall_approval_triggered";
+pub const EVT_SCAN_TRUNCATED = "firewall_scan_truncated";
 
 // ── Outbound request descriptor ────────────────────────────────────────────
 
@@ -128,7 +129,8 @@ pub const Firewall = struct {
     pub fn eventTypeForScan(result: ScanResult) ?[]const u8 {
         return switch (result) {
             .flagged => EVT_CONTENT_FLAGGED,
-            .clean, .truncated => null,
+            .truncated => EVT_SCAN_TRUNCATED,
+            .clean => null,
         };
     }
 };

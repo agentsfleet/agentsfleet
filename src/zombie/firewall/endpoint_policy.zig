@@ -11,6 +11,8 @@ const FirewallDecision = domain_policy.FirewallDecision;
 const asciiEqlIgnoreCase = domain_policy.asciiEqlIgnoreCase;
 const Allocator = std.mem.Allocator;
 
+const log = std.log.scoped(.firewall);
+
 pub const EndpointAction = enum {
     allow,
     deny,
@@ -77,6 +79,10 @@ pub fn parseEndpointRules(alloc: Allocator, json_bytes: []const u8) ![]EndpointR
         errdefer alloc.free(method);
         const path = try dupeJsonStr(alloc, item, "path");
         errdefer alloc.free(path);
+        if (hasMidPathWildcard(path)) {
+            log.warn("firewall.endpoint_rule_unsupported_wildcard path={s} hint=only leading/trailing * supported", .{path});
+            return error.FirewallPolicyParseError;
+        }
         const action_str = jsonStr(item, "action") orelse return error.FirewallPolicyParseError;
         const reason = try dupeJsonStr(alloc, item, "reason");
         errdefer alloc.free(reason);
@@ -102,6 +108,19 @@ fn freeRule(alloc: Allocator, r: EndpointRule) void {
     alloc.free(r.method);
     alloc.free(r.path);
     alloc.free(r.reason);
+}
+
+/// Reject paths with mid-path wildcards (e.g., `/api/*/users`).
+/// Only leading `*X`, trailing `X*`, both `*X*`, and lone `*` are supported.
+fn hasMidPathWildcard(path: []const u8) bool {
+    if (path.len <= 1) return false;
+    // Lone `*` is fine
+    if (std.mem.eql(u8, path, "*")) return false;
+    // Check for `*` in positions that are not the first or last character
+    for (path[1 .. path.len - 1]) |c| {
+        if (c == '*') return true;
+    }
+    return false;
 }
 
 fn parseAction(s: []const u8) EndpointAction {
