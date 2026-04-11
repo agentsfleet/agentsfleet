@@ -123,8 +123,6 @@ pub const TABLE = [_]ErrorEntry{
     .{ .code = "UZ-SANDBOX-002", .http_status = .forbidden,          .title = "Sandbox kill switch triggered",    .docs_uri = ERROR_DOCS_BASE ++ "UZ-SANDBOX-002" },
     .{ .code = "UZ-SANDBOX-003", .http_status = .forbidden,          .title = "Sandbox command blocked",          .docs_uri = ERROR_DOCS_BASE ++ "UZ-SANDBOX-003" },
     // ── WORKER ───────────────────────────────────────────────────────────────
-    .{ .code = "UZ-WORKER-001", .http_status = .internal_server_error,.title = "Worker prompts load failed",  .docs_uri = ERROR_DOCS_BASE ++ "UZ-WORKER-001" },
-    .{ .code = "UZ-WORKER-002", .http_status = .internal_server_error,.title = "Worker profile init failed",  .docs_uri = ERROR_DOCS_BASE ++ "UZ-WORKER-002" },
     // ── EXECUTOR ─────────────────────────────────────────────────────────────
     .{ .code = "UZ-EXEC-001", .http_status = .internal_server_error,.title = "Execution session create failed",.docs_uri = ERROR_DOCS_BASE ++ "UZ-EXEC-001" },
     .{ .code = "UZ-EXEC-002", .http_status = .internal_server_error,.title = "Stage start failed",             .docs_uri = ERROR_DOCS_BASE ++ "UZ-EXEC-002" },
