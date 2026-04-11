@@ -1,5 +1,6 @@
 const std = @import("std");
 const pg = @import("pg");
+const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
 const types = @import("types.zig");
 const util = @import("util.zig");
 const activate_mod = @import("activate.zig");
@@ -157,25 +158,23 @@ test "integration: compileProfile persists deterministic invalid outcome and lin
     try std.testing.expect(std.mem.indexOf(u8, out.validation_report_json, "PROFILE_PAYLOAD_NOT_FOUND") != null);
 
     {
-        var q = try db_ctx.conn.query(
+        var q = PgQuery.from(try db_ctx.conn.query(
             "SELECT state, failure_reason FROM profile_compile_jobs WHERE compile_job_id = $1",
             .{out.compile_job_id},
-        );
+        ));
         defer q.deinit();
         const row = (try q.next()) orelse return error.TestUnexpectedResult;
         try std.testing.expectEqualStrings("FAILED", try row.get([]const u8, 0));
         try std.testing.expectEqualStrings("deterministic validation failed", (try row.get(?[]const u8, 1)).?);
-        try q.drain();
     }
     {
-        var q = try db_ctx.conn.query(
+        var q = PgQuery.from(try db_ctx.conn.query(
             "SELECT metadata_json FROM profile_linkage_audit_artifacts WHERE compile_job_id = $1 AND artifact_type = 'COMPILE'",
             .{out.compile_job_id},
-        );
+        ));
         defer q.deinit();
         const row = (try q.next()) orelse return error.TestUnexpectedResult;
         try std.testing.expectEqualStrings("{\"is_valid\":false}", try row.get([]const u8, 0));
-        try q.drain();
     }
 }
 
@@ -292,22 +291,20 @@ test "integration: compileProfile is atomic and rolls back on linkage persist fa
     }));
 
     {
-        var q = try db_ctx.conn.query("SELECT COUNT(*)::BIGINT FROM profile_compile_jobs", .{});
+        var q = PgQuery.from(try db_ctx.conn.query("SELECT COUNT(*)::BIGINT FROM profile_compile_jobs", .{}));
         defer q.deinit();
         const row = (try q.next()) orelse return error.TestUnexpectedResult;
         try std.testing.expectEqual(@as(i64, 0), try row.get(i64, 0));
-        try q.drain();
     }
     {
-        var q = try db_ctx.conn.query(
+        var q = PgQuery.from(try db_ctx.conn.query(
             "SELECT compile_engine, validation_report_json FROM agent_profile_versions WHERE profile_version_id = '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f91'",
             .{},
-        );
+        ));
         defer q.deinit();
         const row = (try q.next()) orelse return error.TestUnexpectedResult;
         try std.testing.expect((try row.get(?[]const u8, 0)) == null);
         try std.testing.expect((try row.get(?[]const u8, 1)) == null);
-        try q.drain();
     }
 }
 
@@ -372,17 +369,15 @@ test "integration: activateProfile is atomic and rolls back on linkage persist f
     }));
 
     {
-        var q = try db_ctx.conn.query("SELECT COUNT(*)::BIGINT FROM workspace_active_profile", .{});
+        var q = PgQuery.from(try db_ctx.conn.query("SELECT COUNT(*)::BIGINT FROM workspace_active_profile", .{}));
         defer q.deinit();
         const row = (try q.next()) orelse return error.TestUnexpectedResult;
         try std.testing.expectEqual(@as(i64, 0), try row.get(i64, 0));
-        try q.drain();
     }
     {
-        var q = try db_ctx.conn.query("SELECT status FROM agent_profiles WHERE profile_id = '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f41'", .{});
+        var q = PgQuery.from(try db_ctx.conn.query("SELECT status FROM agent_profiles WHERE profile_id = '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f41'", .{}));
         defer q.deinit();
         const row = (try q.next()) orelse return error.TestUnexpectedResult;
         try std.testing.expectEqualStrings("DRAFT", try row.get([]const u8, 0));
-        try q.drain();
     }
 }

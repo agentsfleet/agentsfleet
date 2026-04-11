@@ -1,6 +1,7 @@
 const std = @import("std");
 const httpz = @import("httpz");
 const pg = @import("pg");
+const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const common = @import("handlers/common.zig");
 const error_codes = @import("../errors/codes.zig");
 const workspace_billing = @import("../state/workspace_billing.zig");
@@ -45,7 +46,7 @@ fn authorizeWorkspace(
 /// Only queries the DB when a `user`-role principal fails the minimum role gate,
 /// so there is no hot-path cost for `operator`/`admin` callers.
 fn isWorkspaceCreator(conn: *pg.Conn, workspace_id: []const u8, user_id: []const u8, tenant_id: ?[]const u8) bool {
-    var q = if (tenant_id) |tid|
+    var q = PgQuery.from(if (tenant_id) |tid|
         conn.query(
             "SELECT 1 FROM workspaces WHERE workspace_id = $1 AND created_by = $2 AND tenant_id = $3",
             .{ workspace_id, user_id, tid },
@@ -54,11 +55,10 @@ fn isWorkspaceCreator(conn: *pg.Conn, workspace_id: []const u8, user_id: []const
         conn.query(
             "SELECT 1 FROM workspaces WHERE workspace_id = $1 AND created_by = $2",
             .{ workspace_id, user_id },
-        ) catch return false;
+        ) catch return false);
     defer q.deinit();
     const row = (q.next() catch return false) orelse return false;
     _ = row;
-    q.drain() catch return false;
     return true;
 }
 

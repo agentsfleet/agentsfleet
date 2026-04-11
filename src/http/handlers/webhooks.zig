@@ -11,6 +11,7 @@
 const std = @import("std");
 const httpz = @import("httpz");
 const pg = @import("pg");
+const PgQuery = @import("../../db/pg_query.zig").PgQuery;
 const common = @import("common.zig");
 const ec = @import("../../errors/codes.zig");
 const zombie_config = @import("../../zombie/config.zig");
@@ -46,18 +47,15 @@ fn deinitZombieRow(row: *const ZombieRow, alloc: std.mem.Allocator) void {
 fn fetchZombieById(pool: *pg.Pool, alloc: std.mem.Allocator, zombie_id: []const u8) !?ZombieRow {
     const conn = try pool.acquire();
     defer pool.release(conn);
-    var q = try conn.query( // check-pg-drain: ok — drain called below
+    var q = PgQuery.from(try conn.query(
         \\SELECT workspace_id::text, status,
         \\       config_json->'trigger'->>'token',
         \\       webhook_secret_ref,
         \\       config_json->'trigger'->>'source'
         \\FROM core.zombies WHERE id = $1::uuid
-    , .{zombie_id});
+    , .{zombie_id}));
     defer q.deinit();
-    const row = try q.next() orelse {
-        q.drain() catch {};
-        return null;
-    };
+    const row = try q.next() orelse return null;
     const workspace_id = try alloc.dupe(u8, try row.get([]const u8, 0));
     errdefer alloc.free(workspace_id);
     const status = try alloc.dupe(u8, try row.get([]const u8, 1));
@@ -70,7 +68,6 @@ fn fetchZombieById(pool: *pg.Pool, alloc: std.mem.Allocator, zombie_id: []const 
     errdefer if (webhook_secret_ref) |s| alloc.free(s);
     const source_raw = row.get([]const u8, 4) catch null;
     const source: ?[]const u8 = if (source_raw) |s| try alloc.dupe(u8, s) else null;
-    q.drain() catch {};
     return .{ .workspace_id = workspace_id, .status = status, .token = token, .webhook_secret_ref = webhook_secret_ref, .source = source };
 }
 

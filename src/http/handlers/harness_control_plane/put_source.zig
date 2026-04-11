@@ -1,5 +1,6 @@
 const std = @import("std");
 const pg = @import("pg");
+const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
 const prompt_events = @import("../../../observability/prompt_events.zig");
 const types = @import("types.zig");
 const util = @import("util.zig");
@@ -17,11 +18,10 @@ pub fn putSource(
 ) (types.ControlPlaneError || anyerror)!types.PutSourceOutput {
     if (input.source_markdown.len == 0) return types.ControlPlaneError.InvalidRequest;
 
-    var ws = try conn.query("SELECT tenant_id FROM workspaces WHERE workspace_id = $1", .{workspace_id});
+    var ws = PgQuery.from(try conn.query("SELECT tenant_id FROM workspaces WHERE workspace_id = $1", .{workspace_id}));
     defer ws.deinit();
     const ws_row = (try ws.next()) orelse return types.ControlPlaneError.WorkspaceNotFound;
     const tenant_id = try alloc.dupe(u8, try ws_row.get([]const u8, 0));
-    try ws.drain();
 
     const agent_id = try util.normalizeAgentId(alloc, input.agent_id);
     errdefer alloc.free(agent_id);
@@ -36,16 +36,14 @@ pub fn putSource(
         \\    updated_at = EXCLUDED.updated_at
     , .{ agent_id, tenant_id, workspace_id, agent_name, STATUS_DRAFT, now_ms });
 
-    var vq = try conn.query(
+    var vq = PgQuery.from(try conn.query(
         "SELECT COALESCE(MAX(version), 0)::INTEGER FROM agent_config_versions WHERE agent_id = $1",
         .{agent_id},
-    );
+    ));
     defer vq.deinit();
     const next_version: i32 = blk: {
         const row = (try vq.next()) orelse break :blk @as(i32, 1);
-        const v = (try row.get(i32, 0)) + 1;
-        try vq.drain();
-        break :blk v;
+        break :blk (try row.get(i32, 0)) + 1;
     };
     const config_version_id = try util.generateConfigVersionId(alloc);
     if (!util.isSupportedConfigVersionId(config_version_id)) return types.ControlPlaneError.InvalidIdShape;

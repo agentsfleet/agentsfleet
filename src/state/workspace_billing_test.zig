@@ -1,5 +1,6 @@
 const std = @import("std");
 const pg = @import("pg");
+const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const workspace_billing = @import("./workspace_billing.zig");
 
 const BillingStatus = workspace_billing.BillingStatus;
@@ -28,10 +29,10 @@ test "upgrade applies scale entitlement deterministically" {
     try std.testing.expectEqual(PlanTier.scale, upgraded.plan_tier);
     try std.testing.expectEqual(BillingStatus.active, upgraded.billing_status);
 
-    var q = try db_ctx.conn.query(
+    var q = PgQuery.from(try db_ctx.conn.query(
         "SELECT plan_tier, max_profiles, max_stages, max_distinct_skills, allow_custom_skills FROM workspace_entitlements WHERE workspace_id = $1",
         .{uc3.WS_UPGRADE},
-    );
+    ));
     defer q.deinit();
     const row = (try q.next()) orelse return error.TestExpectedEqual;
     try std.testing.expectEqualStrings("SCALE", try row.get([]const u8, 0));
@@ -106,10 +107,10 @@ test "billing sync remains stable across repeated sync cycles" {
     try std.testing.expectEqual(PlanTier.scale, second.plan_tier);
     try std.testing.expectEqual(BillingStatus.active, second.billing_status);
 
-    var q = try db_ctx.conn.query(
+    var q = PgQuery.from(try db_ctx.conn.query(
         "SELECT COUNT(*)::BIGINT FROM workspace_billing_audit WHERE event_type = 'SCALE_ACTIVATED' AND workspace_id = $1",
         .{uc3.WS_SYNC},
-    );
+    ));
     defer q.deinit();
     const row = (try q.next()) orelse return error.TestExpectedEqual;
     try std.testing.expectEqual(@as(i64, 1), try row.get(i64, 0));
@@ -129,10 +130,10 @@ test "missing billing state provisions free deterministically on reconcile" {
     try std.testing.expectEqual(BillingStatus.active, state.billing_status);
     try std.testing.expect(state.subscription_id == null);
 
-    var q = try db_ctx.conn.query(
+    var q = PgQuery.from(try db_ctx.conn.query(
         "SELECT plan_tier, billing_status FROM workspace_billing_state WHERE workspace_id = $1",
         .{uc3.WS_MISSING},
-    );
+    ));
     defer q.deinit();
     const row = (try q.next()) orelse return error.TestExpectedEqual;
     try std.testing.expectEqualStrings("FREE", try row.get([]const u8, 0));
@@ -219,24 +220,22 @@ test "workspace deletion cascades billing state cleanup" {
     );
 
     {
-        var q = try db_ctx.conn.query(
+        var q = PgQuery.from(try db_ctx.conn.query(
             "SELECT COUNT(*)::BIGINT FROM workspace_billing_state WHERE workspace_id = $1",
             .{uc3.WS_CASCADE},
-        );
+        ));
         defer q.deinit();
         const row = (try q.next()) orelse return error.TestExpectedEqual;
         try std.testing.expectEqual(@as(i64, 0), try row.get(i64, 0));
-        q.drain() catch {};
     }
     {
-        var q = try db_ctx.conn.query(
+        var q = PgQuery.from(try db_ctx.conn.query(
             "SELECT COUNT(*)::BIGINT FROM workspace_billing_audit WHERE workspace_id = $1",
             .{uc3.WS_CASCADE},
-        );
+        ));
         defer q.deinit();
         const row = (try q.next()) orelse return error.TestExpectedEqual;
         try std.testing.expectEqual(@as(i64, 0), try row.get(i64, 0));
-        q.drain() catch {};
     }
 }
 

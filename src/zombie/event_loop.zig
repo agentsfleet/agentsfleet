@@ -11,6 +11,7 @@
 
 const std = @import("std");
 const pg = @import("pg");
+const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const Allocator = std.mem.Allocator;
 
 const zombie_config = @import("config.zig");
@@ -88,10 +89,10 @@ pub fn claimZombie(
     const conn = try pool.acquire();
     defer pool.release(conn);
 
-    var q = try conn.query(
+    var q = PgQuery.from(try conn.query(
         \\SELECT workspace_id::text, config_json::text, source_markdown, status
         \\FROM core.zombies WHERE id = $1
-    , .{zombie_id_input}); // check-pg-drain: ok — drain in collectZombieRow
+    , .{zombie_id_input}));
     defer q.deinit();
 
     const row = try q.next() orelse {
@@ -105,10 +106,8 @@ pub fn claimZombie(
     defer alloc.free(config_json);
     const source_markdown = try alloc.dupe(u8, try row.get([]const u8, 2));
     errdefer alloc.free(source_markdown);
-    // Check status before drain — row-backed slices are invalid after drain.
+    // Check status before deinit — row-backed slices are invalid after deinit.
     const status = zombie_config.ZombieStatus.fromSlice(try row.get([]const u8, 3)) orelse .stopped;
-
-    q.drain() catch {};
 
     if (!status.isRunnable()) {
         log.warn("zombie_event_loop.claim_skipped zombie_id={s}", .{zombie_id_input});
@@ -413,17 +412,14 @@ fn loadSessionCheckpoint(alloc: Allocator, pool: *pg.Pool, zombie_id: []const u8
     const conn = try pool.acquire();
     defer pool.release(conn);
 
-    var q = try conn.query(
+    var q = PgQuery.from(try conn.query(
         \\SELECT context_json::text FROM core.zombie_sessions WHERE zombie_id = $1
-    , .{zombie_id}); // check-pg-drain: ok — drain after next()
+    , .{zombie_id}));
     defer q.deinit();
 
     if (try q.next()) |row| {
-        const ctx = try alloc.dupe(u8, try row.get([]const u8, 0));
-        q.drain() catch {};
-        return ctx;
+        return try alloc.dupe(u8, try row.get([]const u8, 0));
     }
-    q.drain() catch {};
     return try alloc.dupe(u8, "{}");
 }
 

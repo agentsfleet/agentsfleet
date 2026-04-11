@@ -1,6 +1,7 @@
 const std = @import("std");
 const httpz = @import("httpz");
 const pg = @import("pg");
+const PgQuery = @import("../../db/pg_query.zig").PgQuery;
 const common = @import("common.zig");
 const error_codes = @import("../../errors/codes.zig");
 const id_format = @import("../../types/id_format.zig");
@@ -61,16 +62,17 @@ fn innerPutAdminPlatformKey(hx: hx_mod.Hx, req: *httpz.Request) void {
     defer hx.ctx.pool.release(conn);
 
     // Validate source_workspace_id references an existing workspace.
-    var ws_q = conn.query(
-        "SELECT 1 FROM core.workspaces WHERE workspace_id = $1 LIMIT 1",
-        .{input.source_workspace_id},
-    ) catch {
-        common.internalOperationError(hx.res, "Failed to check workspace existence", hx.req_id);
-        return;
+    const ws_exists = blk: {
+        var ws_q = PgQuery.from(conn.query(
+            "SELECT 1 FROM core.workspaces WHERE workspace_id = $1 LIMIT 1",
+            .{input.source_workspace_id},
+        ) catch {
+            common.internalOperationError(hx.res, "Failed to check workspace existence", hx.req_id);
+            return;
+        });
+        defer ws_q.deinit();
+        break :blk (ws_q.next() catch null) != null;
     };
-    const ws_exists = (ws_q.next() catch null) != null;
-    ws_q.drain() catch {};
-    ws_q.deinit();
     if (!ws_exists) {
         hx.fail(error_codes.ERR_INVALID_REQUEST, "source_workspace_id does not reference an existing workspace");
         return;
@@ -150,13 +152,13 @@ fn innerGetAdminPlatformKeys(hx: hx_mod.Hx, req: *httpz.Request) void {
     };
     defer hx.ctx.pool.release(conn);
 
-    var q = conn.query(
+    var q = PgQuery.from(conn.query(
         "SELECT provider, source_workspace_id, active, updated_at FROM core.platform_llm_keys ORDER BY provider",
         .{},
     ) catch {
         common.internalOperationError(hx.res, "Failed to query platform keys", hx.req_id);
         return;
-    };
+    });
     defer q.deinit();
 
     var rows: std.ArrayList(PlatformKeyRow) = .{};
@@ -178,7 +180,6 @@ fn innerGetAdminPlatformKeys(hx: hx_mod.Hx, req: *httpz.Request) void {
             .updated_at = updated_at,
         }) catch continue;
     }
-    q.drain() catch {};
 
     hx.ok(.ok, .{
         .keys = rows.items,

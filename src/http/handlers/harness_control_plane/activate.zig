@@ -1,5 +1,6 @@
 const std = @import("std");
 const pg = @import("pg");
+const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
 const prompt_events = @import("../../../observability/prompt_events.zig");
 const profile_linkage = @import("../../../audit/profile_linkage.zig");
 const entitlements = @import("../../../state/entitlements.zig");
@@ -31,13 +32,13 @@ pub fn activateProfile(
 ) (types.ControlPlaneError || anyerror)!types.ActivateOutput {
     if (!util.isSupportedConfigVersionId(input.config_version_id)) return types.ControlPlaneError.InvalidIdShape;
 
-    var q = try conn.query(
+    var q = PgQuery.from(try conn.query(
         \\SELECT v.agent_id, v.is_valid, p.tenant_id, v.compiled_profile_json
         \\FROM agent_config_versions v
         \\JOIN agent_profiles p ON p.agent_id = v.agent_id
         \\WHERE p.workspace_id = $1 AND v.config_version_id = $2
         \\LIMIT 1
-    , .{ workspace_id, input.config_version_id });
+    , .{ workspace_id, input.config_version_id }));
     defer q.deinit();
 
     const row = (try q.next()) orelse return types.ControlPlaneError.ProfileNotFound;
@@ -45,7 +46,6 @@ pub fn activateProfile(
     const is_valid = try row.get(bool, 1);
     const tenant_id = try row.get([]const u8, 2);
     const compiled_profile_json = try row.get(?[]const u8, 3);
-    try q.drain();
     if (!is_valid) return types.ControlPlaneError.ProfileInvalid;
     const billing_state = try workspace_billing.reconcileWorkspaceBilling(conn, alloc, workspace_id, std.time.milliTimestamp(), input.activated_by orelse API_ACTOR);
     defer alloc.free(billing_state.plan_sku);

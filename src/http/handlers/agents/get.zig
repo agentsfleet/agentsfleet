@@ -1,5 +1,6 @@
 const std = @import("std");
 const httpz = @import("httpz");
+const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
 const common = @import("../common.zig");
 const obs_log = @import("../../../observability/logging.zig");
 const id_format = @import("../../../types/id_format.zig");
@@ -27,10 +28,10 @@ fn innerGetAgent(hx: hx_mod.Hx, req: *httpz.Request, agent_id: []const u8) void 
     };
     defer hx.ctx.pool.release(conn);
 
-    var q = conn.query(sql_get_agent, .{agent_id}) catch {
+    var q = PgQuery.from(conn.query(sql_get_agent, .{agent_id}) catch {
         common.internalDbError(hx.res, hx.req_id);
         return;
-    };
+    });
     defer q.deinit();
 
     const row = q.next() catch null orelse {
@@ -46,8 +47,6 @@ fn innerGetAgent(hx: hx_mod.Hx, req: *httpz.Request, agent_id: []const u8) void 
     const trust_streak_runs = row.get(i32, 5) catch 0;
     const created_at = row.get(i64, 6) catch 0;
     const updated_at = row.get(i64, 7) catch 0;
-
-    q.drain() catch |err| obs_log.logWarnErr(.http, err, "agent.query_drain_fail agent_id={s}", .{agent_id});
 
     if (!common.authorizeWorkspaceAndSetTenantContext(conn, hx.principal, workspace_id)) {
         hx.fail(error_codes.ERR_FORBIDDEN, "Workspace access denied");
@@ -81,7 +80,7 @@ test "integration: get agent returns 404 for unknown agent_id" {
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
 
-    var q = try db_ctx.conn.query(sql_get_agent, .{"0195b4ba-8d3a-7f13-8abc-000000000000"});
+    var q = PgQuery.from(try db_ctx.conn.query(sql_get_agent, .{"0195b4ba-8d3a-7f13-8abc-000000000000"}));
     defer q.deinit();
     const row = try q.next();
     try std.testing.expect(row == null);

@@ -1,5 +1,6 @@
 const std = @import("std");
 const pg = @import("pg");
+const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const db = @import("../db/pool.zig");
 const obs_log = @import("logging.zig");
 const id_format = @import("../types/id_format.zig");
@@ -164,16 +165,15 @@ test "integration: prompt lifecycle events are append-only and auditable" {
         .ts_ms = std.time.milliTimestamp(),
     });
 
-    var events_q = try db_ctx.conn.query(
+    var events_q = PgQuery.from(try db_ctx.conn.query(
         "SELECT event_type FROM prompt_lifecycle_events ORDER BY id ASC",
         .{},
-    );
+    ));
     defer events_q.deinit();
     const first = (try events_q.next()) orelse return error.TestUnexpectedResult;
     try std.testing.expectEqualStrings("prompt_birth", try first.get([]const u8, 0));
     const second = (try events_q.next()) orelse return error.TestUnexpectedResult;
     try std.testing.expectEqualStrings("prompt_applied", try second.get([]const u8, 0));
-    try events_q.drain();
 
     _ = db_ctx.conn.exec(
         "UPDATE prompt_lifecycle_events SET metadata_json = '{\"mutated\":true}'",

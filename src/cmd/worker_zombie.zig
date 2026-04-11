@@ -8,6 +8,7 @@
 
 const std = @import("std");
 const pg = @import("pg");
+const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const queue_redis = @import("../queue/redis_client.zig");
 const event_loop = @import("../zombie/event_loop.zig");
 const executor_client = @import("../executor/client.zig");
@@ -78,11 +79,11 @@ fn claimOrReturn(alloc: std.mem.Allocator, cfg: ZombieWorkerConfig) ?event_loop.
 pub fn listActiveZombieIds(pool: *pg.Pool, alloc: std.mem.Allocator) ![][]const u8 {
     const conn = try pool.acquire();
     defer pool.release(conn);
-    var q = try conn.query( // check-pg-drain: ok — drain called below
+    var q = PgQuery.from(try conn.query(
         \\SELECT id::text FROM core.zombies
         \\WHERE status = $1
         \\ORDER BY created_at ASC
-    , .{zombie_config.ZombieStatus.active.toSlice()});
+    , .{zombie_config.ZombieStatus.active.toSlice()}));
     defer q.deinit();
 
     var ids: std.ArrayList([]const u8) = .{};
@@ -90,11 +91,10 @@ pub fn listActiveZombieIds(pool: *pg.Pool, alloc: std.mem.Allocator) ![][]const 
         for (ids.items) |id| alloc.free(id);
         ids.deinit(alloc);
     }
-    while (try q.*.next()) |row| {
+    while (try q.next()) |row| {
         const id = try alloc.dupe(u8, try row.get([]const u8, 0));
         try ids.append(alloc, id);
     }
-    q.drain() catch {};
     return ids.toOwnedSlice(alloc);
 }
 

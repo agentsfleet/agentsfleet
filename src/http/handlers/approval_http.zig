@@ -13,6 +13,7 @@
 const std = @import("std");
 const httpz = @import("httpz");
 const pg = @import("pg");
+const PgQuery = @import("../../db/pg_query.zig").PgQuery;
 const common = @import("common.zig");
 const ec = @import("../../errors/codes.zig");
 const approval_gate = @import("../../zombie/approval_gate.zig");
@@ -236,17 +237,12 @@ fn verifyRequestSignature(req: *httpz.Request, res: *httpz.Response, req_id: []c
 fn fetchWorkspaceId(pool: *pg.Pool, alloc: std.mem.Allocator, zombie_id: []const u8) ![]const u8 {
     const conn = try pool.acquire();
     defer pool.release(conn);
-    var q = try conn.query( // check-pg-drain: ok — drain called below
+    var q = PgQuery.from(try conn.query(
         \\SELECT workspace_id::text FROM core.zombies WHERE id = $1::uuid
-    , .{zombie_id});
+    , .{zombie_id}));
     defer q.deinit();
-    const row = try q.next() orelse {
-        q.drain() catch {};
-        return "";
-    };
-    const ws = try alloc.dupe(u8, try row.get([]const u8, 0));
-    q.drain() catch {};
-    return ws;
+    const row = try q.next() orelse return "";
+    return try alloc.dupe(u8, try row.get([]const u8, 0));
 }
 
 test "ApprovalDecision.toConstString maps correctly" {

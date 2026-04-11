@@ -1,5 +1,6 @@
 const std = @import("std");
 const httpz = @import("httpz");
+const PgQuery = @import("../../db/pg_query.zig").PgQuery;
 const metrics = @import("../../observability/metrics.zig");
 const obs_log = @import("../../observability/logging.zig");
 const common = @import("common.zig");
@@ -20,12 +21,9 @@ fn databaseHealthy(ctx: *Context) bool {
     const conn = ctx.pool.acquire() catch return false;
     defer ctx.pool.release(conn);
 
-    var ping = conn.query("SELECT 1", .{}) catch return false;
+    var ping = PgQuery.from(conn.query("SELECT 1", .{}) catch return false);
     defer ping.deinit();
-
-    const alive = (ping.next() catch null) != null;
-    ping.drain() catch {};
-    return alive;
+    return (ping.next() catch null) != null;
 }
 
 fn queueDependencyHealthy(ctx: *Context) bool {

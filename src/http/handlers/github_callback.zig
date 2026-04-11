@@ -2,6 +2,7 @@
 // a ?code= query param; authentication is completed via OAuth exchange, not Bearer.
 const std = @import("std");
 const httpz = @import("httpz");
+const PgQuery = @import("../../db/pg_query.zig").PgQuery;
 const secrets = @import("../../secrets/crypto.zig");
 const error_codes = @import("../../errors/codes.zig");
 const id_format = @import("../../types/id_format.zig");
@@ -45,31 +46,22 @@ pub fn handleGitHubCallback(ctx: *Context, req: *httpz.Request, res: *httpz.Resp
 
     const now_ms = std.time.milliTimestamp();
     const tenant_id = blk: {
-        var existing = conn.query("SELECT tenant_id FROM workspaces WHERE workspace_id = $1", .{workspace_id}) catch {
+        var existing = PgQuery.from(conn.query("SELECT tenant_id FROM workspaces WHERE workspace_id = $1", .{workspace_id}) catch {
             log.err("workspace.tenant_lookup_fail error_code=UZ-INTERNAL-002 workspace_id={s}", .{workspace_id});
             common.internalDbError(res, req_id);
             return;
-        };
+        });
         defer existing.deinit();
         if (existing.next() catch null) |row| {
             const current_tenant = row.get([]u8, 0) catch {
                 common.internalDbError(res, req_id);
                 return;
             };
-            const tid = alloc.dupe(u8, current_tenant) catch {
+            break :blk alloc.dupe(u8, current_tenant) catch {
                 common.internalOperationError(res, "Failed to allocate tenant id", req_id);
                 return;
             };
-            existing.drain() catch {
-                common.internalDbError(res, req_id);
-                return;
-            };
-            break :blk tid;
         }
-        existing.drain() catch {
-            common.internalDbError(res, req_id);
-            return;
-        };
         break :blk id_format.generateTenantId(alloc) catch {
             common.internalOperationError(res, "Failed to allocate tenant id", req_id);
             return;
@@ -77,17 +69,14 @@ pub fn handleGitHubCallback(ctx: *Context, req: *httpz.Request, res: *httpz.Resp
     };
     _ = common.setTenantSessionContext(conn, tenant_id);
 
-    {
-        var t = conn.query(
-            \\INSERT INTO tenants (tenant_id, name, api_key_hash, created_at, updated_at)
-            \\VALUES ($1, 'GitHub App', 'callback', $2, $2)
-            \\ON CONFLICT (tenant_id) DO NOTHING
-        , .{ tenant_id, now_ms }) catch {
-            common.internalOperationError(res, "Failed to upsert tenant", req_id);
-            return;
-        };
-        t.deinit();
-    }
+    _ = conn.exec(
+        \\INSERT INTO tenants (tenant_id, name, api_key_hash, created_at, updated_at)
+        \\VALUES ($1, 'GitHub App', 'callback', $2, $2)
+        \\ON CONFLICT (tenant_id) DO NOTHING
+    , .{ tenant_id, now_ms }) catch {
+        common.internalOperationError(res, "Failed to upsert tenant", req_id);
+        return;
+    };
 
     workspace_billing.enforceFreeWorkspaceCreationAllowed(conn, tenant_id, workspace_id) catch |err| {
         if (workspace_billing.errorCode(err)) |code| {
@@ -102,7 +91,7 @@ pub fn handleGitHubCallback(ctx: *Context, req: *httpz.Request, res: *httpz.Resp
         const repo_url = qs.get("repo_url") orelse "https://github.com/unknown/unknown";
         const default_branch = qs.get("default_branch") orelse "main";
 
-        var w = conn.query(
+        _ = conn.exec(
             \\INSERT INTO workspaces
             \\  (workspace_id, tenant_id, repo_url, default_branch, paused, version, created_at, updated_at)
             \\VALUES ($1, $2, $3, $4, false, 1, $5, $5)
@@ -115,7 +104,6 @@ pub fn handleGitHubCallback(ctx: *Context, req: *httpz.Request, res: *httpz.Resp
             common.internalOperationError(res, "Failed to upsert workspace", req_id);
             return;
         };
-        w.deinit();
     }
 
     workspace_billing.provisionFreeWorkspace(conn, alloc, workspace_id, "api") catch {

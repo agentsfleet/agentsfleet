@@ -1,5 +1,6 @@
 const std = @import("std");
 const pg = @import("pg");
+const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const error_codes = @import("../errors/codes.zig");
 const id_format = @import("../types/id_format.zig");
 const billing = @import("./workspace_billing.zig");
@@ -274,16 +275,15 @@ test "deductCompletedRuntimeUsage debits free-plan credit once per completed run
     try std.testing.expectEqual(FREE_PLAN_INITIAL_CREDIT_CENTS - 42, second.remaining_credit_cents);
 
     {
-        var q = try db_ctx.conn.query(
+        var q = PgQuery.from(try db_ctx.conn.query(
             \\SELECT COUNT(*)::BIGINT
             \\FROM workspace_credit_audit
             \\WHERE workspace_id = $1
             \\  AND event_type = 'CREDIT_DEDUCTED'
-        , .{uc1.WS_DEDUCT});
+        , .{uc1.WS_DEDUCT}));
         defer q.deinit();
         const row = (try q.next()) orelse return error.TestExpectedEqual;
         const cnt = try row.get(i64, 0);
-        try q.drain();
         try std.testing.expectEqual(@as(i64, 1), cnt);
     }
 }
@@ -319,16 +319,15 @@ test "deductCompletedRuntimeUsage clamps to zero and records exhaustion" {
     try std.testing.expect(credit.exhausted_at != null);
 
     {
-        var q = try db_ctx.conn.query(
+        var q = PgQuery.from(try db_ctx.conn.query(
             \\SELECT COUNT(*)::BIGINT
             \\FROM workspace_credit_audit
             \\WHERE workspace_id = $1
             \\  AND event_type = 'CREDIT_EXHAUSTED'
-        , .{uc1.WS_CLAMP});
+        , .{uc1.WS_CLAMP}));
         defer q.deinit();
         const row = (try q.next()) orelse return error.TestExpectedEqual;
         const cnt = try row.get(i64, 0);
-        try q.drain();
         try std.testing.expectEqual(@as(i64, 1), cnt);
     }
 }

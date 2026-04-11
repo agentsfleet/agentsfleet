@@ -7,6 +7,7 @@
 const std = @import("std");
 const httpz = @import("httpz");
 const pg = @import("pg");
+const PgQuery = @import("../../db/pg_query.zig").PgQuery;
 const common = @import("common.zig");
 const hx_mod = @import("hx.zig");
 const ec = @import("../../errors/codes.zig");
@@ -150,17 +151,17 @@ const ZombieListRow = struct {
 fn fetchZombieList(pool: *pg.Pool, alloc: std.mem.Allocator, workspace_id: []const u8) ![]ZombieListRow {
     const conn = try pool.acquire();
     defer pool.release(conn);
-    var q = try conn.query( // check-pg-drain: ok — drain called in collectZombieRows
+    var q = PgQuery.from(try conn.query(
         \\SELECT id::text, name, status, created_at, updated_at
         \\FROM core.zombies
         \\WHERE workspace_id = $1::uuid
         \\ORDER BY created_at DESC
-    , .{workspace_id});
+    , .{workspace_id}));
     defer q.deinit();
     return collectZombieRows(alloc, &q);
 }
 
-fn collectZombieRows(alloc: std.mem.Allocator, q: anytype) ![]ZombieListRow {
+fn collectZombieRows(alloc: std.mem.Allocator, q: *PgQuery) ![]ZombieListRow {
     var rows: std.ArrayList(ZombieListRow) = .{};
     errdefer {
         for (rows.items) |r| {
@@ -170,7 +171,7 @@ fn collectZombieRows(alloc: std.mem.Allocator, q: anytype) ![]ZombieListRow {
         }
         rows.deinit(alloc);
     }
-    while (try q.*.next()) |row| {
+    while (try q.next()) |row| {
         const id = try alloc.dupe(u8, try row.get([]const u8, 0));
         errdefer alloc.free(id);
         const name = try alloc.dupe(u8, try row.get([]const u8, 1));
@@ -184,7 +185,6 @@ fn collectZombieRows(alloc: std.mem.Allocator, q: anytype) ![]ZombieListRow {
             .updated_at = try row.get(i64, 4),
         });
     }
-    q.*.drain() catch {};
     return rows.toOwnedSlice(alloc);
 }
 
@@ -218,15 +218,13 @@ fn killZombie(pool: *pg.Pool, zombie_id: []const u8) !bool {
     defer pool.release(conn);
     const now_ms = std.time.milliTimestamp();
     // rows_affected check: if zombie doesn't exist or already killed, return false
-    var q = try conn.query( // check-pg-drain: ok — drain called below
+    var q = PgQuery.from(try conn.query(
         \\UPDATE core.zombies SET status = $1, updated_at = $2
         \\WHERE id = $3::uuid AND status != $1
         \\RETURNING id
-    , .{ zombie_config.ZombieStatus.killed.toSlice(), now_ms, zombie_id });
+    , .{ zombie_config.ZombieStatus.killed.toSlice(), now_ms, zombie_id }));
     defer q.deinit();
-    const has_row = try q.next() != null;
-    q.drain() catch {};
-    return has_row;
+    return try q.next() != null;
 }
 
 // validateCreateFields is tested via integration tests (DB-backed).

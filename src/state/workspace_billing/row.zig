@@ -2,6 +2,7 @@
 
 const std = @import("std");
 const pg = @import("pg");
+const PgQuery = @import("../../db/pg_query.zig").PgQuery;
 const model = @import("../workspace_billing_model.zig");
 
 pub const PlanTier = model.PlanTier;
@@ -59,34 +60,22 @@ pub fn loadStateRow(
     alloc: std.mem.Allocator,
     workspace_id: []const u8,
 ) !?StateRow {
-    var q = try conn.query(
+    var q = PgQuery.from(try conn.query(
         \\SELECT plan_tier, billing_status, plan_sku, adapter, subscription_id, payment_failed_at,
         \\       grace_expires_at, pending_status, pending_reason
         \\FROM workspace_billing_state
         \\WHERE workspace_id = $1
         \\LIMIT 1
-    , .{workspace_id});
+    , .{workspace_id}));
     defer q.deinit();
-    const row = (try q.next()) orelse {
-        q.drain() catch {};
-        return error.WorkspaceBillingStateMissing;
-    };
+    const row = (try q.next()) orelse return error.WorkspaceBillingStateMissing;
     const plan_tier_raw = try row.get([]const u8, 0);
     const billing_status_raw = try row.get([]const u8, 1);
     const pending_status_raw = try row.get(?[]const u8, 7);
-    const plan_tier = parsePlanTier(plan_tier_raw) orelse {
-        q.drain() catch {};
-        return error.InvalidWorkspaceBillingState;
-    };
-    const billing_status = parseBillingStatus(billing_status_raw) orelse {
-        q.drain() catch {};
-        return error.InvalidWorkspaceBillingState;
-    };
-    const pending_status = if (pending_status_raw) |v| (parsePendingStatus(v) orelse {
-        q.drain() catch {};
-        return error.InvalidWorkspaceBillingState;
-    }) else null;
-    const result = StateRow{
+    const plan_tier = parsePlanTier(plan_tier_raw) orelse return error.InvalidWorkspaceBillingState;
+    const billing_status = parseBillingStatus(billing_status_raw) orelse return error.InvalidWorkspaceBillingState;
+    const pending_status = if (pending_status_raw) |v| (parsePendingStatus(v) orelse return error.InvalidWorkspaceBillingState) else null;
+    return .{
         .plan_tier = plan_tier,
         .billing_status = billing_status,
         .plan_sku = try alloc.dupe(u8, try row.get([]const u8, 2)),
@@ -97,8 +86,6 @@ pub fn loadStateRow(
         .pending_status = pending_status,
         .pending_reason = if (try row.get(?[]const u8, 8)) |v| try alloc.dupe(u8, v) else null,
     };
-    q.drain() catch {};
-    return result;
 }
 
 test "parsePlanTier case-insensitive happy path" {

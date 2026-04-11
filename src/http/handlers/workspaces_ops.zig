@@ -1,5 +1,6 @@
 const std = @import("std");
 const httpz = @import("httpz");
+const PgQuery = @import("../../db/pg_query.zig").PgQuery;
 const policy = @import("../../state/policy.zig");
 const obs_log = @import("../../observability/logging.zig");
 const error_codes = @import("../../errors/codes.zig");
@@ -47,7 +48,7 @@ fn innerPauseWorkspace(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []const
     };
 
     const now_ms = std.time.milliTimestamp();
-    var upd = conn.query(
+    var upd = PgQuery.from(conn.query(
         \\UPDATE workspaces
         \\SET paused = $1, paused_reason = $2, version = version + 1, updated_at = $3
         \\WHERE workspace_id = $4 AND version = $5
@@ -61,7 +62,7 @@ fn innerPauseWorkspace(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []const
     }) catch {
         common.internalDbError(hx.res, hx.req_id);
         return;
-    };
+    });
     defer upd.deinit();
 
     const row = upd.next() catch null orelse {
@@ -70,7 +71,6 @@ fn innerPauseWorkspace(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []const
     };
 
     const new_version = row.get(i64, 0) catch 0;
-    upd.drain() catch {};
     log.info("workspace.pause_updated pause={} workspace_id={s}", .{ parsed.value.pause, workspace_id });
 
     hx.ok(.ok, .{

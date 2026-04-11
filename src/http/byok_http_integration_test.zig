@@ -13,6 +13,7 @@
 
 const std = @import("std");
 const pg = @import("pg");
+const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const auth_sessions = @import("../auth/sessions.zig");
 const oidc = @import("../auth/oidc.zig");
 const queue_redis = @import("../queue/redis.zig");
@@ -481,11 +482,10 @@ test "integration: M16_004 concurrent platform key upserts are idempotent" {
     for (results) |status| try std.testing.expectEqual(@as(u16, 200), status);
     const conn = try srv.pool.acquire();
     defer srv.pool.release(conn);
-    var q = try conn.query("SELECT COUNT(*) FROM platform_llm_keys WHERE provider = $1 AND active = true", .{TEST_PROVIDER});
+    var q = PgQuery.from(try conn.query("SELECT COUNT(*) FROM platform_llm_keys WHERE provider = $1 AND active = true", .{TEST_PROVIDER}));
     defer q.deinit();
     const row = (try q.next()).?;
     const count = try row.get(i64, 0);
-    try q.drain();
     try std.testing.expectEqual(@as(i64, 1), count);
     cleanupSeedData(conn);
 }

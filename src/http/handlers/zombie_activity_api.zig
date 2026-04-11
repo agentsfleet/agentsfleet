@@ -7,6 +7,7 @@
 const std = @import("std");
 const httpz = @import("httpz");
 const pg = @import("pg");
+const PgQuery = @import("../../db/pg_query.zig").PgQuery;
 const common = @import("common.zig");
 const hx_mod = @import("hx.zig");
 const ec = @import("../../errors/codes.zig");
@@ -173,11 +174,11 @@ fn fetchCredentialList(pool: *pg.Pool, alloc: std.mem.Allocator, workspace_id: [
     const conn = try pool.acquire();
     defer pool.release(conn);
     // Query vault.secrets for zombie-prefixed keys (zombie:{name}).
-    var q = try conn.query( // check-pg-drain: ok — drain called below
+    var q = PgQuery.from(try conn.query(
         \\SELECT key_name, created_at FROM vault.secrets
         \\WHERE workspace_id = $1::uuid AND key_name LIKE 'zombie:%'
         \\ORDER BY key_name ASC
-    , .{workspace_id});
+    , .{workspace_id}));
     defer q.deinit();
 
     var rows: std.ArrayList(CredentialListRow) = .{};
@@ -185,7 +186,7 @@ fn fetchCredentialList(pool: *pg.Pool, alloc: std.mem.Allocator, workspace_id: [
         for (rows.items) |r| alloc.free(r.name);
         rows.deinit(alloc);
     }
-    while (try q.*.next()) |row| {
+    while (try q.next()) |row| {
         const raw_name = try row.get([]const u8, 0);
         // Strip "zombie:" prefix for display
         const display_name = if (std.mem.startsWith(u8, raw_name, "zombie:"))
@@ -198,7 +199,6 @@ fn fetchCredentialList(pool: *pg.Pool, alloc: std.mem.Allocator, workspace_id: [
             .created_at = try row.get(i64, 1),
         });
     }
-    q.*.drain() catch {};
     return rows.toOwnedSlice(alloc);
 }
 

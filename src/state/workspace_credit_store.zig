@@ -1,5 +1,6 @@
 const std = @import("std");
 const pg = @import("pg");
+const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const id_format = @import("../types/id_format.zig");
 
 pub const CreditRow = struct {
@@ -19,12 +20,12 @@ pub fn loadCreditRow(
     alloc: std.mem.Allocator,
     workspace_id: []const u8,
 ) !?CreditRow {
-    var q = try conn.query(
+    var q = PgQuery.from(try conn.query(
         \\SELECT currency, initial_credit_cents, consumed_credit_cents, remaining_credit_cents, exhausted_at
         \\FROM workspace_credit_state
         \\WHERE workspace_id = $1
         \\LIMIT 1
-    , .{workspace_id});
+    , .{workspace_id}));
     defer q.deinit();
     const row = (try q.next()) orelse return error.WorkspaceCreditStateMissing;
     const currency = try alloc.dupe(u8, try row.get([]const u8, 0));
@@ -33,7 +34,6 @@ pub fn loadCreditRow(
     const consumed_credit_cents = try row.get(i64, 2);
     const remaining_credit_cents = try row.get(i64, 3);
     const exhausted_at = try row.get(?i64, 4);
-    try q.drain();
     return .{
         .currency = currency,
         .initial_credit_cents = initial_credit_cents,
@@ -50,7 +50,7 @@ pub fn hasAuditEvent(
     reason: []const u8,
     metadata_json: []const u8,
 ) !bool {
-    var q = try conn.query(
+    var q = PgQuery.from(try conn.query(
         \\SELECT 1
         \\FROM workspace_credit_audit
         \\WHERE workspace_id = $1
@@ -58,11 +58,9 @@ pub fn hasAuditEvent(
         \\  AND reason = $3
         \\  AND metadata_json = $4
         \\LIMIT 1
-    , .{ workspace_id, event_type, reason, metadata_json });
+    , .{ workspace_id, event_type, reason, metadata_json }));
     defer q.deinit();
-    const found = (try q.next()) != null;
-    try q.drain();
-    return found;
+    return (try q.next()) != null;
 }
 
 pub fn upsertCreditState(

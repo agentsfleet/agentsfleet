@@ -1,5 +1,6 @@
 const std = @import("std");
 const pg = @import("pg");
+const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
 const topology = @import("../../../state/topology.zig");
 const harness = @import("../../../harness/control_plane.zig");
 const types = @import("types.zig");
@@ -9,13 +10,13 @@ pub fn getActiveProfile(
     alloc: std.mem.Allocator,
     workspace_id: []const u8,
 ) (types.ControlPlaneError || anyerror)!types.ActiveOutput {
-    var q = try conn.query(
+    var q = PgQuery.from(try conn.query(
         \\SELECT wap.config_version_id, wap.activated_at, v.agent_id, v.compiled_profile_json
         \\FROM workspace_active_config wap
         \\JOIN agent_config_versions v ON v.config_version_id = wap.config_version_id
         \\WHERE wap.workspace_id = $1
         \\LIMIT 1
-    , .{workspace_id});
+    , .{workspace_id}));
     defer q.deinit();
 
     if (try q.next()) |row| {
@@ -23,7 +24,6 @@ pub fn getActiveProfile(
         const activated_at = try row.get(i64, 1);
         const agent_id = try row.get([]const u8, 2);
         const compiled_json_opt = try row.get(?[]const u8, 3);
-        try q.drain();
         if (compiled_json_opt) |compiled_json| {
             return .{
                 .source = "active",
@@ -34,8 +34,6 @@ pub fn getActiveProfile(
                 .profile_json = try alloc.dupe(u8, compiled_json),
             };
         }
-    } else {
-        try q.drain();
     }
 
     var fallback = try topology.defaultProfile(alloc);

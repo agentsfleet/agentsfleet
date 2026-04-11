@@ -18,6 +18,7 @@
 const std = @import("std");
 const posthog = @import("posthog");
 const db = @import("../db/pool.zig");
+const PgQuery = @import("../db/pg_query.zig").PgQuery;
 
 const sql_rollback = sql_rollback;
 const outbox = @import("../state/outbox_reconciler.zig");
@@ -83,7 +84,7 @@ fn openReconcileTestConn(alloc: std.mem.Allocator) !?struct { pool: *db.Pool, co
 }
 
 fn createTempOutboxTable(conn: *db.Conn) !void {
-    var create_q = try conn.query(
+    _ = try conn.exec(
         \\CREATE TEMP TABLE run_side_effect_outbox (
         \\  id UUID PRIMARY KEY,
         \\  run_id TEXT NOT NULL,
@@ -96,8 +97,6 @@ fn createTempOutboxTable(conn: *db.Conn) !void {
         \\  updated_at BIGINT NOT NULL
         \\) ON COMMIT DROP
     , .{});
-    try create_q.drain();
-    create_q.deinit();
 }
 
 fn insertPendingRows(conn: *db.Conn, count: usize) !void {
@@ -118,8 +117,7 @@ fn insertPendingRows(conn: *db.Conn, count: usize) !void {
 }
 
 fn simulateSingleBatchDeadLetter(conn: *db.Conn, now_ms: i64) !u32 {
-    // check-pg-drain: ok — full while loop exhausts all rows, natural drain
-    var q = try conn.query(
+    var q = PgQuery.from(try conn.query(
         \\UPDATE run_side_effect_outbox
         \\SET status = 'dead_letter',
         \\    reconciled_state = 'startup_reconcile',
@@ -132,7 +130,7 @@ fn simulateSingleBatchDeadLetter(conn: *db.Conn, now_ms: i64) !u32 {
         \\    FOR UPDATE SKIP LOCKED
         \\)
         \\RETURNING id
-    , .{ now_ms, @as(i32, @intCast(outbox.RECONCILE_BATCH_LIMIT)) });
+    , .{ now_ms, @as(i32, @intCast(outbox.RECONCILE_BATCH_LIMIT)) }));
     defer q.deinit();
 
     var count: u32 = 0;
@@ -143,15 +141,13 @@ fn simulateSingleBatchDeadLetter(conn: *db.Conn, now_ms: i64) !u32 {
 }
 
 fn pendingCount(conn: *db.Conn) !i64 {
-    var q = try conn.query(
+    var q = PgQuery.from(try conn.query(
         "SELECT COUNT(*)::BIGINT FROM run_side_effect_outbox WHERE status = 'pending'",
         .{},
-    );
+    ));
     defer q.deinit();
     const row = (try q.next()).?;
-    const count = try row.get(i64, 0);
-    try q.drain();
-    return count;
+    return try row.get(i64, 0);
 }
 
 test "integration: reconcile handles reachable postgres with no pending rows" {
@@ -172,7 +168,7 @@ test "integration: reconcile dead-letters stale pending rows and is idempotent" 
 
     try createTempOutboxTable(db_ctx.conn);
 
-    var seed_q = try db_ctx.conn.query(
+    _ = try db_ctx.conn.exec(
         \\INSERT INTO run_side_effect_outbox
         \\  (id, run_id, effect_key, status, last_event, created_at, updated_at)
         \\VALUES
@@ -181,18 +177,17 @@ test "integration: reconcile dead-letters stale pending rows and is idempotent" 
         \\  ('0195b4ba-8d3a-7f13-8abc-000000000003', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f93', 'k3', 'delivered', 'done', 3, 3),
         \\  ('0195b4ba-8d3a-7f13-8abc-000000000004', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f94', 'k4', 'pending', 'claimed', 4, 4)
     , .{});
-    seed_q.deinit();
 
     const first = try outbox.reconcileStartup(db_ctx.conn);
     try std.testing.expectEqual(@as(u32, 3), first.dead_lettered);
 
-    var counts_q = try db_ctx.conn.query(
+    var counts_q = PgQuery.from(try db_ctx.conn.query(
         \\SELECT
         \\  COUNT(*) FILTER (WHERE status = 'pending')::BIGINT,
         \\  COUNT(*) FILTER (WHERE status = 'dead_letter')::BIGINT,
         \\  COUNT(*) FILTER (WHERE status = 'delivered')::BIGINT
         \\FROM run_side_effect_outbox
-    , .{});
+    , .{}));
     defer counts_q.deinit();
     const row = (try counts_q.next()).?;
     try std.testing.expectEqual(@as(i64, 0), try row.get(i64, 0));
@@ -243,24 +238,18 @@ test "integration: rollback preserves pending rows for restart recovery" {
     try createTempOutboxTable(db_ctx.conn);
     try insertPendingRows(db_ctx.conn, 1);
 
-    var begin_q = try db_ctx.conn.query("BEGIN", .{});
-    begin_q.deinit();
+    _ = try db_ctx.conn.exec("BEGIN", .{});
     errdefer {
-        if (db_ctx.conn.query(sql_rollback, .{})) |rb_result| {
-            var rb_q = rb_result;
-            rb_q.deinit();
-        } else |_| {}
+        _ = db_ctx.conn.exec(sql_rollback, .{}) catch {};
     }
 
-    var update_q = try db_ctx.conn.query(
+    _ = try db_ctx.conn.exec(
         \\UPDATE run_side_effect_outbox
         \\SET status = 'dead_letter', reconciled_state = 'simulated_crash', updated_at = $1
         \\WHERE status = 'pending'
     , .{std.time.milliTimestamp()});
-    update_q.deinit();
 
-    var rollback_q = try db_ctx.conn.query(sql_rollback, .{});
-    rollback_q.deinit();
+    _ = try db_ctx.conn.exec(sql_rollback, .{});
 
     try std.testing.expectEqual(@as(i64, 1), try pendingCount(db_ctx.conn));
 
