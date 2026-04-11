@@ -202,3 +202,97 @@ test "M16_001: hint() returns UNKNOWN hint for unregistered codes" {
     const h = reg.hint("UZ-DOES-NOT-EXIST");
     try std.testing.expectEqualStrings(reg.UNKNOWN.hint, h);
 }
+
+// ── T7: REGISTRY entry count regression ─────────────────────────────────────
+// Pin the count so accidental deletions are caught immediately.
+
+test "T7: REGISTRY contains exactly 97 entries (post-M10 cleanup)" {
+    try std.testing.expectEqual(@as(usize, 97), reg.REGISTRY.len);
+}
+
+// ── T2: Sentinel code lookup ────────────────────────────────────────────────
+// Looking up the sentinel code itself must return UNKNOWN (it's not in REGISTRY).
+
+test "T2: lookup of sentinel code 'UZ-UNKNOWN' returns UNKNOWN entry" {
+    const entry = reg.lookup("UZ-UNKNOWN");
+    try std.testing.expectEqualStrings("UZ-UNKNOWN", entry.code);
+    try std.testing.expectEqual(std.http.Status.internal_server_error, entry.http_status);
+    try std.testing.expectEqualStrings(reg.UNKNOWN.hint, entry.hint);
+}
+
+// ── T7: ERR_* constants resolve to correct REGISTRY entries ─────────────────
+// Spot-check that ERR_* constant strings match their REGISTRY entries.
+// Comptime self-check ensures ALL ERR_* are in REGISTRY; these pin values.
+
+test "T7: ERR_* constants match REGISTRY entry codes (spot check)" {
+    // Verify the constant string equals the entry's code field
+    try std.testing.expectEqualStrings(reg.ERR_UNAUTHORIZED, reg.lookup(reg.ERR_UNAUTHORIZED).code);
+    try std.testing.expectEqualStrings(reg.ERR_ZOMBIE_NOT_FOUND, reg.lookup(reg.ERR_ZOMBIE_NOT_FOUND).code);
+    try std.testing.expectEqualStrings(reg.ERR_CRED_ANTHROPIC_KEY_MISSING, reg.lookup(reg.ERR_CRED_ANTHROPIC_KEY_MISSING).code);
+    try std.testing.expectEqualStrings(reg.ERR_EXEC_TIMEOUT_KILL, reg.lookup(reg.ERR_EXEC_TIMEOUT_KILL).code);
+    try std.testing.expectEqualStrings(reg.ERR_APPROVAL_CONDITION_INVALID, reg.lookup(reg.ERR_APPROVAL_CONDITION_INVALID).code);
+}
+
+// ── T10: Operational hints contain actionable keywords ──────────────────────
+// Beyond non-empty, verify key hints have the right operational guidance.
+
+test "T10: startup hints reference 'zombied doctor' or env vars" {
+    const startup_codes = [_][]const u8{
+        reg.ERR_STARTUP_ENV_CHECK,
+        reg.ERR_STARTUP_CONFIG_LOAD,
+        reg.ERR_STARTUP_DB_CONNECT,
+    };
+    for (startup_codes) |code| {
+        const h = reg.hint(code);
+        // Startup hints should reference diagnostics or config
+        const has_doctor = std.mem.indexOf(u8, h, "doctor") != null;
+        const has_env = std.mem.indexOf(u8, h, "DATABASE_URL") != null or
+            std.mem.indexOf(u8, h, "env") != null or
+            std.mem.indexOf(u8, h, "REDIS") != null;
+        try std.testing.expect(has_doctor or has_env);
+    }
+}
+
+test "T10: gate hints reference gate results or timeout" {
+    const gate_codes = [_][]const u8{
+        reg.ERR_GATE_COMMAND_FAILED,
+        reg.ERR_GATE_COMMAND_TIMEOUT,
+        reg.ERR_GATE_REPAIR_EXHAUSTED,
+    };
+    for (gate_codes) |code| {
+        const h = reg.hint(code);
+        const has_gate = std.mem.indexOf(u8, h, "gate") != null or
+            std.mem.indexOf(u8, h, "Gate") != null;
+        try std.testing.expect(has_gate);
+    }
+}
+
+// ── T12: Entry struct has exactly 5 fields (spec invariant §1.1) ────────────
+
+test "T12: Entry struct has 5 fields (code, http_status, title, hint, docs_uri)" {
+    const fields = @typeInfo(reg.Entry).@"struct".fields;
+    try std.testing.expectEqual(@as(usize, 5), fields.len);
+}
+
+// ── T7: UNKNOWN sentinel has non-empty fields ──────────────────────────────
+
+test "T7: UNKNOWN sentinel has all fields populated" {
+    try std.testing.expect(reg.UNKNOWN.code.len > 0);
+    try std.testing.expect(reg.UNKNOWN.title.len > 0);
+    try std.testing.expect(reg.UNKNOWN.hint.len > 0);
+    try std.testing.expect(reg.UNKNOWN.docs_uri.len > 0);
+}
+
+// ── T7: Canary — deleted files must not be importable ───────────────────────
+// If someone re-creates codes.zig or error_table.zig, these comptime checks
+// will fail because the test expects the imports to NOT exist.
+// (We can't test "import fails" directly, but we verify the new file IS the
+// canonical source by checking its public API.)
+
+test "T7: error_registry.zig exports REGISTRY (not TABLE)" {
+    // REGISTRY must exist as a pub const
+    try std.testing.expect(reg.REGISTRY.len > 0);
+    // Entry must exist (not ErrorEntry)
+    const e: reg.Entry = reg.REGISTRY[0];
+    try std.testing.expect(e.code.len > 0);
+}
