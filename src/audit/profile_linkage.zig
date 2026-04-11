@@ -121,12 +121,22 @@ pub fn fetchRunLinkage(conn: *pg.Conn, alloc: std.mem.Allocator, run_id: []const
 
     const row = (try q.next()) orelse return null;
 
+    const run_artifact_id = if (try row.get(?[]const u8, 0)) |v| try alloc.dupe(u8, v) else null;
+    errdefer if (run_artifact_id) |v| alloc.free(v);
+    const config_version_id = if (try row.get(?[]const u8, 1)) |v| try alloc.dupe(u8, v) else null;
+    errdefer if (config_version_id) |v| alloc.free(v);
+    const compile_job_id = if (try row.get(?[]const u8, 2)) |v| try alloc.dupe(u8, v) else null;
+    errdefer if (compile_job_id) |v| alloc.free(v);
+    const activate_artifact_id = if (try row.get(?[]const u8, 3)) |v| try alloc.dupe(u8, v) else null;
+    errdefer if (activate_artifact_id) |v| alloc.free(v);
+    const compile_artifact_id = if (try row.get(?[]const u8, 4)) |v| try alloc.dupe(u8, v) else null;
+
     return .{
-        .run_artifact_id = if (try row.get(?[]const u8, 0)) |v| try alloc.dupe(u8, v) else null,
-        .config_version_id = if (try row.get(?[]const u8, 1)) |v| try alloc.dupe(u8, v) else null,
-        .compile_job_id = if (try row.get(?[]const u8, 2)) |v| try alloc.dupe(u8, v) else null,
-        .activate_artifact_id = if (try row.get(?[]const u8, 3)) |v| try alloc.dupe(u8, v) else null,
-        .compile_artifact_id = if (try row.get(?[]const u8, 4)) |v| try alloc.dupe(u8, v) else null,
+        .run_artifact_id = run_artifact_id,
+        .config_version_id = config_version_id,
+        .compile_job_id = compile_job_id,
+        .activate_artifact_id = activate_artifact_id,
+        .compile_artifact_id = compile_artifact_id,
     };
 }
 
