@@ -221,15 +221,17 @@ pub const WorkspaceGithubConnected = struct {
 };
 
 pub const AuthLoginCompleted = struct {
+    distinct_id: []const u8,
     session_id: []const u8,
     request_id: []const u8,
 
     pub const kind: EventKind = .auth_login_completed;
 
-    pub fn properties(self: @This()) [2]posthog.Property {
+    pub fn properties(self: @This()) [3]posthog.Property {
         return .{
             .{ .key = "session_id", .value = .{ .string = self.session_id } },
             .{ .key = "request_id", .value = .{ .string = self.request_id } },
+            .{ .key = "distinct_id", .value = .{ .string = self.distinct_id } },
         };
     }
 };

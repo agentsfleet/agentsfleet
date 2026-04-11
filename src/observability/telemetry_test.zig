@@ -78,7 +78,7 @@ test "T1: all 14 event types can be captured without error" {
     t.capture(telemetry.ApiErrorWithContext, .{ .distinct_id = "u", .error_code = "UZ-001", .message = "m", .workspace_id = "w", .request_id = "r" });
     t.capture(telemetry.WorkspaceCreated, .{ .distinct_id = "u", .workspace_id = "w", .tenant_id = "t", .repo_url = "https://x", .request_id = "r" });
     t.capture(telemetry.WorkspaceGithubConnected, .{ .workspace_id = "w", .installation_id = "12345", .request_id = "r" });
-    t.capture(telemetry.AuthLoginCompleted, .{ .session_id = "s", .request_id = "r" });
+    t.capture(telemetry.AuthLoginCompleted, .{ .distinct_id = "u", .session_id = "s", .request_id = "r" });
     t.capture(telemetry.AuthRejected, .{ .reason = "token_expired", .request_id = "r" });
     t.capture(telemetry.RunOrphanNoAgentProfile, .{ .distinct_id = "u", .run_id = "r", .workspace_id = "w" });
     try telemetry.TestBackend.assertCount(14);
