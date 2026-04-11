@@ -130,8 +130,12 @@ fn innerDeleteWorkspaceLlmCredential(hx: hx_mod.Hx, req: *httpz.Request, workspa
         common.internalOperationError(hx.res, "Failed to delete LLM API key", hx.req_id);
         return;
     };
-    _ = conn.exec("DELETE FROM vault.secrets WHERE workspace_id = $1 AND key_name = 'llm_provider_preference'", .{workspace_id}) catch |e|
+    _ = conn.exec("DELETE FROM vault.secrets WHERE workspace_id = $1 AND key_name = 'llm_provider_preference'", .{workspace_id}) catch |e| {
         log.err("workspace.llm_pref_delete_failed workspace_id={s} err={s}", .{ workspace_id, @errorName(e) });
+        _ = conn.exec("ROLLBACK", .{}) catch {};
+        common.internalOperationError(hx.res, "Failed to delete provider preference", hx.req_id);
+        return;
+    };
 
     _ = conn.exec("COMMIT", .{}) catch {
         _ = conn.exec("ROLLBACK", .{}) catch {};
