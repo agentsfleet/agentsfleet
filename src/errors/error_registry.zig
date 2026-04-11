@@ -177,6 +177,28 @@ pub const ERR_APPROVAL_INVALID_SIGNATURE = "UZ-APPROVAL-003";
 pub const ERR_APPROVAL_REDIS_UNAVAILABLE = "UZ-APPROVAL-004";
 pub const ERR_APPROVAL_CONDITION_INVALID = "UZ-APPROVAL-005";
 
+// ── Error mapping table (bvisor pattern) ─────────────────────────────────────
+// Shared type for modules that map Zig errors to registry codes + messages.
+// Use with `inline for` over a const table for comptime-validated dispatch.
+pub const ErrorMapping = struct {
+    err: anyerror,
+    code: []const u8,
+    message: []const u8,
+};
+
+/// Comptime-validate an error mapping table: no empty codes/messages, no duplicate errors.
+pub fn validateErrorTable(comptime table: []const ErrorMapping) void {
+    for (table) |entry| {
+        if (entry.code.len == 0) @compileError("error table: empty code");
+        if (entry.message.len == 0) @compileError("error table: empty message");
+    }
+    for (table, 0..) |a, i| {
+        for (table[i + 1 ..]) |b| {
+            if (a.err == b.err) @compileError("error table: duplicate error");
+        }
+    }
+}
+
 // ── Non-error constants (migrated from codes.zig) ──────────────────────────
 // Webhook user-facing messages
 pub const MSG_BODY_REQUIRED = "Request body required";

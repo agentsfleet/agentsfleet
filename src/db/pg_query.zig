@@ -16,10 +16,16 @@
 //!       while (try q.next()) |row| { ... }
 //!   }
 
+const std = @import("std");
 const pg = @import("pg");
 
 pub const PgQuery = struct {
     inner: *pg.Result,
+
+    // bvisor pattern: comptime size assertion — single pointer wrapper.
+    comptime {
+        std.debug.assert(@sizeOf(PgQuery) == 8);
+    }
 
     /// Wrap a *pg.Result returned by conn.query(). Use defer deinit() immediately.
     pub fn from(result: *pg.Result) PgQuery {
