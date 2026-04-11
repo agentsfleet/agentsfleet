@@ -48,10 +48,8 @@ pub fn renderOtlpJson(
     alloc: std.mem.Allocator,
     service_name: []const u8,
     worker_running: bool,
-    queue_depth: ?i64,
-    oldest_queued_age_ms: ?i64,
 ) ![]u8 {
-    const prom_body = try metrics.renderPrometheus(alloc, worker_running, queue_depth, oldest_queued_age_ms);
+    const prom_body = try metrics.renderPrometheus(alloc, worker_running);
     defer alloc.free(prom_body);
 
     const now_ns = @as(u64, @intCast(std.time.nanoTimestamp()));
@@ -116,11 +114,9 @@ pub fn exportMetricsSnapshotBestEffort(
     alloc: std.mem.Allocator,
     cfg: OtelConfig,
     worker_running: bool,
-    queue_depth: ?i64,
-    oldest_queued_age_ms: ?i64,
 ) void {
     metrics.incOtelExportTotal();
-    exportMetricsSnapshotInner(alloc, cfg, worker_running, queue_depth, oldest_queued_age_ms) catch |err| {
+    exportMetricsSnapshotInner(alloc, cfg, worker_running) catch |err| {
         metrics.incOtelExportFailed();
         obs_log.logWarnErr(.otel_export, err, "otel.export_fail error_code={s} endpoint={s}", .{ exportErrorCode(err), cfg.endpoint });
         return;
@@ -132,10 +128,8 @@ fn exportMetricsSnapshotInner(
     alloc: std.mem.Allocator,
     cfg: OtelConfig,
     worker_running: bool,
-    queue_depth: ?i64,
-    oldest_queued_age_ms: ?i64,
 ) !void {
-    const body = try renderOtlpJson(alloc, cfg.service_name, worker_running, queue_depth, oldest_queued_age_ms);
+    const body = try renderOtlpJson(alloc, cfg.service_name, worker_running);
     defer alloc.free(body);
 
     const endpoint = std.mem.trimRight(u8, cfg.endpoint, "/");
@@ -205,7 +199,7 @@ fn isSuccessStatus(status: std.http.Status) bool {
 
 test "renderOtlpJson produces valid JSON envelope" {
     const alloc = std.testing.allocator;
-    const body = try renderOtlpJson(alloc, "test-svc", true, 0, 0);
+    const body = try renderOtlpJson(alloc, "test-svc", true);
     defer alloc.free(body);
 
     // Must start with resourceMetrics
@@ -213,14 +207,14 @@ test "renderOtlpJson produces valid JSON envelope" {
     // Must contain service name
     try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "test-svc"));
     // Must contain at least one metric
-    try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_runs_created_total"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_external_retries_total"));
     // Must end with closing brackets
     try std.testing.expect(std.mem.endsWith(u8, body, "]}]}]}"));
 }
 
 test "renderOtlpJson counters use sum with isMonotonic" {
     const alloc = std.testing.allocator;
-    const body = try renderOtlpJson(alloc, "zombied", false, null, null);
+    const body = try renderOtlpJson(alloc, "zombied", false);
     defer alloc.free(body);
 
     try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "\"isMonotonic\":true"));
@@ -228,7 +222,7 @@ test "renderOtlpJson counters use sum with isMonotonic" {
 
 test "renderOtlpJson gauges use gauge type" {
     const alloc = std.testing.allocator;
-    const body = try renderOtlpJson(alloc, "zombied", true, 5, 100);
+    const body = try renderOtlpJson(alloc, "zombied", true);
     defer alloc.free(body);
 
     try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "\"gauge\":{\"dataPoints\""));
@@ -265,7 +259,7 @@ test "isSuccessStatus accepts 2xx and rejects non-2xx" {
 
 test "renderOtlpJson excludes histogram helper series from prometheus text" {
     const alloc = std.testing.allocator;
-    const body = try renderOtlpJson(alloc, "zombied", true, 5, 100);
+    const body = try renderOtlpJson(alloc, "zombied", true);
     defer alloc.free(body);
 
     try std.testing.expect(std.mem.indexOf(u8, body, "zombie_agent_duration_seconds_bucket") == null);

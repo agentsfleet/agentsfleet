@@ -10,10 +10,6 @@ pub const DurationBuckets = mc.DurationBuckets;
 pub const HistogramSnapshot = mc.HistogramSnapshot;
 pub const Snapshot = mc.Snapshot;
 
-pub const incRunsCreated = mc.incRunsCreated;
-pub const incRunsCompleted = mc.incRunsCompleted;
-pub const incRunsBlocked = mc.incRunsBlocked;
-pub const incRunRetries = mc.incRunRetries;
 pub const incExternalRetry = mc.incExternalRetry;
 pub const incExternalFailure = mc.incExternalFailure;
 pub const incRetryAfterHintsApplied = mc.incRetryAfterHintsApplied;
@@ -35,10 +31,8 @@ pub const incOutboxDelivered = mc.incOutboxDelivered;
 pub const incOutboxDeadLetter = mc.incOutboxDeadLetter;
 pub const incApiBackpressureRejections = mc.incApiBackpressureRejections;
 pub const setApiInFlightRequests = mc.setApiInFlightRequests;
-pub const setWorkerInFlightRuns = mc.setWorkerInFlightRuns;
 pub const incWorkerAllocatorLeaks = mc.incWorkerAllocatorLeaks;
 pub const observeAgentDurationSeconds = mc.observeAgentDurationSeconds;
-pub const observeRunTotalWallSeconds = mc.observeRunTotalWallSeconds;
 pub const incGateRepairLoops = mc.incGateRepairLoops;
 pub const incGateRepairExhausted = mc.incGateRepairExhausted;
 // M17_001 §1.3
@@ -70,8 +64,6 @@ pub const renderPrometheus = mr.renderPrometheus;
 
 // M28_001 §2.0: Per-workspace metrics.
 pub const wsAddTokens = mw.addTokens;
-pub const wsIncRunsCompleted = mw.incRunsCompleted;
-pub const wsIncRunsBlocked = mw.incRunsBlocked;
 pub const wsIncGateRepairLoops = mw.incGateRepairLoops;
 pub const wsRenderPrometheus = mw.renderPrometheus;
 
@@ -91,12 +83,10 @@ pub const executorSnapshot = em.executorSnapshot;
 
 test "prometheus render includes key metrics" {
     const alloc = std.testing.allocator;
-    const body = try renderPrometheus(alloc, true, 3, 1200);
+    const body = try renderPrometheus(alloc, true);
     defer alloc.free(body);
 
-    try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_runs_created_total"));
     try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_worker_running 1"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_queue_depth 3"));
     try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_external_retries_total"));
     try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_external_failures_total"));
     try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_rate_limit_wait_ms_total"));
@@ -105,7 +95,6 @@ test "prometheus render includes key metrics" {
     try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_api_backpressure_rejections_total"));
     try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_api_in_flight_requests"));
     try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_agent_duration_seconds_bucket"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_run_total_wall_seconds_bucket"));
 }
 
 test "integration: outbox metric counters are exposed in prometheus output" {
@@ -114,7 +103,7 @@ test "integration: outbox metric counters are exposed in prometheus output" {
     incOutboxDelivered();
     incOutboxDeadLetter();
 
-    const body = try renderPrometheus(alloc, false, 0, 0);
+    const body = try renderPrometheus(alloc, false);
     defer alloc.free(body);
 
     try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_side_effect_outbox_enqueued_total"));
@@ -124,13 +113,11 @@ test "integration: outbox metric counters are exposed in prometheus output" {
 
 test "integration: worker guardrail metrics are exposed in prometheus output" {
     const alloc = std.testing.allocator;
-    setWorkerInFlightRuns(2);
     incWorkerAllocatorLeaks();
 
-    const body = try renderPrometheus(alloc, true, 0, 0);
+    const body = try renderPrometheus(alloc, true);
     defer alloc.free(body);
 
-    try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_worker_in_flight_runs 2"));
     try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_worker_allocator_leaks_total"));
 }
 
@@ -139,7 +126,7 @@ test "integration: api throughput guardrail metrics are exposed in prometheus ou
     setApiInFlightRequests(3);
     incApiBackpressureRejections();
 
-    const body = try renderPrometheus(alloc, true, 0, 0);
+    const body = try renderPrometheus(alloc, true);
     defer alloc.free(body);
 
     try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_api_in_flight_requests 3"));
@@ -152,7 +139,7 @@ test "integration: otel exporter metrics are exposed in prometheus output" {
     incOtelExportFailed();
     setOtelLastSuccessAtMs(1710000000000);
 
-    const body = try renderPrometheus(alloc, true, 0, 0);
+    const body = try renderPrometheus(alloc, true);
     defer alloc.free(body);
 
     try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_otel_export_total"));
@@ -163,10 +150,9 @@ test "integration: otel exporter metrics are exposed in prometheus output" {
 // T3 — worker_running=false path; guards against the gauge always emitting 1
 test "prometheus render emits zombie_worker_running 0 when worker is not running" {
     const alloc = std.testing.allocator;
-    const body = try renderPrometheus(alloc, false, 0, 0);
+    const body = try renderPrometheus(alloc, false);
     defer alloc.free(body);
     try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_worker_running 0"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_queue_depth 0"));
 }
 
 test {

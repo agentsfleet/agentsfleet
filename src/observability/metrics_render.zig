@@ -40,22 +40,14 @@ fn appendMetric(
 pub fn renderPrometheus(
     alloc: std.mem.Allocator,
     worker_running: bool,
-    queue_depth: ?i64,
-    oldest_queued_age_ms: ?i64,
 ) ![]u8 {
     const s = mc.snapshot();
     const worker_running_gauge: u8 = if (worker_running) 1 else 0;
-    const queue_depth_gauge: i64 = queue_depth orelse 0;
-    const oldest_age_gauge: i64 = oldest_queued_age_ms orelse 0;
 
     var out: std.ArrayList(u8) = .{};
     errdefer out.deinit(alloc);
     const writer = out.writer(alloc);
 
-    try appendMetric(writer, "zombie_runs_created_total", "counter", "Total runs accepted by API.", s.runs_created_total);
-    try appendMetric(writer, "zombie_runs_completed_total", "counter", "Total runs completed successfully.", s.runs_completed_total);
-    try appendMetric(writer, "zombie_runs_blocked_total", "counter", "Total runs that ended blocked.", s.runs_blocked_total);
-    try appendMetric(writer, "zombie_run_retries_total", "counter", "Total retry attempts across runs.", s.run_retries_total);
     try appendMetric(writer, "zombie_external_retries_total", "counter", "Total retry attempts inside external side-effect wrappers.", s.external_retries_total);
     try appendMetric(writer, "zombie_external_retries_rate_limited_total", "counter", "External retries classified as rate-limited.", s.external_retries_rate_limited_total);
     try appendMetric(writer, "zombie_external_retries_timeout_total", "counter", "External retries classified as timeout.", s.external_retries_timeout_total);
@@ -94,11 +86,8 @@ pub fn renderPrometheus(
     try appendMetric(writer, "zombie_side_effect_outbox_dead_letter_total", "counter", "Total side-effect outbox entries dead-lettered by reconciliation.", s.side_effect_outbox_dead_letter_total);
     try appendMetric(writer, "zombie_api_backpressure_rejections_total", "counter", "Total API requests rejected by in-flight backpressure guard.", s.api_backpressure_rejections_total);
     try appendMetric(writer, "zombie_api_in_flight_requests", "gauge", "Current in-flight API requests protected by backpressure guard.", s.api_in_flight_requests);
-    try appendMetric(writer, "zombie_worker_in_flight_runs", "gauge", "Current in-flight runs across worker threads.", s.worker_in_flight_runs);
     try appendMetric(writer, "zombie_worker_allocator_leaks_total", "counter", "Total worker allocator leak detections on teardown.", s.worker_allocator_leaks_total);
     try appendMetric(writer, "zombie_worker_running", "gauge", "Worker liveness gauge (1 running, 0 stopped).", worker_running_gauge);
-    try appendMetric(writer, "zombie_queue_depth", "gauge", "Current queued runs in SPEC_QUEUED.", queue_depth_gauge);
-    try appendMetric(writer, "zombie_oldest_queued_age_ms", "gauge", "Oldest queued run age in milliseconds.", oldest_age_gauge);
 
     try appendMetric(writer, "zombie_gate_repair_loops_total", "counter", "Total gate repair loop iterations.", s.gate_repair_loops_total);
     try appendMetric(writer, "zombie_gate_repair_exhausted_total", "counter", "Total gate repair exhaustions (max loops reached).", s.gate_repair_exhausted_total);
@@ -120,12 +109,6 @@ pub fn renderPrometheus(
         "zombie_agent_duration_seconds",
         "Duration of individual agent calls in seconds.",
         s.agent_duration_seconds,
-    );
-    try appendDurationHistogram(
-        writer,
-        "zombie_run_total_wall_seconds",
-        "End-to-end run wall-clock duration in seconds.",
-        s.run_total_wall_seconds,
     );
     // M28_001 §4.1: gate repair loops per run histogram (custom buckets).
     {
