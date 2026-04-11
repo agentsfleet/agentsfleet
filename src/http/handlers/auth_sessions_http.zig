@@ -3,11 +3,13 @@ const httpz = @import("httpz");
 const error_codes = @import("../../errors/codes.zig");
 const posthog_events = @import("../../observability/posthog_events.zig");
 const common = @import("common.zig");
+const hx_mod = @import("hx.zig");
 
 const log = std.log.scoped(.http);
 
 pub const Context = common.Context;
 
+// No Bearer auth — creates auth session (login endpoint, unauthenticated).
 pub fn handleCreateAuthSession(ctx: *Context, req: *httpz.Request, res: *httpz.Response) void {
     _ = req;
     var arena = std.heap.ArenaAllocator.init(ctx.alloc);
@@ -36,6 +38,7 @@ pub fn handleCreateAuthSession(ctx: *Context, req: *httpz.Request, res: *httpz.R
     });
 }
 
+// No Bearer auth — polls pending auth session (unauthenticated).
 pub fn handlePollAuthSession(ctx: *Context, req: *httpz.Request, res: *httpz.Response, session_id: []const u8) void {
     _ = req;
     const result = ctx.auth_sessions.poll(session_id);
@@ -48,49 +51,39 @@ pub fn handlePollAuthSession(ctx: *Context, req: *httpz.Request, res: *httpz.Res
     common.writeJson(res, .ok, .{ .status = status_str, .token = result.token });
 }
 
-pub fn handleCompleteAuthSession(ctx: *Context, req: *httpz.Request, res: *httpz.Response, session_id: []const u8) void {
-    var arena = std.heap.ArenaAllocator.init(ctx.alloc);
-    defer arena.deinit();
-    const alloc = arena.allocator();
-    const req_id = common.requestId(alloc);
-
-    log.debug("auth.session_complete session_id={s} req_id={s}", .{ session_id, req_id });
-
-    const principal = common.authenticate(alloc, req, ctx) catch |err| {
-        log.debug("auth.session_complete_auth_fail session_id={s} err={s}", .{ session_id, @errorName(err) });
-        common.writeAuthErrorWithTracking(res, req_id, err, ctx.posthog);
-        return;
-    };
-    _ = principal;
+fn innerCompleteAuthSession(hx: hx_mod.Hx, req: *httpz.Request, session_id: []const u8) void {
+    log.debug("auth.session_complete session_id={s} req_id={s}", .{ session_id, hx.req_id });
 
     const body = req.body() orelse {
-        common.errorResponse(res, error_codes.ERR_INVALID_REQUEST, "Request body required", req_id);
+        hx.fail(error_codes.ERR_INVALID_REQUEST, "Request body required");
         return;
     };
-    const parsed = std.json.parseFromSlice(struct { token: []const u8 }, alloc, body, .{}) catch {
-        common.errorResponse(res, error_codes.ERR_INVALID_REQUEST, "Malformed JSON or missing token field", req_id);
+    const parsed = std.json.parseFromSlice(struct { token: []const u8 }, hx.alloc, body, .{}) catch {
+        hx.fail(error_codes.ERR_INVALID_REQUEST, "Malformed JSON or missing token field");
         return;
     };
     defer parsed.deinit();
 
     if (parsed.value.token.len == 0) {
-        common.errorResponse(res, error_codes.ERR_INVALID_REQUEST, "Token must not be empty", req_id);
+        hx.fail(error_codes.ERR_INVALID_REQUEST, "Token must not be empty");
         return;
     }
 
-    ctx.auth_sessions.complete(session_id, parsed.value.token) catch |err| {
-        log.err("auth.session_complete_fail err={s} session_id={s} req_id={s}", .{ @errorName(err), session_id, req_id });
+    hx.ctx.auth_sessions.complete(session_id, parsed.value.token) catch |err| {
+        log.err("auth.session_complete_fail err={s} session_id={s} req_id={s}", .{ @errorName(err), session_id, hx.req_id });
         const code: []const u8 = switch (err) {
             error.SessionNotFound => error_codes.ERR_SESSION_NOT_FOUND,
             error.SessionExpired => error_codes.ERR_SESSION_EXPIRED,
             error.SessionAlreadyComplete => error_codes.ERR_SESSION_ALREADY_COMPLETE,
             else => error_codes.ERR_INTERNAL_OPERATION_FAILED,
         };
-        common.errorResponse(res, code, @errorName(err), req_id);
+        hx.fail(code, @errorName(err));
         return;
     };
 
-    log.info("auth.session_completed session_id={s} req_id={s}", .{ session_id, req_id });
-    posthog_events.trackAuthLoginCompleted(ctx.posthog, session_id, req_id);
-    common.writeJson(res, .ok, .{ .status = "complete", .request_id = req_id });
+    log.info("auth.session_completed session_id={s} req_id={s}", .{ session_id, hx.req_id });
+    posthog_events.trackAuthLoginCompleted(hx.ctx.posthog, session_id, hx.req_id);
+    hx.ok(.ok, .{ .status = "complete", .request_id = hx.req_id });
 }
+
+pub const handleCompleteAuthSession = hx_mod.authenticatedWithParam(innerCompleteAuthSession);

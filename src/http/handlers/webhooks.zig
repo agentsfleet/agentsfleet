@@ -4,6 +4,9 @@
 //       or Bearer token (config_json->'trigger'->>'token') as fallback.
 // Idempotency: Redis SET NX EX on "webhook:dedup:{zombie_id}:{event_id}".
 // On success: event enqueued to zombie:{zombie_id}:events stream, returns 202.
+//
+// Secret-verified — does not use hx.authenticated(). Auth is via URL-embedded
+// secret or trigger token, not Bearer. Two path params also prevent wrapper use.
 
 const std = @import("std");
 const httpz = @import("httpz");

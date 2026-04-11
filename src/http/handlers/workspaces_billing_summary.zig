@@ -8,6 +8,7 @@ const std = @import("std");
 const httpz = @import("httpz");
 const common = @import("common.zig");
 const workspace_guards = @import("../workspace_guards.zig");
+const hx_mod = @import("hx.zig");
 
 const log = std.log.scoped(.http);
 const API_ACTOR = "api";
@@ -21,29 +22,20 @@ fn parsePeriodDays(raw: ?[]const u8) u32 {
     return 30;
 }
 
-pub fn handleGetWorkspaceBillingSummary(ctx: *common.Context, req: *httpz.Request, res: *httpz.Response, workspace_id: []const u8) void {
-    var arena = std.heap.ArenaAllocator.init(ctx.alloc);
-    defer arena.deinit();
-    const alloc = arena.allocator();
-    const req_id = common.requestId(alloc);
+fn innerGetWorkspaceBillingSummary(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []const u8) void {
+    if (!common.requireUuidV7Id(hx.res, hx.req_id, workspace_id, "workspace_id")) return;
 
-    const principal = common.authenticate(alloc, req, ctx) catch |err| {
-        common.writeAuthError(res, req_id, err);
+    const conn = hx.ctx.pool.acquire() catch {
+        common.internalDbUnavailable(hx.res, hx.req_id);
         return;
     };
-    if (!common.requireUuidV7Id(res, req_id, workspace_id, "workspace_id")) return;
+    defer hx.ctx.pool.release(conn);
 
-    const conn = ctx.pool.acquire() catch {
-        common.internalDbUnavailable(res, req_id);
-        return;
-    };
-    defer ctx.pool.release(conn);
-
-    const actor = principal.user_id orelse API_ACTOR;
-    const access = workspace_guards.enforce(res, req_id, conn, alloc, principal, workspace_id, actor, .{
+    const actor = hx.principal.user_id orelse API_ACTOR;
+    const access = workspace_guards.enforce(hx.res, hx.req_id, conn, hx.alloc, hx.principal, workspace_id, actor, .{
         .minimum_role = .operator,
     }) orelse return;
-    defer access.deinit(alloc);
+    defer access.deinit(hx.alloc);
 
     const qs = req.query() catch null;
     const period_days = parsePeriodDays(if (qs) |q| q.get("period") else null);
@@ -55,7 +47,7 @@ pub fn handleGetWorkspaceBillingSummary(ctx: *common.Context, req: *httpz.Reques
     // M15_001 will wire zombie credit metering and populate real data.
     log.info("billing_summary.ok workspace_id={s} period={d}d total=0 (stub)", .{ workspace_id, period_days });
 
-    common.writeJson(res, .ok, .{
+    hx.ok(.ok, .{
         .workspace_id = workspace_id,
         .period_days = period_days,
         .period_start_ms = period_start_ms,
@@ -64,6 +56,8 @@ pub fn handleGetWorkspaceBillingSummary(ctx: *common.Context, req: *httpz.Reques
         .non_billable = .{ .count = @as(i64, 0) },
         .non_billable_score_gated = .{ .count = @as(i64, 0), .avg_score = @as(i64, 0) },
         .total_runs = @as(i64, 0),
-        .request_id = req_id,
+        .request_id = hx.req_id,
     });
 }
+
+pub const handleGetWorkspaceBillingSummary = hx_mod.authenticatedWithParam(innerGetWorkspaceBillingSummary);

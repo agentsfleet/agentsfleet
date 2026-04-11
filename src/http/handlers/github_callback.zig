@@ -1,3 +1,5 @@
+// OAuth callback — does not use hx.authenticated(). GitHub redirects here with
+// a ?code= query param; authentication is completed via OAuth exchange, not Bearer.
 const std = @import("std");
 const httpz = @import("httpz");
 const secrets = @import("../../secrets/crypto.zig");

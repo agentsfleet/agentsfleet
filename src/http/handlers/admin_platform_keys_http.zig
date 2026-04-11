@@ -4,6 +4,7 @@ const pg = @import("pg");
 const common = @import("common.zig");
 const error_codes = @import("../../errors/codes.zig");
 const id_format = @import("../../types/id_format.zig");
+const hx_mod = @import("hx.zig");
 
 const log = std.log.scoped(.http);
 
@@ -21,72 +22,57 @@ const PlatformKeyRow = struct {
 // ── PUT /v1/admin/platform-keys ─────────────────────────────────────────────
 // Upsert the platform default LLM key source for a provider.
 // Body: {"provider": "kimi", "source_workspace_id": "..."}
-// Response: 200 with the upserted row (provider, source_workspace_id, active).
 
 const PutInput = struct {
     provider: []const u8,
     source_workspace_id: []const u8,
 };
 
-pub fn handlePutAdminPlatformKey(
-    ctx: *Context,
-    req: *httpz.Request,
-    res: *httpz.Response,
-) void {
-    var arena = std.heap.ArenaAllocator.init(ctx.alloc);
-    defer arena.deinit();
-    const alloc = arena.allocator();
-    const req_id = common.requestId(alloc);
-
-    const principal = common.authenticate(alloc, req, ctx) catch |err| {
-        common.writeAuthError(res, req_id, err);
-        return;
-    };
-    if (!common.requireRole(res, req_id, principal, .admin)) return;
+fn innerPutAdminPlatformKey(hx: hx_mod.Hx, req: *httpz.Request) void {
+    if (!common.requireRole(hx.res, hx.req_id, hx.principal, .admin)) return;
 
     const body = req.body() orelse {
-        common.errorResponse(res, error_codes.ERR_INVALID_REQUEST, "Request body required", req_id);
+        hx.fail(error_codes.ERR_INVALID_REQUEST, "Request body required");
         return;
     };
-    const parsed = std.json.parseFromSlice(PutInput, alloc, body, .{}) catch {
-        common.errorResponse(res, error_codes.ERR_INVALID_REQUEST, "Malformed JSON", req_id);
+    const parsed = std.json.parseFromSlice(PutInput, hx.alloc, body, .{}) catch {
+        hx.fail(error_codes.ERR_INVALID_REQUEST, "Malformed JSON");
         return;
     };
     defer parsed.deinit();
     const input = parsed.value;
 
     if (input.provider.len == 0 or input.provider.len > 32) {
-        common.errorResponse(res, error_codes.ERR_INVALID_REQUEST, "provider must be 1–32 chars", req_id);
+        hx.fail(error_codes.ERR_INVALID_REQUEST, "provider must be 1–32 chars");
         return;
     }
-    if (!common.requireUuidV7Id(res, req_id, input.source_workspace_id, "source_workspace_id")) return;
+    if (!common.requireUuidV7Id(hx.res, hx.req_id, input.source_workspace_id, "source_workspace_id")) return;
 
-    const key_id = id_format.generatePlatformLlmKeyId(alloc) catch {
-        common.internalOperationError(res, "Failed to generate platform key id", req_id);
+    const key_id = id_format.generatePlatformLlmKeyId(hx.alloc) catch {
+        common.internalOperationError(hx.res, "Failed to generate platform key id", hx.req_id);
         return;
     };
     const now_ms = std.time.milliTimestamp();
 
-    const conn = ctx.pool.acquire() catch {
-        common.internalDbUnavailable(res, req_id);
+    const conn = hx.ctx.pool.acquire() catch {
+        common.internalDbUnavailable(hx.res, hx.req_id);
         return;
     };
-    defer ctx.pool.release(conn);
+    defer hx.ctx.pool.release(conn);
 
     // Validate source_workspace_id references an existing workspace.
-    // FK violation returns a generic 500; this gives callers a clear 400.
     var ws_q = conn.query(
         "SELECT 1 FROM core.workspaces WHERE workspace_id = $1 LIMIT 1",
         .{input.source_workspace_id},
     ) catch {
-        common.internalOperationError(res, "Failed to check workspace existence", req_id);
+        common.internalOperationError(hx.res, "Failed to check workspace existence", hx.req_id);
         return;
     };
     const ws_exists = (ws_q.next() catch null) != null;
     ws_q.drain() catch {};
     ws_q.deinit();
     if (!ws_exists) {
-        common.errorResponse(res, error_codes.ERR_INVALID_REQUEST, "source_workspace_id does not reference an existing workspace", req_id);
+        hx.fail(error_codes.ERR_INVALID_REQUEST, "source_workspace_id does not reference an existing workspace");
         return;
     }
 
@@ -98,98 +84,77 @@ pub fn handlePutAdminPlatformKey(
         \\    active = true,
         \\    updated_at = EXCLUDED.updated_at
     , .{ key_id, input.provider, input.source_workspace_id, now_ms }) catch {
-        common.internalOperationError(res, "Failed to upsert platform key", req_id);
+        common.internalOperationError(hx.res, "Failed to upsert platform key", hx.req_id);
         return;
     };
 
     log.info("admin.platform_key_upserted provider={s} source_workspace_id={s}", .{ input.provider, input.source_workspace_id });
 
-    common.writeJson(res, .ok, .{
+    hx.ok(.ok, .{
         .provider = input.provider,
         .source_workspace_id = input.source_workspace_id,
         .active = true,
-        .request_id = req_id,
+        .request_id = hx.req_id,
     });
 }
+
+pub const handlePutAdminPlatformKey = hx_mod.authenticated(innerPutAdminPlatformKey);
 
 // ── DELETE /v1/admin/platform-keys/{provider} ────────────────────────────────
 // Deactivate the platform default for a provider (sets active = false).
 
-pub fn handleDeleteAdminPlatformKey(
-    ctx: *Context,
-    req: *httpz.Request,
-    res: *httpz.Response,
-    provider: []const u8,
-) void {
-    var arena = std.heap.ArenaAllocator.init(ctx.alloc);
-    defer arena.deinit();
-    const alloc = arena.allocator();
-    const req_id = common.requestId(alloc);
-
-    const principal = common.authenticate(alloc, req, ctx) catch |err| {
-        common.writeAuthError(res, req_id, err);
-        return;
-    };
-    if (!common.requireRole(res, req_id, principal, .admin)) return;
+fn innerDeleteAdminPlatformKey(hx: hx_mod.Hx, req: *httpz.Request, provider: []const u8) void {
+    _ = req;
+    if (!common.requireRole(hx.res, hx.req_id, hx.principal, .admin)) return;
 
     if (provider.len == 0 or provider.len > 32) {
-        common.errorResponse(res, error_codes.ERR_INVALID_REQUEST, "provider must be 1–32 chars", req_id);
+        hx.fail(error_codes.ERR_INVALID_REQUEST, "provider must be 1–32 chars");
         return;
     }
 
-    const conn = ctx.pool.acquire() catch {
-        common.internalDbUnavailable(res, req_id);
+    const conn = hx.ctx.pool.acquire() catch {
+        common.internalDbUnavailable(hx.res, hx.req_id);
         return;
     };
-    defer ctx.pool.release(conn);
+    defer hx.ctx.pool.release(conn);
 
     _ = conn.exec(
         "UPDATE core.platform_llm_keys SET active = false, updated_at = $1 WHERE provider = $2",
         .{ std.time.milliTimestamp(), provider },
     ) catch {
-        common.internalOperationError(res, "Failed to deactivate platform key", req_id);
+        common.internalOperationError(hx.res, "Failed to deactivate platform key", hx.req_id);
         return;
     };
 
     log.info("admin.platform_key_deactivated provider={s}", .{provider});
 
-    common.writeJson(res, .ok, .{
+    hx.ok(.ok, .{
         .provider = provider,
         .active = false,
-        .request_id = req_id,
+        .request_id = hx.req_id,
     });
 }
+
+pub const handleDeleteAdminPlatformKey = hx_mod.authenticatedWithParam(innerDeleteAdminPlatformKey);
 
 // ── GET /v1/admin/platform-keys ──────────────────────────────────────────────
 // List all platform key rows (active and inactive). Never returns key material.
 
-pub fn handleGetAdminPlatformKeys(
-    ctx: *Context,
-    req: *httpz.Request,
-    res: *httpz.Response,
-) void {
-    var arena = std.heap.ArenaAllocator.init(ctx.alloc);
-    defer arena.deinit();
-    const alloc = arena.allocator();
-    const req_id = common.requestId(alloc);
+fn innerGetAdminPlatformKeys(hx: hx_mod.Hx, req: *httpz.Request) void {
+    _ = req;
+    if (!common.requireRole(hx.res, hx.req_id, hx.principal, .admin)) return;
 
-    const principal = common.authenticate(alloc, req, ctx) catch |err| {
-        common.writeAuthError(res, req_id, err);
+    const conn = hx.ctx.pool.acquire() catch {
+        common.internalDbUnavailable(hx.res, hx.req_id);
         return;
     };
-    if (!common.requireRole(res, req_id, principal, .admin)) return;
-
-    const conn = ctx.pool.acquire() catch {
-        common.internalDbUnavailable(res, req_id);
-        return;
-    };
-    defer ctx.pool.release(conn);
+    defer hx.ctx.pool.release(conn);
 
     var q = conn.query(
         "SELECT provider, source_workspace_id, active, updated_at FROM core.platform_llm_keys ORDER BY provider",
         .{},
     ) catch {
-        common.internalOperationError(res, "Failed to query platform keys", req_id);
+        common.internalOperationError(hx.res, "Failed to query platform keys", hx.req_id);
         return;
     };
     defer q.deinit();
@@ -202,11 +167,11 @@ pub fn handleGetAdminPlatformKeys(
             break;
         };
         const row = maybe_row orelse break;
-        const prov = alloc.dupe(u8, row.get([]u8, 0) catch continue) catch continue;
-        const src_ws = alloc.dupe(u8, row.get([]u8, 1) catch continue) catch continue;
+        const prov = hx.alloc.dupe(u8, row.get([]u8, 0) catch continue) catch continue;
+        const src_ws = hx.alloc.dupe(u8, row.get([]u8, 1) catch continue) catch continue;
         const active = row.get(bool, 2) catch continue;
         const updated_at = row.get(i64, 3) catch continue;
-        rows.append(alloc, .{
+        rows.append(hx.alloc, .{
             .provider = prov,
             .source_workspace_id = src_ws,
             .active = active,
@@ -215,8 +180,10 @@ pub fn handleGetAdminPlatformKeys(
     }
     q.drain() catch {};
 
-    common.writeJson(res, .ok, .{
+    hx.ok(.ok, .{
         .keys = rows.items,
-        .request_id = req_id,
+        .request_id = hx.req_id,
     });
 }
+
+pub const handleGetAdminPlatformKeys = hx_mod.authenticated(innerGetAdminPlatformKeys);
