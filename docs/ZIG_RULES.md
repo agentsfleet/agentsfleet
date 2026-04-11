@@ -32,6 +32,7 @@ Status: Canonical Zig source of truth for agents and commits
 - Do not use `q.next()` on a query result passed via `anytype` pointer — use `q.*.next()`.
 - Do not create test files without adding them to `main.zig` test discovery — tests won't run.
 - Do not store credentials in plaintext tables — use `crypto_store.store()/load()` with `vault.secrets`.
+- Do not use `pub` on constants, types, or functions unless an external file imports them. Default to private; add `pub` only when a consumer exists outside the file.
 
 ## Allowed Exceptions
 
