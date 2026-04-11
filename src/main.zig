@@ -121,6 +121,7 @@ test {
     _ = @import("types.zig");
     _ = @import("secrets/crypto.zig");
     _ = @import("db/pool.zig");
+    _ = @import("db/sql_splitter.zig");
     _ = @import("config/env_vars.zig");
     _ = @import("config/load.zig");
     _ = @import("harness/control_plane.zig");
