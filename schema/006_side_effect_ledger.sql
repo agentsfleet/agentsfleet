@@ -1,3 +1,4 @@
 -- 006_side_effect_ledger.sql
 -- M10_001: Pipeline v1 removed. run_side_effects table deleted.
 -- Kept as version marker only.
+SELECT 1;

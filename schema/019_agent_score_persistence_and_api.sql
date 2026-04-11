@@ -1,3 +1,4 @@
 -- 019_agent_score_persistence_and_api.sql
 -- M10_001: Pipeline v1 removed. agent_run_scores table deleted.
 -- Kept as version marker only.
+SELECT 1;

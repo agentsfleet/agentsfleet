@@ -492,7 +492,7 @@ test "integration: zero-trust schema segmentation and role matrix are enforced" 
         .{ .table_name = "agent.agent_profiles", .privilege = "UPDATE" },
         .{ .table_name = "agent.workspace_active_config", .privilege = "UPDATE" },
         .{ .table_name = "agent.agent_config_versions", .privilege = "INSERT" },
-        .{ .table_name = "agent.harness_change_log", .privilege = "UPDATE" },
+        // M10_001: agent.harness_change_log removed (pipeline v1 scoring).
     };
     inline for (worker_privilege_checks) |check| {
         var privilege_q = try db_ctx.conn.query(

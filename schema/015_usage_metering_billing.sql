@@ -1,3 +1,4 @@
 -- 015_usage_metering_billing.sql
 -- M10_001: Pipeline v1 removed. billing_delivery_outbox table deleted.
 -- Kept as version marker only.
+SELECT 1;

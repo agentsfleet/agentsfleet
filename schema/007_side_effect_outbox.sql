@@ -1,4 +1,5 @@
 -- 007_side_effect_outbox.sql
 -- M10_001: Pipeline v1 removed. core.run_side_effect_outbox table deleted.
 -- run_id FK referenced core.runs (dropped). Seed INSERT referenced core.run_side_effects (dropped).
--- Kept as version marker only; later migrations depend on this slot's existence.
+-- Kept as version marker only.
+SELECT 1;

@@ -1,3 +1,4 @@
 -- 002_core_workflow.sql
 -- M10_001: Pipeline v1 removed. All tables (specs, runs, run_transitions,
 -- artifacts) are deleted. Kept as version marker only.
+SELECT 1;
