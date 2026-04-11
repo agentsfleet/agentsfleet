@@ -1,13 +1,7 @@
-// Tests for docsRef and hint (migrated from codes.zig tests for M16_001).
+// Tests for hint and credential error codes (migrated from codes.zig for M16_001).
 
 const std = @import("std");
 const ec = @import("error_registry.zig");
-
-test "docsRef returns single base and code tuple" {
-    const ref = ec.docsRef(ec.ERR_UUIDV7_INVALID_ID_SHAPE);
-    try std.testing.expectEqualStrings(ec.ERROR_DOCS_BASE, ref.base);
-    try std.testing.expectEqualStrings("UZ-UUIDV7-009", ref.code);
-}
 
 test "hint returns actionable text for known startup codes" {
     try std.testing.expect(ec.hint(ec.ERR_STARTUP_REDIS_CONNECT).len > 0);

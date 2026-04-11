@@ -56,10 +56,6 @@ pub fn hint(code: []const u8) []const u8 {
     return lookup(code).hint;
 }
 
-pub fn docsRef(code: []const u8) struct { base: []const u8, code: []const u8 } {
-    return .{ .base = ERROR_DOCS_BASE, .code = code };
-}
-
 // ── ERR_* constants ────────────────────────────────────────────────────────
 // UUIDV7
 pub const ERR_UUIDV7_CANONICAL_FORMAT = "UZ-UUIDV7-003";
