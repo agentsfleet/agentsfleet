@@ -2,9 +2,10 @@
 Milestone: M16
 Workstream: M16_002
 Name: COMPTIME_POSTHOG_MOCKS
-Status: PENDING
+Status: IN_PROGRESS
 Priority: P2 — eliminates null-check boilerplate + enables test event assertions
 Created: Apr 11, 2026
+Branch: feat/m16-002-comptime-posthog-mocks
 Depends on: none
 ---
 
