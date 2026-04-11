@@ -2,7 +2,7 @@
 Milestone: M10
 Workstream: M10_002
 Name: PIPELINE_OBSERVABILITY_CLEANUP
-Status: IN_PROGRESS
+Status: DONE
 Priority: P2 — cosmetic; no runtime errors, no data loss
 Created: Apr 11, 2026
 Started: Apr 11, 2026

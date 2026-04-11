@@ -2,7 +2,7 @@
 Milestone: M10
 Workstream: M10_003
 Name: DEAD_ERROR_CODES_AND_ROUTE_STUBS
-Status: IN_PROGRESS
+Status: DONE
 Branch: feat/m10-003-dead-error-codes
 Priority: P2 — no runtime errors, cosmetic cleanup
 Created: Apr 11, 2026

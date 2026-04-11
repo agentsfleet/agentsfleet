@@ -2,7 +2,7 @@
 Milestone: M10
 Workstream: M10_005
 Name: PGQUERY_MIGRATION
-Status: IN_PROGRESS
+Status: DONE
 Priority: P2 — progressive cleanup, not blocking
 Created: Apr 11, 2026
 Started: Apr 11, 2026
