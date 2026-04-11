@@ -144,6 +144,38 @@ test "T7: UNKNOWN_ENTRY and UZ-INTERNAL-001 are distinct (RULE 5: distinguish er
     );
 }
 
+// ── T7: Semantic correctness — auth codes match HTTP semantics ───────────────
+//
+// RULE 5: distinguish error classes.
+// ERR_UNAUTHORIZED (UZ-AUTH-002) is for authentication failures (401) —
+//   missing token, invalid token, expired token.
+// ERR_FORBIDDEN (UZ-AUTH-001) is for authorization failures (403) —
+//   valid token but insufficient permissions, wrong role.
+// These must NEVER be swapped. Webhook auth failures are authentication,
+// not authorization.
+
+test "T7: ERR_UNAUTHORIZED is 401 (authentication failure, not 403)" {
+    const entry = error_table.lookup(codes.ERR_UNAUTHORIZED).?;
+    try std.testing.expectEqual(std.http.Status.unauthorized, entry.http_status);
+    // Must NOT be 403 — that's authorization, not authentication
+    try std.testing.expect(@intFromEnum(entry.http_status) != @intFromEnum(std.http.Status.forbidden));
+}
+
+test "T7: ERR_FORBIDDEN is 403 (authorization failure, not 401)" {
+    const entry = error_table.lookup(codes.ERR_FORBIDDEN).?;
+    try std.testing.expectEqual(std.http.Status.forbidden, entry.http_status);
+    try std.testing.expect(@intFromEnum(entry.http_status) != @intFromEnum(std.http.Status.unauthorized));
+}
+
+test "T7: UZ-WH-003 stays 409 (zombie paused = conflict, not 403)" {
+    // Paused zombie is a temporary state conflict — caller can retry when unpaused.
+    // 403 Forbidden means "you lack permission" — semantically wrong here.
+    try std.testing.expectEqual(
+        std.http.Status.conflict,
+        error_table.lookup(codes.ERR_WEBHOOK_ZOMBIE_PAUSED).?.http_status,
+    );
+}
+
 // ── T10: Magic-value policy — TABLE format invariants ────────────────────────
 
 test "T10: all TABLE codes start with 'UZ-' prefix" {

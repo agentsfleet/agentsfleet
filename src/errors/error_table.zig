@@ -118,7 +118,7 @@ pub const TABLE = [_]ErrorEntry{
     // ── WEBHOOK ──────────────────────────────────────────────────────────────
     .{ .code = "UZ-WH-001", .http_status = .not_found,   .title = "Zombie not found for webhook",   .docs_uri = ERROR_DOCS_BASE ++ "UZ-WH-001" },
     .{ .code = "UZ-WH-002", .http_status = .bad_request, .title = "Malformed webhook",              .docs_uri = ERROR_DOCS_BASE ++ "UZ-WH-002" },
-    .{ .code = "UZ-WH-003", .http_status = .forbidden,   .title = "Zombie paused",                  .docs_uri = ERROR_DOCS_BASE ++ "UZ-WH-003" },
+    .{ .code = "UZ-WH-003", .http_status = .conflict,    .title = "Zombie paused",                  .docs_uri = ERROR_DOCS_BASE ++ "UZ-WH-003" },
     .{ .code = "UZ-WH-010", .http_status = .unauthorized,.title = "Invalid webhook signature",       .docs_uri = ERROR_DOCS_BASE ++ "UZ-WH-010" },
     .{ .code = "UZ-WH-011", .http_status = .unauthorized,.title = "Stale webhook timestamp",         .docs_uri = ERROR_DOCS_BASE ++ "UZ-WH-011" },
     // ── TOOL ─────────────────────────────────────────────────────────────────
