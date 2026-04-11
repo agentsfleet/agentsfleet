@@ -473,3 +473,18 @@ breaks when either field changes independently.
 **Why:** Linear scan over 130+ entries on every error response is unnecessary when the table is known at compile time. `StaticStringMap.initComptime()` generates a perfect hash at zero runtime cost.
 **Tags:** zig, performance, comptime
 **Ref:** M11_001 error_table.zig — lookup() replaced O(n) for-loop with StaticStringMap(usize) mapping code→TABLE index
+
+**Rule:** Do not ship convenience helpers without at least one consumer. Remove dead API surface (unused pub fns) before merge.
+**Why:** Unused helpers invite misuse. A `db()`/`releaseDb()` pair with no consumer trains future devs to use it, but without a `defer`-friendly wrapper, they'll leak pool connections.
+**Tags:** zig, api-design
+**Ref:** M11_001 hx.zig — db()/releaseDb() shipped with zero callers, all handlers used ctx.pool directly. Removed in greptile fix.
+
+**Rule:** CI validators must verify `$ref` targets, not silently skip them. When a response has no inline `content`, check that its `$ref` points to the expected shared response.
+**Why:** A `$ref` to `LegacyError` (using `application/json`) passes the validator undetected if the script only checks inline content blocks.
+**Tags:** python, ci, openapi
+**Ref:** M11_001 check_openapi_errors.py — $ref responses were silently skipped; added target validation.
+
+**Rule:** Test names must state what they verify, not narrate the author's reasoning. No mid-sentence corrections ("does not X — wait, it does").
+**Why:** When a test fails, the name is the first thing an engineer reads. A self-contradicting name wastes investigation time.
+**Tags:** zig, testing
+**Ref:** M11_001 error_registry_test.zig — renamed "does not start with UZ- — wait, it does" to "has sentinel code UZ-UNKNOWN and is 500"
