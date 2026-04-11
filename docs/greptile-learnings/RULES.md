@@ -454,31 +454,17 @@ breaks when either field changes independently.
 > M3_001: Derived Slack HMAC version `"v0"` by slicing prefix `"v0="[0..len-1]`.
 > Fixed by adding explicit `hmac_version` field to `VerifyConfig`.
 
----
-
-<!-- New rules use compact format: Rule / Why / Tags / Ref (4 lines each) -->
-
-## 41. Comptime table scans need explicit eval quota
-
 **Rule:** Add `@setEvalBranchQuota(N)` as the first line of any `comptime {}` block that iterates over a registry table with string comparison. Formula: `N ≈ code_count × table_size × avg_string_len`, round to next power-of-ten. Add a comment with the math.
 **Why:** Default quota is 1000. 130 codes × 131 entries × char-by-char `std.mem.eql` = ~2.2M comparisons — blows the quota silently with "evaluation exceeded 1000 backwards branches".
 **Tags:** zig, comptime, testing
-**Ref:** M11_001 `m11_001_coverage_test.zig` — comptime exhaustive coverage for error code registry
-
----
-
-## 42. `@embedFile` is sandboxed to the package root (`src/`)
+**Ref:** M11_001 m11_001_coverage_test.zig — comptime exhaustive coverage for error code registry
 
 **Rule:** Never use `@embedFile` to reach files outside `src/`. For external files (OpenAPI specs, config fixtures), write a Python/shell validator and wire it into a `make` target under `lint-zig`.
 **Why:** Zig's embed security model restricts `@embedFile` to the package directory. `@embedFile("../../public/openapi.json")` is a hard compile error, not a runtime failure. There is no workaround except an external script.
 **Tags:** zig, comptime, testing
-**Ref:** M11_001 §3.1 — OpenAPI ErrorBody validation moved to `scripts/check_openapi_errors.py` + `make check-openapi-errors`
-
----
-
-## 43. Fallback sentinels must not share a code with real registry entries
+**Ref:** M11_001 §3.1 — OpenAPI ErrorBody validation moved to scripts/check_openapi_errors.py + make check-openapi-errors
 
 **Rule:** In any code registry with a fallback sentinel (e.g. `UNKNOWN_ENTRY`), the sentinel's key field must NOT match any real registered entry. Use a distinct value that cannot appear in the real table. Add a test that verifies the sentinel is absent from the table.
-**Why:** A sentinel whose code matches a real entry causes tests to silently pass with wrong semantics (comparing the sentinel to "real" entries succeeds), and breaks comptime coverage gates that assume the sentinel is outside the table.
+**Why:** A sentinel whose code matches a real entry causes tests to silently pass with wrong semantics and breaks comptime coverage gates that assume the sentinel is outside the table.
 **Tags:** zig, error-handling, design
-**Ref:** M11_001 `error_table.zig` — `UNKNOWN_ENTRY.code` was `"UZ-INTERNAL-001"` (real 503 entry), renamed to `"UZ-UNKNOWN"` (distinct sentinel)
+**Ref:** M11_001 error_table.zig — UNKNOWN_ENTRY.code was "UZ-INTERNAL-001" (real 503 entry), renamed to "UZ-UNKNOWN" (distinct sentinel)
