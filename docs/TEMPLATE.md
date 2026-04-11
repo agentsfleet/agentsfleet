@@ -155,7 +155,7 @@ Copy everything below this line when creating a new spec.
 ## Files Changed (blast radius)
 
 List every file that will be created, modified, or deleted. This scopes
-the 400-line gate, `pub` audit, orphan sweep, and domain lint checks.
+the 350-line gate, `pub` audit, orphan sweep, and domain lint checks.
 
 | File | Action | Why |
 |------|--------|-----|
@@ -265,7 +265,7 @@ Each constraint must be measurable — not "fast" or "efficient" but a number or
 | Constraint | How to verify |
 |-----------|---------------|
 | {e.g., "Zero heap allocations in hot path"} | {e.g., "std.testing.allocator detects leaks; grep for alloc in loop body"} |
-| {e.g., "File under 400 lines"} | {e.g., "wc -l < 400"} |
+| {e.g., "File under 350 lines"} | {e.g., "wc -l < 350"} |
 | {e.g., "Cross-compiles on x86_64-linux, aarch64-linux"} | {e.g., "zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux"} |
 
 ---
@@ -412,8 +412,8 @@ zig build -Dtarget=aarch64-linux 2>&1 | tail -3; echo "arm=$?"
 # E8: Gitleaks — no secrets in diff
 gitleaks detect 2>&1 | tail -3; echo "gitleaks=$?"
 
-# E9: 400-line gate (exempts .md files)
-git diff --name-only origin/main | xargs wc -l 2>/dev/null | awk '$1 > 400 && $2 !~ /\.md$/ { print "OVER: " $2 ": " $1 " lines" }'
+# E9: 350-line gate (exempts .md files — RULE FLL)
+git diff --name-only origin/main | grep -v '\.md$' | xargs wc -l 2>/dev/null | awk '$1 > 350 { print "OVER: " $2 ": " $1 " lines (limit 350)" }'
 
 # E10: Domain-specific lints (uncomment applicable ones)
 # make check-pg-drain    # if touching pg query code
@@ -469,7 +469,7 @@ Filled in during VERIFY phase. Proves the spec claims are met.
 | Cross-compile | `zig build -Dtarget=x86_64-linux` | {output} | |
 | Lint | `make lint` | {output} | |
 | Gitleaks | `gitleaks detect` | {output} | |
-| 400L gate | `wc -l` (exempts .md) | {output} | |
+| 350L gate | `wc -l` (exempts .md — RULE FLL) | {output} | |
 | Dead code sweep | `grep -rn {symbol} src/` | {output} | |
 
 ---
