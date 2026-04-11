@@ -287,12 +287,12 @@ Generic principles from greptile reviews, PR feedback, and production incidents.
 **Tags:** zig
 **Ref:** M3_001 HMAC version "v0" derived by slicing "v0=" prefix — fixed with explicit hmac_version field.
 
-## 41. Pre-production schema teardown is edit-in-place
+## 41. Pre-v2.0 schema removal: delete contents, keep SELECT 1
 
-**Rule:** Before first production deploy, remove tables by editing CREATE TABLE files directly; keep file as version marker with comment.
-**Why:** Migration runner replays from scratch; no live data to protect; DROP adds noise to history.
+**Rule:** Before v2.0 (no production data), remove tables by replacing file contents with `SELECT 1;`. No version marker comments needed — just the no-op. After v2.0 (production data exists), use proper ALTER/DROP migrations.
+**Why:** Migration runner replays from scratch and needs a valid SQL statement per file. Comment-only files cause UnexpectedDBMessage (splitter tail handler sends raw comments to Postgres). Apostrophes/semicolons in comments also break the splitter (it does not track -- line comment context).
 **Tags:** sql, process
-**Ref:** M10_001 8 schema files edited in-place; version marker comment: -- MN_WS: removed. Kept as version marker.
+**Ref:** M10_001 comment-only version markers failed CI; apostrophe in "slots" opened unterminated string literal in splitter.
 
 ## 42. Removed endpoints return 410 Gone, not 404
 
