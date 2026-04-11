@@ -7,6 +7,7 @@ const common = @import("handlers/common.zig");
 const handler = @import("handler.zig");
 const http_server = @import("server.zig");
 const error_codes = @import("../errors/codes.zig");
+const telemetry_mod = @import("../observability/telemetry.zig");
 
 const TEST_TENANT_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01";
 const TEST_WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
@@ -45,6 +46,7 @@ const RunningServer = struct {
     // Queue intentionally uninitialized — do not add tests that touch ctx.queue
     // without initializing this field first.
     queue: queue_redis.Client = undefined,
+    telemetry: telemetry_mod.Telemetry,
     ctx: handler.Context,
     thread: std.Thread,
     port: u16,
@@ -178,11 +180,13 @@ fn startServer(alloc: std.mem.Allocator) !*RunningServer {
             .api_max_in_flight_requests = 64,
             .ready_max_queue_depth = null,
             .ready_max_queue_age_ms = null,
-            .posthog = null,
+            .telemetry = undefined,
         },
         .thread = undefined,
         .port = port,
     };
+    running.telemetry = telemetry_mod.Telemetry.initTest();
+    running.ctx.telemetry = &running.telemetry;
     running.ctx.queue = &running.queue;
     running.ctx.oidc = &running.verifier;
     running.ctx.auth_sessions = &running.session_store;

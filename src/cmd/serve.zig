@@ -1,6 +1,4 @@
 const std = @import("std");
-const posthog = @import("posthog");
-
 const db = @import("../db/pool.zig");
 const runtime_config = @import("../config/runtime.zig");
 const env_vars = @import("../config/env_vars.zig");
@@ -12,7 +10,7 @@ const auth_sessions = @import("../auth/sessions.zig");
 const queue_redis = @import("../queue/redis.zig");
 const metrics = @import("../observability/metrics.zig");
 const obs_log = @import("../observability/logging.zig");
-const posthog_events = @import("../observability/posthog_events.zig");
+const telemetry_mod = @import("../observability/telemetry.zig");
 const preflight = @import("preflight.zig");
 const common = @import("common.zig");
 const error_codes = @import("../errors/codes.zig");
@@ -143,13 +141,13 @@ pub fn run(alloc: std.mem.Allocator) !void {
         .api_max_in_flight_requests = serve_cfg.api_max_in_flight_requests,
         .ready_max_queue_depth = serve_cfg.ready_max_queue_depth,
         .ready_max_queue_age_ms = serve_cfg.ready_max_queue_age_ms,
-        .posthog = null,
+        .telemetry = undefined,
     };
     metrics.setApiInFlightRequests(0);
 
-    const ph = preflight.initPostHog(alloc);
-    defer ph.deinit(alloc);
-    ctx.posthog = ph.client;
+    var tel = preflight.initTelemetry(alloc);
+    defer tel.deinit(alloc);
+    ctx.telemetry = tel.ptr();
 
     if (serve_cfg.oidc_enabled) {
         log.info("startup.oidc_init status=start provider={s}", .{@tagName(serve_cfg.oidc_provider)});
@@ -191,7 +189,7 @@ pub fn run(alloc: std.mem.Allocator) !void {
         serve_cfg.api_max_clients,
         serve_cfg.api_max_in_flight_requests,
     });
-    posthog_events.trackServerStarted(ph.client, serve_cfg.port);
+    ctx.telemetry.capture(telemetry_mod.ServerStarted, .{ .port = serve_cfg.port });
     http_server.serve(&ctx, .{
         .port = serve_cfg.port,
         .threads = serve_cfg.api_http_threads,

@@ -3,7 +3,7 @@ const httpz = @import("httpz");
 const workspace_billing = @import("../../state/workspace_billing.zig");
 const workspace_credit = @import("../../state/workspace_credit.zig");
 const obs_log = @import("../../observability/logging.zig");
-const posthog_events = @import("../../observability/posthog_events.zig");
+const telemetry_mod = @import("../../observability/telemetry.zig");
 const error_codes = @import("../../errors/codes.zig");
 const id_format = @import("../../types/id_format.zig");
 const common = @import("common.zig");
@@ -50,7 +50,7 @@ fn enforceBillingGate(conn: anytype, tenant_id: []const u8, hx: hx_mod.Hx) bool 
     workspace_billing.enforceFreeWorkspaceCreationAllowed(conn, tenant_id, null) catch |err| {
         if (workspace_billing.errorCode(err)) |code| {
             log.err("workspace.billing_enforcement_fail tenant_id={s} error_code={s}", .{ tenant_id, code });
-            posthog_events.trackApiError(hx.ctx.posthog, hx.principal.user_id orelse "", code, workspace_billing.errorMessage(err) orelse "Workspace billing failure", hx.req_id);
+            hx.ctx.telemetry.capture(telemetry_mod.ApiError, .{ .distinct_id = hx.principal.user_id orelse "", .error_code = code, .message = workspace_billing.errorMessage(err) orelse "Workspace billing failure", .request_id = hx.req_id });
             hx.fail(code, workspace_billing.errorMessage(err) orelse "Workspace billing failure");
             return false;
         }
@@ -133,7 +133,7 @@ fn innerCreateWorkspace(hx: hx_mod.Hx, req: *httpz.Request) void {
     };
 
     log.info("workspace.created workspace_id={s} tenant_id={s} repo_url={s}", .{ workspace_id, tenant_id, repo_url });
-    posthog_events.trackWorkspaceCreated(hx.ctx.posthog, hx.principal.user_id orelse "", workspace_id, tenant_id, repo_url, hx.req_id);
+    hx.ctx.telemetry.capture(telemetry_mod.WorkspaceCreated, .{ .distinct_id = hx.principal.user_id orelse "", .workspace_id = workspace_id, .tenant_id = tenant_id, .repo_url = repo_url, .request_id = hx.req_id });
 
     hx.ok(.created, .{
         .workspace_id = workspace_id,

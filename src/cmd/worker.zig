@@ -4,7 +4,7 @@ const worker_config = @import("worker_config.zig");
 const env_vars = @import("../config/env_vars.zig");
 const events_bus = @import("../events/bus.zig");
 const obs_log = @import("../observability/logging.zig");
-const posthog_events = @import("../observability/posthog_events.zig");
+const telemetry_mod = @import("../observability/telemetry.zig");
 const error_codes = @import("../errors/codes.zig");
 const preflight = @import("preflight.zig");
 const executor_client = @import("../executor/client.zig");
@@ -64,8 +64,8 @@ pub fn run(alloc: std.mem.Allocator) !void {
     defer worker_cfg.deinit();
     log.info("startup.config_load status=ok", .{});
 
-    const ph = preflight.initPostHog(alloc);
-    defer ph.deinit(alloc);
+    var tel = preflight.initTelemetry(alloc);
+    defer tel.deinit(alloc);
 
     var exec_client: ?executor_client.ExecutorClient = null;
     if (worker_cfg.executor_socket_path) |path| {
@@ -77,7 +77,7 @@ pub fn run(alloc: std.mem.Allocator) !void {
                 path,
                 @errorName(err),
             });
-            posthog_events.trackStartupFailed(ph.client, "worker", "executor_connect", @errorName(err), error_codes.ERR_EXEC_STARTUP_POSTURE);
+            tel.ptr().capture(telemetry_mod.StartupFailed, .{ .command = "worker", .phase = "executor_connect", .reason = @errorName(err), .error_code = error_codes.ERR_EXEC_STARTUP_POSTURE });
             std.process.exit(1);
         };
         exec_client = ec;
@@ -88,15 +88,15 @@ pub fn run(alloc: std.mem.Allocator) !void {
     defer if (exec_client) |*ec| ec.close();
 
     const worker_pool = preflight.connectDbPool(alloc, .worker) catch |err| {
-        posthog_events.trackStartupFailed(ph.client, "worker", "db_connect", @errorName(err), error_codes.ERR_STARTUP_DB_CONNECT);
-        ph.deinit(alloc);
+        tel.ptr().capture(telemetry_mod.StartupFailed, .{ .command = "worker", .phase = "db_connect", .reason = @errorName(err), .error_code = error_codes.ERR_STARTUP_DB_CONNECT });
+        tel.deinit(alloc);
         std.process.exit(1);
     };
     defer worker_pool.deinit();
 
     preflight.checkMigrations(worker_pool, false) catch |err| {
-        posthog_events.trackStartupFailed(ph.client, "worker", "migration_check", @errorName(err), error_codes.ERR_STARTUP_MIGRATION_CHECK);
-        ph.deinit(alloc);
+        tel.ptr().capture(telemetry_mod.StartupFailed, .{ .command = "worker", .phase = "migration_check", .reason = @errorName(err), .error_code = error_codes.ERR_STARTUP_MIGRATION_CHECK });
+        tel.deinit(alloc);
         std.process.exit(1);
     };
 

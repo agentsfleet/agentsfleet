@@ -1,6 +1,6 @@
 const std = @import("std");
 const httpz = @import("httpz");
-const posthog_events = @import("../../observability/posthog_events.zig");
+const telemetry_mod = @import("../../observability/telemetry.zig");
 const error_codes = @import("../../errors/codes.zig");
 const workspace_guards = @import("../workspace_guards.zig");
 const harness_handlers = @import("harness_control_plane.zig");
@@ -99,19 +99,19 @@ fn innerCompileHarness(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []const
             error.ProfileNotFound => hx.fail(error_codes.ERR_PROFILE_NOT_FOUND, "No harness profile source found for workspace"),
             error.CompileFailed => common.internalOperationError(hx.res, "Harness compile failed", hx.req_id),
             error.EntitlementMissing => {
-                posthog_events.trackEntitlementRejected(hx.ctx.posthog, posthog_events.distinctIdOrSystem(hx.principal.user_id orelse ""), workspace_id, "COMPILE", error_codes.ERR_ENTITLEMENT_UNAVAILABLE, hx.req_id);
+                hx.ctx.telemetry.capture(telemetry_mod.EntitlementRejected, .{ .distinct_id = telemetry_mod.distinctIdOrSystem(hx.principal.user_id orelse ""), .workspace_id = workspace_id, .boundary = "COMPILE", .reason_code = error_codes.ERR_ENTITLEMENT_UNAVAILABLE, .request_id = hx.req_id });
                 hx.fail(error_codes.ERR_ENTITLEMENT_UNAVAILABLE, "Workspace entitlement missing; request denied");
             },
             error.EntitlementProfileLimit => {
-                posthog_events.trackEntitlementRejected(hx.ctx.posthog, posthog_events.distinctIdOrSystem(hx.principal.user_id orelse ""), workspace_id, "COMPILE", error_codes.ERR_ENTITLEMENT_PROFILE_LIMIT, hx.req_id);
+                hx.ctx.telemetry.capture(telemetry_mod.EntitlementRejected, .{ .distinct_id = telemetry_mod.distinctIdOrSystem(hx.principal.user_id orelse ""), .workspace_id = workspace_id, .boundary = "COMPILE", .reason_code = error_codes.ERR_ENTITLEMENT_PROFILE_LIMIT, .request_id = hx.req_id });
                 hx.fail(error_codes.ERR_ENTITLEMENT_PROFILE_LIMIT, "Workspace profile limit exceeded");
             },
             error.EntitlementStageLimit => {
-                posthog_events.trackEntitlementRejected(hx.ctx.posthog, posthog_events.distinctIdOrSystem(hx.principal.user_id orelse ""), workspace_id, "COMPILE", error_codes.ERR_ENTITLEMENT_STAGE_LIMIT, hx.req_id);
+                hx.ctx.telemetry.capture(telemetry_mod.EntitlementRejected, .{ .distinct_id = telemetry_mod.distinctIdOrSystem(hx.principal.user_id orelse ""), .workspace_id = workspace_id, .boundary = "COMPILE", .reason_code = error_codes.ERR_ENTITLEMENT_STAGE_LIMIT, .request_id = hx.req_id });
                 hx.fail(error_codes.ERR_ENTITLEMENT_STAGE_LIMIT, "Plan stage limit exceeded");
             },
             error.EntitlementSkillNotAllowed => {
-                posthog_events.trackEntitlementRejected(hx.ctx.posthog, posthog_events.distinctIdOrSystem(hx.principal.user_id orelse ""), workspace_id, "COMPILE", error_codes.ERR_ENTITLEMENT_SKILL_NOT_ALLOWED, hx.req_id);
+                hx.ctx.telemetry.capture(telemetry_mod.EntitlementRejected, .{ .distinct_id = telemetry_mod.distinctIdOrSystem(hx.principal.user_id orelse ""), .workspace_id = workspace_id, .boundary = "COMPILE", .reason_code = error_codes.ERR_ENTITLEMENT_SKILL_NOT_ALLOWED, .request_id = hx.req_id });
                 hx.fail(error_codes.ERR_ENTITLEMENT_SKILL_NOT_ALLOWED, "Plan does not allow one or more profile skills");
             },
             error.CreditExhausted => hx.fail(error_codes.ERR_CREDIT_EXHAUSTED, "Free plan credit exhausted. Upgrade to Scale to continue."),
@@ -137,25 +137,25 @@ fn innerCompileHarness(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []const
 pub const handleCompileHarness = hx_mod.authenticatedWithParam(innerCompileHarness);
 
 fn reportActivateError(hx: hx_mod.Hx, workspace_id: []const u8, err: anyerror) void {
-    const distinct_id = posthog_events.distinctIdOrSystem(hx.principal.user_id orelse "");
+    const distinct_id = telemetry_mod.distinctIdOrSystem(hx.principal.user_id orelse "");
     switch (err) {
         error.InvalidIdShape => hx.fail(error_codes.ERR_UUIDV7_INVALID_ID_SHAPE, "Invalid config_version_id format"),
         error.ProfileNotFound => hx.fail(error_codes.ERR_PROFILE_NOT_FOUND, "Profile version not found"),
         error.ProfileInvalid => hx.fail(error_codes.ERR_PROFILE_INVALID, "Invalid profile cannot be activated"),
         error.EntitlementMissing => {
-            posthog_events.trackEntitlementRejected(hx.ctx.posthog, distinct_id, workspace_id, "ACTIVATE", error_codes.ERR_ENTITLEMENT_UNAVAILABLE, hx.req_id);
+            hx.ctx.telemetry.capture(telemetry_mod.EntitlementRejected, .{ .distinct_id = distinct_id, .workspace_id = workspace_id, .boundary = "ACTIVATE", .reason_code = error_codes.ERR_ENTITLEMENT_UNAVAILABLE, .request_id = hx.req_id });
             hx.fail(error_codes.ERR_ENTITLEMENT_UNAVAILABLE, "Workspace entitlement missing; request denied");
         },
         error.EntitlementProfileLimit => {
-            posthog_events.trackEntitlementRejected(hx.ctx.posthog, distinct_id, workspace_id, "ACTIVATE", error_codes.ERR_ENTITLEMENT_PROFILE_LIMIT, hx.req_id);
+            hx.ctx.telemetry.capture(telemetry_mod.EntitlementRejected, .{ .distinct_id = distinct_id, .workspace_id = workspace_id, .boundary = "ACTIVATE", .reason_code = error_codes.ERR_ENTITLEMENT_PROFILE_LIMIT, .request_id = hx.req_id });
             hx.fail(error_codes.ERR_ENTITLEMENT_PROFILE_LIMIT, "Workspace profile limit exceeded");
         },
         error.EntitlementStageLimit => {
-            posthog_events.trackEntitlementRejected(hx.ctx.posthog, distinct_id, workspace_id, "ACTIVATE", error_codes.ERR_ENTITLEMENT_STAGE_LIMIT, hx.req_id);
+            hx.ctx.telemetry.capture(telemetry_mod.EntitlementRejected, .{ .distinct_id = distinct_id, .workspace_id = workspace_id, .boundary = "ACTIVATE", .reason_code = error_codes.ERR_ENTITLEMENT_STAGE_LIMIT, .request_id = hx.req_id });
             hx.fail(error_codes.ERR_ENTITLEMENT_STAGE_LIMIT, "Plan stage limit exceeded");
         },
         error.EntitlementSkillNotAllowed => {
-            posthog_events.trackEntitlementRejected(hx.ctx.posthog, distinct_id, workspace_id, "ACTIVATE", error_codes.ERR_ENTITLEMENT_SKILL_NOT_ALLOWED, hx.req_id);
+            hx.ctx.telemetry.capture(telemetry_mod.EntitlementRejected, .{ .distinct_id = distinct_id, .workspace_id = workspace_id, .boundary = "ACTIVATE", .reason_code = error_codes.ERR_ENTITLEMENT_SKILL_NOT_ALLOWED, .request_id = hx.req_id });
             hx.fail(error_codes.ERR_ENTITLEMENT_SKILL_NOT_ALLOWED, "Plan does not allow one or more profile skills");
         },
         error.CreditExhausted => hx.fail(error_codes.ERR_CREDIT_EXHAUSTED, "Free plan credit exhausted. Upgrade to Scale to continue."),
@@ -198,15 +198,14 @@ fn innerActivateHarness(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []cons
 
     log.info("harness.activated workspace_id={s} agent_id={s} config_version_id={s}", .{ workspace_id, out.agent_id, out.config_version_id });
 
-    posthog_events.trackProfileActivated(
-        hx.ctx.posthog,
-        posthog_events.distinctIdOrSystem(hx.principal.user_id orelse ""),
-        workspace_id,
-        out.agent_id,
-        out.config_version_id,
-        out.run_snapshot_config_version,
-        hx.req_id,
-    );
+    hx.ctx.telemetry.capture(telemetry_mod.ProfileActivated, .{
+        .distinct_id = telemetry_mod.distinctIdOrSystem(hx.principal.user_id orelse ""),
+        .workspace_id = workspace_id,
+        .agent_id = out.agent_id,
+        .config_version_id = out.config_version_id,
+        .run_snapshot_version = out.run_snapshot_config_version,
+        .request_id = hx.req_id,
+    });
 
     hx.ok(.ok, .{
         .workspace_id = workspace_id,

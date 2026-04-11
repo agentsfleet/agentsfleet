@@ -111,7 +111,7 @@ fn handleRelay(
     const req_id = common.requestId(alloc);
 
     const principal = common.authenticate(alloc, req, ctx) catch |err| {
-        common.writeAuthError(res, req_id, err);
+        common.writeAuthError(ctx, res, req_id, err);
         return;
     };
     if (!common.requireUuidV7Id(res, req_id, workspace_id, "workspace_id")) return;
