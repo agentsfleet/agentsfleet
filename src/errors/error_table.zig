@@ -190,6 +190,10 @@ pub const TABLE = [_]ErrorEntry{
 /// Look up an error entry by code string. Returns null if not found.
 /// Callers should use UNKNOWN_ENTRY as the fallback:
 ///   const entry = error_table.lookup(code) orelse error_table.UNKNOWN_ENTRY;
+///
+/// O(n) linear scan — fine for error paths (cold). If the table grows past
+/// ~500 entries or error responses become hot (throttling storms), replace
+/// with std.StaticStringMap for O(1) comptime-generated lookup.
 pub fn lookup(code: []const u8) ?ErrorEntry {
     for (TABLE) |entry| {
         if (std.mem.eql(u8, entry.code, code)) return entry;

@@ -23,17 +23,6 @@ pub const Hx = struct {
     ctx: *common.Context,
     res: *httpz.Response,
 
-    /// Acquire a Postgres connection from the pool.
-    /// Caller must call hx.releaseDb(conn) when done.
-    pub fn db(self: Hx) !*pg.Conn {
-        return self.ctx.pool.acquire();
-    }
-
-    /// Release a Postgres connection back to the pool.
-    pub fn releaseDb(self: Hx, conn: *pg.Conn) void {
-        self.ctx.pool.release(conn);
-    }
-
     /// Redis client reference.
     pub fn redis(self: Hx) *queue_redis.Client {
         return self.ctx.queue;

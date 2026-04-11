@@ -59,7 +59,13 @@ def main() -> int:
                     continue
                 content = resp.get("content", {})
                 if not content:
-                    # Uses $ref to shared Error response — OK
+                    # No inline content — must be $ref to shared Error response
+                    ref = resp.get("$ref", "")
+                    if ref and not ref.endswith("/responses/Error"):
+                        failures.append(
+                            f"{method.upper()} {path} HTTP {code}: "
+                            f"uses $ref '{ref}', expected '#/components/responses/Error'"
+                        )
                     continue
                 if REQUIRED_CONTENT_TYPE not in content:
                     failures.append(

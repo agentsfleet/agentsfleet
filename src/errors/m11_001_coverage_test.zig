@@ -198,7 +198,7 @@ test "T10: all TABLE docs_uri end with the entry's own code" {
     }
 }
 
-test "T10: UNKNOWN_ENTRY sentinel code does not start with 'UZ-' prefix — wait, it does, but is distinct from all TABLE codes" {
+test "T10: UNKNOWN_ENTRY has sentinel code 'UZ-UNKNOWN' and is 500 (not in TABLE)" {
     // UNKNOWN_ENTRY.code is "UZ-UNKNOWN" — a sentinel, not a real registered code.
     // It must not appear in TABLE (tested in error_table.zig) and its status must be
     // the generic 500 fallback, not a domain-specific status.
