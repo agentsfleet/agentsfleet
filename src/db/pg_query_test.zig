@@ -1,5 +1,4 @@
 const std = @import("std");
-const pg = @import("pg");
 const PgQuery = @import("pg_query.zig").PgQuery;
 const base = @import("test_fixtures.zig");
 

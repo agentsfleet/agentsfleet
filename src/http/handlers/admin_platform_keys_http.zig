@@ -1,6 +1,5 @@
 const std = @import("std");
 const httpz = @import("httpz");
-const pg = @import("pg");
 const PgQuery = @import("../../db/pg_query.zig").PgQuery;
 const common = @import("common.zig");
 const error_codes = @import("../../errors/codes.zig");
