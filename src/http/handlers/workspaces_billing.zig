@@ -2,7 +2,7 @@ const std = @import("std");
 const httpz = @import("httpz");
 const PgQuery = @import("../../db/pg_query.zig").PgQuery;
 const workspace_billing = @import("../../state/workspace_billing.zig");
-const posthog_events = @import("../../observability/posthog_events.zig");
+const telemetry_mod = @import("../../observability/telemetry.zig");
 const obs_log = @import("../../observability/logging.zig");
 const error_codes = @import("../../errors/error_registry.zig");
 const common = @import("common.zig");
@@ -57,7 +57,7 @@ fn innerUpgradeWorkspaceToScale(hx: hx_mod.Hx, req: *httpz.Request, workspace_id
         .actor = actor,
     }) catch |err| switch (err) {
         error.InvalidSubscriptionId => {
-            posthog_events.trackApiErrorWithContext(hx.ctx.posthog, hx.principal.user_id orelse "", error_codes.ERR_BILLING_INVALID_SUBSCRIPTION_ID, "subscription_id is required", workspace_id, hx.req_id);
+            hx.ctx.telemetry.capture(telemetry_mod.ApiErrorWithContext, .{ .distinct_id = hx.principal.user_id orelse "", .error_code = error_codes.ERR_BILLING_INVALID_SUBSCRIPTION_ID, .message = "subscription_id is required", .workspace_id = workspace_id, .request_id = hx.req_id });
             hx.fail(error_codes.ERR_BILLING_INVALID_SUBSCRIPTION_ID, "subscription_id is required");
             return;
         },
@@ -163,16 +163,15 @@ fn respondBillingState(hx: hx_mod.Hx, workspace_id: []const u8, event_type: []co
         .grace_expires_at = state.grace_expires_at,
         .request_id = hx.req_id,
     });
-    posthog_events.trackBillingLifecycleEvent(
-        hx.ctx.posthog,
-        posthog_events.distinctIdOrSystem(hx.principal.user_id orelse ""),
-        workspace_id,
-        event_type,
-        reason,
-        state.plan_tier.label(),
-        state.billing_status.label(),
-        hx.req_id,
-    );
+    hx.ctx.telemetry.capture(telemetry_mod.BillingLifecycleEvent, .{
+        .distinct_id = telemetry_mod.distinctIdOrSystem(hx.principal.user_id orelse ""),
+        .workspace_id = workspace_id,
+        .event_type = event_type,
+        .reason = reason,
+        .plan_tier = state.plan_tier.label(),
+        .billing_status = state.billing_status.label(),
+        .request_id = hx.req_id,
+    });
 }
 
 fn innerApplyWorkspaceBillingEvent(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []const u8) void {
@@ -219,7 +218,7 @@ fn innerApplyWorkspaceBillingEvent(hx: hx_mod.Hx, req: *httpz.Request, workspace
         .actor = actor,
     }) catch |err| {
         if (workspace_billing.errorCode(err)) |code| {
-            posthog_events.trackApiErrorWithContext(hx.ctx.posthog, hx.principal.user_id orelse "", code, workspace_billing.errorMessage(err) orelse "Workspace billing failure", workspace_id, hx.req_id);
+            hx.ctx.telemetry.capture(telemetry_mod.ApiErrorWithContext, .{ .distinct_id = hx.principal.user_id orelse "", .error_code = code, .message = workspace_billing.errorMessage(err) orelse "Workspace billing failure", .workspace_id = workspace_id, .request_id = hx.req_id });
             hx.fail(code, workspace_billing.errorMessage(err) orelse "Workspace billing failure");
             return;
         }

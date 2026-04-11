@@ -2,13 +2,12 @@ const std = @import("std");
 const httpz = @import("httpz");
 const pg = @import("pg");
 const PgQuery = @import("../../db/pg_query.zig").PgQuery;
-const posthog = @import("posthog");
 const oidc = @import("../../auth/oidc.zig");
 const auth_sessions = @import("../../auth/sessions.zig");
 const queue_redis = @import("../../queue/redis.zig");
 const metrics = @import("../../observability/metrics.zig");
 const obs_log = @import("../../observability/logging.zig");
-const posthog_events = @import("../../observability/posthog_events.zig");
+const telemetry_mod = @import("../../observability/telemetry.zig");
 const trace_ctx = @import("../../observability/trace.zig");
 const db = @import("../../db/pool.zig");
 const error_codes = @import("../../errors/error_registry.zig");
@@ -29,7 +28,7 @@ pub const Context = struct {
     api_max_in_flight_requests: u32,
     ready_max_queue_depth: ?i64,
     ready_max_queue_age_ms: ?i64,
-    posthog: ?*posthog.PostHogClient = null,
+    telemetry: *telemetry_mod.Telemetry,
 };
 
 /// Parse traceparent header from request, or generate a root trace context.
@@ -236,18 +235,14 @@ pub fn requireUuidV7Id(
     return false;
 }
 
-pub fn writeAuthError(res: *httpz.Response, req_id: []const u8, err: AuthError) void {
-    writeAuthErrorWithTracking(res, req_id, err, null);
-}
-
-pub fn writeAuthErrorWithTracking(res: *httpz.Response, req_id: []const u8, err: AuthError, ph_client: ?*posthog.PostHogClient) void {
+pub fn writeAuthError(ctx: *Context, res: *httpz.Response, req_id: []const u8, err: AuthError) void {
     const reason: []const u8 = switch (err) {
         AuthError.TokenExpired => "token_expired",
         AuthError.Unauthorized => "unauthorized",
         AuthError.UnsupportedRole => "unsupported_role",
         AuthError.AuthServiceUnavailable => "auth_service_unavailable",
     };
-    posthog_events.trackAuthRejected(ph_client, reason, req_id);
+    ctx.telemetry.capture(telemetry_mod.AuthRejected, .{ .reason = reason, .request_id = req_id });
     switch (err) {
         AuthError.TokenExpired => errorResponse(res, error_codes.ERR_TOKEN_EXPIRED, "token expired", req_id),
         AuthError.Unauthorized => errorResponse(res, error_codes.ERR_UNAUTHORIZED, "Invalid or missing token", req_id),

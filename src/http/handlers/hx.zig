@@ -48,7 +48,7 @@ pub fn authenticated(
             const req_id = common.requestId(alloc);
 
             const principal = common.authenticate(alloc, req, ctx) catch |err| {
-                common.writeAuthError(res, req_id, err);
+                common.writeAuthError(ctx, res, req_id, err);
                 return;
             };
 
@@ -75,7 +75,7 @@ pub fn authenticatedWithParam(
             const req_id = common.requestId(alloc);
 
             const principal = common.authenticate(alloc, req, ctx) catch |err| {
-                common.writeAuthError(res, req_id, err);
+                common.writeAuthError(ctx, res, req_id, err);
                 return;
             };
 

@@ -16,18 +16,18 @@
 //!   - Exit code: 0 = success, 1 = fatal error.
 
 const std = @import("std");
-const posthog = @import("posthog");
 const db = @import("../db/pool.zig");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 
 const sql_rollback = "ROLLBACK";
 const outbox = @import("../state/outbox_reconciler.zig");
 const id_format = @import("../types/id_format.zig");
-const obs_log = @import("../observability/logging.zig");
 
 const args_mod = @import("./reconcile/args.zig");
 const daemon_mod = @import("./reconcile/daemon.zig");
 const tick_mod = @import("./reconcile/tick.zig");
+const preflight = @import("preflight.zig");
+const telemetry_mod = @import("../observability/telemetry.zig");
 
 fn openDbOrExit(alloc: std.mem.Allocator) *db.Pool {
     const pool = db.initFromEnvForRole(alloc, .api) catch |err| {
@@ -41,27 +41,14 @@ pub fn run(alloc: std.mem.Allocator) !void {
     const args = args_mod.parseArgs(alloc) catch |err| args_mod.printArgErrorAndExit(err);
     const pool = openDbOrExit(alloc);
     defer pool.deinit();
-    const posthog_api_key = std.process.getEnvVarOwned(alloc, "POSTHOG_API_KEY") catch null;
-    defer if (posthog_api_key) |key| alloc.free(key);
-    const ph_client: ?*posthog.PostHogClient = if (posthog_api_key) |key| blk: {
-        break :blk posthog.init(alloc, .{
-            .api_key = key,
-            .host = "https://us.i.posthog.com",
-            .flush_interval_ms = 10_000,
-            .flush_at = 20,
-            .max_retries = 3,
-        }) catch |err| {
-            obs_log.logWarnErr(.reconcile, err, "posthog init failed; analytics disabled", .{});
-            break :blk null;
-        };
-    } else null;
-    defer if (ph_client) |client| client.deinit();
+    var tel = preflight.initTelemetry(alloc);
+    defer tel.deinit(alloc);
 
     switch (args.mode) {
         .one_shot => {
-            if (!tick_mod.runOnce(alloc, pool, ph_client)) std.process.exit(1);
+            if (!tick_mod.runOnce(alloc, pool, tel.ptr())) std.process.exit(1);
         },
-        .daemon => try daemon_mod.runDaemon(alloc, pool, ph_client, args.interval_seconds, args.metrics_port),
+        .daemon => try daemon_mod.runDaemon(alloc, pool, tel.ptr(), args.interval_seconds, args.metrics_port),
     }
 }
 
