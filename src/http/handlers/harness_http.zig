@@ -136,6 +136,34 @@ fn innerCompileHarness(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []const
 
 pub const handleCompileHarness = hx_mod.authenticatedWithParam(innerCompileHarness);
 
+fn reportActivateError(hx: hx_mod.Hx, workspace_id: []const u8, err: anyerror) void {
+    const distinct_id = posthog_events.distinctIdOrSystem(hx.principal.user_id orelse "");
+    switch (err) {
+        error.InvalidIdShape => hx.fail(error_codes.ERR_UUIDV7_INVALID_ID_SHAPE, "Invalid config_version_id format"),
+        error.ProfileNotFound => hx.fail(error_codes.ERR_PROFILE_NOT_FOUND, "Profile version not found"),
+        error.ProfileInvalid => hx.fail(error_codes.ERR_PROFILE_INVALID, "Invalid profile cannot be activated"),
+        error.EntitlementMissing => {
+            posthog_events.trackEntitlementRejected(hx.ctx.posthog, distinct_id, workspace_id, "ACTIVATE", error_codes.ERR_ENTITLEMENT_UNAVAILABLE, hx.req_id);
+            hx.fail(error_codes.ERR_ENTITLEMENT_UNAVAILABLE, "Workspace entitlement missing; request denied");
+        },
+        error.EntitlementProfileLimit => {
+            posthog_events.trackEntitlementRejected(hx.ctx.posthog, distinct_id, workspace_id, "ACTIVATE", error_codes.ERR_ENTITLEMENT_PROFILE_LIMIT, hx.req_id);
+            hx.fail(error_codes.ERR_ENTITLEMENT_PROFILE_LIMIT, "Workspace profile limit exceeded");
+        },
+        error.EntitlementStageLimit => {
+            posthog_events.trackEntitlementRejected(hx.ctx.posthog, distinct_id, workspace_id, "ACTIVATE", error_codes.ERR_ENTITLEMENT_STAGE_LIMIT, hx.req_id);
+            hx.fail(error_codes.ERR_ENTITLEMENT_STAGE_LIMIT, "Plan stage limit exceeded");
+        },
+        error.EntitlementSkillNotAllowed => {
+            posthog_events.trackEntitlementRejected(hx.ctx.posthog, distinct_id, workspace_id, "ACTIVATE", error_codes.ERR_ENTITLEMENT_SKILL_NOT_ALLOWED, hx.req_id);
+            hx.fail(error_codes.ERR_ENTITLEMENT_SKILL_NOT_ALLOWED, "Plan does not allow one or more profile skills");
+        },
+        error.CreditExhausted => hx.fail(error_codes.ERR_CREDIT_EXHAUSTED, "Free plan credit exhausted. Upgrade to Scale to continue."),
+        else => common.internalOperationError(hx.res, "Failed to activate profile", hx.req_id),
+    }
+    log.err("harness.activate_fail error_code=UZ-INTERNAL-003 workspace_id={s}", .{workspace_id});
+}
+
 fn innerActivateHarness(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []const u8) void {
     if (!common.requireUuidV7Id(hx.res, hx.req_id, workspace_id, "workspace_id")) return;
 
@@ -164,30 +192,7 @@ fn innerActivateHarness(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []cons
     log.debug("harness.activate workspace_id={s}", .{workspace_id});
 
     const out = harness_handlers.activateProfile(conn, hx.alloc, workspace_id, parsed.value) catch |err| {
-        switch (err) {
-            error.InvalidIdShape => hx.fail(error_codes.ERR_UUIDV7_INVALID_ID_SHAPE, "Invalid config_version_id format"),
-            error.ProfileNotFound => hx.fail(error_codes.ERR_PROFILE_NOT_FOUND, "Profile version not found"),
-            error.ProfileInvalid => hx.fail(error_codes.ERR_PROFILE_INVALID, "Invalid profile cannot be activated"),
-            error.EntitlementMissing => {
-                posthog_events.trackEntitlementRejected(hx.ctx.posthog, posthog_events.distinctIdOrSystem(hx.principal.user_id orelse ""), workspace_id, "ACTIVATE", error_codes.ERR_ENTITLEMENT_UNAVAILABLE, hx.req_id);
-                hx.fail(error_codes.ERR_ENTITLEMENT_UNAVAILABLE, "Workspace entitlement missing; request denied");
-            },
-            error.EntitlementProfileLimit => {
-                posthog_events.trackEntitlementRejected(hx.ctx.posthog, posthog_events.distinctIdOrSystem(hx.principal.user_id orelse ""), workspace_id, "ACTIVATE", error_codes.ERR_ENTITLEMENT_PROFILE_LIMIT, hx.req_id);
-                hx.fail(error_codes.ERR_ENTITLEMENT_PROFILE_LIMIT, "Workspace profile limit exceeded");
-            },
-            error.EntitlementStageLimit => {
-                posthog_events.trackEntitlementRejected(hx.ctx.posthog, posthog_events.distinctIdOrSystem(hx.principal.user_id orelse ""), workspace_id, "ACTIVATE", error_codes.ERR_ENTITLEMENT_STAGE_LIMIT, hx.req_id);
-                hx.fail(error_codes.ERR_ENTITLEMENT_STAGE_LIMIT, "Plan stage limit exceeded");
-            },
-            error.EntitlementSkillNotAllowed => {
-                posthog_events.trackEntitlementRejected(hx.ctx.posthog, posthog_events.distinctIdOrSystem(hx.principal.user_id orelse ""), workspace_id, "ACTIVATE", error_codes.ERR_ENTITLEMENT_SKILL_NOT_ALLOWED, hx.req_id);
-                hx.fail(error_codes.ERR_ENTITLEMENT_SKILL_NOT_ALLOWED, "Plan does not allow one or more profile skills");
-            },
-            error.CreditExhausted => hx.fail(error_codes.ERR_CREDIT_EXHAUSTED, "Free plan credit exhausted. Upgrade to Scale to continue."),
-            else => common.internalOperationError(hx.res, "Failed to activate profile", hx.req_id),
-        }
-        log.err("harness.activate_fail error_code=UZ-INTERNAL-003 workspace_id={s}", .{workspace_id});
+        reportActivateError(hx, workspace_id, err);
         return;
     };
 

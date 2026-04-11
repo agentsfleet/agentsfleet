@@ -30,6 +30,58 @@ fn buildInstallUrl(alloc: std.mem.Allocator, app_slug: []const u8, workspace_id:
     );
 }
 
+/// Upsert the tenant row. Returns false and writes error response on failure.
+fn upsertTenant(conn: anytype, tenant_id: []const u8, now_ms: i64, hx: hx_mod.Hx) bool {
+    _ = common.setTenantSessionContext(conn, tenant_id);
+    _ = conn.exec(
+        \\INSERT INTO tenants (tenant_id, name, api_key_hash, created_at, updated_at)
+        \\VALUES ($1, $2, 'managed', $3, $3)
+        \\ON CONFLICT (tenant_id) DO NOTHING
+    , .{ tenant_id, "Workspace Tenant", now_ms }) catch {
+        log.err("workspace.tenant_upsert_fail error_code=UZ-INTERNAL-003 tenant_id={s}", .{tenant_id});
+        common.internalOperationError(hx.res, "Failed to upsert tenant", hx.req_id);
+        return false;
+    };
+    return true;
+}
+
+/// Enforce free workspace billing gate. Returns false and writes error response on failure.
+fn enforceBillingGate(conn: anytype, tenant_id: []const u8, hx: hx_mod.Hx) bool {
+    workspace_billing.enforceFreeWorkspaceCreationAllowed(conn, tenant_id, null) catch |err| {
+        if (workspace_billing.errorCode(err)) |code| {
+            log.err("workspace.billing_enforcement_fail tenant_id={s} error_code={s}", .{ tenant_id, code });
+            posthog_events.trackApiError(hx.ctx.posthog, hx.principal.user_id orelse "", code, workspace_billing.errorMessage(err) orelse "Workspace billing failure", hx.req_id);
+            hx.fail(code, workspace_billing.errorMessage(err) orelse "Workspace billing failure");
+            return false;
+        }
+        log.err("workspace.billing_validation_fail error_code=UZ-INTERNAL-003 tenant_id={s}", .{tenant_id});
+        common.internalOperationError(hx.res, "Failed to validate free workspace limit", hx.req_id);
+        return false;
+    };
+    return true;
+}
+
+/// INSERT workspace row and provision free entitlement + credit. Returns false on failure.
+fn insertAndProvision(conn: anytype, hx: hx_mod.Hx, workspace_id: []const u8, tenant_id: []const u8, repo_url: []const u8, default_branch: []const u8, now_ms: i64) bool {
+    _ = conn.exec(
+        \\INSERT INTO workspaces
+        \\  (workspace_id, tenant_id, repo_url, default_branch, paused, created_by, version, created_at, updated_at)
+        \\VALUES ($1, $2, $3, $4, false, $5, 1, $6, $6)
+    , .{ workspace_id, tenant_id, repo_url, default_branch, hx.principal.user_id, now_ms }) catch {
+        common.internalOperationError(hx.res, "Failed to create workspace", hx.req_id);
+        return false;
+    };
+    workspace_billing.provisionFreeWorkspace(conn, hx.alloc, workspace_id, "api") catch {
+        common.internalOperationError(hx.res, "Failed to provision free entitlement", hx.req_id);
+        return false;
+    };
+    workspace_credit.provisionWorkspaceCredit(conn, hx.alloc, workspace_id, "api") catch {
+        common.internalOperationError(hx.res, "Failed to provision free credit", hx.req_id);
+        return false;
+    };
+    return true;
+}
+
 fn innerCreateWorkspace(hx: hx_mod.Hx, req: *httpz.Request) void {
     const Req = struct {
         repo_url: []const u8,
@@ -65,51 +117,14 @@ fn innerCreateWorkspace(hx: hx_mod.Hx, req: *httpz.Request) void {
     defer hx.ctx.pool.release(conn);
 
     const now_ms = std.time.milliTimestamp();
-    _ = common.setTenantSessionContext(conn, tenant_id);
-    _ = conn.exec(
-        \\INSERT INTO tenants (tenant_id, name, api_key_hash, created_at, updated_at)
-        \\VALUES ($1, $2, 'managed', $3, $3)
-        \\ON CONFLICT (tenant_id) DO NOTHING
-    , .{ tenant_id, "Workspace Tenant", now_ms }) catch {
-        log.err("workspace.tenant_upsert_fail error_code=UZ-INTERNAL-003 tenant_id={s}", .{tenant_id});
-        common.internalOperationError(hx.res, "Failed to upsert tenant", hx.req_id);
-        return;
-    };
-
-    workspace_billing.enforceFreeWorkspaceCreationAllowed(conn, tenant_id, null) catch |err| {
-        if (workspace_billing.errorCode(err)) |code| {
-            log.err("workspace.billing_enforcement_fail tenant_id={s} error_code={s}", .{ tenant_id, code });
-            posthog_events.trackApiError(hx.ctx.posthog, hx.principal.user_id orelse "", code, workspace_billing.errorMessage(err) orelse "Workspace billing failure", hx.req_id);
-            hx.fail(code, workspace_billing.errorMessage(err) orelse "Workspace billing failure");
-            return;
-        }
-        log.err("workspace.billing_validation_fail error_code=UZ-INTERNAL-003 tenant_id={s}", .{tenant_id});
-        common.internalOperationError(hx.res, "Failed to validate free workspace limit", hx.req_id);
-        return;
-    };
+    if (!upsertTenant(conn, tenant_id, now_ms, hx)) return;
+    if (!enforceBillingGate(conn, tenant_id, hx)) return;
 
     const workspace_id = generateWorkspaceId(hx.alloc) catch {
         common.internalOperationError(hx.res, "Failed to allocate workspace id", hx.req_id);
         return;
     };
-
-    _ = conn.exec(
-        \\INSERT INTO workspaces
-        \\  (workspace_id, tenant_id, repo_url, default_branch, paused, created_by, version, created_at, updated_at)
-        \\VALUES ($1, $2, $3, $4, false, $5, 1, $6, $6)
-    , .{ workspace_id, tenant_id, repo_url, default_branch, hx.principal.user_id, now_ms }) catch {
-        common.internalOperationError(hx.res, "Failed to create workspace", hx.req_id);
-        return;
-    };
-
-    workspace_billing.provisionFreeWorkspace(conn, hx.alloc, workspace_id, "api") catch {
-        common.internalOperationError(hx.res, "Failed to provision free entitlement", hx.req_id);
-        return;
-    };
-    workspace_credit.provisionWorkspaceCredit(conn, hx.alloc, workspace_id, "api") catch {
-        common.internalOperationError(hx.res, "Failed to provision free credit", hx.req_id);
-        return;
-    };
+    if (!insertAndProvision(conn, hx, workspace_id, tenant_id, repo_url, default_branch, now_ms)) return;
 
     const github_app_slug = std.process.getEnvVarOwned(hx.alloc, "GITHUB_APP_SLUG") catch "usezombie";
     const install_url = buildInstallUrl(hx.alloc, github_app_slug, workspace_id) catch {

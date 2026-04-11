@@ -12,9 +12,7 @@
 
 const std = @import("std");
 const httpz = @import("httpz");
-const pg = @import("pg");
 const common = @import("common.zig");
-const queue_redis = @import("../../queue/redis.zig");
 
 pub const Hx = struct {
     alloc: std.mem.Allocator,
@@ -22,11 +20,6 @@ pub const Hx = struct {
     req_id: []const u8,
     ctx: *common.Context,
     res: *httpz.Response,
-
-    /// Redis client reference.
-    pub fn redis(self: Hx) *queue_redis.Client {
-        return self.ctx.queue;
-    }
 
     /// Write a successful JSON response.
     pub fn ok(self: Hx, status: std.http.Status, body: anytype) void {

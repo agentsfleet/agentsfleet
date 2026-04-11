@@ -155,6 +155,30 @@ fn innerSetWorkspaceScoringConfig(hx: hx_mod.Hx, req: *httpz.Request, workspace_
 
 pub const handleSetWorkspaceScoringConfig = hx_mod.authenticatedWithParam(innerSetWorkspaceScoringConfig);
 
+/// Respond with the billed state and emit the posthog lifecycle event.
+fn respondBillingState(hx: hx_mod.Hx, workspace_id: []const u8, event_type: []const u8, reason: []const u8, state: workspace_billing.StateView) void {
+    log.info("billing.event_applied workspace_id={s} event_type={s} plan_tier={s}", .{ workspace_id, event_type, state.plan_tier.label() });
+    hx.ok(.ok, .{
+        .workspace_id = workspace_id,
+        .event_type = event_type,
+        .plan_tier = state.plan_tier.label(),
+        .billing_status = state.billing_status.label(),
+        .plan_sku = state.plan_sku,
+        .grace_expires_at = state.grace_expires_at,
+        .request_id = hx.req_id,
+    });
+    posthog_events.trackBillingLifecycleEvent(
+        hx.ctx.posthog,
+        posthog_events.distinctIdOrSystem(hx.principal.user_id orelse ""),
+        workspace_id,
+        event_type,
+        reason,
+        state.plan_tier.label(),
+        state.billing_status.label(),
+        hx.req_id,
+    );
+}
+
 fn innerApplyWorkspaceBillingEvent(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []const u8) void {
     if (!common.requireUuidV7Id(hx.res, hx.req_id, workspace_id, "workspace_id")) return;
 
@@ -210,28 +234,7 @@ fn innerApplyWorkspaceBillingEvent(hx: hx_mod.Hx, req: *httpz.Request, workspace
     defer hx.alloc.free(state.plan_sku);
     defer if (state.subscription_id) |v| hx.alloc.free(v);
 
-    log.info("billing.event_applied workspace_id={s} event_type={s} plan_tier={s}", .{ workspace_id, parsed.value.event_type, state.plan_tier.label() });
-
-    hx.ok(.ok, .{
-        .workspace_id = workspace_id,
-        .event_type = parsed.value.event_type,
-        .plan_tier = state.plan_tier.label(),
-        .billing_status = state.billing_status.label(),
-        .plan_sku = state.plan_sku,
-        .grace_expires_at = state.grace_expires_at,
-        .request_id = hx.req_id,
-    });
-
-    posthog_events.trackBillingLifecycleEvent(
-        hx.ctx.posthog,
-        posthog_events.distinctIdOrSystem(hx.principal.user_id orelse ""),
-        workspace_id,
-        parsed.value.event_type,
-        parsed.value.reason,
-        state.plan_tier.label(),
-        state.billing_status.label(),
-        hx.req_id,
-    );
+    respondBillingState(hx, workspace_id, parsed.value.event_type, parsed.value.reason, state);
 }
 
 pub const handleApplyWorkspaceBillingEvent = hx_mod.authenticatedWithParam(innerApplyWorkspaceBillingEvent);
