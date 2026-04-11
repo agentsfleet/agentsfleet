@@ -55,7 +55,7 @@ jobs:
         run: |
           mkdir -p .tmp
           docker compose cp redis:/tls/server.crt .tmp/redis-ca.crt
-          echo "TEST_REDIS_TLS_CA_CERT=$(pwd)/.tmp/redis-ca.crt" >> "$GITHUB_ENV"
+          echo "REDIS_TLS_CA_CERT_FILE=$(pwd)/.tmp/redis-ca.crt" >> "$GITHUB_ENV"
 
       - name: Run all integration tests
         env:
