@@ -112,3 +112,92 @@ test "M11_001: unregistered code → HTTP 500 fallback" {
     common.errorResponse(ht.res, "UZ-DOES-NOT-EXIST-IN-TABLE", "fallback test", "req-fb");
     try ht.expectStatus(500);
 }
+
+// ── T2: Edge cases — empty / boundary inputs ─────────────────────────────────
+
+test "M11_001 T2: empty detail string passes through without crashing" {
+    var ht = httpz.testing.init(.{});
+    defer ht.deinit();
+
+    common.errorResponse(ht.res, error_codes.ERR_UNAUTHORIZED, "", "req-t2a");
+    try ht.expectStatus(401);
+    const json = try ht.getJson();
+    try std.testing.expectEqualStrings("", json.object.get("detail").?.string);
+}
+
+test "M11_001 T2: empty request_id string passes through without crashing" {
+    var ht = httpz.testing.init(.{});
+    defer ht.deinit();
+
+    common.errorResponse(ht.res, error_codes.ERR_UNAUTHORIZED, "some detail", "");
+    try ht.expectStatus(401);
+    const json = try ht.getJson();
+    try std.testing.expectEqualStrings("", json.object.get("request_id").?.string);
+}
+
+test "M11_001 T2: very long detail (1000 chars) does not crash" {
+    var ht = httpz.testing.init(.{});
+    defer ht.deinit();
+
+    const long_detail = "x" ** 1000;
+    common.errorResponse(ht.res, error_codes.ERR_UNAUTHORIZED, long_detail, "req-t2c");
+    try ht.expectStatus(401);
+    const json = try ht.getJson();
+    try std.testing.expectEqual(@as(usize, 1000), json.object.get("detail").?.string.len);
+}
+
+test "M11_001 T2: docs_uri in body matches table entry (not constructed by caller)" {
+    var ht = httpz.testing.init(.{});
+    defer ht.deinit();
+
+    common.errorResponse(ht.res, error_codes.ERR_UNAUTHORIZED, "d", "r");
+    const json = try ht.getJson();
+    const expected_entry = error_table.lookup(error_codes.ERR_UNAUTHORIZED).?;
+    try std.testing.expectEqualStrings(expected_entry.docs_uri, json.object.get("docs_uri").?.string);
+}
+
+test "M11_001 T2: title in body matches table entry (caller cannot override)" {
+    var ht = httpz.testing.init(.{});
+    defer ht.deinit();
+
+    common.errorResponse(ht.res, error_codes.ERR_UNAUTHORIZED, "d", "r");
+    const json = try ht.getJson();
+    const expected_entry = error_table.lookup(error_codes.ERR_UNAUTHORIZED).?;
+    try std.testing.expectEqualStrings(expected_entry.title, json.object.get("title").?.string);
+}
+
+// ── T3: No nested 'error' wrapper — RFC 7807 flat body ───────────────────────
+
+test "M11_001 T3: body has no nested 'error' field (old format regression)" {
+    var ht = httpz.testing.init(.{});
+    defer ht.deinit();
+
+    common.errorResponse(ht.res, error_codes.ERR_UNAUTHORIZED, "detail", "req-t3");
+    const json = try ht.getJson();
+    // Old format had .error.code — must not exist in new format
+    try std.testing.expectEqual(@as(?std.json.Value, null), json.object.get("error"));
+}
+
+test "M11_001 T3: body has no nested 'message' field (old format regression)" {
+    var ht = httpz.testing.init(.{});
+    defer ht.deinit();
+
+    common.errorResponse(ht.res, error_codes.ERR_UNAUTHORIZED, "detail", "req-t3b");
+    const json = try ht.getJson();
+    // Old format used .message — replaced by .detail in RFC 7807
+    try std.testing.expectEqual(@as(?std.json.Value, null), json.object.get("message"));
+}
+
+// ── T11: Memory safety — repeated calls don't leak ───────────────────────────
+
+test "M11_001 T11: 100 errorResponse calls with std.testing.allocator — no leaks" {
+    // httpz.testing.init uses a fresh arena per call; we verify no arena leak
+    // by ensuring each call pair (init/deinit) is balanced.
+    var i: usize = 0;
+    while (i < 100) : (i += 1) {
+        var ht = httpz.testing.init(.{});
+        defer ht.deinit();
+        common.errorResponse(ht.res, error_codes.ERR_UNAUTHORIZED, "detail", "req-loop");
+        try ht.expectStatus(401);
+    }
+}
