@@ -20,6 +20,12 @@ pub const StateRow = struct {
     pending_status: ?model.PendingStatus,
     pending_reason: ?[]u8,
 
+    // bvisor pattern: comptime size assertion catches silent field drift.
+    // 9 fields: 2 enums + 2 slices + 2 optional slices + 2 optional i64 + 1 optional enum
+    comptime {
+        std.debug.assert(@sizeOf(StateRow) == 104);
+    }
+
     pub fn deinit(self: *StateRow, alloc: std.mem.Allocator) void {
         alloc.free(self.plan_sku);
         alloc.free(self.adapter);

@@ -1,13 +1,6 @@
 // Zombie event loop — persistent agent process for a single Zombie.
-//
-// Lifecycle:
-//   1. claimZombie — load config + session checkpoint from Postgres.
-//   2. runEventLoop — XREADGROUP on zombie:{id}:events, deliver each event
-//      to the NullClaw agent via the executor, checkpoint state, XACK.
-//   3. On crash: next claimZombie loads the last checkpoint, resumes.
-//
-// Sequential mailbox ordering. At-least-once delivery (XACK after processing).
-// Imports budget, kill switch, and cooperative shutdown from v1 shared primitives.
+// claimZombie loads config + session, runEventLoop reads events via XREADGROUP,
+// delivers to executor, checkpoints state, XACKs. Sequential at-least-once delivery.
 
 const std = @import("std");
 const pg = @import("pg");
@@ -21,60 +14,23 @@ const redis_zombie = @import("../queue/redis_zombie.zig");
 const queue_consts = @import("../queue/constants.zig");
 const executor_client = @import("../executor/client.zig");
 const error_codes = @import("../errors/error_registry.zig");
-const crypto_store = @import("../secrets/crypto_store.zig");
 const obs_log = @import("../observability/logging.zig");
-const backoff = @import("../reliability/backoff.zig");
 const id_format = @import("../types/id_format.zig");
 const event_loop_gate = @import("event_loop_gate.zig");
 
 const log = std.log.scoped(.zombie_event_loop);
 
-// ── Public types ─────────────────────────────────────────────────────────
-
-pub const ZombieSession = struct {
-    zombie_id: []const u8,
-    workspace_id: []const u8,
-    config: zombie_config.ZombieConfig,
-    instructions: []const u8,
-    /// Session context (conversation memory) from core.zombie_sessions.
-    /// JSON string. "{}" for a fresh session.
-    context_json: []const u8,
-    /// Source markdown — owns the memory that instructions borrows from.
-    source_markdown: []const u8,
-
-    pub fn deinit(self: *ZombieSession, alloc: Allocator) void {
-        alloc.free(self.zombie_id);
-        alloc.free(self.workspace_id);
-        self.config.deinit(alloc);
-        alloc.free(self.source_markdown);
-        alloc.free(self.context_json);
-    }
-};
-
-pub const EventResult = struct {
-    status: Status,
-    agent_response: []const u8,
-    token_count: u64,
-    wall_seconds: u64,
-
-    pub const Status = enum { processed, skipped_duplicate, agent_error };
-
-    pub fn deinit(self: *const EventResult, alloc: Allocator) void {
-        alloc.free(self.agent_response);
-    }
-};
-
-pub const EventLoopConfig = struct {
-    pool: *pg.Pool,
-    redis: *queue_redis.Client,
-    executor: *executor_client.ExecutorClient,
-    /// Cooperative shutdown flag — checked between events.
-    running: *const std.atomic.Value(bool),
-    /// Poll interval for backoff on consecutive errors (ms).
-    poll_interval_ms: u64 = 2_000,
-    /// Executor socket path for createExecution workspace_path.
-    workspace_path: []const u8 = "/tmp/zombie",
-};
+// Types + helpers extracted per RULE FLL (350-line gate).
+const types = @import("event_loop_types.zig");
+pub const ZombieSession = types.ZombieSession;
+pub const EventResult = types.EventResult;
+const helpers = @import("event_loop_helpers.zig");
+pub const EventLoopConfig = types.EventLoopConfig;
+const loadSessionCheckpoint = helpers.loadSessionCheckpoint;
+pub const updateSessionContext = helpers.updateSessionContext;
+const resolveFirstCredential = helpers.resolveFirstCredential;
+const sleepWithBackoff = helpers.sleepWithBackoff;
+pub const truncateForJson = helpers.truncateForJson;
 
 // ── Public API (spec §7.1) ───────────────────────────────────────────────
 
@@ -383,100 +339,9 @@ pub fn checkpointState(
     log.debug("zombie_event_loop.checkpointed zombie_id={s} context_len={d}", .{ session.zombie_id, session.context_json.len });
 }
 
-/// Iterate session.config.credentials and return the first successfully
-/// resolved value from vault.secrets. Credentials are plain names (e.g. "agentmail").
-fn resolveFirstCredential(alloc: Allocator, pool: *pg.Pool, session: *ZombieSession) ![]const u8 {
-    for (session.config.credentials) |cred_name| {
-        return resolveCredential(alloc, pool, session.workspace_id, cred_name) catch continue;
-    }
-    return error.CredentialNotFound;
-}
-
-/// M2_001: Resolve a zombie credential from vault.secrets via crypto_store.
-/// Key naming: "zombie:{name}" in vault.secrets. Returns decrypted value.
-fn resolveCredential(alloc: Allocator, pool: *pg.Pool, workspace_id: []const u8, name: []const u8) ![]const u8 {
-    const key_name = try std.fmt.allocPrint(alloc, "zombie:{s}", .{name});
-    defer alloc.free(key_name);
-
-    const conn = try pool.acquire();
-    defer pool.release(conn);
-    return crypto_store.load(alloc, conn, workspace_id, key_name) catch |err| {
-        log.warn("zombie_event_loop.credential_not_found workspace_id={s} name={s} error_code=" ++ error_codes.ERR_ZOMBIE_CREDENTIAL_MISSING, .{ workspace_id, name });
-        return err;
-    };
-}
-
-// ── Internal helpers ─────────────────────────────────────────────────────
-
-fn loadSessionCheckpoint(alloc: Allocator, pool: *pg.Pool, zombie_id: []const u8) ![]const u8 {
-    const conn = try pool.acquire();
-    defer pool.release(conn);
-
-    var q = PgQuery.from(try conn.query(
-        \\SELECT context_json::text FROM core.zombie_sessions WHERE zombie_id = $1
-    , .{zombie_id}));
-    defer q.deinit();
-
-    if (try q.next()) |row| {
-        return try alloc.dupe(u8, try row.get([]const u8, 0));
-    }
-    return try alloc.dupe(u8, "{}");
-}
-
-pub fn updateSessionContext(
-    alloc: Allocator,
-    session: *ZombieSession,
-    event_id: []const u8,
-    agent_response: []const u8,
-) !void {
-    // Build a minimal context update with proper JSON escaping.
-    // Future: richer conversation memory with sliding window.
-    const truncated = truncateForJson(agent_response);
-
-    // Use std.json.Stringify to properly escape strings (handles ", \, control chars).
-    const ContextUpdate = struct {
-        last_event_id: []const u8,
-        last_response: []const u8,
-    };
-
-    const new_context = try std.json.Stringify.valueAlloc(alloc, ContextUpdate{
-        .last_event_id = event_id,
-        .last_response = truncated,
-    }, .{});
-
-    alloc.free(session.context_json);
-    session.context_json = new_context;
-}
-
-/// Truncate a string for safe inclusion in a JSON value (max 2048 bytes).
-/// Walks backward from the cut point to avoid splitting a multi-byte UTF-8 sequence.
-pub fn truncateForJson(s: []const u8) []const u8 {
-    const max_len: usize = 2048;
-    if (s.len <= max_len) return s;
-    var end = max_len;
-    while (end > 0 and (s[end] & 0xC0) == 0x80) end -= 1; // skip continuation bytes
-    return s[0..end];
-}
-
-fn sleepWithBackoff(cfg: EventLoopConfig, consecutive_errors: u32) void {
-    const max_delay_ms = std.math.mul(u64, cfg.poll_interval_ms, 8) catch cfg.poll_interval_ms;
-    const delay_ms = backoff.expBackoffJitter(
-        if (consecutive_errors > 0) consecutive_errors - 1 else 0,
-        cfg.poll_interval_ms,
-        max_delay_ms,
-    );
-    // Cooperative sleep — check shutdown flag every 100ms
-    var remaining = delay_ms;
-    while (remaining > 0 and cfg.running.load(.acquire)) {
-        const slice_ms: u64 = @min(remaining, 100);
-        std.Thread.sleep(slice_ms * std.time.ns_per_ms);
-        remaining -= slice_ms;
-    }
-}
-
-// ── Tests ────────────────────────────────────────────────────────────────
-
 test {
+    _ = @import("event_loop_types.zig");
+    _ = @import("event_loop_helpers.zig");
     _ = @import("event_loop_test.zig");
     _ = @import("event_loop_integration_test.zig");
 }
