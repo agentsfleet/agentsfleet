@@ -1,13 +1,14 @@
 /// test_fixtures_uc3.zig — UC3: Billing integration fixtures.
 ///
 /// Covers:
-///   src/state/billing_test.zig          — usage metering + credit deduction
 ///   src/state/workspace_billing_test.zig — plan lifecycle (provision/upgrade/grace/downgrade)
 ///
-/// Tables seeded: tenants, workspaces (and optionally specs, runs for billing_test)
+/// Tables seeded: tenants, workspaces
 /// Tables cleaned via CASCADE on workspace delete:
 ///   workspace_billing_state, workspace_billing_audit, workspace_credit_state,
-///   workspace_credit_audit, usage_ledger, billing_delivery_outbox, workspace_entitlements
+///   workspace_credit_audit, workspace_entitlements
+///
+/// M10_001: spec/run seed helpers removed — tables dropped.
 ///
 /// Usage per test:
 ///
@@ -41,24 +42,8 @@ pub const TENANT_LIMIT_BLOCK = "0195b4ba-8d3a-7f13-8abc-cc0000000051";
 pub const TENANT_LIMIT_IGNORE = "0195b4ba-8d3a-7f13-8abc-cc0000000052";
 pub const TENANT_EXCLUDE_SELF = "0195b4ba-8d3a-7f13-8abc-cc0000000053";
 
-// ── Workspace IDs for billing_test.zig ──────────────────────────────────
-// Prefix cc11–cc12 identifies UC3 metering workspaces.
-
-pub const WS_BT_FREE = "0195b4ba-8d3a-7f13-8abc-cc0000000011";
-pub const WS_BT_SCALE = "0195b4ba-8d3a-7f13-8abc-cc0000000012";
-
-// Spec + run IDs for billing_test (usage_ledger + billing_delivery_outbox have FK to runs).
-pub const SPEC_BT_FREE = "0195b4ba-8d3a-7f13-8abc-cc0000000021";
-pub const SPEC_BT_SCALE = "0195b4ba-8d3a-7f13-8abc-cc0000000022";
-pub const RUN_BT_COMPLETED = "0195b4ba-8d3a-7f13-8abc-cc0000000031";
-pub const RUN_BT_NON_BILLABLE = "0195b4ba-8d3a-7f13-8abc-cc0000000032";
-pub const RUN_BT_SCALE = "0195b4ba-8d3a-7f13-8abc-cc0000000033";
-
-// IDs for billing_reconciler.zig test (prefix cc13/cc23/cc34/cc44).
-pub const WS_RECONCILER = "0195b4ba-8d3a-7f13-8abc-cc0000000013";
-pub const SPEC_RECONCILER = "0195b4ba-8d3a-7f13-8abc-cc0000000023";
-pub const RUN_RECONCILER = "0195b4ba-8d3a-7f13-8abc-cc0000000034";
-pub const OUTBOX_RECONCILER = "0195b4ba-8d3a-7f13-8abc-cc0000000044";
+// M10_001: WS_BT_*, SPEC_BT_*, RUN_BT_*, WS_RECONCILER, SPEC_RECONCILER,
+// RUN_RECONCILER, OUTBOX_RECONCILER constants removed — tables dropped.
 
 // ── Seed / teardown ─────────────────────────────────────────────────────
 
@@ -78,15 +63,7 @@ pub fn seedWithTenant(conn: *pg.Conn, workspace_id: []const u8, tenant_id: []con
     try base.seedWorkspaceWithTenant(conn, workspace_id, tenant_id);
 }
 
-/// Seed workspace + spec + runs for billing_test.zig tests that insert into usage_ledger.
-pub fn seedWithRuns(conn: *pg.Conn, workspace_id: []const u8, spec_id: []const u8, run_ids: []const []const u8) !void {
-    try base.seedTenant(conn);
-    try base.seedWorkspace(conn, workspace_id);
-    try base.seedSpec(conn, spec_id, workspace_id);
-    for (run_ids) |run_id| {
-        try base.seedRun(conn, run_id, workspace_id, spec_id);
-    }
-}
+// M10_001: seedWithRuns removed — seedSpec/seedRun deleted (tables dropped).
 
 /// Seed workspace_billing_state for billing_test.zig (needs pre-seeded workspace).
 pub fn seedBillingState(
@@ -139,15 +116,4 @@ pub fn teardownWithTenant(conn: *pg.Conn, workspace_id: []const u8, tenant_id: [
     base.teardownTenantById(conn, tenant_id);
 }
 
-/// Teardown for billing_test.zig tests that seeded runs.
-/// Order: billing_delivery_outbox (FK → runs) → runs → specs → workspace → tenant.
-pub fn teardownWithRuns(conn: *pg.Conn, workspace_id: []const u8) void {
-    _ = conn.exec(
-        "DELETE FROM billing_delivery_outbox WHERE workspace_id = $1::uuid",
-        .{workspace_id},
-    ) catch {};
-    base.teardownRuns(conn, workspace_id);
-    base.teardownSpecs(conn, workspace_id);
-    base.teardownWorkspace(conn, workspace_id);
-    base.teardownTenant(conn);
-}
+// M10_001: teardownWithRuns removed — billing_delivery_outbox, runs, specs tables dropped.

@@ -1,17 +1,7 @@
 const std = @import("std");
-const sandbox_runtime = @import("../pipeline/sandbox_runtime.zig");
 
 pub const ValidationError = error{
-    MissingGitHubAppId,
-    MissingGitHubAppPrivateKey,
-    InvalidMaxAttempts,
-    InvalidWorkerConcurrency,
-    InvalidRunTimeoutMs,
     InvalidDrainTimeoutMs,
-    InvalidRateLimitCapacity,
-    InvalidRateLimitRefillPerSec,
-    InvalidSandboxBackend,
-    InvalidSandboxKillGraceMs,
     InvalidExecutorStartupTimeoutMs,
     InvalidExecutorLeaseTimeoutMs,
     InvalidExecutorMemoryLimitMb,
@@ -20,17 +10,8 @@ pub const ValidationError = error{
 
 pub const Config = struct {
     cache_root: []u8,
-    github_app_id: []u8,
-    github_app_private_key: []u8,
-    config_dir: []u8,
-    pipeline_profile_path: []u8,
-    max_attempts: u32,
     worker_concurrency: u32,
-    run_timeout_ms: u64,
     drain_timeout_ms: u64,
-    sandbox: sandbox_runtime.Config,
-    rate_limit_capacity: u32,
-    rate_limit_refill_per_sec: f64,
     executor_socket_path: ?[]u8 = null,
     executor_startup_timeout_ms: u64 = 5_000,
     executor_lease_timeout_ms: u64 = 30_000,
@@ -39,41 +20,18 @@ pub const Config = struct {
     alloc: std.mem.Allocator,
 
     pub fn load(alloc: std.mem.Allocator) !Config {
-        const max_attempts = try parseU32Env(alloc, "DEFAULT_MAX_ATTEMPTS", 3, ValidationError.InvalidMaxAttempts);
-        const worker_concurrency = try parseU32Env(alloc, "WORKER_CONCURRENCY", 1, ValidationError.InvalidWorkerConcurrency);
-        const run_timeout_ms = try parseU64Env(alloc, "RUN_TIMEOUT_MS", 300_000, ValidationError.InvalidRunTimeoutMs);
-        const drain_timeout_ms = try parseU64Env(alloc, "DRAIN_TIMEOUT_MS", 270_000, ValidationError.InvalidDrainTimeoutMs);
-        const rate_limit_capacity = try parseU32Env(alloc, "RATE_LIMIT_CAPACITY", 30, ValidationError.InvalidRateLimitCapacity);
-        const rate_limit_refill_per_sec = try parseF64Env(alloc, "RATE_LIMIT_REFILL_PER_SEC", 5.0, ValidationError.InvalidRateLimitRefillPerSec);
-        const sandbox = sandbox_runtime.loadFromEnv(alloc) catch |err| switch (err) {
-            sandbox_runtime.ValidationError.InvalidSandboxBackend => return ValidationError.InvalidSandboxBackend,
-            sandbox_runtime.ValidationError.InvalidSandboxKillGraceMs => return ValidationError.InvalidSandboxKillGraceMs,
-            else => return err,
+        const worker_concurrency = std.process.getEnvVarOwned(alloc, "WORKER_CONCURRENCY") catch {
+            return Config{
+                .cache_root = try alloc.dupe(u8, "/tmp/zombie-git-cache"),
+                .worker_concurrency = 1,
+                .drain_timeout_ms = 270_000,
+                .alloc = alloc,
+            };
         };
+        defer alloc.free(worker_concurrency);
+        const concurrency = std.fmt.parseInt(u32, worker_concurrency, 10) catch 1;
 
-        if (max_attempts == 0) return ValidationError.InvalidMaxAttempts;
-        if (worker_concurrency == 0) return ValidationError.InvalidWorkerConcurrency;
-        if (run_timeout_ms == 0) return ValidationError.InvalidRunTimeoutMs;
-        if (rate_limit_capacity == 0) return ValidationError.InvalidRateLimitCapacity;
-        if (!(rate_limit_refill_per_sec > 0)) return ValidationError.InvalidRateLimitRefillPerSec;
-
-        const github_app_id = try requiredEnvOwned(alloc, "GITHUB_APP_ID", ValidationError.MissingGitHubAppId);
-        errdefer alloc.free(github_app_id);
-        if (github_app_id.len == 0) return ValidationError.MissingGitHubAppId;
-
-        const github_app_private_key = try requiredEnvOwned(alloc, "GITHUB_APP_PRIVATE_KEY", ValidationError.MissingGitHubAppPrivateKey);
-        errdefer alloc.free(github_app_private_key);
-        if (github_app_private_key.len == 0) return ValidationError.MissingGitHubAppPrivateKey;
-
-        const cache_root = try envOrDefaultOwned(alloc, "GIT_CACHE_ROOT", "/tmp/zombie-git-cache");
-        errdefer alloc.free(cache_root);
-        const config_dir = try envOrDefaultOwned(alloc, "AGENT_CONFIG_DIR", "./config");
-        errdefer alloc.free(config_dir);
-        const pipeline_profile_path = try envOrDefaultOwned(alloc, "PIPELINE_PROFILE_PATH", "./config/pipeline-default.json");
-        errdefer alloc.free(pipeline_profile_path);
-
-        // Executor config (§5.1). EXECUTOR_SOCKET_PATH is optional; when unset
-        // the worker runs in direct mode (backward compatible).
+        const drain_timeout_ms = try parseU64Env(alloc, "DRAIN_TIMEOUT_MS", 270_000, ValidationError.InvalidDrainTimeoutMs);
         const executor_socket_path: ?[]u8 = std.process.getEnvVarOwned(alloc, "EXECUTOR_SOCKET_PATH") catch null;
         errdefer if (executor_socket_path) |p| alloc.free(p);
         const executor_startup_timeout_ms = try parseU64Env(alloc, "EXECUTOR_STARTUP_TIMEOUT_MS", 5_000, ValidationError.InvalidExecutorStartupTimeoutMs);
@@ -83,19 +41,13 @@ pub const Config = struct {
 
         if (executor_cpu_limit_percent == 0 or executor_cpu_limit_percent > 100) return ValidationError.InvalidExecutorCpuLimitPercent;
 
+        const cache_root = try envOrDefaultOwned(alloc, "GIT_CACHE_ROOT", "/tmp/zombie-git-cache");
+        errdefer alloc.free(cache_root);
+
         return .{
             .cache_root = cache_root,
-            .github_app_id = github_app_id,
-            .github_app_private_key = github_app_private_key,
-            .config_dir = config_dir,
-            .pipeline_profile_path = pipeline_profile_path,
-            .max_attempts = max_attempts,
-            .worker_concurrency = worker_concurrency,
-            .run_timeout_ms = run_timeout_ms,
+            .worker_concurrency = concurrency,
             .drain_timeout_ms = drain_timeout_ms,
-            .sandbox = sandbox,
-            .rate_limit_capacity = rate_limit_capacity,
-            .rate_limit_refill_per_sec = rate_limit_refill_per_sec,
             .executor_socket_path = executor_socket_path,
             .executor_startup_timeout_ms = executor_startup_timeout_ms,
             .executor_lease_timeout_ms = executor_lease_timeout_ms,
@@ -107,26 +59,13 @@ pub const Config = struct {
 
     pub fn deinit(self: *Config) void {
         self.alloc.free(self.cache_root);
-        self.alloc.free(self.github_app_id);
-        self.alloc.free(self.github_app_private_key);
-        self.alloc.free(self.config_dir);
-        self.alloc.free(self.pipeline_profile_path);
         if (self.executor_socket_path) |p| self.alloc.free(p);
     }
 };
 
 pub fn printValidationError(err: ValidationError) void {
     switch (err) {
-        ValidationError.MissingGitHubAppId => std.debug.print("fatal: GITHUB_APP_ID not set\n", .{}),
-        ValidationError.MissingGitHubAppPrivateKey => std.debug.print("fatal: GITHUB_APP_PRIVATE_KEY not set\n", .{}),
-        ValidationError.InvalidMaxAttempts => std.debug.print("fatal: invalid DEFAULT_MAX_ATTEMPTS value\n", .{}),
-        ValidationError.InvalidWorkerConcurrency => std.debug.print("fatal: invalid WORKER_CONCURRENCY value\n", .{}),
-        ValidationError.InvalidRunTimeoutMs => std.debug.print("fatal: invalid RUN_TIMEOUT_MS value\n", .{}),
         ValidationError.InvalidDrainTimeoutMs => std.debug.print("fatal: invalid DRAIN_TIMEOUT_MS value\n", .{}),
-        ValidationError.InvalidRateLimitCapacity => std.debug.print("fatal: invalid RATE_LIMIT_CAPACITY value\n", .{}),
-        ValidationError.InvalidRateLimitRefillPerSec => std.debug.print("fatal: invalid RATE_LIMIT_REFILL_PER_SEC value\n", .{}),
-        ValidationError.InvalidSandboxBackend => std.debug.print("fatal: invalid SANDBOX_BACKEND value\n", .{}),
-        ValidationError.InvalidSandboxKillGraceMs => std.debug.print("fatal: invalid SANDBOX_KILL_GRACE_MS value\n", .{}),
         ValidationError.InvalidExecutorStartupTimeoutMs => std.debug.print("fatal: invalid EXECUTOR_STARTUP_TIMEOUT_MS value\n", .{}),
         ValidationError.InvalidExecutorLeaseTimeoutMs => std.debug.print("fatal: invalid EXECUTOR_LEASE_TIMEOUT_MS value\n", .{}),
         ValidationError.InvalidExecutorMemoryLimitMb => std.debug.print("fatal: invalid EXECUTOR_MEMORY_LIMIT_MB value\n", .{}),
@@ -160,148 +99,28 @@ fn parseU64Env(alloc: std.mem.Allocator, name: []const u8, default_value: u64, i
     return std.fmt.parseInt(u64, raw, 10) catch invalid_error;
 }
 
-// --- Test helpers ---
+// --- Tests ---
 
-const worker_test_env = [_][2][]const u8{
-    .{ "GITHUB_APP_ID", "12345" },
-    .{ "GITHUB_APP_PRIVATE_KEY", "test-pem-key" },
-};
-
-fn setWorkerTestEnv(env: []const [2][]const u8) void {
-    for (env) |entry| {
-        std.posix.setenv(entry[0], entry[1], true) catch {};
-    }
-}
-
-fn unsetWorkerTestEnv(env: []const [2][]const u8) void {
-    for (env) |entry| {
-        std.posix.unsetenv(entry[0]);
-    }
-}
-
-// --- T1: Happy path — Config.load with required env set ---
-
-test "Config.load succeeds with required env vars" {
-    setWorkerTestEnv(&worker_test_env);
-    defer unsetWorkerTestEnv(&worker_test_env);
+test "Config.load succeeds with defaults" {
+    std.posix.unsetenv("EXECUTOR_SOCKET_PATH");
+    std.posix.unsetenv("DRAIN_TIMEOUT_MS");
 
     var cfg = try Config.load(std.testing.allocator);
     defer cfg.deinit();
 
-    try std.testing.expectEqualStrings("12345", cfg.github_app_id);
-    try std.testing.expectEqualStrings("test-pem-key", cfg.github_app_private_key);
-    try std.testing.expectEqualStrings("./config", cfg.config_dir);
     try std.testing.expectEqualStrings("/tmp/zombie-git-cache", cfg.cache_root);
-    try std.testing.expectEqual(@as(u32, 3), cfg.max_attempts);
-    try std.testing.expectEqual(@as(u32, 1), cfg.worker_concurrency);
-    try std.testing.expectEqual(@as(u64, 300_000), cfg.run_timeout_ms);
+    try std.testing.expectEqual(@as(u64, 270_000), cfg.drain_timeout_ms);
     try std.testing.expect(cfg.executor_socket_path == null);
 }
 
-// --- T3: Error paths — missing required env ---
-
-test "Config.load rejects missing GITHUB_APP_ID" {
-    // Ensure clean state — unset both, defer restore
-    std.posix.unsetenv("GITHUB_APP_ID");
-    std.posix.unsetenv("GITHUB_APP_PRIVATE_KEY");
-    defer unsetWorkerTestEnv(&worker_test_env);
-
-    try std.testing.expectError(ValidationError.MissingGitHubAppId, Config.load(std.testing.allocator));
-}
-
-test "Config.load rejects empty GITHUB_APP_ID" {
-    const env = [_][2][]const u8{
-        .{ "GITHUB_APP_ID", "" },
-        .{ "GITHUB_APP_PRIVATE_KEY", "pem" },
-    };
-    setWorkerTestEnv(&env);
-    defer unsetWorkerTestEnv(&env);
-
-    try std.testing.expectError(ValidationError.MissingGitHubAppId, Config.load(std.testing.allocator));
-}
-
-test "Config.load rejects missing GITHUB_APP_PRIVATE_KEY" {
-    const env = [_][2][]const u8{
-        .{ "GITHUB_APP_ID", "12345" },
-    };
-    setWorkerTestEnv(&env);
-    std.posix.unsetenv("GITHUB_APP_PRIVATE_KEY");
-    defer unsetWorkerTestEnv(&env);
-
-    try std.testing.expectError(ValidationError.MissingGitHubAppPrivateKey, Config.load(std.testing.allocator));
-}
-
-// --- T2: Edge cases — invalid numeric env overrides ---
-
-test "Config.load rejects zero max_attempts" {
-    setWorkerTestEnv(&worker_test_env);
-    defer unsetWorkerTestEnv(&worker_test_env);
-    std.posix.setenv("DEFAULT_MAX_ATTEMPTS", "0", true) catch {};
-    defer std.posix.unsetenv("DEFAULT_MAX_ATTEMPTS");
-
-    try std.testing.expectError(ValidationError.InvalidMaxAttempts, Config.load(std.testing.allocator));
-}
-
-test "Config.load rejects zero worker_concurrency" {
-    setWorkerTestEnv(&worker_test_env);
-    defer unsetWorkerTestEnv(&worker_test_env);
-    std.posix.setenv("WORKER_CONCURRENCY", "0", true) catch {};
-    defer std.posix.unsetenv("WORKER_CONCURRENCY");
-
-    try std.testing.expectError(ValidationError.InvalidWorkerConcurrency, Config.load(std.testing.allocator));
-}
-
-test "Config.load rejects non-numeric max_attempts" {
-    setWorkerTestEnv(&worker_test_env);
-    defer unsetWorkerTestEnv(&worker_test_env);
-    std.posix.setenv("DEFAULT_MAX_ATTEMPTS", "abc", true) catch {};
-    defer std.posix.unsetenv("DEFAULT_MAX_ATTEMPTS");
-
-    try std.testing.expectError(ValidationError.InvalidMaxAttempts, Config.load(std.testing.allocator));
-}
-
 test "Config.load rejects executor CPU limit above 100" {
-    setWorkerTestEnv(&worker_test_env);
-    defer unsetWorkerTestEnv(&worker_test_env);
     std.posix.setenv("EXECUTOR_CPU_LIMIT_PERCENT", "101", true) catch {};
     defer std.posix.unsetenv("EXECUTOR_CPU_LIMIT_PERCENT");
 
     try std.testing.expectError(ValidationError.InvalidExecutorCpuLimitPercent, Config.load(std.testing.allocator));
 }
 
-test "Config.load picks up custom env overrides" {
-    setWorkerTestEnv(&worker_test_env);
-    defer unsetWorkerTestEnv(&worker_test_env);
-    std.posix.setenv("WORKER_CONCURRENCY", "4", true) catch {};
-    std.posix.setenv("RUN_TIMEOUT_MS", "60000", true) catch {};
-    defer {
-        std.posix.unsetenv("WORKER_CONCURRENCY");
-        std.posix.unsetenv("RUN_TIMEOUT_MS");
-    }
-
-    var cfg = try Config.load(std.testing.allocator);
-    defer cfg.deinit();
-
-    try std.testing.expectEqual(@as(u32, 4), cfg.worker_concurrency);
-    try std.testing.expectEqual(@as(u64, 60000), cfg.run_timeout_ms);
-}
-
-// --- drain_timeout_ms tests ---
-
-test "Config.load default drain_timeout_ms is 270000" {
-    setWorkerTestEnv(&worker_test_env);
-    defer unsetWorkerTestEnv(&worker_test_env);
-    std.posix.unsetenv("DRAIN_TIMEOUT_MS");
-
-    var cfg = try Config.load(std.testing.allocator);
-    defer cfg.deinit();
-
-    try std.testing.expectEqual(@as(u64, 270_000), cfg.drain_timeout_ms);
-}
-
 test "Config.load picks up custom DRAIN_TIMEOUT_MS" {
-    setWorkerTestEnv(&worker_test_env);
-    defer unsetWorkerTestEnv(&worker_test_env);
     std.posix.setenv("DRAIN_TIMEOUT_MS", "120000", true) catch {};
     defer std.posix.unsetenv("DRAIN_TIMEOUT_MS");
 
@@ -311,21 +130,7 @@ test "Config.load picks up custom DRAIN_TIMEOUT_MS" {
     try std.testing.expectEqual(@as(u64, 120_000), cfg.drain_timeout_ms);
 }
 
-test "Config.load accepts DRAIN_TIMEOUT_MS=0 for immediate drain" {
-    setWorkerTestEnv(&worker_test_env);
-    defer unsetWorkerTestEnv(&worker_test_env);
-    std.posix.setenv("DRAIN_TIMEOUT_MS", "0", true) catch {};
-    defer std.posix.unsetenv("DRAIN_TIMEOUT_MS");
-
-    var cfg = try Config.load(std.testing.allocator);
-    defer cfg.deinit();
-
-    try std.testing.expectEqual(@as(u64, 0), cfg.drain_timeout_ms);
-}
-
 test "Config.load rejects non-numeric DRAIN_TIMEOUT_MS" {
-    setWorkerTestEnv(&worker_test_env);
-    defer unsetWorkerTestEnv(&worker_test_env);
     std.posix.setenv("DRAIN_TIMEOUT_MS", "abc", true) catch {};
     defer std.posix.unsetenv("DRAIN_TIMEOUT_MS");
 

@@ -70,7 +70,6 @@ ZIG_LINE_LIMIT_ALLOWLIST := \
 	src/auth/jwks_test.zig \
 	src/cmd/doctor.zig \
 	src/cmd/reconcile.zig \
-	src/cmd/serve.zig \
 	src/config/runtime.zig \
 	src/db/pool.zig \
 	src/db/pool_test.zig \
@@ -82,27 +81,11 @@ ZIG_LINE_LIMIT_ALLOWLIST := \
 	src/executor/sandbox_edge_test.zig \
 	src/executor/session.zig \
 	src/http/handlers/common.zig \
-	src/http/handlers/runs/interrupt_test.zig \
-	src/http/handlers/runs/start.zig \
-	src/http/m16_004_http_integration_test.zig \
-	src/http/router.zig \
+	src/http/byok_http_integration_test.zig \
 	src/http/workspace_guards.zig \
 	src/observability/metrics_counters.zig \
 	src/observability/posthog_events.zig \
-	src/pipeline/gate_loop_integration_test.zig \
-	src/pipeline/proposals_e2e_test.zig \
-	src/pipeline/proposals_guard_test.zig \
-	src/pipeline/proposals_lifecycle_manual_test.zig \
-	src/pipeline/proposals_trigger_reporting_test.zig \
-	src/pipeline/sandbox_shell_tool.zig \
-	src/pipeline/scoring_mod/proposals_validation.zig \
-	src/pipeline/scoring_mod/resource_score_test.zig \
-	src/pipeline/scoring_test.zig \
-	src/pipeline/worker_gate_loop.zig \
-	src/pipeline/worker_stage_executor.zig \
 	src/state/entitlements.zig \
-	src/state/machine.zig \
-	src/state/orphan_recovery.zig \
 	src/tools/api_bench_runner.zig \
 	src/zombie/config.zig \
 	src/zombie/event_loop.zig \

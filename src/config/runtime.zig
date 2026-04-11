@@ -3,7 +3,6 @@
 
 const std = @import("std");
 const oidc = @import("../auth/oidc.zig");
-const sandbox_runtime = @import("../pipeline/sandbox_runtime.zig");
 
 pub const ValidationError = error{
     MissingApiKey,
@@ -12,47 +11,26 @@ pub const ValidationError = error{
     InvalidOidcProvider,
     MissingEncryptionMasterKey,
     InvalidEncryptionMasterKey,
-    MissingGitHubAppId,
-    MissingGitHubAppPrivateKey,
     InvalidPort,
-    InvalidMaxAttempts,
-    InvalidWorkerConcurrency,
     InvalidApiHttpThreads,
     InvalidApiHttpWorkers,
     InvalidApiMaxClients,
     InvalidApiMaxInFlightRequests,
-    InvalidRateLimitCapacity,
-    InvalidRateLimitRefillPerSec,
-    InvalidRunTimeoutMs,
     InvalidReadyMaxQueueDepth,
     InvalidReadyMaxQueueAgeMs,
     InvalidKekVersion,
     MissingEncryptionMasterKeyV2,
     InvalidEncryptionMasterKeyV2,
-    InvalidSandboxBackend,
-    InvalidSandboxKillGraceMs,
-    InvalidGateToolTimeoutMs,
 };
 
 pub const ServeConfig = struct {
     port: u16,
     api_keys: []u8,
     cache_root: []u8,
-    github_app_id: []u8,
-    github_app_private_key: []u8,
-    config_dir: []u8,
-    pipeline_profile_path: []u8,
-    max_attempts: u32,
-    worker_concurrency: u32,
     api_http_threads: i16,
     api_http_workers: i16,
     api_max_clients: u32,
     api_max_in_flight_requests: u32,
-    run_timeout_ms: u64,
-    gate_tool_timeout_ms: u64,
-    sandbox: sandbox_runtime.Config,
-    rate_limit_capacity: u32,
-    rate_limit_refill_per_sec: f64,
     ready_max_queue_depth: ?i64,
     ready_max_queue_age_ms: ?i64,
     app_url: []u8,
@@ -69,33 +47,17 @@ pub const ServeConfig = struct {
 
     pub fn load(alloc: std.mem.Allocator) !ServeConfig {
         const port = try parseU16Env(alloc, "PORT", 3000, ValidationError.InvalidPort);
-        const max_attempts = try parseU32Env(alloc, "DEFAULT_MAX_ATTEMPTS", 3, ValidationError.InvalidMaxAttempts);
-        const worker_concurrency = try parseU32Env(alloc, "WORKER_CONCURRENCY", 1, ValidationError.InvalidWorkerConcurrency);
         const api_http_threads = try parseI16Env(alloc, "API_HTTP_THREADS", 1, ValidationError.InvalidApiHttpThreads);
         const api_http_workers = try parseI16Env(alloc, "API_HTTP_WORKERS", 1, ValidationError.InvalidApiHttpWorkers);
         const api_max_clients = try parseU32Env(alloc, "API_MAX_CLIENTS", 1024, ValidationError.InvalidApiMaxClients);
         const api_max_in_flight_requests = try parseU32Env(alloc, "API_MAX_IN_FLIGHT_REQUESTS", 256, ValidationError.InvalidApiMaxInFlightRequests);
-        const run_timeout_ms = try parseU64Env(alloc, "RUN_TIMEOUT_MS", 300_000, ValidationError.InvalidRunTimeoutMs);
-        const gate_tool_timeout_ms = try parseU64Env(alloc, "GATE_TOOL_TIMEOUT_MS", 300_000, ValidationError.InvalidGateToolTimeoutMs);
-        const sandbox = sandbox_runtime.loadFromEnv(alloc) catch |err| switch (err) {
-            sandbox_runtime.ValidationError.InvalidSandboxBackend => return ValidationError.InvalidSandboxBackend,
-            sandbox_runtime.ValidationError.InvalidSandboxKillGraceMs => return ValidationError.InvalidSandboxKillGraceMs,
-            else => return err,
-        };
-        const rate_limit_capacity = try parseU32Env(alloc, "RATE_LIMIT_CAPACITY", 30, ValidationError.InvalidRateLimitCapacity);
-        const rate_limit_refill_per_sec = try parseF64Env(alloc, "RATE_LIMIT_REFILL_PER_SEC", 5.0, ValidationError.InvalidRateLimitRefillPerSec);
         const ready_max_queue_depth = try parseOptionalI64Env(alloc, "READY_MAX_QUEUE_DEPTH", ValidationError.InvalidReadyMaxQueueDepth);
         const ready_max_queue_age_ms = try parseOptionalI64Env(alloc, "READY_MAX_QUEUE_AGE_MS", ValidationError.InvalidReadyMaxQueueAgeMs);
 
-        if (max_attempts == 0) return ValidationError.InvalidMaxAttempts;
-        if (worker_concurrency == 0) return ValidationError.InvalidWorkerConcurrency;
         if (api_http_threads <= 0) return ValidationError.InvalidApiHttpThreads;
         if (api_http_workers <= 0) return ValidationError.InvalidApiHttpWorkers;
         if (api_max_clients == 0) return ValidationError.InvalidApiMaxClients;
         if (api_max_in_flight_requests == 0) return ValidationError.InvalidApiMaxInFlightRequests;
-        if (run_timeout_ms == 0) return ValidationError.InvalidRunTimeoutMs;
-        if (rate_limit_capacity == 0) return ValidationError.InvalidRateLimitCapacity;
-        if (!(rate_limit_refill_per_sec > 0)) return ValidationError.InvalidRateLimitRefillPerSec;
         if (ready_max_queue_depth) |v| if (v <= 0) return ValidationError.InvalidReadyMaxQueueDepth;
         if (ready_max_queue_age_ms) |v| if (v <= 0) return ValidationError.InvalidReadyMaxQueueAgeMs;
 
@@ -146,20 +108,8 @@ pub const ServeConfig = struct {
         } else std.process.getEnvVarOwned(alloc, "ENCRYPTION_MASTER_KEY_V2") catch null;
         errdefer if (encryption_master_key_v2) |v| alloc.free(v);
 
-        const github_app_id = try requiredEnvOwned(alloc, "GITHUB_APP_ID", ValidationError.MissingGitHubAppId);
-        errdefer alloc.free(github_app_id);
-        if (github_app_id.len == 0) return ValidationError.MissingGitHubAppId;
-
-        const github_app_private_key = try requiredEnvOwned(alloc, "GITHUB_APP_PRIVATE_KEY", ValidationError.MissingGitHubAppPrivateKey);
-        errdefer alloc.free(github_app_private_key);
-        if (github_app_private_key.len == 0) return ValidationError.MissingGitHubAppPrivateKey;
-
         const cache_root = try envOrDefaultOwned(alloc, "GIT_CACHE_ROOT", "/tmp/zombie-git-cache");
         errdefer alloc.free(cache_root);
-        const config_dir = try envOrDefaultOwned(alloc, "AGENT_CONFIG_DIR", "./config");
-        errdefer alloc.free(config_dir);
-        const pipeline_profile_path = try envOrDefaultOwned(alloc, "PIPELINE_PROFILE_PATH", "./config/pipeline-default.json");
-        errdefer alloc.free(pipeline_profile_path);
 
         errdefer if (oidc_jwks_url) |v| alloc.free(v);
         const oidc_provider = blk: {
@@ -174,21 +124,10 @@ pub const ServeConfig = struct {
             .port = port,
             .api_keys = api_keys,
             .cache_root = cache_root,
-            .github_app_id = github_app_id,
-            .github_app_private_key = github_app_private_key,
-            .config_dir = config_dir,
-            .pipeline_profile_path = pipeline_profile_path,
-            .max_attempts = max_attempts,
-            .worker_concurrency = worker_concurrency,
             .api_http_threads = api_http_threads,
             .api_http_workers = api_http_workers,
             .api_max_clients = api_max_clients,
             .api_max_in_flight_requests = api_max_in_flight_requests,
-            .run_timeout_ms = run_timeout_ms,
-            .gate_tool_timeout_ms = gate_tool_timeout_ms,
-            .sandbox = sandbox,
-            .rate_limit_capacity = rate_limit_capacity,
-            .rate_limit_refill_per_sec = rate_limit_refill_per_sec,
             .ready_max_queue_depth = ready_max_queue_depth,
             .ready_max_queue_age_ms = ready_max_queue_age_ms,
             .app_url = app_url,
@@ -207,10 +146,6 @@ pub const ServeConfig = struct {
     pub fn deinit(self: *ServeConfig) void {
         self.alloc.free(self.api_keys);
         self.alloc.free(self.cache_root);
-        self.alloc.free(self.github_app_id);
-        self.alloc.free(self.github_app_private_key);
-        self.alloc.free(self.config_dir);
-        self.alloc.free(self.pipeline_profile_path);
         self.alloc.free(self.app_url);
         if (self.oidc_jwks_url) |v| self.alloc.free(v);
         if (self.oidc_issuer) |v| self.alloc.free(v);
@@ -227,21 +162,11 @@ pub const ServeConfig = struct {
             ValidationError.InvalidOidcProvider => std.debug.print("fatal: OIDC_PROVIDER is invalid (supported: {s})\n", .{oidc.supportedProviderList()}),
             ValidationError.MissingEncryptionMasterKey => std.debug.print("fatal: ENCRYPTION_MASTER_KEY not set\n", .{}),
             ValidationError.InvalidEncryptionMasterKey => std.debug.print("fatal: ENCRYPTION_MASTER_KEY must be 64 hex chars\n", .{}),
-            ValidationError.MissingGitHubAppId => std.debug.print("fatal: GITHUB_APP_ID not set\n", .{}),
-            ValidationError.MissingGitHubAppPrivateKey => std.debug.print("fatal: GITHUB_APP_PRIVATE_KEY not set\n", .{}),
             ValidationError.InvalidPort => std.debug.print("fatal: invalid PORT value\n", .{}),
-            ValidationError.InvalidMaxAttempts => std.debug.print("fatal: invalid DEFAULT_MAX_ATTEMPTS value\n", .{}),
-            ValidationError.InvalidWorkerConcurrency => std.debug.print("fatal: invalid WORKER_CONCURRENCY value\n", .{}),
             ValidationError.InvalidApiHttpThreads => std.debug.print("fatal: invalid API_HTTP_THREADS value\n", .{}),
             ValidationError.InvalidApiHttpWorkers => std.debug.print("fatal: invalid API_HTTP_WORKERS value\n", .{}),
             ValidationError.InvalidApiMaxClients => std.debug.print("fatal: invalid API_MAX_CLIENTS value\n", .{}),
             ValidationError.InvalidApiMaxInFlightRequests => std.debug.print("fatal: invalid API_MAX_IN_FLIGHT_REQUESTS value\n", .{}),
-            ValidationError.InvalidRunTimeoutMs => std.debug.print("fatal: invalid RUN_TIMEOUT_MS value\n", .{}),
-            ValidationError.InvalidSandboxBackend => std.debug.print("fatal: invalid SANDBOX_BACKEND value\n", .{}),
-            ValidationError.InvalidSandboxKillGraceMs => std.debug.print("fatal: invalid SANDBOX_KILL_GRACE_MS value\n", .{}),
-            ValidationError.InvalidGateToolTimeoutMs => std.debug.print("fatal: invalid GATE_TOOL_TIMEOUT_MS value\n", .{}),
-            ValidationError.InvalidRateLimitCapacity => std.debug.print("fatal: invalid RATE_LIMIT_CAPACITY value\n", .{}),
-            ValidationError.InvalidRateLimitRefillPerSec => std.debug.print("fatal: invalid RATE_LIMIT_REFILL_PER_SEC value\n", .{}),
             ValidationError.InvalidReadyMaxQueueDepth => std.debug.print("fatal: invalid READY_MAX_QUEUE_DEPTH value\n", .{}),
             ValidationError.InvalidReadyMaxQueueAgeMs => std.debug.print("fatal: invalid READY_MAX_QUEUE_AGE_MS value\n", .{}),
             ValidationError.InvalidKekVersion => std.debug.print("fatal: KEK_VERSION must be 1 or 2\n", .{}),
@@ -275,18 +200,6 @@ fn parseI16Env(alloc: std.mem.Allocator, name: []const u8, default_value: i16, i
     const raw = std.process.getEnvVarOwned(alloc, name) catch return default_value;
     defer alloc.free(raw);
     return std.fmt.parseInt(i16, raw, 10) catch invalid_error;
-}
-
-fn parseF64Env(alloc: std.mem.Allocator, name: []const u8, default_value: f64, invalid_error: ValidationError) !f64 {
-    const raw = std.process.getEnvVarOwned(alloc, name) catch return default_value;
-    defer alloc.free(raw);
-    return std.fmt.parseFloat(f64, raw) catch invalid_error;
-}
-
-fn parseU64Env(alloc: std.mem.Allocator, name: []const u8, default_value: u64, invalid_error: ValidationError) !u64 {
-    const raw = std.process.getEnvVarOwned(alloc, name) catch return default_value;
-    defer alloc.free(raw);
-    return std.fmt.parseInt(u64, raw, 10) catch invalid_error;
 }
 
 fn parseOptionalI64Env(alloc: std.mem.Allocator, name: []const u8, invalid_error: ValidationError) !?i64 {
@@ -338,8 +251,6 @@ test "ServeConfig.load accepts custom provider" {
         .{ "OIDC_JWKS_URL", "https://idp.example.com/.well-known/jwks.json" },
         .{ "OIDC_PROVIDER", "custom" },
         .{ "ENCRYPTION_MASTER_KEY", test_encryption_master_key },
-        .{ "GITHUB_APP_ID", "12345" },
-        .{ "GITHUB_APP_PRIVATE_KEY", "pem" },
     };
     try setTestEnv(&env);
     defer unsetTestEnv(&env);
@@ -356,8 +267,6 @@ test "ServeConfig.load rejects invalid provider deterministically" {
         .{ "OIDC_JWKS_URL", "https://idp.example.com/.well-known/jwks.json" },
         .{ "OIDC_PROVIDER", "not-real" },
         .{ "ENCRYPTION_MASTER_KEY", test_encryption_master_key },
-        .{ "GITHUB_APP_ID", "12345" },
-        .{ "GITHUB_APP_PRIVATE_KEY", "pem" },
     };
     try setTestEnv(&env);
     defer unsetTestEnv(&env);
@@ -369,8 +278,6 @@ test "ServeConfig.load rejects provider without required OIDC_JWKS_URL" {
     const env = [_][2][]const u8{
         .{ "OIDC_PROVIDER", "custom" },
         .{ "ENCRYPTION_MASTER_KEY", test_encryption_master_key },
-        .{ "GITHUB_APP_ID", "12345" },
-        .{ "GITHUB_APP_PRIVATE_KEY", "pem" },
     };
     try setTestEnv(&env);
     defer unsetTestEnv(&env);
@@ -382,8 +289,6 @@ test "ServeConfig.load rejects empty OIDC_JWKS_URL" {
     const env = [_][2][]const u8{
         .{ "OIDC_JWKS_URL", "" },
         .{ "ENCRYPTION_MASTER_KEY", test_encryption_master_key },
-        .{ "GITHUB_APP_ID", "12345" },
-        .{ "GITHUB_APP_PRIVATE_KEY", "pem" },
     };
     try setTestEnv(&env);
     defer unsetTestEnv(&env);
@@ -395,8 +300,6 @@ test "ServeConfig.load accepts api key only auth mode" {
     const env = [_][2][]const u8{
         .{ "API_KEY", "dev-key" },
         .{ "ENCRYPTION_MASTER_KEY", test_encryption_master_key },
-        .{ "GITHUB_APP_ID", "12345" },
-        .{ "GITHUB_APP_PRIVATE_KEY", "pem" },
     };
     try setTestEnv(&env);
     defer unsetTestEnv(&env);
@@ -414,8 +317,6 @@ test "ServeConfig.load accepts oidc plus api key auth mode" {
         .{ "OIDC_PROVIDER", "custom" },
         .{ "API_KEY", "issued-key" },
         .{ "ENCRYPTION_MASTER_KEY", test_encryption_master_key },
-        .{ "GITHUB_APP_ID", "12345" },
-        .{ "GITHUB_APP_PRIVATE_KEY", "pem" },
     };
     try setTestEnv(&env);
     defer unsetTestEnv(&env);
@@ -433,8 +334,6 @@ test "ServeConfig.load rejects empty api key when explicitly configured with oid
         .{ "OIDC_JWKS_URL", "https://idp.example.com/.well-known/jwks.json" },
         .{ "API_KEY", "   " },
         .{ "ENCRYPTION_MASTER_KEY", test_encryption_master_key },
-        .{ "GITHUB_APP_ID", "12345" },
-        .{ "GITHUB_APP_PRIVATE_KEY", "pem" },
     };
     try setTestEnv(&env);
     defer unsetTestEnv(&env);
@@ -442,14 +341,10 @@ test "ServeConfig.load rejects empty api key when explicitly configured with oid
     try std.testing.expectError(ValidationError.InvalidApiKeyList, ServeConfig.load(std.testing.allocator));
 }
 
-// --- T1: Defaults — ServeConfig.load applies correct defaults ---
-
-test "ServeConfig.load applies default port and concurrency" {
+test "ServeConfig.load applies default port" {
     const env = [_][2][]const u8{
         .{ "API_KEY", "dev-key" },
         .{ "ENCRYPTION_MASTER_KEY", test_encryption_master_key },
-        .{ "GITHUB_APP_ID", "12345" },
-        .{ "GITHUB_APP_PRIVATE_KEY", "pem" },
     };
     try setTestEnv(&env);
     defer unsetTestEnv(&env);
@@ -458,52 +353,16 @@ test "ServeConfig.load applies default port and concurrency" {
     defer cfg.deinit();
 
     try std.testing.expectEqual(@as(u16, 3000), cfg.port);
-    try std.testing.expectEqual(@as(u32, 1), cfg.worker_concurrency);
-    try std.testing.expectEqual(@as(u32, 3), cfg.max_attempts);
-    try std.testing.expectEqual(@as(u64, 300_000), cfg.run_timeout_ms);
     try std.testing.expectEqual(@as(i16, 1), cfg.api_http_threads);
     try std.testing.expectEqual(@as(u32, 1024), cfg.api_max_clients);
-    try std.testing.expectEqualStrings("./config", cfg.config_dir);
     try std.testing.expectEqualStrings("/tmp/zombie-git-cache", cfg.cache_root);
     try std.testing.expectEqual(@as(u32, 1), cfg.active_kek_version);
-}
-
-// --- T2: Edge cases — zero/invalid values ---
-
-test "ServeConfig.load rejects zero worker_concurrency" {
-    const env = [_][2][]const u8{
-        .{ "API_KEY", "dev-key" },
-        .{ "ENCRYPTION_MASTER_KEY", test_encryption_master_key },
-        .{ "GITHUB_APP_ID", "12345" },
-        .{ "GITHUB_APP_PRIVATE_KEY", "pem" },
-        .{ "WORKER_CONCURRENCY", "0" },
-    };
-    try setTestEnv(&env);
-    defer unsetTestEnv(&env);
-
-    try std.testing.expectError(ValidationError.InvalidWorkerConcurrency, ServeConfig.load(std.testing.allocator));
-}
-
-test "ServeConfig.load rejects zero run_timeout_ms" {
-    const env = [_][2][]const u8{
-        .{ "API_KEY", "dev-key" },
-        .{ "ENCRYPTION_MASTER_KEY", test_encryption_master_key },
-        .{ "GITHUB_APP_ID", "12345" },
-        .{ "GITHUB_APP_PRIVATE_KEY", "pem" },
-        .{ "RUN_TIMEOUT_MS", "0" },
-    };
-    try setTestEnv(&env);
-    defer unsetTestEnv(&env);
-
-    try std.testing.expectError(ValidationError.InvalidRunTimeoutMs, ServeConfig.load(std.testing.allocator));
 }
 
 test "ServeConfig.load rejects short encryption key" {
     const env = [_][2][]const u8{
         .{ "API_KEY", "dev-key" },
         .{ "ENCRYPTION_MASTER_KEY", "tooshort" },
-        .{ "GITHUB_APP_ID", "12345" },
-        .{ "GITHUB_APP_PRIVATE_KEY", "pem" },
     };
     try setTestEnv(&env);
     defer unsetTestEnv(&env);
@@ -515,8 +374,6 @@ test "ServeConfig.load rejects non-hex encryption key" {
     const env = [_][2][]const u8{
         .{ "API_KEY", "dev-key" },
         .{ "ENCRYPTION_MASTER_KEY", "gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg" },
-        .{ "GITHUB_APP_ID", "12345" },
-        .{ "GITHUB_APP_PRIVATE_KEY", "pem" },
     };
     try setTestEnv(&env);
     defer unsetTestEnv(&env);
@@ -524,27 +381,10 @@ test "ServeConfig.load rejects non-hex encryption key" {
     try std.testing.expectError(ValidationError.InvalidEncryptionMasterKey, ServeConfig.load(std.testing.allocator));
 }
 
-test "ServeConfig.load rejects empty GITHUB_APP_ID" {
-    const env = [_][2][]const u8{
-        .{ "API_KEY", "dev-key" },
-        .{ "ENCRYPTION_MASTER_KEY", test_encryption_master_key },
-        .{ "GITHUB_APP_ID", "" },
-        .{ "GITHUB_APP_PRIVATE_KEY", "pem" },
-    };
-    try setTestEnv(&env);
-    defer unsetTestEnv(&env);
-
-    try std.testing.expectError(ValidationError.MissingGitHubAppId, ServeConfig.load(std.testing.allocator));
-}
-
-// --- T3: KEK v2 path ---
-
 test "ServeConfig.load rejects KEK_VERSION=2 without v2 key" {
     const env = [_][2][]const u8{
         .{ "API_KEY", "dev-key" },
         .{ "ENCRYPTION_MASTER_KEY", test_encryption_master_key },
-        .{ "GITHUB_APP_ID", "12345" },
-        .{ "GITHUB_APP_PRIVATE_KEY", "pem" },
         .{ "KEK_VERSION", "2" },
     };
     try setTestEnv(&env);
@@ -558,8 +398,6 @@ test "ServeConfig.load accepts KEK_VERSION=2 with valid v2 key" {
     const env = [_][2][]const u8{
         .{ "API_KEY", "dev-key" },
         .{ "ENCRYPTION_MASTER_KEY", test_encryption_master_key },
-        .{ "GITHUB_APP_ID", "12345" },
-        .{ "GITHUB_APP_PRIVATE_KEY", "pem" },
         .{ "KEK_VERSION", "2" },
         .{ "ENCRYPTION_MASTER_KEY_V2", v2_key },
     };
@@ -577,8 +415,6 @@ test "ServeConfig.load rejects KEK_VERSION=0" {
     const env = [_][2][]const u8{
         .{ "API_KEY", "dev-key" },
         .{ "ENCRYPTION_MASTER_KEY", test_encryption_master_key },
-        .{ "GITHUB_APP_ID", "12345" },
-        .{ "GITHUB_APP_PRIVATE_KEY", "pem" },
         .{ "KEK_VERSION", "0" },
     };
     try setTestEnv(&env);
@@ -591,8 +427,6 @@ test "ServeConfig.load rejects negative READY_MAX_QUEUE_DEPTH" {
     const env = [_][2][]const u8{
         .{ "API_KEY", "dev-key" },
         .{ "ENCRYPTION_MASTER_KEY", test_encryption_master_key },
-        .{ "GITHUB_APP_ID", "12345" },
-        .{ "GITHUB_APP_PRIVATE_KEY", "pem" },
         .{ "READY_MAX_QUEUE_DEPTH", "-5" },
     };
     try setTestEnv(&env);

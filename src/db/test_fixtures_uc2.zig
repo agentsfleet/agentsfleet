@@ -120,8 +120,7 @@ pub fn teardownWorkspace(conn: *pg.Conn, workspace_id: []const u8) void {
         "DELETE FROM harness_change_log WHERE workspace_id = $1::uuid",
         .{workspace_id},
     ) catch {};
-    base.teardownRuns(conn, workspace_id);
-    base.teardownSpecs(conn, workspace_id);
+    // M10_001: teardownRuns/teardownSpecs removed — tables dropped.
     _ = conn.exec(
         "DELETE FROM agent_profiles WHERE workspace_id = $1::uuid",
         .{workspace_id},

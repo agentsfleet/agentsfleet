@@ -2,7 +2,6 @@ const std = @import("std");
 const pg = @import("pg");
 const auth_sessions = @import("../auth/sessions.zig");
 const oidc = @import("../auth/oidc.zig");
-const worker = @import("../pipeline/worker.zig");
 const queue_redis = @import("../queue/redis.zig");
 const common = @import("handlers/common.zig");
 const handler = @import("handler.zig");
@@ -43,7 +42,6 @@ const RunningServer = struct {
     pool: *pg.Pool,
     session_store: auth_sessions.SessionStore,
     verifier: oidc.Verifier,
-    worker_state: worker.WorkerState,
     // Queue intentionally uninitialized — do not add tests that touch ctx.queue
     // without initializing this field first.
     queue: queue_redis.Client = undefined,
@@ -161,7 +159,6 @@ fn startServer(alloc: std.mem.Allocator) !*RunningServer {
         .audience = TEST_AUDIENCE,
         .inline_jwks_json = TEST_JWKS,
     });
-    var worker_state = worker.WorkerState.init();
     const port = allocTestPort();
 
     const running = try alloc.create(RunningServer);
@@ -169,7 +166,6 @@ fn startServer(alloc: std.mem.Allocator) !*RunningServer {
         .pool = db_ctx.pool,
         .session_store = session_store,
         .verifier = verifier,
-        .worker_state = worker_state,
         .ctx = .{
             .pool = db_ctx.pool,
             .queue = &undefined,
@@ -178,7 +174,6 @@ fn startServer(alloc: std.mem.Allocator) !*RunningServer {
             .oidc = &verifier,
             .auth_sessions = &session_store,
             .app_url = "http://127.0.0.1",
-            .worker_state = &worker_state,
             .api_in_flight_requests = std.atomic.Value(u32).init(0),
             .api_max_in_flight_requests = 64,
             .ready_max_queue_depth = null,
@@ -191,7 +186,6 @@ fn startServer(alloc: std.mem.Allocator) !*RunningServer {
     running.ctx.queue = &running.queue;
     running.ctx.oidc = &running.verifier;
     running.ctx.auth_sessions = &running.session_store;
-    running.ctx.worker_state = &running.worker_state;
     running.thread = try std.Thread.spawn(.{}, serverThread, .{ &running.ctx, port });
     errdefer {
         http_server.stop();

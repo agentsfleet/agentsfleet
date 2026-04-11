@@ -1,7 +1,7 @@
 const std = @import("std");
 const pg = @import("pg");
 const error_codes = @import("../errors/codes.zig");
-const topology = @import("../pipeline/topology.zig");
+const topology = @import("topology.zig");
 const id_format = @import("../types/id_format.zig");
 
 const log = std.log.scoped(.state);

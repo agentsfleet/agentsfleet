@@ -205,29 +205,22 @@ test "canonical schema bootstrap includes scoring config in base schema" {
     try std.testing.expect(std.mem.containsAtLeast(u8, migrations[6].sql, 1, "CREATE TABLE harness_change_log"));
     try std.testing.expect(std.mem.containsAtLeast(u8, migrations[9].sql, 1, "enable_agent_scoring BOOLEAN NOT NULL"));
     try std.testing.expect(std.mem.containsAtLeast(u8, migrations[9].sql, 1, "agent_scoring_weights_json TEXT NOT NULL"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, migrations[13].sql, 1, "CREATE TABLE workspace_latency_baseline"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, migrations[14].sql, 1, "CREATE TABLE agent_run_scores"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, migrations[15].sql, 1, "CREATE TABLE agent_run_analysis"));
-    try std.testing.expect(!std.mem.containsAtLeast(u8, migrations[14].sql, 1, "tier             TEXT"));
+    // M10_001: migrations[13] (018), [14] (019) are version markers.
+    // [15] (020) retained audit logging infra but dropped agent_run_analysis.
+    try std.testing.expect(std.mem.containsAtLeast(u8, migrations[13].sql, 1, "version marker only"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, migrations[14].sql, 1, "version marker only"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, migrations[15].sql, 1, "agent_run_analysis table removed"));
 }
 
-test "migration SQL has no semicolons inside line comments" {
-    // The migration statement splitter splits on `;` but does not track `-- line comments`.
-    // A semicolon inside a comment breaks the splitter, producing invalid SQL fragments.
+test "every migration SQL is parseable by SqlStatementSplitter" {
+    const SqlSplitter = @import("../db/sql_splitter.zig").SqlStatementSplitter;
     const migrations = canonicalMigrations();
     for (migrations) |migration| {
-        var iter = std.mem.splitScalar(u8, migration.sql, '\n');
-        while (iter.next()) |line| {
-            const trimmed = std.mem.trimLeft(u8, line, " \t");
-            if (std.mem.startsWith(u8, trimmed, "--")) {
-                // Skip the leading "-- " prefix before checking for `;`
-                // to avoid false positives on the `--` itself.
-                const comment_body = trimmed[2..];
-                if (std.mem.indexOfScalar(u8, comment_body, ';') != null) {
-                    std.debug.print("\nFAIL: migration v{d} has ';' in comment: {s}\n", .{ migration.version, trimmed });
-                    return error.SemicolonInComment;
-                }
-            }
+        const stmt_count = SqlSplitter.count(migration.sql);
+        // Every migration must produce at least one statement (even version markers have SELECT 1).
+        if (stmt_count == 0) {
+            std.debug.print("\nFAIL: migration v{d} produces zero statements\n", .{migration.version});
+            return error.EmptyMigration;
         }
     }
 }

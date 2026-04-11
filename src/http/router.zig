@@ -26,15 +26,6 @@ pub const Route = union(enum) {
     poll_auth_session: []const u8,
     github_callback,
     create_workspace,
-    start_run,
-    list_runs,
-    list_specs,
-    retry_run: []const u8,
-    replay_run: []const u8,
-    stream_run: []const u8,
-    cancel_run: []const u8,
-    interrupt_run: []const u8,
-    get_run: []const u8,
     pause_workspace: []const u8,
     upgrade_workspace_to_scale: []const u8,
     apply_workspace_billing_event: []const u8,
@@ -71,7 +62,6 @@ pub const Route = union(enum) {
     zombie_credentials, // GET|POST /v1/zombies/credentials
 };
 
-const matchRunAction = matchers.matchRunAction;
 const matchWorkspaceSuffix = matchers.matchWorkspaceSuffix;
 const matchAgentProposalAction = matchers.matchAgentProposalAction;
 const matchAgentHarnessChangeAction = matchers.matchAgentHarnessChangeAction;
@@ -79,7 +69,6 @@ const isSingleSegment = matchers.isSingleSegment;
 const matchWebhookRoute = matchers.matchWebhookRoute;
 
 const prefix_workspaces = "/v1/workspaces/";
-const prefix_runs = "/v1/runs/";
 const prefix_agents = "/v1/agents/";
 const prefix_auth_sessions = "/v1/auth/sessions/";
 
@@ -90,8 +79,6 @@ pub fn match(path: []const u8) ?Route {
     if (std.mem.eql(u8, path, "/v1/auth/sessions")) return .create_auth_session;
     if (std.mem.eql(u8, path, "/v1/github/callback")) return .github_callback;
     if (std.mem.eql(u8, path, "/v1/workspaces")) return .create_workspace;
-    if (std.mem.eql(u8, path, "/v1/runs")) return .start_run;
-    if (std.mem.eql(u8, path, "/v1/specs")) return .list_specs;
 
     if (std.mem.startsWith(u8, path, prefix_auth_sessions) and std.mem.endsWith(u8, path, "/complete")) {
         const inner = path[prefix_auth_sessions.len .. path.len - "/complete".len];
@@ -101,19 +88,6 @@ pub fn match(path: []const u8) ?Route {
     if (std.mem.startsWith(u8, path, prefix_auth_sessions)) {
         const session_id = path[prefix_auth_sessions.len..];
         if (isSingleSegment(session_id)) return .{ .poll_auth_session = session_id };
-    }
-
-    if (matchRunAction(path, ":retry")) |run_id| return .{ .retry_run = run_id };
-    if (matchRunAction(path, ":replay")) |run_id| return .{ .replay_run = run_id };
-    if (matchRunAction(path, ":stream")) |run_id| return .{ .stream_run = run_id };
-    if (matchRunAction(path, ":interrupt")) |run_id| return .{ .interrupt_run = run_id };
-    if (matchRunAction(path, ":cancel")) |run_id| return .{ .cancel_run = run_id };
-
-    if (std.mem.startsWith(u8, path, prefix_runs)) {
-        const run_id = path[prefix_runs.len..];
-        // Reject run_ids with ':' — those are unrecognized action suffixes
-        if (isSingleSegment(run_id) and std.mem.indexOfScalar(u8, run_id, ':') == null)
-            return .{ .get_run = run_id };
     }
 
     if (std.mem.startsWith(u8, path, prefix_workspaces) and std.mem.endsWith(u8, path, ":pause")) {
@@ -278,7 +252,7 @@ test "match resolves agent profile and scores routes" {
     try std.testing.expect(match("/v1/agents/foo/harness/changes/bar/baz:revert") == null);
 }
 
-test "match resolves auth and run routes" {
+test "match resolves auth routes" {
     try std.testing.expectEqualDeep(Route.create_auth_session, match("/v1/auth/sessions").?);
     try std.testing.expectEqualStrings(
         "sess_1",
@@ -287,13 +261,8 @@ test "match resolves auth and run routes" {
             else => return error.TestExpectedEqual,
         },
     );
-    try std.testing.expectEqualStrings(
-        "run_1",
-        switch (match("/v1/runs/run_1").?) {
-            .get_run => |run_id| run_id,
-            else => return error.TestExpectedEqual,
-        },
-    );
+    // M10_001: /v1/runs/* removed
+    try std.testing.expect(match("/v1/runs/run_1") == null);
 }
 
 // ── M16_004 route tests ───────────────────────────────────────────────────────
@@ -355,81 +324,6 @@ test "match resolves workspace LLM credential route (M16_004)" {
     );
     // Extra segments not matched
     try std.testing.expect(match("/v1/workspaces/ws_1/extra/credentials/llm") == null);
-}
-
-test "match uses matchRunAction — run action routes resolve correctly" {
-    try std.testing.expectEqualStrings(
-        "run_1",
-        switch (match("/v1/runs/run_1:retry").?) {
-            .retry_run => |id| id,
-            else => return error.TestExpectedEqual,
-        },
-    );
-    try std.testing.expectEqualStrings(
-        "run_1",
-        switch (match("/v1/runs/run_1:replay").?) {
-            .replay_run => |id| id,
-            else => return error.TestExpectedEqual,
-        },
-    );
-    try std.testing.expectEqualStrings(
-        "run_1",
-        switch (match("/v1/runs/run_1:stream").?) {
-            .stream_run => |id| id,
-            else => return error.TestExpectedEqual,
-        },
-    );
-}
-
-// ── M17_001 router tests ──────────────────────────────────────────────────
-
-test "M17: match resolves cancel_run route and extracts run_id" {
-    const run_id = "0195b4ba-8d3a-7f13-8abc-cc0000000001";
-    const route = match("/v1/runs/0195b4ba-8d3a-7f13-8abc-cc0000000001:cancel") orelse
-        return error.TestExpectedMatch;
-    try std.testing.expectEqualStrings(run_id, switch (route) {
-        .cancel_run => |id| id,
-        else => return error.TestExpectedEqual,
-    });
-}
-
-test "M17: match cancel_run accepts short run_id" {
-    const route = match("/v1/runs/run-42:cancel") orelse return error.TestExpectedMatch;
-    try std.testing.expectEqualStrings("run-42", switch (route) {
-        .cancel_run => |id| id,
-        else => return error.TestExpectedEqual,
-    });
-}
-
-test "M17: match rejects cancel_run with empty run_id" {
-    try std.testing.expect(match("/v1/runs/:cancel") == null);
-}
-
-test "M17: wrong suffix does not match cancel_run" {
-    try std.testing.expect(match("/v1/runs/run-1:cancelX") == null);
-    try std.testing.expect(match("/v1/runs/run-1:CANCEL") == null);
-    try std.testing.expect(match("/v1/runs/run-1/cancel") == null);
-}
-
-test "M17: cancel route does not interfere with retry and replay" {
-    const retry_route = match("/v1/runs/run-1:retry") orelse return error.TestExpectedMatch;
-    switch (retry_route) {
-        .retry_run => {},
-        else => return error.TestExpectedEqual,
-    }
-    const replay_route = match("/v1/runs/run-1:replay") orelse return error.TestExpectedMatch;
-    switch (replay_route) {
-        .replay_run => {},
-        else => return error.TestExpectedEqual,
-    }
-}
-
-test "M17: bare run path resolves to get_run not cancel_run" {
-    const route = match("/v1/runs/run-99") orelse return error.TestExpectedMatch;
-    switch (route) {
-        .get_run => |id| try std.testing.expectEqualStrings("run-99", id),
-        else => return error.TestExpectedEqual,
-    }
 }
 
 // Webhook + approval route tests are in router_test.zig.

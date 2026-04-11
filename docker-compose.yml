@@ -3,6 +3,7 @@
 # `TARGETARCH` to docker compose. CI does not use this path.
 services:
   postgres:
+    container_name: zombie-postgres
     image: mirror.gcr.io/library/postgres:18-alpine
     command:
       - sh
@@ -24,6 +25,7 @@ services:
       retries: 20
 
   redis:
+    container_name: zombie-redis
     image: mirror.gcr.io/library/redis:7-alpine
     command:
       - sh
@@ -45,6 +47,7 @@ services:
       retries: 20
 
   zombied:
+    container_name: zombied-api
     build:
       context: .
       dockerfile: Dockerfile
@@ -68,6 +71,7 @@ services:
       REDIS_URL_API: rediss://:usezombie@redis:6379/api
       REDIS_URL_WORKER: rediss://:usezombie@redis:6379/worker
       REDIS_TLS_CA_CERT_FILE: /tls/server.crt
+      MIGRATE_ON_START: "1"
     depends_on:
       postgres:
         condition: service_healthy

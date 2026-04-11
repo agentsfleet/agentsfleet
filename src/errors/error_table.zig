@@ -74,21 +74,9 @@ pub const TABLE = [_]ErrorEntry{
     .{ .code = "UZ-ENTL-002", .http_status = .payment_required,    .title = "Profile limit reached",           .docs_uri = ERROR_DOCS_BASE ++ "UZ-ENTL-002" },
     .{ .code = "UZ-ENTL-003", .http_status = .payment_required,    .title = "Stage limit reached",             .docs_uri = ERROR_DOCS_BASE ++ "UZ-ENTL-003" },
     .{ .code = "UZ-ENTL-004", .http_status = .forbidden,           .title = "Skill not allowed",               .docs_uri = ERROR_DOCS_BASE ++ "UZ-ENTL-004" },
-    // ── SPEC ─────────────────────────────────────────────────────────────────
-    .{ .code = "UZ-SPEC-001", .http_status = .not_found,           .title = "Spec not found",                .docs_uri = ERROR_DOCS_BASE ++ "UZ-SPEC-001" },
-    .{ .code = "UZ-SPEC-002", .http_status = .bad_request,         .title = "Spec is empty",                 .docs_uri = ERROR_DOCS_BASE ++ "UZ-SPEC-002" },
-    .{ .code = "UZ-SPEC-003", .http_status = .unprocessable_entity,.title = "Spec has no actionable content",.docs_uri = ERROR_DOCS_BASE ++ "UZ-SPEC-003" },
-    .{ .code = "UZ-SPEC-004", .http_status = .unprocessable_entity,.title = "Spec has unresolved file ref",  .docs_uri = ERROR_DOCS_BASE ++ "UZ-SPEC-004" },
-    // ── RUN ──────────────────────────────────────────────────────────────────
-    .{ .code = "UZ-RUN-001", .http_status = .not_found,           .title = "Run not found",                      .docs_uri = ERROR_DOCS_BASE ++ "UZ-RUN-001" },
-    .{ .code = "UZ-RUN-002", .http_status = .conflict,            .title = "Invalid state transition",           .docs_uri = ERROR_DOCS_BASE ++ "UZ-RUN-002" },
-    .{ .code = "UZ-RUN-003", .http_status = .too_many_requests,   .title = "Run token budget exceeded",          .docs_uri = ERROR_DOCS_BASE ++ "UZ-RUN-003" },
-    .{ .code = "UZ-RUN-004", .http_status = .request_timeout,     .title = "Run wall time exceeded",             .docs_uri = ERROR_DOCS_BASE ++ "UZ-RUN-004" },
-    .{ .code = "UZ-RUN-005", .http_status = .too_many_requests,   .title = "Workspace monthly budget exceeded",  .docs_uri = ERROR_DOCS_BASE ++ "UZ-RUN-005" },
-    .{ .code = "UZ-RUN-006", .http_status = .conflict,            .title = "Run already in terminal state",      .docs_uri = ERROR_DOCS_BASE ++ "UZ-RUN-006" },
-    .{ .code = "UZ-RUN-007", .http_status = .internal_server_error,.title = "Run cancel signal failed",          .docs_uri = ERROR_DOCS_BASE ++ "UZ-RUN-007" },
-    .{ .code = "UZ-RUN-008", .http_status = .internal_server_error,.title = "Run interrupt signal failed",       .docs_uri = ERROR_DOCS_BASE ++ "UZ-RUN-008" },
-    .{ .code = "UZ-RUN-009", .http_status = .conflict,            .title = "Run not interruptible",              .docs_uri = ERROR_DOCS_BASE ++ "UZ-RUN-009" },
+    // ── M10_001: SPEC + RUN entries removed (tables dropped) ─────────────────
+    // ── PIPELINE V1 REMOVED ─────────────────────────────────────────────────
+    .{ .code = "UZ-RUNS-410", .http_status = .gone,               .title = "Pipeline v1 permanently removed", .docs_uri = ERROR_DOCS_BASE ++ "UZ-RUNS-410" },
     // ── AGENT ────────────────────────────────────────────────────────────────
     .{ .code = "UZ-AGENT-001", .http_status = .not_found,          .title = "Agent not found",           .docs_uri = ERROR_DOCS_BASE ++ "UZ-AGENT-001" },
     .{ .code = "UZ-AGENT-002", .http_status = .service_unavailable,.title = "Agent scores unavailable",  .docs_uri = ERROR_DOCS_BASE ++ "UZ-AGENT-002" },

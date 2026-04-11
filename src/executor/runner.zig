@@ -289,7 +289,6 @@ fn injectProviderApiKey(cfg: *Config, api_key: []const u8) !void {
     cfg.providers = new_providers;
 }
 
-
 /// Build tools from RPC tools array, or fall back to allTools.
 /// Unknown names are logged to stderr and collected in BuildResult.skipped.
 fn buildToolsFromSpec(

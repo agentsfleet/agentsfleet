@@ -88,85 +88,13 @@ pub fn handlePauseWorkspace(ctx: *common.Context, req: *httpz.Request, res: *htt
     });
 }
 
+/// M10_001: Pipeline v1 removed — specs table dropped. Stub returns 410.
 pub fn handleSyncSpecs(ctx: *common.Context, req: *httpz.Request, res: *httpz.Response, workspace_id: []const u8) void {
+    _ = req;
+    _ = workspace_id;
     var arena = std.heap.ArenaAllocator.init(ctx.alloc);
     defer arena.deinit();
     const alloc = arena.allocator();
     const req_id = common.requestId(alloc);
-
-    const principal = common.authenticate(alloc, req, ctx) catch |err| {
-        common.writeAuthError(res, req_id, err);
-        return;
-    };
-    if (!common.requireUuidV7Id(res, req_id, workspace_id, "workspace_id")) return;
-
-    const conn = ctx.pool.acquire() catch {
-        common.internalDbUnavailable(res, req_id);
-        return;
-    };
-    defer ctx.pool.release(conn);
-
-    const actor = principal.user_id orelse API_ACTOR;
-    const access = workspace_guards.enforce(res, req_id, conn, alloc, principal, workspace_id, actor, .{
-        .credit_policy = .execution_required,
-    }) orelse return;
-    defer access.deinit(alloc);
-
-    const billing_state = access.billing_state orelse {
-        common.internalOperationError(res, "billing_state missing after execution guard", req_id);
-        return;
-    };
-
-    var ws = conn.query(
-        "SELECT repo_url, default_branch FROM workspaces WHERE workspace_id = $1",
-        .{workspace_id},
-    ) catch {
-        common.internalDbError(res, req_id);
-        return;
-    };
-    defer ws.deinit();
-
-    const ws_row = ws.next() catch null orelse {
-        common.errorResponse(res, error_codes.ERR_WORKSPACE_NOT_FOUND, "Workspace not found", req_id);
-        return;
-    };
-
-    _ = ws_row;
-    ws.drain() catch {};
-
-    var count_result = conn.query(
-        "SELECT COUNT(*) FROM specs WHERE workspace_id = $1 AND status = 'pending'",
-        .{workspace_id},
-    ) catch {
-        common.internalDbError(res, req_id);
-        return;
-    };
-    defer count_result.deinit();
-
-    const total_pending: i64 = blk: {
-        const crow = (count_result.next() catch null) orelse break :blk @as(i64, 0);
-        const v = crow.get(i64, 0) catch @as(i64, 0);
-        count_result.drain() catch {};
-        break :blk v;
-    };
-
-    const credit = access.credit orelse {
-        common.internalOperationError(res, "credit missing after execution guard", req_id);
-        return;
-    };
-
-    log.info("workspace.sync workspace_id={s} total_pending={d}", .{ workspace_id, total_pending });
-
-    common.writeJson(res, .ok, .{
-        .synced_count = @as(i64, 0),
-        .total_pending = total_pending,
-        .specs = &[_]u8{},
-        .plan_tier = billing_state.plan_tier.label(),
-        .billing_status = billing_state.billing_status.label(),
-        .plan_sku = billing_state.plan_sku,
-        .grace_expires_at = billing_state.grace_expires_at,
-        .credit_remaining_cents = credit.remaining_credit_cents,
-        .credit_currency = credit.currency,
-        .request_id = req_id,
-    });
+    common.errorResponse(res, error_codes.ERR_PIPELINE_V1_REMOVED, "Pipeline v1 removed — spec sync is no longer available", req_id);
 }

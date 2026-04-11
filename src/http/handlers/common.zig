@@ -5,7 +5,6 @@ const posthog = @import("posthog");
 const oidc = @import("../../auth/oidc.zig");
 const auth_sessions = @import("../../auth/sessions.zig");
 const queue_redis = @import("../../queue/redis.zig");
-const worker = @import("../../pipeline/worker.zig");
 const metrics = @import("../../observability/metrics.zig");
 const obs_log = @import("../../observability/logging.zig");
 const posthog_events = @import("../../observability/posthog_events.zig");
@@ -26,7 +25,6 @@ pub const Context = struct {
     oidc: ?*oidc.Verifier,
     auth_sessions: *auth_sessions.SessionStore,
     app_url: []const u8,
-    worker_state: *const worker.WorkerState,
     api_in_flight_requests: std.atomic.Value(u32),
     api_max_in_flight_requests: u32,
     ready_max_queue_depth: ?i64,
@@ -386,28 +384,8 @@ pub fn endApiRequest(ctx: *Context) void {
     metrics.setApiInFlightRequests(ctx.api_in_flight_requests.load(.acquire));
 }
 
-pub fn compensateStartRunQueueFailure(conn: *pg.Conn, run_id: []const u8) void {
-    _ = conn.exec(
-        "DELETE FROM runs WHERE run_id = $1 AND state = 'SPEC_QUEUED'",
-        .{run_id},
-    ) catch {};
-}
-
-pub fn compensateRetryQueueFailure(
-    conn: *pg.Conn,
-    run_id: []const u8,
-    previous_state: []const u8,
-    transition_ts: i64,
-) void {
-    _ = conn.exec(
-        "UPDATE runs SET state = $1, updated_at = $2 WHERE run_id = $3",
-        .{ previous_state, std.time.milliTimestamp(), run_id },
-    ) catch {};
-    _ = conn.exec(
-        "DELETE FROM run_transitions WHERE run_id = $1 AND reason_code = 'MANUAL_RETRY' AND ts = $2",
-        .{ run_id, transition_ts },
-    ) catch {};
-}
+// M10_001: compensateStartRunQueueFailure and compensateRetryQueueFailure removed.
+// Callers (start.zig, retry.zig) were deleted; runs/run_transitions tables dropped.
 
 pub fn openHandlerTestConn(alloc: std.mem.Allocator) !?struct { pool: *db.Pool, conn: *pg.Conn } {
     // check-pg-drain: ok — no conn.query() here; checker misattributes test-block queries

@@ -5,6 +5,7 @@ const std = @import("std");
 const pg = @import("pg");
 const id_format = @import("../types/id_format.zig");
 const error_codes = @import("../errors/codes.zig");
+const sql_splitter = @import("sql_splitter.zig");
 const log = std.log.scoped(.db);
 
 pub const Pool = pg.Pool;
@@ -294,52 +295,13 @@ fn tableExists(conn: *Conn, query_sql: []const u8) !bool {
 }
 
 fn applySqlStatements(conn: *Conn, sql: []const u8) !u32 {
-    var start: usize = 0;
-    var i: usize = 0;
-    var in_single_quote = false;
-    var in_dollar_quote = false;
+    var splitter = sql_splitter.SqlStatementSplitter.init(sql);
     var count: u32 = 0;
 
-    while (i < sql.len) : (i += 1) {
-        const ch = sql[i];
-
-        if (!in_dollar_quote and ch == '\'') {
-            // Skip escaped single quote inside string literal.
-            if (in_single_quote and i + 1 < sql.len and sql[i + 1] == '\'') {
-                i += 1;
-                continue;
-            }
-            in_single_quote = !in_single_quote;
-            continue;
-        }
-
-        // NOTE: Only bare $$ dollar-quoting is supported.
-        // Tagged dollar-quotes (e.g. $body$...$body$) are not handled.
-        // All schema files must use plain $$ — do not use tagged variants.
-        if (!in_single_quote and i + 1 < sql.len and sql[i] == '$' and sql[i + 1] == '$') {
-            in_dollar_quote = !in_dollar_quote;
-            i += 1;
-            continue;
-        }
-
-        if (ch != ';' or in_single_quote or in_dollar_quote) continue;
-
-        const stmt = std.mem.trim(u8, sql[start..i], " \t\r\n");
-        if (stmt.len > 0) {
-            const preview_len = @min(stmt.len, 120);
-            log.debug("migrate.stmt index={d} preview={s}", .{ count + 1, stmt[0..preview_len] });
-            _ = try conn.exec(stmt, .{});
-            count += 1;
-        }
-
-        start = i + 1;
-    }
-
-    const tail = std.mem.trim(u8, sql[start..], " \t\r\n");
-    if (tail.len > 0) {
-        const preview_len = @min(tail.len, 120);
-        log.debug("migrate.stmt index={d} preview={s}", .{ count + 1, tail[0..preview_len] });
-        _ = try conn.exec(tail, .{});
+    while (splitter.next()) |stmt| {
+        const preview_len = @min(stmt.len, 120);
+        log.debug("migrate.stmt index={d} preview={s}", .{ count + 1, stmt[0..preview_len] });
+        _ = try conn.exec(stmt, .{});
         count += 1;
     }
 

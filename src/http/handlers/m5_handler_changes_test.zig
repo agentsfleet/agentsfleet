@@ -128,14 +128,6 @@ test "agents/get module imports resolve" {
     _ = @import("agents/get.zig");
 }
 
-test "agents/scores module imports resolve" {
-    _ = @import("agents/scores.zig");
-}
-
-test "runs/start module imports resolve" {
-    _ = @import("runs/start.zig");
-}
-
 test "skill_secrets_http module imports resolve" {
     _ = @import("skill_secrets_http.zig");
 }

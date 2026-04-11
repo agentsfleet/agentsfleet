@@ -1,20 +1,16 @@
-//! Policy enforcement — records policy_decision events in policy_events table.
-//! M1: permissive mode — classify all actions and record as 'allow'.
-//! Provides the audit trail required by M1_003 AC#1 and AC#4.
-//! POLICY_ENFORCE=strict (future M2) enables full gate enforcement.
+//! Policy enforcement — stub after M10_001 pipeline v1 removal.
+//!
+//! The policy_events table and runs table were dropped. recordPolicyEvent is
+//! now a no-op that logs the decision without persisting to DB. Callers
+//! (workspaces_ops.zig) are unchanged — they catch the error return.
 
 const std = @import("std");
 const pg = @import("pg");
 const types = @import("../types.zig");
 const events = @import("../events/bus.zig");
 const log = std.log.scoped(.policy);
-const id_format = @import("../types/id_format.zig");
 
-/// Record a policy_decision event in the policy_events table.
-///
-/// Called before every state-changing handler (sensitive/critical class).
-/// M1 permissive mode: decision is always 'allow' for authenticated requests.
-/// Denied paths must pass .deny explicitly.
+/// Record a policy decision. M10_001: policy_events table dropped — log only.
 pub fn recordPolicyEvent(
     conn: *pg.Conn,
     workspace_id: []const u8,
@@ -24,50 +20,13 @@ pub fn recordPolicyEvent(
     rule_id: []const u8,
     actor: []const u8,
 ) !void {
-    const now_ms = std.time.milliTimestamp();
-    const event_id = try id_format.generatePolicyEventId(conn._allocator);
-    defer conn._allocator.free(event_id);
-    _ = try conn.exec(
-        \\INSERT INTO policy_events
-        \\  (id, run_id, workspace_id, action_class, decision, rule_id, actor, ts)
-        \\VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-    , .{
-        event_id,
-        run_id,
-        workspace_id,
-        @tagName(action_class),
-        @tagName(decision),
-        rule_id,
-        actor,
-        now_ms,
-    });
-
-    var request_id: []const u8 = "-";
-    if (run_id) |rid| {
-        const rq = conn.query("SELECT request_id FROM runs WHERE run_id = $1", .{rid}) catch null;
-        if (rq) |q| {
-            defer q.deinit();
-            if ((q.next() catch null)) |rrow| {
-                if (rrow.get(?[]u8, 0) catch null) |req| {
-                    if (req.len > 0) request_id = req;
-                }
-            }
-            q.drain() catch {};
-        }
-    }
-    log.info("policy.event request_id={s} workspace={s} class={s} decision={s} rule={s} actor={s}", .{
-        request_id,
+    _ = conn;
+    log.info("policy.event workspace={s} class={s} decision={s} rule={s} actor={s}", .{
         workspace_id,
         @tagName(action_class),
         @tagName(decision),
         rule_id,
         actor,
     });
-    var detail_buf: [192]u8 = undefined;
-    const detail = std.fmt.bufPrint(
-        &detail_buf,
-        "request_id={s} workspace={s} class={s} decision={s} rule={s} actor={s}",
-        .{ request_id, workspace_id, @tagName(action_class), @tagName(decision), rule_id, actor },
-    ) catch "policy_event";
-    events.emit("policy_event", run_id, detail);
+    events.emit("policy_event", run_id, "policy_event");
 }

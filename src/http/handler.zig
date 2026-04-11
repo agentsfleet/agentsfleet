@@ -3,9 +3,7 @@
 
 const std = @import("std");
 const common = @import("handlers/common.zig");
-const runs_handlers = @import("handlers/runs.zig");
 const workspace_handlers = @import("handlers/workspaces.zig");
-const specs_handlers = @import("handlers/specs.zig");
 const agents_handlers = @import("handlers/agents.zig");
 const skill_secret_handlers = @import("handlers/skill_secrets.zig");
 const health_handlers = @import("handlers/health.zig");
@@ -24,14 +22,6 @@ const zombie_activity_api_http = @import("handlers/zombie_activity_api.zig");
 pub const Context = common.Context;
 pub const SkillSecretRoute = skill_secret_handlers.Route;
 
-pub const handleStartRun = runs_handlers.handleStartRun;
-pub const handleGetRun = runs_handlers.handleGetRun;
-pub const handleListRuns = runs_handlers.handleListRuns;
-pub const handleRetryRun = runs_handlers.handleRetryRun;
-pub const handleGetRunReplay = runs_handlers.handleGetRunReplay;
-pub const handleStreamRun = runs_handlers.handleStreamRun;
-pub const handleCancelRun = runs_handlers.handleCancelRun;
-pub const handleInterruptRun = runs_handlers.handleInterruptRun;
 pub const handleCreateWorkspace = workspace_handlers.handleCreateWorkspace;
 pub const handlePauseWorkspace = workspace_handlers.handlePauseWorkspace;
 pub const handleSyncSpecs = workspace_handlers.handleSyncSpecs;
@@ -39,7 +29,6 @@ pub const handleUpgradeWorkspaceToScale = workspace_handlers.handleUpgradeWorksp
 pub const handleApplyWorkspaceBillingEvent = workspace_handlers.handleApplyWorkspaceBillingEvent;
 pub const handleGetWorkspaceBillingSummary = workspace_handlers.handleGetWorkspaceBillingSummary;
 pub const handleSetWorkspaceScoringConfig = workspace_handlers.handleSetWorkspaceScoringConfig;
-pub const handleListSpecs = specs_handlers.handleListSpecs;
 pub const handleGetAgent = agents_handlers.handleGetAgent;
 pub const handleGetAgentScores = agents_handlers.handleGetAgentScores;
 pub const handleGetAgentImprovementReport = agents_handlers.handleGetAgentImprovementReport;
