@@ -20,7 +20,7 @@ const posthog = @import("posthog");
 const db = @import("../db/pool.zig");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 
-const sql_rollback = sql_rollback;
+const sql_rollback = "ROLLBACK";
 const outbox = @import("../state/outbox_reconciler.zig");
 const id_format = @import("../types/id_format.zig");
 const obs_log = @import("../observability/logging.zig");
