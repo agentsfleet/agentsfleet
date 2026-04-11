@@ -6,6 +6,9 @@
 //
 // Must respond to Slack within 3 seconds — processing is inline since
 // it's just a Redis SET + Postgres INSERT.
+//
+// HMAC-verified — does not use hx.authenticated(). Slack sends a signed
+// payload; authentication is via request signature, not Bearer token.
 
 const std = @import("std");
 const httpz = @import("httpz");

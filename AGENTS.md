@@ -263,7 +263,7 @@ Required outputs:
   - [ ] **OpenAPI spec update** — does this change add/modify/remove API endpoints, request/response shapes, or error codes? If yes, list affected paths.
   - [ ] **`zombiectl` CLI changes** — does this change require new subcommands, flags, or output format changes in the npm CLI? If yes, note that the project manager must approve CLI surface changes (create a skill ticket if needed).
   - [ ] **User-facing doc changes** — do docs at `docs.usezombie.com` need updating? If yes, list pages.
-  - [ ] **Release notes** — will this ship as a version bump? If yes, note the version (minor for features, patch for fixes) and draft the `docs/v1/ship/{version}.md` entry during DOCUMENT phase.
+  - [ ] **Release notes** — will this ship as a version bump? If yes, note the version (minor for features, patch for fixes) and update `/Users/kishore/Projects/docs/changelog.mdx` with a new `<Update>` block during CHORE(close).
   - [ ] **Schema changes** — does this change add/modify/remove database tables, columns, or constraints? If yes: (a) each new SQL file must be ≤100 lines and single-concern (one table or one logical group), (b) update `schema/embed.zig` and `src/cmd/common.zig` migration array, (c) verify `docs/SCHEMA_CONVENTIONS.md` is followed. Full teardown-rebuild is allowed until v0.5.0 — no ALTER migrations needed.
   - [ ] **Schema teardown (pre-production only)** — if removing tables before first production deploy: edit `CREATE TABLE` source files directly (no DROP migrations). When all tables in a file are removed, keep the file as a version marker with a comment (`-- MN_WS: removed. Kept as version marker.`). Never delete migration files — later migrations depend on slot numbering. See `docs/greptile-learnings/RULES.md` rule 41.
 
@@ -389,57 +389,41 @@ Required outputs:
 - Spec header `Status: DONE` (or `Status: IN_PROGRESS` if parked).
 - Spec moved from `docs/v1/active/` to `docs/v1/done/` (only if fully complete).
 - Spec move committed on the feature branch.
-- **Release doc generated** at `docs/v1/ship/{version}.md` for every milestone/workstream completion.
+- **Release doc updated** in `/Users/kishore/Projects/docs/changelog.mdx` for every milestone/workstream completion. Add a new `<Update>` MDX block — do NOT create `docs/v*/ship/` files.
 - **Orphan sweep completed** (Rule 30). For every renamed/deleted/changed symbol in the branch, verify zero non-historical references remain across schema, Zig, JS, tests, and docs. This is a hard gate — do not open the PR with stale references.
 
 #### Release Doc Generation
 
-On every CHORE(close) where the spec is fully `DONE`, generate a release doc:
+On every CHORE(close) where the spec is fully `DONE`, update the public changelog:
 
-1. **Version bump rule:**
-   - Feature milestone → minor bump (e.g., `0.3.1` → `0.4.0`)
-   - Bug fix workstream → patch bump (e.g., `0.4.0` → `0.4.1`)
-   - Breaking change → major bump (e.g., `0.x` → `1.0.0`)
+1. **File:** `/Users/kishore/Projects/docs/changelog.mdx` — this is the single source of truth. Do NOT create `docs/v*/ship/*.md` files.
 
-2. **File:** `docs/v1/ship/{next_version}.md`
+2. **Add a new `<Update>` block** at the top of the changelog (after the `<Tip>` block), using the Mintlify MDX format:
 
-3. **Format:** Changelog-style, suitable for an agent to transform into the public changelog at `docs.usezombie.com/changelog`. Structure:
+```mdx
+<Update label="vX.Y.Z — {date}" tags={["New releases", ...]}>
+  ## {Feature name}
 
-```markdown
-# v{version}
-
-**Date:** {date}
-**Milestone:** M{N}_{WS}
-**Spec:** {spec_file_name}
-
-## What changed
-
-- {bullet: user-visible change with context}
-
-## Technical details
-
-- {bullet: implementation detail relevant to operators/developers}
-
-## Breaking changes
-
-- {bullet or "None"}
-
-## Migration
-
-- {bullet or "None — tables rebuilt from scratch" / "No migration needed"}
+  {User-visible description. Internal refactors (no API change) are omitted.}
+</Update>
 ```
 
-4. Commit the release doc on the feature branch alongside the spec move.
+3. **Version label rule:**
+   - Feature milestone → minor bump (e.g., `0.7.0` → `0.8.0`)
+   - Bug fix workstream → patch bump (e.g., `0.8.0` → `0.8.1`)
+   - Breaking change → major bump
+
+4. Internal refactors (no user-visible change) do not need an Update block — skip or fold into the next feature release.
 
 Gate:
 
-- Verify `docs/v1/done/` contains the spec file in the branch diff (skip if parked midway).
-- Verify `docs/v1/ship/{version}.md` exists in the branch diff (skip if parked midway).
+- Verify `docs/v2/done/` contains the spec file in the branch diff (skip if parked midway).
+- Verify `/Users/kishore/Projects/docs/changelog.mdx` has a new `<Update>` block in the branch diff (skip if internal-only refactor or parked midway).
 - If the spec is not in `done/` and status is `DONE` — do not open the PR.
 
 Exit criteria:
 
-- PR opened with spec in `done/` directory and release doc in `ship/`.
+- PR opened with spec in `done/` directory and changelog.mdx updated.
 
 ## Safety and Policy Appendix
 

@@ -355,3 +355,10 @@ Generic principles from greptile reviews, PR feedback, and production incidents.
 **Why:** When a test fails, the name is the first thing an engineer reads. A self-contradicting name wastes investigation time.
 **Tags:** zig, testing
 **Ref:** M11_001 error_registry_test.zig — renamed "does not start with UZ- — wait, it does" to "has sentinel code UZ-UNKNOWN and is 500"
+
+## 46. Every DELETE in a transaction must ROLLBACK on failure
+
+**Rule:** When multiple `DELETE` (or `UPDATE`) statements share a transaction, every `catch` branch must issue `ROLLBACK` and return. Never log-and-continue — that causes a partial commit where one row is deleted and another is left orphaned.
+**Why:** Silent partial commits create vault inconsistencies. For example, deleting the api-key row but leaving the preference row means future GET reports no key while the preference pointer persists.
+**Tags:** zig, database, transactions
+**Ref:** M11_002 workspace_credentials_http.zig — second DELETE swallowed the error; ROLLBACK was missing. Caught by greptile on PR #189.

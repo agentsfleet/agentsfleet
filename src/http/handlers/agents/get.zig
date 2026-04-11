@@ -4,6 +4,7 @@ const common = @import("../common.zig");
 const obs_log = @import("../../../observability/logging.zig");
 const id_format = @import("../../../types/id_format.zig");
 const error_codes = @import("../../../errors/codes.zig");
+const hx_mod = @import("../hx.zig");
 
 const log = std.log.scoped(.http);
 
@@ -12,36 +13,28 @@ const sql_get_agent =
     \\FROM agent_profiles WHERE agent_id = $1
 ;
 
-pub fn handleGetAgent(ctx: *common.Context, req: *httpz.Request, res: *httpz.Response, agent_id: []const u8) void {
-    var arena = std.heap.ArenaAllocator.init(ctx.alloc);
-    defer arena.deinit();
-    const alloc = arena.allocator();
-    const req_id = common.requestId(alloc);
-
-    const principal = common.authenticate(alloc, req, ctx) catch |err| {
-        common.writeAuthError(res, req_id, err);
-        return;
-    };
+fn innerGetAgent(hx: hx_mod.Hx, req: *httpz.Request, agent_id: []const u8) void {
+    _ = req;
 
     if (!id_format.isSupportedAgentId(agent_id)) {
-        common.errorResponse(res, error_codes.ERR_UUIDV7_INVALID_ID_SHAPE, "Invalid agent_id format", req_id);
+        hx.fail(error_codes.ERR_UUIDV7_INVALID_ID_SHAPE, "Invalid agent_id format");
         return;
     }
 
-    const conn = ctx.pool.acquire() catch {
-        common.internalDbUnavailable(res, req_id);
+    const conn = hx.ctx.pool.acquire() catch {
+        common.internalDbUnavailable(hx.res, hx.req_id);
         return;
     };
-    defer ctx.pool.release(conn);
+    defer hx.ctx.pool.release(conn);
 
     var q = conn.query(sql_get_agent, .{agent_id}) catch {
-        common.internalDbError(res, req_id);
+        common.internalDbError(hx.res, hx.req_id);
         return;
     };
     defer q.deinit();
 
     const row = q.next() catch null orelse {
-        common.errorResponse(res, error_codes.ERR_AGENT_NOT_FOUND, "Agent not found", req_id);
+        hx.fail(error_codes.ERR_AGENT_NOT_FOUND, "Agent not found");
         return;
     };
 
@@ -56,18 +49,18 @@ pub fn handleGetAgent(ctx: *common.Context, req: *httpz.Request, res: *httpz.Res
 
     q.drain() catch |err| obs_log.logWarnErr(.http, err, "agent.query_drain_fail agent_id={s}", .{agent_id});
 
-    if (!common.authorizeWorkspaceAndSetTenantContext(conn, principal, workspace_id)) {
-        common.errorResponse(res, error_codes.ERR_FORBIDDEN, "Workspace access denied", req_id);
+    if (!common.authorizeWorkspaceAndSetTenantContext(conn, hx.principal, workspace_id)) {
+        hx.fail(error_codes.ERR_FORBIDDEN, "Workspace access denied");
         return;
     }
-    if (!common.requireRole(res, req_id, principal, .user)) return;
+    if (!common.requireRole(hx.res, hx.req_id, hx.principal, .user)) return;
 
     // Pipeline v1 removed — improvement stalled warnings are no longer generated.
     const improvement_stalled_warning = false;
 
     log.debug("agent.get agent_id={s} status={s}", .{ agent_id, status });
 
-    common.writeJson(res, .ok, .{
+    hx.ok(.ok, .{
         .agent_id = rid,
         .name = name,
         .status = status,
@@ -77,9 +70,11 @@ pub fn handleGetAgent(ctx: *common.Context, req: *httpz.Request, res: *httpz.Res
         .improvement_stalled_warning = improvement_stalled_warning,
         .created_at = created_at,
         .updated_at = updated_at,
-        .request_id = req_id,
+        .request_id = hx.req_id,
     });
 }
+
+pub const handleGetAgent = hx_mod.authenticatedWithParam(innerGetAgent);
 
 test "integration: get agent returns 404 for unknown agent_id" {
     const db_ctx = (try common.openHandlerTestConn(std.testing.allocator)) orelse return error.SkipZigTest;

@@ -5,20 +5,13 @@ const obs_log = @import("../../observability/logging.zig");
 const error_codes = @import("../../errors/codes.zig");
 const common = @import("common.zig");
 const workspace_guards = @import("../workspace_guards.zig");
+const hx_mod = @import("hx.zig");
+
 const log = std.log.scoped(.http);
 const API_ACTOR = "api";
 
-pub fn handlePauseWorkspace(ctx: *common.Context, req: *httpz.Request, res: *httpz.Response, workspace_id: []const u8) void {
-    var arena = std.heap.ArenaAllocator.init(ctx.alloc);
-    defer arena.deinit();
-    const alloc = arena.allocator();
-    const req_id = common.requestId(alloc);
-
-    const principal = common.authenticate(alloc, req, ctx) catch |err| {
-        common.writeAuthError(res, req_id, err);
-        return;
-    };
-    if (!common.requireUuidV7Id(res, req_id, workspace_id, "workspace_id")) return;
+fn innerPauseWorkspace(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []const u8) void {
+    if (!common.requireUuidV7Id(hx.res, hx.req_id, workspace_id, "workspace_id")) return;
 
     const Req = struct {
         pause: bool,
@@ -27,27 +20,27 @@ pub fn handlePauseWorkspace(ctx: *common.Context, req: *httpz.Request, res: *htt
     };
 
     const body = req.body() orelse {
-        common.errorResponse(res, error_codes.ERR_INVALID_REQUEST, "Request body required", req_id);
+        hx.fail(error_codes.ERR_INVALID_REQUEST, "Request body required");
         return;
     };
-    if (!common.checkBodySize(req, res, body, req_id)) return;
-    const parsed = std.json.parseFromSlice(Req, alloc, body, .{}) catch {
-        common.errorResponse(res, error_codes.ERR_INVALID_REQUEST, "Malformed JSON", req_id);
+    if (!common.checkBodySize(req, hx.res, body, hx.req_id)) return;
+    const parsed = std.json.parseFromSlice(Req, hx.alloc, body, .{}) catch {
+        hx.fail(error_codes.ERR_INVALID_REQUEST, "Malformed JSON");
         return;
     };
     defer parsed.deinit();
 
-    const conn = ctx.pool.acquire() catch {
-        common.internalDbUnavailable(res, req_id);
+    const conn = hx.ctx.pool.acquire() catch {
+        common.internalDbUnavailable(hx.res, hx.req_id);
         return;
     };
-    defer ctx.pool.release(conn);
+    defer hx.ctx.pool.release(conn);
 
-    const actor = principal.user_id orelse API_ACTOR;
-    const access = workspace_guards.enforce(res, req_id, conn, alloc, principal, workspace_id, actor, .{
+    const actor = hx.principal.user_id orelse API_ACTOR;
+    const access = workspace_guards.enforce(hx.res, hx.req_id, conn, hx.alloc, hx.principal, workspace_id, actor, .{
         .minimum_role = .operator,
     }) orelse return;
-    defer access.deinit(alloc);
+    defer access.deinit(hx.alloc);
 
     policy.recordPolicyEvent(conn, workspace_id, null, .sensitive, .allow, "m1.pause_workspace", "api") catch |err| {
         obs_log.logWarnErr(.http, err, "workspace.policy_event_insert_fail workspace_id={s}", .{workspace_id});
@@ -66,13 +59,13 @@ pub fn handlePauseWorkspace(ctx: *common.Context, req: *httpz.Request, res: *htt
         workspace_id,
         parsed.value.version,
     }) catch {
-        common.internalDbError(res, req_id);
+        common.internalDbError(hx.res, hx.req_id);
         return;
     };
     defer upd.deinit();
 
     const row = upd.next() catch null orelse {
-        common.errorResponse(res, error_codes.ERR_WORKSPACE_NOT_FOUND, "Workspace not found or version conflict", req_id);
+        hx.fail(error_codes.ERR_WORKSPACE_NOT_FOUND, "Workspace not found or version conflict");
         return;
     };
 
@@ -80,21 +73,21 @@ pub fn handlePauseWorkspace(ctx: *common.Context, req: *httpz.Request, res: *htt
     upd.drain() catch {};
     log.info("workspace.pause_updated pause={} workspace_id={s}", .{ parsed.value.pause, workspace_id });
 
-    common.writeJson(res, .ok, .{
+    hx.ok(.ok, .{
         .workspace_id = workspace_id,
         .paused = parsed.value.pause,
         .version = new_version,
-        .request_id = req_id,
+        .request_id = hx.req_id,
     });
 }
 
-/// M10_001: Pipeline v1 removed — specs table dropped. Stub returns 410.
+pub const handlePauseWorkspace = hx_mod.authenticatedWithParam(innerPauseWorkspace);
+
+/// M10_001: Pipeline v1 removed — specs table dropped. Returns 410.
+/// No Bearer auth — 410 stub, no authentication required.
 pub fn handleSyncSpecs(ctx: *common.Context, req: *httpz.Request, res: *httpz.Response, workspace_id: []const u8) void {
+    _ = ctx;
     _ = req;
     _ = workspace_id;
-    var arena = std.heap.ArenaAllocator.init(ctx.alloc);
-    defer arena.deinit();
-    const alloc = arena.allocator();
-    const req_id = common.requestId(alloc);
-    common.errorResponse(res, error_codes.ERR_PIPELINE_V1_REMOVED, "Pipeline v1 removed — spec sync is no longer available", req_id);
+    common.errorResponse(res, error_codes.ERR_PIPELINE_V1_REMOVED, "Pipeline v1 removed — spec sync is no longer available", "");
 }

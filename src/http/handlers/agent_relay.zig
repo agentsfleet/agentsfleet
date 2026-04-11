@@ -2,6 +2,9 @@
 //! Accepts CLI messages + tool definitions, forwards to workspace LLM provider,
 //! streams response back as SSE events (tool_use, text_delta, done, error).
 //! zombied is a pure pass-through: adds system prompt + API key, forwards, streams back.
+//!
+//! Streaming handler — does not use hx.authenticated(). Blocks in a loop calling
+//! res.chunk(); arena lifetime spans the entire stream.
 
 const std = @import("std");
 const httpz = @import("httpz");

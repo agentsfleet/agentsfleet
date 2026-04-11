@@ -1,3 +1,7 @@
+// Raw handlers — does not use hx.authenticated().
+// These handlers take 3 path params (workspace_id, skill_ref_encoded, key_name_encoded).
+// hx.authenticatedWithParam() supports exactly 1 path param. Three-param routes stay raw.
+
 const std = @import("std");
 const httpz = @import("httpz");
 const error_codes = @import("../../errors/codes.zig");
