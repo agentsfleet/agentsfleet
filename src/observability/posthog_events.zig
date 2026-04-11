@@ -7,100 +7,6 @@ pub fn distinctIdOrSystem(raw: []const u8) []const u8 {
     return raw;
 }
 
-pub fn trackRunStarted(
-    client: ?*posthog.PostHogClient,
-    distinct_id: []const u8,
-    run_id: []const u8,
-    workspace_id: []const u8,
-    spec_id: []const u8,
-    mode: []const u8,
-    request_id: []const u8,
-) void {
-    if (client) |ph| {
-        const props = [_]posthog.Property{
-            .{ .key = "run_id", .value = .{ .string = run_id } },
-            .{ .key = "workspace_id", .value = .{ .string = workspace_id } },
-            .{ .key = "spec_id", .value = .{ .string = spec_id } },
-            .{ .key = "mode", .value = .{ .string = mode } },
-            .{ .key = "request_id", .value = .{ .string = request_id } },
-        };
-        ph.capture(.{
-            .distinct_id = distinct_id,
-            .event = "run_started",
-            .properties = &props,
-        }) catch {};
-    }
-}
-
-pub fn trackRunRetried(
-    client: ?*posthog.PostHogClient,
-    distinct_id: []const u8,
-    run_id: []const u8,
-    workspace_id: []const u8,
-    attempt: u32,
-    request_id: []const u8,
-) void {
-    if (client) |ph| {
-        const props = [_]posthog.Property{
-            .{ .key = "run_id", .value = .{ .string = run_id } },
-            .{ .key = "workspace_id", .value = .{ .string = workspace_id } },
-            .{ .key = "attempt", .value = .{ .integer = @intCast(attempt) } },
-            .{ .key = "request_id", .value = .{ .string = request_id } },
-        };
-        ph.capture(.{
-            .distinct_id = distinct_id,
-            .event = "run_retried",
-            .properties = &props,
-        }) catch {};
-    }
-}
-
-pub fn trackRunCompleted(
-    client: ?*posthog.PostHogClient,
-    distinct_id: []const u8,
-    run_id: []const u8,
-    workspace_id: []const u8,
-    verdict: []const u8,
-    duration_ms: u64,
-) void {
-    if (client) |ph| {
-        const props = [_]posthog.Property{
-            .{ .key = "run_id", .value = .{ .string = run_id } },
-            .{ .key = "workspace_id", .value = .{ .string = workspace_id } },
-            .{ .key = "verdict", .value = .{ .string = verdict } },
-            .{ .key = "duration_ms", .value = .{ .integer = @intCast(duration_ms) } },
-        };
-        ph.capture(.{
-            .distinct_id = distinct_id,
-            .event = "run_completed",
-            .properties = &props,
-        }) catch {};
-    }
-}
-
-pub fn trackRunFailed(
-    client: ?*posthog.PostHogClient,
-    distinct_id: []const u8,
-    run_id: []const u8,
-    workspace_id: []const u8,
-    reason: []const u8,
-    duration_ms: u64,
-) void {
-    if (client) |ph| {
-        const props = [_]posthog.Property{
-            .{ .key = "run_id", .value = .{ .string = run_id } },
-            .{ .key = "workspace_id", .value = .{ .string = workspace_id } },
-            .{ .key = "reason", .value = .{ .string = reason } },
-            .{ .key = "duration_ms", .value = .{ .integer = @intCast(duration_ms) } },
-        };
-        ph.capture(.{
-            .distinct_id = distinct_id,
-            .event = "run_failed",
-            .properties = &props,
-        }) catch {};
-    }
-}
-
 pub fn trackAgentCompleted(
     client: ?*posthog.PostHogClient,
     distinct_id: []const u8,
@@ -210,10 +116,9 @@ pub fn trackBillingLifecycleEvent(
 pub fn trackServerStarted(
     client: ?*posthog.PostHogClient,
     port: u16,
-    worker_concurrency: u16,
 ) void {
     if (client) |ph| {
-        const props = serverStartedProps(port, worker_concurrency);
+        const props = serverStartedProps(port);
         ph.capture(.{
             .distinct_id = "system",
             .event = "server_started",
@@ -222,10 +127,9 @@ pub fn trackServerStarted(
     }
 }
 
-pub fn serverStartedProps(port: u16, worker_concurrency: u16) [2]posthog.Property {
+pub fn serverStartedProps(port: u16) [1]posthog.Property {
     return .{
         .{ .key = "port", .value = .{ .integer = @intCast(port) } },
-        .{ .key = "worker_concurrency", .value = .{ .integer = @intCast(worker_concurrency) } },
     };
 }
 
@@ -324,92 +228,12 @@ pub fn trackApiErrorWithContext(
     }
 }
 
-// ---------------------------------------------------------------------------
-// Workspace lifecycle events
-// ---------------------------------------------------------------------------
-
-pub fn trackWorkspaceCreated(
-    client: ?*posthog.PostHogClient,
-    distinct_id: []const u8,
-    workspace_id: []const u8,
-    tenant_id: []const u8,
-    repo_url: []const u8,
-    request_id: []const u8,
-) void {
-    if (client) |ph| {
-        const props = [_]posthog.Property{
-            .{ .key = "workspace_id", .value = .{ .string = workspace_id } },
-            .{ .key = "tenant_id", .value = .{ .string = tenant_id } },
-            .{ .key = "repo_url", .value = .{ .string = repo_url } },
-            .{ .key = "request_id", .value = .{ .string = request_id } },
-        };
-        ph.capture(.{
-            .distinct_id = distinctIdOrSystem(distinct_id),
-            .event = "workspace_created",
-            .properties = &props,
-        }) catch {};
-    }
-}
-
-pub fn trackWorkspaceGithubConnected(
-    client: ?*posthog.PostHogClient,
-    workspace_id: []const u8,
-    installation_id: []const u8,
-    request_id: []const u8,
-) void {
-    if (client) |ph| {
-        const props = [_]posthog.Property{
-            .{ .key = "workspace_id", .value = .{ .string = workspace_id } },
-            .{ .key = "installation_id", .value = .{ .string = installation_id } },
-            .{ .key = "request_id", .value = .{ .string = request_id } },
-        };
-        ph.capture(.{
-            .distinct_id = "system",
-            .event = "workspace_github_connected",
-            .properties = &props,
-        }) catch {};
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Auth lifecycle events
-// ---------------------------------------------------------------------------
-
-pub fn trackAuthLoginCompleted(
-    client: ?*posthog.PostHogClient,
-    session_id: []const u8,
-    request_id: []const u8,
-) void {
-    if (client) |ph| {
-        const props = [_]posthog.Property{
-            .{ .key = "session_id", .value = .{ .string = session_id } },
-            .{ .key = "request_id", .value = .{ .string = request_id } },
-        };
-        ph.capture(.{
-            .distinct_id = "system",
-            .event = "auth_login_completed",
-            .properties = &props,
-        }) catch {};
-    }
-}
-
-pub fn trackAuthRejected(
-    client: ?*posthog.PostHogClient,
-    reason: []const u8,
-    request_id: []const u8,
-) void {
-    if (client) |ph| {
-        const props = [_]posthog.Property{
-            .{ .key = "reason", .value = .{ .string = reason } },
-            .{ .key = "request_id", .value = .{ .string = request_id } },
-        };
-        ph.capture(.{
-            .distinct_id = "system",
-            .event = "auth_rejected",
-            .properties = &props,
-        }) catch {};
-    }
-}
+// Workspace + auth lifecycle events extracted to posthog_events_lifecycle.zig (M10_002).
+const plc = @import("posthog_events_lifecycle.zig");
+pub const trackWorkspaceCreated = plc.trackWorkspaceCreated;
+pub const trackWorkspaceGithubConnected = plc.trackWorkspaceGithubConnected;
+pub const trackAuthLoginCompleted = plc.trackAuthLoginCompleted;
+pub const trackAuthRejected = plc.trackAuthRejected;
 
 // ---------------------------------------------------------------------------
 // Orphan recovery events (M14_001)

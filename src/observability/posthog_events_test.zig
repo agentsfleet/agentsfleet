@@ -9,15 +9,11 @@ test "unit: distinctIdOrSystem falls back to system" {
 
 test "integration: telemetry helpers are no-op when posthog client is disabled" {
     const disabled: ?*posthog.PostHogClient = null;
-    posthog_events.trackRunStarted(disabled, "u", "run_1", "ws_1", "spec_1", "auto", "req_1");
-    posthog_events.trackRunRetried(disabled, "u", "run_1", "ws_1", 2, "req_1");
-    posthog_events.trackRunCompleted(disabled, "u", "run_1", "ws_1", "passed", 42);
-    posthog_events.trackRunFailed(disabled, "u", "run_1", "ws_1", "blocked", 42);
     posthog_events.trackAgentCompleted(disabled, "u", "run_1", "ws_1", "Echo", 10, 50, "ok");
     posthog_events.trackEntitlementRejected(disabled, "u", "ws_1", "COMPILE", "ERR_ENTITLEMENT_STAGE_LIMIT", "req_1");
     posthog_events.trackProfileActivated(disabled, "u", "ws_1", "prof_1", "ver_1", "ver_1", "req_1");
     posthog_events.trackBillingLifecycleEvent(disabled, "u", "ws_1", "PAYMENT_FAILED", "invoice_failed", "SCALE", "GRACE", "req_1");
-    posthog_events.trackServerStarted(disabled, 3000, 4);
+    posthog_events.trackServerStarted(disabled, 3000);
     posthog_events.trackWorkerStarted(disabled, 4);
     posthog_events.trackStartupFailed(disabled, "serve", "db_connect", "connection_refused", "UZ-STARTUP-003");
     posthog_events.trackWorkspaceCreated(disabled, "u", "ws_1", "t_1", "https://github.com/org/repo", "req_1");
@@ -31,13 +27,11 @@ test "integration: telemetry helpers are no-op when posthog client is disabled" 
     try std.testing.expect(true);
 }
 
-test "server started payload includes port and worker concurrency" {
-    const props = posthog_events.serverStartedProps(3000, 4);
-    try std.testing.expectEqual(@as(usize, 2), props.len);
+test "server started payload includes port" {
+    const props = posthog_events.serverStartedProps(3000);
+    try std.testing.expectEqual(@as(usize, 1), props.len);
     try std.testing.expectEqualStrings("port", props[0].key);
     try std.testing.expectEqual(@as(i64, 3000), props[0].value.integer);
-    try std.testing.expectEqualStrings("worker_concurrency", props[1].key);
-    try std.testing.expectEqual(@as(i64, 4), props[1].value.integer);
 }
 
 test "startup failed payload includes command phase reason and error code" {

@@ -63,7 +63,7 @@ pub fn pushOtelMetrics(alloc: std.mem.Allocator, dead_lettered: u32) void {
     }
 
     // The metrics snapshot includes the outbox dead-letter counter we just incremented.
-    otel.exportMetricsSnapshotBestEffort(alloc, cfg, false, null, null);
+    otel.exportMetricsSnapshotBestEffort(alloc, cfg, false);
     log.info("reconcile.otel_push endpoint={s} dead_lettered={d}", .{
         cfg.endpoint,
         dead_lettered,

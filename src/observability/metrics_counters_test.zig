@@ -90,13 +90,13 @@ test "atomic counters tolerate concurrent increments without loss" {
     for (&threads) |*t| {
         t.* = try std.Thread.spawn(.{}, struct {
             fn run() void {
-                mc.incRunsCreated();
+                mc.incWorkerErrors();
             }
         }.run, .{});
     }
     for (&threads) |t| t.join();
     const after = mc.snapshot();
-    try std.testing.expectEqual(before.runs_created_total + N, after.runs_created_total);
+    try std.testing.expectEqual(before.worker_errors_total + N, after.worker_errors_total);
 }
 
 // ── M17_001 — run limit counter tests ────────────────────────────────────
@@ -160,7 +160,7 @@ test "M17: run limit counters tolerate concurrent increments without loss" {
 test "M17: renderPrometheus includes all three run_limit reason labels" {
     const alloc = std.testing.allocator;
     const render = @import("metrics_render.zig");
-    const output = try render.renderPrometheus(alloc, false, null, null);
+    const output = try render.renderPrometheus(alloc, false);
     defer alloc.free(output);
     try std.testing.expect(std.mem.indexOf(u8, output, "zombied_run_limit_exceeded_total{reason=\"token_budget\"}") != null);
     try std.testing.expect(std.mem.indexOf(u8, output, "zombied_run_limit_exceeded_total{reason=\"wall_time\"}") != null);
@@ -173,7 +173,7 @@ test "M17: renderPrometheus run_limit values match snapshot" {
     const render = @import("metrics_render.zig");
     mc.incRunLimitTokenBudgetExceeded();
     const snap = mc.snapshot();
-    const output = try render.renderPrometheus(alloc, false, null, null);
+    const output = try render.renderPrometheus(alloc, false);
     defer alloc.free(output);
     // Build the expected line and search for it.
     var buf: [256]u8 = undefined;
