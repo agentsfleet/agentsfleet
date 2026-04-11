@@ -109,7 +109,7 @@ pub const CorrelationContext = struct {
 
 ```bash
 # E1: No v1 field names in executor source (excluding comments/docs)
-count=$(grep -rn "\.run_id\|\.stage_id\|\.role_id\|\.skill_id" src/executor/ --include="*.zig" | grep -v "//\|///\|test" | wc -l | tr -d ' ')
+count=$(grep -rn "\.run_id\|\.stage_id\|\.role_id\|\.skill_id" src/executor/ --include="*.zig" | grep -v "^.*//\|^.*_test\.zig:" | wc -l | tr -d ' ')
 [ "$count" -eq 0 ] && echo "PASS" || echo "FAIL: $count stale v1 refs"
 
 # E2: New field names present
@@ -127,7 +127,7 @@ zig build -Dtarget=aarch64-linux 2>&1 | tail -3; echo "arm=$?"
 make lint-zig 2>&1 | grep -E "✓|FAIL"
 
 # E6: Orphan sweep — no stale run_id/stage_id in zombie event loop
-grep -rn "run_id\|stage_id" src/zombie/ --include="*.zig" | grep -v "//\|test"
+grep -rn "run_id\|stage_id" src/zombie/ --include="*.zig" | grep -v "^.*//\|^.*_test\.zig:"
 echo "E6: (empty = pass)"
 ```
 

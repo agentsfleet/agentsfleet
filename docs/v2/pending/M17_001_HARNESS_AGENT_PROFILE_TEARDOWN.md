@@ -169,6 +169,7 @@ echo "Lines removed: ~2400"
 - [ ] `make lint-zig` passes
 - [ ] Cross-compiles for x86_64-linux and aarch64-linux
 - [ ] Entitlement profile-limit enforcement removed or decoupled
+- [ ] `profile_linkage.zig` FK to `agent_config_versions` resolved (drop FK or delete file) — verify: `grep -rn "agent_config_versions" src/ --include="*.zig"` returns 0
 - [ ] Frontend harness marketing copy updated
 
 ## Out of Scope
