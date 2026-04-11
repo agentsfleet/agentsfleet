@@ -2,9 +2,10 @@
 Milestone: M10
 Workstream: M10_006
 Name: BVISOR_ZIG_PATTERNS
-Status: PENDING
+Status: IN_PROGRESS
 Priority: P3 — progressive improvement, apply when touching files
 Created: Apr 11, 2026
+Branch: feat/m10-006-bvisor-zig-patterns
 Depends on: M10_005 (PgQuery migration complete)
 ---
 
