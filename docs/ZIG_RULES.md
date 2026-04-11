@@ -33,6 +33,7 @@ Status: Canonical Zig source of truth for agents and commits
 - Do not create test files without adding them to `main.zig` test discovery — tests won't run.
 - Do not store credentials in plaintext tables — use `crypto_store.store()/load()` with `vault.secrets`.
 - Do not use `pub` on constants, types, or functions unless an external file imports them. Default to private; add `pub` only when a consumer exists outside the file.
+- When touching a file, audit its `pub` exports: `grep -n "^pub " src/path/file.zig`, then for each symbol `grep -rn "symbol_name" src/ --include="*.zig"` to check if any other file uses it. Remove `pub` from symbols with zero external references. This is progressive cleanup — no need to sweep the whole repo at once.
 
 ## Allowed Exceptions
 
