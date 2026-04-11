@@ -152,6 +152,32 @@ Copy everything below this line when creating a new spec.
 
 ---
 
+## Files Changed (blast radius)
+
+List every file that will be created, modified, or deleted. This scopes
+the 400-line gate, `pub` audit, orphan sweep, and domain lint checks.
+
+| File | Action | Why |
+|------|--------|-----|
+| {e.g., `src/errors/error_registry.zig`} | CREATE | {single source of truth for error codes} |
+| {e.g., `src/http/handlers/common.zig`} | MODIFY | {update import from error_table → error_registry} |
+| {e.g., `src/errors/error_table.zig`} | DELETE | {replaced by error_registry.zig} |
+
+## Applicable Rules
+
+List RULES.md rule IDs that apply to this spec's scope. The agent MUST
+re-read these before EXECUTE and verify no violations during VERIFY.
+
+- {e.g., RULE FLS — flush all layers (if touching pg queries)}
+- {e.g., RULE OWN — one owner per resource (if adding init/deinit)}
+- {e.g., RULE XCC — cross-compile before commit (always for Zig)}
+- {e.g., RULE ORP — cross-layer orphan sweep (if renaming/deleting symbols)}
+
+If no specific rules apply beyond the universal set (XCC, FLL, ORP): write
+"Standard set only — no domain-specific rules."
+
+---
+
 ## Sections (implementation slices)
 
 Add as many `## §N — {Title}` sections as needed. Each section is an
@@ -279,6 +305,28 @@ Every dimension from the §N sections must map to a test case here. This section
 |-----------|-----|-------------|-------|----------|
 | {name} | {2.1} | {DB / Redis / both} | {input} | {output} |
 
+### Negative Tests (error paths that MUST fail)
+
+| Test name | Dim | Input | Expected error |
+|-----------|-----|-------|---------------|
+| {e.g., "lookup returns UNKNOWN for empty string"} | {N.N} | `""` | `UNKNOWN` entry returned |
+| {e.g., "reject malformed UUID"} | {N.N} | `"not-a-uuid"` | `ERR_UUIDV7_CANONICAL_FORMAT` |
+
+### Edge Case Tests (boundary values)
+
+| Test name | Dim | Input | Expected |
+|-----------|-----|-------|----------|
+| {e.g., "max-length code string"} | {N.N} | 256-char string | `UNKNOWN` (not crash) |
+| {e.g., "zero-count query"} | {N.N} | workspace with 0 profiles | returns 0 (not error) |
+
+### Regression Tests (pre-existing behavior that MUST NOT change)
+
+| Test name | What it guards | File |
+|-----------|---------------|------|
+| {e.g., "UZ-AUTH-002 stays 401"} | Auth error = 401, not 403 | `error_registry_test.zig` |
+
+If no pre-existing behavior is at risk: write "N/A — greenfield."
+
 ### Leak Detection Tests
 
 | Test name | Dim | What it proves |
@@ -301,15 +349,19 @@ appear here.
 
 **Status:** PENDING
 
-Ordered steps. Agent executes top-to-bottom. Each step has a verification command.
+Ordered steps. Agent executes top-to-bottom. Each step has a verification
+command. **The codebase MUST build AND pass tests after every step.** If a
+step leaves the code in a broken state, fix it before proceeding — do not
+carry forward compile errors.
 
-| Step | Action | Verify |
-|------|--------|--------|
-| 1 | {Define interfaces} | {Compiles with no impl} |
-| 2 | {Implement core logic} | {make test passes} |
-| 3 | {Add failure handling} | {make test passes} |
-| 4 | {Generate tests via /write-unit-test} | {all tests pass} |
-| 5 | {Cross-compile check} | {zig build -Dtarget=x86_64-linux} |
+| Step | Action | Verify (must pass before next step) |
+|------|--------|--------------------------------------|
+| 1 | {Define interfaces} | `zig build` compiles |
+| 2 | {Implement core logic} | `zig build && zig build test` |
+| 3 | {Add failure handling} | `zig build test` |
+| 4 | {Write tests via /write-unit-test} | `zig build test` (all pass) |
+| 5 | {Delete old files + orphan sweep} | `zig build && grep -rn {old_sym} src/` returns 0 |
+| 6 | {Cross-compile + lint + gitleaks} | `zig build -Dtarget=x86_64-linux && make lint && gitleaks detect` |
 
 ---
 
@@ -357,8 +409,15 @@ make lint 2>&1 | grep -E "✓|FAIL"
 zig build -Dtarget=x86_64-linux 2>&1 | tail -3; echo "x86=$?"
 zig build -Dtarget=aarch64-linux 2>&1 | tail -3; echo "arm=$?"
 
-# E8: 400-line gate
+# E8: Gitleaks — no secrets in diff
+gitleaks detect 2>&1 | tail -3; echo "gitleaks=$?"
+
+# E9: 400-line gate (exempts .md files)
 git diff --name-only origin/main | xargs wc -l 2>/dev/null | awk '$1 > 400 && $2 !~ /\.md$/ { print "OVER: " $2 ": " $1 " lines" }'
+
+# E10: Domain-specific lints (uncomment applicable ones)
+# make check-pg-drain    # if touching pg query code
+# make check-openapi-errors  # if touching error codes or HTTP endpoints
 ```
 
 ---
@@ -409,7 +468,8 @@ Filled in during VERIFY phase. Proves the spec claims are met.
 | Leak detection | `zig build test \| grep leak` | {output} | |
 | Cross-compile | `zig build -Dtarget=x86_64-linux` | {output} | |
 | Lint | `make lint` | {output} | |
-| 400L gate | `wc -l` | {output} | |
+| Gitleaks | `gitleaks detect` | {output} | |
+| 400L gate | `wc -l` (exempts .md) | {output} | |
 | Dead code sweep | `grep -rn {symbol} src/` | {output} | |
 
 ---
