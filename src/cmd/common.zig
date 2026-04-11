@@ -205,10 +205,11 @@ test "canonical schema bootstrap includes scoring config in base schema" {
     try std.testing.expect(std.mem.containsAtLeast(u8, migrations[6].sql, 1, "CREATE TABLE harness_change_log"));
     try std.testing.expect(std.mem.containsAtLeast(u8, migrations[9].sql, 1, "enable_agent_scoring BOOLEAN NOT NULL"));
     try std.testing.expect(std.mem.containsAtLeast(u8, migrations[9].sql, 1, "agent_scoring_weights_json TEXT NOT NULL"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, migrations[13].sql, 1, "CREATE TABLE workspace_latency_baseline"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, migrations[14].sql, 1, "CREATE TABLE agent_run_scores"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, migrations[15].sql, 1, "CREATE TABLE agent_run_analysis"));
-    try std.testing.expect(!std.mem.containsAtLeast(u8, migrations[14].sql, 1, "tier             TEXT"));
+    // M10_001: migrations[13] (018), [14] (019) are version markers.
+    // [15] (020) retained audit logging infra but dropped agent_run_analysis.
+    try std.testing.expect(std.mem.containsAtLeast(u8, migrations[13].sql, 1, "version marker only"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, migrations[14].sql, 1, "version marker only"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, migrations[15].sql, 1, "agent_run_analysis table removed"));
 }
 
 test "migration SQL has no semicolons inside line comments" {
