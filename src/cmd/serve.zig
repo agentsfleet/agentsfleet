@@ -16,6 +16,7 @@ const posthog_events = @import("../observability/posthog_events.zig");
 const preflight = @import("preflight.zig");
 const common = @import("common.zig");
 const error_codes = @import("../errors/codes.zig");
+const serve_args = @import("serve_args.zig");
 
 const log = std.log.scoped(.zombied);
 
@@ -23,41 +24,11 @@ var shutdown_requested = std.atomic.Value(bool).init(false);
 var stop_server_fn: *const fn () void = http_server.stop;
 var stop_server_test_counter: ?*std.atomic.Value(u32) = null;
 
-pub const ServeArgError = error{
-    InvalidServeArgument,
-    MissingPortValue,
-    InvalidPortValue,
-};
-
-fn parseServeArgOverrides() ServeArgError!?u16 {
+fn parseServeArgOverrides() serve_args.ServeArgError!?u16 {
     var it = std.process.args();
     _ = it.next(); // binary name
     _ = it.next(); // subcommand
-    return parseServeArgs(&it);
-}
-
-pub fn parseServeArgs(it: anytype) ServeArgError!?u16 {
-    var override_port: ?u16 = null;
-    while (it.next()) |arg| {
-        if (std.mem.eql(u8, arg, "--port")) {
-            const port_raw = it.next() orelse return ServeArgError.MissingPortValue;
-            override_port = parsePortValue(port_raw) orelse return ServeArgError.InvalidPortValue;
-            continue;
-        }
-        if (std.mem.startsWith(u8, arg, "--port=")) {
-            const port_raw = arg["--port=".len..];
-            override_port = parsePortValue(port_raw) orelse return ServeArgError.InvalidPortValue;
-            continue;
-        }
-        return ServeArgError.InvalidServeArgument;
-    }
-    return override_port;
-}
-
-pub fn parsePortValue(raw: []const u8) ?u16 {
-    const parsed = std.fmt.parseInt(u16, raw, 10) catch return null;
-    if (parsed == 0) return null;
-    return parsed;
+    return serve_args.parseArgs(&it);
 }
 
 fn onSignal(sig: i32) callconv(.c) void {
@@ -81,9 +52,9 @@ pub fn run(alloc: std.mem.Allocator) !void {
 
     const serve_port_override = parseServeArgOverrides() catch |err| {
         switch (err) {
-            ServeArgError.InvalidServeArgument => log.err("startup.args_parse status=fail reason=invalid_argument", .{}),
-            ServeArgError.MissingPortValue => log.err("startup.args_parse status=fail reason=missing_port_value", .{}),
-            ServeArgError.InvalidPortValue => log.err("startup.args_parse status=fail reason=invalid_port_value", .{}),
+            serve_args.ServeArgError.InvalidServeArgument => log.err("startup.args_parse status=fail reason=invalid_argument", .{}),
+            serve_args.ServeArgError.MissingPortValue => log.err("startup.args_parse status=fail reason=missing_port_value", .{}),
+            serve_args.ServeArgError.InvalidPortValue => log.err("startup.args_parse status=fail reason=invalid_port_value", .{}),
         }
         std.process.exit(2);
     };
