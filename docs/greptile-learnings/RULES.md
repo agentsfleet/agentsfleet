@@ -468,3 +468,8 @@ breaks when either field changes independently.
 **Why:** A sentinel whose code matches a real entry causes tests to silently pass with wrong semantics and breaks comptime coverage gates that assume the sentinel is outside the table.
 **Tags:** zig, error-handling, design
 **Ref:** M11_001 error_table.zig — UNKNOWN_ENTRY.code was "UZ-INTERNAL-001" (real 503 entry), renamed to "UZ-UNKNOWN" (distinct sentinel)
+
+**Rule:** Use `std.StaticStringMap` for comptime-generated O(1) lookup on static string→value registries. Build the map from the existing TABLE array at comptime with a `const LOOKUP_MAP = blk: { ... }` block.
+**Why:** Linear scan over 130+ entries on every error response is unnecessary when the table is known at compile time. `StaticStringMap.initComptime()` generates a perfect hash at zero runtime cost.
+**Tags:** zig, performance, comptime
+**Ref:** M11_001 error_table.zig — lookup() replaced O(n) for-loop with StaticStringMap(usize) mapping code→TABLE index

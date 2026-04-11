@@ -323,5 +323,5 @@ pub fn hint(code: []const u8) ?[]const u8 {
 test {
     _ = @import("codes_test.zig");
     _ = @import("error_table.zig");
-    _ = @import("m11_001_coverage_test.zig");
+    _ = @import("error_registry_test.zig");
 }

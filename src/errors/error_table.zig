@@ -187,18 +187,22 @@ pub const TABLE = [_]ErrorEntry{
     .{ .code = "UZ-APPROVAL-005", .http_status = .bad_request,          .title = "Approval condition invalid",     .docs_uri = ERROR_DOCS_BASE ++ "UZ-APPROVAL-005" },
 };
 
+/// Comptime-generated hash map for O(1) lookup by error code string.
+/// Built from TABLE at compile time — no runtime allocation.
+const LOOKUP_MAP = blk: {
+    var kvs: [TABLE.len]struct { []const u8, usize } = undefined;
+    for (TABLE, 0..) |entry, i| {
+        kvs[i] = .{ entry.code, i };
+    }
+    break :blk std.StaticStringMap(usize).initComptime(kvs);
+};
+
 /// Look up an error entry by code string. Returns null if not found.
 /// Callers should use UNKNOWN_ENTRY as the fallback:
 ///   const entry = error_table.lookup(code) orelse error_table.UNKNOWN_ENTRY;
-///
-/// O(n) linear scan — fine for error paths (cold). If the table grows past
-/// ~500 entries or error responses become hot (throttling storms), replace
-/// with std.StaticStringMap for O(1) comptime-generated lookup.
 pub fn lookup(code: []const u8) ?ErrorEntry {
-    for (TABLE) |entry| {
-        if (std.mem.eql(u8, entry.code, code)) return entry;
-    }
-    return null;
+    const idx = LOOKUP_MAP.get(code) orelse return null;
+    return TABLE[idx];
 }
 
 // Tests
