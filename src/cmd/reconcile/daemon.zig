@@ -18,7 +18,7 @@
 const std = @import("std");
 const PgQuery = @import("../../db/pg_query.zig").PgQuery;
 const db = @import("../../db/pool.zig");
-const posthog = @import("posthog");
+const telemetry_mod = @import("../../observability/telemetry.zig");
 const tick_mod = @import("tick.zig");
 const metrics_mod = @import("metrics.zig");
 const state_mod = @import("state.zig");
@@ -59,7 +59,7 @@ pub fn installSignalHandlers() void {
     std.posix.sigaction(std.posix.SIG.TERM, &action, null);
 }
 
-pub fn runDaemon(alloc: std.mem.Allocator, pool: *db.Pool, posthog_client: ?*posthog.PostHogClient, interval_seconds: u64, metrics_port: u16) !void {
+pub fn runDaemon(alloc: std.mem.Allocator, pool: *db.Pool, telemetry: *telemetry_mod.Telemetry, interval_seconds: u64, metrics_port: u16) !void {
     daemon_shutdown_requested.store(false, .release);
     installSignalHandlers();
 
@@ -106,7 +106,7 @@ pub fn runDaemon(alloc: std.mem.Allocator, pool: *db.Pool, posthog_client: ?*pos
         daemon_state.last_attempt_ms.store(now_ms, .release);
         _ = daemon_state.total_ticks.fetchAdd(1, .monotonic);
 
-        const ok = tick_mod.runOnce(alloc, pool, posthog_client);
+        const ok = tick_mod.runOnce(alloc, pool, telemetry);
         if (ok) {
             daemon_state.last_success_ms.store(now_ms, .release);
             daemon_state.consecutive_failures.store(0, .release);

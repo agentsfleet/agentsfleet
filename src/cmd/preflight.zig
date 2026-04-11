@@ -10,6 +10,7 @@ const git_ops = @import("../git/ops.zig");
 const obs_log = @import("../observability/logging.zig");
 const otel_logs = @import("../observability/otel_logs.zig");
 const otel_traces = @import("../observability/otel_traces.zig");
+const telemetry_mod = @import("../observability/telemetry.zig");
 const common = @import("common.zig");
 
 const log = std.log.scoped(.preflight);
@@ -45,6 +46,24 @@ pub fn initPostHog(alloc: std.mem.Allocator) PostHogResult {
     };
 
     return .{ .client = client, .api_key_owned = api_key };
+}
+
+pub const TelemetryResult = struct {
+    telemetry: telemetry_mod.Telemetry,
+    ph: PostHogResult,
+
+    pub fn deinit(self: TelemetryResult, alloc: std.mem.Allocator) void {
+        self.ph.deinit(alloc);
+    }
+
+    pub fn ptr(self: *TelemetryResult) *telemetry_mod.Telemetry {
+        return &self.telemetry;
+    }
+};
+
+pub fn initTelemetry(alloc: std.mem.Allocator) TelemetryResult {
+    const ph = initPostHog(alloc);
+    return .{ .telemetry = telemetry_mod.Telemetry.initProd(ph.client), .ph = ph };
 }
 
 // ---------------------------------------------------------------------------

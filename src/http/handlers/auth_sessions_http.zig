@@ -1,7 +1,7 @@
 const std = @import("std");
 const httpz = @import("httpz");
 const error_codes = @import("../../errors/error_registry.zig");
-const posthog_events = @import("../../observability/posthog_events.zig");
+const telemetry_mod = @import("../../observability/telemetry.zig");
 const common = @import("common.zig");
 const hx_mod = @import("hx.zig");
 
@@ -82,7 +82,7 @@ fn innerCompleteAuthSession(hx: hx_mod.Hx, req: *httpz.Request, session_id: []co
     };
 
     log.info("auth.session_completed session_id={s} req_id={s}", .{ session_id, hx.req_id });
-    posthog_events.trackAuthLoginCompleted(hx.ctx.posthog, session_id, hx.req_id);
+    hx.ctx.telemetry.capture(telemetry_mod.AuthLoginCompleted, .{ .distinct_id = telemetry_mod.distinctIdOrSystem(hx.principal.user_id orelse ""), .session_id = session_id, .request_id = hx.req_id });
     hx.ok(.ok, .{ .status = "complete", .request_id = hx.req_id });
 }
 

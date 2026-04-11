@@ -21,6 +21,7 @@ const common = @import("handlers/common.zig");
 const handler = @import("handler.zig");
 const http_server = @import("server.zig");
 const error_codes = @import("../errors/error_registry.zig");
+const telemetry_mod = @import("../observability/telemetry.zig");
 
 // ── Test constants ────────────────────────────────────────────────────────────
 // Workspace + tenant UUIDs match the role claims in the JWT tokens below.
@@ -63,6 +64,7 @@ const TestServer = struct {
     session_store: auth_sessions.SessionStore,
     verifier: oidc.Verifier,
     queue: queue_redis.Client = undefined,
+    telemetry: telemetry_mod.Telemetry,
     ctx: handler.Context,
     thread: std.Thread,
     port: u16,
@@ -113,11 +115,13 @@ fn startTestServer(alloc: std.mem.Allocator) !*TestServer {
             .api_max_in_flight_requests = 64,
             .ready_max_queue_depth = null,
             .ready_max_queue_age_ms = null,
-            .posthog = null,
+            .telemetry = undefined,
         },
         .thread = undefined,
         .port = port,
     };
+    srv.telemetry = telemetry_mod.Telemetry.initTest();
+    srv.ctx.telemetry = &srv.telemetry;
     srv.ctx.queue = &srv.queue;
     srv.ctx.oidc = &srv.verifier;
     srv.ctx.auth_sessions = &srv.session_store;
