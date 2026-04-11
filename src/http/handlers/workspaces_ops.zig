@@ -27,12 +27,12 @@ pub fn handlePauseWorkspace(ctx: *common.Context, req: *httpz.Request, res: *htt
     };
 
     const body = req.body() orelse {
-        common.errorResponse(res, .bad_request, error_codes.ERR_INVALID_REQUEST, "Request body required", req_id);
+        common.errorResponse(res, error_codes.ERR_INVALID_REQUEST, "Request body required", req_id);
         return;
     };
     if (!common.checkBodySize(req, res, body, req_id)) return;
     const parsed = std.json.parseFromSlice(Req, alloc, body, .{}) catch {
-        common.errorResponse(res, .bad_request, error_codes.ERR_INVALID_REQUEST, "Malformed JSON", req_id);
+        common.errorResponse(res, error_codes.ERR_INVALID_REQUEST, "Malformed JSON", req_id);
         return;
     };
     defer parsed.deinit();
@@ -72,7 +72,7 @@ pub fn handlePauseWorkspace(ctx: *common.Context, req: *httpz.Request, res: *htt
     defer upd.deinit();
 
     const row = upd.next() catch null orelse {
-        common.errorResponse(res, .conflict, error_codes.ERR_WORKSPACE_NOT_FOUND, "Workspace not found or version conflict", req_id);
+        common.errorResponse(res, error_codes.ERR_WORKSPACE_NOT_FOUND, "Workspace not found or version conflict", req_id);
         return;
     };
 
@@ -96,5 +96,5 @@ pub fn handleSyncSpecs(ctx: *common.Context, req: *httpz.Request, res: *httpz.Re
     defer arena.deinit();
     const alloc = arena.allocator();
     const req_id = common.requestId(alloc);
-    common.errorResponse(res, .gone, error_codes.ERR_PIPELINE_V1_REMOVED, "Pipeline v1 removed — spec sync is no longer available", req_id);
+    common.errorResponse(res, error_codes.ERR_PIPELINE_V1_REMOVED, "Pipeline v1 removed — spec sync is no longer available", req_id);
 }

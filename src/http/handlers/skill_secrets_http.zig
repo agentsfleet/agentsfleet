@@ -31,11 +31,11 @@ pub fn handlePutWorkspaceSkillSecret(
 
     const Req = skill_secret_handlers.PutInput;
     const body = req.body() orelse {
-        common.errorResponse(res, .bad_request, error_codes.ERR_INVALID_REQUEST, "Request body required", req_id);
+        common.errorResponse(res, error_codes.ERR_INVALID_REQUEST, "Request body required", req_id);
         return;
     };
     const parsed = std.json.parseFromSlice(Req, alloc, body, .{}) catch {
-        common.errorResponse(res, .bad_request, error_codes.ERR_INVALID_REQUEST, "Malformed JSON", req_id);
+        common.errorResponse(res, error_codes.ERR_INVALID_REQUEST, "Malformed JSON", req_id);
         return;
     };
     defer parsed.deinit();
@@ -53,7 +53,7 @@ pub fn handlePutWorkspaceSkillSecret(
 
     const out = skill_secret_handlers.put(conn, alloc, workspace_id, skill_ref_encoded, key_name_encoded, parsed.value) catch |err| {
         switch (err) {
-            error.InvalidRequest => common.errorResponse(res, .bad_request, error_codes.ERR_INVALID_REQUEST, "Invalid skill secret payload", req_id),
+            error.InvalidRequest => common.errorResponse(res, error_codes.ERR_INVALID_REQUEST, "Invalid skill secret payload", req_id),
             error.MissingMasterKey => common.internalOperationError(res, "ENCRYPTION_MASTER_KEY is missing", req_id),
             else => common.internalOperationError(res, "Failed to store skill secret", req_id),
         }

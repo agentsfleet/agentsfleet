@@ -121,6 +121,15 @@ Status: Canonical Zig source of truth for agents and commits
 - If the route is removed from the router at the same time (pre-production), delete the handler file too and remove all re-exports from `handler.zig`.
 - When removing a handler file, also remove it from `m5_handler_changes_test.zig` (or equivalent import-resolution test) — stale `@import` will break the build.
 
+## Comptime Eval Quota + Package Boundary (M11_001)
+
+- Comptime loops over large tables (e.g. 130 codes × 131 TABLE entries × `std.mem.eql`) need `@setEvalBranchQuota(N)` as the first line. Default is 1000. Formula: `N ≈ code_count × table_size × avg_string_len`. Round to next power-of-ten; comment the math.
+- `@embedFile` is sandboxed to `src/`. Any path escaping it (`../../public/openapi.json`) is a compile error. For files outside `src/`, write a Python/shell validator invoked via a `make` target wired into `lint-zig`.
+
+## Sentinel Values Must Not Collide With Real Registry Codes (M11_001)
+
+- In any code registry with a fallback sentinel (e.g. `UNKNOWN_ENTRY` in `error_table.zig`), the sentinel's `.code` must NOT match any real registered entry. Use a visually distinct value like `"UZ-UNKNOWN"`. Collision causes tests to pass with wrong semantics and the comptime coverage gate to fail. Add a test that verifies the sentinel is absent from TABLE.
+
 ## Module Split Pattern (M4_001)
 
 - When a module hits the line limit, split by concern — not arbitrarily. Preferred extraction order:

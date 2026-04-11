@@ -45,18 +45,18 @@ pub fn handlePutAdminPlatformKey(
     if (!common.requireRole(res, req_id, principal, .admin)) return;
 
     const body = req.body() orelse {
-        common.errorResponse(res, .bad_request, error_codes.ERR_INVALID_REQUEST, "Request body required", req_id);
+        common.errorResponse(res, error_codes.ERR_INVALID_REQUEST, "Request body required", req_id);
         return;
     };
     const parsed = std.json.parseFromSlice(PutInput, alloc, body, .{}) catch {
-        common.errorResponse(res, .bad_request, error_codes.ERR_INVALID_REQUEST, "Malformed JSON", req_id);
+        common.errorResponse(res, error_codes.ERR_INVALID_REQUEST, "Malformed JSON", req_id);
         return;
     };
     defer parsed.deinit();
     const input = parsed.value;
 
     if (input.provider.len == 0 or input.provider.len > 32) {
-        common.errorResponse(res, .bad_request, error_codes.ERR_INVALID_REQUEST, "provider must be 1–32 chars", req_id);
+        common.errorResponse(res, error_codes.ERR_INVALID_REQUEST, "provider must be 1–32 chars", req_id);
         return;
     }
     if (!common.requireUuidV7Id(res, req_id, input.source_workspace_id, "source_workspace_id")) return;
@@ -86,7 +86,7 @@ pub fn handlePutAdminPlatformKey(
     ws_q.drain() catch {};
     ws_q.deinit();
     if (!ws_exists) {
-        common.errorResponse(res, .bad_request, error_codes.ERR_INVALID_REQUEST, "source_workspace_id does not reference an existing workspace", req_id);
+        common.errorResponse(res, error_codes.ERR_INVALID_REQUEST, "source_workspace_id does not reference an existing workspace", req_id);
         return;
     }
 
@@ -133,7 +133,7 @@ pub fn handleDeleteAdminPlatformKey(
     if (!common.requireRole(res, req_id, principal, .admin)) return;
 
     if (provider.len == 0 or provider.len > 32) {
-        common.errorResponse(res, .bad_request, error_codes.ERR_INVALID_REQUEST, "provider must be 1–32 chars", req_id);
+        common.errorResponse(res, error_codes.ERR_INVALID_REQUEST, "provider must be 1–32 chars", req_id);
         return;
     }
 

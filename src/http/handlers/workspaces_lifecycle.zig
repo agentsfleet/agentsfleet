@@ -46,18 +46,18 @@ pub fn handleCreateWorkspace(ctx: *common.Context, req: *httpz.Request, res: *ht
     };
 
     const body = req.body() orelse {
-        common.errorResponse(res, .bad_request, error_codes.ERR_INVALID_REQUEST, "Request body required", req_id);
+        common.errorResponse(res, error_codes.ERR_INVALID_REQUEST, "Request body required", req_id);
         return;
     };
     const parsed = std.json.parseFromSlice(Req, alloc, body, .{}) catch {
-        common.errorResponse(res, .bad_request, error_codes.ERR_INVALID_REQUEST, "Malformed JSON", req_id);
+        common.errorResponse(res, error_codes.ERR_INVALID_REQUEST, "Malformed JSON", req_id);
         return;
     };
     defer parsed.deinit();
 
     const repo_url = std.mem.trim(u8, parsed.value.repo_url, " \t\r\n");
     if (repo_url.len == 0) {
-        common.errorResponse(res, .bad_request, error_codes.ERR_INVALID_REQUEST, "repo_url is required", req_id);
+        common.errorResponse(res, error_codes.ERR_INVALID_REQUEST, "repo_url is required", req_id);
         return;
     }
     const default_branch = normalizeDefaultBranch(parsed.value.default_branch);
@@ -89,7 +89,7 @@ pub fn handleCreateWorkspace(ctx: *common.Context, req: *httpz.Request, res: *ht
         if (workspace_billing.errorCode(err)) |code| {
             log.err("workspace.billing_enforcement_fail tenant_id={s} error_code={s}", .{ tenant_id, code });
             posthog_events.trackApiError(ctx.posthog, principal.user_id orelse "", code, workspace_billing.errorMessage(err) orelse "Workspace billing failure", req_id);
-            common.errorResponse(res, .forbidden, code, workspace_billing.errorMessage(err) orelse "Workspace billing failure", req_id);
+            common.errorResponse(res, code, workspace_billing.errorMessage(err) orelse "Workspace billing failure", req_id);
             return;
         }
         log.err("workspace.billing_validation_fail error_code=UZ-INTERNAL-003 tenant_id={s}", .{tenant_id});

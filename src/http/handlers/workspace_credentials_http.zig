@@ -39,22 +39,22 @@ pub fn handlePutWorkspaceLlmCredential(
     if (!common.requireUuidV7Id(res, req_id, workspace_id, "workspace_id")) return;
 
     const body = req.body() orelse {
-        common.errorResponse(res, .bad_request, error_codes.ERR_INVALID_REQUEST, "Request body required", req_id);
+        common.errorResponse(res, error_codes.ERR_INVALID_REQUEST, "Request body required", req_id);
         return;
     };
     const parsed = std.json.parseFromSlice(PutInput, alloc, body, .{}) catch {
-        common.errorResponse(res, .bad_request, error_codes.ERR_INVALID_REQUEST, "Malformed JSON", req_id);
+        common.errorResponse(res, error_codes.ERR_INVALID_REQUEST, "Malformed JSON", req_id);
         return;
     };
     defer parsed.deinit();
     const input = parsed.value;
 
     if (input.provider.len == 0 or input.provider.len > 32) {
-        common.errorResponse(res, .bad_request, error_codes.ERR_INVALID_REQUEST, "provider must be 1–32 chars", req_id);
+        common.errorResponse(res, error_codes.ERR_INVALID_REQUEST, "provider must be 1–32 chars", req_id);
         return;
     }
     if (input.api_key.len == 0 or input.api_key.len > 256) {
-        common.errorResponse(res, .bad_request, error_codes.ERR_INVALID_REQUEST, "api_key must be 1–256 chars", req_id);
+        common.errorResponse(res, error_codes.ERR_INVALID_REQUEST, "api_key must be 1–256 chars", req_id);
         return;
     }
 

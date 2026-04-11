@@ -19,16 +19,16 @@ pub fn handleGitHubCallback(ctx: *Context, req: *httpz.Request, res: *httpz.Resp
     const req_id = common.requestId(alloc);
 
     const qs = req.query() catch {
-        common.errorResponse(res, .bad_request, error_codes.ERR_INVALID_REQUEST, "installation_id query param required", req_id);
+        common.errorResponse(res, error_codes.ERR_INVALID_REQUEST, "installation_id query param required", req_id);
         return;
     };
     const installation_id = qs.get("installation_id") orelse {
-        common.errorResponse(res, .bad_request, error_codes.ERR_INVALID_REQUEST, "installation_id query param required", req_id);
+        common.errorResponse(res, error_codes.ERR_INVALID_REQUEST, "installation_id query param required", req_id);
         return;
     };
 
     const workspace_id = qs.get("state") orelse {
-        common.errorResponse(res, .bad_request, error_codes.ERR_INVALID_REQUEST, "state query param required", req_id);
+        common.errorResponse(res, error_codes.ERR_INVALID_REQUEST, "state query param required", req_id);
         return;
     };
 
@@ -89,7 +89,7 @@ pub fn handleGitHubCallback(ctx: *Context, req: *httpz.Request, res: *httpz.Resp
 
     workspace_billing.enforceFreeWorkspaceCreationAllowed(conn, tenant_id, workspace_id) catch |err| {
         if (workspace_billing.errorCode(err)) |code| {
-            common.errorResponse(res, .forbidden, code, workspace_billing.errorMessage(err) orelse "Workspace billing failure", req_id);
+            common.errorResponse(res, code, workspace_billing.errorMessage(err) orelse "Workspace billing failure", req_id);
             return;
         }
         common.internalOperationError(res, "Failed to validate free workspace limit", req_id);

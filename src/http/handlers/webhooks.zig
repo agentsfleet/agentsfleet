@@ -76,18 +76,18 @@ fn fetchZombieById(pool: *pg.Pool, alloc: std.mem.Allocator, zombie_id: []const 
 fn parseBody(alloc: std.mem.Allocator, req: *httpz.Request, res: *httpz.Response, zombie_id: []const u8, req_id: []const u8) ?WebhookPayload {
     const body = req.body() orelse {
         log.warn("webhook.no_body zombie_id={s} req_id={s}", .{ zombie_id, req_id });
-        common.errorResponse(res, .bad_request, ec.ERR_WEBHOOK_MALFORMED, ec.MSG_BODY_REQUIRED, req_id);
+        common.errorResponse(res, ec.ERR_WEBHOOK_MALFORMED, ec.MSG_BODY_REQUIRED, req_id);
         return null;
     };
     if (!common.checkBodySize(req, res, body, req_id)) return null;
     const parsed = std.json.parseFromSlice(WebhookPayload, alloc, body, .{ .ignore_unknown_fields = true }) catch {
         log.warn("webhook.malformed_json zombie_id={s} req_id={s}", .{ zombie_id, req_id });
-        common.errorResponse(res, .bad_request, ec.ERR_WEBHOOK_MALFORMED, ec.MSG_MALFORMED_JSON, req_id);
+        common.errorResponse(res, ec.ERR_WEBHOOK_MALFORMED, ec.MSG_MALFORMED_JSON, req_id);
         return null;
     };
     const payload = parsed.value;
     if (payload.event_id.len == 0 or payload.type.len == 0) {
-        common.errorResponse(res, .bad_request, ec.ERR_WEBHOOK_MALFORMED, ec.MSG_MISSING_FIELDS, req_id);
+        common.errorResponse(res, ec.ERR_WEBHOOK_MALFORMED, ec.MSG_MISSING_FIELDS, req_id);
         parsed.deinit();
         return null;
     }
@@ -107,18 +107,18 @@ fn verifyWebhookAuth(
     // Path 1: URL-embedded secret — resolve from vault via webhook_secret_ref
     if (url_secret) |provided_secret| {
         const ref = zombie.webhook_secret_ref orelse {
-            common.errorResponse(res, .forbidden, ec.ERR_FORBIDDEN, ec.MSG_AUTH_REQUIRED, req_id);
+            common.errorResponse(res, ec.ERR_UNAUTHORIZED, ec.MSG_AUTH_REQUIRED, req_id);
             return false;
         };
         const conn = pool.acquire() catch {
             log.err("webhook.vault_pool_acquire_failed req_id={s}", .{req_id});
-            common.errorResponse(res, .forbidden, ec.ERR_FORBIDDEN, ec.MSG_AUTH_REQUIRED, req_id);
+            common.errorResponse(res, ec.ERR_UNAUTHORIZED, ec.MSG_AUTH_REQUIRED, req_id);
             return false;
         };
         defer pool.release(conn);
         const expected = crypto_store.load(alloc, conn, zombie.workspace_id, ref) catch {
             log.err("webhook.vault_load_failed ref={s} req_id={s}", .{ ref, req_id });
-            common.errorResponse(res, .forbidden, ec.ERR_FORBIDDEN, ec.MSG_AUTH_REQUIRED, req_id);
+            common.errorResponse(res, ec.ERR_UNAUTHORIZED, ec.MSG_AUTH_REQUIRED, req_id);
             return false;
         };
         defer alloc.free(expected);
@@ -126,7 +126,7 @@ fn verifyWebhookAuth(
     }
     // Path 2: Bearer token fallback
     const expected_token = zombie.token orelse {
-        common.errorResponse(res, .forbidden, ec.ERR_FORBIDDEN, ec.MSG_AUTH_REQUIRED, req_id);
+        common.errorResponse(res, ec.ERR_UNAUTHORIZED, ec.MSG_AUTH_REQUIRED, req_id);
         return false;
     };
     return verifyBearerToken(expected_token, req, res, req_id);
@@ -141,7 +141,7 @@ fn constantTimeEq(a: []const u8, b: []const u8, res: *httpz.Response, req_id: []
     // into the result after the constant-time loop to prevent short-circuit.
     diff |= @as(u8, @intFromBool(a.len != b.len));
     if (diff != 0) {
-        common.errorResponse(res, .unauthorized, ec.ERR_FORBIDDEN, ec.MSG_INVALID_TOKEN, req_id);
+        common.errorResponse(res, ec.ERR_UNAUTHORIZED, ec.MSG_INVALID_TOKEN, req_id);
         return false;
     }
     return true;
@@ -149,11 +149,11 @@ fn constantTimeEq(a: []const u8, b: []const u8, res: *httpz.Response, req_id: []
 
 fn verifyBearerToken(expected_token: []const u8, req: *httpz.Request, res: *httpz.Response, req_id: []const u8) bool {
     const auth_header = req.header("authorization") orelse {
-        common.errorResponse(res, .unauthorized, ec.ERR_FORBIDDEN, ec.MSG_AUTH_REQUIRED, req_id);
+        common.errorResponse(res, ec.ERR_UNAUTHORIZED, ec.MSG_AUTH_REQUIRED, req_id);
         return false;
     };
     if (!std.mem.startsWith(u8, auth_header, ec.BEARER_PREFIX)) {
-        common.errorResponse(res, .unauthorized, ec.ERR_FORBIDDEN, ec.MSG_BEARER_REQUIRED, req_id);
+        common.errorResponse(res, ec.ERR_UNAUTHORIZED, ec.MSG_BEARER_REQUIRED, req_id);
         return false;
     }
     const provided = auth_header[ec.BEARER_PREFIX.len..];
@@ -163,7 +163,7 @@ fn verifyBearerToken(expected_token: []const u8, req: *httpz.Request, res: *http
         break :ct diff == 0;
     };
     if (!valid) {
-        common.errorResponse(res, .unauthorized, ec.ERR_FORBIDDEN, ec.MSG_INVALID_TOKEN, req_id);
+        common.errorResponse(res, ec.ERR_UNAUTHORIZED, ec.MSG_INVALID_TOKEN, req_id);
         return false;
     }
     return true;
@@ -214,7 +214,7 @@ pub fn handleReceiveWebhook(ctx: *Context, req: *httpz.Request, res: *httpz.Resp
         return;
     } orelse {
         log.warn("webhook.not_found zombie_id={s} req_id={s}", .{ zombie_id, req_id });
-        common.errorResponse(res, .not_found, ec.ERR_WEBHOOK_NO_ZOMBIE, ec.MSG_ZOMBIE_NOT_FOUND, req_id);
+        common.errorResponse(res, ec.ERR_WEBHOOK_NO_ZOMBIE, ec.MSG_ZOMBIE_NOT_FOUND, req_id);
         return;
     };
     defer deinitZombieRow(&zombie, alloc);
@@ -225,7 +225,7 @@ pub fn handleReceiveWebhook(ctx: *Context, req: *httpz.Request, res: *httpz.Resp
     const status = zombie_config.ZombieStatus.fromSlice(zombie.status) orelse .stopped;
     if (!status.isRunnable()) {
         log.warn("webhook.zombie_not_active zombie_id={s} status={s} req_id={s}", .{ zombie_id, zombie.status, req_id });
-        common.errorResponse(res, .conflict, ec.ERR_WEBHOOK_ZOMBIE_PAUSED, ec.MSG_ZOMBIE_NOT_ACTIVE, req_id);
+        common.errorResponse(res, ec.ERR_WEBHOOK_ZOMBIE_PAUSED, ec.MSG_ZOMBIE_NOT_ACTIVE, req_id);
         return;
     }
 

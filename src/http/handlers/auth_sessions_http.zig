@@ -19,7 +19,7 @@ pub fn handleCreateAuthSession(ctx: *Context, req: *httpz.Request, res: *httpz.R
 
     const session_id = ctx.auth_sessions.create() catch {
         log.err("auth.session_create_fail error_code=UZ-AUTH-008 err=too_many_pending_sessions req_id={s}", .{req_id});
-        common.errorResponse(res, .service_unavailable, error_codes.ERR_SESSION_LIMIT, "Too many pending sessions", req_id);
+        common.errorResponse(res, error_codes.ERR_SESSION_LIMIT, "Too many pending sessions", req_id);
         return;
     };
 
@@ -64,17 +64,17 @@ pub fn handleCompleteAuthSession(ctx: *Context, req: *httpz.Request, res: *httpz
     _ = principal;
 
     const body = req.body() orelse {
-        common.errorResponse(res, .bad_request, error_codes.ERR_INVALID_REQUEST, "Request body required", req_id);
+        common.errorResponse(res, error_codes.ERR_INVALID_REQUEST, "Request body required", req_id);
         return;
     };
     const parsed = std.json.parseFromSlice(struct { token: []const u8 }, alloc, body, .{}) catch {
-        common.errorResponse(res, .bad_request, error_codes.ERR_INVALID_REQUEST, "Malformed JSON or missing token field", req_id);
+        common.errorResponse(res, error_codes.ERR_INVALID_REQUEST, "Malformed JSON or missing token field", req_id);
         return;
     };
     defer parsed.deinit();
 
     if (parsed.value.token.len == 0) {
-        common.errorResponse(res, .bad_request, error_codes.ERR_INVALID_REQUEST, "Token must not be empty", req_id);
+        common.errorResponse(res, error_codes.ERR_INVALID_REQUEST, "Token must not be empty", req_id);
         return;
     }
 
@@ -86,7 +86,7 @@ pub fn handleCompleteAuthSession(ctx: *Context, req: *httpz.Request, res: *httpz
             error.SessionAlreadyComplete => error_codes.ERR_SESSION_ALREADY_COMPLETE,
             else => error_codes.ERR_INTERNAL_OPERATION_FAILED,
         };
-        common.errorResponse(res, .bad_request, code, @errorName(err), req_id);
+        common.errorResponse(res, code, @errorName(err), req_id);
         return;
     };
 

@@ -297,4 +297,6 @@ pub fn hint(code: []const u8) ?[]const u8 {
 // Tests extracted to codes_test.zig (Rule 8: 400-line gate)
 test {
     _ = @import("codes_test.zig");
+    _ = @import("error_table.zig");
+    _ = @import("error_registry_test.zig");
 }
