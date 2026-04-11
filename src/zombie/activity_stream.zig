@@ -230,7 +230,6 @@ fn collectActivityPage(alloc: Allocator, q: *PgQuery, limit: u32) !ActivityPage 
             .created_at = created_at,
         });
     }
-    q.drain();
 
     const events = try rows.toOwnedSlice(alloc);
     errdefer {
