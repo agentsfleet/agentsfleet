@@ -1,7 +1,7 @@
 // M11_002: Request-scoped handler context and comptime auth wrappers.
 //
-// Eliminates the 9-line boilerplate ritual (arena, req_id, authenticate,
-// error response, pool acquire) from every authenticated handler.
+// Eliminates the boilerplate ritual (arena, req_id, authenticate,
+// auth-error response) from every authenticated handler.
 //
 // Usage:
 //   fn innerCreateZombie(hx: Hx, req: *httpz.Request) void { ... }
