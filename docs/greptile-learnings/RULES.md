@@ -289,7 +289,7 @@ Generic principles from greptile reviews, PR feedback, and production incidents.
 
 ## 41. Pre-v2.0 schema removal: delete contents, keep SELECT 1
 
-**Rule:** Before v2.0 (no production data), remove tables by replacing file contents with `SELECT 1;`. No version marker comments needed — just the no-op. After v2.0 (production data exists), use proper ALTER/DROP migrations.
+**Rule:** While `cat VERSION` < 2.0.0 (teardown-rebuild era), remove tables by replacing file contents with `SELECT 1;`. After VERSION >= 2.0.0 (production data exists), use proper ALTER/DROP migrations.
 **Why:** Migration runner replays from scratch and needs a valid SQL statement per file. Comment-only files cause UnexpectedDBMessage (splitter tail handler sends raw comments to Postgres). Apostrophes/semicolons in comments also break the splitter (it does not track -- line comment context).
 **Tags:** sql, process
 **Ref:** M10_001 comment-only version markers failed CI; apostrophe in "slots" opened unterminated string literal in splitter.
