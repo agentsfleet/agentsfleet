@@ -8,28 +8,15 @@ const pg = @import("pg");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const Allocator = std.mem.Allocator;
 
-const queue_redis = @import("../queue/redis_client.zig");
-const executor_client = @import("../executor/client.zig");
 const error_codes = @import("../errors/error_registry.zig");
 const crypto_store = @import("../secrets/crypto_store.zig");
 const backoff = @import("../reliability/backoff.zig");
 
 const types = @import("event_loop_types.zig");
 const ZombieSession = types.ZombieSession;
+const EventLoopConfig = types.EventLoopConfig;
 
 const log = std.log.scoped(.zombie_event_loop);
-
-pub const EventLoopConfig = struct {
-    pool: *pg.Pool,
-    redis: *queue_redis.Client,
-    executor: *executor_client.ExecutorClient,
-    /// Cooperative shutdown flag — checked between events.
-    running: *const std.atomic.Value(bool),
-    /// Poll interval for backoff on consecutive errors (ms).
-    poll_interval_ms: u64 = 2_000,
-    /// Executor socket path for createExecution workspace_path.
-    workspace_path: []const u8 = "/tmp/zombie",
-};
 
 /// Iterate session.config.credentials and return the first successfully
 /// resolved value from vault.secrets. Credentials are plain names (e.g. "agentmail").

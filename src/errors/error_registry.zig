@@ -186,7 +186,7 @@ pub const ErrorMapping = struct {
     message: []const u8,
 };
 
-/// Comptime-validate an error mapping table: no empty codes/messages, no duplicate errors.
+/// Comptime-validate an error mapping table: no empty codes/messages, no duplicate errors or codes.
 pub fn validateErrorTable(comptime table: []const ErrorMapping) void {
     for (table) |entry| {
         if (entry.code.len == 0) @compileError("error table: empty code");
@@ -195,6 +195,7 @@ pub fn validateErrorTable(comptime table: []const ErrorMapping) void {
     for (table, 0..) |a, i| {
         for (table[i + 1 ..]) |b| {
             if (a.err == b.err) @compileError("error table: duplicate error");
+            if (std.mem.eql(u8, a.code, b.code)) @compileError("error table: duplicate code " ++ a.code);
         }
     }
 }

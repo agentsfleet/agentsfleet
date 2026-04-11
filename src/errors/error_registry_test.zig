@@ -296,3 +296,48 @@ test "T7: error_registry.zig exports REGISTRY (not TABLE)" {
     const e: reg.Entry = reg.REGISTRY[0];
     try std.testing.expect(e.code.len > 0);
 }
+
+// ── M10_006: ErrorMapping + validateErrorTable (bvisor pattern) ───────────
+
+test "M10_006: ErrorMapping struct has 3 fields (err, code, message)" {
+    const fields = @typeInfo(reg.ErrorMapping).@"struct".fields;
+    try std.testing.expectEqual(@as(usize, 3), fields.len);
+}
+
+test "M10_006: validateErrorTable accepts valid single-entry table" {
+    const table = [_]reg.ErrorMapping{
+        .{ .err = error.OutOfMemory, .code = "UZ-TEST-001", .message = "test message" },
+    };
+    // comptime validation — if it compiles, it passes
+    comptime {
+        reg.validateErrorTable(&table);
+    }
+}
+
+test "M10_006: validateErrorTable accepts valid multi-entry table" {
+    const table = [_]reg.ErrorMapping{
+        .{ .err = error.OutOfMemory, .code = "UZ-TEST-001", .message = "oom" },
+        .{ .err = error.Overflow, .code = "UZ-TEST-002", .message = "overflow" },
+        .{ .err = error.InvalidCharacter, .code = "UZ-TEST-003", .message = "bad char" },
+    };
+    comptime {
+        reg.validateErrorTable(&table);
+    }
+}
+
+test "M10_006: billing error table passes validateErrorTable at comptime" {
+    // Verifies the actual billing table is valid (imported transitively via build)
+    // The comptime block in workspace_billing.zig enforces this, but this test
+    // makes the dependency explicit in the test suite.
+    comptime {
+        const billing = @import("../state/workspace_billing.zig");
+        _ = billing; // comptime validation runs on import
+    }
+}
+
+test "M10_006: credit error table passes validateErrorTable at comptime" {
+    comptime {
+        const credit = @import("../state/workspace_credit.zig");
+        _ = credit;
+    }
+}

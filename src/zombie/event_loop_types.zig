@@ -3,8 +3,11 @@
 // Re-exported by event_loop.zig. External consumers should import event_loop.zig.
 
 const std = @import("std");
+const pg = @import("pg");
 const Allocator = std.mem.Allocator;
 const zombie_config = @import("config.zig");
+const queue_redis = @import("../queue/redis_client.zig");
+const executor_client = @import("../executor/client.zig");
 
 pub const ZombieSession = struct {
     zombie_id: []const u8,
@@ -43,4 +46,16 @@ pub const EventResult = struct {
     pub fn deinit(self: *const EventResult, alloc: Allocator) void {
         alloc.free(self.agent_response);
     }
+};
+
+pub const EventLoopConfig = struct {
+    pool: *pg.Pool,
+    redis: *queue_redis.Client,
+    executor: *executor_client.ExecutorClient,
+    /// Cooperative shutdown flag — checked between events.
+    running: *const std.atomic.Value(bool),
+    /// Poll interval for backoff on consecutive errors (ms).
+    poll_interval_ms: u64 = 2_000,
+    /// Executor socket path for createExecution workspace_path.
+    workspace_path: []const u8 = "/tmp/zombie",
 };
