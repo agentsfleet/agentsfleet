@@ -2,7 +2,7 @@
 //
 // Each provider is a VerifyConfig entry. Adding a new provider = one new const.
 // No switch statements, no per-provider functions.
-// Uses constant-time comparison to prevent timing side-channels (Rule 4).
+// Uses constant-time comparison to prevent timing side-channels (RULE CTM).
 
 const std = @import("std");
 const HmacSha256 = std.crypto.auth.hmac.sha2.HmacSha256;

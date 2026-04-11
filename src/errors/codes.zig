@@ -85,7 +85,7 @@ pub const ERR_TOOL_NOT_ATTACHED = "UZ-TOOL-004";
 pub const ERR_TOOL_UNKNOWN = "UZ-TOOL-005";
 pub const ERR_TOOL_TIMEOUT = "UZ-TOOL-006";
 
-// M1_001: Webhook user-facing error messages (rule 22: no inline strings)
+// M1_001: Webhook user-facing error messages (RULE EMS: no inline strings)
 pub const MSG_BODY_REQUIRED = "Request body required";
 pub const MSG_MALFORMED_JSON = "Malformed JSON";
 pub const MSG_MISSING_FIELDS = "event_id and type are required";
@@ -294,7 +294,7 @@ pub fn hint(code: []const u8) ?[]const u8 {
     return null;
 }
 
-// Tests extracted to codes_test.zig (Rule 8: 400-line gate)
+// Tests extracted to codes_test.zig (RULE FLL: 400-line gate)
 test {
     _ = @import("codes_test.zig");
     _ = @import("error_table.zig");
