@@ -41,12 +41,12 @@ Depends on: none
 | `src/http/rbac_http_integration_test.zig` | MODIFY | Remove harness RBAC test cases |
 | `src/http/handlers/m5_handler_changes_test.zig` | MODIFY | Remove harness import resolution test |
 | `src/state/entitlements.zig` | MODIFY | Remove profile-limit enforcement (harness-only) |
-| `src/audit/profile_linkage.zig` | EVALUATE | FK to agent_config_versions — drop or decouple |
+| `src/audit/profile_linkage.zig` | DELETE | FK to agent_config_versions — entire file is harness-only audit |
 | `src/db/test_fixtures.zig` | MODIFY | Remove agent.* table fixture inserts |
 | `src/db/test_fixtures_uc2.zig` | MODIFY | Remove harness_change_log references |
 | `src/db/pool_test.zig` | MODIFY | Remove agent table references in migration tests |
 | `src/main.zig` | MODIFY | Remove harness test discovery import |
-| `schema/NNN_drop_harness_tables.sql` | CREATE | DROP TABLE migration for 4 agent tables |
+| `schema/NNN_drop_harness_tables.sql` | CREATE | DROP TABLE migration for 5 agent tables (incl. config_linkage_audit_artifacts) |
 | `ui/packages/website/src/components/FeatureFlow.tsx` | MODIFY | Remove harness marketing copy |
 | `ui/packages/website/src/pages/Home.tsx` | MODIFY | Remove harness marketing copy |
 
@@ -61,12 +61,18 @@ Depends on: none
 
 ### §1.0 — Drop schema tables
 
+Drop order follows reverse FK dependency chain. `config_linkage_audit_artifacts`
+has `ON DELETE RESTRICT` FKs to both `agent_config_versions` and `config_compile_jobs`,
+so it must be dropped first. `config_compile_jobs` has FK to `agent_profiles`, so it
+must precede `agent_profiles`.
+
 | Dim | Status | Check |
 |-----|--------|-------|
-| 1.1 | PENDING | New migration drops `agent.workspace_active_config` (FK dep first) |
-| 1.2 | PENDING | Migration drops `agent.agent_config_versions` |
-| 1.3 | PENDING | Migration drops `agent.agent_profiles` |
-| 1.4 | PENDING | Migration drops `agent.config_compile_jobs` |
+| 1.1 | PENDING | Migration drops `agent.config_linkage_audit_artifacts` (FK to config_versions + compile_jobs) |
+| 1.2 | PENDING | Migration drops `agent.workspace_active_config` (FK to config_versions) |
+| 1.3 | PENDING | Migration drops `agent.config_compile_jobs` (FK to agent_profiles) |
+| 1.4 | PENDING | Migration drops `agent.agent_config_versions` (FK to agent_profiles) |
+| 1.5 | PENDING | Migration drops `agent.agent_profiles` (leaf — no remaining dependents) |
 
 ### §2.0 — Delete harness code
 
@@ -91,7 +97,7 @@ Depends on: none
 | Dim | Status | Check |
 |-----|--------|-------|
 | 4.1 | PENDING | `entitlements.zig` — remove `countWorkspaceProfiles()` and profile-limit enforcement |
-| 4.2 | PENDING | `profile_linkage.zig` — evaluate: drop FK to agent_config_versions or delete file |
+| 4.2 | PENDING | `profile_linkage.zig` — delete file (harness-only audit, table dropped in §1.1) |
 | 4.3 | PENDING | Handler entitlement error paths — remove `EntitlementProfileLimit` if harness-only |
 
 ### §5.0 — Clean tests + fixtures + frontend
@@ -147,6 +153,7 @@ echo "Lines removed: ~2400"
 | `src/http/handlers/harness_http.zig` | `test ! -f src/http/handlers/harness_http.zig` |
 | `src/http/handlers/harness_control_plane.zig` | `test ! -f src/http/handlers/harness_control_plane.zig` |
 | `src/http/handlers/harness_control_plane/` | `test ! -d src/http/handlers/harness_control_plane` |
+| `src/audit/profile_linkage.zig` | `test ! -f src/audit/profile_linkage.zig` |
 
 **2. Orphaned references:**
 
@@ -156,6 +163,8 @@ echo "Lines removed: ~2400"
 | `harness_control_plane` | `grep -rn "harness_control_plane" src/ --include="*.zig"` | 0 |
 | `agent_profiles` | `grep -rn "agent_profiles" src/ --include="*.zig"` | 0 |
 | `workspace_active_config` | `grep -rn "workspace_active_config" src/ --include="*.zig"` | 0 |
+| `config_linkage_audit` | `grep -rn "config_linkage_audit" src/ --include="*.zig"` | 0 |
+| `profile_linkage` | `grep -rn "profile_linkage" src/ --include="*.zig"` | 0 |
 | `countWorkspaceProfiles` | `grep -rn "countWorkspaceProfiles" src/ --include="*.zig"` | 0 |
 
 ## Acceptance Criteria
@@ -164,7 +173,7 @@ echo "Lines removed: ~2400"
 - [ ] `src/http/handlers/harness_control_plane/` directory does not exist
 - [ ] `src/http/handlers/harness_http.zig` does not exist
 - [ ] Zero grep hits for `agent_profiles`, `harness_http`, `harness_control_plane` in src/
-- [ ] New migration drops all 4 agent schema tables
+- [ ] New migration drops all 5 agent schema tables (audit_artifacts, active_config, compile_jobs, config_versions, profiles) in correct FK order
 - [ ] `zig build && zig build test` passes
 - [ ] `make lint-zig` passes
 - [ ] Cross-compiles for x86_64-linux and aarch64-linux
