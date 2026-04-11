@@ -98,8 +98,6 @@ pub fn renderDaemonMetrics(alloc: std.mem.Allocator, s: *state_mod.DaemonState) 
     const base = try metrics.renderPrometheus(
         alloc,
         s.running.load(.acquire),
-        null,
-        null,
     );
     defer alloc.free(base);
 

@@ -84,12 +84,9 @@ pub fn handleReadyz(ctx: *Context, req: *httpz.Request, res: *httpz.Response) vo
 
 pub fn handleMetrics(ctx: *Context, req: *httpz.Request, res: *httpz.Response) void {
     _ = ctx;
-    // M10_001: queue_depth and oldest_queued_age_ms removed (runs table dropped).
     const body = metrics.renderPrometheus(
         req.arena,
         true,
-        null,
-        null,
     ) catch {
         res.status = @intFromEnum(std.http.Status.internal_server_error);
         res.body = "";

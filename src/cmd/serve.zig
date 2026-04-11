@@ -16,6 +16,7 @@ const posthog_events = @import("../observability/posthog_events.zig");
 const preflight = @import("preflight.zig");
 const common = @import("common.zig");
 const error_codes = @import("../errors/codes.zig");
+const serve_args = @import("serve_args.zig");
 
 const log = std.log.scoped(.zombied);
 
@@ -23,41 +24,11 @@ var shutdown_requested = std.atomic.Value(bool).init(false);
 var stop_server_fn: *const fn () void = http_server.stop;
 var stop_server_test_counter: ?*std.atomic.Value(u32) = null;
 
-const ServeArgError = error{
-    InvalidServeArgument,
-    MissingPortValue,
-    InvalidPortValue,
-};
-
-fn parseServeArgOverrides() ServeArgError!?u16 {
+fn parseServeArgOverrides() serve_args.ServeArgError!?u16 {
     var it = std.process.args();
     _ = it.next(); // binary name
     _ = it.next(); // subcommand
-    return parseServeArgs(&it);
-}
-
-fn parseServeArgs(it: anytype) ServeArgError!?u16 {
-    var override_port: ?u16 = null;
-    while (it.next()) |arg| {
-        if (std.mem.eql(u8, arg, "--port")) {
-            const port_raw = it.next() orelse return ServeArgError.MissingPortValue;
-            override_port = parsePortValue(port_raw) orelse return ServeArgError.InvalidPortValue;
-            continue;
-        }
-        if (std.mem.startsWith(u8, arg, "--port=")) {
-            const port_raw = arg["--port=".len..];
-            override_port = parsePortValue(port_raw) orelse return ServeArgError.InvalidPortValue;
-            continue;
-        }
-        return ServeArgError.InvalidServeArgument;
-    }
-    return override_port;
-}
-
-fn parsePortValue(raw: []const u8) ?u16 {
-    const parsed = std.fmt.parseInt(u16, raw, 10) catch return null;
-    if (parsed == 0) return null;
-    return parsed;
+    return serve_args.parseArgs(&it);
 }
 
 fn onSignal(sig: i32) callconv(.c) void {
@@ -81,9 +52,9 @@ pub fn run(alloc: std.mem.Allocator) !void {
 
     const serve_port_override = parseServeArgOverrides() catch |err| {
         switch (err) {
-            ServeArgError.InvalidServeArgument => log.err("startup.args_parse status=fail reason=invalid_argument", .{}),
-            ServeArgError.MissingPortValue => log.err("startup.args_parse status=fail reason=missing_port_value", .{}),
-            ServeArgError.InvalidPortValue => log.err("startup.args_parse status=fail reason=invalid_port_value", .{}),
+            serve_args.ServeArgError.InvalidServeArgument => log.err("startup.args_parse status=fail reason=invalid_argument", .{}),
+            serve_args.ServeArgError.MissingPortValue => log.err("startup.args_parse status=fail reason=missing_port_value", .{}),
+            serve_args.ServeArgError.InvalidPortValue => log.err("startup.args_parse status=fail reason=invalid_port_value", .{}),
         }
         std.process.exit(2);
     };
@@ -220,7 +191,7 @@ pub fn run(alloc: std.mem.Allocator) !void {
         serve_cfg.api_max_clients,
         serve_cfg.api_max_in_flight_requests,
     });
-    posthog_events.trackServerStarted(ph.client, serve_cfg.port, 0);
+    posthog_events.trackServerStarted(ph.client, serve_cfg.port);
     http_server.serve(&ctx, .{
         .port = serve_cfg.port,
         .threads = serve_cfg.api_http_threads,
@@ -263,92 +234,7 @@ test "integration: signalWatcher stops server on shutdown" {
     try std.testing.expectEqual(@as(u32, 1), stop_calls.load(.acquire));
 }
 
-// --- T1: Happy path — parseServeArgs with valid --port ---
-
-const TestArgIterator = struct {
-    args: []const []const u8,
-    index: usize = 0,
-
-    fn next(self: *TestArgIterator) ?[]const u8 {
-        if (self.index >= self.args.len) return null;
-        const arg = self.args[self.index];
-        self.index += 1;
-        return arg;
-    }
-};
-
-test "parseServeArgs returns null when no args" {
-    var it = TestArgIterator{ .args = &.{} };
-    const result = try parseServeArgs(&it);
-    try std.testing.expect(result == null);
-}
-
-test "parseServeArgs parses --port with space" {
-    var it = TestArgIterator{ .args = &.{ "--port", "8080" } };
-    const result = try parseServeArgs(&it);
-    try std.testing.expectEqual(@as(?u16, 8080), result);
-}
-
-test "parseServeArgs parses --port= form" {
-    var it = TestArgIterator{ .args = &.{"--port=3001"} };
-    const result = try parseServeArgs(&it);
-    try std.testing.expectEqual(@as(?u16, 3001), result);
-}
-
-// --- T2: Edge cases ---
-
-test "parseServeArgs rejects port 0" {
-    var it = TestArgIterator{ .args = &.{ "--port", "0" } };
-    try std.testing.expectError(ServeArgError.InvalidPortValue, parseServeArgs(&it));
-}
-
-test "parseServeArgs rejects port=0 form" {
-    var it = TestArgIterator{ .args = &.{"--port=0"} };
-    try std.testing.expectError(ServeArgError.InvalidPortValue, parseServeArgs(&it));
-}
-
-test "parseServeArgs rejects non-numeric port" {
-    var it = TestArgIterator{ .args = &.{ "--port", "abc" } };
-    try std.testing.expectError(ServeArgError.InvalidPortValue, parseServeArgs(&it));
-}
-
-test "parseServeArgs rejects overflow port" {
-    var it = TestArgIterator{ .args = &.{ "--port", "99999" } };
-    try std.testing.expectError(ServeArgError.InvalidPortValue, parseServeArgs(&it));
-}
-
-test "parseServeArgs rejects negative port" {
-    var it = TestArgIterator{ .args = &.{ "--port", "-1" } };
-    try std.testing.expectError(ServeArgError.InvalidPortValue, parseServeArgs(&it));
-}
-
-// --- T3: Error paths ---
-
-test "parseServeArgs returns error for missing port value" {
-    var it = TestArgIterator{ .args = &.{"--port"} };
-    try std.testing.expectError(ServeArgError.MissingPortValue, parseServeArgs(&it));
-}
-
-test "parseServeArgs returns error for unknown arg" {
-    var it = TestArgIterator{ .args = &.{"--verbose"} };
-    try std.testing.expectError(ServeArgError.InvalidServeArgument, parseServeArgs(&it));
-}
-
-test "parseServeArgs returns error for unknown arg after valid port" {
-    var it = TestArgIterator{ .args = &.{ "--port", "3000", "--extra" } };
-    try std.testing.expectError(ServeArgError.InvalidServeArgument, parseServeArgs(&it));
-}
-
-test "parsePortValue parses valid ports" {
-    try std.testing.expectEqual(@as(?u16, 3000), parsePortValue("3000"));
-    try std.testing.expectEqual(@as(?u16, 1), parsePortValue("1"));
-    try std.testing.expectEqual(@as(?u16, 65535), parsePortValue("65535"));
-}
-
-test "parsePortValue rejects invalid values" {
-    try std.testing.expect(parsePortValue("0") == null);
-    try std.testing.expect(parsePortValue("abc") == null);
-    try std.testing.expect(parsePortValue("99999") == null);
-    try std.testing.expect(parsePortValue("") == null);
-    try std.testing.expect(parsePortValue("-5") == null);
+// Arg-parsing tests extracted to serve_test.zig (M10_002).
+comptime {
+    _ = @import("serve_test.zig");
 }

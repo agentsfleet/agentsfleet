@@ -2,7 +2,8 @@
 Milestone: M10
 Workstream: M10_003
 Name: DEAD_ERROR_CODES_AND_ROUTE_STUBS
-Status: PENDING
+Status: IN_PROGRESS
+Branch: feat/m10-003-dead-error-codes
 Priority: P2 — no runtime errors, cosmetic cleanup
 Created: Apr 11, 2026
 Depends on: M10_001 (pipeline v1 removal)
@@ -102,19 +103,20 @@ git diff --name-only origin/main | grep -v '\.md$' | xargs wc -l 2>/dev/null | a
 
 | Check | Command | Result | Pass? |
 |-------|---------|--------|-------|
-| Unit tests | `make test` | | |
-| Leak detection | `zig build test \| grep leak` | | |
-| Cross-compile | `zig build -Dtarget=x86_64-linux` | | |
-| Lint | `make lint` | | |
-| Gitleaks | `gitleaks detect` | | |
-| 350L gate | `wc -l` (exempts .md) | | |
-| Dead code sweep | eval E1–E4 | | |
+| Unit tests | `zig build test` | all pass, no failures | ✅ |
+| Leak detection | `zig build test \| grep leak` | empty (no leaks) | ✅ |
+| Cross-compile x86 | `zig build -Dtarget=x86_64-linux` | exit 0 | ✅ |
+| Cross-compile arm | `zig build -Dtarget=aarch64-linux` | exit 0 | ✅ |
+| Lint | `make lint` | zombied lint passed | ✅ |
+| Gitleaks | `gitleaks detect` | no leaks found | ✅ |
+| 350L gate | `wc -l` (exempts .md) | no file over 350 | ✅ |
+| Dead code sweep | grep UZ-PROPOSAL, UZ-HARNESS, UZ-AGENT-002, UZ-WORKER | 0 matches in src/ | ✅ |
 
 ## Out of Scope
 
 - `handleGetAgent` — still active (agent profile viewer)
 - `get_agent` Route variant — still routed and useful
-- ERR_AGENT_NOT_FOUND, ERR_AGENT_SCORES_UNAVAILABLE — still used by get.zig
+- ERR_AGENT_NOT_FOUND — still used by get.zig
 
 ## Acceptance Criteria
 

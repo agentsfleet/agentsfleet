@@ -17,8 +17,6 @@ const WS_ID_LEN: usize = 48;
 
 const Counters = struct {
     tokens_total: std.atomic.Value(u64) = std.atomic.Value(u64).init(0),
-    runs_completed_total: std.atomic.Value(u64) = std.atomic.Value(u64).init(0),
-    runs_blocked_total: std.atomic.Value(u64) = std.atomic.Value(u64).init(0),
     gate_repair_loops_total: std.atomic.Value(u64) = std.atomic.Value(u64).init(0),
 };
 
@@ -96,24 +94,6 @@ pub fn addTokens(ws_id: []const u8, tokens: u64) void {
     }
 }
 
-pub fn incRunsCompleted(ws_id: []const u8) void {
-    if (resolveSlot(ws_id)) |slot| {
-        _ = slot.counters.runs_completed_total.fetchAdd(1, .monotonic);
-    } else {
-        _ = g_overflow.runs_completed_total.fetchAdd(1, .monotonic);
-        _ = g_overflow_total.fetchAdd(1, .monotonic);
-    }
-}
-
-pub fn incRunsBlocked(ws_id: []const u8) void {
-    if (resolveSlot(ws_id)) |slot| {
-        _ = slot.counters.runs_blocked_total.fetchAdd(1, .monotonic);
-    } else {
-        _ = g_overflow.runs_blocked_total.fetchAdd(1, .monotonic);
-        _ = g_overflow_total.fetchAdd(1, .monotonic);
-    }
-}
-
 pub fn incGateRepairLoops(ws_id: []const u8) void {
     if (resolveSlot(ws_id)) |slot| {
         _ = slot.counters.gate_repair_loops_total.fetchAdd(1, .monotonic);
@@ -130,8 +110,6 @@ pub fn renderPrometheus(writer: anytype) !void {
     if (count == 0 and g_overflow_total.load(.acquire) == 0) return;
 
     try renderFamily(writer, "zombie_agent_tokens_by_workspace_total", "counter", "Tokens consumed per workspace.", &g_overflow.tokens_total, .tokens_total);
-    try renderFamily(writer, "zombie_runs_completed_by_workspace_total", "counter", "Completed runs per workspace.", &g_overflow.runs_completed_total, .runs_completed_total);
-    try renderFamily(writer, "zombie_runs_blocked_by_workspace_total", "counter", "Blocked runs per workspace.", &g_overflow.runs_blocked_total, .runs_blocked_total);
     try renderFamily(writer, "zombie_gate_repair_loops_by_workspace_total", "counter", "Gate repair loops per workspace.", &g_overflow.gate_repair_loops_total, .gate_repair_loops_total);
 
     // Overflow counter so operators know if cardinality exceeds capacity.
@@ -141,7 +119,7 @@ pub fn renderPrometheus(writer: anytype) !void {
     try writer.print("zombie_workspace_metrics_overflow_total {d}\n", .{overflow});
 }
 
-const CounterField = enum { tokens_total, runs_completed_total, runs_blocked_total, gate_repair_loops_total };
+const CounterField = enum { tokens_total, gate_repair_loops_total };
 
 fn renderFamily(writer: anytype, name: []const u8, metric_type: []const u8, help: []const u8, overflow: *std.atomic.Value(u64), field: CounterField) !void {
     try writer.print("# HELP {s} {s}\n", .{ name, help });
@@ -151,8 +129,6 @@ fn renderFamily(writer: anytype, name: []const u8, metric_type: []const u8, help
         if (slot.occupied.load(.acquire) != 1 or slot.ready.load(.acquire) != 1) continue;
         const val = switch (field) {
             .tokens_total => slot.counters.tokens_total.load(.acquire),
-            .runs_completed_total => slot.counters.runs_completed_total.load(.acquire),
-            .runs_blocked_total => slot.counters.runs_blocked_total.load(.acquire),
             .gate_repair_loops_total => slot.counters.gate_repair_loops_total.load(.acquire),
         };
         if (val == 0) continue; // skip zero-value slots
@@ -183,21 +159,6 @@ test "addTokens tracks per-workspace" {
 
     const slot_b = resolveSlot("ws-bbb").?;
     try std.testing.expectEqual(@as(u64, 200), slot_b.counters.tokens_total.load(.acquire));
-}
-
-test "incRunsCompleted and incRunsBlocked" {
-    g_slots = [_]Slot{.{}} ** MAX_WORKSPACES;
-    g_overflow = .{};
-    g_overflow_total.store(0, .release);
-    g_slot_count.store(0, .release);
-
-    incRunsCompleted("ws-ccc");
-    incRunsCompleted("ws-ccc");
-    incRunsBlocked("ws-ccc");
-
-    const slot = resolveSlot("ws-ccc").?;
-    try std.testing.expectEqual(@as(u64, 2), slot.counters.runs_completed_total.load(.acquire));
-    try std.testing.expectEqual(@as(u64, 1), slot.counters.runs_blocked_total.load(.acquire));
 }
 
 test "renderPrometheus outputs labeled metrics" {

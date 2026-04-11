@@ -8,7 +8,6 @@ const interrupt_hist = @import("metrics_interrupt_histogram.zig");
 
 var g_histograms_mu: std.Thread.Mutex = .{};
 var g_agent_duration_seconds = mc.HistogramSnapshot{};
-var g_run_total_wall_seconds = mc.HistogramSnapshot{};
 
 fn observeHistogram(hist: *mc.HistogramSnapshot, value: u64) void {
     hist.count += 1;
@@ -22,12 +21,6 @@ pub fn observeAgentDurationSeconds(seconds: u64) void {
     g_histograms_mu.lock();
     defer g_histograms_mu.unlock();
     observeHistogram(&g_agent_duration_seconds, seconds);
-}
-
-pub fn observeRunTotalWallSeconds(seconds: u64) void {
-    g_histograms_mu.lock();
-    defer g_histograms_mu.unlock();
-    observeHistogram(&g_run_total_wall_seconds, seconds);
 }
 
 /// M28_001 §4.2: Record gate repair loop count for a run.
@@ -45,7 +38,6 @@ pub fn snapshotHistograms(s: *mc.Snapshot) void {
     g_histograms_mu.lock();
     defer g_histograms_mu.unlock();
     s.agent_duration_seconds = g_agent_duration_seconds;
-    s.run_total_wall_seconds = g_run_total_wall_seconds;
     s.gate_repair_loops_per_run = gate_hist.snapshot();
     s.interrupt_delivery_latency_ms = interrupt_hist.snapshot();
 }

@@ -2,9 +2,11 @@
 Milestone: M10
 Workstream: M10_002
 Name: PIPELINE_OBSERVABILITY_CLEANUP
-Status: PENDING
+Status: IN_PROGRESS
 Priority: P2 — cosmetic; no runtime errors, no data loss
 Created: Apr 11, 2026
+Started: Apr 11, 2026
+Branch: feat/m10-pipeline-observability-cleanup
 Depends on: M10_001 (pipeline v1 removal)
 ---
 

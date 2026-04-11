@@ -6,8 +6,6 @@
 const std = @import("std");
 const router = @import("router.zig");
 
-const AgentProposalRoute = router.AgentProposalRoute;
-const AgentHarnessChangeRoute = router.AgentHarnessChangeRoute;
 pub const WebhookRoute = router.WebhookRoute;
 
 const prefix_workspaces = "/v1/workspaces/";
@@ -21,30 +19,6 @@ pub fn matchWorkspaceSuffix(path: []const u8, suffix: []const u8) ?[]const u8 {
     const inner = path[prefix_workspaces.len .. path.len - suffix.len];
     if (!isSingleSegment(inner)) return null;
     return inner;
-}
-
-pub fn matchAgentProposalAction(path: []const u8, suffix: []const u8) ?AgentProposalRoute {
-    if (!std.mem.startsWith(u8, path, prefix_agents)) return null;
-    if (!std.mem.endsWith(u8, path, suffix)) return null;
-    const inner = path[prefix_agents.len .. path.len - suffix.len];
-    const marker = "/proposals/";
-    const marker_idx = std.mem.indexOf(u8, inner, marker) orelse return null;
-    const agent_id = inner[0..marker_idx];
-    const proposal_id = inner[marker_idx + marker.len ..];
-    if (!isSingleSegment(agent_id) or !isSingleSegment(proposal_id)) return null;
-    return .{ .agent_id = agent_id, .proposal_id = proposal_id };
-}
-
-pub fn matchAgentHarnessChangeAction(path: []const u8, suffix: []const u8) ?AgentHarnessChangeRoute {
-    if (!std.mem.startsWith(u8, path, prefix_agents)) return null;
-    if (!std.mem.endsWith(u8, path, suffix)) return null;
-    const inner = path[prefix_agents.len .. path.len - suffix.len];
-    const marker = "/harness/changes/";
-    const marker_idx = std.mem.indexOf(u8, inner, marker) orelse return null;
-    const agent_id = inner[0..marker_idx];
-    const change_id = inner[marker_idx + marker.len ..];
-    if (!isSingleSegment(agent_id) or !isSingleSegment(change_id)) return null;
-    return .{ .agent_id = agent_id, .change_id = change_id };
 }
 
 pub fn isSingleSegment(value: []const u8) bool {
