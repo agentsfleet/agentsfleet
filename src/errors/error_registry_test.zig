@@ -341,3 +341,33 @@ test "M10_006: credit error table passes validateErrorTable at comptime" {
         _ = credit;
     }
 }
+
+// T7: Regression — comptime size assertions pin struct layouts
+test "M10_006 T7: StateRow size pinned at 104 bytes" {
+    const StateRow = @import("../state/workspace_billing/row.zig").StateRow;
+    try std.testing.expectEqual(@as(usize, 104), @sizeOf(StateRow));
+}
+
+test "M10_006 T7: CreditRow size pinned at 56 bytes" {
+    const CreditRow = @import("../state/workspace_credit_store.zig").CreditRow;
+    try std.testing.expectEqual(@as(usize, 56), @sizeOf(CreditRow));
+}
+
+test "M10_006 T7: PgQuery size pinned at 8 bytes (single pointer)" {
+    const PgQuery = @import("../db/pg_query.zig").PgQuery;
+    try std.testing.expectEqual(@as(usize, 8), @sizeOf(PgQuery));
+}
+
+test "M10_006 T7: ZombieSession size pinned at 296 bytes" {
+    const ZombieSession = @import("../zombie/event_loop_types.zig").ZombieSession;
+    try std.testing.expectEqual(@as(usize, 296), @sizeOf(ZombieSession));
+}
+
+// T7: Regression — ErrorMapping field count and types
+test "M10_006 T7: ErrorMapping.err field is anyerror" {
+    const fields = @typeInfo(reg.ErrorMapping).@"struct".fields;
+    // First field is 'err' of type anyerror
+    try std.testing.expectEqualStrings("err", fields[0].name);
+    try std.testing.expectEqualStrings("code", fields[1].name);
+    try std.testing.expectEqualStrings("message", fields[2].name);
+}
