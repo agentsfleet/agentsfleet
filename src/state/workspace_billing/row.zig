@@ -75,16 +75,26 @@ pub fn loadStateRow(
     const plan_tier = parsePlanTier(plan_tier_raw) orelse return error.InvalidWorkspaceBillingState;
     const billing_status = parseBillingStatus(billing_status_raw) orelse return error.InvalidWorkspaceBillingState;
     const pending_status = if (pending_status_raw) |v| (parsePendingStatus(v) orelse return error.InvalidWorkspaceBillingState) else null;
+    const plan_sku = try alloc.dupe(u8, try row.get([]const u8, 2));
+    errdefer alloc.free(plan_sku);
+    const adapter = try alloc.dupe(u8, try row.get([]const u8, 3));
+    errdefer alloc.free(adapter);
+    const subscription_id = if (try row.get(?[]const u8, 4)) |v| try alloc.dupe(u8, v) else null;
+    errdefer if (subscription_id) |v| alloc.free(v);
+    const payment_failed_at = try row.get(?i64, 5);
+    const grace_expires_at = try row.get(?i64, 6);
+    const pending_reason = if (try row.get(?[]const u8, 8)) |v| try alloc.dupe(u8, v) else null;
+
     return .{
         .plan_tier = plan_tier,
         .billing_status = billing_status,
-        .plan_sku = try alloc.dupe(u8, try row.get([]const u8, 2)),
-        .adapter = try alloc.dupe(u8, try row.get([]const u8, 3)),
-        .subscription_id = if (try row.get(?[]const u8, 4)) |v| try alloc.dupe(u8, v) else null,
-        .payment_failed_at = try row.get(?i64, 5),
-        .grace_expires_at = try row.get(?i64, 6),
+        .plan_sku = plan_sku,
+        .adapter = adapter,
+        .subscription_id = subscription_id,
+        .payment_failed_at = payment_failed_at,
+        .grace_expires_at = grace_expires_at,
         .pending_status = pending_status,
-        .pending_reason = if (try row.get(?[]const u8, 8)) |v| try alloc.dupe(u8, v) else null,
+        .pending_reason = pending_reason,
     };
 }
 
