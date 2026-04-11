@@ -3,19 +3,18 @@
 // Uses httpz.testing to exercise the real response path — correct HTTP status,
 // Content-Type: application/problem+json, and RFC 7807 JSON body shape.
 //
-// What is tested here (not in error_table.zig):
+// What is tested here (not in error_registry.zig):
 //   T1  — Known code → correct HTTP status in response
 //   T2  — Content-Type header is application/problem+json
 //   T3  — Body fields: docs_uri, title, detail, error_code, request_id all present
-//   T4  — error_code uses caller-supplied code, not UNKNOWN_ENTRY.code
+//   T4  — error_code uses caller-supplied code, not UNKNOWN.code
 //   T5  — Unregistered code → 500 with caller's code in body
 //   T6  — detail and request_id pass through verbatim
 
 const std = @import("std");
 const httpz = @import("httpz");
 const common = @import("common.zig");
-const error_codes = @import("../../errors/codes.zig");
-const error_table = @import("../../errors/error_table.zig");
+const error_codes = @import("../../errors/error_registry.zig");
 
 // ── T1: Known code → correct HTTP status ─────────────────────────────────────
 
@@ -84,13 +83,13 @@ test "M11_001: detail and request_id pass through verbatim" {
     try std.testing.expectEqualStrings("xreq-999", obj.get("request_id").?.string);
 }
 
-// ── T4: error_code is the caller-supplied code, not UNKNOWN_ENTRY.code ────────
+// ── T4: error_code is the caller-supplied code, not UNKNOWN.code ────────
 
-test "M11_001: error_code in body is caller-supplied code, not UNKNOWN_ENTRY.code" {
+test "M11_001: error_code in body is caller-supplied code, not UNKNOWN.code" {
     var ht = httpz.testing.init(.{});
     defer ht.deinit();
 
-    // Pass an unregistered code — fallback to UNKNOWN_ENTRY for status/title,
+    // Pass an unregistered code — fallback to UNKNOWN for status/title,
     // but error_code must still be what the caller passed.
     const unregistered = "UZ-DOES-NOT-EXIST-IN-TABLE";
     common.errorResponse(ht.res, unregistered, "sentinel check", "req-sentinel");
@@ -99,8 +98,8 @@ test "M11_001: error_code in body is caller-supplied code, not UNKNOWN_ENTRY.cod
     const obj = json.object;
 
     try std.testing.expectEqualStrings(unregistered, obj.get("error_code").?.string);
-    // Must NOT be the UNKNOWN_ENTRY sentinel code
-    try std.testing.expect(!std.mem.eql(u8, error_table.UNKNOWN_ENTRY.code, obj.get("error_code").?.string));
+    // Must NOT be the UNKNOWN sentinel code
+    try std.testing.expect(!std.mem.eql(u8, error_codes.UNKNOWN.code, obj.get("error_code").?.string));
 }
 
 // ── T5: Unregistered code → 500, caller code preserved ───────────────────────
@@ -152,7 +151,7 @@ test "M11_001 T2: docs_uri in body matches table entry (not constructed by calle
 
     common.errorResponse(ht.res, error_codes.ERR_UNAUTHORIZED, "d", "r");
     const json = try ht.getJson();
-    const expected_entry = error_table.lookup(error_codes.ERR_UNAUTHORIZED).?;
+    const expected_entry = error_codes.lookup(error_codes.ERR_UNAUTHORIZED);
     try std.testing.expectEqualStrings(expected_entry.docs_uri, json.object.get("docs_uri").?.string);
 }
 
@@ -162,7 +161,7 @@ test "M11_001 T2: title in body matches table entry (caller cannot override)" {
 
     common.errorResponse(ht.res, error_codes.ERR_UNAUTHORIZED, "d", "r");
     const json = try ht.getJson();
-    const expected_entry = error_table.lookup(error_codes.ERR_UNAUTHORIZED).?;
+    const expected_entry = error_codes.lookup(error_codes.ERR_UNAUTHORIZED);
     try std.testing.expectEqualStrings(expected_entry.title, json.object.get("title").?.string);
 }
 

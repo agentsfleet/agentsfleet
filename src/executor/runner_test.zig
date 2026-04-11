@@ -205,7 +205,7 @@ test "T9: getStr returns string value" {
 
 // ── T10: Constants — error code values ───────────────────────────────
 test "T10: error codes follow UZ-EXEC-0XX naming" {
-    // Verify the error codes referenced in runner.zig match codes.zig.
+    // Verify the error codes referenced in runner.zig match error_registry.zig.
     try std.testing.expect(std.mem.startsWith(u8, "UZ-EXEC-012", "UZ-EXEC-"));
     try std.testing.expect(std.mem.startsWith(u8, "UZ-EXEC-013", "UZ-EXEC-"));
     try std.testing.expect(std.mem.startsWith(u8, "UZ-EXEC-014", "UZ-EXEC-"));

@@ -2,7 +2,7 @@ const std = @import("std");
 
 const db = @import("../db/pool.zig");
 const common = @import("common.zig");
-const error_codes = @import("../errors/codes.zig");
+const error_codes = @import("../errors/error_registry.zig");
 const preflight = @import("preflight.zig");
 
 const log = std.log.scoped(.zombied);

@@ -12,7 +12,7 @@
 
 const std = @import("std");
 const common = @import("common.zig");
-const error_codes = @import("../../errors/codes.zig");
+const error_codes = @import("../../errors/error_registry.zig");
 
 // ── T9: Module import resolution ─────────────────────────────────────────────
 
@@ -119,7 +119,7 @@ test "M16_004: ERR_CRED_PLATFORM_KEY_MISSING has UZ-CRED- prefix" {
 }
 
 test "M16_004: ERR_CRED_PLATFORM_KEY_MISSING hint references admin endpoint" {
-    const h = error_codes.hint(error_codes.ERR_CRED_PLATFORM_KEY_MISSING).?;
+    const h = error_codes.hint(error_codes.ERR_CRED_PLATFORM_KEY_MISSING);
     try std.testing.expect(std.mem.indexOf(u8, h, "platform-keys") != null or
         std.mem.indexOf(u8, h, "admin") != null);
 }

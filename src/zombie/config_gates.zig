@@ -6,7 +6,7 @@
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
-const ec = @import("../errors/codes.zig");
+const ec = @import("../errors/error_registry.zig");
 
 const log = std.log.scoped(.zombie_config_gates);
 

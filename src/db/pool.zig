@@ -5,7 +5,7 @@ const std = @import("std");
 const pg = @import("pg");
 const PgQuery = @import("pg_query.zig").PgQuery;
 const id_format = @import("../types/id_format.zig");
-const error_codes = @import("../errors/codes.zig");
+const error_codes = @import("../errors/error_registry.zig");
 const sql_splitter = @import("sql_splitter.zig");
 const log = std.log.scoped(.db);
 

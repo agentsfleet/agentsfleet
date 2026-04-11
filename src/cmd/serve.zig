@@ -15,7 +15,7 @@ const obs_log = @import("../observability/logging.zig");
 const posthog_events = @import("../observability/posthog_events.zig");
 const preflight = @import("preflight.zig");
 const common = @import("common.zig");
-const error_codes = @import("../errors/codes.zig");
+const error_codes = @import("../errors/error_registry.zig");
 const serve_args = @import("serve_args.zig");
 
 const log = std.log.scoped(.zombied);

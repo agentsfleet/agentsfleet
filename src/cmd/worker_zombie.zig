@@ -13,7 +13,7 @@ const queue_redis = @import("../queue/redis_client.zig");
 const event_loop = @import("../zombie/event_loop.zig");
 const executor_client = @import("../executor/client.zig");
 const zombie_config = @import("../zombie/config.zig");
-const error_codes = @import("../errors/codes.zig");
+const error_codes = @import("../errors/error_registry.zig");
 const obs_log = @import("../observability/logging.zig");
 
 const log = std.log.scoped(.zombie_worker);

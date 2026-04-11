@@ -6,7 +6,7 @@ const queue_redis = @import("../queue/redis.zig");
 const common = @import("handlers/common.zig");
 const handler = @import("handler.zig");
 const http_server = @import("server.zig");
-const error_codes = @import("../errors/codes.zig");
+const error_codes = @import("../errors/error_registry.zig");
 
 const TEST_TENANT_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01";
 const TEST_WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
