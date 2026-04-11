@@ -11,34 +11,38 @@ pub fn distinctIdOrSystem(raw: []const u8) []const u8 {
     return raw;
 }
 
-// ── Event types ─────────────────────────────────────────────────────
+// ── Event types + structs (from telemetry_events.zig) ───────────────
 
-pub const EventKind = enum {
-    agent_completed,
-    entitlement_rejected,
-    profile_activated,
-    billing_lifecycle_event,
-    server_started,
-    worker_started,
-    startup_failed,
-    api_error,
-    workspace_created,
-    workspace_github_connected,
-    auth_login_completed,
-    auth_rejected,
-    run_orphan_recovered,
-    run_orphan_no_agent_profile,
-};
+const events = @import("telemetry_events.zig");
+
+pub const EventKind = events.EventKind;
 
 pub const RecordedEvent = struct {
     kind: EventKind,
-    distinct_id: []const u8,
-    workspace_id: []const u8,
+    distinct_id_buf: [64]u8 = .{0} ** 64,
+    distinct_id_len: u8 = 0,
+    workspace_id_buf: [64]u8 = .{0} ** 64,
+    workspace_id_len: u8 = 0,
+
+    pub fn distinctId(self: *const RecordedEvent) []const u8 {
+        return self.distinct_id_buf[0..self.distinct_id_len];
+    }
+
+    pub fn workspaceId(self: *const RecordedEvent) []const u8 {
+        return self.workspace_id_buf[0..self.workspace_id_len];
+    }
+
+    fn initFromSlices(kind: EventKind, did: []const u8, wid: []const u8) RecordedEvent {
+        var r = RecordedEvent{ .kind = kind };
+        const did_len = @min(did.len, 64);
+        const wid_len = @min(wid.len, 64);
+        @memcpy(r.distinct_id_buf[0..did_len], did[0..did_len]);
+        r.distinct_id_len = @intCast(did_len);
+        @memcpy(r.workspace_id_buf[0..wid_len], wid[0..wid_len]);
+        r.workspace_id_len = @intCast(wid_len);
+        return r;
+    }
 };
-
-// ── Event structs (re-exported from telemetry_events.zig) ───────────
-
-const events = @import("telemetry_events.zig");
 pub const AgentCompleted = events.AgentCompleted;
 pub const EntitlementRejected = events.EntitlementRejected;
 pub const ProfileActivated = events.ProfileActivated;
@@ -82,11 +86,9 @@ pub const TestBackend = struct {
     var count: usize = 0;
 
     pub fn capture(_: *TestBackend, comptime E: type, event: E) void {
-        ring[count % 64] = .{
-            .kind = E.kind,
-            .distinct_id = if (@hasField(E, "distinct_id")) event.distinct_id else "system",
-            .workspace_id = if (@hasField(E, "workspace_id")) event.workspace_id else "",
-        };
+        const did = if (@hasField(E, "distinct_id")) event.distinct_id else "system";
+        const wid = if (@hasField(E, "workspace_id")) event.workspace_id else "";
+        ring[count % 64] = RecordedEvent.initFromSlices(E.kind, did, wid);
         count += 1;
     }
 

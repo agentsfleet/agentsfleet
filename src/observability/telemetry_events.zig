@@ -3,8 +3,23 @@
 //! that returns a fixed-size array of PostHog properties.
 
 const posthog = @import("posthog");
-const telemetry = @import("telemetry.zig");
-const EventKind = telemetry.EventKind;
+
+pub const EventKind = enum {
+    agent_completed,
+    entitlement_rejected,
+    profile_activated,
+    billing_lifecycle_event,
+    server_started,
+    worker_started,
+    startup_failed,
+    api_error,
+    workspace_created,
+    workspace_github_connected,
+    auth_login_completed,
+    auth_rejected,
+    run_orphan_recovered,
+    run_orphan_no_agent_profile,
+};
 
 pub const AgentCompleted = struct {
     distinct_id: []const u8,

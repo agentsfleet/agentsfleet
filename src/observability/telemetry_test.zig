@@ -44,21 +44,21 @@ test "workspace_id captured for events that have it" {
         .request_id = "r1",
     });
     const last = telemetry.TestBackend.lastEvent().?;
-    try std.testing.expectEqualStrings("ws_42", last.workspace_id);
+    try std.testing.expectEqualStrings("ws_42", last.workspaceId());
 }
 
 test "events without workspace_id capture empty string" {
     var t = telemetry.Telemetry.initTest();
     t.capture(telemetry.ServerStarted, .{ .port = 3000 });
     const last = telemetry.TestBackend.lastEvent().?;
-    try std.testing.expectEqualStrings("", last.workspace_id);
+    try std.testing.expectEqualStrings("", last.workspaceId());
 }
 
 test "distinct_id defaults to system for events without it" {
     var t = telemetry.Telemetry.initTest();
     t.capture(telemetry.ServerStarted, .{ .port = 3000 });
     const last = telemetry.TestBackend.lastEvent().?;
-    try std.testing.expectEqualStrings("system", last.distinct_id);
+    try std.testing.expectEqualStrings("system", last.distinctId());
 }
 
 test "all 14 event types can be captured without error" {
