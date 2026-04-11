@@ -121,17 +121,17 @@ Generic principles from greptile reviews, PR feedback, and production incidents.
 
 ## 17. Migration index assertions track position
 
-**Rule:** When inserting or splitting migration files, update every index-based assertion.
-**Why:** Stale index silently points at the wrong SQL file with no compile-time error.
+**Rule:** When inserting, splitting, or removing migration files, update every index-based assertion in `src/cmd/common.zig`. While `cat VERSION` < 2.0.0, removed files become `SELECT 1;` (see Rule 41) — their array slot stays but the assertion must match the new content.
+**Why:** Stale index silently points at the wrong SQL file with no compile-time error. M10_001 assertions checked for CREATE TABLE in files that were now `SELECT 1;` version markers.
 **Tags:** zig, sql
-**Ref:** M31_001 migrations[7] pointed at wrong file after a split; should have been [6].
+**Ref:** M31_001 migrations[7] pointed at wrong file after a split. M10_001 migrations[14]/[15] asserted dropped table names in version marker files.
 
-## 18. No semicolons in SQL comments
+## 18. No semicolons or apostrophes in SQL comments
 
-**Rule:** Never put ; inside a SQL -- comment; the migration statement splitter will break the statement.
-**Why:** The splitter splits on ; without tracking line comment context.
+**Rule:** Never put `;` or `'` inside a SQL `--` comment. The migration statement splitter does not track line comment context — it processes `;` and `'` globally.
+**Why:** A `;` in a comment splits the statement prematurely. An `'` in a comment (e.g. `slot's`) opens an unterminated string literal, causing subsequent `;` to be skipped.
 **Tags:** sql
-**Ref:** M1_001 022_core_zombies.sql had ; in comment, broke migration runner with UnexpectedDBMessage.
+**Ref:** M1_001 `;` in comment broke runner. M10_001 apostrophe in `slots` opened unterminated string → UnexpectedDBMessage.
 
 ## 19. Gate dispatcher must not glob itself
 
