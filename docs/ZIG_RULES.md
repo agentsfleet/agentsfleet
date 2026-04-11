@@ -63,6 +63,27 @@ Status: Canonical Zig source of truth for agents and commits
 - When a struct carries data from different sources (e.g. vault ref + Bearer token), consider whether a tagged union better represents the "exactly one of these" constraint.
 - `deinit()` methods on tagged union types must switch on all variants and free only what that variant owns.
 
+## Progressive Cleanup (apply on file touch)
+
+When you touch a file during any workstream and see one of these patterns,
+fix it in the same commit. No spec needed — these are incremental improvements.
+
+- **Comptime struct size assertion.** When modifying a struct used for DB rows,
+  metrics snapshots, or wire formats, add `comptime { std.debug.assert(@sizeOf(T) == N); }`
+  after the struct definition. This catches silent field drift on the next edit.
+  Applies to: `Snapshot`, `EntitlementPolicy`, `ActivityEventRow`, any `*Row` struct.
+
+- **Stack buffer for bounded data.** When you see `alloc.dupe(u8, ...)` or
+  `Stringify.valueAlloc(...)` and the output is ≤256 bytes with a known upper
+  bound, replace with a stack `var buf: [N]u8 = undefined;` + `std.fmt.bufPrint`
+  or `std.io.fixedBufferStream`. Eliminates allocator pressure on hot paths.
+  Applies to: UUID formatting, small JSON payloads, log message interpolation.
+
+- **Remove unused `pub`.** When touching a file, run:
+  `grep -n "^pub " src/path/file.zig` and for each symbol
+  `grep -rn "symbol_name" src/ --include="*.zig"` to check if any other file
+  uses it. Remove `pub` from symbols with zero external references.
+
 ## New File Rules
 
 - Prefer extending an existing Zig module unless a new file clearly reduces coupling or keeps module size reviewable.
