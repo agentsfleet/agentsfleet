@@ -92,13 +92,6 @@ fn dispatchMatchedRoute(ctx: *handler.Context, req: *httpz.Request, res: *httpz.
         .get_harness_active => |workspace_id| if (req.method == .GET) handler.handleGetHarnessActive(ctx, req, res, workspace_id) else respondMethodNotAllowed(res),
         .sync_workspace => |workspace_id| if (req.method == .POST) handler.handleSyncSpecs(ctx, req, res, workspace_id) else respondMethodNotAllowed(res),
         .get_agent => |agent_id| if (req.method == .GET) handler.handleGetAgent(ctx, req, res, agent_id) else respondMethodNotAllowed(res),
-        .get_agent_scores => |agent_id| if (req.method == .GET) handler.handleGetAgentScores(ctx, req, res, agent_id) else respondMethodNotAllowed(res),
-        .get_agent_improvement_report => |agent_id| if (req.method == .GET) handler.handleGetAgentImprovementReport(ctx, req, res, agent_id) else respondMethodNotAllowed(res),
-        .list_agent_proposals => |agent_id| if (req.method == .GET) handler.handleListAgentProposals(ctx, req, res, agent_id) else respondMethodNotAllowed(res),
-        .approve_agent_proposal => |route| if (req.method == .POST) handler.handleApproveAgentProposal(ctx, req, res, route.agent_id, route.proposal_id) else respondMethodNotAllowed(res),
-        .reject_agent_proposal => |route| if (req.method == .POST) handler.handleRejectAgentProposal(ctx, req, res, route.agent_id, route.proposal_id) else respondMethodNotAllowed(res),
-        .veto_agent_proposal => |route| if (req.method == .POST) handler.handleVetoAgentProposal(ctx, req, res, route.agent_id, route.proposal_id) else respondMethodNotAllowed(res),
-        .revert_agent_harness_change => |route| if (req.method == .POST) handler.handleRevertAgentHarnessChange(ctx, req, res, route.agent_id, route.change_id) else respondMethodNotAllowed(res),
         // M16_004: admin platform key management
         .admin_platform_keys => switch (req.method) {
             .GET => handler.handleGetAdminPlatformKeys(ctx, req, res),

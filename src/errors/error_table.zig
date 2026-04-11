@@ -79,30 +79,9 @@ pub const TABLE = [_]ErrorEntry{
     .{ .code = "UZ-RUNS-410", .http_status = .gone,               .title = "Pipeline v1 permanently removed", .docs_uri = ERROR_DOCS_BASE ++ "UZ-RUNS-410" },
     // ── AGENT ────────────────────────────────────────────────────────────────
     .{ .code = "UZ-AGENT-001", .http_status = .not_found,          .title = "Agent not found",           .docs_uri = ERROR_DOCS_BASE ++ "UZ-AGENT-001" },
-    .{ .code = "UZ-AGENT-002", .http_status = .service_unavailable,.title = "Agent scores unavailable",  .docs_uri = ERROR_DOCS_BASE ++ "UZ-AGENT-002" },
     // ── PROFILE ──────────────────────────────────────────────────────────────
     .{ .code = "UZ-PROFILE-001", .http_status = .not_found,   .title = "Profile not found", .docs_uri = ERROR_DOCS_BASE ++ "UZ-PROFILE-001" },
     .{ .code = "UZ-PROFILE-002", .http_status = .bad_request, .title = "Invalid profile",   .docs_uri = ERROR_DOCS_BASE ++ "UZ-PROFILE-002" },
-    // ── PROPOSAL ─────────────────────────────────────────────────────────────
-    .{ .code = "UZ-PROPOSAL-001", .http_status = .bad_request,          .title = "Invalid proposal JSON",             .docs_uri = ERROR_DOCS_BASE ++ "UZ-PROPOSAL-001" },
-    .{ .code = "UZ-PROPOSAL-002", .http_status = .bad_request,          .title = "Proposal not an array",             .docs_uri = ERROR_DOCS_BASE ++ "UZ-PROPOSAL-002" },
-    .{ .code = "UZ-PROPOSAL-003", .http_status = .bad_request,          .title = "Proposal change not an object",     .docs_uri = ERROR_DOCS_BASE ++ "UZ-PROPOSAL-003" },
-    .{ .code = "UZ-PROPOSAL-004", .http_status = .bad_request,          .title = "Missing target field",              .docs_uri = ERROR_DOCS_BASE ++ "UZ-PROPOSAL-004" },
-    .{ .code = "UZ-PROPOSAL-005", .http_status = .bad_request,          .title = "Unsupported target field",          .docs_uri = ERROR_DOCS_BASE ++ "UZ-PROPOSAL-005" },
-    .{ .code = "UZ-PROPOSAL-006", .http_status = .bad_request,          .title = "Missing stage ID",                  .docs_uri = ERROR_DOCS_BASE ++ "UZ-PROPOSAL-006" },
-    .{ .code = "UZ-PROPOSAL-007", .http_status = .bad_request,          .title = "Missing role",                      .docs_uri = ERROR_DOCS_BASE ++ "UZ-PROPOSAL-007" },
-    .{ .code = "UZ-PROPOSAL-008", .http_status = .bad_request,          .title = "Missing insert-before stage ID",    .docs_uri = ERROR_DOCS_BASE ++ "UZ-PROPOSAL-008" },
-    .{ .code = "UZ-PROPOSAL-009", .http_status = .bad_request,          .title = "Disallowed field",                  .docs_uri = ERROR_DOCS_BASE ++ "UZ-PROPOSAL-009" },
-    .{ .code = "UZ-PROPOSAL-010", .http_status = .bad_request,          .title = "Unregistered agent reference",      .docs_uri = ERROR_DOCS_BASE ++ "UZ-PROPOSAL-010" },
-    .{ .code = "UZ-PROPOSAL-011", .http_status = .bad_request,          .title = "Invalid skill reference",           .docs_uri = ERROR_DOCS_BASE ++ "UZ-PROPOSAL-011" },
-    .{ .code = "UZ-PROPOSAL-012", .http_status = .bad_request,          .title = "Unknown stage reference",           .docs_uri = ERROR_DOCS_BASE ++ "UZ-PROPOSAL-012" },
-    .{ .code = "UZ-PROPOSAL-013", .http_status = .conflict,             .title = "Duplicate stage reference",         .docs_uri = ERROR_DOCS_BASE ++ "UZ-PROPOSAL-013" },
-    .{ .code = "UZ-PROPOSAL-014", .http_status = .unprocessable_entity, .title = "Proposal would not compile",        .docs_uri = ERROR_DOCS_BASE ++ "UZ-PROPOSAL-014" },
-    .{ .code = "UZ-PROPOSAL-015", .http_status = .unprocessable_entity, .title = "No valid proposal template",        .docs_uri = ERROR_DOCS_BASE ++ "UZ-PROPOSAL-015" },
-    .{ .code = "UZ-PROPOSAL-016", .http_status = .internal_server_error,.title = "Proposal generation failed",        .docs_uri = ERROR_DOCS_BASE ++ "UZ-PROPOSAL-016" },
-    .{ .code = "UZ-PROPOSAL-017", .http_status = .not_found,            .title = "Proposal not found",                .docs_uri = ERROR_DOCS_BASE ++ "UZ-PROPOSAL-017" },
-    // ── HARNESS ──────────────────────────────────────────────────────────────
-    .{ .code = "UZ-HARNESS-001", .http_status = .not_found, .title = "Harness change not found", .docs_uri = ERROR_DOCS_BASE ++ "UZ-HARNESS-001" },
     // ── WEBHOOK ──────────────────────────────────────────────────────────────
     .{ .code = "UZ-WH-001", .http_status = .not_found,   .title = "Zombie not found for webhook",   .docs_uri = ERROR_DOCS_BASE ++ "UZ-WH-001" },
     .{ .code = "UZ-WH-002", .http_status = .bad_request, .title = "Malformed webhook",              .docs_uri = ERROR_DOCS_BASE ++ "UZ-WH-002" },
@@ -144,8 +123,6 @@ pub const TABLE = [_]ErrorEntry{
     .{ .code = "UZ-SANDBOX-002", .http_status = .forbidden,          .title = "Sandbox kill switch triggered",    .docs_uri = ERROR_DOCS_BASE ++ "UZ-SANDBOX-002" },
     .{ .code = "UZ-SANDBOX-003", .http_status = .forbidden,          .title = "Sandbox command blocked",          .docs_uri = ERROR_DOCS_BASE ++ "UZ-SANDBOX-003" },
     // ── WORKER ───────────────────────────────────────────────────────────────
-    .{ .code = "UZ-WORKER-001", .http_status = .internal_server_error,.title = "Worker prompts load failed",  .docs_uri = ERROR_DOCS_BASE ++ "UZ-WORKER-001" },
-    .{ .code = "UZ-WORKER-002", .http_status = .internal_server_error,.title = "Worker profile init failed",  .docs_uri = ERROR_DOCS_BASE ++ "UZ-WORKER-002" },
     // ── EXECUTOR ─────────────────────────────────────────────────────────────
     .{ .code = "UZ-EXEC-001", .http_status = .internal_server_error,.title = "Execution session create failed",.docs_uri = ERROR_DOCS_BASE ++ "UZ-EXEC-001" },
     .{ .code = "UZ-EXEC-002", .http_status = .internal_server_error,.title = "Stage start failed",             .docs_uri = ERROR_DOCS_BASE ++ "UZ-EXEC-002" },
@@ -215,11 +192,6 @@ test "lookup returns correct entry for AUTH-002 (unauthorized → 401)" {
 test "lookup returns correct entry for REQ-002 (payload too large → 413)" {
     const entry = lookup("UZ-REQ-002").?;
     try std.testing.expectEqual(std.http.Status.payload_too_large, entry.http_status);
-}
-
-test "lookup returns correct entry for PROPOSAL-017 (not found → 404)" {
-    const entry = lookup("UZ-PROPOSAL-017").?;
-    try std.testing.expectEqual(std.http.Status.not_found, entry.http_status);
 }
 
 test "lookup returns null for unknown code" {
