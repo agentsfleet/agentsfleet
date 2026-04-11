@@ -356,6 +356,20 @@ Generic principles from greptile reviews, PR feedback, and production incidents.
 **Tags:** zig, testing
 **Ref:** M11_001 error_registry_test.zig — renamed "does not start with UZ- — wait, it does" to "has sentinel code UZ-UNKNOWN and is 500"
 
+## 47. Zig struct init/deinit/ownership conventions
+
+**Rule:** Follow this pattern for all Zig structs:
+- **`init` signature:** `fn init(allocator: Allocator, ...) !Self` for stack-returned structs that can fail; `fn init(...) !*Self` for heap-allocated. Never return `Self` from `init` when setup is fallible — use `!Self`.
+- **`deinit` signature:** Always `pub fn deinit(self: *Self) void` — pointer receiver, no error return. Cleanup must be infallible from the caller's perspective.
+- **Multi-step init:** Wrap each allocator.create or sub-init with `errdefer` so partial construction always cleans up. Pattern: `const x = try alloc.create(T); errdefer alloc.destroy(x);` before the next allocating step.
+- **Ownership comments:** When a field is borrowed (not owned), say so explicitly: `// owned by caller, not freed here`. Silence implies ownership.
+- **Private fields:** No underscore prefix convention. Use Zig visibility (`pub` vs none) and `const`/`var` to control mutability. Helper functions are private by default (no `pub`).
+- **Refcounting:** Use `std.atomic.Value(usize)` with `ref()` / `unref()` helpers for shared ownership. `unref()` calls `destroy` when count hits zero.
+
+**Why:** bvisor/src/core shows these patterns consistently. Deviating breaks the ownership contract — missed errdefer means memory leak on partial init; missing ROLLBACK on deinit-equivalent means inconsistent state.
+**Tags:** zig, memory, ownership, patterns
+**Ref:** bvisor src/core/Supervisor.zig, Thread.zig, ThreadGroup.zig, OverlayRoot.zig, LogBuffer.zig
+
 ## 46. Every DELETE in a transaction must ROLLBACK on failure
 
 **Rule:** When multiple `DELETE` (or `UPDATE`) statements share a transaction, every `catch` branch must issue `ROLLBACK` and return. Never log-and-continue — that causes a partial commit where one row is deleted and another is left orphaned.
