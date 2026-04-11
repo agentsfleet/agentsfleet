@@ -244,19 +244,19 @@ GET /v1/workspaces/{ws}/firewall/events?type={type}&tool={tool}&cursor={cursor}&
 
 ---
 
-## 9.0 Applicable Rules
+## Applicable Rules
 
-RULE XCC (cross-compile check), RULE FLL (full lint gate), RULE ORP (cross-layer orphan sweep), RULE DRN (drain before deinit), RULE 350L (line-length gate).
+RULE XCC (cross-compile), RULE FLL (350-line gate), RULE FLS (drain all results), RULE ORP (orphan sweep).
 
 ---
 
-## 9.1 Invariants
+## Invariants
 
 N/A — no compile-time guardrails.
 
 ---
 
-## 9.2 Eval Commands
+## Eval Commands
 
 ```bash
 # E1: Build
@@ -284,13 +284,13 @@ make check-pg-drain 2>&1 | tail -3; echo "drain=$?"
 
 ---
 
-## 9.3 Dead Code Sweep
+## Dead Code Sweep
 
 N/A — no files deleted.
 
 ---
 
-## 9.4 Verification Evidence
+## Verification Evidence
 
 | Check | Command | Result | Pass? |
 |-------|---------|--------|-------|
@@ -305,7 +305,7 @@ N/A — no files deleted.
 
 ---
 
-## 10.0 Out of Scope
+## Out of Scope
 
 - Real-time WebSocket streaming of firewall events (API polling is sufficient for v1)
 - Historical trend storage beyond activity_events retention (30 days default)

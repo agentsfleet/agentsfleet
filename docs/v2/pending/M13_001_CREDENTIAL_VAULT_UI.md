@@ -225,19 +225,19 @@ DELETE /v1/workspaces/{ws}/credentials/{name}       — delete
 
 ---
 
-## 9.0 Applicable Rules
+## Applicable Rules
 
-RULE XCC (cross-compile check — Zig handler), RULE FLL (full lint gate), RULE ORP (cross-layer orphan sweep), RULE DRN (drain before deinit — Zig handler), RULE 350L (line-length gate). Standard set for Next.js components.
+RULE XCC (cross-compile — Zig handler), RULE FLL (350-line gate), RULE FLS (drain all results — Zig handler), RULE ORP (orphan sweep). Standard set for Next.js components.
 
 ---
 
-## 9.1 Invariants
+## Invariants
 
 N/A — no compile-time guardrails.
 
 ---
 
-## 9.2 Eval Commands
+## Eval Commands
 
 ```bash
 # E1: Build (Zig backend)
@@ -268,13 +268,13 @@ make check-pg-drain 2>&1 | tail -3; echo "drain=$?"
 
 ---
 
-## 9.3 Dead Code Sweep
+## Dead Code Sweep
 
 N/A — no files deleted.
 
 ---
 
-## 9.4 Verification Evidence
+## Verification Evidence
 
 | Check | Command | Result | Pass? |
 |-------|---------|--------|-------|
@@ -291,7 +291,7 @@ N/A — no files deleted.
 
 ---
 
-## 10.0 Out of Scope
+## Out of Scope
 
 - Credential rotation (revoke + re-add for v1)
 - Credential sharing across workspaces (workspace-scoped only)

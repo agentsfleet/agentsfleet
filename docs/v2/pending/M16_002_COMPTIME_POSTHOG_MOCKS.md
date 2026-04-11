@@ -83,6 +83,14 @@ Issues:
    changes from `?*posthog.PostHogClient` to `*Telemetry`. Every file that
    accesses `ctx.posthog` or `hx.ctx.posthog` is updated.
 
+## Applicable Rules
+
+- RULE NDC — no dead code (deleting posthog_events.zig)
+- RULE ORP — cross-layer orphan sweep after deletion
+- RULE XCC — cross-compile before commit
+- RULE FLL — 350-line gate on touched files
+- RULE TST — test discovery requires explicit import in main.zig
+
 ## Files Changed (blast radius)
 
 | File | Action | Why |
@@ -397,6 +405,40 @@ echo "E13: assertion call count (should be >= 5)"
 # E14: 400-line gate
 git diff --name-only origin/main | xargs wc -l 2>/dev/null | awk '$1 > 400 && $2 !~ /\.md$/ { print "OVER: " $2 ": " $1 " lines" }'
 ```
+
+## Dead Code Sweep
+
+**1. Orphaned files — must be deleted from disk and git.**
+
+| File to delete | Verify deleted |
+|---------------|----------------|
+| `src/observability/posthog_events.zig` | `test ! -f src/observability/posthog_events.zig` |
+| `src/observability/posthog_events_test.zig` | `test ! -f src/observability/posthog_events_test.zig` |
+
+**2. Orphaned references — zero remaining imports or uses.**
+
+| Deleted symbol or import | Grep command | Expected |
+|-------------------------|--------------|----------|
+| `posthog_events` | `grep -rn "posthog_events" src/ --include="*.zig"` | 0 matches |
+| `?*posthog.PostHogClient` | `grep -rn '?\*.*PostHogClient' src/ --include="*.zig"` | 0 matches |
+| `distinctIdOrSystem` | `grep -rn "distinctIdOrSystem" src/ --include="*.zig"` | 0 matches |
+| `serverStartedProps` | `grep -rn "serverStartedProps" src/ --include="*.zig"` | 0 matches |
+| `startupFailedProps` | `grep -rn "startupFailedProps" src/ --include="*.zig"` | 0 matches |
+
+**3. main.zig test discovery — update imports.**
+Remove posthog_events imports. Add telemetry.zig + telemetry_test.zig imports.
+
+## Verification Evidence
+
+| Check | Command | Result | Pass? |
+|-------|---------|--------|-------|
+| Unit tests | `make test` | | |
+| Leak detection | `zig build test \| grep leak` | | |
+| Cross-compile | `zig build -Dtarget=x86_64-linux` | | |
+| Lint | `make lint` | | |
+| Gitleaks | `gitleaks detect` | | |
+| 350L gate | `wc -l` (exempts .md) | | |
+| Dead code sweep | eval E1–E6 | | |
 
 ## Out of Scope
 

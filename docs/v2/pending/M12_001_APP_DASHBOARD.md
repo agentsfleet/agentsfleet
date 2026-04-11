@@ -269,19 +269,19 @@ All data comes from existing APIs. The app is a pure frontend consumer.
 
 ---
 
-## 11.0 Applicable Rules
+## Applicable Rules
 
 Standard set only.
 
 ---
 
-## 11.1 Invariants
+## Invariants
 
 N/A — no compile-time guardrails.
 
 ---
 
-## 11.2 Eval Commands
+## Eval Commands
 
 ```bash
 # E1: Build
@@ -302,13 +302,13 @@ git diff --name-only origin/main | grep -v '\.md$' | xargs wc -l 2>/dev/null | a
 
 ---
 
-## 11.3 Dead Code Sweep
+## Dead Code Sweep
 
 N/A — no files deleted.
 
 ---
 
-## 11.4 Verification Evidence
+## Verification Evidence
 
 | Check | Command | Result | Pass? |
 |-------|---------|--------|-------|
@@ -321,7 +321,7 @@ N/A — no files deleted.
 
 ---
 
-## 12.0 Out of Scope
+## Out of Scope
 
 - Real-time WebSocket updates (SSE polling at 5s interval for v1)
 - Chat with running agent (deferred — CLI-only for now)

@@ -288,6 +288,40 @@ echo "E12: orphan sweep (empty = pass)"
 git diff --name-only origin/main | xargs wc -l 2>/dev/null | awk '$1 > 400 && $2 !~ /\.md$/ { print "OVER: " $2 ": " $1 " lines" }'
 ```
 
+## Dead Code Sweep
+
+**1. Orphaned files — must be deleted from disk and git.**
+
+| File to delete | Verify deleted |
+|---------------|----------------|
+| `src/errors/error_table.zig` | `test ! -f src/errors/error_table.zig` |
+| `src/errors/codes.zig` | `test ! -f src/errors/codes.zig` |
+
+**2. Orphaned references — zero remaining imports or uses.**
+
+| Deleted symbol or import | Grep command | Expected |
+|-------------------------|--------------|----------|
+| `error_table` | `grep -rn "error_table" src/ --include="*.zig"` | 0 matches |
+| `UNKNOWN_ENTRY` | `grep -rn "UNKNOWN_ENTRY" src/ --include="*.zig"` | 0 matches |
+| `codes.zig` import | `grep -rn '@import.*codes\.zig' src/ --include="*.zig"` | 0 matches |
+| `LOOKUP_MAP` | `grep -rn "LOOKUP_MAP" src/ --include="*.zig"` | 0 matches |
+
+**3. main.zig test discovery — update imports.**
+Remove `_ = @import("error_table.zig");` and `_ = @import("codes.zig");` lines. Add `_ = @import("error_registry.zig");`.
+
+## Verification Evidence
+
+| Check | Command | Result | Pass? |
+|-------|---------|--------|-------|
+| Unit tests | `make test` | | |
+| Integration tests | `make test-integration` | | |
+| Leak detection | `zig build test \| grep leak` | | |
+| Cross-compile | `zig build -Dtarget=x86_64-linux` | | |
+| Lint | `make lint` | | |
+| Gitleaks | `gitleaks detect` | | |
+| 350L gate | `wc -l` (exempts .md) | | |
+| Dead code sweep | eval E3–E6 | | |
+
 ## Out of Scope
 
 - Changing error code format (UZ-*-NNN stays)

@@ -240,19 +240,19 @@ POST /v1/slack/interactions               — Slack interactive message callback
 
 ---
 
-## 10.0 Applicable Rules
+## Applicable Rules
 
-RULE XCC (cross-compile check), RULE FLL (full lint gate), RULE ORP (cross-layer orphan sweep), RULE DRN (drain before deinit), RULE 350L (line-length gate).
+RULE XCC (cross-compile check), RULE FLL (350-line gate), RULE ORP (cross-layer orphan sweep), RULE FLS (drain all results), RULE FLL (350-line gate).
 
 ---
 
-## 10.1 Invariants
+## Invariants
 
 N/A — no compile-time guardrails.
 
 ---
 
-## 10.2 Eval Commands
+## Eval Commands
 
 ```bash
 # E1: Build
@@ -280,13 +280,13 @@ make check-pg-drain 2>&1 | tail -3; echo "drain=$?"
 
 ---
 
-## 10.3 Dead Code Sweep
+## Dead Code Sweep
 
 N/A — no files deleted.
 
 ---
 
-## 10.4 Verification Evidence
+## Verification Evidence
 
 | Check | Command | Result | Pass? |
 |-------|---------|--------|-------|
@@ -301,7 +301,7 @@ N/A — no files deleted.
 
 ---
 
-## 11.0 Out of Scope
+## Out of Scope
 
 - Slack App Directory submission (manual install URL for now)
 - Multi-workspace per Slack team (1:1 mapping for v1)
