@@ -55,7 +55,11 @@ pub fn upsertIntegration(
         \\  SET scopes_granted = EXCLUDED.scopes_granted,
         \\      updated_at     = EXCLUDED.updated_at,
         \\      status         = 'active'
-        \\RETURNING integration_id::text, (xmax = 0) AS is_new
+        \\RETURNING integration_id::text,
+        \\          -- xmax holds the XID of the last deleter/updater transaction.
+        \\          -- xmax=0 means no UPDATE touched this row → INSERT path (fresh install).
+        \\          -- xmax≠0 means DO UPDATE fired → existing row updated (reinstall).
+        \\          (xmax = 0) AS is_new
     , .{ new_id, workspace_id, provider, external_id, scopes_granted, source_str, now_ms }) catch |err| {
         log.err("workspace_integrations.upsert_fail provider={s} err={s}", .{ provider, @errorName(err) });
         return err;
