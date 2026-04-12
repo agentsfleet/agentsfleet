@@ -287,12 +287,12 @@ Reference a rule as `RULE NDC`, `RULE OWN`, etc.
 **Tags:** zig
 **Ref:** M3_001 HMAC version "v0" derived by slicing "v0=" prefix — fixed with explicit hmac_version field.
 
-## RULE SCH — Pre-v2.0 schema removal: delete contents, keep SELECT 1
+## RULE SCH — Pre-v2.0 schema removal: full teardown, no markers, no DROP
 
-**Rule:** While `cat VERSION` < 2.0.0 (teardown-rebuild era), remove tables by replacing file contents with `SELECT 1;`. After VERSION >= 2.0.0 (production data exists), use proper ALTER/DROP migrations. `make test` validates every migration produces at least one statement.
-**Why:** Migration runner replays from scratch. Every file must produce at least one valid SQL statement — `make test` catches empty/broken files without needing a DB.
+**Rule:** While `cat VERSION` < 2.0.0 (teardown-rebuild era), removing tables MUST be a full teardown: (1) delete the SQL file (`rm schema/NNN_foo.sql`), (2) remove the `@embedFile` constant from `schema/embed.zig`, (3) remove the migration array entry from `src/cmd/common.zig` and update its array length + any index-based tests. Never write ALTER TABLE, DROP TABLE, or `SELECT 1;` placeholders. Never keep version-marker files. Migration slot numbers are not sacred pre-v2.0 — the DB is wiped on every rebuild, and gaps in numbering are fine. After VERSION >= 2.0.0, switch to proper ALTER/DROP migrations in new numbered files.
+**Why:** Markers accumulate dead code and still force CI to splitter-parse them. Pre-v2.0 there is zero production data to protect; full removal is cleaner and leaves no false grep hits or stale migration slots.
 **Tags:** sql, process
-**Ref:** M10_001 comment-only version markers failed CI; apostrophe in "slots" opened unterminated string literal in splitter.
+**Ref:** M17_001 harness teardown — supersedes prior "replace with `SELECT 1;`" guidance. Under the old rule, M10_001 comment-only markers broke CI (apostrophe in "slots" opened unterminated string in splitter); full deletion avoids the marker problem entirely.
 
 ## RULE EP4 — Removed endpoints return 410 Gone, not 404
 

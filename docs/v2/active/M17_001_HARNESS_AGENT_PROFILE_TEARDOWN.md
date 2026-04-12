@@ -48,9 +48,27 @@ Depends on: none
 | `src/db/test_fixtures_uc2.zig` | MODIFY | Remove harness_change_log references |
 | `src/db/pool_test.zig` | MODIFY | Remove agent table references in migration tests |
 | `src/main.zig` | MODIFY | Remove harness test discovery import |
-| `schema/NNN_drop_harness_tables.sql` | CREATE | DROP TABLE migration for 5 agent tables (incl. config_linkage_audit_artifacts) |
+| `schema/008_harness_control_plane.sql` | DELETE | Pre-v2.0 full teardown (RULE SCH); removes agent_profiles, agent_config_versions, workspace_active_config, config_compile_jobs |
+| `schema/011_profile_linkage_audit.sql` | DELETE | Pre-v2.0 full teardown; removes config_linkage_audit_artifacts |
+| `schema/009_rls_tenant_isolation.sql` | MODIFY | Strip agent.* ALTER TABLE + POLICY lines; keep core.prompt_lifecycle_events + vault.workspace_skill_secrets |
+| `schema/embed.zig` | MODIFY | Remove `harness_control_plane_sql` + `profile_linkage_audit_sql` constants |
+| `src/cmd/common.zig` | MODIFY | Remove versions 8 and 11 migration array entries; shrink array `[21]` → `[19]` |
+| `src/db/pool_test.zig` | MODIFY | Remove obsolete `migrations[6]` assertion on `CREATE TABLE harness_change_log` (indexes shift) |
 | `ui/packages/website/src/components/FeatureFlow.tsx` | MODIFY | Remove harness marketing copy |
 | `ui/packages/website/src/pages/Home.tsx` | MODIFY | Remove harness marketing copy |
+| `zombiectl/src/commands/harness.js` | DELETE | Dead CLI command (calls removed /harness/* endpoints) |
+| `zombiectl/src/commands/harness_activate.js` | DELETE | Dead CLI command |
+| `zombiectl/src/commands/harness_active.js` | DELETE | Dead CLI command |
+| `zombiectl/src/commands/harness_compile.js` | DELETE | Dead CLI command |
+| `zombiectl/src/commands/harness_source.js` | DELETE | Dead CLI command |
+| `zombiectl/src/commands/agent_harness.js` | DELETE | Dead CLI command (agent harness revert) |
+| `zombiectl/test/harness_*.unit.test.js` + `harness-*.test.js` + `agent_harness.unit.test.js` | DELETE | 9 dead test files |
+| `zombiectl/src/cli.js` | MODIFY | Remove harness import + routing case |
+| `zombiectl/src/program/command-registry.js` | MODIFY | Remove harness handler entry |
+| `zombiectl/src/program/routes.js` | MODIFY | Remove "harness" route entry |
+| `zombiectl/src/program/suggest.js` | MODIFY | Remove "harness" top-level + subcommand completions |
+| `zombiectl/src/program/io.js` | MODIFY | Remove 5 harness help lines |
+| `zombiectl/src/commands/agent.js` | MODIFY | Remove "agent harness revert" action block + usage line + import |
 
 ## Applicable Rules
 
@@ -61,20 +79,23 @@ Depends on: none
 
 ## Sections
 
-### §1.0 — Drop schema tables
+### §1.0 — Schema teardown (pre-v2.0, full teardown — RULE SCH)
 
-Drop order follows reverse FK dependency chain. `config_linkage_audit_artifacts`
-has `ON DELETE RESTRICT` FKs to both `agent_config_versions` and `config_compile_jobs`,
-so it must be dropped first. `config_compile_jobs` has FK to `agent_profiles`, so it
-must precede `agent_profiles`.
+Pre-v2.0 (`VERSION=0.5.0`) teardown-rebuild era: no production data to protect,
+no `ALTER`, no `DROP TABLE`, no `SELECT 1;` markers, no version-marker files.
+Remove tables fully by deleting the SQL file + embed constant + migration array
+entry. Slot numbers are not sacred; gaps are fine because the DB is wiped on
+every rebuild. FK drop order is irrelevant because the entire CREATE set is
+removed as source code.
 
 | Dim | Status | Check |
 |-----|--------|-------|
-| 1.1 | PENDING | Migration drops `agent.config_linkage_audit_artifacts` (FK to config_versions + compile_jobs) |
-| 1.2 | PENDING | Migration drops `agent.workspace_active_config` (FK to config_versions) |
-| 1.3 | PENDING | Migration drops `agent.config_compile_jobs` (FK to agent_profiles) |
-| 1.4 | PENDING | Migration drops `agent.agent_config_versions` (FK to agent_profiles) |
-| 1.5 | PENDING | Migration drops `agent.agent_profiles` (leaf — no remaining dependents) |
+| 1.1 | PENDING | `schema/008_harness_control_plane.sql` deleted (removes agent_profiles, agent_config_versions, workspace_active_config, config_compile_jobs) |
+| 1.2 | PENDING | `schema/011_profile_linkage_audit.sql` deleted (removes config_linkage_audit_artifacts) |
+| 1.3 | PENDING | `schema/009_rls_tenant_isolation.sql` — agent.* ALTER TABLE + POLICY lines removed; core.prompt_lifecycle_events + vault.workspace_skill_secrets retained |
+| 1.4 | PENDING | `schema/embed.zig` — `harness_control_plane_sql` and `profile_linkage_audit_sql` constants removed |
+| 1.5 | PENDING | `src/cmd/common.zig` `canonicalMigrations` — entries for versions 8 and 11 removed; array length shrunk from `[21]` to `[19]` |
+| 1.6 | PENDING | `src/db/pool_test.zig` — obsolete `migrations[6]` assertion on harness `CREATE TABLE` removed (indexes shift after array shrink) |
 
 ### §2.0 — Delete harness code
 
@@ -110,6 +131,25 @@ must precede `agent_profiles`.
 | 5.2 | PENDING | `rbac_http_integration_test.zig` — remove harness RBAC tests |
 | 5.3 | PENDING | `test_fixtures*.zig` — remove agent.* table inserts |
 | 5.4 | PENDING | `FeatureFlow.tsx`, `Home.tsx` — remove harness marketing copy |
+
+### §6.0 — Delete zombiectl harness CLI surface
+
+Server-side `/harness/*` endpoints are being removed; every zombiectl harness
+command is a dead client. Ships together with server removal so the CLI never
+calls 404 routes.
+
+| Dim | Status | Check |
+|-----|--------|-------|
+| 6.1 | PENDING | 6 command files deleted (`harness.js`, `harness_activate.js`, `harness_active.js`, `harness_compile.js`, `harness_source.js`, `agent_harness.js`) |
+| 6.2 | PENDING | 9 harness test files deleted under `zombiectl/test/` |
+| 6.3 | PENDING | `cli.js` — `commandHarnessModule` import + routing case removed |
+| 6.4 | PENDING | `command-registry.js` — `harness: handlers.harness` entry removed |
+| 6.5 | PENDING | `routes.js` — `{ key: "harness", ... }` entry removed |
+| 6.6 | PENDING | `suggest.js` — `"harness"` top-level + subcommand completions removed |
+| 6.7 | PENDING | `io.js` — 5 harness help lines removed |
+| 6.8 | PENDING | `agent.js` — `commandAgentHarness` import + `action === "harness"` block + usage line removed |
+| 6.9 | PENDING | `grep -rn "harness" zombiectl/src/ --include="*.js"` returns 0 |
+| 6.10 | PENDING | `cd zombiectl && npm test` passes |
 
 ## Eval Commands
 
@@ -182,6 +222,8 @@ echo "Lines removed: ~2400"
 - [ ] Entitlement profile-limit enforcement removed or decoupled
 - [ ] `profile_linkage.zig` FK to `agent_config_versions` resolved (drop FK or delete file) — verify: `grep -rn "agent_config_versions" src/ --include="*.zig"` returns 0
 - [ ] Frontend harness marketing copy updated
+- [ ] All zombiectl harness commands + tests deleted; `grep -rn "harness" zombiectl/src/ --include="*.js"` returns 0
+- [ ] `cd zombiectl && npm test` passes
 
 ## Out of Scope
 
