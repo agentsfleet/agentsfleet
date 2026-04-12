@@ -138,12 +138,13 @@ functions, each ≤50 lines. Mirror the `trackRunStarted` / `trackRunCompleted` 
 Two files get new calls — no new files, no new imports beyond what they already have.
 
 **Dimensions:**
-- 3.1 PENDING
-  - target: `src/http/handlers/webhooks.zig:handleReceiveWebhook`
+- 3.1 DONE
+  - target: `src/http/handlers/webhooks.zig:recordWebhookAccepted`
   - input: successful XADD (202 response path)
-  - expected: `incZombiesTriggered()` called; `trackZombieTriggered()` called before return
-  - test_type: integration (real Redis)
-- 3.2 PENDING
+  - expected: `incZombiesTriggered()` called; `ZombieTriggered` PostHog event captured before return
+  - test: `"M15_002 3.1: webhook_increments_triggered"` in `webhooks.zig` — unit (no Redis needed)
+  - note: extracted `recordWebhookAccepted` helper (lines 244-253 → named fn) for testability
+- 3.2 DONE
   - target: `src/zombie/event_loop.zig:processEvent`
   - input: delivery success, executor returns wall_ms + token_count
   - expected: `incZombiesCompleted()`, `addZombieTokens()`, `observeZombieExecutionSeconds()`,
@@ -239,14 +240,14 @@ pub const ZombieDurationBuckets = [_]u64{ 1, 5, 10, 30, 60, 120, 300, 600 };
 
 | Test name | Dim | Infra | Input | Expected |
 |-----------|-----|-------|-------|----------|
-| `webhook_increments_triggered` | 3.1 | DB + Redis | valid webhook | metrics snapshot +1 |
+| `webhook_increments_triggered` | 3.1 | unit | `recordWebhookAccepted` call | counter +1, `.zombie_triggered` event |
 | `event_loop_emits_completion` | 3.2 | DB + Redis | delivery success | all 4 counters updated |
 
 ### Spec-Claim Tracing
 
 | Spec claim | Test | Type |
 |-----------|------|------|
-| `zombies_triggered_total` visible in `/metrics` | `webhook_increments_triggered` | integration |
+| `zombies_triggered_total` visible in `/metrics` | `webhook_increments_triggered` | unit |
 | PostHog receives `zombie_triggered` event | `trackZombieTriggered` mock | unit |
 | Token count accumulated per delivery | `add_tokens_accumulates` | unit |
 

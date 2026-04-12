@@ -16,7 +16,6 @@ pub const EventKind = enum {
     workspace_github_connected,
     auth_login_completed,
     auth_rejected,
-    run_orphan_recovered,
     zombie_triggered,
     zombie_completed,
 };
@@ -225,23 +224,6 @@ pub const AuthRejected = struct {
         return .{
             .{ .key = "reason", .value = .{ .string = self.reason } },
             .{ .key = "request_id", .value = .{ .string = self.request_id } },
-        };
-    }
-};
-
-pub const RunOrphanRecovered = struct {
-    distinct_id: []const u8,
-    run_id: []const u8,
-    workspace_id: []const u8,
-    staleness_ms: u64,
-
-    pub const kind: EventKind = .run_orphan_recovered;
-
-    pub fn properties(self: @This()) [3]posthog.Property {
-        return .{
-            .{ .key = "run_id", .value = .{ .string = self.run_id } },
-            .{ .key = "workspace_id", .value = .{ .string = self.workspace_id } },
-            .{ .key = "staleness_ms", .value = .{ .integer = @intCast(self.staleness_ms) } },
         };
     }
 };

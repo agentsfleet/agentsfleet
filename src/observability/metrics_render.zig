@@ -65,28 +65,11 @@ pub fn renderPrometheus(
     try appendMetric(writer, "zombie_external_failures_server_error_total", "counter", "External failures classified as server error.", s.external_failures_server_error_total);
     try appendMetric(writer, "zombie_external_failures_unknown_total", "counter", "External failures classified as unknown.", s.external_failures_unknown_total);
     try appendMetric(writer, "zombie_retry_after_hints_total", "counter", "Retry attempts that used Retry-After guidance.", s.retry_after_hints_total);
-    try appendMetric(writer, "zombie_worker_errors_total", "counter", "Total worker loop errors.", s.worker_errors_total);
-    try appendMetric(writer, "zombie_sandbox_shell_runs_total", "counter", "Total shell tool executions routed through sandbox wrapper.", s.sandbox_shell_runs_total);
-    try appendMetric(writer, "zombie_sandbox_host_runs_total", "counter", "Total sandbox shell executions using host backend.", s.sandbox_host_runs_total);
-    try appendMetric(writer, "zombie_sandbox_bubblewrap_runs_total", "counter", "Total sandbox shell executions using bubblewrap backend.", s.sandbox_bubblewrap_runs_total);
-    try appendMetric(writer, "zombie_sandbox_kill_switch_total", "counter", "Total shell executions interrupted by sandbox kill switch.", s.sandbox_kill_switch_total);
-    try appendMetric(writer, "zombie_sandbox_preflight_failures_total", "counter", "Total sandbox backend preflight failures.", s.sandbox_preflight_failures_total);
-    try appendMetric(writer, "zombie_agent_echo_calls_total", "counter", "Total Echo agent invocations.", s.agent_echo_calls_total);
-    try appendMetric(writer, "zombie_agent_scout_calls_total", "counter", "Total Scout agent invocations.", s.agent_scout_calls_total);
-    try appendMetric(writer, "zombie_agent_warden_calls_total", "counter", "Total Warden agent invocations.", s.agent_warden_calls_total);
     try appendMetric(writer, "zombie_agent_tokens_total", "counter", "Total tokens consumed by agent calls.", s.agent_tokens_total);
-    try appendMetric(writer, "zombie_agent_echo_tokens_total", "counter", "Tokens consumed by Echo (plan) agent calls.", s.agent_echo_tokens_total);
-    try appendMetric(writer, "zombie_agent_scout_tokens_total", "counter", "Tokens consumed by Scout (implement) agent calls.", s.agent_scout_tokens_total);
-    try appendMetric(writer, "zombie_agent_warden_tokens_total", "counter", "Tokens consumed by Warden (validate) agent calls.", s.agent_warden_tokens_total);
-    try appendMetric(writer, "zombie_agent_orchestrator_tokens_total", "counter", "Tokens consumed by Orchestrator agent calls.", s.agent_orchestrator_tokens_total);
     try appendMetric(writer, "zombie_backoff_wait_ms_total", "counter", "Total backoff wait time in milliseconds.", s.backoff_wait_ms_total);
-    try appendMetric(writer, "zombie_rate_limit_wait_ms_total", "counter", "Total wait time due to rate limiting in milliseconds.", s.rate_limit_wait_ms_total);
-    try appendMetric(writer, "zombie_side_effect_outbox_enqueued_total", "counter", "Total side-effect outbox entries enqueued.", s.side_effect_outbox_enqueued_total);
-    try appendMetric(writer, "zombie_side_effect_outbox_delivered_total", "counter", "Total side-effect outbox entries marked delivered.", s.side_effect_outbox_delivered_total);
     try appendMetric(writer, "zombie_side_effect_outbox_dead_letter_total", "counter", "Total side-effect outbox entries dead-lettered by reconciliation.", s.side_effect_outbox_dead_letter_total);
     try appendMetric(writer, "zombie_api_backpressure_rejections_total", "counter", "Total API requests rejected by in-flight backpressure guard.", s.api_backpressure_rejections_total);
     try appendMetric(writer, "zombie_api_in_flight_requests", "gauge", "Current in-flight API requests protected by backpressure guard.", s.api_in_flight_requests);
-    try appendMetric(writer, "zombie_worker_allocator_leaks_total", "counter", "Total worker allocator leak detections on teardown.", s.worker_allocator_leaks_total);
     try appendMetric(writer, "zombie_worker_running", "gauge", "Worker liveness gauge (1 running, 0 stopped).", worker_running_gauge);
 
     try appendMetric(writer, "zombie_gate_repair_loops_total", "counter", "Total gate repair loop iterations.", s.gate_repair_loops_total);
@@ -99,8 +82,6 @@ pub fn renderPrometheus(
     try appendMetric(writer, "zombie_otel_export_failed_total", "counter", "Total OTEL metric export failures.", s.otel_export_failed_total);
     try appendMetric(writer, "zombie_otel_last_success_at_ms", "gauge", "Timestamp of last successful OTEL export in epoch ms.", s.otel_last_success_at_ms);
 
-    // Orphan recovery metrics (M14_001).
-    try appendMetric(writer, "zombie_reconcile_orphan_runs_recovered_total", "counter", "Total orphaned runs recovered by reconciler.", s.orphan_runs_recovered_total);
     try appendMetric(writer, "zombie_reconcile_running", "gauge", "Reconcile daemon liveness gauge (1 running, 0 stopped).", s.reconcile_running);
 
     try appendDurationHistogram(
@@ -109,31 +90,6 @@ pub fn renderPrometheus(
         "Duration of individual agent calls in seconds.",
         s.agent_duration_seconds,
     );
-    // M28_001 §4.1: gate repair loops per run histogram (custom buckets).
-    {
-        const glh = s.gate_repair_loops_per_run;
-        try writer.print("# HELP zombie_gate_repair_loops_per_run Distribution of gate repair loops per run.\n", .{});
-        try writer.print("# TYPE zombie_gate_repair_loops_per_run histogram\n", .{});
-        for (mc.GateLoopBuckets, 0..) |le, i| {
-            try writer.print("zombie_gate_repair_loops_per_run_bucket{{le=\"{d}\"}} {d}\n", .{ le, glh.buckets[i] });
-        }
-        try writer.print("zombie_gate_repair_loops_per_run_bucket{{le=\"+Inf\"}} {d}\n", .{glh.count});
-        try writer.print("zombie_gate_repair_loops_per_run_sum {d}\n", .{glh.sum});
-        try writer.print("zombie_gate_repair_loops_per_run_count {d}\n", .{glh.count});
-    }
-
-    // M21_002 §4.3: interrupt delivery latency histogram (custom buckets).
-    {
-        const ilh = s.interrupt_delivery_latency_ms;
-        try writer.print("# HELP zombie_interrupt_delivery_latency_ms Time from gate start to interrupt detection in milliseconds.\n", .{});
-        try writer.print("# TYPE zombie_interrupt_delivery_latency_ms histogram\n", .{});
-        for (mc.InterruptLatencyBuckets, 0..) |le, i| {
-            try writer.print("zombie_interrupt_delivery_latency_ms_bucket{{le=\"{d}\"}} {d}\n", .{ le, ilh.buckets[i] });
-        }
-        try writer.print("zombie_interrupt_delivery_latency_ms_bucket{{le=\"+Inf\"}} {d}\n", .{ilh.count});
-        try writer.print("zombie_interrupt_delivery_latency_ms_sum {d}\n", .{ilh.sum});
-        try writer.print("zombie_interrupt_delivery_latency_ms_count {d}\n", .{ilh.count});
-    }
 
     // Executor metrics (§5.2).
     const es = em.executorSnapshot();

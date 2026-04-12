@@ -5,7 +5,7 @@
   ],
   "title": "Agent Run Breakdown",
   "uid": "zombie-run-breakdown",
-  "version": 1,
+  "version": 2,
   "time": { "from": "now-24h", "to": "now" },
   "templating": {
     "list": [
@@ -48,27 +48,6 @@
         {
           "expr": "increase(zombie_runs_blocked_by_workspace_total{workspace_id=~\"$workspace_id\"}[1h])",
           "legendFormat": "blocked {{workspace_id}}"
-        }
-      ]
-    },
-    {
-      "id": 3,
-      "title": "Gate Repair Loop Distribution (p50/p95/p99)",
-      "type": "timeseries",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
-      "datasource": "${DS_PROMETHEUS}",
-      "targets": [
-        {
-          "expr": "histogram_quantile(0.50, rate(zombie_gate_repair_loops_per_run_bucket[1h]))",
-          "legendFormat": "p50"
-        },
-        {
-          "expr": "histogram_quantile(0.95, rate(zombie_gate_repair_loops_per_run_bucket[1h]))",
-          "legendFormat": "p95"
-        },
-        {
-          "expr": "histogram_quantile(0.99, rate(zombie_gate_repair_loops_per_run_bucket[1h]))",
-          "legendFormat": "p99"
         }
       ]
     },
