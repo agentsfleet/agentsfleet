@@ -138,7 +138,14 @@ pub fn recordZombieDelivery(
 
     // M18_001: persist per-delivery telemetry. Non-fatal — DB failure logged, delivery unaffected.
     // Skip gate-blocked events (epoch_wall_time_ms=0) — no meaningful wall time to record.
+    // Negative epoch is a system clock anomaly (boot-time edge case) — log and skip rather
+    // than storing a corrupt row or passing a negative value to @intCast below.
+    if (epoch_wall_time_ms < 0) {
+        log.warn("metering.skip_telemetry reason=negative_epoch zombie_id={s}", .{zombie_id});
+        return;
+    }
     if (epoch_wall_time_ms == 0) return;
+    // epoch_wall_time_ms > 0 guaranteed from here.
     zombie_telemetry_store.insertTelemetry(conn, alloc, .{
         .zombie_id = zombie_id,
         .workspace_id = workspace_id,
@@ -156,8 +163,8 @@ pub fn recordZombieDelivery(
 
     // M18_001: emit OTel span for Grafana/Tempo per-delivery trace visibility.
     // Root span — zombie delivery has no inbound HTTP traceparent.
-    // Skipped when epoch_wall_time_ms=0 (gate-blocked or pre-M18 path).
-    if (epoch_wall_time_ms > 0) {
+    // epoch_wall_time_ms > 0 guaranteed by guards above; no conditional needed.
+    {
         const start_ns: u64 = @as(u64, @intCast(epoch_wall_time_ms)) * 1_000_000;
         const capped_seconds: u64 = @min(agent_seconds, 604_800); // cap at 7 days; guards u64 overflow
         const end_ns: u64 = start_ns + capped_seconds * 1_000_000_000;

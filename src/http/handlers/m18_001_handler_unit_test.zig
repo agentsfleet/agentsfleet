@@ -22,20 +22,24 @@ test "M18_001: zombie_telemetry_store module imports resolve" {
 }
 
 // ── T2: RBAC contract ────────────────────────────────────────────────────────
-// requireRole is stateless — test without an HTTP server by calling it directly
-// with a mock response. This pins the contract: internal telemetry requires .admin.
+// `common.requireRole` writes a 403 to *httpz.Response and returns false when
+// the principal's role doesn't match. Calling it directly in a unit test requires
+// a live httpz.Response, which needs a running server — not possible here.
+//
+// Coverage gap: these tests verify the AuthPrincipal role enum shape and the
+// inequality contract, but do NOT call requireRole itself. An integration test
+// should verify that GET /internal/v1/telemetry with a .user token returns 403.
+// Tracked as a known gap; the code-level gate is visible in zombie_telemetry.zig:102.
 
-test "M18_001: requireRole grants .admin principal" {
+test "M18_001: .admin role satisfies the admin gate (enum contract)" {
     const principal = common.AuthPrincipal{
         .mode = .api_key,
         .role = .admin,
     };
-    // requireRole returns true for matching role.
-    // We can't call it without an httpz.Response, so we verify the role comparison directly.
     try std.testing.expect(principal.role == .admin);
 }
 
-test "M18_001: .user role is not .admin (internal endpoint should reject)" {
+test "M18_001: .user role does not satisfy the admin gate" {
     const principal = common.AuthPrincipal{
         .mode = .api_key,
         .role = .user,
@@ -43,7 +47,7 @@ test "M18_001: .user role is not .admin (internal endpoint should reject)" {
     try std.testing.expect(principal.role != .admin);
 }
 
-test "M18_001: .operator role is not .admin (internal endpoint should reject)" {
+test "M18_001: .operator role does not satisfy the admin gate" {
     const principal = common.AuthPrincipal{
         .mode = .api_key,
         .role = .operator,

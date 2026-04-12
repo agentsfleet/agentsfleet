@@ -2,14 +2,23 @@
 //!
 //! Writes to `zombie_execution_telemetry`. All queries use PgQuery (RULE FLS).
 //! Idempotent: insertTelemetry uses ON CONFLICT DO NOTHING on event_id.
-//! Cursor format: "<recorded_at_dec>:<id>" (same as activity_stream.zig).
+//! Cursor format: opaque base64url-no-pad token encoding "<recorded_at>:<id>".
 
 const std = @import("std");
 const pg = @import("pg");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const id_format = @import("../types/id_format.zig");
+const base64 = std.base64.url_safe_no_pad;
 
 const log = std.log.scoped(.zombie_telemetry_store);
+
+// Shared SELECT columns reused across all query branches.
+const TELEMETRY_SELECT =
+    \\SELECT id, zombie_id, workspace_id, event_id,
+    \\       token_count, time_to_first_token_ms, epoch_wall_time_ms,
+    \\       wall_seconds, plan_tier, credit_deducted_cents, recorded_at
+    \\FROM zombie_execution_telemetry
+;
 
 pub const TelemetryRow = struct {
     id: []u8,
@@ -84,7 +93,7 @@ pub fn insertTelemetry(
 }
 
 /// Customer query — returns newest-first rows for one zombie in one workspace.
-/// cursor is "<recorded_at>:<id>" or null for first page.
+/// cursor is an opaque base64url token (from makeCursor) or null for first page.
 pub fn listTelemetryForZombie(
     conn: *pg.Conn,
     alloc: std.mem.Allocator,
@@ -94,23 +103,15 @@ pub fn listTelemetryForZombie(
     cursor: ?[]const u8,
 ) ![]TelemetryRow {
     if (cursor) |c| {
-        const parsed = try parseCursor(c);
-        return queryRows(conn, alloc,
-            \\SELECT id, zombie_id, workspace_id, event_id,
-            \\       token_count, time_to_first_token_ms, epoch_wall_time_ms,
-            \\       wall_seconds, plan_tier, credit_deducted_cents, recorded_at
-            \\FROM zombie_execution_telemetry
+        const parsed = try parseCursor(alloc, c);
+        return queryRows(conn, alloc, TELEMETRY_SELECT ++
             \\WHERE workspace_id = $1 AND zombie_id = $2
             \\  AND (recorded_at, id) < ($3, $4)
             \\ORDER BY recorded_at DESC, id DESC
             \\LIMIT $5
         , .{ workspace_id, zombie_id, parsed.recorded_at, parsed.id, @as(i64, @intCast(limit)) });
     }
-    return queryRows(conn, alloc,
-        \\SELECT id, zombie_id, workspace_id, event_id,
-        \\       token_count, time_to_first_token_ms, epoch_wall_time_ms,
-        \\       wall_seconds, plan_tier, credit_deducted_cents, recorded_at
-        \\FROM zombie_execution_telemetry
+    return queryRows(conn, alloc, TELEMETRY_SELECT ++
         \\WHERE workspace_id = $1 AND zombie_id = $2
         \\ORDER BY recorded_at DESC, id DESC
         \\LIMIT $3
@@ -118,6 +119,7 @@ pub fn listTelemetryForZombie(
 }
 
 /// Operator query — cross-workspace. All params optional. Newest-first. No cursor.
+/// Uses static query branches (not IS NULL OR) so each active filter uses an index.
 pub fn listTelemetryAll(
     conn: *pg.Conn,
     alloc: std.mem.Allocator,
@@ -126,39 +128,102 @@ pub fn listTelemetryAll(
     after_ms: ?i64,
     limit: u32,
 ) ![]TelemetryRow {
-    // Build query dynamically based on which filters are set.
-    // Postgres: use NULL coalesce so unused params are no-ops.
-    return queryRows(conn, alloc,
-        \\SELECT id, zombie_id, workspace_id, event_id,
-        \\       token_count, time_to_first_token_ms, epoch_wall_time_ms,
-        \\       wall_seconds, plan_tier, credit_deducted_cents, recorded_at
-        \\FROM zombie_execution_telemetry
-        \\WHERE ($1::TEXT IS NULL OR workspace_id = $1)
-        \\  AND ($2::TEXT IS NULL OR zombie_id = $2)
-        \\  AND ($3::BIGINT IS NULL OR recorded_at > $3)
-        \\ORDER BY recorded_at DESC, id DESC
-        \\LIMIT $4
-    , .{ workspace_id, zombie_id, after_ms, @as(i64, @intCast(limit)) });
+    const lim: i64 = @intCast(limit);
+    if (workspace_id) |ws| {
+        if (zombie_id) |zid| {
+            if (after_ms) |ams| {
+                return queryRows(conn, alloc, TELEMETRY_SELECT ++
+                    \\WHERE workspace_id = $1 AND zombie_id = $2 AND recorded_at > $3
+                    \\ORDER BY recorded_at DESC, id DESC
+                    \\LIMIT $4
+                , .{ ws, zid, ams, lim });
+            } else {
+                return queryRows(conn, alloc, TELEMETRY_SELECT ++
+                    \\WHERE workspace_id = $1 AND zombie_id = $2
+                    \\ORDER BY recorded_at DESC, id DESC
+                    \\LIMIT $3
+                , .{ ws, zid, lim });
+            }
+        } else {
+            if (after_ms) |ams| {
+                return queryRows(conn, alloc, TELEMETRY_SELECT ++
+                    \\WHERE workspace_id = $1 AND recorded_at > $2
+                    \\ORDER BY recorded_at DESC, id DESC
+                    \\LIMIT $3
+                , .{ ws, ams, lim });
+            } else {
+                return queryRows(conn, alloc, TELEMETRY_SELECT ++
+                    \\WHERE workspace_id = $1
+                    \\ORDER BY recorded_at DESC, id DESC
+                    \\LIMIT $2
+                , .{ ws, lim });
+            }
+        }
+    } else {
+        if (zombie_id) |zid| {
+            if (after_ms) |ams| {
+                return queryRows(conn, alloc, TELEMETRY_SELECT ++
+                    \\WHERE zombie_id = $1 AND recorded_at > $2
+                    \\ORDER BY recorded_at DESC, id DESC
+                    \\LIMIT $3
+                , .{ zid, ams, lim });
+            } else {
+                return queryRows(conn, alloc, TELEMETRY_SELECT ++
+                    \\WHERE zombie_id = $1
+                    \\ORDER BY recorded_at DESC, id DESC
+                    \\LIMIT $2
+                , .{ zid, lim });
+            }
+        } else {
+            if (after_ms) |ams| {
+                return queryRows(conn, alloc, TELEMETRY_SELECT ++
+                    \\WHERE recorded_at > $1
+                    \\ORDER BY recorded_at DESC, id DESC
+                    \\LIMIT $2
+                , .{ ams, lim });
+            } else {
+                return queryRows(conn, alloc, TELEMETRY_SELECT ++
+                    \\ORDER BY recorded_at DESC, id DESC
+                    \\LIMIT $1
+                , .{lim});
+            }
+        }
+    }
 }
 
-/// Build a cursor string from the last row of a page.
+/// Build an opaque base64url cursor token from the last row of a page.
 pub fn makeCursor(alloc: std.mem.Allocator, row: TelemetryRow) ![]u8 {
-    return std.fmt.allocPrint(alloc, "{d}:{s}", .{ row.recorded_at, row.id });
+    const plain = try std.fmt.allocPrint(alloc, "{d}:{s}", .{ row.recorded_at, row.id });
+    defer alloc.free(plain);
+    const encoded_len = base64.Encoder.calcSize(plain.len);
+    const encoded = try alloc.alloc(u8, encoded_len);
+    _ = base64.Encoder.encode(encoded, plain);
+    return encoded;
 }
 
 // ── Internal helpers ────────────────────────────────────────────────
 
-const ParsedCursor = struct { recorded_at: i64, id: []const u8 };
+const ParsedCursor = struct { recorded_at: i64, id: []u8 };
 
-// Max cursor id segment: UUID-format IDs are ≤36 chars; 128 is a generous cap.
+// Max id segment: UUID-format IDs are ≤36 chars; 128 is a generous cap.
 const CURSOR_ID_MAX_LEN: usize = 128;
 
-fn parseCursor(cursor: []const u8) !ParsedCursor {
-    const sep = std.mem.indexOf(u8, cursor, ":") orelse return error.InvalidCursor;
-    const ts = std.fmt.parseInt(i64, cursor[0..sep], 10) catch return error.InvalidCursor;
-    const id = cursor[sep + 1 ..];
-    if (id.len == 0 or id.len > CURSOR_ID_MAX_LEN) return error.InvalidCursor;
-    return .{ .recorded_at = ts, .id = id };
+/// Decode an opaque base64url cursor token into its components.
+/// Caller owns ParsedCursor.id and must free it (or use an arena allocator).
+fn parseCursor(alloc: std.mem.Allocator, cursor: []const u8) !ParsedCursor {
+    // Base64url-decode the opaque token.
+    const decoded_len = base64.Decoder.calcSizeForSlice(cursor) catch return error.InvalidCursor;
+    const plain = try alloc.alloc(u8, decoded_len);
+    defer alloc.free(plain);
+    base64.Decoder.decode(plain, cursor) catch return error.InvalidCursor;
+
+    const sep = std.mem.indexOf(u8, plain, ":") orelse return error.InvalidCursor;
+    const ts = std.fmt.parseInt(i64, plain[0..sep], 10) catch return error.InvalidCursor;
+    const id_slice = plain[sep + 1 ..];
+    if (id_slice.len == 0 or id_slice.len > CURSOR_ID_MAX_LEN) return error.InvalidCursor;
+
+    // Dupe id_slice before plain is freed by defer above.
+    return .{ .recorded_at = ts, .id = try alloc.dupe(u8, id_slice) };
 }
 
 fn queryRows(conn: *pg.Conn, alloc: std.mem.Allocator, comptime sql: []const u8, params: anytype) ![]TelemetryRow {
@@ -188,10 +253,13 @@ fn queryRows(conn: *pg.Conn, alloc: std.mem.Allocator, comptime sql: []const u8,
             .zombie_id = zombie_id_s,
             .workspace_id = workspace_id_s,
             .event_id = event_id_s,
-            .token_count = @intCast(try row.get(i64, 4)),
-            .time_to_first_token_ms = @intCast(try row.get(i64, 5)),
+            // Safe cast: DB columns are BIGINT NOT NULL DEFAULT 0; @max(0,…) guards
+            // against corrupt rows with negative values (impossible via insertTelemetry
+            // but defensive against manual edits or future migrations).
+            .token_count = @intCast(@max(0, try row.get(i64, 4))),
+            .time_to_first_token_ms = @intCast(@max(0, try row.get(i64, 5))),
             .epoch_wall_time_ms = try row.get(i64, 6),
-            .wall_seconds = @intCast(try row.get(i64, 7)),
+            .wall_seconds = @intCast(@max(0, try row.get(i64, 7))),
             .plan_tier = plan_tier_s,
             .credit_deducted_cents = try row.get(i64, 9),
             .recorded_at = try row.get(i64, 10),
@@ -202,6 +270,13 @@ fn queryRows(conn: *pg.Conn, alloc: std.mem.Allocator, comptime sql: []const u8,
 }
 
 // ── Tests ───────────────────────────────────────────────────────────────────
+
+// Comptime helper: base64url-encode a string literal for use in test inputs.
+fn encode64(comptime src: []const u8) [base64.Encoder.calcSize(src.len)]u8 {
+    var buf: [base64.Encoder.calcSize(src.len)]u8 = undefined;
+    _ = base64.Encoder.encode(&buf, src);
+    return buf;
+}
 
 test "parseCursor: valid round-trip" {
     const alloc = std.testing.allocator;
@@ -220,26 +295,34 @@ test "parseCursor: valid round-trip" {
     };
     const cursor = try makeCursor(alloc, row);
     defer alloc.free(cursor);
-    const parsed = try parseCursor(cursor);
+    const parsed = try parseCursor(alloc, cursor);
+    defer alloc.free(parsed.id);
     try std.testing.expectEqual(@as(i64, 1712924400000), parsed.recorded_at);
     try std.testing.expectEqualStrings("abc123", parsed.id);
 }
 
+test "parseCursor: rejects invalid base64" {
+    // Non-base64url characters must return InvalidCursor.
+    try std.testing.expectError(error.InvalidCursor, parseCursor(std.testing.allocator, "!!not-valid-base64!!"));
+}
+
 test "parseCursor: rejects empty id" {
-    try std.testing.expectError(error.InvalidCursor, parseCursor("1712924400000:"));
+    const encoded = comptime encode64("1712924400000:");
+    try std.testing.expectError(error.InvalidCursor, parseCursor(std.testing.allocator, &encoded));
 }
 
 test "parseCursor: rejects missing separator" {
-    try std.testing.expectError(error.InvalidCursor, parseCursor("1712924400000"));
+    const encoded = comptime encode64("1712924400000");
+    try std.testing.expectError(error.InvalidCursor, parseCursor(std.testing.allocator, &encoded));
 }
 
 test "parseCursor: rejects oversized id" {
-    // 129-byte id exceeds CURSOR_ID_MAX_LEN
     const big_id = "x" ** 129;
-    const cursor = "1712924400000:" ++ big_id;
-    try std.testing.expectError(error.InvalidCursor, parseCursor(cursor));
+    const encoded = comptime encode64("1712924400000:" ++ big_id);
+    try std.testing.expectError(error.InvalidCursor, parseCursor(std.testing.allocator, &encoded));
 }
 
 test "parseCursor: rejects non-integer timestamp" {
-    try std.testing.expectError(error.InvalidCursor, parseCursor("notanumber:abc123"));
+    const encoded = comptime encode64("notanumber:abc123");
+    try std.testing.expectError(error.InvalidCursor, parseCursor(std.testing.allocator, &encoded));
 }
