@@ -69,6 +69,30 @@ pub fn hasAuditEvent(
     return (try q.next()) != null;
 }
 
+/// Idempotency-by-run_id lookup. Keys only on the `run_id` field inside the
+/// audit row's `metadata_json`, so replays of the same logical event that
+/// happen to report different `agent_seconds` / `debit_cents` (variable LLM +
+/// tool latency between retries) are still deduped as the same event.
+///
+/// `metadata_json` is stored as TEXT; we cast to JSONB for the `->>` operator.
+pub fn hasAuditForRunId(
+    conn: *pg.Conn,
+    workspace_id: []const u8,
+    event_type: []const u8,
+    run_id: []const u8,
+) !bool {
+    var q = PgQuery.from(try conn.query(
+        \\SELECT 1
+        \\FROM workspace_credit_audit
+        \\WHERE workspace_id = $1
+        \\  AND event_type = $2
+        \\  AND metadata_json::jsonb ->> 'run_id' = $3
+        \\LIMIT 1
+    , .{ workspace_id, event_type, run_id }));
+    defer q.deinit();
+    return (try q.next()) != null;
+}
+
 pub fn upsertCreditState(
     conn: *pg.Conn,
     alloc: std.mem.Allocator,
