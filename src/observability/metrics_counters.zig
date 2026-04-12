@@ -18,6 +18,15 @@ const interrupt_hist = @import("metrics_interrupt_histogram.zig");
 pub const InterruptLatencyBuckets = interrupt_hist.InterruptLatencyBuckets;
 pub const InterruptLatencySnapshot = interrupt_hist.InterruptLatencySnapshot;
 
+const zombie_metrics = @import("metrics_zombie.zig");
+pub const ZombieDurationBuckets = zombie_metrics.ZombieDurationBuckets;
+pub const ZombieHistogramSnapshot = zombie_metrics.ZombieHistogramSnapshot;
+pub const incZombiesTriggered = zombie_metrics.incZombiesTriggered;
+pub const incZombiesCompleted = zombie_metrics.incZombiesCompleted;
+pub const incZombiesFailed = zombie_metrics.incZombiesFailed;
+pub const addZombieTokens = zombie_metrics.addZombieTokens;
+pub const observeZombieExecutionSeconds = zombie_metrics.observeZombieExecutionSeconds;
+
 pub const Snapshot = struct {
     // External retry/failure fields — defaults to 0, filled by me.snapshotExternalFields().
     external_retries_total: u64 = 0,
@@ -80,6 +89,12 @@ pub const Snapshot = struct {
     gate_repair_loops_per_run: GateLoopHistogramSnapshot,
     // M21_002 §4.3
     interrupt_delivery_latency_ms: InterruptLatencySnapshot,
+    // M15_002 §1.0 — zombie counters + wall-time histogram
+    zombies_triggered_total: u64 = 0,
+    zombies_completed_total: u64 = 0,
+    zombies_failed_total: u64 = 0,
+    zombie_tokens_total: u64 = 0,
+    zombie_execution_seconds: ZombieHistogramSnapshot = .{},
 };
 
 var g_worker_errors_total = std.atomic.Value(u64).init(0);
@@ -323,5 +338,11 @@ pub fn snapshot() Snapshot {
     s.external_failures_unknown_total = ext.external_failures_unknown_total;
     s.retry_after_hints_total = ext.retry_after_hints_total;
     mh.snapshotHistograms(&s);
+    const zf = zombie_metrics.snapshotZombieFields();
+    s.zombies_triggered_total = zf.zombies_triggered_total;
+    s.zombies_completed_total = zf.zombies_completed_total;
+    s.zombies_failed_total = zf.zombies_failed_total;
+    s.zombie_tokens_total = zf.zombie_tokens_total;
+    s.zombie_execution_seconds = zf.zombie_execution_seconds;
     return s;
 }

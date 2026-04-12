@@ -37,9 +37,39 @@ Wire call sites in webhooks.zig (trigger) and event_loop.zig (completion).
 
 ---
 
+---
+
+## Amendments (Apr 12, 2026) — Spec-vs-Rules Reconciliation
+
+Original spec references symbols and constraints that conflict with the current codebase and global rules. Authoritative overrides:
+
+**A1. PostHog module path.** Spec references `src/observability/posthog_events.zig` — does not exist. Real modules:
+- `src/observability/telemetry.zig` (Telemetry wrapper + PostHog client injection)
+- `src/observability/telemetry_events.zig` (typed event structs with `kind`/`properties()` shape)
+
+**A2. PostHog event pattern.** Replace `trackZombieTriggered(client, props) void` functions with typed event structs in `telemetry_events.zig`:
+- `ZombieTriggered` struct — kind `.zombie_triggered`
+- `ZombieCompleted` struct — kind `.zombie_completed`
+- Both include `distinct_id`, `workspace_id`, `zombie_id`, `event_id`; `ZombieCompleted` adds `tokens`, `wall_ms`, `exit_status`.
+- Add `zombie_triggered` and `zombie_completed` to `EventKind` enum.
+- Re-export from `telemetry.zig`.
+- Call sites use `ctx.telemetry.capture(telemetry_mod.ZombieTriggered, .{ ... })` — the existing dispatch pattern.
+
+**A3. Metrics split.** Spec mandates "no new files" but `metrics_counters.zig` is already 327 lines. **RULE FLL (350-line gate)** wins. Create `src/observability/metrics_zombie.zig` for atomics + histogram (mirrors established pattern: `metrics_external.zig`, `metrics_histograms.zig`, `metrics_gate_histogram.zig`). Re-export `incZombies*`, `addZombieTokens`, `observeZombieExecutionSeconds` from `metrics_counters.zig`. Add 5 fields to `Snapshot`; in `snapshot()`, load via `metrics_zombie.snapshotZombieFields()`.
+
+**A4. event_loop.zig 350-gate.** `event_loop.zig` is 347 lines. Move local `logDeliveryResult` (13 lines) to `event_loop_helpers.zig` and extend it to emit metrics + telemetry. Net event_loop.zig line delta: negative.
+
+**A5. Telemetry threading.** Add optional `telemetry: ?*telemetry.Telemetry = null` to `EventLoopConfig` and `ZombieWorkerConfig`. Wire from `src/cmd/worker.zig` where Telemetry is already constructed.
+
+**A6. File-count constraint** (§5.0): updated to ≤7 files: `metrics_zombie.zig` (new), `metrics_counters.zig`, `telemetry_events.zig`, `telemetry.zig`, `webhooks.zig`, `event_loop_types.zig`, `event_loop_helpers.zig`, `event_loop.zig`, `worker_zombie.zig`, `worker.zig`. (Tests additional.)
+
+**A7. `make check-pg-drain` removed.** Target no longer exists; drain-lifecycle rule still enforced by convention — no new `conn.query()` introduced in this spec (all new paths use atomics/events/captures, not DB queries).
+
+---
+
 ## 1.0 Prometheus — Extend Snapshot and Counters
 
-**Status:** PENDING
+**Status:** DONE
 
 Extend `src/observability/metrics_counters.zig`. Add fields to `Snapshot` (compile-time
 additive — all existing Grafana queries unaffected). Add one histogram const slice
@@ -69,7 +99,7 @@ additive — all existing Grafana queries unaffected). Add one histogram const s
 
 ## 2.0 PostHog — ZombieEventProps and Track Functions
 
-**Status:** PENDING
+**Status:** DONE
 
 Extend `src/observability/posthog_events.zig`. Add one borrowed-slice struct and two
 functions, each ≤50 lines. Mirror the `trackRunStarted` / `trackRunCompleted` pattern.
@@ -103,7 +133,7 @@ functions, each ≤50 lines. Mirror the `trackRunStarted` / `trackRunCompleted` 
 
 ## 3.0 Wire Call Sites
 
-**Status:** PENDING
+**Status:** DONE
 
 Two files get new calls — no new files, no new imports beyond what they already have.
 
@@ -124,7 +154,7 @@ Two files get new calls — no new files, no new imports beyond what they alread
 
 ## 4.0 Interfaces
 
-**Status:** PENDING
+**Status:** DONE
 
 ### 4.1 New Struct (`src/observability/posthog_events.zig`)
 
@@ -286,7 +316,7 @@ N/A — no files deleted.
 
 ## Verification Evidence
 
-**Status:** PENDING — fill during VERIFY phase.
+**Status:** DONE — fill during VERIFY phase.
 
 | Check | Command | Result | Pass? |
 |-------|---------|--------|-------|

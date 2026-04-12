@@ -17,6 +17,8 @@ const ec = @import("../../errors/error_registry.zig");
 const zombie_config = @import("../../zombie/config.zig");
 const activity_stream = @import("../../zombie/activity_stream.zig");
 const crypto_store = @import("../../secrets/crypto_store.zig");
+const telemetry_mod = @import("../../observability/telemetry.zig");
+const metrics_counters = @import("../../observability/metrics_counters.zig");
 
 const log = std.log.scoped(.http_webhook);
 
@@ -237,6 +239,15 @@ pub fn handleReceiveWebhook(ctx: *Context, req: *httpz.Request, res: *httpz.Resp
         .workspace_id = zombie.workspace_id,
         .event_type = ec.WEBHOOK_EVENT_TYPE,
         .detail = payload.event_id,
+    });
+
+    metrics_counters.incZombiesTriggered();
+    ctx.telemetry.capture(telemetry_mod.ZombieTriggered, .{
+        .distinct_id = zombie.workspace_id,
+        .workspace_id = zombie.workspace_id,
+        .zombie_id = zombie_id,
+        .event_id = payload.event_id,
+        .source = source_label,
     });
 
     log.info("webhook.accepted zombie_id={s} event_id={s} type={s}", .{ zombie_id, payload.event_id, payload.type });

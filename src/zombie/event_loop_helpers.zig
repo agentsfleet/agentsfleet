@@ -11,6 +11,10 @@ const Allocator = std.mem.Allocator;
 const error_codes = @import("../errors/error_registry.zig");
 const crypto_store = @import("../secrets/crypto_store.zig");
 const backoff = @import("../reliability/backoff.zig");
+const activity_stream = @import("activity_stream.zig");
+const metrics_counters = @import("../observability/metrics_counters.zig");
+const telemetry_mod = @import("../observability/telemetry.zig");
+const redis_zombie = @import("../queue/redis_zombie.zig");
 
 const types = @import("event_loop_types.zig");
 const ZombieSession = types.ZombieSession;
@@ -100,5 +104,71 @@ pub fn sleepWithBackoff(cfg: EventLoopConfig, consecutive_errors: u32) void {
         const slice_ms: u64 = @min(remaining, 100);
         std.Thread.sleep(slice_ms * std.time.ns_per_ms);
         remaining -= slice_ms;
+    }
+}
+
+/// M15_002: delivery bookkeeping — activity log + Prometheus + PostHog.
+/// Called from event_loop.processEvent after deliverEvent resolves.
+pub fn logDeliveryResult(
+    cfg: EventLoopConfig,
+    alloc: Allocator,
+    session: *ZombieSession,
+    event: *const redis_zombie.ZombieEvent,
+    stage_result: anytype,
+    wall_ms: u64,
+) void {
+    const ok = stage_result.failure == null;
+    if (ok) {
+        log.info("zombie_event_loop.delivered zombie_id={s} event_id={s} tokens={d} wall_s={d}", .{
+            session.zombie_id, event.event_id, stage_result.token_count, stage_result.wall_seconds,
+        });
+        activity_stream.logEvent(cfg.pool, alloc, .{
+            .zombie_id = session.zombie_id,
+            .workspace_id = session.workspace_id,
+            .event_type = activity_stream.EVT_AGENT_RESPONSE,
+            .detail = event.event_id,
+        });
+        metrics_counters.incZombiesCompleted();
+        metrics_counters.addZombieTokens(stage_result.token_count);
+        metrics_counters.observeZombieExecutionSeconds(wall_ms);
+    } else {
+        const label = stage_result.failure.?.label();
+        log.warn("zombie_event_loop.agent_failure zombie_id={s} event_id={s} failure={s}", .{
+            session.zombie_id, event.event_id, label,
+        });
+        activity_stream.logEvent(cfg.pool, alloc, .{
+            .zombie_id = session.zombie_id,
+            .workspace_id = session.workspace_id,
+            .event_type = activity_stream.EVT_AGENT_ERROR,
+            .detail = label,
+        });
+        metrics_counters.incZombiesFailed();
+    }
+    if (cfg.telemetry) |tel| {
+        tel.capture(telemetry_mod.ZombieCompleted, .{
+            .distinct_id = session.workspace_id,
+            .workspace_id = session.workspace_id,
+            .zombie_id = session.zombie_id,
+            .event_id = event.event_id,
+            .tokens = stage_result.token_count,
+            .wall_ms = wall_ms,
+            .exit_status = if (ok) "processed" else "agent_error",
+        });
+    }
+}
+
+/// M15_002: deliver-path failure (before stage_result is available).
+pub fn recordDeliverError(cfg: EventLoopConfig, session: *ZombieSession, event_id: []const u8) void {
+    metrics_counters.incZombiesFailed();
+    if (cfg.telemetry) |tel| {
+        tel.capture(telemetry_mod.ZombieCompleted, .{
+            .distinct_id = session.workspace_id,
+            .workspace_id = session.workspace_id,
+            .zombie_id = session.zombie_id,
+            .event_id = event_id,
+            .tokens = 0,
+            .wall_ms = 0,
+            .exit_status = "deliver_error",
+        });
     }
 }
