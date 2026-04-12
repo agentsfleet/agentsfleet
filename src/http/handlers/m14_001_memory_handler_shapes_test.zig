@@ -98,6 +98,50 @@ test "M14_001 T2: two sequential genId calls produce distinct values" {
     try std.testing.expect(!std.mem.eql(u8, id1, id2));
 }
 
+// ── T2: escapeLikePattern ────────────────────────────────────────────────────
+
+test "M14_001 T2: escapeLikePattern plain string unchanged" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const out = try h.escapeLikePattern(arena.allocator(), "hello");
+    try std.testing.expectEqualStrings("hello", out);
+}
+
+test "M14_001 T2: escapeLikePattern escapes percent" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const out = try h.escapeLikePattern(arena.allocator(), "100%");
+    try std.testing.expectEqualStrings("100\\%", out);
+}
+
+test "M14_001 T2: escapeLikePattern escapes underscore" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const out = try h.escapeLikePattern(arena.allocator(), "a_b");
+    try std.testing.expectEqualStrings("a\\_b", out);
+}
+
+test "M14_001 T2: escapeLikePattern escapes backslash" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const out = try h.escapeLikePattern(arena.allocator(), "a\\b");
+    try std.testing.expectEqualStrings("a\\\\b", out);
+}
+
+test "M14_001 T2: escapeLikePattern escapes all metacharacters in one string" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const out = try h.escapeLikePattern(arena.allocator(), "%_\\");
+    try std.testing.expectEqualStrings("\\%\\_\\\\", out);
+}
+
+test "M14_001 T2: escapeLikePattern empty input returns empty output" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const out = try h.escapeLikePattern(arena.allocator(), "");
+    try std.testing.expectEqual(@as(usize, 0), out.len);
+}
+
 // ── T12: Response JSON shape contracts ───────────────────────────────────────
 
 test "M14_001 T12: store success response shape parses (zombie_id/key/category/request_id)" {

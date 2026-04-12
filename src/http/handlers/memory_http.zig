@@ -120,7 +120,13 @@ fn innerMemoryRecall(hx: Hx, req: *httpz.Request) void {
         return;
     }
     const limit = @min(b.limit orelse h.DEFAULT_RECALL_LIMIT, h.MAX_RECALL_LIMIT);
-    const like_pat = std.fmt.allocPrint(hx.alloc, "%{s}%", .{b.query}) catch {
+    // Escape LIKE metacharacters so a query of "%" doesn't dump all entries.
+    // Pattern: %{escaped_query}% with ESCAPE '\'
+    const escaped = h.escapeLikePattern(hx.alloc, b.query) catch {
+        common.internalOperationError(hx.res, "OOM", hx.req_id);
+        return;
+    };
+    const like_pat = std.fmt.allocPrint(hx.alloc, "%{s}%", .{escaped}) catch {
         common.internalOperationError(hx.res, "OOM", hx.req_id);
         return;
     };
@@ -143,7 +149,7 @@ fn innerMemoryRecall(hx: Hx, req: *httpz.Request) void {
         \\SELECT key, content, category, updated_at
         \\FROM memory.memory_entries
         \\WHERE instance_id = $1
-        \\  AND (key ILIKE $2 OR content ILIKE $2)
+        \\  AND (key ILIKE $2 ESCAPE '\' OR content ILIKE $2 ESCAPE '\')
         \\ORDER BY updated_at DESC
         \\LIMIT $3
     , .{ instance_id, like_pat, limit }) catch {

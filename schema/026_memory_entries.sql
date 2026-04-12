@@ -7,10 +7,18 @@
 -- NOTE: NullClaw's PostgresMemory.init() auto-migrates the actual tables
 -- (memory_entries, messages, session_usage) on first connect. This migration
 -- only creates the schema and role; table DDL is intentionally delegated to
--- NullClaw so its column layout (instance_id TEXT, TIMESTAMPTZ timestamps, etc.)
--- stays coherent with NullClaw's internal queries. Steps 5+ (export/import)
--- can ALTER TABLE to add operator-visible columns (e.g. tags[]) without
--- conflicting with NullClaw's required columns.
+-- NullClaw. Actual column types (verified from NullClaw source):
+--   id TEXT PRIMARY KEY             -- format: "{ns}-{hex64}-{hex64}"
+--   key TEXT NOT NULL
+--   content TEXT NOT NULL
+--   category TEXT NOT NULL DEFAULT 'core'
+--   session_id TEXT
+--   instance_id TEXT NOT NULL DEFAULT ''
+--   created_at TEXT NOT NULL        -- decimal Unix epoch (e.g. "1712931234")
+--   updated_at TEXT NOT NULL        -- decimal Unix epoch
+-- NullClaw also creates:
+--   UNIQUE INDEX idx_memory_entries_key_instance ON memory_entries(key, instance_id)
+-- This index is what allows ON CONFLICT (key, instance_id) upserts in memory_http.zig.
 --
 -- Row-level isolation: memory_runtime connects with instance_id="zmb:{uuid}"
 -- (set by zombie_memory.zig). NullClaw's queries all scope by instance_id,

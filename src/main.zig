@@ -164,8 +164,9 @@ test {
     _ = @import("queue/redis.zig");
     _ = @import("queue/redis_pubsub_test.zig");
     _ = @import("reliability/backoff.zig");
-    // M14_001: Persistent Zombie Memory — role isolation tests
+    // M14_001: Persistent Zombie Memory — role isolation tests + executor unit tests
     _ = @import("memory/zombie_memory_role_test.zig");
+    _ = @import("executor/zombie_memory.zig");
     // M2_001: Zombie CRUD, activity, router, worker
     _ = @import("http/handlers/zombie_api.zig");
     _ = @import("http/handlers/zombie_activity_api.zig");
