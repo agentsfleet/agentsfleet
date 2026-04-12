@@ -70,7 +70,7 @@ pub fn handleSlackEvent(ctx: *Context, req: *httpz.Request, res: *httpz.Response
         const challenge = payload.challenge orelse "";
         log.info("slack.events.url_verification req_id={s}", .{req_id});
         res.status = 200;
-        const resp_body = std.fmt.allocPrint(alloc, "{{\"challenge\":\"{s}\"}}", .{challenge}) catch {
+        const resp_body = std.json.Stringify.valueAlloc(alloc, .{ .challenge = challenge }, .{}) catch {
             res.body = "{}";
             return;
         };
@@ -163,6 +163,11 @@ fn verifySlackSignature(req: *httpz.Request, body: []const u8, res: *httpz.Respo
         return false;
     };
     defer std.heap.page_allocator.free(secret);
+    if (secret.len == 0) {
+        log.err("slack.events.empty_signing_secret req_id={s}", .{req_id});
+        common.errorResponse(res, ec.ERR_WEBHOOK_SLACK_SIG_INVALID, "Signing secret not configured", req_id);
+        return false;
+    }
 
     const timestamp = req.header(ec.SLACK_TS_HEADER) orelse {
         common.errorResponse(res, ec.ERR_WEBHOOK_SLACK_SIG_INVALID, "Missing timestamp header", req_id);

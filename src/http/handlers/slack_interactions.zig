@@ -184,6 +184,11 @@ fn verifySlackSignature(req: *httpz.Request, body: []const u8, res: *httpz.Respo
         return false;
     };
     defer std.heap.page_allocator.free(secret);
+    if (secret.len == 0) {
+        log.err("slack.interactions.empty_signing_secret req_id={s}", .{req_id});
+        common.errorResponse(res, ec.ERR_WEBHOOK_SLACK_SIG_INVALID, "Signing secret not configured", req_id);
+        return false;
+    }
 
     const timestamp = req.header(ec.SLACK_TS_HEADER) orelse {
         common.errorResponse(res, ec.ERR_WEBHOOK_SLACK_SIG_INVALID, "Missing timestamp header", req_id);

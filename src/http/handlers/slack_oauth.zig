@@ -49,6 +49,7 @@ pub fn handleInstall(ctx: *Context, req: *httpz.Request, res: *httpz.Response) v
         common.internalOperationError(res, "SLACK_SIGNING_SECRET not set", req_id);
         return;
     };
+    if (secret.len == 0) { common.internalOperationError(res, "SLACK_SIGNING_SECRET is empty", req_id); return; }
     const qs = req.query() catch {
         common.errorResponse(res, ec.ERR_INVALID_REQUEST, "Invalid query string", req_id);
         return;
@@ -251,7 +252,9 @@ fn exchangeCode(alloc: std.mem.Allocator, code: []const u8, app_url: []const u8)
     const client_secret = std.process.getEnvVarOwned(alloc, "SLACK_CLIENT_SECRET") catch return error.MissingClientSecret;
     const redir = try std.fmt.allocPrint(alloc, "{s}/v1/slack/callback", .{app_url});
     const redir_enc = try urlEncode(alloc, redir);
-    const body = try std.fmt.allocPrint(alloc, "code={s}&client_id={s}&client_secret={s}&redirect_uri={s}", .{ code, client_id, client_secret, redir_enc });
+    const client_id_enc = try urlEncode(alloc, client_id);
+    const client_secret_enc = try urlEncode(alloc, client_secret);
+    const body = try std.fmt.allocPrint(alloc, "code={s}&client_id={s}&client_secret={s}&redirect_uri={s}", .{ code, client_id_enc, client_secret_enc, redir_enc });
 
     var client: std.http.Client = .{ .allocator = alloc };
     defer client.deinit();
