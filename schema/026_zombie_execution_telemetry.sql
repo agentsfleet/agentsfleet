@@ -29,3 +29,8 @@ CREATE INDEX idx_telemetry_workspace_time
 -- Operator query: zombie_id-only filter (workspace_id is optional in listTelemetryAll).
 CREATE INDEX idx_telemetry_zombie
     ON zombie_execution_telemetry (zombie_id, recorded_at DESC);
+
+-- api_runtime: customer + operator read endpoints (SELECT), metering INSERT from HTTP path.
+GRANT SELECT, INSERT ON zombie_execution_telemetry TO api_runtime;
+-- worker_runtime: event-loop metering writes.
+GRANT INSERT ON zombie_execution_telemetry TO worker_runtime;
