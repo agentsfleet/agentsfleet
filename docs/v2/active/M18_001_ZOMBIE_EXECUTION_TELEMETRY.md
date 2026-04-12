@@ -4,7 +4,7 @@
 **Milestone:** M18
 **Workstream:** 001
 **Date:** Apr 12, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — UseZombie blind to per-execution latency and token costs; customers cannot self-serve their own usage data
 **Batch:** B1
 **Branch:** feat/m18-zombie-execution-telemetry
