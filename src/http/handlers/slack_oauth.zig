@@ -124,7 +124,10 @@ pub fn handleCallback(ctx: *Context, req: *httpz.Request, res: *httpz.Response) 
 
     if (!validateState(ctx, alloc, state, res, req_id)) return;
 
-    const ws_in_state = extractWorkspaceId(alloc, state);
+    const ws_in_state = extractWorkspaceId(alloc, state) catch {
+        common.internalOperationError(res, "workspace_id extraction failed", req_id);
+        return;
+    };
     const tok = oauth_client.exchangeCode(alloc, code, ctx.app_url) catch {
         common.errorResponse(res, ec.ERR_SLACK_TOKEN_EXCHANGE, "Slack token exchange failed", req_id);
         return;
@@ -234,11 +237,12 @@ fn validateState(ctx: *Context, alloc: std.mem.Allocator, state: []const u8, res
     return true;
 }
 
-fn extractWorkspaceId(alloc: std.mem.Allocator, state: []const u8) []const u8 {
+fn extractWorkspaceId(alloc: std.mem.Allocator, state: []const u8) ![]const u8 {
     const first = std.mem.indexOfScalar(u8, state, '.') orelse return "";
     const last = std.mem.lastIndexOfScalar(u8, state, '.') orelse return "";
     if (first >= last) return "";
-    return alloc.dupe(u8, state[first + 1 .. last]) catch "";
+    // dupe so the caller owns the slice independently of the request arena
+    return alloc.dupe(u8, state[first + 1 .. last]);
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────

@@ -80,12 +80,17 @@ pub fn verifySignature(
 }
 
 /// Check if a timestamp string is within the allowed drift window.
+/// Rejects future timestamps (ts > now) — an attacker cannot pre-sign requests.
+/// Allows a small forward tolerance (max_drift seconds) for clock skew only.
 pub fn isTimestampFresh(timestamp: []const u8, max_drift: i64) bool {
     const ts = std.fmt.parseInt(i64, timestamp, 10) catch return false;
     if (ts <= 0) return false;
     const now = std.time.timestamp();
-    const diff = if (now > ts) now - ts else ts - now;
-    return diff <= max_drift;
+    // Reject far-future timestamps; allow only max_drift seconds of forward clock skew.
+    if (ts > now + max_drift) return false;
+    // Reject stale timestamps.
+    if (now > ts and now - ts > max_drift) return false;
+    return true;
 }
 
 // ── Internal ──────────────────────────────────────────────────────────────
@@ -192,6 +197,22 @@ test "isTimestampFresh: negative timestamp rejected (overflow protection)" {
     try std.testing.expect(!isTimestampFresh("-9223372036854775808", 300));
     try std.testing.expect(!isTimestampFresh("-1", 300));
     try std.testing.expect(!isTimestampFresh("0", 300));
+}
+
+test "isTimestampFresh: far-future timestamp rejected (no pre-signed requests)" {
+    var buf: [20]u8 = undefined;
+    // 1 hour in the future — must be rejected to prevent pre-signed request attacks
+    const future = std.time.timestamp() + 3600;
+    const s = std.fmt.bufPrint(&buf, "{d}", .{future}) catch unreachable;
+    try std.testing.expect(!isTimestampFresh(s, 300));
+}
+
+test "isTimestampFresh: small forward clock skew accepted (within max_drift)" {
+    var buf: [20]u8 = undefined;
+    // 10 seconds in the future — within the 300s drift window (clock skew tolerance)
+    const slightly_future = std.time.timestamp() + 10;
+    const s = std.fmt.bufPrint(&buf, "{d}", .{slightly_future}) catch unreachable;
+    try std.testing.expect(isTimestampFresh(s, 300));
 }
 
 test "wrong prefix rejected" {
