@@ -32,3 +32,8 @@ CREATE INDEX IF NOT EXISTS idx_workspace_integrations_workspace
 
 CREATE INDEX IF NOT EXISTS idx_workspace_integrations_lookup
     ON core.workspace_integrations(provider, external_id);
+
+-- api_runtime: upsertIntegration (OAuth callback) + lookupWorkspace (Slack event routing)
+GRANT SELECT, INSERT, UPDATE ON core.workspace_integrations TO api_runtime;
+-- worker_runtime: lookupWorkspace for event dispatch
+GRANT SELECT ON core.workspace_integrations TO worker_runtime;

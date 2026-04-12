@@ -405,3 +405,21 @@ Reference a rule as `RULE NDC`, `RULE OWN`, etc.
 **Don't:** `fn extractWorkspaceId(...) []const u8 { return alloc.dupe(...) catch ""; }`
 **Tags:** zig, memory, error-handling, correctness
 **Ref:** M8_001 slack_oauth.zig `extractWorkspaceId` — `catch ""` on dupe failure. Fixed in d07b6de.
+
+## RULE SGR — SQL migrations must include GRANT statements for all created tables
+
+**Rule:** Every `CREATE TABLE` migration must end with `GRANT` statements for every role that will query the table. Check which operations the application performs (`SELECT`, `INSERT`, `UPDATE`, `DELETE`) against this table and grant exactly those to `api_runtime` and/or `worker_runtime` as appropriate.
+**Why:** PostgreSQL denies all access by default. Without grants, every query against the table fails with `permission denied` in production. This is invisible at migration time and only fails at first runtime use.
+**Do:** Follow every `CREATE TABLE` + indices block with grants mirroring the table's callers.
+**Don't:** Ship a migration without grants on the assumption that a superuser connection is used in production.
+**Tags:** sql, postgres, migrations, security
+**Ref:** M8_001 schema/028_workspace_integrations.sql — missing GRANT for api_runtime and worker_runtime. Fixed in this PR.
+
+## RULE OAE — OAuth form bodies must URL-encode all fields including `code`
+
+**Rule:** When building an `application/x-www-form-urlencoded` body for an OAuth token exchange, percent-encode every field value — including the authorization code. Do not assume authorization codes are URL-safe in practice.
+**Why:** OAuth codes are URL-safe in most providers today, but the spec allows any character. A code containing `+`, `&`, or `=` would silently corrupt the form body and produce a confusing provider-side error with no local diagnostic.
+**Do:** `const code_enc = try urlEncode(alloc, code);` then use `code_enc` in the body template.
+**Don't:** Interpolate `code` raw while encoding other fields — the inconsistency signals an oversight and will eventually fail.
+**Tags:** zig, oauth, http, security
+**Ref:** M8_001 slack_oauth_client.zig `exchangeCode` — `code` interpolated raw. Fixed in this PR.

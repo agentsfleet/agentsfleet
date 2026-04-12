@@ -27,8 +27,9 @@ pub fn exchangeCode(alloc: std.mem.Allocator, code: []const u8, app_url: []const
     const redir_enc = try urlEncode(alloc, redir);
     const client_id_enc = try urlEncode(alloc, client_id);
     const client_secret_enc = try urlEncode(alloc, client_secret);
+    const code_enc = try urlEncode(alloc, code);
     const body = try std.fmt.allocPrint(alloc, "code={s}&client_id={s}&client_secret={s}&redirect_uri={s}", .{
-        code, client_id_enc, client_secret_enc, redir_enc,
+        code_enc, client_id_enc, client_secret_enc, redir_enc,
     });
 
     var client: std.http.Client = .{ .allocator = alloc };
