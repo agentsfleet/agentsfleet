@@ -101,73 +101,6 @@ fn openIntegrationTestConn(alloc: std.mem.Allocator) !?struct { pool: *Pool, con
     return .{ .pool = pool, .conn = conn };
 }
 
-fn createUuidContractTempSchema(conn: *Conn) !void {
-    _ = try conn.exec(
-        \\CREATE TEMP TABLE t_uuid_runs (
-        \\  run_id UUID PRIMARY KEY,
-        \\  run_snapshot_version UUID
-        \\)
-    , .{});
-    _ = try conn.exec(
-        \\CREATE TEMP TABLE t_uuid_agent_profile_versions (
-        \\  profile_version_id UUID PRIMARY KEY
-        \\)
-    , .{});
-    _ = try conn.exec(
-        \\CREATE TEMP TABLE t_uuid_profile_compile_jobs (
-        \\  compile_job_id UUID PRIMARY KEY
-        \\)
-    , .{});
-    _ = try conn.exec(
-        \\CREATE TEMP TABLE t_uuid_run_transitions (
-        \\  id UUID PRIMARY KEY,
-        \\  run_id UUID NOT NULL REFERENCES t_uuid_runs(run_id)
-        \\)
-    , .{});
-    _ = try conn.exec(
-        \\CREATE TEMP TABLE t_uuid_artifacts (
-        \\  run_id UUID NOT NULL REFERENCES t_uuid_runs(run_id)
-        \\)
-    , .{});
-    _ = try conn.exec(
-        \\CREATE TEMP TABLE t_uuid_usage_ledger (
-        \\  run_id UUID NOT NULL REFERENCES t_uuid_runs(run_id)
-        \\)
-    , .{});
-    _ = try conn.exec(
-        \\CREATE TEMP TABLE t_uuid_run_side_effects (
-        \\  run_id UUID NOT NULL REFERENCES t_uuid_runs(run_id)
-        \\)
-    , .{});
-    _ = try conn.exec(
-        \\CREATE TEMP TABLE t_uuid_run_side_effect_outbox (
-        \\  run_id UUID NOT NULL REFERENCES t_uuid_runs(run_id)
-        \\)
-    , .{});
-    _ = try conn.exec(
-        \\CREATE TEMP TABLE t_uuid_workspace_memories (
-        \\  run_id UUID NOT NULL REFERENCES t_uuid_runs(run_id)
-        \\)
-    , .{});
-    _ = try conn.exec(
-        \\CREATE TEMP TABLE t_uuid_policy_events (
-        \\  run_id UUID REFERENCES t_uuid_runs(run_id)
-        \\)
-    , .{});
-    _ = try conn.exec(
-        \\CREATE TEMP TABLE t_uuid_workspace_active_profile (
-        \\  profile_version_id UUID NOT NULL REFERENCES t_uuid_agent_profile_versions(profile_version_id)
-        \\)
-    , .{});
-    _ = try conn.exec(
-        \\CREATE TEMP TABLE t_uuid_profile_linkage_audit_artifacts (
-        \\  profile_version_id UUID NOT NULL REFERENCES t_uuid_agent_profile_versions(profile_version_id),
-        \\  compile_job_id UUID REFERENCES t_uuid_profile_compile_jobs(compile_job_id),
-        \\  run_id UUID REFERENCES t_uuid_runs(run_id)
-        \\)
-    , .{});
-}
-
 test "integration: canary pool acquire + exec + query SELECT 1" {
     const alloc = std.testing.allocator;
     const url = std.process.getEnvVarOwned(alloc, "TEST_DATABASE_URL") catch
@@ -185,50 +118,6 @@ test "integration: canary pool acquire + exec + query SELECT 1" {
     _ = try conn.exec("SELECT 1", .{});
     // Extended query protocol (no params)
     _ = try conn.exec("SELECT 1", .{});
-}
-
-test "integration: uuid contract tables are UUID typed for run/profile/linkage IDs" {
-    if (!std.process.hasEnvVarConstant("LIVE_DB")) return error.SkipZigTest;
-    const db_ctx = (try openIntegrationTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
-    defer db_ctx.pool.deinit();
-    defer db_ctx.pool.release(db_ctx.conn);
-
-    try createUuidContractTempSchema(db_ctx.conn);
-
-    {
-        var q = PgQuery.from(try db_ctx.conn.query(
-            \\SELECT table_name, column_name, data_type
-            \\FROM information_schema.columns
-            \\WHERE table_name IN ('t_uuid_runs', 't_uuid_agent_profile_versions', 't_uuid_profile_compile_jobs', 't_uuid_profile_linkage_audit_artifacts')
-            \\  AND column_name IN ('run_id', 'run_snapshot_version', 'profile_version_id', 'compile_job_id')
-            \\ORDER BY table_name, column_name
-        , .{}));
-        defer q.deinit();
-
-        while (try q.next()) |row| {
-            try std.testing.expectEqualStrings("uuid", try row.get([]const u8, 2));
-        }
-    }
-
-    const run_id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f99";
-    const pver_id = "0195b4ba-8d3a-7f13-9abc-2b3e1e0a6f98";
-    const cjob_id = "0195b4ba-8d3a-7f13-aabc-2b3e1e0a6f97";
-    _ = try db_ctx.conn.exec(
-        "INSERT INTO t_uuid_runs (run_id, run_snapshot_version) VALUES ($1::uuid, $2::uuid)",
-        .{ run_id, pver_id },
-    );
-    _ = try db_ctx.conn.exec(
-        "INSERT INTO t_uuid_agent_profile_versions (profile_version_id) VALUES ($1::uuid)",
-        .{pver_id},
-    );
-    _ = try db_ctx.conn.exec(
-        "INSERT INTO t_uuid_profile_compile_jobs (compile_job_id) VALUES ($1::uuid)",
-        .{cjob_id},
-    );
-    _ = try db_ctx.conn.exec(
-        "INSERT INTO t_uuid_profile_linkage_audit_artifacts (profile_version_id, compile_job_id, run_id) VALUES ($1::uuid, $2::uuid, $3::uuid)",
-        .{ pver_id, cjob_id, run_id },
-    );
 }
 
 test "T6 integration: generated UUID PKs round-trip through INSERT and SELECT" {
@@ -453,7 +342,7 @@ test "integration: zero-trust schema segmentation and role matrix are enforced" 
             \\SELECT 1
             \\FROM information_schema.tables
             \\WHERE table_schema = 'public'
-            \\  AND table_name IN ('tenants', 'workspaces', 'runs', 'agent_profiles', 'workspace_entitlements')
+            \\  AND table_name IN ('tenants', 'workspaces', 'runs', 'workspace_entitlements')
             \\LIMIT 1
         , .{}));
         defer q.deinit();
@@ -476,29 +365,7 @@ test "integration: zero-trust schema segmentation and role matrix are enforced" 
         try std.testing.expect((try role_q.next()) != null);
     }
 
-    const worker_privilege_checks = [_]struct { table_name: []const u8, privilege: []const u8 }{
-        .{ .table_name = "agent.agent_profiles", .privilege = "UPDATE" },
-        .{ .table_name = "agent.workspace_active_config", .privilege = "UPDATE" },
-        .{ .table_name = "agent.agent_config_versions", .privilege = "INSERT" },
-        // M10_001: agent.harness_change_log removed (pipeline v1 scoring).
-    };
-    inline for (worker_privilege_checks) |check| {
-        var privilege_q = PgQuery.from(try db_ctx.conn.query(
-            "SELECT has_table_privilege('worker_runtime', $1, $2)",
-            .{ check.table_name, check.privilege },
-        ));
-        defer privilege_q.deinit();
-        const row = (try privilege_q.next()) orelse return error.TestUnexpectedResult;
-        const has_privilege = try row.get(bool, 0);
-        try std.testing.expect(has_privilege);
-    }
-
     const rls_tables = [_]struct { schema_name: []const u8, table_name: []const u8 }{
-        .{ .schema_name = "agent", .table_name = "agent_profiles" },
-        .{ .schema_name = "agent", .table_name = "agent_config_versions" },
-        .{ .schema_name = "agent", .table_name = "workspace_active_config" },
-        .{ .schema_name = "agent", .table_name = "config_compile_jobs" },
-        .{ .schema_name = "agent", .table_name = "config_linkage_audit_artifacts" },
         .{ .schema_name = "vault", .table_name = "workspace_skill_secrets" },
     };
     inline for (rls_tables) |table_ref| {

@@ -15,7 +15,7 @@ const ServeMigrationDecision = enum {
     run_required,
 };
 
-pub fn canonicalMigrations() [21]db.Migration {
+pub fn canonicalMigrations() [19]db.Migration {
     const schema = @import("schema");
     return .{
         .{ .version = 1, .sql = schema.core_foundation_sql },
@@ -24,9 +24,7 @@ pub fn canonicalMigrations() [21]db.Migration {
         .{ .version = 4, .sql = schema.vault_sql },
         .{ .version = 6, .sql = schema.side_effect_ledger_sql },
         .{ .version = 7, .sql = schema.side_effect_outbox_sql },
-        .{ .version = 8, .sql = schema.harness_control_plane_sql },
         .{ .version = 9, .sql = schema.rls_tenant_isolation_sql },
-        .{ .version = 11, .sql = schema.profile_linkage_audit_sql },
         .{ .version = 14, .sql = schema.workspace_entitlements_sql },
         .{ .version = 15, .sql = schema.usage_metering_billing_sql },
         .{ .version = 16, .sql = schema.workspace_billing_state_sql },
