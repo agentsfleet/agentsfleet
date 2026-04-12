@@ -47,6 +47,11 @@ pub const Route = union(enum) {
     // M18_001: zombie execution telemetry
     zombie_telemetry: ZombieTelemetryRoute, // GET /v1/workspaces/{ws}/zombies/{id}/telemetry
     internal_telemetry, // GET /internal/v1/telemetry
+    // M8_001: Slack plugin acquisition
+    slack_install, // GET /v1/slack/install
+    slack_callback, // GET /v1/slack/callback
+    slack_events, // POST /v1/slack/events
+    slack_interactions, // POST /v1/slack/interactions
 };
 
 const matchWorkspaceSuffix = matchers.matchWorkspaceSuffix;
@@ -109,6 +114,12 @@ pub fn match(path: []const u8) ?Route {
 
     // M18_001: customer telemetry endpoint
     if (matchers.matchZombieTelemetry(path)) |route| return .{ .zombie_telemetry = route };
+
+    // M8_001: Slack plugin routes
+    if (std.mem.eql(u8, path, "/v1/slack/install")) return .slack_install;
+    if (std.mem.eql(u8, path, "/v1/slack/callback")) return .slack_callback;
+    if (std.mem.eql(u8, path, "/v1/slack/events")) return .slack_events;
+    if (std.mem.eql(u8, path, "/v1/slack/interactions")) return .slack_interactions;
 
     // M4_001: Zombie approval gate callback — /v1/webhooks/{zombie_id}:approval
     if (matchers.matchWebhookAction(path, ":approval")) |zombie_id| return .{ .approval_webhook = zombie_id };
@@ -224,6 +235,17 @@ test "match resolves workspace LLM credential route (M16_004)" {
     );
     // Extra segments not matched
     try std.testing.expect(match("/v1/workspaces/ws_1/extra/credentials/llm") == null);
+}
+
+// ── M8_001 Slack route tests ──────────────────────────────────────────────────
+
+test "match resolves Slack install route (M8_001)" {
+    try std.testing.expectEqualDeep(Route.slack_install, match("/v1/slack/install").?);
+    try std.testing.expectEqualDeep(Route.slack_callback, match("/v1/slack/callback").?);
+    try std.testing.expectEqualDeep(Route.slack_events, match("/v1/slack/events").?);
+    try std.testing.expectEqualDeep(Route.slack_interactions, match("/v1/slack/interactions").?);
+    try std.testing.expect(match("/v1/slack/other") == null);
+    try std.testing.expect(match("/v1/slack/") == null);
 }
 
 // Webhook + approval route tests are in router_test.zig.

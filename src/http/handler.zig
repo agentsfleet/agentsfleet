@@ -17,6 +17,9 @@ const approval_http = @import("handlers/approval_http.zig");
 const zombie_api_http = @import("handlers/zombie_api.zig");
 const zombie_activity_api_http = @import("handlers/zombie_activity_api.zig");
 const zombie_telemetry_http = @import("handlers/zombie_telemetry.zig");
+const slack_oauth_http = @import("handlers/slack_oauth.zig");
+const slack_events_http = @import("handlers/slack_events.zig");
+const slack_interactions_http = @import("handlers/slack_interactions.zig");
 
 pub const Context = common.Context;
 pub const SkillSecretRoute = skill_secret_handlers.Route;
@@ -66,6 +69,12 @@ pub const handleListCredentials = zombie_activity_api_http.handleListCredentials
 // M18_001: zombie execution telemetry
 pub const handleZombieTelemetry = zombie_telemetry_http.handleZombieTelemetry;
 pub const handleInternalTelemetry = zombie_telemetry_http.handleInternalTelemetry;
+
+// M8_001: Slack plugin acquisition
+pub const handleSlackInstall = slack_oauth_http.handleInstall;
+pub const handleSlackCallback = slack_oauth_http.handleCallback;
+pub const handleSlackEvent = slack_events_http.handleSlackEvent;
+pub const handleSlackInteraction = slack_interactions_http.handleInteraction;
 
 pub fn parseSkillSecretRoute(path: []const u8) ?SkillSecretRoute {
     return skill_secret_handlers.parseRoute(path);
