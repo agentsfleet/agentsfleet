@@ -300,3 +300,51 @@ test "gate action_id: zombie_id parsed correctly" {
     try std.testing.expectEqualStrings("0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11", rest[0..UUID_LEN]);
     try std.testing.expectEqual(@as(u8, '_'), rest[UUID_LEN]);
 }
+
+test "urlDecode: empty string returns empty" {
+    const alloc = std.testing.allocator;
+    const out = try urlDecode(alloc, "");
+    defer alloc.free(out);
+    try std.testing.expectEqualStrings("", out);
+}
+
+test "urlDecode: plain string passes through unchanged" {
+    const alloc = std.testing.allocator;
+    const out = try urlDecode(alloc, "helloworld");
+    defer alloc.free(out);
+    try std.testing.expectEqualStrings("helloworld", out);
+}
+
+test "urlDecode: lowercase hex digits decoded correctly" {
+    // Slack sends lowercase percent-encoding (%7b, not %7B).
+    const alloc = std.testing.allocator;
+    const out = try urlDecode(alloc, "%7b%22key%22%7d");
+    defer alloc.free(out);
+    try std.testing.expectEqualStrings("{\"key\"}", out);
+}
+
+test "urlDecode: malformed percent sequences pass through literally" {
+    // Truncated %XX (0 or 1 trailing chars): '%' emitted as literal, no crash.
+    const alloc = std.testing.allocator;
+    const out1 = try urlDecode(alloc, "abc%");
+    defer alloc.free(out1);
+    try std.testing.expectEqualStrings("abc%", out1);
+    const out2 = try urlDecode(alloc, "a%2");
+    defer alloc.free(out2);
+    try std.testing.expectEqualStrings("a%2", out2);
+}
+
+test "extractPayloadField: missing payload field or empty body returns null" {
+    const alloc = std.testing.allocator;
+    try std.testing.expect(extractPayloadField(alloc, "") == null);
+    try std.testing.expect(extractPayloadField(alloc, "type=block_actions&other=foo") == null);
+}
+
+test "extractPayloadField: payload value stops at ampersand" {
+    const alloc = std.testing.allocator;
+    const body = "payload=%7B%22type%22%3A%22block_actions%22%7D&extra=ignored";
+    const out = extractPayloadField(alloc, body);
+    defer if (out) |s| alloc.free(s);
+    try std.testing.expect(out != null);
+    try std.testing.expectEqualStrings("{\"type\":\"block_actions\"}", out.?);
+}

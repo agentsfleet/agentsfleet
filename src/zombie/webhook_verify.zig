@@ -234,3 +234,46 @@ test "constantTimeEql: different" {
 test "constantTimeEql: length mismatch" {
     try std.testing.expect(!constantTimeEql("ab", "abc"));
 }
+
+test "constantTimeEql: both empty slices are equal" {
+    // Zero-length path: the for-loop body never runs, diff stays 0 → true.
+    try std.testing.expect(constantTimeEql("", ""));
+}
+
+test "constantTimeEql: empty vs non-empty is false (length guard)" {
+    try std.testing.expect(!constantTimeEql("", "a"));
+}
+
+// ── T2: isTimestampFresh boundary cases ──────────────────────────────────────
+
+test "isTimestampFresh: at exactly max_drift seconds old is accepted" {
+    var buf: [20]u8 = undefined;
+    // now - max_drift: on the boundary (just within window).
+    const at_boundary = std.time.timestamp() - 300;
+    const s = std.fmt.bufPrint(&buf, "{d}", .{at_boundary}) catch unreachable;
+    // Implementation: accepted when now - ts <= max_drift (boundary inclusive on <=).
+    try std.testing.expect(isTimestampFresh(s, 300));
+}
+
+test "isTimestampFresh: at max_drift + 1 seconds old is rejected" {
+    var buf: [20]u8 = undefined;
+    // now - (max_drift + 1): one second past the window.
+    const just_outside = std.time.timestamp() - 301;
+    const s = std.fmt.bufPrint(&buf, "{d}", .{just_outside}) catch unreachable;
+    try std.testing.expect(!isTimestampFresh(s, 300));
+}
+
+test "isTimestampFresh: at exactly max_drift seconds ahead is accepted (clock skew)" {
+    var buf: [20]u8 = undefined;
+    const at_forward_boundary = std.time.timestamp() + 300;
+    const s = std.fmt.bufPrint(&buf, "{d}", .{at_forward_boundary}) catch unreachable;
+    // On the boundary: ts == now + max_drift → ts > now + max_drift is false → accepted.
+    try std.testing.expect(isTimestampFresh(s, 300));
+}
+
+test "isTimestampFresh: at max_drift + 1 seconds ahead is rejected (pre-sign attack)" {
+    var buf: [20]u8 = undefined;
+    const just_outside_future = std.time.timestamp() + 301;
+    const s = std.fmt.bufPrint(&buf, "{d}", .{just_outside_future}) catch unreachable;
+    try std.testing.expect(!isTimestampFresh(s, 300));
+}

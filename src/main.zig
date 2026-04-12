@@ -181,6 +181,8 @@ test {
     _ = @import("types/id_format.zig");
     _ = @import("types/id_format_test.zig");
     _ = @import("http/handlers/slack_oauth.zig");
+    _ = @import("http/handlers/slack_oauth_client.zig");
     _ = @import("http/handlers/slack_events.zig");
     _ = @import("http/handlers/slack_interactions.zig");
+    _ = @import("http/handlers/m8_001_slack_unit_test.zig");
 }

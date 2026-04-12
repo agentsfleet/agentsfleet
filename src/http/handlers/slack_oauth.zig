@@ -254,3 +254,81 @@ test "state format: three dot-separated parts" {
     try std.testing.expect(first != last);
     try std.testing.expectEqual(@as(usize, 64), state[last + 1 ..].len);
 }
+
+// ── T2: extractWorkspaceId edge cases ────────────────────────────────────────
+
+test "extractWorkspaceId: empty string returns empty" {
+    const alloc = std.testing.allocator;
+    const ws = try extractWorkspaceId(alloc, "");
+    try std.testing.expectEqualStrings("", ws);
+}
+
+test "extractWorkspaceId: no dots returns empty (no segment)" {
+    const alloc = std.testing.allocator;
+    const ws = try extractWorkspaceId(alloc, "nodots");
+    try std.testing.expectEqualStrings("", ws);
+}
+
+test "extractWorkspaceId: single dot (first == last) returns empty" {
+    // State must have at least two distinct dot positions.
+    const alloc = std.testing.allocator;
+    const ws = try extractWorkspaceId(alloc, "nonce.hmac");
+    try std.testing.expectEqualStrings("", ws);
+}
+
+test "extractWorkspaceId: valid three-part state extracts middle segment" {
+    const alloc = std.testing.allocator;
+    const ws = try extractWorkspaceId(alloc, "nonce.my-workspace-id.hmachex");
+    defer alloc.free(ws);
+    try std.testing.expectEqualStrings("my-workspace-id", ws);
+}
+
+test "extractWorkspaceId: UUID workspace_id with hyphens preserved exactly" {
+    const alloc = std.testing.allocator;
+    const uuid = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
+    const state = "nonce123." ++ uuid ++ ".aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    const ws = try extractWorkspaceId(alloc, state);
+    defer alloc.free(ws);
+    try std.testing.expectEqualStrings(uuid, ws);
+}
+
+test "extractWorkspaceId: workspace_id is independent allocation (owns its slice)" {
+    // Verify the returned slice is a fresh allocation, not a pointer into the input.
+    const alloc = std.testing.allocator;
+    const state = try alloc.dupe(u8, "nonce.wsid-abc.hmac64hexhex00000000000000000000000000000000000000000");
+    defer alloc.free(state);
+    const ws = try extractWorkspaceId(alloc, state);
+    defer alloc.free(ws);
+    // If ws points into state, free(state) before comparing would crash.
+    // Having separate defers exercises the ownership.
+    try std.testing.expectEqualStrings("wsid-abc", ws);
+}
+
+// ── T7: State HMAC structural invariants ────────────────────────────────────
+
+test "state HMAC: SHA-256 produces exactly 32 bytes → 64 hex chars" {
+    // Pin: the HMAC in state is SHA-256 (32 bytes × 2 = 64 hex chars).
+    // If someone changes the algorithm, validateState's provided.len != 64 check breaks.
+    var mac: [HmacSha256.mac_length]u8 = undefined;
+    var h = HmacSha256.init("test-secret");
+    h.update("nonce:workspace");
+    h.final(&mac);
+    const hex = std.fmt.bytesToHex(mac, .lower);
+    try std.testing.expectEqual(@as(usize, 64), hex.len);
+}
+
+test "state HMAC: different nonces produce different HMACs (sanity)" {
+    var mac1: [HmacSha256.mac_length]u8 = undefined;
+    var mac2: [HmacSha256.mac_length]u8 = undefined;
+    var h1 = HmacSha256.init("secret");
+    h1.update("nonce1");
+    h1.update(":");
+    h1.update("ws");
+    h1.final(&mac1);
+    var h2 = HmacSha256.init("secret");
+    h2.update("nonce2");
+    h2.update(":");
+    h2.update("ws");
+    h2.final(&mac2);
+    try std.testing.expect(!std.mem.eql(u8, &mac1, &mac2));
+}

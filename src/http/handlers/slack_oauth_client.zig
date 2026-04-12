@@ -119,3 +119,91 @@ test "urlEncode: colons and slashes encoded" {
     try std.testing.expect(std.mem.indexOf(u8, out, "%3A") != null);
     try std.testing.expect(std.mem.indexOf(u8, out, "%2F") != null);
 }
+
+// ── T2: urlEncode edge cases ──────────────────────────────────────────────────
+
+test "urlEncode: empty string returns empty" {
+    const alloc = std.testing.allocator;
+    const out = try urlEncode(alloc, "");
+    defer alloc.free(out);
+    try std.testing.expectEqualStrings("", out);
+}
+
+test "urlEncode: space → %20" {
+    const alloc = std.testing.allocator;
+    const out = try urlEncode(alloc, "hello world");
+    defer alloc.free(out);
+    try std.testing.expectEqualStrings("hello%20world", out);
+}
+
+test "urlEncode: ampersand → %26 (OAuth param separator must be encoded)" {
+    const alloc = std.testing.allocator;
+    const out = try urlEncode(alloc, "a&b");
+    defer alloc.free(out);
+    try std.testing.expectEqualStrings("a%26b", out);
+}
+
+test "urlEncode: equals sign → %3D (key=value separator must be encoded)" {
+    const alloc = std.testing.allocator;
+    const out = try urlEncode(alloc, "key=value");
+    defer alloc.free(out);
+    try std.testing.expectEqualStrings("key%3Dvalue", out);
+}
+
+test "urlEncode: percent sign itself → %25 (no double-encoding)" {
+    const alloc = std.testing.allocator;
+    const out = try urlEncode(alloc, "100%");
+    defer alloc.free(out);
+    try std.testing.expectEqualStrings("100%25", out);
+}
+
+test "urlEncode: OAuth redirect_uri round-trip encodes all non-safe chars" {
+    const alloc = std.testing.allocator;
+    const uri = "https://app.usezombie.com/v1/slack/callback?a=b&c=d";
+    const out = try urlEncode(alloc, uri);
+    defer alloc.free(out);
+    // Must encode ://?=& — no raw control chars should survive
+    try std.testing.expect(std.mem.indexOf(u8, out, "://") == null);
+    try std.testing.expect(std.mem.indexOf(u8, out, "?") == null);
+    try std.testing.expect(std.mem.indexOf(u8, out, "&") == null);
+}
+
+// ── T7: Constants pinned ──────────────────────────────────────────────────────
+
+test "SLACK_SCOPES: non-empty and contains required scopes" {
+    // Pin: if scopes change, OAuth grant changes — requires product approval.
+    try std.testing.expect(SLACK_SCOPES.len > 0);
+    try std.testing.expect(std.mem.indexOf(u8, SLACK_SCOPES, "chat:write") != null);
+}
+
+test "SLACK_CONNECTED_MSG: parses as valid JSON" {
+    // Bootstrap message must be valid JSON or Slack will reject it.
+    const alloc = std.testing.allocator;
+    const parsed = std.json.parseFromSlice(std.json.Value, alloc, SLACK_CONNECTED_MSG, .{}) catch |err| {
+        std.debug.print("SLACK_CONNECTED_MSG is not valid JSON: {}\n", .{err});
+        return err;
+    };
+    defer parsed.deinit();
+    // Must have a "channel" key (bootstrap exception §2.0: hardcoded "general")
+    try std.testing.expect(parsed.value.object.get("channel") != null);
+}
+
+// ── T12: SlackTokenResponse struct shape ──────────────────────────────────────
+
+test "SlackTokenResponse: has exactly 4 fields (access_token, team_id, team_name, scope)" {
+    const fields = @typeInfo(SlackTokenResponse).@"struct".fields;
+    try std.testing.expectEqual(@as(usize, 4), fields.len);
+}
+
+test "SlackTokenResponse: scope field is []const u8 (not optional — must be populated)" {
+    // scope is required: if Slack returns different scopes than requested, we need to know.
+    const fields = @typeInfo(SlackTokenResponse).@"struct".fields;
+    var found = false;
+    inline for (fields) |f| {
+        if (comptime std.mem.eql(u8, f.name, "scope")) {
+            try std.testing.expectEqual([]const u8, f.type);
+            found = true;
+        }
+    }
+    try std.testing.expect(found);
+}
