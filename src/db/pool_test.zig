@@ -488,6 +488,91 @@ test "integration: runMigrations reaps orphan rows for versions no longer in can
     _ = db_ctx.conn.exec("DROP TABLE IF EXISTS public.test_reap_keep_fixture", .{}) catch {};
 }
 
+test "integration: runMigrations reaps orphan rows in schema_migration_failures (T2/T6)" {
+    if (!std.process.hasEnvVarConstant("LIVE_DB")) return error.SkipZigTest;
+    const alloc = std.testing.allocator;
+    const db_ctx = (try openIntegrationTestConn(alloc)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
+
+    const orphan_version: i32 = 99995;
+    const keep_version: i32 = 99994;
+    const keep_sql =
+        \\CREATE TABLE IF NOT EXISTS public.test_reap_failures_fixture (id BIGINT PRIMARY KEY);
+    ;
+    const canonical = [_]pool_mod.Migration{
+        .{ .version = keep_version, .sql = keep_sql },
+    };
+
+    _ = db_ctx.conn.exec("DELETE FROM audit.schema_migrations WHERE version IN ($1, $2)", .{ orphan_version, keep_version }) catch {};
+    _ = db_ctx.conn.exec("DELETE FROM audit.schema_migration_failures WHERE version IN ($1, $2)", .{ orphan_version, keep_version }) catch {};
+    _ = db_ctx.conn.exec("DROP TABLE IF EXISTS public.test_reap_failures_fixture", .{}) catch {};
+
+    // Seed an orphan failure row — simulates a previously-failed migration that
+    // has since been removed from the canonical list.
+    _ = try db_ctx.conn.exec(
+        \\INSERT INTO audit.schema_migration_failures (version, failed_at, error_text)
+        \\VALUES ($1, $2, 'simulated')
+    , .{ orphan_version, std.time.milliTimestamp() });
+
+    try pool_mod.runMigrations(db_ctx.pool, &canonical);
+
+    var q = PgQuery.from(try db_ctx.conn.query(
+        "SELECT 1 FROM audit.schema_migration_failures WHERE version = $1",
+        .{orphan_version},
+    ));
+    defer q.deinit();
+    try std.testing.expect((try q.next()) == null);
+
+    _ = db_ctx.conn.exec("DELETE FROM audit.schema_migrations WHERE version = $1", .{keep_version}) catch {};
+    _ = db_ctx.conn.exec("DROP TABLE IF EXISTS public.test_reap_failures_fixture", .{}) catch {};
+}
+
+test "integration: runMigrations reap is a no-op when all applied rows are canonical (T2)" {
+    if (!std.process.hasEnvVarConstant("LIVE_DB")) return error.SkipZigTest;
+    const alloc = std.testing.allocator;
+    const db_ctx = (try openIntegrationTestConn(alloc)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
+
+    const v1: i32 = 99993;
+    const v2: i32 = 99992;
+    const sql_a =
+        \\CREATE TABLE IF NOT EXISTS public.test_reap_noop_a (id BIGINT PRIMARY KEY);
+    ;
+    const sql_b =
+        \\CREATE TABLE IF NOT EXISTS public.test_reap_noop_b (id BIGINT PRIMARY KEY);
+    ;
+    const canonical = [_]pool_mod.Migration{
+        .{ .version = v1, .sql = sql_a },
+        .{ .version = v2, .sql = sql_b },
+    };
+
+    _ = db_ctx.conn.exec("DELETE FROM audit.schema_migrations WHERE version IN ($1, $2)", .{ v1, v2 }) catch {};
+    _ = db_ctx.conn.exec("DROP TABLE IF EXISTS public.test_reap_noop_a", .{}) catch {};
+    _ = db_ctx.conn.exec("DROP TABLE IF EXISTS public.test_reap_noop_b", .{}) catch {};
+
+    try pool_mod.runMigrations(db_ctx.pool, &canonical);
+
+    // Second run — reap must preserve all canonical rows (no-op).
+    try pool_mod.runMigrations(db_ctx.pool, &canonical);
+
+    {
+        var q = PgQuery.from(try db_ctx.conn.query(
+            "SELECT COUNT(*)::BIGINT FROM audit.schema_migrations WHERE version IN ($1, $2)",
+            .{ v1, v2 },
+        ));
+        defer q.deinit();
+        const row = (try q.next()) orelse return error.TestUnexpectedResult;
+        const count = try row.get(i64, 0);
+        try std.testing.expectEqual(@as(i64, 2), count);
+    }
+
+    _ = db_ctx.conn.exec("DELETE FROM audit.schema_migrations WHERE version IN ($1, $2)", .{ v1, v2 }) catch {};
+    _ = db_ctx.conn.exec("DROP TABLE IF EXISTS public.test_reap_noop_a", .{}) catch {};
+    _ = db_ctx.conn.exec("DROP TABLE IF EXISTS public.test_reap_noop_b", .{}) catch {};
+}
+
 test "integration: readonly roles can only query ops_ro views, not vault" {
     if (!std.process.hasEnvVarConstant("LIVE_DB")) return error.SkipZigTest;
     const alloc = std.testing.allocator;
