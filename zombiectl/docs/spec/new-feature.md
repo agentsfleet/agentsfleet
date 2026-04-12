@@ -3,7 +3,7 @@
 **Prototype:** v1.0.0
 **Milestone:** M{N}
 **Workstream:** 001
-**Date:** Apr 11, 2026
+**Date:** Apr 12, 2026
 **Status:** PENDING
 **Priority:** P1 — {one-line description of what this workstream delivers}
 **Batch:** B1
