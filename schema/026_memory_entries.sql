@@ -1,52 +1,36 @@
--- M14_001: Zombie agent memory — durable store for `core` and `daily` categories.
+-- M14_001: Zombie agent memory — schema, role, and grants.
 -- Survives workspace destruction. Isolated from core.* via the memory_runtime role.
 -- See docs/v2/active/M14_001_PERSISTENT_ZOMBIE_MEMORY.md.
 -- Confused-deputy mitigation per RULE CTX: memory lives behind a process boundary
 -- (Postgres role with no grants on core.*), NOT a shared filesystem.
+--
+-- NOTE: NullClaw's PostgresMemory.init() auto-migrates the actual tables
+-- (memory_entries, messages, session_usage) on first connect. This migration
+-- only creates the schema and role; table DDL is intentionally delegated to
+-- NullClaw so its column layout (instance_id TEXT, TIMESTAMPTZ timestamps, etc.)
+-- stays coherent with NullClaw's internal queries. Steps 5+ (export/import)
+-- can ALTER TABLE to add operator-visible columns (e.g. tags[]) without
+-- conflicting with NullClaw's required columns.
+--
+-- Row-level isolation: memory_runtime connects with instance_id="zmb:{uuid}"
+-- (set by zombie_memory.zig). NullClaw's queries all scope by instance_id,
+-- so two concurrent zombies cannot read each other's entries.
 
-CREATE TABLE IF NOT EXISTS memory.memory_entries (
-    id              UUID PRIMARY KEY,
-    CONSTRAINT ck_memory_entries_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
-    zombie_id       UUID NOT NULL REFERENCES core.zombies(id),
-    category        TEXT NOT NULL,
-    key             TEXT NOT NULL,
-    content         TEXT NOT NULL,
-    tags            TEXT[] NOT NULL DEFAULT '{}',
-    created_at      BIGINT NOT NULL,
-    updated_at      BIGINT NOT NULL,
-    CONSTRAINT ck_memory_entries_category
-        CHECK (category IN ('core', 'daily', 'conversation', 'workspace')),
-    CONSTRAINT ck_memory_entries_key_len
-        CHECK (char_length(key) BETWEEN 1 AND 255),
-    CONSTRAINT ck_memory_entries_content_len
-        CHECK (char_length(content) BETWEEN 1 AND 16384),
-    CONSTRAINT ck_memory_entries_tags_count
-        CHECK (coalesce(array_length(tags, 1), 0) <= 32),
-    CONSTRAINT uq_memory_entries_scope
-        UNIQUE (zombie_id, category, key)
-);
+-- memory_runtime role is created in schema/004_vault_schema.sql.
+-- This migration scopes it to the memory schema and grants it CREATE
+-- so NullClaw can auto-migrate its tables on first connect.
+GRANT USAGE, CREATE ON SCHEMA memory TO memory_runtime;
 
--- Primary lookup: recall/list by zombie + category.
-CREATE INDEX IF NOT EXISTS idx_memory_entries_zombie_category
-    ON memory.memory_entries(zombie_id, category);
+-- Auto-grant on any tables NullClaw creates. This covers memory_entries,
+-- messages, and session_usage which NullClaw auto-creates at runtime.
+ALTER DEFAULT PRIVILEGES IN SCHEMA memory
+    GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO memory_runtime;
 
--- Recency ordering for "last N entries" and retention pruning.
-CREATE INDEX IF NOT EXISTS idx_memory_entries_zombie_updated
-    ON memory.memory_entries(zombie_id, updated_at DESC);
-
--- Tag filter for memory_list(tag=...) queries.
-CREATE INDEX IF NOT EXISTS idx_memory_entries_tags
-    ON memory.memory_entries USING GIN (tags);
-
--- Runtime grants: memory_runtime is the ONLY runtime role with access.
--- worker_runtime and api_runtime intentionally have zero grants here.
--- Any agent shell tool running under a different role cannot reach memory.
-GRANT USAGE ON SCHEMA memory TO memory_runtime;
-GRANT SELECT, INSERT, UPDATE, DELETE ON memory.memory_entries TO memory_runtime;
+ALTER DEFAULT PRIVILEGES IN SCHEMA memory
+    GRANT USAGE, SELECT ON SEQUENCES TO memory_runtime;
 
 -- memory_runtime search_path is scoped to its own schema.
 ALTER ROLE memory_runtime SET search_path = memory, public;
 
 -- Negative-test guarantee: nothing else can read memory tables.
-REVOKE ALL ON ALL TABLES IN SCHEMA memory FROM PUBLIC;
 REVOKE CREATE ON SCHEMA memory FROM PUBLIC;
