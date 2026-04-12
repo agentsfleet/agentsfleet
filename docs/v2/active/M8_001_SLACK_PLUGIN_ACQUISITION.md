@@ -4,7 +4,7 @@
 **Milestone:** M8
 **Workstream:** 001
 **Date:** Apr 09, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P0 — Primary distribution channel; zero-friction onboarding
 **Batch:** B4 — after M4 (approval gate in Slack), M6 (firewall)
 **Branch:** feat/m8-slack-plugin
