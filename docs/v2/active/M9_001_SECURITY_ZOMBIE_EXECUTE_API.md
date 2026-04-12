@@ -4,10 +4,10 @@
 **Milestone:** M9
 **Workstream:** 001
 **Date:** Apr 09, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — Expands TAM to any agent framework (LangGraph, CrewAI, OpenAI SDK)
 **Batch:** B4 — after M6 (firewall inspects all requests), M4 (approval gate)
-**Branch:** feat/m9-execute-api
+**Branch:** feat/m9-001-execute-api
 **Depends on:** M6_001 (firewall policy engine), M4_001 (approval gate), M5_001 (tool bridge)
 
 ---
