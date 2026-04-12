@@ -2,9 +2,11 @@
 Milestone: M17
 Workstream: M17_001
 Name: HARNESS_AGENT_PROFILE_TEARDOWN
-Status: PENDING
+Status: IN_PROGRESS
 Priority: P1 — removes ~2,400 lines of orphaned infrastructure with zero runtime consumers
 Created: Apr 12, 2026
+Started: Apr 12, 2026
+Branch: feat/m17-001-harness-teardown
 Depends on: none
 ---
 
