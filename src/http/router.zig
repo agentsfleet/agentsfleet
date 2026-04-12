@@ -49,6 +49,9 @@ pub const Route = union(enum) {
     request_integration_grant: []const u8,    // POST /v1/zombies/{id}/integration-requests
     list_integration_grants: []const u8,      // GET  /v1/zombies/{id}/integration-grants
     revoke_integration_grant: matchers.ZombieGrantRoute, // DELETE /v1/zombies/{id}/integration-grants/{grant_id}
+    // M9_001: External agent key management
+    external_agents: []const u8,              // POST|GET /v1/workspaces/{ws}/external-agents
+    delete_external_agent: matchers.WorkspaceAgentRoute, // DELETE /v1/workspaces/{ws}/external-agents/{agent_id}
 };
 
 const matchWorkspaceSuffix = matchers.matchWorkspaceSuffix;
@@ -115,6 +118,10 @@ pub fn match(path: []const u8) ?Route {
     if (matchers.matchZombieSuffix(path, "/integration-requests")) |zombie_id| return .{ .request_integration_grant = zombie_id };
     if (matchers.matchZombieGrantRevoke(path)) |route| return .{ .revoke_integration_grant = route };
     if (matchers.matchZombieSuffix(path, "/integration-grants")) |zombie_id| return .{ .list_integration_grants = zombie_id };
+
+    // M9_001: External agent key management (DELETE before GET/POST to prevent suffix clash)
+    if (matchers.matchWorkspaceAgentDelete(path)) |route| return .{ .delete_external_agent = route };
+    if (matchers.matchWorkspaceSuffix(path, "/external-agents")) |workspace_id| return .{ .external_agents = workspace_id };
 
     // M4_001: Zombie approval gate callback — /v1/webhooks/{zombie_id}:approval
     if (matchers.matchWebhookAction(path, ":approval")) |zombie_id| return .{ .approval_webhook = zombie_id };

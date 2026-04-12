@@ -132,6 +132,13 @@ fn dispatchMatchedRoute(ctx: *handler.Context, req: *httpz.Request, res: *httpz.
         .request_integration_grant => |zombie_id| if (req.method == .POST) handler.handleRequestGrant(ctx, req, res, zombie_id) else respondMethodNotAllowed(res),
         .list_integration_grants => |zombie_id| if (req.method == .GET) handler.handleListGrants(ctx, req, res, zombie_id) else respondMethodNotAllowed(res),
         .revoke_integration_grant => |route| if (req.method == .DELETE) handler.handleRevokeGrant(ctx, req, res, route.zombie_id, route.grant_id) else respondMethodNotAllowed(res),
+        // M9_001: External agent key management
+        .external_agents => |workspace_id| switch (req.method) {
+            .POST => handler.handleCreateExternalAgent(ctx, req, res, workspace_id),
+            .GET  => handler.handleListExternalAgents(ctx, req, res, workspace_id),
+            else  => respondMethodNotAllowed(res),
+        },
+        .delete_external_agent => |route| if (req.method == .DELETE) handler.handleDeleteExternalAgent(ctx, req, res, route.workspace_id, route.agent_id) else respondMethodNotAllowed(res),
     }
     return true;
 }

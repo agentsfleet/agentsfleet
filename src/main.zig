@@ -170,6 +170,7 @@ test {
     _ = @import("http/handlers/execute.zig");
     _ = @import("http/handlers/execute_pipeline.zig");
     _ = @import("http/handlers/integration_grants.zig");
+    _ = @import("http/handlers/external_agents.zig");
     _ = @import("http/route_matchers.zig");
     _ = @import("cmd/worker_zombie.zig");
     // M6_001: AI Firewall Policy Engine

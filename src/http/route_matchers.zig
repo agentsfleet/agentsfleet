@@ -67,6 +67,26 @@ pub fn matchZombieId(path: []const u8) ?[]const u8 {
     return zombie_id;
 }
 
+// M9_001: WorkspaceAgentRoute carries workspace_id + agent_id for external-agent DELETE.
+pub const WorkspaceAgentRoute = struct {
+    workspace_id: []const u8,
+    agent_id: []const u8,
+};
+
+// M9_001: matchWorkspaceAgentDelete matches /v1/workspaces/{ws}/external-agents/{agent_id}.
+pub fn matchWorkspaceAgentDelete(path: []const u8) ?WorkspaceAgentRoute {
+    const prefix = "/v1/workspaces/";
+    const mid = "/external-agents/";
+    if (!std.mem.startsWith(u8, path, prefix)) return null;
+    const rest = path[prefix.len..];
+    const slash = std.mem.indexOf(u8, rest, mid) orelse return null;
+    const workspace_id = rest[0..slash];
+    if (!isSingleSegment(workspace_id)) return null;
+    const agent_id = rest[slash + mid.len ..];
+    if (!isSingleSegment(agent_id)) return null;
+    return .{ .workspace_id = workspace_id, .agent_id = agent_id };
+}
+
 // M9_001: matchZombieSuffix matches /v1/zombies/{id}/{suffix} and returns the zombie_id.
 pub fn matchZombieSuffix(path: []const u8, suffix: []const u8) ?[]const u8 {
     const prefix = "/v1/zombies/";
@@ -95,6 +115,15 @@ pub fn matchZombieGrantRevoke(path: []const u8) ?ZombieGrantRoute {
     const grant_id = rest[slash + mid.len ..];
     if (!isSingleSegment(grant_id)) return null;
     return .{ .zombie_id = zombie_id, .grant_id = grant_id };
+}
+
+test "matchWorkspaceAgentDelete: workspace_id and agent_id" {
+    const r = matchWorkspaceAgentDelete("/v1/workspaces/ws1/external-agents/ag1").?;
+    try std.testing.expectEqualStrings("ws1", r.workspace_id);
+    try std.testing.expectEqualStrings("ag1", r.agent_id);
+    try std.testing.expect(matchWorkspaceAgentDelete("/v1/workspaces/ws1/external-agents/") == null);
+    try std.testing.expect(matchWorkspaceAgentDelete("/v1/workspaces//external-agents/ag1") == null);
+    try std.testing.expect(matchWorkspaceAgentDelete("/v1/workspaces/a/b/external-agents/ag1") == null);
 }
 
 test "matchZombieSuffix: integration-requests and integration-grants" {
