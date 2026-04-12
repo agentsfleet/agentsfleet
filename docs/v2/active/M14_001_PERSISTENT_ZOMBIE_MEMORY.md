@@ -90,7 +90,7 @@ in workspace SQLite. Row-level scoping is enforced at the query layer.
 
 | Dim | Status | Target | Input | Expected | Test type |
 |-----|--------|--------|-------|----------|-----------|
-| 2.1 | PENDING | `src/executor/types.zig:MemoryBackendConfig` | `MemoryBackendConfig{ .backend = "postgres", .connection = "...", .namespace = "zmb:zom_01JQ...", .max_entries = 100000, .daily_retention_hours = 72 }` | struct validates at startup; rejects empty namespace, invalid backend | unit |
+| 2.1 | PENDING | `src/executor/types.zig:MemoryBackendConfig` | `MemoryBackendConfig{ .backend = "postgres", .connection = "...", .namespace = "zmb:0195b4ba-8d3a-7f13-8abc-...", .max_entries = 100000, .daily_retention_hours = 72 }` | struct validates at startup; rejects empty namespace, invalid backend | unit |
 | 2.2 | PENDING | `src/executor/runner.zig:executeInner` | zombie_id `zom_A` running concurrently with `zom_B` | Zombie A's `memory_store("user_pref", "dark")` NOT visible to Zombie B's `memory_recall("user_pref")`; scope enforced via `WHERE zombie_id = $current` in every memory op | integration |
 | 2.3 | PENDING | `src/memory/zombie_memory.zig` | NullClaw calls `memory_store` with category `core` | write goes to `memory.memory_entries` in the memory schema; `conversation` category still writes to workspace SQLite | integration |
 | 2.4 | PENDING | crash recovery path | zombie stores memory, then SIGKILL, then restart | all memory_store calls committed before SIGKILL are recoverable; `UPSERT` semantics (not INSERT) so retried writes don't conflict | integration |
@@ -179,7 +179,7 @@ zombiectl memory scrub          --zombie <id> --pattern <regex>   # PII redactio
 |-------|------|-------------|---------|
 | backend | string | one of: `postgres` (sqlite, redis reserved for future) | `"postgres"` |
 | connection | string | valid Postgres URI | `"postgresql://memory_runtime:..."` |
-| namespace | string | non-empty; pattern `zmb:zom_[0-9A-Z]{26}` | `"zmb:zom_01JQ..."` |
+| namespace | string | non-empty; must start with `zmb:` followed by a 36-char UUID v7 | `"zmb:0195b4ba-8d3a-7f13-8abc-000000000100"` |
 | category | enum | one of: `core`, `daily`, `conversation`, `workspace` | `"core"` |
 | key | string | 1-255 bytes, UTF-8 | `"lead_acme_corp"` |
 | content | string | 1-16384 bytes | `"Acme Corp — CTO Jane..."` |
@@ -189,7 +189,7 @@ zombiectl memory scrub          --zombie <id> --pattern <regex>   # PII redactio
 
 | Field | Type | When | Example |
 |-------|------|------|---------|
-| `memory.backend_ready` | log line | executor startup success | `backend=postgres namespace=zmb:zom_01JQ...` |
+| `memory.backend_ready` | log line | executor startup success | `backend=postgres namespace=zmb:0195b4ba-8d3a-7f13-8abc-...` |
 | `memory.backend_unavailable` | log warning | connection failure | `err=ConnectionRefused — falling back to ephemeral` |
 | `ExportSummary{count, bytes, files}` | struct | `exportZombie` completes | `{count: 47, bytes: 12403, files: 47}` |
 | `ImportSummary{upserted, rejected, errors}` | struct | `importZombie` completes | `{upserted: 45, rejected: 2, errors: []}` |
@@ -251,7 +251,7 @@ zombiectl memory scrub          --zombie <id> --pattern <regex>   # PII redactio
 | # | Invariant | Enforcement mechanism |
 |---|-----------|----------------------|
 | 1 | Every memory operation includes `WHERE zombie_id = $current` | Query-builder wrapper; grep in CI to verify no raw SQL bypasses it |
-| 2 | `MemoryBackendConfig.namespace` matches `zmb:zom_[0-9A-Z]{26}` pattern | comptime regex validation in `init` |
+| 2 | `MemoryBackendConfig.namespace` starts with `zmb:` followed by a valid UUID v7 | `validate()` checks prefix and UUID v7 format |
 | 3 | `Category` enum has exactly four variants (`core`, `daily`, `conversation`, `workspace`) | Zig enum exhaustiveness check at comptime |
 
 ---
@@ -266,7 +266,7 @@ zombiectl memory scrub          --zombie <id> --pattern <regex>   # PII redactio
 |-----------|-----|--------|-------|----------|
 | `memory_config_default_ephemeral` | 4.3 | `types.zig` | null config | falls back to workspace SQLite |
 | `memory_config_validates_backend` | 2.1 | `types.zig` | `backend="invalid"` | returns validation error |
-| `memory_config_namespace_format` | 2.1 | `types.zig` | namespace `"zmb:zom_01JQ..."` | validates; empty namespace errors |
+| `memory_config_namespace_format` | 2.1 | `types.zig` | namespace `"zmb:0195b4ba-8d3a-7f13-8abc-..."` | validates; empty namespace errors |
 | `category_enum_exhaustive` | 2.3 | `zombie_memory.zig` | all four variants | compiles; fifth variant = compile error |
 | `memory_full_errors_core` | 4.2 | `zombie_memory.zig` | zombie at `max_entries`, store attempt | returns `UZ-MEM-FULL` |
 | `memory_forget_idempotent` | 4.4 | `zombie_memory.zig` | forget non-existent key | returns false, no error |
