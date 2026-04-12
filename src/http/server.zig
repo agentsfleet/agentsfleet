@@ -109,6 +109,11 @@ fn dispatchMatchedRoute(ctx: *handler.Context, req: *httpz.Request, res: *httpz.
             .GET => handler.handleGetWorkspaceLlmCredential(ctx, req, res, workspace_id),
             else => respondMethodNotAllowed(res),
         },
+        // M14_001: External-agent memory API
+        .memory_store => if (req.method == .POST) handler.handleMemoryStore(ctx, req, res) else respondMethodNotAllowed(res),
+        .memory_recall => if (req.method == .POST) handler.handleMemoryRecall(ctx, req, res) else respondMethodNotAllowed(res),
+        .memory_list => if (req.method == .POST) handler.handleMemoryList(ctx, req, res) else respondMethodNotAllowed(res),
+        .memory_forget => if (req.method == .POST) handler.handleMemoryForget(ctx, req, res) else respondMethodNotAllowed(res),
         // M4_001: Zombie approval gate callback
         .approval_webhook => |zombie_id| if (req.method == .POST) handler.handleApprovalCallback(ctx, req, res, zombie_id) else respondMethodNotAllowed(res),
         // M1_001: Zombie webhook ingestion

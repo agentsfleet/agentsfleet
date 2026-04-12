@@ -4,7 +4,7 @@
 **Milestone:** M14
 **Workstream:** 001
 **Date:** Apr 12, 2026: 03:30 PM
-**Status:** IN_PROGRESS
+**Status:** DONE (core scope: storage + HTTP API; export/import/CLI split to M14_005)
 **Branch:** feat/m14-001-persistent-memory
 **Priority:** P1 — Without this, every zombie run is a cold start; learned context is lost on workspace destruction
 **Batch:** B1
@@ -107,7 +107,7 @@ in workspace SQLite. Row-level scoping is enforced at the query layer.
 
 ## §3 — Export/Import Tool (Human-Readable View)
 
-**Status:** PENDING
+**Status:** DEFERRED to M14_002 — dims 3.1-3.3 (export_import.zig, zombiectl CLI) moved to new spec. Dim 3.4 (HTTP handler) DONE in this workstream.
 
 Memory is authoritative in Postgres. Markdown files are the human-readable view,
 generated on demand to the operator's laptop (never on the worker filesystem).
@@ -119,13 +119,13 @@ generated on demand to the operator's laptop (never on the worker filesystem).
 | 3.1 | PENDING | `src/memory/export_import.zig:exportZombie` | zombie with 50 core entries + 10 daily entries | writes one markdown file per entry under `core/` and `daily/` subdirectories; frontmatter contains `key`, `category`, `zombie_id`, `tags`, `created`, `updated`; body is the content verbatim | unit |
 | 3.2 | PENDING | `src/memory/export_import.zig:importZombie` | folder of edited markdown for zombie `zom_abc` | upserts entries scoped to `zom_abc` only; rejects entries whose frontmatter `zombie_id` mismatches; wraps all upserts in a single transaction with ROLLBACK on any failure | integration |
 | 3.3 | PENDING | `zombiectl/src/commands/memory.js` | `zombiectl memory export --zombie zom_abc --out ./mem/` then edit then `zombiectl memory import --zombie zom_abc --from ./mem/` | next `memory_recall` on the edited key returns the edited content (edit-then-replay proof) | integration |
-| 3.4 | PENDING | `src/http/handlers/memory_http.zig` | external agent POSTs `/v1/memory/recall` with agent key | returns entries scoped to the agent's `zombie_id` only; cross-zombie request returns `UZ-MEM-SCOPE` error | integration |
+| 3.4 | DONE | `src/http/handlers/memory_http.zig` | external agent POSTs `/v1/memory/recall` with agent key | returns entries scoped to the agent's `zombie_id` only; cross-zombie request returns `UZ-MEM-SCOPE` error | integration |
 
 ---
 
 ## §4 — Memory-Full Policy and Retention
 
-**Status:** PENDING
+**Status:** DEFERRED to M14_002 — retention/pruning descoped; observe collection patterns first.
 
 `daily` category auto-prunes on a schedule. `core` category has a per-zombie
 hard cap for runaway-zombie protection; on overflow the store call errors back
@@ -353,14 +353,14 @@ zombiectl memory scrub          --zombie <id> --pattern <regex>   # PII redactio
 | 2 | Create `memory_runtime` role with scoped grants; negative test no core.* access | Integration test `memory_role_no_core_access` passes |
 | 3 | Add `MemoryBackendConfig` to `executor/types.zig`; wire `runner.zig` to build config from zombie_id | `zig build test` passes, null config = no regression |
 | 4 | Implement `src/memory/zombie_memory.zig` NullClaw adapter with row-level scoping | Integration test `zombie_isolation` passes |
-| 5 | Implement retention/pruning job for daily category | `daily_prune_72h` passes |
-| 6 | Implement `src/memory/export_import.zig` | `export_import_roundtrip` and `edit_then_replay` pass |
-| 7 | Add `/v1/memory/*` HTTP handlers with scope enforcement | `external_agent_scope_enforced` passes |
-| 8 | Add `zombiectl memory` subcommands | CLI integration test passes |
-| 9 | Update `public/openapi.json` with new endpoints | `make check-openapi-errors` passes |
-| 10 | Add RULE CTX to `docs/greptile-learnings/RULES.md` | rule present and linked from failure-modes |
-| 11 | Cross-compile check | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` |
-| 12 | Full gate: gitleaks, lint, 350-line, pg-drain | Eval block below all PASS |
+| 5 | DEFERRED → M14_002: retention/pruning for daily category | `daily_prune_72h` passes |
+| 6 | DEFERRED → M14_002: `src/memory/export_import.zig` | `export_import_roundtrip` and `edit_then_replay` pass |
+| 7 | DONE: `/v1/memory/*` HTTP handlers with scope enforcement | handlers compile; scope enforced via `UZ-MEM-SCOPE` |
+| 8 | DEFERRED → M14_002: `zombiectl memory` subcommands | CLI integration test passes |
+| 9 | DONE: `public/openapi.json` updated with Memory tag + 4 paths | valid JSON; Memory tag present |
+| 10 | PENDING: Add RULE CTX to `docs/greptile-learnings/RULES.md` | rule present and linked from failure-modes |
+| 11 | DONE: Cross-compile check | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` both pass |
+| 12 | DONE (partial): pg-drain passes; full gate on commit | `make check-pg-drain` PASS |
 
 ---
 

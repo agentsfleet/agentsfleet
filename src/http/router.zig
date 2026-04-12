@@ -43,6 +43,11 @@ pub const Route = union(enum) {
     delete_zombie: []const u8, // DELETE /v1/zombies/{id}
     zombie_activity, // GET /v1/zombies/activity
     zombie_credentials, // GET|POST /v1/zombies/credentials
+    // M14_001: External-agent memory API
+    memory_store, // POST /v1/memory/store
+    memory_recall, // POST /v1/memory/recall
+    memory_list, // POST /v1/memory/list
+    memory_forget, // POST /v1/memory/forget
 };
 
 const matchWorkspaceSuffix = matchers.matchWorkspaceSuffix;
@@ -95,6 +100,12 @@ pub fn match(path: []const u8) ?Route {
     if (matchWorkspaceSuffix(path, "/billing/summary")) |workspace_id| return .{ .get_workspace_billing_summary = workspace_id };
     if (matchWorkspaceSuffix(path, "/scoring/config")) |workspace_id| return .{ .set_workspace_scoring_config = workspace_id };
     if (matchWorkspaceSuffix(path, "/harness/source")) |workspace_id| return .{ .put_harness_source = workspace_id };
+
+    // M14_001: External-agent memory API
+    if (std.mem.eql(u8, path, "/v1/memory/store")) return .memory_store;
+    if (std.mem.eql(u8, path, "/v1/memory/recall")) return .memory_recall;
+    if (std.mem.eql(u8, path, "/v1/memory/list")) return .memory_list;
+    if (std.mem.eql(u8, path, "/v1/memory/forget")) return .memory_forget;
 
     // M2_001: Zombie CRUD + activity + credentials
     if (std.mem.eql(u8, path, "/v1/zombies/")) return .list_or_create_zombies;

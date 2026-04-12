@@ -21,6 +21,12 @@
 -- so NullClaw can auto-migrate its tables on first connect.
 GRANT USAGE, CREATE ON SCHEMA memory TO memory_runtime;
 
+-- Allow api_runtime to SET ROLE memory_runtime in HTTP handlers.
+-- RULE CTX: api_runtime still has zero direct grants on memory.*
+-- (those belong to memory_runtime). SET ROLE gives temporary memory
+-- access within a single request; RESET ROLE restores api_runtime.
+GRANT memory_runtime TO api_runtime;
+
 -- Auto-grant on any tables NullClaw creates. This covers memory_entries,
 -- messages, and session_usage which NullClaw auto-creates at runtime.
 ALTER DEFAULT PRIVILEGES IN SCHEMA memory
