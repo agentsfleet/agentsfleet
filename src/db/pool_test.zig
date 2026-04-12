@@ -437,6 +437,57 @@ test "integration: runMigrations is idempotent when table exists but migration r
     _ = db_ctx.conn.exec("DROP TABLE IF EXISTS public.test_migration_idempotency_fixture", .{}) catch {};
 }
 
+test "integration: runMigrations reaps orphan rows for versions no longer in canonical list" {
+    if (!std.process.hasEnvVarConstant("LIVE_DB")) return error.SkipZigTest;
+    const alloc = std.testing.allocator;
+    const db_ctx = (try openIntegrationTestConn(alloc)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
+
+    const orphan_version: i32 = 99997;
+    const keep_version: i32 = 99996;
+    const keep_sql =
+        \\CREATE TABLE IF NOT EXISTS public.test_reap_keep_fixture (id BIGINT PRIMARY KEY);
+    ;
+    const canonical = [_]pool_mod.Migration{
+        .{ .version = keep_version, .sql = keep_sql },
+    };
+
+    // Clean slate, then seed an orphan row (simulates a migration that was removed
+    // from the canonical list — e.g., M17_001's v8 and v11).
+    _ = db_ctx.conn.exec("DELETE FROM audit.schema_migrations WHERE version IN ($1, $2)", .{ orphan_version, keep_version }) catch {};
+    _ = db_ctx.conn.exec("DELETE FROM audit.schema_migration_failures WHERE version IN ($1, $2)", .{ orphan_version, keep_version }) catch {};
+    _ = db_ctx.conn.exec("DROP TABLE IF EXISTS public.test_reap_keep_fixture", .{}) catch {};
+    _ = try db_ctx.conn.exec(
+        "INSERT INTO audit.schema_migrations (version, applied_at) VALUES ($1, $2)",
+        .{ orphan_version, std.time.milliTimestamp() },
+    );
+
+    // Run canonical migrations — the reap step should remove orphan_version.
+    try pool_mod.runMigrations(db_ctx.pool, &canonical);
+
+    {
+        var q = PgQuery.from(try db_ctx.conn.query(
+            "SELECT 1 FROM audit.schema_migrations WHERE version = $1",
+            .{orphan_version},
+        ));
+        defer q.deinit();
+        try std.testing.expect((try q.next()) == null);
+    }
+
+    {
+        var q = PgQuery.from(try db_ctx.conn.query(
+            "SELECT 1 FROM audit.schema_migrations WHERE version = $1",
+            .{keep_version},
+        ));
+        defer q.deinit();
+        try std.testing.expect((try q.next()) != null);
+    }
+
+    _ = db_ctx.conn.exec("DELETE FROM audit.schema_migrations WHERE version = $1", .{keep_version}) catch {};
+    _ = db_ctx.conn.exec("DROP TABLE IF EXISTS public.test_reap_keep_fixture", .{}) catch {};
+}
+
 test "integration: readonly roles can only query ops_ro views, not vault" {
     if (!std.process.hasEnvVarConstant("LIVE_DB")) return error.SkipZigTest;
     const alloc = std.testing.allocator;
