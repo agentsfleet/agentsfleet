@@ -17,6 +17,8 @@ const routes = [
   { key: "skill-secret", match: (cmd) => cmd === "skill-secret" },
   { key: "agent", match: (cmd) => cmd === "agent" },
   { key: "admin", match: (cmd) => cmd === "admin" },
+  // M9_001: Integration grant management
+  { key: "grant", match: (cmd) => cmd === "grant" },
   // M1_001 §5: Zombie commands — flat top-level for common ops
   { key: "zombie.install", match: (cmd) => cmd === "install" },
   { key: "zombie.up", match: (cmd) => cmd === "up" },

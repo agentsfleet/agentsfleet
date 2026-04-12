@@ -8,6 +8,7 @@ import { findRoute } from "./program/routes.js";
 import { registerProgramCommands } from "./program/command-registry.js";
 import { commandHarness as commandHarnessModule } from "./commands/harness.js";
 import { commandAgent as commandAgentModule } from "./commands/agent.js";
+import { commandGrant as commandGrantModule } from "./commands/grant.js";
 import { commandAdmin as commandAdminModule } from "./commands/admin.js";
 import { commandZombie as commandZombieModule } from "./commands/zombie.js";
 import { commandRuns as commandRunsModule } from "./commands/runs.js";
@@ -148,6 +149,16 @@ export async function runCli(argv, io = {}) {
       printJson,
       printKeyValue,
       printSection,
+      printTable,
+      writeLine,
+    }),
+    // M9_001: Integration grant management
+    grant: (routeArgs) => commandGrantModule(ctx, routeArgs, workspaces, {
+      parseFlags,
+      request,
+      apiHeaders,
+      ui,
+      printJson,
       printTable,
       writeLine,
     }),

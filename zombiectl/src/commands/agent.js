@@ -4,6 +4,7 @@ import { commandAgentProfile } from "./agent_profile.js";
 import { commandAgentImprovementReport } from "./agent_improvement_report.js";
 import { commandAgentProposals } from "./agent_proposals.js";
 import { commandAgentHarness } from "./agent_harness.js";
+import { commandAgentCreate, commandAgentList, commandAgentDelete } from "./agent_external.js";
 import { validateRequiredId } from "../program/validate.js";
 import { writeError } from "../program/io.js";
 
@@ -67,6 +68,11 @@ export async function commandAgent(ctx, args, workspaces, deps) {
     return commandAgentProposals(ctx, parsed, agentId, deps);
   }
 
+  // M9_001: External agent key management
+  if (action === "create") return commandAgentCreate(ctx, parsed, deps);
+  if (action === "list")   return commandAgentList(ctx, parsed, deps);
+  if (action === "delete") return commandAgentDelete(ctx, parsed, deps);
+
   if (action === "harness") {
     if (!agentId) {
       writeError(ctx, "USAGE_ERROR", "agent harness revert requires <agent-id>", deps);
@@ -97,8 +103,11 @@ export async function commandAgent(ctx, args, workspaces, deps) {
     writeLine(ctx.stderr, ui.err("usage: agent scores <agent-id> [--limit N] [--starting-after ID] [--json]"));
     writeLine(ctx.stderr, ui.err("       agent profile <agent-id> [--json]"));
     writeLine(ctx.stderr, ui.err("       agent improvement-report <agent-id> [--json]"));
-    writeLine(ctx.stderr, ui.err("       agent proposals <agent-id> [approve <proposal-id> | reject <proposal-id> [--reason TEXT] | veto <proposal-id> [--reason TEXT] | --json]"));
+    writeLine(ctx.stderr, ui.err("       agent proposals <agent-id> [approve|reject|veto <proposal-id>]"));
     writeLine(ctx.stderr, ui.err("       agent harness revert <agent-id> --to-change <change-id>"));
+    writeLine(ctx.stderr, ui.err("       agent create --workspace <ws> --zombie <id> --name <name>"));
+    writeLine(ctx.stderr, ui.err("       agent list   --workspace <ws>"));
+    writeLine(ctx.stderr, ui.err("       agent delete --workspace <ws> <agent-id>"));
   }
   return 2;
 }
