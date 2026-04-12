@@ -67,6 +67,53 @@ pub fn matchZombieId(path: []const u8) ?[]const u8 {
     return zombie_id;
 }
 
+// M9_001: matchZombieSuffix matches /v1/zombies/{id}/{suffix} and returns the zombie_id.
+pub fn matchZombieSuffix(path: []const u8, suffix: []const u8) ?[]const u8 {
+    const prefix = "/v1/zombies/";
+    if (!std.mem.startsWith(u8, path, prefix)) return null;
+    if (!std.mem.endsWith(u8, path, suffix)) return null;
+    const inner = path[prefix.len .. path.len - suffix.len];
+    if (!isSingleSegment(inner)) return null;
+    return inner;
+}
+
+// M9_001: ZombieGrantRoute carries zombie_id + grant_id for DELETE grant.
+pub const ZombieGrantRoute = struct {
+    zombie_id: []const u8,
+    grant_id: []const u8,
+};
+
+// M9_001: matchZombieGrantRevoke matches /v1/zombies/{zombie_id}/integration-grants/{grant_id}.
+pub fn matchZombieGrantRevoke(path: []const u8) ?ZombieGrantRoute {
+    const prefix = "/v1/zombies/";
+    const mid = "/integration-grants/";
+    if (!std.mem.startsWith(u8, path, prefix)) return null;
+    const rest = path[prefix.len..];
+    const slash = std.mem.indexOf(u8, rest, mid) orelse return null;
+    const zombie_id = rest[0..slash];
+    if (!isSingleSegment(zombie_id)) return null;
+    const grant_id = rest[slash + mid.len ..];
+    if (!isSingleSegment(grant_id)) return null;
+    return .{ .zombie_id = zombie_id, .grant_id = grant_id };
+}
+
+test "matchZombieSuffix: integration-requests and integration-grants" {
+    const id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
+    try std.testing.expectEqualStrings(id, matchZombieSuffix("/v1/zombies/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/integration-requests", "/integration-requests").?);
+    try std.testing.expectEqualStrings(id, matchZombieSuffix("/v1/zombies/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/integration-grants", "/integration-grants").?);
+    try std.testing.expect(matchZombieSuffix("/v1/zombies//integration-requests", "/integration-requests") == null);
+    try std.testing.expect(matchZombieSuffix("/v1/zombies/a/b/integration-requests", "/integration-requests") == null);
+}
+
+test "matchZombieGrantRevoke: zombie_id and grant_id" {
+    const r = matchZombieGrantRevoke("/v1/zombies/z1/integration-grants/g1").?;
+    try std.testing.expectEqualStrings("z1", r.zombie_id);
+    try std.testing.expectEqualStrings("g1", r.grant_id);
+    try std.testing.expect(matchZombieGrantRevoke("/v1/zombies/z1/integration-grants/") == null);
+    try std.testing.expect(matchZombieGrantRevoke("/v1/zombies//integration-grants/g1") == null);
+    try std.testing.expect(matchZombieGrantRevoke("/v1/zombies/z1/z2/integration-grants/g1") == null);
+}
+
 test "matchZombieId: excludes sub-paths" {
     try std.testing.expect(matchZombieId("/v1/zombies/activity") == null);
     try std.testing.expect(matchZombieId("/v1/zombies/credentials") == null);

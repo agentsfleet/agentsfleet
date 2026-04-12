@@ -19,6 +19,7 @@ const approval_http = @import("handlers/approval_http.zig");
 const zombie_api_http = @import("handlers/zombie_api.zig");
 const zombie_activity_api_http = @import("handlers/zombie_activity_api.zig");
 const execute_http = @import("handlers/execute.zig");
+const integration_grants_http = @import("handlers/integration_grants.zig");
 
 pub const Context = common.Context;
 pub const SkillSecretRoute = skill_secret_handlers.Route;
@@ -74,6 +75,11 @@ pub const handleListCredentials = zombie_activity_api_http.handleListCredentials
 
 // M9_001: Execute proxy
 pub const handleExecute = execute_http.handleExecute;
+
+// M9_001: Integration grant CRUD
+pub const handleRequestGrant = integration_grants_http.handleRequestGrant;
+pub const handleListGrants = integration_grants_http.handleListGrants;
+pub const handleRevokeGrant = integration_grants_http.handleRevokeGrant;
 
 pub fn parseSkillSecretRoute(path: []const u8) ?SkillSecretRoute {
     return skill_secret_handlers.parseRoute(path);

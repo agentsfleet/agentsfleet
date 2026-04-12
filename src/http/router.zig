@@ -45,6 +45,10 @@ pub const Route = union(enum) {
     zombie_credentials, // GET|POST /v1/zombies/credentials
     // M9_001: Execute proxy endpoint
     execute, // POST /v1/execute
+    // M9_001: Integration grant CRUD
+    request_integration_grant: []const u8,    // POST /v1/zombies/{id}/integration-requests
+    list_integration_grants: []const u8,      // GET  /v1/zombies/{id}/integration-grants
+    revoke_integration_grant: matchers.ZombieGrantRoute, // DELETE /v1/zombies/{id}/integration-grants/{grant_id}
 };
 
 const matchWorkspaceSuffix = matchers.matchWorkspaceSuffix;
@@ -106,6 +110,11 @@ pub fn match(path: []const u8) ?Route {
 
     // M9_001: Execute proxy — POST /v1/execute
     if (std.mem.eql(u8, path, "/v1/execute")) return .execute;
+
+    // M9_001: Integration grant CRUD
+    if (matchers.matchZombieSuffix(path, "/integration-requests")) |zombie_id| return .{ .request_integration_grant = zombie_id };
+    if (matchers.matchZombieGrantRevoke(path)) |route| return .{ .revoke_integration_grant = route };
+    if (matchers.matchZombieSuffix(path, "/integration-grants")) |zombie_id| return .{ .list_integration_grants = zombie_id };
 
     // M4_001: Zombie approval gate callback — /v1/webhooks/{zombie_id}:approval
     if (matchers.matchWebhookAction(path, ":approval")) |zombie_id| return .{ .approval_webhook = zombie_id };
