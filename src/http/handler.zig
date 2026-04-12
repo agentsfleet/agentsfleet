@@ -19,6 +19,7 @@ const zombie_activity_api_http = @import("handlers/zombie_activity_api.zig");
 const execute_http = @import("handlers/execute.zig");
 const integration_grants_http = @import("handlers/integration_grants.zig");
 const external_agents_http = @import("handlers/external_agents.zig");
+const grant_approval_webhook_http = @import("handlers/grant_approval_webhook.zig");
 
 pub const Context = common.Context;
 pub const SkillSecretRoute = skill_secret_handlers.Route;
@@ -77,6 +78,9 @@ pub const handleRevokeGrant = integration_grants_http.handleRevokeGrant;
 pub const handleCreateExternalAgent = external_agents_http.handleCreateExternalAgent;
 pub const handleListExternalAgents = external_agents_http.handleListExternalAgents;
 pub const handleDeleteExternalAgent = external_agents_http.handleDeleteExternalAgent;
+
+// M9_001: Grant approval webhook
+pub const handleGrantApproval = grant_approval_webhook_http.handleGrantApproval;
 
 pub fn parseSkillSecretRoute(path: []const u8) ?SkillSecretRoute {
     return skill_secret_handlers.parseRoute(path);

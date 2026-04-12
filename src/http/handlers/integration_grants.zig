@@ -10,6 +10,7 @@ const PgQuery = @import("../../db/pg_query.zig").PgQuery;
 const common = @import("common.zig");
 const ec = @import("../../errors/error_registry.zig");
 const id_format = @import("../../types/id_format.zig");
+const grant_notifier = @import("../../zombie/notifications/grant_notifier.zig");
 
 const log = std.log.scoped(.integration_grants);
 
@@ -200,6 +201,24 @@ pub fn handleRequestGrant(ctx: *Context, req: *httpz.Request, res: *httpz.Respon
     };
 
     log.info("grant.requested zombie_id={s} service={s} grant_id={s}", .{ zombie_id, body.service, grant_id });
+
+    // Fetch zombie name for notification; falls back to zombie_id on any error.
+    var zombie_name: []const u8 = zombie_id;
+    fetch_name: {
+        var nq = PgQuery.from(conn.query(
+            \\SELECT name FROM core.zombies WHERE id = $1::uuid LIMIT 1
+        , .{zombie_id}) catch break :fetch_name);
+        defer nq.deinit();
+        const nrow = nq.next() catch break :fetch_name orelse break :fetch_name;
+        const raw = nrow.get([]u8, 0) catch break :fetch_name;
+        zombie_name = alloc.dupe(u8, raw) catch zombie_id;
+    }
+
+    grant_notifier.notifyGrantRequest(
+        ctx.pool, ctx.queue, alloc,
+        zombie_id, caller.workspace_id,
+        grant_id, zombie_name, body.service, body.reason,
+    );
 
     common.writeJson(res, .created, .{
         .grant_id     = grant_id,

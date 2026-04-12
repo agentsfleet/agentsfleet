@@ -1,5 +1,5 @@
-//! Execute pipeline — firewall → grant check → credential inject → proxy → scan.
-//! Called by execute.zig after authentication. Reuses M6 firewall and M4 gate.
+//! Outbound proxy — grant check → firewall → credential inject → HTTP proxy → echo strip.
+//! Called by execute.zig after authentication. Reuses M6 firewall policy engine.
 
 const std = @import("std");
 const pg = @import("pg");
@@ -8,9 +8,9 @@ const firewall = @import("../../zombie/firewall/firewall.zig");
 const crypto_store = @import("../../secrets/crypto_store.zig");
 const error_codes = @import("../../errors/error_registry.zig");
 
-const log = std.log.scoped(.execute_pipeline);
+const log = std.log.scoped(.outbound_proxy);
 
-const MAX_RESPONSE_BYTES: usize = 10 * 1024 * 1024; // 10 MB cap
+pub const MAX_RESPONSE_BYTES: usize = 10 * 1024 * 1024; // 10 MB cap
 
 pub const PipelineInput = struct {
     zombie_id: []const u8,
@@ -148,7 +148,7 @@ fn proxyCall(
         .payload = body,
         .response_writer = &aw.writer,
     }) catch {
-        log.err("execute_pipeline.proxy_fail target={s}", .{target});
+        log.err("outbound_proxy.proxy_fail target={s}", .{target});
         return error.TargetError;
     };
 
@@ -167,7 +167,9 @@ fn proxyCall(
 
 // ── Credential echo strip ─────────────────────────────────────────────────
 
-fn stripEcho(alloc: std.mem.Allocator, body: []const u8, credential: []const u8) ![]u8 {
+pub fn stripEcho(alloc: std.mem.Allocator, body: []const u8, credential: []const u8) ![]u8 {
+    // Empty credential means nothing to strip — return body as-is.
+    if (credential.len == 0) return alloc.dupe(u8, body);
     const fw = firewall.Firewall.init(&.{}, &.{});
     const scan = fw.scanResponseBody(body, &.{credential});
     _ = scan; // scan result logged upstream; strip regardless of classification
@@ -199,7 +201,7 @@ pub fn run(
 ) PipelineError!PipelineResult {
     const domain = extractDomain(input.target);
     const service = serviceForDomain(domain) orelse {
-        log.warn("execute_pipeline.domain_blocked zombie_id={s} domain={s}", .{
+        log.warn("outbound_proxy.domain_blocked zombie_id={s} domain={s}", .{
             input.zombie_id, domain,
         });
         return PipelineError.DomainBlocked;
@@ -231,7 +233,7 @@ pub fn run(
 
     // Credential fetch
     const credential = crypto_store.load(alloc, conn, input.workspace_id, input.credential_ref) catch {
-        log.err("execute_pipeline.cred_not_found workspace_id={s} ref={s}", .{
+        log.err("outbound_proxy.cred_not_found workspace_id={s} ref={s}", .{
             input.workspace_id, input.credential_ref,
         });
         return PipelineError.CredentialNotFound;
@@ -247,7 +249,7 @@ pub fn run(
     const clean_body = stripEcho(alloc, proxy.body, credential) catch
         return PipelineError.OutOfMemory;
 
-    log.info("execute_pipeline.ok zombie_id={s} service={s} status={d}", .{
+    log.info("outbound_proxy.ok zombie_id={s} service={s} status={d}", .{
         input.zombie_id, service, proxy.status,
     });
 

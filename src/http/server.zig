@@ -104,6 +104,8 @@ fn dispatchMatchedRoute(ctx: *handler.Context, req: *httpz.Request, res: *httpz.
             .GET => handler.handleGetWorkspaceLlmCredential(ctx, req, res, workspace_id),
             else => respondMethodNotAllowed(res),
         },
+        // M9_001: Grant approval webhook
+        .grant_approval_webhook => |zombie_id| if (req.method == .POST) handler.handleGrantApproval(ctx, req, res, zombie_id) else respondMethodNotAllowed(res),
         // M4_001: Zombie approval gate callback
         .approval_webhook => |zombie_id| if (req.method == .POST) handler.handleApprovalCallback(ctx, req, res, zombie_id) else respondMethodNotAllowed(res),
         // M1_001: Zombie webhook ingestion

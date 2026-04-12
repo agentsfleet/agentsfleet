@@ -24,6 +24,8 @@ pub const Route = union(enum) {
     receive_webhook: WebhookRoute,
     // M4_001: Zombie approval gate callback
     approval_webhook: []const u8,
+    // M9_001: Grant approval webhook — /v1/webhooks/{zombie_id}:grant-approval
+    grant_approval_webhook: []const u8,
     sync_workspace: []const u8,
     // M16_004: admin platform key management
     admin_platform_keys, // GET + PUT /v1/admin/platform-keys (method-dispatched in server.zig)
@@ -116,6 +118,8 @@ pub fn match(path: []const u8) ?Route {
     if (matchers.matchWorkspaceAgentDelete(path)) |route| return .{ .delete_external_agent = route };
     if (matchers.matchWorkspaceSuffix(path, "/external-agents")) |workspace_id| return .{ .external_agents = workspace_id };
 
+    // M9_001: Grant approval webhook — /v1/webhooks/{zombie_id}:grant-approval (before :approval)
+    if (matchers.matchWebhookAction(path, ":grant-approval")) |zombie_id| return .{ .grant_approval_webhook = zombie_id };
     // M4_001: Zombie approval gate callback — /v1/webhooks/{zombie_id}:approval
     if (matchers.matchWebhookAction(path, ":approval")) |zombie_id| return .{ .approval_webhook = zombie_id };
     // M1_001: Zombie webhook endpoint — /v1/webhooks/{zombie_id}

@@ -1,6 +1,6 @@
 //! M9_001 §1.0 — POST /v1/execute HTTP handler.
 //! Authenticates the caller (zombie session or zmb_ external agent key),
-//! resolves zombie_id + workspace_id, then delegates to execute_pipeline.
+//! resolves zombie_id + workspace_id, then delegates to outbound_proxy.
 
 const std = @import("std");
 const httpz = @import("httpz");
@@ -8,7 +8,7 @@ const pg = @import("pg");
 const PgQuery = @import("../../db/pg_query.zig").PgQuery;
 const common = @import("common.zig");
 const error_codes = @import("../../errors/error_registry.zig");
-const pipeline = @import("execute_pipeline.zig");
+const pipeline = @import("outbound_proxy.zig");
 
 const log = std.log.scoped(.execute);
 
