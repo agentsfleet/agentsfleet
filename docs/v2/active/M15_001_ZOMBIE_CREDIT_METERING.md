@@ -4,7 +4,7 @@
 **Milestone:** M15
 **Workstream:** 001
 **Date:** Apr 11, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P0 — Free-plan zombies currently consume unlimited quota
 **Batch:** B1
 **Branch:** feat/m15-zombie-metering
