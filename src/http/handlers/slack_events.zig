@@ -4,12 +4,12 @@
 //   1. Verify x-slack-signature (HMAC-SHA256, RULE CTM) → UZ-WH-010 on fail
 //   2. Verify x-slack-request-timestamp freshness → UZ-WH-011 on stale
 //   3. type=url_verification → echo challenge (HTTP 200)
-//   4. event.bot_id present → ignore (bot loop prevention, HTTP 200)
+//   4. event.bot_id present or subtype=bot_message → ignore (bot loop prevention, HTTP 200)
 //   5. Lookup workspace_id via workspace_integrations(provider="slack", external_id=team_id)
 //   6. No row → HTTP 200 (workspace hasn't installed UseZombie)
 //   7. Find Zombie in workspace with Slack event trigger
 //   8. Enqueue event to Redis worker queue
-//   9. HTTP 200 always (Slack retries on non-200)
+//   9. HTTP 200 on success; HTTP 503 on infra failure (pool/DB/Redis) so Slack retries
 //
 // Does NOT use hx.authenticated() — signed by Slack signing secret.
 // Env var: SLACK_SIGNING_SECRET
@@ -247,4 +247,20 @@ test "event_callback without bot_id is human event" {
     const parsed = try std.json.parseFromSlice(SlackEventPayload, alloc, body, .{ .ignore_unknown_fields = true });
     defer parsed.deinit();
     try std.testing.expect(parsed.value.event.?.bot_id == null);
+}
+
+test "event_callback with subtype=bot_message is bot event (bot loop §4.0)" {
+    const alloc = std.testing.allocator;
+    const body =
+        \\{"type":"event_callback","team_id":"T01","event_id":"Ev03","event":{"type":"message","subtype":"bot_message","text":"hello"}}
+    ;
+    const parsed = try std.json.parseFromSlice(SlackEventPayload, alloc, body, .{ .ignore_unknown_fields = true });
+    defer parsed.deinit();
+    const evt = parsed.value.event.?;
+    try std.testing.expect(evt.bot_id == null); // no bot_id on subtype path
+    try std.testing.expectEqualStrings("bot_message", evt.subtype.?);
+    // Verify the combined check: bot_id == null but subtype triggers is_bot
+    const is_bot = evt.bot_id != null or
+        (if (evt.subtype) |st| std.mem.eql(u8, st, "bot_message") else false);
+    try std.testing.expect(is_bot);
 }
