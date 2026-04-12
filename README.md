@@ -100,7 +100,7 @@ All agents read the canonical [AGENTS.md](AGENTS.md) operating model. Each confi
 
 | Agent | Config |
 |-------|--------|
-| Claude Code | `CLAUDE.md` → `AGENTS.md` |
+| Claude Code | `AGENTS.md` |
 | Codex | `.codex/instructions.md` → `AGENTS.md` |
 | OpenCode | `.opencode/instructions.md` → `AGENTS.md` |
 | Amp | `.amp/instructions.md` → `AGENTS.md` |

@@ -241,20 +241,46 @@ pub fn handleReceiveWebhook(ctx: *Context, req: *httpz.Request, res: *httpz.Resp
         .detail = payload.event_id,
     });
 
-    metrics_counters.incZombiesTriggered();
-    // Webhook path has no authenticated user — PostHog distinct_id is the workspace
-    // so zombie events group under the owning workspace in funnels/retention.
-    ctx.telemetry.capture(telemetry_mod.ZombieTriggered, .{
-        .distinct_id = zombie.workspace_id,
-        .workspace_id = zombie.workspace_id,
-        .zombie_id = zombie_id,
-        .event_id = payload.event_id,
-        .source = source_label,
-    });
+    recordWebhookAccepted(ctx.telemetry, zombie.workspace_id, zombie_id, payload.event_id, source_label);
 
     log.info("webhook.accepted zombie_id={s} event_id={s} type={s}", .{ zombie_id, payload.event_id, payload.type });
     res.status = 202;
     res.json(.{ .status = ec.STATUS_ACCEPTED, .event_id = payload.event_id }, .{}) catch {};
+}
+
+/// Record observability for a successfully accepted webhook (202 path).
+/// Increments the Prometheus triggered counter and emits a PostHog event.
+/// Webhook path has no authenticated user — distinct_id is workspace_id so
+/// zombie events group under the owning workspace in funnels/retention.
+fn recordWebhookAccepted(
+    tel: *telemetry_mod.Telemetry,
+    workspace_id: []const u8,
+    zombie_id: []const u8,
+    event_id: []const u8,
+    source: []const u8,
+) void {
+    metrics_counters.incZombiesTriggered();
+    tel.capture(telemetry_mod.ZombieTriggered, .{
+        .distinct_id = workspace_id,
+        .workspace_id = workspace_id,
+        .zombie_id = zombie_id,
+        .event_id = event_id,
+        .source = source,
+    });
+}
+
+// Spec §6.0 row 3.1 — webhook_increments_triggered: successful 202 path increments
+// zombies_triggered_total and emits zombie_triggered PostHog event.
+test "M15_002 3.1: webhook_increments_triggered" {
+    const metrics_zombie = @import("../../observability/metrics_zombie.zig");
+    const tel_mod = @import("../../observability/telemetry.zig");
+    metrics_zombie.resetForTest();
+    defer metrics_zombie.resetForTest();
+    var tel = tel_mod.Telemetry.initTest();
+    const before = metrics_zombie.snapshotZombieFields().zombie_triggered_total;
+    recordWebhookAccepted(&tel, "ws_001", "z_001", "evt_001", "webhook");
+    try std.testing.expectEqual(@as(u64, 1), metrics_zombie.snapshotZombieFields().zombie_triggered_total - before);
+    try tel_mod.TestBackend.assertLastEventIs(.zombie_triggered);
 }
 
 test "WebhookPayload parses valid event" {

@@ -120,8 +120,6 @@ pub const ENTRIES = [_]Entry{
     // ── ENTITLEMENT ──────────────────────────────────────────────────────────
     e("UZ-ENTL-001", .service_unavailable, "Entitlement service unavailable",
         "Entitlement service is temporarily unavailable. Retry shortly."),
-    e("UZ-ENTL-002", .payment_required, "Profile limit reached",
-        "Profile limit reached for your plan. Upgrade to add more."),
     e("UZ-ENTL-003", .payment_required, "Stage limit reached",
         "Stage limit reached for your plan. Upgrade to add more."),
     e("UZ-ENTL-004", .forbidden, "Skill not allowed",

@@ -6,10 +6,11 @@
 TEST_DATABASE_URL_LOCAL ?= postgres://usezombie:usezombie@localhost:5432/usezombiedb
 TEST_REDIS_TLS_URL_LOCAL ?= rediss://:usezombie@localhost:6379
 # Self-signed cert from docker compose Redis — extracted once before tests.
-# Try current project's compose first, then any running usezombie redis container.
+# Try current project's compose first, then any running usezombie/zombie redis container.
 TEST_REDIS_TLS_CA_CERT  ?= $(shell mkdir -p .tmp && \
 	( docker compose cp redis:/tls/server.crt .tmp/redis-ca.crt 2>/dev/null \
-	  || docker cp $$(docker ps -qf "name=usezombie.*redis" | head -1):/tls/server.crt .tmp/redis-ca.crt 2>/dev/null ) \
+	  || docker cp $$(docker ps -qf "name=usezombie.*redis" | head -1):/tls/server.crt .tmp/redis-ca.crt 2>/dev/null \
+	  || docker cp $$(docker ps -qf "name=zombie.*redis" | head -1):/tls/server.crt .tmp/redis-ca.crt 2>/dev/null ) \
 	&& echo "$$(pwd)/.tmp/redis-ca.crt")
 
 _test-integration-zombied:

@@ -45,7 +45,6 @@ pub const RecordedEvent = struct {
 };
 pub const AgentCompleted = events.AgentCompleted;
 pub const EntitlementRejected = events.EntitlementRejected;
-pub const ProfileActivated = events.ProfileActivated;
 pub const BillingLifecycleEvent = events.BillingLifecycleEvent;
 pub const ServerStarted = events.ServerStarted;
 pub const WorkerStarted = events.WorkerStarted;
@@ -56,8 +55,6 @@ pub const WorkspaceCreated = events.WorkspaceCreated;
 pub const WorkspaceGithubConnected = events.WorkspaceGithubConnected;
 pub const AuthLoginCompleted = events.AuthLoginCompleted;
 pub const AuthRejected = events.AuthRejected;
-pub const RunOrphanRecovered = events.RunOrphanRecovered;
-pub const RunOrphanNoAgentProfile = events.RunOrphanNoAgentProfile;
 pub const ZombieTriggered = events.ZombieTriggered;
 pub const ZombieCompleted = events.ZombieCompleted;
 

@@ -7,7 +7,7 @@ const Route = router.Route;
 const match = router.match;
 const matchZombieId = matchers.matchZombieId;
 
-test "match resolves workspace billing and harness routes" {
+test "match resolves workspace billing routes" {
     try std.testing.expectEqualStrings(
         "ws_1",
         switch (match("/v1/workspaces/ws_1/billing/events").?) {
@@ -29,13 +29,6 @@ test "match resolves workspace billing and harness routes" {
             else => return error.TestExpectedEqual,
         },
     );
-    try std.testing.expectEqualStrings(
-        "ws_1",
-        switch (match("/v1/workspaces/ws_1/harness/compile").?) {
-            .compile_harness => |workspace_id| workspace_id,
-            else => return error.TestExpectedEqual,
-        },
-    );
 }
 
 test "match rejects multi-segment workspace suffix routes" {
@@ -43,20 +36,11 @@ test "match rejects multi-segment workspace suffix routes" {
     try std.testing.expect(match("/v1/workspaces//billing/events") == null);
 }
 
-test "match resolves agent profile route" {
-    const agent_id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
-    try std.testing.expectEqualStrings(
-        agent_id,
-        switch (match("/v1/agents/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11").?) {
-            .get_agent => |id| id,
-            else => return error.TestExpectedEqual,
-        },
-    );
+test "match rejects /v1/agents paths after agent_profiles removal (M17_001)" {
+    try std.testing.expect(match("/v1/agents/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11") == null);
     try std.testing.expect(match("/v1/agents/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/scores") == null);
     try std.testing.expect(match("/v1/agents/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/improvement-report") == null);
     try std.testing.expect(match("/v1/agents/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/proposals") == null);
-    try std.testing.expect(match("/v1/agents/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/proposals/p1:approve") == null);
-    try std.testing.expect(match("/v1/agents/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/proposals/p1:veto") == null);
     try std.testing.expect(match("/v1/agents/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/harness/changes/c1:revert") == null);
     try std.testing.expect(match("/v1/agents/") == null);
     try std.testing.expect(match("/v1/agents/foo/bar/scores") == null);

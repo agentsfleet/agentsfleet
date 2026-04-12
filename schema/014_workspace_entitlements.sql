@@ -4,7 +4,6 @@ CREATE TABLE IF NOT EXISTS billing.workspace_entitlements (
     entitlement_id       UUID PRIMARY KEY,
     workspace_id         UUID NOT NULL UNIQUE REFERENCES core.workspaces(workspace_id) ON DELETE CASCADE,
     plan_tier            TEXT NOT NULL,
-    max_profiles         INTEGER NOT NULL CHECK (max_profiles > 0),
     max_stages           INTEGER NOT NULL CHECK (max_stages > 0),
     max_distinct_skills  INTEGER NOT NULL CHECK (max_distinct_skills > 0),
     allow_custom_skills  BOOLEAN NOT NULL,

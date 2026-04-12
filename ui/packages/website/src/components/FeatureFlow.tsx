@@ -19,7 +19,7 @@ const items: FeatureFlowItem[] = [
     bullets: [
       "Works with existing coding agents and IDE-first teams",
       "No workflow migration required",
-      "Automated PR lifecycle with harness checks before review",
+      "Automated PR lifecycle with validation before review",
     ],
     ctaLabel: "Install guide",
     ctaHref: DOCS_QUICKSTART_URL,

@@ -146,11 +146,10 @@ curl -sH "Authorization: Bearer $GRAFANA_TOKEN" \
 |---|-------|--------|
 | 1 | Token consumption by workspace | `zombie_agent_tokens_by_workspace_total` returns data or empty (not error) |
 | 2 | Run outcomes by workspace | `zombie_runs_completed_by_workspace_total` queryable |
-| 3 | Gate repair loop distribution | `zombie_gate_repair_loops_per_run_bucket` exists |
-| 4 | Score-gated run rate | SQL query on `usage_ledger` returns without error |
-| 5 | Top-10 runs by token consumption | SQL query returns table (may be empty) |
-| 6 | Per-stage token breakdown | SQL query groups by actor |
-| 7 | Workspace metrics overflow | `zombie_workspace_metrics_overflow_total` queryable |
+| 3 | Score-gated run rate | SQL query on `usage_ledger` returns without error |
+| 4 | Top-10 runs by token consumption | SQL query returns table (may be empty) |
+| 5 | Per-stage token breakdown | SQL query groups by actor |
+| 6 | Workspace metrics overflow | `zombie_workspace_metrics_overflow_total` queryable |
 
 ### Acceptance
 

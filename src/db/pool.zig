@@ -237,6 +237,41 @@ fn clearMigrationFailure(conn: *Conn, version: i32) void {
     _ = conn.exec("DELETE FROM audit.schema_migration_failures WHERE version = $1", .{version}) catch {};
 }
 
+/// Delete rows in audit.schema_migrations + schema_migration_failures whose version
+/// is no longer in the canonical migration list. Keeps the bookkeeping table in sync
+/// when migrations are removed (pre-v2.0 teardown — RULE SCH). Safe to run on every
+/// migrate: a fresh DB with no orphan rows is a no-op.
+fn reapOrphanedMigrationRows(conn: *Conn, migrations: []const Migration) !void {
+    const allocator = std.heap.page_allocator;
+    var buf = std.ArrayList(u8){};
+    defer buf.deinit(allocator);
+    var writer = buf.writer(allocator);
+    for (migrations, 0..) |m, i| {
+        if (i > 0) try writer.writeByte(',');
+        try writer.print("{d}", .{m.version});
+    }
+    const canonical_list = buf.items;
+
+    const reap_migrations_sql = try std.fmt.allocPrint(
+        allocator,
+        "DELETE FROM audit.schema_migrations WHERE version NOT IN ({s})",
+        .{canonical_list},
+    );
+    defer allocator.free(reap_migrations_sql);
+    const reaped = conn.exec(reap_migrations_sql, .{}) catch |err| return err;
+    if (reaped != null and reaped.? > 0) {
+        log.info("db.migration_reap reaped={d} orphan_rows", .{reaped.?});
+    }
+
+    const reap_failures_sql = try std.fmt.allocPrint(
+        allocator,
+        "DELETE FROM audit.schema_migration_failures WHERE version NOT IN ({s})",
+        .{canonical_list},
+    );
+    defer allocator.free(reap_failures_sql);
+    _ = conn.exec(reap_failures_sql, .{}) catch |err| return err;
+}
+
 fn maxAppliedMigrationVersion(conn: *Conn) !i32 {
     var result = PgQuery.from(try conn.query("SELECT COALESCE(MAX(version), 0) FROM audit.schema_migrations", .{}));
     defer result.deinit();
@@ -387,6 +422,11 @@ pub fn runMigrations(pool: *Pool, migrations: []const Migration) !void {
         return err;
     };
     defer releaseMigrationLock(conn);
+
+    reapOrphanedMigrationRows(conn, migrations) catch |err| {
+        if (err == error.PG) logPgErrorContext(conn, "migrate.reap_orphans");
+        return err;
+    };
 
     for (migrations) |migration| {
         if (isMigrationApplied(conn, migration.version) catch |err| {
