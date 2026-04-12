@@ -2,6 +2,9 @@ const std = @import("std");
 const mc = @import("metrics_counters.zig");
 const me = @import("metrics_external.zig");
 const error_classify = @import("../reliability/error_classify.zig");
+comptime {
+    _ = @import("metrics_zombie.zig");
+}
 
 // T9 — inline-for over all ErrorClass variants; catches any new class added without a counter
 test "incExternalRetry routes each ErrorClass to its sub-counter" {

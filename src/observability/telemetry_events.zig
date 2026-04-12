@@ -19,6 +19,8 @@ pub const EventKind = enum {
     auth_rejected,
     run_orphan_recovered,
     run_orphan_no_agent_profile,
+    zombie_triggered,
+    zombie_completed,
 };
 
 pub const AgentCompleted = struct {
@@ -278,6 +280,48 @@ pub const RunOrphanNoAgentProfile = struct {
         return .{
             .{ .key = "run_id", .value = .{ .string = self.run_id } },
             .{ .key = "workspace_id", .value = .{ .string = self.workspace_id } },
+        };
+    }
+};
+
+pub const ZombieTriggered = struct {
+    distinct_id: []const u8,
+    workspace_id: []const u8,
+    zombie_id: []const u8,
+    event_id: []const u8,
+    source: []const u8,
+
+    pub const kind: EventKind = .zombie_triggered;
+
+    pub fn properties(self: @This()) [4]posthog.Property {
+        return .{
+            .{ .key = "workspace_id", .value = .{ .string = self.workspace_id } },
+            .{ .key = "zombie_id", .value = .{ .string = self.zombie_id } },
+            .{ .key = "event_id", .value = .{ .string = self.event_id } },
+            .{ .key = "source", .value = .{ .string = self.source } },
+        };
+    }
+};
+
+pub const ZombieCompleted = struct {
+    distinct_id: []const u8,
+    workspace_id: []const u8,
+    zombie_id: []const u8,
+    event_id: []const u8,
+    tokens: u64,
+    wall_ms: u64,
+    exit_status: []const u8,
+
+    pub const kind: EventKind = .zombie_completed;
+
+    pub fn properties(self: @This()) [6]posthog.Property {
+        return .{
+            .{ .key = "workspace_id", .value = .{ .string = self.workspace_id } },
+            .{ .key = "zombie_id", .value = .{ .string = self.zombie_id } },
+            .{ .key = "event_id", .value = .{ .string = self.event_id } },
+            .{ .key = "tokens", .value = .{ .integer = @intCast(self.tokens) } },
+            .{ .key = "wall_ms", .value = .{ .integer = @intCast(self.wall_ms) } },
+            .{ .key = "exit_status", .value = .{ .string = self.exit_status } },
         };
     }
 };

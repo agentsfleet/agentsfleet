@@ -15,6 +15,7 @@ const executor_client = @import("../executor/client.zig");
 const zombie_config = @import("../zombie/config.zig");
 const error_codes = @import("../errors/error_registry.zig");
 const obs_log = @import("../observability/logging.zig");
+const telemetry_mod = @import("../observability/telemetry.zig");
 
 const log = std.log.scoped(.zombie_worker);
 
@@ -25,6 +26,7 @@ pub const ZombieWorkerConfig = struct {
     shutdown_requested: *const std.atomic.Value(bool),
     executor: ?*executor_client.ExecutorClient,
     workspace_path: []const u8 = "/tmp/zombie",
+    telemetry: ?*telemetry_mod.Telemetry = null,
 };
 
 /// Entry point for a Zombie worker thread.
@@ -61,6 +63,7 @@ pub fn zombieWorkerLoop(alloc: std.mem.Allocator, cfg: ZombieWorkerConfig) void 
         .executor = exec_ref,
         .running = &running,
         .workspace_path = cfg.workspace_path,
+        .telemetry = cfg.telemetry,
     });
     log.info("zombie_worker.stopped zombie_id={s}", .{cfg.zombie_id});
 }
