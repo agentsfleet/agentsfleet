@@ -169,6 +169,7 @@ test {
     _ = @import("state/zombie_telemetry_store.zig");
     _ = @import("http/handlers/zombie_telemetry.zig");
     _ = @import("http/handlers/m18_001_handler_unit_test.zig");
+    _ = @import("http/handlers/m18_001_http_integration_test.zig");
     _ = @import("http/router_test.zig");
     _ = @import("cmd/worker_zombie.zig");
     // M6_001: AI Firewall Policy Engine

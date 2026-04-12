@@ -326,3 +326,7 @@ test "parseCursor: rejects non-integer timestamp" {
     const encoded = comptime encode64("notanumber:abc123");
     try std.testing.expectError(error.InvalidCursor, parseCursor(std.testing.allocator, &encoded));
 }
+
+test {
+    _ = @import("zombie_telemetry_store_test.zig");
+}
