@@ -30,16 +30,15 @@ test "upgrade applies scale entitlement deterministically" {
     try std.testing.expectEqual(BillingStatus.active, upgraded.billing_status);
 
     var q = PgQuery.from(try db_ctx.conn.query(
-        "SELECT plan_tier, max_profiles, max_stages, max_distinct_skills, allow_custom_skills FROM workspace_entitlements WHERE workspace_id = $1",
+        "SELECT plan_tier, max_stages, max_distinct_skills, allow_custom_skills FROM workspace_entitlements WHERE workspace_id = $1",
         .{uc3.WS_UPGRADE},
     ));
     defer q.deinit();
     const row = (try q.next()) orelse return error.TestExpectedEqual;
     try std.testing.expectEqualStrings("SCALE", try row.get([]const u8, 0));
     try std.testing.expectEqual(@as(i32, 8), try row.get(i32, 1));
-    try std.testing.expectEqual(@as(i32, 8), try row.get(i32, 2));
-    try std.testing.expectEqual(@as(i32, 16), try row.get(i32, 3));
-    try std.testing.expect(try row.get(bool, 4));
+    try std.testing.expectEqual(@as(i32, 16), try row.get(i32, 2));
+    try std.testing.expect(try row.get(bool, 3));
 }
 
 test "payment failure transitions to grace then downgrade policy" {

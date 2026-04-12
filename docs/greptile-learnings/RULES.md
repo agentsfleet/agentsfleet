@@ -287,19 +287,19 @@ Reference a rule as `RULE NDC`, `RULE OWN`, etc.
 **Tags:** zig
 **Ref:** M3_001 HMAC version "v0" derived by slicing "v0=" prefix — fixed with explicit hmac_version field.
 
-## RULE SCH — Pre-v2.0 schema removal: delete contents, keep SELECT 1
+## RULE SCH — Pre-v2.0 schema removal: full teardown, no markers, no DROP
 
-**Rule:** While `cat VERSION` < 2.0.0 (teardown-rebuild era), remove tables by replacing file contents with `SELECT 1;`. After VERSION >= 2.0.0 (production data exists), use proper ALTER/DROP migrations. `make test` validates every migration produces at least one statement.
-**Why:** Migration runner replays from scratch. Every file must produce at least one valid SQL statement — `make test` catches empty/broken files without needing a DB.
+**Rule:** While `cat VERSION` < 2.0.0 (teardown-rebuild era), removing tables MUST be a full teardown: (1) delete the SQL file (`rm schema/NNN_foo.sql`), (2) remove the `@embedFile` constant from `schema/embed.zig`, (3) remove the migration array entry from `src/cmd/common.zig` and update its array length + any index-based tests. Never write ALTER TABLE, DROP TABLE, or `SELECT 1;` placeholders. Never keep version-marker files. Migration slot numbers are not sacred pre-v2.0 — the DB is wiped on every rebuild, and gaps in numbering are fine. After VERSION >= 2.0.0, switch to proper ALTER/DROP migrations in new numbered files.
+**Why:** Markers accumulate dead code and still force CI to splitter-parse them. Pre-v2.0 there is zero production data to protect; full removal is cleaner and leaves no false grep hits or stale migration slots.
 **Tags:** sql, process
-**Ref:** M10_001 comment-only version markers failed CI; apostrophe in "slots" opened unterminated string literal in splitter.
+**Ref:** M17_001 harness teardown — supersedes prior "replace with `SELECT 1;`" guidance. Under the old rule, M10_001 comment-only markers broke CI (apostrophe in "slots" opened unterminated string in splitter); full deletion avoids the marker problem entirely.
 
-## RULE EP4 — Removed endpoints return 410 Gone, not 404
+## RULE EP4 — Removed endpoints return 410 Gone, not 404 (post-v2.0 only)
 
-**Rule:** Intentionally removed endpoints return HTTP 410 Gone with a named error code, not 404.
-**Why:** 410 signals permanent intentional removal to clients and monitors; 404 implies a routing error.
+**Rule:** While `cat VERSION` < 2.0.0 (teardown-rebuild era), removed endpoints MAY simply 404 — API drift is allowed because there are no stable external clients. Do NOT write 410 Gone stubs for pre-v2.0 removals; they are ceremony without value. Once VERSION >= 2.0.0, intentionally removed endpoints MUST return HTTP 410 Gone with a named error code — 404 implies a routing error to monitors and clients, 410 signals permanent intentional removal.
+**Why:** Pre-v2.0 mirrors the schema teardown policy (RULE SCH) — we tear down DB + APIs freely because nobody downstream is pinned to them. Post-v2.0, 410 becomes load-bearing for client behavior and deprecation signals.
 **Tags:** zig, api
-**Ref:** M10_001 all /v1/runs/* and /v1/specs return ERR_PIPELINE_V1_REMOVED 410.
+**Ref:** M10_001 shipped /v1/runs/* + /v1/specs as 410 stubs before this rule was scoped. M17_001 removed /v1/harness/* and /v1/agents/{id} as bare 404s under the pre-v2.0 carve-out.
 
 ## RULE FXS — Fixed-size scan buffers are security bypasses
 

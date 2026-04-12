@@ -48,12 +48,7 @@ pub fn seedWorkspace(conn: *pg.Conn, workspace_id: []const u8) !void {
 /// Delete workspace. CASCADE removes:
 ///   workspace_credit_state, workspace_credit_audit, workspace_billing_state,
 ///   workspace_billing_audit, usage_ledger, workspace_entitlements,
-///   workspace_active_config, entitlement_policy_audit_snapshots,
-///   agent_improvement_proposals, harness_change_log.
-///
-/// Does NOT cascade: agent_profiles — but MUST be called before deleting agent_profiles
-/// because workspace_active_config holds a FK to agent_config_versions (NO ACTION).
-/// Correct order: teardownWorkspace → delete agent_profiles → teardownTenant.
+///   entitlement_policy_audit_snapshots.
 pub fn teardownWorkspace(conn: *pg.Conn, workspace_id: []const u8) void {
     _ = conn.exec(
         "DELETE FROM workspaces WHERE workspace_id = $1::uuid",

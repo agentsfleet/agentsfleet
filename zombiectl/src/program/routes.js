@@ -13,9 +13,7 @@ const routes = [
   // M21_001 §3: runs interrupt
   { key: "runs.interrupt", match: (cmd, args) => cmd === "runs" && args[0] === "interrupt" },
   { key: "doctor", match: (cmd) => cmd === "doctor" },
-  { key: "harness", match: (cmd) => cmd === "harness" },
   { key: "skill-secret", match: (cmd) => cmd === "skill-secret" },
-  { key: "agent", match: (cmd) => cmd === "agent" },
   { key: "admin", match: (cmd) => cmd === "admin" },
   // M1_001 §5: Zombie commands — flat top-level for common ops
   { key: "zombie.install", match: (cmd) => cmd === "install" },
