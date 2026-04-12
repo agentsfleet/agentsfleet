@@ -21,15 +21,10 @@ pub const Route = union(enum) {
     apply_workspace_billing_event: []const u8,
     get_workspace_billing_summary: []const u8,
     set_workspace_scoring_config: []const u8,
-    put_harness_source: []const u8,
     receive_webhook: WebhookRoute,
     // M4_001: Zombie approval gate callback
     approval_webhook: []const u8,
-    compile_harness: []const u8,
-    activate_harness: []const u8,
-    get_harness_active: []const u8,
     sync_workspace: []const u8,
-    get_agent: []const u8,
     // M16_004: admin platform key management
     admin_platform_keys, // GET + PUT /v1/admin/platform-keys (method-dispatched in server.zig)
     delete_admin_platform_key: []const u8, // DELETE /v1/admin/platform-keys/{provider}
@@ -50,7 +45,6 @@ const isSingleSegment = matchers.isSingleSegment;
 const matchWebhookRoute = matchers.matchWebhookRoute;
 
 const prefix_workspaces = "/v1/workspaces/";
-const prefix_agents = "/v1/agents/";
 const prefix_auth_sessions = "/v1/auth/sessions/";
 
 pub fn match(path: []const u8) ?Route {
@@ -94,7 +88,6 @@ pub fn match(path: []const u8) ?Route {
     if (matchWorkspaceSuffix(path, "/billing/events")) |workspace_id| return .{ .apply_workspace_billing_event = workspace_id };
     if (matchWorkspaceSuffix(path, "/billing/summary")) |workspace_id| return .{ .get_workspace_billing_summary = workspace_id };
     if (matchWorkspaceSuffix(path, "/scoring/config")) |workspace_id| return .{ .set_workspace_scoring_config = workspace_id };
-    if (matchWorkspaceSuffix(path, "/harness/source")) |workspace_id| return .{ .put_harness_source = workspace_id };
 
     // M2_001: Zombie CRUD + activity + credentials
     if (std.mem.eql(u8, path, "/v1/zombies/")) return .list_or_create_zombies;
@@ -106,24 +99,16 @@ pub fn match(path: []const u8) ?Route {
     if (matchers.matchWebhookAction(path, ":approval")) |zombie_id| return .{ .approval_webhook = zombie_id };
     // M1_001: Zombie webhook endpoint — /v1/webhooks/{zombie_id}
     if (matchWebhookRoute(path)) |route| return .{ .receive_webhook = route };
-    if (matchWorkspaceSuffix(path, "/harness/compile")) |workspace_id| return .{ .compile_harness = workspace_id };
-    if (matchWorkspaceSuffix(path, "/harness/activate")) |workspace_id| return .{ .activate_harness = workspace_id };
-    if (matchWorkspaceSuffix(path, "/harness/active")) |workspace_id| return .{ .get_harness_active = workspace_id };
 
     if (std.mem.startsWith(u8, path, prefix_workspaces) and std.mem.endsWith(u8, path, ":sync")) {
         const inner = path[prefix_workspaces.len .. path.len - ":sync".len];
         if (inner.len > 0) return .{ .sync_workspace = inner };
     }
 
-    if (std.mem.startsWith(u8, path, prefix_agents)) {
-        const agent_id = path[prefix_agents.len..];
-        if (isSingleSegment(agent_id)) return .{ .get_agent = agent_id };
-    }
-
     return null;
 }
 
-test "match resolves workspace billing and harness routes" {
+test "match resolves workspace billing routes" {
     try std.testing.expectEqualStrings(
         "ws_1",
         switch (match("/v1/workspaces/ws_1/billing/events").?) {
@@ -145,13 +130,6 @@ test "match resolves workspace billing and harness routes" {
             else => return error.TestExpectedEqual,
         },
     );
-    try std.testing.expectEqualStrings(
-        "ws_1",
-        switch (match("/v1/workspaces/ws_1/harness/compile").?) {
-            .compile_harness => |workspace_id| workspace_id,
-            else => return error.TestExpectedEqual,
-        },
-    );
 }
 
 test "match rejects multi-segment workspace suffix routes" {
@@ -159,15 +137,8 @@ test "match rejects multi-segment workspace suffix routes" {
     try std.testing.expect(match("/v1/workspaces//billing/events") == null);
 }
 
-test "match resolves agent profile route" {
-    const agent_id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
-    try std.testing.expectEqualStrings(
-        agent_id,
-        switch (match("/v1/agents/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11").?) {
-            .get_agent => |id| id,
-            else => return error.TestExpectedEqual,
-        },
-    );
+test "match rejects /v1/agents paths after agent_profiles removal" {
+    try std.testing.expect(match("/v1/agents/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11") == null);
     try std.testing.expect(match("/v1/agents/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/scores") == null);
     try std.testing.expect(match("/v1/agents/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/improvement-report") == null);
     try std.testing.expect(match("/v1/agents/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/proposals") == null);

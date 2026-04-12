@@ -105,25 +105,6 @@ pub fn teardown(conn: *pg.Conn, workspace_id: []const u8) void {
 
 /// Teardown workspace only (no tenant removal).
 /// Use when multiple workspaces share one tenant in the same test.
-///
-/// Correct FK-aware order:
-///   1. workspace_active_config  — removes NO ACTION blocker on agent_config_versions
-///   2. harness_change_log       — removes NO ACTION blocker on agent_improvement_proposals
-///   3. agent_profiles           — cascades agent_config_versions + proposals (now safe)
-///   4. workspaces               — cascades remaining tables (entitlements, billing, etc.)
 pub fn teardownWorkspace(conn: *pg.Conn, workspace_id: []const u8) void {
-    _ = conn.exec(
-        "DELETE FROM workspace_active_config WHERE workspace_id = $1::uuid",
-        .{workspace_id},
-    ) catch {};
-    _ = conn.exec(
-        "DELETE FROM harness_change_log WHERE workspace_id = $1::uuid",
-        .{workspace_id},
-    ) catch {};
-    // M10_001: teardownRuns/teardownSpecs removed — tables dropped.
-    _ = conn.exec(
-        "DELETE FROM agent_profiles WHERE workspace_id = $1::uuid",
-        .{workspace_id},
-    ) catch {};
     base.teardownWorkspace(conn, workspace_id);
 }

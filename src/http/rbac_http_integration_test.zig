@@ -99,13 +99,12 @@ fn setupSeedData(conn: *pg.Conn) !void {
     , .{ TEST_WORKSPACE_ID, TEST_TENANT_ID, TEST_REPO_URL, now_ms });
     _ = try conn.exec(
         \\INSERT INTO workspace_entitlements
-        \\  (entitlement_id, workspace_id, plan_tier, max_profiles, max_stages, max_distinct_skills,
+        \\  (entitlement_id, workspace_id, plan_tier, max_stages, max_distinct_skills,
         \\   allow_custom_skills, enable_agent_scoring, agent_scoring_weights_json, scoring_context_max_tokens, created_at, updated_at)
-        \\VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f71', $1, 'SCALE', 8, 8, 16,
+        \\VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f71', $1, 'SCALE', 8, 16,
         \\        true, false, '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}', 2048, $2, $2)
         \\ON CONFLICT (workspace_id) DO UPDATE
         \\SET plan_tier = EXCLUDED.plan_tier,
-        \\    max_profiles = EXCLUDED.max_profiles,
         \\    max_stages = EXCLUDED.max_stages,
         \\    max_distinct_skills = EXCLUDED.max_distinct_skills,
         \\    allow_custom_skills = EXCLUDED.allow_custom_skills,
