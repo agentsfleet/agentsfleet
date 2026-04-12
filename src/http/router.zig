@@ -43,6 +43,8 @@ pub const Route = union(enum) {
     delete_zombie: []const u8, // DELETE /v1/zombies/{id}
     zombie_activity, // GET /v1/zombies/activity
     zombie_credentials, // GET|POST /v1/zombies/credentials
+    // M9_001: Execute proxy endpoint
+    execute, // POST /v1/execute
 };
 
 const matchWorkspaceSuffix = matchers.matchWorkspaceSuffix;
@@ -101,6 +103,9 @@ pub fn match(path: []const u8) ?Route {
     if (std.mem.eql(u8, path, "/v1/zombies/activity")) return .zombie_activity;
     if (std.mem.eql(u8, path, "/v1/zombies/credentials")) return .zombie_credentials;
     if (matchers.matchZombieId(path)) |zombie_id| return .{ .delete_zombie = zombie_id };
+
+    // M9_001: Execute proxy — POST /v1/execute
+    if (std.mem.eql(u8, path, "/v1/execute")) return .execute;
 
     // M4_001: Zombie approval gate callback — /v1/webhooks/{zombie_id}:approval
     if (matchers.matchWebhookAction(path, ":approval")) |zombie_id| return .{ .approval_webhook = zombie_id };

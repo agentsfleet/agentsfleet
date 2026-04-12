@@ -166,6 +166,9 @@ test {
     _ = @import("http/handlers/zombie_api.zig");
     _ = @import("http/handlers/zombie_activity_api.zig");
     _ = @import("http/router_test.zig");
+    // M9_001: Integration grant + execute API
+    _ = @import("http/handlers/execute.zig");
+    _ = @import("http/handlers/execute_pipeline.zig");
     _ = @import("cmd/worker_zombie.zig");
     // M6_001: AI Firewall Policy Engine
     _ = @import("zombie/firewall/domain_policy.zig");

@@ -126,6 +126,8 @@ fn dispatchMatchedRoute(ctx: *handler.Context, req: *httpz.Request, res: *httpz.
             .GET => handler.handleListCredentials(ctx, req, res),
             else => respondMethodNotAllowed(res),
         },
+        // M9_001: Execute proxy
+        .execute => if (req.method == .POST) handler.handleExecute(ctx, req, res) else respondMethodNotAllowed(res),
     }
     return true;
 }
