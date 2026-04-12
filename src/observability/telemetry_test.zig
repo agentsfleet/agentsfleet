@@ -307,3 +307,8 @@ test "T11: RecordedEvent is stack-allocated, no heap" {
     const size = @sizeOf(telemetry.RecordedEvent);
     try std.testing.expect(size <= 256);
 }
+
+// M15_002 zombie-specific telemetry tests live in telemetry_zombie_test.zig.
+comptime {
+    _ = @import("telemetry_zombie_test.zig");
+}

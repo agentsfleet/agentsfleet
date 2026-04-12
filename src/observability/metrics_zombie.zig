@@ -86,20 +86,94 @@ pub fn resetForTest() void {
     for (&g_hist_buckets) |*b| b.store(0, .release);
 }
 
-test "inc and snapshot" {
+// Spec §6.0 row 1.1 — comptime field presence on the exported Snapshot struct.
+test "1.1: snapshot_has_zombie_fields" {
+    const ZF = @TypeOf(snapshotZombieFields());
+    // comptime field access — compile fails if any field missing
+    _ = @as(u64, @field(ZF{
+        .zombie_triggered_total = 0,
+        .zombie_completed_total = 0,
+        .zombie_failed_total = 0,
+        .zombie_tokens_total = 0,
+        .zombie_execution_seconds = .{},
+    }, "zombie_triggered_total"));
+}
+
+// Spec §6.0 row 1.2 — single call produces exactly +1 delta on the triggered counter.
+test "1.2: inc_triggered_increments_counter" {
     resetForTest();
+    defer resetForTest();
+    const before = snapshotZombieFields().zombie_triggered_total;
     incZombiesTriggered();
-    incZombiesTriggered();
-    incZombiesCompleted();
-    incZombiesFailed();
+    const after = snapshotZombieFields().zombie_triggered_total;
+    try std.testing.expectEqual(@as(u64, 1), after - before);
+}
+
+// Spec §6.0 row 1.3 — addZombieTokens accumulates monotonically.
+test "1.3: add_tokens_accumulates" {
+    resetForTest();
+    defer resetForTest();
     addZombieTokens(1500);
-    observeZombieExecutionSeconds(4_200);
-    const s = snapshotZombieFields();
-    try std.testing.expectEqual(@as(u64, 2), s.zombie_triggered_total);
-    try std.testing.expectEqual(@as(u64, 1), s.zombie_completed_total);
-    try std.testing.expectEqual(@as(u64, 1), s.zombie_failed_total);
-    try std.testing.expectEqual(@as(u64, 1500), s.zombie_tokens_total);
-    try std.testing.expectEqual(@as(u64, 1), s.zombie_execution_seconds.count);
-    try std.testing.expectEqual(@as(u64, 4_200), s.zombie_execution_seconds.sum);
+    addZombieTokens(500);
+    try std.testing.expectEqual(@as(u64, 2000), snapshotZombieFields().zombie_tokens_total);
+}
+
+// T2 — histogram bucket boundaries. wall_ms = exact bucket value lands in that bucket.
+test "T2: observe at exact bucket boundary increments that bucket and all larger ones" {
     resetForTest();
+    defer resetForTest();
+    observeZombieExecutionSeconds(1_000); // exactly the 1s bucket
+    const s = snapshotZombieFields();
+    // Cumulative histogram: every bucket with bound >= 1000ms sees this observation.
+    for (ZombieDurationBucketsMs, 0..) |bound, i| {
+        const expected: u64 = if (bound >= 1_000) 1 else 0;
+        try std.testing.expectEqual(expected, s.zombie_execution_seconds.buckets[i]);
+    }
+    try std.testing.expectEqual(@as(u64, 1), s.zombie_execution_seconds.count);
+    try std.testing.expectEqual(@as(u64, 1_000), s.zombie_execution_seconds.sum);
+}
+
+// T2 — wall_ms beyond the largest bucket contributes to count + sum but no named bucket.
+test "T2: observe above largest bucket only hits +Inf" {
+    resetForTest();
+    defer resetForTest();
+    observeZombieExecutionSeconds(900_000); // 15 min, above 600_000 (10m) largest bucket
+    const s = snapshotZombieFields();
+    for (s.zombie_execution_seconds.buckets) |b| {
+        try std.testing.expectEqual(@as(u64, 0), b);
+    }
+    try std.testing.expectEqual(@as(u64, 1), s.zombie_execution_seconds.count);
+    try std.testing.expectEqual(@as(u64, 900_000), s.zombie_execution_seconds.sum);
+}
+
+// T2 — wall_ms = 0 (sub-millisecond event) goes into every bucket.
+test "T2: observe zero lands in every bucket" {
+    resetForTest();
+    defer resetForTest();
+    observeZombieExecutionSeconds(0);
+    const s = snapshotZombieFields();
+    for (s.zombie_execution_seconds.buckets) |b| {
+        try std.testing.expectEqual(@as(u64, 1), b);
+    }
+}
+
+// T5 — concurrent increments never lose updates (atomic.fetchAdd contract).
+test "T5: concurrent incZombiesTriggered from N threads" {
+    resetForTest();
+    defer resetForTest();
+    const Runner = struct {
+        fn run(iters: usize) void {
+            var i: usize = 0;
+            while (i < iters) : (i += 1) incZombiesTriggered();
+        }
+    };
+    const thread_count = 4;
+    const per_thread = 1_000;
+    var threads: [thread_count]std.Thread = undefined;
+    for (&threads) |*t| t.* = try std.Thread.spawn(.{}, Runner.run, .{per_thread});
+    for (threads) |t| t.join();
+    try std.testing.expectEqual(
+        @as(u64, thread_count * per_thread),
+        snapshotZombieFields().zombie_triggered_total,
+    );
 }
