@@ -206,8 +206,8 @@ test "M16_001: hint() returns UNKNOWN hint for unregistered codes" {
 // ── T7: REGISTRY entry count regression ─────────────────────────────────────
 // Pin the count so accidental deletions are caught immediately.
 
-test "T7: REGISTRY contains exactly 96 entries (post-M17_001 cleanup)" {
-    try std.testing.expectEqual(@as(usize, 96), reg.REGISTRY.len);
+test "T7: REGISTRY contains exactly 99 entries (post-M8 Slack additions)" {
+    try std.testing.expectEqual(@as(usize, 99), reg.REGISTRY.len);
 }
 
 // ── T2: Sentinel code lookup ────────────────────────────────────────────────
