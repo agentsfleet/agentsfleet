@@ -13,6 +13,7 @@ const pg = @import("pg");
 const common = @import("common.zig");
 const ec = @import("../../errors/error_registry.zig");
 const store = @import("../../state/zombie_telemetry_store.zig");
+const id_format = @import("../../types/id_format.zig");
 
 const log = std.log.scoped(.http_zombie_telemetry);
 
@@ -72,10 +73,12 @@ pub fn handleZombieTelemetry(
         return;
     };
 
-    const next_cursor: ?[]u8 = if (rows.len == limit and rows.len > 0)
-        store.makeCursor(alloc, rows[rows.len - 1]) catch null
-    else
-        null;
+    const next_cursor: ?[]u8 = if (rows.len == limit and rows.len > 0) blk: {
+        break :blk store.makeCursor(alloc, rows[rows.len - 1]) catch {
+            common.internalDbError(res, req_id);
+            return;
+        };
+    } else null;
 
     common.writeJson(res, .ok, .{ .items = rows, .cursor = next_cursor });
 }
@@ -92,10 +95,11 @@ pub fn handleInternalTelemetry(
     const alloc = arena.allocator();
     const req_id = common.requestId(alloc);
 
-    _ = common.authenticate(alloc, req, ctx) catch |err| {
+    const principal = common.authenticate(alloc, req, ctx) catch |err| {
         common.writeAuthError(ctx, res, req_id, err);
         return;
     };
+    if (!common.requireRole(res, req_id, principal, .admin)) return;
 
     const qs = req.query() catch {
         common.errorResponse(res, ec.ERR_INVALID_REQUEST, "malformed query string", req_id);
@@ -108,6 +112,18 @@ pub fn handleInternalTelemetry(
     };
     const workspace_id = qs.get("workspace_id");
     const zombie_id = qs.get("zombie_id");
+    if (workspace_id) |wid| {
+        if (!id_format.isSupportedWorkspaceId(wid)) {
+            common.errorResponse(res, ec.ERR_INVALID_REQUEST, "workspace_id must be a valid UUIDv7", req_id);
+            return;
+        }
+    }
+    if (zombie_id) |zid| {
+        if (!id_format.isSupportedWorkspaceId(zid)) {
+            common.errorResponse(res, ec.ERR_INVALID_REQUEST, "zombie_id must be a valid UUIDv7", req_id);
+            return;
+        }
+    }
     const after_ms: ?i64 = blk: {
         const raw = qs.get("after") orelse break :blk null;
         const parsed = std.fmt.parseInt(i64, raw, 10) catch {

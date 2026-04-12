@@ -137,6 +137,8 @@ pub fn recordZombieDelivery(
     };
 
     // M18_001: persist per-delivery telemetry. Non-fatal — DB failure logged, delivery unaffected.
+    // Skip gate-blocked events (epoch_wall_time_ms=0) — no meaningful wall time to record.
+    if (epoch_wall_time_ms == 0) return;
     zombie_telemetry_store.insertTelemetry(conn, alloc, .{
         .zombie_id = zombie_id,
         .workspace_id = workspace_id,
@@ -157,7 +159,8 @@ pub fn recordZombieDelivery(
     // Skipped when epoch_wall_time_ms=0 (gate-blocked or pre-M18 path).
     if (epoch_wall_time_ms > 0) {
         const start_ns: u64 = @as(u64, @intCast(epoch_wall_time_ms)) * 1_000_000;
-        const end_ns: u64 = start_ns + agent_seconds * 1_000_000_000;
+        const capped_seconds: u64 = @min(agent_seconds, 604_800); // cap at 7 days; guards u64 overflow
+        const end_ns: u64 = start_ns + capped_seconds * 1_000_000_000;
         const tctx = trace.TraceContext.generate();
         var span = otel_traces.buildSpan(tctx, "zombie.delivery", start_ns, end_ns);
         _ = otel_traces.addAttr(&span, "zombie_id", zombie_id);

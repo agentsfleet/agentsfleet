@@ -24,9 +24,9 @@ pub const TelemetryRow = struct {
     credit_deducted_cents: i64,
     recorded_at: i64,
 
-    // bvisor pattern: comptime size assertion.
+    // bvisor pattern: comptime size assertion — @compileError so it fires in all build modes.
     comptime {
-        std.debug.assert(@sizeOf(TelemetryRow) == 128);
+        if (@sizeOf(TelemetryRow) != 128) @compileError("TelemetryRow size changed; update this assertion");
     }
 
     pub fn deinit(self: *TelemetryRow, alloc: std.mem.Allocator) void {
@@ -60,6 +60,7 @@ pub fn insertTelemetry(
     const row_id = try id_format.generateZombieId(alloc);
     defer alloc.free(row_id);
 
+    const max_i64: u64 = @intCast(std.math.maxInt(i64));
     _ = try conn.exec(
         \\INSERT INTO zombie_execution_telemetry
         \\  (id, zombie_id, workspace_id, event_id,
@@ -72,10 +73,10 @@ pub fn insertTelemetry(
         params.zombie_id,
         params.workspace_id,
         params.event_id,
-        @as(i64, @intCast(params.token_count)),
-        @as(i64, @intCast(params.time_to_first_token_ms)),
+        @as(i64, @intCast(@min(params.token_count, max_i64))),
+        @as(i64, @intCast(@min(params.time_to_first_token_ms, max_i64))),
         params.epoch_wall_time_ms,
-        @as(i64, @intCast(params.wall_seconds)),
+        @as(i64, @intCast(@min(params.wall_seconds, max_i64))),
         params.plan_tier,
         params.credit_deducted_cents,
         params.recorded_at,
@@ -198,4 +199,47 @@ fn queryRows(conn: *pg.Conn, alloc: std.mem.Allocator, comptime sql: []const u8,
     }
 
     return rows.toOwnedSlice(alloc);
+}
+
+// ── Tests ───────────────────────────────────────────────────────────────────
+
+test "parseCursor: valid round-trip" {
+    const alloc = std.testing.allocator;
+    const row = TelemetryRow{
+        .id = @constCast("abc123"),
+        .zombie_id = @constCast("z"),
+        .workspace_id = @constCast("w"),
+        .event_id = @constCast("e"),
+        .token_count = 0,
+        .time_to_first_token_ms = 0,
+        .epoch_wall_time_ms = 0,
+        .wall_seconds = 0,
+        .plan_tier = @constCast("free"),
+        .credit_deducted_cents = 0,
+        .recorded_at = 1712924400000,
+    };
+    const cursor = try makeCursor(alloc, row);
+    defer alloc.free(cursor);
+    const parsed = try parseCursor(cursor);
+    try std.testing.expectEqual(@as(i64, 1712924400000), parsed.recorded_at);
+    try std.testing.expectEqualStrings("abc123", parsed.id);
+}
+
+test "parseCursor: rejects empty id" {
+    try std.testing.expectError(error.InvalidCursor, parseCursor("1712924400000:"));
+}
+
+test "parseCursor: rejects missing separator" {
+    try std.testing.expectError(error.InvalidCursor, parseCursor("1712924400000"));
+}
+
+test "parseCursor: rejects oversized id" {
+    // 129-byte id exceeds CURSOR_ID_MAX_LEN
+    const big_id = "x" ** 129;
+    const cursor = "1712924400000:" ++ big_id;
+    try std.testing.expectError(error.InvalidCursor, parseCursor(cursor));
+}
+
+test "parseCursor: rejects non-integer timestamp" {
+    try std.testing.expectError(error.InvalidCursor, parseCursor("notanumber:abc123"));
 }
