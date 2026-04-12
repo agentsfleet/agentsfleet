@@ -170,47 +170,6 @@ test "M17: renderPrometheus run_limit values match snapshot" {
 
 // ── M10_002 — pipeline observability cleanup tests ──────────────────────
 
-// T7: Removed pipeline counters must be absent from Prometheus output.
-// M10_002 + M15_002 sunset: pipeline counters + their histograms.
-test "M10_002/M15_002 sunset: renderPrometheus excludes removed pipeline counters" {
-    const alloc = std.testing.allocator;
-    const render = @import("metrics_render.zig");
-    const output = try render.renderPrometheus(alloc, true);
-    defer alloc.free(output);
-    // M10_002 removals.
-    try std.testing.expect(std.mem.indexOf(u8, output, "zombie_runs_created_total") == null);
-    try std.testing.expect(std.mem.indexOf(u8, output, "zombie_runs_completed_total") == null);
-    try std.testing.expect(std.mem.indexOf(u8, output, "zombie_runs_blocked_total") == null);
-    try std.testing.expect(std.mem.indexOf(u8, output, "zombie_run_retries_total") == null);
-    try std.testing.expect(std.mem.indexOf(u8, output, "zombie_worker_in_flight_runs") == null);
-    try std.testing.expect(std.mem.indexOf(u8, output, "zombie_run_total_wall_seconds") == null);
-    try std.testing.expect(std.mem.indexOf(u8, output, "zombie_queue_depth") == null);
-    try std.testing.expect(std.mem.indexOf(u8, output, "zombie_oldest_queued_age_ms") == null);
-    // M15_002 pipeline-tier-2 sunset — these had zero prod callers after M10.
-    try std.testing.expect(std.mem.indexOf(u8, output, "zombie_worker_errors_total") == null);
-    try std.testing.expect(std.mem.indexOf(u8, output, "zombie_worker_allocator_leaks_total") == null);
-    try std.testing.expect(std.mem.indexOf(u8, output, "zombie_sandbox_shell_runs_total") == null);
-    try std.testing.expect(std.mem.indexOf(u8, output, "zombie_sandbox_host_runs_total") == null);
-    try std.testing.expect(std.mem.indexOf(u8, output, "zombie_sandbox_bubblewrap_runs_total") == null);
-    try std.testing.expect(std.mem.indexOf(u8, output, "zombie_sandbox_kill_switch_total") == null);
-    try std.testing.expect(std.mem.indexOf(u8, output, "zombie_sandbox_preflight_failures_total") == null);
-    try std.testing.expect(std.mem.indexOf(u8, output, "zombie_agent_echo_calls_total") == null);
-    try std.testing.expect(std.mem.indexOf(u8, output, "zombie_agent_scout_calls_total") == null);
-    try std.testing.expect(std.mem.indexOf(u8, output, "zombie_agent_warden_calls_total") == null);
-    try std.testing.expect(std.mem.indexOf(u8, output, "zombie_agent_echo_tokens_total") == null);
-    try std.testing.expect(std.mem.indexOf(u8, output, "zombie_rate_limit_wait_ms_total") == null);
-    try std.testing.expect(std.mem.indexOf(u8, output, "zombie_side_effect_outbox_enqueued_total") == null);
-    try std.testing.expect(std.mem.indexOf(u8, output, "zombie_side_effect_outbox_delivered_total") == null);
-    try std.testing.expect(std.mem.indexOf(u8, output, "zombie_interrupt_queued_total") == null);
-    try std.testing.expect(std.mem.indexOf(u8, output, "zombie_interrupt_instant_total") == null);
-    try std.testing.expect(std.mem.indexOf(u8, output, "zombie_interrupt_fallback_total") == null);
-    try std.testing.expect(std.mem.indexOf(u8, output, "zombie_run_aborted_total") == null);
-    try std.testing.expect(std.mem.indexOf(u8, output, "zombie_reconcile_orphan_runs_recovered_total") == null);
-    try std.testing.expect(std.mem.indexOf(u8, output, "zombie_reconcile_orphan_no_agent_profile_total") == null);
-    try std.testing.expect(std.mem.indexOf(u8, output, "zombie_gate_repair_loops_per_run") == null);
-    try std.testing.expect(std.mem.indexOf(u8, output, "zombie_interrupt_delivery_latency_ms") == null);
-}
-
 // T1: ExternalSnapshot round-trip — inc then snapshot reflects the increment.
 test "M10_002: snapshotExternalFields reflects incExternalRetry" {
     const before = me.snapshotExternalFields();

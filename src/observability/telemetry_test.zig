@@ -10,17 +10,6 @@ test "T1: distinctIdOrSystem falls back to system" {
     try std.testing.expectEqualStrings("user_123", telemetry.distinctIdOrSystem("user_123"));
 }
 
-test "T1: capture RunOrphanRecovered records correct kind" {
-    var t = telemetry.Telemetry.initTest();
-    t.capture(telemetry.RunOrphanRecovered, .{
-        .distinct_id = "u1",
-        .run_id = "run_1",
-        .workspace_id = "ws_1",
-        .staleness_ms = 5000,
-    });
-    try telemetry.TestBackend.assertLastEventIs(.run_orphan_recovered);
-}
-
 test "T1: capture multiple events increments count" {
     var t = telemetry.Telemetry.initTest();
     t.capture(telemetry.ServerStarted, .{ .port = 3000 });
@@ -226,31 +215,17 @@ test "T4: BillingLifecycleEvent.properties returns all 6 fields" {
     try std.testing.expectEqualStrings("PAYMENT_FAILED", props[1].value.string);
 }
 
-test "T4: RunOrphanRecovered.properties includes staleness_ms as integer" {
-    const ev = telemetry.RunOrphanRecovered{
-        .distinct_id = "u",
-        .run_id = "run_1",
-        .workspace_id = "ws_1",
-        .staleness_ms = 12345,
-    };
-    const props = ev.properties();
-    try std.testing.expectEqual(@as(usize, 3), props.len);
-    try std.testing.expectEqualStrings("staleness_ms", props[2].key);
-    try std.testing.expectEqual(@as(i64, 12345), props[2].value.integer);
-}
-
 // ── T7: Regression safety ───────────────────────────────────────────
 
-test "T7: EventKind has exactly 14 variants" {
+test "T7: EventKind has exactly 13 variants" {
     const fields = @typeInfo(telemetry.EventKind).@"enum".fields;
-    try std.testing.expectEqual(@as(usize, 14), fields.len);
+    try std.testing.expectEqual(@as(usize, 13), fields.len);
 }
 
 test "T7: EventKind tagName matches expected event name strings" {
     try std.testing.expectEqualStrings("agent_completed", @tagName(telemetry.EventKind.agent_completed));
     try std.testing.expectEqualStrings("server_started", @tagName(telemetry.EventKind.server_started));
     try std.testing.expectEqualStrings("auth_rejected", @tagName(telemetry.EventKind.auth_rejected));
-    try std.testing.expectEqualStrings("run_orphan_recovered", @tagName(telemetry.EventKind.run_orphan_recovered));
     try std.testing.expectEqualStrings("billing_lifecycle_event", @tagName(telemetry.EventKind.billing_lifecycle_event));
 }
 
@@ -267,7 +242,6 @@ test "T7: each event struct kind constant matches its EventKind variant" {
     try std.testing.expectEqual(telemetry.EventKind.workspace_github_connected, telemetry.WorkspaceGithubConnected.kind);
     try std.testing.expectEqual(telemetry.EventKind.auth_login_completed, telemetry.AuthLoginCompleted.kind);
     try std.testing.expectEqual(telemetry.EventKind.auth_rejected, telemetry.AuthRejected.kind);
-    try std.testing.expectEqual(telemetry.EventKind.run_orphan_recovered, telemetry.RunOrphanRecovered.kind);
 }
 
 // ── T11: Memory + resource safety ───────────────────────────────────
