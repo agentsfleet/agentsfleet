@@ -165,6 +165,24 @@ pub fn renderPrometheus(
     try writer.print("zombie_executor_agent_duration_seconds_sum {d}\n", .{es.duration_sum});
     try writer.print("zombie_executor_agent_duration_seconds_count {d}\n", .{es.duration_count});
 
+    // M15_002: zombie execution counters + wall-time histogram.
+    try appendMetric(writer, "zombie_triggered_total", "counter", "Total zombie webhook triggers accepted.", s.zombie_triggered_total);
+    try appendMetric(writer, "zombie_completed_total", "counter", "Total zombie events delivered successfully.", s.zombie_completed_total);
+    try appendMetric(writer, "zombie_failed_total", "counter", "Total zombie event delivery failures.", s.zombie_failed_total);
+    try appendMetric(writer, "zombie_tokens_total", "counter", "Total tokens consumed across zombie deliveries.", s.zombie_tokens_total);
+    {
+        const zh = s.zombie_execution_seconds;
+        try writer.print("# HELP zombie_execution_seconds Zombie event end-to-end wall-time in seconds.\n", .{});
+        try writer.print("# TYPE zombie_execution_seconds histogram\n", .{});
+        // Buckets stored as ms; emit le and sum as fractional seconds (Prometheus base unit).
+        for (mc.ZombieDurationBucketsMs, 0..) |le_ms, i| {
+            try writer.print("zombie_execution_seconds_bucket{{le=\"{d:.3}\"}} {d}\n", .{ @as(f64, @floatFromInt(le_ms)) / 1000.0, zh.buckets[i] });
+        }
+        try writer.print("zombie_execution_seconds_bucket{{le=\"+Inf\"}} {d}\n", .{zh.count});
+        try writer.print("zombie_execution_seconds_sum {d:.3}\n", .{@as(f64, @floatFromInt(zh.sum)) / 1000.0});
+        try writer.print("zombie_execution_seconds_count {d}\n", .{zh.count});
+    }
+
     // M28_001 §2.5: per-workspace metrics.
     try mw.renderPrometheus(writer);
 

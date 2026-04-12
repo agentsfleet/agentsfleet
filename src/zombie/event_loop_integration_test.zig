@@ -225,3 +225,48 @@ test "integration 3.3: checkpointState UPSERT overwrites previous checkpoint" {
     // First checkpoint should be overwritten
     try std.testing.expect(std.mem.indexOf(u8, session2.context_json, "evt_001") == null);
 }
+
+// ── M15_002: observability wiring — metrics + PostHog capture ───────────────
+
+test "integration M15_002: recordDeliverError increments failed counter + PostHog" {
+    const alloc = std.testing.allocator;
+    const db_ctx = (try base.openTestConn(alloc)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
+
+    try base.seedTenant(db_ctx.conn);
+    defer base.teardownTenant(db_ctx.conn);
+    try base.seedWorkspace(db_ctx.conn, TEST_WORKSPACE_ID);
+    defer base.teardownWorkspace(db_ctx.conn, TEST_WORKSPACE_ID);
+    try base.seedZombie(db_ctx.conn, TEST_ZOMBIE_ID, TEST_WORKSPACE_ID, "lead-collector", VALID_CONFIG_JSON, VALID_SOURCE_MD);
+    defer base.teardownZombies(db_ctx.conn, TEST_WORKSPACE_ID);
+
+    var session = try event_loop.claimZombie(alloc, TEST_ZOMBIE_ID, db_ctx.pool);
+    defer session.deinit(alloc);
+
+    const metrics_zombie = @import("../observability/metrics_zombie.zig");
+    const telemetry_mod = @import("../observability/telemetry.zig");
+    const helpers = @import("event_loop_helpers.zig");
+    const types = @import("event_loop_types.zig");
+
+    metrics_zombie.resetForTest();
+    var tel = telemetry_mod.Telemetry.initTest();
+
+    // Build a running flag so EventLoopConfig is valid (recordDeliverError doesn't read it).
+    var running = std.atomic.Value(bool).init(true);
+    const cfg = types.EventLoopConfig{
+        .pool = db_ctx.pool,
+        .redis = undefined,
+        .executor = undefined,
+        .running = &running,
+        .telemetry = &tel,
+    };
+
+    helpers.recordDeliverError(cfg, &session, "evt_abc");
+
+    const s = metrics_zombie.snapshotZombieFields();
+    try std.testing.expectEqual(@as(u64, 1), s.zombie_failed_total);
+    try telemetry_mod.TestBackend.assertLastEventIs(.zombie_completed);
+
+    metrics_zombie.resetForTest();
+}

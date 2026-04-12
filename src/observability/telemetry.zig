@@ -32,7 +32,7 @@ pub const RecordedEvent = struct {
         return self.workspace_id_buf[0..self.workspace_id_len];
     }
 
-    fn initFromSlices(kind: EventKind, did: []const u8, wid: []const u8) RecordedEvent {
+    pub fn initFromSlices(kind: EventKind, did: []const u8, wid: []const u8) RecordedEvent {
         var r = RecordedEvent{ .kind = kind };
         const did_len = @min(did.len, 64);
         const wid_len = @min(wid.len, 64);
@@ -57,6 +57,8 @@ pub const WorkspaceGithubConnected = events.WorkspaceGithubConnected;
 pub const AuthLoginCompleted = events.AuthLoginCompleted;
 pub const AuthRejected = events.AuthRejected;
 pub const RunOrphanRecovered = events.RunOrphanRecovered;
+pub const ZombieTriggered = events.ZombieTriggered;
+pub const ZombieCompleted = events.ZombieCompleted;
 
 // ── Backends ────────────────────────────────────────────────────────
 
