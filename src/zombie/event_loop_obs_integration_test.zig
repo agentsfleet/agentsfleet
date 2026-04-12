@@ -24,7 +24,6 @@ const VALID_SOURCE_MD =
     \\You are a lead collector agent. Reply to every inbound email with a friendly greeting.
 ;
 
-
 // ── M15_002: observability wiring — metrics + PostHog capture ───────────────
 
 test "integration M15_002: recordDeliverError increments failed counter + PostHog" {
@@ -49,6 +48,7 @@ test "integration M15_002: recordDeliverError increments failed counter + PostHo
     const types = @import("event_loop_types.zig");
 
     metrics_zombie.resetForTest();
+    defer metrics_zombie.resetForTest();
     var tel = telemetry_mod.Telemetry.initTest();
 
     // Build a running flag so EventLoopConfig is valid (recordDeliverError doesn't read it).
@@ -94,6 +94,7 @@ test "integration M15_002 3.2: event_loop_emits_completion updates all 4 counter
     const redis_zombie = @import("../queue/redis_zombie.zig");
 
     metrics_zombie.resetForTest();
+    defer metrics_zombie.resetForTest();
     var tel = telemetry_mod.Telemetry.initTest();
 
     var running = std.atomic.Value(bool).init(true);
@@ -160,6 +161,7 @@ test "integration M15_002: null telemetry in recordDeliverError does not panic" 
     const types = @import("event_loop_types.zig");
 
     metrics_zombie.resetForTest();
+    defer metrics_zombie.resetForTest();
     var running = std.atomic.Value(bool).init(true);
     const cfg = types.EventLoopConfig{
         .pool = db_ctx.pool,

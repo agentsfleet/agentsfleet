@@ -68,6 +68,15 @@ test "prometheus render includes key live metrics" {
     try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_api_in_flight_requests"));
     try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_agent_duration_seconds_bucket"));
     try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_triggered_total"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_worker_running 1"));
+}
+
+// T3 — worker_running=false path; guards against the gauge always emitting 1.
+test "prometheus render emits zombie_worker_running 0 when worker is not running" {
+    const alloc = std.testing.allocator;
+    const body = try renderPrometheus(alloc, false);
+    defer alloc.free(body);
+    try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_worker_running 0"));
 }
 
 test "integration: outbox dead-letter metric is exposed in prometheus output" {

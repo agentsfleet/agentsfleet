@@ -5,7 +5,7 @@
   ],
   "title": "Agent Run Breakdown",
   "uid": "zombie-run-breakdown",
-  "version": 1,
+  "version": 2,
   "time": { "from": "now-24h", "to": "now" },
   "templating": {
     "list": [
