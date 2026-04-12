@@ -135,7 +135,33 @@ test "deductZombieUsage exhausted writes zero-delta audit and returns .exhausted
     try std.testing.expectEqual(@as(i64, 0), try row.get(i64, 1));
 }
 
-// T5 (spec dim 2.3) — Replay of same event_id deducts 0 cents.
+// T5 (spec dim 2.2) — DB failure returns .db_error; event loop still XACKs
+// because recordZombieDelivery returns void (no error propagation).
+// Injection: workspace_id that doesn't exist → FK violation on the INSERT in
+// provisionWorkspaceCredit inside getOrProvisionWorkspaceCredit.
+test "deductZombieUsage returns .db_error on DB write failure" {
+    const db_ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
+
+    // Deliberately NOT seeded — workspace_id has no matching row in `workspaces`.
+    const WS_GHOST = "0195b4ba-8d3a-7f13-8abc-aa0500000099";
+
+    const result = metering.deductZombieUsage(db_ctx.conn, ALLOC, .{
+        .zombie_id = "zombie-m15-ghost",
+        .workspace_id = WS_GHOST,
+        .event_id = "0195b4ba-8d3a-7f13-8abc-aa050000ee99",
+        .agent_seconds = 30,
+        .token_count = 0,
+    }, .free);
+
+    try std.testing.expect(switch (result) {
+        .db_error => true,
+        else => false,
+    });
+}
+
+// T6 (spec dim 2.3) — Replay of same event_id deducts 0 cents.
 test "deductZombieUsage is idempotent on crash-recovery replay" {
     const db_ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();

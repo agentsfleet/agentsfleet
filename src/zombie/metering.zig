@@ -27,6 +27,8 @@ pub const ExecutionUsage = struct {
     workspace_id: []const u8, // borrowed
     event_id: []const u8, // borrowed — idempotency key embedded in audit metadata
     agent_seconds: u64,
+    // Reserved for M15_002 (Zombie Observability) — PostHog will bill per token
+    // in parallel with the per-agent-second deduction done here. Not read today.
     token_count: u64,
 };
 
