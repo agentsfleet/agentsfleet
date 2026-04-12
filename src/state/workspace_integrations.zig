@@ -55,7 +55,7 @@ pub fn upsertIntegration(
         \\  SET scopes_granted = EXCLUDED.scopes_granted,
         \\      updated_at     = EXCLUDED.updated_at,
         \\      status         = 'active'
-        \\RETURNING integration_id::text
+        \\RETURNING integration_id::text, (xmax = 0) AS is_new
     , .{ new_id, workspace_id, provider, external_id, scopes_granted, source_str, now_ms }) catch |err| {
         log.err("workspace_integrations.upsert_fail provider={s} err={s}", .{ provider, @errorName(err) });
         return err;
@@ -66,8 +66,9 @@ pub fn upsertIntegration(
         log.err("workspace_integrations.upsert_no_row provider={s}", .{provider});
         return error.UpsertNoRow;
     };
-    const raw = try row.get([]u8, 0);
-    return .{ .integration_id = try alloc.dupe(u8, raw), .created = false };
+    const raw_id = try row.get([]u8, 0);
+    const is_new = try row.get(bool, 1);
+    return .{ .integration_id = try alloc.dupe(u8, raw_id), .created = is_new };
 }
 
 /// Look up workspace_id for an active integration. Returns owned slice or null.

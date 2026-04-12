@@ -140,8 +140,8 @@ fn handleGateAction(ctx: *Context, alloc: std.mem.Allocator, rest: []const u8, r
         return;
     }
 
-    // Atomically take ownership of the pending gate — DEL returns 1 only for the
-    // one request that deletes it; concurrent requests get 0 and fast-exit.
+    // Atomically take ownership of the pending gate — GETDEL returns the value
+    // only for the one request that consumes it; concurrent requests get null.
     var pending_key_buf: [256]u8 = undefined;
     const pending_key = std.fmt.bufPrint(&pending_key_buf, "{s}{s}:{s}", .{
         ec.GATE_PENDING_KEY_PREFIX, zombie_id, inner_action_id,
@@ -149,14 +149,14 @@ fn handleGateAction(ctx: *Context, alloc: std.mem.Allocator, rest: []const u8, r
         common.internalOperationError(res, "key overflow", req_id);
         return;
     };
-    const del_resp = ctx.queue.command(&.{ "DEL", pending_key }) catch {
+    const get_del = ctx.queue.command(&.{ "GETDEL", pending_key }) catch {
         log.err("slack.interactions.redis_fail req_id={s}", .{req_id});
         res.status = 200;
         res.body = "{}";
         return;
     };
-    const owned = switch (del_resp) {
-        .integer => |n| n == 1,
+    const owned = switch (get_del) {
+        .bulk => |v| v != null,
         else => false,
     };
     if (!owned) {
