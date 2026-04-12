@@ -167,9 +167,9 @@ pub fn renderPrometheus(
     try writer.print("zombie_executor_agent_duration_seconds_count {d}\n", .{es.duration_count});
 
     // M15_002: zombie execution counters + wall-time histogram.
-    try appendMetric(writer, "zombies_triggered_total", "counter", "Total zombie webhook triggers accepted.", s.zombies_triggered_total);
-    try appendMetric(writer, "zombies_completed_total", "counter", "Total zombie events delivered successfully.", s.zombies_completed_total);
-    try appendMetric(writer, "zombies_failed_total", "counter", "Total zombie event delivery failures.", s.zombies_failed_total);
+    try appendMetric(writer, "zombie_triggered_total", "counter", "Total zombie webhook triggers accepted.", s.zombie_triggered_total);
+    try appendMetric(writer, "zombie_completed_total", "counter", "Total zombie events delivered successfully.", s.zombie_completed_total);
+    try appendMetric(writer, "zombie_failed_total", "counter", "Total zombie event delivery failures.", s.zombie_failed_total);
     try appendMetric(writer, "zombie_tokens_total", "counter", "Total tokens consumed across zombie deliveries.", s.zombie_tokens_total);
     {
         const zh = s.zombie_execution_seconds;

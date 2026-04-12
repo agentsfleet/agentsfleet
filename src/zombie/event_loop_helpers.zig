@@ -107,6 +107,11 @@ pub fn sleepWithBackoff(cfg: EventLoopConfig, consecutive_errors: u32) void {
     }
 }
 
+// M15_002: exit_status label values for PostHog ZombieCompleted events.
+pub const EXIT_PROCESSED = "processed";
+pub const EXIT_AGENT_ERROR = "agent_error";
+pub const EXIT_DELIVER_ERROR = "deliver_error";
+
 /// M15_002: delivery bookkeeping — activity log + Prometheus + PostHog.
 /// Called from event_loop.processEvent after deliverEvent resolves.
 pub fn logDeliveryResult(
@@ -152,7 +157,7 @@ pub fn logDeliveryResult(
             .event_id = event.event_id,
             .tokens = stage_result.token_count,
             .wall_ms = wall_ms,
-            .exit_status = if (ok) "processed" else "agent_error",
+            .exit_status = if (ok) EXIT_PROCESSED else EXIT_AGENT_ERROR,
         });
     }
 }
@@ -168,7 +173,7 @@ pub fn recordDeliverError(cfg: EventLoopConfig, session: *ZombieSession, event_i
             .event_id = event_id,
             .tokens = 0,
             .wall_ms = 0,
-            .exit_status = "deliver_error",
+            .exit_status = EXIT_DELIVER_ERROR,
         });
     }
 }

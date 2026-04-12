@@ -13,9 +13,9 @@ pub const ZombieHistogramSnapshot = struct {
 };
 
 pub const ZombieFields = struct {
-    zombies_triggered_total: u64,
-    zombies_completed_total: u64,
-    zombies_failed_total: u64,
+    zombie_triggered_total: u64,
+    zombie_completed_total: u64,
+    zombie_failed_total: u64,
     zombie_tokens_total: u64,
     zombie_execution_seconds: ZombieHistogramSnapshot,
 };
@@ -64,9 +64,9 @@ pub fn snapshotZombieFields() ZombieFields {
     };
     for (&h.buckets, 0..) |*b, i| b.* = g_hist_buckets[i].load(.acquire);
     return .{
-        .zombies_triggered_total = g_triggered.load(.acquire),
-        .zombies_completed_total = g_completed.load(.acquire),
-        .zombies_failed_total = g_failed.load(.acquire),
+        .zombie_triggered_total = g_triggered.load(.acquire),
+        .zombie_completed_total = g_completed.load(.acquire),
+        .zombie_failed_total = g_failed.load(.acquire),
         .zombie_tokens_total = g_tokens.load(.acquire),
         .zombie_execution_seconds = h,
     };
@@ -91,9 +91,9 @@ test "inc and snapshot" {
     addZombieTokens(1500);
     observeZombieExecutionSeconds(4_200);
     const s = snapshotZombieFields();
-    try std.testing.expectEqual(@as(u64, 2), s.zombies_triggered_total);
-    try std.testing.expectEqual(@as(u64, 1), s.zombies_completed_total);
-    try std.testing.expectEqual(@as(u64, 1), s.zombies_failed_total);
+    try std.testing.expectEqual(@as(u64, 2), s.zombie_triggered_total);
+    try std.testing.expectEqual(@as(u64, 1), s.zombie_completed_total);
+    try std.testing.expectEqual(@as(u64, 1), s.zombie_failed_total);
     try std.testing.expectEqual(@as(u64, 1500), s.zombie_tokens_total);
     try std.testing.expectEqual(@as(u64, 1), s.zombie_execution_seconds.count);
     try std.testing.expectEqual(@as(u64, 4), s.zombie_execution_seconds.sum);

@@ -207,6 +207,10 @@ pub fn deliverEvent(
     });
     logActivity(cfg.pool, alloc, session, activity_stream.EVT_EVENT_RECEIVED, event.event_id);
 
+    // M15_002: wall-time spans the full deliver path — gate wait + sandbox — so the
+    // histogram reflects end-to-end latency operators see, not just executor time.
+    const t_start_ms = std.time.milliTimestamp();
+
     // M4_001: Approval gate — check before tool execution
     const gate_check = event_loop_gate.checkApprovalGate(alloc, session, event, cfg.pool, cfg.redis);
     switch (gate_check) {
@@ -232,7 +236,6 @@ pub fn deliverEvent(
         .passed => {},
     }
 
-    const t_start_ms = std.time.milliTimestamp();
     const stage_result = try executeInSandbox(alloc, session, event, cfg);
     const wall_ms: u64 = @intCast(@max(0, std.time.milliTimestamp() - t_start_ms));
 

@@ -90,9 +90,9 @@ pub const Snapshot = struct {
     // M21_002 §4.3
     interrupt_delivery_latency_ms: InterruptLatencySnapshot,
     // M15_002 §1.0 — zombie counters + wall-time histogram
-    zombies_triggered_total: u64 = 0,
-    zombies_completed_total: u64 = 0,
-    zombies_failed_total: u64 = 0,
+    zombie_triggered_total: u64 = 0,
+    zombie_completed_total: u64 = 0,
+    zombie_failed_total: u64 = 0,
     zombie_tokens_total: u64 = 0,
     zombie_execution_seconds: ZombieHistogramSnapshot = .{},
 };
@@ -339,9 +339,9 @@ pub fn snapshot() Snapshot {
     s.retry_after_hints_total = ext.retry_after_hints_total;
     mh.snapshotHistograms(&s);
     const zf = zombie_metrics.snapshotZombieFields();
-    s.zombies_triggered_total = zf.zombies_triggered_total;
-    s.zombies_completed_total = zf.zombies_completed_total;
-    s.zombies_failed_total = zf.zombies_failed_total;
+    s.zombie_triggered_total = zf.zombie_triggered_total;
+    s.zombie_completed_total = zf.zombie_completed_total;
+    s.zombie_failed_total = zf.zombie_failed_total;
     s.zombie_tokens_total = zf.zombie_tokens_total;
     s.zombie_execution_seconds = zf.zombie_execution_seconds;
     return s;
