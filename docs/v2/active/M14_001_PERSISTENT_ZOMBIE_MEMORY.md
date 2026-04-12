@@ -58,29 +58,37 @@
 
 ## §1 — Memory Schema and Role
 
-**Status:** PENDING
+**Status:** IN_PROGRESS (schema + role done; table schema revised — see note)
 
 Create a dedicated `memory` schema in the core Postgres database, with a
 dedicated `memory_runtime` role that has grants only on `memory.*` and zero
-grants on `core.*`. The schema is deliberately simple — one table, indexes
-for the queries we actually run. Follow `docs/SCHEMA_CONVENTIONS.md`:
-UUIDv7 primary key with CHECK constraint, BIGINT millisecond timestamps,
-≤100 lines per SQL file, single-concern.
+grants on `core.*`. NullClaw's PostgresMemory auto-migrates its own table
+schema (instance_id TEXT, TIMESTAMPTZ timestamps, session_id UUID) on first
+connect. Migration 026 creates the schema, role, and grants; it does NOT
+pre-create the table (NullClaw owns table DDL to keep column names coherent
+with NullClaw's internal queries). Steps 5+ can ALTER TABLE to add operator
+columns (tags, etc.) on top.
+
+**Schema design note (Step 4 deviation):** Original spec called for `zombie_id
+UUID FK` + BIGINT timestamps. Revised to let NullClaw manage the table because
+NullClaw's INSERT includes `instance_id TEXT` (its isolation key) and
+`created_at TIMESTAMPTZ` — column type mismatches would break at runtime.
+The FK is deferred to when NullClaw's schema is extended in Steps 5+.
 
 **Dimensions (test blueprints):**
 
 | Dim | Status | Target | Input | Expected | Test type |
 |-----|--------|--------|-------|----------|-----------|
-| 1.1 | PENDING | `schema/026_memory_entries.sql` | fresh DB | table `memory.memory_entries` exists with columns `(id, zombie_id, category, key, content, tags, created_at, updated_at)`; UNIQUE on `(zombie_id, category, key)`; B-tree on `(zombie_id, category)`; GIN on `tags` | integration |
-| 1.2 | PENDING | `memory_runtime` role grants | fresh DB after migration | role has SELECT/INSERT/UPDATE/DELETE on `memory.memory_entries`; role has NO access to `core.*` (negative test: `SELECT FROM core.zombies` returns permission denied) | integration |
-| 1.3 | PENDING | `schema/embed.zig` + `src/cmd/common.zig` | `make run-migrations` | new migration runs exactly once; re-run is idempotent; migration array length matches embedFile list | contract |
+| 1.1 | DONE | `schema/026_memory_entries.sql` | fresh DB + NullClaw connect | table `memory.memory_entries` auto-created by NullClaw with `(id, key, content, category, session_id, instance_id, created_at, updated_at)`; isolation via `instance_id = "zmb:{uuid}"`; schema revised from spec (see note above) | integration |
+| 1.2 | DONE | `memory_runtime` role grants | fresh DB after migration | role has USAGE+CREATE on `memory` schema; has NO access to `core.*` (negative test passes per Step 2 tests); ALTER DEFAULT PRIVILEGES auto-grants on NullClaw-created tables | integration |
+| 1.3 | DONE | `schema/embed.zig` + `src/cmd/common.zig` | `make run-migrations` | migration v26 runs exactly once; re-run is idempotent; migration array length matches embedFile list | contract |
 | 1.4 | PENDING | `schema/023_core_zombie_sessions.sql` comment fix | read comment after edit | comment describes `context_json` as "conversation resume bookmark storing {last_event_id, last_response}" and explicitly notes it is NOT agent memory | contract |
 
 ---
 
 ## §2 — Executor Wiring and Per-Zombie Isolation
 
-**Status:** PENDING
+**Status:** IN_PROGRESS (Step 4 done; dims 2.1 unit-tested, 2.3/2.4 require live DB)
 
 The executor must build a per-zombie `MemoryConfig` and pass it to NullClaw so
 `core` and `daily` categories route to the memory schema while `conversation` stays
@@ -90,9 +98,9 @@ in workspace SQLite. Row-level scoping is enforced at the query layer.
 
 | Dim | Status | Target | Input | Expected | Test type |
 |-----|--------|--------|-------|----------|-----------|
-| 2.1 | PENDING | `src/executor/types.zig:MemoryBackendConfig` | `MemoryBackendConfig{ .backend = "postgres", .connection = "...", .namespace = "zmb:0195b4ba-8d3a-7f13-8abc-...", .max_entries = 100000, .daily_retention_hours = 72 }` | struct validates at startup; rejects empty namespace, invalid backend | unit |
-| 2.2 | PENDING | `src/executor/runner.zig:executeInner` | zombie_id `zom_A` running concurrently with `zom_B` | Zombie A's `memory_store("user_pref", "dark")` NOT visible to Zombie B's `memory_recall("user_pref")`; scope enforced via `WHERE zombie_id = $current` in every memory op | integration |
-| 2.3 | PENDING | `src/memory/zombie_memory.zig` | NullClaw calls `memory_store` with category `core` | write goes to `memory.memory_entries` in the memory schema; `conversation` category still writes to workspace SQLite | integration |
+| 2.1 | DONE | `src/executor/types.zig:MemoryBackendConfig` | `MemoryBackendConfig{ .backend = "postgres", .connection = "...", .namespace = "zmb:0195b4ba-8d3a-7f13-8abc-...", .max_entries = 100000, .daily_retention_hours = 72 }` | struct validates at startup; rejects empty namespace, invalid backend | unit |
+| 2.2 | PENDING | `src/executor/runner.zig:executeInner` | zombie_id `zom_A` running concurrently with `zom_B` | Zombie A's `memory_store("user_pref", "dark")` NOT visible to Zombie B's `memory_recall("user_pref")`; scope enforced via `WHERE instance_id = $current` in every memory op | integration |
+| 2.3 | PENDING | `src/executor/zombie_memory.zig` (executor) | NullClaw calls `memory_store` with category `core` | write goes to `memory.memory_entries` in the memory schema; `conversation` category still writes to workspace SQLite | integration |
 | 2.4 | PENDING | crash recovery path | zombie stores memory, then SIGKILL, then restart | all memory_store calls committed before SIGKILL are recoverable; `UPSERT` semantics (not INSERT) so retried writes don't conflict | integration |
 
 ---
