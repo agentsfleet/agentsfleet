@@ -12,7 +12,6 @@ export function registerProgramCommands(handlers) {
     "runs.interrupt": handlers.runsInterrupt,
     doctor: handlers.doctor,
     "skill-secret": handlers.skillSecret,
-    agent: handlers.agent,
     admin: handlers.admin,
     // M1_001 §5: Zombie commands
     "zombie.install": handlers.zombieInstall,

@@ -49,13 +49,6 @@ function printHelp(stdout, ui, opts = {}) {
     writeLine(stdout, "  workspace upgrade-scale --workspace-id ID --subscription-id SUBSCRIPTION_ID");
     writeLine(stdout, "  skill-secret put --workspace-id ID --skill-ref REF --key KEY --value VALUE [--scope host|sandbox]");
     writeLine(stdout, "  skill-secret delete --workspace-id ID --skill-ref REF --key KEY");
-    writeLine(stdout, "  agent scores <agent-id> [--limit N] [--starting-after ID]");
-    writeLine(stdout, "  agent profile <agent-id>");
-    writeLine(stdout, "  agent improvement-report <agent-id>");
-    writeLine(stdout, "  agent proposals <agent-id>");
-    writeLine(stdout, "  agent proposals <agent-id> approve <proposal-id>");
-    writeLine(stdout, "  agent proposals <agent-id> reject <proposal-id> [--reason TEXT]");
-    writeLine(stdout, "  agent proposals <agent-id> veto <proposal-id> [--reason TEXT]");
     writeLine(stdout, "  admin config set scoring_context_max_tokens <value> --workspace-id ID");
   }
 

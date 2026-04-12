@@ -6,7 +6,6 @@ import {
 } from "./lib/analytics.js";
 import { findRoute } from "./program/routes.js";
 import { registerProgramCommands } from "./program/command-registry.js";
-import { commandAgent as commandAgentModule } from "./commands/agent.js";
 import { commandAdmin as commandAdminModule } from "./commands/admin.js";
 import { commandZombie as commandZombieModule } from "./commands/zombie.js";
 import { commandRuns as commandRunsModule } from "./commands/runs.js";
@@ -129,17 +128,6 @@ export async function runCli(argv, io = {}) {
     runsList: (routeArgs) => core.commandRunsList(routeArgs.slice(1)),
     doctor: () => core.commandDoctor(),
     skillSecret: (routeArgs) => core.commandSkillSecret(routeArgs),
-    agent: (routeArgs) => commandAgentModule(ctx, routeArgs, workspaces, {
-      parseFlags,
-      request,
-      apiHeaders,
-      ui,
-      printJson,
-      printKeyValue,
-      printSection,
-      printTable,
-      writeLine,
-    }),
     admin: (routeArgs) => commandAdminModule(ctx, routeArgs, workspaces, {
       parseFlags,
       request,

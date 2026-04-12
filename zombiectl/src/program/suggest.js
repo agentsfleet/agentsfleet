@@ -12,7 +12,6 @@ const KNOWN_COMMANDS = [
   "runs",
   "doctor",
   "skill-secret",
-  "agent",
 ];
 
 const KNOWN_SUBCOMMANDS = {
@@ -22,7 +21,6 @@ const KNOWN_SUBCOMMANDS = {
   runs: ["list"],
   run: ["status"],
   "skill-secret": ["put", "delete"],
-  agent: ["scores", "profile"],
 };
 
 export function levenshteinDistance(a, b) {

@@ -69,10 +69,6 @@ describe("help output", () => {
     expect(output).toContain("OPERATOR COMMANDS");
     expect(output).toContain("workspace upgrade-scale");
     expect(output).toContain("skill-secret put");
-    expect(output).toContain("agent scores");
-    expect(output).toContain("agent profile");
-    expect(output).toContain("agent improvement-report");
-    expect(output).toContain("agent proposals <agent-id> veto <proposal-id>");
   });
 
   test("--help without ZOMBIE_OPERATOR does NOT contain operator commands", async () => {

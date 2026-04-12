@@ -7,7 +7,6 @@ const posthog = @import("posthog");
 pub const EventKind = enum {
     agent_completed,
     entitlement_rejected,
-    profile_activated,
     billing_lifecycle_event,
     server_started,
     worker_started,
@@ -59,27 +58,6 @@ pub const EntitlementRejected = struct {
             .{ .key = "workspace_id", .value = .{ .string = self.workspace_id } },
             .{ .key = "boundary", .value = .{ .string = self.boundary } },
             .{ .key = "reason_code", .value = .{ .string = self.reason_code } },
-            .{ .key = "request_id", .value = .{ .string = self.request_id } },
-        };
-    }
-};
-
-pub const ProfileActivated = struct {
-    distinct_id: []const u8,
-    workspace_id: []const u8,
-    agent_id: []const u8,
-    config_version_id: []const u8,
-    run_snapshot_version: []const u8,
-    request_id: []const u8,
-
-    pub const kind: EventKind = .profile_activated;
-
-    pub fn properties(self: @This()) [5]posthog.Property {
-        return .{
-            .{ .key = "workspace_id", .value = .{ .string = self.workspace_id } },
-            .{ .key = "agent_id", .value = .{ .string = self.agent_id } },
-            .{ .key = "config_version_id", .value = .{ .string = self.config_version_id } },
-            .{ .key = "run_snapshot_version", .value = .{ .string = self.run_snapshot_version } },
             .{ .key = "request_id", .value = .{ .string = self.request_id } },
         };
     }
