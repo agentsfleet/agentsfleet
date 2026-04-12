@@ -24,7 +24,9 @@ pub const UpsertResult = struct {
 };
 
 /// Upsert a workspace_integrations row for the given (provider, external_id).
-/// On conflict (existing row): refresh updated_at and scopes_granted.
+/// Atomic: INSERT ... ON CONFLICT DO UPDATE — no read-then-write race.
+/// On conflict: refreshes scopes_granted, updated_at, and resets status to 'active'
+/// (so reinstall after revoke recovers the workspace).
 /// Returns UpsertResult with an owned integration_id string. Caller must free.
 pub fn upsertIntegration(
     conn: *pg.Conn,
@@ -36,35 +38,36 @@ pub fn upsertIntegration(
     source: Source,
 ) !UpsertResult {
     const now_ms = std.time.milliTimestamp();
-
-    // Read existing row first — materialise before any write (ZIG_RULES: no concurrent read+write)
-    const existing = try lookupIntegrationId(conn, alloc, provider, external_id);
-
-    if (existing) |id| {
-        defer alloc.free(id);
-        try touchIntegration(conn, id, scopes_granted, now_ms);
-        return .{ .integration_id = try alloc.dupe(u8, id), .created = false };
-    }
-
     const new_id = try id_format.generateIntegrationId(alloc);
-    errdefer alloc.free(new_id);
+    defer alloc.free(new_id); // always free; result ID comes from RETURNING
 
     const source_str: []const u8 = switch (source) {
         .oauth => "oauth",
         .cli => "cli",
     };
 
-    _ = conn.exec(
+    var q = PgQuery.from(conn.query(
         \\INSERT INTO core.workspace_integrations
         \\  (integration_id, workspace_id, provider, external_id,
         \\   scopes_granted, source, status, installed_at, updated_at)
         \\VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, 'active', $7, $7)
+        \\ON CONFLICT (provider, external_id) DO UPDATE
+        \\  SET scopes_granted = EXCLUDED.scopes_granted,
+        \\      updated_at     = EXCLUDED.updated_at,
+        \\      status         = 'active'
+        \\RETURNING integration_id::text
     , .{ new_id, workspace_id, provider, external_id, scopes_granted, source_str, now_ms }) catch |err| {
-        log.err("workspace_integrations.insert_fail provider={s} err={s}", .{ provider, @errorName(err) });
+        log.err("workspace_integrations.upsert_fail provider={s} err={s}", .{ provider, @errorName(err) });
         return err;
-    };
+    });
+    defer q.deinit();
 
-    return .{ .integration_id = new_id, .created = true };
+    const row = try q.next() orelse {
+        log.err("workspace_integrations.upsert_no_row provider={s}", .{provider});
+        return error.UpsertNoRow;
+    };
+    const raw = try row.get([]u8, 0);
+    return .{ .integration_id = try alloc.dupe(u8, raw), .created = false };
 }
 
 /// Look up workspace_id for an active integration. Returns owned slice or null.
@@ -88,35 +91,6 @@ pub fn lookupWorkspace(
     const row = try q.next() orelse return null;
     const raw = try row.get([]u8, 0);
     return try alloc.dupe(u8, raw);
-}
-
-// ── Internal ─────────────────────────────────────────────────────────────────
-
-fn lookupIntegrationId(conn: *pg.Conn, alloc: std.mem.Allocator, provider: []const u8, external_id: []const u8) !?[]const u8 {
-    var q = PgQuery.from(conn.query(
-        \\SELECT integration_id::text
-        \\FROM core.workspace_integrations
-        \\WHERE provider = $1 AND external_id = $2
-    , .{ provider, external_id }) catch |err| {
-        log.err("workspace_integrations.id_lookup_fail provider={s} err={s}", .{ provider, @errorName(err) });
-        return err;
-    });
-    defer q.deinit();
-
-    const row = try q.next() orelse return null;
-    const raw = try row.get([]u8, 0);
-    return try alloc.dupe(u8, raw);
-}
-
-fn touchIntegration(conn: *pg.Conn, integration_id: []const u8, scopes_granted: []const u8, now_ms: i64) !void {
-    _ = conn.exec(
-        \\UPDATE core.workspace_integrations
-        \\SET scopes_granted = $1, updated_at = $2
-        \\WHERE integration_id = $3::uuid
-    , .{ scopes_granted, now_ms, integration_id }) catch |err| {
-        log.err("workspace_integrations.touch_fail id={s} err={s}", .{ integration_id, @errorName(err) });
-        return err;
-    };
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────

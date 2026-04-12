@@ -38,6 +38,7 @@ const SlackEventPayload = struct {
 const SlackEvent = struct {
     type: []const u8,
     bot_id: ?[]const u8 = null,
+    subtype: ?[]const u8 = null,
 };
 
 // ── Handler ───────────────────────────────────────────────────────────────────
@@ -84,9 +85,11 @@ pub fn handleSlackEvent(ctx: *Context, req: *httpz.Request, res: *httpz.Response
         return;
     }
 
-    // Bot loop prevention (§4.0)
+    // Bot loop prevention (§4.0): skip bot_id events and bot_message subtypes
     if (payload.event) |evt| {
-        if (evt.bot_id != null) {
+        const is_bot = evt.bot_id != null or
+            (if (evt.subtype) |st| std.mem.eql(u8, st, "bot_message") else false);
+        if (is_bot) {
             log.debug("slack.events.bot_loop_skip req_id={s}", .{req_id});
             res.status = 200;
             res.body = "{}";
@@ -102,8 +105,8 @@ pub fn handleSlackEvent(ctx: *Context, req: *httpz.Request, res: *httpz.Response
 
     const conn = ctx.pool.acquire() catch {
         log.err("slack.events.db_acquire_fail req_id={s}", .{req_id});
-        // Always 200 to Slack — Slack retries on non-200
-        res.status = 200;
+        // 503 so Slack retries — returning 200 would permanently lose the event
+        res.status = 503;
         res.body = "{}";
         return;
     };
@@ -112,12 +115,12 @@ pub fn handleSlackEvent(ctx: *Context, req: *httpz.Request, res: *httpz.Response
     // Lookup workspace via routing record
     const workspace_id = workspace_integrations.lookupWorkspace(conn, alloc, "slack", team_id) catch {
         log.err("slack.events.lookup_fail team_id={s} req_id={s}", .{ team_id, req_id });
-        res.status = 200;
+        res.status = 503; // DB error — Slack should retry
         res.body = "{}";
         return;
     } orelse {
         log.debug("slack.events.no_workspace team_id={s} req_id={s}", .{ team_id, req_id });
-        res.status = 200;
+        res.status = 200; // workspace not installed — not an error, no retry needed
         res.body = "{}";
         return;
     };
@@ -125,12 +128,12 @@ pub fn handleSlackEvent(ctx: *Context, req: *httpz.Request, res: *httpz.Response
     // Find a Zombie in this workspace configured for Slack events
     const zombie_id = lookupSlackZombie(conn, alloc, workspace_id) catch {
         log.err("slack.events.zombie_lookup_fail workspace_id={s} req_id={s}", .{ workspace_id, req_id });
-        res.status = 200;
+        res.status = 503; // DB error — Slack should retry
         res.body = "{}";
         return;
     } orelse {
         log.debug("slack.events.no_zombie workspace_id={s} req_id={s}", .{ workspace_id, req_id });
-        res.status = 200;
+        res.status = 200; // no Slack-trigger zombie configured — not an error
         res.body = "{}";
         return;
     };
@@ -140,7 +143,7 @@ pub fn handleSlackEvent(ctx: *Context, req: *httpz.Request, res: *httpz.Response
 
     ctx.queue.xaddZombieEvent(zombie_id, event_id, event_type, "slack", body) catch |err| {
         log.err("slack.events.enqueue_fail zombie_id={s} err={s} req_id={s}", .{ zombie_id, @errorName(err), req_id });
-        res.status = 200;
+        res.status = 503; // Redis error — Slack should retry
         res.body = "{}";
         return;
     };
@@ -200,6 +203,7 @@ fn lookupSlackZombie(conn: *pg.Conn, alloc: std.mem.Allocator, workspace_id: []c
         \\WHERE workspace_id = $1::uuid
         \\  AND status = 'active'
         \\  AND config_json->'trigger'->>'type' = 'slack_event'
+        \\ORDER BY created_at ASC
         \\LIMIT 1
     , .{workspace_id}) catch |err| {
         log.err("slack.events.zombie_query_fail workspace_id={s} err={s}", .{ workspace_id, @errorName(err) });

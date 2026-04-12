@@ -168,6 +168,12 @@ fn handleGateAction(ctx: *Context, alloc: std.mem.Allocator, rest: []const u8, r
         return;
     };
 
+    // Delete pending key so the gate button cannot be re-submitted within the 2h TTL window
+    _ = ctx.queue.command(&.{ "DEL", pending_key }) catch |del_err| {
+        log.warn("slack.interactions.pending_del_fail err={s} req_id={s}", .{ @errorName(del_err), req_id });
+        // Non-fatal: approval was already resolved; key will expire naturally
+    };
+
     _ = alloc;
     log.info("slack.interactions.gate_resolved zombie_id={s} action_id={s} decision={s} req_id={s}", .{
         zombie_id, inner_action_id, decision, req_id,
