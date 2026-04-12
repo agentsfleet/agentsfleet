@@ -3,11 +3,20 @@
 **Prototype:** v2
 **Milestone:** M14
 **Workstream:** 001
-**Date:** Apr 10, 2026
-**Status:** PENDING
-**Priority:** P1 — Zombies lose all learned context on crash/restart; every restart is a cold start
+**Date:** Apr 12, 2026: 03:05 PM
+**Status:** IN_PROGRESS
+**Branch:** feat/m14-001-persistent-memory
+**Priority:** P1 — Zombies lose learned context on workspace destruction; every run is a cold start
 **Batch:** B1
 **Depends on:** M5_001 (dynamic skill architecture, tool_bridge)
+
+> **Note (Apr 12):** Spec body below is being rewritten. Design review in this
+> milestone concluded: (1) storage is a dedicated Postgres *database* on the core
+> cluster, (2) no pgvector / no RAG, (3) markdown is an export/import view, not
+> the store, (4) memory-full policy on `core` errors back to the agent, (5) default-on
+> for new zombies. See `docs/v2/agent-docs/RIPLEYS_LOG_APR_12_15_30.md` for the
+> design log and `docs/v2/agent-docs/memory.md` for the public contributor guide.
+> Full spec rewrite to follow.
 
 ---
 
