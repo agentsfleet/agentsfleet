@@ -1,8 +1,10 @@
 //! M9_001 §5.0 — Outbound proxy unit tests.
-//! Tests pure functions: extractDomain, serviceForDomain, stripEcho, MAX_RESPONSE_BYTES.
+//! Tests pure functions: extractDomain, extractPath, serviceForDomain, stripEcho, MAX_RESPONSE_BYTES.
 //!
 //! §5.2: Unknown domain → serviceForDomain returns null → DomainBlocked error path.
 //! §5.3: MAX_RESPONSE_BYTES = 10 MB; stripEcho removes credential echoes.
+//! §5.4: extractPath correctly handles scheme-prefixed targets (PR #205 fix #7).
+//! §5.5: PipelineError.ApprovalRequired exists and is reachable (PR #205 fix #3).
 
 const std = @import("std");
 const pipeline = @import("outbound_proxy.zig");
@@ -109,4 +111,66 @@ test "stripEcho: empty credential returns body unchanged (guard)" {
     const cleaned = try pipeline.stripEcho(alloc, body, "");
     defer alloc.free(cleaned);
     try std.testing.expectEqualStrings(body, cleaned);
+}
+
+// ── extractPath (§5.4 — PR #205 fix #7) ─────────────────────────────────────
+// Before the fix, path_start did not account for scheme_len, producing a wrong
+// firewall path ("/slack.com/api/chat" from "https://slack.com/api/chat").
+// After the fix, extractPath(target, domain) correctly strips scheme + domain.
+
+test "extractPath: https target gives correct path starting with slash" {
+    const p = pipeline.extractPath("https://slack.com/api/chat.postMessage", "slack.com");
+    try std.testing.expectEqualStrings("/api/chat.postMessage", p);
+}
+
+test "extractPath: http target gives correct path starting with slash" {
+    const p = pipeline.extractPath("http://localhost:8080/v1/resource", "localhost:8080");
+    try std.testing.expectEqualStrings("/v1/resource", p);
+}
+
+test "extractPath: bare target without scheme gives correct path" {
+    const p = pipeline.extractPath("slack.com/api/chat", "slack.com");
+    try std.testing.expectEqualStrings("/api/chat", p);
+}
+
+test "extractPath: target with no path after domain returns /" {
+    const p = pipeline.extractPath("slack.com", "slack.com");
+    try std.testing.expectEqualStrings("/", p);
+}
+
+test "extractPath: https target with no path after domain returns /" {
+    const p = pipeline.extractPath("https://slack.com", "slack.com");
+    try std.testing.expectEqualStrings("/", p);
+}
+
+test "extractPath: deep nested path preserved exactly" {
+    const p = pipeline.extractPath("https://discord.com/api/webhooks/123/abc", "discord.com");
+    try std.testing.expectEqualStrings("/api/webhooks/123/abc", p);
+}
+
+// ── PipelineError.ApprovalRequired (§5.5 — PR #205 fix #3) ──────────────────
+// Verify that ApprovalRequired is a valid member of PipelineError so the
+// .requires_approval firewall case is never silently dropped.
+
+test "PipelineError.ApprovalRequired: error exists in PipelineError union" {
+    // Comptime-reachable: if someone removes ApprovalRequired this fails to compile.
+    const err: pipeline.PipelineError = pipeline.PipelineError.ApprovalRequired;
+    try std.testing.expect(err == pipeline.PipelineError.ApprovalRequired);
+}
+
+test "PipelineError: exhaustive switch compiles — all 9 members present" {
+    // Regression guard: adding/removing an error variant breaks the exhaustive switch.
+    const dummy: pipeline.PipelineError = error.DomainBlocked;
+    const n = switch (dummy) {
+        error.DomainBlocked      => 1,
+        error.InjectionDetected  => 2,
+        error.ApprovalRequired   => 3,
+        error.GrantNotFound      => 4,
+        error.GrantPending       => 5,
+        error.GrantDenied        => 6,
+        error.CredentialNotFound => 7,
+        error.TargetError        => 8,
+        error.OutOfMemory        => 9,
+    };
+    try std.testing.expectEqual(@as(usize, 1), n);
 }

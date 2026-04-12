@@ -58,7 +58,7 @@ pub fn handleCreateExternalAgent(
     const alloc = arena.allocator();
     const req_id = common.requestId(alloc);
 
-    _ = common.authenticate(alloc, req, ctx) catch |err| {
+    const principal = common.authenticate(alloc, req, ctx) catch |err| {
         switch (err) {
             error.Unauthorized => common.errorResponse(res, ec.ERR_UNAUTHORIZED, "Authentication required", req_id),
             error.TokenExpired => common.errorResponse(res, ec.ERR_TOKEN_EXPIRED, "Token expired", req_id),
@@ -99,6 +99,11 @@ pub fn handleCreateExternalAgent(
         return;
     };
     defer ctx.pool.release(conn);
+
+    if (!common.authorizeWorkspace(conn, principal, workspace_id)) {
+        common.errorResponse(res, ec.ERR_FORBIDDEN, "Workspace access denied", req_id);
+        return;
+    }
 
     // Verify zombie belongs to this workspace.
     var zombie_q = PgQuery.from(conn.query(
@@ -177,7 +182,7 @@ pub fn handleListExternalAgents(
     const alloc = arena.allocator();
     const req_id = common.requestId(alloc);
 
-    _ = common.authenticate(alloc, req, ctx) catch |err| {
+    const principal = common.authenticate(alloc, req, ctx) catch |err| {
         switch (err) {
             error.Unauthorized => common.errorResponse(res, ec.ERR_UNAUTHORIZED, "Authentication required", req_id),
             error.TokenExpired => common.errorResponse(res, ec.ERR_TOKEN_EXPIRED, "Token expired", req_id),
@@ -192,6 +197,11 @@ pub fn handleListExternalAgents(
         return;
     };
     defer ctx.pool.release(conn);
+
+    if (!common.authorizeWorkspace(conn, principal, workspace_id)) {
+        common.errorResponse(res, ec.ERR_FORBIDDEN, "Workspace access denied", req_id);
+        return;
+    }
 
     var q = PgQuery.from(conn.query(
         \\SELECT agent_id, zombie_id::text, name, description, created_at, last_used_at
@@ -241,7 +251,7 @@ pub fn handleDeleteExternalAgent(
     const alloc = arena.allocator();
     const req_id = common.requestId(alloc);
 
-    _ = common.authenticate(alloc, req, ctx) catch |err| {
+    const principal = common.authenticate(alloc, req, ctx) catch |err| {
         switch (err) {
             error.Unauthorized => common.errorResponse(res, ec.ERR_UNAUTHORIZED, "Authentication required", req_id),
             error.TokenExpired => common.errorResponse(res, ec.ERR_TOKEN_EXPIRED, "Token expired", req_id),
@@ -256,6 +266,11 @@ pub fn handleDeleteExternalAgent(
         return;
     };
     defer ctx.pool.release(conn);
+
+    if (!common.authorizeWorkspace(conn, principal, workspace_id)) {
+        common.errorResponse(res, ec.ERR_FORBIDDEN, "Workspace access denied", req_id);
+        return;
+    }
 
     var del_q = PgQuery.from(conn.query(
         \\DELETE FROM core.external_agents

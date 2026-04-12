@@ -77,6 +77,18 @@ pub fn extractDomain(target: []const u8) []const u8 {
     return rest[0..slash];
 }
 
+/// Extract the path component from a target for firewall rule matching.
+/// Accounts for an optional scheme prefix (https://, http://) and the domain.
+/// Always returns a slice starting with '/', or "/" when there is no path.
+/// Caller does not own returned slice — points into `target`.
+pub fn extractPath(target: []const u8, domain: []const u8) []const u8 {
+    var scheme_len: usize = 0;
+    if (std.mem.startsWith(u8, target, "https://")) scheme_len = "https://".len
+    else if (std.mem.startsWith(u8, target, "http://")) scheme_len = "http://".len;
+    const path_start = scheme_len + domain.len;
+    return if (path_start < target.len) target[path_start..] else "/";
+}
+
 // ── Grant check ───────────────────────────────────────────────────────────
 
 const GrantStatus = enum { approved, pending, denied, not_found };
@@ -218,12 +230,7 @@ pub fn run(
     }
 
     // Firewall: injection scan on request body.
-    // Compute path offset accounting for an optional scheme prefix in the target.
-    var scheme_len: usize = 0;
-    if (std.mem.startsWith(u8, input.target, "https://")) scheme_len = "https://".len
-    else if (std.mem.startsWith(u8, input.target, "http://")) scheme_len = "http://".len;
-    const path_start = scheme_len + domain.len;
-    const fw_path = if (path_start < input.target.len) input.target[path_start..] else "/";
+    const fw_path = extractPath(input.target, domain);
 
     if (input.body) |b| {
         const fw = firewall.Firewall.init(&.{}, &.{});

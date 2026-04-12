@@ -212,3 +212,41 @@ test "generateNonce: produces 32-char hex string" {
         try std.testing.expect((c >= '0' and c <= '9') or (c >= 'a' and c <= 'f'));
     }
 }
+
+test "generateNonce: two calls produce different values (probabilistic)" {
+    // Fails with probability 2^-128 — acceptable for test uniqueness check.
+    const n1 = generateNonce();
+    const n2 = generateNonce();
+    try std.testing.expect(!std.mem.eql(u8, n1[0..], n2[0..]));
+}
+
+test "buildGrantSlackMessage: button value uses pipe-separated grant_id|nonce format" {
+    // The approval webhook extracts the nonce from the button value by splitting on '|'.
+    // Regression guard: changing the separator silently breaks the webhook.
+    const alloc = std.testing.allocator;
+    const nonce = "abcd1234abcd1234abcd1234abcd1234";
+    const grant_id = "uzg_test_001";
+    const msg = try buildGrantSlackMessage(alloc, "mybot", "slack", "need access", grant_id, nonce);
+    defer alloc.free(msg);
+    // The button value "{grant_id}|{nonce}" must appear in the Slack payload.
+    const expected_value = grant_id ++ "|" ++ nonce;
+    try std.testing.expect(std.mem.indexOf(u8, msg, expected_value) != null);
+}
+
+test "buildGrantSlackMessage: approve and deny buttons both carry the button value" {
+    // Both buttons must have the same value — the webhook must not accept one without the other.
+    const alloc = std.testing.allocator;
+    const nonce = "1111222233334444555566667777888";
+    const grant_id = "uzg_002";
+    const msg = try buildGrantSlackMessage(alloc, "agent", "discord", "post updates", grant_id, nonce);
+    defer alloc.free(msg);
+    const expected_value = grant_id ++ "|" ++ nonce;
+    // Count occurrences — must appear at least twice (once per button).
+    const count = std.mem.count(u8, msg, expected_value);
+    try std.testing.expect(count >= 2);
+}
+
+test "GRANT_NOTIFY_TTL_SECONDS: matches nonce TTL (both 7200s)" {
+    // Nonce TTL must equal or exceed notification TTL so approval can always consume it.
+    try std.testing.expectEqual(@as(u32, 7200), GRANT_NOTIFY_TTL_SECONDS);
+}

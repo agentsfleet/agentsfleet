@@ -151,7 +151,10 @@ pub fn handleRequestGrant(ctx: *Context, req: *httpz.Request, res: *httpz.Respon
         return;
     }
 
-    // Idempotency: return existing grant if already present for this zombie+service.
+    // Idempotency / re-request logic:
+    //   pending | approved → return existing (no new request needed)
+    //   revoked | denied   → UPDATE back to pending with new reason (re-request allowed)
+    //   no row             → INSERT new grant
     var existing_q = PgQuery.from(conn.query(
         \\SELECT grant_id, status, requested_at FROM core.integration_grants
         \\WHERE zombie_id = $1::uuid AND service = $2
@@ -166,14 +169,60 @@ pub fn handleRequestGrant(ctx: *Context, req: *httpz.Request, res: *httpz.Respon
         const existing_id  = existing_row.get([]u8, 0) catch "";
         const existing_st  = existing_row.get([]u8, 1) catch "unknown";
         const existing_at  = existing_row.get(i64, 2) catch 0;
-        log.info("grant.already_exists zombie_id={s} service={s} status={s}", .{ zombie_id, body.service, existing_st });
-        common.writeJson(res, .ok, .{
-            .grant_id    = alloc.dupe(u8, existing_id) catch existing_id,
-            .zombie_id   = zombie_id,
-            .service     = body.service,
-            .status      = alloc.dupe(u8, existing_st) catch existing_st,
-            .requested_at = existing_at,
-            .message     = "Grant already exists for this service.",
+
+        const is_terminal = std.mem.eql(u8, existing_st, "revoked") or
+                            std.mem.eql(u8, existing_st, "denied");
+        if (!is_terminal) {
+            // pending or approved — idempotent return.
+            log.info("grant.already_exists zombie_id={s} service={s} status={s}", .{ zombie_id, body.service, existing_st });
+            common.writeJson(res, .ok, .{
+                .grant_id     = alloc.dupe(u8, existing_id) catch existing_id,
+                .zombie_id    = zombie_id,
+                .service      = body.service,
+                .status       = alloc.dupe(u8, existing_st) catch existing_st,
+                .requested_at = existing_at,
+                .message      = "Grant already exists for this service.",
+            });
+            return;
+        }
+
+        // Revoked/denied: re-request — UPDATE back to pending.
+        const now_ms_reopen = std.time.milliTimestamp();
+        _ = conn.exec(
+            \\UPDATE core.integration_grants
+            \\SET status = 'pending', requested_at = $1, requested_reason = $2,
+            \\    approved_at = NULL, revoked_at = NULL
+            \\WHERE grant_id = $3
+        , .{ now_ms_reopen, body.reason, alloc.dupe(u8, existing_id) catch existing_id }) catch {
+            common.internalDbError(res, req_id);
+            return;
+        };
+        log.info("grant.re_requested zombie_id={s} service={s} grant_id={s}", .{ zombie_id, body.service, existing_id });
+
+        // Notify for the re-request using the existing grant_id.
+        const existing_grant_id = alloc.dupe(u8, existing_id) catch existing_id;
+        var zombie_name_reopen: []const u8 = zombie_id;
+        fetch_name_reopen: {
+            var nq = PgQuery.from(conn.query(
+                \\SELECT name FROM core.zombies WHERE id = $1::uuid LIMIT 1
+            , .{zombie_id}) catch break :fetch_name_reopen);
+            defer nq.deinit();
+            const nrow = nq.next() catch break :fetch_name_reopen orelse break :fetch_name_reopen;
+            const raw = nrow.get([]u8, 0) catch break :fetch_name_reopen;
+            zombie_name_reopen = alloc.dupe(u8, raw) catch zombie_id;
+        }
+        grant_notifier.notifyGrantRequest(
+            ctx.pool, ctx.queue, alloc,
+            zombie_id, caller.workspace_id,
+            existing_grant_id, zombie_name_reopen, body.service, body.reason,
+        );
+        common.writeJson(res, .created, .{
+            .grant_id     = existing_grant_id,
+            .zombie_id    = zombie_id,
+            .service      = body.service,
+            .status       = "pending",
+            .requested_at = now_ms_reopen,
+            .message      = "Grant re-requested. Awaiting workspace owner approval.",
         });
         return;
     }

@@ -30,8 +30,9 @@ const GrantApprovalBody = struct {
     nonce: []const u8,    // single-use, verified against Redis
 };
 
-/// Fetch the stored nonce for a grant from Redis, then DEL it (single-use).
-/// Returns null if the key is missing (expired or never stored).
+/// Atomically fetch and delete the stored nonce for a grant (GETDEL, Redis ≥ 6.2).
+/// Single-command atomicity prevents duplicate-approval under concurrent webhook delivery
+/// (Slack retries, duplicate button clicks). Returns null if key is missing or expired.
 fn fetchAndConsumeNonce(
     queue: *queue_redis.Client,
     alloc: std.mem.Allocator,
@@ -42,7 +43,7 @@ fn fetchAndConsumeNonce(
         GRANT_NONCE_KEY_PREFIX, grant_id,
     }) catch return null;
 
-    var resp = queue.commandAllowError(&.{ "GET", key }) catch return null;
+    var resp = queue.commandAllowError(&.{ "GETDEL", key }) catch return null;
     defer resp.deinit(queue.alloc);
 
     const stored: []const u8 = switch (resp) {
@@ -50,12 +51,7 @@ fn fetchAndConsumeNonce(
         .simple => |s| s,
         else => return null,
     };
-    const owned = alloc.dupe(u8, stored) catch return null;
-
-    // Consume: DEL so the nonce cannot be replayed.
-    _ = queue.command(&.{ "DEL", key }) catch {};
-
-    return owned;
+    return alloc.dupe(u8, stored) catch return null;
 }
 
 fn fetchWorkspaceId(pool: *pg.Pool, alloc: std.mem.Allocator, zombie_id: []const u8) []const u8 {
@@ -206,4 +202,44 @@ test "is_approved logic: only 'approved' matches, not 'deny' or empty" {
     try std.testing.expect(std.mem.eql(u8, "approved", "approved"));
     try std.testing.expect(!std.mem.eql(u8, "denied", "approved"));
     try std.testing.expect(!std.mem.eql(u8, "", "approved"));
+}
+
+test "is_denied logic: only 'denied' matches, not 'approve' or 'DENIED'" {
+    try std.testing.expect(std.mem.eql(u8, "denied", "denied"));
+    try std.testing.expect(!std.mem.eql(u8, "approved", "denied"));
+    try std.testing.expect(!std.mem.eql(u8, "DENIED", "denied")); // case-sensitive
+    try std.testing.expect(!std.mem.eql(u8, "", "denied"));
+}
+
+test "GrantApprovalBody: missing nonce field fails to parse" {
+    const alloc = std.testing.allocator;
+    // No nonce field — JSON parser rejects because nonce is non-optional.
+    const json = "{\"grant_id\":\"uzg_001\",\"decision\":\"approved\"}";
+    try std.testing.expectError(
+        error.MissingField,
+        std.json.parseFromSlice(GrantApprovalBody, alloc, json, .{}),
+    );
+}
+
+test "GrantApprovalBody: missing grant_id field fails to parse" {
+    const alloc = std.testing.allocator;
+    const json = "{\"decision\":\"approved\",\"nonce\":\"abc123\"}";
+    try std.testing.expectError(
+        error.MissingField,
+        std.json.parseFromSlice(GrantApprovalBody, alloc, json, .{}),
+    );
+}
+
+test "GRANT_NONCE_KEY_PREFIX: expected value for Redis key construction" {
+    // Regression guard: changing the prefix silently breaks nonce lookup across restarts.
+    try std.testing.expectEqualStrings("grant:nonce:", GRANT_NONCE_KEY_PREFIX);
+}
+
+test "nonce mismatch detection: std.mem.eql distinguishes different nonces" {
+    // The verification logic uses std.mem.eql — ensure it behaves correctly.
+    const stored = "abcd1234abcd1234abcd1234abcd1234";
+    const correct = "abcd1234abcd1234abcd1234abcd1234";
+    const wrong   = "xxxx1234abcd1234abcd1234abcd1234";
+    try std.testing.expect(std.mem.eql(u8, stored, correct));
+    try std.testing.expect(!std.mem.eql(u8, stored, wrong));
 }

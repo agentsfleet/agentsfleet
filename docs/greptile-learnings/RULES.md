@@ -387,3 +387,30 @@ Reference a rule as `RULE NDC`, `RULE OWN`, etc.
 **Why:** bvisor/src/core shows these patterns consistently. Deviating breaks the ownership contract — missed errdefer means memory leak on partial init; missing ROLLBACK on deinit-equivalent means inconsistent state.
 **Tags:** zig, memory, ownership, patterns
 **Ref:** bvisor src/core/Supervisor.zig, Thread.zig, ThreadGroup.zig, OverlayRoot.zig, LogBuffer.zig.
+
+## RULE WAUTH — Every workspace-scoped handler must call authorizeWorkspace after authenticate
+
+**Rule:** Any handler that takes a `workspace_id` URL parameter must (1) capture the principal from `common.authenticate` — never discard with `_ =` — and (2) call `common.authorizeWorkspace(conn, principal, workspace_id)` immediately after acquiring a DB connection. A 403 must be returned before any data is read or written.
+**Why:** External agents handlers discarded the principal with `_ = common.authenticate(...)`, so any authenticated workspace owner could enumerate, create, or delete agents in a different workspace just by substituting the workspace_id in the path. Caught by greptile on PR #205 (P0).
+**Do:** `const principal = common.authenticate(...) catch |err| { ... }; ... if (!common.authorizeWorkspace(conn, principal, workspace_id)) { return 403; }`
+**Don't:** `_ = common.authenticate(...) catch |err| { ... };`
+**Tags:** zig, security, IDOR, auth
+**Ref:** external_agents.zig — all 3 handlers missing workspace check. Fixed PR #205.
+
+## RULE IDMP — Idempotency checks must not block re-request for terminal statuses
+
+**Rule:** When an idempotency guard queries for an existing row before INSERT, it must distinguish between active statuses (`pending`, `approved`) and terminal statuses (`revoked`, `denied`). Terminal rows must allow re-request via UPDATE back to `pending`, not early-return with the stale status.
+**Why:** The UNIQUE constraint on `(zombie_id, service)` makes INSERT impossible after the first row. If the idempotency check returns for ANY status including `revoked`, the zombie can never re-request a grant for that service — it gets `{ "status": "revoked" }` forever. Caught by greptile on PR #205 (P1).
+**Do:** Check `is_terminal = eql(status, "revoked") or eql(status, "denied")`. If terminal, UPDATE to pending.
+**Don't:** Return early for every existing row regardless of status.
+**Tags:** zig, database, idempotency
+**Ref:** integration_grants.zig:handleRequestGrant. Fixed PR #205.
+
+## RULE GATDL — Use GETDEL not GET+DEL for single-use Redis tokens
+
+**Rule:** When consuming a single-use token from Redis (nonce, gate key, CSRF token), always use the atomic `GETDEL` command (Redis ≥ 6.2). Never issue `GET` followed by `DEL` as separate commands.
+**Why:** Two concurrent requests can both `GET` the value before either `DEL` runs, passing the token check twice. The DB `WHERE status = 'pending'` guard prevents a double-commit but `activity_stream.logEvent` is called twice, producing duplicate audit entries. Caught by greptile on PR #205 (P1). M8 approval_gate.zig already uses GETDEL — this must be universal.
+**Do:** `queue.commandAllowError(&.{ "GETDEL", key })`
+**Don't:** `GET` key + `DEL` key as two round trips.
+**Tags:** zig, redis, concurrency, security
+**Ref:** grant_approval_webhook.zig:fetchAndConsumeNonce. Fixed PR #205.

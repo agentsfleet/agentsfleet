@@ -148,14 +148,22 @@ pub fn handleRevokeGrant(
     }
 
     const now_ms = std.time.milliTimestamp();
-    _ = conn.exec(
+    var rev_q = PgQuery.from(conn.query(
         \\UPDATE core.integration_grants
         \\SET status = 'revoked', revoked_at = $1
         \\WHERE grant_id = $2 AND zombie_id = $3::uuid AND status != 'revoked'
+        \\RETURNING grant_id
     , .{ now_ms, grant_id, zombie_id }) catch {
         common.internalDbError(res, req_id);
         return;
-    };
+    });
+    defer rev_q.deinit();
+
+    const revoked = rev_q.next() catch null;
+    if (revoked == null) {
+        common.errorResponse(res, ec.ERR_GRANT_NOT_FOUND, "Grant not found or already revoked", req_id);
+        return;
+    }
 
     log.info("grant.revoked zombie_id={s} grant_id={s}", .{ zombie_id, grant_id });
     res.status = 204;
