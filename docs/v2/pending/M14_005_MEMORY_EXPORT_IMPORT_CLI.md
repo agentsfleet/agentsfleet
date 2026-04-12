@@ -36,31 +36,6 @@
 
 ---
 
-## §0 — Recall Performance Index
-
-**Status:** PENDING
-
-The `/v1/memory/recall` handler uses `ILIKE '%query%'` on both `key` and `content`. NullClaw auto-creates `memory.memory_entries` at runtime, so the index cannot be added in a migration before the table exists. Add a `CREATE INDEX IF NOT EXISTS` step in a new migration or in `zombie_memory.zig` post-init.
-
-| Dim | Status | Target | Input | Expected | Test type |
-|-----|--------|--------|-------|----------|-----------|
-| 0.1 | PENDING | `schema/027_memory_entries_idx.sql` | zombie with 10k entries, recall query | `EXPLAIN ANALYZE` shows bitmap index scan via trigram index, not seq scan on `memory.memory_entries` | integration |
-
-The recall handler uses `ILIKE '%query%'` — full-text (`to_tsvector`) does not accelerate this. The correct index is `pg_trgm` trigram GIN, which is a standard Postgres built-in extension (not pgvector):
-
-```sql
--- schema/027_memory_entries_idx.sql
-CREATE EXTENSION IF NOT EXISTS pg_trgm;
-CREATE INDEX IF NOT EXISTS idx_memory_entries_content_trgm
-    ON memory.memory_entries USING gin (content gin_trgm_ops);
-CREATE INDEX IF NOT EXISTS idx_memory_entries_key_trgm
-    ON memory.memory_entries USING gin (key gin_trgm_ops);
-```
-
-Postgres combines the instance_id equality filter (btree on the existing PK scan) with a bitmap AND on the trigram index — no composite index needed.
-
----
-
 ## §1 — Export/Import Library
 
 **Status:** PENDING

@@ -139,11 +139,6 @@ fn innerMemoryRecall(hx: Hx, req: *httpz.Request) void {
     }
     defer h.resetRole(conn);
 
-    // TODO(M14_005): ILIKE '%q%' on key+content is a sequential scan within the
-    // zombie's rows. Acceptable at current scale (instance_id scoping limits the
-    // scan to one zombie). Fix: enable pg_trgm extension and add GIN indexes on
-    // content and key columns — standard Postgres trigram, no pgvector needed.
-    // See M14_005 §0 for the migration.
     var q = PgQuery.from(conn.query(
         \\SELECT key, content, category, updated_at
         \\FROM memory.memory_entries
