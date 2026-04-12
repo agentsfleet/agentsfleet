@@ -2,10 +2,11 @@
 Milestone: M17
 Workstream: M17_001
 Name: HARNESS_AGENT_PROFILE_TEARDOWN
-Status: IN_PROGRESS
+Status: DONE
 Priority: P1 — removes ~2,400 lines of orphaned infrastructure with zero runtime consumers
 Created: Apr 12, 2026
 Started: Apr 12, 2026
+Completed: Apr 12, 2026
 Branch: feat/m17-001-harness-teardown
 Depends on: none
 ---
@@ -90,47 +91,47 @@ removed as source code.
 
 | Dim | Status | Check |
 |-----|--------|-------|
-| 1.1 | PENDING | `schema/008_harness_control_plane.sql` deleted (removes agent_profiles, agent_config_versions, workspace_active_config, config_compile_jobs) |
-| 1.2 | PENDING | `schema/011_profile_linkage_audit.sql` deleted (removes config_linkage_audit_artifacts) |
-| 1.3 | PENDING | `schema/009_rls_tenant_isolation.sql` — agent.* ALTER TABLE + POLICY lines removed; core.prompt_lifecycle_events + vault.workspace_skill_secrets retained |
-| 1.4 | PENDING | `schema/embed.zig` — `harness_control_plane_sql` and `profile_linkage_audit_sql` constants removed |
-| 1.5 | PENDING | `src/cmd/common.zig` `canonicalMigrations` — entries for versions 8 and 11 removed; array length shrunk from `[21]` to `[19]` |
-| 1.6 | PENDING | `src/db/pool_test.zig` — obsolete `migrations[6]` assertion on harness `CREATE TABLE` removed (indexes shift after array shrink) |
+| 1.1 | DONE | `schema/008_harness_control_plane.sql` deleted (removes agent_profiles, agent_config_versions, workspace_active_config, config_compile_jobs) |
+| 1.2 | DONE | `schema/011_profile_linkage_audit.sql` deleted (removes config_linkage_audit_artifacts) |
+| 1.3 | DONE | `schema/009_rls_tenant_isolation.sql` — agent.* ALTER TABLE + POLICY lines removed; core.prompt_lifecycle_events + vault.workspace_skill_secrets retained |
+| 1.4 | DONE | `schema/embed.zig` — `harness_control_plane_sql` and `profile_linkage_audit_sql` constants removed |
+| 1.5 | DONE | `src/cmd/common.zig` `canonicalMigrations` — entries for versions 8 and 11 removed; array length shrunk from `[21]` to `[19]` |
+| 1.6 | DONE | `src/db/pool_test.zig` — obsolete `migrations[6]` assertion on harness `CREATE TABLE` removed (indexes shift after array shrink) |
 
 ### §2.0 — Delete harness code
 
 | Dim | Status | Check |
 |-----|--------|-------|
-| 2.1 | PENDING | `src/harness/` directory deleted (2 files, 689L) |
-| 2.2 | PENDING | `src/http/handlers/harness_http.zig` deleted (263L) |
-| 2.3 | PENDING | `src/http/handlers/harness_control_plane.zig` deleted (23L) |
-| 2.4 | PENDING | `src/http/handlers/harness_control_plane/` directory deleted (8 files, 1,134L) |
+| 2.1 | DONE | `src/harness/` directory deleted (2 files, 689L) |
+| 2.2 | DONE | `src/http/handlers/harness_http.zig` deleted (263L) |
+| 2.3 | DONE | `src/http/handlers/harness_control_plane.zig` deleted (23L) |
+| 2.4 | DONE | `src/http/handlers/harness_control_plane/` directory deleted (8 files, 1,134L) |
 
 ### §3.0 — Clean route dispatch + imports
 
 | Dim | Status | Check |
 |-----|--------|-------|
-| 3.1 | PENDING | `handler.zig` — remove 4 harness handler imports + pub exports |
-| 3.2 | PENDING | `router.zig` — remove 4 route enum fields + matchers |
-| 3.3 | PENDING | `server.zig` — remove 4 harness dispatch arms |
-| 3.4 | PENDING | `main.zig` — remove harness test discovery import |
+| 3.1 | DONE | `handler.zig` — remove 4 harness handler imports + pub exports |
+| 3.2 | DONE | `router.zig` — remove 4 route enum fields + matchers |
+| 3.3 | DONE | `server.zig` — remove 4 harness dispatch arms |
+| 3.4 | DONE | `main.zig` — remove harness test discovery import |
 
 ### §4.0 — Clean entitlements + audit
 
 | Dim | Status | Check |
 |-----|--------|-------|
-| 4.1 | PENDING | `entitlements.zig` — remove `countWorkspaceProfiles()` and profile-limit enforcement |
-| 4.2 | PENDING | `profile_linkage.zig` — delete file (harness-only audit, table dropped in §1.1) |
-| 4.3 | PENDING | Handler entitlement error paths — remove `EntitlementProfileLimit` if harness-only |
+| 4.1 | DONE | `entitlements.zig` — remove `countWorkspaceProfiles()` and profile-limit enforcement |
+| 4.2 | DONE | `profile_linkage.zig` — delete file (harness-only audit, table dropped in §1.1) |
+| 4.3 | DONE | Handler entitlement error paths — remove `EntitlementProfileLimit` if harness-only |
 
 ### §5.0 — Clean tests + fixtures + frontend
 
 | Dim | Status | Check |
 |-----|--------|-------|
-| 5.1 | PENDING | `router_test.zig` — remove harness route tests |
-| 5.2 | PENDING | `rbac_http_integration_test.zig` — remove harness RBAC tests |
-| 5.3 | PENDING | `test_fixtures*.zig` — remove agent.* table inserts |
-| 5.4 | PENDING | `FeatureFlow.tsx`, `Home.tsx` — remove harness marketing copy |
+| 5.1 | DONE | `router_test.zig` — remove harness route tests |
+| 5.2 | DONE | `rbac_http_integration_test.zig` — remove harness RBAC tests |
+| 5.3 | DONE | `test_fixtures*.zig` — remove agent.* table inserts |
+| 5.4 | DONE | `FeatureFlow.tsx`, `Home.tsx` — remove harness marketing copy |
 
 ### §6.0 — Delete zombiectl harness CLI surface
 
@@ -140,16 +141,16 @@ calls 404 routes.
 
 | Dim | Status | Check |
 |-----|--------|-------|
-| 6.1 | PENDING | 6 command files deleted (`harness.js`, `harness_activate.js`, `harness_active.js`, `harness_compile.js`, `harness_source.js`, `agent_harness.js`) |
-| 6.2 | PENDING | 9 harness test files deleted under `zombiectl/test/` |
-| 6.3 | PENDING | `cli.js` — `commandHarnessModule` import + routing case removed |
-| 6.4 | PENDING | `command-registry.js` — `harness: handlers.harness` entry removed |
-| 6.5 | PENDING | `routes.js` — `{ key: "harness", ... }` entry removed |
-| 6.6 | PENDING | `suggest.js` — `"harness"` top-level + subcommand completions removed |
-| 6.7 | PENDING | `io.js` — 5 harness help lines removed |
-| 6.8 | PENDING | `agent.js` — `commandAgentHarness` import + `action === "harness"` block + usage line removed |
-| 6.9 | PENDING | `grep -rn "harness" zombiectl/src/ --include="*.js"` returns 0 |
-| 6.10 | PENDING | `cd zombiectl && npm test` passes |
+| 6.1 | DONE | 6 command files deleted (`harness.js`, `harness_activate.js`, `harness_active.js`, `harness_compile.js`, `harness_source.js`, `agent_harness.js`) |
+| 6.2 | DONE | 9 harness test files deleted under `zombiectl/test/` |
+| 6.3 | DONE | `cli.js` — `commandHarnessModule` import + routing case removed |
+| 6.4 | DONE | `command-registry.js` — `harness: handlers.harness` entry removed |
+| 6.5 | DONE | `routes.js` — `{ key: "harness", ... }` entry removed |
+| 6.6 | DONE | `suggest.js` — `"harness"` top-level + subcommand completions removed |
+| 6.7 | DONE | `io.js` — 5 harness help lines removed |
+| 6.8 | DONE | `agent.js` — `commandAgentHarness` import + `action === "harness"` block + usage line removed |
+| 6.9 | DONE | `grep -rn "harness" zombiectl/src/ --include="*.js"` returns 0 |
+| 6.10 | DONE | `cd zombiectl && npm test` passes |
 
 ## Eval Commands
 
@@ -211,19 +212,19 @@ echo "Lines removed: ~2400"
 
 ## Acceptance Criteria
 
-- [ ] `src/harness/` directory does not exist
-- [ ] `src/http/handlers/harness_control_plane/` directory does not exist
-- [ ] `src/http/handlers/harness_http.zig` does not exist
-- [ ] Zero grep hits for `agent_profiles`, `harness_http`, `harness_control_plane` in src/
-- [ ] New migration drops all 5 agent schema tables (audit_artifacts, active_config, compile_jobs, config_versions, profiles) in correct FK order
-- [ ] `zig build && zig build test` passes
-- [ ] `make lint-zig` passes
-- [ ] Cross-compiles for x86_64-linux and aarch64-linux
-- [ ] Entitlement profile-limit enforcement removed or decoupled
-- [ ] `profile_linkage.zig` FK to `agent_config_versions` resolved (drop FK or delete file) — verify: `grep -rn "agent_config_versions" src/ --include="*.zig"` returns 0
-- [ ] Frontend harness marketing copy updated
-- [ ] All zombiectl harness commands + tests deleted; `grep -rn "harness" zombiectl/src/ --include="*.js"` returns 0
-- [ ] `cd zombiectl && npm test` passes
+- [x] `src/harness/` directory does not exist
+- [x] `src/http/handlers/harness_control_plane/` directory does not exist
+- [x] `src/http/handlers/harness_http.zig` does not exist
+- [x] Zero grep hits for `agent_profiles`, `harness_http`, `harness_control_plane` in src/
+- [x] New migration drops all 5 agent schema tables (audit_artifacts, active_config, compile_jobs, config_versions, profiles) in correct FK order
+- [x] `zig build && zig build test` passes
+- [x] `make lint-zig` passes
+- [x] Cross-compiles for x86_64-linux and aarch64-linux
+- [x] Entitlement profile-limit enforcement removed or decoupled
+- [x] `profile_linkage.zig` FK to `agent_config_versions` resolved (drop FK or delete file) — verify: `grep -rn "agent_config_versions" src/ --include="*.zig"` returns 0
+- [x] Frontend harness marketing copy updated
+- [x] All zombiectl harness commands + tests deleted; `grep -rn "harness" zombiectl/src/ --include="*.js"` returns 0
+- [x] `cd zombiectl && npm test` passes
 
 ## Out of Scope
 
