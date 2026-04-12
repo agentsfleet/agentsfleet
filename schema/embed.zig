@@ -10,3 +10,4 @@ pub const core_zombies_sql = @embedFile("022_core_zombies.sql");
 pub const core_zombie_sessions_sql = @embedFile("023_core_zombie_sessions.sql");
 pub const core_activity_events_sql = @embedFile("024_core_activity_events.sql");
 pub const core_zombie_approval_gates_sql = @embedFile("025_core_zombie_approval_gates.sql");
+pub const workspace_integrations_sql = @embedFile("028_workspace_integrations.sql");

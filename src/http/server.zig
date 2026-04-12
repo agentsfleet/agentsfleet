@@ -108,6 +108,11 @@ fn dispatchMatchedRoute(ctx: *handler.Context, req: *httpz.Request, res: *httpz.
         .approval_webhook => |zombie_id| if (req.method == .POST) handler.handleApprovalCallback(ctx, req, res, zombie_id) else respondMethodNotAllowed(res),
         // M1_001: Zombie webhook ingestion
         .receive_webhook => |route| if (req.method == .POST) handler.handleReceiveWebhook(ctx, req, res, route.zombie_id, route.secret) else respondMethodNotAllowed(res),
+        // M8_001: Slack plugin acquisition
+        .slack_install => if (req.method == .GET) handler.handleSlackInstall(ctx, req, res) else respondMethodNotAllowed(res),
+        .slack_callback => if (req.method == .GET) handler.handleSlackCallback(ctx, req, res) else respondMethodNotAllowed(res),
+        .slack_events => if (req.method == .POST) handler.handleSlackEvent(ctx, req, res) else respondMethodNotAllowed(res),
+        .slack_interactions => if (req.method == .POST) handler.handleSlackInteraction(ctx, req, res) else respondMethodNotAllowed(res),
         // M2_001: Zombie CRUD + activity + credentials
         .list_or_create_zombies => switch (req.method) {
             .POST => handler.handleCreateZombie(ctx, req, res),

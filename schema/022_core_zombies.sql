@@ -25,3 +25,11 @@ CREATE TABLE IF NOT EXISTS core.zombies (
 -- API creates, reads, updates zombies for CLI install/up/kill operations.
 GRANT SELECT ON core.zombies TO worker_runtime;
 GRANT SELECT, INSERT, UPDATE ON core.zombies TO api_runtime;
+
+-- Partial index for Slack event routing: find the active zombie with a
+-- slack_event trigger for a given workspace (lookupSlackZombie in slack_events.zig).
+-- Partial on status='active' keeps the index small; workspace_id+created_at
+-- covers the equality filter and deterministic ORDER BY in one scan.
+CREATE INDEX IF NOT EXISTS idx_zombies_slack_event_trigger
+    ON core.zombies(workspace_id, created_at)
+    WHERE status = 'active';

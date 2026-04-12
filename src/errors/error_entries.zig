@@ -274,4 +274,14 @@ pub const ENTRIES = [_]Entry{
         "Gate service unavailable \u{2014} default-deny applied. Check Redis connectivity."),
     e("UZ-APPROVAL-005", .bad_request, "Approval condition invalid",
         "Gate condition expression is invalid. Supported operators: == and != with single-quoted values."),
+    // ── SLACK PLUGIN (M8_001) ────────────────────────────────────────────────
+    e("UZ-SLACK-001", .forbidden, "Slack OAuth state invalid",
+        "OAuth state parameter mismatch — possible CSRF attempt. " ++
+        "Please try installing UseZombie again from the beginning."),
+    e("UZ-SLACK-002", .bad_gateway, "Slack token exchange failed",
+        "Could not exchange OAuth code for bot token. Verify SLACK_CLIENT_SECRET " ++
+        "is set and the code has not expired (codes are single-use, 10-minute TTL)."),
+    e("UZ-SLACK-003", .unauthorized, "Slack bot token expired",
+        "The Slack bot token has been revoked or expired. " ++
+        "Reinstall UseZombie to Slack to issue a fresh token."),
 };

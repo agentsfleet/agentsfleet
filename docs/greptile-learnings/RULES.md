@@ -387,3 +387,39 @@ Reference a rule as `RULE NDC`, `RULE OWN`, etc.
 **Why:** bvisor/src/core shows these patterns consistently. Deviating breaks the ownership contract — missed errdefer means memory leak on partial init; missing ROLLBACK on deinit-equivalent means inconsistent state.
 **Tags:** zig, memory, ownership, patterns
 **Ref:** bvisor src/core/Supervisor.zig, Thread.zig, ThreadGroup.zig, OverlayRoot.zig, LogBuffer.zig.
+
+## RULE TWF — Timestamp freshness must reject future timestamps
+
+**Rule:** When validating webhook timestamps (Slack `X-Slack-Request-Timestamp`, etc.), reject timestamps that are more than `max_drift` seconds *in the future*, not just in the past. Use `if (ts > now + max_drift) return false;` before the stale check.
+**Why:** Accepting future timestamps within the drift window allows an attacker to pre-sign requests with a future timestamp and replay them later, bypassing the anti-replay window.
+**Do:** `if (ts > now + max_drift) return false; if (now - ts > max_drift) return false;`
+**Don't:** `const diff = if (now > ts) now - ts else ts - now; return diff <= max_drift;` — this accepts future timestamps.
+**Tags:** zig, security, webhooks, timing
+**Ref:** M8_001 webhook_verify.zig — `isTimestampFresh` accepted future timestamps. Fixed in d07b6de.
+
+## RULE ESO — Error returns must not silently substitute default values on OOM
+
+**Rule:** When a function extracts user-linked data (workspace IDs, user IDs, session tokens) from a trusted input, it must return `!T` and propagate allocation failures, not return a default/empty value with `catch ""` or `catch 0`. A silent default causes the caller to use wrong data (e.g., create a new workspace instead of linking to an existing one).
+**Why:** OOM masked by a default value causes silent data corruption — a new entity is created instead of the intended existing one being used. No log entry, no 5xx, no observable failure until the user notices their workspace is gone.
+**Do:** `fn extractWorkspaceId(...) ![]const u8 { return alloc.dupe(...); }`
+**Don't:** `fn extractWorkspaceId(...) []const u8 { return alloc.dupe(...) catch ""; }`
+**Tags:** zig, memory, error-handling, correctness
+**Ref:** M8_001 slack_oauth.zig `extractWorkspaceId` — `catch ""` on dupe failure. Fixed in d07b6de.
+
+## RULE SGR — SQL migrations must include GRANT statements for all created tables
+
+**Rule:** Every `CREATE TABLE` migration must end with `GRANT` statements for every role that will query the table. Check which operations the application performs (`SELECT`, `INSERT`, `UPDATE`, `DELETE`) against this table and grant exactly those to `api_runtime` and/or `worker_runtime` as appropriate.
+**Why:** PostgreSQL denies all access by default. Without grants, every query against the table fails with `permission denied` in production. This is invisible at migration time and only fails at first runtime use.
+**Do:** Follow every `CREATE TABLE` + indices block with grants mirroring the table's callers.
+**Don't:** Ship a migration without grants on the assumption that a superuser connection is used in production.
+**Tags:** sql, postgres, migrations, security
+**Ref:** M8_001 schema/028_workspace_integrations.sql — missing GRANT for api_runtime and worker_runtime. Fixed in this PR.
+
+## RULE OAE — OAuth form bodies must URL-encode all fields including `code`
+
+**Rule:** When building an `application/x-www-form-urlencoded` body for an OAuth token exchange, percent-encode every field value — including the authorization code. Do not assume authorization codes are URL-safe in practice.
+**Why:** OAuth codes are URL-safe in most providers today, but the spec allows any character. A code containing `+`, `&`, or `=` would silently corrupt the form body and produce a confusing provider-side error with no local diagnostic.
+**Do:** `const code_enc = try urlEncode(alloc, code);` then use `code_enc` in the body template.
+**Don't:** Interpolate `code` raw while encoding other fields — the inconsistency signals an oversight and will eventually fail.
+**Tags:** zig, oauth, http, security
+**Ref:** M8_001 slack_oauth_client.zig `exchangeCode` — `code` interpolated raw. Fixed in this PR.
