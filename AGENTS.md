@@ -431,6 +431,7 @@ Required outputs:
 - Spec moved from `docs/v1/active/` to `docs/v1/done/` (only if fully complete).
 - Spec move committed on the feature branch.
 - **Release doc updated** in `/Users/kishore/Projects/docs/changelog.mdx` for every milestone/workstream completion. Add a new `<Update>` MDX block — do NOT create `docs/v*/ship/` files.
+- **Ripley's Log written** in `docs/v2/agent-docs/RIPLEYS_LOG_{MMM}_{DD}_{HH_MM}.md` (example: `RIPLEYS_LOG_APR_12_15_30.md`). A first-person, dated session log of decisions made, assumptions surfaced, dead ends, trade-offs considered, and follow-ups deferred — the things that don't belong in commit messages or the spec but matter for the next agent picking up the thread. Commit alongside the spec move. Required for every non-trivial CHORE(close), not optional.
 - **Orphan sweep completed** (Rule 30). For every renamed/deleted/changed symbol in the branch, verify zero non-historical references remain across schema, Zig, JS, tests, and docs. This is a hard gate — do not open the PR with stale references.
 
 #### Release Doc Generation

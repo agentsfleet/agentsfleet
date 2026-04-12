@@ -21,6 +21,9 @@ const integration_grants_http = @import("handlers/integration_grants.zig");
 const integration_grants_workspace_http = @import("handlers/integration_grants_workspace.zig");
 const external_agents_http = @import("handlers/external_agents.zig");
 const grant_approval_webhook_http = @import("handlers/grant_approval_webhook.zig");
+const slack_oauth_http = @import("handlers/slack_oauth.zig");
+const slack_events_http = @import("handlers/slack_events.zig");
+const slack_interactions_http = @import("handlers/slack_interactions.zig");
 
 pub const Context = common.Context;
 pub const SkillSecretRoute = skill_secret_handlers.Route;
@@ -82,6 +85,11 @@ pub const handleDeleteExternalAgent = external_agents_http.handleDeleteExternalA
 
 // M9_001: Grant approval webhook
 pub const handleGrantApproval = grant_approval_webhook_http.handleGrantApproval;
+// M8_001: Slack plugin acquisition
+pub const handleSlackInstall = slack_oauth_http.handleInstall;
+pub const handleSlackCallback = slack_oauth_http.handleCallback;
+pub const handleSlackEvent = slack_events_http.handleSlackEvent;
+pub const handleSlackInteraction = slack_interactions_http.handleInteraction;
 
 pub fn parseSkillSecretRoute(path: []const u8) ?SkillSecretRoute {
     return skill_secret_handlers.parseRoute(path);

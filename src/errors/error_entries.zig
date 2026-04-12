@@ -304,4 +304,14 @@ pub const ENTRIES = [_]Entry{
     // ── GATE (execute path) ───────────────────────────────────────────────────
     e("UZ-GATE-005", .request_timeout, "Approval timed out",
         "Approval timed out — action denied. Retry after approving in Slack, Discord, or the dashboard."),
+    // ── SLACK PLUGIN (M8_001) ────────────────────────────────────────────────
+    e("UZ-SLACK-001", .forbidden, "Slack OAuth state invalid",
+        "OAuth state parameter mismatch — possible CSRF attempt. " ++
+        "Please try installing UseZombie again from the beginning."),
+    e("UZ-SLACK-002", .bad_gateway, "Slack token exchange failed",
+        "Could not exchange OAuth code for bot token. Verify SLACK_CLIENT_SECRET " ++
+        "is set and the code has not expired (codes are single-use, 10-minute TTL)."),
+    e("UZ-SLACK-003", .unauthorized, "Slack bot token expired",
+        "The Slack bot token has been revoked or expired. " ++
+        "Reinstall UseZombie to Slack to issue a fresh token."),
 };

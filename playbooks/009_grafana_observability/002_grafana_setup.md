@@ -36,7 +36,6 @@ Import `agent_run_breakdown.json` via Grafana UI:
 |-------|--------|-------|
 | Token consumption by workspace | Prometheus | `zombie_agent_tokens_by_workspace_total` |
 | Run outcomes by workspace | Prometheus | `zombie_runs_completed_by_workspace_total` / `blocked` |
-| Gate repair loop distribution | Prometheus | `histogram_quantile(0.95, zombie_gate_repair_loops_per_run_bucket)` |
 | Score-gated run rate | PostgreSQL | `usage_ledger WHERE lifecycle_event = 'run_not_billable_score_gated'` |
 | Top-N runs by token consumption | PostgreSQL | `usage_ledger ORDER BY token_count DESC LIMIT 10` |
 | Per-stage token breakdown | PostgreSQL | `usage_ledger WHERE source = 'runtime_stage' GROUP BY actor` |

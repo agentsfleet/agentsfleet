@@ -15,7 +15,7 @@ const ServeMigrationDecision = enum {
     run_required,
 };
 
-pub fn canonicalMigrations() [14]db.Migration {
+pub fn canonicalMigrations() [15]db.Migration {
     const schema = @import("schema");
     return .{
         .{ .version = 1, .sql = schema.core_foundation_sql },
@@ -32,6 +32,7 @@ pub fn canonicalMigrations() [14]db.Migration {
         .{ .version = 25, .sql = schema.core_zombie_approval_gates_sql },
         .{ .version = 26, .sql = schema.core_integration_grants_sql },
         .{ .version = 27, .sql = schema.core_external_agents_sql },
+        .{ .version = 28, .sql = schema.workspace_integrations_sql },
     };
 }
 
@@ -181,9 +182,9 @@ test "integration: startup with pending migrations proceeds when enabled and loc
     try std.testing.expectEqual(.run_required, decision);
 }
 
-test "canonical schema bootstrap: last version is 25 and entitlements carry scoring config" {
+test "canonical schema bootstrap: last version is 28 and entitlements carry scoring config" {
     const migrations = canonicalMigrations();
-    try std.testing.expectEqual(@as(i32, 25), migrations[migrations.len - 1].version);
+    try std.testing.expectEqual(@as(i32, 28), migrations[migrations.len - 1].version);
 
     var entitlements_sql: ?[]const u8 = null;
     for (migrations) |m| {
