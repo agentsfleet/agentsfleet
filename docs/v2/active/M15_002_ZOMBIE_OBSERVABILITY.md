@@ -4,7 +4,7 @@
 **Milestone:** M15
 **Workstream:** 002
 **Date:** Apr 11, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P0 — Zombie execution is a Grafana and PostHog blind spot
 **Batch:** B1 (parallel with M15_001)
 **Branch:** feat/m15-zombie-observability
