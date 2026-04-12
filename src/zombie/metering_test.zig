@@ -135,6 +135,57 @@ test "deductZombieUsage exhausted writes zero-delta audit and returns .exhausted
     try std.testing.expectEqual(@as(i64, 0), try row.get(i64, 1));
 }
 
+// Regression (Greptile P1) — Replay with DIFFERENT agent_seconds must not
+// double-bill. Simulates XACK failure + redelivery where the re-execution
+// reports different wall_seconds. Previously keyed on full metadata_json,
+// which would have missed and charged twice.
+const WS_REPLAY_DIFF = "0195b4ba-8d3a-7f13-8abc-aa0500000005";
+test "deductZombieUsage dedupes replay when agent_seconds changes between retries" {
+    const db_ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
+
+    try uc1.seed(db_ctx.conn, WS_REPLAY_DIFF);
+    defer uc1.teardown(db_ctx.conn, WS_REPLAY_DIFF);
+    try workspace_credit.provisionWorkspaceCredit(db_ctx.conn, ALLOC, WS_REPLAY_DIFF, "test");
+
+    const event_id = "0195b4ba-8d3a-7f13-8abc-aa050000ee04";
+
+    const first = metering.deductZombieUsage(db_ctx.conn, ALLOC, .{
+        .zombie_id = "zombie-m15-retry",
+        .workspace_id = WS_REPLAY_DIFF,
+        .event_id = event_id,
+        .agent_seconds = 60, // first attempt reports 60s
+        .token_count = 0,
+    }, .free);
+    try std.testing.expectEqual(@as(i64, 60), switch (first) {
+        .deducted => |c| c,
+        else => @as(i64, -1),
+    });
+
+    // Redelivery: same event_id, different agent_seconds (LLM latency varied).
+    const second = metering.deductZombieUsage(db_ctx.conn, ALLOC, .{
+        .zombie_id = "zombie-m15-retry",
+        .workspace_id = WS_REPLAY_DIFF,
+        .event_id = event_id,
+        .agent_seconds = 45, // second attempt reports 45s — DIFFERENT
+        .token_count = 0,
+    }, .free);
+    try std.testing.expectEqual(@as(i64, 0), switch (second) {
+        .deducted => |c| c,
+        else => @as(i64, -2),
+    });
+
+    // Exactly one CREDIT_DEDUCTED audit row for this workspace.
+    var q = PgQuery.from(try db_ctx.conn.query(
+        \\SELECT COUNT(*)::BIGINT FROM workspace_credit_audit
+        \\WHERE workspace_id = $1 AND event_type = 'CREDIT_DEDUCTED'
+    , .{WS_REPLAY_DIFF}));
+    defer q.deinit();
+    const row = (try q.next()).?;
+    try std.testing.expectEqual(@as(i64, 1), try row.get(i64, 0));
+}
+
 // T5 (spec dim 2.2) — DB failure returns .db_error; event loop still XACKs
 // because recordZombieDelivery returns void (no error propagation).
 // Injection: workspace_id that doesn't exist → FK violation on the INSERT in

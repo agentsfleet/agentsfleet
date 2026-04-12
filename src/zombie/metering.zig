@@ -45,9 +45,12 @@ pub const DeductionResult = union(enum) {
 
 /// Deduct credits for one zombie event delivery. Must stay ≤50 lines.
 ///
-/// On the happy path (free plan, credits available) this does ONE hasAuditEvent
-/// round-trip — inside `deductCompletedRuntimeUsage`. The exhausted path needs
-/// its own idempotency check because we write the zero-delta audit ourselves.
+/// Idempotency is keyed on `event_id` via `hasAuditForRunId`, NOT on full
+/// metadata_json. This matters: on XACK failure the event is redelivered and
+/// re-executed, producing a different `agent_seconds` (LLM + tool latency
+/// varies between retries). A metadata_json-keyed check would miss and
+/// double-bill. Keying on event_id dedupes the logical event regardless of
+/// measured duration.
 pub fn deductZombieUsage(
     conn: *pg.Conn,
     alloc: Allocator,
@@ -56,6 +59,9 @@ pub fn deductZombieUsage(
 ) DeductionResult {
     if (plan_tier == .scale) return .{ .exempt = {} };
 
+    const already = workspace_credit_store.hasAuditForRunId(conn, usage.workspace_id, EVENT_TYPE, usage.event_id) catch return .{ .db_error = {} };
+    if (already) return .{ .deducted = 0 };
+
     const pre = workspace_credit.getOrProvisionWorkspaceCredit(conn, alloc, usage.workspace_id) catch return .{ .db_error = {} };
     alloc.free(pre.currency);
 
@@ -63,9 +69,6 @@ pub fn deductZombieUsage(
         const debit_cents = workspace_credit.runtimeUsageCostCents(usage.agent_seconds);
         const metadata_json = workspace_credit_store.runtimeDeductionMetadata(alloc, usage.event_id, 0, usage.agent_seconds, debit_cents) catch return .{ .db_error = {} };
         defer alloc.free(metadata_json);
-
-        const already = workspace_credit_store.hasAuditEvent(conn, usage.workspace_id, EVENT_TYPE, REASON, metadata_json) catch return .{ .db_error = {} };
-        if (already) return .{ .deducted = 0 };
         workspace_credit_store.insertAudit(conn, alloc, usage.workspace_id, EVENT_TYPE, 0, 0, REASON, ACTOR, metadata_json) catch return .{ .db_error = {} };
         return .{ .exhausted = 0 };
     }
