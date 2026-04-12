@@ -17,6 +17,7 @@ const error_codes = @import("../errors/error_registry.zig");
 const obs_log = @import("../observability/logging.zig");
 const id_format = @import("../types/id_format.zig");
 const event_loop_gate = @import("event_loop_gate.zig");
+const metering = @import("metering.zig");
 
 const log = std.log.scoped(.zombie_event_loop);
 
@@ -176,6 +177,7 @@ fn processEvent(alloc: Allocator, session: *ZombieSession, evt: *redis_zombie.Zo
         obs_log.logWarnErr(.zombie_event_loop, err, "zombie_event_loop.checkpoint_fail zombie_id={s} error_code=" ++ error_codes.ERR_ZOMBIE_CHECKPOINT_FAILED, .{session.zombie_id});
         return consecutive_errors.* + 1;
     };
+    metering.recordZombieDelivery(cfg.pool, alloc, session.workspace_id, session.zombie_id, evt.event_id, result.wall_seconds, result.token_count);
 
     redis_zombie.xackZombie(cfg.redis, session.zombie_id, evt.message_id) catch |err| {
         obs_log.logWarnErr(.zombie_event_loop, err, "zombie_event_loop.xack_fail zombie_id={s} message_id={s}", .{ session.zombie_id, evt.message_id });

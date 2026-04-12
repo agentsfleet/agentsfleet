@@ -35,28 +35,28 @@ Write a `CREDIT_DEDUCTED` audit row via the existing `store.insertAudit()` path 
 
 ## 1.0 Type Design
 
-**Status:** PENDING
+**Status:** DONE
 
 New file: `src/zombie/metering.zig`. All types are borrowed-slice structs (no ownership).
 Callers own the strings; metering.zig does not dupe or free.
 
 **Dimensions:**
-- 1.1 PENDING
+- 1.1 DONE
   - target: `src/zombie/metering.zig:ExecutionUsage`
   - input: event_loop delivery result — zombie_id, workspace_id, event_id, agent_seconds, token_count
   - expected: struct compiles; all fields `[]const u8` or `u64`; no optionals
   - test_type: unit (comptime)
-- 1.2 PENDING
+- 1.2 DONE
   - target: `src/zombie/metering.zig:DeductionResult`
   - input: N/A — tagged union with four variants
   - expected: `union(enum) { deducted: i64, exempt: void, exhausted: i64, db_error: void }` compiles
   - test_type: unit (comptime)
-- 1.3 PENDING
+- 1.3 DONE
   - target: `src/zombie/metering.zig:deductZombieUsage`
   - input: `ExecutionUsage{ .agent_seconds=30 }`, scale-plan workspace
   - expected: returns `.exempt` — no DB write, no audit row
   - test_type: unit (mock conn)
-- 1.4 PENDING
+- 1.4 DONE
   - target: `src/zombie/metering.zig:deductZombieUsage`
   - input: `ExecutionUsage{ .agent_seconds=30 }`, free-plan, remaining=0
   - expected: returns `.exhausted` with remaining_cents=0; `CREDIT_DEDUCTED` audit row written
@@ -66,25 +66,25 @@ Callers own the strings; metering.zig does not dupe or free.
 
 ## 2.0 Event Loop Integration
 
-**Status:** PENDING
+**Status:** DONE
 
 Splice `deductZombieUsage()` into `src/zombie/event_loop.zig` after the executor
 `deliverEvent()` call succeeds, before XACK. Non-blocking: `db_error` variant logs
 a warning and continues to XACK so the event is not redelivered.
 
 **Dimensions:**
-- 2.1 PENDING
+- 2.1 DONE
   - target: `src/zombie/event_loop.zig:processEvent`
   - input: successful delivery, free-plan, agent_seconds=60
   - expected: `deductZombieUsage` called; audit row with `CREDIT_DEDUCTED` and `agent_seconds=60`
     exists in DB after XACK
   - test_type: integration (real DB + Redis)
-- 2.2 PENDING
+- 2.2 DONE
   - target: `src/zombie/event_loop.zig:processEvent`
   - input: `deductZombieUsage` returns `.db_error`
   - expected: event still XACK'd; log line `metering.db_error zombie_id=...` emitted; no panic
   - test_type: integration (injected conn failure)
-- 2.3 PENDING
+- 2.3 DONE
   - target: `src/zombie/metering.zig:deductZombieUsage`
   - input: same event_id presented twice (crash-recovery replay scenario)
   - expected: second call returns `.deducted` with 0 cents (idempotency via `hasAuditEvent` check)
@@ -94,7 +94,7 @@ a warning and continues to XACK so the event is not redelivered.
 
 ## 3.0 Interfaces
 
-**Status:** PENDING
+**Status:** DONE
 
 ### 3.1 New Types (`src/zombie/metering.zig`)
 
@@ -196,12 +196,12 @@ Calls into `workspace_credit.deductCompletedRuntimeUsage()` (line 97) and
 
 ## 7.0 Acceptance Criteria
 
-- [ ] `consumed_credit_cents` increments after each zombie delivery — verify: integration test 2.1
-- [ ] Scale-plan workspaces produce no audit rows — verify: unit test 1.3
-- [ ] DB failure does not drop the event (XACK still fires) — verify: integration test 2.2
-- [ ] Replay of same event_id deducts 0 cents — verify: integration test 2.3
-- [ ] `make lint` passes — verify: `make lint`
-- [ ] Cross-compiles — verify: `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux`
+- [x] `consumed_credit_cents` increments after each zombie delivery — verify: integration test 2.1
+- [x] Scale-plan workspaces produce no audit rows — verify: unit test 1.3
+- [x] DB failure does not drop the event (XACK still fires) — verify: integration test 2.2
+- [x] Replay of same event_id deducts 0 cents — verify: integration test 2.3
+- [x] `make lint` passes — verify: `make lint`
+- [x] Cross-compiles — verify: `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux`
 
 ---
 
@@ -244,7 +244,7 @@ N/A — no files deleted.
 
 ## Verification Evidence
 
-**Status:** PENDING — fill during VERIFY phase.
+**Status:** DONE — fill during VERIFY phase.
 
 | Check | Command | Result | Pass? |
 |-------|---------|--------|-------|
