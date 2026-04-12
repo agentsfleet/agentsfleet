@@ -52,27 +52,6 @@
       ]
     },
     {
-      "id": 3,
-      "title": "Gate Repair Loop Distribution (p50/p95/p99)",
-      "type": "timeseries",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
-      "datasource": "${DS_PROMETHEUS}",
-      "targets": [
-        {
-          "expr": "histogram_quantile(0.50, rate(zombie_gate_repair_loops_per_run_bucket[1h]))",
-          "legendFormat": "p50"
-        },
-        {
-          "expr": "histogram_quantile(0.95, rate(zombie_gate_repair_loops_per_run_bucket[1h]))",
-          "legendFormat": "p95"
-        },
-        {
-          "expr": "histogram_quantile(0.99, rate(zombie_gate_repair_loops_per_run_bucket[1h]))",
-          "legendFormat": "p99"
-        }
-      ]
-    },
-    {
       "id": 4,
       "title": "Score-Gated Run Rate",
       "type": "timeseries",

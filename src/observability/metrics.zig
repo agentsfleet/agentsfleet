@@ -13,25 +13,11 @@ pub const Snapshot = mc.Snapshot;
 pub const incExternalRetry = mc.incExternalRetry;
 pub const incExternalFailure = mc.incExternalFailure;
 pub const incRetryAfterHintsApplied = mc.incRetryAfterHintsApplied;
-pub const incWorkerErrors = mc.incWorkerErrors;
-pub const incSandboxShellRuns = mc.incSandboxShellRuns;
-pub const incSandboxHostRuns = mc.incSandboxHostRuns;
-pub const incSandboxBubblewrapRuns = mc.incSandboxBubblewrapRuns;
-pub const incSandboxKillSwitches = mc.incSandboxKillSwitches;
-pub const incSandboxPreflightFailures = mc.incSandboxPreflightFailures;
-pub const incAgentEchoCalls = mc.incAgentEchoCalls;
-pub const incAgentScoutCalls = mc.incAgentScoutCalls;
-pub const incAgentWardenCalls = mc.incAgentWardenCalls;
 pub const addAgentTokens = mc.addAgentTokens;
-pub const addAgentTokensByActor = mc.addAgentTokensByActor;
 pub const addBackoffWaitMs = mc.addBackoffWaitMs;
-pub const addRateLimitWaitMs = mc.addRateLimitWaitMs;
-pub const incOutboxEnqueued = mc.incOutboxEnqueued;
-pub const incOutboxDelivered = mc.incOutboxDelivered;
 pub const incOutboxDeadLetter = mc.incOutboxDeadLetter;
 pub const incApiBackpressureRejections = mc.incApiBackpressureRejections;
 pub const setApiInFlightRequests = mc.setApiInFlightRequests;
-pub const incWorkerAllocatorLeaks = mc.incWorkerAllocatorLeaks;
 pub const observeAgentDurationSeconds = mc.observeAgentDurationSeconds;
 pub const incGateRepairLoops = mc.incGateRepairLoops;
 pub const incGateRepairExhausted = mc.incGateRepairExhausted;
@@ -39,15 +25,6 @@ pub const incGateRepairExhausted = mc.incGateRepairExhausted;
 pub const incRunLimitTokenBudgetExceeded = mc.incRunLimitTokenBudgetExceeded;
 pub const incRunLimitWallTimeExceeded = mc.incRunLimitWallTimeExceeded;
 pub const incRunLimitRepairLoopsExhausted = mc.incRunLimitRepairLoopsExhausted;
-// M28_001 §4.2
-pub const observeGateRepairLoopsPerRun = mc.observeGateRepairLoopsPerRun;
-// M21_001
-pub const incInterruptQueued = mc.incInterruptQueued;
-pub const incInterruptInstant = mc.incInterruptInstant;
-pub const incInterruptFallback = mc.incInterruptFallback;
-// M21_002 §4.3
-pub const observeInterruptDeliveryLatencyMs = mc.observeInterruptDeliveryLatencyMs;
-pub const incRunAborted = mc.incRunAborted;
 pub const snapshot = mc.snapshot;
 
 // OTel exporter metrics.
@@ -55,9 +32,7 @@ pub const incOtelExportTotal = mc.incOtelExportTotal;
 pub const incOtelExportFailed = mc.incOtelExportFailed;
 pub const setOtelLastSuccessAtMs = mc.setOtelLastSuccessAtMs;
 
-// Orphan recovery metrics (M14_001).
-pub const incOrphanRunsRecovered = mc.incOrphanRunsRecovered;
-pub const incOrphanNoAgentProfile = mc.incOrphanNoAgentProfile;
+// Reconciler daemon gauge.
 pub const setReconcileRunning = mc.setReconcileRunning;
 
 pub const renderPrometheus = mr.renderPrometheus;
@@ -81,44 +56,28 @@ pub const addExecutorCpuThrottledMs = em.addExecutorCpuThrottledMs;
 pub const setExecutorMemoryPeakBytes = em.setExecutorMemoryPeakBytes;
 pub const executorSnapshot = em.executorSnapshot;
 
-test "prometheus render includes key metrics" {
+test "prometheus render includes key live metrics" {
     const alloc = std.testing.allocator;
     const body = try renderPrometheus(alloc, true);
     defer alloc.free(body);
 
-    try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_worker_running 1"));
     try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_external_retries_total"));
     try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_external_failures_total"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_rate_limit_wait_ms_total"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_side_effect_outbox_enqueued_total"));
     try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_side_effect_outbox_dead_letter_total"));
     try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_api_backpressure_rejections_total"));
     try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_api_in_flight_requests"));
     try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_agent_duration_seconds_bucket"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_triggered_total"));
 }
 
-test "integration: outbox metric counters are exposed in prometheus output" {
+test "integration: outbox dead-letter metric is exposed in prometheus output" {
     const alloc = std.testing.allocator;
-    incOutboxEnqueued();
-    incOutboxDelivered();
     incOutboxDeadLetter();
 
     const body = try renderPrometheus(alloc, false);
     defer alloc.free(body);
 
-    try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_side_effect_outbox_enqueued_total"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_side_effect_outbox_delivered_total"));
     try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_side_effect_outbox_dead_letter_total"));
-}
-
-test "integration: worker guardrail metrics are exposed in prometheus output" {
-    const alloc = std.testing.allocator;
-    incWorkerAllocatorLeaks();
-
-    const body = try renderPrometheus(alloc, true);
-    defer alloc.free(body);
-
-    try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_worker_allocator_leaks_total"));
 }
 
 test "integration: api throughput guardrail metrics are exposed in prometheus output" {
@@ -145,14 +104,6 @@ test "integration: otel exporter metrics are exposed in prometheus output" {
     try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_otel_export_total"));
     try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_otel_export_failed_total"));
     try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_otel_last_success_at_ms"));
-}
-
-// T3 — worker_running=false path; guards against the gauge always emitting 1
-test "prometheus render emits zombie_worker_running 0 when worker is not running" {
-    const alloc = std.testing.allocator;
-    const body = try renderPrometheus(alloc, false);
-    defer alloc.free(body);
-    try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_worker_running 0"));
 }
 
 test {
