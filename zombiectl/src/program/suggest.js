@@ -11,9 +11,7 @@ const KNOWN_COMMANDS = [
   "run",
   "runs",
   "doctor",
-  "harness",
   "skill-secret",
-  "agent",
 ];
 
 const KNOWN_SUBCOMMANDS = {
@@ -22,9 +20,7 @@ const KNOWN_SUBCOMMANDS = {
   specs: ["sync"],
   runs: ["list"],
   run: ["status"],
-  harness: ["source", "compile", "activate", "active"],
   "skill-secret": ["put", "delete"],
-  agent: ["scores", "profile"],
 };
 
 export function levenshteinDistance(a, b) {

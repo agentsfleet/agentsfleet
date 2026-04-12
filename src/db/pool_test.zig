@@ -101,73 +101,6 @@ fn openIntegrationTestConn(alloc: std.mem.Allocator) !?struct { pool: *Pool, con
     return .{ .pool = pool, .conn = conn };
 }
 
-fn createUuidContractTempSchema(conn: *Conn) !void {
-    _ = try conn.exec(
-        \\CREATE TEMP TABLE t_uuid_runs (
-        \\  run_id UUID PRIMARY KEY,
-        \\  run_snapshot_version UUID
-        \\)
-    , .{});
-    _ = try conn.exec(
-        \\CREATE TEMP TABLE t_uuid_agent_profile_versions (
-        \\  profile_version_id UUID PRIMARY KEY
-        \\)
-    , .{});
-    _ = try conn.exec(
-        \\CREATE TEMP TABLE t_uuid_profile_compile_jobs (
-        \\  compile_job_id UUID PRIMARY KEY
-        \\)
-    , .{});
-    _ = try conn.exec(
-        \\CREATE TEMP TABLE t_uuid_run_transitions (
-        \\  id UUID PRIMARY KEY,
-        \\  run_id UUID NOT NULL REFERENCES t_uuid_runs(run_id)
-        \\)
-    , .{});
-    _ = try conn.exec(
-        \\CREATE TEMP TABLE t_uuid_artifacts (
-        \\  run_id UUID NOT NULL REFERENCES t_uuid_runs(run_id)
-        \\)
-    , .{});
-    _ = try conn.exec(
-        \\CREATE TEMP TABLE t_uuid_usage_ledger (
-        \\  run_id UUID NOT NULL REFERENCES t_uuid_runs(run_id)
-        \\)
-    , .{});
-    _ = try conn.exec(
-        \\CREATE TEMP TABLE t_uuid_run_side_effects (
-        \\  run_id UUID NOT NULL REFERENCES t_uuid_runs(run_id)
-        \\)
-    , .{});
-    _ = try conn.exec(
-        \\CREATE TEMP TABLE t_uuid_run_side_effect_outbox (
-        \\  run_id UUID NOT NULL REFERENCES t_uuid_runs(run_id)
-        \\)
-    , .{});
-    _ = try conn.exec(
-        \\CREATE TEMP TABLE t_uuid_workspace_memories (
-        \\  run_id UUID NOT NULL REFERENCES t_uuid_runs(run_id)
-        \\)
-    , .{});
-    _ = try conn.exec(
-        \\CREATE TEMP TABLE t_uuid_policy_events (
-        \\  run_id UUID REFERENCES t_uuid_runs(run_id)
-        \\)
-    , .{});
-    _ = try conn.exec(
-        \\CREATE TEMP TABLE t_uuid_workspace_active_profile (
-        \\  profile_version_id UUID NOT NULL REFERENCES t_uuid_agent_profile_versions(profile_version_id)
-        \\)
-    , .{});
-    _ = try conn.exec(
-        \\CREATE TEMP TABLE t_uuid_profile_linkage_audit_artifacts (
-        \\  profile_version_id UUID NOT NULL REFERENCES t_uuid_agent_profile_versions(profile_version_id),
-        \\  compile_job_id UUID REFERENCES t_uuid_profile_compile_jobs(compile_job_id),
-        \\  run_id UUID REFERENCES t_uuid_runs(run_id)
-        \\)
-    , .{});
-}
-
 test "integration: canary pool acquire + exec + query SELECT 1" {
     const alloc = std.testing.allocator;
     const url = std.process.getEnvVarOwned(alloc, "TEST_DATABASE_URL") catch
@@ -185,50 +118,6 @@ test "integration: canary pool acquire + exec + query SELECT 1" {
     _ = try conn.exec("SELECT 1", .{});
     // Extended query protocol (no params)
     _ = try conn.exec("SELECT 1", .{});
-}
-
-test "integration: uuid contract tables are UUID typed for run/profile/linkage IDs" {
-    if (!std.process.hasEnvVarConstant("LIVE_DB")) return error.SkipZigTest;
-    const db_ctx = (try openIntegrationTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
-    defer db_ctx.pool.deinit();
-    defer db_ctx.pool.release(db_ctx.conn);
-
-    try createUuidContractTempSchema(db_ctx.conn);
-
-    {
-        var q = PgQuery.from(try db_ctx.conn.query(
-            \\SELECT table_name, column_name, data_type
-            \\FROM information_schema.columns
-            \\WHERE table_name IN ('t_uuid_runs', 't_uuid_agent_profile_versions', 't_uuid_profile_compile_jobs', 't_uuid_profile_linkage_audit_artifacts')
-            \\  AND column_name IN ('run_id', 'run_snapshot_version', 'profile_version_id', 'compile_job_id')
-            \\ORDER BY table_name, column_name
-        , .{}));
-        defer q.deinit();
-
-        while (try q.next()) |row| {
-            try std.testing.expectEqualStrings("uuid", try row.get([]const u8, 2));
-        }
-    }
-
-    const run_id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f99";
-    const pver_id = "0195b4ba-8d3a-7f13-9abc-2b3e1e0a6f98";
-    const cjob_id = "0195b4ba-8d3a-7f13-aabc-2b3e1e0a6f97";
-    _ = try db_ctx.conn.exec(
-        "INSERT INTO t_uuid_runs (run_id, run_snapshot_version) VALUES ($1::uuid, $2::uuid)",
-        .{ run_id, pver_id },
-    );
-    _ = try db_ctx.conn.exec(
-        "INSERT INTO t_uuid_agent_profile_versions (profile_version_id) VALUES ($1::uuid)",
-        .{pver_id},
-    );
-    _ = try db_ctx.conn.exec(
-        "INSERT INTO t_uuid_profile_compile_jobs (compile_job_id) VALUES ($1::uuid)",
-        .{cjob_id},
-    );
-    _ = try db_ctx.conn.exec(
-        "INSERT INTO t_uuid_profile_linkage_audit_artifacts (profile_version_id, compile_job_id, run_id) VALUES ($1::uuid, $2::uuid, $3::uuid)",
-        .{ pver_id, cjob_id, run_id },
-    );
 }
 
 test "T6 integration: generated UUID PKs round-trip through INSERT and SELECT" {
@@ -453,7 +342,7 @@ test "integration: zero-trust schema segmentation and role matrix are enforced" 
             \\SELECT 1
             \\FROM information_schema.tables
             \\WHERE table_schema = 'public'
-            \\  AND table_name IN ('tenants', 'workspaces', 'runs', 'agent_profiles', 'workspace_entitlements')
+            \\  AND table_name IN ('tenants', 'workspaces', 'runs', 'workspace_entitlements')
             \\LIMIT 1
         , .{}));
         defer q.deinit();
@@ -476,29 +365,7 @@ test "integration: zero-trust schema segmentation and role matrix are enforced" 
         try std.testing.expect((try role_q.next()) != null);
     }
 
-    const worker_privilege_checks = [_]struct { table_name: []const u8, privilege: []const u8 }{
-        .{ .table_name = "agent.agent_profiles", .privilege = "UPDATE" },
-        .{ .table_name = "agent.workspace_active_config", .privilege = "UPDATE" },
-        .{ .table_name = "agent.agent_config_versions", .privilege = "INSERT" },
-        // M10_001: agent.harness_change_log removed (pipeline v1 scoring).
-    };
-    inline for (worker_privilege_checks) |check| {
-        var privilege_q = PgQuery.from(try db_ctx.conn.query(
-            "SELECT has_table_privilege('worker_runtime', $1, $2)",
-            .{ check.table_name, check.privilege },
-        ));
-        defer privilege_q.deinit();
-        const row = (try privilege_q.next()) orelse return error.TestUnexpectedResult;
-        const has_privilege = try row.get(bool, 0);
-        try std.testing.expect(has_privilege);
-    }
-
     const rls_tables = [_]struct { schema_name: []const u8, table_name: []const u8 }{
-        .{ .schema_name = "agent", .table_name = "agent_profiles" },
-        .{ .schema_name = "agent", .table_name = "agent_config_versions" },
-        .{ .schema_name = "agent", .table_name = "workspace_active_config" },
-        .{ .schema_name = "agent", .table_name = "config_compile_jobs" },
-        .{ .schema_name = "agent", .table_name = "config_linkage_audit_artifacts" },
         .{ .schema_name = "vault", .table_name = "workspace_skill_secrets" },
     };
     inline for (rls_tables) |table_ref| {
@@ -568,6 +435,142 @@ test "integration: runMigrations is idempotent when table exists but migration r
     // Cleanup.
     _ = db_ctx.conn.exec("DELETE FROM audit.schema_migrations WHERE version = $1", .{test_version}) catch {};
     _ = db_ctx.conn.exec("DROP TABLE IF EXISTS public.test_migration_idempotency_fixture", .{}) catch {};
+}
+
+test "integration: runMigrations reaps orphan rows for versions no longer in canonical list" {
+    if (!std.process.hasEnvVarConstant("LIVE_DB")) return error.SkipZigTest;
+    const alloc = std.testing.allocator;
+    const db_ctx = (try openIntegrationTestConn(alloc)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
+
+    const orphan_version: i32 = 99997;
+    const keep_version: i32 = 99996;
+    const keep_sql =
+        \\CREATE TABLE IF NOT EXISTS public.test_reap_keep_fixture (id BIGINT PRIMARY KEY);
+    ;
+    const canonical = [_]pool_mod.Migration{
+        .{ .version = keep_version, .sql = keep_sql },
+    };
+
+    // Clean slate, then seed an orphan row (simulates a migration that was removed
+    // from the canonical list — e.g., M17_001's v8 and v11).
+    _ = db_ctx.conn.exec("DELETE FROM audit.schema_migrations WHERE version IN ($1, $2)", .{ orphan_version, keep_version }) catch {};
+    _ = db_ctx.conn.exec("DELETE FROM audit.schema_migration_failures WHERE version IN ($1, $2)", .{ orphan_version, keep_version }) catch {};
+    _ = db_ctx.conn.exec("DROP TABLE IF EXISTS public.test_reap_keep_fixture", .{}) catch {};
+    _ = try db_ctx.conn.exec(
+        "INSERT INTO audit.schema_migrations (version, applied_at) VALUES ($1, $2)",
+        .{ orphan_version, std.time.milliTimestamp() },
+    );
+
+    // Run canonical migrations — the reap step should remove orphan_version.
+    try pool_mod.runMigrations(db_ctx.pool, &canonical);
+
+    {
+        var q = PgQuery.from(try db_ctx.conn.query(
+            "SELECT 1 FROM audit.schema_migrations WHERE version = $1",
+            .{orphan_version},
+        ));
+        defer q.deinit();
+        try std.testing.expect((try q.next()) == null);
+    }
+
+    {
+        var q = PgQuery.from(try db_ctx.conn.query(
+            "SELECT 1 FROM audit.schema_migrations WHERE version = $1",
+            .{keep_version},
+        ));
+        defer q.deinit();
+        try std.testing.expect((try q.next()) != null);
+    }
+
+    _ = db_ctx.conn.exec("DELETE FROM audit.schema_migrations WHERE version = $1", .{keep_version}) catch {};
+    _ = db_ctx.conn.exec("DROP TABLE IF EXISTS public.test_reap_keep_fixture", .{}) catch {};
+}
+
+test "integration: runMigrations reaps orphan rows in schema_migration_failures (T2/T6)" {
+    if (!std.process.hasEnvVarConstant("LIVE_DB")) return error.SkipZigTest;
+    const alloc = std.testing.allocator;
+    const db_ctx = (try openIntegrationTestConn(alloc)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
+
+    const orphan_version: i32 = 99995;
+    const keep_version: i32 = 99994;
+    const keep_sql =
+        \\CREATE TABLE IF NOT EXISTS public.test_reap_failures_fixture (id BIGINT PRIMARY KEY);
+    ;
+    const canonical = [_]pool_mod.Migration{
+        .{ .version = keep_version, .sql = keep_sql },
+    };
+
+    _ = db_ctx.conn.exec("DELETE FROM audit.schema_migrations WHERE version IN ($1, $2)", .{ orphan_version, keep_version }) catch {};
+    _ = db_ctx.conn.exec("DELETE FROM audit.schema_migration_failures WHERE version IN ($1, $2)", .{ orphan_version, keep_version }) catch {};
+    _ = db_ctx.conn.exec("DROP TABLE IF EXISTS public.test_reap_failures_fixture", .{}) catch {};
+
+    // Seed an orphan failure row — simulates a previously-failed migration that
+    // has since been removed from the canonical list.
+    _ = try db_ctx.conn.exec(
+        \\INSERT INTO audit.schema_migration_failures (version, failed_at, error_text)
+        \\VALUES ($1, $2, 'simulated')
+    , .{ orphan_version, std.time.milliTimestamp() });
+
+    try pool_mod.runMigrations(db_ctx.pool, &canonical);
+
+    var q = PgQuery.from(try db_ctx.conn.query(
+        "SELECT 1 FROM audit.schema_migration_failures WHERE version = $1",
+        .{orphan_version},
+    ));
+    defer q.deinit();
+    try std.testing.expect((try q.next()) == null);
+
+    _ = db_ctx.conn.exec("DELETE FROM audit.schema_migrations WHERE version = $1", .{keep_version}) catch {};
+    _ = db_ctx.conn.exec("DROP TABLE IF EXISTS public.test_reap_failures_fixture", .{}) catch {};
+}
+
+test "integration: runMigrations reap is a no-op when all applied rows are canonical (T2)" {
+    if (!std.process.hasEnvVarConstant("LIVE_DB")) return error.SkipZigTest;
+    const alloc = std.testing.allocator;
+    const db_ctx = (try openIntegrationTestConn(alloc)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
+
+    const v1: i32 = 99993;
+    const v2: i32 = 99992;
+    const sql_a =
+        \\CREATE TABLE IF NOT EXISTS public.test_reap_noop_a (id BIGINT PRIMARY KEY);
+    ;
+    const sql_b =
+        \\CREATE TABLE IF NOT EXISTS public.test_reap_noop_b (id BIGINT PRIMARY KEY);
+    ;
+    const canonical = [_]pool_mod.Migration{
+        .{ .version = v1, .sql = sql_a },
+        .{ .version = v2, .sql = sql_b },
+    };
+
+    _ = db_ctx.conn.exec("DELETE FROM audit.schema_migrations WHERE version IN ($1, $2)", .{ v1, v2 }) catch {};
+    _ = db_ctx.conn.exec("DROP TABLE IF EXISTS public.test_reap_noop_a", .{}) catch {};
+    _ = db_ctx.conn.exec("DROP TABLE IF EXISTS public.test_reap_noop_b", .{}) catch {};
+
+    try pool_mod.runMigrations(db_ctx.pool, &canonical);
+
+    // Second run — reap must preserve all canonical rows (no-op).
+    try pool_mod.runMigrations(db_ctx.pool, &canonical);
+
+    {
+        var q = PgQuery.from(try db_ctx.conn.query(
+            "SELECT COUNT(*)::BIGINT FROM audit.schema_migrations WHERE version IN ($1, $2)",
+            .{ v1, v2 },
+        ));
+        defer q.deinit();
+        const row = (try q.next()) orelse return error.TestUnexpectedResult;
+        const count = try row.get(i64, 0);
+        try std.testing.expectEqual(@as(i64, 2), count);
+    }
+
+    _ = db_ctx.conn.exec("DELETE FROM audit.schema_migrations WHERE version IN ($1, $2)", .{ v1, v2 }) catch {};
+    _ = db_ctx.conn.exec("DROP TABLE IF EXISTS public.test_reap_noop_a", .{}) catch {};
+    _ = db_ctx.conn.exec("DROP TABLE IF EXISTS public.test_reap_noop_b", .{}) catch {};
 }
 
 test "integration: readonly roles can only query ops_ro views, not vault" {

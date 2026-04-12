@@ -125,13 +125,13 @@ test {
     _ = @import("db/sql_splitter.zig");
     _ = @import("config/env_vars.zig");
     _ = @import("config/load.zig");
-    _ = @import("harness/control_plane.zig");
     _ = @import("zombie/config.zig");
     _ = @import("zombie/config_helpers.zig");
     _ = @import("zombie/yaml_frontmatter.zig");
     _ = @import("http/route_matchers.zig");
     _ = @import("zombie/activity_stream.zig");
     _ = @import("zombie/event_loop.zig");
+    _ = @import("zombie/metering.zig");
     _ = @import("zombie/webhook_verify.zig");
     _ = @import("cli/commands.zig");
     _ = @import("auth/sessions.zig");
@@ -180,4 +180,13 @@ test {
     _ = @import("zombie/firewall/firewall_test.zig");
     _ = @import("zombie/firewall/firewall_robustness_test.zig");
     _ = @import("zombie/firewall/firewall_greptile_test.zig");
+    // M8_001: Slack plugin
+    _ = @import("state/workspace_integrations.zig");
+    _ = @import("types/id_format.zig");
+    _ = @import("types/id_format_test.zig");
+    _ = @import("http/handlers/slack_oauth.zig");
+    _ = @import("http/handlers/slack_oauth_client.zig");
+    _ = @import("http/handlers/slack_events.zig");
+    _ = @import("http/handlers/slack_interactions.zig");
+    _ = @import("http/handlers/m8_001_slack_unit_test.zig");
 }

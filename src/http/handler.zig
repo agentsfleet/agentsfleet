@@ -4,10 +4,8 @@
 const std = @import("std");
 const common = @import("handlers/common.zig");
 const workspace_handlers = @import("handlers/workspaces.zig");
-const agents_handlers = @import("handlers/agents.zig");
 const skill_secret_handlers = @import("handlers/skill_secrets.zig");
 const health_handlers = @import("handlers/health.zig");
-const harness_http = @import("handlers/harness_http.zig");
 const skill_secrets_http = @import("handlers/skill_secrets_http.zig");
 const auth_sessions_http = @import("handlers/auth_sessions_http.zig");
 const github_callback = @import("handlers/github_callback.zig");
@@ -19,6 +17,9 @@ const approval_http = @import("handlers/approval_http.zig");
 const zombie_api_http = @import("handlers/zombie_api.zig");
 const zombie_activity_api_http = @import("handlers/zombie_activity_api.zig");
 const memory_http = @import("handlers/memory_http.zig");
+const slack_oauth_http = @import("handlers/slack_oauth.zig");
+const slack_events_http = @import("handlers/slack_events.zig");
+const slack_interactions_http = @import("handlers/slack_interactions.zig");
 
 pub const Context = common.Context;
 pub const SkillSecretRoute = skill_secret_handlers.Route;
@@ -30,16 +31,9 @@ pub const handleUpgradeWorkspaceToScale = workspace_handlers.handleUpgradeWorksp
 pub const handleApplyWorkspaceBillingEvent = workspace_handlers.handleApplyWorkspaceBillingEvent;
 pub const handleGetWorkspaceBillingSummary = workspace_handlers.handleGetWorkspaceBillingSummary;
 pub const handleSetWorkspaceScoringConfig = workspace_handlers.handleSetWorkspaceScoringConfig;
-pub const handleGetAgent = agents_handlers.handleGetAgent;
-
 pub const handleHealthz = health_handlers.handleHealthz;
 pub const handleReadyz = health_handlers.handleReadyz;
 pub const handleMetrics = health_handlers.handleMetrics;
-
-pub const handlePutHarnessSource = harness_http.handlePutHarnessSource;
-pub const handleCompileHarness = harness_http.handleCompileHarness;
-pub const handleActivateHarness = harness_http.handleActivateHarness;
-pub const handleGetHarnessActive = harness_http.handleGetHarnessActive;
 
 pub const handlePutWorkspaceSkillSecret = skill_secrets_http.handlePutWorkspaceSkillSecret;
 pub const handleDeleteWorkspaceSkillSecret = skill_secrets_http.handleDeleteWorkspaceSkillSecret;
@@ -77,6 +71,12 @@ pub const handleDeleteZombie = zombie_api_http.handleDeleteZombie;
 pub const handleListActivity = zombie_activity_api_http.handleListActivity;
 pub const handleStoreCredential = zombie_activity_api_http.handleStoreCredential;
 pub const handleListCredentials = zombie_activity_api_http.handleListCredentials;
+
+// M8_001: Slack plugin acquisition
+pub const handleSlackInstall = slack_oauth_http.handleInstall;
+pub const handleSlackCallback = slack_oauth_http.handleCallback;
+pub const handleSlackEvent = slack_events_http.handleSlackEvent;
+pub const handleSlackInteraction = slack_interactions_http.handleInteraction;
 
 pub fn parseSkillSecretRoute(path: []const u8) ?SkillSecretRoute {
     return skill_secret_handlers.parseRoute(path);

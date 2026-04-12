@@ -2,6 +2,9 @@ const std = @import("std");
 const mc = @import("metrics_counters.zig");
 const me = @import("metrics_external.zig");
 const error_classify = @import("../reliability/error_classify.zig");
+comptime {
+    _ = @import("metrics_zombie.zig");
+}
 
 // T9 — inline-for over all ErrorClass variants; catches any new class added without a counter
 test "incExternalRetry routes each ErrorClass to its sub-counter" {
@@ -81,23 +84,6 @@ test "observeHistogram value above all buckets increments count and sum only" {
     }
     try std.testing.expectEqual(before.agent_duration_seconds.count + 1, after.agent_duration_seconds.count);
     try std.testing.expectEqual(before.agent_duration_seconds.sum + 999, after.agent_duration_seconds.sum);
-}
-
-// T5 — atomic counters must not lose increments under concurrent write pressure
-test "atomic counters tolerate concurrent increments without loss" {
-    const N = 100;
-    const before = mc.snapshot();
-    var threads: [N]std.Thread = undefined;
-    for (&threads) |*t| {
-        t.* = try std.Thread.spawn(.{}, struct {
-            fn run() void {
-                mc.incWorkerErrors();
-            }
-        }.run, .{});
-    }
-    for (&threads) |t| t.join();
-    const after = mc.snapshot();
-    try std.testing.expectEqual(before.worker_errors_total + N, after.worker_errors_total);
 }
 
 // ── M17_001 — run limit counter tests ────────────────────────────────────
@@ -183,23 +169,6 @@ test "M17: renderPrometheus run_limit values match snapshot" {
 }
 
 // ── M10_002 — pipeline observability cleanup tests ──────────────────────
-
-// T7: Removed pipeline counters must be absent from Prometheus output.
-test "M10_002: renderPrometheus excludes removed pipeline counters" {
-    const alloc = std.testing.allocator;
-    const render = @import("metrics_render.zig");
-    const output = try render.renderPrometheus(alloc, true);
-    defer alloc.free(output);
-    // These were removed in M10_002 — zero matches expected.
-    try std.testing.expect(std.mem.indexOf(u8, output, "zombie_runs_created_total") == null);
-    try std.testing.expect(std.mem.indexOf(u8, output, "zombie_runs_completed_total") == null);
-    try std.testing.expect(std.mem.indexOf(u8, output, "zombie_runs_blocked_total") == null);
-    try std.testing.expect(std.mem.indexOf(u8, output, "zombie_run_retries_total") == null);
-    try std.testing.expect(std.mem.indexOf(u8, output, "zombie_worker_in_flight_runs") == null);
-    try std.testing.expect(std.mem.indexOf(u8, output, "zombie_run_total_wall_seconds") == null);
-    try std.testing.expect(std.mem.indexOf(u8, output, "zombie_queue_depth") == null);
-    try std.testing.expect(std.mem.indexOf(u8, output, "zombie_oldest_queued_age_ms") == null);
-}
 
 // T1: ExternalSnapshot round-trip — inc then snapshot reflects the increment.
 test "M10_002: snapshotExternalFields reflects incExternalRetry" {

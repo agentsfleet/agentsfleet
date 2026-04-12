@@ -6,8 +6,6 @@ import {
 } from "./lib/analytics.js";
 import { findRoute } from "./program/routes.js";
 import { registerProgramCommands } from "./program/command-registry.js";
-import { commandHarness as commandHarnessModule } from "./commands/harness.js";
-import { commandAgent as commandAgentModule } from "./commands/agent.js";
 import { commandAdmin as commandAdminModule } from "./commands/admin.js";
 import { commandZombie as commandZombieModule } from "./commands/zombie.js";
 import { commandRuns as commandRunsModule } from "./commands/runs.js";
@@ -30,7 +28,7 @@ import { suggestCommand } from "./program/suggest.js";
 import { requireAuth, AUTH_FAIL_MESSAGE } from "./program/auth-guard.js";
 import { createCoreHandlers } from "./commands/core.js";
 
-export const VERSION = "0.5.0";
+export const VERSION = "0.9.0";
 
 export { parseGlobalArgs };
 
@@ -129,28 +127,7 @@ export async function runCli(argv, io = {}) {
     run: (routeArgs) => core.commandRun(routeArgs),
     runsList: (routeArgs) => core.commandRunsList(routeArgs.slice(1)),
     doctor: () => core.commandDoctor(),
-    harness: (routeArgs) => commandHarnessModule(ctx, routeArgs, workspaces, {
-      parseFlags,
-      request,
-      apiHeaders,
-      ui,
-      printJson,
-      printKeyValue,
-      printSection,
-      writeLine,
-    }),
     skillSecret: (routeArgs) => core.commandSkillSecret(routeArgs),
-    agent: (routeArgs) => commandAgentModule(ctx, routeArgs, workspaces, {
-      parseFlags,
-      request,
-      apiHeaders,
-      ui,
-      printJson,
-      printKeyValue,
-      printSection,
-      printTable,
-      writeLine,
-    }),
     admin: (routeArgs) => commandAdminModule(ctx, routeArgs, workspaces, {
       parseFlags,
       request,

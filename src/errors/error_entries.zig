@@ -120,8 +120,6 @@ pub const ENTRIES = [_]Entry{
     // ── ENTITLEMENT ──────────────────────────────────────────────────────────
     e("UZ-ENTL-001", .service_unavailable, "Entitlement service unavailable",
         "Entitlement service is temporarily unavailable. Retry shortly."),
-    e("UZ-ENTL-002", .payment_required, "Profile limit reached",
-        "Profile limit reached for your plan. Upgrade to add more."),
     e("UZ-ENTL-003", .payment_required, "Stage limit reached",
         "Stage limit reached for your plan. Upgrade to add more."),
     e("UZ-ENTL-004", .forbidden, "Skill not allowed",
@@ -286,4 +284,14 @@ pub const ENTRIES = [_]Entry{
     e("UZ-MEM-003", .service_unavailable, "Memory backend unavailable",
         "The memory backend (Postgres memory schema) is unreachable. " ++
         "The agent falls back to ephemeral workspace memory. Check MEMORY_RUNTIME_URL."),
+    // ── SLACK PLUGIN (M8_001) ────────────────────────────────────────────────
+    e("UZ-SLACK-001", .forbidden, "Slack OAuth state invalid",
+        "OAuth state parameter mismatch — possible CSRF attempt. " ++
+        "Please try installing UseZombie again from the beginning."),
+    e("UZ-SLACK-002", .bad_gateway, "Slack token exchange failed",
+        "Could not exchange OAuth code for bot token. Verify SLACK_CLIENT_SECRET " ++
+        "is set and the code has not expired (codes are single-use, 10-minute TTL)."),
+    e("UZ-SLACK-003", .unauthorized, "Slack bot token expired",
+        "The Slack bot token has been revoked or expired. " ++
+        "Reinstall UseZombie to Slack to issue a fresh token."),
 };

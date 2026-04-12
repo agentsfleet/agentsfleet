@@ -86,12 +86,7 @@ fn dispatchMatchedRoute(ctx: *handler.Context, req: *httpz.Request, res: *httpz.
         .apply_workspace_billing_event => |workspace_id| if (req.method == .POST) handler.handleApplyWorkspaceBillingEvent(ctx, req, res, workspace_id) else respondMethodNotAllowed(res),
         .get_workspace_billing_summary => |workspace_id| if (req.method == .GET) handler.handleGetWorkspaceBillingSummary(ctx, req, res, workspace_id) else respondMethodNotAllowed(res),
         .set_workspace_scoring_config => |workspace_id| if (req.method == .POST) handler.handleSetWorkspaceScoringConfig(ctx, req, res, workspace_id) else respondMethodNotAllowed(res),
-        .put_harness_source => |workspace_id| if (req.method == .PUT) handler.handlePutHarnessSource(ctx, req, res, workspace_id) else respondMethodNotAllowed(res),
-        .compile_harness => |workspace_id| if (req.method == .POST) handler.handleCompileHarness(ctx, req, res, workspace_id) else respondMethodNotAllowed(res),
-        .activate_harness => |workspace_id| if (req.method == .POST) handler.handleActivateHarness(ctx, req, res, workspace_id) else respondMethodNotAllowed(res),
-        .get_harness_active => |workspace_id| if (req.method == .GET) handler.handleGetHarnessActive(ctx, req, res, workspace_id) else respondMethodNotAllowed(res),
         .sync_workspace => |workspace_id| if (req.method == .POST) handler.handleSyncSpecs(ctx, req, res, workspace_id) else respondMethodNotAllowed(res),
-        .get_agent => |agent_id| if (req.method == .GET) handler.handleGetAgent(ctx, req, res, agent_id) else respondMethodNotAllowed(res),
         // M16_004: admin platform key management
         .admin_platform_keys => switch (req.method) {
             .GET => handler.handleGetAdminPlatformKeys(ctx, req, res),
@@ -118,6 +113,11 @@ fn dispatchMatchedRoute(ctx: *handler.Context, req: *httpz.Request, res: *httpz.
         .approval_webhook => |zombie_id| if (req.method == .POST) handler.handleApprovalCallback(ctx, req, res, zombie_id) else respondMethodNotAllowed(res),
         // M1_001: Zombie webhook ingestion
         .receive_webhook => |route| if (req.method == .POST) handler.handleReceiveWebhook(ctx, req, res, route.zombie_id, route.secret) else respondMethodNotAllowed(res),
+        // M8_001: Slack plugin acquisition
+        .slack_install => if (req.method == .GET) handler.handleSlackInstall(ctx, req, res) else respondMethodNotAllowed(res),
+        .slack_callback => if (req.method == .GET) handler.handleSlackCallback(ctx, req, res) else respondMethodNotAllowed(res),
+        .slack_events => if (req.method == .POST) handler.handleSlackEvent(ctx, req, res) else respondMethodNotAllowed(res),
+        .slack_interactions => if (req.method == .POST) handler.handleSlackInteraction(ctx, req, res) else respondMethodNotAllowed(res),
         // M2_001: Zombie CRUD + activity + credentials
         .list_or_create_zombies => switch (req.method) {
             .POST => handler.handleCreateZombie(ctx, req, res),

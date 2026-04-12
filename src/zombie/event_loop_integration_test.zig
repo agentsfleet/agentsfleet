@@ -225,3 +225,8 @@ test "integration 3.3: checkpointState UPSERT overwrites previous checkpoint" {
     // First checkpoint should be overwritten
     try std.testing.expect(std.mem.indexOf(u8, session2.context_json, "evt_001") == null);
 }
+
+// M15_002 observability integration tests live in event_loop_obs_integration_test.zig.
+comptime {
+    _ = @import("event_loop_obs_integration_test.zig");
+}

@@ -7,7 +7,6 @@ const posthog = @import("posthog");
 pub const EventKind = enum {
     agent_completed,
     entitlement_rejected,
-    profile_activated,
     billing_lifecycle_event,
     server_started,
     worker_started,
@@ -17,8 +16,8 @@ pub const EventKind = enum {
     workspace_github_connected,
     auth_login_completed,
     auth_rejected,
-    run_orphan_recovered,
-    run_orphan_no_agent_profile,
+    zombie_triggered,
+    zombie_completed,
 };
 
 pub const AgentCompleted = struct {
@@ -58,27 +57,6 @@ pub const EntitlementRejected = struct {
             .{ .key = "workspace_id", .value = .{ .string = self.workspace_id } },
             .{ .key = "boundary", .value = .{ .string = self.boundary } },
             .{ .key = "reason_code", .value = .{ .string = self.reason_code } },
-            .{ .key = "request_id", .value = .{ .string = self.request_id } },
-        };
-    }
-};
-
-pub const ProfileActivated = struct {
-    distinct_id: []const u8,
-    workspace_id: []const u8,
-    agent_id: []const u8,
-    config_version_id: []const u8,
-    run_snapshot_version: []const u8,
-    request_id: []const u8,
-
-    pub const kind: EventKind = .profile_activated;
-
-    pub fn properties(self: @This()) [5]posthog.Property {
-        return .{
-            .{ .key = "workspace_id", .value = .{ .string = self.workspace_id } },
-            .{ .key = "agent_id", .value = .{ .string = self.agent_id } },
-            .{ .key = "config_version_id", .value = .{ .string = self.config_version_id } },
-            .{ .key = "run_snapshot_version", .value = .{ .string = self.run_snapshot_version } },
             .{ .key = "request_id", .value = .{ .string = self.request_id } },
         };
     }
@@ -250,34 +228,44 @@ pub const AuthRejected = struct {
     }
 };
 
-pub const RunOrphanRecovered = struct {
+pub const ZombieTriggered = struct {
     distinct_id: []const u8,
-    run_id: []const u8,
     workspace_id: []const u8,
-    staleness_ms: u64,
+    zombie_id: []const u8,
+    event_id: []const u8,
+    source: []const u8,
 
-    pub const kind: EventKind = .run_orphan_recovered;
+    pub const kind: EventKind = .zombie_triggered;
 
-    pub fn properties(self: @This()) [3]posthog.Property {
+    pub fn properties(self: @This()) [4]posthog.Property {
         return .{
-            .{ .key = "run_id", .value = .{ .string = self.run_id } },
             .{ .key = "workspace_id", .value = .{ .string = self.workspace_id } },
-            .{ .key = "staleness_ms", .value = .{ .integer = @intCast(self.staleness_ms) } },
+            .{ .key = "zombie_id", .value = .{ .string = self.zombie_id } },
+            .{ .key = "event_id", .value = .{ .string = self.event_id } },
+            .{ .key = "source", .value = .{ .string = self.source } },
         };
     }
 };
 
-pub const RunOrphanNoAgentProfile = struct {
+pub const ZombieCompleted = struct {
     distinct_id: []const u8,
-    run_id: []const u8,
     workspace_id: []const u8,
+    zombie_id: []const u8,
+    event_id: []const u8,
+    tokens: u64,
+    wall_ms: u64,
+    exit_status: []const u8,
 
-    pub const kind: EventKind = .run_orphan_no_agent_profile;
+    pub const kind: EventKind = .zombie_completed;
 
-    pub fn properties(self: @This()) [2]posthog.Property {
+    pub fn properties(self: @This()) [6]posthog.Property {
         return .{
-            .{ .key = "run_id", .value = .{ .string = self.run_id } },
             .{ .key = "workspace_id", .value = .{ .string = self.workspace_id } },
+            .{ .key = "zombie_id", .value = .{ .string = self.zombie_id } },
+            .{ .key = "event_id", .value = .{ .string = self.event_id } },
+            .{ .key = "tokens", .value = .{ .integer = @intCast(self.tokens) } },
+            .{ .key = "wall_ms", .value = .{ .integer = @intCast(self.wall_ms) } },
+            .{ .key = "exit_status", .value = .{ .string = self.exit_status } },
         };
     }
 };

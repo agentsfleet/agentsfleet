@@ -99,13 +99,12 @@ fn setupSeedData(conn: *pg.Conn) !void {
     , .{ TEST_WORKSPACE_ID, TEST_TENANT_ID, TEST_REPO_URL, now_ms });
     _ = try conn.exec(
         \\INSERT INTO workspace_entitlements
-        \\  (entitlement_id, workspace_id, plan_tier, max_profiles, max_stages, max_distinct_skills,
+        \\  (entitlement_id, workspace_id, plan_tier, max_stages, max_distinct_skills,
         \\   allow_custom_skills, enable_agent_scoring, agent_scoring_weights_json, scoring_context_max_tokens, created_at, updated_at)
-        \\VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f71', $1, 'SCALE', 8, 8, 16,
+        \\VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f71', $1, 'SCALE', 8, 16,
         \\        true, false, '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}', 2048, $2, $2)
         \\ON CONFLICT (workspace_id) DO UPDATE
         \\SET plan_tier = EXCLUDED.plan_tier,
-        \\    max_profiles = EXCLUDED.max_profiles,
         \\    max_stages = EXCLUDED.max_stages,
         \\    max_distinct_skills = EXCLUDED.max_distinct_skills,
         \\    allow_custom_skills = EXCLUDED.allow_custom_skills,
@@ -264,13 +263,6 @@ test "integration: RBAC endpoints enforce operator and admin roles over live HTT
         std.testing.allocator.destroy(server);
     }
 
-    const harness_url = try std.fmt.allocPrint(std.testing.allocator, "http://127.0.0.1:{d}/v1/workspaces/{s}/harness/active", .{
-        server.port,
-        TEST_WORKSPACE_ID,
-    });
-    defer std.testing.allocator.free(harness_url);
-    const invalid_harness_url = try std.fmt.allocPrint(std.testing.allocator, "http://127.0.0.1:{d}/v1/workspaces/not-a-uuid/harness/active", .{server.port});
-    defer std.testing.allocator.free(invalid_harness_url);
     const skill_secret_url = try std.fmt.allocPrint(std.testing.allocator, "http://127.0.0.1:{d}/v1/workspaces/{s}/skills/{s}/secrets/{s}", .{
         server.port,
         TEST_WORKSPACE_ID,
@@ -285,22 +277,10 @@ test "integration: RBAC endpoints enforce operator and admin roles over live HTT
     defer std.testing.allocator.free(billing_event_url);
 
     {
-        const response = try sendRequest(std.testing.allocator, harness_url, .GET, null, null, null);
+        const response = try sendRequest(std.testing.allocator, skill_secret_url, .DELETE, null, null, null);
         defer response.deinit(std.testing.allocator);
         try std.testing.expectEqual(@as(u16, 401), response.status);
         try std.testing.expect(std.mem.indexOf(u8, response.body, error_codes.ERR_UNAUTHORIZED) != null);
-    }
-    {
-        const response = try sendRequest(std.testing.allocator, invalid_harness_url, .GET, TEST_OPERATOR_TOKEN, null, null);
-        defer response.deinit(std.testing.allocator);
-        try std.testing.expectEqual(@as(u16, 400), response.status);
-        try std.testing.expect(std.mem.indexOf(u8, response.body, error_codes.ERR_UUIDV7_INVALID_ID_SHAPE) != null);
-    }
-    {
-        const response = try sendRequest(std.testing.allocator, harness_url, .GET, TEST_USER_TOKEN, null, null);
-        defer response.deinit(std.testing.allocator);
-        try std.testing.expectEqual(@as(u16, 403), response.status);
-        try std.testing.expect(std.mem.indexOf(u8, response.body, error_codes.ERR_INSUFFICIENT_ROLE) != null);
     }
     {
         const response = try sendRequest(std.testing.allocator, skill_secret_url, .DELETE, TEST_USER_TOKEN, null, null);
@@ -336,12 +316,6 @@ test "integration: RBAC endpoints enforce operator and admin roles over live HTT
         try std.testing.expect(std.mem.indexOf(u8, response.body, error_codes.ERR_INSUFFICIENT_ROLE) != null);
     }
     {
-        const response = try sendRequest(std.testing.allocator, harness_url, .GET, TEST_OPERATOR_TOKEN, null, null);
-        defer response.deinit(std.testing.allocator);
-        try std.testing.expectEqual(@as(u16, 200), response.status);
-        try std.testing.expect(std.mem.indexOf(u8, response.body, "\"source\":\"default-v1\"") != null);
-    }
-    {
         const response = try sendRequest(std.testing.allocator, skill_secret_url, .DELETE, TEST_OPERATOR_TOKEN, null, null);
         defer response.deinit(std.testing.allocator);
         try std.testing.expectEqual(@as(u16, 200), response.status);
@@ -373,17 +347,17 @@ test "integration: RBAC user-role rejection stays deterministic under concurrenc
         std.testing.allocator.destroy(server);
     }
 
-    const harness_url = try std.fmt.allocPrint(std.testing.allocator, "http://127.0.0.1:{d}/v1/workspaces/{s}/harness/active", .{
+    const billing_summary_url = try std.fmt.allocPrint(std.testing.allocator, "http://127.0.0.1:{d}/v1/workspaces/{s}/billing/summary", .{
         server.port,
         TEST_WORKSPACE_ID,
     });
-    defer std.testing.allocator.free(harness_url);
+    defer std.testing.allocator.free(billing_summary_url);
 
     var statuses = [_]u16{0} ** 5;
     var threads: [5]std.Thread = undefined;
     for (&threads, 0..) |*thread, idx| {
         thread.* = try std.Thread.spawn(.{}, ConcurrentRequestCtx.run, .{ConcurrentRequestCtx{
-            .url = harness_url,
+            .url = billing_summary_url,
             .token = TEST_USER_TOKEN,
             .status = &statuses[idx],
         }});

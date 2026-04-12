@@ -287,19 +287,19 @@ Reference a rule as `RULE NDC`, `RULE OWN`, etc.
 **Tags:** zig
 **Ref:** M3_001 HMAC version "v0" derived by slicing "v0=" prefix — fixed with explicit hmac_version field.
 
-## RULE SCH — Pre-v2.0 schema removal: delete contents, keep SELECT 1
+## RULE SCH — Pre-v2.0 schema removal: full teardown, no markers, no DROP
 
-**Rule:** While `cat VERSION` < 2.0.0 (teardown-rebuild era), remove tables by replacing file contents with `SELECT 1;`. After VERSION >= 2.0.0 (production data exists), use proper ALTER/DROP migrations. `make test` validates every migration produces at least one statement.
-**Why:** Migration runner replays from scratch. Every file must produce at least one valid SQL statement — `make test` catches empty/broken files without needing a DB.
+**Rule:** While `cat VERSION` < 2.0.0 (teardown-rebuild era), removing tables MUST be a full teardown: (1) delete the SQL file (`rm schema/NNN_foo.sql`), (2) remove the `@embedFile` constant from `schema/embed.zig`, (3) remove the migration array entry from `src/cmd/common.zig` and update its array length + any index-based tests. Never write ALTER TABLE, DROP TABLE, or `SELECT 1;` placeholders. Never keep version-marker files. Migration slot numbers are not sacred pre-v2.0 — the DB is wiped on every rebuild, and gaps in numbering are fine. After VERSION >= 2.0.0, switch to proper ALTER/DROP migrations in new numbered files.
+**Why:** Markers accumulate dead code and still force CI to splitter-parse them. Pre-v2.0 there is zero production data to protect; full removal is cleaner and leaves no false grep hits or stale migration slots.
 **Tags:** sql, process
-**Ref:** M10_001 comment-only version markers failed CI; apostrophe in "slots" opened unterminated string literal in splitter.
+**Ref:** M17_001 harness teardown — supersedes prior "replace with `SELECT 1;`" guidance. Under the old rule, M10_001 comment-only markers broke CI (apostrophe in "slots" opened unterminated string in splitter); full deletion avoids the marker problem entirely.
 
-## RULE EP4 — Removed endpoints return 410 Gone, not 404
+## RULE EP4 — Removed endpoints return 410 Gone, not 404 (post-v2.0 only)
 
-**Rule:** Intentionally removed endpoints return HTTP 410 Gone with a named error code, not 404.
-**Why:** 410 signals permanent intentional removal to clients and monitors; 404 implies a routing error.
+**Rule:** While `cat VERSION` < 2.0.0 (teardown-rebuild era), removed endpoints MAY simply 404 — API drift is allowed because there are no stable external clients. Do NOT write 410 Gone stubs for pre-v2.0 removals; they are ceremony without value. Once VERSION >= 2.0.0, intentionally removed endpoints MUST return HTTP 410 Gone with a named error code — 404 implies a routing error to monitors and clients, 410 signals permanent intentional removal.
+**Why:** Pre-v2.0 mirrors the schema teardown policy (RULE SCH) — we tear down DB + APIs freely because nobody downstream is pinned to them. Post-v2.0, 410 becomes load-bearing for client behavior and deprecation signals.
 **Tags:** zig, api
-**Ref:** M10_001 all /v1/runs/* and /v1/specs return ERR_PIPELINE_V1_REMOVED 410.
+**Ref:** M10_001 shipped /v1/runs/* + /v1/specs as 410 stubs before this rule was scoped. M17_001 removed /v1/harness/* and /v1/agents/{id} as bare 404s under the pre-v2.0 carve-out.
 
 ## RULE FXS — Fixed-size scan buffers are security bypasses
 
@@ -394,3 +394,39 @@ Reference a rule as `RULE NDC`, `RULE OWN`, etc.
 **Why:** The memory-tool API enforces zombie_id scoping on `memory_recall`. But if the underlying store is a bind-mounted `/var/lib/zombie-memory/{zombie_id}/` directory and the agent has ANY shell or file-read tool (Bash, code execution, Read-file), the agent can bypass the memory API entirely: `cat /var/lib/zombie-memory/zom_other/core/*.md`. This is the classic confused-deputy pattern — the API's scoping checks are bypassed by a different tool that has broader filesystem permissions. Moving the store to a process boundary (Postgres with `memory_runtime` role, different protocol, different credentials) makes cross-tenant access structurally impossible, not just policy-enforced.
 **Tags:** security, architecture, multi-tenancy, confused-deputy
 **Ref:** M14_001 design review — original draft proposed SQLite on a persistent host volume; rejected because agent shell tools could read sibling zombies' directories. Storage moved to a dedicated Postgres database with a scoped `memory_runtime` role. The rule generalizes: it applies to any future cross-tenant data (per-workspace caches, per-customer artifacts, per-zombie workspaces).
+
+## RULE TWF — Timestamp freshness must reject future timestamps
+
+**Rule:** When validating webhook timestamps (Slack `X-Slack-Request-Timestamp`, etc.), reject timestamps that are more than `max_drift` seconds *in the future*, not just in the past. Use `if (ts > now + max_drift) return false;` before the stale check.
+**Why:** Accepting future timestamps within the drift window allows an attacker to pre-sign requests with a future timestamp and replay them later, bypassing the anti-replay window.
+**Do:** `if (ts > now + max_drift) return false; if (now - ts > max_drift) return false;`
+**Don't:** `const diff = if (now > ts) now - ts else ts - now; return diff <= max_drift;` — this accepts future timestamps.
+**Tags:** zig, security, webhooks, timing
+**Ref:** M8_001 webhook_verify.zig — `isTimestampFresh` accepted future timestamps. Fixed in d07b6de.
+
+## RULE ESO — Error returns must not silently substitute default values on OOM
+
+**Rule:** When a function extracts user-linked data (workspace IDs, user IDs, session tokens) from a trusted input, it must return `!T` and propagate allocation failures, not return a default/empty value with `catch ""` or `catch 0`. A silent default causes the caller to use wrong data (e.g., create a new workspace instead of linking to an existing one).
+**Why:** OOM masked by a default value causes silent data corruption — a new entity is created instead of the intended existing one being used. No log entry, no 5xx, no observable failure until the user notices their workspace is gone.
+**Do:** `fn extractWorkspaceId(...) ![]const u8 { return alloc.dupe(...); }`
+**Don't:** `fn extractWorkspaceId(...) []const u8 { return alloc.dupe(...) catch ""; }`
+**Tags:** zig, memory, error-handling, correctness
+**Ref:** M8_001 slack_oauth.zig `extractWorkspaceId` — `catch ""` on dupe failure. Fixed in d07b6de.
+
+## RULE SGR — SQL migrations must include GRANT statements for all created tables
+
+**Rule:** Every `CREATE TABLE` migration must end with `GRANT` statements for every role that will query the table. Check which operations the application performs (`SELECT`, `INSERT`, `UPDATE`, `DELETE`) against this table and grant exactly those to `api_runtime` and/or `worker_runtime` as appropriate.
+**Why:** PostgreSQL denies all access by default. Without grants, every query against the table fails with `permission denied` in production. This is invisible at migration time and only fails at first runtime use.
+**Do:** Follow every `CREATE TABLE` + indices block with grants mirroring the table's callers.
+**Don't:** Ship a migration without grants on the assumption that a superuser connection is used in production.
+**Tags:** sql, postgres, migrations, security
+**Ref:** M8_001 schema/028_workspace_integrations.sql — missing GRANT for api_runtime and worker_runtime. Fixed in this PR.
+
+## RULE OAE — OAuth form bodies must URL-encode all fields including `code`
+
+**Rule:** When building an `application/x-www-form-urlencoded` body for an OAuth token exchange, percent-encode every field value — including the authorization code. Do not assume authorization codes are URL-safe in practice.
+**Why:** OAuth codes are URL-safe in most providers today, but the spec allows any character. A code containing `+`, `&`, or `=` would silently corrupt the form body and produce a confusing provider-side error with no local diagnostic.
+**Do:** `const code_enc = try urlEncode(alloc, code);` then use `code_enc` in the body template.
+**Don't:** Interpolate `code` raw while encoding other fields — the inconsistency signals an oversight and will eventually fail.
+**Tags:** zig, oauth, http, security
+**Ref:** M8_001 slack_oauth_client.zig `exchangeCode` — `code` interpolated raw. Fixed in this PR.

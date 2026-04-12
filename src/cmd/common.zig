@@ -15,24 +15,15 @@ const ServeMigrationDecision = enum {
     run_required,
 };
 
-pub fn canonicalMigrations() [22]db.Migration {
+pub fn canonicalMigrations() [14]db.Migration {
     const schema = @import("schema");
     return .{
         .{ .version = 1, .sql = schema.core_foundation_sql },
-        .{ .version = 2, .sql = schema.core_workflow_sql },
-        .{ .version = 3, .sql = schema.core_results_events_sql },
         .{ .version = 4, .sql = schema.vault_sql },
-        .{ .version = 6, .sql = schema.side_effect_ledger_sql },
-        .{ .version = 7, .sql = schema.side_effect_outbox_sql },
-        .{ .version = 8, .sql = schema.harness_control_plane_sql },
         .{ .version = 9, .sql = schema.rls_tenant_isolation_sql },
-        .{ .version = 11, .sql = schema.profile_linkage_audit_sql },
         .{ .version = 14, .sql = schema.workspace_entitlements_sql },
-        .{ .version = 15, .sql = schema.usage_metering_billing_sql },
         .{ .version = 16, .sql = schema.workspace_billing_state_sql },
         .{ .version = 17, .sql = schema.workspace_free_credit_sql },
-        .{ .version = 18, .sql = schema.agent_scoring_baseline_sql },
-        .{ .version = 19, .sql = schema.agent_score_persistence_api_sql },
         .{ .version = 20, .sql = schema.agent_failure_analysis_context_sql },
         .{ .version = 21, .sql = schema.platform_llm_keys_sql },
         .{ .version = 22, .sql = schema.core_zombies_sql },
@@ -40,6 +31,7 @@ pub fn canonicalMigrations() [22]db.Migration {
         .{ .version = 24, .sql = schema.core_activity_events_sql },
         .{ .version = 25, .sql = schema.core_zombie_approval_gates_sql },
         .{ .version = 26, .sql = schema.memory_entries_sql },
+        .{ .version = 28, .sql = schema.workspace_integrations_sql },
     };
 }
 
@@ -189,28 +181,17 @@ test "integration: startup with pending migrations proceeds when enabled and loc
     try std.testing.expectEqual(.run_required, decision);
 }
 
-test "canonical schema bootstrap includes scoring config in base schema" {
+test "canonical schema bootstrap: last version is 28 and entitlements carry scoring config" {
     const migrations = canonicalMigrations();
-    try std.testing.expectEqual(@as(i32, 25), migrations[migrations.len - 1].version);
-    try std.testing.expect(std.mem.containsAtLeast(u8, migrations[6].sql, 1, "trust_streak_runs INTEGER NOT NULL"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, migrations[6].sql, 1, "trust_level   TEXT NOT NULL"));
-    try std.testing.expect(!std.mem.containsAtLeast(u8, migrations[6].sql, 1, "trust_streak_runs INTEGER NOT NULL DEFAULT 0"));
-    try std.testing.expect(!std.mem.containsAtLeast(u8, migrations[6].sql, 1, "trust_level   TEXT NOT NULL DEFAULT 'UNEARNED'"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, migrations[6].sql, 1, "CREATE TABLE agent_improvement_proposals"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, migrations[6].sql, 1, "generation_status   TEXT NOT NULL"));
-    try std.testing.expect(!std.mem.containsAtLeast(u8, migrations[6].sql, 1, "CHECK (trigger_reason IN"));
-    try std.testing.expect(!std.mem.containsAtLeast(u8, migrations[6].sql, 1, "CHECK (approval_mode IN"));
-    try std.testing.expect(!std.mem.containsAtLeast(u8, migrations[6].sql, 1, "CHECK (generation_status IN"));
-    try std.testing.expect(!std.mem.containsAtLeast(u8, migrations[6].sql, 1, "CHECK (status IN"));
-    try std.testing.expect(!std.mem.containsAtLeast(u8, migrations[6].sql, 1, "WHERE status ="));
-    try std.testing.expect(std.mem.containsAtLeast(u8, migrations[6].sql, 1, "CREATE TABLE harness_change_log"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, migrations[9].sql, 1, "enable_agent_scoring BOOLEAN NOT NULL"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, migrations[9].sql, 1, "agent_scoring_weights_json TEXT NOT NULL"));
-    // M10_001: migrations[13] (018), [14] (019) are version markers.
-    // [15] (020) retained audit logging infra but dropped agent_run_analysis.
-    try std.testing.expect(std.mem.containsAtLeast(u8, migrations[13].sql, 1, "version marker only"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, migrations[14].sql, 1, "version marker only"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, migrations[15].sql, 1, "agent_run_analysis table removed"));
+    try std.testing.expectEqual(@as(i32, 28), migrations[migrations.len - 1].version);
+
+    var entitlements_sql: ?[]const u8 = null;
+    for (migrations) |m| {
+        if (m.version == 14) entitlements_sql = m.sql;
+    }
+    const ent = entitlements_sql orelse return error.TestExpectedEqual;
+    try std.testing.expect(std.mem.containsAtLeast(u8, ent, 1, "enable_agent_scoring BOOLEAN NOT NULL"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, ent, 1, "agent_scoring_weights_json TEXT NOT NULL"));
 }
 
 test "every migration SQL is parseable by SqlStatementSplitter" {

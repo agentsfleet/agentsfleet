@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Removed
+
+- 22 dead pipeline-tier-2 metrics (`zombie_agent_echo_*`, `zombie_agent_scout_*`, `zombie_agent_warden_*`, `zombie_sandbox_*`, `zombie_side_effect_outbox_*`, `zombie_worker_allocator_leaks_total`, `zombie_rate_limit_wait_ms_total`, and others) — consolidated into `zombie_agent_duration_seconds` histogram and per-workspace counters
+- `zombie_gate_repair_loops_per_run` histogram — replaced by the composite `zombie_agent_duration_seconds` histogram added in 0.4.0
+
 ## [0.4.0] - 2026-04-06
 
 ### Added
