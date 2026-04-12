@@ -124,6 +124,8 @@ pub const ExecutorClient = struct {
         /// M27_001: memory limit in bytes for scoring normalization.
         /// Only populated via getUsage() — start_stage response does not include it.
         memory_limit_bytes: u64 = 0,
+        /// M18_001: ms from stage start to first token received. 0 if executor did not report.
+        time_to_first_token_ms: u64 = 0,
     };
 
     /// Agent configuration for StartStage payload (M12_003, M16_003).
@@ -218,6 +220,7 @@ pub const ExecutorClient = struct {
             .failure = null,
             .memory_peak_bytes = json.getIntOrZero(result, "memory_peak_bytes"),
             .cpu_throttled_ms = json.getIntOrZero(result, "cpu_throttled_ms"),
+            .time_to_first_token_ms = json.getIntOrZero(result, "time_to_first_token_ms"),
         };
     }
 
@@ -275,6 +278,7 @@ pub const ExecutorClient = struct {
             .memory_peak_bytes = json.getIntOrZero(result, "memory_peak_bytes"),
             .cpu_throttled_ms = json.getIntOrZero(result, "cpu_throttled_ms"),
             .memory_limit_bytes = json.getIntOrZero(result, "memory_limit_bytes"),
+            .time_to_first_token_ms = json.getIntOrZero(result, "time_to_first_token_ms"),
         };
     }
 

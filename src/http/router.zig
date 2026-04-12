@@ -7,6 +7,12 @@ pub const WebhookRoute = struct {
     secret: ?[]const u8,
 };
 
+// M18_001: zombie telemetry route carries workspace_id and zombie_id
+pub const ZombieTelemetryRoute = struct {
+    workspace_id: []const u8,
+    zombie_id: []const u8,
+};
+
 pub const Route = union(enum) {
     healthz,
     readyz,
@@ -38,6 +44,9 @@ pub const Route = union(enum) {
     delete_zombie: []const u8, // DELETE /v1/zombies/{id}
     zombie_activity, // GET /v1/zombies/activity
     zombie_credentials, // GET|POST /v1/zombies/credentials
+    // M18_001: zombie execution telemetry
+    zombie_telemetry: ZombieTelemetryRoute, // GET /v1/workspaces/{ws}/zombies/{id}/telemetry
+    internal_telemetry, // GET /internal/v1/telemetry
 };
 
 const matchWorkspaceSuffix = matchers.matchWorkspaceSuffix;
@@ -89,11 +98,17 @@ pub fn match(path: []const u8) ?Route {
     if (matchWorkspaceSuffix(path, "/billing/summary")) |workspace_id| return .{ .get_workspace_billing_summary = workspace_id };
     if (matchWorkspaceSuffix(path, "/scoring/config")) |workspace_id| return .{ .set_workspace_scoring_config = workspace_id };
 
+    // M18_001: operator telemetry endpoint (before workspace prefix to avoid false match)
+    if (std.mem.eql(u8, path, "/internal/v1/telemetry")) return .internal_telemetry;
+
     // M2_001: Zombie CRUD + activity + credentials
     if (std.mem.eql(u8, path, "/v1/zombies/")) return .list_or_create_zombies;
     if (std.mem.eql(u8, path, "/v1/zombies/activity")) return .zombie_activity;
     if (std.mem.eql(u8, path, "/v1/zombies/credentials")) return .zombie_credentials;
     if (matchers.matchZombieId(path)) |zombie_id| return .{ .delete_zombie = zombie_id };
+
+    // M18_001: customer telemetry endpoint
+    if (matchers.matchZombieTelemetry(path)) |route| return .{ .zombie_telemetry = route };
 
     // M4_001: Zombie approval gate callback — /v1/webhooks/{zombie_id}:approval
     if (matchers.matchWebhookAction(path, ":approval")) |zombie_id| return .{ .approval_webhook = zombie_id };

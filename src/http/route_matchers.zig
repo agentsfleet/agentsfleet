@@ -7,6 +7,7 @@ const std = @import("std");
 const router = @import("router.zig");
 
 pub const WebhookRoute = router.WebhookRoute;
+pub const ZombieTelemetryRoute = router.ZombieTelemetryRoute;
 
 const prefix_workspaces = "/v1/workspaces/";
 const prefix_agents = "/v1/agents/";
@@ -23,6 +24,25 @@ pub fn matchWorkspaceSuffix(path: []const u8, suffix: []const u8) ?[]const u8 {
 
 pub fn isSingleSegment(value: []const u8) bool {
     return value.len > 0 and std.mem.indexOfScalar(u8, value, '/') == null;
+}
+
+// matchZombieTelemetry matches /v1/workspaces/{ws_id}/zombies/{zombie_id}/telemetry.
+pub fn matchZombieTelemetry(path: []const u8) ?ZombieTelemetryRoute {
+    const prefix = "/v1/workspaces/";
+    const mid = "/zombies/";
+    const suffix = "/telemetry";
+
+    if (!std.mem.startsWith(u8, path, prefix)) return null;
+    if (!std.mem.endsWith(u8, path, suffix)) return null;
+
+    const inner = path[prefix.len .. path.len - suffix.len];
+    const sep = std.mem.indexOf(u8, inner, mid) orelse return null;
+    const ws_id = inner[0..sep];
+    const zombie_id = inner[sep + mid.len ..];
+
+    if (!isSingleSegment(ws_id)) return null;
+    if (!isSingleSegment(zombie_id)) return null;
+    return .{ .workspace_id = ws_id, .zombie_id = zombie_id };
 }
 
 // matchWebhookRoute matches /v1/webhooks/{zombie_id} or /v1/webhooks/{zombie_id}/{secret}.
@@ -72,6 +92,22 @@ test "matchZombieId: excludes sub-paths" {
     try std.testing.expect(matchZombieId("/v1/zombies/credentials") == null);
     try std.testing.expectEqualStrings("z1", matchZombieId("/v1/zombies/z1").?);
     try std.testing.expect(matchZombieId("/v1/zombies/a/b") == null);
+}
+
+test "matchZombieTelemetry: extracts workspace_id and zombie_id" {
+    const ws = "ws_abc";
+    const zid = "z_123";
+    const r = matchZombieTelemetry("/v1/workspaces/ws_abc/zombies/z_123/telemetry").?;
+    try std.testing.expectEqualStrings(ws, r.workspace_id);
+    try std.testing.expectEqualStrings(zid, r.zombie_id);
+    // extra segments rejected
+    try std.testing.expect(matchZombieTelemetry("/v1/workspaces/ws_abc/extra/zombies/z_123/telemetry") == null);
+    // missing trailing segment
+    try std.testing.expect(matchZombieTelemetry("/v1/workspaces/ws_abc/zombies/z_123") == null);
+    // empty zombie_id
+    try std.testing.expect(matchZombieTelemetry("/v1/workspaces/ws_abc/zombies//telemetry") == null);
+    // empty workspace_id
+    try std.testing.expect(matchZombieTelemetry("/v1/workspaces//zombies/z_123/telemetry") == null);
 }
 
 test "matchWebhookRoute: id only and id+secret" {

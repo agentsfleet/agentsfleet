@@ -16,6 +16,7 @@ const webhooks_http = @import("handlers/webhooks.zig");
 const approval_http = @import("handlers/approval_http.zig");
 const zombie_api_http = @import("handlers/zombie_api.zig");
 const zombie_activity_api_http = @import("handlers/zombie_activity_api.zig");
+const zombie_telemetry_http = @import("handlers/zombie_telemetry.zig");
 
 pub const Context = common.Context;
 pub const SkillSecretRoute = skill_secret_handlers.Route;
@@ -61,6 +62,10 @@ pub const handleDeleteZombie = zombie_api_http.handleDeleteZombie;
 pub const handleListActivity = zombie_activity_api_http.handleListActivity;
 pub const handleStoreCredential = zombie_activity_api_http.handleStoreCredential;
 pub const handleListCredentials = zombie_activity_api_http.handleListCredentials;
+
+// M18_001: zombie execution telemetry
+pub const handleZombieTelemetry = zombie_telemetry_http.handleZombieTelemetry;
+pub const handleInternalTelemetry = zombie_telemetry_http.handleInternalTelemetry;
 
 pub fn parseSkillSecretRoute(path: []const u8) ?SkillSecretRoute {
     return skill_secret_handlers.parseRoute(path);

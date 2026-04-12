@@ -41,6 +41,10 @@ pub const EventResult = struct {
     agent_response: []const u8,
     token_count: u64,
     wall_seconds: u64,
+    /// M18_001: ms from stage start to first token. 0 if executor did not report.
+    time_to_first_token_ms: u64 = 0,
+    /// M18_001: Unix epoch ms at the start of deliverEvent(). 0 on gate-blocked paths.
+    epoch_wall_time_ms: i64 = 0,
 
     pub const Status = enum { processed, skipped_duplicate, agent_error };
 
