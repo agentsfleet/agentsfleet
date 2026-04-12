@@ -116,28 +116,20 @@ pub fn initRuntime(
 
 // ── Tests ────────────────────────────────────────────────────────────────────
 
-test "zombie_memory: missing postgres backend returns null gracefully" {
-    // This test passes trivially when postgres is enabled (backend found,
-    // but connection will fail with no real DB) — the important thing is
-    // no crash or unreachable. We test the OOM / backend-disabled paths
-    // via unit coverage; the real connection path is in integration tests.
-    //
-    // In CI without -Dengines=postgres the backend lookup returns null
-    // and initRuntime returns null — no panic.
+test "zombie_memory: empty connection string returns null (no panic)" {
+    // An empty connection string is always rejected — libpq cannot connect to "".
+    // initRuntime must return null, not panic or reach unreachable.
+    // In CI without -Dengines=postgres the backend lookup returns null before
+    // even attempting a connection. Either way the outcome is null.
     const alloc = std.testing.allocator;
     const cfg = MemoryBackendConfig{
         .backend = "postgres",
-        .connection = "", // empty — libpq will reject this, backend returns null
+        .connection = "", // empty — libpq rejects this at the URL-parse stage
         .namespace = "zmb:0195b4ba-8d3a-7f13-8abc-000000000001",
     };
-    // empty connection → connect_failed → returns null (not a crash).
     const rt = initRuntime(alloc, &cfg, "/tmp");
-    // Either null (backend disabled or connection rejected) or non-null
-    // (test DB happens to be running) — both are acceptable here.
-    if (rt) |r| {
-        var mut = r;
-        mut.deinit();
-    }
+    // Empty connection can never succeed — assert null, not "either is fine".
+    try std.testing.expect(rt == null);
 }
 
 test "zombie_memory: MemoryBackendConfig validates namespace format" {

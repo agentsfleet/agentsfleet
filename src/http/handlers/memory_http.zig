@@ -139,6 +139,10 @@ fn innerMemoryRecall(hx: Hx, req: *httpz.Request) void {
     }
     defer h.resetRole(conn);
 
+    // TODO(M14_005): ILIKE '%q%' on key+content is a sequential scan within the
+    // zombie's rows. Acceptable at current scale (instance_id scoping limits the
+    // scan to one zombie). Add a pg_trgm GIN index on (instance_id, content) when
+    // recall latency becomes measurable — tracked in M14_005.
     var q = PgQuery.from(conn.query(
         \\SELECT key, content, category, updated_at
         \\FROM memory.memory_entries

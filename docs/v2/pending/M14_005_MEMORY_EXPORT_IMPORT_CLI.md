@@ -36,6 +36,20 @@
 
 ---
 
+## §0 — Recall Performance Index
+
+**Status:** PENDING
+
+The `/v1/memory/recall` handler uses `ILIKE '%query%'` on both `key` and `content`. NullClaw auto-creates `memory.memory_entries` at runtime, so the index cannot be added in a migration before the table exists. Add a `CREATE INDEX IF NOT EXISTS` step in a new migration or in `zombie_memory.zig` post-init.
+
+| Dim | Status | Target | Input | Expected | Test type |
+|-----|--------|--------|-------|----------|-----------|
+| 0.1 | PENDING | `schema/027_memory_entries_idx.sql` or `zombie_memory.zig:initRuntime` | zombie with 10k entries, recall query | `EXPLAIN` shows index scan, not seq scan on `memory.memory_entries` | integration |
+
+Index: `CREATE INDEX IF NOT EXISTS idx_memory_entries_instance_content ON memory.memory_entries USING gin (instance_id, to_tsvector('simple', content))` — or `pg_trgm` GIN if lexical match is preferred over full-text.
+
+---
+
 ## §1 — Export/Import Library
 
 **Status:** PENDING

@@ -58,11 +58,17 @@ pub fn resolveInstanceId(
         return null;
     };
 
-    if (hx.principal.workspace_scope_id) |scope| {
-        if (!std.mem.eql(u8, scope, workspace_id)) {
-            hx.fail(ec.ERR_MEM_SCOPE, "zombie belongs to a different workspace");
-            return null;
-        }
+    // Memory endpoints require a workspace-scoped token. Service tokens without a
+    // workspace scope are rejected — there is no trusted cross-workspace access model
+    // for memory reads/writes at the HTTP layer (executor-side access is separate and
+    // bypasses this path entirely).
+    const scope = hx.principal.workspace_scope_id orelse {
+        hx.fail(ec.ERR_MEM_SCOPE, "memory API requires a workspace-scoped token");
+        return null;
+    };
+    if (!std.mem.eql(u8, scope, workspace_id)) {
+        hx.fail(ec.ERR_MEM_SCOPE, "zombie belongs to a different workspace");
+        return null;
     }
 
     return std.fmt.allocPrint(hx.alloc, "zmb:{s}", .{zombie_id}) catch {

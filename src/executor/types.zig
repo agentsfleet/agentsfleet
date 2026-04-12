@@ -105,11 +105,13 @@ pub const MemoryBackendConfig = struct {
     /// concurrent zombies cannot read each other's entries.
     namespace: []const u8,
     /// Hard cap on `core` category entries per zombie.
-    /// On overflow the store operation returns error.MemoryFull to the agent;
-    /// nothing is silently pruned (spec §4.2).
+    /// TODO(M14_005): not yet enforced — the store handler performs an unconditional
+    /// upsert. Field is defined here for config forward-compatibility so the struct
+    /// shape is stable when enforcement ships. Do not rely on this cap in production.
     max_entries: u32 = 100_000,
     /// Retention window for `daily` category entries (hours).
-    /// Entries older than this are eligible for the prune job (Step 5).
+    /// TODO(M14_005): not yet enforced — the prune job is deferred. Field is reserved
+    /// for forward-compatibility; no entries are pruned today.
     daily_retention_hours: u32 = 72,
 
     pub const NAMESPACE_PREFIX = "zmb:";

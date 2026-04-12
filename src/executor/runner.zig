@@ -205,6 +205,11 @@ fn executeInner(
     // NullClaw's default ephemeral workspace SQLite.
     var mem_rt: ?memory_mod.MemoryRuntime = blk: {
         if (agent_config) |ac| {
+            // NOTE: these JSON field names ("memory_connection", "memory_namespace") are
+            // the API contract between the dispatch layer and the executor. If they are
+            // ever renamed in the RPC schema, this silently falls back to ephemeral SQLite
+            // with no error. Tracked in M14_005 — validate field presence explicitly when
+            // the zombiectl config surface is added.
             const mem_conn = json.getStr(ac, "memory_connection") orelse "";
             const mem_ns = json.getStr(ac, "memory_namespace") orelse "";
             if (mem_conn.len > 0 and mem_ns.len > 0) {

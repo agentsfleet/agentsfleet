@@ -2290,7 +2290,7 @@
   "/v1/memory/recall": {
     "post": {
       "summary": "Recall memory entries by keyword",
-      "description": "Search a zombie's memory entries by keyword. Matches against key and content using ILIKE.",
+      "description": "Search a zombie's memory entries by keyword. Matches against key and content using ILIKE. Uses POST (not GET) because the query parameters are carried in the request body — HTTP caching does not apply to this endpoint.",
       "operationId": "memoryRecall",
       "tags": ["Memory"],
       "security": [{"BearerAuth": []}],
@@ -2349,7 +2349,7 @@
   "/v1/memory/list": {
     "post": {
       "summary": "List memory entries for a zombie",
-      "description": "List all memory entries for a zombie, optionally filtered by category.",
+      "description": "List all memory entries for a zombie, optionally filtered by category. Uses POST (not GET) because the filter parameters are carried in the request body — HTTP caching does not apply to this endpoint.",
       "operationId": "memoryList",
       "tags": ["Memory"],
       "security": [{"BearerAuth": []}],
