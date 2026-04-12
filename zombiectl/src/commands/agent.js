@@ -3,7 +3,6 @@ import { commandAgentScores } from "./agent_scores.js";
 import { commandAgentProfile } from "./agent_profile.js";
 import { commandAgentImprovementReport } from "./agent_improvement_report.js";
 import { commandAgentProposals } from "./agent_proposals.js";
-import { commandAgentHarness } from "./agent_harness.js";
 import { validateRequiredId } from "../program/validate.js";
 import { writeError } from "../program/io.js";
 
@@ -67,29 +66,6 @@ export async function commandAgent(ctx, args, workspaces, deps) {
     return commandAgentProposals(ctx, parsed, agentId, deps);
   }
 
-  if (action === "harness") {
-    if (!agentId) {
-      writeError(ctx, "USAGE_ERROR", "agent harness revert requires <agent-id>", deps);
-      return 2;
-    }
-    const check = validateRequiredId(agentId, "agent-id");
-    if (!check.ok) {
-      writeError(ctx, "VALIDATION_ERROR", check.message, deps);
-      return 2;
-    }
-    const changeId = parsed.options["to-change"];
-    if (!changeId) {
-      writeError(ctx, "USAGE_ERROR", "agent harness revert requires --to-change <change-id>", deps);
-      return 2;
-    }
-    const changeCheck = validateRequiredId(changeId, "change-id");
-    if (!changeCheck.ok) {
-      writeError(ctx, "VALIDATION_ERROR", changeCheck.message, deps);
-      return 2;
-    }
-    return commandAgentHarness(ctx, parsed, agentId, deps);
-  }
-
   // non-JSON: preserve multi-line usage text not expressible as a single message
   if (ctx.jsonMode) {
     writeError(ctx, "UNKNOWN_COMMAND", `unknown agent subcommand: ${action}`, deps);
@@ -98,7 +74,6 @@ export async function commandAgent(ctx, args, workspaces, deps) {
     writeLine(ctx.stderr, ui.err("       agent profile <agent-id> [--json]"));
     writeLine(ctx.stderr, ui.err("       agent improvement-report <agent-id> [--json]"));
     writeLine(ctx.stderr, ui.err("       agent proposals <agent-id> [approve <proposal-id> | reject <proposal-id> [--reason TEXT] | veto <proposal-id> [--reason TEXT] | --json]"));
-    writeLine(ctx.stderr, ui.err("       agent harness revert <agent-id> --to-change <change-id>"));
   }
   return 2;
 }

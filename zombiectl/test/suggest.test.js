@@ -63,11 +63,6 @@ describe("suggestCommand", () => {
     }
   });
 
-  test("'harnes' suggests 'harness'", () => {
-    const result = suggestCommand("harnes");
-    expect(result).toContain("harness");
-  });
-
   test("'doctr' suggests 'doctor'", () => {
     const result = suggestCommand("doctr");
     expect(result).toContain("doctor");

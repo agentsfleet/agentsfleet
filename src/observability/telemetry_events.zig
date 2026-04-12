@@ -18,7 +18,6 @@ pub const EventKind = enum {
     auth_login_completed,
     auth_rejected,
     run_orphan_recovered,
-    run_orphan_no_agent_profile,
 };
 
 pub const AgentCompleted = struct {
@@ -267,17 +266,3 @@ pub const RunOrphanRecovered = struct {
     }
 };
 
-pub const RunOrphanNoAgentProfile = struct {
-    distinct_id: []const u8,
-    run_id: []const u8,
-    workspace_id: []const u8,
-
-    pub const kind: EventKind = .run_orphan_no_agent_profile;
-
-    pub fn properties(self: @This()) [2]posthog.Property {
-        return .{
-            .{ .key = "run_id", .value = .{ .string = self.run_id } },
-            .{ .key = "workspace_id", .value = .{ .string = self.workspace_id } },
-        };
-    }
-};

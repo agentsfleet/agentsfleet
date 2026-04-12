@@ -69,7 +69,6 @@ describe("M30 §1 — route inventory matches command registry", () => {
     { cmd: "runs", args: ["replay"], key: "runs.replay" },
     { cmd: "runs", args: ["interrupt"], key: "runs.interrupt" },
     { cmd: "doctor", args: [], key: "doctor" },
-    { cmd: "harness", args: ["source"], key: "harness" },
     { cmd: "skill-secret", args: ["put"], key: "skill-secret" },
     { cmd: "agent", args: ["scores"], key: "agent" },
     { cmd: "admin", args: ["config"], key: "admin" },
@@ -89,7 +88,7 @@ describe("M30 §1 — route inventory matches command registry", () => {
       login: noop, logout: noop, workspace: noop,
       specsSync: noop, specInit: noop, run: noop,
       runsList: noop, runsCancel: noop, runsReplay: noop,
-      runsInterrupt: noop, doctor: noop, harness: noop,
+      runsInterrupt: noop, doctor: noop,
       skillSecret: noop, agent: noop, admin: noop,
     });
     for (const { key } of expectedRoutes) {
@@ -384,21 +383,6 @@ describe("M30 §3.5 — agent JSON errors", () => {
     const parsed = tryParseJson(err.read());
     expect(parsed).not.toBeNull();
     expect(parsed.error.code).toBe("USAGE_ERROR");
-  });
-});
-
-describe("M30 §3.5 — harness JSON errors", () => {
-  test("harness unknown subcommand emits UNKNOWN_COMMAND", async () => {
-    const out = makeBufferStream();
-    const err = makeBufferStream();
-    const code = await runCli(["--json", "harness", "bogus", "--workspace-id", "0195b4ba-8d3a-7f13-8abc-000000000010"], {
-      stdout: out.stream, stderr: err.stream,
-      env: { ...process.env, ZOMBIE_TOKEN: "header.payload.sig" },
-    });
-    expect(code).toBe(2);
-    const parsed = tryParseJson(err.read());
-    expect(parsed).not.toBeNull();
-    expect(parsed.error.code).toBe("UNKNOWN_COMMAND");
   });
 });
 

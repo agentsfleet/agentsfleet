@@ -67,16 +67,12 @@ describe("help output", () => {
     expect(code).toBe(0);
     const output = out.read();
     expect(output).toContain("OPERATOR COMMANDS");
-    expect(output).toContain("harness source put");
-    expect(output).toContain("harness compile");
-    expect(output).toContain("harness activate");
     expect(output).toContain("workspace upgrade-scale");
     expect(output).toContain("skill-secret put");
     expect(output).toContain("agent scores");
     expect(output).toContain("agent profile");
     expect(output).toContain("agent improvement-report");
     expect(output).toContain("agent proposals <agent-id> veto <proposal-id>");
-    expect(output).toContain("agent harness revert");
   });
 
   test("--help without ZOMBIE_OPERATOR does NOT contain operator commands", async () => {
@@ -91,7 +87,6 @@ describe("help output", () => {
       expect(code).toBe(0);
       const output = out.read();
       expect(output).not.toContain("OPERATOR COMMANDS");
-      expect(output).not.toContain("harness source put");
       expect(output).not.toContain("workspace upgrade-scale");
     });
   });

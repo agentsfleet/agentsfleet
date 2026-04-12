@@ -57,7 +57,6 @@ pub const setOtelLastSuccessAtMs = mc.setOtelLastSuccessAtMs;
 
 // Orphan recovery metrics (M14_001).
 pub const incOrphanRunsRecovered = mc.incOrphanRunsRecovered;
-pub const incOrphanNoAgentProfile = mc.incOrphanNoAgentProfile;
 pub const setReconcileRunning = mc.setReconcileRunning;
 
 pub const renderPrometheus = mr.renderPrometheus;

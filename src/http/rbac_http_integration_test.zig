@@ -263,13 +263,6 @@ test "integration: RBAC endpoints enforce operator and admin roles over live HTT
         std.testing.allocator.destroy(server);
     }
 
-    const harness_url = try std.fmt.allocPrint(std.testing.allocator, "http://127.0.0.1:{d}/v1/workspaces/{s}/harness/active", .{
-        server.port,
-        TEST_WORKSPACE_ID,
-    });
-    defer std.testing.allocator.free(harness_url);
-    const invalid_harness_url = try std.fmt.allocPrint(std.testing.allocator, "http://127.0.0.1:{d}/v1/workspaces/not-a-uuid/harness/active", .{server.port});
-    defer std.testing.allocator.free(invalid_harness_url);
     const skill_secret_url = try std.fmt.allocPrint(std.testing.allocator, "http://127.0.0.1:{d}/v1/workspaces/{s}/skills/{s}/secrets/{s}", .{
         server.port,
         TEST_WORKSPACE_ID,
@@ -284,22 +277,10 @@ test "integration: RBAC endpoints enforce operator and admin roles over live HTT
     defer std.testing.allocator.free(billing_event_url);
 
     {
-        const response = try sendRequest(std.testing.allocator, harness_url, .GET, null, null, null);
+        const response = try sendRequest(std.testing.allocator, skill_secret_url, .DELETE, null, null, null);
         defer response.deinit(std.testing.allocator);
         try std.testing.expectEqual(@as(u16, 401), response.status);
         try std.testing.expect(std.mem.indexOf(u8, response.body, error_codes.ERR_UNAUTHORIZED) != null);
-    }
-    {
-        const response = try sendRequest(std.testing.allocator, invalid_harness_url, .GET, TEST_OPERATOR_TOKEN, null, null);
-        defer response.deinit(std.testing.allocator);
-        try std.testing.expectEqual(@as(u16, 400), response.status);
-        try std.testing.expect(std.mem.indexOf(u8, response.body, error_codes.ERR_UUIDV7_INVALID_ID_SHAPE) != null);
-    }
-    {
-        const response = try sendRequest(std.testing.allocator, harness_url, .GET, TEST_USER_TOKEN, null, null);
-        defer response.deinit(std.testing.allocator);
-        try std.testing.expectEqual(@as(u16, 403), response.status);
-        try std.testing.expect(std.mem.indexOf(u8, response.body, error_codes.ERR_INSUFFICIENT_ROLE) != null);
     }
     {
         const response = try sendRequest(std.testing.allocator, skill_secret_url, .DELETE, TEST_USER_TOKEN, null, null);
@@ -335,12 +316,6 @@ test "integration: RBAC endpoints enforce operator and admin roles over live HTT
         try std.testing.expect(std.mem.indexOf(u8, response.body, error_codes.ERR_INSUFFICIENT_ROLE) != null);
     }
     {
-        const response = try sendRequest(std.testing.allocator, harness_url, .GET, TEST_OPERATOR_TOKEN, null, null);
-        defer response.deinit(std.testing.allocator);
-        try std.testing.expectEqual(@as(u16, 200), response.status);
-        try std.testing.expect(std.mem.indexOf(u8, response.body, "\"source\":\"default-v1\"") != null);
-    }
-    {
         const response = try sendRequest(std.testing.allocator, skill_secret_url, .DELETE, TEST_OPERATOR_TOKEN, null, null);
         defer response.deinit(std.testing.allocator);
         try std.testing.expectEqual(@as(u16, 200), response.status);
@@ -372,17 +347,17 @@ test "integration: RBAC user-role rejection stays deterministic under concurrenc
         std.testing.allocator.destroy(server);
     }
 
-    const harness_url = try std.fmt.allocPrint(std.testing.allocator, "http://127.0.0.1:{d}/v1/workspaces/{s}/harness/active", .{
+    const billing_summary_url = try std.fmt.allocPrint(std.testing.allocator, "http://127.0.0.1:{d}/v1/workspaces/{s}/billing/summary", .{
         server.port,
         TEST_WORKSPACE_ID,
     });
-    defer std.testing.allocator.free(harness_url);
+    defer std.testing.allocator.free(billing_summary_url);
 
     var statuses = [_]u16{0} ** 5;
     var threads: [5]std.Thread = undefined;
     for (&threads, 0..) |*thread, idx| {
         thread.* = try std.Thread.spawn(.{}, ConcurrentRequestCtx.run, .{ConcurrentRequestCtx{
-            .url = harness_url,
+            .url = billing_summary_url,
             .token = TEST_USER_TOKEN,
             .status = &statuses[idx],
         }});

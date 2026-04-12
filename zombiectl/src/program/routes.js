@@ -13,7 +13,6 @@ const routes = [
   // M21_001 §3: runs interrupt
   { key: "runs.interrupt", match: (cmd, args) => cmd === "runs" && args[0] === "interrupt" },
   { key: "doctor", match: (cmd) => cmd === "doctor" },
-  { key: "harness", match: (cmd) => cmd === "harness" },
   { key: "skill-secret", match: (cmd) => cmd === "skill-secret" },
   { key: "agent", match: (cmd) => cmd === "agent" },
   { key: "admin", match: (cmd) => cmd === "admin" },

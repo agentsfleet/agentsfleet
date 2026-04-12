@@ -57,7 +57,6 @@ pub const WorkspaceGithubConnected = events.WorkspaceGithubConnected;
 pub const AuthLoginCompleted = events.AuthLoginCompleted;
 pub const AuthRejected = events.AuthRejected;
 pub const RunOrphanRecovered = events.RunOrphanRecovered;
-pub const RunOrphanNoAgentProfile = events.RunOrphanNoAgentProfile;
 
 // ── Backends ────────────────────────────────────────────────────────
 

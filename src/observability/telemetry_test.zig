@@ -80,9 +80,8 @@ test "T1: all 14 event types can be captured without error" {
     t.capture(telemetry.WorkspaceGithubConnected, .{ .workspace_id = "w", .installation_id = "12345", .request_id = "r" });
     t.capture(telemetry.AuthLoginCompleted, .{ .distinct_id = "u", .session_id = "s", .request_id = "r" });
     t.capture(telemetry.AuthRejected, .{ .reason = "token_expired", .request_id = "r" });
-    t.capture(telemetry.RunOrphanNoAgentProfile, .{ .distinct_id = "u", .run_id = "r", .workspace_id = "w" });
-    try telemetry.TestBackend.assertCount(14);
-    try telemetry.TestBackend.assertLastEventIs(.run_orphan_no_agent_profile);
+    try telemetry.TestBackend.assertCount(13);
+    try telemetry.TestBackend.assertLastEventIs(.auth_rejected);
 }
 
 // ── T2: Edge cases ──────────────────────────────────────────────────
@@ -269,7 +268,6 @@ test "T7: each event struct kind constant matches its EventKind variant" {
     try std.testing.expectEqual(telemetry.EventKind.auth_login_completed, telemetry.AuthLoginCompleted.kind);
     try std.testing.expectEqual(telemetry.EventKind.auth_rejected, telemetry.AuthRejected.kind);
     try std.testing.expectEqual(telemetry.EventKind.run_orphan_recovered, telemetry.RunOrphanRecovered.kind);
-    try std.testing.expectEqual(telemetry.EventKind.run_orphan_no_agent_profile, telemetry.RunOrphanNoAgentProfile.kind);
 }
 
 // ── T11: Memory + resource safety ───────────────────────────────────

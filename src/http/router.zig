@@ -137,15 +137,6 @@ test "match rejects multi-segment workspace suffix routes" {
     try std.testing.expect(match("/v1/workspaces//billing/events") == null);
 }
 
-test "match rejects /v1/agents paths after agent_profiles removal" {
-    try std.testing.expect(match("/v1/agents/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11") == null);
-    try std.testing.expect(match("/v1/agents/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/scores") == null);
-    try std.testing.expect(match("/v1/agents/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/improvement-report") == null);
-    try std.testing.expect(match("/v1/agents/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/proposals") == null);
-    try std.testing.expect(match("/v1/agents/") == null);
-    try std.testing.expect(match("/v1/agents/foo/bar/scores") == null);
-}
-
 test "match resolves auth routes" {
     try std.testing.expectEqualDeep(Route.create_auth_session, match("/v1/auth/sessions").?);
     try std.testing.expectEqualStrings(

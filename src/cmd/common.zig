@@ -186,28 +186,17 @@ test "integration: startup with pending migrations proceeds when enabled and loc
     try std.testing.expectEqual(.run_required, decision);
 }
 
-test "canonical schema bootstrap includes scoring config in base schema" {
+test "canonical schema bootstrap: last version is 25 and entitlements carry scoring config" {
     const migrations = canonicalMigrations();
     try std.testing.expectEqual(@as(i32, 25), migrations[migrations.len - 1].version);
-    try std.testing.expect(std.mem.containsAtLeast(u8, migrations[6].sql, 1, "trust_streak_runs INTEGER NOT NULL"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, migrations[6].sql, 1, "trust_level   TEXT NOT NULL"));
-    try std.testing.expect(!std.mem.containsAtLeast(u8, migrations[6].sql, 1, "trust_streak_runs INTEGER NOT NULL DEFAULT 0"));
-    try std.testing.expect(!std.mem.containsAtLeast(u8, migrations[6].sql, 1, "trust_level   TEXT NOT NULL DEFAULT 'UNEARNED'"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, migrations[6].sql, 1, "CREATE TABLE agent_improvement_proposals"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, migrations[6].sql, 1, "generation_status   TEXT NOT NULL"));
-    try std.testing.expect(!std.mem.containsAtLeast(u8, migrations[6].sql, 1, "CHECK (trigger_reason IN"));
-    try std.testing.expect(!std.mem.containsAtLeast(u8, migrations[6].sql, 1, "CHECK (approval_mode IN"));
-    try std.testing.expect(!std.mem.containsAtLeast(u8, migrations[6].sql, 1, "CHECK (generation_status IN"));
-    try std.testing.expect(!std.mem.containsAtLeast(u8, migrations[6].sql, 1, "CHECK (status IN"));
-    try std.testing.expect(!std.mem.containsAtLeast(u8, migrations[6].sql, 1, "WHERE status ="));
-    try std.testing.expect(std.mem.containsAtLeast(u8, migrations[6].sql, 1, "CREATE TABLE harness_change_log"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, migrations[9].sql, 1, "enable_agent_scoring BOOLEAN NOT NULL"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, migrations[9].sql, 1, "agent_scoring_weights_json TEXT NOT NULL"));
-    // M10_001: migrations[13] (018), [14] (019) are version markers.
-    // [15] (020) retained audit logging infra but dropped agent_run_analysis.
-    try std.testing.expect(std.mem.containsAtLeast(u8, migrations[13].sql, 1, "version marker only"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, migrations[14].sql, 1, "version marker only"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, migrations[15].sql, 1, "agent_run_analysis table removed"));
+
+    var entitlements_sql: ?[]const u8 = null;
+    for (migrations) |m| {
+        if (m.version == 14) entitlements_sql = m.sql;
+    }
+    const ent = entitlements_sql orelse return error.TestExpectedEqual;
+    try std.testing.expect(std.mem.containsAtLeast(u8, ent, 1, "enable_agent_scoring BOOLEAN NOT NULL"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, ent, 1, "agent_scoring_weights_json TEXT NOT NULL"));
 }
 
 test "every migration SQL is parseable by SqlStatementSplitter" {
