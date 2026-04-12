@@ -22,14 +22,12 @@ pub fn entitlementForTier(tier: model.PlanTier) entitlements.EntitlementPolicy {
     return switch (tier) {
         .free => .{
             .tier = .free,
-            .max_profiles = 1,
             .max_stages = 3,
             .max_distinct_skills = 3,
             .allow_custom_skills = false,
         },
         .scale => .{
             .tier = .scale,
-            .max_profiles = 8,
             .max_stages = 8,
             .max_distinct_skills = 16,
             .allow_custom_skills = true,
@@ -49,12 +47,11 @@ pub fn applyEntitlementPlan(
     const policy = entitlementForTier(tier);
     _ = try conn.exec(
         \\INSERT INTO workspace_entitlements
-        \\  (entitlement_id, workspace_id, plan_tier, max_profiles, max_stages, max_distinct_skills,
+        \\  (entitlement_id, workspace_id, plan_tier, max_stages, max_distinct_skills,
         \\   allow_custom_skills, enable_agent_scoring, agent_scoring_weights_json, created_at, updated_at)
-        \\VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, false, $8, $9, $9)
+        \\VALUES ($1::uuid, $2, $3, $4, $5, $6, false, $7, $8, $8)
         \\ON CONFLICT (workspace_id) DO UPDATE
         \\SET plan_tier = EXCLUDED.plan_tier,
-        \\    max_profiles = EXCLUDED.max_profiles,
         \\    max_stages = EXCLUDED.max_stages,
         \\    max_distinct_skills = EXCLUDED.max_distinct_skills,
         \\    allow_custom_skills = EXCLUDED.allow_custom_skills,
@@ -65,7 +62,6 @@ pub fn applyEntitlementPlan(
         entitlement_id,
         workspace_id,
         tier.label(),
-        @as(i32, policy.max_profiles),
         @as(i32, policy.max_stages),
         @as(i32, policy.max_distinct_skills),
         policy.allow_custom_skills,

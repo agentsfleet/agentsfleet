@@ -13,11 +13,10 @@ const routes = [
   // M21_001 §3: runs interrupt
   { key: "runs.interrupt", match: (cmd, args) => cmd === "runs" && args[0] === "interrupt" },
   { key: "doctor", match: (cmd) => cmd === "doctor" },
-  { key: "harness", match: (cmd) => cmd === "harness" },
   { key: "skill-secret", match: (cmd) => cmd === "skill-secret" },
-  { key: "agent", match: (cmd) => cmd === "agent" },
   { key: "admin", match: (cmd) => cmd === "admin" },
-  // M9_001: Integration grant management
+  // M9_001: External agent key management + integration grants
+  { key: "agent", match: (cmd) => cmd === "agent" },
   { key: "grant", match: (cmd) => cmd === "grant" },
   // M1_001 §5: Zombie commands — flat top-level for common ops
   { key: "zombie.install", match: (cmd) => cmd === "install" },

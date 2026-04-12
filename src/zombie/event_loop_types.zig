@@ -8,6 +8,7 @@ const Allocator = std.mem.Allocator;
 const zombie_config = @import("config.zig");
 const queue_redis = @import("../queue/redis_client.zig");
 const executor_client = @import("../executor/client.zig");
+const telemetry_mod = @import("../observability/telemetry.zig");
 
 pub const ZombieSession = struct {
     zombie_id: []const u8,
@@ -58,4 +59,6 @@ pub const EventLoopConfig = struct {
     poll_interval_ms: u64 = 2_000,
     /// Executor socket path for createExecution workspace_path.
     workspace_path: []const u8 = "/tmp/zombie",
+    /// M15_002: optional telemetry for PostHog `zombie_completed` events.
+    telemetry: ?*telemetry_mod.Telemetry = null,
 };

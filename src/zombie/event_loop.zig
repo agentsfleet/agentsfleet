@@ -17,6 +17,7 @@ const error_codes = @import("../errors/error_registry.zig");
 const obs_log = @import("../observability/logging.zig");
 const id_format = @import("../types/id_format.zig");
 const event_loop_gate = @import("event_loop_gate.zig");
+const metering = @import("metering.zig");
 
 const log = std.log.scoped(.zombie_event_loop);
 
@@ -31,6 +32,8 @@ pub const updateSessionContext = helpers.updateSessionContext;
 const resolveFirstCredential = helpers.resolveFirstCredential;
 const sleepWithBackoff = helpers.sleepWithBackoff;
 pub const truncateForJson = helpers.truncateForJson;
+const logDeliveryResult = helpers.logDeliveryResult;
+const recordDeliverError = helpers.recordDeliverError;
 
 // ── Public API (spec §7.1) ───────────────────────────────────────────────
 
@@ -167,6 +170,7 @@ fn processEvent(alloc: Allocator, session: *ZombieSession, evt: *redis_zombie.Zo
     var result = deliverEvent(alloc, session, evt, cfg) catch |err| {
         obs_log.logErr(.zombie_event_loop, err, "zombie_event_loop.deliver_fail zombie_id={s} event_id={s}", .{ session.zombie_id, evt.event_id });
         logActivity(cfg.pool, alloc, session, activity_stream.EVT_EVENT_ERROR, evt.event_id);
+        recordDeliverError(cfg, session, evt.event_id);
         sleepWithBackoff(cfg, consecutive_errors.* + 1);
         return consecutive_errors.* + 1;
     };
@@ -176,6 +180,7 @@ fn processEvent(alloc: Allocator, session: *ZombieSession, evt: *redis_zombie.Zo
         obs_log.logWarnErr(.zombie_event_loop, err, "zombie_event_loop.checkpoint_fail zombie_id={s} error_code=" ++ error_codes.ERR_ZOMBIE_CHECKPOINT_FAILED, .{session.zombie_id});
         return consecutive_errors.* + 1;
     };
+    metering.recordZombieDelivery(cfg.pool, alloc, session.workspace_id, session.zombie_id, evt.event_id, result.wall_seconds, result.token_count);
 
     redis_zombie.xackZombie(cfg.redis, session.zombie_id, evt.message_id) catch |err| {
         obs_log.logWarnErr(.zombie_event_loop, err, "zombie_event_loop.xack_fail zombie_id={s} message_id={s}", .{ session.zombie_id, evt.message_id });
@@ -204,6 +209,11 @@ pub fn deliverEvent(
     });
     logActivity(cfg.pool, alloc, session, activity_stream.EVT_EVENT_RECEIVED, event.event_id);
 
+    // M15_002: wall-time spans the full deliver path — gate wait + sandbox — so the
+    // histogram reflects end-to-end latency operators see, not just executor time.
+    // Monotonic clock so system-clock steps don't skew or negate the duration.
+    const t_start = std.time.Instant.now() catch null;
+
     // M4_001: Approval gate — check before tool execution
     const gate_check = event_loop_gate.checkApprovalGate(alloc, session, event, cfg.pool, cfg.redis);
     switch (gate_check) {
@@ -230,6 +240,10 @@ pub fn deliverEvent(
     }
 
     const stage_result = try executeInSandbox(alloc, session, event, cfg);
+    const wall_ms: u64 = if (t_start) |s| blk: {
+        const now = std.time.Instant.now() catch break :blk 0;
+        break :blk now.since(s) / std.time.ns_per_ms;
+    } else 0;
 
     const response_owned = try alloc.dupe(u8, stage_result.content);
     errdefer alloc.free(response_owned);
@@ -238,7 +252,7 @@ pub fn deliverEvent(
         log.warn("zombie_event_loop.context_update_fail zombie_id={s} err={s}", .{ session.zombie_id, @errorName(err) });
     };
 
-    logDeliveryResult(cfg.pool, alloc, session, event, &stage_result);
+    logDeliveryResult(cfg, alloc, session, event, &stage_result, wall_ms);
 
     return EventResult{
         .status = if (stage_result.exit_ok) .processed else .agent_error,
@@ -297,20 +311,6 @@ fn executeInSandbox(
         log.err("zombie_event_loop.stage_fail zombie_id={s} event_id={s} error_code=" ++ error_codes.ERR_EXEC_STAGE_START_FAILED, .{ session.zombie_id, event.event_id });
         return err;
     };
-}
-
-fn logDeliveryResult(pool: *pg.Pool, alloc: Allocator, session: *ZombieSession, event: *const redis_zombie.ZombieEvent, stage_result: anytype) void {
-    if (stage_result.failure) |failure| {
-        log.warn("zombie_event_loop.agent_failure zombie_id={s} event_id={s} failure={s}", .{
-            session.zombie_id, event.event_id, failure.label(),
-        });
-        logActivity(pool, alloc, session, activity_stream.EVT_AGENT_ERROR, failure.label());
-    } else {
-        log.info("zombie_event_loop.delivered zombie_id={s} event_id={s} tokens={d} wall_s={d}", .{
-            session.zombie_id, event.event_id, stage_result.token_count, stage_result.wall_seconds,
-        });
-        logActivity(pool, alloc, session, activity_stream.EVT_AGENT_RESPONSE, event.event_id);
-    }
 }
 
 /// Checkpoint session state to Postgres (UPSERT on zombie_id).

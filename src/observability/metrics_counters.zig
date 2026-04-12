@@ -18,6 +18,15 @@ const interrupt_hist = @import("metrics_interrupt_histogram.zig");
 pub const InterruptLatencyBuckets = interrupt_hist.InterruptLatencyBuckets;
 pub const InterruptLatencySnapshot = interrupt_hist.InterruptLatencySnapshot;
 
+const zombie_metrics = @import("metrics_zombie.zig");
+pub const ZombieDurationBucketsMs = zombie_metrics.ZombieDurationBucketsMs;
+pub const ZombieHistogramSnapshot = zombie_metrics.ZombieHistogramSnapshot;
+pub const incZombiesTriggered = zombie_metrics.incZombiesTriggered;
+pub const incZombiesCompleted = zombie_metrics.incZombiesCompleted;
+pub const incZombiesFailed = zombie_metrics.incZombiesFailed;
+pub const addZombieTokens = zombie_metrics.addZombieTokens;
+pub const observeZombieExecutionSeconds = zombie_metrics.observeZombieExecutionSeconds;
+
 pub const Snapshot = struct {
     // External retry/failure fields — defaults to 0, filled by me.snapshotExternalFields().
     external_retries_total: u64 = 0,
@@ -73,13 +82,18 @@ pub const Snapshot = struct {
     otel_export_failed_total: u64,
     otel_last_success_at_ms: i64,
     orphan_runs_recovered_total: u64,
-    orphan_no_agent_profile_total: u64,
     reconcile_running: u64,
     agent_duration_seconds: HistogramSnapshot,
     // M28_001 §4.1
     gate_repair_loops_per_run: GateLoopHistogramSnapshot,
     // M21_002 §4.3
     interrupt_delivery_latency_ms: InterruptLatencySnapshot,
+    // M15_002 §1.0 — zombie counters + wall-time histogram
+    zombie_triggered_total: u64 = 0,
+    zombie_completed_total: u64 = 0,
+    zombie_failed_total: u64 = 0,
+    zombie_tokens_total: u64 = 0,
+    zombie_execution_seconds: ZombieHistogramSnapshot = .{},
 };
 
 var g_worker_errors_total = std.atomic.Value(u64).init(0);
@@ -117,7 +131,6 @@ var g_otel_export_total = std.atomic.Value(u64).init(0);
 var g_otel_export_failed_total = std.atomic.Value(u64).init(0);
 var g_otel_last_success_at_ms = std.atomic.Value(i64).init(0);
 var g_orphan_runs_recovered_total = std.atomic.Value(u64).init(0);
-var g_orphan_no_agent_profile_total = std.atomic.Value(u64).init(0);
 var g_reconcile_running = std.atomic.Value(u64).init(0);
 const mh = @import("metrics_histograms.zig");
 pub const incExternalRetry = me.incExternalRetry;
@@ -249,10 +262,6 @@ pub fn incOrphanRunsRecovered() void {
     _ = g_orphan_runs_recovered_total.fetchAdd(1, .monotonic);
 }
 
-pub fn incOrphanNoAgentProfile() void {
-    _ = g_orphan_no_agent_profile_total.fetchAdd(1, .monotonic);
-}
-
 pub fn setReconcileRunning(v: bool) void {
     g_reconcile_running.store(if (v) 1 else 0, .release);
 }
@@ -298,7 +307,6 @@ pub fn snapshot() Snapshot {
         .otel_export_failed_total = g_otel_export_failed_total.load(.acquire),
         .otel_last_success_at_ms = g_otel_last_success_at_ms.load(.acquire),
         .orphan_runs_recovered_total = g_orphan_runs_recovered_total.load(.acquire),
-        .orphan_no_agent_profile_total = g_orphan_no_agent_profile_total.load(.acquire),
         .reconcile_running = g_reconcile_running.load(.acquire),
         .agent_duration_seconds = .{},
         .gate_repair_loops_per_run = .{},
@@ -323,5 +331,11 @@ pub fn snapshot() Snapshot {
     s.external_failures_unknown_total = ext.external_failures_unknown_total;
     s.retry_after_hints_total = ext.retry_after_hints_total;
     mh.snapshotHistograms(&s);
+    const zf = zombie_metrics.snapshotZombieFields();
+    s.zombie_triggered_total = zf.zombie_triggered_total;
+    s.zombie_completed_total = zf.zombie_completed_total;
+    s.zombie_failed_total = zf.zombie_failed_total;
+    s.zombie_tokens_total = zf.zombie_tokens_total;
+    s.zombie_execution_seconds = zf.zombie_execution_seconds;
     return s;
 }

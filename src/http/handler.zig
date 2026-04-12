@@ -4,10 +4,8 @@
 const std = @import("std");
 const common = @import("handlers/common.zig");
 const workspace_handlers = @import("handlers/workspaces.zig");
-const agents_handlers = @import("handlers/agents.zig");
 const skill_secret_handlers = @import("handlers/skill_secrets.zig");
 const health_handlers = @import("handlers/health.zig");
-const harness_http = @import("handlers/harness_http.zig");
 const skill_secrets_http = @import("handlers/skill_secrets_http.zig");
 const auth_sessions_http = @import("handlers/auth_sessions_http.zig");
 const github_callback = @import("handlers/github_callback.zig");
@@ -32,16 +30,9 @@ pub const handleUpgradeWorkspaceToScale = workspace_handlers.handleUpgradeWorksp
 pub const handleApplyWorkspaceBillingEvent = workspace_handlers.handleApplyWorkspaceBillingEvent;
 pub const handleGetWorkspaceBillingSummary = workspace_handlers.handleGetWorkspaceBillingSummary;
 pub const handleSetWorkspaceScoringConfig = workspace_handlers.handleSetWorkspaceScoringConfig;
-pub const handleGetAgent = agents_handlers.handleGetAgent;
-
 pub const handleHealthz = health_handlers.handleHealthz;
 pub const handleReadyz = health_handlers.handleReadyz;
 pub const handleMetrics = health_handlers.handleMetrics;
-
-pub const handlePutHarnessSource = harness_http.handlePutHarnessSource;
-pub const handleCompileHarness = harness_http.handleCompileHarness;
-pub const handleActivateHarness = harness_http.handleActivateHarness;
-pub const handleGetHarnessActive = harness_http.handleGetHarnessActive;
 
 pub const handlePutWorkspaceSkillSecret = skill_secrets_http.handlePutWorkspaceSkillSecret;
 pub const handleDeleteWorkspaceSkillSecret = skill_secrets_http.handleDeleteWorkspaceSkillSecret;

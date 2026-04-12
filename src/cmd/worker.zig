@@ -141,6 +141,7 @@ pub fn run(alloc: std.mem.Allocator) !void {
                 .zombie_id = zombie_id,
                 .shutdown_requested = &shutdown_requested,
                 .executor = if (exec_client) |*ec| ec else null,
+                .telemetry = tel.ptr(),
             },
         }) catch |err| {
             log.err("worker.zombie_thread_spawn_fail zombie_id={s} err={s}", .{ zombie_id, @errorName(err) });
