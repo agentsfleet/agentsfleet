@@ -9,6 +9,7 @@ const PgQuery = @import("../../db/pg_query.zig").PgQuery;
 const common = @import("common.zig");
 const error_codes = @import("../../errors/error_registry.zig");
 const pipeline = @import("outbound_proxy.zig");
+const api_key = @import("../../auth/api_key.zig");
 
 const log = std.log.scoped(.execute);
 
@@ -74,27 +75,12 @@ fn authFromSession(
 // Header: Authorization: Bearer zmb_xxx
 // Constant-time: compare SHA-256 hex of provided key against stored hash (RULE CTM).
 
-/// SHA-256 of input, returned as lower-hex [64]u8. Stack-allocated, no alloc.
-fn sha256Hex(input: []const u8) [64]u8 {
-    var digest: [std.crypto.hash.sha2.Sha256.digest_length]u8 = undefined;
-    std.crypto.hash.sha2.Sha256.hash(input, &digest, .{});
-    return std.fmt.bytesToHex(digest, .lower);
-}
-
-/// XOR accumulation — constant time regardless of first differing byte (RULE CTM).
-fn constantTimeEql(a: []const u8, b: []const u8) bool {
-    if (a.len != b.len) return false;
-    var diff: u8 = 0;
-    for (a, b) |x, y| diff |= x ^ y;
-    return diff == 0;
-}
-
 fn authFromApiKey(
     alloc: std.mem.Allocator,
     conn: *pg.Conn,
     raw_key: []const u8,
 ) ?Caller {
-    const hex = sha256Hex(raw_key);
+    const hex = api_key.sha256Hex(raw_key);
     const computed_hash: []const u8 = hex[0..];
 
     var q = PgQuery.from(conn.query(
@@ -111,7 +97,12 @@ fn authFromApiKey(
     const zombie_id    = row.get([]u8, 1) catch return null;
     const workspace_id = row.get([]u8, 2) catch return null;
 
-    if (!constantTimeEql(computed_hash, stored_hash)) return null;
+    if (!api_key.constantTimeEql(computed_hash, stored_hash)) return null;
+
+    // Best-effort: record last use time. Failure is not fatal.
+    _ = conn.exec(
+        \\UPDATE core.external_agents SET last_used_at = $1 WHERE key_hash = $2
+    , .{ std.time.milliTimestamp(), computed_hash }) catch {};
 
     return .{
         .zombie_id    = alloc.dupe(u8, zombie_id)    catch return null,
@@ -197,6 +188,8 @@ pub fn handleExecute(ctx: *Context, req: *httpz.Request, res: *httpz.Response) v
                 "Target domain not mapped to a known service", req_id),
             error.InjectionDetected  => common.errorResponse(res, error_codes.ERR_FW_INJECTION_DETECTED,
                 "Prompt injection pattern detected in request body", req_id),
+            error.ApprovalRequired   => common.errorResponse(res, error_codes.ERR_FW_APPROVAL_REQUIRED,
+                "Request body requires human approval before execution. Awaiting gate decision.", req_id),
             error.GrantNotFound      => common.errorResponse(res, error_codes.ERR_GRANT_NOT_FOUND,
                 "No approved grant for this service. Request one via POST /v1/zombies/{id}/integration-requests", req_id),
             error.GrantPending       => common.errorResponse(res, error_codes.ERR_GRANT_PENDING,

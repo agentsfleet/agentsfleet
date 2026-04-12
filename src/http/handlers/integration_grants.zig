@@ -1,7 +1,6 @@
-//! M9_001 §2.0 — Integration Grant CRUD handlers.
-//! POST   /v1/zombies/{id}/integration-requests      → handleRequestGrant (zombie auth)
-//! GET    /v1/zombies/{id}/integration-grants        → handleListGrants   (workspace auth)
-//! DELETE /v1/zombies/{id}/integration-grants/{gid}  → handleRevokeGrant  (workspace auth)
+//! M9_001 §2.0 — Integration Grant request handler (zombie auth).
+//! POST /v1/zombies/{id}/integration-requests → handleRequestGrant
+//! Workspace-auth operations (list/revoke) are in integration_grants_workspace.zig.
 
 const std = @import("std");
 const httpz = @import("httpz");
@@ -11,6 +10,7 @@ const common = @import("common.zig");
 const ec = @import("../../errors/error_registry.zig");
 const id_format = @import("../../types/id_format.zig");
 const grant_notifier = @import("../../zombie/notifications/grant_notifier.zig");
+const api_key = @import("../../auth/api_key.zig");
 
 const log = std.log.scoped(.integration_grants);
 
@@ -18,19 +18,6 @@ pub const Context = common.Context;
 
 // ── Zombie auth helpers (Path A + Path B) ─────────────────────────────────
 // Mirrors execute.zig auth — caller must prove zombie identity.
-
-fn sha256Hex(input: []const u8) [64]u8 {
-    var digest: [std.crypto.hash.sha2.Sha256.digest_length]u8 = undefined;
-    std.crypto.hash.sha2.Sha256.hash(input, &digest, .{});
-    return std.fmt.bytesToHex(digest, .lower);
-}
-
-fn constantTimeEql(a: []const u8, b: []const u8) bool {
-    if (a.len != b.len) return false;
-    var diff: u8 = 0;
-    for (a, b) |x, y| diff |= x ^ y;
-    return diff == 0;
-}
 
 const Caller = struct {
     zombie_id: []const u8,
@@ -57,7 +44,7 @@ fn zombieFromSession(alloc: std.mem.Allocator, conn: *pg.Conn, token: []const u8
 }
 
 fn zombieFromApiKey(alloc: std.mem.Allocator, conn: *pg.Conn, raw_key: []const u8) ?Caller {
-    const hex = sha256Hex(raw_key);
+    const hex = api_key.sha256Hex(raw_key);
     const computed_hash: []const u8 = hex[0..];
     var q = PgQuery.from(conn.query(
         \\SELECT ea.key_hash, ea.zombie_id::text, ea.workspace_id::text
@@ -71,7 +58,13 @@ fn zombieFromApiKey(alloc: std.mem.Allocator, conn: *pg.Conn, raw_key: []const u
     const stored_hash  = row.get([]u8, 0) catch return null;
     const zombie_id    = row.get([]u8, 1) catch return null;
     const workspace_id = row.get([]u8, 2) catch return null;
-    if (!constantTimeEql(computed_hash, stored_hash)) return null;
+    if (!api_key.constantTimeEql(computed_hash, stored_hash)) return null;
+
+    // Best-effort: record last use time. Failure is not fatal.
+    _ = conn.exec(
+        \\UPDATE core.external_agents SET last_used_at = $1 WHERE key_hash = $2
+    , .{ std.time.milliTimestamp(), computed_hash }) catch {};
+
     return .{
         .zombie_id    = alloc.dupe(u8, zombie_id)    catch return null,
         .workspace_id = alloc.dupe(u8, workspace_id) catch return null,
@@ -230,119 +223,3 @@ pub fn handleRequestGrant(ctx: *Context, req: *httpz.Request, res: *httpz.Respon
     });
 }
 
-// ── handleListGrants ────────────────────────────────────────────────────────
-// GET /v1/zombies/{zombie_id}/integration-grants
-// Workspace owner auth (Clerk OIDC or internal API key).
-
-const GrantRow = struct {
-    grant_id: []const u8,
-    service: []const u8,
-    status: []const u8,
-    requested_at: i64,
-    approved_at: ?i64,
-    revoked_at: ?i64,
-    reason: []const u8,
-};
-
-pub fn handleListGrants(ctx: *Context, req: *httpz.Request, res: *httpz.Response, zombie_id: []const u8) void {
-    var arena = std.heap.ArenaAllocator.init(ctx.alloc);
-    defer arena.deinit();
-    const alloc = arena.allocator();
-    const req_id = common.requestId(alloc);
-
-    _ = common.authenticate(alloc, req, ctx) catch |err| {
-        switch (err) {
-            error.Unauthorized => common.errorResponse(res, ec.ERR_UNAUTHORIZED, "Authentication required", req_id),
-            error.TokenExpired => common.errorResponse(res, ec.ERR_TOKEN_EXPIRED, "Token expired", req_id),
-            error.AuthServiceUnavailable => common.errorResponse(res, ec.ERR_AUTH_UNAVAILABLE, "Auth service unavailable", req_id),
-            error.UnsupportedRole => common.errorResponse(res, ec.ERR_UNSUPPORTED_ROLE, "Unsupported role", req_id),
-        }
-        return;
-    };
-
-    const conn = ctx.pool.acquire() catch {
-        common.internalDbUnavailable(res, req_id);
-        return;
-    };
-    defer ctx.pool.release(conn);
-
-    var q = PgQuery.from(conn.query(
-        \\SELECT grant_id, service, status, requested_at, approved_at, revoked_at, requested_reason
-        \\FROM core.integration_grants
-        \\WHERE zombie_id = $1::uuid
-        \\ORDER BY requested_at DESC
-    , .{zombie_id}) catch {
-        common.internalDbError(res, req_id);
-        return;
-    });
-    defer q.deinit();
-
-    var grants: std.ArrayListUnmanaged(GrantRow) = .{};
-    while (q.next() catch null) |row| {
-        const grant_id    = alloc.dupe(u8, row.get([]u8, 0) catch continue) catch continue;
-        const service     = alloc.dupe(u8, row.get([]u8, 1) catch continue) catch continue;
-        const status      = alloc.dupe(u8, row.get([]u8, 2) catch continue) catch continue;
-        const requested_at = row.get(i64, 3) catch continue;
-        const approved_at  = row.get(i64, 4) catch null;
-        const revoked_at   = row.get(i64, 5) catch null;
-        const reason      = alloc.dupe(u8, row.get([]u8, 6) catch continue) catch continue;
-        grants.append(alloc, .{
-            .grant_id     = grant_id,
-            .service      = service,
-            .status       = status,
-            .requested_at = requested_at,
-            .approved_at  = approved_at,
-            .revoked_at   = revoked_at,
-            .reason       = reason,
-        }) catch {};
-    }
-
-    common.writeJson(res, .ok, .{ .grants = grants.items });
-}
-
-// ── handleRevokeGrant ───────────────────────────────────────────────────────
-// DELETE /v1/zombies/{zombie_id}/integration-grants/{grant_id}
-// Workspace owner auth. Sets status = 'revoked', records revoked_at timestamp.
-
-pub fn handleRevokeGrant(
-    ctx: *Context,
-    req: *httpz.Request,
-    res: *httpz.Response,
-    zombie_id: []const u8,
-    grant_id: []const u8,
-) void {
-    var arena = std.heap.ArenaAllocator.init(ctx.alloc);
-    defer arena.deinit();
-    const alloc = arena.allocator();
-    const req_id = common.requestId(alloc);
-
-    _ = common.authenticate(alloc, req, ctx) catch |err| {
-        switch (err) {
-            error.Unauthorized => common.errorResponse(res, ec.ERR_UNAUTHORIZED, "Authentication required", req_id),
-            error.TokenExpired => common.errorResponse(res, ec.ERR_TOKEN_EXPIRED, "Token expired", req_id),
-            error.AuthServiceUnavailable => common.errorResponse(res, ec.ERR_AUTH_UNAVAILABLE, "Auth service unavailable", req_id),
-            error.UnsupportedRole => common.errorResponse(res, ec.ERR_UNSUPPORTED_ROLE, "Unsupported role", req_id),
-        }
-        return;
-    };
-
-    const conn = ctx.pool.acquire() catch {
-        common.internalDbUnavailable(res, req_id);
-        return;
-    };
-    defer ctx.pool.release(conn);
-
-    const now_ms = std.time.milliTimestamp();
-    _ = conn.exec(
-        \\UPDATE core.integration_grants
-        \\SET status = 'revoked', revoked_at = $1
-        \\WHERE grant_id = $2 AND zombie_id = $3::uuid AND status != 'revoked'
-    , .{ now_ms, grant_id, zombie_id }) catch {
-        common.internalDbError(res, req_id);
-        return;
-    };
-
-    log.info("grant.revoked zombie_id={s} grant_id={s}", .{ zombie_id, grant_id });
-    res.status = 204;
-    res.body = "";
-}

@@ -291,6 +291,8 @@ pub const ENTRIES = [_]Entry{
     // ── FIREWALL (execute path) ───────────────────────────────────────────────
     e("UZ-FW-001", .forbidden, "Domain not in workspace allowlist",
         "The target domain is not in the workspace allowlist. Add it via firewall configuration."),
+    e("UZ-FW-002", .bad_request, "Human approval required",
+        "The request body triggered the approval gate. Awaiting human approval before execution."),
     e("UZ-FW-003", .forbidden, "Prompt injection detected",
         "A prompt injection pattern was detected in the request body. Request blocked."),
     // ── TOOL / CREDENTIAL (execute path) ─────────────────────────────────────

@@ -13,6 +13,7 @@ const PgQuery = @import("../../db/pg_query.zig").PgQuery;
 const common = @import("common.zig");
 const ec = @import("../../errors/error_registry.zig");
 const id_format = @import("../../types/id_format.zig");
+const api_key = @import("../../auth/api_key.zig");
 
 const log = std.log.scoped(.external_agents);
 
@@ -30,12 +31,6 @@ fn generateApiKey(alloc: std.mem.Allocator) ![]const u8 {
     std.crypto.random.bytes(&raw);
     const hex = std.fmt.bytesToHex(raw, .lower);
     return std.fmt.allocPrint(alloc, "{s}{s}", .{ KEY_PREFIX, hex });
-}
-
-fn sha256Hex(input: []const u8) [64]u8 {
-    var digest: [std.crypto.hash.sha2.Sha256.digest_length]u8 = undefined;
-    std.crypto.hash.sha2.Sha256.hash(input, &digest, .{});
-    return std.fmt.bytesToHex(digest, .lower);
 }
 
 // ── handleCreateExternalAgent ───────────────────────────────────────────────
@@ -123,7 +118,7 @@ pub fn handleCreateExternalAgent(
         common.internalOperationError(res, "Key generation failed", req_id);
         return;
     };
-    const key_hash_arr = sha256Hex(raw_key);
+    const key_hash_arr = api_key.sha256Hex(raw_key);
     const key_hash: []const u8 = key_hash_arr[0..];
 
     const agent_id = id_format.generateZombieId(alloc) catch {
@@ -262,13 +257,21 @@ pub fn handleDeleteExternalAgent(
     };
     defer ctx.pool.release(conn);
 
-    _ = conn.exec(
+    var del_q = PgQuery.from(conn.query(
         \\DELETE FROM core.external_agents
         \\WHERE agent_id = $1 AND workspace_id = $2::uuid
+        \\RETURNING agent_id
     , .{ agent_id, workspace_id }) catch {
         common.internalDbError(res, req_id);
         return;
-    };
+    });
+    defer del_q.deinit();
+
+    const deleted = del_q.next() catch null;
+    if (deleted == null) {
+        common.errorResponse(res, ec.ERR_AGENT_NOT_FOUND, "External agent not found", req_id);
+        return;
+    }
 
     log.info("external_agent.deleted agent_id={s} workspace_id={s}", .{ agent_id, workspace_id });
     res.status = 204;

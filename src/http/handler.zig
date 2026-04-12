@@ -18,6 +18,7 @@ const zombie_api_http = @import("handlers/zombie_api.zig");
 const zombie_activity_api_http = @import("handlers/zombie_activity_api.zig");
 const execute_http = @import("handlers/execute.zig");
 const integration_grants_http = @import("handlers/integration_grants.zig");
+const integration_grants_workspace_http = @import("handlers/integration_grants_workspace.zig");
 const external_agents_http = @import("handlers/external_agents.zig");
 const grant_approval_webhook_http = @import("handlers/grant_approval_webhook.zig");
 
@@ -71,8 +72,8 @@ pub const handleExecute = execute_http.handleExecute;
 
 // M9_001: Integration grant CRUD
 pub const handleRequestGrant = integration_grants_http.handleRequestGrant;
-pub const handleListGrants = integration_grants_http.handleListGrants;
-pub const handleRevokeGrant = integration_grants_http.handleRevokeGrant;
+pub const handleListGrants = integration_grants_workspace_http.handleListGrants;
+pub const handleRevokeGrant = integration_grants_workspace_http.handleRevokeGrant;
 
 // M9_001: External agent key management
 pub const handleCreateExternalAgent = external_agents_http.handleCreateExternalAgent;

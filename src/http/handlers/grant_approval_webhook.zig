@@ -2,8 +2,9 @@
 //! POST /v1/webhooks/{zombie_id}:grant-approval
 //!
 //! Called by the Slack/Discord notification provider after the human clicks
-//! Approve or Deny. No HMAC verification — the callback URL is opaque and
-//! the grant_id is validated against the zombie_id in the DB.
+//! Approve or Deny. The nonce is required for authenticity — it is generated
+//! at grant-request time, stored at grant:nonce:{grant_id} in Redis, embedded
+//! in the Slack button value, and consumed (single-use DEL) on first use here.
 //!
 //! §4.4 decision=approved → status=approved, approved_at set
 //! §4.5 decision=denied   → status=revoked,  revoked_at set
@@ -15,15 +16,47 @@ const PgQuery = @import("../../db/pg_query.zig").PgQuery;
 const common = @import("common.zig");
 const ec = @import("../../errors/error_registry.zig");
 const activity_stream = @import("../../zombie/activity_stream.zig");
+const queue_redis = @import("../../queue/redis.zig");
 
 const log = std.log.scoped(.grant_approval_webhook);
 
 pub const Context = common.Context;
 
+const GRANT_NONCE_KEY_PREFIX = "grant:nonce:";
+
 const GrantApprovalBody = struct {
     grant_id: []const u8,
     decision: []const u8, // "approved" | "denied"
+    nonce: []const u8,    // single-use, verified against Redis
 };
+
+/// Fetch the stored nonce for a grant from Redis, then DEL it (single-use).
+/// Returns null if the key is missing (expired or never stored).
+fn fetchAndConsumeNonce(
+    queue: *queue_redis.Client,
+    alloc: std.mem.Allocator,
+    grant_id: []const u8,
+) ?[]const u8 {
+    var key_buf: [256]u8 = undefined;
+    const key = std.fmt.bufPrint(&key_buf, "{s}{s}", .{
+        GRANT_NONCE_KEY_PREFIX, grant_id,
+    }) catch return null;
+
+    var resp = queue.commandAllowError(&.{ "GET", key }) catch return null;
+    defer resp.deinit(queue.alloc);
+
+    const stored: []const u8 = switch (resp) {
+        .bulk => |b| b orelse return null,
+        .simple => |s| s,
+        else => return null,
+    };
+    const owned = alloc.dupe(u8, stored) catch return null;
+
+    // Consume: DEL so the nonce cannot be replayed.
+    _ = queue.command(&.{ "DEL", key }) catch {};
+
+    return owned;
+}
 
 fn fetchWorkspaceId(pool: *pg.Pool, alloc: std.mem.Allocator, zombie_id: []const u8) []const u8 {
     const conn = pool.acquire() catch return "";
@@ -95,11 +128,27 @@ pub fn handleGrantApproval(
         common.errorResponse(res, ec.ERR_INVALID_REQUEST, "grant_id required", req_id);
         return;
     }
+    if (body.nonce.len == 0) {
+        common.errorResponse(res, ec.ERR_INVALID_REQUEST, "nonce required", req_id);
+        return;
+    }
     const is_approved = std.mem.eql(u8, body.decision, "approved");
     const is_denied   = std.mem.eql(u8, body.decision, "denied");
     if (!is_approved and !is_denied) {
         common.errorResponse(res, ec.ERR_INVALID_REQUEST,
             "decision must be 'approved' or 'denied'", req_id);
+        return;
+    }
+
+    // Verify and consume the one-time nonce before any DB mutation.
+    const stored_nonce = fetchAndConsumeNonce(ctx.queue, alloc, body.grant_id) orelse {
+        common.errorResponse(res, ec.ERR_INVALID_REQUEST,
+            "Invalid or expired approval nonce", req_id);
+        return;
+    };
+    if (!std.mem.eql(u8, stored_nonce, body.nonce)) {
+        common.errorResponse(res, ec.ERR_INVALID_REQUEST,
+            "Invalid or expired approval nonce", req_id);
         return;
     }
 
@@ -134,21 +183,23 @@ pub fn handleGrantApproval(
 
 // ── Tests ──────────────────────────────────────────────────────────────────
 
-test "GrantApprovalBody parses approved decision" {
+test "GrantApprovalBody parses approved decision with nonce" {
     const alloc = std.testing.allocator;
-    const json = "{\"grant_id\":\"uzg_001\",\"decision\":\"approved\"}";
+    const json = "{\"grant_id\":\"uzg_001\",\"decision\":\"approved\",\"nonce\":\"abc123\"}";
     const parsed = try std.json.parseFromSlice(GrantApprovalBody, alloc, json, .{});
     defer parsed.deinit();
     try std.testing.expectEqualStrings("uzg_001", parsed.value.grant_id);
     try std.testing.expectEqualStrings("approved", parsed.value.decision);
+    try std.testing.expectEqualStrings("abc123", parsed.value.nonce);
 }
 
-test "GrantApprovalBody parses denied decision" {
+test "GrantApprovalBody parses denied decision with nonce" {
     const alloc = std.testing.allocator;
-    const json = "{\"grant_id\":\"uzg_002\",\"decision\":\"denied\"}";
+    const json = "{\"grant_id\":\"uzg_002\",\"decision\":\"denied\",\"nonce\":\"xyz789\"}";
     const parsed = try std.json.parseFromSlice(GrantApprovalBody, alloc, json, .{});
     defer parsed.deinit();
     try std.testing.expectEqualStrings("denied", parsed.value.decision);
+    try std.testing.expectEqualStrings("xyz789", parsed.value.nonce);
 }
 
 test "is_approved logic: only 'approved' matches, not 'deny' or empty" {

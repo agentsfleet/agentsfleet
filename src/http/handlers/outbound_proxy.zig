@@ -7,6 +7,7 @@ const PgQuery = @import("../../db/pg_query.zig").PgQuery;
 const firewall = @import("../../zombie/firewall/firewall.zig");
 const crypto_store = @import("../../secrets/crypto_store.zig");
 const error_codes = @import("../../errors/error_registry.zig");
+const id_format = @import("../../types/id_format.zig");
 
 const log = std.log.scoped(.outbound_proxy);
 
@@ -33,6 +34,7 @@ pub const PipelineResult = struct {
 pub const PipelineError = error{
     DomainBlocked,
     InjectionDetected,
+    ApprovalRequired,
     GrantNotFound,
     GrantPending,
     GrantDenied,
@@ -215,19 +217,27 @@ pub fn run(
         .not_found => return PipelineError.GrantNotFound,
     }
 
-    // Firewall: injection scan on request body
+    // Firewall: injection scan on request body.
+    // Compute path offset accounting for an optional scheme prefix in the target.
+    var scheme_len: usize = 0;
+    if (std.mem.startsWith(u8, input.target, "https://")) scheme_len = "https://".len
+    else if (std.mem.startsWith(u8, input.target, "http://")) scheme_len = "http://".len;
+    const path_start = scheme_len + domain.len;
+    const fw_path = if (path_start < input.target.len) input.target[path_start..] else "/";
+
     if (input.body) |b| {
         const fw = firewall.Firewall.init(&.{}, &.{});
-        const req = firewall.OutboundRequest{
+        const fw_req = firewall.OutboundRequest{
             .tool = "execute",
             .method = input.method,
             .domain = domain,
-            .path = input.target[domain.len..],
+            .path = fw_path,
             .body = b,
         };
-        switch (fw.inspectRequest(req)) {
+        switch (fw.inspectRequest(fw_req)) {
             .block => return PipelineError.InjectionDetected,
-            .allow, .requires_approval => {},
+            .requires_approval => return PipelineError.ApprovalRequired,
+            .allow => {},
         }
     }
 
@@ -249,14 +259,17 @@ pub fn run(
     const clean_body = stripEcho(alloc, proxy.body, credential) catch
         return PipelineError.OutOfMemory;
 
-    log.info("outbound_proxy.ok zombie_id={s} service={s} status={d}", .{
-        input.zombie_id, service, proxy.status,
+    const action_id = id_format.generateZombieId(alloc) catch
+        return PipelineError.OutOfMemory;
+
+    log.info("outbound_proxy.ok zombie_id={s} service={s} status={d} action_id={s}", .{
+        input.zombie_id, service, proxy.status, action_id,
     });
 
     return .{
         .status = proxy.status,
         .body = clean_body,
-        .action_id = "execute",
+        .action_id = action_id,
         .firewall_decision = "allow",
         .credential_injected = true,
         .truncated = proxy.truncated,
