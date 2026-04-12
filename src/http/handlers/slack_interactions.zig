@@ -140,7 +140,8 @@ fn handleGateAction(ctx: *Context, alloc: std.mem.Allocator, rest: []const u8, r
         return;
     }
 
-    // Check pending gate exists
+    // Atomically take ownership of the pending gate — DEL returns 1 only for the
+    // one request that deletes it; concurrent requests get 0 and fast-exit.
     var pending_key_buf: [256]u8 = undefined;
     const pending_key = std.fmt.bufPrint(&pending_key_buf, "{s}{s}:{s}", .{
         ec.GATE_PENDING_KEY_PREFIX, zombie_id, inner_action_id,
@@ -148,13 +149,17 @@ fn handleGateAction(ctx: *Context, alloc: std.mem.Allocator, rest: []const u8, r
         common.internalOperationError(res, "key overflow", req_id);
         return;
     };
-    const exists = ctx.queue.exists(pending_key) catch {
+    const del_resp = ctx.queue.command(&.{ "DEL", pending_key }) catch {
         log.err("slack.interactions.redis_fail req_id={s}", .{req_id});
         res.status = 200;
         res.body = "{}";
         return;
     };
-    if (!exists) {
+    const owned = switch (del_resp) {
+        .integer => |n| n == 1,
+        else => false,
+    };
+    if (!owned) {
         log.debug("slack.interactions.gate_not_found action_id={s} req_id={s}", .{ inner_action_id, req_id });
         res.status = 200;
         res.body = "{\"error\":\"gate_expired\"}";
@@ -166,12 +171,6 @@ fn handleGateAction(ctx: *Context, alloc: std.mem.Allocator, rest: []const u8, r
         res.status = 200;
         res.body = "{}";
         return;
-    };
-
-    // Delete pending key so the gate button cannot be re-submitted within the 2h TTL window
-    _ = ctx.queue.command(&.{ "DEL", pending_key }) catch |del_err| {
-        log.warn("slack.interactions.pending_del_fail err={s} req_id={s}", .{ @errorName(del_err), req_id });
-        // Non-fatal: approval was already resolved; key will expire naturally
     };
 
     _ = alloc;
