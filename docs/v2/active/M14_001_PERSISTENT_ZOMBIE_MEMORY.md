@@ -1,314 +1,422 @@
-# M14_001: Persistent Zombie Memory — Agent Memory Survives Crashes and Restarts
+# M14_001: Persistent Zombie Memory — Core and Daily Memory Survives Workspace Destruction
 
 **Prototype:** v2
 **Milestone:** M14
 **Workstream:** 001
-**Date:** Apr 12, 2026: 03:05 PM
+**Date:** Apr 12, 2026: 03:30 PM
 **Status:** IN_PROGRESS
 **Branch:** feat/m14-001-persistent-memory
-**Priority:** P1 — Zombies lose learned context on workspace destruction; every run is a cold start
+**Priority:** P1 — Without this, every zombie run is a cold start; learned context is lost on workspace destruction
 **Batch:** B1
 **Depends on:** M5_001 (dynamic skill architecture, tool_bridge)
-
-> **Note (Apr 12):** Spec body below is being rewritten. Design review in this
-> milestone concluded: (1) storage is a dedicated Postgres *database* on the core
-> cluster, (2) no pgvector / no RAG, (3) markdown is an export/import view, not
-> the store, (4) memory-full policy on `core` errors back to the agent, (5) default-on
-> for new zombies. See `docs/v2/agent-docs/RIPLEYS_LOG_APR_12_15_30.md` for the
-> design log and `docs/v2/agent-docs/memory.md` for the public contributor guide.
-> Full spec rewrite to follow.
 
 ---
 
 ## Overview
 
-**Goal (testable):** Zombie agent memory persists across workspace destruction, process crashes, and zombie restarts — verified by storing a fact in run N and recalling it in run N+1 after workspace cleanup.
+**Goal (testable):** A zombie that calls `memory_store("lead_acme", "...")` in run N recalls the exact content in run N+1 after the run N workspace is destroyed, with row-level isolation enforced so a second zombie cannot read the first zombie's memory.
 
-**Problem:** NullClaw's memory tools (`memory_store`, `memory_recall`, `memory_list`, `memory_forget`) default to SQLite at `<workspace_dir>/memory.db`. The executor workspace is a temporary worktree deleted after each run. On crash, the workspace is destroyed. On restart, a fresh workspace is created. Result: every zombie run starts with zero memory. The agent cannot learn from prior interactions, remember user preferences, or accumulate context across conversations. For long-running zombies that handle ongoing work (bug triage, lead response, incident management), this is a serious capability gap.
+**Problem:** NullClaw's memory tools (`memory_store`, `memory_recall`, `memory_list`, `memory_forget`) default to SQLite at `<workspace_dir>/memory.db` via the `hybrid_keyword` profile. The executor takes these defaults unchanged (`src/executor/runner.zig:155, 200`). Workspaces are temporary worktrees destroyed after each run. Result: every zombie run starts with zero memory. Lead-Collector zombies re-research every lead, Customer-Support zombies re-ask customers their plan, Ops zombies don't recognize recurring incidents. `core.zombie_sessions.context_json` is a conversation-resume cursor (stores `{last_event_id, last_response}` per `src/zombie/event_loop_helpers.zig:67-75`), not agent memory — the SQL comment misdescribes it, and the comment is corrected as part of this workstream.
 
-**Solution summary:** Evaluate durable storage backends that survive workspace lifecycle. NullClaw already supports pluggable memory backends (Postgres, Redis, API gateway, markdown files). The work is: (1) evaluate alternatives against UseZombie's deployment topology (Fly.io workers, Cloudflare edge, bare-metal), (2) select and configure the backend, (3) wire the executor to pass memory backend config per-zombie, (4) verify cross-run persistence with integration tests.
-
----
-
-## 1.0 Storage Backend Evaluation
-
-**Status:** PENDING
-
-Evaluate each candidate against these criteria: durability (survives crash), latency (memory recall during agent conversation), operational complexity (what we run/pay for), multi-zombie isolation (zombies don't read each other's memory), and deployment topology fit (Fly workers, Cloudflare, bare-metal).
-
-NullClaw v2026.4.9 supports these memory backend profiles (from `config_types.zig`): `hybrid_keyword`, `local_keyword`, `markdown_only`, `postgres_keyword`, `postgres_hybrid`, `minimal_none`, plus custom backends (Redis, ClickHouse, LanceDB, API gateway).
-
-**Dimensions (test blueprints):**
-
-- 1.1 PENDING — Postgres (existing infrastructure)
-  - target: evaluation document
-  - input: UseZombie already runs Postgres for `core.*` tables. Memory tables would be per-zombie namespace in the same cluster.
-  - expected: Evaluation covering — latency impact on shared DB, isolation model (schema per workspace vs row-level), backup/retention, vector search support (`pgvector` extension availability on Fly Postgres), connection pool pressure from N concurrent zombies doing memory ops
-  - test_type: contract
-
-- 1.2 PENDING — Cloudflare R2 / Fly Volumes / shared filesystem
-  - target: evaluation document
-  - input: R2 is S3-compatible object storage on Cloudflare edge. Fly Volumes are persistent NVMe attached to Fly machines. Evaluate both as durable backing for SQLite (SQLite on a persistent volume that outlives the workspace).
-  - expected: Evaluation covering — R2 latency from Fly workers (cross-network hop?), Fly Volume attachment model (one volume per machine, not shareable across machines), SQLite on network filesystem limitations (WAL mode fails on NFS/9p — NullClaw already has a fallback to DELETE journal mode), Dragonfly/KeyDB as Redis-compatible alternatives with persistence
-  - test_type: contract
-
-- 1.3 PENDING — Dragonfly / KeyDB / Valkey (Redis-compatible with persistence)
-  - target: evaluation document
-  - input: UseZombie already runs Redis for event streams (XREADGROUP). Dragonfly is a Redis-compatible engine with native persistence (snapshots + AOF), multi-threaded, lower memory footprint. KeyDB is Redis fork with multi-threading. Valkey is the Redis OSS successor.
-  - expected: Evaluation covering — can memory ops coexist on the same Redis instance as event streams without latency interference, persistence guarantees (Dragonfly snapshot interval vs AOF), key namespace isolation per zombie, memory data model fit (NullClaw memory is key-value with categories — maps naturally to Redis hashes), vector search support (RediSearch module for hybrid recall)
-  - test_type: contract
-
-- 1.4 PENDING — Decision matrix and recommendation
-  - target: evaluation document
-  - input: Results from 1.1–1.3
-  - expected: Scored matrix (durability, latency, ops cost, isolation, topology fit) with clear recommendation and fallback. Document trade-offs explicitly. If Postgres wins, note the connection pool concern. If Dragonfly wins, note the new dependency cost.
-  - test_type: contract
+**Solution summary:** Route NullClaw's `core` and `daily` memory categories to a dedicated Postgres database (`memory`) on the existing core cluster, isolated by schema and by a dedicated `memory_runtime` role. Leave `conversation` category in workspace SQLite (correctly ephemeral). Ship `zombiectl memory export|import` so operators can read and edit memory as markdown on their own laptops. Default memory on for new zombies. On `core` capacity exceeded, error back to the agent loudly — never silently prune. Isolation is enforced at the query layer (row-level `zombie_id` scope) because the store lives behind a process boundary (the agent's shell tools cannot reach the memory DB).
 
 ---
 
-## 2.0 Memory Backend Configuration Wiring
+## Files Changed (blast radius)
 
-**Status:** PENDING
-
-Wire the selected backend through the executor config path. NullClaw's `MemoryRuntime` is initialized from `config_types.zig` `MemoryConfig`. The executor must pass per-zombie memory config so each zombie gets its own isolated memory namespace.
-
-**Dimensions (test blueprints):**
-
-- 2.1 PENDING — Executor config accepts memory backend settings
-  - target: `src/executor/types.zig:ExecutorConfig` or new `memory_config` field
-  - input: Memory backend type (postgres/redis/dragonfly), connection string, zombie-scoped namespace key
-  - expected: Config struct extended, validated at startup, passed through to NullClaw `Config.memory`
-  - test_type: unit
-
-- 2.2 PENDING — Per-zombie memory isolation
-  - target: `src/executor/runner.zig:executeInner` or memory init path
-  - input: Two zombies (zombie_id=A, zombie_id=B) running concurrently
-  - expected: Zombie A's `memory_store("user_pref", "dark mode")` is NOT visible to zombie B's `memory_recall("user_pref")`. Isolation via key prefix (`zmb:{zombie_id}:`) or schema separation.
-  - test_type: integration
-
-- 2.3 PENDING — Workspace-scoped vs zombie-scoped memory
-  - target: memory namespace design
-  - input: NullClaw memory has `session_id` scoping (null = global, explicit = session). Map zombie_id to global scope, individual run_id to session scope.
-  - expected: `memory_store` with `category: "core"` persists across runs (zombie-scoped). `memory_store` with `category: "conversation"` scoped to current run only.
-  - test_type: integration
-
----
-
-## 3.0 Cross-Run Persistence Verification
-
-**Status:** PENDING
-
-Prove that memory survives the workspace lifecycle: store in run N, destroy workspace, create new workspace for run N+1, recall succeeds.
-
-**Dimensions (test blueprints):**
-
-- 3.1 PENDING — Store-destroy-recall integration test
-  - target: integration test harness
-  - input: (1) Start zombie run, call `memory_store("learned_fact", "user prefers terse responses")`, (2) complete run, workspace destroyed, (3) start new run for same zombie_id, call `memory_recall("user prefers")`
-  - expected: Recall returns the stored fact with content match. Zero data loss.
-  - test_type: integration
-
-- 3.2 PENDING — Crash recovery test
-  - target: integration test harness
-  - input: (1) Start zombie run, store memory, (2) kill executor process (SIGKILL — no graceful shutdown), (3) restart zombie, recall memory
-  - expected: All committed memory_store calls before crash are recoverable. In-flight stores may be lost (acceptable — document the guarantee).
-  - test_type: integration
-
-- 3.3 PENDING — Memory size and retention bounds
-  - target: configuration + enforcement
-  - input: Zombie stores 10,000 facts over weeks of operation
-  - expected: Memory has a configurable retention policy (max entries, max age, or max bytes). Old `daily` category entries are auto-pruned. `core` category entries are never pruned unless explicitly forgotten. Document the defaults.
-  - test_type: unit
-
----
-
-## 4.0 Interfaces
-
-**Status:** PENDING
-
-### 4.1 Executor Config Extension
-
-```zig
-/// Memory backend configuration passed per-zombie.
-pub const MemoryBackendConfig = struct {
-    /// Backend type: "postgres", "redis", "dragonfly", "sqlite_volume"
-    backend: []const u8,
-    /// Connection string or file path (depends on backend)
-    connection: []const u8,
-    /// Namespace prefix for zombie isolation (e.g., "zmb:{zombie_id}")
-    namespace: []const u8,
-    /// Max entries before pruning (0 = unlimited)
-    max_entries: u32 = 0,
-    /// Max age in hours for "daily" category (0 = no auto-prune)
-    daily_retention_hours: u32 = 72,
-};
-```
-
-### 4.2 Input Contracts
-
-| Field | Type | Constraints | Example |
-|-------|------|-------------|---------|
-| backend | string | one of: postgres, redis, dragonfly, sqlite_volume | "postgres" |
-| connection | string | valid URI or file path | "postgresql://..." |
-| namespace | string | non-empty, alphanumeric + colon + hyphen | "zmb:zom_01JQ..." |
-| max_entries | u32 | >= 0 | 5000 |
-| daily_retention_hours | u32 | >= 0 | 72 |
-
-### 4.3 Output Contracts
-
-| Field | Type | When | Example |
-|-------|------|------|---------|
-| memory initialized | log line | executor startup | `memory.backend_ready backend=postgres namespace=zmb:zom_01JQ...` |
-| memory unavailable | log warning | connection failure | `memory.backend_unavailable err=ConnectionRefused — falling back to ephemeral` |
-
-### 4.4 Error Contracts
-
-| Error condition | Behavior | Caller sees |
-|----------------|----------|-------------|
-| Backend unreachable at startup | Log warning, fall back to ephemeral SQLite (current behavior) | Agent runs with no persistent memory; activity log records the degradation |
-| Backend unreachable mid-run | Memory ops return error to agent; agent continues without memory | Agent sees tool error, can retry or skip |
-| Namespace collision | Prevented by zombie_id uniqueness (ULIDs) | N/A — cannot happen with correct namespace generation |
-| Storage quota exceeded | Prune oldest `daily` entries; if still over, reject new stores | Agent sees "memory full" tool error |
-
----
-
-## 5.0 Failure Modes
-
-**Status:** PENDING
-
-| Failure | Trigger | System behavior | User observes |
-|---------|---------|----------------|---------------|
-| Backend down at zombie start | Postgres/Redis unreachable | Fall back to ephemeral workspace SQLite, log degradation to activity stream | `zombiectl logs` shows "memory degraded — ephemeral only" |
-| Backend down mid-conversation | Network partition | memory_store/recall return error to agent | Agent may mention "I can't access my memory right now" |
-| Slow backend (> 500ms) | Overloaded Postgres/Redis | Agent conversation latency increases | Slower responses; activity log shows memory latency |
-| Data corruption | Disk failure, bad migration | Memory ops fail consistently | Zombie restarts with empty memory (same as today — no worse) |
-
-**Platform constraints:**
-- SQLite WAL mode does not work on network filesystems (NFS, 9p, CIFS). NullClaw falls back to DELETE journal mode automatically (`sqlite.zig:37-48`). If Fly Volumes use 9p mounts, this applies.
-- Postgres `pgvector` extension is required for hybrid recall (`postgres_hybrid` profile). Verify availability on Fly Postgres before selecting this profile.
-
----
-
-## 6.0 Implementation Constraints (Enforceable)
-
-**Status:** PENDING
-
-| Constraint | How to verify |
-|-----------|---------------|
-| No new Zig files > 400 lines | `wc -l` on all new/modified files |
-| Memory config is optional — omitting it preserves current ephemeral behavior | Unit test: null memory config → ephemeral SQLite (no regression) |
-| Cross-compiles on x86_64-linux, aarch64-linux | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` |
-| Zero impact on zombies that don't use memory tools | Benchmark: zombie without memory tools shows no latency change |
-| Backend selection does not add compile-time dependencies | NullClaw already vendors all backends; no new build.zig.zon entries |
-
----
-
-## 7.0 Test Specification
-
-**Status:** PENDING
-
-### Unit Tests
-
-| Test name | Dimension | Target | Input | Expected |
-|-----------|-----------|--------|-------|----------|
-| memory_config_default_ephemeral | 2.1 | types.zig | null config | falls back to workspace SQLite |
-| memory_config_validates_backend | 2.1 | types.zig | backend="invalid" | returns validation error |
-| namespace_format | 2.2 | runner.zig | zombie_id="zom_01JQ..." | namespace="zmb:zom_01JQ..." |
-| retention_prune_daily | 3.3 | memory config | 100 daily entries older than 72h | pruned to 0 |
-
-### Integration Tests
-
-| Test name | Dimension | Infra needed | Input | Expected |
-|-----------|-----------|-------------|-------|----------|
-| store_destroy_recall | 3.1 | selected backend | store → destroy workspace → recall | fact returned |
-| crash_recovery | 3.2 | selected backend | store → SIGKILL → restart → recall | committed facts returned |
-| zombie_isolation | 2.2 | selected backend | zombie A stores, zombie B recalls same key | zombie B gets nothing |
-
-### Spec-Claim Tracing
-
-| Spec claim | Test that proves it | Test type |
-|-----------|-------------------|-----------|
-| Memory survives workspace destruction | store_destroy_recall | integration |
-| Memory survives process crash | crash_recovery | integration |
-| Zombies cannot read each other's memory | zombie_isolation | integration |
-| Missing config degrades gracefully | memory_config_default_ephemeral | unit |
-
----
-
-## 8.0 Execution Plan (Ordered)
-
-**Status:** PENDING
-
-| Step | Action | Verify |
-|------|--------|--------|
-| 1 | Complete storage backend evaluation (§1.0) — research, benchmark, score | Decision matrix document with recommendation |
-| 2 | Design memory namespace schema for selected backend | Document reviewed |
-| 3 | Extend executor config with MemoryBackendConfig | `zig build test` passes, null config = no regression |
-| 4 | Wire NullClaw MemoryRuntime initialization in runner.zig | Executor starts with memory backend configured |
-| 5 | Implement per-zombie namespace isolation | zombie_isolation integration test passes |
-| 6 | Implement retention/pruning for daily category | retention_prune_daily unit test passes |
-| 7 | Write store_destroy_recall and crash_recovery integration tests | All integration tests pass |
-| 8 | Cross-compile check | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` |
-
----
-
-## 9.0 Acceptance Criteria
-
-**Status:** PENDING
-
-- [ ] Storage backend evaluation complete with scored decision matrix — verify: document exists in spec
-- [ ] `memory_store` in run N → `memory_recall` in run N+1 returns stored fact — verify: `make test-integration` (store_destroy_recall)
-- [ ] Process crash (SIGKILL) does not lose committed memory — verify: `make test-integration` (crash_recovery)
-- [ ] Two concurrent zombies cannot read each other's memory — verify: `make test-integration` (zombie_isolation)
-- [ ] Omitting memory config preserves current ephemeral behavior — verify: `make test` (memory_config_default_ephemeral)
-- [ ] No new file exceeds 400 lines — verify: `wc -l`
-- [ ] Cross-compile passes — verify: `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux`
+| File | Action | Why |
+|------|--------|-----|
+| `schema/024_memory_entries.sql` | CREATE | Dedicated memory DB schema (entries table + indexes) |
+| `schema/embed.zig` | MODIFY | Register the new SQL file as an @embedFile constant |
+| `src/cmd/common.zig` | MODIFY | Add the new migration to the canonical array |
+| `schema/023_core_zombie_sessions.sql` | MODIFY | Fix inaccurate comment (context_json is a bookmark, not memory) |
+| `src/executor/types.zig` | MODIFY | Add `MemoryBackendConfig` struct |
+| `src/executor/runner.zig` | MODIFY | Pass per-zombie MemoryConfig to NullClaw (currently takes defaults) |
+| `src/memory/zombie_memory.zig` | CREATE | NullClaw backend adapter + row-level scoping helpers |
+| `src/memory/export_import.zig` | CREATE | Export to markdown, import from markdown with scope validation |
+| `src/http/handlers/memory_http.zig` | CREATE | `/v1/memory/{store,recall,list,forget}` endpoints (Path B external-agent) |
+| `zombiectl/src/commands/memory.js` | CREATE | `zombiectl memory {enable,status,export,import,forget,scrub}` |
+| `public/openapi.json` | MODIFY | Declare the new memory endpoints |
+| `docs/greptile-learnings/RULES.md` | MODIFY | Add RULE CTX (cross-tenant process boundary) |
 
 ---
 
 ## Applicable Rules
 
-RULE XCC (cross-compile check), RULE FLL (350-line gate), RULE ORP (cross-layer orphan sweep), RULE FLS (drain all results), RULE FLL (350-line gate).
+- **RULE FLS** — drain/flush all pg query result rows before deinit (every query in the memory path)
+- **RULE FLL** — 350-line gate on every touched .zig/.js file
+- **RULE ORP** — cross-layer orphan sweep (if any symbols rename)
+- **RULE XCC** — cross-compile x86_64-linux and aarch64-linux before commit
+- **RULE TXN** — every DELETE/UPDATE in a transaction must ROLLBACK on failure (export/import upserts)
+- **RULE SSM** — StaticStringMap for category enum lookup
+- **RULE ZIG** — init/deinit/ownership conventions for new structs
+- **RULE CTX** (new, added by this workstream) — cross-tenant data requires a process boundary, not a shared filesystem
+- **RULE EP4** — any removed/deprecated endpoint returns HTTP 410 Gone with a named error code (no endpoints are removed in this workstream, but verify on API review)
 
 ---
 
-## Invariants
+## §1 — Memory Database Schema and Role
 
-N/A — no compile-time guardrails.
+**Status:** PENDING
+
+Create a dedicated `memory` database on the existing Postgres cluster, with a
+dedicated `memory_runtime` role that has no access to `core.*` tables. The
+schema is deliberately simple — one table, indexes for the queries we actually run.
+
+**Dimensions (test blueprints):**
+
+| Dim | Status | Target | Input | Expected | Test type |
+|-----|--------|--------|-------|----------|-----------|
+| 1.1 | PENDING | `schema/024_memory_entries.sql` | fresh DB | table `memory.memory_entries` exists with columns `(id, zombie_id, category, key, content, tags, created_at, updated_at)`; UNIQUE on `(zombie_id, category, key)`; B-tree on `(zombie_id, category)`; GIN on `tags` | integration |
+| 1.2 | PENDING | `memory_runtime` role grants | fresh DB after migration | role has SELECT/INSERT/UPDATE/DELETE on `memory.memory_entries`; role has NO access to `core.*` (negative test: `SELECT FROM core.zombies` returns permission denied) | integration |
+| 1.3 | PENDING | `schema/embed.zig` + `src/cmd/common.zig` | `make run-migrations` | new migration runs exactly once; re-run is idempotent; migration array length matches embedFile list | contract |
+| 1.4 | PENDING | `schema/023_core_zombie_sessions.sql` comment fix | read comment after edit | comment describes `context_json` as "conversation resume bookmark storing {last_event_id, last_response}" and explicitly notes it is NOT agent memory | contract |
 
 ---
 
-## Eval Commands
+## §2 — Executor Wiring and Per-Zombie Isolation
+
+**Status:** PENDING
+
+The executor must build a per-zombie `MemoryConfig` and pass it to NullClaw so
+`core` and `daily` categories route to the memory DB while `conversation` stays
+in workspace SQLite. Row-level scoping is enforced at the query layer.
+
+**Dimensions (test blueprints):**
+
+| Dim | Status | Target | Input | Expected | Test type |
+|-----|--------|--------|-------|----------|-----------|
+| 2.1 | PENDING | `src/executor/types.zig:MemoryBackendConfig` | `MemoryBackendConfig{ .backend = "postgres", .connection = "...", .namespace = "zmb:zom_01JQ...", .max_entries = 100000, .daily_retention_hours = 72 }` | struct validates at startup; rejects empty namespace, invalid backend | unit |
+| 2.2 | PENDING | `src/executor/runner.zig:executeInner` | zombie_id `zom_A` running concurrently with `zom_B` | Zombie A's `memory_store("user_pref", "dark")` NOT visible to Zombie B's `memory_recall("user_pref")`; scope enforced via `WHERE zombie_id = $current` in every memory op | integration |
+| 2.3 | PENDING | `src/memory/zombie_memory.zig` | NullClaw calls `memory_store` with category `core` | write goes to `memory.memory_entries` in the memory DB; `conversation` category still writes to workspace SQLite | integration |
+| 2.4 | PENDING | crash recovery path | zombie stores memory, then SIGKILL, then restart | all memory_store calls committed before SIGKILL are recoverable; `UPSERT` semantics (not INSERT) so retried writes don't conflict | integration |
+
+---
+
+## §3 — Export/Import Tool (Human-Readable View)
+
+**Status:** PENDING
+
+Memory is authoritative in Postgres. Markdown files are the human-readable view,
+generated on demand to the operator's laptop (never on the worker filesystem).
+
+**Dimensions (test blueprints):**
+
+| Dim | Status | Target | Input | Expected | Test type |
+|-----|--------|--------|-------|----------|-----------|
+| 3.1 | PENDING | `src/memory/export_import.zig:exportZombie` | zombie with 50 core entries + 10 daily entries | writes one markdown file per entry under `core/` and `daily/` subdirectories; frontmatter contains `key`, `category`, `zombie_id`, `tags`, `created`, `updated`; body is the content verbatim | unit |
+| 3.2 | PENDING | `src/memory/export_import.zig:importZombie` | folder of edited markdown for zombie `zom_abc` | upserts entries scoped to `zom_abc` only; rejects entries whose frontmatter `zombie_id` mismatches; wraps all upserts in a single transaction with ROLLBACK on any failure | integration |
+| 3.3 | PENDING | `zombiectl/src/commands/memory.js` | `zombiectl memory export --zombie zom_abc --out ./mem/` then edit then `zombiectl memory import --zombie zom_abc --from ./mem/` | next `memory_recall` on the edited key returns the edited content (edit-then-replay proof) | integration |
+| 3.4 | PENDING | `src/http/handlers/memory_http.zig` | external agent POSTs `/v1/memory/recall` with agent key | returns entries scoped to the agent's `zombie_id` only; cross-zombie request returns `UZ-MEM-SCOPE` error | integration |
+
+---
+
+## §4 — Memory-Full Policy and Retention
+
+**Status:** PENDING
+
+`daily` category auto-prunes on a schedule. `core` category has a per-zombie
+hard cap for runaway-zombie protection; on overflow the store call errors back
+to the agent loudly. Never silently drop a `core` entry the agent asked to keep.
+
+**Dimensions (test blueprints):**
+
+| Dim | Status | Target | Input | Expected | Test type |
+|-----|--------|--------|-------|----------|-----------|
+| 4.1 | PENDING | daily prune job | 100 `daily` entries older than 72h + 10 younger | older 100 deleted, younger 10 retained; run is idempotent | integration |
+| 4.2 | PENDING | `src/memory/zombie_memory.zig:store` on core overflow | zombie at `max_entries=100000` attempts one more `core` store | store returns `UZ-MEM-FULL` error to agent; no entry written; nothing auto-pruned | integration |
+| 4.3 | PENDING | memory-off default path | zombie without memory config OR memory backend unreachable at startup | executor falls back to ephemeral workspace SQLite; logs `memory.backend_unavailable`; agent continues running | unit |
+| 4.4 | PENDING | `memory_forget` | agent calls `memory_forget("lead_acme_corp")` | entry removed from DB; next `memory_recall` returns empty; operation is idempotent | unit |
+
+---
+
+## Interfaces
+
+**Status:** PENDING
+
+### Public Functions (Zig)
+
+```zig
+// src/executor/types.zig
+pub const MemoryBackendConfig = struct {
+    backend: []const u8,            // "postgres" (future: "redis", "sqlite")
+    connection: []const u8,         // connection string or file path
+    namespace: []const u8,          // "zmb:{zombie_id}" — row-level scope key
+    max_entries: u32 = 100_000,     // hard cap for runaway-zombie protection
+    daily_retention_hours: u32 = 72,
+};
+
+// src/memory/zombie_memory.zig
+pub fn initRuntime(alloc: Allocator, cfg: *const MemoryBackendConfig, zombie_id: []const u8) !MemoryRuntime;
+pub fn store(self: *MemoryRuntime, key: []const u8, category: Category, content: []const u8, tags: []const []const u8) !void;
+pub fn recall(self: *MemoryRuntime, key: []const u8) !?Entry;
+pub fn list(self: *MemoryRuntime, filter: ListFilter) !EntryIter;
+pub fn forget(self: *MemoryRuntime, key: []const u8) !bool;
+
+// src/memory/export_import.zig
+pub fn exportZombie(alloc: Allocator, db: *Pool, zombie_id: []const u8, out_dir: []const u8) !ExportSummary;
+pub fn importZombie(alloc: Allocator, db: *Pool, zombie_id: []const u8, in_dir: []const u8) !ImportSummary;
+```
+
+### CLI Surface
+
+```
+zombiectl zombie memory enable  --zombie <id> [--categories core,daily] [--daily-retention-hours 72]
+zombiectl zombie memory status  --zombie <id>
+zombiectl memory export         --zombie <id> --out <dir>  [--filter "tag:X" | "category:core"]
+zombiectl memory import         --zombie <id> --from <dir> [--mode upsert|replace]
+zombiectl memory forget         --zombie <id> --key <key>
+zombiectl memory scrub          --zombie <id> --pattern <regex>   # PII redaction
+```
+
+### Input Contracts
+
+| Field | Type | Constraints | Example |
+|-------|------|-------------|---------|
+| backend | string | one of: `postgres` (sqlite, redis reserved for future) | `"postgres"` |
+| connection | string | valid Postgres URI | `"postgresql://memory_runtime:..."` |
+| namespace | string | non-empty; pattern `zmb:zom_[0-9A-Z]{26}` | `"zmb:zom_01JQ..."` |
+| category | enum | one of: `core`, `daily`, `conversation`, `workspace` | `"core"` |
+| key | string | 1-255 bytes, UTF-8 | `"lead_acme_corp"` |
+| content | string | 1-16384 bytes | `"Acme Corp — CTO Jane..."` |
+| tags | string[] | 0-32 elements, each 1-64 bytes | `["lead", "enterprise"]` |
+
+### Output Contracts
+
+| Field | Type | When | Example |
+|-------|------|------|---------|
+| `memory.backend_ready` | log line | executor startup success | `backend=postgres namespace=zmb:zom_01JQ...` |
+| `memory.backend_unavailable` | log warning | connection failure | `err=ConnectionRefused — falling back to ephemeral` |
+| `ExportSummary{count, bytes, files}` | struct | `exportZombie` completes | `{count: 47, bytes: 12403, files: 47}` |
+| `ImportSummary{upserted, rejected, errors}` | struct | `importZombie` completes | `{upserted: 45, rejected: 2, errors: []}` |
+
+### Error Contracts
+
+| Error condition | Behavior | Caller sees |
+|----------------|----------|-------------|
+| Memory backend unreachable at startup | Fall back to ephemeral workspace SQLite, log degradation | activity log: `memory degraded — ephemeral only` |
+| Memory backend unreachable mid-run | Memory op returns error to agent; agent continues | `UZ-MEM-UNAVAILABLE` tool error |
+| Core category at max_entries | Reject new store; do NOT prune | `UZ-MEM-FULL` tool error to agent |
+| Import with mismatched `zombie_id` in frontmatter | Reject that entry, continue others, report in summary | `ImportSummary.rejected` with reason |
+| External agent requests another zombie's key | Reject at API layer | HTTP 403 with `UZ-MEM-SCOPE` |
+| Connection pool exhaustion on memory_runtime | Tool error; no cascade to core.* pool | `UZ-MEM-POOL-EXHAUSTED` |
+
+---
+
+## Failure Modes
+
+**Status:** PENDING
+
+| Failure | Trigger | System behavior | User observes |
+|---------|---------|----------------|---------------|
+| Memory DB down at zombie start | Postgres memory cluster unreachable | Fall back to ephemeral workspace SQLite; activity log records degradation | `zombiectl logs` shows "memory degraded — ephemeral only" |
+| Memory DB down mid-run | Network partition | memory_store/recall return error to agent | Agent may say "I can't access my memory right now" |
+| Slow memory backend (>500ms) | Overloaded memory DB | Agent conversation latency increases | Slower responses; activity log shows memory latency |
+| Corrupt or missing entry | Disk failure, bad migration | memory_recall returns empty | Zombie treats the fact as never-learned; same behavior as pre-M14 |
+| Core category overflow | Runaway zombie or explicit 100k entries | `UZ-MEM-FULL` to agent | Agent surfaces "my memory is full — please review" |
+| Edit-then-replay with wrong zombie_id | Operator pointed import at wrong zombie | Import rejects mismatched entries; summary lists rejections | Operator sees rejection count |
+| PII in memory that should have been scrubbed | Skill template didn't redact before store | `zombiectl memory scrub` removes post-hoc | Support/compliance can verify scrub ran |
+
+**Platform constraints:**
+- Memory DB is a separate database on the same Postgres cluster (not a separate instance). Shared CPU/IO/WAL with `core.*` — monitor for noisy-neighbor; escalation path is a separate instance.
+- `memory_runtime` role must have zero access to `core.*` (verify with negative test).
+- NullClaw `postgres_keyword` profile is the target — `postgres_hybrid` not used (no pgvector).
+
+---
+
+## Implementation Constraints (Enforceable)
+
+**Status:** PENDING
+
+| Constraint | How to verify |
+|-----------|---------------|
+| No new Zig file > 350 lines (RULE FLL) | `wc -l` on every new file |
+| Cross-compiles on x86_64-linux, aarch64-linux (RULE XCC) | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` |
+| Every `conn.query()` has `.drain()` before `deinit()` (RULE FLS) | `make check-pg-drain` |
+| Memory config optional — null config preserves current ephemeral behavior | Unit test: null → workspace SQLite, no regression |
+| `memory_runtime` role has zero `core.*` grants | Integration negative test: `SELECT FROM core.zombies AS memory_runtime` → permission denied |
+| Zero new build.zig.zon entries | NullClaw already vendors the backends; no new deps |
+| Export never writes to a path under the worker's filesystem | CLI writes under caller's CWD; server handler returns bytes, caller writes |
+
+---
+
+## Invariants (Hard Guardrails)
+
+**Status:** PENDING
+
+| # | Invariant | Enforcement mechanism |
+|---|-----------|----------------------|
+| 1 | Every memory operation includes `WHERE zombie_id = $current` | Query-builder wrapper; grep in CI to verify no raw SQL bypasses it |
+| 2 | `MemoryBackendConfig.namespace` matches `zmb:zom_[0-9A-Z]{26}` pattern | comptime regex validation in `init` |
+| 3 | `Category` enum has exactly four variants (`core`, `daily`, `conversation`, `workspace`) | Zig enum exhaustiveness check at comptime |
+
+---
+
+## Test Specification
+
+**Status:** PENDING
+
+### Unit Tests
+
+| Test name | Dim | Target | Input | Expected |
+|-----------|-----|--------|-------|----------|
+| `memory_config_default_ephemeral` | 4.3 | `types.zig` | null config | falls back to workspace SQLite |
+| `memory_config_validates_backend` | 2.1 | `types.zig` | `backend="invalid"` | returns validation error |
+| `memory_config_namespace_format` | 2.1 | `types.zig` | namespace `"zmb:zom_01JQ..."` | validates; empty namespace errors |
+| `category_enum_exhaustive` | 2.3 | `zombie_memory.zig` | all four variants | compiles; fifth variant = compile error |
+| `memory_full_errors_core` | 4.2 | `zombie_memory.zig` | zombie at `max_entries`, store attempt | returns `UZ-MEM-FULL` |
+| `memory_forget_idempotent` | 4.4 | `zombie_memory.zig` | forget non-existent key | returns false, no error |
+
+### Integration Tests
+
+| Test name | Dim | Infra needed | Input | Expected |
+|-----------|-----|-------------|-------|----------|
+| `store_destroy_recall` | 2.4 | memory DB | store in run N, destroy workspace, recall in run N+1 | fact returned |
+| `crash_recovery` | 2.4 | memory DB | store → SIGKILL → restart → recall | committed facts returned |
+| `zombie_isolation` | 2.2 | memory DB | A stores, B recalls same key | B gets nothing |
+| `daily_prune_72h` | 4.1 | memory DB + clock fast-forward | 100 daily entries, 50 aged >72h | 50 deleted |
+| `memory_role_no_core_access` | 1.2 | memory DB | `SELECT FROM core.zombies AS memory_runtime` | permission denied |
+| `export_import_roundtrip` | 3.3 | memory DB | export → no edits → import | zero diff |
+| `edit_then_replay` | 3.3 | memory DB | export → edit one entry → import → recall | edited content returned |
+| `import_rejects_mismatched_zombie` | 3.2 | memory DB | import with wrong zombie_id in frontmatter | entry rejected, summary reports it |
+| `external_agent_scope_enforced` | 3.4 | memory DB + http | agent key for zom_A requests zom_B recall | 403 `UZ-MEM-SCOPE` |
+
+### Negative Tests (error paths that MUST fail)
+
+| Test name | Dim | Input | Expected error |
+|-----------|-----|-------|---------------|
+| `reject_empty_namespace` | 2.1 | namespace `""` | config validation error |
+| `reject_invalid_category` | 2.3 | store with category `"garbage"` | compile error (enum) |
+| `reject_cross_zombie_recall_via_api` | 3.4 | external agent for zom_A, key in zom_B | HTTP 403 |
+| `reject_import_mismatch` | 3.2 | import with frontmatter zombie_id ≠ arg | rejected entry in summary |
+
+### Edge Case Tests (boundary values)
+
+| Test name | Dim | Input | Expected |
+|-----------|-----|-------|----------|
+| `content_max_length` | 2.3 | 16384-byte content | stored successfully |
+| `content_over_max` | 2.3 | 16385-byte content | validation error |
+| `tag_count_max` | 2.3 | 32-tag array | stored; 33 tags → validation error |
+| `unicode_key` | 2.3 | key with multibyte UTF-8 | stored and recalled bit-identical |
+| `concurrent_upsert_same_key` | 2.2 | zombie A updates same key from two processes | one wins, no error, no lost update (UPSERT semantics) |
+
+### Regression Tests (pre-existing behavior that MUST NOT change)
+
+| Test name | What it guards | File |
+|-----------|---------------|------|
+| `zombie_sessions_context_json_unchanged` | `core.zombie_sessions.context_json` format stays `{last_event_id, last_response}` | `src/zombie/event_loop_test.zig` |
+| `workspace_sqlite_still_handles_conversation` | NullClaw `conversation` category still writes to workspace SQLite | `src/executor/runner_test.zig` |
+
+### Leak Detection Tests
+
+| Test name | Dim | What it proves |
+|-----------|-----|---------------|
+| `export_zero_leaks` | 3.1 | std.testing.allocator detects zero leaks after exportZombie |
+| `import_zero_leaks` | 3.2 | std.testing.allocator detects zero leaks after importZombie |
+| `memory_runtime_deinit_clean` | 2.3 | MemoryRuntime.deinit frees all pooled connections |
+
+### Spec-Claim Tracing
+
+| Spec claim | Test that proves it | Test type |
+|-----------|-------------------|-----------|
+| Memory survives workspace destruction | `store_destroy_recall` | integration |
+| Memory survives process crash | `crash_recovery` | integration |
+| Zombies cannot read each other's memory | `zombie_isolation` | integration |
+| Missing config degrades gracefully | `memory_config_default_ephemeral` | unit |
+| `core` overflow errors, does not silently prune | `memory_full_errors_core` | unit |
+| `daily` auto-prunes at 72h | `daily_prune_72h` | integration |
+| Edit-then-replay works end-to-end | `edit_then_replay` | integration |
+| External agent cannot cross zombie scope | `external_agent_scope_enforced` | integration |
+| `memory_runtime` has zero core.* access | `memory_role_no_core_access` | integration |
+
+---
+
+## Execution Plan (Ordered)
+
+**Status:** PENDING
+
+| Step | Action | Verify (must pass before next step) |
+|------|--------|--------------------------------------|
+| 1 | Write `schema/024_memory_entries.sql`; add embed + migration array entries; fix `023_core_zombie_sessions.sql` comment | `make run-migrations && psql memory -c '\dt memory.*'` lists `memory_entries` |
+| 2 | Create `memory_runtime` role with scoped grants; negative test no core.* access | Integration test `memory_role_no_core_access` passes |
+| 3 | Add `MemoryBackendConfig` to `executor/types.zig`; wire `runner.zig` to build config from zombie_id | `zig build test` passes, null config = no regression |
+| 4 | Implement `src/memory/zombie_memory.zig` NullClaw adapter with row-level scoping | Integration test `zombie_isolation` passes |
+| 5 | Implement retention/pruning job for daily category | `daily_prune_72h` passes |
+| 6 | Implement `src/memory/export_import.zig` | `export_import_roundtrip` and `edit_then_replay` pass |
+| 7 | Add `/v1/memory/*` HTTP handlers with scope enforcement | `external_agent_scope_enforced` passes |
+| 8 | Add `zombiectl memory` subcommands | CLI integration test passes |
+| 9 | Update `public/openapi.json` with new endpoints | `make check-openapi-errors` passes |
+| 10 | Add RULE CTX to `docs/greptile-learnings/RULES.md` | rule present and linked from failure-modes |
+| 11 | Cross-compile check | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` |
+| 12 | Full gate: gitleaks, lint, 350-line, pg-drain | Eval block below all PASS |
+
+---
+
+## Acceptance Criteria
+
+**Status:** PENDING
+
+- [ ] `memory_store` in run N → `memory_recall` in run N+1 returns stored fact — verify: `make test-integration` (`store_destroy_recall`)
+- [ ] Process crash (SIGKILL) does not lose committed memory — verify: `make test-integration` (`crash_recovery`)
+- [ ] Two concurrent zombies cannot read each other's memory — verify: `make test-integration` (`zombie_isolation`)
+- [ ] `core` capacity exceeded errors the agent; never silently prunes — verify: `make test` (`memory_full_errors_core`)
+- [ ] `daily` entries auto-prune at 72h — verify: `make test-integration` (`daily_prune_72h`)
+- [ ] `memory_runtime` role has zero grants on `core.*` — verify: `make test-integration` (`memory_role_no_core_access`)
+- [ ] `zombiectl memory export|import` edit-then-replay round-trips — verify: `make test-integration` (`edit_then_replay`)
+- [ ] External-agent cross-zombie recall is 403 — verify: `make test-integration` (`external_agent_scope_enforced`)
+- [ ] Missing memory config preserves current ephemeral behavior — verify: `make test` (`memory_config_default_ephemeral`)
+- [ ] No new file exceeds 350 lines — verify: `wc -l`
+- [ ] Cross-compile passes — verify: `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux`
+- [ ] Gitleaks passes on diff — verify: `gitleaks detect`
+- [ ] RULE CTX added to RULES.md — verify: `grep -c "RULE CTX" docs/greptile-learnings/RULES.md` = 1
+- [ ] SQL comment on `schema/023_core_zombie_sessions.sql` corrected — verify: `grep -c "NOT agent memory" schema/023_core_zombie_sessions.sql` = 1
+
+---
+
+## Eval Commands (Post-Implementation Verification)
+
+**Status:** PENDING
 
 ```bash
 # E1: Build
 zig build 2>&1 | head -5; echo "build=$?"
 
-# E2: Tests
+# E2: Unit + integration tests
 make test 2>&1 | tail -5; echo "test=$?"
+make test-integration 2>&1 | tail -5; echo "test-int=$?"
 
-# E3: Lint
+# E3: Cross-compile
+zig build -Dtarget=x86_64-linux 2>&1 | tail -3; echo "xc_x86=$?"
+zig build -Dtarget=aarch64-linux 2>&1 | tail -3; echo "xc_arm=$?"
+
+# E4: Lint + pg-drain
 make lint 2>&1 | grep -E "✓|FAIL"
-
-# E4: Gitleaks
-gitleaks detect 2>&1 | tail -3; echo "gitleaks=$?"
+make check-pg-drain 2>&1 | tail -3; echo "drain=$?"
 
 # E5: 350-line gate (exempts .md)
 git diff --name-only origin/main | grep -v '\.md$' | xargs wc -l 2>/dev/null | awk '$1 > 350 { print "OVER: " $2 ": " $1 }'
 
-# E6: Cross-compile
-zig build -Dtarget=x86_64-linux 2>&1 | tail -3; echo "xc_x86=$?"
-zig build -Dtarget=aarch64-linux 2>&1 | tail -3; echo "xc_arm=$?"
+# E6: Gitleaks
+gitleaks detect 2>&1 | tail -3; echo "gitleaks=$?"
 
-# E7: Memory leak check
-make check-pg-drain 2>&1 | tail -3; echo "drain=$?"
+# E7: OpenAPI consistency
+make check-openapi-errors 2>&1 | tail -3; echo "openapi=$?"
+
+# E8: RULE CTX present
+grep -c "RULE CTX" docs/greptile-learnings/RULES.md; echo "ctx_rule=$?"
+
+# E9: SQL comment corrected
+grep -c "NOT agent memory" schema/023_core_zombie_sessions.sql; echo "sql_comment=$?"
 ```
 
 ---
 
 ## Dead Code Sweep
 
-N/A — no files deleted.
+**Status:** PENDING
+
+N/A — no files deleted in this workstream. The schema comment correction is a
+textual edit, not a symbol removal.
 
 ---
 
@@ -320,17 +428,22 @@ N/A — no files deleted.
 |-------|---------|--------|-------|
 | Unit tests | `make test` | | |
 | Integration tests | `make test-integration` | | |
-| Cross-compile | `zig build -Dtarget=x86_64-linux` | | |
+| Cross-compile x86 | `zig build -Dtarget=x86_64-linux` | | |
+| Cross-compile arm | `zig build -Dtarget=aarch64-linux` | | |
 | Lint | `make lint` | | |
-| 400L gate | `wc -l` | | |
-| Backend evaluation | review §1.0 document | | |
+| pg-drain | `make check-pg-drain` | | |
+| 350L gate | `wc -l` (exempts .md) | | |
+| Gitleaks | `gitleaks detect` | | |
+| OpenAPI | `make check-openapi-errors` | | |
 
 ---
 
 ## Out of Scope
 
-- Vector/semantic search optimization (use whatever NullClaw's selected profile provides out of the box)
-- Cross-zombie shared memory (knowledge sharing between zombies in a workspace) — future milestone
-- Memory migration tooling (export/import between backends) — not needed until multi-backend is real
-- Memory UI in dashboard — separate milestone (M12 or later)
-- Workspace-level shared facts (all zombies in a workspace see common context) — future milestone
+- **Vector / semantic search.** Deferred unless evidence shows LLM-in-context retrieval is inadequate. Adding an `embedding` column + ivfflat index later is an additive migration, not a redesign.
+- **Cross-zombie shared memory** (one zombie reads another's core). Future milestone; requires a consent/sharing model.
+- **Memory migration tooling between backends** (Postgres ↔ Dragonfly ↔ markdown). Not needed until multi-backend is real.
+- **Memory dashboard UI** — separate workstream: M14_003.
+- **Per-archetype memory policies (skill templates)** — separate workstream: M14_002.
+- **Memory-effectiveness metrics** — separate workstream: M14_004.
+- **PII redaction policy engine.** `zombiectl memory scrub` ships with regex-only support; policy-driven redaction is a future milestone.

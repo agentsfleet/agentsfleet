@@ -387,3 +387,10 @@ Reference a rule as `RULE NDC`, `RULE OWN`, etc.
 **Why:** bvisor/src/core shows these patterns consistently. Deviating breaks the ownership contract — missed errdefer means memory leak on partial init; missing ROLLBACK on deinit-equivalent means inconsistent state.
 **Tags:** zig, memory, ownership, patterns
 **Ref:** bvisor src/core/Supervisor.zig, Thread.zig, ThreadGroup.zig, OverlayRoot.zig, LogBuffer.zig.
+
+## RULE CTX — Cross-tenant data requires a process boundary, not a shared filesystem
+
+**Rule:** Any data that a sandboxed agent must not read across tenant boundaries (zombie, workspace, customer) must live behind a process boundary — a database, a network service, or an authenticated API. A shared filesystem (bind-mounted volume, NFS, host directory) shared between sibling sandboxes is never acceptable, even if the data is "scoped" by path convention.
+**Why:** The memory-tool API enforces zombie_id scoping on `memory_recall`. But if the underlying store is a bind-mounted `/var/lib/zombie-memory/{zombie_id}/` directory and the agent has ANY shell or file-read tool (Bash, code execution, Read-file), the agent can bypass the memory API entirely: `cat /var/lib/zombie-memory/zom_other/core/*.md`. This is the classic confused-deputy pattern — the API's scoping checks are bypassed by a different tool that has broader filesystem permissions. Moving the store to a process boundary (Postgres with `memory_runtime` role, different protocol, different credentials) makes cross-tenant access structurally impossible, not just policy-enforced.
+**Tags:** security, architecture, multi-tenancy, confused-deputy
+**Ref:** M14_001 design review — original draft proposed SQLite on a persistent host volume; rejected because agent shell tools could read sibling zombies' directories. Storage moved to a dedicated Postgres database with a scoped `memory_runtime` role. The rule generalizes: it applies to any future cross-tenant data (per-workspace caches, per-customer artifacts, per-zombie workspaces).
