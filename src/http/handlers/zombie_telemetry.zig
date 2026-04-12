@@ -63,7 +63,11 @@ pub fn handleZombieTelemetry(
         return;
     }
 
-    const rows = store.listTelemetryForZombie(conn, alloc, workspace_id, zombie_id, limit, cursor) catch {
+    const rows = store.listTelemetryForZombie(conn, alloc, workspace_id, zombie_id, limit, cursor) catch |err| {
+        if (err == error.InvalidCursor) {
+            common.errorResponse(res, ec.ERR_INVALID_REQUEST, "invalid cursor", req_id);
+            return;
+        }
         common.internalDbError(res, req_id);
         return;
     };
@@ -106,7 +110,11 @@ pub fn handleInternalTelemetry(
     const zombie_id = qs.get("zombie_id");
     const after_ms: ?i64 = blk: {
         const raw = qs.get("after") orelse break :blk null;
-        break :blk std.fmt.parseInt(i64, raw, 10) catch null;
+        const parsed = std.fmt.parseInt(i64, raw, 10) catch {
+            common.errorResponse(res, ec.ERR_INVALID_REQUEST, "after must be epoch ms (integer)", req_id);
+            return;
+        };
+        break :blk parsed;
     };
 
     const conn = ctx.pool.acquire() catch {

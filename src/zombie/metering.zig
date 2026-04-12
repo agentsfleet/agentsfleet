@@ -156,7 +156,7 @@ pub fn recordZombieDelivery(
     // Root span — zombie delivery has no inbound HTTP traceparent.
     // Skipped when epoch_wall_time_ms=0 (gate-blocked or pre-M18 path).
     if (epoch_wall_time_ms > 0) {
-        const start_ns: u64 = @intCast(epoch_wall_time_ms * 1_000_000);
+        const start_ns: u64 = @as(u64, @intCast(epoch_wall_time_ms)) * 1_000_000;
         const end_ns: u64 = start_ns + agent_seconds * 1_000_000_000;
         const tctx = trace.TraceContext.generate();
         var span = otel_traces.buildSpan(tctx, "zombie.delivery", start_ns, end_ns);

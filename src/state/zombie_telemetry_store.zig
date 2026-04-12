@@ -149,11 +149,14 @@ pub fn makeCursor(alloc: std.mem.Allocator, row: TelemetryRow) ![]u8 {
 
 const ParsedCursor = struct { recorded_at: i64, id: []const u8 };
 
+// Max cursor id segment: UUID-format IDs are ≤36 chars; 128 is a generous cap.
+const CURSOR_ID_MAX_LEN: usize = 128;
+
 fn parseCursor(cursor: []const u8) !ParsedCursor {
     const sep = std.mem.indexOf(u8, cursor, ":") orelse return error.InvalidCursor;
     const ts = std.fmt.parseInt(i64, cursor[0..sep], 10) catch return error.InvalidCursor;
     const id = cursor[sep + 1 ..];
-    if (id.len == 0) return error.InvalidCursor;
+    if (id.len == 0 or id.len > CURSOR_ID_MAX_LEN) return error.InvalidCursor;
     return .{ .recorded_at = ts, .id = id };
 }
 
