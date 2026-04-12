@@ -173,13 +173,14 @@ pub fn renderPrometheus(
     try appendMetric(writer, "zombie_tokens_total", "counter", "Total tokens consumed across zombie deliveries.", s.zombie_tokens_total);
     {
         const zh = s.zombie_execution_seconds;
-        try writer.print("# HELP zombie_execution_seconds Zombie event execution wall-time in seconds.\n", .{});
+        try writer.print("# HELP zombie_execution_seconds Zombie event end-to-end wall-time in seconds.\n", .{});
         try writer.print("# TYPE zombie_execution_seconds histogram\n", .{});
-        for (mc.ZombieDurationBuckets, 0..) |le, i| {
-            try writer.print("zombie_execution_seconds_bucket{{le=\"{d}\"}} {d}\n", .{ le, zh.buckets[i] });
+        // Buckets stored as ms; emit le and sum as fractional seconds (Prometheus base unit).
+        for (mc.ZombieDurationBucketsMs, 0..) |le_ms, i| {
+            try writer.print("zombie_execution_seconds_bucket{{le=\"{d:.3}\"}} {d}\n", .{ @as(f64, @floatFromInt(le_ms)) / 1000.0, zh.buckets[i] });
         }
         try writer.print("zombie_execution_seconds_bucket{{le=\"+Inf\"}} {d}\n", .{zh.count});
-        try writer.print("zombie_execution_seconds_sum {d}\n", .{zh.sum});
+        try writer.print("zombie_execution_seconds_sum {d:.3}\n", .{@as(f64, @floatFromInt(zh.sum)) / 1000.0});
         try writer.print("zombie_execution_seconds_count {d}\n", .{zh.count});
     }
 

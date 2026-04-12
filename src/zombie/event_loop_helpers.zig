@@ -149,6 +149,8 @@ pub fn logDeliveryResult(
         });
         metrics_counters.incZombiesFailed();
     }
+    // Worker thread has no user context — distinct_id = workspace_id so events
+    // group under the owning workspace (consistent with ZombieTriggered in webhooks).
     if (cfg.telemetry) |tel| {
         tel.capture(telemetry_mod.ZombieCompleted, .{
             .distinct_id = session.workspace_id,

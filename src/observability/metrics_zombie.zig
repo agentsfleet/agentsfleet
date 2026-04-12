@@ -4,10 +4,13 @@
 
 const std = @import("std");
 
-pub const ZombieDurationBuckets = [_]u64{ 1, 5, 10, 30, 60, 120, 300, 600 };
+// Buckets are stored in milliseconds; rendered as fractional seconds in
+// metrics_render (Prometheus base unit is seconds). Sub-second buckets capture
+// fast deliveries — most zombies complete well under 1s.
+pub const ZombieDurationBucketsMs = [_]u64{ 100, 500, 1_000, 5_000, 10_000, 30_000, 60_000, 300_000, 600_000 };
 
 pub const ZombieHistogramSnapshot = struct {
-    buckets: [ZombieDurationBuckets.len]u64 = [_]u64{0} ** ZombieDurationBuckets.len,
+    buckets: [ZombieDurationBucketsMs.len]u64 = [_]u64{0} ** ZombieDurationBucketsMs.len,
     count: u64 = 0,
     sum: u64 = 0,
 };
@@ -26,8 +29,8 @@ var g_failed = std.atomic.Value(u64).init(0);
 var g_tokens = std.atomic.Value(u64).init(0);
 var g_hist_count = std.atomic.Value(u64).init(0);
 var g_hist_sum = std.atomic.Value(u64).init(0);
-var g_hist_buckets: [ZombieDurationBuckets.len]std.atomic.Value(u64) = blk: {
-    var arr: [ZombieDurationBuckets.len]std.atomic.Value(u64) = undefined;
+var g_hist_buckets: [ZombieDurationBucketsMs.len]std.atomic.Value(u64) = blk: {
+    var arr: [ZombieDurationBucketsMs.len]std.atomic.Value(u64) = undefined;
     for (&arr) |*b| b.* = std.atomic.Value(u64).init(0);
     break :blk arr;
 };
@@ -48,13 +51,14 @@ pub fn addZombieTokens(n: u64) void {
     _ = g_tokens.fetchAdd(n, .monotonic);
 }
 
+/// Observe a zombie execution wall-time. Storage is milliseconds so sub-second
+/// buckets retain resolution; rendering converts le + sum to fractional seconds.
 pub fn observeZombieExecutionSeconds(wall_ms: u64) void {
-    const secs = wall_ms / 1000;
-    for (ZombieDurationBuckets, 0..) |bound, i| {
-        if (secs <= bound) _ = g_hist_buckets[i].fetchAdd(1, .monotonic);
+    for (ZombieDurationBucketsMs, 0..) |bound, i| {
+        if (wall_ms <= bound) _ = g_hist_buckets[i].fetchAdd(1, .monotonic);
     }
     _ = g_hist_count.fetchAdd(1, .monotonic);
-    _ = g_hist_sum.fetchAdd(secs, .monotonic);
+    _ = g_hist_sum.fetchAdd(wall_ms, .monotonic);
 }
 
 pub fn snapshotZombieFields() ZombieFields {
@@ -96,6 +100,6 @@ test "inc and snapshot" {
     try std.testing.expectEqual(@as(u64, 1), s.zombie_failed_total);
     try std.testing.expectEqual(@as(u64, 1500), s.zombie_tokens_total);
     try std.testing.expectEqual(@as(u64, 1), s.zombie_execution_seconds.count);
-    try std.testing.expectEqual(@as(u64, 4), s.zombie_execution_seconds.sum);
+    try std.testing.expectEqual(@as(u64, 4_200), s.zombie_execution_seconds.sum);
     resetForTest();
 }

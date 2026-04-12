@@ -242,6 +242,8 @@ pub fn handleReceiveWebhook(ctx: *Context, req: *httpz.Request, res: *httpz.Resp
     });
 
     metrics_counters.incZombiesTriggered();
+    // Webhook path has no authenticated user — PostHog distinct_id is the workspace
+    // so zombie events group under the owning workspace in funnels/retention.
     ctx.telemetry.capture(telemetry_mod.ZombieTriggered, .{
         .distinct_id = zombie.workspace_id,
         .workspace_id = zombie.workspace_id,

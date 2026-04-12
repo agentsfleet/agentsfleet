@@ -19,7 +19,7 @@ pub const InterruptLatencyBuckets = interrupt_hist.InterruptLatencyBuckets;
 pub const InterruptLatencySnapshot = interrupt_hist.InterruptLatencySnapshot;
 
 const zombie_metrics = @import("metrics_zombie.zig");
-pub const ZombieDurationBuckets = zombie_metrics.ZombieDurationBuckets;
+pub const ZombieDurationBucketsMs = zombie_metrics.ZombieDurationBucketsMs;
 pub const ZombieHistogramSnapshot = zombie_metrics.ZombieHistogramSnapshot;
 pub const incZombiesTriggered = zombie_metrics.incZombiesTriggered;
 pub const incZombiesCompleted = zombie_metrics.incZombiesCompleted;

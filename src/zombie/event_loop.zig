@@ -209,7 +209,8 @@ pub fn deliverEvent(
 
     // M15_002: wall-time spans the full deliver path — gate wait + sandbox — so the
     // histogram reflects end-to-end latency operators see, not just executor time.
-    const t_start_ms = std.time.milliTimestamp();
+    // Monotonic clock so system-clock steps don't skew or negate the duration.
+    const t_start = std.time.Instant.now() catch null;
 
     // M4_001: Approval gate — check before tool execution
     const gate_check = event_loop_gate.checkApprovalGate(alloc, session, event, cfg.pool, cfg.redis);
@@ -237,7 +238,10 @@ pub fn deliverEvent(
     }
 
     const stage_result = try executeInSandbox(alloc, session, event, cfg);
-    const wall_ms: u64 = @intCast(@max(0, std.time.milliTimestamp() - t_start_ms));
+    const wall_ms: u64 = if (t_start) |s| blk: {
+        const now = std.time.Instant.now() catch break :blk 0;
+        break :blk now.since(s) / std.time.ns_per_ms;
+    } else 0;
 
     const response_owned = try alloc.dupe(u8, stage_result.content);
     errdefer alloc.free(response_owned);
