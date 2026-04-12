@@ -112,20 +112,8 @@ test "MAX_BODY_SIZE is 2 MB" {
 // These verify that the new imports (workspace_guards, rbac, etc.)
 // added by the M5 changes resolve without error at compile time.
 
-test "harness_http module imports resolve" {
-    _ = @import("harness_http.zig");
-}
-
 test "workspaces_ops module imports resolve" {
     _ = @import("workspaces_ops.zig");
-}
-
-test "agents module imports resolve" {
-    _ = @import("agents.zig");
-}
-
-test "agents/get module imports resolve" {
-    _ = @import("agents/get.zig");
 }
 
 test "skill_secrets_http module imports resolve" {

@@ -37,14 +37,12 @@ pub const PolicyTier = enum {
 
 pub const EntitlementPolicy = struct {
     tier: PolicyTier,
-    max_profiles: u16,
     max_stages: u16,
     max_distinct_skills: u16,
     allow_custom_skills: bool,
 };
 
 pub const Observed = struct {
-    profile_count: u32 = 0,
     stage_count: u16 = 0,
     distinct_skill_count: u16 = 0,
     config_version_id: ?[]const u8 = null,
@@ -52,7 +50,6 @@ pub const Observed = struct {
 
 pub const EnforcementError = error{
     EntitlementMissing,
-    EntitlementProfileLimit,
     EntitlementStageLimit,
     EntitlementSkillNotAllowed,
     InvalidCompiledProfile,
@@ -66,7 +63,7 @@ fn parseTier(raw: []const u8) ?PolicyTier {
 
 fn loadPolicy(conn: *pg.Conn, workspace_id: []const u8) !EntitlementPolicy {
     var q = PgQuery.from(try conn.query(
-        \\SELECT plan_tier, max_profiles, max_stages, max_distinct_skills, allow_custom_skills
+        \\SELECT plan_tier, max_stages, max_distinct_skills, allow_custom_skills
         \\FROM workspace_entitlements
         \\WHERE workspace_id = $1
         \\LIMIT 1
@@ -77,34 +74,19 @@ fn loadPolicy(conn: *pg.Conn, workspace_id: []const u8) !EntitlementPolicy {
     // Read all column values before drain — row buffer lives in conn reader.
     const tier_raw = try row.get([]const u8, 0);
     const tier = parseTier(tier_raw) orelse return EnforcementError.EntitlementMissing;
-    const max_profiles_i32 = try row.get(i32, 1);
-    const max_stages_i32 = try row.get(i32, 2);
-    const max_distinct_skills_i32 = try row.get(i32, 3);
-    const allow_custom_skills = try row.get(bool, 4);
-    if (max_profiles_i32 <= 0 or max_stages_i32 <= 0 or max_distinct_skills_i32 <= 0) {
+    const max_stages_i32 = try row.get(i32, 1);
+    const max_distinct_skills_i32 = try row.get(i32, 2);
+    const allow_custom_skills = try row.get(bool, 3);
+    if (max_stages_i32 <= 0 or max_distinct_skills_i32 <= 0) {
         return EnforcementError.EntitlementMissing;
     }
 
     return .{
         .tier = tier,
-        .max_profiles = @intCast(max_profiles_i32),
         .max_stages = @intCast(max_stages_i32),
         .max_distinct_skills = @intCast(max_distinct_skills_i32),
         .allow_custom_skills = allow_custom_skills,
     };
-}
-
-fn countWorkspaceProfiles(conn: *pg.Conn, workspace_id: []const u8) !u32 {
-    var q = PgQuery.from(try conn.query(
-        "SELECT COUNT(*)::BIGINT FROM agent_profiles WHERE workspace_id = $1",
-        .{workspace_id},
-    ));
-    defer q.deinit();
-
-    const row = (try q.next()) orelse return 0;
-    const count = try row.get(i64, 0);
-    if (count <= 0) return 0;
-    return @intCast(count);
 }
 
 fn evaluateProfile(
@@ -161,7 +143,6 @@ fn insertAuditSnapshot(
     const policy_json = if (policy) |p|
         try std.json.Stringify.valueAlloc(alloc, .{
             .plan_tier = p.tier.label(),
-            .max_profiles = p.max_profiles,
             .max_stages = p.max_stages,
             .max_distinct_skills = p.max_distinct_skills,
             .allow_custom_skills = p.allow_custom_skills,
@@ -171,7 +152,6 @@ fn insertAuditSnapshot(
     defer alloc.free(policy_json);
 
     const observed_json = try std.json.Stringify.valueAlloc(alloc, .{
-        .profile_count = observed.profile_count,
         .stage_count = observed.stage_count,
         .distinct_skill_count = observed.distinct_skill_count,
         .config_version_id = observed.config_version_id,
@@ -222,12 +202,6 @@ pub fn enforceWithAudit(
         return err;
     };
 
-    observed.profile_count = try countWorkspaceProfiles(conn, workspace_id);
-    if (observed.profile_count > policy.max_profiles) {
-        try insertAuditSnapshot(conn, alloc, workspace_id, boundary, "DENY", error_codes.ERR_ENTITLEMENT_PROFILE_LIMIT, policy.tier, policy, observed, actor);
-        return EnforcementError.EntitlementProfileLimit;
-    }
-
     if (try evaluateProfile(alloc, policy, compiled_profile_json, &observed)) |reason_code| {
         if (std.mem.eql(u8, reason_code, error_codes.ERR_ENTITLEMENT_STAGE_LIMIT)) {
             try insertAuditSnapshot(conn, alloc, workspace_id, boundary, "DENY", reason_code, policy.tier, policy, observed, actor);
@@ -237,7 +211,7 @@ pub fn enforceWithAudit(
         return EnforcementError.EntitlementSkillNotAllowed;
     }
 
-    log.debug("entitlement.allow workspace_id={s} boundary={s} tier={s} profiles={d} stages={d}", .{ workspace_id, boundary.label(), policy.tier.label(), observed.profile_count, observed.stage_count });
+    log.debug("entitlement.allow workspace_id={s} boundary={s} tier={s} stages={d}", .{ workspace_id, boundary.label(), policy.tier.label(), observed.stage_count });
     try insertAuditSnapshot(conn, alloc, workspace_id, boundary, "ALLOW", "ALLOW", policy.tier, policy, observed, actor);
 }
 
@@ -255,7 +229,6 @@ test "unit: evaluateProfile rejects disallowed skill with stable reason code" {
     var observed: Observed = .{};
     const reason = try evaluateProfile(std.testing.allocator, .{
         .tier = .free,
-        .max_profiles = 1,
         .max_stages = 3,
         .max_distinct_skills = 3,
         .allow_custom_skills = false,
@@ -279,7 +252,6 @@ test "unit: evaluateProfile rejects stage limits deterministically" {
     var observed: Observed = .{};
     const reason = try evaluateProfile(std.testing.allocator, .{
         .tier = .free,
-        .max_profiles = 1,
         .max_stages = 3,
         .max_distinct_skills = 3,
         .allow_custom_skills = false,
@@ -304,7 +276,6 @@ test "T6: evaluateProfile returns null (ALLOW) for SCALE tier with custom skill"
     var observed: Observed = .{};
     const reason = try evaluateProfile(std.testing.allocator, .{
         .tier = .scale,
-        .max_profiles = 5,
         .max_stages = 10,
         .max_distinct_skills = 10,
         .allow_custom_skills = true,
@@ -318,7 +289,6 @@ test "T6: evaluateProfile returns null (ALLOW) when compiled_profile_json is nul
     var observed: Observed = .{};
     const reason = try evaluateProfile(std.testing.allocator, .{
         .tier = .free,
-        .max_profiles = 1,
         .max_stages = 3,
         .max_distinct_skills = 3,
         .allow_custom_skills = false,
@@ -342,7 +312,6 @@ test "T6: evaluateProfile reports correct distinct_skill_count with repeated ski
     var observed: Observed = .{};
     _ = try evaluateProfile(std.testing.allocator, .{
         .tier = .free,
-        .max_profiles = 1,
         .max_stages = 4,
         .max_distinct_skills = 3,
         .allow_custom_skills = false,
@@ -369,7 +338,6 @@ test "T8: free tier ALLOWS all three default skills (invariant before and after 
     var observed: Observed = .{};
     const reason = try evaluateProfile(std.testing.allocator, .{
         .tier = .free,
-        .max_profiles = 1,
         .max_stages = 3,
         .max_distinct_skills = 3,
         .allow_custom_skills = false,
@@ -393,7 +361,6 @@ test "T8: free tier DENIES when custom skill is added alongside default skills" 
     var observed: Observed = .{};
     const reason = try evaluateProfile(std.testing.allocator, .{
         .tier = .free,
-        .max_profiles = 1,
         .max_stages = 3,
         .max_distinct_skills = 3,
         .allow_custom_skills = false,
@@ -418,7 +385,6 @@ test "T8: free tier DENIES skill_id with surrounding whitespace (no bypass via p
     var observed: Observed = .{};
     const reason = try evaluateProfile(std.testing.allocator, .{
         .tier = .free,
-        .max_profiles = 1,
         .max_stages = 3,
         .max_distinct_skills = 3,
         .allow_custom_skills = false,
@@ -439,7 +405,6 @@ test "M20_001 T1: SCALE tier with allow_custom_skills=true ALLOWS clawhub:// ski
     var observed: Observed = .{};
     const reason = try evaluateProfile(std.testing.allocator, .{
         .tier = .scale,
-        .max_profiles = 10,
         .max_stages = 5,
         .max_distinct_skills = 5,
         .allow_custom_skills = true,
@@ -460,7 +425,6 @@ test "M20_001 T6 integration: custom role_ids (planner/coder/reviewer) with defa
     var observed: Observed = .{};
     const reason = try evaluateProfile(std.testing.allocator, .{
         .tier = .free,
-        .max_profiles = 1,
         .max_stages = 3,
         .max_distinct_skills = 3,
         .allow_custom_skills = false,
@@ -473,7 +437,7 @@ test "M20_001 T6 integration: custom skill DENIED on free tier" {
         \\{"agent_id":"ms","stages":[{"stage_id":"plan","role":"planner","skill":"echo"},{"stage_id":"implement","role":"coder","skill":"custom-analyzer"},{"stage_id":"verify","role":"reviewer","skill":"warden","gate":true,"on_pass":"done","on_fail":"retry"}]}
     ;
     var observed: Observed = .{};
-    const reason = try evaluateProfile(std.testing.allocator, .{ .tier = .free, .max_profiles = 1, .max_stages = 3, .max_distinct_skills = 3, .allow_custom_skills = false }, raw, &observed);
+    const reason = try evaluateProfile(std.testing.allocator, .{ .tier = .free, .max_stages = 3, .max_distinct_skills = 3, .allow_custom_skills = false }, raw, &observed);
     try std.testing.expect(reason != null);
     try std.testing.expectEqualStrings(error_codes.ERR_ENTITLEMENT_SKILL_NOT_ALLOWED, reason.?);
 }

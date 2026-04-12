@@ -65,11 +65,10 @@ test "T1: distinct_id defaults to system for events without it" {
     try std.testing.expectEqualStrings("system", last.distinctId());
 }
 
-test "T1: all 16 event types can be captured without error" {
+test "T1: all 14 event types can be captured without error" {
     var t = telemetry.Telemetry.initTest();
     t.capture(telemetry.AgentCompleted, .{ .distinct_id = "u", .run_id = "r", .workspace_id = "w", .actor = "a", .tokens = 10, .duration_ms = 50, .exit_status = "ok" });
     t.capture(telemetry.EntitlementRejected, .{ .distinct_id = "u", .workspace_id = "w", .boundary = "COMPILE", .reason_code = "ERR", .request_id = "r" });
-    t.capture(telemetry.ProfileActivated, .{ .distinct_id = "u", .workspace_id = "w", .agent_id = "a", .config_version_id = "v", .run_snapshot_version = "v", .request_id = "r" });
     t.capture(telemetry.BillingLifecycleEvent, .{ .distinct_id = "u", .workspace_id = "w", .event_type = "PAYMENT_FAILED", .reason = "r", .plan_tier = "SCALE", .billing_status = "GRACE", .request_id = "r" });
     t.capture(telemetry.ServerStarted, .{ .port = 3000 });
     t.capture(telemetry.WorkerStarted, .{ .concurrency = 4 });
@@ -80,10 +79,9 @@ test "T1: all 16 event types can be captured without error" {
     t.capture(telemetry.WorkspaceGithubConnected, .{ .workspace_id = "w", .installation_id = "12345", .request_id = "r" });
     t.capture(telemetry.AuthLoginCompleted, .{ .distinct_id = "u", .session_id = "s", .request_id = "r" });
     t.capture(telemetry.AuthRejected, .{ .reason = "token_expired", .request_id = "r" });
-    t.capture(telemetry.RunOrphanNoAgentProfile, .{ .distinct_id = "u", .run_id = "r", .workspace_id = "w" });
     t.capture(telemetry.ZombieTriggered, .{ .distinct_id = "w", .workspace_id = "w", .zombie_id = "z", .event_id = "e", .source = "webhook" });
     t.capture(telemetry.ZombieCompleted, .{ .distinct_id = "w", .workspace_id = "w", .zombie_id = "z", .event_id = "e", .tokens = 100, .wall_ms = 2000, .exit_status = "processed" });
-    try telemetry.TestBackend.assertCount(16);
+    try telemetry.TestBackend.assertCount(14);
     try telemetry.TestBackend.assertLastEventIs(.zombie_completed);
 }
 
@@ -243,9 +241,9 @@ test "T4: RunOrphanRecovered.properties includes staleness_ms as integer" {
 
 // ── T7: Regression safety ───────────────────────────────────────────
 
-test "T7: EventKind has exactly 16 variants" {
+test "T7: EventKind has exactly 14 variants" {
     const fields = @typeInfo(telemetry.EventKind).@"enum".fields;
-    try std.testing.expectEqual(@as(usize, 16), fields.len);
+    try std.testing.expectEqual(@as(usize, 14), fields.len);
 }
 
 test "T7: EventKind tagName matches expected event name strings" {
@@ -259,7 +257,6 @@ test "T7: EventKind tagName matches expected event name strings" {
 test "T7: each event struct kind constant matches its EventKind variant" {
     try std.testing.expectEqual(telemetry.EventKind.agent_completed, telemetry.AgentCompleted.kind);
     try std.testing.expectEqual(telemetry.EventKind.entitlement_rejected, telemetry.EntitlementRejected.kind);
-    try std.testing.expectEqual(telemetry.EventKind.profile_activated, telemetry.ProfileActivated.kind);
     try std.testing.expectEqual(telemetry.EventKind.billing_lifecycle_event, telemetry.BillingLifecycleEvent.kind);
     try std.testing.expectEqual(telemetry.EventKind.server_started, telemetry.ServerStarted.kind);
     try std.testing.expectEqual(telemetry.EventKind.worker_started, telemetry.WorkerStarted.kind);
@@ -271,7 +268,6 @@ test "T7: each event struct kind constant matches its EventKind variant" {
     try std.testing.expectEqual(telemetry.EventKind.auth_login_completed, telemetry.AuthLoginCompleted.kind);
     try std.testing.expectEqual(telemetry.EventKind.auth_rejected, telemetry.AuthRejected.kind);
     try std.testing.expectEqual(telemetry.EventKind.run_orphan_recovered, telemetry.RunOrphanRecovered.kind);
-    try std.testing.expectEqual(telemetry.EventKind.run_orphan_no_agent_profile, telemetry.RunOrphanNoAgentProfile.kind);
 }
 
 // ── T11: Memory + resource safety ───────────────────────────────────

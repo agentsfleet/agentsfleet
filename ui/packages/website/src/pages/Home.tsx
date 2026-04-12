@@ -17,7 +17,7 @@ const features = [
     number: "02",
     title: "Validation before review",
     description:
-      "Run harness checks before reviewers are pulled in, and attach validation output to every pull request.",
+      "Run validation before reviewers are pulled in, and attach validation output to every pull request.",
   },
   {
     number: "03",

@@ -126,6 +126,40 @@ Execution pattern:
 - Before creating any new `*.zig` file, read `docs/ZIG_RULES.md` and follow its rules first.
 - When writing or reviewing any Zig code that calls `conn.query()`: verify `.drain()` is present in the same function before `deinit()`. Run `make check-pg-drain` to confirm. Use `conn.exec()` instead whenever no result rows are needed.
 - For date-time entries in docs/notes, use format `Feb 02, 2026: 10:30 AM`.
+- Any edit touching `schema/*.sql`, `schema/embed.zig`, or the migration array in `src/cmd/common.zig` — even a one-line fix — invokes the `Schema Table Removal Guard` (section below). No exceptions.
+
+## Schema Table Removal Guard (pre-v2.0.0)
+
+This guard fires on ACTIONS, not lifecycle phases. It runs every time, regardless of whether you are in PLAN, EXECUTE, a bug fix, or an ad-hoc SQL edit.
+
+**Trigger — before any of these, you MUST run `cat VERSION` and state the result in your user-facing message:**
+
+- Creating, editing, or deleting any file under `schema/*.sql`.
+- Editing `schema/embed.zig` (adding or removing an `@embedFile` constant).
+- Editing the canonical migration array in `src/cmd/common.zig`.
+- Writing the tokens `DROP TABLE`, `ALTER TABLE`, or `SELECT 1;` into any SQL file.
+- Accepting a spec dimension that prescribes a "DROP migration", "ALTER migration", or "version marker".
+
+**If `cat VERSION` < 2.0.0 (teardown-rebuild era):**
+
+- To remove a table: (1) `rm schema/NNN_foo.sql`, (2) remove the `@embedFile` constant from `schema/embed.zig`, (3) remove the matching entry from the canonical migration array in `src/cmd/common.zig` and update the array length + any index-based tests.
+- **Forbidden:** `ALTER TABLE`, `DROP TABLE`, `SELECT 1;` placeholders, version-marker files with comment-only content, or any "keep the file for slot numbering" pattern. Migration slot numbers are not sacred pre-v2.0; gaps are fine because the DB is wiped on every rebuild.
+- **If a spec conflicts with this rule, AMEND THE SPEC before execution.** The spec is an instance; this rule is the constant.
+
+**If `cat VERSION` >= 2.0.0 (production-data era):**
+
+- Use proper `ALTER`/`DROP` migrations in new numbered files. The pre-v2.0 teardown branch is no longer valid.
+
+**State the guard output explicitly** in your user-facing message before the edit, in this format:
+
+```
+SCHEMA GUARD: VERSION=0.5.0 (<2.0.0) → full teardown branch.
+  Deleting: schema/008_harness_control_plane.sql
+  Removing: schema.harness_control_plane_sql from embed.zig
+  Removing: version 8 entry from canonicalMigrations()
+```
+
+Skipping the guard output is a rule violation even if the edit itself is correct. If the user issues an explicit override, print `SCHEMA GUARD: SKIPPED per user override (reason: ...)` so the bypass is visible in the log.
 
 ## Specification Standards
 
@@ -264,8 +298,13 @@ Required outputs:
   - [ ] **`zombiectl` CLI changes** — does this change require new subcommands, flags, or output format changes in the npm CLI? If yes, note that the project manager must approve CLI surface changes (create a skill ticket if needed).
   - [ ] **User-facing doc changes** — do docs at `docs.usezombie.com` need updating? If yes, list pages.
   - [ ] **Release notes** — will this ship as a version bump? If yes, note the version (minor for features, patch for fixes) and update `/Users/kishore/Projects/docs/changelog.mdx` with a new `<Update>` block during CHORE(close).
-  - [ ] **Schema changes** — does this change add/modify/remove database tables, columns, or constraints? If yes: (a) each new SQL file must be ≤100 lines and single-concern (one table or one logical group), (b) update `schema/embed.zig` and `src/cmd/common.zig` migration array, (c) verify `docs/SCHEMA_CONVENTIONS.md` is followed. Full teardown-rebuild is allowed until v0.5.0 — no ALTER migrations needed.
-  - [ ] **Schema teardown (pre-production only)** — if removing tables before first production deploy: edit `CREATE TABLE` source files directly (no DROP migrations). When all tables in a file are removed, keep the file as a version marker with a comment (`-- MN_WS: removed. Kept as version marker.`). Never delete migration files — later migrations depend on slot numbering. See `docs/greptile-learnings/RULES.md` rule 41.
+  - [ ] **Schema changes** — does this change add/modify/remove database tables, columns, or constraints? If yes: (a) each new SQL file must be ≤100 lines and single-concern (one table or one logical group), (b) update `schema/embed.zig` and `src/cmd/common.zig` migration array, (c) verify `docs/SCHEMA_CONVENTIONS.md` is followed.
+  - [ ] **Schema teardown** — if the change removes or modifies tables, invoke the `Schema Table Removal Guard` section (above, near Oracle Operational Defaults) and print its output in PLAN before any file edit. The guard is action-triggered and also fires at EXECUTE regardless of whether it ran here.
+  - [ ] **Spec-vs-rules conflict check** — before executing a spec's prescribed approach, test it against AGENTS.md and `docs/greptile-learnings/RULES.md`. If the spec conflicts with a rule, **amend the spec first**, then execute. Common traps:
+    - Spec prescribes a DROP/ALTER migration or `SELECT 1;` marker while `cat VERSION` < 2.0.0 → violates the `Schema Table Removal Guard`. Correct approach: fully delete SQL file + embed entry + migration array entry.
+    - Spec says "remove endpoints" without returning 410 while `cat VERSION` >= 2.0.0 → violates **RULE EP4**. Correct approach: return HTTP 410 Gone with a named error code, not 404. (Pre-v2.0: bare 404 is allowed per RULE EP4 carve-out.)
+    - Spec prescribes `conn.query()` without `.drain()` → violates the zig-pg-drain rule. Use `conn.exec()` or add `.drain()`.
+  - **Spec is an instance, rules are the constant.** Never silently execute a spec that violates an authoritative rule.
 
 Restrictions:
 
@@ -282,6 +321,8 @@ Exit criteria:
 **Before writing any code**, read `docs/greptile-learnings/RULES.md` and follow every rule. If a rule conflicts with the task, state the conflict and ask — never silently skip.
 
 **Before writing any Zig code**, additionally read `docs/ZIG_RULES.md`. It contains Zig-specific patterns (drain/dupe lifecycle, cross-compile verification, TLS transport, memory safety) that RULES.md references but does not duplicate.
+
+**Before editing any file under `schema/`, `schema/embed.zig`, or the migration array in `src/cmd/common.zig`, invoke the `Schema Table Removal Guard` (top of this file) and print its output in the user-facing message.** This fires even if the guard already ran at PLAN, and even if the edit is prescribed by a spec — no exceptions.
 
 Required outputs:
 

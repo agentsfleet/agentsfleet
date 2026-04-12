@@ -2471,7 +2471,7 @@
       },
       "Proposal": {
         "type": "object",
-        "description": "An agent self-tuning proposal \u2014 a suggested change to the harness configuration",
+        "description": "An agent self-tuning proposal \u2014 a suggested change to the agent configuration",
         "properties": {
           "proposal_id": {
             "type": "string",
