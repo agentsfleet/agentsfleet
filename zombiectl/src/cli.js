@@ -30,7 +30,7 @@ import { suggestCommand } from "./program/suggest.js";
 import { requireAuth, AUTH_FAIL_MESSAGE } from "./program/auth-guard.js";
 import { createCoreHandlers } from "./commands/core.js";
 
-export const VERSION = "0.5.0";
+export const VERSION = "0.9.0";;
 
 export { parseGlobalArgs };
 
