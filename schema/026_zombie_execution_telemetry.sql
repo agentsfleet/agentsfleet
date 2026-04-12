@@ -25,3 +25,7 @@ CREATE INDEX idx_telemetry_workspace_zombie
 -- Operator query: workspace filter + time-window.
 CREATE INDEX idx_telemetry_workspace_time
     ON zombie_execution_telemetry (workspace_id, recorded_at DESC);
+
+-- Operator query: zombie_id-only filter (workspace_id is optional in listTelemetryAll).
+CREATE INDEX idx_telemetry_zombie
+    ON zombie_execution_telemetry (zombie_id, recorded_at DESC);
