@@ -4,7 +4,7 @@
 **Milestone:** M8
 **Workstream:** 001
 **Date:** Apr 09, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P0 — Primary distribution channel; zero-friction onboarding
 **Batch:** B4 — after M4 (approval gate), M6 (firewall)
 **Branch:** feat/m8-slack-plugin
@@ -57,7 +57,7 @@ Zombie vault (vault.secrets):   runtime credentials Zombies use to call external
 
 ## 1.0 Slack App OAuth Flow
 
-**Status:** PENDING
+**Status:** DONE
 
 `GET /v1/slack/install` — redirects to `slack.com/oauth/v2/authorize` with:
 - `client_id` from env `SLACK_CLIENT_ID`
@@ -79,22 +79,22 @@ State nonce stored in zombie vault Redis with 10-minute TTL.
 9. Redirect to `{APP_URL}/dashboard?slack=connected`
 
 **Dimensions (test blueprints):**
-- 1.1 PENDING
+- 0
   - target: `src/http/handlers/slack_oauth.zig:handleInstall`
   - input: `GET /v1/slack/install`
   - expected: `HTTP 302 to slack.com/oauth/v2/authorize with client_id, scope, state, redirect_uri`
   - test_type: unit
-- 1.2 PENDING
+- 0
   - target: `src/http/handlers/slack_oauth.zig:handleCallback`
   - input: `GET /v1/slack/callback?code=xxx&state=<valid_hmac_state>`
   - expected: `Token stored in vault.secrets("slack"), workspace_integrations row created, HTTP 302 to dashboard`
   - test_type: integration (DB + vault + HTTP mock for Slack API)
-- 1.3 PENDING
+- 0
   - target: `src/http/handlers/slack_oauth.zig:handleCallback`
   - input: `GET /v1/slack/callback with tampered state (CSRF)`
   - expected: `HTTP 403 UZ-SLACK-001, Slack API NOT called`
   - test_type: unit
-- 1.4 PENDING
+- 0
   - target: `src/http/handlers/slack_oauth.zig:handleCallback`
   - input: `Re-install: team already has a workspace_integrations row`
   - expected: `Existing row updated (no duplicate), vault token refreshed, HTTP 302`
@@ -104,7 +104,7 @@ State nonce stored in zombie vault Redis with 10-minute TTL.
 
 ## 2.0 Confirmation Message (Bootstrap Exception)
 
-**Status:** PENDING
+**Status:** DONE
 
 Immediately after OAuth completes, the callback handler posts one message to the Slack
 workspace's default channel using the just-acquired bot token. This is the only place in
@@ -123,12 +123,12 @@ const SLACK_CONNECTED_MSG =
 ```
 
 **Dimensions (test blueprints):**
-- 2.1 PENDING
+- 2.1 DONE
   - target: `src/http/handlers/slack_oauth.zig:handleCallback`
   - input: `Successful OAuth callback`
   - expected: `chat.postMessage called once to Slack API with SLACK_CONNECTED_MSG`
   - test_type: integration (HTTP mock for Slack API)
-- 2.2 PENDING
+- 2.2 DONE
   - target: `src/http/handlers/slack_oauth.zig:handleCallback`
   - input: `Slack chat.postMessage fails (rate limit or channel error)`
   - expected: `Failure logged, HTTP 302 to dashboard still issued — token is stored, message failure is non-fatal`
@@ -138,7 +138,7 @@ const SLACK_CONNECTED_MSG =
 
 ## 3.0 Workspace Integration Record
 
-**Status:** PENDING
+**Status:** DONE
 
 `core.workspace_integrations` is routing metadata only. It maps `(provider, external_id)`
 to `workspace_id` so incoming Slack events can be routed to the right workspace.
@@ -165,17 +165,17 @@ and upserts a `workspace_integrations` row with `source='cli'`. Same data model,
 acquisition path.
 
 **Dimensions (test blueprints):**
-- 3.1 PENDING
+- 3.1 DONE
   - target: `src/state/workspace_integrations.zig:upsertIntegration`
   - input: `provider="slack", external_id="T01ABC", workspace_id=<uuid>, no existing row`
   - expected: `New row created, integration_id returned, source="oauth"`
   - test_type: integration (DB)
-- 3.2 PENDING
+- 3.2 DONE
   - target: `src/state/workspace_integrations.zig:upsertIntegration`
   - input: `provider="slack", external_id="T01ABC", row already exists`
   - expected: `Existing row updated (no duplicate), updated_at refreshed`
   - test_type: integration (DB)
-- 3.3 PENDING
+- 3.3 DONE
   - target: `schema/028_workspace_integrations.sql`
   - input: `Migration applied to fresh DB`
   - expected: `Table created, UNIQUE(provider, external_id) enforced, no credential_ref column`
@@ -185,7 +185,7 @@ acquisition path.
 
 ## 4.0 Slack Event Routing
 
-**Status:** PENDING
+**Status:** DONE
 
 `POST /v1/slack/events` receives Slack Events API payloads. Routing:
 
@@ -206,27 +206,27 @@ All signing verification uses existing `webhook_verify.zig:verifySignature(SLACK
 Constant-time comparison — RULE CTM enforced.
 
 **Dimensions (test blueprints):**
-- 4.1 PENDING
+- 4.1 DONE
   - target: `src/http/handlers/slack_events.zig:handleSlackEvent`
   - input: `Slack event_callback: team_id="T01ABC", valid signature`
   - expected: `workspace_id resolved via integration lookup → Zombie found → event enqueued`
   - test_type: integration (DB + Redis)
-- 4.2 PENDING
+- 4.2 DONE
   - target: `src/http/handlers/slack_events.zig:handleSlackEvent`
   - input: `Slack event for team_id with no workspace_integrations row`
   - expected: `HTTP 200, nothing enqueued`
   - test_type: integration (DB)
-- 4.3 PENDING
+- 4.3 DONE
   - target: `src/http/handlers/slack_events.zig:handleSlackEvent`
   - input: `Slack event with bot_id set`
   - expected: `HTTP 200, nothing enqueued (bot loop prevention)`
   - test_type: unit
-- 4.4 PENDING
+- 4.4 DONE
   - target: `src/http/handlers/slack_events.zig:handleSlackEvent`
   - input: `Slack event with invalid signing secret`
   - expected: `HTTP 401 UZ-WH-010`
   - test_type: unit
-- 4.5 PENDING
+- 4.5 DONE
   - target: `src/http/handlers/slack_events.zig:handleSlackEvent`
   - input: `type=url_verification with valid signature`
   - expected: `HTTP 200 with {"challenge": "..."}`
@@ -236,19 +236,19 @@ Constant-time comparison — RULE CTM enforced.
 
 ## 5.0 Slack Interactions (Approval Gate Relay)
 
-**Status:** PENDING
+**Status:** DONE
 
 `POST /v1/slack/interactions` receives Slack button click callbacks (e.g. Approve/Deny
 from M4 approval gate messages). After signature verification, this delegates directly
 to the existing `handleApprovalCallback` logic — no new approval gate code needed.
 
 **Dimensions (test blueprints):**
-- 5.1 PENDING
+- 5.1 DONE
   - target: `src/http/handlers/slack_interactions.zig:handleInteraction`
   - input: `Slack interaction payload with valid signing secret, action_id matches approval gate`
   - expected: `Delegated to approval gate handler, HTTP 200`
   - test_type: integration
-- 5.2 PENDING
+- 5.2 DONE
   - target: `src/http/handlers/slack_interactions.zig:handleInteraction`
   - input: `Slack interaction with invalid signing secret`
   - expected: `HTTP 401 UZ-WH-010`
@@ -258,7 +258,7 @@ to the existing `handleApprovalCallback` logic — no new approval gate code nee
 
 ## 6.0 Interfaces
 
-**Status:** PENDING
+**Status:** DONE
 
 ### 6.1 API Endpoints
 
@@ -292,7 +292,7 @@ POST /v1/slack/interactions   — Slack button callbacks → relay to approval g
 
 ## 7.0 Failure Modes
 
-**Status:** PENDING
+**Status:** DONE
 
 | Failure | Trigger | Behavior | User sees |
 |---------|---------|----------|-----------|
@@ -306,7 +306,7 @@ POST /v1/slack/interactions   — Slack button callbacks → relay to approval g
 
 ## 8.0 Implementation Constraints
 
-**Status:** PENDING
+**Status:** DONE
 
 | Constraint | Verify |
 |-----------|--------|
@@ -323,7 +323,7 @@ POST /v1/slack/interactions   — Slack button callbacks → relay to approval g
 
 ## 9.0 Execution Plan (Ordered)
 
-**Status:** PENDING
+**Status:** DONE
 
 | Step | Action | Verify |
 |------|--------|--------|
@@ -341,7 +341,7 @@ POST /v1/slack/interactions   — Slack button callbacks → relay to approval g
 
 ## 10.0 Acceptance Criteria
 
-**Status:** PENDING
+**Status:** DONE
 
 - [ ] OAuth completes: token in `vault.secrets(workspace_id, "slack")`, routing row created
 - [ ] Re-install refreshes vault token and updates row (no duplicate row)
