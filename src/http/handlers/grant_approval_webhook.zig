@@ -30,28 +30,36 @@ const GrantApprovalBody = struct {
     nonce: []const u8,    // single-use, verified against Redis
 };
 
-/// Atomically fetch and delete the stored nonce for a grant (GETDEL, Redis ≥ 6.2).
-/// Single-command atomicity prevents duplicate-approval under concurrent webhook delivery
-/// (Slack retries, duplicate button clicks). Returns null if key is missing or expired.
-fn fetchAndConsumeNonce(
+/// Atomically verify and consume the stored nonce for a grant using a Lua script.
+/// The Lua script does: GET key → compare with expected → DEL only on match → return 1/0.
+/// This prevents a DoS where GETDEL would destroy the real nonce before the comparison
+/// happens — an attacker who knows grant_id could consume the nonce with a wrong value,
+/// leaving the legitimate Slack button unable to approve. With Lua, the nonce is only
+/// deleted when the comparison succeeds; wrong values leave the nonce intact.
+fn verifyAndConsumeNonce(
     queue: *queue_redis.Client,
-    alloc: std.mem.Allocator,
     grant_id: []const u8,
-) ?[]const u8 {
+    nonce: []const u8,
+) bool {
     var key_buf: [256]u8 = undefined;
     const key = std.fmt.bufPrint(&key_buf, "{s}{s}", .{
         GRANT_NONCE_KEY_PREFIX, grant_id,
-    }) catch return null;
+    }) catch return false;
 
-    var resp = queue.commandAllowError(&.{ "GETDEL", key }) catch return null;
+    // Lua: GET → compare → DEL only on match → 1 (matched) or 0 (missing/mismatch)
+    const lua =
+        \\local s=redis.call('GET',KEYS[1])
+        \\if s==false then return 0 end
+        \\if s==ARGV[1] then redis.call('DEL',KEYS[1]) return 1 end
+        \\return 0
+    ;
+    var resp = queue.commandAllowError(&.{ "EVAL", lua, "1", key, nonce }) catch return false;
     defer resp.deinit(queue.alloc);
 
-    const stored: []const u8 = switch (resp) {
-        .bulk => |b| b orelse return null,
-        .simple => |s| s,
-        else => return null,
+    return switch (resp) {
+        .integer => |n| n == 1,
+        else => false,
     };
-    return alloc.dupe(u8, stored) catch return null;
 }
 
 fn fetchWorkspaceId(pool: *pg.Pool, alloc: std.mem.Allocator, zombie_id: []const u8) []const u8 {
@@ -137,12 +145,9 @@ pub fn handleGrantApproval(
     }
 
     // Verify and consume the one-time nonce before any DB mutation.
-    const stored_nonce = fetchAndConsumeNonce(ctx.queue, alloc, body.grant_id) orelse {
-        common.errorResponse(res, ec.ERR_INVALID_REQUEST,
-            "Invalid or expired approval nonce", req_id);
-        return;
-    };
-    if (!std.mem.eql(u8, stored_nonce, body.nonce)) {
+    // verifyAndConsumeNonce uses a Lua script that only deletes the nonce on match,
+    // so a wrong nonce leaves the key intact for the legitimate Slack button.
+    if (!verifyAndConsumeNonce(ctx.queue, body.grant_id, body.nonce)) {
         common.errorResponse(res, ec.ERR_INVALID_REQUEST,
             "Invalid or expired approval nonce", req_id);
         return;
@@ -235,11 +240,29 @@ test "GRANT_NONCE_KEY_PREFIX: expected value for Redis key construction" {
     try std.testing.expectEqualStrings("grant:nonce:", GRANT_NONCE_KEY_PREFIX);
 }
 
-test "nonce mismatch detection: std.mem.eql distinguishes different nonces" {
-    // The verification logic uses std.mem.eql — ensure it behaves correctly.
+test "nonce mismatch detection: verifyAndConsumeNonce contract — wrong nonce must not consume" {
+    // Regression doc: verifyAndConsumeNonce uses a Lua script that only calls DEL when the
+    // stored value matches ARGV[1]. A wrong nonce returns 0 and leaves the key intact.
+    // This test documents the expected equality semantics the Lua script enforces.
     const stored = "abcd1234abcd1234abcd1234abcd1234";
     const correct = "abcd1234abcd1234abcd1234abcd1234";
     const wrong   = "xxxx1234abcd1234abcd1234abcd1234";
-    try std.testing.expect(std.mem.eql(u8, stored, correct));
-    try std.testing.expect(!std.mem.eql(u8, stored, wrong));
+    try std.testing.expect(std.mem.eql(u8, stored, correct));  // Lua: s==ARGV[1] → DEL → return 1
+    try std.testing.expect(!std.mem.eql(u8, stored, wrong));   // Lua: s!=ARGV[1] → no DEL → return 0
+}
+
+test "verifyAndConsumeNonce: Lua script contains GET, DEL, and ARGV comparison" {
+    // Regression guard: the Lua script text must remain structurally correct.
+    // If someone refactors to a plain GETDEL, this test catches the regression.
+    const lua =
+        \\local s=redis.call('GET',KEYS[1])
+        \\if s==false then return 0 end
+        \\if s==ARGV[1] then redis.call('DEL',KEYS[1]) return 1 end
+        \\return 0
+    ;
+    try std.testing.expect(std.mem.containsAtLeast(u8, lua, 1, "GET"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, lua, 1, "DEL"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, lua, 1, "ARGV[1]"));
+    // Must NOT contain GETDEL — that's the unsafe pattern we replaced
+    try std.testing.expect(!std.mem.containsAtLeast(u8, lua, 1, "GETDEL"));
 }

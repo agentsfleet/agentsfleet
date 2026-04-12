@@ -406,14 +406,24 @@ Reference a rule as `RULE NDC`, `RULE OWN`, etc.
 **Tags:** zig, database, idempotency
 **Ref:** integration_grants.zig:handleRequestGrant. Fixed PR #205.
 
-## RULE GATDL — Use GETDEL not GET+DEL for single-use Redis tokens
+## RULE GATDL — Single-use Redis tokens must use Lua compare-then-delete, not GETDEL
 
-**Rule:** When consuming a single-use token from Redis (nonce, gate key, CSRF token), always use the atomic `GETDEL` command (Redis ≥ 6.2). Never issue `GET` followed by `DEL` as separate commands.
-**Why:** Two concurrent requests can both `GET` the value before either `DEL` runs, passing the token check twice. The DB `WHERE status = 'pending'` guard prevents a double-commit but `activity_stream.logEvent` is called twice, producing duplicate audit entries. Caught by greptile on PR #205 (P1). M8 approval_gate.zig already uses GETDEL — this must be universal.
-**Do:** `queue.commandAllowError(&.{ "GETDEL", key })`
-**Don't:** `GET` key + `DEL` key as two round trips.
-**Tags:** zig, redis, concurrency, security
-**Ref:** grant_approval_webhook.zig:fetchAndConsumeNonce. Fixed PR #205.
+**Rule:** When consuming a single-use token from Redis (nonce, gate key, CSRF token), use a Lua `EVAL` script that atomically: GET → compare → DEL only on match → return 1/0. Never use GETDEL (deletes before comparison) or GET+DEL as separate commands.
+**Why:** GETDEL atomically deletes the key *before* the comparison happens. An attacker who knows the token ID (e.g., `grant_id` is returned in the API response) can send a request with a fabricated nonce: GETDEL destroys the real nonce, the comparison fails (400), but the legitimate Slack "Approve" button is now broken — the grant is stuck in `pending` indefinitely. This is a targeted DoS that requires only knowing the `grant_id`. With Lua, a wrong nonce returns 0 and leaves the key intact. GET+DEL as two round trips has a separate race condition (two concurrent requests both pass the GET before DEL runs).
+**Do:**
+```zig
+const lua =
+    \\local s=redis.call('GET',KEYS[1])
+    \\if s==false then return 0 end
+    \\if s==ARGV[1] then redis.call('DEL',KEYS[1]) return 1 end
+    \\return 0
+;
+var resp = queue.commandAllowError(&.{ "EVAL", lua, "1", key, nonce }) catch return false;
+return switch (resp) { .integer => |n| n == 1, else => false };
+```
+**Don't:** `GETDEL` (deletes before compare); `GET` + `DEL` as two commands (race).
+**Tags:** zig, redis, concurrency, security, nonce
+**Ref:** grant_approval_webhook.zig:verifyAndConsumeNonce. Fixed PR #205 (initial GETDEL, second greptile P1 review 4095571471).
 ## RULE TWF — Timestamp freshness must reject future timestamps
 
 **Rule:** When validating webhook timestamps (Slack `X-Slack-Request-Timestamp`, etc.), reject timestamps that are more than `max_drift` seconds *in the future*, not just in the past. Use `if (ts > now + max_drift) return false;` before the stale check.
