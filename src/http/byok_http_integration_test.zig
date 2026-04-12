@@ -105,7 +105,7 @@ fn startTestServer(alloc: std.mem.Allocator) !*TestServer {
         .verifier = verifier,
         .ctx = .{
             .pool = db_ctx.pool,
-            .queue = &undefined,
+            .queue = undefined,
             .alloc = alloc,
             .api_keys = "",
             .oidc = &verifier,
@@ -117,6 +117,7 @@ fn startTestServer(alloc: std.mem.Allocator) !*TestServer {
             .ready_max_queue_age_ms = null,
             .telemetry = undefined,
         },
+        .telemetry = undefined,
         .thread = undefined,
         .port = port,
     };
