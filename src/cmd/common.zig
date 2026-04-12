@@ -15,22 +15,15 @@ const ServeMigrationDecision = enum {
     run_required,
 };
 
-pub fn canonicalMigrations() [19]db.Migration {
+pub fn canonicalMigrations() [12]db.Migration {
     const schema = @import("schema");
     return .{
         .{ .version = 1, .sql = schema.core_foundation_sql },
-        .{ .version = 2, .sql = schema.core_workflow_sql },
-        .{ .version = 3, .sql = schema.core_results_events_sql },
         .{ .version = 4, .sql = schema.vault_sql },
-        .{ .version = 6, .sql = schema.side_effect_ledger_sql },
-        .{ .version = 7, .sql = schema.side_effect_outbox_sql },
         .{ .version = 9, .sql = schema.rls_tenant_isolation_sql },
         .{ .version = 14, .sql = schema.workspace_entitlements_sql },
-        .{ .version = 15, .sql = schema.usage_metering_billing_sql },
         .{ .version = 16, .sql = schema.workspace_billing_state_sql },
         .{ .version = 17, .sql = schema.workspace_free_credit_sql },
-        .{ .version = 18, .sql = schema.agent_scoring_baseline_sql },
-        .{ .version = 19, .sql = schema.agent_score_persistence_api_sql },
         .{ .version = 20, .sql = schema.agent_failure_analysis_context_sql },
         .{ .version = 21, .sql = schema.platform_llm_keys_sql },
         .{ .version = 22, .sql = schema.core_zombies_sql },

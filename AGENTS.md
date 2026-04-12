@@ -302,7 +302,7 @@ Required outputs:
   - [ ] **Schema teardown** — if the change removes or modifies tables, invoke the `Schema Table Removal Guard` section (above, near Oracle Operational Defaults) and print its output in PLAN before any file edit. The guard is action-triggered and also fires at EXECUTE regardless of whether it ran here.
   - [ ] **Spec-vs-rules conflict check** — before executing a spec's prescribed approach, test it against AGENTS.md and `docs/greptile-learnings/RULES.md`. If the spec conflicts with a rule, **amend the spec first**, then execute. Common traps:
     - Spec prescribes a DROP/ALTER migration or `SELECT 1;` marker while `cat VERSION` < 2.0.0 → violates the `Schema Table Removal Guard`. Correct approach: fully delete SQL file + embed entry + migration array entry.
-    - Spec says "remove endpoints" without returning 410 → violates **RULE EP4**. Correct approach: return HTTP 410 Gone with a named error code, not 404.
+    - Spec says "remove endpoints" without returning 410 while `cat VERSION` >= 2.0.0 → violates **RULE EP4**. Correct approach: return HTTP 410 Gone with a named error code, not 404. (Pre-v2.0: bare 404 is allowed per RULE EP4 carve-out.)
     - Spec prescribes `conn.query()` without `.drain()` → violates the zig-pg-drain rule. Use `conn.exec()` or add `.drain()`.
   - **Spec is an instance, rules are the constant.** Never silently execute a spec that violates an authoritative rule.
 

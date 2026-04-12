@@ -1,16 +1,9 @@
 pub const core_foundation_sql = @embedFile("001_core_foundation.sql");
-pub const core_workflow_sql = @embedFile("002_core_workflow.sql");
-pub const core_results_events_sql = @embedFile("003_core_results_events.sql");
 pub const vault_sql = @embedFile("004_vault_schema.sql");
-pub const side_effect_ledger_sql = @embedFile("006_side_effect_ledger.sql");
-pub const side_effect_outbox_sql = @embedFile("007_side_effect_outbox.sql");
 pub const rls_tenant_isolation_sql = @embedFile("009_rls_tenant_isolation.sql");
 pub const workspace_entitlements_sql = @embedFile("014_workspace_entitlements.sql");
-pub const usage_metering_billing_sql = @embedFile("015_usage_metering_billing.sql");
 pub const workspace_billing_state_sql = @embedFile("016_workspace_billing_state.sql");
 pub const workspace_free_credit_sql = @embedFile("017_workspace_free_credit.sql");
-pub const agent_scoring_baseline_sql = @embedFile("018_agent_scoring_baseline.sql");
-pub const agent_score_persistence_api_sql = @embedFile("019_agent_score_persistence_and_api.sql");
 pub const agent_failure_analysis_context_sql = @embedFile("020_agent_failure_analysis_and_context_injection.sql");
 pub const platform_llm_keys_sql = @embedFile("021_platform_llm_keys.sql");
 pub const core_zombies_sql = @embedFile("022_core_zombies.sql");
