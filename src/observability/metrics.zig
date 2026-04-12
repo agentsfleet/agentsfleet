@@ -115,6 +115,31 @@ test "integration: otel exporter metrics are exposed in prometheus output" {
     try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_otel_last_success_at_ms"));
 }
 
+// T7 — all zombie counters + histogram render in Prometheus output after increment.
+test "T7: prometheus render includes all zombie counters and histogram after increment" {
+    const metrics_zombie = @import("metrics_zombie.zig");
+    metrics_zombie.resetForTest();
+    defer metrics_zombie.resetForTest();
+
+    metrics_zombie.incZombiesTriggered();
+    metrics_zombie.incZombiesCompleted();
+    metrics_zombie.incZombiesFailed();
+    metrics_zombie.addZombieTokens(500);
+    metrics_zombie.observeZombieExecutionSeconds(2_000);
+
+    const alloc = std.testing.allocator;
+    const body = try renderPrometheus(alloc, true);
+    defer alloc.free(body);
+
+    try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_triggered_total 1"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_completed_total 1"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_failed_total 1"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_tokens_total 500"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_execution_seconds_count 1"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_execution_seconds_sum 2"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_execution_seconds_bucket"));
+}
+
 test {
     _ = @import("metrics_counters_test.zig");
 }

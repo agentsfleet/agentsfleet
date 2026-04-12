@@ -157,6 +157,44 @@ test "T2: observe zero lands in every bucket" {
     }
 }
 
+// T1 — incZombiesCompleted produces exactly +1 delta.
+test "T1: inc_completed_increments_counter" {
+    resetForTest();
+    defer resetForTest();
+    incZombiesCompleted();
+    try std.testing.expectEqual(@as(u64, 1), snapshotZombieFields().zombie_completed_total);
+}
+
+// T1 — incZombiesFailed produces exactly +1 delta.
+test "T1: inc_failed_increments_counter" {
+    resetForTest();
+    defer resetForTest();
+    incZombiesFailed();
+    try std.testing.expectEqual(@as(u64, 1), snapshotZombieFields().zombie_failed_total);
+}
+
+// T2 — addZombieTokens(0) is a no-op but must not corrupt state.
+test "T2: add_zero_tokens_is_identity" {
+    resetForTest();
+    defer resetForTest();
+    addZombieTokens(1000);
+    addZombieTokens(0);
+    try std.testing.expectEqual(@as(u64, 1000), snapshotZombieFields().zombie_tokens_total);
+}
+
+// T2 — observation at smallest bucket (100ms) fills every bucket.
+test "T2: observe at smallest bucket boundary fills all buckets" {
+    resetForTest();
+    defer resetForTest();
+    observeZombieExecutionSeconds(100);
+    const s = snapshotZombieFields();
+    for (s.zombie_execution_seconds.buckets) |b| {
+        try std.testing.expectEqual(@as(u64, 1), b);
+    }
+    try std.testing.expectEqual(@as(u64, 1), s.zombie_execution_seconds.count);
+    try std.testing.expectEqual(@as(u64, 100), s.zombie_execution_seconds.sum);
+}
+
 // T5 — concurrent increments never lose updates (atomic.fetchAdd contract).
 test "T5: concurrent incZombiesTriggered from N threads" {
     resetForTest();
@@ -176,4 +214,24 @@ test "T5: concurrent incZombiesTriggered from N threads" {
         @as(u64, thread_count * per_thread),
         snapshotZombieFields().zombie_triggered_total,
     );
+}
+
+// T5 — concurrent observeZombieExecutionSeconds preserves count + sum.
+test "T5: concurrent observe does not lose observations" {
+    resetForTest();
+    defer resetForTest();
+    const Runner = struct {
+        fn run(iters: usize) void {
+            var i: usize = 0;
+            while (i < iters) : (i += 1) observeZombieExecutionSeconds(1_000);
+        }
+    };
+    const thread_count = 4;
+    const per_thread = 500;
+    var threads: [thread_count]std.Thread = undefined;
+    for (&threads) |*t| t.* = try std.Thread.spawn(.{}, Runner.run, .{per_thread});
+    for (threads) |t| t.join();
+    const s = snapshotZombieFields();
+    try std.testing.expectEqual(@as(u64, thread_count * per_thread), s.zombie_execution_seconds.count);
+    try std.testing.expectEqual(@as(u64, thread_count * per_thread * 1_000), s.zombie_execution_seconds.sum);
 }
