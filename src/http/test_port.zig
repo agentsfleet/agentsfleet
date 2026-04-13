@@ -38,10 +38,50 @@ test "allocFreePort returns a non-zero port" {
     try std.testing.expect(p != 0);
 }
 
+test "allocFreePort returns a port in the valid unprivileged range" {
+    // Ephemeral ports on Linux default to 32768-60999 and on Darwin to
+    // 49152-65535. We don't pin to a kernel-specific range, just assert
+    // the port is unprivileged (>=1024) and within u16.
+    const p = try allocFreePort();
+    try std.testing.expect(p >= 1024);
+}
+
 test "allocFreePort returns distinct ports on repeated calls" {
     const a = try allocFreePort();
     const b = try allocFreePort();
     // Not strictly guaranteed by POSIX, but Linux/Darwin reliably hand out
     // different ephemeral ports for consecutive binds.
     try std.testing.expect(a != b);
+}
+
+test "allocFreePort: returned port is immediately bindable by the caller" {
+    // The load-bearing claim of the helper: after getsockname + close, the
+    // caller can bind the port without AddressInUse. If this fails, the
+    // whole test-infra fix is broken.
+    const port = try allocFreePort();
+
+    const sock = try posix.socket(posix.AF.INET, posix.SOCK.STREAM, posix.IPPROTO.TCP);
+    defer posix.close(sock);
+    try posix.setsockopt(
+        sock,
+        posix.SOL.SOCKET,
+        posix.SO.REUSEADDR,
+        &std.mem.toBytes(@as(c_int, 1)),
+    );
+    const addr = try std.net.Address.parseIp4("127.0.0.1", port);
+    try posix.bind(sock, &addr.any, addr.getOsSockLen());
+}
+
+test "allocFreePort: 64 sequential allocations all succeed and are distinct" {
+    // Regression for the original flake: fixed-counter port allocation
+    // collided with CI-runner sockets. This asserts we can drive a long
+    // test suite's worth of allocations without reuse or failure.
+    var seen = std.AutoHashMap(u16, void).init(std.testing.allocator);
+    defer seen.deinit();
+    var i: usize = 0;
+    while (i < 64) : (i += 1) {
+        const p = try allocFreePort();
+        const gop = try seen.getOrPut(p);
+        try std.testing.expect(!gop.found_existing);
+    }
 }
