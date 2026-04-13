@@ -1,0 +1,17 @@
+.{
+    .name = .httpz,
+    .paths = .{""},
+    .version = "0.0.0",
+    .fingerprint = 0x472add02ac73d53c,
+    .dependencies = .{
+        .metrics = .{
+            .url = "https://github.com/karlseguin/metrics.zig/archive/603954879849c331a26529b88254770089acac8b.tar.gz",
+            .hash = "metrics-0.0.0-W7G4eP2_AQAdJGKMonHeZFaY4oU4ZXPFFTqFCFXItX3O",
+        },
+        .websocket = .{
+            .url = "https://github.com/karlseguin/websocket.zig/archive/4deaaef2b4475a63f19c5e2f43e38fd55464b118.tar.gz",
+            .hash = "websocket-0.1.0-ZPISdZJxAwAt6Ys_JpoHQQV3NpWCof_N9Jg-Ul2g7OoV",
+        },
+        // .websocket = .{ .path = "../websocket.zig" },
+    },
+}
