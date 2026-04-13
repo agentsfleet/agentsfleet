@@ -57,6 +57,13 @@
       }
     },
     {
+      "name": "Memory",
+      "description": "Persistent zombie memory — store, recall, list, and forget key-value entries scoped to a zombie",
+      "x-mintlify": {
+        "navigation": "Memory"
+      }
+    },
+    {
       "name": "Credentials",
       "description": "BYOK (Bring Your Own Key) LLM provider credentials",
       "x-mintlify": {
@@ -2228,6 +2235,220 @@
             "BearerAuth": []
           }
         ]
+      }
+    }
+  },
+  "/v1/memory/store": {
+    "post": {
+      "summary": "Store a memory entry",
+      "description": "Store or upsert a key-value memory entry for a zombie. On conflict (same key + zombie), the content and category are updated.",
+      "operationId": "memoryStore",
+      "tags": ["Memory"],
+      "security": [{"BearerAuth": []}],
+      "requestBody": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "required": ["zombie_id", "key", "content"],
+              "properties": {
+                "zombie_id": {"type": "string", "format": "uuid", "description": "UUIDv7 of the target zombie"},
+                "key": {"type": "string", "minLength": 1, "maxLength": 255, "description": "Memory entry key"},
+                "content": {"type": "string", "minLength": 1, "maxLength": 16384, "description": "Memory entry content"},
+                "category": {"type": "string", "enum": ["core", "daily", "conversation", "workspace"], "default": "core", "description": "Memory category"}
+              }
+            }
+          }
+        }
+      },
+      "responses": {
+        "201": {
+          "description": "Memory entry stored",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "zombie_id": {"type": "string"},
+                  "key": {"type": "string"},
+                  "category": {"type": "string"},
+                  "request_id": {"type": "string"}
+                }
+              }
+            }
+          }
+        },
+        "400": {"$ref": "#/components/responses/Error"},
+        "401": {"$ref": "#/components/responses/Error"},
+        "403": {"$ref": "#/components/responses/Error"},
+        "404": {"$ref": "#/components/responses/Error"},
+        "503": {"$ref": "#/components/responses/Error"}
+      }
+    }
+  },
+  "/v1/memory/recall": {
+    "post": {
+      "summary": "Recall memory entries by keyword",
+      "description": "Search a zombie's memory entries by keyword. Matches against key and content using ILIKE. Uses POST (not GET) because the query parameters are carried in the request body — HTTP caching does not apply to this endpoint.",
+      "operationId": "memoryRecall",
+      "tags": ["Memory"],
+      "security": [{"BearerAuth": []}],
+      "requestBody": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "required": ["zombie_id", "query"],
+              "properties": {
+                "zombie_id": {"type": "string", "format": "uuid", "description": "UUIDv7 of the target zombie"},
+                "query": {"type": "string", "minLength": 1, "description": "Keyword to search in key and content"},
+                "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 20, "description": "Maximum entries to return"}
+              }
+            }
+          }
+        }
+      },
+      "responses": {
+        "200": {
+          "description": "Matching memory entries",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "zombie_id": {"type": "string"},
+                  "entries": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "key": {"type": "string"},
+                        "content": {"type": "string"},
+                        "category": {"type": "string"},
+                        "updated_at": {"type": "string", "description": "Unix epoch seconds as string"}
+                      }
+                    }
+                  },
+                  "count": {"type": "integer"},
+                  "request_id": {"type": "string"}
+                }
+              }
+            }
+          }
+        },
+        "400": {"$ref": "#/components/responses/Error"},
+        "401": {"$ref": "#/components/responses/Error"},
+        "403": {"$ref": "#/components/responses/Error"},
+        "404": {"$ref": "#/components/responses/Error"},
+        "503": {"$ref": "#/components/responses/Error"}
+      }
+    }
+  },
+  "/v1/memory/list": {
+    "post": {
+      "summary": "List memory entries for a zombie",
+      "description": "List all memory entries for a zombie, optionally filtered by category. Uses POST (not GET) because the filter parameters are carried in the request body — HTTP caching does not apply to this endpoint.",
+      "operationId": "memoryList",
+      "tags": ["Memory"],
+      "security": [{"BearerAuth": []}],
+      "requestBody": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "required": ["zombie_id"],
+              "properties": {
+                "zombie_id": {"type": "string", "format": "uuid", "description": "UUIDv7 of the target zombie"},
+                "category": {"type": "string", "enum": ["core", "daily", "conversation", "workspace"], "description": "Filter by category (omit for all)"},
+                "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 100, "description": "Maximum entries to return"}
+              }
+            }
+          }
+        }
+      },
+      "responses": {
+        "200": {
+          "description": "Memory entries",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "zombie_id": {"type": "string"},
+                  "entries": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "key": {"type": "string"},
+                        "content": {"type": "string"},
+                        "category": {"type": "string"},
+                        "updated_at": {"type": "string"}
+                      }
+                    }
+                  },
+                  "count": {"type": "integer"},
+                  "request_id": {"type": "string"}
+                }
+              }
+            }
+          }
+        },
+        "400": {"$ref": "#/components/responses/Error"},
+        "401": {"$ref": "#/components/responses/Error"},
+        "403": {"$ref": "#/components/responses/Error"},
+        "404": {"$ref": "#/components/responses/Error"},
+        "503": {"$ref": "#/components/responses/Error"}
+      }
+    }
+  },
+  "/v1/memory/forget": {
+    "post": {
+      "summary": "Forget a memory entry",
+      "description": "Delete a specific memory entry by key for a zombie. Idempotent — returns deleted=false if the entry did not exist.",
+      "operationId": "memoryForget",
+      "tags": ["Memory"],
+      "security": [{"BearerAuth": []}],
+      "requestBody": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "required": ["zombie_id", "key"],
+              "properties": {
+                "zombie_id": {"type": "string", "format": "uuid", "description": "UUIDv7 of the target zombie"},
+                "key": {"type": "string", "minLength": 1, "maxLength": 255, "description": "Memory entry key to delete"}
+              }
+            }
+          }
+        }
+      },
+      "responses": {
+        "200": {
+          "description": "Forget operation result",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "zombie_id": {"type": "string"},
+                  "key": {"type": "string"},
+                  "deleted": {"type": "boolean", "description": "true if the entry existed and was deleted; false if it did not exist"},
+                  "request_id": {"type": "string"}
+                }
+              }
+            }
+          }
+        },
+        "400": {"$ref": "#/components/responses/Error"},
+        "401": {"$ref": "#/components/responses/Error"},
+        "403": {"$ref": "#/components/responses/Error"},
+        "404": {"$ref": "#/components/responses/Error"},
+        "503": {"$ref": "#/components/responses/Error"}
       }
     }
   },
