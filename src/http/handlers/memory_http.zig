@@ -119,7 +119,12 @@ fn innerMemoryRecall(hx: Hx, req: *httpz.Request) void {
         hx.fail(ec.ERR_INVALID_REQUEST, "query must be non-empty");
         return;
     }
-    const limit = @min(b.limit orelse h.DEFAULT_RECALL_LIMIT, h.MAX_RECALL_LIMIT);
+    const raw_limit = b.limit orelse h.DEFAULT_RECALL_LIMIT;
+    if (raw_limit < 1) {
+        hx.fail(ec.ERR_INVALID_REQUEST, "limit must be a positive integer");
+        return;
+    }
+    const limit = @min(raw_limit, h.MAX_RECALL_LIMIT);
     // Escape LIKE metacharacters so a query of "%" doesn't dump all entries.
     // Pattern: %{escaped_query}% with ESCAPE '\'
     const escaped = h.escapeLikePattern(hx.alloc, b.query) catch {
@@ -190,7 +195,12 @@ fn innerMemoryList(hx: Hx, req: *httpz.Request) void {
         return;
     };
     const b = parsed.value;
-    const limit = @min(b.limit orelse h.DEFAULT_LIST_LIMIT, h.MAX_RECALL_LIMIT);
+    const raw_limit = b.limit orelse h.DEFAULT_LIST_LIMIT;
+    if (raw_limit < 1) {
+        hx.fail(ec.ERR_INVALID_REQUEST, "limit must be a positive integer");
+        return;
+    }
+    const limit = @min(raw_limit, h.MAX_RECALL_LIMIT);
 
     const conn = hx.ctx.pool.acquire() catch {
         common.internalDbUnavailable(hx.res, hx.req_id);
