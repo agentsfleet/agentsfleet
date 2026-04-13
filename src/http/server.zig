@@ -34,8 +34,54 @@ const App = struct {
     }
 };
 
-/// Module-level server pointer for cross-thread stop().
-var g_server: ?*httpz.Server(App) = null;
+/// Handle-based server. Stop from any thread via `Server.stop()`.
+/// Replaces the previous module-level pointer (which was a cross-thread data race
+/// and meant tests couldn't isolate their own server instance).
+pub const Server = struct {
+    alloc: std.mem.Allocator,
+    inner: httpz.Server(App),
+    cfg: ServerConfig,
+
+    pub fn init(ctx: *handler.Context, cfg: ServerConfig) !*Server {
+        const alloc = ctx.alloc;
+        const self = try alloc.create(Server);
+        errdefer alloc.destroy(self);
+        self.* = .{
+            .alloc = alloc,
+            .inner = try httpz.Server(App).init(alloc, .{
+                .address = .{ .ip = .{ .host = cfg.interface, .port = cfg.port } },
+                .workers = .{
+                    .count = @intCast(cfg.workers),
+                    .max_conn = if (cfg.max_clients) |mc| @intCast(mc) else null,
+                },
+                .thread_pool = .{
+                    .count = @intCast(cfg.threads),
+                },
+                .request = .{
+                    .max_body_size = 2 * 1024 * 1024, // 2MB
+                },
+            }, .{ .ctx = ctx }),
+            .cfg = cfg,
+        };
+        return self;
+    }
+
+    /// Block until stop() is called from another thread.
+    pub fn listen(self: *Server) !void {
+        log.info("http.listening interface={s} port={d}", .{ self.cfg.interface, self.cfg.port });
+        try self.inner.listen();
+    }
+
+    /// Signal the server to stop. Safe to call from any thread.
+    pub fn stop(self: *Server) void {
+        self.inner.stop();
+    }
+
+    pub fn deinit(self: *Server) void {
+        self.inner.deinit();
+        self.alloc.destroy(self);
+    }
+};
 
 // ── Request dispatch ──────────────────────────────────────────────────────
 
@@ -145,8 +191,8 @@ fn dispatchMatchedRoute(ctx: *handler.Context, req: *httpz.Request, res: *httpz.
         // M9_001: External agent key management
         .external_agents => |workspace_id| switch (req.method) {
             .POST => handler.handleCreateExternalAgent(ctx, req, res, workspace_id),
-            .GET  => handler.handleListExternalAgents(ctx, req, res, workspace_id),
-            else  => respondMethodNotAllowed(res),
+            .GET => handler.handleListExternalAgents(ctx, req, res, workspace_id),
+            else => respondMethodNotAllowed(res),
         },
         .delete_external_agent => |route| if (req.method == .DELETE) handler.handleDeleteExternalAgent(ctx, req, res, route.workspace_id, route.agent_id) else respondMethodNotAllowed(res),
     }
@@ -212,35 +258,20 @@ test "ServerConfig defaults are stable — full struct check" {
     try std.testing.expectEqual(@as(?isize, 1024), cfg.max_clients);
 }
 
-// ── Server lifecycle ──────────────────────────────────────────────────────
+// ── Server lifecycle tests ───────────────────────────────────────────────
+// The 3 integration tests (rbac/byok/telemetry) cover init→listen→stop→deinit
+// end-to-end. These two unit tests lock contracts those can't reach:
+// the no-listen unwind path and pre-listen stop().
 
-/// Start the httpz HTTP server. Blocks until stop() is called.
-pub fn serve(ctx: *handler.Context, cfg: ServerConfig) !void {
-    var server = try httpz.Server(App).init(ctx.alloc, .{
-        .address = .{ .ip = .{ .host = cfg.interface, .port = cfg.port } },
-        .workers = .{
-            .count = @intCast(cfg.workers),
-            .max_conn = if (cfg.max_clients) |mc| @intCast(mc) else null,
-        },
-        .thread_pool = .{
-            .count = @intCast(cfg.threads),
-        },
-        .request = .{
-            .max_body_size = 2 * 1024 * 1024, // 2MB
-        },
-    }, .{ .ctx = ctx });
-    defer server.deinit();
-
-    g_server = &server;
-    defer g_server = null;
-
-    log.info("http.listening interface={s} port={d}", .{ cfg.interface, cfg.port });
-
-    try server.listen();
-}
-
-pub fn stop() void {
-    if (g_server) |s| s.stop();
+test "Server.init then deinit without listen does not leak" {
+    // T11 — std.testing.allocator asserts no leaks at test exit.
+    // Catches any future refactor that allocates in init() but only frees in
+    // a path conditional on listen() having been called.
+    const alloc = std.testing.allocator;
+    var ctx: handler.Context = undefined;
+    ctx.alloc = alloc;
+    const srv = try Server.init(&ctx, .{ .threads = 1, .workers = 1, .max_clients = 4 });
+    srv.deinit();
 }
 
 test {

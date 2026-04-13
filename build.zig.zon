@@ -20,9 +20,14 @@
             .url = "git+https://github.com/hendriknielaender/zBench#feaf455d9f8efa7a95b75b52ac3efe0c52549691",
             .hash = "zbench-0.11.1-YTdc7zkmAQBWI99esNFueJc9GuzK-KaU6Nfr1ZXhNGmc",
         },
+        // Vendored fork of karlseguin/http.zig at upstream commit 86ec1ae,
+        // patched to fix a shutdown UAF in the non-blocking Worker.deinit:
+        // the per-worker thread pool was deinit'd (arena freed) without
+        // first being stopped, so pool threads waking from read_cond.wait
+        // would dereference a freed queue. See vendor/httpz/CHANGES.md.
+        // Drop this vendor copy when the upstream PR lands and we re-pin.
         .httpz = .{
-            .url = "git+https://github.com/karlseguin/http.zig#86ec1ae5fca398a58dfb06ae7fd8395b8ab2ab76",
-            .hash = "httpz-0.0.0-PNVzrOlMBwDf2xnpIPCRXuFtO-qK6h2Vrl8n7_UjXZI1",
+            .path = "vendor/httpz",
         },
     },
     .paths = .{

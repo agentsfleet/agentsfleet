@@ -22,4 +22,6 @@ scratch_pad.md
 .claude/worktrees/
 .context/
 .claude/skills/
+.claude/settings.local.json
+.claude/scheduled_tasks.lock
 zombiectl/docs/spec/new-feature.md

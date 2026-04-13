@@ -47,12 +47,14 @@ const RunningServer = struct {
     queue: queue_redis.Client = undefined,
     telemetry: telemetry_mod.Telemetry,
     ctx: handler.Context,
+    srv: *http_server.Server,
     thread: std.Thread,
     port: u16,
 
     fn deinit(self: *RunningServer) void {
-        http_server.stop();
+        self.srv.stop();
         self.thread.join();
+        self.srv.deinit();
         self.verifier.deinit();
         self.session_store.deinit();
         self.pool.deinit();
@@ -135,15 +137,8 @@ fn cleanupSeedData(conn: *pg.Conn) !void {
     _ = try conn.exec("DELETE FROM tenants WHERE tenant_id = $1", .{TEST_TENANT_ID});
 }
 
-fn serverThread(ctx: *handler.Context, port: u16) void {
-    http_server.serve(ctx, .{
-        .port = port,
-        .threads = 1,
-        .workers = 1,
-        .max_clients = 64,
-    }) catch |err| {
-        std.debug.panic("rbac test server failed: {s}", .{@errorName(err)});
-    };
+fn serverThread(srv: *http_server.Server) void {
+    srv.listen() catch |err| std.debug.panic("rbac test server failed: {s}", .{@errorName(err)});
 }
 
 fn startServer(alloc: std.mem.Allocator) !*RunningServer {
@@ -181,6 +176,7 @@ fn startServer(alloc: std.mem.Allocator) !*RunningServer {
             .telemetry = undefined,
         },
         .telemetry = undefined,
+        .srv = undefined,
         .thread = undefined,
         .port = port,
     };
@@ -189,10 +185,17 @@ fn startServer(alloc: std.mem.Allocator) !*RunningServer {
     running.ctx.queue = &running.queue;
     running.ctx.oidc = &running.verifier;
     running.ctx.auth_sessions = &running.session_store;
-    running.thread = try std.Thread.spawn(.{}, serverThread, .{ &running.ctx, port });
+    running.srv = try http_server.Server.init(&running.ctx, .{
+        .port = port,
+        .threads = 1,
+        .workers = 1,
+        .max_clients = 64,
+    });
+    running.thread = try std.Thread.spawn(.{}, serverThread, .{running.srv});
     errdefer {
-        http_server.stop();
+        running.srv.stop();
         running.thread.join();
+        running.srv.deinit();
     }
     try waitForServer(alloc, port);
     return running;
