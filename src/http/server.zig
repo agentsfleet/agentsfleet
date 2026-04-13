@@ -246,4 +246,5 @@ pub fn stop() void {
 test {
     _ = @import("rbac_http_integration_test.zig");
     _ = @import("byok_http_integration_test.zig");
+    _ = @import("test_port.zig");
 }
