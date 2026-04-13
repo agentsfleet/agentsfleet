@@ -14,7 +14,10 @@ export default defineConfig({
   use: {
     baseURL: BASE_URL,
     extraHTTPHeaders: process.env.VERCEL_BYPASS_SECRET
-      ? { "x-vercel-protection-bypass": process.env.VERCEL_BYPASS_SECRET }
+      ? {
+          "x-vercel-protection-bypass": process.env.VERCEL_BYPASS_SECRET,
+          "x-vercel-set-bypass-cookie": "true",
+        }
       : {},
     trace: "on-first-retry",
     screenshot: "only-on-failure",
