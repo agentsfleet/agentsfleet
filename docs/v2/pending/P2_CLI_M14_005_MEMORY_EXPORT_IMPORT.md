@@ -9,6 +9,7 @@
 **Priority:** P2 — Operator tooling; agents already persist memory via M14_001
 **Batch:** B2
 **Depends on:** M14_001 (persistent memory schema + HTTP API shipped)
+**UI equivalent:** M24_001 (B7) — the dashboard import flow (`POST /v1/zombies/{id}/memory/import`) covers the same zip-upload-and-upsert operation this CLI wraps. The two paths must produce identical results; M24_001 reuses this workstream's zip format and import API. Non-CLI operators use M24_001; power users and agents use this CLI.
 
 ---
 

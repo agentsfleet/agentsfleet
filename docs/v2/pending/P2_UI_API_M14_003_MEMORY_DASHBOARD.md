@@ -8,6 +8,7 @@
 **Priority:** P2 — Without this, users don't trust memory; with it, memory feels tangible
 **Batch:** B2
 **Depends on:** M14_001 (export/import tool), M12_001 (app dashboard base)
+**Extended by:** M24_001 (B7) — adds write operations to this read-only tab: inline add/edit/delete entries, bulk zip import with preview. M14_003 ships the read surface; M24_001 closes the write loop without needing CLI export-then-edit.
 
 ---
 
