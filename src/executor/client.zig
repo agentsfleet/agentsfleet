@@ -80,11 +80,9 @@ pub const ExecutorClient = struct {
 
         try params.object.put("workspace_path", .{ .string = workspace_path });
         try params.object.put("trace_id", .{ .string = correlation.trace_id });
-        try params.object.put("run_id", .{ .string = correlation.run_id });
+        try params.object.put("zombie_id", .{ .string = correlation.zombie_id });
         try params.object.put("workspace_id", .{ .string = correlation.workspace_id });
-        try params.object.put("stage_id", .{ .string = correlation.stage_id });
-        try params.object.put("role_id", .{ .string = correlation.role_id });
-        try params.object.put("skill_id", .{ .string = correlation.skill_id });
+        try params.object.put("session_id", .{ .string = correlation.session_id });
 
         var resp = self.transport_client.sendRequest(self.nextId(), protocol.Method.create_execution, params) catch {
             log.err("executor_client.transport_loss error_code=UZ-EXEC-006 method=CreateExecution", .{});
@@ -144,10 +142,9 @@ pub const ExecutorClient = struct {
     };
 
     /// Full StartStage payload carrying agent execution context.
+    /// Zombie-native: identity travels via CorrelationContext on CreateExecution;
+    /// StartStage only carries per-turn execution payload.
     pub const StagePayload = struct {
-        stage_id: []const u8,
-        role_id: []const u8,
-        skill_id: []const u8,
         agent_config: AgentConfig = .{},
         message: []const u8 = "",
         tools: ?std.json.Value = null,
@@ -164,9 +161,6 @@ pub const ExecutorClient = struct {
         defer params.object.deinit();
 
         try params.object.put("execution_id", .{ .string = execution_id });
-        try params.object.put("stage_id", .{ .string = payload.stage_id });
-        try params.object.put("role_id", .{ .string = payload.role_id });
-        try params.object.put("skill_id", .{ .string = payload.skill_id });
         try params.object.put("message", .{ .string = payload.message });
 
         // Build agent_config object.
@@ -222,22 +216,6 @@ pub const ExecutorClient = struct {
             .cpu_throttled_ms = json.getIntOrZero(result, "cpu_throttled_ms"),
             .time_to_first_token_ms = json.getIntOrZero(result, "time_to_first_token_ms"),
         };
-    }
-
-    /// Backward-compatible startStage for tests and callers that don't
-    /// need the full agent payload (sends minimal params).
-    pub fn startStageBasic(
-        self: *ExecutorClient,
-        execution_id: []const u8,
-        stage_id: []const u8,
-        role_id: []const u8,
-        skill_id: []const u8,
-    ) !StageResult {
-        return self.startStage(execution_id, .{
-            .stage_id = stage_id,
-            .role_id = role_id,
-            .skill_id = skill_id,
-        });
     }
 
     pub fn cancelExecution(self: *ExecutorClient, execution_id: []const u8) !void {

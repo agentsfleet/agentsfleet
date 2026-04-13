@@ -224,7 +224,7 @@ test "T3: handler StartStage without agent_config processes request" {
     var create_params = std.json.Value{ .object = std.json.ObjectMap.init(alloc) };
     defer create_params.object.deinit();
     try create_params.object.put("workspace_path", .{ .string = "/tmp/test" });
-    try create_params.object.put("run_id", .{ .string = "r" });
+    try create_params.object.put("zombie_id", .{ .string = "r" });
 
     const create_req = try protocol.serializeRequest(alloc, 1, protocol.Method.create_execution, create_params);
     defer alloc.free(create_req);
@@ -240,9 +240,7 @@ test "T3: handler StartStage without agent_config processes request" {
     var stage_params = std.json.Value{ .object = std.json.ObjectMap.init(alloc) };
     defer stage_params.object.deinit();
     try stage_params.object.put("execution_id", .{ .string = exec_id });
-    try stage_params.object.put("stage_id", .{ .string = "plan" });
-    try stage_params.object.put("role_id", .{ .string = "echo" });
-    try stage_params.object.put("skill_id", .{ .string = "echo" });
+    try stage_params.object.put("session_id", .{ .string = "plan" });
 
     const stage_req = try protocol.serializeRequest(alloc, 2, protocol.Method.start_stage, stage_params);
     defer alloc.free(stage_req);
@@ -266,7 +264,7 @@ test "T3: handler StartStage without execution_id returns invalid_params" {
 
     var params = std.json.Value{ .object = std.json.ObjectMap.init(alloc) };
     defer params.object.deinit();
-    try params.object.put("stage_id", .{ .string = "plan" });
+    try params.object.put("session_id", .{ .string = "plan" });
 
     const req = try protocol.serializeRequest(alloc, 1, protocol.Method.start_stage, params);
     defer alloc.free(req);

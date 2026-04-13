@@ -55,7 +55,7 @@ test "T5: concurrent CreateExecution from 8 workers produces unique execution ID
             defer params.object.deinit();
             params.object.put("workspace_path", .{ .string = "/tmp/ws" }) catch return;
             params.object.put("trace_id", .{ .string = "t" }) catch return;
-            params.object.put("run_id", .{ .string = "r" }) catch return;
+            params.object.put("zombie_id", .{ .string = "r" }) catch return;
 
             const req = protocol.serializeRequest(a, @intCast(idx), protocol.Method.create_execution, params) catch return;
             defer a.free(req);
@@ -111,11 +111,9 @@ test "T5: concurrent heartbeat and cancel race — session is cancelled" {
     const page = std.heap.page_allocator;
     var session = session_mod.Session.create(page, "/tmp/ws", .{
         .trace_id = "t",
-        .run_id = "r",
+        .zombie_id = "r",
         .workspace_id = "w",
-        .stage_id = "s",
-        .role_id = "echo",
-        .skill_id = "echo",
+        .session_id = "s",
     }, .{}, 30_000);
     defer session.destroy();
 
@@ -166,8 +164,8 @@ test "T5: 10 parallel worker lifecycle runs leave the session store empty" {
             create_p.object.put("workspace_path", .{ .string = "/tmp/ws" }) catch return;
 
             var run_buf: [16]u8 = undefined;
-            const run_id = std.fmt.bufPrint(&run_buf, "run-{d}", .{idx}) catch "run";
-            create_p.object.put("run_id", .{ .string = run_id }) catch return;
+            const zombie_id = std.fmt.bufPrint(&run_buf, "run-{d}", .{idx}) catch "run";
+            create_p.object.put("zombie_id", .{ .string = zombie_id }) catch return;
 
             const create_req = protocol.serializeRequest(a, @intCast(idx * 10 + 1), protocol.Method.create_execution, create_p) catch return;
             defer a.free(create_req);
@@ -213,16 +211,14 @@ test "T5: 20 sessions all expire simultaneously — reapExpired clears all" {
 
     for (0..20) |_| {
         const s = try page.create(session_mod.Session);
-        // Use a string literal — stack-buffer stage_id would outlive the loop
+        // Use a string literal — stack-buffer session_id would outlive the loop
         // iteration and produce dangling pointers since Session stores the slice
         // header without copying the bytes.
         s.* = session_mod.Session.create(page, "/tmp/ws", .{
             .trace_id = "t",
-            .run_id = "r",
+            .zombie_id = "r",
             .workspace_id = "w",
-            .stage_id = "mass",
-            .role_id = "echo",
-            .skill_id = "echo",
+            .session_id = "mass",
         }, .{}, 1); // 1ms — expires immediately
         try store.put(s);
     }
@@ -248,11 +244,9 @@ test "T3: reapExpired does not remove session with fresh heartbeat" {
     const s = try page.create(session_mod.Session);
     s.* = session_mod.Session.create(page, "/tmp/ws", .{
         .trace_id = "t",
-        .run_id = "r",
+        .zombie_id = "r",
         .workspace_id = "w",
-        .stage_id = "active",
-        .role_id = "echo",
-        .skill_id = "echo",
+        .session_id = "active",
     }, .{}, 30_000); // 30s lease
     try store.put(s);
 
@@ -277,11 +271,9 @@ test "T3: worker crash simulation — no heartbeat → session reaped as orphan"
     const s = try page.create(session_mod.Session);
     s.* = session_mod.Session.create(page, "/tmp/ws", .{
         .trace_id = "t",
-        .run_id = "r",
+        .zombie_id = "r",
         .workspace_id = "w",
-        .stage_id = "orphan-1",
-        .role_id = "echo",
-        .skill_id = "echo",
+        .session_id = "orphan-1",
     }, .{}, 5); // 5ms lease — simulates worker crash timeout
     try store.put(s);
 

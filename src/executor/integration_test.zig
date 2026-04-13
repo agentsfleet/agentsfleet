@@ -52,11 +52,9 @@ test "integration: full RPC lifecycle over Unix socket" {
     defer create_params.object.deinit();
     try create_params.object.put("workspace_path", .{ .string = "/tmp/test-workspace" });
     try create_params.object.put("trace_id", .{ .string = "trace-123" });
-    try create_params.object.put("run_id", .{ .string = "run-456" });
+    try create_params.object.put("zombie_id", .{ .string = "run-456" });
     try create_params.object.put("workspace_id", .{ .string = "ws-789" });
-    try create_params.object.put("stage_id", .{ .string = "stage-1" });
-    try create_params.object.put("role_id", .{ .string = "echo" });
-    try create_params.object.put("skill_id", .{ .string = "echo" });
+    try create_params.object.put("session_id", .{ .string = "stage-1" });
 
     try protocol.sendRequest(alloc, sock, 1, protocol.Method.create_execution, create_params);
     const create_frame = try protocol.readFrameFromFd(alloc, sock);
@@ -79,9 +77,7 @@ test "integration: full RPC lifecycle over Unix socket" {
     var stage_params = std.json.Value{ .object = std.json.ObjectMap.init(alloc) };
     defer stage_params.object.deinit();
     try stage_params.object.put("execution_id", .{ .string = exec_id });
-    try stage_params.object.put("stage_id", .{ .string = "stage-1" });
-    try stage_params.object.put("role_id", .{ .string = "echo" });
-    try stage_params.object.put("skill_id", .{ .string = "echo" });
+    try stage_params.object.put("session_id", .{ .string = "stage-1" });
     try stage_params.object.put("message", .{ .string = "Test stage execution" });
 
     try protocol.sendRequest(alloc, sock, 2, protocol.Method.start_stage, stage_params);
@@ -212,7 +208,7 @@ test "integration: start_stage with invalid execution_id returns error" {
     var params = std.json.Value{ .object = std.json.ObjectMap.init(alloc) };
     defer params.object.deinit();
     try params.object.put("execution_id", .{ .string = "00000000000000000000000000000000" });
-    try params.object.put("stage_id", .{ .string = "stage-1" });
+    try params.object.put("session_id", .{ .string = "stage-1" });
 
     const req_json = try protocol.serializeRequest(alloc, 1, protocol.Method.start_stage, params);
     defer alloc.free(req_json);
@@ -237,11 +233,9 @@ test "integration: lease expiry reaps orphaned sessions" {
     const session = try page.create(session_mod.Session);
     session.* = session_mod.Session.create(page, "/tmp/test", .{
         .trace_id = "t",
-        .run_id = "r",
+        .zombie_id = "r",
         .workspace_id = "w",
-        .stage_id = "s",
-        .role_id = "echo",
-        .skill_id = "echo",
+        .session_id = "s",
     }, .{}, 1); // 1ms lease timeout
 
     try store.put(session);

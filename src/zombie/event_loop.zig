@@ -281,11 +281,9 @@ fn executeInSandbox(
 
     const execution_id = cfg.executor.createExecution(cfg.workspace_path, .{
         .trace_id = event.event_id,
-        .run_id = event.event_id,
+        .zombie_id = session.zombie_id,
         .workspace_id = session.workspace_id,
-        .stage_id = "zombie",
-        .role_id = "agent",
-        .skill_id = session.config.name,
+        .session_id = event.event_id,
     }) catch |err| {
         log.err("zombie_event_loop.exec_create_fail zombie_id={s} event_id={s} error_code=" ++ error_codes.ERR_EXEC_SESSION_CREATE_FAILED, .{ session.zombie_id, event.event_id });
         return err;
@@ -301,9 +299,6 @@ fn executeInSandbox(
     defer if (api_key.len > 0) alloc.free(api_key);
 
     return cfg.executor.startStage(execution_id, .{
-        .stage_id = "zombie",
-        .role_id = "agent",
-        .skill_id = session.config.name,
         .agent_config = .{
             .system_prompt = session.instructions,
             .api_key = api_key,
