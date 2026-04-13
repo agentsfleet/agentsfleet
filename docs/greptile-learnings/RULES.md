@@ -388,6 +388,13 @@ Reference a rule as `RULE NDC`, `RULE OWN`, etc.
 **Tags:** zig, memory, ownership, patterns
 **Ref:** bvisor src/core/Supervisor.zig, Thread.zig, ThreadGroup.zig, OverlayRoot.zig, LogBuffer.zig.
 
+## RULE CTX — Cross-tenant data requires a process boundary, not a shared filesystem
+
+**Rule:** Any data that a sandboxed agent must not read across tenant boundaries (zombie, workspace, customer) must live behind a process boundary — a database, a network service, or an authenticated API. A shared filesystem (bind-mounted volume, NFS, host directory) shared between sibling sandboxes is never acceptable, even if the data is "scoped" by path convention.
+**Why:** The memory-tool API enforces zombie_id scoping on `memory_recall`. But if the underlying store is a bind-mounted `/var/lib/zombie-memory/{zombie_id}/` directory and the agent has ANY shell or file-read tool (Bash, code execution, Read-file), the agent can bypass the memory API entirely: `cat /var/lib/zombie-memory/zom_other/core/*.md`. This is the classic confused-deputy pattern — the API's scoping checks are bypassed by a different tool that has broader filesystem permissions. Moving the store to a process boundary (Postgres with `memory_runtime` role, different protocol, different credentials) makes cross-tenant access structurally impossible, not just policy-enforced.
+**Tags:** security, architecture, multi-tenancy, confused-deputy
+**Ref:** M14_001 design review — original draft proposed SQLite on a persistent host volume; rejected because agent shell tools could read sibling zombies' directories. Storage moved to a dedicated Postgres database with a scoped `memory_runtime` role. The rule generalizes: it applies to any future cross-tenant data (per-workspace caches, per-customer artifacts, per-zombie workspaces).
+
 ## RULE WAUTH — Every workspace-scoped handler must call authorizeWorkspace after authenticate
 
 **Rule:** Any handler that takes a `workspace_id` URL parameter must (1) capture the principal from `common.authenticate` — never discard with `_ =` — and (2) call `common.authorizeWorkspace(conn, principal, workspace_id)` immediately after acquiring a DB connection. A 403 must be returned before any data is read or written.
@@ -424,6 +431,7 @@ return switch (resp) { .integer => |n| n == 1, else => false };
 **Don't:** `GETDEL` (deletes before compare); `GET` + `DEL` as two commands (race).
 **Tags:** zig, redis, concurrency, security, nonce
 **Ref:** grant_approval_webhook.zig:verifyAndConsumeNonce. Fixed PR #205 (initial GETDEL, second greptile P1 review 4095571471).
+
 ## RULE TWF — Timestamp freshness must reject future timestamps
 
 **Rule:** When validating webhook timestamps (Slack `X-Slack-Request-Timestamp`, etc.), reject timestamps that are more than `max_drift` seconds *in the future*, not just in the past. Use `if (ts > now + max_drift) return false;` before the stale check.

@@ -83,6 +83,77 @@ pub const ExecutorConfig = struct {
     resource_limits: ResourceLimits = .{},
 };
 
+/// Per-zombie configuration for durable Postgres-backed memory (M14_001).
+///
+/// When present, the executor overrides NullClaw's default workspace-SQLite
+/// memory with a persistent Postgres backend scoped to this zombie only.
+/// When absent (null in runner.zig), the executor falls back to the existing
+/// ephemeral workspace-SQLite behaviour — no regression for existing zombies.
+///
+/// Validation: call `validate()` at config-load time. An invalid config is
+/// treated as memory-off (the runner logs `memory.config_invalid` and
+/// continues without persistent memory).
+pub const MemoryBackendConfig = struct {
+    /// Storage backend. Only "postgres" is supported in v1.
+    /// "redis" and "sqlite-global" are reserved for future workstreams.
+    backend: []const u8,
+    /// Postgres connection string for the memory_runtime role.
+    /// Example: "postgresql://memory_runtime:pw@localhost:5432/usezombiedb"
+    connection: []const u8,
+    /// Row-level scope key — "zmb:{zombie_uuid_v7}".
+    /// Every query in zombie_memory.zig scopes to this namespace so two
+    /// concurrent zombies cannot read each other's entries.
+    namespace: []const u8,
+    /// Hard cap on `core` category entries per zombie.
+    /// TODO(M14_005): not yet enforced — the store handler performs an unconditional
+    /// upsert. Field is defined here for config forward-compatibility so the struct
+    /// shape is stable when enforcement ships. Do not rely on this cap in production.
+    max_entries: u32 = 100_000,
+    /// Retention window for `daily` category entries (hours).
+    /// TODO(M14_005): not yet enforced — the prune job is deferred. Field is reserved
+    /// for forward-compatibility; no entries are pruned today.
+    daily_retention_hours: u32 = 72,
+
+    pub const NAMESPACE_PREFIX = "zmb:";
+    /// UUID v7 string length: "xxxxxxxx-xxxx-7xxx-xxxx-xxxxxxxxxxxx" = 36 chars.
+    pub const UUID_V7_LEN = 36;
+
+    pub const ValidationError = error{
+        UnsupportedBackend,
+        EmptyConnection,
+        InvalidNamespace,
+    };
+
+    /// Validate the config. Returns an error if any field is out of contract.
+    /// Called at runner startup; an error means memory falls back to ephemeral.
+    pub fn validate(self: MemoryBackendConfig) ValidationError!void {
+        // backend must be "postgres" (only supported value in v1).
+        if (!std.mem.eql(u8, self.backend, "postgres")) {
+            return ValidationError.UnsupportedBackend;
+        }
+        // connection must be non-empty.
+        if (self.connection.len == 0) {
+            return ValidationError.EmptyConnection;
+        }
+        // namespace must be "zmb:" + 36-char UUID v7.
+        const pfx = NAMESPACE_PREFIX;
+        if (self.namespace.len != pfx.len + UUID_V7_LEN) {
+            return ValidationError.InvalidNamespace;
+        }
+        if (!std.mem.startsWith(u8, self.namespace, pfx)) {
+            return ValidationError.InvalidNamespace;
+        }
+        const uuid_part = self.namespace[pfx.len..];
+        // Quick structural check: UUID v7 has '-' at [8],[13],[18],[23] and '7' at [14].
+        if (uuid_part[8] != '-' or uuid_part[13] != '-' or
+            uuid_part[18] != '-' or uuid_part[23] != '-' or
+            uuid_part[14] != '7')
+        {
+            return ValidationError.InvalidNamespace;
+        }
+    }
+};
+
 pub fn generateExecutionId() ExecutionId {
     var id: ExecutionId = undefined;
     std.crypto.random.bytes(&id);
@@ -133,4 +204,73 @@ test "ResourceLimits has sensible defaults" {
     const defaults = ResourceLimits{};
     try std.testing.expectEqual(@as(u64, 512), defaults.memory_limit_mb);
     try std.testing.expectEqual(@as(u64, 100), defaults.cpu_limit_percent);
+}
+
+// ── MemoryBackendConfig tests ─────────────────────────────────────────────────
+
+const VALID_NAMESPACE = "zmb:0195b4ba-8d3a-7f13-8abc-000000000100";
+
+test "MemoryBackendConfig.validate accepts valid postgres config" {
+    const cfg = MemoryBackendConfig{
+        .backend = "postgres",
+        .connection = "postgresql://memory_runtime:pw@localhost:5432/usezombiedb",
+        .namespace = VALID_NAMESPACE,
+    };
+    try cfg.validate();
+}
+
+test "MemoryBackendConfig.validate rejects unsupported backend" {
+    const cfg = MemoryBackendConfig{
+        .backend = "redis",
+        .connection = "redis://localhost:6379",
+        .namespace = VALID_NAMESPACE,
+    };
+    try std.testing.expectError(MemoryBackendConfig.ValidationError.UnsupportedBackend, cfg.validate());
+}
+
+test "MemoryBackendConfig.validate rejects empty connection" {
+    const cfg = MemoryBackendConfig{
+        .backend = "postgres",
+        .connection = "",
+        .namespace = VALID_NAMESPACE,
+    };
+    try std.testing.expectError(MemoryBackendConfig.ValidationError.EmptyConnection, cfg.validate());
+}
+
+test "MemoryBackendConfig.validate rejects empty namespace" {
+    const cfg = MemoryBackendConfig{
+        .backend = "postgres",
+        .connection = "postgresql://localhost/db",
+        .namespace = "",
+    };
+    try std.testing.expectError(MemoryBackendConfig.ValidationError.InvalidNamespace, cfg.validate());
+}
+
+test "MemoryBackendConfig.validate rejects namespace missing zmb: prefix" {
+    const cfg = MemoryBackendConfig{
+        .backend = "postgres",
+        .connection = "postgresql://localhost/db",
+        .namespace = "0195b4ba-8d3a-7f13-8abc-000000000100",
+    };
+    try std.testing.expectError(MemoryBackendConfig.ValidationError.InvalidNamespace, cfg.validate());
+}
+
+test "MemoryBackendConfig.validate rejects namespace with wrong UUID version" {
+    // UUID version char at position 14 (after "zmb:") is '4' instead of '7'.
+    const cfg = MemoryBackendConfig{
+        .backend = "postgres",
+        .connection = "postgresql://localhost/db",
+        .namespace = "zmb:0195b4ba-8d3a-4f13-8abc-000000000100",
+    };
+    try std.testing.expectError(MemoryBackendConfig.ValidationError.InvalidNamespace, cfg.validate());
+}
+
+test "MemoryBackendConfig defaults are sane" {
+    const cfg = MemoryBackendConfig{
+        .backend = "postgres",
+        .connection = "x",
+        .namespace = VALID_NAMESPACE,
+    };
+    try std.testing.expectEqual(@as(u32, 100_000), cfg.max_entries);
+    try std.testing.expectEqual(@as(u32, 72), cfg.daily_retention_hours);
 }

@@ -157,11 +157,16 @@ test {
     _ = @import("http/handlers/m5_handler_changes_test.zig");
     _ = @import("http/handlers/m16_004_handler_unit_test.zig");
     _ = @import("http/handlers/m11_001_error_response_test.zig");
+    _ = @import("http/handlers/m14_001_memory_handler_test.zig");
+    _ = @import("http/handlers/m14_001_memory_handler_shapes_test.zig");
     _ = @import("cmd/run_watch_test.zig");
     _ = @import("cmd/serve_test.zig");
     _ = @import("queue/redis.zig");
     _ = @import("queue/redis_pubsub_test.zig");
     _ = @import("reliability/backoff.zig");
+    // M14_001: Persistent Zombie Memory — role isolation tests + executor unit tests
+    _ = @import("memory/zombie_memory_role_test.zig");
+    _ = @import("executor/zombie_memory.zig");
     // M2_001: Zombie CRUD, activity, router, worker
     _ = @import("http/handlers/zombie_api.zig");
     _ = @import("http/handlers/zombie_activity_api.zig");

@@ -16,6 +16,7 @@ const webhooks_http = @import("handlers/webhooks.zig");
 const approval_http = @import("handlers/approval_http.zig");
 const zombie_api_http = @import("handlers/zombie_api.zig");
 const zombie_activity_api_http = @import("handlers/zombie_activity_api.zig");
+const memory_http = @import("handlers/memory_http.zig");
 const execute_http = @import("handlers/execute.zig");
 const integration_grants_http = @import("handlers/integration_grants.zig");
 const integration_grants_workspace_http = @import("handlers/integration_grants_workspace.zig");
@@ -61,6 +62,12 @@ pub const handleSpecPreview = agent_relay_http.handleSpecPreview;
 
 pub const handleReceiveWebhook = webhooks_http.handleReceiveWebhook;
 pub const handleApprovalCallback = approval_http.handleApprovalCallback;
+
+// M14_001: External-agent memory API
+pub const handleMemoryStore = memory_http.handleMemoryStore;
+pub const handleMemoryRecall = memory_http.handleMemoryRecall;
+pub const handleMemoryList = memory_http.handleMemoryList;
+pub const handleMemoryForget = memory_http.handleMemoryForget;
 
 // M2_001: Zombie CRUD + activity + credentials
 pub const handleCreateZombie = zombie_api_http.handleCreateZombie;
