@@ -471,6 +471,10 @@ test "integration: M16_004 concurrent platform key upserts are idempotent" {
     const alloc = std.testing.allocator;
     const srv = try startTestServer(alloc);
     defer {
+        // Let httpz workers finish unwinding after the client responses
+        // before stop() frees the thread-pool queue. Without this, shutdown
+        // races the last worker dequeue and segfaults in thread_pool.zig.
+        std.Thread.sleep(200 * std.time.ns_per_ms);
         srv.deinit();
         alloc.destroy(srv);
     }
