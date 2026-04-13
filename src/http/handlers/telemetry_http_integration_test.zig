@@ -25,6 +25,7 @@ const common = @import("common.zig");
 const handler = @import("../../http/handler.zig");
 const http_server = @import("../../http/server.zig");
 const telemetry_mod = @import("../../observability/telemetry.zig");
+const test_port = @import("../test_port.zig");
 
 const TEST_TENANT_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01";
 const TEST_WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
@@ -47,8 +48,6 @@ const TOKEN_OPERATOR =
 // .admin role
 const TOKEN_ADMIN =
     "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6InJiYWMtdGVzdC1raWQifQ.eyJzdWIiOiJ1c2VyX3Rlc3QiLCJpc3MiOiJodHRwczovL2NsZXJrLmRldi51c2V6b21iaWUuY29tIiwiYXVkIjoiaHR0cHM6Ly9hcGkudXNlem9tYmllLmNvbSIsImV4cCI6NDEwMjQ0NDgwMCwibWV0YWRhdGEiOnsidGVuYW50X2lkIjoiMDE5NWI0YmEtOGQzYS03ZjEzLThhYmMtMmIzZTFlMGE2ZjAxIiwid29ya3NwYWNlX2lkIjoiMDE5NWI0YmEtOGQzYS03ZjEzLThhYmMtMmIzZTFlMGE2ZjExIiwicm9sZSI6ImFkbWluIn19.sTBn0XSWWTLEd5fSEcClUIhMCVeuXjljxYymPdMwahzAhhkg6P3MVhmtiPC_B_nFQQ7WU8cAS7kSvPL3Fcs9feb06C7zosm63ByUdqigATBVILyCDt43em2pG8cGOgj-bhkxIoWsGai5hdzu4vzOEYMMLzvN_V_QPMrjqWnLIiCVXk9_Mcdpx5xbUfA1hAwg_bM8CTlezRQ5ys8oxQDymx6cvuUaW_M69jYEgpFeETNpYWmuvMWIuVlT2wpME9-8l3ytYpE0ZxnGG_HQTY1bXRkg_ZC02uYs90lhOWEs9cPG4Uz0HU6rNSnRK71bAtlgQUlcUZZSK-Gg4GbFM0SVPg";
-
-var next_test_port = std.atomic.Value(u16).init(39200);
 
 const HttpResponse = struct {
     status: u16,
@@ -132,7 +131,7 @@ fn startTestServer(alloc: std.mem.Allocator) !*TestServer {
     try seedTestData(db_ctx.conn);
     db_ctx.pool.release(db_ctx.conn);
 
-    const port = next_test_port.fetchAdd(1, .acq_rel);
+    const port = try test_port.allocFreePort();
 
     const srv = try alloc.create(TestServer);
     srv.* = TestServer{
