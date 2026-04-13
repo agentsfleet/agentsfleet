@@ -288,4 +288,4 @@ make check-pg-drain 2>&1 | tail -3
 
 ---
 
-**Note (M24 numbering):** M24_001 is already allocated to "Zombie Steer + Memory Bridge" (P1 API backend, created Apr 13 2026 earlier same day). This spec is M24_002, the UI layer that builds on the same M14 memory primitives. The two workstreams are complementary: M24_001 enables durable coaching/steering, M24_002 enables operator-driven seeding and editing from the browser.
+**Note (M24 workstream):** Zombie Steer + Memory Bridge is M23_001 (P1 API backend). This spec is M24_001, the UI layer that builds on M14 memory primitives. The two milestones are complementary: M23_001 enables durable coaching/steering, M24_001 enables operator-driven seeding and editing from the browser.

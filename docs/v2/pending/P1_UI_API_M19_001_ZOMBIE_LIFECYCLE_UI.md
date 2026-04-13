@@ -63,9 +63,9 @@ Accessed from Dashboard via "+ New Zombie" button. Two paths: (a) pick a skill t
 **Dimensions:**
 - 1.1 PENDING
   - target: `app/zombies/new/page.tsx`
-  - input: user selects "Lead Collector" template
-  - expected: name pre-filled as "lead-collector", skill pre-filled as "lead-collector-v1", description pre-filled
-  - test_type: unit (component test)
+  - input: `GET /v1/skills` returns skills including "lead-collector"; user selects it
+  - expected: name pre-filled as "lead-collector", skill field pre-filled as "lead-collector-v1", description pre-filled from SKILL.md frontmatter
+  - test_type: unit (component test, API mock)
 - 1.2 PENDING
   - target: `app/zombies/new/page.tsx`
   - input: user fills form and clicks Create
