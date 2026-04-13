@@ -22,8 +22,10 @@ pub const admin_api_key = @import("admin_api_key.zig");
 pub const bearer_oidc = @import("bearer_oidc.zig");
 pub const bearer_or_api_key = @import("bearer_or_api_key.zig");
 pub const require_role = @import("require_role.zig");
+pub const webhook_hmac = @import("webhook_hmac.zig");
 
 pub const AdminApiKey = admin_api_key.AdminApiKey;
 pub const BearerOidc = bearer_oidc.BearerOidc;
 pub const BearerOrApiKey = bearer_or_api_key.BearerOrApiKey;
 pub const RequireRole = require_role.RequireRole;
+pub const WebhookHmac = webhook_hmac.WebhookHmac;

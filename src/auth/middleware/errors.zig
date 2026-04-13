@@ -10,3 +10,4 @@ pub const ERR_TOKEN_EXPIRED: []const u8 = "UZ-AUTH-003";
 pub const ERR_AUTH_UNAVAILABLE: []const u8 = "UZ-AUTH-004";
 pub const ERR_INSUFFICIENT_ROLE: []const u8 = "UZ-AUTH-009";
 pub const ERR_UNSUPPORTED_ROLE: []const u8 = "UZ-AUTH-010";
+pub const ERR_APPROVAL_INVALID_SIGNATURE: []const u8 = "UZ-APPROVAL-003";
