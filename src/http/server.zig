@@ -34,8 +34,8 @@ const App = struct {
     }
 };
 
-/// Module-level server pointer for cross-thread stop().
-var g_server: ?*httpz.Server(App) = null;
+/// Thread-local server pointer for cross-thread stop() — isolation per test thread.
+threadlocal var g_server: ?*httpz.Server(App) = null;
 
 // ── Request dispatch ──────────────────────────────────────────────────────
 
@@ -145,8 +145,8 @@ fn dispatchMatchedRoute(ctx: *handler.Context, req: *httpz.Request, res: *httpz.
         // M9_001: External agent key management
         .external_agents => |workspace_id| switch (req.method) {
             .POST => handler.handleCreateExternalAgent(ctx, req, res, workspace_id),
-            .GET  => handler.handleListExternalAgents(ctx, req, res, workspace_id),
-            else  => respondMethodNotAllowed(res),
+            .GET => handler.handleListExternalAgents(ctx, req, res, workspace_id),
+            else => respondMethodNotAllowed(res),
         },
         .delete_external_agent => |route| if (req.method == .DELETE) handler.handleDeleteExternalAgent(ctx, req, res, route.workspace_id, route.agent_id) else respondMethodNotAllowed(res),
     }
