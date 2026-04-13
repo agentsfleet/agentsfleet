@@ -2,7 +2,7 @@
 Milestone: M18
 Workstream: M18_002
 Name: MIDDLEWARE_MIGRATION
-Status: PENDING
+Status: IN_PROGRESS
 Branch: feat/m18-002-middleware-migration
 Depends-on: M11_002 (introduced hx.zig — this workstream replaces hx.authenticated*)
 Created: Apr 13, 2026
