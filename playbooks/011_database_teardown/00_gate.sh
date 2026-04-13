@@ -18,7 +18,12 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-export ENV="${ENV:-all}"
+if [ -z "${ENV:-}" ]; then
+	echo "❌ ERROR: ENV must be set explicitly (dev or prod)" >&2
+	echo "Usage: ALLOW_DATABASE_TEARDOWN=1 ENV=dev ./00_gate.sh" >&2
+	exit 1
+fi
+export ENV
 export VAULT_DEV="${VAULT_DEV:-ZMB_CD_DEV}"
 export VAULT_PROD="${VAULT_PROD:-ZMB_CD_PROD}"
 

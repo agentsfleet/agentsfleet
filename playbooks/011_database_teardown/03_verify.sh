@@ -31,13 +31,22 @@ get_password() {
 	echo "$url" | sed -n 's/.*:\/\/[^:]*:\([^@]*\)@.*/\1/p'
 }
 
+# Strip password from URL so it never shows up in `ps aux`.
+# psql will pick up credentials from PGPASSWORD instead.
+strip_password() {
+	local url="$1"
+	echo "$url" | sed -E 's|^(.+://[^:/@]+):[^@]+@|\1@|'
+}
+
 verify_database() {
 	local url="$1"
 	local env_label="$2"
 	local password
+	local safe_url
 	local tmp_sql
 
 	password=$(get_password "$url")
+	safe_url=$(strip_password "$url")
 
 	echo ""
 	echo "============================================================"
@@ -138,7 +147,7 @@ SQLEOF
 		-e PGPASSWORD="$password" \
 		-v "$tmp_sql:/verify.sql:ro" \
 		postgres:18-alpine \
-		psql "$url" \
+		psql "$safe_url" \
 		-f /verify.sql \
 		-t \
 		2>&1 | grep -v "^psql:" | grep -v "^SSL connection" | grep -v "^NOTICE:"

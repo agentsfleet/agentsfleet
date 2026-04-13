@@ -46,14 +46,23 @@ get_password() {
 	echo "$url" | sed -n 's/.*:\/\/[^:]*:\([^@]*\)@.*/\1/p'
 }
 
+# Strip password from URL so it never shows up in `ps aux`.
+# psql will pick up credentials from PGPASSWORD instead.
+strip_password() {
+	local url="$1"
+	echo "$url" | sed -E 's|^(.+://[^:/@]+):[^@]+@|\1@|'
+}
+
 # Execute teardown on a database
 teardown_database() {
 	local url="$1"
 	local env_label="$2"
 	local password
+	local safe_url
 	local tmp_sql
 
 	password=$(get_password "$url")
+	safe_url=$(strip_password "$url")
 
 	echo ""
 	echo "================================================"
@@ -86,15 +95,16 @@ teardown_database() {
 		-e PGPASSWORD="$password" \
 		-v "$tmp_sql:/teardown.sql:ro" \
 		postgres:18-alpine \
-		psql "$url" \
+		psql "$safe_url" \
 		-f /teardown.sql \
 		-v ON_ERROR_STOP=1 2>&1; then
 
 		echo ""
 		echo "✅ $env_label teardown completed successfully"
 	else
+		local docker_exit=$?
 		echo ""
-		echo "❌ $env_label teardown failed with exit code $?"
+		echo "❌ $env_label teardown failed with exit code $docker_exit"
 		return 1
 	fi
 }
