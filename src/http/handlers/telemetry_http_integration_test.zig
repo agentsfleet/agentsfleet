@@ -65,6 +65,7 @@ const TestServer = struct {
     queue: queue_redis.Client = undefined,
     telemetry: telemetry_mod.Telemetry,
     ctx: handler.Context,
+    server: *http_server.Server,
     thread: std.Thread,
     port: u16,
 
@@ -72,17 +73,17 @@ const TestServer = struct {
     // Pool must outlive the server thread so handlers can complete in-flight requests.
     // Caller must call alloc.destroy(self) after deinit() — matches rbac_http_integration_test pattern.
     fn deinit(self: *TestServer) void {
-        http_server.stop();
+        self.server.stop();
         self.thread.join();
+        self.server.deinit();
         self.verifier.deinit();
         self.session_store.deinit();
         self.pool.deinit();
     }
 };
 
-fn serverThread(ctx: *handler.Context, port: u16) void {
-    http_server.serve(ctx, .{ .port = port, .threads = 1, .workers = 1, .max_clients = 64 }) catch |e|
-        std.debug.panic("m18 test server: {s}", .{@errorName(e)});
+fn serverThread(srv: *http_server.Server) void {
+    srv.listen() catch |e| std.debug.panic("m18 test server: {s}", .{@errorName(e)});
 }
 
 fn seedTestData(conn: *pg.Conn) !void {
@@ -159,6 +160,7 @@ fn startTestServer(alloc: std.mem.Allocator) !*TestServer {
             .telemetry = undefined,
         },
         .telemetry = undefined,
+        .server = undefined,
         .thread = undefined,
         .port = port,
     };
@@ -169,10 +171,12 @@ fn startTestServer(alloc: std.mem.Allocator) !*TestServer {
     srv.ctx.oidc = &srv.verifier;
     srv.ctx.auth_sessions = &srv.session_store;
 
-    srv.thread = try std.Thread.spawn(.{}, serverThread, .{ &srv.ctx, port });
+    srv.server = try http_server.Server.init(&srv.ctx, .{ .port = port, .threads = 1, .workers = 1, .max_clients = 64 });
+    srv.thread = try std.Thread.spawn(.{}, serverThread, .{srv.server});
     errdefer {
-        http_server.stop();
+        srv.server.stop();
         srv.thread.join();
+        srv.server.deinit();
     }
 
     // Wait for /healthz to confirm the server is accepting connections.

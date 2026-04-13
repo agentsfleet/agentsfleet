@@ -19,8 +19,14 @@ const serve_args = @import("serve_args.zig");
 const log = std.log.scoped(.zombied);
 
 var shutdown_requested = std.atomic.Value(bool).init(false);
-var stop_server_fn: *const fn () void = http_server.stop;
+/// Published by run() before listen() begins; signalWatcher reads this to call stop().
+var active_server = std.atomic.Value(?*http_server.Server).init(null);
+var stop_server_fn: *const fn () void = defaultStopServer;
 var stop_server_test_counter: ?*std.atomic.Value(u32) = null;
+
+fn defaultStopServer() void {
+    if (active_server.load(.acquire)) |s| s.stop();
+}
 
 fn parseServeArgOverrides() serve_args.ServeArgError!?u16 {
     var it = std.process.args();
@@ -190,12 +196,20 @@ pub fn run(alloc: std.mem.Allocator) !void {
         serve_cfg.api_max_in_flight_requests,
     });
     ctx.telemetry.capture(telemetry_mod.ServerStarted, .{ .port = serve_cfg.port });
-    http_server.serve(&ctx, .{
+    const srv = http_server.Server.init(&ctx, .{
         .port = serve_cfg.port,
         .threads = serve_cfg.api_http_threads,
         .workers = serve_cfg.api_http_workers,
         .max_clients = @intCast(serve_cfg.api_max_clients),
     }) catch |err| {
+        obs_log.logErr(.zombied, err, "http.server_init status=fail", .{});
+        return err;
+    };
+    defer srv.deinit();
+    active_server.store(srv, .release);
+    defer active_server.store(null, .release);
+
+    srv.listen() catch |err| {
         obs_log.logErr(.zombied, err, "http.server_exit status=fail", .{});
     };
 
@@ -219,7 +233,7 @@ test "integration: signalWatcher stops server on shutdown" {
     stop_server_test_counter = &stop_calls;
     stop_server_fn = testStopServerHook;
     defer {
-        stop_server_fn = http_server.stop;
+        stop_server_fn = defaultStopServer;
         stop_server_test_counter = null;
         shutdown_requested.store(false, .release);
     }

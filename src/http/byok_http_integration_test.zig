@@ -65,21 +65,22 @@ const TestServer = struct {
     queue: queue_redis.Client = undefined,
     telemetry: telemetry_mod.Telemetry,
     ctx: handler.Context,
+    server: *http_server.Server,
     thread: std.Thread,
     port: u16,
 
     fn deinit(self: *TestServer) void {
-        http_server.stop();
+        self.server.stop();
         self.thread.join();
+        self.server.deinit();
         self.verifier.deinit();
         self.session_store.deinit();
         self.pool.deinit();
     }
 };
 
-fn serverThread(ctx: *handler.Context, port: u16) void {
-    http_server.serve(ctx, .{ .port = port, .threads = 2, .workers = 2, .max_clients = 64 }) catch |err|
-        std.debug.panic("m16004 test server: {s}", .{@errorName(err)});
+fn serverThread(srv: *http_server.Server) void {
+    srv.listen() catch |err| std.debug.panic("m16004 test server: {s}", .{@errorName(err)});
 }
 
 fn startTestServer(alloc: std.mem.Allocator) !*TestServer {
@@ -117,6 +118,7 @@ fn startTestServer(alloc: std.mem.Allocator) !*TestServer {
             .telemetry = undefined,
         },
         .telemetry = undefined,
+        .server = undefined,
         .thread = undefined,
         .port = port,
     };
@@ -125,10 +127,12 @@ fn startTestServer(alloc: std.mem.Allocator) !*TestServer {
     srv.ctx.queue = &srv.queue;
     srv.ctx.oidc = &srv.verifier;
     srv.ctx.auth_sessions = &srv.session_store;
-    srv.thread = try std.Thread.spawn(.{}, serverThread, .{ &srv.ctx, port });
+    srv.server = try http_server.Server.init(&srv.ctx, .{ .port = port, .threads = 2, .workers = 2, .max_clients = 64 });
+    srv.thread = try std.Thread.spawn(.{}, serverThread, .{srv.server});
     errdefer {
-        http_server.stop();
+        srv.server.stop();
         srv.thread.join();
+        srv.server.deinit();
     }
     try waitForServer(alloc, port);
     return srv;
