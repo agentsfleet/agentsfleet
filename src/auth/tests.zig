@@ -27,4 +27,5 @@ test {
     _ = @import("middleware/require_role.zig");
     _ = @import("middleware/webhook_hmac.zig");
     _ = @import("middleware/slack_signature.zig");
+    _ = @import("middleware/oauth_state.zig");
 }

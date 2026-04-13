@@ -24,6 +24,7 @@ pub const bearer_or_api_key = @import("bearer_or_api_key.zig");
 pub const require_role = @import("require_role.zig");
 pub const webhook_hmac = @import("webhook_hmac.zig");
 pub const slack_signature = @import("slack_signature.zig");
+pub const oauth_state = @import("oauth_state.zig");
 
 pub const AdminApiKey = admin_api_key.AdminApiKey;
 pub const BearerOidc = bearer_oidc.BearerOidc;
@@ -31,3 +32,4 @@ pub const BearerOrApiKey = bearer_or_api_key.BearerOrApiKey;
 pub const RequireRole = require_role.RequireRole;
 pub const WebhookHmac = webhook_hmac.WebhookHmac;
 pub const SlackSignature = slack_signature.SlackSignature;
+pub const OAuthState = oauth_state.OAuthState;
