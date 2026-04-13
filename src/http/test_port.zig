@@ -46,12 +46,15 @@ test "allocFreePort returns a port in the valid unprivileged range" {
     try std.testing.expect(p >= 1024);
 }
 
-test "allocFreePort returns distinct ports on repeated calls" {
+test "allocFreePort: two consecutive calls both return valid ports" {
+    // Distinctness isn't an invariant — the Linux kernel legitimately reuses
+    // freshly-released ephemeral ports across short windows. What matters is
+    // that each call succeeds and returns a plausible port; bindability is
+    // covered by a dedicated test below.
     const a = try allocFreePort();
     const b = try allocFreePort();
-    // Not strictly guaranteed by POSIX, but Linux/Darwin reliably hand out
-    // different ephemeral ports for consecutive binds.
-    try std.testing.expect(a != b);
+    try std.testing.expect(a != 0);
+    try std.testing.expect(b != 0);
 }
 
 test "allocFreePort: returned port is immediately bindable by the caller" {
@@ -72,16 +75,16 @@ test "allocFreePort: returned port is immediately bindable by the caller" {
     try posix.bind(sock, &addr.any, addr.getOsSockLen());
 }
 
-test "allocFreePort: 64 sequential allocations all succeed and are distinct" {
+test "allocFreePort: 64 sequential allocations all succeed" {
     // Regression for the original flake: fixed-counter port allocation
-    // collided with CI-runner sockets. This asserts we can drive a long
-    // test suite's worth of allocations without reuse or failure.
-    var seen = std.AutoHashMap(u16, void).init(std.testing.allocator);
-    defer seen.deinit();
+    // panicked on CI when the kernel had already grabbed the port. This
+    // asserts allocFreePort scales to a full test suite's churn without
+    // ever failing. Port values may repeat — the kernel legitimately reuses
+    // freshly-released ephemeral ports — and that's fine because httpz sets
+    // SO_REUSEADDR.
     var i: usize = 0;
     while (i < 64) : (i += 1) {
         const p = try allocFreePort();
-        const gop = try seen.getOrPut(p);
-        try std.testing.expect(!gop.found_existing);
+        try std.testing.expect(p != 0);
     }
 }
