@@ -17,7 +17,7 @@
 
 **Problem:** Shipping persistent memory without metrics means we can't distinguish "memory is helping" from "memory is a durable pile of noise." Worse, the most critical failure (zombie confidently asserts something false from stale memory) is invisible unless measured. Without metrics, a regression in the skill template that causes the zombie to stop recalling passes undetected.
 
-**Solution summary:** Emit structured events on every memory operation (already partially happens via M14_001). Add a metric-computation service that aggregates these events into four key rates. Surface them on the zombie dashboard (leveraging M14_003) and in Grafana dashboards for SREs. Wrong-context-asserted is the trickiest — it requires a human feedback signal or heuristic (operator-marked "wrong" on a response), which this workstream introduces as a thumbs-down action.
+**Solution summary:** Emit structured events on every memory operation (already partially happens via M14_001). Add a metric-computation service that aggregates these events into four key rates. Expose them via API endpoints; Grafana dashboard reads the same rates for SRE-facing rollups. Operator-facing dashboard panel is owned by a separate milestone — this workstream ships only the backend pipeline + Grafana. Wrong-context-asserted requires a human feedback signal (operator-marked "wrong" on a response), which this workstream introduces as a thumbs-down POST endpoint.
 
 ---
 
