@@ -49,6 +49,6 @@ BEGIN
     IF schema_count = 0 AND table_count = 0 THEN
         RAISE NOTICE 'SUCCESS: All user schemas and tables have been removed';
     ELSE
-        RAISE WARNING 'Some objects remain: % schemas, % tables', schema_count, table_count;
+        RAISE EXCEPTION 'Teardown incomplete: % schemas and % tables remain', schema_count, table_count;
     END IF;
 END $$;
