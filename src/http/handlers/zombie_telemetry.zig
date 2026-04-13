@@ -60,7 +60,7 @@ pub fn handleZombieTelemetry(
     defer ctx.pool.release(conn);
 
     if (!common.authorizeWorkspaceAndSetTenantContext(conn, principal, workspace_id)) {
-        common.errorResponse(res, ec.ERR_WORKSPACE_NOT_FOUND, "Workspace not found or access denied", req_id);
+        common.errorResponse(res, ec.ERR_FORBIDDEN, "Workspace access denied", req_id);
         return;
     }
 

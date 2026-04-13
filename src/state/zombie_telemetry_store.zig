@@ -13,11 +13,14 @@ const base64 = std.base64.url_safe_no_pad;
 const log = std.log.scoped(.zombie_telemetry_store);
 
 // Shared SELECT columns reused across all query branches.
+// Trailing newline matters — concatenated suffix begins with WHERE/ORDER BY, so
+// without it we'd get "zombie_execution_telemetryWHERE" (PG syntax error 42601).
 const TELEMETRY_SELECT =
     \\SELECT id, zombie_id, workspace_id, event_id,
     \\       token_count, time_to_first_token_ms, epoch_wall_time_ms,
     \\       wall_seconds, plan_tier, credit_deducted_cents, recorded_at
     \\FROM zombie_execution_telemetry
+    \\
 ;
 
 pub const TelemetryRow = struct {
@@ -104,18 +107,19 @@ pub fn listTelemetryForZombie(
 ) ![]TelemetryRow {
     if (cursor) |c| {
         const parsed = try parseCursor(alloc, c);
+        defer alloc.free(parsed.id);
         return queryRows(conn, alloc, TELEMETRY_SELECT ++
             \\WHERE workspace_id = $1 AND zombie_id = $2
             \\  AND (recorded_at, id) < ($3, $4)
             \\ORDER BY recorded_at DESC, id DESC
             \\LIMIT $5
-        , .{ workspace_id, zombie_id, parsed.recorded_at, parsed.id, @as(i64, @intCast(limit)) });
+        , .{ workspace_id, zombie_id, parsed.recorded_at, parsed.id, @as(i32, @intCast(limit)) });
     }
     return queryRows(conn, alloc, TELEMETRY_SELECT ++
         \\WHERE workspace_id = $1 AND zombie_id = $2
         \\ORDER BY recorded_at DESC, id DESC
         \\LIMIT $3
-    , .{ workspace_id, zombie_id, @as(i64, @intCast(limit)) });
+    , .{ workspace_id, zombie_id, @as(i32, @intCast(limit)) });
 }
 
 /// Operator query — cross-workspace. All params optional. Newest-first. No cursor.
@@ -128,7 +132,10 @@ pub fn listTelemetryAll(
     after_ms: ?i64,
     limit: u32,
 ) ![]TelemetryRow {
-    const lim: i64 = @intCast(limit);
+    // LIMIT must be i32 — PostgreSQL's prepared-statement type inference resolves
+    // `$N` in a LIMIT position as int4; binding int8 causes error.PG at parse time.
+    // (Same pattern as outbox_reconciler.zig.)
+    const lim: i32 = @intCast(limit);
     if (workspace_id) |ws| {
         if (zombie_id) |zid| {
             if (after_ms) |ams| {

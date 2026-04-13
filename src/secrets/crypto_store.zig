@@ -83,7 +83,9 @@ pub fn load(
     defer result.deinit();
 
     const row = try result.next() orelse {
-        log.err("secret.not_found workspace_id={s} key_name={s} error_code=UZ-INTERNAL-002", .{ workspace_id, key_name });
+        // Not-found is a normal control-flow path — caller decides whether to treat
+        // it as an error. Log at debug so it doesn't trip "logged errors" test gates.
+        log.debug("secret.not_found workspace_id={s} key_name={s}", .{ workspace_id, key_name });
         return cp.SecretError.NotFound;
     };
 

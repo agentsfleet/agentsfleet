@@ -88,19 +88,20 @@ fn serverThread(ctx: *handler.Context, port: u16) void {
 
 fn seedTestData(conn: *pg.Conn) !void {
     const now_ms = std.time.milliTimestamp();
+    // Idempotent seed — use upserts instead of DELETE so we don't trip FK constraints
+    // from sibling tables (platform_llm_keys, activity_events, etc.) that other tests
+    // may have populated against this test workspace.
     _ = try conn.exec("DELETE FROM zombie_execution_telemetry WHERE workspace_id = $1", .{TEST_WORKSPACE_ID});
-    _ = try conn.exec("DELETE FROM workspace_billing_state WHERE workspace_id = $1", .{TEST_WORKSPACE_ID});
-    _ = try conn.exec("DELETE FROM workspace_entitlements WHERE workspace_id = $1", .{TEST_WORKSPACE_ID});
-    _ = try conn.exec("DELETE FROM workspaces WHERE workspace_id = $1", .{TEST_WORKSPACE_ID});
-    _ = try conn.exec("DELETE FROM tenants WHERE tenant_id = $1", .{TEST_TENANT_ID});
     _ = try conn.exec(
-        "INSERT INTO tenants (tenant_id, name, api_key_hash, created_at, updated_at) VALUES ($1, 'M18Test', 'managed', $2, $2)",
-        .{ TEST_TENANT_ID, now_ms },
-    );
+        \\INSERT INTO tenants (tenant_id, name, api_key_hash, created_at, updated_at)
+        \\VALUES ($1, 'M18Test', 'managed', $2, $2)
+        \\ON CONFLICT (tenant_id) DO NOTHING
+    , .{ TEST_TENANT_ID, now_ms });
     _ = try conn.exec(
-        "INSERT INTO workspaces (workspace_id, tenant_id, repo_url, default_branch, paused, version, created_at, updated_at) VALUES ($1, $2, $3, 'main', false, 1, $4, $4)",
-        .{ TEST_WORKSPACE_ID, TEST_TENANT_ID, TEST_REPO_URL, now_ms },
-    );
+        \\INSERT INTO workspaces (workspace_id, tenant_id, repo_url, default_branch, paused, version, created_at, updated_at)
+        \\VALUES ($1, $2, $3, 'main', false, 1, $4, $4)
+        \\ON CONFLICT (workspace_id) DO NOTHING
+    , .{ TEST_WORKSPACE_ID, TEST_TENANT_ID, TEST_REPO_URL, now_ms });
     _ = try conn.exec(
         \\INSERT INTO workspace_entitlements
         \\  (entitlement_id, workspace_id, plan_tier, max_stages, max_distinct_skills,
@@ -120,11 +121,10 @@ fn seedTestData(conn: *pg.Conn) !void {
 }
 
 fn cleanupTestData(conn: *pg.Conn) void {
+    // Only clean up what this test owns. tenants/workspaces/entitlements/billing_state
+    // are shared fixtures — leaving them in place is safe and avoids FK violations from
+    // sibling tables that may reference them.
     _ = conn.exec("DELETE FROM zombie_execution_telemetry WHERE workspace_id = $1", .{TEST_WORKSPACE_ID}) catch {};
-    _ = conn.exec("DELETE FROM workspace_billing_state WHERE workspace_id = $1", .{TEST_WORKSPACE_ID}) catch {};
-    _ = conn.exec("DELETE FROM workspace_entitlements WHERE workspace_id = $1", .{TEST_WORKSPACE_ID}) catch {};
-    _ = conn.exec("DELETE FROM workspaces WHERE workspace_id = $1", .{TEST_WORKSPACE_ID}) catch {};
-    _ = conn.exec("DELETE FROM tenants WHERE tenant_id = $1", .{TEST_TENANT_ID}) catch {};
 }
 
 fn startTestServer(alloc: std.mem.Allocator) !*TestServer {
