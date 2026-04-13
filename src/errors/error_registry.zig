@@ -179,6 +179,17 @@ pub const ERR_APPROVAL_NOT_FOUND = "UZ-APPROVAL-002";
 pub const ERR_APPROVAL_INVALID_SIGNATURE = "UZ-APPROVAL-003";
 pub const ERR_APPROVAL_REDIS_UNAVAILABLE = "UZ-APPROVAL-004";
 pub const ERR_APPROVAL_CONDITION_INVALID = "UZ-APPROVAL-005";
+pub const ERR_APIKEY_INVALID = "UZ-APIKEY-001";
+pub const ERR_APIKEY_PERMISSION = "UZ-APIKEY-002";
+pub const ERR_GRANT_NOT_FOUND = "UZ-GRANT-001";
+pub const ERR_GRANT_PENDING = "UZ-GRANT-002";
+pub const ERR_GRANT_DENIED = "UZ-GRANT-003";
+pub const ERR_FW_DOMAIN_BLOCKED = "UZ-FW-001";
+pub const ERR_FW_APPROVAL_REQUIRED = "UZ-FW-002";
+pub const ERR_FW_INJECTION_DETECTED = "UZ-FW-003";
+pub const ERR_TOOL_CRED_NOT_FOUND = "UZ-CRED-004";
+pub const ERR_PROXY_TARGET_ERROR = "UZ-PROXY-001";
+pub const ERR_GATE_APPROVAL_TIMEOUT = "UZ-GATE-005";
 
 // ── Error mapping table (bvisor pattern) ─────────────────────────────────────
 // Shared type for modules that map Zig errors to registry codes + messages.

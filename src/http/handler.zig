@@ -16,6 +16,11 @@ const webhooks_http = @import("handlers/webhooks.zig");
 const approval_http = @import("handlers/approval_http.zig");
 const zombie_api_http = @import("handlers/zombie_api.zig");
 const zombie_activity_api_http = @import("handlers/zombie_activity_api.zig");
+const execute_http = @import("handlers/execute.zig");
+const integration_grants_http = @import("handlers/integration_grants.zig");
+const integration_grants_workspace_http = @import("handlers/integration_grants_workspace.zig");
+const external_agents_http = @import("handlers/external_agents.zig");
+const grant_approval_webhook_http = @import("handlers/grant_approval_webhook.zig");
 const slack_oauth_http = @import("handlers/slack_oauth.zig");
 const slack_events_http = @import("handlers/slack_events.zig");
 const slack_interactions_http = @import("handlers/slack_interactions.zig");
@@ -65,6 +70,21 @@ pub const handleListActivity = zombie_activity_api_http.handleListActivity;
 pub const handleStoreCredential = zombie_activity_api_http.handleStoreCredential;
 pub const handleListCredentials = zombie_activity_api_http.handleListCredentials;
 
+// M9_001: Execute proxy
+pub const handleExecute = execute_http.handleExecute;
+
+// M9_001: Integration grant CRUD
+pub const handleRequestGrant = integration_grants_http.handleRequestGrant;
+pub const handleListGrants = integration_grants_workspace_http.handleListGrants;
+pub const handleRevokeGrant = integration_grants_workspace_http.handleRevokeGrant;
+
+// M9_001: External agent key management
+pub const handleCreateExternalAgent = external_agents_http.handleCreateExternalAgent;
+pub const handleListExternalAgents = external_agents_http.handleListExternalAgents;
+pub const handleDeleteExternalAgent = external_agents_http.handleDeleteExternalAgent;
+
+// M9_001: Grant approval webhook
+pub const handleGrantApproval = grant_approval_webhook_http.handleGrantApproval;
 // M8_001: Slack plugin acquisition
 pub const handleSlackInstall = slack_oauth_http.handleInstall;
 pub const handleSlackCallback = slack_oauth_http.handleCallback;
