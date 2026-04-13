@@ -26,27 +26,10 @@ get_connection_string() {
 	playbooks_read_ref_or_empty "$ref"
 }
 
-get_password() {
-	local url="$1"
-	echo "$url" | sed -n 's/.*:\/\/[^:]*:\([^@]*\)@.*/\1/p'
-}
-
-# Strip password from URL so it never shows up in `ps aux`.
-# psql will pick up credentials from PGPASSWORD instead.
-strip_password() {
-	local url="$1"
-	echo "$url" | sed -E 's|^(.+://[^:/@]+):[^@]+@|\1@|'
-}
-
 verify_database() {
 	local url="$1"
 	local env_label="$2"
-	local password
-	local safe_url
 	local tmp_sql
-
-	password=$(get_password "$url")
-	safe_url=$(strip_password "$url")
 
 	echo ""
 	echo "============================================================"
@@ -143,13 +126,12 @@ FROM pg_indexes
 WHERE schemaname NOT IN ('pg_catalog', 'information_schema', 'pg_toast', 'public');
 SQLEOF
 
-	docker run --rm \
-		-e PGPASSWORD="$password" \
+	# Forward URL via env-name-only so the password never appears in `ps aux`.
+	DATABASE_URL="$url" docker run --rm \
+		-e DATABASE_URL \
 		-v "$tmp_sql:/verify.sql:ro" \
 		postgres:18-alpine \
-		psql "$safe_url" \
-		-f /verify.sql \
-		-t \
+		sh -c 'psql "$DATABASE_URL" -f /verify.sql -t' \
 		2>&1 | grep -v "^psql:" | grep -v "^SSL connection" | grep -v "^NOTICE:"
 
 	rm -f "$tmp_sql"
