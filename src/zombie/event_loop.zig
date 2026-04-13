@@ -180,7 +180,7 @@ fn processEvent(alloc: Allocator, session: *ZombieSession, evt: *redis_zombie.Zo
         obs_log.logWarnErr(.zombie_event_loop, err, "zombie_event_loop.checkpoint_fail zombie_id={s} error_code=" ++ error_codes.ERR_ZOMBIE_CHECKPOINT_FAILED, .{session.zombie_id});
         return consecutive_errors.* + 1;
     };
-    metering.recordZombieDelivery(cfg.pool, alloc, session.workspace_id, session.zombie_id, evt.event_id, result.wall_seconds, result.token_count);
+    metering.recordZombieDelivery(cfg.pool, alloc, session.workspace_id, session.zombie_id, evt.event_id, result.wall_seconds, result.token_count, result.time_to_first_token_ms, result.epoch_wall_time_ms);
 
     redis_zombie.xackZombie(cfg.redis, session.zombie_id, evt.message_id) catch |err| {
         obs_log.logWarnErr(.zombie_event_loop, err, "zombie_event_loop.xack_fail zombie_id={s} message_id={s}", .{ session.zombie_id, evt.message_id });
@@ -209,6 +209,7 @@ pub fn deliverEvent(
     });
     logActivity(cfg.pool, alloc, session, activity_stream.EVT_EVENT_RECEIVED, event.event_id);
 
+    const epoch_wall_time_ms: i64 = std.time.milliTimestamp(); // M18_001: absolute epoch at delivery start
     // M15_002: wall-time spans the full deliver path — gate wait + sandbox — so the
     // histogram reflects end-to-end latency operators see, not just executor time.
     // Monotonic clock so system-clock steps don't skew or negate the duration.
@@ -259,6 +260,8 @@ pub fn deliverEvent(
         .agent_response = response_owned,
         .token_count = stage_result.token_count,
         .wall_seconds = stage_result.wall_seconds,
+        .time_to_first_token_ms = stage_result.time_to_first_token_ms,
+        .epoch_wall_time_ms = epoch_wall_time_ms,
     };
 }
 

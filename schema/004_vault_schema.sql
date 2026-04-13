@@ -2,6 +2,7 @@
 
 CREATE SCHEMA IF NOT EXISTS vault;
 CREATE SCHEMA IF NOT EXISTS ops_ro;
+CREATE SCHEMA IF NOT EXISTS memory;
 
 DO $$
 BEGIN
@@ -13,6 +14,9 @@ BEGIN
     END IF;
     IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'worker_runtime') THEN
         CREATE ROLE worker_runtime;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'memory_runtime') THEN
+        CREATE ROLE memory_runtime;
     END IF;
     IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'ops_readonly_human') THEN
         CREATE ROLE ops_readonly_human;
@@ -26,8 +30,8 @@ $$;
 REVOKE CREATE ON SCHEMA public FROM PUBLIC;
 
 -- db_migrator: full DDL authority (control plane only)
-GRANT ALL ON SCHEMA public, core, agent, billing, vault, audit, ops_ro TO db_migrator;
-GRANT ALL ON ALL TABLES IN SCHEMA core, agent, billing, vault, audit, ops_ro TO db_migrator;
+GRANT ALL ON SCHEMA public, core, agent, billing, vault, audit, ops_ro, memory TO db_migrator;
+GRANT ALL ON ALL TABLES IN SCHEMA core, agent, billing, vault, audit, ops_ro, memory TO db_migrator;
 
 -- Runtime roles: data access only
 GRANT USAGE ON SCHEMA core, agent, billing, vault, audit TO api_runtime, worker_runtime;
@@ -105,11 +109,11 @@ GRANT SELECT ON vault.workspace_skill_secrets TO worker_runtime;
 GRANT USAGE ON SCHEMA ops_ro, audit TO ops_readonly_human, ops_readonly_agent;
 
 -- No runtime/read-only DDL in app schemas
-REVOKE CREATE ON SCHEMA public, core, agent, billing, vault, audit, ops_ro
-FROM api_runtime, worker_runtime, ops_readonly_human, ops_readonly_agent;
+REVOKE CREATE ON SCHEMA public, core, agent, billing, vault, audit, ops_ro, memory
+FROM api_runtime, worker_runtime, memory_runtime, ops_readonly_human, ops_readonly_agent;
 
 -- Remove default PUBLIC table visibility in authoritative app schemas.
-REVOKE ALL ON ALL TABLES IN SCHEMA core, agent, billing, vault, audit, ops_ro FROM PUBLIC;
+REVOKE ALL ON ALL TABLES IN SCHEMA core, agent, billing, vault, audit, ops_ro, memory FROM PUBLIC;
 
 ALTER ROLE api_runtime SET search_path = core, agent, billing, vault, audit, public;
 ALTER ROLE worker_runtime SET search_path = core, agent, billing, vault, audit, public;

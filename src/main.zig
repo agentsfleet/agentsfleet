@@ -157,15 +157,34 @@ test {
     _ = @import("http/handlers/m5_handler_changes_test.zig");
     _ = @import("http/handlers/m16_004_handler_unit_test.zig");
     _ = @import("http/handlers/m11_001_error_response_test.zig");
+    _ = @import("http/handlers/m14_001_memory_handler_test.zig");
+    _ = @import("http/handlers/m14_001_memory_handler_shapes_test.zig");
     _ = @import("cmd/run_watch_test.zig");
     _ = @import("cmd/serve_test.zig");
     _ = @import("queue/redis.zig");
     _ = @import("queue/redis_pubsub_test.zig");
     _ = @import("reliability/backoff.zig");
+    // M14_001: Persistent Zombie Memory — role isolation tests + executor unit tests
+    _ = @import("memory/zombie_memory_role_test.zig");
+    _ = @import("executor/zombie_memory.zig");
     // M2_001: Zombie CRUD, activity, router, worker
     _ = @import("http/handlers/zombie_api.zig");
     _ = @import("http/handlers/zombie_activity_api.zig");
+    // M18_001: zombie execution telemetry
+    _ = @import("state/zombie_telemetry_store.zig");
+    _ = @import("http/handlers/zombie_telemetry.zig");
+    _ = @import("http/handlers/m18_001_handler_unit_test.zig");
+    _ = @import("http/handlers/m18_001_http_integration_test.zig");
     _ = @import("http/router_test.zig");
+    // M9_001: Integration grant + execute API
+    _ = @import("http/handlers/execute.zig");
+    _ = @import("http/handlers/outbound_proxy.zig");
+    _ = @import("http/handlers/outbound_proxy_test.zig");
+    _ = @import("http/handlers/integration_grants.zig");
+    _ = @import("http/handlers/external_agents.zig");
+    _ = @import("http/handlers/grant_approval_webhook.zig");
+    _ = @import("zombie/notifications/grant_notifier.zig");
+    _ = @import("http/route_matchers.zig");
     _ = @import("cmd/worker_zombie.zig");
     // M6_001: AI Firewall Policy Engine
     _ = @import("zombie/firewall/domain_policy.zig");

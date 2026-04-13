@@ -7,6 +7,12 @@ pub const WebhookRoute = struct {
     secret: ?[]const u8,
 };
 
+// M18_001: zombie telemetry route carries workspace_id and zombie_id
+pub const ZombieTelemetryRoute = struct {
+    workspace_id: []const u8,
+    zombie_id: []const u8,
+};
+
 pub const Route = union(enum) {
     healthz,
     readyz,
@@ -24,6 +30,8 @@ pub const Route = union(enum) {
     receive_webhook: WebhookRoute,
     // M4_001: Zombie approval gate callback
     approval_webhook: []const u8,
+    // M9_001: Grant approval webhook — /v1/webhooks/{zombie_id}:grant-approval
+    grant_approval_webhook: []const u8,
     sync_workspace: []const u8,
     // M16_004: admin platform key management
     admin_platform_keys, // GET + PUT /v1/admin/platform-keys (method-dispatched in server.zig)
@@ -38,6 +46,23 @@ pub const Route = union(enum) {
     delete_zombie: []const u8, // DELETE /v1/zombies/{id}
     zombie_activity, // GET /v1/zombies/activity
     zombie_credentials, // GET|POST /v1/zombies/credentials
+    // M18_001: zombie execution telemetry
+    zombie_telemetry: ZombieTelemetryRoute, // GET /v1/workspaces/{ws}/zombies/{id}/telemetry
+    internal_telemetry, // GET /internal/v1/telemetry
+    // M14_001: External-agent memory API
+    memory_store, // POST /v1/memory/store
+    memory_recall, // POST /v1/memory/recall
+    memory_list, // POST /v1/memory/list
+    memory_forget, // POST /v1/memory/forget
+    // M9_001: Execute proxy endpoint
+    execute, // POST /v1/execute
+    // M9_001: Integration grant CRUD
+    request_integration_grant: []const u8,    // POST /v1/zombies/{id}/integration-requests
+    list_integration_grants: []const u8,      // GET  /v1/zombies/{id}/integration-grants
+    revoke_integration_grant: matchers.ZombieGrantRoute, // DELETE /v1/zombies/{id}/integration-grants/{grant_id}
+    // M9_001: External agent key management
+    external_agents: []const u8,              // POST|GET /v1/workspaces/{ws}/external-agents
+    delete_external_agent: matchers.WorkspaceAgentRoute, // DELETE /v1/workspaces/{ws}/external-agents/{agent_id}
     // M8_001: Slack plugin acquisition
     slack_install, // GET /v1/slack/install
     slack_callback, // GET /v1/slack/callback
@@ -94,12 +119,38 @@ pub fn match(path: []const u8) ?Route {
     if (matchWorkspaceSuffix(path, "/billing/summary")) |workspace_id| return .{ .get_workspace_billing_summary = workspace_id };
     if (matchWorkspaceSuffix(path, "/scoring/config")) |workspace_id| return .{ .set_workspace_scoring_config = workspace_id };
 
+    // M18_001: operator telemetry endpoint (before workspace prefix to avoid false match)
+    if (std.mem.eql(u8, path, "/internal/v1/telemetry")) return .internal_telemetry;
+
+    // M14_001: External-agent memory API
+    if (std.mem.eql(u8, path, "/v1/memory/store")) return .memory_store;
+    if (std.mem.eql(u8, path, "/v1/memory/recall")) return .memory_recall;
+    if (std.mem.eql(u8, path, "/v1/memory/list")) return .memory_list;
+    if (std.mem.eql(u8, path, "/v1/memory/forget")) return .memory_forget;
+
     // M2_001: Zombie CRUD + activity + credentials
     if (std.mem.eql(u8, path, "/v1/zombies/")) return .list_or_create_zombies;
     if (std.mem.eql(u8, path, "/v1/zombies/activity")) return .zombie_activity;
     if (std.mem.eql(u8, path, "/v1/zombies/credentials")) return .zombie_credentials;
     if (matchers.matchZombieId(path)) |zombie_id| return .{ .delete_zombie = zombie_id };
 
+    // M18_001: customer telemetry endpoint
+    if (matchers.matchZombieTelemetry(path)) |route| return .{ .zombie_telemetry = route };
+
+    // M9_001: Execute proxy — POST /v1/execute
+    if (std.mem.eql(u8, path, "/v1/execute")) return .execute;
+
+    // M9_001: Integration grant CRUD
+    if (matchers.matchZombieSuffix(path, "/integration-requests")) |zombie_id| return .{ .request_integration_grant = zombie_id };
+    if (matchers.matchZombieGrantRevoke(path)) |route| return .{ .revoke_integration_grant = route };
+    if (matchers.matchZombieSuffix(path, "/integration-grants")) |zombie_id| return .{ .list_integration_grants = zombie_id };
+
+    // M9_001: External agent key management (DELETE before GET/POST to prevent suffix clash)
+    if (matchers.matchWorkspaceAgentDelete(path)) |route| return .{ .delete_external_agent = route };
+    if (matchers.matchWorkspaceSuffix(path, "/external-agents")) |workspace_id| return .{ .external_agents = workspace_id };
+
+    // M9_001: Grant approval webhook — /v1/webhooks/{zombie_id}:grant-approval (before :approval)
+    if (matchers.matchWebhookAction(path, ":grant-approval")) |zombie_id| return .{ .grant_approval_webhook = zombie_id };
     // M8_001: Slack plugin routes
     if (std.mem.eql(u8, path, "/v1/slack/install")) return .slack_install;
     if (std.mem.eql(u8, path, "/v1/slack/callback")) return .slack_callback;

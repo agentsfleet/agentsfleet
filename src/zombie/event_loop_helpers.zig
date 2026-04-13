@@ -160,6 +160,7 @@ pub fn logDeliveryResult(
             .tokens = stage_result.token_count,
             .wall_ms = wall_ms,
             .exit_status = if (ok) EXIT_PROCESSED else EXIT_AGENT_ERROR,
+            .time_to_first_token_ms = stage_result.time_to_first_token_ms,
         });
     }
 }

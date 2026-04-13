@@ -113,6 +113,10 @@ pub const ERR_ZOMBIE_NAME_EXISTS = "UZ-ZMB-006";
 pub const ERR_ZOMBIE_CREDENTIAL_VALUE_TOO_LONG = "UZ-ZMB-007";
 pub const ERR_ZOMBIE_INVALID_CONFIG = "UZ-ZMB-008";
 pub const ERR_ZOMBIE_NOT_FOUND = "UZ-ZMB-009";
+// MEMORY (M14_001)
+pub const ERR_MEM_SCOPE = "UZ-MEM-001";
+pub const ERR_MEM_ZOMBIE_NOT_FOUND = "UZ-MEM-002";
+pub const ERR_MEM_UNAVAILABLE = "UZ-MEM-003";
 // GATE
 pub const ERR_GATE_COMMAND_FAILED = "UZ-GATE-001";
 pub const ERR_GATE_COMMAND_TIMEOUT = "UZ-GATE-002";
@@ -147,6 +151,17 @@ pub const ERR_APPROVAL_NOT_FOUND = "UZ-APPROVAL-002";
 pub const ERR_APPROVAL_INVALID_SIGNATURE = "UZ-APPROVAL-003";
 pub const ERR_APPROVAL_REDIS_UNAVAILABLE = "UZ-APPROVAL-004";
 pub const ERR_APPROVAL_CONDITION_INVALID = "UZ-APPROVAL-005";
+pub const ERR_APIKEY_INVALID = "UZ-APIKEY-001";
+pub const ERR_APIKEY_PERMISSION = "UZ-APIKEY-002";
+pub const ERR_GRANT_NOT_FOUND = "UZ-GRANT-001";
+pub const ERR_GRANT_PENDING = "UZ-GRANT-002";
+pub const ERR_GRANT_DENIED = "UZ-GRANT-003";
+pub const ERR_FW_DOMAIN_BLOCKED = "UZ-FW-001";
+pub const ERR_FW_APPROVAL_REQUIRED = "UZ-FW-002";
+pub const ERR_FW_INJECTION_DETECTED = "UZ-FW-003";
+pub const ERR_TOOL_CRED_NOT_FOUND = "UZ-CRED-004";
+pub const ERR_PROXY_TARGET_ERROR = "UZ-PROXY-001";
+pub const ERR_GATE_APPROVAL_TIMEOUT = "UZ-GATE-005";
 
 // ── Error mapping table (bvisor pattern) ─────────────────────────────────────
 // Shared type for modules that map Zig errors to registry codes + messages.

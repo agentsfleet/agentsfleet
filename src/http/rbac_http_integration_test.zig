@@ -169,7 +169,7 @@ fn startServer(alloc: std.mem.Allocator) !*RunningServer {
         .verifier = verifier,
         .ctx = .{
             .pool = db_ctx.pool,
-            .queue = &undefined,
+            .queue = undefined,
             .alloc = alloc,
             .api_keys = "",
             .oidc = &verifier,
@@ -181,6 +181,7 @@ fn startServer(alloc: std.mem.Allocator) !*RunningServer {
             .ready_max_queue_age_ms = null,
             .telemetry = undefined,
         },
+        .telemetry = undefined,
         .thread = undefined,
         .port = port,
     };

@@ -1,8 +1,11 @@
--- M1_001 §6.2: Zombie session checkpoint table.
+-- M1_001 §6.2: Zombie session CHECKPOINT BOOKMARK table.
 -- One row per Zombie — upserted after each event delivery.
--- context_json: complete agent session state (conversation history, memory).
+-- context_json: conversation resume cursor — serialized as {last_event_id, last_response}.
+--   NOTE: This is NOT agent memory. Agent memory lives in the dedicated `memory` database
+--   (see M14_001 and docs/v2/active/M14_001_PERSISTENT_ZOMBIE_MEMORY.md). Writing full
+--   conversation history or memory tool outputs here is not what this column is for.
 -- checkpoint_at: millis timestamp of last successful checkpoint.
--- On crash + restart, worker reads this row to resume from last known state.
+-- On crash + restart, worker reads this row to resume from the last event cursor.
 
 CREATE TABLE IF NOT EXISTS core.zombie_sessions (
     id              UUID PRIMARY KEY,

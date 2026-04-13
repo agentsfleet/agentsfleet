@@ -124,6 +124,7 @@ test "integration M15_002 3.2: event_loop_emits_completion updates all 4 counter
         failure: ?Failure = null,
         token_count: u64 = 1500,
         wall_seconds: u64 = 2,
+        time_to_first_token_ms: u64 = 0,
     }{};
 
     helpers.logDeliveryResult(cfg, alloc, &session, &event, stage_result, 4_200);

@@ -34,6 +34,8 @@ const types = @import("types.zig");
 const executor_metrics = @import("executor_metrics.zig");
 const tool_bridge = @import("tool_bridge.zig");
 const runner_credentials = @import("runner_credentials.zig");
+const zombie_memory = @import("zombie_memory.zig");
+const runner_helpers = @import("runner_helpers.zig");
 
 const log = std.log.scoped(.executor_runner);
 
@@ -197,7 +199,34 @@ fn executeInner(
     defer tools_mod.deinitTools(alloc, tools);
 
     // 4. Initialize memory runtime.
-    var mem_rt = memory_mod.initRuntime(alloc, &cfg.memory, workspace_path);
+    // M14_001: If agent_config carries memory_connection + memory_namespace,
+    // use the per-zombie postgres backend (zombie_memory.zig) which sets
+    // instance_id correctly for row-level isolation. Otherwise fall back to
+    // NullClaw's default ephemeral workspace SQLite.
+    var mem_rt: ?memory_mod.MemoryRuntime = blk: {
+        if (agent_config) |ac| {
+            // NOTE: these JSON field names ("memory_connection", "memory_namespace") are
+            // the API contract between the dispatch layer and the executor. If they are
+            // ever renamed in the RPC schema, this silently falls back to ephemeral SQLite
+            // with no error. Tracked in M14_005 — validate field presence explicitly when
+            // the zombiectl config surface is added.
+            const mem_conn = json.getStr(ac, "memory_connection") orelse "";
+            const mem_ns = json.getStr(ac, "memory_namespace") orelse "";
+            if (mem_conn.len > 0 and mem_ns.len > 0) {
+                const mem_cfg = types.MemoryBackendConfig{
+                    .backend = "postgres",
+                    .connection = mem_conn,
+                    .namespace = mem_ns,
+                };
+                mem_cfg.validate() catch |err| {
+                    log.warn("executor.runner.memory_config_invalid err={s} falling_back=ephemeral", .{@errorName(err)});
+                    break :blk memory_mod.initRuntime(alloc, &cfg.memory, workspace_path);
+                };
+                break :blk zombie_memory.initRuntime(alloc, &mem_cfg, workspace_path);
+            }
+        }
+        break :blk memory_mod.initRuntime(alloc, &cfg.memory, workspace_path);
+    };
     defer if (mem_rt) |*rt| rt.deinit();
     const mem_opt: ?memory_mod.Memory = if (mem_rt) |rt| rt.memory else null;
     tools_mod.bindMemoryTools(tools, mem_opt);
@@ -233,126 +262,11 @@ fn executeInner(
     };
 }
 
-/// Apply agent_config JSON overrides to the NullClaw Config.
-/// Only overrides fields that are present in the JSON object.
-///
-/// NullClaw Config uses: default_model, default_provider, default_temperature,
-/// temperature (convenience alias), max_tokens (convenience alias).
-fn applyAgentConfig(cfg: *Config, ac: std.json.Value) void {
-    if (ac != .object) return;
-    if (json.getStr(ac, "model")) |model| cfg.default_model = model;
-    if (json.getStr(ac, "provider")) |prov| cfg.default_provider = prov;
-    if (json.getFloat(ac, "temperature")) |t| {
-        cfg.default_temperature = t;
-        cfg.temperature = t;
-    }
-    if (json.getInt(ac, "max_tokens")) |mt| cfg.max_tokens = @intCast(mt);
-    // system_prompt is not a Config field — it's passed via the message.
-    // The agent receives it as part of the composed message from composeMessage().
-}
-
-/// Inject an LLM API key into NullClaw Config for cfg.default_provider (M16_003 §1.4).
-///
-/// Strategy:
-/// 1. Scan cfg.providers for an entry matching cfg.default_provider.
-///    If found, overwrite its api_key using cfg.allocator (arena-backed).
-///    The old pointer remains in the arena and is freed with it on cfg.deinit().
-/// 2. If no matching entry exists, prepend a new ProviderEntry to cfg.providers.
-///    Both the new entry slice and its api_key string are allocated from cfg.allocator,
-///    so cfg.deinit() (arena.deinit) frees them automatically.
-///
-/// After this call, RuntimeProviderBundle.init() finds the injected key via
-/// resolveApiKeyFromConfig() and never falls through to the process environment.
-fn injectProviderApiKey(cfg: *Config, api_key: []const u8) !void {
-    const owned_key = try cfg.allocator.dupe(u8, api_key);
-
-    // Try to update an existing provider entry.
-    for (@constCast(cfg.providers)) |*entry| {
-        if (std.mem.eql(u8, entry.name, cfg.default_provider)) {
-            // Old api_key lives in the arena — overwriting the pointer is safe.
-            entry.api_key = owned_key;
-            return;
-        }
-    }
-
-    // No existing entry for default_provider — prepend one to the slice.
-    // cfg.allocator is the arena so all allocations are freed by cfg.deinit().
-    const nullclaw_config = @import("nullclaw").config;
-    const new_providers = try cfg.allocator.alloc(nullclaw_config.ProviderEntry, cfg.providers.len + 1);
-    new_providers[0] = .{
-        .name = cfg.default_provider,
-        .api_key = owned_key,
-    };
-    @memcpy(new_providers[1..], cfg.providers);
-    // Replace the slice pointer. The old slice is still in the arena and
-    // will be freed when the arena deinits — no double-free, no leak.
-    cfg.providers = new_providers;
-}
-
-/// Build tools from RPC tools array, or fall back to allTools.
-/// Unknown names are logged to stderr and collected in BuildResult.skipped.
-fn buildToolsFromSpec(
-    alloc: std.mem.Allocator,
-    workspace_path: []const u8,
-    tools_spec: ?std.json.Value,
-    cfg: *const Config,
-) ![]tools_mod.Tool {
-    const spec = tools_spec orelse return try tools_mod.allTools(alloc, workspace_path, .{
-        .allowed_paths = &.{workspace_path},
-        .tools_config = cfg.tools,
-    });
-    if (spec != .array) return try tools_mod.allTools(alloc, workspace_path, .{
-        .allowed_paths = &.{workspace_path},
-        .tools_config = cfg.tools,
-    });
-
-    const result = try tool_bridge.buildTools(alloc, spec, workspace_path, cfg);
-    for (result.skipped) |name| {
-        log.warn("executor.runner.tool_skipped name={s}", .{name});
-        alloc.free(name);
-    }
-    alloc.free(result.skipped);
-    return result.tools;
-}
-
-/// Compose the agent message by appending context fields.
-///
-/// The executor does NOT interpret context semantics — it concatenates
-/// non-null fields as markdown sections so the agent receives full context.
-pub fn composeMessage(
-    alloc: std.mem.Allocator,
-    message: []const u8,
-    context: ?std.json.Value,
-) ![]const u8 {
-    const ctx = context orelse return message;
-    if (ctx != .object) return message;
-
-    var parts: std.ArrayList(u8) = .{};
-    errdefer parts.deinit(alloc);
-
-    try parts.appendSlice(alloc, message);
-
-    const fields = [_]struct { key: []const u8, label: []const u8 }{
-        .{ .key = "spec_content", .label = "Spec" },
-        .{ .key = "plan_content", .label = "Plan" },
-        .{ .key = "memory_context", .label = "Memory context" },
-        .{ .key = "defects_content", .label = "Defects from previous attempt" },
-        .{ .key = "implementation_summary", .label = "Implementation summary" },
-    };
-
-    for (fields) |f| {
-        if (json.getStr(ctx, f.key)) |content| {
-            if (content.len > 0) {
-                try parts.appendSlice(alloc, "\n\n---\n## ");
-                try parts.appendSlice(alloc, f.label);
-                try parts.appendSlice(alloc, "\n\n");
-                try parts.appendSlice(alloc, content);
-            }
-        }
-    }
-
-    return parts.toOwnedSlice(alloc);
-}
+// Delegate to runner_helpers.zig (split for RULE FLL).
+const applyAgentConfig = runner_helpers.applyAgentConfig;
+const injectProviderApiKey = runner_helpers.injectProviderApiKey;
+const buildToolsFromSpec = runner_helpers.buildToolsFromSpec;
+pub const composeMessage = runner_helpers.composeMessage;
 
 /// Map a runner error to a FailureClass.
 pub fn mapError(err: anyerror) types.FailureClass {

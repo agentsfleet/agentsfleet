@@ -104,6 +104,13 @@ fn dispatchMatchedRoute(ctx: *handler.Context, req: *httpz.Request, res: *httpz.
             .GET => handler.handleGetWorkspaceLlmCredential(ctx, req, res, workspace_id),
             else => respondMethodNotAllowed(res),
         },
+        // M14_001: External-agent memory API
+        .memory_store => if (req.method == .POST) handler.handleMemoryStore(ctx, req, res) else respondMethodNotAllowed(res),
+        .memory_recall => if (req.method == .POST) handler.handleMemoryRecall(ctx, req, res) else respondMethodNotAllowed(res),
+        .memory_list => if (req.method == .POST) handler.handleMemoryList(ctx, req, res) else respondMethodNotAllowed(res),
+        .memory_forget => if (req.method == .POST) handler.handleMemoryForget(ctx, req, res) else respondMethodNotAllowed(res),
+        // M9_001: Grant approval webhook
+        .grant_approval_webhook => |zombie_id| if (req.method == .POST) handler.handleGrantApproval(ctx, req, res, zombie_id) else respondMethodNotAllowed(res),
         // M4_001: Zombie approval gate callback
         .approval_webhook => |zombie_id| if (req.method == .POST) handler.handleApprovalCallback(ctx, req, res, zombie_id) else respondMethodNotAllowed(res),
         // M1_001: Zombie webhook ingestion
@@ -126,6 +133,22 @@ fn dispatchMatchedRoute(ctx: *handler.Context, req: *httpz.Request, res: *httpz.
             .GET => handler.handleListCredentials(ctx, req, res),
             else => respondMethodNotAllowed(res),
         },
+        // M18_001: zombie execution telemetry
+        .zombie_telemetry => |route| if (req.method == .GET) handler.handleZombieTelemetry(ctx, req, res, route.workspace_id, route.zombie_id) else respondMethodNotAllowed(res),
+        .internal_telemetry => if (req.method == .GET) handler.handleInternalTelemetry(ctx, req, res) else respondMethodNotAllowed(res),
+        // M9_001: Execute proxy
+        .execute => if (req.method == .POST) handler.handleExecute(ctx, req, res) else respondMethodNotAllowed(res),
+        // M9_001: Integration grant CRUD
+        .request_integration_grant => |zombie_id| if (req.method == .POST) handler.handleRequestGrant(ctx, req, res, zombie_id) else respondMethodNotAllowed(res),
+        .list_integration_grants => |zombie_id| if (req.method == .GET) handler.handleListGrants(ctx, req, res, zombie_id) else respondMethodNotAllowed(res),
+        .revoke_integration_grant => |route| if (req.method == .DELETE) handler.handleRevokeGrant(ctx, req, res, route.zombie_id, route.grant_id) else respondMethodNotAllowed(res),
+        // M9_001: External agent key management
+        .external_agents => |workspace_id| switch (req.method) {
+            .POST => handler.handleCreateExternalAgent(ctx, req, res, workspace_id),
+            .GET  => handler.handleListExternalAgents(ctx, req, res, workspace_id),
+            else  => respondMethodNotAllowed(res),
+        },
+        .delete_external_agent => |route| if (req.method == .DELETE) handler.handleDeleteExternalAgent(ctx, req, res, route.workspace_id, route.agent_id) else respondMethodNotAllowed(res),
     }
     return true;
 }
