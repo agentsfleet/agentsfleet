@@ -53,6 +53,8 @@ test "deductZombieUsage exempt on scale plan does not touch DB" {
         .event_id = "e-1",
         .agent_seconds = 30,
         .token_count = 0,
+        .time_to_first_token_ms = 0,
+        .epoch_wall_time_ms = 0,
     }, .scale);
     try std.testing.expect(switch (result) {
         .exempt => true,
@@ -77,6 +79,8 @@ test "deductZombieUsage on free plan writes CREDIT_DEDUCTED audit row" {
         .event_id = "0195b4ba-8d3a-7f13-8abc-aa050000ee01",
         .agent_seconds = 60,
         .token_count = 100,
+        .time_to_first_token_ms = 0,
+        .epoch_wall_time_ms = 0,
     }, .free);
 
     try std.testing.expectEqual(@as(i64, 60), switch (result) {
@@ -117,6 +121,8 @@ test "deductZombieUsage exhausted writes zero-delta audit and returns .exhausted
         .event_id = "0195b4ba-8d3a-7f13-8abc-aa050000ee02",
         .agent_seconds = 30,
         .token_count = 0,
+        .time_to_first_token_ms = 0,
+        .epoch_wall_time_ms = 0,
     }, .free);
 
     try std.testing.expect(switch (result) {
@@ -157,6 +163,8 @@ test "deductZombieUsage dedupes replay when agent_seconds changes between retrie
         .event_id = event_id,
         .agent_seconds = 60, // first attempt reports 60s
         .token_count = 0,
+        .time_to_first_token_ms = 0,
+        .epoch_wall_time_ms = 0,
     }, .free);
     try std.testing.expectEqual(@as(i64, 60), switch (first) {
         .deducted => |c| c,
@@ -170,6 +178,8 @@ test "deductZombieUsage dedupes replay when agent_seconds changes between retrie
         .event_id = event_id,
         .agent_seconds = 45, // second attempt reports 45s — DIFFERENT
         .token_count = 0,
+        .time_to_first_token_ms = 0,
+        .epoch_wall_time_ms = 0,
     }, .free);
     try std.testing.expectEqual(@as(i64, 0), switch (second) {
         .deducted => |c| c,
@@ -204,6 +214,8 @@ test "deductZombieUsage returns .db_error on DB write failure" {
         .event_id = "0195b4ba-8d3a-7f13-8abc-aa050000ee99",
         .agent_seconds = 30,
         .token_count = 0,
+        .time_to_first_token_ms = 0,
+        .epoch_wall_time_ms = 0,
     }, .free);
 
     try std.testing.expect(switch (result) {
@@ -229,6 +241,8 @@ test "deductZombieUsage is idempotent on crash-recovery replay" {
         .event_id = "0195b4ba-8d3a-7f13-8abc-aa050000ee03",
         .agent_seconds = 25,
         .token_count = 0,
+        .time_to_first_token_ms = 0,
+        .epoch_wall_time_ms = 0,
     };
 
     const first = metering.deductZombieUsage(db_ctx.conn, ALLOC, usage, .free);

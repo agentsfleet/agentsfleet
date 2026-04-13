@@ -133,6 +133,9 @@ fn dispatchMatchedRoute(ctx: *handler.Context, req: *httpz.Request, res: *httpz.
             .GET => handler.handleListCredentials(ctx, req, res),
             else => respondMethodNotAllowed(res),
         },
+        // M18_001: zombie execution telemetry
+        .zombie_telemetry => |route| if (req.method == .GET) handler.handleZombieTelemetry(ctx, req, res, route.workspace_id, route.zombie_id) else respondMethodNotAllowed(res),
+        .internal_telemetry => if (req.method == .GET) handler.handleInternalTelemetry(ctx, req, res) else respondMethodNotAllowed(res),
         // M9_001: Execute proxy
         .execute => if (req.method == .POST) handler.handleExecute(ctx, req, res) else respondMethodNotAllowed(res),
         // M9_001: Integration grant CRUD

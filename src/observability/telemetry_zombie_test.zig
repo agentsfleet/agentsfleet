@@ -30,12 +30,14 @@ test "M15_002 2.1: ZombieCompleted properties return expected keys and numeric t
         .wall_ms = 4200,
         .exit_status = "processed",
     }).properties();
-    try std.testing.expectEqual(@as(usize, 6), props.len);
+    try std.testing.expectEqual(@as(usize, 7), props.len);
     try std.testing.expectEqualStrings("tokens", props[3].key);
     try std.testing.expectEqual(@as(i64, 1500), props[3].value.integer);
     try std.testing.expectEqualStrings("wall_ms", props[4].key);
     try std.testing.expectEqual(@as(i64, 4200), props[4].value.integer);
     try std.testing.expectEqualStrings("exit_status", props[5].key);
+    try std.testing.expectEqualStrings("time_to_first_token_ms", props[6].key);
+    try std.testing.expectEqual(@as(i64, 0), props[6].value.integer);
 }
 
 // Spec §6.0 row 2.3 — null PostHog client must not panic on Zombie captures.

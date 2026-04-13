@@ -14,3 +14,4 @@ pub const core_integration_grants_sql = @embedFile("026_core_integration_grants.
 pub const core_external_agents_sql = @embedFile("027_core_external_agents.sql");
 pub const workspace_integrations_sql = @embedFile("028_workspace_integrations.sql");
 pub const memory_entries_sql = @embedFile("029_memory_entries.sql");
+pub const zombie_execution_telemetry_sql = @embedFile("030_zombie_execution_telemetry.sql");

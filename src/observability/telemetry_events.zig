@@ -255,10 +255,12 @@ pub const ZombieCompleted = struct {
     tokens: u64,
     wall_ms: u64,
     exit_status: []const u8,
+    /// M18_001: ms to first token. 0 if executor did not report.
+    time_to_first_token_ms: u64 = 0,
 
     pub const kind: EventKind = .zombie_completed;
 
-    pub fn properties(self: @This()) [6]posthog.Property {
+    pub fn properties(self: @This()) [7]posthog.Property {
         return .{
             .{ .key = "workspace_id", .value = .{ .string = self.workspace_id } },
             .{ .key = "zombie_id", .value = .{ .string = self.zombie_id } },
@@ -266,6 +268,7 @@ pub const ZombieCompleted = struct {
             .{ .key = "tokens", .value = .{ .integer = @intCast(self.tokens) } },
             .{ .key = "wall_ms", .value = .{ .integer = @intCast(self.wall_ms) } },
             .{ .key = "exit_status", .value = .{ .string = self.exit_status } },
+            .{ .key = "time_to_first_token_ms", .value = .{ .integer = @intCast(self.time_to_first_token_ms) } },
         };
     }
 };

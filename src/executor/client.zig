@@ -27,7 +27,7 @@ pub const ClientError = error{
 };
 
 /// Maps an RPC error code to a FailureClass.
-fn classifyError(code: i32) types.FailureClass {
+pub fn classifyError(code: i32) types.FailureClass {
     return switch (code) {
         protocol.ErrorCode.timeout_killed => .timeout_kill,
         protocol.ErrorCode.oom_killed => .oom_kill,
@@ -124,6 +124,8 @@ pub const ExecutorClient = struct {
         /// M27_001: memory limit in bytes for scoring normalization.
         /// Only populated via getUsage() — start_stage response does not include it.
         memory_limit_bytes: u64 = 0,
+        /// M18_001: ms from stage start to first token received. 0 if executor did not report.
+        time_to_first_token_ms: u64 = 0,
     };
 
     /// Agent configuration for StartStage payload (M12_003, M16_003).
@@ -218,6 +220,7 @@ pub const ExecutorClient = struct {
             .failure = null,
             .memory_peak_bytes = json.getIntOrZero(result, "memory_peak_bytes"),
             .cpu_throttled_ms = json.getIntOrZero(result, "cpu_throttled_ms"),
+            .time_to_first_token_ms = json.getIntOrZero(result, "time_to_first_token_ms"),
         };
     }
 
@@ -275,6 +278,7 @@ pub const ExecutorClient = struct {
             .memory_peak_bytes = json.getIntOrZero(result, "memory_peak_bytes"),
             .cpu_throttled_ms = json.getIntOrZero(result, "cpu_throttled_ms"),
             .memory_limit_bytes = json.getIntOrZero(result, "memory_limit_bytes"),
+            .time_to_first_token_ms = json.getIntOrZero(result, "time_to_first_token_ms"),
         };
     }
 
@@ -327,65 +331,4 @@ pub const ExecutorClient = struct {
     }
 };
 
-// ── Tests ────────────────────────────────────────────────────────────────
-
-test "classifyError maps all known error codes" {
-    try std.testing.expectEqual(types.FailureClass.timeout_kill, classifyError(protocol.ErrorCode.timeout_killed));
-    try std.testing.expectEqual(types.FailureClass.oom_kill, classifyError(protocol.ErrorCode.oom_killed));
-    try std.testing.expectEqual(types.FailureClass.policy_deny, classifyError(protocol.ErrorCode.policy_denied));
-    try std.testing.expectEqual(types.FailureClass.lease_expired, classifyError(protocol.ErrorCode.lease_expired));
-    try std.testing.expectEqual(types.FailureClass.landlock_deny, classifyError(protocol.ErrorCode.landlock_denied));
-    try std.testing.expectEqual(types.FailureClass.resource_kill, classifyError(protocol.ErrorCode.resource_killed));
-}
-
-test "classifyError falls back to executor_crash for unknown codes" {
-    try std.testing.expectEqual(types.FailureClass.executor_crash, classifyError(0));
-    try std.testing.expectEqual(types.FailureClass.executor_crash, classifyError(-999));
-    try std.testing.expectEqual(types.FailureClass.executor_crash, classifyError(42));
-}
-
-// ── StagePayload / AgentConfig default values ────────────────────────────
-
-test "StagePayload default values" {
-    const payload = ExecutorClient.StagePayload{
-        .stage_id = "plan",
-        .role_id = "coder",
-        .skill_id = "zig",
-    };
-    try std.testing.expectEqualStrings("plan", payload.stage_id);
-    try std.testing.expectEqualStrings("coder", payload.role_id);
-    try std.testing.expectEqualStrings("zig", payload.skill_id);
-    try std.testing.expectEqualStrings("", payload.message);
-    try std.testing.expect(payload.tools == null);
-    try std.testing.expect(payload.context == null);
-    // Agent config should use defaults.
-    try std.testing.expectEqualStrings("", payload.agent_config.model);
-    try std.testing.expectEqualStrings("anthropic", payload.agent_config.provider);
-    try std.testing.expectEqual(@as(f64, 0.7), payload.agent_config.temperature);
-    try std.testing.expectEqual(@as(u64, 16384), payload.agent_config.max_tokens);
-}
-
-test "AgentConfig default values" {
-    const ac = ExecutorClient.AgentConfig{};
-    try std.testing.expectEqualStrings("", ac.model);
-    try std.testing.expectEqualStrings("anthropic", ac.provider);
-    try std.testing.expectEqualStrings("", ac.system_prompt);
-    try std.testing.expectEqual(@as(f64, 0.7), ac.temperature);
-    try std.testing.expectEqual(@as(u64, 16384), ac.max_tokens);
-}
-
-// ── classifyError comprehensive ──────────────────────────────────────────
-
-test "classifyError maps all known protocol error codes" {
-    // All 7 known codes (6 domain + execution_failed).
-    try std.testing.expectEqual(types.FailureClass.timeout_kill, classifyError(protocol.ErrorCode.timeout_killed));
-    try std.testing.expectEqual(types.FailureClass.oom_kill, classifyError(protocol.ErrorCode.oom_killed));
-    try std.testing.expectEqual(types.FailureClass.policy_deny, classifyError(protocol.ErrorCode.policy_denied));
-    try std.testing.expectEqual(types.FailureClass.lease_expired, classifyError(protocol.ErrorCode.lease_expired));
-    try std.testing.expectEqual(types.FailureClass.landlock_deny, classifyError(protocol.ErrorCode.landlock_denied));
-    try std.testing.expectEqual(types.FailureClass.resource_kill, classifyError(protocol.ErrorCode.resource_killed));
-    // execution_failed falls through to else => executor_crash.
-    try std.testing.expectEqual(types.FailureClass.executor_crash, classifyError(protocol.ErrorCode.execution_failed));
-}
-
-// M16_003 §1/§2 credential field tests live in client_credentials_test.zig.
+// Tests live in client_test.zig (split per RULE FLL). M16_003 §1/§2 in client_credentials_test.zig.

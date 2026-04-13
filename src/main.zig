@@ -170,6 +170,11 @@ test {
     // M2_001: Zombie CRUD, activity, router, worker
     _ = @import("http/handlers/zombie_api.zig");
     _ = @import("http/handlers/zombie_activity_api.zig");
+    // M18_001: zombie execution telemetry
+    _ = @import("state/zombie_telemetry_store.zig");
+    _ = @import("http/handlers/zombie_telemetry.zig");
+    _ = @import("http/handlers/m18_001_handler_unit_test.zig");
+    _ = @import("http/handlers/m18_001_http_integration_test.zig");
     _ = @import("http/router_test.zig");
     // M9_001: Integration grant + execute API
     _ = @import("http/handlers/execute.zig");

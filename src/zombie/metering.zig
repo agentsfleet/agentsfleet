@@ -15,6 +15,9 @@ const Allocator = std.mem.Allocator;
 const workspace_credit = @import("../state/workspace_credit.zig");
 const workspace_credit_store = @import("../state/workspace_credit_store.zig");
 const billing_row = @import("../state/workspace_billing/row.zig");
+const zombie_telemetry_store = @import("../state/zombie_telemetry_store.zig");
+const otel_traces = @import("../observability/otel_traces.zig");
+const trace = @import("../observability/trace.zig");
 
 const log = std.log.scoped(.zombie_metering);
 
@@ -27,9 +30,11 @@ pub const ExecutionUsage = struct {
     workspace_id: []const u8, // borrowed
     event_id: []const u8, // borrowed — idempotency key embedded in audit metadata
     agent_seconds: u64,
-    // Reserved for M15_002 (Zombie Observability) — PostHog will bill per token
-    // in parallel with the per-agent-second deduction done here. Not read today.
     token_count: u64,
+    /// M18_001: ms from stage start to first token. 0 if executor did not report.
+    time_to_first_token_ms: u64,
+    /// M18_001: Unix epoch ms at the start of deliverEvent(). 0 on gate-blocked paths.
+    epoch_wall_time_ms: i64,
 };
 
 pub const DeductionResult = union(enum) {
@@ -88,6 +93,8 @@ pub fn recordZombieDelivery(
     event_id: []const u8,
     agent_seconds: u64,
     token_count: u64,
+    time_to_first_token_ms: u64,
+    epoch_wall_time_ms: i64,
 ) void {
     const conn = pool.acquire() catch |err| {
         log.warn("metering.acquire_fail zombie_id={s} err={s}", .{ zombie_id, @errorName(err) });
@@ -106,13 +113,71 @@ pub fn recordZombieDelivery(
         .event_id = event_id,
         .agent_seconds = agent_seconds,
         .token_count = token_count,
+        .time_to_first_token_ms = time_to_first_token_ms,
+        .epoch_wall_time_ms = epoch_wall_time_ms,
     }, plan_tier);
 
-    switch (result) {
-        .deducted => |cents| log.debug("metering.deducted zombie_id={s} cents={d}", .{ zombie_id, cents }),
-        .exempt => log.debug("metering.exempt zombie_id={s} plan=scale", .{zombie_id}),
-        .exhausted => log.info("metering.exhausted zombie_id={s} workspace_id={s}", .{ zombie_id, workspace_id }),
-        .db_error => log.warn("metering.db_error zombie_id={s} workspace_id={s}", .{ zombie_id, workspace_id }),
+    const deducted_cents: i64 = switch (result) {
+        .deducted => |cents| blk: {
+            log.debug("metering.deducted zombie_id={s} cents={d}", .{ zombie_id, cents });
+            break :blk cents;
+        },
+        .exempt => blk: {
+            log.debug("metering.exempt zombie_id={s} plan=scale", .{zombie_id});
+            break :blk 0;
+        },
+        .exhausted => blk: {
+            log.info("metering.exhausted zombie_id={s} workspace_id={s}", .{ zombie_id, workspace_id });
+            break :blk 0;
+        },
+        .db_error => blk: {
+            log.warn("metering.db_error zombie_id={s} workspace_id={s}", .{ zombie_id, workspace_id });
+            break :blk 0;
+        },
+    };
+
+    // M18_001: persist per-delivery telemetry. Non-fatal — DB failure logged, delivery unaffected.
+    // Skip gate-blocked events (epoch_wall_time_ms=0) — no meaningful wall time to record.
+    // Negative epoch is a system clock anomaly (boot-time edge case) — log and skip rather
+    // than storing a corrupt row or passing a negative value to @intCast below.
+    if (epoch_wall_time_ms < 0) {
+        log.warn("metering.skip_telemetry reason=negative_epoch zombie_id={s}", .{zombie_id});
+        return;
+    }
+    if (epoch_wall_time_ms == 0) return;
+    // epoch_wall_time_ms > 0 guaranteed from here.
+    zombie_telemetry_store.insertTelemetry(conn, alloc, .{
+        .zombie_id = zombie_id,
+        .workspace_id = workspace_id,
+        .event_id = event_id,
+        .token_count = token_count,
+        .time_to_first_token_ms = time_to_first_token_ms,
+        .epoch_wall_time_ms = epoch_wall_time_ms,
+        .wall_seconds = agent_seconds,
+        .plan_tier = @tagName(plan_tier),
+        .credit_deducted_cents = deducted_cents,
+        .recorded_at = std.time.milliTimestamp(),
+    }) catch |err| {
+        log.warn("metering.telemetry_insert_fail zombie_id={s} err={s}", .{ zombie_id, @errorName(err) });
+    };
+
+    // M18_001: emit OTel span for Grafana/Tempo per-delivery trace visibility.
+    // Root span — zombie delivery has no inbound HTTP traceparent.
+    // epoch_wall_time_ms > 0 guaranteed by guards above; no conditional needed.
+    {
+        const start_ns: u64 = @as(u64, @intCast(epoch_wall_time_ms)) * 1_000_000;
+        const capped_seconds: u64 = @min(agent_seconds, 604_800); // cap at 7 days; guards u64 overflow
+        const end_ns: u64 = start_ns + capped_seconds * 1_000_000_000;
+        const tctx = trace.TraceContext.generate();
+        var span = otel_traces.buildSpan(tctx, "zombie.delivery", start_ns, end_ns);
+        _ = otel_traces.addAttr(&span, "zombie_id", zombie_id);
+        _ = otel_traces.addAttr(&span, "workspace_id", workspace_id);
+        _ = otel_traces.addAttr(&span, "event_id", event_id);
+        _ = otel_traces.addAttr(&span, "plan_tier", @tagName(plan_tier));
+        var cnt_buf: [24]u8 = undefined;
+        const cnt_str = std.fmt.bufPrint(&cnt_buf, "{d}", .{token_count}) catch "0";
+        _ = otel_traces.addAttr(&span, "token_count", cnt_str);
+        otel_traces.enqueueSpan(span);
     }
 }
 
@@ -129,4 +194,5 @@ fn resolvePlanTier(
 
 test {
     _ = @import("metering_test.zig");
+    _ = @import("metering_m18_test.zig");
 }
