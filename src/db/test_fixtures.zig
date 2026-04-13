@@ -47,8 +47,7 @@ pub fn seedWorkspace(conn: *pg.Conn, workspace_id: []const u8) !void {
 
 /// Delete workspace. CASCADE removes:
 ///   workspace_credit_state, workspace_credit_audit, workspace_billing_state,
-///   workspace_billing_audit, usage_ledger, workspace_entitlements,
-///   entitlement_policy_audit_snapshots.
+///   workspace_billing_audit, usage_ledger, workspace_entitlements.
 pub fn teardownWorkspace(conn: *pg.Conn, workspace_id: []const u8) void {
     _ = conn.exec(
         "DELETE FROM workspaces WHERE workspace_id = $1::uuid",
