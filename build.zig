@@ -176,6 +176,26 @@ pub fn build(b: *std.Build) void {
     });
     b.step("test", "Run unit tests").dependOn(&b.addRunArtifact(tests).step);
 
+    // ── test-auth (M18_002 §1.3) ─────────────────────────────────────────────
+    // Links ONLY src/auth/** and proves the portability contract: every module
+    // under src/auth/ compiles in isolation without the rest of the project.
+    // Any import that escapes the folder (directly or transitively) fails the
+    // link here — so src/auth/ stays extractable into a standalone zombie-auth.
+    const test_auth = b.addTest(.{
+        .name = "zombied-test-auth",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/auth/tests.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "httpz", .module = httpz_mod },
+            },
+        }),
+        .filters = test_filters,
+    });
+    b.step("test-auth", "Run src/auth/** tests in isolation (portability gate)")
+        .dependOn(&b.addRunArtifact(test_auth).step);
+
     if (with_bench_tools) {
         // ── zBench dependency ────────────────────────────────────────────────
         const zbench_dep = b.dependency("zbench", .{

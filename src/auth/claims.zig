@@ -2,7 +2,7 @@
 
 const std = @import("std");
 const jwks = @import("jwks.zig");
-const rbac = @import("../http/rbac.zig");
+const rbac = @import("rbac.zig");
 
 const log = std.log.scoped(.auth);
 

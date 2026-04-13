@@ -2,7 +2,7 @@
 # TEST-UNIT — zombied, zombiectl, website, app
 # =============================================================================
 
-.PHONY: test-zombied test-unit-zombied _test-unit-zombied-executor test-unit-zombiectl test-unit-website test-unit-app test-depth test-coverage-zombied
+.PHONY: test-zombied test-unit-zombied _test-unit-zombied-executor test-unit-zombiectl test-unit-website test-unit-app test-depth test-coverage-zombied test-auth
 
 test-unit-zombied:  ## Run zombied unit tests (Zig)
 	@echo "→ [zombied] Running Zig unit tests..."
@@ -20,6 +20,14 @@ test-unit-zombied:  ## Run zombied unit tests (Zig)
 	 zig build test --summary all
 	@$(MAKE) _test-unit-zombied-executor
 	@$(MAKE) test-depth
+
+test-auth:  ## Portability gate — compile + run src/auth/** in isolation (M18_002 §1.3)
+	@echo "→ [zombied] Running src/auth/ portability gate..."
+	@mkdir -p "$(ZIG_GLOBAL_CACHE_DIR)" "$(ZIG_LOCAL_CACHE_DIR)"
+	@ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" \
+	 ZIG_LOCAL_CACHE_DIR="$(ZIG_LOCAL_CACHE_DIR)" \
+	 zig build test-auth --summary all
+	@echo "✓ [zombied] src/auth/ compiles + tests pass in isolation (portability contract holds)"
 
 _test-unit-zombied-executor:  ## Run zombied-executor sidecar unit tests (Zig)
 	@echo "→ [zombied-executor] Running executor sidecar tests..."
