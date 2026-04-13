@@ -56,57 +56,137 @@ const HttpResponse = struct {
     fn deinit(self: HttpResponse, alloc: std.mem.Allocator) void { alloc.free(self.body); }
 };
 
+// Heap-allocated running server — same pattern as rbac_http_integration_test.zig
+// and byok_http_integration_test.zig. Heap allocation guarantees that self-referential
+// pointers (ctx.oidc = &verifier, etc.) remain valid after startTestServer returns.
+const TestServer = struct {
+    pool: *pg.Pool,
+    session_store: auth_sessions.SessionStore,
+    verifier: oidc.Verifier,
+    queue: queue_redis.Client = undefined,
+    telemetry: telemetry_mod.Telemetry,
+    ctx: handler.Context,
+    thread: std.Thread,
+    port: u16,
+
+    // Correct teardown order: stop server first, then release pool.
+    // Pool must outlive the server thread so handlers can complete in-flight requests.
+    // Caller must call alloc.destroy(self) after deinit() — matches rbac_http_integration_test pattern.
+    fn deinit(self: *TestServer) void {
+        http_server.stop();
+        self.thread.join();
+        self.verifier.deinit();
+        self.session_store.deinit();
+        self.pool.deinit();
+    }
+};
+
 fn serverThread(ctx: *handler.Context, port: u16) void {
     http_server.serve(ctx, .{ .port = port, .threads = 1, .workers = 1, .max_clients = 64 }) catch |e|
         std.debug.panic("m18 test server: {s}", .{@errorName(e)});
 }
 
-fn setupAndServe(alloc: std.mem.Allocator, server: anytype, port: u16) !void {
-    const db_ctx = (try common.openHandlerTestConn(alloc)) orelse return error.SkipZigTest;
+fn seedTestData(conn: *pg.Conn) !void {
     const now_ms = std.time.milliTimestamp();
-    const conn = db_ctx.conn;
     _ = try conn.exec("DELETE FROM zombie_execution_telemetry WHERE workspace_id = $1", .{TEST_WORKSPACE_ID});
     _ = try conn.exec("DELETE FROM workspace_billing_state WHERE workspace_id = $1", .{TEST_WORKSPACE_ID});
     _ = try conn.exec("DELETE FROM workspace_entitlements WHERE workspace_id = $1", .{TEST_WORKSPACE_ID});
     _ = try conn.exec("DELETE FROM workspaces WHERE workspace_id = $1", .{TEST_WORKSPACE_ID});
     _ = try conn.exec("DELETE FROM tenants WHERE tenant_id = $1", .{TEST_TENANT_ID});
-    _ = try conn.exec("INSERT INTO tenants (tenant_id, name, api_key_hash, created_at, updated_at) VALUES ($1, 'M18Test', 'managed', $2, $2)", .{ TEST_TENANT_ID, now_ms });
-    _ = try conn.exec("INSERT INTO workspaces (workspace_id, tenant_id, repo_url, default_branch, paused, version, created_at, updated_at) VALUES ($1, $2, $3, 'main', false, 1, $4, $4)", .{ TEST_WORKSPACE_ID, TEST_TENANT_ID, TEST_REPO_URL, now_ms });
-    _ = try conn.exec("INSERT INTO workspace_entitlements (entitlement_id, workspace_id, plan_tier, max_stages, max_distinct_skills, allow_custom_skills, enable_agent_scoring, agent_scoring_weights_json, scoring_context_max_tokens, created_at, updated_at) VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6ff1', $1, 'FREE', 2, 8, false, false, '{\"completion\":0.4,\"error_rate\":0.3,\"latency\":0.2,\"resource\":0.1}', 2048, $2, $2) ON CONFLICT (workspace_id) DO UPDATE SET plan_tier=EXCLUDED.plan_tier, updated_at=EXCLUDED.updated_at", .{ TEST_WORKSPACE_ID, now_ms });
-    _ = try conn.exec("INSERT INTO workspace_billing_state (billing_id, workspace_id, plan_tier, plan_sku, billing_status, adapter, subscription_id, created_at, updated_at) VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6ff2', $1, 'FREE', 'free', 'ACTIVE', 'noop', 'sub-m18', $2, $2) ON CONFLICT (workspace_id) DO UPDATE SET plan_tier=EXCLUDED.plan_tier, updated_at=EXCLUDED.updated_at", .{ TEST_WORKSPACE_ID, now_ms });
-    db_ctx.pool.release(conn);
+    _ = try conn.exec(
+        "INSERT INTO tenants (tenant_id, name, api_key_hash, created_at, updated_at) VALUES ($1, 'M18Test', 'managed', $2, $2)",
+        .{ TEST_TENANT_ID, now_ms },
+    );
+    _ = try conn.exec(
+        "INSERT INTO workspaces (workspace_id, tenant_id, repo_url, default_branch, paused, version, created_at, updated_at) VALUES ($1, $2, $3, 'main', false, 1, $4, $4)",
+        .{ TEST_WORKSPACE_ID, TEST_TENANT_ID, TEST_REPO_URL, now_ms },
+    );
+    _ = try conn.exec(
+        \\INSERT INTO workspace_entitlements
+        \\  (entitlement_id, workspace_id, plan_tier, max_stages, max_distinct_skills,
+        \\   allow_custom_skills, enable_agent_scoring, agent_scoring_weights_json,
+        \\   scoring_context_max_tokens, created_at, updated_at)
+        \\VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6ff1', $1, 'FREE', 2, 8,
+        \\        false, false, '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}',
+        \\        2048, $2, $2)
+        \\ON CONFLICT (workspace_id) DO UPDATE SET plan_tier=EXCLUDED.plan_tier, updated_at=EXCLUDED.updated_at
+    , .{ TEST_WORKSPACE_ID, now_ms });
+    _ = try conn.exec(
+        \\INSERT INTO workspace_billing_state
+        \\  (billing_id, workspace_id, plan_tier, plan_sku, billing_status, adapter, subscription_id, created_at, updated_at)
+        \\VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6ff2', $1, 'FREE', 'free', 'ACTIVE', 'noop', 'sub-m18', $2, $2)
+        \\ON CONFLICT (workspace_id) DO UPDATE SET plan_tier=EXCLUDED.plan_tier, updated_at=EXCLUDED.updated_at
+    , .{ TEST_WORKSPACE_ID, now_ms });
+}
 
-    server.pool = db_ctx.pool;
-    server.session_store = auth_sessions.SessionStore.init(alloc);
-    server.verifier = oidc.Verifier.init(alloc, .{ .provider = .clerk, .jwks_url = TEST_JWKS_URL, .issuer = TEST_ISSUER, .audience = TEST_AUDIENCE, .inline_jwks_json = TEST_JWKS });
-    server.telemetry = telemetry_mod.Telemetry.initTest();
-    server.ctx = handler.Context{
-        .pool = server.pool, .queue = &server.queue, .alloc = alloc,
-        .api_keys = "", .oidc = &server.verifier, .auth_sessions = &server.session_store,
-        .app_url = "http://127.0.0.1", .api_in_flight_requests = std.atomic.Value(u32).init(0),
-        .api_max_in_flight_requests = 64, .ready_max_queue_depth = null,
-        .ready_max_queue_age_ms = null, .telemetry = &server.telemetry,
+fn cleanupTestData(conn: *pg.Conn) void {
+    _ = conn.exec("DELETE FROM zombie_execution_telemetry WHERE workspace_id = $1", .{TEST_WORKSPACE_ID}) catch {};
+    _ = conn.exec("DELETE FROM workspace_billing_state WHERE workspace_id = $1", .{TEST_WORKSPACE_ID}) catch {};
+    _ = conn.exec("DELETE FROM workspace_entitlements WHERE workspace_id = $1", .{TEST_WORKSPACE_ID}) catch {};
+    _ = conn.exec("DELETE FROM workspaces WHERE workspace_id = $1", .{TEST_WORKSPACE_ID}) catch {};
+    _ = conn.exec("DELETE FROM tenants WHERE tenant_id = $1", .{TEST_TENANT_ID}) catch {};
+}
+
+fn startTestServer(alloc: std.mem.Allocator) !*TestServer {
+    const db_ctx = (try common.openHandlerTestConn(alloc)) orelse return error.SkipZigTest;
+    try seedTestData(db_ctx.conn);
+    db_ctx.pool.release(db_ctx.conn);
+
+    const port = next_test_port.fetchAdd(1, .acq_rel);
+
+    const srv = try alloc.create(TestServer);
+    srv.* = TestServer{
+        .pool = db_ctx.pool,
+        .session_store = auth_sessions.SessionStore.init(alloc),
+        .verifier = oidc.Verifier.init(alloc, .{
+            .provider = .clerk,
+            .jwks_url = TEST_JWKS_URL,
+            .issuer = TEST_ISSUER,
+            .audience = TEST_AUDIENCE,
+            .inline_jwks_json = TEST_JWKS,
+        }),
+        .ctx = .{
+            .pool = db_ctx.pool,
+            .queue = undefined,
+            .alloc = alloc,
+            .api_keys = "",
+            .oidc = undefined,
+            .auth_sessions = undefined,
+            .app_url = "http://127.0.0.1",
+            .api_in_flight_requests = std.atomic.Value(u32).init(0),
+            .api_max_in_flight_requests = 64,
+            .ready_max_queue_depth = null,
+            .ready_max_queue_age_ms = null,
+            .telemetry = undefined,
+        },
+        .telemetry = undefined,
+        .thread = undefined,
+        .port = port,
     };
-    server.thread = try std.Thread.spawn(.{}, serverThread, .{ &server.ctx, port });
-    // Wait for healthz
+    // Fix up self-referential pointers after heap placement.
+    srv.telemetry = telemetry_mod.Telemetry.initTest();
+    srv.ctx.telemetry = &srv.telemetry;
+    srv.ctx.queue = &srv.queue;
+    srv.ctx.oidc = &srv.verifier;
+    srv.ctx.auth_sessions = &srv.session_store;
+
+    srv.thread = try std.Thread.spawn(.{}, serverThread, .{ &srv.ctx, port });
+    errdefer {
+        http_server.stop();
+        srv.thread.join();
+    }
+
+    // Wait for /healthz to confirm the server is accepting connections.
     const url = try std.fmt.allocPrint(alloc, "http://127.0.0.1:{d}/healthz", .{port});
     defer alloc.free(url);
     var attempts: usize = 0;
     while (attempts < 40) : (attempts += 1) {
         const r = get(alloc, url, null) catch { std.Thread.sleep(25_000_000); continue; };
         defer r.deinit(alloc);
-        if (r.status == 200) return;
+        if (r.status == 200) return srv;
         std.Thread.sleep(25_000_000);
     }
     return error.ConnectionTimedOut;
-}
-
-fn cleanup(conn: *pg.Conn) void {
-    _ = conn.exec("DELETE FROM zombie_execution_telemetry WHERE workspace_id = $1", .{TEST_WORKSPACE_ID}) catch {};
-    _ = conn.exec("DELETE FROM workspace_billing_state WHERE workspace_id = $1", .{TEST_WORKSPACE_ID}) catch {};
-    _ = conn.exec("DELETE FROM workspace_entitlements WHERE workspace_id = $1", .{TEST_WORKSPACE_ID}) catch {};
-    _ = conn.exec("DELETE FROM workspaces WHERE workspace_id = $1", .{TEST_WORKSPACE_ID}) catch {};
-    _ = conn.exec("DELETE FROM tenants WHERE tenant_id = $1", .{TEST_TENANT_ID}) catch {};
 }
 
 fn get(alloc: std.mem.Allocator, url: []const u8, token: ?[]const u8) !HttpResponse {
@@ -129,18 +209,14 @@ fn get(alloc: std.mem.Allocator, url: []const u8, token: ?[]const u8) !HttpRespo
 
 test "M18_001: internal telemetry RBAC and limit enforcement" {
     const alloc = std.testing.allocator;
-    const port = next_test_port.fetchAdd(1, .acq_rel);
-    var server: struct {
-        pool: *pg.Pool = undefined, session_store: auth_sessions.SessionStore = undefined,
-        verifier: oidc.Verifier = undefined, queue: queue_redis.Client = undefined,
-        telemetry: telemetry_mod.Telemetry = undefined, ctx: handler.Context = undefined,
-        thread: std.Thread = undefined,
-    } = .{};
-    try setupAndServe(alloc, &server, port);
-    defer { http_server.stop(); server.thread.join(); server.verifier.deinit(); server.session_store.deinit(); }
-    defer { if (server.pool.acquire()) |c| { cleanup(c); server.pool.release(c); } else |_| {} server.pool.deinit(); }
+    const srv = try startTestServer(alloc);
+    defer {
+        if (srv.pool.acquire()) |c| { cleanupTestData(c); srv.pool.release(c); } else |_| {}
+        srv.deinit();
+        alloc.destroy(srv);
+    }
 
-    const base = try std.fmt.allocPrint(alloc, "http://127.0.0.1:{d}/internal/v1/telemetry", .{port});
+    const base = try std.fmt.allocPrint(alloc, "http://127.0.0.1:{d}/internal/v1/telemetry", .{srv.port});
     defer alloc.free(base);
 
     // T1: .user role → 403
@@ -161,24 +237,20 @@ test "M18_001: internal telemetry RBAC and limit enforcement" {
 
 test "M18_001: customer telemetry endpoint auth, limit and cursor enforcement" {
     const alloc = std.testing.allocator;
-    const port = next_test_port.fetchAdd(1, .acq_rel);
-    var server: struct {
-        pool: *pg.Pool = undefined, session_store: auth_sessions.SessionStore = undefined,
-        verifier: oidc.Verifier = undefined, queue: queue_redis.Client = undefined,
-        telemetry: telemetry_mod.Telemetry = undefined, ctx: handler.Context = undefined,
-        thread: std.Thread = undefined,
-    } = .{};
-    try setupAndServe(alloc, &server, port);
-    defer { http_server.stop(); server.thread.join(); server.verifier.deinit(); server.session_store.deinit(); }
-    defer { if (server.pool.acquire()) |c| { cleanup(c); server.pool.release(c); } else |_| {} server.pool.deinit(); }
+    const srv = try startTestServer(alloc);
+    defer {
+        if (srv.pool.acquire()) |c| { cleanupTestData(c); srv.pool.release(c); } else |_| {}
+        srv.deinit();
+        alloc.destroy(srv);
+    }
 
-    const ws_base = try std.fmt.allocPrint(alloc, "http://127.0.0.1:{d}/v1/workspaces/{s}/zombies/{s}/telemetry", .{ port, TEST_WORKSPACE_ID, TEST_ZOMBIE_ID });
+    const ws_base = try std.fmt.allocPrint(alloc, "http://127.0.0.1:{d}/v1/workspaces/{s}/zombies/{s}/telemetry", .{ srv.port, TEST_WORKSPACE_ID, TEST_ZOMBIE_ID });
     defer alloc.free(ws_base);
 
     // T6: valid JWT, correct workspace → 200
     { const r = try get(alloc, ws_base, TOKEN_USER); defer r.deinit(alloc); try std.testing.expectEqual(@as(u16, 200), r.status); }
     // T7: JWT workspace ≠ path workspace → 403
-    const wrong_ws = try std.fmt.allocPrint(alloc, "http://127.0.0.1:{d}/v1/workspaces/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f99/zombies/{s}/telemetry", .{ port, TEST_ZOMBIE_ID });
+    const wrong_ws = try std.fmt.allocPrint(alloc, "http://127.0.0.1:{d}/v1/workspaces/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f99/zombies/{s}/telemetry", .{ srv.port, TEST_ZOMBIE_ID });
     defer alloc.free(wrong_ws);
     { const r = try get(alloc, wrong_ws, TOKEN_USER); defer r.deinit(alloc); try std.testing.expectEqual(@as(u16, 403), r.status); }
     // T8: limit=0 → 400

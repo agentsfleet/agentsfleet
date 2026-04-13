@@ -69,6 +69,7 @@ pub fn handleZombieTelemetry(
             common.errorResponse(res, ec.ERR_INVALID_REQUEST, "invalid cursor", req_id);
             return;
         }
+        log.err("listTelemetryForZombie failed err={s}", .{@errorName(err)});
         common.internalDbError(res, req_id);
         return;
     };
@@ -139,7 +140,8 @@ pub fn handleInternalTelemetry(
     };
     defer ctx.pool.release(conn);
 
-    const rows = store.listTelemetryAll(conn, alloc, workspace_id, zombie_id, after_ms, limit) catch {
+    const rows = store.listTelemetryAll(conn, alloc, workspace_id, zombie_id, after_ms, limit) catch |err| {
+        log.err("listTelemetryAll failed err={s}", .{@errorName(err)});
         common.internalDbError(res, req_id);
         return;
     };
