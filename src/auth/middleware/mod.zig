@@ -1,23 +1,29 @@
 //! Public surface of the auth middleware layer (M18_002).
 //!
-//! Re-exports the chain runner and — once concrete middlewares land in
-//! Batch B — the bearer / api-key / role / webhook / oauth implementations.
-//! Callers import this module and compose policies via `policies.*`.
+//! Re-exports the chain runner and the concrete middleware implementations.
+//! Callers import this module, construct the middleware structs they need,
+//! and attach each via its `.middleware()` method to route specs.
+//!
+//! Batch B.1 ships bearer + admin + role gates. Batch B.2 adds webhook
+//! HMAC/URL-secret middlewares. Batch B.3 adds Slack + OAuth.
 
 pub const chain = @import("chain.zig");
+pub const auth_ctx = @import("auth_ctx.zig");
+pub const errors = @import("errors.zig");
 
 pub const Middleware = chain.Middleware;
 pub const Outcome = chain.Outcome;
 pub const run = chain.run;
 
-/// Pre-defined middleware chains callers attach to routes.
-///
-/// Batch A ships only `none`. Concrete entries (bearer, admin, operator,
-/// webhook_hmac, webhook_secret, slack, oauth_callback) land in Batch B
-/// once their backing middleware files exist.
-pub const policies = struct {
-    /// Route opts out of auth (e.g. login endpoint, public health check).
-    pub fn none(comptime Ctx: type) []const chain.Middleware(Ctx) {
-        return &.{};
-    }
-};
+pub const AuthCtx = auth_ctx.AuthCtx;
+pub const WriteErrorFn = auth_ctx.WriteErrorFn;
+
+pub const admin_api_key = @import("admin_api_key.zig");
+pub const bearer_oidc = @import("bearer_oidc.zig");
+pub const bearer_or_api_key = @import("bearer_or_api_key.zig");
+pub const require_role = @import("require_role.zig");
+
+pub const AdminApiKey = admin_api_key.AdminApiKey;
+pub const BearerOidc = bearer_oidc.BearerOidc;
+pub const BearerOrApiKey = bearer_or_api_key.BearerOrApiKey;
+pub const RequireRole = require_role.RequireRole;

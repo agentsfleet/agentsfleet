@@ -18,4 +18,11 @@ test {
     _ = @import("sessions.zig");
     _ = @import("middleware/chain.zig");
     _ = @import("middleware/mod.zig");
+    _ = @import("middleware/auth_ctx.zig");
+    _ = @import("middleware/bearer.zig");
+    _ = @import("middleware/errors.zig");
+    _ = @import("middleware/admin_api_key.zig");
+    _ = @import("middleware/bearer_oidc.zig");
+    _ = @import("middleware/bearer_or_api_key.zig");
+    _ = @import("middleware/require_role.zig");
 }
