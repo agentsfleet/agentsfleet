@@ -6,9 +6,9 @@
 **Date:** Apr 10, 2026
 **Status:** PENDING
 **Priority:** P1 — Operator-facing surface; first web UI for non-CLI users
-**Batch:** B5 — after M7 (metrics API), M8 (Slack plugin creates workspaces); M25 (invite signup) ships alongside this batch
+**Batch:** B5 — after M8 (Slack plugin creates workspaces); M25 (invite signup) ships alongside this batch
 **Branch:** feat/m12-app-dashboard
-**Depends on:** M7_001 (firewall metrics API), M4_001 (approval gate), M2_001 (activity stream API)
+**Depends on:** M4_001 (approval gate), M2_001 (activity stream API)
 
 **Extended by (post-M12 milestones that build on this shell):**
 - M13_001 (B5): Credential Vault UI — full vault management; supersedes §4.0 of this spec
