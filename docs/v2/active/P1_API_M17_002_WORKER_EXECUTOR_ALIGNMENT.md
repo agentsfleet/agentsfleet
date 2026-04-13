@@ -2,10 +2,11 @@
 Milestone: M17
 Workstream: M17_002
 Name: WORKER_EXECUTOR_ZOMBIE_ALIGNMENT
-Status: PENDING
+Status: IN_PROGRESS
 Priority: P1 — executor still uses v1 pipeline concepts (run_id, stage_id) that don't exist in zombie world
 Created: Apr 12, 2026
 Depends on: M17_001 (harness teardown clears the old agent_profile path)
+Branch: feat/m17-002-worker-executor-alignment
 ---
 
 # M17_002 — Worker & Executor Zombie Architecture Alignment
