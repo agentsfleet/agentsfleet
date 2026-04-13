@@ -395,6 +395,43 @@ Reference a rule as `RULE NDC`, `RULE OWN`, etc.
 **Tags:** security, architecture, multi-tenancy, confused-deputy
 **Ref:** M14_001 design review — original draft proposed SQLite on a persistent host volume; rejected because agent shell tools could read sibling zombies' directories. Storage moved to a dedicated Postgres database with a scoped `memory_runtime` role. The rule generalizes: it applies to any future cross-tenant data (per-workspace caches, per-customer artifacts, per-zombie workspaces).
 
+## RULE WAUTH — Every workspace-scoped handler must call authorizeWorkspace after authenticate
+
+**Rule:** Any handler that takes a `workspace_id` URL parameter must (1) capture the principal from `common.authenticate` — never discard with `_ =` — and (2) call `common.authorizeWorkspace(conn, principal, workspace_id)` immediately after acquiring a DB connection. A 403 must be returned before any data is read or written.
+**Why:** External agents handlers discarded the principal with `_ = common.authenticate(...)`, so any authenticated workspace owner could enumerate, create, or delete agents in a different workspace just by substituting the workspace_id in the path. Caught by greptile on PR #205 (P0).
+**Do:** `const principal = common.authenticate(...) catch |err| { ... }; ... if (!common.authorizeWorkspace(conn, principal, workspace_id)) { return 403; }`
+**Don't:** `_ = common.authenticate(...) catch |err| { ... };`
+**Tags:** zig, security, IDOR, auth
+**Ref:** external_agents.zig — all 3 handlers missing workspace check. Fixed PR #205.
+
+## RULE IDMP — Idempotency checks must not block re-request for terminal statuses
+
+**Rule:** When an idempotency guard queries for an existing row before INSERT, it must distinguish between active statuses (`pending`, `approved`) and terminal statuses (`revoked`, `denied`). Terminal rows must allow re-request via UPDATE back to `pending`, not early-return with the stale status.
+**Why:** The UNIQUE constraint on `(zombie_id, service)` makes INSERT impossible after the first row. If the idempotency check returns for ANY status including `revoked`, the zombie can never re-request a grant for that service — it gets `{ "status": "revoked" }` forever. Caught by greptile on PR #205 (P1).
+**Do:** Check `is_terminal = eql(status, "revoked") or eql(status, "denied")`. If terminal, UPDATE to pending.
+**Don't:** Return early for every existing row regardless of status.
+**Tags:** zig, database, idempotency
+**Ref:** integration_grants.zig:handleRequestGrant. Fixed PR #205.
+
+## RULE GATDL — Single-use Redis tokens must use Lua compare-then-delete, not GETDEL
+
+**Rule:** When consuming a single-use token from Redis (nonce, gate key, CSRF token), use a Lua `EVAL` script that atomically: GET → compare → DEL only on match → return 1/0. Never use GETDEL (deletes before comparison) or GET+DEL as separate commands.
+**Why:** GETDEL atomically deletes the key *before* the comparison happens. An attacker who knows the token ID (e.g., `grant_id` is returned in the API response) can send a request with a fabricated nonce: GETDEL destroys the real nonce, the comparison fails (400), but the legitimate Slack "Approve" button is now broken — the grant is stuck in `pending` indefinitely. This is a targeted DoS that requires only knowing the `grant_id`. With Lua, a wrong nonce returns 0 and leaves the key intact. GET+DEL as two round trips has a separate race condition (two concurrent requests both pass the GET before DEL runs).
+**Do:**
+```zig
+const lua =
+    \\local s=redis.call('GET',KEYS[1])
+    \\if s==false then return 0 end
+    \\if s==ARGV[1] then redis.call('DEL',KEYS[1]) return 1 end
+    \\return 0
+;
+var resp = queue.commandAllowError(&.{ "EVAL", lua, "1", key, nonce }) catch return false;
+return switch (resp) { .integer => |n| n == 1, else => false };
+```
+**Don't:** `GETDEL` (deletes before compare); `GET` + `DEL` as two commands (race).
+**Tags:** zig, redis, concurrency, security, nonce
+**Ref:** grant_approval_webhook.zig:verifyAndConsumeNonce. Fixed PR #205 (initial GETDEL, second greptile P1 review 4095571471).
+
 ## RULE TWF — Timestamp freshness must reject future timestamps
 
 **Rule:** When validating webhook timestamps (Slack `X-Slack-Request-Timestamp`, etc.), reject timestamps that are more than `max_drift` seconds *in the future*, not just in the past. Use `if (ts > now + max_drift) return false;` before the stale check.

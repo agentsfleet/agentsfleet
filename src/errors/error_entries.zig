@@ -284,6 +284,36 @@ pub const ENTRIES = [_]Entry{
     e("UZ-MEM-003", .service_unavailable, "Memory backend unavailable",
         "The memory backend (Postgres memory schema) is unreachable. " ++
         "The agent falls back to ephemeral workspace memory. Check MEMORY_RUNTIME_URL."),
+    // ── EXTERNAL AGENT API KEYS ───────────────────────────────────────────────
+    e("UZ-APIKEY-001", .unauthorized, "Invalid API key",
+        "API key is invalid or revoked. Create one with: zombiectl agent create --workspace {ws} --name my-agent"),
+    e("UZ-APIKEY-002", .forbidden, "API key lacks execute permission",
+        "This API key does not have execute permission. Re-create with the correct permissions."),
+    // ── INTEGRATION GRANTS ────────────────────────────────────────────────────
+    e("UZ-GRANT-001", .forbidden, "No integration grant for service",
+        "This zombie has no approved grant for the target service. " ++
+        "Request one with: POST /v1/zombies/{id}/integration-requests"),
+    e("UZ-GRANT-002", .forbidden, "Integration grant pending approval",
+        "A grant request for this service is pending human approval. " ++
+        "Approve it in Slack, Discord, or the dashboard."),
+    e("UZ-GRANT-003", .forbidden, "Integration grant denied",
+        "The integration grant for this service was denied or revoked by the workspace owner."),
+    // ── FIREWALL (execute path) ───────────────────────────────────────────────
+    e("UZ-FW-001", .forbidden, "Domain not in workspace allowlist",
+        "The target domain is not in the workspace allowlist. Add it via firewall configuration."),
+    e("UZ-FW-002", .bad_request, "Human approval required",
+        "The request body triggered the approval gate. Awaiting human approval before execution."),
+    e("UZ-FW-003", .forbidden, "Prompt injection detected",
+        "A prompt injection pattern was detected in the request body. Request blocked."),
+    // ── TOOL / CREDENTIAL (execute path) ─────────────────────────────────────
+    e("UZ-CRED-004", .not_found, "Credential not found in vault",
+        "Credential ref not found. Add it with: zombiectl credential add {ref}"),
+    // ── PROXY (execute path) ──────────────────────────────────────────────────
+    e("UZ-PROXY-001", .bad_gateway, "Target API error",
+        "The target API returned an error or was unreachable. Check the target service status."),
+    // ── GATE (execute path) ───────────────────────────────────────────────────
+    e("UZ-GATE-005", .request_timeout, "Approval timed out",
+        "Approval timed out — action denied. Retry after approving in Slack, Discord, or the dashboard."),
     // ── SLACK PLUGIN (M8_001) ────────────────────────────────────────────────
     e("UZ-SLACK-001", .forbidden, "Slack OAuth state invalid",
         "OAuth state parameter mismatch — possible CSRF attempt. " ++

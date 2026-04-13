@@ -6,6 +6,8 @@ import {
 } from "./lib/analytics.js";
 import { findRoute } from "./program/routes.js";
 import { registerProgramCommands } from "./program/command-registry.js";
+import { commandAgent as commandAgentModule } from "./commands/agent.js";
+import { commandGrant as commandGrantModule } from "./commands/grant.js";
 import { commandAdmin as commandAdminModule } from "./commands/admin.js";
 import { commandZombie as commandZombieModule } from "./commands/zombie.js";
 import { commandRuns as commandRunsModule } from "./commands/runs.js";
@@ -128,6 +130,28 @@ export async function runCli(argv, io = {}) {
     runsList: (routeArgs) => core.commandRunsList(routeArgs.slice(1)),
     doctor: () => core.commandDoctor(),
     skillSecret: (routeArgs) => core.commandSkillSecret(routeArgs),
+    // M9_001: External agent key management
+    agent: (routeArgs) => commandAgentModule(ctx, routeArgs, workspaces, {
+      parseFlags,
+      request,
+      apiHeaders,
+      ui,
+      printJson,
+      printKeyValue,
+      printSection,
+      printTable,
+      writeLine,
+    }),
+    // M9_001: Integration grant management
+    grant: (routeArgs) => commandGrantModule(ctx, routeArgs, workspaces, {
+      parseFlags,
+      request,
+      apiHeaders,
+      ui,
+      printJson,
+      printTable,
+      writeLine,
+    }),
     admin: (routeArgs) => commandAdminModule(ctx, routeArgs, workspaces, {
       parseFlags,
       request,
