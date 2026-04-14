@@ -96,3 +96,55 @@ test "integration: ready decision passes when dependencies are healthy" {
         .queue_ok = true,
     }));
 }
+
+// ── Response-shape tests (T1 + T7) ────────────────────────────────────────
+// Pin the JSON envelope so a refactor cannot silently reintroduce removed
+// fields or rename the renamed ones. These tests exercise innerHealthz
+// directly via httpz.testing — the handler doesn't read hx.ctx, so ctx can
+// be undefined.
+
+fn buildLivenessHx(res: *httpz.Response) hx_mod.Hx {
+    return .{
+        .alloc = std.testing.allocator,
+        .principal = undefined,
+        .req_id = "health-test",
+        .ctx = undefined, // innerHealthz does not read ctx
+        .res = res,
+    };
+}
+
+test "innerHealthz returns 200 with status/service/commit and NO database field" {
+    // Regression guard — M18_002 dropped the `database` field from /healthz
+    // (liveness does not probe DB; /readyz does that). If someone reintroduces
+    // it, this test fails and forces the conversation.
+    var ht = httpz.testing.init(.{});
+    defer ht.deinit();
+
+    const hx = buildLivenessHx(ht.res);
+    innerHealthz(hx);
+
+    try ht.expectStatus(200);
+    const json = try ht.getJson();
+    const obj = json.object;
+    try std.testing.expect(obj.get("status") != null);
+    try std.testing.expect(obj.get("service") != null);
+    try std.testing.expect(obj.get("commit") != null);
+    // The anti-assertion: no database probe leaks into /healthz.
+    try std.testing.expect(obj.get("database") == null);
+    // Also guard the old/misspelled names that might resurface during merges.
+    try std.testing.expect(obj.get("db") == null);
+    try std.testing.expect(obj.get("queue_dependency") == null);
+    try std.testing.expect(obj.get("queue") == null);
+}
+
+test "innerHealthz status value is the literal string \"ok\"" {
+    var ht = httpz.testing.init(.{});
+    defer ht.deinit();
+
+    const hx = buildLivenessHx(ht.res);
+    innerHealthz(hx);
+
+    const json = try ht.getJson();
+    try std.testing.expectEqualStrings("ok", json.object.get("status").?.string);
+    try std.testing.expectEqualStrings("zombied", json.object.get("service").?.string);
+}
