@@ -212,7 +212,7 @@ test "4.1: detects credit card pattern" {
 }
 
 test "4.2: detects OpenAI API key pattern" {
-    const result = scanResponse("Here is your key: sk-proj-abc123def456", &.{});
+    const result = scanResponse("Here is your key: sk-proj-abc123def456", &.{}); // gitleaks:allow
     switch (result) {
         .flagged => |f| {
             try std.testing.expect(f.flag_type == .api_key_leak);
@@ -268,7 +268,7 @@ test "detects SSN pattern" {
 }
 
 test "detects Stripe live key" {
-    const result = scanResponse("key=sk_live_abc123", &.{});
+    const result = scanResponse("key=sk_live_abc123", &.{}); // gitleaks:allow
     switch (result) {
         .flagged => |f| try std.testing.expect(f.flag_type == .api_key_leak),
         else => return error.ExpectedFlagged,
