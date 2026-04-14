@@ -12,6 +12,29 @@ Memory is what a zombie *learned* from prior runs that lets it behave like a tea
 
 ---
 
+## The problem memory solves (the flat tyre nobody calls a flat tyre)
+
+A flat tyre is usually acute and visible. Memoryless zombies don't feel flat-tyred because the pain shows up as three slow leaks:
+
+1. **Death by re-steering.** You tell the zombie "don't pitch enterprise to sub-50" on Monday. You tell it again Wednesday. And Friday. Each correction feels minor — cumulatively it's a huge tax. No single moment looks like failure.
+2. **Confident wrongness with delayed blowback.** "Following up on our last call…" when no call happened. Damage shows up days later as a churned lead, a ghosted candidate, a page ignored. The cause looks like "AI wasn't good enough" — it's actually "AI had no memory of what actually happened."
+3. **Silent redundancy.** Re-researching Acme. Re-classifying the same flap at 3am. Re-asking Sarah questions she already answered. Small per-instance, large in aggregate, invisible to an operator not watching closely.
+
+**Reframed:** the zombie feels *almost* useful — enough to keep, not enough to trust. The operator becomes its permanent supervisor. Memory is what converts "needs re-briefing every run" into "remembers the briefing." That's the flat tyre. It hides because it's the difference between "no AI" and "underwhelming AI," not "no AI" and "no car."
+
+By archetype, the hidden pain concentrates differently:
+
+| Archetype | What memory actually solves | Highest-pain failure mode without it |
+|---|---|---|
+| Lead Collector | Keeps a journal on people + companies + your steering | Pitching the same lead twice; saying "per our last call" to a first-time contact |
+| Ops Zombie | Keeps an incident library + noise fingerprints + runbooks | Paging humans at 3am for a flap it has seen 47 times |
+| Hiring Agent | Keeps a candidate file + role rubric + phrasing rules | "Continue from your onsite" to someone who never onsited — legal/brand risk |
+| Customer Support | Keeps customer profile + account context + prior issues | Asking for info already given; wrong-plan assertions |
+
+The **observability layer on top of memory** (see Metrics section) exists for a second-order flat tyre: once memory ships, you can't tell if it's working. Recall could be silently missing. Steering could be stored but not applied. Without metrics, memory is a black box.
+
+---
+
 ## Log vs memory (the distinction that makes or breaks the feature)
 
 **Log** = what happened. Tool calls, events, timestamps. Raw history. UseZombie already has this via SSE streams, event tables, and `zombiectl runs replay`.
@@ -157,7 +180,7 @@ This composes with two primitives UseZombie already shipped:
 | Primitive | When | What it does |
 |---|---|---|
 | Session replay (`zombiectl runs replay`) | after a run | forensic event playback |
-| Interrupt and steer (M21_001) | during a run | live correction |
+| Interrupt and steer (M23_001) | during a run | live correction |
 | Memory export/import (M14_001) | between runs | surgical brain-edit |
 
 ---
@@ -176,9 +199,54 @@ If recall-hit rate stays near zero after a week of operation, the skill template
 
 ---
 
+## End-to-end flow (what every archetype shares)
+
+Every archetype — Lead Collector, Ops, Hiring, Support, custom — follows the same generic sequence. Only the keys and skill-template choices differ.
+
+```
+[external trigger fires — email / webhook / Slack event / cron]
+    → run starts
+        → memory_recall × N (template-prescribed lookups from the trigger payload)
+            → emit memory.recall.hit | memory.recall.miss per lookup
+        → agent reasons using recalled context + incoming trigger
+        → agent takes action (tool calls logged to core.activity_events)
+            → approval gate branch if action is high-impact (Slack/Discord DM or dashboard)
+        → memory_store × M (distilled facts learned this run)
+            → emit memory.store.ok | memory.store.full per write
+    → run ends
+
+[separately, async — operator at their leisure]
+    → opens replay UI
+        → reads core.activity_events (timeline of what happened)
+        → reads memory.memory_entries (what the zombie now knows)
+    → optional: chat to steer → memory_store("steering:...", ...)
+    → optional: thumbs-down on a wrong draft → INSERT INTO memory_feedback
+
+[separately, async — every 5 min]
+    → memory_metrics aggregator reads events + memory_feedback + activity_events
+    → writes rolled-up rates keyed (zombie_id, archetype)
+    → dashboard panel + Grafana read the pre-computed rates
+```
+
+Two surfaces the operator looks at, and they're different tables:
+
+| Surface | Table | Purpose |
+|---|---|---|
+| "What did the zombie do?" | `core.activity_events` | Append-only timeline of every tool call and event |
+| "What does the zombie know?" | `memory.memory_entries` | Curated durable facts — editable, exportable |
+
+`core.zombie_sessions` is **not** user-facing — it's a resume bookmark for crash recovery, explicitly not memory.
+
+Steering happens two ways and they're complementary, not alternatives:
+
+- **In-app replay chat** (M23_001) → coach the zombie live. Chat messages get stored as `steering:*` entries and persist for future runs.
+- **Slack / Discord / dashboard approval** → gate specific high-impact actions (page on-call, send offer, auto-scale). Not a steering surface — a go/no-go surface.
+
+---
+
 ## Archetype guides — what each zombie remembers
 
-The primitives are the same. The **key conventions**, **what-to-store discipline**, and **seed data** differ per archetype. Below is the condensed guide per type — an LLM-driven skill template fills in the rest.
+The primitives are the same. The **key conventions**, **what-to-store discipline**, and **seed data** differ per archetype. Below is the condensed guide per type, followed by an elaborated step-by-step walkthrough. An LLM-driven skill template fills in the rest.
 
 ### Lead Collector
 
@@ -202,6 +270,30 @@ tags: [lead, enterprise, warm]
 ---
 Acme Corp — CTO Jane. Prefers email. Budget $75k. Follow up Jun 15.
 ```
+
+#### Lead Collector — step-by-step walkthrough
+
+**Real flow:** contact form on `usezombie.com/contact/sales` → email to `usezombie@agentmail.to` → zombie traps the email, researches, drafts a reply, notifies the operator. Operator replays in the UI and chats to steer.
+
+1. **Trigger.** Prospect `jane@acme.com` fills the form. AgentMail webhook delivers to the zombie. One email = one run. No cron.
+2. **Recall — before research.** Zombie extracts identifiers and does exact-key lookups:
+   - `memory_recall("lead_acme_corp")` → hit: CTO Jane, team ~200, asked pricing 3 weeks ago, "sub-50 push declined."
+   - `memory_recall("thread:<message_id>")` → miss. New thread.
+   - `memory_list(category="core", tags=["steering"])` → `steering:sub_50_employees`, `steering:tone`.
+   - Each recall emits `memory.recall.hit` / `memory.recall.miss`.
+3. **Act — research only the gaps.** Because `lead_acme_corp` hit, zombie skips LinkedIn + company-size research. Only researches what's new (Jane's current role, recent news). Actions written to `core.activity_events`.
+4. **Act — draft.** Reply conditioned on recalled context (picking up the pricing thread, skipping demo CTA per steering). Draft → `core.activity_events`.
+5. **Notify operator.** Slack DM or dashboard notification: *"Lead Collector drafted a reply to jane@acme.com."*
+6. **Store — what was learned.**
+   - `lead_acme_corp` updated: new interaction date, stage = "re-engaged," Jane's updated role.
+   - `thread:<message_id>` created: `{last_action: "drafted_pricing_reply", approved_by_human: false}`.
+   - Possibly a daily `followup_acme_corp_2026-04-20` if a nudge is warranted.
+   - Each store emits `memory.store.ok` / `memory.store.full`.
+7. **Operator loop — chat steering.** Operator opens replay view. If tone is off, types: *"don't mention competitor X, she's allergic."* That chat triggers `memory_store("steering:acme_corp:no_competitor_mentions", ...)`. Persists for future Acme runs.
+8. **Operator loop — thumbs-down.** Zombie asserted "per our last call" when no call happened. Operator clicks thumbs-down → row in `memory_feedback`. This is the only input to wrong-context-asserted rate — no heuristics.
+9. **Aggregator (async).** Every 5 min rolls the last 7 days into the four rates. Dashboard reads pre-computed rates; never live-computes.
+
+**What good looks like after a month:** recall-hit 40-60%, duplicate-action <2%, wrong-context near zero, memory size plateaus after pruning.
 
 ### Hiring Agent
 
@@ -228,6 +320,30 @@ Stage: tech screen Apr 15 with Priya (systems design focus).
 Phone screen Apr 2 with Raj: pass, notes in Lever #445.
 ```
 
+#### Hiring Agent — step-by-step walkthrough
+
+**Real flow:** HR posts in `#hiring`. Zombie drafts response (interview questions, scheduling, feedback summary) to the thread. Offers / rejections require per-action approval.
+
+1. **Trigger.** HR posts: *"Sarah from the April 2 phone screen wants to schedule the technical round."* Slack Events API → webhook. One message = one run.
+2. **Recall — before drafting.**
+   - `memory_recall("candidate_sarah_smith_sr_backend")` → hit: Apr 2 phone screen by Raj (pass), strengths = Rust + distributed systems, concerns = no on-call exp, stage = `phone_screen_done`.
+   - `memory_recall("thread:<slack_ts>")` → hit: previous message context.
+   - `memory_recall("role_senior_backend_2026_q2")` → hit: rubric, must-haves, hiring manager = Kishore.
+   - `memory_recall("interviewer_priya_preferences")` → hit: systems design focus, 90-min slots, Tue/Thu IST.
+   - `memory_list(tags=["steering", "rejections"])` → `steering:rejections` (legal-preferred phrasing).
+3. **Act — draft with full context.** *"Scheduling Sarah with Priya — 90 min, Tue Apr 21 or Thu Apr 23 IST, systems design focus based on her phone screen strengths."* Without memory, HR would have had to re-type all of that.
+4. **Post to thread.** Via Slack API. `message_posted` event to `core.activity_events`.
+5. **Approval gate branches.** Scheduling messages post directly. Offer letters / rejections trigger firewall → DM to hiring manager with `[Approve] [Deny]`. Steering is applied BEFORE the approval DM, so the manager is approving already-corrected phrasing.
+6. **Store — candidate file updated.**
+   - `candidate_sarah_smith_sr_backend`: stage → `technical_round_scheduled`, next_action → "await Priya's feedback Apr 23."
+   - `thread:<slack_ts>` updated.
+   - Daily `followup_sarah_smith_2026-04-23` created to nudge Priya.
+7. **Operator loop — chat steering.** Manager types: *"less systems design emphasis, she's more of an implementer."* → `steering:candidate_sarah_smith:rubric_override`.
+8. **Operator loop — thumbs-down (P0 here).** Zombie drafted "continuing from your onsite feedback" but Sarah never onsited. Manager thumbs-down → `memory_feedback` row. **In hiring, wrong-context in a rejection or offer is legal/brand risk**, not just an embarrassing draft. This rate must stay near zero.
+9. **Aggregator.** Per-archetype rollup flags `hiring_zombie` wrong-context trend. Above 0.5% → investigate (usually colliding candidate keys or stale memory).
+
+**What good looks like:** re-question rate drops 30% → <5%, stage recall-hit >90%, wrong-context ~0, daily-followup compliance >80%.
+
 ### Ops Zombie
 
 | | |
@@ -252,6 +368,30 @@ Signature: api-server OOM from PG pool exhaustion.
 Seen Mar 14, Apr 2. Root: connection leak in PDF worker (src/workers/pdf.py:142).
 Fix: use context manager for pool.acquire. Runbook: [link].
 ```
+
+#### Ops Zombie — step-by-step walkthrough
+
+**Real flow:** Grafana alert webhook or 5-min Loki log poll fires. Zombie classifies and routes to Slack/Discord. Critical actions (paging on-call, auto-scale) go through approval gates. Noise suppression is the single biggest on-call-human time saver.
+
+1. **Trigger.** Grafana fires `api-server error rate > 5%` webhook. Payload contains alert name, labels, current value, timestamp. One alert = one run.
+2. **Recall — before classification.** Zombie derives a fingerprint from the alert (service + symptom) and recalls:
+   - `memory_recall("incident_sig_api_server_pg_timeout")` → hit. Returns: signature seen 47 times over last 3 months, last 3 occurrences were flaps that auto-resolved in <4 min, root cause = pg connection pool exhaustion, runbook = `scale-pool-to-50`.
+   - `memory_recall("noise_pattern_api_server_batch_3am")` → hit (current time is 03:12). Returns: "batch job causes 30s error spike at 03:00-03:05 nightly — suppress unless sustained >10 min."
+   - `memory_list(category="core", tags=["slo", "api-server"])` → `slo_api_server` ("99.9% target, current month 99.94% — room to absorb minor flaps").
+   - `memory_recall("oncall_roster_weekly")` → `{primary: "jane", secondary: "sam"}`.
+   - Each recall emits hit / miss events with latency.
+3. **Act — classify using the recalled context.** Armed with the fingerprint hit + noise pattern + time-of-day steering + SLO headroom, zombie classifies this alert as `noise` (not a real incident). Without memory it would have classified as `warning` and posted to Slack — a notification for something the operator has already told it to suppress at 3am.
+4. **Act — suppress or post.** Because classification is `noise`, zombie does NOT post to Slack. Instead it updates the existing aggregate count in `incident_sig_api_server_pg_timeout` (occurrences + 1, last_seen = now). Writes a `suppressed_noise` event to `core.activity_events` so the operator can still see it happened in the replay view if they skim.
+5. **Alternate branch — if classification had been `critical`.** Zombie drafts the Slack message. If the body contains `@on-call`, the firewall rule fires → DM to workspace owner with `[Approve] [Deny]`. On approve, Slack message posts with the page. For destructive actions (scale-up, restart-pod), additional approval gate applies even if classification is `critical` — memory of "already scaled 2 min ago" prevents approval loops.
+6. **Store — signature update.** On run completion:
+   - `incident_sig_api_server_pg_timeout` updated with new last_seen + occurrence count + auto-resolve duration if applicable.
+   - If this had been a NEW signature (recall miss), zombie would create a new `incident_sig_{service}_{symptom}_{hash}` entry with `{first_seen, root_cause: "unknown, investigating", runbook_applied: null}` — to be filled in post-mortem.
+   - Each store emits `memory.store.ok` / `memory.store.full`.
+7. **Operator loop — post-mortem steering.** After a real incident resolves, SRE opens the signature entry in the memory view and edits it: adds the root cause, runbook link, and a disambiguation note ("this is NOT the same as the April 2 OOM, separate signature"). That edit lands as a `memory_store` call and persists. Next alert with matching fingerprint gets the corrected context. This is where the zombie compounds value over postmortems the way a senior SRE does.
+8. **Operator loop — thumbs-down.** Zombie drafted "this looks like the April 2 OOM incident" but it's actually the pg pool flap. SRE thumbs-down → `memory_feedback` row → wrong-context-asserted rate ticks up. High rate here means signatures are overlapping too much; fix is usually more specific key construction in the skill template (include a root_cause_hash component).
+9. **Aggregator (async).** Same 5-min cron. Per-archetype rollup panel on Grafana surfaces `ops_zombie` recall-hit trending up over 30 days — proves the zombie is learning your infra's personality and earning its keep by replacing paged humans with signatures + auto-handled noise.
+
+**What good looks like after a quarter:** noise-suppression saves on-call ~20 pages/week; recall-hit rate > 70% at steady state (most alerts are variations of things seen before); duplicate-action = 0 for destructive actions (approval gate + memory of "already scaled 2 min ago" prevents loops); wrong-context-asserted near zero — catastrophic if it drifts, because SRE trust collapses the moment the zombie confidently asserts a false root cause.
 
 ### Customer Support
 

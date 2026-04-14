@@ -16,6 +16,7 @@ playwright-results/
 playwright-tests/
 test-results/
 blob-report/
+.playwright-mcp/
 **/tsconfig.tsbuildinfo
 scratch_pad.md
 **/scratch_pad.md

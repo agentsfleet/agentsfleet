@@ -2,7 +2,7 @@
 //
 // Routing metadata only — maps (provider, external_id) → workspace_id.
 // No credentials stored here. vault.secrets is the single source of truth
-// for bot tokens. See docs/v2/agent-docs/RIPLEYS_LOG_APR_12_15_30.md §2.
+// for bot tokens. See docs/nostromo/LOG_APR_12_15_30.md §2.
 //
 // Two acquisition paths converge here:
 //   OAuth:  source="oauth" — set by handleCallback after Slack OAuth completes

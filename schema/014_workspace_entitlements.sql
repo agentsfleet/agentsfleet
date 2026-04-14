@@ -1,4 +1,4 @@
--- Entitlement source-of-truth and policy audit snapshots (UUID-only IDs)
+-- Entitlement source-of-truth (UUID-only IDs)
 
 CREATE TABLE IF NOT EXISTS billing.workspace_entitlements (
     entitlement_id       UUID PRIMARY KEY,
@@ -20,23 +20,5 @@ CREATE TABLE IF NOT EXISTS billing.workspace_entitlements (
 CREATE INDEX IF NOT EXISTS idx_workspace_entitlements_tier
     ON billing.workspace_entitlements(plan_tier, updated_at DESC);
 
-CREATE TABLE IF NOT EXISTS billing.entitlement_policy_audit_snapshots (
-    snapshot_id        UUID PRIMARY KEY,
-    workspace_id       UUID NOT NULL REFERENCES core.workspaces(workspace_id) ON DELETE CASCADE,
-    boundary           TEXT NOT NULL,
-    decision           TEXT NOT NULL,
-    reason_code        TEXT NOT NULL,
-    plan_tier          TEXT NOT NULL,
-    policy_json        TEXT NOT NULL DEFAULT '{}',
-    observed_json      TEXT NOT NULL DEFAULT '{}',
-    actor              TEXT NOT NULL,
-    created_at         BIGINT NOT NULL
-);
-CREATE INDEX IF NOT EXISTS idx_entitlement_policy_audit_workspace
-    ON billing.entitlement_policy_audit_snapshots(workspace_id, created_at DESC);
-
 GRANT SELECT, INSERT, UPDATE, DELETE ON billing.workspace_entitlements TO api_runtime;
 GRANT SELECT ON billing.workspace_entitlements TO worker_runtime;
-
-GRANT SELECT, INSERT, UPDATE, DELETE ON billing.entitlement_policy_audit_snapshots TO api_runtime;
-GRANT SELECT ON billing.entitlement_policy_audit_snapshots TO worker_runtime;

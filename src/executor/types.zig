@@ -10,14 +10,13 @@ const std = @import("std");
 pub const ExecutionId = [16]u8;
 
 /// Correlation context threaded through every RPC.
-/// Maps directly to the existing ToolExecutionContext fields.
+/// Zombie-native fields: zombie_id identifies the agent, session_id identifies
+/// the conversation turn within that zombie.
 pub const CorrelationContext = struct {
     trace_id: []const u8,
-    run_id: []const u8,
+    zombie_id: []const u8,
     workspace_id: []const u8,
-    stage_id: []const u8,
-    role_id: []const u8,
-    skill_id: []const u8,
+    session_id: []const u8,
 };
 
 /// Failure classification for executor/sandbox errors.

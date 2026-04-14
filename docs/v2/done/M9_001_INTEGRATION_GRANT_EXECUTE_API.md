@@ -400,15 +400,15 @@ zombiectl agent delete --workspace {ws} {agent_id}
 
 ## Part 2: Use Case Agent-Executable Docs
 
-*Each use case has a standalone agent-executable doc in `docs/v2/agent-docs/`.
+*Each use case has a standalone agent-executable doc in `docs/nostromo/`.
 These docs are designed to be read by an AI agent and executed end-to-end.
 They will be published at docs.usezombie.com/integrations/{slug}.*
 
 | Use Case | Doc | Integration actors |
 |----------|-----|--------------------|
-| Lead Collector | `docs/v2/agent-docs/lead_collector_zombie.md` | AgentMail/Gmail → Zombie → Slack/CRM |
-| Hiring Agent | `docs/v2/agent-docs/hiring_agent_zombie.md` | Slack → Zombie → Slack thread |
-| Ops Zombie | `docs/v2/agent-docs/ops_zombie.md` | Grafana → Zombie → Slack/Discord |
+| Lead Collector | `docs/nostromo/lead_collector_zombie.md` | AgentMail/Gmail → Zombie → Slack/CRM |
+| Hiring Agent | `docs/nostromo/hiring_agent_zombie.md` | Slack → Zombie → Slack thread |
+| Ops Zombie | `docs/nostromo/ops_zombie.md` | Grafana → Zombie → Slack/Discord |
 
 ---
 

@@ -76,11 +76,9 @@ pub const Handler = struct {
 
         const correlation = types.CorrelationContext{
             .trace_id = json.getStr(p, "trace_id") orelse "",
-            .run_id = json.getStr(p, "run_id") orelse "",
+            .zombie_id = json.getStr(p, "zombie_id") orelse "",
             .workspace_id = json.getStr(p, "workspace_id") orelse "",
-            .stage_id = json.getStr(p, "stage_id") orelse "",
-            .role_id = json.getStr(p, "role_id") orelse "",
-            .skill_id = json.getStr(p, "skill_id") orelse "",
+            .session_id = json.getStr(p, "session_id") orelse "",
         };
 
         const session_ptr = self.alloc.create(session_mod.Session) catch {
@@ -104,7 +102,7 @@ pub const Handler = struct {
         executor_metrics.setExecutorSessionsActive(@intCast(self.store.activeCount()));
 
         const hex = types.executionIdHex(session_ptr.execution_id);
-        log.info("executor.create_execution execution_id={s} run_id={s}", .{ &hex, correlation.run_id });
+        log.info("executor.create_execution execution_id={s} zombie_id={s}", .{ &hex, correlation.zombie_id });
 
         return std.fmt.allocPrint(alloc,
             \\{{"id":{d},"result":{{"execution_id":"{s}"}}}}
@@ -128,8 +126,6 @@ pub const Handler = struct {
             return self.errorResponse(alloc, id, protocol.ErrorCode.lease_expired, "Lease expired");
         }
 
-        const stage_id = json.getStr(p, "stage_id") orelse "";
-        const role_id = json.getStr(p, "role_id") orelse "";
         const hex = types.executionIdHex(exec_id);
 
         // Extract M12_003 payload fields.
@@ -139,7 +135,7 @@ pub const Handler = struct {
         const context = getObjectParam(p, "context");
 
         const model_name = if (agent_config) |ac| json.getStr(ac, "model") orelse "default" else "default";
-        log.info("executor.runner.start execution_id={s} stage_id={s} role_id={s} model={s} network_policy={s}", .{ &hex, stage_id, role_id, model_name, @tagName(self.network_policy) });
+        log.info("executor.runner.start execution_id={s} zombie_id={s} session_id={s} model={s} network_policy={s}", .{ &hex, session.correlation.zombie_id, session.correlation.session_id, model_name, @tagName(self.network_policy) });
 
         // Invoke NullClaw runner — this blocks until agent execution completes.
         const result = runner.execute(
@@ -359,7 +355,7 @@ test "handler CreateExecution returns execution_id" {
     var params = std.json.Value{ .object = std.json.ObjectMap.init(alloc) };
     defer params.object.deinit();
     try params.object.put("workspace_path", .{ .string = "/tmp/test" });
-    try params.object.put("run_id", .{ .string = "r" });
+    try params.object.put("zombie_id", .{ .string = "r" });
 
     const req = try protocol.serializeRequest(alloc, 1, protocol.Method.create_execution, params);
     defer alloc.free(req);
@@ -422,7 +418,7 @@ test "handler CreateExecution with unicode correlation fields" {
     var params = std.json.Value{ .object = std.json.ObjectMap.init(alloc) };
     defer params.object.deinit();
     try params.object.put("workspace_path", .{ .string = "/tmp/日本語-workspace" });
-    try params.object.put("run_id", .{ .string = "run-café-☕" });
+    try params.object.put("zombie_id", .{ .string = "run-café-☕" });
     try params.object.put("trace_id", .{ .string = "trace-émoji-👨‍💻" });
 
     const req = try protocol.serializeRequest(alloc, 1, protocol.Method.create_execution, params);
@@ -447,7 +443,7 @@ test "handler StartStage with unknown execution_id returns execution_failed" {
     var params = std.json.Value{ .object = std.json.ObjectMap.init(alloc) };
     defer params.object.deinit();
     try params.object.put("execution_id", .{ .string = &fake_id });
-    try params.object.put("stage_id", .{ .string = "s" });
+    try params.object.put("session_id", .{ .string = "s" });
 
     const req = try protocol.serializeRequest(alloc, 1, protocol.Method.start_stage, params);
     defer alloc.free(req);
@@ -522,7 +518,7 @@ test "handler CreateExecution accepts path traversal without crashing" {
     var params = std.json.Value{ .object = std.json.ObjectMap.init(alloc) };
     defer params.object.deinit();
     try params.object.put("workspace_path", .{ .string = "/tmp/../../../etc/passwd" });
-    try params.object.put("run_id", .{ .string = "r" });
+    try params.object.put("zombie_id", .{ .string = "r" });
 
     const req = try protocol.serializeRequest(alloc, 1, protocol.Method.create_execution, params);
     defer alloc.free(req);
@@ -546,7 +542,7 @@ test "handler 100 create+destroy cycles no leak" {
         // Create.
         var params = std.json.Value{ .object = std.json.ObjectMap.init(alloc) };
         try params.object.put("workspace_path", .{ .string = "/tmp/test" });
-        try params.object.put("run_id", .{ .string = "r" });
+        try params.object.put("zombie_id", .{ .string = "r" });
 
         const req = try protocol.serializeRequest(alloc, i + 1, protocol.Method.create_execution, params);
         const resp_json = try handler.handleFrame(alloc, req);
@@ -735,7 +731,7 @@ test "handler GetUsage returns zero for fresh session" {
     // Create a session via handler.
     var cparams = std.json.Value{ .object = std.json.ObjectMap.init(alloc) };
     try cparams.object.put("workspace_path", .{ .string = "/tmp/test" });
-    try cparams.object.put("run_id", .{ .string = "r" });
+    try cparams.object.put("zombie_id", .{ .string = "r" });
 
     const creq = try protocol.serializeRequest(alloc, 1, protocol.Method.create_execution, cparams);
     const cresp_json = try handler.handleFrame(alloc, creq);
@@ -784,7 +780,7 @@ test "handler Heartbeat refreshes lease" {
     // Create a session via handler.
     var cparams = std.json.Value{ .object = std.json.ObjectMap.init(alloc) };
     try cparams.object.put("workspace_path", .{ .string = "/tmp/test" });
-    try cparams.object.put("run_id", .{ .string = "r" });
+    try cparams.object.put("zombie_id", .{ .string = "r" });
 
     const creq = try protocol.serializeRequest(alloc, 1, protocol.Method.create_execution, cparams);
     const cresp_json = try handler.handleFrame(alloc, creq);

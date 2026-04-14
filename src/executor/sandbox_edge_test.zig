@@ -171,11 +171,9 @@ test "T1: Session.recordStageResult accumulates tokens and wall_seconds" {
     const page = std.heap.page_allocator;
     var session = session_mod.Session.create(page, "/tmp/ws", .{
         .trace_id = "t",
-        .run_id = "r",
+        .zombie_id = "r",
         .workspace_id = "w",
-        .stage_id = "s",
-        .role_id = "echo",
-        .skill_id = "echo",
+        .session_id = "s",
     }, .{}, 30_000);
     defer session.destroy();
 
@@ -192,11 +190,9 @@ test "T1: Session.getUsage reflects last_result failure" {
     const page = std.heap.page_allocator;
     var session = session_mod.Session.create(page, "/tmp/ws", .{
         .trace_id = "t",
-        .run_id = "r",
+        .zombie_id = "r",
         .workspace_id = "w",
-        .stage_id = "s",
-        .role_id = "echo",
-        .skill_id = "echo",
+        .session_id = "s",
     }, .{}, 30_000);
     defer session.destroy();
 
@@ -213,11 +209,9 @@ test "T2: Session.getUsage with no stages returns safe defaults" {
     const page = std.heap.page_allocator;
     var session = session_mod.Session.create(page, "/tmp/ws", .{
         .trace_id = "t",
-        .run_id = "r",
+        .zombie_id = "r",
         .workspace_id = "w",
-        .stage_id = "s",
-        .role_id = "echo",
-        .skill_id = "echo",
+        .session_id = "s",
     }, .{}, 30_000);
     defer session.destroy();
 
@@ -235,11 +229,9 @@ test "T5: Session.cancel is atomic — concurrent cancel from 8 threads" {
     const page = std.heap.page_allocator;
     var session = session_mod.Session.create(page, "/tmp/ws", .{
         .trace_id = "t",
-        .run_id = "r",
+        .zombie_id = "r",
         .workspace_id = "w",
-        .stage_id = "s",
-        .role_id = "echo",
-        .skill_id = "echo",
+        .session_id = "s",
     }, .{}, 30_000);
     defer session.destroy();
 
@@ -263,11 +255,9 @@ test "T5: Concurrent lease touch from 8 threads — no data race" {
     const page = std.heap.page_allocator;
     var session = session_mod.Session.create(page, "/tmp/ws", .{
         .trace_id = "t",
-        .run_id = "r",
+        .zombie_id = "r",
         .workspace_id = "w",
-        .stage_id = "s",
-        .role_id = "echo",
-        .skill_id = "echo",
+        .session_id = "s",
     }, .{}, 30_000);
     defer session.destroy();
 
@@ -337,18 +327,16 @@ test "T3: SessionStore.reapExpired only removes expired sessions, leaves active 
     defer store.deinit();
 
     // Create 3 sessions that will expire (1ms lease).
-    // Use string literals — stack-buffer stage_id would outlive the loop
+    // Use string literals — stack-buffer session_id would outlive the loop
     // iteration and produce dangling pointers since Session stores the slice
     // header without copying the bytes.
     for (0..3) |_| {
         const s = try page.create(session_mod.Session);
         s.* = session_mod.Session.create(page, "/tmp/ws", .{
             .trace_id = "t",
-            .run_id = "r",
+            .zombie_id = "r",
             .workspace_id = "w",
-            .stage_id = "exp",
-            .role_id = "echo",
-            .skill_id = "echo",
+            .session_id = "exp",
         }, .{}, 1); // 1ms — will expire
         try store.put(s);
     }
@@ -358,11 +346,9 @@ test "T3: SessionStore.reapExpired only removes expired sessions, leaves active 
         const s = try page.create(session_mod.Session);
         s.* = session_mod.Session.create(page, "/tmp/ws", .{
             .trace_id = "t",
-            .run_id = "r",
+            .zombie_id = "r",
             .workspace_id = "w",
-            .stage_id = "act",
-            .role_id = "echo",
-            .skill_id = "echo",
+            .session_id = "act",
         }, .{}, 30_000); // 30s — will NOT expire
         try store.put(s);
     }
