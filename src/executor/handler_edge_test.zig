@@ -37,7 +37,7 @@ fn createSession(alloc: std.mem.Allocator, h: *handler_mod.Handler) ![]u8 {
     defer p.object.deinit();
     try p.object.put("workspace_path", .{ .string = "/tmp/test-ws" });
     try p.object.put("trace_id", .{ .string = "trace-1" });
-    try p.object.put("run_id", .{ .string = "run-1" });
+    try p.object.put("zombie_id", .{ .string = "run-1" });
 
     const req = try protocol.serializeRequest(alloc, 1, protocol.Method.create_execution, p);
     defer alloc.free(req);
@@ -78,11 +78,9 @@ test "T3: StartStage on lease-expired session returns lease_expired" {
     const s = try page.create(session_mod.Session);
     s.* = session_mod.Session.create(page, "/tmp/ws", .{
         .trace_id = "t",
-        .run_id = "r",
+        .zombie_id = "r",
         .workspace_id = "w",
-        .stage_id = "s",
-        .role_id = "echo",
-        .skill_id = "echo",
+        .session_id = "s",
     }, .{}, 1); // 1ms lease
     try store.put(s);
 
@@ -98,7 +96,6 @@ test "T3: StartStage on lease-expired session returns lease_expired" {
     var p = std.json.Value{ .object = std.json.ObjectMap.init(page) };
     defer p.object.deinit();
     try p.object.put("execution_id", .{ .string = &exec_id_hex });
-    try p.object.put("stage_id", .{ .string = "s1" });
     try p.object.put("message", .{ .string = "do work" });
 
     const req = try protocol.serializeRequest(page, 1, protocol.Method.start_stage, p);
@@ -283,7 +280,7 @@ test "T2: CreateExecution with unicode trace_id is stored without corruption" {
     defer p.object.deinit();
     try p.object.put("workspace_path", .{ .string = "/tmp/ws" });
     try p.object.put("trace_id", .{ .string = "田中-☕-αβγ" });
-    try p.object.put("run_id", .{ .string = "run-unicode-🎯" });
+    try p.object.put("zombie_id", .{ .string = "run-unicode-🎯" });
 
     const req = try protocol.serializeRequest(alloc, 1, protocol.Method.create_execution, p);
     defer alloc.free(req);

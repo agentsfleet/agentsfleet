@@ -2,10 +2,11 @@
 Milestone: M17
 Workstream: M17_002
 Name: WORKER_EXECUTOR_ZOMBIE_ALIGNMENT
-Status: PENDING
+Status: DONE
 Priority: P1 — executor still uses v1 pipeline concepts (run_id, stage_id) that don't exist in zombie world
 Created: Apr 12, 2026
 Depends on: M17_001 (harness teardown clears the old agent_profile path)
+Branch: feat/m17-002-worker-executor-alignment
 ---
 
 # M17_002 — Worker & Executor Zombie Architecture Alignment
@@ -51,35 +52,35 @@ Depends on: M17_001 (harness teardown clears the old agent_profile path)
 
 | Dim | Status | Check |
 |-----|--------|-------|
-| 1.1 | PENDING | `types.zig`: `run_id` → `zombie_id` |
-| 1.2 | PENDING | `types.zig`: `stage_id` → `session_id` |
-| 1.3 | PENDING | `types.zig`: evaluate `role_id` and `skill_id` — remove if unused by zombie, or rename |
-| 1.4 | PENDING | All references across handler/runner/session/transport updated |
+| 1.1 | DONE | `types.zig`: `run_id` → `zombie_id` |
+| 1.2 | DONE | `types.zig`: `stage_id` → `session_id` |
+| 1.3 | DONE | `types.zig`: evaluate `role_id` and `skill_id` — remove if unused by zombie, or rename |
+| 1.4 | DONE | All references across handler/runner/session/transport updated |
 
 ### §2.0 — Update executor protocol + client
 
 | Dim | Status | Check |
 |-----|--------|-------|
-| 2.1 | PENDING | `protocol.zig` wire format uses new field names |
-| 2.2 | PENDING | `client.zig` sends new field names |
-| 2.3 | PENDING | `handler.zig` parses new field names from JSON |
-| 2.4 | PENDING | `executor_metrics.zig` labels use zombie_id instead of run_id |
+| 2.1 | DONE | `protocol.zig` wire format uses new field names |
+| 2.2 | DONE | `client.zig` sends new field names |
+| 2.3 | DONE | `handler.zig` parses new field names from JSON |
+| 2.4 | DONE | `executor_metrics.zig` labels use zombie_id instead of run_id |
 
 ### §3.0 — Simplify zombie event loop integration
 
 | Dim | Status | Check |
 |-----|--------|-------|
-| 3.1 | PENDING | `event_loop.zig` passes zombie_id/session_id directly, no v1 translation |
-| 3.2 | PENDING | `worker.zig` startup is zombie-only (no dual-mode vestiges) |
-| 3.3 | PENDING | `worker_zombie.zig` constructs CorrelationContext with native field names |
+| 3.1 | DONE | `event_loop.zig` passes zombie_id/session_id directly, no v1 translation |
+| 3.2 | DONE | `worker.zig` startup is zombie-only (no dual-mode vestiges) |
+| 3.3 | DONE | `worker_zombie.zig` constructs CorrelationContext with native field names |
 
 ### §4.0 — Update tests
 
 | Dim | Status | Check |
 |-----|--------|-------|
-| 4.1 | PENDING | All 10 executor test files use `zombie_id`/`session_id` in fixtures |
-| 4.2 | PENDING | Zero grep hits for old field names (`run_id`, `stage_id`) in executor tests |
-| 4.3 | PENDING | Integration test verifies full zombie → executor → result round-trip |
+| 4.1 | DONE | All 10 executor test files use `zombie_id`/`session_id` in fixtures |
+| 4.2 | DONE | Zero grep hits for old field names (`run_id`, `stage_id`) in executor tests |
+| 4.3 | DONE | Integration test verifies full zombie → executor → result round-trip |
 
 ## Interfaces
 
@@ -144,12 +145,28 @@ echo "E6: (empty = pass)"
 
 ## Acceptance Criteria
 
-- [ ] `CorrelationContext` uses `zombie_id` and `session_id` — verify: `grep "zombie_id" src/executor/types.zig`
-- [ ] Zero `run_id` references in executor source (non-comment) — verify: grep command
-- [ ] Zombie event loop passes native field names, no translation — verify: read `event_loop.zig`
-- [ ] Worker startup is zombie-only — verify: read `worker.zig`
-- [ ] All executor tests pass with new field names — verify: `zig build test`
-- [ ] Cross-compiles — verify: `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux`
+- [x] `CorrelationContext` uses `zombie_id` and `session_id` ✅
+- [x] Zero `run_id`/`stage_id`/`role_id`/`skill_id` references in `src/executor/` ✅
+- [x] Zombie event loop passes native field names, no translation ✅
+- [x] Worker startup is zombie-only (was already — no vestiges to remove) ✅
+- [x] `StagePayload` stripped of `stage_id`/`role_id`/`skill_id` (scope expansion) ✅
+- [x] All executor tests pass (`zig build test` exit 0) ✅
+- [x] Cross-compiles (x86_64-linux, aarch64-linux) ✅
+- [x] `make lint` passes (zig + website + app + zombiectl + actionlint) ✅
+- [x] `make check-pg-drain` passes ✅
+
+## Scope Decisions (executed)
+
+- **Dropped `role_id` and `skill_id` entirely** from both `CorrelationContext` and `StagePayload`. They were hardcoded literals (`"agent"`, `session.config.name`) in the sole real caller — dead v1 baggage.
+- **Dropped `stage_id` from `StagePayload`** as well; `CorrelationContext.session_id` is the single authoritative identity.
+- **Deleted `startStageBasic`** — RULE ORP sweep found zero callers. Purely dead scaffolding left from the pipeline era.
+
+## Out-of-Scope Findings (needs separate spec)
+
+`src/state/topology.zig` (`ProfileDoc` struct) and `src/state/entitlements.zig` still carry v1 `role_id` / `skill_id` fields for pipeline profile-doc parsing. They're **live** — used by `types/defaults.zig` and `workspace_billing/db.zig`. If the v1 pipeline profile subsystem is also slated for teardown, it needs its own workstream (suggest **M17_003 — TOPOLOGY_ENTITLEMENTS_V1_TEARDOWN**). Not touched here to avoid scope creep.
+- **Log-line rewrite** in `handler.zig`: `executor.create_execution` and `executor.runner.start` now emit `zombie_id`/`session_id`.
+- **Worker dual-mode vestige** — inspected `src/cmd/worker.zig`: already zombie-only (spawns `worker_zombie.zombieWorkerLoop` per zombie). No changes needed — spec §3.2 was pre-corrected by an earlier pass.
+- **Orphan sweep** verified across `schema/*.sql`, `src/`, `zombiectl/`, `ui/packages/website/`, `docs/v2/active/`. The `run_id` refs in `zombiectl/test/` and `ui/packages/website/src/` are the independent HTTP `/runs` API concept, unrelated to executor CorrelationContext — explicitly out of scope.
 
 ## Out of Scope
 

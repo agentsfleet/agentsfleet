@@ -25,18 +25,10 @@ test "classifyError falls back to executor_crash for unknown codes" {
 }
 
 test "StagePayload default values" {
-    const payload = ExecutorClient.StagePayload{
-        .stage_id = "plan",
-        .role_id = "coder",
-        .skill_id = "zig",
-    };
-    try std.testing.expectEqualStrings("plan", payload.stage_id);
-    try std.testing.expectEqualStrings("coder", payload.role_id);
-    try std.testing.expectEqualStrings("zig", payload.skill_id);
+    const payload = ExecutorClient.StagePayload{};
     try std.testing.expectEqualStrings("", payload.message);
     try std.testing.expect(payload.tools == null);
     try std.testing.expect(payload.context == null);
-    // Agent config should use defaults.
     try std.testing.expectEqualStrings("", payload.agent_config.model);
     try std.testing.expectEqualStrings("anthropic", payload.agent_config.provider);
     try std.testing.expectEqual(@as(f64, 0.7), payload.agent_config.temperature);

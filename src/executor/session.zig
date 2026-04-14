@@ -202,11 +202,9 @@ pub const SessionStore = struct {
 test "Session create and lifecycle" {
     var session = Session.create(std.testing.allocator, "/tmp/test", .{
         .trace_id = "trace-1",
-        .run_id = "run-1",
+        .zombie_id = "run-1",
         .workspace_id = "ws-1",
-        .stage_id = "stage-1",
-        .role_id = "echo",
-        .skill_id = "echo",
+        .session_id = "stage-1",
     }, .{}, 30_000);
     defer session.destroy();
 
@@ -229,11 +227,9 @@ test "SessionStore put/get/remove" {
     const session = try alloc.create(Session);
     session.* = Session.create(alloc, "/tmp/test", .{
         .trace_id = "t",
-        .run_id = "r",
+        .zombie_id = "r",
         .workspace_id = "w",
-        .stage_id = "s",
-        .role_id = "echo",
-        .skill_id = "echo",
+        .session_id = "s",
     }, .{}, 30_000);
 
     try store.put(session);
@@ -271,11 +267,9 @@ test "Session getUsage returns cumulative results" {
     const alloc = std.testing.allocator;
     var session = Session.create(alloc, "/tmp/ws", .{
         .trace_id = "t",
-        .run_id = "r",
+        .zombie_id = "r",
         .workspace_id = "w",
-        .stage_id = "s",
-        .role_id = "echo",
-        .skill_id = "echo",
+        .session_id = "s",
     }, .{}, 30_000);
     defer session.destroy();
 
@@ -292,11 +286,9 @@ test "Session touchLease refreshes lease" {
     const alloc = std.testing.allocator;
     var session = Session.create(alloc, "/tmp/ws", .{
         .trace_id = "t",
-        .run_id = "r",
+        .zombie_id = "r",
         .workspace_id = "w",
-        .stage_id = "s",
-        .role_id = "echo",
-        .skill_id = "echo",
+        .session_id = "s",
     }, .{}, 50); // 50ms lease
     defer session.destroy();
 
@@ -313,11 +305,9 @@ test "SessionStore reapExpired returns 0 when no expired sessions" {
     const session = try alloc.create(Session);
     session.* = Session.create(alloc, "/tmp/ws", .{
         .trace_id = "t",
-        .run_id = "r",
+        .zombie_id = "r",
         .workspace_id = "w",
-        .stage_id = "s",
-        .role_id = "echo",
-        .skill_id = "echo",
+        .session_id = "s",
     }, .{}, 300_000); // 5 minute lease — won't expire
 
     try store.put(session);
@@ -342,11 +332,9 @@ test "SessionStore concurrent put/get from multiple threads" {
                 const sess = a.create(Session) catch return;
                 sess.* = Session.create(a, "/tmp/conc", .{
                     .trace_id = "t",
-                    .run_id = "r",
+                    .zombie_id = "r",
                     .workspace_id = "w",
-                    .stage_id = "s",
-                    .role_id = "echo",
-                    .skill_id = "echo",
+                    .session_id = "s",
                 }, .{}, 30_000);
                 s.put(sess) catch return;
             }
@@ -368,17 +356,15 @@ test "Session create initializes all fields correctly" {
     const alloc = std.testing.allocator;
     var session = Session.create(alloc, "/tmp/ws", .{
         .trace_id = "trace-abc",
-        .run_id = "run-123",
+        .zombie_id = "run-123",
         .workspace_id = "ws-456",
-        .stage_id = "stg-1",
-        .role_id = "echo",
-        .skill_id = "echo",
+        .session_id = "stg-1",
     }, .{ .memory_limit_mb = 256, .cpu_limit_percent = 50 }, 5_000);
     defer session.destroy();
 
     try std.testing.expectEqualStrings("/tmp/ws", session.workspace_path);
     try std.testing.expectEqualStrings("trace-abc", session.correlation.trace_id);
-    try std.testing.expectEqualStrings("run-123", session.correlation.run_id);
+    try std.testing.expectEqualStrings("run-123", session.correlation.zombie_id);
     try std.testing.expectEqual(@as(u64, 256), session.resource_limits.memory_limit_mb);
     try std.testing.expectEqual(@as(u64, 50), session.resource_limits.cpu_limit_percent);
     try std.testing.expectEqual(@as(u64, 5_000), session.lease.lease_timeout_ms);
@@ -393,11 +379,9 @@ test "Session getUsage with no stages returns zero values" {
     const alloc = std.testing.allocator;
     var session = Session.create(alloc, "/tmp/ws", .{
         .trace_id = "t",
-        .run_id = "r",
+        .zombie_id = "r",
         .workspace_id = "w",
-        .stage_id = "s",
-        .role_id = "echo",
-        .skill_id = "echo",
+        .session_id = "s",
     }, .{}, 30_000);
     defer session.destroy();
 
@@ -413,11 +397,9 @@ test "Session cancel is idempotent" {
     const alloc = std.testing.allocator;
     var session = Session.create(alloc, "/tmp/ws", .{
         .trace_id = "t",
-        .run_id = "r",
+        .zombie_id = "r",
         .workspace_id = "w",
-        .stage_id = "s",
-        .role_id = "echo",
-        .skill_id = "echo",
+        .session_id = "s",
     }, .{}, 30_000);
     defer session.destroy();
 
