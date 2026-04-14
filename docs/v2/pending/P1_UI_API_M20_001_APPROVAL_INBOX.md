@@ -223,7 +223,7 @@ POST /v1/workspaces/{ws}/approvals/{gate_id}:deny     — deny gate (optional re
 
 ### 5.2 M4_001 Gate State (existing, no changes)
 
-The gate is still created by M4_001's firewall intercept. The gate's Slack DM still fires. M21 adds a parallel read/resolve surface. Gate state stores: `gate_id`, `zombie_id`, `workspace_id`, `tool`, `target`, `method`, `body_summary`, `created_at`, `resolved_at`, `resolved_by` (slack|dashboard|api), `outcome` (approved|denied), `reason`.
+The gate is still created by M4_001's firewall intercept. The gate's Slack DM still fires. M20 adds a parallel read/resolve surface. Gate state stores: `gate_id`, `zombie_id`, `workspace_id`, `tool`, `target`, `method`, `body_summary`, `created_at`, `resolved_at`, `resolved_by` (slack|dashboard|api), `outcome` (approved|denied), `reason`.
 
 ### 5.3 Error Contracts
 

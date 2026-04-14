@@ -10,6 +10,8 @@
 **Branch:** feat/m21-byok-provider
 **Depends on:** M12_001 (settings page), M13_001 (credential vault), M15_001 (credit metering, done)
 
+> **v2 note — identifier reuse:** `M21_001` is also used in v1 for "Agent Interrupt and Steer" (`docs/v1/done/M21_001_AGENT_INTERRUPT_AND_STEER.md`, done). That v1 primitive is what M23_001 (v2) builds on. When resolving `M21_001` in a cross-reference, check the version prefix (`v1/done/` vs `v2/pending/`) — they are unrelated features sharing the same milestone slot across schema generations.
+
 ---
 
 ## Overview
