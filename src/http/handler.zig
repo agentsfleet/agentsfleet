@@ -25,20 +25,20 @@ pub fn parseSkillSecretRoute(path: []const u8) ?SkillSecretRoute {
 test "integration: ready decision fails closed when redis queue dependency is degraded" {
     try std.testing.expect(!health_handlers.readyDecision(.{
         .db_ok = true,
-        .queue_dependency_ok = false,
+        .queue_ok = false,
     }));
 }
 
 test "integration: ready decision fails closed when db is unhealthy" {
     try std.testing.expect(!health_handlers.readyDecision(.{
         .db_ok = false,
-        .queue_dependency_ok = true,
+        .queue_ok = true,
     }));
 }
 
 test "integration: ready decision passes when dependencies are healthy" {
     try std.testing.expect(health_handlers.readyDecision(.{
         .db_ok = true,
-        .queue_dependency_ok = true,
+        .queue_ok = true,
     }));
 }

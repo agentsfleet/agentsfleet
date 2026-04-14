@@ -175,7 +175,7 @@
                     "ready",
                     "database",
                     "worker",
-                    "queue_dependency",
+                    "queue",
                     "queue_depth",
                     "queue_depth_breached",
                     "queue_age_breached",
@@ -194,9 +194,9 @@
                       "type": "boolean",
                       "description": "Background worker process is responsive"
                     },
-                    "queue_dependency": {
+                    "queue": {
                       "type": "boolean",
-                      "description": "Queue backend is reachable"
+                      "description": "Redis queue backend is reachable"
                     },
                     "queue_depth": {
                       "type": "integer",

@@ -131,7 +131,7 @@ Run operator checks:
 
 ```bash
 curl -sS https://api.usezombie.com/healthz
-curl -sS https://api.usezombie.com/readyz | jq '.queue_dependency,.ready'
+curl -sS https://api.usezombie.com/readyz | jq '.queue,.ready'
 npx zombiectl login && npx zombiectl doctor
 zombied doctor --format=json
 ```

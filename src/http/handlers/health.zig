@@ -14,7 +14,7 @@ pub const Context = common.Context;
 
 pub const ReadyInputs = struct {
     db_ok: bool,
-    queue_dependency_ok: bool,
+    queue_ok: bool,
 };
 
 fn databaseHealthy(ctx: *Context) bool {
@@ -26,16 +26,16 @@ fn databaseHealthy(ctx: *Context) bool {
     return (ping.next() catch null) != null;
 }
 
-fn queueDependencyHealthy(ctx: *Context) bool {
+fn queueHealthy(ctx: *Context) bool {
     ctx.queue.readyCheck() catch |err| {
-        obs_log.logWarnErr(.http, err, "readyz: redis queue dependency check failed", .{});
+        obs_log.logWarnErr(.http, err, "readyz: redis queue check failed", .{});
         return false;
     };
     return true;
 }
 
 pub fn readyDecision(inputs: ReadyInputs) bool {
-    return inputs.db_ok and inputs.queue_dependency_ok;
+    return inputs.db_ok and inputs.queue_ok;
 }
 
 pub fn handleHealthz(ctx: *Context, req: *httpz.Request, res: *httpz.Response) void {
@@ -61,16 +61,16 @@ pub fn handleHealthz(ctx: *Context, req: *httpz.Request, res: *httpz.Response) v
 pub fn handleReadyz(ctx: *Context, req: *httpz.Request, res: *httpz.Response) void {
     _ = req;
     const db_ok = databaseHealthy(ctx);
-    const queue_dependency_ok = queueDependencyHealthy(ctx);
+    const queue_ok = queueHealthy(ctx);
 
     if (!readyDecision(.{
         .db_ok = db_ok,
-        .queue_dependency_ok = queue_dependency_ok,
+        .queue_ok = queue_ok,
     })) {
         common.writeJson(res, .service_unavailable, .{
             .ready = false,
             .database = db_ok,
-            .queue_dependency = queue_dependency_ok,
+            .queue = queue_ok,
         });
         return;
     }
@@ -78,7 +78,7 @@ pub fn handleReadyz(ctx: *Context, req: *httpz.Request, res: *httpz.Response) vo
     common.writeJson(res, .ok, .{
         .ready = true,
         .database = true,
-        .queue_dependency = true,
+        .queue = true,
     });
 }
 
@@ -101,13 +101,13 @@ pub fn handleMetrics(ctx: *Context, req: *httpz.Request, res: *httpz.Response) v
 test "integration: ready decision fails closed when redis queue dependency is degraded" {
     try std.testing.expect(!readyDecision(.{
         .db_ok = true,
-        .queue_dependency_ok = false,
+        .queue_ok = false,
     }));
 }
 
 test "integration: ready decision passes when dependencies are healthy" {
     try std.testing.expect(readyDecision(.{
         .db_ok = true,
-        .queue_dependency_ok = true,
+        .queue_ok = true,
     }));
 }
