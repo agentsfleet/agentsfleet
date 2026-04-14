@@ -1,12 +1,13 @@
 //! Integration Grant workspace-owner operations.
-//! GET    /v1/zombies/{id}/integration-grants        → handleListGrants  (workspace auth)
-//! DELETE /v1/zombies/{id}/integration-grants/{gid}  → handleRevokeGrant (workspace auth)
+//! GET    /v1/zombies/{id}/integration-grants        → innerListGrants  (bearer policy)
+//! DELETE /v1/zombies/{id}/integration-grants/{gid}  → innerRevokeGrant (bearer policy)
 
 const std = @import("std");
 const httpz = @import("httpz");
 const pg = @import("pg");
 const PgQuery = @import("../../db/pg_query.zig").PgQuery;
 const common = @import("common.zig");
+const hx_mod = @import("hx.zig");
 const ec = @import("../../errors/error_registry.zig");
 
 const log = std.log.scoped(.integration_grants);
@@ -27,9 +28,9 @@ pub fn getZombieWorkspaceId(conn: *pg.Conn, alloc: std.mem.Allocator, zombie_id:
     return alloc.dupe(u8, ws) catch null;
 }
 
-// ── handleListGrants ────────────────────────────────────────────────────────
+// ── innerListGrants ────────────────────────────────────────────────────────
 // GET /v1/zombies/{zombie_id}/integration-grants
-// Workspace owner auth (Clerk OIDC or internal API key).
+// bearer policy — principal set by middleware.
 
 const GrantRow = struct {
     grant_id: []const u8,
@@ -41,34 +42,19 @@ const GrantRow = struct {
     reason: []const u8,
 };
 
-pub fn handleListGrants(ctx: *Context, req: *httpz.Request, res: *httpz.Response, zombie_id: []const u8) void {
-    var arena = std.heap.ArenaAllocator.init(ctx.alloc);
-    defer arena.deinit();
-    const alloc = arena.allocator();
-    const req_id = common.requestId(alloc);
-
-    const principal = common.authenticate(alloc, req, ctx) catch |err| {
-        switch (err) {
-            error.Unauthorized => common.errorResponse(res, ec.ERR_UNAUTHORIZED, "Authentication required", req_id),
-            error.TokenExpired => common.errorResponse(res, ec.ERR_TOKEN_EXPIRED, "Token expired", req_id),
-            error.AuthServiceUnavailable => common.errorResponse(res, ec.ERR_AUTH_UNAVAILABLE, "Auth service unavailable", req_id),
-            error.UnsupportedRole => common.errorResponse(res, ec.ERR_UNSUPPORTED_ROLE, "Unsupported role", req_id),
-        }
+pub fn innerListGrants(hx: hx_mod.Hx, zombie_id: []const u8) void {
+    const conn = hx.ctx.pool.acquire() catch {
+        common.internalDbUnavailable(hx.res, hx.req_id);
         return;
     };
+    defer hx.ctx.pool.release(conn);
 
-    const conn = ctx.pool.acquire() catch {
-        common.internalDbUnavailable(res, req_id);
+    const zombie_ws_id = getZombieWorkspaceId(conn, hx.alloc, zombie_id) orelse {
+        hx.fail(ec.ERR_ZOMBIE_NOT_FOUND, "Zombie not found");
         return;
     };
-    defer ctx.pool.release(conn);
-
-    const zombie_ws_id = getZombieWorkspaceId(conn, alloc, zombie_id) orelse {
-        common.errorResponse(res, ec.ERR_ZOMBIE_NOT_FOUND, "Zombie not found", req_id);
-        return;
-    };
-    if (!common.authorizeWorkspace(conn, principal, zombie_ws_id)) {
-        common.errorResponse(res, ec.ERR_FORBIDDEN, "Workspace access denied", req_id);
+    if (!common.authorizeWorkspace(conn, hx.principal, zombie_ws_id)) {
+        hx.fail(ec.ERR_FORBIDDEN, "Workspace access denied");
         return;
     }
 
@@ -78,21 +64,21 @@ pub fn handleListGrants(ctx: *Context, req: *httpz.Request, res: *httpz.Response
         \\WHERE zombie_id = $1::uuid
         \\ORDER BY requested_at DESC
     , .{zombie_id}) catch {
-        common.internalDbError(res, req_id);
+        common.internalDbError(hx.res, hx.req_id);
         return;
     });
     defer q.deinit();
 
     var grants: std.ArrayListUnmanaged(GrantRow) = .{};
     while (q.next() catch null) |row| {
-        const grant_id    = alloc.dupe(u8, row.get([]u8, 0) catch continue) catch continue;
-        const service     = alloc.dupe(u8, row.get([]u8, 1) catch continue) catch continue;
-        const status      = alloc.dupe(u8, row.get([]u8, 2) catch continue) catch continue;
+        const grant_id    = hx.alloc.dupe(u8, row.get([]u8, 0) catch continue) catch continue;
+        const service     = hx.alloc.dupe(u8, row.get([]u8, 1) catch continue) catch continue;
+        const status      = hx.alloc.dupe(u8, row.get([]u8, 2) catch continue) catch continue;
         const requested_at = row.get(i64, 3) catch continue;
         const approved_at  = row.get(i64, 4) catch null;
         const revoked_at   = row.get(i64, 5) catch null;
-        const reason      = alloc.dupe(u8, row.get([]u8, 6) catch continue) catch continue;
-        grants.append(alloc, .{
+        const reason      = hx.alloc.dupe(u8, row.get([]u8, 6) catch continue) catch continue;
+        grants.append(hx.alloc, .{
             .grant_id     = grant_id,
             .service      = service,
             .status       = status,
@@ -103,47 +89,26 @@ pub fn handleListGrants(ctx: *Context, req: *httpz.Request, res: *httpz.Response
         }) catch {};
     }
 
-    common.writeJson(res, .ok, .{ .grants = grants.items });
+    hx.ok(.ok, .{ .grants = grants.items });
 }
 
-// ── handleRevokeGrant ───────────────────────────────────────────────────────
+// ── innerRevokeGrant ───────────────────────────────────────────────────────
 // DELETE /v1/zombies/{zombie_id}/integration-grants/{grant_id}
-// Workspace owner auth. Sets status = 'revoked', records revoked_at timestamp.
+// bearer policy — principal set by middleware.
 
-pub fn handleRevokeGrant(
-    ctx: *Context,
-    req: *httpz.Request,
-    res: *httpz.Response,
-    zombie_id: []const u8,
-    grant_id: []const u8,
-) void {
-    var arena = std.heap.ArenaAllocator.init(ctx.alloc);
-    defer arena.deinit();
-    const alloc = arena.allocator();
-    const req_id = common.requestId(alloc);
-
-    const principal = common.authenticate(alloc, req, ctx) catch |err| {
-        switch (err) {
-            error.Unauthorized => common.errorResponse(res, ec.ERR_UNAUTHORIZED, "Authentication required", req_id),
-            error.TokenExpired => common.errorResponse(res, ec.ERR_TOKEN_EXPIRED, "Token expired", req_id),
-            error.AuthServiceUnavailable => common.errorResponse(res, ec.ERR_AUTH_UNAVAILABLE, "Auth service unavailable", req_id),
-            error.UnsupportedRole => common.errorResponse(res, ec.ERR_UNSUPPORTED_ROLE, "Unsupported role", req_id),
-        }
+pub fn innerRevokeGrant(hx: hx_mod.Hx, zombie_id: []const u8, grant_id: []const u8) void {
+    const conn = hx.ctx.pool.acquire() catch {
+        common.internalDbUnavailable(hx.res, hx.req_id);
         return;
     };
+    defer hx.ctx.pool.release(conn);
 
-    const conn = ctx.pool.acquire() catch {
-        common.internalDbUnavailable(res, req_id);
+    const zombie_ws_id = getZombieWorkspaceId(conn, hx.alloc, zombie_id) orelse {
+        hx.fail(ec.ERR_ZOMBIE_NOT_FOUND, "Zombie not found");
         return;
     };
-    defer ctx.pool.release(conn);
-
-    const zombie_ws_id = getZombieWorkspaceId(conn, alloc, zombie_id) orelse {
-        common.errorResponse(res, ec.ERR_ZOMBIE_NOT_FOUND, "Zombie not found", req_id);
-        return;
-    };
-    if (!common.authorizeWorkspace(conn, principal, zombie_ws_id)) {
-        common.errorResponse(res, ec.ERR_FORBIDDEN, "Workspace access denied", req_id);
+    if (!common.authorizeWorkspace(conn, hx.principal, zombie_ws_id)) {
+        hx.fail(ec.ERR_FORBIDDEN, "Workspace access denied");
         return;
     }
 
@@ -154,18 +119,18 @@ pub fn handleRevokeGrant(
         \\WHERE grant_id = $2 AND zombie_id = $3::uuid AND status != 'revoked'
         \\RETURNING grant_id
     , .{ now_ms, grant_id, zombie_id }) catch {
-        common.internalDbError(res, req_id);
+        common.internalDbError(hx.res, hx.req_id);
         return;
     });
     defer rev_q.deinit();
 
     const revoked = rev_q.next() catch null;
     if (revoked == null) {
-        common.errorResponse(res, ec.ERR_GRANT_NOT_FOUND, "Grant not found or already revoked", req_id);
+        hx.fail(ec.ERR_GRANT_NOT_FOUND, "Grant not found or already revoked");
         return;
     }
 
     log.info("grant.revoked zombie_id={s} grant_id={s}", .{ zombie_id, grant_id });
-    res.status = 204;
-    res.body = "";
+    hx.res.status = 204;
+    hx.res.body = "";
 }

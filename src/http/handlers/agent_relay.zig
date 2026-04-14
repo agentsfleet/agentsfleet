@@ -9,6 +9,7 @@
 const std = @import("std");
 const httpz = @import("httpz");
 const common = @import("common.zig");
+const hx_mod = @import("hx.zig");
 const error_codes = @import("../../errors/error_registry.zig");
 const crypto_store = @import("../../secrets/crypto_store.zig");
 const nullclaw = @import("nullclaw");
@@ -78,95 +79,70 @@ const RelayRequest = struct {
 
 // ── Handler entry points ────────────────────────────────────────────────────
 
-pub fn handleSpecTemplate(
-    ctx: *common.Context,
-    req: *httpz.Request,
-    res: *httpz.Response,
-    workspace_id: []const u8,
-) void {
-    handleRelay(ctx, req, res, workspace_id, .spec_template);
+pub fn innerSpecTemplate(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []const u8) void {
+    innerRelay(hx, req, workspace_id, .spec_template);
 }
 
-pub fn handleSpecPreview(
-    ctx: *common.Context,
-    req: *httpz.Request,
-    res: *httpz.Response,
-    workspace_id: []const u8,
-) void {
-    handleRelay(ctx, req, res, workspace_id, .spec_preview);
+pub fn innerSpecPreview(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []const u8) void {
+    innerRelay(hx, req, workspace_id, .spec_preview);
 }
 
 // ── Shared relay logic ──────────────────────────────────────────────────────
 
-fn handleRelay(
-    ctx: *common.Context,
-    req: *httpz.Request,
-    res: *httpz.Response,
-    workspace_id: []const u8,
-    mode: Mode,
-) void {
-    var arena = std.heap.ArenaAllocator.init(ctx.alloc);
-    defer arena.deinit();
-    const alloc = arena.allocator();
-    const req_id = common.requestId(alloc);
-
-    const principal = common.authenticate(alloc, req, ctx) catch |err| {
-        common.writeAuthError(ctx, res, req_id, err);
-        return;
-    };
-    if (!common.requireUuidV7Id(res, req_id, workspace_id, "workspace_id")) return;
+fn innerRelay(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []const u8, mode: Mode) void {
+    if (!common.requireUuidV7Id(hx.res, hx.req_id, workspace_id, "workspace_id")) return;
 
     const body = req.body() orelse {
-        common.errorResponse(res, error_codes.ERR_INVALID_REQUEST, "Request body required", req_id);
+        hx.fail(error_codes.ERR_INVALID_REQUEST, "Request body required");
         return;
     };
-    if (!common.checkBodySize(req, res, body, req_id)) return;
+    if (!common.checkBodySize(req, hx.res, body, hx.req_id)) return;
 
-    const parsed = std.json.parseFromSlice(RelayRequest, alloc, body, .{
+    const parsed = std.json.parseFromSlice(RelayRequest, hx.alloc, body, .{
         .ignore_unknown_fields = true,
     }) catch {
-        common.errorResponse(res, error_codes.ERR_INVALID_REQUEST, "Malformed JSON", req_id);
+        hx.fail(error_codes.ERR_INVALID_REQUEST, "Malformed JSON");
         return;
     };
     defer parsed.deinit();
     const rval = parsed.value;
 
     if (rval.messages.len == 0) {
-        common.errorResponse(res, error_codes.ERR_INVALID_REQUEST, "messages array is required and must not be empty", req_id);
+        hx.fail(error_codes.ERR_INVALID_REQUEST, "messages array is required and must not be empty");
         return;
     }
 
     // Authorize workspace
-    const conn = ctx.pool.acquire() catch {
-        common.internalDbUnavailable(res, req_id);
+    const conn = hx.ctx.pool.acquire() catch {
+        common.internalDbUnavailable(hx.res, hx.req_id);
         return;
     };
-    defer ctx.pool.release(conn);
+    defer hx.ctx.pool.release(conn);
 
-    if (!common.authorizeWorkspaceAndSetTenantContext(conn, principal, workspace_id)) {
-        common.errorResponse(res, error_codes.ERR_FORBIDDEN, "Workspace access denied", req_id);
+    if (!common.authorizeWorkspaceAndSetTenantContext(conn, hx.principal, workspace_id)) {
+        hx.fail(error_codes.ERR_FORBIDDEN, "Workspace access denied");
         return;
     }
 
     // Resolve workspace LLM provider credentials
-    const provider_name = crypto_store.load(alloc, conn, workspace_id, "llm_provider_preference") catch {
-        common.errorResponse(res, error_codes.ERR_RELAY_NO_PROVIDER, "No LLM provider configured for workspace. Set credentials via PUT /v1/workspaces/{id}/credentials/llm", req_id);
+    const provider_name = crypto_store.load(hx.alloc, conn, workspace_id, "llm_provider_preference") catch {
+        hx.fail(error_codes.ERR_RELAY_NO_PROVIDER, "No LLM provider configured for workspace. Set credentials via PUT /v1/workspaces/{id}/credentials/llm");
         return;
     };
 
-    const api_key_name = std.fmt.allocPrint(alloc, "{s}_api_key", .{provider_name}) catch {
-        common.internalOperationError(res, "Allocation failed", req_id);
+    const api_key_name = std.fmt.allocPrint(hx.alloc, "{s}_api_key", .{provider_name}) catch {
+        common.internalOperationError(hx.res, "Allocation failed", hx.req_id);
         return;
     };
 
-    const api_key = crypto_store.load(alloc, conn, workspace_id, api_key_name) catch {
-        common.errorResponse(res, error_codes.ERR_CRED_PLATFORM_KEY_MISSING, "LLM API key not found for workspace provider", req_id);
+    const api_key = crypto_store.load(hx.alloc, conn, workspace_id, api_key_name) catch {
+        hx.fail(error_codes.ERR_CRED_PLATFORM_KEY_MISSING, "LLM API key not found for workspace provider");
         return;
     };
 
     // Build nullclaw config with workspace credentials
-    var cfg = Config.load(alloc) catch {
-        common.internalOperationError(res, "Failed to load agent config", req_id);
+    var cfg = Config.load(hx.alloc) catch {
+        common.internalOperationError(hx.res, "Failed to load agent config", hx.req_id);
         return;
     };
     defer cfg.deinit();
@@ -174,13 +150,13 @@ fn handleRelay(
 
     // Inject API key into provider entry (same pattern as executor/runner.zig)
     injectProviderApiKey(&cfg, api_key) catch {
-        common.internalOperationError(res, "Failed to inject provider API key", req_id);
+        common.internalOperationError(hx.res, "Failed to inject provider API key", hx.req_id);
         return;
     };
 
     // Initialize provider
-    var runtime_provider = providers.runtime_bundle.RuntimeProviderBundle.init(alloc, &cfg) catch {
-        common.internalOperationError(res, "Failed to initialize LLM provider", req_id);
+    var runtime_provider = providers.runtime_bundle.RuntimeProviderBundle.init(hx.alloc, &cfg) catch {
+        common.internalOperationError(hx.res, "Failed to initialize LLM provider", hx.req_id);
         return;
     };
     defer runtime_provider.deinit();
@@ -191,20 +167,20 @@ fn handleRelay(
 
     // Convert JSON messages to ChatMessage array
     var messages: std.ArrayList(ChatMessage) = .{};
-    messages.append(alloc, ChatMessage.system(system_prompt)) catch {
-        common.internalOperationError(res, "Allocation failed", req_id);
+    messages.append(hx.alloc, ChatMessage.system(system_prompt)) catch {
+        common.internalOperationError(hx.res, "Allocation failed", hx.req_id);
         return;
     };
 
     for (rval.messages) |msg| {
         const role = providers.Role.fromSlice(msg.role) orelse continue;
-        messages.append(alloc, .{ .role = role, .content = msg.content }) catch continue;
+        messages.append(hx.alloc, .{ .role = role, .content = msg.content }) catch continue;
     }
 
     // Convert JSON tools to ToolSpec array
     var tool_specs: std.ArrayList(ToolSpec) = .{};
     for (rval.tools) |t| {
-        tool_specs.append(alloc, .{
+        tool_specs.append(hx.alloc, .{
             .name = t.name,
             .description = t.description,
         }) catch continue;
@@ -222,31 +198,31 @@ fn handleRelay(
     };
 
     // Call provider
-    const response = provider_i.chatWithTools(alloc, chat_req) catch |err| {
+    const response = provider_i.chatWithTools(hx.alloc, chat_req) catch |err| {
         log.warn("relay.provider_error err={s} workspace_id={s}", .{ @errorName(err), workspace_id });
         // Set SSE headers and send error event
-        setSseHeaders(res);
+        setSseHeaders(hx.res);
         const error_event = std.fmt.allocPrint(
-            alloc,
+            hx.alloc,
             "event: error\ndata: {{\"message\":\"provider error: {s}\"}}\n\n",
             .{@errorName(err)},
         ) catch return;
-        _ = res.chunk(error_event) catch {};
+        _ = hx.res.chunk(error_event) catch {};
         return;
     };
 
     // Set SSE headers
-    setSseHeaders(res);
+    setSseHeaders(hx.res);
 
     // Emit tool_use events if the model requested tool calls
     if (response.hasToolCalls()) {
         for (response.tool_calls) |tc| {
             const event = std.fmt.allocPrint(
-                alloc,
+                hx.alloc,
                 "event: tool_use\ndata: {{\"id\":\"{s}\",\"name\":\"{s}\",\"input\":{s}}}\n\n",
                 .{ tc.id, tc.name, tc.arguments },
             ) catch continue;
-            res.chunk(event) catch return;
+            hx.res.chunk(event) catch return;
         }
     }
 
@@ -254,19 +230,19 @@ fn handleRelay(
     if (response.content) |text| {
         if (text.len > 0) {
             // Escape the text for JSON embedding
-            const escaped = jsonEscapeString(alloc, text) catch text;
+            const escaped = jsonEscapeString(hx.alloc, text) catch text;
             const event = std.fmt.allocPrint(
-                alloc,
+                hx.alloc,
                 "event: text_delta\ndata: {{\"text\":\"{s}\"}}\n\n",
                 .{escaped},
             ) catch return;
-            res.chunk(event) catch return;
+            hx.res.chunk(event) catch return;
         }
     }
 
     // Emit done event with usage
     const done_event = std.fmt.allocPrint(
-        alloc,
+        hx.alloc,
         "event: done\ndata: {{\"usage\":{{\"input_tokens\":{d},\"output_tokens\":{d},\"total_tokens\":{d}}},\"provider\":\"{s}\",\"model\":\"{s}\"}}\n\n",
         .{
             response.usage.prompt_tokens,
@@ -276,7 +252,7 @@ fn handleRelay(
             model,
         },
     ) catch return;
-    _ = res.chunk(done_event) catch {};
+    _ = hx.res.chunk(done_event) catch {};
 }
 
 /// Inject an API key into the NullClaw Config for the workspace's default provider.

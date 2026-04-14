@@ -7,6 +7,7 @@ const httpz = @import("httpz");
 const pg = @import("pg");
 const PgQuery = @import("../../db/pg_query.zig").PgQuery;
 const common = @import("common.zig");
+const hx_mod = @import("hx.zig");
 const ec = @import("../../errors/error_registry.zig");
 const id_format = @import("../../types/id_format.zig");
 const grant_notifier = @import("../../zombie/notifications/grant_notifier.zig");
@@ -106,48 +107,41 @@ const RequestGrantBody = struct {
     reason: []const u8,
 };
 
-pub fn handleRequestGrant(ctx: *Context, req: *httpz.Request, res: *httpz.Response, zombie_id: []const u8) void {
-    var arena = std.heap.ArenaAllocator.init(ctx.alloc);
-    defer arena.deinit();
-    const alloc = arena.allocator();
-    const req_id = common.requestId(alloc);
-
-    const conn = ctx.pool.acquire() catch {
-        common.internalDbUnavailable(res, req_id);
+pub fn innerRequestGrant(hx: hx_mod.Hx, req: *httpz.Request, zombie_id: []const u8) void {
+    const conn = hx.ctx.pool.acquire() catch {
+        common.internalDbUnavailable(hx.res, hx.req_id);
         return;
     };
-    defer ctx.pool.release(conn);
+    defer hx.ctx.pool.release(conn);
 
-    const caller = authenticateZombie(alloc, conn, req) orelse {
-        common.errorResponse(res, ec.ERR_APIKEY_INVALID,
-            "Invalid API key or session. Use: Authorization: Session {uuid} or Authorization: Bearer zmb_xxx", req_id);
+    const caller = authenticateZombie(hx.alloc, conn, req) orelse {
+        hx.fail(ec.ERR_APIKEY_INVALID,
+            "Invalid API key or session. Use: Authorization: Session {uuid} or Authorization: Bearer zmb_xxx");
         return;
     };
 
     if (!std.mem.eql(u8, caller.zombie_id, zombie_id)) {
-        common.errorResponse(res, ec.ERR_FORBIDDEN,
-            "Zombie identity mismatch: authenticated zombie_id does not match path", req_id);
+        hx.fail(ec.ERR_FORBIDDEN, "Zombie identity mismatch: authenticated zombie_id does not match path");
         return;
     }
 
     const raw_body = req.body() orelse {
-        common.errorResponse(res, ec.ERR_INVALID_REQUEST, "Request body required", req_id);
+        hx.fail(ec.ERR_INVALID_REQUEST, "Request body required");
         return;
     };
-    const parsed = std.json.parseFromSlice(RequestGrantBody, alloc, raw_body, .{}) catch {
-        common.errorResponse(res, ec.ERR_INVALID_REQUEST, "Malformed JSON body", req_id);
+    const parsed = std.json.parseFromSlice(RequestGrantBody, hx.alloc, raw_body, .{}) catch {
+        hx.fail(ec.ERR_INVALID_REQUEST, "Malformed JSON body");
         return;
     };
     defer parsed.deinit();
     const body = parsed.value;
 
     if (!isSupportedService(body.service)) {
-        common.errorResponse(res, ec.ERR_INVALID_REQUEST,
-            "service must be one of: slack, gmail, agentmail, discord, grafana", req_id);
+        hx.fail(ec.ERR_INVALID_REQUEST, "service must be one of: slack, gmail, agentmail, discord, grafana");
         return;
     }
     if (body.reason.len == 0 or body.reason.len > MAX_REASON_LEN) {
-        common.errorResponse(res, ec.ERR_INVALID_REQUEST, "reason must be 1–512 chars", req_id);
+        hx.fail(ec.ERR_INVALID_REQUEST, "reason must be 1–512 chars");
         return;
     }
 
@@ -160,7 +154,7 @@ pub fn handleRequestGrant(ctx: *Context, req: *httpz.Request, res: *httpz.Respon
         \\WHERE zombie_id = $1::uuid AND service = $2
         \\LIMIT 1
     , .{ zombie_id, body.service }) catch {
-        common.internalDbError(res, req_id);
+        common.internalDbError(hx.res, hx.req_id);
         return;
     });
     defer existing_q.deinit();
@@ -175,11 +169,11 @@ pub fn handleRequestGrant(ctx: *Context, req: *httpz.Request, res: *httpz.Respon
         if (!is_terminal) {
             // pending or approved — idempotent return.
             log.info("grant.already_exists zombie_id={s} service={s} status={s}", .{ zombie_id, body.service, existing_st });
-            common.writeJson(res, .ok, .{
-                .grant_id     = alloc.dupe(u8, existing_id) catch existing_id,
+            hx.ok(.ok, .{
+                .grant_id     = hx.alloc.dupe(u8, existing_id) catch existing_id,
                 .zombie_id    = zombie_id,
                 .service      = body.service,
-                .status       = alloc.dupe(u8, existing_st) catch existing_st,
+                .status       = hx.alloc.dupe(u8, existing_st) catch existing_st,
                 .requested_at = existing_at,
                 .message      = "Grant already exists for this service.",
             });
@@ -193,14 +187,14 @@ pub fn handleRequestGrant(ctx: *Context, req: *httpz.Request, res: *httpz.Respon
             \\SET status = 'pending', requested_at = $1, requested_reason = $2,
             \\    approved_at = NULL, revoked_at = NULL
             \\WHERE grant_id = $3
-        , .{ now_ms_reopen, body.reason, alloc.dupe(u8, existing_id) catch existing_id }) catch {
-            common.internalDbError(res, req_id);
+        , .{ now_ms_reopen, body.reason, hx.alloc.dupe(u8, existing_id) catch existing_id }) catch {
+            common.internalDbError(hx.res, hx.req_id);
             return;
         };
         log.info("grant.re_requested zombie_id={s} service={s} grant_id={s}", .{ zombie_id, body.service, existing_id });
 
         // Notify for the re-request using the existing grant_id.
-        const existing_grant_id = alloc.dupe(u8, existing_id) catch existing_id;
+        const existing_grant_id = hx.alloc.dupe(u8, existing_id) catch existing_id;
         var zombie_name_reopen: []const u8 = zombie_id;
         fetch_name_reopen: {
             var nq = PgQuery.from(conn.query(
@@ -209,14 +203,14 @@ pub fn handleRequestGrant(ctx: *Context, req: *httpz.Request, res: *httpz.Respon
             defer nq.deinit();
             const nrow = nq.next() catch break :fetch_name_reopen orelse break :fetch_name_reopen;
             const raw = nrow.get([]u8, 0) catch break :fetch_name_reopen;
-            zombie_name_reopen = alloc.dupe(u8, raw) catch zombie_id;
+            zombie_name_reopen = hx.alloc.dupe(u8, raw) catch zombie_id;
         }
         grant_notifier.notifyGrantRequest(
-            ctx.pool, ctx.queue, alloc,
+            hx.ctx.pool, hx.ctx.queue, hx.alloc,
             zombie_id, caller.workspace_id,
             existing_grant_id, zombie_name_reopen, body.service, body.reason,
         );
-        common.writeJson(res, .created, .{
+        hx.ok(.created, .{
             .grant_id     = existing_grant_id,
             .zombie_id    = zombie_id,
             .service      = body.service,
@@ -227,8 +221,8 @@ pub fn handleRequestGrant(ctx: *Context, req: *httpz.Request, res: *httpz.Respon
         return;
     }
 
-    const grant_id = id_format.generateZombieId(alloc) catch {
-        common.internalOperationError(res, "ID generation failed", req_id);
+    const grant_id = id_format.generateZombieId(hx.alloc) catch {
+        common.internalOperationError(hx.res, "ID generation failed", hx.req_id);
         return;
     };
     const now_ms = std.time.milliTimestamp();
@@ -238,7 +232,7 @@ pub fn handleRequestGrant(ctx: *Context, req: *httpz.Request, res: *httpz.Respon
         \\  (grant_id, zombie_id, service, scopes, status, requested_at, requested_reason)
         \\VALUES ($1, $2::uuid, $3, ARRAY['*'], 'pending', $4, $5)
     , .{ grant_id, zombie_id, body.service, now_ms, body.reason }) catch {
-        common.internalDbError(res, req_id);
+        common.internalDbError(hx.res, hx.req_id);
         return;
     };
 
@@ -253,16 +247,16 @@ pub fn handleRequestGrant(ctx: *Context, req: *httpz.Request, res: *httpz.Respon
         defer nq.deinit();
         const nrow = nq.next() catch break :fetch_name orelse break :fetch_name;
         const raw = nrow.get([]u8, 0) catch break :fetch_name;
-        zombie_name = alloc.dupe(u8, raw) catch zombie_id;
+        zombie_name = hx.alloc.dupe(u8, raw) catch zombie_id;
     }
 
     grant_notifier.notifyGrantRequest(
-        ctx.pool, ctx.queue, alloc,
+        hx.ctx.pool, hx.ctx.queue, hx.alloc,
         zombie_id, caller.workspace_id,
         grant_id, zombie_name, body.service, body.reason,
     );
 
-    common.writeJson(res, .created, .{
+    hx.ok(.created, .{
         .grant_id     = grant_id,
         .zombie_id    = zombie_id,
         .service      = body.service,

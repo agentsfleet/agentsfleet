@@ -16,7 +16,7 @@
 
 const std = @import("std");
 const common = @import("common.zig");
-const rbac = @import("../rbac.zig");
+const rbac = @import("../../auth/rbac.zig");
 const workspace_guards = @import("../workspace_guards.zig");
 const error_codes = @import("../../errors/error_registry.zig");
 

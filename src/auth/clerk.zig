@@ -57,6 +57,10 @@ pub const Verifier = struct {
         // claims_json ownership was transferred from verifyAndDecode;
         // parseStandardClaims does not free it, so we must.
         alloc.free(verified.claims_json);
+        // Principal only carries 4 of the IdentityClaims fields; free the rest
+        // or they leak through the standardised allocator on test runs.
+        if (clerk_claims.audience) |v| alloc.free(v);
+        if (clerk_claims.scopes) |v| alloc.free(v);
 
         return .{
             .subject = verified.subject,

@@ -96,15 +96,15 @@
     "/healthz": {
       "get": {
         "operationId": "healthz",
-        "summary": "Health check",
-        "description": "Returns service health status including database connectivity and current commit SHA.",
+        "summary": "Liveness check",
+        "description": "Returns 200 as long as the process is alive and able to serve HTTP. Does not probe dependencies — use /readyz for readiness (database + queue).",
         "tags": [
           "Health"
         ],
         "security": [],
         "responses": {
           "200": {
-            "description": "Service health status",
+            "description": "Process is alive",
             "content": {
               "application/json": {
                 "schema": {
@@ -112,31 +112,19 @@
                   "required": [
                     "status",
                     "service",
-                    "database",
                     "commit",
                     "request_id"
                   ],
                   "properties": {
                     "status": {
                       "type": "string",
-                      "enum": [
-                        "ok",
-                        "degraded"
-                      ],
-                      "description": "Overall service health"
+                      "const": "ok",
+                      "description": "Always \"ok\" for a live process"
                     },
                     "service": {
                       "type": "string",
                       "const": "zombied",
                       "description": "Service identifier"
-                    },
-                    "database": {
-                      "type": "string",
-                      "enum": [
-                        "up",
-                        "down"
-                      ],
-                      "description": "Database connectivity status"
                     },
                     "commit": {
                       "type": "string",
@@ -159,84 +147,28 @@
       "get": {
         "operationId": "readyz",
         "summary": "Readiness probe",
-        "description": "Kubernetes-style readiness probe. Returns detailed status of all dependencies including queue health metrics.",
+        "description": "Kubernetes-style readiness probe. Returns 200 when both the database and the Redis queue are reachable; returns 503 fail-closed if either dependency is degraded.",
         "tags": [
           "Health"
         ],
         "security": [],
         "responses": {
           "200": {
-            "description": "Readiness status with dependency details",
+            "description": "Both dependencies healthy",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "required": [
-                    "ready",
-                    "database",
-                    "worker",
-                    "queue_dependency",
-                    "queue_depth",
-                    "queue_depth_breached",
-                    "queue_age_breached",
-                    "request_id"
-                  ],
-                  "properties": {
-                    "ready": {
-                      "type": "boolean",
-                      "description": "Overall readiness \u2014 true only when all dependencies are healthy"
-                    },
-                    "database": {
-                      "type": "boolean",
-                      "description": "Database connection pool is healthy"
-                    },
-                    "worker": {
-                      "type": "boolean",
-                      "description": "Background worker process is responsive"
-                    },
-                    "queue_dependency": {
-                      "type": "boolean",
-                      "description": "Queue backend is reachable"
-                    },
-                    "queue_depth": {
-                      "type": "integer",
-                      "description": "Current number of items in the work queue"
-                    },
-                    "oldest_queued_age_ms": {
-                      "type": [
-                        "integer",
-                        "null"
-                      ],
-                      "description": "Age in milliseconds of the oldest queued item, null if queue is empty"
-                    },
-                    "queue_depth_breached": {
-                      "type": "boolean",
-                      "description": "True if queue depth exceeds the configured limit"
-                    },
-                    "queue_age_breached": {
-                      "type": "boolean",
-                      "description": "True if oldest queued item exceeds the configured age limit"
-                    },
-                    "queue_depth_limit": {
-                      "type": [
-                        "integer",
-                        "null"
-                      ],
-                      "description": "Configured queue depth threshold, null if unconfigured"
-                    },
-                    "queue_age_limit_ms": {
-                      "type": [
-                        "integer",
-                        "null"
-                      ],
-                      "description": "Configured queue age threshold in milliseconds, null if unconfigured"
-                    },
-                    "request_id": {
-                      "type": "string",
-                      "format": "uuid",
-                      "description": "Unique request identifier"
-                    }
-                  }
+                  "$ref": "#/components/schemas/ReadyzBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "At least one dependency is degraded; ready=false and the failing dependency's boolean is false",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadyzBody"
                 }
               }
             }
@@ -2462,6 +2394,30 @@
       }
     },
     "schemas": {
+      "ReadyzBody": {
+        "type": "object",
+        "description": "Response body for GET /readyz. Identical shape for both 200 (healthy) and 503 (degraded) responses — only the boolean values differ.",
+        "required": [
+          "ready",
+          "database",
+          "queue"
+        ],
+        "properties": {
+          "ready": {
+            "type": "boolean",
+            "description": "Overall readiness — true only when every dependency is healthy. Mirrors the HTTP status (true ↔ 200, false ↔ 503)."
+          },
+          "database": {
+            "type": "boolean",
+            "description": "True if the PostgreSQL connection pool is reachable and a trivial query succeeds"
+          },
+          "queue": {
+            "type": "boolean",
+            "description": "True if the Redis queue backend is reachable"
+          }
+        },
+        "additionalProperties": false
+      },
       "Transition": {
         "type": "object",
         "description": "A state transition in the run pipeline",

@@ -8,6 +8,7 @@ const http_server = @import("../http/server.zig");
 const http_handler = @import("../http/handler.zig");
 const auth_sessions = @import("../auth/sessions.zig");
 const queue_redis = @import("../queue/redis.zig");
+const auth_mw = @import("../auth/middleware/mod.zig");
 const metrics = @import("../observability/metrics.zig");
 const obs_log = @import("../observability/logging.zig");
 const telemetry_mod = @import("../observability/telemetry.zig");
@@ -26,6 +27,37 @@ var stop_server_test_counter: ?*std.atomic.Value(u32) = null;
 
 fn defaultStopServer() void {
     if (active_server.load(.acquire)) |s| s.stop();
+}
+
+// ── M18_002 C.2: MiddlewareRegistry callbacks ─────────────────────────────
+
+/// Atomically consume an OAuth nonce from Redis. Called by `OAuthState`
+/// middleware when the OAuth callback route is handled by the chain.
+///
+/// Key format: `slack:oauth:nonce:<nonce>` — mirrors `slack_oauth.zig::validateState`.
+/// Returns true if the nonce existed and was deleted; false if it was already
+/// consumed (0-key DEL) or if Redis is unavailable.
+fn consumeOAuthNonce(user: *anyopaque, nonce: []const u8) anyerror!bool {
+    const q: *queue_redis.Client = @ptrCast(@alignCast(user));
+    var key_buf: [64]u8 = undefined;
+    const key = std.fmt.bufPrint(&key_buf, "slack:oauth:nonce:{s}", .{nonce}) catch return error.KeyTooLong;
+    const resp = q.command(&.{ "DEL", key }) catch return error.RedisUnavailable;
+    return switch (resp) {
+        .integer => |n| n > 0,
+        else => false,
+    };
+}
+
+/// Stub webhook URL-secret lookup. Returns null (no secret configured) until
+/// a future batch wires the real vault/DB lookup. Not called at runtime because
+/// `.receive_webhook` uses the `none` middleware policy; the real handler does
+/// its own auth for now.
+fn stubWebhookSecretLookup(
+    _: *anyopaque,
+    _: []const u8,
+    _: std.mem.Allocator,
+) anyerror!?[]const u8 {
+    return null;
 }
 
 fn parseServeArgOverrides() serve_args.ServeArgError!?u16 {
@@ -170,6 +202,48 @@ pub fn run(alloc: std.mem.Allocator) !void {
         log.info("startup.oidc_init status=ok", .{});
     }
 
+    // M18_002 C.2: Build the middleware registry at boot.
+    //
+    // Signing secrets are loaded from env vars here so each request does not
+    // pay a getenv syscall. Missing secrets → empty slice → the middleware
+    // rejects every request on that route (correct fail-closed behavior).
+    //
+    // LIFETIME: `registry` is a stack-allocated var in run(). It must stay
+    // alive for the duration of the server. `initChains()` captures pointers
+    // into registry fields; do NOT call initChains() before all fields are set,
+    // and do NOT move/copy registry after calling initChains().
+    const slack_signing_secret_owned = std.process.getEnvVarOwned(alloc, "SLACK_SIGNING_SECRET") catch null;
+    defer if (slack_signing_secret_owned) |s| alloc.free(s);
+    const slack_signing_secret: []const u8 = if (slack_signing_secret_owned) |s| s else "";
+    const approval_signing_secret_owned = std.process.getEnvVarOwned(alloc, "APPROVAL_SIGNING_SECRET") catch null;
+    defer if (approval_signing_secret_owned) |s| alloc.free(s);
+    const approval_signing_secret: []const u8 = if (approval_signing_secret_owned) |s| s else "";
+
+    var registry = auth_mw.MiddlewareRegistry{
+        .bearer_or_api_key = .{
+            .api_keys = serve_cfg.api_keys,
+            .verifier = ctx.oidc,
+        },
+        .admin_api_key_mw = .{
+            .api_keys = serve_cfg.api_keys,
+        },
+        .require_role_admin = .{ .required = .admin },
+        .require_role_operator = .{ .required = .operator },
+        .slack_sig = .{ .secret = slack_signing_secret },
+        .webhook_hmac_mw = .{ .secret = approval_signing_secret },
+        .oauth_state_mw = .{
+            .signing_secret = slack_signing_secret,
+            .consume_ctx = &api_queue,
+            .consume_nonce = consumeOAuthNonce,
+        },
+        .webhook_url_secret_mw = .{
+            .lookup_ctx = &api_queue, // unused by stub; Batch D will wire real lookup
+            .lookup_fn = stubWebhookSecretLookup,
+        },
+    };
+    registry.initChains();
+    log.info("startup.middleware_registry status=ok", .{});
+
     shutdown_requested.store(false, .release);
     preflight.installSignalHandlers(onSignal);
 
@@ -196,7 +270,7 @@ pub fn run(alloc: std.mem.Allocator) !void {
         serve_cfg.api_max_in_flight_requests,
     });
     ctx.telemetry.capture(telemetry_mod.ServerStarted, .{ .port = serve_cfg.port });
-    const srv = http_server.Server.init(&ctx, .{
+    const srv = http_server.Server.init(&ctx, &registry, .{
         .port = serve_cfg.port,
         .threads = serve_cfg.api_http_threads,
         .workers = serve_cfg.api_http_workers,

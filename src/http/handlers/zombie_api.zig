@@ -1,8 +1,8 @@
 // M2_001: Zombie CRUD API — create, list, delete, status.
 //
-// POST   /v1/zombies/           → handleCreateZombie
-// GET    /v1/zombies/           → handleListZombies (workspace_id query param)
-// DELETE /v1/zombies/{id}       → handleDeleteZombie
+// POST   /v1/zombies/           → innerCreateZombie
+// GET    /v1/zombies/           → innerListZombies (workspace_id query param)
+// DELETE /v1/zombies/{id}       → innerDeleteZombie
 
 const std = @import("std");
 const httpz = @import("httpz");
@@ -31,45 +31,45 @@ const CreateBody = struct {
     workspace_id: []const u8,
 };
 
-fn parseCreateBody(alloc: std.mem.Allocator, req: *httpz.Request, res: *httpz.Response, req_id: []const u8) ?CreateBody {
+fn parseCreateBody(hx: Hx, req: *httpz.Request) ?CreateBody {
     const body = req.body() orelse {
-        common.errorResponse(res, ec.ERR_INVALID_REQUEST, ec.MSG_BODY_REQUIRED, req_id);
+        hx.fail(ec.ERR_INVALID_REQUEST, ec.MSG_BODY_REQUIRED);
         return null;
     };
-    if (!common.checkBodySize(req, res, body, req_id)) return null;
-    const parsed = std.json.parseFromSlice(CreateBody, alloc, body, .{ .ignore_unknown_fields = true }) catch {
-        common.errorResponse(res, ec.ERR_INVALID_REQUEST, ec.MSG_MALFORMED_JSON, req_id);
+    if (!common.checkBodySize(req, hx.res, body, hx.req_id)) return null;
+    const parsed = std.json.parseFromSlice(CreateBody, hx.alloc, body, .{ .ignore_unknown_fields = true }) catch {
+        hx.fail(ec.ERR_INVALID_REQUEST, ec.MSG_MALFORMED_JSON);
         return null;
     };
     return parsed.value;
 }
 
-fn validateCreateFields(b: CreateBody, res: *httpz.Response, req_id: []const u8) bool {
+fn validateCreateFields(hx: Hx, b: CreateBody) bool {
     if (b.name.len == 0 or b.name.len > MAX_NAME_LEN) {
-        common.errorResponse(res, ec.ERR_INVALID_REQUEST, ec.MSG_ZOMBIE_NAME_REQUIRED, req_id);
+        hx.fail(ec.ERR_INVALID_REQUEST, ec.MSG_ZOMBIE_NAME_REQUIRED);
         return false;
     }
     if (b.source_markdown.len == 0 or b.source_markdown.len > MAX_SOURCE_LEN) {
-        common.errorResponse(res, ec.ERR_INVALID_REQUEST, ec.MSG_ZOMBIE_SOURCE_REQUIRED, req_id);
+        hx.fail(ec.ERR_INVALID_REQUEST, ec.MSG_ZOMBIE_SOURCE_REQUIRED);
         return false;
     }
     if (b.config_json.len == 0) {
-        common.errorResponse(res, ec.ERR_INVALID_REQUEST, ec.MSG_ZOMBIE_CONFIG_REQUIRED, req_id);
+        hx.fail(ec.ERR_INVALID_REQUEST, ec.MSG_ZOMBIE_CONFIG_REQUIRED);
         return false;
     }
     if (b.workspace_id.len == 0 or !id_format.isSupportedWorkspaceId(b.workspace_id)) {
-        common.errorResponse(res, ec.ERR_INVALID_REQUEST, ec.MSG_WORKSPACE_ID_REQUIRED, req_id);
+        hx.fail(ec.ERR_INVALID_REQUEST, ec.MSG_WORKSPACE_ID_REQUIRED);
         return false;
     }
     return true;
 }
 
-fn innerCreateZombie(hx: Hx, req: *httpz.Request) void {
-    const body = parseCreateBody(hx.alloc, req, hx.res, hx.req_id) orelse return;
-    if (!validateCreateFields(body, hx.res, hx.req_id)) return;
+pub fn innerCreateZombie(hx: Hx, req: *httpz.Request) void {
+    const body = parseCreateBody(hx, req) orelse return;
+    if (!validateCreateFields(hx, body)) return;
 
     _ = zombie_config.parseZombieConfig(hx.alloc, body.config_json) catch {
-        common.errorResponse(hx.res, ec.ERR_ZOMBIE_INVALID_CONFIG, ec.MSG_ZOMBIE_INVALID_CONFIG, hx.req_id);
+        hx.fail(ec.ERR_ZOMBIE_INVALID_CONFIG, ec.MSG_ZOMBIE_INVALID_CONFIG);
         return;
     };
 
@@ -81,7 +81,7 @@ fn innerCreateZombie(hx: Hx, req: *httpz.Request) void {
 
     insertZombie(hx.ctx.pool, body, zombie_id, now_ms) catch |err| {
         if (isUniqueViolation(err)) {
-            common.errorResponse(hx.res, ec.ERR_ZOMBIE_NAME_EXISTS, ec.MSG_ZOMBIE_NAME_EXISTS, hx.req_id);
+            hx.fail(ec.ERR_ZOMBIE_NAME_EXISTS, ec.MSG_ZOMBIE_NAME_EXISTS);
             return;
         }
         log.err("zombie.create_failed err={s} req_id={s}", .{ @errorName(err), hx.req_id });
@@ -90,10 +90,8 @@ fn innerCreateZombie(hx: Hx, req: *httpz.Request) void {
     };
 
     log.info("zombie.created id={s} name={s} workspace={s}", .{ zombie_id, body.name, body.workspace_id });
-    hx.res.status = 201;
-    hx.res.json(.{ .zombie_id = zombie_id, .status = zombie_config.ZombieStatus.active.toSlice() }, .{}) catch {};
+    hx.ok(.created, .{ .zombie_id = zombie_id, .status = zombie_config.ZombieStatus.active.toSlice() });
 }
-pub const handleCreateZombie = hx_mod.authenticated(innerCreateZombie);
 
 fn insertZombie(pool: *pg.Pool, body: CreateBody, zombie_id: []const u8, now_ms: i64) !void {
     const conn = try pool.acquire();
@@ -115,17 +113,17 @@ fn isUniqueViolation(_: anyerror) bool {
 
 // ── List Zombies ──────────────────────────────────────────────────────
 
-fn innerListZombies(hx: Hx, req: *httpz.Request) void {
+pub fn innerListZombies(hx: Hx, req: *httpz.Request) void {
     const qs = req.query() catch {
-        common.errorResponse(hx.res, ec.ERR_INVALID_REQUEST, ec.MSG_WORKSPACE_ID_REQUIRED, hx.req_id);
+        hx.fail(ec.ERR_INVALID_REQUEST, ec.MSG_WORKSPACE_ID_REQUIRED);
         return;
     };
     const workspace_id = qs.get("workspace_id") orelse {
-        common.errorResponse(hx.res, ec.ERR_INVALID_REQUEST, ec.MSG_WORKSPACE_ID_REQUIRED, hx.req_id);
+        hx.fail(ec.ERR_INVALID_REQUEST, ec.MSG_WORKSPACE_ID_REQUIRED);
         return;
     };
     if (!id_format.isSupportedWorkspaceId(workspace_id)) {
-        common.errorResponse(hx.res, ec.ERR_INVALID_REQUEST, ec.MSG_WORKSPACE_ID_REQUIRED, hx.req_id);
+        hx.fail(ec.ERR_INVALID_REQUEST, ec.MSG_WORKSPACE_ID_REQUIRED);
         return;
     }
 
@@ -135,10 +133,8 @@ fn innerListZombies(hx: Hx, req: *httpz.Request) void {
         return;
     };
 
-    hx.res.status = 200;
-    hx.res.json(.{ .zombies = rows }, .{}) catch {};
+    hx.ok(.ok, .{ .zombies = rows });
 }
-pub const handleListZombies = hx_mod.authenticated(innerListZombies);
 
 const ZombieListRow = struct {
     id: []const u8,
@@ -191,9 +187,9 @@ fn collectZombieRows(alloc: std.mem.Allocator, q: *PgQuery) ![]ZombieListRow {
 
 // ── Delete Zombie ─────────────────────────────────────────────────────
 
-fn innerDeleteZombie(hx: Hx, _: *httpz.Request, zombie_id: []const u8) void {
+pub fn innerDeleteZombie(hx: Hx, _: *httpz.Request, zombie_id: []const u8) void {
     if (!id_format.isSupportedWorkspaceId(zombie_id)) {
-        common.errorResponse(hx.res, ec.ERR_INVALID_REQUEST, "zombie_id must be a valid UUIDv7", hx.req_id);
+        hx.fail(ec.ERR_INVALID_REQUEST, "zombie_id must be a valid UUIDv7");
         return;
     }
 
@@ -204,15 +200,13 @@ fn innerDeleteZombie(hx: Hx, _: *httpz.Request, zombie_id: []const u8) void {
     };
 
     if (!updated) {
-        common.errorResponse(hx.res, ec.ERR_ZOMBIE_NOT_FOUND, ec.MSG_ZOMBIE_NOT_FOUND, hx.req_id);
+        hx.fail(ec.ERR_ZOMBIE_NOT_FOUND, ec.MSG_ZOMBIE_NOT_FOUND);
         return;
     }
 
     log.info("zombie.killed id={s}", .{zombie_id});
-    hx.res.status = 200;
-    hx.res.json(.{ .zombie_id = zombie_id, .status = zombie_config.ZombieStatus.killed.toSlice() }, .{}) catch {};
+    hx.ok(.ok, .{ .zombie_id = zombie_id, .status = zombie_config.ZombieStatus.killed.toSlice() });
 }
-pub const handleDeleteZombie = hx_mod.authenticatedWithParam(innerDeleteZombie);
 
 fn killZombie(pool: *pg.Pool, zombie_id: []const u8) !bool {
     const conn = try pool.acquire();

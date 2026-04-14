@@ -37,7 +37,7 @@ const StoreBody = struct {
     category: []const u8 = "core",
 };
 
-fn innerMemoryStore(hx: Hx, req: *httpz.Request) void {
+pub fn innerMemoryStore(hx: Hx, req: *httpz.Request) void {
     const body_raw = req.body() orelse {
         hx.fail(ec.ERR_INVALID_REQUEST, "request body required");
         return;
@@ -95,7 +95,6 @@ fn innerMemoryStore(hx: Hx, req: *httpz.Request) void {
     });
 }
 
-pub const handleMemoryStore = hx_mod.authenticated(innerMemoryStore);
 
 // ── Recall ────────────────────────────────────────────────────────────────────
 
@@ -105,7 +104,7 @@ const RecallBody = struct {
     limit: ?i64 = null,
 };
 
-fn innerMemoryRecall(hx: Hx, req: *httpz.Request) void {
+pub fn innerMemoryRecall(hx: Hx, req: *httpz.Request) void {
     const body_raw = req.body() orelse {
         hx.fail(ec.ERR_INVALID_REQUEST, "request body required");
         return;
@@ -175,7 +174,6 @@ fn innerMemoryRecall(hx: Hx, req: *httpz.Request) void {
     });
 }
 
-pub const handleMemoryRecall = hx_mod.authenticated(innerMemoryRecall);
 
 // ── List ──────────────────────────────────────────────────────────────────────
 
@@ -185,7 +183,7 @@ const ListBody = struct {
     limit: ?i64 = null,
 };
 
-fn innerMemoryList(hx: Hx, req: *httpz.Request) void {
+pub fn innerMemoryList(hx: Hx, req: *httpz.Request) void {
     const body_raw = req.body() orelse {
         hx.fail(ec.ERR_INVALID_REQUEST, "request body required");
         return;
@@ -251,7 +249,6 @@ fn innerMemoryList(hx: Hx, req: *httpz.Request) void {
     });
 }
 
-pub const handleMemoryList = hx_mod.authenticated(innerMemoryList);
 
 // ── Forget ────────────────────────────────────────────────────────────────────
 
@@ -260,7 +257,7 @@ const ForgetBody = struct {
     key: []const u8,
 };
 
-fn innerMemoryForget(hx: Hx, req: *httpz.Request) void {
+pub fn innerMemoryForget(hx: Hx, req: *httpz.Request) void {
     const body_raw = req.body() orelse {
         hx.fail(ec.ERR_INVALID_REQUEST, "request body required");
         return;
@@ -310,4 +307,3 @@ fn innerMemoryForget(hx: Hx, req: *httpz.Request) void {
     });
 }
 
-pub const handleMemoryForget = hx_mod.authenticated(innerMemoryForget);

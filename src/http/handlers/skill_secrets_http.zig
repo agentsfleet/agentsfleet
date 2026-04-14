@@ -1,6 +1,7 @@
-// Raw handlers — does not use hx.authenticated().
-// These handlers take 3 path params (workspace_id, skill_ref_encoded, key_name_encoded).
-// hx.authenticatedWithParam() supports exactly 1 path param. Three-param routes stay raw.
+// Skill-secret routes are the only handlers dispatched BEFORE the middleware
+// chain (3 path params don't fit the Route enum). They do their own bearer
+// auth inline via `common.authenticate`, then build an Hx locally so the rest
+// of the handler body follows the normal hx.ok / hx.fail convention.
 
 const std = @import("std");
 const httpz = @import("httpz");
@@ -8,11 +9,26 @@ const error_codes = @import("../../errors/error_registry.zig");
 const workspace_guards = @import("../workspace_guards.zig");
 const skill_secret_handlers = @import("skill_secrets.zig");
 const common = @import("common.zig");
+const hx_mod = @import("hx.zig");
 
 const log = std.log.scoped(.http);
 const API_ACTOR = "api";
 
 pub const Context = common.Context;
+
+fn buildHx(ctx: *Context, req: *httpz.Request, res: *httpz.Response, alloc: std.mem.Allocator, req_id: []const u8) ?hx_mod.Hx {
+    const principal = common.authenticate(alloc, req, ctx) catch |err| {
+        common.writeAuthError(ctx, res, req_id, err);
+        return null;
+    };
+    return hx_mod.Hx{
+        .alloc = alloc,
+        .principal = principal,
+        .req_id = req_id,
+        .ctx = ctx,
+        .res = res,
+    };
+}
 
 pub fn handlePutWorkspaceSkillSecret(
     ctx: *Context,
@@ -27,49 +43,46 @@ pub fn handlePutWorkspaceSkillSecret(
     const alloc = arena.allocator();
     const req_id = common.requestId(alloc);
 
-    const principal = common.authenticate(alloc, req, ctx) catch |err| {
-        common.writeAuthError(ctx, res, req_id, err);
-        return;
-    };
-    if (!common.requireUuidV7Id(res, req_id, workspace_id, "workspace_id")) return;
+    const hx = buildHx(ctx, req, res, alloc, req_id) orelse return;
+    if (!common.requireUuidV7Id(hx.res, hx.req_id, workspace_id, "workspace_id")) return;
 
     const Req = skill_secret_handlers.PutInput;
     const body = req.body() orelse {
-        common.errorResponse(res, error_codes.ERR_INVALID_REQUEST, "Request body required", req_id);
+        hx.fail(error_codes.ERR_INVALID_REQUEST, "Request body required");
         return;
     };
-    const parsed = std.json.parseFromSlice(Req, alloc, body, .{}) catch {
-        common.errorResponse(res, error_codes.ERR_INVALID_REQUEST, "Malformed JSON", req_id);
+    const parsed = std.json.parseFromSlice(Req, hx.alloc, body, .{}) catch {
+        hx.fail(error_codes.ERR_INVALID_REQUEST, "Malformed JSON");
         return;
     };
     defer parsed.deinit();
-    const conn = ctx.pool.acquire() catch {
-        common.internalDbUnavailable(res, req_id);
+    const conn = hx.ctx.pool.acquire() catch {
+        common.internalDbUnavailable(hx.res, hx.req_id);
         return;
     };
-    defer ctx.pool.release(conn);
-    const access = workspace_guards.enforce(res, req_id, conn, alloc, principal, workspace_id, principal.user_id orelse API_ACTOR, .{
+    defer hx.ctx.pool.release(conn);
+    const access = workspace_guards.enforce(hx.res, hx.req_id, conn, hx.alloc, hx.principal, workspace_id, hx.principal.user_id orelse API_ACTOR, .{
         .minimum_role = .operator,
     }) orelse return;
-    defer access.deinit(alloc);
+    defer access.deinit(hx.alloc);
 
     log.debug("secret.put workspace_id={s}", .{workspace_id});
 
-    const out = skill_secret_handlers.put(conn, alloc, workspace_id, skill_ref_encoded, key_name_encoded, parsed.value) catch |err| {
+    const out = skill_secret_handlers.put(conn, hx.alloc, workspace_id, skill_ref_encoded, key_name_encoded, parsed.value) catch |err| {
         switch (err) {
-            error.InvalidRequest => common.errorResponse(res, error_codes.ERR_INVALID_REQUEST, "Invalid skill secret payload", req_id),
-            error.MissingMasterKey => common.internalOperationError(res, "ENCRYPTION_MASTER_KEY is missing", req_id),
-            else => common.internalOperationError(res, "Failed to store skill secret", req_id),
+            error.InvalidRequest => hx.fail(error_codes.ERR_INVALID_REQUEST, "Invalid skill secret payload"),
+            error.MissingMasterKey => common.internalOperationError(hx.res, "ENCRYPTION_MASTER_KEY is missing", hx.req_id),
+            else => common.internalOperationError(hx.res, "Failed to store skill secret", hx.req_id),
         }
         return;
     };
 
-    common.writeJson(res, .ok, .{
+    hx.ok(.ok, .{
         .workspace_id = workspace_id,
         .skill_ref = out.skill_ref,
         .key_name = out.key_name,
         .scope = out.scope.label(),
-        .request_id = req_id,
+        .request_id = hx.req_id,
     });
 }
 
@@ -86,34 +99,31 @@ pub fn handleDeleteWorkspaceSkillSecret(
     const alloc = arena.allocator();
     const req_id = common.requestId(alloc);
 
-    const principal = common.authenticate(alloc, req, ctx) catch |err| {
-        common.writeAuthError(ctx, res, req_id, err);
-        return;
-    };
-    if (!common.requireUuidV7Id(res, req_id, workspace_id, "workspace_id")) return;
+    const hx = buildHx(ctx, req, res, alloc, req_id) orelse return;
+    if (!common.requireUuidV7Id(hx.res, hx.req_id, workspace_id, "workspace_id")) return;
 
-    const conn = ctx.pool.acquire() catch {
-        common.internalDbUnavailable(res, req_id);
+    const conn = hx.ctx.pool.acquire() catch {
+        common.internalDbUnavailable(hx.res, hx.req_id);
         return;
     };
-    defer ctx.pool.release(conn);
-    const access = workspace_guards.enforce(res, req_id, conn, alloc, principal, workspace_id, principal.user_id orelse API_ACTOR, .{
+    defer hx.ctx.pool.release(conn);
+    const access = workspace_guards.enforce(hx.res, hx.req_id, conn, hx.alloc, hx.principal, workspace_id, hx.principal.user_id orelse API_ACTOR, .{
         .minimum_role = .operator,
     }) orelse return;
-    defer access.deinit(alloc);
+    defer access.deinit(hx.alloc);
 
     log.debug("secret.delete workspace_id={s}", .{workspace_id});
 
-    const out = skill_secret_handlers.delete(conn, alloc, workspace_id, skill_ref_encoded, key_name_encoded) catch {
-        common.internalOperationError(res, "Failed to delete skill secret", req_id);
+    const out = skill_secret_handlers.delete(conn, hx.alloc, workspace_id, skill_ref_encoded, key_name_encoded) catch {
+        common.internalOperationError(hx.res, "Failed to delete skill secret", hx.req_id);
         return;
     };
 
-    common.writeJson(res, .ok, .{
+    hx.ok(.ok, .{
         .workspace_id = workspace_id,
         .skill_ref = out.skill_ref,
         .key_name = out.key_name,
         .deleted = true,
-        .request_id = req_id,
+        .request_id = hx.req_id,
     });
 }

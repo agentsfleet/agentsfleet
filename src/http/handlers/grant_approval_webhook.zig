@@ -14,6 +14,7 @@ const httpz = @import("httpz");
 const pg = @import("pg");
 const PgQuery = @import("../../db/pg_query.zig").PgQuery;
 const common = @import("common.zig");
+const hx_mod = @import("hx.zig");
 const ec = @import("../../errors/error_registry.zig");
 const activity_stream = @import("../../zombie/activity_stream.zig");
 const queue_redis = @import("../../queue/redis.zig");
@@ -76,13 +77,12 @@ fn fetchWorkspaceId(pool: *pg.Pool, alloc: std.mem.Allocator, zombie_id: []const
 }
 
 fn applyDecision(
+    hx: hx_mod.Hx,
     conn: *pg.Conn,
     grant_id: []const u8,
     zombie_id: []const u8,
     is_approved: bool,
     now_ms: i64,
-    res: *httpz.Response,
-    req_id: []const u8,
 ) bool {
     if (is_approved) {
         _ = conn.exec(
@@ -90,7 +90,7 @@ fn applyDecision(
             \\SET status = 'approved', approved_at = $1
             \\WHERE grant_id = $2 AND zombie_id = $3::uuid AND status = 'pending'
         , .{ now_ms, grant_id, zombie_id }) catch {
-            common.internalDbError(res, req_id);
+            common.internalDbError(hx.res, hx.req_id);
             return false;
         };
     } else {
@@ -99,72 +99,60 @@ fn applyDecision(
             \\SET status = 'revoked', revoked_at = $1
             \\WHERE grant_id = $2 AND zombie_id = $3::uuid AND status = 'pending'
         , .{ now_ms, grant_id, zombie_id }) catch {
-            common.internalDbError(res, req_id);
+            common.internalDbError(hx.res, hx.req_id);
             return false;
         };
     }
     return true;
 }
 
-pub fn handleGrantApproval(
-    ctx: *Context,
-    req: *httpz.Request,
-    res: *httpz.Response,
-    zombie_id: []const u8,
-) void {
-    var arena = std.heap.ArenaAllocator.init(ctx.alloc);
-    defer arena.deinit();
-    const alloc = arena.allocator();
-    const req_id = common.requestId(alloc);
-
+pub fn innerGrantApproval(hx: hx_mod.Hx, req: *httpz.Request, zombie_id: []const u8) void {
     const raw_body = req.body() orelse {
-        common.errorResponse(res, ec.ERR_INVALID_REQUEST, "Request body required", req_id);
+        hx.fail(ec.ERR_INVALID_REQUEST, "Request body required");
         return;
     };
-    const parsed = std.json.parseFromSlice(GrantApprovalBody, alloc, raw_body, .{}) catch {
-        common.errorResponse(res, ec.ERR_INVALID_REQUEST, "Malformed JSON body", req_id);
+    const parsed = std.json.parseFromSlice(GrantApprovalBody, hx.alloc, raw_body, .{}) catch {
+        hx.fail(ec.ERR_INVALID_REQUEST, "Malformed JSON body");
         return;
     };
     defer parsed.deinit();
     const body = parsed.value;
 
     if (body.grant_id.len == 0) {
-        common.errorResponse(res, ec.ERR_INVALID_REQUEST, "grant_id required", req_id);
+        hx.fail(ec.ERR_INVALID_REQUEST, "grant_id required");
         return;
     }
     if (body.nonce.len == 0) {
-        common.errorResponse(res, ec.ERR_INVALID_REQUEST, "nonce required", req_id);
+        hx.fail(ec.ERR_INVALID_REQUEST, "nonce required");
         return;
     }
     const is_approved = std.mem.eql(u8, body.decision, "approved");
     const is_denied   = std.mem.eql(u8, body.decision, "denied");
     if (!is_approved and !is_denied) {
-        common.errorResponse(res, ec.ERR_INVALID_REQUEST,
-            "decision must be 'approved' or 'denied'", req_id);
+        hx.fail(ec.ERR_INVALID_REQUEST, "decision must be 'approved' or 'denied'");
         return;
     }
 
     // Verify and consume the one-time nonce before any DB mutation.
     // verifyAndConsumeNonce uses a Lua script that only deletes the nonce on match,
     // so a wrong nonce leaves the key intact for the legitimate Slack button.
-    if (!verifyAndConsumeNonce(ctx.queue, body.grant_id, body.nonce)) {
-        common.errorResponse(res, ec.ERR_INVALID_REQUEST,
-            "Invalid or expired approval nonce", req_id);
+    if (!verifyAndConsumeNonce(hx.ctx.queue, body.grant_id, body.nonce)) {
+        hx.fail(ec.ERR_INVALID_REQUEST, "Invalid or expired approval nonce");
         return;
     }
 
-    const conn = ctx.pool.acquire() catch {
-        common.internalDbUnavailable(res, req_id);
+    const conn = hx.ctx.pool.acquire() catch {
+        common.internalDbUnavailable(hx.res, hx.req_id);
         return;
     };
-    defer ctx.pool.release(conn);
+    defer hx.ctx.pool.release(conn);
 
     const now_ms = std.time.milliTimestamp();
-    if (!applyDecision(conn, body.grant_id, zombie_id, is_approved, now_ms, res, req_id)) return;
+    if (!applyDecision(hx, conn, body.grant_id, zombie_id, is_approved, now_ms)) return;
 
-    const workspace_id = fetchWorkspaceId(ctx.pool, alloc, zombie_id);
+    const workspace_id = fetchWorkspaceId(hx.ctx.pool, hx.alloc, zombie_id);
     const event_type: []const u8 = if (is_approved) "grant.approved" else "grant.denied";
-    activity_stream.logEvent(ctx.pool, alloc, .{
+    activity_stream.logEvent(hx.ctx.pool, hx.alloc, .{
         .zombie_id    = zombie_id,
         .workspace_id = workspace_id,
         .event_type   = event_type,
@@ -175,7 +163,7 @@ pub fn handleGrantApproval(
         body.decision, zombie_id, body.grant_id,
     });
 
-    common.writeJson(res, .ok, .{
+    hx.ok(.ok, .{
         .status   = "ok",
         .grant_id = body.grant_id,
         .decision = body.decision,

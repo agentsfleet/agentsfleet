@@ -1,14 +1,14 @@
-// M11_002: Request-scoped handler context and comptime auth wrappers.
+// M11_002: Request-scoped handler context.
 //
-// Eliminates the boilerplate ritual (arena, req_id, authenticate,
-// auth-error response) from every authenticated handler.
+// M18_002 Batch D: `authenticated()` and `authenticatedWithParam()` wrappers
+// removed. Auth lives in the middleware chain (route_table.zig + auth/middleware/).
+// Hx is now constructed by the dispatcher after the chain runs; handlers receive
+// a populated Hx directly.
 //
-// Usage:
+// Usage (post-M18_002):
 //   fn innerCreateZombie(hx: Hx, req: *httpz.Request) void { ... }
-//   pub const handleCreateZombie = authenticated(innerCreateZombie);
-//
-//   fn innerDeleteZombie(hx: Hx, req: *httpz.Request, zombie_id: []const u8) void { ... }
-//   pub const handleDeleteZombie = authenticatedWithParam(innerDeleteZombie);
+//   // Route registered in route_table.zig with bearer policy.
+//   // Dispatcher builds Hx from AuthCtx and calls invokeXxx.
 
 const std = @import("std");
 const httpz = @import("httpz");
@@ -16,6 +16,9 @@ const common = @import("common.zig");
 
 pub const Hx = struct {
     alloc: std.mem.Allocator,
+    /// Populated by bearer/admin middleware for authenticated routes.
+    /// Zero-value (.mode = .api_key) for none-policy routes — those
+    /// handlers must not access this field (Batch E will make it optional).
     principal: common.AuthPrincipal,
     req_id: []const u8,
     ctx: *common.Context,
@@ -31,61 +34,8 @@ pub const Hx = struct {
         common.errorResponse(self.res, code, detail, self.req_id);
     }
 };
-
-/// Returns an httpz-compatible handler fn that:
-///   1. Sets up an arena allocator (freed on return).
-///   2. Generates a request ID.
-///   3. Calls common.authenticate — returns rich auth error on failure.
-///   4. Builds Hx and calls inner(hx, req).
-pub fn authenticated(
-    comptime inner: fn (hx: Hx, req: *httpz.Request) void,
-) fn (*common.Context, *httpz.Request, *httpz.Response) void {
-    return struct {
-        fn handle(ctx: *common.Context, req: *httpz.Request, res: *httpz.Response) void {
-            var arena = std.heap.ArenaAllocator.init(ctx.alloc);
-            defer arena.deinit();
-            const alloc = arena.allocator();
-            const req_id = common.requestId(alloc);
-
-            const principal = common.authenticate(alloc, req, ctx) catch |err| {
-                common.writeAuthError(ctx, res, req_id, err);
-                return;
-            };
-
-            inner(.{
-                .alloc = alloc,
-                .principal = principal,
-                .req_id = req_id,
-                .ctx = ctx,
-                .res = res,
-            }, req);
-        }
-    }.handle;
-}
-
-/// Like authenticated(), but the inner function also receives a path param.
-pub fn authenticatedWithParam(
-    comptime inner: fn (hx: Hx, req: *httpz.Request, param: []const u8) void,
-) fn (*common.Context, *httpz.Request, *httpz.Response, []const u8) void {
-    return struct {
-        fn handle(ctx: *common.Context, req: *httpz.Request, res: *httpz.Response, param: []const u8) void {
-            var arena = std.heap.ArenaAllocator.init(ctx.alloc);
-            defer arena.deinit();
-            const alloc = arena.allocator();
-            const req_id = common.requestId(alloc);
-
-            const principal = common.authenticate(alloc, req, ctx) catch |err| {
-                common.writeAuthError(ctx, res, req_id, err);
-                return;
-            };
-
-            inner(.{
-                .alloc = alloc,
-                .principal = principal,
-                .req_id = req_id,
-                .ctx = ctx,
-                .res = res,
-            }, req, param);
-        }
-    }.handle;
-}
+// Rationale: Hx keeps only `ok`/`fail` because both wrap the standard JSON
+// envelope and the RFC 7807 error contract — real abstraction boundaries.
+// For internal-500s (db unavailable/error/operation) and body-size checks,
+// call `common.internalDbError(hx.res, hx.req_id)` etc. directly — a shallow
+// wrapper on Hx would just forward to the same two fields.

@@ -12,7 +12,8 @@ const trace_ctx = @import("../../observability/trace.zig");
 const db = @import("../../db/pool.zig");
 const error_codes = @import("../../errors/error_registry.zig");
 const id_format = @import("../../types/id_format.zig");
-const rbac = @import("../rbac.zig");
+const rbac = @import("../../auth/rbac.zig");
+const principal_mod = @import("../../auth/principal.zig");
 
 pub const TraceContext = trace_ctx.TraceContext;
 
@@ -46,19 +47,11 @@ pub fn traceIdFromContext(tctx: *const TraceContext) []const u8 {
     return tctx.traceIdSlice();
 }
 
-pub const AuthMode = enum {
-    api_key,
-    jwt_oidc,
-};
+// M18_002: AuthPrincipal + AuthMode now live in src/auth/principal.zig.
+// Re-exported here for backward compatibility during the middleware migration.
+pub const AuthMode = principal_mod.AuthMode;
 pub const AuthRole = rbac.AuthRole;
-
-pub const AuthPrincipal = struct {
-    mode: AuthMode,
-    role: AuthRole = .user,
-    user_id: ?[]const u8 = null,
-    tenant_id: ?[]const u8 = null,
-    workspace_scope_id: ?[]const u8 = null,
-};
+pub const AuthPrincipal = principal_mod.AuthPrincipal;
 
 pub const AuthError = error{
     Unauthorized,
@@ -282,6 +275,13 @@ pub fn parsePaginationParams(limit_str: ?[]const u8, starting_after: ?[]const u8
         break :blk @min(@max(parsed, 1), max_page_limit);
     };
     return .{ .limit = limit, .starting_after = starting_after };
+}
+
+/// Write a 405 Method Not Allowed response.
+/// Used by route_table.zig invoke functions that do their own method dispatch.
+pub fn respondMethodNotAllowed(res: *httpz.Response) void {
+    res.status = @intFromEnum(std.http.Status.method_not_allowed);
+    res.body = "";
 }
 
 /// After fetching limit+1 rows into `items`, derive has_more, slice to limit,

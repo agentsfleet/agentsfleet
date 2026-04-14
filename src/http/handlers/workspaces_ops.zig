@@ -11,7 +11,7 @@ const hx_mod = @import("hx.zig");
 const log = std.log.scoped(.http);
 const API_ACTOR = "api";
 
-fn innerPauseWorkspace(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []const u8) void {
+pub fn innerPauseWorkspace(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []const u8) void {
     if (!common.requireUuidV7Id(hx.res, hx.req_id, workspace_id, "workspace_id")) return;
 
     const Req = struct {
@@ -81,13 +81,10 @@ fn innerPauseWorkspace(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []const
     });
 }
 
-pub const handlePauseWorkspace = hx_mod.authenticatedWithParam(innerPauseWorkspace);
 
 /// M10_001: Pipeline v1 removed — specs table dropped. Returns 410.
-/// No Bearer auth — 410 stub, no authentication required.
-pub fn handleSyncSpecs(ctx: *common.Context, req: *httpz.Request, res: *httpz.Response, workspace_id: []const u8) void {
-    _ = ctx;
-    _ = req;
+/// none policy — 410 stub, no authentication required.
+pub fn innerSyncSpecs(hx: hx_mod.Hx, workspace_id: []const u8) void {
     _ = workspace_id;
-    common.errorResponse(res, error_codes.ERR_PIPELINE_V1_REMOVED, "Pipeline v1 removed — spec sync is no longer available", "");
+    hx.fail(error_codes.ERR_PIPELINE_V1_REMOVED, "Pipeline v1 removed — spec sync is no longer available");
 }

@@ -9,49 +9,42 @@ const log = std.log.scoped(.http);
 
 pub const Context = common.Context;
 
-// No Bearer auth — creates auth session (login endpoint, unauthenticated).
-pub fn handleCreateAuthSession(ctx: *Context, req: *httpz.Request, res: *httpz.Response) void {
-    _ = req;
-    var arena = std.heap.ArenaAllocator.init(ctx.alloc);
-    defer arena.deinit();
-    const alloc = arena.allocator();
-    const req_id = common.requestId(alloc);
+// none policy — login endpoint, no bearer auth required.
+pub fn innerCreateAuthSession(hx: hx_mod.Hx) void {
+    log.debug("auth.session_create req_id={s}", .{hx.req_id});
 
-    log.debug("auth.session_create req_id={s}", .{req_id});
-
-    const session_id = ctx.auth_sessions.create() catch {
-        log.err("auth.session_create_fail error_code=UZ-AUTH-008 err=too_many_pending_sessions req_id={s}", .{req_id});
-        common.errorResponse(res, error_codes.ERR_SESSION_LIMIT, "Too many pending sessions", req_id);
+    const session_id = hx.ctx.auth_sessions.create() catch {
+        log.err("auth.session_create_fail error_code=UZ-AUTH-008 err=too_many_pending_sessions req_id={s}", .{hx.req_id});
+        hx.fail(error_codes.ERR_SESSION_LIMIT, "Too many pending sessions");
         return;
     };
 
-    const login_url = std.fmt.allocPrint(alloc, "{s}/auth/cli?session_id={s}", .{ ctx.app_url, session_id }) catch {
-        common.internalOperationError(res, "Failed to build login URL", req_id);
+    const login_url = std.fmt.allocPrint(hx.alloc, "{s}/auth/cli?session_id={s}", .{ hx.ctx.app_url, session_id }) catch {
+        common.internalOperationError(hx.res, "Failed to build login URL", hx.req_id);
         return;
     };
 
-    log.info("auth.session_created session_id={s} req_id={s}", .{ session_id, req_id });
-    common.writeJson(res, .created, .{
+    log.info("auth.session_created session_id={s} req_id={s}", .{ session_id, hx.req_id });
+    hx.ok(.created, .{
         .session_id = session_id,
         .login_url = login_url,
-        .request_id = req_id,
+        .request_id = hx.req_id,
     });
 }
 
-// No Bearer auth — polls pending auth session (unauthenticated).
-pub fn handlePollAuthSession(ctx: *Context, req: *httpz.Request, res: *httpz.Response, session_id: []const u8) void {
-    _ = req;
-    const result = ctx.auth_sessions.poll(session_id);
+// none policy — polls pending auth session, no bearer auth required.
+pub fn innerPollAuthSession(hx: hx_mod.Hx, session_id: []const u8) void {
+    const result = hx.ctx.auth_sessions.poll(session_id);
     const status_str: []const u8 = switch (result.status) {
         .pending => "pending",
         .complete => "complete",
         .expired => "expired",
     };
     log.debug("auth.session_poll session_id={s} status={s}", .{ session_id, status_str });
-    common.writeJson(res, .ok, .{ .status = status_str, .token = result.token });
+    hx.ok(.ok, .{ .status = status_str, .token = result.token });
 }
 
-fn innerCompleteAuthSession(hx: hx_mod.Hx, req: *httpz.Request, session_id: []const u8) void {
+pub fn innerCompleteAuthSession(hx: hx_mod.Hx, req: *httpz.Request, session_id: []const u8) void {
     log.debug("auth.session_complete session_id={s} req_id={s}", .{ session_id, hx.req_id });
 
     const body = req.body() orelse {
@@ -86,4 +79,3 @@ fn innerCompleteAuthSession(hx: hx_mod.Hx, req: *httpz.Request, session_id: []co
     hx.ok(.ok, .{ .status = "complete", .request_id = hx.req_id });
 }
 
-pub const handleCompleteAuthSession = hx_mod.authenticatedWithParam(innerCompleteAuthSession);

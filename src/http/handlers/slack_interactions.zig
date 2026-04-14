@@ -25,11 +25,13 @@ const httpz = @import("httpz");
 const webhook_verify = @import("../../zombie/webhook_verify.zig");
 const approval_gate = @import("../../zombie/approval_gate.zig");
 const common = @import("common.zig");
+const hx_mod = @import("hx.zig");
 const ec = @import("../../errors/error_registry.zig");
 
 const log = std.log.scoped(.http_slack_interactions);
 
 pub const Context = common.Context;
+const Hx = hx_mod.Hx;
 
 const GATE_PREFIX = "gate_";
 const GRANT_PREFIX = "grant_";
@@ -45,79 +47,74 @@ const SlackAction = struct {
 
 // ── Handler ───────────────────────────────────────────────────────────────────
 
-pub fn handleInteraction(ctx: *Context, req: *httpz.Request, res: *httpz.Response) void {
-    var arena = std.heap.ArenaAllocator.init(ctx.alloc);
-    defer arena.deinit();
-    const alloc = arena.allocator();
-    const req_id = common.requestId(alloc);
-
+pub fn innerInteraction(hx: Hx, req: *httpz.Request) void {
     const raw_body = req.body() orelse {
-        common.errorResponse(res, ec.ERR_INVALID_REQUEST, "Empty body", req_id);
+        hx.fail(ec.ERR_INVALID_REQUEST, "Empty body");
         return;
     };
 
-    if (!verifySlackSignature(req, raw_body, res, req_id)) return;
+    if (!verifySlackSignature(hx, req, raw_body)) return;
 
     // Slack sends interactions as URL-encoded: payload={url_encoded_json}
-    const payload_json = extractPayloadField(alloc, raw_body) orelse {
-        log.warn("slack.interactions.no_payload req_id={s}", .{req_id});
-        common.errorResponse(res, ec.ERR_INVALID_REQUEST, "Missing payload field", req_id);
+    const payload_json = extractPayloadField(hx.alloc, raw_body) orelse {
+        log.warn("slack.interactions.no_payload req_id={s}", .{hx.req_id});
+        hx.fail(ec.ERR_INVALID_REQUEST, "Missing payload field");
         return;
     };
 
-    const parsed = std.json.parseFromSlice(SlackInteractionPayload, alloc, payload_json, .{ .ignore_unknown_fields = true }) catch {
-        log.warn("slack.interactions.parse_fail req_id={s}", .{req_id});
-        common.errorResponse(res, ec.ERR_INVALID_REQUEST, "Invalid interaction payload", req_id);
+    const parsed = std.json.parseFromSlice(SlackInteractionPayload, hx.alloc, payload_json, .{ .ignore_unknown_fields = true }) catch {
+        log.warn("slack.interactions.parse_fail req_id={s}", .{hx.req_id});
+        hx.fail(ec.ERR_INVALID_REQUEST, "Invalid interaction payload");
         return;
     };
     defer parsed.deinit();
 
     const actions = parsed.value.actions orelse {
-        log.warn("slack.interactions.no_actions req_id={s}", .{req_id});
-        res.status = 200;
-        res.body = "{}";
+        log.warn("slack.interactions.no_actions req_id={s}", .{hx.req_id});
+        hx.res.status = 200;
+        hx.res.body = "{}";
         return;
     };
     if (actions.len == 0) {
-        res.status = 200;
-        res.body = "{}";
+        hx.res.status = 200;
+        hx.res.body = "{}";
         return;
     }
 
     const action_id = actions[0].action_id;
 
     if (std.mem.startsWith(u8, action_id, GATE_PREFIX)) {
-        handleGateAction(ctx, alloc, action_id[GATE_PREFIX.len..], res, req_id);
+        handleGateAction(hx, action_id[GATE_PREFIX.len..]);
     } else if (std.mem.startsWith(u8, action_id, GRANT_PREFIX)) {
         // Integration grant approval — M9 territory. Log and ack for now.
-        log.info("slack.interactions.grant_action action_id={s} req_id={s}", .{ action_id, req_id });
-        res.status = 200;
-        res.body = "{}";
+        log.info("slack.interactions.grant_action action_id={s} req_id={s}", .{ action_id, hx.req_id });
+        hx.res.status = 200;
+        hx.res.body = "{}";
     } else {
-        log.warn("slack.interactions.unknown_action action_id={s} req_id={s}", .{ action_id, req_id });
-        res.status = 200;
-        res.body = "{}";
+        log.warn("slack.interactions.unknown_action action_id={s} req_id={s}", .{ action_id, hx.req_id });
+        hx.res.status = 200;
+        hx.res.body = "{}";
     }
 }
 
 // ── Internal ─────────────────────────────────────────────────────────────────
 
 /// Route gate_{zombie_id}_{inner_action_id}_{decision} to approval gate.
-fn handleGateAction(ctx: *Context, alloc: std.mem.Allocator, rest: []const u8, res: *httpz.Response, req_id: []const u8) void {
+fn handleGateAction(hx: Hx, rest: []const u8) void {
     // rest = {zombie_id}_{inner_action_id}_{decision}
     // zombie_id is a UUID v7 (36 chars). Find by fixed length.
     const UUID_LEN = 36;
     if (rest.len < UUID_LEN + 2) {
-        log.warn("slack.interactions.gate_short action rest={s} req_id={s}", .{ rest, req_id });
-        res.status = 200;
-        res.body = "{}";
+        log.warn("slack.interactions.gate_short action rest={s} req_id={s}", .{ rest, hx.req_id });
+        hx.res.status = 200;
+        hx.res.body = "{}";
         return;
     }
     // zombie_id ends at position UUID_LEN, must be followed by '_'
     if (rest[UUID_LEN] != '_') {
-        log.warn("slack.interactions.gate_bad_sep req_id={s}", .{req_id});
-        res.status = 200;
-        res.body = "{}";
+        log.warn("slack.interactions.gate_bad_sep req_id={s}", .{hx.req_id});
+        hx.res.status = 200;
+        hx.res.body = "{}";
         return;
     }
     const zombie_id = rest[0..UUID_LEN];
@@ -125,18 +122,18 @@ fn handleGateAction(ctx: *Context, alloc: std.mem.Allocator, rest: []const u8, r
 
     // Find decision at the end: last segment after final '_'
     const last_underscore = std.mem.lastIndexOfScalar(u8, after_zombie, '_') orelse {
-        log.warn("slack.interactions.gate_no_decision req_id={s}", .{req_id});
-        res.status = 200;
-        res.body = "{}";
+        log.warn("slack.interactions.gate_no_decision req_id={s}", .{hx.req_id});
+        hx.res.status = 200;
+        hx.res.body = "{}";
         return;
     };
     const inner_action_id = after_zombie[0..last_underscore];
     const decision = after_zombie[last_underscore + 1 ..];
 
     if (!std.mem.eql(u8, decision, "approve") and !std.mem.eql(u8, decision, "deny")) {
-        log.warn("slack.interactions.invalid_decision decision={s} req_id={s}", .{ decision, req_id });
-        res.status = 200;
-        res.body = "{}";
+        log.warn("slack.interactions.invalid_decision decision={s} req_id={s}", .{ decision, hx.req_id });
+        hx.res.status = 200;
+        hx.res.body = "{}";
         return;
     }
 
@@ -146,13 +143,13 @@ fn handleGateAction(ctx: *Context, alloc: std.mem.Allocator, rest: []const u8, r
     const pending_key = std.fmt.bufPrint(&pending_key_buf, "{s}{s}:{s}", .{
         ec.GATE_PENDING_KEY_PREFIX, zombie_id, inner_action_id,
     }) catch {
-        common.internalOperationError(res, "key overflow", req_id);
+        common.internalOperationError(hx.res, "key overflow", hx.req_id);
         return;
     };
-    const get_del = ctx.queue.command(&.{ "GETDEL", pending_key }) catch {
-        log.err("slack.interactions.redis_fail req_id={s}", .{req_id});
-        res.status = 200;
-        res.body = "{}";
+    const get_del = hx.ctx.queue.command(&.{ "GETDEL", pending_key }) catch {
+        log.err("slack.interactions.redis_fail req_id={s}", .{hx.req_id});
+        hx.res.status = 200;
+        hx.res.body = "{}";
         return;
     };
     const owned = switch (get_del) {
@@ -160,58 +157,57 @@ fn handleGateAction(ctx: *Context, alloc: std.mem.Allocator, rest: []const u8, r
         else => false,
     };
     if (!owned) {
-        log.debug("slack.interactions.gate_not_found action_id={s} req_id={s}", .{ inner_action_id, req_id });
-        res.status = 200;
-        res.body = "{\"error\":\"gate_expired\"}";
+        log.debug("slack.interactions.gate_not_found action_id={s} req_id={s}", .{ inner_action_id, hx.req_id });
+        hx.res.status = 200;
+        hx.res.body = "{\"error\":\"gate_expired\"}";
         return;
     }
 
-    approval_gate.resolveApproval(ctx.queue, inner_action_id, decision) catch |err| {
-        log.err("slack.interactions.resolve_fail err={s} req_id={s}", .{ @errorName(err), req_id });
-        res.status = 200;
-        res.body = "{}";
+    approval_gate.resolveApproval(hx.ctx.queue, inner_action_id, decision) catch |err| {
+        log.err("slack.interactions.resolve_fail err={s} req_id={s}", .{ @errorName(err), hx.req_id });
+        hx.res.status = 200;
+        hx.res.body = "{}";
         return;
     };
 
-    _ = alloc;
     log.info("slack.interactions.gate_resolved zombie_id={s} action_id={s} decision={s} req_id={s}", .{
-        zombie_id, inner_action_id, decision, req_id,
+        zombie_id, inner_action_id, decision, hx.req_id,
     });
-    res.status = 200;
-    res.body = "{}";
+    hx.res.status = 200;
+    hx.res.body = "{}";
 }
 
 /// Verify Slack request signature and timestamp freshness (RULE CTM).
-fn verifySlackSignature(req: *httpz.Request, body: []const u8, res: *httpz.Response, req_id: []const u8) bool {
+fn verifySlackSignature(hx: Hx, req: *httpz.Request, body: []const u8) bool {
     const secret = std.process.getEnvVarOwned(std.heap.page_allocator, "SLACK_SIGNING_SECRET") catch {
-        log.err("slack.interactions.no_signing_secret req_id={s}", .{req_id});
-        common.errorResponse(res, ec.ERR_WEBHOOK_SLACK_SIG_INVALID, "Signing secret not configured", req_id);
+        log.err("slack.interactions.no_signing_secret req_id={s}", .{hx.req_id});
+        hx.fail(ec.ERR_WEBHOOK_SLACK_SIG_INVALID, "Signing secret not configured");
         return false;
     };
     defer std.heap.page_allocator.free(secret);
     if (secret.len == 0) {
-        log.err("slack.interactions.empty_signing_secret req_id={s}", .{req_id});
-        common.errorResponse(res, ec.ERR_WEBHOOK_SLACK_SIG_INVALID, "Signing secret not configured", req_id);
+        log.err("slack.interactions.empty_signing_secret req_id={s}", .{hx.req_id});
+        hx.fail(ec.ERR_WEBHOOK_SLACK_SIG_INVALID, "Signing secret not configured");
         return false;
     }
 
     const timestamp = req.header(ec.SLACK_TS_HEADER) orelse {
-        common.errorResponse(res, ec.ERR_WEBHOOK_SLACK_SIG_INVALID, "Missing timestamp header", req_id);
+        hx.fail(ec.ERR_WEBHOOK_SLACK_SIG_INVALID, "Missing timestamp header");
         return false;
     };
     const signature = req.header(ec.SLACK_SIG_HEADER) orelse {
-        common.errorResponse(res, ec.ERR_WEBHOOK_SLACK_SIG_INVALID, "Missing signature header", req_id);
+        hx.fail(ec.ERR_WEBHOOK_SLACK_SIG_INVALID, "Missing signature header");
         return false;
     };
 
     if (!webhook_verify.isTimestampFresh(timestamp, ec.SLACK_MAX_TS_DRIFT_SECONDS)) {
-        common.errorResponse(res, ec.ERR_WEBHOOK_SLACK_TIMESTAMP_STALE, "Timestamp too old", req_id);
+        hx.fail(ec.ERR_WEBHOOK_SLACK_TIMESTAMP_STALE, "Timestamp too old");
         return false;
     }
 
     if (!webhook_verify.verifySignature(webhook_verify.SLACK, secret, timestamp, body, signature)) {
-        log.warn("slack.interactions.sig_invalid req_id={s}", .{req_id});
-        common.errorResponse(res, ec.ERR_WEBHOOK_SLACK_SIG_INVALID, "Invalid signature", req_id);
+        log.warn("slack.interactions.sig_invalid req_id={s}", .{hx.req_id});
+        hx.fail(ec.ERR_WEBHOOK_SLACK_SIG_INVALID, "Invalid signature");
         return false;
     }
     return true;

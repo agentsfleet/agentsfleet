@@ -24,3 +24,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+          # Use the latest gitleaks binary (action default is 8.24.3).
+          # Ensures config features like [[allowlists]] and modern rule
+          # defaults stay in sync with what developers run locally.
+          GITLEAKS_VERSION: latest
