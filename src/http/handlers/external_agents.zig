@@ -1,7 +1,7 @@
 //! M9_001 §3.0 — External Agent Key management.
-//! POST   /v1/workspaces/{ws}/external-agents           → handleCreateExternalAgent
-//! GET    /v1/workspaces/{ws}/external-agents           → handleListExternalAgents
-//! DELETE /v1/workspaces/{ws}/external-agents/{agent_id} → handleDeleteExternalAgent
+//! POST   /v1/workspaces/{ws}/external-agents           → innerCreateExternalAgent
+//! GET    /v1/workspaces/{ws}/external-agents           → innerListExternalAgents
+//! DELETE /v1/workspaces/{ws}/external-agents/{agent_id} → innerDeleteExternalAgent
 //!
 //! Keys are issued as "zmb_{hex32}" — 32 random bytes as lower-hex prefixed with "zmb_".
 //! Only the SHA-256 hash of the key is stored. The raw key is shown once at creation.
@@ -11,6 +11,7 @@ const httpz = @import("httpz");
 const pg = @import("pg");
 const PgQuery = @import("../../db/pg_query.zig").PgQuery;
 const common = @import("common.zig");
+const hx_mod = @import("hx.zig");
 const ec = @import("../../errors/error_registry.zig");
 const id_format = @import("../../types/id_format.zig");
 const api_key = @import("../../auth/api_key.zig");
@@ -18,6 +19,7 @@ const api_key = @import("../../auth/api_key.zig");
 const log = std.log.scoped(.external_agents);
 
 pub const Context = common.Context;
+const Hx = hx_mod.Hx;
 
 const KEY_PREFIX = "zmb_";
 const KEY_RANDOM_BYTES: usize = 32;
@@ -33,9 +35,8 @@ fn generateApiKey(alloc: std.mem.Allocator) ![]const u8 {
     return std.fmt.allocPrint(alloc, "{s}{s}", .{ KEY_PREFIX, hex });
 }
 
-// ── handleCreateExternalAgent ───────────────────────────────────────────────
-// POST /v1/workspaces/{ws}/external-agents
-// Workspace owner auth (Clerk OIDC or internal API key).
+// ── innerCreateExternalAgent ───────────────────────────────────────────────
+// POST /v1/workspaces/{ws}/external-agents — bearer policy.
 // Returns the raw key exactly once — not stored, cannot be retrieved later.
 
 const CreateAgentBody = struct {
@@ -47,61 +48,41 @@ const CreateAgentBody = struct {
 const MAX_NAME_LEN: usize = 64;
 const MAX_DESC_LEN: usize = 256;
 
-pub fn handleCreateExternalAgent(
-    ctx: *Context,
-    req: *httpz.Request,
-    res: *httpz.Response,
-    workspace_id: []const u8,
-) void {
-    var arena = std.heap.ArenaAllocator.init(ctx.alloc);
-    defer arena.deinit();
-    const alloc = arena.allocator();
-    const req_id = common.requestId(alloc);
-
-    const principal = common.authenticate(alloc, req, ctx) catch |err| {
-        switch (err) {
-            error.Unauthorized => common.errorResponse(res, ec.ERR_UNAUTHORIZED, "Authentication required", req_id),
-            error.TokenExpired => common.errorResponse(res, ec.ERR_TOKEN_EXPIRED, "Token expired", req_id),
-            error.AuthServiceUnavailable => common.errorResponse(res, ec.ERR_AUTH_UNAVAILABLE, "Auth service unavailable", req_id),
-            error.UnsupportedRole => common.errorResponse(res, ec.ERR_UNSUPPORTED_ROLE, "Unsupported role", req_id),
-        }
-        return;
-    };
-
+pub fn innerCreateExternalAgent(hx: Hx, req: *httpz.Request, workspace_id: []const u8) void {
     const raw_body = req.body() orelse {
-        common.errorResponse(res, ec.ERR_INVALID_REQUEST, "Request body required", req_id);
+        hx.fail(ec.ERR_INVALID_REQUEST, "Request body required");
         return;
     };
-    const parsed = std.json.parseFromSlice(CreateAgentBody, alloc, raw_body, .{}) catch {
-        common.errorResponse(res, ec.ERR_INVALID_REQUEST, "Malformed JSON body", req_id);
+    const parsed = std.json.parseFromSlice(CreateAgentBody, hx.alloc, raw_body, .{}) catch {
+        hx.fail(ec.ERR_INVALID_REQUEST, "Malformed JSON body");
         return;
     };
     defer parsed.deinit();
     const body = parsed.value;
 
     if (!id_format.isSupportedAgentId(body.zombie_id)) {
-        common.errorResponse(res, ec.ERR_INVALID_REQUEST, "zombie_id must be a valid UUIDv7", req_id);
+        hx.fail(ec.ERR_INVALID_REQUEST, "zombie_id must be a valid UUIDv7");
         return;
     }
     if (body.name.len == 0 or body.name.len > MAX_NAME_LEN) {
-        common.errorResponse(res, ec.ERR_INVALID_REQUEST, "name must be 1–64 chars", req_id);
+        hx.fail(ec.ERR_INVALID_REQUEST, "name must be 1–64 chars");
         return;
     }
     if (body.description) |d| {
         if (d.len > MAX_DESC_LEN) {
-            common.errorResponse(res, ec.ERR_INVALID_REQUEST, "description must be ≤256 chars", req_id);
+            hx.fail(ec.ERR_INVALID_REQUEST, "description must be ≤256 chars");
             return;
         }
     }
 
-    const conn = ctx.pool.acquire() catch {
-        common.internalDbUnavailable(res, req_id);
+    const conn = hx.ctx.pool.acquire() catch {
+        common.internalDbUnavailable(hx.res, hx.req_id);
         return;
     };
-    defer ctx.pool.release(conn);
+    defer hx.ctx.pool.release(conn);
 
-    if (!common.authorizeWorkspace(conn, principal, workspace_id)) {
-        common.errorResponse(res, ec.ERR_FORBIDDEN, "Workspace access denied", req_id);
+    if (!common.authorizeWorkspace(conn, hx.principal, workspace_id)) {
+        hx.fail(ec.ERR_FORBIDDEN, "Workspace access denied");
         return;
     }
 
@@ -109,25 +90,25 @@ pub fn handleCreateExternalAgent(
     var zombie_q = PgQuery.from(conn.query(
         \\SELECT id FROM core.zombies WHERE id = $1::uuid AND workspace_id = $2::uuid LIMIT 1
     , .{ body.zombie_id, workspace_id }) catch {
-        common.internalDbError(res, req_id);
+        common.internalDbError(hx.res, hx.req_id);
         return;
     });
     defer zombie_q.deinit();
     const zombie_row = zombie_q.next() catch null;
     if (zombie_row == null) {
-        common.errorResponse(res, ec.ERR_ZOMBIE_NOT_FOUND, "Zombie not found in this workspace", req_id);
+        hx.fail(ec.ERR_ZOMBIE_NOT_FOUND, "Zombie not found in this workspace");
         return;
     }
 
-    const raw_key = generateApiKey(alloc) catch {
-        common.internalOperationError(res, "Key generation failed", req_id);
+    const raw_key = generateApiKey(hx.alloc) catch {
+        common.internalOperationError(hx.res, "Key generation failed", hx.req_id);
         return;
     };
     const key_hash_arr = api_key.sha256Hex(raw_key);
     const key_hash: []const u8 = key_hash_arr[0..];
 
-    const agent_id = id_format.generateZombieId(alloc) catch {
-        common.internalOperationError(res, "ID generation failed", req_id);
+    const agent_id = id_format.generateZombieId(hx.alloc) catch {
+        common.internalOperationError(hx.res, "ID generation failed", hx.req_id);
         return;
     };
     const now_ms = std.time.milliTimestamp();
@@ -138,7 +119,7 @@ pub fn handleCreateExternalAgent(
         \\  (agent_id, workspace_id, zombie_id, name, description, key_hash, created_at)
         \\VALUES ($1, $2::uuid, $3::uuid, $4, $5, $6, $7)
     , .{ agent_id, workspace_id, body.zombie_id, body.name, desc, key_hash, now_ms }) catch {
-        common.internalDbError(res, req_id);
+        common.internalDbError(hx.res, hx.req_id);
         return;
     };
 
@@ -147,7 +128,7 @@ pub fn handleCreateExternalAgent(
     });
 
     // Return the raw key once — callers must store it; it cannot be retrieved again.
-    common.writeJson(res, .created, .{
+    hx.ok(.created, .{
         .agent_id    = agent_id,
         .workspace_id = workspace_id,
         .zombie_id   = body.zombie_id,
@@ -158,9 +139,9 @@ pub fn handleCreateExternalAgent(
     });
 }
 
-// ── handleListExternalAgents ────────────────────────────────────────────────
-// GET /v1/workspaces/{ws}/external-agents
-// Workspace owner auth. Returns agent metadata — never returns key_hash.
+// ── innerListExternalAgents ────────────────────────────────────────────────
+// GET /v1/workspaces/{ws}/external-agents — bearer policy.
+// Returns agent metadata — never returns key_hash.
 
 const AgentRow = struct {
     agent_id: []const u8,
@@ -171,35 +152,15 @@ const AgentRow = struct {
     last_used_at: ?i64,
 };
 
-pub fn handleListExternalAgents(
-    ctx: *Context,
-    req: *httpz.Request,
-    res: *httpz.Response,
-    workspace_id: []const u8,
-) void {
-    var arena = std.heap.ArenaAllocator.init(ctx.alloc);
-    defer arena.deinit();
-    const alloc = arena.allocator();
-    const req_id = common.requestId(alloc);
-
-    const principal = common.authenticate(alloc, req, ctx) catch |err| {
-        switch (err) {
-            error.Unauthorized => common.errorResponse(res, ec.ERR_UNAUTHORIZED, "Authentication required", req_id),
-            error.TokenExpired => common.errorResponse(res, ec.ERR_TOKEN_EXPIRED, "Token expired", req_id),
-            error.AuthServiceUnavailable => common.errorResponse(res, ec.ERR_AUTH_UNAVAILABLE, "Auth service unavailable", req_id),
-            error.UnsupportedRole => common.errorResponse(res, ec.ERR_UNSUPPORTED_ROLE, "Unsupported role", req_id),
-        }
+pub fn innerListExternalAgents(hx: Hx, workspace_id: []const u8) void {
+    const conn = hx.ctx.pool.acquire() catch {
+        common.internalDbUnavailable(hx.res, hx.req_id);
         return;
     };
+    defer hx.ctx.pool.release(conn);
 
-    const conn = ctx.pool.acquire() catch {
-        common.internalDbUnavailable(res, req_id);
-        return;
-    };
-    defer ctx.pool.release(conn);
-
-    if (!common.authorizeWorkspace(conn, principal, workspace_id)) {
-        common.errorResponse(res, ec.ERR_FORBIDDEN, "Workspace access denied", req_id);
+    if (!common.authorizeWorkspace(conn, hx.principal, workspace_id)) {
+        hx.fail(ec.ERR_FORBIDDEN, "Workspace access denied");
         return;
     }
 
@@ -209,20 +170,20 @@ pub fn handleListExternalAgents(
         \\WHERE workspace_id = $1::uuid
         \\ORDER BY created_at DESC
     , .{workspace_id}) catch {
-        common.internalDbError(res, req_id);
+        common.internalDbError(hx.res, hx.req_id);
         return;
     });
     defer q.deinit();
 
     var agents: std.ArrayListUnmanaged(AgentRow) = .{};
     while (q.next() catch null) |row| {
-        const agent_id    = alloc.dupe(u8, row.get([]u8, 0) catch continue) catch continue;
-        const zombie_id   = alloc.dupe(u8, row.get([]u8, 1) catch continue) catch continue;
-        const name        = alloc.dupe(u8, row.get([]u8, 2) catch continue) catch continue;
-        const description = alloc.dupe(u8, row.get([]u8, 3) catch continue) catch continue;
+        const agent_id    = hx.alloc.dupe(u8, row.get([]u8, 0) catch continue) catch continue;
+        const zombie_id   = hx.alloc.dupe(u8, row.get([]u8, 1) catch continue) catch continue;
+        const name        = hx.alloc.dupe(u8, row.get([]u8, 2) catch continue) catch continue;
+        const description = hx.alloc.dupe(u8, row.get([]u8, 3) catch continue) catch continue;
         const created_at  = row.get(i64, 4) catch continue;
         const last_used   = row.get(i64, 5) catch null;
-        agents.append(alloc, .{
+        agents.append(hx.alloc, .{
             .agent_id    = agent_id,
             .zombie_id   = zombie_id,
             .name        = name,
@@ -232,43 +193,21 @@ pub fn handleListExternalAgents(
         }) catch {};
     }
 
-    common.writeJson(res, .ok, .{ .agents = agents.items });
+    hx.ok(.ok, .{ .agents = agents.items });
 }
 
-// ── handleDeleteExternalAgent ───────────────────────────────────────────────
-// DELETE /v1/workspaces/{ws}/external-agents/{agent_id}
-// Workspace owner auth. Hard-deletes the agent row — key immediately invalidated.
+// ── innerDeleteExternalAgent ───────────────────────────────────────────────
+// DELETE /v1/workspaces/{ws}/external-agents/{agent_id} — bearer policy.
 
-pub fn handleDeleteExternalAgent(
-    ctx: *Context,
-    req: *httpz.Request,
-    res: *httpz.Response,
-    workspace_id: []const u8,
-    agent_id: []const u8,
-) void {
-    var arena = std.heap.ArenaAllocator.init(ctx.alloc);
-    defer arena.deinit();
-    const alloc = arena.allocator();
-    const req_id = common.requestId(alloc);
-
-    const principal = common.authenticate(alloc, req, ctx) catch |err| {
-        switch (err) {
-            error.Unauthorized => common.errorResponse(res, ec.ERR_UNAUTHORIZED, "Authentication required", req_id),
-            error.TokenExpired => common.errorResponse(res, ec.ERR_TOKEN_EXPIRED, "Token expired", req_id),
-            error.AuthServiceUnavailable => common.errorResponse(res, ec.ERR_AUTH_UNAVAILABLE, "Auth service unavailable", req_id),
-            error.UnsupportedRole => common.errorResponse(res, ec.ERR_UNSUPPORTED_ROLE, "Unsupported role", req_id),
-        }
+pub fn innerDeleteExternalAgent(hx: Hx, workspace_id: []const u8, agent_id: []const u8) void {
+    const conn = hx.ctx.pool.acquire() catch {
+        common.internalDbUnavailable(hx.res, hx.req_id);
         return;
     };
+    defer hx.ctx.pool.release(conn);
 
-    const conn = ctx.pool.acquire() catch {
-        common.internalDbUnavailable(res, req_id);
-        return;
-    };
-    defer ctx.pool.release(conn);
-
-    if (!common.authorizeWorkspace(conn, principal, workspace_id)) {
-        common.errorResponse(res, ec.ERR_FORBIDDEN, "Workspace access denied", req_id);
+    if (!common.authorizeWorkspace(conn, hx.principal, workspace_id)) {
+        hx.fail(ec.ERR_FORBIDDEN, "Workspace access denied");
         return;
     }
 
@@ -277,18 +216,18 @@ pub fn handleDeleteExternalAgent(
         \\WHERE agent_id = $1 AND workspace_id = $2::uuid
         \\RETURNING agent_id
     , .{ agent_id, workspace_id }) catch {
-        common.internalDbError(res, req_id);
+        common.internalDbError(hx.res, hx.req_id);
         return;
     });
     defer del_q.deinit();
 
     const deleted = del_q.next() catch null;
     if (deleted == null) {
-        common.errorResponse(res, ec.ERR_AGENT_NOT_FOUND, "External agent not found", req_id);
+        hx.fail(ec.ERR_AGENT_NOT_FOUND, "External agent not found");
         return;
     }
 
     log.info("external_agent.deleted agent_id={s} workspace_id={s}", .{ agent_id, workspace_id });
-    res.status = 204;
-    res.body = "";
+    hx.res.status = 204;
+    hx.res.body = "";
 }

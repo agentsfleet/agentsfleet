@@ -26,15 +26,15 @@ const MAX_CREDENTIAL_NAME_LEN: usize = 64;
 
 pub fn innerListActivity(hx: hx_mod.Hx, req: *httpz.Request) void {
     const qs = req.query() catch {
-        common.errorResponse(hx.res, ec.ERR_INVALID_REQUEST, "zombie_id query parameter required", hx.req_id);
+        hx.fail(ec.ERR_INVALID_REQUEST, "zombie_id query parameter required");
         return;
     };
     const zombie_id = qs.get("zombie_id") orelse {
-        common.errorResponse(hx.res, ec.ERR_INVALID_REQUEST, "zombie_id query parameter required", hx.req_id);
+        hx.fail(ec.ERR_INVALID_REQUEST, "zombie_id query parameter required");
         return;
     };
     if (!id_format.isSupportedWorkspaceId(zombie_id)) {
-        common.errorResponse(hx.res, ec.ERR_INVALID_REQUEST, "zombie_id must be a valid UUIDv7", hx.req_id);
+        hx.fail(ec.ERR_INVALID_REQUEST, "zombie_id must be a valid UUIDv7");
         return;
     }
 
@@ -43,7 +43,7 @@ pub fn innerListActivity(hx: hx_mod.Hx, req: *httpz.Request) void {
 
     const page = activity_stream.queryByZombie(hx.ctx.pool, hx.alloc, zombie_id, cursor, limit) catch |err| {
         if (err == error.InvalidCursor) {
-            common.errorResponse(hx.res, ec.ERR_INVALID_REQUEST, "Invalid cursor format", hx.req_id);
+            hx.fail(ec.ERR_INVALID_REQUEST, "Invalid cursor format");
             return;
         }
         log.err("activity.list_failed err={s} zombie_id={s} req_id={s}", .{ @errorName(err), zombie_id, hx.req_id });
@@ -52,24 +52,12 @@ pub fn innerListActivity(hx: hx_mod.Hx, req: *httpz.Request) void {
     };
     defer page.deinit(hx.alloc);
 
-    writeActivityResponse(hx.res, page);
+    hx.ok(.ok, .{ .events = page.events, .next_cursor = page.next_cursor });
 }
 
 fn parseLimitFromQs(qs: anytype) u32 {
     const limit_str = qs.get("limit") orelse return activity_stream.DEFAULT_ACTIVITY_PAGE_LIMIT;
     return std.fmt.parseInt(u32, limit_str, 10) catch activity_stream.DEFAULT_ACTIVITY_PAGE_LIMIT;
-}
-
-fn writeActivityResponse(res: *httpz.Response, page: activity_stream.ActivityPage) void {
-    res.status = 200;
-    // Build JSON array manually to avoid deep nested serialization issues
-    res.json(.{
-        .events = page.events,
-        .next_cursor = page.next_cursor,
-    }, .{}) catch {
-        res.status = 500;
-        res.body = "{}";
-    };
 }
 
 // ── Store Credential ──────────────────────────────────────────────────
@@ -82,18 +70,18 @@ const CredentialBody = struct {
 
 pub fn innerStoreCredential(hx: hx_mod.Hx, req: *httpz.Request) void {
     const body = req.body() orelse {
-        common.errorResponse(hx.res, ec.ERR_INVALID_REQUEST, ec.MSG_BODY_REQUIRED, hx.req_id);
+        hx.fail(ec.ERR_INVALID_REQUEST, ec.MSG_BODY_REQUIRED);
         return;
     };
     if (!common.checkBodySize(req, hx.res, body, hx.req_id)) return;
 
     const parsed = std.json.parseFromSlice(CredentialBody, hx.alloc, body, .{ .ignore_unknown_fields = true }) catch {
-        common.errorResponse(hx.res, ec.ERR_INVALID_REQUEST, ec.MSG_MALFORMED_JSON, hx.req_id);
+        hx.fail(ec.ERR_INVALID_REQUEST, ec.MSG_MALFORMED_JSON);
         return;
     };
     const cred = parsed.value;
 
-    if (!validateCredential(cred, hx.res, hx.req_id)) return;
+    if (!validateCredential(hx, cred)) return;
 
     storeCredentialEncrypted(hx.ctx.pool, hx.alloc, cred) catch |err| {
         log.err("credential.store_failed err={s} name={s} req_id={s}", .{ @errorName(err), cred.name, hx.req_id });
@@ -102,25 +90,24 @@ pub fn innerStoreCredential(hx: hx_mod.Hx, req: *httpz.Request) void {
     };
 
     log.info("credential.stored name={s} workspace={s}", .{ cred.name, cred.workspace_id });
-    hx.res.status = 201;
-    hx.res.json(.{ .name = cred.name }, .{}) catch {};
+    hx.ok(.created, .{ .name = cred.name });
 }
 
-fn validateCredential(cred: CredentialBody, res: *httpz.Response, req_id: []const u8) bool {
+fn validateCredential(hx: hx_mod.Hx, cred: CredentialBody) bool {
     if (cred.name.len == 0 or cred.name.len > MAX_CREDENTIAL_NAME_LEN) {
-        common.errorResponse(res, ec.ERR_INVALID_REQUEST, ec.MSG_CREDENTIAL_NAME_REQUIRED, req_id);
+        hx.fail(ec.ERR_INVALID_REQUEST, ec.MSG_CREDENTIAL_NAME_REQUIRED);
         return false;
     }
     if (cred.value.len == 0) {
-        common.errorResponse(res, ec.ERR_INVALID_REQUEST, ec.MSG_CREDENTIAL_VALUE_REQUIRED, req_id);
+        hx.fail(ec.ERR_INVALID_REQUEST, ec.MSG_CREDENTIAL_VALUE_REQUIRED);
         return false;
     }
     if (cred.value.len > MAX_CREDENTIAL_VALUE_LEN) {
-        common.errorResponse(res, ec.ERR_ZOMBIE_CREDENTIAL_VALUE_TOO_LONG, ec.MSG_ZOMBIE_CREDENTIAL_TOO_LONG, req_id);
+        hx.fail(ec.ERR_ZOMBIE_CREDENTIAL_VALUE_TOO_LONG, ec.MSG_ZOMBIE_CREDENTIAL_TOO_LONG);
         return false;
     }
     if (cred.workspace_id.len == 0 or !id_format.isSupportedWorkspaceId(cred.workspace_id)) {
-        common.errorResponse(res, ec.ERR_INVALID_REQUEST, ec.MSG_WORKSPACE_ID_REQUIRED, req_id);
+        hx.fail(ec.ERR_INVALID_REQUEST, ec.MSG_WORKSPACE_ID_REQUIRED);
         return false;
     }
     return true;
@@ -140,15 +127,15 @@ fn storeCredentialEncrypted(pool: *pg.Pool, alloc: std.mem.Allocator, cred: Cred
 
 pub fn innerListCredentials(hx: hx_mod.Hx, req: *httpz.Request) void {
     const qs = req.query() catch {
-        common.errorResponse(hx.res, ec.ERR_INVALID_REQUEST, ec.MSG_WORKSPACE_ID_REQUIRED, hx.req_id);
+        hx.fail(ec.ERR_INVALID_REQUEST, ec.MSG_WORKSPACE_ID_REQUIRED);
         return;
     };
     const workspace_id = qs.get("workspace_id") orelse {
-        common.errorResponse(hx.res, ec.ERR_INVALID_REQUEST, ec.MSG_WORKSPACE_ID_REQUIRED, hx.req_id);
+        hx.fail(ec.ERR_INVALID_REQUEST, ec.MSG_WORKSPACE_ID_REQUIRED);
         return;
     };
     if (!id_format.isSupportedWorkspaceId(workspace_id)) {
-        common.errorResponse(hx.res, ec.ERR_INVALID_REQUEST, ec.MSG_WORKSPACE_ID_REQUIRED, hx.req_id);
+        hx.fail(ec.ERR_INVALID_REQUEST, ec.MSG_WORKSPACE_ID_REQUIRED);
         return;
     }
 
@@ -158,8 +145,7 @@ pub fn innerListCredentials(hx: hx_mod.Hx, req: *httpz.Request) void {
         return;
     };
 
-    hx.res.status = 200;
-    hx.res.json(.{ .credentials = creds }, .{}) catch {};
+    hx.ok(.ok, .{ .credentials = creds });
 }
 
 const CredentialListRow = struct {

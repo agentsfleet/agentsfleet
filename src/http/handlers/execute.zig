@@ -7,6 +7,7 @@ const httpz = @import("httpz");
 const pg = @import("pg");
 const PgQuery = @import("../../db/pg_query.zig").PgQuery;
 const common = @import("common.zig");
+const hx_mod = @import("hx.zig");
 const error_codes = @import("../../errors/error_registry.zig");
 const pipeline = @import("outbound_proxy.zig");
 const api_key = @import("../../auth/api_key.zig");
@@ -137,45 +138,40 @@ fn authenticate(
 
 // ── Handler ───────────────────────────────────────────────────────────────
 
-pub fn handleExecute(ctx: *Context, req: *httpz.Request, res: *httpz.Response) void {
-    var arena = std.heap.ArenaAllocator.init(ctx.alloc);
-    defer arena.deinit();
-    const alloc = arena.allocator();
-    const req_id = common.requestId(alloc);
-
-    const conn = ctx.pool.acquire() catch {
-        common.internalDbUnavailable(res, req_id);
+pub fn innerExecute(hx: hx_mod.Hx, req: *httpz.Request) void {
+    const conn = hx.ctx.pool.acquire() catch {
+        common.internalDbUnavailable(hx.res, hx.req_id);
         return;
     };
-    defer ctx.pool.release(conn);
+    defer hx.ctx.pool.release(conn);
 
-    const caller = authenticate(alloc, conn, req) orelse {
-        common.errorResponse(res, error_codes.ERR_APIKEY_INVALID,
-            "Invalid API key or session. Create one with: zombiectl agent create", req_id);
+    const caller = authenticate(hx.alloc, conn, req) orelse {
+        hx.fail(error_codes.ERR_APIKEY_INVALID,
+            "Invalid API key or session. Create one with: zombiectl agent create");
         return;
     };
 
     const raw_body = req.body() orelse {
-        common.errorResponse(res, error_codes.ERR_INVALID_REQUEST, "Request body required", req_id);
+        hx.fail(error_codes.ERR_INVALID_REQUEST, "Request body required");
         return;
     };
-    const parsed = std.json.parseFromSlice(ExecuteInput, alloc, raw_body, .{}) catch {
-        common.errorResponse(res, error_codes.ERR_INVALID_REQUEST, "Malformed JSON body", req_id);
+    const parsed = std.json.parseFromSlice(ExecuteInput, hx.alloc, raw_body, .{}) catch {
+        hx.fail(error_codes.ERR_INVALID_REQUEST, "Malformed JSON body");
         return;
     };
     defer parsed.deinit();
     const input = parsed.value;
 
     if (input.target.len == 0 or input.target.len > 512) {
-        common.errorResponse(res, error_codes.ERR_INVALID_REQUEST, "target must be 1–512 chars", req_id);
+        hx.fail(error_codes.ERR_INVALID_REQUEST, "target must be 1–512 chars");
         return;
     }
     if (input.method.len == 0 or input.method.len > 16) {
-        common.errorResponse(res, error_codes.ERR_INVALID_REQUEST, "method must be 1–16 chars", req_id);
+        hx.fail(error_codes.ERR_INVALID_REQUEST, "method must be 1–16 chars");
         return;
     }
 
-    const result = pipeline.run(alloc, conn, .{
+    const result = pipeline.run(hx.alloc, conn, .{
         .zombie_id      = caller.zombie_id,
         .workspace_id   = caller.workspace_id,
         .target         = input.target,
@@ -184,32 +180,32 @@ pub fn handleExecute(ctx: *Context, req: *httpz.Request, res: *httpz.Response) v
         .credential_ref = input.credential_ref,
     }) catch |err| {
         switch (err) {
-            error.DomainBlocked      => common.errorResponse(res, error_codes.ERR_FW_DOMAIN_BLOCKED,
-                "Target domain not mapped to a known service", req_id),
-            error.InjectionDetected  => common.errorResponse(res, error_codes.ERR_FW_INJECTION_DETECTED,
-                "Prompt injection pattern detected in request body", req_id),
-            error.ApprovalRequired   => common.errorResponse(res, error_codes.ERR_FW_APPROVAL_REQUIRED,
-                "Request body requires human approval before execution. Awaiting gate decision.", req_id),
-            error.GrantNotFound      => common.errorResponse(res, error_codes.ERR_GRANT_NOT_FOUND,
-                "No approved grant for this service. Request one via POST /v1/zombies/{id}/integration-requests", req_id),
-            error.GrantPending       => common.errorResponse(res, error_codes.ERR_GRANT_PENDING,
-                "Grant pending human approval. Approve in Slack, Discord, or dashboard.", req_id),
-            error.GrantDenied        => common.errorResponse(res, error_codes.ERR_GRANT_DENIED,
-                "Grant denied or revoked by workspace owner.", req_id),
-            error.CredentialNotFound => common.errorResponse(res, error_codes.ERR_TOOL_CRED_NOT_FOUND,
-                "Credential not found in vault. Add with: zombiectl credential add {ref}", req_id),
-            error.TargetError        => common.errorResponse(res, error_codes.ERR_PROXY_TARGET_ERROR,
-                "Target API unreachable or returned an error.", req_id),
-            error.OutOfMemory        => common.internalOperationError(res, "Out of memory", req_id),
+            error.DomainBlocked      => hx.fail(error_codes.ERR_FW_DOMAIN_BLOCKED,
+                "Target domain not mapped to a known service"),
+            error.InjectionDetected  => hx.fail(error_codes.ERR_FW_INJECTION_DETECTED,
+                "Prompt injection pattern detected in request body"),
+            error.ApprovalRequired   => hx.fail(error_codes.ERR_FW_APPROVAL_REQUIRED,
+                "Request body requires human approval before execution. Awaiting gate decision."),
+            error.GrantNotFound      => hx.fail(error_codes.ERR_GRANT_NOT_FOUND,
+                "No approved grant for this service. Request one via POST /v1/zombies/{id}/integration-requests"),
+            error.GrantPending       => hx.fail(error_codes.ERR_GRANT_PENDING,
+                "Grant pending human approval. Approve in Slack, Discord, or dashboard."),
+            error.GrantDenied        => hx.fail(error_codes.ERR_GRANT_DENIED,
+                "Grant denied or revoked by workspace owner."),
+            error.CredentialNotFound => hx.fail(error_codes.ERR_TOOL_CRED_NOT_FOUND,
+                "Credential not found in vault. Add with: zombiectl credential add {ref}"),
+            error.TargetError        => hx.fail(error_codes.ERR_PROXY_TARGET_ERROR,
+                "Target API unreachable or returned an error."),
+            error.OutOfMemory        => common.internalOperationError(hx.res, "Out of memory", hx.req_id),
         }
         return;
     };
 
-    res.header("X-UseZombie-Action-Id", result.action_id);
-    res.header("X-UseZombie-Firewall-Decision", result.firewall_decision);
-    if (result.truncated) res.header("X-UseZombie-Truncated", "true");
+    hx.res.header("X-UseZombie-Action-Id", result.action_id);
+    hx.res.header("X-UseZombie-Firewall-Decision", result.firewall_decision);
+    if (result.truncated) hx.res.header("X-UseZombie-Truncated", "true");
 
-    common.writeJson(res, .ok, ExecuteResponse{
+    hx.ok(.ok, ExecuteResponse{
         .status = result.status,
         .body   = result.body,
         .usezombie = .{

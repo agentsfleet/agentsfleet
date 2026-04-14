@@ -21,11 +21,13 @@ const PgQuery = @import("../../db/pg_query.zig").PgQuery;
 const webhook_verify = @import("../../zombie/webhook_verify.zig");
 const workspace_integrations = @import("../../state/workspace_integrations.zig");
 const common = @import("common.zig");
+const hx_mod = @import("hx.zig");
 const ec = @import("../../errors/error_registry.zig");
 
 const log = std.log.scoped(.http_slack_events);
 
 pub const Context = common.Context;
+const Hx = hx_mod.Hx;
 
 const SlackEventPayload = struct {
     type: []const u8,
@@ -43,24 +45,19 @@ const SlackEvent = struct {
 
 // ── Handler ───────────────────────────────────────────────────────────────────
 
-pub fn handleSlackEvent(ctx: *Context, req: *httpz.Request, res: *httpz.Response) void {
-    var arena = std.heap.ArenaAllocator.init(ctx.alloc);
-    defer arena.deinit();
-    const alloc = arena.allocator();
-    const req_id = common.requestId(alloc);
-
+pub fn innerSlackEvent(hx: Hx, req: *httpz.Request) void {
     const body = req.body() orelse {
-        res.status = 200;
-        res.body = "{}";
+        hx.res.status = 200;
+        hx.res.body = "{}";
         return;
     };
 
-    if (!verifySlackSignature(req, body, res, req_id)) return;
+    if (!verifySlackSignature(hx, req, body)) return;
 
-    const parsed = std.json.parseFromSlice(SlackEventPayload, alloc, body, .{ .ignore_unknown_fields = true }) catch {
-        log.warn("slack.events.parse_fail req_id={s}", .{req_id});
-        res.status = 200;
-        res.body = "{}";
+    const parsed = std.json.parseFromSlice(SlackEventPayload, hx.alloc, body, .{ .ignore_unknown_fields = true }) catch {
+        log.warn("slack.events.parse_fail req_id={s}", .{hx.req_id});
+        hx.res.status = 200;
+        hx.res.body = "{}";
         return;
     };
     defer parsed.deinit();
@@ -69,19 +66,14 @@ pub fn handleSlackEvent(ctx: *Context, req: *httpz.Request, res: *httpz.Response
     // url_verification: echo challenge (Slack setup handshake)
     if (std.mem.eql(u8, payload.type, "url_verification")) {
         const challenge = payload.challenge orelse "";
-        log.info("slack.events.url_verification req_id={s}", .{req_id});
-        res.status = 200;
-        const resp_body = std.json.Stringify.valueAlloc(alloc, .{ .challenge = challenge }, .{}) catch {
-            res.body = "{}";
-            return;
-        };
-        res.body = resp_body;
+        log.info("slack.events.url_verification req_id={s}", .{hx.req_id});
+        hx.ok(.ok, .{ .challenge = challenge });
         return;
     }
 
     if (!std.mem.eql(u8, payload.type, "event_callback")) {
-        res.status = 200;
-        res.body = "{}";
+        hx.res.status = 200;
+        hx.res.body = "{}";
         return;
     }
 
@@ -90,105 +82,105 @@ pub fn handleSlackEvent(ctx: *Context, req: *httpz.Request, res: *httpz.Response
         const is_bot = evt.bot_id != null or
             (if (evt.subtype) |st| std.mem.eql(u8, st, "bot_message") else false);
         if (is_bot) {
-            log.debug("slack.events.bot_loop_skip req_id={s}", .{req_id});
-            res.status = 200;
-            res.body = "{}";
+            log.debug("slack.events.bot_loop_skip req_id={s}", .{hx.req_id});
+            hx.res.status = 200;
+            hx.res.body = "{}";
             return;
         }
     }
 
     const team_id = payload.team_id orelse {
-        res.status = 200;
-        res.body = "{}";
+        hx.res.status = 200;
+        hx.res.body = "{}";
         return;
     };
 
-    const conn = ctx.pool.acquire() catch {
-        log.err("slack.events.db_acquire_fail req_id={s}", .{req_id});
+    const conn = hx.ctx.pool.acquire() catch {
+        log.err("slack.events.db_acquire_fail req_id={s}", .{hx.req_id});
         // 503 so Slack retries — returning 200 would permanently lose the event
-        res.status = 503;
-        res.body = "{}";
+        hx.res.status = 503;
+        hx.res.body = "{}";
         return;
     };
-    defer ctx.pool.release(conn);
+    defer hx.ctx.pool.release(conn);
 
     // Lookup workspace via routing record
-    const workspace_id = workspace_integrations.lookupWorkspace(conn, alloc, "slack", team_id) catch {
-        log.err("slack.events.lookup_fail team_id={s} req_id={s}", .{ team_id, req_id });
-        res.status = 503; // DB error — Slack should retry
-        res.body = "{}";
+    const workspace_id = workspace_integrations.lookupWorkspace(conn, hx.alloc, "slack", team_id) catch {
+        log.err("slack.events.lookup_fail team_id={s} req_id={s}", .{ team_id, hx.req_id });
+        hx.res.status = 503; // DB error — Slack should retry
+        hx.res.body = "{}";
         return;
     } orelse {
-        log.debug("slack.events.no_workspace team_id={s} req_id={s}", .{ team_id, req_id });
-        res.status = 200; // workspace not installed — not an error, no retry needed
-        res.body = "{}";
+        log.debug("slack.events.no_workspace team_id={s} req_id={s}", .{ team_id, hx.req_id });
+        hx.res.status = 200; // workspace not installed — not an error, no retry needed
+        hx.res.body = "{}";
         return;
     };
 
     // Find a Zombie in this workspace configured for Slack events
-    const zombie_id = lookupSlackZombie(conn, alloc, workspace_id) catch {
-        log.err("slack.events.zombie_lookup_fail workspace_id={s} req_id={s}", .{ workspace_id, req_id });
-        res.status = 503; // DB error — Slack should retry
-        res.body = "{}";
+    const zombie_id = lookupSlackZombie(conn, hx.alloc, workspace_id) catch {
+        log.err("slack.events.zombie_lookup_fail workspace_id={s} req_id={s}", .{ workspace_id, hx.req_id });
+        hx.res.status = 503; // DB error — Slack should retry
+        hx.res.body = "{}";
         return;
     } orelse {
-        log.debug("slack.events.no_zombie workspace_id={s} req_id={s}", .{ workspace_id, req_id });
-        res.status = 200; // no Slack-trigger zombie configured — not an error
-        res.body = "{}";
+        log.debug("slack.events.no_zombie workspace_id={s} req_id={s}", .{ workspace_id, hx.req_id });
+        hx.res.status = 200; // no Slack-trigger zombie configured — not an error
+        hx.res.body = "{}";
         return;
     };
 
     const event_id = payload.event_id orelse "slack_evt";
     const event_type = if (payload.event) |evt| evt.type else "unknown";
 
-    ctx.queue.xaddZombieEvent(zombie_id, event_id, event_type, "slack", body) catch |err| {
-        log.err("slack.events.enqueue_fail zombie_id={s} err={s} req_id={s}", .{ zombie_id, @errorName(err), req_id });
-        res.status = 503; // Redis error — Slack should retry
-        res.body = "{}";
+    hx.ctx.queue.xaddZombieEvent(zombie_id, event_id, event_type, "slack", body) catch |err| {
+        log.err("slack.events.enqueue_fail zombie_id={s} err={s} req_id={s}", .{ zombie_id, @errorName(err), hx.req_id });
+        hx.res.status = 503; // Redis error — Slack should retry
+        hx.res.body = "{}";
         return;
     };
 
     log.info("slack.events.enqueued zombie_id={s} event_id={s} type={s} req_id={s}", .{
-        zombie_id, event_id, event_type, req_id,
+        zombie_id, event_id, event_type, hx.req_id,
     });
-    res.status = 200;
-    res.body = "{}";
+    hx.res.status = 200;
+    hx.res.body = "{}";
 }
 
 // ── Internal ─────────────────────────────────────────────────────────────────
 
 /// Verify Slack request signature and timestamp freshness.
 /// Returns false and writes UZ-WH-010/011 on failure.
-fn verifySlackSignature(req: *httpz.Request, body: []const u8, res: *httpz.Response, req_id: []const u8) bool {
+fn verifySlackSignature(hx: Hx, req: *httpz.Request, body: []const u8) bool {
     const secret = std.process.getEnvVarOwned(std.heap.page_allocator, "SLACK_SIGNING_SECRET") catch {
-        log.err("slack.events.no_signing_secret req_id={s}", .{req_id});
-        common.errorResponse(res, ec.ERR_WEBHOOK_SLACK_SIG_INVALID, "Signing secret not configured", req_id);
+        log.err("slack.events.no_signing_secret req_id={s}", .{hx.req_id});
+        hx.fail(ec.ERR_WEBHOOK_SLACK_SIG_INVALID, "Signing secret not configured");
         return false;
     };
     defer std.heap.page_allocator.free(secret);
     if (secret.len == 0) {
-        log.err("slack.events.empty_signing_secret req_id={s}", .{req_id});
-        common.errorResponse(res, ec.ERR_WEBHOOK_SLACK_SIG_INVALID, "Signing secret not configured", req_id);
+        log.err("slack.events.empty_signing_secret req_id={s}", .{hx.req_id});
+        hx.fail(ec.ERR_WEBHOOK_SLACK_SIG_INVALID, "Signing secret not configured");
         return false;
     }
 
     const timestamp = req.header(ec.SLACK_TS_HEADER) orelse {
-        common.errorResponse(res, ec.ERR_WEBHOOK_SLACK_SIG_INVALID, "Missing timestamp header", req_id);
+        hx.fail(ec.ERR_WEBHOOK_SLACK_SIG_INVALID, "Missing timestamp header");
         return false;
     };
     const signature = req.header(ec.SLACK_SIG_HEADER) orelse {
-        common.errorResponse(res, ec.ERR_WEBHOOK_SLACK_SIG_INVALID, "Missing signature header", req_id);
+        hx.fail(ec.ERR_WEBHOOK_SLACK_SIG_INVALID, "Missing signature header");
         return false;
     };
 
     if (!webhook_verify.isTimestampFresh(timestamp, ec.SLACK_MAX_TS_DRIFT_SECONDS)) {
-        common.errorResponse(res, ec.ERR_WEBHOOK_SLACK_TIMESTAMP_STALE, "Timestamp too old", req_id);
+        hx.fail(ec.ERR_WEBHOOK_SLACK_TIMESTAMP_STALE, "Timestamp too old");
         return false;
     }
 
     if (!webhook_verify.verifySignature(webhook_verify.SLACK, secret, timestamp, body, signature)) {
-        log.warn("slack.events.sig_invalid req_id={s}", .{req_id});
-        common.errorResponse(res, ec.ERR_WEBHOOK_SLACK_SIG_INVALID, "Invalid signature", req_id);
+        log.warn("slack.events.sig_invalid req_id={s}", .{hx.req_id});
+        hx.fail(ec.ERR_WEBHOOK_SLACK_SIG_INVALID, "Invalid signature");
         return false;
     }
 

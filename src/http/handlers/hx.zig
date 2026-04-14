@@ -34,3 +34,8 @@ pub const Hx = struct {
         common.errorResponse(self.res, code, detail, self.req_id);
     }
 };
+// Rationale: Hx keeps only `ok`/`fail` because both wrap the standard JSON
+// envelope and the RFC 7807 error contract — real abstraction boundaries.
+// For internal-500s (db unavailable/error/operation) and body-size checks,
+// call `common.internalDbError(hx.res, hx.req_id)` etc. directly — a shallow
+// wrapper on Hx would just forward to the same two fields.

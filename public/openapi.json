@@ -96,15 +96,15 @@
     "/healthz": {
       "get": {
         "operationId": "healthz",
-        "summary": "Health check",
-        "description": "Returns service health status including database connectivity and current commit SHA.",
+        "summary": "Liveness check",
+        "description": "Returns 200 as long as the process is alive and able to serve HTTP. Does not probe dependencies — use /readyz for readiness (database + queue).",
         "tags": [
           "Health"
         ],
         "security": [],
         "responses": {
           "200": {
-            "description": "Service health status",
+            "description": "Process is alive",
             "content": {
               "application/json": {
                 "schema": {
@@ -112,31 +112,19 @@
                   "required": [
                     "status",
                     "service",
-                    "database",
                     "commit",
                     "request_id"
                   ],
                   "properties": {
                     "status": {
                       "type": "string",
-                      "enum": [
-                        "ok",
-                        "degraded"
-                      ],
-                      "description": "Overall service health"
+                      "const": "ok",
+                      "description": "Always \"ok\" for a live process"
                     },
                     "service": {
                       "type": "string",
                       "const": "zombied",
                       "description": "Service identifier"
-                    },
-                    "database": {
-                      "type": "string",
-                      "enum": [
-                        "up",
-                        "down"
-                      ],
-                      "description": "Database connectivity status"
                     },
                     "commit": {
                       "type": "string",

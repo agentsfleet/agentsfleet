@@ -15,6 +15,7 @@ const HmacSha256 = std.crypto.auth.hmac.sha2.HmacSha256;
 const crypto_store = @import("../../secrets/crypto_store.zig");
 const workspace_integrations = @import("../../state/workspace_integrations.zig");
 const common = @import("common.zig");
+const hx_mod = @import("hx.zig");
 const ec = @import("../../errors/error_registry.zig");
 const id_format = @import("../../types/id_format.zig");
 const oauth_client = @import("slack_oauth_client.zig");
@@ -22,6 +23,7 @@ const oauth_client = @import("slack_oauth_client.zig");
 const log = std.log.scoped(.http_slack_oauth);
 
 pub const Context = common.Context;
+const Hx = hx_mod.Hx;
 
 const SLACK_AUTHORIZE_URL = "https://slack.com/oauth/v2/authorize";
 const SLACK_SCOPES = oauth_client.SLACK_SCOPES;
@@ -30,23 +32,18 @@ const NONCE_TTL: u32 = 600;
 
 // ── Install ──────────────────────────────────────────────────────────────────
 
-pub fn handleInstall(ctx: *Context, req: *httpz.Request, res: *httpz.Response) void {
-    var arena = std.heap.ArenaAllocator.init(ctx.alloc);
-    defer arena.deinit();
-    const alloc = arena.allocator();
-    const req_id = common.requestId(alloc);
-
-    const client_id = std.process.getEnvVarOwned(alloc, "SLACK_CLIENT_ID") catch {
-        common.internalOperationError(res, "SLACK_CLIENT_ID not set", req_id);
+pub fn innerInstall(hx: Hx, req: *httpz.Request) void {
+    const client_id = std.process.getEnvVarOwned(hx.alloc, "SLACK_CLIENT_ID") catch {
+        common.internalOperationError(hx.res, "SLACK_CLIENT_ID not set", hx.req_id);
         return;
     };
-    const secret = std.process.getEnvVarOwned(alloc, "SLACK_SIGNING_SECRET") catch {
-        common.internalOperationError(res, "SLACK_SIGNING_SECRET not set", req_id);
+    const secret = std.process.getEnvVarOwned(hx.alloc, "SLACK_SIGNING_SECRET") catch {
+        common.internalOperationError(hx.res, "SLACK_SIGNING_SECRET not set", hx.req_id);
         return;
     };
-    if (secret.len == 0) { common.internalOperationError(res, "SLACK_SIGNING_SECRET is empty", req_id); return; }
+    if (secret.len == 0) { common.internalOperationError(hx.res, "SLACK_SIGNING_SECRET is empty", hx.req_id); return; }
     const qs = req.query() catch {
-        common.errorResponse(res, ec.ERR_INVALID_REQUEST, "Invalid query string", req_id);
+        hx.fail(ec.ERR_INVALID_REQUEST, "Invalid query string");
         return;
     };
     const workspace_id = qs.get("workspace_id") orelse "";
@@ -63,139 +60,134 @@ pub fn handleInstall(ctx: *Context, req: *httpz.Request, res: *httpz.Response) v
     h.final(&hmac_out);
     const hmac_hex = std.fmt.bytesToHex(hmac_out, .lower);
 
-    const state = std.fmt.allocPrint(alloc, "{s}.{s}.{s}", .{ &nonce_hex, workspace_id, &hmac_hex }) catch {
-        common.internalOperationError(res, "State build failed", req_id);
+    const state = std.fmt.allocPrint(hx.alloc, "{s}.{s}.{s}", .{ &nonce_hex, workspace_id, &hmac_hex }) catch {
+        common.internalOperationError(hx.res, "State build failed", hx.req_id);
         return;
     };
 
     var nonce_key_buf: [64]u8 = undefined;
     const nonce_key = std.fmt.bufPrint(&nonce_key_buf, "slack:oauth:nonce:{s}", .{&nonce_hex}) catch unreachable;
-    ctx.queue.setEx(nonce_key, "1", NONCE_TTL) catch {
-        common.internalOperationError(res, "Redis unavailable", req_id);
+    hx.ctx.queue.setEx(nonce_key, "1", NONCE_TTL) catch {
+        common.internalOperationError(hx.res, "Redis unavailable", hx.req_id);
         return;
     };
 
-    const redir = std.fmt.allocPrint(alloc, "{s}/v1/slack/callback", .{ctx.app_url}) catch {
-        common.internalOperationError(res, "Redirect URI overflow", req_id);
+    const redir = std.fmt.allocPrint(hx.alloc, "{s}/v1/slack/callback", .{hx.ctx.app_url}) catch {
+        common.internalOperationError(hx.res, "Redirect URI overflow", hx.req_id);
         return;
     };
-    const redir_enc = oauth_client.urlEncode(alloc, redir) catch {
-        common.internalOperationError(res, "URL encode failed", req_id);
+    const redir_enc = oauth_client.urlEncode(hx.alloc, redir) catch {
+        common.internalOperationError(hx.res, "URL encode failed", hx.req_id);
         return;
     };
-    const location = std.fmt.allocPrint(alloc, "{s}?client_id={s}&scope={s}&state={s}&redirect_uri={s}", .{
+    const location = std.fmt.allocPrint(hx.alloc, "{s}?client_id={s}&scope={s}&state={s}&redirect_uri={s}", .{
         SLACK_AUTHORIZE_URL, client_id, SLACK_SCOPES, state, redir_enc,
     }) catch {
-        common.internalOperationError(res, "Location overflow", req_id);
+        common.internalOperationError(hx.res, "Location overflow", hx.req_id);
         return;
     };
 
-    res.status = 302;
-    res.header("Location", location);
-    res.body = "";
+    hx.res.status = 302;
+    hx.res.header("Location", location);
+    hx.res.body = "";
     log.info("slack.install workspace_id={s}", .{workspace_id});
 }
 
 // ── Callback ─────────────────────────────────────────────────────────────────
 
-pub fn handleCallback(ctx: *Context, req: *httpz.Request, res: *httpz.Response) void {
-    var arena = std.heap.ArenaAllocator.init(ctx.alloc);
-    defer arena.deinit();
-    const alloc = arena.allocator();
-    const req_id = common.requestId(alloc);
-
+pub fn innerCallback(hx: Hx, req: *httpz.Request) void {
     const qs = req.query() catch {
-        common.errorResponse(res, ec.ERR_INVALID_REQUEST, "Invalid query string", req_id);
+        hx.fail(ec.ERR_INVALID_REQUEST, "Invalid query string");
         return;
     };
     const code = qs.get("code") orelse {
         if (qs.get("error")) |err| {
             log.warn("slack.callback.denied err={s}", .{err});
-            dashboardRedirect(ctx, res, "denied");
+            dashboardRedirect(hx, "denied");
             return;
         }
-        common.errorResponse(res, ec.ERR_INVALID_REQUEST, "code required", req_id);
+        hx.fail(ec.ERR_INVALID_REQUEST, "code required");
         return;
     };
     const state = qs.get("state") orelse {
-        common.errorResponse(res, ec.ERR_SLACK_OAUTH_STATE, "state required", req_id);
+        hx.fail(ec.ERR_SLACK_OAUTH_STATE, "state required");
         return;
     };
 
-    if (!validateState(ctx, alloc, state, res, req_id)) return;
+    if (!validateState(hx, state)) return;
 
-    const ws_in_state = extractWorkspaceId(alloc, state) catch {
-        common.internalOperationError(res, "workspace_id extraction failed", req_id);
+    const ws_in_state = extractWorkspaceId(hx.alloc, state) catch {
+        common.internalOperationError(hx.res, "workspace_id extraction failed", hx.req_id);
         return;
     };
-    const tok = oauth_client.exchangeCode(alloc, code, ctx.app_url) catch {
-        common.errorResponse(res, ec.ERR_SLACK_TOKEN_EXCHANGE, "Slack token exchange failed", req_id);
+    const tok = oauth_client.exchangeCode(hx.alloc, code, hx.ctx.app_url) catch {
+        hx.fail(ec.ERR_SLACK_TOKEN_EXCHANGE, "Slack token exchange failed");
         return;
     };
 
-    const conn = ctx.pool.acquire() catch {
-        common.internalDbUnavailable(res, req_id);
+    const conn = hx.ctx.pool.acquire() catch {
+        common.internalDbUnavailable(hx.res, hx.req_id);
         return;
     };
-    defer ctx.pool.release(conn);
+    defer hx.ctx.pool.release(conn);
 
     const workspace_id = if (ws_in_state.len > 0)
         ws_in_state
     else
-        id_format.generateWorkspaceId(alloc) catch {
-            common.internalOperationError(res, "workspace_id generation failed", req_id);
+        id_format.generateWorkspaceId(hx.alloc) catch {
+            common.internalOperationError(hx.res, "workspace_id generation failed", hx.req_id);
             return;
         };
 
-    crypto_store.store(alloc, conn, workspace_id, SLACK_KEY_NAME, tok.access_token, 1) catch {
+    crypto_store.store(hx.alloc, conn, workspace_id, SLACK_KEY_NAME, tok.access_token, 1) catch {
         log.err("slack.callback.vault_fail workspace_id={s}", .{workspace_id});
-        common.internalOperationError(res, "Vault store failed", req_id);
+        common.internalOperationError(hx.res, "Vault store failed", hx.req_id);
         return;
     };
 
-    const upsert = workspace_integrations.upsertIntegration(conn, alloc, workspace_id, "slack", tok.team_id, tok.scope, .oauth) catch {
-        common.internalOperationError(res, "Integration record failed", req_id);
+    const upsert = workspace_integrations.upsertIntegration(conn, hx.alloc, workspace_id, "slack", tok.team_id, tok.scope, .oauth) catch {
+        common.internalOperationError(hx.res, "Integration record failed", hx.req_id);
         return;
     };
-    defer alloc.free(upsert.integration_id);
+    defer hx.alloc.free(upsert.integration_id);
 
     // Bootstrap exception — one message direct, all future Slack via M9
-    oauth_client.postConfirmation(alloc, tok.access_token) catch |err|
+    oauth_client.postConfirmation(hx.alloc, tok.access_token) catch |err|
         log.warn("slack.callback.confirm_fail err={s}", .{@errorName(err)});
 
     log.info("slack.callback.ok workspace_id={s} team_id={s} created={}", .{ workspace_id, tok.team_id, upsert.created });
-    dashboardRedirect(ctx, res, "connected");
+    dashboardRedirect(hx, "connected");
 }
 
 // ── Internal ─────────────────────────────────────────────────────────────────
 
-fn dashboardRedirect(ctx: *Context, res: *httpz.Response, status: []const u8) void {
+fn dashboardRedirect(hx: Hx, status: []const u8) void {
     var buf: [512]u8 = undefined;
-    const loc = std.fmt.bufPrint(&buf, "{s}/dashboard?slack={s}", .{ ctx.app_url, status }) catch "/dashboard";
-    res.status = 302;
-    res.header("Location", loc);
-    res.body = "";
+    const loc = std.fmt.bufPrint(&buf, "{s}/dashboard?slack={s}", .{ hx.ctx.app_url, status }) catch "/dashboard";
+    hx.res.status = 302;
+    hx.res.header("Location", loc);
+    hx.res.body = "";
 }
 
-fn validateState(ctx: *Context, alloc: std.mem.Allocator, state: []const u8, res: *httpz.Response, req_id: []const u8) bool {
-    const secret = std.process.getEnvVarOwned(alloc, "SLACK_SIGNING_SECRET") catch {
-        common.internalOperationError(res, "Signing secret not configured", req_id);
+fn validateState(hx: Hx, state: []const u8) bool {
+    const secret = std.process.getEnvVarOwned(hx.alloc, "SLACK_SIGNING_SECRET") catch {
+        common.internalOperationError(hx.res, "Signing secret not configured", hx.req_id);
         return false;
     };
     const first = std.mem.indexOfScalar(u8, state, '.') orelse {
-        common.errorResponse(res, ec.ERR_SLACK_OAUTH_STATE, "Invalid state", req_id);
+        hx.fail(ec.ERR_SLACK_OAUTH_STATE, "Invalid state");
         return false;
     };
     const last = std.mem.lastIndexOfScalar(u8, state, '.') orelse first;
     if (first == last or state.len < last + 1 + 64) {
-        common.errorResponse(res, ec.ERR_SLACK_OAUTH_STATE, "Invalid state", req_id);
+        hx.fail(ec.ERR_SLACK_OAUTH_STATE, "Invalid state");
         return false;
     }
     const nonce = state[0..first];
     const workspace_id = state[first + 1 .. last];
     const provided = state[last + 1 ..];
     if (provided.len != 64) {
-        common.errorResponse(res, ec.ERR_SLACK_OAUTH_STATE, "Invalid state HMAC", req_id);
+        hx.fail(ec.ERR_SLACK_OAUTH_STATE, "Invalid state HMAC");
         return false;
     }
 
@@ -210,20 +202,20 @@ fn validateState(ctx: *Context, alloc: std.mem.Allocator, state: []const u8, res
     var diff: u8 = 0;
     for (provided, &expected_hex) |a, b| diff |= a ^ b;
     if (diff != 0) {
-        log.warn("slack.callback.state_mismatch req_id={s}", .{req_id});
-        common.errorResponse(res, ec.ERR_SLACK_OAUTH_STATE, "OAuth state invalid", req_id);
+        log.warn("slack.callback.state_mismatch req_id={s}", .{hx.req_id});
+        hx.fail(ec.ERR_SLACK_OAUTH_STATE, "OAuth state invalid");
         return false;
     }
 
     var nonce_key_buf: [64]u8 = undefined;
     const nonce_key = std.fmt.bufPrint(&nonce_key_buf, "slack:oauth:nonce:{s}", .{nonce}) catch {
-        common.internalOperationError(res, "Nonce key overflow", req_id);
+        common.internalOperationError(hx.res, "Nonce key overflow", hx.req_id);
         return false;
     };
     // Atomic consume: DEL returns 1 if the key existed and was deleted, 0 if
     // already gone (expired or replayed). Single command — no TOCTOU window.
-    const del_resp = ctx.queue.command(&.{ "DEL", nonce_key }) catch {
-        common.internalOperationError(res, "Redis unavailable", req_id);
+    const del_resp = hx.ctx.queue.command(&.{ "DEL", nonce_key }) catch {
+        common.internalOperationError(hx.res, "Redis unavailable", hx.req_id);
         return false;
     };
     const consumed = switch (del_resp) {
@@ -231,7 +223,7 @@ fn validateState(ctx: *Context, alloc: std.mem.Allocator, state: []const u8, res
         else => false,
     };
     if (!consumed) {
-        common.errorResponse(res, ec.ERR_SLACK_OAUTH_STATE, "OAuth state expired or replayed", req_id);
+        hx.fail(ec.ERR_SLACK_OAUTH_STATE, "OAuth state expired or replayed");
         return false;
     }
     return true;

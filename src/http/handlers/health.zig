@@ -4,9 +4,11 @@ const PgQuery = @import("../../db/pg_query.zig").PgQuery;
 const metrics = @import("../../observability/metrics.zig");
 const obs_log = @import("../../observability/logging.zig");
 const common = @import("common.zig");
+const hx_mod = @import("hx.zig");
 const build_options = @import("build_options");
 
 pub const Context = common.Context;
+const Hx = hx_mod.Hx;
 
 // M10_001: QueueHealth struct and queueHealth() removed — they queried the
 // dropped `runs` table for SPEC_QUEUED count. Zombie uses Redis streams,
@@ -38,36 +40,23 @@ pub fn readyDecision(inputs: ReadyInputs) bool {
     return inputs.db_ok and inputs.queue_ok;
 }
 
-pub fn handleHealthz(ctx: *Context, req: *httpz.Request, res: *httpz.Response) void {
-    _ = req;
-    const db_ok = databaseHealthy(ctx);
-    if (!db_ok) {
-        common.writeJson(res, .service_unavailable, .{
-            .status = "degraded",
-            .service = "zombied",
-            .database = "down",
-        });
-        return;
-    }
-
-    common.writeJson(res, .ok, .{
+pub fn innerHealthz(hx: Hx) void {
+    // Liveness only — process is alive and able to serve an HTTP response.
+    // Dependency checks (Postgres, Redis) live in /readyz; mixing them here
+    // would flap liveness during transient dependency outages.
+    hx.ok(.ok, .{
         .status = "ok",
         .service = "zombied",
-        .database = "up",
         .commit = build_options.git_commit,
     });
 }
 
-pub fn handleReadyz(ctx: *Context, req: *httpz.Request, res: *httpz.Response) void {
-    _ = req;
-    const db_ok = databaseHealthy(ctx);
-    const queue_ok = queueHealthy(ctx);
+pub fn innerReadyz(hx: Hx) void {
+    const db_ok = databaseHealthy(hx.ctx);
+    const queue_ok = queueHealthy(hx.ctx);
 
-    if (!readyDecision(.{
-        .db_ok = db_ok,
-        .queue_ok = queue_ok,
-    })) {
-        common.writeJson(res, .service_unavailable, .{
+    if (!readyDecision(.{ .db_ok = db_ok, .queue_ok = queue_ok })) {
+        hx.ok(.service_unavailable, .{
             .ready = false,
             .database = db_ok,
             .queue = queue_ok,
@@ -75,27 +64,23 @@ pub fn handleReadyz(ctx: *Context, req: *httpz.Request, res: *httpz.Response) vo
         return;
     }
 
-    common.writeJson(res, .ok, .{
+    hx.ok(.ok, .{
         .ready = true,
         .database = true,
         .queue = true,
     });
 }
 
-pub fn handleMetrics(ctx: *Context, req: *httpz.Request, res: *httpz.Response) void {
-    _ = ctx;
-    const body = metrics.renderPrometheus(
-        req.arena,
-        true,
-    ) catch {
-        res.status = @intFromEnum(std.http.Status.internal_server_error);
-        res.body = "";
+pub fn innerMetrics(hx: Hx, req: *httpz.Request) void {
+    // Prometheus exposition is text/plain, not JSON — write res directly.
+    const body = metrics.renderPrometheus(req.arena, true) catch {
+        hx.res.status = @intFromEnum(std.http.Status.internal_server_error);
+        hx.res.body = "";
         return;
     };
-
-    res.status = @intFromEnum(std.http.Status.ok);
-    res.header("content-type", "text/plain; charset=utf-8");
-    res.body = body;
+    hx.res.status = @intFromEnum(std.http.Status.ok);
+    hx.res.header("content-type", "text/plain; charset=utf-8");
+    hx.res.body = body;
 }
 
 test "integration: ready decision fails closed when redis queue dependency is degraded" {

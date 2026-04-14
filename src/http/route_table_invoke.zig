@@ -43,18 +43,20 @@ const Hx = hx_mod.Hx;
 // ── Health / observability ────────────────────────────────────────────────
 
 pub fn invokeHealthz(hx: *Hx, req: *httpz.Request, route: router.Route) void {
+    _ = req;
     _ = route;
-    health.handleHealthz(hx.ctx, req, hx.res);
+    health.innerHealthz(hx.*);
 }
 
 pub fn invokeReadyz(hx: *Hx, req: *httpz.Request, route: router.Route) void {
+    _ = req;
     _ = route;
-    health.handleReadyz(hx.ctx, req, hx.res);
+    health.innerReadyz(hx.*);
 }
 
 pub fn invokeMetrics(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     _ = route;
-    health.handleMetrics(hx.ctx, req, hx.res);
+    health.innerMetrics(hx.*, req);
 }
 
 // ── Auth sessions ─────────────────────────────────────────────────────────
@@ -62,7 +64,7 @@ pub fn invokeMetrics(hx: *Hx, req: *httpz.Request, route: router.Route) void {
 pub fn invokeCreateAuthSession(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     _ = route;
     if (req.method != .POST) { common.respondMethodNotAllowed(hx.res); return; }
-    auth_sessions.handleCreateAuthSession(hx.ctx, req, hx.res);
+    auth_sessions.innerCreateAuthSession(hx.*);
 }
 
 pub fn invokeCompleteAuthSession(hx: *Hx, req: *httpz.Request, route: router.Route) void {
@@ -72,7 +74,7 @@ pub fn invokeCompleteAuthSession(hx: *Hx, req: *httpz.Request, route: router.Rou
 
 pub fn invokePollAuthSession(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     if (req.method != .GET) { common.respondMethodNotAllowed(hx.res); return; }
-    auth_sessions.handlePollAuthSession(hx.ctx, req, hx.res, route.poll_auth_session);
+    auth_sessions.innerPollAuthSession(hx.*, route.poll_auth_session);
 }
 
 // ── OAuth callbacks ───────────────────────────────────────────────────────
@@ -80,7 +82,7 @@ pub fn invokePollAuthSession(hx: *Hx, req: *httpz.Request, route: router.Route) 
 pub fn invokeGitHubCallback(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     _ = route;
     if (req.method != .GET) { common.respondMethodNotAllowed(hx.res); return; }
-    github_cb.handleGitHubCallback(hx.ctx, req, hx.res);
+    github_cb.innerGitHubCallback(hx.*, req);
 }
 
 // ── Workspace lifecycle ───────────────────────────────────────────────────
@@ -118,7 +120,7 @@ pub fn invokeSetWorkspaceScoringConfig(hx: *Hx, req: *httpz.Request, route: rout
 
 pub fn invokeSyncWorkspace(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     if (req.method != .POST) { common.respondMethodNotAllowed(hx.res); return; }
-    ws_ops.handleSyncSpecs(hx.ctx, req, hx.res, route.sync_workspace);
+    ws_ops.innerSyncSpecs(hx.*, route.sync_workspace);
 }
 
 pub fn invokeWorkspaceLlmCredential(hx: *Hx, req: *httpz.Request, route: router.Route) void {
@@ -148,17 +150,14 @@ pub fn invokeDeleteAdminPlatformKey(hx: *Hx, req: *httpz.Request, route: router.
 }
 
 // ── Agent relay ───────────────────────────────────────────────────────────
-// agent_relay.zig is at 366 lines (pre-existing RULE FLL violation — not
-// modified here). Invoke functions live here to avoid touching it.
-
 pub fn invokeSpecTemplate(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     if (req.method != .POST) { common.respondMethodNotAllowed(hx.res); return; }
-    agent_relay.handleSpecTemplate(hx.ctx, req, hx.res, route.spec_template);
+    agent_relay.innerSpecTemplate(hx.*, req, route.spec_template);
 }
 
 pub fn invokeSpecPreview(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     if (req.method != .POST) { common.respondMethodNotAllowed(hx.res); return; }
-    agent_relay.handleSpecPreview(hx.ctx, req, hx.res, route.spec_preview);
+    agent_relay.innerSpecPreview(hx.*, req, route.spec_preview);
 }
 
 // ── Webhooks ──────────────────────────────────────────────────────────────
@@ -166,17 +165,17 @@ pub fn invokeSpecPreview(hx: *Hx, req: *httpz.Request, route: router.Route) void
 pub fn invokeReceiveWebhook(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     if (req.method != .POST) { common.respondMethodNotAllowed(hx.res); return; }
     const wh = route.receive_webhook;
-    webhooks.handleReceiveWebhook(hx.ctx, req, hx.res, wh.zombie_id, wh.secret);
+    webhooks.innerReceiveWebhook(hx.*, req, wh.zombie_id, wh.secret);
 }
 
 pub fn invokeApprovalWebhook(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     if (req.method != .POST) { common.respondMethodNotAllowed(hx.res); return; }
-    approval.handleApprovalCallback(hx.ctx, req, hx.res, route.approval_webhook);
+    approval.innerApprovalCallback(hx.*, req, route.approval_webhook);
 }
 
 pub fn invokeGrantApprovalWebhook(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     if (req.method != .POST) { common.respondMethodNotAllowed(hx.res); return; }
-    grant_approval.handleGrantApproval(hx.ctx, req, hx.res, route.grant_approval_webhook);
+    grant_approval.innerGrantApproval(hx.*, req, route.grant_approval_webhook);
 }
 
 // ── Zombie CRUD ───────────────────────────────────────────────────────────
@@ -215,13 +214,13 @@ pub fn invokeZombieCredentials(hx: *Hx, req: *httpz.Request, route: router.Route
 pub fn invokeZombieTelemetry(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     if (req.method != .GET) { common.respondMethodNotAllowed(hx.res); return; }
     const r = route.zombie_telemetry;
-    zombie_tel.handleZombieTelemetry(hx.ctx, req, hx.res, r.workspace_id, r.zombie_id);
+    zombie_tel.innerZombieTelemetry(hx.*, req, r.workspace_id, r.zombie_id);
 }
 
 pub fn invokeInternalTelemetry(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     _ = route;
     if (req.method != .GET) { common.respondMethodNotAllowed(hx.res); return; }
-    zombie_tel.handleInternalTelemetry(hx.ctx, req, hx.res);
+    zombie_tel.innerInternalTelemetry(hx.*, req);
 }
 
 // ── Memory ────────────────────────────────────────────────────────────────
@@ -255,33 +254,33 @@ pub fn invokeMemoryForget(hx: *Hx, req: *httpz.Request, route: router.Route) voi
 pub fn invokeExecute(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     _ = route;
     if (req.method != .POST) { common.respondMethodNotAllowed(hx.res); return; }
-    execute_h.handleExecute(hx.ctx, req, hx.res);
+    execute_h.innerExecute(hx.*, req);
 }
 
 // ── Integration grants ────────────────────────────────────────────────────
 
 pub fn invokeRequestGrant(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     if (req.method != .POST) { common.respondMethodNotAllowed(hx.res); return; }
-    grants.handleRequestGrant(hx.ctx, req, hx.res, route.request_integration_grant);
+    grants.innerRequestGrant(hx.*, req, route.request_integration_grant);
 }
 
 pub fn invokeListGrants(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     if (req.method != .GET) { common.respondMethodNotAllowed(hx.res); return; }
-    grants_ws.handleListGrants(hx.ctx, req, hx.res, route.list_integration_grants);
+    grants_ws.innerListGrants(hx.*, route.list_integration_grants);
 }
 
 pub fn invokeRevokeGrant(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     if (req.method != .DELETE) { common.respondMethodNotAllowed(hx.res); return; }
     const r = route.revoke_integration_grant;
-    grants_ws.handleRevokeGrant(hx.ctx, req, hx.res, r.zombie_id, r.grant_id);
+    grants_ws.innerRevokeGrant(hx.*, r.zombie_id, r.grant_id);
 }
 
 // ── External agents ───────────────────────────────────────────────────────
 
 pub fn invokeExternalAgents(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     switch (req.method) {
-        .POST => ext_agents.handleCreateExternalAgent(hx.ctx, req, hx.res, route.external_agents),
-        .GET => ext_agents.handleListExternalAgents(hx.ctx, req, hx.res, route.external_agents),
+        .POST => ext_agents.innerCreateExternalAgent(hx.*, req, route.external_agents),
+        .GET => ext_agents.innerListExternalAgents(hx.*, route.external_agents),
         else => common.respondMethodNotAllowed(hx.res),
     }
 }
@@ -289,7 +288,7 @@ pub fn invokeExternalAgents(hx: *Hx, req: *httpz.Request, route: router.Route) v
 pub fn invokeDeleteExternalAgent(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     if (req.method != .DELETE) { common.respondMethodNotAllowed(hx.res); return; }
     const r = route.delete_external_agent;
-    ext_agents.handleDeleteExternalAgent(hx.ctx, req, hx.res, r.workspace_id, r.agent_id);
+    ext_agents.innerDeleteExternalAgent(hx.*, r.workspace_id, r.agent_id);
 }
 
 // ── Slack ─────────────────────────────────────────────────────────────────
@@ -297,25 +296,23 @@ pub fn invokeDeleteExternalAgent(hx: *Hx, req: *httpz.Request, route: router.Rou
 pub fn invokeSlackInstall(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     _ = route;
     if (req.method != .GET) { common.respondMethodNotAllowed(hx.res); return; }
-    slack_oauth.handleInstall(hx.ctx, req, hx.res);
+    slack_oauth.innerInstall(hx.*, req);
 }
 
 pub fn invokeSlackCallback(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     _ = route;
     if (req.method != .GET) { common.respondMethodNotAllowed(hx.res); return; }
-    slack_oauth.handleCallback(hx.ctx, req, hx.res);
+    slack_oauth.innerCallback(hx.*, req);
 }
 
 pub fn invokeSlackEvents(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     _ = route;
     if (req.method != .POST) { common.respondMethodNotAllowed(hx.res); return; }
-    slack_ev.handleSlackEvent(hx.ctx, req, hx.res);
+    slack_ev.innerSlackEvent(hx.*, req);
 }
 
-// slack_interactions.zig is at 350 lines — invoke fn lives here to avoid
-// pushing that file over the RULE FLL limit.
 pub fn invokeSlackInteractions(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     _ = route;
     if (req.method != .POST) { common.respondMethodNotAllowed(hx.res); return; }
-    slack_ix.handleInteraction(hx.ctx, req, hx.res);
+    slack_ix.innerInteraction(hx.*, req);
 }
