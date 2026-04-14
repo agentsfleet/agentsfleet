@@ -180,11 +180,11 @@ pub fn invokeGrantApprovalWebhook(hx: *Hx, req: *httpz.Request, route: router.Ro
 
 // ── Zombie CRUD ───────────────────────────────────────────────────────────
 
-pub fn invokeListOrCreateZombies(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    _ = route;
+pub fn invokeWorkspaceZombies(hx: *Hx, req: *httpz.Request, route: router.Route) void {
+    const workspace_id = route.workspace_zombies;
     switch (req.method) {
-        .POST => zombie_api.innerCreateZombie(hx.*, req),
-        .GET => zombie_api.innerListZombies(hx.*, req),
+        .POST => zombie_api.innerCreateZombie(hx.*, req, workspace_id),
+        .GET => zombie_api.innerListZombies(hx.*, req, workspace_id),
         else => common.respondMethodNotAllowed(hx.res),
     }
 }

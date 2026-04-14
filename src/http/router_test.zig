@@ -142,8 +142,19 @@ test "M1_001: webhook routes resolve and reject correctly" {
 
 // ── M2_001 zombie CRUD route tests ────────────────────────────────────
 
-test "M2_001: zombie CRUD routes resolve correctly" {
-    try std.testing.expectEqualDeep(Route.list_or_create_zombies, match("/v1/zombies/").?);
+test "M24_001: workspace-scoped zombie collection resolves" {
+    const ws_id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
+    try std.testing.expectEqualStrings(ws_id, switch (match("/v1/workspaces/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/zombies").?) {
+        .workspace_zombies => |id| id,
+        else => return error.TestExpectedEqual,
+    });
+}
+
+test "M24_001: flat /v1/zombies/ is removed (pre-v2.0 bare 404 per RULE EP4)" {
+    try std.testing.expect(match("/v1/zombies/") == null);
+}
+
+test "M2_001: remaining flat zombie routes still resolve (migrated in later M24 slices)" {
     try std.testing.expectEqualDeep(Route.zombie_activity, match("/v1/zombies/activity").?);
     try std.testing.expectEqualDeep(Route.zombie_credentials, match("/v1/zombies/credentials").?);
     const zombie_id = "019abc12-8d3a-7f13-8abc-2b3e1e0a6f11";
@@ -155,7 +166,6 @@ test "M2_001: zombie CRUD routes resolve correctly" {
 
 test "M2_001: zombie routes reject invalid paths" {
     try std.testing.expect(match("/v1/zombies/a/b") == null);
-    try std.testing.expectEqualDeep(Route.list_or_create_zombies, match("/v1/zombies/").?);
     try std.testing.expect(match("/v1/zombies") == null);
 }
 
