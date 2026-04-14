@@ -9,7 +9,7 @@
 **Batch:** B5 — after M8 (Slack plugin creates workspaces); M11_003 (invite signup) ships alongside this batch
 **Branch:** feat/m12-app-dashboard
 **Worktree:** /Users/kishore/Projects/usezombie-m12-app-dashboard
-**Depends on:** M4_001 (approval gate), M2_001 (activity stream API)
+**Depends on:** M4_001 (approval gate), M2_001 (activity stream API), **M24_001 (REST workspace-scoped route refactor — must land first)**
 
 **Extended by (post-M12 milestones that build on this shell):**
 - M13_001 (B5): Credential Vault UI — full vault management; supersedes §4.0 of this spec
@@ -25,10 +25,12 @@
 
 The original spec (Apr 10) assumed workspace-scoped REST endpoints (`/v1/workspaces/{ws}/zombies/...`) already existed. A data/route audit on `main` (commit `a85ae78`) found the API was flat (`/v1/zombies/?workspace_id=`) and several consumed endpoints (kill switch, firewall metrics, api-keys) did not exist at all. This amendment:
 
-1. **Adds a REST URL refactor as the first workstream** — move flat `/v1/zombies/*` to workspace-scoped `/v1/workspaces/{ws}/zombies/*`. Query params reserved for `page`, `limit`, `cursor`, `search`.
+1. **Split out REST URL refactor to its own milestone — M24_001.** Flat `/v1/zombies/*` → `/v1/workspaces/{ws}/zombies/*` refactor ships as PR #1 ahead of M12's UI work. Query params reserved for `page`, `limit`, `cursor`, `search`.
 2. **Adds Tier A backend endpoints** that are cheap to build on existing schema (workspace activity, kill switch, per-zombie spend aggregation).
 3. **Defers to follow-up milestones**: full firewall page (no backing data today), multi-key API key management (schema has single `api_key_hash` per tenant), trust score (not a real primitive yet).
 4. **UI is built against mocked responses first, swapped to real endpoints as they land.** Lets frontend and backend iterate in parallel.
+
+**PR strategy:** PR #1 = M24_001 REST refactor (mechanical, ships independently). PR #2 = M12_001 backend + frontend (this spec), opens off the post-refactor main.
 
 ---
 
@@ -41,42 +43,19 @@ The original spec (Apr 10) assumed workspace-scoped REST endpoints (`/v1/workspa
 **M12 adds:** REST URL refactor on the API side + 4 new frontend pages (+ 1 placeholder) layered into the existing `(dashboard)` route group.
 
 **Solution summary:**
-- **API refactor (workstream 1):** flat `/v1/zombies/*` → workspace-scoped `/v1/workspaces/{ws}/zombies/*`. Update handlers, router, OpenAPI, `zombiectl`, tests.
-- **Backend adds (workstream 2):** `GET /v1/workspaces/{ws}/activity`, `POST /v1/workspaces/{ws}/zombies/{id}:stop`, `GET /v1/workspaces/{ws}/zombies/{id}/spend`.
-- **Frontend (workstream 3):** `/dashboard` overview, `/zombies` list, `/zombies/[id]` detail, `/settings` (minimal), `/firewall` placeholder. Sidebar nav links.
+- **API refactor (prerequisite, M24_001):** flat `/v1/zombies/*` → workspace-scoped. Ships as PR #1 independently.
+- **Backend adds (workstream 1 of this spec):** `GET /v1/workspaces/{ws}/activity`, `POST /v1/workspaces/{ws}/zombies/{id}:stop`, `GET /v1/workspaces/{ws}/zombies/{id}/spend`.
+- **Frontend (workstream 2):** `/dashboard` overview, `/zombies` list, `/zombies/[id]` detail, `/settings` (minimal), `/firewall` placeholder. Sidebar nav links.
 
 ---
 
-## 1.0 REST URL Refactor (workstream 1)
+## 1.0 REST Workspace-Scoped Route Refactor — MOVED to M24_001
 
-**Status:** PENDING
-
-Flat routes → workspace-scoped paths. Query params reserved for pagination and search.
-
-**Route migration table:**
-
-| From | To |
-|---|---|
-| `GET /v1/zombies/?workspace_id=X` | `GET /v1/workspaces/{ws}/zombies?page=&limit=&search=` |
-| `POST /v1/zombies/` (body: workspace_id) | `POST /v1/workspaces/{ws}/zombies` |
-| `DELETE /v1/zombies/{id}` | `DELETE /v1/workspaces/{ws}/zombies/{id}` |
-| `GET /v1/zombies/activity?zombie_id=X` | `GET /v1/workspaces/{ws}/zombies/{id}/activity?cursor=&limit=` |
-| `POST /v1/zombies/{id}/integration-requests` | `POST /v1/workspaces/{ws}/zombies/{id}/integration-requests` |
-| `GET /v1/zombies/{id}/integration-grants` | `GET /v1/workspaces/{ws}/zombies/{id}/integration-grants` |
-| `DELETE /v1/zombies/{id}/integration-grants/{gid}` | `DELETE /v1/workspaces/{ws}/zombies/{id}/integration-grants/{gid}` |
-
-**Rule:** pre-v2.0 (VERSION=`0.9.0`), no HTTP 410 stubs for the removed flat paths — per project feedback (`feedback_pre_v2_api_drift.md`), bare 404s are acceptable in teardown era.
-
-**Dimensions:**
-- 1.1 PENDING — target `src/http/router.zig` — input: request paths from migration table — expected: workspace-scoped paths resolve; flat paths 404 — test_type: integration
-- 1.2 PENDING — target `src/http/route_matchers.zig` — input: new path matchers for `/v1/workspaces/{ws}/zombies/...` — expected: workspace_id + zombie_id extracted correctly; malformed rejected — test_type: unit
-- 1.3 PENDING — target handlers in `src/http/handlers/zombie_api.zig`, `zombie_activity_api.zig`, `integration_grants.zig` — input: new paths with path-param workspace_id — expected: `workspace_id` from path, not query — test_type: integration
-- 1.4 PENDING — target `zombiectl` (npm package) — input: existing subcommands that call flat routes — expected: all updated to call workspace-scoped paths — test_type: unit (mocked HTTP) + e2e smoke
-- 1.5 PENDING — target `openapi.json` — input: regenerated from new routes — expected: paths use `{workspaceId}` path params, query params limited to paging/search — test_type: schema diff
+Flat `/v1/zombies/*` → `/v1/workspaces/{ws}/zombies/*` refactor is now its own milestone (M24_001, PR #1). This spec depends on M24_001 landing first. Route migration table, dimensions, and verification live in the M24 spec.
 
 ---
 
-## 2.0 Backend Endpoints Added (workstream 2)
+## 2.0 Backend Endpoints Added
 
 **Status:** PENDING
 
@@ -271,11 +250,13 @@ All endpoints read from existing tables. No new schema:
 
 ## 11.0 Execution Plan
 
+**Precondition:** M24_001 (REST refactor) merged to main.
+
 | Step | Action | Verify |
 |---|---|---|
-| 1 | REST refactor: router + route_matchers + handlers for existing flat routes | Tests 1.1-1.3 pass; existing integration tests updated and green |
-| 2 | `zombiectl` updated to new paths | Tier 1 `make test` in npm package; smoke against `api-dev` |
-| 3 | OpenAPI regen | `openapi.json` diff reviewed |
+| 1 | REST refactor complete (M24_001 merged) — rebase this branch on post-refactor main | `git log main..HEAD` clean |
+| 2 | *(consumed by M24_001)* | — |
+| 3 | *(consumed by M24_001)* | — |
 | 4 | New backend: workspace activity, kill switch, per-zombie spend | Tests 2.1-2.5 pass (tier 1 + 2) |
 | 5 | Frontend: extend `lib/api.ts` against MSW mocks | `npm run test` green |
 | 6 | Dashboard page + ActivityFeed + SpendTracker | Tests 3.1-3.3 pass |
@@ -290,9 +271,7 @@ All endpoints read from existing tables. No new schema:
 
 ## 12.0 Acceptance Criteria
 
-- [ ] All flat `/v1/zombies/*` routes removed; workspace-scoped paths serve equivalent behaviour
-- [ ] `zombiectl` works against refactored API — existing CLI smoke tests green
-- [ ] OpenAPI paths updated; no query param carries identity data
+- [ ] M24_001 (REST refactor) merged before M12 EXECUTE starts
 - [ ] Dashboard shows zombie status counts, activity feed, spend summary against `api-dev`
 - [ ] Zombies list paginates and searches
 - [ ] Zombie detail shows activity log, 7d + 30d spend, working kill switch
