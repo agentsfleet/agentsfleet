@@ -82,7 +82,7 @@ fn insertAndProvision(conn: anytype, hx: hx_mod.Hx, workspace_id: []const u8, te
     return true;
 }
 
-fn innerCreateWorkspace(hx: hx_mod.Hx, req: *httpz.Request) void {
+pub fn innerCreateWorkspace(hx: hx_mod.Hx, req: *httpz.Request) void {
     const Req = struct {
         repo_url: []const u8,
         default_branch: ?[]const u8 = null,
@@ -144,7 +144,6 @@ fn innerCreateWorkspace(hx: hx_mod.Hx, req: *httpz.Request) void {
     });
 }
 
-pub const handleCreateWorkspace = hx_mod.authenticated(innerCreateWorkspace);
 
 test "normalizeDefaultBranch falls back to main for null/blank input" {
     try std.testing.expectEqualStrings("main", normalizeDefaultBranch(null));

@@ -64,7 +64,7 @@ fn validateCreateFields(b: CreateBody, res: *httpz.Response, req_id: []const u8)
     return true;
 }
 
-fn innerCreateZombie(hx: Hx, req: *httpz.Request) void {
+pub fn innerCreateZombie(hx: Hx, req: *httpz.Request) void {
     const body = parseCreateBody(hx.alloc, req, hx.res, hx.req_id) orelse return;
     if (!validateCreateFields(body, hx.res, hx.req_id)) return;
 
@@ -93,7 +93,6 @@ fn innerCreateZombie(hx: Hx, req: *httpz.Request) void {
     hx.res.status = 201;
     hx.res.json(.{ .zombie_id = zombie_id, .status = zombie_config.ZombieStatus.active.toSlice() }, .{}) catch {};
 }
-pub const handleCreateZombie = hx_mod.authenticated(innerCreateZombie);
 
 fn insertZombie(pool: *pg.Pool, body: CreateBody, zombie_id: []const u8, now_ms: i64) !void {
     const conn = try pool.acquire();
@@ -115,7 +114,7 @@ fn isUniqueViolation(_: anyerror) bool {
 
 // ── List Zombies ──────────────────────────────────────────────────────
 
-fn innerListZombies(hx: Hx, req: *httpz.Request) void {
+pub fn innerListZombies(hx: Hx, req: *httpz.Request) void {
     const qs = req.query() catch {
         common.errorResponse(hx.res, ec.ERR_INVALID_REQUEST, ec.MSG_WORKSPACE_ID_REQUIRED, hx.req_id);
         return;
@@ -138,7 +137,6 @@ fn innerListZombies(hx: Hx, req: *httpz.Request) void {
     hx.res.status = 200;
     hx.res.json(.{ .zombies = rows }, .{}) catch {};
 }
-pub const handleListZombies = hx_mod.authenticated(innerListZombies);
 
 const ZombieListRow = struct {
     id: []const u8,
@@ -191,7 +189,7 @@ fn collectZombieRows(alloc: std.mem.Allocator, q: *PgQuery) ![]ZombieListRow {
 
 // ── Delete Zombie ─────────────────────────────────────────────────────
 
-fn innerDeleteZombie(hx: Hx, _: *httpz.Request, zombie_id: []const u8) void {
+pub fn innerDeleteZombie(hx: Hx, _: *httpz.Request, zombie_id: []const u8) void {
     if (!id_format.isSupportedWorkspaceId(zombie_id)) {
         common.errorResponse(hx.res, ec.ERR_INVALID_REQUEST, "zombie_id must be a valid UUIDv7", hx.req_id);
         return;
@@ -212,7 +210,6 @@ fn innerDeleteZombie(hx: Hx, _: *httpz.Request, zombie_id: []const u8) void {
     hx.res.status = 200;
     hx.res.json(.{ .zombie_id = zombie_id, .status = zombie_config.ZombieStatus.killed.toSlice() }, .{}) catch {};
 }
-pub const handleDeleteZombie = hx_mod.authenticatedWithParam(innerDeleteZombie);
 
 fn killZombie(pool: *pg.Pool, zombie_id: []const u8) !bool {
     const conn = try pool.acquire();

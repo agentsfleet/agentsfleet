@@ -28,7 +28,7 @@ const PutInput = struct {
     source_workspace_id: []const u8,
 };
 
-fn innerPutAdminPlatformKey(hx: hx_mod.Hx, req: *httpz.Request) void {
+pub fn innerPutAdminPlatformKey(hx: hx_mod.Hx, req: *httpz.Request) void {
     if (!common.requireRole(hx.res, hx.req_id, hx.principal, .admin)) return;
 
     const body = req.body() orelse {
@@ -99,12 +99,11 @@ fn innerPutAdminPlatformKey(hx: hx_mod.Hx, req: *httpz.Request) void {
     });
 }
 
-pub const handlePutAdminPlatformKey = hx_mod.authenticated(innerPutAdminPlatformKey);
 
 // ── DELETE /v1/admin/platform-keys/{provider} ────────────────────────────────
 // Deactivate the platform default for a provider (sets active = false).
 
-fn innerDeleteAdminPlatformKey(hx: hx_mod.Hx, req: *httpz.Request, provider: []const u8) void {
+pub fn innerDeleteAdminPlatformKey(hx: hx_mod.Hx, req: *httpz.Request, provider: []const u8) void {
     _ = req;
     if (!common.requireRole(hx.res, hx.req_id, hx.principal, .admin)) return;
 
@@ -136,12 +135,11 @@ fn innerDeleteAdminPlatformKey(hx: hx_mod.Hx, req: *httpz.Request, provider: []c
     });
 }
 
-pub const handleDeleteAdminPlatformKey = hx_mod.authenticatedWithParam(innerDeleteAdminPlatformKey);
 
 // ── GET /v1/admin/platform-keys ──────────────────────────────────────────────
 // List all platform key rows (active and inactive). Never returns key material.
 
-fn innerGetAdminPlatformKeys(hx: hx_mod.Hx, req: *httpz.Request) void {
+pub fn innerGetAdminPlatformKeys(hx: hx_mod.Hx, req: *httpz.Request) void {
     _ = req;
     if (!common.requireRole(hx.res, hx.req_id, hx.principal, .admin)) return;
 
@@ -186,4 +184,3 @@ fn innerGetAdminPlatformKeys(hx: hx_mod.Hx, req: *httpz.Request) void {
     });
 }
 
-pub const handleGetAdminPlatformKeys = hx_mod.authenticated(innerGetAdminPlatformKeys);

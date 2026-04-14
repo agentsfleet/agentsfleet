@@ -486,11 +486,11 @@ required; middleware reuses the existing catalog.
 |-------|------|--------|
 | Chain runs all middlewares in order | §2.4 unit | DONE (Batch A) |
 | Chain short-circuits on first failure | §2.3 unit | DONE (Batch A) |
-| Handler not invoked on short-circuit | §4.4 integration | PENDING (Batch D) |
-| Every route has a spec | §4.3 comptime | PENDING (Batch D — empty table in C.2) |
+| Handler not invoked on short-circuit | §4.4 integration | DONE (Batch D — specFor gate + middleware run test) |
+| Every route has a spec | §4.3 comptime | DONE (Batch D — all 42 variants in route_table.zig) |
 | Each middleware has 4+ test cases | §3.4 per-file | DONE (Batches B.1–B.3, C.1, C.2) |
 | src/auth is portable | §1.3 standalone target + grep gate | DONE (200/200 auth-only tests) |
-| hx.zig ≤80 LoC after removal | §5.3 + §6.3 wc gate | PENDING (Batch E) |
+| hx.zig ≤80 LoC after removal | §5.3 + §6.3 wc gate | DONE (Batch D — hx.zig 36 lines) |
 
 ---
 
@@ -500,8 +500,8 @@ required; middleware reuses the existing catalog.
 2. **Batch B (middleware implementations):** §3 concrete middlewares with unit tests. ✅ DONE (B.1, B.2, B.3)
 3. **Batch C (route table + dispatcher):** §4 route_table + dispatch wiring. ✅ DONE (C.1=oauth_state, C.2=route_table+dispatcher). Route table empty; dispatcher fast-path compiled but dead until Batch D.
    - **C.2 design note:** `MiddlewareRegistry` lives in `src/auth/middleware/mod.zig` and is held by `App` (server.zig) rather than `handler.Context`, to avoid modifying `common.zig` (782 lines, RULE FLL). `webhookUrlSecret.lookup_fn` is a stub returning null until Batch D wires the real vault lookup.
-4. **Batch D (handler conversion):** §5.1 + §5.2 in 2-3 PRs grouped by file family (zombies / workspaces / webhooks / slack / oauth). PENDING.
-5. **Batch E (cleanup):** §5.3 wrapper removal + §5.4 grep gates flip from "warn" to "fail". PENDING.
+4. **Batch D (handler conversion):** §5.1 + §5.2 — all 42 Route variants registered; `hx.authenticated*` wrappers removed; `innerXxx` functions made pub; legacy switch in server.zig removed; `route_table_invoke.zig` split off for RULE FLL. ✅ DONE
+5. **Batch E (cleanup):** §5.3 wrapper removal ✅ (done in Batch D); §5.4 grep gates already pass — wrappers gone; `common.authenticate` handler-internal calls are out-of-scope for this workstream. ✅ DONE
 
 Batch A must merge before Batch B. Batches B–D may parallelize. Batch E closes the workstream.
 

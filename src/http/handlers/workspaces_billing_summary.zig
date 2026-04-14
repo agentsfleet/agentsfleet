@@ -22,7 +22,7 @@ fn parsePeriodDays(raw: ?[]const u8) u32 {
     return 30;
 }
 
-fn innerGetWorkspaceBillingSummary(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []const u8) void {
+pub fn innerGetWorkspaceBillingSummary(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []const u8) void {
     if (!common.requireUuidV7Id(hx.res, hx.req_id, workspace_id, "workspace_id")) return;
 
     const conn = hx.ctx.pool.acquire() catch {
@@ -60,4 +60,3 @@ fn innerGetWorkspaceBillingSummary(hx: hx_mod.Hx, req: *httpz.Request, workspace
     });
 }
 
-pub const handleGetWorkspaceBillingSummary = hx_mod.authenticatedWithParam(innerGetWorkspaceBillingSummary);

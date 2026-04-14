@@ -20,7 +20,7 @@ fn parseBillingLifecycleEvent(raw: []const u8) ?workspace_billing.BillingLifecyc
     return null;
 }
 
-fn innerUpgradeWorkspaceToScale(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []const u8) void {
+pub fn innerUpgradeWorkspaceToScale(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []const u8) void {
     if (!common.requireUuidV7Id(hx.res, hx.req_id, workspace_id, "workspace_id")) return;
 
     const Req = struct {
@@ -82,9 +82,8 @@ fn innerUpgradeWorkspaceToScale(hx: hx_mod.Hx, req: *httpz.Request, workspace_id
     });
 }
 
-pub const handleUpgradeWorkspaceToScale = hx_mod.authenticatedWithParam(innerUpgradeWorkspaceToScale);
 
-fn innerSetWorkspaceScoringConfig(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []const u8) void {
+pub fn innerSetWorkspaceScoringConfig(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []const u8) void {
     if (!common.requireUuidV7Id(hx.res, hx.req_id, workspace_id, "workspace_id")) return;
 
     const Req = struct {
@@ -149,7 +148,6 @@ fn innerSetWorkspaceScoringConfig(hx: hx_mod.Hx, req: *httpz.Request, workspace_
     });
 }
 
-pub const handleSetWorkspaceScoringConfig = hx_mod.authenticatedWithParam(innerSetWorkspaceScoringConfig);
 
 /// Respond with the billed state and emit the posthog lifecycle event.
 fn respondBillingState(hx: hx_mod.Hx, workspace_id: []const u8, event_type: []const u8, reason: []const u8, state: workspace_billing.StateView) void {
@@ -174,7 +172,7 @@ fn respondBillingState(hx: hx_mod.Hx, workspace_id: []const u8, event_type: []co
     });
 }
 
-fn innerApplyWorkspaceBillingEvent(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []const u8) void {
+pub fn innerApplyWorkspaceBillingEvent(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []const u8) void {
     if (!common.requireUuidV7Id(hx.res, hx.req_id, workspace_id, "workspace_id")) return;
 
     const Req = struct {
@@ -232,7 +230,6 @@ fn innerApplyWorkspaceBillingEvent(hx: hx_mod.Hx, req: *httpz.Request, workspace
     respondBillingState(hx, workspace_id, parsed.value.event_type, parsed.value.reason, state);
 }
 
-pub const handleApplyWorkspaceBillingEvent = hx_mod.authenticatedWithParam(innerApplyWorkspaceBillingEvent);
 
 test "parseBillingLifecycleEvent accepts supported event types" {
     try std.testing.expectEqual(workspace_billing.BillingLifecycleEvent.payment_failed, parseBillingLifecycleEvent("PAYMENT_FAILED").?);

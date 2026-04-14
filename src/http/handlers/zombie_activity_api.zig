@@ -24,7 +24,7 @@ const MAX_CREDENTIAL_NAME_LEN: usize = 64;
 
 // ── List Activity ─────────────────────────────────────────────────────
 
-fn innerListActivity(hx: hx_mod.Hx, req: *httpz.Request) void {
+pub fn innerListActivity(hx: hx_mod.Hx, req: *httpz.Request) void {
     const qs = req.query() catch {
         common.errorResponse(hx.res, ec.ERR_INVALID_REQUEST, "zombie_id query parameter required", hx.req_id);
         return;
@@ -54,7 +54,6 @@ fn innerListActivity(hx: hx_mod.Hx, req: *httpz.Request) void {
 
     writeActivityResponse(hx.res, page);
 }
-pub const handleListActivity = hx_mod.authenticated(innerListActivity);
 
 fn parseLimitFromQs(qs: anytype) u32 {
     const limit_str = qs.get("limit") orelse return activity_stream.DEFAULT_ACTIVITY_PAGE_LIMIT;
@@ -81,7 +80,7 @@ const CredentialBody = struct {
     workspace_id: []const u8,
 };
 
-fn innerStoreCredential(hx: hx_mod.Hx, req: *httpz.Request) void {
+pub fn innerStoreCredential(hx: hx_mod.Hx, req: *httpz.Request) void {
     const body = req.body() orelse {
         common.errorResponse(hx.res, ec.ERR_INVALID_REQUEST, ec.MSG_BODY_REQUIRED, hx.req_id);
         return;
@@ -106,7 +105,6 @@ fn innerStoreCredential(hx: hx_mod.Hx, req: *httpz.Request) void {
     hx.res.status = 201;
     hx.res.json(.{ .name = cred.name }, .{}) catch {};
 }
-pub const handleStoreCredential = hx_mod.authenticated(innerStoreCredential);
 
 fn validateCredential(cred: CredentialBody, res: *httpz.Response, req_id: []const u8) bool {
     if (cred.name.len == 0 or cred.name.len > MAX_CREDENTIAL_NAME_LEN) {
@@ -140,7 +138,7 @@ fn storeCredentialEncrypted(pool: *pg.Pool, alloc: std.mem.Allocator, cred: Cred
 
 // ── List Credentials ──────────────────────────────────────────────────
 
-fn innerListCredentials(hx: hx_mod.Hx, req: *httpz.Request) void {
+pub fn innerListCredentials(hx: hx_mod.Hx, req: *httpz.Request) void {
     const qs = req.query() catch {
         common.errorResponse(hx.res, ec.ERR_INVALID_REQUEST, ec.MSG_WORKSPACE_ID_REQUIRED, hx.req_id);
         return;
@@ -163,7 +161,6 @@ fn innerListCredentials(hx: hx_mod.Hx, req: *httpz.Request) void {
     hx.res.status = 200;
     hx.res.json(.{ .credentials = creds }, .{}) catch {};
 }
-pub const handleListCredentials = hx_mod.authenticated(innerListCredentials);
 
 const CredentialListRow = struct {
     name: []const u8,

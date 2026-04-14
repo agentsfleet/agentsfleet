@@ -51,7 +51,7 @@ pub fn handlePollAuthSession(ctx: *Context, req: *httpz.Request, res: *httpz.Res
     common.writeJson(res, .ok, .{ .status = status_str, .token = result.token });
 }
 
-fn innerCompleteAuthSession(hx: hx_mod.Hx, req: *httpz.Request, session_id: []const u8) void {
+pub fn innerCompleteAuthSession(hx: hx_mod.Hx, req: *httpz.Request, session_id: []const u8) void {
     log.debug("auth.session_complete session_id={s} req_id={s}", .{ session_id, hx.req_id });
 
     const body = req.body() orelse {
@@ -86,4 +86,3 @@ fn innerCompleteAuthSession(hx: hx_mod.Hx, req: *httpz.Request, session_id: []co
     hx.ok(.ok, .{ .status = "complete", .request_id = hx.req_id });
 }
 
-pub const handleCompleteAuthSession = hx_mod.authenticatedWithParam(innerCompleteAuthSession);

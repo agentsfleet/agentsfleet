@@ -23,7 +23,7 @@ const PutInput = struct {
     api_key: []const u8,
 };
 
-fn innerPutWorkspaceLlmCredential(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []const u8) void {
+pub fn innerPutWorkspaceLlmCredential(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []const u8) void {
     if (!common.requireUuidV7Id(hx.res, hx.req_id, workspace_id, "workspace_id")) return;
 
     const body = req.body() orelse {
@@ -74,12 +74,11 @@ fn innerPutWorkspaceLlmCredential(hx: hx_mod.Hx, req: *httpz.Request, workspace_
     hx.res.status = 204;
 }
 
-pub const handlePutWorkspaceLlmCredential = hx_mod.authenticatedWithParam(innerPutWorkspaceLlmCredential);
 
 // ── DELETE /v1/workspaces/{workspace_id}/credentials/llm ────────────────────
 // Remove workspace BYOK key. Subsequent runs fall back to platform default.
 
-fn innerDeleteWorkspaceLlmCredential(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []const u8) void {
+pub fn innerDeleteWorkspaceLlmCredential(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []const u8) void {
     _ = req;
     if (!common.requireUuidV7Id(hx.res, hx.req_id, workspace_id, "workspace_id")) return;
 
@@ -149,12 +148,11 @@ fn innerDeleteWorkspaceLlmCredential(hx: hx_mod.Hx, req: *httpz.Request, workspa
     hx.res.status = 204;
 }
 
-pub const handleDeleteWorkspaceLlmCredential = hx_mod.authenticatedWithParam(innerDeleteWorkspaceLlmCredential);
 
 // ── GET /v1/workspaces/{workspace_id}/credentials/llm ───────────────────────
 // Returns {"provider": "anthropic", "has_key": true} — never the key value.
 
-fn innerGetWorkspaceLlmCredential(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []const u8) void {
+pub fn innerGetWorkspaceLlmCredential(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []const u8) void {
     _ = req;
     if (!common.requireUuidV7Id(hx.res, hx.req_id, workspace_id, "workspace_id")) return;
 
@@ -196,4 +194,3 @@ fn innerGetWorkspaceLlmCredential(hx: hx_mod.Hx, req: *httpz.Request, workspace_
     });
 }
 
-pub const handleGetWorkspaceLlmCredential = hx_mod.authenticatedWithParam(innerGetWorkspaceLlmCredential);

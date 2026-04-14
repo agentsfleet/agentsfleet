@@ -277,6 +277,13 @@ pub fn parsePaginationParams(limit_str: ?[]const u8, starting_after: ?[]const u8
     return .{ .limit = limit, .starting_after = starting_after };
 }
 
+/// Write a 405 Method Not Allowed response.
+/// Used by route_table.zig invoke functions that do their own method dispatch.
+pub fn respondMethodNotAllowed(res: *httpz.Response) void {
+    res.status = @intFromEnum(std.http.Status.method_not_allowed);
+    res.body = "";
+}
+
 /// After fetching limit+1 rows into `items`, derive has_more, slice to limit,
 /// and extract next_cursor from the last item's ID field.
 pub fn derivePaginationResult(

@@ -11,6 +11,7 @@ const trace_mod = @import("../observability/trace.zig");
 const auth_mw = @import("../auth/middleware/mod.zig");
 const auth_adapter = @import("handlers/auth_adapter.zig");
 const route_table = @import("route_table.zig");
+const hx_mod = @import("handlers/hx.zig");
 const log = std.log.scoped(.http);
 
 pub const ServerConfig = struct {
@@ -145,9 +146,8 @@ fn dispatchMatchedRoute(ctx: *handler.Context, registry: *auth_mw.MiddlewareRegi
 
     const matched = router.match(path) orelse return false;
 
-    // M18_002 C.2: middleware fast-path. If a RouteSpec exists, run the chain
-    // and call spec.invoke. Falls through to the legacy switch when specFor
-    // returns null (all routes in C.2 — Batch D opts routes in one by one).
+    // M18_002 Batch D: route_table.specFor covers all Route variants.
+    // The legacy switch is removed — all routes are handled here.
     if (route_table.specFor(matched, registry)) |spec| {
         var arena = std.heap.ArenaAllocator.init(ctx.alloc);
         defer arena.deinit();
@@ -167,89 +167,21 @@ fn dispatchMatchedRoute(ctx: *handler.Context, registry: *auth_mw.MiddlewareRegi
             return true;
         };
         if (outcome == .short_circuit) return true;
-        spec.invoke(ctx, req, res, matched);
+
+        // Build Hx from auth context — principal is set by bearer/admin middleware
+        // for authenticated routes; zero-value (.mode=.api_key) for none-policy
+        // routes (those handlers do not access hx.principal).
+        var hx = hx_mod.Hx{
+            .alloc = alloc,
+            .principal = auth.principal orelse .{ .mode = .api_key },
+            .req_id = req_id,
+            .ctx = ctx,
+            .res = res,
+        };
+        spec.invoke(&hx, req, matched);
         return true;
     }
-
-    switch (matched) {
-        .healthz => handler.handleHealthz(ctx, req, res),
-        .readyz => handler.handleReadyz(ctx, req, res),
-        .metrics => handler.handleMetrics(ctx, req, res),
-        .create_auth_session => if (req.method == .POST) handler.handleCreateAuthSession(ctx, req, res) else respondMethodNotAllowed(res),
-        .complete_auth_session => |session_id| if (req.method == .POST) handler.handleCompleteAuthSession(ctx, req, res, session_id) else respondMethodNotAllowed(res),
-        .poll_auth_session => |session_id| if (req.method == .GET) handler.handlePollAuthSession(ctx, req, res, session_id) else respondMethodNotAllowed(res),
-        .github_callback => if (req.method == .GET) handler.handleGitHubCallback(ctx, req, res) else respondMethodNotAllowed(res),
-        .create_workspace => if (req.method == .POST) handler.handleCreateWorkspace(ctx, req, res) else respondMethodNotAllowed(res),
-        .pause_workspace => |workspace_id| if (req.method == .POST) handler.handlePauseWorkspace(ctx, req, res, workspace_id) else respondMethodNotAllowed(res),
-        .upgrade_workspace_to_scale => |workspace_id| if (req.method == .POST) handler.handleUpgradeWorkspaceToScale(ctx, req, res, workspace_id) else respondMethodNotAllowed(res),
-        .apply_workspace_billing_event => |workspace_id| if (req.method == .POST) handler.handleApplyWorkspaceBillingEvent(ctx, req, res, workspace_id) else respondMethodNotAllowed(res),
-        .get_workspace_billing_summary => |workspace_id| if (req.method == .GET) handler.handleGetWorkspaceBillingSummary(ctx, req, res, workspace_id) else respondMethodNotAllowed(res),
-        .set_workspace_scoring_config => |workspace_id| if (req.method == .POST) handler.handleSetWorkspaceScoringConfig(ctx, req, res, workspace_id) else respondMethodNotAllowed(res),
-        .sync_workspace => |workspace_id| if (req.method == .POST) handler.handleSyncSpecs(ctx, req, res, workspace_id) else respondMethodNotAllowed(res),
-        // M16_004: admin platform key management
-        .admin_platform_keys => switch (req.method) {
-            .GET => handler.handleGetAdminPlatformKeys(ctx, req, res),
-            .PUT => handler.handlePutAdminPlatformKey(ctx, req, res),
-            else => respondMethodNotAllowed(res),
-        },
-        .delete_admin_platform_key => |provider| if (req.method == .DELETE) handler.handleDeleteAdminPlatformKey(ctx, req, res, provider) else respondMethodNotAllowed(res),
-        // M18_003: agent relay endpoints
-        .spec_template => |workspace_id| if (req.method == .POST) handler.handleSpecTemplate(ctx, req, res, workspace_id) else respondMethodNotAllowed(res),
-        .spec_preview => |workspace_id| if (req.method == .POST) handler.handleSpecPreview(ctx, req, res, workspace_id) else respondMethodNotAllowed(res),
-        // M16_004: workspace BYOK LLM credentials
-        .workspace_llm_credential => |workspace_id| switch (req.method) {
-            .PUT => handler.handlePutWorkspaceLlmCredential(ctx, req, res, workspace_id),
-            .DELETE => handler.handleDeleteWorkspaceLlmCredential(ctx, req, res, workspace_id),
-            .GET => handler.handleGetWorkspaceLlmCredential(ctx, req, res, workspace_id),
-            else => respondMethodNotAllowed(res),
-        },
-        // M14_001: External-agent memory API
-        .memory_store => if (req.method == .POST) handler.handleMemoryStore(ctx, req, res) else respondMethodNotAllowed(res),
-        .memory_recall => if (req.method == .POST) handler.handleMemoryRecall(ctx, req, res) else respondMethodNotAllowed(res),
-        .memory_list => if (req.method == .POST) handler.handleMemoryList(ctx, req, res) else respondMethodNotAllowed(res),
-        .memory_forget => if (req.method == .POST) handler.handleMemoryForget(ctx, req, res) else respondMethodNotAllowed(res),
-        // M9_001: Grant approval webhook
-        .grant_approval_webhook => |zombie_id| if (req.method == .POST) handler.handleGrantApproval(ctx, req, res, zombie_id) else respondMethodNotAllowed(res),
-        // M4_001: Zombie approval gate callback
-        .approval_webhook => |zombie_id| if (req.method == .POST) handler.handleApprovalCallback(ctx, req, res, zombie_id) else respondMethodNotAllowed(res),
-        // M1_001: Zombie webhook ingestion
-        .receive_webhook => |route| if (req.method == .POST) handler.handleReceiveWebhook(ctx, req, res, route.zombie_id, route.secret) else respondMethodNotAllowed(res),
-        // M8_001: Slack plugin acquisition
-        .slack_install => if (req.method == .GET) handler.handleSlackInstall(ctx, req, res) else respondMethodNotAllowed(res),
-        .slack_callback => if (req.method == .GET) handler.handleSlackCallback(ctx, req, res) else respondMethodNotAllowed(res),
-        .slack_events => if (req.method == .POST) handler.handleSlackEvent(ctx, req, res) else respondMethodNotAllowed(res),
-        .slack_interactions => if (req.method == .POST) handler.handleSlackInteraction(ctx, req, res) else respondMethodNotAllowed(res),
-        // M2_001: Zombie CRUD + activity + credentials
-        .list_or_create_zombies => switch (req.method) {
-            .POST => handler.handleCreateZombie(ctx, req, res),
-            .GET => handler.handleListZombies(ctx, req, res),
-            else => respondMethodNotAllowed(res),
-        },
-        .delete_zombie => |zombie_id| if (req.method == .DELETE) handler.handleDeleteZombie(ctx, req, res, zombie_id) else respondMethodNotAllowed(res),
-        .zombie_activity => if (req.method == .GET) handler.handleListActivity(ctx, req, res) else respondMethodNotAllowed(res),
-        .zombie_credentials => switch (req.method) {
-            .POST => handler.handleStoreCredential(ctx, req, res),
-            .GET => handler.handleListCredentials(ctx, req, res),
-            else => respondMethodNotAllowed(res),
-        },
-        // M18_001: zombie execution telemetry
-        .zombie_telemetry => |route| if (req.method == .GET) handler.handleZombieTelemetry(ctx, req, res, route.workspace_id, route.zombie_id) else respondMethodNotAllowed(res),
-        .internal_telemetry => if (req.method == .GET) handler.handleInternalTelemetry(ctx, req, res) else respondMethodNotAllowed(res),
-        // M9_001: Execute proxy
-        .execute => if (req.method == .POST) handler.handleExecute(ctx, req, res) else respondMethodNotAllowed(res),
-        // M9_001: Integration grant CRUD
-        .request_integration_grant => |zombie_id| if (req.method == .POST) handler.handleRequestGrant(ctx, req, res, zombie_id) else respondMethodNotAllowed(res),
-        .list_integration_grants => |zombie_id| if (req.method == .GET) handler.handleListGrants(ctx, req, res, zombie_id) else respondMethodNotAllowed(res),
-        .revoke_integration_grant => |route| if (req.method == .DELETE) handler.handleRevokeGrant(ctx, req, res, route.zombie_id, route.grant_id) else respondMethodNotAllowed(res),
-        // M9_001: External agent key management
-        .external_agents => |workspace_id| switch (req.method) {
-            .POST => handler.handleCreateExternalAgent(ctx, req, res, workspace_id),
-            .GET => handler.handleListExternalAgents(ctx, req, res, workspace_id),
-            else => respondMethodNotAllowed(res),
-        },
-        .delete_external_agent => |route| if (req.method == .DELETE) handler.handleDeleteExternalAgent(ctx, req, res, route.workspace_id, route.agent_id) else respondMethodNotAllowed(res),
-    }
-    return true;
+    return false;
 }
 
 fn respondMethodNotAllowed(res: *httpz.Response) void {
