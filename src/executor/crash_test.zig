@@ -307,7 +307,6 @@ test "crash: cancelled session returns error on StartStage" {
     var stage_params = std.json.Value{ .object = std.json.ObjectMap.init(alloc) };
     defer stage_params.object.deinit();
     try stage_params.object.put("execution_id", .{ .string = exec_id });
-    try stage_params.object.put("session_id", .{ .string = "s" });
 
     const stage_json = try protocol.serializeRequest(alloc, 3, protocol.Method.start_stage, stage_params);
     defer alloc.free(stage_json);

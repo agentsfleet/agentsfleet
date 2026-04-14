@@ -77,7 +77,6 @@ test "integration: full RPC lifecycle over Unix socket" {
     var stage_params = std.json.Value{ .object = std.json.ObjectMap.init(alloc) };
     defer stage_params.object.deinit();
     try stage_params.object.put("execution_id", .{ .string = exec_id });
-    try stage_params.object.put("session_id", .{ .string = "stage-1" });
     try stage_params.object.put("message", .{ .string = "Test stage execution" });
 
     try protocol.sendRequest(alloc, sock, 2, protocol.Method.start_stage, stage_params);
@@ -208,7 +207,6 @@ test "integration: start_stage with invalid execution_id returns error" {
     var params = std.json.Value{ .object = std.json.ObjectMap.init(alloc) };
     defer params.object.deinit();
     try params.object.put("execution_id", .{ .string = "00000000000000000000000000000000" });
-    try params.object.put("session_id", .{ .string = "stage-1" });
 
     const req_json = try protocol.serializeRequest(alloc, 1, protocol.Method.start_stage, params);
     defer alloc.free(req_json);

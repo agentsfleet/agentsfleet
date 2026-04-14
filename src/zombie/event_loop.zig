@@ -279,6 +279,11 @@ fn executeInSandbox(
 ) !executor_client.ExecutorClient.StageResult {
     const context_val = parseSessionContext(alloc, session.context_json);
 
+    // trace_id and session_id both bind to event.event_id: no upstream trace
+    // propagator exists yet, so the per-event ID doubles as both the distributed
+    // trace handle and the per-turn session identifier. When a real trace
+    // propagator lands (OTel context injection from HTTP ingress), trace_id
+    // should switch to the propagated trace while session_id stays event-scoped.
     const execution_id = cfg.executor.createExecution(cfg.workspace_path, .{
         .trace_id = event.event_id,
         .zombie_id = session.zombie_id,

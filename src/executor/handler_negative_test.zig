@@ -144,7 +144,6 @@ test "T3: StartStage with malformed execution_id returns invalid_params" {
         var p = std.json.Value{ .object = std.json.ObjectMap.init(alloc) };
         defer p.object.deinit();
         try p.object.put("execution_id", .{ .string = bad_id });
-        try p.object.put("session_id", .{ .string = "s" });
 
         const req = try protocol.serializeRequest(alloc, 1, protocol.Method.start_stage, p);
         defer alloc.free(req);
@@ -194,7 +193,6 @@ test "T3: StartStage with unknown execution_id returns execution_failed" {
     var p = std.json.Value{ .object = std.json.ObjectMap.init(alloc) };
     defer p.object.deinit();
     try p.object.put("execution_id", .{ .string = NONEXISTENT_ID });
-    try p.object.put("session_id", .{ .string = "s" });
 
     const req = try protocol.serializeRequest(alloc, 1, protocol.Method.start_stage, p);
     defer alloc.free(req);

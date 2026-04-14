@@ -96,7 +96,6 @@ test "T3: StartStage on lease-expired session returns lease_expired" {
     var p = std.json.Value{ .object = std.json.ObjectMap.init(page) };
     defer p.object.deinit();
     try p.object.put("execution_id", .{ .string = &exec_id_hex });
-    try p.object.put("session_id", .{ .string = "s1" });
     try p.object.put("message", .{ .string = "do work" });
 
     const req = try protocol.serializeRequest(page, 1, protocol.Method.start_stage, p);
