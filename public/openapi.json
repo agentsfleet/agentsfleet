@@ -2170,6 +2170,63 @@
       }
     }
   },
+  "/v1/zombies/{zombie_id}:steer": {
+    "post": {
+      "summary": "Steer a zombie's active run",
+      "description": "Injects a message into the zombie's current active run via the Redis interrupt channel. If the zombie has no active run, returns ack with run_steered=false. The worker gate loop picks up the message on the next checkpoint iteration.",
+      "operationId": "zombieSteer",
+      "tags": ["Zombies"],
+      "security": [{ "BearerAuth": [] }],
+      "parameters": [
+        {
+          "name": "zombie_id",
+          "in": "path",
+          "required": true,
+          "schema": { "type": "string" },
+          "description": "The zombie's UUID"
+        }
+      ],
+      "requestBody": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "required": ["message"],
+              "properties": {
+                "message": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 8192,
+                  "description": "Steering message to inject into the active run"
+                }
+              }
+            }
+          }
+        }
+      },
+      "responses": {
+        "200": {
+          "description": "Steer acknowledged",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "ack": { "type": "boolean", "example": true },
+                  "run_steered": { "type": "boolean", "description": "true if an active run was found and the message was queued" },
+                  "execution_id": { "type": "string", "nullable": true, "description": "The execution_id that was steered, or null" }
+                }
+              }
+            }
+          }
+        },
+        "400": { "$ref": "#/components/responses/BadRequest" },
+        "401": { "$ref": "#/components/responses/Unauthorized" },
+        "404": { "$ref": "#/components/responses/NotFound" }
+      }
+    }
+  },
   "/v1/memory/store": {
     "post": {
       "summary": "Store a memory entry",
