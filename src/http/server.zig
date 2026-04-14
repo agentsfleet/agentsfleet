@@ -104,9 +104,11 @@ pub const Server = struct {
 
 /// Module-level dummy registry used by `Server.initForTesting`.
 ///
-/// Fields are left undefined — no middleware `execute()` is called in tests
-/// because `route_table.specFor` returns null for every Route in C.2.
-/// Lives in the data segment (not the stack), so `initForTesting` returns
+/// Fields are undefined — safe only for tests that do NOT hit authenticated
+/// routes (i.e. tests that never call dispatch, or only hit `none`-policy
+/// routes like /healthz). Integration tests that exercise bearer/admin routes
+/// must use `Server.init` with a properly-initialized registry instead.
+/// Lives in the data segment (not the stack) so `initForTesting` returns
 /// no dangling pointer.
 var testing_dummy_registry: auth_mw.MiddlewareRegistry = undefined;
 
@@ -154,13 +156,6 @@ fn dispatchMatchedRoute(ctx: *handler.Context, registry: *auth_mw.MiddlewareRegi
         const alloc = arena.allocator();
         const req_id = common.requestId(alloc);
         var auth = auth_adapter.buildAuthCtx(res, alloc, req_id);
-
-        // For .receive_webhook routes, populate the URL-secret slot in AuthCtx
-        // so webhook_url_secret middleware can validate without DB access.
-        if (matched == .receive_webhook) {
-            auth.webhook_zombie_id = matched.receive_webhook.zombie_id;
-            auth.webhook_provided_secret = matched.receive_webhook.secret;
-        }
 
         const outcome = auth_mw.run(auth_mw.AuthCtx, spec.middlewares, &auth, req) catch |e| {
             common.internalOperationError(res, @errorName(e), req_id);

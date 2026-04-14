@@ -49,8 +49,9 @@ fn consumeOAuthNonce(user: *anyopaque, nonce: []const u8) anyerror!bool {
 }
 
 /// Stub webhook URL-secret lookup. Returns null (no secret configured) until
-/// Batch D wires the real vault/DB lookup. With an empty route table (C.2),
-/// this function is never invoked at runtime.
+/// a future batch wires the real vault/DB lookup. Not called at runtime because
+/// `.receive_webhook` uses the `none` middleware policy; the real handler does
+/// its own auth for now.
 fn stubWebhookSecretLookup(
     _: *anyopaque,
     _: []const u8,
@@ -211,8 +212,12 @@ pub fn run(alloc: std.mem.Allocator) !void {
     // alive for the duration of the server. `initChains()` captures pointers
     // into registry fields; do NOT call initChains() before all fields are set,
     // and do NOT move/copy registry after calling initChains().
-    const slack_signing_secret = std.process.getEnvVarOwned(alloc, "SLACK_SIGNING_SECRET") catch "";
-    const approval_signing_secret = std.process.getEnvVarOwned(alloc, "APPROVAL_SIGNING_SECRET") catch "";
+    const slack_signing_secret_owned = std.process.getEnvVarOwned(alloc, "SLACK_SIGNING_SECRET") catch null;
+    defer if (slack_signing_secret_owned) |s| alloc.free(s);
+    const slack_signing_secret: []const u8 = if (slack_signing_secret_owned) |s| s else "";
+    const approval_signing_secret_owned = std.process.getEnvVarOwned(alloc, "APPROVAL_SIGNING_SECRET") catch null;
+    defer if (approval_signing_secret_owned) |s| alloc.free(s);
+    const approval_signing_secret: []const u8 = if (approval_signing_secret_owned) |s| s else "";
 
     var registry = auth_mw.MiddlewareRegistry{
         .bearer_or_api_key = .{

@@ -81,8 +81,11 @@ pub const WebhookUrlSecret = struct {
 
 /// Constant-time byte-slice equality.
 ///
-/// Always iterates over the minimum-length prefix so the XOR loop does not
-/// short-circuit on mismatch, preventing timing leaks on secret value or length.
+/// Prevents timing leaks on secret *value* — the XOR loop never short-circuits
+/// on mismatch. However, the loop runs `min(a.len, b.len)` iterations, so
+/// response latency still leaks the *shorter* length. For fixed-length webhook
+/// secrets (e.g. 32-byte hex nonces) this is not exploitable in practice, but
+/// callers must not use this for variable-length secrets without padding.
 fn constantTimeEq(a: []const u8, b: []const u8) bool {
     const min_len = @min(a.len, b.len);
     var diff: u8 = 0;
