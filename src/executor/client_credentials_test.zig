@@ -92,7 +92,6 @@ test "AgentConfig api_key with newline is still treated as non-empty but caller 
 
 test "StagePayload.agent_config credential fields propagate" {
     const payload = ExecutorClient.StagePayload{
-        .session_id = "implement",
         .agent_config = .{
             .api_key = "sk-fireworks-test",
             .github_token = "ghs_abc123",
