@@ -1,51 +1,36 @@
 [extend]
 useDefault = true
 
-[[allowlists]]
-description = "Ignore generated Next.js build artifacts"
+# Single merged allowlist — uses the universally-supported `[allowlist]`
+# (singular) form. The `[[allowlists]]` array-of-tables form is only honored
+# reliably by gitleaks >= 8.19, but CI pins gitleaks-action@v2.3.9 which
+# bundles gitleaks v8.18.4. With the singular form everything is merged
+# into one allowlist block that both old and new gitleaks respect.
+[allowlist]
+description = "Merged allowlist — build artifacts, deterministic test fixtures, and error-code false positives"
 paths = [
+  # Generated Next.js build artifacts
   '''(^|/)app/\.next/.*''',
-]
-
-[[allowlists]]
-description = "Ignore deterministic JWT fixtures and test tokens in Zig test files"
-paths = [
+  # Zig test files (deterministic fixtures, not real credentials)
   '''(^|/).*_test\.zig$''',
-]
-
-[[allowlists]]
-description = "Ignore test JWT tokens in RBAC integration test (deterministic, not real credentials)"
-regexTarget = "match"
-regexes = [
-  '''eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6InJiYWMtdGVzdC1raWQifQ\..*''',
-]
-
-[[allowlists]]
-description = "Ignore UZ-* error codes in structured log messages (false positive: generic-api-key rule)"
-regexTarget = "match"
-regexes = [
-  '''UZ-[A-Z]+-\d{3}''',
-]
-
-[[allowlists]]
-description = "Ignore Zig cache and temp directories"
-paths = [
+  # Zig build/cache directories
   '''(^|/)\.tmp/''',
   '''(^|/)zig-cache/''',
   '''(^|/)\.zig-cache/''',
   '''(^|/)zig-out/''',
   '''(^|/)\.tmp/zig-global-cache/''',
 ]
-
-[[allowlists]]
-description = "Auth middleware test fixtures — deterministic test signing secrets and high-entropy nonce strings used as test data (not real credentials). CI gitleaks version does not honor the path-based *_test.zig allowlist for git-history scans, so we pin explicit fingerprints."
-stopwords = [
-  "nonce1234567890abcdef",
-]
 regexTarget = "match"
 regexes = [
-  # Test nonce used in oauth_state_test.zig (all occurrences)
+  # Test JWT tokens (RBAC integration test, kid=rbac-test-kid) — deterministic
+  '''eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6InJiYWMtdGVzdC1raWQifQ\..*''',
+  # UZ-* error codes in structured log messages (false positive: generic-api-key)
+  '''UZ-[A-Z]+-\d{3}''',
+  # Auth middleware test fixtures — deterministic signing secrets & nonces
   '''nonce1234567890abcdef''',
-  # Test Slack signing secret shape used in slack_signature_test.zig line 68
   '''8f742231b10e8888abcd99yyyzz0ek9i''',
+]
+stopwords = [
+  "nonce1234567890abcdef",
+  "8f742231b10e8888abcd99yyyzz0ek9i",
 ]
