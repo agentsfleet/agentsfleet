@@ -9,6 +9,8 @@
 **Batch:** B5 — after M12 (app dashboard provides the shell)
 **Branch:** feat/m13-credential-vault-ui
 **Depends on:** M12_001 (app dashboard layout + auth), M5_001 (tool bridge credential flow)
+**Supersedes:** M12_001 §4.0 (Credentials Page) — M12's basic credentials list is replaced by this spec in full
+**Extended by:** M21_001 (B6) — adds `credential_type = llm_provider` field for BYOK provider keys; same vault, same Add Credential modal with a new "Type" selector; provider credentials are excluded from firewall injection path
 
 ---
 
