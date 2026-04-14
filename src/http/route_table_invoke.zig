@@ -189,9 +189,10 @@ pub fn invokeWorkspaceZombies(hx: *Hx, req: *httpz.Request, route: router.Route)
     }
 }
 
-pub fn invokeDeleteZombie(hx: *Hx, req: *httpz.Request, route: router.Route) void {
+pub fn invokeDeleteWorkspaceZombie(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     if (req.method != .DELETE) { common.respondMethodNotAllowed(hx.res); return; }
-    zombie_api.innerDeleteZombie(hx.*, req, route.delete_zombie);
+    const r = route.delete_workspace_zombie;
+    zombie_api.innerDeleteZombie(hx.*, req, r.workspace_id, r.zombie_id);
 }
 
 pub fn invokeZombieActivity(hx: *Hx, req: *httpz.Request, route: router.Route) void {

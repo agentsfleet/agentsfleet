@@ -198,13 +198,28 @@ fn collectZombieRows(alloc: std.mem.Allocator, q: *PgQuery) ![]ZombieListRow {
 
 // ── Delete Zombie ─────────────────────────────────────────────────────
 
-pub fn innerDeleteZombie(hx: Hx, _: *httpz.Request, zombie_id: []const u8) void {
+pub fn innerDeleteZombie(hx: Hx, _: *httpz.Request, workspace_id: []const u8, zombie_id: []const u8) void {
+    if (!id_format.isSupportedWorkspaceId(workspace_id)) {
+        hx.fail(ec.ERR_INVALID_REQUEST, ec.MSG_WORKSPACE_ID_REQUIRED);
+        return;
+    }
     if (!id_format.isSupportedWorkspaceId(zombie_id)) {
         hx.fail(ec.ERR_INVALID_REQUEST, "zombie_id must be a valid UUIDv7");
         return;
     }
 
-    const updated = killZombie(hx.ctx.pool, zombie_id) catch |err| {
+    const conn = hx.ctx.pool.acquire() catch {
+        common.internalDbUnavailable(hx.res, hx.req_id);
+        return;
+    };
+    defer hx.ctx.pool.release(conn);
+
+    if (!common.authorizeWorkspace(conn, hx.principal, workspace_id)) {
+        hx.fail(ec.ERR_FORBIDDEN, "Workspace access denied");
+        return;
+    }
+
+    const updated = killZombieOnConn(conn, workspace_id, zombie_id) catch |err| {
         log.err("zombie.delete_failed err={s} zombie_id={s} req_id={s}", .{ @errorName(err), zombie_id, hx.req_id });
         common.internalDbError(hx.res, hx.req_id);
         return;
@@ -215,20 +230,18 @@ pub fn innerDeleteZombie(hx: Hx, _: *httpz.Request, zombie_id: []const u8) void 
         return;
     }
 
-    log.info("zombie.killed id={s}", .{zombie_id});
+    log.info("zombie.killed id={s} workspace={s}", .{ zombie_id, workspace_id });
     hx.ok(.ok, .{ .zombie_id = zombie_id, .status = zombie_config.ZombieStatus.killed.toSlice() });
 }
 
-fn killZombie(pool: *pg.Pool, zombie_id: []const u8) !bool {
-    const conn = try pool.acquire();
-    defer pool.release(conn);
+fn killZombieOnConn(conn: *pg.Conn, workspace_id: []const u8, zombie_id: []const u8) !bool {
     const now_ms = std.time.milliTimestamp();
-    // rows_affected check: if zombie doesn't exist or already killed, return false
+    // Scope to workspace_id to prevent cross-tenant deletes (RULE WAUTH defence in depth).
     var q = PgQuery.from(try conn.query(
         \\UPDATE core.zombies SET status = $1, updated_at = $2
-        \\WHERE id = $3::uuid AND status != $1
+        \\WHERE id = $3::uuid AND workspace_id = $4::uuid AND status != $1
         \\RETURNING id
-    , .{ zombie_config.ZombieStatus.killed.toSlice(), now_ms, zombie_id }));
+    , .{ zombie_config.ZombieStatus.killed.toSlice(), now_ms, zombie_id, workspace_id }));
     defer q.deinit();
     return try q.next() != null;
 }
