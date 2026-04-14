@@ -1,8 +1,11 @@
-// M23_001: POST /v1/zombies/{id}:steer — live steering for active runs.
+// M23_001: POST /v1/zombies/{id}:steer — live steering for active zombies.
 //
-// Looks up the zombie's active execution_id from core.zombie_sessions.
-// If found, writes the message to Redis key run:{execution_id}:interrupt
-// so the worker gate loop picks it up on the next checkpoint.
+// Verifies zombie ownership, writes message to Redis key zombie:{id}:steer (SETEX
+// 300s TTL). The worker polls this key at the top of each event loop iteration and
+// injects the message as a synthetic "steer" event into the zombie's event stream.
+//
+// Response includes execution_id (from core.zombie_sessions) so the caller can tell
+// whether the message lands mid-execution or queued for the zombie's next event.
 //
 // Auth: Bearer token with workspace scope (registry.bearer()).
 // Scope check: zombie must belong to the caller's workspace.
@@ -62,60 +65,47 @@ pub fn innerZombieSteer(hx: Hx, req: *httpz.Request, zombie_id: []const u8) void
     };
     defer hx.ctx.pool.release(conn);
 
-    // Verify zombie exists and belongs to the caller's workspace.
-    const exec_id_opt = resolveActiveExecution(hx, conn, zombie_id) orelse return;
+    // Verify zombie exists + ownership; read active execution_id if any.
+    const exec_id_opt = resolveZombieExecution(hx, conn, zombie_id) orelse return;
 
-    // If no active run: return ack with run_steered=false.
-    const exec_id = exec_id_opt orelse {
-        hx.ok(.ok, .{
-            .ack = true,
-            .run_steered = false,
-            .execution_id = @as(?[]const u8, null),
-        });
-        return;
-    };
-
-    // Write interrupt key to Redis. TTL matches M21_001 constant.
-    const redis_key = std.fmt.allocPrint(
+    // Write steer signal to Redis. Worker polls GETDEL at top of event loop.
+    const steer_key = std.fmt.allocPrint(
         hx.alloc,
-        "{s}{s}",
-        .{ queue_consts.interrupt_key_prefix, exec_id },
+        "zombie:{s}{s}",
+        .{ zombie_id, queue_consts.zombie_steer_key_suffix },
     ) catch {
-        common.internalOperationError(hx.res, "OOM building interrupt key", hx.req_id);
+        common.internalOperationError(hx.res, "OOM building steer key", hx.req_id);
         return;
     };
 
-    hx.ctx.queue.setEx(redis_key, msg, queue_consts.interrupt_ttl_seconds) catch |err| {
-        log.warn("zombie_steer.redis_write_failed execution_id={s} err={s}", .{ exec_id, @errorName(err) });
-        // Redis failure is non-fatal: return ack with run_steered=false so
-        // the caller knows the message was not delivered.
+    hx.ctx.queue.setEx(steer_key, msg, queue_consts.zombie_steer_ttl_seconds) catch |err| {
+        log.warn("zombie_steer.redis_write_failed zombie_id={s} err={s}", .{ zombie_id, @errorName(err) });
         hx.ok(.ok, .{
-            .ack = true,
-            .run_steered = false,
+            .message_queued = false,
+            .execution_active = exec_id_opt != null,
             .execution_id = @as(?[]const u8, null),
         });
         return;
     };
 
-    log.info("zombie_steer.steered zombie_id={s} execution_id={s}", .{ zombie_id, exec_id });
+    const is_active = exec_id_opt != null;
+    log.info("zombie_steer.steered zombie_id={s} execution_active={}", .{ zombie_id, is_active });
     hx.ok(.ok, .{
-        .ack = true,
-        .run_steered = true,
-        .execution_id = exec_id,
+        .message_queued = true,
+        .execution_active = is_active,
+        .execution_id = exec_id_opt,
     });
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-/// Verify zombie belongs to the caller's workspace, then return active execution_id
-/// (null if no active session). Returns null and writes an error response on failure.
+/// Verify zombie belongs to caller's workspace. Returns active execution_id (null
+/// if zombie is idle). Returns null and writes error response on ownership failure.
 ///
-/// Two-query path:
-///   1. Verify zombie exists + workspace match.
-///   2. Look up active execution_id from core.zombie_sessions.
-///
-/// Cross-workspace access returns 404 — not 403 — to avoid existence leaks.
-fn resolveActiveExecution(
+/// ??[]const u8 semantics:
+///   outer null = error, response already written — caller must return
+///   inner null = zombie exists, owned, but not currently executing (idle state)
+fn resolveZombieExecution(
     hx: Hx,
     conn: *pg.Conn,
     zombie_id: []const u8,
@@ -148,21 +138,18 @@ fn resolveActiveExecution(
         return null;
     };
     if (!std.mem.eql(u8, caller_ws, zombie_workspace)) {
-        // Return 404 not 403 — do not leak existence across workspaces.
+        // 404 not 403 — do not leak existence across workspaces.
         hx.fail(ec.ERR_ZOMBIE_NOT_FOUND, ec.MSG_ZOMBIE_NOT_FOUND);
         return null;
     }
 
-    // Step 2: look up active execution_id.
-    // Drain q1 before opening q2 on the same connection (RULE FLS).
-    // PgQuery.deinit() already drains, so defer above covers this.
-
+    // Step 2: read active execution_id (M23_001 column — NULL when idle).
+    // PgQuery.deinit() on q1 drains it before we open q2 (RULE FLS).
     var q2 = PgQuery.from(conn.query(
-        \\SELECT execution_id::text
+        \\SELECT execution_id
         \\FROM core.zombie_sessions
         \\WHERE zombie_id = $1::uuid
         \\  AND execution_id IS NOT NULL
-        \\ORDER BY created_at DESC
         \\LIMIT 1
     , .{zombie_id}) catch {
         common.internalDbError(hx.res, hx.req_id);
@@ -173,7 +160,7 @@ fn resolveActiveExecution(
     const row2 = (q2.next() catch {
         common.internalDbError(hx.res, hx.req_id);
         return null;
-    }) orelse return @as(?[]const u8, null); // no active session — valid state
+    }) orelse return @as(?[]const u8, null); // idle — valid state
 
     const raw = row2.get([]const u8, 0) catch {
         common.internalDbError(hx.res, hx.req_id);
@@ -181,9 +168,8 @@ fn resolveActiveExecution(
     };
 
     // Dupe before q2 deinit fires (RULE FLS — borrowed row data).
-    const exec_id = hx.alloc.dupe(u8, raw) catch {
+    return hx.alloc.dupe(u8, raw) catch {
         common.internalOperationError(hx.res, "OOM duping execution_id", hx.req_id);
         return null;
     };
-    return exec_id;
 }

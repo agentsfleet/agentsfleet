@@ -2173,7 +2173,7 @@
   "/v1/zombies/{zombie_id}:steer": {
     "post": {
       "summary": "Steer a zombie's active run",
-      "description": "Injects a message into the zombie's current active run via the Redis interrupt channel. If the zombie has no active run, returns ack with run_steered=false. The worker gate loop picks up the message on the next checkpoint iteration.",
+      "description": "Queues a steering message for the zombie. The message is written to Redis (zombie:{id}:steer, 300s TTL); the worker injects it as a synthetic event on the next event loop iteration. message_queued indicates whether the Redis write succeeded. execution_active indicates whether the zombie is currently executing when the request is handled.",
       "operationId": "zombieSteer",
       "tags": ["Zombies"],
       "security": [{ "BearerAuth": [] }],
@@ -2213,9 +2213,9 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "ack": { "type": "boolean", "example": true },
-                  "run_steered": { "type": "boolean", "description": "true if an active run was found and the message was queued" },
-                  "execution_id": { "type": "string", "nullable": true, "description": "The execution_id that was steered, or null" }
+                  "message_queued": { "type": "boolean", "description": "true if the message was successfully written to Redis" },
+                  "execution_active": { "type": "boolean", "description": "true if the zombie has an active execution_id at request time" },
+                  "execution_id": { "type": "string", "nullable": true, "description": "Active execution_id from zombie_sessions, or null if zombie is idle" }
                 }
               }
             }

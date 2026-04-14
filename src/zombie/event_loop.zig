@@ -12,7 +12,6 @@ const activity_stream = @import("activity_stream.zig");
 const queue_redis = @import("../queue/redis_client.zig");
 const redis_zombie = @import("../queue/redis_zombie.zig");
 const queue_consts = @import("../queue/constants.zig");
-const executor_client = @import("../executor/client.zig");
 const error_codes = @import("../errors/error_registry.zig");
 const obs_log = @import("../observability/logging.zig");
 const id_format = @import("../types/id_format.zig");
@@ -29,11 +28,14 @@ const helpers = @import("event_loop_helpers.zig");
 pub const EventLoopConfig = types.EventLoopConfig;
 const loadSessionCheckpoint = helpers.loadSessionCheckpoint;
 pub const updateSessionContext = helpers.updateSessionContext;
-const resolveFirstCredential = helpers.resolveFirstCredential;
 const sleepWithBackoff = helpers.sleepWithBackoff;
 pub const truncateForJson = helpers.truncateForJson;
 const logDeliveryResult = helpers.logDeliveryResult;
 const recordDeliverError = helpers.recordDeliverError;
+// M23_001
+const pollSteerAndInject = helpers.pollSteerAndInject;
+const clearExecutionActive = helpers.clearExecutionActive;
+pub const executeInSandbox = helpers.executeInSandbox;
 
 // ── Public API (spec §7.1) ───────────────────────────────────────────────
 
@@ -93,7 +95,7 @@ pub fn claimZombie(
         zombie_id, config.name, context_json.len > 2,
     });
 
-    return ZombieSession{
+    var session = ZombieSession{
         .zombie_id = zombie_id,
         .workspace_id = workspace_id,
         .config = config,
@@ -101,6 +103,9 @@ pub fn claimZombie(
         .context_json = context_json,
         .source_markdown = source_markdown,
     };
+    // M23_001: clear any stale execution_id left by a crashed worker.
+    clearExecutionActive(alloc, &session, pool);
+    return session;
 }
 
 /// Run the event loop for a claimed Zombie. Blocks until shutdown signal.
@@ -125,6 +130,9 @@ pub fn runEventLoop(
     var consecutive_errors: u32 = 0;
 
     while (cfg.running.load(.acquire)) {
+        // M23_001: inject any pending steer message into the event stream before polling.
+        pollSteerAndInject(alloc, cfg, session);
+
         const poll_result = pollNextEvent(cfg, session, consumer_id, &last_reclaim_ms);
         if (poll_result.err) {
             consecutive_errors += 1;
@@ -262,57 +270,6 @@ pub fn deliverEvent(
         .wall_seconds = stage_result.wall_seconds,
         .time_to_first_token_ms = stage_result.time_to_first_token_ms,
         .epoch_wall_time_ms = epoch_wall_time_ms,
-    };
-}
-
-fn parseSessionContext(alloc: Allocator, json: []const u8) ?std.json.Value {
-    if (json.len <= 2) return null;
-    const parsed = std.json.parseFromSlice(std.json.Value, alloc, json, .{}) catch return null;
-    return parsed.value;
-}
-
-fn executeInSandbox(
-    alloc: Allocator,
-    session: *ZombieSession,
-    event: *const redis_zombie.ZombieEvent,
-    cfg: EventLoopConfig,
-) !executor_client.ExecutorClient.StageResult {
-    const context_val = parseSessionContext(alloc, session.context_json);
-
-    // trace_id and session_id both bind to event.event_id: no upstream trace
-    // propagator exists yet, so the per-event ID doubles as both the distributed
-    // trace handle and the per-turn session identifier. When a real trace
-    // propagator lands (OTel context injection from HTTP ingress), trace_id
-    // should switch to the propagated trace while session_id stays event-scoped.
-    const execution_id = cfg.executor.createExecution(cfg.workspace_path, .{
-        .trace_id = event.event_id,
-        .zombie_id = session.zombie_id,
-        .workspace_id = session.workspace_id,
-        .session_id = event.event_id,
-    }) catch |err| {
-        log.err("zombie_event_loop.exec_create_fail zombie_id={s} event_id={s} error_code=" ++ error_codes.ERR_EXEC_SESSION_CREATE_FAILED, .{ session.zombie_id, event.event_id });
-        return err;
-    };
-    defer {
-        cfg.executor.destroyExecution(execution_id) catch {};
-        alloc.free(execution_id);
-    }
-
-    // Resolve the first credential from the zombie's config as the api_key.
-    // Each entry is an op:// ref; we extract the credential name and look it up.
-    const api_key: []const u8 = resolveFirstCredential(alloc, cfg.pool, session) catch "";
-    defer if (api_key.len > 0) alloc.free(api_key);
-
-    return cfg.executor.startStage(execution_id, .{
-        .agent_config = .{
-            .system_prompt = session.instructions,
-            .api_key = api_key,
-        },
-        .message = event.data_json,
-        .context = context_val,
-    }) catch |err| {
-        log.err("zombie_event_loop.stage_fail zombie_id={s} event_id={s} error_code=" ++ error_codes.ERR_EXEC_STAGE_START_FAILED, .{ session.zombie_id, event.event_id });
-        return err;
     };
 }
 

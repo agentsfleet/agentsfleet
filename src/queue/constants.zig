@@ -17,9 +17,15 @@ pub const reclaim_interval_ms: i64 = 60_000;
 /// Full key: cancel_key_prefix ++ run_id, TTL 1h.
 pub const cancel_key_prefix = "run:cancel:";
 
-/// M21_001 §1.2: Redis key for queued interrupt messages.
+/// M21_001 §1.2: Redis key for queued interrupt messages (v1 — no reader in v2).
 pub const interrupt_key_prefix = "run:interrupt:";
 pub const interrupt_ttl_seconds: u32 = 300;
+
+/// M23_001: Redis key suffix for zombie steering signals.
+/// Full key: "zombie:" ++ zombie_id ++ zombie_steer_key_suffix
+/// Worker polls GETDEL at top of event loop; injects result as a synthetic steer event.
+pub const zombie_steer_key_suffix = ":steer";
+pub const zombie_steer_ttl_seconds: u32 = 300;
 
 // ── M1_001: Zombie event stream constants ────────────────────────────────
 
