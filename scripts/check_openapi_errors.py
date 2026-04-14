@@ -14,6 +14,18 @@ REQUIRED_SCHEMA = "ErrorBody"
 REQUIRED_CONTENT_TYPE = "application/problem+json"
 OLD_SCHEMA = "Error"
 
+# Explicit allowlist: (path, status_code) pairs that return a non-RFC-7807 body.
+# Each entry MUST include a justification comment. These are structured status
+# responses whose 503 shape equals their 200 shape — they are not errors in the
+# RFC 7807 sense and shouldn't be forced into a problem+json document.
+ALLOWLIST: set[tuple[str, str]] = {
+    # /readyz 503: degraded readiness. Body is the same ReadyzBody schema as
+    # the 200 (ready/database/queue booleans) with `ready: false` and the
+    # failing dependency's boolean set to false. It's a readiness report, not
+    # an error message, so the application/problem+json contract does not fit.
+    ("/readyz", "503"),
+}
+
 
 def main() -> int:
     try:
@@ -56,6 +68,8 @@ def main() -> int:
         for method, op in methods.items():
             for code, resp in op.get("responses", {}).items():
                 if not code.startswith(("4", "5")):
+                    continue
+                if (path, code) in ALLOWLIST:
                     continue
                 content = resp.get("content", {})
                 if not content:
