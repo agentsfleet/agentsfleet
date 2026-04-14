@@ -3,12 +3,21 @@ const pg = @import("pg");
 const auth_sessions = @import("../auth/sessions.zig");
 const oidc = @import("../auth/oidc.zig");
 const queue_redis = @import("../queue/redis.zig");
+const auth_mw = @import("../auth/middleware/mod.zig");
 const common = @import("handlers/common.zig");
 const handler = @import("handler.zig");
 const http_server = @import("server.zig");
 const error_codes = @import("../errors/error_registry.zig");
 const telemetry_mod = @import("../observability/telemetry.zig");
 const test_port = @import("test_port.zig");
+
+fn stubConsumeNonce(_: *anyopaque, _: []const u8) anyerror!bool {
+    return false;
+}
+
+fn stubLookupWebhookSecret(_: *anyopaque, _: []const u8, _: std.mem.Allocator) anyerror!?[]const u8 {
+    return null;
+}
 
 const TEST_TENANT_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01";
 const TEST_WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
@@ -46,6 +55,7 @@ const RunningServer = struct {
     // without initializing this field first.
     queue: queue_redis.Client = undefined,
     telemetry: telemetry_mod.Telemetry,
+    registry: auth_mw.MiddlewareRegistry,
     ctx: handler.Context,
     srv: *http_server.Server,
     thread: std.Thread,
@@ -161,6 +171,7 @@ fn startServer(alloc: std.mem.Allocator) !*RunningServer {
         .pool = db_ctx.pool,
         .session_store = session_store,
         .verifier = verifier,
+        .registry = undefined, // initialized below via initChains()
         .ctx = .{
             .pool = db_ctx.pool,
             .queue = undefined,
@@ -185,7 +196,18 @@ fn startServer(alloc: std.mem.Allocator) !*RunningServer {
     running.ctx.queue = &running.queue;
     running.ctx.oidc = &running.verifier;
     running.ctx.auth_sessions = &running.session_store;
-    running.srv = try http_server.Server.initForTesting(&running.ctx, .{
+    running.registry = .{
+        .bearer_or_api_key = .{ .api_keys = "", .verifier = &running.verifier },
+        .admin_api_key_mw = .{ .api_keys = "" },
+        .require_role_admin = .{ .required = .admin },
+        .require_role_operator = .{ .required = .operator },
+        .slack_sig = .{ .secret = "" },
+        .webhook_hmac_mw = .{ .secret = "" },
+        .oauth_state_mw = .{ .signing_secret = "", .consume_ctx = &running.queue, .consume_nonce = stubConsumeNonce },
+        .webhook_url_secret_mw = .{ .lookup_ctx = &running.queue, .lookup_fn = stubLookupWebhookSecret },
+    };
+    running.registry.initChains();
+    running.srv = try http_server.Server.init(&running.ctx, &running.registry, .{
         .port = port,
         .threads = 1,
         .workers = 1,

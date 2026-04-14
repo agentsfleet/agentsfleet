@@ -21,11 +21,20 @@ const pg = @import("pg");
 const auth_sessions = @import("../../auth/sessions.zig");
 const oidc = @import("../../auth/oidc.zig");
 const queue_redis = @import("../../queue/redis.zig");
+const auth_mw = @import("../../auth/middleware/mod.zig");
 const common = @import("common.zig");
 const handler = @import("../../http/handler.zig");
 const http_server = @import("../../http/server.zig");
 const telemetry_mod = @import("../../observability/telemetry.zig");
 const test_port = @import("../test_port.zig");
+
+fn stubConsumeNonce(_: *anyopaque, _: []const u8) anyerror!bool {
+    return false;
+}
+
+fn stubLookupWebhookSecret(_: *anyopaque, _: []const u8, _: std.mem.Allocator) anyerror!?[]const u8 {
+    return null;
+}
 
 const TEST_TENANT_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01";
 const TEST_WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
@@ -64,6 +73,7 @@ const TestServer = struct {
     verifier: oidc.Verifier,
     queue: queue_redis.Client = undefined,
     telemetry: telemetry_mod.Telemetry,
+    registry: auth_mw.MiddlewareRegistry,
     ctx: handler.Context,
     server: *http_server.Server,
     thread: std.Thread,
@@ -145,6 +155,7 @@ fn startTestServer(alloc: std.mem.Allocator) !*TestServer {
             .audience = TEST_AUDIENCE,
             .inline_jwks_json = TEST_JWKS,
         }),
+        .registry = undefined, // initialized below via initChains()
         .ctx = .{
             .pool = db_ctx.pool,
             .queue = undefined,
@@ -170,8 +181,18 @@ fn startTestServer(alloc: std.mem.Allocator) !*TestServer {
     srv.ctx.queue = &srv.queue;
     srv.ctx.oidc = &srv.verifier;
     srv.ctx.auth_sessions = &srv.session_store;
-
-    srv.server = try http_server.Server.initForTesting(&srv.ctx, .{ .port = port, .threads = 1, .workers = 1, .max_clients = 64 });
+    srv.registry = .{
+        .bearer_or_api_key = .{ .api_keys = "", .verifier = &srv.verifier },
+        .admin_api_key_mw = .{ .api_keys = "" },
+        .require_role_admin = .{ .required = .admin },
+        .require_role_operator = .{ .required = .operator },
+        .slack_sig = .{ .secret = "" },
+        .webhook_hmac_mw = .{ .secret = "" },
+        .oauth_state_mw = .{ .signing_secret = "", .consume_ctx = &srv.queue, .consume_nonce = stubConsumeNonce },
+        .webhook_url_secret_mw = .{ .lookup_ctx = &srv.queue, .lookup_fn = stubLookupWebhookSecret },
+    };
+    srv.registry.initChains();
+    srv.server = try http_server.Server.init(&srv.ctx, &srv.registry, .{ .port = port, .threads = 1, .workers = 1, .max_clients = 64 });
     srv.thread = try std.Thread.spawn(.{}, serverThread, .{srv.server});
     errdefer {
         srv.server.stop();
