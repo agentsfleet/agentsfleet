@@ -4,10 +4,11 @@
 **Milestone:** M12
 **Workstream:** 001
 **Date:** Apr 10, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — Operator-facing surface; first web UI for non-CLI users
 **Batch:** B5 — after M8 (Slack plugin creates workspaces); M11_003 (invite signup) ships alongside this batch
 **Branch:** feat/m12-app-dashboard
+**Worktree:** /Users/kishore/Projects/usezombie-m12-app-dashboard
 **Depends on:** M4_001 (approval gate), M2_001 (activity stream API)
 
 **Extended by (post-M12 milestones that build on this shell):**
