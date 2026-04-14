@@ -323,8 +323,10 @@ pub fn checkpointState(
     session: *const ZombieSession,
     pool: *pg.Pool,
 ) !void {
-    const session_id = try id_format.generateZombieId(alloc);
-    defer alloc.free(session_id);
+    // row_id is the zombie_sessions PK — only consumed on INSERT; the ON CONFLICT
+    // branch updates an existing row keyed by zombie_id and discards this id.
+    const row_id = try id_format.generateZombieId(alloc);
+    defer alloc.free(row_id);
 
     const now_ms = std.time.milliTimestamp();
     const conn = try pool.acquire();
@@ -337,7 +339,7 @@ pub fn checkpointState(
         \\  SET context_json = EXCLUDED.context_json,
         \\      checkpoint_at = EXCLUDED.checkpoint_at,
         \\      updated_at = EXCLUDED.updated_at
-    , .{ session_id, session.zombie_id, session.context_json, now_ms });
+    , .{ row_id, session.zombie_id, session.context_json, now_ms });
 
     log.debug("zombie_event_loop.checkpointed zombie_id={s} context_len={d}", .{ session.zombie_id, session.context_json.len });
 }
