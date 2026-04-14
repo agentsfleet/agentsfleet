@@ -27,11 +27,9 @@ const SessionStore = session_mod.SessionStore;
 fn testCorrelation() types.CorrelationContext {
     return .{
         .trace_id = "t",
-        .run_id = "r",
+        .zombie_id = "r",
         .workspace_id = "w",
-        .stage_id = "s",
-        .role_id = "echo",
-        .skill_id = "echo",
+        .session_id = "s",
     };
 }
 

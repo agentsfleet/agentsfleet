@@ -166,7 +166,7 @@ test "T5: concurrent StartStage on cancelled session all return execution_failed
             var p = std.json.Value{ .object = std.json.ObjectMap.init(a) };
             defer p.object.deinit();
             p.object.put("execution_id", .{ .string = exec_id }) catch return;
-            p.object.put("stage_id", .{ .string = "s" }) catch return;
+            p.object.put("session_id", .{ .string = "s" }) catch return;
             p.object.put("message", .{ .string = "test" }) catch return;
             const req = protocol.serializeRequest(a, @intCast(idx + 10), protocol.Method.start_stage, p) catch return;
             defer a.free(req);
@@ -218,8 +218,8 @@ test "T5: session store count is correct after 16 parallel create+destroy cycles
             defer cp.object.deinit();
             cp.object.put("workspace_path", .{ .string = "/tmp/ws" }) catch return;
             var id_buf: [16]u8 = undefined;
-            const run_id = std.fmt.bufPrint(&id_buf, "r{d}", .{idx}) catch "r";
-            cp.object.put("run_id", .{ .string = run_id }) catch return;
+            const zombie_id = std.fmt.bufPrint(&id_buf, "r{d}", .{idx}) catch "r";
+            cp.object.put("zombie_id", .{ .string = zombie_id }) catch return;
 
             const cr = protocol.serializeRequest(a, @intCast(idx * 3 + 1), protocol.Method.create_execution, cp) catch return;
             defer a.free(cr);

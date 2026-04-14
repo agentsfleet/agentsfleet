@@ -85,11 +85,9 @@ test "crash: executor stops mid-session, client RPC returns TransportLoss" {
 
     const exec_id = try ec.createExecution("/tmp/ws", .{
         .trace_id = "t",
-        .run_id = "r",
+        .zombie_id = "r",
         .workspace_id = "w",
-        .stage_id = "s",
-        .role_id = "echo",
-        .skill_id = "echo",
+        .session_id = "s",
     });
     defer alloc.free(exec_id);
 
@@ -126,14 +124,12 @@ test "crash: worker disappears, lease reaper cleans orphaned sessions" {
     for (0..3) |i| {
         const session = try page.create(session_mod.Session);
         var stage_buf: [8]u8 = undefined;
-        const stage_id = std.fmt.bufPrint(&stage_buf, "s-{d}", .{i}) catch "s";
+        const session_id = std.fmt.bufPrint(&stage_buf, "s-{d}", .{i}) catch "s";
         session.* = session_mod.Session.create(page, "/tmp/test", .{
             .trace_id = "trace-orphan",
-            .run_id = "run-orphan",
+            .zombie_id = "run-orphan",
             .workspace_id = "ws-orphan",
-            .stage_id = stage_id,
-            .role_id = "echo",
-            .skill_id = "echo",
+            .session_id = session_id,
         }, .{}, 50); // 50ms lease
         try store.put(session);
     }
@@ -184,11 +180,9 @@ test "crash: executor restart, worker reconnects to new socket" {
 
     const exec_id1 = try ec1.createExecution("/tmp/ws", .{
         .trace_id = "t",
-        .run_id = "r",
+        .zombie_id = "r",
         .workspace_id = "w",
-        .stage_id = "s",
-        .role_id = "echo",
-        .skill_id = "echo",
+        .session_id = "s",
     });
     defer alloc.free(exec_id1);
     try std.testing.expectEqual(@as(usize, 1), store1.activeCount());
@@ -229,11 +223,9 @@ test "crash: executor restart, worker reconnects to new socket" {
     // But worker can create a new session successfully.
     const exec_id2 = try ec2.createExecution("/tmp/ws", .{
         .trace_id = "t2",
-        .run_id = "r2",
+        .zombie_id = "r2",
         .workspace_id = "w2",
-        .stage_id = "s2",
-        .role_id = "echo",
-        .skill_id = "echo",
+        .session_id = "s2",
     });
     defer alloc.free(exec_id2);
 
@@ -290,7 +282,7 @@ test "crash: cancelled session returns error on StartStage" {
     var create_params = std.json.Value{ .object = std.json.ObjectMap.init(alloc) };
     defer create_params.object.deinit();
     try create_params.object.put("workspace_path", .{ .string = "/tmp/test" });
-    try create_params.object.put("run_id", .{ .string = "r" });
+    try create_params.object.put("zombie_id", .{ .string = "r" });
 
     const create_json = try protocol.serializeRequest(alloc, 1, protocol.Method.create_execution, create_params);
     defer alloc.free(create_json);
@@ -315,7 +307,6 @@ test "crash: cancelled session returns error on StartStage" {
     var stage_params = std.json.Value{ .object = std.json.ObjectMap.init(alloc) };
     defer stage_params.object.deinit();
     try stage_params.object.put("execution_id", .{ .string = exec_id });
-    try stage_params.object.put("stage_id", .{ .string = "s" });
 
     const stage_json = try protocol.serializeRequest(alloc, 3, protocol.Method.start_stage, stage_params);
     defer alloc.free(stage_json);
