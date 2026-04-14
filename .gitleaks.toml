@@ -36,3 +36,16 @@ paths = [
   '''(^|/)zig-out/''',
   '''(^|/)\.tmp/zig-global-cache/''',
 ]
+
+[[allowlists]]
+description = "Auth middleware test fixtures — deterministic test signing secrets and high-entropy nonce strings used as test data (not real credentials). CI gitleaks version does not honor the path-based *_test.zig allowlist for git-history scans, so we pin explicit fingerprints."
+stopwords = [
+  "nonce1234567890abcdef",
+]
+regexTarget = "match"
+regexes = [
+  # Test nonce used in oauth_state_test.zig (all occurrences)
+  '''nonce1234567890abcdef''',
+  # Test Slack signing secret shape used in slack_signature_test.zig line 68
+  '''8f742231b10e8888abcd99yyyzz0ek9i''',
+]
