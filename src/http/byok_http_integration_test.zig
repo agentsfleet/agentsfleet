@@ -127,7 +127,7 @@ fn startTestServer(alloc: std.mem.Allocator) !*TestServer {
     srv.ctx.queue = &srv.queue;
     srv.ctx.oidc = &srv.verifier;
     srv.ctx.auth_sessions = &srv.session_store;
-    srv.server = try http_server.Server.init(&srv.ctx, .{ .port = port, .threads = 2, .workers = 2, .max_clients = 64 });
+    srv.server = try http_server.Server.initForTesting(&srv.ctx, .{ .port = port, .threads = 2, .workers = 2, .max_clients = 64 });
     srv.thread = try std.Thread.spawn(.{}, serverThread, .{srv.server});
     errdefer {
         srv.server.stop();

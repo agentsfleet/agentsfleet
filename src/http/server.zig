@@ -8,6 +8,9 @@ const router = @import("router.zig");
 const common = @import("handlers/common.zig");
 const otel_traces = @import("../observability/otel_traces.zig");
 const trace_mod = @import("../observability/trace.zig");
+const auth_mw = @import("../auth/middleware/mod.zig");
+const auth_adapter = @import("handlers/auth_adapter.zig");
+const route_table = @import("route_table.zig");
 const log = std.log.scoped(.http);
 
 pub const ServerConfig = struct {
@@ -21,11 +24,17 @@ pub const ServerConfig = struct {
 };
 
 /// httpz handler struct — carries Context and owns dispatch.
+///
+/// M18_002 C.2: `registry` is a pointer to the boot-time `MiddlewareRegistry`
+/// allocated in `src/cmd/serve.zig`. The registry must outlive the server
+/// (both live in the `run()` stack frame). All threads share this read-only
+/// pointer — no mutex needed because registry is immutable after `initChains()`.
 const App = struct {
     ctx: *handler.Context,
+    registry: *auth_mw.MiddlewareRegistry,
 
     pub fn handle(self: App, req: *httpz.Request, res: *httpz.Response) void {
-        dispatch(self.ctx, req, res);
+        dispatch(self.ctx, self.registry, req, res);
     }
 
     pub fn uncaughtError(_: App, _: *httpz.Request, res: *httpz.Response, _: anyerror) void {
@@ -42,7 +51,9 @@ pub const Server = struct {
     inner: httpz.Server(App),
     cfg: ServerConfig,
 
-    pub fn init(ctx: *handler.Context, cfg: ServerConfig) !*Server {
+    /// `registry` must outlive the server — typically a pointer to a var in
+    /// `src/cmd/serve.zig::run()` that was fully initialised via `initChains()`.
+    pub fn init(ctx: *handler.Context, registry: *auth_mw.MiddlewareRegistry, cfg: ServerConfig) !*Server {
         const alloc = ctx.alloc;
         const self = try alloc.create(Server);
         errdefer alloc.destroy(self);
@@ -60,7 +71,7 @@ pub const Server = struct {
                 .request = .{
                     .max_body_size = 2 * 1024 * 1024, // 2MB
                 },
-            }, .{ .ctx = ctx }),
+            }, .{ .ctx = ctx, .registry = registry }),
             .cfg = cfg,
         };
         return self;
@@ -81,19 +92,34 @@ pub const Server = struct {
         self.inner.deinit();
         self.alloc.destroy(self);
     }
+
+    /// Convenience constructor for tests that do not exercise the middleware
+    /// fast-path. Uses a module-level dummy registry (route table is empty in
+    /// C.2, so the registry is never dereferenced during test runs).
+    pub fn initForTesting(ctx: *handler.Context, cfg: ServerConfig) !*Server {
+        return init(ctx, &testing_dummy_registry, cfg);
+    }
 };
+
+/// Module-level dummy registry used by `Server.initForTesting`.
+///
+/// Fields are left undefined — no middleware `execute()` is called in tests
+/// because `route_table.specFor` returns null for every Route in C.2.
+/// Lives in the data segment (not the stack), so `initForTesting` returns
+/// no dangling pointer.
+var testing_dummy_registry: auth_mw.MiddlewareRegistry = undefined;
 
 // ── Request dispatch ──────────────────────────────────────────────────────
 
 /// Top-level request handler — dispatches based on method + path prefix.
-fn dispatch(ctx: *handler.Context, req: *httpz.Request, res: *httpz.Response) void {
+fn dispatch(ctx: *handler.Context, registry: *auth_mw.MiddlewareRegistry, req: *httpz.Request, res: *httpz.Response) void {
     const path = req.url.path;
 
     // Resolve trace context from inbound traceparent header or generate root.
     const tctx = common.resolveTraceContext(req);
     const start_ns: u64 = @intCast(std.time.nanoTimestamp());
 
-    if (dispatchMatchedRoute(ctx, req, res, path)) {
+    if (dispatchMatchedRoute(ctx, registry, req, res, path)) {
         emitRequestSpan(tctx, path, start_ns);
         return;
     }
@@ -107,7 +133,7 @@ fn emitRequestSpan(tctx: common.TraceContext, path: []const u8, start_ns: u64) v
     otel_traces.enqueueSpan(span);
 }
 
-fn dispatchMatchedRoute(ctx: *handler.Context, req: *httpz.Request, res: *httpz.Response, path: []const u8) bool {
+fn dispatchMatchedRoute(ctx: *handler.Context, registry: *auth_mw.MiddlewareRegistry, req: *httpz.Request, res: *httpz.Response, path: []const u8) bool {
     if (handler.parseSkillSecretRoute(path)) |route| {
         switch (req.method) {
             .PUT => handler.handlePutWorkspaceSkillSecret(ctx, req, res, route.workspace_id, route.skill_ref_encoded, route.key_name_encoded),
@@ -118,6 +144,33 @@ fn dispatchMatchedRoute(ctx: *handler.Context, req: *httpz.Request, res: *httpz.
     }
 
     const matched = router.match(path) orelse return false;
+
+    // M18_002 C.2: middleware fast-path. If a RouteSpec exists, run the chain
+    // and call spec.invoke. Falls through to the legacy switch when specFor
+    // returns null (all routes in C.2 — Batch D opts routes in one by one).
+    if (route_table.specFor(matched, registry)) |spec| {
+        var arena = std.heap.ArenaAllocator.init(ctx.alloc);
+        defer arena.deinit();
+        const alloc = arena.allocator();
+        const req_id = common.requestId(alloc);
+        var auth = auth_adapter.buildAuthCtx(res, alloc, req_id);
+
+        // For .receive_webhook routes, populate the URL-secret slot in AuthCtx
+        // so webhook_url_secret middleware can validate without DB access.
+        if (matched == .receive_webhook) {
+            auth.webhook_zombie_id = matched.receive_webhook.zombie_id;
+            auth.webhook_provided_secret = matched.receive_webhook.secret;
+        }
+
+        const outcome = auth_mw.run(auth_mw.AuthCtx, spec.middlewares, &auth, req) catch |e| {
+            common.internalOperationError(res, @errorName(e), req_id);
+            return true;
+        };
+        if (outcome == .short_circuit) return true;
+        spec.invoke(ctx, req, res, matched);
+        return true;
+    }
+
     switch (matched) {
         .healthz => handler.handleHealthz(ctx, req, res),
         .readyz => handler.handleReadyz(ctx, req, res),
@@ -270,7 +323,7 @@ test "Server.init then deinit without listen does not leak" {
     const alloc = std.testing.allocator;
     var ctx: handler.Context = undefined;
     ctx.alloc = alloc;
-    const srv = try Server.init(&ctx, .{ .threads = 1, .workers = 1, .max_clients = 4 });
+    const srv = try Server.initForTesting(&ctx, .{ .threads = 1, .workers = 1, .max_clients = 4 });
     srv.deinit();
 }
 

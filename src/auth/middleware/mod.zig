@@ -1,11 +1,17 @@
 //! Public surface of the auth middleware layer (M18_002).
 //!
 //! Re-exports the chain runner and the concrete middleware implementations.
-//! Callers import this module, construct the middleware structs they need,
-//! and attach each via its `.middleware()` method to route specs.
+//! Also defines `MiddlewareRegistry` — the boot-time struct that holds
+//! pre-instantiated middleware and pre-built policy chains. The host
+//! (src/cmd/serve.zig) constructs one registry at server boot and passes
+//! a pointer into the HTTP dispatcher via `App.registry`.
 //!
-//! Batch B.1 ships bearer + admin + role gates. Batch B.2 adds webhook
-//! HMAC/URL-secret middlewares. Batch B.3 adds Slack + OAuth.
+//! C.2 NOTE: `MiddlewareRegistry` is intentionally kept in this auth-layer
+//! module (not in src/http/handlers/common.zig) so the portability gate
+//! (`make test-auth`) covers the complete registry without http-layer
+//! imports. RULE FLL prevents touching common.zig (782 lines) without a
+//! split; the registry therefore lives here and the dispatcher receives it
+//! via App, not via Context.
 
 pub const chain = @import("chain.zig");
 pub const auth_ctx = @import("auth_ctx.zig");
@@ -23,6 +29,7 @@ pub const bearer_oidc = @import("bearer_oidc.zig");
 pub const bearer_or_api_key = @import("bearer_or_api_key.zig");
 pub const require_role = @import("require_role.zig");
 pub const webhook_hmac = @import("webhook_hmac.zig");
+pub const webhook_url_secret = @import("webhook_url_secret.zig");
 pub const slack_signature = @import("slack_signature.zig");
 pub const oauth_state = @import("oauth_state.zig");
 
@@ -31,5 +38,104 @@ pub const BearerOidc = bearer_oidc.BearerOidc;
 pub const BearerOrApiKey = bearer_or_api_key.BearerOrApiKey;
 pub const RequireRole = require_role.RequireRole;
 pub const WebhookHmac = webhook_hmac.WebhookHmac;
+pub const WebhookUrlSecret = webhook_url_secret.WebhookUrlSecret;
 pub const SlackSignature = slack_signature.SlackSignature;
 pub const OAuthState = oauth_state.OAuthState;
+
+pub const AuthPrincipal = auth_ctx.AuthPrincipal;
+
+/// Boot-time registry of pre-instantiated middleware structs and pre-built
+/// policy chains.
+///
+/// LIFETIME RULE: call `initChains()` exactly once, AFTER the registry is
+/// in its final memory location (i.e. after all struct fields are set and
+/// before the server starts accepting requests). Do NOT move or copy the
+/// registry struct after `initChains()` — the chain arrays store pointers
+/// into fields of this struct.
+pub const MiddlewareRegistry = struct {
+    // ── Concrete middleware instances ─────────────────────────────────────
+    bearer_or_api_key: BearerOrApiKey,
+    admin_api_key_mw: AdminApiKey,
+    require_role_admin: RequireRole,
+    require_role_operator: RequireRole,
+    slack_sig: SlackSignature,
+    webhook_hmac_mw: WebhookHmac,
+    oauth_state_mw: OAuthState,
+    webhook_url_secret_mw: WebhookUrlSecret,
+
+    // ── Pre-built policy chains ────────────────────────────────────────────
+    // Populated by initChains(). Fixed-size arrays so policy methods can
+    // return slices without allocating per request.
+    _bearer_chain: [1]Middleware(AuthCtx) = undefined,
+    _admin_chain: [2]Middleware(AuthCtx) = undefined,
+    _operator_chain: [2]Middleware(AuthCtx) = undefined,
+    _admin_api_key_chain: [1]Middleware(AuthCtx) = undefined,
+    _webhook_hmac_chain: [1]Middleware(AuthCtx) = undefined,
+    _webhook_secret_chain: [1]Middleware(AuthCtx) = undefined,
+    _slack_chain: [1]Middleware(AuthCtx) = undefined,
+    _oauth_chain: [1]Middleware(AuthCtx) = undefined,
+
+    /// Build the policy chain arrays. Must be called once after the registry
+    /// struct is placed in its final memory location.
+    pub fn initChains(self: *MiddlewareRegistry) void {
+        self._bearer_chain = .{self.bearer_or_api_key.middleware()};
+        self._admin_chain = .{
+            self.bearer_or_api_key.middleware(),
+            self.require_role_admin.middleware(),
+        };
+        self._operator_chain = .{
+            self.bearer_or_api_key.middleware(),
+            self.require_role_operator.middleware(),
+        };
+        self._admin_api_key_chain = .{self.admin_api_key_mw.middleware()};
+        self._webhook_hmac_chain = .{self.webhook_hmac_mw.middleware()};
+        self._webhook_secret_chain = .{self.webhook_url_secret_mw.middleware()};
+        self._slack_chain = .{self.slack_sig.middleware()};
+        self._oauth_chain = .{self.oauth_state_mw.middleware()};
+    }
+
+    // ── Policy accessors ────────────────────────────────────────────────────
+
+    /// No authentication required.
+    pub const none: []const Middleware(AuthCtx) = &.{};
+
+    /// Bearer token or admin API key, any role.
+    pub fn bearer(self: *MiddlewareRegistry) []const Middleware(AuthCtx) {
+        return &self._bearer_chain;
+    }
+
+    /// Bearer token or admin API key, admin role required.
+    pub fn admin(self: *MiddlewareRegistry) []const Middleware(AuthCtx) {
+        return &self._admin_chain;
+    }
+
+    /// Bearer token or admin API key, operator role required.
+    pub fn operator(self: *MiddlewareRegistry) []const Middleware(AuthCtx) {
+        return &self._operator_chain;
+    }
+
+    /// Admin API key only (no JWT path).
+    pub fn adminApiKey(self: *MiddlewareRegistry) []const Middleware(AuthCtx) {
+        return &self._admin_api_key_chain;
+    }
+
+    /// HMAC-SHA256 body signature (approval/generic webhooks).
+    pub fn webhookHmac(self: *MiddlewareRegistry) []const Middleware(AuthCtx) {
+        return &self._webhook_hmac_chain;
+    }
+
+    /// URL-embedded per-zombie secret.
+    pub fn webhookSecret(self: *MiddlewareRegistry) []const Middleware(AuthCtx) {
+        return &self._webhook_secret_chain;
+    }
+
+    /// Slack x-slack-signature verification.
+    pub fn slack(self: *MiddlewareRegistry) []const Middleware(AuthCtx) {
+        return &self._slack_chain;
+    }
+
+    /// OAuth state nonce + HMAC (GitHub/Slack OAuth callbacks).
+    pub fn oauthCallback(self: *MiddlewareRegistry) []const Middleware(AuthCtx) {
+        return &self._oauth_chain;
+    }
+};

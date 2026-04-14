@@ -185,7 +185,7 @@ fn startServer(alloc: std.mem.Allocator) !*RunningServer {
     running.ctx.queue = &running.queue;
     running.ctx.oidc = &running.verifier;
     running.ctx.auth_sessions = &running.session_store;
-    running.srv = try http_server.Server.init(&running.ctx, .{
+    running.srv = try http_server.Server.initForTesting(&running.ctx, .{
         .port = port,
         .threads = 1,
         .workers = 1,
