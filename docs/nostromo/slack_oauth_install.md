@@ -155,7 +155,7 @@ Once connected, your zombies can use Slack:
 
 ```bash
 # Request Slack access for a zombie (M9 grant flow)
-curl -X POST https://api.usezombie.com/v1/zombies/{zombie_id}/integration-requests \
+curl -X POST https://api.usezombie.com/v1/workspaces/{workspace_id}/zombies/{zombie_id}/integration-requests \
   -H "Authorization: Bearer {your_workspace_token}" \
   -d '{"service": "slack", "reason": "Need to post alerts to #ops channel"}'
 ```
