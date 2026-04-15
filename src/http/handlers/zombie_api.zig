@@ -2,7 +2,7 @@
 //
 // POST   /v1/workspaces/{ws}/zombies       → innerCreateZombie
 // GET    /v1/workspaces/{ws}/zombies       → innerListZombies
-// DELETE /v1/zombies/{id}                  → innerDeleteZombie  (migrated in later M24 slice)
+// DELETE /v1/workspaces/{ws}/zombies/{id}  → innerDeleteZombie
 
 const std = @import("std");
 const httpz = @import("httpz");

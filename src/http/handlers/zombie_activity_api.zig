@@ -1,8 +1,8 @@
 // M2_001 / M24_001: Zombie activity stream + credential API handlers.
 //
 // GET  /v1/workspaces/{ws}/zombies/{id}/activity  → innerListActivity
-// POST /v1/zombies/credentials  → innerStoreCredential     (migrated in later M24 slice)
-// GET  /v1/zombies/credentials  → innerListCredentials     (migrated in later M24 slice)
+// POST /v1/workspaces/{ws}/credentials            → innerStoreCredential
+// GET  /v1/workspaces/{ws}/credentials            → innerListCredentials
 
 const std = @import("std");
 const httpz = @import("httpz");
@@ -49,7 +49,22 @@ pub fn innerListActivity(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []con
         return;
     }
 
-    const page = activity_stream.queryByZombie(hx.ctx.pool, hx.alloc, zombie_id, cursor, limit) catch |err| {
+    // M24_001 / RULE WAUTH: verify the zombie belongs to the path workspace.
+    // authorizeWorkspace only checks the principal's access to the path ws; without
+    // this second check a caller in WS_A could read activity for a zombie in WS_B.
+    // Return 404 (not 403) to avoid leaking zombie existence across workspaces.
+    const zombie_ws_id = common.getZombieWorkspaceId(conn, hx.alloc, zombie_id) orelse {
+        hx.fail(ec.ERR_ZOMBIE_NOT_FOUND, ec.MSG_ZOMBIE_NOT_FOUND);
+        return;
+    };
+    if (!std.mem.eql(u8, zombie_ws_id, workspace_id)) {
+        hx.fail(ec.ERR_ZOMBIE_NOT_FOUND, ec.MSG_ZOMBIE_NOT_FOUND);
+        return;
+    }
+
+    // Reuse `conn` via queryByZombieOnConn instead of calling queryByZombie(pool,…)
+    // — otherwise we'd hold two pool connections concurrently for one request.
+    const page = activity_stream.queryByZombieOnConn(conn, hx.alloc, zombie_id, cursor, limit) catch |err| {
         if (err == error.InvalidCursor) {
             hx.fail(ec.ERR_INVALID_REQUEST, "Invalid cursor format");
             return;

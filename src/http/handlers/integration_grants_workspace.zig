@@ -1,6 +1,6 @@
 //! Integration Grant workspace-owner operations.
-//! GET    /v1/zombies/{id}/integration-grants        → innerListGrants  (bearer policy)
-//! DELETE /v1/zombies/{id}/integration-grants/{gid}  → innerRevokeGrant (bearer policy)
+//! GET    /v1/workspaces/{ws}/zombies/{id}/integration-grants        → innerListGrants  (bearer policy)
+//! DELETE /v1/workspaces/{ws}/zombies/{id}/integration-grants/{gid}  → innerRevokeGrant (bearer policy)
 
 const std = @import("std");
 const httpz = @import("httpz");
@@ -14,22 +14,12 @@ const log = std.log.scoped(.integration_grants);
 
 pub const Context = common.Context;
 
-// ── Workspace ownership check ─────────────────────────────────────────────
-
-/// Look up the workspace_id for a zombie. Returns null if not found.
-pub fn getZombieWorkspaceId(conn: *pg.Conn, alloc: std.mem.Allocator, zombie_id: []const u8) ?[]const u8 {
-    var q = PgQuery.from(conn.query(
-        \\SELECT workspace_id::text FROM core.zombies WHERE id = $1::uuid LIMIT 1
-    , .{zombie_id}) catch return null);
-    defer q.deinit();
-    const row_opt = q.next() catch return null;
-    const row = row_opt orelse return null;
-    const ws = row.get([]u8, 0) catch return null;
-    return alloc.dupe(u8, ws) catch null;
-}
+// M24_001: getZombieWorkspaceId lived here pre-M24 and was duplicated into
+// zombie_activity_api for the IDOR guard. It now lives in common.zig so all
+// workspace-scoped zombie routes share one implementation.
 
 // ── innerListGrants ────────────────────────────────────────────────────────
-// GET /v1/zombies/{zombie_id}/integration-grants
+// GET /v1/workspaces/{ws}/zombies/{zombie_id}/integration-grants
 // bearer policy — principal set by middleware.
 
 const GrantRow = struct {
@@ -55,7 +45,7 @@ pub fn innerListGrants(hx: hx_mod.Hx, workspace_id: []const u8, zombie_id: []con
     }
     // M24_001: verify zombie belongs to the path workspace (don't leak existence
     // of zombies in other workspaces — return 404, not 403).
-    const zombie_ws_id = getZombieWorkspaceId(conn, hx.alloc, zombie_id) orelse {
+    const zombie_ws_id = common.getZombieWorkspaceId(conn, hx.alloc, zombie_id) orelse {
         hx.fail(ec.ERR_ZOMBIE_NOT_FOUND, "Zombie not found");
         return;
     };
@@ -99,7 +89,7 @@ pub fn innerListGrants(hx: hx_mod.Hx, workspace_id: []const u8, zombie_id: []con
 }
 
 // ── innerRevokeGrant ───────────────────────────────────────────────────────
-// DELETE /v1/zombies/{zombie_id}/integration-grants/{grant_id}
+// DELETE /v1/workspaces/{ws}/zombies/{zombie_id}/integration-grants/{grant_id}
 // bearer policy — principal set by middleware.
 
 pub fn innerRevokeGrant(hx: hx_mod.Hx, workspace_id: []const u8, zombie_id: []const u8, grant_id: []const u8) void {
@@ -114,7 +104,7 @@ pub fn innerRevokeGrant(hx: hx_mod.Hx, workspace_id: []const u8, zombie_id: []co
         return;
     }
     // M24_001: verify zombie belongs to the path workspace.
-    const zombie_ws_id = getZombieWorkspaceId(conn, hx.alloc, zombie_id) orelse {
+    const zombie_ws_id = common.getZombieWorkspaceId(conn, hx.alloc, zombie_id) orelse {
         hx.fail(ec.ERR_ZOMBIE_NOT_FOUND, "Zombie not found");
         return;
     };
@@ -124,12 +114,18 @@ pub fn innerRevokeGrant(hx: hx_mod.Hx, workspace_id: []const u8, zombie_id: []co
     }
 
     const now_ms = std.time.milliTimestamp();
+    // Scope UPDATE by workspace_id as defence-in-depth — mirrors the pattern in
+    // killZombieOnConn. Even if the app-level zombie-ws match is ever bypassed by
+    // a future refactor, the SQL still refuses cross-workspace revocation.
     var rev_q = PgQuery.from(conn.query(
         \\UPDATE core.integration_grants
         \\SET status = 'revoked', revoked_at = $1
-        \\WHERE grant_id = $2 AND zombie_id = $3::uuid AND status != 'revoked'
+        \\WHERE grant_id = $2
+        \\  AND zombie_id = $3::uuid
+        \\  AND zombie_id IN (SELECT id FROM core.zombies WHERE workspace_id = $4::uuid)
+        \\  AND status != 'revoked'
         \\RETURNING grant_id
-    , .{ now_ms, grant_id, zombie_id }) catch {
+    , .{ now_ms, grant_id, zombie_id, workspace_id }) catch {
         common.internalDbError(hx.res, hx.req_id);
         return;
     });

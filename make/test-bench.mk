@@ -72,9 +72,12 @@ _bench-loadgen:  ## Internal: hey-backed HTTP loadgen gate (Tier-2).
 	 [ "$$TOTAL" -gt 0 ] || { echo "✗ hey produced zero samples"; exit 1; }; \
 	 ERR=$$(tail -n +2 "$$ARTIFACT" | awk -F, '{s=$$7+0; if (s<200||s>=300) c++} END{print c+0}'); \
 	 ERR_RATE=$$(awk -v e=$$ERR -v t=$$TOTAL 'BEGIN{printf "%.6f", e/t}'); \
-	 P50_S=$$(tail -n +2 "$$ARTIFACT" | awk -F, '{print $$1}' | sort -n | awk -v t=$$TOTAL 'NR==int(t*0.50){print; exit}'); \
-	 P95_S=$$(tail -n +2 "$$ARTIFACT" | awk -F, '{print $$1}' | sort -n | awk -v t=$$TOTAL 'NR==int(t*0.95){print; exit}'); \
-	 P99_S=$$(tail -n +2 "$$ARTIFACT" | awk -F, '{print $$1}' | sort -n | awk -v t=$$TOTAL 'NR==int(t*0.99){print; exit}'); \
+	 SORTED=".tmp/api-bench-sorted-$$$$.txt"; \
+	 trap 'rm -f "$$SORTED"' EXIT; \
+	 tail -n +2 "$$ARTIFACT" | awk -F, '{print $$1}' | sort -n > "$$SORTED"; \
+	 P50_S=$$(awk -v t=$$TOTAL 'NR==int(t*0.50){print; exit}' "$$SORTED"); \
+	 P95_S=$$(awk -v t=$$TOTAL 'NR==int(t*0.95){print; exit}' "$$SORTED"); \
+	 P99_S=$$(awk -v t=$$TOTAL 'NR==int(t*0.99){print; exit}' "$$SORTED"); \
 	 P50_MS=$$(awk -v v=$$P50_S 'BEGIN{printf "%.2f", v*1000}'); \
 	 P95_MS=$$(awk -v v=$$P95_S 'BEGIN{printf "%.2f", v*1000}'); \
 	 P99_MS=$$(awk -v v=$$P99_S 'BEGIN{printf "%.2f", v*1000}'); \

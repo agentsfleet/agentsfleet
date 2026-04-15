@@ -66,6 +66,16 @@ pub fn innerZombieSteer(hx: Hx, req: *httpz.Request, workspace_id: []const u8, z
     defer hx.ctx.pool.release(conn);
 
     // M24_001 / RULE WAUTH: principal must have access to the path workspace_id.
+    //
+    // Intentional widening vs M23_001: the original spec required
+    // `principal.workspace_scope_id != null` (operator-token-only). M24_001 drops
+    // that pre-check because `authorizeWorkspace` is the canonical workspace authZ
+    // gate used by every workspace-scoped handler — special-casing :steer to also
+    // require a workspace-scoped token would be inconsistent with create/list/
+    // delete/activity/credentials/grants. Membership-based principals with access
+    // to the workspace may now steer. If a role gate is ever needed (e.g. only
+    // `.operator`), add `common.requireRole(…, .operator)` here — don't re-add
+    // the token-scope check.
     if (!common.authorizeWorkspace(conn, hx.principal, workspace_id)) {
         hx.fail(ec.ERR_FORBIDDEN, "Workspace access denied");
         return;
