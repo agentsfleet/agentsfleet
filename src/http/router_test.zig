@@ -180,8 +180,21 @@ test "M24_001: workspace-scoped activity route resolves" {
     try std.testing.expect(match("/v1/zombies/activity") == null);
 }
 
-test "M2_001: remaining flat zombie routes still resolve (migrated in later M24 slices)" {
-    try std.testing.expectEqualDeep(Route.zombie_credentials, match("/v1/zombies/credentials").?);
+test "M24_001: workspace-scoped credentials route resolves" {
+    const ws_id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
+    try std.testing.expectEqualStrings(ws_id, switch (match("/v1/workspaces/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/credentials").?) {
+        .workspace_credentials => |id| id,
+        else => return error.TestExpectedEqual,
+    });
+    try std.testing.expect(match("/v1/zombies/credentials") == null);
+}
+
+test "M24_001: /credentials/llm still distinct from /credentials" {
+    const ws_id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
+    try std.testing.expectEqualStrings(ws_id, switch (match("/v1/workspaces/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/credentials/llm").?) {
+        .workspace_llm_credential => |id| id,
+        else => return error.TestExpectedEqual,
+    });
 }
 
 test "M24_001: flat /v1/zombies/{id} DELETE path is removed (bare 404 per RULE EP4)" {

@@ -201,11 +201,11 @@ pub fn invokeWorkspaceZombieActivity(hx: *Hx, req: *httpz.Request, route: router
     zombie_act.innerListActivity(hx.*, req, r.workspace_id, r.zombie_id);
 }
 
-pub fn invokeZombieCredentials(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    _ = route;
+pub fn invokeWorkspaceCredentials(hx: *Hx, req: *httpz.Request, route: router.Route) void {
+    const workspace_id = route.workspace_credentials;
     switch (req.method) {
-        .POST => zombie_act.innerStoreCredential(hx.*, req),
-        .GET => zombie_act.innerListCredentials(hx.*, req),
+        .POST => zombie_act.innerStoreCredential(hx.*, req, workspace_id),
+        .GET => zombie_act.innerListCredentials(hx.*, req, workspace_id),
         else => common.respondMethodNotAllowed(hx.res),
     }
 }
