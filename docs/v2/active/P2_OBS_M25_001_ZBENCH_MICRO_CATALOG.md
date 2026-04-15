@@ -4,7 +4,7 @@
 **Milestone:** M25
 **Workstream:** 001
 **Date:** Apr 16, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P2 — Operator/maintainer tooling; regression detection on hot paths
 **Batch:** B7+ — follows M24_001 (bench tooling migration to hey + dummy zbench stub)
 **Branch:** feat/m25-zbench-micro-catalog
