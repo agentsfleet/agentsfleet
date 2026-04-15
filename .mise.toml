@@ -1,0 +1,5 @@
+# Developer tool pins. `mise install` picks these up.
+# M24_001: hey is required for the Tier-2 HTTP loadgen half of `make bench`.
+
+[tools]
+"ubi:rakyll/hey" = "latest"
