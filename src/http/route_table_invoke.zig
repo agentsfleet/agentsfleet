@@ -215,7 +215,8 @@ pub fn invokeWorkspaceCredentials(hx: *Hx, req: *httpz.Request, route: router.Ro
 
 pub fn invokeZombieSteer(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     if (req.method != .POST) { common.respondMethodNotAllowed(hx.res); return; }
-    zombie_steer.innerZombieSteer(hx.*, req, route.zombie_steer);
+    const r = route.workspace_zombie_steer;
+    zombie_steer.innerZombieSteer(hx.*, req, r.workspace_id, r.zombie_id);
 }
 
 // ── Zombie telemetry ──────────────────────────────────────────────────────
