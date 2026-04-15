@@ -316,3 +316,24 @@ test "M24_001 IDOR: DELETE /workspaces/{my}/zombies/{foreign}/integration-grants
     defer r.deinit(ALLOC);
     try std.testing.expectEqual(@as(u16, 404), r.status);
 }
+
+// ── getZombieWorkspaceId orelse branch — nonexistent zombie ────────────────
+
+test "M24_001 IDOR: GET activity for nonexistent zombie returns 404 (getZombieWorkspaceId orelse branch)" {
+    const srv = try startTestServer(ALLOC);
+    defer {
+        if (srv.pool.acquire()) |c| { cleanupTestData(c); srv.pool.release(c); } else |_| {}
+        srv.deinit();
+        ALLOC.destroy(srv);
+    }
+
+    // UUIDv7 shape but nothing in core.zombies matches — exercises the `orelse`
+    // branch in common.getZombieWorkspaceId rather than the !eql path.
+    const nonexistent_zombie = "0195b4ba-8d3a-7f13-8abc-2b3e1edead01";
+    const url = try urlJoin(ALLOC, srv.port, "/v1/workspaces/{s}/zombies/{s}/activity", .{ TEST_WORKSPACE_ID, nonexistent_zombie });
+    defer ALLOC.free(url);
+
+    const r = try sendReq(ALLOC, url, .GET, TOKEN_OPERATOR, null);
+    defer r.deinit(ALLOC);
+    try std.testing.expectEqual(@as(u16, 404), r.status);
+}
