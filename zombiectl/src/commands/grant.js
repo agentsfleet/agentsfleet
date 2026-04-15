@@ -3,17 +3,23 @@
 // zombiectl grant list   --zombie <id>              → list grants for a zombie
 // zombiectl grant revoke --zombie <id> <grant_id>   → revoke a grant immediately
 
-import { ZOMBIES_PATH } from "../lib/api-paths.js";
+import { wsGrantsListPath, wsGrantPath } from "../lib/api-paths.js";
 import { writeError } from "../program/io.js";
 
-export async function commandGrant(ctx, args, _workspaces, deps) {
+export async function commandGrant(ctx, args, workspaces, deps) {
   const { parseFlags, request, apiHeaders, ui, printJson, printTable, writeLine } = deps;
 
   const action = args[0];
   const parsed = parseFlags(args.slice(1));
 
-  if (action === "list") return commandGrantList(ctx, parsed, { request, apiHeaders, ui, printJson, printTable, writeLine });
-  if (action === "revoke") return commandGrantRevoke(ctx, parsed, { request, apiHeaders, ui, printJson, writeLine, writeError, deps });
+  const wsId = workspaces.current_workspace_id;
+  if (!wsId) {
+    writeError(ctx, "NO_WORKSPACE", "no workspace selected. Run: zombiectl workspace add", deps);
+    return 1;
+  }
+
+  if (action === "list") return commandGrantList(ctx, parsed, wsId, { request, apiHeaders, ui, printJson, printTable, writeLine });
+  if (action === "revoke") return commandGrantRevoke(ctx, parsed, wsId, { request, apiHeaders, ui, printJson, writeLine, writeError, deps });
 
   if (ctx.jsonMode) {
     writeError(ctx, "UNKNOWN_COMMAND", `unknown grant subcommand: ${action ?? "(none)"}`, deps);
@@ -26,7 +32,7 @@ export async function commandGrant(ctx, args, _workspaces, deps) {
 
 // ── grant list ───────────────────────────────────────────────────────────────
 
-async function commandGrantList(ctx, parsed, deps) {
+async function commandGrantList(ctx, parsed, wsId, deps) {
   const { request, apiHeaders, ui, printJson, printTable, writeLine } = deps;
 
   const zombieId = parsed.options["zombie"] || parsed.positionals[0];
@@ -35,7 +41,7 @@ async function commandGrantList(ctx, parsed, deps) {
     return 2;
   }
 
-  const url = `${ZOMBIES_PATH}${encodeURIComponent(zombieId)}/integration-grants`;
+  const url = wsGrantsListPath(wsId, zombieId);
   const res = await request(ctx, url, { method: "GET", headers: apiHeaders(ctx) });
   const grants = Array.isArray(res.grants) ? res.grants : [];
 
@@ -65,7 +71,7 @@ async function commandGrantList(ctx, parsed, deps) {
 
 // ── grant revoke ─────────────────────────────────────────────────────────────
 
-async function commandGrantRevoke(ctx, parsed, deps) {
+async function commandGrantRevoke(ctx, parsed, wsId, deps) {
   const { request, apiHeaders, ui, printJson, writeLine } = deps;
 
   const zombieId = parsed.options["zombie"];
@@ -76,7 +82,7 @@ async function commandGrantRevoke(ctx, parsed, deps) {
     return 2;
   }
 
-  const url = `${ZOMBIES_PATH}${encodeURIComponent(zombieId)}/integration-grants/${encodeURIComponent(grantId)}`;
+  const url = wsGrantPath(wsId, zombieId, grantId);
   await request(ctx, url, { method: "DELETE", headers: apiHeaders(ctx) });
 
   if (ctx.jsonMode) {

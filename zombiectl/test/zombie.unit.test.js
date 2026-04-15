@@ -150,12 +150,12 @@ test("2.2: up sends source_markdown and trigger_markdown to API", async () => {
   try {
     const code = await commandZombie(makeCtx(), ["up"], workspaces, deps);
     assert.equal(code, 0);
-    assert.ok(requestUrl.includes("/v1/zombies/"));
-    // M2_002: no config_json — server parses trigger_markdown
+    // M24_001: workspace-scoped path; workspace_id in URL, not in body.
+    assert.ok(requestUrl.includes(`/v1/workspaces/${WS_ID}/zombies`));
     assert.ok(requestBody.source_markdown);
     assert.ok(requestBody.trigger_markdown);
     assert.equal(requestBody.config_json, undefined);
-    assert.equal(requestBody.workspace_id, WS_ID);
+    assert.equal(requestBody.workspace_id, undefined);
   } finally {
     process.chdir(origCwd);
   }
@@ -206,9 +206,11 @@ test("5.3: credential add stores via API", async () => {
     deps,
   );
   assert.equal(code, 0);
-  assert.ok(requestUrl.includes("/v1/zombies/credentials"));
+  // M24_001: workspace-scoped credentials path; workspace_id in URL, not body.
+  assert.ok(requestUrl.includes(`/v1/workspaces/${WS_ID}/credentials`));
   assert.equal(requestBody.name, "agentmail");
   assert.equal(requestBody.value, "sk-test-123");
+  assert.equal(requestBody.workspace_id, undefined);
 });
 
 test("5.3: credential add without name returns exit 2", async () => {
@@ -301,7 +303,7 @@ test("kill sends DELETE to API", async () => {
 
 // ── logs ───────────────────────────────────────────────────────────────
 
-test("logs fetches activity stream", async () => {
+test("logs fetches per-zombie activity stream", async () => {
   let requestUrl = null;
   const deps = makeDeps({
     request: async (_ctx, url) => {
@@ -310,9 +312,16 @@ test("logs fetches activity stream", async () => {
     },
   });
 
-  const code = await commandZombie(makeCtx(), ["logs"], workspaces, deps);
+  const ZOMBIE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
+  const code = await commandZombie(makeCtx(), ["logs", "--zombie", ZOMBIE_ID], workspaces, deps);
   assert.equal(code, 0);
-  assert.ok(requestUrl.includes("/v1/zombies/activity"));
+  // M24_001: activity is now per-zombie at /v1/workspaces/{ws}/zombies/{id}/activity
+  assert.ok(requestUrl.includes(`/v1/workspaces/${WS_ID}/zombies/${ZOMBIE_ID}/activity`));
+});
+
+test("logs without --zombie returns exit 2", async () => {
+  const code = await commandZombie(makeCtx(), ["logs"], workspaces, makeDeps());
+  assert.equal(code, 2);
 });
 
 // ── unknown subcommand ─────────────────────────────────────────────────

@@ -6,7 +6,12 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { join, dirname, basename } from "node:path";
 import { fileURLToPath } from "node:url";
-import { ZOMBIES_PATH } from "../lib/api-paths.js";
+import {
+  wsZombiesPath,
+  wsZombiePath,
+  wsZombieActivityPath,
+  wsCredentialsPath,
+} from "../lib/api-paths.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const TEMPLATES_DIR = join(__dirname, "../../templates");
@@ -149,12 +154,12 @@ async function commandUp(ctx, args, workspaces, deps) {
     return 1;
   }
 
-  // Deploy to UseZombie cloud — server parses TRIGGER.md, no client-side YAML parsing
-  const res = await request(ctx, ZOMBIES_PATH, {
+  // Deploy to UseZombie cloud — server parses TRIGGER.md, no client-side YAML parsing.
+  // M24_001: workspace_id moved to URL path (RULE RAD §4); body carries content only.
+  const res = await request(ctx, wsZombiesPath(wsId), {
     method: "POST",
     headers: { ...apiHeaders(ctx), "Content-Type": "application/json" },
     body: JSON.stringify({
-      workspace_id: wsId,
       source_markdown: skillMd,
       trigger_markdown: triggerMd,
     }),
@@ -191,7 +196,7 @@ async function commandStatus(ctx, args, workspaces, deps) {
     return 1;
   }
 
-  const res = await request(ctx, `${ZOMBIES_PATH}?workspace_id=${encodeURIComponent(wsId)}`, {
+  const res = await request(ctx, wsZombiesPath(wsId), {
     method: "GET",
     headers: apiHeaders(ctx),
   });
@@ -235,10 +240,11 @@ async function commandKill(ctx, args, workspaces, deps) {
     return 1;
   }
 
-  // If no name given, kill all zombies in the workspace
+  // M24_001: per-zombie DELETE only; the collection-DELETE (kill-all) was never
+  // implemented server-side — falls through to a 405 if attempted.
   const endpoint = zombieName
-    ? `${ZOMBIES_PATH}${encodeURIComponent(zombieName)}?workspace_id=${encodeURIComponent(wsId)}`
-    : `${ZOMBIES_PATH}?workspace_id=${encodeURIComponent(wsId)}`;
+    ? wsZombiePath(wsId, zombieName)
+    : wsZombiesPath(wsId);
 
   const res = await request(ctx, endpoint, {
     method: "DELETE",
@@ -268,7 +274,13 @@ async function commandLogs(ctx, args, workspaces, deps) {
     return 1;
   }
 
-  let url = `${ZOMBIES_PATH}activity?workspace_id=${encodeURIComponent(wsId)}&limit=${limit}`;
+  // M24_001: activity is now per-zombie — require --zombie <id>.
+  const zombieId = parsed.options.zombie || parsed.positionals[0];
+  if (!zombieId) {
+    writeError(ctx, "MISSING_ARGUMENT", "logs requires --zombie <id>", deps);
+    return 2;
+  }
+  let url = `${wsZombieActivityPath(wsId, zombieId)}?limit=${encodeURIComponent(limit)}`;
   if (parsed.options.cursor) {
     url += `&cursor=${encodeURIComponent(parsed.options.cursor)}`;
   }
@@ -337,11 +349,11 @@ async function commandCredential(ctx, args, workspaces, deps) {
       return 1;
     }
 
-    await request(ctx, `${ZOMBIES_PATH}credentials`, {
+    // M24_001: workspace_id in URL path, body carries content only.
+    await request(ctx, wsCredentialsPath(wsId), {
       method: "POST",
       headers: { ...apiHeaders(ctx), "Content-Type": "application/json" },
       body: JSON.stringify({
-        workspace_id: wsId,
         name: credName,
         value: credValue,
       }),
@@ -356,7 +368,7 @@ async function commandCredential(ctx, args, workspaces, deps) {
   }
 
   if (action === "list") {
-    const res = await request(ctx, `${ZOMBIES_PATH}credentials?workspace_id=${encodeURIComponent(wsId)}`, {
+    const res = await request(ctx, wsCredentialsPath(wsId), {
       method: "GET",
       headers: apiHeaders(ctx),
     });
