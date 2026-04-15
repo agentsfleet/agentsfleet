@@ -46,7 +46,9 @@ pub const Route = union(enum) {
     delete_workspace_zombie: matchers.WorkspaceZombieRoute, // DELETE /v1/workspaces/{ws}/zombies/{id}
     workspace_zombie_activity: matchers.ZombieTelemetryRoute, // GET /v1/workspaces/{ws}/zombies/{id}/activity
     workspace_credentials: []const u8, // GET|POST /v1/workspaces/{ws}/credentials
-    // NOTE: flat .zombie_activity and .zombie_credentials removed by M24_001 slices 3-4.
+    // M23_001: Live steering — POST /v1/zombies/{id}:steer (flat path preserved through merge;
+    // workspace-scoped migration tracked as M24_001 slice 6).
+    zombie_steer: []const u8, // zombie_id
     // M18_001: zombie execution telemetry
     zombie_telemetry: ZombieTelemetryRoute, // GET /v1/workspaces/{ws}/zombies/{id}/telemetry
     internal_telemetry, // GET /internal/v1/telemetry
@@ -136,6 +138,10 @@ pub fn match(path: []const u8) ?Route {
     if (matchWorkspaceSuffix(path, "/zombies")) |workspace_id| return .{ .workspace_zombies = workspace_id };
     // credentials/llm is already handled above; /credentials (plain) is workspace-level credential vault.
     if (matchWorkspaceSuffix(path, "/credentials")) |workspace_id| return .{ .workspace_credentials = workspace_id };
+
+    // M23_001: zombie steer — flat /v1/zombies/{id}:steer path preserved through M24 merge.
+    // To be migrated to /v1/workspaces/{ws}/zombies/{id}:steer in M24_001 slice 6.
+    if (matchers.matchZombieAction(path, ":steer")) |zombie_id| return .{ .zombie_steer = zombie_id };
 
     // M18_001: customer telemetry endpoint
     if (matchers.matchZombieTelemetry(path)) |route| return .{ .zombie_telemetry = route };
@@ -285,6 +291,23 @@ test "match resolves Slack install route (M8_001)" {
     try std.testing.expectEqualDeep(Route.slack_interactions, match("/v1/slack/interactions").?);
     try std.testing.expect(match("/v1/slack/other") == null);
     try std.testing.expect(match("/v1/slack/") == null);
+}
+
+// ── M23_001 route tests ───────────────────────────────────────────────────────
+
+test "match resolves zombie_steer route (M23_001)" {
+    const zombie_id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
+    try std.testing.expectEqualStrings(
+        zombie_id,
+        switch (match("/v1/zombies/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11:steer").?) {
+            .zombie_steer => |id| id,
+            else => return error.TestExpectedEqual,
+        },
+    );
+    // M24_001: plain flat /v1/zombies/{id} is removed — now 404 (not steer, not delete).
+    try std.testing.expect(match("/v1/zombies/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11") == null);
+    // multi-segment rejected
+    try std.testing.expect(match("/v1/zombies/a/b:steer") == null);
 }
 
 // Webhook + approval route tests are in router_test.zig.

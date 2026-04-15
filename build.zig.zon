@@ -10,7 +10,7 @@
         },
         .pg = .{
             .url = "git+https://github.com/karlseguin/pg.zig#master",
-            .hash = "pg-0.0.0-Wp_7gXFoBgD0fQ72WICKa-bxLga03AXXQ3BbIsjjohQ3",
+            .hash = "pg-0.0.0-Wp_7gV1pBgAN_atgbzpICLXPcJ0gJJxVfFmuaprjCUew",
         },
         .posthog = .{
             .url = "git+https://github.com/usezombie/posthog-zig.git#v0.1.3",

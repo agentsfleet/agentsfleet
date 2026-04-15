@@ -1,6 +1,7 @@
 // Zombie event loop helpers — extracted per RULE FLL (350-line gate).
 //
-// Session checkpoint, credential resolution, context update, truncation, backoff.
+// Session checkpoint, credential resolution, context update, truncation, backoff,
+// execution tracking (M23_001), steer poll (M23_001), sandbox execution.
 // Called by event_loop.zig.
 
 const std = @import("std");
@@ -15,6 +16,9 @@ const activity_stream = @import("activity_stream.zig");
 const metrics_counters = @import("../observability/metrics_counters.zig");
 const telemetry_mod = @import("../observability/telemetry.zig");
 const redis_zombie = @import("../queue/redis_zombie.zig");
+const queue_consts = @import("../queue/constants.zig");
+const executor_client = @import("../executor/client.zig");
+const id_format = @import("../types/id_format.zig");
 
 const types = @import("event_loop_types.zig");
 const ZombieSession = types.ZombieSession;
@@ -179,4 +183,121 @@ pub fn recordDeliverError(cfg: EventLoopConfig, session: *ZombieSession, event_i
             .exit_status = EXIT_DELIVER_ERROR,
         });
     }
+}
+
+// ── M23_001: Execution tracking ──────────────────────────────────────────────
+
+/// Set active execution in session and DB. Non-fatal — tracking is observability only.
+/// Called immediately after createExecution succeeds.
+pub fn setExecutionActive(alloc: Allocator, session: *ZombieSession, execution_id: []const u8, pool: *pg.Pool) void {
+    const owned = alloc.dupe(u8, execution_id) catch return;
+    if (session.execution_id) |old| alloc.free(old);
+    session.execution_id = owned;
+    session.execution_started_at = std.time.milliTimestamp();
+    const conn = pool.acquire() catch return;
+    defer pool.release(conn);
+    _ = conn.exec(
+        \\UPDATE core.zombie_sessions
+        \\SET execution_id = $1, execution_started_at = $2
+        \\WHERE zombie_id = $3::uuid
+    , .{ owned, session.execution_started_at, session.zombie_id }) catch {};
+}
+
+/// Clear active execution in session and DB. Non-fatal.
+/// Called in defer after destroyExecution, and at claimZombie startup (crash recovery).
+pub fn clearExecutionActive(alloc: Allocator, session: *ZombieSession, pool: *pg.Pool) void {
+    if (session.execution_id) |old| {
+        alloc.free(old);
+        session.execution_id = null;
+    }
+    session.execution_started_at = 0;
+    const conn = pool.acquire() catch return;
+    defer pool.release(conn);
+    _ = conn.exec(
+        \\UPDATE core.zombie_sessions
+        \\SET execution_id = NULL, execution_started_at = NULL
+        \\WHERE zombie_id = $1::uuid
+    , .{session.zombie_id}) catch {};
+}
+
+// ── M23_001: Steer poll ───────────────────────────────────────────────────────
+
+/// Poll Redis for a pending steer signal and inject it as a synthetic event.
+/// Called at the top of the runEventLoop while iteration, before pollNextEvent.
+/// Non-fatal: errors are logged and discarded so they never stall the event loop.
+pub fn pollSteerAndInject(alloc: Allocator, cfg: EventLoopConfig, session: *const ZombieSession) void {
+    var key_buf: [128]u8 = undefined;
+    const key = std.fmt.bufPrint(&key_buf, "zombie:{s}{s}", .{
+        session.zombie_id, queue_consts.zombie_steer_key_suffix,
+    }) catch return;
+
+    const msg = cfg.redis.getDel(key) catch null orelse return;
+    defer alloc.free(msg);
+
+    const event_id = id_format.generateZombieId(alloc) catch {
+        log.warn("zombie_event_loop.steer_poll_oom zombie_id={s}", .{session.zombie_id});
+        return;
+    };
+    defer alloc.free(event_id);
+
+    cfg.redis.xaddZombieEvent(session.zombie_id, event_id, "steer", "operator", msg) catch |err| {
+        log.warn("zombie_event_loop.steer_inject_fail zombie_id={s} err={s}", .{ session.zombie_id, @errorName(err) });
+    };
+    log.info("zombie_event_loop.steer_injected zombie_id={s} event_id={s}", .{ session.zombie_id, event_id });
+}
+
+// ── Sandbox execution (moved from event_loop.zig for RULE FLL) ───────────────
+
+fn parseSessionContext(alloc: Allocator, json: []const u8) ?std.json.Value {
+    if (json.len <= 2) return null;
+    const parsed = std.json.parseFromSlice(std.json.Value, alloc, json, .{}) catch return null;
+    return parsed.value;
+}
+
+/// Create executor session, run the stage, destroy session. Tracks execution_id
+/// in session + DB for API visibility (M23_001).
+pub fn executeInSandbox(
+    alloc: Allocator,
+    session: *ZombieSession,
+    event: *const redis_zombie.ZombieEvent,
+    cfg: EventLoopConfig,
+) !executor_client.ExecutorClient.StageResult {
+    const context_val = parseSessionContext(alloc, session.context_json);
+
+    // trace_id and session_id both bind to event.event_id: no upstream trace
+    // propagator exists yet, so the per-event ID doubles as both the distributed
+    // trace handle and the per-turn session identifier.
+    const execution_id = cfg.executor.createExecution(cfg.workspace_path, .{
+        .trace_id = event.event_id,
+        .zombie_id = session.zombie_id,
+        .workspace_id = session.workspace_id,
+        .session_id = event.event_id,
+    }) catch |err| {
+        log.err("zombie_event_loop.exec_create_fail zombie_id={s} event_id={s} error_code=" ++ error_codes.ERR_EXEC_SESSION_CREATE_FAILED, .{ session.zombie_id, event.event_id });
+        return err;
+    };
+    // clearExecutionActive defer runs BEFORE this (LIFO), so DB is cleared before socket is closed.
+    defer {
+        cfg.executor.destroyExecution(execution_id) catch {};
+        alloc.free(execution_id);
+    }
+
+    // M23_001: track execution in session + DB so the steer API can read it.
+    setExecutionActive(alloc, session, execution_id, cfg.pool);
+    defer clearExecutionActive(alloc, session, cfg.pool);
+
+    const api_key: []const u8 = resolveFirstCredential(alloc, cfg.pool, session) catch "";
+    defer if (api_key.len > 0) alloc.free(api_key);
+
+    return cfg.executor.startStage(execution_id, .{
+        .agent_config = .{
+            .system_prompt = session.instructions,
+            .api_key = api_key,
+        },
+        .message = event.data_json,
+        .context = context_val,
+    }) catch |err| {
+        log.err("zombie_event_loop.stage_fail zombie_id={s} event_id={s} error_code=" ++ error_codes.ERR_EXEC_STAGE_START_FAILED, .{ session.zombie_id, event.event_id });
+        return err;
+    };
 }
