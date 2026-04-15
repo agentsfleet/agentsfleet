@@ -315,6 +315,21 @@ pub fn mapOidcVerifyError(err: anyerror) AuthError {
     };
 }
 
+/// Look up the workspace_id a zombie belongs to. Returns null if the zombie
+/// does not exist or the query fails. Result is duped into `alloc` (typically
+/// the request-scoped arena, `hx.alloc`). Used by workspace-scoped zombie
+/// routes to reject cross-workspace IDOR attempts (RULE WAUTH defence-in-depth).
+pub fn getZombieWorkspaceId(conn: *pg.Conn, alloc: std.mem.Allocator, zombie_id: []const u8) ?[]const u8 {
+    var q = PgQuery.from(conn.query(
+        \\SELECT workspace_id::text FROM core.zombies WHERE id = $1::uuid LIMIT 1
+    , .{zombie_id}) catch return null);
+    defer q.deinit();
+    const row_opt = q.next() catch return null;
+    const row = row_opt orelse return null;
+    const ws = row.get([]u8, 0) catch return null;
+    return alloc.dupe(u8, ws) catch null;
+}
+
 pub fn authorizeWorkspace(conn: *pg.Conn, principal: AuthPrincipal, workspace_id: []const u8) bool {
     var q = PgQuery.from(blk: {
         if (principal.tenant_id) |tenant_id| {

@@ -88,10 +88,22 @@ pub fn queryByZombie(
     cursor: ?[]const u8,
     limit: u32,
 ) !ActivityPage {
-    const page_limit = @min(limit, MAX_ACTIVITY_PAGE_LIMIT);
     const conn = try pool.acquire();
     defer pool.release(conn);
+    return queryByZombieOnConn(conn, alloc, zombie_id, cursor, limit);
+}
 
+// queryByZombieOnConn reuses a caller-owned connection. Use this from request
+// handlers that already acquired a conn for authorization — it avoids holding
+// two connections from the pool concurrently for a single request.
+pub fn queryByZombieOnConn(
+    conn: *pg.Conn,
+    alloc: Allocator,
+    zombie_id: []const u8,
+    cursor: ?[]const u8,
+    limit: u32,
+) !ActivityPage {
+    const page_limit = @min(limit, MAX_ACTIVITY_PAGE_LIMIT);
     return if (cursor) |c|
         fetchActivityPage(conn, alloc, .zombie, zombie_id, c, page_limit)
     else

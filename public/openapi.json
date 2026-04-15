@@ -2170,7 +2170,7 @@
       }
     }
   },
-  "/v1/zombies/{zombie_id}:steer": {
+  "/v1/workspaces/{workspace_id}/zombies/{zombie_id}:steer": {
     "post": {
       "summary": "Steer a zombie's active run",
       "description": "Queues a steering message for the zombie. The message is written to Redis (zombie:{id}:steer, 300s TTL); the worker injects it as a synthetic event on the next event loop iteration. message_queued indicates whether the Redis write succeeded. execution_active indicates whether the zombie is currently executing when the request is handled.",
@@ -2178,6 +2178,13 @@
       "tags": ["Zombies"],
       "security": [{ "BearerAuth": [] }],
       "parameters": [
+        {
+          "name": "workspace_id",
+          "in": "path",
+          "required": true,
+          "schema": { "type": "string" },
+          "description": "The workspace UUID"
+        },
         {
           "name": "zombie_id",
           "in": "path",

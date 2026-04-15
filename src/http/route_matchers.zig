@@ -28,9 +28,14 @@ pub fn isSingleSegment(value: []const u8) bool {
 
 // matchZombieTelemetry matches /v1/workspaces/{ws_id}/zombies/{zombie_id}/telemetry.
 pub fn matchZombieTelemetry(path: []const u8) ?ZombieTelemetryRoute {
+    return matchWorkspaceZombieSuffix(path, "/telemetry");
+}
+
+// M24_001: generic helper for /v1/workspaces/{ws}/zombies/{id}/{suffix} routes.
+// Returns ZombieTelemetryRoute (ws_id + zombie_id) for any suffix.
+pub fn matchWorkspaceZombieSuffix(path: []const u8, suffix: []const u8) ?ZombieTelemetryRoute {
     const prefix = "/v1/workspaces/";
     const mid = "/zombies/";
-    const suffix = "/telemetry";
 
     if (!std.mem.startsWith(u8, path, prefix)) return null;
     if (!std.mem.endsWith(u8, path, suffix)) return null;
@@ -77,25 +82,46 @@ pub fn matchWebhookAction(path: []const u8, action: []const u8) ?[]const u8 {
     return inner;
 }
 
-// M23_001: matchZombieAction matches /v1/zombies/{zombie_id}:action (colon-suffixed, no slash).
-// Used for POST /v1/zombies/{id}:steer. Returns the zombie_id.
-pub fn matchZombieAction(path: []const u8, action: []const u8) ?[]const u8 {
-    const prefix = "/v1/zombies/";
+// M24_001: matchWorkspaceZombieAction matches /v1/workspaces/{ws}/zombies/{zombie_id}{action}.
+// action is colon-prefixed (e.g. ":steer") — Google Custom Method style.
+pub fn matchWorkspaceZombieAction(path: []const u8, action: []const u8) ?WorkspaceZombieRoute {
+    const prefix = "/v1/workspaces/";
+    const mid = "/zombies/";
+
     if (!std.mem.startsWith(u8, path, prefix)) return null;
     if (!std.mem.endsWith(u8, path, action)) return null;
+
     const inner = path[prefix.len .. path.len - action.len];
-    if (!isSingleSegment(inner)) return null;
-    return inner;
+    const sep = std.mem.indexOf(u8, inner, mid) orelse return null;
+    const ws_id = inner[0..sep];
+    const zombie_id = inner[sep + mid.len ..];
+
+    if (!isSingleSegment(ws_id)) return null;
+    if (!isSingleSegment(zombie_id)) return null;
+    return .{ .workspace_id = ws_id, .zombie_id = zombie_id };
 }
 
-// M2_001: matchZombieId matches /v1/zombies/{zombie_id} for DELETE.
-pub fn matchZombieId(path: []const u8) ?[]const u8 {
-    const prefix = "/v1/zombies/";
+// M24_001: WorkspaceZombieRoute carries workspace_id + zombie_id for /v1/workspaces/{ws}/zombies/{zombie_id}.
+pub const WorkspaceZombieRoute = struct {
+    workspace_id: []const u8,
+    zombie_id: []const u8,
+};
+
+// M24_001: matchWorkspaceZombie matches /v1/workspaces/{ws_id}/zombies/{zombie_id}.
+// Used for DELETE and (in later slices) per-zombie sub-resources.
+pub fn matchWorkspaceZombie(path: []const u8) ?WorkspaceZombieRoute {
+    const prefix = "/v1/workspaces/";
+    const mid = "/zombies/";
+
     if (!std.mem.startsWith(u8, path, prefix)) return null;
-    const zombie_id = path[prefix.len..];
-    if (std.mem.eql(u8, zombie_id, "activity") or std.mem.eql(u8, zombie_id, "credentials")) return null;
+    const rest = path[prefix.len..];
+    const sep = std.mem.indexOf(u8, rest, mid) orelse return null;
+    const ws_id = rest[0..sep];
+    const zombie_id = rest[sep + mid.len ..];
+
+    if (!isSingleSegment(ws_id)) return null;
     if (!isSingleSegment(zombie_id)) return null;
-    return zombie_id;
+    return .{ .workspace_id = ws_id, .zombie_id = zombie_id };
 }
 
 // M9_001: WorkspaceAgentRoute carries workspace_id + agent_id for external-agent DELETE.
@@ -118,34 +144,36 @@ pub fn matchWorkspaceAgentDelete(path: []const u8) ?WorkspaceAgentRoute {
     return .{ .workspace_id = workspace_id, .agent_id = agent_id };
 }
 
-// M9_001: matchZombieSuffix matches /v1/zombies/{id}/{suffix} and returns the zombie_id.
-pub fn matchZombieSuffix(path: []const u8, suffix: []const u8) ?[]const u8 {
-    const prefix = "/v1/zombies/";
-    if (!std.mem.startsWith(u8, path, prefix)) return null;
-    if (!std.mem.endsWith(u8, path, suffix)) return null;
-    const inner = path[prefix.len .. path.len - suffix.len];
-    if (!isSingleSegment(inner)) return null;
-    return inner;
-}
-
-// M9_001: ZombieGrantRoute carries zombie_id + grant_id for DELETE grant.
-pub const ZombieGrantRoute = struct {
+// M24_001: WorkspaceZombieGrantRoute carries ws_id + zombie_id + grant_id for grant DELETE.
+pub const WorkspaceZombieGrantRoute = struct {
+    workspace_id: []const u8,
     zombie_id: []const u8,
     grant_id: []const u8,
 };
 
-// M9_001: matchZombieGrantRevoke matches /v1/zombies/{zombie_id}/integration-grants/{grant_id}.
-pub fn matchZombieGrantRevoke(path: []const u8) ?ZombieGrantRoute {
-    const prefix = "/v1/zombies/";
-    const mid = "/integration-grants/";
+// M24_001: matchWorkspaceZombieGrant matches
+//   /v1/workspaces/{ws}/zombies/{zombie_id}/integration-grants/{grant_id}.
+pub fn matchWorkspaceZombieGrant(path: []const u8) ?WorkspaceZombieGrantRoute {
+    const prefix = "/v1/workspaces/";
+    const ws_mid = "/zombies/";
+    const grant_mid = "/integration-grants/";
+
     if (!std.mem.startsWith(u8, path, prefix)) return null;
     const rest = path[prefix.len..];
-    const slash = std.mem.indexOf(u8, rest, mid) orelse return null;
-    const zombie_id = rest[0..slash];
+
+    const ws_sep = std.mem.indexOf(u8, rest, ws_mid) orelse return null;
+    const ws_id = rest[0..ws_sep];
+    if (!isSingleSegment(ws_id)) return null;
+
+    const after_ws = rest[ws_sep + ws_mid.len ..];
+    const grant_sep = std.mem.indexOf(u8, after_ws, grant_mid) orelse return null;
+    const zombie_id = after_ws[0..grant_sep];
     if (!isSingleSegment(zombie_id)) return null;
-    const grant_id = rest[slash + mid.len ..];
+
+    const grant_id = after_ws[grant_sep + grant_mid.len ..];
     if (!isSingleSegment(grant_id)) return null;
-    return .{ .zombie_id = zombie_id, .grant_id = grant_id };
+
+    return .{ .workspace_id = ws_id, .zombie_id = zombie_id, .grant_id = grant_id };
 }
 
 test "matchWorkspaceAgentDelete: workspace_id and agent_id" {
@@ -157,35 +185,41 @@ test "matchWorkspaceAgentDelete: workspace_id and agent_id" {
     try std.testing.expect(matchWorkspaceAgentDelete("/v1/workspaces/a/b/external-agents/ag1") == null);
 }
 
-test "matchZombieSuffix: integration-requests and integration-grants" {
-    const id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
-    try std.testing.expectEqualStrings(id, matchZombieSuffix("/v1/zombies/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/integration-requests", "/integration-requests").?);
-    try std.testing.expectEqualStrings(id, matchZombieSuffix("/v1/zombies/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/integration-grants", "/integration-grants").?);
-    try std.testing.expect(matchZombieSuffix("/v1/zombies//integration-requests", "/integration-requests") == null);
-    try std.testing.expect(matchZombieSuffix("/v1/zombies/a/b/integration-requests", "/integration-requests") == null);
-}
-
-test "matchZombieGrantRevoke: zombie_id and grant_id" {
-    const r = matchZombieGrantRevoke("/v1/zombies/z1/integration-grants/g1").?;
+test "matchWorkspaceZombieGrant: ws_id, zombie_id, grant_id" {
+    const r = matchWorkspaceZombieGrant("/v1/workspaces/ws1/zombies/z1/integration-grants/g1").?;
+    try std.testing.expectEqualStrings("ws1", r.workspace_id);
     try std.testing.expectEqualStrings("z1", r.zombie_id);
     try std.testing.expectEqualStrings("g1", r.grant_id);
-    try std.testing.expect(matchZombieGrantRevoke("/v1/zombies/z1/integration-grants/") == null);
-    try std.testing.expect(matchZombieGrantRevoke("/v1/zombies//integration-grants/g1") == null);
-    try std.testing.expect(matchZombieGrantRevoke("/v1/zombies/z1/z2/integration-grants/g1") == null);
+    try std.testing.expect(matchWorkspaceZombieGrant("/v1/workspaces/ws1/zombies/z1/integration-grants/") == null);
+    try std.testing.expect(matchWorkspaceZombieGrant("/v1/workspaces//zombies/z1/integration-grants/g1") == null);
+    try std.testing.expect(matchWorkspaceZombieGrant("/v1/workspaces/ws1/zombies//integration-grants/g1") == null);
+    try std.testing.expect(matchWorkspaceZombieGrant("/v1/workspaces/ws1/zombies/z1/x/integration-grants/g1") == null);
 }
 
-test "matchZombieAction: :steer extracts zombie_id" {
-    try std.testing.expectEqualStrings("z1", matchZombieAction("/v1/zombies/z1:steer", ":steer").?);
-    try std.testing.expect(matchZombieAction("/v1/zombies/:steer", ":steer") == null); // empty id
-    try std.testing.expect(matchZombieAction("/v1/zombies/a/b:steer", ":steer") == null); // multi-segment
-    try std.testing.expect(matchZombieAction("/v1/zombies/z1:other", ":steer") == null); // wrong action
+test "matchWorkspaceZombie: workspace_id and zombie_id extracted" {
+    const r = matchWorkspaceZombie("/v1/workspaces/ws_1/zombies/z_1").?;
+    try std.testing.expectEqualStrings("ws_1", r.workspace_id);
+    try std.testing.expectEqualStrings("z_1", r.zombie_id);
+    try std.testing.expect(matchWorkspaceZombie("/v1/workspaces/ws_1/zombies/") == null);
+    try std.testing.expect(matchWorkspaceZombie("/v1/workspaces//zombies/z_1") == null);
+    try std.testing.expect(matchWorkspaceZombie("/v1/workspaces/a/b/zombies/z_1") == null);
+    try std.testing.expect(matchWorkspaceZombie("/v1/workspaces/ws_1/zombies/z_1/extra") == null);
 }
 
-test "matchZombieId: excludes sub-paths" {
-    try std.testing.expect(matchZombieId("/v1/zombies/activity") == null);
-    try std.testing.expect(matchZombieId("/v1/zombies/credentials") == null);
-    try std.testing.expectEqualStrings("z1", matchZombieId("/v1/zombies/z1").?);
-    try std.testing.expect(matchZombieId("/v1/zombies/a/b") == null);
+test "matchWorkspaceZombieAction: :steer extracts ws_id + zombie_id" {
+    const r = matchWorkspaceZombieAction("/v1/workspaces/ws1/zombies/z1:steer", ":steer").?;
+    try std.testing.expectEqualStrings("ws1", r.workspace_id);
+    try std.testing.expectEqualStrings("z1", r.zombie_id);
+    // empty ids rejected
+    try std.testing.expect(matchWorkspaceZombieAction("/v1/workspaces/ws1/zombies/:steer", ":steer") == null);
+    try std.testing.expect(matchWorkspaceZombieAction("/v1/workspaces//zombies/z1:steer", ":steer") == null);
+    // multi-segment rejected
+    try std.testing.expect(matchWorkspaceZombieAction("/v1/workspaces/ws1/zombies/a/b:steer", ":steer") == null);
+    try std.testing.expect(matchWorkspaceZombieAction("/v1/workspaces/a/b/zombies/z1:steer", ":steer") == null);
+    // wrong action rejected
+    try std.testing.expect(matchWorkspaceZombieAction("/v1/workspaces/ws1/zombies/z1:other", ":steer") == null);
+    // flat path no longer matches
+    try std.testing.expect(matchWorkspaceZombieAction("/v1/zombies/z1:steer", ":steer") == null);
 }
 
 test "matchZombieTelemetry: extracts workspace_id and zombie_id" {

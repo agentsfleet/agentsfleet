@@ -130,7 +130,7 @@ on their next execute call.
 | Symptom | Cause | Fix |
 |---------|-------|-----|
 | `UZ-TOOL-001` in execute | Credential missing from vault | Run `zombiectl credential add slack <token>` |
-| `UZ-GRANT-001` in execute | No integration grant for zombie | Request grant: `POST /v1/zombies/{id}/integration-requests` |
+| `UZ-GRANT-001` in execute | No integration grant for zombie | Request grant: `POST /v1/workspaces/{ws}/zombies/{id}/integration-requests` |
 | Token silently rejected by Slack | Token was revoked or expired | Generate new token in Slack API dashboard, re-run `credential add` |
 | `external_id` shows `(pending)` | Team ID not yet resolved | Post a test event to the webhook URL or run `zombiectl integration refresh slack` |
 
@@ -141,7 +141,7 @@ on their next execute call.
 After the credential is stored, request zombie-level Slack access via M9:
 
 ```bash
-curl -X POST https://api.usezombie.com/v1/zombies/{zombie_id}/integration-requests \
+curl -X POST https://api.usezombie.com/v1/workspaces/{workspace_id}/zombies/{zombie_id}/integration-requests \
   -H "Authorization: Bearer {your_workspace_token}" \
   -d '{"service": "slack", "reason": "Need to post to #hiring channel"}'
 ```

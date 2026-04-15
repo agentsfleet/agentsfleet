@@ -190,6 +190,8 @@ test {
     // M23_001: Zombie Steer — live steering + execution tracking
     _ = @import("http/handlers/zombie_steer_http_integration_test.zig");
     _ = @import("zombie/event_loop_m23_integration_test.zig");
+    // M24_001: cross-workspace IDOR regression tests (RULE WAUTH)
+    _ = @import("http/handlers/m24_001_cross_workspace_idor_test.zig");
     _ = @import("cmd/worker_zombie.zig");
     // M6_001: AI Firewall Policy Engine
     _ = @import("zombie/firewall/domain_policy.zig");

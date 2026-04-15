@@ -86,7 +86,7 @@ Use push for alert rules, pull for proactive log anomaly detection.
 
 ```bash
 # Grafana grant — for querying logs and fetching alert context
-curl -X POST https://api.usezombie.com/v1/zombies/{zombie_id}/integration-requests \
+curl -X POST https://api.usezombie.com/v1/workspaces/{workspace_id}/zombies/{zombie_id}/integration-requests \
   -H "Authorization: Bearer {your_workspace_token}" \
   -d '{
     "service": "grafana",
@@ -94,7 +94,7 @@ curl -X POST https://api.usezombie.com/v1/zombies/{zombie_id}/integration-reques
   }'
 
 # Slack grant — for posting classified alerts
-curl -X POST https://api.usezombie.com/v1/zombies/{zombie_id}/integration-requests \
+curl -X POST https://api.usezombie.com/v1/workspaces/{workspace_id}/zombies/{zombie_id}/integration-requests \
   -H "Authorization: Bearer {your_workspace_token}" \
   -d '{
     "service": "slack",
@@ -102,7 +102,7 @@ curl -X POST https://api.usezombie.com/v1/zombies/{zombie_id}/integration-reques
   }'
 
 # Discord grant — if using Discord
-curl -X POST https://api.usezombie.com/v1/zombies/{zombie_id}/integration-requests \
+curl -X POST https://api.usezombie.com/v1/workspaces/{workspace_id}/zombies/{zombie_id}/integration-requests \
   -H "Authorization: Bearer {your_workspace_token}" \
   -d '{
     "service": "discord",

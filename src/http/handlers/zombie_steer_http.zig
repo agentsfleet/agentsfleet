@@ -1,4 +1,4 @@
-// M23_001: POST /v1/zombies/{id}:steer — live steering for active zombies.
+// M23_001 / M24_001: POST /v1/workspaces/{ws}/zombies/{id}:steer — live steering for active zombies.
 //
 // Verifies zombie ownership, writes message to Redis key zombie:{id}:steer (SETEX
 // 300s TTL). The worker polls this key at the top of each event loop iteration and
@@ -34,7 +34,7 @@ const SteerBody = struct {
 
 // ── Handler ───────────────────────────────────────────────────────────────────
 
-pub fn innerZombieSteer(hx: Hx, req: *httpz.Request, zombie_id: []const u8) void {
+pub fn innerZombieSteer(hx: Hx, req: *httpz.Request, workspace_id: []const u8, zombie_id: []const u8) void {
     // Parse + validate body.
     const body_raw = req.body() orelse {
         hx.fail(ec.ERR_INVALID_REQUEST, "request body required");
@@ -65,8 +65,24 @@ pub fn innerZombieSteer(hx: Hx, req: *httpz.Request, zombie_id: []const u8) void
     };
     defer hx.ctx.pool.release(conn);
 
-    // Verify zombie exists + ownership; read active execution_id if any.
-    const exec_id_opt = resolveZombieExecution(hx, conn, zombie_id) orelse return;
+    // M24_001 / RULE WAUTH: principal must have access to the path workspace_id.
+    //
+    // Intentional widening vs M23_001: the original spec required
+    // `principal.workspace_scope_id != null` (operator-token-only). M24_001 drops
+    // that pre-check because `authorizeWorkspace` is the canonical workspace authZ
+    // gate used by every workspace-scoped handler — special-casing :steer to also
+    // require a workspace-scoped token would be inconsistent with create/list/
+    // delete/activity/credentials/grants. Membership-based principals with access
+    // to the workspace may now steer. If a role gate is ever needed (e.g. only
+    // `.operator`), add `common.requireRole(…, .operator)` here — don't re-add
+    // the token-scope check.
+    if (!common.authorizeWorkspace(conn, hx.principal, workspace_id)) {
+        hx.fail(ec.ERR_FORBIDDEN, "Workspace access denied");
+        return;
+    }
+
+    // Verify zombie exists + belongs to path workspace; read active execution_id if any.
+    const exec_id_opt = resolveZombieExecution(hx, conn, workspace_id, zombie_id) orelse return;
 
     // Write steer signal to Redis. Worker polls GETDEL at top of event loop.
     const steer_key = std.fmt.allocPrint(
@@ -108,9 +124,11 @@ pub fn innerZombieSteer(hx: Hx, req: *httpz.Request, zombie_id: []const u8) void
 fn resolveZombieExecution(
     hx: Hx,
     conn: *pg.Conn,
+    path_workspace_id: []const u8,
     zombie_id: []const u8,
 ) ??[]const u8 {
-    // Step 1: verify ownership.
+    // M24_001: verify zombie belongs to the path workspace_id.
+    // Returns 404 (not 403) on mismatch — do not leak existence across workspaces.
     var q1 = PgQuery.from(conn.query(
         "SELECT workspace_id::text FROM core.zombies WHERE id = $1::uuid",
         .{zombie_id},
@@ -133,12 +151,7 @@ fn resolveZombieExecution(
         return null;
     };
 
-    const caller_ws = hx.principal.workspace_scope_id orelse {
-        hx.fail(ec.ERR_UNAUTHORIZED, "workspace-scoped token required");
-        return null;
-    };
-    if (!std.mem.eql(u8, caller_ws, zombie_workspace)) {
-        // 404 not 403 — do not leak existence across workspaces.
+    if (!std.mem.eql(u8, path_workspace_id, zombie_workspace)) {
         hx.fail(ec.ERR_ZOMBIE_NOT_FOUND, ec.MSG_ZOMBIE_NOT_FOUND);
         return null;
     }

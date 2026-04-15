@@ -107,7 +107,7 @@ const RequestGrantBody = struct {
     reason: []const u8,
 };
 
-pub fn innerRequestGrant(hx: hx_mod.Hx, req: *httpz.Request, zombie_id: []const u8) void {
+pub fn innerRequestGrant(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []const u8, zombie_id: []const u8) void {
     const conn = hx.ctx.pool.acquire() catch {
         common.internalDbUnavailable(hx.res, hx.req_id);
         return;
@@ -122,6 +122,12 @@ pub fn innerRequestGrant(hx: hx_mod.Hx, req: *httpz.Request, zombie_id: []const 
 
     if (!std.mem.eql(u8, caller.zombie_id, zombie_id)) {
         hx.fail(ec.ERR_FORBIDDEN, "Zombie identity mismatch: authenticated zombie_id does not match path");
+        return;
+    }
+
+    // M24_001: defence in depth — verify zombie's workspace matches the path workspace_id.
+    if (!std.mem.eql(u8, caller.workspace_id, workspace_id)) {
+        hx.fail(ec.ERR_FORBIDDEN, "Workspace identity mismatch: zombie does not belong to path workspace_id");
         return;
     }
 

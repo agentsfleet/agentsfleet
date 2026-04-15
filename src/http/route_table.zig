@@ -81,12 +81,12 @@ pub fn specFor(route: router.Route, registry: *auth_mw.MiddlewareRegistry) ?Rout
         .grant_approval_webhook => .{ .middlewares = auth_mw.MiddlewareRegistry.none, .invoke = invoke.invokeGrantApprovalWebhook },
 
         // Zombie CRUD + activity + credentials
-        .list_or_create_zombies => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeListOrCreateZombies },
-        .delete_zombie => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeDeleteZombie },
-        .zombie_activity => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeZombieActivity },
-        .zombie_credentials => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeZombieCredentials },
-        // M23_001: live steering
-        .zombie_steer => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeZombieSteer },
+        .workspace_zombies => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceZombies },
+        .delete_workspace_zombie => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeDeleteWorkspaceZombie },
+        .workspace_zombie_activity => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceZombieActivity },
+        .workspace_credentials => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceCredentials },
+        // M23_001 / M24_001: live steering (workspace-scoped)
+        .workspace_zombie_steer => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeZombieSteer },
 
         // Zombie telemetry
         .zombie_telemetry => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeZombieTelemetry },
@@ -140,11 +140,11 @@ test "specFor returns a RouteSpec for every Route variant (Batch D — full tabl
     try testing.expect(specFor(.github_callback, &reg) != null);
     try testing.expect(specFor(.create_workspace, &reg) != null);
     try testing.expect(specFor(.{ .pause_workspace = "ws1" }, &reg) != null);
-    try testing.expect(specFor(.list_or_create_zombies, &reg) != null);
-    try testing.expect(specFor(.{ .delete_zombie = "z1" }, &reg) != null);
-    try testing.expect(specFor(.zombie_activity, &reg) != null);
-    try testing.expect(specFor(.zombie_credentials, &reg) != null);
-    try testing.expect(specFor(.{ .zombie_steer = "z1" }, &reg) != null);
+    try testing.expect(specFor(.{ .workspace_zombies = "ws1" }, &reg) != null);
+    try testing.expect(specFor(.{ .delete_workspace_zombie = .{ .workspace_id = "ws1", .zombie_id = "z1" } }, &reg) != null);
+    try testing.expect(specFor(.{ .workspace_zombie_activity = .{ .workspace_id = "ws1", .zombie_id = "z1" } }, &reg) != null);
+    try testing.expect(specFor(.{ .workspace_credentials = "ws1" }, &reg) != null);
+    try testing.expect(specFor(.{ .workspace_zombie_steer = .{ .workspace_id = "ws1", .zombie_id = "z1" } }, &reg) != null);
     try testing.expect(specFor(.{ .zombie_telemetry = .{ .workspace_id = "ws1", .zombie_id = "z1" } }, &reg) != null);
     try testing.expect(specFor(.internal_telemetry, &reg) != null);
     try testing.expect(specFor(.admin_platform_keys, &reg) != null);
@@ -161,9 +161,9 @@ test "specFor returns a RouteSpec for every Route variant (Batch D — full tabl
     try testing.expect(specFor(.memory_list, &reg) != null);
     try testing.expect(specFor(.memory_forget, &reg) != null);
     try testing.expect(specFor(.execute, &reg) != null);
-    try testing.expect(specFor(.{ .request_integration_grant = "z1" }, &reg) != null);
-    try testing.expect(specFor(.{ .list_integration_grants = "z1" }, &reg) != null);
-    try testing.expect(specFor(.{ .revoke_integration_grant = .{ .zombie_id = "z1", .grant_id = "g1" } }, &reg) != null);
+    try testing.expect(specFor(.{ .request_integration_grant = .{ .workspace_id = "ws1", .zombie_id = "z1" } }, &reg) != null);
+    try testing.expect(specFor(.{ .list_integration_grants = .{ .workspace_id = "ws1", .zombie_id = "z1" } }, &reg) != null);
+    try testing.expect(specFor(.{ .revoke_integration_grant = .{ .workspace_id = "ws1", .zombie_id = "z1", .grant_id = "g1" } }, &reg) != null);
     try testing.expect(specFor(.{ .external_agents = "ws1" }, &reg) != null);
     try testing.expect(specFor(.{ .delete_external_agent = .{ .workspace_id = "ws1", .agent_id = "a1" } }, &reg) != null);
     try testing.expect(specFor(.slack_install, &reg) != null);

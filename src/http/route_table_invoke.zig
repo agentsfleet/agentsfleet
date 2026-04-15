@@ -181,31 +181,32 @@ pub fn invokeGrantApprovalWebhook(hx: *Hx, req: *httpz.Request, route: router.Ro
 
 // ── Zombie CRUD ───────────────────────────────────────────────────────────
 
-pub fn invokeListOrCreateZombies(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    _ = route;
+pub fn invokeWorkspaceZombies(hx: *Hx, req: *httpz.Request, route: router.Route) void {
+    const workspace_id = route.workspace_zombies;
     switch (req.method) {
-        .POST => zombie_api.innerCreateZombie(hx.*, req),
-        .GET => zombie_api.innerListZombies(hx.*, req),
+        .POST => zombie_api.innerCreateZombie(hx.*, req, workspace_id),
+        .GET => zombie_api.innerListZombies(hx.*, req, workspace_id),
         else => common.respondMethodNotAllowed(hx.res),
     }
 }
 
-pub fn invokeDeleteZombie(hx: *Hx, req: *httpz.Request, route: router.Route) void {
+pub fn invokeDeleteWorkspaceZombie(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     if (req.method != .DELETE) { common.respondMethodNotAllowed(hx.res); return; }
-    zombie_api.innerDeleteZombie(hx.*, req, route.delete_zombie);
+    const r = route.delete_workspace_zombie;
+    zombie_api.innerDeleteZombie(hx.*, req, r.workspace_id, r.zombie_id);
 }
 
-pub fn invokeZombieActivity(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    _ = route;
+pub fn invokeWorkspaceZombieActivity(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     if (req.method != .GET) { common.respondMethodNotAllowed(hx.res); return; }
-    zombie_act.innerListActivity(hx.*, req);
+    const r = route.workspace_zombie_activity;
+    zombie_act.innerListActivity(hx.*, req, r.workspace_id, r.zombie_id);
 }
 
-pub fn invokeZombieCredentials(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    _ = route;
+pub fn invokeWorkspaceCredentials(hx: *Hx, req: *httpz.Request, route: router.Route) void {
+    const workspace_id = route.workspace_credentials;
     switch (req.method) {
-        .POST => zombie_act.innerStoreCredential(hx.*, req),
-        .GET => zombie_act.innerListCredentials(hx.*, req),
+        .POST => zombie_act.innerStoreCredential(hx.*, req, workspace_id),
+        .GET => zombie_act.innerListCredentials(hx.*, req, workspace_id),
         else => common.respondMethodNotAllowed(hx.res),
     }
 }
@@ -214,7 +215,8 @@ pub fn invokeZombieCredentials(hx: *Hx, req: *httpz.Request, route: router.Route
 
 pub fn invokeZombieSteer(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     if (req.method != .POST) { common.respondMethodNotAllowed(hx.res); return; }
-    zombie_steer.innerZombieSteer(hx.*, req, route.zombie_steer);
+    const r = route.workspace_zombie_steer;
+    zombie_steer.innerZombieSteer(hx.*, req, r.workspace_id, r.zombie_id);
 }
 
 // ── Zombie telemetry ──────────────────────────────────────────────────────
@@ -269,18 +271,20 @@ pub fn invokeExecute(hx: *Hx, req: *httpz.Request, route: router.Route) void {
 
 pub fn invokeRequestGrant(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     if (req.method != .POST) { common.respondMethodNotAllowed(hx.res); return; }
-    grants.innerRequestGrant(hx.*, req, route.request_integration_grant);
+    const r = route.request_integration_grant;
+    grants.innerRequestGrant(hx.*, req, r.workspace_id, r.zombie_id);
 }
 
 pub fn invokeListGrants(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     if (req.method != .GET) { common.respondMethodNotAllowed(hx.res); return; }
-    grants_ws.innerListGrants(hx.*, route.list_integration_grants);
+    const r = route.list_integration_grants;
+    grants_ws.innerListGrants(hx.*, r.workspace_id, r.zombie_id);
 }
 
 pub fn invokeRevokeGrant(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     if (req.method != .DELETE) { common.respondMethodNotAllowed(hx.res); return; }
     const r = route.revoke_integration_grant;
-    grants_ws.innerRevokeGrant(hx.*, r.zombie_id, r.grant_id);
+    grants_ws.innerRevokeGrant(hx.*, r.workspace_id, r.zombie_id, r.grant_id);
 }
 
 // ── External agents ───────────────────────────────────────────────────────

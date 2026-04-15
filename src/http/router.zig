@@ -41,13 +41,13 @@ pub const Route = union(enum) {
     // M18_003: agent relay endpoints
     spec_template: []const u8, // POST /v1/workspaces/{id}/spec/template
     spec_preview: []const u8, // POST /v1/workspaces/{id}/spec/preview
-    // M2_001: Zombie CRUD + activity + credentials
-    list_or_create_zombies, // GET|POST /v1/zombies/
-    delete_zombie: []const u8, // DELETE /v1/zombies/{id}
-    zombie_activity, // GET /v1/zombies/activity
-    zombie_credentials, // GET|POST /v1/zombies/credentials
-    // M23_001: Live steering — POST /v1/zombies/{id}:steer
-    zombie_steer: []const u8, // zombie_id
+    // M24_001: Zombie CRUD + activity + credentials (workspace-scoped)
+    workspace_zombies: []const u8, // GET|POST /v1/workspaces/{ws}/zombies
+    delete_workspace_zombie: matchers.WorkspaceZombieRoute, // DELETE /v1/workspaces/{ws}/zombies/{id}
+    workspace_zombie_activity: matchers.ZombieTelemetryRoute, // GET /v1/workspaces/{ws}/zombies/{id}/activity
+    workspace_credentials: []const u8, // GET|POST /v1/workspaces/{ws}/credentials
+    // M23_001 / M24_001: Live steering — POST /v1/workspaces/{ws}/zombies/{id}:steer
+    workspace_zombie_steer: matchers.WorkspaceZombieRoute,
     // M18_001: zombie execution telemetry
     zombie_telemetry: ZombieTelemetryRoute, // GET /v1/workspaces/{ws}/zombies/{id}/telemetry
     internal_telemetry, // GET /internal/v1/telemetry
@@ -58,10 +58,10 @@ pub const Route = union(enum) {
     memory_forget, // POST /v1/memory/forget
     // M9_001: Execute proxy endpoint
     execute, // POST /v1/execute
-    // M9_001: Integration grant CRUD
-    request_integration_grant: []const u8,    // POST /v1/zombies/{id}/integration-requests
-    list_integration_grants: []const u8,      // GET  /v1/zombies/{id}/integration-grants
-    revoke_integration_grant: matchers.ZombieGrantRoute, // DELETE /v1/zombies/{id}/integration-grants/{grant_id}
+    // M9_001 / M24_001: Integration grant CRUD (workspace-scoped)
+    request_integration_grant: matchers.ZombieTelemetryRoute,    // POST /v1/workspaces/{ws}/zombies/{id}/integration-requests
+    list_integration_grants: matchers.ZombieTelemetryRoute,      // GET  /v1/workspaces/{ws}/zombies/{id}/integration-grants
+    revoke_integration_grant: matchers.WorkspaceZombieGrantRoute, // DELETE /v1/workspaces/{ws}/zombies/{id}/integration-grants/{grant_id}
     // M9_001: External agent key management
     external_agents: []const u8,              // POST|GET /v1/workspaces/{ws}/external-agents
     delete_external_agent: matchers.WorkspaceAgentRoute, // DELETE /v1/workspaces/{ws}/external-agents/{agent_id}
@@ -130,14 +130,15 @@ pub fn match(path: []const u8) ?Route {
     if (std.mem.eql(u8, path, "/v1/memory/list")) return .memory_list;
     if (std.mem.eql(u8, path, "/v1/memory/forget")) return .memory_forget;
 
-    // M23_001: zombie steer (before matchZombieId — colon-action paths must not fall through to plain-id)
-    if (matchers.matchZombieAction(path, ":steer")) |zombie_id| return .{ .zombie_steer = zombie_id };
-
-    // M2_001: Zombie CRUD + activity + credentials
-    if (std.mem.eql(u8, path, "/v1/zombies/")) return .list_or_create_zombies;
-    if (std.mem.eql(u8, path, "/v1/zombies/activity")) return .zombie_activity;
-    if (std.mem.eql(u8, path, "/v1/zombies/credentials")) return .zombie_credentials;
-    if (matchers.matchZombieId(path)) |zombie_id| return .{ .delete_zombie = zombie_id };
+    // M24_001: Workspace-scoped zombie collection + single-resource + sub-resources.
+    // Most-specific paths first to avoid collisions:
+    //   colon-action (:steer) before plain-id, suffix-paths (/activity) before plain-id.
+    if (matchers.matchWorkspaceZombieAction(path, ":steer")) |route| return .{ .workspace_zombie_steer = route };
+    if (matchers.matchWorkspaceZombieSuffix(path, "/activity")) |route| return .{ .workspace_zombie_activity = route };
+    if (matchers.matchWorkspaceZombie(path)) |route| return .{ .delete_workspace_zombie = route };
+    if (matchWorkspaceSuffix(path, "/zombies")) |workspace_id| return .{ .workspace_zombies = workspace_id };
+    // credentials/llm is already handled above; /credentials (plain) is workspace-level credential vault.
+    if (matchWorkspaceSuffix(path, "/credentials")) |workspace_id| return .{ .workspace_credentials = workspace_id };
 
     // M18_001: customer telemetry endpoint
     if (matchers.matchZombieTelemetry(path)) |route| return .{ .zombie_telemetry = route };
@@ -145,10 +146,10 @@ pub fn match(path: []const u8) ?Route {
     // M9_001: Execute proxy — POST /v1/execute
     if (std.mem.eql(u8, path, "/v1/execute")) return .execute;
 
-    // M9_001: Integration grant CRUD
-    if (matchers.matchZombieSuffix(path, "/integration-requests")) |zombie_id| return .{ .request_integration_grant = zombie_id };
-    if (matchers.matchZombieGrantRevoke(path)) |route| return .{ .revoke_integration_grant = route };
-    if (matchers.matchZombieSuffix(path, "/integration-grants")) |zombie_id| return .{ .list_integration_grants = zombie_id };
+    // M24_001: Integration grant CRUD (workspace-scoped). Most-specific path first.
+    if (matchers.matchWorkspaceZombieGrant(path)) |route| return .{ .revoke_integration_grant = route };
+    if (matchers.matchWorkspaceZombieSuffix(path, "/integration-requests")) |route| return .{ .request_integration_grant = route };
+    if (matchers.matchWorkspaceZombieSuffix(path, "/integration-grants")) |route| return .{ .list_integration_grants = route };
 
     // M9_001: External agent key management (DELETE before GET/POST to prevent suffix clash)
     if (matchers.matchWorkspaceAgentDelete(path)) |route| return .{ .delete_external_agent = route };
@@ -291,22 +292,22 @@ test "match resolves Slack install route (M8_001)" {
 
 // ── M23_001 route tests ───────────────────────────────────────────────────────
 
-test "match resolves zombie_steer route (M23_001)" {
-    const zombie_id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
-    try std.testing.expectEqualStrings(
-        zombie_id,
-        switch (match("/v1/zombies/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11:steer").?) {
-            .zombie_steer => |id| id,
-            else => return error.TestExpectedEqual,
+test "match resolves zombie_steer route (M23_001 + M24_001 workspace-scoped)" {
+    const ws_id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
+    const zid = "019abc12-8d3a-7f13-8abc-2b3e1e0a6f11";
+    switch (match("/v1/workspaces/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/zombies/019abc12-8d3a-7f13-8abc-2b3e1e0a6f11:steer").?) {
+        .workspace_zombie_steer => |r| {
+            try std.testing.expectEqualStrings(ws_id, r.workspace_id);
+            try std.testing.expectEqualStrings(zid, r.zombie_id);
         },
-    );
-    // plain zombie path not matched as steer
-    try std.testing.expect(switch (match("/v1/zombies/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11").?) {
-        .zombie_steer => false,
-        else => true,
-    });
+        else => return error.TestExpectedEqual,
+    }
+    // M24_001: flat :steer path removed.
+    try std.testing.expect(match("/v1/zombies/019abc12-8d3a-7f13-8abc-2b3e1e0a6f11:steer") == null);
+    // plain flat /v1/zombies/{id} is also 404 (not steer, not delete).
+    try std.testing.expect(match("/v1/zombies/019abc12-8d3a-7f13-8abc-2b3e1e0a6f11") == null);
     // multi-segment rejected
-    try std.testing.expect(match("/v1/zombies/a/b:steer") == null);
+    try std.testing.expect(match("/v1/workspaces/ws1/zombies/a/b:steer") == null);
 }
 
 // Webhook + approval route tests are in router_test.zig.

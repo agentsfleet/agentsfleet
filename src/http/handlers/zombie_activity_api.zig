@@ -1,8 +1,8 @@
-// M2_001: Zombie activity stream + credential API handlers.
+// M2_001 / M24_001: Zombie activity stream + credential API handlers.
 //
-// GET  /v1/zombies/activity     → handleListActivity
-// POST /v1/zombies/credentials  → handleStoreCredential
-// GET  /v1/zombies/credentials  → handleListCredentials
+// GET  /v1/workspaces/{ws}/zombies/{id}/activity  → innerListActivity
+// POST /v1/workspaces/{ws}/credentials            → innerStoreCredential
+// GET  /v1/workspaces/{ws}/credentials            → innerListCredentials
 
 const std = @import("std");
 const httpz = @import("httpz");
@@ -24,24 +24,47 @@ const MAX_CREDENTIAL_NAME_LEN: usize = 64;
 
 // ── List Activity ─────────────────────────────────────────────────────
 
-pub fn innerListActivity(hx: hx_mod.Hx, req: *httpz.Request) void {
-    const qs = req.query() catch {
-        hx.fail(ec.ERR_INVALID_REQUEST, "zombie_id query parameter required");
+pub fn innerListActivity(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []const u8, zombie_id: []const u8) void {
+    if (!id_format.isSupportedWorkspaceId(workspace_id)) {
+        hx.fail(ec.ERR_INVALID_REQUEST, ec.MSG_WORKSPACE_ID_REQUIRED);
         return;
-    };
-    const zombie_id = qs.get("zombie_id") orelse {
-        hx.fail(ec.ERR_INVALID_REQUEST, "zombie_id query parameter required");
-        return;
-    };
+    }
     if (!id_format.isSupportedWorkspaceId(zombie_id)) {
         hx.fail(ec.ERR_INVALID_REQUEST, "zombie_id must be a valid UUIDv7");
         return;
     }
 
-    const limit = parseLimitFromQs(qs);
-    const cursor = qs.get("cursor");
+    const qs = req.query() catch null;
+    const limit = if (qs) |q| parseLimitFromQs(q) else activity_stream.DEFAULT_ACTIVITY_PAGE_LIMIT;
+    const cursor = if (qs) |q| q.get("cursor") else null;
 
-    const page = activity_stream.queryByZombie(hx.ctx.pool, hx.alloc, zombie_id, cursor, limit) catch |err| {
+    const conn = hx.ctx.pool.acquire() catch {
+        common.internalDbUnavailable(hx.res, hx.req_id);
+        return;
+    };
+    defer hx.ctx.pool.release(conn);
+
+    if (!common.authorizeWorkspace(conn, hx.principal, workspace_id)) {
+        hx.fail(ec.ERR_FORBIDDEN, "Workspace access denied");
+        return;
+    }
+
+    // M24_001 / RULE WAUTH: verify the zombie belongs to the path workspace.
+    // authorizeWorkspace only checks the principal's access to the path ws; without
+    // this second check a caller in WS_A could read activity for a zombie in WS_B.
+    // Return 404 (not 403) to avoid leaking zombie existence across workspaces.
+    const zombie_ws_id = common.getZombieWorkspaceId(conn, hx.alloc, zombie_id) orelse {
+        hx.fail(ec.ERR_ZOMBIE_NOT_FOUND, ec.MSG_ZOMBIE_NOT_FOUND);
+        return;
+    };
+    if (!std.mem.eql(u8, zombie_ws_id, workspace_id)) {
+        hx.fail(ec.ERR_ZOMBIE_NOT_FOUND, ec.MSG_ZOMBIE_NOT_FOUND);
+        return;
+    }
+
+    // Reuse `conn` via queryByZombieOnConn instead of calling queryByZombie(pool,…)
+    // — otherwise we'd hold two pool connections concurrently for one request.
+    const page = activity_stream.queryByZombieOnConn(conn, hx.alloc, zombie_id, cursor, limit) catch |err| {
         if (err == error.InvalidCursor) {
             hx.fail(ec.ERR_INVALID_REQUEST, "Invalid cursor format");
             return;
@@ -62,13 +85,17 @@ fn parseLimitFromQs(qs: anytype) u32 {
 
 // ── Store Credential ──────────────────────────────────────────────────
 
+// M24_001: workspace_id comes from URL path (RULE RAD §4).
 const CredentialBody = struct {
     name: []const u8,
     value: []const u8,
-    workspace_id: []const u8,
 };
 
-pub fn innerStoreCredential(hx: hx_mod.Hx, req: *httpz.Request) void {
+pub fn innerStoreCredential(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []const u8) void {
+    if (!id_format.isSupportedWorkspaceId(workspace_id)) {
+        hx.fail(ec.ERR_INVALID_REQUEST, ec.MSG_WORKSPACE_ID_REQUIRED);
+        return;
+    }
     const body = req.body() orelse {
         hx.fail(ec.ERR_INVALID_REQUEST, ec.MSG_BODY_REQUIRED);
         return;
@@ -83,13 +110,24 @@ pub fn innerStoreCredential(hx: hx_mod.Hx, req: *httpz.Request) void {
 
     if (!validateCredential(hx, cred)) return;
 
-    storeCredentialEncrypted(hx.ctx.pool, hx.alloc, cred) catch |err| {
+    const conn = hx.ctx.pool.acquire() catch {
+        common.internalDbUnavailable(hx.res, hx.req_id);
+        return;
+    };
+    defer hx.ctx.pool.release(conn);
+
+    if (!common.authorizeWorkspace(conn, hx.principal, workspace_id)) {
+        hx.fail(ec.ERR_FORBIDDEN, "Workspace access denied");
+        return;
+    }
+
+    storeCredentialEncryptedOnConn(conn, hx.alloc, workspace_id, cred) catch |err| {
         log.err("credential.store_failed err={s} name={s} req_id={s}", .{ @errorName(err), cred.name, hx.req_id });
         common.internalDbError(hx.res, hx.req_id);
         return;
     };
 
-    log.info("credential.stored name={s} workspace={s}", .{ cred.name, cred.workspace_id });
+    log.info("credential.stored name={s} workspace={s}", .{ cred.name, workspace_id });
     hx.ok(.created, .{ .name = cred.name });
 }
 
@@ -106,40 +144,38 @@ fn validateCredential(hx: hx_mod.Hx, cred: CredentialBody) bool {
         hx.fail(ec.ERR_ZOMBIE_CREDENTIAL_VALUE_TOO_LONG, ec.MSG_ZOMBIE_CREDENTIAL_TOO_LONG);
         return false;
     }
-    if (cred.workspace_id.len == 0 or !id_format.isSupportedWorkspaceId(cred.workspace_id)) {
-        hx.fail(ec.ERR_INVALID_REQUEST, ec.MSG_WORKSPACE_ID_REQUIRED);
-        return false;
-    }
     return true;
 }
 
-fn storeCredentialEncrypted(pool: *pg.Pool, alloc: std.mem.Allocator, cred: CredentialBody) !void {
-    const conn = try pool.acquire();
-    defer pool.release(conn);
+fn storeCredentialEncryptedOnConn(conn: *pg.Conn, alloc: std.mem.Allocator, workspace_id: []const u8, cred: CredentialBody) !void {
     const key_name = try std.fmt.allocPrint(alloc, "zombie:{s}", .{cred.name});
     defer alloc.free(key_name);
     // Use envelope encryption via crypto_store (vault.secrets table).
     // KEK version 1 is the default master key.
-    try crypto_store.store(alloc, conn, cred.workspace_id, key_name, cred.value, 1);
+    try crypto_store.store(alloc, conn, workspace_id, key_name, cred.value, 1);
 }
 
 // ── List Credentials ──────────────────────────────────────────────────
 
-pub fn innerListCredentials(hx: hx_mod.Hx, req: *httpz.Request) void {
-    const qs = req.query() catch {
-        hx.fail(ec.ERR_INVALID_REQUEST, ec.MSG_WORKSPACE_ID_REQUIRED);
-        return;
-    };
-    const workspace_id = qs.get("workspace_id") orelse {
-        hx.fail(ec.ERR_INVALID_REQUEST, ec.MSG_WORKSPACE_ID_REQUIRED);
-        return;
-    };
+pub fn innerListCredentials(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []const u8) void {
+    _ = req;
     if (!id_format.isSupportedWorkspaceId(workspace_id)) {
         hx.fail(ec.ERR_INVALID_REQUEST, ec.MSG_WORKSPACE_ID_REQUIRED);
         return;
     }
 
-    const creds = fetchCredentialList(hx.ctx.pool, hx.alloc, workspace_id) catch |err| {
+    const conn = hx.ctx.pool.acquire() catch {
+        common.internalDbUnavailable(hx.res, hx.req_id);
+        return;
+    };
+    defer hx.ctx.pool.release(conn);
+
+    if (!common.authorizeWorkspace(conn, hx.principal, workspace_id)) {
+        hx.fail(ec.ERR_FORBIDDEN, "Workspace access denied");
+        return;
+    }
+
+    const creds = fetchCredentialListOnConn(conn, hx.alloc, workspace_id) catch |err| {
         log.err("credential.list_failed err={s} req_id={s}", .{ @errorName(err), hx.req_id });
         common.internalDbError(hx.res, hx.req_id);
         return;
@@ -153,9 +189,7 @@ const CredentialListRow = struct {
     created_at: i64,
 };
 
-fn fetchCredentialList(pool: *pg.Pool, alloc: std.mem.Allocator, workspace_id: []const u8) ![]CredentialListRow {
-    const conn = try pool.acquire();
-    defer pool.release(conn);
+fn fetchCredentialListOnConn(conn: *pg.Conn, alloc: std.mem.Allocator, workspace_id: []const u8) ![]CredentialListRow {
     // Query vault.secrets for zombie-prefixed keys (zombie:{name}).
     var q = PgQuery.from(try conn.query(
         \\SELECT key_name, created_at FROM vault.secrets

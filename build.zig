@@ -204,11 +204,12 @@ pub fn build(b: *std.Build) void {
         });
         const zbench_mod = zbench_dep.module("zbench");
 
-        // ── API benchmark gate step (zBench-backed) ─────────────────────────
-        const api_bench = b.addExecutable(.{
-            .name = "api-bench-runner",
+        // ── Tier-1 micro-benchmark runner (zBench-backed) ────────────────────
+        // HTTP loadgen is handled by `hey` in make/test-bench.mk; see M24_001.
+        const zbench_micro = b.addExecutable(.{
+            .name = "zbench-micro",
             .root_module = b.createModule(.{
-                .root_source_file = b.path("src/tools/api_bench_runner.zig"),
+                .root_source_file = b.path("src/tools/zbench_micro.zig"),
                 .target = target,
                 .optimize = optimize,
                 .imports = &.{
@@ -217,9 +218,9 @@ pub fn build(b: *std.Build) void {
             }),
         });
 
-        const run_api_bench = b.addRunArtifact(api_bench);
-        if (b.args) |args| run_api_bench.addArgs(args);
-        b.step("bench-api", "Run API benchmark gate").dependOn(&run_api_bench.step);
+        const run_zbench_micro = b.addRunArtifact(zbench_micro);
+        if (b.args) |args| run_zbench_micro.addArgs(args);
+        b.step("bench-micro", "Run Tier-1 zbench micro-benchmarks").dependOn(&run_zbench_micro.step);
     }
 
     // Installable backend test binary for coverage tooling (kcov/codecov).

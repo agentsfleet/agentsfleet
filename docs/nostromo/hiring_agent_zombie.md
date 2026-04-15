@@ -73,7 +73,7 @@ In the Slack API dashboard for your app:
 
 ```bash
 # Slack grant — for reading events and posting responses
-curl -X POST https://api.usezombie.com/v1/zombies/{zombie_id}/integration-requests \
+curl -X POST https://api.usezombie.com/v1/workspaces/{workspace_id}/zombies/{zombie_id}/integration-requests \
   -H "Authorization: Bearer {your_workspace_token}" \
   -d '{
     "service": "slack",
@@ -81,7 +81,7 @@ curl -X POST https://api.usezombie.com/v1/zombies/{zombie_id}/integration-reques
   }'
 
 # ATS grant (if using Lever)
-curl -X POST https://api.usezombie.com/v1/zombies/{zombie_id}/integration-requests \
+curl -X POST https://api.usezombie.com/v1/workspaces/{workspace_id}/zombies/{zombie_id}/integration-requests \
   -H "Authorization: Bearer {your_workspace_token}" \
   -d '{
     "service": "lever",

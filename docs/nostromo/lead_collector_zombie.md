@@ -87,7 +87,7 @@ you for approval and the zombie remembers the approved grants.
 
 ```bash
 # Request Slack grant
-curl -X POST https://api.usezombie.com/v1/zombies/{zombie_id}/integration-requests \
+curl -X POST https://api.usezombie.com/v1/workspaces/{workspace_id}/zombies/{zombie_id}/integration-requests \
   -H "Authorization: Bearer {your_workspace_token}" \
   -H "Content-Type: application/json" \
   -d '{
@@ -96,7 +96,7 @@ curl -X POST https://api.usezombie.com/v1/zombies/{zombie_id}/integration-reques
   }'
 
 # Request CRM grant (example: HubSpot)
-curl -X POST https://api.usezombie.com/v1/zombies/{zombie_id}/integration-requests \
+curl -X POST https://api.usezombie.com/v1/workspaces/{workspace_id}/zombies/{zombie_id}/integration-requests \
   -H "Authorization: Bearer {your_workspace_token}" \
   -d '{
     "service": "hubspot",
