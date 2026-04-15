@@ -57,10 +57,10 @@ pub const Route = union(enum) {
     memory_forget, // POST /v1/memory/forget
     // M9_001: Execute proxy endpoint
     execute, // POST /v1/execute
-    // M9_001: Integration grant CRUD
-    request_integration_grant: []const u8,    // POST /v1/zombies/{id}/integration-requests
-    list_integration_grants: []const u8,      // GET  /v1/zombies/{id}/integration-grants
-    revoke_integration_grant: matchers.ZombieGrantRoute, // DELETE /v1/zombies/{id}/integration-grants/{grant_id}
+    // M9_001 / M24_001: Integration grant CRUD (workspace-scoped)
+    request_integration_grant: matchers.ZombieTelemetryRoute,    // POST /v1/workspaces/{ws}/zombies/{id}/integration-requests
+    list_integration_grants: matchers.ZombieTelemetryRoute,      // GET  /v1/workspaces/{ws}/zombies/{id}/integration-grants
+    revoke_integration_grant: matchers.WorkspaceZombieGrantRoute, // DELETE /v1/workspaces/{ws}/zombies/{id}/integration-grants/{grant_id}
     // M9_001: External agent key management
     external_agents: []const u8,              // POST|GET /v1/workspaces/{ws}/external-agents
     delete_external_agent: matchers.WorkspaceAgentRoute, // DELETE /v1/workspaces/{ws}/external-agents/{agent_id}
@@ -143,10 +143,10 @@ pub fn match(path: []const u8) ?Route {
     // M9_001: Execute proxy — POST /v1/execute
     if (std.mem.eql(u8, path, "/v1/execute")) return .execute;
 
-    // M9_001: Integration grant CRUD
-    if (matchers.matchZombieSuffix(path, "/integration-requests")) |zombie_id| return .{ .request_integration_grant = zombie_id };
-    if (matchers.matchZombieGrantRevoke(path)) |route| return .{ .revoke_integration_grant = route };
-    if (matchers.matchZombieSuffix(path, "/integration-grants")) |zombie_id| return .{ .list_integration_grants = zombie_id };
+    // M24_001: Integration grant CRUD (workspace-scoped). Most-specific path first.
+    if (matchers.matchWorkspaceZombieGrant(path)) |route| return .{ .revoke_integration_grant = route };
+    if (matchers.matchWorkspaceZombieSuffix(path, "/integration-requests")) |route| return .{ .request_integration_grant = route };
+    if (matchers.matchWorkspaceZombieSuffix(path, "/integration-grants")) |route| return .{ .list_integration_grants = route };
 
     // M9_001: External agent key management (DELETE before GET/POST to prevent suffix clash)
     if (matchers.matchWorkspaceAgentDelete(path)) |route| return .{ .delete_external_agent = route };

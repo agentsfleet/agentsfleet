@@ -262,18 +262,20 @@ pub fn invokeExecute(hx: *Hx, req: *httpz.Request, route: router.Route) void {
 
 pub fn invokeRequestGrant(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     if (req.method != .POST) { common.respondMethodNotAllowed(hx.res); return; }
-    grants.innerRequestGrant(hx.*, req, route.request_integration_grant);
+    const r = route.request_integration_grant;
+    grants.innerRequestGrant(hx.*, req, r.workspace_id, r.zombie_id);
 }
 
 pub fn invokeListGrants(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     if (req.method != .GET) { common.respondMethodNotAllowed(hx.res); return; }
-    grants_ws.innerListGrants(hx.*, route.list_integration_grants);
+    const r = route.list_integration_grants;
+    grants_ws.innerListGrants(hx.*, r.workspace_id, r.zombie_id);
 }
 
 pub fn invokeRevokeGrant(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     if (req.method != .DELETE) { common.respondMethodNotAllowed(hx.res); return; }
     const r = route.revoke_integration_grant;
-    grants_ws.innerRevokeGrant(hx.*, r.zombie_id, r.grant_id);
+    grants_ws.innerRevokeGrant(hx.*, r.workspace_id, r.zombie_id, r.grant_id);
 }
 
 // ── External agents ───────────────────────────────────────────────────────

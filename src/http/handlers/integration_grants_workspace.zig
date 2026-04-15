@@ -42,19 +42,25 @@ const GrantRow = struct {
     reason: []const u8,
 };
 
-pub fn innerListGrants(hx: hx_mod.Hx, zombie_id: []const u8) void {
+pub fn innerListGrants(hx: hx_mod.Hx, workspace_id: []const u8, zombie_id: []const u8) void {
     const conn = hx.ctx.pool.acquire() catch {
         common.internalDbUnavailable(hx.res, hx.req_id);
         return;
     };
     defer hx.ctx.pool.release(conn);
 
+    if (!common.authorizeWorkspace(conn, hx.principal, workspace_id)) {
+        hx.fail(ec.ERR_FORBIDDEN, "Workspace access denied");
+        return;
+    }
+    // M24_001: verify zombie belongs to the path workspace (don't leak existence
+    // of zombies in other workspaces — return 404, not 403).
     const zombie_ws_id = getZombieWorkspaceId(conn, hx.alloc, zombie_id) orelse {
         hx.fail(ec.ERR_ZOMBIE_NOT_FOUND, "Zombie not found");
         return;
     };
-    if (!common.authorizeWorkspace(conn, hx.principal, zombie_ws_id)) {
-        hx.fail(ec.ERR_FORBIDDEN, "Workspace access denied");
+    if (!std.mem.eql(u8, zombie_ws_id, workspace_id)) {
+        hx.fail(ec.ERR_ZOMBIE_NOT_FOUND, "Zombie not found");
         return;
     }
 
@@ -96,19 +102,24 @@ pub fn innerListGrants(hx: hx_mod.Hx, zombie_id: []const u8) void {
 // DELETE /v1/zombies/{zombie_id}/integration-grants/{grant_id}
 // bearer policy — principal set by middleware.
 
-pub fn innerRevokeGrant(hx: hx_mod.Hx, zombie_id: []const u8, grant_id: []const u8) void {
+pub fn innerRevokeGrant(hx: hx_mod.Hx, workspace_id: []const u8, zombie_id: []const u8, grant_id: []const u8) void {
     const conn = hx.ctx.pool.acquire() catch {
         common.internalDbUnavailable(hx.res, hx.req_id);
         return;
     };
     defer hx.ctx.pool.release(conn);
 
+    if (!common.authorizeWorkspace(conn, hx.principal, workspace_id)) {
+        hx.fail(ec.ERR_FORBIDDEN, "Workspace access denied");
+        return;
+    }
+    // M24_001: verify zombie belongs to the path workspace.
     const zombie_ws_id = getZombieWorkspaceId(conn, hx.alloc, zombie_id) orelse {
         hx.fail(ec.ERR_ZOMBIE_NOT_FOUND, "Zombie not found");
         return;
     };
-    if (!common.authorizeWorkspace(conn, hx.principal, zombie_ws_id)) {
-        hx.fail(ec.ERR_FORBIDDEN, "Workspace access denied");
+    if (!std.mem.eql(u8, zombie_ws_id, workspace_id)) {
+        hx.fail(ec.ERR_ZOMBIE_NOT_FOUND, "Zombie not found");
         return;
     }
 

@@ -158,9 +158,9 @@ test "specFor returns a RouteSpec for every Route variant (Batch D — full tabl
     try testing.expect(specFor(.memory_list, &reg) != null);
     try testing.expect(specFor(.memory_forget, &reg) != null);
     try testing.expect(specFor(.execute, &reg) != null);
-    try testing.expect(specFor(.{ .request_integration_grant = "z1" }, &reg) != null);
-    try testing.expect(specFor(.{ .list_integration_grants = "z1" }, &reg) != null);
-    try testing.expect(specFor(.{ .revoke_integration_grant = .{ .zombie_id = "z1", .grant_id = "g1" } }, &reg) != null);
+    try testing.expect(specFor(.{ .request_integration_grant = .{ .workspace_id = "ws1", .zombie_id = "z1" } }, &reg) != null);
+    try testing.expect(specFor(.{ .list_integration_grants = .{ .workspace_id = "ws1", .zombie_id = "z1" } }, &reg) != null);
+    try testing.expect(specFor(.{ .revoke_integration_grant = .{ .workspace_id = "ws1", .zombie_id = "z1", .grant_id = "g1" } }, &reg) != null);
     try testing.expect(specFor(.{ .external_agents = "ws1" }, &reg) != null);
     try testing.expect(specFor(.{ .delete_external_agent = .{ .workspace_id = "ws1", .agent_id = "a1" } }, &reg) != null);
     try testing.expect(specFor(.slack_install, &reg) != null);
