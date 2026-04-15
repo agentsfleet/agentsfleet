@@ -28,9 +28,14 @@ pub fn isSingleSegment(value: []const u8) bool {
 
 // matchZombieTelemetry matches /v1/workspaces/{ws_id}/zombies/{zombie_id}/telemetry.
 pub fn matchZombieTelemetry(path: []const u8) ?ZombieTelemetryRoute {
+    return matchWorkspaceZombieSuffix(path, "/telemetry");
+}
+
+// M24_001: generic helper for /v1/workspaces/{ws}/zombies/{id}/{suffix} routes.
+// Returns ZombieTelemetryRoute (ws_id + zombie_id) for any suffix.
+pub fn matchWorkspaceZombieSuffix(path: []const u8, suffix: []const u8) ?ZombieTelemetryRoute {
     const prefix = "/v1/workspaces/";
     const mid = "/zombies/";
-    const suffix = "/telemetry";
 
     if (!std.mem.startsWith(u8, path, prefix)) return null;
     if (!std.mem.endsWith(u8, path, suffix)) return null;

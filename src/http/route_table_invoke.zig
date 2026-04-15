@@ -195,10 +195,10 @@ pub fn invokeDeleteWorkspaceZombie(hx: *Hx, req: *httpz.Request, route: router.R
     zombie_api.innerDeleteZombie(hx.*, req, r.workspace_id, r.zombie_id);
 }
 
-pub fn invokeZombieActivity(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    _ = route;
+pub fn invokeWorkspaceZombieActivity(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     if (req.method != .GET) { common.respondMethodNotAllowed(hx.res); return; }
-    zombie_act.innerListActivity(hx.*, req);
+    const r = route.workspace_zombie_activity;
+    zombie_act.innerListActivity(hx.*, req, r.workspace_id, r.zombie_id);
 }
 
 pub fn invokeZombieCredentials(hx: *Hx, req: *httpz.Request, route: router.Route) void {

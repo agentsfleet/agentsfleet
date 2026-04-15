@@ -166,8 +166,21 @@ test "M24_001: workspace-scoped zombie DELETE resolves" {
     }
 }
 
+test "M24_001: workspace-scoped activity route resolves" {
+    const ws_id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
+    const zid = "019abc12-8d3a-7f13-8abc-2b3e1e0a6f11";
+    switch (match("/v1/workspaces/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/zombies/019abc12-8d3a-7f13-8abc-2b3e1e0a6f11/activity").?) {
+        .workspace_zombie_activity => |r| {
+            try std.testing.expectEqualStrings(ws_id, r.workspace_id);
+            try std.testing.expectEqualStrings(zid, r.zombie_id);
+        },
+        else => return error.TestExpectedEqual,
+    }
+    // flat /v1/zombies/activity removed
+    try std.testing.expect(match("/v1/zombies/activity") == null);
+}
+
 test "M2_001: remaining flat zombie routes still resolve (migrated in later M24 slices)" {
-    try std.testing.expectEqualDeep(Route.zombie_activity, match("/v1/zombies/activity").?);
     try std.testing.expectEqualDeep(Route.zombie_credentials, match("/v1/zombies/credentials").?);
 }
 

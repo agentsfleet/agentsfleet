@@ -44,8 +44,9 @@ pub const Route = union(enum) {
     // M24_001: Zombie CRUD + activity + credentials (workspace-scoped)
     workspace_zombies: []const u8, // GET|POST /v1/workspaces/{ws}/zombies
     delete_workspace_zombie: matchers.WorkspaceZombieRoute, // DELETE /v1/workspaces/{ws}/zombies/{id}
-    zombie_activity, // GET /v1/zombies/activity  (migrated in later slice)
+    workspace_zombie_activity: matchers.ZombieTelemetryRoute, // GET /v1/workspaces/{ws}/zombies/{id}/activity
     zombie_credentials, // GET|POST /v1/zombies/credentials  (migrated in later slice)
+    // NOTE: flat .zombie_activity removed by M24_001 slice 3.
     // M18_001: zombie execution telemetry
     zombie_telemetry: ZombieTelemetryRoute, // GET /v1/workspaces/{ws}/zombies/{id}/telemetry
     internal_telemetry, // GET /internal/v1/telemetry
@@ -128,12 +129,13 @@ pub fn match(path: []const u8) ?Route {
     if (std.mem.eql(u8, path, "/v1/memory/list")) return .memory_list;
     if (std.mem.eql(u8, path, "/v1/memory/forget")) return .memory_forget;
 
-    // M24_001: Workspace-scoped zombie collection + single-resource
+    // M24_001: Workspace-scoped zombie collection + single-resource + sub-resources.
+    // Longer/more-specific paths first to avoid prefix collisions.
+    if (matchers.matchWorkspaceZombieSuffix(path, "/activity")) |route| return .{ .workspace_zombie_activity = route };
     if (matchers.matchWorkspaceZombie(path)) |route| return .{ .delete_workspace_zombie = route };
     if (matchWorkspaceSuffix(path, "/zombies")) |workspace_id| return .{ .workspace_zombies = workspace_id };
 
     // M2_001: remaining flat routes (migrated in later M24 slices)
-    if (std.mem.eql(u8, path, "/v1/zombies/activity")) return .zombie_activity;
     if (std.mem.eql(u8, path, "/v1/zombies/credentials")) return .zombie_credentials;
 
     // M18_001: customer telemetry endpoint

@@ -1,8 +1,8 @@
-// M2_001: Zombie activity stream + credential API handlers.
+// M2_001 / M24_001: Zombie activity stream + credential API handlers.
 //
-// GET  /v1/zombies/activity     → handleListActivity
-// POST /v1/zombies/credentials  → handleStoreCredential
-// GET  /v1/zombies/credentials  → handleListCredentials
+// GET  /v1/workspaces/{ws}/zombies/{id}/activity  → innerListActivity
+// POST /v1/zombies/credentials  → innerStoreCredential     (migrated in later M24 slice)
+// GET  /v1/zombies/credentials  → innerListCredentials     (migrated in later M24 slice)
 
 const std = @import("std");
 const httpz = @import("httpz");
@@ -24,22 +24,30 @@ const MAX_CREDENTIAL_NAME_LEN: usize = 64;
 
 // ── List Activity ─────────────────────────────────────────────────────
 
-pub fn innerListActivity(hx: hx_mod.Hx, req: *httpz.Request) void {
-    const qs = req.query() catch {
-        hx.fail(ec.ERR_INVALID_REQUEST, "zombie_id query parameter required");
+pub fn innerListActivity(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []const u8, zombie_id: []const u8) void {
+    if (!id_format.isSupportedWorkspaceId(workspace_id)) {
+        hx.fail(ec.ERR_INVALID_REQUEST, ec.MSG_WORKSPACE_ID_REQUIRED);
         return;
-    };
-    const zombie_id = qs.get("zombie_id") orelse {
-        hx.fail(ec.ERR_INVALID_REQUEST, "zombie_id query parameter required");
-        return;
-    };
+    }
     if (!id_format.isSupportedWorkspaceId(zombie_id)) {
         hx.fail(ec.ERR_INVALID_REQUEST, "zombie_id must be a valid UUIDv7");
         return;
     }
 
-    const limit = parseLimitFromQs(qs);
-    const cursor = qs.get("cursor");
+    const qs = req.query() catch null;
+    const limit = if (qs) |q| parseLimitFromQs(q) else activity_stream.DEFAULT_ACTIVITY_PAGE_LIMIT;
+    const cursor = if (qs) |q| q.get("cursor") else null;
+
+    const conn = hx.ctx.pool.acquire() catch {
+        common.internalDbUnavailable(hx.res, hx.req_id);
+        return;
+    };
+    defer hx.ctx.pool.release(conn);
+
+    if (!common.authorizeWorkspace(conn, hx.principal, workspace_id)) {
+        hx.fail(ec.ERR_FORBIDDEN, "Workspace access denied");
+        return;
+    }
 
     const page = activity_stream.queryByZombie(hx.ctx.pool, hx.alloc, zombie_id, cursor, limit) catch |err| {
         if (err == error.InvalidCursor) {
