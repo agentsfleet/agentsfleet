@@ -37,6 +37,7 @@ const ext_agents = @import("handlers/external_agents.zig");
 const slack_oauth = @import("handlers/slack_oauth.zig");
 const slack_ev = @import("handlers/slack_events.zig");
 const slack_ix = @import("handlers/slack_interactions.zig");
+const zombie_steer = @import("handlers/zombie_steer_http.zig");
 
 const Hx = hx_mod.Hx;
 
@@ -207,6 +208,13 @@ pub fn invokeZombieCredentials(hx: *Hx, req: *httpz.Request, route: router.Route
         .GET => zombie_act.innerListCredentials(hx.*, req),
         else => common.respondMethodNotAllowed(hx.res),
     }
+}
+
+// ── Zombie steer (M23_001) ────────────────────────────────────────────────
+
+pub fn invokeZombieSteer(hx: *Hx, req: *httpz.Request, route: router.Route) void {
+    if (req.method != .POST) { common.respondMethodNotAllowed(hx.res); return; }
+    zombie_steer.innerZombieSteer(hx.*, req, route.zombie_steer);
 }
 
 // ── Zombie telemetry ──────────────────────────────────────────────────────

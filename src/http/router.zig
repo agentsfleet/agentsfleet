@@ -46,6 +46,8 @@ pub const Route = union(enum) {
     delete_zombie: []const u8, // DELETE /v1/zombies/{id}
     zombie_activity, // GET /v1/zombies/activity
     zombie_credentials, // GET|POST /v1/zombies/credentials
+    // M23_001: Live steering — POST /v1/zombies/{id}:steer
+    zombie_steer: []const u8, // zombie_id
     // M18_001: zombie execution telemetry
     zombie_telemetry: ZombieTelemetryRoute, // GET /v1/workspaces/{ws}/zombies/{id}/telemetry
     internal_telemetry, // GET /internal/v1/telemetry
@@ -127,6 +129,9 @@ pub fn match(path: []const u8) ?Route {
     if (std.mem.eql(u8, path, "/v1/memory/recall")) return .memory_recall;
     if (std.mem.eql(u8, path, "/v1/memory/list")) return .memory_list;
     if (std.mem.eql(u8, path, "/v1/memory/forget")) return .memory_forget;
+
+    // M23_001: zombie steer (before matchZombieId — colon-action paths must not fall through to plain-id)
+    if (matchers.matchZombieAction(path, ":steer")) |zombie_id| return .{ .zombie_steer = zombie_id };
 
     // M2_001: Zombie CRUD + activity + credentials
     if (std.mem.eql(u8, path, "/v1/zombies/")) return .list_or_create_zombies;
@@ -282,6 +287,26 @@ test "match resolves Slack install route (M8_001)" {
     try std.testing.expectEqualDeep(Route.slack_interactions, match("/v1/slack/interactions").?);
     try std.testing.expect(match("/v1/slack/other") == null);
     try std.testing.expect(match("/v1/slack/") == null);
+}
+
+// ── M23_001 route tests ───────────────────────────────────────────────────────
+
+test "match resolves zombie_steer route (M23_001)" {
+    const zombie_id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
+    try std.testing.expectEqualStrings(
+        zombie_id,
+        switch (match("/v1/zombies/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11:steer").?) {
+            .zombie_steer => |id| id,
+            else => return error.TestExpectedEqual,
+        },
+    );
+    // plain zombie path not matched as steer
+    try std.testing.expect(switch (match("/v1/zombies/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11").?) {
+        .zombie_steer => false,
+        else => true,
+    });
+    // multi-segment rejected
+    try std.testing.expect(match("/v1/zombies/a/b:steer") == null);
 }
 
 // Webhook + approval route tests are in router_test.zig.

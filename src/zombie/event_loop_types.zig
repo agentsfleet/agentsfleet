@@ -20,11 +20,17 @@ pub const ZombieSession = struct {
     context_json: []const u8,
     /// Source markdown — owns the memory that instructions borrows from.
     source_markdown: []const u8,
+    /// M23_001: active executor session handle. NULL when zombie is idle.
+    /// Set at createExecution, cleared at destroyExecution and on claimZombie (crash recovery).
+    /// Persisted to core.zombie_sessions.execution_id so the steer API can read it.
+    execution_id: ?[]const u8 = null,
+    /// M23_001: millis timestamp when execution_id was set. 0 when idle.
+    execution_started_at: i64 = 0,
 
     // bvisor pattern: comptime size assertion catches silent field drift.
-    // 6 fields: 2 const slices + ZombieConfig(inline) + 3 const slices
+    // 8 fields: 2 const slices + ZombieConfig(inline) + 3 const slices + ?slice + i64
     comptime {
-        if (@sizeOf(ZombieSession) != 296) @compileError("ZombieSession size changed; update this assertion");
+        if (@sizeOf(ZombieSession) != 320) @compileError("ZombieSession size changed; update this assertion");
     }
 
     pub fn deinit(self: *ZombieSession, alloc: Allocator) void {
@@ -33,6 +39,7 @@ pub const ZombieSession = struct {
         self.config.deinit(alloc);
         alloc.free(self.source_markdown);
         alloc.free(self.context_json);
+        if (self.execution_id) |eid| alloc.free(eid);
     }
 };
 

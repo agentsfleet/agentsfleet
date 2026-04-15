@@ -76,6 +76,18 @@ pub const Client = struct {
         }
     }
 
+    /// GETDEL key — atomically get and delete. Returns null if key does not exist.
+    /// Caller owns the returned slice (allocated with self.alloc).
+    /// M23_001: used by worker to poll zombie steer signals.
+    pub fn getDel(self: *Client, key: []const u8) !?[]u8 {
+        var resp = try self.command(&.{ "GETDEL", key });
+        defer resp.deinit(self.alloc);
+        return switch (resp) {
+            .bulk => |v| if (v) |s| try self.alloc.dupe(u8, s) else null,
+            else => null,
+        };
+    }
+
     /// EXISTS key — returns true if the key exists (M17_001 §3.2).
     pub fn exists(self: *Client, key: []const u8) !bool {
         var resp = try self.command(&.{ "EXISTS", key });
@@ -126,35 +138,6 @@ pub const Client = struct {
         defer resp.deinit(self.alloc);
         const who = redis_protocol.valueAsString(resp) orelse return error.RedisUnexpectedResponse;
         return try self.alloc.dupe(u8, who);
-    }
-
-    pub fn xaddRun(self: *Client, run_id: []const u8, attempt: u32, workspace_id: []const u8) !void {
-        var attempt_buf: [16]u8 = undefined;
-        const attempt_str = try std.fmt.bufPrint(&attempt_buf, "{d}", .{attempt});
-        var resp = try self.command(&.{
-            "XADD",
-            queue_consts.stream_name,
-            "*",
-            queue_consts.field_run_id,
-            run_id,
-            queue_consts.field_attempt,
-            attempt_str,
-            queue_consts.field_workspace_id,
-            workspace_id,
-        });
-        defer resp.deinit(self.alloc);
-
-        switch (resp) {
-            .bulk => |v| if (v == null) {
-                log.err("redis.xadd_fail run_id={s} attempt={d} error_code=" ++ error_codes.ERR_INTERNAL_OPERATION_FAILED, .{ run_id, attempt });
-                return error.RedisXaddFailed;
-            },
-            else => {
-                log.err("redis.xadd_fail run_id={s} attempt={d} error_code=" ++ error_codes.ERR_INTERNAL_OPERATION_FAILED, .{ run_id, attempt });
-                return error.RedisXaddFailed;
-            },
-        }
-        log.debug("redis.xadd run_id={s} attempt={d} workspace_id={s}", .{ run_id, attempt, workspace_id });
     }
 
     // setNx sets key=value with ttl only if key does not exist.
@@ -224,39 +207,6 @@ pub const Client = struct {
             },
         }
         log.debug("redis.xack message_id={s}", .{message_id});
-    }
-
-    pub fn xreadgroupOne(self: *Client, consumer_id: []const u8) !?redis_types.QueueMessage {
-        var resp = try self.command(&.{
-            "XREADGROUP",
-            "GROUP",
-            queue_consts.consumer_group,
-            consumer_id,
-            "COUNT",
-            queue_consts.xread_count,
-            "BLOCK",
-            queue_consts.xread_block_ms,
-            "STREAMS",
-            queue_consts.stream_name,
-            ">",
-        });
-        defer resp.deinit(self.alloc);
-        return self.decodeSingleMessage(resp);
-    }
-
-    pub fn xautoclaimOne(self: *Client, consumer_id: []const u8) !?redis_types.QueueMessage {
-        var resp = try self.command(&.{
-            "XAUTOCLAIM",
-            queue_consts.stream_name,
-            queue_consts.consumer_group,
-            consumer_id,
-            queue_consts.xautoclaim_min_idle_ms,
-            queue_consts.xautoclaim_start,
-            "COUNT",
-            queue_consts.xautoclaim_count,
-        });
-        defer resp.deinit(self.alloc);
-        return self.decodeAutoClaimMessage(resp);
     }
 
     pub fn command(self: *Client, argv: []const []const u8) !redis_protocol.RespValue {

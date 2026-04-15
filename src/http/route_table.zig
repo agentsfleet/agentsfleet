@@ -85,6 +85,8 @@ pub fn specFor(route: router.Route, registry: *auth_mw.MiddlewareRegistry) ?Rout
         .delete_zombie => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeDeleteZombie },
         .zombie_activity => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeZombieActivity },
         .zombie_credentials => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeZombieCredentials },
+        // M23_001: live steering
+        .zombie_steer => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeZombieSteer },
 
         // Zombie telemetry
         .zombie_telemetry => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeZombieTelemetry },
@@ -142,6 +144,7 @@ test "specFor returns a RouteSpec for every Route variant (Batch D — full tabl
     try testing.expect(specFor(.{ .delete_zombie = "z1" }, &reg) != null);
     try testing.expect(specFor(.zombie_activity, &reg) != null);
     try testing.expect(specFor(.zombie_credentials, &reg) != null);
+    try testing.expect(specFor(.{ .zombie_steer = "z1" }, &reg) != null);
     try testing.expect(specFor(.{ .zombie_telemetry = .{ .workspace_id = "ws1", .zombie_id = "z1" } }, &reg) != null);
     try testing.expect(specFor(.internal_telemetry, &reg) != null);
     try testing.expect(specFor(.admin_platform_keys, &reg) != null);

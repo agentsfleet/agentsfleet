@@ -77,6 +77,17 @@ pub fn matchWebhookAction(path: []const u8, action: []const u8) ?[]const u8 {
     return inner;
 }
 
+// M23_001: matchZombieAction matches /v1/zombies/{zombie_id}:action (colon-suffixed, no slash).
+// Used for POST /v1/zombies/{id}:steer. Returns the zombie_id.
+pub fn matchZombieAction(path: []const u8, action: []const u8) ?[]const u8 {
+    const prefix = "/v1/zombies/";
+    if (!std.mem.startsWith(u8, path, prefix)) return null;
+    if (!std.mem.endsWith(u8, path, action)) return null;
+    const inner = path[prefix.len .. path.len - action.len];
+    if (!isSingleSegment(inner)) return null;
+    return inner;
+}
+
 // M2_001: matchZombieId matches /v1/zombies/{zombie_id} for DELETE.
 pub fn matchZombieId(path: []const u8) ?[]const u8 {
     const prefix = "/v1/zombies/";
@@ -161,6 +172,13 @@ test "matchZombieGrantRevoke: zombie_id and grant_id" {
     try std.testing.expect(matchZombieGrantRevoke("/v1/zombies/z1/integration-grants/") == null);
     try std.testing.expect(matchZombieGrantRevoke("/v1/zombies//integration-grants/g1") == null);
     try std.testing.expect(matchZombieGrantRevoke("/v1/zombies/z1/z2/integration-grants/g1") == null);
+}
+
+test "matchZombieAction: :steer extracts zombie_id" {
+    try std.testing.expectEqualStrings("z1", matchZombieAction("/v1/zombies/z1:steer", ":steer").?);
+    try std.testing.expect(matchZombieAction("/v1/zombies/:steer", ":steer") == null); // empty id
+    try std.testing.expect(matchZombieAction("/v1/zombies/a/b:steer", ":steer") == null); // multi-segment
+    try std.testing.expect(matchZombieAction("/v1/zombies/z1:other", ":steer") == null); // wrong action
 }
 
 test "matchZombieId: excludes sub-paths" {
