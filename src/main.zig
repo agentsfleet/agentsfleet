@@ -187,6 +187,9 @@ test {
     _ = @import("zombie/notifications/grant_notifier.zig");
     _ = @import("http/route_matchers.zig");
     _ = @import("http/handlers/zombie_steer_http.zig");
+    // M23_001: Zombie Steer — live steering + execution tracking
+    _ = @import("http/handlers/zombie_steer_http_integration_test.zig");
+    _ = @import("zombie/event_loop_m23_integration_test.zig");
     _ = @import("cmd/worker_zombie.zig");
     // M6_001: AI Firewall Policy Engine
     _ = @import("zombie/firewall/domain_policy.zig");
