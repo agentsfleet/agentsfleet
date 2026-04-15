@@ -139,6 +139,9 @@ fn seedTestData(conn: *pg.Conn) !void {
 fn cleanupTestData(conn: *pg.Conn) void {
     _ = conn.exec("DELETE FROM core.zombie_sessions WHERE zombie_id IN ($1, $2, $3)", .{ ZOMBIE_IDLE, ZOMBIE_ACTIVE, ZOMBIE_OTHER_WS }) catch {};
     _ = conn.exec("DELETE FROM core.zombies WHERE workspace_id IN ($1, $2)", .{ TEST_WORKSPACE_ID, OTHER_WS_ID }) catch {};
+    // Delete OTHER_WS_ID workspace so its FK reference to TEST_TENANT_ID doesn't block
+    // rbac/byok test teardown (which does DELETE FROM tenants WHERE tenant_id = TEST_TENANT_ID).
+    _ = conn.exec("DELETE FROM workspaces WHERE workspace_id = $1", .{OTHER_WS_ID}) catch {};
 }
 
 fn startTestServer(alloc: std.mem.Allocator) !*TestServer {
