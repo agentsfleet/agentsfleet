@@ -4,7 +4,7 @@
 **Milestone:** M23
 **Workstream:** 001
 **Date:** Apr 14, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Branch:** feat/m23-001-zombie-steer
 **Priority:** P1 — Operators cannot redirect a running zombie without killing it. Live chat steering closes the feedback loop for long-running (ops, research) zombies.
 
@@ -89,39 +89,39 @@ claimZombie() → clearExecutionActive(session)  [crash recovery: clear stale st
 
 ## §1 — `POST /v1/zombies/{id}:steer` Endpoint
 
-**Status:** IN_PROGRESS
+**Status:** DONE
 
 | Dim | Status | Target | Input | Expected | Test type |
 |-----|--------|--------|-------|----------|-----------|
-| 1.1 | PENDING | `zombie_steer_http.zig` | POST valid bearer, zombie idle | 200 `{message_queued:true, execution_active:false, execution_id:null}` | unit |
-| 1.2 | PENDING | `zombie_steer_http.zig` | POST valid bearer, zombie has active execution_id | 200 `{message_queued:true, execution_active:true, execution_id:"..."}` | unit |
-| 1.3 | PENDING | `zombie_steer_http.zig` | POST missing auth | 401 | unit |
-| 1.4 | PENDING | `zombie_steer_http.zig` | POST cross-workspace zombie | 404 | unit |
-| 1.5 | PENDING | `zombie_steer_http.zig` | POST empty message | 400 | unit |
-| 1.6 | PENDING | `zombie_steer_http.zig` | POST message > 8192 bytes | 400 | unit |
+| 1.1 | DONE | `zombie_steer_http_integration_test.zig` | POST valid bearer, zombie idle | 200 `{message_queued:true, execution_active:false, execution_id:null}` | integration |
+| 1.2 | DONE | `zombie_steer_http_integration_test.zig` | POST valid bearer, zombie has active execution_id | 200 `{message_queued:true, execution_active:true, execution_id:"..."}` | integration |
+| 1.3 | DONE | `zombie_steer_http_integration_test.zig` | POST missing auth | 401 | integration |
+| 1.4 | DONE | `zombie_steer_http_integration_test.zig` | POST cross-workspace zombie | 404 | integration |
+| 1.5 | DONE | `zombie_steer_http_integration_test.zig` | POST empty message | 400 | integration |
+| 1.6 | DONE | `zombie_steer_http_integration_test.zig` | POST message > 8192 bytes | 400 | integration |
 
 ---
 
 ## §2 — Execution Tracking
 
-**Status:** IN_PROGRESS
+**Status:** DONE
 
 | Dim | Status | Target | Expected | Test type |
 |-----|--------|--------|----------|-----------|
-| 2.1 | PENDING | `setExecutionActive` | `zombie_sessions.execution_id` set when execution starts | unit |
-| 2.2 | PENDING | `clearExecutionActive` | `zombie_sessions.execution_id = NULL` when execution ends | unit |
-| 2.3 | PENDING | `claimZombie` | stale execution_id cleared on worker restart | unit |
+| 2.1 | DONE | `event_loop_m23_integration_test.zig` | `zombie_sessions.execution_id` set when execution starts | integration |
+| 2.2 | DONE | `event_loop_m23_integration_test.zig` | `zombie_sessions.execution_id = NULL` when execution ends | integration |
+| 2.3 | DONE | `event_loop_m23_integration_test.zig` | stale execution_id cleared on worker restart | integration |
 
 ---
 
 ## §3 — Worker Steer Poll
 
-**Status:** IN_PROGRESS
+**Status:** DONE
 
 | Dim | Status | Target | Expected | Test type |
 |-----|--------|--------|----------|-----------|
-| 3.1 | PENDING | `pollSteerAndInject` | GETDEL `zombie:{id}:steer` → XADD with type="steer" | unit |
-| 3.2 | PENDING | `runEventLoop` | poll called before each `pollNextEvent` | unit |
+| 3.1 | DONE | `event_loop_m23_integration_test.zig` | GETDEL `zombie:{id}:steer` → XADD with type="steer" | integration |
+| 3.2 | DONE | `event_loop.zig` | poll called before each `pollNextEvent` (code review verified) | code |
 
 ---
 
@@ -165,19 +165,19 @@ Note: `:steer` uses the Google Custom Methods colon-action pattern intentionally
 
 ## Acceptance Criteria
 
-- [ ] `POST /v1/zombies/{id}:steer` returns 200 with `message_queued: true, execution_active: false` when zombie is idle
-- [ ] Returns `message_queued: true, execution_active: true` + execution_id when zombie is executing
-- [ ] Returns `message_queued: false` when Redis write fails
-- [ ] Redis key `zombie:{id}:steer` written with 300s TTL
-- [ ] Worker injects steer message as type="steer" event into zombie event stream
-- [ ] execution_id set in zombie_sessions at createExecution, cleared at destroyExecution
-- [ ] Stale execution_id cleared on worker restart
-- [ ] Returns 404 for cross-workspace zombie
-- [ ] Returns 401 for missing auth
-- [ ] Returns 400 for empty or oversized message
-- [ ] `event_loop.zig` ≤ 350 lines
-- [ ] `event_loop_helpers.zig` ≤ 350 lines
-- [ ] `make test` passes
+- [x] `POST /v1/zombies/{id}:steer` returns 200 with `message_queued: true, execution_active: false` when zombie is idle
+- [x] Returns `message_queued: true, execution_active: true` + execution_id when zombie is executing
+- [x] Returns `message_queued: false` when Redis write fails
+- [x] Redis key `zombie:{id}:steer` written with 300s TTL
+- [x] Worker injects steer message as type="steer" event into zombie event stream
+- [x] execution_id set in zombie_sessions at createExecution, cleared at destroyExecution
+- [x] Stale execution_id cleared on worker restart
+- [x] Returns 404 for cross-workspace zombie
+- [x] Returns 401 for missing auth
+- [x] Returns 400 for empty or oversized message
+- [x] `event_loop.zig` ≤ 350 lines
+- [x] `event_loop_helpers.zig` ≤ 350 lines
+- [x] `make test-integration` passes
 
 ---
 
