@@ -22,11 +22,16 @@ const ec = @import("../../errors/error_registry.zig");
 const id_format = @import("../../types/id_format.zig");
 const zombie_config = @import("../../zombie/config.zig");
 const activity_stream = @import("../../zombie/activity_stream.zig");
+const workspace_guards = @import("../workspace_guards.zig");
 
 const log = std.log.scoped(.zombie_lifecycle);
 
 const API_ACTOR = "api";
 const DETAIL_MANUAL_STOP = "stopped via operator kill switch";
+
+// RULE BIL-adjacent: destructive lifecycle actions (kill switch, future
+// delete/pause/resume) require operator-minimum role. Regular workspace
+// members must not be able to halt a running zombie they didn't deploy.
 
 // StopOutcome describes the three paths: transitioned / already-terminal / not-found.
 const StopOutcome = enum { transitioned, already_terminal, not_found };
@@ -52,10 +57,13 @@ pub fn innerStopZombie(
     };
     defer hx.ctx.pool.release(conn);
 
-    if (!common.authorizeWorkspace(conn, hx.principal, workspace_id)) {
-        hx.fail(ec.ERR_FORBIDDEN, "Workspace access denied");
-        return;
-    }
+    // RULE BIL-adjacent: kill switch is a destructive action. Operator-minimum
+    // role required so plain workspace members can't halt production zombies.
+    const actor = hx.principal.user_id orelse API_ACTOR;
+    const access = workspace_guards.enforce(hx.res, hx.req_id, conn, hx.alloc, hx.principal, workspace_id, actor, .{
+        .minimum_role = .operator,
+    }) orelse return;
+    defer access.deinit(hx.alloc);
 
     // RULE ZWO: verify zombie belongs to the path workspace (don't leak existence).
     const zombie_ws_id = common.getZombieWorkspaceId(conn, hx.alloc, zombie_id) orelse {

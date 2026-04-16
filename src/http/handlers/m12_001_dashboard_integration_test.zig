@@ -43,9 +43,12 @@ const TEST_AUDIENCE = "https://api.usezombie.com";
 const TEST_JWKS =
     \\{"keys":[{"kty":"RSA","n":"2hg972tpbq8H6kzRZ3oVL4wZ9bO-04gJ6gCig68aluyRBzagx-7XXPCiuX80oBHBVj51kvMjT_QDNXfrwzjy4cPbwiVV4HqOGpeIZkPEopfyzs4G7mjiQmx0YuM_5WQUlUjji6Y_DfeaoH-yOhTWBMBVoI0vW_1n66CFaGuEarj3VasdWYxObJTBAM6Jn4XZDcDsBBPNGO4ku7yILkfi11FqXfBP2V8NT0hAGXVAxlWwv-8up1RDzgACp-8JWoC2-kOUJN82fGenDGKq9hW_sumO-4YPNP4U1smnw5jzLlvKa0LBrYG8IgW-3Dniuq2mojhrD_ZQClUd5rF42OyYqw","e":"AQAB","kid":"rbac-test-kid","use":"sig","alg":"RS256"}]}
 ;
-// .user role, workspace = TEST_WORKSPACE_ID; same token minted in telemetry_http_integration_test.zig.
+// .user role, workspace = TEST_WORKSPACE_ID; same tokens minted in telemetry_http_integration_test.zig.
 const TOKEN_USER =
     "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6InJiYWMtdGVzdC1raWQifQ.eyJzdWIiOiJ1c2VyX3Rlc3QiLCJpc3MiOiJodHRwczovL2NsZXJrLmRldi51c2V6b21iaWUuY29tIiwiYXVkIjoiaHR0cHM6Ly9hcGkudXNlem9tYmllLmNvbSIsImV4cCI6NDEwMjQ0NDgwMCwibWV0YWRhdGEiOnsidGVuYW50X2lkIjoiMDE5NWI0YmEtOGQzYS03ZjEzLThhYmMtMmIzZTFlMGE2ZjAxIiwid29ya3NwYWNlX2lkIjoiMDE5NWI0YmEtOGQzYS03ZjEzLThhYmMtMmIzZTFlMGE2ZjExIiwicm9sZSI6InVzZXIifX0.UEZ3huXtn6bXpa3M1EJZ2QmqLtXewLsHYP5ggTeRg-lgX-Vzp2ECvTsGgzhCSxNNPudRXYgdTsPa1ufIKv_5n1SvuoCRw2eRZfTUp5a_68KbScepnLVx5LaRJmoMyPP8Q_DPYwB0vHm1NCPRIfFqzcBOpLw01Ygkse4mTq19JPE4vcINmaVTWMiN02_ScU0DWhzhzx3_B1_vCBC3wxCpVuM_wqOHDUCnBEPkM-YVQcZrtQIdXPfRzZ2XFRVWFn-E7s0EWBpEP1wSCh31ymki_E1vlnrW4q9ZKNBYnZX0ErvJlcqH2U7nIsFlLYULNP_4mdYrDaWvBSSYZROoK1d8WQ";
+// .operator role — required for :stop, billing summary, credentials (RULE BIL + kill-switch guard).
+const TOKEN_OPERATOR =
+    "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6InJiYWMtdGVzdC1raWQifQ.eyJzdWIiOiJ1c2VyX3Rlc3QiLCJpc3MiOiJodHRwczovL2NsZXJrLmRldi51c2V6b21iaWUuY29tIiwiYXVkIjoiaHR0cHM6Ly9hcGkudXNlem9tYmllLmNvbSIsImV4cCI6NDEwMjQ0NDgwMCwibWV0YWRhdGEiOnsidGVuYW50X2lkIjoiMDE5NWI0YmEtOGQzYS03ZjEzLThhYmMtMmIzZTFlMGE2ZjAxIiwid29ya3NwYWNlX2lkIjoiMDE5NWI0YmEtOGQzYS03ZjEzLThhYmMtMmIzZTFlMGE2ZjExIiwicm9sZSI6Im9wZXJhdG9yIn19.V84uE69RTLrRef0sogegUcUZeKWx8E68GEruFoS8HegUa3o7bVCfQjlkllNSbtUut919EygbQv1C16BMfNTOAv1Lvl3AeLYPYr4ni6EnzzGllbyxDw1aY68AGWEEvKOUxd5wCGl8BnEqaOKX7KNNbAOV4AzJNWqnV-uxJiZl6oDtqi8bsSF1HAm9qY9MAl6AwoZLGnT_x6ux_3vfKy_9ckZSbgjN7laZOMqQ5nwwcaSpwYNm_3ZpXJLgHYMVxel2M4rT0SIaFh__rE42yGE9FBDRUFoyktGOR3NYPOzogjj3tfOoecC8NEhrwifzXcSNVAiHOMnmXojjAPEUORovPg";
 
 const HttpResponse = struct {
     status: u16,
@@ -304,14 +307,16 @@ test "M12_001: POST /workspaces/{ws}/zombies/{id}:stop — transitions, 409, 404
     const stop_url = try std.fmt.allocPrint(alloc, "http://127.0.0.1:{d}/v1/workspaces/{s}/zombies/{s}:stop", .{ srv.port, TEST_WORKSPACE_ID, TEST_ZOMBIE_ACTIVE });
     defer alloc.free(stop_url);
 
-    // T5: active → stopped, 200 with status=stopped in body.
-    { const r = try http(alloc, .POST, stop_url, TOKEN_USER, null); defer r.deinit(alloc); try std.testing.expectEqual(@as(u16, 200), r.status); try std.testing.expect(std.mem.indexOf(u8, r.body, "\"status\":\"stopped\"") != null); }
+    // T5-pre: user role → 403 (kill switch requires operator, greptile PR #221 3095061278).
+    { const r = try http(alloc, .POST, stop_url, TOKEN_USER, null); defer r.deinit(alloc); try std.testing.expectEqual(@as(u16, 403), r.status); }
+    // T5: operator active → stopped, 200 with status=stopped in body.
+    { const r = try http(alloc, .POST, stop_url, TOKEN_OPERATOR, null); defer r.deinit(alloc); try std.testing.expectEqual(@as(u16, 200), r.status); try std.testing.expect(std.mem.indexOf(u8, r.body, "\"status\":\"stopped\"") != null); }
     // T6: re-call → 409 UZ-ZMB-010.
-    { const r = try http(alloc, .POST, stop_url, TOKEN_USER, null); defer r.deinit(alloc); try std.testing.expectEqual(@as(u16, 409), r.status); try std.testing.expect(std.mem.indexOf(u8, r.body, "UZ-ZMB-010") != null); }
+    { const r = try http(alloc, .POST, stop_url, TOKEN_OPERATOR, null); defer r.deinit(alloc); try std.testing.expectEqual(@as(u16, 409), r.status); try std.testing.expect(std.mem.indexOf(u8, r.body, "UZ-ZMB-010") != null); }
     // T7: nonexistent zombie → 404 UZ-ZMB-009.
     const missing = try std.fmt.allocPrint(alloc, "http://127.0.0.1:{d}/v1/workspaces/{s}/zombies/{s}:stop", .{ srv.port, TEST_WORKSPACE_ID, TEST_ZOMBIE_NONEXISTENT });
     defer alloc.free(missing);
-    { const r = try http(alloc, .POST, missing, TOKEN_USER, null); defer r.deinit(alloc); try std.testing.expectEqual(@as(u16, 404), r.status); try std.testing.expect(std.mem.indexOf(u8, r.body, "UZ-ZMB-009") != null); }
+    { const r = try http(alloc, .POST, missing, TOKEN_OPERATOR, null); defer r.deinit(alloc); try std.testing.expectEqual(@as(u16, 404), r.status); try std.testing.expect(std.mem.indexOf(u8, r.body, "UZ-ZMB-009") != null); }
 }
 
 test "M12_001: GET /workspaces/{ws}/zombies/{id}/billing/summary — populated, zeros, IDOR" {
@@ -323,18 +328,20 @@ test "M12_001: GET /workspaces/{ws}/zombies/{id}/billing/summary — populated, 
         alloc.destroy(srv);
     }
 
-    // T8: zombie with 2 billable + 1 non-billable → total_runs=3, total_cents=1000.
+    // T8-pre: user role → 403 (RULE BIL).
     const url_active = try std.fmt.allocPrint(alloc, "http://127.0.0.1:{d}/v1/workspaces/{s}/zombies/{s}/billing/summary?period_days=30", .{ srv.port, TEST_WORKSPACE_ID, TEST_ZOMBIE_ACTIVE });
     defer alloc.free(url_active);
-    { const r = try http(alloc, .GET, url_active, TOKEN_USER, null); defer r.deinit(alloc); try std.testing.expectEqual(@as(u16, 200), r.status); try std.testing.expect(std.mem.indexOf(u8, r.body, "\"total_runs\":3") != null); try std.testing.expect(std.mem.indexOf(u8, r.body, "\"total_cents\":1000") != null); }
+    { const r = try http(alloc, .GET, url_active, TOKEN_USER, null); defer r.deinit(alloc); try std.testing.expectEqual(@as(u16, 403), r.status); }
+    // T8: operator — zombie with 2 billable + 1 non-billable → total_runs=3, total_cents=1000.
+    { const r = try http(alloc, .GET, url_active, TOKEN_OPERATOR, null); defer r.deinit(alloc); try std.testing.expectEqual(@as(u16, 200), r.status); try std.testing.expect(std.mem.indexOf(u8, r.body, "\"total_runs\":3") != null); try std.testing.expect(std.mem.indexOf(u8, r.body, "\"total_cents\":1000") != null); }
     // T9: zombie with no telemetry → 200 with zeros (not 404).
     const url_empty = try std.fmt.allocPrint(alloc, "http://127.0.0.1:{d}/v1/workspaces/{s}/zombies/{s}/billing/summary?period_days=7", .{ srv.port, TEST_WORKSPACE_ID, TEST_ZOMBIE_EMPTY });
     defer alloc.free(url_empty);
-    { const r = try http(alloc, .GET, url_empty, TOKEN_USER, null); defer r.deinit(alloc); try std.testing.expectEqual(@as(u16, 200), r.status); try std.testing.expect(std.mem.indexOf(u8, r.body, "\"total_runs\":0") != null); try std.testing.expect(std.mem.indexOf(u8, r.body, "\"total_cents\":0") != null); }
+    { const r = try http(alloc, .GET, url_empty, TOKEN_OPERATOR, null); defer r.deinit(alloc); try std.testing.expectEqual(@as(u16, 200), r.status); try std.testing.expect(std.mem.indexOf(u8, r.body, "\"total_runs\":0") != null); try std.testing.expect(std.mem.indexOf(u8, r.body, "\"total_cents\":0") != null); }
     // T10: zombie not in workspace → 404 UZ-ZMB-009.
     const url_missing = try std.fmt.allocPrint(alloc, "http://127.0.0.1:{d}/v1/workspaces/{s}/zombies/{s}/billing/summary", .{ srv.port, TEST_WORKSPACE_ID, TEST_ZOMBIE_NONEXISTENT });
     defer alloc.free(url_missing);
-    { const r = try http(alloc, .GET, url_missing, TOKEN_USER, null); defer r.deinit(alloc); try std.testing.expectEqual(@as(u16, 404), r.status); try std.testing.expect(std.mem.indexOf(u8, r.body, "UZ-ZMB-009") != null); }
+    { const r = try http(alloc, .GET, url_missing, TOKEN_OPERATOR, null); defer r.deinit(alloc); try std.testing.expectEqual(@as(u16, 404), r.status); try std.testing.expect(std.mem.indexOf(u8, r.body, "UZ-ZMB-009") != null); }
 }
 
 test "M12_001: GET /workspaces/{ws}/billing/summary surfaces real telemetry after stub upgrade" {
@@ -348,9 +355,11 @@ test "M12_001: GET /workspaces/{ws}/billing/summary surfaces real telemetry afte
 
     // T11: workspace summary should now aggregate over the seeded telemetry
     // (3 rows, 1000 cents total). This pins the zero-stub → real-data upgrade.
+    // Uses TOKEN_OPERATOR — workspaces_billing_summary.zig has always enforced
+    // operator-minimum role.
     const url = try std.fmt.allocPrint(alloc, "http://127.0.0.1:{d}/v1/workspaces/{s}/billing/summary?period_days=30", .{ srv.port, TEST_WORKSPACE_ID });
     defer alloc.free(url);
-    const r = try http(alloc, .GET, url, TOKEN_USER, null);
+    const r = try http(alloc, .GET, url, TOKEN_OPERATOR, null);
     defer r.deinit(alloc);
     try std.testing.expectEqual(@as(u16, 200), r.status);
     try std.testing.expect(std.mem.indexOf(u8, r.body, "\"total_runs\":3") != null);
