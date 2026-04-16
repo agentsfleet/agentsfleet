@@ -90,6 +90,62 @@
       "x-mintlify": {
         "navigation": "Billing"
       }
+    },
+    {
+      "name": "Integration Grants",
+      "description": "Zombie runtime permission grants for third-party services (Slack, GitHub, etc.)",
+      "x-mintlify": {
+        "navigation": "Integration Grants"
+      }
+    },
+    {
+      "name": "External Agents",
+      "description": "API keys for LangGraph/CrewAI/Composio agents to connect to a zombie",
+      "x-mintlify": {
+        "navigation": "External Agents"
+      }
+    },
+    {
+      "name": "Execute",
+      "description": "Synchronous tool execution proxy for external agents",
+      "x-mintlify": {
+        "navigation": "Execute"
+      }
+    },
+    {
+      "name": "Slack",
+      "description": "Slack OAuth install flow and inbound events/interactions webhooks",
+      "x-mintlify": {
+        "navigation": "Slack"
+      }
+    },
+    {
+      "name": "Webhooks",
+      "description": "Approval-gate webhooks invoked by humans to unblock a paused zombie",
+      "x-mintlify": {
+        "navigation": "Webhooks"
+      }
+    },
+    {
+      "name": "Telemetry",
+      "description": "Per-zombie execution telemetry and internal operator telemetry",
+      "x-mintlify": {
+        "navigation": "Telemetry"
+      }
+    },
+    {
+      "name": "Spec",
+      "description": "Spec templating and preview endpoints for the agent relay",
+      "x-mintlify": {
+        "navigation": "Spec"
+      }
+    },
+    {
+      "name": "Scoring",
+      "description": "Per-workspace scoring configuration",
+      "x-mintlify": {
+        "navigation": "Scoring"
+      }
     }
   ],
   "paths": {
@@ -1389,6 +1445,1886 @@
           }
         ]
       }
+    },
+    "/v1/workspaces/{workspace_id}/zombies": {
+      "get": {
+        "operationId": "list_zombies",
+        "summary": "List zombies in a workspace",
+        "description": "Returns all zombies the caller has access to in the given workspace. Response envelope follows the RAD \u00a78 `items`/`total` convention.",
+        "tags": [
+          "Zombies"
+        ],
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "description": "UUIDv7 of the workspace.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "total"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/ZombieSummary"
+                      }
+                    },
+                    "total": {
+                      "type": "integer",
+                      "description": "Count of items in this response (not total across pages)."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "create_zombie",
+        "summary": "Create a zombie",
+        "description": "Creates a new zombie from a SKILL.md source and a config JSON. The CLI (`zombiectl up`) compiles TRIGGER.md frontmatter into JSON before upload; the server never sees raw YAML.",
+        "tags": [
+          "Zombies"
+        ],
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "description": "UUIDv7 of the workspace.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name",
+                  "config_json",
+                  "source_markdown"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "maxLength": 64
+                  },
+                  "config_json": {
+                    "type": "string",
+                    "description": "Zombie config serialised as a JSON string."
+                  },
+                  "source_markdown": {
+                    "type": "string",
+                    "maxLength": 65536,
+                    "description": "SKILL.md body."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "zombie_id",
+                    "status"
+                  ],
+                  "properties": {
+                    "zombie_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "status": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/workspaces/{workspace_id}/zombies/{zombie_id}": {
+      "delete": {
+        "operationId": "delete_zombie",
+        "summary": "Kill a zombie",
+        "description": "Marks the zombie as killed. Idempotent: re-killing a killed zombie returns the same 200 response. Scoped to workspace \u2014 cross-workspace deletes are rejected at the SQL layer as defence-in-depth.",
+        "tags": [
+          "Zombies"
+        ],
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "description": "UUIDv7 of the workspace.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "zombie_id",
+            "in": "path",
+            "required": true,
+            "description": "UUIDv7 of the zombie.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "zombie_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "killed"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/workspaces/{workspace_id}/zombies/{zombie_id}/activity": {
+      "get": {
+        "operationId": "list_zombie_activity",
+        "summary": "List zombie activity events",
+        "description": "Returns the append-only activity stream for a zombie (event received, skill invoked, response returned, credential resolved, grant requested, etc.). Cursor-based pagination.",
+        "tags": [
+          "Zombies"
+        ],
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "description": "UUIDv7 of the workspace.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "zombie_id",
+            "in": "path",
+            "required": true,
+            "description": "UUIDv7 of the zombie.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 20,
+              "minimum": 1,
+              "maximum": 100
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Opaque cursor from the previous response."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "total"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/ActivityEvent"
+                      }
+                    },
+                    "total": {
+                      "type": "integer",
+                      "description": "Count of items in this response (not total across pages)."
+                    },
+                    "cursor": {
+                      "type": "string",
+                      "nullable": true,
+                      "description": "Opaque cursor for the next page. null when no more items."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/workspaces/{workspace_id}/zombies/{zombie_id}:steer": {
+      "post": {
+        "operationId": "steer_zombie",
+        "summary": "Steer a running zombie",
+        "description": "Send a message to a running zombie to nudge it at the next gate checkpoint. Queued (next checkpoint) or instant (IPC delivery) per body.",
+        "tags": [
+          "Zombies"
+        ],
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "description": "UUIDv7 of the workspace.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "zombie_id",
+            "in": "path",
+            "required": true,
+            "description": "UUIDv7 of the zombie.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "message"
+                ],
+                "properties": {
+                  "message": {
+                    "type": "string"
+                  },
+                  "mode": {
+                    "type": "string",
+                    "enum": [
+                      "queued",
+                      "instant"
+                    ],
+                    "default": "queued"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string"
+                    },
+                    "event_id": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/workspaces/{workspace_id}/zombies/{zombie_id}/telemetry": {
+      "get": {
+        "operationId": "get_zombie_telemetry",
+        "summary": "Get per-zombie telemetry",
+        "description": "Returns execution telemetry for a specific zombie \u2014 last activity, event count, budget consumed, error counts.",
+        "tags": [
+          "Telemetry"
+        ],
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "description": "UUIDv7 of the workspace.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "zombie_id",
+            "in": "path",
+            "required": true,
+            "description": "UUIDv7 of the zombie.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "Telemetry payload (shape evolves with operator needs)."
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/workspaces/{workspace_id}/credentials": {
+      "get": {
+        "operationId": "list_workspace_credentials",
+        "summary": "List credentials stored for a workspace",
+        "description": "Returns credential names. Values are never returned \u2014 they live encrypted in `vault.secrets`.",
+        "tags": [
+          "Credentials"
+        ],
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "description": "UUIDv7 of the workspace.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "credentials": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/CredentialSummary"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "store_workspace_credential",
+        "summary": "Store a credential in the workspace vault",
+        "description": "Envelope-encrypted with the KEK (master key v1) and persisted to `vault.secrets`. The raw value is never stored unencrypted and never returned.",
+        "tags": [
+          "Credentials"
+        ],
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "description": "UUIDv7 of the workspace.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name",
+                  "value"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "maxLength": 64
+                  },
+                  "value": {
+                    "type": "string",
+                    "maxLength": 4096
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/memory/store": {
+      "post": {
+        "operationId": "memory_store",
+        "summary": "Store or upsert a memory entry",
+        "description": "Writes a `(key, content, category)` entry scoped to a zombie instance. Idempotent upsert on `(key, instance_id)`.",
+        "tags": [
+          "Memory"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "zombie_id",
+                  "key",
+                  "content"
+                ],
+                "properties": {
+                  "zombie_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "key": {
+                    "type": "string",
+                    "maxLength": 255
+                  },
+                  "content": {
+                    "type": "string",
+                    "maxLength": 16384
+                  },
+                  "category": {
+                    "type": "string",
+                    "default": "core"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "zombie_id": {
+                      "type": "string"
+                    },
+                    "key": {
+                      "type": "string"
+                    },
+                    "category": {
+                      "type": "string"
+                    },
+                    "request_id": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/memory/recall": {
+      "get": {
+        "operationId": "memory_recall",
+        "summary": "Recall memory entries matching a query",
+        "description": "Case-insensitive LIKE search across both `key` and `content`. LIKE metacharacters in `query` are escaped \u2014 a query of `%` does NOT return every entry.",
+        "tags": [
+          "Memory"
+        ],
+        "parameters": [
+          {
+            "name": "zombie_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "query",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 10,
+              "minimum": 1,
+              "maximum": 100
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "zombie_id": {
+                      "type": "string"
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/MemoryEntry"
+                      }
+                    },
+                    "total": {
+                      "type": "integer"
+                    },
+                    "request_id": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/memory/list": {
+      "get": {
+        "operationId": "memory_list",
+        "summary": "List recent memory entries",
+        "description": "Returns most-recent entries, optionally filtered by category.",
+        "tags": [
+          "Memory"
+        ],
+        "parameters": [
+          {
+            "name": "zombie_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "category",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 50,
+              "minimum": 1,
+              "maximum": 100
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "zombie_id": {
+                      "type": "string"
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/MemoryEntry"
+                      }
+                    },
+                    "total": {
+                      "type": "integer"
+                    },
+                    "request_id": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/memory/forget": {
+      "post": {
+        "operationId": "memory_forget",
+        "summary": "Forget a memory entry by key",
+        "description": "Deletes the entry with the given `key` under the zombie instance. Returns `{ deleted: false }` if no match \u2014 never errors on miss.",
+        "tags": [
+          "Memory"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "zombie_id",
+                  "key"
+                ],
+                "properties": {
+                  "zombie_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "key": {
+                    "type": "string",
+                    "maxLength": 255
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "zombie_id": {
+                      "type": "string"
+                    },
+                    "key": {
+                      "type": "string"
+                    },
+                    "deleted": {
+                      "type": "boolean"
+                    },
+                    "request_id": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/execute": {
+      "post": {
+        "operationId": "execute_tool",
+        "summary": "Execute a tool on behalf of an external agent",
+        "description": "Synchronous tool execution proxy. The external agent calls this endpoint with its API key (bearer), names a tool, and receives the tool's result inline. Used by LangGraph / CrewAI / Composio integrations.",
+        "tags": [
+          "Execute"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "tool",
+                  "input"
+                ],
+                "properties": {
+                  "tool": {
+                    "type": "string",
+                    "description": "Tool name."
+                  },
+                  "input": {
+                    "type": "object",
+                    "description": "Tool-specific input payload."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "Tool-specific result. Shape depends on the tool."
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/workspaces/{workspace_id}/zombies/{zombie_id}/integration-requests": {
+      "post": {
+        "operationId": "request_integration_grant",
+        "summary": "Request a new integration grant",
+        "description": "Called by a zombie (or on its behalf) to request permission to use a third-party integration (e.g. Slack, GitHub). Creates a pending grant that a human approves via the grant-approval webhook.",
+        "tags": [
+          "Integration Grants"
+        ],
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "description": "UUIDv7 of the workspace.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "zombie_id",
+            "in": "path",
+            "required": true,
+            "description": "UUIDv7 of the zombie.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "service",
+                  "reason"
+                ],
+                "properties": {
+                  "service": {
+                    "type": "string"
+                  },
+                  "reason": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "grant_id": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "pending"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/workspaces/{workspace_id}/zombies/{zombie_id}/integration-grants": {
+      "get": {
+        "operationId": "list_integration_grants",
+        "summary": "List integration grants for a zombie",
+        "description": "Returns pending, approved, and revoked grants, newest first.",
+        "tags": [
+          "Integration Grants"
+        ],
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "description": "UUIDv7 of the workspace.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "zombie_id",
+            "in": "path",
+            "required": true,
+            "description": "UUIDv7 of the zombie.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "total"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/IntegrationGrant"
+                      }
+                    },
+                    "total": {
+                      "type": "integer",
+                      "description": "Count of items in this response (not total across pages)."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/workspaces/{workspace_id}/zombies/{zombie_id}/integration-grants/{grant_id}": {
+      "delete": {
+        "operationId": "revoke_integration_grant",
+        "summary": "Revoke an integration grant",
+        "description": "Immediately revokes a grant. A revoked grant surfaces `UZ-GRANT-003` to the zombie on its next execute attempt against the affected service.",
+        "tags": [
+          "Integration Grants"
+        ],
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "description": "UUIDv7 of the workspace.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "zombie_id",
+            "in": "path",
+            "required": true,
+            "description": "UUIDv7 of the zombie.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "grant_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Opaque grant ID returned by integration-requests."
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/workspaces/{workspace_id}/external-agents": {
+      "get": {
+        "operationId": "list_external_agents",
+        "summary": "List external agents in a workspace",
+        "description": "Returns agent metadata only \u2014 never returns `key_hash`.",
+        "tags": [
+          "External Agents"
+        ],
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "description": "UUIDv7 of the workspace.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "total"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/ExternalAgent"
+                      }
+                    },
+                    "total": {
+                      "type": "integer",
+                      "description": "Count of items in this response (not total across pages)."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "create_external_agent",
+        "summary": "Issue an API key for an external agent",
+        "description": "Creates a new `zmb_` API key bound to a specific zombie. **The raw key is returned once.** Only the SHA-256 hash is persisted \u2014 the key cannot be retrieved again.",
+        "tags": [
+          "External Agents"
+        ],
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "description": "UUIDv7 of the workspace.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "zombie_id",
+                  "name"
+                ],
+                "properties": {
+                  "zombie_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "name": {
+                    "type": "string",
+                    "maxLength": 64
+                  },
+                  "description": {
+                    "type": "string",
+                    "maxLength": 256
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "agent_id",
+                    "key"
+                  ],
+                  "properties": {
+                    "agent_id": {
+                      "type": "string"
+                    },
+                    "workspace_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "zombie_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "key": {
+                      "type": "string",
+                      "description": "Raw `zmb_` API key. Shown once \u2014 store securely."
+                    },
+                    "created_at": {
+                      "type": "integer",
+                      "format": "int64"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/workspaces/{workspace_id}/external-agents/{agent_id}": {
+      "delete": {
+        "operationId": "delete_external_agent",
+        "summary": "Revoke an external-agent API key",
+        "description": "Revokes the key immediately. Subsequent requests with the key receive 401.",
+        "tags": [
+          "External Agents"
+        ],
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "description": "UUIDv7 of the workspace.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "agent_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/slack/install": {
+      "get": {
+        "operationId": "slack_install",
+        "summary": "Begin Slack OAuth install",
+        "description": "Redirects the user to Slack's OAuth consent screen. Used by the workspace owner to install the UseZombie Slack app.",
+        "tags": [
+          "Slack"
+        ],
+        "responses": {
+          "302": {
+            "description": "Redirect to Slack OAuth consent URL."
+          },
+          "500": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": []
+      }
+    },
+    "/v1/slack/callback": {
+      "get": {
+        "operationId": "slack_callback",
+        "summary": "Slack OAuth redirect target",
+        "description": "Exchanges the OAuth code for a team access token and persists team\u2192workspace binding. Validates the HMAC-signed state nonce.",
+        "tags": [
+          "Slack"
+        ],
+        "parameters": [
+          {
+            "name": "code",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "302": {
+            "description": "Redirect to the post-install page in the UseZombie dashboard."
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": []
+      }
+    },
+    "/v1/slack/events": {
+      "post": {
+        "operationId": "slack_events",
+        "summary": "Receive Slack Events API callbacks",
+        "description": "Entry point for Slack Events API deliveries (message, app_mention, etc.). Verified via the `X-Slack-Signature` HMAC header; all other auth headers are ignored. Returns 200 immediately to satisfy Slack's 3s ack budget.",
+        "tags": [
+          "Slack"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "description": "Slack Events API payload (opaque)."
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Acknowledged."
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": []
+      }
+    },
+    "/v1/slack/interactions": {
+      "post": {
+        "operationId": "slack_interactions",
+        "summary": "Receive Slack interactivity callbacks",
+        "description": "Entry point for Slack Block Kit / shortcut / modal submissions. Verified via the `X-Slack-Signature` HMAC header. Form-encoded body per Slack's spec.",
+        "tags": [
+          "Slack"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "payload": {
+                    "type": "string",
+                    "description": "JSON-encoded interaction payload."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Acknowledged."
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": []
+      }
+    },
+    "/v1/webhooks/{zombie_id}:approval": {
+      "post": {
+        "operationId": "approval_webhook",
+        "summary": "Resolve a zombie approval gate",
+        "description": "Called by a human (via email link or Slack action) to approve or reject a paused zombie. Body is HMAC-signed by the issuer; the signature is verified against the zombie's webhook secret.",
+        "tags": [
+          "Webhooks"
+        ],
+        "parameters": [
+          {
+            "name": "zombie_id",
+            "in": "path",
+            "required": true,
+            "description": "UUIDv7 of the zombie.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "decision",
+                  "signature"
+                ],
+                "properties": {
+                  "decision": {
+                    "type": "string",
+                    "enum": [
+                      "approved",
+                      "rejected"
+                    ]
+                  },
+                  "signature": {
+                    "type": "string",
+                    "description": "HMAC signature over the body."
+                  },
+                  "reason": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": []
+      }
+    },
+    "/v1/webhooks/{zombie_id}:grant-approval": {
+      "post": {
+        "operationId": "grant_approval_webhook",
+        "summary": "Approve or reject an integration grant request",
+        "description": "Human-in-the-loop approval webhook for integration grant requests (Slack, GitHub, etc.). HMAC-signed.",
+        "tags": [
+          "Webhooks"
+        ],
+        "parameters": [
+          {
+            "name": "zombie_id",
+            "in": "path",
+            "required": true,
+            "description": "UUIDv7 of the zombie.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "grant_id",
+                  "decision",
+                  "signature"
+                ],
+                "properties": {
+                  "grant_id": {
+                    "type": "string"
+                  },
+                  "decision": {
+                    "type": "string",
+                    "enum": [
+                      "approved",
+                      "rejected"
+                    ]
+                  },
+                  "signature": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": []
+      }
+    },
+    "/internal/v1/telemetry": {
+      "get": {
+        "operationId": "internal_telemetry",
+        "summary": "Internal operator telemetry",
+        "description": "Admin-only platform health snapshot \u2014 in-flight request counts, queue depth, error rates. Requires the admin API key, not a user bearer token.",
+        "tags": [
+          "Telemetry"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "Opaque operator-visible telemetry payload."
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/workspaces/{workspace_id}/spec/template": {
+      "post": {
+        "operationId": "spec_template",
+        "summary": "Agent relay: fetch a spec template",
+        "description": "Internal endpoint used by the agent relay to materialise a spec template for a given workspace. Request/response shapes are version-coupled to the relay.",
+        "tags": [
+          "Spec"
+        ],
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "description": "UUIDv7 of the workspace.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "description": "Relay-specific request payload."
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "Rendered template payload."
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/workspaces/{workspace_id}/spec/preview": {
+      "post": {
+        "operationId": "spec_preview",
+        "summary": "Agent relay: preview a spec",
+        "description": "Internal endpoint used by the agent relay to preview a spec before execution. Request/response shapes are version-coupled to the relay.",
+        "tags": [
+          "Spec"
+        ],
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "description": "UUIDv7 of the workspace.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "description": "Relay-specific request payload."
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "Preview payload."
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/workspaces/{workspace_id}/scoring/config": {
+      "post": {
+        "operationId": "set_workspace_scoring_config",
+        "summary": "Set per-workspace scoring configuration",
+        "description": "Persists the scoring thresholds and weights for run evaluation in this workspace.",
+        "tags": [
+          "Scoring"
+        ],
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "description": "UUIDv7 of the workspace.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "description": "Scoring configuration payload."
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
     }
   },
   "/v1/workspaces/{workspace_id}/zombies/{zombie_id}:steer": {
@@ -2263,6 +4199,185 @@
           "request_id": {
             "type": "string",
             "description": "Correlation ID for this request"
+          }
+        }
+      },
+      "ZombieSummary": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "paused",
+              "killed"
+            ]
+          },
+          "created_at": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Unix epoch milliseconds"
+          },
+          "updated_at": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "ActivityEvent": {
+        "type": "object",
+        "required": [
+          "event_id",
+          "event_type",
+          "created_at"
+        ],
+        "properties": {
+          "event_id": {
+            "type": "string"
+          },
+          "event_type": {
+            "type": "string"
+          },
+          "detail": {
+            "type": "string",
+            "nullable": true
+          },
+          "created_at": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "IntegrationGrant": {
+        "type": "object",
+        "required": [
+          "grant_id",
+          "service",
+          "status",
+          "requested_at"
+        ],
+        "properties": {
+          "grant_id": {
+            "type": "string"
+          },
+          "service": {
+            "type": "string",
+            "description": "e.g. slack, github"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "approved",
+              "revoked"
+            ]
+          },
+          "requested_at": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "approved_at": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "revoked_at": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "reason": {
+            "type": "string"
+          }
+        }
+      },
+      "ExternalAgent": {
+        "type": "object",
+        "required": [
+          "agent_id",
+          "zombie_id",
+          "name",
+          "created_at"
+        ],
+        "properties": {
+          "agent_id": {
+            "type": "string"
+          },
+          "zombie_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "last_used_at": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          }
+        }
+      },
+      "MemoryEntry": {
+        "type": "object",
+        "required": [
+          "key",
+          "content",
+          "category",
+          "updated_at"
+        ],
+        "properties": {
+          "key": {
+            "type": "string",
+            "maxLength": 255
+          },
+          "content": {
+            "type": "string",
+            "maxLength": 16384
+          },
+          "category": {
+            "type": "string",
+            "description": "e.g. core, episodic, task"
+          },
+          "updated_at": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "CredentialSummary": {
+        "type": "object",
+        "required": [
+          "name",
+          "created_at"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "integer",
+            "format": "int64"
           }
         }
       }
