@@ -2395,11 +2395,12 @@
               "type": "integer",
               "enum": [
                 7,
-                30
+                30,
+                90
               ],
               "default": 30
             },
-            "description": "Time window in days."
+            "description": "Time window in days. Matches the workspace-scope billing summary endpoint."
           }
         ],
         "responses": {

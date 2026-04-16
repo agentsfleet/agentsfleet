@@ -22,8 +22,19 @@ export interface ConfirmDialogProps {
   intent?: "default" | "destructive";
   /** Async action. The dialog disables both buttons while it resolves. */
   onConfirm: () => void | Promise<void>;
-  /** Optional error rendered below the description if onConfirm rejects. */
+  /**
+   * Caller-controlled. Render a custom error message above the footer.
+   * Typically set from caller state in response to `onError` below.
+   */
   errorMessage?: string | null;
+  /**
+   * Invoked when `onConfirm()` throws or rejects. Receives the thrown value.
+   * Recommended: set local state from this that feeds `errorMessage`. When
+   * omitted, rejections are swallowed silently so they do not surface as
+   * unhandled promise rejections (React drops async event-handler rejections
+   * in production).
+   */
+  onError?: (error: unknown) => void;
 }
 
 export function ConfirmDialog({
@@ -36,18 +47,24 @@ export function ConfirmDialog({
   intent = "default",
   onConfirm,
   errorMessage,
+  onError,
 }: ConfirmDialogProps) {
   const [pending, setPending] = React.useState(false);
+  const descId = React.useId();
 
   const handleConfirm = React.useCallback(async () => {
     if (pending) return;
     setPending(true);
     try {
       await onConfirm();
+    } catch (err) {
+      if (onError) onError(err);
+      // No onError handler: swallow. Surfaces as an unhandled rejection in the
+      // console during dev (helpful signal) but never propagates to production.
     } finally {
       setPending(false);
     }
-  }, [pending, onConfirm]);
+  }, [pending, onConfirm, onError]);
 
   return (
     <Dialog open={open} onOpenChange={(next) => { if (!pending) onOpenChange(next); }}>
@@ -55,13 +72,13 @@ export function ConfirmDialog({
         data-slot="confirm-dialog"
         data-testid="confirm-dialog"
         role="alertdialog"
-        aria-describedby={description ? "confirm-dialog-desc" : undefined}
+        aria-describedby={description ? descId : undefined}
         className="max-w-md"
       >
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           {description ? (
-            <DialogDescription id="confirm-dialog-desc">{description}</DialogDescription>
+            <DialogDescription id={descId}>{description}</DialogDescription>
           ) : null}
         </DialogHeader>
         {errorMessage ? (

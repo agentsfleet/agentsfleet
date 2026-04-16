@@ -2,10 +2,12 @@
 // to one zombie. Shares the response schema so an SDK has a single shape for
 // both scopes: workspaces.billing.summary(ws) and workspaces.zombies.billing.summary(ws, z).
 //
-// GET /v1/workspaces/{ws}/zombies/{zombie_id}/billing/summary?period_days=7|30
+// GET /v1/workspaces/{ws}/zombies/{zombie_id}/billing/summary?period_days=7|30|90
 //
-// Auth: bearer. Workspace scope enforced by common.authorizeWorkspace. Zombie
-// ownership enforced by RULE ZWO (getZombieWorkspaceId + workspace match).
+// Auth: bearer + operator role (see RULE BIL — billing/credential endpoints
+// must gate on minimum_role = .operator; plain workspace membership is not
+// sufficient for per-zombie credit/cents disclosure).
+// Zombie ownership enforced by RULE ZWO (getZombieWorkspaceId + workspace match).
 //
 // Data: zombie_execution_telemetry aggregated over [now - period_days, now].
 
@@ -19,18 +21,20 @@ const hx_mod = @import("hx.zig");
 const ec = @import("../../errors/error_registry.zig");
 const id_format = @import("../../types/id_format.zig");
 const billing_summary_store = @import("../../state/billing_summary_store.zig");
+const workspace_guards = @import("../workspace_guards.zig");
 
 const log = std.log.scoped(.zombie_billing_summary);
+const API_ACTOR = "api";
 
-/// Parse period_days query param. Accepts "7" or "30"; defaults to 30.
+/// Parse period_days query param. Accepts "7", "30", or "90"; defaults to 30.
+/// Matches workspaces_billing_summary.zig's accepted set so the two scopes
+/// do not diverge (greptile P2: inconsistent-period-clamp bug).
 /// Accepting bare integers keeps the param SDK-friendly; the workspace summary
-/// handler accepts legacy "7d"/"30d" suffixes too for backwards-compat — the
-/// zombie endpoint is new so only the integer form is supported.
+/// handler also accepts legacy "7d"/"30d"/"90d" suffixes for backwards-compat.
 pub fn parsePeriodDays(raw: ?[]const u8) u32 {
     const val = raw orelse return 30;
     const n = std.fmt.parseInt(u32, val, 10) catch return 30;
-    if (n == 7) return 7;
-    if (n == 30) return 30;
+    if (n == 7 or n == 30 or n == 90) return n;
     return 30;
 }
 
@@ -58,10 +62,14 @@ pub fn innerGetZombieBillingSummary(
     };
     defer hx.ctx.pool.release(conn);
 
-    if (!common.authorizeWorkspace(conn, hx.principal, workspace_id)) {
-        hx.fail(ec.ERR_FORBIDDEN, "Workspace access denied");
-        return;
-    }
+    // RULE BIL: billing/credential endpoints require operator-minimum role. A
+    // plain workspace member (role=user) must not see per-zombie credit/cents
+    // figures. Mirrors the pattern in workspaces_billing_summary.zig.
+    const actor = hx.principal.user_id orelse API_ACTOR;
+    const access = workspace_guards.enforce(hx.res, hx.req_id, conn, hx.alloc, hx.principal, workspace_id, actor, .{
+        .minimum_role = .operator,
+    }) orelse return;
+    defer access.deinit(hx.alloc);
 
     // RULE ZWO: verify zombie belongs to the path workspace (404 — don't leak existence).
     const zombie_ws_id = common.getZombieWorkspaceId(conn, hx.alloc, zombie_id) orelse {
@@ -115,9 +123,13 @@ test "parsePeriodDays: '30' returns 30" {
     try std.testing.expectEqual(@as(u32, 30), parsePeriodDays("30"));
 }
 
+test "parsePeriodDays: '90' returns 90 (matches workspace endpoint — no silent clamp)" {
+    try std.testing.expectEqual(@as(u32, 90), parsePeriodDays("90"));
+}
+
 test "parsePeriodDays: unsupported integer clamps to 30" {
     try std.testing.expectEqual(@as(u32, 30), parsePeriodDays("14"));
-    try std.testing.expectEqual(@as(u32, 30), parsePeriodDays("90"));
+    try std.testing.expectEqual(@as(u32, 30), parsePeriodDays("180"));
 }
 
 test "parsePeriodDays: non-integer falls back to 30" {
