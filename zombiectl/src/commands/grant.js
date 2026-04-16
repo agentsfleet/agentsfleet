@@ -43,7 +43,7 @@ async function commandGrantList(ctx, parsed, wsId, deps) {
 
   const url = wsGrantsListPath(wsId, zombieId);
   const res = await request(ctx, url, { method: "GET", headers: apiHeaders(ctx) });
-  const grants = Array.isArray(res.grants) ? res.grants : [];
+  const grants = Array.isArray(res.items) ? res.items : [];
 
   if (ctx.jsonMode) {
     printJson(ctx.stdout, res);
