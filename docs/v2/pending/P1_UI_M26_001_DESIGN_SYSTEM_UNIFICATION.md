@@ -389,6 +389,137 @@ These land in `@usezombie/design-system` and automatically improve every downstr
 
 ---
 
+## 5.8 Website-Specific Interactive Components
+
+**Status:** PENDING
+**Workstream:** M26.8 — lands after M26.6 (motion vocabulary established) and M26.4 (website migration complete).
+**Scope:** website-only. These are marketing / demo surface components for `ui/packages/website`. They live in `ui/packages/website/src/components/domain/`, NOT in the shared `@usezombie/design-system` package. The dashboard (`ui/packages/app`) does not consume them; it uses `<AtmosphericBackground />` (§5.5.4) instead.
+
+### 5.8.1 Why these are website-domain, not shared primitives
+
+- Landing pages need visual drama (beams, explosions) that would distract from operational tasks on the dashboard.
+- The dashboard already has `<AtmosphericBackground />` (calm, continuous, low-distraction). Mixing paradigms on one surface is worse than two well-scoped surfaces.
+- The demo terminal is landing-page copy — a way to show the CLI without a user having it installed. Not operational.
+- YAGNI applies: promote to shared only if a second consumer actually needs these. Today, only the website does.
+
+### 5.8.2 Motion library — scope exception with guardrails
+
+The shared design-system bans heavy motion libraries (§5.6.2, rationale: `motion`/`framer-motion` is ~50 KB gzipped, too much for a package consumed by every page in both apps). The two components below genuinely need `motion`'s state machine + `AnimatePresence` for collision-triggered explosion lifecycle management and declarative variants. Implementing the same with raw CSS + `requestAnimationFrame` is doable but adds meaningful code complexity for no user-facing benefit.
+
+**Exception:** `motion` (the package, formerly `framer-motion`) is allowed **in website-domain components only**, subject to:
+
+| Guardrail | Threshold | Enforcement |
+|---|---|---|
+| Lazy-loaded via `React.lazy()` + `<Suspense>` | Motion chunk loads only when the /agents route mounts | Webpack/Vite chunk analysis — CI gate |
+| Isolated to website | Zero `motion` imports under `ui/packages/app/**` or `ui/packages/design-system/**` | grep gate in `make lint` |
+| Chunk budget | ≤ 40 KB gzipped for the motion+components split chunk | size-limit CI gate |
+| Respects `prefers-reduced-motion` | All animations have static fallbacks | Playwright emulated media query |
+| Does not affect landing-page LCP | Beams load *after* LCP, via dynamic import or below-the-fold Intersection trigger | Lighthouse CI (LCP target preserved) |
+| Package.json import | `"motion": "^11"` pinned in `ui/packages/website/package.json` only | Dependency CI gate (see §7.0) |
+
+### 5.8.3 `<BackgroundBeamsWithCollision />`
+
+**Location:** `ui/packages/website/src/components/domain/background-beams-with-collision.tsx`
+
+**What it does:** Vertical gradient beams fall from above the viewport. When any beam's bottom edge intersects a collision floor element, a particle explosion animates at the collision point (20 particles, random velocities, 0.5–2s opacity fade). After 2s the beam resets and re-fires with a repeat delay. Variable per-beam speed, position, height, and delay produce a layered, organic feel.
+
+**Brand variant:** beams use `from-[var(--primary)] via-[var(--primary-bright)] to-transparent` (UseZombie orange). Explosions use `from-[var(--info)] to-[var(--primary)]` (cyan → orange gradient — faster than the "indigo/violet" reference). Container background: `bg-gradient-to-b from-[var(--background)] to-[var(--z-bg-1)]` (pure zombie dark, no neutral-100 fallback).
+
+**Intended placement:** `/agents` route hero section on the website. Wraps an `<h2>` with messaging about zombie agents. Single instance per page — multiple stacked would tank perf.
+
+**Architecture:**
+
+- `BackgroundBeamsWithCollision` — orchestrator component. Fixed array of ~7 beam configs. Renders `<CollisionMechanism>` instances in a parent container with a `containerRef` pointing at the bottom floor element.
+- `CollisionMechanism` — one per beam. Uses `motion.div` for the falling animation (`translateY` -200px → 1800px, `transition.repeat: Infinity`). A `useEffect` polling `getBoundingClientRect` at 50ms intervals checks whether the beam's bottom has crossed the floor's top. On collision, setState flips the explosion on, beam animation key increments to restart the animation after a 2s cooldown.
+- `Explosion` — 20 `motion.span` particles with randomized `directionX` / `directionY`, `opacity: 1 → 0`, staggered durations 0.5–2s.
+
+**Perf invariants (measurable):**
+
+- `requestAnimationFrame`-based collision check instead of `setInterval(50ms)` — cleaner, browser-throttled when tab hidden. Replace the reference sample's `setInterval` with `rAF`.
+- Beams use `will-change: transform, opacity`.
+- `AnimatePresence` unmounts explosions after exit — no DOM growth over time.
+- `pointer-events: none` on beams + floor so they never intercept user clicks.
+- `aria-hidden="true"` + `role="presentation"` — screen readers ignore the decoration.
+- Single IntersectionObserver pauses the animation when the section scrolls out of view (CPU idle when not visible).
+
+**Dimensions:**
+
+- 5.8.1 PENDING — target: `background-beams-with-collision.tsx` — input: default 7-beam config on `/agents` route — expected: beams render, each on its own vertical path, collision-on-impact particle explosions visible, reset every 2s — test_type: Playwright (visual at 0/3/6/9 seconds) + unit (SSR snapshot for beam array length)
+- 5.8.2 PENDING — target: collision detection — input: Playwright `page.evaluate` checking for `data-collision-detected="true"` on at least one beam within 10s of mount — expected: collision fires for every beam at least once in 30s steady state — test_type: Playwright
+- 5.8.3 PENDING — target: `prefers-reduced-motion: reduce` — input: Playwright emulated media query — expected: beams render statically (no `translateY` animation), explosions disabled, page still visually complete — test_type: Playwright
+- 5.8.4 PENDING — target: CPU idle on hidden tab — input: `visibilitychange` → `hidden` simulated — expected: `motion` animations paused within 100ms, `performance.getEntriesByType("measure")` shows no animation frames after pause — test_type: Playwright
+- 5.8.5 PENDING — target: accessibility tree — input: `axe-core` sweep on `/agents` — expected: zero violations; beams contribute zero nodes to a11y tree (`aria-hidden` + `role="presentation"`) — test_type: Playwright + @axe-core/playwright
+- 5.8.6 PENDING — target: LCP preservation — input: Lighthouse CI on `/agents` before and after component mount — expected: LCP ≤ 2.0s (within §5.6.1 website target); beams load AFTER LCP via dynamic import or below-the-fold trigger — test_type: Lighthouse CI
+- 5.8.7 PENDING — target: chunk budget — input: Vite build of `/agents` route — expected: motion + beams chunk ≤ 40 KB gzipped, loaded only when /agents navigates — test_type: size-limit CI gate
+
+### 5.8.4 `<AnimatedTerminal />`
+
+**Location:** `ui/packages/website/src/components/domain/animated-terminal.tsx`
+
+**What it does:** macOS-styled terminal chrome. When scrolled into view, types out a configurable command list with realistic keystroke timing + optional per-keystroke sound + bash syntax highlighting + multi-step output rendering + blinking cursor. Phase state machine: `idle → typing → executing → outputting → pausing → (next command) → done`.
+
+**Brand variant:** prompt uses `--z-cyan` for username + `--primary` for `$`. Syntax highlighter:
+- `command` tokens → `text-success` (was emerald-400)
+- `flag` tokens → `text-info` (was sky-400)
+- `string` → `text-warning` (was amber-300)
+- `path` → `text-info/80` (was cyan-300)
+- `default` → `text-muted-foreground` (was neutral-300)
+
+Window chrome: title bar with traffic lights stays neutral (the macOS convention). Body background: `bg-card` so it sits nicely on the beams container.
+
+**Intended placement:** `/agents` route, below the `<BackgroundBeamsWithCollision />` hero, showing the `zombiectl` install + run happy-path. Dimensions referenced below use a canonical demo script:
+
+```
+zombiectl login
+zombiectl zombie install --template lead-collector
+zombiectl zombie up lead-collector --watch
+# → [ready] lead-collector awaiting triggers
+```
+
+**Architecture:**
+
+- `AnimatedTerminal` — the public component. Props: `commands: string[]`, `outputs?: Record<number, string[]>`, `username?: string`, `typingSpeed?: number`, `delayBetweenCommands?: number`, `initialDelay?: number`, `enableSound?: boolean`, `className?: string`.
+- `useInView(ref, once)` — minimal `IntersectionObserver` hook. Trigger once, 0.1 threshold.
+- `useAudio(enabled)` — Web Audio API hook. Fetches `/sounds/keystroke.ogg` (a sprite; key-specific offsets map in a static record). Disabled silently if autoplay blocked, file fails to fetch, or `enabled=false`. No JS shipped unless `enableSound` is truthy.
+- `tokenizeBash(text)` — pure function, unit-testable. Splits on whitespace, classifies each word as `command | flag | string | number | operator | path | variable | comment | default`.
+- `SyntaxHighlightedText` — renders `tokenizeBash` output into `<span>` elements with semantic-token color classes.
+
+**Perf invariants (measurable):**
+
+- Typing animation driven by `setTimeout` chains (existing pattern), not reflow-inducing layout writes. Each typed character appends to a state string that renders once — React batches.
+- Audio is optional. If `enableSound={false}` or audio fails to load, the component behaves identically minus sound.
+- No global `<audio>` element — Web Audio API via `AudioContext`, cleaned up on unmount.
+- Output container `scrollTop = scrollHeight` on each line — single layout write, no thrash.
+- Respects `prefers-reduced-motion: reduce` → commands appear instantly (no character-by-character), cursor stops blinking, audio silent.
+
+**Dimensions:**
+
+- 5.8.8 PENDING — target: `tokenizeBash()` pure function — input: `"zombiectl zombie install --template lead-collector # deploys"` — expected: tokens `[command="zombiectl", default=" ", default="zombie", default=" ", default="install", default=" ", flag="--template", default=" ", default="lead-collector", default=" ", comment="# deploys"]` — test_type: unit
+- 5.8.9 PENDING — target: `tokenizeBash()` — paths + strings + numbers + operators + variables + comments — expected: correct classification per token type — test_type: unit (table-driven, one case per TokenType)
+- 5.8.10 PENDING — target: `<AnimatedTerminal>` — input: 4-command script — expected: phase state machine transitions in sequence: idle → typing → executing → outputting → pausing → (next) → ... → done. Each state's render asserted via Playwright — test_type: Playwright (step-through)
+- 5.8.11 PENDING — target: `useInView` hook — input: mount below the fold, then scroll into view — expected: animation starts on first intersection; does NOT restart on subsequent intersection — test_type: Playwright (scroll + assertion on line count)
+- 5.8.12 PENDING — target: `prefers-reduced-motion: reduce` — input: Playwright emulated media query — expected: all commands + outputs render instantly, cursor stops blinking, audio silent — test_type: Playwright
+- 5.8.13 PENDING — target: audio gating — input: `enableSound={false}` — expected: zero network requests to `/sounds/*`, no `AudioContext` constructor called (verified via Playwright `page.on("request")`) — test_type: Playwright
+- 5.8.14 PENDING — target: audio failure path — input: `enableSound={true}`, mock `/sounds/keystroke.ogg` to 404 — expected: component still renders + types, no JS error thrown, silent fallback — test_type: Playwright
+- 5.8.15 PENDING — target: SSR render — input: `renderToStaticMarkup(<AnimatedTerminal commands={[...]} />)` — expected: initial chrome + prompt render, no hydration mismatch, no runtime errors from `AudioContext`/`IntersectionObserver` in SSR (guarded behind `typeof window !== "undefined"` checks) — test_type: unit
+- 5.8.16 PENDING — target: a11y — input: `axe-core` on a page containing the terminal — expected: zero violations; terminal semantic wrapper uses `role="region" aria-label="Interactive terminal demonstration"`; output text is live-announced (`aria-live="polite"`) so screen readers get the completed command output — test_type: Playwright + @axe-core/playwright
+
+### 5.8.5 Bundle + performance budget (both components combined)
+
+| Asset | Budget | How |
+|---|---|---|
+| `motion` library chunk | ≤ 40 KB gzipped | Vite chunk split on dynamic import of the /agents route |
+| `background-beams-with-collision.tsx` source | ≤ 5 KB gzipped | Component code stays lean; beam configs are data, not logic |
+| `animated-terminal.tsx` source | ≤ 5 KB gzipped | Tokenizer + audio + phase machine combined |
+| `/sounds/keystroke.ogg` (audio sprite) | ≤ 50 KB, lazy-fetched, only when `enableSound={true}` | Route-level code split + fetch on first render |
+| Initial `/agents` route JS (gzipped) | Unchanged vs pre-M26.8 baseline — these components chunk-split out | Lighthouse CI diff |
+
+### 5.8.6 Audio sprite provenance
+
+The keystroke sound sprite (`/sounds/keystroke.ogg`) is royalty-free or self-recorded. Track the source in `ui/packages/website/public/sounds/README.md` (license, author, generation command). No third-party CDN — bundled with the website's static assets.
+
+---
+
 ## 6.0 Interfaces
 
 **Status:** PENDING
@@ -477,6 +608,10 @@ The package is framework-agnostic by construction.
 | Lighthouse CI: LCP ≤ target, CLS ≤ target, TBT ≤ target on both consumers; no metric regresses > 10% vs baseline | LHCI CI gate per PR |
 | Initial-JS gzipped budget: website ≤ 90 KB, app ≤ 180 KB first-load (pre-M26 baseline captured; ≤ 5% regression allowed) | size-limit CI gate |
 | Every signature animation sustains ≥ 55 FPS during Playwright frame-timing trace | Playwright perf trace |
+| Zero `motion` / `framer-motion` imports under `ui/packages/app/**` OR `ui/packages/design-system/**` (website-only exception, §5.8.2) | grep gate in `make lint` |
+| Website `/agents` route bundle chunk-splits motion library — loaded only on route entry, not on `/` | Vite build chunk analysis CI gate |
+| `<BackgroundBeamsWithCollision />` + `<AnimatedTerminal />` live in `ui/packages/website/src/components/domain/`, not in the shared package | `find` gate |
+| Audio sprite for terminal is bundled locally (no CDN) and lazy-fetched only when `enableSound={true}` | grep gate + Playwright network assertion |
 
 ---
 
@@ -493,8 +628,9 @@ The package is framework-agnostic by construction.
 | 7 | M26.5 app migration — delete app/components/ui/button.tsx, re-export, update call-sites | dims 5.1–5.5 pass |
 | 8 | M26.6 Signature Motion + Atmospheric Background — motion tokens, 6 keyframes, Button hover trace, Skeleton shimmer, `<AtmosphericBackground />`, Playwright hover/reduced-motion tests | dims 5.5.1–5.5.10 pass |
 | 9 | M26.7 Load Performance — `sideEffects: false` + per-component exports, self-hosted Geist fonts replacing googleapis import, critical-CSS, Lighthouse CI + size-limit + Playwright FPS trace wired as CI gates | dims 5.6.1–5.6.10 pass |
-| 10 | Full verification — `make lint`, `bun run typecheck / lint / test / build` in both app and website, `bunx playwright test` in both (including motion + perf suites), Lighthouse CI green, bundle budgets green | all green |
-| 11 | CHORE(close) — spec DONE, move to done/, Ripley log, changelog entry, PR | PR open with visual-diff screenshots + motion recordings + Lighthouse report deltas attached |
+| 10 | M26.8 Website interactive demos — `<BackgroundBeamsWithCollision />` + `<AnimatedTerminal />` land in `ui/packages/website/src/components/domain/`, `motion` chunk lazy-loaded on `/agents` route, audio sprite bundled, unit tests for tokenizer + phase machine + SSR, Playwright tests for collision / reduced-motion / LCP / chunk budget | dims 5.8.1–5.8.16 pass |
+| 11 | Full verification — `make lint`, `bun run typecheck / lint / test / build` in both app and website, `bunx playwright test` in both (including motion + perf + M26.8 demo suites), Lighthouse CI green, bundle budgets green | all green |
+| 12 | CHORE(close) — spec DONE, move to done/, Ripley log, changelog entry, PR | PR open with visual-diff screenshots + motion recordings + Lighthouse report deltas + /agents route demo capture attached |
 
 ---
 
@@ -521,15 +657,25 @@ The package is framework-agnostic by construction.
 - [ ] `@usezombie/design-system/package.json` has `"sideEffects": false` + per-component exports; `import { Button }` tree-shakes in isolation
 - [ ] Every signature animation sustains ≥ 55 FPS in Playwright frame-timing trace
 - [ ] `export const dynamic` / `revalidate` tuned on app routes — max static coverage in Next.js build output
+- [ ] `<BackgroundBeamsWithCollision />` ships on website `/agents` route — beams fall + collide + explode + reset; brand gradients (orange→bright, explosions cyan→orange) — zero indigo/violet
+- [ ] `<AnimatedTerminal />` ships on website `/agents` route — types canonical `zombiectl` install+run script with bash syntax highlighting; phase state machine tested end-to-end
+- [ ] `motion` library chunk lazy-loaded on `/agents` only; zero imports under `app/**` or `design-system/**`
+- [ ] Both components pass `@axe-core/playwright` with zero violations
+- [ ] Audio opt-in via `enableSound`; zero network requests to `/sounds/*` when disabled or not in viewport
+- [ ] Reduced-motion fallback: beams static, terminal renders instantly, cursor stops blinking, audio silent
+- [ ] `/agents` route LCP stays within §5.6.1 budget (≤ 2.0s) — demos load post-LCP
 
 ---
 
 ## 10.0 Out of Scope
 
 - Introducing Panda CSS / Vanilla Extract / styled-components. M26 stays on Tailwind v4 + CSS variables.
-- Adding new design-system components. M26 is a migration, not a feature milestone — new primitives go in M27 or later.
+- Adding new *shared* design-system components. M26 is a migration, not a feature milestone for the shared package. New primitives in the shared package go in M27 or later.
 - Migrating shadcn-scope primitives I added in M12 (StatusCard, EmptyState, Pagination, DataTable, ConfirmDialog, ActivityFeed) into the design-system package. Those are app-local compositions; promoting them is a judgement call for M27+ when a second consumer needs them.
 - Playwright visual-regression infra itself. M26 uses the existing Playwright setup + manual before/after screenshot comparison. A proper visual-diff CI gate is a separate DX milestone.
+- Consuming `@aceternity/ui` or other third-party animated component libraries. M26.8 reimplements the beam-collision + typed-terminal patterns under our own code with UseZombie branding — structural technique (`getBoundingClientRect` collision, `IntersectionObserver` trigger, `AudioContext` sprite playback) is generic web platform usage, not copyrighted.
+- Installing a `motion` library in the shared design-system or app packages. §5.8.2 carves an explicit website-only exception with six measurable guardrails; the ban holds everywhere else.
+- Replacing `<AtmosphericBackground />` with `<BackgroundBeamsWithCollision />` on the dashboard. The dashboard is operational UI that needs calm, continuous ambient motion — beams would be distracting during a kill-switch decision. Two surfaces, two atmospheres.
 
 ---
 
@@ -550,6 +696,12 @@ The package is framework-agnostic by construction.
 | Bundle size grows when a second consumer is added | `size-limit` runs per-package, so the per-consumer budget is independent. The package's own budget (≤ 12 KB CSS, tree-shakable JS) is the invariant. |
 | Self-hosting Geist breaks the website's current visual — subtle weight/spacing diffs vs Google Fonts version | Capture pre-migration reference screenshots of text-heavy pages; verify the self-hosted font matches at the same weight/axis. Use Vercel's npm `geist` package which ships the same binaries Google Fonts serves — known parity. |
 | A motion improvement regresses CLS (e.g. dialog enter animation changes layout height) | Every motion keyframe is constrained to `transform` / `opacity` / `filter` (§5.5.8 grep gate). Layout-triggering animations are a build failure, not a runtime surprise. |
+| `motion` library leaks from website-domain into the shared package or app | grep gate in `make lint` catches the import before PR merges; size-limit catches the bundle bloat as a second line of defence |
+| Beam collision check `getBoundingClientRect` runs on the main thread and stalls the page | Replace the reference sample's `setInterval(50ms)` with `requestAnimationFrame` — browser throttles it when tab hidden; measured in §5.8.4 |
+| Explosions pile up if `AnimatePresence` exit logic misbehaves | Playwright test §5.8.1 captures DOM node count at 0s / 30s — must stay within 5% of starting count |
+| Terminal audio autoplay blocked by browser policy | Component silently falls back to no-sound (§5.8.14). User gesture requirement handled by Web Audio API `resume()` on first play, already in the reference implementation. |
+| Audio sprite fetch fails (404 / CORS) | §5.8.14 covers — component behaves identically without audio. No console errors to the user. |
+| `/agents` LCP degrades due to animated components | Dimensions §5.8.6 gate this — beams + terminal load AFTER LCP (via dynamic import + IntersectionObserver trigger). Lighthouse CI is the enforcement. |
 
 ---
 
