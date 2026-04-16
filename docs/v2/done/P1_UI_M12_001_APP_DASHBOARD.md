@@ -1,15 +1,16 @@
-# M12_001: App Dashboard — operator-facing web UI at app.usezombie.com
+# M12_001: Operator Dashboard — API + Shared UI Foundation
 
 **Prototype:** v1.0.0
 **Milestone:** M12
 **Workstream:** 001
-**Date:** Apr 10, 2026 (amended Apr 14, 2026)
-**Status:** IN_PROGRESS
+**Date:** Apr 10, 2026 (amended Apr 14 + Apr 16, 2026)
+**Status:** DONE — scope narrowed on Apr 16; pages moved to M27
 **Priority:** P1 — Operator-facing surface; first web UI for non-CLI users
 **Batch:** B5 — after M8 (Slack plugin creates workspaces); M11_003 (invite signup) ships alongside this batch
 **Branch:** feat/m12-app-dashboard
 **Worktree:** /Users/kishore/Projects/usezombie-m12-app-dashboard
 **Depends on:** M4_001 (approval gate), M2_001 (activity stream API), **M24_001 (REST workspace-scoped route refactor — must land first)**
+**Blocks:** M26_001 (Design System Unification), then M27_001 (Dashboard Pages)
 
 **Extended by (post-M12 milestones that build on this shell):**
 - M13_001 (B5): Credential Vault UI — full vault management; supersedes §4.0 of this spec
@@ -21,6 +22,18 @@
 
 ---
 
+## Amendment note — Scope pivot (Apr 16, 2026)
+
+Mid-EXECUTE, a review of the frontend workstream surfaced that the `@usezombie/design-system` package was **not self-contained** — its `Button.tsx` emits `.z-btn` class names, but the actual CSS rules live in the consumer (`ui/packages/website/src/styles.css`). The design-system components also import `react-router-dom`, which is incompatible with Next.js Server Components.
+
+Building the dashboard pages against the app-local `components/ui/button.tsx` — then migrating them to a unified Button post-hoc — would mean writing the pages twice. The user called this: *"I prefer that we ship the Design system M26 first, that is important than finishing up the work."*
+
+**Pivot:**
+
+1. **M12 ships narrowed** to what's already delivered: three new backend endpoints (workspace activity, zombie :stop, per-zombie billing summary), OpenAPI entries, HTTP integration tests, shared UI primitives (StatusCard / EmptyState / Pagination / DataTable / ConfirmDialog / ActivityFeed), and the three-layer token pyramid in `globals.css`. All ✅ green at commit time.
+2. **M26_001 Design System Unification** becomes the next active milestone. Makes the design-system package self-contained (CSS + components + tokens), framework-agnostic via Radix `Slot` + `asChild`, and RSC-safe. Migrates both `ui/packages/app` **and** `ui/packages/website` to the unified package.
+3. **M27_001 Dashboard Pages** is blocked by M26 and picks up where M12 stopped: typed API client split by resource, `/dashboard` / `/zombies` / `/zombies/[id]` / `/firewall` / `/settings` pages, Shell nav, frontend VERIFY gates. Pages build on the unified Button landed in M26, so no rework.
+
 ## Amendment note (Apr 14, 2026)
 
 The original spec (Apr 10) assumed workspace-scoped REST endpoints (`/v1/workspaces/{ws}/zombies/...`) already existed. A data/route audit on `main` (commit `a85ae78`) found the API was flat (`/v1/zombies/?workspace_id=`) and several consumed endpoints (kill switch, firewall metrics, api-keys) did not exist at all. This amendment:
@@ -30,7 +43,7 @@ The original spec (Apr 10) assumed workspace-scoped REST endpoints (`/v1/workspa
 3. **Defers to follow-up milestones**: full firewall page (no backing data today), multi-key API key management (schema has single `api_key_hash` per tenant), trust score (not a real primitive yet).
 4. **UI is built against mocked responses first, swapped to real endpoints as they land.** Lets frontend and backend iterate in parallel.
 
-**PR strategy:** PR #1 = M24_001 REST refactor (mechanical, ships independently). PR #2 = M12_001 backend + frontend (this spec), opens off the post-refactor main.
+**PR strategy:** PR #1 = M24_001 REST refactor (mechanical, ships independently). PR #2 = M12_001 narrowed scope (backend + primitives + tokens), this spec. PR #3 = M26_001. PR #4 = M27_001 frontend pages.
 
 ---
 
@@ -42,10 +55,11 @@ The original spec (Apr 10) assumed workspace-scoped REST endpoints (`/v1/workspa
 
 **M12 adds:** REST URL refactor on the API side + 4 new frontend pages (+ 1 placeholder) layered into the existing `(dashboard)` route group.
 
-**Solution summary:**
-- **API refactor (prerequisite, M24_001):** flat `/v1/zombies/*` → workspace-scoped. Ships as PR #1 independently.
-- **Backend adds (workstream 1 of this spec):** `GET /v1/workspaces/{ws}/activity`, `POST /v1/workspaces/{ws}/zombies/{id}:stop`, `GET /v1/workspaces/{ws}/zombies/{id}/spend`.
-- **Frontend (workstream 2):** `/dashboard` overview, `/zombies` list, `/zombies/[id]` detail, `/settings` (minimal), `/firewall` placeholder. Sidebar nav links.
+**Solution summary (post Apr 16 pivot):**
+- **API refactor (prerequisite, M24_001 — DONE):** flat `/v1/zombies/*` → workspace-scoped.
+- **Backend adds (workstream 1, DONE this milestone):** `GET /v1/workspaces/{ws}/activity`, `POST /v1/workspaces/{ws}/zombies/{id}:stop`, `GET /v1/workspaces/{ws}/zombies/{id}/billing/summary`. OpenAPI entries + integration tests landed with them.
+- **Shared UI foundation (workstream 2, DONE this milestone):** six app-local primitives (StatusCard, EmptyState, Pagination, DataTable, ConfirmDialog, ActivityFeed) + three-layer token pyramid in `globals.css` + existing `button.tsx` refactored to semantic tokens.
+- **Frontend pages (MOVED_TO_M27):** `/dashboard`, `/zombies`, `/zombies/[id]`, `/settings`, `/firewall`, Shell nav, typed API client. Built against the unified Design System landed in M26.
 
 ---
 
@@ -107,7 +121,15 @@ Response matches the existing `billing/summary` envelope (`workspace_id`, `perio
 
 ---
 
-## 3.0 Dashboard Page (Overview)
+## 3.0 – 8.0 Dashboard pages + nav — MOVED_TO_M27
+
+The five pages (`/dashboard`, `/zombies`, `/zombies/[id]`, `/firewall`, `/settings`), the Shell sidebar nav updates, and the typed API client split are now scoped to `docs/v2/pending/P1_UI_M27_001_DASHBOARD_PAGES.md`. M27 is blocked by M26_001 — pages consume the unified Button landed there.
+
+The dimensions below (originally §3.x – §8.1) are preserved verbatim for reference by M27's author. Their status stays **MOVED_TO_M27**; the source of truth is the new spec.
+
+---
+
+## 3.0 Dashboard Page (Overview) — MOVED_TO_M27
 
 **Status:** PENDING
 
@@ -299,39 +321,41 @@ Several components will be reused across M11_003, M12, M13, M19, M20, M22. To av
 
 ---
 
-## 11.0 Execution Plan
+## 11.0 Execution Plan (narrowed Apr 16)
 
-**Precondition:** M24_001 (REST refactor) merged to main.
+**Precondition:** M24_001 (REST refactor) merged to main — ✅ DONE.
 
-| Step | Action | Verify |
-|---|---|---|
-| 1 | REST refactor complete (M24_001 merged) — rebase this branch on post-refactor main | `git log main..HEAD` clean |
-| 2 | *(consumed by M24_001)* | — |
-| 3 | *(consumed by M24_001)* | — |
-| 4 | New backend: workspace activity, kill switch, per-zombie spend | Tests 2.1-2.5 pass (tier 1 + 2) |
-| 5 | Frontend: extend `lib/api.ts` against MSW mocks | `npm run test` green |
-| 6 | Dashboard page + ActivityFeed + SpendTracker | Tests 3.1-3.3 pass |
-| 7 | Zombies list page | Tests 4.1-4.2 pass |
-| 8 | Zombie detail + ActivityLog + SpendPanel + KillSwitch | Tests 5.1-5.4 pass |
-| 9 | Firewall placeholder + Settings + Shell nav | Tests 6.1, 7.1, 8.1 pass |
-| 10 | Swap MSW for real `api-dev`, manual smoke | Pages render with real data |
-| 11 | Tier 3 verification: `make down && make up && make test-integration` | Green |
-| 12 | Vercel preview deploy | Deploy succeeds, smoke against preview URL |
+| Step | Action | Verify | Status |
+|---|---|---|---|
+| 1 | M24_001 merged; branch rebased onto post-refactor main | `git log main..HEAD` clean | ✅ DONE |
+| 2 | Backend handlers: workspace activity, zombie :stop, per-zombie billing summary + shared aggregator + upgraded workspace summary | tier-1 unit tests + tier-2 HTTP integration tests green | ✅ DONE (`c6c61e6`, `b6a39ee`) |
+| 3 | OpenAPI entries for the 3 new endpoints + `period_days` / `total_cents` on workspace summary | `jq .paths` shows new entries | ✅ DONE (`b6a39ee`) |
+| 4 | Shared UI primitives (StatusCard, EmptyState, Pagination, DataTable, ConfirmDialog, ActivityFeed) with 70/70 unit tests | `bun run typecheck / lint / test / build` green | ✅ DONE (`6712f7c`) |
+| 5 | Three-layer token pyramid: `globals.css` gains `@theme inline` + `--success`/`--warning`/`--info` + `--primary-bright`/`--primary-glow[-strong]`; `button.tsx` refactored to drop all `var(--z-*)` arbitrary values | grep shows zero `var(--z-` in components | ✅ DONE (`6712f7c`) |
+| 6 | `components.json` + `tw-animate-css` + `@custom-variant dark` installed | shadcn CLI contract present | ✅ DONE (`6712f7c`) |
+| 7 | CHORE(close): narrow spec, move to done/, write Ripley log, bump VERSION 0.9.0 → 0.18.0, add changelog entry, open PR | spec in `done/`, changelog + log committed | ⏳ IN_PROGRESS |
+| 8 | **MOVED_TO_M26:** Design System Unification — self-contained `@usezombie/design-system` package usable by both `ui/packages/app` (Next.js RSC) and `ui/packages/website` (Vite SPA) without framework-specific imports | see `docs/v2/pending/P1_UI_M26_001_DESIGN_SYSTEM_UNIFICATION.md` | — |
+| 9 | **MOVED_TO_M27:** typed API client split + 4 pages + firewall placeholder + Shell nav + frontend VERIFY + Vercel preview | see `docs/v2/pending/P1_UI_M27_001_DASHBOARD_PAGES.md` | — |
 
 ---
 
-## 12.0 Acceptance Criteria
+## 12.0 Acceptance Criteria (narrowed Apr 16)
 
-- [ ] M24_001 (REST refactor) merged before M12 EXECUTE starts
-- [ ] Dashboard shows zombie status counts, activity feed, spend summary against `api-dev`
-- [ ] Zombies list paginates and searches
-- [ ] Zombie detail shows activity log, 7d + 30d spend, working kill switch
-- [ ] Firewall page renders placeholder (no API calls)
-- [ ] Settings shows workspace info + masked tenant key
-- [ ] Clerk auth protects all `(dashboard)` routes
-- [ ] All Zig handlers ≤350 lines; all .tsx pages ≤350 lines
-- [ ] `make lint && make test && make test-integration && make memleak && make bench` all green
-- [ ] Vercel preview deployed and manually smoked
+**In-scope for M12_001:**
+- [x] M24_001 (REST refactor) merged before M12 EXECUTE starts
+- [x] 3 new backend endpoints land with OpenAPI + integration tests (workspace activity, zombie :stop, per-zombie billing summary)
+- [x] Workspace billing summary stub upgraded to real data via shared `billing_summary_store` aggregator; no schema change
+- [x] Shared UI primitives (StatusCard / EmptyState / Pagination / DataTable / ConfirmDialog / ActivityFeed) shipped with 70/70 colocated unit tests
+- [x] Three-layer token pyramid enforced in `globals.css` (`@theme inline` block + extended `:root` + `.dark`)
+- [x] `button.tsx` refactored: zero `var(--z-*)` arbitrary values; `data-slot` + `asChild` support preserved
+- [x] All Zig handlers ≤ 350 lines; all .tsx files ≤ 350 lines (test files exempt)
+- [x] `zig build`, `zig build test`, `make test-integration-db`, `make lint`, `make check-pg-drain`, cross-compile x86_64+aarch64-linux, `bun run typecheck/lint/test/build`, `gitleaks` — all green
+
+**Explicitly deferred (deferred, not dropped):**
+- [ ] Dashboard / Zombies / Zombie detail / Firewall / Settings pages → **M27_001**
+- [ ] Typed API client split + MSW mocks → **M27_001**
+- [ ] Vercel preview deploy + Playwright smoke → **M27_001**
+- [ ] `@usezombie/design-system` becomes self-contained + framework-agnostic + used by both app and website → **M26_001**
 
 ---
 

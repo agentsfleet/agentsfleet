@@ -1,3 +1,17 @@
+// App-local Button (Next.js App Router, shadcn + Tailwind + cva).
+//
+// Why not reuse `@usezombie/design-system`'s Button?
+//   1. That package's CSS for `.z-btn` actually lives in `ui/packages/website/src/styles.css`
+//      (the consumer), not in the package itself — dropping it into this app
+//      would render unstyled.
+//   2. It imports `react-router-dom`'s <Link>, which is not RSC-safe.
+// Both blockers are addressed in the M26 Design System Unification spec; after
+// that lands, this file deletes itself in favour of the package export.
+//
+// Visual parity is maintained via the shared Layer 0 primitives in
+// `@usezombie/design-system/tokens.css` — the gradient + glow effects match
+// the website's Button by construction.
+
 import * as React from "react";
 import { Slot } from "@radix-ui/react-slot";
 import { cva, type VariantProps } from "class-variance-authority";
