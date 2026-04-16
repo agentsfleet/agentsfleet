@@ -58,7 +58,7 @@
     },
     {
       "name": "Memory",
-      "description": "Persistent zombie memory — store, recall, list, and forget key-value entries scoped to a zombie",
+      "description": "Persistent zombie memory \u2014 store, recall, list, and forget key-value entries scoped to a zombie",
       "x-mintlify": {
         "navigation": "Memory"
       }
@@ -97,7 +97,7 @@
       "get": {
         "operationId": "healthz",
         "summary": "Liveness check",
-        "description": "Returns 200 as long as the process is alive and able to serve HTTP. Does not probe dependencies — use /readyz for readiness (database + queue).",
+        "description": "Returns 200 as long as the process is alive and able to serve HTTP. Does not probe dependencies \u2014 use /readyz for readiness (database + queue).",
         "tags": [
           "Health"
         ],
@@ -657,556 +657,6 @@
         }
       }
     },
-    "/v1/runs": {
-      "post": {
-        "operationId": "start_run",
-        "summary": "Start a spec-to-PR run",
-        "description": "Queues a new run for the given workspace. Provide either spec_id (reference an existing spec) or spec_markdown (inline spec content), but not both. The idempotency_key ensures at-most-once execution.",
-        "tags": [
-          "Runs"
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "workspace_id",
-                  "mode",
-                  "requested_by",
-                  "idempotency_key"
-                ],
-                "properties": {
-                  "workspace_id": {
-                    "type": "string",
-                    "format": "uuid",
-                    "description": "Target workspace"
-                  },
-                  "spec_id": {
-                    "type": [
-                      "string",
-                      "null"
-                    ],
-                    "format": "uuid",
-                    "description": "Reference to an existing spec. Mutually exclusive with spec_markdown."
-                  },
-                  "spec_markdown": {
-                    "type": [
-                      "string",
-                      "null"
-                    ],
-                    "description": "Inline spec content in Markdown. Mutually exclusive with spec_id."
-                  },
-                  "mode": {
-                    "type": "string",
-                    "enum": [
-                      "pull_request"
-                    ],
-                    "description": "Run mode \u2014 currently only pull_request is supported"
-                  },
-                  "requested_by": {
-                    "type": "string",
-                    "description": "Identity of the user or system that requested the run"
-                  },
-                  "idempotency_key": {
-                    "type": "string",
-                    "description": "Client-generated key for at-most-once execution"
-                  },
-                  "base_commit_sha": {
-                    "type": [
-                      "string",
-                      "null"
-                    ],
-                    "description": "Pin the run to a specific base commit. Uses HEAD of default branch if null."
-                  }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "Run queued",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "required": [
-                    "run_id",
-                    "workspace_id",
-                    "idempotency_key",
-                    "status",
-                    "request_id"
-                  ],
-                  "properties": {
-                    "run_id": {
-                      "type": "string",
-                      "format": "uuid"
-                    },
-                    "workspace_id": {
-                      "type": "string",
-                      "format": "uuid"
-                    },
-                    "spec_id": {
-                      "type": [
-                        "string",
-                        "null"
-                      ],
-                      "format": "uuid"
-                    },
-                    "idempotency_key": {
-                      "type": "string"
-                    },
-                    "status": {
-                      "type": "string",
-                      "const": "queued"
-                    },
-                    "request_id": {
-                      "type": "string",
-                      "format": "uuid"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "default": {
-            "$ref": "#/components/responses/Error"
-          }
-        }
-      },
-      "get": {
-        "operationId": "list_runs",
-        "summary": "List runs",
-        "description": "Lists runs using Stripe-style keyset pagination. Pass starting_after (run_id of last item) to page forward.",
-        "tags": [
-          "Runs"
-        ],
-        "parameters": [
-          {
-            "name": "workspace_id",
-            "in": "query",
-            "required": false,
-            "description": "Filter by workspace",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          {
-            "name": "limit",
-            "in": "query",
-            "required": false,
-            "description": "Maximum number of runs to return",
-            "schema": {
-              "type": "integer",
-              "default": 50,
-              "minimum": 1,
-              "maximum": 100
-            }
-          },
-          {
-            "name": "starting_after",
-            "in": "query",
-            "required": false,
-            "description": "Cursor for keyset pagination. Pass the run_id of the last item on the previous page.",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Run list",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "required": [
-                    "data",
-                    "has_more",
-                    "request_id"
-                  ],
-                  "properties": {
-                    "data": {
-                      "type": "array",
-                      "items": {
-                        "$ref": "#/components/schemas/RunSummary"
-                      }
-                    },
-                    "has_more": {
-                      "type": "boolean",
-                      "description": "Whether more results exist beyond this page"
-                    },
-                    "next_cursor": {
-                      "type": [
-                        "string",
-                        "null"
-                      ],
-                      "description": "Cursor to pass as starting_after for the next page"
-                    },
-                    "request_id": {
-                      "type": "string",
-                      "format": "uuid"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "default": {
-            "$ref": "#/components/responses/Error"
-          }
-        }
-      }
-    },
-    "/v1/runs/{run_id}": {
-      "get": {
-        "operationId": "get_run",
-        "summary": "Get run details",
-        "description": "Returns full run details including state transitions, artifacts produced by each pipeline stage, and policy events.",
-        "tags": [
-          "Runs"
-        ],
-        "parameters": [
-          {
-            "name": "run_id",
-            "in": "path",
-            "required": true,
-            "description": "Run identifier",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Run details",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "required": [
-                    "run_id",
-                    "workspace_id",
-                    "spec_id",
-                    "current_state",
-                    "attempt",
-                    "mode",
-                    "requested_by",
-                    "branch",
-                    "created_at",
-                    "updated_at",
-                    "transitions",
-                    "artifacts",
-                    "policy_events",
-                    "request_id"
-                  ],
-                  "properties": {
-                    "run_id": {
-                      "type": "string",
-                      "format": "uuid"
-                    },
-                    "workspace_id": {
-                      "type": "string",
-                      "format": "uuid"
-                    },
-                    "spec_id": {
-                      "type": "string",
-                      "format": "uuid"
-                    },
-                    "current_state": {
-                      "type": "string",
-                      "description": "Current pipeline state (e.g. SPEC_QUEUED, ECHO_RUNNING, PR_OPENED, FAILED)"
-                    },
-                    "attempt": {
-                      "type": "integer",
-                      "description": "Current attempt number (increments on retry)"
-                    },
-                    "mode": {
-                      "type": "string",
-                      "enum": [
-                        "pull_request"
-                      ]
-                    },
-                    "requested_by": {
-                      "type": "string"
-                    },
-                    "branch": {
-                      "type": "string",
-                      "description": "Git branch created for this run"
-                    },
-                    "pr_url": {
-                      "type": [
-                        "string",
-                        "null"
-                      ],
-                      "format": "uri",
-                      "description": "Pull request URL, null until PR is opened"
-                    },
-                    "created_at": {
-                      "type": "integer",
-                      "description": "Unix timestamp in milliseconds"
-                    },
-                    "updated_at": {
-                      "type": "integer",
-                      "description": "Unix timestamp in milliseconds"
-                    },
-                    "transitions": {
-                      "type": "array",
-                      "items": {
-                        "$ref": "#/components/schemas/Transition"
-                      },
-                      "description": "Ordered list of state transitions"
-                    },
-                    "artifacts": {
-                      "type": "array",
-                      "items": {
-                        "$ref": "#/components/schemas/Artifact"
-                      },
-                      "description": "Artifacts produced during the run"
-                    },
-                    "policy_events": {
-                      "type": "array",
-                      "items": {
-                        "$ref": "#/components/schemas/PolicyEvent"
-                      },
-                      "description": "Policy evaluation events"
-                    },
-                    "request_id": {
-                      "type": "string",
-                      "format": "uuid"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "default": {
-            "$ref": "#/components/responses/Error"
-          }
-        }
-      }
-    },
-    "/v1/runs/{run_id}:retry": {
-      "post": {
-        "operationId": "retry_run",
-        "summary": "Retry a run",
-        "description": "Retries a blocked or failed run. Increments the attempt counter and re-queues from the last checkpoint.",
-        "tags": [
-          "Runs"
-        ],
-        "parameters": [
-          {
-            "name": "run_id",
-            "in": "path",
-            "required": true,
-            "description": "Run identifier",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "reason",
-                  "retry_token"
-                ],
-                "properties": {
-                  "reason": {
-                    "type": "string",
-                    "description": "Human-readable reason for the retry"
-                  },
-                  "retry_token": {
-                    "type": "string",
-                    "description": "Idempotency token for the retry operation"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "202": {
-            "description": "Retry queued",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "required": [
-                    "run_id",
-                    "state",
-                    "attempt",
-                    "request_id"
-                  ],
-                  "properties": {
-                    "run_id": {
-                      "type": "string",
-                      "format": "uuid"
-                    },
-                    "state": {
-                      "type": "string",
-                      "example": "SPEC_QUEUED"
-                    },
-                    "attempt": {
-                      "type": "integer"
-                    },
-                    "request_id": {
-                      "type": "string",
-                      "format": "uuid"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "default": {
-            "$ref": "#/components/responses/Error"
-          }
-        }
-      }
-    },
-    "/v1/runs/{run_id}:replay": {
-      "get": {
-        "operationId": "replay_run",
-        "summary": "Replay run events",
-        "description": "Streams the complete event history of a finished run as Server-Sent Events. Useful for replaying a run's timeline in the UI.",
-        "tags": [
-          "Runs"
-        ],
-        "parameters": [
-          {
-            "name": "run_id",
-            "in": "path",
-            "required": true,
-            "description": "Run identifier",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "SSE event stream of run history",
-            "content": {
-              "text/event-stream": {
-                "schema": {
-                  "type": "string",
-                  "description": "Server-Sent Events stream"
-                }
-              }
-            }
-          },
-          "default": {
-            "$ref": "#/components/responses/Error"
-          }
-        }
-      }
-    },
-    "/v1/runs/{run_id}:stream": {
-      "get": {
-        "operationId": "stream_run",
-        "summary": "Stream live run events",
-        "description": "Streams live events for an in-progress run as Server-Sent Events. Connection stays open until the run completes or the client disconnects.",
-        "tags": [
-          "Runs"
-        ],
-        "parameters": [
-          {
-            "name": "run_id",
-            "in": "path",
-            "required": true,
-            "description": "Run identifier",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "SSE event stream of live run progress",
-            "content": {
-              "text/event-stream": {
-                "schema": {
-                  "type": "string",
-                  "description": "Server-Sent Events stream"
-                }
-              }
-            }
-          },
-          "default": {
-            "$ref": "#/components/responses/Error"
-          }
-        }
-      }
-    },
-    "/v1/runs/{run_id}:cancel": {
-      "post": {
-        "operationId": "cancel_run",
-        "summary": "Cancel a run",
-        "description": "Cancels a queued or in-progress run. The run transitions to CANCELLED state and any active pipeline stage is aborted.",
-        "tags": [
-          "Runs"
-        ],
-        "parameters": [
-          {
-            "name": "run_id",
-            "in": "path",
-            "required": true,
-            "description": "Run identifier",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Run cancelled",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "required": [
-                    "run_id",
-                    "state",
-                    "request_id"
-                  ],
-                  "properties": {
-                    "run_id": {
-                      "type": "string",
-                      "format": "uuid"
-                    },
-                    "state": {
-                      "type": "string",
-                      "const": "CANCELLED"
-                    },
-                    "request_id": {
-                      "type": "string",
-                      "format": "uuid"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "default": {
-            "$ref": "#/components/responses/Error"
-          }
-        }
-      }
-    },
     "/v1/workspaces/{workspace_id}/credentials/llm": {
       "put": {
         "operationId": "put_llm_credential",
@@ -1336,131 +786,6 @@
         "responses": {
           "204": {
             "description": "Credential deleted"
-          },
-          "default": {
-            "$ref": "#/components/responses/Error"
-          }
-        }
-      }
-    },
-    "/v1/workspaces/{workspace_id}/skills/{skill_ref}/secrets/{key_name}": {
-      "put": {
-        "operationId": "put_skill_secret",
-        "summary": "Set a skill secret",
-        "description": "Stores a secret value for a specific skill in a workspace. Secrets are scoped to the skill and can be further scoped to host-only or sandbox-only access.",
-        "tags": [
-          "Skill Secrets"
-        ],
-        "parameters": [
-          {
-            "name": "workspace_id",
-            "in": "path",
-            "required": true,
-            "description": "Workspace identifier",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          {
-            "name": "skill_ref",
-            "in": "path",
-            "required": true,
-            "description": "Skill reference identifier",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "key_name",
-            "in": "path",
-            "required": true,
-            "description": "Secret key name",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "value"
-                ],
-                "properties": {
-                  "value": {
-                    "type": "string",
-                    "description": "Secret value \u2014 encrypted at rest, never echoed"
-                  },
-                  "scope": {
-                    "type": "string",
-                    "enum": [
-                      "host",
-                      "sandbox"
-                    ],
-                    "description": "Where the secret is available. Defaults to both if omitted."
-                  },
-                  "meta_json": {
-                    "type": "string",
-                    "description": "Optional JSON metadata for the secret (e.g. expiry, rotation info)"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "204": {
-            "description": "Secret stored"
-          },
-          "default": {
-            "$ref": "#/components/responses/Error"
-          }
-        }
-      },
-      "delete": {
-        "operationId": "delete_skill_secret",
-        "summary": "Delete a skill secret",
-        "description": "Removes a specific secret for a skill in a workspace.",
-        "tags": [
-          "Skill Secrets"
-        ],
-        "parameters": [
-          {
-            "name": "workspace_id",
-            "in": "path",
-            "required": true,
-            "description": "Workspace identifier",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          {
-            "name": "skill_ref",
-            "in": "path",
-            "required": true,
-            "description": "Skill reference identifier",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "key_name",
-            "in": "path",
-            "required": true,
-            "description": "Secret key name",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": "Secret deleted"
           },
           "default": {
             "$ref": "#/components/responses/Error"
@@ -1921,110 +1246,6 @@
         }
       }
     },
-    "/v1/runs/{run_id}:interrupt": {
-      "post": {
-        "operationId": "interrupt_run",
-        "summary": "Interrupt a running agent",
-        "description": "Sends a steering message to a running agent without aborting it. The agent absorbs the message and adjusts course at the next gate checkpoint (queued) or mid-turn (instant). Last-write-wins: if two interrupts arrive before the next checkpoint, the second overwrites the first.",
-        "tags": [
-          "Runs"
-        ],
-        "parameters": [
-          {
-            "name": "run_id",
-            "in": "path",
-            "required": true,
-            "description": "Run identifier",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "message"
-                ],
-                "properties": {
-                  "message": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 4096,
-                    "description": "The steering message to deliver to the agent"
-                  },
-                  "mode": {
-                    "type": "string",
-                    "enum": [
-                      "queued",
-                      "instant"
-                    ],
-                    "default": "queued",
-                    "description": "Delivery mode. queued: picked up at next gate checkpoint. instant: injected mid-turn via executor IPC (falls back to queued if executor is unavailable)."
-                  }
-                }
-              },
-              "example": {
-                "message": "Focus on the billing endpoint, skip auth refactor",
-                "mode": "queued"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Interrupt acknowledged",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "required": [
-                    "ack",
-                    "mode",
-                    "request_id"
-                  ],
-                  "properties": {
-                    "ack": {
-                      "type": "boolean",
-                      "const": true
-                    },
-                    "mode": {
-                      "type": "string",
-                      "enum": [
-                        "queued",
-                        "instant"
-                      ],
-                      "description": "The effective delivery mode (may differ from requested if instant fell back to queued)"
-                    },
-                    "request_id": {
-                      "type": "string",
-                      "format": "uuid"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "Run is not in an interruptible state (terminal, BLOCKED, PR_OPENED, or NOTIFIED)",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "default": {
-            "$ref": "#/components/responses/Error"
-          }
-        }
-      }
-    },
     "/v1/webhooks/{zombie_id}": {
       "post": {
         "operationId": "receive_webhook",
@@ -2175,21 +1396,31 @@
       "summary": "Steer a zombie's active run",
       "description": "Queues a steering message for the zombie. The message is written to Redis (zombie:{id}:steer, 300s TTL); the worker injects it as a synthetic event on the next event loop iteration. message_queued indicates whether the Redis write succeeded. execution_active indicates whether the zombie is currently executing when the request is handled.",
       "operationId": "zombieSteer",
-      "tags": ["Zombies"],
-      "security": [{ "BearerAuth": [] }],
+      "tags": [
+        "Zombies"
+      ],
+      "security": [
+        {
+          "BearerAuth": []
+        }
+      ],
       "parameters": [
         {
           "name": "workspace_id",
           "in": "path",
           "required": true,
-          "schema": { "type": "string" },
+          "schema": {
+            "type": "string"
+          },
           "description": "The workspace UUID"
         },
         {
           "name": "zombie_id",
           "in": "path",
           "required": true,
-          "schema": { "type": "string" },
+          "schema": {
+            "type": "string"
+          },
           "description": "The zombie's UUID"
         }
       ],
@@ -2199,7 +1430,9 @@
           "application/json": {
             "schema": {
               "type": "object",
-              "required": ["message"],
+              "required": [
+                "message"
+              ],
               "properties": {
                 "message": {
                   "type": "string",
@@ -2220,17 +1453,33 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "message_queued": { "type": "boolean", "description": "true if the message was successfully written to Redis" },
-                  "execution_active": { "type": "boolean", "description": "true if the zombie has an active execution_id at request time" },
-                  "execution_id": { "type": "string", "nullable": true, "description": "Active execution_id from zombie_sessions, or null if zombie is idle" }
+                  "message_queued": {
+                    "type": "boolean",
+                    "description": "true if the message was successfully written to Redis"
+                  },
+                  "execution_active": {
+                    "type": "boolean",
+                    "description": "true if the zombie has an active execution_id at request time"
+                  },
+                  "execution_id": {
+                    "type": "string",
+                    "nullable": true,
+                    "description": "Active execution_id from zombie_sessions, or null if zombie is idle"
+                  }
                 }
               }
             }
           }
         },
-        "400": { "$ref": "#/components/responses/BadRequest" },
-        "401": { "$ref": "#/components/responses/Unauthorized" },
-        "404": { "$ref": "#/components/responses/NotFound" }
+        "400": {
+          "$ref": "#/components/responses/BadRequest"
+        },
+        "401": {
+          "$ref": "#/components/responses/Unauthorized"
+        },
+        "404": {
+          "$ref": "#/components/responses/NotFound"
+        }
       }
     }
   },
@@ -2239,20 +1488,54 @@
       "summary": "Store a memory entry",
       "description": "Store or upsert a key-value memory entry for a zombie. On conflict (same key + zombie), the content and category are updated.",
       "operationId": "memoryStore",
-      "tags": ["Memory"],
-      "security": [{"BearerAuth": []}],
+      "tags": [
+        "Memory"
+      ],
+      "security": [
+        {
+          "BearerAuth": []
+        }
+      ],
       "requestBody": {
         "required": true,
         "content": {
           "application/json": {
             "schema": {
               "type": "object",
-              "required": ["zombie_id", "key", "content"],
+              "required": [
+                "zombie_id",
+                "key",
+                "content"
+              ],
               "properties": {
-                "zombie_id": {"type": "string", "format": "uuid", "description": "UUIDv7 of the target zombie"},
-                "key": {"type": "string", "minLength": 1, "maxLength": 255, "description": "Memory entry key"},
-                "content": {"type": "string", "minLength": 1, "maxLength": 16384, "description": "Memory entry content"},
-                "category": {"type": "string", "enum": ["core", "daily", "conversation", "workspace"], "default": "core", "description": "Memory category"}
+                "zombie_id": {
+                  "type": "string",
+                  "format": "uuid",
+                  "description": "UUIDv7 of the target zombie"
+                },
+                "key": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 255,
+                  "description": "Memory entry key"
+                },
+                "content": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 16384,
+                  "description": "Memory entry content"
+                },
+                "category": {
+                  "type": "string",
+                  "enum": [
+                    "core",
+                    "daily",
+                    "conversation",
+                    "workspace"
+                  ],
+                  "default": "core",
+                  "description": "Memory category"
+                }
               }
             }
           }
@@ -2266,41 +1549,82 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "zombie_id": {"type": "string"},
-                  "key": {"type": "string"},
-                  "category": {"type": "string"},
-                  "request_id": {"type": "string"}
+                  "zombie_id": {
+                    "type": "string"
+                  },
+                  "key": {
+                    "type": "string"
+                  },
+                  "category": {
+                    "type": "string"
+                  },
+                  "request_id": {
+                    "type": "string"
+                  }
                 }
               }
             }
           }
         },
-        "400": {"$ref": "#/components/responses/Error"},
-        "401": {"$ref": "#/components/responses/Error"},
-        "403": {"$ref": "#/components/responses/Error"},
-        "404": {"$ref": "#/components/responses/Error"},
-        "503": {"$ref": "#/components/responses/Error"}
+        "400": {
+          "$ref": "#/components/responses/Error"
+        },
+        "401": {
+          "$ref": "#/components/responses/Error"
+        },
+        "403": {
+          "$ref": "#/components/responses/Error"
+        },
+        "404": {
+          "$ref": "#/components/responses/Error"
+        },
+        "503": {
+          "$ref": "#/components/responses/Error"
+        }
       }
     }
   },
   "/v1/memory/recall": {
     "post": {
       "summary": "Recall memory entries by keyword",
-      "description": "Search a zombie's memory entries by keyword. Matches against key and content using ILIKE. Uses POST (not GET) because the query parameters are carried in the request body — HTTP caching does not apply to this endpoint.",
+      "description": "Search a zombie's memory entries by keyword. Matches against key and content using ILIKE. Uses POST (not GET) because the query parameters are carried in the request body \u2014 HTTP caching does not apply to this endpoint.",
       "operationId": "memoryRecall",
-      "tags": ["Memory"],
-      "security": [{"BearerAuth": []}],
+      "tags": [
+        "Memory"
+      ],
+      "security": [
+        {
+          "BearerAuth": []
+        }
+      ],
       "requestBody": {
         "required": true,
         "content": {
           "application/json": {
             "schema": {
               "type": "object",
-              "required": ["zombie_id", "query"],
+              "required": [
+                "zombie_id",
+                "query"
+              ],
               "properties": {
-                "zombie_id": {"type": "string", "format": "uuid", "description": "UUIDv7 of the target zombie"},
-                "query": {"type": "string", "minLength": 1, "description": "Keyword to search in key and content"},
-                "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 20, "description": "Maximum entries to return"}
+                "zombie_id": {
+                  "type": "string",
+                  "format": "uuid",
+                  "description": "UUIDv7 of the target zombie"
+                },
+                "query": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "Keyword to search in key and content"
+                },
+                "limit": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 100,
+                  "default": 20,
+                  "description": "Maximum entries to return"
+                }
               }
             }
           }
@@ -2314,52 +1638,104 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "zombie_id": {"type": "string"},
+                  "zombie_id": {
+                    "type": "string"
+                  },
                   "entries": {
                     "type": "array",
                     "items": {
                       "type": "object",
                       "properties": {
-                        "key": {"type": "string"},
-                        "content": {"type": "string"},
-                        "category": {"type": "string"},
-                        "updated_at": {"type": "string", "description": "Unix epoch seconds as string"}
+                        "key": {
+                          "type": "string"
+                        },
+                        "content": {
+                          "type": "string"
+                        },
+                        "category": {
+                          "type": "string"
+                        },
+                        "updated_at": {
+                          "type": "string",
+                          "description": "Unix epoch seconds as string"
+                        }
                       }
                     }
                   },
-                  "count": {"type": "integer"},
-                  "request_id": {"type": "string"}
+                  "count": {
+                    "type": "integer"
+                  },
+                  "request_id": {
+                    "type": "string"
+                  }
                 }
               }
             }
           }
         },
-        "400": {"$ref": "#/components/responses/Error"},
-        "401": {"$ref": "#/components/responses/Error"},
-        "403": {"$ref": "#/components/responses/Error"},
-        "404": {"$ref": "#/components/responses/Error"},
-        "503": {"$ref": "#/components/responses/Error"}
+        "400": {
+          "$ref": "#/components/responses/Error"
+        },
+        "401": {
+          "$ref": "#/components/responses/Error"
+        },
+        "403": {
+          "$ref": "#/components/responses/Error"
+        },
+        "404": {
+          "$ref": "#/components/responses/Error"
+        },
+        "503": {
+          "$ref": "#/components/responses/Error"
+        }
       }
     }
   },
   "/v1/memory/list": {
     "post": {
       "summary": "List memory entries for a zombie",
-      "description": "List all memory entries for a zombie, optionally filtered by category. Uses POST (not GET) because the filter parameters are carried in the request body — HTTP caching does not apply to this endpoint.",
+      "description": "List all memory entries for a zombie, optionally filtered by category. Uses POST (not GET) because the filter parameters are carried in the request body \u2014 HTTP caching does not apply to this endpoint.",
       "operationId": "memoryList",
-      "tags": ["Memory"],
-      "security": [{"BearerAuth": []}],
+      "tags": [
+        "Memory"
+      ],
+      "security": [
+        {
+          "BearerAuth": []
+        }
+      ],
       "requestBody": {
         "required": true,
         "content": {
           "application/json": {
             "schema": {
               "type": "object",
-              "required": ["zombie_id"],
+              "required": [
+                "zombie_id"
+              ],
               "properties": {
-                "zombie_id": {"type": "string", "format": "uuid", "description": "UUIDv7 of the target zombie"},
-                "category": {"type": "string", "enum": ["core", "daily", "conversation", "workspace"], "description": "Filter by category (omit for all)"},
-                "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 100, "description": "Maximum entries to return"}
+                "zombie_id": {
+                  "type": "string",
+                  "format": "uuid",
+                  "description": "UUIDv7 of the target zombie"
+                },
+                "category": {
+                  "type": "string",
+                  "enum": [
+                    "core",
+                    "daily",
+                    "conversation",
+                    "workspace"
+                  ],
+                  "description": "Filter by category (omit for all)"
+                },
+                "limit": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 100,
+                  "default": 100,
+                  "description": "Maximum entries to return"
+                }
               }
             }
           }
@@ -2373,51 +1749,93 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "zombie_id": {"type": "string"},
+                  "zombie_id": {
+                    "type": "string"
+                  },
                   "entries": {
                     "type": "array",
                     "items": {
                       "type": "object",
                       "properties": {
-                        "key": {"type": "string"},
-                        "content": {"type": "string"},
-                        "category": {"type": "string"},
-                        "updated_at": {"type": "string"}
+                        "key": {
+                          "type": "string"
+                        },
+                        "content": {
+                          "type": "string"
+                        },
+                        "category": {
+                          "type": "string"
+                        },
+                        "updated_at": {
+                          "type": "string"
+                        }
                       }
                     }
                   },
-                  "count": {"type": "integer"},
-                  "request_id": {"type": "string"}
+                  "count": {
+                    "type": "integer"
+                  },
+                  "request_id": {
+                    "type": "string"
+                  }
                 }
               }
             }
           }
         },
-        "400": {"$ref": "#/components/responses/Error"},
-        "401": {"$ref": "#/components/responses/Error"},
-        "403": {"$ref": "#/components/responses/Error"},
-        "404": {"$ref": "#/components/responses/Error"},
-        "503": {"$ref": "#/components/responses/Error"}
+        "400": {
+          "$ref": "#/components/responses/Error"
+        },
+        "401": {
+          "$ref": "#/components/responses/Error"
+        },
+        "403": {
+          "$ref": "#/components/responses/Error"
+        },
+        "404": {
+          "$ref": "#/components/responses/Error"
+        },
+        "503": {
+          "$ref": "#/components/responses/Error"
+        }
       }
     }
   },
   "/v1/memory/forget": {
     "post": {
       "summary": "Forget a memory entry",
-      "description": "Delete a specific memory entry by key for a zombie. Idempotent — returns deleted=false if the entry did not exist.",
+      "description": "Delete a specific memory entry by key for a zombie. Idempotent \u2014 returns deleted=false if the entry did not exist.",
       "operationId": "memoryForget",
-      "tags": ["Memory"],
-      "security": [{"BearerAuth": []}],
+      "tags": [
+        "Memory"
+      ],
+      "security": [
+        {
+          "BearerAuth": []
+        }
+      ],
       "requestBody": {
         "required": true,
         "content": {
           "application/json": {
             "schema": {
               "type": "object",
-              "required": ["zombie_id", "key"],
+              "required": [
+                "zombie_id",
+                "key"
+              ],
               "properties": {
-                "zombie_id": {"type": "string", "format": "uuid", "description": "UUIDv7 of the target zombie"},
-                "key": {"type": "string", "minLength": 1, "maxLength": 255, "description": "Memory entry key to delete"}
+                "zombie_id": {
+                  "type": "string",
+                  "format": "uuid",
+                  "description": "UUIDv7 of the target zombie"
+                },
+                "key": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 255,
+                  "description": "Memory entry key to delete"
+                }
               }
             }
           }
@@ -2431,20 +1849,39 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "zombie_id": {"type": "string"},
-                  "key": {"type": "string"},
-                  "deleted": {"type": "boolean", "description": "true if the entry existed and was deleted; false if it did not exist"},
-                  "request_id": {"type": "string"}
+                  "zombie_id": {
+                    "type": "string"
+                  },
+                  "key": {
+                    "type": "string"
+                  },
+                  "deleted": {
+                    "type": "boolean",
+                    "description": "true if the entry existed and was deleted; false if it did not exist"
+                  },
+                  "request_id": {
+                    "type": "string"
+                  }
                 }
               }
             }
           }
         },
-        "400": {"$ref": "#/components/responses/Error"},
-        "401": {"$ref": "#/components/responses/Error"},
-        "403": {"$ref": "#/components/responses/Error"},
-        "404": {"$ref": "#/components/responses/Error"},
-        "503": {"$ref": "#/components/responses/Error"}
+        "400": {
+          "$ref": "#/components/responses/Error"
+        },
+        "401": {
+          "$ref": "#/components/responses/Error"
+        },
+        "403": {
+          "$ref": "#/components/responses/Error"
+        },
+        "404": {
+          "$ref": "#/components/responses/Error"
+        },
+        "503": {
+          "$ref": "#/components/responses/Error"
+        }
       }
     }
   },
@@ -2460,7 +1897,7 @@
     "schemas": {
       "ReadyzBody": {
         "type": "object",
-        "description": "Response body for GET /readyz. Identical shape for both 200 (healthy) and 503 (degraded) responses — only the boolean values differ.",
+        "description": "Response body for GET /readyz. Identical shape for both 200 (healthy) and 503 (degraded) responses \u2014 only the boolean values differ.",
         "required": [
           "ready",
           "database",
@@ -2469,7 +1906,7 @@
         "properties": {
           "ready": {
             "type": "boolean",
-            "description": "Overall readiness — true only when every dependency is healthy. Mirrors the HTTP status (true ↔ 200, false ↔ 503)."
+            "description": "Overall readiness \u2014 true only when every dependency is healthy. Mirrors the HTTP status (true \u2194 200, false \u2194 503)."
           },
           "database": {
             "type": "boolean",
@@ -2606,57 +2043,6 @@
               "failed"
             ],
             "description": "Current spec lifecycle status"
-          },
-          "created_at": {
-            "type": "integer",
-            "description": "Unix timestamp in milliseconds"
-          },
-          "updated_at": {
-            "type": "integer",
-            "description": "Unix timestamp in milliseconds"
-          }
-        }
-      },
-      "RunSummary": {
-        "type": "object",
-        "description": "Summary of a run for list views",
-        "properties": {
-          "run_id": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "workspace_id": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "spec_id": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "state": {
-            "type": "string",
-            "description": "Current pipeline state"
-          },
-          "attempt": {
-            "type": "integer",
-            "description": "Current attempt number"
-          },
-          "mode": {
-            "type": "string",
-            "enum": [
-              "pull_request"
-            ]
-          },
-          "requested_by": {
-            "type": "string"
-          },
-          "pr_url": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "format": "uri",
-            "description": "Pull request URL, null until PR is opened"
           },
           "created_at": {
             "type": "integer",
