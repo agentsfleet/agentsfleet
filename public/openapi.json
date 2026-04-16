@@ -58,7 +58,7 @@
     },
     {
       "name": "Memory",
-      "description": "Persistent zombie memory — store, recall, list, and forget key-value entries scoped to a zombie",
+      "description": "Persistent zombie memory \u2014 store, recall, list, and forget key-value entries scoped to a zombie",
       "x-mintlify": {
         "navigation": "Memory"
       }
@@ -97,7 +97,7 @@
       "get": {
         "operationId": "healthz",
         "summary": "Liveness check",
-        "description": "Returns 200 as long as the process is alive and able to serve HTTP. Does not probe dependencies — use /readyz for readiness (database + queue).",
+        "description": "Returns 200 as long as the process is alive and able to serve HTTP. Does not probe dependencies \u2014 use /readyz for readiness (database + queue).",
         "tags": [
           "Health"
         ],
@@ -1839,6 +1839,21 @@
               "default": "30d"
             },
             "description": "Time period for the summary window"
+          },
+          {
+            "name": "period_days",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "enum": [
+                7,
+                30,
+                90
+              ],
+              "default": 30
+            },
+            "description": "Integer form of the summary window. Takes precedence over the legacy `period` param."
           }
         ],
         "responses": {
@@ -1857,7 +1872,8 @@
                     "non_billable",
                     "non_billable_score_gated",
                     "total_runs",
-                    "request_id"
+                    "request_id",
+                    "total_cents"
                   ],
                   "properties": {
                     "workspace_id": {
@@ -1906,6 +1922,11 @@
                     },
                     "total_runs": {
                       "type": "integer"
+                    },
+                    "total_cents": {
+                      "type": "integer",
+                      "format": "int64",
+                      "description": "Sum of credit_deducted_cents across the window."
                     },
                     "request_id": {
                       "type": "string"
@@ -2168,6 +2189,307 @@
           }
         ]
       }
+    },
+    "/v1/workspaces/{workspace_id}/activity": {
+      "get": {
+        "operationId": "list_workspace_activity",
+        "summary": "List workspace activity feed",
+        "description": "Workspace-wide merged activity stream across every zombie. Cursor-paginated newest-first. Backs the dashboard Recent Activity feed.",
+        "tags": [
+          "Activity"
+        ],
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            },
+            "description": "Page size. Capped at 100."
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Opaque cursor returned by a previous call. Omit for the first page."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Activity page (newest-first)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "events"
+                  ],
+                  "properties": {
+                    "events": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "zombie_id",
+                          "workspace_id",
+                          "event_type",
+                          "detail",
+                          "created_at"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "zombie_id": {
+                            "type": "string"
+                          },
+                          "workspace_id": {
+                            "type": "string"
+                          },
+                          "event_type": {
+                            "type": "string"
+                          },
+                          "detail": {
+                            "type": "string"
+                          },
+                          "created_at": {
+                            "type": "integer",
+                            "format": "int64"
+                          }
+                        }
+                      }
+                    },
+                    "next_cursor": {
+                      "type": "string",
+                      "nullable": true,
+                      "description": "Cursor for the next page. Null when the feed is exhausted."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/workspaces/{workspace_id}/zombies/{zombie_id}:stop": {
+      "post": {
+        "operationId": "stop_workspace_zombie",
+        "summary": "Stop a zombie (kill switch)",
+        "description": "Transitions a zombie's status from `active` or `paused` to `stopped` and records a `zombie_stopped` activity event. Returns 409 if the zombie is already stopped or killed. Returns 404 if the zombie is not in the path workspace (cross-workspace IDOR guard).",
+        "tags": [
+          "Zombie"
+        ],
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "zombie_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Zombie transitioned to stopped",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "zombie_id",
+                    "workspace_id",
+                    "status",
+                    "request_id"
+                  ],
+                  "properties": {
+                    "zombie_id": {
+                      "type": "string"
+                    },
+                    "workspace_id": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "stopped"
+                      ]
+                    },
+                    "request_id": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/workspaces/{workspace_id}/zombies/{zombie_id}/billing/summary": {
+      "get": {
+        "operationId": "get_zombie_billing_summary",
+        "summary": "Get billing summary for a single zombie",
+        "description": "Per-zombie slice of the workspace billing summary. Response schema matches the workspace-scope endpoint plus a `zombie_id` field. SDK shape: `workspaces.billing.summary(ws)` vs `workspaces.zombies.billing.summary(ws, zombie)`.",
+        "tags": [
+          "Billing"
+        ],
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "zombie_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "period_days",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "enum": [
+                7,
+                30
+              ],
+              "default": 30
+            },
+            "description": "Time window in days."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Billing summary for the zombie",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "workspace_id",
+                    "zombie_id",
+                    "period_days",
+                    "period_start_ms",
+                    "period_end_ms",
+                    "completed",
+                    "non_billable",
+                    "non_billable_score_gated",
+                    "total_runs",
+                    "total_cents",
+                    "request_id"
+                  ],
+                  "properties": {
+                    "workspace_id": {
+                      "type": "string"
+                    },
+                    "zombie_id": {
+                      "type": "string"
+                    },
+                    "period_days": {
+                      "type": "integer"
+                    },
+                    "period_start_ms": {
+                      "type": "integer",
+                      "format": "int64"
+                    },
+                    "period_end_ms": {
+                      "type": "integer",
+                      "format": "int64"
+                    },
+                    "completed": {
+                      "type": "object",
+                      "properties": {
+                        "count": {
+                          "type": "integer"
+                        },
+                        "agent_seconds": {
+                          "type": "integer"
+                        }
+                      }
+                    },
+                    "non_billable": {
+                      "type": "object",
+                      "properties": {
+                        "count": {
+                          "type": "integer"
+                        }
+                      }
+                    },
+                    "non_billable_score_gated": {
+                      "type": "object",
+                      "properties": {
+                        "count": {
+                          "type": "integer"
+                        },
+                        "avg_score": {
+                          "type": "integer"
+                        }
+                      }
+                    },
+                    "total_runs": {
+                      "type": "integer"
+                    },
+                    "total_cents": {
+                      "type": "integer",
+                      "format": "int64"
+                    },
+                    "request_id": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
     }
   },
   "/v1/workspaces/{workspace_id}/zombies/{zombie_id}:steer": {
@@ -2175,21 +2497,31 @@
       "summary": "Steer a zombie's active run",
       "description": "Queues a steering message for the zombie. The message is written to Redis (zombie:{id}:steer, 300s TTL); the worker injects it as a synthetic event on the next event loop iteration. message_queued indicates whether the Redis write succeeded. execution_active indicates whether the zombie is currently executing when the request is handled.",
       "operationId": "zombieSteer",
-      "tags": ["Zombies"],
-      "security": [{ "BearerAuth": [] }],
+      "tags": [
+        "Zombies"
+      ],
+      "security": [
+        {
+          "BearerAuth": []
+        }
+      ],
       "parameters": [
         {
           "name": "workspace_id",
           "in": "path",
           "required": true,
-          "schema": { "type": "string" },
+          "schema": {
+            "type": "string"
+          },
           "description": "The workspace UUID"
         },
         {
           "name": "zombie_id",
           "in": "path",
           "required": true,
-          "schema": { "type": "string" },
+          "schema": {
+            "type": "string"
+          },
           "description": "The zombie's UUID"
         }
       ],
@@ -2199,7 +2531,9 @@
           "application/json": {
             "schema": {
               "type": "object",
-              "required": ["message"],
+              "required": [
+                "message"
+              ],
               "properties": {
                 "message": {
                   "type": "string",
@@ -2220,17 +2554,33 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "message_queued": { "type": "boolean", "description": "true if the message was successfully written to Redis" },
-                  "execution_active": { "type": "boolean", "description": "true if the zombie has an active execution_id at request time" },
-                  "execution_id": { "type": "string", "nullable": true, "description": "Active execution_id from zombie_sessions, or null if zombie is idle" }
+                  "message_queued": {
+                    "type": "boolean",
+                    "description": "true if the message was successfully written to Redis"
+                  },
+                  "execution_active": {
+                    "type": "boolean",
+                    "description": "true if the zombie has an active execution_id at request time"
+                  },
+                  "execution_id": {
+                    "type": "string",
+                    "nullable": true,
+                    "description": "Active execution_id from zombie_sessions, or null if zombie is idle"
+                  }
                 }
               }
             }
           }
         },
-        "400": { "$ref": "#/components/responses/BadRequest" },
-        "401": { "$ref": "#/components/responses/Unauthorized" },
-        "404": { "$ref": "#/components/responses/NotFound" }
+        "400": {
+          "$ref": "#/components/responses/BadRequest"
+        },
+        "401": {
+          "$ref": "#/components/responses/Unauthorized"
+        },
+        "404": {
+          "$ref": "#/components/responses/NotFound"
+        }
       }
     }
   },
@@ -2239,20 +2589,54 @@
       "summary": "Store a memory entry",
       "description": "Store or upsert a key-value memory entry for a zombie. On conflict (same key + zombie), the content and category are updated.",
       "operationId": "memoryStore",
-      "tags": ["Memory"],
-      "security": [{"BearerAuth": []}],
+      "tags": [
+        "Memory"
+      ],
+      "security": [
+        {
+          "BearerAuth": []
+        }
+      ],
       "requestBody": {
         "required": true,
         "content": {
           "application/json": {
             "schema": {
               "type": "object",
-              "required": ["zombie_id", "key", "content"],
+              "required": [
+                "zombie_id",
+                "key",
+                "content"
+              ],
               "properties": {
-                "zombie_id": {"type": "string", "format": "uuid", "description": "UUIDv7 of the target zombie"},
-                "key": {"type": "string", "minLength": 1, "maxLength": 255, "description": "Memory entry key"},
-                "content": {"type": "string", "minLength": 1, "maxLength": 16384, "description": "Memory entry content"},
-                "category": {"type": "string", "enum": ["core", "daily", "conversation", "workspace"], "default": "core", "description": "Memory category"}
+                "zombie_id": {
+                  "type": "string",
+                  "format": "uuid",
+                  "description": "UUIDv7 of the target zombie"
+                },
+                "key": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 255,
+                  "description": "Memory entry key"
+                },
+                "content": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 16384,
+                  "description": "Memory entry content"
+                },
+                "category": {
+                  "type": "string",
+                  "enum": [
+                    "core",
+                    "daily",
+                    "conversation",
+                    "workspace"
+                  ],
+                  "default": "core",
+                  "description": "Memory category"
+                }
               }
             }
           }
@@ -2266,41 +2650,82 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "zombie_id": {"type": "string"},
-                  "key": {"type": "string"},
-                  "category": {"type": "string"},
-                  "request_id": {"type": "string"}
+                  "zombie_id": {
+                    "type": "string"
+                  },
+                  "key": {
+                    "type": "string"
+                  },
+                  "category": {
+                    "type": "string"
+                  },
+                  "request_id": {
+                    "type": "string"
+                  }
                 }
               }
             }
           }
         },
-        "400": {"$ref": "#/components/responses/Error"},
-        "401": {"$ref": "#/components/responses/Error"},
-        "403": {"$ref": "#/components/responses/Error"},
-        "404": {"$ref": "#/components/responses/Error"},
-        "503": {"$ref": "#/components/responses/Error"}
+        "400": {
+          "$ref": "#/components/responses/Error"
+        },
+        "401": {
+          "$ref": "#/components/responses/Error"
+        },
+        "403": {
+          "$ref": "#/components/responses/Error"
+        },
+        "404": {
+          "$ref": "#/components/responses/Error"
+        },
+        "503": {
+          "$ref": "#/components/responses/Error"
+        }
       }
     }
   },
   "/v1/memory/recall": {
     "post": {
       "summary": "Recall memory entries by keyword",
-      "description": "Search a zombie's memory entries by keyword. Matches against key and content using ILIKE. Uses POST (not GET) because the query parameters are carried in the request body — HTTP caching does not apply to this endpoint.",
+      "description": "Search a zombie's memory entries by keyword. Matches against key and content using ILIKE. Uses POST (not GET) because the query parameters are carried in the request body \u2014 HTTP caching does not apply to this endpoint.",
       "operationId": "memoryRecall",
-      "tags": ["Memory"],
-      "security": [{"BearerAuth": []}],
+      "tags": [
+        "Memory"
+      ],
+      "security": [
+        {
+          "BearerAuth": []
+        }
+      ],
       "requestBody": {
         "required": true,
         "content": {
           "application/json": {
             "schema": {
               "type": "object",
-              "required": ["zombie_id", "query"],
+              "required": [
+                "zombie_id",
+                "query"
+              ],
               "properties": {
-                "zombie_id": {"type": "string", "format": "uuid", "description": "UUIDv7 of the target zombie"},
-                "query": {"type": "string", "minLength": 1, "description": "Keyword to search in key and content"},
-                "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 20, "description": "Maximum entries to return"}
+                "zombie_id": {
+                  "type": "string",
+                  "format": "uuid",
+                  "description": "UUIDv7 of the target zombie"
+                },
+                "query": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "Keyword to search in key and content"
+                },
+                "limit": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 100,
+                  "default": 20,
+                  "description": "Maximum entries to return"
+                }
               }
             }
           }
@@ -2314,52 +2739,104 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "zombie_id": {"type": "string"},
+                  "zombie_id": {
+                    "type": "string"
+                  },
                   "entries": {
                     "type": "array",
                     "items": {
                       "type": "object",
                       "properties": {
-                        "key": {"type": "string"},
-                        "content": {"type": "string"},
-                        "category": {"type": "string"},
-                        "updated_at": {"type": "string", "description": "Unix epoch seconds as string"}
+                        "key": {
+                          "type": "string"
+                        },
+                        "content": {
+                          "type": "string"
+                        },
+                        "category": {
+                          "type": "string"
+                        },
+                        "updated_at": {
+                          "type": "string",
+                          "description": "Unix epoch seconds as string"
+                        }
                       }
                     }
                   },
-                  "count": {"type": "integer"},
-                  "request_id": {"type": "string"}
+                  "count": {
+                    "type": "integer"
+                  },
+                  "request_id": {
+                    "type": "string"
+                  }
                 }
               }
             }
           }
         },
-        "400": {"$ref": "#/components/responses/Error"},
-        "401": {"$ref": "#/components/responses/Error"},
-        "403": {"$ref": "#/components/responses/Error"},
-        "404": {"$ref": "#/components/responses/Error"},
-        "503": {"$ref": "#/components/responses/Error"}
+        "400": {
+          "$ref": "#/components/responses/Error"
+        },
+        "401": {
+          "$ref": "#/components/responses/Error"
+        },
+        "403": {
+          "$ref": "#/components/responses/Error"
+        },
+        "404": {
+          "$ref": "#/components/responses/Error"
+        },
+        "503": {
+          "$ref": "#/components/responses/Error"
+        }
       }
     }
   },
   "/v1/memory/list": {
     "post": {
       "summary": "List memory entries for a zombie",
-      "description": "List all memory entries for a zombie, optionally filtered by category. Uses POST (not GET) because the filter parameters are carried in the request body — HTTP caching does not apply to this endpoint.",
+      "description": "List all memory entries for a zombie, optionally filtered by category. Uses POST (not GET) because the filter parameters are carried in the request body \u2014 HTTP caching does not apply to this endpoint.",
       "operationId": "memoryList",
-      "tags": ["Memory"],
-      "security": [{"BearerAuth": []}],
+      "tags": [
+        "Memory"
+      ],
+      "security": [
+        {
+          "BearerAuth": []
+        }
+      ],
       "requestBody": {
         "required": true,
         "content": {
           "application/json": {
             "schema": {
               "type": "object",
-              "required": ["zombie_id"],
+              "required": [
+                "zombie_id"
+              ],
               "properties": {
-                "zombie_id": {"type": "string", "format": "uuid", "description": "UUIDv7 of the target zombie"},
-                "category": {"type": "string", "enum": ["core", "daily", "conversation", "workspace"], "description": "Filter by category (omit for all)"},
-                "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 100, "description": "Maximum entries to return"}
+                "zombie_id": {
+                  "type": "string",
+                  "format": "uuid",
+                  "description": "UUIDv7 of the target zombie"
+                },
+                "category": {
+                  "type": "string",
+                  "enum": [
+                    "core",
+                    "daily",
+                    "conversation",
+                    "workspace"
+                  ],
+                  "description": "Filter by category (omit for all)"
+                },
+                "limit": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 100,
+                  "default": 100,
+                  "description": "Maximum entries to return"
+                }
               }
             }
           }
@@ -2373,51 +2850,93 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "zombie_id": {"type": "string"},
+                  "zombie_id": {
+                    "type": "string"
+                  },
                   "entries": {
                     "type": "array",
                     "items": {
                       "type": "object",
                       "properties": {
-                        "key": {"type": "string"},
-                        "content": {"type": "string"},
-                        "category": {"type": "string"},
-                        "updated_at": {"type": "string"}
+                        "key": {
+                          "type": "string"
+                        },
+                        "content": {
+                          "type": "string"
+                        },
+                        "category": {
+                          "type": "string"
+                        },
+                        "updated_at": {
+                          "type": "string"
+                        }
                       }
                     }
                   },
-                  "count": {"type": "integer"},
-                  "request_id": {"type": "string"}
+                  "count": {
+                    "type": "integer"
+                  },
+                  "request_id": {
+                    "type": "string"
+                  }
                 }
               }
             }
           }
         },
-        "400": {"$ref": "#/components/responses/Error"},
-        "401": {"$ref": "#/components/responses/Error"},
-        "403": {"$ref": "#/components/responses/Error"},
-        "404": {"$ref": "#/components/responses/Error"},
-        "503": {"$ref": "#/components/responses/Error"}
+        "400": {
+          "$ref": "#/components/responses/Error"
+        },
+        "401": {
+          "$ref": "#/components/responses/Error"
+        },
+        "403": {
+          "$ref": "#/components/responses/Error"
+        },
+        "404": {
+          "$ref": "#/components/responses/Error"
+        },
+        "503": {
+          "$ref": "#/components/responses/Error"
+        }
       }
     }
   },
   "/v1/memory/forget": {
     "post": {
       "summary": "Forget a memory entry",
-      "description": "Delete a specific memory entry by key for a zombie. Idempotent — returns deleted=false if the entry did not exist.",
+      "description": "Delete a specific memory entry by key for a zombie. Idempotent \u2014 returns deleted=false if the entry did not exist.",
       "operationId": "memoryForget",
-      "tags": ["Memory"],
-      "security": [{"BearerAuth": []}],
+      "tags": [
+        "Memory"
+      ],
+      "security": [
+        {
+          "BearerAuth": []
+        }
+      ],
       "requestBody": {
         "required": true,
         "content": {
           "application/json": {
             "schema": {
               "type": "object",
-              "required": ["zombie_id", "key"],
+              "required": [
+                "zombie_id",
+                "key"
+              ],
               "properties": {
-                "zombie_id": {"type": "string", "format": "uuid", "description": "UUIDv7 of the target zombie"},
-                "key": {"type": "string", "minLength": 1, "maxLength": 255, "description": "Memory entry key to delete"}
+                "zombie_id": {
+                  "type": "string",
+                  "format": "uuid",
+                  "description": "UUIDv7 of the target zombie"
+                },
+                "key": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 255,
+                  "description": "Memory entry key to delete"
+                }
               }
             }
           }
@@ -2431,20 +2950,39 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "zombie_id": {"type": "string"},
-                  "key": {"type": "string"},
-                  "deleted": {"type": "boolean", "description": "true if the entry existed and was deleted; false if it did not exist"},
-                  "request_id": {"type": "string"}
+                  "zombie_id": {
+                    "type": "string"
+                  },
+                  "key": {
+                    "type": "string"
+                  },
+                  "deleted": {
+                    "type": "boolean",
+                    "description": "true if the entry existed and was deleted; false if it did not exist"
+                  },
+                  "request_id": {
+                    "type": "string"
+                  }
                 }
               }
             }
           }
         },
-        "400": {"$ref": "#/components/responses/Error"},
-        "401": {"$ref": "#/components/responses/Error"},
-        "403": {"$ref": "#/components/responses/Error"},
-        "404": {"$ref": "#/components/responses/Error"},
-        "503": {"$ref": "#/components/responses/Error"}
+        "400": {
+          "$ref": "#/components/responses/Error"
+        },
+        "401": {
+          "$ref": "#/components/responses/Error"
+        },
+        "403": {
+          "$ref": "#/components/responses/Error"
+        },
+        "404": {
+          "$ref": "#/components/responses/Error"
+        },
+        "503": {
+          "$ref": "#/components/responses/Error"
+        }
       }
     }
   },
@@ -2460,7 +2998,7 @@
     "schemas": {
       "ReadyzBody": {
         "type": "object",
-        "description": "Response body for GET /readyz. Identical shape for both 200 (healthy) and 503 (degraded) responses — only the boolean values differ.",
+        "description": "Response body for GET /readyz. Identical shape for both 200 (healthy) and 503 (degraded) responses \u2014 only the boolean values differ.",
         "required": [
           "ready",
           "database",
@@ -2469,7 +3007,7 @@
         "properties": {
           "ready": {
             "type": "boolean",
-            "description": "Overall readiness — true only when every dependency is healthy. Mirrors the HTTP status (true ↔ 200, false ↔ 503)."
+            "description": "Overall readiness \u2014 true only when every dependency is healthy. Mirrors the HTTP status (true \u2194 200, false \u2194 503)."
           },
           "database": {
             "type": "boolean",
