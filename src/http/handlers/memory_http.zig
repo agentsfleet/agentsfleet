@@ -1,9 +1,12 @@
 // M14_001: External-agent memory API — Path B HTTP endpoints.
+// M26_001: recall + list converted to GET with query params (RAD §4).
 //
-// POST /v1/memory/store   → handleMemoryStore
-// POST /v1/memory/recall  → handleMemoryRecall
-// POST /v1/memory/list    → handleMemoryList
-// POST /v1/memory/forget  → handleMemoryForget
+// POST   /v1/memory/store   → innerMemoryStore
+// GET    /v1/memory/recall  → innerMemoryRecall  (query: zombie_id, query, limit?)
+// GET    /v1/memory/list    → innerMemoryList    (query: zombie_id, category?, limit?)
+// DELETE /v1/memory/forget  → innerMemoryForget  (still POST pre-M26; left as-is)
+//
+// Forget remains POST; a follow-up can normalize to DELETE + query params.
 //
 // Auth: Bearer token (API key or JWT with workspace scope).
 // Scope: zombie_id in body must belong to the caller's workspace.
@@ -97,36 +100,33 @@ pub fn innerMemoryStore(hx: Hx, req: *httpz.Request) void {
 
 
 // ── Recall ────────────────────────────────────────────────────────────────────
-
-const RecallBody = struct {
-    zombie_id: []const u8,
-    query: []const u8,
-    limit: ?i64 = null,
-};
+// M26_001: GET /v1/memory/recall?zombie_id=...&query=...&limit=...
 
 pub fn innerMemoryRecall(hx: Hx, req: *httpz.Request) void {
-    const body_raw = req.body() orelse {
-        hx.fail(ec.ERR_INVALID_REQUEST, "request body required");
+    const qs = req.query() catch {
+        hx.fail(ec.ERR_INVALID_REQUEST, "malformed query string");
         return;
     };
-    const parsed = std.json.parseFromSlice(RecallBody, hx.alloc, body_raw, .{ .ignore_unknown_fields = true }) catch {
-        hx.fail(ec.ERR_INVALID_REQUEST, "malformed JSON");
+    const zombie_id = qs.get("zombie_id") orelse {
+        hx.fail(ec.ERR_INVALID_REQUEST, "zombie_id query param required");
         return;
     };
-    const b = parsed.value;
-    if (b.query.len == 0) {
+    const query_text = qs.get("query") orelse {
+        hx.fail(ec.ERR_INVALID_REQUEST, "query query param required");
+        return;
+    };
+    if (query_text.len == 0) {
         hx.fail(ec.ERR_INVALID_REQUEST, "query must be non-empty");
         return;
     }
-    const raw_limit = b.limit orelse h.DEFAULT_RECALL_LIMIT;
-    if (raw_limit < 1) {
+    const limit = parseLimitQs(qs.get("limit"), h.DEFAULT_RECALL_LIMIT) catch {
         hx.fail(ec.ERR_INVALID_REQUEST, "limit must be a positive integer");
         return;
-    }
-    const limit = @min(raw_limit, h.MAX_RECALL_LIMIT);
+    };
+    const clamped = @min(limit, h.MAX_RECALL_LIMIT);
     // Escape LIKE metacharacters so a query of "%" doesn't dump all entries.
     // Pattern: %{escaped_query}% with ESCAPE '\'
-    const escaped = h.escapeLikePattern(hx.alloc, b.query) catch {
+    const escaped = h.escapeLikePattern(hx.alloc, query_text) catch {
         common.internalOperationError(hx.res, "OOM", hx.req_id);
         return;
     };
@@ -141,7 +141,7 @@ pub fn innerMemoryRecall(hx: Hx, req: *httpz.Request) void {
     };
     defer hx.ctx.pool.release(conn);
 
-    const instance_id = h.resolveInstanceId(hx, conn, b.zombie_id) orelse return;
+    const instance_id = h.resolveInstanceId(hx, conn, zombie_id) orelse return;
 
     if (!h.setMemoryRole(conn)) {
         hx.fail(ec.ERR_MEM_UNAVAILABLE, "memory backend role switch failed");
@@ -156,7 +156,7 @@ pub fn innerMemoryRecall(hx: Hx, req: *httpz.Request) void {
         \\  AND (key ILIKE $2 ESCAPE '\' OR content ILIKE $2 ESCAPE '\')
         \\ORDER BY updated_at DESC
         \\LIMIT $3
-    , .{ instance_id, like_pat, limit }) catch {
+    , .{ instance_id, like_pat, clamped }) catch {
         hx.fail(ec.ERR_MEM_UNAVAILABLE, "memory recall failed");
         return;
     });
@@ -167,38 +167,44 @@ pub fn innerMemoryRecall(hx: Hx, req: *httpz.Request) void {
     h.collectEntries(hx.alloc, &q, &entries);
 
     hx.ok(.ok, .{
-        .zombie_id = b.zombie_id,
-        .entries = entries.items,
-        .count = entries.items.len,
+        .zombie_id = zombie_id,
+        .items = entries.items,
+        .total = entries.items.len,
         .request_id = hx.req_id,
     });
 }
 
+fn parseLimitQs(raw: ?[]const u8, default_value: i64) !i64 {
+    const s = raw orelse return default_value;
+    if (s.len == 0) return default_value;
+    const n = try std.fmt.parseInt(i64, s, 10);
+    if (n < 1) return error.InvalidCharacter;
+    return n;
+}
+
 
 // ── List ──────────────────────────────────────────────────────────────────────
-
-const ListBody = struct {
-    zombie_id: []const u8,
-    category: ?[]const u8 = null,
-    limit: ?i64 = null,
-};
+// M26_001: GET /v1/memory/list?zombie_id=...&category=...&limit=...
 
 pub fn innerMemoryList(hx: Hx, req: *httpz.Request) void {
-    const body_raw = req.body() orelse {
-        hx.fail(ec.ERR_INVALID_REQUEST, "request body required");
+    const qs = req.query() catch {
+        hx.fail(ec.ERR_INVALID_REQUEST, "malformed query string");
         return;
     };
-    const parsed = std.json.parseFromSlice(ListBody, hx.alloc, body_raw, .{ .ignore_unknown_fields = true }) catch {
-        hx.fail(ec.ERR_INVALID_REQUEST, "malformed JSON");
+    const zombie_id = qs.get("zombie_id") orelse {
+        hx.fail(ec.ERR_INVALID_REQUEST, "zombie_id query param required");
         return;
     };
-    const b = parsed.value;
-    const raw_limit = b.limit orelse h.DEFAULT_LIST_LIMIT;
-    if (raw_limit < 1) {
+    const category_opt: ?[]const u8 = blk: {
+        const c = qs.get("category") orelse break :blk null;
+        if (c.len == 0) break :blk null;
+        break :blk c;
+    };
+    const limit_raw = parseLimitQs(qs.get("limit"), h.DEFAULT_LIST_LIMIT) catch {
         hx.fail(ec.ERR_INVALID_REQUEST, "limit must be a positive integer");
         return;
-    }
-    const limit = @min(raw_limit, h.MAX_RECALL_LIMIT);
+    };
+    const limit = @min(limit_raw, h.MAX_RECALL_LIMIT);
 
     const conn = hx.ctx.pool.acquire() catch {
         common.internalDbUnavailable(hx.res, hx.req_id);
@@ -206,7 +212,7 @@ pub fn innerMemoryList(hx: Hx, req: *httpz.Request) void {
     };
     defer hx.ctx.pool.release(conn);
 
-    const instance_id = h.resolveInstanceId(hx, conn, b.zombie_id) orelse return;
+    const instance_id = h.resolveInstanceId(hx, conn, zombie_id) orelse return;
 
     if (!h.setMemoryRole(conn)) {
         hx.fail(ec.ERR_MEM_UNAVAILABLE, "memory backend role switch failed");
@@ -214,14 +220,13 @@ pub fn innerMemoryList(hx: Hx, req: *httpz.Request) void {
     }
     defer h.resetRole(conn);
 
-    const has_category = b.category != null and b.category.?.len > 0;
-    var q = if (has_category)
+    var q = if (category_opt) |cat|
         PgQuery.from(conn.query(
             \\SELECT key, content, category, updated_at
             \\FROM memory.memory_entries
             \\WHERE instance_id = $1 AND category = $2
             \\ORDER BY updated_at DESC LIMIT $3
-        , .{ instance_id, b.category.?, limit }) catch {
+        , .{ instance_id, cat, limit }) catch {
             hx.fail(ec.ERR_MEM_UNAVAILABLE, "memory list failed");
             return;
         })
@@ -242,9 +247,9 @@ pub fn innerMemoryList(hx: Hx, req: *httpz.Request) void {
     h.collectEntries(hx.alloc, &q, &entries);
 
     hx.ok(.ok, .{
-        .zombie_id = b.zombie_id,
-        .entries = entries.items,
-        .count = entries.items.len,
+        .zombie_id = zombie_id,
+        .items = entries.items,
+        .total = entries.items.len,
         .request_id = hx.req_id,
     });
 }

@@ -146,7 +146,7 @@ pub fn innerListZombies(hx: Hx, req: *httpz.Request, workspace_id: []const u8) v
         return;
     };
 
-    hx.ok(.ok, .{ .zombies = rows });
+    hx.ok(.ok, .{ .items = rows, .total = rows.len });
 }
 
 const ZombieListRow = struct {

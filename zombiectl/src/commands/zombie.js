@@ -206,7 +206,7 @@ async function commandStatus(ctx, args, workspaces, deps) {
     return 0;
   }
 
-  const zombies = res.zombies || res.data || [];
+  const zombies = res.items || res.data || [];
   if (zombies.length === 0) {
     writeLine(ctx.stdout, ui.info("No zombies running. Install one with: zombiectl install <template>"));
     return 0;
@@ -295,7 +295,7 @@ async function commandLogs(ctx, args, workspaces, deps) {
     return 0;
   }
 
-  const events = res.events || res.data || [];
+  const events = res.items || res.data || [];
   if (events.length === 0) {
     writeLine(ctx.stdout, ui.info("No activity yet."));
     return 0;
@@ -307,9 +307,9 @@ async function commandLogs(ctx, args, workspaces, deps) {
     writeLine(ctx.stdout, `  ${ui.dim(ts)}  ${evt.event_type}  ${evt.detail || ""}`);
   }
 
-  if (res.next_cursor) {
+  if (res.cursor) {
     writeLine(ctx.stdout);
-    writeLine(ctx.stdout, ui.dim(`  More: zombiectl logs --cursor=${res.next_cursor}`));
+    writeLine(ctx.stdout, ui.dim(`  More: zombiectl logs --cursor=${res.cursor}`));
   }
 
   return 0;

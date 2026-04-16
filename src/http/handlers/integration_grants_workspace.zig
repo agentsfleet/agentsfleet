@@ -85,7 +85,7 @@ pub fn innerListGrants(hx: hx_mod.Hx, workspace_id: []const u8, zombie_id: []con
         }) catch {};
     }
 
-    hx.ok(.ok, .{ .grants = grants.items });
+    hx.ok(.ok, .{ .items = grants.items, .total = grants.items.len });
 }
 
 // ── innerRevokeGrant ───────────────────────────────────────────────────────
@@ -138,8 +138,7 @@ pub fn innerRevokeGrant(hx: hx_mod.Hx, workspace_id: []const u8, zombie_id: []co
     }
 
     log.info("grant.revoked zombie_id={s} grant_id={s}", .{ zombie_id, grant_id });
-    hx.res.status = 204;
-    hx.res.body = "";
+    hx.ok(.no_content, .{});
 }
 
 // ── Defence-in-depth test for the revoke UPDATE SQL ────────────────────────

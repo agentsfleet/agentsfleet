@@ -243,13 +243,13 @@ pub fn invokeMemoryStore(hx: *Hx, req: *httpz.Request, route: router.Route) void
 
 pub fn invokeMemoryRecall(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     _ = route;
-    if (req.method != .POST) { common.respondMethodNotAllowed(hx.res); return; }
+    if (req.method != .GET) { common.respondMethodNotAllowed(hx.res); return; }
     memory.innerMemoryRecall(hx.*, req);
 }
 
 pub fn invokeMemoryList(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     _ = route;
-    if (req.method != .POST) { common.respondMethodNotAllowed(hx.res); return; }
+    if (req.method != .GET) { common.respondMethodNotAllowed(hx.res); return; }
     memory.innerMemoryList(hx.*, req);
 }
 

@@ -91,16 +91,11 @@ Normalize four GET list handlers to return `{ items: [...], total: N }` (plus `c
 | 2.3 | PENDING | `memory_http.zig:innerMemoryList` | `GET /v1/memory/list?zombie_id=...&category=...` | `items`/`total` response | integration |
 | 2.4 | PENDING | `route_table_invoke.zig:invokeMemoryRecall` | `POST /v1/memory/recall` | 405 Method Not Allowed | integration |
 
-### §3 — Field casing: `request_id` → `requestId`
+### §3 — Field casing — DROPPED
 
-**Status:** PENDING
+**Status:** DROPPED (audit misread)
 
-Memory responses return `request_id` (snake_case). Per RAD §1 use lowerCamelCase for acronyms. Other handlers already use `req_id` internally but don't leak it to the wire; memory is the one outlier that does.
-
-| Dim | Status | Target | Input | Expected | Test type |
-|-----|--------|--------|-------|----------|-----------|
-| 3.1 | PENDING | `memory_http.zig:94,173,248,306` | any memory request | response has `requestId`, no `request_id` | integration |
-| 3.2 | PENDING | `zombiectl/src/lib/http.js:44` | any ApiError | reads `requestId` first | unit |
+The original audit flagged `request_id` as a snake_case violation, citing RAD §1's *"lower camelCase for acronyms"* rule. That rule is about **how to spell acronyms within an identifier** (`Url` not `URL`), not about snake_case vs camelCase overall. The rest of the guide's examples are snake_case (`created_at`, `product_id`, `expiration_days`, `phone_number`) — matching the codebase convention. No rename needed.
 
 ### §4 — Inline 204 → `hx.ok(.no_content, .{})`
 
@@ -125,18 +120,22 @@ Document every route in `router.zig` Route enum. Remove stale `/v1/runs/*`.
 | 5.3 | PENDING | `public/openapi.json` | all list response schemas | use `items`/`total` shape | contract |
 | 5.4 | PENDING | `public/openapi.json` | memory recall/list | method is GET with query params | contract |
 
-### §6 — Auth RBAC helpers → `src/auth/rbac/`
+### §6 — Auth RBAC helpers → `src/auth/rbac/` — REVISED
 
-**Status:** PENDING
+**Status:** ALREADY-SATISFIED (investigation outcome)
 
-Move the three workspace-authorization helpers out of `src/http/handlers/common.zig` into a new `src/auth/rbac/workspace.zig`. Handlers import from `auth.rbac`. No behavior change; pure relocation + import rewrites. Keeps `test-auth` target green (already proves auth module compiles standalone).
+Investigation during EXECUTE revealed the auth boundary is already clean. `src/auth/**` imports **zero** pg, and `test-auth` (build.zig:184) proves portability with only httpz as a dependency. M18_002 already did the extraction work.
+
+The functions originally scoped for this section (`authorizeWorkspace`, `getZombieWorkspaceId`, `setTenantSessionContext`, `authorizeWorkspaceAndSetTenantContext`) are fundamentally **DB-coupled** (they take `*pg.Conn`). Moving them into `src/auth/` would either (a) force pg into the test-auth build (breaks the portability contract the user wanted preserved) or (b) require a dependency-injection refactor far outside this milestone's scope.
+
+**Conclusion:** "Ensure auth is built in this PR" is satisfied by existing prior-milestone work. `zig build test-auth` passes on this branch (verified during EXECUTE). No code change needed.
+
+**Follow-up:** If a future milestone wants workspace-authz logic inside the auth package, it must first introduce a `WorkspaceLookup` interface so auth can authorize without a direct DB handle. Out of scope for M26_001.
 
 | Dim | Status | Target | Input | Expected | Test type |
 |-----|--------|--------|-------|----------|-----------|
-| 6.1 | PENDING | `src/auth/rbac/workspace.zig` | compile | exports `authorizeWorkspace`, `getZombieWorkspaceId`, `authorizeWorkspaceAndSetTenantContext` | unit |
-| 6.2 | PENDING | all handlers using these fns | `grep -rn common.authorizeWorkspace src/http/handlers/` | 0 matches post-refactor | contract |
-| 6.3 | PENDING | `build.zig:test-auth` | `zig build test-auth` | passes — auth module still compiles without HTTP layer | contract |
-| 6.4 | PENDING | existing auth/workspace tests | `make test` | all pass, zero regressions | unit + integration |
+| 6.1 | DONE | `build.zig:test-auth` target | `zig build test-auth` | passes (verified) | contract |
+| 6.2 | DONE | `src/auth/` dependency closure | `grep -rn 'const pg = @import' src/auth/` | zero matches (verified) | contract |
 
 ### §7 — zombiectl consumer updates
 
