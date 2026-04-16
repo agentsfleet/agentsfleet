@@ -182,6 +182,125 @@ Each component gets the same treatment as Button: framework-agnostic imports onl
 
 ---
 
+## 5.5 Signature Motion + Atmospheric Dark Background
+
+**Status:** PENDING
+**Workstream:** M26.6 — runs after M26.5 (app migration) so motion is consistent across both consumers on day one.
+
+A design-system without a signature motion language and a distinctive background feels generic. M26.6 gives UseZombie both — a *voice* for motion and an *atmosphere* for the canvas — without reaching for a heavyweight runtime (Framer Motion's ~50KB gzipped). Everything GPU-accelerated (`transform`, `opacity` only), everything gated behind `prefers-reduced-motion: reduce`, everything tokenized so future rebrands touch one file.
+
+### 5.5.1 Motion tokens (Layer 1 extension of globals.css)
+
+Add a motion token block alongside the color tokens. Every duration + easing curve referenced by a component must resolve to a CSS variable — no inline `200ms ease-out` in component files.
+
+```css
+:root {
+  /* Duration — tuned for perceived snappiness on interactive paths. */
+  --motion-duration-instant:  80ms;   /* hover feedback */
+  --motion-duration-short:    160ms;  /* focus ring, small transitions */
+  --motion-duration-medium:   280ms;  /* dialog enter/exit, toast */
+  --motion-duration-long:     560ms;  /* page stagger, hero reveal */
+
+  /* Easing — "zombie" feels the interaction curve. */
+  --motion-ease-standard: cubic-bezier(0.22, 0.61, 0.36, 1);
+  --motion-ease-emphasized: cubic-bezier(0.4, 0, 0.2, 1);
+  --motion-ease-decelerate: cubic-bezier(0, 0, 0.2, 1);
+  --motion-ease-spring: linear(0, 0.006 1.6%, 0.023 3.2%, 0.054 4.8%, 0.18 8.2%, 0.372 12%, 0.569 16%, 0.734 20%, 0.859 24%, 0.944 28%, 0.994 32%, 1 34%, 0.998 38%, 0.988 42%, 0.987 46%, 0.999 60%, 1);
+}
+
+@theme inline {
+  --animate-glow-pulse: z-glow-pulse 2.8s var(--motion-ease-standard) infinite;
+  --animate-shimmer: z-shimmer 1.6s linear infinite;
+  --animate-scanline: z-scanline 6s var(--motion-ease-standard) infinite;
+  --animate-drift-slow: z-drift 22s linear infinite;
+  --animate-float-up: z-float-up 15s linear infinite;
+  --animate-enter: z-enter var(--motion-duration-medium) var(--motion-ease-decelerate);
+}
+```
+
+### 5.5.2 Signature animations — the brand motion vocabulary
+
+Six named animations form the vocabulary. Every component picks from these, never inlines its own.
+
+| Name | When to use | Keyframes | Fallback when reduced |
+|---|---|---|---|
+| `z-glow-pulse` | Active CTA idle state (primary Button), pending kill-switch confirmation dialog | Orange glow shadow cycles 0.08 → 0.22 opacity, 2.8s infinite | Static shadow at 0.1 opacity |
+| `z-shimmer` | Skeleton loaders (replaces shadcn default `pulse`) — gradient traverses left-to-right | 200% background width, `background-position` 0% → 100%, 1.6s linear | Static muted bar at 0.12 opacity |
+| `z-enter` | Dialog / Popover / Tooltip / Toast enter | `opacity 0 + translateY(4px)` → `opacity 1 + translateY(0)`, 280ms emphasized | No transform, `opacity 1` immediately |
+| `z-scanline` | Hero / empty-state decorative overlays — horizontal line traverses element | Vertical `translateY` from -2% → 102%, 6s infinite | Hidden entirely |
+| `z-drift` | Atmospheric aurora blob on dark background + AnimatedIcon idle wobble | Existing keyframe in tokens.css, `22s linear infinite` | Paused at neutral position |
+| `z-float-up` | Background particles — tiny dots drift from bottom to top | Existing keyframe in tokens.css, `15s linear` stagger | Hidden |
+
+### 5.5.3 Signature interaction — Button hover "trace"
+
+When a user hovers or focuses the primary Button, a subtle orange radial trace animates outward from the cursor (on hover) or from the element center (on focus). Uses CSS `radial-gradient` + `@property --trace-x/--trace-y` registered custom properties, all GPU-accelerated, zero JS.
+
+- Adds ~0.4KB of CSS to the package
+- `@property` fallback: browsers without registered-property support get a flat glow (no animation), no breakage
+- Respects `prefers-reduced-motion`
+
+### 5.5.4 Atmospheric dark background
+
+Replace the current flat `--z-bg-0: #05080d` with a layered composition. Each layer lives in `components.css` so both app and website inherit it automatically.
+
+**Layer stack (bottom → top):**
+
+1. **Base gradient** — `radial-gradient(ellipse at 50% 0%, var(--z-bg-1) 0%, var(--z-bg-0) 60%)`. Gives the viewport a subtle glow from above, like a CRT monitor or a spotlight on a desk.
+2. **Grid overlay** — 1px lines at 2% opacity, 64×64 cell, slow horizontal drift via `z-grid-shift` (30s linear). Already have the keyframe. Masked with a radial vignette so lines fade at edges.
+3. **Aurora glow** — two large radial blobs using `--primary-glow` (orange) and a faint `--info` (cyan), positioned at (top-left, bottom-right), `filter: blur(120px)`, `z-drift 22s`. Opacity capped at 0.14 so they're felt more than seen.
+4. **Particle layer (optional)** — 12 tiny 2px dots, `position: absolute`, random horizontal positions, `z-float-up 15s` with staggered delays. Opacity 0.3, color `--primary-bright`. **Disabled** when `prefers-reduced-motion: reduce` OR `prefers-reduced-data: reduce` OR viewport < 640px (perf on mobile).
+5. **Scanline (decorative, rare use)** — single horizontal line animated via `z-scanline` 6s. Only rendered in the app's `/dashboard` hero area (terminal/agent vibe). Not global.
+
+Layers 1–3 run continuously on every page in both app and website. Layer 4 is opt-in via `<AtmosphericBackground particles />`. Layer 5 is page-specific.
+
+**GPU + accessibility constraints (non-negotiable):**
+
+- All animations use `transform` / `opacity` / `filter` only. No `top`/`left`/`width` transitions (layout thrash).
+- `will-change: transform` applied to drifting layers — browser opts them onto the GPU composite layer.
+- `@media (prefers-reduced-motion: reduce)` selector disables every `animation` property. Hardcoded in `components.css`.
+- Layers use `pointer-events: none` and `aria-hidden="true"` so screen readers ignore them.
+- Total background overhead: ≤ 3KB CSS, zero JS, zero layout thrash.
+
+### 5.5.5 Dimensions — tests per animation + background layer
+
+- 5.5.1 PENDING — target: `ui/packages/design-system/src/tokens.css` — input: add motion-duration + motion-ease tokens per §5.5.1 — expected: variables resolve in computed style, `@theme inline` emits `--animate-*` utilities — test_type: unit (grep + computed style)
+- 5.5.2 PENDING — target: `ui/packages/design-system/src/components.css` — input: add 6 keyframes (`z-glow-pulse`, `z-shimmer`, `z-enter`, `z-scanline`, keep `z-drift`/`z-float-up`) — expected: keyframes defined, every component references them by name — test_type: unit (grep)
+- 5.5.3 PENDING — target: `Button.tsx` primary variant — input: hover over Button — expected: `animation-name: z-glow-pulse` on computed style at idle, radial-gradient trace on hover — test_type: Playwright (hover state screenshot + getComputedStyle check)
+- 5.5.4 PENDING — target: Skeleton component — input: render default — expected: `animation: var(--animate-shimmer)` in computed style, shimmer traverses left-to-right in screenshots at 0ms / 800ms / 1600ms — test_type: Playwright (multi-frame capture)
+- 5.5.5 PENDING — target: `AtmosphericBackground` component (new, ships in design-system) — input: render on dashboard — expected: 3 layers visible in DOM (gradient + grid + aurora), pointer-events:none, aria-hidden, < 3KB CSS footprint — test_type: Playwright visual + unit (SSR snapshot)
+- 5.5.6 PENDING — target: Dialog enter — input: open dialog — expected: `z-enter` animation runs once, duration 280ms, opacity ends at 1 — test_type: Playwright (animation start/end listener)
+- 5.5.7 PENDING — target: `prefers-reduced-motion: reduce` — input: Playwright emulated media query — expected: all 6 signature animations have `animation: none` in computed style; particles layer hidden — test_type: Playwright
+- 5.5.8 PENDING — target: GPU safety audit — input: every keyframe in `components.css` — expected: only `transform`, `opacity`, `filter`, `background-position` animated; grep gate catches `top`/`left`/`width`/`height` in any `@keyframes` block — test_type: unit (grep CI gate)
+- 5.5.9 PENDING — target: SSR snapshot — input: every design-system component under `renderToStaticMarkup` — expected: no motion-specific runtime errors, no `undefined` in animation attributes — test_type: unit
+- 5.5.10 PENDING — target: `AtmosphericBackground` responsive — input: Playwright at viewports 375px / 768px / 1440px — expected: particle layer hidden at 375, visible at ≥ 768, visual-regression delta < 1% per viewport — test_type: Playwright
+
+### 5.5.6 New design-system export
+
+```ts
+// @usezombie/design-system
+export {
+  AtmosphericBackground,     // <AtmosphericBackground particles scanline={false} />
+  type AtmosphericBackgroundProps,
+} from "./design-system";
+```
+
+Both consumers wrap their root layout with it:
+
+```tsx
+// ui/packages/app/app/layout.tsx (RSC)
+<body>
+  <AtmosphericBackground particles />
+  {children}
+</body>
+
+// ui/packages/website/src/App.tsx
+<AtmosphericBackground particles scanline />
+```
+
+One component, two consumers, identical visual atmosphere.
+
+---
+
 ## 6.0 Interfaces
 
 **Status:** PENDING
@@ -201,11 +320,13 @@ export {
   InstallBlock,
   AnimatedIcon,
   ZombieHandIcon,
+  AtmosphericBackground,
+  type AtmosphericBackgroundProps,
 } from "./design-system";
 
 // CSS exports
-// @usezombie/design-system/tokens.css     — Layer 0 palette + typography primitives
-// @usezombie/design-system/components.css — component CSS (new)
+// @usezombie/design-system/tokens.css     — Layer 0 palette + typography + motion primitives
+// @usezombie/design-system/components.css — component CSS + signature keyframes + atmospheric background
 ```
 
 ### 6.2 Public API change — Button
@@ -258,6 +379,10 @@ The package is framework-agnostic by construction.
 | Build delta: app + website first-load bundle shrinks or stays flat vs pre-migration | `next build` + `vite build` output comparison |
 | `.z-btn` / `.z-card` rules no longer in `website/styles.css` | grep assertion |
 | All Button variants round-trip in both consumers | unit + e2e tests |
+| Every keyframe under `components.css` animates only `transform` / `opacity` / `filter` / `background-position` | grep gate (§5.5.8 dimension) |
+| Every signature animation has a `prefers-reduced-motion: reduce` fallback | Playwright emulated media query (§5.5.7) |
+| Background overhead ≤ 3KB CSS, zero JS | measured against `components.css` + bundle analyzer |
+| Motion tokens (`--motion-duration-*`, `--motion-ease-*`) referenced only through `var()` — no inline durations in component `style` or `className` | grep gate |
 
 ---
 
@@ -272,8 +397,9 @@ The package is framework-agnostic by construction.
 | 5 | Website Playwright baseline — capture main's visual state before migration | screenshots checked in |
 | 6 | M26.4 website migration — update call-sites, re-import CSS | dims 4.1–4.4 pass |
 | 7 | M26.5 app migration — delete app/components/ui/button.tsx, re-export, update call-sites | dims 5.1–5.5 pass |
-| 8 | Full verification — `make lint`, `bun run typecheck / lint / test / build` in both app and website, `bunx playwright test` in both | all green |
-| 9 | CHORE(close) — spec DONE, move to done/, Ripley log, changelog entry, PR | PR open with visual-diff screenshots attached |
+| 8 | M26.6 Signature Motion + Atmospheric Background — motion tokens, 6 keyframes, Button hover trace, Skeleton shimmer, `<AtmosphericBackground />`, Playwright hover/reduced-motion tests | dims 5.5.1–5.5.10 pass |
+| 9 | Full verification — `make lint`, `bun run typecheck / lint / test / build` in both app and website, `bunx playwright test` in both (including motion suite) | all green |
+| 10 | CHORE(close) — spec DONE, move to done/, Ripley log, changelog entry, PR | PR open with visual-diff screenshots + motion recordings attached |
 
 ---
 
@@ -289,6 +415,10 @@ The package is framework-agnostic by construction.
 - [ ] All existing tests (website + app) pass against the new component API
 - [ ] RSC fixture route in the app builds as a static Server Component (proves RSC-safety)
 - [ ] Release notes document the `<Button to="/x">` → `<Button asChild><Link to="/x" /></Button>` migration
+- [ ] Motion tokens (`--motion-duration-*`, `--motion-ease-*`) + 6 signature keyframes land in the package; component files reference them via `var()` only
+- [ ] `<AtmosphericBackground />` renders in both app and website layouts, with 3 base layers (gradient + grid + aurora), opt-in particles, and `prefers-reduced-motion` honoured
+- [ ] Playwright motion suite (§5.5.3–5.5.10) green — hover trace, shimmer frames, dialog enter, reduced-motion disables all animations, GPU-safety grep
+- [ ] Unit-test SSR coverage for every motion-using component (no runtime errors, no `undefined` in animation attributes)
 
 ---
 
@@ -310,6 +440,10 @@ The package is framework-agnostic by construction.
 | Tailwind v4 `@source` needs to scan the package's new components.css | Verify `@source` directives in both app and website entry CSS cover the design-system package paths |
 | Next.js RSC build silently client-hoists the whole tree due to a hidden import | The M26.2 dimension 2.5 fixture catches this — explicitly asserts a Server Component builds |
 | Breaking change (`to=` → `asChild`) missed in a call-site | grep-gate for `<Button to=` — zero matches post-migration |
+| Signature animation looks like a "novelty" rather than a signature | Keep durations short (≤ 560ms), opacity low (0.08–0.22 for glow), grounded in existing brand tokens. Review recordings at M26.6 before merging. |
+| Background particles tank perf on low-end devices | Auto-disable via `prefers-reduced-data`, `prefers-reduced-motion`, and viewport `< 640px`. Cap DOM nodes for particles at 12. |
+| Playwright visual regression flakes on animated elements | Capture static screenshots with animations paused (`animation-play-state: paused` via test hook). Motion coverage uses frame captures at specific offsets (0ms / 800ms / 1600ms) rather than pixel-perfect diffs on an in-flight animation. |
+| A consumer imports from `"@usezombie/design-system"` but forgets the CSS import, shipping unstyled | Package `exports` field + TypeScript barrel doesn't expose runtime checks. Mitigation: docs note + a runtime `console.warn` in dev-mode if `document.adoptedStyleSheets` doesn't contain the package's `z-btn` selector within 50ms of first component mount. |
 
 ---
 
