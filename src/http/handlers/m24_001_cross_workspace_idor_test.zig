@@ -337,3 +337,165 @@ test "M24_001 IDOR: GET activity for nonexistent zombie returns 404 (getZombieWo
     defer r.deinit(ALLOC);
     try std.testing.expectEqual(@as(u16, 404), r.status);
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// M26_001: REST conventions — envelope shape, method enforcement, 204 body.
+// Added to this file because it shares TestServer + operator JWT + cleanup.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Tiny JSON probe that asserts a top-level string key exists in a JSON object
+// body, without pulling in a full parser. Good enough for the 1-level envelope
+// keys we assert here (`items`, `total`, `zombies`, `agents`, etc.).
+fn bodyHasTopLevelKey(body: []const u8, key: []const u8) bool {
+    // Matches `"key":` with optional whitespace. Not hardened against quoted-in-
+    // string pathologies; sufficient for server-generated response shapes.
+    const alloc = std.testing.allocator;
+    const needle = std.fmt.allocPrint(alloc, "\"{s}\":", .{key}) catch return false;
+    defer alloc.free(needle);
+    return std.mem.indexOf(u8, body, needle) != null;
+}
+
+test "M26_001 envelope: GET /workspaces/{my}/zombies body has items+total, no zombies key" {
+    const srv = try startTestServer(ALLOC);
+    defer {
+        if (srv.pool.acquire()) |c| { cleanupTestData(c); srv.pool.release(c); } else |_| {}
+        srv.deinit();
+        ALLOC.destroy(srv);
+    }
+
+    const url = try urlJoin(ALLOC, srv.port, "/v1/workspaces/{s}/zombies", .{TEST_WORKSPACE_ID});
+    defer ALLOC.free(url);
+
+    const r = try sendReq(ALLOC, url, .GET, TOKEN_OPERATOR, null);
+    defer r.deinit(ALLOC);
+    try std.testing.expectEqual(@as(u16, 200), r.status);
+    try std.testing.expect(bodyHasTopLevelKey(r.body, "items"));
+    try std.testing.expect(bodyHasTopLevelKey(r.body, "total"));
+    // Old collection-keyed envelope must be gone.
+    try std.testing.expect(!bodyHasTopLevelKey(r.body, "zombies"));
+}
+
+test "M26_001 envelope: GET /workspaces/{my}/external-agents body has items+total, no agents key" {
+    const srv = try startTestServer(ALLOC);
+    defer {
+        if (srv.pool.acquire()) |c| { cleanupTestData(c); srv.pool.release(c); } else |_| {}
+        srv.deinit();
+        ALLOC.destroy(srv);
+    }
+
+    const url = try urlJoin(ALLOC, srv.port, "/v1/workspaces/{s}/external-agents", .{TEST_WORKSPACE_ID});
+    defer ALLOC.free(url);
+
+    const r = try sendReq(ALLOC, url, .GET, TOKEN_OPERATOR, null);
+    defer r.deinit(ALLOC);
+    try std.testing.expectEqual(@as(u16, 200), r.status);
+    try std.testing.expect(bodyHasTopLevelKey(r.body, "items"));
+    try std.testing.expect(bodyHasTopLevelKey(r.body, "total"));
+    try std.testing.expect(!bodyHasTopLevelKey(r.body, "agents"));
+}
+
+test "M26_001 method: POST /v1/memory/recall returns 405 (GET-only post-M26)" {
+    const srv = try startTestServer(ALLOC);
+    defer {
+        if (srv.pool.acquire()) |c| { cleanupTestData(c); srv.pool.release(c); } else |_| {}
+        srv.deinit();
+        ALLOC.destroy(srv);
+    }
+
+    const url = try urlJoin(ALLOC, srv.port, "/v1/memory/recall", .{});
+    defer ALLOC.free(url);
+
+    const r = try sendReq(ALLOC, url, .POST, TOKEN_OPERATOR, "{\"zombie_id\":\"x\"}");
+    defer r.deinit(ALLOC);
+    try std.testing.expectEqual(@as(u16, 405), r.status);
+}
+
+test "M26_001 method: POST /v1/memory/list returns 405" {
+    const srv = try startTestServer(ALLOC);
+    defer {
+        if (srv.pool.acquire()) |c| { cleanupTestData(c); srv.pool.release(c); } else |_| {}
+        srv.deinit();
+        ALLOC.destroy(srv);
+    }
+
+    const url = try urlJoin(ALLOC, srv.port, "/v1/memory/list", .{});
+    defer ALLOC.free(url);
+
+    const r = try sendReq(ALLOC, url, .POST, TOKEN_OPERATOR, "{\"zombie_id\":\"x\"}");
+    defer r.deinit(ALLOC);
+    try std.testing.expectEqual(@as(u16, 405), r.status);
+}
+
+test "M26_001 validation: GET /v1/memory/recall without zombie_id returns 400" {
+    const srv = try startTestServer(ALLOC);
+    defer {
+        if (srv.pool.acquire()) |c| { cleanupTestData(c); srv.pool.release(c); } else |_| {}
+        srv.deinit();
+        ALLOC.destroy(srv);
+    }
+
+    const url = try urlJoin(ALLOC, srv.port, "/v1/memory/recall?query=hello", .{});
+    defer ALLOC.free(url);
+
+    const r = try sendReq(ALLOC, url, .GET, TOKEN_OPERATOR, null);
+    defer r.deinit(ALLOC);
+    try std.testing.expectEqual(@as(u16, 400), r.status);
+}
+
+test "M26_001 validation: GET /v1/memory/recall with bad-format zombie_id returns 400" {
+    const srv = try startTestServer(ALLOC);
+    defer {
+        if (srv.pool.acquire()) |c| { cleanupTestData(c); srv.pool.release(c); } else |_| {}
+        srv.deinit();
+        ALLOC.destroy(srv);
+    }
+
+    const url = try urlJoin(ALLOC, srv.port, "/v1/memory/recall?zombie_id=not-a-uuid&query=x", .{});
+    defer ALLOC.free(url);
+
+    const r = try sendReq(ALLOC, url, .GET, TOKEN_OPERATOR, null);
+    defer r.deinit(ALLOC);
+    try std.testing.expectEqual(@as(u16, 400), r.status);
+}
+
+test "M26_001 no-content: DELETE external-agent returns 204 with empty body" {
+    const srv = try startTestServer(ALLOC);
+    defer {
+        if (srv.pool.acquire()) |c| { cleanupTestData(c); srv.pool.release(c); } else |_| {}
+        srv.deinit();
+        ALLOC.destroy(srv);
+    }
+
+    // Seed an external agent in TEST_WORKSPACE_ID for this test only. A zombie
+    // record is also required because external_agents.zombie_id has a FK.
+    const agent_id = "agent_m26_204_test";
+    const zombie_for_agent = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f99";
+    const conn = try srv.pool.acquire();
+    _ = try conn.exec(
+        \\INSERT INTO core.zombies (id, workspace_id, name, source_markdown, config_json, status, created_at, updated_at)
+        \\VALUES ($1::uuid, $2::uuid, 'm26-204-test', '---\nname: m26-204\n---\nx', '{"name":"m26-204"}', 'active', 0, 0)
+        \\ON CONFLICT DO NOTHING
+    , .{ zombie_for_agent, TEST_WORKSPACE_ID });
+    _ = try conn.exec(
+        \\INSERT INTO core.external_agents (agent_id, workspace_id, zombie_id, name, description, key_hash, created_at)
+        \\VALUES ($1, $2::uuid, $3::uuid, 'm26-204-test', '', 'stub-hash', 0)
+        \\ON CONFLICT (agent_id) DO NOTHING
+    , .{ agent_id, TEST_WORKSPACE_ID, zombie_for_agent });
+    srv.pool.release(conn);
+    defer {
+        if (srv.pool.acquire()) |c| {
+            _ = c.exec("DELETE FROM core.external_agents WHERE agent_id = $1", .{agent_id}) catch {};
+            _ = c.exec("DELETE FROM core.zombies WHERE id = $1::uuid", .{zombie_for_agent}) catch {};
+            srv.pool.release(c);
+        } else |_| {}
+    }
+
+    const url = try urlJoin(ALLOC, srv.port, "/v1/workspaces/{s}/external-agents/{s}", .{ TEST_WORKSPACE_ID, agent_id });
+    defer ALLOC.free(url);
+
+    const r = try sendReq(ALLOC, url, .DELETE, TOKEN_OPERATOR, null);
+    defer r.deinit(ALLOC);
+    try std.testing.expectEqual(@as(u16, 204), r.status);
+    // RFC 9110 §6.4.5: 204 responses MUST NOT include a message body.
+    try std.testing.expectEqual(@as(usize, 0), r.body.len);
+}

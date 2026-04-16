@@ -228,5 +228,5 @@ pub fn innerDeleteExternalAgent(hx: Hx, workspace_id: []const u8, agent_id: []co
     }
 
     log.info("external_agent.deleted agent_id={s} workspace_id={s}", .{ agent_id, workspace_id });
-    hx.ok(.no_content, .{});
+    hx.noContent();
 }

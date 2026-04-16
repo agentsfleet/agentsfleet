@@ -138,7 +138,7 @@ pub fn innerRevokeGrant(hx: hx_mod.Hx, workspace_id: []const u8, zombie_id: []co
     }
 
     log.info("grant.revoked zombie_id={s} grant_id={s}", .{ zombie_id, grant_id });
-    hx.ok(.no_content, .{});
+    hx.noContent();
 }
 
 // ── Defence-in-depth test for the revoke UPDATE SQL ────────────────────────

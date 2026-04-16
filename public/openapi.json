@@ -2367,17 +2367,35 @@
               "schema": {
                 "type": "object",
                 "required": [
-                  "tool",
-                  "input"
+                  "target",
+                  "method",
+                  "credential_ref"
                 ],
                 "properties": {
-                  "tool": {
+                  "target": {
                     "type": "string",
-                    "description": "Tool name."
+                    "format": "uri",
+                    "description": "Target URL for the outbound call."
                   },
-                  "input": {
-                    "type": "object",
-                    "description": "Tool-specific input payload."
+                  "method": {
+                    "type": "string",
+                    "enum": [
+                      "GET",
+                      "POST",
+                      "PUT",
+                      "PATCH",
+                      "DELETE"
+                    ],
+                    "description": "HTTP method to use against the target."
+                  },
+                  "credential_ref": {
+                    "type": "string",
+                    "description": "Named credential from the workspace vault to inject on the outbound request."
+                  },
+                  "body": {
+                    "type": "string",
+                    "nullable": true,
+                    "description": "Request body to forward to the target. Null for GET/DELETE."
                   }
                 }
               }
@@ -2386,12 +2404,54 @@
         },
         "responses": {
           "200": {
-            "description": "OK",
+            "description": "Tool executed; upstream status and body are returned plus UseZombie metadata.",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "description": "Tool-specific result. Shape depends on the tool."
+                  "required": [
+                    "status",
+                    "body",
+                    "usezombie"
+                  ],
+                  "properties": {
+                    "status": {
+                      "type": "integer",
+                      "description": "HTTP status returned by the upstream target."
+                    },
+                    "body": {
+                      "type": "string",
+                      "description": "Response body returned by the upstream target (as string)."
+                    },
+                    "usezombie": {
+                      "type": "object",
+                      "required": [
+                        "action_id",
+                        "firewall_decision",
+                        "credential_injected",
+                        "approval_required"
+                      ],
+                      "properties": {
+                        "action_id": {
+                          "type": "string"
+                        },
+                        "firewall_decision": {
+                          "type": "string",
+                          "enum": [
+                            "allow",
+                            "deny",
+                            "approval_required"
+                          ]
+                        },
+                        "credential_injected": {
+                          "type": "boolean"
+                        },
+                        "approval_required": {
+                          "type": "boolean"
+                        }
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -3134,12 +3194,28 @@
         ],
         "responses": {
           "200": {
-            "description": "OK",
+            "description": "Operator telemetry snapshot.",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "description": "Opaque operator-visible telemetry payload."
+                  "properties": {
+                    "api_in_flight_requests": {
+                      "type": "integer"
+                    },
+                    "api_max_in_flight_requests": {
+                      "type": "integer"
+                    },
+                    "queue_depth": {
+                      "type": "integer",
+                      "nullable": true
+                    },
+                    "queue_age_ms": {
+                      "type": "integer",
+                      "nullable": true
+                    }
+                  },
+                  "additionalProperties": true
                 }
               }
             }
@@ -3295,18 +3371,38 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "description": "Scoring configuration payload."
+                "required": [
+                  "scoring_context_max_tokens"
+                ],
+                "properties": {
+                  "scoring_context_max_tokens": {
+                    "type": "integer",
+                    "format": "int32",
+                    "minimum": 1,
+                    "description": "Maximum token budget for the scoring prompt context."
+                  }
+                }
               }
             }
           }
         },
         "responses": {
           "200": {
-            "description": "OK",
+            "description": "Scoring config applied.",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object"
+                  "type": "object",
+                  "properties": {
+                    "workspace_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "scoring_context_max_tokens": {
+                      "type": "integer",
+                      "format": "int32"
+                    }
+                  }
                 }
               }
             }

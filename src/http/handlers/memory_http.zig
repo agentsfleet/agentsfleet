@@ -1,12 +1,14 @@
 // M14_001: External-agent memory API — Path B HTTP endpoints.
 // M26_001: recall + list converted to GET with query params (RAD §4).
 //
-// POST   /v1/memory/store   → innerMemoryStore
-// GET    /v1/memory/recall  → innerMemoryRecall  (query: zombie_id, query, limit?)
-// GET    /v1/memory/list    → innerMemoryList    (query: zombie_id, category?, limit?)
-// DELETE /v1/memory/forget  → innerMemoryForget  (still POST pre-M26; left as-is)
+// POST /v1/memory/store   → innerMemoryStore
+// GET  /v1/memory/recall  → innerMemoryRecall  (query: zombie_id, query, limit?)
+// GET  /v1/memory/list    → innerMemoryList    (query: zombie_id, category?, limit?)
+// POST /v1/memory/forget  → innerMemoryForget
 //
-// Forget remains POST; a follow-up can normalize to DELETE + query params.
+// `forget` stays POST for now; a follow-up may graduate it to
+// DELETE /v1/memory/entries/{id}?zombie_id=... once identification semantics
+// are reshaped from (key, instance_id) to a URL-addressable entry id.
 //
 // Auth: Bearer token (API key or JWT with workspace scope).
 // Scope: zombie_id in body must belong to the caller's workspace.
@@ -23,6 +25,7 @@ const PgQuery = @import("../../db/pg_query.zig").PgQuery;
 const common = @import("common.zig");
 const hx_mod = @import("hx.zig");
 const ec = @import("../../errors/error_registry.zig");
+const id_format = @import("../../types/id_format.zig");
 
 const h = @import("memory_http_helpers.zig");
 const Hx = h.Hx;
@@ -111,6 +114,10 @@ pub fn innerMemoryRecall(hx: Hx, req: *httpz.Request) void {
         hx.fail(ec.ERR_INVALID_REQUEST, "zombie_id query param required");
         return;
     };
+    if (!id_format.isSupportedAgentId(zombie_id)) {
+        hx.fail(ec.ERR_INVALID_REQUEST, "zombie_id must be a valid UUIDv7");
+        return;
+    }
     const query_text = qs.get("query") orelse {
         hx.fail(ec.ERR_INVALID_REQUEST, "query query param required");
         return;
@@ -174,12 +181,33 @@ pub fn innerMemoryRecall(hx: Hx, req: *httpz.Request) void {
     });
 }
 
-fn parseLimitQs(raw: ?[]const u8, default_value: i64) !i64 {
+const ParseLimitError = error{ InvalidLimit, OutOfRange };
+
+fn parseLimitQs(raw: ?[]const u8, default_value: i64) ParseLimitError!i64 {
     const s = raw orelse return default_value;
     if (s.len == 0) return default_value;
-    const n = try std.fmt.parseInt(i64, s, 10);
-    if (n < 1) return error.InvalidCharacter;
+    const n = std.fmt.parseInt(i64, s, 10) catch return ParseLimitError.InvalidLimit;
+    if (n < 1) return ParseLimitError.OutOfRange;
     return n;
+}
+
+test "parseLimitQs: null returns default" {
+    try std.testing.expectEqual(@as(i64, 10), try parseLimitQs(null, 10));
+}
+test "parseLimitQs: empty string returns default" {
+    try std.testing.expectEqual(@as(i64, 10), try parseLimitQs("", 10));
+}
+test "parseLimitQs: '25' returns 25" {
+    try std.testing.expectEqual(@as(i64, 25), try parseLimitQs("25", 10));
+}
+test "parseLimitQs: '0' returns OutOfRange" {
+    try std.testing.expectError(ParseLimitError.OutOfRange, parseLimitQs("0", 10));
+}
+test "parseLimitQs: '-5' returns OutOfRange" {
+    try std.testing.expectError(ParseLimitError.OutOfRange, parseLimitQs("-5", 10));
+}
+test "parseLimitQs: 'abc' returns InvalidLimit" {
+    try std.testing.expectError(ParseLimitError.InvalidLimit, parseLimitQs("abc", 10));
 }
 
 
@@ -195,6 +223,10 @@ pub fn innerMemoryList(hx: Hx, req: *httpz.Request) void {
         hx.fail(ec.ERR_INVALID_REQUEST, "zombie_id query param required");
         return;
     };
+    if (!id_format.isSupportedAgentId(zombie_id)) {
+        hx.fail(ec.ERR_INVALID_REQUEST, "zombie_id must be a valid UUIDv7");
+        return;
+    }
     const category_opt: ?[]const u8 = blk: {
         const c = qs.get("category") orelse break :blk null;
         if (c.len == 0) break :blk null;
