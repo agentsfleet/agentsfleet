@@ -4,7 +4,7 @@
 **Milestone:** M26
 **Workstream:** 001
 **Date:** Apr 16, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — Customer-facing API surface hygiene + internal auth boundary
 **Batch:** B1
 **Branch:** feat/m26-rest-and-auth-cleanup
