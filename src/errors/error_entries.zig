@@ -182,6 +182,8 @@ pub const ENTRIES = [_]Entry{
         "Run 'zombiectl install <template>' for a valid template."),
     e("UZ-ZMB-009", .not_found, "Zombie not found",
         "Zombie not found. Verify the zombie_id and that it has not been killed."),
+    e("UZ-ZMB-010", .conflict, "Zombie already stopped or killed",
+        "This zombie is already stopped or has been killed. Restart it before issuing another :stop."),
     // ── GATE ─────────────────────────────────────────────────────────────────
     e("UZ-GATE-001", .internal_server_error, "Gate command failed",
         "A gate command (make lint/test/build) failed. Check the gate results for stdout/stderr output."),

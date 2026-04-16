@@ -87,6 +87,10 @@ pub fn specFor(route: router.Route, registry: *auth_mw.MiddlewareRegistry) ?Rout
         .workspace_credentials => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceCredentials },
         // M23_001 / M24_001: live steering (workspace-scoped)
         .workspace_zombie_steer => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeZombieSteer },
+        // M12_001: Dashboard endpoints — workspace activity feed, kill switch, per-zombie billing
+        .workspace_activity => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceActivity },
+        .workspace_zombie_stop => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceZombieStop },
+        .workspace_zombie_billing_summary => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceZombieBillingSummary },
 
         // Zombie telemetry
         .zombie_telemetry => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeZombieTelemetry },

@@ -57,9 +57,9 @@ Flat `/v1/zombies/*` → `/v1/workspaces/{ws}/zombies/*` refactor is now its own
 
 ## 2.0 Backend Endpoints Added
 
-**Status:** PENDING
+**Status:** IN_PROGRESS — handlers + unit tests DONE; openapi.json + integration tests PENDING
 
-Three new endpoints backed by existing tables. Each ≤100 lines.
+Three new endpoints backed by existing tables. Each handler ≤ 165 lines.
 
 ### 2.1 Workspace-wide activity stream
 
@@ -78,34 +78,32 @@ Response:
 }
 ```
 
-- 2.1 PENDING — target `src/http/handlers/workspace_activity.zig` — input: workspace with 3 zombies each with 20 events — expected: merged feed newest-first, cursor pagination — test_type: integration
+- 2.1 DONE (handler + 6 unit tests; cursor pagination via `activity_stream.queryByWorkspaceOnConn` — RULE CNX single-conn) — INTEGRATION PENDING — target `src/http/handlers/workspace_activity.zig` — input: workspace with 3 zombies each with 20 events — expected: merged feed newest-first, cursor pagination
 
 ### 2.2 Kill switch
 
 `POST /v1/workspaces/{ws}/zombies/{id}:stop`
 
-Flips `core.zombies.status` from `active`/`paused` to `stopped`. `stopped` is terminal per the schema comment. Returns 409 if already terminal.
+Flips `core.zombies.status` from `active`/`paused` → `stopped`. `stopped` is the non-terminal halt state; a follow-up M19 action will re-start. `killed` remains the terminal marker (via DELETE). Returns 409 (`UZ-ZMB-010`) if already stopped/killed; 404 if zombie not in workspace (IDOR guard).
 
-- 2.2 PENDING — target `src/http/handlers/zombie_lifecycle.zig` (new) — input: active zombie — expected: status=stopped after call, activity event recorded, 409 on re-call — test_type: integration
-- 2.3 PENDING — same — input: zombie not in workspace — expected: 404 — test_type: integration
+- 2.2 DONE (handler + 4 unit tests; writes `zombie_stopped` activity event; 409 `UZ-ZMB-010` registered; IDOR guard via `getZombieWorkspaceId`) — INTEGRATION PENDING — target `src/http/handlers/zombie_lifecycle.zig` — input: active zombie — expected: status=stopped after call, activity event recorded, 409 on re-call
+- 2.3 DONE (handler path covered) — INTEGRATION PENDING — input: zombie not in workspace — expected: 404
 
-### 2.3 Per-zombie spend summary
+### 2.3 Per-zombie billing summary
 
-`GET /v1/workspaces/{ws}/zombies/{id}/spend?period=7d|30d`
+`GET /v1/workspaces/{workspace_id}/zombies/{zombie_id}/billing/summary?period_days=7|30`
 
-Aggregates `zombie_execution_telemetry.credit_deducted_cents` grouped by zombie, windowed by `recorded_at`.
+Per-zombie slice of the workspace billing summary. **Uses the exact same response schema as `GET /v1/workspaces/{workspace_id}/billing/summary`** — only the scope (path) differs. This is the REST-correct shape per `docs/REST_API_DESIGN_GUIDELINES.md` §2 (reflect hierarchy in path) and §5 (resource IDs in path, not query params). SDK shape: `workspaces.billing.summary(ws)` vs `workspaces.zombies.billing.summary(ws, zombie)`.
 
-Response:
-```json
-{
-  "zombie_id": "...", "period_days": 7,
-  "total_cents": 1240, "event_count": 47,
-  "first_event_at": 1744..., "last_event_at": 1744...
-}
-```
+Data source: aggregates `zombie_execution_telemetry.credit_deducted_cents` (same table `/billing/summary` already reads) filtered by `zombie_id`, windowed by `recorded_at`. A shared aggregator (`src/state/billing_summary_store.zig`) powers both the workspace and per-zombie handlers so they cannot drift.
 
-- 2.4 PENDING — target `src/http/handlers/zombie_spend.zig` (new) — input: zombie with 47 telemetry rows totalling 1240 cents in 7d — expected: response matches — test_type: integration
-- 2.5 PENDING — same — input: zombie with no telemetry — expected: zeros, not 404 — test_type: integration
+Response matches the existing `billing/summary` envelope (`workspace_id`, `period_days`, `period_start_ms`, `period_end_ms`, `completed`, `non_billable`, `non_billable_score_gated`, `total_runs`, `total_cents`, `request_id`), plus a `zombie_id` field when called at the zombie scope.
+
+**Side effect of landing this:** the pre-existing `GET /v1/workspaces/{ws}/billing/summary` stub (zeros since M10_001) is upgraded to read real data via the shared aggregator. No OpenAPI schema change — just behaviour.
+
+- 2.4 DONE (handler + 5 unit tests; shared aggregator + 2 unit tests; workspace-summary handler upgraded + 3 new unit tests) — INTEGRATION PENDING — target `src/http/handlers/zombie_billing_summary.zig` — input: zombie with 47 telemetry rows in 7d — expected: response matches workspace summary shape, scoped to zombie
+- 2.5 DONE (handler returns zeros with 200 for empty telemetry) — INTEGRATION PENDING — input: zombie with no telemetry — expected: zero counters, 200 (not 404)
+- 2.6 DONE (IDOR guard via `getZombieWorkspaceId` + workspace-id match) — INTEGRATION PENDING — input: zombie_id not in workspace — expected: 404 `UZ-ZMB-009`
 
 ---
 
@@ -135,7 +133,7 @@ Firewall summary bar deferred (no backend data). Spend tracker uses per-zombie s
 **Dimensions:**
 - 3.1 PENDING — target `app/(dashboard)/page.tsx` — input: workspace with 3 active + 1 paused zombies — expected: status cards correct, from `GET /v1/workspaces/{ws}/zombies` — test_type: integration (MSW mock)
 - 3.2 PENDING — target `components/domain/ActivityFeed.tsx` — input: `GET /v1/workspaces/{ws}/activity?limit=50` — expected: event rows with timestamp + zombie name + event_type + detail — test_type: unit
-- 3.3 PENDING — target `components/domain/SpendTracker.tsx` — input: per-zombie `/spend?period=7d` responses summed — expected: total cents displayed, per-zombie breakdown on hover — test_type: unit
+- 3.3 PENDING — target `components/domain/SpendTracker.tsx` — input: `GET /v1/workspaces/{workspace_id}/billing/summary?period_days=7` — expected: workspace-wide total displayed, drill-down via per-zombie endpoint on hover — test_type: unit
 
 ---
 
@@ -160,7 +158,7 @@ Route: `app/(dashboard)/zombies/[id]/page.tsx`.
 - 5.1 PENDING — target page — input: zombie id — expected: name, status, trigger type, uptime, 7d spend, kill switch button — test_type: integration
 - 5.2 PENDING — target `app/(dashboard)/zombies/[id]/components/KillSwitch.tsx` — input: click on active zombie — expected: confirm dialog → `POST /v1/workspaces/{ws}/zombies/{id}:stop` → status=stopped → toast — test_type: integration
 - 5.3 PENDING — target `app/(dashboard)/zombies/[id]/components/ActivityLog.tsx` — input: zombie with 200 events — expected: cursor-paginated, filterable by event_type prefix — test_type: unit
-- 5.4 PENDING — target `app/(dashboard)/zombies/[id]/components/SpendPanel.tsx` — input: 7d + 30d spend calls — expected: both values shown, event count — test_type: unit
+- 5.4 PENDING — target `app/(dashboard)/zombies/[id]/components/SpendPanel.tsx` — input: 7d + 30d calls to `/zombies/{id}/billing/summary` — expected: both period values shown, run count, zero-state handled — test_type: unit
 
 Trust chart (original 2.4) **removed** — trust score is not a real data primitive today. Re-scope when defined.
 
@@ -217,10 +215,17 @@ GET    /v1/workspaces/{ws}/zombies/{id}/activity?cursor=&limit=
 
 **New (this milestone):**
 ```
-GET    /v1/workspaces/{ws}/activity?cursor=&limit=
-POST   /v1/workspaces/{ws}/zombies/{id}:stop
-GET    /v1/workspaces/{ws}/zombies/{id}/spend?period=7d|30d
+GET    /v1/workspaces/{workspace_id}/activity?cursor=&limit=
+POST   /v1/workspaces/{workspace_id}/zombies/{zombie_id}:stop
+GET    /v1/workspaces/{workspace_id}/zombies/{zombie_id}/billing/summary?period_days=7|30
 ```
+
+**Reused (existing):**
+```
+GET    /v1/workspaces/{workspace_id}/billing/summary?period_days=7|30   — workspace-wide total (dashboard)
+```
+
+Per-zombie spend is a scope-sliced view of the same data as workspace summary — response schema is identical. No `?group_by=` param; hierarchy lives in the URL per `docs/REST_API_DESIGN_GUIDELINES.md` §2 + §5.
 
 ### 9.2 Data sources
 
@@ -229,6 +234,49 @@ All endpoints read from existing tables. No new schema:
 - `core.activity_events` (with `idx_activity_events_workspace_created`)
 - `zombie_execution_telemetry`
 - `core.tenants`
+
+---
+
+## 9.3 Design system + theming (enforced)
+
+All new UI components MUST consume design tokens exclusively. No inline colors, no raw hex, no per-component `dark:` overrides.
+
+**Token stack (already wired in `ui/packages/app/app/globals.css`):**
+- Primitives: `@usezombie/design-system/tokens.css` — `--z-bg-*`, `--z-surface-*`, `--z-text-*`, `--z-orange`, `--z-red`, `--z-border`, etc. Same language as `usezombie.com`.
+- Semantic bridge (Shadcn-compatible): `--background`, `--foreground`, `--card`, `--popover`, `--primary`, `--secondary`, `--muted`, `--accent`, `--destructive`, `--border`, `--input`, `--ring`, `--radius`.
+- Layout tokens: `--sidebar-width`, `--header-height`, `--content-max`.
+
+**Rules:**
+1. Components use semantic names only (`bg-background`, `text-foreground`, `border-border`, `bg-destructive`, etc.) via Tailwind utilities or CSS custom props — never the `--z-*` primitives directly. This keeps the primitive layer swappable (future theme variants) without touching components.
+2. Dark mode is the token layer's responsibility. Components must look correct in both modes without any `dark:` class; if a component needs a `dark:` override, that is a signal that a token is missing — add the token, don't patch the component.
+3. Dialog / Toast / Tooltip / Popover: use the existing Radix + Shadcn primitives in `components/ui/` (already themed). Do not introduce a second dialog or toast system.
+4. Motion: Tailwind `transition-*` utilities + CSS `@starting-style` / View Transitions API first. Framer Motion only if a specific interaction genuinely needs it, and gated behind `prefers-reduced-motion`.
+
+**Verify:**
+- Code review: grep new .tsx files for hex color literals (`#[0-9a-f]{3,6}`), inline `style={{ color/background }}` with literals, and `dark:` classes. Zero allowed in M12 components.
+- Manual: toggle system dark/light; every new page/component renders correctly in both.
+
+---
+
+## 9.4 Shared UI primitives — first-needer-owns policy
+
+Several components will be reused across M11_003, M12, M13, M19, M20, M22. To avoid blocking parallel work, we adopt **option B: first-needer owns each primitive**, placed in `components/ui/` (pure-visual) or `components/domain/` (opinionated shape). Later milestones consume, don't re-implement.
+
+| Primitive | First owner | Location | Notes |
+|---|---|---|---|
+| `StatusCard` (label + count + variant + optional trend) | M12_001 (this spec, §3) | `components/ui/status-card.tsx` | Used by dashboard, later M20 approvals, M19 lifecycle |
+| `Pagination` (cursor + page/limit) | M12_001 (this spec, §4) | `components/ui/pagination.tsx` | Zombies list first; M11_003 admin codes, M20 approvals, M22 grants follow |
+| `DataTable` (sortable, row-action, empty state) | M12_001 (this spec, §4) | `components/ui/data-table.tsx` | Single primitive across all list pages |
+| `EmptyState` | M12_001 (this spec, §3/§4) | `components/ui/empty-state.tsx` | — |
+| `ConfirmDialog` (destructive action) | M12_001 (this spec, §5 kill switch) | `components/ui/confirm-dialog.tsx` | Reused by M13 revoke, M22 revoke, M19 delete |
+| `ActivityRow` / `ActivityFeed` | M12_001 (this spec, §3/§5) | `components/domain/activity-feed.tsx` | Workspace-wide + per-zombie variants |
+| `SkeletonLoader` primitives | M12_001 (this spec, §3) | `components/ui/skeleton.tsx` | Suspense fallbacks |
+| `Banner` (info/success/warn/error, dismissible) | **M11_003** (redemption banner) | `components/ui/banner.tsx` | M12 consumes for degraded-service messaging |
+| `CreditsBadge` (header pill, reads credits.remaining) | **M11_003** | `components/domain/credits-badge.tsx` | M12 renders it in Shell header |
+
+**Dimension added for ownership:**
+- 9.4.1 PENDING — each primitive listed above owned by M12 must ship with a unit test (`*.test.tsx`) covering default/empty/interactive states — test_type: unit
+- 9.4.2 PENDING — each owned primitive must be theme-token-only (zero hex, zero `dark:`) — test_type: code review gate
 
 ---
 
@@ -242,6 +290,9 @@ All endpoints read from existing tables. No new schema:
 | Server components for data fetching; Clerk `auth()` token never crosses to client | code review |
 | Clerk auth protects all `(dashboard)` routes | middleware check |
 | API errors → toast; no raw error text in UI | component tests |
+| All UI uses semantic design tokens only (no hex, no `dark:` in components) | grep new .tsx + manual dark/light toggle |
+| Every new `.tsx` in `components/` + `app/(dashboard)/**` has a colocated `*.test.tsx` unit test | `find` sweep at CHORE(close) |
+| Every new Zig handler has colocated unit tests (pure logic) + integration tests (HTTP+DB) | tier 1 + tier 2 green |
 | Zig: every `conn.query()` has `.drain()` before `deinit()` | `make check-pg-drain` |
 | Cross-compile on Linux targets | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` |
 | Full lint + memleak + bench before PR | `make lint && make memleak && make bench` |

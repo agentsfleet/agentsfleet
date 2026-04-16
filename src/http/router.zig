@@ -48,6 +48,10 @@ pub const Route = union(enum) {
     workspace_credentials: []const u8, // GET|POST /v1/workspaces/{ws}/credentials
     // M23_001 / M24_001: Live steering — POST /v1/workspaces/{ws}/zombies/{id}:steer
     workspace_zombie_steer: matchers.WorkspaceZombieRoute,
+    // M12_001: Dashboard-facing reads + kill switch
+    workspace_activity: []const u8, // GET /v1/workspaces/{ws}/activity
+    workspace_zombie_stop: matchers.WorkspaceZombieRoute, // POST /v1/workspaces/{ws}/zombies/{id}:stop
+    workspace_zombie_billing_summary: matchers.ZombieTelemetryRoute, // GET /v1/workspaces/{ws}/zombies/{id}/billing/summary
     // M18_001: zombie execution telemetry
     zombie_telemetry: ZombieTelemetryRoute, // GET /v1/workspaces/{ws}/zombies/{id}/telemetry
     internal_telemetry, // GET /internal/v1/telemetry
@@ -132,11 +136,15 @@ pub fn match(path: []const u8) ?Route {
 
     // M24_001: Workspace-scoped zombie collection + single-resource + sub-resources.
     // Most-specific paths first to avoid collisions:
-    //   colon-action (:steer) before plain-id, suffix-paths (/activity) before plain-id.
+    //   colon-action (:steer, :stop) before plain-id, suffix-paths (/activity, /billing/summary) before plain-id.
     if (matchers.matchWorkspaceZombieAction(path, ":steer")) |route| return .{ .workspace_zombie_steer = route };
+    if (matchers.matchWorkspaceZombieAction(path, ":stop")) |route| return .{ .workspace_zombie_stop = route };
     if (matchers.matchWorkspaceZombieSuffix(path, "/activity")) |route| return .{ .workspace_zombie_activity = route };
+    if (matchers.matchWorkspaceZombieSuffix(path, "/billing/summary")) |route| return .{ .workspace_zombie_billing_summary = route };
     if (matchers.matchWorkspaceZombie(path)) |route| return .{ .delete_workspace_zombie = route };
     if (matchWorkspaceSuffix(path, "/zombies")) |workspace_id| return .{ .workspace_zombies = workspace_id };
+    // M12_001: workspace-wide activity feed (/activity, no /zombies prefix)
+    if (matchWorkspaceSuffix(path, "/activity")) |workspace_id| return .{ .workspace_activity = workspace_id };
     // credentials/llm is already handled above; /credentials (plain) is workspace-level credential vault.
     if (matchWorkspaceSuffix(path, "/credentials")) |workspace_id| return .{ .workspace_credentials = workspace_id };
 
