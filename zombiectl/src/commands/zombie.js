@@ -206,7 +206,7 @@ async function commandStatus(ctx, args, workspaces, deps) {
     return 0;
   }
 
-  const zombies = res.items || res.data || [];
+  const zombies = res.items ?? [];
   if (zombies.length === 0) {
     writeLine(ctx.stdout, ui.info("No zombies running. Install one with: zombiectl install <template>"));
     return 0;
@@ -295,7 +295,7 @@ async function commandLogs(ctx, args, workspaces, deps) {
     return 0;
   }
 
-  const events = res.items || res.data || [];
+  const events = res.items ?? [];
   if (events.length === 0) {
     writeLine(ctx.stdout, ui.info("No activity yet."));
     return 0;

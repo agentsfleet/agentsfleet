@@ -61,7 +61,7 @@ export async function commandCredential(ctx, args, workspaces, deps) {
     if (ctx.jsonMode) {
       printJson(ctx.stdout, res);
     } else {
-      const creds = res.credentials || res.items || res.data || [];
+      const creds = res.credentials ?? [];
       if (creds.length === 0) {
         writeLine(ctx.stdout, ui.info("No credentials stored. Add one with: zombiectl credential add <name>"));
       } else {
