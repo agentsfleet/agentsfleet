@@ -14,8 +14,9 @@ const id_format = @import("types/id_format.zig");
 const webhook_verify = @import("zombie/webhook_verify.zig");
 const fx = @import("zbench_fixtures.zig");
 
-// ── 1.1 route_match ───────────────────────────────────────────────────────
-// Gate: p99 < 2 µs per call. Sweeps every Route arm once per iteration.
+// Authoritative gates live in spec §1.X — these comments are pointers, not sources of truth.
+
+// ── 1.1 route_match ─ spec §1.1
 fn benchRouteMatch(allocator: std.mem.Allocator) void {
     _ = allocator;
     for (fx.ROUTE_PATHS) |path| {
@@ -24,8 +25,7 @@ fn benchRouteMatch(allocator: std.mem.Allocator) void {
     }
 }
 
-// ── 1.2 error_registry_lookup ─────────────────────────────────────────────
-// Gate: p99 < 100 ns per lookup. StaticStringMap hit + miss paths.
+// ── 1.2 error_registry_lookup ─ spec §1.2
 fn benchErrorRegistryLookup(allocator: std.mem.Allocator) void {
     _ = allocator;
     for (fx.ERROR_CODES) |code| {
@@ -34,35 +34,33 @@ fn benchErrorRegistryLookup(allocator: std.mem.Allocator) void {
     }
 }
 
-// ── 1.3 activity_cursor_roundtrip ─────────────────────────────────────────
-// Gate: p99 < 1 µs per round-trip. parse → format → free.
+// ── 1.3 activity_cursor_roundtrip ─ spec §1.3
 fn benchActivityCursorRoundtrip(allocator: std.mem.Allocator) void {
     for (fx.CURSORS) |raw| {
-        const parsed = activity_cursor.parse(raw) catch continue;
-        const re = activity_cursor.format(allocator, parsed) catch continue;
+        // Fixtures are synthesized in-process and covered by activity_cursor
+        // unit tests; any failure here means the fixture builder drifted.
+        const parsed = activity_cursor.parse(raw) catch @panic("CURSORS fixture invalid");
+        const re = activity_cursor.format(allocator, parsed) catch @panic("cursor format OOM");
         allocator.free(re);
     }
 }
 
-// ── 1.4 json_encode_response ──────────────────────────────────────────────
-// Gate: p99 < 50 µs for the 10-zombie fixture.
+// ── 1.4 json_encode_response ─ spec §1.4
 fn benchJsonEncodeResponse(allocator: std.mem.Allocator) void {
     const body = .{ .zombies = fx.ZOMBIE_PAGE };
-    const s = std.json.Stringify.valueAlloc(allocator, body, .{}) catch return;
+    const s = std.json.Stringify.valueAlloc(allocator, body, .{}) catch @panic("json encode OOM");
     defer allocator.free(s);
     std.mem.doNotOptimizeAway(s.ptr);
 }
 
-// ── 1.6 uuid_v7_generate ──────────────────────────────────────────────────
-// Gate: p99 < 2 µs per mint.
+// ── 1.6 uuid_v7_generate ─ spec §1.6
 fn benchUuidV7Generate(allocator: std.mem.Allocator) void {
-    const id = id_format.generateWorkspaceId(allocator) catch return;
+    const id = id_format.generateWorkspaceId(allocator) catch @panic("uuid mint OOM");
     defer allocator.free(id);
     std.mem.doNotOptimizeAway(id.ptr);
 }
 
-// ── 1.7 webhook_signature_verify ──────────────────────────────────────────
-// Gate: p99 < 10 µs per verify. GITHUB config — prefix + HMAC + constant-time eq.
+// ── 1.7 webhook_signature_verify ─ spec §1.7
 fn benchWebhookSignatureVerify(allocator: std.mem.Allocator) void {
     _ = allocator;
     const ok = webhook_verify.verifySignature(
@@ -72,7 +70,9 @@ fn benchWebhookSignatureVerify(allocator: std.mem.Allocator) void {
         &fx.WEBHOOK_BODY,
         fx.WEBHOOK_SIGNATURE,
     );
-    std.debug.assert(ok);
+    // @panic survives ReleaseFast — std.debug.assert would be elided and
+    // silently measure the reject path if the comptime fixture ever drifted.
+    if (!ok) @panic("webhook fixture invalid");
     std.mem.doNotOptimizeAway(ok);
 }
 
