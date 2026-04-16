@@ -42,6 +42,19 @@ Post-M26 both apps import Button from the same file, and you can delete one Butt
 
 ---
 
+## Migration scope — at a glance
+
+Both existing consumers migrate in M26. No one stays on the old package shape.
+
+| Consumer | Framework | Migration workstream | What changes |
+|---|---|---|---|
+| `ui/packages/website` | Vite SPA + `react-router-dom` | **§4 Website Migration** (M26.4) | CSS moves from `website/styles.css` into the package; `<Button to="/x">X</Button>` becomes `<Button asChild><Link to="/x">X</Link></Button>`; all existing tests re-run against new API |
+| `ui/packages/app` | Next.js 16 App Router + RSC | **§5 App Migration** (M26.5) | Delete `components/ui/button.tsx`; re-export / import from `@usezombie/design-system`; convert call-sites to `asChild + <Link>`; prove RSC-safety via fixture route |
+
+Both packages also inherit the motion language (§5.5 / M26.6) and the load-performance budget (§5.6 / M26.7) the instant they upgrade. Zero follow-up PRs. Zero drift window.
+
+---
+
 ## 1.0 CSS Migration — package becomes self-contained
 
 **Status:** PENDING
@@ -301,6 +314,81 @@ One component, two consumers, identical visual atmosphere.
 
 ---
 
+## 5.6 Load Performance — snappier by construction
+
+**Status:** PENDING
+**Workstream:** M26.7 — applies during and after each per-consumer migration. Gate is enforced before each migration workstream's acceptance.
+
+Motion only feels good when the page is already fast. M26.7 sets explicit load budgets, bakes the optimizations into the package + consumers' build pipelines, and makes regressions a CI-visible failure rather than a thing someone notices three weeks later.
+
+### 5.6.1 Core Web Vitals targets (per consumer, 75th percentile)
+
+Measured on throttled 4G, mid-tier mobile device profile (CPU 4x slowdown), Lighthouse CI + WebPageTest. These are the bars; a regression triggers a build-log warning and blocks merge.
+
+| Metric | Target | Website landing | App `/workspaces` | Why this bar |
+|---|---|---|---|---|
+| **LCP** (Largest Contentful Paint) | < 2.0s | < 1.6s | < 2.0s | Google's "good" threshold; marketing depends on it |
+| **FCP** (First Contentful Paint) | < 1.2s | < 1.0s | < 1.2s | User sees brand within a blink |
+| **INP** (Interaction to Next Paint) | < 150ms | — | < 150ms | Replaces FID in 2024; kill-switch click feels instant |
+| **CLS** (Cumulative Layout Shift) | < 0.05 | < 0.02 | < 0.05 | No jank — dashboard must never jump |
+| **TBT** (Total Blocking Time) | < 200ms | < 150ms | < 200ms | Main-thread discipline |
+| **Initial JS** (gzipped, first load) | — | ≤ 90 KB | ≤ 180 KB (RSC offloads most) | Package migration must shrink or hold bundles |
+
+### 5.6.2 Package-level optimizations (shipped once, benefits both consumers)
+
+These land in `@usezombie/design-system` and automatically improve every downstream consumer.
+
+1. **`"sideEffects": false` in package.json** + per-file marker for CSS imports — unlocks tree-shaking. Importing `{ Button }` must not pull in `AtmosphericBackground` or its CSS.
+2. **ESM-only + individual entry points** — `@usezombie/design-system/button`, `@usezombie/design-system/atmospheric-background` — so consumers can import surgically without the barrel file pulling everything.
+3. **No React context providers at the root of the package.** Context forces a client boundary in RSC. If a component truly needs state, it carries its own `"use client"` and stays leaf-level.
+4. **CSS is a separate artifact**, not inlined by JS. `components.css` ships as a raw CSS file (see §1.0). Consumers `@import` it in their entry stylesheet — zero CSS-in-JS runtime.
+5. **Self-hosted, preloaded fonts.** Geist + Geist Mono ship as `.woff2` from the package (or from Vercel's CDN via `next/font` in the app). Replace the current `@import url("https://fonts.googleapis.com/...")` — that's a render-blocking third-party request on every page load. Use `font-display: swap` + `<link rel="preload">` for the above-the-fold weight.
+6. **Lazy-load heavy optional components.** `Mermaid`/`SyntaxHighlighter`-class components (not currently shipped but anticipated) land behind `React.lazy()` or route-level code-splitting. The Button must never pull in a markdown parser.
+7. **Critical CSS inlined for above-the-fold.** Website uses `@vercel/critical` or a Vite plugin to inline the CSS for the landing hero; the rest streams. App relies on Next.js's automatic critical-CSS extraction (already on by default in App Router).
+8. **View Transitions API where supported.** Replaces JS-driven page transitions with a browser-native one-liner — zero JS cost, no layout thrash. Progressive enhancement: older browsers get the instant transition.
+
+### 5.6.3 Consumer-level optimizations (per-app, during their migration)
+
+**Website (M26.4):**
+
+- Vite's `build.cssCodeSplit: true` + `build.reportCompressedSize: true` in config — verifiable CSS chunk output
+- `vite-plugin-imagemin` on the `public/` assets if not already configured
+- `<link rel="preconnect">` to `clerk.usezombie.com` (if used) and the API domain
+- `<link rel="preload" as="image">` on the landing hero image
+
+**App (M26.5):**
+
+- Next.js 16 Turbopack is on by default; verify it for dev — production build stays on webpack unless confirmed stable
+- `next/image` with explicit `width`/`height` on every image (prevents CLS)
+- `next/font` for Geist/Geist Mono (auto-handles `font-display: swap` + preload)
+- Route segment config: `export const dynamic = "force-static"` on the landing `/workspaces` page if it's truly cacheable; `revalidate: 60` on the dashboard
+- Server Components default for data fetches — client components explicitly marked. Verifies in the build output's Route (app) table: `○` static + `ƒ` dynamic markers, minimize `ƒ`
+
+### 5.6.4 Measurement + CI gate
+
+| Gate | Tool | When it runs | Threshold |
+|---|---|---|---|
+| Lighthouse CI | `@lhci/cli` against a preview deployment | On every PR that touches `ui/packages/**` | LCP ≤ target, CLS ≤ target, TBT ≤ target — fail build if any regress by > 10% |
+| Bundle size | `size-limit` or `bundlesize` in each package | On every PR | Initial JS gzipped must stay within the §5.6.1 budget per consumer |
+| CSS size | Package build asserts `components.css` ≤ 12 KB gzipped | On every build of `@usezombie/design-system` | Hard fail if over |
+| Runtime FPS during motion | Playwright with `page.evaluate(() => performance.now())` + frame timing | Motion suite | Every signature animation sustains 60 FPS on the test runner (≥ 55 FPS floor) |
+| INP on dashboard interaction | Playwright + `web-vitals` library injected | M27 acceptance (dashboard pages ship) | Kill-switch click → status-updated within 150ms, measured |
+
+### 5.6.5 Dimensions
+
+- 5.6.1 PENDING — target: `@usezombie/design-system/package.json` — input: add `"sideEffects": false` + `"exports"` map for per-component entry points — expected: `import { Button }` tree-shakes to < 4 KB gzipped in isolation — test_type: bundle (`rollup --config rollup.analyze.js` or `size-limit`)
+- 5.6.2 PENDING — target: `components.css` — input: final build of components.css at CHORE(close) — expected: gzipped size ≤ 12 KB — test_type: build (`gzip -9 | wc -c`)
+- 5.6.3 PENDING — target: Geist font loading — input: migrate from `@import url(googleapis)` to self-hosted woff2 + preload — expected: zero third-party requests in network waterfall; FCP improvement measurable via Lighthouse diff — test_type: Playwright (request interception count) + Lighthouse CI
+- 5.6.4 PENDING — target: Website landing — input: Lighthouse CI on preview deployment — expected: LCP < 1.6s, CLS < 0.02, TBT < 150ms at mobile profile — test_type: Lighthouse CI
+- 5.6.5 PENDING — target: App `/workspaces` (existing v1 page) — input: Lighthouse CI on preview deployment — expected: LCP < 2.0s, INP < 150ms on any interaction, CLS < 0.05 — test_type: Lighthouse CI
+- 5.6.6 PENDING — target: Bundle size (per consumer) — input: `bun run build` output — expected: website ≤ 90 KB gzipped first-load, app ≤ 180 KB gzipped first-load (baseline captured pre-M26, must not regress by > 5%) — test_type: size-limit CI gate
+- 5.6.7 PENDING — target: Signature motion FPS — input: Playwright frame-timing trace during Button hover + Skeleton shimmer + Dialog enter — expected: ≥ 55 FPS sustained on each — test_type: Playwright performance trace
+- 5.6.8 PENDING — target: View Transitions API — input: navigation between `/zombies` list and `/zombies/[id]` detail (when M27 ships those) — expected: transition uses `document.startViewTransition` on supporting browsers, falls back to instant on others — test_type: Playwright (feature-detect + visual)
+- 5.6.9 PENDING — target: Third-party script discipline — input: `grep -r "googleapis.com\|googletagmanager\|cdn.jsdelivr" ui/packages/**/src` — expected: zero matches (all fonts + scripts self-hosted or package-shipped) — test_type: unit (grep CI gate)
+- 5.6.10 PENDING — target: Initial-render layout stability — input: Playwright capturing CLS over first 2.5s of both consumers' landing pages — expected: CLS < 0.05 per route — test_type: Playwright (PerformanceObserver → layout-shift)
+
+---
+
 ## 6.0 Interfaces
 
 **Status:** PENDING
@@ -383,6 +471,12 @@ The package is framework-agnostic by construction.
 | Every signature animation has a `prefers-reduced-motion: reduce` fallback | Playwright emulated media query (§5.5.7) |
 | Background overhead ≤ 3KB CSS, zero JS | measured against `components.css` + bundle analyzer |
 | Motion tokens (`--motion-duration-*`, `--motion-ease-*`) referenced only through `var()` — no inline durations in component `style` or `className` | grep gate |
+| `@usezombie/design-system/package.json` has `"sideEffects": false` + per-component exports map | JSON assertion + tree-shake test |
+| `components.css` ≤ 12 KB gzipped at ship time | build gate (`gzip -9 \| wc -c`) |
+| Zero third-party font/script imports (`googleapis`, `jsdelivr`, `cdn.*`) in any package source | grep gate in `make lint` |
+| Lighthouse CI: LCP ≤ target, CLS ≤ target, TBT ≤ target on both consumers; no metric regresses > 10% vs baseline | LHCI CI gate per PR |
+| Initial-JS gzipped budget: website ≤ 90 KB, app ≤ 180 KB first-load (pre-M26 baseline captured; ≤ 5% regression allowed) | size-limit CI gate |
+| Every signature animation sustains ≥ 55 FPS during Playwright frame-timing trace | Playwright perf trace |
 
 ---
 
@@ -398,8 +492,9 @@ The package is framework-agnostic by construction.
 | 6 | M26.4 website migration — update call-sites, re-import CSS | dims 4.1–4.4 pass |
 | 7 | M26.5 app migration — delete app/components/ui/button.tsx, re-export, update call-sites | dims 5.1–5.5 pass |
 | 8 | M26.6 Signature Motion + Atmospheric Background — motion tokens, 6 keyframes, Button hover trace, Skeleton shimmer, `<AtmosphericBackground />`, Playwright hover/reduced-motion tests | dims 5.5.1–5.5.10 pass |
-| 9 | Full verification — `make lint`, `bun run typecheck / lint / test / build` in both app and website, `bunx playwright test` in both (including motion suite) | all green |
-| 10 | CHORE(close) — spec DONE, move to done/, Ripley log, changelog entry, PR | PR open with visual-diff screenshots + motion recordings attached |
+| 9 | M26.7 Load Performance — `sideEffects: false` + per-component exports, self-hosted Geist fonts replacing googleapis import, critical-CSS, Lighthouse CI + size-limit + Playwright FPS trace wired as CI gates | dims 5.6.1–5.6.10 pass |
+| 10 | Full verification — `make lint`, `bun run typecheck / lint / test / build` in both app and website, `bunx playwright test` in both (including motion + perf suites), Lighthouse CI green, bundle budgets green | all green |
+| 11 | CHORE(close) — spec DONE, move to done/, Ripley log, changelog entry, PR | PR open with visual-diff screenshots + motion recordings + Lighthouse report deltas attached |
 
 ---
 
@@ -419,6 +514,13 @@ The package is framework-agnostic by construction.
 - [ ] `<AtmosphericBackground />` renders in both app and website layouts, with 3 base layers (gradient + grid + aurora), opt-in particles, and `prefers-reduced-motion` honoured
 - [ ] Playwright motion suite (§5.5.3–5.5.10) green — hover trace, shimmer frames, dialog enter, reduced-motion disables all animations, GPU-safety grep
 - [ ] Unit-test SSR coverage for every motion-using component (no runtime errors, no `undefined` in animation attributes)
+- [ ] Lighthouse CI: website LCP < 1.6s, app LCP < 2.0s, CLS < 0.05 on both, TBT within target, measured on mobile throttled profile
+- [ ] Initial JS bundle: website ≤ 90 KB gzipped, app ≤ 180 KB gzipped first-load (baseline captured pre-M26, ≤ 5% regression tolerance)
+- [ ] `components.css` ≤ 12 KB gzipped at ship
+- [ ] Zero third-party font/script imports (`googleapis`, `jsdelivr`, `cdn.*`) — Geist self-hosted from the package or via `next/font`
+- [ ] `@usezombie/design-system/package.json` has `"sideEffects": false` + per-component exports; `import { Button }` tree-shakes in isolation
+- [ ] Every signature animation sustains ≥ 55 FPS in Playwright frame-timing trace
+- [ ] `export const dynamic` / `revalidate` tuned on app routes — max static coverage in Next.js build output
 
 ---
 
@@ -444,6 +546,10 @@ The package is framework-agnostic by construction.
 | Background particles tank perf on low-end devices | Auto-disable via `prefers-reduced-data`, `prefers-reduced-motion`, and viewport `< 640px`. Cap DOM nodes for particles at 12. |
 | Playwright visual regression flakes on animated elements | Capture static screenshots with animations paused (`animation-play-state: paused` via test hook). Motion coverage uses frame captures at specific offsets (0ms / 800ms / 1600ms) rather than pixel-perfect diffs on an in-flight animation. |
 | A consumer imports from `"@usezombie/design-system"` but forgets the CSS import, shipping unstyled | Package `exports` field + TypeScript barrel doesn't expose runtime checks. Mitigation: docs note + a runtime `console.warn` in dev-mode if `document.adoptedStyleSheets` doesn't contain the package's `z-btn` selector within 50ms of first component mount. |
+| Lighthouse CI flakes on a slow runner — falsely fails a PR | Use `@lhci/cli` `numberOfRuns: 3` + take median; require > 10% regression before blocking, not 1%. |
+| Bundle size grows when a second consumer is added | `size-limit` runs per-package, so the per-consumer budget is independent. The package's own budget (≤ 12 KB CSS, tree-shakable JS) is the invariant. |
+| Self-hosting Geist breaks the website's current visual — subtle weight/spacing diffs vs Google Fonts version | Capture pre-migration reference screenshots of text-heavy pages; verify the self-hosted font matches at the same weight/axis. Use Vercel's npm `geist` package which ships the same binaries Google Fonts serves — known parity. |
+| A motion improvement regresses CLS (e.g. dialog enter animation changes layout height) | Every motion keyframe is constrained to `transform` / `opacity` / `filter` (§5.5.8 grep gate). Layout-triggering animations are a build failure, not a runtime surprise. |
 
 ---
 
