@@ -209,7 +209,7 @@ pub fn build(b: *std.Build) void {
         const zbench_micro = b.addExecutable(.{
             .name = "zbench-micro",
             .root_module = b.createModule(.{
-                .root_source_file = b.path("src/tools/zbench_micro.zig"),
+                .root_source_file = b.path("src/zbench_micro.zig"),
                 .target = target,
                 .optimize = optimize,
                 .imports = &.{

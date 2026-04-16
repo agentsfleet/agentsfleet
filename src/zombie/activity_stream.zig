@@ -14,6 +14,7 @@ const pg = @import("pg");
 const Allocator = std.mem.Allocator;
 const id_format = @import("../types/id_format.zig");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
+const activity_cursor = @import("activity_cursor.zig");
 
 const log = std.log.scoped(.activity_stream);
 
@@ -183,12 +184,11 @@ fn fetchActivityPage(
     cursor: []const u8,
     limit: u32,
 ) !ActivityPage {
-    // Cursor format: "{created_at}:{id}" — composite keyset prevents silent skips
-    // when multiple events land on the same millisecond timestamp.
-    const sep = std.mem.indexOf(u8, cursor, ":") orelse return error.InvalidCursor;
-    const cursor_ts = std.fmt.parseInt(i64, cursor[0..sep], 10) catch return error.InvalidCursor;
-    const cursor_id = cursor[sep + 1 ..];
-    if (cursor_id.len == 0) return error.InvalidCursor;
+    // Composite keyset cursor prevents silent skips when multiple events share
+    // a millisecond timestamp. See activity_cursor.zig.
+    const parsed = activity_cursor.parse(cursor) catch return error.InvalidCursor;
+    const cursor_ts = parsed.created_at_ms;
+    const cursor_id = parsed.id;
 
     const sql_zombie =
         \\SELECT id, zombie_id, workspace_id, event_type, detail, created_at
@@ -254,7 +254,7 @@ fn collectActivityPage(alloc: Allocator, q: *PgQuery, limit: u32) !ActivityPage 
     // multiple events share the same millisecond timestamp.
     const next_cursor: ?[]const u8 = if (events.len == limit) blk: {
         const last = events[events.len - 1];
-        break :blk try std.fmt.allocPrint(alloc, "{d}:{s}", .{ last.created_at, last.id });
+        break :blk try activity_cursor.format(alloc, .{ .created_at_ms = last.created_at, .id = last.id });
     } else null;
 
     return ActivityPage{ .events = events, .next_cursor = next_cursor };

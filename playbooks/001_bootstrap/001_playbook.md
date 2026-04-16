@@ -244,7 +244,7 @@ Agent reads project IDs and API token from 1Password, sets via Vercel API (`PATC
 
 | Variable | Preview | Production |
 |---|---|---|
-| `NEXT_PUBLIC_API_URL` | `https://api.dev.usezombie.com` | `https://api.usezombie.com` |
+| `NEXT_PUBLIC_API_URL` | `https://api-dev.usezombie.com` | `https://api.usezombie.com` |
 | `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Clerk DEV publishable key | Clerk PROD publishable key |
 | `CLERK_SECRET_KEY` | Clerk DEV secret key | Clerk PROD secret key |
 | `NEXT_PUBLIC_POSTHOG_KEY` | `op://$VAULT_DEV/posthog-dev/credential` | `op://$VAULT_PROD/posthog-prod/credential` |
