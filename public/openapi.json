@@ -2150,7 +2150,7 @@
             "required": false,
             "schema": {
               "type": "integer",
-              "default": 10,
+              "default": 20,
               "minimum": 1,
               "maximum": 100
             }
@@ -2231,7 +2231,7 @@
             "required": false,
             "schema": {
               "type": "integer",
-              "default": 50,
+              "default": 100,
               "minimum": 1,
               "maximum": 100
             }
