@@ -67,29 +67,29 @@ No schema changes — Schema Table Removal Guard does not fire.
 
 ### §1 — List envelope standardization
 
-**Status:** PENDING
+**Status:** DONE
 
 Normalize four GET list handlers to return `{ items: [...], total: N }` (plus `cursor` where pagination already exists). Eliminates the per-resource collection key so SDKs can share a `Paginated<T>` generic.
 
 | Dim | Status | Target | Input | Expected | Test type |
 |-----|--------|--------|-------|----------|-----------|
-| 1.1 | PENDING | `zombie_api.zig:innerListZombies` | authed GET with 3 zombies | body has `items: [3]`, `total: 3`, no `zombies` key | integration |
-| 1.2 | PENDING | `external_agents.zig:innerListExternalAgents` | authed GET | body has `items`/`total` | integration |
-| 1.3 | PENDING | `integration_grants_workspace.zig:innerListGrants` | authed GET | body has `items`/`total` | integration |
-| 1.4 | PENDING | `zombie_activity_api.zig:innerListActivity` | authed GET with cursor | body has `items`/`total`/`cursor` (not `events`/`next_cursor`) | integration |
+| 1.1 | DONE | `zombie_api.zig:innerListZombies` | authed GET with 3 zombies | body has `items: [3]`, `total: 3`, no `zombies` key | integration |
+| 1.2 | DONE | `external_agents.zig:innerListExternalAgents` | authed GET | body has `items`/`total` | integration |
+| 1.3 | DONE | `integration_grants_workspace.zig:innerListGrants` | authed GET | body has `items`/`total` | integration |
+| 1.4 | DONE | `zombie_activity_api.zig:innerListActivity` | authed GET with cursor | body has `items`/`total`/`cursor` (not `events`/`next_cursor`) | integration |
 
 ### §2 — Memory endpoints POST → GET
 
-**Status:** PENDING
+**Status:** DONE
 
-`/v1/memory/recall` and `/v1/memory/list` are read-only queries that currently POST a body. Convert to GET with query params. `store` stays POST, `forget` stays DELETE.
+`/v1/memory/recall` and `/v1/memory/list` are read-only queries that currently POST a body. Convert to GET with query params. `store` stays POST, `forget` stays POST.
 
 | Dim | Status | Target | Input | Expected | Test type |
 |-----|--------|--------|-------|----------|-----------|
-| 2.1 | PENDING | `router.zig:match` | `GET /v1/memory/recall?zombie_id=...&query=...&limit=10` | returns `.memory_recall` variant | unit |
-| 2.2 | PENDING | `memory_http.zig:innerMemoryRecall` | GET with query params | same response shape as prior POST | integration |
-| 2.3 | PENDING | `memory_http.zig:innerMemoryList` | `GET /v1/memory/list?zombie_id=...&category=...` | `items`/`total` response | integration |
-| 2.4 | PENDING | `route_table_invoke.zig:invokeMemoryRecall` | `POST /v1/memory/recall` | 405 Method Not Allowed | integration |
+| 2.1 | DONE | `router.zig:match` | `GET /v1/memory/recall?zombie_id=...&query=...&limit=10` | returns `.memory_recall` variant | unit |
+| 2.2 | DONE | `memory_http.zig:innerMemoryRecall` | GET with query params | response with `items`/`total` shape | integration |
+| 2.3 | DONE | `memory_http.zig:innerMemoryList` | `GET /v1/memory/list?zombie_id=...&category=...` | `items`/`total` response | integration |
+| 2.4 | DONE | `route_table_invoke.zig:invokeMemoryRecall` | `POST /v1/memory/recall` | 405 Method Not Allowed (via method check) | integration |
 
 ### §3 — Field casing — DROPPED
 
@@ -99,26 +99,29 @@ The original audit flagged `request_id` as a snake_case violation, citing RAD §
 
 ### §4 — Inline 204 → `hx.ok(.no_content, .{})`
 
-**Status:** PENDING
+**Status:** DONE
 
-Single-line handler-guide violation.
+Single-line handler-guide violation. Also fixed the same pattern in `external_agents.zig:innerDeleteExternalAgent` while touching the file.
 
 | Dim | Status | Target | Input | Expected | Test type |
 |-----|--------|--------|-------|----------|-----------|
-| 4.1 | PENDING | `integration_grants_workspace.zig:141` | authed DELETE grant | 204 response via `hx.ok(.no_content, .{})` | integration |
+| 4.1 | DONE | `integration_grants_workspace.zig:innerRevokeGrant` | authed DELETE grant | 204 response via `hx.ok(.no_content, .{})` | integration |
+| 4.2 | DONE | `external_agents.zig:innerDeleteExternalAgent` | authed DELETE agent | 204 response via `hx.ok(.no_content, .{})` | integration |
 
 ### §5 — OpenAPI regeneration
 
-**Status:** PENDING
+**Status:** DONE
 
 Document every route in `router.zig` Route enum. Remove stale `/v1/runs/*`.
 
 | Dim | Status | Target | Input | Expected | Test type |
 |-----|--------|--------|-------|----------|-----------|
-| 5.1 | PENDING | `public/openapi.json` | N/A | 42 paths × methods match router enum exactly | contract |
-| 5.2 | PENDING | `public/openapi.json` | grep `/v1/runs` | zero matches | contract |
-| 5.3 | PENDING | `public/openapi.json` | all list response schemas | use `items`/`total` shape | contract |
-| 5.4 | PENDING | `public/openapi.json` | memory recall/list | method is GET with query params | contract |
+| 5.1 | DONE | `public/openapi.json` | N/A | 43 paths × methods match router enum (verified) | contract |
+| 5.2 | DONE | `public/openapi.json` | grep `/v1/runs` | zero matches (verified) | contract |
+| 5.3 | DONE | `public/openapi.json` | all list response schemas | use `items`/`total` shape (verified by python assertion) | contract |
+| 5.4 | DONE | `public/openapi.json` | memory recall/list | method is GET with query params (verified) | contract |
+
+Outcome: 2897 → 4398 lines. 17 existing paths kept, 8 stale removed, 26 new operations added across 19 new paths. 6 reusable component schemas added (`ZombieSummary`, `ActivityEvent`, `IntegrationGrant`, `ExternalAgent`, `MemoryEntry`, `CredentialSummary`). 8 new Mintlify navigation tags.
 
 ### §6 — Auth RBAC helpers → `src/auth/rbac/` — REVISED
 
@@ -139,14 +142,14 @@ The functions originally scoped for this section (`authorizeWorkspace`, `getZomb
 
 ### §7 — zombiectl consumer updates
 
-**Status:** PENDING
+**Status:** DONE
 
 | Dim | Status | Target | Input | Expected | Test type |
 |-----|--------|--------|-------|----------|-----------|
-| 7.1 | PENDING | `zombiectl/src/commands/zombie.js` | list + activity | reads `res.items` | unit |
-| 7.2 | PENDING | `zombiectl/src/commands/agent_external.js` | list | reads `res.items` | unit |
-| 7.3 | PENDING | `zombiectl/src/commands/grant.js` | list | reads `res.items` | unit |
-| 7.4 | PENDING | `zombiectl/src/commands/memory.js` (if present) | recall/list | uses GET with query params | unit |
+| 7.1 | DONE | `zombiectl/src/commands/zombie.js` | list + activity | reads `res.items` / `res.cursor` | unit |
+| 7.2 | DONE | `zombiectl/src/commands/agent_external.js` | list | reads `res.items` | unit |
+| 7.3 | DONE | `zombiectl/src/commands/grant.js` | list | reads `res.items` | unit |
+| 7.4 | N/A | `zombiectl/src/commands/memory.js` | — | no memory command exists in zombiectl; nothing to update | unit |
 
 ---
 
