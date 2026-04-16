@@ -90,7 +90,6 @@ ZIG_LINE_LIMIT_ALLOWLIST := \
 	src/queue/redis_client.zig \
 	src/state/entitlements.zig \
 	src/state/topology.zig \
-	src/tools/api_bench_runner.zig \
 	src/types.zig \
 	src/types/id_format.zig \
 	src/zombie/approval_gate.zig \

@@ -2,7 +2,7 @@
 # TEST-BENCH — API benchmark and memory leak gates (M24_001)
 #
 # `make bench` runs two tiers:
-#   Tier-1  zbench micro-benchmarks   (src/tools/zbench_micro.zig)
+#   Tier-1  zbench micro-benchmarks   (src/zbench_micro.zig — ReleaseFast)
 #   Tier-2  hey HTTP loadgen          (requires `hey` in PATH — mise installs it)
 # =============================================================================
 
@@ -41,10 +41,10 @@ bench:  ## Run Tier-1 zbench micro + Tier-2 hey HTTP loadgen (M24_001).
 
 _bench-micro:  ## Internal: zbench-backed code micro-benchmarks (Tier-1).
 	@mkdir -p .tmp "$(ZIG_GLOBAL_CACHE_DIR)" "$(ZIG_LOCAL_CACHE_DIR)"
-	@echo "→ [zombied] Tier-1: running zbench micro-benchmarks..."
+	@echo "→ [zombied] Tier-1: running zbench micro-benchmarks (ReleaseFast)..."
 	@ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" \
 	 ZIG_LOCAL_CACHE_DIR="$(ZIG_LOCAL_CACHE_DIR)" \
-	 zig build -Dwith-bench-tools=true bench-micro
+	 zig build -Dwith-bench-tools=true -Doptimize=ReleaseFast bench-micro
 	@echo "✓ [zombied] Tier-1 zbench passed"
 
 _bench-loadgen:  ## Internal: hey-backed HTTP loadgen gate (Tier-2).
