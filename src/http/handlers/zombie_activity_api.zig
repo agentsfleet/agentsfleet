@@ -77,7 +77,7 @@ pub fn innerListActivity(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []con
     };
     defer page.deinit(hx.alloc);
 
-    hx.ok(.ok, .{ .events = page.events, .next_cursor = page.next_cursor });
+    hx.ok(.ok, .{ .items = page.events, .total = page.events.len, .cursor = page.next_cursor });
 }
 
 fn parseLimitFromQs(qs: anytype) u32 {

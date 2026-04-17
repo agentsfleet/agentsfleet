@@ -68,7 +68,7 @@ export async function commandAgentList(ctx, parsed, deps) {
 
   const url = `${WORKSPACES_PATH}${encodeURIComponent(workspaceId)}/external-agents`;
   const res = await request(ctx, url, { method: "GET", headers: apiHeaders(ctx) });
-  const agents = Array.isArray(res.agents) ? res.agents : [];
+  const agents = Array.isArray(res.items) ? res.items : [];
 
   if (ctx.jsonMode) {
     printJson(ctx.stdout, res);

@@ -33,9 +33,19 @@ pub const Hx = struct {
     pub fn fail(self: Hx, code: []const u8, detail: []const u8) void {
         common.errorResponse(self.res, code, detail, self.req_id);
     }
+
+    /// Spec-compliant 204 No Content: status is 204 and the body is truly empty.
+    /// RFC 9110 §6.4.5 forbids a message body on 204; `hx.ok(.no_content, .{})`
+    /// would emit a 2-byte `{}` body via res.json, which some CDNs and HTTP/2
+    /// stacks reject or normalize. Use this helper for DELETE/revoke/forget
+    /// endpoints where the response carries no payload.
+    pub fn noContent(self: Hx) void {
+        self.res.status = 204;
+        self.res.body = "";
+    }
 };
-// Rationale: Hx keeps only `ok`/`fail` because both wrap the standard JSON
-// envelope and the RFC 7807 error contract — real abstraction boundaries.
+// Rationale: Hx keeps `ok`/`fail`/`noContent` because each wraps a distinct
+// wire contract — JSON envelope, RFC 7807 error, and empty-body 204.
 // For internal-500s (db unavailable/error/operation) and body-size checks,
 // call `common.internalDbError(hx.res, hx.req_id)` etc. directly — a shallow
 // wrapper on Hx would just forward to the same two fields.

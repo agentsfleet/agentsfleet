@@ -56,6 +56,21 @@ test "match resolves auth routes" {
     );
 }
 
+// M26_001: memory recall/list are matched regardless of HTTP method — method
+// enforcement happens in route_table_invoke.zig. This test pins the path match
+// so a regression that drops the routes can be caught without spinning up a
+// server. Spec §2.1 — GET /v1/memory/recall resolves to .memory_recall.
+test "match resolves memory recall/list/store/forget routes" {
+    try std.testing.expectEqualDeep(Route.memory_store, match("/v1/memory/store").?);
+    try std.testing.expectEqualDeep(Route.memory_recall, match("/v1/memory/recall").?);
+    try std.testing.expectEqualDeep(Route.memory_list, match("/v1/memory/list").?);
+    try std.testing.expectEqualDeep(Route.memory_forget, match("/v1/memory/forget").?);
+    // Query-string suffixes are stripped by the httpz layer before match() runs;
+    // path-only match is what we pin here.
+    try std.testing.expect(match("/v1/memory/recall/") == null); // trailing slash is NOT accepted
+    try std.testing.expect(match("/v1/memory/unknown") == null);
+}
+
 // M10_001: /v1/runs/* routes removed — get_run, retry_run, replay_run,
 // stream_run, cancel_run variants deleted from Route union.
 test "M10_001: run paths no longer match any route" {

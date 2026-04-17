@@ -193,7 +193,7 @@ pub fn innerListExternalAgents(hx: Hx, workspace_id: []const u8) void {
         }) catch {};
     }
 
-    hx.ok(.ok, .{ .agents = agents.items });
+    hx.ok(.ok, .{ .items = agents.items, .total = agents.items.len });
 }
 
 // ── innerDeleteExternalAgent ───────────────────────────────────────────────
@@ -228,6 +228,5 @@ pub fn innerDeleteExternalAgent(hx: Hx, workspace_id: []const u8, agent_id: []co
     }
 
     log.info("external_agent.deleted agent_id={s} workspace_id={s}", .{ agent_id, workspace_id });
-    hx.res.status = 204;
-    hx.res.body = "";
+    hx.noContent();
 }

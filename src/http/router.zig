@@ -55,10 +55,10 @@ pub const Route = union(enum) {
     // M18_001: zombie execution telemetry
     zombie_telemetry: ZombieTelemetryRoute, // GET /v1/workspaces/{ws}/zombies/{id}/telemetry
     internal_telemetry, // GET /internal/v1/telemetry
-    // M14_001: External-agent memory API
+    // M14_001: External-agent memory API (M26_001: recall/list moved to GET)
     memory_store, // POST /v1/memory/store
-    memory_recall, // POST /v1/memory/recall
-    memory_list, // POST /v1/memory/list
+    memory_recall, // GET  /v1/memory/recall
+    memory_list, // GET  /v1/memory/list
     memory_forget, // POST /v1/memory/forget
     // M9_001: Execute proxy endpoint
     execute, // POST /v1/execute

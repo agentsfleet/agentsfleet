@@ -10,8 +10,8 @@ import {
   wsZombiesPath,
   wsZombiePath,
   wsZombieActivityPath,
-  wsCredentialsPath,
 } from "../lib/api-paths.js";
+import { commandCredential } from "./zombie_credential.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const TEMPLATES_DIR = join(__dirname, "../../templates");
@@ -206,7 +206,7 @@ async function commandStatus(ctx, args, workspaces, deps) {
     return 0;
   }
 
-  const zombies = res.zombies || res.data || [];
+  const zombies = res.items ?? [];
   if (zombies.length === 0) {
     writeLine(ctx.stdout, ui.info("No zombies running. Install one with: zombiectl install <template>"));
     return 0;
@@ -295,7 +295,7 @@ async function commandLogs(ctx, args, workspaces, deps) {
     return 0;
   }
 
-  const events = res.events || res.data || [];
+  const events = res.items ?? [];
   if (events.length === 0) {
     writeLine(ctx.stdout, ui.info("No activity yet."));
     return 0;
@@ -307,96 +307,15 @@ async function commandLogs(ctx, args, workspaces, deps) {
     writeLine(ctx.stdout, `  ${ui.dim(ts)}  ${evt.event_type}  ${evt.detail || ""}`);
   }
 
-  if (res.next_cursor) {
+  if (res.cursor) {
     writeLine(ctx.stdout);
-    writeLine(ctx.stdout, ui.dim(`  More: zombiectl logs --cursor=${res.next_cursor}`));
+    writeLine(ctx.stdout, ui.dim(`  More: zombiectl logs --cursor=${res.cursor}`));
   }
 
   return 0;
 }
 
-// ── credential ───────────────────────────────────────────────────────────
-
-async function commandCredential(ctx, args, workspaces, deps) {
-  const { parseFlags, request, apiHeaders, ui, printJson, writeLine, writeError } = deps;
-  const action = args[0];
-
-  const wsId = workspaces.current_workspace_id;
-  if (!wsId) {
-    writeError(ctx, "NO_WORKSPACE", "no workspace selected. Run: zombiectl workspace add", deps);
-    return 1;
-  }
-
-  if (action === "add") {
-    const credName = args[1];
-    if (!credName) {
-      writeError(ctx, "MISSING_ARGUMENT", "usage: zombiectl credential add <name>", deps);
-      return 2;
-    }
-
-    // Read credential value from stdin or --value flag
-    const parsed = parseFlags(args.slice(2));
-    let credValue = parsed.options.value;
-
-    if (!credValue) {
-      // Prompt for value (non-interactive mode returns error)
-      if (ctx.noInput) {
-        writeError(ctx, "NO_INPUT", "credential value required. Use: zombiectl credential add <name> --value=<value>", deps);
-        return 1;
-      }
-      // In production, this would use readline. For now, require --value.
-      writeError(ctx, "NO_INPUT", "interactive credential prompt not yet implemented. Use: zombiectl credential add <name> --value=<value>", deps);
-      return 1;
-    }
-
-    // M24_001: workspace_id in URL path, body carries content only.
-    await request(ctx, wsCredentialsPath(wsId), {
-      method: "POST",
-      headers: { ...apiHeaders(ctx), "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: credName,
-        value: credValue,
-      }),
-    });
-
-    if (ctx.jsonMode) {
-      printJson(ctx.stdout, { status: "stored", name: credName });
-    } else {
-      writeLine(ctx.stdout, ui.ok(`Credential '${credName}' stored in vault.`));
-    }
-    return 0;
-  }
-
-  if (action === "list") {
-    const res = await request(ctx, wsCredentialsPath(wsId), {
-      method: "GET",
-      headers: apiHeaders(ctx),
-    });
-
-    if (ctx.jsonMode) {
-      printJson(ctx.stdout, res);
-    } else {
-      const creds = res.credentials || res.data || [];
-      if (creds.length === 0) {
-        writeLine(ctx.stdout, ui.info("No credentials stored. Add one with: zombiectl credential add <name>"));
-      } else {
-        for (const c of creds) {
-          writeLine(ctx.stdout, `  ${c.name}  ${ui.dim(c.created_at || "")}`);
-        }
-      }
-    }
-    return 0;
-  }
-
-  if (ctx.jsonMode) {
-    writeError(ctx, "UNKNOWN_COMMAND", `unknown credential action: ${action ?? "(none)"}`, deps);
-  } else {
-    writeLine(ctx.stderr, ui.err(`unknown credential action: ${action ?? "(none)"}`));
-    writeLine(ctx.stderr, "usage: zombiectl credential add <name> --value=<value>");
-    writeLine(ctx.stderr, "       zombiectl credential list");
-  }
-  return 2;
-}
+// commandCredential extracted to ./zombie_credential.js (M26_001, RULE FLL).
 
 // ── helpers ──────────────────────────────────────────────────────────────
 
