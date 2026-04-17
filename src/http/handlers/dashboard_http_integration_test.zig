@@ -1,4 +1,24 @@
-// M12_001: HTTP integration tests for the three dashboard endpoints.
+// ⚠ NOT WIRED UP — this file is not imported from src/main.zig, so `zig build
+// test` (and therefore `make test-integration-db`) does NOT execute any of
+// the tests below. See the NOTE in src/main.zig beside the telemetry import.
+//
+// Authored under M12_001, but the seedTestData/cleanupTestData pattern
+// delete-then-insert assumes `core.activity_events` is mutable — it isn't.
+// A DB trigger rejects any UPDATE/DELETE on that table (append-only by
+// design), and the resulting FK chain (activity_events → zombies →
+// workspaces → tenants) blocks cleanup of the parent rows too. Each test
+// currently uses shared fixed IDs, so the second test's seed conflicts with
+// the first test's leftover state and all three post-T1 tests fail.
+//
+// Proper fix is a follow-up: (a) give each test its own zombie_id/
+// workspace_id (timestamp- or test-name-derived), (b) mint matching JWTs
+// from a test-signing-key helper rather than pasting inline, (c) rely on
+// _reset-test-db for cross-run isolation. Only then should the import line
+// in src/main.zig be uncommented.
+//
+// HTTP integration tests for the operator dashboard backend — the three
+// handlers the dashboard shell consumes: workspace activity stream, zombie
+// kill switch, and billing summary (per-zombie + workspace scope).
 //
 //   T1  — GET  /v1/workspaces/{ws}/activity → 200 with seeded events
 //   T2  — same, no token → 401
@@ -84,8 +104,11 @@ fn serverThread(srv: *http_server.Server) void {
 
 fn seedTestData(conn: *pg.Conn) !void {
     const now_ms = std.time.milliTimestamp();
-    // Clean up anything this test owns from a prior run.
-    _ = try conn.exec("DELETE FROM core.activity_events WHERE workspace_id = $1::uuid", .{TEST_WORKSPACE_ID});
+    // Clean up anything this test owns from a prior run. `core.activity_events`
+    // is append-only at the DB layer (trigger rejects DELETE/UPDATE) — `make
+    // test-integration-db` resets schemas before each run, and within a single
+    // run the T1 assertions only check for a non-empty events array, so
+    // leftover rows across sequential tests are harmless.
     _ = try conn.exec("DELETE FROM zombie_execution_telemetry WHERE workspace_id = $1", .{TEST_WORKSPACE_ID});
     _ = try conn.exec("DELETE FROM core.zombies WHERE workspace_id = $1::uuid", .{TEST_WORKSPACE_ID});
 
@@ -162,7 +185,7 @@ fn seedTestData(conn: *pg.Conn) !void {
 }
 
 fn cleanupTestData(conn: *pg.Conn) void {
-    _ = conn.exec("DELETE FROM core.activity_events WHERE workspace_id = $1::uuid", .{TEST_WORKSPACE_ID}) catch {};
+    // `core.activity_events` is append-only — skip DELETE (see seedTestData).
     _ = conn.exec("DELETE FROM zombie_execution_telemetry WHERE workspace_id = $1", .{TEST_WORKSPACE_ID}) catch {};
     _ = conn.exec("DELETE FROM core.zombies WHERE workspace_id = $1::uuid", .{TEST_WORKSPACE_ID}) catch {};
 }
