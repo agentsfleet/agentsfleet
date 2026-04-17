@@ -46,6 +46,35 @@ M12 narrowed to the foundation (backend + primitives + token pyramid). M26 unifi
 
 ---
 
+## 0.5 Inherited from M12_001 — backend test wire-up
+
+**Status:** PENDING
+
+M12_001 shipped `src/http/handlers/dashboard_http_integration_test.zig` (the T1–T11 HTTP integration tests against the three dashboard-backing endpoints) but the file is deliberately **not imported** in `src/main.zig` (see the NOTE beside the telemetry import there). Wiring it up surfaces real bugs: `seedTestData` deletes from `core.activity_events`, which is append-only at the DB layer, and the resulting foreign-key chain (`activity_events → zombies → workspaces → tenants`) blocks cleanup of parent rows too. Each test currently uses shared fixed IDs so the second test's seed conflicts with the first test's leftover state and T5–T11 fail on tier-2.
+
+**Interim regression coverage (landed in M12_001 PR #221):** `src/http/rbac_http_integration_test.zig` was extended with two negative-assertion tests — `TEST_USER_TOKEN` on `:stop` and on per-zombie billing summary both assert 403 + `ERR_INSUFFICIENT_ROLE`. That locks RULE BIL on those handlers in CI today. It does NOT cover positive-path assertions (operator succeeds, IDOR 404, etc.) or the four non-billing dashboard tests (T1–T4 workspace activity).
+
+**M27_001 closes this gap.** The frontend pages need a working backend-integration test suite they can lean on (for example, the kill-switch Playwright path needs backend tests green end-to-end, not just the RBAC guard). Scope in this workstream:
+
+**Dimensions:**
+
+- 0.5.1 PENDING — rewrite `dashboard_http_integration_test.zig` to use unique workspace_id / tenant_id / zombie_ids per test run (UUIDv7 generated at test start, not hardcoded constants), so the append-only + FK-chain cleanup problem disappears — test_type: integration
+- 0.5.2 PENDING — add a test-signing-key helper (`src/http/test_tokens.zig` or equivalent) that mints RS256 JWTs from a test keypair embedded in the test binary, so TOKEN_USER / TOKEN_OPERATOR can be generated per-run matching the per-run workspace_id — replaces the current pasted-JWT-literal pattern — test_type: unit
+- 0.5.3 PENDING — delete the DELETE-before-INSERT pattern from `seedTestData` / `cleanupTestData`; rely on `make down && make up` + `_reset-test-db` for cross-run isolation; within a run, unique IDs per test remove the need to clean — test_type: integration
+- 0.5.4 PENDING — uncomment the `_ = @import("http/handlers/dashboard_http_integration_test.zig");` line in `src/main.zig` and remove the NOTE explaining why it's absent — test_type: build
+- 0.5.5 PENDING — remove the "⚠ NOT WIRED UP" banner from the top of `dashboard_http_integration_test.zig` — test_type: lint
+- 0.5.6 PENDING — `make test-integration-db` fails if any of T1–T11 fails (tier-3 verified: `make down && make up && make test-integration-db`) — test_type: integration
+- 0.5.7 PENDING — optional: remove the M12 regression-coverage block from `rbac_http_integration_test.zig` once the dashboard integration tests are green, OR keep it as a fast-path smoke (the rbac test runs in a few hundred ms; the dashboard test spins up a full server and is slower). Decide during EXECUTE — test_type: design
+
+**Acceptance criteria:**
+
+- `grep -n "dashboard_http_integration_test" src/main.zig` shows exactly one import line (no NOTE comment)
+- `make test-integration-db` exits 0 with T1–T11 all in the passing-tests list
+- Tier-3 fresh-DB run (`make down && make up && make test-integration-db`) also green
+- No leaked allocations in the dashboard tests (current file leaks 10+ allocations per run when wired naively)
+
+---
+
 ## 1.0 Typed API client split (`lib/api/`)
 
 **Status:** PENDING
