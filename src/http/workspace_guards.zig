@@ -6,24 +6,7 @@ const common = @import("handlers/common.zig");
 const error_codes = @import("../errors/error_registry.zig");
 const workspace_billing = @import("../state/workspace_billing.zig");
 const workspace_credit = @import("../state/workspace_credit.zig");
-const base_fixtures = @import("../db/test_fixtures.zig");
-
-// Shared IDs for the isWorkspaceCreator integration tests. Kept as constants
-// so tear-down stays surgical even when tests share the same tenant.
-const GUARD_TENANT_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01";
-const GUARD_WS_PRIMARY = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
-const GUARD_WS_SECONDARY = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f12";
-
-fn cleanupGuardFixtures(conn: *pg.Conn) void {
-    _ = conn.exec(
-        "DELETE FROM core.workspaces WHERE workspace_id IN ($1::uuid, $2::uuid)",
-        .{ GUARD_WS_PRIMARY, GUARD_WS_SECONDARY },
-    ) catch {};
-    _ = conn.exec(
-        "DELETE FROM core.tenants WHERE tenant_id = $1::uuid",
-        .{GUARD_TENANT_ID},
-    ) catch {};
-}
+const http_auth = @import("../db/test_fixtures_http_auth.zig");
 
 pub const CreditPolicy = enum {
     none,
@@ -314,18 +297,18 @@ test "integration: isWorkspaceCreator returns true for creator" {
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
 
-    cleanupGuardFixtures(db_ctx.conn);
-    defer cleanupGuardFixtures(db_ctx.conn);
+    http_auth.cleanup(db_ctx.conn);
+    defer http_auth.cleanup(db_ctx.conn);
 
-    try base_fixtures.seedTenantById(db_ctx.conn, GUARD_TENANT_ID, "guard-tests");
-    try base_fixtures.seedWorkspaceWithCreator(db_ctx.conn, GUARD_WS_PRIMARY, GUARD_TENANT_ID, "user_creator123");
+    try http_auth.seedTenant(db_ctx.conn);
+    try http_auth.seedGuardWorkspace(db_ctx.conn, http_auth.WS_PRIMARY, "user_creator123");
 
-    try std.testing.expect(isWorkspaceCreator(db_ctx.conn, GUARD_WS_PRIMARY, "user_creator123", GUARD_TENANT_ID));
-    try std.testing.expect(!isWorkspaceCreator(db_ctx.conn, GUARD_WS_PRIMARY, "user_other456", GUARD_TENANT_ID));
+    try std.testing.expect(isWorkspaceCreator(db_ctx.conn, http_auth.WS_PRIMARY, "user_creator123", http_auth.TENANT_ID));
+    try std.testing.expect(!isWorkspaceCreator(db_ctx.conn, http_auth.WS_PRIMARY, "user_other456", http_auth.TENANT_ID));
     // Without tenant_id still works (nullable path)
-    try std.testing.expect(isWorkspaceCreator(db_ctx.conn, GUARD_WS_PRIMARY, "user_creator123", null));
+    try std.testing.expect(isWorkspaceCreator(db_ctx.conn, http_auth.WS_PRIMARY, "user_creator123", null));
     // Wrong tenant_id blocks even correct creator
-    try std.testing.expect(!isWorkspaceCreator(db_ctx.conn, GUARD_WS_PRIMARY, "user_creator123", "0195b4ba-8d3a-7f13-8abc-000000000099"));
+    try std.testing.expect(!isWorkspaceCreator(db_ctx.conn, http_auth.WS_PRIMARY, "user_creator123", http_auth.TENANT_UNRELATED));
 }
 
 test "integration: isWorkspaceCreator returns false when created_by is null" {
@@ -333,13 +316,13 @@ test "integration: isWorkspaceCreator returns false when created_by is null" {
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
 
-    cleanupGuardFixtures(db_ctx.conn);
-    defer cleanupGuardFixtures(db_ctx.conn);
+    http_auth.cleanup(db_ctx.conn);
+    defer http_auth.cleanup(db_ctx.conn);
 
-    try base_fixtures.seedTenantById(db_ctx.conn, GUARD_TENANT_ID, "guard-tests");
-    try base_fixtures.seedWorkspaceWithCreator(db_ctx.conn, GUARD_WS_PRIMARY, GUARD_TENANT_ID, null);
+    try http_auth.seedTenant(db_ctx.conn);
+    try http_auth.seedGuardWorkspace(db_ctx.conn, http_auth.WS_PRIMARY, null);
 
-    try std.testing.expect(!isWorkspaceCreator(db_ctx.conn, GUARD_WS_PRIMARY, "user_any", GUARD_TENANT_ID));
+    try std.testing.expect(!isWorkspaceCreator(db_ctx.conn, http_auth.WS_PRIMARY, "user_any", http_auth.TENANT_ID));
 }
 
 test "integration: isWorkspaceCreator returns false for non-existent workspace" {
@@ -347,9 +330,8 @@ test "integration: isWorkspaceCreator returns false for non-existent workspace" 
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
 
-    // No seed — we're asserting the lookup of a UUID that isn't in core.workspaces.
-    // Use a nonce UUID that no other test ever inserts.
-    try std.testing.expect(!isWorkspaceCreator(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-999900000000", "user_any", null));
+    // No seed — WS_ABSENT is a UUID reserved as "never inserted."
+    try std.testing.expect(!isWorkspaceCreator(db_ctx.conn, http_auth.WS_ABSENT, "user_any", null));
 }
 
 test "integration: isWorkspaceCreator is scoped to exact workspace" {
@@ -357,17 +339,17 @@ test "integration: isWorkspaceCreator is scoped to exact workspace" {
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
 
-    cleanupGuardFixtures(db_ctx.conn);
-    defer cleanupGuardFixtures(db_ctx.conn);
+    http_auth.cleanup(db_ctx.conn);
+    defer http_auth.cleanup(db_ctx.conn);
 
-    try base_fixtures.seedTenantById(db_ctx.conn, GUARD_TENANT_ID, "guard-tests");
-    try base_fixtures.seedWorkspaceWithCreator(db_ctx.conn, GUARD_WS_PRIMARY, GUARD_TENANT_ID, "user_alice");
-    try base_fixtures.seedWorkspaceWithCreator(db_ctx.conn, GUARD_WS_SECONDARY, GUARD_TENANT_ID, "user_bob");
+    try http_auth.seedTenant(db_ctx.conn);
+    try http_auth.seedGuardWorkspace(db_ctx.conn, http_auth.WS_PRIMARY, "user_alice");
+    try http_auth.seedGuardWorkspace(db_ctx.conn, http_auth.WS_SECONDARY, "user_bob");
 
-    try std.testing.expect(isWorkspaceCreator(db_ctx.conn, GUARD_WS_PRIMARY, "user_alice", GUARD_TENANT_ID));
-    try std.testing.expect(!isWorkspaceCreator(db_ctx.conn, GUARD_WS_SECONDARY, "user_alice", GUARD_TENANT_ID));
-    try std.testing.expect(!isWorkspaceCreator(db_ctx.conn, GUARD_WS_PRIMARY, "user_bob", GUARD_TENANT_ID));
-    try std.testing.expect(isWorkspaceCreator(db_ctx.conn, GUARD_WS_SECONDARY, "user_bob", GUARD_TENANT_ID));
+    try std.testing.expect(isWorkspaceCreator(db_ctx.conn, http_auth.WS_PRIMARY, "user_alice", http_auth.TENANT_ID));
+    try std.testing.expect(!isWorkspaceCreator(db_ctx.conn, http_auth.WS_SECONDARY, "user_alice", http_auth.TENANT_ID));
+    try std.testing.expect(!isWorkspaceCreator(db_ctx.conn, http_auth.WS_PRIMARY, "user_bob", http_auth.TENANT_ID));
+    try std.testing.expect(isWorkspaceCreator(db_ctx.conn, http_auth.WS_SECONDARY, "user_bob", http_auth.TENANT_ID));
 }
 
 test "owner override promotes user to operator but not admin" {
@@ -429,13 +411,13 @@ test "integration: non-creator user stays blocked at user role" {
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
 
-    cleanupGuardFixtures(db_ctx.conn);
-    defer cleanupGuardFixtures(db_ctx.conn);
+    http_auth.cleanup(db_ctx.conn);
+    defer http_auth.cleanup(db_ctx.conn);
 
-    try base_fixtures.seedTenantById(db_ctx.conn, GUARD_TENANT_ID, "guard-tests");
-    try base_fixtures.seedWorkspaceWithCreator(db_ctx.conn, GUARD_WS_PRIMARY, GUARD_TENANT_ID, "user_owner");
+    try http_auth.seedTenant(db_ctx.conn);
+    try http_auth.seedGuardWorkspace(db_ctx.conn, http_auth.WS_PRIMARY, "user_owner");
 
-    try std.testing.expect(!isWorkspaceCreator(db_ctx.conn, GUARD_WS_PRIMARY, "user_invited_member", GUARD_TENANT_ID));
+    try std.testing.expect(!isWorkspaceCreator(db_ctx.conn, http_auth.WS_PRIMARY, "user_invited_member", http_auth.TENANT_ID));
 }
 
 test "effective_principal is a copy — original principal is not mutated" {

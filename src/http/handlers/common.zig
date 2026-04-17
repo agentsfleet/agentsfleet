@@ -14,7 +14,7 @@ const error_codes = @import("../../errors/error_registry.zig");
 const id_format = @import("../../types/id_format.zig");
 const rbac = @import("../../auth/rbac.zig");
 const principal_mod = @import("../../auth/principal.zig");
-const base_fixtures = @import("../../db/test_fixtures.zig");
+const http_auth = @import("../../db/test_fixtures_http_auth.zig");
 
 pub const TraceContext = trace_ctx.TraceContext;
 
@@ -448,42 +448,25 @@ test "mapOidcVerifyError maps signature failures to unauthorized" {
     try std.testing.expectEqual(AuthError.Unauthorized, mapOidcVerifyError(oidc.VerifyError.SignatureInvalid));
 }
 
-// Shared IDs for workspace-scoping integration tests. Kept at module scope
-// so the cleanup helper is unambiguous.
-const SCOPE_TENANT_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01";
-const SCOPE_WS_PRIMARY = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
-const SCOPE_WS_SECONDARY = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f12";
-
-fn cleanupScopeFixtures(conn: *pg.Conn) void {
-    _ = conn.exec(
-        "DELETE FROM core.workspaces WHERE workspace_id IN ($1::uuid, $2::uuid)",
-        .{ SCOPE_WS_PRIMARY, SCOPE_WS_SECONDARY },
-    ) catch {};
-    _ = conn.exec(
-        "DELETE FROM core.tenants WHERE tenant_id = $1::uuid",
-        .{SCOPE_TENANT_ID},
-    ) catch {};
-}
-
 test "integration: oidc workspace scoping blocks cross-workspace access" {
     const db_ctx = (try openHandlerTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
 
-    cleanupScopeFixtures(db_ctx.conn);
-    defer cleanupScopeFixtures(db_ctx.conn);
+    http_auth.cleanup(db_ctx.conn);
+    defer http_auth.cleanup(db_ctx.conn);
 
-    try base_fixtures.seedTenantById(db_ctx.conn, SCOPE_TENANT_ID, "scope-tests");
-    try base_fixtures.seedWorkspaceWithTenant(db_ctx.conn, SCOPE_WS_PRIMARY, SCOPE_TENANT_ID);
-    try base_fixtures.seedWorkspaceWithTenant(db_ctx.conn, SCOPE_WS_SECONDARY, SCOPE_TENANT_ID);
+    try http_auth.seedTenant(db_ctx.conn);
+    try http_auth.seedScopeWorkspace(db_ctx.conn, http_auth.WS_PRIMARY);
+    try http_auth.seedScopeWorkspace(db_ctx.conn, http_auth.WS_SECONDARY);
 
     const principal = AuthPrincipal{
         .mode = .jwt_oidc,
-        .tenant_id = SCOPE_TENANT_ID,
-        .workspace_scope_id = SCOPE_WS_PRIMARY,
+        .tenant_id = http_auth.TENANT_ID,
+        .workspace_scope_id = http_auth.WS_PRIMARY,
     };
-    try std.testing.expect(authorizeWorkspace(db_ctx.conn, principal, SCOPE_WS_PRIMARY));
-    try std.testing.expect(!authorizeWorkspace(db_ctx.conn, principal, SCOPE_WS_SECONDARY));
+    try std.testing.expect(authorizeWorkspace(db_ctx.conn, principal, http_auth.WS_PRIMARY));
+    try std.testing.expect(!authorizeWorkspace(db_ctx.conn, principal, http_auth.WS_SECONDARY));
 }
 
 test "integration: clerk workspace claim scoping blocks cross-workspace access" {
@@ -491,20 +474,20 @@ test "integration: clerk workspace claim scoping blocks cross-workspace access" 
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
 
-    cleanupScopeFixtures(db_ctx.conn);
-    defer cleanupScopeFixtures(db_ctx.conn);
+    http_auth.cleanup(db_ctx.conn);
+    defer http_auth.cleanup(db_ctx.conn);
 
-    try base_fixtures.seedTenantById(db_ctx.conn, SCOPE_TENANT_ID, "scope-tests");
-    try base_fixtures.seedWorkspaceWithTenant(db_ctx.conn, SCOPE_WS_PRIMARY, SCOPE_TENANT_ID);
-    try base_fixtures.seedWorkspaceWithTenant(db_ctx.conn, SCOPE_WS_SECONDARY, SCOPE_TENANT_ID);
+    try http_auth.seedTenant(db_ctx.conn);
+    try http_auth.seedScopeWorkspace(db_ctx.conn, http_auth.WS_PRIMARY);
+    try http_auth.seedScopeWorkspace(db_ctx.conn, http_auth.WS_SECONDARY);
 
     const principal = AuthPrincipal{
         .mode = .jwt_oidc,
-        .tenant_id = SCOPE_TENANT_ID,
-        .workspace_scope_id = SCOPE_WS_PRIMARY,
+        .tenant_id = http_auth.TENANT_ID,
+        .workspace_scope_id = http_auth.WS_PRIMARY,
     };
-    try std.testing.expect(authorizeWorkspace(db_ctx.conn, principal, SCOPE_WS_PRIMARY));
-    try std.testing.expect(!authorizeWorkspace(db_ctx.conn, principal, SCOPE_WS_SECONDARY));
+    try std.testing.expect(authorizeWorkspace(db_ctx.conn, principal, http_auth.WS_PRIMARY));
+    try std.testing.expect(!authorizeWorkspace(db_ctx.conn, principal, http_auth.WS_SECONDARY));
 }
 
 test "integration: tenant context helper writes app.current_tenant_id" {
