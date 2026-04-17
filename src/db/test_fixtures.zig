@@ -82,6 +82,23 @@ pub fn seedWorkspaceWithTenant(conn: *pg.Conn, workspace_id: []const u8, tenant_
     , .{ workspace_id, tenant_id });
 }
 
+/// Insert a workspace with an explicit `created_by`. Used by tests that
+/// exercise owner-override / creator-check logic (isWorkspaceCreator).
+/// Name mirrors `workspace_id` — satisfies `uq_workspaces_tenant_name`.
+pub fn seedWorkspaceWithCreator(
+    conn: *pg.Conn,
+    workspace_id: []const u8,
+    tenant_id: []const u8,
+    created_by: ?[]const u8,
+) !void {
+    _ = try conn.exec(
+        \\INSERT INTO workspaces
+        \\  (workspace_id, tenant_id, name, repo_url, default_branch, created_by, created_at, updated_at)
+        \\VALUES ($1, $2, $1::text, '', 'main', $3, 0, 0)
+        \\ON CONFLICT DO NOTHING
+    , .{ workspace_id, tenant_id, created_by });
+}
+
 /// Delete a tenant by custom ID.
 pub fn teardownTenantById(conn: *pg.Conn, tenant_id: []const u8) void {
     _ = conn.exec(
