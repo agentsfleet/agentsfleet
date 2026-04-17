@@ -14,8 +14,10 @@ const ec = @import("../../errors/error_registry.zig");
 const id_format = @import("../../types/id_format.zig");
 const activity_stream = @import("../../zombie/activity_stream.zig");
 const crypto_store = @import("../../secrets/crypto_store.zig");
+const workspace_guards = @import("../workspace_guards.zig");
 
 const log = std.log.scoped(.zombie_activity_api);
+const API_ACTOR = "api";
 
 pub const Context = common.Context;
 
@@ -116,10 +118,12 @@ pub fn innerStoreCredential(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []
     };
     defer hx.ctx.pool.release(conn);
 
-    if (!common.authorizeWorkspace(conn, hx.principal, workspace_id)) {
-        hx.fail(ec.ERR_FORBIDDEN, "Workspace access denied");
-        return;
-    }
+    // RULE BIL: credential endpoints require operator-minimum role.
+    const actor = hx.principal.user_id orelse API_ACTOR;
+    const access = workspace_guards.enforce(hx.res, hx.req_id, conn, hx.alloc, hx.principal, workspace_id, actor, .{
+        .minimum_role = .operator,
+    }) orelse return;
+    defer access.deinit(hx.alloc);
 
     storeCredentialEncryptedOnConn(conn, hx.alloc, workspace_id, cred) catch |err| {
         log.err("credential.store_failed err={s} name={s} req_id={s}", .{ @errorName(err), cred.name, hx.req_id });
@@ -170,10 +174,12 @@ pub fn innerListCredentials(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []
     };
     defer hx.ctx.pool.release(conn);
 
-    if (!common.authorizeWorkspace(conn, hx.principal, workspace_id)) {
-        hx.fail(ec.ERR_FORBIDDEN, "Workspace access denied");
-        return;
-    }
+    // RULE BIL: credential endpoints require operator-minimum role.
+    const actor = hx.principal.user_id orelse API_ACTOR;
+    const access = workspace_guards.enforce(hx.res, hx.req_id, conn, hx.alloc, hx.principal, workspace_id, actor, .{
+        .minimum_role = .operator,
+    }) orelse return;
+    defer access.deinit(hx.alloc);
 
     const creds = fetchCredentialListOnConn(conn, hx.alloc, workspace_id) catch |err| {
         log.err("credential.list_failed err={s} req_id={s}", .{ @errorName(err), hx.req_id });

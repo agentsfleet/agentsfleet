@@ -119,10 +119,22 @@ pub fn queryByWorkspace(
     cursor: ?[]const u8,
     limit: u32,
 ) !ActivityPage {
-    const page_limit = @min(limit, MAX_ACTIVITY_PAGE_LIMIT);
     const conn = try pool.acquire();
     defer pool.release(conn);
+    return queryByWorkspaceOnConn(conn, alloc, workspace_id, cursor, limit);
+}
 
+// queryByWorkspaceOnConn reuses a caller-owned connection. Use this from request
+// handlers that already acquired a conn for authorization — avoids RULE CNX
+// (holding two pool connections concurrently per request).
+pub fn queryByWorkspaceOnConn(
+    conn: *pg.Conn,
+    alloc: Allocator,
+    workspace_id: []const u8,
+    cursor: ?[]const u8,
+    limit: u32,
+) !ActivityPage {
+    const page_limit = @min(limit, MAX_ACTIVITY_PAGE_LIMIT);
     return if (cursor) |c|
         fetchActivityPage(conn, alloc, .workspace, workspace_id, c, page_limit)
     else

@@ -1,27 +1,41 @@
+// App-local Button (Next.js App Router, shadcn + Tailwind + cva).
+//
+// Why not reuse `@usezombie/design-system`'s Button?
+//   1. That package's CSS for `.z-btn` actually lives in `ui/packages/website/src/styles.css`
+//      (the consumer), not in the package itself — dropping it into this app
+//      would render unstyled.
+//   2. It imports `react-router-dom`'s <Link>, which is not RSC-safe.
+// Both blockers are addressed in the M26 Design System Unification spec; after
+// that lands, this file deletes itself in favour of the package export.
+//
+// Visual parity is maintained via the shared Layer 0 primitives in
+// `@usezombie/design-system/tokens.css` — the gradient + glow effects match
+// the website's Button by construction.
+
 import * as React from "react";
 import { Slot } from "@radix-ui/react-slot";
 import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@usezombie/design-system/utils";
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full text-sm font-semibold transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full text-sm font-semibold transition-all motion-reduce:transition-none disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
   {
     variants: {
       variant: {
         default:
-          "bg-gradient-to-r from-[var(--z-orange)] to-[var(--z-orange-bright)] text-[#111] shadow-[0_0_0_0_var(--z-glow-orange)] hover:shadow-[0_0_20px_var(--z-glow-strong)] hover:-translate-y-px",
+          "bg-gradient-to-r from-primary to-primary-bright text-primary-foreground shadow-[0_0_0_0_var(--primary-glow)] hover:shadow-[0_0_20px_var(--primary-glow-strong)] hover:-translate-y-px",
         ghost:
-          "border border-[var(--z-border)] bg-transparent text-[var(--z-text-muted)] hover:border-[var(--z-orange)] hover:text-[var(--z-text-primary)] hover:shadow-[0_0_12px_var(--z-glow-orange)]",
+          "border border-border bg-transparent text-muted-foreground hover:border-primary hover:text-foreground hover:shadow-[0_0_12px_var(--primary-glow)]",
         destructive:
-          "bg-[var(--z-red)] text-[var(--z-text-primary)] hover:opacity-90",
+          "bg-destructive text-destructive-foreground hover:opacity-90",
         outline:
-          "border border-[var(--z-border)] bg-transparent hover:bg-[var(--z-surface-1)] text-[var(--z-text-primary)]",
+          "border border-border bg-transparent text-foreground hover:bg-muted",
         secondary:
-          "bg-[var(--z-surface-1)] text-[var(--z-text-primary)] hover:bg-[var(--z-surface-2)]",
+          "bg-secondary text-secondary-foreground hover:bg-accent",
         link:
-          "text-[var(--z-cyan)] underline-offset-4 hover:underline p-0 h-auto",
+          "text-info underline-offset-4 hover:underline p-0 h-auto",
         "double-border":
-          "border-2 border-[var(--z-orange)] bg-transparent text-[var(--z-text-primary)] shadow-[inset_0_0_0_2px_var(--z-bg-0)] hover:shadow-[inset_0_0_0_2px_var(--z-bg-0),0_0_16px_var(--z-glow-strong)]",
+          "border-2 border-primary bg-transparent text-foreground shadow-[inset_0_0_0_2px_var(--background)] hover:shadow-[inset_0_0_0_2px_var(--background),0_0_16px_var(--primary-glow-strong)]",
       },
       size: {
         default: "h-10 px-5 py-2",
@@ -48,6 +62,9 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
     const Comp = asChild ? Slot : "button";
     return (
       <Comp
+        data-slot="button"
+        data-variant={variant ?? "default"}
+        data-size={size ?? "default"}
         className={cn(buttonVariants({ variant, size, className }))}
         ref={ref}
         {...props}

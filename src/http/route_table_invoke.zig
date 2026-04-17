@@ -39,6 +39,14 @@ const slack_ev = @import("handlers/slack_events.zig");
 const slack_ix = @import("handlers/slack_interactions.zig");
 const zombie_steer = @import("handlers/zombie_steer_http.zig");
 
+// M12_001 dashboard invokes live in a sibling file (keeps this file ≤ 350
+// lines per RULE FLL). Re-export so the dispatcher reference stays stable:
+// `invoke.invokeWorkspaceActivity` continues to resolve here.
+const dashboard_invokes = @import("route_table_invoke_dashboard.zig");
+pub const invokeWorkspaceActivity = dashboard_invokes.invokeWorkspaceActivity;
+pub const invokeWorkspaceZombieStop = dashboard_invokes.invokeWorkspaceZombieStop;
+pub const invokeWorkspaceZombieBillingSummary = dashboard_invokes.invokeWorkspaceZombieBillingSummary;
+
 const Hx = hx_mod.Hx;
 
 // ── Health / observability ────────────────────────────────────────────────

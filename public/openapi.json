@@ -199,6 +199,74 @@
         }
       }
     },
+    "/internal/v1/telemetry": {
+      "get": {
+        "operationId": "internal_telemetry",
+        "summary": "Internal operator telemetry",
+        "description": "Admin-only platform health snapshot \u2014 in-flight request counts, queue depth, error rates. Requires the admin API key, not a user bearer token.",
+        "tags": [
+          "Telemetry"
+        ],
+        "responses": {
+          "200": {
+            "description": "Operator telemetry snapshot.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "api_in_flight_requests": {
+                      "type": "integer"
+                    },
+                    "api_max_in_flight_requests": {
+                      "type": "integer"
+                    },
+                    "queue_depth": {
+                      "type": "integer",
+                      "nullable": true
+                    },
+                    "queue_age_ms": {
+                      "type": "integer",
+                      "nullable": true
+                    }
+                  },
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/metrics": {
+      "get": {
+        "operationId": "metrics",
+        "summary": "Prometheus metrics",
+        "description": "Returns Prometheus-format metrics for scraping by monitoring infrastructure.",
+        "tags": [
+          "Health"
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Prometheus text exposition format",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/readyz": {
       "get": {
         "operationId": "readyz",
@@ -232,25 +300,167 @@
         }
       }
     },
-    "/metrics": {
+    "/v1/admin/platform-keys": {
       "get": {
-        "operationId": "metrics",
-        "summary": "Prometheus metrics",
-        "description": "Returns Prometheus-format metrics for scraping by monitoring infrastructure.",
+        "operationId": "list_platform_keys",
+        "summary": "List platform LLM keys",
+        "description": "Lists all configured platform-wide LLM provider keys. These are shared keys that workspaces fall back to when no BYOK key is configured.",
         "tags": [
-          "Health"
+          "Admin"
         ],
-        "security": [],
         "responses": {
           "200": {
-            "description": "Prometheus text exposition format",
+            "description": "Platform key list",
             "content": {
-              "text/plain": {
+              "application/json": {
                 "schema": {
-                  "type": "string"
+                  "type": "object",
+                  "required": [
+                    "keys",
+                    "request_id"
+                  ],
+                  "properties": {
+                    "keys": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/PlatformKey"
+                      }
+                    },
+                    "request_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    }
+                  }
                 }
               }
             }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "put": {
+        "operationId": "put_platform_key",
+        "summary": "Set a platform LLM key",
+        "description": "Configures a platform-wide LLM provider key by referencing a workspace that has a BYOK key stored. The platform key proxies through the referenced workspace's credential.",
+        "tags": [
+          "Admin"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "provider",
+                  "source_workspace_id"
+                ],
+                "properties": {
+                  "provider": {
+                    "type": "string",
+                    "description": "LLM provider name (e.g. openai, anthropic)"
+                  },
+                  "source_workspace_id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "Workspace whose BYOK key to use as the platform key"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Platform key configured",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "provider",
+                    "source_workspace_id",
+                    "active",
+                    "request_id"
+                  ],
+                  "properties": {
+                    "provider": {
+                      "type": "string"
+                    },
+                    "source_workspace_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "active": {
+                      "type": "boolean"
+                    },
+                    "request_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/admin/platform-keys/{provider}": {
+      "delete": {
+        "operationId": "delete_platform_key",
+        "summary": "Delete a platform LLM key",
+        "description": "Removes a platform-wide LLM provider key. Workspaces without BYOK keys will no longer be able to use this provider.",
+        "tags": [
+          "Admin"
+        ],
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "path",
+            "required": true,
+            "description": "LLM provider name",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Platform key deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "provider",
+                    "active",
+                    "request_id"
+                  ],
+                  "properties": {
+                    "provider": {
+                      "type": "string"
+                    },
+                    "active": {
+                      "type": "boolean",
+                      "const": false
+                    },
+                    "request_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
           }
         }
       }
@@ -440,6 +650,125 @@
         }
       }
     },
+    "/v1/execute": {
+      "post": {
+        "operationId": "execute_tool",
+        "summary": "Execute a tool on behalf of an external agent",
+        "description": "Synchronous tool execution proxy. The external agent calls this endpoint with its API key (bearer), names a tool, and receives the tool's result inline. Used by LangGraph / CrewAI / Composio integrations.",
+        "tags": [
+          "Execute"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "target",
+                  "method",
+                  "credential_ref"
+                ],
+                "properties": {
+                  "target": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "Target URL for the outbound call."
+                  },
+                  "method": {
+                    "type": "string",
+                    "enum": [
+                      "GET",
+                      "POST",
+                      "PUT",
+                      "PATCH",
+                      "DELETE"
+                    ],
+                    "description": "HTTP method to use against the target."
+                  },
+                  "credential_ref": {
+                    "type": "string",
+                    "description": "Named credential from the workspace vault to inject on the outbound request."
+                  },
+                  "body": {
+                    "type": "string",
+                    "nullable": true,
+                    "description": "Request body to forward to the target. Null for GET/DELETE."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tool executed; upstream status and body are returned plus UseZombie metadata.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "status",
+                    "body",
+                    "usezombie"
+                  ],
+                  "properties": {
+                    "status": {
+                      "type": "integer",
+                      "description": "HTTP status returned by the upstream target."
+                    },
+                    "body": {
+                      "type": "string",
+                      "description": "Response body returned by the upstream target (as string)."
+                    },
+                    "usezombie": {
+                      "type": "object",
+                      "required": [
+                        "action_id",
+                        "firewall_decision",
+                        "credential_injected",
+                        "approval_required"
+                      ],
+                      "properties": {
+                        "action_id": {
+                          "type": "string"
+                        },
+                        "firewall_decision": {
+                          "type": "string",
+                          "enum": [
+                            "allow",
+                            "deny",
+                            "approval_required"
+                          ]
+                        },
+                        "credential_injected": {
+                          "type": "boolean"
+                        },
+                        "approval_required": {
+                          "type": "boolean"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/v1/github/callback": {
       "get": {
         "operationId": "github_oauth_callback",
@@ -479,13 +808,13 @@
         }
       }
     },
-    "/v1/workspaces": {
+    "/v1/memory/forget": {
       "post": {
-        "operationId": "create_workspace",
-        "summary": "Create a workspace",
-        "description": "Creates a new workspace linked to a GitHub repository. Returns the workspace ID and a GitHub App install URL if the app is not yet installed on the repo.",
+        "operationId": "memory_forget",
+        "summary": "Forget a memory entry by key",
+        "description": "Deletes the entry with the given `key` under the zombie instance. Returns `{ deleted: false }` if no match \u2014 never errors on miss.",
         "tags": [
-          "Workspaces"
+          "Memory"
         ],
         "requestBody": {
           "required": true,
@@ -494,17 +823,260 @@
               "schema": {
                 "type": "object",
                 "required": [
-                  "repo_url"
+                  "zombie_id",
+                  "key"
                 ],
                 "properties": {
-                  "repo_url": {
+                  "zombie_id": {
                     "type": "string",
-                    "format": "uri",
-                    "description": "Full GitHub repository URL (e.g. https://github.com/org/repo)"
+                    "format": "uuid"
                   },
-                  "default_branch": {
+                  "key": {
                     "type": "string",
-                    "description": "Default branch name, defaults to 'main' if omitted"
+                    "maxLength": 255
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "zombie_id": {
+                      "type": "string"
+                    },
+                    "key": {
+                      "type": "string"
+                    },
+                    "deleted": {
+                      "type": "boolean"
+                    },
+                    "request_id": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/memory/list": {
+      "get": {
+        "operationId": "memory_list",
+        "summary": "List recent memory entries",
+        "description": "Returns most-recent entries, optionally filtered by category.",
+        "tags": [
+          "Memory"
+        ],
+        "parameters": [
+          {
+            "name": "zombie_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "category",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 100,
+              "minimum": 1,
+              "maximum": 100
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "zombie_id": {
+                      "type": "string"
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/MemoryEntry"
+                      }
+                    },
+                    "total": {
+                      "type": "integer"
+                    },
+                    "request_id": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/memory/recall": {
+      "get": {
+        "operationId": "memory_recall",
+        "summary": "Recall memory entries matching a query",
+        "description": "Case-insensitive LIKE search across both `key` and `content`. LIKE metacharacters in `query` are escaped \u2014 a query of `%` does NOT return every entry.",
+        "tags": [
+          "Memory"
+        ],
+        "parameters": [
+          {
+            "name": "zombie_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "query",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 20,
+              "minimum": 1,
+              "maximum": 100
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "zombie_id": {
+                      "type": "string"
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/MemoryEntry"
+                      }
+                    },
+                    "total": {
+                      "type": "integer"
+                    },
+                    "request_id": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/memory/store": {
+      "post": {
+        "operationId": "memory_store",
+        "summary": "Store or upsert a memory entry",
+        "description": "Writes a `(key, content, category)` entry scoped to a zombie instance. Idempotent upsert on `(key, instance_id)`.",
+        "tags": [
+          "Memory"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "zombie_id",
+                  "key",
+                  "content"
+                ],
+                "properties": {
+                  "zombie_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "key": {
+                    "type": "string",
+                    "maxLength": 255
+                  },
+                  "content": {
+                    "type": "string",
+                    "maxLength": 16384
+                  },
+                  "category": {
+                    "type": "string",
+                    "default": "core"
                   }
                 }
               }
@@ -513,526 +1085,91 @@
         },
         "responses": {
           "201": {
-            "description": "Workspace created",
+            "description": "Created",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": [
-                    "workspace_id",
-                    "repo_url",
-                    "default_branch",
-                    "install_url",
-                    "request_id"
-                  ],
                   "properties": {
-                    "workspace_id": {
-                      "type": "string",
-                      "format": "uuid",
-                      "description": "Unique workspace identifier"
-                    },
-                    "repo_url": {
-                      "type": "string",
-                      "format": "uri",
-                      "description": "Repository URL"
-                    },
-                    "default_branch": {
-                      "type": "string",
-                      "description": "Default branch for the workspace"
-                    },
-                    "install_url": {
-                      "type": "string",
-                      "format": "uri",
-                      "description": "GitHub App installation URL \u2014 direct user here if the app is not yet installed"
-                    },
-                    "request_id": {
-                      "type": "string",
-                      "format": "uuid",
-                      "description": "Unique request identifier"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "default": {
-            "$ref": "#/components/responses/Error"
-          }
-        }
-      }
-    },
-    "/v1/workspaces/{workspace_id}:pause": {
-      "post": {
-        "operationId": "pause_workspace",
-        "summary": "Pause or unpause a workspace",
-        "description": "Toggles the paused state of a workspace. When paused, no new runs will be started and queued runs will be held. Uses optimistic concurrency via the version field.",
-        "tags": [
-          "Workspaces"
-        ],
-        "parameters": [
-          {
-            "name": "workspace_id",
-            "in": "path",
-            "required": true,
-            "description": "Workspace identifier",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "pause",
-                  "reason",
-                  "version"
-                ],
-                "properties": {
-                  "pause": {
-                    "type": "boolean",
-                    "description": "True to pause, false to unpause"
-                  },
-                  "reason": {
-                    "type": "string",
-                    "description": "Human-readable reason for the state change"
-                  },
-                  "version": {
-                    "type": "integer",
-                    "description": "Optimistic concurrency version \u2014 must match current workspace version"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Workspace pause state updated",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "required": [
-                    "workspace_id",
-                    "paused",
-                    "version",
-                    "request_id"
-                  ],
-                  "properties": {
-                    "workspace_id": {
-                      "type": "string",
-                      "format": "uuid"
-                    },
-                    "paused": {
-                      "type": "boolean"
-                    },
-                    "version": {
-                      "type": "integer"
-                    },
-                    "request_id": {
-                      "type": "string",
-                      "format": "uuid"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "default": {
-            "$ref": "#/components/responses/Error"
-          }
-        }
-      }
-    },
-    "/v1/workspaces/{workspace_id}:sync": {
-      "post": {
-        "operationId": "sync_specs",
-        "summary": "Sync specs from repo",
-        "description": "Reads PENDING_*.md spec files from the repository's default branch and upserts them into the control plane. Returns the count of newly synced specs.",
-        "tags": [
-          "Workspaces"
-        ],
-        "parameters": [
-          {
-            "name": "workspace_id",
-            "in": "path",
-            "required": true,
-            "description": "Workspace identifier",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Sync complete",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "required": [
-                    "synced_count",
-                    "total_pending",
-                    "specs",
-                    "request_id"
-                  ],
-                  "properties": {
-                    "synced_count": {
-                      "type": "integer",
-                      "description": "Number of specs synced in this request"
-                    },
-                    "total_pending": {
-                      "type": "integer",
-                      "description": "Total pending specs after sync"
-                    },
-                    "specs": {
-                      "type": "array",
-                      "items": {
-                        "$ref": "#/components/schemas/SpecSummary"
-                      },
-                      "description": "List of synced spec summaries"
-                    },
-                    "request_id": {
-                      "type": "string",
-                      "format": "uuid"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "default": {
-            "$ref": "#/components/responses/Error"
-          }
-        }
-      }
-    },
-    "/v1/workspaces/{workspace_id}/credentials/llm": {
-      "put": {
-        "operationId": "put_llm_credential",
-        "summary": "Set LLM credential",
-        "description": "Stores or replaces the BYOK LLM API key for a workspace. The key is encrypted at rest and never returned in API responses.",
-        "tags": [
-          "Credentials"
-        ],
-        "parameters": [
-          {
-            "name": "workspace_id",
-            "in": "path",
-            "required": true,
-            "description": "Workspace identifier",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "provider",
-                  "api_key"
-                ],
-                "properties": {
-                  "provider": {
-                    "type": "string",
-                    "description": "LLM provider name (e.g. openai, anthropic)"
-                  },
-                  "api_key": {
-                    "type": "string",
-                    "description": "API key for the provider \u2014 encrypted at rest, never echoed"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "204": {
-            "description": "Credential stored"
-          },
-          "default": {
-            "$ref": "#/components/responses/Error"
-          }
-        }
-      },
-      "get": {
-        "operationId": "get_llm_credential",
-        "summary": "Get LLM credential status",
-        "description": "Returns whether a BYOK LLM key is configured for the workspace and which provider it belongs to. Never returns the actual key.",
-        "tags": [
-          "Credentials"
-        ],
-        "parameters": [
-          {
-            "name": "workspace_id",
-            "in": "path",
-            "required": true,
-            "description": "Workspace identifier",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Credential status",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "required": [
-                    "provider",
-                    "has_key",
-                    "request_id"
-                  ],
-                  "properties": {
-                    "provider": {
-                      "type": "string",
-                      "description": "Configured LLM provider name"
-                    },
-                    "has_key": {
-                      "type": "boolean",
-                      "description": "True if an API key is stored"
-                    },
-                    "request_id": {
-                      "type": "string",
-                      "format": "uuid"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "default": {
-            "$ref": "#/components/responses/Error"
-          }
-        }
-      },
-      "delete": {
-        "operationId": "delete_llm_credential",
-        "summary": "Delete LLM credential",
-        "description": "Removes the stored BYOK LLM API key for the workspace. Future runs will fall back to platform-provided keys if available.",
-        "tags": [
-          "Credentials"
-        ],
-        "parameters": [
-          {
-            "name": "workspace_id",
-            "in": "path",
-            "required": true,
-            "description": "Workspace identifier",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": "Credential deleted"
-          },
-          "default": {
-            "$ref": "#/components/responses/Error"
-          }
-        }
-      }
-    },
-    "/v1/admin/platform-keys": {
-      "get": {
-        "operationId": "list_platform_keys",
-        "summary": "List platform LLM keys",
-        "description": "Lists all configured platform-wide LLM provider keys. These are shared keys that workspaces fall back to when no BYOK key is configured.",
-        "tags": [
-          "Admin"
-        ],
-        "responses": {
-          "200": {
-            "description": "Platform key list",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "required": [
-                    "keys",
-                    "request_id"
-                  ],
-                  "properties": {
-                    "keys": {
-                      "type": "array",
-                      "items": {
-                        "$ref": "#/components/schemas/PlatformKey"
-                      }
-                    },
-                    "request_id": {
-                      "type": "string",
-                      "format": "uuid"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "default": {
-            "$ref": "#/components/responses/Error"
-          }
-        }
-      },
-      "put": {
-        "operationId": "put_platform_key",
-        "summary": "Set a platform LLM key",
-        "description": "Configures a platform-wide LLM provider key by referencing a workspace that has a BYOK key stored. The platform key proxies through the referenced workspace's credential.",
-        "tags": [
-          "Admin"
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "provider",
-                  "source_workspace_id"
-                ],
-                "properties": {
-                  "provider": {
-                    "type": "string",
-                    "description": "LLM provider name (e.g. openai, anthropic)"
-                  },
-                  "source_workspace_id": {
-                    "type": "string",
-                    "format": "uuid",
-                    "description": "Workspace whose BYOK key to use as the platform key"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Platform key configured",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "required": [
-                    "provider",
-                    "source_workspace_id",
-                    "active",
-                    "request_id"
-                  ],
-                  "properties": {
-                    "provider": {
+                    "zombie_id": {
                       "type": "string"
                     },
-                    "source_workspace_id": {
-                      "type": "string",
-                      "format": "uuid"
+                    "key": {
+                      "type": "string"
                     },
-                    "active": {
-                      "type": "boolean"
+                    "category": {
+                      "type": "string"
                     },
                     "request_id": {
-                      "type": "string",
-                      "format": "uuid"
+                      "type": "string"
                     }
                   }
                 }
               }
             }
           },
-          "default": {
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
             "$ref": "#/components/responses/Error"
           }
         }
       }
     },
-    "/v1/admin/platform-keys/{provider}": {
-      "delete": {
-        "operationId": "delete_platform_key",
-        "summary": "Delete a platform LLM key",
-        "description": "Removes a platform-wide LLM provider key. Workspaces without BYOK keys will no longer be able to use this provider.",
+    "/v1/slack/callback": {
+      "get": {
+        "operationId": "slack_callback",
+        "summary": "Slack OAuth redirect target",
+        "description": "Exchanges the OAuth code for a team access token and persists team\u2192workspace binding. Validates the HMAC-signed state nonce.",
         "tags": [
-          "Admin"
+          "Slack"
         ],
         "parameters": [
           {
-            "name": "provider",
-            "in": "path",
+            "name": "code",
+            "in": "query",
             "required": true,
-            "description": "LLM provider name",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "required": true,
             "schema": {
               "type": "string"
             }
           }
         ],
         "responses": {
-          "200": {
-            "description": "Platform key deleted",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "required": [
-                    "provider",
-                    "active",
-                    "request_id"
-                  ],
-                  "properties": {
-                    "provider": {
-                      "type": "string"
-                    },
-                    "active": {
-                      "type": "boolean",
-                      "const": false
-                    },
-                    "request_id": {
-                      "type": "string",
-                      "format": "uuid"
-                    }
-                  }
-                }
-              }
-            }
+          "302": {
+            "description": "Redirect to the post-install page in the UseZombie dashboard."
           },
-          "default": {
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
             "$ref": "#/components/responses/Error"
           }
-        }
+        },
+        "security": []
       }
     },
-    "/v1/workspaces/{workspace_id}/billing/scale": {
+    "/v1/slack/events": {
       "post": {
-        "operationId": "scale_billing",
-        "summary": "Upgrade billing plan",
-        "description": "Upgrades a workspace's billing plan by linking a payment provider subscription. The workspace's plan tier and billing status are updated immediately.",
+        "operationId": "slack_events",
+        "summary": "Receive Slack Events API callbacks",
+        "description": "Entry point for Slack Events API deliveries (message, app_mention, etc.). Verified via the `X-Slack-Signature` HMAC header; all other auth headers are ignored. Returns 200 immediately to satisfy Slack's 3s ack budget.",
         "tags": [
-          "Billing"
-        ],
-        "parameters": [
-          {
-            "name": "workspace_id",
-            "in": "path",
-            "required": true,
-            "description": "Workspace identifier",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
+          "Slack"
         ],
         "requestBody": {
           "required": true,
@@ -1040,266 +1177,74 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": [
-                  "subscription_id"
-                ],
-                "properties": {
-                  "subscription_id": {
-                    "type": "string",
-                    "description": "Payment provider subscription identifier"
-                  }
-                }
+                "description": "Slack Events API payload (opaque)."
               }
             }
           }
         },
         "responses": {
           "200": {
-            "description": "Billing plan updated",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "required": [
-                    "workspace_id",
-                    "plan_tier",
-                    "billing_status",
-                    "plan_sku",
-                    "subscription_id",
-                    "request_id"
-                  ],
-                  "properties": {
-                    "workspace_id": {
-                      "type": "string",
-                      "format": "uuid"
-                    },
-                    "plan_tier": {
-                      "type": "string",
-                      "description": "New plan tier (e.g. free, pro, enterprise)"
-                    },
-                    "billing_status": {
-                      "type": "string",
-                      "description": "Current billing status"
-                    },
-                    "plan_sku": {
-                      "type": "string",
-                      "description": "Plan SKU identifier"
-                    },
-                    "subscription_id": {
-                      "type": "string",
-                      "description": "Payment provider subscription ID"
-                    },
-                    "request_id": {
-                      "type": "string",
-                      "format": "uuid"
-                    }
-                  }
-                }
-              }
-            }
+            "description": "Acknowledged."
           },
-          "default": {
+          "401": {
             "$ref": "#/components/responses/Error"
-          }
-        }
-      }
-    },
-    "/v1/workspaces/{workspace_id}/billing/events": {
-      "post": {
-        "operationId": "billing_event",
-        "summary": "Record a billing event",
-        "description": "Records a billing lifecycle event such as a payment failure or downgrade. The workspace's billing status is updated accordingly.",
-        "tags": [
-          "Billing"
-        ],
-        "parameters": [
-          {
-            "name": "workspace_id",
-            "in": "path",
-            "required": true,
-            "description": "Workspace identifier",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "event_type",
-                  "reason"
-                ],
-                "properties": {
-                  "event_type": {
-                    "type": "string",
-                    "enum": [
-                      "PAYMENT_FAILED",
-                      "DOWNGRADE_TO_FREE"
-                    ],
-                    "description": "Type of billing event"
-                  },
-                  "reason": {
-                    "type": "string",
-                    "description": "Human-readable reason for the event"
-                  }
-                }
-              }
-            }
           }
         },
-        "responses": {
-          "200": {
-            "description": "Billing event recorded",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "required": [
-                    "workspace_id",
-                    "billing_status",
-                    "request_id"
-                  ],
-                  "properties": {
-                    "workspace_id": {
-                      "type": "string",
-                      "format": "uuid"
-                    },
-                    "billing_status": {
-                      "type": "string",
-                      "description": "Updated billing status"
-                    },
-                    "request_id": {
-                      "type": "string",
-                      "format": "uuid"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "default": {
-            "$ref": "#/components/responses/Error"
-          }
-        }
+        "security": []
       }
     },
-    "/v1/workspaces/{workspace_id}/billing/summary": {
+    "/v1/slack/install": {
       "get": {
-        "operationId": "get_billing_summary",
-        "summary": "Get billing summary",
-        "description": "Returns a billing breakdown for a workspace: run counts grouped by lifecycle event (completed, non-billable, score-gated), plus total agent seconds and average score for gated runs. Filterable by period.",
+        "operationId": "slack_install",
+        "summary": "Begin Slack OAuth install",
+        "description": "Redirects the user to Slack's OAuth consent screen. Used by the workspace owner to install the UseZombie Slack app.",
         "tags": [
-          "Billing"
-        ],
-        "parameters": [
-          {
-            "name": "workspace_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          {
-            "name": "period",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "enum": [
-                "7d",
-                "30d",
-                "90d"
-              ],
-              "default": "30d"
-            },
-            "description": "Time period for the summary window"
-          }
+          "Slack"
         ],
         "responses": {
-          "200": {
-            "description": "Billing summary for the workspace",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "required": [
-                    "workspace_id",
-                    "period_days",
-                    "period_start_ms",
-                    "period_end_ms",
-                    "completed",
-                    "non_billable",
-                    "non_billable_score_gated",
-                    "total_runs",
-                    "request_id"
-                  ],
-                  "properties": {
-                    "workspace_id": {
-                      "type": "string"
-                    },
-                    "period_days": {
-                      "type": "integer"
-                    },
-                    "period_start_ms": {
-                      "type": "integer",
-                      "format": "int64"
-                    },
-                    "period_end_ms": {
-                      "type": "integer",
-                      "format": "int64"
-                    },
-                    "completed": {
-                      "type": "object",
-                      "properties": {
-                        "count": {
-                          "type": "integer"
-                        },
-                        "agent_seconds": {
-                          "type": "integer"
-                        }
-                      }
-                    },
-                    "non_billable": {
-                      "type": "object",
-                      "properties": {
-                        "count": {
-                          "type": "integer"
-                        }
-                      }
-                    },
-                    "non_billable_score_gated": {
-                      "type": "object",
-                      "properties": {
-                        "count": {
-                          "type": "integer"
-                        },
-                        "avg_score": {
-                          "type": "integer"
-                        }
-                      }
-                    },
-                    "total_runs": {
-                      "type": "integer"
-                    },
-                    "request_id": {
-                      "type": "string"
-                    }
+          "302": {
+            "description": "Redirect to Slack OAuth consent URL."
+          },
+          "500": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": []
+      }
+    },
+    "/v1/slack/interactions": {
+      "post": {
+        "operationId": "slack_interactions",
+        "summary": "Receive Slack interactivity callbacks",
+        "description": "Entry point for Slack Block Kit / shortcut / modal submissions. Verified via the `X-Slack-Signature` HMAC header. Form-encoded body per Slack's spec.",
+        "tags": [
+          "Slack"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "payload": {
+                    "type": "string",
+                    "description": "JSON-encoded interaction payload."
                   }
                 }
               }
             }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Acknowledged."
           },
-          "default": {
+          "401": {
             "$ref": "#/components/responses/Error"
           }
-        }
+        },
+        "security": []
       }
     },
     "/v1/webhooks/{zombie_id}": {
@@ -1444,6 +1389,1325 @@
             "BearerAuth": []
           }
         ]
+      }
+    },
+    "/v1/webhooks/{zombie_id}:approval": {
+      "post": {
+        "operationId": "approval_webhook",
+        "summary": "Resolve a zombie approval gate",
+        "description": "Called by a human (via email link or Slack action) to approve or reject a paused zombie. Body is HMAC-signed by the issuer; the signature is verified against the zombie's webhook secret.",
+        "tags": [
+          "Webhooks"
+        ],
+        "parameters": [
+          {
+            "name": "zombie_id",
+            "in": "path",
+            "required": true,
+            "description": "UUIDv7 of the zombie.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "decision",
+                  "signature"
+                ],
+                "properties": {
+                  "decision": {
+                    "type": "string",
+                    "enum": [
+                      "approved",
+                      "rejected"
+                    ]
+                  },
+                  "signature": {
+                    "type": "string",
+                    "description": "HMAC signature over the body."
+                  },
+                  "reason": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": []
+      }
+    },
+    "/v1/webhooks/{zombie_id}:grant-approval": {
+      "post": {
+        "operationId": "grant_approval_webhook",
+        "summary": "Approve or reject an integration grant request",
+        "description": "Human-in-the-loop approval webhook for integration grant requests (Slack, GitHub, etc.). HMAC-signed.",
+        "tags": [
+          "Webhooks"
+        ],
+        "parameters": [
+          {
+            "name": "zombie_id",
+            "in": "path",
+            "required": true,
+            "description": "UUIDv7 of the zombie.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "grant_id",
+                  "decision",
+                  "signature"
+                ],
+                "properties": {
+                  "grant_id": {
+                    "type": "string"
+                  },
+                  "decision": {
+                    "type": "string",
+                    "enum": [
+                      "approved",
+                      "rejected"
+                    ]
+                  },
+                  "signature": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": []
+      }
+    },
+    "/v1/workspaces": {
+      "post": {
+        "operationId": "create_workspace",
+        "summary": "Create a workspace",
+        "description": "Creates a new workspace linked to a GitHub repository. Returns the workspace ID and a GitHub App install URL if the app is not yet installed on the repo.",
+        "tags": [
+          "Workspaces"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "repo_url"
+                ],
+                "properties": {
+                  "repo_url": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "Full GitHub repository URL (e.g. https://github.com/org/repo)"
+                  },
+                  "default_branch": {
+                    "type": "string",
+                    "description": "Default branch name, defaults to 'main' if omitted"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Workspace created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "workspace_id",
+                    "repo_url",
+                    "default_branch",
+                    "install_url",
+                    "request_id"
+                  ],
+                  "properties": {
+                    "workspace_id": {
+                      "type": "string",
+                      "format": "uuid",
+                      "description": "Unique workspace identifier"
+                    },
+                    "repo_url": {
+                      "type": "string",
+                      "format": "uri",
+                      "description": "Repository URL"
+                    },
+                    "default_branch": {
+                      "type": "string",
+                      "description": "Default branch for the workspace"
+                    },
+                    "install_url": {
+                      "type": "string",
+                      "format": "uri",
+                      "description": "GitHub App installation URL \u2014 direct user here if the app is not yet installed"
+                    },
+                    "request_id": {
+                      "type": "string",
+                      "format": "uuid",
+                      "description": "Unique request identifier"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/workspaces/{workspace_id}/activity": {
+      "get": {
+        "operationId": "list_workspace_activity",
+        "summary": "List workspace activity feed",
+        "description": "Workspace-wide merged activity stream across every zombie. Cursor-paginated newest-first. Backs the dashboard Recent Activity feed.",
+        "tags": [
+          "Activity"
+        ],
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            },
+            "description": "Page size. Capped at 100."
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Opaque cursor returned by a previous call. Omit for the first page."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Activity page (newest-first)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "events"
+                  ],
+                  "properties": {
+                    "events": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "zombie_id",
+                          "workspace_id",
+                          "event_type",
+                          "detail",
+                          "created_at"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "zombie_id": {
+                            "type": "string"
+                          },
+                          "workspace_id": {
+                            "type": "string"
+                          },
+                          "event_type": {
+                            "type": "string"
+                          },
+                          "detail": {
+                            "type": "string"
+                          },
+                          "created_at": {
+                            "type": "integer",
+                            "format": "int64"
+                          }
+                        }
+                      }
+                    },
+                    "next_cursor": {
+                      "type": "string",
+                      "nullable": true,
+                      "description": "Cursor for the next page. Null when the feed is exhausted."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/workspaces/{workspace_id}/billing/events": {
+      "post": {
+        "operationId": "billing_event",
+        "summary": "Record a billing event",
+        "description": "Records a billing lifecycle event such as a payment failure or downgrade. The workspace's billing status is updated accordingly.",
+        "tags": [
+          "Billing"
+        ],
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "description": "Workspace identifier",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "event_type",
+                  "reason"
+                ],
+                "properties": {
+                  "event_type": {
+                    "type": "string",
+                    "enum": [
+                      "PAYMENT_FAILED",
+                      "DOWNGRADE_TO_FREE"
+                    ],
+                    "description": "Type of billing event"
+                  },
+                  "reason": {
+                    "type": "string",
+                    "description": "Human-readable reason for the event"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Billing event recorded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "workspace_id",
+                    "billing_status",
+                    "request_id"
+                  ],
+                  "properties": {
+                    "workspace_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "billing_status": {
+                      "type": "string",
+                      "description": "Updated billing status"
+                    },
+                    "request_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/workspaces/{workspace_id}/billing/scale": {
+      "post": {
+        "operationId": "scale_billing",
+        "summary": "Upgrade billing plan",
+        "description": "Upgrades a workspace's billing plan by linking a payment provider subscription. The workspace's plan tier and billing status are updated immediately.",
+        "tags": [
+          "Billing"
+        ],
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "description": "Workspace identifier",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "subscription_id"
+                ],
+                "properties": {
+                  "subscription_id": {
+                    "type": "string",
+                    "description": "Payment provider subscription identifier"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Billing plan updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "workspace_id",
+                    "plan_tier",
+                    "billing_status",
+                    "plan_sku",
+                    "subscription_id",
+                    "request_id"
+                  ],
+                  "properties": {
+                    "workspace_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "plan_tier": {
+                      "type": "string",
+                      "description": "New plan tier (e.g. free, pro, enterprise)"
+                    },
+                    "billing_status": {
+                      "type": "string",
+                      "description": "Current billing status"
+                    },
+                    "plan_sku": {
+                      "type": "string",
+                      "description": "Plan SKU identifier"
+                    },
+                    "subscription_id": {
+                      "type": "string",
+                      "description": "Payment provider subscription ID"
+                    },
+                    "request_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/workspaces/{workspace_id}/billing/summary": {
+      "get": {
+        "operationId": "get_billing_summary",
+        "summary": "Get billing summary",
+        "description": "Returns a billing breakdown for a workspace: run counts grouped by lifecycle event (completed, non-billable, score-gated), plus total agent seconds and average score for gated runs. Filterable by period.",
+        "tags": [
+          "Billing"
+        ],
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "period",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "7d",
+                "30d",
+                "90d"
+              ],
+              "default": "30d"
+            },
+            "description": "Time period for the summary window"
+          },
+          {
+            "name": "period_days",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "enum": [
+                7,
+                30,
+                90
+              ],
+              "default": 30
+            },
+            "description": "Integer form of the summary window. Takes precedence over the legacy `period` param."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Billing summary for the workspace",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "workspace_id",
+                    "period_days",
+                    "period_start_ms",
+                    "period_end_ms",
+                    "completed",
+                    "non_billable",
+                    "non_billable_score_gated",
+                    "total_runs",
+                    "request_id",
+                    "total_cents"
+                  ],
+                  "properties": {
+                    "workspace_id": {
+                      "type": "string"
+                    },
+                    "period_days": {
+                      "type": "integer"
+                    },
+                    "period_start_ms": {
+                      "type": "integer",
+                      "format": "int64"
+                    },
+                    "period_end_ms": {
+                      "type": "integer",
+                      "format": "int64"
+                    },
+                    "completed": {
+                      "type": "object",
+                      "properties": {
+                        "count": {
+                          "type": "integer"
+                        },
+                        "agent_seconds": {
+                          "type": "integer"
+                        }
+                      }
+                    },
+                    "non_billable": {
+                      "type": "object",
+                      "properties": {
+                        "count": {
+                          "type": "integer"
+                        }
+                      }
+                    },
+                    "non_billable_score_gated": {
+                      "type": "object",
+                      "properties": {
+                        "count": {
+                          "type": "integer"
+                        },
+                        "avg_score": {
+                          "type": "integer"
+                        }
+                      }
+                    },
+                    "total_runs": {
+                      "type": "integer"
+                    },
+                    "total_cents": {
+                      "type": "integer",
+                      "format": "int64",
+                      "description": "Sum of credit_deducted_cents across the window."
+                    },
+                    "request_id": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/workspaces/{workspace_id}/credentials": {
+      "get": {
+        "operationId": "list_workspace_credentials",
+        "summary": "List credentials stored for a workspace",
+        "description": "Returns credential names. Values are never returned \u2014 they live encrypted in `vault.secrets`.",
+        "tags": [
+          "Credentials"
+        ],
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "description": "UUIDv7 of the workspace.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "credentials": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/CredentialSummary"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "store_workspace_credential",
+        "summary": "Store a credential in the workspace vault",
+        "description": "Envelope-encrypted with the KEK (master key v1) and persisted to `vault.secrets`. The raw value is never stored unencrypted and never returned.",
+        "tags": [
+          "Credentials"
+        ],
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "description": "UUIDv7 of the workspace.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name",
+                  "value"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "maxLength": 64
+                  },
+                  "value": {
+                    "type": "string",
+                    "maxLength": 4096
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/workspaces/{workspace_id}/credentials/llm": {
+      "put": {
+        "operationId": "put_llm_credential",
+        "summary": "Set LLM credential",
+        "description": "Stores or replaces the BYOK LLM API key for a workspace. The key is encrypted at rest and never returned in API responses.",
+        "tags": [
+          "Credentials"
+        ],
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "description": "Workspace identifier",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "provider",
+                  "api_key"
+                ],
+                "properties": {
+                  "provider": {
+                    "type": "string",
+                    "description": "LLM provider name (e.g. openai, anthropic)"
+                  },
+                  "api_key": {
+                    "type": "string",
+                    "description": "API key for the provider \u2014 encrypted at rest, never echoed"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Credential stored"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "get": {
+        "operationId": "get_llm_credential",
+        "summary": "Get LLM credential status",
+        "description": "Returns whether a BYOK LLM key is configured for the workspace and which provider it belongs to. Never returns the actual key.",
+        "tags": [
+          "Credentials"
+        ],
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "description": "Workspace identifier",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Credential status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "provider",
+                    "has_key",
+                    "request_id"
+                  ],
+                  "properties": {
+                    "provider": {
+                      "type": "string",
+                      "description": "Configured LLM provider name"
+                    },
+                    "has_key": {
+                      "type": "boolean",
+                      "description": "True if an API key is stored"
+                    },
+                    "request_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "delete_llm_credential",
+        "summary": "Delete LLM credential",
+        "description": "Removes the stored BYOK LLM API key for the workspace. Future runs will fall back to platform-provided keys if available.",
+        "tags": [
+          "Credentials"
+        ],
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "description": "Workspace identifier",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Credential deleted"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/workspaces/{workspace_id}/external-agents": {
+      "get": {
+        "operationId": "list_external_agents",
+        "summary": "List external agents in a workspace",
+        "description": "Returns agent metadata only \u2014 never returns `key_hash`.",
+        "tags": [
+          "External Agents"
+        ],
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "description": "UUIDv7 of the workspace.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "total"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/ExternalAgent"
+                      }
+                    },
+                    "total": {
+                      "type": "integer",
+                      "description": "Count of items in this response (not total across pages)."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "create_external_agent",
+        "summary": "Issue an API key for an external agent",
+        "description": "Creates a new `zmb_` API key bound to a specific zombie. **The raw key is returned once.** Only the SHA-256 hash is persisted \u2014 the key cannot be retrieved again.",
+        "tags": [
+          "External Agents"
+        ],
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "description": "UUIDv7 of the workspace.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "zombie_id",
+                  "name"
+                ],
+                "properties": {
+                  "zombie_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "name": {
+                    "type": "string",
+                    "maxLength": 64
+                  },
+                  "description": {
+                    "type": "string",
+                    "maxLength": 256
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "agent_id",
+                    "key"
+                  ],
+                  "properties": {
+                    "agent_id": {
+                      "type": "string"
+                    },
+                    "workspace_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "zombie_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "key": {
+                      "type": "string",
+                      "description": "Raw `zmb_` API key. Shown once \u2014 store securely."
+                    },
+                    "created_at": {
+                      "type": "integer",
+                      "format": "int64"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/workspaces/{workspace_id}/external-agents/{agent_id}": {
+      "delete": {
+        "operationId": "delete_external_agent",
+        "summary": "Revoke an external-agent API key",
+        "description": "Revokes the key immediately. Subsequent requests with the key receive 401.",
+        "tags": [
+          "External Agents"
+        ],
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "description": "UUIDv7 of the workspace.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "agent_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/workspaces/{workspace_id}/scoring/config": {
+      "post": {
+        "operationId": "set_workspace_scoring_config",
+        "summary": "Set per-workspace scoring configuration",
+        "description": "Persists the scoring thresholds and weights for run evaluation in this workspace.",
+        "tags": [
+          "Scoring"
+        ],
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "description": "UUIDv7 of the workspace.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "scoring_context_max_tokens"
+                ],
+                "properties": {
+                  "scoring_context_max_tokens": {
+                    "type": "integer",
+                    "format": "int32",
+                    "minimum": 1,
+                    "description": "Maximum token budget for the scoring prompt context."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Scoring config applied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "workspace_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "scoring_context_max_tokens": {
+                      "type": "integer",
+                      "format": "int32"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/workspaces/{workspace_id}/spec/preview": {
+      "post": {
+        "operationId": "spec_preview",
+        "summary": "Agent relay: preview a spec",
+        "description": "Internal endpoint used by the agent relay to preview a spec before execution. Request/response shapes are version-coupled to the relay.",
+        "tags": [
+          "Spec"
+        ],
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "description": "UUIDv7 of the workspace.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "description": "Relay-specific request payload."
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "Preview payload."
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/workspaces/{workspace_id}/spec/template": {
+      "post": {
+        "operationId": "spec_template",
+        "summary": "Agent relay: fetch a spec template",
+        "description": "Internal endpoint used by the agent relay to materialise a spec template for a given workspace. Request/response shapes are version-coupled to the relay.",
+        "tags": [
+          "Spec"
+        ],
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "description": "UUIDv7 of the workspace.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "description": "Relay-specific request payload."
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "Rendered template payload."
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
       }
     },
     "/v1/workspaces/{workspace_id}/zombies": {
@@ -1763,20 +3027,19 @@
         }
       }
     },
-    "/v1/workspaces/{workspace_id}/zombies/{zombie_id}:steer": {
-      "post": {
-        "operationId": "steer_zombie",
-        "summary": "Steer a running zombie",
-        "description": "Send a message to a running zombie to nudge it at the next gate checkpoint. Queued (next checkpoint) or instant (IPC delivery) per body.",
+    "/v1/workspaces/{workspace_id}/zombies/{zombie_id}/billing/summary": {
+      "get": {
+        "operationId": "get_zombie_billing_summary",
+        "summary": "Get billing summary for a single zombie",
+        "description": "Per-zombie slice of the workspace billing summary. Response schema matches the workspace-scope endpoint plus a `zombie_id` field. SDK shape: `workspaces.billing.summary(ws)` vs `workspaces.zombies.billing.summary(ws, zombie)`.",
         "tags": [
-          "Zombies"
+          "Billing"
         ],
         "parameters": [
           {
             "name": "workspace_id",
             "in": "path",
             "required": true,
-            "description": "UUIDv7 of the workspace.",
             "schema": {
               "type": "string",
               "format": "uuid"
@@ -1786,775 +3049,111 @@
             "name": "zombie_id",
             "in": "path",
             "required": true,
-            "description": "UUIDv7 of the zombie.",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "message"
-                ],
-                "properties": {
-                  "message": {
-                    "type": "string"
-                  },
-                  "mode": {
-                    "type": "string",
-                    "enum": [
-                      "queued",
-                      "instant"
-                    ],
-                    "default": "queued"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "202": {
-            "description": "Accepted",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "status": {
-                      "type": "string"
-                    },
-                    "event_id": {
-                      "type": "string"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "400": {
-            "$ref": "#/components/responses/Error"
-          },
-          "401": {
-            "$ref": "#/components/responses/Error"
-          },
-          "403": {
-            "$ref": "#/components/responses/Error"
-          },
-          "404": {
-            "$ref": "#/components/responses/Error"
-          }
-        }
-      }
-    },
-    "/v1/workspaces/{workspace_id}/zombies/{zombie_id}/telemetry": {
-      "get": {
-        "operationId": "get_zombie_telemetry",
-        "summary": "Get per-zombie telemetry",
-        "description": "Returns execution telemetry for a specific zombie \u2014 last activity, event count, budget consumed, error counts.",
-        "tags": [
-          "Telemetry"
-        ],
-        "parameters": [
-          {
-            "name": "workspace_id",
-            "in": "path",
-            "required": true,
-            "description": "UUIDv7 of the workspace.",
             "schema": {
               "type": "string",
               "format": "uuid"
             }
           },
           {
-            "name": "zombie_id",
-            "in": "path",
-            "required": true,
-            "description": "UUIDv7 of the zombie.",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "description": "Telemetry payload (shape evolves with operator needs)."
-                }
-              }
-            }
-          },
-          "400": {
-            "$ref": "#/components/responses/Error"
-          },
-          "401": {
-            "$ref": "#/components/responses/Error"
-          },
-          "403": {
-            "$ref": "#/components/responses/Error"
-          },
-          "404": {
-            "$ref": "#/components/responses/Error"
-          }
-        }
-      }
-    },
-    "/v1/workspaces/{workspace_id}/credentials": {
-      "get": {
-        "operationId": "list_workspace_credentials",
-        "summary": "List credentials stored for a workspace",
-        "description": "Returns credential names. Values are never returned \u2014 they live encrypted in `vault.secrets`.",
-        "tags": [
-          "Credentials"
-        ],
-        "parameters": [
-          {
-            "name": "workspace_id",
-            "in": "path",
-            "required": true,
-            "description": "UUIDv7 of the workspace.",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "credentials": {
-                      "type": "array",
-                      "items": {
-                        "$ref": "#/components/schemas/CredentialSummary"
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "400": {
-            "$ref": "#/components/responses/Error"
-          },
-          "401": {
-            "$ref": "#/components/responses/Error"
-          },
-          "403": {
-            "$ref": "#/components/responses/Error"
-          },
-          "404": {
-            "$ref": "#/components/responses/Error"
-          }
-        }
-      },
-      "post": {
-        "operationId": "store_workspace_credential",
-        "summary": "Store a credential in the workspace vault",
-        "description": "Envelope-encrypted with the KEK (master key v1) and persisted to `vault.secrets`. The raw value is never stored unencrypted and never returned.",
-        "tags": [
-          "Credentials"
-        ],
-        "parameters": [
-          {
-            "name": "workspace_id",
-            "in": "path",
-            "required": true,
-            "description": "UUIDv7 of the workspace.",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "name",
-                  "value"
-                ],
-                "properties": {
-                  "name": {
-                    "type": "string",
-                    "maxLength": 64
-                  },
-                  "value": {
-                    "type": "string",
-                    "maxLength": 4096
-                  }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "Created",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "name": {
-                      "type": "string"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "400": {
-            "$ref": "#/components/responses/Error"
-          },
-          "401": {
-            "$ref": "#/components/responses/Error"
-          },
-          "403": {
-            "$ref": "#/components/responses/Error"
-          },
-          "404": {
-            "$ref": "#/components/responses/Error"
-          }
-        }
-      }
-    },
-    "/v1/memory/store": {
-      "post": {
-        "operationId": "memory_store",
-        "summary": "Store or upsert a memory entry",
-        "description": "Writes a `(key, content, category)` entry scoped to a zombie instance. Idempotent upsert on `(key, instance_id)`.",
-        "tags": [
-          "Memory"
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "zombie_id",
-                  "key",
-                  "content"
-                ],
-                "properties": {
-                  "zombie_id": {
-                    "type": "string",
-                    "format": "uuid"
-                  },
-                  "key": {
-                    "type": "string",
-                    "maxLength": 255
-                  },
-                  "content": {
-                    "type": "string",
-                    "maxLength": 16384
-                  },
-                  "category": {
-                    "type": "string",
-                    "default": "core"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "Created",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "zombie_id": {
-                      "type": "string"
-                    },
-                    "key": {
-                      "type": "string"
-                    },
-                    "category": {
-                      "type": "string"
-                    },
-                    "request_id": {
-                      "type": "string"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "400": {
-            "$ref": "#/components/responses/Error"
-          },
-          "401": {
-            "$ref": "#/components/responses/Error"
-          },
-          "403": {
-            "$ref": "#/components/responses/Error"
-          },
-          "404": {
-            "$ref": "#/components/responses/Error"
-          }
-        }
-      }
-    },
-    "/v1/memory/recall": {
-      "get": {
-        "operationId": "memory_recall",
-        "summary": "Recall memory entries matching a query",
-        "description": "Case-insensitive LIKE search across both `key` and `content`. LIKE metacharacters in `query` are escaped \u2014 a query of `%` does NOT return every entry.",
-        "tags": [
-          "Memory"
-        ],
-        "parameters": [
-          {
-            "name": "zombie_id",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          {
-            "name": "query",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "limit",
+            "name": "period_days",
             "in": "query",
             "required": false,
             "schema": {
               "type": "integer",
-              "default": 20,
-              "minimum": 1,
-              "maximum": 100
-            }
+              "enum": [
+                7,
+                30,
+                90
+              ],
+              "default": 30
+            },
+            "description": "Time window in days. Matches the workspace-scope billing summary endpoint."
           }
         ],
         "responses": {
           "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "zombie_id": {
-                      "type": "string"
-                    },
-                    "items": {
-                      "type": "array",
-                      "items": {
-                        "$ref": "#/components/schemas/MemoryEntry"
-                      }
-                    },
-                    "total": {
-                      "type": "integer"
-                    },
-                    "request_id": {
-                      "type": "string"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "400": {
-            "$ref": "#/components/responses/Error"
-          },
-          "401": {
-            "$ref": "#/components/responses/Error"
-          },
-          "403": {
-            "$ref": "#/components/responses/Error"
-          },
-          "404": {
-            "$ref": "#/components/responses/Error"
-          }
-        }
-      }
-    },
-    "/v1/memory/list": {
-      "get": {
-        "operationId": "memory_list",
-        "summary": "List recent memory entries",
-        "description": "Returns most-recent entries, optionally filtered by category.",
-        "tags": [
-          "Memory"
-        ],
-        "parameters": [
-          {
-            "name": "zombie_id",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          {
-            "name": "category",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "limit",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "default": 100,
-              "minimum": 1,
-              "maximum": 100
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "zombie_id": {
-                      "type": "string"
-                    },
-                    "items": {
-                      "type": "array",
-                      "items": {
-                        "$ref": "#/components/schemas/MemoryEntry"
-                      }
-                    },
-                    "total": {
-                      "type": "integer"
-                    },
-                    "request_id": {
-                      "type": "string"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "400": {
-            "$ref": "#/components/responses/Error"
-          },
-          "401": {
-            "$ref": "#/components/responses/Error"
-          },
-          "403": {
-            "$ref": "#/components/responses/Error"
-          },
-          "404": {
-            "$ref": "#/components/responses/Error"
-          }
-        }
-      }
-    },
-    "/v1/memory/forget": {
-      "post": {
-        "operationId": "memory_forget",
-        "summary": "Forget a memory entry by key",
-        "description": "Deletes the entry with the given `key` under the zombie instance. Returns `{ deleted: false }` if no match \u2014 never errors on miss.",
-        "tags": [
-          "Memory"
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "zombie_id",
-                  "key"
-                ],
-                "properties": {
-                  "zombie_id": {
-                    "type": "string",
-                    "format": "uuid"
-                  },
-                  "key": {
-                    "type": "string",
-                    "maxLength": 255
-                  }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "zombie_id": {
-                      "type": "string"
-                    },
-                    "key": {
-                      "type": "string"
-                    },
-                    "deleted": {
-                      "type": "boolean"
-                    },
-                    "request_id": {
-                      "type": "string"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "400": {
-            "$ref": "#/components/responses/Error"
-          },
-          "401": {
-            "$ref": "#/components/responses/Error"
-          },
-          "403": {
-            "$ref": "#/components/responses/Error"
-          },
-          "404": {
-            "$ref": "#/components/responses/Error"
-          }
-        }
-      }
-    },
-    "/v1/execute": {
-      "post": {
-        "operationId": "execute_tool",
-        "summary": "Execute a tool on behalf of an external agent",
-        "description": "Synchronous tool execution proxy. The external agent calls this endpoint with its API key (bearer), names a tool, and receives the tool's result inline. Used by LangGraph / CrewAI / Composio integrations.",
-        "tags": [
-          "Execute"
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "target",
-                  "method",
-                  "credential_ref"
-                ],
-                "properties": {
-                  "target": {
-                    "type": "string",
-                    "format": "uri",
-                    "description": "Target URL for the outbound call."
-                  },
-                  "method": {
-                    "type": "string",
-                    "enum": [
-                      "GET",
-                      "POST",
-                      "PUT",
-                      "PATCH",
-                      "DELETE"
-                    ],
-                    "description": "HTTP method to use against the target."
-                  },
-                  "credential_ref": {
-                    "type": "string",
-                    "description": "Named credential from the workspace vault to inject on the outbound request."
-                  },
-                  "body": {
-                    "type": "string",
-                    "nullable": true,
-                    "description": "Request body to forward to the target. Null for GET/DELETE."
-                  }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Tool executed; upstream status and body are returned plus UseZombie metadata.",
+            "description": "Billing summary for the zombie",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "object",
                   "required": [
-                    "status",
-                    "body",
-                    "usezombie"
+                    "workspace_id",
+                    "zombie_id",
+                    "period_days",
+                    "period_start_ms",
+                    "period_end_ms",
+                    "completed",
+                    "non_billable",
+                    "non_billable_score_gated",
+                    "total_runs",
+                    "total_cents",
+                    "request_id"
                   ],
                   "properties": {
-                    "status": {
-                      "type": "integer",
-                      "description": "HTTP status returned by the upstream target."
-                    },
-                    "body": {
-                      "type": "string",
-                      "description": "Response body returned by the upstream target (as string)."
-                    },
-                    "usezombie": {
-                      "type": "object",
-                      "required": [
-                        "action_id",
-                        "firewall_decision",
-                        "credential_injected",
-                        "approval_required"
-                      ],
-                      "properties": {
-                        "action_id": {
-                          "type": "string"
-                        },
-                        "firewall_decision": {
-                          "type": "string",
-                          "enum": [
-                            "allow",
-                            "deny",
-                            "approval_required"
-                          ]
-                        },
-                        "credential_injected": {
-                          "type": "boolean"
-                        },
-                        "approval_required": {
-                          "type": "boolean"
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "400": {
-            "$ref": "#/components/responses/Error"
-          },
-          "401": {
-            "$ref": "#/components/responses/Error"
-          },
-          "403": {
-            "$ref": "#/components/responses/Error"
-          },
-          "404": {
-            "$ref": "#/components/responses/Error"
-          }
-        }
-      }
-    },
-    "/v1/workspaces/{workspace_id}/zombies/{zombie_id}/integration-requests": {
-      "post": {
-        "operationId": "request_integration_grant",
-        "summary": "Request a new integration grant",
-        "description": "Called by a zombie (or on its behalf) to request permission to use a third-party integration (e.g. Slack, GitHub). Creates a pending grant that a human approves via the grant-approval webhook.",
-        "tags": [
-          "Integration Grants"
-        ],
-        "parameters": [
-          {
-            "name": "workspace_id",
-            "in": "path",
-            "required": true,
-            "description": "UUIDv7 of the workspace.",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          {
-            "name": "zombie_id",
-            "in": "path",
-            "required": true,
-            "description": "UUIDv7 of the zombie.",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "service",
-                  "reason"
-                ],
-                "properties": {
-                  "service": {
-                    "type": "string"
-                  },
-                  "reason": {
-                    "type": "string"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "Created",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "grant_id": {
+                    "workspace_id": {
                       "type": "string"
                     },
-                    "status": {
-                      "type": "string",
-                      "enum": [
-                        "pending"
-                      ]
+                    "zombie_id": {
+                      "type": "string"
+                    },
+                    "period_days": {
+                      "type": "integer"
+                    },
+                    "period_start_ms": {
+                      "type": "integer",
+                      "format": "int64"
+                    },
+                    "period_end_ms": {
+                      "type": "integer",
+                      "format": "int64"
+                    },
+                    "completed": {
+                      "type": "object",
+                      "properties": {
+                        "count": {
+                          "type": "integer"
+                        },
+                        "agent_seconds": {
+                          "type": "integer"
+                        }
+                      }
+                    },
+                    "non_billable": {
+                      "type": "object",
+                      "properties": {
+                        "count": {
+                          "type": "integer"
+                        }
+                      }
+                    },
+                    "non_billable_score_gated": {
+                      "type": "object",
+                      "properties": {
+                        "count": {
+                          "type": "integer"
+                        },
+                        "avg_score": {
+                          "type": "integer"
+                        }
+                      }
+                    },
+                    "total_runs": {
+                      "type": "integer"
+                    },
+                    "total_cents": {
+                      "type": "integer",
+                      "format": "int64"
+                    },
+                    "request_id": {
+                      "type": "string"
                     }
                   }
                 }
               }
             }
           },
-          "400": {
-            "$ref": "#/components/responses/Error"
-          },
-          "401": {
-            "$ref": "#/components/responses/Error"
-          },
-          "403": {
-            "$ref": "#/components/responses/Error"
-          },
-          "404": {
+          "default": {
             "$ref": "#/components/responses/Error"
           }
         }
@@ -2690,13 +3289,13 @@
         }
       }
     },
-    "/v1/workspaces/{workspace_id}/external-agents": {
-      "get": {
-        "operationId": "list_external_agents",
-        "summary": "List external agents in a workspace",
-        "description": "Returns agent metadata only \u2014 never returns `key_hash`.",
+    "/v1/workspaces/{workspace_id}/zombies/{zombie_id}/integration-requests": {
+      "post": {
+        "operationId": "request_integration_grant",
+        "summary": "Request a new integration grant",
+        "description": "Called by a zombie (or on its behalf) to request permission to use a third-party integration (e.g. Slack, GitHub). Creates a pending grant that a human approves via the grant-approval webhook.",
         "tags": [
-          "External Agents"
+          "Integration Grants"
         ],
         "parameters": [
           {
@@ -2708,62 +3307,12 @@
               "type": "string",
               "format": "uuid"
             }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "required": [
-                    "items",
-                    "total"
-                  ],
-                  "properties": {
-                    "items": {
-                      "type": "array",
-                      "items": {
-                        "$ref": "#/components/schemas/ExternalAgent"
-                      }
-                    },
-                    "total": {
-                      "type": "integer",
-                      "description": "Count of items in this response (not total across pages)."
-                    }
-                  }
-                }
-              }
-            }
           },
-          "400": {
-            "$ref": "#/components/responses/Error"
-          },
-          "401": {
-            "$ref": "#/components/responses/Error"
-          },
-          "403": {
-            "$ref": "#/components/responses/Error"
-          },
-          "404": {
-            "$ref": "#/components/responses/Error"
-          }
-        }
-      },
-      "post": {
-        "operationId": "create_external_agent",
-        "summary": "Issue an API key for an external agent",
-        "description": "Creates a new `zmb_` API key bound to a specific zombie. **The raw key is returned once.** Only the SHA-256 hash is persisted \u2014 the key cannot be retrieved again.",
-        "tags": [
-          "External Agents"
-        ],
-        "parameters": [
           {
-            "name": "workspace_id",
+            "name": "zombie_id",
             "in": "path",
             "required": true,
-            "description": "UUIDv7 of the workspace.",
+            "description": "UUIDv7 of the zombie.",
             "schema": {
               "type": "string",
               "format": "uuid"
@@ -2777,21 +3326,15 @@
               "schema": {
                 "type": "object",
                 "required": [
-                  "zombie_id",
-                  "name"
+                  "service",
+                  "reason"
                 ],
                 "properties": {
-                  "zombie_id": {
-                    "type": "string",
-                    "format": "uuid"
+                  "service": {
+                    "type": "string"
                   },
-                  "name": {
-                    "type": "string",
-                    "maxLength": 64
-                  },
-                  "description": {
-                    "type": "string",
-                    "maxLength": 256
+                  "reason": {
+                    "type": "string"
                   }
                 }
               }
@@ -2805,35 +3348,15 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": [
-                    "agent_id",
-                    "key"
-                  ],
                   "properties": {
-                    "agent_id": {
+                    "grant_id": {
                       "type": "string"
                     },
-                    "workspace_id": {
+                    "status": {
                       "type": "string",
-                      "format": "uuid"
-                    },
-                    "zombie_id": {
-                      "type": "string",
-                      "format": "uuid"
-                    },
-                    "name": {
-                      "type": "string"
-                    },
-                    "key": {
-                      "type": "string",
-                      "description": "Raw `zmb_` API key. Shown once \u2014 store securely."
-                    },
-                    "created_at": {
-                      "type": "integer",
-                      "format": "int64"
-                    },
-                    "message": {
-                      "type": "string"
+                      "enum": [
+                        "pending"
+                      ]
                     }
                   }
                 }
@@ -2855,388 +3378,14 @@
         }
       }
     },
-    "/v1/workspaces/{workspace_id}/external-agents/{agent_id}": {
-      "delete": {
-        "operationId": "delete_external_agent",
-        "summary": "Revoke an external-agent API key",
-        "description": "Revokes the key immediately. Subsequent requests with the key receive 401.",
-        "tags": [
-          "External Agents"
-        ],
-        "parameters": [
-          {
-            "name": "workspace_id",
-            "in": "path",
-            "required": true,
-            "description": "UUIDv7 of the workspace.",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          {
-            "name": "agent_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": "No Content"
-          },
-          "400": {
-            "$ref": "#/components/responses/Error"
-          },
-          "401": {
-            "$ref": "#/components/responses/Error"
-          },
-          "403": {
-            "$ref": "#/components/responses/Error"
-          },
-          "404": {
-            "$ref": "#/components/responses/Error"
-          }
-        }
-      }
-    },
-    "/v1/slack/install": {
+    "/v1/workspaces/{workspace_id}/zombies/{zombie_id}/telemetry": {
       "get": {
-        "operationId": "slack_install",
-        "summary": "Begin Slack OAuth install",
-        "description": "Redirects the user to Slack's OAuth consent screen. Used by the workspace owner to install the UseZombie Slack app.",
-        "tags": [
-          "Slack"
-        ],
-        "responses": {
-          "302": {
-            "description": "Redirect to Slack OAuth consent URL."
-          },
-          "500": {
-            "$ref": "#/components/responses/Error"
-          }
-        },
-        "security": []
-      }
-    },
-    "/v1/slack/callback": {
-      "get": {
-        "operationId": "slack_callback",
-        "summary": "Slack OAuth redirect target",
-        "description": "Exchanges the OAuth code for a team access token and persists team\u2192workspace binding. Validates the HMAC-signed state nonce.",
-        "tags": [
-          "Slack"
-        ],
-        "parameters": [
-          {
-            "name": "code",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "state",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "302": {
-            "description": "Redirect to the post-install page in the UseZombie dashboard."
-          },
-          "400": {
-            "$ref": "#/components/responses/Error"
-          },
-          "401": {
-            "$ref": "#/components/responses/Error"
-          }
-        },
-        "security": []
-      }
-    },
-    "/v1/slack/events": {
-      "post": {
-        "operationId": "slack_events",
-        "summary": "Receive Slack Events API callbacks",
-        "description": "Entry point for Slack Events API deliveries (message, app_mention, etc.). Verified via the `X-Slack-Signature` HMAC header; all other auth headers are ignored. Returns 200 immediately to satisfy Slack's 3s ack budget.",
-        "tags": [
-          "Slack"
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "description": "Slack Events API payload (opaque)."
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Acknowledged."
-          },
-          "401": {
-            "$ref": "#/components/responses/Error"
-          }
-        },
-        "security": []
-      }
-    },
-    "/v1/slack/interactions": {
-      "post": {
-        "operationId": "slack_interactions",
-        "summary": "Receive Slack interactivity callbacks",
-        "description": "Entry point for Slack Block Kit / shortcut / modal submissions. Verified via the `X-Slack-Signature` HMAC header. Form-encoded body per Slack's spec.",
-        "tags": [
-          "Slack"
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/x-www-form-urlencoded": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "payload": {
-                    "type": "string",
-                    "description": "JSON-encoded interaction payload."
-                  }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Acknowledged."
-          },
-          "401": {
-            "$ref": "#/components/responses/Error"
-          }
-        },
-        "security": []
-      }
-    },
-    "/v1/webhooks/{zombie_id}:approval": {
-      "post": {
-        "operationId": "approval_webhook",
-        "summary": "Resolve a zombie approval gate",
-        "description": "Called by a human (via email link or Slack action) to approve or reject a paused zombie. Body is HMAC-signed by the issuer; the signature is verified against the zombie's webhook secret.",
-        "tags": [
-          "Webhooks"
-        ],
-        "parameters": [
-          {
-            "name": "zombie_id",
-            "in": "path",
-            "required": true,
-            "description": "UUIDv7 of the zombie.",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "decision",
-                  "signature"
-                ],
-                "properties": {
-                  "decision": {
-                    "type": "string",
-                    "enum": [
-                      "approved",
-                      "rejected"
-                    ]
-                  },
-                  "signature": {
-                    "type": "string",
-                    "description": "HMAC signature over the body."
-                  },
-                  "reason": {
-                    "type": "string"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "status": {
-                      "type": "string"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "400": {
-            "$ref": "#/components/responses/Error"
-          },
-          "401": {
-            "$ref": "#/components/responses/Error"
-          },
-          "404": {
-            "$ref": "#/components/responses/Error"
-          }
-        },
-        "security": []
-      }
-    },
-    "/v1/webhooks/{zombie_id}:grant-approval": {
-      "post": {
-        "operationId": "grant_approval_webhook",
-        "summary": "Approve or reject an integration grant request",
-        "description": "Human-in-the-loop approval webhook for integration grant requests (Slack, GitHub, etc.). HMAC-signed.",
-        "tags": [
-          "Webhooks"
-        ],
-        "parameters": [
-          {
-            "name": "zombie_id",
-            "in": "path",
-            "required": true,
-            "description": "UUIDv7 of the zombie.",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "grant_id",
-                  "decision",
-                  "signature"
-                ],
-                "properties": {
-                  "grant_id": {
-                    "type": "string"
-                  },
-                  "decision": {
-                    "type": "string",
-                    "enum": [
-                      "approved",
-                      "rejected"
-                    ]
-                  },
-                  "signature": {
-                    "type": "string"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "status": {
-                      "type": "string"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "400": {
-            "$ref": "#/components/responses/Error"
-          },
-          "401": {
-            "$ref": "#/components/responses/Error"
-          },
-          "404": {
-            "$ref": "#/components/responses/Error"
-          }
-        },
-        "security": []
-      }
-    },
-    "/internal/v1/telemetry": {
-      "get": {
-        "operationId": "internal_telemetry",
-        "summary": "Internal operator telemetry",
-        "description": "Admin-only platform health snapshot \u2014 in-flight request counts, queue depth, error rates. Requires the admin API key, not a user bearer token.",
+        "operationId": "get_zombie_telemetry",
+        "summary": "Get per-zombie telemetry",
+        "description": "Returns execution telemetry for a specific zombie \u2014 last activity, event count, budget consumed, error counts.",
         "tags": [
           "Telemetry"
         ],
-        "responses": {
-          "200": {
-            "description": "Operator telemetry snapshot.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "api_in_flight_requests": {
-                      "type": "integer"
-                    },
-                    "api_max_in_flight_requests": {
-                      "type": "integer"
-                    },
-                    "queue_depth": {
-                      "type": "integer",
-                      "nullable": true
-                    },
-                    "queue_age_ms": {
-                      "type": "integer",
-                      "nullable": true
-                    }
-                  },
-                  "additionalProperties": true
-                }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/Error"
-          },
-          "403": {
-            "$ref": "#/components/responses/Error"
-          }
-        }
-      }
-    },
-    "/v1/workspaces/{workspace_id}/spec/template": {
-      "post": {
-        "operationId": "spec_template",
-        "summary": "Agent relay: fetch a spec template",
-        "description": "Internal endpoint used by the agent relay to materialise a spec template for a given workspace. Request/response shapes are version-coupled to the relay.",
-        "tags": [
-          "Spec"
-        ],
         "parameters": [
           {
             "name": "workspace_id",
@@ -3247,19 +3396,18 @@
               "type": "string",
               "format": "uuid"
             }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "description": "Relay-specific request payload."
-              }
+          },
+          {
+            "name": "zombie_id",
+            "in": "path",
+            "required": true,
+            "description": "UUIDv7 of the zombie.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
             }
           }
-        },
+        ],
         "responses": {
           "200": {
             "description": "OK",
@@ -3267,7 +3415,7 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "description": "Rendered template payload."
+                  "description": "Telemetry payload (shape evolves with operator needs)."
                 }
               }
             }
@@ -3287,13 +3435,13 @@
         }
       }
     },
-    "/v1/workspaces/{workspace_id}/spec/preview": {
+    "/v1/workspaces/{workspace_id}/zombies/{zombie_id}:steer": {
       "post": {
-        "operationId": "spec_preview",
-        "summary": "Agent relay: preview a spec",
-        "description": "Internal endpoint used by the agent relay to preview a spec before execution. Request/response shapes are version-coupled to the relay.",
+        "operationId": "steer_zombie",
+        "summary": "Steer a running zombie",
+        "description": "Send a message to a running zombie to nudge it at the next gate checkpoint. Queued (next checkpoint) or instant (IPC delivery) per body.",
         "tags": [
-          "Spec"
+          "Zombies"
         ],
         "parameters": [
           {
@@ -3305,60 +3453,12 @@
               "type": "string",
               "format": "uuid"
             }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "description": "Relay-specific request payload."
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "description": "Preview payload."
-                }
-              }
-            }
           },
-          "400": {
-            "$ref": "#/components/responses/Error"
-          },
-          "401": {
-            "$ref": "#/components/responses/Error"
-          },
-          "403": {
-            "$ref": "#/components/responses/Error"
-          },
-          "404": {
-            "$ref": "#/components/responses/Error"
-          }
-        }
-      }
-    },
-    "/v1/workspaces/{workspace_id}/scoring/config": {
-      "post": {
-        "operationId": "set_workspace_scoring_config",
-        "summary": "Set per-workspace scoring configuration",
-        "description": "Persists the scoring thresholds and weights for run evaluation in this workspace.",
-        "tags": [
-          "Scoring"
-        ],
-        "parameters": [
           {
-            "name": "workspace_id",
+            "name": "zombie_id",
             "in": "path",
             "required": true,
-            "description": "UUIDv7 of the workspace.",
+            "description": "UUIDv7 of the zombie.",
             "schema": {
               "type": "string",
               "format": "uuid"
@@ -3372,14 +3472,19 @@
               "schema": {
                 "type": "object",
                 "required": [
-                  "scoring_context_max_tokens"
+                  "message"
                 ],
                 "properties": {
-                  "scoring_context_max_tokens": {
-                    "type": "integer",
-                    "format": "int32",
-                    "minimum": 1,
-                    "description": "Maximum token budget for the scoring prompt context."
+                  "message": {
+                    "type": "string"
+                  },
+                  "mode": {
+                    "type": "string",
+                    "enum": [
+                      "queued",
+                      "instant"
+                    ],
+                    "default": "queued"
                   }
                 }
               }
@@ -3387,20 +3492,18 @@
           }
         },
         "responses": {
-          "200": {
-            "description": "Scoring config applied.",
+          "202": {
+            "description": "Accepted",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "workspace_id": {
-                      "type": "string",
-                      "format": "uuid"
+                    "status": {
+                      "type": "string"
                     },
-                    "scoring_context_max_tokens": {
-                      "type": "integer",
-                      "format": "int32"
+                    "event_id": {
+                      "type": "string"
                     }
                   }
                 }
@@ -3417,6 +3520,226 @@
             "$ref": "#/components/responses/Error"
           },
           "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/workspaces/{workspace_id}/zombies/{zombie_id}:stop": {
+      "post": {
+        "operationId": "stop_workspace_zombie",
+        "summary": "Stop a zombie (kill switch)",
+        "description": "Transitions a zombie's status from `active` or `paused` to `stopped` and records a `zombie_stopped` activity event. Returns 409 if the zombie is already stopped or killed. Returns 404 if the zombie is not in the path workspace (cross-workspace IDOR guard).",
+        "tags": [
+          "Zombie"
+        ],
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "zombie_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Zombie transitioned to stopped",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "zombie_id",
+                    "workspace_id",
+                    "status",
+                    "request_id"
+                  ],
+                  "properties": {
+                    "zombie_id": {
+                      "type": "string"
+                    },
+                    "workspace_id": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "stopped"
+                      ]
+                    },
+                    "request_id": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/workspaces/{workspace_id}:pause": {
+      "post": {
+        "operationId": "pause_workspace",
+        "summary": "Pause or unpause a workspace",
+        "description": "Toggles the paused state of a workspace. When paused, no new runs will be started and queued runs will be held. Uses optimistic concurrency via the version field.",
+        "tags": [
+          "Workspaces"
+        ],
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "description": "Workspace identifier",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "pause",
+                  "reason",
+                  "version"
+                ],
+                "properties": {
+                  "pause": {
+                    "type": "boolean",
+                    "description": "True to pause, false to unpause"
+                  },
+                  "reason": {
+                    "type": "string",
+                    "description": "Human-readable reason for the state change"
+                  },
+                  "version": {
+                    "type": "integer",
+                    "description": "Optimistic concurrency version \u2014 must match current workspace version"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Workspace pause state updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "workspace_id",
+                    "paused",
+                    "version",
+                    "request_id"
+                  ],
+                  "properties": {
+                    "workspace_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "paused": {
+                      "type": "boolean"
+                    },
+                    "version": {
+                      "type": "integer"
+                    },
+                    "request_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/workspaces/{workspace_id}:sync": {
+      "post": {
+        "operationId": "sync_specs",
+        "summary": "Sync specs from repo",
+        "description": "Reads PENDING_*.md spec files from the repository's default branch and upserts them into the control plane. Returns the count of newly synced specs.",
+        "tags": [
+          "Workspaces"
+        ],
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "description": "Workspace identifier",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Sync complete",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "synced_count",
+                    "total_pending",
+                    "specs",
+                    "request_id"
+                  ],
+                  "properties": {
+                    "synced_count": {
+                      "type": "integer",
+                      "description": "Number of specs synced in this request"
+                    },
+                    "total_pending": {
+                      "type": "integer",
+                      "description": "Total pending specs after sync"
+                    },
+                    "specs": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/SpecSummary"
+                      },
+                      "description": "List of synced spec summaries"
+                    },
+                    "request_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
             "$ref": "#/components/responses/Error"
           }
         }
@@ -3433,162 +3756,27 @@
       }
     },
     "schemas": {
-      "ReadyzBody": {
+      "ActivityEvent": {
         "type": "object",
-        "description": "Response body for GET /readyz. Identical shape for both 200 (healthy) and 503 (degraded) responses \u2014 only the boolean values differ.",
         "required": [
-          "ready",
-          "database",
-          "queue"
+          "event_id",
+          "event_type",
+          "created_at"
         ],
         "properties": {
-          "ready": {
-            "type": "boolean",
-            "description": "Overall readiness \u2014 true only when every dependency is healthy. Mirrors the HTTP status (true \u2194 200, false \u2194 503)."
+          "event_id": {
+            "type": "string"
           },
-          "database": {
-            "type": "boolean",
-            "description": "True if the PostgreSQL connection pool is reachable and a trivial query succeeds"
+          "event_type": {
+            "type": "string"
           },
-          "queue": {
-            "type": "boolean",
-            "description": "True if the Redis queue backend is reachable"
-          }
-        },
-        "additionalProperties": false
-      },
-      "Transition": {
-        "type": "object",
-        "description": "A state transition in the run pipeline",
-        "properties": {
-          "state_from": {
+          "detail": {
             "type": "string",
-            "description": "State before the transition"
-          },
-          "state_to": {
-            "type": "string",
-            "description": "State after the transition"
-          },
-          "actor": {
-            "type": "string",
-            "description": "Pipeline stage or user that triggered the transition"
-          },
-          "reason_code": {
-            "type": "string",
-            "description": "Machine-readable reason for the transition"
-          },
-          "ts": {
-            "type": "integer",
-            "description": "Unix timestamp in milliseconds"
-          }
-        }
-      },
-      "Artifact": {
-        "type": "object",
-        "description": "An artifact produced during a run (e.g. plan, diff, review)",
-        "properties": {
-          "artifact_name": {
-            "type": "string",
-            "description": "Human-readable artifact name"
-          },
-          "object_key": {
-            "type": "string",
-            "description": "Git path: docs/runs/<run_id>/<name>"
-          },
-          "checksum_sha256": {
-            "type": "string",
-            "description": "SHA-256 checksum of the artifact content"
-          },
-          "producer": {
-            "type": "string",
-            "enum": [
-              "echo",
-              "scout",
-              "warden",
-              "orchestrator"
-            ],
-            "description": "Pipeline stage that produced the artifact"
-          },
-          "attempt": {
-            "type": "integer",
-            "description": "Run attempt number that produced this artifact"
+            "nullable": true
           },
           "created_at": {
             "type": "integer",
-            "description": "Unix timestamp in milliseconds"
-          }
-        }
-      },
-      "PolicyEvent": {
-        "type": "object",
-        "description": "A policy evaluation event from the Warden stage",
-        "properties": {
-          "action_class": {
-            "type": "string",
-            "enum": [
-              "safe",
-              "sensitive",
-              "critical"
-            ],
-            "description": "Classification of the action being evaluated"
-          },
-          "decision": {
-            "type": "string",
-            "enum": [
-              "allow",
-              "deny",
-              "require_confirmation"
-            ],
-            "description": "Policy decision"
-          },
-          "rule_id": {
-            "type": "string",
-            "description": "Identifier of the policy rule that matched"
-          },
-          "actor": {
-            "type": "string",
-            "description": "Pipeline stage that triggered the policy check"
-          },
-          "ts": {
-            "type": "integer",
-            "description": "Unix timestamp in milliseconds"
-          }
-        }
-      },
-      "SpecSummary": {
-        "type": "object",
-        "description": "Summary of a spec document",
-        "properties": {
-          "spec_id": {
-            "type": "string",
-            "format": "uuid",
-            "description": "Unique spec identifier"
-          },
-          "file_path": {
-            "type": "string",
-            "description": "Path to the spec file in the repository"
-          },
-          "title": {
-            "type": "string",
-            "description": "Spec title extracted from the document"
-          },
-          "status": {
-            "type": "string",
-            "enum": [
-              "pending",
-              "in_progress",
-              "done",
-              "failed"
-            ],
-            "description": "Current spec lifecycle status"
-          },
-          "created_at": {
-            "type": "integer",
-            "description": "Unix timestamp in milliseconds"
-          },
-          "updated_at": {
-            "type": "integer",
-            "description": "Unix timestamp in milliseconds"
+            "format": "int64"
           }
         }
       },
@@ -3627,76 +3815,6 @@
           "created_at": {
             "type": "string",
             "format": "date-time"
-          },
-          "updated_at": {
-            "type": "string",
-            "format": "date-time"
-          }
-        }
-      },
-      "Proposal": {
-        "type": "object",
-        "description": "An agent self-tuning proposal \u2014 a suggested change to the agent configuration",
-        "properties": {
-          "proposal_id": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "trigger_reason": {
-            "type": "string",
-            "description": "Why the agent generated this proposal"
-          },
-          "proposed_changes": {
-            "type": "string",
-            "description": "Description of the proposed configuration changes"
-          },
-          "config_version_id": {
-            "type": "string",
-            "format": "uuid",
-            "description": "Config version this proposal targets"
-          },
-          "approval_mode": {
-            "type": "string",
-            "description": "Whether the proposal requires manual approval or can auto-apply"
-          },
-          "status": {
-            "type": "string",
-            "description": "Proposal lifecycle status (e.g. PENDING, APPLIED, REJECTED, VETOED)"
-          },
-          "auto_apply_at": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "format": "date-time",
-            "description": "Timestamp when the proposal will auto-apply, null if manual approval required"
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "updated_at": {
-            "type": "string",
-            "format": "date-time"
-          }
-        }
-      },
-      "PlatformKey": {
-        "type": "object",
-        "description": "A platform-wide LLM provider key configuration",
-        "properties": {
-          "provider": {
-            "type": "string",
-            "description": "LLM provider name"
-          },
-          "source_workspace_id": {
-            "type": "string",
-            "format": "uuid",
-            "description": "Workspace whose BYOK key is used"
-          },
-          "active": {
-            "type": "boolean",
-            "description": "Whether this platform key is active"
           },
           "updated_at": {
             "type": "string",
@@ -3766,6 +3884,58 @@
           }
         }
       },
+      "Artifact": {
+        "type": "object",
+        "description": "An artifact produced during a run (e.g. plan, diff, review)",
+        "properties": {
+          "artifact_name": {
+            "type": "string",
+            "description": "Human-readable artifact name"
+          },
+          "object_key": {
+            "type": "string",
+            "description": "Git path: docs/runs/<run_id>/<name>"
+          },
+          "checksum_sha256": {
+            "type": "string",
+            "description": "SHA-256 checksum of the artifact content"
+          },
+          "producer": {
+            "type": "string",
+            "enum": [
+              "echo",
+              "scout",
+              "warden",
+              "orchestrator"
+            ],
+            "description": "Pipeline stage that produced the artifact"
+          },
+          "attempt": {
+            "type": "integer",
+            "description": "Run attempt number that produced this artifact"
+          },
+          "created_at": {
+            "type": "integer",
+            "description": "Unix timestamp in milliseconds"
+          }
+        }
+      },
+      "CredentialSummary": {
+        "type": "object",
+        "required": [
+          "name",
+          "created_at"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
       "ErrorBody": {
         "type": "object",
         "description": "RFC 7807 problem detail error response (application/problem+json)",
@@ -3804,63 +3974,36 @@
           }
         }
       },
-      "ZombieSummary": {
+      "ExternalAgent": {
         "type": "object",
         "required": [
-          "id",
+          "agent_id",
+          "zombie_id",
           "name",
-          "status",
-          "created_at",
-          "updated_at"
+          "created_at"
         ],
         "properties": {
-          "id": {
+          "agent_id": {
+            "type": "string"
+          },
+          "zombie_id": {
             "type": "string",
             "format": "uuid"
           },
           "name": {
             "type": "string"
           },
-          "status": {
-            "type": "string",
-            "enum": [
-              "active",
-              "paused",
-              "killed"
-            ]
+          "description": {
+            "type": "string"
           },
           "created_at": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "last_used_at": {
             "type": "integer",
             "format": "int64",
-            "description": "Unix epoch milliseconds"
-          },
-          "updated_at": {
-            "type": "integer",
-            "format": "int64"
-          }
-        }
-      },
-      "ActivityEvent": {
-        "type": "object",
-        "required": [
-          "event_id",
-          "event_type",
-          "created_at"
-        ],
-        "properties": {
-          "event_id": {
-            "type": "string"
-          },
-          "event_type": {
-            "type": "string"
-          },
-          "detail": {
-            "type": "string",
             "nullable": true
-          },
-          "created_at": {
-            "type": "integer",
-            "format": "int64"
           }
         }
       },
@@ -3907,39 +4050,6 @@
           }
         }
       },
-      "ExternalAgent": {
-        "type": "object",
-        "required": [
-          "agent_id",
-          "zombie_id",
-          "name",
-          "created_at"
-        ],
-        "properties": {
-          "agent_id": {
-            "type": "string"
-          },
-          "zombie_id": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "name": {
-            "type": "string"
-          },
-          "description": {
-            "type": "string"
-          },
-          "created_at": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "last_used_at": {
-            "type": "integer",
-            "format": "int64",
-            "nullable": true
-          }
-        }
-      },
       "MemoryEntry": {
         "type": "object",
         "required": [
@@ -3967,17 +4077,230 @@
           }
         }
       },
-      "CredentialSummary": {
+      "PlatformKey": {
         "type": "object",
+        "description": "A platform-wide LLM provider key configuration",
+        "properties": {
+          "provider": {
+            "type": "string",
+            "description": "LLM provider name"
+          },
+          "source_workspace_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Workspace whose BYOK key is used"
+          },
+          "active": {
+            "type": "boolean",
+            "description": "Whether this platform key is active"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "PolicyEvent": {
+        "type": "object",
+        "description": "A policy evaluation event from the Warden stage",
+        "properties": {
+          "action_class": {
+            "type": "string",
+            "enum": [
+              "safe",
+              "sensitive",
+              "critical"
+            ],
+            "description": "Classification of the action being evaluated"
+          },
+          "decision": {
+            "type": "string",
+            "enum": [
+              "allow",
+              "deny",
+              "require_confirmation"
+            ],
+            "description": "Policy decision"
+          },
+          "rule_id": {
+            "type": "string",
+            "description": "Identifier of the policy rule that matched"
+          },
+          "actor": {
+            "type": "string",
+            "description": "Pipeline stage that triggered the policy check"
+          },
+          "ts": {
+            "type": "integer",
+            "description": "Unix timestamp in milliseconds"
+          }
+        }
+      },
+      "Proposal": {
+        "type": "object",
+        "description": "An agent self-tuning proposal \u2014 a suggested change to the agent configuration",
+        "properties": {
+          "proposal_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "trigger_reason": {
+            "type": "string",
+            "description": "Why the agent generated this proposal"
+          },
+          "proposed_changes": {
+            "type": "string",
+            "description": "Description of the proposed configuration changes"
+          },
+          "config_version_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Config version this proposal targets"
+          },
+          "approval_mode": {
+            "type": "string",
+            "description": "Whether the proposal requires manual approval or can auto-apply"
+          },
+          "status": {
+            "type": "string",
+            "description": "Proposal lifecycle status (e.g. PENDING, APPLIED, REJECTED, VETOED)"
+          },
+          "auto_apply_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Timestamp when the proposal will auto-apply, null if manual approval required"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "ReadyzBody": {
+        "type": "object",
+        "description": "Response body for GET /readyz. Identical shape for both 200 (healthy) and 503 (degraded) responses \u2014 only the boolean values differ.",
         "required": [
-          "name",
-          "created_at"
+          "ready",
+          "database",
+          "queue"
         ],
         "properties": {
+          "ready": {
+            "type": "boolean",
+            "description": "Overall readiness \u2014 true only when every dependency is healthy. Mirrors the HTTP status (true \u2194 200, false \u2194 503)."
+          },
+          "database": {
+            "type": "boolean",
+            "description": "True if the PostgreSQL connection pool is reachable and a trivial query succeeds"
+          },
+          "queue": {
+            "type": "boolean",
+            "description": "True if the Redis queue backend is reachable"
+          }
+        },
+        "additionalProperties": false
+      },
+      "SpecSummary": {
+        "type": "object",
+        "description": "Summary of a spec document",
+        "properties": {
+          "spec_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Unique spec identifier"
+          },
+          "file_path": {
+            "type": "string",
+            "description": "Path to the spec file in the repository"
+          },
+          "title": {
+            "type": "string",
+            "description": "Spec title extracted from the document"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "in_progress",
+              "done",
+              "failed"
+            ],
+            "description": "Current spec lifecycle status"
+          },
+          "created_at": {
+            "type": "integer",
+            "description": "Unix timestamp in milliseconds"
+          },
+          "updated_at": {
+            "type": "integer",
+            "description": "Unix timestamp in milliseconds"
+          }
+        }
+      },
+      "Transition": {
+        "type": "object",
+        "description": "A state transition in the run pipeline",
+        "properties": {
+          "state_from": {
+            "type": "string",
+            "description": "State before the transition"
+          },
+          "state_to": {
+            "type": "string",
+            "description": "State after the transition"
+          },
+          "actor": {
+            "type": "string",
+            "description": "Pipeline stage or user that triggered the transition"
+          },
+          "reason_code": {
+            "type": "string",
+            "description": "Machine-readable reason for the transition"
+          },
+          "ts": {
+            "type": "integer",
+            "description": "Unix timestamp in milliseconds"
+          }
+        }
+      },
+      "ZombieSummary": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
           "name": {
             "type": "string"
           },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "paused",
+              "killed"
+            ]
+          },
           "created_at": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Unix epoch milliseconds"
+          },
+          "updated_at": {
             "type": "integer",
             "format": "int64"
           }

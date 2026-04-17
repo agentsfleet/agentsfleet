@@ -360,6 +360,40 @@ test "integration: RBAC endpoints enforce operator and admin roles over live HTT
         try std.testing.expect(std.mem.indexOf(u8, response.body, "\"billing_status\":\"GRACE\"") != null);
     }
 
+    // M12_001 — RULE BIL regression for destructive lifecycle + per-zombie
+    // billing endpoints. `workspace_guards.enforce(.minimum_role = .operator)`
+    // fires before any zombie lookup, so a well-formed-but-nonexistent
+    // zombie_id still yields 403 under TEST_USER_TOKEN. These assertions
+    // lock in commits 02a3726 (kill switch) and 899c24e (per-zombie billing)
+    // so stripping `workspace_guards.enforce` from either handler regresses
+    // in CI. (Follow-up: dashboard_http_integration_test.zig rewrite will
+    // carry positive-path T5/T8 coverage; tracked as a subsequent
+    // workstream, see src/main.zig NOTE beside the telemetry import.)
+    const m12_stop_url = try std.fmt.allocPrint(std.testing.allocator, "http://127.0.0.1:{d}/v1/workspaces/{s}/zombies/0195b4ba-8d3a-7f13-8abc-2b3e1e0a71bb:stop", .{
+        server.port,
+        TEST_WORKSPACE_ID,
+    });
+    defer std.testing.allocator.free(m12_stop_url);
+    const m12_zombie_billing_url = try std.fmt.allocPrint(std.testing.allocator, "http://127.0.0.1:{d}/v1/workspaces/{s}/zombies/0195b4ba-8d3a-7f13-8abc-2b3e1e0a71bb/billing/summary?period_days=30", .{
+        server.port,
+        TEST_WORKSPACE_ID,
+    });
+    defer std.testing.allocator.free(m12_zombie_billing_url);
+    {
+        // `:stop` is POST-with-no-body (verb-in-path). Zig's std HTTP client
+        // asserts POST carries a payload, so pass `""` rather than `null`.
+        const response = try sendRequest(std.testing.allocator, m12_stop_url, .POST, TEST_USER_TOKEN, "", null);
+        defer response.deinit(std.testing.allocator);
+        try std.testing.expectEqual(@as(u16, 403), response.status);
+        try std.testing.expect(std.mem.indexOf(u8, response.body, error_codes.ERR_INSUFFICIENT_ROLE) != null);
+    }
+    {
+        const response = try sendRequest(std.testing.allocator, m12_zombie_billing_url, .GET, TEST_USER_TOKEN, null, null);
+        defer response.deinit(std.testing.allocator);
+        try std.testing.expectEqual(@as(u16, 403), response.status);
+        try std.testing.expect(std.mem.indexOf(u8, response.body, error_codes.ERR_INSUFFICIENT_ROLE) != null);
+    }
+
     const cleanup_conn = try server.pool.acquire();
     defer server.pool.release(cleanup_conn);
     try cleanupSeedData(cleanup_conn);
