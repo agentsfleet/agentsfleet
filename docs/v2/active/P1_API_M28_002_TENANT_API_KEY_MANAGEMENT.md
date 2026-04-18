@@ -379,6 +379,27 @@ Server MUST reject `page_size > 100` with `400 ERR_INVALID_REQUEST`. Sort must b
 
 **Status:** PENDING
 
+### Tier Coverage Matrix (bound to /write-unit-test)
+
+When EXECUTE begins, run `/write-unit-test` with this spec as input. The skill's tier taxonomy maps to sections below — every tier MUST have at least one row. A tier with zero rows is a gap and blocks VERIFY.
+
+| Tier                         | Covered by                                      | Rows |
+|------------------------------|-------------------------------------------------|------|
+| Happy path                   | Integration Tests                               | 9    |
+| Edge cases (boundaries)      | Edge Case Tests                                 | 6    |
+| Error paths                  | Negative Tests + Error Contracts table          | 11   |
+| Concurrency                  | Concurrency Tests                               | 2    |
+| Integration (cross-module)   | Integration Tests                               | 9    |
+| Regression                   | Regression Tests                                | 5    |
+| Leak detection               | Leak Detection Tests                            | 4    |
+| Security                     | Security Tests + Key Entropy & Crackability     | 10   |
+| Fidelity (shape conformance) | Fidelity Tests                                  | 3    |
+| Constants (no magic strings) | Constants Tests                                 | 2    |
+| Performance                  | Performance Tests                               | 2    |
+| API contract compliance      | API Contract Tests                              | 2    |
+| Spec-claim traceability      | Spec-Claim Tracing                              | 12   |
+| Observability emission       | §5 dims 5.1–5.6 (referenced from this section)  | 6    |
+
 ### Unit Tests
 
 | Test name | Dim | Target | Input | Expected |
@@ -451,6 +472,65 @@ Server MUST reject `page_size > 100` with `400 ERR_INVALID_REQUEST`. Sort must b
 | TenantApiKey middleware alloc/free | 2.1 | std.testing.allocator detects zero leaks for execute path |
 | api_keys handler alloc/free | 3.1 | std.testing.allocator detects zero leaks for create path |
 | key generation alloc/free | 3.1 | std.testing.allocator detects zero leaks for generateTenantApiKey |
+| Deferred `last_used_at` hook alloc/free | 2.1 | std.testing.allocator detects zero leaks for the post-flush hook path (including the "hook fires but DB fails" branch); the fresh connection is released on every code path |
+
+### Concurrency Tests
+
+| Test name | Dim | Input | Expected |
+|-----------|-----|-------|----------|
+| Concurrent revoke is idempotent | 3.3 | (see Negative Tests above — duplicated in the matrix, single implementation) | — |
+| Concurrent CREATE with identical key_name | 3.5 | Two parallel POST /v1/api-keys with `{ "key_name": "ci-pipeline" }` for the same tenant, fired before either has committed | Exactly one request returns 201; the other returns 409 ERR_APIKEY_NAME_TAKEN. DB ends with exactly one row. UNIQUE(tenant_id, key_name) enforces this even under race; test asserts the second caller sees 409 and never observes a mid-insert 500 |
+
+### Security Tests
+
+| Test name | Dim | Input | Expected |
+|-----------|-----|-------|----------|
+| SQL-injection-shaped key_name | 3.5 / invariant | POST with `{ "key_name": "x'; DROP TABLE core.api_keys; --" }` | 400 ERR_INVALID_REQUEST from `validateKeyName` (special chars rejected *before* SQL). Post-test: `SELECT count(*) FROM core.api_keys` is unchanged. Also verifies that even if validation were bypassed, parameterized queries would still not execute the payload |
+| Raw key never logged | §5.6 | Mint a key with a known hex suffix, scrape every structured log emitted during the request, grep for the suffix | Zero matches — raw key appears only in the HTTP 201 response body |
+| Constant-time compare used on hash lookup | RULE CTM | Unit: call the key-lookup helper with two keys whose hashes differ at byte 0 vs byte 31; measure relative timing | Relative variance below threshold (proves `std.crypto.timing_safe.eql` or equivalent is used, not plain `std.mem.eql`) |
+
+#### Key Entropy & Crackability Tests (minted keys are truly random)
+
+**Honest framing:** you cannot unit-test that a key "cannot be cracked" — cracking is bounded by cryptanalysis, not tests. What we CAN test are the concrete properties that make brute force infeasible: a true CSPRNG source, high statistical randomness, no collisions at scale, no bit bias, and a keyspace large enough that brute force is physically impossible. The table below tests each of those properties; the final row documents the keyspace math so reviewers see the actual safety bound.
+
+| Test name | Dim | Input | Expected |
+|-----------|-----|-------|----------|
+| Entropy source is the OS CSPRNG | invariant #1 | Call stack inspection / symbol grep on `generateTenantApiKey` | The function reaches `std.crypto.random.bytes(&buf)` (OS-backed `getrandom` / `/dev/urandom`) — NOT `std.rand.DefaultPrng`, NOT `std.rand.Xoshiro256`, NOT anything seeded from `std.time.timestamp()`. Also listed under Unit Tests ("Key bytes come from std.crypto.random") — this row cross-references that test |
+| Shannon entropy ≥ 7.9 bits/byte on a large sample | security | Mint 10 000 keys, concatenate the 64-hex-char payloads into a single byte buffer, compute Shannon entropy over it | Entropy ≥ 7.95 bits/byte (theoretical max 8.0). A stuck bit, repeated byte, or reduced-state PRNG would drop this below 7.5 and fail the test |
+| Zero collisions at 1M mints | security | Mint 1 000 000 keys (CI job, not per-commit — gated behind `make test-entropy`). Collect every `key_hash`. | 0 duplicate hashes. At 256 bits of entropy the birthday bound makes the expected-collision count at 1M draws ≈ 10⁻⁶² — any duplicate is proof of a broken generator, not bad luck |
+| Bit-level balance across 10k keys | security | For each of the 256 bit positions across 10 000 sampled keys, count how many keys have that bit set | Every bit position is set in 45–55% of keys (50% ± 5%, tolerance for 10k sample). Catches stuck-bit regressions, masked-byte bugs, or any non-uniform bit distribution |
+| Inter-key byte independence | security | Pearson correlation coefficient between byte `i` of key `N` and byte `i` of key `N+1`, across 10 000 consecutive mints, for all 32 byte positions | \|r\| < 0.05 for every position. A time-seeded or LCG-style PRNG would produce visible correlation between adjacent outputs; a CSPRNG produces none |
+| Keyspace size bound (documentation test) | invariant #1 | Assert at build time (`comptime`): key entropy = 64 hex chars × 4 bits = 256 bits; keyspace = 2^256 ≈ 1.16×10⁷⁷ | Even at an optimistic 10¹⁵ guesses/second, brute-forcing the keyspace takes ~10⁵⁴ years (≈ 10⁴⁴× the age of the universe). Test is a static assertion on the constants `KEY_HEX_LEN = 64` and `KEY_ENTROPY_BITS = 256` so neither can silently shrink |
+| Timing-equivalence: unknown vs revoked auth | security | Issue 1 000 auth requests split evenly between unknown-key and revoked-key inputs, measure response-time distributions | Medians within 3 ms of each other. Proves the middleware does the same DB lookup in both cases (no short-circuit on "unknown" that would leak "this key exists but is revoked" via timing) |
+
+### Fidelity Tests (response shape exactly matches Output Contract)
+
+| Test name | Dim | Input | Expected |
+|-----------|-----|-------|----------|
+| POST response has exactly `{id, key_name, key, created_at}` | 3.1 | Successful create | Response object keys, sorted, equal `["created_at","id","key","key_name"]` — no extras, no `key_hash`, no `tenant_id`, no `created_by` |
+| GET response has exactly `{items, total, page, page_size}` at top level, and each item has exactly `{id, key_name, active, created_at, last_used_at, revoked_at}` | 3.2 | Successful list | Top-level key set and per-item key set match verbatim. No `key_hash` at any nesting level |
+| PATCH response has exactly `{id, active, revoked_at}` | 3.3 | Successful revoke | Response key set equals `["active","id","revoked_at"]`. `active` is literal `false`. `revoked_at` is non-null |
+
+### Constants Tests
+
+| Test name | Dim | Input | Expected |
+|-----------|-----|-------|----------|
+| No hardcoded `"zmb_t_"` outside the KEY_PREFIX constant site | invariant #2 | `grep -rn '"zmb_t_"' src/` | Exactly one hit: the `KEY_PREFIX` declaration in `api_keys.zig`. Every other site must reference the constant |
+| Error codes declared exactly once | RULE NSQ-equivalent | `grep -c '"UZ-APIKEY-' src/errors/error_entries.zig` and `grep -rn '"UZ-APIKEY-' src/` | Each of UZ-APIKEY-001..005 declared exactly once in `error_entries.zig`; every other reference is through the registry symbol, not the literal string |
+
+### Performance Tests
+
+| Test name | Dim | Input | Expected |
+|-----------|-----|-------|----------|
+| Auth hot-path p95 budget | RULE perf | `make bench` against `/healthz` behind tenant-api-key auth (local, `API_BENCH_CONCURRENCY=16`, 30s) | p95 ≤ 20 ms, p99 ≤ 50 ms. Delta vs baseline (`admin_api_key` env-var auth) ≤ +5 ms — proves adding the DB lookup did not regress the hot path meaningfully |
+| Deferred stamping does not inflate response time | RULE perf | Same bench, measure between two runs: stamping enabled vs `pending_apikey_touch` forced to null | Response-time medians within ±2 ms (the stamping truly happens after flush; the client cannot observe it) |
+
+### API Contract Tests
+
+| Test name | Dim | Input | Expected |
+|-----------|-----|-------|----------|
+| openapi.json paths match router table | RULE HGD | Parse `public/openapi.json`, extract paths; diff against `src/http/router.zig` `match()` arms for `/v1/api-keys*` | Set equality — every documented path has a router arm and vice versa. No drift |
+| openapi.json response schemas match Output Contracts | RULE HGD | For each endpoint, assert the OpenAPI response schema's `required` and `properties` sets match the Fidelity Tests expected shapes | Exact match. Fails loud if someone adds a field to the handler without adding it to OpenAPI (or vice versa) |
 
 ### Spec-Claim Tracing
 
