@@ -41,6 +41,7 @@
 | `src/http/route_table.zig` | MODIFY | Register new routes for /v1/api-keys |
 | `src/http/route_table_invoke.zig` | MODIFY | Invoke handlers for api-key routes |
 | `src/http/router.zig` | MODIFY | Add route variants for api-key endpoints |
+| `public/openapi.json` | MODIFY | Document /v1/api-keys endpoints (POST create, GET list, PATCH revoke, DELETE) — per api_handler_guide.md §4 the OpenAPI spec is the fifth (and public) route registration |
 | `src/errors/error_entries.zig` | MODIFY | Add error codes: ERR_APIKEY_NOT_FOUND, ERR_APIKEY_REVOKED, ERR_APIKEY_NAME_TAKEN, ERR_APIKEY_ALREADY_REVOKED |
 | `src/db/test_fixtures.zig` | MODIFY | Add api_keys table to test fixtures |
 | `src/main.zig` | MODIFY | Add test import for new files |
@@ -318,6 +319,7 @@ pub fn innerDeleteApiKey(hx: Hx, key_id: []const u8) void
 | User role blocked from key creation | 3.6 | DB | POST /v1/api-keys with user-role JWT | 403 |
 | Env-var key still works (bootstrap) | 4.2 | DB + env | Bearer with env-var key | 200 + log warning |
 | last_used_at updated on auth (fire-and-forget) | 2.1 | DB | Auth with key → (brief settle) → SELECT last_used_at | Non-null, recent. Update is dispatched asynchronously from the middleware (best-effort; failures logged but do not fail the request) so the auth hot path stays a single DB round-trip. See Failure Modes row "last_used_at update failure". |
+| Cross-tenant GET isolation | 3.7 | DB | Seed Tenant A + Tenant B each with 2 keys → GET /v1/api-keys with Tenant A operator JWT | 200; `items` contains exactly Tenant A's 2 keys; zero Tenant B rows present. Repeat with Tenant B JWT and assert the mirror — proves `WHERE tenant_id = $1` is on every SELECT. |
 
 ### Negative Tests (error paths that MUST fail)
 
@@ -365,7 +367,7 @@ pub fn innerDeleteApiKey(hx: Hx, key_id: []const u8) void
 | Mint named API key via POST /v1/api-keys | Create + auth with tenant API key | integration |
 | Raw key shown once, hash stored | List keys omits key_hash | integration |
 | zmb_t_ Bearer resolves to principal with user_id + tenant_id | Auth with tenant API key | integration |
-| Per-tenant isolation (key scoped to tenant) | Duplicate key_name across tenants succeeds | integration |
+| Per-tenant isolation (key scoped to tenant) | Duplicate key_name across tenants succeeds + Cross-tenant GET isolation | integration |
 | Per-key revocation | Revoke key blocks auth | integration |
 | API_KEY env var still works as bootstrap fallback | Env-var key still works | integration |
 | user-role cannot create keys | User role blocked | integration |
@@ -384,7 +386,7 @@ pub fn innerDeleteApiKey(hx: Hx, key_id: []const u8) void
 | 6 | Tenant API key middleware: `tenant_api_key.zig` — DB lookup, principal population, revoked rejection | Unit tests pass |
 | 7 | Wire middleware: update `bearer_or_api_key.zig` to route `zmb_t_` → tenant_api_key; update `mod.zig` registry; update `serve.zig` | `zig build` compiles; existing auth tests pass |
 | 8 | CRUD handlers: `api_keys.zig` — create, list, revoke, delete | Unit tests pass |
-| 9 | Routes: register `/v1/api-keys` in router.zig + route_table.zig + route_table_invoke.zig | `zig build` compiles |
+| 9 | Routes: register `/v1/api-keys` in router.zig + route_table.zig + route_table_invoke.zig + document in public/openapi.json (the five places from api_handler_guide.md §4) | `zig build` compiles; `jq '.paths["/v1/api-keys"]' public/openapi.json` returns a non-null object |
 | 10 | Integration tests: full auth flow, revoke, delete, duplicate name, role gate | `make test-integration` |
 | 11 | Bootstrap log warning: add structured warning in `admin_api_key.zig` when env-var key matches | Unit test for log emission |
 | 12 | Dead code sweep: verify no orphaned references to old single-hash auth path | `grep -rn api_key_hash src/` — only schema references remain |
