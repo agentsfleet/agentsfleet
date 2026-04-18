@@ -16,7 +16,6 @@ const hx_mod = @import("hx.zig");
 const ec = @import("../../errors/error_registry.zig");
 const zombie_config = @import("../../zombie/config.zig");
 const activity_stream = @import("../../zombie/activity_stream.zig");
-const crypto_store = @import("../../secrets/crypto_store.zig");
 const telemetry_mod = @import("../../observability/telemetry.zig");
 const metrics_counters = @import("../../observability/metrics_counters.zig");
 
@@ -97,73 +96,6 @@ fn parseBody(hx: Hx, req: *httpz.Request, zombie_id: []const u8) ?WebhookPayload
     return payload;
 }
 
-// M2_002: Unified webhook auth — URL secret (vault-backed) first, Bearer token fallback.
-fn verifyWebhookAuth(hx: Hx, url_secret: ?[]const u8, zombie: *const ZombieRow, req: *httpz.Request) bool {
-    // Path 1: URL-embedded secret — resolve from vault via webhook_secret_ref
-    if (url_secret) |provided_secret| {
-        const ref = zombie.webhook_secret_ref orelse {
-            hx.fail(ec.ERR_UNAUTHORIZED, ec.MSG_AUTH_REQUIRED);
-            return false;
-        };
-        const conn = hx.ctx.pool.acquire() catch {
-            log.err("webhook.vault_pool_acquire_failed req_id={s}", .{hx.req_id});
-            hx.fail(ec.ERR_UNAUTHORIZED, ec.MSG_AUTH_REQUIRED);
-            return false;
-        };
-        defer hx.ctx.pool.release(conn);
-        const expected = crypto_store.load(hx.alloc, conn, zombie.workspace_id, ref) catch {
-            log.err("webhook.vault_load_failed ref={s} req_id={s}", .{ ref, hx.req_id });
-            hx.fail(ec.ERR_UNAUTHORIZED, ec.MSG_AUTH_REQUIRED);
-            return false;
-        };
-        defer hx.alloc.free(expected);
-        return constantTimeEq(hx, provided_secret, expected);
-    }
-    // Path 2: Bearer token fallback
-    const expected_token = zombie.token orelse {
-        hx.fail(ec.ERR_UNAUTHORIZED, ec.MSG_AUTH_REQUIRED);
-        return false;
-    };
-    return verifyBearerToken(hx, expected_token, req);
-}
-
-fn constantTimeEq(hx: Hx, a: []const u8, b: []const u8) bool {
-    // Always run XOR loop over min length to avoid leaking secret length via timing.
-    const min_len = @min(a.len, b.len);
-    var diff: u8 = 0;
-    for (a[0..min_len], b[0..min_len]) |x, y| diff |= x ^ y;
-    // Length mismatch is not secret (attacker controls input length), but fold it
-    // into the result after the constant-time loop to prevent short-circuit.
-    diff |= @as(u8, @intFromBool(a.len != b.len));
-    if (diff != 0) {
-        hx.fail(ec.ERR_UNAUTHORIZED, ec.MSG_INVALID_TOKEN);
-        return false;
-    }
-    return true;
-}
-
-fn verifyBearerToken(hx: Hx, expected_token: []const u8, req: *httpz.Request) bool {
-    const auth_header = req.header("authorization") orelse {
-        hx.fail(ec.ERR_UNAUTHORIZED, ec.MSG_AUTH_REQUIRED);
-        return false;
-    };
-    if (!std.mem.startsWith(u8, auth_header, ec.BEARER_PREFIX)) {
-        hx.fail(ec.ERR_UNAUTHORIZED, ec.MSG_BEARER_REQUIRED);
-        return false;
-    }
-    const provided = auth_header[ec.BEARER_PREFIX.len..];
-    const valid = provided.len == expected_token.len and ct: {
-        var diff: u8 = 0;
-        for (provided, expected_token) |a, b| diff |= a ^ b;
-        break :ct diff == 0;
-    };
-    if (!valid) {
-        hx.fail(ec.ERR_UNAUTHORIZED, ec.MSG_INVALID_TOKEN);
-        return false;
-    }
-    return true;
-}
-
 fn dedupAndEnqueue(hx: Hx, zombie_id: []const u8, payload: WebhookPayload, source_label: []const u8) bool {
     var dedup_key_buf: [256]u8 = undefined;
     const dedup_key = std.fmt.bufPrint(&dedup_key_buf, "webhook:dedup:{s}:{s}", .{ zombie_id, payload.event_id }) catch {
@@ -194,7 +126,7 @@ fn dedupAndEnqueue(hx: Hx, zombie_id: []const u8, payload: WebhookPayload, sourc
 
 // ── Main handler ───────────────────────────────────────────────────────────
 
-pub fn innerReceiveWebhook(hx: Hx, req: *httpz.Request, zombie_id: []const u8, url_secret: ?[]const u8) void {
+pub fn innerReceiveWebhook(hx: Hx, req: *httpz.Request, zombie_id: []const u8) void {
     const payload = parseBody(hx, req, zombie_id) orelse return;
 
     var zombie = fetchZombieById(hx.ctx.pool, hx.alloc, zombie_id) catch |err| {
@@ -208,8 +140,7 @@ pub fn innerReceiveWebhook(hx: Hx, req: *httpz.Request, zombie_id: []const u8, u
     };
     defer deinitZombieRow(&zombie, hx.alloc);
 
-    // M2_002: URL secret (vault-backed via webhook_secret_ref) or Bearer token fallback.
-    if (!verifyWebhookAuth(hx, url_secret, &zombie, req)) return;
+    // Auth is handled by webhook_sig middleware (M28_001) before this handler runs.
 
     const status = zombie_config.ZombieStatus.fromSlice(zombie.status) orelse .stopped;
     if (!status.isRunnable()) {

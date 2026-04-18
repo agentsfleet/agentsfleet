@@ -45,6 +45,23 @@ pub const LINEAR = VerifyConfig{
     .prefix = "",
 };
 
+// ── Provider registry ─────────────────────────────────────────────────
+// Comptime array of all known HMAC-SHA256 providers. Adding a new
+// provider = one new const + one new entry here.
+
+pub const PROVIDER_REGISTRY: []const VerifyConfig = &.{ SLACK, GITHUB, LINEAR };
+
+// Comptime invariants: unique sig_header, non-empty sig_header.
+comptime {
+    for (PROVIDER_REGISTRY, 0..) |a, i| {
+        if (a.sig_header.len == 0) @compileError("VerifyConfig sig_header must be non-empty");
+        for (PROVIDER_REGISTRY[i + 1 ..]) |b| {
+            if (std.mem.eql(u8, a.sig_header, b.sig_header))
+                @compileError("Duplicate sig_header in PROVIDER_REGISTRY: " ++ a.sig_header);
+        }
+    }
+}
+
 // ── Public API ────────────────────────────────────────────────────────────
 
 /// Verify a webhook signature using the given config.

@@ -16,6 +16,8 @@ const preflight = @import("preflight.zig");
 const common = @import("common.zig");
 const error_codes = @import("../errors/error_registry.zig");
 const serve_args = @import("serve_args.zig");
+const pg = @import("pg");
+const serve_webhook_lookup = @import("serve_webhook_lookup.zig");
 
 const log = std.log.scoped(.zombied);
 
@@ -59,6 +61,8 @@ fn stubWebhookSecretLookup(
 ) anyerror!?[]const u8 {
     return null;
 }
+
+const webhook_sig = auth_mw.webhook_sig_mod;
 
 fn parseServeArgOverrides() serve_args.ServeArgError!?u16 {
     var it = std.process.args();
@@ -241,7 +245,15 @@ pub fn run(alloc: std.mem.Allocator) !void {
             .lookup_fn = stubWebhookSecretLookup,
         },
     };
+    // M28_001: construct the generic WebhookSig with concrete *pg.Pool type.
+    // Must be declared before initChains() so the pointer is stable, but
+    // the chain is set via setWebhookSig() after initChains().
+    var webhook_sig_mw = webhook_sig.WebhookSig(*pg.Pool){
+        .lookup_ctx = api_pool,
+        .lookup_fn = serve_webhook_lookup.lookup,
+    };
     registry.initChains();
+    registry.setWebhookSig(webhook_sig_mw.middleware());
     log.info("startup.middleware_registry status=ok", .{});
 
     shutdown_requested.store(false, .release);

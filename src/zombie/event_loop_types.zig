@@ -30,7 +30,7 @@ pub const ZombieSession = struct {
     // bvisor pattern: comptime size assertion catches silent field drift.
     // 8 fields: 2 const slices + ZombieConfig(inline) + 3 const slices + ?slice + i64
     comptime {
-        if (@sizeOf(ZombieSession) != 320) @compileError("ZombieSession size changed; update this assertion");
+        if (@sizeOf(ZombieSession) != 376) @compileError("ZombieSession size changed; update this assertion");
     }
 
     pub fn deinit(self: *ZombieSession, alloc: Allocator) void {

@@ -358,10 +358,11 @@ test "M10_006 T7: PgQuery size pinned at 8 bytes (single pointer)" {
     try std.testing.expectEqual(@as(usize, 8), @sizeOf(PgQuery));
 }
 
-test "M10_006 T7: ZombieSession size pinned at 320 bytes" {
+test "M10_006 T7: ZombieSession size pinned at 376 bytes" {
     // M23_001: +24 bytes for execution_id (?[]const u8 = 16) + execution_started_at (i64 = 8)
+    // M28_001: +56 bytes for ?WebhookSignatureConfig in ZombieTrigger.webhook
     const ZombieSession = @import("../zombie/event_loop_types.zig").ZombieSession;
-    try std.testing.expectEqual(@as(usize, 320), @sizeOf(ZombieSession));
+    try std.testing.expectEqual(@as(usize, 376), @sizeOf(ZombieSession));
 }
 
 // T7: Regression — ErrorMapping field count and types

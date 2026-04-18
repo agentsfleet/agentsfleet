@@ -72,9 +72,9 @@ pub fn specFor(route: router.Route, registry: *auth_mw.MiddlewareRegistry) ?Rout
         .spec_template => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeSpecTemplate },
         .spec_preview => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeSpecPreview },
 
-        // Webhooks — receive_webhook uses none because webhook_url_secret
-        // LookupFn is stubbed; handler does its own secret/bearer auth for now.
-        .receive_webhook => .{ .middlewares = auth_mw.MiddlewareRegistry.none, .invoke = invoke.invokeReceiveWebhook },
+        // Webhooks — receive_webhook uses webhookSig middleware (M28_001):
+        // URL secret (vault-backed) or Bearer token fallback.
+        .receive_webhook => .{ .middlewares = registry.webhookSig(), .invoke = invoke.invokeReceiveWebhook },
         // approval_webhook: HMAC middleware + handler also verifies (double-check OK).
         .approval_webhook => .{ .middlewares = registry.webhookHmac(), .invoke = invoke.invokeApprovalWebhook },
         // grant_approval_webhook uses Redis nonce; no standard policy fits.

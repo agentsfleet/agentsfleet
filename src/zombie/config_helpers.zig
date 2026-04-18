@@ -12,6 +12,7 @@ const ZombieTrigger = config.ZombieTrigger;
 const ZombieNetwork = config.ZombieNetwork;
 const ZombieBudget = config.ZombieBudget;
 const ZombieConfigError = config.ZombieConfigError;
+const WebhookSignatureConfig = config.WebhookSignatureConfig;
 
 // Built-in skills. clawhub:// registry refs are also accepted (must be pinned).
 const KNOWN_ZOMBIE_SKILLS = [_][]const u8{
@@ -32,7 +33,9 @@ pub fn parseZombieTrigger(alloc: Allocator, obj: std.json.ObjectMap) (Allocator.
         const source = try requireString(alloc, obj, "source") orelse return ZombieConfigError.InvalidTriggerSource;
         errdefer alloc.free(source);
         const event = try optionalString(alloc, obj, "event");
-        return .{ .webhook = .{ .source = source, .event = event } };
+        errdefer if (event) |e| alloc.free(e);
+        const signature = try parseWebhookSignature(alloc, obj);
+        return .{ .webhook = .{ .source = source, .event = event, .signature = signature } };
     }
     if (std.mem.eql(u8, type_str, "cron")) {
         const schedule = try requireString(alloc, obj, "schedule") orelse return ZombieConfigError.MissingRequiredField;
@@ -44,6 +47,23 @@ pub fn parseZombieTrigger(alloc: Allocator, obj: std.json.ObjectMap) (Allocator.
     }
     if (std.mem.eql(u8, type_str, "api")) return .{ .api = {} };
     return ZombieConfigError.InvalidTriggerType;
+}
+
+fn parseWebhookSignature(alloc: Allocator, obj: std.json.ObjectMap) !?WebhookSignatureConfig {
+    const sig_val = obj.get("signature") orelse return null;
+    const sig_obj = switch (sig_val) {
+        .object => |o| o,
+        else => return null,
+    };
+    const header = try requireString(alloc, sig_obj, "header") orelse return null;
+    errdefer alloc.free(header);
+    const prefix = blk: {
+        const p = try optionalString(alloc, sig_obj, "prefix");
+        break :blk p orelse try alloc.dupe(u8, "");
+    };
+    errdefer alloc.free(prefix);
+    const ts_header = try optionalString(alloc, sig_obj, "ts_header");
+    return .{ .header = header, .prefix = prefix, .ts_header = ts_header };
 }
 
 fn requireString(alloc: Allocator, obj: std.json.ObjectMap, key: []const u8) !?[]const u8 {
@@ -124,6 +144,11 @@ pub fn freeZombieTrigger(alloc: Allocator, t: ZombieTrigger) void {
         .webhook => |w| {
             alloc.free(w.source);
             if (w.event) |e| alloc.free(e);
+            if (w.signature) |sig| {
+                alloc.free(sig.header);
+                alloc.free(sig.prefix);
+                if (sig.ts_header) |ts| alloc.free(ts);
+            }
         },
         .cron => |c| alloc.free(c.schedule),
         .chain => |ch| alloc.free(ch.source),

@@ -22,7 +22,6 @@
 
 const std = @import("std");
 const httpz = @import("httpz");
-const webhook_verify = @import("../../zombie/webhook_verify.zig");
 const approval_gate = @import("../../zombie/approval_gate.zig");
 const common = @import("common.zig");
 const hx_mod = @import("hx.zig");
@@ -53,7 +52,7 @@ pub fn innerInteraction(hx: Hx, req: *httpz.Request) void {
         return;
     };
 
-    if (!verifySlackSignature(hx, req, raw_body)) return;
+    // Slack signature verified by slack_signature middleware before this handler runs.
 
     // Slack sends interactions as URL-encoded: payload={url_encoded_json}
     const payload_json = extractPayloadField(hx.alloc, raw_body) orelse {
@@ -175,42 +174,6 @@ fn handleGateAction(hx: Hx, rest: []const u8) void {
     });
     hx.res.status = 200;
     hx.res.body = "{}";
-}
-
-/// Verify Slack request signature and timestamp freshness (RULE CTM).
-fn verifySlackSignature(hx: Hx, req: *httpz.Request, body: []const u8) bool {
-    const secret = std.process.getEnvVarOwned(std.heap.page_allocator, "SLACK_SIGNING_SECRET") catch {
-        log.err("slack.interactions.no_signing_secret req_id={s}", .{hx.req_id});
-        hx.fail(ec.ERR_WEBHOOK_SLACK_SIG_INVALID, "Signing secret not configured");
-        return false;
-    };
-    defer std.heap.page_allocator.free(secret);
-    if (secret.len == 0) {
-        log.err("slack.interactions.empty_signing_secret req_id={s}", .{hx.req_id});
-        hx.fail(ec.ERR_WEBHOOK_SLACK_SIG_INVALID, "Signing secret not configured");
-        return false;
-    }
-
-    const timestamp = req.header(ec.SLACK_TS_HEADER) orelse {
-        hx.fail(ec.ERR_WEBHOOK_SLACK_SIG_INVALID, "Missing timestamp header");
-        return false;
-    };
-    const signature = req.header(ec.SLACK_SIG_HEADER) orelse {
-        hx.fail(ec.ERR_WEBHOOK_SLACK_SIG_INVALID, "Missing signature header");
-        return false;
-    };
-
-    if (!webhook_verify.isTimestampFresh(timestamp, ec.SLACK_MAX_TS_DRIFT_SECONDS)) {
-        hx.fail(ec.ERR_WEBHOOK_SLACK_TIMESTAMP_STALE, "Timestamp too old");
-        return false;
-    }
-
-    if (!webhook_verify.verifySignature(webhook_verify.SLACK, secret, timestamp, body, signature)) {
-        log.warn("slack.interactions.sig_invalid req_id={s}", .{hx.req_id});
-        hx.fail(ec.ERR_WEBHOOK_SLACK_SIG_INVALID, "Invalid signature");
-        return false;
-    }
-    return true;
 }
 
 /// Extract the `payload` field from a URL-encoded body and URL-decode it.
