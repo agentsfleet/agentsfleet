@@ -254,3 +254,26 @@ test "M4_001: approval route resolves before webhook route" {
         else => return error.TestExpectedEqual,
     }
 }
+
+test "svix webhook route resolves with zombie_id" {
+    const zid = "019abc12-8d3a-7f13-8abc-2b3e1e0a6f11";
+    const route = match("/v1/webhooks/svix/019abc12-8d3a-7f13-8abc-2b3e1e0a6f11") orelse return error.TestExpectedMatch;
+    try std.testing.expectEqualStrings(zid, switch (route) {
+        .receive_svix_webhook => |id| id,
+        else => return error.TestExpectedEqual,
+    });
+}
+
+test "svix route takes precedence over generic /v1/webhooks/{id}/{secret}" {
+    // /v1/webhooks/svix/{id} must NOT be interpreted as {zombie_id=svix, secret=id}.
+    const route = match("/v1/webhooks/svix/zomb-abc") orelse return error.TestExpectedMatch;
+    switch (route) {
+        .receive_svix_webhook => |id| try std.testing.expectEqualStrings("zomb-abc", id),
+        else => return error.TestExpectedEqual,
+    }
+}
+
+test "svix route rejects empty and multi-segment zombie_id" {
+    try std.testing.expect(match("/v1/webhooks/svix/") == null);
+    try std.testing.expect(match("/v1/webhooks/svix/a/b") == null);
+}

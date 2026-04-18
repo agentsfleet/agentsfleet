@@ -29,6 +29,7 @@ pub const ZombieConfigError = error{
     UnknownSkill,
     InvalidCredentialRef,
     InvalidBudget,
+    InvalidSignatureConfig,
 };
 
 pub const ZombieStatus = enum {
@@ -65,14 +66,13 @@ pub const ZombieStatus = enum {
 
 pub const ZombieTriggerType = enum { webhook, cron, api, chain };
 
-/// Optional HMAC signature scheme declared in TRIGGER.md for zero-code
-/// provider scaling. When present, the webhook auth middleware uses these
-/// fields to build a VerifyConfig at request time instead of relying on
-/// the built-in provider registry.
+pub const MAX_SIGNATURE_HEADER_LEN: usize = 64;
+
 pub const WebhookSignatureConfig = struct {
     header: []const u8,
     prefix: []const u8,
     ts_header: ?[]const u8 = null,
+    secret_ref: []const u8,
 };
 
 /// Tagged union for trigger config. Each variant carries only the fields it needs,
@@ -124,6 +124,7 @@ pub const ZombieConfig = struct {
                     alloc.free(sig.header);
                     alloc.free(sig.prefix);
                     if (sig.ts_header) |ts| alloc.free(ts);
+                    alloc.free(sig.secret_ref);
                 }
             },
             .cron => |c| alloc.free(c.schedule),

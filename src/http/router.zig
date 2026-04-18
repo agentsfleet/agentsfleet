@@ -28,6 +28,8 @@ pub const Route = union(enum) {
     get_workspace_billing_summary: []const u8,
     set_workspace_scoring_config: []const u8,
     receive_webhook: WebhookRoute,
+    // M28_001 §5: Clerk / Svix signed webhooks — /v1/webhooks/svix/{zombie_id}.
+    receive_svix_webhook: []const u8,
     // M4_001: Zombie approval gate callback
     approval_webhook: []const u8,
     // M9_001: Grant approval webhook — /v1/webhooks/{zombie_id}:grant-approval
@@ -173,6 +175,15 @@ pub fn match(path: []const u8) ?Route {
 
     // M4_001: Zombie approval gate callback — /v1/webhooks/{zombie_id}:approval
     if (matchers.matchWebhookAction(path, ":approval")) |zombie_id| return .{ .approval_webhook = zombie_id };
+    // M28_001 §5: Clerk / Svix signed webhooks — /v1/webhooks/svix/{zombie_id}
+    // (before matchWebhookRoute so "svix" is not swallowed as zombie_id).
+    {
+        const svix_prefix = "/v1/webhooks/svix/";
+        if (std.mem.startsWith(u8, path, svix_prefix)) {
+            const zombie_id = path[svix_prefix.len..];
+            if (matchers.isSingleSegment(zombie_id)) return .{ .receive_svix_webhook = zombie_id };
+        }
+    }
     // M1_001: Zombie webhook endpoint — /v1/webhooks/{zombie_id}
     if (matchWebhookRoute(path)) |route| return .{ .receive_webhook = route };
 

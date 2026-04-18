@@ -75,6 +75,8 @@ pub fn specFor(route: router.Route, registry: *auth_mw.MiddlewareRegistry) ?Rout
         // Webhooks — receive_webhook uses webhookSig middleware (M28_001):
         // URL secret (vault-backed) or Bearer token fallback.
         .receive_webhook => .{ .middlewares = registry.webhookSig(), .invoke = invoke.invokeReceiveWebhook },
+        // M28_001 §5: Clerk via Svix — dedicated middleware, shared handler.
+        .receive_svix_webhook => .{ .middlewares = registry.svix(), .invoke = invoke.invokeReceiveSvixWebhook },
         // approval_webhook: HMAC middleware + handler also verifies (double-check OK).
         .approval_webhook => .{ .middlewares = registry.webhookHmac(), .invoke = invoke.invokeApprovalWebhook },
         // grant_approval_webhook uses Redis nonce; no standard policy fits.
@@ -157,6 +159,7 @@ test "specFor returns a RouteSpec for every Route variant (Batch D — full tabl
     try testing.expect(specFor(.{ .spec_template = "ws1" }, &reg) != null);
     try testing.expect(specFor(.{ .spec_preview = "ws1" }, &reg) != null);
     try testing.expect(specFor(.{ .receive_webhook = .{ .zombie_id = "z1", .secret = null } }, &reg) != null);
+    try testing.expect(specFor(.{ .receive_svix_webhook = "z1" }, &reg) != null);
     try testing.expect(specFor(.{ .approval_webhook = "z1" }, &reg) != null);
     try testing.expect(specFor(.{ .grant_approval_webhook = "z1" }, &reg) != null);
     try testing.expect(specFor(.{ .sync_workspace = "ws1" }, &reg) != null);

@@ -95,7 +95,7 @@ test "slack_signature short-circuits with UZ-WH-010 when x-slack-signature heade
     const outcome = try runOne(&mw, &ht);
 
     try testing.expectEqual(chain.Outcome.short_circuit, outcome);
-    try testing.expectEqualStrings(errors.ERR_WEBHOOK_SLACK_SIG_INVALID, test_fixtures.last_code);
+    try testing.expectEqualStrings(errors.ERR_WEBHOOK_SIG_INVALID, test_fixtures.last_code);
     try testing.expectEqualStrings("Missing signature header", test_fixtures.last_detail);
 }
 
@@ -117,7 +117,7 @@ test "slack_signature short-circuits with UZ-WH-011 on stale timestamp (> 300s o
     const outcome = try runOne(&mw, &ht);
 
     try testing.expectEqual(chain.Outcome.short_circuit, outcome);
-    try testing.expectEqualStrings(errors.ERR_WEBHOOK_SLACK_TIMESTAMP_STALE, test_fixtures.last_code);
+    try testing.expectEqualStrings(errors.ERR_WEBHOOK_TIMESTAMP_STALE, test_fixtures.last_code);
 }
 
 test "slack_signature short-circuits with UZ-WH-010 on tampered body" {
@@ -137,7 +137,7 @@ test "slack_signature short-circuits with UZ-WH-010 on tampered body" {
     const outcome = try runOne(&mw, &ht);
 
     try testing.expectEqual(chain.Outcome.short_circuit, outcome);
-    try testing.expectEqualStrings(errors.ERR_WEBHOOK_SLACK_SIG_INVALID, test_fixtures.last_code);
+    try testing.expectEqualStrings(errors.ERR_WEBHOOK_SIG_INVALID, test_fixtures.last_code);
     try testing.expectEqualStrings("Invalid signature", test_fixtures.last_detail);
 }
 
@@ -153,7 +153,7 @@ test "slack_signature short-circuits when signature lacks v0= prefix" {
     const outcome = try runOne(&mw, &ht);
 
     try testing.expectEqual(chain.Outcome.short_circuit, outcome);
-    try testing.expectEqualStrings(errors.ERR_WEBHOOK_SLACK_SIG_INVALID, test_fixtures.last_code);
+    try testing.expectEqualStrings(errors.ERR_WEBHOOK_SIG_INVALID, test_fixtures.last_code);
 }
 
 test "isTimestampFresh: inclusive at boundary, rejects one second past" {

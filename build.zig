@@ -89,6 +89,14 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.path("schema/embed.zig"),
     });
 
+    // ── Crypto primitives module (M28_001 §crypto — shared HMAC/CT/hex) ──────
+    // Pure stdlib only; no deps. Importable from src/auth/ without breaking the
+    // test-auth portability gate, and from src/zombie/ as the canonical source
+    // for webhook signature verification primitives.
+    const hmac_sig_mod = b.createModule(.{
+        .root_source_file = b.path("src/crypto/hmac_sig.zig"),
+    });
+
     // ── UseZombie executable ───────────────────────────────────────────────────
     const exe = b.addExecutable(.{
         .name = "zombied",
@@ -103,6 +111,7 @@ pub fn build(b: *std.Build) void {
                 .{ .name = "posthog", .module = posthog_mod },
                 .{ .name = "schema", .module = schema_mod },
                 .{ .name = "build_options", .module = build_opts.createModule() },
+                .{ .name = "hmac_sig", .module = hmac_sig_mod },
             },
         }),
     });
@@ -170,6 +179,7 @@ pub fn build(b: *std.Build) void {
                 .{ .name = "posthog", .module = posthog_mod },
                 .{ .name = "schema", .module = schema_mod },
                 .{ .name = "build_options", .module = build_opts.createModule() },
+                .{ .name = "hmac_sig", .module = hmac_sig_mod },
             },
         }),
         .filters = test_filters,
@@ -189,6 +199,7 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
             .imports = &.{
                 .{ .name = "httpz", .module = httpz_mod },
+                .{ .name = "hmac_sig", .module = hmac_sig_mod },
             },
         }),
         .filters = test_filters,
@@ -214,6 +225,7 @@ pub fn build(b: *std.Build) void {
                 .optimize = optimize,
                 .imports = &.{
                     .{ .name = "zbench", .module = zbench_mod },
+                    .{ .name = "hmac_sig", .module = hmac_sig_mod },
                 },
             }),
         });

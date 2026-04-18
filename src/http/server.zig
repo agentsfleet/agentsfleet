@@ -164,6 +164,9 @@ fn dispatchMatchedRoute(ctx: *handler.Context, registry: *auth_mw.MiddlewareRegi
                 auth.webhook_zombie_id = wh.zombie_id;
                 auth.webhook_provided_secret = wh.secret;
             },
+            .receive_svix_webhook => |zombie_id| {
+                auth.webhook_zombie_id = zombie_id;
+            },
             else => {},
         }
 

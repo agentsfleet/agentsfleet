@@ -177,6 +177,11 @@ pub fn invokeReceiveWebhook(hx: *Hx, req: *httpz.Request, route: router.Route) v
     webhooks.innerReceiveWebhook(hx.*, req, wh.zombie_id);
 }
 
+pub fn invokeReceiveSvixWebhook(hx: *Hx, req: *httpz.Request, route: router.Route) void {
+    if (req.method != .POST) { common.respondMethodNotAllowed(hx.res); return; }
+    webhooks.innerReceiveWebhook(hx.*, req, route.receive_svix_webhook);
+}
+
 pub fn invokeApprovalWebhook(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     if (req.method != .POST) { common.respondMethodNotAllowed(hx.res); return; }
     approval.innerApprovalCallback(hx.*, req, route.approval_webhook);

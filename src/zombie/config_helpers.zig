@@ -7,12 +7,14 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 
 const config = @import("config.zig");
+const webhook_verify = @import("webhook_verify.zig");
 const ZombieTriggerType = config.ZombieTriggerType;
 const ZombieTrigger = config.ZombieTrigger;
 const ZombieNetwork = config.ZombieNetwork;
 const ZombieBudget = config.ZombieBudget;
 const ZombieConfigError = config.ZombieConfigError;
 const WebhookSignatureConfig = config.WebhookSignatureConfig;
+const MAX_SIGNATURE_HEADER_LEN = config.MAX_SIGNATURE_HEADER_LEN;
 
 // Built-in skills. clawhub:// registry refs are also accepted (must be pinned).
 const KNOWN_ZOMBIE_SKILLS = [_][]const u8{
@@ -34,7 +36,7 @@ pub fn parseZombieTrigger(alloc: Allocator, obj: std.json.ObjectMap) (Allocator.
         errdefer alloc.free(source);
         const event = try optionalString(alloc, obj, "event");
         errdefer if (event) |e| alloc.free(e);
-        const signature = try parseWebhookSignature(alloc, obj);
+        const signature = try parseWebhookSignature(alloc, obj, source);
         return .{ .webhook = .{ .source = source, .event = event, .signature = signature } };
     }
     if (std.mem.eql(u8, type_str, "cron")) {
@@ -49,21 +51,53 @@ pub fn parseZombieTrigger(alloc: Allocator, obj: std.json.ObjectMap) (Allocator.
     return ZombieConfigError.InvalidTriggerType;
 }
 
-fn parseWebhookSignature(alloc: Allocator, obj: std.json.ObjectMap) !?WebhookSignatureConfig {
+fn parseWebhookSignature(
+    alloc: Allocator,
+    obj: std.json.ObjectMap,
+    source: []const u8,
+) !?WebhookSignatureConfig {
     const sig_val = obj.get("signature") orelse return null;
     const sig_obj = switch (sig_val) {
         .object => |o| o,
         else => return null,
     };
-    const header = try requireString(alloc, sig_obj, "header") orelse return null;
+
+    const secret_ref = try requireString(alloc, sig_obj, "secret_ref") orelse
+        return ZombieConfigError.InvalidSignatureConfig;
+    errdefer alloc.free(secret_ref);
+    if (secret_ref.len == 0) return ZombieConfigError.InvalidSignatureConfig;
+
+    const registry_hit = webhook_verify.detectProvider(source, webhook_verify.NoHeaders{});
+
+    const header = header_blk: {
+        if (try optionalString(alloc, sig_obj, "header")) |h| break :header_blk h;
+        if (registry_hit) |cfg| break :header_blk try alloc.dupe(u8, cfg.sig_header);
+        return ZombieConfigError.InvalidSignatureConfig;
+    };
     errdefer alloc.free(header);
-    const prefix = blk: {
-        const p = try optionalString(alloc, sig_obj, "prefix");
-        break :blk p orelse try alloc.dupe(u8, "");
+    if (header.len > MAX_SIGNATURE_HEADER_LEN) return ZombieConfigError.InvalidSignatureConfig;
+
+    const prefix = prefix_blk: {
+        if (try optionalString(alloc, sig_obj, "prefix")) |p| break :prefix_blk p;
+        if (registry_hit) |cfg| break :prefix_blk try alloc.dupe(u8, cfg.prefix);
+        break :prefix_blk try alloc.dupe(u8, "");
     };
     errdefer alloc.free(prefix);
-    const ts_header = try optionalString(alloc, sig_obj, "ts_header");
-    return .{ .header = header, .prefix = prefix, .ts_header = ts_header };
+
+    const ts_header = ts_blk: {
+        if (try optionalString(alloc, sig_obj, "ts_header")) |t| break :ts_blk t;
+        if (registry_hit) |cfg| {
+            if (cfg.ts_header) |t| break :ts_blk try alloc.dupe(u8, t);
+        }
+        break :ts_blk null;
+    };
+
+    return .{
+        .header = header,
+        .prefix = prefix,
+        .ts_header = ts_header,
+        .secret_ref = secret_ref,
+    };
 }
 
 fn requireString(alloc: Allocator, obj: std.json.ObjectMap, key: []const u8) !?[]const u8 {
@@ -148,6 +182,7 @@ pub fn freeZombieTrigger(alloc: Allocator, t: ZombieTrigger) void {
                 alloc.free(sig.header);
                 alloc.free(sig.prefix);
                 if (sig.ts_header) |ts| alloc.free(ts);
+                alloc.free(sig.secret_ref);
             }
         },
         .cron => |c| alloc.free(c.schedule),
@@ -179,4 +214,106 @@ test "isKnownZombieSkill: built-in and clawhub refs" {
     try std.testing.expect(isKnownZombieSkill("clawhub://queen/lead-hunter@1.0.1"));
     try std.testing.expect(!isKnownZombieSkill("clawhub://queen/lead-hunter@latest"));
     try std.testing.expect(!isKnownZombieSkill("clawhub://queen/lead-hunter"));
+}
+
+// ── parseWebhookSignature (§3 + §4.7) ────────────────────────────────────
+// Exercised via parseZombieTrigger (pub). Uses std.json.parseFromSlice to
+// produce the ObjectMap.
+
+const test_alloc = std.testing.allocator;
+
+fn parseTriggerForTest(src: []const u8) !ZombieTrigger {
+    const parsed = try std.json.parseFromSlice(std.json.Value, test_alloc, src, .{});
+    defer parsed.deinit();
+    return parseZombieTrigger(test_alloc, parsed.value.object);
+}
+
+fn freeTrigger(t: ZombieTrigger) void {
+    freeZombieTrigger(test_alloc, t);
+}
+
+test "parseWebhookSignature: defaults from github registry (dim 3.1)" {
+    const src =
+        \\{"type":"webhook","source":"github","signature":{"secret_ref":"gh_secret"}}
+    ;
+    const trig = try parseTriggerForTest(src);
+    defer freeTrigger(trig);
+    const sig = trig.webhook.signature.?;
+    try std.testing.expectEqualStrings("x-hub-signature-256", sig.header);
+    try std.testing.expectEqualStrings("sha256=", sig.prefix);
+    try std.testing.expect(sig.ts_header == null);
+    try std.testing.expectEqualStrings("gh_secret", sig.secret_ref);
+}
+
+test "parseWebhookSignature: defaults from linear registry (dim 3.7, Q1)" {
+    const src =
+        \\{"type":"webhook","source":"linear","signature":{"secret_ref":"ln_secret"}}
+    ;
+    const trig = try parseTriggerForTest(src);
+    defer freeTrigger(trig);
+    const sig = trig.webhook.signature.?;
+    try std.testing.expectEqualStrings("linear-signature", sig.header);
+    try std.testing.expectEqualStrings("", sig.prefix);
+    try std.testing.expectEqualStrings("ln_secret", sig.secret_ref);
+}
+
+test "parseWebhookSignature: no signature block = null (backward compat, dim 3.2)" {
+    const src =
+        \\{"type":"webhook","source":"agentmail"}
+    ;
+    const trig = try parseTriggerForTest(src);
+    defer freeTrigger(trig);
+    try std.testing.expect(trig.webhook.signature == null);
+}
+
+test "parseWebhookSignature: Jira custom scheme (not in registry)" {
+    const src =
+        \\{"type":"webhook","source":"jira","signature":{"secret_ref":"j","header":"x-jira-hook-signature","prefix":"sha256=","ts_header":"x-jira-timestamp"}}
+    ;
+    const trig = try parseTriggerForTest(src);
+    defer freeTrigger(trig);
+    const sig = trig.webhook.signature.?;
+    try std.testing.expectEqualStrings("x-jira-hook-signature", sig.header);
+    try std.testing.expectEqualStrings("sha256=", sig.prefix);
+    try std.testing.expectEqualStrings("x-jira-timestamp", sig.ts_header.?);
+}
+
+test "parseWebhookSignature: explicit header overrides registry (escape hatch)" {
+    const src =
+        \\{"type":"webhook","source":"github","signature":{"secret_ref":"s","header":"x-custom-gh"}}
+    ;
+    const trig = try parseTriggerForTest(src);
+    defer freeTrigger(trig);
+    const sig = trig.webhook.signature.?;
+    try std.testing.expectEqualStrings("x-custom-gh", sig.header);
+    try std.testing.expectEqualStrings("sha256=", sig.prefix);
+}
+
+test "parseWebhookSignature: missing secret_ref is rejected" {
+    const src =
+        \\{"type":"webhook","source":"github","signature":{}}
+    ;
+    try std.testing.expectError(ZombieConfigError.InvalidSignatureConfig, parseTriggerForTest(src));
+}
+
+test "parseWebhookSignature: empty secret_ref is rejected" {
+    const src =
+        \\{"type":"webhook","source":"github","signature":{"secret_ref":""}}
+    ;
+    try std.testing.expectError(ZombieConfigError.InvalidSignatureConfig, parseTriggerForTest(src));
+}
+
+test "parseWebhookSignature: unknown source without header is rejected" {
+    const src =
+        \\{"type":"webhook","source":"custom_provider","signature":{"secret_ref":"s"}}
+    ;
+    try std.testing.expectError(ZombieConfigError.InvalidSignatureConfig, parseTriggerForTest(src));
+}
+
+test "parseWebhookSignature: header > 64 chars is rejected" {
+    // 65 'a's
+    const src =
+        \\{"type":"webhook","source":"jira","signature":{"secret_ref":"s","header":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}}
+    ;
+    try std.testing.expectError(ZombieConfigError.InvalidSignatureConfig, parseTriggerForTest(src));
 }

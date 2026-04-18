@@ -63,6 +63,7 @@ fn stubWebhookSecretLookup(
 }
 
 const webhook_sig = auth_mw.webhook_sig_mod;
+const svix_signature = auth_mw.svix_signature_mod;
 
 fn parseServeArgOverrides() serve_args.ServeArgError!?u16 {
     var it = std.process.args();
@@ -252,8 +253,15 @@ pub fn run(alloc: std.mem.Allocator) !void {
         .lookup_ctx = api_pool,
         .lookup_fn = serve_webhook_lookup.lookup,
     };
+    // M28_001 §5: Svix middleware for Clerk — separate lookup fn resolves
+    // the whsec_<base64> secret via the workspace vault.
+    var svix_mw = svix_signature.SvixSignature(*pg.Pool){
+        .lookup_ctx = api_pool,
+        .lookup_fn = serve_webhook_lookup.lookupSvix,
+    };
     registry.initChains();
     registry.setWebhookSig(webhook_sig_mw.middleware());
+    registry.setSvixSig(svix_mw.middleware());
     log.info("startup.middleware_registry status=ok", .{});
 
     shutdown_requested.store(false, .release);
