@@ -286,11 +286,22 @@ pub const ENTRIES = [_]Entry{
     e("UZ-MEM-003", .service_unavailable, "Memory backend unavailable",
         "The memory backend (Postgres memory schema) is unreachable. " ++
         "The agent falls back to ephemeral workspace memory. Check MEMORY_RUNTIME_URL."),
-    // ── EXTERNAL AGENT API KEYS ───────────────────────────────────────────────
+    // ── AGENT KEYS (workspace-scoped, zmb_ prefix) ────────────────────────────
     e("UZ-APIKEY-001", .unauthorized, "Invalid API key",
         "API key is invalid or revoked. Create one with: zombiectl agent create --workspace {ws} --name my-agent"),
     e("UZ-APIKEY-002", .forbidden, "API key lacks execute permission",
         "This API key does not have execute permission. Re-create with the correct permissions."),
+    // ── TENANT API KEYS (tenant-scoped, zmb_t_ prefix) ────────────────────────
+    e("UZ-APIKEY-003", .not_found, "API key not found",
+        "No API key matches the supplied id for this tenant. Verify the id with: GET /v1/api-keys"),
+    e("UZ-APIKEY-004", .unauthorized, "API key has been revoked",
+        "This key was revoked and can no longer authenticate. Mint a replacement with: POST /v1/api-keys"),
+    e("UZ-APIKEY-005", .conflict, "Key name already exists in this tenant",
+        "key_name must be unique per tenant. Pick a different name or revoke the existing key first."),
+    e("UZ-APIKEY-006", .conflict, "API key is already revoked",
+        "This key is already revoked. No further action is required."),
+    e("UZ-APIKEY-007", .conflict, "active cannot be set to true; mint a new key instead",
+        "Re-activation is not supported. Create a new key via POST /v1/api-keys and revoke the old one."),
     // ── INTEGRATION GRANTS ────────────────────────────────────────────────────
     e("UZ-GRANT-001", .forbidden, "No integration grant for service",
         "This zombie has no approved grant for the target service. " ++

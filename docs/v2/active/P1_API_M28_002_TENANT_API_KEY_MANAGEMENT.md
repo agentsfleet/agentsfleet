@@ -28,11 +28,11 @@
 
 | File | Action | Why |
 |------|--------|-----|
-| `schema/030_api_keys.sql` | CREATE | New table `core.api_keys` with tenant scoping, key_hash, name, lifecycle |
+| `schema/031_api_keys.sql` | CREATE | New table `core.api_keys` with tenant scoping, key_hash, name, lifecycle. (Slot 030 is already taken by `zombie_execution_telemetry`.) |
 | `schema/027_core_external_agents.sql` | DELETE | Renamed to `schema/027_core_agent_keys.sql` — table `core.agent_keys` (pre-v2.0 teardown, full file replace) |
 | `schema/027_core_agent_keys.sql` | CREATE | Replacement: `core.agent_keys` (renamed from `core.external_agents`) |
-| `schema/embed.zig` | MODIFY | Update `@embedFile` for 027 rename; add `@embedFile` for 030_api_keys.sql |
-| `src/cmd/common.zig` | MODIFY | Add migration entry for 030 |
+| `schema/embed.zig` | MODIFY | Update `@embedFile` for 027 rename; add `@embedFile` for 031_api_keys.sql |
+| `src/cmd/common.zig` | MODIFY | Add migration entry for 031 |
 | `src/auth/middleware/tenant_api_key.zig` | CREATE | DB-backed API key lookup middleware — populates principal with user_id + tenant_id |
 | `src/auth/middleware/mod.zig` | MODIFY | Add TenantApiKey to registry, wire into chains |
 | `src/auth/middleware/bearer_or_api_key.zig` | MODIFY | Add DB lookup path: if Bearer token starts with `zmb_t_`, delegate to tenant_api_key |
@@ -44,7 +44,7 @@
 | `src/http/route_table_invoke.zig` | MODIFY | Invoke handlers for api-key routes |
 | `src/http/router.zig` | MODIFY | Add route variants for api-key endpoints |
 | `public/openapi.json` | MODIFY | Document /v1/api-keys endpoints (POST create, GET list, PATCH revoke, DELETE) — per api_handler_guide.md §4 the OpenAPI spec is the fifth (and public) route registration |
-| `src/errors/error_entries.zig` | MODIFY | Add error codes: ERR_APIKEY_NOT_FOUND (UZ-APIKEY-002), ERR_APIKEY_REVOKED (UZ-APIKEY-003), ERR_APIKEY_NAME_TAKEN (UZ-APIKEY-001), ERR_APIKEY_ALREADY_REVOKED (UZ-APIKEY-004), ERR_APIKEY_READONLY_FIELD (UZ-APIKEY-005) |
+| `src/errors/error_entries.zig` | MODIFY | Add tenant-API-key codes starting at `UZ-APIKEY-003` (001/002 pre-exist for workspace agent keys): ERR_APIKEY_NOT_FOUND (UZ-APIKEY-003), ERR_APIKEY_REVOKED (UZ-APIKEY-004), ERR_APIKEY_NAME_TAKEN (UZ-APIKEY-005), ERR_APIKEY_ALREADY_REVOKED (UZ-APIKEY-006), ERR_APIKEY_READONLY_FIELD (UZ-APIKEY-007) |
 | `src/db/test_fixtures.zig` | MODIFY | Add api_keys table to test fixtures |
 | `src/main.zig` | MODIFY | Add test import for new files |
 | `src/cmd/serve.zig` | MODIFY | Wire tenant_api_key middleware into registry |
@@ -107,7 +107,7 @@ CREATE TABLE core.api_keys (
     id           uuid        PRIMARY KEY,                            -- UUIDv7
     tenant_id    uuid        NOT NULL REFERENCES core.tenants(id) ON DELETE CASCADE,
     key_name     text        NOT NULL,
-    key_hash     bytea       NOT NULL,                               -- SHA-256 of the raw zmb_t_ key
+    key_hash     text        NOT NULL,                               -- SHA-256 hex of the raw zmb_t_ key (64 chars; matches the sibling core.agent_keys convention)
     created_by   uuid        NOT NULL REFERENCES core.users(id),     -- admin who minted it
     active       boolean     NOT NULL DEFAULT true,
     revoked_at   timestamptz NULL,
@@ -128,8 +128,8 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON core.api_keys TO api_runtime;
 
 | Dim | Status | Target | Input | Expected | Test type |
 |-----|--------|--------|-------|----------|-----------|
-| 1.1 | PENDING | `schema/030_api_keys.sql` | DDL applied via migration runner | Table `core.api_keys` exists with columns: id, tenant_id, key_name, key_hash, created_by, active, revoked_at, last_used_at, created_at, updated_at; UNIQUE(tenant_id, key_name); GRANT on api_runtime | integration |
-| 1.2 | PENDING | `src/cmd/common.zig` | Migration array after adding entry 030 | `canonicalMigrations()` length incremented; index 29 points at 030 content | unit |
+| 1.1 | PENDING | `schema/031_api_keys.sql` | DDL applied via migration runner | Table `core.api_keys` exists with columns: id, tenant_id, key_name, key_hash, created_by, active, revoked_at, last_used_at, created_at, updated_at; UNIQUE(tenant_id, key_name); GRANT on api_runtime | integration |
+| 1.2 | PENDING | `src/cmd/common.zig` | Migration array after adding entry 031 | `canonicalMigrations()` length incremented; index 30 points at 031 content | unit |
 | 1.3 | PENDING | `schema/embed.zig` | Build after adding `@embedFile` | `zig build` compiles; embedded constant accessible | unit |
 
 ### §2 — Tenant API Key Middleware
@@ -142,9 +142,9 @@ DB-backed middleware that resolves `zmb_t_`-prefixed Bearer tokens. Looks up SHA
 
 | Dim | Status | Target | Input | Expected | Test type |
 |-----|--------|--------|-------|----------|-----------|
-| 2.1 | PENDING | `src/auth/middleware/tenant_api_key.zig:execute` | `Authorization: Bearer zmb_t_{valid_key}` + matching row in core.api_keys (active=true) | `.next`, principal = { .mode=.api_key, .role=.admin, .user_id=row.created_by, .tenant_id=row.tenant_id } | unit (mock DB) |
-| 2.2 | PENDING | `src/auth/middleware/tenant_api_key.zig:execute` | `Authorization: Bearer zmb_t_{revoked_key}` + row with active=false, revoked_at set | `.short_circuit`, ERR_APIKEY_REVOKED, 401 | unit |
-| 2.3 | PENDING | `src/auth/middleware/tenant_api_key.zig:execute` | `Authorization: Bearer zmb_t_{unknown_key}` + no matching row | `.short_circuit`, ERR_UNAUTHORIZED, 401 | unit |
+| 2.1 | PENDING | `src/auth/middleware/tenant_api_key.zig:execute` | `Authorization: Bearer zmb_t_{valid_key}` + matching row via host `LookupFn` (active=true) | `.next`, principal = { .mode=.api_key, .role=.admin, .user_id=row.created_by, .tenant_id=row.tenant_id } | unit (mock LookupFn) |
+| 2.2 | PENDING | `src/auth/middleware/tenant_api_key.zig:execute` | `Authorization: Bearer zmb_t_{revoked_key}` + row with active=false | `.short_circuit`, ERR_APIKEY_REVOKED, 401 | unit (mock LookupFn) |
+| 2.3 | PENDING | `src/auth/middleware/tenant_api_key.zig:execute` | `Authorization: Bearer zmb_t_{unknown_key}` + LookupFn returns null | `.short_circuit`, ERR_UNAUTHORIZED, 401 | unit (mock LookupFn) |
 | 2.4 | PENDING | `src/auth/middleware/bearer_or_api_key.zig` | `Authorization: Bearer zmb_t_xxx` | Delegates to tenant_api_key (not env-var rotation) | unit |
 
 ### §3 — CRUD Endpoints
@@ -314,15 +314,15 @@ Server MUST reject `page_size > 100` with `400 ERR_INVALID_REQUEST`. Sort must b
 
 | Error condition | Behavior | Caller sees |
 |----------------|----------|-------------|
-| Key name already exists for this tenant | 409 with ERR_APIKEY_NAME_TAKEN | `{"error_code":"UZ-APIKEY-001","message":"Key name already exists in this tenant"}` |
-| Key not found | 404 with ERR_APIKEY_NOT_FOUND | `{"error_code":"UZ-APIKEY-002","message":"API key not found"}` |
-| Key is revoked (auth attempt) | 401 with ERR_APIKEY_REVOKED | `{"error_code":"UZ-APIKEY-003","message":"API key has been revoked"}` |
-| Revoke on already-revoked key | 409 with ERR_APIKEY_ALREADY_REVOKED | `{"error_code":"UZ-APIKEY-004","message":"API key is already revoked"}` |
+| Key name already exists for this tenant | 409 with ERR_APIKEY_NAME_TAKEN | `{"error_code":"UZ-APIKEY-005","message":"Key name already exists in this tenant"}` |
+| Key not found | 404 with ERR_APIKEY_NOT_FOUND | `{"error_code":"UZ-APIKEY-003","message":"API key not found"}` |
+| Key is revoked (auth attempt) | 401 with ERR_APIKEY_REVOKED | `{"error_code":"UZ-APIKEY-004","message":"API key has been revoked"}` |
+| Revoke on already-revoked key | 409 with ERR_APIKEY_ALREADY_REVOKED | `{"error_code":"UZ-APIKEY-006","message":"API key is already revoked"}` |
 | Insufficient role (user role) | 403 with ERR_FORBIDDEN | `{"error_code":"UZ-AUTH-003","message":"Workspace access denied"}` |
 | DB unavailable | 503 with ERR_INTERNAL | `{"error_code":"UZ-INTERNAL-001","message":"Database unavailable"}` |
 | Malformed input (empty/oversized key_name) | 400 with ERR_INVALID_REQUEST | `{"error_code":"UZ-BAD-001","message":"key_name must be 1–64 chars"}` |
 | DELETE on active (non-revoked) key | 409 with ERR_INVALID_REQUEST | `{"error_code":"UZ-BAD-001","message":"Active key must be revoked before deletion"}` |
-| PATCH `{"active": true}` (attempt to re-activate) | 409 with ERR_APIKEY_READONLY_FIELD | `{"error_code":"UZ-APIKEY-005","message":"active cannot be set to true; mint a new key instead"}` |
+| PATCH `{"active": true}` (attempt to re-activate) | 409 with ERR_APIKEY_READONLY_FIELD | `{"error_code":"UZ-APIKEY-007","message":"active cannot be set to true; mint a new key instead"}` |
 | PATCH with malformed body (missing `active`, non-bool, extra fields) | 400 with ERR_INVALID_REQUEST | `{"error_code":"UZ-BAD-001","message":"PATCH body must be {\"active\": false}"}` |
 | GET with `page_size > 100` | 400 with ERR_INVALID_REQUEST | `{"error_code":"UZ-BAD-001","message":"page_size must be between 1 and 100"}` |
 
@@ -358,7 +358,7 @@ Server MUST reject `page_size > 100` with `400 ERR_INVALID_REQUEST`. Sort must b
 | Schema-qualified SQL (RULE NSQ) | grep for unqualified table references in api_keys.zig — zero matches |
 | Files ≤ 350 lines (RULE FLL) | `wc -l` on every new/touched .zig file |
 | Cross-compile (RULE XCC) | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` |
-| GRANT on new table (RULE SGR) | 030_api_keys.sql includes GRANT SELECT, INSERT, UPDATE, DELETE ON core.api_keys TO api_runtime |
+| GRANT on new table (RULE SGR) | 031_api_keys.sql includes GRANT SELECT, INSERT, UPDATE, DELETE ON core.api_keys TO api_runtime |
 | Key prefix distinct from agent_keys | `zmb_t_` prefix — grep confirms no overlap with `zmb_` routing logic |
 | Zero concurrent pool connections per request (RULE CNX) | Handler acquires one connection, defers release |
 
@@ -566,7 +566,7 @@ test "minted key cannot be regenerated by seeded PRNGs in a 10-iter brute force"
 | Test name | Dim | Input | Expected |
 |-----------|-----|-------|----------|
 | No hardcoded `"zmb_t_"` outside the KEY_PREFIX constant site | invariant #2 | `grep -rn '"zmb_t_"' src/` | Exactly one hit: the `KEY_PREFIX` declaration in `api_keys.zig`. Every other site must reference the constant |
-| Error codes declared exactly once | RULE NSQ-equivalent | `grep -c '"UZ-APIKEY-' src/errors/error_entries.zig` and `grep -rn '"UZ-APIKEY-' src/` | Each of UZ-APIKEY-001..005 declared exactly once in `error_entries.zig`; every other reference is through the registry symbol, not the literal string |
+| Error codes declared exactly once | RULE NSQ-equivalent | `grep -c '"UZ-APIKEY-' src/errors/error_entries.zig` and `grep -rn '"UZ-APIKEY-' src/` | Each of UZ-APIKEY-003..007 (tenant codes; 001/002 pre-exist for agent keys) declared exactly once in `error_entries.zig`; every other reference is through the registry symbol, not the literal string |
 
 ### Performance Tests
 
@@ -603,7 +603,7 @@ test "minted key cannot be regenerated by seeded PRNGs in a 10-iter brute force"
 | 1 | Rename: delete `schema/027_core_external_agents.sql`, create `schema/027_core_agent_keys.sql` (table=agent_keys), update `embed.zig` + `common.zig` | `zig build` compiles |
 | 2 | Rename: `external_agents.zig` → `agent_keys.zig`, update all route registrations (router, route_table, route_table_invoke), update imports in execute.zig, integration_grants.zig, main.zig | `zig build && zig build test` |
 | 3 | Orphan sweep: `grep -rn "external_agents" src/` — zero hits | grep returns empty |
-| 4 | Schema: create `030_api_keys.sql`, update `embed.zig` + `common.zig` migration array | `zig build` compiles |
+| 4 | Schema: create `031_api_keys.sql`, update `embed.zig` + `common.zig` migration array | `zig build` compiles |
 | 5 | Error codes: add ERR_APIKEY_NOT_FOUND, ERR_APIKEY_REVOKED, ERR_APIKEY_NAME_TAKEN, ERR_APIKEY_ALREADY_REVOKED, ERR_APIKEY_READONLY_FIELD to error_entries.zig | `zig build test` (error_registry unit tests pass) |
 | 6 | Tenant API key middleware: `tenant_api_key.zig` — DB lookup, principal population, revoked rejection | Unit tests pass |
 | 7 | Wire middleware: update `bearer_or_api_key.zig` to route `zmb_t_` → tenant_api_key; update `mod.zig` registry; update `serve.zig` | `zig build` compiles; existing auth tests pass |

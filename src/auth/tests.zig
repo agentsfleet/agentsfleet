@@ -24,6 +24,7 @@ test {
     _ = @import("middleware/admin_api_key.zig");
     _ = @import("middleware/bearer_oidc.zig");
     _ = @import("middleware/bearer_or_api_key.zig");
+    _ = @import("middleware/tenant_api_key.zig");
     _ = @import("middleware/require_role.zig");
     _ = @import("middleware/webhook_hmac.zig");
     _ = @import("middleware/webhook_url_secret.zig");

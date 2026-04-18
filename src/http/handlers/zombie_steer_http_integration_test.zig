@@ -56,6 +56,10 @@ fn stubLookupWebhookSecret(_: *anyopaque, _: []const u8, _: std.mem.Allocator) a
     return null;
 }
 
+fn stubTenantApiKeyLookup(_: *anyopaque, _: std.mem.Allocator, _: []const u8) anyerror!?auth_mw.tenant_api_key.LookupResult {
+    return null;
+}
+
 const HttpResp = struct {
     status: u16,
     body: []u8,
@@ -171,7 +175,7 @@ fn startTestServer(alloc: std.mem.Allocator) !*TestServer {
     srv.ctx.queue = &srv.queue;
     srv.ctx.oidc = &srv.verifier;
     srv.ctx.auth_sessions = &srv.session_store;
-    srv.registry = .{ .bearer_or_api_key = .{ .api_keys = "", .verifier = &srv.verifier }, .admin_api_key_mw = .{ .api_keys = "" }, .require_role_admin = .{ .required = .admin }, .require_role_operator = .{ .required = .operator }, .slack_sig = .{ .secret = "" }, .webhook_hmac_mw = .{ .secret = "" }, .oauth_state_mw = .{ .signing_secret = "", .consume_ctx = &srv.queue, .consume_nonce = stubConsumeNonce }, .webhook_url_secret_mw = .{ .lookup_ctx = &srv.queue, .lookup_fn = stubLookupWebhookSecret } };
+    srv.registry = .{ .bearer_or_api_key = .{ .api_keys = "", .verifier = &srv.verifier }, .admin_api_key_mw = .{ .api_keys = "" }, .tenant_api_key_mw = .{ .host = undefined, .lookup = stubTenantApiKeyLookup }, .require_role_admin = .{ .required = .admin }, .require_role_operator = .{ .required = .operator }, .slack_sig = .{ .secret = "" }, .webhook_hmac_mw = .{ .secret = "" }, .oauth_state_mw = .{ .signing_secret = "", .consume_ctx = &srv.queue, .consume_nonce = stubConsumeNonce }, .webhook_url_secret_mw = .{ .lookup_ctx = &srv.queue, .lookup_fn = stubLookupWebhookSecret } };
     srv.registry.initChains();
     srv.server = try http_server.Server.init(&srv.ctx, &srv.registry, .{ .port = port, .threads = 1, .workers = 1, .max_clients = 64 });
     srv.thread = try std.Thread.spawn(.{}, serverThread, .{srv.server});

@@ -64,6 +64,9 @@ fn stubConsumeNonce(_: *anyopaque, _: []const u8) anyerror!bool {
 fn stubLookupWebhookSecret(_: *anyopaque, _: []const u8, _: std.mem.Allocator) anyerror!?[]const u8 {
     return null;
 }
+fn stubTenantApiKeyLookup(_: *anyopaque, _: std.mem.Allocator, _: []const u8) anyerror!?auth_mw.tenant_api_key.LookupResult {
+    return null;
+}
 
 const HttpResp = struct {
     status: u16,
@@ -164,6 +167,7 @@ fn startTestServer(alloc: std.mem.Allocator) !*TestServer {
     srv.registry = .{
         .bearer_or_api_key = .{ .api_keys = "", .verifier = &srv.verifier },
         .admin_api_key_mw = .{ .api_keys = "" },
+        .tenant_api_key_mw = .{ .host = undefined, .lookup = stubTenantApiKeyLookup },
         .require_role_admin = .{ .required = .admin },
         .require_role_operator = .{ .required = .operator },
         .slack_sig = .{ .secret = "" },

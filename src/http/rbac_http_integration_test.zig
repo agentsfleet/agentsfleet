@@ -19,6 +19,10 @@ fn stubLookupWebhookSecret(_: *anyopaque, _: []const u8, _: std.mem.Allocator) a
     return null;
 }
 
+fn stubTenantApiKeyLookup(_: *anyopaque, _: std.mem.Allocator, _: []const u8) anyerror!?auth_mw.tenant_api_key.LookupResult {
+    return null;
+}
+
 const TEST_TENANT_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01";
 const TEST_WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
 const TEST_SKILL_REF_ENCODED = "clawhub%3A%2F%2Fopenclaw%2Freviewer%401.2.0";
@@ -199,6 +203,7 @@ fn startServer(alloc: std.mem.Allocator) !*RunningServer {
     running.registry = .{
         .bearer_or_api_key = .{ .api_keys = "", .verifier = &running.verifier },
         .admin_api_key_mw = .{ .api_keys = "" },
+        .tenant_api_key_mw = .{ .host = undefined, .lookup = stubTenantApiKeyLookup },
         .require_role_admin = .{ .required = .admin },
         .require_role_operator = .{ .required = .operator },
         .slack_sig = .{ .secret = "" },
