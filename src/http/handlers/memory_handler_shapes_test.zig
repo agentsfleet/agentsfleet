@@ -2,7 +2,7 @@
 // Covers: T2 (boundary validation, helper functions),
 //         T11 (memory safety), T12 (response JSON shapes).
 //
-// Part 1 (T3, T7, T8, T9, T10) lives in m14_001_memory_handler_test.zig.
+// Part 1 (T3, T7, T8, T9, T10) lives in memory_handler_test.zig.
 
 const std = @import("std");
 const ec = @import("../../errors/error_registry.zig");

@@ -2,7 +2,7 @@
 // Covers: T3 (HTTP status), T7 (error code stability), T8 (security),
 //         T9 (imports), T10 (constants).
 //
-// Part 2 (T2, T11, T12) lives in m14_001_memory_handler_shapes_test.zig.
+// Part 2 (T2, T11, T12) lives in memory_handler_shapes_test.zig.
 // Live HTTP enforcement (T1, T5, T6) requires LIVE_DB=1.
 
 const std = @import("std");

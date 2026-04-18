@@ -33,7 +33,11 @@ const memory = @import("handlers/memory_http.zig");
 const execute_h = @import("handlers/execute.zig");
 const grants = @import("handlers/integration_grants.zig");
 const grants_ws = @import("handlers/integration_grants_workspace.zig");
-const ext_agents = @import("handlers/external_agents.zig");
+const agent_keys_h = @import("handlers/agent_keys.zig");
+const api_keys_invokes = @import("route_table_invoke_api_keys.zig");
+
+pub const invokeTenantApiKeys = api_keys_invokes.invokeTenantApiKeys;
+pub const invokeTenantApiKeyById = api_keys_invokes.invokeTenantApiKeyById;
 const slack_oauth = @import("handlers/slack_oauth.zig");
 const slack_ev = @import("handlers/slack_events.zig");
 const slack_ix = @import("handlers/slack_interactions.zig");
@@ -300,20 +304,20 @@ pub fn invokeRevokeGrant(hx: *Hx, req: *httpz.Request, route: router.Route) void
     grants_ws.innerRevokeGrant(hx.*, r.workspace_id, r.zombie_id, r.grant_id);
 }
 
-// ── External agents ───────────────────────────────────────────────────────
+// ── Agent keys ────────────────────────────────────────────────────────────
 
-pub fn invokeExternalAgents(hx: *Hx, req: *httpz.Request, route: router.Route) void {
+pub fn invokeAgentKeys(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     switch (req.method) {
-        .POST => ext_agents.innerCreateExternalAgent(hx.*, req, route.external_agents),
-        .GET => ext_agents.innerListExternalAgents(hx.*, route.external_agents),
+        .POST => agent_keys_h.innerCreateAgentKey(hx.*, req, route.agent_keys),
+        .GET => agent_keys_h.innerListAgentKeys(hx.*, route.agent_keys),
         else => common.respondMethodNotAllowed(hx.res),
     }
 }
 
-pub fn invokeDeleteExternalAgent(hx: *Hx, req: *httpz.Request, route: router.Route) void {
+pub fn invokeDeleteAgentKey(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     if (req.method != .DELETE) { common.respondMethodNotAllowed(hx.res); return; }
-    const r = route.delete_external_agent;
-    ext_agents.innerDeleteExternalAgent(hx.*, r.workspace_id, r.agent_id);
+    const r = route.delete_agent_key;
+    agent_keys_h.innerDeleteAgentKey(hx.*, r.workspace_id, r.agent_id);
 }
 
 // ── Slack ─────────────────────────────────────────────────────────────────

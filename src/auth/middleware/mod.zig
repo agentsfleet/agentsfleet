@@ -27,6 +27,7 @@ pub const WriteErrorFn = auth_ctx.WriteErrorFn;
 pub const admin_api_key = @import("admin_api_key.zig");
 pub const bearer_oidc = @import("bearer_oidc.zig");
 pub const bearer_or_api_key = @import("bearer_or_api_key.zig");
+pub const tenant_api_key = @import("tenant_api_key.zig");
 pub const require_role = @import("require_role.zig");
 pub const webhook_hmac = @import("webhook_hmac.zig");
 pub const webhook_url_secret = @import("webhook_url_secret.zig");
@@ -38,6 +39,7 @@ pub const oauth_state = @import("oauth_state.zig");
 pub const AdminApiKey = admin_api_key.AdminApiKey;
 pub const BearerOidc = bearer_oidc.BearerOidc;
 pub const BearerOrApiKey = bearer_or_api_key.BearerOrApiKey;
+pub const TenantApiKey = tenant_api_key.TenantApiKey;
 pub const RequireRole = require_role.RequireRole;
 pub const WebhookHmac = webhook_hmac.WebhookHmac;
 pub const WebhookUrlSecret = webhook_url_secret.WebhookUrlSecret;
@@ -59,6 +61,7 @@ pub const MiddlewareRegistry = struct {
     // ── Concrete middleware instances ─────────────────────────────────────
     bearer_or_api_key: BearerOrApiKey,
     admin_api_key_mw: AdminApiKey,
+    tenant_api_key_mw: TenantApiKey,
     require_role_admin: RequireRole,
     require_role_operator: RequireRole,
     slack_sig: SlackSignature,
@@ -88,6 +91,9 @@ pub const MiddlewareRegistry = struct {
     /// Build the policy chain arrays. Must be called once after the registry
     /// struct is placed in its final memory location.
     pub fn initChains(self: *MiddlewareRegistry) void {
+        // Wire the tenant-key pointer into bearer_or_api_key so `zmb_t_`-
+        // prefixed tokens delegate to the DB-backed lookup path.
+        self.bearer_or_api_key.tenant_api_key = &self.tenant_api_key_mw;
         self._bearer_chain = .{self.bearer_or_api_key.middleware()};
         self._admin_chain = .{
             self.bearer_or_api_key.middleware(),

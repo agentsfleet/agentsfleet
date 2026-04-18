@@ -112,9 +112,13 @@ pub fn specFor(route: router.Route, registry: *auth_mw.MiddlewareRegistry) ?Rout
         .list_integration_grants => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeListGrants },
         .revoke_integration_grant => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeRevokeGrant },
 
-        // External agent key management
-        .external_agents => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeExternalAgents },
-        .delete_external_agent => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeDeleteExternalAgent },
+        // Workspace agent-key management (M28_002 §0 rename)
+        .agent_keys => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeAgentKeys },
+        .delete_agent_key => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeDeleteAgentKey },
+
+        // Tenant API keys (M28_002 §3) — operator-minimum per RULE BIL.
+        .tenant_api_keys => .{ .middlewares = registry.operator(), .invoke = invoke.invokeTenantApiKeys },
+        .tenant_api_key_by_id => .{ .middlewares = registry.operator(), .invoke = invoke.invokeTenantApiKeyById },
 
         // Slack — install/callback use none (handler validates OAuth state+nonce);
         // events and interactions use Slack signature middleware.
@@ -171,8 +175,8 @@ test "specFor returns a RouteSpec for every Route variant (Batch D — full tabl
     try testing.expect(specFor(.{ .request_integration_grant = .{ .workspace_id = "ws1", .zombie_id = "z1" } }, &reg) != null);
     try testing.expect(specFor(.{ .list_integration_grants = .{ .workspace_id = "ws1", .zombie_id = "z1" } }, &reg) != null);
     try testing.expect(specFor(.{ .revoke_integration_grant = .{ .workspace_id = "ws1", .zombie_id = "z1", .grant_id = "g1" } }, &reg) != null);
-    try testing.expect(specFor(.{ .external_agents = "ws1" }, &reg) != null);
-    try testing.expect(specFor(.{ .delete_external_agent = .{ .workspace_id = "ws1", .agent_id = "a1" } }, &reg) != null);
+    try testing.expect(specFor(.{ .agent_keys = "ws1" }, &reg) != null);
+    try testing.expect(specFor(.{ .delete_agent_key = .{ .workspace_id = "ws1", .agent_id = "a1" } }, &reg) != null);
     try testing.expect(specFor(.slack_install, &reg) != null);
     try testing.expect(specFor(.slack_callback, &reg) != null);
     try testing.expect(specFor(.slack_events, &reg) != null);

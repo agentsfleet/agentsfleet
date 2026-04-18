@@ -9,6 +9,7 @@ const http_handler = @import("../http/handler.zig");
 const auth_sessions = @import("../auth/sessions.zig");
 const queue_redis = @import("../queue/redis.zig");
 const auth_mw = @import("../auth/middleware/mod.zig");
+const api_key_lookup = @import("api_key_lookup.zig");
 const metrics = @import("../observability/metrics.zig");
 const obs_log = @import("../observability/logging.zig");
 const telemetry_mod = @import("../observability/telemetry.zig");
@@ -224,6 +225,8 @@ pub fn run(alloc: std.mem.Allocator) !void {
     defer if (approval_signing_secret_owned) |s| alloc.free(s);
     const approval_signing_secret: []const u8 = if (approval_signing_secret_owned) |s| s else "";
 
+    var api_key_lookup_ctx = api_key_lookup.Ctx{ .pool = ctx.pool };
+
     var registry = auth_mw.MiddlewareRegistry{
         .bearer_or_api_key = .{
             .api_keys = serve_cfg.api_keys,
@@ -231,6 +234,10 @@ pub fn run(alloc: std.mem.Allocator) !void {
         },
         .admin_api_key_mw = .{
             .api_keys = serve_cfg.api_keys,
+        },
+        .tenant_api_key_mw = .{
+            .host = &api_key_lookup_ctx,
+            .lookup = api_key_lookup.lookup,
         },
         .require_role_admin = .{ .required = .admin },
         .require_role_operator = .{ .required = .operator },
@@ -263,6 +270,10 @@ pub fn run(alloc: std.mem.Allocator) !void {
     registry.setWebhookSig(webhook_sig_mw.middleware());
     registry.setSvixSig(svix_mw.middleware());
     log.info("startup.middleware_registry status=ok", .{});
+
+    if (serve_cfg.api_keys.len > 0) {
+        log.warn("startup.bootstrap_api_key status=warning message=\"env-var API_KEY is bootstrap-only; migrate to tenant API keys via POST /v1/api-keys\"", .{});
+    }
 
     shutdown_requested.store(false, .release);
     preflight.installSignalHandlers(onSignal);

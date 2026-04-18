@@ -25,8 +25,10 @@ const errors = @import("errors.zig");
 const oidc = @import("../oidc.zig");
 const rbac = @import("../rbac.zig");
 const principal_mod = @import("../principal.zig");
+const tenant_api_key_mod = @import("tenant_api_key.zig");
 
 pub const AuthCtx = auth_ctx.AuthCtx;
+pub const TenantApiKey = tenant_api_key_mod.TenantApiKey;
 
 /// Free fields of `oidc.Principal` that `AuthPrincipal` does not adopt
 /// (mirrors bearer_oidc — duplicated to avoid a shared helper module just
@@ -42,6 +44,11 @@ fn freeUnusedPrincipalFields(alloc: std.mem.Allocator, p: oidc.Principal) void {
 pub const BearerOrApiKey = struct {
     api_keys: []const u8,
     verifier: ?*oidc.Verifier,
+    /// Populated by MiddlewareRegistry.initChains() when a tenant API-key
+    /// lookup is wired. When set, any `zmb_t_`-prefixed Bearer token is
+    /// routed to the tenant-key path (DB-backed lookup via host callback)
+    /// before the env-var rotation match.
+    tenant_api_key: ?*TenantApiKey = null,
 
     pub fn middleware(self: *BearerOrApiKey) chain.Middleware(AuthCtx) {
         return .{ .ptr = self, .execute_fn = executeTypeErased };
@@ -58,7 +65,14 @@ pub const BearerOrApiKey = struct {
             return .short_circuit;
         };
 
+        if (self.tenant_api_key) |tapi| {
+            if (std.mem.startsWith(u8, provided, tenant_api_key_mod.TENANT_KEY_PREFIX)) {
+                return tapi.execute(ctx, req);
+            }
+        }
+
         if (bearer.matchRotatedKey(provided, self.api_keys)) {
+            std.log.scoped(.auth).warn("api_key.bootstrap_env_var_used req_id={s} note=\"migrate to tenant API keys via POST /v1/api-keys\"", .{ctx.req_id});
             ctx.principal = .{ .mode = .api_key, .role = .admin };
             return .next;
         }

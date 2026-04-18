@@ -64,6 +64,9 @@ fn stubConsumeNonce(_: *anyopaque, _: []const u8) anyerror!bool {
 fn stubLookupWebhookSecret(_: *anyopaque, _: []const u8, _: std.mem.Allocator) anyerror!?[]const u8 {
     return null;
 }
+fn stubTenantApiKeyLookup(_: *anyopaque, _: std.mem.Allocator, _: []const u8) anyerror!?auth_mw.tenant_api_key.LookupResult {
+    return null;
+}
 
 const HttpResp = struct {
     status: u16,
@@ -164,6 +167,7 @@ fn startTestServer(alloc: std.mem.Allocator) !*TestServer {
     srv.registry = .{
         .bearer_or_api_key = .{ .api_keys = "", .verifier = &srv.verifier },
         .admin_api_key_mw = .{ .api_keys = "" },
+        .tenant_api_key_mw = .{ .host = undefined, .lookup = stubTenantApiKeyLookup },
         .require_role_admin = .{ .required = .admin },
         .require_role_operator = .{ .required = .operator },
         .slack_sig = .{ .secret = "" },
@@ -379,7 +383,7 @@ test "M26_001 envelope: GET /workspaces/{my}/zombies body has items+total, no zo
     try std.testing.expect(!bodyHasTopLevelKey(r.body, "zombies"));
 }
 
-test "M26_001 envelope: GET /workspaces/{my}/external-agents body has items+total, no agents key" {
+test "M26_001 envelope: GET /workspaces/{my}/agent-keys body has items+total, no agents key" {
     const srv = try startTestServer(ALLOC);
     defer {
         if (srv.pool.acquire()) |c| { cleanupTestData(c); srv.pool.release(c); } else |_| {}
@@ -387,7 +391,7 @@ test "M26_001 envelope: GET /workspaces/{my}/external-agents body has items+tota
         ALLOC.destroy(srv);
     }
 
-    const url = try urlJoin(ALLOC, srv.port, "/v1/workspaces/{s}/external-agents", .{TEST_WORKSPACE_ID});
+    const url = try urlJoin(ALLOC, srv.port, "/v1/workspaces/{s}/agent-keys", .{TEST_WORKSPACE_ID});
     defer ALLOC.free(url);
 
     const r = try sendReq(ALLOC, url, .GET, TOKEN_OPERATOR, null);
@@ -462,7 +466,7 @@ test "M26_001 validation: GET /v1/memory/recall with bad-format zombie_id return
     try std.testing.expectEqual(@as(u16, 400), r.status);
 }
 
-test "M26_001 no-content: DELETE external-agent returns 204 with empty body" {
+test "M26_001 no-content: DELETE agent-key returns 204 with empty body" {
     const srv = try startTestServer(ALLOC);
     defer {
         if (srv.pool.acquire()) |c| { cleanupTestData(c); srv.pool.release(c); } else |_| {}
@@ -470,8 +474,8 @@ test "M26_001 no-content: DELETE external-agent returns 204 with empty body" {
         ALLOC.destroy(srv);
     }
 
-    // Seed an external agent in TEST_WORKSPACE_ID for this test only. A zombie
-    // record is also required because external_agents.zombie_id has a FK.
+    // Seed an agent key in TEST_WORKSPACE_ID for this test only. A zombie
+    // record is also required because agent_keys.zombie_id has a FK.
     const agent_id = "agent_m26_204_test";
     const zombie_for_agent = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f99";
     const conn = try srv.pool.acquire();
@@ -481,20 +485,20 @@ test "M26_001 no-content: DELETE external-agent returns 204 with empty body" {
         \\ON CONFLICT DO NOTHING
     , .{ zombie_for_agent, TEST_WORKSPACE_ID });
     _ = try conn.exec(
-        \\INSERT INTO core.external_agents (agent_id, workspace_id, zombie_id, name, description, key_hash, created_at)
+        \\INSERT INTO core.agent_keys (agent_id, workspace_id, zombie_id, name, description, key_hash, created_at)
         \\VALUES ($1, $2::uuid, $3::uuid, 'm26-204-test', '', 'stub-hash', 0)
         \\ON CONFLICT (agent_id) DO NOTHING
     , .{ agent_id, TEST_WORKSPACE_ID, zombie_for_agent });
     srv.pool.release(conn);
     defer {
         if (srv.pool.acquire()) |c| {
-            _ = c.exec("DELETE FROM core.external_agents WHERE agent_id = $1", .{agent_id}) catch {};
+            _ = c.exec("DELETE FROM core.agent_keys WHERE agent_id = $1", .{agent_id}) catch {};
             _ = c.exec("DELETE FROM core.zombies WHERE id = $1::uuid", .{zombie_for_agent}) catch {};
             srv.pool.release(c);
         } else |_| {}
     }
 
-    const url = try urlJoin(ALLOC, srv.port, "/v1/workspaces/{s}/external-agents/{s}", .{ TEST_WORKSPACE_ID, agent_id });
+    const url = try urlJoin(ALLOC, srv.port, "/v1/workspaces/{s}/agent-keys/{s}", .{ TEST_WORKSPACE_ID, agent_id });
     defer ALLOC.free(url);
 
     const r = try sendReq(ALLOC, url, .DELETE, TOKEN_OPERATOR, null);

@@ -158,12 +158,12 @@ test {
     _ = @import("executor/executor_network_policy.zig");
     _ = @import("executor/lease.zig");
     _ = @import("executor/client.zig");
-    _ = @import("http/handlers/m5_handler_changes_test.zig");
-    _ = @import("http/handlers/m16_004_handler_unit_test.zig");
-    _ = @import("http/handlers/m11_001_error_response_test.zig");
+    _ = @import("http/handlers/handler_auth_primitives_test.zig");
+    _ = @import("http/handlers/byok_handlers_unit_test.zig");
+    _ = @import("http/handlers/error_response_test.zig");
     _ = @import("http/handlers/hx_test.zig");
-    _ = @import("http/handlers/m14_001_memory_handler_test.zig");
-    _ = @import("http/handlers/m14_001_memory_handler_shapes_test.zig");
+    _ = @import("http/handlers/memory_handler_test.zig");
+    _ = @import("http/handlers/memory_handler_shapes_test.zig");
     _ = @import("cmd/run_watch_test.zig");
     _ = @import("cmd/serve_test.zig");
     _ = @import("queue/redis.zig");
@@ -178,7 +178,7 @@ test {
     // M18_001: zombie execution telemetry
     _ = @import("state/zombie_telemetry_store.zig");
     _ = @import("http/handlers/zombie_telemetry.zig");
-    _ = @import("http/handlers/m18_001_handler_unit_test.zig");
+    _ = @import("http/handlers/zombie_telemetry_handler_test.zig");
     _ = @import("http/handlers/telemetry_http_integration_test.zig");
     // NOTE: src/http/handlers/dashboard_http_integration_test.zig is NOT wired
     // up yet. The test was authored under M12_001 but the seedTestData cleanup
@@ -193,16 +193,19 @@ test {
     _ = @import("http/handlers/outbound_proxy.zig");
     _ = @import("http/handlers/outbound_proxy_test.zig");
     _ = @import("http/handlers/integration_grants.zig");
-    _ = @import("http/handlers/external_agents.zig");
+    _ = @import("http/handlers/agent_keys.zig");
+    _ = @import("http/handlers/api_keys.zig");
+    _ = @import("http/handlers/api_keys_list.zig");
+    _ = @import("http/handlers/tenant_api_keys_integration_test.zig");
     _ = @import("http/handlers/grant_approval_webhook.zig");
     _ = @import("zombie/notifications/grant_notifier.zig");
     _ = @import("http/route_matchers.zig");
     _ = @import("http/handlers/zombie_steer_http.zig");
     // M23_001: Zombie Steer — live steering + execution tracking
     _ = @import("http/handlers/zombie_steer_http_integration_test.zig");
-    _ = @import("zombie/event_loop_m23_integration_test.zig");
-    // M24_001: cross-workspace IDOR regression tests (RULE WAUTH)
-    _ = @import("http/handlers/m24_001_cross_workspace_idor_test.zig");
+    _ = @import("zombie/event_loop_execution_tracking_test.zig");
+    // Cross-workspace IDOR regression tests (RULE WAUTH)
+    _ = @import("http/handlers/cross_workspace_idor_test.zig");
     _ = @import("cmd/worker_zombie.zig");
     // M6_001: AI Firewall Policy Engine
     _ = @import("zombie/firewall/domain_policy.zig");
@@ -221,5 +224,5 @@ test {
     _ = @import("http/handlers/slack_oauth_client.zig");
     _ = @import("http/handlers/slack_events.zig");
     _ = @import("http/handlers/slack_interactions.zig");
-    _ = @import("http/handlers/m8_001_slack_unit_test.zig");
+    _ = @import("http/handlers/slack_error_code_pins_test.zig");
 }
