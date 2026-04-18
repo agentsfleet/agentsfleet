@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+# Pre-commit: gitleaks on staged content, plus make lint when lint-relevant files are staged.
+# Bypass for emergencies: `git commit --no-verify` (discouraged per AGENTS.md).
+set -euo pipefail
+
+repo_root="$(git rev-parse --show-toplevel)"
+cd "$repo_root"
+
+# --- gitleaks on staged content ----------------------------------------------
+if ! command -v gitleaks >/dev/null 2>&1; then
+  echo "pre-commit: gitleaks not installed. See https://github.com/gitleaks/gitleaks/releases" >&2
+  exit 1
+fi
+
+echo "pre-commit: gitleaks protect --staged"
+gitleaks protect --staged --redact --verbose --no-banner
+
+# --- conditional make lint ---------------------------------------------------
+# Run the full lint gate only if staged files could affect it. Keeps fast-path
+# commits (docs, specs, memory) from paying the lint cost.
+staged="$(git diff --cached --name-only --diff-filter=ACMR)"
+
+needs_lint=0
+while IFS= read -r f; do
+  [ -z "$f" ] && continue
+  case "$f" in
+    *.zig)                         needs_lint=1 ;;
+    apps/*|website/*|*.ts|*.tsx|*.js|*.jsx|*.json) needs_lint=1 ;;
+    .github/workflows/*.yml|.github/workflows/*.yaml) needs_lint=1 ;;
+    Makefile|make/*.mk)            needs_lint=1 ;;
+  esac
+done <<< "$staged"
+
+if [ "$needs_lint" -eq 1 ]; then
+  echo "pre-commit: make lint"
+  make lint
+else
+  echo "pre-commit: no lint-relevant files staged, skipping make lint"
+fi
