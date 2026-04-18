@@ -4,7 +4,7 @@
 **Milestone:** M28
 **Workstream:** 001
 **Date:** Apr 17, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — Customer-facing webhook reliability and security unification
 **Batch:** B1
 **Branch:** feat/m28-webhook-auth-middleware
@@ -36,8 +36,9 @@ Slack's native handler stays separate (it needs challenge handshake, bot-loop pr
 
 | File | Action | Why |
 |------|--------|-----|
-| `src/auth/middleware/webhook_auth.zig` | CREATE | Unified webhook auth middleware — URL secret + Bearer + HMAC |
-| `src/auth/middleware/webhook_auth_test.zig` | CREATE | Unit tests for all auth paths |
+| `src/auth/middleware/webhook_sig.zig` | CREATE | Unified webhook auth middleware — URL secret + Bearer + HMAC. Comptime-generic on `LookupCtx` (RULE NTE — no `*anyopaque`). |
+| `src/auth/middleware/webhook_sig_test.zig` | CREATE | 13 unit tests covering URL secret, Bearer, HMAC negative paths, edge cases. |
+| `src/cmd/serve_webhook_lookup.zig` | CREATE | Real pg+vault `WebhookLookupFn` implementation, extracted from `serve.zig` for RULE FLL. |
 | `src/http/handlers/webhooks.zig` | MODIFY | Remove `verifyWebhookAuth`, `constantTimeEq`, `verifyBearerToken` — delegate to middleware |
 | `src/http/handlers/slack_events.zig` | MODIFY | Remove inline `verifySlackSignature` — delegate to middleware |
 | `src/http/route_table.zig` | MODIFY | Wire `receive_webhook` to use new middleware instead of `none` |
@@ -62,22 +63,22 @@ Slack's native handler stays separate (it needs challenge handshake, bot-loop pr
 
 ### §1 — Unified WebhookAuth Middleware
 
-**Status:** PENDING
+**Status:** DONE
 
-Create `src/auth/middleware/webhook_auth.zig` implementing `chain.Middleware(AuthCtx)`. The middleware handles three auth strategies in priority order: (1) URL-embedded secret (vault-backed), (2) HMAC signature header detection against provider registry, (3) Bearer token fallback. All comparisons use constant-time XOR (RULE CTM).
+Create `src/auth/middleware/webhook_sig.zig` implementing `chain.Middleware(AuthCtx)`. The middleware handles three auth strategies in priority order: (1) URL-embedded secret (vault-backed), (2) HMAC signature header detection against provider registry, (3) Bearer token fallback. All comparisons use constant-time XOR (RULE CTM).
 
 **Dimensions (test blueprints):**
 
 | Dim | Status | Target | Input | Expected | Test type |
 |-----|--------|--------|-------|----------|-----------|
-| 1.1 | PENDING | `webhook_auth.zig:execute` | URL secret matches vault secret | `.next` (auth passes) | unit |
-| 1.2 | PENDING | `webhook_auth.zig:execute` | URL secret does NOT match vault | `.short_circuit` + 401 | unit |
-| 1.3 | PENDING | `webhook_auth.zig:execute` | No URL secret, valid Bearer token | `.next` (fallback passes) | unit |
-| 1.4 | PENDING | `webhook_auth.zig:execute` | No URL secret, invalid Bearer token | `.short_circuit` + 401 | unit |
+| 1.1 | DONE | `webhook_sig.zig:execute` | URL secret matches vault secret | `.next` (auth passes) | unit |
+| 1.2 | DONE | `webhook_sig.zig:execute` | URL secret does NOT match vault | `.short_circuit` + 401 | unit |
+| 1.3 | DONE | `webhook_sig.zig:execute` | No URL secret, valid Bearer token | `.next` (fallback passes) | unit |
+| 1.4 | DONE | `webhook_sig.zig:execute` | No URL secret, invalid Bearer token | `.short_circuit` + 401 | unit |
 
 ### §2 — HMAC Provider Detection and Verification
 
-**Status:** PENDING
+**Status:** DONE
 
 Add `PROVIDER_REGISTRY: []const VerifyConfig` to `webhook_verify.zig` — a comptime array of all known providers. Add `detectProvider(headers) → ?VerifyConfig` that probes headers in priority order. The middleware calls this to auto-detect the provider from request headers when no URL secret or Bearer token is present.
 
@@ -85,14 +86,14 @@ Add `PROVIDER_REGISTRY: []const VerifyConfig` to `webhook_verify.zig` — a comp
 
 | Dim | Status | Target | Input | Expected | Test type |
 |-----|--------|--------|-------|----------|-----------|
-| 2.1 | PENDING | `webhook_verify.zig:detectProvider` | Request with `x-slack-signature` header | Returns `SLACK` config | unit |
-| 2.2 | PENDING | `webhook_verify.zig:detectProvider` | Request with `x-hub-signature-256` header | Returns `GITHUB` config | unit |
-| 2.3 | PENDING | `webhook_verify.zig:detectProvider` | Request with `linear-signature` header | Returns `LINEAR` config | unit |
-| 2.4 | PENDING | `webhook_verify.zig:detectProvider` | Request with no known signature header | Returns `null` | unit |
+| 2.1 | DONE | `webhook_verify.zig:detectProvider` | Request with `x-slack-signature` header | Returns `SLACK` config | unit |
+| 2.2 | DONE | `webhook_verify.zig:detectProvider` | Request with `x-hub-signature-256` header | Returns `GITHUB` config | unit |
+| 2.3 | DONE | `webhook_verify.zig:detectProvider` | Request with `linear-signature` header | Returns `LINEAR` config | unit |
+| 2.4 | DONE | `webhook_verify.zig:detectProvider` | Request with no known signature header | Returns `null` | unit |
 
 ### §3 — Config-Driven Trigger Signature (Zero-Code Scaling)
 
-**Status:** PENDING
+**Status:** DONE
 
 Extend `ZombieTrigger.webhook` to accept optional `signature` fields: `sig_header`, `sig_prefix`, `ts_header`. When present, the middleware builds a `VerifyConfig` from these fields at request time. This allows any new HMAC-SHA256 provider (Jira, Asana, Stripe, etc.) to work without code changes — the user declares the signature scheme in TRIGGER.md.
 
@@ -100,14 +101,14 @@ Extend `ZombieTrigger.webhook` to accept optional `signature` fields: `sig_heade
 
 | Dim | Status | Target | Input | Expected | Test type |
 |-----|--------|--------|-------|----------|-----------|
-| 3.1 | PENDING | `config_helpers.zig:parseZombieTrigger` | Trigger with `signature.header: "x-jira-hook"` | Parses into webhook with signature config | unit |
-| 3.2 | PENDING | `config_helpers.zig:parseZombieTrigger` | Trigger without `signature` block | Parses with null signature (backward compat) | unit |
-| 3.3 | PENDING | `webhook_auth.zig:execute` | Custom `VerifyConfig` from config + valid HMAC | `.next` (auth passes) | unit |
-| 3.4 | PENDING | `webhook_auth.zig:execute` | Custom `VerifyConfig` from config + invalid HMAC | `.short_circuit` + 401 | unit |
+| 3.1 | DONE | `config_helpers.zig:parseZombieTrigger` | Trigger with `signature.header: "x-jira-hook"` | Parses into webhook with signature config | unit |
+| 3.2 | DONE | `config_helpers.zig:parseZombieTrigger` | Trigger without `signature` block | Parses with null signature (backward compat) | unit |
+| 3.3 | DONE | `webhook_sig.zig:execute` | Custom `VerifyConfig` from config + valid HMAC | `.next` (auth passes) | unit |
+| 3.4 | DONE | `webhook_sig.zig:execute` | Custom `VerifyConfig` from config + invalid HMAC | `.short_circuit` + 401 | unit |
 
 ### §4 — Handler Cleanup and Route Wiring
 
-**Status:** PENDING
+**Status:** DONE
 
 Remove inline auth from `webhooks.zig` (delete `verifyWebhookAuth`, `constantTimeEq`, `verifyBearerToken`). Remove inline `verifySlackSignature` from `slack_events.zig`. Update `route_table.zig` to wire `receive_webhook` through the new middleware. Verify no orphaned references (RULE ORP).
 
@@ -115,33 +116,40 @@ Remove inline auth from `webhooks.zig` (delete `verifyWebhookAuth`, `constantTim
 
 | Dim | Status | Target | Input | Expected | Test type |
 |-----|--------|--------|-------|----------|-----------|
-| 4.1 | PENDING | `webhooks.zig` | After cleanup | Zero auth functions remain in handler | inspection |
-| 4.2 | PENDING | `route_table.zig` | `receive_webhook` route | Uses `webhookAuth()` middleware, not `none` | unit |
-| 4.3 | PENDING | `slack_events.zig` | After cleanup | `verifySlackSignature` removed; sig check via middleware or direct `webhook_verify` call | inspection |
-| 4.4 | PENDING | orphan sweep | `grep -rn "verifyWebhookAuth\|verifyBearerToken" src/` | 0 matches | inspection |
+| 4.1 | DONE | `webhooks.zig` | After cleanup | Zero auth functions remain in handler | inspection |
+| 4.2 | DONE | `route_table.zig` | `receive_webhook` route | Uses `WebhookSig(*pg.Pool)` middleware via registry, not `none` | unit |
+| 4.3 | DONE | `slack_events.zig` / `slack_interactions.zig` | After cleanup | `verifySlackSignature` removed from both handlers; sig check routes through middleware | inspection |
+| 4.4 | DONE | orphan sweep | `grep -rn "verifyWebhookAuth\|verifyBearerToken\|verifySlackSignature" src/` | 0 matches in non-test code | inspection |
 
 ---
 
 ## Interfaces
 
-**Status:** PENDING
+**Status:** DONE
 
 ### Public Functions
 
 ```zig
-// src/auth/middleware/webhook_auth.zig
-pub const WebhookAuth = struct {
-    vault_lookup_ctx: *anyopaque,
-    vault_lookup_fn: LookupFn,
+// src/auth/middleware/webhook_sig.zig — comptime-generic on LookupCtx (RULE NTE)
+pub fn WebhookSig(comptime LookupCtx: type) type {
+    return struct {
+        const Self = @This();
+        lookup_ctx: LookupCtx,
+        lookup_fn: *const fn (ctx: LookupCtx, allocator: std.mem.Allocator, zombie_id: []const u8) anyerror!?WebhookSecret,
+        config: WebhookSignatureConfig,
 
-    pub fn middleware(self: *WebhookAuth) chain.Middleware(AuthCtx);
-    pub fn execute(self: *WebhookAuth, ctx: *AuthCtx, req: *httpz.Request) !chain.Outcome;
-};
+        pub fn middleware(self: *Self) chain.Middleware(AuthCtx);
+        pub fn execute(self: *Self, ctx: *AuthCtx, req: *httpz.Request) !chain.Outcome;
+    };
+}
 
 // src/zombie/webhook_verify.zig (additions)
 pub const PROVIDER_REGISTRY: []const VerifyConfig = &.{ SLACK, GITHUB, LINEAR };
 pub fn detectProvider(headers: anytype) ?VerifyConfig;
+// comptime invariants: unique sig_header, non-empty sig_header across all entries.
 ```
+
+**Implementation note (deviation from initial spec):** Filename renamed `webhook_sig.zig` → `webhook_sig.zig` to reflect that it is signature-driven auth. The `*anyopaque` lookup context was refactored to a comptime generic parameter per RULE NTE (added to `docs/greptile-learnings/RULES.md` in this branch) — the host passes `*pg.Pool` directly with compile-time type safety.
 
 ### Input Contracts
 
@@ -175,7 +183,7 @@ pub fn detectProvider(headers: anytype) ?VerifyConfig;
 
 ## Failure Modes
 
-**Status:** PENDING
+**Status:** DONE
 
 | Failure | Trigger | System behavior | User observes |
 |---------|---------|----------------|---------------|
@@ -191,22 +199,22 @@ pub fn detectProvider(headers: anytype) ?VerifyConfig;
 
 ## Implementation Constraints (Enforceable)
 
-**Status:** PENDING
+**Status:** DONE
 
 | Constraint | How to verify |
 |-----------|---------------|
 | Zero auth logic in `webhooks.zig` handler | `grep -rn "verifyWebhookAuth\|constantTimeEq\|verifyBearerToken" src/http/handlers/webhooks.zig` returns 0 |
-| All secret comparisons use constant-time XOR | `grep -rn "std.mem.eql.*secret\|==.*token" src/auth/middleware/webhook_auth.zig` returns 0 |
-| `webhook_auth.zig` ≤ 350 lines | `wc -l < 350` |
-| `webhook_auth_test.zig` covers all 4 auth strategies | `zig build test` — all dim tests pass |
+| All secret comparisons use constant-time XOR | `grep -rn "std.mem.eql.*secret\|==.*token" src/auth/middleware/webhook_sig.zig` returns 0 |
+| `webhook_sig.zig` ≤ 350 lines | `wc -l < 350` |
+| `webhook_sig_test.zig` covers all 4 auth strategies | `zig build test` — all dim tests pass |
 | Cross-compiles | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` |
-| No env var reads at request time | `grep -rn "getEnvVarOwned" src/auth/middleware/webhook_auth.zig` returns 0 |
+| No env var reads at request time | `grep -rn "getEnvVarOwned" src/auth/middleware/webhook_sig.zig` returns 0 |
 
 ---
 
 ## Invariants (Hard Guardrails)
 
-**Status:** PENDING
+**Status:** DONE
 
 | # | Invariant | Enforcement mechanism |
 |---|-----------|----------------------|
@@ -217,24 +225,24 @@ pub fn detectProvider(headers: anytype) ?VerifyConfig;
 
 ## Test Specification
 
-**Status:** PENDING
+**Status:** DONE
 
 ### Unit Tests
 
 | Test name | Dim | Target | Input | Expected |
 |-----------|-----|--------|-------|----------|
-| `url_secret_match_returns_next` | 1.1 | `webhook_auth.zig:execute` | Provided secret = vault secret | `.next` |
-| `url_secret_mismatch_returns_401` | 1.2 | `webhook_auth.zig:execute` | Provided secret ≠ vault secret | `.short_circuit` + 401 |
-| `bearer_fallback_valid_returns_next` | 1.3 | `webhook_auth.zig:execute` | No URL secret, valid Bearer | `.next` |
-| `bearer_fallback_invalid_returns_401` | 1.4 | `webhook_auth.zig:execute` | No URL secret, wrong Bearer | `.short_circuit` + 401 |
+| `url_secret_match_returns_next` | 1.1 | `webhook_sig.zig:execute` | Provided secret = vault secret | `.next` |
+| `url_secret_mismatch_returns_401` | 1.2 | `webhook_sig.zig:execute` | Provided secret ≠ vault secret | `.short_circuit` + 401 |
+| `bearer_fallback_valid_returns_next` | 1.3 | `webhook_sig.zig:execute` | No URL secret, valid Bearer | `.next` |
+| `bearer_fallback_invalid_returns_401` | 1.4 | `webhook_sig.zig:execute` | No URL secret, wrong Bearer | `.short_circuit` + 401 |
 | `detect_slack_by_header` | 2.1 | `webhook_verify.zig:detectProvider` | `x-slack-signature` present | `SLACK` |
 | `detect_github_by_header` | 2.2 | `webhook_verify.zig:detectProvider` | `x-hub-signature-256` present | `GITHUB` |
 | `detect_linear_by_header` | 2.3 | `webhook_verify.zig:detectProvider` | `linear-signature` present | `LINEAR` |
 | `detect_unknown_returns_null` | 2.4 | `webhook_verify.zig:detectProvider` | No known headers | `null` |
 | `custom_signature_config_parsed` | 3.1 | `config_helpers.zig` | TRIGGER with `signature` block | Signature fields populated |
 | `missing_signature_config_is_null` | 3.2 | `config_helpers.zig` | TRIGGER without `signature` | Null signature (backward compat) |
-| `custom_hmac_valid_passes` | 3.3 | `webhook_auth.zig:execute` | Custom config + valid HMAC | `.next` |
-| `custom_hmac_invalid_rejects` | 3.4 | `webhook_auth.zig:execute` | Custom config + bad HMAC | `.short_circuit` + 401 |
+| `custom_hmac_valid_passes` | 3.3 | `webhook_sig.zig:execute` | Custom config + valid HMAC | `.next` |
+| `custom_hmac_invalid_rejects` | 3.4 | `webhook_sig.zig:execute` | Custom config + bad HMAC | `.short_circuit` + 401 |
 
 ### Negative Tests (error paths that MUST fail)
 
@@ -277,14 +285,14 @@ pub fn detectProvider(headers: anytype) ?VerifyConfig;
 
 ## Execution Plan (Ordered)
 
-**Status:** PENDING
+**Status:** DONE
 
 | Step | Action | Verify (must pass before next step) |
 |------|--------|--------------------------------------|
 | 1 | Add `PROVIDER_REGISTRY` + `detectProvider` to `webhook_verify.zig` with comptime invariants | `zig build` compiles |
 | 2 | Add optional `signature` fields to `ZombieTrigger.webhook` in `config.zig` / `config_helpers.zig` | `zig build && zig build test` |
-| 3 | Create `webhook_auth.zig` middleware with URL secret + Bearer + HMAC strategies | `zig build` compiles |
-| 4 | Create `webhook_auth_test.zig` covering all dims | `zig build test` (all pass) |
+| 3 | Create `webhook_sig.zig` middleware with URL secret + Bearer + HMAC strategies | `zig build` compiles |
+| 4 | Create `webhook_sig_test.zig` covering all dims | `zig build test` (all pass) |
 | 5 | Wire `receive_webhook` in `route_table.zig` to use new middleware | `zig build test` |
 | 6 | Remove inline auth from `webhooks.zig` (verifyWebhookAuth, constantTimeEq, verifyBearerToken) | `zig build test` |
 | 7 | Remove inline `verifySlackSignature` from `slack_events.zig` — route through middleware or direct `webhook_verify` call | `zig build test` |
@@ -294,22 +302,22 @@ pub fn detectProvider(headers: anytype) ?VerifyConfig;
 
 ## Acceptance Criteria
 
-**Status:** PENDING
+**Status:** DONE
 
-- [ ] `webhook_auth.zig` middleware handles URL secret, Bearer, and HMAC auth — verify: `zig build test`
-- [ ] `webhooks.zig` contains zero auth functions — verify: `grep -rn "verifyWebhookAuth\|constantTimeEq\|verifyBearerToken" src/http/handlers/webhooks.zig` returns 0
-- [ ] `detectProvider` returns correct config for Slack/GitHub/Linear headers — verify: `zig build test`
-- [ ] Custom signature config in TRIGGER.md parses into `VerifyConfig` — verify: `zig build test`
-- [ ] All existing webhook tests still pass — verify: `make test`
-- [ ] Cross-compile succeeds — verify: `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux`
-- [ ] No leaked secrets — verify: `gitleaks detect`
-- [ ] All new/modified files ≤ 350 lines — verify: `wc -l`
+- [x] `webhook_sig.zig` middleware handles URL secret, Bearer, and HMAC auth — verified: `zig build test` (13 tests green)
+- [x] `webhooks.zig` contains zero auth functions — verified: grep returns 0
+- [x] `detectProvider` returns correct config for Slack/GitHub/Linear headers — verified: `zig build test`
+- [x] Custom signature config in TRIGGER.md parses into `VerifyConfig` — verified: `zig build test`
+- [x] All existing webhook tests still pass — verified: `make test` + `make test-integration`
+- [x] Cross-compile succeeds — verified: x86_64-linux + aarch64-linux
+- [x] No leaked secrets — verified: `gitleaks detect` (922 commits scanned, no leaks)
+- [x] All new/modified files ≤ 350 lines — verified: webhook_sig.zig=143, webhook_sig_test.zig=232 (test exempt), serve_webhook_lookup.zig=53
 
 ---
 
 ## Eval Commands (Post-Implementation Verification)
 
-**Status:** PENDING
+**Status:** DONE
 
 ```bash
 # E1: No auth logic in webhook handler
@@ -351,7 +359,7 @@ make check-pg-drain
 
 ## Dead Code Sweep
 
-**Status:** PENDING
+**Status:** DONE
 
 **1. Orphaned symbols — must be removed from handlers.**
 
@@ -364,24 +372,26 @@ make check-pg-drain
 
 **2. No files deleted** — symbols removed from existing files only.
 
-**3. main.zig test discovery** — add `_ = @import("auth/middleware/webhook_auth_test.zig");` if test discovery uses explicit imports.
+**3. main.zig test discovery** — add `_ = @import("auth/middleware/webhook_sig_test.zig");` if test discovery uses explicit imports.
 
 ---
 
 ## Verification Evidence
 
-**Status:** PENDING
+**Status:** DONE
 
 | Check | Command | Result | Pass? |
 |-------|---------|--------|-------|
-| Unit tests | `make test` | | |
-| Integration tests | `make test-integration` | | |
-| Leak detection | `zig build test \| grep leak` | | |
-| Cross-compile | `zig build -Dtarget=x86_64-linux` | | |
-| Lint | `make lint` | | |
-| Gitleaks | `gitleaks detect` | | |
-| 350L gate | `wc -l` | | |
-| Dead code sweep | `grep -rn verifyWebhookAuth src/` | | |
+| Unit tests | `make test` | exit 0 | ✅ |
+| Integration tests | `make test-integration` | full suite green | ✅ |
+| Leak detection | `zig build test` under `std.testing.allocator` | zero leaks reported | ✅ |
+| Cross-compile x86 | `zig build -Dtarget=x86_64-linux` | exit 0 | ✅ |
+| Cross-compile arm | `zig build -Dtarget=aarch64-linux` | exit 0 | ✅ |
+| Full lint | `make lint` | All lint checks passed | ✅ |
+| pg-drain | `make check-pg-drain` | 268 files scanned, pass | ✅ |
+| Gitleaks | `gitleaks detect` | 922 commits, no leaks | ✅ |
+| 350L gate | `wc -l` on touched code files | all under limit | ✅ |
+| Dead code sweep | `grep -rn "verifyWebhookAuth\|verifyBearerToken\|verifySlackSignature" src/ --include="*.zig"` | 0 non-test hits | ✅ |
 
 ---
 
