@@ -267,7 +267,7 @@ fn reportDeleteFailure(hx: Hx, tenant_id: []const u8, key_id: []const u8) void {
         hx.fail(ec.ERR_APIKEY_NOT_FOUND, "API key not found");
         return;
     }
-    hx.fail(ec.ERR_INVALID_REQUEST, "Active key must be revoked before deletion");
+    hx.fail(ec.ERR_APIKEY_MUST_REVOKE_FIRST, "Active key must be revoked before deletion");
 }
 
 test {

@@ -105,7 +105,7 @@ New table for tenant-scoped API keys with named keys, SHA-256 hash storage, and 
 ```sql
 CREATE TABLE core.api_keys (
     id           uuid        PRIMARY KEY,                            -- UUIDv7
-    tenant_id    uuid        NOT NULL REFERENCES core.tenants(id) ON DELETE CASCADE,
+    tenant_id    uuid        NOT NULL REFERENCES core.tenants(tenant_id) ON DELETE CASCADE,
     key_name     text        NOT NULL,
     key_hash     text        NOT NULL,                               -- SHA-256 hex of the raw zmb_t_ key (64 chars; matches the sibling core.agent_keys convention)
     created_by   text        NOT NULL,                               -- OIDC sub of the admin who minted it (opaque provider string; there is no local core.users table)
@@ -321,7 +321,7 @@ Server MUST reject `page_size > 100` with `400 ERR_INVALID_REQUEST`. Sort must b
 | Insufficient role (user role) | 403 with ERR_FORBIDDEN | `{"error_code":"UZ-AUTH-003","message":"Workspace access denied"}` |
 | DB unavailable | 503 with ERR_INTERNAL | `{"error_code":"UZ-INTERNAL-001","message":"Database unavailable"}` |
 | Malformed input (empty/oversized key_name) | 400 with ERR_INVALID_REQUEST | `{"error_code":"UZ-BAD-001","message":"key_name must be 1–64 chars"}` |
-| DELETE on active (non-revoked) key | 409 with ERR_INVALID_REQUEST | `{"error_code":"UZ-BAD-001","message":"Active key must be revoked before deletion"}` |
+| DELETE on active (non-revoked) key | 409 with ERR_APIKEY_MUST_REVOKE_FIRST | `{"error_code":"UZ-APIKEY-008","message":"Active API key must be revoked before deletion"}` |
 | PATCH `{"active": true}` (attempt to re-activate) | 409 with ERR_APIKEY_READONLY_FIELD | `{"error_code":"UZ-APIKEY-007","message":"active cannot be set to true; mint a new key instead"}` |
 | PATCH with malformed body (missing `active`, non-bool, extra fields) | 400 with ERR_INVALID_REQUEST | `{"error_code":"UZ-BAD-001","message":"PATCH body must be {\"active\": false}"}` |
 | GET with `page_size > 100` | 400 with ERR_INVALID_REQUEST | `{"error_code":"UZ-BAD-001","message":"page_size must be between 1 and 100"}` |

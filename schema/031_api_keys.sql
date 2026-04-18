@@ -6,7 +6,7 @@
 
 CREATE TABLE IF NOT EXISTS core.api_keys (
     id            UUID        PRIMARY KEY,
-    tenant_id     UUID        NOT NULL REFERENCES core.tenants(id) ON DELETE CASCADE,
+    tenant_id     UUID        NOT NULL REFERENCES core.tenants(tenant_id) ON DELETE CASCADE,
     key_name      TEXT        NOT NULL,
     key_hash      TEXT        NOT NULL,                               -- SHA-256 hex of raw zmb_t_ key (64 chars)
     created_by    TEXT        NOT NULL,                               -- OIDC sub of the admin who minted it (opaque provider-issued string, not a UUID)

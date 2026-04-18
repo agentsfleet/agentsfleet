@@ -302,6 +302,8 @@ pub const ENTRIES = [_]Entry{
         "This key is already revoked. No further action is required."),
     e("UZ-APIKEY-007", .conflict, "active cannot be set to true; mint a new key instead",
         "Re-activation is not supported. Create a new key via POST /v1/api-keys and revoke the old one."),
+    e("UZ-APIKEY-008", .conflict, "Active API key must be revoked before deletion",
+        "Revoke the key first with PATCH /v1/api-keys/{id} body {\"active\": false}, then retry DELETE."),
     // ── INTEGRATION GRANTS ────────────────────────────────────────────────────
     e("UZ-GRANT-001", .forbidden, "No integration grant for service",
         "This zombie has no approved grant for the target service. " ++

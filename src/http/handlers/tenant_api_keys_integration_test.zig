@@ -106,7 +106,10 @@ fn seedTestData(conn: *pg.Conn) !void {
 
 fn cleanupApiKeys(conn: *pg.Conn) void {
     _ = conn.exec("DELETE FROM core.api_keys WHERE tenant_id IN ($1::uuid, $2::uuid)", .{ TEST_TENANT_ID, OTHER_TENANT_ID }) catch {};
-    _ = conn.exec("DELETE FROM tenants WHERE tenant_id = $1", .{OTHER_TENANT_ID}) catch {};
+    // Intentionally do NOT delete OTHER_TENANT_ID here — seedTestData runs
+    // before cleanupApiKeys in startTestServer; removing the tenant row
+    // would leave subsequent INSERTs into core.api_keys (FK → core.tenants)
+    // failing with foreign_key_violation.
 }
 
 fn startTestServer(alloc: std.mem.Allocator) !*TestServer {
