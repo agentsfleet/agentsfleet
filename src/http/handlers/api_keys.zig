@@ -242,7 +242,7 @@ pub fn innerDeleteApiKey(hx: Hx, key_id: []const u8) void {
     defer q.deinit();
 
     if ((q.next() catch null) == null) {
-        reportDeleteFailure(hx, tenant_id, key_id);
+        reportDeleteFailure(hx, conn, tenant_id, key_id);
         return;
     }
 
@@ -252,12 +252,7 @@ pub fn innerDeleteApiKey(hx: Hx, key_id: []const u8) void {
     hx.noContent();
 }
 
-fn reportDeleteFailure(hx: Hx, tenant_id: []const u8, key_id: []const u8) void {
-    const conn = hx.ctx.pool.acquire() catch {
-        hx.fail(ec.ERR_APIKEY_NOT_FOUND, "API key not found");
-        return;
-    };
-    defer hx.ctx.pool.release(conn);
+fn reportDeleteFailure(hx: Hx, conn: *pg.Conn, tenant_id: []const u8, key_id: []const u8) void {
     var q = PgQuery.from(conn.query(
         \\SELECT active FROM core.api_keys WHERE id = $1::uuid AND tenant_id = $2::uuid LIMIT 1
     , .{ key_id, tenant_id }) catch {

@@ -57,7 +57,18 @@ jobs:
           version: 0.15.2
 
       - name: Compile zombied + zombied-executor (x86_64-linux)
-        run: zig build -Doptimize=ReleaseSafe -Dtarget=x86_64-linux-musl
+        # Retry on transient GitHub CDN 5xx when fetching transitive zig deps.
+        run: |
+          attempt=1
+          until zig build -Doptimize=ReleaseSafe -Dtarget=x86_64-linux-musl; do
+            if [ "$attempt" -ge 3 ]; then
+              echo "FAIL: zig build failed after 3 attempts"
+              exit 1
+            fi
+            echo "  zig build attempt $attempt failed; retrying in $((attempt * 10))s..."
+            sleep $((attempt * 10))
+            attempt=$((attempt + 1))
+          done
 
       - name: Verify static ELF — zero NEEDED, no INTERP (x86_64-linux)
         run: |
@@ -115,7 +126,21 @@ jobs:
               (cd /tmp && tar xf zig.tar.xz)
               export PATH="/tmp/zig-aarch64-linux-0.15.2:$PATH"
               echo "  compiling zombied + zombied-executor (aarch64-linux)..."
-              zig build -Doptimize=ReleaseSafe -Dtarget=aarch64-linux-musl
+              # Retry zig build up to 3x — transitive deps declared in
+              # vendor/httpz/build.zig.zon are fetched from github.com
+              # and github'\''s archive CDN occasionally returns 5xx.
+              # Retries handle the transient-network failure mode without
+              # vendoring every transitive package.
+              attempt=1
+              until zig build -Doptimize=ReleaseSafe -Dtarget=aarch64-linux-musl; do
+                if [ "$attempt" -ge 3 ]; then
+                  echo "FAIL: zig build failed after 3 attempts"
+                  exit 1
+                fi
+                echo "  zig build attempt $attempt failed; retrying in $((attempt * 10))s..."
+                sleep $((attempt * 10))
+                attempt=$((attempt + 1))
+              done
               for bin in zig-out/bin/zombied zig-out/bin/zombied-executor; do
                 test -f "$bin"
                 if readelf -d "$bin" 2>/dev/null | grep -q " (NEEDED)"; then

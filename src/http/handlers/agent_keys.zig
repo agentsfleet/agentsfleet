@@ -94,7 +94,10 @@ pub fn innerCreateAgentKey(hx: Hx, req: *httpz.Request, workspace_id: []const u8
         return;
     });
     defer zombie_q.deinit();
-    const zombie_row = zombie_q.next() catch null;
+    const zombie_row = zombie_q.next() catch {
+        common.internalDbError(hx.res, hx.req_id);
+        return;
+    };
     if (zombie_row == null) {
         hx.fail(ec.ERR_ZOMBIE_NOT_FOUND, "Zombie not found in this workspace");
         return;
