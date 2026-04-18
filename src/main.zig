@@ -194,6 +194,8 @@ test {
     _ = @import("http/handlers/outbound_proxy_test.zig");
     _ = @import("http/handlers/integration_grants.zig");
     _ = @import("http/handlers/agent_keys.zig");
+    _ = @import("http/handlers/api_keys.zig");
+    _ = @import("http/handlers/api_keys_list.zig");
     _ = @import("http/handlers/grant_approval_webhook.zig");
     _ = @import("zombie/notifications/grant_notifier.zig");
     _ = @import("http/route_matchers.zig");

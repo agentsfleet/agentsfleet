@@ -243,7 +243,7 @@ pub const TenantApiKey = struct {
 // Shape follows docs/nostromo/api_handler_guide.md: innerXxx(hx: Hx, ...),
 // path params after req, returns void, responses via hx.ok / hx.fail only.
 pub fn innerCreateApiKey(hx: Hx, req: *httpz.Request) void
-pub fn innerListApiKeys(hx: Hx) void
+pub fn innerListApiKeys(hx: Hx, req: *httpz.Request) void // req for `page`/`page_size`/`sort` query params
 pub fn innerPatchApiKey(hx: Hx, req: *httpz.Request, key_id: []const u8) void // PATCH; body { active: false } → revoke
 pub fn innerDeleteApiKey(hx: Hx, key_id: []const u8) void
 ```

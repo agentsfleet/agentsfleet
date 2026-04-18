@@ -158,7 +158,7 @@ pub fn isUuidV7(id: []const u8) bool {
     };
 }
 
-fn allocUuidV7(alloc: std.mem.Allocator) ![]const u8 {
+pub fn allocUuidV7(alloc: std.mem.Allocator) ![]const u8 {
     var raw: [16]u8 = undefined;
     std.crypto.random.bytes(&raw);
 

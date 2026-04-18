@@ -116,6 +116,10 @@ pub fn specFor(route: router.Route, registry: *auth_mw.MiddlewareRegistry) ?Rout
         .agent_keys => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeAgentKeys },
         .delete_agent_key => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeDeleteAgentKey },
 
+        // Tenant API keys (M28_002 §3) — operator-minimum per RULE BIL.
+        .tenant_api_keys => .{ .middlewares = registry.operator(), .invoke = invoke.invokeTenantApiKeys },
+        .tenant_api_key_by_id => .{ .middlewares = registry.operator(), .invoke = invoke.invokeTenantApiKeyById },
+
         // Slack — install/callback use none (handler validates OAuth state+nonce);
         // events and interactions use Slack signature middleware.
         .slack_install => .{ .middlewares = auth_mw.MiddlewareRegistry.none, .invoke = invoke.invokeSlackInstall },
