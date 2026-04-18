@@ -33,12 +33,16 @@ export default function PricingLeadCapture({ intent }: Props) {
   const [status, setStatus] = useState<"idle" | "submitting" | "success" | "error">("idle");
   const [errorMessage, setErrorMessage] = useState("");
 
-  useEffect(() => {
-    if (!intent) return;
+  const [prevIntent, setPrevIntent] = useState(intent);
+  if (prevIntent !== intent) {
+    setPrevIntent(intent);
     setStatus("idle");
     setErrorMessage("");
     setEmail("");
-    inputRef.current?.focus();
+  }
+
+  useEffect(() => {
+    if (intent) inputRef.current?.focus();
   }, [intent]);
 
   const utms = useMemo(() => readUtms(window.location.search), []);
