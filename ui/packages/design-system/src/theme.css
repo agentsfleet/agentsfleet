@@ -1,0 +1,122 @@
+/*
+ * @usezombie/design-system — Semantic theme bridge (Layer 1 + Layer 2)
+ *
+ * Consumed by ui/packages/app and ui/packages/website so both surfaces
+ * share the same semantic-token → Tailwind utility mapping.
+ *
+ *   Layer 0 (tokens.css)   — palette + spacing + typography primitives (--z-*)
+ *   Layer 1 (:root, .dark) — semantic names bridging to Layer 0 (--primary, --card, ...)
+ *   Layer 2 (@theme inline)— exposes the semantic names to Tailwind v4 as utilities
+ *                            (bg-primary, text-success, border-border, ...)
+ *   Layer 3 (components)   — only consume Layer 2 utilities via className.
+ *                            Zero var(--z-*) arbitrary values in component files.
+ *
+ * Adding a new semantic color is a three-line change: one :root line,
+ * one .dark line, one @theme inline line.
+ *
+ * Matches the shadcn + Tailwind v4 canonical pattern (assistant-ui,
+ * openhive, shadcn/ui v4 reference app).
+ */
+
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  --background: var(--z-bg-0);
+  --foreground: var(--z-text-primary);
+  --card: var(--z-surface-0);
+  --card-foreground: var(--z-text-primary);
+  --popover: var(--z-surface-1);
+  --popover-foreground: var(--z-text-primary);
+  --primary: var(--z-orange);
+  --primary-foreground: var(--z-text-inverse);
+  --secondary: var(--z-surface-1);
+  --secondary-foreground: var(--z-text-primary);
+  --muted: var(--z-surface-1);
+  --muted-foreground: var(--z-text-muted);
+  --accent: var(--z-surface-2);
+  --accent-foreground: var(--z-text-primary);
+  --destructive: var(--z-red);
+  --destructive-foreground: var(--z-text-primary);
+  --success: var(--z-green);
+  --success-foreground: var(--z-text-inverse);
+  --warning: var(--z-amber);
+  --warning-foreground: var(--z-text-inverse);
+  --info: var(--z-cyan);
+  --info-foreground: var(--z-text-inverse);
+  --border: var(--z-border);
+  --input: var(--z-border);
+  --ring: var(--z-orange);
+  --radius: 0.5rem;
+
+  --primary-bright: var(--z-orange-bright);
+  --primary-glow: var(--z-glow-orange);
+  --primary-glow-strong: var(--z-glow-strong);
+}
+
+.dark {
+  --background: var(--z-bg-0);
+  --foreground: var(--z-text-primary);
+  --card: var(--z-surface-0);
+  --card-foreground: var(--z-text-primary);
+  --popover: var(--z-surface-1);
+  --popover-foreground: var(--z-text-primary);
+  --primary: var(--z-orange);
+  --primary-foreground: var(--z-text-inverse);
+  --secondary: var(--z-surface-1);
+  --secondary-foreground: var(--z-text-primary);
+  --muted: var(--z-surface-1);
+  --muted-foreground: var(--z-text-muted);
+  --accent: var(--z-surface-2);
+  --accent-foreground: var(--z-text-primary);
+  --destructive: var(--z-red);
+  --destructive-foreground: var(--z-text-primary);
+  --success: var(--z-green);
+  --success-foreground: var(--z-text-inverse);
+  --warning: var(--z-amber);
+  --warning-foreground: var(--z-text-inverse);
+  --info: var(--z-cyan);
+  --info-foreground: var(--z-text-inverse);
+  --border: var(--z-border);
+  --input: var(--z-border);
+  --ring: var(--z-orange);
+  --primary-bright: var(--z-orange-bright);
+  --primary-glow: var(--z-glow-orange);
+  --primary-glow-strong: var(--z-glow-strong);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  --color-primary-bright: var(--primary-bright);
+  --color-primary-glow: var(--primary-glow);
+  --color-primary-glow-strong: var(--primary-glow-strong);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-sm: calc(var(--radius) - 2px);
+  --radius-md: var(--radius);
+  --radius-lg: calc(var(--radius) + 4px);
+  --radius-xl: calc(var(--radius) + 8px);
+  --font-sans: var(--z-font-sans);
+  --font-mono: var(--z-font-mono);
+}

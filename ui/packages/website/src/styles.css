@@ -1,6 +1,7 @@
 @import url("https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&display=swap");
 @import "tailwindcss";
 @import "@usezombie/design-system/tokens.css";
+@import "@usezombie/design-system/theme.css";
 
 @font-face {
   font-family: "Geist Mono";

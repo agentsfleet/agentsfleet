@@ -2,26 +2,21 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "@usezombie/design-system/tokens.css";
+@import "@usezombie/design-system/theme.css";
 
 /*
  * UseZombie Mission Control — Global Styles
  *
- * Three-layer token pyramid (see components/ui/README for rationale):
- *   Layer 0  — @usezombie/design-system/tokens.css — palette primitives (--z-*)
- *              shared across website + Mission Control.
- *   Layer 1  — :root + .dark below — app-specific semantic names
- *              (--primary, --card, --success, ...) bridging to --z-* primitives.
- *   Layer 2  — @theme inline — exposes the semantic names to Tailwind v4 so
- *              they become utility classes (bg-primary, text-success, ...).
- *   Layer 3  — components/** — only consume Layer 2 utilities via className.
- *              Zero var(--z-*) arbitrary values in component files.
+ * The four-layer token pyramid now lives in the shared package:
+ *   Layer 0 — @usezombie/design-system/tokens.css   — palette primitives (--z-*)
+ *   Layer 1 — @usezombie/design-system/theme.css    — semantic bridge (--primary, ...)
+ *   Layer 2 — @usezombie/design-system/theme.css    — @theme inline for Tailwind utilities
+ *   Layer 3 — components/**                         — consume only Layer 2 utilities
  *
- * This matches the shadcn + Tailwind v4 canonical pattern (assistant-ui,
- * openhive, shadcn/ui v4 reference app). Adding a new semantic color is a
- * three-line change here: one :root line, one .dark line, one @theme line.
+ * Both ui/packages/app and ui/packages/website inherit Layers 0-2 from the
+ * package — zero drift. App-specific overrides (dashboard shell, status
+ * badges, pipeline visualization) stay here.
  */
-
-@custom-variant dark (&:is(.dark *));
 
 @font-face {
   font-family: "Geist Mono";
@@ -37,117 +32,11 @@
   font-display: swap;
 }
 
-/* ── Layer 1 — Semantic bridge (light-mode defaults) ─────────────────────── */
-/* The app currently renders always-dark (body picks --z-bg-0). We still
- * declare :root so future light-theme work can invert by swapping .dark
- * without touching component markup. Today :root and .dark share values. */
+/* Mission Control shell layout vars (not color tokens — kept app-local). */
 :root {
-  --background: var(--z-bg-0);
-  --foreground: var(--z-text-primary);
-  --card: var(--z-surface-0);
-  --card-foreground: var(--z-text-primary);
-  --popover: var(--z-surface-1);
-  --popover-foreground: var(--z-text-primary);
-  --primary: var(--z-orange);
-  --primary-foreground: var(--z-text-inverse);
-  --secondary: var(--z-surface-1);
-  --secondary-foreground: var(--z-text-primary);
-  --muted: var(--z-surface-1);
-  --muted-foreground: var(--z-text-muted);
-  --accent: var(--z-surface-2);
-  --accent-foreground: var(--z-text-primary);
-  --destructive: var(--z-red);
-  --destructive-foreground: var(--z-text-primary);
-  --success: var(--z-green);
-  --success-foreground: var(--z-text-inverse);
-  --warning: var(--z-amber);
-  --warning-foreground: var(--z-text-inverse);
-  --info: var(--z-cyan);
-  --info-foreground: var(--z-text-inverse);
-  --border: var(--z-border);
-  --input: var(--z-border);
-  --ring: var(--z-orange);
-  --radius: 0.5rem;
-
-  /* Brand-effect tokens — gradient endpoints + glow shadow colors for CTA-style
-   * elements. Defined here so components never touch Layer 0 (--z-*) directly. */
-  --primary-bright: var(--z-orange-bright);
-  --primary-glow: var(--z-glow-orange);
-  --primary-glow-strong: var(--z-glow-strong);
-
-  /* Layout — Mission Control shell (not color tokens; kept for backwards compat). */
   --sidebar-width: 240px;
   --header-height: 56px;
   --content-max: 1200px;
-}
-
-.dark {
-  --background: var(--z-bg-0);
-  --foreground: var(--z-text-primary);
-  --card: var(--z-surface-0);
-  --card-foreground: var(--z-text-primary);
-  --popover: var(--z-surface-1);
-  --popover-foreground: var(--z-text-primary);
-  --primary: var(--z-orange);
-  --primary-foreground: var(--z-text-inverse);
-  --secondary: var(--z-surface-1);
-  --secondary-foreground: var(--z-text-primary);
-  --muted: var(--z-surface-1);
-  --muted-foreground: var(--z-text-muted);
-  --accent: var(--z-surface-2);
-  --accent-foreground: var(--z-text-primary);
-  --destructive: var(--z-red);
-  --destructive-foreground: var(--z-text-primary);
-  --success: var(--z-green);
-  --success-foreground: var(--z-text-inverse);
-  --warning: var(--z-amber);
-  --warning-foreground: var(--z-text-inverse);
-  --info: var(--z-cyan);
-  --info-foreground: var(--z-text-inverse);
-  --border: var(--z-border);
-  --input: var(--z-border);
-  --ring: var(--z-orange);
-  --primary-bright: var(--z-orange-bright);
-  --primary-glow: var(--z-glow-orange);
-  --primary-glow-strong: var(--z-glow-strong);
-}
-
-/* ── Layer 2 — Expose semantic tokens to Tailwind v4 ─────────────────────── */
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --color-card: var(--card);
-  --color-card-foreground: var(--card-foreground);
-  --color-popover: var(--popover);
-  --color-popover-foreground: var(--popover-foreground);
-  --color-primary: var(--primary);
-  --color-primary-foreground: var(--primary-foreground);
-  --color-secondary: var(--secondary);
-  --color-secondary-foreground: var(--secondary-foreground);
-  --color-muted: var(--muted);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-accent: var(--accent);
-  --color-accent-foreground: var(--accent-foreground);
-  --color-destructive: var(--destructive);
-  --color-destructive-foreground: var(--destructive-foreground);
-  --color-success: var(--success);
-  --color-success-foreground: var(--success-foreground);
-  --color-warning: var(--warning);
-  --color-warning-foreground: var(--warning-foreground);
-  --color-info: var(--info);
-  --color-info-foreground: var(--info-foreground);
-  --color-primary-bright: var(--primary-bright);
-  --color-primary-glow: var(--primary-glow);
-  --color-primary-glow-strong: var(--primary-glow-strong);
-  --color-border: var(--border);
-  --color-input: var(--input);
-  --color-ring: var(--ring);
-  --radius-sm: calc(var(--radius) - 2px);
-  --radius-md: var(--radius);
-  --radius-lg: calc(var(--radius) + 4px);
-  --radius-xl: calc(var(--radius) + 8px);
-  --font-sans: var(--z-font-sans);
-  --font-mono: var(--z-font-mono);
 }
 
 /* ── Base ── */

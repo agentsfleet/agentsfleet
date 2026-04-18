@@ -8,7 +8,8 @@
     "./design-system": "./src/design-system/index.ts",
     "./classes": "./src/classes.ts",
     "./utils": "./src/utils.ts",
-    "./tokens.css": "./src/tokens.css"
+    "./tokens.css": "./src/tokens.css",
+    "./theme.css": "./src/theme.css"
   },
   "scripts": {
     "lint": "eslint src && tsc --noEmit",
