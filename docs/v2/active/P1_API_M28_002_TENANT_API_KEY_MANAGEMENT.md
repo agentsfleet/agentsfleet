@@ -80,7 +80,7 @@ This spec inherits, and MUST NOT contradict, the following repository documents.
 
 ### §0 — Rename: external_agents → agent_keys
 
-**Status:** PENDING
+**Status:** IN_PROGRESS (code shipped; integration verification 0.1-0.4 pending a live DB run; 0.5 DONE)
 
 Rename `core.external_agents` → `core.agent_keys`, `/v1/workspaces/{ws}/external-agents` → `/v1/workspaces/{ws}/agent-keys`, and `external_agents.zig` → `agent_keys.zig`. The name "external agents" is cryptic in logs and docs — "agent keys" reads naturally ("mint an agent key for your LangGraph automation" vs "create an external agent"). The `zmb_` key prefix and all key semantics remain unchanged.
 
@@ -92,7 +92,7 @@ Rename `core.external_agents` → `core.agent_keys`, `/v1/workspaces/{ws}/extern
 | 0.2 | PENDING | `POST /v1/workspaces/{ws}/agent-keys` | Same body as old endpoint | 201 with `zmb_` key; auth with key still works | integration |
 | 0.3 | PENDING | `GET /v1/workspaces/{ws}/agent-keys` | operator JWT | 200 with items list; same shape as old response | integration |
 | 0.4 | PENDING | `DELETE /v1/workspaces/{ws}/agent-keys/{id}` | operator JWT + agent_id | 204; row removed | integration |
-| 0.5 | PENDING | Orphan sweep | grep for `external_agents`, `external-agents` across src/ | Zero hits in non-historical files | manual |
+| 0.5 | DONE | Orphan sweep | grep for `external_agents`, `external-agents` across src/ | Zero hits in non-historical files (two archaeology comments remain in `agent_keys.zig:1` header and `router.zig:69` enum comment, same pattern as 027 schema header — intentional) | manual |
 
 ### §1 — Schema: core.api_keys table
 
