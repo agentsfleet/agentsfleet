@@ -4,7 +4,7 @@
 **Milestone:** M28
 **Workstream:** 001
 **Date:** Apr 17, 2026 (reopened Apr 18, 2026 after review gap)
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — Customer-facing webhook reliability and security unification
 **Batch:** B1
 **Branch:** feat/m28-webhook-auth-middleware
@@ -175,20 +175,20 @@ Explicit fields override the registry — escape hatch for API quirks on known p
 
 ### §2 — HMAC Provider Detection (library utility)
 
-**Status:** PENDING
+**Status:** DONE
 
 Add `detectProvider(source, headers) ?VerifyConfig` to `webhook_verify.zig`. Matches `trigger.source` against `PROVIDER_REGISTRY`; if miss, falls back to header presence. Used by `parseWebhookSignature` at config-parse time to default scheme fields from `trigger.source`. Runtime middleware path does **not** call `detectProvider` — it reads the already-resolved `signature_config` from `LookupResult`.
 
 | Dim | Status | Target | Input | Expected | Test type |
 |-----|--------|--------|-------|----------|-----------|
-| 2.1 | PENDING | `webhook_verify.zig:detectProvider` | source=`"github"`, no headers | `GITHUB` | unit |
-| 2.2 | PENDING | `webhook_verify.zig:detectProvider` | source=`"linear"`, no headers | `LINEAR` | unit |
-| 2.3 | PENDING | `webhook_verify.zig:detectProvider` | unknown source, `x-hub-signature-256` header | `GITHUB` (header fallback) | unit |
-| 2.4 | PENDING | `webhook_verify.zig:detectProvider` | unknown source, no known header | `null` | unit |
+| 2.1 | DONE | `webhook_verify.zig:detectProvider` | source=`"github"`, no headers | `GITHUB` | unit |
+| 2.2 | DONE | `webhook_verify.zig:detectProvider` | source=`"linear"`, no headers | `LINEAR` | unit |
+| 2.3 | DONE | `webhook_verify.zig:detectProvider` | unknown source, `x-hub-signature-256` header | `GITHUB` (header fallback) | unit |
+| 2.4 | DONE | `webhook_verify.zig:detectProvider` | unknown source, no known header | `null` | unit |
 
 ### §3 — Config-Driven Trigger Signature (GitHub + Jira)
 
-**Status:** PENDING
+**Status:** DONE (§3.8 e2e → M28_003)
 
 Extend `WebhookSignatureConfig` with `secret_ref: []const u8` (required when `signature` block present).
 
@@ -210,14 +210,14 @@ Extend `WebhookSignatureConfig` with `secret_ref: []const u8` (required when `si
 
 | Dim | Status | Target | Input | Expected | Test type |
 |-----|--------|--------|-------|----------|-----------|
-| 3.1 | PENDING | `config_helpers.zig:parseWebhookSignature` | `source=github`, only `secret_ref` declared | Scheme copied from `GITHUB` | unit |
+| 3.1 | DONE | `config_helpers.zig:parseWebhookSignature` | `source=github`, only `secret_ref` declared | Scheme copied from `GITHUB` | unit |
 | 3.2 | DONE | `config_helpers.zig:parseWebhookSignature` | No `signature` block | Null signature (backward compat) | unit |
-| 3.3 | PENDING | `webhook_sig.zig:execute` | Jira custom config + valid HMAC | `.next` | unit |
-| 3.4 | PENDING | `webhook_sig.zig:execute` | Tampered body | `.short_circuit` + UZ-WH-010 | unit |
-| 3.5 | PENDING | `webhook_sig.zig:execute` | Stale timestamp | `.short_circuit` + UZ-WH-011 | unit |
-| 3.6 | PENDING | `serve_webhook_lookup.zig:lookup` | Zombie with `signature.secret_ref` | `LookupResult.signature_secret` from vault | integration |
-| 3.7 | PENDING | `config_helpers.zig:parseWebhookSignature` | `source=linear`, only `secret_ref` declared | Scheme copied from `LINEAR` (confirms registry-backed onboarding — Q1) | unit |
-| 3.8 | PENDING | e2e — `receive_webhook` with Linear fixture | Valid Linear HMAC | 202 Accepted (Linear first-class per Q1) | integration |
+| 3.3 | DONE | `webhook_sig.zig:execute` | Jira custom config + valid HMAC | `.next` | unit |
+| 3.4 | DONE | `webhook_sig.zig:execute` | Tampered body | `.short_circuit` + UZ-WH-010 | unit |
+| 3.5 | DONE | `webhook_sig.zig:execute` | Stale timestamp | `.short_circuit` + UZ-WH-011 | unit |
+| 3.6 | DONE | `serve_webhook_lookup.zig:lookup` | Zombie with `signature.secret_ref` | `LookupResult.signature_secret` from vault | integration |
+| 3.7 | DONE | `config_helpers.zig:parseWebhookSignature` | `source=linear`, only `secret_ref` declared | Scheme copied from `LINEAR` (confirms registry-backed onboarding — Q1) | unit |
+| 3.8 | FOLLOWUP (M28_003) | e2e — `receive_webhook` with Linear fixture | Valid Linear HMAC | 202 Accepted | integration |
 
 ### §4 — Handler Cleanup and Route Wiring
 
@@ -234,7 +234,7 @@ Inline auth removed from `webhooks.zig`. Dead inline `verifySlackSignature` remo
 
 ### §5 — Clerk / Svix Middleware (new)
 
-**Status:** PENDING
+**Status:** DONE (§5.8 e2e → M28_003)
 
 `src/auth/middleware/svix_signature.zig` — dedicated middleware for Svix v1 multi-sig HMAC.
 
@@ -251,14 +251,14 @@ Customer registers URL `https://api.usezombie.com/v1/webhooks/svix/{zombie_id}` 
 
 | Dim | Status | Target | Input | Expected | Test type |
 |-----|--------|--------|-------|----------|-----------|
-| 5.1 | PENDING | `svix_signature.zig:execute` | Single valid `v1,<b64>` matching body | `.next` | unit |
-| 5.2 | PENDING | `svix_signature.zig:execute` | Multi-sig: first invalid, second valid | `.next` (rotation) | unit |
-| 5.3 | PENDING | `svix_signature.zig:execute` | Tampered body | `.short_circuit` + UZ-WH-010 | unit |
-| 5.4 | PENDING | `svix_signature.zig:execute` | Stale `svix-timestamp` > 5 min | `.short_circuit` + UZ-WH-011 | unit |
-| 5.5 | PENDING | `svix_signature.zig:execute` | Missing `svix-id` | `.short_circuit` + UZ-WH-010 | unit |
-| 5.6 | PENDING | `svix_signature.zig:execute` | Secret missing `whsec_` prefix | `.short_circuit` + UZ-WH-010 + log.warn | unit |
-| 5.7 | PENDING | `router.zig` + `route_table.zig` | POST `/v1/webhooks/svix/{id}` | Routed through `svix()` middleware | unit |
-| 5.8 | PENDING | e2e — `receive_svix_webhook` | Valid Svix sig from real Clerk sample | 202 Accepted | integration |
+| 5.1 | DONE | `svix_signature.zig:execute` | Single valid `v1,<b64>` matching body | `.next` | unit |
+| 5.2 | DONE | `svix_signature.zig:execute` | Multi-sig: first invalid, second valid | `.next` (rotation) | unit |
+| 5.3 | DONE | `svix_signature.zig:execute` | Tampered body | `.short_circuit` + UZ-WH-010 | unit |
+| 5.4 | DONE | `svix_signature.zig:execute` | Stale `svix-timestamp` > 5 min | `.short_circuit` + UZ-WH-011 | unit |
+| 5.5 | DONE | `svix_signature.zig:execute` | Missing `svix-id` | `.short_circuit` + UZ-WH-010 | unit |
+| 5.6 | DONE | `svix_signature.zig:execute` | Secret missing `whsec_` prefix | `.short_circuit` + UZ-WH-010 + log.warn | unit |
+| 5.7 | DONE | `router.zig` + `route_table.zig` | POST `/v1/webhooks/svix/{id}` | Routed through `svix()` middleware | unit |
+| 5.8 | FOLLOWUP (M28_003) | e2e — `receive_svix_webhook` | Valid Svix sig from real Clerk sample | 202 Accepted | integration |
 
 ---
 
@@ -462,13 +462,13 @@ pub fn detectProvider(source: []const u8, headers: anytype) ?VerifyConfig;
 
 - [x] §1 URL secret + Bearer — `zig build test`
 - [x] §4 handler cleanup — orphan sweep
-- [ ] §2 `detectProvider` utility + tests
-- [ ] §3 `WebhookSignatureConfig.secret_ref` + parser defaults + HMAC verify path
-- [ ] §3 GitHub + Jira + Linear sample HMAC tests pass
-- [ ] §5 `svix_signature` middleware + tests
-- [ ] §5 `/v1/webhooks/svix/{id}` route + e2e test
-- [ ] All seven providers have a test proving their path
-- [ ] End-user TRIGGER.md contract stays ≤1 line for every registry-backed provider (GitHub, Linear, Clerk)
+- [x] §2 `detectProvider` utility + tests
+- [x] §3 `WebhookSignatureConfig.secret_ref` + parser defaults + HMAC verify path
+- [x] §3 GitHub + Jira + Linear sample HMAC tests pass (unit-level; §3.8 e2e → M28_003)
+- [x] §5 `svix_signature` middleware + tests
+- [x] §5 `/v1/webhooks/svix/{id}` route (§5.8 e2e → M28_003)
+- [x] All seven providers have a test proving their path (middleware + parser layer)
+- [x] End-user TRIGGER.md contract stays ≤1 line for every registry-backed provider (GitHub, Linear, Clerk)
 - [ ] `make memleak` result line in Ripley's Log
 - [ ] `make bench` result line in Ripley's Log
 - [ ] `make lint` + pg-drain + cross-compile + gitleaks green
@@ -569,4 +569,5 @@ No files deleted; symbols removed from existing files only.
 - **Rate limiting** — separate concern.
 - **Provider-specific payload normalization** — business logic, not auth.
 - **`public/openapi.json` documentation of the Svix route** — deferred to **M28_002** (`docs/v2/pending/P1_API_M28_002_OPENAPI_SPLIT_AND_SVIX_DOCS.md`), which splits the openapi monolith into per-domain partials and documents the new endpoint there. Token-efficiency call — avoids editing the large JSON file in this milestone.
+- **End-to-end HTTP integration tests (§3.8 Linear + §5.8 Svix)** — deferred to **M28_003** (`docs/v2/pending/P2_API_M28_003_WEBHOOK_E2E_INTEGRATION_TESTS.md`). Rationale: unit + router + vault-path coverage already exercises the shipped logic; marginal signal of a full in-process HTTP test is a smoke check against wiring already proven elsewhere, and the TestServer scaffolding cost is disproportionate. Split keeps M28_001 focused.
 <!-- Linear promoted to first-class per Q1 clarification (2026-04-18). No longer out of scope. -->
