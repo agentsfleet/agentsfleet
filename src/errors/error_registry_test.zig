@@ -29,98 +29,98 @@ test "§2.2: third param is []const u8 (detail), not std.http.Status" {
 
 // ── T2: Edge cases for lookup ───────────────────────────────────────────────
 
-test "T2: lookup returns UNKNOWN for empty string" {
+test "lookup returns UNKNOWN for empty string" {
     const entry = reg.lookup("");
     try std.testing.expectEqualStrings("UZ-UNKNOWN", entry.code);
 }
 
-test "T2: lookup returns UNKNOWN for whitespace-only input" {
+test "lookup returns UNKNOWN for whitespace-only input" {
     const entry = reg.lookup("   ");
     try std.testing.expectEqualStrings("UZ-UNKNOWN", entry.code);
 }
 
-test "T2: lookup is case-sensitive — wrong case returns UNKNOWN" {
+test "lookup is case-sensitive — wrong case returns UNKNOWN" {
     try std.testing.expectEqualStrings("UZ-UNKNOWN", reg.lookup("uz-auth-002").code);
     try std.testing.expectEqualStrings("UZ-UNKNOWN", reg.lookup("UZ-auth-002").code);
 }
 
-test "T2: lookup returns UNKNOWN for near-miss (trailing space)" {
+test "lookup returns UNKNOWN for near-miss (trailing space)" {
     try std.testing.expectEqualStrings("UZ-UNKNOWN", reg.lookup("UZ-AUTH-002 ").code);
 }
 
-test "T2: lookup returns UNKNOWN for near-miss (prefix only)" {
+test "lookup returns UNKNOWN for near-miss (prefix only)" {
     try std.testing.expectEqualStrings("UZ-UNKNOWN", reg.lookup("UZ-").code);
 }
 
-test "T2: lookup handles very long input without crashing" {
+test "lookup handles very long input without crashing" {
     const long_code = "UZ-" ++ "A" ** 500;
     try std.testing.expectEqualStrings("UZ-UNKNOWN", reg.lookup(long_code).code);
 }
 
 // ── T7: Regression — pin specific code → status mappings ────────────────────
 
-test "T7: UZ-AUTH-002 stays 401 (pinned)" {
+test "UZ-AUTH-002 stays 401 (pinned)" {
     try std.testing.expectEqual(
         std.http.Status.unauthorized,
         reg.lookup(reg.ERR_UNAUTHORIZED).http_status,
     );
 }
 
-test "T7: UZ-AUTH-001 stays 403 (pinned)" {
+test "UZ-AUTH-001 stays 403 (pinned)" {
     try std.testing.expectEqual(
         std.http.Status.forbidden,
         reg.lookup(reg.ERR_FORBIDDEN).http_status,
     );
 }
 
-test "T7: UZ-INTERNAL-001 stays 503 (pinned — db-unavailable, not 500)" {
+test "UZ-INTERNAL-001 stays 503 (pinned — db-unavailable, not 500)" {
     try std.testing.expectEqual(
         std.http.Status.service_unavailable,
         reg.lookup(reg.ERR_INTERNAL_DB_UNAVAILABLE).http_status,
     );
 }
 
-test "T7: UZ-REQ-002 stays 413 (payload too large, pinned)" {
+test "UZ-REQ-002 stays 413 (payload too large, pinned)" {
     try std.testing.expectEqual(
         std.http.Status.payload_too_large,
         reg.lookup(reg.ERR_PAYLOAD_TOO_LARGE).http_status,
     );
 }
 
-test "T7: UZ-ZMB-009 stays 404 (zombie not found, pinned)" {
+test "UZ-ZMB-009 stays 404 (zombie not found, pinned)" {
     try std.testing.expectEqual(
         std.http.Status.not_found,
         reg.lookup(reg.ERR_ZOMBIE_NOT_FOUND).http_status,
     );
 }
 
-test "T7: UZ-WORKSPACE-002 stays 402 (workspace paused = payment required)" {
+test "UZ-WORKSPACE-002 stays 402 (workspace paused = payment required)" {
     try std.testing.expectEqual(
         std.http.Status.payment_required,
         reg.lookup(reg.ERR_WORKSPACE_PAUSED).http_status,
     );
 }
 
-test "T7: UNKNOWN and UZ-INTERNAL-001 are distinct (distinguish error classes)" {
+test "UNKNOWN and UZ-INTERNAL-001 are distinct (distinguish error classes)" {
     const internal_001 = reg.lookup(reg.ERR_INTERNAL_DB_UNAVAILABLE);
     try std.testing.expect(
         @intFromEnum(reg.UNKNOWN.http_status) != @intFromEnum(internal_001.http_status),
     );
 }
 
-test "T7: ERR_UNAUTHORIZED is 401 (authentication failure, not 403)" {
+test "ERR_UNAUTHORIZED is 401 (authentication failure, not 403)" {
     const entry = reg.lookup(reg.ERR_UNAUTHORIZED);
     try std.testing.expectEqual(std.http.Status.unauthorized, entry.http_status);
     try std.testing.expect(@intFromEnum(entry.http_status) != @intFromEnum(std.http.Status.forbidden));
 }
 
-test "T7: ERR_FORBIDDEN is 403 (authorization failure, not 401)" {
+test "ERR_FORBIDDEN is 403 (authorization failure, not 401)" {
     const entry = reg.lookup(reg.ERR_FORBIDDEN);
     try std.testing.expectEqual(std.http.Status.forbidden, entry.http_status);
     try std.testing.expect(@intFromEnum(entry.http_status) != @intFromEnum(std.http.Status.unauthorized));
 }
 
-test "T7: UZ-WH-003 stays 409 (zombie paused = conflict, not 403)" {
+test "UZ-WH-003 stays 409 (zombie paused = conflict, not 403)" {
     try std.testing.expectEqual(
         std.http.Status.conflict,
         reg.lookup(reg.ERR_WEBHOOK_ZOMBIE_PAUSED).http_status,
@@ -129,32 +129,32 @@ test "T7: UZ-WH-003 stays 409 (zombie paused = conflict, not 403)" {
 
 // ── T10: REGISTRY format invariants ─────────────────────────────────────────
 
-test "T10: all REGISTRY codes start with 'UZ-' prefix" {
+test "all REGISTRY codes start with 'UZ-' prefix" {
     for (reg.REGISTRY) |entry| {
         try std.testing.expect(std.mem.startsWith(u8, entry.code, "UZ-"));
     }
 }
 
-test "T10: all REGISTRY docs_uri point to the canonical docs base" {
+test "all REGISTRY docs_uri point to the canonical docs base" {
     for (reg.REGISTRY) |entry| {
         try std.testing.expect(std.mem.startsWith(u8, entry.docs_uri, reg.ERROR_DOCS_BASE));
     }
 }
 
-test "T10: all REGISTRY docs_uri end with the entry's own code" {
+test "all REGISTRY docs_uri end with the entry's own code" {
     for (reg.REGISTRY) |entry| {
         try std.testing.expect(std.mem.endsWith(u8, entry.docs_uri, entry.code));
     }
 }
 
-test "T10: UNKNOWN has sentinel code 'UZ-UNKNOWN' and is 500" {
+test "UNKNOWN has sentinel code 'UZ-UNKNOWN' and is 500" {
     try std.testing.expectEqual(std.http.Status.internal_server_error, reg.UNKNOWN.http_status);
     try std.testing.expectEqualStrings("UZ-UNKNOWN", reg.UNKNOWN.code);
 }
 
 // ── T10: all REGISTRY entries have non-empty hints ──────────────────────────
 
-test "T10: every entry has a non-empty hint" {
+test "every entry has a non-empty hint" {
     for (reg.REGISTRY) |entry| {
         try std.testing.expect(entry.hint.len > 0);
     }
@@ -162,7 +162,7 @@ test "T10: every entry has a non-empty hint" {
 
 // ── T12: API contract — error code format ───────────────────────────────────
 
-test "T12: every REGISTRY code matches pattern UZ-<CATEGORY>-<NUMBER>" {
+test "every REGISTRY code matches pattern UZ-<CATEGORY>-<NUMBER>" {
     for (reg.REGISTRY) |entry| {
         const code = entry.code;
         try std.testing.expect(std.mem.startsWith(u8, code, "UZ-"));
@@ -177,13 +177,13 @@ test "T12: every REGISTRY code matches pattern UZ-<CATEGORY>-<NUMBER>" {
 
 // ── M16_001: lookup() returns Entry, not ?Entry ─────────────────────────────
 
-test "M16_001: lookup never returns null — unknown codes return UNKNOWN" {
+test "lookup never returns null — unknown codes return UNKNOWN" {
     const entry = reg.lookup("UZ-DOES-NOT-EXIST");
     try std.testing.expectEqualStrings("UZ-UNKNOWN", entry.code);
     try std.testing.expectEqual(std.http.Status.internal_server_error, entry.http_status);
 }
 
-test "M16_001: lookup returns correct entry for known code" {
+test "lookup returns correct entry for known code" {
     const entry = reg.lookup("UZ-ZMB-009");
     try std.testing.expectEqual(std.http.Status.not_found, entry.http_status);
     try std.testing.expectEqualStrings("Zombie not found", entry.title);
@@ -191,14 +191,14 @@ test "M16_001: lookup returns correct entry for known code" {
     try std.testing.expect(std.mem.startsWith(u8, entry.docs_uri, reg.ERROR_DOCS_BASE));
 }
 
-test "M16_001: hint() returns non-empty string for all registered codes" {
+test "hint() returns non-empty string for all registered codes" {
     for (reg.REGISTRY) |entry| {
         const h = reg.hint(entry.code);
         try std.testing.expect(h.len > 0);
     }
 }
 
-test "M16_001: hint() returns UNKNOWN hint for unregistered codes" {
+test "hint() returns UNKNOWN hint for unregistered codes" {
     const h = reg.hint("UZ-DOES-NOT-EXIST");
     try std.testing.expectEqualStrings(reg.UNKNOWN.hint, h);
 }
@@ -206,14 +206,14 @@ test "M16_001: hint() returns UNKNOWN hint for unregistered codes" {
 // ── T7: REGISTRY entry count regression ─────────────────────────────────────
 // Pin the count so accidental deletions are caught immediately.
 
-test "T7: REGISTRY contains exactly 114 entries (+ M12 UZ-ZMB-010 already-terminal)" {
+test "REGISTRY contains exactly 114 entries (+ M12 UZ-ZMB-010 already-terminal)" {
     try std.testing.expectEqual(@as(usize, 114), reg.REGISTRY.len);
 }
 
 // ── T2: Sentinel code lookup ────────────────────────────────────────────────
 // Looking up the sentinel code itself must return UNKNOWN (it's not in REGISTRY).
 
-test "T2: lookup of sentinel code 'UZ-UNKNOWN' returns UNKNOWN entry" {
+test "lookup of sentinel code 'UZ-UNKNOWN' returns UNKNOWN entry" {
     const entry = reg.lookup("UZ-UNKNOWN");
     try std.testing.expectEqualStrings("UZ-UNKNOWN", entry.code);
     try std.testing.expectEqual(std.http.Status.internal_server_error, entry.http_status);
@@ -224,7 +224,7 @@ test "T2: lookup of sentinel code 'UZ-UNKNOWN' returns UNKNOWN entry" {
 // Spot-check that ERR_* constant strings match their REGISTRY entries.
 // Comptime self-check ensures ALL ERR_* are in REGISTRY; these pin values.
 
-test "T7: ERR_* constants match REGISTRY entry codes (spot check)" {
+test "ERR_* constants match REGISTRY entry codes (spot check)" {
     // Verify the constant string equals the entry's code field
     try std.testing.expectEqualStrings(reg.ERR_UNAUTHORIZED, reg.lookup(reg.ERR_UNAUTHORIZED).code);
     try std.testing.expectEqualStrings(reg.ERR_ZOMBIE_NOT_FOUND, reg.lookup(reg.ERR_ZOMBIE_NOT_FOUND).code);
@@ -236,7 +236,7 @@ test "T7: ERR_* constants match REGISTRY entry codes (spot check)" {
 // ── T10: Operational hints contain actionable keywords ──────────────────────
 // Beyond non-empty, verify key hints have the right operational guidance.
 
-test "T10: startup hints reference 'zombied doctor' or env vars" {
+test "startup hints reference 'zombied doctor' or env vars" {
     const startup_codes = [_][]const u8{
         reg.ERR_STARTUP_ENV_CHECK,
         reg.ERR_STARTUP_CONFIG_LOAD,
@@ -253,7 +253,7 @@ test "T10: startup hints reference 'zombied doctor' or env vars" {
     }
 }
 
-test "T10: gate hints reference gate results or timeout" {
+test "gate hints reference gate results or timeout" {
     const gate_codes = [_][]const u8{
         reg.ERR_GATE_COMMAND_FAILED,
         reg.ERR_GATE_COMMAND_TIMEOUT,
@@ -269,14 +269,14 @@ test "T10: gate hints reference gate results or timeout" {
 
 // ── T12: Entry struct has exactly 5 fields (spec invariant §1.1) ────────────
 
-test "T12: Entry struct has 5 fields (code, http_status, title, hint, docs_uri)" {
+test "Entry struct has 5 fields (code, http_status, title, hint, docs_uri)" {
     const fields = @typeInfo(reg.Entry).@"struct".fields;
     try std.testing.expectEqual(@as(usize, 5), fields.len);
 }
 
 // ── T7: UNKNOWN sentinel has non-empty fields ──────────────────────────────
 
-test "T7: UNKNOWN sentinel has all fields populated" {
+test "UNKNOWN sentinel has all fields populated" {
     try std.testing.expect(reg.UNKNOWN.code.len > 0);
     try std.testing.expect(reg.UNKNOWN.title.len > 0);
     try std.testing.expect(reg.UNKNOWN.hint.len > 0);
@@ -289,7 +289,7 @@ test "T7: UNKNOWN sentinel has all fields populated" {
 // (We can't test "import fails" directly, but we verify the new file IS the
 // canonical source by checking its public API.)
 
-test "T7: error_registry.zig exports REGISTRY (not TABLE)" {
+test "error_registry.zig exports REGISTRY (not TABLE)" {
     // REGISTRY must exist as a pub const
     try std.testing.expect(reg.REGISTRY.len > 0);
     // Entry must exist (not ErrorEntry)
@@ -299,12 +299,12 @@ test "T7: error_registry.zig exports REGISTRY (not TABLE)" {
 
 // ── M10_006: ErrorMapping + validateErrorTable (bvisor pattern) ───────────
 
-test "M10_006: ErrorMapping struct has 3 fields (err, code, message)" {
+test "ErrorMapping struct has 3 fields (err, code, message)" {
     const fields = @typeInfo(reg.ErrorMapping).@"struct".fields;
     try std.testing.expectEqual(@as(usize, 3), fields.len);
 }
 
-test "M10_006: validateErrorTable accepts valid single-entry table" {
+test "validateErrorTable accepts valid single-entry table" {
     const table = [_]reg.ErrorMapping{
         .{ .err = error.OutOfMemory, .code = "UZ-TEST-001", .message = "test message" },
     };
@@ -314,7 +314,7 @@ test "M10_006: validateErrorTable accepts valid single-entry table" {
     }
 }
 
-test "M10_006: validateErrorTable accepts valid multi-entry table" {
+test "validateErrorTable accepts valid multi-entry table" {
     const table = [_]reg.ErrorMapping{
         .{ .err = error.OutOfMemory, .code = "UZ-TEST-001", .message = "oom" },
         .{ .err = error.Overflow, .code = "UZ-TEST-002", .message = "overflow" },
@@ -325,7 +325,7 @@ test "M10_006: validateErrorTable accepts valid multi-entry table" {
     }
 }
 
-test "M10_006: billing error table passes validateErrorTable at comptime" {
+test "billing error table passes validateErrorTable at comptime" {
     // Verifies the actual billing table is valid (imported transitively via build)
     // The comptime block in workspace_billing.zig enforces this, but this test
     // makes the dependency explicit in the test suite.
@@ -335,7 +335,7 @@ test "M10_006: billing error table passes validateErrorTable at comptime" {
     }
 }
 
-test "M10_006: credit error table passes validateErrorTable at comptime" {
+test "credit error table passes validateErrorTable at comptime" {
     comptime {
         const credit = @import("../state/workspace_credit.zig");
         _ = credit;
@@ -343,29 +343,31 @@ test "M10_006: credit error table passes validateErrorTable at comptime" {
 }
 
 // T7: Regression — comptime size assertions pin struct layouts
-test "M10_006 T7: StateRow size pinned at 104 bytes" {
+test "StateRow size pinned at 104 bytes" {
     const StateRow = @import("../state/workspace_billing/row.zig").StateRow;
     try std.testing.expectEqual(@as(usize, 104), @sizeOf(StateRow));
 }
 
-test "M10_006 T7: CreditRow size pinned at 56 bytes" {
+test "CreditRow size pinned at 56 bytes" {
     const CreditRow = @import("../state/workspace_credit_store.zig").CreditRow;
     try std.testing.expectEqual(@as(usize, 56), @sizeOf(CreditRow));
 }
 
-test "M10_006 T7: PgQuery size pinned at 8 bytes (single pointer)" {
+test "PgQuery size pinned at 8 bytes (single pointer)" {
     const PgQuery = @import("../db/pg_query.zig").PgQuery;
     try std.testing.expectEqual(@as(usize, 8), @sizeOf(PgQuery));
 }
 
-test "M10_006 T7: ZombieSession size pinned at 320 bytes" {
+test "ZombieSession size pinned at 392 bytes" {
     // M23_001: +24 bytes for execution_id (?[]const u8 = 16) + execution_started_at (i64 = 8)
+    // M28_001: +56 bytes for ?WebhookSignatureConfig in ZombieTrigger.webhook.
+    // M28_001 §3: +16 bytes for secret_ref slice in WebhookSignatureConfig.
     const ZombieSession = @import("../zombie/event_loop_types.zig").ZombieSession;
-    try std.testing.expectEqual(@as(usize, 320), @sizeOf(ZombieSession));
+    try std.testing.expectEqual(@as(usize, 392), @sizeOf(ZombieSession));
 }
 
 // T7: Regression — ErrorMapping field count and types
-test "M10_006 T7: ErrorMapping.err field is anyerror" {
+test "ErrorMapping.err field is anyerror" {
     const fields = @typeInfo(reg.ErrorMapping).@"struct".fields;
     // First field is 'err' of type anyerror
     try std.testing.expectEqualStrings("err", fields[0].name);

@@ -1,4 +1,4 @@
-// POST /v1/webhooks/{zombie_id}:approval — Slack interactive payload callback.
+// POST /v1/webhooks/{zombie_id}/approval — Slack interactive payload callback.
 //
 // Receives Slack button clicks (approve/deny) for the approval gate.
 // Validates the payload, resolves the pending action in Redis, and

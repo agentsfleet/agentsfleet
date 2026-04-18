@@ -21,6 +21,7 @@ const httpz = @import("httpz");
 const chain = @import("chain.zig");
 const auth_ctx = @import("auth_ctx.zig");
 const errors = @import("errors.zig");
+const hs = @import("hmac_sig");
 
 pub const AuthCtx = auth_ctx.AuthCtx;
 
@@ -71,7 +72,7 @@ pub const WebhookUrlSecret = struct {
         };
         defer ctx.alloc.free(expected);
 
-        if (!constantTimeEq(provided, expected)) {
+        if (!hs.constantTimeEql(provided, expected)) {
             ctx.fail(errors.ERR_UNAUTHORIZED, "Invalid or missing token");
             return .short_circuit;
         }
@@ -79,21 +80,7 @@ pub const WebhookUrlSecret = struct {
     }
 };
 
-/// Constant-time byte-slice equality.
-///
-/// Prevents timing leaks on secret *value* — the XOR loop never short-circuits
-/// on mismatch. However, the loop runs `min(a.len, b.len)` iterations, so
-/// response latency still leaks the *shorter* length. For fixed-length webhook
-/// secrets (e.g. 32-byte hex nonces) this is not exploitable in practice, but
-/// callers must not use this for variable-length secrets without padding.
-fn constantTimeEq(a: []const u8, b: []const u8) bool {
-    const min_len = @min(a.len, b.len);
-    var diff: u8 = 0;
-    for (a[0..min_len], b[0..min_len]) |x, y| diff |= x ^ y;
-    // Length mismatch is folded in after the loop (not a conditional branch).
-    diff |= @as(u8, @intFromBool(a.len != b.len));
-    return diff == 0;
-}
+// constantTimeEql moved to src/crypto/hmac_sig.zig (canonical source).
 
 // ── Tests ────────────────────────────────────────────────────────────────
 
@@ -231,19 +218,4 @@ test "webhook_url_secret short-circuits with 401 when lookup returns an error" {
     try testing.expectEqualStrings(errors.ERR_UNAUTHORIZED, Fixtures.last_code);
 }
 
-test "constantTimeEq: equal strings return true" {
-    try testing.expect(constantTimeEq("secret-abc", "secret-abc"));
-}
-
-test "constantTimeEq: different strings return false without short-circuiting on first byte" {
-    try testing.expect(!constantTimeEq("secret-abc", "secret-xyz"));
-}
-
-test "constantTimeEq: different lengths return false" {
-    try testing.expect(!constantTimeEq("abc", "abcd"));
-    try testing.expect(!constantTimeEq("abcd", "abc"));
-}
-
-test "constantTimeEq: empty strings are equal" {
-    try testing.expect(constantTimeEq("", ""));
-}
+// constantTimeEq tests moved to src/crypto/hmac_sig_test.zig (canonical source).

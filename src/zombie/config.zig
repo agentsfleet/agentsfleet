@@ -29,6 +29,7 @@ pub const ZombieConfigError = error{
     UnknownSkill,
     InvalidCredentialRef,
     InvalidBudget,
+    InvalidSignatureConfig,
 };
 
 pub const ZombieStatus = enum {
@@ -65,10 +66,19 @@ pub const ZombieStatus = enum {
 
 pub const ZombieTriggerType = enum { webhook, cron, api, chain };
 
+pub const MAX_SIGNATURE_HEADER_LEN: usize = 64;
+
+pub const WebhookSignatureConfig = struct {
+    header: []const u8,
+    prefix: []const u8,
+    ts_header: ?[]const u8 = null,
+    secret_ref: []const u8,
+};
+
 /// Tagged union for trigger config. Each variant carries only the fields it needs,
 /// making invalid states (e.g. webhook without source) unrepresentable.
 pub const ZombieTrigger = union(ZombieTriggerType) {
-    webhook: struct { source: []const u8, event: ?[]const u8 },
+    webhook: struct { source: []const u8, event: ?[]const u8, signature: ?WebhookSignatureConfig = null },
     cron: struct { schedule: []const u8 },
     api: void,
     chain: struct { source: []const u8 },
@@ -110,6 +120,12 @@ pub const ZombieConfig = struct {
             .webhook => |w| {
                 alloc.free(w.source);
                 if (w.event) |e| alloc.free(e);
+                if (w.signature) |sig| {
+                    alloc.free(sig.header);
+                    alloc.free(sig.prefix);
+                    if (sig.ts_header) |ts| alloc.free(ts);
+                    alloc.free(sig.secret_ref);
+                }
             },
             .cron => |c| alloc.free(c.schedule),
             .chain => |ch| alloc.free(ch.source),

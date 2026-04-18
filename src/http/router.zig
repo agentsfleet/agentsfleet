@@ -28,9 +28,11 @@ pub const Route = union(enum) {
     get_workspace_billing_summary: []const u8,
     set_workspace_scoring_config: []const u8,
     receive_webhook: WebhookRoute,
+    // M28_001 §5: Clerk / Svix signed webhooks — /v1/webhooks/svix/{zombie_id}.
+    receive_svix_webhook: []const u8,
     // M4_001: Zombie approval gate callback
     approval_webhook: []const u8,
-    // M9_001: Grant approval webhook — /v1/webhooks/{zombie_id}:grant-approval
+    // M9_001: Grant approval webhook — /v1/webhooks/{zombie_id}/grant-approval
     grant_approval_webhook: []const u8,
     sync_workspace: []const u8,
     // M16_004: admin platform key management
@@ -46,11 +48,11 @@ pub const Route = union(enum) {
     delete_workspace_zombie: matchers.WorkspaceZombieRoute, // DELETE /v1/workspaces/{ws}/zombies/{id}
     workspace_zombie_activity: matchers.ZombieTelemetryRoute, // GET /v1/workspaces/{ws}/zombies/{id}/activity
     workspace_credentials: []const u8, // GET|POST /v1/workspaces/{ws}/credentials
-    // M23_001 / M24_001: Live steering — POST /v1/workspaces/{ws}/zombies/{id}:steer
+    // M23_001 / M24_001: Live steering — POST /v1/workspaces/{ws}/zombies/{id}/steer
     workspace_zombie_steer: matchers.WorkspaceZombieRoute,
     // M12_001: Dashboard-facing reads + kill switch
     workspace_activity: []const u8, // GET /v1/workspaces/{ws}/activity
-    workspace_zombie_stop: matchers.WorkspaceZombieRoute, // POST /v1/workspaces/{ws}/zombies/{id}:stop
+    workspace_zombie_stop: matchers.WorkspaceZombieRoute, // POST /v1/workspaces/{ws}/zombies/{id}/stop
     workspace_zombie_billing_summary: matchers.ZombieTelemetryRoute, // GET /v1/workspaces/{ws}/zombies/{id}/billing/summary
     // M18_001: zombie execution telemetry
     zombie_telemetry: ZombieTelemetryRoute, // GET /v1/workspaces/{ws}/zombies/{id}/telemetry
@@ -101,8 +103,8 @@ pub fn match(path: []const u8) ?Route {
         if (isSingleSegment(session_id)) return .{ .poll_auth_session = session_id };
     }
 
-    if (std.mem.startsWith(u8, path, prefix_workspaces) and std.mem.endsWith(u8, path, ":pause")) {
-        const inner = path[prefix_workspaces.len .. path.len - ":pause".len];
+    if (std.mem.startsWith(u8, path, prefix_workspaces) and std.mem.endsWith(u8, path, "/pause")) {
+        const inner = path[prefix_workspaces.len .. path.len - "/pause".len];
         if (inner.len > 0) return .{ .pause_workspace = inner };
     }
 
@@ -136,9 +138,9 @@ pub fn match(path: []const u8) ?Route {
 
     // M24_001: Workspace-scoped zombie collection + single-resource + sub-resources.
     // Most-specific paths first to avoid collisions:
-    //   colon-action (:steer, :stop) before plain-id, suffix-paths (/activity, /billing/summary) before plain-id.
-    if (matchers.matchWorkspaceZombieAction(path, ":steer")) |route| return .{ .workspace_zombie_steer = route };
-    if (matchers.matchWorkspaceZombieAction(path, ":stop")) |route| return .{ .workspace_zombie_stop = route };
+    //   colon-action (/steer, /stop) before plain-id, suffix-paths (/activity, /billing/summary) before plain-id.
+    if (matchers.matchWorkspaceZombieAction(path, "/steer")) |route| return .{ .workspace_zombie_steer = route };
+    if (matchers.matchWorkspaceZombieAction(path, "/stop")) |route| return .{ .workspace_zombie_stop = route };
     if (matchers.matchWorkspaceZombieSuffix(path, "/activity")) |route| return .{ .workspace_zombie_activity = route };
     if (matchers.matchWorkspaceZombieSuffix(path, "/billing/summary")) |route| return .{ .workspace_zombie_billing_summary = route };
     if (matchers.matchWorkspaceZombie(path)) |route| return .{ .delete_workspace_zombie = route };
@@ -163,21 +165,30 @@ pub fn match(path: []const u8) ?Route {
     if (matchers.matchWorkspaceAgentDelete(path)) |route| return .{ .delete_external_agent = route };
     if (matchers.matchWorkspaceSuffix(path, "/external-agents")) |workspace_id| return .{ .external_agents = workspace_id };
 
-    // M9_001: Grant approval webhook — /v1/webhooks/{zombie_id}:grant-approval (before :approval)
-    if (matchers.matchWebhookAction(path, ":grant-approval")) |zombie_id| return .{ .grant_approval_webhook = zombie_id };
+    // M9_001: Grant approval webhook — /v1/webhooks/{zombie_id}/grant-approval (before /approval)
+    if (matchers.matchWebhookAction(path, "/grant-approval")) |zombie_id| return .{ .grant_approval_webhook = zombie_id };
     // M8_001: Slack plugin routes
     if (std.mem.eql(u8, path, "/v1/slack/install")) return .slack_install;
     if (std.mem.eql(u8, path, "/v1/slack/callback")) return .slack_callback;
     if (std.mem.eql(u8, path, "/v1/slack/events")) return .slack_events;
     if (std.mem.eql(u8, path, "/v1/slack/interactions")) return .slack_interactions;
 
-    // M4_001: Zombie approval gate callback — /v1/webhooks/{zombie_id}:approval
-    if (matchers.matchWebhookAction(path, ":approval")) |zombie_id| return .{ .approval_webhook = zombie_id };
+    // M4_001: Zombie approval gate callback — /v1/webhooks/{zombie_id}/approval
+    if (matchers.matchWebhookAction(path, "/approval")) |zombie_id| return .{ .approval_webhook = zombie_id };
+    // M28_001 §5: Clerk / Svix signed webhooks — /v1/webhooks/svix/{zombie_id}
+    // (before matchWebhookRoute so "svix" is not swallowed as zombie_id).
+    {
+        const svix_prefix = "/v1/webhooks/svix/";
+        if (std.mem.startsWith(u8, path, svix_prefix)) {
+            const zombie_id = path[svix_prefix.len..];
+            if (matchers.isSingleSegment(zombie_id)) return .{ .receive_svix_webhook = zombie_id };
+        }
+    }
     // M1_001: Zombie webhook endpoint — /v1/webhooks/{zombie_id}
     if (matchWebhookRoute(path)) |route| return .{ .receive_webhook = route };
 
-    if (std.mem.startsWith(u8, path, prefix_workspaces) and std.mem.endsWith(u8, path, ":sync")) {
-        const inner = path[prefix_workspaces.len .. path.len - ":sync".len];
+    if (std.mem.startsWith(u8, path, prefix_workspaces) and std.mem.endsWith(u8, path, "/sync")) {
+        const inner = path[prefix_workspaces.len .. path.len - "/sync".len];
         if (inner.len > 0) return .{ .sync_workspace = inner };
     }
 
@@ -303,19 +314,19 @@ test "match resolves Slack install route (M8_001)" {
 test "match resolves zombie_steer route (M23_001 + M24_001 workspace-scoped)" {
     const ws_id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
     const zid = "019abc12-8d3a-7f13-8abc-2b3e1e0a6f11";
-    switch (match("/v1/workspaces/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/zombies/019abc12-8d3a-7f13-8abc-2b3e1e0a6f11:steer").?) {
+    switch (match("/v1/workspaces/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/zombies/019abc12-8d3a-7f13-8abc-2b3e1e0a6f11/steer").?) {
         .workspace_zombie_steer => |r| {
             try std.testing.expectEqualStrings(ws_id, r.workspace_id);
             try std.testing.expectEqualStrings(zid, r.zombie_id);
         },
         else => return error.TestExpectedEqual,
     }
-    // M24_001: flat :steer path removed.
-    try std.testing.expect(match("/v1/zombies/019abc12-8d3a-7f13-8abc-2b3e1e0a6f11:steer") == null);
+    // M24_001: flat /steer path removed.
+    try std.testing.expect(match("/v1/zombies/019abc12-8d3a-7f13-8abc-2b3e1e0a6f11/steer") == null);
     // plain flat /v1/zombies/{id} is also 404 (not steer, not delete).
     try std.testing.expect(match("/v1/zombies/019abc12-8d3a-7f13-8abc-2b3e1e0a6f11") == null);
     // multi-segment rejected
-    try std.testing.expect(match("/v1/workspaces/ws1/zombies/a/b:steer") == null);
+    try std.testing.expect(match("/v1/workspaces/ws1/zombies/a/b/steer") == null);
 }
 
 // Webhook + approval route tests are in router_test.zig.

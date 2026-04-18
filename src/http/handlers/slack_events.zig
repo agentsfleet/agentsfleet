@@ -18,7 +18,6 @@ const std = @import("std");
 const httpz = @import("httpz");
 const pg = @import("pg");
 const PgQuery = @import("../../db/pg_query.zig").PgQuery;
-const webhook_verify = @import("../../zombie/webhook_verify.zig");
 const workspace_integrations = @import("../../state/workspace_integrations.zig");
 const common = @import("common.zig");
 const hx_mod = @import("hx.zig");
@@ -52,7 +51,7 @@ pub fn innerSlackEvent(hx: Hx, req: *httpz.Request) void {
         return;
     };
 
-    if (!verifySlackSignature(hx, req, body)) return;
+    // Slack signature verified by slack_signature middleware before this handler runs.
 
     const parsed = std.json.parseFromSlice(SlackEventPayload, hx.alloc, body, .{ .ignore_unknown_fields = true }) catch {
         log.warn("slack.events.parse_fail req_id={s}", .{hx.req_id});
@@ -148,44 +147,6 @@ pub fn innerSlackEvent(hx: Hx, req: *httpz.Request) void {
 }
 
 // ── Internal ─────────────────────────────────────────────────────────────────
-
-/// Verify Slack request signature and timestamp freshness.
-/// Returns false and writes UZ-WH-010/011 on failure.
-fn verifySlackSignature(hx: Hx, req: *httpz.Request, body: []const u8) bool {
-    const secret = std.process.getEnvVarOwned(std.heap.page_allocator, "SLACK_SIGNING_SECRET") catch {
-        log.err("slack.events.no_signing_secret req_id={s}", .{hx.req_id});
-        hx.fail(ec.ERR_WEBHOOK_SLACK_SIG_INVALID, "Signing secret not configured");
-        return false;
-    };
-    defer std.heap.page_allocator.free(secret);
-    if (secret.len == 0) {
-        log.err("slack.events.empty_signing_secret req_id={s}", .{hx.req_id});
-        hx.fail(ec.ERR_WEBHOOK_SLACK_SIG_INVALID, "Signing secret not configured");
-        return false;
-    }
-
-    const timestamp = req.header(ec.SLACK_TS_HEADER) orelse {
-        hx.fail(ec.ERR_WEBHOOK_SLACK_SIG_INVALID, "Missing timestamp header");
-        return false;
-    };
-    const signature = req.header(ec.SLACK_SIG_HEADER) orelse {
-        hx.fail(ec.ERR_WEBHOOK_SLACK_SIG_INVALID, "Missing signature header");
-        return false;
-    };
-
-    if (!webhook_verify.isTimestampFresh(timestamp, ec.SLACK_MAX_TS_DRIFT_SECONDS)) {
-        hx.fail(ec.ERR_WEBHOOK_SLACK_TIMESTAMP_STALE, "Timestamp too old");
-        return false;
-    }
-
-    if (!webhook_verify.verifySignature(webhook_verify.SLACK, secret, timestamp, body, signature)) {
-        log.warn("slack.events.sig_invalid req_id={s}", .{hx.req_id});
-        hx.fail(ec.ERR_WEBHOOK_SLACK_SIG_INVALID, "Invalid signature");
-        return false;
-    }
-
-    return true;
-}
 
 /// Find the first active Zombie in `workspace_id` with a Slack event trigger.
 /// Returns owned zombie_id or null if none configured.

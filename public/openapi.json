@@ -1391,7 +1391,7 @@
         ]
       }
     },
-    "/v1/webhooks/{zombie_id}:approval": {
+    "/v1/webhooks/{zombie_id}/approval": {
       "post": {
         "operationId": "approval_webhook",
         "summary": "Resolve a zombie approval gate",
@@ -1470,7 +1470,7 @@
         "security": []
       }
     },
-    "/v1/webhooks/{zombie_id}:grant-approval": {
+    "/v1/webhooks/{zombie_id}/grant-approval": {
       "post": {
         "operationId": "grant_approval_webhook",
         "summary": "Approve or reject an integration grant request",
@@ -3435,7 +3435,7 @@
         }
       }
     },
-    "/v1/workspaces/{workspace_id}/zombies/{zombie_id}:steer": {
+    "/v1/workspaces/{workspace_id}/zombies/{zombie_id}/steer": {
       "post": {
         "operationId": "steer_zombie",
         "summary": "Steer a running zombie",
@@ -3525,7 +3525,7 @@
         }
       }
     },
-    "/v1/workspaces/{workspace_id}/zombies/{zombie_id}:stop": {
+    "/v1/workspaces/{workspace_id}/zombies/{zombie_id}/stop": {
       "post": {
         "operationId": "stop_workspace_zombie",
         "summary": "Stop a zombie (kill switch)",
@@ -3593,7 +3593,7 @@
         }
       }
     },
-    "/v1/workspaces/{workspace_id}:pause": {
+    "/v1/workspaces/{workspace_id}/pause": {
       "post": {
         "operationId": "pause_workspace",
         "summary": "Pause or unpause a workspace",
@@ -3681,7 +3681,7 @@
         }
       }
     },
-    "/v1/workspaces/{workspace_id}:sync": {
+    "/v1/workspaces/{workspace_id}/sync": {
       "post": {
         "operationId": "sync_specs",
         "summary": "Sync specs from repo",

@@ -16,10 +16,9 @@ const httpz = @import("httpz");
 const chain = @import("chain.zig");
 const auth_ctx = @import("auth_ctx.zig");
 const errors = @import("errors.zig");
+const hs = @import("hmac_sig");
 
 pub const AuthCtx = auth_ctx.AuthCtx;
-
-const HmacSha256 = std.crypto.auth.hmac.sha2.HmacSha256;
 
 pub const SLACK_SIG_HEADER: []const u8 = "x-slack-signature";
 pub const SLACK_TS_HEADER: []const u8 = "x-slack-request-timestamp";
@@ -51,22 +50,22 @@ pub const SlackSignature = struct {
 
     pub fn execute(self: *SlackSignature, ctx: *AuthCtx, req: *httpz.Request) !chain.Outcome {
         const timestamp = req.header(SLACK_TS_HEADER) orelse {
-            ctx.fail(errors.ERR_WEBHOOK_SLACK_SIG_INVALID, "Missing timestamp header");
+            ctx.fail(errors.ERR_WEBHOOK_SIG_INVALID, "Missing timestamp header");
             return .short_circuit;
         };
         const signature = req.header(SLACK_SIG_HEADER) orelse {
-            ctx.fail(errors.ERR_WEBHOOK_SLACK_SIG_INVALID, "Missing signature header");
+            ctx.fail(errors.ERR_WEBHOOK_SIG_INVALID, "Missing signature header");
             return .short_circuit;
         };
 
         if (!isTimestampFresh(timestamp, self.now_seconds(), SLACK_MAX_DRIFT_SECONDS)) {
-            ctx.fail(errors.ERR_WEBHOOK_SLACK_TIMESTAMP_STALE, "Timestamp too old");
+            ctx.fail(errors.ERR_WEBHOOK_TIMESTAMP_STALE, "Timestamp too old");
             return .short_circuit;
         }
 
         const body = req.body() orelse "";
         if (!verifyV0Signature(self.secret, timestamp, body, signature)) {
-            ctx.fail(errors.ERR_WEBHOOK_SLACK_SIG_INVALID, "Invalid signature");
+            ctx.fail(errors.ERR_WEBHOOK_SIG_INVALID, "Invalid signature");
             return .short_circuit;
         }
         return .next;
@@ -83,22 +82,9 @@ pub fn verifyV0Signature(
     signature: []const u8,
 ) bool {
     if (!std.mem.startsWith(u8, signature, SLACK_SIG_PREFIX)) return false;
-    const hex_part = signature[SLACK_SIG_PREFIX.len..];
-    if (hex_part.len != HmacSha256.mac_length * 2) return false;
-
-    var expected: [HmacSha256.mac_length]u8 = undefined;
-    _ = std.fmt.hexToBytes(&expected, hex_part) catch return false;
-
-    var mac: [HmacSha256.mac_length]u8 = undefined;
-    var h = HmacSha256.init(secret);
-    h.update(SLACK_SIG_VERSION);
-    h.update(":");
-    h.update(timestamp);
-    h.update(":");
-    h.update(body);
-    h.final(&mac);
-
-    return std.crypto.timing_safe.eql([HmacSha256.mac_length]u8, mac, expected);
+    const expected = hs.hexDecode32(signature[SLACK_SIG_PREFIX.len..]) orelse return false;
+    const mac = hs.computeMac(secret, &.{ SLACK_SIG_VERSION, ":", timestamp, ":", body });
+    return hs.constantTimeEql(&mac, &expected);
 }
 
 /// Freshness window check: rejects timestamps outside `[now - max_drift,

@@ -9,8 +9,11 @@
             .hash = "nullclaw-2026.4.9-wlZZyXmrLQGfbXV5_BZlUNF5VH7B4KDPg8uyY5nf_4mO",
         },
         .pg = .{
-            .url = "git+https://github.com/karlseguin/pg.zig#master",
-            .hash = "pg-0.0.0-Wp_7gV1pBgAN_atgbzpICLXPcJ0gJJxVfFmuaprjCUew",
+            // Pinned to a specific commit (not `#master`) to prevent drift from
+            // upstream pushes breaking CI mid-PR. Bump this SHA + hash together
+            // when you need a new upstream fix; do not track a moving branch.
+            .url = "git+https://github.com/karlseguin/pg.zig?ref=master#a4351154a00488d26740b4378872be03bd562d27",
+            .hash = "pg-0.0.0-Wp_7gdNpBgBWiq6RQguwbekGA0sbYvjgZd4sNG_CyT0f",
         },
         .posthog = .{
             .url = "git+https://github.com/usezombie/posthog-zig.git#v0.1.3",

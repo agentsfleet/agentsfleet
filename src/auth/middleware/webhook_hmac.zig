@@ -22,10 +22,9 @@ const httpz = @import("httpz");
 const chain = @import("chain.zig");
 const auth_ctx = @import("auth_ctx.zig");
 const errors = @import("errors.zig");
+const hs = @import("hmac_sig");
 
 pub const AuthCtx = auth_ctx.AuthCtx;
-
-const HmacSha256 = std.crypto.auth.hmac.sha2.HmacSha256;
 
 pub const SIGNATURE_MAX_AGE_SECONDS: i64 = 300;
 pub const SIGNATURE_VERSION: []const u8 = "v0";
@@ -73,28 +72,12 @@ pub const WebhookHmac = struct {
 
         const body = req.body() orelse "";
 
-        var mac: [HmacSha256.mac_length]u8 = undefined;
-        var h = HmacSha256.init(self.secret);
-        h.update(SIGNATURE_VERSION);
-        h.update(":");
-        h.update(timestamp);
-        h.update(":");
-        h.update(body);
-        h.final(&mac);
+        const mac = hs.computeMac(self.secret, &.{ SIGNATURE_VERSION, ":", timestamp, ":", body });
 
-        // Expected: "v0=" ++ lowercase hex of the MAC.
-        var expected_buf: [SIGNATURE_VERSION.len + 1 + HmacSha256.mac_length * 2]u8 = undefined;
-        @memcpy(expected_buf[0..SIGNATURE_VERSION.len], SIGNATURE_VERSION);
-        expected_buf[SIGNATURE_VERSION.len] = '=';
-        const hex_chars = "0123456789abcdef";
-        const hex_start = SIGNATURE_VERSION.len + 1;
-        for (mac, 0..) |byte, i| {
-            expected_buf[hex_start + i * 2] = hex_chars[byte >> 4];
-            expected_buf[hex_start + i * 2 + 1] = hex_chars[byte & 0x0f];
-        }
-        const expected = expected_buf[0..];
+        var expected_buf: [SIGNATURE_VERSION.len + 1 + hs.MAC_LEN * 2]u8 = undefined;
+        const expected = hs.encodeMacHex(&expected_buf, SIGNATURE_VERSION ++ "=", mac);
 
-        if (!constantTimeEqual(provided_sig, expected)) {
+        if (!hs.constantTimeEql(provided_sig, expected)) {
             ctx.fail(errors.ERR_APPROVAL_INVALID_SIGNATURE, "Invalid signature");
             return .short_circuit;
         }
@@ -102,15 +85,7 @@ pub const WebhookHmac = struct {
     }
 };
 
-/// Constant-time equality over two byte slices. Length mismatch is folded in
-/// *after* the XOR loop so we don't short-circuit on secret data.
-fn constantTimeEqual(a: []const u8, b: []const u8) bool {
-    const min_len = @min(a.len, b.len);
-    var diff: u8 = 0;
-    for (a[0..min_len], b[0..min_len]) |x, y| diff |= x ^ y;
-    diff |= @as(u8, @intFromBool(a.len != b.len));
-    return diff == 0;
-}
+// HMAC + constantTimeEql moved to src/crypto/hmac_sig.zig (canonical source).
 
 test {
     _ = @import("webhook_hmac_test.zig");

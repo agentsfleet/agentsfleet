@@ -58,6 +58,12 @@ _bench-loadgen:  ## Internal: hey-backed HTTP loadgen gate (Tier-2).
 	}
 	@set -e; \
 	 URL="$${API_BENCH_URL:-http://127.0.0.1:3000/healthz}"; \
+	 curl -fsS --max-time 3 "$$URL" >/dev/null 2>&1 || { \
+	   echo "✗ No live server at $$URL — Tier-2 bench needs a running API."; \
+	   echo "  Start it first:  FOLLOW_LOGS=0 make up"; \
+	   echo "  Or point bench at dev: API_BENCH_URL=https://api-dev.usezombie.com/healthz make bench"; \
+	   exit 1; \
+	 }; \
 	 METHOD="$${API_BENCH_METHOD:-GET}"; \
 	 DURATION="$${API_BENCH_DURATION_SEC:-20}"; \
 	 CONC="$${API_BENCH_CONCURRENCY:-20}"; \

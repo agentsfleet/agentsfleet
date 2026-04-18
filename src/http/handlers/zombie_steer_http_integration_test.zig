@@ -1,4 +1,4 @@
-// Integration tests for POST /v1/zombies/{id}:steer (M23_001 §1).
+// Integration tests for POST /v1/zombies/{id}/steer (M23_001 §1).
 //
 // T1.1 — valid bearer, idle zombie         → 200 {message_queued:true, execution_active:false}
 // T1.2 — valid bearer, zombie with exec_id → 200 {execution_active:true, execution_id:non-null}
@@ -220,11 +220,11 @@ test "M23_001 §1: steer endpoint auth and body validation" {
         ALLOC.destroy(srv);
     }
 
-    // M24_001: /v1/workspaces/{ws}/zombies/{id}:steer
-    const steer_idle = try std.fmt.allocPrint(ALLOC, "http://127.0.0.1:{d}/v1/workspaces/{s}/zombies/{s}:steer", .{ srv.port, TEST_WORKSPACE_ID, ZOMBIE_IDLE });
+    // M24_001: /v1/workspaces/{ws}/zombies/{id}/steer
+    const steer_idle = try std.fmt.allocPrint(ALLOC, "http://127.0.0.1:{d}/v1/workspaces/{s}/zombies/{s}/steer", .{ srv.port, TEST_WORKSPACE_ID, ZOMBIE_IDLE });
     defer ALLOC.free(steer_idle);
     // steer_other: caller's workspace in URL path, but zombie actually belongs to OTHER_WS — handler returns 404.
-    const steer_other = try std.fmt.allocPrint(ALLOC, "http://127.0.0.1:{d}/v1/workspaces/{s}/zombies/{s}:steer", .{ srv.port, TEST_WORKSPACE_ID, ZOMBIE_OTHER_WS });
+    const steer_other = try std.fmt.allocPrint(ALLOC, "http://127.0.0.1:{d}/v1/workspaces/{s}/zombies/{s}/steer", .{ srv.port, TEST_WORKSPACE_ID, ZOMBIE_OTHER_WS });
     defer ALLOC.free(steer_other);
     const body_valid = "{\"message\":\"redirect to phase 2\"}";
     const body_empty = "{\"message\":\"\"}";
@@ -251,7 +251,7 @@ test "M23_001 §1.1: steer idle zombie returns message_queued=true execution_act
     }
     if (!srv.has_redis) return error.SkipZigTest;
 
-    const url = try std.fmt.allocPrint(ALLOC, "http://127.0.0.1:{d}/v1/workspaces/{s}/zombies/{s}:steer", .{ srv.port, TEST_WORKSPACE_ID, ZOMBIE_IDLE });
+    const url = try std.fmt.allocPrint(ALLOC, "http://127.0.0.1:{d}/v1/workspaces/{s}/zombies/{s}/steer", .{ srv.port, TEST_WORKSPACE_ID, ZOMBIE_IDLE });
     defer ALLOC.free(url);
 
     const r = try sendReq(ALLOC, url, .POST, TOKEN_OPERATOR, "{\"message\":\"proceed to phase 2\"}");
@@ -276,7 +276,7 @@ test "M23_001 §1.2: steer active zombie returns execution_active=true and execu
     }
     if (!srv.has_redis) return error.SkipZigTest;
 
-    const url = try std.fmt.allocPrint(ALLOC, "http://127.0.0.1:{d}/v1/workspaces/{s}/zombies/{s}:steer", .{ srv.port, TEST_WORKSPACE_ID, ZOMBIE_ACTIVE });
+    const url = try std.fmt.allocPrint(ALLOC, "http://127.0.0.1:{d}/v1/workspaces/{s}/zombies/{s}/steer", .{ srv.port, TEST_WORKSPACE_ID, ZOMBIE_ACTIVE });
     defer ALLOC.free(url);
 
     const r = try sendReq(ALLOC, url, .POST, TOKEN_OPERATOR, "{\"message\":\"new objective\"}");

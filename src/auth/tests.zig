@@ -29,4 +29,6 @@ test {
     _ = @import("middleware/webhook_url_secret.zig");
     _ = @import("middleware/slack_signature.zig");
     _ = @import("middleware/oauth_state.zig");
+    _ = @import("middleware/webhook_sig.zig");
+    _ = @import("middleware/svix_signature.zig");
 }

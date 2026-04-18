@@ -1,5 +1,5 @@
 //! M9_001 §4.4–4.5 — Grant approval webhook handler.
-//! POST /v1/webhooks/{zombie_id}:grant-approval
+//! POST /v1/webhooks/{zombie_id}/grant-approval
 //!
 //! Called by the Slack/Discord notification provider after the human clicks
 //! Approve or Deny. The nonce is required for authenticity — it is generated

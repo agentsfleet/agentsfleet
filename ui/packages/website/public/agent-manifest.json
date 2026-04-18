@@ -60,7 +60,7 @@
     {
       "operationId": "pause_workspace",
       "method": "POST",
-      "path": "/v1/workspaces/{workspace_id}:pause",
+      "path": "/v1/workspaces/{workspace_id}/pause",
       "description": "Pause or unpause admission of new runs for a workspace.",
       "actionClass": "sensitive"
     },
@@ -74,7 +74,7 @@
     {
       "operationId": "sync_specs",
       "method": "POST",
-      "path": "/v1/workspaces/{workspace_id}:sync",
+      "path": "/v1/workspaces/{workspace_id}/sync",
       "description": "Scan workspace repo for PENDING_*.md files and upsert spec records. Idempotent.",
       "actionClass": "safe"
     }
