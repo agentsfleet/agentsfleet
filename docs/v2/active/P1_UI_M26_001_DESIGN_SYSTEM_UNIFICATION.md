@@ -160,6 +160,35 @@ Each component gets the same treatment as Button: framework-agnostic imports onl
 - 3.6 PENDING — AnimatedIcon rewrite (preserves `.z-animated-icon__glyph` keyframes) + SSR snapshot test
 - 3.7 PENDING — ZombieHandIcon rewrite + SSR snapshot test
 
+### 3.8 — Promote app-local primitives to shared package (AMENDMENT Apr 18, 2026)
+
+This amendment overrides §10 Out of Scope. User intent: every common UI primitive lives in `@usezombie/design-system`; only zombie-domain compositions stay app-local. Twelve additional components move from `ui/packages/app/components/ui/` into `ui/packages/design-system/src/design-system/`. Each is rewritten as framework-agnostic + RSC-safe, uses React 19 `ref` as prop (no `forwardRef`), keeps its Radix primitive underpinning, and ships with a co-located unit test + SSR snapshot in the design-system package itself.
+
+**Promoted primitives (8):** Badge, Dialog, DropdownMenu, Input, Separator, Skeleton, Tooltip, (Card merges with the existing package Card).
+
+**Promoted compositions (4):** ConfirmDialog, EmptyState, Pagination, StatusCard.
+
+**Stay app-local (domain):** `DataTable` (bound to app data shapes), `ActivityFeed`, `RunRow`, `WorkspaceCard` — live in `ui/packages/app/components/domain/` only.
+
+**Dimensions — one per promoted component, same shape (SSR snapshot + unit test + a11y smoke):**
+
+- 3.8 PENDING — Badge promotion: move + rewrite (ref-as-prop, cva variants) + tests
+- 3.9 PENDING — Dialog promotion: move + rewrite (Radix Dialog + `asChild` + ref-as-prop) + tests
+- 3.10 PENDING — DropdownMenu promotion: move + rewrite (Radix DropdownMenu + ref-as-prop) + tests
+- 3.11 PENDING — Input promotion: move + rewrite (ref-as-prop, `useFormStatus` aware disabled state) + tests
+- 3.12 PENDING — Separator promotion: move + rewrite (Radix Separator + ref-as-prop) + tests
+- 3.13 PENDING — Skeleton promotion: move + rewrite (shimmer animation via §5.5 motion tokens) + tests
+- 3.14 PENDING — Tooltip promotion: move + rewrite (Radix Tooltip + ref-as-prop) + tests
+- 3.15 PENDING — Card merge: consolidate app's shadcn Card with package's Card into a single `<Card>` supporting both zombie-branded and neutral variants + tests
+- 3.16 PENDING — ConfirmDialog promotion: move + rewrite (composes shared Dialog + Button) + tests
+- 3.17 PENDING — EmptyState promotion: move + rewrite (generic icon + title + body + action slot) + tests
+- 3.18 PENDING — Pagination promotion: move + rewrite (composes shared Button) + tests
+- 3.19 PENDING — StatusCard promotion: move + rewrite (composes shared Card, generic status prop) + tests
+
+**React 19 constraint (amendment):** every component in §2.0 / §3.0 rewrite uses React 19's `ref` as a prop. The grep gate in §7.0 asserts zero `forwardRef` imports under `ui/packages/design-system/src/**`.
+
+**Test co-location constraint (amendment):** every design-system component ships its unit test alongside its source (e.g. `src/design-system/Button.test.tsx`). The existing 9 website-side design-system tests (`ui/packages/website/src/tests/design-system/*.test.tsx`) move into the package during §3 EXECUTE. Target: design-system package ships ≥20 test files / ≥60 tests before M26 close.
+
 ---
 
 ## 4.0 Website Migration
@@ -612,6 +641,11 @@ The package is framework-agnostic by construction.
 | Website `/agents` route bundle chunk-splits motion library — loaded only on route entry, not on `/` | Vite build chunk analysis CI gate |
 | `<BackgroundBeamsWithCollision />` + `<AnimatedTerminal />` live in `ui/packages/website/src/components/domain/`, not in the shared package | `find` gate |
 | Audio sprite for terminal is bundled locally (no CDN) and lazy-fetched only when `enableSound={true}` | grep gate + Playwright network assertion |
+| Zero `forwardRef` imports under `ui/packages/design-system/src/**` (React 19 uses `ref` as prop) | grep gate in `make lint` |
+| Design-system tests co-located with source (`src/design-system/Button.test.tsx`), not in the website package | `find` gate — zero `tests/design-system/*.test.tsx` in website post-migration |
+| Design-system package ships ≥20 test files and ≥60 tests | `bunx vitest run` count |
+| Both consumers' key routes pass `@axe-core/playwright` with zero violations | Playwright a11y spec |
+| Responsive visual regression at 375 / 768 / 1440 viewports on key routes | Playwright visual spec |
 
 ---
 
@@ -664,14 +698,19 @@ The package is framework-agnostic by construction.
 - [ ] Audio opt-in via `enableSound`; zero network requests to `/sounds/*` when disabled or not in viewport
 - [ ] Reduced-motion fallback: beams static, terminal renders instantly, cursor stops blinking, audio silent
 - [ ] `/agents` route LCP stays within §5.6.1 budget (≤ 2.0s) — demos load post-LCP
+- [ ] §3.8 amendment shipped: all 12 promoted primitives (Badge, Dialog, DropdownMenu, Input, Separator, Skeleton, Tooltip, ConfirmDialog, EmptyState, Pagination, StatusCard, merged Card) live in `@usezombie/design-system`; app's `components/ui/*.tsx` for these is deleted and re-imports shared exports
+- [ ] Zero `forwardRef` imports under `ui/packages/design-system/src/**` — React 19 `ref` as prop throughout
+- [ ] Design-system package ships ≥20 test files, ≥60 tests; website's `tests/design-system/*.test.tsx` moved into package
+- [ ] `@axe-core/playwright` a11y sweep passes zero violations on website `/`, `/pricing`, `/agents` and app `/workspaces`
+- [ ] Responsive Playwright visual regression at 375 / 768 / 1440 viewports on both consumers
 
 ---
 
 ## 10.0 Out of Scope
 
 - Introducing Panda CSS / Vanilla Extract / styled-components. M26 stays on Tailwind v4 + CSS variables.
-- Adding new *shared* design-system components. M26 is a migration, not a feature milestone for the shared package. New primitives in the shared package go in M27 or later.
-- Migrating shadcn-scope primitives I added in M12 (StatusCard, EmptyState, Pagination, DataTable, ConfirmDialog, ActivityFeed) into the design-system package. Those are app-local compositions; promoting them is a judgement call for M27+ when a second consumer needs them.
+- Adding new *shared* design-system components beyond those enumerated in §3.8. M26 is still migration-first; net-new primitives land in M27+.
+- ~~Migrating shadcn-scope primitives I added in M12 (StatusCard, EmptyState, Pagination, DataTable, ConfirmDialog, ActivityFeed) into the design-system package.~~ **Overridden by §3.8 amendment (Apr 18, 2026):** all except `DataTable` and domain feeds are promoted to the shared package in this milestone.
 - Playwright visual-regression infra itself. M26 uses the existing Playwright setup + manual before/after screenshot comparison. A proper visual-diff CI gate is a separate DX milestone.
 - Consuming `@aceternity/ui` or other third-party animated component libraries. M26.8 reimplements the beam-collision + typed-terminal patterns under our own code with UseZombie branding — structural technique (`getBoundingClientRect` collision, `IntersectionObserver` trigger, `AudioContext` sprite playback) is generic web platform usage, not copyrighted.
 - Installing a `motion` library in the shared design-system or app packages. §5.8.2 carves an explicit website-only exception with six measurable guardrails; the ban holds everywhere else.
