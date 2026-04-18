@@ -4,10 +4,10 @@
 **Milestone:** M26
 **Workstream:** 001
 **Date:** Apr 16, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — Unblocks M27 (dashboard pages) and eliminates Button drift between `ui/packages/app` and `ui/packages/website`
 **Batch:** B5 — lands between M12 (narrowed foundation) and M27 (dashboard pages)
-**Branch:** feat/m26-design-system-unification (not yet created)
+**Branch:** feat/m26-design-system-unification
 **Depends on:** M12_001 (token pyramid, shared primitives, `components.json` + `tw-animate-css` installed in app)
 **Blocks:** M27_001 (dashboard pages need the unified Button; see acceptance step 5)
 
@@ -57,7 +57,7 @@ Both packages also inherit the motion language (§5.5 / M26.6) and the load-perf
 
 ## 1.0 CSS Migration — package becomes self-contained
 
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Workstream:** M26.1
 
 **Current state audit:**
@@ -83,7 +83,7 @@ Both packages also inherit the motion language (§5.5 / M26.6) and the load-perf
 
 ## 2.0 Button Rewrite — framework-agnostic + RSC-safe
 
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Workstream:** M26.2
 
 **The framework-agnostic contract** (enforced by exports + TypeScript):
@@ -139,7 +139,7 @@ Radix `Slot` clones the single child element and merges props. The Button cares 
 
 ## 3.0 Card / Terminal / Grid / Section / InstallBlock / AnimatedIcon / ZombieHandIcon Rewrite
 
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Workstream:** M26.3
 
 **Scope rule (important):** `@usezombie/design-system` owns **generic UI primitives only** — Button, Card, Dialog, Input, Badge, Alert, Tooltip, Skeleton, Dropdown, Select, Tabs, Sheet, Toast and friends. Both `ui/packages/app` and `ui/packages/website` import these from the shared package — zero forking, zero drift.
@@ -164,7 +164,7 @@ Each component gets the same treatment as Button: framework-agnostic imports onl
 
 ## 4.0 Website Migration
 
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Workstream:** M26.4
 
 `ui/packages/website` currently imports design-system components AND relies on the website's own `styles.css` for the component CSS. After M26.1, the CSS moves to the package. After M26.2–3, the components change API slightly (e.g. `<Button to="/x">` → `<Button asChild><Link to="/x" /></Button>`).
@@ -180,7 +180,7 @@ Each component gets the same treatment as Button: framework-agnostic imports onl
 
 ## 5.0 App Migration
 
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Workstream:** M26.5
 
 `ui/packages/app` currently has its own `components/ui/button.tsx` — a shadcn-style Button written during M12_001 as a workaround for the package's unusability. After M26.2–3, the package's Button is RSC-safe + framework-agnostic, so the app's copy becomes redundant.
@@ -197,7 +197,7 @@ Each component gets the same treatment as Button: framework-agnostic imports onl
 
 ## 5.5 Signature Motion + Atmospheric Dark Background
 
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Workstream:** M26.6 — runs after M26.5 (app migration) so motion is consistent across both consumers on day one.
 
 A design-system without a signature motion language and a distinctive background feels generic. M26.6 gives UseZombie both — a *voice* for motion and an *atmosphere* for the canvas — without reaching for a heavyweight runtime (Framer Motion's ~50KB gzipped). Everything GPU-accelerated (`transform`, `opacity` only), everything gated behind `prefers-reduced-motion: reduce`, everything tokenized so future rebrands touch one file.
@@ -316,7 +316,7 @@ One component, two consumers, identical visual atmosphere.
 
 ## 5.6 Load Performance — snappier by construction
 
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Workstream:** M26.7 — applies during and after each per-consumer migration. Gate is enforced before each migration workstream's acceptance.
 
 Motion only feels good when the page is already fast. M26.7 sets explicit load budgets, bakes the optimizations into the package + consumers' build pipelines, and makes regressions a CI-visible failure rather than a thing someone notices three weeks later.
@@ -391,7 +391,7 @@ These land in `@usezombie/design-system` and automatically improve every downstr
 
 ## 5.8 Website-Specific Interactive Components
 
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Workstream:** M26.8 — lands after M26.6 (motion vocabulary established) and M26.4 (website migration complete).
 **Scope:** website-only. These are marketing / demo surface components for `ui/packages/website`. They live in `ui/packages/website/src/components/domain/`, NOT in the shared `@usezombie/design-system` package. The dashboard (`ui/packages/app`) does not consume them; it uses `<AtmosphericBackground />` (§5.5.4) instead.
 
@@ -522,7 +522,7 @@ The keystroke sound sprite (`/sounds/keystroke.ogg`) is royalty-free or self-rec
 
 ## 6.0 Interfaces
 
-**Status:** PENDING
+**Status:** IN_PROGRESS
 
 ### 6.1 Public package exports (post-M26)
 
@@ -586,7 +586,7 @@ The package is framework-agnostic by construction.
 
 ## 7.0 Implementation Constraints (enforceable)
 
-**Status:** PENDING
+**Status:** IN_PROGRESS
 
 | Constraint | Verify |
 |---|---|
