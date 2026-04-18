@@ -194,5 +194,5 @@ fn resolvePlanTier(
 
 test {
     _ = @import("metering_test.zig");
-    _ = @import("metering_m18_test.zig");
+    _ = @import("metering_delivery_telemetry_test.zig");
 }

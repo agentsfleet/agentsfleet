@@ -520,5 +520,5 @@ test "integration: M16_004 concurrent platform key upserts are idempotent" {
     cleanupSeedData(conn);
 }
 test {
-    _ = @import("handlers/m16_004_handler_unit_test.zig");
+    _ = @import("handlers/byok_handlers_unit_test.zig");
 }
