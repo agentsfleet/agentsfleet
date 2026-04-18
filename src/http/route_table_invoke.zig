@@ -34,7 +34,10 @@ const execute_h = @import("handlers/execute.zig");
 const grants = @import("handlers/integration_grants.zig");
 const grants_ws = @import("handlers/integration_grants_workspace.zig");
 const agent_keys_h = @import("handlers/agent_keys.zig");
-const api_keys_h = @import("handlers/api_keys.zig");
+const api_keys_invokes = @import("route_table_invoke_api_keys.zig");
+
+pub const invokeTenantApiKeys = api_keys_invokes.invokeTenantApiKeys;
+pub const invokeTenantApiKeyById = api_keys_invokes.invokeTenantApiKeyById;
 const slack_oauth = @import("handlers/slack_oauth.zig");
 const slack_ev = @import("handlers/slack_events.zig");
 const slack_ix = @import("handlers/slack_interactions.zig");
@@ -315,26 +318,6 @@ pub fn invokeDeleteAgentKey(hx: *Hx, req: *httpz.Request, route: router.Route) v
     if (req.method != .DELETE) { common.respondMethodNotAllowed(hx.res); return; }
     const r = route.delete_agent_key;
     agent_keys_h.innerDeleteAgentKey(hx.*, r.workspace_id, r.agent_id);
-}
-
-// ── Tenant API keys (M28_002 §3) ──────────────────────────────────────────
-
-pub fn invokeTenantApiKeys(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    _ = route;
-    switch (req.method) {
-        .POST => api_keys_h.innerCreateApiKey(hx.*, req),
-        .GET => api_keys_h.innerListApiKeys(hx.*, req),
-        else => common.respondMethodNotAllowed(hx.res),
-    }
-}
-
-pub fn invokeTenantApiKeyById(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    const key_id = route.tenant_api_key_by_id;
-    switch (req.method) {
-        .PATCH => api_keys_h.innerPatchApiKey(hx.*, req, key_id),
-        .DELETE => api_keys_h.innerDeleteApiKey(hx.*, key_id),
-        else => common.respondMethodNotAllowed(hx.res),
-    }
 }
 
 // ── Slack ─────────────────────────────────────────────────────────────────

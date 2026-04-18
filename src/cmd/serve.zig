@@ -271,6 +271,10 @@ pub fn run(alloc: std.mem.Allocator) !void {
     registry.setSvixSig(svix_mw.middleware());
     log.info("startup.middleware_registry status=ok", .{});
 
+    if (serve_cfg.api_keys.len > 0) {
+        log.warn("startup.bootstrap_api_key status=warning message=\"env-var API_KEY is bootstrap-only; migrate to tenant API keys via POST /v1/api-keys\"", .{});
+    }
+
     shutdown_requested.store(false, .release);
     preflight.installSignalHandlers(onSignal);
 

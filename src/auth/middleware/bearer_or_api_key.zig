@@ -72,6 +72,7 @@ pub const BearerOrApiKey = struct {
         }
 
         if (bearer.matchRotatedKey(provided, self.api_keys)) {
+            std.log.scoped(.auth).warn("api_key.bootstrap_env_var_used req_id={s} note=\"migrate to tenant API keys via POST /v1/api-keys\"", .{ctx.req_id});
             ctx.principal = .{ .mode = .api_key, .role = .admin };
             return .next;
         }
