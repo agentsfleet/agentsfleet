@@ -46,6 +46,14 @@
 | `src/main.zig` | MODIFY | Add test import for new files |
 | `src/cmd/serve.zig` | MODIFY | Wire tenant_api_key middleware into registry |
 
+## Authoritative References (must comply)
+
+This spec inherits, and MUST NOT contradict, the following repository documents. When resolving any design question below, consult these first:
+
+- `docs/REST_API_DESIGN_GUIDELINES.md` — resource naming, HTTP method semantics, "avoid verbs in URLs" (§7), list-response envelope (`items` + `total`), error status codes (§10), snake_case + `_at` suffix conventions. This is why revocation is modeled as `PATCH /v1/api-keys/{id}` with `{ "active": false }` (partial update of lifecycle state) rather than a verb in the path like `/revoke`, and why `DELETE /v1/api-keys/{id}` retains pure removal semantics.
+- `docs/nostromo/api_handler_guide.md` — handler shape (`innerXxx(hx: Hx, ...)`), `hx.ok` / `hx.fail` envelope usage, route registration in five places (router.zig → route_table.zig → route_table_invoke.zig → openapi.json), and the "NEVER call `common.writeJson` / `common.errorResponse`" rules. All api-key handlers defined below MUST follow this shape verbatim.
+- `docs/v2/done/M11_002_HX_HANDLER_CONTEXT.md` — the `Hx` context type, how middleware populates `hx.principal`, and why handlers receive `Hx` by value. The tenant_api_key middleware MUST populate `hx.principal.user_id` and `hx.principal.tenant_id` such that every CRUD handler can authorize and tenant-scope without re-parsing the token.
+
 ## Applicable Rules
 
 - RULE CTM — Constant-time comparison for secrets (api_key.zig already follows this)
@@ -116,7 +124,7 @@ DB-backed middleware that resolves `zmb_t_`-prefixed Bearer tokens. Looks up SHA
 
 **Status:** PENDING
 
-Four endpoints for tenant API key lifecycle: create (mint), list, revoke, delete. Create follows the `agent_keys.zig` pattern — generate raw key, store hash, return raw key once. List returns metadata only (never key_hash). Revoke (`POST /v1/api-keys/{id}/revoke`) is a state transition — sets active=false + revoked_at — modeled as an action subresource rather than a DELETE to avoid mixing DELETE semantics with lifecycle changes. Delete (`DELETE /v1/api-keys/{id}`) is resource removal and requires the key to be revoked first (409 otherwise). Every CRUD handler MUST filter `WHERE tenant_id = principal.tenant_id` on every SQL query — this is the tenant-scoped analog of RULE WAUTH. Omitting the filter would leak cross-tenant key rows; enforced by dim 3.7.
+Four endpoints for tenant API key lifecycle: create (mint), list, revoke, delete. Create follows the `agent_keys.zig` pattern — generate raw key, store hash, return raw key once. List returns metadata only (never key_hash). Revoke is modeled as `PATCH /v1/api-keys/{id}` with body `{ "active": false }` — a partial lifecycle update per REST_API_DESIGN_GUIDELINES.md §4/§7 (no verbs in URLs; PATCH is the correct method for a state transition). The handler also stamps `revoked_at`. Delete (`DELETE /v1/api-keys/{id}`) is resource removal and requires the key to be revoked first (409 otherwise). Every CRUD handler MUST filter `WHERE tenant_id = principal.tenant_id` on every SQL query — this is the tenant-scoped analog of RULE WAUTH. Omitting the filter would leak cross-tenant key rows; enforced by dim 3.7. All handlers follow `docs/nostromo/api_handler_guide.md` — `innerXxx(hx: Hx, ...)` signature, `hx.ok` / `hx.fail` envelope only; no direct `common.writeJson` or `common.errorResponse` calls.
 
 **Dimensions (test blueprints):**
 
@@ -124,7 +132,7 @@ Four endpoints for tenant API key lifecycle: create (mint), list, revoke, delete
 |-----|--------|--------|-------|----------|-----------|
 | 3.1 | PENDING | `POST /v1/api-keys` | `{ key_name: "ci-pipeline", description: "GH Actions" }` + operator JWT | 201: `{ id, key_name, key: "zmb_t_...", created_at }`; core.api_keys row has SHA-256 of raw key | integration |
 | 3.2 | PENDING | `GET /v1/api-keys` | operator JWT | 200: `{ items: [{ id, key_name, active, created_at, last_used_at, revoked_at }], total: N }` — no key_hash in response | integration |
-| 3.3 | PENDING | `POST /v1/api-keys/{id}/revoke` | operator JWT + active key id | 200: `{ id, active: false, revoked_at }`; key no longer authenticates | integration |
+| 3.3 | PENDING | `PATCH /v1/api-keys/{id}` body `{ "active": false }` | operator JWT + active key id | 200: `{ id, active: false, revoked_at }`; key no longer authenticates. PATCH (partial lifecycle update) — no verb in URL per REST_API_DESIGN_GUIDELINES.md §7 | integration |
 | 3.4 | PENDING | `DELETE /v1/api-keys/{id}` | operator JWT + revoked key id | 204; row removed from core.api_keys | integration |
 | 3.5 | PENDING | `POST /v1/api-keys` | `{ key_name: "ci-pipeline" }` twice with same name | Second call: 409 ERR_APIKEY_NAME_TAKEN | integration |
 | 3.6 | PENDING | `POST /v1/api-keys` | user-role JWT (not operator/admin) | 403 ERR_FORBIDDEN — RULE BIL | integration |
@@ -161,9 +169,11 @@ pub const TenantApiKey = struct {
 };
 
 // src/http/handlers/api_keys.zig
+// Shape follows docs/nostromo/api_handler_guide.md: innerXxx(hx: Hx, ...),
+// path params after req, returns void, responses via hx.ok / hx.fail only.
 pub fn innerCreateApiKey(hx: Hx, req: *httpz.Request) void
 pub fn innerListApiKeys(hx: Hx) void
-pub fn innerRevokeApiKey(hx: Hx, key_id: []const u8) void
+pub fn innerPatchApiKey(hx: Hx, req: *httpz.Request, key_id: []const u8) void // PATCH; body { active: false } → revoke
 pub fn innerDeleteApiKey(hx: Hx, key_id: []const u8) void
 ```
 
@@ -176,11 +186,12 @@ pub fn innerDeleteApiKey(hx: Hx, key_id: []const u8) void
 | key_name | string | 1–64 chars, alphanumeric + hyphens + underscores | `"ci-pipeline"` |
 | description | string | 0–256 chars, optional | `"GH Actions deploys"` |
 
-**POST /v1/api-keys/{id}/revoke** (state-transition action subresource — not a DELETE)
+**PATCH /v1/api-keys/{id}** (partial lifecycle update — revoke a key)
 
 | Field | Type | Constraints | Example |
 |-------|------|-------------|---------|
 | id | path param | UUIDv7 | `"0195b4ba-..."` |
+| active | bool (body) | must be `false` — re-activation is not supported; mint a new key instead | `false` |
 
 **DELETE /v1/api-keys/{id}** (hard delete; requires key to already be revoked)
 
@@ -206,7 +217,7 @@ pub fn innerDeleteApiKey(hx: Hx, key_id: []const u8) void
 | items | array | always | `[{ id, key_name, active, created_at, last_used_at, revoked_at }]` |
 | total | i32 | always | `3` |
 
-**POST /v1/api-keys/{id}/revoke → 200**
+**PATCH /v1/api-keys/{id} → 200**
 
 | Field | Type | When | Example |
 |-------|------|------|---------|
@@ -316,7 +327,7 @@ pub fn innerDeleteApiKey(hx: Hx, key_id: []const u8) void
 | Auth with unknown key | 2.3 | Bearer zmb_t_{unknown} | 401 ERR_UNAUTHORIZED |
 | Create key with no auth | 3.6 | POST /v1/api-keys with no Authorization | 401 |
 | Delete active key without revoke | 3.4 | DELETE /v1/api-keys/{id} on active key | 409 ERR_INVALID_REQUEST |
-| Revoke already-revoked key | 3.3 | POST /v1/api-keys/{id}/revoke on revoked key | 409 ERR_APIKEY_ALREADY_REVOKED (resource exists but is in wrong state — not a not-found) |
+| Revoke already-revoked key | 3.3 | PATCH /v1/api-keys/{id} body `{ "active": false }` on revoked key | 409 ERR_APIKEY_ALREADY_REVOKED (resource exists but is in wrong state — not a not-found) |
 
 ### Edge Case Tests (boundary values)
 
