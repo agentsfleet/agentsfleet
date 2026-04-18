@@ -18,7 +18,7 @@
 
 **Problem:** Three observable symptoms: (1) A manually inserted admin user has no way to mint an API key — the only mechanism is the `API_KEY` env var which requires a server restart and grants global admin across all tenants. (2) `core.tenants.api_key_hash` is a single hash per tenant (placeholder value like `'managed'` or `'callback'`) — no multi-key, no rotation, no revocation. (3) `principal.user_id` is null when authenticating via `API_KEY` env var — audit logs cannot attribute actions to a specific admin.
 
-**Solution summary:** Introduce a `core.api_keys` table (tenant-scoped, named keys, SHA-256 hash, active/revoked lifecycle). Add a new middleware (`tenant_api_key`) that looks up the key hash from the DB on each request, populating `principal` with user_id + tenant_id from the key row. Expose CRUD endpoints under `/v1/api-keys`. The `external_agents.zig` handler is the reference implementation — this workstream replicates its pattern at the tenant-admin level. The existing `admin_api_key` middleware (env-var based) stays as a bootstrap fallback for initial setup before any keys exist in the DB.
+**Solution summary:** Introduce a `core.api_keys` table (tenant-scoped, named keys, SHA-256 hash, active/revoked lifecycle). Add a new middleware (`tenant_api_key`) that looks up the key hash from the DB on each request, populating `principal` with user_id + tenant_id from the key row. Expose CRUD endpoints under `/v1/api-keys`. The existing `agent_keys.zig` handler (renamed from `external_agents.zig` — see §0 below) is the reference implementation — this workstream replicates its pattern at the tenant-admin level. The existing `admin_api_key` middleware (env-var based) stays as a bootstrap fallback for initial setup before any keys exist in the DB.
 
 ---
 
@@ -27,13 +27,17 @@
 | File | Action | Why |
 |------|--------|-----|
 | `schema/030_api_keys.sql` | CREATE | New table `core.api_keys` with tenant scoping, key_hash, name, lifecycle |
-| `schema/embed.zig` | MODIFY | Add `@embedFile` for 030_api_keys.sql |
+| `schema/027_core_external_agents.sql` | DELETE | Renamed to `schema/027_core_agent_keys.sql` — table `core.agent_keys` (pre-v2.0 teardown, full file replace) |
+| `schema/027_core_agent_keys.sql` | CREATE | Replacement: `core.agent_keys` (renamed from `core.external_agents`) |
+| `schema/embed.zig` | MODIFY | Update `@embedFile` for 027 rename; add `@embedFile` for 030_api_keys.sql |
 | `src/cmd/common.zig` | MODIFY | Add migration entry for 030 |
 | `src/auth/middleware/tenant_api_key.zig` | CREATE | DB-backed API key lookup middleware — populates principal with user_id + tenant_id |
 | `src/auth/middleware/mod.zig` | MODIFY | Add TenantApiKey to registry, wire into chains |
 | `src/auth/middleware/bearer_or_api_key.zig` | MODIFY | Add DB lookup path: if Bearer token starts with `zmb_t_`, delegate to tenant_api_key |
 | `src/auth/middleware/admin_api_key.zig` | MODIFY | Document as bootstrap-only; add log warning when env-var key is used |
-| `src/http/handlers/api_keys.zig` | CREATE | CRUD handlers: create, list, revoke, delete |
+| `src/http/handlers/agent_keys.zig` | CREATE | Renamed from `external_agents.zig` — CRUD handlers for workspace agent keys |
+| `src/http/handlers/external_agents.zig` | DELETE | Renamed to `agent_keys.zig` |
+| `src/http/handlers/api_keys.zig` | CREATE | CRUD handlers: create, list, revoke, delete for tenant API keys |
 | `src/http/route_table.zig` | MODIFY | Register new routes for /v1/api-keys |
 | `src/http/route_table_invoke.zig` | MODIFY | Invoke handlers for api-key routes |
 | `src/http/router.zig` | MODIFY | Add route variants for api-key endpoints |
@@ -62,6 +66,22 @@
 ---
 
 ## Sections (implementation slices)
+
+### §0 — Rename: external_agents → agent_keys
+
+**Status:** PENDING
+
+Rename `core.external_agents` → `core.agent_keys`, `/v1/workspaces/{ws}/external-agents` → `/v1/workspaces/{ws}/agent-keys`, and `external_agents.zig` → `agent_keys.zig`. The name "external agents" is cryptic in logs and docs — "agent keys" reads naturally ("mint an agent key for your LangGraph automation" vs "create an external agent"). The `zmb_` key prefix and all key semantics remain unchanged.
+
+**Dimensions (test blueprints):**
+
+| Dim | Status | Target | Input | Expected | Test type |
+|-----|--------|--------|-------|----------|-----------|
+| 0.1 | PENDING | `schema/027_core_agent_keys.sql` | DDL applied | Table `core.agent_keys` exists (not `core.external_agents`); all columns, constraints, indexes, and grants preserved | integration |
+| 0.2 | PENDING | `POST /v1/workspaces/{ws}/agent-keys` | Same body as old endpoint | 201 with `zmb_` key; auth with key still works | integration |
+| 0.3 | PENDING | `GET /v1/workspaces/{ws}/agent-keys` | operator JWT | 200 with items list; same shape as old response | integration |
+| 0.4 | PENDING | `DELETE /v1/workspaces/{ws}/agent-keys/{id}` | operator JWT + agent_id | 204; row removed | integration |
+| 0.5 | PENDING | Orphan sweep | grep for `external_agents`, `external-agents` across src/ | Zero hits in non-historical files | manual |
 
 ### §1 — Schema: core.api_keys table
 
@@ -96,7 +116,7 @@ DB-backed middleware that resolves `zmb_t_`-prefixed Bearer tokens. Looks up SHA
 
 **Status:** PENDING
 
-Four endpoints for tenant API key lifecycle: create (mint), list, revoke, delete. Create follows the `external_agents.zig` pattern — generate raw key, store hash, return raw key once. List returns metadata only (never key_hash). Revoke sets active=false + revoked_at. Delete removes the row (hard delete, pre-v2.0 teardown era).
+Four endpoints for tenant API key lifecycle: create (mint), list, revoke, delete. Create follows the `agent_keys.zig` pattern — generate raw key, store hash, return raw key once. List returns metadata only (never key_hash). Revoke sets active=false + revoked_at. Delete removes the row (hard delete, pre-v2.0 teardown era).
 
 **Dimensions (test blueprints):**
 
@@ -218,7 +238,7 @@ pub fn innerDeleteApiKey(hx: Hx, key_id: []const u8) void
 | Race: key revoked between lookup and handler execution | Revocation during request | Request succeeds (TOCTOU acceptable for revocation — not a security boundary) | Request completes normally; next request with same key fails |
 
 **Platform constraints:**
-- `zmb_t_` prefix must be distinct from `zmb_` (external_agents) to route middleware correctly at parse time — no DB query needed for routing.
+- `zmb_t_` prefix must be distinct from `zmb_` (agent_keys) to route middleware correctly at parse time — no DB query needed for routing.
 - PgQuery wrapper (RULE FLS) auto-drains — no manual drain() needed.
 
 ---
@@ -234,7 +254,7 @@ pub fn innerDeleteApiKey(hx: Hx, key_id: []const u8) void
 | Files ≤ 350 lines (RULE FLL) | `wc -l` on every new/touched .zig file |
 | Cross-compile (RULE XCC) | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` |
 | GRANT on new table (RULE SGR) | 030_api_keys.sql includes GRANT SELECT, INSERT, UPDATE, DELETE ON core.api_keys TO api_runtime |
-| Key prefix distinct from external_agents | `zmb_t_` prefix — grep confirms no overlap with `zmb_` routing logic |
+| Key prefix distinct from agent_keys | `zmb_t_` prefix — grep confirms no overlap with `zmb_` routing logic |
 | Zero concurrent pool connections per request (RULE CNX) | Handler acquires one connection, defers release |
 
 ---
@@ -305,7 +325,7 @@ pub fn innerDeleteApiKey(hx: Hx, key_id: []const u8) void
 
 | Test name | What it guards | File |
 |-----------|---------------|------|
-| external_agents zmb_ keys still work | zmb_ prefix routing unchanged | `external_agents.zig` |
+| external_agents → agent_keys zmb_ keys still work | zmb_ prefix routing unchanged | `agent_keys.zig` |
 | admin_api_key middleware still passes | Env-var bootstrap auth not broken | `admin_api_key.zig` |
 | bearer_or_api_key JWT path still works | OIDC auth unaffected | `bearer_or_api_key.zig` |
 | workspace_guards owner override still works | Creator auto-promote to operator | `workspace_guards.zig` |
@@ -337,16 +357,19 @@ pub fn innerDeleteApiKey(hx: Hx, key_id: []const u8) void
 
 | Step | Action | Verify (must pass before next step) |
 |------|--------|--------------------------------------|
-| 1 | Schema: create `030_api_keys.sql`, update `embed.zig` + `common.zig` migration array | `zig build` compiles |
-| 2 | Error codes: add ERR_APIKEY_NOT_FOUND, ERR_APIKEY_REVOKED, ERR_APIKEY_NAME_TAKEN to error_entries.zig | `zig build test` (error_registry unit tests pass) |
-| 3 | Tenant API key middleware: `tenant_api_key.zig` — DB lookup, principal population, revoked rejection | Unit tests pass |
-| 4 | Wire middleware: update `bearer_or_api_key.zig` to route `zmb_t_` → tenant_api_key; update `mod.zig` registry; update `serve.zig` | `zig build` compiles; existing auth tests pass |
-| 5 | CRUD handlers: `api_keys.zig` — create, list, revoke, delete | Unit tests pass |
-| 6 | Routes: register `/v1/api-keys` in router.zig + route_table.zig + route_table_invoke.zig | `zig build` compiles |
-| 7 | Integration tests: full auth flow, revoke, delete, duplicate name, role gate | `make test-integration` |
-| 8 | Bootstrap log warning: add structured warning in `admin_api_key.zig` when env-var key matches | Unit test for log emission |
-| 9 | Dead code sweep: verify no orphaned references to old single-hash auth path | `grep -rn api_key_hash src/` — only schema references remain |
-| 10 | Cross-compile + lint + gitleaks | `zig build -Dtarget=x86_64-linux && make lint && gitleaks detect` |
+| 1 | Rename: delete `schema/027_core_external_agents.sql`, create `schema/027_core_agent_keys.sql` (table=agent_keys), update `embed.zig` + `common.zig` | `zig build` compiles |
+| 2 | Rename: `external_agents.zig` → `agent_keys.zig`, update all route registrations (router, route_table, route_table_invoke), update imports in execute.zig, integration_grants.zig, main.zig | `zig build && zig build test` |
+| 3 | Orphan sweep: `grep -rn "external_agents" src/` — zero hits | grep returns empty |
+| 4 | Schema: create `030_api_keys.sql`, update `embed.zig` + `common.zig` migration array | `zig build` compiles |
+| 5 | Error codes: add ERR_APIKEY_NOT_FOUND, ERR_APIKEY_REVOKED, ERR_APIKEY_NAME_TAKEN to error_entries.zig | `zig build test` (error_registry unit tests pass) |
+| 6 | Tenant API key middleware: `tenant_api_key.zig` — DB lookup, principal population, revoked rejection | Unit tests pass |
+| 7 | Wire middleware: update `bearer_or_api_key.zig` to route `zmb_t_` → tenant_api_key; update `mod.zig` registry; update `serve.zig` | `zig build` compiles; existing auth tests pass |
+| 8 | CRUD handlers: `api_keys.zig` — create, list, revoke, delete | Unit tests pass |
+| 9 | Routes: register `/v1/api-keys` in router.zig + route_table.zig + route_table_invoke.zig | `zig build` compiles |
+| 10 | Integration tests: full auth flow, revoke, delete, duplicate name, role gate | `make test-integration` |
+| 11 | Bootstrap log warning: add structured warning in `admin_api_key.zig` when env-var key matches | Unit test for log emission |
+| 12 | Dead code sweep: verify no orphaned references to old single-hash auth path | `grep -rn api_key_hash src/` — only schema references remain |
+| 13 | Cross-compile + lint + gitleaks | `zig build -Dtarget=x86_64-linux && make lint && gitleaks detect` |
 
 ---
 
@@ -381,8 +404,12 @@ make test 2>&1 | tail -10
 make test-integration 2>&1 | tail -10
 
 # E4: Dead code sweep — zero orphaned references to deleted/renamed symbols
+grep -rn "external_agents" src/ --include="*.zig" | head -5
+echo "E4a: external_agents in src/ (empty = pass)"
+grep -rn "external-agents" src/ --include="*.zig" | head -5
+echo "E4b: external-agents in src/ (empty = pass)"
 grep -rn "api_key_hash" src/ --include="*.zig" | head -5
-echo "E4: api_key_hash in src/ should only appear in test fixtures"
+echo "E4c: api_key_hash in src/ should only appear in test fixtures"
 
 # E5: Memory leak test (std.testing.allocator detects leaks)
 zig build test 2>&1 | grep -i "leak" | head -5
@@ -413,15 +440,22 @@ make check-pg-drain 2>&1 | tail -3
 
 **1. Orphaned files — must be deleted from disk and git.**
 
-N/A — no files deleted. `core.tenants.api_key_hash` column remains in schema for backward compatibility (pre-v2.0 teardown era).
+| File to delete | Verify deleted |
+|---------------|----------------|
+| `src/http/handlers/external_agents.zig` | `test ! -f src/http/handlers/external_agents.zig` |
+| `schema/027_core_external_agents.sql` | `test ! -f schema/027_core_external_agents.sql` |
 
 **2. Orphaned references — zero remaining imports or uses.**
 
-N/A — no symbols renamed or deleted. New symbols added only.
+| Deleted symbol or import | Grep command | Expected |
+|-------------------------|--------------|----------|
+| `external_agents` | `grep -rn "external_agents" src/ --include="*.zig"` | 0 matches |
+| `external-agents` | `grep -rn "external-agents" src/ --include="*.zig"` | 0 matches |
+| `external_agents_sql` (embed) | `grep -rn "external_agents_sql" src/ --include="*.zig"` | 0 matches |
 
 **3. main.zig test discovery — update imports.**
 
-Add `_ = @import("auth/middleware/tenant_api_key.zig");` and `_ = @import("http/handlers/api_keys.zig");` to `src/main.zig`.
+Add `_ = @import("auth/middleware/tenant_api_key.zig");` and `_ = @import("http/handlers/api_keys.zig");` to `src/main.zig`. Replace `_ = @import("http/handlers/external_agents.zig");` with `_ = @import("http/handlers/agent_keys.zig");`.
 
 ---
 
