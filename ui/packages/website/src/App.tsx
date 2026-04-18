@@ -108,16 +108,20 @@ export default function App() {
 
         <div className="header-actions">
           <Button
-            to={APP_BASE_URL}
-            onClick={() => trackSignupStarted({ source: "header_mission_control", surface: "header", mode })}
+            asChild
             className={isHumansMode ? "header-mission-control z-animated-icon-trigger" : "header-mission-control z-animated-icon-trigger is-hidden"}
-            aria-hidden={!isHumansMode}
-            tabIndex={isHumansMode ? undefined : -1}
           >
-            <span>Mission Control</span>
-            <span className="header-mission-control-icon" aria-hidden="true">
-              <AnimatedIcon trigger="parent-hover" animation="wiggle"><ZombieHandIcon size={18} /></AnimatedIcon>
-            </span>
+            <a
+              href={APP_BASE_URL}
+              onClick={() => trackSignupStarted({ source: "header_mission_control", surface: "header", mode })}
+              aria-hidden={!isHumansMode}
+              tabIndex={isHumansMode ? undefined : -1}
+            >
+              <span>Mission Control</span>
+              <span className="header-mission-control-icon" aria-hidden="true">
+                <AnimatedIcon trigger="parent-hover" animation="wiggle"><ZombieHandIcon size={18} /></AnimatedIcon>
+              </span>
+            </a>
           </Button>
         </div>
       </header>

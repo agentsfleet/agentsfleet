@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import { Button, Terminal } from "@usezombie/design-system";
 import { APP_BASE_URL } from "../config";
 import { trackNavigationClicked, trackSignupStarted } from "../analytics/posthog";
@@ -24,22 +25,23 @@ export default function Hero() {
           <p className="hero-kicker">{heading.kicker}</p>
 
           <div className="hero-cta-row">
-            <Button
-              to={APP_BASE_URL}
-              className="hero-cta-primary"
-              onClick={() => {
-                trackSignupStarted({ source: "hero_primary", surface: "hero", mode: "humans" });
-              }}
-            >
-              Connect GitHub, automate PRs
+            <Button asChild className="hero-cta-primary">
+              <a
+                href={APP_BASE_URL}
+                onClick={() => {
+                  trackSignupStarted({ source: "hero_primary", surface: "hero", mode: "humans" });
+                }}
+              >
+                Connect GitHub, automate PRs
+              </a>
             </Button>
-            <Button
-              to="/pricing"
-              variant="double-border"
-              className="hero-cta-secondary"
-              onClick={() => trackNavigationClicked({ source: "hero_secondary_pricing", surface: "hero", target: "pricing" })}
-            >
-              See pricing
+            <Button asChild variant="double-border" className="hero-cta-secondary">
+              <Link
+                to="/pricing"
+                onClick={() => trackNavigationClicked({ source: "hero_secondary_pricing", surface: "hero", target: "pricing" })}
+              >
+                See pricing
+              </Link>
             </Button>
           </div>
 

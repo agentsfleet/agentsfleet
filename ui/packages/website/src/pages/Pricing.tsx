@@ -91,16 +91,20 @@ export default function Pricing() {
               {tier.priceNote ? <p className="pricing-card-note">{tier.priceNote}</p> : null}
             </div>
             <Button
-              to={APP_BASE_URL}
+              asChild
               variant={tier.featured ? "primary" : "double-border"}
               className="pricing-card-cta"
-              onClick={() =>
-                tier.featured
-                  ? trackLeadCaptureClicked({ page: "pricing", surface: "pricing_card", cta_id: tier.ctaSource, plan_interest: "Scale" })
-                  : trackSignupCompleted({ source: tier.ctaSource, surface: "pricing", mode: MODE_HUMANS })
-              }
             >
-              {tier.ctaLabel}
+              <a
+                href={APP_BASE_URL}
+                onClick={() =>
+                  tier.featured
+                    ? trackLeadCaptureClicked({ page: "pricing", surface: "pricing_card", cta_id: tier.ctaSource, plan_interest: "Scale" })
+                    : trackSignupCompleted({ source: tier.ctaSource, surface: "pricing", mode: MODE_HUMANS })
+                }
+              >
+                {tier.ctaLabel}
+              </a>
             </Button>
 
             <div className="pricing-card-proof">

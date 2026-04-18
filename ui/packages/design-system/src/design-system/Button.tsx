@@ -1,59 +1,76 @@
-import { type ComponentProps, type ReactNode } from "react";
-import { Link } from "react-router-dom";
-import { uiButtonClass, type UiButtonVariant } from "@usezombie/design-system/classes";
+import { Slot } from "@radix-ui/react-slot";
+import { cva, type VariantProps } from "class-variance-authority";
+import { type ComponentProps } from "react";
 import { cn } from "../utils";
 
-type Variant = UiButtonVariant;
+/*
+ * Framework-agnostic, RSC-safe Button.
+ *
+ * Zero router imports. Composition with any link element (Next <Link>,
+ * react-router-dom <Link>, plain <a>, custom) goes through Radix Slot
+ * via `asChild`. React 19 accepts `ref` as a prop, so no forwardRef.
+ *
+ *   <Button variant="primary">Click</Button>             // <button>
+ *   <Button asChild><a href="/x">Go</a></Button>         // <a> with button styles
+ *   <Button asChild><Link to="/x">Go</Link></Button>     // any router <Link>
+ */
+export const buttonVariants = cva(
+  [
+    "inline-flex items-center justify-center gap-2 whitespace-nowrap",
+    "min-h-11 rounded-full border px-[1.4rem] py-[0.7rem]",
+    "font-sans text-base font-bold cursor-pointer",
+    "transition-[box-shadow,transform] duration-[var(--z-ease-fast)]",
+    "hover:-translate-y-px",
+    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+    "disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0",
+  ].join(" "),
+  {
+    variants: {
+      variant: {
+        primary:
+          "border-transparent bg-[linear-gradient(120deg,var(--primary),var(--primary-bright))] text-primary-foreground hover:shadow-[0_0_24px_var(--primary-glow-strong)]",
+        ghost:
+          "bg-transparent border-border text-foreground hover:border-primary hover:shadow-[0_0_12px_var(--primary-glow)]",
+        "double-border": [
+          "bg-transparent border-2 border-primary text-foreground",
+          "shadow-[inset_0_0_0_2px_var(--background),0_0_0_1px_var(--primary)]",
+          "hover:shadow-[inset_0_0_0_2px_var(--background),0_0_16px_var(--primary-glow-strong)]",
+        ].join(" "),
+      },
+    },
+    defaultVariants: { variant: "primary" },
+  },
+);
 
-type BaseProps = {
-  variant?: Variant;
-  children: ReactNode;
-};
+export type ButtonVariant = NonNullable<VariantProps<typeof buttonVariants>["variant"]>;
 
-type LinkButtonProps = BaseProps & {
-  to: string;
-  external?: boolean;
-} & Omit<ComponentProps<"a">, "href">;
+export type ButtonProps = ComponentProps<"button"> &
+  VariantProps<typeof buttonVariants> & {
+    asChild?: boolean;
+  };
 
-type NativeButtonProps = BaseProps & ComponentProps<"button">;
-
-export type ButtonProps = LinkButtonProps | NativeButtonProps;
-
-function isLink(props: ButtonProps): props is LinkButtonProps {
-  return "to" in props;
-}
-
-function classNames(variant: Variant): string {
-  return uiButtonClass(variant);
-}
-
-export default function Button(props: ButtonProps) {
-  const variant = props.variant ?? "primary";
-  const cls = classNames(variant);
-
-  if (isLink(props)) {
-    const { to, external, variant, children, className, ...rest } = props;
-    void variant;
-    const classes = cn(cls, className);
-    if (external || to.startsWith("http") || to.startsWith("mailto:")) {
-      return (
-        <a className={classes} href={to} target={external ? "_blank" : undefined} rel={external ? "noopener noreferrer" : undefined} {...rest}>
-          {children}
-        </a>
-      );
-    }
-    return (
-      <Link className={classes} to={to} {...(rest as Omit<ComponentProps<typeof Link>, "to" | "className">)}>
-        {children}
-      </Link>
-    );
-  }
-
-  const { variant: propsVariant, children, className, ...rest } = props;
-  void propsVariant;
+export function Button({
+  className,
+  variant,
+  asChild = false,
+  type,
+  ref,
+  ...props
+}: ButtonProps) {
+  const Comp = asChild ? Slot : "button";
   return (
-    <button className={cn(cls, className)} type="button" {...rest}>
-      {children}
-    </button>
+    <Comp
+      ref={ref}
+      className={cn(buttonVariants({ variant }), className)}
+      type={asChild ? undefined : (type ?? "button")}
+      {...props}
+    />
   );
+}
+
+export default Button;
+
+/** Class-string helper for non-React / non-Tailwind-JSX callers. */
+export function buttonClassName(variant: ButtonVariant = "primary"): string {
+  return buttonVariants({ variant });
 }

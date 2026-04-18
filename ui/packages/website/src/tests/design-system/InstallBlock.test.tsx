@@ -44,18 +44,18 @@ describe("InstallBlock", () => {
   it("applies correct variant classes to buttons", () => {
     renderBlock();
     const ghost = screen.getByRole("link", { name: "Read the docs" });
-    expect(ghost).toHaveClass("z-btn--ghost");
+    expect(ghost.className).toContain("bg-transparent");
+    expect(ghost.className).toContain("border-border");
 
     const double = screen.getByRole("link", { name: "Setup dashboard" });
-    expect(double).toHaveClass("z-btn--double");
+    expect(double.className).toMatch(/border-2\s.*border-primary/);
   });
 
-  it("primary button has no variant modifier class", () => {
+  it("primary button uses the default primary variant", () => {
     renderBlock();
     const primary = screen.getByRole("link", { name: "Install now" });
-    expect(primary).toHaveClass("z-btn");
-    expect(primary).not.toHaveClass("z-btn--ghost");
-    expect(primary).not.toHaveClass("z-btn--double");
+    expect(primary.className).toContain("text-primary-foreground");
+    expect(primary.className).not.toContain("bg-transparent");
   });
 
   it("renders inside z-install-block container", () => {

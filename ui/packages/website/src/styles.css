@@ -189,50 +189,8 @@ a {
    Portable to Mission Control — copy design-system/ + these styles.
    ================================================================== */
 
-/* ── z-btn ── */
-.z-btn {
-  display: inline-flex;
-  align-items: center;
-  min-height: 44px;
-  padding: 0.7rem 1.4rem;
-  border-radius: var(--z-radius-pill);
-  border: 1px solid transparent;
-  background: linear-gradient(120deg, var(--z-orange), var(--z-orange-bright));
-  color: var(--z-text-inverse);
-  text-decoration: none;
-  font-weight: 700;
-  font-size: var(--z-text-base);
-  transition: box-shadow var(--z-ease-default), transform var(--z-ease-fast);
-  cursor: pointer;
-  font-family: var(--z-font-sans);
-}
-
-.z-btn:hover {
-  box-shadow: var(--z-shadow-cta);
-  transform: translateY(-1px);
-}
-
-.z-btn--ghost {
-  background: transparent;
-  border-color: var(--z-border);
-  color: var(--z-text-primary);
-}
-
-.z-btn--ghost:hover {
-  border-color: var(--z-orange);
-  box-shadow: var(--z-shadow-subtle);
-}
-
-.z-btn--double {
-  background: transparent;
-  border: 2px solid var(--z-orange);
-  color: var(--z-text-primary);
-  box-shadow: inset 0 0 0 2px var(--z-bg-0), 0 0 0 1px var(--z-orange);
-}
-
-.z-btn--double:hover {
-  box-shadow: inset 0 0 0 2px var(--z-bg-0), 0 0 16px var(--z-glow-strong);
-}
+/* .z-btn* rules removed — Button now uses Tailwind utilities via cva. See
+ * ui/packages/design-system/src/design-system/Button.tsx. */
 
 .z-btn-row {
   display: flex;
