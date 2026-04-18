@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Pre-push: full unit test suite before anything leaves the machine.
+# Bypass for emergencies: `git push --no-verify` (discouraged per AGENTS.md).
+set -euo pipefail
+
+repo_root="$(git rev-parse --show-toplevel)"
+cd "$repo_root"
+
+echo "pre-push: make test"
+make test
