@@ -110,22 +110,24 @@ fn performCreate(
     user_id: []const u8,
     body: CreateBody,
 ) CreateError!void {
-    var check_q = PgQuery.from(conn.query(
-        \\SELECT 1 FROM core.api_keys WHERE tenant_id = $1::uuid AND key_name = $2 LIMIT 1
-    , .{ tenant_id, body.key_name }) catch return error.DbError);
-    defer check_q.deinit();
-    if ((check_q.next() catch return error.DbError) != null) return error.NameTaken;
-
     const raw_key = generateRawKey(hx.alloc) catch return error.OperationError;
     const key_hash = api_key.sha256Hex(raw_key);
     const id = id_format.allocUuidV7(hx.alloc) catch return error.OperationError;
     const now_ms = std.time.milliTimestamp();
 
+    // Atomic insert — rely on api_keys_name_per_tenant_uniq to arbitrate
+    // name collisions. Pre-flight SELECT would create a TOCTOU window
+    // where two concurrent POSTs could both pass the check and race.
     const description: []const u8 = body.description orelse "";
     _ = conn.exec(
         \\INSERT INTO core.api_keys (id, tenant_id, key_name, description, key_hash, created_by, active)
         \\VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, TRUE)
-    , .{ id, tenant_id, body.key_name, description, key_hash[0..], user_id }) catch return error.DbError;
+    , .{ id, tenant_id, body.key_name, description, key_hash[0..], user_id }) catch {
+        if (conn.err) |pe| {
+            if (std.mem.eql(u8, pe.code, "23505")) return error.NameTaken;
+        }
+        return error.DbError;
+    };
 
     log.info("api_key.created tenant_id={s} actor_user_id={s} api_key_id={s} key_name={s}", .{
         tenant_id, user_id, id, body.key_name,

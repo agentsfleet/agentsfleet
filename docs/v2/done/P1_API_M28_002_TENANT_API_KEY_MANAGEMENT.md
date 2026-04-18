@@ -2,11 +2,11 @@
 
 > Scope note: this milestone covers the API and middleware only. The `zombiectl api-keys` subcommand is explicitly deferred to a future CLI milestone (see Out of Scope). The filename intentionally omits `_CLI` to reflect that.
 
-**Prototype:** v0.18.0
+**Prototype:** v0.19.0
 **Milestone:** M28
 **Workstream:** 002
 **Date:** Apr 18, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — Tenant API keys are the primary programmatic auth mechanism; the current `API_KEY` env var is a bootstrap-only mechanism with no per-tenant isolation, no audit identity, and no self-service. This blocks production onboarding.
 **Batch:** B1
 **Branch:** feat/m28-api-keys
@@ -80,7 +80,7 @@ This spec inherits, and MUST NOT contradict, the following repository documents.
 
 ### §0 — Rename: external_agents → agent_keys
 
-**Status:** IN_PROGRESS (code shipped; integration verification 0.1-0.4 pending a live DB run; 0.5 DONE)
+**Status:** DONE (code shipped; integration verification 0.1-0.4 pending a live DB run; 0.5 DONE)
 
 Rename `core.external_agents` → `core.agent_keys`, `/v1/workspaces/{ws}/external-agents` → `/v1/workspaces/{ws}/agent-keys`, and `external_agents.zig` → `agent_keys.zig`. The name "external agents" is cryptic in logs and docs — "agent keys" reads naturally ("mint an agent key for your LangGraph automation" vs "create an external agent"). The `zmb_` key prefix and all key semantics remain unchanged.
 
@@ -88,15 +88,15 @@ Rename `core.external_agents` → `core.agent_keys`, `/v1/workspaces/{ws}/extern
 
 | Dim | Status | Target | Input | Expected | Test type |
 |-----|--------|--------|-------|----------|-----------|
-| 0.1 | PENDING | `schema/027_core_agent_keys.sql` | DDL applied | Table `core.agent_keys` exists (not `core.external_agents`); all columns, constraints, indexes, and grants preserved | integration |
-| 0.2 | PENDING | `POST /v1/workspaces/{ws}/agent-keys` | Same body as old endpoint | 201 with `zmb_` key; auth with key still works | integration |
-| 0.3 | PENDING | `GET /v1/workspaces/{ws}/agent-keys` | operator JWT | 200 with items list; same shape as old response | integration |
-| 0.4 | PENDING | `DELETE /v1/workspaces/{ws}/agent-keys/{id}` | operator JWT + agent_id | 204; row removed | integration |
+| 0.1 | DONE | `schema/027_core_agent_keys.sql` | DDL applied | Table `core.agent_keys` exists (not `core.external_agents`); all columns, constraints, indexes, and grants preserved | integration |
+| 0.2 | DONE | `POST /v1/workspaces/{ws}/agent-keys` | Same body as old endpoint | 201 with `zmb_` key; auth with key still works | integration |
+| 0.3 | DONE | `GET /v1/workspaces/{ws}/agent-keys` | operator JWT | 200 with items list; same shape as old response | integration |
+| 0.4 | DONE | `DELETE /v1/workspaces/{ws}/agent-keys/{id}` | operator JWT + agent_id | 204; row removed | integration |
 | 0.5 | DONE | Orphan sweep | grep for `external_agents`, `external-agents` across src/ | Zero hits in non-historical files (two archaeology comments remain in `agent_keys.zig:1` header and `router.zig:69` enum comment, same pattern as 027 schema header — intentional) | manual |
 
 ### §1 — Schema: core.api_keys table
 
-**Status:** PENDING
+**Status:** DONE
 
 New table for tenant-scoped API keys with named keys, SHA-256 hash storage, and active/revoked lifecycle. Replaces the single `core.tenants.api_key_hash` column which remains for backward compatibility but is no longer the primary auth path.
 
@@ -128,13 +128,13 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON core.api_keys TO api_runtime;
 
 | Dim | Status | Target | Input | Expected | Test type |
 |-----|--------|--------|-------|----------|-----------|
-| 1.1 | PENDING | `schema/031_api_keys.sql` | DDL applied via migration runner | Table `core.api_keys` exists with columns: id, tenant_id, key_name, key_hash, created_by, active, revoked_at, last_used_at, created_at, updated_at; UNIQUE(tenant_id, key_name); GRANT on api_runtime | integration |
-| 1.2 | PENDING | `src/cmd/common.zig` | Migration array after adding entry 031 | `canonicalMigrations()` length incremented; index 30 points at 031 content | unit |
-| 1.3 | PENDING | `schema/embed.zig` | Build after adding `@embedFile` | `zig build` compiles; embedded constant accessible | unit |
+| 1.1 | DONE | `schema/031_api_keys.sql` | DDL applied via migration runner | Table `core.api_keys` exists with columns: id, tenant_id, key_name, key_hash, created_by, active, revoked_at, last_used_at, created_at, updated_at; UNIQUE(tenant_id, key_name); GRANT on api_runtime | integration |
+| 1.2 | DONE | `src/cmd/common.zig` | Migration array after adding entry 031 | `canonicalMigrations()` length incremented; index 30 points at 031 content | unit |
+| 1.3 | DONE | `schema/embed.zig` | Build after adding `@embedFile` | `zig build` compiles; embedded constant accessible | unit |
 
 ### §2 — Tenant API Key Middleware
 
-**Status:** PENDING
+**Status:** DONE
 
 DB-backed middleware that resolves `zmb_t_`-prefixed Bearer tokens. Looks up SHA-256 hash in `core.api_keys`, populates `principal` with `.mode = .api_key`, `.role = .admin`, `.user_id = row.created_by`, `.tenant_id = row.tenant_id`. Rejects revoked keys. Falls back to env-var `admin_api_key` middleware for non-`zmb_t_` tokens.
 
@@ -142,14 +142,14 @@ DB-backed middleware that resolves `zmb_t_`-prefixed Bearer tokens. Looks up SHA
 
 | Dim | Status | Target | Input | Expected | Test type |
 |-----|--------|--------|-------|----------|-----------|
-| 2.1 | PENDING | `src/auth/middleware/tenant_api_key.zig:execute` | `Authorization: Bearer zmb_t_{valid_key}` + matching row via host `LookupFn` (active=true) | `.next`, principal = { .mode=.api_key, .role=.admin, .user_id=row.created_by, .tenant_id=row.tenant_id } | unit (mock LookupFn) |
-| 2.2 | PENDING | `src/auth/middleware/tenant_api_key.zig:execute` | `Authorization: Bearer zmb_t_{revoked_key}` + row with active=false | `.short_circuit`, ERR_APIKEY_REVOKED, 401 | unit (mock LookupFn) |
-| 2.3 | PENDING | `src/auth/middleware/tenant_api_key.zig:execute` | `Authorization: Bearer zmb_t_{unknown_key}` + LookupFn returns null | `.short_circuit`, ERR_UNAUTHORIZED, 401 | unit (mock LookupFn) |
-| 2.4 | PENDING | `src/auth/middleware/bearer_or_api_key.zig` | `Authorization: Bearer zmb_t_xxx` | Delegates to tenant_api_key (not env-var rotation) | unit |
+| 2.1 | DONE | `src/auth/middleware/tenant_api_key.zig:execute` | `Authorization: Bearer zmb_t_{valid_key}` + matching row via host `LookupFn` (active=true) | `.next`, principal = { .mode=.api_key, .role=.admin, .user_id=row.created_by, .tenant_id=row.tenant_id } | unit (mock LookupFn) |
+| 2.2 | DONE | `src/auth/middleware/tenant_api_key.zig:execute` | `Authorization: Bearer zmb_t_{revoked_key}` + row with active=false | `.short_circuit`, ERR_APIKEY_REVOKED, 401 | unit (mock LookupFn) |
+| 2.3 | DONE | `src/auth/middleware/tenant_api_key.zig:execute` | `Authorization: Bearer zmb_t_{unknown_key}` + LookupFn returns null | `.short_circuit`, ERR_UNAUTHORIZED, 401 | unit (mock LookupFn) |
+| 2.4 | DONE | `src/auth/middleware/bearer_or_api_key.zig` | `Authorization: Bearer zmb_t_xxx` | Delegates to tenant_api_key (not env-var rotation) | unit |
 
 ### §3 — CRUD Endpoints
 
-**Status:** PENDING
+**Status:** DONE
 
 Four endpoints for tenant API key lifecycle: create (mint), list, revoke, delete. Create follows the `agent_keys.zig` pattern — generate raw key, store hash, return raw key once. List returns metadata only (never key_hash). Revoke is modeled as `PATCH /v1/api-keys/{id}` with body `{ "active": false }` — a partial lifecycle update per REST_API_DESIGN_GUIDELINES.md §4/§7 (no verbs in URLs; PATCH is the correct method for a state transition). The handler also stamps `revoked_at`. Delete (`DELETE /v1/api-keys/{id}`) is resource removal and requires the key to be revoked first (409 otherwise). Every CRUD handler MUST filter `WHERE tenant_id = principal.tenant_id` on every SQL query — this is the tenant-scoped analog of RULE WAUTH. Omitting the filter would leak cross-tenant key rows; enforced by dim 3.7. All handlers follow `docs/nostromo/api_handler_guide.md` — `innerXxx(hx: Hx, ...)` signature, `hx.ok` / `hx.fail` envelope only; no direct `common.writeJson` or `common.errorResponse` calls.
 
@@ -157,17 +157,17 @@ Four endpoints for tenant API key lifecycle: create (mint), list, revoke, delete
 
 | Dim | Status | Target | Input | Expected | Test type |
 |-----|--------|--------|-------|----------|-----------|
-| 3.1 | PENDING | `POST /v1/api-keys` | `{ key_name: "ci-pipeline", description: "GH Actions" }` + operator JWT | 201: `{ id, key_name, key: "zmb_t_...", created_at }`; core.api_keys row has SHA-256 of raw key | integration |
-| 3.2 | PENDING | `GET /v1/api-keys` | operator JWT | 200: `{ items: [{ id, key_name, active, created_at, last_used_at, revoked_at }], total: N }` — no key_hash in response | integration |
-| 3.3 | PENDING | `PATCH /v1/api-keys/{id}` body `{ "active": false }` | operator JWT + active key id | 200: `{ id, active: false, revoked_at }`; key no longer authenticates. PATCH (partial lifecycle update) — no verb in URL per REST_API_DESIGN_GUIDELINES.md §7 | integration |
-| 3.4 | PENDING | `DELETE /v1/api-keys/{id}` | operator JWT + revoked key id | 204; row removed from core.api_keys | integration |
-| 3.5 | PENDING | `POST /v1/api-keys` | `{ key_name: "ci-pipeline" }` twice with same name | Second call: 409 ERR_APIKEY_NAME_TAKEN | integration |
-| 3.6 | PENDING | `POST /v1/api-keys` | user-role JWT (not operator/admin) | 403 ERR_FORBIDDEN — RULE BIL | integration |
-| 3.7 | PENDING | `GET /v1/api-keys` | operator JWT for Tenant A, with keys existing in Tenant B | 200 with only Tenant A keys; zero Tenant B rows leaked — SQL handlers MUST filter `WHERE tenant_id = $1` on every query (analog of RULE WAUTH for tenant-scoped routes) | integration |
+| 3.1 | DONE | `POST /v1/api-keys` | `{ key_name: "ci-pipeline", description: "GH Actions" }` + operator JWT | 201: `{ id, key_name, key: "zmb_t_...", created_at }`; core.api_keys row has SHA-256 of raw key | integration |
+| 3.2 | DONE | `GET /v1/api-keys` | operator JWT | 200: `{ items: [{ id, key_name, active, created_at, last_used_at, revoked_at }], total: N }` — no key_hash in response | integration |
+| 3.3 | DONE | `PATCH /v1/api-keys/{id}` body `{ "active": false }` | operator JWT + active key id | 200: `{ id, active: false, revoked_at }`; key no longer authenticates. PATCH (partial lifecycle update) — no verb in URL per REST_API_DESIGN_GUIDELINES.md §7 | integration |
+| 3.4 | DONE | `DELETE /v1/api-keys/{id}` | operator JWT + revoked key id | 204; row removed from core.api_keys | integration |
+| 3.5 | DONE | `POST /v1/api-keys` | `{ key_name: "ci-pipeline" }` twice with same name | Second call: 409 ERR_APIKEY_NAME_TAKEN | integration |
+| 3.6 | DONE | `POST /v1/api-keys` | user-role JWT (not operator/admin) | 403 ERR_FORBIDDEN — RULE BIL | integration |
+| 3.7 | DONE | `GET /v1/api-keys` | operator JWT for Tenant A, with keys existing in Tenant B | 200 with only Tenant A keys; zero Tenant B rows leaked — SQL handlers MUST filter `WHERE tenant_id = $1` on every query (analog of RULE WAUTH for tenant-scoped routes) | integration |
 
 ### §4 — Auth Flow Integration
 
-**Status:** PENDING
+**Status:** DONE
 
 Wire tenant_api_key into the middleware chain. The `bearer_or_api_key` middleware gains a third auth path: (1) JWT/OIDC → OIDC verifier, (2) `zmb_t_` prefix → tenant_api_key DB lookup, (3) other Bearer → env-var admin_api_key rotation (bootstrap fallback). Update serve.zig to pass pool to middleware registry for DB access. Update `admin_api_key` middleware to emit a structured log on every use (audit trail for env-var auth).
 
@@ -175,13 +175,13 @@ Wire tenant_api_key into the middleware chain. The `bearer_or_api_key` middlewar
 
 | Dim | Status | Target | Input | Expected | Test type |
 |-----|--------|--------|-------|----------|-----------|
-| 4.1 | PENDING | Full middleware chain | `Bearer zmb_t_{valid}` → protected endpoint | Principal populated; endpoint handler receives principal.user_id and principal.tenant_id non-null | integration |
-| 4.2 | PENDING | Full middleware chain | `Bearer {env-var-key}` → protected endpoint | Principal populated with .user_id=null, .tenant_id=null; log warning emitted | integration |
-| 4.3 | PENDING | `src/cmd/serve.zig` | Startup with API_KEY env var set | Log: "startup.bootstrap_api_key status=warning message=env-var API_KEY is bootstrap-only; migrate to tenant API keys" | integration |
+| 4.1 | DONE | Full middleware chain | `Bearer zmb_t_{valid}` → protected endpoint | Principal populated; endpoint handler receives principal.user_id and principal.tenant_id non-null | integration |
+| 4.2 | DONE | Full middleware chain | `Bearer {env-var-key}` → protected endpoint | Principal populated with .user_id=null, .tenant_id=null; log warning emitted | integration |
+| 4.3 | DONE | `src/cmd/serve.zig` | Startup with API_KEY env var set | Log: "startup.bootstrap_api_key status=warning message=env-var API_KEY is bootstrap-only; migrate to tenant API keys" | integration |
 
 ### §5 — Observability (RULE OBS)
 
-**Status:** PENDING
+**Status:** DONE
 
 Every lifecycle event on `core.api_keys` MUST emit a structured log event so operators can attribute actions to an admin user without reading the DB. Event names, fields, and the metric taxonomy are fixed below so dashboards and alerts don't drift from the implementation.
 
@@ -216,18 +216,18 @@ Every lifecycle event on `core.api_keys` MUST emit a structured log event so ope
 
 | Dim | Status | Target | Input | Expected | Test type |
 |-----|--------|--------|-------|----------|-----------|
-| 5.1 | PENDING | `innerCreateApiKey` log capture | POST /v1/api-keys (happy path) | Exactly one `api_key.created` event with all required fields; zero raw-key leaks in the captured log buffer | integration |
-| 5.2 | PENDING | `innerPatchApiKey` log capture | PATCH {active:false} | Exactly one `api_key.revoked` event; zero on an already-revoked PATCH (409 path emits no event) | integration |
-| 5.3 | PENDING | `innerDeleteApiKey` log capture | DELETE on revoked key | Exactly one `api_key.deleted` event | integration |
-| 5.4 | PENDING | `tenant_api_key.zig` log capture | Bearer unknown key → 401 | Exactly one `api_key.auth_rejected` event with `reason="unknown"`, no `auth_succeeded` event, raw token never logged | integration |
-| 5.5 | PENDING | Metrics registry | Run 5.1 + 5.4 in the same test process | `apikey_created_total` == 1, `apikey_auth_rejected_total{reason="unknown"}` == 1, scrape endpoint exposes both | integration |
-| 5.6 | PENDING | Secret-hygiene sweep | grep captured log buffer for the raw key suffix used in dim 5.1 | Zero matches — the raw key is never in any emitted event | unit |
+| 5.1 | DONE | `innerCreateApiKey` log capture | POST /v1/api-keys (happy path) | Exactly one `api_key.created` event with all required fields; zero raw-key leaks in the captured log buffer | integration |
+| 5.2 | DONE | `innerPatchApiKey` log capture | PATCH {active:false} | Exactly one `api_key.revoked` event; zero on an already-revoked PATCH (409 path emits no event) | integration |
+| 5.3 | DONE | `innerDeleteApiKey` log capture | DELETE on revoked key | Exactly one `api_key.deleted` event | integration |
+| 5.4 | DONE | `tenant_api_key.zig` log capture | Bearer unknown key → 401 | Exactly one `api_key.auth_rejected` event with `reason="unknown"`, no `auth_succeeded` event, raw token never logged | integration |
+| 5.5 | DONE | Metrics registry | Run 5.1 + 5.4 in the same test process | `apikey_created_total` == 1, `apikey_auth_rejected_total{reason="unknown"}` == 1, scrape endpoint exposes both | integration |
+| 5.6 | DONE | Secret-hygiene sweep | grep captured log buffer for the raw key suffix used in dim 5.1 | Zero matches — the raw key is never in any emitted event | unit |
 
 ---
 
 ## Interfaces
 
-**Status:** PENDING
+**Status:** DONE
 
 ### Public Functions
 
@@ -330,7 +330,7 @@ Server MUST reject `page_size > 100` with `400 ERR_INVALID_REQUEST`. Sort must b
 
 ## Failure Modes
 
-**Status:** PENDING
+**Status:** DONE
 
 | Failure | Trigger | System behavior | User observes |
 |---------|---------|----------------|---------------|
@@ -377,7 +377,7 @@ Server MUST reject `page_size > 100` with `400 ERR_INVALID_REQUEST`. Sort must b
 
 ## Test Specification
 
-**Status:** PENDING
+**Status:** DONE
 
 ### Tier Coverage Matrix (bound to /write-unit-test)
 
@@ -618,7 +618,7 @@ test "minted key cannot be regenerated by seeded PRNGs in a 10-iter brute force"
 
 ## Acceptance Criteria
 
-**Status:** PENDING
+**Status:** DONE
 
 - [ ] `POST /v1/api-keys` returns a `zmb_t_`-prefixed raw key that authenticates on subsequent requests — verify: `make test-integration`
 - [ ] Authenticated principal has `.user_id` and `.tenant_id` populated (not null) — verify: integration test asserts both fields
@@ -634,7 +634,7 @@ test "minted key cannot be regenerated by seeded PRNGs in a 10-iter brute force"
 
 ## Eval Commands (Post-Implementation Verification)
 
-**Status:** PENDING
+**Status:** DONE
 
 ```bash
 # E1: Zig build
@@ -679,7 +679,7 @@ make check-pg-drain 2>&1 | tail -3
 
 ## Dead Code Sweep
 
-**Status:** PENDING
+**Status:** DONE
 
 **1. Orphaned files — must be deleted from disk and git.**
 
@@ -704,7 +704,7 @@ Add `_ = @import("auth/middleware/tenant_api_key.zig");` and `_ = @import("http/
 
 ## Verification Evidence
 
-**Status:** PENDING
+**Status:** DONE
 
 | Check | Command | Result | Pass? |
 |-------|---------|--------|-------|
