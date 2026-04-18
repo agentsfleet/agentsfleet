@@ -108,7 +108,7 @@ CREATE TABLE core.api_keys (
     tenant_id    uuid        NOT NULL REFERENCES core.tenants(id) ON DELETE CASCADE,
     key_name     text        NOT NULL,
     key_hash     text        NOT NULL,                               -- SHA-256 hex of the raw zmb_t_ key (64 chars; matches the sibling core.agent_keys convention)
-    created_by   uuid        NOT NULL REFERENCES core.users(id),     -- admin who minted it
+    created_by   text        NOT NULL,                               -- OIDC sub of the admin who minted it (opaque provider string; there is no local core.users table)
     active       boolean     NOT NULL DEFAULT true,
     revoked_at   timestamptz NULL,
     last_used_at timestamptz NULL,
