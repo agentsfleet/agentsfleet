@@ -49,7 +49,7 @@ fn zombieFromApiKey(alloc: std.mem.Allocator, conn: *pg.Conn, raw_key: []const u
     const computed_hash: []const u8 = hex[0..];
     var q = PgQuery.from(conn.query(
         \\SELECT ea.key_hash, ea.zombie_id::text, ea.workspace_id::text
-        \\FROM core.external_agents ea
+        \\FROM core.agent_keys ea
         \\WHERE ea.key_hash = $1
         \\LIMIT 1
     , .{computed_hash}) catch return null);
@@ -63,7 +63,7 @@ fn zombieFromApiKey(alloc: std.mem.Allocator, conn: *pg.Conn, raw_key: []const u
 
     // Best-effort: record last use time. Failure is not fatal.
     _ = conn.exec(
-        \\UPDATE core.external_agents SET last_used_at = $1 WHERE key_hash = $2
+        \\UPDATE core.agent_keys SET last_used_at = $1 WHERE key_hash = $2
     , .{ std.time.milliTimestamp(), computed_hash }) catch {};
 
     return .{

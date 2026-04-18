@@ -68,9 +68,9 @@ pub const Route = union(enum) {
     request_integration_grant: matchers.ZombieTelemetryRoute,    // POST /v1/workspaces/{ws}/zombies/{id}/integration-requests
     list_integration_grants: matchers.ZombieTelemetryRoute,      // GET  /v1/workspaces/{ws}/zombies/{id}/integration-grants
     revoke_integration_grant: matchers.WorkspaceZombieGrantRoute, // DELETE /v1/workspaces/{ws}/zombies/{id}/integration-grants/{grant_id}
-    // M9_001: External agent key management
-    external_agents: []const u8,              // POST|GET /v1/workspaces/{ws}/external-agents
-    delete_external_agent: matchers.WorkspaceAgentRoute, // DELETE /v1/workspaces/{ws}/external-agents/{agent_id}
+    // M9_001 / M28_002 §0: Workspace agent-key management (renamed from external_agents).
+    agent_keys: []const u8,              // POST|GET /v1/workspaces/{ws}/agent-keys
+    delete_agent_key: matchers.WorkspaceAgentRoute, // DELETE /v1/workspaces/{ws}/agent-keys/{agent_id}
     // M8_001: Slack plugin acquisition
     slack_install, // GET /v1/slack/install
     slack_callback, // GET /v1/slack/callback
@@ -161,9 +161,9 @@ pub fn match(path: []const u8) ?Route {
     if (matchers.matchWorkspaceZombieSuffix(path, "/integration-requests")) |route| return .{ .request_integration_grant = route };
     if (matchers.matchWorkspaceZombieSuffix(path, "/integration-grants")) |route| return .{ .list_integration_grants = route };
 
-    // M9_001: External agent key management (DELETE before GET/POST to prevent suffix clash)
-    if (matchers.matchWorkspaceAgentDelete(path)) |route| return .{ .delete_external_agent = route };
-    if (matchers.matchWorkspaceSuffix(path, "/external-agents")) |workspace_id| return .{ .external_agents = workspace_id };
+    // M9_001 / M28_002 §0: Workspace agent-key management (DELETE before GET/POST to prevent suffix clash)
+    if (matchers.matchWorkspaceAgentDelete(path)) |route| return .{ .delete_agent_key = route };
+    if (matchers.matchWorkspaceSuffix(path, "/agent-keys")) |workspace_id| return .{ .agent_keys = workspace_id };
 
     // M9_001: Grant approval webhook — /v1/webhooks/{zombie_id}/grant-approval (before /approval)
     if (matchers.matchWebhookAction(path, "/grant-approval")) |zombie_id| return .{ .grant_approval_webhook = zombie_id };

@@ -1,7 +1,7 @@
-//! M9_001 §3.0 — External Agent Key management.
-//! POST   /v1/workspaces/{ws}/external-agents           → innerCreateExternalAgent
-//! GET    /v1/workspaces/{ws}/external-agents           → innerListExternalAgents
-//! DELETE /v1/workspaces/{ws}/external-agents/{agent_id} → innerDeleteExternalAgent
+//! M28_002 §0 — Workspace agent-key management (renamed from external_agents.zig).
+//! POST   /v1/workspaces/{ws}/agent-keys            → innerCreateAgentKey
+//! GET    /v1/workspaces/{ws}/agent-keys            → innerListAgentKeys
+//! DELETE /v1/workspaces/{ws}/agent-keys/{agent_id} → innerDeleteAgentKey
 //!
 //! Keys are issued as "zmb_{hex32}" — 32 random bytes as lower-hex prefixed with "zmb_".
 //! Only the SHA-256 hash of the key is stored. The raw key is shown once at creation.
@@ -16,7 +16,7 @@ const ec = @import("../../errors/error_registry.zig");
 const id_format = @import("../../types/id_format.zig");
 const api_key = @import("../../auth/api_key.zig");
 
-const log = std.log.scoped(.external_agents);
+const log = std.log.scoped(.agent_keys);
 
 pub const Context = common.Context;
 const Hx = hx_mod.Hx;
@@ -35,8 +35,8 @@ fn generateApiKey(alloc: std.mem.Allocator) ![]const u8 {
     return std.fmt.allocPrint(alloc, "{s}{s}", .{ KEY_PREFIX, hex });
 }
 
-// ── innerCreateExternalAgent ───────────────────────────────────────────────
-// POST /v1/workspaces/{ws}/external-agents — bearer policy.
+// ── innerCreateAgentKey ────────────────────────────────────────────────────
+// POST /v1/workspaces/{ws}/agent-keys — bearer policy.
 // Returns the raw key exactly once — not stored, cannot be retrieved later.
 
 const CreateAgentBody = struct {
@@ -48,7 +48,7 @@ const CreateAgentBody = struct {
 const MAX_NAME_LEN: usize = 64;
 const MAX_DESC_LEN: usize = 256;
 
-pub fn innerCreateExternalAgent(hx: Hx, req: *httpz.Request, workspace_id: []const u8) void {
+pub fn innerCreateAgentKey(hx: Hx, req: *httpz.Request, workspace_id: []const u8) void {
     const raw_body = req.body() orelse {
         hx.fail(ec.ERR_INVALID_REQUEST, "Request body required");
         return;
@@ -115,7 +115,7 @@ pub fn innerCreateExternalAgent(hx: Hx, req: *httpz.Request, workspace_id: []con
     const desc = body.description orelse "";
 
     _ = conn.exec(
-        \\INSERT INTO core.external_agents
+        \\INSERT INTO core.agent_keys
         \\  (agent_id, workspace_id, zombie_id, name, description, key_hash, created_at)
         \\VALUES ($1, $2::uuid, $3::uuid, $4, $5, $6, $7)
     , .{ agent_id, workspace_id, body.zombie_id, body.name, desc, key_hash, now_ms }) catch {
@@ -123,7 +123,7 @@ pub fn innerCreateExternalAgent(hx: Hx, req: *httpz.Request, workspace_id: []con
         return;
     };
 
-    log.info("external_agent.created agent_id={s} workspace_id={s} zombie_id={s}", .{
+    log.info("agent_key.created agent_id={s} workspace_id={s} zombie_id={s}", .{
         agent_id, workspace_id, body.zombie_id,
     });
 
@@ -139,8 +139,8 @@ pub fn innerCreateExternalAgent(hx: Hx, req: *httpz.Request, workspace_id: []con
     });
 }
 
-// ── innerListExternalAgents ────────────────────────────────────────────────
-// GET /v1/workspaces/{ws}/external-agents — bearer policy.
+// ── innerListAgentKeys ─────────────────────────────────────────────────────
+// GET /v1/workspaces/{ws}/agent-keys — bearer policy.
 // Returns agent metadata — never returns key_hash.
 
 const AgentRow = struct {
@@ -152,7 +152,7 @@ const AgentRow = struct {
     last_used_at: ?i64,
 };
 
-pub fn innerListExternalAgents(hx: Hx, workspace_id: []const u8) void {
+pub fn innerListAgentKeys(hx: Hx, workspace_id: []const u8) void {
     const conn = hx.ctx.pool.acquire() catch {
         common.internalDbUnavailable(hx.res, hx.req_id);
         return;
@@ -166,7 +166,7 @@ pub fn innerListExternalAgents(hx: Hx, workspace_id: []const u8) void {
 
     var q = PgQuery.from(conn.query(
         \\SELECT agent_id, zombie_id::text, name, description, created_at, last_used_at
-        \\FROM core.external_agents
+        \\FROM core.agent_keys
         \\WHERE workspace_id = $1::uuid
         \\ORDER BY created_at DESC
     , .{workspace_id}) catch {
@@ -196,10 +196,10 @@ pub fn innerListExternalAgents(hx: Hx, workspace_id: []const u8) void {
     hx.ok(.ok, .{ .items = agents.items, .total = agents.items.len });
 }
 
-// ── innerDeleteExternalAgent ───────────────────────────────────────────────
-// DELETE /v1/workspaces/{ws}/external-agents/{agent_id} — bearer policy.
+// ── innerDeleteAgentKey ────────────────────────────────────────────────────
+// DELETE /v1/workspaces/{ws}/agent-keys/{agent_id} — bearer policy.
 
-pub fn innerDeleteExternalAgent(hx: Hx, workspace_id: []const u8, agent_id: []const u8) void {
+pub fn innerDeleteAgentKey(hx: Hx, workspace_id: []const u8, agent_id: []const u8) void {
     const conn = hx.ctx.pool.acquire() catch {
         common.internalDbUnavailable(hx.res, hx.req_id);
         return;
@@ -212,7 +212,7 @@ pub fn innerDeleteExternalAgent(hx: Hx, workspace_id: []const u8, agent_id: []co
     }
 
     var del_q = PgQuery.from(conn.query(
-        \\DELETE FROM core.external_agents
+        \\DELETE FROM core.agent_keys
         \\WHERE agent_id = $1 AND workspace_id = $2::uuid
         \\RETURNING agent_id
     , .{ agent_id, workspace_id }) catch {
@@ -223,10 +223,10 @@ pub fn innerDeleteExternalAgent(hx: Hx, workspace_id: []const u8, agent_id: []co
 
     const deleted = del_q.next() catch null;
     if (deleted == null) {
-        hx.fail(ec.ERR_AGENT_NOT_FOUND, "External agent not found");
+        hx.fail(ec.ERR_AGENT_NOT_FOUND, "Agent key not found");
         return;
     }
 
-    log.info("external_agent.deleted agent_id={s} workspace_id={s}", .{ agent_id, workspace_id });
+    log.info("agent_key.deleted agent_id={s} workspace_id={s}", .{ agent_id, workspace_id });
     hx.noContent();
 }

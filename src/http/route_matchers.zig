@@ -129,16 +129,16 @@ pub fn matchWorkspaceZombie(path: []const u8) ?WorkspaceZombieRoute {
     return .{ .workspace_id = ws_id, .zombie_id = zombie_id };
 }
 
-// M9_001: WorkspaceAgentRoute carries workspace_id + agent_id for external-agent DELETE.
+// M9_001 / M28_002 §0: WorkspaceAgentRoute carries workspace_id + agent_id for agent-key DELETE.
 pub const WorkspaceAgentRoute = struct {
     workspace_id: []const u8,
     agent_id: []const u8,
 };
 
-// M9_001: matchWorkspaceAgentDelete matches /v1/workspaces/{ws}/external-agents/{agent_id}.
+// M9_001 / M28_002 §0: matchWorkspaceAgentDelete matches /v1/workspaces/{ws}/agent-keys/{agent_id}.
 pub fn matchWorkspaceAgentDelete(path: []const u8) ?WorkspaceAgentRoute {
     const prefix = "/v1/workspaces/";
-    const mid = "/external-agents/";
+    const mid = "/agent-keys/";
     if (!std.mem.startsWith(u8, path, prefix)) return null;
     const rest = path[prefix.len..];
     const slash = std.mem.indexOf(u8, rest, mid) orelse return null;
@@ -182,12 +182,12 @@ pub fn matchWorkspaceZombieGrant(path: []const u8) ?WorkspaceZombieGrantRoute {
 }
 
 test "matchWorkspaceAgentDelete: workspace_id and agent_id" {
-    const r = matchWorkspaceAgentDelete("/v1/workspaces/ws1/external-agents/ag1").?;
+    const r = matchWorkspaceAgentDelete("/v1/workspaces/ws1/agent-keys/ag1").?;
     try std.testing.expectEqualStrings("ws1", r.workspace_id);
     try std.testing.expectEqualStrings("ag1", r.agent_id);
-    try std.testing.expect(matchWorkspaceAgentDelete("/v1/workspaces/ws1/external-agents/") == null);
-    try std.testing.expect(matchWorkspaceAgentDelete("/v1/workspaces//external-agents/ag1") == null);
-    try std.testing.expect(matchWorkspaceAgentDelete("/v1/workspaces/a/b/external-agents/ag1") == null);
+    try std.testing.expect(matchWorkspaceAgentDelete("/v1/workspaces/ws1/agent-keys/") == null);
+    try std.testing.expect(matchWorkspaceAgentDelete("/v1/workspaces//agent-keys/ag1") == null);
+    try std.testing.expect(matchWorkspaceAgentDelete("/v1/workspaces/a/b/agent-keys/ag1") == null);
 }
 
 test "matchWorkspaceZombieGrant: ws_id, zombie_id, grant_id" {

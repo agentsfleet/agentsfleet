@@ -23,7 +23,7 @@ export async function commandAgentCreate(ctx, parsed, deps) {
   if (!zombieId)    { writeLine(ctx.stderr, ui.err("agent create requires --zombie <id>")); return 2; }
   if (!name)        { writeLine(ctx.stderr, ui.err("agent create requires --name <name>")); return 2; }
 
-  const url = `${WORKSPACES_PATH}${encodeURIComponent(workspaceId)}/external-agents`;
+  const url = `${WORKSPACES_PATH}${encodeURIComponent(workspaceId)}/agent-keys`;
   const res = await request(ctx, url, {
     method: "POST",
     headers: { ...apiHeaders(ctx), "Content-Type": "application/json" },
@@ -66,7 +66,7 @@ export async function commandAgentList(ctx, parsed, deps) {
   const workspaceId = parsed.options["workspace"] || parsed.options["workspace-id"];
   if (!workspaceId) { writeLine(ctx.stderr, ui.err("agent list requires --workspace <id>")); return 2; }
 
-  const url = `${WORKSPACES_PATH}${encodeURIComponent(workspaceId)}/external-agents`;
+  const url = `${WORKSPACES_PATH}${encodeURIComponent(workspaceId)}/agent-keys`;
   const res = await request(ctx, url, { method: "GET", headers: apiHeaders(ctx) });
   const agents = Array.isArray(res.items) ? res.items : [];
 
@@ -103,7 +103,7 @@ export async function commandAgentDelete(ctx, parsed, deps) {
   if (!workspaceId) { writeLine(ctx.stderr, ui.err("agent delete requires --workspace <id>")); return 2; }
   if (!agentId)     { writeLine(ctx.stderr, ui.err("agent delete requires <agent_id>")); return 2; }
 
-  const url = `${WORKSPACES_PATH}${encodeURIComponent(workspaceId)}/external-agents/${encodeURIComponent(agentId)}`;
+  const url = `${WORKSPACES_PATH}${encodeURIComponent(workspaceId)}/agent-keys/${encodeURIComponent(agentId)}`;
   await request(ctx, url, { method: "DELETE", headers: apiHeaders(ctx) });
 
   if (ctx.jsonMode) {
