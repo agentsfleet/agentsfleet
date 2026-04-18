@@ -109,16 +109,26 @@ pub fn WebhookSig(comptime LookupCtx: type) type {
                 return .next;
             }
 
-            // Strategy 2: Per-zombie HMAC signature (§3)
+            // Strategy 2: Per-zombie HMAC signature (§3) — when a scheme is
+            // declared, HMAC is the ONLY acceptable auth path. No silent
+            // downgrade to Bearer on vault failure or missing sig_header:
+            // both fail closed. A scheme-configured zombie that authenticated
+            // via Bearer alone would be a header-omission bypass.
             if (result.signature_scheme) |scheme| {
-                if (result.signature_secret) |secret| {
-                    if (req.header(scheme.sig_header)) |provided_sig| {
-                        return verifyHmac(ctx, scheme, secret, provided_sig, req);
-                    }
-                }
+                const secret = result.signature_secret orelse {
+                    log.warn("webhook_sig hmac secret unavailable req_id={s} zombie_id={s} (scheme configured; vault load failed or empty)", .{ ctx.req_id, zombie_id });
+                    ctx.fail(errors.ERR_WEBHOOK_SIG_INVALID, "Invalid signature");
+                    return .short_circuit;
+                };
+                const provided_sig = req.header(scheme.sig_header) orelse {
+                    ctx.fail(errors.ERR_WEBHOOK_SIG_INVALID, "Invalid signature");
+                    return .short_circuit;
+                };
+                return verifyHmac(ctx, scheme, secret, provided_sig, req);
             }
 
-            // Strategy 3: Bearer token fallback
+            // Strategy 3: Bearer token fallback (reached only when no HMAC
+            // scheme is configured on the zombie).
             const expected_token = result.expected_token orelse {
                 ctx.fail(errors.ERR_UNAUTHORIZED, "Invalid or missing token");
                 return .short_circuit;
@@ -135,6 +145,14 @@ fn verifyHmac(
     provided_sig: []const u8,
     req: *httpz.Request,
 ) chain.Outcome {
+    // Defense-in-depth: empty key → HMAC is deterministic and attacker-
+    // computable. Mirrors the same guard in svix_signature.zig. The parser +
+    // execute() already reject empty secrets upstream, but middleware must
+    // not trust the vault blindly.
+    if (secret.len == 0) {
+        ctx.fail(errors.ERR_WEBHOOK_SIG_INVALID, "Invalid signature");
+        return .short_circuit;
+    }
     const timestamp = if (scheme.ts_header) |ts_h| req.header(ts_h) else null;
     if (scheme.ts_header != null) {
         const ts = timestamp orelse {

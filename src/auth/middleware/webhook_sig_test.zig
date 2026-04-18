@@ -349,3 +349,76 @@ test "stale timestamp → UZ-WH-011 .short_circuit" {
     try testing.expectEqual(chain.Outcome.short_circuit, outcome);
     try testing.expectEqualStrings(errors.ERR_WEBHOOK_TIMESTAMP_STALE, Fixtures.last_code);
 }
+
+// ── Fail-closed when HMAC scheme is declared (no Bearer downgrade) ────
+
+test "HMAC scheme configured + secret null → .short_circuit (no Bearer fallthrough)" {
+    // Simulates a vault transient failure: serve_webhook_lookup returns
+    // signature_scheme populated but signature_secret = null. Middleware
+    // must fail closed, NOT fall through to Bearer auth.
+    Fixtures.reset();
+    var lookup_ctx = TestLookupCtx{
+        .return_scheme = JIRA_SCHEME,
+        .return_signature_secret = null,
+        .return_token = "valid-token", // would-be Bearer fallback (must NOT be used)
+    };
+    var mw = TestWebhookSig{ .lookup_ctx = &lookup_ctx, .lookup_fn = testLookup };
+
+    var ht = httpz.testing.init(.{});
+    defer ht.deinit();
+    // Include a valid Bearer so the downgrade path, if taken, would succeed.
+    ht.header("authorization", "Bearer valid-token");
+    ht.body(JIRA_BODY);
+
+    const outcome = try runMw(&mw, &ht, "zombie-abc", null);
+    try testing.expectEqual(chain.Outcome.short_circuit, outcome);
+    try testing.expectEqualStrings(errors.ERR_WEBHOOK_SIG_INVALID, Fixtures.last_code);
+}
+
+test "HMAC scheme configured + sig_header missing → .short_circuit (no Bearer fallthrough)" {
+    // Scheme + secret both present, but request omits the sig_header. Prior
+    // behavior silently fell through to Bearer auth — a header-omission
+    // downgrade. Now: fail closed.
+    Fixtures.reset();
+    var lookup_ctx = TestLookupCtx{
+        .return_scheme = JIRA_SCHEME,
+        .return_signature_secret = JIRA_SECRET,
+        .return_token = "valid-token", // would-be Bearer fallback (must NOT be used)
+    };
+    var mw = TestWebhookSig{ .lookup_ctx = &lookup_ctx, .lookup_fn = testLookup };
+
+    var ht = httpz.testing.init(.{});
+    defer ht.deinit();
+    // No x-jira-hook-signature header; valid Bearer that would auth via fallback.
+    ht.header("authorization", "Bearer valid-token");
+    ht.body(JIRA_BODY);
+
+    const outcome = try runMw(&mw, &ht, "zombie-abc", null);
+    try testing.expectEqual(chain.Outcome.short_circuit, outcome);
+    try testing.expectEqualStrings(errors.ERR_WEBHOOK_SIG_INVALID, Fixtures.last_code);
+}
+
+test "HMAC empty secret (attacker-computable) → .short_circuit" {
+    // Defense-in-depth: vault misconfig stores an empty secret. hs.computeMac("", ...)
+    // is deterministic and an attacker who knows the basestring can forge a valid
+    // MAC. The middleware must reject this at the verify boundary rather than
+    // trusting the vault. Mirrors the same guard in svix_signature.zig.
+    Fixtures.reset();
+    var sig_buf: [64 + 16]u8 = undefined;
+    const sig = hmacHex(&sig_buf, "", &.{JIRA_BODY}, "sha256=");
+
+    var lookup_ctx = TestLookupCtx{
+        .return_scheme = JIRA_SCHEME,
+        .return_signature_secret = "", // empty vault entry
+    };
+    var mw = TestWebhookSig{ .lookup_ctx = &lookup_ctx, .lookup_fn = testLookup };
+
+    var ht = httpz.testing.init(.{});
+    defer ht.deinit();
+    ht.header("x-jira-hook-signature", sig);
+    ht.body(JIRA_BODY);
+
+    const outcome = try runMw(&mw, &ht, "zombie-abc", null);
+    try testing.expectEqual(chain.Outcome.short_circuit, outcome);
+    try testing.expectEqualStrings(errors.ERR_WEBHOOK_SIG_INVALID, Fixtures.last_code);
+}
