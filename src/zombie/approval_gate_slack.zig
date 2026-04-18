@@ -71,7 +71,7 @@ test "buildSlackApprovalMessage: produces valid JSON" {
         "test-zombie",
         "action-001",
         .{ .tool = "git", .action = "push", .params_summary = "3 files to main" },
-        "https://api.usezombie.com/v1/webhooks/z1:approval",
+        "https://api.usezombie.com/v1/webhooks/z1/approval",
     );
     defer alloc.free(msg);
     const parsed = try std.json.parseFromSlice(std.json.Value, alloc, msg, .{});

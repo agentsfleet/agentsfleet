@@ -16,9 +16,9 @@ Turns spec files into validated pull requests using a sequential NullClaw agent 
 | `start_run` | POST | `/v1/runs` |
 | `get_run` | GET | `/v1/runs/{run_id}` |
 | `retry_run` | POST | `/v1/runs/{run_id}:retry` |
-| `pause_workspace` | POST | `/v1/workspaces/{workspace_id}:pause` |
+| `pause_workspace` | POST | `/v1/workspaces/{workspace_id}/pause` |
 | `list_specs` | GET | `/v1/specs?workspace_id={id}` |
-| `sync_specs` | POST | `/v1/workspaces/{workspace_id}:sync` |
+| `sync_specs` | POST | `/v1/workspaces/{workspace_id}/sync` |
 
 ## Authentication
 `Authorization: Bearer <api_key>`

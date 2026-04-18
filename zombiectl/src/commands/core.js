@@ -156,7 +156,7 @@ function createCoreHandlers(ctx, workspaces, deps) {
 
     let res;
     try {
-      res = await request(ctx, `/v1/workspaces/${encodeURIComponent(workspaceId)}:sync`, {
+      res = await request(ctx, `/v1/workspaces/${encodeURIComponent(workspaceId)}/sync`, {
         method: "POST",
         headers: apiHeaders(ctx),
         body: "{}",

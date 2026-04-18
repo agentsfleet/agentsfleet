@@ -1,6 +1,6 @@
 // M12_001: Zombie lifecycle actions — operator kill switch and re-starts.
 //
-// POST /v1/workspaces/{ws}/zombies/{zombie_id}:stop
+// POST /v1/workspaces/{ws}/zombies/{zombie_id}/stop
 //   Transitions status from `active` | `paused` → `stopped`. `stopped` is the
 //   non-terminal halt state (a stopped zombie can be restarted by the next M19
 //   milestone). `killed` is the terminal delete marker set by DELETE /zombies/{id}.

@@ -72,7 +72,11 @@ pub fn matchWebhookRoute(path: []const u8) ?WebhookRoute {
 
 // M10_001: matchRunAction test removed — function deleted.
 
-// M4_001: matchWebhookAction matches /v1/webhooks/{zombie_id}{action} and returns the zombie_id.
+// matchWebhookAction matches /v1/webhooks/{zombie_id}{action} and returns the zombie_id.
+// `action` is the full suffix (e.g. "/approval") — M28 migration replaced the
+// Google-style ":action" custom-method form with a direct subpath so public docs
+// can parameterize it as /v1/webhooks/{zombie_id}/{action} without OpenAPI-validator
+// rejection of the colon.
 pub fn matchWebhookAction(path: []const u8, action: []const u8) ?[]const u8 {
     const prefix = "/v1/webhooks/";
     if (!std.mem.startsWith(u8, path, prefix)) return null;
@@ -82,8 +86,9 @@ pub fn matchWebhookAction(path: []const u8, action: []const u8) ?[]const u8 {
     return inner;
 }
 
-// M24_001: matchWorkspaceZombieAction matches /v1/workspaces/{ws}/zombies/{zombie_id}{action}.
-// action is colon-prefixed (e.g. ":steer") — Google Custom Method style.
+// matchWorkspaceZombieAction matches /v1/workspaces/{ws}/zombies/{zombie_id}{action}.
+// `action` is the full suffix (e.g. "/steer") — M28 migration replaced
+// the Google-style ":action" custom-method form with a validator-friendly subpath.
 pub fn matchWorkspaceZombieAction(path: []const u8, action: []const u8) ?WorkspaceZombieRoute {
     const prefix = "/v1/workspaces/";
     const mid = "/zombies/";
@@ -206,20 +211,20 @@ test "matchWorkspaceZombie: workspace_id and zombie_id extracted" {
     try std.testing.expect(matchWorkspaceZombie("/v1/workspaces/ws_1/zombies/z_1/extra") == null);
 }
 
-test "matchWorkspaceZombieAction: :steer extracts ws_id + zombie_id" {
-    const r = matchWorkspaceZombieAction("/v1/workspaces/ws1/zombies/z1:steer", ":steer").?;
+test "matchWorkspaceZombieAction: /steer extracts ws_id + zombie_id" {
+    const r = matchWorkspaceZombieAction("/v1/workspaces/ws1/zombies/z1/steer", "/steer").?;
     try std.testing.expectEqualStrings("ws1", r.workspace_id);
     try std.testing.expectEqualStrings("z1", r.zombie_id);
     // empty ids rejected
-    try std.testing.expect(matchWorkspaceZombieAction("/v1/workspaces/ws1/zombies/:steer", ":steer") == null);
-    try std.testing.expect(matchWorkspaceZombieAction("/v1/workspaces//zombies/z1:steer", ":steer") == null);
+    try std.testing.expect(matchWorkspaceZombieAction("/v1/workspaces/ws1/zombies//steer", "/steer") == null);
+    try std.testing.expect(matchWorkspaceZombieAction("/v1/workspaces//zombies/z1/steer", "/steer") == null);
     // multi-segment rejected
-    try std.testing.expect(matchWorkspaceZombieAction("/v1/workspaces/ws1/zombies/a/b:steer", ":steer") == null);
-    try std.testing.expect(matchWorkspaceZombieAction("/v1/workspaces/a/b/zombies/z1:steer", ":steer") == null);
+    try std.testing.expect(matchWorkspaceZombieAction("/v1/workspaces/ws1/zombies/a/b/steer", "/steer") == null);
+    try std.testing.expect(matchWorkspaceZombieAction("/v1/workspaces/a/b/zombies/z1/steer", "/steer") == null);
     // wrong action rejected
-    try std.testing.expect(matchWorkspaceZombieAction("/v1/workspaces/ws1/zombies/z1:other", ":steer") == null);
+    try std.testing.expect(matchWorkspaceZombieAction("/v1/workspaces/ws1/zombies/z1/other-action", "/steer") == null);
     // flat path no longer matches
-    try std.testing.expect(matchWorkspaceZombieAction("/v1/zombies/z1:steer", ":steer") == null);
+    try std.testing.expect(matchWorkspaceZombieAction("/v1/zombies/z1/steer", "/steer") == null);
 }
 
 test "matchZombieTelemetry: extracts workspace_id and zombie_id" {

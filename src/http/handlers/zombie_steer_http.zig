@@ -1,4 +1,4 @@
-// M23_001 / M24_001: POST /v1/workspaces/{ws}/zombies/{id}:steer — live steering for active zombies.
+// M23_001 / M24_001: POST /v1/workspaces/{ws}/zombies/{id}/steer — live steering for active zombies.
 //
 // Verifies zombie ownership, writes message to Redis key zombie:{id}:steer (SETEX
 // 300s TTL). The worker polls this key at the top of each event loop iteration and
@@ -70,7 +70,7 @@ pub fn innerZombieSteer(hx: Hx, req: *httpz.Request, workspace_id: []const u8, z
     // Intentional widening vs M23_001: the original spec required
     // `principal.workspace_scope_id != null` (operator-token-only). M24_001 drops
     // that pre-check because `authorizeWorkspace` is the canonical workspace authZ
-    // gate used by every workspace-scoped handler — special-casing :steer to also
+    // gate used by every workspace-scoped handler — special-casing /steer to also
     // require a workspace-scoped token would be inconsistent with create/list/
     // delete/activity/credentials/grants. Membership-based principals with access
     // to the workspace may now steer. If a role gate is ever needed (e.g. only

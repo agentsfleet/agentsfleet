@@ -369,7 +369,7 @@ test "integration: RBAC endpoints enforce operator and admin roles over live HTT
     // in CI. (Follow-up: dashboard_http_integration_test.zig rewrite will
     // carry positive-path T5/T8 coverage; tracked as a subsequent
     // workstream, see src/main.zig NOTE beside the telemetry import.)
-    const m12_stop_url = try std.fmt.allocPrint(std.testing.allocator, "http://127.0.0.1:{d}/v1/workspaces/{s}/zombies/0195b4ba-8d3a-7f13-8abc-2b3e1e0a71bb:stop", .{
+    const m12_stop_url = try std.fmt.allocPrint(std.testing.allocator, "http://127.0.0.1:{d}/v1/workspaces/{s}/zombies/0195b4ba-8d3a-7f13-8abc-2b3e1e0a71bb/stop", .{
         server.port,
         TEST_WORKSPACE_ID,
     });
@@ -380,7 +380,7 @@ test "integration: RBAC endpoints enforce operator and admin roles over live HTT
     });
     defer std.testing.allocator.free(m12_zombie_billing_url);
     {
-        // `:stop` is POST-with-no-body (verb-in-path). Zig's std HTTP client
+        // `/stop` is POST-with-no-body (verb-in-path). Zig's std HTTP client
         // asserts POST carries a payload, so pass `""` rather than `null`.
         const response = try sendRequest(std.testing.allocator, m12_stop_url, .POST, TEST_USER_TOKEN, "", null);
         defer response.deinit(std.testing.allocator);
