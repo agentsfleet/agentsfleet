@@ -121,10 +121,11 @@ fn performCreate(
     const id = id_format.allocUuidV7(hx.alloc) catch return error.OperationError;
     const now_ms = std.time.milliTimestamp();
 
+    const description: []const u8 = body.description orelse "";
     _ = conn.exec(
-        \\INSERT INTO core.api_keys (id, tenant_id, key_name, key_hash, created_by, active)
-        \\VALUES ($1::uuid, $2::uuid, $3, $4, $5, TRUE)
-    , .{ id, tenant_id, body.key_name, key_hash[0..], user_id }) catch return error.DbError;
+        \\INSERT INTO core.api_keys (id, tenant_id, key_name, description, key_hash, created_by, active)
+        \\VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, TRUE)
+    , .{ id, tenant_id, body.key_name, description, key_hash[0..], user_id }) catch return error.DbError;
 
     log.info("api_key.created tenant_id={s} actor_user_id={s} api_key_id={s} key_name={s}", .{
         tenant_id, user_id, id, body.key_name,
