@@ -15,7 +15,7 @@ describe("Section", () => {
     const { container } = render(<Section gap>x</Section>);
     const el = container.firstChild as HTMLElement;
     expect(el.getAttribute("data-section")).toBe("gap");
-    expect(el.className).toContain("py-[var(--z-space-5xl)]");
+    expect(el.className).toContain("py-5xl");
   });
 
   it("merges custom className", () => {

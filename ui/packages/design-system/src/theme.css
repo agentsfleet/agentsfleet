@@ -120,8 +120,42 @@
   --font-sans: var(--z-font-sans);
   --font-mono: var(--z-font-mono);
 
-  /* Animation utilities — expose tokens.css keyframes to Tailwind so
-   * components use animate-wave / animate-wiggle instead of raw CSS. */
+  /* Brand-surface + effect colors — bridged so components write
+   * `border-border-active`, `bg-terminal`, `shadow-card` etc. instead of
+   * reaching into Layer 0 via var(). */
+  --color-border-active: var(--z-border-active);
+  --color-border-strong: var(--z-border-strong);
+  --color-surface-terminal: var(--z-surface-terminal);
+  --color-glow-green: var(--z-glow-green);
+  --color-glow-orange: var(--z-glow-orange);
+  --color-glow-strong: var(--z-glow-strong);
+
+  /* Spacing scale — Tailwind utilities: p-xs/sm/md/lg/xl/2xl/3xl/4xl/5xl,
+   * gap-*, m-*, px-*, etc. */
+  --spacing-xs: var(--z-space-xs);
+  --spacing-sm: var(--z-space-sm);
+  --spacing-md: var(--z-space-md);
+  --spacing-lg: var(--z-space-lg);
+  --spacing-xl: var(--z-space-xl);
+  --spacing-2xl: var(--z-space-2xl);
+  --spacing-3xl: var(--z-space-3xl);
+  --spacing-4xl: var(--z-space-4xl);
+  --spacing-5xl: var(--z-space-5xl);
+
+  /* Shadow scale — shadow-card / shadow-cta / shadow-subtle. */
+  --shadow-card: var(--z-shadow-card);
+  --shadow-cta: var(--z-shadow-cta);
+  --shadow-subtle: var(--z-shadow-subtle);
+  --shadow-floating: var(--z-shadow-floating);
+
+  /* Motion easing — transition-timing-function via ease-*-z. */
+  --ease-fast: var(--z-ease-fast);
+  --ease-default: var(--z-ease-default);
+
+  /* Pill radius on top of the existing --radius-sm/md/lg/xl. */
+  --radius-pill: var(--z-radius-pill);
+
+  /* Animation utilities — keyframes defined in tokens.css. */
   --animate-wave: z-icon-wave 700ms ease-in-out;
   --animate-wiggle: z-icon-wiggle 700ms ease-in-out;
 }

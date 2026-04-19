@@ -1,4 +1,5 @@
 import { Slot } from "@radix-ui/react-slot";
+import { cva, type VariantProps } from "class-variance-authority";
 import { type ComponentProps, type ReactNode } from "react";
 import { cn } from "../utils";
 
@@ -8,12 +9,29 @@ import { cn } from "../utils";
  * layouts port over cleanly.
  */
 
-export type CardProps = ComponentProps<"article"> & {
-  featured?: boolean;
-  /** Badge label rendered above a featured card. Defaults to "Popular". */
-  badgeLabel?: ReactNode;
-  asChild?: boolean;
-};
+const cardVariants = cva(
+  [
+    "relative rounded-lg border border-border bg-card p-6",
+    "transition-[border-color,box-shadow] duration-200 ease-out",
+    "hover:border-border-active hover:shadow-card",
+  ].join(" "),
+  {
+    variants: {
+      featured: {
+        true: "border-primary shadow-card",
+        false: "",
+      },
+    },
+    defaultVariants: { featured: false },
+  },
+);
+
+export type CardProps = ComponentProps<"article"> &
+  VariantProps<typeof cardVariants> & {
+    /** Badge label rendered above a featured card. Defaults to "Popular". */
+    badgeLabel?: ReactNode;
+    asChild?: boolean;
+  };
 
 export function Card({
   featured,
@@ -24,18 +42,14 @@ export function Card({
   ref,
   ...props
 }: CardProps) {
-  const classes = cn(
-    "relative rounded-lg border border-border bg-card p-6",
-    "transition-[border-color,box-shadow] duration-200 ease-out",
-    "hover:border-[var(--z-border-active)] hover:shadow-[var(--z-shadow-card)]",
-    featured && "border-primary shadow-[var(--z-shadow-card)]",
-    className,
-  );
+  const classes = cn(cardVariants({ featured }), className);
 
   if (asChild) {
-    // asChild consumers own their own markup; Radix Slot requires a single
-    // child element, so we don't auto-insert the featured badge.
-    return <Slot ref={ref} className={classes} {...props}>{children}</Slot>;
+    return (
+      <Slot ref={ref} className={classes} {...props}>
+        {children}
+      </Slot>
+    );
   }
 
   return (
@@ -79,4 +93,5 @@ export function CardFooter({ className, ref, ...props }: ComponentProps<"div">) 
   return <div ref={ref} className={cn("flex items-center pt-4", className)} {...props} />;
 }
 
+export { cardVariants };
 export default Card;

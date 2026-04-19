@@ -26,15 +26,15 @@ export default function InstallBlock({ title, command, actions, className }: Pro
   return (
     <div
       className={cn(
-        "rounded-lg border border-border bg-card p-[var(--z-space-3xl)]",
+        "rounded-lg border border-border bg-card p-3xl",
         className,
       )}
     >
-      <h2 className="mt-0 mb-[var(--z-space-lg)] text-2xl">{title}</h2>
+      <h2 className="mt-0 mb-lg text-2xl">{title}</h2>
       <Terminal label={`${title} command`} copyable>
         {command}
       </Terminal>
-      <div className="mt-[var(--z-space-xl)] flex flex-wrap gap-[var(--z-space-md)]">
+      <div className="mt-xl flex flex-wrap gap-md">
         {actions.map((a) => (
           <Button key={a.label} asChild variant={a.variant ?? "primary"}>
             <a

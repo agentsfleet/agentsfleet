@@ -19,7 +19,7 @@ export const buttonVariants = cva(
     "inline-flex items-center justify-center gap-2 whitespace-nowrap",
     "min-h-11 rounded-full border px-[1.4rem] py-[0.7rem]",
     "font-sans text-base font-bold cursor-pointer",
-    "transition-[box-shadow,transform] duration-[var(--z-ease-fast)]",
+    "transition-[box-shadow,transform] ease-fast",
     "hover:-translate-y-px",
     "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
     "disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0",
@@ -28,9 +28,9 @@ export const buttonVariants = cva(
     variants: {
       variant: {
         primary:
-          "border-transparent bg-[linear-gradient(120deg,var(--primary),var(--primary-bright))] text-primary-foreground hover:shadow-[0_0_24px_var(--primary-glow-strong)]",
+          "border-transparent bg-[linear-gradient(120deg,var(--primary),var(--primary-bright))] text-primary-foreground hover:shadow-cta",
         ghost:
-          "bg-transparent border-border text-foreground hover:border-primary hover:shadow-[0_0_12px_var(--primary-glow)]",
+          "bg-transparent border-border text-foreground hover:border-primary hover:shadow-subtle",
         "double-border": [
           "bg-transparent border-2 border-primary text-foreground",
           "shadow-[inset_0_0_0_2px_var(--background),0_0_0_1px_var(--primary)]",

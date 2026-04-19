@@ -23,7 +23,7 @@ export default function Grid({ columns, className, ref, ...rest }: Props) {
   return (
     <div
       ref={ref}
-      className={cn("grid gap-[var(--z-space-lg)]", columnClass[columns], className)}
+      className={cn("grid gap-lg", columnClass[columns], className)}
       {...rest}
     />
   );

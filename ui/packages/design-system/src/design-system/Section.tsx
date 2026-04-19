@@ -24,8 +24,8 @@ export default function Section({ gap, asChild, className, ref, ...rest }: Props
       ref={ref}
       data-section={gap ? "gap" : "stack"}
       className={cn(
-        "grid gap-[var(--z-space-xl)]",
-        gap && "py-[var(--z-space-5xl)] [&+[data-section=gap]]:pt-0",
+        "grid gap-xl",
+        gap && "py-5xl [&+[data-section=gap]]:pt-0",
         className,
       )}
       {...rest}

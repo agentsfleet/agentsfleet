@@ -29,10 +29,10 @@ export default function Terminal({ label, green, copyable, children, className }
     <div className={cn("relative", className)}>
       <pre
         className={cn(
-          "m-0 overflow-auto rounded-md border p-[0.95rem_1.1rem] text-[0.88rem]",
-          "bg-[var(--z-surface-terminal)]",
+          "m-0 overflow-auto rounded-md border px-[1.1rem] py-[0.95rem] text-[0.88rem]",
+          "bg-surface-terminal",
           green
-            ? "border-[var(--z-glow-green)] text-success"
+            ? "border-glow-green text-success"
             : "border-border text-info",
           copyable && "pr-[5.5rem]",
         )}
