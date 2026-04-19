@@ -78,13 +78,6 @@
       }
     },
     {
-      "name": "Skill Secrets",
-      "description": "Per-skill secret storage for agent skill integrations",
-      "x-mintlify": {
-        "navigation": "Skill Secrets"
-      }
-    },
-    {
       "name": "Admin",
       "description": "Platform-wide configuration — manage shared LLM provider keys",
       "x-mintlify": {

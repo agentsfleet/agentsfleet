@@ -17,41 +17,6 @@ pub const SecretError = error{
     NotFound,
 };
 
-pub const SkillSecretScope = enum {
-    host,
-    sandbox,
-
-    pub fn label(self: SkillSecretScope) []const u8 {
-        return switch (self) {
-            .host => "host",
-            .sandbox => "sandbox",
-        };
-    }
-};
-
-pub const EnvPair = struct {
-    name: []u8,
-    value: []u8,
-};
-
-pub const SecretInjectionPlan = struct {
-    host_env: []EnvPair,
-    sandbox_env: []EnvPair,
-
-    pub fn deinit(self: SecretInjectionPlan, alloc: std.mem.Allocator) void {
-        for (self.host_env) |entry| {
-            alloc.free(entry.name);
-            alloc.free(entry.value);
-        }
-        alloc.free(self.host_env);
-        for (self.sandbox_env) |entry| {
-            alloc.free(entry.name);
-            alloc.free(entry.value);
-        }
-        alloc.free(self.sandbox_env);
-    }
-};
-
 pub const EncryptedBlob = struct {
     nonce: [NONCE_LEN]u8,
     ciphertext: []u8,
@@ -154,70 +119,6 @@ pub fn toFixed(comptime N: usize, bytes: []const u8) ![N]u8 {
     return out;
 }
 
-pub fn buildSecretInjectionPlan(
-    alloc: std.mem.Allocator,
-    keys: []const []const u8,
-    values: []const []const u8,
-    scopes: []const SkillSecretScope,
-) !SecretInjectionPlan {
-    if (keys.len != values.len or keys.len != scopes.len) return SecretError.InvalidEnvelope;
-
-    var host_env: std.ArrayList(EnvPair) = .{};
-    errdefer {
-        for (host_env.items) |entry| {
-            alloc.free(entry.name);
-            alloc.free(entry.value);
-        }
-        host_env.deinit(alloc);
-    }
-
-    var sandbox_env: std.ArrayList(EnvPair) = .{};
-    errdefer {
-        for (sandbox_env.items) |entry| {
-            alloc.free(entry.name);
-            alloc.free(entry.value);
-        }
-        sandbox_env.deinit(alloc);
-    }
-
-    for (keys, values, scopes) |key, value, scope| {
-        const env_name = try normalizeSkillSecretEnvName(alloc, key, scope);
-        const env_value = try alloc.dupe(u8, value);
-        const entry: EnvPair = .{ .name = env_name, .value = env_value };
-        switch (scope) {
-            .host => try host_env.append(alloc, entry),
-            .sandbox => try sandbox_env.append(alloc, entry),
-        }
-    }
-
-    return .{
-        .host_env = try host_env.toOwnedSlice(alloc),
-        .sandbox_env = try sandbox_env.toOwnedSlice(alloc),
-    };
-}
-
-fn normalizeSkillSecretEnvName(
-    alloc: std.mem.Allocator,
-    key_name: []const u8,
-    scope: SkillSecretScope,
-) ![]u8 {
-    const prefix = switch (scope) {
-        .host => "UZ_HOST_SKILL_",
-        .sandbox => "UZ_SANDBOX_SKILL_",
-    };
-    var out: std.ArrayList(u8) = .{};
-    defer out.deinit(alloc);
-    try out.appendSlice(alloc, prefix);
-    for (key_name) |c| {
-        if (std.ascii.isAlphanumeric(c)) {
-            try out.append(alloc, std.ascii.toUpper(c));
-        } else {
-            try out.append(alloc, '_');
-        }
-    }
-    return out.toOwnedSlice(alloc);
-}
-
 test "encrypt/decrypt round-trip with raw bytes" {
     const alloc = std.testing.allocator;
 
@@ -283,15 +184,3 @@ test "loadKekByVersion dispatches to correct env var" {
     try std.testing.expect(!std.mem.eql(u8, &loaded_v1, &loaded_v2));
 }
 
-test "buildSecretInjectionPlan keeps host and sandbox scopes separate" {
-    const keys = [_][]const u8{ "api_key", "session-token" };
-    const values = [_][]const u8{ "k1", "k2" };
-    const scopes = [_]SkillSecretScope{ .host, .sandbox };
-    const plan = try buildSecretInjectionPlan(std.testing.allocator, &keys, &values, &scopes);
-    defer plan.deinit(std.testing.allocator);
-
-    try std.testing.expectEqual(@as(usize, 1), plan.host_env.len);
-    try std.testing.expectEqual(@as(usize, 1), plan.sandbox_env.len);
-    try std.testing.expectEqualStrings("UZ_HOST_SKILL_API_KEY", plan.host_env[0].name);
-    try std.testing.expectEqualStrings("UZ_SANDBOX_SKILL_SESSION_TOKEN", plan.sandbox_env[0].name);
-}

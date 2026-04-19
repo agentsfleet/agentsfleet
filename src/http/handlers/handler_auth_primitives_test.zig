@@ -116,10 +116,6 @@ test "workspaces_ops module imports resolve" {
     _ = @import("workspaces_ops.zig");
 }
 
-test "skill_secrets_http module imports resolve" {
-    _ = @import("skill_secrets_http.zig");
-}
-
 test "workspace_guards module imports resolve" {
     _ = @import("../workspace_guards.zig");
 }

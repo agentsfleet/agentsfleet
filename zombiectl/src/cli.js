@@ -29,7 +29,7 @@ import { suggestCommand } from "./program/suggest.js";
 import { requireAuth, AUTH_FAIL_MESSAGE } from "./program/auth-guard.js";
 import { createCoreHandlers } from "./commands/core.js";
 
-export const VERSION = "0.9.0";
+export const VERSION = "0.23.0";
 
 export { parseGlobalArgs };
 
@@ -125,7 +125,6 @@ export async function runCli(argv, io = {}) {
     workspace: (routeArgs) => core.commandWorkspace(routeArgs),
     specsSync: (routeArgs) => core.commandSpecsSync(routeArgs.slice(1)),
     doctor: () => core.commandDoctor(),
-    skillSecret: (routeArgs) => core.commandSkillSecret(routeArgs),
     // M9_001: External agent key management
     agent: (routeArgs) => commandAgentModule(ctx, routeArgs, workspaces, {
       parseFlags,

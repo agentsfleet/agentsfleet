@@ -82,4 +82,3 @@ GRANT SELECT ON
 TO ops_readonly_human, ops_readonly_agent;
 
 REVOKE ALL ON vault.secrets FROM ops_readonly_human, ops_readonly_agent;
-REVOKE ALL ON vault.workspace_skill_secrets FROM ops_readonly_human, ops_readonly_agent;
