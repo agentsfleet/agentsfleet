@@ -39,13 +39,13 @@ export default function PipelineStage({ stage, state, showConnector }: Props) {
       <div className="flex flex-col flex-shrink-0 items-center gap-1.5">
         <div
           className={cn(
-            "relative z-10 flex h-7 w-7 items-center justify-center rounded-full border-2 border-border bg-card font-mono text-[0.65rem] transition-colors",
+            "relative z-10 flex h-7 w-7 items-center justify-center rounded-full border-2 border-border bg-card font-mono text-xs transition-colors",
             DOT_STATE_CLASS[state],
           )}
         >
           {STATE_ICONS[state]}
         </div>
-        <span className="text-center font-mono text-[0.6rem] uppercase tracking-wide leading-tight max-w-16 text-muted-foreground">
+        <span className="text-center font-mono text-xs uppercase tracking-wide leading-tight max-w-16 text-muted-foreground">
           {STAGE_LABELS[stage] ?? stage}
         </span>
       </div>

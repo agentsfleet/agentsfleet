@@ -36,7 +36,7 @@ export default function RunStatus({ status, size = "md" }: Props) {
     <Badge
       variant={KIND_VARIANT[cfg.kind]}
       className={cn(
-        size === "sm" && "text-[0.65rem] px-2 py-0.5",
+        size === "sm" && "text-xs px-2 py-0.5",
         isPulsing && "animate-pulse",
       )}
     >
