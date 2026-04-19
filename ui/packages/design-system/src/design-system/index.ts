@@ -20,3 +20,12 @@ export { default as Section } from "./Section";
 export { default as InstallBlock } from "./InstallBlock";
 export { default as AnimatedIcon } from "./AnimatedIcon";
 export { default as ZombieHandIcon } from "./ZombieHandIcon";
+export {
+  Badge,
+  badgeVariants,
+  type BadgeProps,
+  type BadgeVariant,
+} from "./Badge";
+export { Input, type InputProps } from "./Input";
+export { Separator, type SeparatorProps } from "./Separator";
+export { Skeleton, type SkeletonProps } from "./Skeleton";

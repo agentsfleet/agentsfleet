@@ -12,6 +12,10 @@ import {
   InstallBlock,
   AnimatedIcon,
   ZombieHandIcon,
+  Badge,
+  Input,
+  Separator,
+  Skeleton,
 } from "@usezombie/design-system";
 
 /*
@@ -121,6 +125,49 @@ export default function DesignSystemGallery() {
             { label: "Pricing", to: "/pricing", variant: "ghost" },
           ]}
         />
+      </Section>
+
+      <Section>
+        <h2>Badge — variants</h2>
+        <div className="flex flex-wrap items-center gap-md">
+          <Badge data-testid="badge-default">Default</Badge>
+          <Badge variant="orange" data-testid="badge-orange">Active</Badge>
+          <Badge variant="amber" data-testid="badge-amber">Pending</Badge>
+          <Badge variant="green" data-testid="badge-green">Healthy</Badge>
+          <Badge variant="cyan" data-testid="badge-cyan">Info</Badge>
+          <Badge variant="destructive" data-testid="badge-destructive">Error</Badge>
+        </div>
+      </Section>
+
+      <Section>
+        <h2>Input</h2>
+        <div className="flex flex-col gap-md max-w-sm">
+          <Input placeholder="you@example.com" data-testid="input-default" />
+          <Input placeholder="Disabled" disabled data-testid="input-disabled" />
+        </div>
+      </Section>
+
+      <Section>
+        <h2>Separator</h2>
+        <div className="flex flex-col gap-md">
+          <div>Above</div>
+          <Separator data-testid="separator-horizontal" />
+          <div>Below</div>
+          <div className="flex h-8 items-center gap-md">
+            <span>Left</span>
+            <Separator orientation="vertical" data-testid="separator-vertical" />
+            <span>Right</span>
+          </div>
+        </div>
+      </Section>
+
+      <Section>
+        <h2>Skeleton</h2>
+        <div className="flex flex-col gap-md max-w-sm">
+          <Skeleton className="h-4 w-3/4" data-testid="skeleton-line" />
+          <Skeleton className="h-4 w-1/2" data-testid="skeleton-line-sm" />
+          <Skeleton className="h-24 w-full" data-testid="skeleton-block" />
+        </div>
       </Section>
 
       <Section>

@@ -144,6 +144,72 @@ test.describe("Grid — computed styles", () => {
   });
 });
 
+test.describe("Badge — computed styles", () => {
+  test("default badge has a visible border and muted background", async ({ page }) => {
+    const bw = await computed(page, "badge-default", "border-top-width");
+    const bg = await computed(page, "badge-default", "background-color");
+    expect(parseFloat(bw)).toBeGreaterThan(0);
+    expect(bg).not.toBe("rgba(0, 0, 0, 0)");
+  });
+
+  test("pill radius resolves (rounded-full)", async ({ page }) => {
+    const r = await computed(page, "badge-default", "border-top-left-radius");
+    expect(parseFloat(r)).toBeGreaterThanOrEqual(40);
+  });
+
+  test("status variants produce distinct text colors", async ({ page }) => {
+    const orange = await computed(page, "badge-orange", "color");
+    const green = await computed(page, "badge-green", "color");
+    const destructive = await computed(page, "badge-destructive", "color");
+    expect(new Set([orange, green, destructive]).size).toBe(3);
+  });
+});
+
+test.describe("Input — computed styles", () => {
+  test("base input has border, muted bg, and rounded-lg radius", async ({ page }) => {
+    const bw = await computed(page, "input-default", "border-top-width");
+    const bg = await computed(page, "input-default", "background-color");
+    const r = await computed(page, "input-default", "border-top-left-radius");
+    expect(parseFloat(bw)).toBeGreaterThan(0);
+    expect(bg).not.toBe("rgba(0, 0, 0, 0)");
+    expect(parseFloat(r)).toBeGreaterThan(0);
+  });
+
+  test("disabled input has reduced opacity", async ({ page }) => {
+    const op = await computed(page, "input-disabled", "opacity");
+    expect(parseFloat(op)).toBeLessThan(1);
+  });
+});
+
+test.describe("Separator — computed styles", () => {
+  test("horizontal separator is 1px tall and full width", async ({ page }) => {
+    const h = await computed(page, "separator-horizontal", "height");
+    expect(parseFloat(h)).toBeCloseTo(1, 0);
+  });
+
+  test("vertical separator is 1px wide", async ({ page }) => {
+    const w = await computed(page, "separator-vertical", "width");
+    expect(parseFloat(w)).toBeCloseTo(1, 0);
+  });
+
+  test("separator has the border color as background", async ({ page }) => {
+    const bg = await computed(page, "separator-horizontal", "background-color");
+    expect(bg).not.toBe("rgba(0, 0, 0, 0)");
+  });
+});
+
+test.describe("Skeleton — computed styles", () => {
+  test("skeleton runs the pulse animation", async ({ page }) => {
+    const name = await computed(page, "skeleton-line", "animation-name");
+    expect(name).toBe("pulse");
+  });
+
+  test("skeleton has rounded corners", async ({ page }) => {
+    const r = await computed(page, "skeleton-line", "border-top-left-radius");
+    expect(parseFloat(r)).toBeGreaterThan(0);
+  });
+});
+
 test.describe("AnimatedIcon — computed styles", () => {
   test("always-trigger glyph has a non-empty animation-name", async ({ page }) => {
     const glyph = page
