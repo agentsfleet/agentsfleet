@@ -63,7 +63,7 @@ export default function Agents() {
         title="Install Zombiectl"
         command="curl -sSL https://usezombie.sh/install | bash"
         actions={[
-          { label: "Install Zombiectl", to: DOCS_QUICKSTART_URL, variant: "primary" },
+          { label: "Install Zombiectl", to: DOCS_QUICKSTART_URL, variant: "default" },
           { label: "Read the docs", to: DOCS_URL, variant: "ghost" },
           { label: "Setup your personal dashboard", to: APP_BASE_URL, variant: "double-border" },
         ]}

@@ -11,11 +11,28 @@ describe("Button", () => {
     expect(btn).toHaveAttribute("type", "button");
   });
 
-  it("applies the primary variant by default", () => {
+  it("applies the default variant when no variant prop is passed", () => {
     render(<Button>Go</Button>);
     const btn = screen.getByRole("button");
     expect(btn.className).toContain("text-primary-foreground");
     expect(btn.className).toContain("linear-gradient");
+  });
+
+  it("applies the destructive variant", () => {
+    render(<Button variant="destructive">Delete</Button>);
+    expect(screen.getByRole("button").className).toContain("bg-destructive");
+  });
+
+  it("applies the outline variant", () => {
+    render(<Button variant="outline">Outline</Button>);
+    const cls = screen.getByRole("button").className;
+    expect(cls).toContain("border-border");
+    expect(cls).toContain("bg-transparent");
+  });
+
+  it("applies the secondary variant", () => {
+    render(<Button variant="secondary">Secondary</Button>);
+    expect(screen.getByRole("button").className).toContain("bg-secondary");
   });
 
   it("applies the ghost variant", () => {
@@ -23,9 +40,38 @@ describe("Button", () => {
     expect(screen.getByRole("button").className).toContain("bg-transparent");
   });
 
+  it("applies the link variant", () => {
+    render(<Button variant="link">Link</Button>);
+    const cls = screen.getByRole("button").className;
+    expect(cls).toContain("underline-offset-4");
+    expect(cls).toContain("text-info");
+  });
+
   it("applies the double-border variant", () => {
     render(<Button variant="double-border">Double</Button>);
     expect(screen.getByRole("button").className).toMatch(/border-2\s.*border-primary/);
+  });
+
+  it("default size has min-h-11", () => {
+    render(<Button>X</Button>);
+    expect(screen.getByRole("button").className).toContain("min-h-11");
+  });
+
+  it("sm size has h-8", () => {
+    render(<Button size="sm">X</Button>);
+    expect(screen.getByRole("button").className).toContain("h-8");
+  });
+
+  it("lg size has h-12", () => {
+    render(<Button size="lg">X</Button>);
+    expect(screen.getByRole("button").className).toContain("h-12");
+  });
+
+  it("icon size is square", () => {
+    render(<Button size="icon" aria-label="settings">⚙</Button>);
+    const cls = screen.getByRole("button").className;
+    expect(cls).toContain("h-10");
+    expect(cls).toContain("w-10");
   });
 
   it("merges a custom className via cn", () => {
@@ -92,7 +138,7 @@ describe("Button", () => {
 
   it("SSR renders an <a> when asChild is used with a link child", () => {
     const html = renderToStaticMarkup(
-      <Button asChild variant="primary">
+      <Button asChild variant="default">
         <a href="/x">X</a>
       </Button>,
     );
@@ -105,24 +151,29 @@ describe("Button", () => {
 
 describe("buttonVariants / buttonClassName", () => {
   it("buttonClassName returns the full class string for a variant", () => {
-    const primary = buttonClassName("primary");
-    expect(primary).toContain("text-primary-foreground");
-    expect(primary).toContain("rounded-full");
-    expect(primary).toContain("inline-flex");
+    const cls = buttonClassName("default");
+    expect(cls).toContain("text-primary-foreground");
+    expect(cls).toContain("rounded-full");
+    expect(cls).toContain("inline-flex");
   });
 
-  it("buttonClassName defaults to primary", () => {
-    expect(buttonClassName()).toBe(buttonClassName("primary"));
+  it("buttonClassName defaults to the default variant + default size", () => {
+    expect(buttonClassName()).toBe(buttonClassName("default", "default"));
   });
 
-  it("buttonVariants({ variant }) is stable across calls", () => {
+  it("buttonVariants is stable across calls for the same inputs", () => {
     expect(buttonVariants({ variant: "ghost" })).toBe(buttonVariants({ variant: "ghost" }));
   });
 
-  it("each variant produces a distinct class string", () => {
-    const p = buttonVariants({ variant: "primary" });
-    const g = buttonVariants({ variant: "ghost" });
-    const d = buttonVariants({ variant: "double-border" });
-    expect(new Set([p, g, d]).size).toBe(3);
+  it("every variant produces a distinct class string", () => {
+    const variants = ["default", "destructive", "outline", "secondary", "ghost", "link", "double-border"] as const;
+    const classes = variants.map((v) => buttonVariants({ variant: v }));
+    expect(new Set(classes).size).toBe(variants.length);
+  });
+
+  it("every size produces a distinct class string", () => {
+    const sizes = ["default", "sm", "lg", "icon"] as const;
+    const classes = sizes.map((s) => buttonVariants({ size: s }));
+    expect(new Set(classes).size).toBe(sizes.length);
   });
 });

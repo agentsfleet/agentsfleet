@@ -92,7 +92,7 @@ export default function Pricing() {
             </div>
             <Button
               asChild
-              variant={tier.featured ? "primary" : "double-border"}
+              variant={tier.featured ? "default" : "double-border"}
               className="pricing-card-cta"
             >
               <a

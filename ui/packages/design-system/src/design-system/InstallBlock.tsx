@@ -5,7 +5,7 @@ import { cn } from "../utils";
 type Action = {
   label: string;
   to: string;
-  variant?: "primary" | "ghost" | "double-border";
+  variant?: "default" | "ghost" | "double-border";
   external?: boolean;
 };
 
@@ -36,7 +36,7 @@ export default function InstallBlock({ title, command, actions, className }: Pro
       </Terminal>
       <div className="mt-xl flex flex-wrap gap-md">
         {actions.map((a) => (
-          <Button key={a.label} asChild variant={a.variant ?? "primary"}>
+          <Button key={a.label} asChild variant={a.variant ?? "default"}>
             <a
               href={a.to}
               target={a.external ? "_blank" : undefined}
