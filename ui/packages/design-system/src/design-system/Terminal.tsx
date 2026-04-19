@@ -1,3 +1,5 @@
+"use client";
+
 import { type ComponentProps, type ReactNode, useId, useState, useCallback } from "react";
 import { cn } from "../utils";
 
