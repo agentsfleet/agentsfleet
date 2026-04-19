@@ -4,10 +4,10 @@
 **Milestone:** M28
 **Workstream:** 005
 **Date:** Apr 18, 2026
-**Status:** PENDING
+**Status:** DONE
 **Priority:** P3 — deferrable; no user-visible behavior change
 **Batch:** B1
-**Branch:** _unassigned_
+**Branch:** feat/m28-runtime-split
 **Depends on:** None (sibling to M28_004)
 
 ---

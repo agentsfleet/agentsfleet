@@ -1,29 +1,28 @@
-//! Runtime config loader/validator for zombied serve mode.
-//! Centralizes env parsing and validation in one place.
+//! Runtime config loader for zombied serve mode.
+//!
+//! Façade over per-concern modules:
+//!   - runtime_types.zig    — ValidationError enum
+//!   - runtime_env_parse.zig — generic env-var readers
+//!   - runtime_validate.zig — predicates + printValidationError
+//!   - runtime_loader.zig   — per-section loaders (sizes / oidc / api keys / encryption / misc)
+//!
+//! Public surface preserved: `ServeConfig`, `ValidationError`,
+//! `printValidationError`. Existing callers keep importing this file.
 
 const std = @import("std");
 const oidc = @import("../auth/oidc.zig");
 
-pub const ValidationError = error{
-    MissingApiKey,
-    InvalidApiKeyList,
-    MissingOidcJwksUrl,
-    InvalidOidcProvider,
-    MissingEncryptionMasterKey,
-    InvalidEncryptionMasterKey,
-    InvalidPort,
-    InvalidApiHttpThreads,
-    InvalidApiHttpWorkers,
-    InvalidApiMaxClients,
-    InvalidApiMaxInFlightRequests,
-    InvalidReadyMaxQueueDepth,
-    InvalidReadyMaxQueueAgeMs,
-    InvalidKekVersion,
-    MissingEncryptionMasterKeyV2,
-    InvalidEncryptionMasterKeyV2,
-};
+const runtime_types = @import("runtime_types.zig");
+const validate = @import("runtime_validate.zig");
+const loader = @import("runtime_loader.zig");
+
+pub const ValidationError = runtime_types.ValidationError;
 
 pub const ServeConfig = struct {
+    /// Static helper preserved here (rather than a free fn on the module)
+    /// so existing callers can keep doing `ServeConfig.printValidationError(err)`.
+    pub const printValidationError = validate.printValidationError;
+
     port: u16,
     api_keys: []u8,
     cache_root: []u8,
@@ -45,100 +44,40 @@ pub const ServeConfig = struct {
 
     alloc: std.mem.Allocator,
 
+    /// Read every env var, validate, and return a populated ServeConfig.
+    /// Caller owns the result and must call deinit. Sub-loaders use their
+    /// own errdefer chains; this orchestrator threads one errdefer per
+    /// heap-owning section so a late failure frees every prior section
+    /// (loadSizes returns POD only; loadMisc is last so no errdefer follows).
     pub fn load(alloc: std.mem.Allocator) !ServeConfig {
-        const port = try parseU16Env(alloc, "PORT", 3000, ValidationError.InvalidPort);
-        const api_http_threads = try parseI16Env(alloc, "API_HTTP_THREADS", 1, ValidationError.InvalidApiHttpThreads);
-        const api_http_workers = try parseI16Env(alloc, "API_HTTP_WORKERS", 1, ValidationError.InvalidApiHttpWorkers);
-        const api_max_clients = try parseU32Env(alloc, "API_MAX_CLIENTS", 1024, ValidationError.InvalidApiMaxClients);
-        const api_max_in_flight_requests = try parseU32Env(alloc, "API_MAX_IN_FLIGHT_REQUESTS", 256, ValidationError.InvalidApiMaxInFlightRequests);
-        const ready_max_queue_depth = try parseOptionalI64Env(alloc, "READY_MAX_QUEUE_DEPTH", ValidationError.InvalidReadyMaxQueueDepth);
-        const ready_max_queue_age_ms = try parseOptionalI64Env(alloc, "READY_MAX_QUEUE_AGE_MS", ValidationError.InvalidReadyMaxQueueAgeMs);
-
-        if (api_http_threads <= 0) return ValidationError.InvalidApiHttpThreads;
-        if (api_http_workers <= 0) return ValidationError.InvalidApiHttpWorkers;
-        if (api_max_clients == 0) return ValidationError.InvalidApiMaxClients;
-        if (api_max_in_flight_requests == 0) return ValidationError.InvalidApiMaxInFlightRequests;
-        if (ready_max_queue_depth) |v| if (v <= 0) return ValidationError.InvalidReadyMaxQueueDepth;
-        if (ready_max_queue_age_ms) |v| if (v <= 0) return ValidationError.InvalidReadyMaxQueueAgeMs;
-
-        const oidc_jwks_url = std.process.getEnvVarOwned(alloc, "OIDC_JWKS_URL") catch null;
-        const oidc_issuer = std.process.getEnvVarOwned(alloc, "OIDC_ISSUER") catch null;
-        errdefer if (oidc_issuer) |v| alloc.free(v);
-        const oidc_audience = std.process.getEnvVarOwned(alloc, "OIDC_AUDIENCE") catch null;
-        errdefer if (oidc_audience) |v| alloc.free(v);
-        const oidc_provider_raw = std.process.getEnvVarOwned(alloc, "OIDC_PROVIDER") catch null;
-        errdefer if (oidc_provider_raw) |v| alloc.free(v);
-
-        const oidc_requested =
-            oidc_jwks_url != null or
-            oidc_issuer != null or
-            oidc_audience != null or
-            oidc_provider_raw != null;
-        const oidc_enabled = if (oidc_jwks_url) |raw|
-            std.mem.trim(u8, raw, " \t\r\n").len > 0
-        else
-            false;
-        if (oidc_requested and !oidc_enabled) return ValidationError.MissingOidcJwksUrl;
-
-        const api_keys = blk: {
-            const configured = std.process.getEnvVarOwned(alloc, "API_KEY") catch null;
-            if (configured) |keys| break :blk keys;
-            if (oidc_enabled) break :blk try alloc.dupe(u8, "");
-            return ValidationError.MissingApiKey;
-        };
+        const sizes = try loader.loadSizes(alloc);
+        const oidc_cfg = try loader.loadOidc(alloc);
+        errdefer loader.freeOidc(alloc, oidc_cfg);
+        const api_keys = try loader.loadApiKeys(alloc, oidc_cfg.enabled);
         errdefer alloc.free(api_keys);
-        if (api_keys.len > 0 and !hasUsableApiKey(api_keys)) return ValidationError.InvalidApiKeyList;
-
-        const encryption_master_key = try requiredEnvOwned(alloc, "ENCRYPTION_MASTER_KEY", ValidationError.MissingEncryptionMasterKey);
-        errdefer alloc.free(encryption_master_key);
-        if (encryption_master_key.len != 64 or !isHexString(encryption_master_key)) {
-            return ValidationError.InvalidEncryptionMasterKey;
-        }
-
-        const active_kek_version = try parseU32Env(alloc, "KEK_VERSION", 1, ValidationError.InvalidKekVersion);
-        if (active_kek_version == 0 or active_kek_version > 2) return ValidationError.InvalidKekVersion;
-
-        const encryption_master_key_v2: ?[]u8 = if (active_kek_version == 2) blk: {
-            const v2 = try requiredEnvOwned(alloc, "ENCRYPTION_MASTER_KEY_V2", ValidationError.MissingEncryptionMasterKeyV2);
-            if (v2.len != 64 or !isHexString(v2)) {
-                alloc.free(v2);
-                return ValidationError.InvalidEncryptionMasterKeyV2;
-            }
-            break :blk v2;
-        } else std.process.getEnvVarOwned(alloc, "ENCRYPTION_MASTER_KEY_V2") catch null;
-        errdefer if (encryption_master_key_v2) |v| alloc.free(v);
-
-        const cache_root = try envOrDefaultOwned(alloc, "GIT_CACHE_ROOT", "/tmp/zombie-git-cache");
-        errdefer alloc.free(cache_root);
-
-        errdefer if (oidc_jwks_url) |v| alloc.free(v);
-        const oidc_provider = blk: {
-            const raw = oidc_provider_raw orelse break :blk oidc.Provider.clerk;
-            break :blk oidc.parseProvider(std.mem.trim(u8, raw, " \t\r\n")) catch return ValidationError.InvalidOidcProvider;
-        };
-
-        const app_url = try envOrDefaultOwned(alloc, "APP_URL", "https://app.usezombie.com");
-        errdefer alloc.free(app_url);
+        const enc = try loader.loadEncryption(alloc);
+        errdefer loader.freeEncryption(alloc, enc);
+        const misc = try loader.loadMisc(alloc);
 
         return .{
-            .port = port,
+            .port = sizes.port,
             .api_keys = api_keys,
-            .cache_root = cache_root,
-            .api_http_threads = api_http_threads,
-            .api_http_workers = api_http_workers,
-            .api_max_clients = api_max_clients,
-            .api_max_in_flight_requests = api_max_in_flight_requests,
-            .ready_max_queue_depth = ready_max_queue_depth,
-            .ready_max_queue_age_ms = ready_max_queue_age_ms,
-            .app_url = app_url,
-            .oidc_enabled = oidc_enabled,
-            .oidc_provider = oidc_provider,
-            .oidc_jwks_url = oidc_jwks_url,
-            .oidc_issuer = oidc_issuer,
-            .oidc_audience = oidc_audience,
-            .encryption_master_key = encryption_master_key,
-            .encryption_master_key_v2 = encryption_master_key_v2,
-            .active_kek_version = active_kek_version,
+            .cache_root = misc.cache_root,
+            .api_http_threads = sizes.api_http_threads,
+            .api_http_workers = sizes.api_http_workers,
+            .api_max_clients = sizes.api_max_clients,
+            .api_max_in_flight_requests = sizes.api_max_in_flight_requests,
+            .ready_max_queue_depth = sizes.ready_max_queue_depth,
+            .ready_max_queue_age_ms = sizes.ready_max_queue_age_ms,
+            .app_url = misc.app_url,
+            .oidc_enabled = oidc_cfg.enabled,
+            .oidc_provider = oidc_cfg.provider,
+            .oidc_jwks_url = oidc_cfg.jwks_url,
+            .oidc_issuer = oidc_cfg.issuer,
+            .oidc_audience = oidc_cfg.audience,
+            .encryption_master_key = enc.master_key,
+            .encryption_master_key_v2 = enc.master_key_v2,
+            .active_kek_version = enc.active_kek_version,
             .alloc = alloc,
         };
     }
@@ -153,296 +92,11 @@ pub const ServeConfig = struct {
         self.alloc.free(self.encryption_master_key);
         if (self.encryption_master_key_v2) |v| self.alloc.free(v);
     }
-
-    pub fn printValidationError(err: ValidationError) void {
-        switch (err) {
-            ValidationError.MissingApiKey => std.debug.print("fatal: API_KEY not set\n", .{}),
-            ValidationError.InvalidApiKeyList => std.debug.print("fatal: API_KEY has no usable keys\n", .{}),
-            ValidationError.MissingOidcJwksUrl => std.debug.print("fatal: OIDC_JWKS_URL is required and must be non-empty\n", .{}),
-            ValidationError.InvalidOidcProvider => std.debug.print("fatal: OIDC_PROVIDER is invalid (supported: {s})\n", .{oidc.supportedProviderList()}),
-            ValidationError.MissingEncryptionMasterKey => std.debug.print("fatal: ENCRYPTION_MASTER_KEY not set\n", .{}),
-            ValidationError.InvalidEncryptionMasterKey => std.debug.print("fatal: ENCRYPTION_MASTER_KEY must be 64 hex chars\n", .{}),
-            ValidationError.InvalidPort => std.debug.print("fatal: invalid PORT value\n", .{}),
-            ValidationError.InvalidApiHttpThreads => std.debug.print("fatal: invalid API_HTTP_THREADS value\n", .{}),
-            ValidationError.InvalidApiHttpWorkers => std.debug.print("fatal: invalid API_HTTP_WORKERS value\n", .{}),
-            ValidationError.InvalidApiMaxClients => std.debug.print("fatal: invalid API_MAX_CLIENTS value\n", .{}),
-            ValidationError.InvalidApiMaxInFlightRequests => std.debug.print("fatal: invalid API_MAX_IN_FLIGHT_REQUESTS value\n", .{}),
-            ValidationError.InvalidReadyMaxQueueDepth => std.debug.print("fatal: invalid READY_MAX_QUEUE_DEPTH value\n", .{}),
-            ValidationError.InvalidReadyMaxQueueAgeMs => std.debug.print("fatal: invalid READY_MAX_QUEUE_AGE_MS value\n", .{}),
-            ValidationError.InvalidKekVersion => std.debug.print("fatal: KEK_VERSION must be 1 or 2\n", .{}),
-            ValidationError.MissingEncryptionMasterKeyV2 => std.debug.print("fatal: ENCRYPTION_MASTER_KEY_V2 not set (required when KEK_VERSION=2)\n", .{}),
-            ValidationError.InvalidEncryptionMasterKeyV2 => std.debug.print("fatal: ENCRYPTION_MASTER_KEY_V2 must be 64 hex chars\n", .{}),
-        }
-    }
 };
 
-fn requiredEnvOwned(alloc: std.mem.Allocator, name: []const u8, missing_error: ValidationError) ![]u8 {
-    return std.process.getEnvVarOwned(alloc, name) catch missing_error;
-}
-
-fn envOrDefaultOwned(alloc: std.mem.Allocator, name: []const u8, default_value: []const u8) ![]u8 {
-    return std.process.getEnvVarOwned(alloc, name) catch try alloc.dupe(u8, default_value);
-}
-
-fn parseU16Env(alloc: std.mem.Allocator, name: []const u8, default_value: u16, invalid_error: ValidationError) !u16 {
-    const raw = std.process.getEnvVarOwned(alloc, name) catch return default_value;
-    defer alloc.free(raw);
-    return std.fmt.parseInt(u16, raw, 10) catch invalid_error;
-}
-
-fn parseU32Env(alloc: std.mem.Allocator, name: []const u8, default_value: u32, invalid_error: ValidationError) !u32 {
-    const raw = std.process.getEnvVarOwned(alloc, name) catch return default_value;
-    defer alloc.free(raw);
-    return std.fmt.parseInt(u32, raw, 10) catch invalid_error;
-}
-
-fn parseI16Env(alloc: std.mem.Allocator, name: []const u8, default_value: i16, invalid_error: ValidationError) !i16 {
-    const raw = std.process.getEnvVarOwned(alloc, name) catch return default_value;
-    defer alloc.free(raw);
-    return std.fmt.parseInt(i16, raw, 10) catch invalid_error;
-}
-
-fn parseOptionalI64Env(alloc: std.mem.Allocator, name: []const u8, invalid_error: ValidationError) !?i64 {
-    const raw = std.process.getEnvVarOwned(alloc, name) catch return null;
-    defer alloc.free(raw);
-    return std.fmt.parseInt(i64, raw, 10) catch invalid_error;
-}
-
-fn isHexString(s: []const u8) bool {
-    for (s) |ch| {
-        if (!std.ascii.isHex(ch)) return false;
-    }
-    return true;
-}
-
-fn hasUsableApiKey(list: []const u8) bool {
-    var it = std.mem.tokenizeScalar(u8, list, ',');
-    while (it.next()) |candidate_raw| {
-        if (std.mem.trim(u8, candidate_raw, " \t").len > 0) return true;
-    }
-    return false;
-}
-
-test "hasUsableApiKey validates rotation list" {
-    try std.testing.expect(hasUsableApiKey("key1,key2"));
-    try std.testing.expect(hasUsableApiKey(" key1 "));
-    try std.testing.expect(!hasUsableApiKey(""));
-    try std.testing.expect(!hasUsableApiKey(" , , "));
-}
-
-test "isHexString validates encryption key format" {
-    try std.testing.expect(isHexString("abcdef0123"));
-    try std.testing.expect(!isHexString("abcxyz"));
-}
-
-test "parseI16Env parses signed short values" {
-    const alloc = std.testing.allocator;
-    try std.posix.setenv("API_HTTP_THREADS", "3", true);
-    defer std.posix.unsetenv("API_HTTP_THREADS");
-
-    const value = try parseI16Env(alloc, "API_HTTP_THREADS", 1, ValidationError.InvalidApiHttpThreads);
-    try std.testing.expectEqual(@as(i16, 3), value);
-}
-
-const test_encryption_master_key = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
-
-test "ServeConfig.load accepts custom provider" {
-    const env = [_][2][]const u8{
-        .{ "OIDC_JWKS_URL", "https://idp.example.com/.well-known/jwks.json" },
-        .{ "OIDC_PROVIDER", "custom" },
-        .{ "ENCRYPTION_MASTER_KEY", test_encryption_master_key },
-    };
-    try setTestEnv(&env);
-    defer unsetTestEnv(&env);
-
-    var cfg = try ServeConfig.load(std.testing.allocator);
-    defer cfg.deinit();
-
-    try std.testing.expect(cfg.oidc_enabled);
-    try std.testing.expectEqual(oidc.Provider.custom, cfg.oidc_provider);
-}
-
-test "ServeConfig.load rejects invalid provider deterministically" {
-    const env = [_][2][]const u8{
-        .{ "OIDC_JWKS_URL", "https://idp.example.com/.well-known/jwks.json" },
-        .{ "OIDC_PROVIDER", "not-real" },
-        .{ "ENCRYPTION_MASTER_KEY", test_encryption_master_key },
-    };
-    try setTestEnv(&env);
-    defer unsetTestEnv(&env);
-
-    try std.testing.expectError(ValidationError.InvalidOidcProvider, ServeConfig.load(std.testing.allocator));
-}
-
-test "ServeConfig.load rejects provider without required OIDC_JWKS_URL" {
-    const env = [_][2][]const u8{
-        .{ "OIDC_PROVIDER", "custom" },
-        .{ "ENCRYPTION_MASTER_KEY", test_encryption_master_key },
-    };
-    try setTestEnv(&env);
-    defer unsetTestEnv(&env);
-
-    try std.testing.expectError(ValidationError.MissingOidcJwksUrl, ServeConfig.load(std.testing.allocator));
-}
-
-test "ServeConfig.load rejects empty OIDC_JWKS_URL" {
-    const env = [_][2][]const u8{
-        .{ "OIDC_JWKS_URL", "" },
-        .{ "ENCRYPTION_MASTER_KEY", test_encryption_master_key },
-    };
-    try setTestEnv(&env);
-    defer unsetTestEnv(&env);
-
-    try std.testing.expectError(ValidationError.MissingOidcJwksUrl, ServeConfig.load(std.testing.allocator));
-}
-
-test "ServeConfig.load accepts api key only auth mode" {
-    const env = [_][2][]const u8{
-        .{ "API_KEY", "dev-key" },
-        .{ "ENCRYPTION_MASTER_KEY", test_encryption_master_key },
-    };
-    try setTestEnv(&env);
-    defer unsetTestEnv(&env);
-
-    var cfg = try ServeConfig.load(std.testing.allocator);
-    defer cfg.deinit();
-
-    try std.testing.expect(!cfg.oidc_enabled);
-    try std.testing.expectEqualStrings("dev-key", cfg.api_keys);
-}
-
-test "ServeConfig.load accepts oidc plus api key auth mode" {
-    const env = [_][2][]const u8{
-        .{ "OIDC_JWKS_URL", "https://idp.example.com/.well-known/jwks.json" },
-        .{ "OIDC_PROVIDER", "custom" },
-        .{ "API_KEY", "issued-key" },
-        .{ "ENCRYPTION_MASTER_KEY", test_encryption_master_key },
-    };
-    try setTestEnv(&env);
-    defer unsetTestEnv(&env);
-
-    var cfg = try ServeConfig.load(std.testing.allocator);
-    defer cfg.deinit();
-
-    try std.testing.expect(cfg.oidc_enabled);
-    try std.testing.expectEqual(oidc.Provider.custom, cfg.oidc_provider);
-    try std.testing.expectEqualStrings("issued-key", cfg.api_keys);
-}
-
-test "ServeConfig.load rejects empty api key when explicitly configured with oidc" {
-    const env = [_][2][]const u8{
-        .{ "OIDC_JWKS_URL", "https://idp.example.com/.well-known/jwks.json" },
-        .{ "API_KEY", "   " },
-        .{ "ENCRYPTION_MASTER_KEY", test_encryption_master_key },
-    };
-    try setTestEnv(&env);
-    defer unsetTestEnv(&env);
-
-    try std.testing.expectError(ValidationError.InvalidApiKeyList, ServeConfig.load(std.testing.allocator));
-}
-
-test "ServeConfig.load applies default port" {
-    const env = [_][2][]const u8{
-        .{ "API_KEY", "dev-key" },
-        .{ "ENCRYPTION_MASTER_KEY", test_encryption_master_key },
-    };
-    try setTestEnv(&env);
-    defer unsetTestEnv(&env);
-
-    var cfg = try ServeConfig.load(std.testing.allocator);
-    defer cfg.deinit();
-
-    try std.testing.expectEqual(@as(u16, 3000), cfg.port);
-    try std.testing.expectEqual(@as(i16, 1), cfg.api_http_threads);
-    try std.testing.expectEqual(@as(u32, 1024), cfg.api_max_clients);
-    try std.testing.expectEqualStrings("/tmp/zombie-git-cache", cfg.cache_root);
-    try std.testing.expectEqual(@as(u32, 1), cfg.active_kek_version);
-}
-
-test "ServeConfig.load rejects short encryption key" {
-    const env = [_][2][]const u8{
-        .{ "API_KEY", "dev-key" },
-        .{ "ENCRYPTION_MASTER_KEY", "tooshort" },
-    };
-    try setTestEnv(&env);
-    defer unsetTestEnv(&env);
-
-    try std.testing.expectError(ValidationError.InvalidEncryptionMasterKey, ServeConfig.load(std.testing.allocator));
-}
-
-test "ServeConfig.load rejects non-hex encryption key" {
-    const env = [_][2][]const u8{
-        .{ "API_KEY", "dev-key" },
-        .{ "ENCRYPTION_MASTER_KEY", "gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg" },
-    };
-    try setTestEnv(&env);
-    defer unsetTestEnv(&env);
-
-    try std.testing.expectError(ValidationError.InvalidEncryptionMasterKey, ServeConfig.load(std.testing.allocator));
-}
-
-test "ServeConfig.load rejects KEK_VERSION=2 without v2 key" {
-    const env = [_][2][]const u8{
-        .{ "API_KEY", "dev-key" },
-        .{ "ENCRYPTION_MASTER_KEY", test_encryption_master_key },
-        .{ "KEK_VERSION", "2" },
-    };
-    try setTestEnv(&env);
-    defer unsetTestEnv(&env);
-
-    try std.testing.expectError(ValidationError.MissingEncryptionMasterKeyV2, ServeConfig.load(std.testing.allocator));
-}
-
-test "ServeConfig.load accepts KEK_VERSION=2 with valid v2 key" {
-    const v2_key = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
-    const env = [_][2][]const u8{
-        .{ "API_KEY", "dev-key" },
-        .{ "ENCRYPTION_MASTER_KEY", test_encryption_master_key },
-        .{ "KEK_VERSION", "2" },
-        .{ "ENCRYPTION_MASTER_KEY_V2", v2_key },
-    };
-    try setTestEnv(&env);
-    defer unsetTestEnv(&env);
-
-    var cfg = try ServeConfig.load(std.testing.allocator);
-    defer cfg.deinit();
-
-    try std.testing.expectEqual(@as(u32, 2), cfg.active_kek_version);
-    try std.testing.expectEqualStrings(v2_key, cfg.encryption_master_key_v2.?);
-}
-
-test "ServeConfig.load rejects KEK_VERSION=0" {
-    const env = [_][2][]const u8{
-        .{ "API_KEY", "dev-key" },
-        .{ "ENCRYPTION_MASTER_KEY", test_encryption_master_key },
-        .{ "KEK_VERSION", "0" },
-    };
-    try setTestEnv(&env);
-    defer unsetTestEnv(&env);
-
-    try std.testing.expectError(ValidationError.InvalidKekVersion, ServeConfig.load(std.testing.allocator));
-}
-
-test "ServeConfig.load rejects negative READY_MAX_QUEUE_DEPTH" {
-    const env = [_][2][]const u8{
-        .{ "API_KEY", "dev-key" },
-        .{ "ENCRYPTION_MASTER_KEY", test_encryption_master_key },
-        .{ "READY_MAX_QUEUE_DEPTH", "-5" },
-    };
-    try setTestEnv(&env);
-    defer unsetTestEnv(&env);
-
-    try std.testing.expectError(ValidationError.InvalidReadyMaxQueueDepth, ServeConfig.load(std.testing.allocator));
-}
-
-fn setTestEnv(env: []const [2][]const u8) !void {
-    for (env) |entry| {
-        try std.posix.setenv(entry[0], entry[1], true);
-    }
-}
-
-fn unsetTestEnv(env: []const [2][]const u8) void {
-    for (env) |entry| {
-        std.posix.unsetenv(entry[0]);
-    }
+// Test discovery — façade fan-out. test {} is stripped in release builds.
+test {
+    _ = @import("runtime_env_parse_test.zig");
+    _ = @import("runtime_validate_test.zig");
+    _ = @import("runtime_loader_test.zig");
 }
