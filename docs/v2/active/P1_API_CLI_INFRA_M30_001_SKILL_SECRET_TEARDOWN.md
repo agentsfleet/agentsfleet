@@ -4,10 +4,10 @@
 **Milestone:** M30
 **Workstream:** 001
 **Date:** Apr 19, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — operator-facing. The `zombiectl skill-secret` command and its HTTP surface are currently shipped but no zombie flow exercises them. Removing dead product-surface reduces attack surface, reduces user confusion ("which credential command do I use?"), and removes a parallel table (`vault.workspace_skill_secrets`) from the pre-v2 schema.
 **Batch:** B1 — standalone; no blocking deps on M29.
-**Branch:** feat/m30-skill-secret-teardown (added when work begins)
+**Branch:** feat/m30-skill-secret-teardown
 **Depends on:** None. The tables and handlers can be removed directly in the pre-v2 teardown era.
 
 ---
