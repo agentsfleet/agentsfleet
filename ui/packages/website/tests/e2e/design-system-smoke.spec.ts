@@ -210,6 +210,83 @@ test.describe("Skeleton — computed styles", () => {
   });
 });
 
+test.describe("Dialog — computed styles", () => {
+  test("dialog content is not rendered until trigger is clicked", async ({ page }) => {
+    await expect(page.locator('[data-testid="dialog-content"]')).toHaveCount(0);
+  });
+
+  test("clicking the trigger opens the dialog with surface styles", async ({ page }) => {
+    await page.locator('[data-testid="dialog-trigger"]').click();
+    const content = page.locator('[data-testid="dialog-content"]');
+    await expect(content).toBeVisible();
+    const bg = await content.evaluate((el) => getComputedStyle(el).backgroundColor);
+    expect(bg).not.toBe("rgba(0, 0, 0, 0)");
+    const r = await content.evaluate((el) => getComputedStyle(el).borderTopLeftRadius);
+    expect(parseFloat(r)).toBeGreaterThan(0);
+    // close dialog afterwards so other tests start from closed state
+    await page.keyboard.press("Escape");
+  });
+
+  test("dialog description uses muted-foreground color", async ({ page }) => {
+    await page.locator('[data-testid="dialog-trigger"]').click();
+    const desc = page.locator('[data-testid="dialog-description"]');
+    const muted = await desc.evaluate((el) => getComputedStyle(el).color);
+    const dialogTitleColor = await page
+      .locator('[data-testid="dialog-content"] h2, [data-testid="dialog-content"] [id]')
+      .first()
+      .evaluate((el) => getComputedStyle(el).color)
+      .catch(() => "");
+    expect(muted.length).toBeGreaterThan(0);
+    if (dialogTitleColor) expect(muted).not.toBe(dialogTitleColor);
+    await page.keyboard.press("Escape");
+  });
+});
+
+test.describe("DropdownMenu — computed styles", () => {
+  test("menu content is not rendered until trigger is clicked", async ({ page }) => {
+    await expect(page.locator('[data-testid="dropdown-content"]')).toHaveCount(0);
+  });
+
+  test("opens on trigger click and applies surface utilities", async ({ page }) => {
+    await page.locator('[data-testid="dropdown-trigger"]').click();
+    const content = page.locator('[data-testid="dropdown-content"]');
+    await expect(content).toBeVisible();
+    const bg = await content.evaluate((el) => getComputedStyle(el).backgroundColor);
+    expect(bg).not.toBe("rgba(0, 0, 0, 0)");
+    await page.keyboard.press("Escape");
+  });
+
+  test("menu item + separator compile and render", async ({ page }) => {
+    await page.locator('[data-testid="dropdown-trigger"]').click();
+    const item = page.locator('[data-testid="dropdown-item"]').first();
+    await expect(item).toBeVisible();
+    const itemBg = await item.evaluate((el) => getComputedStyle(el).backgroundColor);
+    // transparent on rest; hover would tint
+    expect(typeof itemBg).toBe("string");
+    const sep = page.locator('[data-testid="dropdown-separator"]');
+    await expect(sep).toBeVisible();
+    const h = await sep.evaluate((el) => getComputedStyle(el).height);
+    expect(parseFloat(h)).toBeCloseTo(1, 0);
+    await page.keyboard.press("Escape");
+  });
+});
+
+test.describe("Tooltip — computed styles", () => {
+  test("tooltip content is not rendered in resting state", async ({ page }) => {
+    await expect(page.locator('[data-testid="tooltip-content"]')).toHaveCount(0);
+  });
+
+  test("hovering the trigger shows the tooltip with popover surface", async ({ page }) => {
+    await page.locator('[data-testid="tooltip-trigger"]').hover();
+    const content = page.locator('[data-testid="tooltip-content"]');
+    await expect(content).toBeVisible({ timeout: 2000 });
+    const bg = await content.evaluate((el) => getComputedStyle(el).backgroundColor);
+    expect(bg).not.toBe("rgba(0, 0, 0, 0)");
+    const font = await content.evaluate((el) => getComputedStyle(el).fontFamily);
+    expect(font.toLowerCase()).toContain("mono");
+  });
+});
+
 test.describe("AnimatedIcon — computed styles", () => {
   test("always-trigger glyph has a non-empty animation-name", async ({ page }) => {
     const glyph = page

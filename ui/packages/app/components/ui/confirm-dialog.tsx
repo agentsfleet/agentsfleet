@@ -8,7 +8,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "./dialog";
+} from "@usezombie/design-system";
 import { Button } from "./button";
 
 export interface ConfirmDialogProps {

@@ -16,6 +16,24 @@ import {
   Input,
   Separator,
   Skeleton,
+  Dialog,
+  DialogTrigger,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuShortcut,
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+  TooltipProvider,
 } from "@usezombie/design-system";
 
 /*
@@ -168,6 +186,56 @@ export default function DesignSystemGallery() {
           <Skeleton className="h-4 w-1/2" data-testid="skeleton-line-sm" />
           <Skeleton className="h-24 w-full" data-testid="skeleton-block" />
         </div>
+      </Section>
+
+      <Section>
+        <h2>Dialog</h2>
+        <Dialog>
+          <DialogTrigger data-testid="dialog-trigger" className="border border-border rounded-full px-4 py-2 text-sm">
+            Open dialog
+          </DialogTrigger>
+          <DialogContent data-testid="dialog-content">
+            <DialogHeader>
+              <DialogTitle>Confirm action</DialogTitle>
+              <DialogDescription data-testid="dialog-description">
+                This is a smoke-route dialog for Playwright verification.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button variant="ghost">Cancel</Button>
+              <Button>Confirm</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </Section>
+
+      <Section>
+        <h2>DropdownMenu</h2>
+        <DropdownMenu>
+          <DropdownMenuTrigger data-testid="dropdown-trigger" className="border border-border rounded-full px-4 py-2 text-sm">
+            Open menu
+          </DropdownMenuTrigger>
+          <DropdownMenuContent data-testid="dropdown-content">
+            <DropdownMenuLabel data-testid="dropdown-label">Actions</DropdownMenuLabel>
+            <DropdownMenuItem data-testid="dropdown-item">
+              Edit<DropdownMenuShortcut>⌘E</DropdownMenuShortcut>
+            </DropdownMenuItem>
+            <DropdownMenuSeparator data-testid="dropdown-separator" />
+            <DropdownMenuItem>Delete</DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </Section>
+
+      <Section>
+        <h2>Tooltip</h2>
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger data-testid="tooltip-trigger" className="border border-border rounded-full px-4 py-2 text-sm">
+              Hover me
+            </TooltipTrigger>
+            <TooltipContent data-testid="tooltip-content">Ship it</TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
       </Section>
 
       <Section>

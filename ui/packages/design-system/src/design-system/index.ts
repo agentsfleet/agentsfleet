@@ -29,3 +29,43 @@ export {
 export { Input, type InputProps } from "./Input";
 export { Separator, type SeparatorProps } from "./Separator";
 export { Skeleton, type SkeletonProps } from "./Skeleton";
+export {
+  Dialog,
+  DialogTrigger,
+  DialogPortal,
+  DialogClose,
+  DialogOverlay,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+  type DialogOverlayProps,
+  type DialogContentProps,
+  type DialogTitleProps,
+  type DialogDescriptionProps,
+} from "./Dialog";
+export {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuShortcut,
+  DropdownMenuPortal,
+  DropdownMenuSub,
+  DropdownMenuRadioGroup,
+  type DropdownMenuContentProps,
+  type DropdownMenuItemProps,
+  type DropdownMenuLabelProps,
+  type DropdownMenuSeparatorProps,
+} from "./DropdownMenu";
+export {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+  TooltipProvider,
+  type TooltipContentProps,
+} from "./Tooltip";
