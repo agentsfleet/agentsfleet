@@ -71,35 +71,6 @@ CREATE INDEX IF NOT EXISTS idx_vault_secrets_workspace
 
 GRANT SELECT, INSERT, UPDATE ON vault.secrets TO api_runtime, worker_runtime;
 
--- Workspace-scoped skill secrets (BYOK credentials per skill+key).
-CREATE TABLE IF NOT EXISTS vault.workspace_skill_secrets (
-    id               UUID PRIMARY KEY,
-    CONSTRAINT ck_workspace_skill_secrets_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
-    tenant_id        UUID NOT NULL REFERENCES core.tenants(tenant_id),
-    workspace_id     UUID NOT NULL REFERENCES core.workspaces(workspace_id) ON DELETE CASCADE,
-    skill_ref        TEXT NOT NULL,
-    key_name         TEXT NOT NULL,
-    scope            TEXT NOT NULL,
-    secret_meta_json TEXT NOT NULL DEFAULT '{}',
-    kek_version      INTEGER NOT NULL DEFAULT 1,
-    encrypted_dek    BYTEA NOT NULL,
-    dek_nonce        BYTEA NOT NULL,
-    dek_tag          BYTEA NOT NULL,
-    nonce            BYTEA NOT NULL,
-    ciphertext       BYTEA NOT NULL,
-    tag              BYTEA NOT NULL,
-    created_at       BIGINT NOT NULL,
-    updated_at       BIGINT NOT NULL,
-    UNIQUE (workspace_id, skill_ref, key_name)
-);
-CREATE INDEX IF NOT EXISTS idx_workspace_skill_secrets_lookup
-    ON vault.workspace_skill_secrets(workspace_id, skill_ref, key_name);
-CREATE INDEX IF NOT EXISTS idx_workspace_skill_secrets_tenant
-    ON vault.workspace_skill_secrets(tenant_id, workspace_id, created_at DESC);
-
-GRANT SELECT, INSERT, UPDATE, DELETE ON vault.workspace_skill_secrets TO api_runtime;
-GRANT SELECT ON vault.workspace_skill_secrets TO worker_runtime;
-
 -- Read-only principals are strictly routed to ops_ro + audit
 GRANT USAGE ON SCHEMA ops_ro, audit TO ops_readonly_human, ops_readonly_agent;
 

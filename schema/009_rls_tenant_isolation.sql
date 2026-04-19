@@ -36,13 +36,7 @@ DO $$ BEGIN
         FOR EACH ROW EXECUTE FUNCTION reject_prompt_lifecycle_event_mutation();
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
-ALTER TABLE vault.workspace_skill_secrets ENABLE ROW LEVEL SECURITY;
-
 -- NOTE: EXCEPTION WHEN duplicate_object silently skips if the policy already exists.
 -- To change a policy definition, write a new migration that DROPs the old policy first.
-DO $$ BEGIN CREATE POLICY workspace_skill_secrets_select_tenant ON vault.workspace_skill_secrets FOR SELECT USING (tenant_id::text = current_setting('app.current_tenant_id', true)); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-DO $$ BEGIN CREATE POLICY workspace_skill_secrets_insert_tenant ON vault.workspace_skill_secrets FOR INSERT WITH CHECK (tenant_id::text = current_setting('app.current_tenant_id', true)); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-DO $$ BEGIN CREATE POLICY workspace_skill_secrets_update_tenant ON vault.workspace_skill_secrets FOR UPDATE USING (tenant_id::text = current_setting('app.current_tenant_id', true)) WITH CHECK (tenant_id::text = current_setting('app.current_tenant_id', true)); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-DO $$ BEGIN CREATE POLICY workspace_skill_secrets_delete_tenant ON vault.workspace_skill_secrets FOR DELETE USING (tenant_id::text = current_setting('app.current_tenant_id', true)); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 GRANT SELECT, INSERT ON core.prompt_lifecycle_events TO api_runtime, worker_runtime;
