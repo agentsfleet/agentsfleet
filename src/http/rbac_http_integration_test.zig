@@ -1,4 +1,4 @@
-// RBAC integration tests — role enforcement on skill-secret, billing, and
+// RBAC integration tests — role enforcement on billing and
 // zombie-lifecycle endpoints over the live HTTP surface.
 //
 // Requires TEST_DATABASE_URL — skipped gracefully otherwise via
@@ -18,8 +18,6 @@ const TestHarness = harness_mod.TestHarness;
 
 const TEST_TENANT_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01";
 const TEST_WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
-const TEST_SKILL_REF_ENCODED = "clawhub%3A%2F%2Fopenclaw%2Freviewer%401.2.0";
-const TEST_SKILL_SECRET_KEY = "API_KEY";
 const TEST_SUBSCRIPTION_ID = "sub_rbac_test";
 const TEST_REPO_URL = "https://github.com/usezombie/rbac-http-test";
 const TEST_ISSUER = "https://clerk.dev.usezombie.com";
@@ -58,7 +56,6 @@ fn setupSeedData(conn: *pg.Conn) !void {
     const now_ms = std.time.milliTimestamp();
     // Idempotent — shared tenant/workspace across integration suites.
     _ = try conn.exec("DELETE FROM workspace_billing_audit WHERE workspace_id = $1", .{TEST_WORKSPACE_ID});
-    _ = try conn.exec("DELETE FROM vault.workspace_skill_secrets WHERE workspace_id = $1", .{TEST_WORKSPACE_ID});
 
     _ = try conn.exec(
         \\INSERT INTO tenants (tenant_id, name, api_key_hash, created_at, updated_at)
@@ -108,10 +105,9 @@ fn cleanupSeedData(conn: *pg.Conn) !void {
     // all use TEST_TENANT_ID "…6f01" and TEST_WORKSPACE_ID "…6f11").
     // See docs/ZIG_RULES.md "HTTP Integration Tests".
     _ = try conn.exec("DELETE FROM workspace_billing_audit WHERE workspace_id = $1", .{TEST_WORKSPACE_ID});
-    _ = try conn.exec("DELETE FROM vault.workspace_skill_secrets WHERE workspace_id = $1", .{TEST_WORKSPACE_ID});
 }
 
-// ── Test: role gates for skill-secret + billing + zombie-lifecycle ─────────────
+// ── Test: role gates for billing + zombie-lifecycle ───────────────────────────
 
 test "integration: RBAC endpoints enforce operator and admin roles over live HTTP" {
     const alloc = std.testing.allocator;
@@ -121,24 +117,15 @@ test "integration: RBAC endpoints enforce operator and admin roles over live HTT
     };
     defer h.deinit();
 
-    const skill_secret_path = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/skills/{s}/secrets/{s}", .{
-        TEST_WORKSPACE_ID, TEST_SKILL_REF_ENCODED, TEST_SKILL_SECRET_KEY,
-    });
-    defer alloc.free(skill_secret_path);
     const billing_event_path = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/billing/events", .{TEST_WORKSPACE_ID});
     defer alloc.free(billing_event_path);
 
-    { // No token → 401
-        const r = try h.delete(skill_secret_path).send();
+    { // No token on billing POST → 401
+        const r = try (try h.post(billing_event_path)
+            .json("{\"event_type\":\"PAYMENT_FAILED\",\"reason\":\"rbac-test\"}")).send();
         defer r.deinit();
         try r.expectStatus(.unauthorized);
         try r.expectErrorCode(error_codes.ERR_UNAUTHORIZED);
-    }
-    { // User role → 403 (insufficient)
-        const r = try (try h.delete(skill_secret_path).bearer(TEST_USER_TOKEN)).send();
-        defer r.deinit();
-        try r.expectStatus(.forbidden);
-        try r.expectErrorCode(error_codes.ERR_INSUFFICIENT_ROLE);
     }
     { // User role on billing POST → 403
         const r = try (try (try h.post(billing_event_path).bearer(TEST_USER_TOKEN))
@@ -153,12 +140,6 @@ test "integration: RBAC endpoints enforce operator and admin roles over live HTT
         defer r.deinit();
         try r.expectStatus(.forbidden);
         try r.expectErrorCode(error_codes.ERR_INSUFFICIENT_ROLE);
-    }
-    { // Operator deletes skill secret — ok
-        const r = try (try h.delete(skill_secret_path).bearer(TEST_OPERATOR_TOKEN)).send();
-        defer r.deinit();
-        try r.expectStatus(.ok);
-        try std.testing.expect(r.bodyContains("\"deleted\":true"));
     }
     { // Admin posts billing event — ok
         const r = try (try (try h.post(billing_event_path).bearer(TEST_ADMIN_TOKEN))

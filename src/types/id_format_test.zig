@@ -60,7 +60,7 @@ test "all new id generators produce valid uuidv7" {
         id.generateTransitionId,      id.generateArtifactId,             id.generateUsageLedgerId,
         id.generateWorkspaceMemoryId, id.generatePolicyEventId,          id.generateSideEffectId,
         id.generateOutboxId,          id.generateBillingDeliveryId,      id.generateVaultSecretId,
-        id.generateSkillSecretId,     id.generatePromptLifecycleEventId, id.generatePlatformLlmKeyId,
+        id.generatePromptLifecycleEventId, id.generatePlatformLlmKeyId,
     }) |gen| {
         const idd = try gen(alloc);
         defer alloc.free(idd);
@@ -90,7 +90,7 @@ test "T2: version nibble and variant bits are correctly set across all generator
         id.generateTransitionId,      id.generateArtifactId,             id.generateUsageLedgerId,
         id.generateWorkspaceMemoryId, id.generatePolicyEventId,          id.generateSideEffectId,
         id.generateOutboxId,          id.generateBillingDeliveryId,      id.generateVaultSecretId,
-        id.generateSkillSecretId,     id.generatePromptLifecycleEventId, id.generatePlatformLlmKeyId,
+        id.generatePromptLifecycleEventId, id.generatePlatformLlmKeyId,
     }) |gen| {
         const idd = try gen(alloc);
         defer alloc.free(idd);
