@@ -1,6 +1,6 @@
 import * as React from "react";
 import { cn } from "@usezombie/design-system/utils";
-import { EmptyState } from "./empty-state";
+import { EmptyState } from "@usezombie/design-system";
 
 export type DataTableColumn<T> = {
   key: string;

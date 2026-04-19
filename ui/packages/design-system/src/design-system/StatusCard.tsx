@@ -1,15 +1,15 @@
-import * as React from "react";
-import { cn } from "@usezombie/design-system/utils";
+import { type HTMLAttributes } from "react";
+import { cn } from "../utils";
 
-// StatusCard renders its own `<dl>` internal markup, which is incompatible
-// with Radix Slot's single-child clone model. For a clickable status tile,
-// wrap the whole card in <Link> externally — same DOM cost, no forced slot
-// pattern. `asChild` belongs on leaf primitives (Button, Badge), not on
-// display compositions with internal structure.
-
+/*
+ * StatusCard — compact metric tile with label, count, optional trend and
+ * sublabel. RSC-safe. Renders its own <dl> internal markup, which is
+ * incompatible with Radix Slot's single-child clone model — so there is
+ * no asChild. Wrap the card in a <Link> externally to make it clickable.
+ */
 export type StatusCardVariant = "default" | "success" | "warning" | "danger" | "muted";
 
-export interface StatusCardProps extends React.HTMLAttributes<HTMLDivElement> {
+export interface StatusCardProps extends HTMLAttributes<HTMLDivElement> {
   label: string;
   count: number | string;
   variant?: StatusCardVariant;
@@ -21,8 +21,8 @@ const variantAccent: Record<StatusCardVariant, string> = {
   default: "text-foreground",
   success: "text-success",
   warning: "text-warning",
-  danger:  "text-destructive",
-  muted:   "text-muted-foreground",
+  danger: "text-destructive",
+  muted: "text-muted-foreground",
 };
 
 const trendGlyph = { up: "↑", down: "↓", flat: "→" } as const;
@@ -42,7 +42,10 @@ export function StatusCard({
     String(count),
     trend ? trendLabel[trend] : null,
     sublabel,
-  ].filter(Boolean).join(", ");
+  ]
+    .filter(Boolean)
+    .join(", ");
+
   return (
     <div
       data-slot="status-card"
@@ -77,3 +80,5 @@ export function StatusCard({
     </div>
   );
 }
+
+export default StatusCard;

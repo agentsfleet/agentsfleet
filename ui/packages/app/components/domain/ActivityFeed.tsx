@@ -1,6 +1,6 @@
 import * as React from "react";
 import { cn } from "@usezombie/design-system/utils";
-import { EmptyState } from "../ui/empty-state";
+import { EmptyState } from "@usezombie/design-system";
 
 export interface ActivityEvent {
   id: string;

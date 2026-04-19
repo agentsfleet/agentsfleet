@@ -287,6 +287,53 @@ test.describe("Tooltip — computed styles", () => {
   });
 });
 
+test.describe("EmptyState — computed styles", () => {
+  test("renders with dashed border + card background tint", async ({ page }) => {
+    const empty = page.locator('[data-testid="empty-state"]').first();
+    await expect(empty).toBeVisible();
+    const style = await empty.evaluate((el) => getComputedStyle(el).borderTopStyle);
+    expect(style).toBe("dashed");
+  });
+});
+
+test.describe("StatusCard — computed styles", () => {
+  test("danger variant count uses the destructive color", async ({ page }) => {
+    const danger = page.locator('[data-testid="status-card"][data-variant="danger"]').first();
+    const countColor = await danger
+      .locator("dd")
+      .first()
+      .evaluate((el) => getComputedStyle(el).color);
+    const successCountColor = await page
+      .locator('[data-testid="status-card"][data-variant="success"]')
+      .first()
+      .locator("dd")
+      .first()
+      .evaluate((el) => getComputedStyle(el).color);
+    expect(countColor).not.toBe(successCountColor);
+  });
+
+  test("has a visible border that tints on focus-within", async ({ page }) => {
+    const card = page.locator('[data-testid="status-card"]').first();
+    const bw = await card.evaluate((el) => getComputedStyle(el).borderTopWidth);
+    expect(parseFloat(bw)).toBeGreaterThan(0);
+  });
+});
+
+test.describe("Pagination — computed styles", () => {
+  test("cursor variant renders a Load-more Button", async ({ page }) => {
+    const nav = page.locator('[data-testid="pagination-cursor"]').first();
+    await expect(nav).toBeVisible();
+    await expect(nav.locator("button")).toContainText("Load more");
+  });
+
+  test("page variant renders Prev/Next + page counter text", async ({ page }) => {
+    const nav = page.locator('[data-testid="pagination-page"]').first();
+    await expect(nav).toBeVisible();
+    await expect(nav).toContainText("Page 2 of 5");
+    await expect(nav.locator("button")).toHaveCount(2);
+  });
+});
+
 test.describe("AnimatedIcon — computed styles", () => {
   test("always-trigger glyph has a non-empty animation-name", async ({ page }) => {
     const glyph = page

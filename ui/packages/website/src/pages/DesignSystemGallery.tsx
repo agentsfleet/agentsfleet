@@ -34,6 +34,9 @@ import {
   TooltipTrigger,
   TooltipContent,
   TooltipProvider,
+  EmptyState,
+  StatusCard,
+  Pagination,
 } from "@usezombie/design-system";
 
 /*
@@ -236,6 +239,31 @@ export default function DesignSystemGallery() {
             <TooltipContent data-testid="tooltip-content">Ship it</TooltipContent>
           </Tooltip>
         </TooltipProvider>
+      </Section>
+
+      <Section>
+        <h2>EmptyState</h2>
+        <EmptyState
+          title="Nothing to show yet"
+          description="Try adjusting the filter or creating a new record."
+          action={<Button size="sm">Create</Button>}
+        />
+      </Section>
+
+      <Section>
+        <h2>StatusCard — variants</h2>
+        <Grid columns="four">
+          <StatusCard label="Active" count={12} variant="success" trend="up" sublabel="last 24h" />
+          <StatusCard label="Pending" count={3} variant="warning" trend="flat" />
+          <StatusCard label="Stopped" count={1} variant="danger" trend="down" />
+          <StatusCard label="Idle" count={7} variant="muted" />
+        </Grid>
+      </Section>
+
+      <Section>
+        <h2>Pagination — cursor + page</h2>
+        <Pagination kind="cursor" nextCursor="abc" onNext={() => {}} />
+        <Pagination kind="page" page={2} pageSize={20} total={87} onPageChange={() => {}} />
       </Section>
 
       <Section>

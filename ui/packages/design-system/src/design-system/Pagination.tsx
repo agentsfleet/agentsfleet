@@ -1,9 +1,14 @@
-import { cn } from "@usezombie/design-system/utils";
-import { Button } from "./button";
+import { Button } from "./Button";
+import { cn } from "../utils";
 
-// Two shapes: cursor-paginated (activity feed, telemetry) and page-paginated
-// (zombies list with numeric pages). Both live behind one component so pages
-// use the same UI regardless of the backend contract.
+/*
+ * Pagination — two shapes under one component:
+ *   • cursor: opaque next-cursor string (activity feed, telemetry).
+ *   • page:   numeric pages (zombies list).
+ * Both land on the same UI so pages render identically regardless of the
+ * backend contract. RSC-safe — event handlers are passed as props and
+ * forwarded to the (RSC-safe) shared Button.
+ */
 
 export interface CursorPaginationProps {
   kind: "cursor";
@@ -45,7 +50,9 @@ function CursorPagination({ nextCursor, onNext, isLoading, className }: CursorPa
         variant="ghost"
         size="sm"
         disabled={exhausted || isLoading}
-        onClick={() => { if (nextCursor) onNext(nextCursor); }}
+        onClick={() => {
+          if (nextCursor) onNext(nextCursor);
+        }}
         aria-label="Load more items"
       >
         {isLoading ? "Loading…" : exhausted ? "End of feed" : "Load more"}
@@ -54,7 +61,14 @@ function CursorPagination({ nextCursor, onNext, isLoading, className }: CursorPa
   );
 }
 
-function PagePagination({ page, pageSize, total, onPageChange, isLoading, className }: PagePaginationProps) {
+function PagePagination({
+  page,
+  pageSize,
+  total,
+  onPageChange,
+  isLoading,
+  className,
+}: PagePaginationProps) {
   const totalPages = total != null ? Math.max(1, Math.ceil(total / pageSize)) : null;
   const hasPrev = page > 1;
   const hasNext = totalPages == null ? true : page < totalPages;
@@ -96,3 +110,5 @@ function PagePagination({ page, pageSize, total, onPageChange, isLoading, classN
     </nav>
   );
 }
+
+export default Pagination;
