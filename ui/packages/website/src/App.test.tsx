@@ -102,24 +102,36 @@ describe("App", () => {
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(/ship ai-generated prs/i);
   });
 
-  it("renders pricing page at /pricing", () => {
+  it("renders pricing page at /pricing", async () => {
     renderApp("/pricing");
-    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(/start free\. upgrade when you need stronger control\./i);
+    // Lazy-loaded route — Suspense defers render until the chunk resolves.
+    expect(
+      await screen.findByRole("heading", {
+        level: 1,
+        name: /start free\. upgrade when you need stronger control\./i,
+      }),
+    ).toBeInTheDocument();
   });
 
-  it("renders agents page at /agents", () => {
+  it("renders agents page at /agents", async () => {
     renderApp("/agents");
-    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(/autonomous agents/i);
+    expect(
+      await screen.findByRole("heading", { level: 1, name: /autonomous agents/i }),
+    ).toBeInTheDocument();
   });
 
-  it("renders privacy page at /privacy", () => {
+  it("renders privacy page at /privacy", async () => {
     renderApp("/privacy");
-    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(/privacy policy/i);
+    expect(
+      await screen.findByRole("heading", { level: 1, name: /privacy policy/i }),
+    ).toBeInTheDocument();
   });
 
-  it("renders terms page at /terms", () => {
+  it("renders terms page at /terms", async () => {
     renderApp("/terms");
-    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(/terms of service/i);
+    expect(
+      await screen.findByRole("heading", { level: 1, name: /terms of service/i }),
+    ).toBeInTheDocument();
   });
 
   it("renders footer on all routes", () => {
