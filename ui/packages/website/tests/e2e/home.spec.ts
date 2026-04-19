@@ -42,16 +42,29 @@ test.describe("Home page", () => {
 
     await mission.hover();
 
-    const after = await mission.evaluate((el) => {
-      const style = window.getComputedStyle(el);
-      return {
-        borderColor: style.borderColor,
-        boxShadow: style.boxShadow,
-      };
-    });
-
-    expect(after.borderColor).not.toBe(before.borderColor);
-    expect(after.boxShadow).not.toBe("none");
+    // The ghost Button variant transitions border-color/box-shadow over
+    // ~150ms (see Button.tsx `transition-[...] ease-fast`). Reading
+    // computed style immediately after hover() catches the interpolation
+    // mid-flight and yields the pre-hover value. Poll until the transition
+    // has settled on the actual hover state.
+    await expect
+      .poll(
+        async () =>
+          mission.evaluate((el) => {
+            const style = window.getComputedStyle(el);
+            return {
+              borderColor: style.borderColor,
+              boxShadow: style.boxShadow,
+            };
+          }),
+        { timeout: 2000, intervals: [50, 100, 200] },
+      )
+      .toMatchObject({
+        borderColor: expect.not.stringMatching(
+          new RegExp(`^${before.borderColor.replace(/[()]/g, "\\$&")}$`),
+        ),
+        boxShadow: expect.not.stringMatching(/^none$/),
+      });
   });
 
   test("renders feature flow rows", async ({ page }) => {
