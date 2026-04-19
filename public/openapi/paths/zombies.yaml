@@ -1,0 +1,419 @@
+/v1/webhooks/{zombie_id}:
+  post:
+    operationId: receive_webhook
+    summary: Deliver an inbound webhook event to a Zombie
+    description: 'Delivers an inbound event to the Zombie identified by `zombie_id`. The Zombie is looked up by primary key
+      — no JSONB traversal, no source-name uniqueness required. Bearer token is validated against the Zombie''s `trigger.token`
+      (omit if no token configured). Duplicate events (same `event_id` within 24 h) return 200 `{status: "duplicate"}`. A
+      new event is enqueued to the Zombie''s Redis stream and returns 202.'
+    tags:
+    - Zombies
+    parameters:
+    - name: zombie_id
+      in: path
+      required: true
+      description: UUIDv7 of the target Zombie. Obtained from `POST /v1/zombies` or `zombiectl up`.
+      schema:
+        type: string
+        format: uuid
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+            - event_id
+            - type
+            - data
+            properties:
+              event_id:
+                type: string
+                description: Unique identifier for this event. Used for idempotency deduplication (24-hour window).
+              type:
+                type: string
+                description: Event type label (e.g. `email.received`, `push`, `payment.succeeded`).
+              data:
+                type: object
+                additionalProperties: true
+                description: Event payload — any JSON object. Passed as-is into the Zombie event loop.
+    responses:
+      '202':
+        description: Event accepted and enqueued for the Zombie.
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - status
+              - event_id
+              properties:
+                status:
+                  type: string
+                  const: accepted
+                event_id:
+                  type: string
+      '200':
+        description: Duplicate event — already processed within the 24-hour dedup window.
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - status
+              properties:
+                status:
+                  type: string
+                  const: duplicate
+      '400':
+        description: Malformed payload — missing `event_id` or `type`.
+        content:
+          application/problem+json:
+            schema:
+              $ref: ../components/schemas.yaml#/components/schemas/ErrorBody
+      '401':
+        description: Missing or invalid Bearer token.
+        content:
+          application/problem+json:
+            schema:
+              $ref: ../components/schemas.yaml#/components/schemas/ErrorBody
+      '404':
+        description: No active Zombie is configured for this source (UZ-WH-001).
+        content:
+          application/problem+json:
+            schema:
+              $ref: ../components/schemas.yaml#/components/schemas/ErrorBody
+      '409':
+        description: Zombie exists but is paused or stopped (UZ-WH-003).
+        content:
+          application/problem+json:
+            schema:
+              $ref: ../components/schemas.yaml#/components/schemas/ErrorBody
+      default:
+        $ref: ../components/responses.yaml#/components/responses/Error
+    security:
+    - BearerAuth: []
+/v1/workspaces/{workspace_id}/zombies:
+  get:
+    operationId: list_zombies
+    summary: List zombies in a workspace
+    description: Returns all zombies the caller has access to in the given workspace. Response envelope follows the RAD §8
+      `items`/`total` convention.
+    tags:
+    - Zombies
+    parameters:
+    - name: workspace_id
+      in: path
+      required: true
+      description: UUIDv7 of the workspace.
+      schema:
+        type: string
+        format: uuid
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - items
+              - total
+              properties:
+                items:
+                  type: array
+                  items:
+                    $ref: ../components/schemas.yaml#/components/schemas/ZombieSummary
+                total:
+                  type: integer
+                  description: Count of items in this response (not total across pages).
+      '400':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '401':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '403':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '404':
+        $ref: ../components/responses.yaml#/components/responses/Error
+  post:
+    operationId: create_zombie
+    summary: Create a zombie
+    description: Creates a new zombie from a SKILL.md source and a config JSON. The CLI (`zombiectl up`) compiles TRIGGER.md
+      frontmatter into JSON before upload; the server never sees raw YAML.
+    tags:
+    - Zombies
+    parameters:
+    - name: workspace_id
+      in: path
+      required: true
+      description: UUIDv7 of the workspace.
+      schema:
+        type: string
+        format: uuid
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+            - name
+            - config_json
+            - source_markdown
+            properties:
+              name:
+                type: string
+                maxLength: 64
+              config_json:
+                type: string
+                description: Zombie config serialised as a JSON string.
+              source_markdown:
+                type: string
+                maxLength: 65536
+                description: SKILL.md body.
+    responses:
+      '201':
+        description: Created
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - zombie_id
+              - status
+              properties:
+                zombie_id:
+                  type: string
+                  format: uuid
+                status:
+                  type: string
+      '400':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '401':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '403':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '404':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '409':
+        $ref: ../components/responses.yaml#/components/responses/Error
+/v1/workspaces/{workspace_id}/zombies/{zombie_id}:
+  delete:
+    operationId: delete_zombie
+    summary: Kill a zombie
+    description: 'Marks the zombie as killed. Idempotent: re-killing a killed zombie returns the same 200 response. Scoped
+      to workspace — cross-workspace deletes are rejected at the SQL layer as defence-in-depth.'
+    tags:
+    - Zombies
+    parameters:
+    - name: workspace_id
+      in: path
+      required: true
+      description: UUIDv7 of the workspace.
+      schema:
+        type: string
+        format: uuid
+    - name: zombie_id
+      in: path
+      required: true
+      description: UUIDv7 of the zombie.
+      schema:
+        type: string
+        format: uuid
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                zombie_id:
+                  type: string
+                  format: uuid
+                status:
+                  type: string
+                  enum:
+                  - killed
+      '400':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '401':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '403':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '404':
+        $ref: ../components/responses.yaml#/components/responses/Error
+/v1/workspaces/{workspace_id}/zombies/{zombie_id}/activity:
+  get:
+    operationId: list_zombie_activity
+    summary: List zombie activity events
+    description: Returns the append-only activity stream for a zombie (event received, skill invoked, response returned, credential
+      resolved, grant requested, etc.). Cursor-based pagination.
+    tags:
+    - Zombies
+    parameters:
+    - name: workspace_id
+      in: path
+      required: true
+      description: UUIDv7 of the workspace.
+      schema:
+        type: string
+        format: uuid
+    - name: zombie_id
+      in: path
+      required: true
+      description: UUIDv7 of the zombie.
+      schema:
+        type: string
+        format: uuid
+    - name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        default: 20
+        minimum: 1
+        maximum: 100
+    - name: cursor
+      in: query
+      required: false
+      schema:
+        type: string
+      description: Opaque cursor from the previous response.
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - items
+              - total
+              properties:
+                items:
+                  type: array
+                  items:
+                    $ref: ../components/schemas.yaml#/components/schemas/ActivityEvent
+                total:
+                  type: integer
+                  description: Count of items in this response (not total across pages).
+                cursor:
+                  type: string
+                  nullable: true
+                  description: Opaque cursor for the next page. null when no more items.
+      '400':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '401':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '403':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '404':
+        $ref: ../components/responses.yaml#/components/responses/Error
+/v1/workspaces/{workspace_id}/zombies/{zombie_id}/steer:
+  post:
+    operationId: steer_zombie
+    summary: Steer a running zombie
+    description: Send a message to a running zombie to nudge it at the next gate checkpoint. Queued (next checkpoint) or instant
+      (IPC delivery) per body.
+    tags:
+    - Zombies
+    parameters:
+    - name: workspace_id
+      in: path
+      required: true
+      description: UUIDv7 of the workspace.
+      schema:
+        type: string
+        format: uuid
+    - name: zombie_id
+      in: path
+      required: true
+      description: UUIDv7 of the zombie.
+      schema:
+        type: string
+        format: uuid
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+            - message
+            properties:
+              message:
+                type: string
+              mode:
+                type: string
+                enum:
+                - queued
+                - instant
+                default: queued
+    responses:
+      '202':
+        description: Accepted
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                event_id:
+                  type: string
+      '400':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '401':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '403':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '404':
+        $ref: ../components/responses.yaml#/components/responses/Error
+/v1/workspaces/{workspace_id}/zombies/{zombie_id}/stop:
+  post:
+    operationId: stop_workspace_zombie
+    summary: Stop a zombie (kill switch)
+    description: Transitions a zombie's status from `active` or `paused` to `stopped` and records a `zombie_stopped` activity
+      event. Returns 409 if the zombie is already stopped or killed. Returns 404 if the zombie is not in the path workspace
+      (cross-workspace IDOR guard).
+    tags:
+    - Zombies
+    parameters:
+    - name: workspace_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    - name: zombie_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    responses:
+      '200':
+        description: Zombie transitioned to stopped
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - zombie_id
+              - workspace_id
+              - status
+              - request_id
+              properties:
+                zombie_id:
+                  type: string
+                workspace_id:
+                  type: string
+                status:
+                  type: string
+                  enum:
+                  - stopped
+                request_id:
+                  type: string
+      default:
+        $ref: ../components/responses.yaml#/components/responses/Error

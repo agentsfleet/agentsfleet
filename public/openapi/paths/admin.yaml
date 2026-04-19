@@ -1,0 +1,114 @@
+/v1/admin/platform-keys:
+  get:
+    operationId: list_platform_keys
+    summary: List platform LLM keys
+    description: Lists all configured platform-wide LLM provider keys. These are shared keys that workspaces fall back to
+      when no BYOK key is configured.
+    tags:
+    - Admin
+    responses:
+      '200':
+        description: Platform key list
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - keys
+              - request_id
+              properties:
+                keys:
+                  type: array
+                  items:
+                    $ref: ../components/schemas.yaml#/components/schemas/PlatformKey
+                request_id:
+                  type: string
+                  format: uuid
+      default:
+        $ref: ../components/responses.yaml#/components/responses/Error
+  put:
+    operationId: put_platform_key
+    summary: Set a platform LLM key
+    description: Configures a platform-wide LLM provider key by referencing a workspace that has a BYOK key stored. The platform
+      key proxies through the referenced workspace's credential.
+    tags:
+    - Admin
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+            - provider
+            - source_workspace_id
+            properties:
+              provider:
+                type: string
+                description: LLM provider name (e.g. openai, anthropic)
+              source_workspace_id:
+                type: string
+                format: uuid
+                description: Workspace whose BYOK key to use as the platform key
+    responses:
+      '200':
+        description: Platform key configured
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - provider
+              - source_workspace_id
+              - active
+              - request_id
+              properties:
+                provider:
+                  type: string
+                source_workspace_id:
+                  type: string
+                  format: uuid
+                active:
+                  type: boolean
+                request_id:
+                  type: string
+                  format: uuid
+      default:
+        $ref: ../components/responses.yaml#/components/responses/Error
+/v1/admin/platform-keys/{provider}:
+  delete:
+    operationId: delete_platform_key
+    summary: Delete a platform LLM key
+    description: Removes a platform-wide LLM provider key. Workspaces without BYOK keys will no longer be able to use this
+      provider.
+    tags:
+    - Admin
+    parameters:
+    - name: provider
+      in: path
+      required: true
+      description: LLM provider name
+      schema:
+        type: string
+    responses:
+      '200':
+        description: Platform key deleted
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - provider
+              - active
+              - request_id
+              properties:
+                provider:
+                  type: string
+                active:
+                  type: boolean
+                  const: false
+                request_id:
+                  type: string
+                  format: uuid
+      default:
+        $ref: ../components/responses.yaml#/components/responses/Error

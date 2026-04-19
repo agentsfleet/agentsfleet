@@ -1,0 +1,147 @@
+/v1/workspaces/{workspace_id}/zombies/{zombie_id}/integration-grants:
+  get:
+    operationId: list_integration_grants
+    summary: List integration grants for a zombie
+    description: Returns pending, approved, and revoked grants, newest first.
+    tags:
+    - Integration Grants
+    parameters:
+    - name: workspace_id
+      in: path
+      required: true
+      description: UUIDv7 of the workspace.
+      schema:
+        type: string
+        format: uuid
+    - name: zombie_id
+      in: path
+      required: true
+      description: UUIDv7 of the zombie.
+      schema:
+        type: string
+        format: uuid
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - items
+              - total
+              properties:
+                items:
+                  type: array
+                  items:
+                    $ref: ../components/schemas.yaml#/components/schemas/IntegrationGrant
+                total:
+                  type: integer
+                  description: Count of items in this response (not total across pages).
+      '400':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '401':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '403':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '404':
+        $ref: ../components/responses.yaml#/components/responses/Error
+/v1/workspaces/{workspace_id}/zombies/{zombie_id}/integration-grants/{grant_id}:
+  delete:
+    operationId: revoke_integration_grant
+    summary: Revoke an integration grant
+    description: Immediately revokes a grant. A revoked grant surfaces `UZ-GRANT-003` to the zombie on its next execute attempt
+      against the affected service.
+    tags:
+    - Integration Grants
+    parameters:
+    - name: workspace_id
+      in: path
+      required: true
+      description: UUIDv7 of the workspace.
+      schema:
+        type: string
+        format: uuid
+    - name: zombie_id
+      in: path
+      required: true
+      description: UUIDv7 of the zombie.
+      schema:
+        type: string
+        format: uuid
+    - name: grant_id
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Opaque grant ID returned by integration-requests.
+    responses:
+      '204':
+        description: No Content
+      '400':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '401':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '403':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '404':
+        $ref: ../components/responses.yaml#/components/responses/Error
+/v1/workspaces/{workspace_id}/zombies/{zombie_id}/integration-requests:
+  post:
+    operationId: request_integration_grant
+    summary: Request a new integration grant
+    description: Called by a zombie (or on its behalf) to request permission to use a third-party integration (e.g. Slack,
+      GitHub). Creates a pending grant that a human approves via the grant-approval webhook.
+    tags:
+    - Integration Grants
+    parameters:
+    - name: workspace_id
+      in: path
+      required: true
+      description: UUIDv7 of the workspace.
+      schema:
+        type: string
+        format: uuid
+    - name: zombie_id
+      in: path
+      required: true
+      description: UUIDv7 of the zombie.
+      schema:
+        type: string
+        format: uuid
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+            - service
+            - reason
+            properties:
+              service:
+                type: string
+              reason:
+                type: string
+    responses:
+      '201':
+        description: Created
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                grant_id:
+                  type: string
+                status:
+                  type: string
+                  enum:
+                  - pending
+      '400':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '401':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '403':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '404':
+        $ref: ../components/responses.yaml#/components/responses/Error

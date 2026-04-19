@@ -1,0 +1,157 @@
+/v1/auth/sessions:
+  post:
+    operationId: create_auth_session
+    summary: Start a CLI login session
+    description: Creates a device-code style auth session. Returns a session ID and a login URL to present to the user in
+      their browser.
+    tags:
+    - Authentication
+    security: []
+    responses:
+      '201':
+        description: Auth session created
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - session_id
+              - login_url
+              - request_id
+              properties:
+                session_id:
+                  type: string
+                  format: uuid
+                  description: Session identifier for polling
+                login_url:
+                  type: string
+                  format: uri
+                  description: URL to open in the user's browser to complete authentication
+                request_id:
+                  type: string
+                  format: uuid
+                  description: Unique request identifier
+      default:
+        $ref: ../components/responses.yaml#/components/responses/Error
+/v1/auth/sessions/{session_id}:
+  get:
+    operationId: poll_auth_session
+    summary: Poll auth session status
+    description: Polls a pending auth session. The CLI calls this repeatedly until status transitions to 'complete' (token
+      available) or 'expired'.
+    tags:
+    - Authentication
+    security: []
+    parameters:
+    - name: session_id
+      in: path
+      required: true
+      description: Auth session identifier
+      schema:
+        type: string
+        format: uuid
+    responses:
+      '200':
+        description: Auth session status
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - status
+              - request_id
+              properties:
+                status:
+                  type: string
+                  enum:
+                  - pending
+                  - complete
+                  - expired
+                  description: Current session status
+                token:
+                  type:
+                  - string
+                  - "null"
+                  description: Bearer token, present only when status is 'complete'
+                request_id:
+                  type: string
+                  format: uuid
+                  description: Unique request identifier
+      default:
+        $ref: ../components/responses.yaml#/components/responses/Error
+/v1/auth/sessions/{session_id}/complete:
+  post:
+    operationId: complete_auth_session
+    summary: Complete an auth session
+    description: Called by the web frontend after successful OAuth to attach a token to the pending session. The CLI's next
+      poll will receive the token.
+    tags:
+    - Authentication
+    security: []
+    parameters:
+    - name: session_id
+      in: path
+      required: true
+      description: Auth session identifier
+      schema:
+        type: string
+        format: uuid
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+            - token
+            properties:
+              token:
+                type: string
+                description: Bearer token from OAuth flow
+    responses:
+      '200':
+        description: Session completed
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - status
+              - request_id
+              properties:
+                status:
+                  type: string
+                  const: complete
+                request_id:
+                  type: string
+                  format: uuid
+                  description: Unique request identifier
+      default:
+        $ref: ../components/responses.yaml#/components/responses/Error
+/v1/github/callback:
+  get:
+    operationId: github_oauth_callback
+    summary: GitHub OAuth callback
+    description: Handles the GitHub OAuth redirect. Exchanges the authorization code for an access token and redirects the
+      user back to the app.
+    tags:
+    - Authentication
+    security: []
+    parameters:
+    - name: code
+      in: query
+      required: true
+      description: OAuth authorization code from GitHub
+      schema:
+        type: string
+    - name: state
+      in: query
+      required: true
+      description: CSRF state parameter
+      schema:
+        type: string
+    responses:
+      '302':
+        description: Redirect to application after successful OAuth exchange
+      default:
+        $ref: ../components/responses.yaml#/components/responses/Error

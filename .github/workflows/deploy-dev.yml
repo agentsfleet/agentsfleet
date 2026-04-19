@@ -407,7 +407,7 @@ jobs:
 
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.3.10
+          bun-version: 1.3.12
 
       - name: Load Vercel bypass secret from 1Password
         uses: 1password/load-secrets-action@v4
@@ -423,7 +423,7 @@ jobs:
 
       - name: Restore Playwright browser cache
         id: playwright-cache-app
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.cache/ms-playwright
           key: ${{ runner.os }}-playwright-app-${{ hashFiles('ui/packages/app/bun.lock') }}

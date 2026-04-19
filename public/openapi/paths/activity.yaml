@@ -1,0 +1,71 @@
+/v1/workspaces/{workspace_id}/activity:
+  get:
+    operationId: list_workspace_activity
+    summary: List workspace activity feed
+    description: Workspace-wide merged activity stream across every zombie. Cursor-paginated newest-first. Backs the dashboard
+      Recent Activity feed.
+    tags:
+    - Activity
+    parameters:
+    - name: workspace_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    - name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+      description: Page size. Capped at 100.
+    - name: cursor
+      in: query
+      required: false
+      schema:
+        type: string
+      description: Opaque cursor returned by a previous call. Omit for the first page.
+    responses:
+      '200':
+        description: Activity page (newest-first)
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - events
+              properties:
+                events:
+                  type: array
+                  items:
+                    type: object
+                    required:
+                    - id
+                    - zombie_id
+                    - workspace_id
+                    - event_type
+                    - detail
+                    - created_at
+                    properties:
+                      id:
+                        type: string
+                      zombie_id:
+                        type: string
+                      workspace_id:
+                        type: string
+                      event_type:
+                        type: string
+                      detail:
+                        type: string
+                      created_at:
+                        type: integer
+                        format: int64
+                next_cursor:
+                  type: string
+                  nullable: true
+                  description: Cursor for the next page. Null when the feed is exhausted.
+      default:
+        $ref: ../components/responses.yaml#/components/responses/Error

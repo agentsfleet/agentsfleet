@@ -1,0 +1,85 @@
+/v1/execute:
+  post:
+    operationId: execute_tool
+    summary: Execute a tool on behalf of an external agent
+    description: Synchronous tool execution proxy. The external agent calls this endpoint with its API key (bearer), names
+      a tool, and receives the tool's result inline. Used by LangGraph / CrewAI / Composio integrations.
+    tags:
+    - Execute
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+            - target
+            - method
+            - credential_ref
+            properties:
+              target:
+                type: string
+                format: uri
+                description: Target URL for the outbound call.
+              method:
+                type: string
+                enum:
+                - GET
+                - POST
+                - PUT
+                - PATCH
+                - DELETE
+                description: HTTP method to use against the target.
+              credential_ref:
+                type: string
+                description: Named credential from the workspace vault to inject on the outbound request.
+              body:
+                type: string
+                nullable: true
+                description: Request body to forward to the target. Null for GET/DELETE.
+    responses:
+      '200':
+        description: Tool executed; upstream status and body are returned plus UseZombie metadata.
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - status
+              - body
+              - usezombie
+              properties:
+                status:
+                  type: integer
+                  description: HTTP status returned by the upstream target.
+                body:
+                  type: string
+                  description: Response body returned by the upstream target (as string).
+                usezombie:
+                  type: object
+                  required:
+                  - action_id
+                  - firewall_decision
+                  - credential_injected
+                  - approval_required
+                  properties:
+                    action_id:
+                      type: string
+                    firewall_decision:
+                      type: string
+                      enum:
+                      - allow
+                      - deny
+                      - approval_required
+                    credential_injected:
+                      type: boolean
+                    approval_required:
+                      type: boolean
+      '400':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '401':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '403':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '404':
+        $ref: ../components/responses.yaml#/components/responses/Error

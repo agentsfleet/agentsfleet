@@ -1,0 +1,26 @@
+extends:
+  - minimal
+
+rules:
+  # Structure gates we actively enforce on every PR
+  operation-operationId: error
+  operation-summary: error
+  operation-tag-defined: error
+  no-invalid-media-type-examples: error
+  no-path-trailing-slash: error
+  no-identical-paths: error
+  path-declaration-must-exist: error
+  # 4xx/5xx bodies: Redocly only checks presence. Shape/media-type/ErrorBody-field
+  # checks live in scripts/check_openapi_errors.py (run from `make openapi` after
+  # this lint pass). See docs/v2/done/P2_INFRA_M28_003_OPENAPI_TOOLING.md §2.
+  operation-4xx-response: warn
+  operation-2xx-response: warn
+  # Pre-existing content issues out of scope for M28_003. Turned off so the CI
+  # gate does not regress; flip to warn/error in a follow-up PR that fixes the
+  # underlying content.
+  #   - `struct: off` — 11 usages of OpenAPI 3.0's `nullable: true` in a 3.1.0
+  #     spec; the correct 3.1 form is `type: [<base>, "null"]`.
+  #   - `no-unused-components: off` — `Transition` schema is referenced from
+  #     docs examples but not from any bundled endpoint.
+  struct: off
+  no-unused-components: off

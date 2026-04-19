@@ -1,0 +1,308 @@
+/v1/workspaces/{workspace_id}/billing/events:
+  post:
+    operationId: billing_event
+    summary: Record a billing event
+    description: Records a billing lifecycle event such as a payment failure or downgrade. The workspace's billing status
+      is updated accordingly.
+    tags:
+    - Billing
+    parameters:
+    - name: workspace_id
+      in: path
+      required: true
+      description: Workspace identifier
+      schema:
+        type: string
+        format: uuid
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+            - event_type
+            - reason
+            properties:
+              event_type:
+                type: string
+                enum:
+                - PAYMENT_FAILED
+                - DOWNGRADE_TO_FREE
+                description: Type of billing event
+              reason:
+                type: string
+                description: Human-readable reason for the event
+    responses:
+      '200':
+        description: Billing event recorded
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - workspace_id
+              - billing_status
+              - request_id
+              properties:
+                workspace_id:
+                  type: string
+                  format: uuid
+                billing_status:
+                  type: string
+                  description: Updated billing status
+                request_id:
+                  type: string
+                  format: uuid
+      default:
+        $ref: ../components/responses.yaml#/components/responses/Error
+/v1/workspaces/{workspace_id}/billing/scale:
+  post:
+    operationId: scale_billing
+    summary: Upgrade billing plan
+    description: Upgrades a workspace's billing plan by linking a payment provider subscription. The workspace's plan tier
+      and billing status are updated immediately.
+    tags:
+    - Billing
+    parameters:
+    - name: workspace_id
+      in: path
+      required: true
+      description: Workspace identifier
+      schema:
+        type: string
+        format: uuid
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+            - subscription_id
+            properties:
+              subscription_id:
+                type: string
+                description: Payment provider subscription identifier
+    responses:
+      '200':
+        description: Billing plan updated
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - workspace_id
+              - plan_tier
+              - billing_status
+              - plan_sku
+              - subscription_id
+              - request_id
+              properties:
+                workspace_id:
+                  type: string
+                  format: uuid
+                plan_tier:
+                  type: string
+                  description: New plan tier (e.g. free, pro, enterprise)
+                billing_status:
+                  type: string
+                  description: Current billing status
+                plan_sku:
+                  type: string
+                  description: Plan SKU identifier
+                subscription_id:
+                  type: string
+                  description: Payment provider subscription ID
+                request_id:
+                  type: string
+                  format: uuid
+      default:
+        $ref: ../components/responses.yaml#/components/responses/Error
+/v1/workspaces/{workspace_id}/billing/summary:
+  get:
+    operationId: get_billing_summary
+    summary: Get billing summary
+    description: 'Returns a billing breakdown for a workspace: run counts grouped by lifecycle event (completed, non-billable,
+      score-gated), plus total agent seconds and average score for gated runs. Filterable by period.'
+    tags:
+    - Billing
+    parameters:
+    - name: workspace_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    - name: period
+      in: query
+      required: false
+      schema:
+        type: string
+        enum:
+        - 7d
+        - 30d
+        - 90d
+        default: 30d
+      description: Time period for the summary window
+    - name: period_days
+      in: query
+      required: false
+      schema:
+        type: integer
+        enum:
+        - 7
+        - 30
+        - 90
+        default: 30
+      description: Integer form of the summary window. Takes precedence over the legacy `period` param.
+    responses:
+      '200':
+        description: Billing summary for the workspace
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - workspace_id
+              - period_days
+              - period_start_ms
+              - period_end_ms
+              - completed
+              - non_billable
+              - non_billable_score_gated
+              - total_runs
+              - request_id
+              - total_cents
+              properties:
+                workspace_id:
+                  type: string
+                period_days:
+                  type: integer
+                period_start_ms:
+                  type: integer
+                  format: int64
+                period_end_ms:
+                  type: integer
+                  format: int64
+                completed:
+                  type: object
+                  properties:
+                    count:
+                      type: integer
+                    agent_seconds:
+                      type: integer
+                non_billable:
+                  type: object
+                  properties:
+                    count:
+                      type: integer
+                non_billable_score_gated:
+                  type: object
+                  properties:
+                    count:
+                      type: integer
+                    avg_score:
+                      type: integer
+                total_runs:
+                  type: integer
+                total_cents:
+                  type: integer
+                  format: int64
+                  description: Sum of credit_deducted_cents across the window.
+                request_id:
+                  type: string
+      default:
+        $ref: ../components/responses.yaml#/components/responses/Error
+/v1/workspaces/{workspace_id}/zombies/{zombie_id}/billing/summary:
+  get:
+    operationId: get_zombie_billing_summary
+    summary: Get billing summary for a single zombie
+    description: 'Per-zombie slice of the workspace billing summary. Response schema matches the workspace-scope endpoint
+      plus a `zombie_id` field. SDK shape: `workspaces.billing.summary(ws)` vs `workspaces.zombies.billing.summary(ws, zombie)`.'
+    tags:
+    - Billing
+    parameters:
+    - name: workspace_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    - name: zombie_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    - name: period_days
+      in: query
+      required: false
+      schema:
+        type: integer
+        enum:
+        - 7
+        - 30
+        - 90
+        default: 30
+      description: Time window in days. Matches the workspace-scope billing summary endpoint.
+    responses:
+      '200':
+        description: Billing summary for the zombie
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - workspace_id
+              - zombie_id
+              - period_days
+              - period_start_ms
+              - period_end_ms
+              - completed
+              - non_billable
+              - non_billable_score_gated
+              - total_runs
+              - total_cents
+              - request_id
+              properties:
+                workspace_id:
+                  type: string
+                zombie_id:
+                  type: string
+                period_days:
+                  type: integer
+                period_start_ms:
+                  type: integer
+                  format: int64
+                period_end_ms:
+                  type: integer
+                  format: int64
+                completed:
+                  type: object
+                  properties:
+                    count:
+                      type: integer
+                    agent_seconds:
+                      type: integer
+                non_billable:
+                  type: object
+                  properties:
+                    count:
+                      type: integer
+                non_billable_score_gated:
+                  type: object
+                  properties:
+                    count:
+                      type: integer
+                    avg_score:
+                      type: integer
+                total_runs:
+                  type: integer
+                total_cents:
+                  type: integer
+                  format: int64
+                request_id:
+                  type: string
+      default:
+        $ref: ../components/responses.yaml#/components/responses/Error

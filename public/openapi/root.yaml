@@ -1,0 +1,197 @@
+openapi: 3.1.0
+info:
+  title: UseZombie Control Plane API
+  version: 1.0.0
+  description: Zombie automation control plane — webhook-driven agent execution in a bwrap+landlock sandbox.
+  contact:
+    name: UseZombie
+    url: https://usezombie.com
+servers:
+- url: https://api.usezombie.com
+  description: Production
+security:
+- BearerAuth: []
+tags:
+- name: Health
+  description: System status and readiness probes
+  x-mintlify:
+    navigation: Health
+- name: Authentication
+  description: CLI login flow via device-code style sessions and GitHub OAuth
+  x-mintlify:
+    navigation: Authentication
+- name: Workspaces
+  description: Create and manage workspaces (one workspace per repo)
+  x-mintlify:
+    navigation: Workspaces
+- name: Activity
+  description: Workspace-wide activity feed (scheduled spec queues, zombie state transitions, webhook ingestion)
+  x-mintlify:
+    navigation: Activity
+- name: Runs
+  description: Core spec-to-PR pipeline — queue, monitor, stream, retry, and cancel runs
+  x-mintlify:
+    navigation: Runs
+- name: Zombies
+  description: Zombie management and webhook ingestion — create, configure, and operate event-driven Zombies
+  x-mintlify:
+    navigation: Zombies
+- name: Memory
+  description: Persistent zombie memory — store, recall, list, and forget key-value entries scoped to a zombie
+  x-mintlify:
+    navigation: Memory
+- name: Credentials
+  description: BYOK (Bring Your Own Key) LLM provider credentials
+  x-mintlify:
+    navigation: Credentials
+- name: Skill Secrets
+  description: Per-skill secret storage for agent skill integrations
+  x-mintlify:
+    navigation: Skill Secrets
+- name: Admin
+  description: Platform-wide configuration — manage shared LLM provider keys
+  x-mintlify:
+    navigation: Admin
+- name: Billing
+  description: Plan upgrades and billing events
+  x-mintlify:
+    navigation: Billing
+- name: Integration Grants
+  description: Zombie runtime permission grants for third-party services (Slack, GitHub, etc.)
+  x-mintlify:
+    navigation: Integration Grants
+- name: Agent Keys
+  description: Per-zombie API keys for LangGraph/CrewAI/Composio agents to call the Execute endpoint. Workspace-scoped.
+  x-mintlify:
+    navigation: Agent Keys
+- name: API Keys
+  description: Tenant-level admin API keys (`zmb_t_` prefix). Rotatable, self-service, replace the legacy `API_KEY` env var
+    for admin auth.
+  x-mintlify:
+    navigation: API Keys
+- name: Execute
+  description: Synchronous tool execution proxy for external agents
+  x-mintlify:
+    navigation: Execute
+- name: Slack
+  description: Slack OAuth install flow and inbound events/interactions webhooks
+  x-mintlify:
+    navigation: Slack
+- name: Webhooks
+  description: Approval-gate webhooks invoked by humans to unblock a paused zombie
+  x-mintlify:
+    navigation: Webhooks
+- name: Telemetry
+  description: Per-zombie execution telemetry and internal operator telemetry
+  x-mintlify:
+    navigation: Telemetry
+- name: Spec
+  description: Spec templating and preview endpoints for the agent relay
+  x-mintlify:
+    navigation: Spec
+- name: Scoring
+  description: Per-workspace scoring configuration
+  x-mintlify:
+    navigation: Scoring
+paths:
+  /healthz:
+    $ref: ./paths/health.yaml#/~1healthz
+  /internal/v1/telemetry:
+    $ref: ./paths/telemetry.yaml#/~1internal~1v1~1telemetry
+  /metrics:
+    $ref: ./paths/health.yaml#/~1metrics
+  /readyz:
+    $ref: ./paths/health.yaml#/~1readyz
+  /v1/admin/platform-keys:
+    $ref: ./paths/admin.yaml#/~1v1~1admin~1platform-keys
+  /v1/admin/platform-keys/{provider}:
+    $ref: ./paths/admin.yaml#/~1v1~1admin~1platform-keys~1{provider}
+  /v1/auth/sessions:
+    $ref: ./paths/authentication.yaml#/~1v1~1auth~1sessions
+  /v1/auth/sessions/{session_id}:
+    $ref: ./paths/authentication.yaml#/~1v1~1auth~1sessions~1{session_id}
+  /v1/auth/sessions/{session_id}/complete:
+    $ref: ./paths/authentication.yaml#/~1v1~1auth~1sessions~1{session_id}~1complete
+  /v1/execute:
+    $ref: ./paths/execute.yaml#/~1v1~1execute
+  /v1/github/callback:
+    $ref: ./paths/authentication.yaml#/~1v1~1github~1callback
+  /v1/memory/forget:
+    $ref: ./paths/memory.yaml#/~1v1~1memory~1forget
+  /v1/memory/list:
+    $ref: ./paths/memory.yaml#/~1v1~1memory~1list
+  /v1/memory/recall:
+    $ref: ./paths/memory.yaml#/~1v1~1memory~1recall
+  /v1/memory/store:
+    $ref: ./paths/memory.yaml#/~1v1~1memory~1store
+  /v1/slack/callback:
+    $ref: ./paths/slack.yaml#/~1v1~1slack~1callback
+  /v1/slack/events:
+    $ref: ./paths/slack.yaml#/~1v1~1slack~1events
+  /v1/slack/install:
+    $ref: ./paths/slack.yaml#/~1v1~1slack~1install
+  /v1/slack/interactions:
+    $ref: ./paths/slack.yaml#/~1v1~1slack~1interactions
+  /v1/webhooks/svix/{zombie_id}:
+    $ref: ./paths/webhooks.yaml#/~1v1~1webhooks~1svix~1{zombie_id}
+  /v1/webhooks/{zombie_id}:
+    $ref: ./paths/zombies.yaml#/~1v1~1webhooks~1{zombie_id}
+  /v1/webhooks/{zombie_id}/approval:
+    $ref: ./paths/webhooks.yaml#/~1v1~1webhooks~1{zombie_id}~1approval
+  /v1/webhooks/{zombie_id}/grant-approval:
+    $ref: ./paths/webhooks.yaml#/~1v1~1webhooks~1{zombie_id}~1grant-approval
+  /v1/workspaces:
+    $ref: ./paths/workspaces.yaml#/~1v1~1workspaces
+  /v1/workspaces/{workspace_id}/activity:
+    $ref: ./paths/activity.yaml#/~1v1~1workspaces~1{workspace_id}~1activity
+  /v1/workspaces/{workspace_id}/billing/events:
+    $ref: ./paths/billing.yaml#/~1v1~1workspaces~1{workspace_id}~1billing~1events
+  /v1/workspaces/{workspace_id}/billing/scale:
+    $ref: ./paths/billing.yaml#/~1v1~1workspaces~1{workspace_id}~1billing~1scale
+  /v1/workspaces/{workspace_id}/billing/summary:
+    $ref: ./paths/billing.yaml#/~1v1~1workspaces~1{workspace_id}~1billing~1summary
+  /v1/workspaces/{workspace_id}/credentials:
+    $ref: ./paths/credentials.yaml#/~1v1~1workspaces~1{workspace_id}~1credentials
+  /v1/workspaces/{workspace_id}/credentials/llm:
+    $ref: ./paths/credentials.yaml#/~1v1~1workspaces~1{workspace_id}~1credentials~1llm
+  /v1/api-keys:
+    $ref: ./paths/api-keys.yaml#/~1v1~1api-keys
+  /v1/api-keys/{id}:
+    $ref: ./paths/api-keys.yaml#/~1v1~1api-keys~1{id}
+  /v1/workspaces/{workspace_id}/agent-keys:
+    $ref: ./paths/agent-keys.yaml#/~1v1~1workspaces~1{workspace_id}~1agent-keys
+  /v1/workspaces/{workspace_id}/agent-keys/{agent_id}:
+    $ref: ./paths/agent-keys.yaml#/~1v1~1workspaces~1{workspace_id}~1agent-keys~1{agent_id}
+  /v1/workspaces/{workspace_id}/scoring/config:
+    $ref: ./paths/scoring.yaml#/~1v1~1workspaces~1{workspace_id}~1scoring~1config
+  /v1/workspaces/{workspace_id}/zombies:
+    $ref: ./paths/zombies.yaml#/~1v1~1workspaces~1{workspace_id}~1zombies
+  /v1/workspaces/{workspace_id}/zombies/{zombie_id}:
+    $ref: ./paths/zombies.yaml#/~1v1~1workspaces~1{workspace_id}~1zombies~1{zombie_id}
+  /v1/workspaces/{workspace_id}/zombies/{zombie_id}/activity:
+    $ref: ./paths/zombies.yaml#/~1v1~1workspaces~1{workspace_id}~1zombies~1{zombie_id}~1activity
+  /v1/workspaces/{workspace_id}/zombies/{zombie_id}/billing/summary:
+    $ref: ./paths/billing.yaml#/~1v1~1workspaces~1{workspace_id}~1zombies~1{zombie_id}~1billing~1summary
+  /v1/workspaces/{workspace_id}/zombies/{zombie_id}/integration-grants:
+    $ref: ./paths/integration-grants.yaml#/~1v1~1workspaces~1{workspace_id}~1zombies~1{zombie_id}~1integration-grants
+  /v1/workspaces/{workspace_id}/zombies/{zombie_id}/integration-grants/{grant_id}:
+    $ref: ./paths/integration-grants.yaml#/~1v1~1workspaces~1{workspace_id}~1zombies~1{zombie_id}~1integration-grants~1{grant_id}
+  /v1/workspaces/{workspace_id}/zombies/{zombie_id}/integration-requests:
+    $ref: ./paths/integration-grants.yaml#/~1v1~1workspaces~1{workspace_id}~1zombies~1{zombie_id}~1integration-requests
+  /v1/workspaces/{workspace_id}/zombies/{zombie_id}/telemetry:
+    $ref: ./paths/telemetry.yaml#/~1v1~1workspaces~1{workspace_id}~1zombies~1{zombie_id}~1telemetry
+  /v1/workspaces/{workspace_id}/zombies/{zombie_id}/steer:
+    $ref: ./paths/zombies.yaml#/~1v1~1workspaces~1{workspace_id}~1zombies~1{zombie_id}~1steer
+  /v1/workspaces/{workspace_id}/zombies/{zombie_id}/stop:
+    $ref: ./paths/zombies.yaml#/~1v1~1workspaces~1{workspace_id}~1zombies~1{zombie_id}~1stop
+  /v1/workspaces/{workspace_id}/pause:
+    $ref: ./paths/workspaces.yaml#/~1v1~1workspaces~1{workspace_id}~1pause
+  /v1/workspaces/{workspace_id}/sync:
+    $ref: ./paths/workspaces.yaml#/~1v1~1workspaces~1{workspace_id}~1sync
+components:
+  securitySchemes:
+    $ref: ./components/security.yaml#/components/securitySchemes
+  responses:
+    $ref: ./components/responses.yaml#/components/responses
+  schemas:
+    $ref: ./components/schemas.yaml#/components/schemas

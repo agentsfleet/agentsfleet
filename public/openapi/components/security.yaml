@@ -1,0 +1,7 @@
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Obtain a token via the CLI auth flow (POST /v1/auth/sessions) or GitHub OAuth

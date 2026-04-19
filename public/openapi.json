@@ -3,7 +3,7 @@
   "info": {
     "title": "UseZombie Control Plane API",
     "version": "1.0.0",
-    "description": "Zombie automation control plane \u2014 webhook-driven agent execution in a bwrap+landlock sandbox.",
+    "description": "Zombie automation control plane — webhook-driven agent execution in a bwrap+landlock sandbox.",
     "contact": {
       "name": "UseZombie",
       "url": "https://usezombie.com"
@@ -43,22 +43,29 @@
       }
     },
     {
+      "name": "Activity",
+      "description": "Workspace-wide activity feed (scheduled spec queues, zombie state transitions, webhook ingestion)",
+      "x-mintlify": {
+        "navigation": "Activity"
+      }
+    },
+    {
       "name": "Runs",
-      "description": "Core spec-to-PR pipeline \u2014 queue, monitor, stream, retry, and cancel runs",
+      "description": "Core spec-to-PR pipeline — queue, monitor, stream, retry, and cancel runs",
       "x-mintlify": {
         "navigation": "Runs"
       }
     },
     {
       "name": "Zombies",
-      "description": "Zombie management and webhook ingestion \u2014 create, configure, and operate event-driven Zombies",
+      "description": "Zombie management and webhook ingestion — create, configure, and operate event-driven Zombies",
       "x-mintlify": {
         "navigation": "Zombies"
       }
     },
     {
       "name": "Memory",
-      "description": "Persistent zombie memory \u2014 store, recall, list, and forget key-value entries scoped to a zombie",
+      "description": "Persistent zombie memory — store, recall, list, and forget key-value entries scoped to a zombie",
       "x-mintlify": {
         "navigation": "Memory"
       }
@@ -79,7 +86,7 @@
     },
     {
       "name": "Admin",
-      "description": "Platform-wide configuration \u2014 manage shared LLM provider keys",
+      "description": "Platform-wide configuration — manage shared LLM provider keys",
       "x-mintlify": {
         "navigation": "Admin"
       }
@@ -160,7 +167,7 @@
       "get": {
         "operationId": "healthz",
         "summary": "Liveness check",
-        "description": "Returns 200 as long as the process is alive and able to serve HTTP. Does not probe dependencies \u2014 use /readyz for readiness (database + queue).",
+        "description": "Returns 200 as long as the process is alive and able to serve HTTP. Does not probe dependencies — use /readyz for readiness (database + queue).",
         "tags": [
           "Health"
         ],
@@ -210,7 +217,7 @@
       "get": {
         "operationId": "internal_telemetry",
         "summary": "Internal operator telemetry",
-        "description": "Admin-only platform health snapshot \u2014 in-flight request counts, queue depth, error rates. Requires the admin API key, not a user bearer token.",
+        "description": "Admin-only platform health snapshot — in-flight request counts, queue depth, error rates. Requires the admin API key, not a user bearer token.",
         "tags": [
           "Telemetry"
         ],
@@ -819,7 +826,7 @@
       "post": {
         "operationId": "memory_forget",
         "summary": "Forget a memory entry by key",
-        "description": "Deletes the entry with the given `key` under the zombie instance. Returns `{ deleted: false }` if no match \u2014 never errors on miss.",
+        "description": "Deletes the entry with the given `key` under the zombie instance. Returns `{ deleted: false }` if no match — never errors on miss.",
         "tags": [
           "Memory"
         ],
@@ -972,7 +979,7 @@
       "get": {
         "operationId": "memory_recall",
         "summary": "Recall memory entries matching a query",
-        "description": "Case-insensitive LIKE search across both `key` and `content`. LIKE metacharacters in `query` are escaped \u2014 a query of `%` does NOT return every entry.",
+        "description": "Case-insensitive LIKE search across both `key` and `content`. LIKE metacharacters in `query` are escaped — a query of `%` does NOT return every entry.",
         "tags": [
           "Memory"
         ],
@@ -1134,7 +1141,7 @@
       "get": {
         "operationId": "slack_callback",
         "summary": "Slack OAuth redirect target",
-        "description": "Exchanges the OAuth code for a team access token and persists team\u2192workspace binding. Validates the HMAC-signed state nonce.",
+        "description": "Exchanges the OAuth code for a team access token and persists team→workspace binding. Validates the HMAC-signed state nonce.",
         "tags": [
           "Slack"
         ],
@@ -1254,11 +1261,102 @@
         "security": []
       }
     },
+    "/v1/webhooks/svix/{zombie_id}": {
+      "post": {
+        "operationId": "receive_svix_webhook",
+        "summary": "Receive a Svix-signed webhook (Clerk events)",
+        "description": "Ingress endpoint for Svix-signed webhooks (e.g. Clerk user lifecycle events). Signature is verified by the webhook auth middleware against the workspace's Svix secret before the handler runs. Body shape is event-specific and defined by the upstream issuer; the server validates the envelope and dispatches to the zombie's event log.",
+        "tags": [
+          "Webhooks"
+        ],
+        "parameters": [
+          {
+            "name": "zombie_id",
+            "in": "path",
+            "required": true,
+            "description": "UUIDv7 of the zombie receiving the webhook.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "svix-id",
+            "in": "header",
+            "required": true,
+            "description": "Svix message identifier (used for deduplication and signature binding).",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "svix-timestamp",
+            "in": "header",
+            "required": true,
+            "description": "Unix timestamp of the Svix delivery (used for replay protection).",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "svix-signature",
+            "in": "header",
+            "required": true,
+            "description": "Space-separated list of Svix signatures (v1 scheme).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "description": "Opaque event envelope; upstream issuer (Svix) defines the payload shape per event type.",
+                "additionalProperties": true
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Webhook accepted and queued for processing.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "accepted"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": []
+      }
+    },
     "/v1/webhooks/{zombie_id}": {
       "post": {
         "operationId": "receive_webhook",
         "summary": "Deliver an inbound webhook event to a Zombie",
-        "description": "Delivers an inbound event to the Zombie identified by `zombie_id`. The Zombie is looked up by primary key \u2014 no JSONB traversal, no source-name uniqueness required. Bearer token is validated against the Zombie's `trigger.token` (omit if no token configured). Duplicate events (same `event_id` within 24 h) return 200 `{status: \"duplicate\"}`. A new event is enqueued to the Zombie's Redis stream and returns 202.",
+        "description": "Delivers an inbound event to the Zombie identified by `zombie_id`. The Zombie is looked up by primary key — no JSONB traversal, no source-name uniqueness required. Bearer token is validated against the Zombie's `trigger.token` (omit if no token configured). Duplicate events (same `event_id` within 24 h) return 200 `{status: \"duplicate\"}`. A new event is enqueued to the Zombie's Redis stream and returns 202.",
         "tags": [
           "Zombies"
         ],
@@ -1297,7 +1395,7 @@
                   "data": {
                     "type": "object",
                     "additionalProperties": true,
-                    "description": "Event payload \u2014 any JSON object. Passed as-is into the Zombie event loop."
+                    "description": "Event payload — any JSON object. Passed as-is into the Zombie event loop."
                   }
                 }
               }
@@ -1305,6 +1403,25 @@
           }
         },
         "responses": {
+          "200": {
+            "description": "Duplicate event — already processed within the 24-hour dedup window.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "status"
+                  ],
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "const": "duplicate"
+                    }
+                  }
+                }
+              }
+            }
+          },
           "202": {
             "description": "Event accepted and enqueued for the Zombie.",
             "content": {
@@ -1328,27 +1445,8 @@
               }
             }
           },
-          "200": {
-            "description": "Duplicate event \u2014 already processed within the 24-hour dedup window.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "required": [
-                    "status"
-                  ],
-                  "properties": {
-                    "status": {
-                      "type": "string",
-                      "const": "duplicate"
-                    }
-                  }
-                }
-              }
-            }
-          },
           "400": {
-            "description": "Malformed payload \u2014 missing `event_id` or `type`.",
+            "description": "Malformed payload — missing `event_id` or `type`.",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -1620,7 +1718,7 @@
                     "install_url": {
                       "type": "string",
                       "format": "uri",
-                      "description": "GitHub App installation URL \u2014 direct user here if the app is not yet installed"
+                      "description": "GitHub App installation URL — direct user here if the app is not yet installed"
                     },
                     "request_id": {
                       "type": "string",
@@ -2053,7 +2151,7 @@
       "get": {
         "operationId": "list_workspace_credentials",
         "summary": "List credentials stored for a workspace",
-        "description": "Returns credential names. Values are never returned \u2014 they live encrypted in `vault.secrets`.",
+        "description": "Returns credential names. Values are never returned — they live encrypted in `vault.secrets`.",
         "tags": [
           "Credentials"
         ],
@@ -2213,7 +2311,7 @@
                   },
                   "api_key": {
                     "type": "string",
-                    "description": "API key for the provider \u2014 encrypted at rest, never echoed"
+                    "description": "API key for the provider — encrypted at rest, never echoed"
                   }
                 }
               }
@@ -2316,7 +2414,7 @@
       "post": {
         "operationId": "create_api_key",
         "summary": "Mint a tenant API key",
-        "description": "Creates a new `zmb_t_`-prefixed tenant admin key. **The raw key is returned once.** Only the SHA-256 hash is persisted \u2014 the key cannot be retrieved again. Requires operator (or admin) role.",
+        "description": "Creates a new `zmb_t_`-prefixed tenant admin key. **The raw key is returned once.** Only the SHA-256 hash is persisted — the key cannot be retrieved again. Requires operator (or admin) role.",
         "tags": [
           "API Keys"
         ],
@@ -2368,7 +2466,7 @@
                     },
                     "key": {
                       "type": "string",
-                      "description": "Raw `zmb_t_` tenant key (70 chars). Shown once \u2014 store securely."
+                      "description": "Raw `zmb_t_` tenant key (70 chars). Shown once — store securely."
                     },
                     "created_at": {
                       "type": "integer",
@@ -2490,7 +2588,7 @@
       "patch": {
         "operationId": "revoke_api_key",
         "summary": "Revoke a tenant API key",
-        "description": "Partial lifecycle update. Body must be `{\"active\": false}` \u2014 re-activation is not supported; mint a new key instead. Sets `revoked_at` and `updated_at`.",
+        "description": "Partial lifecycle update. Body must be `{\"active\": false}` — re-activation is not supported; mint a new key instead. Sets `revoked_at` and `updated_at`.",
         "tags": [
           "API Keys"
         ],
@@ -2623,7 +2721,7 @@
       "get": {
         "operationId": "list_agent_keys",
         "summary": "List agent keys in a workspace",
-        "description": "Returns agent-key metadata only \u2014 never returns `key_hash`.",
+        "description": "Returns agent-key metadata only — never returns `key_hash`.",
         "tags": [
           "Agent Keys"
         ],
@@ -2683,7 +2781,7 @@
       "post": {
         "operationId": "create_agent_key",
         "summary": "Issue an agent key for a zombie",
-        "description": "Creates a new `zmb_` agent key bound to a specific zombie. **The raw key is returned once.** Only the SHA-256 hash is persisted \u2014 the key cannot be retrieved again.",
+        "description": "Creates a new `zmb_` agent key bound to a specific zombie. **The raw key is returned once.** Only the SHA-256 hash is persisted — the key cannot be retrieved again.",
         "tags": [
           "Agent Keys"
         ],
@@ -2755,7 +2853,7 @@
                     },
                     "key": {
                       "type": "string",
-                      "description": "Raw `zmb_` API key. Shown once \u2014 store securely."
+                      "description": "Raw `zmb_` API key. Shown once — store securely."
                     },
                     "created_at": {
                       "type": "integer",
@@ -2908,127 +3006,11 @@
         }
       }
     },
-    "/v1/workspaces/{workspace_id}/spec/preview": {
-      "post": {
-        "operationId": "spec_preview",
-        "summary": "Agent relay: preview a spec",
-        "description": "Internal endpoint used by the agent relay to preview a spec before execution. Request/response shapes are version-coupled to the relay.",
-        "tags": [
-          "Spec"
-        ],
-        "parameters": [
-          {
-            "name": "workspace_id",
-            "in": "path",
-            "required": true,
-            "description": "UUIDv7 of the workspace.",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "description": "Relay-specific request payload."
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "description": "Preview payload."
-                }
-              }
-            }
-          },
-          "400": {
-            "$ref": "#/components/responses/Error"
-          },
-          "401": {
-            "$ref": "#/components/responses/Error"
-          },
-          "403": {
-            "$ref": "#/components/responses/Error"
-          },
-          "404": {
-            "$ref": "#/components/responses/Error"
-          }
-        }
-      }
-    },
-    "/v1/workspaces/{workspace_id}/spec/template": {
-      "post": {
-        "operationId": "spec_template",
-        "summary": "Agent relay: fetch a spec template",
-        "description": "Internal endpoint used by the agent relay to materialise a spec template for a given workspace. Request/response shapes are version-coupled to the relay.",
-        "tags": [
-          "Spec"
-        ],
-        "parameters": [
-          {
-            "name": "workspace_id",
-            "in": "path",
-            "required": true,
-            "description": "UUIDv7 of the workspace.",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "description": "Relay-specific request payload."
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "description": "Rendered template payload."
-                }
-              }
-            }
-          },
-          "400": {
-            "$ref": "#/components/responses/Error"
-          },
-          "401": {
-            "$ref": "#/components/responses/Error"
-          },
-          "403": {
-            "$ref": "#/components/responses/Error"
-          },
-          "404": {
-            "$ref": "#/components/responses/Error"
-          }
-        }
-      }
-    },
     "/v1/workspaces/{workspace_id}/zombies": {
       "get": {
         "operationId": "list_zombies",
         "summary": "List zombies in a workspace",
-        "description": "Returns all zombies the caller has access to in the given workspace. Response envelope follows the RAD \u00a78 `items`/`total` convention.",
+        "description": "Returns all zombies the caller has access to in the given workspace. Response envelope follows the RAD §8 `items`/`total` convention.",
         "tags": [
           "Zombies"
         ],
@@ -3180,7 +3162,7 @@
       "delete": {
         "operationId": "delete_zombie",
         "summary": "Kill a zombie",
-        "description": "Marks the zombie as killed. Idempotent: re-killing a killed zombie returns the same 200 response. Scoped to workspace \u2014 cross-workspace deletes are rejected at the SQL layer as defence-in-depth.",
+        "description": "Marks the zombie as killed. Idempotent: re-killing a killed zombie returns the same 200 response. Scoped to workspace — cross-workspace deletes are rejected at the SQL layer as defence-in-depth.",
         "tags": [
           "Zombies"
         ],
@@ -3696,7 +3678,7 @@
       "get": {
         "operationId": "get_zombie_telemetry",
         "summary": "Get per-zombie telemetry",
-        "description": "Returns execution telemetry for a specific zombie \u2014 last activity, event count, budget consumed, error counts.",
+        "description": "Returns execution telemetry for a specific zombie — last activity, event count, budget consumed, error counts.",
         "tags": [
           "Telemetry"
         ],
@@ -3845,7 +3827,7 @@
         "summary": "Stop a zombie (kill switch)",
         "description": "Transitions a zombie's status from `active` or `paused` to `stopped` and records a `zombie_stopped` activity event. Returns 409 if the zombie is already stopped or killed. Returns 404 if the zombie is not in the path workspace (cross-workspace IDOR guard).",
         "tags": [
-          "Zombie"
+          "Zombies"
         ],
         "parameters": [
           {
@@ -3949,7 +3931,7 @@
                   },
                   "version": {
                     "type": "integer",
-                    "description": "Optimistic concurrency version \u2014 must match current workspace version"
+                    "description": "Optimistic concurrency version — must match current workspace version"
                   }
                 }
               }
@@ -4069,7 +4051,253 @@
         "description": "Obtain a token via the CLI auth flow (POST /v1/auth/sessions) or GitHub OAuth"
       }
     },
+    "responses": {
+      "Error": {
+        "description": "RFC 7807 problem detail error response",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorBody"
+            }
+          }
+        }
+      }
+    },
     "schemas": {
+      "ErrorBody": {
+        "type": "object",
+        "description": "RFC 7807 problem detail error response (application/problem+json)",
+        "required": [
+          "docs_uri",
+          "title",
+          "detail",
+          "error_code",
+          "request_id"
+        ],
+        "properties": {
+          "docs_uri": {
+            "type": "string",
+            "format": "uri",
+            "description": "Stable link to documentation for this error code",
+            "example": "https://docs.usezombie.com/error-codes#UZ-ZMB-009"
+          },
+          "title": {
+            "type": "string",
+            "description": "Short human-readable label, same for every occurrence of this code",
+            "example": "Zombie not found"
+          },
+          "detail": {
+            "type": "string",
+            "description": "Instance-specific context describing what went wrong",
+            "example": "No zombie with id 'abc123' in this workspace."
+          },
+          "error_code": {
+            "type": "string",
+            "description": "Machine-readable error code",
+            "example": "UZ-ZMB-009"
+          },
+          "request_id": {
+            "type": "string",
+            "description": "Correlation ID for this request"
+          }
+        }
+      },
+      "ReadyzBody": {
+        "type": "object",
+        "description": "Response body for GET /readyz. Identical shape for both 200 (healthy) and 503 (degraded) responses — only the boolean values differ.",
+        "required": [
+          "ready",
+          "database",
+          "queue"
+        ],
+        "properties": {
+          "ready": {
+            "type": "boolean",
+            "description": "Overall readiness — true only when every dependency is healthy. Mirrors the HTTP status (true ↔ 200, false ↔ 503)."
+          },
+          "database": {
+            "type": "boolean",
+            "description": "True if the PostgreSQL connection pool is reachable and a trivial query succeeds"
+          },
+          "queue": {
+            "type": "boolean",
+            "description": "True if the Redis queue backend is reachable"
+          }
+        },
+        "additionalProperties": false
+      },
+      "PlatformKey": {
+        "type": "object",
+        "description": "A platform-wide LLM provider key configuration",
+        "properties": {
+          "provider": {
+            "type": "string",
+            "description": "LLM provider name"
+          },
+          "source_workspace_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Workspace whose BYOK key is used"
+          },
+          "active": {
+            "type": "boolean",
+            "description": "Whether this platform key is active"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "MemoryEntry": {
+        "type": "object",
+        "required": [
+          "key",
+          "content",
+          "category",
+          "updated_at"
+        ],
+        "properties": {
+          "key": {
+            "type": "string",
+            "maxLength": 255
+          },
+          "content": {
+            "type": "string",
+            "maxLength": 16384
+          },
+          "category": {
+            "type": "string",
+            "description": "e.g. core, episodic, task"
+          },
+          "updated_at": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "CredentialSummary": {
+        "type": "object",
+        "required": [
+          "name",
+          "created_at"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "TenantApiKey": {
+        "type": "object",
+        "description": "Metadata for a tenant API key. `key_hash` and the raw key are never returned.",
+        "required": [
+          "id",
+          "key_name",
+          "active",
+          "created_at"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "key_name": {
+            "type": "string"
+          },
+          "active": {
+            "type": "boolean"
+          },
+          "created_at": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "last_used_at": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true,
+            "description": "Stays null until the async-stamping workstream ships."
+          },
+          "revoked_at": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          }
+        }
+      },
+      "AgentKey": {
+        "type": "object",
+        "required": [
+          "agent_id",
+          "zombie_id",
+          "name",
+          "created_at"
+        ],
+        "properties": {
+          "agent_id": {
+            "type": "string"
+          },
+          "zombie_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "last_used_at": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          }
+        }
+      },
+      "ZombieSummary": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "paused",
+              "killed"
+            ]
+          },
+          "created_at": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Unix epoch milliseconds"
+          },
+          "updated_at": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
       "ActivityEvent": {
         "type": "object",
         "required": [
@@ -4091,6 +4319,86 @@
           "created_at": {
             "type": "integer",
             "format": "int64"
+          }
+        }
+      },
+      "IntegrationGrant": {
+        "type": "object",
+        "required": [
+          "grant_id",
+          "service",
+          "status",
+          "requested_at"
+        ],
+        "properties": {
+          "grant_id": {
+            "type": "string"
+          },
+          "service": {
+            "type": "string",
+            "description": "e.g. slack, github"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "approved",
+              "revoked"
+            ]
+          },
+          "requested_at": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "approved_at": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "revoked_at": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "reason": {
+            "type": "string"
+          }
+        }
+      },
+      "SpecSummary": {
+        "type": "object",
+        "description": "Summary of a spec document",
+        "properties": {
+          "spec_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Unique spec identifier"
+          },
+          "file_path": {
+            "type": "string",
+            "description": "Path to the spec file in the repository"
+          },
+          "title": {
+            "type": "string",
+            "description": "Spec title extracted from the document"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "in_progress",
+              "done",
+              "failed"
+            ],
+            "description": "Current spec lifecycle status"
+          },
+          "created_at": {
+            "type": "integer",
+            "description": "Unix timestamp in milliseconds"
+          },
+          "updated_at": {
+            "type": "integer",
+            "description": "Unix timestamp in milliseconds"
           }
         }
       },
@@ -4234,223 +4542,6 @@
           }
         }
       },
-      "CredentialSummary": {
-        "type": "object",
-        "required": [
-          "name",
-          "created_at"
-        ],
-        "properties": {
-          "name": {
-            "type": "string"
-          },
-          "created_at": {
-            "type": "integer",
-            "format": "int64"
-          }
-        }
-      },
-      "ErrorBody": {
-        "type": "object",
-        "description": "RFC 7807 problem detail error response (application/problem+json)",
-        "required": [
-          "docs_uri",
-          "title",
-          "detail",
-          "error_code",
-          "request_id"
-        ],
-        "properties": {
-          "docs_uri": {
-            "type": "string",
-            "format": "uri",
-            "description": "Stable link to documentation for this error code",
-            "example": "https://docs.usezombie.com/error-codes#UZ-ZMB-009"
-          },
-          "title": {
-            "type": "string",
-            "description": "Short human-readable label, same for every occurrence of this code",
-            "example": "Zombie not found"
-          },
-          "detail": {
-            "type": "string",
-            "description": "Instance-specific context describing what went wrong",
-            "example": "No zombie with id 'abc123' in this workspace."
-          },
-          "error_code": {
-            "type": "string",
-            "description": "Machine-readable error code",
-            "example": "UZ-ZMB-009"
-          },
-          "request_id": {
-            "type": "string",
-            "description": "Correlation ID for this request"
-          }
-        }
-      },
-      "TenantApiKey": {
-        "type": "object",
-        "description": "Metadata for a tenant API key. `key_hash` and the raw key are never returned.",
-        "required": [
-          "id",
-          "key_name",
-          "active",
-          "created_at"
-        ],
-        "properties": {
-          "id": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "key_name": {
-            "type": "string"
-          },
-          "active": {
-            "type": "boolean"
-          },
-          "created_at": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "last_used_at": {
-            "type": "integer",
-            "format": "int64",
-            "nullable": true,
-            "description": "Stays null until the async-stamping workstream ships."
-          },
-          "revoked_at": {
-            "type": "integer",
-            "format": "int64",
-            "nullable": true
-          }
-        }
-      },
-      "AgentKey": {
-        "type": "object",
-        "required": [
-          "agent_id",
-          "zombie_id",
-          "name",
-          "created_at"
-        ],
-        "properties": {
-          "agent_id": {
-            "type": "string"
-          },
-          "zombie_id": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "name": {
-            "type": "string"
-          },
-          "description": {
-            "type": "string"
-          },
-          "created_at": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "last_used_at": {
-            "type": "integer",
-            "format": "int64",
-            "nullable": true
-          }
-        }
-      },
-      "IntegrationGrant": {
-        "type": "object",
-        "required": [
-          "grant_id",
-          "service",
-          "status",
-          "requested_at"
-        ],
-        "properties": {
-          "grant_id": {
-            "type": "string"
-          },
-          "service": {
-            "type": "string",
-            "description": "e.g. slack, github"
-          },
-          "status": {
-            "type": "string",
-            "enum": [
-              "pending",
-              "approved",
-              "revoked"
-            ]
-          },
-          "requested_at": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "approved_at": {
-            "type": "integer",
-            "format": "int64",
-            "nullable": true
-          },
-          "revoked_at": {
-            "type": "integer",
-            "format": "int64",
-            "nullable": true
-          },
-          "reason": {
-            "type": "string"
-          }
-        }
-      },
-      "MemoryEntry": {
-        "type": "object",
-        "required": [
-          "key",
-          "content",
-          "category",
-          "updated_at"
-        ],
-        "properties": {
-          "key": {
-            "type": "string",
-            "maxLength": 255
-          },
-          "content": {
-            "type": "string",
-            "maxLength": 16384
-          },
-          "category": {
-            "type": "string",
-            "description": "e.g. core, episodic, task"
-          },
-          "updated_at": {
-            "type": "integer",
-            "format": "int64"
-          }
-        }
-      },
-      "PlatformKey": {
-        "type": "object",
-        "description": "A platform-wide LLM provider key configuration",
-        "properties": {
-          "provider": {
-            "type": "string",
-            "description": "LLM provider name"
-          },
-          "source_workspace_id": {
-            "type": "string",
-            "format": "uuid",
-            "description": "Workspace whose BYOK key is used"
-          },
-          "active": {
-            "type": "boolean",
-            "description": "Whether this platform key is active"
-          },
-          "updated_at": {
-            "type": "string",
-            "format": "date-time"
-          }
-        }
-      },
       "PolicyEvent": {
         "type": "object",
         "description": "A policy evaluation event from the Warden stage",
@@ -4489,7 +4580,7 @@
       },
       "Proposal": {
         "type": "object",
-        "description": "An agent self-tuning proposal \u2014 a suggested change to the agent configuration",
+        "description": "An agent self-tuning proposal — a suggested change to the agent configuration",
         "properties": {
           "proposal_id": {
             "type": "string",
@@ -4534,67 +4625,6 @@
           }
         }
       },
-      "ReadyzBody": {
-        "type": "object",
-        "description": "Response body for GET /readyz. Identical shape for both 200 (healthy) and 503 (degraded) responses \u2014 only the boolean values differ.",
-        "required": [
-          "ready",
-          "database",
-          "queue"
-        ],
-        "properties": {
-          "ready": {
-            "type": "boolean",
-            "description": "Overall readiness \u2014 true only when every dependency is healthy. Mirrors the HTTP status (true \u2194 200, false \u2194 503)."
-          },
-          "database": {
-            "type": "boolean",
-            "description": "True if the PostgreSQL connection pool is reachable and a trivial query succeeds"
-          },
-          "queue": {
-            "type": "boolean",
-            "description": "True if the Redis queue backend is reachable"
-          }
-        },
-        "additionalProperties": false
-      },
-      "SpecSummary": {
-        "type": "object",
-        "description": "Summary of a spec document",
-        "properties": {
-          "spec_id": {
-            "type": "string",
-            "format": "uuid",
-            "description": "Unique spec identifier"
-          },
-          "file_path": {
-            "type": "string",
-            "description": "Path to the spec file in the repository"
-          },
-          "title": {
-            "type": "string",
-            "description": "Spec title extracted from the document"
-          },
-          "status": {
-            "type": "string",
-            "enum": [
-              "pending",
-              "in_progress",
-              "done",
-              "failed"
-            ],
-            "description": "Current spec lifecycle status"
-          },
-          "created_at": {
-            "type": "integer",
-            "description": "Unix timestamp in milliseconds"
-          },
-          "updated_at": {
-            "type": "integer",
-            "description": "Unix timestamp in milliseconds"
-          }
-        }
-      },
       "Transition": {
         "type": "object",
         "description": "A state transition in the run pipeline",
@@ -4618,54 +4648,6 @@
           "ts": {
             "type": "integer",
             "description": "Unix timestamp in milliseconds"
-          }
-        }
-      },
-      "ZombieSummary": {
-        "type": "object",
-        "required": [
-          "id",
-          "name",
-          "status",
-          "created_at",
-          "updated_at"
-        ],
-        "properties": {
-          "id": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "name": {
-            "type": "string"
-          },
-          "status": {
-            "type": "string",
-            "enum": [
-              "active",
-              "paused",
-              "killed"
-            ]
-          },
-          "created_at": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Unix epoch milliseconds"
-          },
-          "updated_at": {
-            "type": "integer",
-            "format": "int64"
-          }
-        }
-      }
-    },
-    "responses": {
-      "Error": {
-        "description": "RFC 7807 problem detail error response",
-        "content": {
-          "application/problem+json": {
-            "schema": {
-              "$ref": "#/components/schemas/ErrorBody"
-            }
           }
         }
       }

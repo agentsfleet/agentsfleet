@@ -401,3 +401,53 @@ test "custom-method subpath: empty ids are rejected" {
     try std.testing.expect(match("/v1/workspaces//pause") == null);
     try std.testing.expect(match("/v1/workspaces//sync") == null);
 }
+
+// Every entry in the route manifest must be dispatchable through match().
+// Guards the in-repo invariant that route_manifest.zig stays aligned with
+// router.zig's match() body.
+//
+// Scope: PATH dispatchability only. match() takes a path, not a method —
+// HTTP method dispatch is handled downstream in src/http/server.zig /
+// route_table.zig. A manifest entry with a correct path but a wrong method
+// (e.g. DELETE where the server actually implements PATCH) will pass this
+// test. Method parity is enforced by scripts/check_openapi_sync.py against
+// public/openapi.json, where method is part of the (method, path) tuple.
+// Together, the two gates catch method+path drift; neither alone is
+// sufficient.
+//
+// Placeholders are substituted with a UUIDv7-shaped fixture rather than a
+// single char so that today's isSingleSegment checks AND any future
+// format-stricter matcher (e.g. stdlib UUID parse on `{workspace_id}`)
+// both succeed with the same test.
+test "route_manifest: every entry dispatches through match()" {
+    const manifest = @import("route_manifest.zig");
+    const fixture = "01234567-89ab-7def-8123-456789abcdef"; // 36-char UUIDv7 shape
+    var buf: [512]u8 = undefined;
+
+    for (manifest.entries) |entry| {
+        var out_len: usize = 0;
+        var i: usize = 0;
+        while (i < entry.path.len) : (i += 1) {
+            if (entry.path[i] == '{') {
+                // Skip to '}' and emit the UUID fixture.
+                while (i < entry.path.len and entry.path[i] != '}') : (i += 1) {}
+                if (out_len + fixture.len > buf.len) return error.ManifestPathTooLongForTestBuffer;
+                @memcpy(buf[out_len .. out_len + fixture.len], fixture);
+                out_len += fixture.len;
+            } else {
+                if (out_len >= buf.len) return error.ManifestPathTooLongForTestBuffer;
+                buf[out_len] = entry.path[i];
+                out_len += 1;
+            }
+        }
+        const concrete = buf[0..out_len];
+
+        if (match(concrete) == null) {
+            std.debug.print(
+                "route_manifest: {s} {s} (concrete: {s}) did not dispatch\n",
+                .{ entry.method, entry.path, concrete },
+            );
+            return error.ManifestEntryDoesNotDispatch;
+        }
+    }
+}

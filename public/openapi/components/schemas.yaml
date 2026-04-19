@@ -1,0 +1,441 @@
+components:
+  schemas:
+    ActivityEvent:
+      type: object
+      required:
+      - event_id
+      - event_type
+      - created_at
+      properties:
+        event_id:
+          type: string
+        event_type:
+          type: string
+        detail:
+          type: string
+          nullable: true
+        created_at:
+          type: integer
+          format: int64
+    AgentProfile:
+      type: object
+      description: Agent profile including trust and improvement metadata
+      properties:
+        agent_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          description: Human-readable agent name
+        status:
+          type: string
+          description: Agent operational status
+        workspace_id:
+          type: string
+          format: uuid
+        trust_level:
+          type: string
+          description: Current trust level (e.g. low, medium, high)
+        trust_streak_runs:
+          type: integer
+          description: Number of consecutive successful runs contributing to trust
+        improvement_stalled_warning:
+          type: boolean
+          description: True if the agent's self-improvement has plateaued
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    AgentRelayRequest:
+      type: object
+      description: Request body for Agent Relay LLM endpoints (spec template and preview). The workspace_id is provided via
+        the path parameter.
+      required:
+      - messages
+      properties:
+        messages:
+          type: array
+          description: Conversation messages for the LLM
+          items:
+            type: object
+            required:
+            - role
+            - content
+            properties:
+              role:
+                type: string
+                enum:
+                - user
+                - assistant
+                - system
+                description: Message role
+              content:
+                type: string
+                description: Message content
+        tools:
+          type: array
+          description: Optional tool definitions for the LLM to use during generation
+          items:
+            type: object
+            required:
+            - name
+            - description
+            - input_schema
+            properties:
+              name:
+                type: string
+                description: Tool name
+              description:
+                type: string
+                description: What the tool does
+              input_schema:
+                type: object
+                additionalProperties: true
+                description: JSON Schema for the tool's input
+    Artifact:
+      type: object
+      description: An artifact produced during a run (e.g. plan, diff, review)
+      properties:
+        artifact_name:
+          type: string
+          description: Human-readable artifact name
+        object_key:
+          type: string
+          description: 'Git path: docs/runs/<run_id>/<name>'
+        checksum_sha256:
+          type: string
+          description: SHA-256 checksum of the artifact content
+        producer:
+          type: string
+          enum:
+          - echo
+          - scout
+          - warden
+          - orchestrator
+          description: Pipeline stage that produced the artifact
+        attempt:
+          type: integer
+          description: Run attempt number that produced this artifact
+        created_at:
+          type: integer
+          description: Unix timestamp in milliseconds
+    CredentialSummary:
+      type: object
+      required:
+      - name
+      - created_at
+      properties:
+        name:
+          type: string
+        created_at:
+          type: integer
+          format: int64
+    ErrorBody:
+      type: object
+      description: RFC 7807 problem detail error response (application/problem+json)
+      required:
+      - docs_uri
+      - title
+      - detail
+      - error_code
+      - request_id
+      properties:
+        docs_uri:
+          type: string
+          format: uri
+          description: Stable link to documentation for this error code
+          example: https://docs.usezombie.com/error-codes#UZ-ZMB-009
+        title:
+          type: string
+          description: Short human-readable label, same for every occurrence of this code
+          example: Zombie not found
+        detail:
+          type: string
+          description: Instance-specific context describing what went wrong
+          example: No zombie with id 'abc123' in this workspace.
+        error_code:
+          type: string
+          description: Machine-readable error code
+          example: UZ-ZMB-009
+        request_id:
+          type: string
+          description: Correlation ID for this request
+    TenantApiKey:
+      type: object
+      description: Metadata for a tenant API key. `key_hash` and the raw key are never returned.
+      required:
+      - id
+      - key_name
+      - active
+      - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        key_name:
+          type: string
+        active:
+          type: boolean
+        created_at:
+          type: integer
+          format: int64
+        last_used_at:
+          type: integer
+          format: int64
+          nullable: true
+          description: Stays null until the async-stamping workstream ships.
+        revoked_at:
+          type: integer
+          format: int64
+          nullable: true
+    AgentKey:
+      type: object
+      required:
+      - agent_id
+      - zombie_id
+      - name
+      - created_at
+      properties:
+        agent_id:
+          type: string
+        zombie_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+        created_at:
+          type: integer
+          format: int64
+        last_used_at:
+          type: integer
+          format: int64
+          nullable: true
+    IntegrationGrant:
+      type: object
+      required:
+      - grant_id
+      - service
+      - status
+      - requested_at
+      properties:
+        grant_id:
+          type: string
+        service:
+          type: string
+          description: e.g. slack, github
+        status:
+          type: string
+          enum:
+          - pending
+          - approved
+          - revoked
+        requested_at:
+          type: integer
+          format: int64
+        approved_at:
+          type: integer
+          format: int64
+          nullable: true
+        revoked_at:
+          type: integer
+          format: int64
+          nullable: true
+        reason:
+          type: string
+    MemoryEntry:
+      type: object
+      required:
+      - key
+      - content
+      - category
+      - updated_at
+      properties:
+        key:
+          type: string
+          maxLength: 255
+        content:
+          type: string
+          maxLength: 16384
+        category:
+          type: string
+          description: e.g. core, episodic, task
+        updated_at:
+          type: integer
+          format: int64
+    PlatformKey:
+      type: object
+      description: A platform-wide LLM provider key configuration
+      properties:
+        provider:
+          type: string
+          description: LLM provider name
+        source_workspace_id:
+          type: string
+          format: uuid
+          description: Workspace whose BYOK key is used
+        active:
+          type: boolean
+          description: Whether this platform key is active
+        updated_at:
+          type: string
+          format: date-time
+    PolicyEvent:
+      type: object
+      description: A policy evaluation event from the Warden stage
+      properties:
+        action_class:
+          type: string
+          enum:
+          - safe
+          - sensitive
+          - critical
+          description: Classification of the action being evaluated
+        decision:
+          type: string
+          enum:
+          - allow
+          - deny
+          - require_confirmation
+          description: Policy decision
+        rule_id:
+          type: string
+          description: Identifier of the policy rule that matched
+        actor:
+          type: string
+          description: Pipeline stage that triggered the policy check
+        ts:
+          type: integer
+          description: Unix timestamp in milliseconds
+    Proposal:
+      type: object
+      description: An agent self-tuning proposal — a suggested change to the agent configuration
+      properties:
+        proposal_id:
+          type: string
+          format: uuid
+        trigger_reason:
+          type: string
+          description: Why the agent generated this proposal
+        proposed_changes:
+          type: string
+          description: Description of the proposed configuration changes
+        config_version_id:
+          type: string
+          format: uuid
+          description: Config version this proposal targets
+        approval_mode:
+          type: string
+          description: Whether the proposal requires manual approval or can auto-apply
+        status:
+          type: string
+          description: Proposal lifecycle status (e.g. PENDING, APPLIED, REJECTED, VETOED)
+        auto_apply_at:
+          type:
+          - string
+          - "null"
+          format: date-time
+          description: Timestamp when the proposal will auto-apply, null if manual approval required
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    ReadyzBody:
+      type: object
+      description: Response body for GET /readyz. Identical shape for both 200 (healthy) and 503 (degraded) responses — only
+        the boolean values differ.
+      required:
+      - ready
+      - database
+      - queue
+      properties:
+        ready:
+          type: boolean
+          description: Overall readiness — true only when every dependency is healthy. Mirrors the HTTP status (true ↔ 200,
+            false ↔ 503).
+        database:
+          type: boolean
+          description: True if the PostgreSQL connection pool is reachable and a trivial query succeeds
+        queue:
+          type: boolean
+          description: True if the Redis queue backend is reachable
+      additionalProperties: false
+    SpecSummary:
+      type: object
+      description: Summary of a spec document
+      properties:
+        spec_id:
+          type: string
+          format: uuid
+          description: Unique spec identifier
+        file_path:
+          type: string
+          description: Path to the spec file in the repository
+        title:
+          type: string
+          description: Spec title extracted from the document
+        status:
+          type: string
+          enum:
+          - pending
+          - in_progress
+          - done
+          - failed
+          description: Current spec lifecycle status
+        created_at:
+          type: integer
+          description: Unix timestamp in milliseconds
+        updated_at:
+          type: integer
+          description: Unix timestamp in milliseconds
+    Transition:
+      type: object
+      description: A state transition in the run pipeline
+      properties:
+        state_from:
+          type: string
+          description: State before the transition
+        state_to:
+          type: string
+          description: State after the transition
+        actor:
+          type: string
+          description: Pipeline stage or user that triggered the transition
+        reason_code:
+          type: string
+          description: Machine-readable reason for the transition
+        ts:
+          type: integer
+          description: Unix timestamp in milliseconds
+    ZombieSummary:
+      type: object
+      required:
+      - id
+      - name
+      - status
+      - created_at
+      - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        status:
+          type: string
+          enum:
+          - active
+          - paused
+          - killed
+        created_at:
+          type: integer
+          format: int64
+          description: Unix epoch milliseconds
+        updated_at:
+          type: integer
+          format: int64

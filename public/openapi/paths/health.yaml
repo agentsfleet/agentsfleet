@@ -1,0 +1,74 @@
+/healthz:
+  get:
+    operationId: healthz
+    summary: Liveness check
+    description: Returns 200 as long as the process is alive and able to serve HTTP. Does not probe dependencies — use /readyz
+      for readiness (database + queue).
+    tags:
+    - Health
+    security: []
+    responses:
+      '200':
+        description: Process is alive
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - status
+              - service
+              - commit
+              - request_id
+              properties:
+                status:
+                  type: string
+                  const: ok
+                  description: Always "ok" for a live process
+                service:
+                  type: string
+                  const: zombied
+                  description: Service identifier
+                commit:
+                  type: string
+                  description: Git commit SHA of the running build
+                request_id:
+                  type: string
+                  format: uuid
+                  description: Unique request identifier
+/metrics:
+  get:
+    operationId: metrics
+    summary: Prometheus metrics
+    description: Returns Prometheus-format metrics for scraping by monitoring infrastructure.
+    tags:
+    - Health
+    security: []
+    responses:
+      '200':
+        description: Prometheus text exposition format
+        content:
+          text/plain:
+            schema:
+              type: string
+/readyz:
+  get:
+    operationId: readyz
+    summary: Readiness probe
+    description: Kubernetes-style readiness probe. Returns 200 when both the database and the Redis queue are reachable; returns
+      503 fail-closed if either dependency is degraded.
+    tags:
+    - Health
+    security: []
+    responses:
+      '200':
+        description: Both dependencies healthy
+        content:
+          application/json:
+            schema:
+              $ref: ../components/schemas.yaml#/components/schemas/ReadyzBody
+      '503':
+        description: At least one dependency is degraded; ready=false and the failing dependency's boolean is false
+        content:
+          application/json:
+            schema:
+              $ref: ../components/schemas.yaml#/components/schemas/ReadyzBody

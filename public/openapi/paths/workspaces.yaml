@@ -1,0 +1,165 @@
+/v1/workspaces:
+  post:
+    operationId: create_workspace
+    summary: Create a workspace
+    description: Creates a new workspace linked to a GitHub repository. Returns the workspace ID and a GitHub App install
+      URL if the app is not yet installed on the repo.
+    tags:
+    - Workspaces
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+            - repo_url
+            properties:
+              repo_url:
+                type: string
+                format: uri
+                description: Full GitHub repository URL (e.g. https://github.com/org/repo)
+              default_branch:
+                type: string
+                description: Default branch name, defaults to 'main' if omitted
+    responses:
+      '201':
+        description: Workspace created
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - workspace_id
+              - repo_url
+              - default_branch
+              - install_url
+              - request_id
+              properties:
+                workspace_id:
+                  type: string
+                  format: uuid
+                  description: Unique workspace identifier
+                repo_url:
+                  type: string
+                  format: uri
+                  description: Repository URL
+                default_branch:
+                  type: string
+                  description: Default branch for the workspace
+                install_url:
+                  type: string
+                  format: uri
+                  description: GitHub App installation URL — direct user here if the app is not yet installed
+                request_id:
+                  type: string
+                  format: uuid
+                  description: Unique request identifier
+      default:
+        $ref: ../components/responses.yaml#/components/responses/Error
+/v1/workspaces/{workspace_id}/pause:
+  post:
+    operationId: pause_workspace
+    summary: Pause or unpause a workspace
+    description: Toggles the paused state of a workspace. When paused, no new runs will be started and queued runs will be
+      held. Uses optimistic concurrency via the version field.
+    tags:
+    - Workspaces
+    parameters:
+    - name: workspace_id
+      in: path
+      required: true
+      description: Workspace identifier
+      schema:
+        type: string
+        format: uuid
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+            - pause
+            - reason
+            - version
+            properties:
+              pause:
+                type: boolean
+                description: True to pause, false to unpause
+              reason:
+                type: string
+                description: Human-readable reason for the state change
+              version:
+                type: integer
+                description: Optimistic concurrency version — must match current workspace version
+    responses:
+      '200':
+        description: Workspace pause state updated
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - workspace_id
+              - paused
+              - version
+              - request_id
+              properties:
+                workspace_id:
+                  type: string
+                  format: uuid
+                paused:
+                  type: boolean
+                version:
+                  type: integer
+                request_id:
+                  type: string
+                  format: uuid
+      default:
+        $ref: ../components/responses.yaml#/components/responses/Error
+/v1/workspaces/{workspace_id}/sync:
+  post:
+    operationId: sync_specs
+    summary: Sync specs from repo
+    description: Reads PENDING_*.md spec files from the repository's default branch and upserts them into the control plane.
+      Returns the count of newly synced specs.
+    tags:
+    - Workspaces
+    parameters:
+    - name: workspace_id
+      in: path
+      required: true
+      description: Workspace identifier
+      schema:
+        type: string
+        format: uuid
+    responses:
+      '200':
+        description: Sync complete
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - synced_count
+              - total_pending
+              - specs
+              - request_id
+              properties:
+                synced_count:
+                  type: integer
+                  description: Number of specs synced in this request
+                total_pending:
+                  type: integer
+                  description: Total pending specs after sync
+                specs:
+                  type: array
+                  items:
+                    $ref: ../components/schemas.yaml#/components/schemas/SpecSummary
+                  description: List of synced spec summaries
+                request_id:
+                  type: string
+                  format: uuid
+      default:
+        $ref: ../components/responses.yaml#/components/responses/Error
