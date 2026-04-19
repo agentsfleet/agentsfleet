@@ -126,7 +126,6 @@ test {
     _ = @import("config/env_vars.zig");
     _ = @import("config/load.zig");
     _ = @import("zombie/config.zig");
-    _ = @import("zombie/config_helpers.zig");
     _ = @import("zombie/yaml_frontmatter.zig");
     _ = @import("http/route_matchers.zig");
     _ = @import("zombie/activity_stream.zig");

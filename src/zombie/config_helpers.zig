@@ -6,15 +6,15 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 
-const config = @import("config.zig");
+const config_types = @import("config_types.zig");
 const webhook_verify = @import("webhook_verify.zig");
-const ZombieTriggerType = config.ZombieTriggerType;
-const ZombieTrigger = config.ZombieTrigger;
-const ZombieNetwork = config.ZombieNetwork;
-const ZombieBudget = config.ZombieBudget;
-const ZombieConfigError = config.ZombieConfigError;
-const WebhookSignatureConfig = config.WebhookSignatureConfig;
-const MAX_SIGNATURE_HEADER_LEN = config.MAX_SIGNATURE_HEADER_LEN;
+const ZombieTriggerType = config_types.ZombieTriggerType;
+const ZombieTrigger = config_types.ZombieTrigger;
+const ZombieNetwork = config_types.ZombieNetwork;
+const ZombieBudget = config_types.ZombieBudget;
+const ZombieConfigError = config_types.ZombieConfigError;
+const WebhookSignatureConfig = config_types.WebhookSignatureConfig;
+const MAX_SIGNATURE_HEADER_LEN = config_types.MAX_SIGNATURE_HEADER_LEN;
 
 // Built-in skills. clawhub:// registry refs are also accepted (must be pinned).
 const KNOWN_ZOMBIE_SKILLS = [_][]const u8{
@@ -168,29 +168,6 @@ pub fn dupeStringArray(alloc: Allocator, items: []const std.json.Value) ![]const
     return out;
 }
 
-pub fn freeStringSlice(alloc: Allocator, slice: []const []const u8) void {
-    for (slice) |s| alloc.free(s);
-    alloc.free(slice);
-}
-
-pub fn freeZombieTrigger(alloc: Allocator, t: ZombieTrigger) void {
-    switch (t) {
-        .webhook => |w| {
-            alloc.free(w.source);
-            if (w.event) |e| alloc.free(e);
-            if (w.signature) |sig| {
-                alloc.free(sig.header);
-                alloc.free(sig.prefix);
-                if (sig.ts_header) |ts| alloc.free(ts);
-                alloc.free(sig.secret_ref);
-            }
-        },
-        .cron => |c| alloc.free(c.schedule),
-        .chain => |ch| alloc.free(ch.source),
-        .api => {},
-    }
-}
-
 pub fn isKnownZombieSkill(skill: []const u8) bool {
     if (std.mem.startsWith(u8, skill, "clawhub://")) return isPinnedZombieSkillRef(skill);
     for (KNOWN_ZOMBIE_SKILLS) |known| {
@@ -229,7 +206,7 @@ fn parseTriggerForTest(src: []const u8) !ZombieTrigger {
 }
 
 fn freeTrigger(t: ZombieTrigger) void {
-    freeZombieTrigger(test_alloc, t);
+    config_types.freeZombieTrigger(test_alloc, t);
 }
 
 test "parseWebhookSignature: defaults from github registry (dim 3.1)" {
