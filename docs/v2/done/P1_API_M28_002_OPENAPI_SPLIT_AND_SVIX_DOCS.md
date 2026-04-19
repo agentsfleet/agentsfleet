@@ -4,11 +4,35 @@
 **Milestone:** M28
 **Workstream:** 002
 **Date:** Apr 18, 2026
-**Status:** PENDING
+**Status:** DONE (absorbed by P2_INFRA_M28_003_OPENAPI_TOOLING)
 **Priority:** P1 — unblock future API additions without monolithic file edits
 **Batch:** B1
 **Branch:** _unassigned_
 **Depends on:** M28_001 (adds `/v1/webhooks/svix/{zombie_id}` route)
+
+---
+
+## Retirement note (Apr 19, 2026)
+
+All acceptance criteria in this spec were delivered under a different workstream
+before it was scheduled:
+
+- **OpenAPI split + bundle + CI sync gate** — landed in commit `bf8f735c`
+  ("feat(m28_003): OpenAPI split, bundle, sync gate, and agent-edit recipes")
+  under `docs/v2/done/P2_INFRA_M28_003_OPENAPI_TOOLING.md`. Per-domain partials
+  now live at `public/openapi/{root.yaml,paths/*.yaml,components/*.yaml}`, and
+  `make openapi` bundles them into `public/openapi.json`. CI enforces sync.
+- **Svix webhook endpoint docs** — `/v1/webhooks/svix/{zombie_id}` is
+  documented in `public/openapi/paths/webhooks.yaml` and wired into
+  `public/openapi/root.yaml`, including the `svix-id` / `svix-timestamp` /
+  `svix-signature` header parameters and 202/401 response contract.
+
+Milestone numbering note: the M28 slots were reshuffled after this spec was
+drafted. What this spec called "M28_002" became M28_003's OpenAPI tooling
+workstream, while the M28_002 filename was reused for Tenant API Key
+Management (see `docs/v2/done/P1_API_M28_002_TENANT_API_KEY_MANAGEMENT.md`).
+
+Moving to `done/` rather than deleting so the decision trail is preserved.
 
 ---
 
