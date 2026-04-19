@@ -1,27 +1,20 @@
+// RBAC integration tests — role enforcement on skill-secret, billing, and
+// zombie-lifecycle endpoints over the live HTTP surface.
+//
+// Requires TEST_DATABASE_URL — skipped gracefully otherwise via
+// `TestHarness.start` returning `error.SkipZigTest`.
+//
+// Uses the shared TestHarness (src/http/test_harness.zig) — see that file
+// plus docs/ZIG_RULES.md "HTTP Integration Tests — Use TestHarness" for
+// the canonical pattern.
+
 const std = @import("std");
 const pg = @import("pg");
-const auth_sessions = @import("../auth/sessions.zig");
-const oidc = @import("../auth/oidc.zig");
-const queue_redis = @import("../queue/redis.zig");
 const auth_mw = @import("../auth/middleware/mod.zig");
-const common = @import("handlers/common.zig");
-const handler = @import("handler.zig");
-const http_server = @import("server.zig");
 const error_codes = @import("../errors/error_registry.zig");
-const telemetry_mod = @import("../observability/telemetry.zig");
-const test_port = @import("test_port.zig");
 
-fn stubConsumeNonce(_: *anyopaque, _: []const u8) anyerror!bool {
-    return false;
-}
-
-fn stubLookupWebhookSecret(_: *anyopaque, _: []const u8, _: std.mem.Allocator) anyerror!?[]const u8 {
-    return null;
-}
-
-fn stubTenantApiKeyLookup(_: *anyopaque, _: std.mem.Allocator, _: []const u8) anyerror!?auth_mw.tenant_api_key.LookupResult {
-    return null;
-}
+const harness_mod = @import("test_harness.zig");
+const TestHarness = harness_mod.TestHarness;
 
 const TEST_TENANT_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01";
 const TEST_WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
@@ -29,7 +22,6 @@ const TEST_SKILL_REF_ENCODED = "clawhub%3A%2F%2Fopenclaw%2Freviewer%401.2.0";
 const TEST_SKILL_SECRET_KEY = "API_KEY";
 const TEST_SUBSCRIPTION_ID = "sub_rbac_test";
 const TEST_REPO_URL = "https://github.com/usezombie/rbac-http-test";
-const TEST_JWKS_URL = "https://clerk.dev.usezombie.com/.well-known/jwks.json";
 const TEST_ISSUER = "https://clerk.dev.usezombie.com";
 const TEST_AUDIENCE = "https://api.usezombie.com";
 const TEST_JWKS =
@@ -42,75 +34,42 @@ const TEST_OPERATOR_TOKEN =
 const TEST_ADMIN_TOKEN =
     "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6InJiYWMtdGVzdC1raWQifQ.eyJzdWIiOiJ1c2VyX3Rlc3QiLCJpc3MiOiJodHRwczovL2NsZXJrLmRldi51c2V6b21iaWUuY29tIiwiYXVkIjoiaHR0cHM6Ly9hcGkudXNlem9tYmllLmNvbSIsImV4cCI6NDEwMjQ0NDgwMCwibWV0YWRhdGEiOnsidGVuYW50X2lkIjoiMDE5NWI0YmEtOGQzYS03ZjEzLThhYmMtMmIzZTFlMGE2ZjAxIiwid29ya3NwYWNlX2lkIjoiMDE5NWI0YmEtOGQzYS03ZjEzLThhYmMtMmIzZTFlMGE2ZjExIiwicm9sZSI6ImFkbWluIn19.sTBn0XSWWTLEd5fSEcClUIhMCVeuXjljxYymPdMwahzAhhkg6P3MVhmtiPC_B_nFQQ7WU8cAS7kSvPL3Fcs9feb06C7zosm63ByUdqigATBVILyCDt43em2pG8cGOgj-bhkxIoWsGai5hdzu4vzOEYMMLzvN_V_QPMrjqWnLIiCVXk9_Mcdpx5xbUfA1hAwg_bM8CTlezRQ5ys8oxQDymx6cvuUaW_M69jYEgpFeETNpYWmuvMWIuVlT2wpME9-8l3ytYpE0ZxnGG_HQTY1bXRkg_ZC02uYs90lhOWEs9cPG4Uz0HU6rNSnRK71bAtlgQUlcUZZSK-Gg4GbFM0SVPg";
 
-const HttpResponse = struct {
-    status: u16,
-    body: []u8,
+fn configureRegistry(_: *auth_mw.MiddlewareRegistry, _: *TestHarness) anyerror!void {}
 
-    fn deinit(self: HttpResponse, alloc: std.mem.Allocator) void {
-        alloc.free(self.body);
-    }
-};
+fn startHarness(alloc: std.mem.Allocator) !*TestHarness {
+    return TestHarness.start(alloc, .{
+        .configureRegistry = configureRegistry,
+        .inline_jwks_json = TEST_JWKS,
+        .issuer = TEST_ISSUER,
+        .audience = TEST_AUDIENCE,
+    });
+}
 
-const RunningServer = struct {
-    pool: *pg.Pool,
-    session_store: auth_sessions.SessionStore,
-    verifier: oidc.Verifier,
-    // Queue intentionally uninitialized — do not add tests that touch ctx.queue
-    // without initializing this field first.
-    queue: queue_redis.Client = undefined,
-    telemetry: telemetry_mod.Telemetry,
-    registry: auth_mw.MiddlewareRegistry,
-    ctx: handler.Context,
-    srv: *http_server.Server,
-    thread: std.Thread,
-    port: u16,
-
-    fn deinit(self: *RunningServer) void {
-        self.srv.stop();
-        self.thread.join();
-        self.srv.deinit();
-        self.verifier.deinit();
-        self.session_store.deinit();
-        self.pool.deinit();
-    }
-};
-
-const ConcurrentRequestCtx = struct {
-    url: []const u8,
-    token: []const u8,
-    status: *u16,
-
-    fn run(self: ConcurrentRequestCtx) void {
-        const response = sendRequest(std.heap.page_allocator, self.url, .GET, self.token, null, null) catch {
-            self.status.* = 0;
-            return;
-        };
-        defer response.deinit(std.heap.page_allocator);
-        self.status.* = response.status;
-    }
-};
-
-fn allocTestPort() !u16 {
-    return try test_port.allocFreePort();
+fn seedAndHarness(alloc: std.mem.Allocator) !*TestHarness {
+    const h = try startHarness(alloc);
+    errdefer h.deinit();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    try setupSeedData(conn);
+    return h;
 }
 
 fn setupSeedData(conn: *pg.Conn) !void {
     const now_ms = std.time.milliTimestamp();
+    // Idempotent — shared tenant/workspace across integration suites.
     _ = try conn.exec("DELETE FROM workspace_billing_audit WHERE workspace_id = $1", .{TEST_WORKSPACE_ID});
-    _ = try conn.exec("DELETE FROM workspace_billing_state WHERE workspace_id = $1", .{TEST_WORKSPACE_ID});
-    _ = try conn.exec("DELETE FROM workspace_entitlements WHERE workspace_id = $1", .{TEST_WORKSPACE_ID});
     _ = try conn.exec("DELETE FROM vault.workspace_skill_secrets WHERE workspace_id = $1", .{TEST_WORKSPACE_ID});
-    _ = try conn.exec("DELETE FROM workspaces WHERE workspace_id = $1", .{TEST_WORKSPACE_ID});
-    _ = try conn.exec("DELETE FROM tenants WHERE tenant_id = $1", .{TEST_TENANT_ID});
 
     _ = try conn.exec(
         \\INSERT INTO tenants (tenant_id, name, api_key_hash, created_at, updated_at)
         \\VALUES ($1, 'RBAC Test Tenant', 'managed', $2, $2)
+        \\ON CONFLICT (tenant_id) DO NOTHING
     , .{ TEST_TENANT_ID, now_ms });
     _ = try conn.exec(
         \\INSERT INTO workspaces
         \\  (workspace_id, tenant_id, repo_url, default_branch, paused, version, created_at, updated_at)
         \\VALUES ($1, $2, $3, 'main', false, 1, $4, $4)
+        \\ON CONFLICT (workspace_id) DO NOTHING
     , .{ TEST_WORKSPACE_ID, TEST_TENANT_ID, TEST_REPO_URL, now_ms });
     _ = try conn.exec(
         \\INSERT INTO workspace_entitlements
@@ -143,285 +102,137 @@ fn setupSeedData(conn: *pg.Conn) !void {
 }
 
 fn cleanupSeedData(conn: *pg.Conn) !void {
+    // Narrow scope — only delete rows THIS suite owns. Tenants/workspaces are shared
+    // across the integration suite via the baked-in JWT claims; wiping them here
+    // breaks sibling tests (byok, telemetry, dashboard, tenant_api_keys, zombie_steer
+    // all use TEST_TENANT_ID "…6f01" and TEST_WORKSPACE_ID "…6f11").
+    // See docs/ZIG_RULES.md "HTTP Integration Tests".
     _ = try conn.exec("DELETE FROM workspace_billing_audit WHERE workspace_id = $1", .{TEST_WORKSPACE_ID});
-    _ = try conn.exec("DELETE FROM workspace_billing_state WHERE workspace_id = $1", .{TEST_WORKSPACE_ID});
-    _ = try conn.exec("DELETE FROM workspace_entitlements WHERE workspace_id = $1", .{TEST_WORKSPACE_ID});
     _ = try conn.exec("DELETE FROM vault.workspace_skill_secrets WHERE workspace_id = $1", .{TEST_WORKSPACE_ID});
-    _ = try conn.exec("DELETE FROM workspaces WHERE workspace_id = $1", .{TEST_WORKSPACE_ID});
-    _ = try conn.exec("DELETE FROM tenants WHERE tenant_id = $1", .{TEST_TENANT_ID});
 }
 
-fn serverThread(srv: *http_server.Server) void {
-    srv.listen() catch |err| std.debug.panic("rbac test server failed: {s}", .{@errorName(err)});
-}
-
-fn startServer(alloc: std.mem.Allocator) !*RunningServer {
-    const db_ctx = (try common.openHandlerTestConn(alloc)) orelse return error.SkipZigTest;
-    try setupSeedData(db_ctx.conn);
-    db_ctx.pool.release(db_ctx.conn);
-
-    var session_store = auth_sessions.SessionStore.init(alloc);
-    var verifier = oidc.Verifier.init(alloc, .{
-        .provider = .clerk,
-        .jwks_url = TEST_JWKS_URL,
-        .issuer = TEST_ISSUER,
-        .audience = TEST_AUDIENCE,
-        .inline_jwks_json = TEST_JWKS,
-    });
-    const port = try allocTestPort();
-
-    const running = try alloc.create(RunningServer);
-    running.* = RunningServer{
-        .pool = db_ctx.pool,
-        .session_store = session_store,
-        .verifier = verifier,
-        .registry = undefined, // initialized below via initChains()
-        .ctx = .{
-            .pool = db_ctx.pool,
-            .queue = undefined,
-            .alloc = alloc,
-            .api_keys = "",
-            .oidc = &verifier,
-            .auth_sessions = &session_store,
-            .app_url = "http://127.0.0.1",
-            .api_in_flight_requests = std.atomic.Value(u32).init(0),
-            .api_max_in_flight_requests = 64,
-            .ready_max_queue_depth = null,
-            .ready_max_queue_age_ms = null,
-            .telemetry = undefined,
-        },
-        .telemetry = undefined,
-        .srv = undefined,
-        .thread = undefined,
-        .port = port,
-    };
-    running.telemetry = telemetry_mod.Telemetry.initTest();
-    running.ctx.telemetry = &running.telemetry;
-    running.ctx.queue = &running.queue;
-    running.ctx.oidc = &running.verifier;
-    running.ctx.auth_sessions = &running.session_store;
-    running.registry = .{
-        .bearer_or_api_key = .{ .api_keys = "", .verifier = &running.verifier },
-        .admin_api_key_mw = .{ .api_keys = "" },
-        .tenant_api_key_mw = .{ .host = undefined, .lookup = stubTenantApiKeyLookup },
-        .require_role_admin = .{ .required = .admin },
-        .require_role_operator = .{ .required = .operator },
-        .slack_sig = .{ .secret = "" },
-        .webhook_hmac_mw = .{ .secret = "" },
-        .oauth_state_mw = .{ .signing_secret = "", .consume_ctx = &running.queue, .consume_nonce = stubConsumeNonce },
-        .webhook_url_secret_mw = .{ .lookup_ctx = &running.queue, .lookup_fn = stubLookupWebhookSecret },
-    };
-    running.registry.initChains();
-    running.srv = try http_server.Server.init(&running.ctx, &running.registry, .{
-        .port = port,
-        .threads = 1,
-        .workers = 1,
-        .max_clients = 64,
-    });
-    running.thread = try std.Thread.spawn(.{}, serverThread, .{running.srv});
-    errdefer {
-        running.srv.stop();
-        running.thread.join();
-        running.srv.deinit();
-    }
-    try waitForServer(alloc, port);
-    return running;
-}
-
-fn waitForServer(alloc: std.mem.Allocator, port: u16) !void {
-    const url = try std.fmt.allocPrint(alloc, "http://127.0.0.1:{d}/healthz", .{port});
-    defer alloc.free(url);
-
-    var attempt: usize = 0;
-    while (attempt < 40) : (attempt += 1) {
-        const response = sendRequest(alloc, url, .GET, null, null, null) catch {
-            std.Thread.sleep(25 * std.time.ns_per_ms);
-            continue;
-        };
-        defer response.deinit(alloc);
-        if (response.status == 200) return;
-        std.Thread.sleep(25 * std.time.ns_per_ms);
-    }
-    return error.ConnectionTimedOut;
-}
-
-fn sendRequest(
-    alloc: std.mem.Allocator,
-    url: []const u8,
-    method: std.http.Method,
-    token: ?[]const u8,
-    payload: ?[]const u8,
-    content_type: ?[]const u8,
-) !HttpResponse {
-    var client: std.http.Client = .{ .allocator = alloc };
-    defer client.deinit();
-
-    var auth_header: ?[]u8 = null;
-    defer if (auth_header) |value| alloc.free(value);
-
-    var headers_buf: [2]std.http.Header = undefined;
-    var header_count: usize = 0;
-    if (token) |value| {
-        auth_header = try std.fmt.allocPrint(alloc, "Bearer {s}", .{value});
-        headers_buf[header_count] = .{ .name = "authorization", .value = auth_header.? };
-        header_count += 1;
-    }
-    if (content_type) |value| {
-        headers_buf[header_count] = .{ .name = "content-type", .value = value };
-        header_count += 1;
-    }
-
-    var response_body: std.ArrayList(u8) = .{};
-    var writer: std.Io.Writer.Allocating = .fromArrayList(alloc, &response_body);
-    const result = try client.fetch(.{
-        .location = .{ .url = url },
-        .method = method,
-        .payload = payload,
-        .extra_headers = headers_buf[0..header_count],
-        .response_writer = &writer.writer,
-    });
-    return .{
-        .status = @intFromEnum(result.status),
-        .body = try writer.toOwnedSlice(),
-    };
-}
+// ── Test: role gates for skill-secret + billing + zombie-lifecycle ─────────────
 
 test "integration: RBAC endpoints enforce operator and admin roles over live HTTP" {
-    const server = try startServer(std.testing.allocator);
-    defer {
-        server.deinit();
-        std.testing.allocator.destroy(server);
+    const alloc = std.testing.allocator;
+    const h = seedAndHarness(alloc) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+
+    const skill_secret_path = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/skills/{s}/secrets/{s}", .{
+        TEST_WORKSPACE_ID, TEST_SKILL_REF_ENCODED, TEST_SKILL_SECRET_KEY,
+    });
+    defer alloc.free(skill_secret_path);
+    const billing_event_path = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/billing/events", .{TEST_WORKSPACE_ID});
+    defer alloc.free(billing_event_path);
+
+    { // No token → 401
+        const r = try h.delete(skill_secret_path).send();
+        defer r.deinit();
+        try r.expectStatus(.unauthorized);
+        try r.expectErrorCode(error_codes.ERR_UNAUTHORIZED);
+    }
+    { // User role → 403 (insufficient)
+        const r = try (try h.delete(skill_secret_path).bearer(TEST_USER_TOKEN)).send();
+        defer r.deinit();
+        try r.expectStatus(.forbidden);
+        try r.expectErrorCode(error_codes.ERR_INSUFFICIENT_ROLE);
+    }
+    { // User role on billing POST → 403
+        const r = try (try (try h.post(billing_event_path).bearer(TEST_USER_TOKEN))
+            .json("{\"event_type\":\"PAYMENT_FAILED\",\"reason\":\"rbac-test\"}")).send();
+        defer r.deinit();
+        try r.expectStatus(.forbidden);
+        try r.expectErrorCode(error_codes.ERR_INSUFFICIENT_ROLE);
+    }
+    { // Operator rejected for admin-only billing endpoint
+        const r = try (try (try h.post(billing_event_path).bearer(TEST_OPERATOR_TOKEN))
+            .json("{\"event_type\":\"PAYMENT_FAILED\",\"reason\":\"rbac-test\"}")).send();
+        defer r.deinit();
+        try r.expectStatus(.forbidden);
+        try r.expectErrorCode(error_codes.ERR_INSUFFICIENT_ROLE);
+    }
+    { // Operator deletes skill secret — ok
+        const r = try (try h.delete(skill_secret_path).bearer(TEST_OPERATOR_TOKEN)).send();
+        defer r.deinit();
+        try r.expectStatus(.ok);
+        try std.testing.expect(r.bodyContains("\"deleted\":true"));
+    }
+    { // Admin posts billing event — ok
+        const r = try (try (try h.post(billing_event_path).bearer(TEST_ADMIN_TOKEN))
+            .json("{\"event_type\":\"PAYMENT_FAILED\",\"reason\":\"rbac-test\"}")).send();
+        defer r.deinit();
+        try r.expectStatus(.ok);
+        try std.testing.expect(r.bodyContains("\"billing_status\":\"GRACE\""));
     }
 
-    const skill_secret_url = try std.fmt.allocPrint(std.testing.allocator, "http://127.0.0.1:{d}/v1/workspaces/{s}/skills/{s}/secrets/{s}", .{
-        server.port,
-        TEST_WORKSPACE_ID,
-        TEST_SKILL_REF_ENCODED,
-        TEST_SKILL_SECRET_KEY,
-    });
-    defer std.testing.allocator.free(skill_secret_url);
-    const billing_event_url = try std.fmt.allocPrint(std.testing.allocator, "http://127.0.0.1:{d}/v1/workspaces/{s}/billing/events", .{
-        server.port,
-        TEST_WORKSPACE_ID,
-    });
-    defer std.testing.allocator.free(billing_event_url);
-
-    {
-        const response = try sendRequest(std.testing.allocator, skill_secret_url, .DELETE, null, null, null);
-        defer response.deinit(std.testing.allocator);
-        try std.testing.expectEqual(@as(u16, 401), response.status);
-        try std.testing.expect(std.mem.indexOf(u8, response.body, error_codes.ERR_UNAUTHORIZED) != null);
+    // M12_001 RULE BIL regression — destructive lifecycle + per-zombie billing
+    // fire workspace_guards.enforce(.minimum_role = .operator) BEFORE any
+    // zombie lookup, so a well-formed-but-nonexistent zombie_id yields 403
+    // under TEST_USER_TOKEN. Locks in commits 02a3726 + 899c24e.
+    const m12_stop_path = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/zombies/0195b4ba-8d3a-7f13-8abc-2b3e1e0a71bb/stop", .{TEST_WORKSPACE_ID});
+    defer alloc.free(m12_stop_path);
+    const m12_billing_path = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/zombies/0195b4ba-8d3a-7f13-8abc-2b3e1e0a71bb/billing/summary?period_days=30", .{TEST_WORKSPACE_ID});
+    defer alloc.free(m12_billing_path);
+    { // `/stop` is POST-with-empty-body (verb-in-path). std.http.Client asserts
+        // POST carries a payload, so rawBody("") rather than no body.
+        const r = try (try h.post(m12_stop_path).bearer(TEST_USER_TOKEN)).rawBody("").send();
+        defer r.deinit();
+        try r.expectStatus(.forbidden);
+        try r.expectErrorCode(error_codes.ERR_INSUFFICIENT_ROLE);
     }
     {
-        const response = try sendRequest(std.testing.allocator, skill_secret_url, .DELETE, TEST_USER_TOKEN, null, null);
-        defer response.deinit(std.testing.allocator);
-        try std.testing.expectEqual(@as(u16, 403), response.status);
-        try std.testing.expect(std.mem.indexOf(u8, response.body, error_codes.ERR_INSUFFICIENT_ROLE) != null);
-    }
-    {
-        const response = try sendRequest(
-            std.testing.allocator,
-            billing_event_url,
-            .POST,
-            TEST_USER_TOKEN,
-            "{\"event_type\":\"PAYMENT_FAILED\",\"reason\":\"rbac-test\"}",
-            "application/json",
-        );
-        defer response.deinit(std.testing.allocator);
-        try std.testing.expectEqual(@as(u16, 403), response.status);
-        try std.testing.expect(std.mem.indexOf(u8, response.body, error_codes.ERR_INSUFFICIENT_ROLE) != null);
-    }
-    {
-        // Operator token must be rejected for admin-only billing-events endpoint.
-        const response = try sendRequest(
-            std.testing.allocator,
-            billing_event_url,
-            .POST,
-            TEST_OPERATOR_TOKEN,
-            "{\"event_type\":\"PAYMENT_FAILED\",\"reason\":\"rbac-test\"}",
-            "application/json",
-        );
-        defer response.deinit(std.testing.allocator);
-        try std.testing.expectEqual(@as(u16, 403), response.status);
-        try std.testing.expect(std.mem.indexOf(u8, response.body, error_codes.ERR_INSUFFICIENT_ROLE) != null);
-    }
-    {
-        const response = try sendRequest(std.testing.allocator, skill_secret_url, .DELETE, TEST_OPERATOR_TOKEN, null, null);
-        defer response.deinit(std.testing.allocator);
-        try std.testing.expectEqual(@as(u16, 200), response.status);
-        try std.testing.expect(std.mem.indexOf(u8, response.body, "\"deleted\":true") != null);
-    }
-    {
-        const response = try sendRequest(
-            std.testing.allocator,
-            billing_event_url,
-            .POST,
-            TEST_ADMIN_TOKEN,
-            "{\"event_type\":\"PAYMENT_FAILED\",\"reason\":\"rbac-test\"}",
-            "application/json",
-        );
-        defer response.deinit(std.testing.allocator);
-        try std.testing.expectEqual(@as(u16, 200), response.status);
-        try std.testing.expect(std.mem.indexOf(u8, response.body, "\"billing_status\":\"GRACE\"") != null);
+        const r = try (try h.get(m12_billing_path).bearer(TEST_USER_TOKEN)).send();
+        defer r.deinit();
+        try r.expectStatus(.forbidden);
+        try r.expectErrorCode(error_codes.ERR_INSUFFICIENT_ROLE);
     }
 
-    // M12_001 — RULE BIL regression for destructive lifecycle + per-zombie
-    // billing endpoints. `workspace_guards.enforce(.minimum_role = .operator)`
-    // fires before any zombie lookup, so a well-formed-but-nonexistent
-    // zombie_id still yields 403 under TEST_USER_TOKEN. These assertions
-    // lock in commits 02a3726 (kill switch) and 899c24e (per-zombie billing)
-    // so stripping `workspace_guards.enforce` from either handler regresses
-    // in CI. (Follow-up: dashboard_http_integration_test.zig rewrite will
-    // carry positive-path T5/T8 coverage; tracked as a subsequent
-    // workstream, see src/main.zig NOTE beside the telemetry import.)
-    const m12_stop_url = try std.fmt.allocPrint(std.testing.allocator, "http://127.0.0.1:{d}/v1/workspaces/{s}/zombies/0195b4ba-8d3a-7f13-8abc-2b3e1e0a71bb/stop", .{
-        server.port,
-        TEST_WORKSPACE_ID,
-    });
-    defer std.testing.allocator.free(m12_stop_url);
-    const m12_zombie_billing_url = try std.fmt.allocPrint(std.testing.allocator, "http://127.0.0.1:{d}/v1/workspaces/{s}/zombies/0195b4ba-8d3a-7f13-8abc-2b3e1e0a71bb/billing/summary?period_days=30", .{
-        server.port,
-        TEST_WORKSPACE_ID,
-    });
-    defer std.testing.allocator.free(m12_zombie_billing_url);
-    {
-        // `/stop` is POST-with-no-body (verb-in-path). Zig's std HTTP client
-        // asserts POST carries a payload, so pass `""` rather than `null`.
-        const response = try sendRequest(std.testing.allocator, m12_stop_url, .POST, TEST_USER_TOKEN, "", null);
-        defer response.deinit(std.testing.allocator);
-        try std.testing.expectEqual(@as(u16, 403), response.status);
-        try std.testing.expect(std.mem.indexOf(u8, response.body, error_codes.ERR_INSUFFICIENT_ROLE) != null);
-    }
-    {
-        const response = try sendRequest(std.testing.allocator, m12_zombie_billing_url, .GET, TEST_USER_TOKEN, null, null);
-        defer response.deinit(std.testing.allocator);
-        try std.testing.expectEqual(@as(u16, 403), response.status);
-        try std.testing.expect(std.mem.indexOf(u8, response.body, error_codes.ERR_INSUFFICIENT_ROLE) != null);
-    }
-
-    const cleanup_conn = try server.pool.acquire();
-    defer server.pool.release(cleanup_conn);
-    try cleanupSeedData(cleanup_conn);
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    try cleanupSeedData(conn);
 }
 
-test "integration: RBAC user-role rejection stays deterministic under concurrency" {
-    const server = try startServer(std.testing.allocator);
-    defer {
-        server.deinit();
-        std.testing.allocator.destroy(server);
-    }
+// ── Test: deterministic rejection under concurrency ───────────────────────────
 
-    const billing_summary_url = try std.fmt.allocPrint(std.testing.allocator, "http://127.0.0.1:{d}/v1/workspaces/{s}/billing/summary", .{
-        server.port,
-        TEST_WORKSPACE_ID,
-    });
-    defer std.testing.allocator.free(billing_summary_url);
+const ConcurrentCtx = struct {
+    h: *TestHarness,
+    path: []const u8,
+    token: []const u8,
+    status: *u16,
+
+    fn run(self: ConcurrentCtx) void {
+        const r = (self.h.get(self.path).bearer(self.token) catch {
+            self.status.* = 0;
+            return;
+        }).send() catch {
+            self.status.* = 0;
+            return;
+        };
+        defer r.deinit();
+        self.status.* = r.status;
+    }
+};
+
+test "integration: RBAC user-role rejection stays deterministic under concurrency" {
+    const alloc = std.testing.allocator;
+    const h = seedAndHarness(alloc) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+
+    const billing_summary_path = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/billing/summary", .{TEST_WORKSPACE_ID});
+    defer alloc.free(billing_summary_path);
 
     var statuses = [_]u16{0} ** 5;
     var threads: [5]std.Thread = undefined;
     for (&threads, 0..) |*thread, idx| {
-        thread.* = try std.Thread.spawn(.{}, ConcurrentRequestCtx.run, .{ConcurrentRequestCtx{
-            .url = billing_summary_url,
+        thread.* = try std.Thread.spawn(.{}, ConcurrentCtx.run, .{ConcurrentCtx{
+            .h = h,
+            .path = billing_summary_path,
             .token = TEST_USER_TOKEN,
             .status = &statuses[idx],
         }});
@@ -429,7 +240,7 @@ test "integration: RBAC user-role rejection stays deterministic under concurrenc
     for (&threads) |*thread| thread.join();
     for (statuses) |status| try std.testing.expectEqual(@as(u16, 403), status);
 
-    const cleanup_conn = try server.pool.acquire();
-    defer server.pool.release(cleanup_conn);
-    try cleanupSeedData(cleanup_conn);
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    try cleanupSeedData(conn);
 }

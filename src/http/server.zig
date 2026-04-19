@@ -270,5 +270,9 @@ test "Server.init then deinit without listen does not leak" {
 test {
     _ = @import("rbac_http_integration_test.zig");
     _ = @import("byok_http_integration_test.zig");
+    _ = @import("test_harness.zig");
+    _ = @import("webhook_test_signers.zig");
+    _ = @import("webhook_test_fixtures.zig");
+    _ = @import("webhook_http_integration_test.zig");
     _ = @import("test_port.zig");
 }
