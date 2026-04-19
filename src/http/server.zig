@@ -137,15 +137,6 @@ fn emitRequestSpan(tctx: common.TraceContext, path: []const u8, start_ns: u64) v
 }
 
 fn dispatchMatchedRoute(ctx: *handler.Context, registry: *auth_mw.MiddlewareRegistry, req: *httpz.Request, res: *httpz.Response, path: []const u8) bool {
-    if (handler.parseSkillSecretRoute(path)) |route| {
-        switch (req.method) {
-            .PUT => handler.handlePutWorkspaceSkillSecret(ctx, req, res, route.workspace_id, route.skill_ref_encoded, route.key_name_encoded),
-            .DELETE => handler.handleDeleteWorkspaceSkillSecret(ctx, req, res, route.workspace_id, route.skill_ref_encoded, route.key_name_encoded),
-            else => respondMethodNotAllowed(res),
-        }
-        return true;
-    }
-
     const matched = router.match(path) orelse return false;
 
     // M18_002 Batch D: route_table.specFor covers all Route variants.

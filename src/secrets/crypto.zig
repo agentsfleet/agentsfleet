@@ -11,9 +11,6 @@ pub const NONCE_LEN = cp.NONCE_LEN;
 pub const TAG_LEN = cp.TAG_LEN;
 
 pub const SecretError = cp.SecretError;
-pub const SkillSecretScope = cp.SkillSecretScope;
-pub const EnvPair = cp.EnvPair;
-pub const SecretInjectionPlan = cp.SecretInjectionPlan;
 pub const EncryptedBlob = cp.EncryptedBlob;
 
 pub const loadKek = cp.loadKek;
@@ -22,13 +19,10 @@ pub const loadKekByVersion = cp.loadKekByVersion;
 pub const encrypt = cp.encrypt;
 pub const decrypt = cp.decrypt;
 pub const toFixed = cp.toFixed;
-pub const buildSecretInjectionPlan = cp.buildSecretInjectionPlan;
 
 pub const store = cs.store;
 pub const load = cs.load;
 pub const reencryptSecret = cs.reencryptSecret;
-pub const storeWorkspaceSkillSecret = cs.storeWorkspaceSkillSecret;
-pub const deleteWorkspaceSkillSecret = cs.deleteWorkspaceSkillSecret;
 
 test {
     _ = @import("crypto_primitives.zig");

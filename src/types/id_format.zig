@@ -72,10 +72,6 @@ pub fn generateVaultSecretId(alloc: std.mem.Allocator) ![]const u8 {
     return allocUuidV7(alloc);
 }
 
-pub fn generateSkillSecretId(alloc: std.mem.Allocator) ![]const u8 {
-    return allocUuidV7(alloc);
-}
-
 pub fn generatePromptLifecycleEventId(alloc: std.mem.Allocator) ![]const u8 {
     return allocUuidV7(alloc);
 }

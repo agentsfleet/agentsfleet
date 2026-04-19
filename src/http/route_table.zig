@@ -1,9 +1,9 @@
 //! Route table for the M18_002 middleware pipeline (M18_002 §4.1).
 //!
 //! Maps each `Route` variant to a `RouteSpec` that declares the middleware
-//! chain and invoke function. `specFor` is called by the dispatcher after
-//! the skill-secret fast-path; if it returns non-null, the middleware chain
-//! runs and the invoke function handles the request.
+//! chain and invoke function. `specFor` is called by the dispatcher; if it
+//! returns non-null, the middleware chain runs and the invoke function
+//! handles the request.
 //!
 //! Batch D: all 42 Route variants are registered here. The legacy switch in
 //! server.zig is now dead code — Batch E removes it.

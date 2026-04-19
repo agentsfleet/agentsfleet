@@ -86,7 +86,7 @@ sync-version: ## Propagate VERSION → build.zig.zon, zombiectl/package.json, zo
 	V="$$(cat VERSION)"; \
 	perl -i -pe 's/\.version = "[^"]+"/.version = "'"$$V"'"/;' build.zig.zon; \
 	perl -i -pe 's/"version": "[^"]+"/"version": "'"$$V"'"/;' zombiectl/package.json; \
-	perl -i -pe 's/^(export const VERSION = ")[^"]+"/$${1}'"$$V"'";/' zombiectl/src/cli.js; \
+	perl -i -pe 's/^(export const VERSION = ")[^"]+(";)/$${1}'"$$V"'$${2}/' zombiectl/src/cli.js; \
 	echo "✓ version $$V synced → build.zig.zon, zombiectl/package.json, zombiectl/src/cli.js"
 
 check-version: ## Verify build.zig.zon, zombiectl/package.json, and zombiectl/src/cli.js match VERSION

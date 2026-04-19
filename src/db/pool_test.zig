@@ -365,22 +365,6 @@ test "integration: zero-trust schema segmentation and role matrix are enforced" 
         try std.testing.expect((try role_q.next()) != null);
     }
 
-    const rls_tables = [_]struct { schema_name: []const u8, table_name: []const u8 }{
-        .{ .schema_name = "vault", .table_name = "workspace_skill_secrets" },
-    };
-    inline for (rls_tables) |table_ref| {
-        var rls_q = PgQuery.from(try db_ctx.conn.query(
-            \\SELECT c.relrowsecurity
-            \\FROM pg_class c
-            \\JOIN pg_namespace n ON n.oid = c.relnamespace
-            \\WHERE n.nspname = $1
-            \\  AND c.relname = $2
-        , .{ table_ref.schema_name, table_ref.table_name }));
-        defer rls_q.deinit();
-        const row = (try rls_q.next()) orelse return error.TestUnexpectedResult;
-        const rls_enabled = try row.get(bool, 0);
-        try std.testing.expect(rls_enabled);
-    }
 }
 
 test "integration: runMigrations is idempotent when table exists but migration record is absent" {

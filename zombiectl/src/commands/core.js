@@ -193,7 +193,6 @@ function createCoreHandlers(ctx, workspaces, deps) {
     commandDoctor: ops.commandDoctor,
     commandLogin,
     commandLogout,
-    commandSkillSecret: ops.commandSkillSecret,
     commandSpecsSync,
     commandWorkspace,
   };

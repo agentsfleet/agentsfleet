@@ -8,7 +8,6 @@ const KNOWN_COMMANDS = [
   "workspace",
   "specs",
   "doctor",
-  "skill-secret",
   "admin",
   "agent",
   "grant",
@@ -24,7 +23,6 @@ const KNOWN_COMMANDS = [
 const KNOWN_SUBCOMMANDS = {
   workspace: ["add", "list", "remove"],
   specs: ["sync"],
-  "skill-secret": ["put", "delete"],
   admin: ["config"],
   agent: ["create", "list", "delete"],
   grant: ["list", "revoke"],

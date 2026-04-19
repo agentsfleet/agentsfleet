@@ -4,7 +4,6 @@ const routes = [
   { key: "workspace", match: (cmd) => cmd === "workspace" },
   { key: "specs.sync", match: (cmd, args) => cmd === "specs" && args[0] === "sync" },
   { key: "doctor", match: (cmd) => cmd === "doctor" },
-  { key: "skill-secret", match: (cmd) => cmd === "skill-secret" },
   { key: "admin", match: (cmd) => cmd === "admin" },
   // M9_001: External agent key management + integration grants
   { key: "agent", match: (cmd) => cmd === "agent" },
