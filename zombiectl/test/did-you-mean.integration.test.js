@@ -16,18 +16,18 @@ function bufferStream() {
 }
 
 describe("did-you-mean integration", () => {
-  test("'runx' suggests 'run'", async () => {
+  test("'docto' suggests 'doctor'", async () => {
     const out = bufferStream();
     const err = bufferStream();
-    const code = await runCli(["runx"], {
+    const code = await runCli(["docto"], {
       stdout: out.stream,
       stderr: err.stream,
       env: { ...process.env, NO_COLOR: "1" },
     });
     expect(code).toBe(2);
     const errText = err.read();
-    expect(errText).toContain("unknown command: runx");
-    expect(errText).toContain("run");
+    expect(errText).toContain("unknown command: docto");
+    expect(errText).toContain("doctor");
   });
 
   test("'workspace ad' suggests 'workspace add'", async () => {

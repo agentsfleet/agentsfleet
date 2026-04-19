@@ -80,7 +80,6 @@ ZIG_LINE_LIMIT_ALLOWLIST := \
 	src/executor/transport.zig \
 	src/git/pr.zig \
 	src/git/repo.zig \
-	src/http/handlers/agent_relay.zig \
 	src/http/handlers/common.zig \
 	src/http/workspace_guards.zig \
 	src/observability/metrics_counters.zig \

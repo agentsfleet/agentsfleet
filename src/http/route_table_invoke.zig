@@ -25,7 +25,6 @@ const ws_billing_sum = @import("handlers/workspaces_billing_summary.zig");
 const ws_ops = @import("handlers/workspaces_ops.zig");
 const ws_creds = @import("handlers/workspace_credentials_http.zig");
 const admin_keys = @import("handlers/admin_platform_keys_http.zig");
-const agent_relay = @import("handlers/agent_relay.zig");
 const webhooks = @import("handlers/webhooks.zig");
 const approval = @import("handlers/approval_http.zig");
 const grant_approval = @import("handlers/grant_approval_webhook.zig");
@@ -160,17 +159,6 @@ pub fn invokeAdminPlatformKeys(hx: *Hx, req: *httpz.Request, route: router.Route
 pub fn invokeDeleteAdminPlatformKey(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     if (req.method != .DELETE) { common.respondMethodNotAllowed(hx.res); return; }
     admin_keys.innerDeleteAdminPlatformKey(hx.*, req, route.delete_admin_platform_key);
-}
-
-// ── Agent relay ───────────────────────────────────────────────────────────
-pub fn invokeSpecTemplate(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    if (req.method != .POST) { common.respondMethodNotAllowed(hx.res); return; }
-    agent_relay.innerSpecTemplate(hx.*, req, route.spec_template);
-}
-
-pub fn invokeSpecPreview(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    if (req.method != .POST) { common.respondMethodNotAllowed(hx.res); return; }
-    agent_relay.innerSpecPreview(hx.*, req, route.spec_preview);
 }
 
 // ── Webhooks ──────────────────────────────────────────────────────────────

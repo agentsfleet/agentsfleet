@@ -35,12 +35,7 @@ function printHelp(stdout, ui, opts = {}) {
   writeLine(stdout, "  workspace add <repo_url> [--default-branch BRANCH]");
   writeLine(stdout, "  workspace list");
   writeLine(stdout, "  workspace remove <workspace_id>");
-  writeLine(stdout, "  spec init [--path DIR] [--output PATH]");
   writeLine(stdout, "  specs sync [--workspace-id ID]");
-  writeLine(stdout, "  run [--workspace-id ID] [--spec-id ID] [--mode MODE] [--requested-by USER] [--idempotency-key KEY]");
-  writeLine(stdout, "  run [--spec FILE] [--preview] [--preview-only] [--path DIR]");
-  writeLine(stdout, "  run status <run_id>");
-  writeLine(stdout, "  runs list [--workspace-id ID] [--limit N] [--starting-after ID]");
   writeLine(stdout, "  doctor");
 
   if (showOperator) {

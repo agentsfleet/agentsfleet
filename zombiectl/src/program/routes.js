@@ -3,15 +3,6 @@ const routes = [
   { key: "logout", match: (cmd) => cmd === "logout" },
   { key: "workspace", match: (cmd) => cmd === "workspace" },
   { key: "specs.sync", match: (cmd, args) => cmd === "specs" && args[0] === "sync" },
-  { key: "spec.init", match: (cmd, args) => cmd === "spec" && args[0] === "init" },
-  { key: "run", match: (cmd) => cmd === "run" },
-  { key: "runs.list", match: (cmd, args) => cmd === "runs" && args[0] === "list" },
-  // M17_001 §3: runs cancel
-  { key: "runs.cancel", match: (cmd, args) => cmd === "runs" && args[0] === "cancel" },
-  // M22_001 §5: runs replay
-  { key: "runs.replay", match: (cmd, args) => cmd === "runs" && args[0] === "replay" },
-  // M21_001 §3: runs interrupt
-  { key: "runs.interrupt", match: (cmd, args) => cmd === "runs" && args[0] === "interrupt" },
   { key: "doctor", match: (cmd) => cmd === "doctor" },
   { key: "skill-secret", match: (cmd) => cmd === "skill-secret" },
   { key: "admin", match: (cmd) => cmd === "admin" },

@@ -2,10 +2,9 @@
 //! One Zig binary. Takes a spec. Ships a validated PR.
 //!
 //! Subcommands:
-//!   serve    Start HTTP API server (default)
-//!   worker   Start worker loop
-//!   doctor   Verify Postgres, git, agent config, and critical env
-//!   run      One-shot: process a spec file without HTTP server
+//!   serve      Start HTTP API server (default)
+//!   worker     Start worker loop
+//!   doctor     Verify Postgres, git, agent config, and critical env
 //!   migrate    Apply schema migrations and exit
 //!   reconcile  Dead-letter stale outbox rows (cron/scheduled)
 
@@ -17,7 +16,6 @@ const cli_commands = @import("cli/commands.zig");
 const cmd_serve = @import("cmd/serve.zig");
 const cmd_worker = @import("cmd/worker.zig");
 const cmd_doctor = @import("cmd/doctor.zig");
-const cmd_run = @import("cmd/run.zig");
 const cmd_migrate = @import("cmd/migrate.zig");
 const cmd_reconcile = @import("cmd/reconcile.zig");
 const config_load = @import("config/load.zig");
@@ -98,12 +96,25 @@ pub fn main() !void {
         log.warn("startup.debug_build hint=not_for_production", .{});
     }
 
-    const cmd = cli_commands.parseSubcommandFromProcessArgs();
+    const cmd = cli_commands.parseSubcommandFromProcessArgs() catch |err| switch (err) {
+        error.UnknownSubcommand => {
+            // Fail loudly so a stale script invoking a removed subcommand
+            // doesn't silently start the HTTP server.
+            var argv = std.process.args();
+            _ = argv.next();
+            const bad = argv.next() orelse "";
+            std.debug.print(
+                "zombied: unknown subcommand: {s}\n" ++
+                    "usage: zombied [serve|worker|doctor|migrate|reconcile]\n",
+                .{bad},
+            );
+            std.process.exit(1);
+        },
+    };
     switch (cmd) {
         .serve => try cmd_serve.run(alloc),
         .worker => try cmd_worker.run(alloc),
         .doctor => try cmd_doctor.run(alloc),
-        .run => try cmd_run.run(alloc),
         .migrate => try cmd_migrate.run(alloc),
         .reconcile => try cmd_reconcile.run(alloc),
     }
@@ -163,7 +174,6 @@ test {
     _ = @import("http/handlers/hx_test.zig");
     _ = @import("http/handlers/memory_handler_test.zig");
     _ = @import("http/handlers/memory_handler_shapes_test.zig");
-    _ = @import("cmd/run_watch_test.zig");
     _ = @import("cmd/serve_test.zig");
     _ = @import("queue/redis.zig");
     _ = @import("queue/redis_pubsub_test.zig");

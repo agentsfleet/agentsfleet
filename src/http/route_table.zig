@@ -68,10 +68,6 @@ pub fn specFor(route: router.Route, registry: *auth_mw.MiddlewareRegistry) ?Rout
         .admin_platform_keys => .{ .middlewares = registry.admin(), .invoke = invoke.invokeAdminPlatformKeys },
         .delete_admin_platform_key => .{ .middlewares = registry.admin(), .invoke = invoke.invokeDeleteAdminPlatformKey },
 
-        // Agent relay (streaming; handler authenticates internally)
-        .spec_template => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeSpecTemplate },
-        .spec_preview => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeSpecPreview },
-
         // Webhooks — receive_webhook uses webhookSig middleware (M28_001):
         // URL secret (vault-backed) or Bearer token fallback.
         .receive_webhook => .{ .middlewares = registry.webhookSig(), .invoke = invoke.invokeReceiveWebhook },
@@ -160,8 +156,6 @@ test "specFor returns a RouteSpec for every Route variant (Batch D — full tabl
     try testing.expect(specFor(.admin_platform_keys, &reg) != null);
     try testing.expect(specFor(.{ .delete_admin_platform_key = "anthropic" }, &reg) != null);
     try testing.expect(specFor(.{ .workspace_llm_credential = "ws1" }, &reg) != null);
-    try testing.expect(specFor(.{ .spec_template = "ws1" }, &reg) != null);
-    try testing.expect(specFor(.{ .spec_preview = "ws1" }, &reg) != null);
     try testing.expect(specFor(.{ .receive_webhook = .{ .zombie_id = "z1", .secret = null } }, &reg) != null);
     try testing.expect(specFor(.{ .receive_svix_webhook = "z1" }, &reg) != null);
     try testing.expect(specFor(.{ .approval_webhook = "z1" }, &reg) != null);

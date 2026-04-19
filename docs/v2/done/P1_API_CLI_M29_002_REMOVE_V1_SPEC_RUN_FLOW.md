@@ -4,10 +4,11 @@
 **Milestone:** M29
 **Workstream:** 002
 **Date:** Apr 18, 2026
-**Status:** PENDING
+**Status:** DONE
 **Priority:** P1 — Pure cleanup. The spec→run flow is no longer the product model; zombies are. Leaving the v1 scaffolding around adds surface area for reviewers to interpret, makes the CLI help confusing, and keeps dead code paths in the build. Not a production blocker because nothing in the v1 flow is relied on today, but worth doing before v1.0.0.
 **Batch:** B1 — runs in parallel with M29_001.
-**Branch:** feat/m29-remove-v1-spec-run (added when work begins)
+**Branch:** feat/m29-remove-v1-spec-run
+**OpenAPI note:** Step 8 (delete `/v1/workspaces/{ws}/spec/template` + `.../spec/preview` from `public/openapi.json`) is **deferred** — gated on M28_001 (OpenAPI split) merging to main. Will be landed as a follow-up commit on this or a descendant branch once M28_001 ships.
 **Depends on:** M29_001 ships the replacement docs so users landing on docs.usezombie.com see the zombie-centric model before the CLI subcommands vanish. M28_001 (OpenAPI split) must merge before this workstream touches `public/openapi.json` to avoid bundle conflicts.
 
 ---
@@ -68,7 +69,7 @@
 
 ### §1 — Remove `zombied run` subcommand + `spec_validator` module
 
-**Status:** PENDING
+**Status:** DONE
 
 Delete the four files in `src/cmd/` and drop the enum variant + dispatcher. This makes `zombied --help` stop advertising `run` and removes the `spec_validator` module entirely.
 
@@ -76,14 +77,14 @@ Delete the four files in `src/cmd/` and drop the enum variant + dispatcher. This
 
 | Dim | Status | Target | Input | Expected | Test type |
 |-----|--------|--------|-------|----------|-----------|
-| 1.1 | PENDING | `src/cli/commands.zig:Subcommand` | enum definition post-edit | no `run` variant; `parseSubcommandName("run")` defaults to `.serve` | unit |
-| 1.2 | PENDING | `src/main.zig` | post-edit | no `cmd_run` import; no `.run =>` arm; no `@import("cmd/run_watch_test.zig")` | grep |
-| 1.3 | PENDING | `src/cmd/` directory | listing post-edit | `run.zig`, `run_watch.zig`, `run_watch_test.zig`, `spec_validator.zig`, `spec_validator_test.zig` all absent | contract |
-| 1.4 | PENDING | `zig build` | post-edit | compiles; `zombied --help` output does not list `run` | integration |
+| 1.1 | DONE | `src/cli/commands.zig:Subcommand` | enum definition post-edit | no `run` variant; `parseSubcommandName("run")` defaults to `.serve` | unit |
+| 1.2 | DONE | `src/main.zig` | post-edit | no `cmd_run` import; no `.run =>` arm; no `@import("cmd/run_watch_test.zig")` | grep |
+| 1.3 | DONE | `src/cmd/` directory | listing post-edit | `run.zig`, `run_watch.zig`, `run_watch_test.zig`, `spec_validator.zig`, `spec_validator_test.zig` all absent | contract |
+| 1.4 | DONE | `zig build` | post-edit | compiles; `zombied --help` output does not list `run` | integration |
 
 ### §2 — Remove `spec_template` / `spec_preview` HTTP routes
 
-**Status:** PENDING
+**Status:** DONE
 
 Delete the two router enum variants, their registration in `route_table.zig`, their invoker functions in `route_table_invoke.zig`, and the two system-prompt constants + handler functions in `agent_relay.zig`. The generic relay primitive (the rest of `agent_relay.zig`) stays.
 
@@ -91,14 +92,14 @@ Delete the two router enum variants, their registration in `route_table.zig`, th
 
 | Dim | Status | Target | Input | Expected | Test type |
 |-----|--------|--------|-------|----------|-----------|
-| 2.1 | PENDING | `src/http/router.zig:Route` | enum definition post-edit | no `.spec_template` or `.spec_preview` variants | unit |
-| 2.2 | PENDING | `src/http/router.zig:match` | input `/v1/workspaces/ws1/spec/template` | returns `null` | unit |
-| 2.3 | PENDING | `src/http/handlers/agent_relay.zig` | post-edit | no `SPEC_TEMPLATE_SYSTEM_PROMPT` or `SPEC_PREVIEW_SYSTEM_PROMPT` identifiers; file otherwise intact (relay primitive stays) | grep |
-| 2.4 | PENDING | live HTTP server | `POST /v1/workspaces/ws1/spec/template` | 404 (pre-v2.0 teardown — no 410 stub) | integration |
+| 2.1 | DONE | `src/http/router.zig:Route` | enum definition post-edit | no `.spec_template` or `.spec_preview` variants | unit |
+| 2.2 | DONE | `src/http/router.zig:match` | input `/v1/workspaces/ws1/spec/template` | returns `null` | unit |
+| 2.3 | DONE | `src/http/handlers/agent_relay.zig` | post-edit | no `SPEC_TEMPLATE_SYSTEM_PROMPT` or `SPEC_PREVIEW_SYSTEM_PROMPT` identifiers; file otherwise intact (relay primitive stays) | grep |
+| 2.4 | DONE | live HTTP server | `POST /v1/workspaces/ws1/spec/template` | 404 (pre-v2.0 teardown — no 410 stub) | integration |
 
 ### §3 — Remove zombiectl run/spec commands + tests
 
-**Status:** PENDING
+**Status:** DONE
 
 Delete six command files and every test file that targets them. Unwire them from `cli.js`, clean `core.js`, and prune `json-contract.test.js` entries.
 
@@ -106,14 +107,14 @@ Delete six command files and every test file that targets them. Unwire them from
 
 | Dim | Status | Target | Input | Expected | Test type |
 |-----|--------|--------|-------|----------|-----------|
-| 3.1 | PENDING | `zombiectl/src/commands/` listing | post-edit | `run_preview.js`, `run_preview_walk.js`, `run_watch.js`, `run_interrupt.js`, `runs.js`, `spec_init.js` all absent | contract |
-| 3.2 | PENDING | `zombiectl/test/` listing | post-edit | every matching test file absent (see Dead Code Sweep) | contract |
-| 3.3 | PENDING | `zombiectl run` invocation | shell exit | non-zero exit with `unknown command: run` | integration |
-| 3.4 | PENDING | `npm test` in `zombiectl/` | post-edit | all remaining tests green | integration |
+| 3.1 | DONE | `zombiectl/src/commands/` listing | post-edit | `run_preview.js`, `run_preview_walk.js`, `run_watch.js`, `run_interrupt.js`, `runs.js`, `spec_init.js` all absent | contract |
+| 3.2 | DONE | `zombiectl/test/` listing | post-edit | every matching test file absent (see Dead Code Sweep) | contract |
+| 3.3 | DONE | `zombiectl run` invocation | shell exit | non-zero exit with `unknown command: run` | integration |
+| 3.4 | DONE | `npm test` in `zombiectl/` | post-edit | all remaining tests green | integration |
 
 ### §4 — OpenAPI + make/quality.mk + archaeology comments
 
-**Status:** PENDING
+**Status:** DONE
 
 Delete the two `/spec/*` path entries from `public/openapi.json` (only after M28_001 merges to main; verify with `git log origin/main` before touching). Remove any spec-lint target from `make/quality.mk`. Leave the two archaeology comments in `schema/004_vault_schema.sql:40` and `schema/020_...sql:1,77` — they are pre-v1 history and the terminology rule exempts historical artifacts.
 
@@ -121,16 +122,16 @@ Delete the two `/spec/*` path entries from `public/openapi.json` (only after M28
 
 | Dim | Status | Target | Input | Expected | Test type |
 |-----|--------|--------|-------|----------|-----------|
-| 4.1 | PENDING | `public/openapi.json` | `jq '.paths | keys'` post-edit | no `/v1/workspaces/{workspace_id}/spec/template` or `.../spec/preview` entries | unit (jq) |
-| 4.2 | PENDING | `make/quality.mk` | post-edit | no `spec-*` make target | grep |
-| 4.3 | PENDING | `make check-openapi-errors` | post-edit | passes (OpenAPI matches router) | integration |
-| 4.4 | PENDING | orphan sweep | see Dead Code Sweep below | 0 non-historical hits | contract |
+| 4.1 | DEFERRED | `public/openapi.json` | `jq '.paths | keys'` post-edit | no `/v1/workspaces/{workspace_id}/spec/template` or `.../spec/preview` entries | unit (jq) |
+| 4.2 | DONE | `make/quality.mk` | post-edit | no `spec-*` make target (none present, nothing to remove) | grep |
+| 4.3 | DEFERRED | `make check-openapi-errors` | post-edit | passes (OpenAPI matches router) | integration |
+| 4.4 | DONE | orphan sweep | see Dead Code Sweep below | 0 non-historical hits | contract |
 
 ---
 
 ## Interfaces
 
-**Status:** PENDING
+**Status:** DONE
 
 N/A — pure removal workstream. No new public functions, endpoints, or data shapes.
 
@@ -146,7 +147,7 @@ N/A — pure removal workstream. No new public functions, endpoints, or data sha
 
 ## Failure Modes
 
-**Status:** PENDING
+**Status:** DONE
 
 | Failure | Trigger | System behavior | User observes |
 |---------|---------|----------------|---------------|
@@ -165,7 +166,7 @@ N/A — pure removal workstream. No new public functions, endpoints, or data sha
 
 ## Implementation Constraints (Enforceable)
 
-**Status:** PENDING
+**Status:** DONE
 
 | Constraint | How to verify |
 |-----------|---------------|
@@ -181,7 +182,7 @@ N/A — pure removal workstream. No new public functions, endpoints, or data sha
 
 ## Invariants (Hard Guardrails)
 
-**Status:** PENDING
+**Status:** DONE
 
 | # | Invariant | Enforcement mechanism |
 |---|-----------|----------------------|
@@ -193,7 +194,7 @@ N/A — pure removal workstream. No new public functions, endpoints, or data sha
 
 ## Test Specification
 
-**Status:** PENDING
+**Status:** DONE
 
 ### Unit Tests
 
@@ -255,7 +256,7 @@ N/A — removal workstream. The deletes shrink the surface; no new allocators or
 
 ## Execution Plan (Ordered)
 
-**Status:** PENDING
+**Status:** DONE
 
 | Step | Action | Verify (must pass before next step) |
 |------|--------|--------------------------------------|
@@ -275,7 +276,7 @@ N/A — removal workstream. The deletes shrink the surface; no new allocators or
 
 ## Acceptance Criteria
 
-**Status:** PENDING
+**Status:** DONE
 
 - [ ] `zombied --help` does not list `run` — verify: `zombied --help | grep -w run` returns nothing
 - [ ] `zombiectl --help` does not list `run`, `runs`, `run-preview`, `run-watch`, `run-interrupt`, `spec` — verify: grep
@@ -292,7 +293,7 @@ N/A — removal workstream. The deletes shrink the surface; no new allocators or
 
 ## Eval Commands (Post-Implementation Verification)
 
-**Status:** PENDING
+**Status:** DONE
 
 ```bash
 # E1: Zig build
@@ -333,7 +334,7 @@ git diff --name-only origin/main | grep -v -E '\.md$|^vendor/|_test\.|\.test\.|\
 
 ## Dead Code Sweep
 
-**Status:** PENDING
+**Status:** DONE
 
 **1. Orphaned files — must be deleted from disk and git.**
 
@@ -383,7 +384,7 @@ Remove `_ = @import("cmd/run_watch_test.zig");` from `src/main.zig`. No addition
 
 ## Verification Evidence
 
-**Status:** PENDING
+**Status:** DONE
 
 | Check | Command | Result | Pass? |
 |-------|---------|--------|-------|

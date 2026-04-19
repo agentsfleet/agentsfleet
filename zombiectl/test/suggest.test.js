@@ -52,13 +52,10 @@ describe("suggestCommand", () => {
   });
 
   test("multiple suggestions sorted by distance", () => {
-    const result = suggestCommand("run");
-    // "run" is an exact top-level match (distance 0, excluded)
-    // but "runs list" and "run status" may be close
-    // All results should be sorted by ascending distance
+    const result = suggestCommand("specz");
     for (let i = 1; i < result.length; i++) {
-      const dPrev = levenshteinDistance("run", result[i - 1]);
-      const dCurr = levenshteinDistance("run", result[i]);
+      const dPrev = levenshteinDistance("specz", result[i - 1]);
+      const dCurr = levenshteinDistance("specz", result[i]);
       expect(dCurr).toBeGreaterThanOrEqual(dPrev);
     }
   });

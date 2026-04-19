@@ -1,28 +1,21 @@
 import { createCoreOpsHandlers } from "./core-ops.js";
 import { commandWorkspace as commandWorkspaceModule } from "./workspace.js";
 import { queueCliAnalyticsEvent, setCliAnalyticsContext } from "../lib/analytics.js";
-import { validateRequiredId } from "../program/validate.js";
 import { ERR_BILLING_CREDIT_EXHAUSTED } from "../constants/error-codes.js";
 import { ApiError } from "../lib/http.js";
-import { commandSpecInit } from "./spec_init.js";
-import { runPreview } from "./run_preview.js";
-import { streamRunWatch } from "./run_watch.js";
 import { writeError } from "../program/io.js";
 
 function createCoreHandlers(ctx, workspaces, deps) {
   const {
     clearCredentials,
     createSpinner,
-    newIdempotencyKey,
     openUrl,
     parseFlags,
     printJson,
     printKeyValue,
     printSection = () => {},
-    printTable,
     request,
     saveCredentials,
-    saveWorkspaces,
     ui,
     writeLine,
     apiHeaders,
@@ -196,201 +189,11 @@ function createCoreHandlers(ctx, workspaces, deps) {
     return 0;
   }
 
-  async function commandRun(args) {
-    if (args[0] === "status") {
-      const runId = args[1];
-      if (!runId) {
-        writeError(ctx, "USAGE_ERROR", "run status requires <run_id>", deps);
-        return 2;
-      }
-
-      const check = validateRequiredId(runId, "run_id");
-      if (!check.ok) {
-        writeError(ctx, "VALIDATION_ERROR", check.message, deps);
-        return 2;
-      }
-
-      const res = await request(ctx, `/v1/runs/${encodeURIComponent(runId)}`, {
-        method: "GET",
-        headers: apiHeaders(ctx),
-      });
-      setCliAnalyticsContext(ctx, {
-        run_id: res.run_id,
-        run_state: res.current_state ?? res.state ?? "unknown",
-        run_attempt: res.attempt,
-        run_snapshot_version: res.run_snapshot_version ?? "default-v1",
-      });
-      queueCliAnalyticsEvent(ctx, "run_status_viewed", {
-        run_id: res.run_id,
-        run_state: res.current_state ?? res.state ?? "unknown",
-      });
-      if (ctx.jsonMode) printJson(ctx.stdout, res);
-      else {
-        printSection(ctx.stdout, "Run status");
-        printKeyValue(ctx.stdout, {
-          run_id: res.run_id,
-          state: res.current_state ?? res.state ?? "unknown",
-          attempt: res.attempt,
-          run_snapshot_version: res.run_snapshot_version ?? "default-v1",
-        });
-      }
-      return 0;
-    }
-
-    const parsed = parseFlags(args);
-
-    // Preview: parse spec file, show predicted file impact
-    const specFile = parsed.options["spec"];
-    const previewOnly = Boolean(parsed.options["preview-only"]);
-    const preview = previewOnly || Boolean(parsed.options["preview"]);
-
-    if (preview) {
-      if (!specFile) {
-        writeError(ctx, "USAGE_ERROR", "--preview requires --spec <file>", deps);
-        return 2;
-      }
-      const repoPath = parsed.options["path"] || ".";
-      const result = await runPreview(specFile, repoPath, ctx, {
-        writeLine,
-        ui,
-        parseFlags,
-        printJson,
-        printSection,
-        printKeyValue,
-        printTable,
-        request,
-        apiHeaders,
-      });
-      if (!result) return 1;
-      if (previewOnly) return 0;
-    }
-
-    const workspaceId = await ensureWorkspaceId(parsed.options["workspace-id"]);
-    if (!workspaceId) {
-      writeError(ctx, "USAGE_ERROR", "workspace_id required (set one with workspace add or pass --workspace-id)", deps);
-      return 2;
-    }
-
-    let specId = parsed.options["spec-id"];
-    if (!specId) {
-      const listed = await request(
-        ctx,
-        `/v1/specs?workspace_id=${encodeURIComponent(workspaceId)}&limit=1`,
-        {
-          method: "GET",
-          headers: apiHeaders(ctx),
-        },
-      );
-      const first = Array.isArray(listed.data) ? listed.data[0] : null;
-      specId = first?.spec_id;
-    }
-
-    if (!specId) {
-      writeError(ctx, "USAGE_ERROR", "spec_id required (no specs found)", deps);
-      return 1;
-    }
-
-    const payload = {
-      workspace_id: workspaceId,
-      spec_id: specId,
-      mode: parsed.options.mode || "api",
-      requested_by: parsed.options["requested-by"] || "zombiectl",
-      idempotency_key: parsed.options["idempotency-key"] || newIdempotencyKey(),
-    };
-
-    const res = await request(ctx, "/v1/runs", {
-      method: "POST",
-      headers: apiHeaders(ctx),
-      body: JSON.stringify(payload),
-    });
-
-    setCliAnalyticsContext(ctx, {
-      workspace_id: workspaceId,
-      spec_id: specId,
-      run_id: res.run_id,
-      run_state: res.state,
-      run_mode: payload.mode,
-      requested_by: payload.requested_by,
-    });
-    queueCliAnalyticsEvent(ctx, "run_queued", {
-      workspace_id: workspaceId,
-      run_id: res.run_id,
-      spec_id: specId,
-    });
-    if (ctx.jsonMode) printJson(ctx.stdout, res);
-    else {
-      printSection(ctx.stdout, "Run queued");
-      printKeyValue(ctx.stdout, {
-        workspace_id: workspaceId,
-        spec_id: specId,
-        run_id: res.run_id,
-        state: res.state,
-        mode: payload.mode,
-        plan_tier: res.plan_tier ?? "unknown",
-        credit_remaining_cents: res.credit_remaining_cents ?? "unknown",
-        credit_currency: res.credit_currency ?? "USD",
-      });
-    }
-
-    // §5: --watch streams SSE events in real time.
-    if (parsed.options.watch) {
-      await streamRunWatch(ctx, res.run_id, { apiHeaders, ui, writeLine });
-    }
-    return 0;
-  }
-
-  async function commandRunsList(args) {
-    const parsed = parseFlags(args);
-    const workspaceId = parsed.options["workspace-id"] || workspaces.current_workspace_id;
-    const limit = parsed.options.limit || 50;
-    const startingAfter = parsed.options["starting-after"] || null;
-
-    let url = `/v1/runs?limit=${limit}`;
-    if (workspaceId) url += `&workspace_id=${encodeURIComponent(workspaceId)}`;
-    if (startingAfter) url += `&starting_after=${encodeURIComponent(startingAfter)}`;
-
-    const res = await request(ctx, url, {
-      method: "GET",
-      headers: apiHeaders(ctx),
-    });
-
-    const items = Array.isArray(res.data) ? res.data : [];
-    setCliAnalyticsContext(ctx, {
-      workspace_id: workspaceId,
-      run_count: items.length,
-    });
-    queueCliAnalyticsEvent(ctx, "runs_list_viewed", {
-      workspace_id: workspaceId,
-      run_count: items.length,
-    });
-
-    if (ctx.jsonMode) printJson(ctx.stdout, res);
-    else {
-      if (items.length === 0) writeLine(ctx.stdout, ui.info("no runs"));
-      printTable(
-        ctx.stdout,
-        [
-          { key: "run_id", label: "RUN" },
-          { key: "workspace_id", label: "WORKSPACE" },
-          { key: "state", label: "STATE" },
-        ],
-        items,
-      );
-      if (res.has_more && res.next_cursor) {
-        writeLine(ctx.stdout, ui.dim(`next: --starting-after ${res.next_cursor}`));
-      }
-    }
-    return 0;
-  }
-
   return {
     commandDoctor: ops.commandDoctor,
     commandLogin,
     commandLogout,
-    commandRun,
-    commandRunsList,
     commandSkillSecret: ops.commandSkillSecret,
-    commandSpecInit: (args) => commandSpecInit(args, ctx, { parseFlags, writeLine, ui, printJson }),
     commandSpecsSync,
     commandWorkspace,
   };

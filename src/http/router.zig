@@ -40,9 +40,6 @@ pub const Route = union(enum) {
     delete_admin_platform_key: []const u8, // DELETE /v1/admin/platform-keys/{provider}
     // M16_004: workspace BYOK LLM credentials
     workspace_llm_credential: []const u8, // PUT|DELETE|GET /v1/workspaces/{id}/credentials/llm
-    // M18_003: agent relay endpoints
-    spec_template: []const u8, // POST /v1/workspaces/{id}/spec/template
-    spec_preview: []const u8, // POST /v1/workspaces/{id}/spec/preview
     // M24_001: Zombie CRUD + activity + credentials (workspace-scoped)
     workspace_zombies: []const u8, // GET|POST /v1/workspaces/{ws}/zombies
     delete_workspace_zombie: matchers.WorkspaceZombieRoute, // DELETE /v1/workspaces/{ws}/zombies/{id}
@@ -120,10 +117,6 @@ pub fn match(path: []const u8) ?Route {
 
     // M16_004: workspace BYOK credential route
     if (matchWorkspaceSuffix(path, "/credentials/llm")) |workspace_id| return .{ .workspace_llm_credential = workspace_id };
-
-    // M18_003: agent relay routes
-    if (matchWorkspaceSuffix(path, "/spec/template")) |workspace_id| return .{ .spec_template = workspace_id };
-    if (matchWorkspaceSuffix(path, "/spec/preview")) |workspace_id| return .{ .spec_preview = workspace_id };
 
     if (matchWorkspaceSuffix(path, "/billing/scale")) |workspace_id| return .{ .upgrade_workspace_to_scale = workspace_id };
     if (matchWorkspaceSuffix(path, "/billing/events")) |workspace_id| return .{ .apply_workspace_billing_event = workspace_id };
@@ -264,35 +257,6 @@ test "match resolves admin platform key routes (M16_004)" {
     try std.testing.expect(match("/v1/admin/platform-keys/a/b") == null);
     // Empty provider segment is rejected
     try std.testing.expect(match("/v1/admin/platform-keys/") == null);
-}
-
-// ── M18_003 agent relay route tests ──────────────────────────────────────────
-
-test "match resolves spec template route (M18_003)" {
-    const ws_id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
-    try std.testing.expectEqualStrings(
-        ws_id,
-        switch (match("/v1/workspaces/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/spec/template").?) {
-            .spec_template => |id| id,
-            else => return error.TestExpectedEqual,
-        },
-    );
-}
-
-test "match resolves spec preview route (M18_003)" {
-    const ws_id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
-    try std.testing.expectEqualStrings(
-        ws_id,
-        switch (match("/v1/workspaces/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/spec/preview").?) {
-            .spec_preview => |id| id,
-            else => return error.TestExpectedEqual,
-        },
-    );
-}
-
-test "match rejects multi-segment workspace in spec routes (M18_003)" {
-    try std.testing.expect(match("/v1/workspaces/ws_1/extra/spec/template") == null);
-    try std.testing.expect(match("/v1/workspaces/ws_1/extra/spec/preview") == null);
 }
 
 test "match resolves workspace LLM credential route (M16_004)" {

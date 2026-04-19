@@ -10,7 +10,6 @@ import { commandAgent as commandAgentModule } from "./commands/agent.js";
 import { commandGrant as commandGrantModule } from "./commands/grant.js";
 import { commandAdmin as commandAdminModule } from "./commands/admin.js";
 import { commandZombie as commandZombieModule } from "./commands/zombie.js";
-import { commandRuns as commandRunsModule } from "./commands/runs.js";
 import { ui, printKeyValue, printSection, printTable } from "./ui-theme.js";
 import { createSpinner } from "./ui-progress.js";
 import {
@@ -34,7 +33,7 @@ export const VERSION = "0.9.0";
 
 export { parseGlobalArgs };
 
-const AUTH_EXEMPT_ROUTES = new Set(["login", "doctor", "spec.init", "zombie.install"]);
+const AUTH_EXEMPT_ROUTES = new Set(["login", "doctor", "zombie.install"]);
 
 export async function runCli(argv, io = {}) {
   const stdout = io.stdout || process.stdout;
@@ -124,10 +123,7 @@ export async function runCli(argv, io = {}) {
     login: (routeArgs) => core.commandLogin(routeArgs),
     logout: () => core.commandLogout(),
     workspace: (routeArgs) => core.commandWorkspace(routeArgs),
-    specInit: (routeArgs) => core.commandSpecInit(routeArgs.slice(1)),
     specsSync: (routeArgs) => core.commandSpecsSync(routeArgs.slice(1)),
-    run: (routeArgs) => core.commandRun(routeArgs),
-    runsList: (routeArgs) => core.commandRunsList(routeArgs.slice(1)),
     doctor: () => core.commandDoctor(),
     skillSecret: (routeArgs) => core.commandSkillSecret(routeArgs),
     // M9_001: External agent key management
@@ -159,30 +155,6 @@ export async function runCli(argv, io = {}) {
       ui,
       printJson,
       printSection,
-      writeLine,
-    }),
-    runsCancel: (routeArgs) => commandRunsModule(ctx, routeArgs, {
-      parseFlags,
-      request,
-      apiHeaders,
-      ui,
-      printJson,
-      writeLine,
-    }),
-    runsReplay: (routeArgs) => commandRunsModule(ctx, routeArgs, {
-      parseFlags,
-      request,
-      apiHeaders,
-      ui,
-      printJson,
-      writeLine,
-    }),
-    runsInterrupt: (routeArgs) => commandRunsModule(ctx, routeArgs, {
-      parseFlags,
-      request,
-      apiHeaders,
-      ui,
-      printJson,
       writeLine,
     }),
     // M1_001 §5: Zombie commands
@@ -234,12 +206,6 @@ export async function runCli(argv, io = {}) {
       }
       if (exitCode === 0 && route.key === "workspace" && args[0] === "add") {
         cliAnalytics.trackCliEvent(analyticsClient, distinctId, "workspace_created", {
-          command: route.key,
-          ...analyticsContext,
-        });
-      }
-      if (exitCode === 0 && route.key === "run" && args[0] !== "status") {
-        cliAnalytics.trackCliEvent(analyticsClient, distinctId, "run_triggered", {
           command: route.key,
           ...analyticsContext,
         });
