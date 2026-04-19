@@ -1,4 +1,16 @@
-import posthog from "posthog-js";
+/*
+ * posthog-js is lazy-loaded to keep it off the landing first-load bundle.
+ * initAnalytics() schedules the import on idle (so it doesn't compete
+ * with LCP work), and track() queues events that arrive before the
+ * module resolves. Once loaded, buffered events flush in order.
+ *
+ * Call-sites stay synchronous (track returns void). Tests can await
+ * flushAnalyticsForTests() to drain the queue before asserting.
+ */
+
+// Module-local type alias so the lazy loader's return type is named
+// without bringing the runtime import along.
+type Posthog = typeof import("posthog-js").default;
 
 export const EVENT_SIGNUP_STARTED = "signup_started";
 export const EVENT_SIGNUP_COMPLETED = "signup_completed";
@@ -45,6 +57,9 @@ const ALLOWED_PROPERTY_KEYS = new Set([
 
 let initialized = false;
 let analyticsEnabled = false;
+let posthogModule: Posthog | null = null;
+let loadPromise: Promise<void> | null = null;
+const pendingEvents: Array<[AnalyticsEventName, AnalyticsProps]> = [];
 
 function readRuntimeConfig(): RuntimeConfig {
   const globalCfg = (globalThis as { __UZ_ANALYTICS_CONFIG__?: Partial<RuntimeConfig> }).__UZ_ANALYTICS_CONFIG__;
@@ -71,6 +86,38 @@ function sanitizeProps(properties: AnalyticsProps): AnalyticsProps {
   return sanitized;
 }
 
+async function loadPosthog(cfg: RuntimeConfig): Promise<void> {
+  if (posthogModule) return;
+  const mod = await import("posthog-js");
+  posthogModule = mod.default;
+  posthogModule.init(cfg.key, {
+    api_host: cfg.host,
+    autocapture: false,
+    capture_pageview: false,
+    persistence: "localStorage",
+  });
+  while (pendingEvents.length > 0) {
+    const next = pendingEvents.shift();
+    if (next) posthogModule.capture(next[0], next[1]);
+  }
+}
+
+function ensureLoader(cfg: RuntimeConfig): void {
+  if (loadPromise || !cfg.enabled) return;
+  loadPromise = loadPosthog(cfg);
+}
+
+function scheduleIdle(fn: () => void): void {
+  const ric = (
+    globalThis as { requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number }
+  ).requestIdleCallback;
+  if (typeof ric === "function") {
+    ric(fn, { timeout: 1500 });
+    return;
+  }
+  setTimeout(fn, 0);
+}
+
 export function initAnalytics(): void {
   if (initialized) return;
   initialized = true;
@@ -79,18 +126,22 @@ export function initAnalytics(): void {
   analyticsEnabled = cfg.enabled;
   if (!cfg.enabled) return;
 
-  posthog.init(cfg.key, {
-    api_host: cfg.host,
-    autocapture: false,
-    capture_pageview: false,
-    persistence: "localStorage",
-  });
+  // Prefetch posthog-js on idle so the first track() finds it hot. Never
+  // blocks the landing LCP critical path.
+  scheduleIdle(() => ensureLoader(cfg));
 }
 
 export function track(event: AnalyticsEventName, properties: AnalyticsProps): void {
   if (!initialized) initAnalytics();
   if (!analyticsEnabled) return;
-  posthog.capture(event, sanitizeProps(properties));
+
+  const sanitized = sanitizeProps(properties);
+  if (posthogModule) {
+    posthogModule.capture(event, sanitized);
+    return;
+  }
+  pendingEvents.push([event, sanitized]);
+  ensureLoader(readRuntimeConfig());
 }
 
 export function trackSignupStarted(properties: Omit<AnalyticsProps, "path">): void {
@@ -142,7 +193,16 @@ export function trackLeadCaptureFailed(properties: Omit<AnalyticsProps, "path">)
   });
 }
 
+/** Await-able test hook: resolves once the lazy posthog-js import has
+ * settled and any buffered events have flushed through `capture()`. */
+export async function flushAnalyticsForTests(): Promise<void> {
+  if (loadPromise) await loadPromise;
+}
+
 export function resetAnalyticsForTests(): void {
   initialized = false;
   analyticsEnabled = false;
+  posthogModule = null;
+  loadPromise = null;
+  pendingEvents.length = 0;
 }

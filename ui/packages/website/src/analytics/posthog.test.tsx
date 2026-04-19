@@ -9,6 +9,7 @@ import {
   EVENT_LEAD_CAPTURE_SUBMITTED,
   EVENT_NAVIGATION_CLICKED,
   EVENT_SIGNUP_STARTED,
+  flushAnalyticsForTests,
   resetAnalyticsForTests,
   trackLeadCaptureClicked,
   trackLeadCaptureFailed,
@@ -67,7 +68,7 @@ describe("website analytics", () => {
     delete (globalThis as { __UZ_ANALYTICS_CONFIG__?: unknown }).__UZ_ANALYTICS_CONFIG__;
   });
 
-  it("emits signup_started with privacy-safe allowlisted properties", () => {
+  it("emits signup_started with privacy-safe allowlisted properties", async () => {
     trackSignupStarted({
       source: "hero_primary",
       surface: "hero",
@@ -75,6 +76,7 @@ describe("website analytics", () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       email: "should-not-leak@example.com" as any,
     });
+    await flushAnalyticsForTests();
 
     expect(mockedPosthog.init).toHaveBeenCalledTimes(1);
     expect(mockedPosthog.capture).toHaveBeenCalledTimes(1);
@@ -93,6 +95,7 @@ describe("website analytics", () => {
   it("captures agent-safe CTA navigation events", async () => {
     ctaOnClick("Read quickstart")?.();
     ctaOnClick("View pricing")?.();
+    await flushAnalyticsForTests();
 
     expect(mockedPosthog.capture).toHaveBeenCalledWith(
       EVENT_NAVIGATION_CLICKED,
@@ -104,7 +107,7 @@ describe("website analytics", () => {
     );
   });
 
-  it("captures pricing lead funnel events with allowlisted metadata only", () => {
+  it("captures pricing lead funnel events with allowlisted metadata only", async () => {
     trackLeadCaptureClicked({
       page: "pricing",
       surface: "pricing_card",
@@ -133,6 +136,7 @@ describe("website analytics", () => {
       plan_interest: "Scale",
       status: "submit_failed",
     });
+    await flushAnalyticsForTests();
 
     expect(mockedPosthog.capture).toHaveBeenCalledWith(
       EVENT_LEAD_CAPTURE_CLICKED,
@@ -164,6 +168,7 @@ describe("website analytics", () => {
     };
 
     ctaOnClick("Read quickstart")?.();
+    await flushAnalyticsForTests();
 
     expect(mockedPosthog.init).not.toHaveBeenCalled();
     expect(mockedPosthog.capture).not.toHaveBeenCalled();

@@ -1,0 +1,14 @@
+[
+  {
+    "name": "landing (critical path)",
+    "path": "dist/assets/index-*.js",
+    "limit": "100 kB",
+    "gzip": true
+  },
+  {
+    "name": "landing css",
+    "path": "dist/assets/index-*.css",
+    "limit": "20 kB",
+    "gzip": true
+  }
+]
