@@ -1,5 +1,31 @@
+import { lazy, Suspense } from "react";
 import { InstallBlock } from "@usezombie/design-system";
 import { APP_BASE_URL, DOCS_QUICKSTART_URL, DOCS_URL } from "../config";
+
+/* M26.8 demos are loaded from a lazy chunk so the agents-route initial
+ * payload stays lean and the motion library never lands on /pricing,
+ * /privacy, or /terms. */
+const BackgroundBeamsWithCollision = lazy(() =>
+  import("../components/domain/background-beams-with-collision").then((m) => ({
+    default: m.BackgroundBeamsWithCollision,
+  })),
+);
+const AnimatedTerminal = lazy(() =>
+  import("../components/domain/animated-terminal").then((m) => ({
+    default: m.AnimatedTerminal,
+  })),
+);
+
+const DEMO_COMMANDS = [
+  "zombiectl login",
+  "zombiectl zombie install --template lead-collector",
+  "zombiectl zombie up lead-collector --watch",
+];
+
+const DEMO_OUTPUTS: Record<number, string[]> = {
+  1: ["Installed lead-collector@0.1.0"],
+  2: ["[ready] lead-collector awaiting triggers"],
+};
 
 const jsonLd = {
   "@context": "https://schema.org",
@@ -57,6 +83,22 @@ export default function Agents() {
       <p className="lead" style={{ color: "var(--z-text-muted)" }}>
         Use <code>/openapi.json</code> as canonical contract. Docs are secondary.
       </p>
+
+      <Suspense fallback={<div className="min-h-[20rem]" aria-hidden="true" />}>
+        <BackgroundBeamsWithCollision className="rounded-lg border border-border">
+          <div className="flex flex-col items-start gap-md px-xl py-2xl">
+            <p className="eyebrow">interactive</p>
+            <h2 className="text-2xl">Zombie agents orchestrate work, humans approve.</h2>
+            <p className="text-muted-foreground max-w-[52ch]">
+              Install, run, and observe the agent lifecycle without leaving this page.
+            </p>
+          </div>
+        </BackgroundBeamsWithCollision>
+      </Suspense>
+
+      <Suspense fallback={<div className="min-h-[16rem]" aria-hidden="true" />}>
+        <AnimatedTerminal commands={DEMO_COMMANDS} outputs={DEMO_OUTPUTS} />
+      </Suspense>
 
       {/* Install Zombiectl */}
       <InstallBlock
