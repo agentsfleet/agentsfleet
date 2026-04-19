@@ -85,3 +85,6 @@ export {
   ConfirmDialog,
   type ConfirmDialogProps,
 } from "./ConfirmDialog";
+export { PageHeader, type PageHeaderProps } from "./PageHeader";
+export { PageTitle, type PageTitleProps } from "./PageTitle";
+export { SectionLabel, type SectionLabelProps } from "./SectionLabel";

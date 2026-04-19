@@ -73,4 +73,10 @@ export {
   type PagePaginationProps,
   ConfirmDialog,
   type ConfirmDialogProps,
+  PageHeader,
+  type PageHeaderProps,
+  PageTitle,
+  type PageTitleProps,
+  SectionLabel,
+  type SectionLabelProps,
 } from "./design-system";

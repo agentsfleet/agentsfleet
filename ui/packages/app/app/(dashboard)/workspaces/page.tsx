@@ -1,5 +1,10 @@
 import { auth } from "@clerk/nextjs/server";
-import { buttonClassName, EmptyState } from "@usezombie/design-system";
+import {
+  buttonClassName,
+  EmptyState,
+  PageHeader,
+  PageTitle,
+} from "@usezombie/design-system";
 import { listWorkspaces } from "@/lib/api";
 import WorkspaceCard from "@/components/domain/WorkspaceCard";
 import AnalyticsPageEvent from "@/components/analytics/AnalyticsPageEvent";
@@ -45,8 +50,9 @@ export default async function WorkspacesPage() {
           }}
         />
       ) : null}
-      <div className="mc-page-header">
-        <h1 className="mc-page-title">Workspaces</h1>
+
+      <PageHeader>
+        <PageTitle>Workspaces</PageTitle>
         <TrackedAnchor
           href="https://docs.usezombie.com/quickstart#add-workspace"
           target="_blank"
@@ -62,7 +68,7 @@ export default async function WorkspacesPage() {
           <PlusIcon size={14} />
           Add workspace
         </TrackedAnchor>
-      </div>
+      </PageHeader>
 
       {error ? (
         <div
@@ -86,7 +92,7 @@ export default async function WorkspacesPage() {
       ) : null}
 
       {workspaces && workspaces.length > 0 ? (
-        <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))" }}>
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(320px,1fr))] gap-4">
           {workspaces.map((ws) => (
             <WorkspaceCard key={ws.id} workspace={ws} />
           ))}

@@ -1,9 +1,16 @@
 import { auth } from "@clerk/nextjs/server";
-import { buttonClassName, StatusCard } from "@usezombie/design-system";
+import {
+  buttonClassName,
+  PageHeader,
+  SectionLabel,
+  StatusCard,
+} from "@usezombie/design-system";
 import { getRun, listRunTransitions } from "@/lib/api";
 import AnalyticsPageEvent from "@/components/analytics/AnalyticsPageEvent";
 import RunStatus from "@/components/domain/RunStatus";
 import PipelineStage from "@/components/domain/PipelineStage";
+import ArtifactRow from "@/components/domain/ArtifactRow";
+import TransitionRow from "@/components/domain/TransitionRow";
 import { notFound } from "next/navigation";
 import { formatDate, formatDuration } from "@/lib/utils";
 import type { RunStatus as RunStatusType } from "@/lib/types";
@@ -68,7 +75,7 @@ export default async function RunDetailPage({
           }}
         />
       ) : null}
-      {/* Back nav */}
+
       <TrackedAnchor
         href={`/workspaces/${id}`}
         className="inline-flex items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
@@ -84,10 +91,9 @@ export default async function RunDetailPage({
         <ArrowLeftIcon size={14} /> Workspace
       </TrackedAnchor>
 
-      {/* Run header */}
-      <div className="mc-page-header mt-4">
+      <PageHeader className="mt-4">
         <div>
-          <div className="font-mono text-xs text-muted-foreground mb-1">{run.id}</div>
+          <div className="mb-1 font-mono text-xs text-muted-foreground">{run.id}</div>
           <div className="text-base font-semibold">{run.spec_path}</div>
         </div>
         <div className="flex items-center gap-2">
@@ -127,14 +133,11 @@ export default async function RunDetailPage({
             </TrackedAnchor>
           ) : null}
         </div>
-      </div>
+      </PageHeader>
 
-      {/* Pipeline */}
-      <div className="mb-8">
-        <p className="mb-3 font-mono text-[0.7rem] uppercase tracking-widest text-muted-foreground">
-          Pipeline
-        </p>
-        <div className="pipeline-track">
+      <section className="mb-8">
+        <SectionLabel>Pipeline</SectionLabel>
+        <div className="flex items-center gap-0 overflow-x-auto py-4">
           {PIPELINE_STAGES.map((stage, i) => {
             const state =
               i < currentStageIdx ? "done"
@@ -150,10 +153,9 @@ export default async function RunDetailPage({
             );
           })}
         </div>
-      </div>
+      </section>
 
-      {/* Metadata */}
-      <div className="mb-8 grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))" }}>
+      <section className="mb-8 grid grid-cols-[repeat(auto-fit,minmax(180px,1fr))] gap-3">
         <StatusCard label="Attempts" count={`${run.attempts} / ${run.max_attempts}`} />
         <StatusCard
           label="Duration"
@@ -161,62 +163,36 @@ export default async function RunDetailPage({
         />
         <StatusCard label="Created" count={formatDate(run.created_at)} />
         <StatusCard label="Updated" count={formatDate(run.updated_at)} />
-      </div>
+      </section>
 
-      {/* Artifacts */}
       {run.artifacts ? (
-        <div className="mb-8">
-          <p className="mb-3 font-mono text-[0.7rem] uppercase tracking-widest text-muted-foreground">
-            Artifacts
-          </p>
+        <section className="mb-8">
+          <SectionLabel>Artifacts</SectionLabel>
           <div className="flex flex-col gap-1.5">
             {Object.entries(run.artifacts)
               .filter(([, v]) => v != null)
               .map(([key, value]) => (
-                <div
-                  key={key}
-                  className="flex items-center gap-3 rounded-sm border border-border bg-card px-3 py-2"
-                >
-                  <span className="min-w-[120px] font-mono text-[0.72rem] uppercase tracking-wide text-warning">
-                    {key}
-                  </span>
-                  <code className="text-xs text-info">{value}</code>
-                </div>
+                <ArtifactRow key={key} label={key} value={String(value)} />
               ))}
           </div>
-        </div>
+        </section>
       ) : null}
 
-      {/* Transition log */}
-      <div className="mb-8">
-        <p className="mb-3 font-mono text-[0.7rem] uppercase tracking-widest text-muted-foreground">
-          Audit trail
-        </p>
+      <section className="mb-8">
+        <SectionLabel>Audit trail</SectionLabel>
         <div className="flex flex-col">
           {transitions.map((t) => (
-            <div
+            <TransitionRow
               key={t.id}
-              className="flex items-start justify-between gap-4 border-b border-border/50 py-3 last:border-b-0"
-            >
-              <div className="flex items-center gap-2 whitespace-nowrap font-mono text-xs">
-                {t.from_status ? (
-                  <>
-                    <span className="text-muted-foreground">{t.from_status}</span>
-                    <span className="text-muted-foreground/60">→</span>
-                  </>
-                ) : null}
-                <span className="font-medium text-info">{t.to_status}</span>
-              </div>
-              <div className="flex flex-col items-end gap-0.5 text-sm text-muted-foreground">
-                <span>{t.reason}</span>
-                <span className="font-mono text-[0.68rem] text-muted-foreground/60">
-                  {t.actor} · {formatDate(t.created_at)}
-                </span>
-              </div>
-            </div>
+              fromStatus={t.from_status}
+              toStatus={t.to_status}
+              reason={t.reason}
+              actor={t.actor}
+              createdAt={t.created_at}
+            />
           ))}
         </div>
-      </div>
+      </section>
     </div>
   );
 }

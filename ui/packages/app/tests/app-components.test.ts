@@ -100,7 +100,10 @@ describe("app components", () => {
     );
 
     expect(activeMarkup).toContain("Patch");
-    expect(activeMarkup).toContain("pipeline-connector");
+    // Connector is a second sibling div with the connector sizing utilities
+    // (h-0.5 w-12). showConnector=true emits it; showConnector=false omits.
+    expect(activeMarkup).toMatch(/<div class="h-0\.5 w-12/);
+    expect(pendingMarkup).not.toMatch(/<div class="h-0\.5 w-12/);
     expect(pendingMarkup).toContain("CUSTOM_STAGE");
     expect(pendingMarkup).toContain("○");
   });
@@ -110,10 +113,12 @@ describe("app components", () => {
     const known = renderToStaticMarkup(React.createElement(RunStatus, { status: "FAILED", size: "sm" }));
     const fallback = renderToStaticMarkup(React.createElement(RunStatus, { status: "WAITING" }));
 
+    // FAILED → DS Badge variant="destructive" → text-destructive utility.
     expect(known).toContain("Failed");
-    expect(known).toContain("status-failed");
+    expect(known).toContain("text-destructive");
+    // Unknown status → fallback Badge variant="default" → muted foreground.
     expect(fallback).toContain("WAITING");
-    expect(fallback).toContain("status-pending");
+    expect(fallback).toContain("text-muted-foreground");
   });
 
   it("tracks workspace and run interactions from domain rows", async () => {

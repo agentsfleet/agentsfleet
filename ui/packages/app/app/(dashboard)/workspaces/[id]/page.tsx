@@ -1,5 +1,11 @@
 import { auth } from "@clerk/nextjs/server";
-import { buttonClassName, EmptyState } from "@usezombie/design-system";
+import {
+  buttonClassName,
+  EmptyState,
+  PageHeader,
+  PageTitle,
+  SectionLabel,
+} from "@usezombie/design-system";
 import { getWorkspace, listRuns } from "@/lib/api";
 import AnalyticsPageEvent from "@/components/analytics/AnalyticsPageEvent";
 import RunRow from "@/components/domain/RunRow";
@@ -52,13 +58,13 @@ export default async function WorkspacePage({ params }: { params: Promise<{ id: 
           active_run_status: activeRun?.status,
         }}
       />
-      {/* Workspace header */}
-      <div className="mc-page-header">
+
+      <PageHeader>
         <div>
-          <div className="font-mono text-xs text-muted-foreground mb-1">
+          <div className="mb-1 font-mono text-xs text-muted-foreground">
             {workspace.repo_url.replace("https://github.com/", "")}
           </div>
-          <h1 className="mc-page-title">{workspace.name ?? workspace.id}</h1>
+          <PageTitle>{workspace.name ?? workspace.id}</PageTitle>
         </div>
         <div className="flex gap-2">
           {workspace.paused ? (
@@ -104,15 +110,12 @@ export default async function WorkspacePage({ params }: { params: Promise<{ id: 
             <RefreshCwIcon size={14} /> All runs
           </TrackedAnchor>
         </div>
-      </div>
+      </PageHeader>
 
-      {/* Pipeline visualization for active run */}
       {activeRun ? (
-        <div className="mb-8">
-          <p className="mb-3 font-mono text-[0.72rem] uppercase tracking-widest text-muted-foreground">
-            Active run · {activeRun.id}
-          </p>
-          <div className="pipeline-track">
+        <section className="mb-8">
+          <SectionLabel>Active run · {activeRun.id}</SectionLabel>
+          <div className="flex items-center gap-0 overflow-x-auto py-4">
             {PIPELINE_STAGES.map((stage, i) => {
               const idx = PIPELINE_STAGES.indexOf(activeRun.status as RunStatus);
               const stageState =
@@ -127,14 +130,11 @@ export default async function WorkspacePage({ params }: { params: Promise<{ id: 
               );
             })}
           </div>
-        </div>
+        </section>
       ) : null}
 
-      {/* Recent runs */}
-      <div className="mb-8">
-        <p className="mb-3 font-mono text-[0.72rem] uppercase tracking-widest text-muted-foreground">
-          Recent runs
-        </p>
+      <section className="mb-8">
+        <SectionLabel>Recent runs</SectionLabel>
         {runsRes.data.length === 0 ? (
           <EmptyState
             title="No runs yet"
@@ -147,7 +147,7 @@ export default async function WorkspacePage({ params }: { params: Promise<{ id: 
             ))}
           </div>
         )}
-      </div>
+      </section>
     </div>
   );
 }

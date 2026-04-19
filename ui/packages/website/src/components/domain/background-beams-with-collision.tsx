@@ -108,40 +108,58 @@ function CollisionBeam({
   });
   const [cycleKey, setCycleKey] = useState(0);
 
+  // rAF loop reads live collision state via a ref so the effect sets up
+  // once per mount — no tear-down/rebuild per state change. Visibility
+  // pause satisfies spec §5.8.4: browser-tab-hidden → no collision checks.
+  const detectedRef = useRef(false);
+  useEffect(() => {
+    detectedRef.current = collision.detected;
+  }, [collision.detected]);
+
   useEffect(() => {
     if (typeof window === "undefined") return;
     let raf = 0;
+    let paused = typeof document !== "undefined" && document.hidden;
 
     const check = () => {
-      const beamEl = beamRef.current;
-      const floorEl = containerRef.current;
-      const parentEl = parentRef.current;
-      if (beamEl && floorEl && parentEl && !collision.detected) {
-        const beamRect = beamEl.getBoundingClientRect();
-        const floorRect = floorEl.getBoundingClientRect();
-        const parentRect = parentEl.getBoundingClientRect();
-        if (beamRect.bottom >= floorRect.top) {
-          setCollision({
-            detected: true,
-            coords: {
-              x: beamRect.left - parentRect.left + beamRect.width / 2,
-              y: beamRect.bottom - parentRect.top,
-            },
-            key: collision.key + 1,
-          });
+      if (!paused) {
+        const beamEl = beamRef.current;
+        const floorEl = containerRef.current;
+        const parentEl = parentRef.current;
+        if (beamEl && floorEl && parentEl && !detectedRef.current) {
+          const beamRect = beamEl.getBoundingClientRect();
+          const floorRect = floorEl.getBoundingClientRect();
+          const parentRect = parentEl.getBoundingClientRect();
+          if (beamRect.bottom >= floorRect.top) {
+            setCollision((prev) => ({
+              detected: true,
+              coords: {
+                x: beamRect.left - parentRect.left + beamRect.width / 2,
+                y: beamRect.bottom - parentRect.top,
+              },
+              key: prev.key + 1,
+            }));
+          }
         }
       }
       raf = window.requestAnimationFrame(check);
     };
 
+    const onVisibility = () => {
+      paused = document.hidden;
+    };
+    document.addEventListener("visibilitychange", onVisibility);
     raf = window.requestAnimationFrame(check);
-    return () => window.cancelAnimationFrame(raf);
-  }, [collision, containerRef, parentRef]);
+    return () => {
+      window.cancelAnimationFrame(raf);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [containerRef, parentRef]);
 
   useEffect(() => {
     if (!collision.detected || !collision.coords) return;
     const resetTimer = window.setTimeout(() => {
-      setCollision({ detected: false, coords: null, key: collision.key });
+      setCollision((prev) => ({ detected: false, coords: null, key: prev.key }));
       setCycleKey((k) => k + 1);
     }, 2000);
     return () => window.clearTimeout(resetTimer);
