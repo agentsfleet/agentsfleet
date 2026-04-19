@@ -2,7 +2,7 @@
 # QUALITY — code quality, formatting, analysis
 # =============================================================================
 
-.PHONY: lint lint-zig lint-website lint-apps lint-ci openapi doctor check-pg-drain _fmt _fmt_check _zlint_check _pg_drain_check _zig_target_lint _zig_line_limit_check _hardcoded_role_check _website_lint _app_lint _zombiectl_lint _actionlint_check
+.PHONY: lint lint-zig lint-website lint-apps lint-ci openapi doctor check-pg-drain _fmt _fmt_check _zlint_check _pg_drain_check _zig_target_lint _zig_line_limit_check _hardcoded_role_check _website_lint _app_lint _design_system_lint _zombiectl_lint _actionlint_check
 
 ZLINT ?= zlint
 ACTIONLINT ?= actionlint
@@ -32,6 +32,11 @@ _app_lint:
 	@cd ui/packages/app && bun run lint
 	@cd ui/packages/app && bun run typecheck
 	@echo "✓ [app] Lint passed"
+
+_design_system_lint:
+	@echo "→ [design-system] Running ESLint + TypeScript check..."
+	@cd ui/packages/design-system && bun run lint
+	@echo "✓ [design-system] Lint passed"
 
 _zombiectl_lint:
 	@echo "→ [zombiectl] Checking CLI syntax..."
@@ -166,11 +171,11 @@ lint-zig: _fmt_check _zlint_check _pg_drain_check _zig_target_lint _zig_line_lim
 
 lint-website: _website_lint  ## Lint website only (ESLint + tsc)
 
-lint-apps: _app_lint _zombiectl_lint  ## Lint app and zombiectl (Next.js ESLint + tsc, CLI syntax)
+lint-apps: _app_lint _design_system_lint _zombiectl_lint  ## Lint app, design-system, and zombiectl
 
 lint-ci: _actionlint_check  ## Lint GitHub Actions workflows (actionlint)
 
-lint: lint-zig lint-website lint-apps lint-ci openapi  ## Lint everything (Zig + website + app + CLI + CI + OpenAPI)
+lint: lint-zig lint-website lint-apps lint-ci openapi  ## Lint everything (zombied + website + app + design-system + zombiectl + CI + OpenAPI)
 	@echo "✓ All lint checks passed"
 
 doctor:  ## Run zombied doctor (connectivity + config check)

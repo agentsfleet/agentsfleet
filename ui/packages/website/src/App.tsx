@@ -1,14 +1,19 @@
+import { lazy, Suspense } from "react";
 import { Link, NavLink, Route, Routes, ScrollRestoration, useLocation, useNavigate } from "react-router-dom";
 import Home from "./pages/Home";
-import Pricing from "./pages/Pricing";
-import Agents from "./pages/Agents";
-import Privacy from "./pages/Privacy";
-import Terms from "./pages/Terms";
 import Footer from "./components/Footer";
 import { Button, AnimatedIcon, ZombieHandIcon } from "@usezombie/design-system";
 import { APP_BASE_URL, DOCS_URL } from "./config";
 import { trackNavigationClicked, trackSignupStarted } from "./analytics/posthog";
 import { getModeFromPathname, MODE_AGENTS, MODE_HUMANS, MODE_PATHS, type Mode } from "./constants/mode";
+
+/* Secondary routes ship as their own chunks so the landing (/) first-load
+ * stays lean. Vite code-splits each React.lazy import by default. */
+const Pricing = lazy(() => import("./pages/Pricing"));
+const Agents = lazy(() => import("./pages/Agents"));
+const Privacy = lazy(() => import("./pages/Privacy"));
+const Terms = lazy(() => import("./pages/Terms"));
+const DesignSystemGallery = lazy(() => import("./pages/DesignSystemGallery"));
 
 /** Derive mode from current URL — single source of truth. */
 function useMode() {
@@ -108,28 +113,36 @@ export default function App() {
 
         <div className="header-actions">
           <Button
-            to={APP_BASE_URL}
-            onClick={() => trackSignupStarted({ source: "header_mission_control", surface: "header", mode })}
-            className={isHumansMode ? "header-mission-control z-animated-icon-trigger" : "header-mission-control z-animated-icon-trigger is-hidden"}
-            aria-hidden={!isHumansMode}
-            tabIndex={isHumansMode ? undefined : -1}
+            asChild
+            variant="ghost"
+            className={isHumansMode ? "header-mission-control group" : "header-mission-control group is-hidden"}
           >
-            <span>Mission Control</span>
-            <span className="header-mission-control-icon" aria-hidden="true">
-              <AnimatedIcon trigger="parent-hover" animation="wiggle"><ZombieHandIcon size={18} /></AnimatedIcon>
-            </span>
+            <a
+              href={APP_BASE_URL}
+              onClick={() => trackSignupStarted({ source: "header_mission_control", surface: "header", mode })}
+              aria-hidden={!isHumansMode}
+              tabIndex={isHumansMode ? undefined : -1}
+            >
+              <span>Mission Control</span>
+              <span className="header-mission-control-icon" aria-hidden="true">
+                <AnimatedIcon trigger="parent-hover" animation="wiggle"><ZombieHandIcon size={18} /></AnimatedIcon>
+              </span>
+            </a>
           </Button>
         </div>
       </header>
 
       <main className="site-main">
-        <Routes>
-          <Route path="/" element={<Home />} />
-          <Route path="/pricing" element={<Pricing />} />
-          <Route path="/agents" element={<Agents />} />
-          <Route path="/privacy" element={<Privacy />} />
-          <Route path="/terms" element={<Terms />} />
-        </Routes>
+        <Suspense fallback={null}>
+          <Routes>
+            <Route path="/" element={<Home />} />
+            <Route path="/pricing" element={<Pricing />} />
+            <Route path="/agents" element={<Agents />} />
+            <Route path="/privacy" element={<Privacy />} />
+            <Route path="/terms" element={<Terms />} />
+            <Route path="/_design-system" element={<DesignSystemGallery />} />
+          </Routes>
+        </Suspense>
       </main>
 
       <Footer />

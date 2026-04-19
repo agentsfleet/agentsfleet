@@ -261,6 +261,7 @@ test.describe("Agents page — install block", () => {
     await page.goto("/agents");
     const btn = page.getByRole("link", { name: "Setup your personal dashboard" });
     await expect(btn).toBeVisible();
-    await expect(btn).toHaveClass(/z-btn--double/);
+    await expect(btn).toHaveClass(/border-2/);
+    await expect(btn).toHaveClass(/border-primary/);
   });
 });

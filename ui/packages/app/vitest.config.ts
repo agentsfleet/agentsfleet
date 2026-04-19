@@ -30,6 +30,10 @@ export default defineConfig({
         'playwright.config.ts',
         'global.d.ts',
         'proxy.ts',
+        // Dev-only fixture route. ds-button-rsc is a build-time assertion —
+        // its contract is that `next build` does not hoist "use client"
+        // onto the DS Button — not a runtime unit.
+        '**/ds-button-rsc/**',
       ],
       thresholds: {
         statements: 95,

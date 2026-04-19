@@ -1,0 +1,36 @@
+coverage:
+  status:
+    project:
+      default:
+        target: auto
+        threshold: 1%
+        informational: false
+    patch:
+      default:
+        target: 90%
+        threshold: 1%
+        informational: false
+
+  range: "70..90"
+  round: down
+  precision: 2
+
+comment:
+  layout: "reach,diff,flags,tree"
+  behavior: default
+  require_changes: false
+
+ignore:
+  - "**/*.test.ts"
+  - "**/*.test.tsx"
+  - "**/*.spec.ts"
+  - "**/*.spec.tsx"
+  - "**/tests/e2e/**"
+  - "**/node_modules/**"
+  - "**/.next/**"
+  - "**/dist/**"
+  - "ui/packages/app/app/(dev)/**"
+  - "ui/packages/website/src/pages/DesignSystemGallery.tsx"
+  - "ui/packages/website/src/components/domain/background-beams-with-collision.tsx"
+  - "ui/packages/website/src/components/domain/animated-terminal.tsx"
+  - "ui/packages/website/src/components/domain/use-in-view.ts"

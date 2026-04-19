@@ -1,30 +1,22 @@
-@import url("https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&display=swap");
+/* Self-hosted Geist via Vercel's @fontsource-variable/geist — drops the
+ * googleapis CDN request that used to block first paint on every page. */
+@import "@fontsource-variable/geist";
+@import "@fontsource-variable/geist-mono";
 @import "tailwindcss";
+@import "tw-animate-css";
 @import "@usezombie/design-system/tokens.css";
+@import "@usezombie/design-system/theme.css";
 
-@font-face {
-  font-family: "Geist Mono";
-  src: url("https://cdn.jsdelivr.net/npm/geist@1.3.1/dist/fonts/geist-mono/GeistMono-Regular.woff2") format("woff2");
-  font-weight: 400;
-  font-style: normal;
-  font-display: swap;
-}
+/* Tailwind v4 auto-scans the website package; the design-system package lives
+ * in a sibling workspace and must be registered explicitly so utilities
+ * referenced in its .tsx files (gap-xl, shadow-card, animate-wave, ...) get
+ * compiled into the final CSS. Without this, Buttons / Cards / Terminals etc.
+ * ship unstyled. */
+@source "../../design-system/src/**/*.{ts,tsx}";
 
-@font-face {
-  font-family: "Geist Mono";
-  src: url("https://cdn.jsdelivr.net/npm/geist@1.3.1/dist/fonts/geist-mono/GeistMono-Medium.woff2") format("woff2");
-  font-weight: 500;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Geist Mono";
-  src: url("https://cdn.jsdelivr.net/npm/geist@1.3.1/dist/fonts/geist-mono/GeistMono-Bold.woff2") format("woff2");
-  font-weight: 700;
-  font-style: normal;
-  font-display: swap;
-}
+/* Geist Mono now ships via @fontsource-variable/geist-mono above — no more
+ * jsdelivr CDN. The shared --z-font-mono token in tokens.css references
+ * "Geist Mono Variable" which the fontsource package provides. */
 
 /* ── Legacy aliases (bridge to z- tokens) ── */
 :root {
@@ -188,213 +180,8 @@ a {
    Portable to Mission Control — copy design-system/ + these styles.
    ================================================================== */
 
-/* ── z-btn ── */
-.z-btn {
-  display: inline-flex;
-  align-items: center;
-  min-height: 44px;
-  padding: 0.7rem 1.4rem;
-  border-radius: var(--z-radius-pill);
-  border: 1px solid transparent;
-  background: linear-gradient(120deg, var(--z-orange), var(--z-orange-bright));
-  color: var(--z-text-inverse);
-  text-decoration: none;
-  font-weight: 700;
-  font-size: var(--z-text-base);
-  transition: box-shadow var(--z-ease-default), transform var(--z-ease-fast);
-  cursor: pointer;
-  font-family: var(--z-font-sans);
-}
-
-.z-btn:hover {
-  box-shadow: var(--z-shadow-cta);
-  transform: translateY(-1px);
-}
-
-.z-btn--ghost {
-  background: transparent;
-  border-color: var(--z-border);
-  color: var(--z-text-primary);
-}
-
-.z-btn--ghost:hover {
-  border-color: var(--z-orange);
-  box-shadow: var(--z-shadow-subtle);
-}
-
-.z-btn--double {
-  background: transparent;
-  border: 2px solid var(--z-orange);
-  color: var(--z-text-primary);
-  box-shadow: inset 0 0 0 2px var(--z-bg-0), 0 0 0 1px var(--z-orange);
-}
-
-.z-btn--double:hover {
-  box-shadow: inset 0 0 0 2px var(--z-bg-0), 0 0 16px var(--z-glow-strong);
-}
-
-.z-btn-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--z-space-md);
-}
-
-/* ── z-card ── */
-.z-card {
-  background: var(--z-surface-0);
-  border: 1px solid var(--z-border);
-  border-radius: var(--z-radius-lg);
-  padding: var(--z-space-xl);
-  transition: border-color 0.25s ease, box-shadow 0.25s ease;
-}
-
-.z-card:hover {
-  border-color: var(--z-border-active);
-  box-shadow: var(--z-shadow-card);
-}
-
-.z-card h2 {
-  margin-top: 0;
-}
-
-.z-card p,
-.z-card li {
-  color: var(--z-text-muted);
-}
-
-.z-card--featured {
-  border-color: var(--z-orange);
-  box-shadow: var(--z-shadow-card);
-  position: relative;
-}
-
-.z-card--featured::before {
-  content: "Popular";
-  position: absolute;
-  top: -0.6rem;
-  left: var(--z-space-xl);
-  background: linear-gradient(120deg, var(--z-orange), var(--z-orange-bright));
-  color: var(--z-text-inverse);
-  font-size: 0.7rem;
-  font-weight: 700;
-  padding: 0.15rem 0.6rem;
-  border-radius: var(--z-radius-pill);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
-/* ── z-terminal ── */
-.z-terminal {
-  margin: 0;
-  padding: 0.95rem 1.1rem;
-  border-radius: var(--z-radius-md);
-  background: var(--z-surface-terminal);
-  border: 1px solid var(--z-border);
-  color: var(--z-cyan);
-  overflow: auto;
-  font-size: 0.88rem;
-}
-
-.z-terminal--green {
-  color: var(--z-green);
-  border-color: var(--z-glow-green);
-}
-
-/* ── z-terminal-wrap + copy button ── */
-.z-terminal-wrap {
-  position: relative;
-}
-
-.z-terminal--copyable {
-  padding-right: 5.5rem; /* room for copy button */
-}
-
-.z-copy-btn {
-  position: absolute;
-  top: 0.6rem;
-  right: 0.6rem;
-  padding: 0.25rem 0.7rem;
-  border-radius: var(--z-radius-sm);
-  border: 1px solid var(--z-border);
-  background: var(--z-surface-1);
-  color: var(--z-text-muted);
-  font-family: var(--z-font-mono);
-  font-size: var(--z-text-xs);
-  cursor: pointer;
-  transition: color var(--z-ease-fast), border-color var(--z-ease-fast);
-  white-space: nowrap;
-}
-
-.z-copy-btn:hover {
-  color: var(--z-text-primary);
-  border-color: var(--z-orange);
-}
-
-/* Confirm state */
-.z-copy-btn[aria-label="Copied!"] {
-  color: var(--z-green);
-  border-color: var(--z-green);
-}
-
-/* ── z-grid ── */
-.z-grid {
-  display: grid;
-  gap: var(--z-space-lg);
-}
-
-.z-grid--two {
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-}
-
-.z-grid--three {
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-}
-
-.z-grid--four {
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-}
-
-/* ── z-stack / z-section-gap ── */
-.z-stack {
-  display: grid;
-  gap: var(--z-space-xl);
-}
-
-.z-section-gap {
-  padding: var(--z-space-5xl) 0;
-}
-
-.z-section-gap + .z-section-gap {
-  padding-top: 0;
-}
-
-/* ── z-install-block ── */
-.z-install-block {
-  padding: var(--z-space-3xl);
-  border: 1px solid var(--z-border);
-  border-radius: var(--z-radius-lg);
-  background: var(--z-surface-0);
-}
-
-.z-install-block h2 {
-  margin: 0 0 var(--z-space-lg);
-  font-size: var(--z-text-2xl);
-}
-
-.z-install-block .z-terminal {
-  margin-bottom: var(--z-space-xl);
-}
-
-/* ── z-price ── */
-.z-price {
-  color: var(--z-orange-bright);
-  font-size: 1.5rem;
-  font-weight: 700;
-}
-
 /* ==================================================================
-   Legacy / Page-specific styles
-   (kept for backward compat — migrate to z- prefix over time)
+   Page-specific styles (site shell, hero, pricing layout, etc.)
    ================================================================== */
 
 /* ---- Layout ---- */
@@ -484,7 +271,7 @@ a {
 }
 
 .header-actions .cta,
-.header-actions .z-btn {
+.header-actions .header-mission-control {
   white-space: nowrap;
 }
 
@@ -1129,8 +916,7 @@ code {
   color: var(--z-green);
 }
 
-.agent-surface .terminal,
-.agent-surface .z-terminal {
+.agent-surface .terminal {
   color: var(--z-green);
   border-color: var(--z-glow-green);
 }
@@ -1972,10 +1758,6 @@ code {
     flex-direction: column;
     align-items: flex-start;
     gap: var(--z-space-lg);
-  }
-
-  .z-install-block {
-    padding: var(--z-space-xl);
   }
 
   .hero {

@@ -1,0 +1,26 @@
+[
+  {
+    "name": "landing (critical path)",
+    "path": "dist/assets/index-*.js",
+    "limit": "100 kB",
+    "gzip": true
+  },
+  {
+    "name": "landing css",
+    "path": "dist/assets/index-*.css",
+    "limit": "20 kB",
+    "gzip": true
+  },
+  {
+    "name": "agents motion chunk (§5.8.2 + §5.8.5)",
+    "path": "dist/assets/background-beams-with-collision-*.js",
+    "limit": "40 kB",
+    "gzip": true
+  },
+  {
+    "name": "animated terminal chunk (§5.8.5)",
+    "path": "dist/assets/animated-terminal-*.js",
+    "limit": "5 kB",
+    "gzip": true
+  }
+]
