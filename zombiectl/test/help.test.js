@@ -69,7 +69,6 @@ describe("help output", () => {
     const output = out.read();
     expect(output).toContain("OPERATOR COMMANDS");
     expect(output).toContain("workspace upgrade-scale");
-    expect(output).toContain("skill-secret put");
   });
 
   test("--help without ZOMBIE_OPERATOR does NOT contain operator commands", async () => {

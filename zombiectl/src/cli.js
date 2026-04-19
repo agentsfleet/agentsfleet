@@ -125,7 +125,6 @@ export async function runCli(argv, io = {}) {
     workspace: (routeArgs) => core.commandWorkspace(routeArgs),
     specsSync: (routeArgs) => core.commandSpecsSync(routeArgs.slice(1)),
     doctor: () => core.commandDoctor(),
-    skillSecret: (routeArgs) => core.commandSkillSecret(routeArgs),
     // M9_001: External agent key management
     agent: (routeArgs) => commandAgentModule(ctx, routeArgs, workspaces, {
       parseFlags,

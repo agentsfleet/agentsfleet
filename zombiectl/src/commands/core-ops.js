@@ -1,9 +1,5 @@
-import { writeError } from "../program/io.js";
-
 function createCoreOpsHandlers(ctx, workspaces, deps) {
   const {
-    apiHeaders,
-    parseFlags,
     printJson,
     request,
     ui,
@@ -53,57 +49,8 @@ function createCoreOpsHandlers(ctx, workspaces, deps) {
     return ok ? 0 : 1;
   }
 
-  async function commandSkillSecret(args) {
-    const action = args[0];
-    const parsed = parseFlags(args.slice(1));
-    const workspaceId = parsed.options["workspace-id"] || workspaces.current_workspace_id;
-    const skillRef = parsed.options["skill-ref"];
-    const key = parsed.options.key;
-
-    if (!workspaceId || !skillRef || !key) {
-      writeError(ctx, "USAGE_ERROR", "skill-secret requires --workspace-id --skill-ref --key", deps);
-      return 2;
-    }
-
-    const route = `/v1/workspaces/${encodeURIComponent(workspaceId)}/skills/${encodeURIComponent(skillRef)}/secrets/${encodeURIComponent(key)}`;
-
-    if (action === "put") {
-      if (!parsed.options.value) {
-        writeError(ctx, "USAGE_ERROR", "skill-secret put requires --value", deps);
-        return 2;
-      }
-      const body = {
-        value: String(parsed.options.value),
-        scope: parsed.options.scope || "sandbox",
-        meta: {},
-      };
-      const res = await request(ctx, route, {
-        method: "PUT",
-        headers: apiHeaders(ctx),
-        body: JSON.stringify(body),
-      });
-      if (ctx.jsonMode) printJson(ctx.stdout, res);
-      else writeLine(ctx.stdout, ui.ok("skill secret stored"));
-      return 0;
-    }
-
-    if (action === "delete") {
-      const res = await request(ctx, route, {
-        method: "DELETE",
-        headers: apiHeaders(ctx),
-      });
-      if (ctx.jsonMode) printJson(ctx.stdout, res);
-      else writeLine(ctx.stdout, ui.ok("skill secret deleted"));
-      return 0;
-    }
-
-    writeError(ctx, "UNKNOWN_COMMAND", `unknown skill-secret action: ${action ?? "(none)"}`, deps);
-    return 2;
-  }
-
   return {
     commandDoctor,
-    commandSkillSecret,
   };
 }
 

@@ -42,8 +42,6 @@ function printHelp(stdout, ui, opts = {}) {
     writeLine(stdout);
     writeLine(stdout, ui.head("OPERATOR COMMANDS"));
     writeLine(stdout, "  workspace upgrade-scale --workspace-id ID --subscription-id SUBSCRIPTION_ID");
-    writeLine(stdout, "  skill-secret put --workspace-id ID --skill-ref REF --key KEY --value VALUE [--scope host|sandbox]");
-    writeLine(stdout, "  skill-secret delete --workspace-id ID --skill-ref REF --key KEY");
     writeLine(stdout, "  admin config set scoring_context_max_tokens <value> --workspace-id ID");
   }
 

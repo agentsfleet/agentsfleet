@@ -5,7 +5,6 @@ export function registerProgramCommands(handlers) {
     workspace: handlers.workspace,
     "specs.sync": handlers.specsSync,
     doctor: handlers.doctor,
-    "skill-secret": handlers.skillSecret,
     admin: handlers.admin,
     agent: handlers.agent,
     grant: handlers.grant,
