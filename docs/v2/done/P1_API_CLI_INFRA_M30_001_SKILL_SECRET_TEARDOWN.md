@@ -1,10 +1,10 @@
 # P1_API_CLI_INFRA_M30_001: Tear down `skill-secret` — deprecated per-skill credential surface
 
-**Prototype:** v0.21.0
+**Prototype:** v0.23.0
 **Milestone:** M30
 **Workstream:** 001
 **Date:** Apr 19, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — operator-facing. The `zombiectl skill-secret` command and its HTTP surface are currently shipped but no zombie flow exercises them. Removing dead product-surface reduces attack surface, reduces user confusion ("which credential command do I use?"), and removes a parallel table (`vault.workspace_skill_secrets`) from the pre-v2 schema.
 **Batch:** B1 — standalone; no blocking deps on M29.
 **Branch:** feat/m30-skill-secret-teardown
@@ -67,7 +67,7 @@ Docs repo (`<docs worktree>`) — companion PR:
 
 ### §1 — Schema teardown
 
-**Status:** PENDING
+**Status:** DONE
 
 Delete the `vault.workspace_skill_secrets` table from `schema/004_vault_schema.sql` (lines ≈ 77–106 per today's layout). Re-print the Schema Guard output in the commit message. Grants referencing the table disappear with the block.
 
@@ -75,13 +75,13 @@ Delete the `vault.workspace_skill_secrets` table from `schema/004_vault_schema.s
 
 | Dim | Status | Target | Input | Expected | Test type |
 |-----|--------|--------|-------|----------|-----------|
-| 1.1 | PENDING | `schema/004_vault_schema.sql` | after commit | no `CREATE TABLE vault.workspace_skill_secrets` block | contract (grep) |
-| 1.2 | PENDING | `make down && make up` | fresh DB provision | completes with no reference to the dropped table | integration |
-| 1.3 | PENDING | `src/db/pool_test.zig` | expected-tables set | no `workspace_skill_secrets` entry | unit |
+| 1.1 | DONE | `schema/004_vault_schema.sql` | after commit | no `CREATE TABLE vault.workspace_skill_secrets` block | contract (grep) |
+| 1.2 | DONE | `make down && make up` | fresh DB provision | completes with no reference to the dropped table | integration |
+| 1.3 | DONE | `src/db/pool_test.zig` | expected-tables set | no `workspace_skill_secrets` entry | unit |
 
 ### §2 — HTTP handler + route teardown
 
-**Status:** PENDING
+**Status:** DONE
 
 Delete `src/http/handlers/skill_secrets.zig` outright. Remove the route registration wherever it lives (router table, serve_webhook_lookup, middleware stack). Remove any error codes in `src/errors/error_registry_test.zig` that are unique to this handler. Delete the INSERT/DELETE SQL blocks in `src/secrets/crypto_store.zig` and any helper functions they touched (sweep for dead callers).
 
@@ -89,14 +89,14 @@ Delete `src/http/handlers/skill_secrets.zig` outright. Remove the route registra
 
 | Dim | Status | Target | Input | Expected | Test type |
 |-----|--------|--------|-------|----------|-----------|
-| 2.1 | PENDING | `src/http/handlers/skill_secrets.zig` | filesystem | file does not exist | contract |
-| 2.2 | PENDING | `curl -X PUT /v1/workspaces/{id}/skills/{ref}/secrets/{key}` | any request | `404 Not Found` | integration |
-| 2.3 | PENDING | `rg -l workspace_skill_secrets src/` | full source tree | no matches | unit (grep) |
-| 2.4 | PENDING | `make memleak` | server lifecycle after route removal | zero new leaks | integration |
+| 2.1 | DONE | `src/http/handlers/skill_secrets.zig` | filesystem | file does not exist | contract |
+| 2.2 | DONE | `curl -X PUT /v1/workspaces/{id}/skills/{ref}/secrets/{key}` | any request | `404 Not Found` | integration |
+| 2.3 | DONE | `rg -l workspace_skill_secrets src/` | full source tree | no matches | unit (grep) |
+| 2.4 | DONE | `make memleak` | server lifecycle after route removal | zero new leaks | integration |
 
 ### §3 — CLI teardown
 
-**Status:** PENDING
+**Status:** DONE
 
 Delete the `skill-secret put` / `skill-secret delete` action branches in `zombiectl/src/commands/core-ops.js`. Remove the route in the registry. Remove matching unit tests.
 
@@ -104,14 +104,14 @@ Delete the `skill-secret put` / `skill-secret delete` action branches in `zombie
 
 | Dim | Status | Target | Input | Expected | Test type |
 |-----|--------|--------|-------|----------|-----------|
-| 3.1 | PENDING | `zombiectl skill-secret put ...` | any invocation | `unknown command` error, exit 2 | unit |
-| 3.2 | PENDING | `zombiectl --help` | output | no `skill-secret` line | unit |
-| 3.3 | PENDING | `rg -l skill-secret zombiectl/` | full tree | no matches | unit (grep) |
-| 3.4 | PENDING | `cd zombiectl && bun test` | full suite | pass, no regressions | unit |
+| 3.1 | DONE | `zombiectl skill-secret put ...` | any invocation | `unknown command` error, exit 2 | unit |
+| 3.2 | DONE | `zombiectl --help` | output | no `skill-secret` line | unit |
+| 3.3 | DONE | `rg -l skill-secret zombiectl/` | full tree | no matches | unit (grep) |
+| 3.4 | DONE | `cd zombiectl && bun test` | full suite | pass, no regressions | unit |
 
 ### §4 — OpenAPI + docs
 
-**Status:** PENDING
+**Status:** DONE
 
 Remove skill_secrets paths/schemas from `public/openapi.json`. In the companion docs PR, delete the `### zombiectl skill-secret` section from `cli/zombiectl.mdx` and the overview table entry. Add a `<Update>` changelog block tagged `Breaking` + `CLI` + `API`.
 
@@ -119,16 +119,16 @@ Remove skill_secrets paths/schemas from `public/openapi.json`. In the companion 
 
 | Dim | Status | Target | Input | Expected | Test type |
 |-----|--------|--------|-------|----------|-----------|
-| 4.1 | PENDING | `public/openapi.json` | validated | no `skill_secret` tag or paths | contract |
-| 4.2 | PENDING | docs-repo `make lint` | full run | exit 0 | integration |
-| 4.3 | PENDING | docs-repo `cli/zombiectl.mdx` | file | no `skill-secret` references | contract (grep) |
-| 4.4 | PENDING | docs-repo `changelog.mdx` | file | new `<Update>` block tagged `Breaking` + `CLI` + `API` | contract |
+| 4.1 | DONE | `public/openapi.json` | validated | no `skill_secret` tag or paths | contract |
+| 4.2 | DONE | docs-repo `make lint` | full run | exit 0 | integration |
+| 4.3 | DONE | docs-repo `cli/zombiectl.mdx` | file | no `skill-secret` references | contract (grep) |
+| 4.4 | DONE | docs-repo `changelog.mdx` | file | new `<Update>` block tagged `Breaking` + `CLI` + `API` | contract |
 
 ---
 
 ## Interfaces
 
-**Status:** PENDING
+**Status:** DONE
 
 N/A — this workstream is entirely deletion; no new interfaces. The deleted interfaces, for the record:
 
@@ -147,7 +147,7 @@ N/A — this workstream is entirely deletion; no new interfaces. The deleted int
 
 ## Failure Modes
 
-**Status:** PENDING
+**Status:** DONE
 
 | Failure | Trigger | System behavior | User observes |
 |---------|---------|----------------|---------------|
@@ -159,7 +159,7 @@ N/A — this workstream is entirely deletion; no new interfaces. The deleted int
 
 ## Implementation Constraints (Enforceable)
 
-**Status:** PENDING
+**Status:** DONE
 
 | Constraint | How to verify |
 |-----------|---------------|
@@ -175,7 +175,7 @@ N/A — this workstream is entirely deletion; no new interfaces. The deleted int
 
 ## Invariants (Hard Guardrails)
 
-**Status:** PENDING
+**Status:** DONE
 
 | # | Invariant | Enforcement mechanism |
 |---|-----------|----------------------|
@@ -187,7 +187,7 @@ N/A — this workstream is entirely deletion; no new interfaces. The deleted int
 
 ## Test Specification
 
-**Status:** PENDING
+**Status:** DONE
 
 ### Contract Tests
 
@@ -239,7 +239,7 @@ Run `make memleak` after removing the HTTP handler to ensure no allocator is lef
 
 ## Execution Plan (Ordered)
 
-**Status:** PENDING
+**Status:** DONE
 
 | Step | Action | Verify (must pass before next step) |
 |------|--------|--------------------------------------|
@@ -255,7 +255,7 @@ Run `make memleak` after removing the HTTP handler to ensure no allocator is lef
 
 ## Acceptance Criteria
 
-**Status:** PENDING
+**Status:** DONE
 
 - [ ] `schema/004_vault_schema.sql` no longer contains `vault.workspace_skill_secrets` — verify: `rg workspace_skill_secrets schema/` returns 0
 - [ ] `src/http/handlers/skill_secrets.zig` does not exist — verify: `test ! -f src/http/handlers/skill_secrets.zig`
@@ -274,7 +274,7 @@ Run `make memleak` after removing the HTTP handler to ensure no allocator is lef
 
 ## Eval Commands (Post-Implementation Verification)
 
-**Status:** PENDING
+**Status:** DONE
 
 ```bash
 # E1: Source tree clean of the dropped surface
@@ -303,7 +303,7 @@ make memleak && echo PASS || echo FAIL
 
 ## Dead Code Sweep
 
-**Status:** PENDING
+**Status:** DONE
 
 **1. Orphaned files — must be deleted from disk and git.**
 
