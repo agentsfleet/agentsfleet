@@ -23,7 +23,11 @@
 
 **Solution summary:** Split `public/openapi.json` into a directory of small YAML files (`root.yaml` + per-tag `paths/*.yaml` + shared `components/*.yaml`). Bundle with `@redocly/cli` via a `make openapi` target; the bundled JSON is still committed so Mintlify can read it. Add `make check-openapi-sync` — a small Python script that asserts every path in `router.zig` has a matching entry in `openapi.json` and vice versa. Wire both into CI. The existing `make check-openapi-errors` lint is folded into the Redocly lint config.
 
+**Not a token-efficiency project.** The YAML split reduces *human* review surface and makes *agent* edits reliable (localized files + CI gates). It does not change what machine consumers ingest — they still read bundled `public/openapi.json`. If a future LLM/SDK pipeline needs per-tag filtered slices, build it as a separate workstream on top of this one (`npx @redocly/cli bundle --filter tag=…`); do not fold it in here.
+
 **Out-of-scope for this spec (deliberate):** generating OpenAPI directly from Zig handler types via comptime reflection is a separate project — larger scope, touches every handler, and only justified if drift still slips past this gate after real usage. Do not fold it in here.
+
+**Agent-edit use cases in scope (§5):** renaming a path (e.g. `/external-agents` → `/agent-keys`), updating an operation's description/summary, removing an endpoint, appending a new endpoint. These are the daily edits an autonomous agent must perform without corrupting the spec. The split YAML + sync gate + bundle-in-sync gate make these edits safe; §5 documents the recipe.
 
 ---
 
@@ -48,6 +52,8 @@
 | `Makefile` / `make/quality.mk` | MODIFY | Add `make openapi` (bundle + lint) and `make check-openapi-sync` (parity gate); fold existing `check-openapi-errors` into `make openapi` Redocly lint |
 | `.github/workflows/ci.yml` | MODIFY | Wire `make check-openapi-sync` into the lint job; add "bundled artifact is in sync" check that re-bundles and asserts `public/openapi.json` is unchanged |
 | `docs/REST_API_DESIGN_GUIDELINES.md` | MODIFY | Document the split-file workflow: "edit YAML under `public/openapi/`, run `make openapi`. Never hand-edit `public/openapi.json`." |
+| `public/AGENTS.md` | PRE-EXISTING | Index of agent-facing public surfaces (llms.txt, skill.md, agent-manifest.json, heartbeat, openapi.json). Created as a prerequisite to this spec; referenced from `public/openapi/AGENTS.md`. |
+| `public/openapi/AGENTS.md` | CREATE | Agent-edit recipe for the split OpenAPI: rename-path / append-path / remove-path / update-description step-by-step, plus the "never hand-edit `public/openapi.json`" rule. Replaces the originally proposed `README.md`. |
 | `scripts/check_openapi_errors.py` | DELETE | Superseded by Redocly lint rules in `.redocly.yaml` |
 
 ## Applicable Rules
@@ -157,8 +163,25 @@ Python script (~60 lines, matches existing `scripts/check_openapi_errors.py` pat
 
 ```python
 #!/usr/bin/env python3
-"""Fail if router.zig paths and openapi.json paths diverge."""
+"""Fail if router.zig paths and openapi.json paths diverge.
+
+ASSUMPTION: src/http/router.zig registers every /v1 route as a LITERAL string
+match arm of the form `"/v1/..." =>`. This script's regex cannot see through
+string interpolation, variable-based path construction, comptime concatenation,
+or macro-expanded route tables. If router.zig is ever refactored to register
+routes dynamically, this gate will silently drop coverage — it will still exit
+0 but compare an incomplete set.
+
+DEFENSIVE FLOOR: the script asserts a minimum known-good path count. If the
+extracted router set drops below MIN_EXPECTED_PATHS, we fail the build and
+force a human review of the regex. Bump MIN_EXPECTED_PATHS in lockstep when
+new endpoints land.
+"""
 import json, re, sys, pathlib
+
+# Floor — bump when new endpoints land. If the regex silently breaks, this
+# fires before path parity does.
+MIN_EXPECTED_PATHS = 30
 
 ROUTER = pathlib.Path("src/http/router.zig").read_text()
 SPEC = json.loads(pathlib.Path("public/openapi.json").read_text())
@@ -167,6 +190,15 @@ SPEC = json.loads(pathlib.Path("public/openapi.json").read_text())
 router_paths = set(re.findall(r'"(/v1/[^"]+)"\s*=>', ROUTER))
 # Normalize :id → {id} for OpenAPI-style path params.
 router_paths = {re.sub(r':(\w+)', r'{\1}', p) for p in router_paths}
+
+if len(router_paths) < MIN_EXPECTED_PATHS:
+    print(
+        f"FAIL: router_paths set has {len(router_paths)} entries, "
+        f"below floor of {MIN_EXPECTED_PATHS}. "
+        "The regex may have silently stopped matching — review "
+        "scripts/check_openapi_sync.py against the current router.zig shape."
+    )
+    sys.exit(1)
 
 spec_paths = set(SPEC.get("paths", {}).keys())
 
@@ -182,6 +214,13 @@ if missing_in_spec or missing_in_router:
 
 print(f"OK: router ↔ openapi.json path parity ({len(router_paths)} paths)")
 ```
+
+**Regex coverage invariant:** the pattern `"/v1/..." =>` matches every literal
+route arm in `router.zig` today. If a future refactor moves routes into a
+variable-driven table or a comptime-built dispatch map, this script will miss
+them. The `MIN_EXPECTED_PATHS` floor is the canary — it fails loudly if the
+regex stops matching enough routes. Update it in the same commit that adds a
+new literal route.
 
 **`make check-openapi-sync`:**
 
@@ -204,14 +243,62 @@ check-openapi-sync:  ## Assert router.zig ↔ openapi.json path parity
 
 **Status:** PENDING
 
-Update `docs/REST_API_DESIGN_GUIDELINES.md` to document the split workflow. Add a short README at `public/openapi/README.md` explaining "edit the YAML, run `make openapi`, never hand-edit `public/openapi.json`". Optionally, add a pre-commit hook (advisory — not a hard gate) that warns when `public/openapi.json` is staged without corresponding YAML changes.
+Update `docs/REST_API_DESIGN_GUIDELINES.md` to document the split workflow. Add `public/openapi/AGENTS.md` explaining "edit the YAML, run `make openapi`, never hand-edit `public/openapi.json`". Optionally, add a pre-commit hook (advisory — not a hard gate) that warns when `public/openapi.json` is staged without corresponding YAML changes.
 
 **Dimensions:**
 
 | Dim | Status | Target | Input | Expected | Test type |
 |-----|--------|--------|-------|----------|-----------|
 | 4.1 | PENDING | `docs/REST_API_DESIGN_GUIDELINES.md` | Read the "Adding a new endpoint" section | Documents: (1) create YAML under `public/openapi/paths/`, (2) run `make openapi`, (3) commit both YAML and bundled JSON | manual |
-| 4.2 | PENDING | `public/openapi/README.md` | Read | States: source of truth is YAML; `public/openapi.json` is a build artifact; direct edits will be lost on the next `make openapi` | manual |
+| 4.2 | PENDING | `public/openapi/AGENTS.md` | Read | States: source of truth is YAML; `public/openapi.json` is a build artifact; direct edits will be lost on the next `make openapi`. Links back to `public/AGENTS.md` for the full public-surface index. | manual |
+
+### §5 — Agent-edit ergonomics (`public/openapi/AGENTS.md` recipe)
+
+**Status:** PENDING
+
+Autonomous agents are first-class editors of this spec. Daily operations: rename a path, append a path, remove a path, update a description. The split YAML localises each edit to a single small file (≤ 400 lines), and the CI gates (§2, §3) catch the common failure modes — hand-editing the bundled JSON, renaming the OpenAPI path without the router arm, or vice versa.
+
+`public/openapi/AGENTS.md` is the deterministic recipe agents follow. It MUST include:
+
+**Hard rule (top of file):** `public/openapi.json` is a build artifact. Never edit it directly — edits are wiped on the next `make openapi` and CI's "bundle in sync" gate will fail the PR.
+
+**Recipes (copy-paste-ready):**
+
+```
+Rename a path (e.g. /external-agents → /agent-keys):
+  1. Find the owning file: grep -rl "external-agents:" public/openapi/paths/
+  2. Rename the path key in that YAML file
+  3. Rename the corresponding match arm in src/http/router.zig
+  4. make openapi && make check-openapi-sync
+
+Append a new path:
+  1. Pick (or create) public/openapi/paths/<tag>.yaml — aim for ≤ 400 lines
+  2. Add the operation block (operationId, summary, tags, responses using $ref: '#/components/responses/ErrorBody' for 4xx/5xx)
+  3. If new file: add a $ref from public/openapi/root.yaml
+  4. Add the router arm in src/http/router.zig
+  5. make openapi && make check-openapi-sync
+
+Remove a path:
+  1. Delete the operation block in public/openapi/paths/<tag>.yaml
+     (if the file becomes empty, delete the file AND its $ref in root.yaml)
+  2. Remove the router arm in src/http/router.zig
+  3. make openapi && make check-openapi-sync
+
+Update a description or summary:
+  1. Edit the field in public/openapi/paths/<tag>.yaml
+  2. make openapi   (no router change → sync check not required, but safe to run)
+```
+
+**Cross-reference:** Links to `public/AGENTS.md` for the full agent-facing public-surface index (llms.txt / skill.md / agent-manifest.json / heartbeat / openapi.json). Any path rename/add/remove that affects the operation set MUST also be reflected in `public/llms.txt` and `public/skill.md` operation tables.
+
+**Dimensions:**
+
+| Dim | Status | Target | Input | Expected | Test type |
+|-----|--------|--------|-------|----------|-----------|
+| 5.1 | PENDING | `public/openapi/AGENTS.md` | Read | Contains all four recipes (rename / append / remove / update description), the hard rule, and a link to `public/AGENTS.md` | manual |
+| 5.2 | PENDING | Rename rehearsal | Follow the rename recipe on a throwaway path in a scratch branch | `make openapi` + `make check-openapi-sync` both pass; `git diff` shows exactly 2 changed files (one YAML, `router.zig`) plus the regenerated `openapi.json` | integration (manual) |
+| 5.3 | PENDING | Append rehearsal | Follow the append recipe for a dummy `GET /v1/_probe` | Bundle succeeds; sync gate passes; Redocly lint does not complain about missing `operationId`/`tags`/`ErrorBody` | integration (manual) |
+| 5.4 | PENDING | Hand-edit detection | Edit `public/openapi.json` directly and commit without running `make openapi` | CI "bundle in sync" check fails with the diff; the error message points the agent at `public/openapi/AGENTS.md` | manual (CI rehearsal) |
 
 ---
 
@@ -304,8 +391,9 @@ No new Zig interfaces. The contract surface is:
 | 7 | Add `make check-openapi-sync` target | Fails on synthetic drift; passes on clean tree |
 | 8 | Wire both targets into CI (`.github/workflows/ci.yml`) | Synthetic drift PR fails CI |
 | 9 | Delete `scripts/check_openapi_errors.py` and its make target | `grep -rn check_openapi_errors` returns zero hits outside historical files |
-| 10 | Update `docs/REST_API_DESIGN_GUIDELINES.md` + add `public/openapi/README.md` | Both documents land in the same PR |
-| 11 | Manual Mintlify regression check: compare 5 rendered endpoints before and after on a staging env | Rendering is identical |
+| 10 | Update `docs/REST_API_DESIGN_GUIDELINES.md` + add `public/openapi/AGENTS.md` (four recipes + hard rule + link to `public/AGENTS.md`) | Both documents land in the same PR; `public/AGENTS.md` is already in place from the prerequisite step |
+| 11 | Rehearse recipes from `public/openapi/AGENTS.md`: run the rename + append recipes on a throwaway path in a scratch commit, confirm `make openapi` + `make check-openapi-sync` pass, then revert | Dim 5.2 and Dim 5.3 pass |
+| 12 | Manual Mintlify regression check: compare 5 rendered endpoints before and after on a staging env | Rendering is identical |
 
 ---
 
@@ -318,7 +406,9 @@ No new Zig interfaces. The contract surface is:
 - [ ] Both targets are wired into CI; a drift PR cannot merge.
 - [ ] `check_openapi_errors.py` is deleted; its rules are enforced by `.redocly.yaml`.
 - [ ] `docs/REST_API_DESIGN_GUIDELINES.md` documents the split workflow; hand-editing `public/openapi.json` is called out as forbidden.
-- [ ] `public/openapi/README.md` exists and explains the "YAML is source, JSON is artifact" model.
+- [ ] `public/openapi/AGENTS.md` exists, contains all four agent-edit recipes (rename / append / remove / update description), states the hard rule, and links to `public/AGENTS.md`.
+- [ ] `public/AGENTS.md` is in place as the public-surface index (done as a prerequisite, referenced from `public/openapi/AGENTS.md`).
+- [ ] Rename and append recipes have been rehearsed successfully on a scratch branch (Dim 5.2, 5.3).
 - [ ] Mintlify at `docs.usezombie.com/api-reference` renders identically before and after (manual spot-check of 5 endpoints).
 
 ---

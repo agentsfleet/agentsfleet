@@ -5,25 +5,22 @@ CREATE SCHEMA IF NOT EXISTS ops_ro;
 CREATE SCHEMA IF NOT EXISTS memory;
 
 DO $$
+DECLARE
+    r text;
 BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'db_migrator') THEN
-        CREATE ROLE db_migrator;
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'api_runtime') THEN
-        CREATE ROLE api_runtime;
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'worker_runtime') THEN
-        CREATE ROLE worker_runtime;
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'memory_runtime') THEN
-        CREATE ROLE memory_runtime;
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'ops_readonly_human') THEN
-        CREATE ROLE ops_readonly_human;
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'ops_readonly_agent') THEN
-        CREATE ROLE ops_readonly_agent;
-    END IF;
+    FOREACH r IN ARRAY ARRAY[
+        'db_migrator',
+        'api_runtime',
+        'worker_runtime',
+        'memory_runtime',
+        'ops_readonly_human',
+        'ops_readonly_agent'
+    ]
+    LOOP
+        IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = r) THEN
+            EXECUTE format('CREATE ROLE %I NOLOGIN', r);
+        END IF;
+    END LOOP;
 END
 $$;
 
@@ -75,8 +72,6 @@ CREATE INDEX IF NOT EXISTS idx_vault_secrets_workspace
 GRANT SELECT, INSERT, UPDATE ON vault.secrets TO api_runtime, worker_runtime;
 
 -- Workspace-scoped skill secrets (BYOK credentials per skill+key).
--- Moved from schema/008_harness_control_plane.sql in M17_001 (that file was
--- deleted; this table is not harness-related and remains in use).
 CREATE TABLE IF NOT EXISTS vault.workspace_skill_secrets (
     id               UUID PRIMARY KEY,
     CONSTRAINT ck_workspace_skill_secrets_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),

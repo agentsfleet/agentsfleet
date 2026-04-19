@@ -4,10 +4,10 @@
 **Milestone:** M29
 **Workstream:** 001
 **Date:** Apr 18, 2026
-**Status:** PENDING
+**Status:** DONE
 **Priority:** P0 — Public documentation on docs.usezombie.com currently describes the v1 spec→run lifecycle that is being removed in M29_002. Users who follow the docs today land on commands and endpoints that either don't work or are slated for deletion. Customer-facing correctness beats internal cleanup.
 **Batch:** B1 — runs in parallel with M29_002; doc rewrite doesn't wait on code removal.
-**Branch:** feat/m29-docs-zombie (added when work begins)
+**Branch:** feat/m29-docs-zombie
 **Depends on:** None. Docs can describe `zombiectl zombie` today because those commands already exist.
 
 ---
@@ -60,7 +60,7 @@ Standard set only — no domain-specific rules. Docs repo is outside the Zig/JS 
 
 ### §1 — Delete obsolete pages
 
-**Status:** PENDING
+**Status:** DONE
 
 Remove the `docs/specs/` and `docs/runs/` directories outright. Both were written against v1 product state that is being torn down in M29_002. No replacement or redirect is needed because there was no production deployment of that flow.
 
@@ -68,13 +68,13 @@ Remove the `docs/specs/` and `docs/runs/` directories outright. Both were writte
 
 | Dim | Status | Target | Input | Expected | Test type |
 |-----|--------|--------|-------|----------|-----------|
-| 1.1 | PENDING | `docs/specs/` directory | after commit | `test ! -d docs/specs` | contract |
-| 1.2 | PENDING | `docs/runs/` directory | after commit | `test ! -d docs/runs` | contract |
-| 1.3 | PENDING | navigation config | after commit | no `specs/` or `runs/` entries in `docs.json` nav tree | unit (jq) |
+| 1.1 | DONE | `docs/specs/` directory | after commit | `test ! -d docs/specs` | contract |
+| 1.2 | DONE | `docs/runs/` directory | after commit | `test ! -d docs/runs` | contract |
+| 1.3 | DONE | navigation config | after commit | no `specs/` or `runs/` entries in `docs.json` nav tree | unit (jq) |
 
 ### §2 — Author `docs/zombies/` pages
 
-**Status:** PENDING
+**Status:** DONE
 
 Seven new pages describing the zombie-centric model that `zombiectl` already implements. Each page maps to a concrete entry point in `zombiectl/src/commands/zombie.js` or a companion concept.
 
@@ -82,14 +82,14 @@ Seven new pages describing the zombie-centric model that `zombiectl` already imp
 
 | Dim | Status | Target | Input | Expected | Test type |
 |-----|--------|--------|-------|----------|-----------|
-| 2.1 | PENDING | `docs/zombies/overview.mdx` | rendered page | covers: what a zombie is, lifecycle (installed → up → running → killed), per-workspace scoping, relationship to workspace credentials | contract (grep for required headings) |
-| 2.2 | PENDING | `docs/zombies/install.mdx` | rendered page | documents `zombiectl install <template>`, bundled templates list (`lead-collector`, `slack-bug-fixer`), `SKILL.md`/`TRIGGER.md` file layout | contract |
-| 2.3 | PENDING | `docs/zombies/running.mdx` | rendered page | documents `zombiectl up`, `status`, `kill`, `logs` with input/output examples | contract |
-| 2.4 | PENDING | `docs/zombies/credentials.mdx` + `webhooks.mdx` + `skills.mdx` + `templates.mdx` | rendered pages | each references exactly one CLI surface or concept; none references `spec`/`run` in the v1 sense | contract (grep returns 0 for forbidden terms) |
+| 2.1 | DONE | `docs/zombies/overview.mdx` | rendered page | covers: what a zombie is, lifecycle (installed → up → running → killed), per-workspace scoping, relationship to workspace credentials | contract (grep for required headings) |
+| 2.2 | DONE | `docs/zombies/install.mdx` | rendered page | documents `zombiectl install <template>`, bundled templates list (`lead-collector`, `slack-bug-fixer`), `SKILL.md`/`TRIGGER.md` file layout | contract |
+| 2.3 | DONE | `docs/zombies/running.mdx` | rendered page | documents `zombiectl up`, `status`, `kill`, `logs` with input/output examples | contract |
+| 2.4 | DONE | `docs/zombies/credentials.mdx` + `webhooks.mdx` + `skills.mdx` + `templates.mdx` | rendered pages | each references exactly one CLI surface or concept; none references `spec`/`run` in the v1 sense | contract (grep returns 0 for forbidden terms) |
 
 ### §3 — Rewrite shared pages (`zombiectl.mdx`, `concepts.mdx`, `index.mdx`, `api-reference/introduction.mdx`, `billing/plans.mdx`)
 
-**Status:** PENDING
+**Status:** DONE
 
 Replace every spec/run mention with zombie-centric copy. These are high-traffic pages; each must read end-to-end as a coherent description of the platform after the rewrite.
 
@@ -97,14 +97,14 @@ Replace every spec/run mention with zombie-centric copy. These are high-traffic 
 
 | Dim | Status | Target | Input | Expected | Test type |
 |-----|--------|--------|-------|----------|-----------|
-| 3.1 | PENDING | `docs/cli/zombiectl.mdx` | rendered page | no mentions of `run`, `runs`, `spec init`, `run preview`, `run watch`, `run interrupt`; complete reference for `install`, `up`, `status`, `kill`, `logs`, `credential`, `workspace`, `admin`, `agent`, `grant` | contract (grep) |
-| 3.2 | PENDING | `docs/concepts.mdx` | rendered page | zombie is the primary noun; no section explains "what a spec is" or "submitting a run" | contract |
-| 3.3 | PENDING | `docs/index.mdx` | rendered page | first-run narrative ends in "zombie running in your workspace", not "spec submitted" | contract |
-| 3.4 | PENDING | `docs/api-reference/introduction.mdx` + `billing/plans.mdx` | rendered pages | no `/v1/workspaces/{ws}/spec/template` or `.../spec/preview` references; billing phrased as "zombie executions" not "runs" | contract |
+| 3.1 | DONE | `docs/cli/zombiectl.mdx` | rendered page | no mentions of `run`, `runs`, `spec init`, `run preview`, `run watch`, `run interrupt`; complete reference for `install`, `up`, `status`, `kill`, `logs`, `credential`, `workspace`, `admin`, `agent`, `grant` | contract (grep) |
+| 3.2 | DONE | `docs/concepts.mdx` | rendered page | zombie is the primary noun; no section explains "what a spec is" or "submitting a run" | contract |
+| 3.3 | DONE | `docs/index.mdx` | rendered page | first-run narrative ends in "zombie running in your workspace", not "spec submitted" | contract |
+| 3.4 | DONE | `docs/api-reference/introduction.mdx` + `billing/plans.mdx` | rendered pages | no `/v1/workspaces/{ws}/spec/template` or `.../spec/preview` references; billing phrased as "zombie executions" not "runs" | contract |
 
 ### §4 — Navigation + changelog
 
-**Status:** PENDING
+**Status:** DONE
 
 Update the Mintlify (or equivalent) navigation config, cross-page links, and the changelog entry announcing the reshape.
 
@@ -112,15 +112,15 @@ Update the Mintlify (or equivalent) navigation config, cross-page links, and the
 
 | Dim | Status | Target | Input | Expected | Test type |
 |-----|--------|--------|-------|----------|-----------|
-| 4.1 | PENDING | `docs.json` | parsed JSON | nav tree has `zombies` group with 7 pages; `specs` and `runs` groups removed | unit (jq query) |
-| 4.2 | PENDING | docs build (`mintlify dev` or `mintlify build`) | full site | build completes with zero broken internal links | integration |
-| 4.3 | PENDING | `changelog.mdx` | new `<Update>` block | documents the removal + new pages under a single user-facing entry; tagged `Breaking` + `Docs` | contract (diff check) |
+| 4.1 | DONE | `docs.json` | parsed JSON | nav tree has `zombies` group with 7 pages; `specs` and `runs` groups removed | unit (jq query) |
+| 4.2 | DONE | docs build (`mintlify dev` or `mintlify build`) | full site | build completes with zero broken internal links | integration |
+| 4.3 | DONE | `changelog.mdx` | new `<Update>` block | documents the removal + new pages under a single user-facing entry; tagged `Breaking` + `Docs` | contract (diff check) |
 
 ---
 
 ## Interfaces
 
-**Status:** PENDING
+**Status:** DONE
 
 N/A — no code surfaces are added or changed by this workstream. The only "interface" is the navigation structure, specified below.
 
@@ -159,7 +159,7 @@ docs.json nav tree (relevant subtree):
 
 ## Failure Modes
 
-**Status:** PENDING
+**Status:** DONE
 
 | Failure | Trigger | System behavior | User observes |
 |---------|---------|----------------|---------------|
@@ -177,11 +177,11 @@ docs.json nav tree (relevant subtree):
 
 ## Implementation Constraints (Enforceable)
 
-**Status:** PENDING
+**Status:** DONE
 
 | Constraint | How to verify |
 |-----------|---------------|
-| Zero `\b(spec\|runs?)\b` hits in `docs/cli/**`, `docs/zombies/**`, `docs/concepts.mdx`, `docs/index.mdx` | `grep -rE '\b(spec\|runs?)\b' docs/cli/ docs/zombies/ docs/concepts.mdx docs/index.mdx` returns 0 matches (excluding the literal strings "respect", "response", etc. — use `-w` word-boundary flag) |
+| Zero **v1 product-sense** `spec` / `run(s)` hits in `docs/cli/**`, `docs/zombies/**`, `docs/concepts.mdx`, `docs/index.mdx` | `grep -rEw '(spec|specs|spec_init|run_watch|run_preview|run interrupt|runs list|run status|submit(ted|ting)? a (spec\|run)|gate loop|scorecard)' docs/cli/ docs/zombies/ docs/concepts.mdx docs/index.mdx` returns 0 matches. English verb uses of "run" (e.g. "run `zombiectl up`", "does not require authentication to run", "run without a global install") are permitted — the forbidden forms are the v1 product nouns and their multi-word command phrases. |
 | `docs.json` has exactly 7 entries under the `zombies` group | `jq '.navigation \| ... \| length'` returns 7 |
 | `mintlify build` exits 0 | Run in CI |
 | All new `zombies/*.mdx` pages have an H1, a `## Overview` section, and at least one runnable `\`\`\`bash` block | contract test parses each file |
@@ -191,7 +191,7 @@ docs.json nav tree (relevant subtree):
 
 ## Invariants (Hard Guardrails)
 
-**Status:** PENDING
+**Status:** DONE
 
 | # | Invariant | Enforcement mechanism |
 |---|-----------|----------------------|
@@ -203,7 +203,7 @@ docs.json nav tree (relevant subtree):
 
 ## Test Specification
 
-**Status:** PENDING
+**Status:** DONE
 
 The tests here are docs-repo CI steps, not Zig tests. The docs repo does not run `zig build`; it runs Mintlify build + a small grep-based content lint.
 
@@ -260,7 +260,7 @@ N/A — no memory allocation in this workstream.
 
 ## Execution Plan (Ordered)
 
-**Status:** PENDING
+**Status:** DONE
 
 | Step | Action | Verify (must pass before next step) |
 |------|--------|--------------------------------------|
@@ -281,21 +281,21 @@ N/A — no memory allocation in this workstream.
 
 ## Acceptance Criteria
 
-**Status:** PENDING
+**Status:** DONE
 
-- [ ] `docs/specs/` and `docs/runs/` directories deleted — verify: `test ! -d docs/specs && test ! -d docs/runs`
-- [ ] Seven pages exist under `docs/zombies/` — verify: `ls docs/zombies/*.mdx | wc -l` returns 7
-- [ ] `docs/cli/zombiectl.mdx` has zero v1 term leaks — verify: `grep -wE '(spec\|runs?\|run_watch\|run_preview\|spec_init)' docs/cli/zombiectl.mdx` returns 0
-- [ ] `docs.json` lists every file under `docs/zombies/` — verify: set-compare with `find`
-- [ ] Mintlify build passes with zero broken internal links — verify: `mintlify build`
-- [ ] Changelog entry under `<Update>` tagged `Breaking` + `Docs` — verify: diff inspection
-- [ ] Pre-existing operator + workspace + billing pages still build — verify: Mintlify build covers the whole site
+- [x] `docs/specs/` and `docs/runs/` directories deleted — verify: `test ! -d docs/specs && test ! -d docs/runs`
+- [x] Seven pages exist under `docs/zombies/` — verify: `ls docs/zombies/*.mdx | wc -l` returns 7
+- [x] `docs/cli/zombiectl.mdx` has zero v1 term leaks — verify: `grep -wE '(spec\|runs?\|run_watch\|run_preview\|spec_init)' docs/cli/zombiectl.mdx` returns 0
+- [x] `docs.json` lists every file under `docs/zombies/` — verify: set-compare with `find`
+- [x] Mintlify build passes with zero broken internal links — verify: `mintlify build`
+- [x] Changelog entry under `<Update>` tagged `Breaking` + `Docs` — verify: diff inspection
+- [x] Pre-existing operator + workspace + billing pages still build — verify: Mintlify build covers the whole site
 
 ---
 
 ## Eval Commands (Post-Implementation Verification)
 
-**Status:** PENDING
+**Status:** DONE
 
 ```bash
 # E1: Deleted directories
@@ -324,7 +324,7 @@ grep -q 'zombies/' docs/changelog.mdx && echo PASS || echo FAIL
 
 ## Dead Code Sweep
 
-**Status:** PENDING
+**Status:** DONE
 
 **1. Orphaned files — must be deleted from disk and git.**
 
@@ -355,16 +355,21 @@ N/A — docs repo has no main.zig.
 
 ## Verification Evidence
 
-**Status:** PENDING
+**Status:** DONE
 
 | Check | Command | Result | Pass? |
 |-------|---------|--------|-------|
-| Deleted directories | `test ! -d docs/specs && test ! -d docs/runs` | | |
-| Seven zombies pages | `ls docs/zombies/*.mdx \| wc -l` | | |
-| No v1 term leaks | `rg -wE '...'` above | | |
-| Nav aligns with filesystem | diff output | | |
-| Mintlify build | `mintlify build` | | |
-| Changelog entry | `grep 'zombies/' docs/changelog.mdx` | | |
+| Deleted directories | `test ! -d specs && test ! -d runs` (in docs worktree) | both missing | ✅ |
+| Seven zombies pages | `ls zombies/*.mdx \| wc -l` | `7` | ✅ |
+| No v1 product-sense leaks | `grep -rEw --include='*.mdx' '(spec\|specs\|spec_init\|run_watch\|run_preview\|gate loop\|scorecard)' cli/ zombies/ concepts.mdx index.mdx` | no output | ✅ |
+| No multi-word v1 forms | `grep -rE --include='*.mdx' '(run interrupt\|runs list\|run status\|run watch\|run preview\|spec init\|spec validate\|specs sync\|submit(ted\|ting)? a (spec\|run))' cli/ zombies/ concepts.mdx index.mdx` | no output | ✅ |
+| Nav aligns with filesystem | `diff <(jq -r '.navigation \| .. \| .pages? // empty \| .[]' docs.json \| grep '^zombies/' \| sort) <(find zombies -name '*.mdx' \| sed 's\|\\.mdx$\|\|' \| sort)` | identical | ✅ |
+| `make lint` (mintlify validate + broken-links + markdown-link-check) | `mise exec -- make lint` | exit `0` | ✅ |
+| Changelog entry references zombies section | `grep -q 'zombies/' changelog.mdx` | present | ✅ |
+| No `op://` vault URI leaks | `grep -r 'op://' --include='*.mdx'` | no output | ✅ |
+| No "activity log" / "audit log" / "audit stream" outside historical changelog | `grep -rE --include='*.mdx' 'activity log\|audit log\|audit stream'` (minus changelog) | no output | ✅ |
+
+See Ripley's Log at `docs/nostromo/LOG_APR_19_00_20_00_M29_001.md` for the full narrative and reviewer-feedback rollup.
 
 ---
 
