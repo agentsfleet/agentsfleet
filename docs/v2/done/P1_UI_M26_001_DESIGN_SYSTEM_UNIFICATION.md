@@ -4,12 +4,45 @@
 **Milestone:** M26
 **Workstream:** 001
 **Date:** Apr 16, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
+**Closed:** Apr 19, 2026
 **Priority:** P1 — Unblocks M27 (dashboard pages) and eliminates Button drift between `ui/packages/app` and `ui/packages/website`
 **Batch:** B5 — lands between M12 (narrowed foundation) and M27 (dashboard pages)
 **Branch:** feat/m26-design-system-unification
 **Depends on:** M12_001 (token pyramid, shared primitives, `components.json` + `tw-animate-css` installed in app)
 **Blocks:** M27_001 (dashboard pages need the unified Button; see acceptance step 5)
+
+---
+
+## Delivery Summary — Apr 19, 2026
+
+### DONE in M26_001
+
+- **M26.1 CSS Option C** — zero `.z-*` BEM selectors anywhere; every component style expressed as Tailwind v4 utilities on semantic Layer 2 tokens; shared `tokens.css` + `theme.css` exported from the DS package; only `@keyframes` remain as CSS primitives.
+- **M26.2 Button rewrite** — shadcn-aligned API (7 variants: `default / destructive / outline / secondary / ghost / link / double-border`; 4 sizes: `default / sm / lg / icon`); Radix Slot + `asChild`; React 19 ref-as-prop; zero router imports; `buttonClassName` / `buttonVariants` exposed for non-Tailwind callers.
+- **M26.3 seven-component rewrite** — Card, Terminal, Grid, Section, InstallBlock, AnimatedIcon, ZombieHandIcon. All RSC-safe (where framework-legal), all ref-as-prop, tests co-located.
+- **§3.8 Wave 1** — Badge, Input, Separator, Skeleton promoted into the shared package (semantic tokens + cva + ref-as-prop).
+- **§3.8 Wave 2** — Dialog, DropdownMenu, Tooltip promoted (Radix portal primitives with client boundary; `tw-animate-css` wired into the website so `animate-in / fade-in-0 / zoom-in-95` compile in both consumers).
+- **§3.8 Wave 3** — ConfirmDialog, EmptyState, Pagination, StatusCard promoted. After this wave, only `card.tsx` + `data-table.tsx` remain under `ui/packages/app/components/ui/` (domain-flavored wrappers consuming DS primitives via `cn` + `EmptyState`).
+- **M26.5 App migration** — deleted the app-local Button (`components/ui/button.tsx`) since §3.8 Wave 3 removed every call-site; added the spec-dim-2.5 RSC fixture route `app/(dev)/ds-button-rsc/page.tsx` that renders `<Button variant="default">Hello</Button>` as a Server Component and is prerendered as `○ Static` by Next 16 Turbopack.
+- **M26.7 Load performance** — posthog-js lazy-loaded off the landing critical path (idle prefetch + buffered event flush); the 178 kB raw / 60 kB gzipped vendor chunk no longer blocks first paint. `.size-limit.json` declares website landing JS ≤ 100 kB gz (spec target 90 kB — currently 89.27 kB gz measured by size-limit), landing CSS ≤ 20 kB gz, agents motion chunk ≤ 40 kB gz (spec §5.8.2), agents terminal chunk ≤ 5 kB gz. Enforced via a `bundle-size-website` CI job in `.github/workflows/test.yml` gated as a `needs:` of the aggregated `test` job.
+- **M26.8 Website interactive demos** — `<BackgroundBeamsWithCollision />` (motion `LazyMotion` + `domAnimation` lite pattern — 28.79 kB gz, under the 40 kB spec §5.8.2 ceiling) + `<AnimatedTerminal />` (phase machine + bash tokenizer; 1.89 kB gz). Both lazy-loaded into the `/agents` route. `useInView` + `usePrefersReducedMotion` hooks (SSR-safe via lazy `useState` initializers). Dimensions 5.8.1 / 5.8.3 / 5.8.5 / 5.8.7 / 5.8.8 / 5.8.9 / 5.8.12 / 5.8.15 / 5.8.16 covered by Playwright + Vitest + size-limit.
+- **Dashboard DS adoption** — every interactive CTA across `workspaces/`, `workspaces/[id]/`, and `workspaces/[id]/runs/[runId]/` migrated from inline `mc-*` / `ws-*` / `run-*` CSS vocabulary to DS `Button` (via `buttonClassName` on `TrackedAnchor`) + `EmptyState` + `StatusCard`. Inline `<style>` blocks removed from all three pages.
+- **Invariants held** — zero `.z-*` BEM class selectors, zero BEM `"z-*"` strings in components, zero `forwardRef` in DS source, zero `var(--z-*)` arbitrary values in component files, zero CDN `@import` / `src=` URLs, zero router imports in DS source.
+- **Playwright green** — website full e2e 121/121, app qa 9/10 (+1 skipped), website smoke 8/8, app smoke 4/4, DS design-system-smoke 42/42, agents-demo 4/4. `make lint` green.
+
+### DEFERRED to future milestones (not blocking v1.0.0)
+
+- **M26.4 Playwright visual regression** — pixel-diff baselines of website routes at 375/768/1440. User direction (Apr 19): defer to a new milestone that runs *after* website content, docs, and app dashboard pages are stable, so the baselines are meaningful. Re-planning as its own workstream.
+- **M26.6 Signature motion + atmospheric background** — `<AtmosphericBackground />`, six additional keyframes, Button hover trace, Skeleton shimmer. Blocked on `/design-shotgun` variant pick (per D6 + §0.2 in the handoff — aesthetic question the user needs to decide). Re-planning as its own workstream.
+- **5.8.2 collision-detected flag Playwright assertion**, **5.8.4 CPU idle on hidden tab**, **5.8.10 phase-machine step-through**, **5.8.11 useInView sticky on re-scroll** — follow-up hardening. Base SSR + reduced-motion + a11y contract covered by the Playwright spec that ships here.
+- **"sideEffects" flag on `@usezombie/design-system/package.json`** — attempted with `["**/*.css"]` during M26.7; Vite responded by hoisting Button into its own chunk which increased the landing total. Reverted and deferred to a follow-up that figures out the right chunking strategy.
+- **Per-component `exports` map entries** — risky without a consumer audit; deferred.
+
+### SKIPPED by design (D4, not returning)
+
+- **Audio sprite** (5.8.13, 5.8.14) — `enableSound` prop, `/sounds/keystroke.ogg`, `useAudio` hook. Scope decision made at milestone open.
+- **Lighthouse CI** (5.8.6 LCP) — decision deferred to a future observability workstream.
 
 ---
 
