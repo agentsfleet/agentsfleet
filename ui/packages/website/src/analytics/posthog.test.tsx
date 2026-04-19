@@ -10,6 +10,7 @@ import {
   EVENT_NAVIGATION_CLICKED,
   EVENT_SIGNUP_STARTED,
   flushAnalyticsForTests,
+  initAnalytics,
   resetAnalyticsForTests,
   trackLeadCaptureClicked,
   trackLeadCaptureFailed,
@@ -172,5 +173,83 @@ describe("website analytics", () => {
 
     expect(mockedPosthog.init).not.toHaveBeenCalled();
     expect(mockedPosthog.capture).not.toHaveBeenCalled();
+  });
+
+  it("treats enabled=true with empty key as disabled", async () => {
+    resetAnalyticsForTests();
+    (globalThis as { __UZ_ANALYTICS_CONFIG__?: unknown }).__UZ_ANALYTICS_CONFIG__ = {
+      enabled: true,
+      key: "",
+      host: "https://us.i.posthog.com",
+    };
+
+    trackSignupStarted({ source: "hero_primary", surface: "hero", mode: "humans" });
+    await flushAnalyticsForTests();
+
+    expect(mockedPosthog.init).not.toHaveBeenCalled();
+    expect(mockedPosthog.capture).not.toHaveBeenCalled();
+  });
+
+  it("truncates string properties longer than 256 characters", async () => {
+    const longSource = "s".repeat(300);
+    trackSignupStarted({ source: longSource, surface: "hero", mode: "humans" });
+    await flushAnalyticsForTests();
+
+    expect(mockedPosthog.capture).toHaveBeenCalledTimes(1);
+    const props = mockedPosthog.capture.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(typeof props.source).toBe("string");
+    expect((props.source as string).length).toBe(256);
+    expect(props.surface).toBe("hero");
+  });
+
+  it("is idempotent across repeated initAnalytics() calls", async () => {
+    initAnalytics();
+    initAnalytics();
+    initAnalytics();
+    // Force the lazy loader to resolve by emitting one event, then flush.
+    trackSignupStarted({ source: "hero_primary", surface: "hero", mode: "humans" });
+    await flushAnalyticsForTests();
+
+    // Three init() calls → still exactly one underlying posthog.init.
+    expect(mockedPosthog.init).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses requestIdleCallback when available to defer module load", async () => {
+    resetAnalyticsForTests();
+    const ric = vi.fn((fn: () => void) => {
+      fn();
+      return 1;
+    });
+    (globalThis as { requestIdleCallback?: unknown }).requestIdleCallback = ric;
+    try {
+      initAnalytics();
+      await flushAnalyticsForTests();
+      expect(ric).toHaveBeenCalledTimes(1);
+      expect(mockedPosthog.init).toHaveBeenCalledTimes(1);
+    } finally {
+      delete (globalThis as { requestIdleCallback?: unknown }).requestIdleCallback;
+    }
+  });
+
+  it("captures synchronously once the posthog module has loaded", async () => {
+    // First event primes the lazy loader.
+    trackSignupStarted({ source: "hero_primary", surface: "hero", mode: "humans" });
+    await flushAnalyticsForTests();
+    expect(mockedPosthog.capture).toHaveBeenCalledTimes(1);
+
+    // Second event arrives AFTER the module is resolved — should hit the
+    // fast path (direct capture, no buffering).
+    trackLeadCaptureClicked({
+      page: "pricing",
+      surface: "pricing_card",
+      cta_id: "pricing_scale_notify",
+      plan_interest: "Scale",
+    });
+    // No flush needed — fast path is synchronous.
+    expect(mockedPosthog.capture).toHaveBeenCalledTimes(2);
+    expect(mockedPosthog.capture).toHaveBeenLastCalledWith(
+      EVENT_LEAD_CAPTURE_CLICKED,
+      expect.objectContaining({ cta_id: "pricing_scale_notify" }),
+    );
   });
 });
