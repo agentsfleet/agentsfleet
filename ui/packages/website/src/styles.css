@@ -3,6 +3,13 @@
 @import "@usezombie/design-system/tokens.css";
 @import "@usezombie/design-system/theme.css";
 
+/* Tailwind v4 auto-scans the website package; the design-system package lives
+ * in a sibling workspace and must be registered explicitly so utilities
+ * referenced in its .tsx files (gap-xl, shadow-card, animate-wave, ...) get
+ * compiled into the final CSS. Without this, Buttons / Cards / Terminals etc.
+ * ship unstyled. */
+@source "../../design-system/src/**/*.{ts,tsx}";
+
 @font-face {
   font-family: "Geist Mono";
   src: url("https://cdn.jsdelivr.net/npm/geist@1.3.1/dist/fonts/geist-mono/GeistMono-Regular.woff2") format("woff2");

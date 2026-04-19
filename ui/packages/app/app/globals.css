@@ -4,6 +4,10 @@
 @import "@usezombie/design-system/tokens.css";
 @import "@usezombie/design-system/theme.css";
 
+/* Register the sibling design-system package so Tailwind scans its TSX for
+ * utility classes. Without this, shared Button/Card/etc ship unstyled. */
+@source "../../../design-system/src/**/*.{ts,tsx}";
+
 /*
  * UseZombie Mission Control — Global Styles
  *
