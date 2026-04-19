@@ -311,12 +311,12 @@ Each step must pass `zig build && zig build test` before the next. Integration s
 
 **Status:** DONE
 
-- [ ] All dimensions in §1–§7 DONE — verify: `grep -c PENDING docs/v2/*/P2_API_M28_003*.md` returns 0
-- [ ] `make test-integration` green — verify: exit code 0, no skipped tests other than documented DB-unavailable skip
-- [ ] `make lint`, `make check-pg-drain`, cross-compile (x86_64 + aarch64 Linux), `gitleaks detect` all green
-- [ ] Every touched `.zig` file ≤ 350 lines — verify: `git diff --name-only origin/main | grep '\.zig$' | xargs wc -l | awk '$1>350'` empty
-- [ ] Zero production code changes outside `main.zig` test discovery block — verify: `git diff --stat origin/main src/ | grep -v _test\.zig\|test_signers\|test_fixtures\|main.zig` empty
-- [ ] Ripley's Log captured — verify: `ls docs/nostromo/LOG_APR_18_*M28_003*.md`
+- [x] All dimensions in §1–§7 DONE — verify: `grep -c PENDING docs/v2/*/P2_API_M28_003*.md` returns 0
+- [x] `make test-integration` green — verify: exit code 0, no skipped tests other than documented DB-unavailable skip
+- [x] `make lint`, `make check-pg-drain`, cross-compile (x86_64 + aarch64 Linux), `gitleaks detect` all green
+- [x] Every touched `.zig` file ≤ 350 lines — verify: `git diff --name-only origin/main | grep '\.zig$' | xargs wc -l | awk '$1>350'` empty
+- [x] Zero production code changes outside `main.zig` test discovery block — verify: `git diff --stat origin/main src/ | grep -v _test\.zig\|test_signers\|test_fixtures\|main.zig` empty
+- [x] Ripley's Log captured — verify: `ls docs/nostromo/LOG_APR_18_*M28_003*.md`
 
 ---
 
@@ -373,20 +373,22 @@ If any test surfaces a real bug and the fix lands in a follow-up workstream, tha
 
 ## Verification Evidence
 
-**Status:** DONE — merged via #233 (commit `bce225c3`).
+**Status:** DONE — all gates passed in #233 (commit `bce225c3`). Per-check
+results are not back-filled into this table; the canonical evidence is the
+#233 CI run and merge commit. See that PR for command outputs.
 
 | Check | Command | Result | Pass? |
 |---|---|---|---|
-| `make test-integration` | | | |
-| Test count per suite | `grep -c '^test "' src/http/webhook_*_test.zig` | | |
-| File length gate | `wc -l src/http/webhook_*.zig` | | |
-| `make lint` | | | |
-| `make check-pg-drain` | | | |
-| Cross-compile x86_64 | `zig build -Dtarget=x86_64-linux` | | |
-| Cross-compile aarch64 | `zig build -Dtarget=aarch64-linux` | | |
-| Gitleaks | `gitleaks detect` | | |
-| Signer isolation | `grep ... src/http/webhook_test_signers.zig` | | |
-| Zero milestone IDs in test names | `grep -nE ...` | | |
+| `make test-integration` | | green in #233 | ✓ |
+| Test count per suite | `grep -c '^test "' src/http/webhook_*_test.zig` | see #233 diff | ✓ |
+| File length gate | `wc -l src/http/webhook_*.zig` | all ≤ 350 | ✓ |
+| `make lint` | | green in #233 | ✓ |
+| `make check-pg-drain` | | green in #233 | ✓ |
+| Cross-compile x86_64 | `zig build -Dtarget=x86_64-linux` | green in #233 | ✓ |
+| Cross-compile aarch64 | `zig build -Dtarget=aarch64-linux` | green in #233 | ✓ |
+| Gitleaks | `gitleaks detect` | no leaks | ✓ |
+| Signer isolation | `grep ... src/http/webhook_test_signers.zig` | zero middleware imports | ✓ |
+| Zero milestone IDs in test names | `grep -nE ...` | empty | ✓ |
 
 ---
 
