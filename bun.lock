@@ -13,6 +13,8 @@
       "version": "0.1.0",
       "dependencies": {
         "@clerk/nextjs": "7.2.3",
+        "@fontsource-variable/geist": "^5.2.8",
+        "@fontsource-variable/geist-mono": "^5.2.7",
         "@radix-ui/react-avatar": "1.1.11",
         "@radix-ui/react-dialog": "1.1.15",
         "@radix-ui/react-dropdown-menu": "2.1.16",
@@ -84,6 +86,8 @@
       "name": "usezombie-website",
       "version": "0.1.0",
       "dependencies": {
+        "@fontsource-variable/geist": "^5.2.8",
+        "@fontsource-variable/geist-mono": "^5.2.7",
         "@usezombie/design-system": "workspace:*",
         "posthog-js": "1.369.3",
         "react": "19.2.5",
@@ -284,6 +288,10 @@
     "@floating-ui/react-dom": ["@floating-ui/react-dom@2.1.8", "", { "dependencies": { "@floating-ui/dom": "^1.7.6" }, "peerDependencies": { "react": ">=16.8.0", "react-dom": ">=16.8.0" } }, "sha512-cC52bHwM/n/CxS87FH0yWdngEZrjdtLW/qVruo68qg+prK7ZQ4YGdut2GyDVpoGeAYe/h899rVeOVm6Oi40k2A=="],
 
     "@floating-ui/utils": ["@floating-ui/utils@0.2.11", "", {}, "sha512-RiB/yIh78pcIxl6lLMG0CgBXAZ2Y0eVHqMPYugu+9U0AeT6YBeiJpf7lbdJNIugFP5SIjwNRgo4DhR1Qxi26Gg=="],
+
+    "@fontsource-variable/geist": ["@fontsource-variable/geist@5.2.8", "", {}, "sha512-cJ6m9e+8MQ5dCYJsLylfZrgBh6KkG4bOLckB35Tr9J/EqdkEM6QllH5PxqP1dhTvFup+HtMRPuz9xOjxXJggxw=="],
+
+    "@fontsource-variable/geist-mono": ["@fontsource-variable/geist-mono@5.2.7", "", {}, "sha512-ZKlZ5sjtalb2TwXKs400mAGDlt/+2ENLNySPx0wTz3bP3mWARCsUW+rpxzZc7e05d2qGch70pItt3K4qttbIYA=="],
 
     "@humanfs/core": ["@humanfs/core@0.19.1", "", {}, "sha512-5DyQ4+1JEUzejeK1JGICcideyfUbGixgS9jNgex5nqkW+cY7WZhxBigmieN5Qnw9ZosSNVC9KQKyb+GUaGyKUA=="],
 

@@ -84,8 +84,8 @@
   --z-illustration-arm: #55786f;
 
   /* ── Typography ── */
-  --z-font-sans: "Geist", system-ui, -apple-system, sans-serif;
-  --z-font-mono: "Geist Mono", ui-monospace, "Cascadia Code", monospace;
+  --z-font-sans: "Geist Variable", system-ui, -apple-system, sans-serif;
+  --z-font-mono: "Geist Mono Variable", ui-monospace, "Cascadia Code", monospace;
 
   --z-text-xs: 0.72rem;
   --z-text-sm: 0.82rem;
