@@ -4,6 +4,7 @@ import Pricing from "./pages/Pricing";
 import Agents from "./pages/Agents";
 import Privacy from "./pages/Privacy";
 import Terms from "./pages/Terms";
+import DesignSystemGallery from "./pages/DesignSystemGallery";
 import Footer from "./components/Footer";
 import { Button, AnimatedIcon, ZombieHandIcon } from "@usezombie/design-system";
 import { APP_BASE_URL, DOCS_URL } from "./config";
@@ -133,6 +134,7 @@ export default function App() {
           <Route path="/agents" element={<Agents />} />
           <Route path="/privacy" element={<Privacy />} />
           <Route path="/terms" element={<Terms />} />
+          <Route path="/_design-system" element={<DesignSystemGallery />} />
         </Routes>
       </main>
 

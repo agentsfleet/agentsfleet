@@ -1,0 +1,144 @@
+import {
+  Button,
+  Card,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+  CardContent,
+  CardFooter,
+  Terminal,
+  Grid,
+  Section,
+  InstallBlock,
+  AnimatedIcon,
+  ZombieHandIcon,
+} from "@usezombie/design-system";
+
+/*
+ * DesignSystemGallery — hidden smoke route at /_design-system.
+ *
+ * Purpose: contract test surface for the shared design-system package.
+ * Playwright's tests/e2e/design-system-smoke.spec.ts visits this page
+ * and asserts computed styles on every component + variant — catches
+ * Tailwind compilation gaps that JSDOM className-string tests can't see.
+ *
+ * Not linked from any navigation. Safe to leave in production.
+ */
+
+export default function DesignSystemGallery() {
+  return (
+    <Section gap>
+      <h1>Design System Gallery</h1>
+      <p>Smoke route for Playwright computed-style verification.</p>
+
+      <Section>
+        <h2>Button — variants</h2>
+        <div className="flex flex-wrap gap-md">
+          <Button data-testid="btn-default">Default</Button>
+          <Button variant="destructive" data-testid="btn-destructive">Destructive</Button>
+          <Button variant="outline" data-testid="btn-outline">Outline</Button>
+          <Button variant="secondary" data-testid="btn-secondary">Secondary</Button>
+          <Button variant="ghost" data-testid="btn-ghost">Ghost</Button>
+          <Button variant="link" data-testid="btn-link">Link</Button>
+          <Button variant="double-border" data-testid="btn-double-border">Double border</Button>
+        </div>
+      </Section>
+
+      <Section>
+        <h2>Button — sizes</h2>
+        <div className="flex flex-wrap items-center gap-md">
+          <Button size="sm" data-testid="btn-sm">Small</Button>
+          <Button size="default" data-testid="btn-default-size">Default</Button>
+          <Button size="lg" data-testid="btn-lg">Large</Button>
+          <Button size="icon" aria-label="settings" data-testid="btn-icon">⚙</Button>
+        </div>
+      </Section>
+
+      <Section>
+        <h2>Button — asChild</h2>
+        <Button asChild data-testid="btn-aschild">
+          <a href="#top">Anchor child</a>
+        </Button>
+      </Section>
+
+      <Section>
+        <h2>Card</h2>
+        <Grid columns="two">
+          <Card data-testid="card-default">
+            <CardHeader>
+              <CardTitle>Standard card</CardTitle>
+              <CardDescription>Default variant, no featured badge</CardDescription>
+            </CardHeader>
+            <CardContent>Body content goes here.</CardContent>
+            <CardFooter>Footer</CardFooter>
+          </Card>
+          <Card featured data-testid="card-featured">
+            <CardHeader>
+              <CardTitle>Featured card</CardTitle>
+              <CardDescription>Renders a &ldquo;Popular&rdquo; badge</CardDescription>
+            </CardHeader>
+            <CardContent>Featured content.</CardContent>
+          </Card>
+        </Grid>
+      </Section>
+
+      <Section>
+        <h2>Terminal</h2>
+        <Terminal label="default terminal" data-testid="terminal-default">
+          {"echo default"}
+        </Terminal>
+        <Terminal green copyable label="green terminal" data-testid="terminal-green">
+          {"echo green"}
+        </Terminal>
+      </Section>
+
+      <Section>
+        <h2>Grid</h2>
+        <Grid columns="two" data-testid="grid-two">
+          <div>A</div>
+          <div>B</div>
+        </Grid>
+        <Grid columns="three" data-testid="grid-three">
+          <div>A</div>
+          <div>B</div>
+          <div>C</div>
+        </Grid>
+        <Grid columns="four" data-testid="grid-four">
+          <div>A</div>
+          <div>B</div>
+          <div>C</div>
+          <div>D</div>
+        </Grid>
+      </Section>
+
+      <Section>
+        <h2>InstallBlock</h2>
+        <InstallBlock
+          title="Install zombiectl"
+          command="curl -sSL https://usezombie.sh/install | bash"
+          actions={[
+            { label: "Docs", to: "https://docs.usezombie.com", external: true },
+            { label: "Pricing", to: "/pricing", variant: "ghost" },
+          ]}
+        />
+      </Section>
+
+      <Section>
+        <h2>AnimatedIcon</h2>
+        <div className="flex flex-wrap items-center gap-lg">
+          <AnimatedIcon animation="wave" trigger="always" label="always-wave">
+            <ZombieHandIcon size={24} />
+          </AnimatedIcon>
+          <AnimatedIcon animation="wiggle" trigger="self-hover" label="self-hover-wiggle">
+            <ZombieHandIcon size={24} />
+          </AnimatedIcon>
+          <span className="group">
+            parent-hover <AnimatedIcon animation="wave" trigger="parent-hover" label="parent-hover-wave">
+              <ZombieHandIcon size={24} />
+            </AnimatedIcon>
+          </span>
+        </div>
+      </Section>
+    </Section>
+  );
+}

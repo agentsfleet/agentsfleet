@@ -1,19 +1,18 @@
-import { type ReactNode, useId, useState, useCallback } from "react";
+import { type ComponentProps, type ReactNode, useId, useState, useCallback } from "react";
 import { cn } from "../utils";
 
-type Props = {
+type Props = Omit<ComponentProps<"div">, "children"> & {
   label?: string;
   green?: boolean;
   copyable?: boolean;
   children: ReactNode;
-  className?: string;
 };
 
 /*
  * Terminal — monospace code block with optional copy affordance.
  * Cyan text by default; green variant for "success"-flavored demos.
  */
-export default function Terminal({ label, green, copyable, children, className }: Props) {
+export default function Terminal({ label, green, copyable, children, className, ...rest }: Props) {
   const id = useId();
   const [copied, setCopied] = useState(false);
 
@@ -26,7 +25,7 @@ export default function Terminal({ label, green, copyable, children, className }
   }, [children]);
 
   return (
-    <div className={cn("relative", className)}>
+    <div className={cn("relative", className)} {...rest}>
       <pre
         className={cn(
           "m-0 overflow-auto rounded-md border px-[1.1rem] py-[0.95rem] text-[0.88rem]",
