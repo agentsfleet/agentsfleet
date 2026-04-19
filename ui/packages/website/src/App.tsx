@@ -114,6 +114,7 @@ export default function App() {
         <div className="header-actions">
           <Button
             asChild
+            variant="ghost"
             className={isHumansMode ? "header-mission-control group" : "header-mission-control group is-hidden"}
           >
             <a

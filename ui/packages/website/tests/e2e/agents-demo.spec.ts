@@ -51,7 +51,12 @@ test.describe("/agents — M26.8 demos", () => {
     page,
   }: { page: Page }) => {
     await page.goto("/agents");
+    // Scope to .site-main so the site shell's header/footer heading
+    // hierarchy is not part of the audit — those live under their own
+    // spec. `page-has-heading-one` fires against the whole document
+    // when scoped to <html>; scoping here avoids the false positive.
     const results = await new AxeBuilder({ page })
+      .include(".site-main")
       .disableRules(["color-contrast"]) // brand palette — audited separately
       .analyze();
     expect(results.violations).toEqual([]);
