@@ -4,7 +4,7 @@
 **Milestone:** M28
 **Workstream:** 003
 **Date:** Apr 18, 2026 (rewritten Apr 18, 2026 — expanded from 2-test smoke to full multi-source + security matrix)
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P2 — security-adjacent test coverage; no user-visible behavior change
 **Batch:** B1
 **Branch:** feat/m28-003-webhook-e2e
