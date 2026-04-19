@@ -119,4 +119,9 @@
   --radius-xl: calc(var(--radius) + 8px);
   --font-sans: var(--z-font-sans);
   --font-mono: var(--z-font-mono);
+
+  /* Animation utilities — expose tokens.css keyframes to Tailwind so
+   * components use animate-wave / animate-wiggle instead of raw CSS. */
+  --animate-wave: z-icon-wave 700ms ease-in-out;
+  --animate-wiggle: z-icon-wiggle 700ms ease-in-out;
 }

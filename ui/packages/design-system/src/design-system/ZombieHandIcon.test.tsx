@@ -1,6 +1,6 @@
 import { render } from "@testing-library/react";
 import { describe, it, expect } from "vitest";
-import { ZombieHandIcon } from "@usezombie/design-system";
+import ZombieHandIcon from "./ZombieHandIcon";
 
 describe("ZombieHandIcon", () => {
   it("renders an SVG element", () => {

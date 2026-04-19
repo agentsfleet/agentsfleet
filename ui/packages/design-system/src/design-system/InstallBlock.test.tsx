@@ -1,7 +1,6 @@
-import { render, screen } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
 import { describe, it, expect } from "vitest";
-import { InstallBlock } from "@usezombie/design-system";
+import { render, screen } from "@testing-library/react";
+import InstallBlock from "./InstallBlock";
 
 const defaultProps = {
   title: "Install Zombiectl",
@@ -14,17 +13,15 @@ const defaultProps = {
 };
 
 function renderBlock(props = defaultProps) {
-  return render(
-    <MemoryRouter>
-      <InstallBlock {...props} />
-    </MemoryRouter>
-  );
+  return render(<InstallBlock {...props} />);
 }
 
 describe("InstallBlock", () => {
   it("renders the title as an h2", () => {
     renderBlock();
-    expect(screen.getByRole("heading", { level: 2, name: "Install Zombiectl" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { level: 2, name: "Install Zombiectl" }),
+    ).toBeInTheDocument();
   });
 
   it("renders the command in a terminal block", () => {
@@ -34,14 +31,14 @@ describe("InstallBlock", () => {
     expect(terminal).toHaveTextContent(/curl -sSL https:\/\/usezombie\.sh\/install \| bash/);
   });
 
-  it("renders all action buttons", () => {
+  it("renders all action links", () => {
     renderBlock();
     expect(screen.getByRole("link", { name: "Install now" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Read the docs" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Setup dashboard" })).toBeInTheDocument();
   });
 
-  it("applies correct variant classes to buttons", () => {
+  it("applies per-variant utility classes to action buttons", () => {
     renderBlock();
     const ghost = screen.getByRole("link", { name: "Read the docs" });
     expect(ghost.className).toContain("bg-transparent");
@@ -51,24 +48,28 @@ describe("InstallBlock", () => {
     expect(double.className).toMatch(/border-2\s.*border-primary/);
   });
 
-  it("primary button uses the default primary variant", () => {
+  it("primary action uses the default primary variant", () => {
     renderBlock();
     const primary = screen.getByRole("link", { name: "Install now" });
     expect(primary.className).toContain("text-primary-foreground");
     expect(primary.className).not.toContain("bg-transparent");
   });
 
-  it("renders inside z-install-block container", () => {
+  it("renders a bordered card-style container", () => {
     const { container } = renderBlock();
-    expect(container.querySelector(".z-install-block")).toBeInTheDocument();
+    const root = container.firstElementChild as HTMLElement | null;
+    expect(root?.className).toContain("border");
+    expect(root?.className).toContain("rounded-lg");
   });
 
-  it("renders z-btn-row around actions", () => {
+  it("renders actions in a flex-wrap container with one anchor per action", () => {
     const { container } = renderBlock();
-    expect(container.querySelector(".z-btn-row")).toBeInTheDocument();
+    const actionsRow = container.querySelector("[class*='flex-wrap']");
+    expect(actionsRow).toBeInTheDocument();
+    expect(actionsRow?.querySelectorAll("a")).toHaveLength(3);
   });
 
-  it("shows a copy button on the terminal block for humans", () => {
+  it("shows a copy button on the terminal block", () => {
     renderBlock();
     expect(screen.getByTestId("copy-btn")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /copy command/i })).toBeInTheDocument();
@@ -78,5 +79,18 @@ describe("InstallBlock", () => {
     const { container } = renderBlock();
     const pre = container.querySelector("pre");
     expect(pre).toHaveAttribute("data-command", defaultProps.command);
+  });
+
+  it("external=true adds target=_blank + rel=noopener noreferrer", () => {
+    render(
+      <InstallBlock
+        title="X"
+        command="echo x"
+        actions={[{ label: "Docs", to: "https://example.com", external: true }]}
+      />,
+    );
+    const link = screen.getByRole("link", { name: "Docs" });
+    expect(link).toHaveAttribute("target", "_blank");
+    expect(link).toHaveAttribute("rel", "noopener noreferrer");
   });
 });

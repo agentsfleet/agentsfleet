@@ -189,171 +189,8 @@ a {
    Portable to Mission Control — copy design-system/ + these styles.
    ================================================================== */
 
-/* .z-btn* rules removed — Button now uses Tailwind utilities via cva. See
- * ui/packages/design-system/src/design-system/Button.tsx. */
-
-.z-btn-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--z-space-md);
-}
-
-/* ── z-card ── */
-.z-card {
-  background: var(--z-surface-0);
-  border: 1px solid var(--z-border);
-  border-radius: var(--z-radius-lg);
-  padding: var(--z-space-xl);
-  transition: border-color 0.25s ease, box-shadow 0.25s ease;
-}
-
-.z-card:hover {
-  border-color: var(--z-border-active);
-  box-shadow: var(--z-shadow-card);
-}
-
-.z-card h2 {
-  margin-top: 0;
-}
-
-.z-card p,
-.z-card li {
-  color: var(--z-text-muted);
-}
-
-.z-card--featured {
-  border-color: var(--z-orange);
-  box-shadow: var(--z-shadow-card);
-  position: relative;
-}
-
-.z-card--featured::before {
-  content: "Popular";
-  position: absolute;
-  top: -0.6rem;
-  left: var(--z-space-xl);
-  background: linear-gradient(120deg, var(--z-orange), var(--z-orange-bright));
-  color: var(--z-text-inverse);
-  font-size: 0.7rem;
-  font-weight: 700;
-  padding: 0.15rem 0.6rem;
-  border-radius: var(--z-radius-pill);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
-/* ── z-terminal ── */
-.z-terminal {
-  margin: 0;
-  padding: 0.95rem 1.1rem;
-  border-radius: var(--z-radius-md);
-  background: var(--z-surface-terminal);
-  border: 1px solid var(--z-border);
-  color: var(--z-cyan);
-  overflow: auto;
-  font-size: 0.88rem;
-}
-
-.z-terminal--green {
-  color: var(--z-green);
-  border-color: var(--z-glow-green);
-}
-
-/* ── z-terminal-wrap + copy button ── */
-.z-terminal-wrap {
-  position: relative;
-}
-
-.z-terminal--copyable {
-  padding-right: 5.5rem; /* room for copy button */
-}
-
-.z-copy-btn {
-  position: absolute;
-  top: 0.6rem;
-  right: 0.6rem;
-  padding: 0.25rem 0.7rem;
-  border-radius: var(--z-radius-sm);
-  border: 1px solid var(--z-border);
-  background: var(--z-surface-1);
-  color: var(--z-text-muted);
-  font-family: var(--z-font-mono);
-  font-size: var(--z-text-xs);
-  cursor: pointer;
-  transition: color var(--z-ease-fast), border-color var(--z-ease-fast);
-  white-space: nowrap;
-}
-
-.z-copy-btn:hover {
-  color: var(--z-text-primary);
-  border-color: var(--z-orange);
-}
-
-/* Confirm state */
-.z-copy-btn[aria-label="Copied!"] {
-  color: var(--z-green);
-  border-color: var(--z-green);
-}
-
-/* ── z-grid ── */
-.z-grid {
-  display: grid;
-  gap: var(--z-space-lg);
-}
-
-.z-grid--two {
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-}
-
-.z-grid--three {
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-}
-
-.z-grid--four {
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-}
-
-/* ── z-stack / z-section-gap ── */
-.z-stack {
-  display: grid;
-  gap: var(--z-space-xl);
-}
-
-.z-section-gap {
-  padding: var(--z-space-5xl) 0;
-}
-
-.z-section-gap + .z-section-gap {
-  padding-top: 0;
-}
-
-/* ── z-install-block ── */
-.z-install-block {
-  padding: var(--z-space-3xl);
-  border: 1px solid var(--z-border);
-  border-radius: var(--z-radius-lg);
-  background: var(--z-surface-0);
-}
-
-.z-install-block h2 {
-  margin: 0 0 var(--z-space-lg);
-  font-size: var(--z-text-2xl);
-}
-
-.z-install-block .z-terminal {
-  margin-bottom: var(--z-space-xl);
-}
-
-/* ── z-price ── */
-.z-price {
-  color: var(--z-orange-bright);
-  font-size: 1.5rem;
-  font-weight: 700;
-}
-
 /* ==================================================================
-   Legacy / Page-specific styles
-   (kept for backward compat — migrate to z- prefix over time)
+   Page-specific styles (site shell, hero, pricing layout, etc.)
    ================================================================== */
 
 /* ---- Layout ---- */
@@ -443,7 +280,7 @@ a {
 }
 
 .header-actions .cta,
-.header-actions .z-btn {
+.header-actions .header-mission-control {
   white-space: nowrap;
 }
 
@@ -1088,8 +925,7 @@ code {
   color: var(--z-green);
 }
 
-.agent-surface .terminal,
-.agent-surface .z-terminal {
+.agent-surface .terminal {
   color: var(--z-green);
   border-color: var(--z-glow-green);
 }
@@ -1931,10 +1767,6 @@ code {
     flex-direction: column;
     align-items: flex-start;
     gap: var(--z-space-lg);
-  }
-
-  .z-install-block {
-    padding: var(--z-space-xl);
   }
 
   .hero {

@@ -5,7 +5,15 @@ export {
   type ButtonProps,
   type ButtonVariant,
 } from "./Button";
-export { default as Card } from "./Card";
+export {
+  Card,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+  CardContent,
+  CardFooter,
+  type CardProps,
+} from "./Card";
 export { default as Terminal } from "./Terminal";
 export { default as Grid } from "./Grid";
 export { default as Section } from "./Section";

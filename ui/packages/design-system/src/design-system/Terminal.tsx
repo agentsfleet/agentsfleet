@@ -1,13 +1,19 @@
 import { type ReactNode, useId, useState, useCallback } from "react";
+import { cn } from "../utils";
 
 type Props = {
   label?: string;
   green?: boolean;
   copyable?: boolean;
   children: ReactNode;
+  className?: string;
 };
 
-export default function Terminal({ label, green, copyable, children }: Props) {
+/*
+ * Terminal — monospace code block with optional copy affordance.
+ * Cyan text by default; green variant for "success"-flavored demos.
+ */
+export default function Terminal({ label, green, copyable, children, className }: Props) {
   const id = useId();
   const [copied, setCopied] = useState(false);
 
@@ -19,28 +25,42 @@ export default function Terminal({ label, green, copyable, children }: Props) {
     });
   }, [children]);
 
-  const cls = ["z-terminal", green && "z-terminal--green", copyable && "z-terminal--copyable"]
-    .filter(Boolean)
-    .join(" ");
-
   return (
-    <div className="z-terminal-wrap">
+    <div className={cn("relative", className)}>
       <pre
-        className={cls}
+        className={cn(
+          "m-0 overflow-auto rounded-md border p-[0.95rem_1.1rem] text-[0.88rem]",
+          "bg-[var(--z-surface-terminal)]",
+          green
+            ? "border-[var(--z-glow-green)] text-success"
+            : "border-border text-info",
+          copyable && "pr-[5.5rem]",
+        )}
         aria-label={label}
         aria-describedby={label ? undefined : id}
         data-command={typeof children === "string" ? children : undefined}
       >
         <code>{children}</code>
-        {!label && <span id={id} className="sr-only">Code block</span>}
+        {!label && (
+          <span id={id} className="sr-only">
+            Code block
+          </span>
+        )}
       </pre>
       {copyable && (
         <button
           type="button"
-          className="z-copy-btn"
           onClick={handleCopy}
           aria-label={copied ? "Copied!" : "Copy command"}
           data-testid="copy-btn"
+          className={cn(
+            "absolute top-[0.6rem] right-[0.6rem] cursor-pointer whitespace-nowrap",
+            "rounded-sm border px-[0.7rem] py-1 font-mono text-xs bg-secondary",
+            "transition-[color,border-color] duration-150",
+            copied
+              ? "border-success text-success"
+              : "border-border text-muted-foreground hover:border-primary hover:text-foreground",
+          )}
         >
           {copied ? "✓ Copied" : "Copy"}
         </button>

@@ -109,7 +109,7 @@ export default function App() {
         <div className="header-actions">
           <Button
             asChild
-            className={isHumansMode ? "header-mission-control z-animated-icon-trigger" : "header-mission-control z-animated-icon-trigger is-hidden"}
+            className={isHumansMode ? "header-mission-control group" : "header-mission-control group is-hidden"}
           >
             <a
               href={APP_BASE_URL}
