@@ -84,7 +84,7 @@ fn derivePersonalTenantNameForTest(alloc: std.mem.Allocator, email: []const u8) 
     return alloc.dupe(u8, local);
 }
 
-// Dim 3.1 — fresh signup inserts six rows across core.* and billing.*.
+// Fresh signup inserts six rows across core.* and billing.*.
 test "bootstrapPersonalAccount: fresh signup provisions tenant/user/membership/workspace/credit" {
     const db_ctx = (try base.openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();
@@ -165,8 +165,8 @@ test "bootstrapPersonalAccount: fresh signup provisions tenant/user/membership/w
     }
 }
 
-// Dim 3.2 — replaying the same oidc_subject returns existing rows with
-// created=false and does not insert anything new.
+// Replaying the same oidc_subject returns existing rows with created=false
+// and does not insert anything new.
 test "bootstrapPersonalAccount: replay returns existing rows without re-inserting" {
     const db_ctx = (try base.openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();
@@ -205,7 +205,7 @@ test "bootstrapPersonalAccount: replay returns existing rows without re-insertin
     try std.testing.expectEqual(@as(i64, 1), try row.get(i64, 0));
 }
 
-// Dim 3.3 — collision retry. Pre-seed a workspace with the name the injected
+// Collision retry. Pre-seed a workspace with the name the injected
 // generator yields first; verify the helper retries to the second candidate.
 var collision_gen_state: usize = 0;
 const COLLISION_NAMES = [_][]const u8{ "preserve-me-042", "fresh-name-999" };
@@ -258,12 +258,12 @@ test "pickUniqueWorkspaceName: retries past an existing (tenant_id, name) collis
     try std.testing.expectEqualSlices(u8, "preserve-me-042", try row2.get([]const u8, 0));
 }
 
-// Dim 3.4 — transactional rollback. The handler's fast-path replay check
-// is bypassed here by pre-seeding a `core.users` row with the target
-// oidc_subject BEFORE calling bootstrapTransaction, so the UNIQUE(oidc_subject)
-// constraint fires on the user INSERT inside the transaction. errdefer must
-// roll back the already-inserted tenant row — proving any mid-transaction
-// failure unwinds the entire bootstrap.
+// Transactional rollback. The handler's fast-path replay check is bypassed
+// here by pre-seeding a `core.users` row with the target oidc_subject BEFORE
+// calling bootstrapTransaction, so the UNIQUE(oidc_subject) constraint fires
+// on the user INSERT inside the transaction. errdefer must roll back the
+// already-inserted tenant row — proving any mid-transaction failure unwinds
+// the entire bootstrap.
 test "bootstrapTransaction: unique-violation mid-tx rolls back every preceding INSERT" {
     const db_ctx = (try base.openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();

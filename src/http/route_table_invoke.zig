@@ -37,6 +37,7 @@ const api_keys_invokes = @import("route_table_invoke_api_keys.zig");
 
 pub const invokeTenantApiKeys = api_keys_invokes.invokeTenantApiKeys;
 pub const invokeTenantApiKeyById = api_keys_invokes.invokeTenantApiKeyById;
+const clerk_webhook_h = @import("handlers/clerk_webhook.zig");
 const slack_oauth = @import("handlers/slack_oauth.zig");
 const slack_ev = @import("handlers/slack_events.zig");
 const slack_ix = @import("handlers/slack_interactions.zig");
@@ -172,6 +173,14 @@ pub fn invokeReceiveWebhook(hx: *Hx, req: *httpz.Request, route: router.Route) v
 pub fn invokeReceiveSvixWebhook(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     if (req.method != .POST) { common.respondMethodNotAllowed(hx.res); return; }
     webhooks.innerReceiveWebhook(hx.*, req, route.receive_svix_webhook);
+}
+
+// Clerk signup webhook. No middleware — handler verifies Svix signature
+// inline against env CLERK_WEBHOOK_SECRET.
+pub fn invokeClerkWebhook(hx: *Hx, req: *httpz.Request, route: router.Route) void {
+    _ = route;
+    if (req.method != .POST) { common.respondMethodNotAllowed(hx.res); return; }
+    clerk_webhook_h.innerClerkWebhook(hx.*, req);
 }
 
 pub fn invokeApprovalWebhook(hx: *Hx, req: *httpz.Request, route: router.Route) void {

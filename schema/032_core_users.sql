@@ -1,10 +1,10 @@
 -- 032_core_users.sql
--- M11_003: identity foundation for Clerk signup bootstrap.
+-- Identity foundation for Clerk signup bootstrap.
 --
 -- core.users binds an external OIDC identity (Clerk subject) to a tenant.
 -- core.memberships maps users to tenants with a role. One user → one tenant
 -- at signup (personal account); the many-to-many shape is forward-looking
--- for team accounts in a later milestone.
+-- for team accounts later.
 
 CREATE TABLE IF NOT EXISTS core.users (
     user_id       UUID PRIMARY KEY,

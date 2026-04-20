@@ -22,10 +22,10 @@ CREATE TABLE IF NOT EXISTS core.tenants (
 CREATE TABLE IF NOT EXISTS core.workspaces (
     workspace_id              UUID PRIMARY KEY,
     tenant_id                 UUID NOT NULL REFERENCES core.tenants(tenant_id),
-    -- M11_003: human-readable workspace name (e.g. Heroku-style `jolly-harbor-482`).
-    -- Nullable for back-compat with pre-M11_003 workspace rows and fixture INSERTs
-    -- that do not supply a name. Uniqueness is enforced per-tenant via the partial
-    -- index below, so signup bootstrap can rely on ON CONFLICT for collision retry.
+    -- Human-readable workspace name (e.g. Heroku-style `jolly-harbor-482`).
+    -- Nullable because most workspace rows and fixture INSERTs do not supply a
+    -- name; uniqueness is enforced per-tenant via the partial index below, so
+    -- signup bootstrap can rely on ON CONFLICT for collision retry.
     name                      TEXT,
     repo_url                  TEXT NOT NULL,
     default_branch            TEXT NOT NULL,

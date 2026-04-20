@@ -60,7 +60,7 @@ pub const Snapshot = struct {
     zombie_failed_total: u64 = 0,
     zombie_tokens_total: u64 = 0,
     zombie_execution_seconds: ZombieHistogramSnapshot = .{},
-    // M11_003: signup funnel counters.
+    // Signup funnel counters.
     signup_bootstrapped_total: u64 = 0,
     signup_replayed_total: u64 = 0,
     signup_failed_bad_sig_total: u64 = 0,
@@ -143,8 +143,8 @@ pub fn setReconcileRunning(v: bool) void {
     g_reconcile_running.store(if (v) 1 else 0, .release);
 }
 
-// M11_003: signup funnel counters. Failure reasons enumerated so a single
-// Prometheus query can answer "how many signups failed for reason X over Y?"
+// Signup funnel counters. Failure reasons enumerated so a single Prometheus
+// query can answer "how many signups failed for reason X over Y?"
 pub const SignupFailReason = enum { bad_sig, stale_ts, missing_email, db_error };
 
 pub fn incSignupBootstrapped() void {

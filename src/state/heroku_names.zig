@@ -1,6 +1,6 @@
 //! Heroku-style workspace name generator: `{adjective}-{noun}-{NNN}`.
 //!
-//! M11_003 signup bootstrap assigns every new personal workspace a memorable
+//! The signup bootstrap assigns every new personal workspace a memorable
 //! default name (e.g. `jolly-harbor-482`). Word lists are small and inlined —
 //! collision avoidance happens at the SQL layer via `uq_workspaces_tenant_name`,
 //! not via list cardinality. Pure: no DB, OOM is the only error.

@@ -274,10 +274,10 @@ pub const ZombieCompleted = struct {
     }
 };
 
-/// M11_003: Clerk signup bootstrapped a personal account (or confirmed replay
-/// of an existing one). distinct_id is the OIDC subject so PostHog funnels
-/// stitch across replayed webhooks. email_domain is included (not the full
-/// email) for cohort analysis without storing PII in the event payload.
+/// Clerk signup bootstrapped a personal account (or confirmed replay of an
+/// existing one). distinct_id is the OIDC subject so PostHog funnels stitch
+/// across replayed webhooks. email_domain is included (not the full email)
+/// for cohort analysis without storing PII in the event payload.
 pub const SignupBootstrapped = struct {
     distinct_id: []const u8,
     tenant_id: []const u8,

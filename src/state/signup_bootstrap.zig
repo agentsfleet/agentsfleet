@@ -1,4 +1,4 @@
-//! M11_003 signup bootstrap facade.
+//! Signup bootstrap facade.
 //!
 //! Given an OIDC subject + email from the Clerk `user.created` webhook,
 //! atomically provisions a personal account in a single SQL transaction:
