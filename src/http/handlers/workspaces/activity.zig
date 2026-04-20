@@ -11,11 +11,11 @@
 const std = @import("std");
 const httpz = @import("httpz");
 
-const common = @import("common.zig");
-const hx_mod = @import("hx.zig");
-const ec = @import("../../errors/error_registry.zig");
-const id_format = @import("../../types/id_format.zig");
-const activity_stream = @import("../../zombie/activity_stream.zig");
+const common = @import("../common.zig");
+const hx_mod = @import("../hx.zig");
+const ec = @import("../../../errors/error_registry.zig");
+const id_format = @import("../../../types/id_format.zig");
+const activity_stream = @import("../../../zombie/activity_stream.zig");
 
 const log = std.log.scoped(.workspace_activity);
 

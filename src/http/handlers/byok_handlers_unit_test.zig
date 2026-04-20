@@ -21,7 +21,7 @@ test "M16_004: admin_platform_keys_http module imports resolve" {
 }
 
 test "M16_004: workspace_credentials_http module imports resolve" {
-    _ = @import("workspace_credentials_http.zig");
+    _ = @import("workspaces/credentials.zig");
 }
 
 // ── T10: Spec-defined limits are pinned here ──────────────────────────────────

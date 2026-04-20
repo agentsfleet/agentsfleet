@@ -9,10 +9,10 @@
 
 const std = @import("std");
 const httpz = @import("httpz");
-const common = @import("common.zig");
-const workspace_guards = @import("../workspace_guards.zig");
-const hx_mod = @import("hx.zig");
-const billing_summary_store = @import("../../state/billing_summary_store.zig");
+const common = @import("../common.zig");
+const workspace_guards = @import("../../workspace_guards.zig");
+const hx_mod = @import("../hx.zig");
+const billing_summary_store = @import("../../../state/billing_summary_store.zig");
 
 const log = std.log.scoped(.http);
 const API_ACTOR = "api";

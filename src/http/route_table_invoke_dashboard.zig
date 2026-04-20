@@ -9,7 +9,7 @@ const router = @import("router.zig");
 const common = @import("handlers/common.zig");
 const hx_mod = @import("handlers/hx.zig");
 
-const workspace_activity = @import("handlers/workspace_activity.zig");
+const workspace_activity = @import("handlers/workspaces/activity.zig");
 const zombie_lifecycle = @import("handlers/zombie_lifecycle.zig");
 const zombie_billing_summary = @import("handlers/zombie_billing_summary.zig");
 
