@@ -17,7 +17,7 @@ const error_codes = @import("../../errors/error_registry.zig");
 // ── T9: Module import resolution ─────────────────────────────────────────────
 
 test "M16_004: admin_platform_keys_http module imports resolve" {
-    _ = @import("admin_platform_keys_http.zig");
+    _ = @import("admin/platform_keys.zig");
 }
 
 test "M16_004: workspace_credentials_http module imports resolve" {

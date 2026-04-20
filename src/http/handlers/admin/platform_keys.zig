@@ -1,10 +1,10 @@
 const std = @import("std");
 const httpz = @import("httpz");
-const PgQuery = @import("../../db/pg_query.zig").PgQuery;
-const common = @import("common.zig");
-const error_codes = @import("../../errors/error_registry.zig");
-const id_format = @import("../../types/id_format.zig");
-const hx_mod = @import("hx.zig");
+const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
+const common = @import("../common.zig");
+const error_codes = @import("../../../errors/error_registry.zig");
+const id_format = @import("../../../types/id_format.zig");
+const hx_mod = @import("../hx.zig");
 
 const log = std.log.scoped(.http);
 
