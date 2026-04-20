@@ -144,10 +144,11 @@ pub const ENTRIES = [_]Entry{
     e("UZ-WH-003", .conflict, "Zombie paused",
         "The target zombie is paused. Resume it before sending webhooks."),
     e("UZ-WH-010", .unauthorized, "Invalid webhook signature",
-        "Slack signature verification failed. Check that the signing secret " ++
-        "in the vault matches the one in Slack App settings."),
+        "Webhook signature verification failed. Confirm the signing secret " ++
+        "stored for this provider (Slack/Clerk/other) matches the one configured " ++
+        "upstream."),
     e("UZ-WH-011", .unauthorized, "Stale webhook timestamp",
-        "Slack request timestamp is more than 5 minutes old. " ++
+        "Webhook request timestamp is outside the allowed 5-minute drift window. " ++
         "This may indicate a replay attack or clock skew."),
     // ── TOOL ─────────────────────────────────────────────────────────────────
     e("UZ-TOOL-001", .failed_dependency, "Tool credential missing",

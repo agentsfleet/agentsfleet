@@ -14,11 +14,11 @@
 
 ## Overview
 
-**Goal (testable):** A Clerk `user.created` webhook delivered to `POST /v1/webhooks/clerk` with a valid Svix signature provisions a fresh personal account — tenant + user + membership + default workspace (Heroku-named, collision-safe) + credit state (0 cents) + audit row — atomically in a single SQL transaction, idempotent on `oidc_subject`, and returns 200 with `{workspace_id, workspace_name, created}`. Invalid signature returns 401 with `UZ-WH-020`.
+**Goal (testable):** A Clerk `user.created` webhook delivered to `POST /v1/webhooks/clerk` with a valid Svix signature provisions a fresh personal account — tenant + user + membership + default workspace (Heroku-named, collision-safe) + credit state (0 cents) + audit row — atomically in a single SQL transaction, idempotent on `oidc_subject`, and returns 200 with `{workspace_id, workspace_name, created}`. Invalid signature returns 401 with `UZ-WH-010`.
 
 **Problem:** UseZombie has no automated signup path today. Clerk manages identity but we have no webhook receiver to bootstrap the corresponding internal records. Without this endpoint, every new user requires manual DB provisioning, making a public `usezombie.com/sign-up` impossible.
 
-**Solution summary:** One Zig HTTP handler at `/v1/webhooks/clerk` that (a) verifies Svix signatures via reusable primitives extracted from `src/auth/middleware/svix_signature.zig` into `src/zombie/svix_verify.zig`, (b) parses the Clerk `user.created` event, and (c) invokes `signup_bootstrap.bootstrapPersonalAccount(conn, alloc, params)` — a new transactional helper that inserts tenant + user + membership + workspace (with a Heroku-name generator that retries on uniqueness collision) + credit_state + audit row. Idempotency is enforced by a fast-path check on `core.users.oidc_subject` before the transaction opens. No invite system, no redemption, no downstream zombies, no AgentMail — those concerns live in later milestones (auto-credit in M11_011; Homelab zombie program in M11_012).
+**Solution summary:** One Zig HTTP handler at `/v1/webhooks/clerk` that (a) verifies Svix signatures via reusable primitives extracted from `src/auth/middleware/svix_signature.zig` into `src/crypto/svix_verify.zig`, (b) parses the Clerk `user.created` event, and (c) invokes `signup_bootstrap.bootstrapPersonalAccount(conn, alloc, params)` — a new transactional helper that inserts tenant + user + membership + workspace (with a Heroku-name generator that retries on uniqueness collision) + credit_state + audit row. Idempotency is enforced by a fast-path check on `core.users.oidc_subject` before the transaction opens. No invite system, no redemption, no downstream zombies, no AgentMail — those concerns live in later milestones (auto-credit in M11_011; Homelab zombie program in M11_012).
 
 ---
 
@@ -33,14 +33,13 @@
 | `src/state/signup_bootstrap.zig` | CREATE | Transactional bootstrap facade (tenant + user + membership + workspace + credit state + audit) |
 | `src/state/signup_bootstrap_store.zig` | CREATE | Store helpers: fast-path replay check, insert primitives |
 | `src/state/heroku_names.zig` | CREATE | Heroku-style `{adjective}-{noun}-{number}` generator (no external deps) |
-| `src/zombie/svix_verify.zig` | CREATE | Reusable Svix v1 crypto core (HMAC + space-separated multi-sig + timestamp freshness) — ≤120 lines |
+| `src/crypto/svix_verify.zig` | CREATE | Reusable Svix v1 crypto core (HMAC + space-separated multi-sig + timestamp freshness) — ≤120 lines |
 | `src/auth/middleware/svix_signature.zig` | MODIFY | Refactor to call `svix_verify.zig`. No behavioral change; pure extraction. |
-| `src/errors/error_entries.zig` | MODIFY | Add `UZ-WH-020` (Clerk sig invalid), `UZ-WH-021` (Clerk ts stale) |
-| `src/errors/error_registry.zig` | MODIFY | Add `ERR_WEBHOOK_CLERK_SIG_INVALID`, `ERR_WEBHOOK_CLERK_TS_STALE` constants |
+| `src/errors/error_entries.zig` | MODIFY | Update `UZ-WH-010` / `UZ-WH-011` hints to provider-neutral (reused for Clerk; no new codes) |
 | `public/openapi.json` | MODIFY | Add `POST /v1/webhooks/clerk` path + 2 new error codes |
 | `src/http/handlers/clerk_webhook_integration_test.zig` | CREATE | Integration tests — real schema, Svix-signed payloads |
 | `src/state/signup_bootstrap_test.zig` | CREATE | Real-schema integration tests for bootstrap paths |
-| `src/zombie/svix_verify_test.zig` | CREATE | Unit tests for Svix v1 verifier primitives |
+| `src/crypto/svix_verify_test.zig` | CREATE | Unit tests for Svix v1 verifier primitives |
 | `docs/v2/pending/P1_UI_CLI_API_M11_003_INVITE_SIGNUP_ONBOARDING.md` | DELETE | Superseded by this spec (pivot: no invites) |
 
 ## Applicable Rules
@@ -62,7 +61,7 @@
 
 **Status:** PENDING
 
-Extract the Svix v1 HMAC crypto core from `src/auth/middleware/svix_signature.zig` into `src/zombie/svix_verify.zig`. Middleware becomes a thin wrapper around the reusable fn. Enables `/v1/webhooks/clerk` handler to verify without the zombie-shaped middleware context.
+Extract the Svix v1 HMAC crypto core from `src/auth/middleware/svix_signature.zig` into `src/crypto/svix_verify.zig`. Middleware becomes a thin wrapper around the reusable fn. Enables `/v1/webhooks/clerk` handler to verify without the zombie-shaped middleware context.
 
 **Dimensions (test blueprints):**
 
@@ -84,8 +83,8 @@ Extract the Svix v1 HMAC crypto core from `src/auth/middleware/svix_signature.zi
 | Dim | Status | Target | Input | Expected | Test type |
 |-----|--------|--------|-------|----------|-----------|
 | 2.1 | PENDING | `src/http/handlers/clerk_webhook.zig:innerClerkWebhook` | Valid Svix-signed `user.created` event, fresh oidc_subject | 200 `{workspace_id, workspace_name, created:true}`; 6 rows inserted | integration |
-| 2.2 | PENDING | `src/http/handlers/clerk_webhook.zig:innerClerkWebhook` | Invalid signature | 401 `UZ-WH-020`, zero DB writes | integration |
-| 2.3 | PENDING | `src/http/handlers/clerk_webhook.zig:innerClerkWebhook` | Valid signature, timestamp 6 minutes old | 401 `UZ-WH-021`, zero DB writes | integration |
+| 2.2 | PENDING | `src/http/handlers/clerk_webhook.zig:innerClerkWebhook` | Invalid signature | 401 `UZ-WH-010`, zero DB writes | integration |
+| 2.3 | PENDING | `src/http/handlers/clerk_webhook.zig:innerClerkWebhook` | Valid signature, timestamp 6 minutes old | 401 `UZ-WH-011`, zero DB writes | integration |
 | 2.4 | PENDING | `src/http/handlers/clerk_webhook.zig:innerClerkWebhook` | Valid request but body missing primary email | 400 `UZ-REQ-001`, zero DB writes | integration |
 
 ### §3 — Transactional Bootstrap
@@ -113,8 +112,8 @@ Add two new error codes to the registry and the OpenAPI spec. Codes + handler li
 
 | Dim | Status | Target | Input | Expected | Test type |
 |-----|--------|--------|-------|----------|-----------|
-| 4.1 | PENDING | `src/errors/error_entries.zig` | Compile-time registry validation | `UZ-WH-020` + `UZ-WH-021` present with `unauthorized` status; no duplicate codes | unit (comptime) |
-| 4.2 | PENDING | `public/openapi.json` | `make check-openapi-errors` | Zero errors — `/v1/webhooks/clerk` documented with 200/400/401 responses mapping to `UZ-WH-020`/`UZ-WH-021`/`UZ-REQ-001` | contract |
+| 4.1 | PENDING | `src/errors/error_entries.zig` | Compile-time registry validation | `UZ-WH-010` + `UZ-WH-011` hints are provider-neutral (mention "Webhook" not "Slack"); no duplicate codes | unit (comptime) |
+| 4.2 | PENDING | `public/openapi.json` | `make check-openapi-errors` | Zero errors — `/v1/webhooks/clerk` documented with 200/400/401 responses mapping to `UZ-WH-010`/`UZ-WH-011`/`UZ-REQ-001` | contract |
 
 ---
 
@@ -186,8 +185,8 @@ pub fn generate(alloc: std.mem.Allocator) ![]u8;  // "{adj}-{noun}-{3digit}" e.g
 
 | Error condition | Behavior | Caller sees |
 |----------------|----------|-------------|
-| Svix signature invalid | Handler rejects pre-transaction | 401 `UZ-WH-020` — "Invalid Clerk webhook signature" |
-| Svix timestamp stale (>5 min drift) | Handler rejects pre-transaction | 401 `UZ-WH-021` — "Clerk webhook timestamp out of window" |
+| Svix signature invalid | Handler rejects pre-transaction | 401 `UZ-WH-010` — "Invalid Clerk webhook signature" |
+| Svix timestamp stale (>5 min drift) | Handler rejects pre-transaction | 401 `UZ-WH-011` — "Clerk webhook timestamp out of window" |
 | Malformed JSON body | Handler rejects pre-transaction | 400 `UZ-REQ-001` — "Malformed JSON body" |
 | Missing primary email | Handler rejects pre-transaction | 400 `UZ-REQ-001` — "Primary email address required" |
 | DB unavailable | Tx never opens | 500 `UZ-INTERNAL-001`; Clerk retries |
@@ -202,8 +201,8 @@ pub fn generate(alloc: std.mem.Allocator) ![]u8;  // "{adj}-{noun}-{3digit}" e.g
 
 | Failure | Trigger | System behavior | User observes |
 |---------|---------|----------------|---------------|
-| Svix sig invalid | Attacker POSTs forged payload | 401, zero DB writes, log warn with `req_id` | 401 `UZ-WH-020` returned to attacker |
-| Svix ts stale | Replay attack OR clock skew > 5 min | 401, zero DB writes | 401 `UZ-WH-021` |
+| Svix sig invalid | Attacker POSTs forged payload | 401, zero DB writes, log warn with `req_id` | 401 `UZ-WH-010` returned to attacker |
+| Svix ts stale | Replay attack OR clock skew > 5 min | 401, zero DB writes | 401 `UZ-WH-011` |
 | DB pool exhausted | API under load | 500, Clerk retries | 500 `UZ-INTERNAL-001`; Clerk backs off and redelivers |
 | Partial commit via crash | API process killed mid-transaction | Postgres rolls back on connection close | Next delivery retries cleanly |
 | Platform LLM keys missing on first signup | Primer (M11_008) has not run | Bootstrap still commits (user workspace created with 0 credits); user sees empty workspace on first login | — (no LLM call attempted at signup; silent until first zombie run) |
@@ -223,7 +222,7 @@ pub fn generate(alloc: std.mem.Allocator) ![]u8;  // "{adj}-{noun}-{3digit}" e.g
 
 | Constraint | How to verify |
 |-----------|---------------|
-| `src/zombie/svix_verify.zig` ≤ 120 lines | `wc -l src/zombie/svix_verify.zig` ≤ 120 |
+| `src/crypto/svix_verify.zig` ≤ 120 lines | `wc -l src/zombie/svix_verify.zig` ≤ 120 |
 | `src/http/handlers/clerk_webhook.zig` ≤ 350 lines | `wc -l` ≤ 350 |
 | `src/state/signup_bootstrap.zig` ≤ 350 lines | `wc -l` ≤ 350 |
 | Constant-time HMAC compare (RULE CTM) | `grep -n "constantTimeEql" src/zombie/svix_verify.zig` — must be used for the HMAC output comparison |
@@ -241,9 +240,9 @@ pub fn generate(alloc: std.mem.Allocator) ![]u8;  // "{adj}-{noun}-{3digit}" e.g
 
 | # | Invariant | Enforcement mechanism |
 |---|-----------|----------------------|
-| 1 | Every registered error code resolves in the REGISTRY | `src/errors/error_registry.zig` comptime loop — compile fails if `UZ-WH-020` or `UZ-WH-021` is declared but missing from ENTRIES |
+| 1 | Every registered error code resolves in the REGISTRY | `src/errors/error_registry.zig` comptime loop — compile fails if `UZ-WH-010` or `UZ-WH-011` is declared but missing from ENTRIES |
 | 2 | No duplicate error codes | Same comptime loop's pair-wise check |
-| 3 | Svix signature compare is constant-time | `src/zombie/svix_verify.zig` uses `constantTimeEql` — reviewed in PR + grep enforced via Implementation Constraints |
+| 3 | Svix signature compare is constant-time | `src/crypto/svix_verify.zig` uses `constantTimeEql` — reviewed in PR + grep enforced via Implementation Constraints |
 | 4 | Bootstrap is transactional (BEGIN / COMMIT or ROLLBACK) | `signup_bootstrap.zig` wraps the multi-INSERT in `conn.exec("BEGIN")` / `conn.exec("COMMIT")`; `errdefer` calls ROLLBACK on any error |
 
 ---
@@ -261,15 +260,15 @@ pub fn generate(alloc: std.mem.Allocator) ![]u8;  // "{adj}-{noun}-{3digit}" e.g
 | svix: stale timestamp rejected | 1.3 | `svix_verify.verifySvix` | `svix_ts` = now − 301s | `false` |
 | svix: future timestamp rejected | 1.3 | `svix_verify.verifySvix` | `svix_ts` = now + 301s (pre-sign attack) | `false` |
 | svix: multi-sig rotation — second entry verifies | 1.1 | `svix_verify.verifySvix` | `v1,<bad> v1,<good>` | `true` |
-| error registry: UZ-WH-020 and UZ-WH-021 present | 4.1 | `error_registry_test.zig` | `lookup("UZ-WH-020")` and `lookup("UZ-WH-021")` | Non-UNKNOWN entries with `http_status = .unauthorized` |
+| error registry: UZ-WH-010 / UZ-WH-011 hints provider-neutral | 4.1 | `error_registry_test.zig` | `lookup("UZ-WH-010").hint` + `lookup("UZ-WH-011").hint` | Hint text does not contain "Slack"; does contain "Webhook" |
 
 ### Integration Tests
 
 | Test name | Dim | Infra needed | Input | Expected |
 |-----------|-----|-------------|-------|----------|
 | clerk webhook: happy path bootstrap | 2.1 | Postgres | Svix-signed `user.created` body | 200; `core.tenants/users/memberships/workspaces` + `billing.workspace_credit_state/audit` all have one new row |
-| clerk webhook: invalid signature 401 | 2.2 | Postgres | Same body, tampered sig | 401 `UZ-WH-020`; no DB writes |
-| clerk webhook: stale timestamp 401 | 2.3 | Postgres | Svix-signed with ts 6 min old | 401 `UZ-WH-021`; no DB writes |
+| clerk webhook: invalid signature 401 | 2.2 | Postgres | Same body, tampered sig | 401 `UZ-WH-010`; no DB writes |
+| clerk webhook: stale timestamp 401 | 2.3 | Postgres | Svix-signed with ts 6 min old | 401 `UZ-WH-011`; no DB writes |
 | clerk webhook: missing email 400 | 2.4 | Postgres | Body without primary email | 400 `UZ-REQ-001`; no DB writes |
 | clerk webhook: svix middleware parity | 1.4 | Postgres | Valid-signed request to `/v1/webhooks/svix/{zombie_id}` | Same acceptance behavior as before extraction |
 | bootstrap: fresh signup commits 6 rows | 3.1 | Postgres | Fresh `oidc_subject` | 6 rows across `core.*` and `billing.*` |
@@ -313,7 +312,7 @@ pub fn generate(alloc: std.mem.Allocator) ![]u8;  // "{adj}-{noun}-{3digit}" e.g
 | "atomically in a single SQL transaction" | Dim 3.4 fault-inject rolls back full state | integration |
 | "idempotent on oidc_subject" | Dim 3.2 replay returns existing | integration |
 | "Heroku-named, collision-safe" | Dim 3.3 injected-collision retry | integration |
-| "invalid signature returns 401 with UZ-WH-020" | Dim 2.2 | integration |
+| "invalid signature returns 401 with UZ-WH-010" | Dim 2.2 | integration |
 
 ---
 
@@ -323,8 +322,8 @@ pub fn generate(alloc: std.mem.Allocator) ![]u8;  // "{adj}-{noun}-{3digit}" e.g
 
 | Step | Action | Verify (must pass before next step) |
 |------|--------|--------------------------------------|
-| 1 | Extract Svix primitives to `src/zombie/svix_verify.zig` + refactor middleware to call it | `zig build && zig build test -Dtest-filter="svix"` |
-| 2 | Add error codes `UZ-WH-020` + `UZ-WH-021` to entries + registry | `zig build` (comptime validation passes) |
+| 1 | Extract Svix primitives to `src/crypto/svix_verify.zig` + refactor middleware to call it | `zig build && zig build test -Dtest-filter="svix"` |
+| 2 | Reword `UZ-WH-010` / `UZ-WH-011` hints to provider-neutral (reused for Clerk) | `zig build` (comptime validation passes) |
 | 3 | Create `src/state/heroku_names.zig` | `zig build test -Dtest-filter="heroku"` |
 | 4 | Create `src/state/signup_bootstrap_store.zig` + `signup_bootstrap.zig` | `zig build` |
 | 5 | Create `src/state/signup_bootstrap_test.zig` (real-schema integration) | `make test-integration -Dtest-filter="signup_bootstrap"` |
@@ -344,8 +343,8 @@ pub fn generate(alloc: std.mem.Allocator) ![]u8;  // "{adj}-{noun}-{3digit}" e.g
 
 - [ ] `POST /v1/webhooks/clerk` with valid Svix signature creates tenant + user + membership + workspace + credit_state + audit rows — verify: Dim 2.1 integration test passes.
 - [ ] Replay of the same `user.created` event returns `created:false` with no additional DB rows — verify: Dim 3.2.
-- [ ] Invalid signature returns 401 `UZ-WH-020` with zero DB writes — verify: Dim 2.2.
-- [ ] Stale timestamp (>5 min drift) returns 401 `UZ-WH-021` — verify: Dim 2.3.
+- [ ] Invalid signature returns 401 `UZ-WH-010` with zero DB writes — verify: Dim 2.2.
+- [ ] Stale timestamp (>5 min drift) returns 401 `UZ-WH-011` — verify: Dim 2.3.
 - [ ] Heroku name collision retries up to 8 times — verify: Dim 3.3.
 - [ ] Fault-injected credit_state write rolls back full bootstrap — verify: Dim 3.4.
 - [ ] OpenAPI documents `/v1/webhooks/clerk` + both new error codes — verify: `make check-openapi-errors` passes.
