@@ -49,8 +49,8 @@ fn seedTestData(conn: *pg.Conn) !void {
     const now_ms = std.time.milliTimestamp();
     _ = try conn.exec("DELETE FROM zombie_execution_telemetry WHERE workspace_id = $1", .{TEST_WORKSPACE_ID});
     _ = try conn.exec(
-        \\INSERT INTO tenants (tenant_id, name, api_key_hash, created_at, updated_at)
-        \\VALUES ($1, 'M18Test', 'managed', $2, $2)
+        \\INSERT INTO tenants (tenant_id, name, created_at, updated_at)
+        \\VALUES ($1, 'M18Test', $2, $2)
         \\ON CONFLICT (tenant_id) DO NOTHING
     , .{ TEST_TENANT_ID, now_ms });
     _ = try conn.exec(

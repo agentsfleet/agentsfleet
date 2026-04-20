@@ -66,8 +66,8 @@ pub fn innerGitHubCallback(hx: hx_mod.Hx, req: *httpz.Request) void {
     _ = common.setTenantSessionContext(conn, tenant_id);
 
     _ = conn.exec(
-        \\INSERT INTO tenants (tenant_id, name, api_key_hash, created_at, updated_at)
-        \\VALUES ($1, 'GitHub App', 'callback', $2, $2)
+        \\INSERT INTO tenants (tenant_id, name, created_at, updated_at)
+        \\VALUES ($1, 'GitHub App', $2, $2)
         \\ON CONFLICT (tenant_id) DO NOTHING
     , .{ tenant_id, now_ms }) catch {
         common.internalOperationError(hx.res, "Failed to upsert tenant", hx.req_id);

@@ -15,7 +15,6 @@ CREATE SCHEMA IF NOT EXISTS audit;
 CREATE TABLE IF NOT EXISTS core.tenants (
     tenant_id    UUID PRIMARY KEY,
     name         TEXT NOT NULL,
-    api_key_hash TEXT NOT NULL,
     created_at   BIGINT NOT NULL,
     updated_at   BIGINT NOT NULL
 );

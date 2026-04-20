@@ -51,8 +51,8 @@ fn seedTestData(conn: *pg.Conn) !void {
     _ = try conn.exec("DELETE FROM zombie_execution_telemetry WHERE workspace_id = $1", .{TEST_WORKSPACE_ID});
     _ = try conn.exec("DELETE FROM core.zombies WHERE workspace_id = $1::uuid", .{TEST_WORKSPACE_ID});
     _ = try conn.exec(
-        \\INSERT INTO tenants (tenant_id, name, api_key_hash, created_at, updated_at)
-        \\VALUES ($1, 'M12Test', 'managed', $2, $2)
+        \\INSERT INTO tenants (tenant_id, name, created_at, updated_at)
+        \\VALUES ($1, 'M12Test', $2, $2)
         \\ON CONFLICT (tenant_id) DO NOTHING
     , .{ TEST_TENANT_ID, now_ms });
     _ = try conn.exec(

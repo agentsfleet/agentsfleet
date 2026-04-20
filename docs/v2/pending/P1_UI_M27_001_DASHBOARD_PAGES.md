@@ -184,9 +184,9 @@ Route: `app/(dashboard)/firewall/page.tsx`. Placeholder with copy "Firewall metr
 
 Route: `app/(dashboard)/settings/page.tsx`. Two cards:
 1. Workspace info — name, id (copyable), plan tier from `core.workspace_entitlements`
-2. Tenant API key — prefix + masked representation of `core.tenants.api_key_hash`, last-used timestamp if tracked
+2. Tenant API keys — list of active keys from `core.api_keys` (name, key prefix, last-used timestamp, revoke button). `core.tenants.api_key_hash` was removed by M11_003; the multi-key `core.api_keys` table from M28_002 is the only store.
 
-Multi-key management deferred to a dedicated future milestone.
+Multi-key management: M28_002 already ships the CRUD API + table. This page wires it up.
 
 **Dimensions:**
 

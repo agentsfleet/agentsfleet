@@ -107,8 +107,8 @@ fn serverThread(srv: *http_server.Server) void {
 fn seedTestData(conn: *pg.Conn) !void {
     const now: i64 = std.time.milliTimestamp();
     _ = try conn.exec(
-        \\INSERT INTO tenants (tenant_id, name, api_key_hash, created_at, updated_at)
-        \\VALUES ($1, 'IdorTest', 'managed', $2, $2)
+        \\INSERT INTO tenants (tenant_id, name, created_at, updated_at)
+        \\VALUES ($1, 'IdorTest', $2, $2)
         \\ON CONFLICT (tenant_id) DO NOTHING
     , .{ TEST_TENANT_ID, now });
     _ = try conn.exec(

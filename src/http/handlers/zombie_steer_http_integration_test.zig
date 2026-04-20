@@ -51,8 +51,8 @@ fn seedAndHarness(alloc: std.mem.Allocator) !*TestHarness {
 
 fn seedTestData(conn: *pg.Conn) !void {
     _ = try conn.exec(
-        \\INSERT INTO tenants (tenant_id, name, api_key_hash, created_at, updated_at)
-        \\VALUES ($1, 'SteerTest', 'managed', $2, $2)
+        \\INSERT INTO tenants (tenant_id, name, created_at, updated_at)
+        \\VALUES ($1, 'SteerTest', $2, $2)
         \\ON CONFLICT (tenant_id) DO NOTHING
     , .{ TEST_TENANT_ID, std.time.milliTimestamp() });
     const now = std.time.milliTimestamp();

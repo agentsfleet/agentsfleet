@@ -28,8 +28,8 @@ pub const TEST_TENANT_ID = "0195b4ba-8d3a-7f13-8abc-000000000001";
 /// Insert the canonical test tenant. Idempotent via ON CONFLICT DO NOTHING.
 pub fn seedTenant(conn: *pg.Conn) !void {
     _ = try conn.exec(
-        \\INSERT INTO tenants (tenant_id, name, api_key_hash, created_at, updated_at)
-        \\VALUES ($1, 'scrooge-mcduck', 'testhash-placeholder', 0, 0)
+        \\INSERT INTO tenants (tenant_id, name, created_at, updated_at)
+        \\VALUES ($1, 'scrooge-mcduck', 0, 0)
         \\ON CONFLICT DO NOTHING
     , .{TEST_TENANT_ID});
 }
@@ -66,8 +66,8 @@ pub fn teardownTenant(conn: *pg.Conn) void {
 /// Insert a tenant with a custom ID. Idempotent via ON CONFLICT DO NOTHING.
 pub fn seedTenantById(conn: *pg.Conn, tenant_id: []const u8, name: []const u8) !void {
     _ = try conn.exec(
-        \\INSERT INTO tenants (tenant_id, name, api_key_hash, created_at, updated_at)
-        \\VALUES ($1, $2, 'testhash-placeholder', 0, 0)
+        \\INSERT INTO tenants (tenant_id, name, created_at, updated_at)
+        \\VALUES ($1, $2, 0, 0)
         \\ON CONFLICT DO NOTHING
     , .{ tenant_id, name });
 }

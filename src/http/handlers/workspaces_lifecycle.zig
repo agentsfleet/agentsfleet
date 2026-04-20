@@ -34,8 +34,8 @@ fn buildInstallUrl(alloc: std.mem.Allocator, app_slug: []const u8, workspace_id:
 fn upsertTenant(conn: anytype, tenant_id: []const u8, now_ms: i64, hx: hx_mod.Hx) bool {
     _ = common.setTenantSessionContext(conn, tenant_id);
     _ = conn.exec(
-        \\INSERT INTO tenants (tenant_id, name, api_key_hash, created_at, updated_at)
-        \\VALUES ($1, $2, 'managed', $3, $3)
+        \\INSERT INTO tenants (tenant_id, name, created_at, updated_at)
+        \\VALUES ($1, $2, $3, $3)
         \\ON CONFLICT (tenant_id) DO NOTHING
     , .{ tenant_id, "Workspace Tenant", now_ms }) catch {
         log.err("workspace.tenant_upsert_fail error_code=UZ-INTERNAL-003 tenant_id={s}", .{tenant_id});

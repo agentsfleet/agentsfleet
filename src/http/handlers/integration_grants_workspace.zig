@@ -169,8 +169,8 @@ test "integration: revoke UPDATE SQL blocks cross-workspace even without app che
 
     // Seed tenant, two workspaces, a zombie in WS_B, and a pending grant.
     _ = try conn.exec(
-        \\INSERT INTO tenants (tenant_id, name, api_key_hash, created_at, updated_at)
-        \\VALUES ($1, 'DefIndepTest', 'managed', $2, $2)
+        \\INSERT INTO tenants (tenant_id, name, created_at, updated_at)
+        \\VALUES ($1, 'DefIndepTest', $2, $2)
         \\ON CONFLICT (tenant_id) DO NOTHING
     , .{ tenant_id, now });
     _ = try conn.exec(
