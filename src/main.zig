@@ -203,7 +203,7 @@ test {
     // test-integration-db` red.
     _ = @import("http/router_test.zig");
     // M9_001: Integration grant + execute API
-    _ = @import("http/handlers/execute/handler.zig");
+    _ = @import("http/handlers/actions/execute.zig");
     _ = @import("http/handlers/proxy/outbound.zig");
     _ = @import("http/handlers/proxy/outbound_test.zig");
     _ = @import("http/handlers/integration_grants/handler.zig");
