@@ -38,6 +38,10 @@
 | `src/errors/error_entries.zig` | MODIFY | Update `UZ-WH-010` / `UZ-WH-011` hints to provider-neutral (reused for Clerk; no new codes) |
 | `public/openapi.json` | MODIFY | Add `POST /v1/webhooks/clerk` path + 2 new error codes |
 | `src/http/handlers/clerk_webhook_integration_test.zig` | CREATE | Integration tests — real schema, Svix-signed payloads |
+| `schema/001_core_foundation.sql` | MODIFY | Add nullable `name TEXT` to `core.workspaces` + partial unique index `uq_workspaces_tenant_name`. Pre-v2.0 teardown-rebuild edit (Schema Guard). |
+| `schema/032_core_users.sql` | CREATE | New `core.users` (oidc_subject UNIQUE, email, display_name, tenant_id) + `core.memberships` (tenant↔user↔role) tables. Required foundation for Clerk identity binding; the signup bootstrap's promise of idempotency on `oidc_subject` presumes these. |
+| `schema/embed.zig` | MODIFY | Register `core_users_sql = @embedFile("032_core_users.sql")` |
+| `src/cmd/common.zig` | MODIFY | Extend `canonicalMigrations` from 18 → 19 entries; add version 32 |
 | `src/state/signup_bootstrap_test.zig` | CREATE | Real-schema integration tests for bootstrap paths |
 | `src/crypto/svix_verify_test.zig` | CREATE | Unit tests for Svix v1 verifier primitives |
 | `docs/v2/pending/P1_UI_CLI_API_M11_003_INVITE_SIGNUP_ONBOARDING.md` | DELETE | Superseded by this spec (pivot: no invites) |
@@ -51,7 +55,7 @@
 - **RULE TNM** — test file naming: problem-oriented (`clerk_webhook_integration_test.zig`, not `m11_003_clerk_test.zig`).
 - **RULE ITF** — integration tests seed real schema via fixture modules; no TEMP TABLE mocks.
 - **RULE CTM** — constant-time compare for HMAC output (inherited from M28's svix middleware — preserved in the extraction).
-- **Schema Table Removal Guard** — `VERSION=0.9.0 (<2.0.0)` — no schema migrations in this spec (only reads existing `core.tenants`/`core.users`/`core.memberships`/`core.workspaces` + `billing.workspace_credit_state`/`billing.workspace_credit_audit`).
+- **Schema Table Removal Guard** — `VERSION=0.24.0 (<2.0.0)` — teardown-rebuild era. `core.users` + `core.memberships` land as a new numbered file (`schema/032_core_users.sql`). `core.workspaces.name` is added by editing `schema/001_core_foundation.sql` in place (no `ALTER TABLE`; DB is wiped on rebuild). Reads existing `core.tenants` + `billing.workspace_credit_state`/`billing.workspace_credit_audit`.
 
 ---
 

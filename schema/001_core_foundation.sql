@@ -23,6 +23,11 @@ CREATE TABLE IF NOT EXISTS core.tenants (
 CREATE TABLE IF NOT EXISTS core.workspaces (
     workspace_id              UUID PRIMARY KEY,
     tenant_id                 UUID NOT NULL REFERENCES core.tenants(tenant_id),
+    -- M11_003: human-readable workspace name (e.g. Heroku-style `jolly-harbor-482`).
+    -- Nullable for back-compat with pre-M11_003 workspace rows and fixture INSERTs
+    -- that do not supply a name. Uniqueness is enforced per-tenant via the partial
+    -- index below, so signup bootstrap can rely on ON CONFLICT for collision retry.
+    name                      TEXT,
     repo_url                  TEXT NOT NULL,
     default_branch            TEXT NOT NULL,
     paused                    BOOLEAN NOT NULL DEFAULT FALSE,
@@ -36,3 +41,5 @@ CREATE TABLE IF NOT EXISTS core.workspaces (
     updated_at                BIGINT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_workspaces_tenant ON core.workspaces(tenant_id);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_workspaces_tenant_name
+    ON core.workspaces(tenant_id, name) WHERE name IS NOT NULL;
