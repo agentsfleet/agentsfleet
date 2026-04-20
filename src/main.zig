@@ -187,13 +187,13 @@ test {
     _ = @import("memory/zombie_memory_role_test.zig");
     _ = @import("executor/zombie_memory.zig");
     // M2_001: Zombie CRUD, activity, router, worker
-    _ = @import("http/handlers/zombie_api.zig");
-    _ = @import("http/handlers/zombie_activity_api.zig");
+    _ = @import("http/handlers/zombies/api.zig");
+    _ = @import("http/handlers/zombies/activity.zig");
     // M18_001: zombie execution telemetry
     _ = @import("state/zombie_telemetry_store.zig");
-    _ = @import("http/handlers/zombie_telemetry.zig");
-    _ = @import("http/handlers/zombie_telemetry_handler_test.zig");
-    _ = @import("http/handlers/telemetry_http_integration_test.zig");
+    _ = @import("http/handlers/zombies/telemetry.zig");
+    _ = @import("http/handlers/zombies/telemetry_test.zig");
+    _ = @import("http/handlers/zombies/telemetry_integration_test.zig");
     // NOTE: src/http/handlers/dashboard_http_integration_test.zig is NOT wired
     // up yet. The test was authored under M12_001 but the seedTestData cleanup
     // pattern (DELETE of activity_events → zombies → workspace) is blocked by
@@ -214,9 +214,9 @@ test {
     _ = @import("http/handlers/webhooks/grant_approval.zig");
     _ = @import("zombie/notifications/grant_notifier.zig");
     _ = @import("http/route_matchers.zig");
-    _ = @import("http/handlers/zombie_steer_http.zig");
+    _ = @import("http/handlers/zombies/steer.zig");
     // M23_001: Zombie Steer — live steering + execution tracking
-    _ = @import("http/handlers/zombie_steer_http_integration_test.zig");
+    _ = @import("http/handlers/zombies/steer_integration_test.zig");
     _ = @import("zombie/event_loop_execution_tracking_test.zig");
     // Cross-workspace IDOR regression tests (RULE WAUTH)
     _ = @import("http/handlers/cross_workspace_idor_test.zig");

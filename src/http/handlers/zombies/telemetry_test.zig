@@ -9,16 +9,16 @@
 // Live HTTP enforcement (cursor pagination, DB writes) is in integration tests.
 
 const std = @import("std");
-const common = @import("common.zig");
+const common = @import("../common.zig");
 
 // ── T1: Module import resolution ─────────────────────────────────────────────
 
 test "M18_001: zombie_telemetry module imports resolve" {
-    _ = @import("zombie_telemetry.zig");
+    _ = @import("telemetry.zig");
 }
 
 test "M18_001: zombie_telemetry_store module imports resolve" {
-    _ = @import("../../state/zombie_telemetry_store.zig");
+    _ = @import("../../../state/zombie_telemetry_store.zig");
 }
 
 // ── T2: RBAC contract ────────────────────────────────────────────────────────
@@ -89,7 +89,7 @@ test "M18_001: capped agent_seconds never overflows u64 when multiplied to ns" {
 
 test "M18_001: TelemetryRow.deinit frees all owned slices without leaking" {
     const alloc = std.testing.allocator;
-    const store = @import("../../state/zombie_telemetry_store.zig");
+    const store = @import("../../../state/zombie_telemetry_store.zig");
     var row = store.TelemetryRow{
         .id = try alloc.dupe(u8, "test-id-001"),
         .zombie_id = try alloc.dupe(u8, "zombie-abc"),
@@ -109,7 +109,7 @@ test "M18_001: TelemetryRow.deinit frees all owned slices without leaking" {
 
 test "M18_001: TelemetryRow.deinit frees scale plan_tier slice without leaking" {
     const alloc = std.testing.allocator;
-    const store = @import("../../state/zombie_telemetry_store.zig");
+    const store = @import("../../../state/zombie_telemetry_store.zig");
     var row = store.TelemetryRow{
         .id = try alloc.dupe(u8, "row-id-002"),
         .zombie_id = try alloc.dupe(u8, "zombie-def"),
@@ -131,7 +131,7 @@ test "M18_001: TelemetryRow.deinit frees scale plan_tier slice without leaking" 
 // refactor removes them, these tests fail to compile — not just to run.
 
 test "M18_001: ExecutionUsage has time_to_first_token_ms and epoch_wall_time_ms (spec §1.4)" {
-    const metering = @import("../../zombie/metering.zig");
+    const metering = @import("../../../zombie/metering.zig");
     const usage = metering.ExecutionUsage{
         .zombie_id = "z",
         .workspace_id = "w",
@@ -146,7 +146,7 @@ test "M18_001: ExecutionUsage has time_to_first_token_ms and epoch_wall_time_ms 
 }
 
 test "M18_001: ExecutionUsage defaults — TTFT and epoch default to 0" {
-    const metering = @import("../../zombie/metering.zig");
+    const metering = @import("../../../zombie/metering.zig");
     // Both fields added with zero-value semantics: TTFT=0 means executor did not report;
     // epoch=0 means gate-blocked event (skipped by recordZombieDelivery).
     try std.testing.expectEqual(@as(u64, 0), @as(u64, 0)); // TTFT zero is valid
@@ -163,7 +163,7 @@ test "M18_001: ExecutionUsage defaults — TTFT and epoch default to 0" {
 }
 
 test "M18_001: EventResult has time_to_first_token_ms and epoch_wall_time_ms (spec §1.2)" {
-    const event_types = @import("../../zombie/event_loop_types.zig");
+    const event_types = @import("../../../zombie/event_loop_types.zig");
     const result = event_types.EventResult{
         .status = .processed,
         .agent_response = @constCast(""),
@@ -177,7 +177,7 @@ test "M18_001: EventResult has time_to_first_token_ms and epoch_wall_time_ms (sp
 }
 
 test "M18_001: EventResult TTFT and epoch default to 0 (gate-blocked path)" {
-    const event_types = @import("../../zombie/event_loop_types.zig");
+    const event_types = @import("../../../zombie/event_loop_types.zig");
     // Gate-blocked events produce EventResult with TTFT=0, epoch=0.
     // recordZombieDelivery skips telemetry when epoch==0.
     const result = event_types.EventResult{
@@ -236,17 +236,17 @@ test "M18_001: LIMIT_DEFAULT is within both customer and operator bounds" {
 // These codes appear in client-facing responses — changing them is a breaking change.
 
 test "M18_001: error code for invalid request is UZ-REQ-001 (limit, cursor, after errors)" {
-    const error_codes = @import("../../errors/error_registry.zig");
+    const error_codes = @import("../../../errors/error_registry.zig");
     try std.testing.expectEqualStrings("UZ-REQ-001", error_codes.ERR_INVALID_REQUEST);
 }
 
 test "M18_001: error code for workspace access denied is UZ-WORKSPACE-001" {
-    const error_codes = @import("../../errors/error_registry.zig");
+    const error_codes = @import("../../../errors/error_registry.zig");
     try std.testing.expectEqualStrings("UZ-WORKSPACE-001", error_codes.ERR_WORKSPACE_NOT_FOUND);
 }
 
 test "M18_001: error code for unauthenticated request is UZ-AUTH-002" {
-    const error_codes = @import("../../errors/error_registry.zig");
+    const error_codes = @import("../../../errors/error_registry.zig");
     try std.testing.expectEqualStrings("UZ-AUTH-002", error_codes.ERR_UNAUTHORIZED);
 }
 
@@ -256,7 +256,7 @@ test "M18_001: error code for unauthenticated request is UZ-AUTH-002" {
 
 test "M18_001: makeCursor output contains no ':' (base64url-encoded, not plain text)" {
     const alloc = std.testing.allocator;
-    const store = @import("../../state/zombie_telemetry_store.zig");
+    const store = @import("../../../state/zombie_telemetry_store.zig");
     const row = store.TelemetryRow{
         .id = @constCast("abc123"),
         .zombie_id = @constCast("z"),
@@ -279,7 +279,7 @@ test "M18_001: makeCursor output contains no ':' (base64url-encoded, not plain t
 
 test "M18_001: makeCursor output contains only base64url characters" {
     const alloc = std.testing.allocator;
-    const store = @import("../../state/zombie_telemetry_store.zig");
+    const store = @import("../../../state/zombie_telemetry_store.zig");
     const row = store.TelemetryRow{
         .id = @constCast("zombie-telemetry-row-id-xyz"),
         .zombie_id = @constCast("z"),

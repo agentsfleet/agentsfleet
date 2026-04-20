@@ -10,8 +10,8 @@ const common = @import("handlers/common.zig");
 const hx_mod = @import("handlers/hx.zig");
 
 const workspace_activity = @import("handlers/workspaces/activity.zig");
-const zombie_lifecycle = @import("handlers/zombie_lifecycle.zig");
-const zombie_billing_summary = @import("handlers/zombie_billing_summary.zig");
+const zombie_lifecycle = @import("handlers/zombies/lifecycle.zig");
+const zombie_billing_summary = @import("handlers/zombies/billing_summary.zig");
 
 const Hx = hx_mod.Hx;
 

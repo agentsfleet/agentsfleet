@@ -16,11 +16,11 @@
 const std = @import("std");
 const httpz = @import("httpz");
 const pg = @import("pg");
-const PgQuery = @import("../../db/pg_query.zig").PgQuery;
-const common = @import("common.zig");
-const hx_mod = @import("hx.zig");
-const ec = @import("../../errors/error_registry.zig");
-const queue_consts = @import("../../queue/constants.zig");
+const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
+const common = @import("../common.zig");
+const hx_mod = @import("../hx.zig");
+const ec = @import("../../../errors/error_registry.zig");
+const queue_consts = @import("../../../queue/constants.zig");
 
 const log = std.log.scoped(.zombie_steer);
 

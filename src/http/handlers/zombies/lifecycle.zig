@@ -14,15 +14,15 @@
 const std = @import("std");
 const httpz = @import("httpz");
 const pg = @import("pg");
-const PgQuery = @import("../../db/pg_query.zig").PgQuery;
+const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
 
-const common = @import("common.zig");
-const hx_mod = @import("hx.zig");
-const ec = @import("../../errors/error_registry.zig");
-const id_format = @import("../../types/id_format.zig");
-const zombie_config = @import("../../zombie/config.zig");
-const activity_stream = @import("../../zombie/activity_stream.zig");
-const workspace_guards = @import("../workspace_guards.zig");
+const common = @import("../common.zig");
+const hx_mod = @import("../hx.zig");
+const ec = @import("../../../errors/error_registry.zig");
+const id_format = @import("../../../types/id_format.zig");
+const zombie_config = @import("../../../zombie/config.zig");
+const activity_stream = @import("../../../zombie/activity_stream.zig");
+const workspace_guards = @import("../../workspace_guards.zig");
 
 const log = std.log.scoped(.zombie_lifecycle);
 

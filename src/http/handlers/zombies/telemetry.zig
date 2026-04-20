@@ -11,11 +11,11 @@ const std = @import("std");
 const httpz = @import("httpz");
 const pg = @import("pg");
 
-const common = @import("common.zig");
-const hx_mod = @import("hx.zig");
-const ec = @import("../../errors/error_registry.zig");
-const store = @import("../../state/zombie_telemetry_store.zig");
-const id_format = @import("../../types/id_format.zig");
+const common = @import("../common.zig");
+const hx_mod = @import("../hx.zig");
+const ec = @import("../../../errors/error_registry.zig");
+const store = @import("../../../state/zombie_telemetry_store.zig");
+const id_format = @import("../../../types/id_format.zig");
 
 const log = std.log.scoped(.http_zombie_telemetry);
 

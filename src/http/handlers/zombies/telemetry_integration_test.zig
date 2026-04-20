@@ -8,9 +8,9 @@
 
 const std = @import("std");
 const pg = @import("pg");
-const auth_mw = @import("../../auth/middleware/mod.zig");
+const auth_mw = @import("../../../auth/middleware/mod.zig");
 
-const harness_mod = @import("../test_harness.zig");
+const harness_mod = @import("../../test_harness.zig");
 const TestHarness = harness_mod.TestHarness;
 
 const TEST_TENANT_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01";

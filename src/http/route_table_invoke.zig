@@ -16,9 +16,9 @@ const hx_mod = @import("handlers/hx.zig");
 const health = @import("handlers/health.zig");
 const auth_sessions = @import("handlers/auth_sessions_http.zig");
 const github_cb = @import("handlers/github_callback.zig");
-const zombie_api = @import("handlers/zombie_api.zig");
-const zombie_act = @import("handlers/zombie_activity_api.zig");
-const zombie_tel = @import("handlers/zombie_telemetry.zig");
+const zombie_api = @import("handlers/zombies/api.zig");
+const zombie_act = @import("handlers/zombies/activity.zig");
+const zombie_tel = @import("handlers/zombies/telemetry.zig");
 const ws_lifecycle = @import("handlers/workspaces/lifecycle.zig");
 const ws_billing = @import("handlers/workspaces/billing.zig");
 const ws_billing_sum = @import("handlers/workspaces/billing_summary.zig");
@@ -41,7 +41,7 @@ const clerk_webhook_h = @import("handlers/webhooks/clerk.zig");
 const slack_oauth = @import("handlers/slack/oauth.zig");
 const slack_ev = @import("handlers/slack/events.zig");
 const slack_ix = @import("handlers/slack/interactions.zig");
-const zombie_steer = @import("handlers/zombie_steer_http.zig");
+const zombie_steer = @import("handlers/zombies/steer.zig");
 
 // M12_001 dashboard invokes live in a sibling file (keeps this file ≤ 350
 // lines per RULE FLL). Re-export so the dispatcher reference stays stable:
