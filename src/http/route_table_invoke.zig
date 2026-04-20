@@ -38,9 +38,9 @@ const api_keys_invokes = @import("route_table_invoke_api_keys.zig");
 pub const invokeTenantApiKeys = api_keys_invokes.invokeTenantApiKeys;
 pub const invokeTenantApiKeyById = api_keys_invokes.invokeTenantApiKeyById;
 const clerk_webhook_h = @import("handlers/webhooks/clerk.zig");
-const slack_oauth = @import("handlers/slack_oauth.zig");
-const slack_ev = @import("handlers/slack_events.zig");
-const slack_ix = @import("handlers/slack_interactions.zig");
+const slack_oauth = @import("handlers/slack/oauth.zig");
+const slack_ev = @import("handlers/slack/events.zig");
+const slack_ix = @import("handlers/slack/interactions.zig");
 const zombie_steer = @import("handlers/zombie_steer_http.zig");
 
 // M12_001 dashboard invokes live in a sibling file (keeps this file ≤ 350

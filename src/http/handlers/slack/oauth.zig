@@ -12,13 +12,13 @@
 const std = @import("std");
 const httpz = @import("httpz");
 const HmacSha256 = std.crypto.auth.hmac.sha2.HmacSha256;
-const crypto_store = @import("../../secrets/crypto_store.zig");
-const workspace_integrations = @import("../../state/workspace_integrations.zig");
-const common = @import("common.zig");
-const hx_mod = @import("hx.zig");
-const ec = @import("../../errors/error_registry.zig");
-const id_format = @import("../../types/id_format.zig");
-const oauth_client = @import("slack_oauth_client.zig");
+const crypto_store = @import("../../../secrets/crypto_store.zig");
+const workspace_integrations = @import("../../../state/workspace_integrations.zig");
+const common = @import("../common.zig");
+const hx_mod = @import("../hx.zig");
+const ec = @import("../../../errors/error_registry.zig");
+const id_format = @import("../../../types/id_format.zig");
+const oauth_client = @import("oauth_client.zig");
 
 const log = std.log.scoped(.http_slack_oauth);
 

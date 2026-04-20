@@ -12,8 +12,8 @@
 
 const std = @import("std");
 const httpz = @import("httpz");
-const common = @import("common.zig");
-const ec = @import("../../errors/error_registry.zig");
+const common = @import("../common.zig");
+const ec = @import("../../../errors/error_registry.zig");
 
 // ── T7: Error code HTTP status regression pins ────────────────────────────────
 

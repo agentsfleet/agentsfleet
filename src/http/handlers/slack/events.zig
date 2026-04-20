@@ -17,11 +17,11 @@
 const std = @import("std");
 const httpz = @import("httpz");
 const pg = @import("pg");
-const PgQuery = @import("../../db/pg_query.zig").PgQuery;
-const workspace_integrations = @import("../../state/workspace_integrations.zig");
-const common = @import("common.zig");
-const hx_mod = @import("hx.zig");
-const ec = @import("../../errors/error_registry.zig");
+const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
+const workspace_integrations = @import("../../../state/workspace_integrations.zig");
+const common = @import("../common.zig");
+const hx_mod = @import("../hx.zig");
+const ec = @import("../../../errors/error_registry.zig");
 
 const log = std.log.scoped(.http_slack_events);
 
