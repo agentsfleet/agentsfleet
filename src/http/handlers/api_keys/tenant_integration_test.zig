@@ -16,11 +16,11 @@
 
 const std = @import("std");
 const pg = @import("pg");
-const auth_mw = @import("../../auth/middleware/mod.zig");
-const api_key_lookup = @import("../../cmd/api_key_lookup.zig");
-const PgQuery = @import("../../db/pg_query.zig").PgQuery;
+const auth_mw = @import("../../../auth/middleware/mod.zig");
+const api_key_lookup = @import("../../../cmd/api_key_lookup.zig");
+const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
 
-const harness_mod = @import("../test_harness.zig");
+const harness_mod = @import("../../test_harness.zig");
 const TestHarness = harness_mod.TestHarness;
 
 const ALLOC = std.testing.allocator;

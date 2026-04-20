@@ -32,7 +32,7 @@ const memory = @import("handlers/memory/handler.zig");
 const execute_h = @import("handlers/execute.zig");
 const grants = @import("handlers/integration_grants.zig");
 const grants_ws = @import("handlers/integration_grants_workspace.zig");
-const agent_keys_h = @import("handlers/agent_keys.zig");
+const agent_keys_h = @import("handlers/api_keys/agent.zig");
 const api_keys_invokes = @import("route_table_invoke_api_keys.zig");
 
 pub const invokeTenantApiKeys = api_keys_invokes.invokeTenantApiKeys;

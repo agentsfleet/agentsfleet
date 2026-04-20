@@ -5,7 +5,7 @@ const httpz = @import("httpz");
 const router = @import("router.zig");
 const hx_mod = @import("handlers/hx.zig");
 const common = @import("handlers/common.zig");
-const api_keys_h = @import("handlers/api_keys.zig");
+const api_keys_h = @import("handlers/api_keys/tenant.zig");
 
 const Hx = hx_mod.Hx;
 

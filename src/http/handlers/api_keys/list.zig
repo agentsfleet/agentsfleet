@@ -3,10 +3,10 @@
 const std = @import("std");
 const httpz = @import("httpz");
 
-const common = @import("common.zig");
-const hx_mod = @import("hx.zig");
-const ec = @import("../../errors/error_registry.zig");
-const PgQuery = @import("../../db/pg_query.zig").PgQuery;
+const common = @import("../common.zig");
+const hx_mod = @import("../hx.zig");
+const ec = @import("../../../errors/error_registry.zig");
+const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
 
 const Hx = hx_mod.Hx;
 

@@ -6,14 +6,14 @@ const std = @import("std");
 const httpz = @import("httpz");
 const pg = @import("pg");
 
-const common = @import("common.zig");
-const hx_mod = @import("hx.zig");
-const ec = @import("../../errors/error_registry.zig");
-const id_format = @import("../../types/id_format.zig");
-const api_key = @import("../../auth/api_key.zig");
-const PgQuery = @import("../../db/pg_query.zig").PgQuery;
-const tenant_api_key = @import("../../auth/middleware/tenant_api_key.zig");
-const api_keys_list = @import("api_keys_list.zig");
+const common = @import("../common.zig");
+const hx_mod = @import("../hx.zig");
+const ec = @import("../../../errors/error_registry.zig");
+const id_format = @import("../../../types/id_format.zig");
+const api_key = @import("../../../auth/api_key.zig");
+const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
+const tenant_api_key = @import("../../../auth/middleware/tenant_api_key.zig");
+const api_keys_list = @import("list.zig");
 
 pub const innerListApiKeys = api_keys_list.innerListApiKeys;
 pub const sortClauseFor = api_keys_list.sortClauseFor;
@@ -269,5 +269,5 @@ fn reportDeleteFailure(hx: Hx, conn: *pg.Conn, tenant_id: []const u8, key_id: []
 }
 
 test {
-    _ = @import("api_keys_test.zig");
+    _ = @import("tenant_test.zig");
 }

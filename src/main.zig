@@ -207,10 +207,10 @@ test {
     _ = @import("http/handlers/outbound_proxy.zig");
     _ = @import("http/handlers/outbound_proxy_test.zig");
     _ = @import("http/handlers/integration_grants.zig");
-    _ = @import("http/handlers/agent_keys.zig");
-    _ = @import("http/handlers/api_keys.zig");
-    _ = @import("http/handlers/api_keys_list.zig");
-    _ = @import("http/handlers/tenant_api_keys_integration_test.zig");
+    _ = @import("http/handlers/api_keys/agent.zig");
+    _ = @import("http/handlers/api_keys/tenant.zig");
+    _ = @import("http/handlers/api_keys/list.zig");
+    _ = @import("http/handlers/api_keys/tenant_integration_test.zig");
     _ = @import("http/handlers/webhooks/grant_approval.zig");
     _ = @import("zombie/notifications/grant_notifier.zig");
     _ = @import("http/route_matchers.zig");

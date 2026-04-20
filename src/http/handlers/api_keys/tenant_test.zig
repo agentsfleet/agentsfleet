@@ -2,8 +2,8 @@
 //! DB-exercising dims 3.1-3.7 live in integration tests.
 
 const std = @import("std");
-const api_keys = @import("api_keys.zig");
-const tenant_api_key = @import("../../auth/middleware/tenant_api_key.zig");
+const api_keys = @import("tenant.zig");
+const tenant_api_key = @import("../../../auth/middleware/tenant_api_key.zig");
 
 const testing = std.testing;
 
