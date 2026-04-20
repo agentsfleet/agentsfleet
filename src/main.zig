@@ -157,6 +157,8 @@ test {
     _ = @import("state/outbox_reconciler.zig");
     _ = @import("state/workspace_billing.zig");
     _ = @import("state/workspace_credit.zig");
+    _ = @import("state/heroku_names.zig");
+    _ = @import("state/heroku_names_test.zig");
     _ = @import("executor/types.zig");
     _ = @import("executor/protocol.zig");
     _ = @import("executor/transport.zig");
