@@ -206,7 +206,7 @@ test {
     _ = @import("http/handlers/execute.zig");
     _ = @import("http/handlers/outbound_proxy.zig");
     _ = @import("http/handlers/outbound_proxy_test.zig");
-    _ = @import("http/handlers/integration_grants.zig");
+    _ = @import("http/handlers/integration_grants/handler.zig");
     _ = @import("http/handlers/api_keys/agent.zig");
     _ = @import("http/handlers/api_keys/tenant.zig");
     _ = @import("http/handlers/api_keys/list.zig");

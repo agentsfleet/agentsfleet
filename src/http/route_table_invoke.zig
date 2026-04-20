@@ -30,8 +30,8 @@ const approval = @import("handlers/webhooks/approval.zig");
 const grant_approval = @import("handlers/webhooks/grant_approval.zig");
 const memory = @import("handlers/memory/handler.zig");
 const execute_h = @import("handlers/execute.zig");
-const grants = @import("handlers/integration_grants.zig");
-const grants_ws = @import("handlers/integration_grants_workspace.zig");
+const grants = @import("handlers/integration_grants/handler.zig");
+const grants_ws = @import("handlers/integration_grants/workspace.zig");
 const agent_keys_h = @import("handlers/api_keys/agent.zig");
 const api_keys_invokes = @import("route_table_invoke_api_keys.zig");
 
