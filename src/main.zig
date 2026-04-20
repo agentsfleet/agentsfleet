@@ -161,6 +161,7 @@ test {
     _ = @import("state/heroku_names_test.zig");
     _ = @import("state/signup_bootstrap.zig");
     _ = @import("state/signup_bootstrap_store.zig");
+    _ = @import("state/signup_bootstrap_test.zig");
     _ = @import("executor/types.zig");
     _ = @import("executor/protocol.zig");
     _ = @import("executor/transport.zig");
