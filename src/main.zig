@@ -177,8 +177,8 @@ test {
     _ = @import("http/handlers/byok_handlers_unit_test.zig");
     _ = @import("http/handlers/error_response_test.zig");
     _ = @import("http/handlers/hx_test.zig");
-    _ = @import("http/handlers/memory_handler_test.zig");
-    _ = @import("http/handlers/memory_handler_shapes_test.zig");
+    _ = @import("http/handlers/memory/handler_test.zig");
+    _ = @import("http/handlers/memory/shapes_test.zig");
     _ = @import("cmd/serve_test.zig");
     _ = @import("queue/redis.zig");
     _ = @import("queue/redis_pubsub_test.zig");

@@ -3,11 +3,11 @@
 
 const std = @import("std");
 const pg = @import("pg");
-const PgQuery = @import("../../db/pg_query.zig").PgQuery;
-const common = @import("common.zig");
-const hx_mod = @import("hx.zig");
-const ec = @import("../../errors/error_registry.zig");
-const id_format = @import("../../types/id_format.zig");
+const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
+const common = @import("../common.zig");
+const hx_mod = @import("../hx.zig");
+const ec = @import("../../../errors/error_registry.zig");
+const id_format = @import("../../../types/id_format.zig");
 
 const log = std.log.scoped(.memory_http_helpers);
 

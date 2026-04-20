@@ -7,18 +7,18 @@
 
 const std = @import("std");
 const httpz = @import("httpz");
-const common = @import("common.zig");
-const ec = @import("../../errors/error_registry.zig");
-const h = @import("memory_http_helpers.zig");
+const common = @import("../common.zig");
+const ec = @import("../../../errors/error_registry.zig");
+const h = @import("helpers.zig");
 
 // ── T9: Module import resolution ─────────────────────────────────────────────
 
 test "M14_001 T9: memory_http module imports resolve" {
-    _ = @import("memory_http.zig");
+    _ = @import("handler.zig");
 }
 
 test "M14_001 T9: memory_http_helpers module imports resolve" {
-    _ = @import("memory_http_helpers.zig");
+    _ = @import("helpers.zig");
 }
 
 // ── T10: Spec-defined limits pinned (spec §2 validation) ─────────────────────
