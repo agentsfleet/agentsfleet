@@ -7,7 +7,7 @@
 //! §5.5: PipelineError.ApprovalRequired exists and is reachable (PR #205 fix #3).
 
 const std = @import("std");
-const pipeline = @import("outbound_proxy.zig");
+const pipeline = @import("outbound.zig");
 
 // ── extractDomain ──────────────────────────────────────────────────────────
 

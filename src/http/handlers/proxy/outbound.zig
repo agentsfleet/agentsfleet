@@ -3,11 +3,11 @@
 
 const std = @import("std");
 const pg = @import("pg");
-const PgQuery = @import("../../db/pg_query.zig").PgQuery;
-const firewall = @import("../../zombie/firewall/firewall.zig");
-const crypto_store = @import("../../secrets/crypto_store.zig");
-const error_codes = @import("../../errors/error_registry.zig");
-const id_format = @import("../../types/id_format.zig");
+const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
+const firewall = @import("../../../zombie/firewall/firewall.zig");
+const crypto_store = @import("../../../secrets/crypto_store.zig");
+const error_codes = @import("../../../errors/error_registry.zig");
+const id_format = @import("../../../types/id_format.zig");
 
 const log = std.log.scoped(.outbound_proxy);
 

@@ -5,12 +5,12 @@
 const std = @import("std");
 const httpz = @import("httpz");
 const pg = @import("pg");
-const PgQuery = @import("../../db/pg_query.zig").PgQuery;
-const common = @import("common.zig");
-const hx_mod = @import("hx.zig");
-const error_codes = @import("../../errors/error_registry.zig");
-const pipeline = @import("outbound_proxy.zig");
-const api_key = @import("../../auth/api_key.zig");
+const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
+const common = @import("../common.zig");
+const hx_mod = @import("../hx.zig");
+const error_codes = @import("../../../errors/error_registry.zig");
+const pipeline = @import("../proxy/outbound.zig");
+const api_key = @import("../../../auth/api_key.zig");
 
 const log = std.log.scoped(.execute);
 
