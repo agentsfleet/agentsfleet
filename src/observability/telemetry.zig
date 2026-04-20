@@ -57,6 +57,7 @@ pub const AuthLoginCompleted = events.AuthLoginCompleted;
 pub const AuthRejected = events.AuthRejected;
 pub const ZombieTriggered = events.ZombieTriggered;
 pub const ZombieCompleted = events.ZombieCompleted;
+pub const SignupBootstrapped = events.SignupBootstrapped;
 
 // ── Backends ────────────────────────────────────────────────────────
 

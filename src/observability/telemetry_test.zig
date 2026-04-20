@@ -217,9 +217,9 @@ test "T4: BillingLifecycleEvent.properties returns all 6 fields" {
 
 // ── T7: Regression safety ───────────────────────────────────────────
 
-test "T7: EventKind has exactly 13 variants" {
+test "T7: EventKind has exactly 14 variants" {
     const fields = @typeInfo(telemetry.EventKind).@"enum".fields;
-    try std.testing.expectEqual(@as(usize, 13), fields.len);
+    try std.testing.expectEqual(@as(usize, 14), fields.len);
 }
 
 test "T7: EventKind tagName matches expected event name strings" {

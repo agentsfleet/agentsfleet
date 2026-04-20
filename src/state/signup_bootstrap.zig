@@ -21,6 +21,7 @@ const id_format = @import("../types/id_format.zig");
 const credit_store = @import("workspace_credit_store.zig");
 const heroku_names = @import("heroku_names.zig");
 const store = @import("signup_bootstrap_store.zig");
+const metrics = @import("../observability/metrics_counters.zig");
 
 const log = std.log.scoped(.state);
 
@@ -79,6 +80,7 @@ pub fn bootstrapPersonalAccount(
 ) !Bootstrap {
     if (try store.findExistingByOidcSubject(conn, alloc, params.oidc_subject)) |existing| {
         log.info("signup.replay oidc_subject={s} workspace={s}", .{ params.oidc_subject, existing.workspace_id });
+        metrics.incSignupReplayed();
         return .{
             .user_id = existing.user_id,
             .tenant_id = existing.tenant_id,
@@ -149,6 +151,7 @@ pub fn bootstrapTransaction(
     tx_open = false;
 
     log.info("signup.bootstrapped user={s} tenant={s} workspace={s} workspace_name={s}", .{ user_id, tenant_id, workspace_id, workspace_name });
+    metrics.incSignupBootstrapped();
 
     return .{
         .user_id = @constCast(user_id),

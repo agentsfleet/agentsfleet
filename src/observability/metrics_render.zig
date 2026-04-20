@@ -84,6 +84,14 @@ pub fn renderPrometheus(
 
     try appendMetric(writer, "zombie_reconcile_running", "gauge", "Reconcile daemon liveness gauge (1 running, 0 stopped).", s.reconcile_running);
 
+    // M11_003: signup funnel counters.
+    try appendMetric(writer, "zombie_signup_bootstrapped_total", "counter", "Clerk webhooks that provisioned a fresh personal account.", s.signup_bootstrapped_total);
+    try appendMetric(writer, "zombie_signup_replayed_total", "counter", "Clerk webhooks that matched an existing account (idempotent replay).", s.signup_replayed_total);
+    try appendMetric(writer, "zombie_signup_failed_total{reason=\"bad_sig\"}", "counter", "Signup webhooks rejected for invalid Svix signature.", s.signup_failed_bad_sig_total);
+    try appendMetric(writer, "zombie_signup_failed_total{reason=\"stale_ts\"}", "counter", "Signup webhooks rejected for stale Svix timestamp.", s.signup_failed_stale_ts_total);
+    try appendMetric(writer, "zombie_signup_failed_total{reason=\"missing_email\"}", "counter", "Signup webhooks rejected for missing primary email.", s.signup_failed_missing_email_total);
+    try appendMetric(writer, "zombie_signup_failed_total{reason=\"db_error\"}", "counter", "Signup webhooks that reached DB but rolled back on error.", s.signup_failed_db_error_total);
+
     try appendDurationHistogram(
         writer,
         "zombie_agent_duration_seconds",
