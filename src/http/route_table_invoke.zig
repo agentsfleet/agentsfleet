@@ -14,8 +14,8 @@ const common = @import("handlers/common.zig");
 const hx_mod = @import("handlers/hx.zig");
 
 const health = @import("handlers/health.zig");
-const auth_sessions = @import("handlers/auth_sessions_http.zig");
-const github_cb = @import("handlers/github_callback.zig");
+const auth_sessions = @import("handlers/auth/sessions.zig");
+const github_cb = @import("handlers/auth/github_callback.zig");
 const zombie_api = @import("handlers/zombies/api.zig");
 const zombie_act = @import("handlers/zombies/activity.zig");
 const zombie_tel = @import("handlers/zombies/telemetry.zig");

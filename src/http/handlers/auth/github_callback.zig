@@ -2,15 +2,15 @@
 // param; authentication is completed via the OAuth exchange, not Bearer.
 const std = @import("std");
 const httpz = @import("httpz");
-const PgQuery = @import("../../db/pg_query.zig").PgQuery;
-const secrets = @import("../../secrets/crypto.zig");
-const error_codes = @import("../../errors/error_registry.zig");
-const id_format = @import("../../types/id_format.zig");
-const workspace_billing = @import("../../state/workspace_billing.zig");
-const workspace_credit = @import("../../state/workspace_credit.zig");
-const telemetry_mod = @import("../../observability/telemetry.zig");
-const common = @import("common.zig");
-const hx_mod = @import("hx.zig");
+const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
+const secrets = @import("../../../secrets/crypto.zig");
+const error_codes = @import("../../../errors/error_registry.zig");
+const id_format = @import("../../../types/id_format.zig");
+const workspace_billing = @import("../../../state/workspace_billing.zig");
+const workspace_credit = @import("../../../state/workspace_credit.zig");
+const telemetry_mod = @import("../../../observability/telemetry.zig");
+const common = @import("../common.zig");
+const hx_mod = @import("../hx.zig");
 
 const log = std.log.scoped(.http);
 

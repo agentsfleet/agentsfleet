@@ -8,8 +8,8 @@
 
 const std = @import("std");
 const httpz = @import("httpz");
-const common = @import("common.zig");
-const auth_mw = @import("../../auth/middleware/mod.zig");
+const common = @import("../common.zig");
+const auth_mw = @import("../../../auth/middleware/mod.zig");
 
 /// Construct an `AuthCtx` wired to the host's error-writer.
 ///
