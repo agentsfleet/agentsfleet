@@ -13,12 +13,12 @@
 const std = @import("std");
 const httpz = @import("httpz");
 const pg = @import("pg");
-const PgQuery = @import("../../db/pg_query.zig").PgQuery;
-const common = @import("common.zig");
-const hx_mod = @import("hx.zig");
-const ec = @import("../../errors/error_registry.zig");
-const approval_gate = @import("../../zombie/approval_gate.zig");
-const activity_stream = @import("../../zombie/activity_stream.zig");
+const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
+const common = @import("../common.zig");
+const hx_mod = @import("../hx.zig");
+const ec = @import("../../../errors/error_registry.zig");
+const approval_gate = @import("../../../zombie/approval_gate.zig");
+const activity_stream = @import("../../../zombie/activity_stream.zig");
 
 const log = std.log.scoped(.http_approval);
 

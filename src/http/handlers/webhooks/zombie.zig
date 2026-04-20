@@ -10,14 +10,14 @@
 const std = @import("std");
 const httpz = @import("httpz");
 const pg = @import("pg");
-const PgQuery = @import("../../db/pg_query.zig").PgQuery;
-const common = @import("common.zig");
-const hx_mod = @import("hx.zig");
-const ec = @import("../../errors/error_registry.zig");
-const zombie_config = @import("../../zombie/config.zig");
-const activity_stream = @import("../../zombie/activity_stream.zig");
-const telemetry_mod = @import("../../observability/telemetry.zig");
-const metrics_counters = @import("../../observability/metrics_counters.zig");
+const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
+const common = @import("../common.zig");
+const hx_mod = @import("../hx.zig");
+const ec = @import("../../../errors/error_registry.zig");
+const zombie_config = @import("../../../zombie/config.zig");
+const activity_stream = @import("../../../zombie/activity_stream.zig");
+const telemetry_mod = @import("../../../observability/telemetry.zig");
+const metrics_counters = @import("../../../observability/metrics_counters.zig");
 
 const log = std.log.scoped(.http_webhook);
 
@@ -189,8 +189,8 @@ fn recordWebhookAccepted(
 // Spec §6.0 row 3.1 — webhook_increments_triggered: successful 202 path increments
 // zombies_triggered_total and emits zombie_triggered PostHog event.
 test "M15_002 3.1: webhook_increments_triggered" {
-    const metrics_zombie = @import("../../observability/metrics_zombie.zig");
-    const tel_mod = @import("../../observability/telemetry.zig");
+    const metrics_zombie = @import("../../../observability/metrics_zombie.zig");
+    const tel_mod = @import("../../../observability/telemetry.zig");
     metrics_zombie.resetForTest();
     defer metrics_zombie.resetForTest();
     var tel = tel_mod.Telemetry.initTest();

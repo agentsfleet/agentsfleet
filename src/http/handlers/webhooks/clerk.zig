@@ -6,8 +6,8 @@
 //! instead of a crash or a silently-accepted webhook.
 
 const httpz = @import("httpz");
-const hx_mod = @import("hx.zig");
-const common = @import("common.zig");
+const hx_mod = @import("../hx.zig");
+const common = @import("../common.zig");
 
 pub fn innerClerkWebhook(hx: hx_mod.Hx, req: *httpz.Request) void {
     _ = req;

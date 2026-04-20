@@ -211,7 +211,7 @@ test {
     _ = @import("http/handlers/api_keys.zig");
     _ = @import("http/handlers/api_keys_list.zig");
     _ = @import("http/handlers/tenant_api_keys_integration_test.zig");
-    _ = @import("http/handlers/grant_approval_webhook.zig");
+    _ = @import("http/handlers/webhooks/grant_approval.zig");
     _ = @import("zombie/notifications/grant_notifier.zig");
     _ = @import("http/route_matchers.zig");
     _ = @import("http/handlers/zombie_steer_http.zig");
