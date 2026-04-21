@@ -10,9 +10,15 @@
 /// session into `replica` replication role, which suspends non-`ALWAYS`
 /// triggers, performs the DELETEs, then switches back to `origin`.
 ///
-/// Superuser-only — matches the docker-compose dev DB. If your test DB
-/// runs as a non-superuser role, tests using this fixture will skip on the
-/// `SET session_replication_role` step rather than mutating rows.
+/// Superuser-only — matches the docker-compose dev DB. On a non-superuser
+/// role the `SET session_replication_role` call fails and is swallowed by
+/// `catch {}`, which then causes the subsequent DELETEs to trip the
+/// append-only triggers and also be swallowed. Net effect: stale prior-run
+/// rows survive and later ORDER BY-based assertions see them ahead of the
+/// new inserts, producing non-deterministic failures. The fixture is only
+/// safe against a superuser connection — tests relying on it should run
+/// under the docker-compose DB or a similarly privileged role. There is no
+/// actual skip path; the silent failure is the failure mode.
 
 const base = @import("test_fixtures.zig");
 const pg = @import("pg");

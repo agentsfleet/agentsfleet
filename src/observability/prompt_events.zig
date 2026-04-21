@@ -59,7 +59,7 @@ fn emitToDb(ctx: *anyopaque, event: PromptEvent) anyerror!void {
     defer conn._allocator.free(row_id);
     const event_id = randomEventId();
     _ = try conn.exec(
-        \\INSERT INTO prompt_lifecycle_events
+        \\INSERT INTO core.prompt_lifecycle_events
         \\  (id, event_id, event_type, workspace_id, tenant_id, agent_id, config_version_id, metadata_json, created_at)
         \\VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
     , .{

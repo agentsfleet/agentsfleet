@@ -28,7 +28,7 @@ pub const TEST_TENANT_ID = "0195b4ba-8d3a-7f13-8abc-000000000001";
 /// Insert the canonical test tenant. Idempotent via ON CONFLICT DO NOTHING.
 pub fn seedTenant(conn: *pg.Conn) !void {
     _ = try conn.exec(
-        \\INSERT INTO tenants (tenant_id, name, created_at, updated_at)
+        \\INSERT INTO core.tenants (tenant_id, name, created_at, updated_at)
         \\VALUES ($1, 'scrooge-mcduck', 0, 0)
         \\ON CONFLICT DO NOTHING
     , .{TEST_TENANT_ID});
@@ -38,7 +38,7 @@ pub fn seedTenant(conn: *pg.Conn) !void {
 /// Idempotent via ON CONFLICT DO NOTHING.
 pub fn seedWorkspace(conn: *pg.Conn, workspace_id: []const u8) !void {
     _ = try conn.exec(
-        \\INSERT INTO workspaces
+        \\INSERT INTO core.workspaces
         \\  (workspace_id, tenant_id, repo_url, default_branch, created_at, updated_at)
         \\VALUES ($1, $2, 'https://github.com/scrooge-mcduck/duckburg-monorepo.git', 'main', 0, 0)
         \\ON CONFLICT DO NOTHING
@@ -50,7 +50,7 @@ pub fn seedWorkspace(conn: *pg.Conn, workspace_id: []const u8) !void {
 ///   workspace_billing_audit, usage_ledger, workspace_entitlements.
 pub fn teardownWorkspace(conn: *pg.Conn, workspace_id: []const u8) void {
     _ = conn.exec(
-        "DELETE FROM workspaces WHERE workspace_id = $1::uuid",
+        "DELETE FROM core.workspaces WHERE workspace_id = $1::uuid",
         .{workspace_id},
     ) catch {};
 }
@@ -66,7 +66,7 @@ pub fn teardownTenant(conn: *pg.Conn) void {
 /// Insert a tenant with a custom ID. Idempotent via ON CONFLICT DO NOTHING.
 pub fn seedTenantById(conn: *pg.Conn, tenant_id: []const u8, name: []const u8) !void {
     _ = try conn.exec(
-        \\INSERT INTO tenants (tenant_id, name, created_at, updated_at)
+        \\INSERT INTO core.tenants (tenant_id, name, created_at, updated_at)
         \\VALUES ($1, $2, 0, 0)
         \\ON CONFLICT DO NOTHING
     , .{ tenant_id, name });
@@ -75,7 +75,7 @@ pub fn seedTenantById(conn: *pg.Conn, tenant_id: []const u8, name: []const u8) !
 /// Insert a workspace under a specific tenant. Idempotent.
 pub fn seedWorkspaceWithTenant(conn: *pg.Conn, workspace_id: []const u8, tenant_id: []const u8) !void {
     _ = try conn.exec(
-        \\INSERT INTO workspaces
+        \\INSERT INTO core.workspaces
         \\  (workspace_id, tenant_id, repo_url, default_branch, created_at, updated_at)
         \\VALUES ($1, $2, 'https://github.com/scrooge-mcduck/duckburg-monorepo.git', 'main', 0, 0)
         \\ON CONFLICT DO NOTHING
@@ -84,25 +84,31 @@ pub fn seedWorkspaceWithTenant(conn: *pg.Conn, workspace_id: []const u8, tenant_
 
 /// Insert a workspace with an explicit `created_by`. Used by tests that
 /// exercise owner-override / creator-check logic (isWorkspaceCreator).
-/// Name mirrors `workspace_id` — satisfies `uq_workspaces_tenant_name`.
+/// Name is left NULL — the partial unique index `uq_workspaces_tenant_name`
+/// only fires on non-null names, so the row slots in without touching it.
 pub fn seedWorkspaceWithCreator(
     conn: *pg.Conn,
     workspace_id: []const u8,
     tenant_id: []const u8,
     created_by: ?[]const u8,
 ) !void {
+    // UPSERT rather than ON CONFLICT DO NOTHING: if a prior test's cleanup
+    // failed silently (FK-blocked delete for a workspace with dependent rows),
+    // ON CONFLICT DO NOTHING would preserve the stale created_by and the
+    // creator-scoping assertions would read the wrong owner. UPDATE on
+    // conflict makes the seed idempotent in the "latest seed wins" sense.
     _ = try conn.exec(
-        \\INSERT INTO workspaces
+        \\INSERT INTO core.workspaces
         \\  (workspace_id, tenant_id, name, repo_url, default_branch, created_by, created_at, updated_at)
-        \\VALUES ($1, $2, $1::text, '', 'main', $3, 0, 0)
-        \\ON CONFLICT DO NOTHING
+        \\VALUES ($1::uuid, $2::uuid, NULL, '', 'main', $3, 0, 0)
+        \\ON CONFLICT (workspace_id) DO UPDATE SET created_by = EXCLUDED.created_by
     , .{ workspace_id, tenant_id, created_by });
 }
 
 /// Delete a tenant by custom ID.
 pub fn teardownTenantById(conn: *pg.Conn, tenant_id: []const u8) void {
     _ = conn.exec(
-        "DELETE FROM tenants WHERE tenant_id = $1::uuid",
+        "DELETE FROM core.tenants WHERE tenant_id = $1::uuid",
         .{tenant_id},
     ) catch {};
 }
