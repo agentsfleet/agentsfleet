@@ -6,7 +6,7 @@
 **Date:** Apr 21, 2026
 **Status:** PENDING
 **Priority:** P1 — Operator-facing docs are out of sync with code; false observability expectations
-**Batch:** B4 — cleanup
+**Batch:** B2 — alpha gate, parallel with M32 (both are docs-repo work)
 **Branch:** feat/v0.25.0-clerk-signup-changelog (in `~/Projects/docs`)
 **Depends on:** M15_002 (zombie observability implementation), M12_001 (Langfuse removal), M29_001 (doc rewrite to zombie)
 

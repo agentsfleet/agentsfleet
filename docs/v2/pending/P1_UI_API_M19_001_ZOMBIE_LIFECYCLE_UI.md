@@ -6,7 +6,7 @@
 **Date:** Apr 13, 2026
 **Status:** PENDING
 **Priority:** P1 — Without this, the dashboard is read-only; operators must use the CLI for all setup
-**Batch:** B2 — alpha gate, parallel with M13_001, M21_001, M11_005
+**Batch:** B2 — alpha gate, parallel with M13_001, M21_001, M11_005, M27_001, M32_001, M31_001
 **Branch:** feat/m19-zombie-lifecycle-ui
 **Depends on:** M12_001 (app shell + layout), M9_001 (grants/execute API, done)
 

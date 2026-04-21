@@ -6,7 +6,7 @@
 **Date:** Apr 21, 2026
 **Status:** PENDING
 **Priority:** P1 — The docs are the product landing surface; stale pre-Clerk vocabulary blocks operator onboarding
-**Batch:** B3 — follows B2 alpha gate; ships in lockstep with M19/M20/M27
+**Batch:** B2 — alpha gate, parallel with M19/M13/M21/M11_005/M27 (docs ship in lockstep with the code they document)
 **Branch:** feat/m32-quickstart-v2 (in `~/Projects/docs`)
 **Depends on:** M19_001 (zombie lifecycle UI), M13_001 (credential vault UI), M11_005 (tenant credits), M21_001 (BYOK) — content needs these to exist
 
@@ -249,6 +249,43 @@ N/A — docs rewrite.
 | 8 | Update `docs.json` nav. | §7 dims |
 | 9 | `mint dev` end-to-end; fix broken links. | `mint dev` clean |
 | 10 | Manual E2E walkthrough timed. | ≤10 min |
+
+---
+
+### §9 — Sample zombies: move from brainstormed/ to repo root samples/
+
+**Status:** PENDING
+
+The three new archetype pages (homebox-audit, migration-zombie, side-project-resurrector) currently source their content from `docs/brainstormed/samples/` inside the `usezombie` repo. `brainstormed/` is a scratchpad — samples we want to ship to operators belong at the repo root under `samples/`, where `zombiectl zombie create --from samples/<name>` can reach them and where their existence signals "supported archetype" rather than "exploratory note."
+
+**Physical move (in the `usezombie` repo, not the docs repo):**
+
+| From | To |
+|------|----|
+| `/Users/kishore/Projects/usezombie/docs/brainstormed/samples/homebox-audit/` | `/Users/kishore/Projects/usezombie/samples/homebox-audit/` |
+| `/Users/kishore/Projects/usezombie/docs/brainstormed/samples/migration-zombie/` | `/Users/kishore/Projects/usezombie/samples/migration-zombie/` |
+| `/Users/kishore/Projects/usezombie/docs/brainstormed/samples/side-project-resurrector/` | `/Users/kishore/Projects/usezombie/samples/side-project-resurrector/` |
+| `/Users/kishore/Projects/usezombie/docs/brainstormed/samples/skills/docker-readonly/` | `/Users/kishore/Projects/usezombie/samples/skills/docker-readonly/` |
+| `/Users/kishore/Projects/usezombie/docs/brainstormed/samples/skills/kubectl-readonly/` | `/Users/kishore/Projects/usezombie/samples/skills/kubectl-readonly/` |
+
+Each zombie archetype directory currently contains `README.md` only; the two skill directories are preserved wholesale. Follow-up work to make any of these "executable" (shippable skill YAML + trigger manifest) is out of scope for M32 — this section is a physical relocation plus doc-source retarget.
+
+**Dimensions:**
+
+| Dim | Status | Target | Input | Expected | Test type |
+|-----|--------|--------|-------|----------|-----------|
+| X.1 | PENDING | `/Users/kishore/Projects/usezombie/samples/` | `ls /Users/kishore/Projects/usezombie/samples/` after move | Lists all 5 items: `homebox-audit/`, `migration-zombie/`, `side-project-resurrector/`, `skills/docker-readonly/`, `skills/kubectl-readonly/` | shell |
+| X.2 | PENDING | `/Users/kishore/Projects/usezombie/docs/brainstormed/samples/` | `ls` after move | Empty, or directory removed entirely | shell |
+| X.3 | PENDING | `docs.json` (Mintlify) | nav entries for the three new archetype pages | Reference `samples/<name>/README.md` as their upstream source, not `docs/brainstormed/samples/<name>/README.md` | manual review |
+| X.4 | PENDING | `docs/zombies/homebox-audit.mdx`, `docs/zombies/migration-zombie.mdx`, `docs/zombies/side-project-resurrector.mdx` | `Files Changed` row and any inline source attribution | Points at `samples/<name>/README.md` — the new canonical path | grep |
+| X.5 | PENDING | `zombiectl zombie create --from samples/homebox-audit` | Run in dev against a local `zombied` | Either completes end-to-end OR the archetype page carries an explicit "README-only sample for now, executable form in follow-up" note. Whichever applies is recorded verbatim in VERIFY evidence. | manual E2E |
+
+**Acceptance for this section:**
+
+- [ ] Files are moved on disk (no copies; `git mv` so history follows).
+- [ ] `docs.json` nav items for the three archetype pages reference `samples/` paths in their source attribution.
+- [ ] The three `docs/zombies/*.mdx` pages cite `samples/<name>/README.md` in their `Files Changed` row.
+- [ ] If `zombiectl zombie create --from samples/homebox-audit` does not run cleanly in dev, the page carries the follow-up note and the limitation is logged under Verification Evidence.
 
 ---
 
