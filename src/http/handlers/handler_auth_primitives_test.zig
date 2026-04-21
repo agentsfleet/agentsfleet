@@ -66,30 +66,19 @@ test "api_key mode principal is expected to carry admin role" {
 
 // --- workspace_guards types and defaults ---
 
-test "workspace_guards.CreditPolicy has expected variants" {
-    try std.testing.expectEqual(workspace_guards.CreditPolicy.none, .none);
-    try std.testing.expectEqual(workspace_guards.CreditPolicy.execution_required, .execution_required);
-}
-
-test "workspace_guards.Requirement defaults to user role and no credit policy" {
+test "workspace_guards.Requirement defaults to user role" {
     const req = workspace_guards.Requirement{};
     try std.testing.expectEqual(common.AuthRole.user, req.minimum_role);
-    try std.testing.expectEqual(workspace_guards.CreditPolicy.none, req.credit_policy);
 }
 
 test "workspace_guards.Requirement accepts operator override" {
-    const req = workspace_guards.Requirement{
-        .minimum_role = .operator,
-        .credit_policy = .execution_required,
-    };
+    const req = workspace_guards.Requirement{ .minimum_role = .operator };
     try std.testing.expectEqual(common.AuthRole.operator, req.minimum_role);
-    try std.testing.expectEqual(workspace_guards.CreditPolicy.execution_required, req.credit_policy);
 }
 
-test "workspace_guards.Access defaults to null optional fields" {
+test "workspace_guards.Access.deinit is a no-op" {
     const access = workspace_guards.Access{};
-    try std.testing.expectEqual(@as(?@import("../../state/workspace_credit.zig").CreditView, null), access.credit);
-    try std.testing.expectEqual(@as(?@import("../../state/workspace_billing.zig").StateView, null), access.billing_state);
+    access.deinit(std.testing.allocator);
 }
 
 // --- ERR_INSUFFICIENT_ROLE error code exists ---

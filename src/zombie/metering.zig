@@ -1,90 +1,78 @@
-//! Zombie credit metering — post-execution deduction per M15_001.
+//! Zombie tenant-billing metering — post-execution debit.
 //!
 //! Called by the zombie event loop after `deliverEvent()` succeeds and before
 //! XACK. Non-blocking: any DB failure returns `.db_error` and the event loop
 //! still XACKs so the message is not redelivered.
 //!
-//! Idempotency: uses `workspace_credit_store.hasAuditEvent` keyed on
-//! metadata_json (which embeds `event_id`) so a crash-recovery replay of the
-//! same event deducts 0 cents on the second call.
+//! Per-workspace credit state is gone; the worker debits the single
+//! `billing.tenant_billing` row shared by all workspaces the tenant owns. The
+//! worker resolves `tenant_id` once via `workspace_id → core.workspaces.tenant_id`.
+//!
+//! MVP note: replay idempotency is out of scope — without an audit table, a
+//! redelivered event can double-bill. Acceptable pre-alpha; revisit when
+//! Stripe wires in.
 
 const std = @import("std");
 const pg = @import("pg");
 const Allocator = std.mem.Allocator;
 
-const workspace_credit = @import("../state/workspace_credit.zig");
-const workspace_credit_store = @import("../state/workspace_credit_store.zig");
-const billing_row = @import("../state/workspace_billing/row.zig");
+const tenant_billing = @import("../state/tenant_billing.zig");
 const zombie_telemetry_store = @import("../state/zombie_telemetry_store.zig");
 const otel_traces = @import("../observability/otel_traces.zig");
 const trace = @import("../observability/trace.zig");
 
 const log = std.log.scoped(.zombie_metering);
 
-const ACTOR = "zombie_event_loop";
-const EVENT_TYPE = "CREDIT_DEDUCTED";
-const REASON = "runtime_completed";
-
 pub const ExecutionUsage = struct {
-    zombie_id: []const u8, // borrowed
-    workspace_id: []const u8, // borrowed
-    event_id: []const u8, // borrowed — idempotency key embedded in audit metadata
+    zombie_id: []const u8,
+    workspace_id: []const u8,
+    event_id: []const u8,
     agent_seconds: u64,
     token_count: u64,
-    /// M18_001: ms from stage start to first token. 0 if executor did not report.
+    /// ms from stage start to first token. 0 if executor did not report.
     time_to_first_token_ms: u64,
-    /// M18_001: Unix epoch ms at the start of deliverEvent(). 0 on gate-blocked paths.
+    /// Unix epoch ms at the start of deliverEvent(). 0 on gate-blocked paths.
     epoch_wall_time_ms: i64,
 };
 
 pub const DeductionResult = union(enum) {
-    /// Cents consumed this call. 0 on replay or zero-cost events.
+    /// Cents consumed this call.
     deducted: i64,
     /// Scale plan — charge not applicable; no DB writes.
     exempt: void,
-    /// Credits were already 0; a zero-delta audit row is still written.
-    exhausted: i64,
+    /// Balance insufficient; no cents deducted.
+    exhausted: void,
+    /// Tenant has no billing row — bootstrap invariant violated. Logged at
+    /// `err`, not `warn`, because it's never an expected operational state.
+    missing_tenant_billing: void,
     /// Non-fatal DB failure; event loop continues to XACK.
     db_error: void,
 };
 
-/// Deduct credits for one zombie event delivery. Must stay ≤50 lines.
-///
-/// Idempotency is keyed on `event_id` via `hasAuditForRunId`, NOT on full
-/// metadata_json. This matters: on XACK failure the event is redelivered and
-/// re-executed, producing a different `agent_seconds` (LLM + tool latency
-/// varies between retries). A metadata_json-keyed check would miss and
-/// double-bill. Keying on event_id dedupes the logical event regardless of
-/// measured duration.
 pub fn deductZombieUsage(
     conn: *pg.Conn,
-    alloc: Allocator,
+    tenant_id: []const u8,
     usage: ExecutionUsage,
-    plan_tier: billing_row.PlanTier,
+    plan_tier: tenant_billing.PlanTier,
 ) DeductionResult {
     if (plan_tier == .scale) return .{ .exempt = {} };
 
-    const already = workspace_credit_store.hasAuditForRunId(conn, usage.workspace_id, EVENT_TYPE, usage.event_id) catch return .{ .db_error = {} };
-    if (already) return .{ .deducted = 0 };
+    const debit_cents = tenant_billing.runtimeUsageCostCents(usage.agent_seconds);
+    if (debit_cents <= 0) return .{ .deducted = 0 };
 
-    const pre = workspace_credit.getOrProvisionWorkspaceCredit(conn, alloc, usage.workspace_id) catch return .{ .db_error = {} };
-    alloc.free(pre.currency);
-
-    if (pre.remaining_credit_cents <= 0) {
-        const debit_cents = workspace_credit.runtimeUsageCostCents(usage.agent_seconds);
-        const metadata_json = workspace_credit_store.runtimeDeductionMetadata(alloc, usage.event_id, 0, usage.agent_seconds, debit_cents) catch return .{ .db_error = {} };
-        defer alloc.free(metadata_json);
-        workspace_credit_store.insertAudit(conn, alloc, usage.workspace_id, EVENT_TYPE, 0, 0, REASON, ACTOR, metadata_json) catch return .{ .db_error = {} };
-        return .{ .exhausted = 0 };
-    }
-
-    const post = workspace_credit.deductCompletedRuntimeUsage(conn, alloc, usage.workspace_id, usage.event_id, 0, usage.agent_seconds, ACTOR) catch return .{ .db_error = {} };
-    alloc.free(post.currency);
-    return .{ .deducted = post.consumed_credit_cents - pre.consumed_credit_cents };
+    const result = tenant_billing.debit(conn, tenant_id, debit_cents) catch |err| switch (err) {
+        error.CreditExhausted => return .{ .exhausted = {} },
+        error.TenantBillingMissing => return .{ .missing_tenant_billing = {} },
+        else => return .{ .db_error = {} },
+    };
+    _ = result;
+    // Pre-alpha: no audit table, so log every debit at warn with
+    // (event_id, tenant_id, cents) — operators can spot-check a logical
+    // event_id appearing twice as a double-bill signal until audit lands.
+    log.warn("metering.debit tenant_id={s} event_id={s} cents={d}", .{ tenant_id, usage.event_id, debit_cents });
+    return .{ .deducted = debit_cents };
 }
 
-/// Convenience wrapper invoked by the event loop after successful delivery.
-/// Non-fatal: all errors are logged; caller continues to XACK.
 pub fn recordZombieDelivery(
     pool: *pg.Pool,
     alloc: Allocator,
@@ -102,12 +90,18 @@ pub fn recordZombieDelivery(
     };
     defer pool.release(conn);
 
-    const plan_tier = resolvePlanTier(conn, alloc, workspace_id) catch |err| {
+    const tenant_id = tenant_billing.resolveTenantFromWorkspace(conn, alloc, workspace_id) catch |err| {
+        log.warn("metering.tenant_lookup_fail zombie_id={s} err={s}", .{ zombie_id, @errorName(err) });
+        return;
+    };
+    defer alloc.free(tenant_id);
+
+    const plan_tier = tenant_billing.getPlanTier(conn, alloc, tenant_id) catch |err| {
         log.warn("metering.plan_tier_fail zombie_id={s} err={s}", .{ zombie_id, @errorName(err) });
         return;
     };
 
-    const result = deductZombieUsage(conn, alloc, .{
+    const result = deductZombieUsage(conn, tenant_id, .{
         .zombie_id = zombie_id,
         .workspace_id = workspace_id,
         .event_id = event_id,
@@ -127,25 +121,25 @@ pub fn recordZombieDelivery(
             break :blk 0;
         },
         .exhausted => blk: {
-            log.info("metering.exhausted zombie_id={s} workspace_id={s}", .{ zombie_id, workspace_id });
+            log.info("metering.exhausted zombie_id={s} tenant_id={s}", .{ zombie_id, tenant_id });
+            break :blk 0;
+        },
+        .missing_tenant_billing => blk: {
+            log.err("metering.missing_tenant_billing zombie_id={s} tenant_id={s} workspace_id={s} — tenant_billing.provisionFreeDefault was never called for this tenant", .{ zombie_id, tenant_id, workspace_id });
             break :blk 0;
         },
         .db_error => blk: {
-            log.warn("metering.db_error zombie_id={s} workspace_id={s}", .{ zombie_id, workspace_id });
+            log.warn("metering.db_error zombie_id={s} tenant_id={s}", .{ zombie_id, tenant_id });
             break :blk 0;
         },
     };
 
-    // M18_001: persist per-delivery telemetry. Non-fatal — DB failure logged, delivery unaffected.
-    // Skip gate-blocked events (epoch_wall_time_ms=0) — no meaningful wall time to record.
-    // Negative epoch is a system clock anomaly (boot-time edge case) — log and skip rather
-    // than storing a corrupt row or passing a negative value to @intCast below.
     if (epoch_wall_time_ms < 0) {
         log.warn("metering.skip_telemetry reason=negative_epoch zombie_id={s}", .{zombie_id});
         return;
     }
     if (epoch_wall_time_ms == 0) return;
-    // epoch_wall_time_ms > 0 guaranteed from here.
+
     zombie_telemetry_store.insertTelemetry(conn, alloc, .{
         .zombie_id = zombie_id,
         .workspace_id = workspace_id,
@@ -154,42 +148,29 @@ pub fn recordZombieDelivery(
         .time_to_first_token_ms = time_to_first_token_ms,
         .epoch_wall_time_ms = epoch_wall_time_ms,
         .wall_seconds = agent_seconds,
-        .plan_tier = @tagName(plan_tier),
+        .plan_tier = plan_tier.label(),
         .credit_deducted_cents = deducted_cents,
         .recorded_at = std.time.milliTimestamp(),
     }) catch |err| {
         log.warn("metering.telemetry_insert_fail zombie_id={s} err={s}", .{ zombie_id, @errorName(err) });
     };
 
-    // M18_001: emit OTel span for Grafana/Tempo per-delivery trace visibility.
-    // Root span — zombie delivery has no inbound HTTP traceparent.
-    // epoch_wall_time_ms > 0 guaranteed by guards above; no conditional needed.
     {
         const start_ns: u64 = @as(u64, @intCast(epoch_wall_time_ms)) * 1_000_000;
-        const capped_seconds: u64 = @min(agent_seconds, 604_800); // cap at 7 days; guards u64 overflow
+        const capped_seconds: u64 = @min(agent_seconds, 604_800);
         const end_ns: u64 = start_ns + capped_seconds * 1_000_000_000;
         const tctx = trace.TraceContext.generate();
         var span = otel_traces.buildSpan(tctx, "zombie.delivery", start_ns, end_ns);
         _ = otel_traces.addAttr(&span, "zombie_id", zombie_id);
         _ = otel_traces.addAttr(&span, "workspace_id", workspace_id);
+        _ = otel_traces.addAttr(&span, "tenant_id", tenant_id);
         _ = otel_traces.addAttr(&span, "event_id", event_id);
-        _ = otel_traces.addAttr(&span, "plan_tier", @tagName(plan_tier));
+        _ = otel_traces.addAttr(&span, "plan_tier", plan_tier.label());
         var cnt_buf: [24]u8 = undefined;
         const cnt_str = std.fmt.bufPrint(&cnt_buf, "{d}", .{token_count}) catch "0";
         _ = otel_traces.addAttr(&span, "token_count", cnt_str);
         otel_traces.enqueueSpan(span);
     }
-}
-
-fn resolvePlanTier(
-    conn: *pg.Conn,
-    alloc: Allocator,
-    workspace_id: []const u8,
-) !billing_row.PlanTier {
-    var row = (try billing_row.loadStateRow(conn, alloc, workspace_id)) orelse
-        return error.WorkspaceBillingStateMissing;
-    defer row.deinit(alloc);
-    return row.plan_tier;
 }
 
 test {

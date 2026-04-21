@@ -9,9 +9,8 @@ pub const DEFAULT_SCORING_CONTEXT_MAX_TOKENS: u32 = 2048;
 // SchemaSpec holds the raw SQL DEFAULT values as literals.
 // It is an independent source of truth: keep these in sync with the DDL.
 // If a constant diverges from its schema DEFAULT, the tests below will fail.
-//   002_core_workflow.sql    — max_repair_loops, max_tokens, max_wall_time_seconds
-//   001_core_foundation.sql  — monthly_token_budget
-//   014_workspace_entitlements.sql — scoring_context_max_tokens
+//   001_core_foundation.sql  — monthly_token_budget, max_repair_loops, max_tokens, max_wall_time_seconds
+//   004_workspace_entitlements.sql — scoring_context_max_tokens
 const SchemaSpec = struct {
     run_max_repair_loops: u32 = 3,
     run_max_tokens: u64 = 100_000,

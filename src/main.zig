@@ -155,8 +155,7 @@ test {
     _ = @import("observability/otel_export.zig");
     _ = @import("observability/otel_logs.zig");
     _ = @import("state/outbox_reconciler.zig");
-    _ = @import("state/workspace_billing.zig");
-    _ = @import("state/workspace_credit.zig");
+    _ = @import("state/tenant_billing.zig");
     _ = @import("state/heroku_names.zig");
     _ = @import("state/heroku_names_test.zig");
     _ = @import("state/signup_bootstrap.zig");

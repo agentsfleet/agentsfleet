@@ -1,4 +1,4 @@
--- 032_core_users.sql
+-- 017_core_users.sql
 -- Identity foundation for Clerk signup bootstrap.
 --
 -- core.users binds an external OIDC identity (Clerk subject) to a tenant.

@@ -23,10 +23,8 @@ pub const Route = union(enum) {
     github_callback,
     create_workspace,
     pause_workspace: []const u8,
-    upgrade_workspace_to_scale: []const u8,
-    apply_workspace_billing_event: []const u8,
-    get_workspace_billing_summary: []const u8,
-    set_workspace_scoring_config: []const u8,
+    // Tenant-scoped billing snapshot — GET /v1/tenants/me/billing
+    get_tenant_billing,
     receive_webhook: WebhookRoute,
     // M28_001 §5: Clerk / Svix signed webhooks — /v1/webhooks/svix/{zombie_id}.
     receive_svix_webhook: []const u8,
@@ -52,7 +50,6 @@ pub const Route = union(enum) {
     // M12_001: Dashboard-facing reads + kill switch
     workspace_activity: []const u8, // GET /v1/workspaces/{ws}/activity
     workspace_zombie_stop: matchers.WorkspaceZombieRoute, // POST /v1/workspaces/{ws}/zombies/{id}/stop
-    workspace_zombie_billing_summary: matchers.ZombieTelemetryRoute, // GET /v1/workspaces/{ws}/zombies/{id}/billing/summary
     // M18_001: zombie execution telemetry
     zombie_telemetry: ZombieTelemetryRoute, // GET /v1/workspaces/{ws}/zombies/{id}/telemetry
     internal_telemetry, // GET /internal/v1/telemetry
@@ -93,6 +90,7 @@ pub fn match(path: []const u8) ?Route {
     if (std.mem.eql(u8, path, "/metrics")) return .metrics;
     if (std.mem.eql(u8, path, "/v1/auth/sessions")) return .create_auth_session;
     if (std.mem.eql(u8, path, "/v1/github/callback")) return .github_callback;
+    if (std.mem.eql(u8, path, "/v1/tenants/me/billing")) return .get_tenant_billing;
     if (std.mem.eql(u8, path, "/v1/workspaces")) return .create_workspace;
 
     if (std.mem.startsWith(u8, path, prefix_auth_sessions) and std.mem.endsWith(u8, path, "/complete")) {
@@ -120,11 +118,6 @@ pub fn match(path: []const u8) ?Route {
     // M16_004: workspace BYOK credential route
     if (matchWorkspaceSuffix(path, "/credentials/llm")) |workspace_id| return .{ .workspace_llm_credential = workspace_id };
 
-    if (matchWorkspaceSuffix(path, "/billing/scale")) |workspace_id| return .{ .upgrade_workspace_to_scale = workspace_id };
-    if (matchWorkspaceSuffix(path, "/billing/events")) |workspace_id| return .{ .apply_workspace_billing_event = workspace_id };
-    if (matchWorkspaceSuffix(path, "/billing/summary")) |workspace_id| return .{ .get_workspace_billing_summary = workspace_id };
-    if (matchWorkspaceSuffix(path, "/scoring/config")) |workspace_id| return .{ .set_workspace_scoring_config = workspace_id };
-
     // M18_001: operator telemetry endpoint (before workspace prefix to avoid false match)
     if (std.mem.eql(u8, path, "/internal/v1/telemetry")) return .internal_telemetry;
 
@@ -140,7 +133,6 @@ pub fn match(path: []const u8) ?Route {
     if (matchers.matchWorkspaceZombieAction(path, "/steer")) |route| return .{ .workspace_zombie_steer = route };
     if (matchers.matchWorkspaceZombieAction(path, "/stop")) |route| return .{ .workspace_zombie_stop = route };
     if (matchers.matchWorkspaceZombieSuffix(path, "/activity")) |route| return .{ .workspace_zombie_activity = route };
-    if (matchers.matchWorkspaceZombieSuffix(path, "/billing/summary")) |route| return .{ .workspace_zombie_billing_summary = route };
     if (matchers.matchWorkspaceZombie(path)) |route| return .{ .delete_workspace_zombie = route };
     if (matchWorkspaceSuffix(path, "/zombies")) |workspace_id| return .{ .workspace_zombies = workspace_id };
     // M12_001: workspace-wide activity feed (/activity, no /zombies prefix)
@@ -204,33 +196,16 @@ pub fn match(path: []const u8) ?Route {
     return null;
 }
 
-test "match resolves workspace billing routes" {
-    try std.testing.expectEqualStrings(
-        "ws_1",
-        switch (match("/v1/workspaces/ws_1/billing/events").?) {
-            .apply_workspace_billing_event => |workspace_id| workspace_id,
-            else => return error.TestExpectedEqual,
-        },
-    );
-    try std.testing.expectEqualStrings(
-        "ws_1",
-        switch (match("/v1/workspaces/ws_1/scoring/config").?) {
-            .set_workspace_scoring_config => |workspace_id| workspace_id,
-            else => return error.TestExpectedEqual,
-        },
-    );
-    try std.testing.expectEqualStrings(
-        "ws_1",
-        switch (match("/v1/workspaces/ws_1/billing/scale").?) {
-            .upgrade_workspace_to_scale => |workspace_id| workspace_id,
-            else => return error.TestExpectedEqual,
-        },
-    );
+test "match resolves tenant billing route" {
+    try std.testing.expectEqualDeep(Route.get_tenant_billing, match("/v1/tenants/me/billing").?);
 }
 
-test "match rejects multi-segment workspace suffix routes" {
-    try std.testing.expect(match("/v1/workspaces/ws_1/extra/billing/events") == null);
-    try std.testing.expect(match("/v1/workspaces//billing/events") == null);
+test "match rejects removed workspace billing routes (pre-v2.0 404s)" {
+    try std.testing.expect(match("/v1/workspaces/ws_1/billing/events") == null);
+    try std.testing.expect(match("/v1/workspaces/ws_1/billing/scale") == null);
+    try std.testing.expect(match("/v1/workspaces/ws_1/billing/summary") == null);
+    try std.testing.expect(match("/v1/workspaces/ws_1/zombies/z_1/billing/summary") == null);
+    try std.testing.expect(match("/v1/workspaces/ws_1/scoring/config") == null);
 }
 
 test "match resolves auth routes" {

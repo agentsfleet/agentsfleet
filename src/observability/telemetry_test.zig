@@ -54,11 +54,10 @@ test "T1: distinct_id defaults to system for events without it" {
     try std.testing.expectEqualStrings("system", last.distinctId());
 }
 
-test "T1: all 14 event types can be captured without error" {
+test "T1: all 13 event types can be captured without error" {
     var t = telemetry.Telemetry.initTest();
     t.capture(telemetry.AgentCompleted, .{ .distinct_id = "u", .run_id = "r", .workspace_id = "w", .actor = "a", .tokens = 10, .duration_ms = 50, .exit_status = "ok" });
     t.capture(telemetry.EntitlementRejected, .{ .distinct_id = "u", .workspace_id = "w", .boundary = "COMPILE", .reason_code = "ERR", .request_id = "r" });
-    t.capture(telemetry.BillingLifecycleEvent, .{ .distinct_id = "u", .workspace_id = "w", .event_type = "PAYMENT_FAILED", .reason = "r", .plan_tier = "SCALE", .billing_status = "GRACE", .request_id = "r" });
     t.capture(telemetry.ServerStarted, .{ .port = 3000 });
     t.capture(telemetry.WorkerStarted, .{ .concurrency = 4 });
     t.capture(telemetry.StartupFailed, .{ .command = "serve", .phase = "db", .reason = "err", .error_code = "UZ-001" });
@@ -70,7 +69,7 @@ test "T1: all 14 event types can be captured without error" {
     t.capture(telemetry.AuthRejected, .{ .reason = "token_expired", .request_id = "r" });
     t.capture(telemetry.ZombieTriggered, .{ .distinct_id = "w", .workspace_id = "w", .zombie_id = "z", .event_id = "e", .source = "webhook" });
     t.capture(telemetry.ZombieCompleted, .{ .distinct_id = "w", .workspace_id = "w", .zombie_id = "z", .event_id = "e", .tokens = 100, .wall_ms = 2000, .exit_status = "processed" });
-    try telemetry.TestBackend.assertCount(14);
+    try telemetry.TestBackend.assertCount(13);
     try telemetry.TestBackend.assertLastEventIs(.zombie_completed);
 }
 
@@ -199,40 +198,22 @@ test "T4: AgentCompleted.properties includes integer fields" {
     try std.testing.expectEqual(@as(i64, 42000), props[4].value.integer);
 }
 
-test "T4: BillingLifecycleEvent.properties returns all 6 fields" {
-    const ev = telemetry.BillingLifecycleEvent{
-        .distinct_id = "u",
-        .workspace_id = "ws_1",
-        .event_type = "PAYMENT_FAILED",
-        .reason = "invoice_failed",
-        .plan_tier = "SCALE",
-        .billing_status = "GRACE",
-        .request_id = "req_1",
-    };
-    const props = ev.properties();
-    try std.testing.expectEqual(@as(usize, 6), props.len);
-    try std.testing.expectEqualStrings("event_type", props[1].key);
-    try std.testing.expectEqualStrings("PAYMENT_FAILED", props[1].value.string);
-}
-
 // ── T7: Regression safety ───────────────────────────────────────────
 
-test "T7: EventKind has exactly 14 variants" {
+test "T7: EventKind has exactly 13 variants" {
     const fields = @typeInfo(telemetry.EventKind).@"enum".fields;
-    try std.testing.expectEqual(@as(usize, 14), fields.len);
+    try std.testing.expectEqual(@as(usize, 13), fields.len);
 }
 
 test "T7: EventKind tagName matches expected event name strings" {
     try std.testing.expectEqualStrings("agent_completed", @tagName(telemetry.EventKind.agent_completed));
     try std.testing.expectEqualStrings("server_started", @tagName(telemetry.EventKind.server_started));
     try std.testing.expectEqualStrings("auth_rejected", @tagName(telemetry.EventKind.auth_rejected));
-    try std.testing.expectEqualStrings("billing_lifecycle_event", @tagName(telemetry.EventKind.billing_lifecycle_event));
 }
 
 test "T7: each event struct kind constant matches its EventKind variant" {
     try std.testing.expectEqual(telemetry.EventKind.agent_completed, telemetry.AgentCompleted.kind);
     try std.testing.expectEqual(telemetry.EventKind.entitlement_rejected, telemetry.EntitlementRejected.kind);
-    try std.testing.expectEqual(telemetry.EventKind.billing_lifecycle_event, telemetry.BillingLifecycleEvent.kind);
     try std.testing.expectEqual(telemetry.EventKind.server_started, telemetry.ServerStarted.kind);
     try std.testing.expectEqual(telemetry.EventKind.worker_started, telemetry.WorkerStarted.kind);
     try std.testing.expectEqual(telemetry.EventKind.startup_failed, telemetry.StartupFailed.kind);

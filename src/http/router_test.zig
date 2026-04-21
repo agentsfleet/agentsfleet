@@ -6,33 +6,16 @@ const matchers = @import("route_matchers.zig");
 const Route = router.Route;
 const match = router.match;
 
-test "match resolves workspace billing routes" {
-    try std.testing.expectEqualStrings(
-        "ws_1",
-        switch (match("/v1/workspaces/ws_1/billing/events").?) {
-            .apply_workspace_billing_event => |workspace_id| workspace_id,
-            else => return error.TestExpectedEqual,
-        },
-    );
-    try std.testing.expectEqualStrings(
-        "ws_1",
-        switch (match("/v1/workspaces/ws_1/scoring/config").?) {
-            .set_workspace_scoring_config => |workspace_id| workspace_id,
-            else => return error.TestExpectedEqual,
-        },
-    );
-    try std.testing.expectEqualStrings(
-        "ws_1",
-        switch (match("/v1/workspaces/ws_1/billing/scale").?) {
-            .upgrade_workspace_to_scale => |workspace_id| workspace_id,
-            else => return error.TestExpectedEqual,
-        },
-    );
+test "tenant billing route resolves" {
+    try std.testing.expectEqualDeep(Route.get_tenant_billing, match("/v1/tenants/me/billing").?);
 }
 
-test "match rejects multi-segment workspace suffix routes" {
-    try std.testing.expect(match("/v1/workspaces/ws_1/extra/billing/events") == null);
-    try std.testing.expect(match("/v1/workspaces//billing/events") == null);
+test "removed workspace billing routes are 404 (pre-v2.0 per RULE EP4)" {
+    try std.testing.expect(match("/v1/workspaces/ws_1/billing/events") == null);
+    try std.testing.expect(match("/v1/workspaces/ws_1/billing/scale") == null);
+    try std.testing.expect(match("/v1/workspaces/ws_1/billing/summary") == null);
+    try std.testing.expect(match("/v1/workspaces/ws_1/zombies/z_1/billing/summary") == null);
+    try std.testing.expect(match("/v1/workspaces/ws_1/scoring/config") == null);
 }
 
 test "match rejects /v1/agents paths after agent_profiles removal (M17_001)" {

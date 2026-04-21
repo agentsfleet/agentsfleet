@@ -14,7 +14,7 @@ const pg = @import("pg");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 
 const metering = @import("metering.zig");
-const billing = @import("../state/workspace_billing.zig");
+const tenant_billing = @import("../state/tenant_billing.zig");
 const base = @import("../db/test_fixtures.zig");
 const uc1 = @import("../db/test_fixtures_uc1.zig");
 
@@ -25,13 +25,13 @@ const WS_TEL_EPOCH_ZERO = "0195b4ba-8d3a-7f13-8abc-aa1800000002";
 const WS_TEL_EPOCH_POS = "0195b4ba-8d3a-7f13-8abc-aa1800000003";
 const WS_TEL_IDEMPOTENT = "0195b4ba-8d3a-7f13-8abc-aa1800000004";
 
-/// Seed workspace + free-plan billing state so resolvePlanTier succeeds inside
-/// recordZombieDelivery. Without billing state, resolvePlanTier returns error
-/// and the function logs a warning then returns — telemetry would be skipped for
-/// the wrong reason, masking the epoch guard behavior under test.
+/// Seed workspace + tenant-billing row so the metering path can resolve
+/// tenant_id and plan_tier. Without the tenant row, `recordZombieDelivery`
+/// returns early on tenant lookup and no telemetry would be written, masking
+/// the epoch-guard behavior under test.
 fn seedTelemetryWorkspace(conn: *pg.Conn, ws_id: []const u8) !void {
     try uc1.seed(conn, ws_id);
-    try billing.provisionFreeWorkspace(conn, ALLOC, ws_id, "test");
+    try tenant_billing.provisionFreeDefault(conn, uc1.TENANT_ID);
 }
 
 fn teardownTelemetryWorkspace(conn: *pg.Conn, ws_id: []const u8) void {

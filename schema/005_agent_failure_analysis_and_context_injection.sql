@@ -60,25 +60,12 @@ SELECT
 FROM core.workspaces AS w
 CROSS JOIN access_mark;
 
-CREATE OR REPLACE VIEW ops_ro.billing_overview AS
-WITH access_mark AS (
-    SELECT audit.log_ops_ro_access('ops_ro.billing_overview')
-)
-SELECT
-    b.workspace_id,
-    b.plan_tier,
-    b.billing_status,
-    b.adapter,
-    b.grace_expires_at,
-    b.updated_at
-FROM billing.workspace_billing_state AS b
-CROSS JOIN access_mark;
-
--- M10_001: ops_ro.run_overview removed (pipeline v1 runs table dropped).
+-- ops_ro.billing_overview removed along with workspace_billing_state.
+-- Tenant-scoped billing view can be reintroduced off billing.tenant_billing
+-- in a later migration when ops actually needs it.
 
 GRANT SELECT ON
-    ops_ro.workspace_overview,
-    ops_ro.billing_overview
+    ops_ro.workspace_overview
 TO ops_readonly_human, ops_readonly_agent;
 
 REVOKE ALL ON vault.secrets FROM ops_readonly_human, ops_readonly_agent;

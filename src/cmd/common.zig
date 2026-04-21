@@ -15,28 +15,27 @@ const ServeMigrationDecision = enum {
     run_required,
 };
 
-pub fn canonicalMigrations() [19]db.Migration {
+pub fn canonicalMigrations() [18]db.Migration {
     const schema = @import("schema");
     return .{
         .{ .version = 1, .sql = schema.core_foundation_sql },
-        .{ .version = 4, .sql = schema.vault_sql },
-        .{ .version = 9, .sql = schema.rls_tenant_isolation_sql },
-        .{ .version = 14, .sql = schema.workspace_entitlements_sql },
-        .{ .version = 16, .sql = schema.workspace_billing_state_sql },
-        .{ .version = 17, .sql = schema.workspace_free_credit_sql },
-        .{ .version = 20, .sql = schema.agent_failure_analysis_context_sql },
-        .{ .version = 21, .sql = schema.platform_llm_keys_sql },
-        .{ .version = 22, .sql = schema.core_zombies_sql },
-        .{ .version = 23, .sql = schema.core_zombie_sessions_sql },
-        .{ .version = 24, .sql = schema.core_activity_events_sql },
-        .{ .version = 25, .sql = schema.core_zombie_approval_gates_sql },
-        .{ .version = 26, .sql = schema.core_integration_grants_sql },
-        .{ .version = 27, .sql = schema.core_agent_keys_sql },
-        .{ .version = 28, .sql = schema.workspace_integrations_sql },
-        .{ .version = 29, .sql = schema.memory_entries_sql },
-        .{ .version = 30, .sql = schema.zombie_execution_telemetry_sql },
-        .{ .version = 31, .sql = schema.api_keys_sql },
-        .{ .version = 32, .sql = schema.core_users_sql },
+        .{ .version = 2, .sql = schema.vault_sql },
+        .{ .version = 3, .sql = schema.rls_tenant_isolation_sql },
+        .{ .version = 4, .sql = schema.workspace_entitlements_sql },
+        .{ .version = 5, .sql = schema.agent_failure_analysis_context_sql },
+        .{ .version = 6, .sql = schema.platform_llm_keys_sql },
+        .{ .version = 7, .sql = schema.core_zombies_sql },
+        .{ .version = 8, .sql = schema.core_zombie_sessions_sql },
+        .{ .version = 9, .sql = schema.core_activity_events_sql },
+        .{ .version = 10, .sql = schema.core_zombie_approval_gates_sql },
+        .{ .version = 11, .sql = schema.core_integration_grants_sql },
+        .{ .version = 12, .sql = schema.core_agent_keys_sql },
+        .{ .version = 13, .sql = schema.workspace_integrations_sql },
+        .{ .version = 14, .sql = schema.memory_entries_sql },
+        .{ .version = 15, .sql = schema.zombie_execution_telemetry_sql },
+        .{ .version = 16, .sql = schema.api_keys_sql },
+        .{ .version = 17, .sql = schema.core_users_sql },
+        .{ .version = 18, .sql = schema.tenant_billing_sql },
     };
 }
 
@@ -186,13 +185,13 @@ test "integration: startup with pending migrations proceeds when enabled and loc
     try std.testing.expectEqual(.run_required, decision);
 }
 
-test "canonical schema bootstrap: last version is 32 and entitlements carry scoring config" {
+test "canonical schema bootstrap: last version is 18 and entitlements carry scoring config" {
     const migrations = canonicalMigrations();
-    try std.testing.expectEqual(@as(i32, 32), migrations[migrations.len - 1].version);
+    try std.testing.expectEqual(@as(i32, 18), migrations[migrations.len - 1].version);
 
     var entitlements_sql: ?[]const u8 = null;
     for (migrations) |m| {
-        if (m.version == 14) entitlements_sql = m.sql;
+        if (m.version == 4) entitlements_sql = m.sql;
     }
     const ent = entitlements_sql orelse return error.TestExpectedEqual;
     try std.testing.expect(std.mem.containsAtLeast(u8, ent, 1, "enable_agent_scoring BOOLEAN NOT NULL"));
