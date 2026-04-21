@@ -143,9 +143,9 @@ Actual action depends on VERSION at execute time — pre-v2.0 we drop + recreate
 
 | Dim | Status | Target | Input | Expected | Test type |
 |-----|--------|--------|-------|----------|-----------|
-| 4.1 | PENDING | `GET /v1/tenants/me/billing` on non-exhausted tenant | Bearer JWT | `200 {plan_tier, plan_sku, balance_cents, updated_at, is_exhausted: false, exhausted_at: null}` | integration |
-| 4.2 | PENDING | same on exhausted tenant | Bearer JWT | `200 {... is_exhausted: true, exhausted_at: <epoch_ms>}` | integration |
-| 4.3 | PENDING | openapi schema | Redocly lint + router parity | public/openapi.json round-trips with new fields | lint |
+| 4.1 | DONE | `GET /v1/tenants/me/billing` on non-exhausted tenant | Bearer JWT | `200 {plan_tier, plan_sku, balance_cents, updated_at, is_exhausted: false, exhausted_at: null}` | integration |
+| 4.2 | DONE | same on exhausted tenant | Bearer JWT | `200 {... is_exhausted: true, exhausted_at: <epoch_ms>}` | integration |
+| 4.3 | DONE | openapi schema | Redocly lint + router parity | public/openapi.json round-trips with new fields | lint |
 
 ### §5 — Admin Bootstrap Playbook (authored, not executed)
 
