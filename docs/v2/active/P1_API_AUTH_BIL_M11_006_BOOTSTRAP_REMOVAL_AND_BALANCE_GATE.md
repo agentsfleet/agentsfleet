@@ -121,8 +121,8 @@ Actual action depends on VERSION at execute time — pre-v2.0 we drop + recreate
 
 | Dim | Status | Target | Input | Expected | Test type |
 |-----|--------|--------|-------|----------|-----------|
-| 2.1 | PENDING | `tenant_billing` schema | fresh DB migrate | column `balance_exhausted_at BIGINT NULL` present; default NULL | integration (tier-3) |
-| 2.2 | PENDING | `tenant_billing.markExhausted` | tenant at 0¢, `markExhausted` called | row's `balance_exhausted_at` set to now_ms; second call idempotent | unit |
+| 2.1 | DONE | `tenant_billing` schema | fresh DB migrate | column `balance_exhausted_at BIGINT NULL` present; default NULL | integration (tier-3) |
+| 2.2 | DONE | `tenant_billing.markExhausted` | tenant at 0¢, `markExhausted` called | row's `balance_exhausted_at` set to now_ms; second call idempotent | unit |
 | 2.3 | PENDING | metering transition | tenant 5¢ balance, debit 10¢ | `CreditExhausted` returned AND `balance_exhausted_at` set AND one `balance_exhausted_first_debit` activity event written | integration |
 | 2.4 | PENDING | metering replay | already-exhausted tenant, another debit 10¢ | still `CreditExhausted`; `balance_exhausted_at` unchanged; NO duplicate activity event | integration |
 

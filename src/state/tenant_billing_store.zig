@@ -8,6 +8,7 @@ pub const BillingRow = struct {
     balance_cents: i64,
     grant_source: []u8,
     updated_at_ms: i64,
+    exhausted_at_ms: ?i64,
 
     pub fn deinit(self: *BillingRow, alloc: std.mem.Allocator) void {
         alloc.free(self.plan_tier);
@@ -81,7 +82,7 @@ pub fn loadByTenant(
     tenant_id: []const u8,
 ) !?BillingRow {
     var q = PgQuery.from(try conn.query(
-        \\SELECT plan_tier, plan_sku, balance_cents, grant_source, updated_at
+        \\SELECT plan_tier, plan_sku, balance_cents, grant_source, updated_at, balance_exhausted_at
         \\FROM billing.tenant_billing
         \\WHERE tenant_id = $1::uuid
         \\LIMIT 1
@@ -96,13 +97,31 @@ pub fn loadByTenant(
     const grant_source = try alloc.dupe(u8, try row.get([]const u8, 3));
     errdefer alloc.free(grant_source);
     const ts = try row.get(i64, 4);
+    const exhausted_at_ms = try row.get(?i64, 5);
     return .{
         .plan_tier = plan_tier,
         .plan_sku = plan_sku,
         .balance_cents = bal,
         .grant_source = grant_source,
         .updated_at_ms = ts,
+        .exhausted_at_ms = exhausted_at_ms,
     };
+}
+
+/// Atomic first-debit-exhaustion mark. Sets balance_exhausted_at=now_ms only
+/// if currently NULL. Returns true if the transition happened (first call),
+/// false if the row was already marked (idempotent replay).
+pub fn markExhausted(conn: *pg.Conn, tenant_id: []const u8) !bool {
+    const now_ms = std.time.milliTimestamp();
+    var q = PgQuery.from(try conn.query(
+        \\UPDATE billing.tenant_billing
+        \\SET balance_exhausted_at = $2, updated_at = $2
+        \\WHERE tenant_id = $1::uuid
+        \\  AND balance_exhausted_at IS NULL
+        \\RETURNING balance_exhausted_at
+    , .{ tenant_id, now_ms }));
+    defer q.deinit();
+    return (try q.next()) != null;
 }
 
 pub fn resolveTenantFromWorkspace(
