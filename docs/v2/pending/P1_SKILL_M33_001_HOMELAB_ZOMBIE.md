@@ -278,10 +278,10 @@ N/A — markdown + integration test additions; integration test uses `std.testin
 
 | Step | Action | Verify |
 |------|--------|--------|
-| 1 | Confirm M32 §9 move landed (brainstormed skills are at `samples/homelab/skills/*/`). If not, block on M32 | `ls samples/homelab/skills/kubectl-readonly samples/homelab/skills/docker-readonly` |
+| 1 | `git mv docs/brainstormed/samples/skills/kubectl-readonly samples/homelab/skills/kubectl-readonly` and same for `docker-readonly`. M33 owns this move (see §0.1 below) — does NOT wait on M32 §9. | `ls samples/homelab/skills/kubectl-readonly samples/homelab/skills/docker-readonly` shows moved directories; `ls docs/brainstormed/samples/skills/` is empty |
 | 2 | Read an existing DONE Clawhub skill (reference M2_002) to confirm current SKILL.md schema | manual |
-| 3 | Author `samples/homelab/skills/kubectl-readonly/SKILL.md` in Clawhub format | §1.1 + §1.3 pass |
-| 4 | Author `samples/homelab/skills/docker-readonly/SKILL.md` in Clawhub format | §1.2 + §1.3 pass |
+| 3 | Rewrite `samples/homelab/skills/kubectl-readonly/SKILL.md` in Clawhub format (content replaces the moved brainstormed README) | §1.1 + §1.3 pass |
+| 4 | Rewrite `samples/homelab/skills/docker-readonly/SKILL.md` in Clawhub format | §1.2 + §1.3 pass |
 | 5 | Author `samples/homelab/SKILL.md` (the flagship prompt + tools + credentials + model) | §2.1 passes |
 | 6 | Author `samples/homelab/TRIGGER.md` | §2.2 passes |
 | 7 | Author `samples/homelab/README.md` — operator quickstart | §2.3 passes |

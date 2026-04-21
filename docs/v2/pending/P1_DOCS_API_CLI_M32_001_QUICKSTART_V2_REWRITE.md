@@ -274,7 +274,7 @@ N/A — docs rewrite.
 Samples we want to ship to operators belong at the repo root under `samples/`, not under `docs/brainstormed/` (which is a scratchpad). Two distinct kinds of move land here:
 
 **(A) Flagship executable zombie — Homelab Zombie.**
-M32 §9 only performs the physical `git mv` of the two sub-skill directories (`kubectl-readonly`, `docker-readonly`) from `docs/brainstormed/samples/skills/` to `samples/skills/` (and subsequently referenced by `samples/homelab/skills/` — authored by M33_001). The flagship `samples/homelab/` directory itself (its `SKILL.md`, `TRIGGER.md`, `README.md`) is **authored by M33_001**, not by M32. M32 does not attempt `zombiectl zombie install --from samples/homelab` — that E2E is M33_001's acceptance.
+The flagship `samples/homelab/` directory (its `SKILL.md`, `TRIGGER.md`, `README.md`) AND its `skills/kubectl-readonly/` + `skills/docker-readonly/` sub-skills are **owned entirely by M33_001** — including the `git mv` from `docs/brainstormed/samples/skills/` to the new path. M32 does not move the sub-skills (ownership partition correction: M33 is B2, M32 is B3 — B2 cannot block on B3). M32 does not attempt `zombiectl zombie install --from samples/homelab` — that E2E is M33_001's acceptance.
 
 **(B) README-only zombies — homebox-audit, migration-zombie, side-project-resurrector.**
 These three directories move from `docs/brainstormed/samples/` to `samples/` as README-only content (no executable `SKILL.md` / `TRIGGER.md` authored in this milestone). They exist at `samples/<name>/README.md` purely so the four new MDX zombie pages have a canonical source path post-move. Making them installable is a follow-up milestone per zombie — not M32, not M33.
@@ -288,16 +288,14 @@ These three directories move from `docs/brainstormed/samples/` to `samples/` as 
 | `$REPO_ROOT/docs/brainstormed/samples/homebox-audit/` | `$REPO_ROOT/samples/homebox-audit/` | README-only |
 | `$REPO_ROOT/docs/brainstormed/samples/migration-zombie/` | `$REPO_ROOT/samples/migration-zombie/` | README-only |
 | `$REPO_ROOT/docs/brainstormed/samples/side-project-resurrector/` | `$REPO_ROOT/samples/side-project-resurrector/` | README-only |
-| `$REPO_ROOT/docs/brainstormed/samples/skills/docker-readonly/` | `$REPO_ROOT/samples/skills/docker-readonly/` | sub-skill (consumed by M33_001's flagship) |
-| `$REPO_ROOT/docs/brainstormed/samples/skills/kubectl-readonly/` | `$REPO_ROOT/samples/skills/kubectl-readonly/` | sub-skill (consumed by M33_001's flagship) |
 
-The three zombie directories each contain `README.md` only. The two skill directories are preserved wholesale; M33_001 converts their content into Clawhub-format `SKILL.md` at `samples/homelab/skills/<name>/SKILL.md`. The physical `samples/homelab/` root (flagship SKILL.md + TRIGGER.md + README.md) is **not created by M32** — it is created by M33_001.
+The three zombie directories each contain `README.md` only. The two skill directories (`kubectl-readonly`, `docker-readonly`) are **moved by M33_001** as part of its Execution Plan step 1 — M32 §9 does NOT touch them. The physical `samples/homelab/` root (flagship SKILL.md + TRIGGER.md + README.md) is also authored entirely by M33_001.
 
 **Dimensions:**
 
 | Dim | Status | Target | Input | Expected | Test type |
 |-----|--------|--------|-------|----------|-----------|
-| 9.1 | PENDING | `$REPO_ROOT/samples/` | `ls $REPO_ROOT/samples/` after move | Lists exactly: `homebox-audit/`, `migration-zombie/`, `side-project-resurrector/`, `skills/docker-readonly/`, `skills/kubectl-readonly/` | shell |
+| 9.1 | PENDING | `$REPO_ROOT/samples/` | `ls $REPO_ROOT/samples/` after M32 §9 move | Lists exactly: `homebox-audit/`, `migration-zombie/`, `side-project-resurrector/` (M33_001 separately adds `homelab/` with its own sub-skills). | shell |
 | 9.2 | PENDING | `$REPO_ROOT/docs/brainstormed/samples/` | `ls` after move | Empty, or directory removed entirely | shell |
 | 9.3 | PENDING | `docs.json` (Mintlify) | nav entries for the four new zombie pages | `homelab.mdx` is listed alongside the three README-only zombies; nav attribution references `samples/homelab` (for flagship — authored by M33_001) and `samples/<name>/README.md` (for the three README-only zombies) | manual review |
 | 9.4 | PENDING | `docs/zombies/homelab.mdx`, `docs/zombies/homebox-audit.mdx`, `docs/zombies/migration-zombie.mdx`, `docs/zombies/side-project-resurrector.mdx` | `Files Changed` row and inline source attribution | `homelab.mdx` cites `docs/brainstormed/docs/homelab-zombie-launch.md` (narrative) + `samples/homelab/` (executable, authored by M33_001); the three README-only pages cite `samples/<name>/README.md` | grep |

@@ -130,32 +130,41 @@ Update correlation fields from pipeline-era to zombie-era. Add DB-backed stores.
 
 ## §2 — metrics.mdx: Document Fixed Behavior + Per-Zombie Label
 
-> **Note:** the earlier draft framed §2.1 and §2.2 as "caveats" because the underlying code was broken. With §0 (code fixes) landing first, these become documentation of the fixed path, not caveat callouts. Content guidance below reflects the post-fix reality.
-
 **Status:** PENDING
 
-Add a "Caveats" section documenting two operational gaps that operators need to know about.
+§0 (code fixes) lands first and resolves the per-workspace wiring gap (fix #5) and the OTLP histogram export (fix #6), plus adds the per-zombie label. §2 documents the **post-fix reality** — what an operator observing metrics in v0.25.0+ will see. No caveats about broken behavior: by the time this spec's docs PR merges, the code PR is already on main.
 
 **Dimensions:**
 
-- 2.1 Add "Per-workspace metrics not yet wired" caveat
-  - target: `metrics.mdx:134-142` (per-workspace section)
-  - expected: Add callout box or note: "As of v0.25.0, the per-workspace helper functions
-    (`wsAddTokens`, `wsIncGateRepairLoops`) are implemented but not called from production
-    code. The counters `zombie_agent_tokens_by_workspace_total` and
-    `zombie_gate_repair_loops_by_workspace_total` will read zero until the event loop is
-    wired to call them. Alerting on these metrics is premature."
-  - test_type: manual review
+- 2.1 Document per-workspace + per-zombie counters as live
+  - target: `metrics.mdx:134-142` (per-workspace section, post-M31_001)
+  - expected: Section reads (paraphrased): "UseZombie emits per-workspace and per-zombie
+    token and gate-repair-loop counters. The counters `zombie_agent_tokens_by_workspace_total{workspace_id=...}`,
+    `zombie_agent_tokens_by_zombie_total{workspace_id=..., zombie_id=...}`,
+    `zombie_gate_repair_loops_by_workspace_total{workspace_id=...}`, and the corresponding
+    per-zombie variant are emitted on every completed run. Query these in Grafana to
+    attribute spend and gate-repair activity to a specific workspace or zombie. Examples:
+    top-N zombies by token spend, per-workspace gate-repair rate over 24h." Include at
+    least one PromQL example per counter.
+  - test_type: manual review + grep assertion (no "not yet wired" / "will read zero" /
+    "alerting premature" strings in `metrics.mdx`)
 
-- 2.2 Add "OTLP export drops histogram series" caveat
-  - target: `metrics.mdx:88-96` (OTEL export section) or new "Caveats" section
-  - expected: Add note: "The OTLP/HTTP JSON exporter (`otel_export.zig`) converts Prometheus
-    text to OTLP JSON but explicitly skips `_bucket`, `_sum`, and `_count` series. Histograms
-    (`zombie_execution_seconds`, `zombie_agent_duration_seconds`,
-    `zombie_executor_agent_duration_seconds`) are not forwarded to the OTLP endpoint.
-    Only counter and gauge values reach the collector. For histogram data, scrape `/metrics`
-    directly with Prometheus."
-  - test_type: manual review
+- 2.2 Document histogram series as present in OTLP
+  - target: `metrics.mdx:88-96` (OTEL export section, post-M31_001)
+  - expected: Section reads (paraphrased): "The OTLP/HTTP JSON exporter (`otel_export.zig`)
+    forwards histograms (`zombie_execution_seconds`, `zombie_agent_duration_seconds`,
+    `zombie_executor_agent_duration_seconds`) as OTLP histogram data points, including the
+    `_bucket`, `_sum`, and `_count` series. Both Prometheus scrape and OTLP collectors
+    receive histogram data." Remove any prior language indicating histograms are dropped /
+    missing / Prometheus-only.
+  - test_type: manual review + grep assertion (no "skips _bucket" / "not forwarded" /
+    "scrape directly with Prometheus" workaround language in `metrics.mdx`)
+
+- 2.3 Add `zombie_id` label to the app PostHog `ALLOWED_PROP_KEYS` note (if still relevant
+  post-fix)
+  - target: `posthog-events.mdx` allowlist section — defer to §3; §2 does not own this.
+  - expected: N/A here; listed for cross-reference.
+  - test_type: N/A
 
 ---
 
