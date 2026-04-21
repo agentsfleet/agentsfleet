@@ -4,7 +4,7 @@
 **Milestone:** M11
 **Workstream:** 005
 **Date:** Apr 21, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — Blocks the end-to-end "zombie runs and we verify credits deducted" demo
 **Batch:** B2 — alpha gate, parallel with M19_001, M13_001, M21_001, M27_001, M31_001, M33_001
 **Branch:** feat/m11-tenant-billing
@@ -14,7 +14,7 @@
 
 ## §0 — Pre-EXECUTE Verification (run BEFORE any file edits)
 
-**Status:** PENDING
+**Status:** DONE
 
 Before touching any file, run these greps and confirm the surface matches this spec. If results diverge, update the spec first, then EXECUTE.
 
@@ -166,7 +166,7 @@ NNN = next free slot at execute time (verify with `ls schema/`).
 
 ### §1 — Schema + migration wiring
 
-**Status:** PENDING
+**Status:** DONE
 
 Create the new table, delete the workspace-free-credit file + embed + migration entry in one slice so tier-3 fresh DB is always coherent.
 
@@ -174,13 +174,13 @@ Create the new table, delete the workspace-free-credit file + embed + migration 
 
 | Dim | Status | Target | Input | Expected | Test type |
 |-----|--------|--------|-------|----------|-----------|
-| 1.1 | PENDING | `schema/NNN_tenant_billing.sql` | fresh DB, run migrations | `billing.tenant_billing` exists with all five columns, PK on `tenant_id`, FK → `core.tenants` | integration (tier-3) |
-| 1.2 | PENDING | `schema/embed.zig` + `src/cmd/common.zig` | fresh DB, run migrations | `billing.workspace_free_credit` does NOT exist; migration array passes length check | integration (tier-3) |
-| 1.3 | PENDING | Schema Guard output | pre-edit | Guard block printed exactly per CLAUDE.md format before any file mutation | lint (manual verify in diff) |
+| 1.1 | DONE | `schema/NNN_tenant_billing.sql` | fresh DB, run migrations | `billing.tenant_billing` exists with all five columns, PK on `tenant_id`, FK → `core.tenants` | integration (tier-3) |
+| 1.2 | DONE | `schema/embed.zig` + `src/cmd/common.zig` | fresh DB, run migrations | `billing.workspace_free_credit` does NOT exist; migration array passes length check | integration (tier-3) |
+| 1.3 | DONE | Schema Guard output | pre-edit | Guard block printed exactly per CLAUDE.md format before any file mutation | lint (manual verify in diff) |
 
 ### §2 — State module (tenant_billing)
 
-**Status:** PENDING
+**Status:** DONE
 
 Facade + store mirroring the existing state-module layout.
 
@@ -188,15 +188,15 @@ Facade + store mirroring the existing state-module layout.
 
 | Dim | Status | Target | Input | Expected | Test type |
 |-----|--------|--------|-------|----------|-----------|
-| 2.1 | PENDING | `tenant_billing.provision` | new tenant, `cents=1000`, `source="bootstrap_free_grant"` | row inserted; second call for same tenant is a no-op (idempotent on replay) | unit |
-| 2.2 | PENDING | `tenant_billing.debit` | tenant with balance 1000, debit 5 | returns `{balance_cents: 995}`; row updated atomically | unit |
-| 2.3 | PENDING | `tenant_billing.debit` (exhaustion) | tenant with balance 3, debit 5 | returns `error.CreditExhausted`; balance unchanged at 3 | unit |
-| 2.4 | PENDING | `tenant_billing.debit` (concurrent) | two parallel debits of 600 against balance 1000 | exactly one succeeds, exactly one returns `CreditExhausted`; final balance = 400 | integration |
-| 2.4a | PENDING | integration harness itself | inspect whether `tests/integration_*.zig` runs each test in a shared transaction (serialized) or opens real parallel connections | if the harness serializes inside one transaction, **rewrite 2.4 against a raw `pg.Pool` with two `std.Thread.spawn` calls** that each check out their own connection — document the chosen path in the test file header before writing 2.4 | design / harness probe |
+| 2.1 | DONE | `tenant_billing.provision` | new tenant, `cents=1000`, `source="bootstrap_free_grant"` | row inserted; second call for same tenant is a no-op (idempotent on replay) | unit |
+| 2.2 | DONE | `tenant_billing.debit` | tenant with balance 1000, debit 5 | returns `{balance_cents: 995}`; row updated atomically | unit |
+| 2.3 | DONE | `tenant_billing.debit` (exhaustion) | tenant with balance 3, debit 5 | returns `error.CreditExhausted`; balance unchanged at 3 | unit |
+| 2.4 | DONE | `tenant_billing.debit` (concurrent) | two parallel debits of 600 against balance 1000 | exactly one succeeds, exactly one returns `CreditExhausted`; final balance = 400 | integration |
+| 2.4a | DONE | integration harness itself | inspect whether `tests/integration_*.zig` runs each test in a shared transaction (serialized) or opens real parallel connections | if the harness serializes inside one transaction, **rewrite 2.4 against a raw `pg.Pool` with two `std.Thread.spawn` calls** that each check out their own connection — document the chosen path in the test file header before writing 2.4 | design / harness probe |
 
 ### §3 — Signup bootstrap + worker debit wiring
 
-**Status:** PENDING
+**Status:** DONE
 
 Wire the provision call into signup; replace the workspace-credit debit path in the worker metering module.
 
@@ -204,14 +204,14 @@ Wire the provision call into signup; replace the workspace-credit debit path in 
 
 | Dim | Status | Target | Input | Expected | Test type |
 |-----|--------|--------|-------|----------|-----------|
-| 3.1 | PENDING | `signup_bootstrap.zig` | Clerk webhook for new user | one `billing.tenant_billing` row with `balance_cents=1000`, `grant_source='bootstrap_free_grant'` | integration |
-| 3.2 | PENDING | `zombie/metering.zig` | completed run in workspace W owned by tenant T | `billing.tenant_billing.balance_cents` for T decremented by the run cost | integration |
-| 3.3 | PENDING | `workspaces/lifecycle.zig` | operator creates a second workspace | no new credit row inserted; tenant balance unchanged | integration |
-| 3.4 | PENDING | metering path | run in workspace W2 created after signup | debits the same tenant row, not a per-workspace row | integration |
+| 3.1 | DONE | `signup_bootstrap.zig` | Clerk webhook for new user | one `billing.tenant_billing` row with `balance_cents=1000`, `grant_source='bootstrap_free_grant'` | integration |
+| 3.2 | DONE | `zombie/metering.zig` | completed run in workspace W owned by tenant T | `billing.tenant_billing.balance_cents` for T decremented by the run cost | integration |
+| 3.3 | DONE | `workspaces/lifecycle.zig` | operator creates a second workspace | no new credit row inserted; tenant balance unchanged | integration |
+| 3.4 | DONE | metering path | run in workspace W2 created after signup | debits the same tenant row, not a per-workspace row | integration |
 
 ### §4 — Read endpoint
 
-**Status:** PENDING
+**Status:** DONE
 
 One handler, one route.
 
@@ -219,9 +219,9 @@ One handler, one route.
 
 | Dim | Status | Target | Input | Expected | Test type |
 |-----|--------|--------|-------|----------|-----------|
-| 4.1 | PENDING | `GET /v1/tenants/me/billing` | authed operator, bootstrap balance | `200 {"balance_cents": 1000, "updated_at": <epoch_ms>}` | integration |
-| 4.2 | PENDING | `GET /v1/tenants/me/billing` | after one debit of 5 | `200 {"balance_cents": 995, ...}` | integration |
-| 4.3 | PENDING | removed workspace credit endpoints | `GET /v1/workspaces/{ws}/credits` | `404` (pre-v2.0 teardown — no 410 ceremony) | integration |
+| 4.1 | DONE | `GET /v1/tenants/me/billing` | authed operator, bootstrap balance | `200 {"balance_cents": 1000, "updated_at": <epoch_ms>}` | integration |
+| 4.2 | DONE | `GET /v1/tenants/me/billing` | after one debit of 5 | `200 {"balance_cents": 995, ...}` | integration |
+| 4.3 | DONE | removed workspace credit endpoints | `GET /v1/workspaces/{ws}/credits` | `404` (pre-v2.0 teardown — no 410 ceremony) | integration |
 
 ---
 
