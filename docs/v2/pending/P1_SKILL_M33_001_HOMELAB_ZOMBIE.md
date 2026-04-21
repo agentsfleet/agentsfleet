@@ -24,7 +24,13 @@
 
 ## Files Changed (blast radius)
 
-All under `/Users/kishore/Projects/usezombie/` unless noted. This milestone does NOT touch `src/**`; the E2E test is the only code addition.
+All under `$REPO_ROOT/` unless noted (the usezombie checkout). Set `REPO_ROOT` before running any eval command:
+
+```bash
+export REPO_ROOT="${REPO_ROOT:-$HOME/Projects/usezombie}"  # default for local dev; CI / agent worktrees must export their own checkout path
+```
+
+This milestone does NOT touch `src/**`; the E2E test is the only code addition.
 
 | File | Action | Why |
 |------|--------|-----|

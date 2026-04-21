@@ -34,6 +34,12 @@ export DOCS_REPO="${DOCS_REPO:-$HOME/Projects/docs}"  # default for local dev; C
 
 All grep / `mint dev` / `wc` commands in this spec reference `$DOCS_REPO` (not a hardcoded path) so they work from any machine, CI runner, or agent worktree.
 
+§9 (samples move) additionally references `$REPO_ROOT` — the usezombie checkout path (separate repo from the docs):
+
+```bash
+export REPO_ROOT="${REPO_ROOT:-$HOME/Projects/usezombie}"
+```
+
 | File | Action | Why |
 |------|--------|-----|
 | `quickstart.mdx` | REWRITE | New 6-step flow matching M19 UI: sign up → dashboard → create zombie with stub skill → copy webhook URL → curl trigger → verify credits in dashboard. |
@@ -279,11 +285,11 @@ These three directories move from `docs/brainstormed/samples/` to `samples/` as 
 
 | From | To | Nature |
 |------|----|--------|
-| `/Users/kishore/Projects/usezombie/docs/brainstormed/samples/homebox-audit/` | `/Users/kishore/Projects/usezombie/samples/homebox-audit/` | README-only |
-| `/Users/kishore/Projects/usezombie/docs/brainstormed/samples/migration-zombie/` | `/Users/kishore/Projects/usezombie/samples/migration-zombie/` | README-only |
-| `/Users/kishore/Projects/usezombie/docs/brainstormed/samples/side-project-resurrector/` | `/Users/kishore/Projects/usezombie/samples/side-project-resurrector/` | README-only |
-| `/Users/kishore/Projects/usezombie/docs/brainstormed/samples/skills/docker-readonly/` | `/Users/kishore/Projects/usezombie/samples/skills/docker-readonly/` | sub-skill (consumed by M33_001's flagship) |
-| `/Users/kishore/Projects/usezombie/docs/brainstormed/samples/skills/kubectl-readonly/` | `/Users/kishore/Projects/usezombie/samples/skills/kubectl-readonly/` | sub-skill (consumed by M33_001's flagship) |
+| `$REPO_ROOT/docs/brainstormed/samples/homebox-audit/` | `$REPO_ROOT/samples/homebox-audit/` | README-only |
+| `$REPO_ROOT/docs/brainstormed/samples/migration-zombie/` | `$REPO_ROOT/samples/migration-zombie/` | README-only |
+| `$REPO_ROOT/docs/brainstormed/samples/side-project-resurrector/` | `$REPO_ROOT/samples/side-project-resurrector/` | README-only |
+| `$REPO_ROOT/docs/brainstormed/samples/skills/docker-readonly/` | `$REPO_ROOT/samples/skills/docker-readonly/` | sub-skill (consumed by M33_001's flagship) |
+| `$REPO_ROOT/docs/brainstormed/samples/skills/kubectl-readonly/` | `$REPO_ROOT/samples/skills/kubectl-readonly/` | sub-skill (consumed by M33_001's flagship) |
 
 The three zombie directories each contain `README.md` only. The two skill directories are preserved wholesale; M33_001 converts their content into Clawhub-format `SKILL.md` at `samples/homelab/skills/<name>/SKILL.md`. The physical `samples/homelab/` root (flagship SKILL.md + TRIGGER.md + README.md) is **not created by M32** — it is created by M33_001.
 
@@ -291,11 +297,11 @@ The three zombie directories each contain `README.md` only. The two skill direct
 
 | Dim | Status | Target | Input | Expected | Test type |
 |-----|--------|--------|-------|----------|-----------|
-| 9.1 | PENDING | `/Users/kishore/Projects/usezombie/samples/` | `ls /Users/kishore/Projects/usezombie/samples/` after move | Lists exactly: `homebox-audit/`, `migration-zombie/`, `side-project-resurrector/`, `skills/docker-readonly/`, `skills/kubectl-readonly/` | shell |
-| 9.2 | PENDING | `/Users/kishore/Projects/usezombie/docs/brainstormed/samples/` | `ls` after move | Empty, or directory removed entirely | shell |
+| 9.1 | PENDING | `$REPO_ROOT/samples/` | `ls $REPO_ROOT/samples/` after move | Lists exactly: `homebox-audit/`, `migration-zombie/`, `side-project-resurrector/`, `skills/docker-readonly/`, `skills/kubectl-readonly/` | shell |
+| 9.2 | PENDING | `$REPO_ROOT/docs/brainstormed/samples/` | `ls` after move | Empty, or directory removed entirely | shell |
 | 9.3 | PENDING | `docs.json` (Mintlify) | nav entries for the four new zombie pages | `homelab.mdx` is listed alongside the three README-only zombies; nav attribution references `samples/homelab` (for flagship — authored by M33_001) and `samples/<name>/README.md` (for the three README-only zombies) | manual review |
 | 9.4 | PENDING | `docs/zombies/homelab.mdx`, `docs/zombies/homebox-audit.mdx`, `docs/zombies/migration-zombie.mdx`, `docs/zombies/side-project-resurrector.mdx` | `Files Changed` row and inline source attribution | `homelab.mdx` cites `docs/brainstormed/docs/homelab-zombie-launch.md` (narrative) + `samples/homelab/` (executable, authored by M33_001); the three README-only pages cite `samples/<name>/README.md` | grep |
-| 9.5 | PENDING | physical existence check | `ls /Users/kishore/Projects/usezombie/samples/homebox-audit/ /Users/kishore/Projects/usezombie/samples/migration-zombie/ /Users/kishore/Projects/usezombie/samples/side-project-resurrector/` | Each shows only `README.md` (no SKILL.md / TRIGGER.md in this milestone — those are per-zombie follow-ups) | shell (ls) |
+| 9.5 | PENDING | physical existence check | `ls $REPO_ROOT/samples/homebox-audit/ $REPO_ROOT/samples/migration-zombie/ $REPO_ROOT/samples/side-project-resurrector/` | Each shows only `README.md` (no SKILL.md / TRIGGER.md in this milestone — those are per-zombie follow-ups) | shell (ls) |
 
 **Acceptance for this section:**
 
