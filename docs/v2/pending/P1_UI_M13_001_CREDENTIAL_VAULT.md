@@ -6,7 +6,7 @@
 **Date:** Apr 10, 2026
 **Status:** PENDING
 **Priority:** P1 — Operator trust surface; proves "agents never see your keys"
-**Batch:** B2 — parallel with M19_001, M21_001, M11_005
+**Batch:** B2 — alpha gate, parallel with M11_005, M19_001, M21_001, M27_001, M31_001, M33_001
 **Branch:** feat/m13-credential-vault-ui
 **Depends on:** M12_001 (app dashboard layout + auth), M5_001 (tool bridge credential flow)
 **Supersedes:** M12_001 §4.0 (Credentials Page) — M12's basic credentials list is replaced by this spec in full
@@ -28,7 +28,7 @@
 
 **Scope additions pulled into M13 as a result:**
 
-1. **Pre-EXECUTE grep.** Before any schema edit, grep for the current scope of `credentials` / the vault table in `schema/*.sql`, `src/db/`, and `src/http/handlers/` to confirm the starting state. Expected: workspace-scoped per `schema/004_vault_schema.sql` and `/v1/workspaces/{ws}/credentials` surface. Record the finding in the Ripley's Log before proceeding.
+1. **Pre-EXECUTE grep.** Before any schema edit, grep for the current scope of `credentials` / the vault table in `schema/*.sql`, `src/db/`, and `src/http/handlers/` to confirm the starting state. Expected: workspace-scoped per `schema/004_vault_schema.sql` and `/v1/tenants/me/credentials` surface. Record the finding in the Ripley's Log before proceeding.
 2. **Schema migration.** If current state confirms workspace-scoped (pre-v2.0 teardown era), invoke the **Schema Table Removal Guard** and re-author `schema/004_vault_schema.sql` (or a new slot) so `credentials` FK is `tenant_id` instead of `workspace_id`. Update `schema/embed.zig` and the canonical migration array in `src/cmd/common.zig` per the Guard. Any RLS policies on the table move to tenant scope.
 3. **API surface.** Add `/v1/tenants/me/credentials` (GET, POST, DELETE) as the new primary surface. Deprecate the workspace-scoped endpoints in-repo (pre-v2 teardown: remove them outright; no 410 stubs per pre-v2 API drift policy).
 4. **UI wiring.** `app/credentials/page.tsx` reads from `/v1/tenants/me/credentials`. The page lives at the tenant level; remove the workspace-switcher dependency on credentials.
@@ -94,7 +94,7 @@ Write-only credential submission. The value field is a password input that clear
 - 2.1 PENDING
   - target: `app/credentials/components/AddCredentialModal.tsx`
   - input: `User enters name="stripe", value="sk_test_xxx", clicks Submit`
-  - expected: `POST /v1/workspaces/{ws}/credentials, success toast, value field cleared, modal closes`
+  - expected: `POST /v1/tenants/me/credentials, success toast, value field cleared, modal closes`
   - test_type: unit (component test)
 - 2.2 PENDING
   - target: `app/credentials/components/AddCredentialModal.tsx`
@@ -134,7 +134,7 @@ Deletion with impact analysis. Before confirming deletion, the UI shows which Zo
 - 3.3 PENDING
   - target: `app/credentials/components/DeleteCredentialDialog.tsx`
   - input: `User confirms deletion`
-  - expected: `DELETE /v1/workspaces/{ws}/credentials/{name}, credential removed from list, success toast`
+  - expected: `DELETE /v1/tenants/me/credentials/{name}, credential removed from list, success toast`
   - test_type: unit (component test)
 
 ---
@@ -146,9 +146,9 @@ Deletion with impact analysis. Before confirming deletion, the UI shows which Zo
 ### 5.2 Existing API Endpoints Used
 
 ```
-GET    /v1/workspaces/{ws}/credentials             — list (name, scope, no values)
-POST   /v1/workspaces/{ws}/credentials             — add (encrypted at rest)
-DELETE /v1/workspaces/{ws}/credentials/{name}       — delete
+GET    /v1/tenants/me/credentials             — list (name, scope, no values)
+POST   /v1/tenants/me/credentials             — add (encrypted at rest)
+DELETE /v1/tenants/me/credentials/{name}       — delete
 ```
 
 ### 5.3 Error Contracts
@@ -268,7 +268,7 @@ N/A — no files deleted.
 
 - Usage audit log — deferred to M13b post-MVP.
 - Credential rotation (revoke + re-add for v1)
-- Credential sharing across workspaces (workspace-scoped only)
+- Per-credential RLS or row-level sharing controls (all credentials in a tenant are visible to every workspace under that tenant by design — per §0.1 tenant-scoped resolution)
 - Credential type detection (Stripe vs Slack vs generic — all treated as opaque strings)
 - Credential value editing (write-once; delete + re-add to change)
 - Export/import credentials (security risk — not planned)

@@ -6,7 +6,7 @@
 **Date:** Apr 21, 2026
 **Status:** PENDING
 **Priority:** P1 — Operator-facing docs are out of sync with code AND two live observability paths (per-workspace metrics, OTLP histograms) are broken; this milestone fixes both and reconciles the docs.
-**Batch:** B2 — alpha gate. Code branch in the usezombie repo; docs edits land in a sibling PR in `~/Projects/docs` once code merges.
+**Batch:** B2 — alpha gate, parallel with M11_005, M19_001, M13_001, M21_001, M27_001, M33_001. Code branch in the usezombie repo; docs edits land in a sibling PR in `~/Projects/docs` once code merges.
 **Branch:** feat/m31-observability-fixes (in `~/Projects/usezombie` — code branch). A sibling docs-repo branch carries the `.mdx` edits and lands after the code PR merges to main.
 **Depends on:** M15_002 (zombie observability implementation), M12_001 (Langfuse removal), M29_001 (doc rewrite to zombie). Code touchpoints for the fix sections: `src/zombie/executor.zig`, `src/zombie/metering.zig`, `src/otel/otel_export.zig`.
 

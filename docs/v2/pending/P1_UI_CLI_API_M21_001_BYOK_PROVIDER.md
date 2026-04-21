@@ -6,7 +6,7 @@
 **Date:** Apr 13, 2026
 **Status:** PENDING
 **Priority:** P1 — Blocks operators who exhaust free credits; enables enterprise self-serve
-**Batch:** B2 — parallel with M19_001, M13_001, M11_005
+**Batch:** B2 — alpha gate, parallel with M11_005, M19_001, M13_001, M27_001, M31_001, M33_001
 **Branch:** feat/m21-byok-provider
 **Depends on:** M12_001 (settings page), **M13_001 (credential vault — provides Add Credential modal and Type selector that M21 extends with `llm_provider`)**, M15_001 (credit metering, done), M11_005 (tenant billing — provides the `tenant_billing.balance_cents` gate that triggers the credit-exhausted UX).
 
@@ -124,15 +124,16 @@ $ zombiectl provider set \
 
 # Set back to hosted
 $ zombiectl provider set --hosted
-✓ Workspace using UseZombie hosted credits (8 remaining)
+✓ Tenant using UseZombie hosted credits ($9.88 remaining)
 
-# Credit status
+# Credit status — unit matches M11_005 billing.tenant_billing.balance_cents
 $ zombiectl credits status
-Workspace:    acme-prod
-Plan:         Free (hosted)
-Used:         12 / 20 runs
-Remaining:    8 runs
-Reset:        Never (one-time credits)
+Tenant:       acme (personal)
+Plan:         free
+Balance:      $9.88  (988¢ of 1000¢ grant)
+Used:         $0.12  (12¢)
+Source:       GET /v1/tenants/me/billing → {plan_tier, plan_sku, balance_cents, updated_at}
+Reset:        Never (one-time grant)
 ```
 
 **Dimensions:**
@@ -154,7 +155,7 @@ Reset:        Never (one-time credits)
 **Status:** PENDING
 
 M13 manages tool credentials. Provider credentials are stored in the same vault but with `credential_type = llm_provider`. The distinction matters at the API layer:
-- Tool credentials: returned by `GET /v1/workspaces/{ws}/credentials` (with name, scope, last_used — no value)
+- Tool credentials: returned by `GET /v1/tenants/me/credentials` (with name, scope, last_used — no value; tenant-scoped per M13_001 §0.1)
 - Provider credentials: returned by the same endpoint but flagged as `type: llm_provider`; excluded from the firewall injection path; only shown in provider-specific dropdowns
 
 An operator adds a provider credential the same way as any credential: Add Credential modal in M13 with a new "Type" field defaulting to "Tool" with an "LLM Provider" option.
@@ -225,7 +226,7 @@ No per-workspace and no per-zombie provider endpoints. Those are explicitly out 
 | Step | Action | Verify |
 |---|---|---|
 | 1 | Schema: add `credential_type` column to credentials table | zig build |
-| 2 | `GET/PUT /v1/workspaces/{ws}/provider` handlers | dim 3.1 |
+| 2 | `GET/PUT /v1/tenants/me/provider` handlers (tenant-scoped per §5.1) | dim 3.1 |
 | 3 | M13 credential modal: add Type field | dim 4.1 |
 | 4 | Settings > Provider tab (dashboard UI) | dims 1.1–1.5 |
 | 5 | CLI `zombiectl provider set/get` | dims 3.1–3.2 |
