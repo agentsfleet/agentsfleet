@@ -6,6 +6,7 @@ const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
 const secrets = @import("../../../secrets/crypto.zig");
 const error_codes = @import("../../../errors/error_registry.zig");
 const id_format = @import("../../../types/id_format.zig");
+const tenant_billing = @import("../../../state/tenant_billing.zig");
 const telemetry_mod = @import("../../../observability/telemetry.zig");
 const common = @import("../common.zig");
 const hx_mod = @import("../hx.zig");
@@ -90,6 +91,19 @@ pub fn innerGitHubCallback(hx: hx_mod.Hx, req: *httpz.Request) void {
             return;
         };
     }
+
+    // TODO(legacy-bootstrap): remove when the GitHub-App "fabricate a tenant
+    // from OAuth state" path is deleted. Post-removal this handler only
+    // ever attaches an install to an existing (signup-bootstrapped) tenant,
+    // so the generateTenantId fallback + this provision call both go away.
+    // Tracked in M11_006.
+    //
+    // Idempotent; no-op when the tenant already has a billing row (signup
+    // bootstrap path) and seeds 1000¢ on fresh GitHub-App-created tenants.
+    tenant_billing.provisionFreeDefault(conn, tenant_id) catch {
+        common.internalOperationError(hx.res, "Failed to provision tenant billing", hx.req_id);
+        return;
+    };
 
     secrets.store(
         hx.alloc,

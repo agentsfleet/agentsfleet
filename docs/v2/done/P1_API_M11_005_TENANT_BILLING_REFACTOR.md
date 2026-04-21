@@ -463,6 +463,30 @@ Also remove the `_ = @import("state/workspace_credit*.zig");` and any `workspace
 
 ---
 
+## Discovery (post-merge follow-ups)
+
+Findings surfaced during execution that are **out of scope for M11_005** but were not in the original spec. Each is tagged in code with `// TODO(legacy-bootstrap): ... Tracked in M11_006.`
+
+### D1 — Legacy `ZOMBIED_ADMIN_API_KEY` bootstrap principal (→ M11_006)
+
+**What:** an env-var-keyed API-key path in `src/auth/` mints an `api_key` principal with `role=admin, tenant_id=null`. Exists so smoke-tests and the admin CLI can hit the API before any Clerk signup completes. Auth layer already warns `api_key.bootstrap_env_var_used` on every use.
+
+**Why it matters to this spec:** the `tenant_id=null` principal reaches `workspaces/lifecycle.zig` and `auth/github_callback.zig`, where both handlers generate a fresh `tenant_id` on the fly. Post-M11_005, the worker debits `billing.tenant_billing` — a tenant row that was never provisioned (because bootstrap skips signup) causes every zombie run on that tenant to log `metering.missing_tenant_billing`. As a stopgap both handlers now call `tenant_billing.provisionFreeDefault(conn, tenant_id)` after tenant upsert so the invariant holds for any fabricated tenant.
+
+**Follow-up scope (M11_006):**
+
+- Delete the env-var bootstrap principal branch in `src/auth/middleware/*` (specifically the site that emits `api_key.bootstrap_env_var_used`).
+- Remove `ZOMBIED_ADMIN_API_KEY` from every env template, compose file, Fly/CD config, and README/docs.
+- In `workspaces/lifecycle.zig` and `auth/github_callback.zig`: remove the `orelse id_format.generateTenantId(alloc)` fallback and reject authenticated-without-tenant requests as `403 UZ-AUTH-001`. The two `tenant_billing.provisionFreeDefault` stopgaps become dead code — delete.
+- Admin-gated endpoints (`/v1/admin/platform-keys`, `/internal/v1/telemetry`) must now rely on Clerk JWT with an `admin` role claim or on a tenant-issued API key flagged admin. Decide which in the follow-up spec.
+- Migrate any smoke-test / CI fixture that authenticates via the env var to a tenant-issued `zmb_t_...` key minted in setup.
+
+### D2 — Metering ambiguity: missing row vs exhausted balance (addressed in this PR, referenced for completeness)
+
+Closed by the store-layer split: `tenant_billing_store.debit` now returns `error.TenantBillingMissing` when no row exists and `error.CreditExhausted` only for the insufficient-balance case. `zombie/metering.zig` surfaces both through distinct `DeductionResult` variants and log lines (`missing_tenant_billing` at `err`, `exhausted` at `info`).
+
+---
+
 ## Out of Scope
 
 - Separate `billing.tenant_plan` table — plan_tier and plan_sku live on `billing.tenant_billing`; no split until Stripe lands.

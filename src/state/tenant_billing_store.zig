@@ -35,9 +35,17 @@ pub fn insertIfAbsent(
 
 pub const DebitResult = struct { balance_cents: i64, updated_at_ms: i64 };
 
-/// Atomic conditional debit. Returns the post-debit balance, or
-/// error.CreditExhausted if the WHERE guard fails (row either missing or
-/// would go negative).
+/// Atomic conditional debit. Returns the post-debit balance, or a typed
+/// error distinguishing "tenant has no billing row" from "row exists but
+/// would go negative":
+///
+///   error.TenantBillingMissing — provision was never called for this tenant.
+///                                Always a bootstrap invariant bug.
+///   error.CreditExhausted      — row present but balance < cents. Expected
+///                                operational outcome on a free-plan tenant.
+///
+/// The primary UPDATE is still a single atomic statement; the EXISTS probe
+/// only fires on the 0-row path, so the happy path stays one round-trip.
 pub fn debit(conn: *pg.Conn, tenant_id: []const u8, cents: i64) !DebitResult {
     if (cents < 0) return error.InvalidDebit;
     const now_ms = std.time.milliTimestamp();
@@ -50,10 +58,21 @@ pub fn debit(conn: *pg.Conn, tenant_id: []const u8, cents: i64) !DebitResult {
         \\RETURNING balance_cents, updated_at
     , .{ tenant_id, cents, now_ms }));
     defer q.deinit();
-    const row = (try q.next()) orelse return error.CreditExhausted;
+    const row = (try q.next()) orelse {
+        if (!try rowExists(conn, tenant_id)) return error.TenantBillingMissing;
+        return error.CreditExhausted;
+    };
     const bal = try row.get(i64, 0);
     const ts = try row.get(i64, 1);
     return .{ .balance_cents = bal, .updated_at_ms = ts };
+}
+
+fn rowExists(conn: *pg.Conn, tenant_id: []const u8) !bool {
+    var q = PgQuery.from(try conn.query(
+        \\SELECT 1 FROM billing.tenant_billing WHERE tenant_id = $1::uuid LIMIT 1
+    , .{tenant_id}));
+    defer q.deinit();
+    return (try q.next()) != null;
 }
 
 pub fn loadByTenant(

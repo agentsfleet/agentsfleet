@@ -1,5 +1,6 @@
 const std = @import("std");
 const httpz = @import("httpz");
+const tenant_billing = @import("../../../state/tenant_billing.zig");
 const obs_log = @import("../../../observability/logging.zig");
 const telemetry_mod = @import("../../../observability/telemetry.zig");
 const error_codes = @import("../../../errors/error_registry.zig");
@@ -93,6 +94,21 @@ pub fn innerCreateWorkspace(hx: hx_mod.Hx, req: *httpz.Request) void {
 
     const now_ms = std.time.milliTimestamp();
     if (!upsertTenant(conn, tenant_id, now_ms, hx)) return;
+
+    // TODO(legacy-bootstrap): remove when ZOMBIED_ADMIN_API_KEY env-var
+    // principal is deleted. Post-removal `hx.principal.tenant_id` is never
+    // null for authenticated requests, so the `orelse generateTenantId(...)`
+    // fallback above goes away and signup_bootstrap is the only provision
+    // site. Tracked in M11_006.
+    //
+    // Idempotent: signup-bootstrapped tenants already have a row (ON CONFLICT
+    // DO NOTHING). The legacy bootstrap API-key path with no tenant_id claim
+    // generates a fresh tenant above; this seeds 1000¢ so the worker's first
+    // debit doesn't hit the "row missing" branch.
+    tenant_billing.provisionFreeDefault(conn, tenant_id) catch {
+        common.internalOperationError(hx.res, "Failed to provision tenant billing", hx.req_id);
+        return;
+    };
 
     const workspace_id = generateWorkspaceId(hx.alloc) catch {
         common.internalOperationError(hx.res, "Failed to allocate workspace id", hx.req_id);

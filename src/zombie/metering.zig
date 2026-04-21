@@ -42,6 +42,9 @@ pub const DeductionResult = union(enum) {
     exempt: void,
     /// Balance insufficient; no cents deducted.
     exhausted: void,
+    /// Tenant has no billing row — bootstrap invariant violated. Logged at
+    /// `err`, not `warn`, because it's never an expected operational state.
+    missing_tenant_billing: void,
     /// Non-fatal DB failure; event loop continues to XACK.
     db_error: void,
 };
@@ -59,6 +62,7 @@ pub fn deductZombieUsage(
 
     const result = tenant_billing.debit(conn, tenant_id, debit_cents) catch |err| switch (err) {
         error.CreditExhausted => return .{ .exhausted = {} },
+        error.TenantBillingMissing => return .{ .missing_tenant_billing = {} },
         else => return .{ .db_error = {} },
     };
     _ = result;
@@ -118,6 +122,10 @@ pub fn recordZombieDelivery(
         },
         .exhausted => blk: {
             log.info("metering.exhausted zombie_id={s} tenant_id={s}", .{ zombie_id, tenant_id });
+            break :blk 0;
+        },
+        .missing_tenant_billing => blk: {
+            log.err("metering.missing_tenant_billing zombie_id={s} tenant_id={s} workspace_id={s} — tenant_billing.provisionFreeDefault was never called for this tenant", .{ zombie_id, tenant_id, workspace_id });
             break :blk 0;
         },
         .db_error => blk: {

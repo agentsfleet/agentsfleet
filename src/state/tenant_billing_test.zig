@@ -72,13 +72,13 @@ test "debit decrements atomically; 0-row UPDATE returns CreditExhausted" {
     try std.testing.expectEqual(@as(i64, 995), row.balance_cents);
 }
 
-test "debit on missing tenant returns CreditExhausted (0-row UPDATE)" {
+test "debit on missing tenant returns TenantBillingMissing (distinct from CreditExhausted)" {
     const db_ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
 
     const unknown = "0195b4ba-8d3a-7f13-8abc-aaffffffff01";
-    try std.testing.expectError(error.CreditExhausted, tenant_billing.debit(db_ctx.conn, unknown, 1));
+    try std.testing.expectError(error.TenantBillingMissing, tenant_billing.debit(db_ctx.conn, unknown, 1));
 }
 
 test "resolveTenantFromWorkspace returns the owning tenant" {
