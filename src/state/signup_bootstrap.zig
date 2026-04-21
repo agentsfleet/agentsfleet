@@ -50,10 +50,10 @@ pub const BootstrapParams = struct {
 };
 
 pub const Bootstrap = struct {
-    user_id: []u8,
-    tenant_id: []u8,
-    workspace_id: []u8,
-    workspace_name: []u8,
+    user_id: []const u8,
+    tenant_id: []const u8,
+    workspace_id: []const u8,
+    workspace_name: []const u8,
     /// `true` on fresh bootstrap, `false` on idempotent replay.
     created: bool,
 
@@ -181,9 +181,9 @@ pub fn bootstrapTransaction(
     metrics.incSignupBootstrapped();
 
     return .{
-        .user_id = @constCast(user_id),
-        .tenant_id = @constCast(tenant_id),
-        .workspace_id = @constCast(workspace_id),
+        .user_id = user_id,
+        .tenant_id = tenant_id,
+        .workspace_id = workspace_id,
         .workspace_name = workspace_name,
         .created = true,
     };

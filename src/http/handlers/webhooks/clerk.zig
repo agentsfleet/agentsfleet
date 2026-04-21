@@ -200,8 +200,8 @@ fn trimOrNull(s: ?[]const u8) ?[]const u8 {
 
 fn runBootstrap(hx: Hx, oidc_subject: []const u8, email: []const u8, display_name: ?[]const u8) void {
     const conn = hx.ctx.pool.acquire() catch {
-        log.err("clerk.pool_acquire_failed req_id={s}", .{hx.req_id});
-        metrics.incSignupFailed(.db_error);
+        log.warn("clerk.pool_acquire_failed req_id={s}", .{hx.req_id});
+        metrics.incSignupFailed(.pool_unavailable);
         common.internalDbUnavailable(hx.res, hx.req_id);
         return;
     };
@@ -216,7 +216,7 @@ fn runBootstrap(hx: Hx, oidc_subject: []const u8, email: []const u8, display_nam
             .display_name = display_name,
         },
     ) catch |err| {
-        log.err("clerk.bootstrap_failed oidc={s} err={s} req_id={s}", .{ oidc_subject, @errorName(err), hx.req_id });
+        log.warn("clerk.bootstrap_failed oidc={s} err={s} req_id={s}", .{ oidc_subject, @errorName(err), hx.req_id });
         metrics.incSignupFailed(.db_error);
         common.internalOperationError(hx.res, "Signup bootstrap failed", hx.req_id);
         return;
