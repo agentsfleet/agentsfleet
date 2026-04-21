@@ -94,10 +94,10 @@ NNN = next free slot at execute time (verify with `ls schema/`).
 | `schema/NNN_tenant_billing.sql` | CREATE | Single table holding `(tenant_id, plan_tier, plan_sku, balance_cents, grant_source, created_at, updated_at)`. ≤100 lines, single concern. **Unit note on `balance_cents`:** MVP uses cents (integer, Stripe-native for chargebacks). Migration to `balance_micros` (millionths of a cent) is deferred to the per-token-metering milestone — pre-v2.0 teardown makes that migration free (drop + recreate), so we explicitly do not preemptively widen the unit now. |
 | `schema/embed.zig` | MODIFY | Add `tenant_billing_sql` `@embedFile`; remove `workspace_billing_state_sql` and `workspace_free_credit_sql`. |
 | `src/cmd/common.zig` | MODIFY | Add new migration entry; remove version-16 and version-17 workspace-billing entries; update array length / index-based tests. |
-| `src/state/tenant_billing.zig` | CREATE | Facade: `provision(tenant_id, plan='free', cents=1000)`, `debit(tenant_id, cents)`, `getBilling(tenant_id)`. |
+| `src/state/tenant_billing.zig` | CREATE | Facade: `provision(tenant_id, plan_tier, plan_sku, balance_cents, grant_source)`, `debit(tenant_id, cents)`, `getBilling(tenant_id)`. MVP call sites pass `plan_tier="free"`, `plan_sku="free_default"`, `balance_cents=1000`; Stripe milestone will vary these. |
 | `src/state/tenant_billing_store.zig` | CREATE | Raw SQL: `INSERT ... ON CONFLICT DO NOTHING`, atomic `UPDATE ... WHERE balance_cents >= $cents RETURNING`, `SELECT`. `conn.query().drain()` discipline. |
 | `src/state/tenant_billing_test.zig` | CREATE | Unit coverage for provision / debit / exhaustion / concurrent-debit. |
-| `src/state/signup_bootstrap.zig` | MODIFY | After tenant/user/workspace insert, call `tenant_billing.provision(tenant_id, 'free', 1000, "bootstrap_free_grant")`. |
+| `src/state/signup_bootstrap.zig` | MODIFY | After tenant/user/workspace insert, call `tenant_billing.provision(tenant_id, "free", "free_default", 1000, "bootstrap_free_grant")`. |
 | `src/zombie/metering.zig` | MODIFY | Replace `workspace_credit.*` calls with `tenant_billing.debit(tenant_id, cents)`. Tenant id resolved via `zombie.workspace_id → core.workspaces.tenant_id` (single `SELECT tenant_id FROM core.workspaces WHERE workspace_id=$1`). |
 | `src/http/handlers/workspaces/lifecycle.zig` | MODIFY | Delete the `provisionWorkspaceCredit(..., "api")` call from the workspace-create handler. New workspaces inherit the tenant balance and plan. |
 | `src/http/handlers/tenant_billing.zig` | CREATE | Single read handler: `GET /v1/tenants/me/billing` → `{plan_tier, plan_sku, balance_cents, updated_at}`. |
@@ -193,6 +193,8 @@ One handler, one route.
 pub fn provision(
     conn: *pg.Conn,
     tenant_id: Uuid,
+    plan_tier: []const u8,       // "free" for MVP; Stripe milestone will pass tiers
+    plan_sku: []const u8,        // "free_default" for MVP; Stripe milestone will pass SKUs
     balance_cents: i64,
     grant_source: []const u8,
 ) !void;
@@ -321,7 +323,7 @@ pub const Balance    = struct { balance_cents: i64, updated_at_ms: i64 };
 |------|--------|--------|
 | 1 | Print Schema Guard block (see Files Changed). Create `schema/NNN_tenant_billing.sql`; delete `schema/017_workspace_free_credit.sql`; update `schema/embed.zig` and the migration array in `src/cmd/common.zig`. | `make down && make up` clean; `psql -c '\d billing.tenant_billing'` |
 | 2 | Write `src/state/tenant_billing{,_store,_test}.zig`. | `zig build test -Dtest-filter=tenant_billing` green |
-| 3 | Update `src/state/signup_bootstrap.zig` to call `tenant_billing.provision(tenant_id, 1000, "bootstrap_free_grant")` after tenant/user/workspace insert. | integration dim 3.1 |
+| 3 | Update `src/state/signup_bootstrap.zig` to call `tenant_billing.provision(tenant_id, "free", "free_default", 1000, "bootstrap_free_grant")` after tenant/user/workspace insert. | integration dim 3.1 |
 | 4 | Update `src/zombie/metering.zig` to debit `billing.tenant_billing` using `tenant_id` resolved from `workspace_id`. | integration dims 3.2, 3.4 |
 | 5 | Remove `provisionWorkspaceCredit(..., "api")` call from `src/http/handlers/workspaces/lifecycle.zig`. | integration dim 3.3 |
 | 6 | Delete `src/state/workspace_credit.zig`, `src/state/workspace_credit_store.zig`, `src/state/workspace_credit_test.zig`. Remove `_ = @import("...");` lines from `src/main.zig`. | `grep -rn workspace_credit src/` = 0 matches |

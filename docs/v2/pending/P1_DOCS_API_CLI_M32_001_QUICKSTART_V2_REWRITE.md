@@ -20,13 +20,19 @@
 
 **Problem:** The current `docs.usezombie.com` content was written against the pre-Clerk "lead-collector demo" framing. It references access codes, invite redemption, per-workspace credits, and marketing-site homepage copy that no longer match what ships. A new operator following the quickstart lands on dead CLI paths (`zombiectl credits redeem`, invite-code flows) and never reaches a running zombie.
 
-**Solution summary:** Rewrite the Mintlify docs at `/Users/kishore/Projects/docs/` to match the v2 MVP: Clerk signup → $10 tenant balance → create a zombie → trigger it via curl → see credits deducted in the dashboard. New CLI reference page, new operator quickstart, billing page reflects tenant-scoped credits, stale-vocabulary sweep across every `.mdx`.
+**Solution summary:** Rewrite the Mintlify docs at `$DOCS_REPO/` to match the v2 MVP: Clerk signup → $10 tenant balance → create a zombie → trigger it via curl → see credits deducted in the dashboard. New CLI reference page, new operator quickstart, billing page reflects tenant-scoped credits, stale-vocabulary sweep across every `.mdx`.
 
 ---
 
 ## Files Changed (blast radius)
 
-Target repo: `/Users/kishore/Projects/docs/` (Mintlify, deployed at docs.usezombie.com).
+Target repo: `$DOCS_REPO` (Mintlify, deployed at docs.usezombie.com). Set `DOCS_REPO` before running any eval command:
+
+```bash
+export DOCS_REPO="${DOCS_REPO:-$HOME/Projects/docs}"  # default for local dev; CI must export its own checkout path
+```
+
+All grep / `mint dev` / `wc` commands in this spec reference `$DOCS_REPO` (not a hardcoded path) so they work from any machine, CI runner, or agent worktree.
 
 | File | Action | Why |
 |------|--------|-----|
@@ -162,7 +168,7 @@ Replace the three stale pre-pivot integration zombies (hiring-agent, lead-collec
 
 | Dim | Status | Target | Input | Expected | Test type |
 |-----|--------|--------|-------|----------|-----------|
-| 8.1 | PENDING | `docs/integrations/{hiring-agent,lead-collector,ops}.mdx` | stale-page deletion | all three files removed from `docs/` repo; no broken internal links remain | `grep -r "integrations/hiring-agent\|integrations/lead-collector\|integrations/ops" /Users/kishore/Projects/docs/` returns 0 |
+| 8.1 | PENDING | `docs/integrations/{hiring-agent,lead-collector,ops}.mdx` | stale-page deletion | all three files removed from `docs/` repo; no broken internal links remain | `grep -r "integrations/hiring-agent\|integrations/lead-collector\|integrations/ops" $DOCS_REPO/` returns 0 |
 | 8.2 | PENDING | `docs/zombies/homelab.mdx`, `docs/zombies/homebox-audit.mdx`, `docs/zombies/migration-zombie.mdx`, `docs/zombies/side-project-resurrector.mdx` | new zombie addition | each page renders cleanly under `mint dev`. `homelab.mdx` content reflects `docs/brainstormed/docs/homelab-zombie-launch.md`; the three README-only pages reflect `samples/<name>/README.md` post-move. | manual review + `mint dev` |
 | 8.3 | PENDING | `docs.json` + changelog | nav parity | `docs.json` drops 3 integration entries, adds 3 zombie entries; `changelog.mdx` notes the churn under an `Integrations` tag | `mint dev` broken-link clean |
 
@@ -174,7 +180,7 @@ Replace the three stale pre-pivot integration zombies (hiring-agent, lead-collec
 
 The "interfaces" it documents are:
 - `zombiectl zombie create / run / logs / trigger / credential add` (owned by M19/M13/existing CLI)
-- `GET /v1/tenants/me/credits` (owned by M11_005)
+- `GET /v1/tenants/me/billing` (owned by M11_005 — returns `{plan_tier, plan_sku, balance_cents, updated_at}`)
 - Dashboard pages at `app.usezombie.com/{dashboard,zombies,zombies/[id]}` (owned by M27_001)
 
 Each referenced interface must exist before this workstream merges; see Depends on.
@@ -196,8 +202,8 @@ Each referenced interface must exist before this workstream merges; see Depends 
 
 | Constraint | How to verify |
 |-----------|---------------|
-| `mint dev` builds cleanly with zero broken links | `cd /Users/kishore/Projects/docs && mint dev` |
-| Zero grep matches for `credits redeem`, `invite code`, `access code` outside changelog history | `grep -rni "credits redeem\|invite code\|access code" /Users/kishore/Projects/docs/ \| grep -v changelog.mdx` returns 0 |
+| `mint dev` builds cleanly with zero broken links | `cd $DOCS_REPO && mint dev` |
+| Zero grep matches for `credits redeem`, `invite code`, `access code` outside changelog history | `grep -rni "credits redeem\|invite code\|access code" $DOCS_REPO/ \| grep -v changelog.mdx` returns 0 |
 | Quickstart end-to-end works in < 10 minutes | manual timed walkthrough |
 | Every referenced `zombiectl` command exists | `zombiectl <cmd> --help` exits 0 for each |
 | Every referenced API path exists in the OpenAPI spec on main | cross-check |
@@ -242,7 +248,7 @@ N/A — docs rewrite.
 
 | Step | Action | Verify |
 |------|--------|--------|
-| 1 | Audit stale vocab with grep sweep; list every match. | `grep -rni "credits redeem\|invite code\|access code\|lead collector" /Users/kishore/Projects/docs/` |
+| 1 | Audit stale vocab with grep sweep; list every match. | `grep -rni "credits redeem\|invite code\|access code\|lead collector" $DOCS_REPO/` |
 | 2 | Rewrite `quickstart.mdx` against M19 UI + curl trigger + credit check. | §2 dims |
 | 3 | Rewrite `index.mdx` hero + blurb. | §3.1 |
 | 4 | Update `concepts.mdx` with tenant/workspace/zombie/skill + tenant credits. | §3.2–3.3 |
@@ -304,7 +310,7 @@ The three zombie directories each contain `README.md` only. The two skill direct
 
 ## Acceptance Criteria
 
-- [ ] `mint dev` builds cleanly with zero broken links — verify: `cd /Users/kishore/Projects/docs && mint dev`
+- [ ] `mint dev` builds cleanly with zero broken links — verify: `cd $DOCS_REPO && mint dev`
 - [ ] Quickstart flow tested manually end-to-end in ≤10 minutes — verify: timed walkthrough
 - [ ] Zero grep matches for removed pre-pivot vocabulary — verify: Eval E2
 - [ ] Every `zombiectl` command referenced exists — verify: Eval E3
@@ -317,14 +323,14 @@ The three zombie directories each contain `README.md` only. The two skill direct
 
 ```bash
 # E1: Mintlify builds cleanly
-cd /Users/kishore/Projects/docs && mint dev 2>&1 | tail -20
+cd $DOCS_REPO && mint dev 2>&1 | tail -20
 
 # E2: Stale vocabulary sweep (must return 0 matches outside changelog history)
-grep -rni "credits redeem\|invite code\|access code" /Users/kishore/Projects/docs/ \
+grep -rni "credits redeem\|invite code\|access code" $DOCS_REPO/ \
   | grep -v -E "changelog\.mdx|\.git/" \
   || echo "VOCAB clean"
 
-grep -rni "lead collector\|lead-collector" /Users/kishore/Projects/docs/ \
+grep -rni "lead collector\|lead-collector" $DOCS_REPO/ \
   | grep -v -E "changelog\.mdx|\.git/" \
   || echo "LC clean"
 
@@ -334,10 +340,10 @@ for cmd in "zombie create" "zombie run" "zombie logs" "zombie trigger" "credenti
 done
 
 # E4: Broken-link check (Mintlify reports during dev)
-cd /Users/kishore/Projects/docs && mint broken-links 2>&1 | tail -10 || true
+cd $DOCS_REPO && mint broken-links 2>&1 | tail -10 || true
 
 # E5: Nav wiring
-grep -c '"page"' /Users/kishore/Projects/docs/docs.json
+grep -c '"page"' $DOCS_REPO/docs.json
 ```
 
 ---
@@ -348,8 +354,8 @@ Mandatory — this workstream deletes stale content.
 
 | Content to delete | Verify deleted |
 |-------------------|----------------|
-| `credits redeem` references | `grep -rni "credits redeem" /Users/kishore/Projects/docs/` → 0 (excluding changelog) |
-| `invite code` / `access code` references | `grep -rni "invite code\|access code" /Users/kishore/Projects/docs/` → 0 |
+| `credits redeem` references | `grep -rni "credits redeem" $DOCS_REPO/` → 0 (excluding changelog) |
+| `invite code` / `access code` references | `grep -rni "invite code\|access code" $DOCS_REPO/` → 0 |
 | Old `quickstart.mdx` lead-collector flow | page rewritten; git history preserves prior |
 | Any nav entry pointing at deleted page | `mint dev` reports zero broken links |
 
