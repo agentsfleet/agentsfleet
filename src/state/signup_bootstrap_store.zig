@@ -116,24 +116,15 @@ pub fn insertMembership(
 }
 
 /// Returns true on insert, false on (tenant_id, name) collision. Caller
-/// retries with a fresh name. Relies on uq_workspaces_tenant_name partial
-/// unique index from schema/001.
+/// retries with a fresh name. One round-trip via ON CONFLICT against the
+/// partial unique index `uq_workspaces_tenant_name` from schema/001 —
+/// single statement keeps the connection clean inside the enclosing tx.
 pub fn tryInsertWorkspace(conn: *pg.Conn, row: WorkspaceRow) !bool {
-    const exists = blk: {
-        var q = PgQuery.from(try conn.query(
-            \\SELECT 1 FROM core.workspaces
-            \\WHERE tenant_id = $1::uuid AND name = $2
-            \\LIMIT 1
-        , .{ row.tenant_id, row.name }));
-        defer q.deinit();
-        break :blk (try q.next()) != null;
-    };
-    if (exists) return false;
-
-    _ = try conn.exec(
+    const affected = try conn.exec(
         \\INSERT INTO core.workspaces
         \\  (workspace_id, tenant_id, name, repo_url, default_branch, created_by, created_at, updated_at)
         \\VALUES ($1::uuid, $2::uuid, $3, '', 'main', $4, $5, $5)
+        \\ON CONFLICT (tenant_id, name) WHERE name IS NOT NULL DO NOTHING
     , .{ row.workspace_id, row.tenant_id, row.name, row.created_by, row.now_ms });
-    return true;
+    return (affected orelse 0) > 0;
 }

@@ -104,7 +104,11 @@ pub fn bootstrapTransaction(
     _ = try conn.exec("BEGIN", .{});
     var tx_open = true;
     errdefer if (tx_open) {
-        _ = conn.exec("ROLLBACK", .{}) catch {};
+        // Use conn.rollback() not conn.exec("ROLLBACK") — the driver's exec
+        // short-circuits when the connection is in FAIL state after a
+        // unique-violation, leaving the session stuck in an aborted tx.
+        // rollback() uses execIgnoringState specifically for this case.
+        conn.rollback() catch {};
     };
 
     const now_ms = std.time.milliTimestamp();
