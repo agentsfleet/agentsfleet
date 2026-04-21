@@ -1,12 +1,4 @@
-/// test_fixtures_uc1.zig — UC1: Free-plan credit exhaustion integration fixtures.
-/// Tenant: scrooge-mcduck (the money guy). Workspaces named after Goofy's operations.
-///
-/// Covers: src/state/workspace_credit.zig integration tests
-/// Tables seeded: tenants, workspaces
-/// Tables cleaned via CASCADE: workspace_credit_state, workspace_credit_audit
-///
-/// Each test gets its own workspace UUID so tests are fully isolated even
-/// when run in the same DB session.
+/// test_fixtures_uc1.zig — shared tenant + workspace fixture.
 ///
 /// Usage per test:
 ///
@@ -16,8 +8,8 @@ const base = @import("test_fixtures.zig");
 const pg = @import("pg");
 
 pub const TEST_TENANT_ID = base.TEST_TENANT_ID;
+pub const TENANT_ID = base.TEST_TENANT_ID;
 
-// One workspace UUID per test in workspace_credit.zig.
 // Segment 5 (aa01–aa04) identifies UC1 workspaces; easy to grep and clean.
 pub const WS_PROVISION = "0195b4ba-8d3a-7f13-8abc-aa0000000001";
 pub const WS_ENFORCE = "0195b4ba-8d3a-7f13-8abc-aa0000000002";

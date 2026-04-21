@@ -7,8 +7,7 @@
 //!   2. user (oidc_subject unique)            — Clerk identity hook
 //!   3. membership (role=owner)               — links user to tenant
 //!   4. workspace (Heroku-style unique name)  — default workspace
-//!   5. workspace_credit_state (0 cents)      — starter balance
-//!   6. workspace_credit_audit (signup row)   — provenance trail
+//!   5. billing.tenant_billing (1000¢ free)   — tenant-scoped starter balance
 //!
 //! Any failure rolls back. Idempotent on `oidc_subject` — replayed webhooks
 //! return existing rows without re-inserting. Platform LLM keys + provider
@@ -18,7 +17,7 @@
 const std = @import("std");
 const pg = @import("pg");
 const id_format = @import("../types/id_format.zig");
-const credit_store = @import("workspace_credit_store.zig");
+const tenant_billing = @import("tenant_billing.zig");
 const heroku_names = @import("heroku_names.zig");
 const store = @import("signup_bootstrap_store.zig");
 const metrics = @import("../observability/metrics_counters.zig");
@@ -29,8 +28,8 @@ const log = std.log.scoped(.state);
 /// practically impossible; cap is a guard against a buggy generator.
 pub const MAX_NAME_ATTEMPTS: u8 = 8;
 
-/// Stamped into workspace_credit_audit.actor on the zero-credit row so
-/// analytics can identify signup-bootstrapped workspaces.
+/// Stamped into workspace rows so analytics can identify signup-bootstrapped
+/// workspaces.
 pub const BOOTSTRAP_ACTOR = "signup_bootstrap";
 
 /// Tenant-level role for the signup user. Personal accounts have exactly
@@ -172,7 +171,7 @@ pub fn bootstrapTransaction(
     );
     errdefer alloc.free(workspace_name);
 
-    try initializeZeroCredit(conn, alloc, workspace_id, now_ms);
+    try tenant_billing.provisionFreeDefault(conn, tenant_id);
 
     _ = try conn.exec("COMMIT", .{});
     tx_open = false;
@@ -220,32 +219,6 @@ pub fn pickUniqueWorkspaceName(
         log.warn("signup.name_collision tenant={s} attempt={d}", .{ tenant_id, attempt + 1 });
     }
     return BootstrapError.WorkspaceNameCollisionExhausted;
-}
-
-fn initializeZeroCredit(
-    conn: *pg.Conn,
-    alloc: std.mem.Allocator,
-    workspace_id: []const u8,
-    now_ms: i64,
-) !void {
-    try credit_store.upsertCreditState(conn, alloc, workspace_id, .{
-        .currency = "USD",
-        .initial_credit_cents = 0,
-        .consumed_credit_cents = 0,
-        .remaining_credit_cents = 0,
-        .exhausted_at = null,
-    }, now_ms);
-    try credit_store.insertAudit(
-        conn,
-        alloc,
-        workspace_id,
-        "CREDIT_GRANTED",
-        0,
-        0,
-        "signup_bootstrap",
-        BOOTSTRAP_ACTOR,
-        "{}",
-    );
 }
 
 fn derivePersonalTenantName(alloc: std.mem.Allocator, email: []const u8) ![]u8 {

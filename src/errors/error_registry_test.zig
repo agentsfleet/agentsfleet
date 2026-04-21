@@ -325,32 +325,11 @@ test "validateErrorTable accepts valid multi-entry table" {
     }
 }
 
-test "billing error table passes validateErrorTable at comptime" {
-    // Verifies the actual billing table is valid (imported transitively via build)
-    // The comptime block in workspace_billing.zig enforces this, but this test
-    // makes the dependency explicit in the test suite.
+test "tenant billing error table passes validateErrorTable at comptime" {
     comptime {
-        const billing = @import("../state/workspace_billing.zig");
+        const billing = @import("../state/tenant_billing.zig");
         _ = billing; // comptime validation runs on import
     }
-}
-
-test "credit error table passes validateErrorTable at comptime" {
-    comptime {
-        const credit = @import("../state/workspace_credit.zig");
-        _ = credit;
-    }
-}
-
-// T7: Regression — comptime size assertions pin struct layouts
-test "StateRow size pinned at 104 bytes" {
-    const StateRow = @import("../state/workspace_billing/row.zig").StateRow;
-    try std.testing.expectEqual(@as(usize, 104), @sizeOf(StateRow));
-}
-
-test "CreditRow size pinned at 56 bytes" {
-    const CreditRow = @import("../state/workspace_credit_store.zig").CreditRow;
-    try std.testing.expectEqual(@as(usize, 56), @sizeOf(CreditRow));
 }
 
 test "PgQuery size pinned at 8 bytes (single pointer)" {

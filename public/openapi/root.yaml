@@ -85,10 +85,6 @@ tags:
   description: Spec templating and preview endpoints for the agent relay
   x-mintlify:
     navigation: Spec
-- name: Scoring
-  description: Per-workspace scoring configuration
-  x-mintlify:
-    navigation: Scoring
 paths:
   /healthz:
     $ref: ./paths/health.yaml#/~1healthz
@@ -142,12 +138,8 @@ paths:
     $ref: ./paths/workspaces.yaml#/~1v1~1workspaces
   /v1/workspaces/{workspace_id}/activity:
     $ref: ./paths/activity.yaml#/~1v1~1workspaces~1{workspace_id}~1activity
-  /v1/workspaces/{workspace_id}/billing/events:
-    $ref: ./paths/billing.yaml#/~1v1~1workspaces~1{workspace_id}~1billing~1events
-  /v1/workspaces/{workspace_id}/billing/scale:
-    $ref: ./paths/billing.yaml#/~1v1~1workspaces~1{workspace_id}~1billing~1scale
-  /v1/workspaces/{workspace_id}/billing/summary:
-    $ref: ./paths/billing.yaml#/~1v1~1workspaces~1{workspace_id}~1billing~1summary
+  /v1/tenants/me/billing:
+    $ref: ./paths/billing.yaml#/~1v1~1tenants~1me~1billing
   /v1/workspaces/{workspace_id}/credentials:
     $ref: ./paths/credentials.yaml#/~1v1~1workspaces~1{workspace_id}~1credentials
   /v1/workspaces/{workspace_id}/credentials/llm:
@@ -160,16 +152,12 @@ paths:
     $ref: ./paths/agent-keys.yaml#/~1v1~1workspaces~1{workspace_id}~1agent-keys
   /v1/workspaces/{workspace_id}/agent-keys/{agent_id}:
     $ref: ./paths/agent-keys.yaml#/~1v1~1workspaces~1{workspace_id}~1agent-keys~1{agent_id}
-  /v1/workspaces/{workspace_id}/scoring/config:
-    $ref: ./paths/scoring.yaml#/~1v1~1workspaces~1{workspace_id}~1scoring~1config
   /v1/workspaces/{workspace_id}/zombies:
     $ref: ./paths/zombies.yaml#/~1v1~1workspaces~1{workspace_id}~1zombies
   /v1/workspaces/{workspace_id}/zombies/{zombie_id}:
     $ref: ./paths/zombies.yaml#/~1v1~1workspaces~1{workspace_id}~1zombies~1{zombie_id}
   /v1/workspaces/{workspace_id}/zombies/{zombie_id}/activity:
     $ref: ./paths/zombies.yaml#/~1v1~1workspaces~1{workspace_id}~1zombies~1{zombie_id}~1activity
-  /v1/workspaces/{workspace_id}/zombies/{zombie_id}/billing/summary:
-    $ref: ./paths/billing.yaml#/~1v1~1workspaces~1{workspace_id}~1zombies~1{zombie_id}~1billing~1summary
   /v1/workspaces/{workspace_id}/zombies/{zombie_id}/integration-grants:
     $ref: ./paths/integration-grants.yaml#/~1v1~1workspaces~1{workspace_id}~1zombies~1{zombie_id}~1integration-grants
   /v1/workspaces/{workspace_id}/zombies/{zombie_id}/integration-grants/{grant_id}:

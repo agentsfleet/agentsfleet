@@ -1,7 +1,5 @@
 const std = @import("std");
 const httpz = @import("httpz");
-const workspace_billing = @import("../../../state/workspace_billing.zig");
-const workspace_credit = @import("../../../state/workspace_credit.zig");
 const obs_log = @import("../../../observability/logging.zig");
 const telemetry_mod = @import("../../../observability/telemetry.zig");
 const error_codes = @import("../../../errors/error_registry.zig");
@@ -45,23 +43,8 @@ fn upsertTenant(conn: anytype, tenant_id: []const u8, now_ms: i64, hx: hx_mod.Hx
     return true;
 }
 
-/// Enforce free workspace billing gate. Returns false and writes error response on failure.
-fn enforceBillingGate(conn: anytype, tenant_id: []const u8, hx: hx_mod.Hx) bool {
-    workspace_billing.enforceFreeWorkspaceCreationAllowed(conn, tenant_id, null) catch |err| {
-        if (workspace_billing.errorCode(err)) |code| {
-            log.err("workspace.billing_enforcement_fail tenant_id={s} error_code={s}", .{ tenant_id, code });
-            hx.ctx.telemetry.capture(telemetry_mod.ApiError, .{ .distinct_id = hx.principal.user_id orelse "", .error_code = code, .message = workspace_billing.errorMessage(err) orelse "Workspace billing failure", .request_id = hx.req_id });
-            hx.fail(code, workspace_billing.errorMessage(err) orelse "Workspace billing failure");
-            return false;
-        }
-        log.err("workspace.billing_validation_fail error_code=UZ-INTERNAL-003 tenant_id={s}", .{tenant_id});
-        common.internalOperationError(hx.res, "Failed to validate free workspace limit", hx.req_id);
-        return false;
-    };
-    return true;
-}
-
-/// INSERT workspace row and provision free entitlement + credit. Returns false on failure.
+/// INSERT workspace row. Billing rolls up to the tenant, so new workspaces
+/// inherit the tenant balance — no per-workspace credit provisioning here.
 fn insertAndProvision(conn: anytype, hx: hx_mod.Hx, workspace_id: []const u8, tenant_id: []const u8, repo_url: []const u8, default_branch: []const u8, now_ms: i64) bool {
     _ = conn.exec(
         \\INSERT INTO workspaces
@@ -69,14 +52,6 @@ fn insertAndProvision(conn: anytype, hx: hx_mod.Hx, workspace_id: []const u8, te
         \\VALUES ($1, $2, $3, $4, false, $5, 1, $6, $6)
     , .{ workspace_id, tenant_id, repo_url, default_branch, hx.principal.user_id, now_ms }) catch {
         common.internalOperationError(hx.res, "Failed to create workspace", hx.req_id);
-        return false;
-    };
-    workspace_billing.provisionFreeWorkspace(conn, hx.alloc, workspace_id, "api") catch {
-        common.internalOperationError(hx.res, "Failed to provision free entitlement", hx.req_id);
-        return false;
-    };
-    workspace_credit.provisionWorkspaceCredit(conn, hx.alloc, workspace_id, "api") catch {
-        common.internalOperationError(hx.res, "Failed to provision free credit", hx.req_id);
         return false;
     };
     return true;
@@ -118,7 +93,6 @@ pub fn innerCreateWorkspace(hx: hx_mod.Hx, req: *httpz.Request) void {
 
     const now_ms = std.time.milliTimestamp();
     if (!upsertTenant(conn, tenant_id, now_ms, hx)) return;
-    if (!enforceBillingGate(conn, tenant_id, hx)) return;
 
     const workspace_id = generateWorkspaceId(hx.alloc) catch {
         common.internalOperationError(hx.res, "Failed to allocate workspace id", hx.req_id);

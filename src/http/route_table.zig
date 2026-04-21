@@ -56,10 +56,8 @@ pub fn specFor(route: router.Route, registry: *auth_mw.MiddlewareRegistry) ?Rout
         // Workspace lifecycle
         .create_workspace => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeCreateWorkspace },
         .pause_workspace => .{ .middlewares = registry.bearer(), .invoke = invoke.invokePauseWorkspace },
-        .upgrade_workspace_to_scale => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeUpgradeWorkspaceToScale },
-        .apply_workspace_billing_event => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeApplyWorkspaceBillingEvent },
-        .get_workspace_billing_summary => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeGetWorkspaceBillingSummary },
-        .set_workspace_scoring_config => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeSetWorkspaceScoringConfig },
+        // Tenant billing snapshot
+        .get_tenant_billing => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeGetTenantBilling },
         // sync_workspace returns 410 — no auth required for the stub.
         .sync_workspace => .{ .middlewares = auth_mw.MiddlewareRegistry.none, .invoke = invoke.invokeSyncWorkspace },
         .workspace_llm_credential => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceLlmCredential },
@@ -91,7 +89,6 @@ pub fn specFor(route: router.Route, registry: *auth_mw.MiddlewareRegistry) ?Rout
         // M12_001: Dashboard endpoints — workspace activity feed, kill switch, per-zombie billing
         .workspace_activity => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceActivity },
         .workspace_zombie_stop => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceZombieStop },
-        .workspace_zombie_billing_summary => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceZombieBillingSummary },
 
         // Zombie telemetry
         .zombie_telemetry => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeZombieTelemetry },

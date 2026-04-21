@@ -69,11 +69,11 @@ fn seedTestData(conn: *pg.Conn) !void {
         \\ON CONFLICT (workspace_id) DO UPDATE SET plan_tier=EXCLUDED.plan_tier, updated_at=EXCLUDED.updated_at
     , .{ TEST_WORKSPACE_ID, now_ms });
     _ = try conn.exec(
-        \\INSERT INTO workspace_billing_state
-        \\  (billing_id, workspace_id, plan_tier, plan_sku, billing_status, adapter, subscription_id, created_at, updated_at)
-        \\VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6ff2', $1, 'FREE', 'free', 'ACTIVE', 'noop', 'sub-m18', $2, $2)
-        \\ON CONFLICT (workspace_id) DO UPDATE SET plan_tier=EXCLUDED.plan_tier, updated_at=EXCLUDED.updated_at
-    , .{ TEST_WORKSPACE_ID, now_ms });
+        \\INSERT INTO billing.tenant_billing
+        \\  (tenant_id, plan_tier, plan_sku, balance_cents, grant_source, created_at, updated_at)
+        \\VALUES ($1, 'free', 'free_default', 1000, 'telemetry_test_seed', $2, $2)
+        \\ON CONFLICT (tenant_id) DO NOTHING
+    , .{ TEST_TENANT_ID, now_ms });
 }
 
 fn cleanupTestData(conn: *pg.Conn) void {

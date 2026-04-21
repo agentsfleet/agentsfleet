@@ -11,7 +11,6 @@ const hx_mod = @import("handlers/hx.zig");
 
 const workspace_activity = @import("handlers/workspaces/activity.zig");
 const zombie_lifecycle = @import("handlers/zombies/lifecycle.zig");
-const zombie_billing_summary = @import("handlers/zombies/billing_summary.zig");
 
 const Hx = hx_mod.Hx;
 
@@ -30,13 +29,4 @@ pub fn invokeWorkspaceZombieStop(hx: *Hx, req: *httpz.Request, route: router.Rou
     }
     const r = route.workspace_zombie_stop;
     zombie_lifecycle.innerStopZombie(hx.*, req, r.workspace_id, r.zombie_id);
-}
-
-pub fn invokeWorkspaceZombieBillingSummary(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    if (req.method != .GET) {
-        common.respondMethodNotAllowed(hx.res);
-        return;
-    }
-    const r = route.workspace_zombie_billing_summary;
-    zombie_billing_summary.innerGetZombieBillingSummary(hx.*, req, r.workspace_id, r.zombie_id);
 }

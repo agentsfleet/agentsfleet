@@ -86,7 +86,7 @@ pub fn getBilling(
     alloc: std.mem.Allocator,
     tenant_id: []const u8,
 ) !?Billing {
-    var row = (try store.loadByTenant(conn, alloc, tenant_id)) orelse return null;
+    const row = (try store.loadByTenant(conn, alloc, tenant_id)) orelse return null;
     return .{
         .plan_tier = row.plan_tier,
         .plan_sku = row.plan_sku,

@@ -20,8 +20,7 @@ const zombie_api = @import("handlers/zombies/api.zig");
 const zombie_act = @import("handlers/zombies/activity.zig");
 const zombie_tel = @import("handlers/zombies/telemetry.zig");
 const ws_lifecycle = @import("handlers/workspaces/lifecycle.zig");
-const ws_billing = @import("handlers/workspaces/billing.zig");
-const ws_billing_sum = @import("handlers/workspaces/billing_summary.zig");
+const tenant_billing_h = @import("handlers/tenant_billing.zig");
 const ws_ops = @import("handlers/workspaces/ops.zig");
 const ws_creds = @import("handlers/workspaces/credentials.zig");
 const admin_keys = @import("handlers/admin/platform_keys.zig");
@@ -49,7 +48,6 @@ const zombie_steer = @import("handlers/zombies/steer.zig");
 const dashboard_invokes = @import("route_table_invoke_dashboard.zig");
 pub const invokeWorkspaceActivity = dashboard_invokes.invokeWorkspaceActivity;
 pub const invokeWorkspaceZombieStop = dashboard_invokes.invokeWorkspaceZombieStop;
-pub const invokeWorkspaceZombieBillingSummary = dashboard_invokes.invokeWorkspaceZombieBillingSummary;
 
 const Hx = hx_mod.Hx;
 
@@ -111,24 +109,10 @@ pub fn invokePauseWorkspace(hx: *Hx, req: *httpz.Request, route: router.Route) v
     ws_ops.innerPauseWorkspace(hx.*, req, route.pause_workspace);
 }
 
-pub fn invokeUpgradeWorkspaceToScale(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    if (req.method != .POST) { common.respondMethodNotAllowed(hx.res); return; }
-    ws_billing.innerUpgradeWorkspaceToScale(hx.*, req, route.upgrade_workspace_to_scale);
-}
-
-pub fn invokeApplyWorkspaceBillingEvent(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    if (req.method != .POST) { common.respondMethodNotAllowed(hx.res); return; }
-    ws_billing.innerApplyWorkspaceBillingEvent(hx.*, req, route.apply_workspace_billing_event);
-}
-
-pub fn invokeGetWorkspaceBillingSummary(hx: *Hx, req: *httpz.Request, route: router.Route) void {
+pub fn invokeGetTenantBilling(hx: *Hx, req: *httpz.Request, route: router.Route) void {
+    _ = route;
     if (req.method != .GET) { common.respondMethodNotAllowed(hx.res); return; }
-    ws_billing_sum.innerGetWorkspaceBillingSummary(hx.*, req, route.get_workspace_billing_summary);
-}
-
-pub fn invokeSetWorkspaceScoringConfig(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    if (req.method != .POST) { common.respondMethodNotAllowed(hx.res); return; }
-    ws_billing.innerSetWorkspaceScoringConfig(hx.*, req, route.set_workspace_scoring_config);
+    tenant_billing_h.innerGetTenantBilling(hx.*, req);
 }
 
 pub fn invokeSyncWorkspace(hx: *Hx, req: *httpz.Request, route: router.Route) void {

@@ -45,7 +45,6 @@ pub const RecordedEvent = struct {
 };
 pub const AgentCompleted = events.AgentCompleted;
 pub const EntitlementRejected = events.EntitlementRejected;
-pub const BillingLifecycleEvent = events.BillingLifecycleEvent;
 pub const ServerStarted = events.ServerStarted;
 pub const WorkerStarted = events.WorkerStarted;
 pub const StartupFailed = events.StartupFailed;

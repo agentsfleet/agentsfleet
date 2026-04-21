@@ -7,7 +7,6 @@ const posthog = @import("posthog");
 pub const EventKind = enum {
     agent_completed,
     entitlement_rejected,
-    billing_lifecycle_event,
     server_started,
     worker_started,
     startup_failed,
@@ -58,29 +57,6 @@ pub const EntitlementRejected = struct {
             .{ .key = "workspace_id", .value = .{ .string = self.workspace_id } },
             .{ .key = "boundary", .value = .{ .string = self.boundary } },
             .{ .key = "reason_code", .value = .{ .string = self.reason_code } },
-            .{ .key = "request_id", .value = .{ .string = self.request_id } },
-        };
-    }
-};
-
-pub const BillingLifecycleEvent = struct {
-    distinct_id: []const u8,
-    workspace_id: []const u8,
-    event_type: []const u8,
-    reason: []const u8,
-    plan_tier: []const u8,
-    billing_status: []const u8,
-    request_id: []const u8,
-
-    pub const kind: EventKind = .billing_lifecycle_event;
-
-    pub fn properties(self: @This()) [6]posthog.Property {
-        return .{
-            .{ .key = "workspace_id", .value = .{ .string = self.workspace_id } },
-            .{ .key = "event_type", .value = .{ .string = self.event_type } },
-            .{ .key = "reason", .value = .{ .string = self.reason } },
-            .{ .key = "plan_tier", .value = .{ .string = self.plan_tier } },
-            .{ .key = "billing_status", .value = .{ .string = self.billing_status } },
             .{ .key = "request_id", .value = .{ .string = self.request_id } },
         };
     }

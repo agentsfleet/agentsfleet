@@ -144,27 +144,18 @@ test "bootstrapPersonalAccount: fresh signup provisions tenant/user/membership/w
         try std.testing.expectEqualSlices(u8, "owner", try row.get([]const u8, 0));
     }
 
-    // Credit state initialized at 0 and an audit row was written.
+    // Tenant billing row initialized at 1000¢ free.
     {
         var q = PgQuery.from(try db_ctx.conn.query(
-            \\SELECT initial_credit_cents, remaining_credit_cents, currency
-            \\FROM billing.workspace_credit_state WHERE workspace_id = $1::uuid
-        , .{result.workspace_id}));
+            \\SELECT plan_tier, plan_sku, balance_cents, grant_source
+            \\FROM billing.tenant_billing WHERE tenant_id = $1::uuid
+        , .{result.tenant_id}));
         defer q.deinit();
         const row = (try q.next()) orelse return error.TestUnexpectedResult;
-        try std.testing.expectEqual(@as(i64, 0), try row.get(i64, 0));
-        try std.testing.expectEqual(@as(i64, 0), try row.get(i64, 1));
-        try std.testing.expectEqualSlices(u8, "USD", try row.get([]const u8, 2));
-    }
-    {
-        var q = PgQuery.from(try db_ctx.conn.query(
-            \\SELECT actor, delta_credit_cents FROM billing.workspace_credit_audit
-            \\WHERE workspace_id = $1::uuid
-        , .{result.workspace_id}));
-        defer q.deinit();
-        const row = (try q.next()) orelse return error.TestUnexpectedResult;
-        try std.testing.expectEqualSlices(u8, "signup_bootstrap", try row.get([]const u8, 0));
-        try std.testing.expectEqual(@as(i64, 0), try row.get(i64, 1));
+        try std.testing.expectEqualSlices(u8, "free", try row.get([]const u8, 0));
+        try std.testing.expectEqualSlices(u8, "free_default", try row.get([]const u8, 1));
+        try std.testing.expectEqual(@as(i64, 1000), try row.get(i64, 2));
+        try std.testing.expectEqualSlices(u8, "bootstrap_free_grant", try row.get([]const u8, 3));
     }
 }
 

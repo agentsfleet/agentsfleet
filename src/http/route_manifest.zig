@@ -41,11 +41,8 @@ pub const entries = [_]Entry{
     // Activity
     .{ .method = "GET", .path = "/v1/workspaces/{workspace_id}/activity" },
 
-    // Billing
-    .{ .method = "POST", .path = "/v1/workspaces/{workspace_id}/billing/events" },
-    .{ .method = "POST", .path = "/v1/workspaces/{workspace_id}/billing/scale" },
-    .{ .method = "GET", .path = "/v1/workspaces/{workspace_id}/billing/summary" },
-    .{ .method = "GET", .path = "/v1/workspaces/{workspace_id}/zombies/{zombie_id}/billing/summary" },
+    // Tenant billing (plan + balance snapshot)
+    .{ .method = "GET", .path = "/v1/tenants/me/billing" },
 
     // Credentials
     .{ .method = "GET", .path = "/v1/workspaces/{workspace_id}/credentials" },
@@ -53,9 +50,6 @@ pub const entries = [_]Entry{
     .{ .method = "GET", .path = "/v1/workspaces/{workspace_id}/credentials/llm" },
     .{ .method = "PUT", .path = "/v1/workspaces/{workspace_id}/credentials/llm" },
     .{ .method = "DELETE", .path = "/v1/workspaces/{workspace_id}/credentials/llm" },
-
-    // Scoring
-    .{ .method = "POST", .path = "/v1/workspaces/{workspace_id}/scoring/config" },
 
     // Zombies
     .{ .method = "GET", .path = "/v1/workspaces/{workspace_id}/zombies" },

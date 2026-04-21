@@ -18,7 +18,6 @@ const TestHarness = harness_mod.TestHarness;
 
 const TEST_TENANT_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01";
 const TEST_WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
-const TEST_SUBSCRIPTION_ID = "sub_rbac_test";
 const TEST_REPO_URL = "https://github.com/usezombie/rbac-http-test";
 const TEST_ISSUER = "https://clerk.dev.usezombie.com";
 const TEST_AUDIENCE = "https://api.usezombie.com";
@@ -54,9 +53,6 @@ fn seedAndHarness(alloc: std.mem.Allocator) !*TestHarness {
 
 fn setupSeedData(conn: *pg.Conn) !void {
     const now_ms = std.time.milliTimestamp();
-    // Idempotent — shared tenant/workspace across integration suites.
-    _ = try conn.exec("DELETE FROM workspace_billing_audit WHERE workspace_id = $1", .{TEST_WORKSPACE_ID});
-
     _ = try conn.exec(
         \\INSERT INTO tenants (tenant_id, name, created_at, updated_at)
         \\VALUES ($1, 'RBAC Test Tenant', $2, $2)
@@ -85,26 +81,17 @@ fn setupSeedData(conn: *pg.Conn) !void {
         \\    updated_at = EXCLUDED.updated_at
     , .{ TEST_WORKSPACE_ID, now_ms });
     _ = try conn.exec(
-        \\INSERT INTO workspace_billing_state
-        \\  (billing_id, workspace_id, plan_tier, plan_sku, billing_status, adapter, subscription_id, created_at, updated_at)
-        \\VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f72', $1, 'SCALE', 'scale', 'ACTIVE', 'noop', $2, $3, $3)
-        \\ON CONFLICT (workspace_id) DO UPDATE
-        \\SET plan_tier = EXCLUDED.plan_tier,
-        \\    plan_sku = EXCLUDED.plan_sku,
-        \\    billing_status = EXCLUDED.billing_status,
-        \\    adapter = EXCLUDED.adapter,
-        \\    subscription_id = EXCLUDED.subscription_id,
-        \\    updated_at = EXCLUDED.updated_at
-    , .{ TEST_WORKSPACE_ID, TEST_SUBSCRIPTION_ID, now_ms });
+        \\INSERT INTO billing.tenant_billing
+        \\  (tenant_id, plan_tier, plan_sku, balance_cents, grant_source, created_at, updated_at)
+        \\VALUES ($1, 'scale', 'scale_default', 1000000, 'rbac_test_seed', $2, $2)
+        \\ON CONFLICT (tenant_id) DO NOTHING
+    , .{ TEST_TENANT_ID, now_ms });
 }
 
 fn cleanupSeedData(conn: *pg.Conn) !void {
-    // Narrow scope — only delete rows THIS suite owns. Tenants/workspaces are shared
-    // across the integration suite via the baked-in JWT claims; wiping them here
-    // breaks sibling tests (byok, telemetry, dashboard, tenant_api_keys, zombie_steer
-    // all use TEST_TENANT_ID "…6f01" and TEST_WORKSPACE_ID "…6f11").
-    // See docs/ZIG_RULES.md "HTTP Integration Tests".
-    _ = try conn.exec("DELETE FROM workspace_billing_audit WHERE workspace_id = $1", .{TEST_WORKSPACE_ID});
+    _ = conn;
+    // Tenants/workspaces are shared across the integration suite; nothing to
+    // narrow-clean now that workspace-scoped billing audit tables are gone.
 }
 
 // ── Test: role gates for billing + zombie-lifecycle ───────────────────────────

@@ -195,10 +195,10 @@ fn respondNotFound(res: *httpz.Response) void {
     ;
 }
 
-test "dispatchMatchedRoute route matcher covers billing event endpoint" {
-    const matched = router.match("/v1/workspaces/ws_1/billing/events") orelse return error.TestExpectedEqual;
+test "dispatchMatchedRoute route matcher covers tenant billing endpoint" {
+    const matched = router.match("/v1/tenants/me/billing") orelse return error.TestExpectedEqual;
     switch (matched) {
-        .apply_workspace_billing_event => |workspace_id| try std.testing.expectEqualStrings("ws_1", workspace_id),
+        .get_tenant_billing => {},
         else => return error.TestExpectedEqual,
     }
 }
