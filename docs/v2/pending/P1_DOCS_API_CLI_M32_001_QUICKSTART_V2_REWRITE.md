@@ -6,9 +6,11 @@
 **Date:** Apr 21, 2026
 **Status:** PENDING
 **Priority:** P1 — The docs are the product landing surface; stale pre-Clerk vocabulary blocks operator onboarding
-**Batch:** B2 — alpha gate, parallel with M19/M13/M21/M11_005/M27 (docs ship in lockstep with the code they document)
+**Batch:** B3 — sequential on B2 code specs (M11_005, M19_001, M13_001, M21_001, M27_001, M33_001). Docs author against target-state, land after code merges to main.
 **Branch:** feat/m32-quickstart-v2 (in `~/Projects/docs`)
-**Depends on:** M19_001 (zombie lifecycle UI), M13_001 (credential vault UI), M11_005 (tenant credits), M21_001 (BYOK) — content needs these to exist
+**Depends on:** M11_005 (tenant credits), M19_001 (zombie lifecycle UI + `zombiectl zombie install`), M13_001 (credential vault UI), M21_001 (BYOK), M27_001 (dashboard detail + list pages), M33_001 (flagship `samples/homelab` executable Homelab Zombie).
+
+**Sequencing note — M31_001 lands first in the docs repo.** M31_001 and M32_001 both touch `docs.json` and `concepts.mdx`. They are NOT parallel in the docs repo. Order: M31_001's docs-side PR merges first, then M32_001 rebases onto the updated docs `main`. In the usezombie repo, M31 is a code branch (see M31_001 spec); only its sibling docs PR is the one that collides with M32.
 
 ---
 
@@ -35,14 +37,15 @@ Target repo: `/Users/kishore/Projects/docs/` (Mintlify, deployed at docs.usezomb
 | `operator/quickstart.mdx` | CREATE | Deployment quickstart for self-hosted operators. |
 | `billing/*.mdx` | UPDATE | Tenant-scoped $10 free credits. Remove invite-code/redeem references. |
 | all `*.mdx` | SWEEP | Remove stale `credits redeem`, `invite code`, `access code` references (killed by Clerk pivot). |
-| `docs.json` | UPDATE | Nav wiring for new pages: remove 3 deleted integration pages, add 3 new archetype pages. |
-| `docs/integrations/hiring-agent.mdx` | DELETE | Stale archetype page (sourced from `nostromo/hiring_agent_zombie.md`, now deleted — low forward value). |
-| `docs/integrations/lead-collector.mdx` | DELETE | Stale archetype page (sourced from `nostromo/lead_collector_zombie.md`, now deleted). |
-| `docs/integrations/ops.mdx` | DELETE | Stale archetype page (sourced from `nostromo/ops_zombie.md`, now deleted). |
-| `docs/zombies/homebox-audit.mdx` | CREATE | New archetype page sourced from `docs/brainstormed/samples/homebox-audit/README.md`. |
-| `docs/zombies/migration-zombie.mdx` | CREATE | New archetype page sourced from `docs/brainstormed/samples/migration-zombie/README.md`. |
-| `docs/zombies/side-project-resurrector.mdx` | CREATE | New archetype page sourced from `docs/brainstormed/samples/side-project-resurrector/README.md`. |
-| `changelog.mdx` | UPDATE | Note archetype page churn (3 removed, 3 added) under an `Integrations` tag. |
+| `docs.json` | UPDATE | Nav wiring for new pages: remove 3 deleted integration pages, add 4 new zombie pages (flagship Homelab Zombie + 3 README-only zombies). |
+| `docs/integrations/hiring-agent.mdx` | DELETE | Stale zombie page (sourced from `nostromo/hiring_agent_zombie.md`, now deleted — low forward value). |
+| `docs/integrations/lead-collector.mdx` | DELETE | Stale zombie page (sourced from `nostromo/lead_collector_zombie.md`, now deleted). |
+| `docs/integrations/ops.mdx` | DELETE | Stale zombie page (sourced from `nostromo/ops_zombie.md`, now deleted). |
+| `docs/zombies/homelab.mdx` | CREATE | Flagship zombie page sourced from `docs/brainstormed/docs/homelab-zombie-launch.md` — the Homelab Zombie narrative (kubectl/docker diagnosis without holding the kubeconfig). The underlying executable skill (`samples/homelab/`) is authored by M33_001; this MDX page is the user-facing docs entry. |
+| `docs/zombies/homebox-audit.mdx` | CREATE | README-only zombie page sourced from `samples/homebox-audit/README.md` (README-only move in §9; not an executable install target in this milestone). |
+| `docs/zombies/migration-zombie.mdx` | CREATE | README-only zombie page sourced from `samples/migration-zombie/README.md` (README-only move in §9; not an executable install target in this milestone). |
+| `docs/zombies/side-project-resurrector.mdx` | CREATE | README-only zombie page sourced from `samples/side-project-resurrector/README.md` (README-only move in §9; not an executable install target in this milestone). |
+| `changelog.mdx` | UPDATE | Note zombie page churn (3 removed, 4 added) under an `Integrations` tag. |
 
 ---
 
@@ -147,20 +150,20 @@ Rewrite billing pages around the single-tenant-wallet model.
 |-----|--------|--------|-------|----------|-----------|
 | 7.1 | PENDING | `docs.json` | new CLI + operator pages | reachable from sidebar | `mint dev` manual |
 | 7.2 | PENDING | `docs.json` | deleted pre-Clerk pages | no broken nav entries | `mint dev` link check |
-| 7.3 | PENDING | `docs.json` | archetype nav parity — 3 old integration entries removed, 3 new zombie entries added | integration nav count drops by 3, zombies nav count rises by 3 | `mint dev` link check |
+| 7.3 | PENDING | `docs.json` | zombie nav parity — 3 old integration entries removed, 3 new zombie entries added | integration nav count drops by 3, zombies nav count rises by 3 | `mint dev` link check |
 
-### §8 — Archetype page churn
+### §8 — Zombie page churn
 
 **Status:** PENDING
 
-Replace the three stale pre-pivot integration archetypes (hiring-agent, lead-collector, ops) with three new archetypes sourced from `docs/brainstormed/samples/`.
+Replace the three stale pre-pivot integration zombies (hiring-agent, lead-collector, ops) with four new zombie pages: the flagship **Homelab Zombie** (sourced from `docs/brainstormed/docs/homelab-zombie-launch.md`; the executable skill at `samples/homelab/` is authored by M33_001) plus three README-only zombies (homebox-audit, migration-zombie, side-project-resurrector) sourced from the moved `samples/<name>/README.md`.
 
 **Dimensions:**
 
 | Dim | Status | Target | Input | Expected | Test type |
 |-----|--------|--------|-------|----------|-----------|
 | 8.1 | PENDING | `docs/integrations/{hiring-agent,lead-collector,ops}.mdx` | stale-page deletion | all three files removed from `docs/` repo; no broken internal links remain | `grep -r "integrations/hiring-agent\|integrations/lead-collector\|integrations/ops" /Users/kishore/Projects/docs/` returns 0 |
-| 8.2 | PENDING | `docs/zombies/homebox-audit.mdx`, `docs/zombies/migration-zombie.mdx`, `docs/zombies/side-project-resurrector.mdx` | new archetype addition | each page renders cleanly under `mint dev`, content reflects the upstream `README.md` from `docs/brainstormed/samples/*/README.md` | manual review + `mint dev` |
+| 8.2 | PENDING | `docs/zombies/homelab.mdx`, `docs/zombies/homebox-audit.mdx`, `docs/zombies/migration-zombie.mdx`, `docs/zombies/side-project-resurrector.mdx` | new zombie addition | each page renders cleanly under `mint dev`. `homelab.mdx` content reflects `docs/brainstormed/docs/homelab-zombie-launch.md`; the three README-only pages reflect `samples/<name>/README.md` post-move. | manual review + `mint dev` |
 | 8.3 | PENDING | `docs.json` + changelog | nav parity | `docs.json` drops 3 integration entries, adds 3 zombie entries; `changelog.mdx` notes the churn under an `Integrations` tag | `mint dev` broken-link clean |
 
 ---
@@ -252,40 +255,50 @@ N/A — docs rewrite.
 
 ---
 
-### §9 — Sample zombies: move from brainstormed/ to repo root samples/
+### §9 — Sample zombies: move from brainstormed/ to repo root samples/ (physical `mv` + doc-source retarget only)
 
 **Status:** PENDING
 
-The three new archetype pages (homebox-audit, migration-zombie, side-project-resurrector) currently source their content from `docs/brainstormed/samples/` inside the `usezombie` repo. `brainstormed/` is a scratchpad — samples we want to ship to operators belong at the repo root under `samples/`, where `zombiectl zombie create --from samples/<name>` can reach them and where their existence signals "supported archetype" rather than "exploratory note."
+Samples we want to ship to operators belong at the repo root under `samples/`, not under `docs/brainstormed/` (which is a scratchpad). Two distinct kinds of move land here:
+
+**(A) Flagship executable zombie — Homelab Zombie.**
+M32 §9 only performs the physical `git mv` of the two sub-skill directories (`kubectl-readonly`, `docker-readonly`) from `docs/brainstormed/samples/skills/` to `samples/skills/` (and subsequently referenced by `samples/homelab/skills/` — authored by M33_001). The flagship `samples/homelab/` directory itself (its `SKILL.md`, `TRIGGER.md`, `README.md`) is **authored by M33_001**, not by M32. M32 does not attempt `zombiectl zombie install --from samples/homelab` — that E2E is M33_001's acceptance.
+
+**(B) README-only zombies — homebox-audit, migration-zombie, side-project-resurrector.**
+These three directories move from `docs/brainstormed/samples/` to `samples/` as README-only content (no executable `SKILL.md` / `TRIGGER.md` authored in this milestone). They exist at `samples/<name>/README.md` purely so the four new MDX zombie pages have a canonical source path post-move. Making them installable is a follow-up milestone per zombie — not M32, not M33.
+
+**M32 owns ONLY the physical move + doc-source retarget.** It does NOT author executable skills; it does NOT attempt any `zombiectl zombie install --from samples/<name>` E2E. The valid install target authored in this v2 cycle is `samples/homelab` (owned by M33_001). `samples/homebox-audit/`, `samples/migration-zombie/`, `samples/side-project-resurrector/` are README-only after M32 and are explicitly NOT valid install targets.
 
 **Physical move (in the `usezombie` repo, not the docs repo):**
 
-| From | To |
-|------|----|
-| `/Users/kishore/Projects/usezombie/docs/brainstormed/samples/homebox-audit/` | `/Users/kishore/Projects/usezombie/samples/homebox-audit/` |
-| `/Users/kishore/Projects/usezombie/docs/brainstormed/samples/migration-zombie/` | `/Users/kishore/Projects/usezombie/samples/migration-zombie/` |
-| `/Users/kishore/Projects/usezombie/docs/brainstormed/samples/side-project-resurrector/` | `/Users/kishore/Projects/usezombie/samples/side-project-resurrector/` |
-| `/Users/kishore/Projects/usezombie/docs/brainstormed/samples/skills/docker-readonly/` | `/Users/kishore/Projects/usezombie/samples/skills/docker-readonly/` |
-| `/Users/kishore/Projects/usezombie/docs/brainstormed/samples/skills/kubectl-readonly/` | `/Users/kishore/Projects/usezombie/samples/skills/kubectl-readonly/` |
+| From | To | Nature |
+|------|----|--------|
+| `/Users/kishore/Projects/usezombie/docs/brainstormed/samples/homebox-audit/` | `/Users/kishore/Projects/usezombie/samples/homebox-audit/` | README-only |
+| `/Users/kishore/Projects/usezombie/docs/brainstormed/samples/migration-zombie/` | `/Users/kishore/Projects/usezombie/samples/migration-zombie/` | README-only |
+| `/Users/kishore/Projects/usezombie/docs/brainstormed/samples/side-project-resurrector/` | `/Users/kishore/Projects/usezombie/samples/side-project-resurrector/` | README-only |
+| `/Users/kishore/Projects/usezombie/docs/brainstormed/samples/skills/docker-readonly/` | `/Users/kishore/Projects/usezombie/samples/skills/docker-readonly/` | sub-skill (consumed by M33_001's flagship) |
+| `/Users/kishore/Projects/usezombie/docs/brainstormed/samples/skills/kubectl-readonly/` | `/Users/kishore/Projects/usezombie/samples/skills/kubectl-readonly/` | sub-skill (consumed by M33_001's flagship) |
 
-Each zombie archetype directory currently contains `README.md` only; the two skill directories are preserved wholesale. Follow-up work to make any of these "executable" (shippable skill YAML + trigger manifest) is out of scope for M32 — this section is a physical relocation plus doc-source retarget.
+The three zombie directories each contain `README.md` only. The two skill directories are preserved wholesale; M33_001 converts their content into Clawhub-format `SKILL.md` at `samples/homelab/skills/<name>/SKILL.md`. The physical `samples/homelab/` root (flagship SKILL.md + TRIGGER.md + README.md) is **not created by M32** — it is created by M33_001.
 
 **Dimensions:**
 
 | Dim | Status | Target | Input | Expected | Test type |
 |-----|--------|--------|-------|----------|-----------|
-| X.1 | PENDING | `/Users/kishore/Projects/usezombie/samples/` | `ls /Users/kishore/Projects/usezombie/samples/` after move | Lists all 5 items: `homebox-audit/`, `migration-zombie/`, `side-project-resurrector/`, `skills/docker-readonly/`, `skills/kubectl-readonly/` | shell |
-| X.2 | PENDING | `/Users/kishore/Projects/usezombie/docs/brainstormed/samples/` | `ls` after move | Empty, or directory removed entirely | shell |
-| X.3 | PENDING | `docs.json` (Mintlify) | nav entries for the three new archetype pages | Reference `samples/<name>/README.md` as their upstream source, not `docs/brainstormed/samples/<name>/README.md` | manual review |
-| X.4 | PENDING | `docs/zombies/homebox-audit.mdx`, `docs/zombies/migration-zombie.mdx`, `docs/zombies/side-project-resurrector.mdx` | `Files Changed` row and any inline source attribution | Points at `samples/<name>/README.md` — the new canonical path | grep |
-| X.5 | PENDING | `zombiectl zombie create --from samples/homebox-audit` | Run in dev against a local `zombied` | Either completes end-to-end OR the archetype page carries an explicit "README-only sample for now, executable form in follow-up" note. Whichever applies is recorded verbatim in VERIFY evidence. | manual E2E |
+| 9.1 | PENDING | `/Users/kishore/Projects/usezombie/samples/` | `ls /Users/kishore/Projects/usezombie/samples/` after move | Lists exactly: `homebox-audit/`, `migration-zombie/`, `side-project-resurrector/`, `skills/docker-readonly/`, `skills/kubectl-readonly/` | shell |
+| 9.2 | PENDING | `/Users/kishore/Projects/usezombie/docs/brainstormed/samples/` | `ls` after move | Empty, or directory removed entirely | shell |
+| 9.3 | PENDING | `docs.json` (Mintlify) | nav entries for the four new zombie pages | `homelab.mdx` is listed alongside the three README-only zombies; nav attribution references `samples/homelab` (for flagship — authored by M33_001) and `samples/<name>/README.md` (for the three README-only zombies) | manual review |
+| 9.4 | PENDING | `docs/zombies/homelab.mdx`, `docs/zombies/homebox-audit.mdx`, `docs/zombies/migration-zombie.mdx`, `docs/zombies/side-project-resurrector.mdx` | `Files Changed` row and inline source attribution | `homelab.mdx` cites `docs/brainstormed/docs/homelab-zombie-launch.md` (narrative) + `samples/homelab/` (executable, authored by M33_001); the three README-only pages cite `samples/<name>/README.md` | grep |
+| 9.5 | PENDING | physical existence check | `ls /Users/kishore/Projects/usezombie/samples/homebox-audit/ /Users/kishore/Projects/usezombie/samples/migration-zombie/ /Users/kishore/Projects/usezombie/samples/side-project-resurrector/` | Each shows only `README.md` (no SKILL.md / TRIGGER.md in this milestone — those are per-zombie follow-ups) | shell (ls) |
 
 **Acceptance for this section:**
 
 - [ ] Files are moved on disk (no copies; `git mv` so history follows).
-- [ ] `docs.json` nav items for the three archetype pages reference `samples/` paths in their source attribution.
-- [ ] The three `docs/zombies/*.mdx` pages cite `samples/<name>/README.md` in their `Files Changed` row.
-- [ ] If `zombiectl zombie create --from samples/homebox-audit` does not run cleanly in dev, the page carries the follow-up note and the limitation is logged under Verification Evidence.
+- [ ] `docs.json` nav items for all four zombie pages (flagship + 3 README-only) land with correct source attribution.
+- [ ] The four `docs/zombies/*.mdx` pages cite the correct upstream path.
+- [ ] `samples/homebox-audit/`, `samples/migration-zombie/`, `samples/side-project-resurrector/` each contain README.md only — they are README-only in this milestone and explicitly NOT install targets for `zombiectl zombie install`.
+- [ ] M32 explicitly does NOT author `samples/homelab/SKILL.md` / `TRIGGER.md` / `README.md` — that is M33_001's scope.
+- [ ] M32 explicitly does NOT attempt any `zombiectl zombie install --from samples/<name>` E2E — the only valid install target in v2 (authored by M33_001) is `samples/homelab`; M32 does not exercise it.
 
 ---
 

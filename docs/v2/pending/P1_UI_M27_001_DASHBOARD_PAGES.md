@@ -20,6 +20,19 @@ M12 narrowed to the foundation (backend + primitives + token pyramid). M26 unifi
 
 ---
 
+## §0 — Route Ownership (M27 vs M19 — no overlap)
+
+**Status:** CONSTRAINT
+
+| Route | Owner | Scope |
+|-------|-------|-------|
+| `app/(dashboard)/zombies/new/page.tsx` | **M19_001** | Install form + webhook URL display after submit. M27 does NOT own this route. |
+| `app/(dashboard)/zombies/[id]/page.tsx` | **M27_001** (this spec) | Zombie detail — metadata, kill switch, spend panel, activity feed. |
+
+This is a §-level constraint, not a buried note. If EXECUTE surfaces install-form UI, that work belongs in M19, not here.
+
+---
+
 ## Overview
 
 **Goal (testable):** Operators signed into `app.usezombie.com` see five dashboard pages — overview, zombies list, zombie detail, firewall placeholder, minimal settings — all consuming M12's backend endpoints via a typed, per-resource API client, using M26's unified Button/Card/Dialog, surfaced through the M12 shared-primitive toolbox (StatusCard / EmptyState / Pagination / DataTable / ConfirmDialog / ActivityFeed).
@@ -229,6 +242,7 @@ M27 is purely composition on top of what M12 + M26 delivered. No new API endpoin
 - i18n — English only
 - Chat with running agent — CLI-only until a future milestone
 - Advanced filtering/search on activity — basic event_type prefix filter only
+- **Grant-health indicator dot on zombie cards** — cut from alpha. The dot would require a per-zombie grant-aggregation endpoint that's not worth building before a dashboard grants UI exists to give it context. The activity log already surfaces `UZ-GRANT-001` as a first-class event, so operators have a way to see grant state without a summary widget. Revisit when a full grants UI lands.
 
 ---
 

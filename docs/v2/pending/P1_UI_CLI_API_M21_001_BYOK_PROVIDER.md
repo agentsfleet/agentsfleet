@@ -8,7 +8,7 @@
 **Priority:** P1 — Blocks operators who exhaust free credits; enables enterprise self-serve
 **Batch:** B2 — parallel with M19_001, M13_001, M11_005
 **Branch:** feat/m21-byok-provider
-**Depends on:** M12_001 (settings page), M13_001 (credential vault), M15_001 (credit metering, done)
+**Depends on:** M12_001 (settings page), **M13_001 (credential vault — provides Add Credential modal and Type selector that M21 extends with `llm_provider`)**, M15_001 (credit metering, done), M11_005 (tenant billing — provides the `tenant_billing.balance_cents` gate that triggers the credit-exhausted UX).
 
 > **v2 note — identifier reuse:** `M21_001` is also used in v1 for "Agent Interrupt and Steer" (`docs/v1/done/M21_001_AGENT_INTERRUPT_AND_STEER.md`, done). That v1 primitive is what M23_001 (v2) builds on. When resolving `M21_001` in a cross-reference, check the version prefix (`v1/done/` vs `v2/pending/`) — they are unrelated features sharing the same milestone slot across schema generations.
 
@@ -16,21 +16,23 @@
 
 ## Overview
 
-**Goal (testable):** An operator who has exhausted their free credits can: (a) open Settings > Provider in the dashboard, switch to "Bring your own key", select their Anthropic credential from the vault, choose a model, and click Save — after which all zombie runs in that workspace bill against their own API quota; OR (b) run `zombiectl provider set --workspace ws --provider anthropic --credential-ref my_anthropic_key --model claude-sonnet-4-6` with identical effect; OR (c) call `PUT /v1/workspaces/{ws}/provider` via the API.
+**Goal (testable):** An operator who has exhausted their free tenant credits can: (a) open Settings > Provider in the dashboard, switch to "Bring your own key", select their Anthropic credential from the vault, choose a model, and click Save — after which **all zombie runs in every workspace under their tenant** bill against their own API quota; OR (b) run `zombiectl provider set --provider anthropic --credential-ref my_anthropic_key --model claude-sonnet-4-6` with identical effect (no `--workspace` flag — the setting is tenant-scoped); OR (c) call `PUT /v1/tenants/me/provider` via the API.
+
+**Scope note — tenant, not workspace.** BYOK configuration is tenant-scoped. Per-workspace overrides and per-zombie overrides are explicitly out of scope for the MVP: billing is tenant-scoped (M11_005), so the provider key that pays the LLM bill must be tenant-scoped too. Settings > Provider lives in the tenant-settings tab, not any workspace-settings surface.
 
 **Problem:** Credits run out. Today, when an operator's 20 free credits are exhausted, their only paths are: upgrade the UseZombie plan (pay UseZombie to keep running hosted Claude), or stop using the product. BYOK (bring your own key) is the enterprise self-serve unlock: the operator adds their own Anthropic or OpenAI API key, and UseZombie becomes the orchestration layer without being the LLM cost center. Without this, operators who want to control their LLM spend, choose specific models, or route to an on-prem/private model cannot do so.
 
 **Conceptual distinction:** Provider credentials are different from tool credentials. Tool credentials (M13) are injected by the firewall into outbound HTTP calls that the zombie makes to external services. Provider credentials are used by the UseZombie runtime itself to make LLM API calls on behalf of the zombie — they are never visible to the zombie's tool calls, never logged in the activity stream, never accessible via zombie code.
 
-**Solution summary:** (1) New `credential_type = llm_provider` in the credential vault — stored with the same encryption as tool credentials but tagged differently and excluded from the firewall injection path. (2) Provider config API: `GET/PUT /v1/workspaces/{ws}/provider` for workspace default; `GET/PUT /v1/workspaces/{ws}/zombies/{id}/provider` for per-zombie override. (3) Dashboard: Settings > Provider tab. (4) CLI: `zombiectl provider set/get`. (5) Usage panel on Settings showing per-zombie token usage and estimated cost from M15_001's metering data.
+**Solution summary:** (1) Extend the M13_001 credential-type enum to include `llm_provider` — stored with the same encryption as tool credentials but tagged differently and excluded from the firewall injection path. (2) Tenant-scoped provider config API: `GET/PUT /v1/tenants/me/provider`. No per-workspace, no per-zombie override endpoints. (3) Dashboard: Settings > Provider tab (under tenant settings). (4) CLI: `zombiectl provider set/get` (no `--workspace` flag). (5) Usage panel on Settings showing per-zombie token usage and estimated cost from M15_001's metering data.
 
 **DX paths:**
 
 | Action | CLI | UI | API |
 |---|---|---|---|
-| View current provider | `zombiectl provider get` | Settings > Provider | `GET /v1/workspaces/{ws}/provider` |
-| Set BYOK (workspace) | `zombiectl provider set --provider anthropic ...` | Settings > Provider > BYOK | `PUT /v1/workspaces/{ws}/provider` |
-| View credit usage | `zombiectl credits status` | Settings > Usage panel | `GET /v1/tenants/me/credits` |
+| View current provider | `zombiectl provider get` | Settings > Provider | `GET /v1/tenants/me/provider` |
+| Set BYOK (tenant) | `zombiectl provider set --provider anthropic ...` | Settings > Provider > BYOK | `PUT /v1/tenants/me/provider` |
+| View credit usage | `zombiectl credits status` | Settings > Usage panel | `GET /v1/tenants/me/billing` |
 
 ---
 
@@ -82,7 +84,7 @@ TOTAL            24    2.5M        $1.75
 - 1.2 PENDING
   - target: `app/settings/components/ProviderSettings.tsx`
   - input: user selects BYOK, selects Anthropic, selects credential "my_anthropic_key" from vault, clicks Save
-  - expected: `PUT /v1/workspaces/{ws}/provider` with `{ type: "anthropic", credential_ref: "my_anthropic_key", model: "claude-sonnet-4-6" }` — success toast
+  - expected: `PUT /v1/tenants/me/provider` with `{ type: "anthropic", credential_ref: "my_anthropic_key", model: "claude-sonnet-4-6" }` — success toast
   - test_type: integration (API mock)
 - 1.3 PENDING
   - target: `app/settings/components/ProviderSettings.tsx`
@@ -137,7 +139,7 @@ Reset:        Never (one-time credits)
 - 3.1 PENDING
   - target: `zombiectl provider set`
   - input: `--provider anthropic --credential-ref my_anthropic_key --model claude-sonnet-4-6`
-  - expected: `PUT /v1/workspaces/{ws}/provider` called; success message printed
+  - expected: `PUT /v1/tenants/me/provider` called; success message printed
   - test_type: CLI integration
 - 3.2 PENDING
   - target: `zombiectl provider set --hosted`
@@ -178,9 +180,11 @@ An operator adds a provider credential the same way as any credential: Add Crede
 ### 5.1 New API Endpoints
 
 ```
-GET  /v1/workspaces/{ws}/provider                   — get workspace LLM provider config
-PUT  /v1/workspaces/{ws}/provider                   — set workspace LLM provider config
+GET  /v1/tenants/me/provider                   — get tenant LLM provider config
+PUT  /v1/tenants/me/provider                   — set tenant LLM provider config
 ```
+
+No per-workspace and no per-zombie provider endpoints. Those are explicitly out of scope (see §9).
 
 ### 5.2 Provider Config Schema
 
@@ -227,6 +231,64 @@ PUT  /v1/workspaces/{ws}/provider                   — set workspace LLM provid
 | 5 | CLI `zombiectl provider set/get` | dims 3.1–3.2 |
 | 6 | Usage panel with M15_001 metering data | dim 1.4 |
 | 7 | Cross-compile + full test gate | all dims |
+
+---
+
+## 7.5 Credit-Exhausted User Journey
+
+**Status:** PENDING
+
+The tenant balance gate is the bridge between M11_005 (credit enforcement) and M21_001 (BYOK unlock). This section specifies exactly what an operator sees when `billing.tenant_billing.balance_cents <= 0` and they have not yet configured BYOK.
+
+### 7.5.1 Worker-side gate (NEW zombie invocations)
+
+When a worker picks up a new zombie invocation for tenant T:
+
+1. Worker looks up `billing.tenant_billing.balance_cents` for T (single read, cached for the run's lifetime).
+2. Worker looks up `tenant.provider.type` — `hosted` vs BYOK.
+3. **If `provider.type == 'hosted'` AND `balance_cents <= 0`:** worker rejects with HTTP `402 UZ-CREDIT-EXHAUSTED`. The activity stream records a `credit_exhausted_at_dispatch` event with the tenant_id and zombie_id.
+4. **If `provider.type != 'hosted'` (BYOK set):** the `balance_cents` check is SKIPPED. LLM calls bill against the operator's provider quota directly. `tenant_billing.balance_cents` is not mutated on BYOK runs.
+
+### 7.5.2 Dashboard banner
+
+When the active tenant has `balance_cents <= 0` AND `provider.type == 'hosted'`:
+
+- Global top-of-page banner (all dashboard routes): "You've used all your free credits. Add your own LLM key to keep running." with a `[Configure BYOK →]` button linking to Settings > Provider.
+- Banner is dismissible per session but re-appears next session until BYOK is configured or credits are topped up.
+- If `provider.type != 'hosted'`, banner is NEVER shown (even with balance_cents <= 0), because BYOK runs don't consume the credit pool.
+
+### 7.5.3 CLI credit-exhausted behavior
+
+Both `zombiectl zombie install` and `zombiectl zombie trigger` (and any future invocation verb) return exit code 2 when the API returns `402 UZ-CREDIT-EXHAUSTED`, with this stderr message:
+
+```
+Error: Credits exhausted.
+
+Your tenant has used all 1000 free credits. To keep running, bring your own LLM key:
+
+  zombiectl provider set --provider anthropic --credential-ref <vault-name>
+
+Or add credits at https://app.usezombie.com/settings/billing.
+```
+
+### 7.5.4 Existing in-flight zombies (CRITICAL)
+
+Runs already executing when the tenant balance crosses zero must not be killed mid-step — that would leave partial tool calls and corrupt state. Instead:
+
+- The in-flight run **finishes the current step** (completes the current LLM call + any pending tool call chain for that step).
+- At the next **step boundary**, the worker re-reads `balance_cents`. If still `<= 0` and provider is still hosted, the run halts with an `credit_exhausted_at_step` event in the activity stream, including the step_id it stopped at.
+- The run does NOT auto-resume. It stays in `status = credit_exhausted` until either:
+  - BYOK is configured for the tenant (worker resumes from the halted step), OR
+  - Tenant balance is topped up (post-MVP billing flow — for now, halted runs remain halted).
+- **State integrity:** all tool outputs, grants, activity events produced up to the halt step are preserved. Resuming is deterministic from the halted step boundary.
+
+### 7.5.5 Once BYOK is set
+
+After a successful `PUT /v1/tenants/me/provider` with `type != 'hosted'`:
+
+- Worker stops reading `tenant_billing.balance_cents` on future invocations.
+- Any `credit_exhausted` zombies can be resumed (manual trigger for MVP; automatic resume deferred).
+- LLM calls bill against the operator's provider directly. The UseZombie hosted LLM quota is not touched.
 
 ---
 

@@ -1,14 +1,14 @@
-# M31_001: Observability Docs Reconciliation
+# M31_001: Observability Fixes + Docs Reconciliation
 
 **Prototype:** v0.25.0
 **Milestone:** M31
 **Workstream:** 001
 **Date:** Apr 21, 2026
 **Status:** PENDING
-**Priority:** P1 — Operator-facing docs are out of sync with code; false observability expectations
-**Batch:** B2 — alpha gate, parallel with M32 (both are docs-repo work)
-**Branch:** feat/v0.25.0-clerk-signup-changelog (in `~/Projects/docs`)
-**Depends on:** M15_002 (zombie observability implementation), M12_001 (Langfuse removal), M29_001 (doc rewrite to zombie)
+**Priority:** P1 — Operator-facing docs are out of sync with code AND two live observability paths (per-workspace metrics, OTLP histograms) are broken; this milestone fixes both and reconciles the docs.
+**Batch:** B2 — alpha gate. Code branch in the usezombie repo; docs edits land in a sibling PR in `~/Projects/docs` once code merges.
+**Branch:** feat/m31-observability-fixes (in `~/Projects/usezombie` — code branch). A sibling docs-repo branch carries the `.mdx` edits and lands after the code PR merges to main.
+**Depends on:** M15_002 (zombie observability implementation), M12_001 (Langfuse removal), M29_001 (doc rewrite to zombie). Code touchpoints for the fix sections: `src/zombie/executor.zig`, `src/zombie/metering.zig`, `src/otel/otel_export.zig`.
 
 ---
 
@@ -32,9 +32,58 @@ documenting operational caveats, and answering "can I monitor a single zombie?"
 | 8 | overview.mdx omits DB-backed observability | Activity stream, execution telemetry, prompt lifecycle events, credit audit trail are primary per-zombie surfaces | Operators don't know about the richest data sources |
 | 9 | posthog-events.mdx omits server-side `zombie_triggered`/`zombie_completed` events | `telemetry_events.zig` emits both with `zombie_id`, `workspace_id`, `event_id` | Incomplete event catalogue |
 
-**Solution:** Edit four docs files in `~/Projects/docs/operator/observability/`. No code changes.
-This spec lives in the usezombie repo (milestone tracking); changes land in the docs repo on
-`feat/v0.25.0-clerk-signup-changelog`.
+**Solution:** Two parts.
+
+1. **Code fixes** (usezombie repo, this milestone's primary branch `feat/m31-observability-fixes`):
+   - Wire `wsAddTokens()` / `wsIncGateRepairLoops()` into production emitters so per-workspace counters report real data.
+   - Fix OTLP histogram export so `_bucket` / `_sum` / `_count` series reach the collector.
+   - Add per-zombie dimensions (`zombie_id` label) to the per-workspace metrics pair, producing `zombie_tokens_total{workspace_id, zombie_id}` and the gate-repair equivalent.
+
+2. **Docs reconciliation** (docs repo, sibling branch, lands after the code PR merges): edit four `.mdx` files in `~/Projects/docs/operator/observability/` so they match what ships. Code fixes #5 and #6 obsolete the "caveats" framing from the earlier draft — docs now document the fixed behavior, not the bug.
+
+---
+
+## §0 — Code Fixes (usezombie repo — land FIRST)
+
+**Status:** PENDING
+
+These three fixes ship in the usezombie repo on `feat/m31-observability-fixes`. They land before any `.mdx` edits — the docs reconciliation (§1–§4) documents the fixed behavior, not the bug.
+
+### 0.1 Fix #5 — Wire per-workspace metrics into production code paths
+
+The helpers `wsAddTokens()` / `wsIncGateRepairLoops()` exist but nothing calls them in the live run path. Counters `zombie_agent_tokens_by_workspace_total` and `zombie_gate_repair_loops_by_workspace_total` read zero on every deployment.
+
+**Dimensions:**
+
+- 0.1.1 PENDING — target: `src/zombie/executor.zig` (agent-tokens emission site) and `src/zombie/metering.zig` (gate-repair emission site). Input: enumerate the exact call sites with `grep -n "ws_tokens\|ws_tokens_total\|gate_repair\|wsAddTokens\|wsIncGateRepairLoops" src/zombie/` before EXECUTE. Expected: at least one production call site for each helper, wired alongside the existing global counter. Test_type: integration — after running a zombie against a dev DB, `curl :8080/metrics | grep "zombie_tokens_total{"` returns a line with `workspace_id="<real-ws>"` and a value > 0.
+- 0.1.2 PENDING — target: same files. Input: run a zombie that triggers a gate repair loop. Expected: `zombie_gate_repair_loops_by_workspace_total{workspace_id="..."} > 0` in Prometheus scrape. Test_type: integration.
+
+### 0.2 Fix #6 — OTLP histogram export
+
+`otel_export.zig` explicitly skips `_bucket`, `_sum`, `_count` series when translating Prometheus text to OTLP JSON. Histograms (`zombie_execution_seconds`, `zombie_agent_duration_seconds`, `zombie_executor_agent_duration_seconds`) therefore never reach an OTLP collector.
+
+**Dimensions:**
+
+- 0.2.1 PENDING — target: `src/otel/otel_export.zig`. Input: replay a `/metrics` snapshot containing a histogram with 10 buckets through `convert()`. Expected: OTLP JSON contains matching `histogram` data points with bucket counts, sum, and count. Test_type: unit.
+- 0.2.2 PENDING — target: end-to-end. Input: spin up a local OTLP collector (docker-compose), point `OTEL_EXPORTER_OTLP_ENDPOINT` at it, run a zombie. Expected: collector logs show histogram samples arriving for at least one of the three histograms named above. Test_type: integration.
+
+### 0.3 Add per-zombie metrics dimension
+
+Extend the per-workspace metric pair from `(workspace_id)` to `(workspace_id, zombie_id)` so operators can slice by zombie from the Prometheus side. Prefer extending the existing emitter rather than adding a second counter, to keep cardinality manageable.
+
+**Dimensions:**
+
+- 0.3.1 PENDING — target: `src/zombie/metering.zig`. Input: rename / extend `wsAddTokens(workspace_id, ...)` → `zombieAddTokens(workspace_id, zombie_id, ...)`; same for gate-repair. Expected: emitter signature accepts both ids; Prometheus exposes `zombie_tokens_total{workspace_id="...", zombie_id="..."}`. Test_type: unit + integration.
+- 0.3.2 PENDING — target: Prometheus query. Input: after a zombie run, `curl :8080/metrics | grep 'zombie_tokens_total{.*zombie_id='`. Expected: per-zombie counts visible. Test_type: integration.
+- 0.3.3 PENDING — target: cardinality bound. Input: review label value sets — workspace_id and zombie_id are both UUIDs; no unbounded user input lands as a label. Expected: documented cardinality bound (workspaces × zombies per tenant) that matches the dashboard scale. Test_type: design review.
+
+### 0.4 Fix-to-docs handoff
+
+After §0.1–§0.3 ship and are verified in dev:
+
+- The "per-workspace metrics not yet wired" caveat in §2.1 becomes obsolete. §2.1 rewrites to document how the metric is wired and what operators should see.
+- The "OTLP histogram export drops series" caveat in §2.2 becomes obsolete. §2.2 rewrites to document that histograms DO reach the collector after fix #6.
+- Per-zombie metric support (§0.3) gets a new metrics.mdx subsection documenting the `zombie_id` label.
 
 ---
 
@@ -79,7 +128,9 @@ Update correlation fields from pipeline-era to zombie-era. Add DB-backed stores.
 
 ---
 
-## §2 — metrics.mdx: Add Operational Caveats
+## §2 — metrics.mdx: Document Fixed Behavior + Per-Zombie Label
+
+> **Note:** the earlier draft framed §2.1 and §2.2 as "caveats" because the underlying code was broken. With §0 (code fixes) landing first, these become documentation of the fixed path, not caveat callouts. Content guidance below reflects the post-fix reality.
 
 **Status:** PENDING
 

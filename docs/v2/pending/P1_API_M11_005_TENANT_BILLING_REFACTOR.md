@@ -12,6 +12,55 @@
 
 ---
 
+## §0 — Pre-EXECUTE Verification (run BEFORE any file edits)
+
+**Status:** PENDING
+
+Before touching any file, run these greps and confirm the surface matches this spec. If results diverge, update the spec first, then EXECUTE.
+
+```bash
+# E0.1: Enumerate every live reference to the workspace-scoped billing + credit symbols this spec deletes.
+grep -rn "workspace_billing_state\|billing\.workspace_billing\|workspace_credit\|workspace_free_credit" src/ schema/
+```
+
+**Expected callers (enumerated — not "any that exist"):**
+
+| File | Expected reference | Action |
+|------|--------------------|--------|
+| `schema/016_workspace_billing_state.sql` | table definition | DELETE file |
+| `schema/017_workspace_free_credit.sql` | table definition | DELETE file |
+| `schema/embed.zig` | `workspace_billing_state_sql`, `workspace_free_credit_sql` `@embedFile` | REMOVE both |
+| `src/cmd/common.zig` | version-16 and version-17 entries in `canonicalMigrations()` | REMOVE entries + update length + index tests |
+| `src/state/workspace_credit.zig`, `workspace_credit_store.zig`, `workspace_credit_test.zig` | facade, store, unit tests | DELETE all three |
+| `src/state/workspace_billing*.zig` | any workspace-plan facade/store | DELETE all |
+| `src/http/handlers/workspaces/lifecycle.zig` | `provisionWorkspaceCredit(..., "api")` call | REMOVE the call |
+| `src/zombie/metering.zig` | `workspace_credit.*` debit path | REWRITE to call `tenant_billing.debit` |
+| `src/http/handlers/workspaces/credit*.zig`, `billing*.zig` | per-workspace read handlers | DELETE |
+| `src/http/router.zig` | `/v1/workspaces/{ws}/credits`, `/v1/workspaces/{ws}/billing`, `/v1/workspaces/{ws}/credits/redeem` | REMOVE registrations |
+| `openapi/paths/*workspaces*credits*`, `*billing*` | path definitions | DELETE |
+| `src/main.zig` | `_ = @import("state/workspace_credit*.zig");` test-discovery lines | REMOVE |
+
+If the grep surfaces a reference **outside this table**, STOP and amend the spec before editing.
+
+**Tenant-id resolution contract (worker debit):** the worker performs exactly one lookup per run:
+
+```sql
+SELECT tenant_id FROM core.workspaces WHERE workspace_id = $1
+```
+
+The resulting tenant_id is carried in memory for the run's lifetime. No per-debit repeat lookup.
+
+**M15_001 metering cross-check (mandatory):**
+
+```bash
+# E0.2: Verify M15_001 metering does NOT read workspace_billing_state.plan_tier.
+grep -rn "plan_tier\|workspace_billing_state" src/ | grep -vi test | grep -v billing/
+```
+
+If any M15_001 metering call site reads `workspace_billing_state.plan_tier`, **add a patch to this milestone's scope**: route plan_tier reads to `billing.tenant_billing.plan_tier` via the tenant_id resolved from workspace_id. Record the found files under Files Changed before EXECUTE.
+
+---
+
 ## Overview
 
 **Goal (testable):** A new Clerk signup results in one tenant with `plan_tier='free'` and a 1000¢ balance; any zombie run in any workspace owned by that tenant debits that single tenant balance; creating a second workspace does not grant additional credits and does not create a separate plan row.
@@ -42,7 +91,7 @@ NNN = next free slot at execute time (verify with `ls schema/`).
 
 | File | Action | Why |
 |------|--------|-----|
-| `schema/NNN_tenant_billing.sql` | CREATE | Single table holding `(tenant_id, plan_tier, plan_sku, balance_cents, grant_source, created_at, updated_at)`. ≤100 lines, single concern. |
+| `schema/NNN_tenant_billing.sql` | CREATE | Single table holding `(tenant_id, plan_tier, plan_sku, balance_cents, grant_source, created_at, updated_at)`. ≤100 lines, single concern. **Unit note on `balance_cents`:** MVP uses cents (integer, Stripe-native for chargebacks). Migration to `balance_micros` (millionths of a cent) is deferred to the per-token-metering milestone — pre-v2.0 teardown makes that migration free (drop + recreate), so we explicitly do not preemptively widen the unit now. |
 | `schema/embed.zig` | MODIFY | Add `tenant_billing_sql` `@embedFile`; remove `workspace_billing_state_sql` and `workspace_free_credit_sql`. |
 | `src/cmd/common.zig` | MODIFY | Add new migration entry; remove version-16 and version-17 workspace-billing entries; update array length / index-based tests. |
 | `src/state/tenant_billing.zig` | CREATE | Facade: `provision(tenant_id, plan='free', cents=1000)`, `debit(tenant_id, cents)`, `getBilling(tenant_id)`. |
@@ -102,6 +151,7 @@ Facade + store mirroring the existing state-module layout.
 | 2.2 | PENDING | `tenant_billing.debit` | tenant with balance 1000, debit 5 | returns `{balance_cents: 995}`; row updated atomically | unit |
 | 2.3 | PENDING | `tenant_billing.debit` (exhaustion) | tenant with balance 3, debit 5 | returns `error.CreditExhausted`; balance unchanged at 3 | unit |
 | 2.4 | PENDING | `tenant_billing.debit` (concurrent) | two parallel debits of 600 against balance 1000 | exactly one succeeds, exactly one returns `CreditExhausted`; final balance = 400 | integration |
+| 2.4a | PENDING | integration harness itself | inspect whether `tests/integration_*.zig` runs each test in a shared transaction (serialized) or opens real parallel connections | if the harness serializes inside one transaction, **rewrite 2.4 against a raw `pg.Pool` with two `std.Thread.spawn` calls** that each check out their own connection — document the chosen path in the test file header before writing 2.4 | design / harness probe |
 
 ### §3 — Signup bootstrap + worker debit wiring
 

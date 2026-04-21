@@ -1,4 +1,4 @@
-# M19_001: Zombie Lifecycle UI — Create, Configure, and Manage Zombies from the Dashboard
+# M19_001: Zombie Lifecycle UI — Install, Configure, and Manage Zombies from the Dashboard
 
 **Prototype:** v2
 **Milestone:** M19
@@ -6,7 +6,7 @@
 **Date:** Apr 13, 2026
 **Status:** PENDING
 **Priority:** P1 — Without this, the dashboard is read-only; operators must use the CLI for all setup
-**Batch:** B2 — alpha gate, parallel with M13_001, M21_001, M11_005, M27_001, M32_001, M31_001
+**Batch:** B2 — alpha gate, parallel with M11_005, M13_001, M21_001, M27_001, M31_001, M33_001
 **Branch:** feat/m19-zombie-lifecycle-ui
 **Depends on:** M12_001 (app shell + layout), M9_001 (grants/execute API, done)
 
@@ -14,9 +14,24 @@
 
 ## Overview
 
-**Goal (testable):** An operator with no CLI access can: create a new zombie from a skill template, copy the webhook URL for their trigger, set a cron schedule, configure firewall rules, rename or delete a zombie, and see all of this reflected live in the dashboard. Every action available in `zombiectl zombie *` subcommands has an equivalent UI surface. An agent or pipeline can perform the same operations via the API.
+**Goal (testable):** An operator with no CLI access can: install a new zombie from a skill template, copy the webhook URL for their trigger, set a cron schedule, configure firewall rules, rename or delete a zombie, and see all of this reflected live in the dashboard. Every action available in `zombiectl zombie *` subcommands has an equivalent UI surface. An agent or pipeline can perform the same operations via the API.
 
-**Problem:** M12 ships a read-only dashboard. The dashboard shows zombie status, activity, and metrics, but offers no way to create or configure zombies. Every setup step requires the CLI: `zombiectl zombie create`, `zombiectl zombie triggers list`, `zombiectl zombie schedule`, `zombiectl zombie firewall set`. This creates a hard dependency on CLI access for anyone who wants to set up or reconfigure a zombie. CTOs, hiring managers, and ops engineers who are not CLI-first users cannot self-serve. They either rely on an engineer or skip UseZombie entirely.
+**Problem:** M12 ships a read-only dashboard. The dashboard shows zombie status, activity, and metrics, but offers no way to install or configure zombies. Every setup step requires the CLI: `zombiectl zombie install`, `zombiectl zombie triggers list`, `zombiectl zombie schedule`, `zombiectl zombie firewall set`. This creates a hard dependency on CLI access for anyone who wants to set up or reconfigure a zombie. CTOs, hiring managers, and ops engineers who are not CLI-first users cannot self-serve. They either rely on an engineer or skip UseZombie entirely.
+
+**CLI verb — `install`, not `create`.** Pre-v2.0, the primary zombie-creation command is `zombiectl zombie install`. There is no `create` alias. The verb reflects the operator mental model: "install a zombie (from a skill template) into this workspace." Every reference in this spec uses `install`.
+
+---
+
+## §0 — Route Ownership (M19 vs M27 — no overlap)
+
+**Status:** CONSTRAINT
+
+| Route | Owner | Scope |
+|-------|-------|-------|
+| `app/(dashboard)/zombies/new/page.tsx` | **M19_001** (this spec) | Install form (template picker + name/desc/skill fields); on submit, POST + redirect; after install, surface webhook URL. |
+| `app/(dashboard)/zombies/[id]/page.tsx` | **M27_001** | Detail page — status, kill switch, spend panel, activity feed. M19 does NOT touch this route. |
+
+This is a §-level constraint: if EXECUTE surfaces UI that belongs on `[id]/page.tsx`, it rides in M27, not here. M19's surface ends at the redirect after install.
 
 **Solution summary:** Add the lifecycle CRUD surface to the app. Five panels: (1) Zombie creation form with skill template picker, (2) Trigger panel on zombie detail showing webhook URL with copy button and cron editor, (3) Firewall rules editor with add/edit/delete inline, (4) Zombie config view (rename, change description, delete), (5) Zombie status actions (pause, resume — in addition to kill switch from M12). All API calls use existing backend endpoints that the CLI already calls.
 
@@ -24,7 +39,7 @@
 
 | Action | CLI | UI (this milestone) | API |
 |---|---|---|---|
-| Create zombie | `zombiectl zombie create` | Creation form | `POST /v1/workspaces/{ws}/zombies` |
+| Install zombie | `zombiectl zombie install` | Install form | `POST /v1/workspaces/{ws}/zombies` |
 | View webhook URL | `zombiectl zombie triggers list` | Trigger panel, copy button | `GET /v1/workspaces/{ws}/zombies/{id}/triggers` |
 | Set cron | `zombiectl zombie schedule` | Cron editor | `POST /v1/workspaces/{ws}/zombies/{id}/schedule` |
 | Set firewall | `zombiectl zombie firewall set` | Rules editor | `PUT /v1/workspaces/{ws}/zombies/{id}/firewall` |
@@ -33,18 +48,18 @@
 
 ---
 
-## 1.0 Zombie Creation Form
+## 1.0 Zombie Install Form
 
 **Status:** PENDING
 
-Accessed from Dashboard via "+ New Zombie" button. Two paths: (a) pick a skill template which pre-fills the name, description, and skill field; (b) start blank. On submit: POST to API, redirect to new zombie's detail page.
+Accessed from Dashboard via "+ Install Zombie" button. Two paths: (a) pick a skill template which pre-fills the name, description, and skill field; (b) start blank. On submit: POST to API, redirect to new zombie's detail page (owned by M27_001).
 
 **Skill-driven picker:** Template options come from `GET /v1/skills` — the same endpoint the onboarding wizard (M25) uses. No hardcoded template list in the frontend. Adding a new skill (e.g., `samples/meeting-maker/`) makes it appear in this picker immediately, zero frontend changes. Each template card shows `display_name` and `description` from `SKILL.md` frontmatter.
 
 **Layout:**
 
 ```
-+ New Zombie
++ Install Zombie
 
 ┌────────────────────────────────────────────────────┐
 │ Choose a template (or start blank)                 │
@@ -56,34 +71,34 @@ Accessed from Dashboard via "+ New Zombie" button. Two paths: (a) pick a skill t
 │ Description   [Monitors inbox, scores...   ]       │
 │ Skill         [lead-collector-v1       ▾   ]       │
 │                                                    │
-│              [Cancel]  [Create Zombie →]           │
+│              [Cancel]  [Install Zombie →]          │
 └────────────────────────────────────────────────────┘
 ```
 
 **Dimensions:**
 - 1.1 PENDING
-  - target: `app/zombies/new/page.tsx`
+  - target: `app/(dashboard)/zombies/new/page.tsx`
   - input: `GET /v1/skills` returns skills including "lead-collector"; user selects it
   - expected: name pre-filled as "lead-collector", skill field pre-filled as "lead-collector-v1", description pre-filled from SKILL.md frontmatter
   - test_type: unit (component test, API mock)
 - 1.2 PENDING
-  - target: `app/zombies/new/page.tsx`
-  - input: user fills form and clicks Create
-  - expected: `POST /v1/workspaces/{ws}/zombies` → redirect to `/zombies/{id}` — new zombie appears in sidebar
+  - target: `app/(dashboard)/zombies/new/page.tsx`
+  - input: user fills form and clicks Install
+  - expected: `POST /v1/workspaces/{ws}/zombies` → redirect to `/zombies/{id}` (route owned by M27_001) — new zombie appears in sidebar
   - test_type: integration (API mock)
 - 1.3 PENDING
-  - target: `app/zombies/new/page.tsx`
+  - target: `app/(dashboard)/zombies/new/page.tsx`
   - input: user submits with empty name
   - expected: client-side validation: "Zombie name is required"
   - test_type: unit (component test)
 - 1.4 PENDING
-  - target: `app/zombies/new/page.tsx`
+  - target: `app/(dashboard)/zombies/new/page.tsx`
   - input: user submits and API returns 409 (name conflict)
   - expected: toast "A zombie named 'lead-collector' already exists in this workspace"
   - test_type: unit (component test)
 - 1.5 PENDING
-  - target: `zombiectl/src/commands/zombie_create.js` (CLI success path)
-  - input: `zombiectl zombie create` completes successfully (API returns 201 with webhook URL)
+  - target: `zombiectl/src/commands/zombie_install.js` (CLI success path)
+  - input: `zombiectl zombie install` completes successfully (API returns 201 with webhook URL)
   - expected: stdout contains the literal line `🎉 Woohoo! Your zombie is installed and ready to run.` followed by the webhook URL on the next line
   - test_type: unit (CLI test asserting `Woohoo! Your zombie is installed` is present in stdout)
 
@@ -234,7 +249,7 @@ Rename, update description, pause/resume, and delete a zombie. Pause is distinct
 All existing (zombiectl calls these today). UI consumes the same endpoints.
 
 ```
-POST   /v1/workspaces/{ws}/zombies               — create
+POST   /v1/workspaces/{ws}/zombies               — install
 PATCH  /v1/workspaces/{ws}/zombies/{id}          — rename / update description
 DELETE /v1/workspaces/{ws}/zombies/{id}          — delete
 GET    /v1/workspaces/{ws}/zombies/{id}/triggers — get webhook URL
@@ -285,8 +300,8 @@ All operations use existing API surface. This is a pure frontend milestone.
 
 ## 8.0 Acceptance Criteria
 
-- [ ] Create zombie from dashboard — verify: dim 1.2
-- [ ] `zombiectl zombie create` prints the literal line `🎉 Woohoo! Your zombie is installed and ready to run.` (followed by the webhook URL) on successful creation — verify: dim 1.5
+- [ ] Install zombie from dashboard — verify: dim 1.2
+- [ ] `zombiectl zombie install` prints the literal line `🎉 Woohoo! Your zombie is installed and ready to run.` (followed by the webhook URL) on successful install — verify: dim 1.5
 - [ ] Webhook URL copyable from trigger panel — verify: dim 2.1
 - [ ] Cron schedule set and next-run shown — verify: dim 2.2 + 2.4
 - [ ] Firewall rule added/deleted — verify: dims 3.2 + 3.3

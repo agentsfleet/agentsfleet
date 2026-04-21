@@ -10,7 +10,42 @@
 **Branch:** feat/m13-credential-vault-ui
 **Depends on:** M12_001 (app dashboard layout + auth), M5_001 (tool bridge credential flow)
 **Supersedes:** M12_001 §4.0 (Credentials Page) — M12's basic credentials list is replaced by this spec in full
-**Extended by:** M21_001 (B6) — adds `credential_type = llm_provider` field for BYOK provider keys; same vault, same Add Credential modal with a new "Type" selector; provider credentials are excluded from firewall injection path
+**Extended by:** M21_001 — depends on M13 for the Add Credential modal and Type selector; M21 extends the Type enum with a new `llm_provider` value and consumes the existing modal. M21 does NOT ship the Type selector itself.
+
+---
+
+## §0 — Scope Decisions (resolve BEFORE EXECUTE)
+
+### 0.1 Credential scope: tenant-scoped — RESOLVED
+
+**Decision (Apr 21, 2026): tenant-scoped credentials.** One vault per tenant, visible to all workspaces owned by that tenant.
+
+**Rationale:**
+- **Consistency with tenant-scoped billing (M11_005).** Credits, payment method, and provider config all live at the tenant. Credentials following the same scope keeps one mental model for operators.
+- **Consistency with tenant-scoped BYOK provider config (M21_001).** An operator's Anthropic / OpenAI key is a tenant-wide asset; selecting that key from a per-workspace vault would force re-adding the same key into every workspace. Tenant-scoped vault keeps M21 coherent — one tenant, one provider key, N workspaces.
+- **Single mental model for operators.** "Workspaces are project folders; the tenant owns the credit balance and the keys" is easy to explain. Workspace-scoped credentials contradict that model.
+- **Avoids per-workspace duplication** for the common case (Anthropic key, Slack token, GitHub PAT, kubectl config, docker socket).
+
+**Scope additions pulled into M13 as a result:**
+
+1. **Pre-EXECUTE grep.** Before any schema edit, grep for the current scope of `credentials` / the vault table in `schema/*.sql`, `src/db/`, and `src/http/handlers/` to confirm the starting state. Expected: workspace-scoped per `schema/004_vault_schema.sql` and `/v1/workspaces/{ws}/credentials` surface. Record the finding in the Ripley's Log before proceeding.
+2. **Schema migration.** If current state confirms workspace-scoped (pre-v2.0 teardown era), invoke the **Schema Table Removal Guard** and re-author `schema/004_vault_schema.sql` (or a new slot) so `credentials` FK is `tenant_id` instead of `workspace_id`. Update `schema/embed.zig` and the canonical migration array in `src/cmd/common.zig` per the Guard. Any RLS policies on the table move to tenant scope.
+3. **API surface.** Add `/v1/tenants/me/credentials` (GET, POST, DELETE) as the new primary surface. Deprecate the workspace-scoped endpoints in-repo (pre-v2 teardown: remove them outright; no 410 stubs per pre-v2 API drift policy).
+4. **UI wiring.** `app/credentials/page.tsx` reads from `/v1/tenants/me/credentials`. The page lives at the tenant level; remove the workspace-switcher dependency on credentials.
+5. **Ripple into M21_001.** Provider credentials read from the tenant vault (already tenant-scoped in M21's own design); no action needed in M21 beyond confirming its credential selector consumes `/v1/tenants/me/credentials`.
+6. **Ripple into M33_001.** Homelab Zombie installs at a workspace but reads `kubectl_config` / `docker_socket` from the tenant vault. README in `samples/homelab/` documents `zombiectl credential add kubectl_config --file ~/.kube/config` as a tenant-level action.
+
+**If the pre-EXECUTE grep reveals the vault is already tenant-scoped** (schema drift since §0 was authored), item 2 is a no-op and items 3-4 may be partially complete; update the spec to reflect actuals and proceed.
+
+### 0.2 Add-Credential Type Selector — owned by M13
+
+M13 ships the Add-credential modal **with a Type selector** defaulting to `credential_type = 'tool'`. The database column + enum is part of this milestone. M21_001 consumes the existing modal and only adds the `llm_provider` value to the enum + routing for provider-typed credentials.
+
+**Concrete M13 scope additions:**
+
+- `schema/NNN_credential_type.sql` (or equivalent column addition on existing credentials table — re-verify pre-v2 teardown path with Schema Guard at EXECUTE) introducing `credential_type TEXT NOT NULL DEFAULT 'tool'` with a CHECK constraint enumerating `'tool'` as the only M13 value.
+- Add Credential modal shows a Type dropdown with `Tool` (default). `LLM Provider` option is NOT present in M13 — M21 extends the enum and exposes the new option.
+- List view shows the Type column so operators can distinguish.
 
 ---
 
