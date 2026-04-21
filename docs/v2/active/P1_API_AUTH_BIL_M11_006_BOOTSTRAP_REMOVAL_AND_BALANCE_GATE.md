@@ -123,8 +123,8 @@ Actual action depends on VERSION at execute time — pre-v2.0 we drop + recreate
 |-----|--------|--------|-------|----------|-----------|
 | 2.1 | DONE | `tenant_billing` schema | fresh DB migrate | column `balance_exhausted_at BIGINT NULL` present; default NULL | integration (tier-3) |
 | 2.2 | DONE | `tenant_billing.markExhausted` | tenant at 0¢, `markExhausted` called | row's `balance_exhausted_at` set to now_ms; second call idempotent | unit |
-| 2.3 | PENDING | metering transition | tenant 5¢ balance, debit 10¢ | `CreditExhausted` returned AND `balance_exhausted_at` set AND one `balance_exhausted_first_debit` activity event written | integration |
-| 2.4 | PENDING | metering replay | already-exhausted tenant, another debit 10¢ | still `CreditExhausted`; `balance_exhausted_at` unchanged; NO duplicate activity event | integration |
+| 2.3 | DONE | metering transition | tenant 5¢ balance, debit 10¢ | `CreditExhausted` returned AND `balance_exhausted_at` set AND one `balance_exhausted_first_debit` activity event written | integration |
+| 2.4 | DONE | metering replay | already-exhausted tenant, another debit 10¢ | still `CreditExhausted`; `balance_exhausted_at` unchanged; NO duplicate activity event | integration |
 
 ### §3 — Exhaustion policy knob
 
@@ -132,10 +132,10 @@ Actual action depends on VERSION at execute time — pre-v2.0 we drop + recreate
 
 | Dim | Status | Target | Input | Expected | Test type |
 |-----|--------|--------|-------|----------|-----------|
-| 3.1 | PENDING | `continue` policy | `BALANCE_EXHAUSTED_POLICY=continue`, exhausted tenant, zombie event | event delivered; zero cents deducted; no activity event beyond the one-shot in §2.3 | integration |
-| 3.2 | PENDING | `warn` policy (default) | unset or `warn`, exhausted tenant, zombie event | event delivered; `balance_exhausted` activity event written (rate-limited to 1/tenant/day) | integration |
-| 3.3 | PENDING | `stop` policy | `BALANCE_EXHAUSTED_POLICY=stop`, exhausted tenant, zombie event | `deliverEvent` NOT called; `balance_gate_blocked` activity event written; event still XACKed so Redis doesn't retry | integration |
-| 3.4 | PENDING | policy config parse | env var parsing | known values accepted; unknown value defaults to `warn` with a startup warn log | unit |
+| 3.1 | DONE | `continue` policy | `BALANCE_EXHAUSTED_POLICY=continue`, exhausted tenant, zombie event | event delivered; zero cents deducted; no activity event beyond the one-shot in §2.3 | integration |
+| 3.2 | DONE | `warn` policy (default) | unset or `warn`, exhausted tenant, zombie event | event delivered; `balance_exhausted` activity event written (rate-limited to 1/tenant/day) | integration |
+| 3.3 | DONE | `stop` policy | `BALANCE_EXHAUSTED_POLICY=stop`, exhausted tenant, zombie event | `deliverEvent` NOT called; `balance_gate_blocked` activity event written; event still XACKed so Redis doesn't retry | integration |
+| 3.4 | DONE | policy config parse | env var parsing | known values accepted; unknown value defaults to `warn` with a startup warn log | unit |
 
 ### §4 — Response surface
 

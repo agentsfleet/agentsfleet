@@ -136,6 +136,7 @@ test {
     _ = @import("db/sql_splitter.zig");
     _ = @import("config/env_vars.zig");
     _ = @import("config/load.zig");
+    _ = @import("config/balance_policy.zig");
     _ = @import("zombie/config.zig");
     _ = @import("zombie/yaml_frontmatter.zig");
     _ = @import("http/route_matchers.zig");
