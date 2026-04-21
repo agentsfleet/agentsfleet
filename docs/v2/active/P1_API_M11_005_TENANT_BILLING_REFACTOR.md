@@ -4,10 +4,10 @@
 **Milestone:** M11
 **Workstream:** 005
 **Date:** Apr 21, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — Blocks the end-to-end "zombie runs and we verify credits deducted" demo
 **Batch:** B2 — alpha gate, parallel with M19_001, M13_001, M21_001, M27_001, M31_001, M33_001
-**Branch:** feat/m11-tenant-credits (TBD)
+**Branch:** feat/m11-tenant-billing
 **Depends on:** M11_003 (Clerk bootstrap — DONE, landed on main Apr 21 via PR #237)
 
 ---
