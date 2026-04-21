@@ -42,6 +42,8 @@ grep -rn "workspace_billing_state\|billing\.workspace_billing\|workspace_credit\
 
 If the grep surfaces a reference **outside this table**, STOP and amend the spec before editing.
 
+**Amendment note (Apr 21, 2026):** §0 was executed on branch `feat/m11-tenant-billing`. Surface matches this spec after the Files Changed table was expanded in this commit to enumerate: full `src/state/workspace_billing*` tree (model/transition/sub-dir), workspace billing HTTP handlers (`billing.zig`, `billing_summary.zig`, per-zombie `billing_summary.zig`), router/manifest/route_table entries for `billing/{scale,events,summary}`, `src/http/workspace_guards.zig` plan_tier rewire, `src/http/handlers/auth/github_callback.zig` second `provisionWorkspaceCredit` call site, test fixtures (`test_fixtures{,_uc1,_uc3}.zig`), and integration tests that seed `workspace_billing_state` (`rbac_http_integration_test.zig`, `zombies/telemetry_integration_test.zig`, `workspaces/dashboard_integration_test.zig`). `openapi/paths/*` row removed — no such directory exists; route manifest is `src/http/route_manifest.zig`.
+
 **Tenant-id resolution contract (worker debit):** the worker performs exactly one lookup per run:
 
 ```sql
@@ -84,7 +86,15 @@ SCHEMA GUARD: VERSION=0.25.0 (<2.0.0) → full teardown branch.
   Deleting:  src/state/workspace_credit.zig                  (facade replaced by tenant_billing)
   Deleting:  src/state/workspace_credit_store.zig            (SQL replaced by tenant_billing_store)
   Deleting:  src/state/workspace_credit_test.zig             (superseded)
-  Deleting:  src/state/workspace_billing*.zig                (any facade/store for the workspace plan row)
+  Deleting:  src/state/workspace_billing.zig                 (workspace-plan facade)
+  Deleting:  src/state/workspace_billing_model.zig           (PlanTier moves to tenant_billing)
+  Deleting:  src/state/workspace_billing_transition.zig      (Stripe state machine, out of scope)
+  Deleting:  src/state/workspace_billing_test.zig            (superseded)
+  Deleting:  src/state/workspace_billing/{db,row,apply}.zig  (workspace billing state + audit sub-dir)
+  Deleting:  src/state/billing_summary_store.zig             (workspace-scoped summary, no caller post-refactor)
+  Deleting:  src/http/handlers/workspaces/billing.zig        (upgrade-to-scale, apply-event, scoring-config)
+  Deleting:  src/http/handlers/workspaces/billing_summary.zig (workspace-scoped summary endpoint)
+  Deleting:  src/http/handlers/zombies/billing_summary.zig   (per-zombie workspace-scoped rollup)
 ```
 
 NNN = next free slot at execute time (verify with `ls schema/`).
@@ -101,12 +111,43 @@ NNN = next free slot at execute time (verify with `ls schema/`).
 | `src/zombie/metering.zig` | MODIFY | Replace `workspace_credit.*` calls with `tenant_billing.debit(tenant_id, cents)`. Tenant id resolved via `zombie.workspace_id → core.workspaces.tenant_id` (single `SELECT tenant_id FROM core.workspaces WHERE workspace_id=$1`). |
 | `src/http/handlers/workspaces/lifecycle.zig` | MODIFY | Delete the `provisionWorkspaceCredit(..., "api")` call from the workspace-create handler. New workspaces inherit the tenant balance and plan. |
 | `src/http/handlers/tenant_billing.zig` | CREATE | Single read handler: `GET /v1/tenants/me/billing` → `{plan_tier, plan_sku, balance_cents, updated_at}`. |
-| `src/http/router.zig` (or equivalent) | MODIFY | Register `/v1/tenants/me/billing`; remove `GET /v1/workspaces/{ws}/credits`, `GET /v1/workspaces/{ws}/billing`, `POST /v1/workspaces/{ws}/credits/redeem`. Pre-v2 → 404s. |
+| `src/http/router.zig` | MODIFY | Register `GET /v1/tenants/me/billing`; remove `billing/scale`, `billing/events`, `billing/summary`, zombie `billing/summary` workspace routes; delete inline `match resolves workspace billing routes` test. Pre-v2 → 404s per RULE EP4. |
+| `src/http/router_test.zig` | MODIFY | Remove `match resolves workspace billing routes` test; add a test for the tenant billing route. |
+| `src/http/route_manifest.zig` | MODIFY | Remove `/v1/workspaces/{ws}/billing/{events,scale,summary}` + `/v1/workspaces/{ws}/zombies/{id}/billing/summary`; add `/v1/tenants/me/billing`. |
+| `src/http/route_table.zig` | MODIFY | Drop `apply_workspace_billing_event`, `get_workspace_billing_summary`, `workspace_zombie_billing_summary`, upgrade-to-scale, scoring-config dispatch rows; add tenant billing dispatch row. |
+| `src/http/route_table_invoke.zig` | MODIFY | Drop `ws_billing` + `ws_billing_sum` imports and inner* invokers for upgrade/apply/summary/scoring; add `tenant_billing` invoker. |
+| `src/http/route_table_invoke_dashboard.zig` | MODIFY | Drop `zombie_billing_summary` dispatch (per-zombie billing rollup is workspace-scoped, dies with this refactor). |
+| `src/http/handlers/workspaces/billing.zig` | DELETE | Upgrade-to-scale + apply-billing-event + scoring-config handlers — all workspace-scoped billing lifecycle, superseded. |
+| `src/http/handlers/workspaces/billing_summary.zig` | DELETE | Per-workspace billing summary — superseded by tenant billing. |
+| `src/http/handlers/workspaces/mod.zig` | MODIFY | Drop `workspace_credit` + `billing*` imports; keep activity/credentials/lifecycle/ops. |
+| `src/http/handlers/zombies/billing_summary.zig` | DELETE | Per-zombie workspace-scoped billing rollup — no tenant-level analog in MVP. |
+| `src/http/handlers/auth/github_callback.zig` | MODIFY | Remove second `provisionWorkspaceCredit(..., "api")` call (pre-Clerk legacy path still wired). Tenant balance inherited on signup. |
+| `src/http/workspace_guards.zig` | MODIFY | Remove `workspace_credit.enforceExecutionAllowed(plan_tier)` path + `CreditView` field; pull plan_tier from `tenant_billing` via tenant_id (resolved from workspace_id). Drop inline tests that mock `.plan_tier = .free/.scale`. |
 | `src/state/workspace_credit.zig`, `workspace_credit_store.zig`, `workspace_credit_test.zig` | DELETE | Replaced by `tenant_billing.*`. |
-| `src/state/workspace_billing*.zig` (any that exist) | DELETE | Superseded; no separate plan module. |
+| `src/state/workspace_billing.zig` | DELETE | Workspace-scoped plan facade — superseded. |
+| `src/state/workspace_billing_model.zig` | DELETE | `PlanTier` enum moves to `src/state/tenant_billing.zig` (`{ free, scale }` for MVP — `scale` still gates metering exemption). |
+| `src/state/workspace_billing_transition.zig` | DELETE | Stripe payment/grace state machine — out of scope pre-Stripe. |
+| `src/state/workspace_billing_test.zig` | DELETE | Superseded. |
+| `src/state/workspace_billing/{db,row,apply}.zig` | DELETE | Sub-dir implementing workspace billing state + audit. |
+| `src/state/billing_summary_store.zig` | DELETE | Workspace-scoped billing summary SQL — no caller after handler deletion. |
+| `src/state/signup_bootstrap_test.zig` | MODIFY | Drop `billing.workspace_credit_state`/`workspace_credit_audit` assertions; add `billing.tenant_billing` assertion (source=`bootstrap_free_grant`, balance=1000). |
+| `src/state/zombie_telemetry_store.zig` | MODIFY | Keep `plan_tier` column on `zombie_execution_telemetry`; change type reference from `workspace_billing_model.PlanTier` to `tenant_billing.PlanTier`. |
+| `src/errors/error_registry_test.zig` | MODIFY | Drop `workspace_credit`/`CreditRow` import + any error-code assertions pinned to the deleted module; re-point at `tenant_billing` error codes. |
+| `src/observability/telemetry_events.zig` | MODIFY | `BillingLifecycleEvent` loses `billing_status` field (no Stripe state); keep minimal `plan_tier` if any caller survives, else delete event type entirely. |
+| `src/observability/telemetry_test.zig` | MODIFY | Drop tests that assert `billing_status = GRACE`, `plan_tier = SCALE` coupling; update to tenant_billing shape or delete if event type is removed. |
+| `src/http/handlers/zombies/telemetry_test.zig` | MODIFY | `plan_tier` allocations stay (per-run telemetry) but sourced from `tenant_billing.PlanTier` — adjust imports. |
+| `src/http/handlers/zombies/telemetry_integration_test.zig` | MODIFY | Drop `INSERT INTO workspace_billing_state` seed; seed `billing.tenant_billing` via fixtures instead. |
+| `src/http/rbac_http_integration_test.zig` | MODIFY | Drop `workspace_billing_state` seed; tenant billing seeded via fixture. |
+| `src/http/handlers/workspaces/dashboard_integration_test.zig` | MODIFY | Drop `workspace_billing_state` seed; adjust `zombie_execution_telemetry` insert if it references billing state. |
+| `src/http/handlers/handler_auth_primitives_test.zig` | MODIFY | Drop `workspace_credit.CreditView` import + assertion. |
+| `src/zombie/metering_test.zig` | REWRITE | Replace `workspace_credit_store.*` fixtures and `provisionWorkspaceCredit` setup with `tenant_billing` provision+debit assertions. |
+| `src/zombie/metering_delivery_telemetry_test.zig` | MODIFY | `plan_tier` telemetry column still written — adjust seed to come from `tenant_billing`. |
+| `src/db/test_fixtures.zig` | MODIFY | Drop `workspace_credit_state`/`workspace_credit_audit`/`workspace_billing_state` CASCADE cleanup; add `billing.tenant_billing`. |
+| `src/db/test_fixtures_uc1.zig` | MODIFY | Drop workspace_credit comment + cleanup; no-op if fixture was credit-only. |
+| `src/db/test_fixtures_uc3.zig` | MODIFY | Replace `seedWorkspaceBillingState`/`seedWorkspaceCreditState` helpers with `seedTenantBilling`. |
 | `schema/016_workspace_billing_state.sql` | DELETE | Per Schema Guard (pre-v2.0): remove file + embed + migration entry. |
 | `schema/017_workspace_free_credit.sql` | DELETE | Per Schema Guard (pre-v2.0): remove file + embed + migration entry. |
-| `openapi/paths/*` | MODIFY | Add `/v1/tenants/me/billing`; remove workspace credit + billing endpoints. |
+| `src/state/tenant_billing.zig` | EXPORT | Holds `pub const PlanTier = enum { free, scale };` so metering-exemption logic survives (`if (plan_tier == .scale) exempt`). Stripe tier expansion deferred. |
 
 ---
 
@@ -388,10 +429,20 @@ make check-openapi-errors
 
 | File to delete | Verify deleted |
 |----------------|----------------|
+| `schema/016_workspace_billing_state.sql` | `test ! -f schema/016_workspace_billing_state.sql` |
 | `schema/017_workspace_free_credit.sql` | `test ! -f schema/017_workspace_free_credit.sql` |
 | `src/state/workspace_credit.zig` | `test ! -f src/state/workspace_credit.zig` |
 | `src/state/workspace_credit_store.zig` | `test ! -f src/state/workspace_credit_store.zig` |
 | `src/state/workspace_credit_test.zig` | `test ! -f src/state/workspace_credit_test.zig` |
+| `src/state/workspace_billing.zig` | `test ! -f src/state/workspace_billing.zig` |
+| `src/state/workspace_billing_model.zig` | `test ! -f src/state/workspace_billing_model.zig` |
+| `src/state/workspace_billing_transition.zig` | `test ! -f src/state/workspace_billing_transition.zig` |
+| `src/state/workspace_billing_test.zig` | `test ! -f src/state/workspace_billing_test.zig` |
+| `src/state/workspace_billing/` (dir) | `test ! -d src/state/workspace_billing` |
+| `src/state/billing_summary_store.zig` | `test ! -f src/state/billing_summary_store.zig` |
+| `src/http/handlers/workspaces/billing.zig` | `test ! -f src/http/handlers/workspaces/billing.zig` |
+| `src/http/handlers/workspaces/billing_summary.zig` | `test ! -f src/http/handlers/workspaces/billing_summary.zig` |
+| `src/http/handlers/zombies/billing_summary.zig` | `test ! -f src/http/handlers/zombies/billing_summary.zig` |
 
 Orphaned references:
 
@@ -400,8 +451,15 @@ Orphaned references:
 | `workspace_credit` | `grep -rn workspace_credit src/` | 0 |
 | `provisionWorkspaceCredit` | `grep -rn provisionWorkspaceCredit src/` | 0 |
 | `workspace_free_credit` | `grep -rn workspace_free_credit src/ schema/` | 0 |
+| `workspace_billing_state` | `grep -rn workspace_billing_state src/ schema/` | 0 |
+| `workspace_billing_audit` | `grep -rn workspace_billing_audit src/ schema/` | 0 |
+| `apply_workspace_billing_event` | `grep -rn apply_workspace_billing_event src/` | 0 |
+| `get_workspace_billing_summary` | `grep -rn get_workspace_billing_summary src/` | 0 |
+| `workspace_zombie_billing_summary` | `grep -rn workspace_zombie_billing_summary src/` | 0 |
+| `upgrade_workspace_to_scale` | `grep -rn upgrade_workspace_to_scale src/` | 0 |
+| `BillingLifecycleEvent.billing_status` | `grep -rn "billing_status" src/observability/` | 0 |
 
-Also remove the `_ = @import("state/workspace_credit*.zig");` lines from `src/main.zig` test discovery.
+Also remove the `_ = @import("state/workspace_credit*.zig");` and any `workspace_billing*` test-discovery lines from `src/main.zig`.
 
 ---
 
