@@ -337,7 +337,9 @@ fn commitTx(conn: *Conn) !void {
 }
 
 fn rollbackTx(conn: *Conn) void {
-    _ = conn.exec("ROLLBACK", .{}) catch {};
+    // conn.rollback() handles the FAIL-state case where exec("ROLLBACK")
+    // would silently no-op and leave the session in an aborted tx.
+    conn.rollback() catch {};
 }
 
 pub fn inspectMigrationState(pool: *Pool, migrations: []const Migration) !MigrationState {

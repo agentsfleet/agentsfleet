@@ -105,7 +105,7 @@ pub fn innerDeleteWorkspaceLlmCredential(hx: hx_mod.Hx, req: *httpz.Request, wor
             "SELECT 1 FROM vault.secrets WHERE workspace_id = $1 AND key_name = 'llm_provider_preference' FOR UPDATE",
             .{workspace_id},
         ) catch {
-            _ = conn.exec("ROLLBACK", .{}) catch {};
+            conn.rollback() catch {};
             common.internalOperationError(hx.res, "Failed to lock provider preference", hx.req_id);
             return;
         });
@@ -114,32 +114,32 @@ pub fn innerDeleteWorkspaceLlmCredential(hx: hx_mod.Hx, req: *httpz.Request, wor
 
     const provider: []const u8 = crypto_store.load(hx.alloc, conn, workspace_id, "llm_provider_preference") catch |e| p: {
         if (e != error.NotFound) {
-            _ = conn.exec("ROLLBACK", .{}) catch {};
+            conn.rollback() catch {};
             common.internalOperationError(hx.res, "Failed to read provider preference", hx.req_id);
             return;
         }
         break :p "anthropic";
     };
     const key_name = std.fmt.allocPrint(hx.alloc, "{s}_api_key", .{provider}) catch {
-        _ = conn.exec("ROLLBACK", .{}) catch {};
+        conn.rollback() catch {};
         common.internalOperationError(hx.res, "Allocation failed", hx.req_id);
         return;
     };
 
     _ = conn.exec("DELETE FROM vault.secrets WHERE workspace_id = $1 AND key_name = $2", .{ workspace_id, key_name }) catch {
-        _ = conn.exec("ROLLBACK", .{}) catch {};
+        conn.rollback() catch {};
         common.internalOperationError(hx.res, "Failed to delete LLM API key", hx.req_id);
         return;
     };
     _ = conn.exec("DELETE FROM vault.secrets WHERE workspace_id = $1 AND key_name = 'llm_provider_preference'", .{workspace_id}) catch |e| {
         log.err("workspace.llm_pref_delete_failed workspace_id={s} err={s}", .{ workspace_id, @errorName(e) });
-        _ = conn.exec("ROLLBACK", .{}) catch {};
+        conn.rollback() catch {};
         common.internalOperationError(hx.res, "Failed to delete provider preference", hx.req_id);
         return;
     };
 
     _ = conn.exec("COMMIT", .{}) catch {
-        _ = conn.exec("ROLLBACK", .{}) catch {};
+        conn.rollback() catch {};
         common.internalOperationError(hx.res, "Transaction commit failed", hx.req_id);
         return;
     };
