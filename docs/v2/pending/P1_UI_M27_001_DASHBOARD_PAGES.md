@@ -20,16 +20,23 @@ M12 narrowed to the foundation (backend + primitives + token pyramid). M26 unifi
 
 ---
 
-## §0 — Route Ownership (M27 vs M19 — no overlap)
+## §0 — Route Ownership (M27 vs M19 — file-level partition, no overlap)
 
 **Status:** CONSTRAINT
 
-| Route | Owner | Scope |
-|-------|-------|-------|
-| `app/(dashboard)/zombies/new/page.tsx` | **M19_001** | Install form + webhook URL display after submit. M27 does NOT own this route. |
-| `app/(dashboard)/zombies/[id]/page.tsx` | **M27_001** (this spec) | Zombie detail — metadata, kill switch, spend panel, activity feed. |
+| Path | Owner | Scope |
+|------|-------|-------|
+| `app/(dashboard)/zombies/new/page.tsx` | **M19_001** | Install form + webhook URL display after submit. M27 does NOT own this file. |
+| `app/(dashboard)/zombies/[id]/page.tsx` | **M27_001** (this spec) | Detail page **file** — layout + status header + kill switch + spend panel + activity feed + imports of M19's panel components (TriggerPanel, FirewallRulesEditor, ZombieConfig). |
+| `app/(dashboard)/zombies/[id]/components/TriggerPanel.tsx` | **M19_001** | Trigger config. M27 imports + renders. |
+| `app/(dashboard)/zombies/[id]/components/FirewallRulesEditor.tsx` | **M19_001** | Firewall rules editor. M27 imports + renders. |
+| `app/(dashboard)/zombies/[id]/components/ZombieConfig.tsx` | **M19_001** | Rename / describe / delete panel. M27 imports + renders. |
 
-This is a §-level constraint, not a buried note. If EXECUTE surfaces install-form UI, that work belongs in M19, not here.
+**Partition rule:** M27 owns **detail-page composition** — the `page.tsx` file itself and widgets that are natural to the dashboard (status, kill switch, spend, activity). M19 owns **lifecycle-behavior components** under `components/`, because every one of them maps 1:1 to a `zombiectl zombie *` subcommand. M27's `page.tsx` imports them; M27 never edits them.
+
+Path format: always `app/(dashboard)/zombies/[id]/...` with the route group segment.
+
+If EXECUTE produces file-level surface outside this table, amend the spec first. Merge-conflict risk is eliminated because M19 only touches `components/**` + `new/page.tsx`, and M27 only touches `[id]/page.tsx` + M27-owned widgets.
 
 ---
 

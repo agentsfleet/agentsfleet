@@ -22,16 +22,23 @@
 
 ---
 
-## §0 — Route Ownership (M19 vs M27 — no overlap)
+## §0 — Route Ownership (M19 vs M27 — file-level partition, no overlap)
 
 **Status:** CONSTRAINT
 
-| Route | Owner | Scope |
-|-------|-------|-------|
-| `app/(dashboard)/zombies/new/page.tsx` | **M19_001** (this spec) | Install form (template picker + name/desc/skill fields); on submit, POST + redirect; after install, surface webhook URL. |
-| `app/(dashboard)/zombies/[id]/page.tsx` | **M27_001** | Detail page — status, kill switch, spend panel, activity feed. M19 does NOT touch this route. |
+| Path | Owner | Scope |
+|------|-------|-------|
+| `app/(dashboard)/zombies/new/page.tsx` | **M19_001** (this spec) | Install form (template picker + name/desc/skill fields); on submit, POST + redirect to `/zombies/{id}`; after install, surface webhook URL. |
+| `app/(dashboard)/zombies/[id]/page.tsx` | **M27_001** | Detail page **file** — composes M19's panel components below, adds M27-owned widgets (status header, kill switch, spend panel, activity feed). M19 does NOT edit this file. |
+| `app/(dashboard)/zombies/[id]/components/TriggerPanel.tsx` | **M19_001** | Trigger config panel (§2) — webhook URL + copy button, cron editor. Imported and rendered by M27's `page.tsx`. |
+| `app/(dashboard)/zombies/[id]/components/FirewallRulesEditor.tsx` | **M19_001** | Firewall rules editor (§3) — rule list + inline add/edit/delete. Imported and rendered by M27's `page.tsx`. |
+| `app/(dashboard)/zombies/[id]/components/ZombieConfig.tsx` | **M19_001** | Rename / describe / delete panel (§4). Imported and rendered by M27's `page.tsx`. |
 
-This is a §-level constraint: if EXECUTE surfaces UI that belongs on `[id]/page.tsx`, it rides in M27, not here. M19's surface ends at the redirect after install.
+**Partition rule:** M19 owns **lifecycle-behavior components** (install, trigger, firewall, config) — every action maps 1:1 to a `zombiectl zombie *` subcommand, so behavior belongs in this milestone. M27 owns the **detail-page composition** — layout, kill switch, spend panel, activity feed — and imports M19's components as panels.
+
+Path format: always `app/(dashboard)/zombies/[id]/...` with the route group. Any reference dropping the `(dashboard)` segment is a typo — the filesystem path includes it.
+
+If EXECUTE produces file-level surface that isn't in the table above, amend the spec before editing. Merge-conflict risk is eliminated because M19 only ever creates files under `components/` and `new/page.tsx`; M27 only ever creates `page.tsx` plus its own widgets (kill switch, spend panel, activity feed).
 
 **Solution summary:** Add the lifecycle CRUD surface to the app. Five panels: (1) Zombie creation form with skill template picker, (2) Trigger panel on zombie detail showing webhook URL with copy button and cron editor, (3) Firewall rules editor with add/edit/delete inline, (4) Zombie config view (rename, change description, delete), (5) Zombie status actions (pause, resume — in addition to kill switch from M12). All API calls use existing backend endpoints that the CLI already calls.
 
@@ -143,22 +150,22 @@ Trigger
 
 **Dimensions:**
 - 2.1 PENDING
-  - target: `app/zombies/[id]/components/TriggerPanel.tsx`
+  - target: `app/(dashboard)/zombies/[id]/components/TriggerPanel.tsx`
   - input: zombie with webhook trigger
   - expected: webhook URL displayed, copy button copies to clipboard
   - test_type: unit (component test)
 - 2.2 PENDING
-  - target: `app/zombies/[id]/components/TriggerPanel.tsx`
+  - target: `app/(dashboard)/zombies/[id]/components/TriggerPanel.tsx`
   - input: user selects cron mode, clicks "Every Tuesday", clicks Save
   - expected: `POST /v1/workspaces/{ws}/zombies/{id}/schedule` with `{ cron: "0 9 * * 2" }` — success toast
   - test_type: integration (API mock)
 - 2.3 PENDING
-  - target: `app/zombies/[id]/components/TriggerPanel.tsx`
+  - target: `app/(dashboard)/zombies/[id]/components/TriggerPanel.tsx`
   - input: invalid cron expression entered
   - expected: inline error "Invalid cron expression" — Save disabled
   - test_type: unit (component test)
 - 2.4 PENDING
-  - target: `app/zombies/[id]/components/TriggerPanel.tsx`
+  - target: `app/(dashboard)/zombies/[id]/components/TriggerPanel.tsx`
   - input: zombie with cron schedule
   - expected: "Next run" timestamp calculated and shown
   - test_type: unit (component test)
@@ -193,22 +200,22 @@ Condition (optional): [body.text contains @sales-lead]
 
 **Dimensions:**
 - 3.1 PENDING
-  - target: `app/zombies/[id]/components/FirewallRulesEditor.tsx`
+  - target: `app/(dashboard)/zombies/[id]/components/FirewallRulesEditor.tsx`
   - input: zombie with 2 existing firewall rules
   - expected: table renders both rules with method, domain, path, action, condition
   - test_type: unit (component test)
 - 3.2 PENDING
-  - target: `app/zombies/[id]/components/FirewallRulesEditor.tsx`
+  - target: `app/(dashboard)/zombies/[id]/components/FirewallRulesEditor.tsx`
   - input: user adds a new rule and clicks Add Rule
   - expected: `PUT /v1/workspaces/{ws}/zombies/{id}/firewall` with updated rules array — success toast
   - test_type: integration (API mock)
 - 3.3 PENDING
-  - target: `app/zombies/[id]/components/FirewallRulesEditor.tsx`
+  - target: `app/(dashboard)/zombies/[id]/components/FirewallRulesEditor.tsx`
   - input: user deletes a rule
   - expected: confirmation dialog → `PUT /v1/workspaces/{ws}/zombies/{id}/firewall` with rule removed
   - test_type: integration (API mock)
 - 3.4 PENDING
-  - target: `app/zombies/[id]/components/FirewallRulesEditor.tsx`
+  - target: `app/(dashboard)/zombies/[id]/components/FirewallRulesEditor.tsx`
   - input: user submits rule with empty domain
   - expected: client-side validation "Domain is required"
   - test_type: unit (component test)
@@ -223,17 +230,17 @@ Rename, update description, pause/resume, and delete a zombie. Pause is distinct
 
 **Dimensions:**
 - 4.1 PENDING
-  - target: `app/zombies/[id]/components/ZombieConfig.tsx`
+  - target: `app/(dashboard)/zombies/[id]/components/ZombieConfig.tsx`
   - input: user renames zombie from "lead-collector" to "lead-collector-prod"
   - expected: `PATCH /v1/workspaces/{ws}/zombies/{id}` with new name — page title updates
   - test_type: integration (API mock)
 - 4.2 PENDING
-  - target: `app/zombies/[id]/components/ZombieConfig.tsx`
+  - target: `app/(dashboard)/zombies/[id]/components/ZombieConfig.tsx`
   - input: user clicks Pause
   - expected: `POST /v1/workspaces/{ws}/zombies/{id}:pause` — status badge updates to "Paused"; new triggers rejected
   - test_type: integration (API mock)
 - 4.3 PENDING
-  - target: `app/zombies/[id]/components/ZombieConfig.tsx`
+  - target: `app/(dashboard)/zombies/[id]/components/ZombieConfig.tsx`
   - input: user clicks Delete
   - expected: confirmation dialog shows zombie name and pending action count → `DELETE /v1/workspaces/{ws}/zombies/{id}` → redirect to dashboard
   - test_type: integration (API mock)
