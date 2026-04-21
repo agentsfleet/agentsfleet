@@ -4,11 +4,15 @@
 **Milestone:** M22
 **Workstream:** 001
 **Date:** Apr 13, 2026
-**Status:** PENDING
+**Status:** DEFERRED
 **Priority:** P1 — UZ-GRANT-001 is the most common failure mode; dashboard has no grants surface
-**Batch:** B7 — after M19 (zombie lifecycle UI provides the detail page shell)
+**Batch:**
 **Branch:** feat/m22-grants-ui
 **Depends on:** M12_001 (app shell), M19_001 (zombie detail page), M9_001 (grants API, done)
+
+---
+
+> **Deferred from v2.0 MVP (Apr 21, 2026):** `zombiectl grant request/approve` already covers the operator motion. Dashboard surface waits until post-alpha. Reactivate when a named user asks.
 
 ---
 

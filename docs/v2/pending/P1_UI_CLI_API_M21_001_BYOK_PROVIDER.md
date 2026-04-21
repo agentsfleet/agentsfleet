@@ -6,7 +6,7 @@
 **Date:** Apr 13, 2026
 **Status:** PENDING
 **Priority:** P1 — Blocks operators who exhaust free credits; enables enterprise self-serve
-**Batch:** B6 — after M12 (settings page shell), M13 (credential vault), M15_001 (credit metering, done)
+**Batch:** B2 — parallel with M19_001, M13_001, M11_005
 **Branch:** feat/m21-byok-provider
 **Depends on:** M12_001 (settings page), M13_001 (credential vault), M15_001 (credit metering, done)
 
@@ -16,7 +16,7 @@
 
 ## Overview
 
-**Goal (testable):** An operator who has exhausted their free credits can: (a) open Settings > Provider in the dashboard, switch to "Bring your own key", select their Anthropic credential from the vault, choose a model, and click Save — after which all zombie runs bill against their own API quota; OR (b) run `zombiectl provider set --workspace ws --provider anthropic --credential-ref my_anthropic_key --model claude-sonnet-4-6` with identical effect; OR (c) call `PUT /v1/workspaces/{ws}/provider` via the API. A per-zombie override lets individual zombies use different models (e.g., Haiku for cheap routing tasks, Sonnet for complex reasoning).
+**Goal (testable):** An operator who has exhausted their free credits can: (a) open Settings > Provider in the dashboard, switch to "Bring your own key", select their Anthropic credential from the vault, choose a model, and click Save — after which all zombie runs in that workspace bill against their own API quota; OR (b) run `zombiectl provider set --workspace ws --provider anthropic --credential-ref my_anthropic_key --model claude-sonnet-4-6` with identical effect; OR (c) call `PUT /v1/workspaces/{ws}/provider` via the API.
 
 **Problem:** Credits run out. Today, when an operator's 20 free credits are exhausted, their only paths are: upgrade the UseZombie plan (pay UseZombie to keep running hosted Claude), or stop using the product. BYOK (bring your own key) is the enterprise self-serve unlock: the operator adds their own Anthropic or OpenAI API key, and UseZombie becomes the orchestration layer without being the LLM cost center. Without this, operators who want to control their LLM spend, choose specific models, or route to an on-prem/private model cannot do so.
 
@@ -30,8 +30,7 @@
 |---|---|---|---|
 | View current provider | `zombiectl provider get` | Settings > Provider | `GET /v1/workspaces/{ws}/provider` |
 | Set BYOK (workspace) | `zombiectl provider set --provider anthropic ...` | Settings > Provider > BYOK | `PUT /v1/workspaces/{ws}/provider` |
-| Per-zombie override | `zombiectl zombie provider set --zombie {id} ...` | Zombie detail > Config > Provider | `PUT /v1/workspaces/{ws}/zombies/{id}/provider` |
-| View credit usage | `zombiectl credits status` | Settings > Usage panel | `GET /v1/workspaces/{ws}/credits` |
+| View credit usage | `zombiectl credits status` | Settings > Usage panel | `GET /v1/tenants/me/credits` |
 
 ---
 
@@ -103,42 +102,6 @@ TOTAL            24    2.5M        $1.75
 
 ---
 
-## 2.0 Per-Zombie Provider Override
-
-**Status:** PENDING
-
-On the zombie detail page > Config tab, an operator can override the workspace provider for that specific zombie. Useful for: cheap routing zombies (Haiku), high-stakes reasoning zombies (Opus), or zombies that must use a different company API key.
-
-**Layout:**
-
-```
-Zombie detail: blog-writer
-[Activity] [Pending] [Integrations] [Memory] [Config]
-
-Provider
-● Inherit workspace default (Anthropic / claude-sonnet-4-6)
-○ Override for this zombie
-  Provider    [OpenAI ▾]
-  Credential  [openai_key ▾]
-  Model       [gpt-4o ▾]
-
-[Save]
-```
-
-**Dimensions:**
-- 2.1 PENDING
-  - target: `app/zombies/[id]/components/ZombieConfig.tsx` (provider section)
-  - input: zombie inheriting workspace default
-  - expected: "Inherit workspace default" selected, current workspace provider shown
-  - test_type: unit (component test)
-- 2.2 PENDING
-  - target: `app/zombies/[id]/components/ZombieConfig.tsx`
-  - input: user selects override, picks OpenAI, selects model gpt-4o, saves
-  - expected: `PUT /v1/workspaces/{ws}/zombies/{id}/provider` with override config — success toast
-  - test_type: integration (API mock)
-
----
-
 ## 3.0 CLI Surface
 
 **Status:** PENDING
@@ -161,18 +124,6 @@ $ zombiectl provider set \
 $ zombiectl provider set --hosted
 ✓ Workspace using UseZombie hosted credits (8 remaining)
 
-# Per-zombie override
-$ zombiectl zombie provider set \
-    --zombie zom_01xyz \
-    --provider openai \
-    --credential-ref openai_key \
-    --model gpt-4o
-✓ blog-writer will use OpenAI gpt-4o
-
-# Clear override (back to workspace default)
-$ zombiectl zombie provider set --zombie zom_01xyz --inherit
-✓ blog-writer inheriting workspace provider
-
 # Credit status
 $ zombiectl credits status
 Workspace:    acme-prod
@@ -192,11 +143,6 @@ Reset:        Never (one-time credits)
   - target: `zombiectl provider set --hosted`
   - input: workspace currently on BYOK
   - expected: provider switched to hosted; remaining credits shown
-  - test_type: CLI integration
-- 3.3 PENDING
-  - target: `zombiectl zombie provider set --inherit`
-  - input: zombie with existing override
-  - expected: override cleared; zombie inherits workspace provider
   - test_type: CLI integration
 
 ---
@@ -234,8 +180,6 @@ An operator adds a provider credential the same way as any credential: Add Crede
 ```
 GET  /v1/workspaces/{ws}/provider                   — get workspace LLM provider config
 PUT  /v1/workspaces/{ws}/provider                   — set workspace LLM provider config
-GET  /v1/workspaces/{ws}/zombies/{id}/provider      — get per-zombie override
-PUT  /v1/workspaces/{ws}/zombies/{id}/provider      — set per-zombie override
 ```
 
 ### 5.2 Provider Config Schema
@@ -278,13 +222,11 @@ PUT  /v1/workspaces/{ws}/zombies/{id}/provider      — set per-zombie override
 |---|---|---|
 | 1 | Schema: add `credential_type` column to credentials table | zig build |
 | 2 | `GET/PUT /v1/workspaces/{ws}/provider` handlers | dim 3.1 |
-| 3 | `GET/PUT /v1/workspaces/{ws}/zombies/{id}/provider` handlers | dim 2.2 |
-| 4 | M13 credential modal: add Type field | dim 4.1 |
-| 5 | Settings > Provider tab (dashboard UI) | dims 1.1–1.5 |
-| 6 | Per-zombie provider section in Config tab | dims 2.1–2.2 |
-| 7 | CLI `zombiectl provider set/get` + `zombiectl zombie provider set` | dims 3.1–3.3 |
-| 8 | Usage panel with M15_001 metering data | dim 1.4 |
-| 9 | Cross-compile + full test gate | all dims |
+| 3 | M13 credential modal: add Type field | dim 4.1 |
+| 4 | Settings > Provider tab (dashboard UI) | dims 1.1–1.5 |
+| 5 | CLI `zombiectl provider set/get` | dims 3.1–3.2 |
+| 6 | Usage panel with M15_001 metering data | dim 1.4 |
+| 7 | Cross-compile + full test gate | all dims |
 
 ---
 
@@ -292,7 +234,6 @@ PUT  /v1/workspaces/{ws}/zombies/{id}/provider      — set per-zombie override
 
 - [ ] BYOK set from dashboard — verify: dim 1.2
 - [ ] Provider credentials excluded from firewall injection — verify: dim 4.2
-- [ ] Per-zombie override works — verify: dim 2.2
 - [ ] CLI `provider set` works — verify: dim 3.1
 - [ ] Hosted credits exhausted → UZ-PROV-003 — verify: dim 5.3 integration test
 - [ ] Usage panel shows per-zombie cost — verify: dim 1.4
@@ -323,6 +264,7 @@ gitleaks detect 2>&1 | tail -3
 
 ## Out of Scope
 
+- Per-zombie provider override — deferred to post-MVP; workspace-level is sufficient for operator "my credits ran out, use my Anthropic key" motion.
 - Per-zombie model fine-tuning or custom system prompts from UI (skill template is the right surface)
 - On-prem / private LLM endpoints (noted as `base_url` extension, not V1)
 - Provider-level rate limiting / cost caps per zombie (future)

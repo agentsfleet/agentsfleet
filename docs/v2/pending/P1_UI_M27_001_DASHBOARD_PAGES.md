@@ -6,7 +6,7 @@
 **Date:** Apr 16, 2026
 **Status:** PENDING — blocked on M26_001
 **Priority:** P1 — Operator-facing pages (dashboard/zombies/detail/firewall/settings); completes what M12 started
-**Batch:** B5 — lands after M26_001 closes
+**Batch:** B3 — follows B2 alpha gate
 **Branch:** feat/m27-dashboard-pages (not yet created)
 **Depends on:** M12_001 (backend endpoints, shared primitives, token pyramid), **M26_001 (unified `@usezombie/design-system` Button/Card/etc. — must merge first)**
 
@@ -166,35 +166,6 @@ Route: `app/(dashboard)/zombies/[id]/page.tsx`. Name / status / uptime / 7d + 30
 
 ---
 
-## 5.0 Firewall placeholder — `/firewall`
-
-**Status:** PENDING
-
-Route: `app/(dashboard)/firewall/page.tsx`. Placeholder with copy "Firewall metrics — coming soon" and a link to the future milestone spec. Nav link wired so users discover the page exists.
-
-**Dimensions:**
-
-- 5.1 PENDING — page renders placeholder, no API calls made — test_type: unit
-
----
-
-## 6.0 Settings (minimal) — `/settings`
-
-**Status:** PENDING
-
-Route: `app/(dashboard)/settings/page.tsx`. Two cards:
-1. Workspace info — name, id (copyable), plan tier from `core.workspace_entitlements`
-2. Tenant API keys — list of active keys from `core.api_keys` (name, key prefix, last-used timestamp, revoke button). `core.tenants.api_key_hash` was removed by M11_003; the multi-key `core.api_keys` table from M28_002 is the only store.
-
-Multi-key management: M28_002 already ships the CRUD API + table. This page wires it up.
-
-**Dimensions:**
-
-- 6.1 PENDING — page renders both cards — test_type: integration
-- 6.2 PENDING — masked API key never exposes raw hash — test_type: unit (grep + render check)
-
----
-
 ## 7.0 Shell + nav
 
 **Status:** PENDING
@@ -251,6 +222,7 @@ M27 is purely composition on top of what M12 + M26 delivered. No new API endpoin
 
 ## 11.0 Out of Scope
 
+- Firewall page, settings placeholder — deferred.
 - Full firewall metrics/events page — M7-extension milestone
 - Multi-key API key management — schema change required
 - Dark/light mode toggle — M12's `.dark` block stubbed for future

@@ -6,7 +6,7 @@
 **Date:** Apr 13, 2026
 **Status:** PENDING
 **Priority:** P1 — Without this, the dashboard gives false confidence; stalled zombies appear "Active"
-**Batch:** B6 — after M12 (app shell); M4_001 (approval gate) already done
+**Batch:** B3 — follows alpha gate
 **Branch:** feat/m20-approval-inbox
 **Depends on:** M12_001 (app shell), M4_001 (approval gate, done)
 

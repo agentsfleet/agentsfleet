@@ -6,7 +6,7 @@
 **Date:** Apr 13, 2026
 **Status:** PENDING
 **Priority:** P1 — Without this, the dashboard is read-only; operators must use the CLI for all setup
-**Batch:** B6 — after M12 (app shell)
+**Batch:** B2 — alpha gate, parallel with M13_001, M21_001, M11_005
 **Branch:** feat/m19-zombie-lifecycle-ui
 **Depends on:** M12_001 (app shell + layout), M9_001 (grants/execute API, done)
 
@@ -81,6 +81,11 @@ Accessed from Dashboard via "+ New Zombie" button. Two paths: (a) pick a skill t
   - input: user submits and API returns 409 (name conflict)
   - expected: toast "A zombie named 'lead-collector' already exists in this workspace"
   - test_type: unit (component test)
+- 1.5 PENDING
+  - target: `zombiectl/src/commands/zombie_create.js` (CLI success path)
+  - input: `zombiectl zombie create` completes successfully (API returns 201 with webhook URL)
+  - expected: stdout contains the literal line `🎉 Woohoo! Your zombie is installed and ready to run.` followed by the webhook URL on the next line
+  - test_type: unit (CLI test asserting `Woohoo! Your zombie is installed` is present in stdout)
 
 ---
 
@@ -281,6 +286,7 @@ All operations use existing API surface. This is a pure frontend milestone.
 ## 8.0 Acceptance Criteria
 
 - [ ] Create zombie from dashboard — verify: dim 1.2
+- [ ] `zombiectl zombie create` prints the literal line `🎉 Woohoo! Your zombie is installed and ready to run.` (followed by the webhook URL) on successful creation — verify: dim 1.5
 - [ ] Webhook URL copyable from trigger panel — verify: dim 2.1
 - [ ] Cron schedule set and next-run shown — verify: dim 2.2 + 2.4
 - [ ] Firewall rule added/deleted — verify: dims 3.2 + 3.3
