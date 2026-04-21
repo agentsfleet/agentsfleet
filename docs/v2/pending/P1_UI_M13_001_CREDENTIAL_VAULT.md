@@ -6,21 +6,56 @@
 **Date:** Apr 10, 2026
 **Status:** PENDING
 **Priority:** P1 — Operator trust surface; proves "agents never see your keys"
-**Batch:** B5 — after M12 (app dashboard provides the shell)
+**Batch:** B2 — alpha gate, parallel with M11_005, M19_001, M21_001, M27_001, M31_001, M33_001
 **Branch:** feat/m13-credential-vault-ui
 **Depends on:** M12_001 (app dashboard layout + auth), M5_001 (tool bridge credential flow)
 **Supersedes:** M12_001 §4.0 (Credentials Page) — M12's basic credentials list is replaced by this spec in full
-**Extended by:** M21_001 (B6) — adds `credential_type = llm_provider` field for BYOK provider keys; same vault, same Add Credential modal with a new "Type" selector; provider credentials are excluded from firewall injection path
+**Extended by:** M21_001 — depends on M13 for the Add Credential modal and Type selector; M21 extends the Type enum with a new `llm_provider` value and consumes the existing modal. M21 does NOT ship the Type selector itself.
+
+---
+
+## §0 — Scope Decisions (resolve BEFORE EXECUTE)
+
+### 0.1 Credential scope: tenant-scoped — RESOLVED
+
+**Decision (Apr 21, 2026): tenant-scoped credentials.** One vault per tenant, visible to all workspaces owned by that tenant.
+
+**Rationale:**
+- **Consistency with tenant-scoped billing (M11_005).** Credits, payment method, and provider config all live at the tenant. Credentials following the same scope keeps one mental model for operators.
+- **Consistency with tenant-scoped BYOK provider config (M21_001).** An operator's Anthropic / OpenAI key is a tenant-wide asset; selecting that key from a per-workspace vault would force re-adding the same key into every workspace. Tenant-scoped vault keeps M21 coherent — one tenant, one provider key, N workspaces.
+- **Single mental model for operators.** "Workspaces are project folders; the tenant owns the credit balance and the keys" is easy to explain. Workspace-scoped credentials contradict that model.
+- **Avoids per-workspace duplication** for the common case (Anthropic key, Slack token, GitHub PAT, kubectl config, docker socket).
+
+**Scope additions pulled into M13 as a result:**
+
+1. **Pre-EXECUTE grep.** Before any schema edit, grep for the current scope of `credentials` / the vault table in `schema/*.sql`, `src/db/`, and `src/http/handlers/` to confirm the starting state. Expected: workspace-scoped per `schema/004_vault_schema.sql` and `/v1/tenants/me/credentials` surface. Record the finding in the Ripley's Log before proceeding.
+2. **Schema migration.** If current state confirms workspace-scoped (pre-v2.0 teardown era), invoke the **Schema Table Removal Guard** and re-author `schema/004_vault_schema.sql` (or a new slot) so `credentials` FK is `tenant_id` instead of `workspace_id`. Update `schema/embed.zig` and the canonical migration array in `src/cmd/common.zig` per the Guard. Any RLS policies on the table move to tenant scope.
+3. **API surface.** Add `/v1/tenants/me/credentials` (GET, POST, DELETE) as the new primary surface. Deprecate the workspace-scoped endpoints in-repo (pre-v2 teardown: remove them outright; no 410 stubs per pre-v2 API drift policy).
+4. **UI wiring.** `app/credentials/page.tsx` reads from `/v1/tenants/me/credentials`. The page lives at the tenant level; remove the workspace-switcher dependency on credentials.
+5. **Ripple into M21_001.** Provider credentials read from the tenant vault (already tenant-scoped in M21's own design); no action needed in M21 beyond confirming its credential selector consumes `/v1/tenants/me/credentials`.
+6. **Ripple into M33_001.** Homelab Zombie installs at a workspace but reads `kubectl_config` / `docker_socket` from the tenant vault. README in `samples/homelab/` documents `zombiectl credential add kubectl_config --file ~/.kube/config` as a tenant-level action.
+
+**If the pre-EXECUTE grep reveals the vault is already tenant-scoped** (schema drift since §0 was authored), item 2 is a no-op and items 3-4 may be partially complete; update the spec to reflect actuals and proceed.
+
+### 0.2 Add-Credential Type Selector — owned by M13
+
+M13 ships the Add-credential modal **with a Type selector** defaulting to `credential_type = 'tool'`. The database column + enum is part of this milestone. M21_001 consumes the existing modal and only adds the `llm_provider` value to the enum + routing for provider-typed credentials.
+
+**Concrete M13 scope additions:**
+
+- `schema/NNN_credential_type.sql` (or equivalent column addition on existing credentials table — re-verify pre-v2 teardown path with Schema Guard at EXECUTE) introducing `credential_type TEXT NOT NULL DEFAULT 'tool'` with a CHECK constraint enumerating `'tool'` as the only M13 value.
+- Add Credential modal shows a Type dropdown with `Tool` (default). `LLM Provider` option is NOT present in M13 — M21 extends the enum and exposes the new option.
+- List view shows the Type column so operators can distinguish.
 
 ---
 
 ## Overview
 
-**Goal (testable):** The Credentials page at `app.usezombie.com/credentials` provides full vault management: add credentials (name + value → encrypted at rest, value never stored in browser), list credentials (name, scope, which Zombies use it, last injection timestamp — never the value), delete credentials (with confirmation showing which Zombies will break), and view credential usage log (which Zombie, which request, which tool, when — proving the audit trail claim). The usage log is the killer feature: it answers "when was my Stripe key last used and by which agent?"
+**Goal (testable):** The Credentials page at `app.usezombie.com/credentials` provides MVP vault management: add credentials (name + value → encrypted at rest, value never stored in browser), list credentials (name, scope, which Zombies use it — never the value), and delete credentials (with confirmation showing which Zombies will break).
 
-**Problem:** M12 includes a basic credentials list, but the vault deserves a dedicated deep experience. The CEO plan's core differentiator is "agents never see your keys" — the Credential Vault UI is the proof. Today, credential management is CLI-only (`zombiectl credential add/list`). The web UI needs to demonstrate the security model visually: values are write-only (submitted once, never retrievable), usage is fully audited, and deletion shows impact. Without this, the "credentials hidden" claim is words, not evidence.
+**Problem:** M12 includes a basic credentials list, but the vault deserves a dedicated experience. The CEO plan's core differentiator is "agents never see your keys" — the Credential Vault UI is the proof. Today, credential management is CLI-only (`zombiectl credential add/list`). The web UI needs to demonstrate the security model visually: values are write-only (submitted once, never retrievable), deletion shows impact.
 
-**Solution summary:** Extend the M12 credentials page into a full vault management experience with four views: (1) Credential list with scope and last-used metadata, (2) Add credential flow with write-only UX (value field clears on submit, never echoed), (3) Delete credential flow with impact analysis (which Zombies will lose access), (4) Credential usage log (filtered from activity_events where event_type='credential_injected'). Requires one new API endpoint: `GET /v1/workspaces/{ws}/credentials/{name}/usage` (paginated usage history). All other endpoints exist.
+**Solution summary:** Extend the M12 credentials page into MVP vault management with three views: (1) Credential list with scope metadata, (2) Add credential flow with write-only UX (value field clears on submit, never echoed), (3) Delete credential flow with impact analysis (which Zombies will lose access). No new API endpoint required — uses existing list/add/delete.
 
 ---
 
@@ -28,13 +63,13 @@
 
 **Status:** PENDING
 
-Enhanced list showing operational metadata for each credential. Each row: name, scope (which skills/tools reference it), zombie count (how many Zombies use it), last injected (timestamp of most recent firewall credential injection), and health status (active/unused/error).
+List showing operational metadata for each credential. Each row: name, scope (which skills/tools reference it), zombie count (how many Zombies use it).
 
 **Dimensions (test blueprints):**
 - 1.1 PENDING
   - target: `app/credentials/page.tsx`
-  - input: `Workspace with 3 credentials: stripe (2 Zombies, last used 10m ago), slack (1 Zombie, last used 1h ago), github (0 Zombies, never used)`
-  - expected: `Table renders with name, zombie count, last_injected as relative time, health badge (active/unused)`
+  - input: `Workspace with 3 credentials: stripe (2 Zombies), slack (1 Zombie), github (0 Zombies)`
+  - expected: `Table renders with name, scope, zombie count`
   - test_type: unit (component test)
 - 1.2 PENDING
   - target: `app/credentials/page.tsx`
@@ -42,11 +77,6 @@ Enhanced list showing operational metadata for each credential. Each row: name, 
   - expected: `No value column exists in the table. No API endpoint returns credential values. Code review confirms.`
   - test_type: unit (static analysis — grep for value/secret/token in rendered output)
 - 1.3 PENDING
-  - target: `app/credentials/components/CredentialRow.tsx`
-  - input: `Click on credential row`
-  - expected: `Expands to show usage log preview (last 5 injections) + link to full usage log`
-  - test_type: unit (component test)
-- 1.4 PENDING
   - target: `app/credentials/page.tsx`
   - input: `Empty workspace with no credentials`
   - expected: `Empty state: "No credentials yet. Add one to get started." + Add button`
@@ -64,7 +94,7 @@ Write-only credential submission. The value field is a password input that clear
 - 2.1 PENDING
   - target: `app/credentials/components/AddCredentialModal.tsx`
   - input: `User enters name="stripe", value="sk_test_xxx", clicks Submit`
-  - expected: `POST /v1/workspaces/{ws}/credentials, success toast, value field cleared, modal closes`
+  - expected: `POST /v1/tenants/me/credentials, success toast, value field cleared, modal closes`
   - test_type: unit (component test)
 - 2.2 PENDING
   - target: `app/credentials/components/AddCredentialModal.tsx`
@@ -104,39 +134,7 @@ Deletion with impact analysis. Before confirming deletion, the UI shows which Zo
 - 3.3 PENDING
   - target: `app/credentials/components/DeleteCredentialDialog.tsx`
   - input: `User confirms deletion`
-  - expected: `DELETE /v1/workspaces/{ws}/credentials/{name}, credential removed from list, success toast`
-  - test_type: unit (component test)
-
----
-
-## 4.0 Credential Usage Log
-
-**Status:** PENDING
-
-Per-credential usage history showing every time the credential was injected into an outbound request. Data comes from a new API endpoint that filters `core.activity_events` where `event_type='credential_injected' AND detail->>'credential_name'='{name}'`. Each entry shows: timestamp, zombie name, tool, target domain, action summary.
-
-This is the audit proof: "Your Stripe key was last used by bug-fixer to create a charge at 10:47 AM."
-
-**Dimensions (test blueprints):**
-- 4.1 PENDING
-  - target: `src/http/handlers/credential_usage.zig:handleGetUsage`
-  - input: `GET /v1/workspaces/{ws}/credentials/stripe/usage?limit=20`
-  - expected: `Paginated list of credential injection events for "stripe": timestamp, zombie_name, tool, target_domain`
-  - test_type: integration (DB)
-- 4.2 PENDING
-  - target: `app/credentials/[name]/usage/page.tsx`
-  - input: `Usage log with 50 entries`
-  - expected: `Table with columns: Time, Zombie, Tool, Target, Action. Cursor-based pagination.`
-  - test_type: unit (component test)
-- 4.3 PENDING
-  - target: `src/http/handlers/credential_usage.zig:handleGetUsage`
-  - input: `Credential with no usage history`
-  - expected: `Empty array, HTTP 200`
-  - test_type: integration (DB)
-- 4.4 PENDING
-  - target: `app/credentials/[name]/usage/page.tsx`
-  - input: `Usage entry: "10:47 AM · lead-collector · agentmail · api.agentmail.com · Sent reply"`
-  - expected: `Entry renders with relative timestamp, zombie linked to detail page, target shown`
+  - expected: `DELETE /v1/tenants/me/credentials/{name}, credential removed from list, success toast`
   - test_type: unit (component test)
 
 ---
@@ -145,29 +143,12 @@ This is the audit proof: "Your Stripe key was last used by bug-fixer to create a
 
 **Status:** PENDING
 
-### 5.1 New API Endpoint
-
-```zig
-// src/http/handlers/credential_usage.zig
-pub fn handleGetUsage(ctx: *Context, req: *httpz.Request, res: *httpz.Response) void
-
-// GET /v1/workspaces/{ws}/credentials/{name}/usage?cursor=...&limit=20
-// Response:
-// {
-//   "events": [
-//     {"timestamp": 1712345678, "zombie_name": "lead-collector", "tool": "agentmail", "target": "api.agentmail.com", "action": "send_reply"},
-//     ...
-//   ],
-//   "next_cursor": "019abc..."
-// }
-```
-
 ### 5.2 Existing API Endpoints Used
 
 ```
-GET    /v1/workspaces/{ws}/credentials             — list (name, scope, no values)
-POST   /v1/workspaces/{ws}/credentials             — add (encrypted at rest)
-DELETE /v1/workspaces/{ws}/credentials/{name}       — delete
+GET    /v1/tenants/me/credentials             — list (name, scope, no values)
+POST   /v1/tenants/me/credentials             — add (encrypted at rest)
+DELETE /v1/tenants/me/credentials/{name}       — delete
 ```
 
 ### 5.3 Error Contracts
@@ -187,12 +168,8 @@ DELETE /v1/workspaces/{ws}/credentials/{name}       — delete
 |-----------|---------------|
 | Credential value NEVER returned by any API | grep all API handlers for credential value in response |
 | Credential value NEVER stored in browser state | grep frontend for localStorage/sessionStorage/state containing credential |
-| credential_usage.zig < 200 lines | `wc -l` |
 | Each component file < 400 lines | `wc -l app/credentials/**/*.tsx` |
-| Usage log query uses existing activity_events index | EXPLAIN ANALYZE on query |
 | Delete dialog shows impact before confirmation | Component test |
-| Cross-compiles (new Zig handler) | both targets |
-| drain() before deinit() | `make check-pg-drain` |
 
 ---
 
@@ -202,13 +179,10 @@ DELETE /v1/workspaces/{ws}/credentials/{name}       — delete
 
 | Step | Action | Verify |
 |------|--------|--------|
-| 1 | Implement credential_usage.zig (new API endpoint) | Integration tests 4.1, 4.3 pass |
-| 2 | Enhanced credential list view (scope, last_used, health) | Tests 1.1-1.4 pass |
-| 3 | Add credential modal (write-only, value cleared) | Tests 2.1-2.4 pass |
-| 4 | Delete credential dialog (impact analysis) | Tests 3.1-3.3 pass |
-| 5 | Credential usage log page | Tests 4.2, 4.4 pass |
-| 6 | Cross-compile (Zig handler) | both targets pass |
-| 7 | Full test suite | `make test && make lint` |
+| 1 | Credential list view (name, scope, zombie count) | Tests 1.1-1.3 pass |
+| 2 | Add credential modal (write-only, value cleared) | Tests 2.1-2.4 pass |
+| 3 | Delete credential dialog (impact analysis) | Tests 3.1-3.3 pass |
+| 4 | Full test suite | `make test && make lint` |
 
 ---
 
@@ -216,20 +190,17 @@ DELETE /v1/workspaces/{ws}/credentials/{name}       — delete
 
 **Status:** PENDING
 
-- [ ] Credential list shows name, scope, last_used — never values — verify: component test + code review
+- [ ] Credential list shows name, scope — never values — verify: component test + code review
 - [ ] Add credential: value cleared after submit, not in browser state — verify: test 2.2
 - [ ] Delete credential: impact shown before confirm — verify: test 3.1
-- [ ] Usage log: per-credential injection history — verify: integration test
-- [ ] Empty states handled gracefully — verify: tests 1.4, 4.3
+- [ ] Empty states handled gracefully — verify: test 1.3
 - [ ] `make test && make lint` pass
-- [ ] Cross-compile passes (Zig handler)
-- [ ] `make check-pg-drain` passes
 
 ---
 
 ## Applicable Rules
 
-RULE XCC (cross-compile — Zig handler), RULE FLL (350-line gate), RULE FLS (drain all results — Zig handler), RULE ORP (orphan sweep). Standard set for Next.js components.
+RULE FLL (350-line gate), RULE ORP (orphan sweep). Standard set for Next.js components — no Zig handlers in this workstream.
 
 ---
 
@@ -295,8 +266,9 @@ N/A — no files deleted.
 
 ## Out of Scope
 
+- Usage audit log — deferred to M13b post-MVP.
 - Credential rotation (revoke + re-add for v1)
-- Credential sharing across workspaces (workspace-scoped only)
+- Per-credential RLS or row-level sharing controls (all credentials in a tenant are visible to every workspace under that tenant by design — per §0.1 tenant-scoped resolution)
 - Credential type detection (Stripe vs Slack vs generic — all treated as opaque strings)
 - Credential value editing (write-once; delete + re-add to change)
 - Export/import credentials (security risk — not planned)

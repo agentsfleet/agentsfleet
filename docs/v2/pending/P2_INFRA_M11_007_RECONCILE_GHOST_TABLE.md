@@ -6,7 +6,7 @@
 **Date:** Apr 17, 2026
 **Status:** PENDING
 **Priority:** P2 — operator tooling cleanup; no user-visible path depends on it today, but the `zombied reconcile` subcommand currently fails at the first DB call against any provisioned schema.
-**Batch:** backlog
+**Batch:** B4 — cleanup
 **Depends on:** none (investigation — decides the fix shape)
 
 ---

@@ -6,7 +6,7 @@
 **Date:** Apr 16, 2026
 **Status:** PENDING — blocked on M26_001
 **Priority:** P1 — Operator-facing pages (dashboard/zombies/detail/firewall/settings); completes what M12 started
-**Batch:** B5 — lands after M26_001 closes
+**Batch:** B2 — alpha gate, parallel with M11_005, M19_001, M13_001, M21_001, M31_001, M33_001 (provides dashboard shell for M19 install flow)
 **Branch:** feat/m27-dashboard-pages (not yet created)
 **Depends on:** M12_001 (backend endpoints, shared primitives, token pyramid), **M26_001 (unified `@usezombie/design-system` Button/Card/etc. — must merge first)**
 
@@ -17,6 +17,26 @@
 M12_001 was originally scoped to ship both the backend endpoints *and* the dashboard pages. During EXECUTE on Apr 16, a design-system audit surfaced that the shared Button was not self-contained (CSS lived in the website) and not RSC-safe (imported `react-router-dom`). Building pages against the app-local Button — then rewriting them post-unification — meant doing the work twice.
 
 M12 narrowed to the foundation (backend + primitives + token pyramid). M26 unifies the design system. M27 picks up the dashboard pages, built directly against the unified Button. No rework.
+
+---
+
+## §0 — Route Ownership (M27 vs M19 — file-level partition, no overlap)
+
+**Status:** CONSTRAINT
+
+| Path | Owner | Scope |
+|------|-------|-------|
+| `app/(dashboard)/zombies/new/page.tsx` | **M19_001** | Install form + webhook URL display after submit. M27 does NOT own this file. |
+| `app/(dashboard)/zombies/[id]/page.tsx` | **M27_001** (this spec) | Detail page **file** — layout + status header + kill switch + spend panel + activity feed + imports of M19's panel components (TriggerPanel, FirewallRulesEditor, ZombieConfig). |
+| `app/(dashboard)/zombies/[id]/components/TriggerPanel.tsx` | **M19_001** | Trigger config. M27 imports + renders. |
+| `app/(dashboard)/zombies/[id]/components/FirewallRulesEditor.tsx` | **M19_001** | Firewall rules editor. M27 imports + renders. |
+| `app/(dashboard)/zombies/[id]/components/ZombieConfig.tsx` | **M19_001** | Rename / describe / delete panel. M27 imports + renders. |
+
+**Partition rule:** M27 owns **detail-page composition** — the `page.tsx` file itself and widgets that are natural to the dashboard (status, kill switch, spend, activity). M19 owns **lifecycle-behavior components** under `components/`, because every one of them maps 1:1 to a `zombiectl zombie *` subcommand. M27's `page.tsx` imports them; M27 never edits them.
+
+Path format: always `app/(dashboard)/zombies/[id]/...` with the route group segment.
+
+If EXECUTE produces file-level surface outside this table, amend the spec first. Merge-conflict risk is eliminated because M19 only touches `components/**` + `new/page.tsx`, and M27 only touches `[id]/page.tsx` + M27-owned widgets.
 
 ---
 
@@ -166,35 +186,6 @@ Route: `app/(dashboard)/zombies/[id]/page.tsx`. Name / status / uptime / 7d + 30
 
 ---
 
-## 5.0 Firewall placeholder — `/firewall`
-
-**Status:** PENDING
-
-Route: `app/(dashboard)/firewall/page.tsx`. Placeholder with copy "Firewall metrics — coming soon" and a link to the future milestone spec. Nav link wired so users discover the page exists.
-
-**Dimensions:**
-
-- 5.1 PENDING — page renders placeholder, no API calls made — test_type: unit
-
----
-
-## 6.0 Settings (minimal) — `/settings`
-
-**Status:** PENDING
-
-Route: `app/(dashboard)/settings/page.tsx`. Two cards:
-1. Workspace info — name, id (copyable), plan tier from `core.workspace_entitlements`
-2. Tenant API keys — list of active keys from `core.api_keys` (name, key prefix, last-used timestamp, revoke button). `core.tenants.api_key_hash` was removed by M11_003; the multi-key `core.api_keys` table from M28_002 is the only store.
-
-Multi-key management: M28_002 already ships the CRUD API + table. This page wires it up.
-
-**Dimensions:**
-
-- 6.1 PENDING — page renders both cards — test_type: integration
-- 6.2 PENDING — masked API key never exposes raw hash — test_type: unit (grep + render check)
-
----
-
 ## 7.0 Shell + nav
 
 **Status:** PENDING
@@ -251,12 +242,14 @@ M27 is purely composition on top of what M12 + M26 delivered. No new API endpoin
 
 ## 11.0 Out of Scope
 
+- Firewall page, settings placeholder — deferred.
 - Full firewall metrics/events page — M7-extension milestone
 - Multi-key API key management — schema change required
 - Dark/light mode toggle — M12's `.dark` block stubbed for future
 - i18n — English only
 - Chat with running agent — CLI-only until a future milestone
 - Advanced filtering/search on activity — basic event_type prefix filter only
+- **Grant-health indicator dot on zombie cards** — cut from alpha. The dot would require a per-zombie grant-aggregation endpoint that's not worth building before a dashboard grants UI exists to give it context. The activity log already surfaces `UZ-GRANT-001` as a first-class event, so operators have a way to see grant state without a summary widget. Revisit when a full grants UI lands.
 
 ---
 

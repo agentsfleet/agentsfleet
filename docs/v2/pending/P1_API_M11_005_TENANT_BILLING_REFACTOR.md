@@ -1,356 +1,350 @@
-# M11_005: Move Plan + Credits from Workspace to Tenant — Billing Foundation Cleanup
+# M11_005: Tenant Billing — Single Row per Tenant (Plan + Credits)
 
-**Prototype:** v2
+**Prototype:** v2.0.0
 **Milestone:** M11
 **Workstream:** 005
-**Date:** Apr 16, 2026 (salvaged Apr 21 post-M11_003 Clerk pivot)
-**Status:** PENDING — needs re-baseline before execution (see Post-Pivot Notes)
-**Priority:** P1 — Foundational; blocks Team Accounts (M16+) and clean tier upgrades
-**Batch:** B5 — follows M11_003 (Clerk signup) on main; no longer parallel
-**Branch:** feat/m11-tenant-billing-refactor (TBD)
-**Depends on:** M11_003 identity layer — `core.tenants`, `core.users`, `core.memberships` — landed on main Apr 21 via PR #237.
+**Date:** Apr 21, 2026
+**Status:** PENDING
+**Priority:** P1 — Blocks the end-to-end "zombie runs and we verify credits deducted" demo
+**Batch:** B2 — alpha gate, parallel with M19_001, M13_001, M21_001, M27_001, M31_001, M33_001
+**Branch:** feat/m11-tenant-credits (TBD)
+**Depends on:** M11_003 (Clerk bootstrap — DONE, landed on main Apr 21 via PR #237)
 
 ---
 
-## Post-Pivot Notes (Apr 21, 2026)
+## §0 — Pre-EXECUTE Verification (run BEFORE any file edits)
 
-This spec was drafted against M11_003's original invite-signup flow and cherry-picked onto main after M11_003 pivoted to Clerk webhook signup (PR #237 merged Apr 21). Before execution:
+**Status:** PENDING
 
-- **§9 (Coordination with M11_003 redemption) is obsolete.** `POST /v1/workspaces/{ws}/credits/redeem` was killed by the Clerk pivot — no redemption endpoint exists on main. The cutover sequencing in §9 can be deleted; the tenant-scoped credit model itself still stands independently.
-- **CLI `zombiectl credits redeem` references throughout §7–§9 are dead.** The command was never shipped.
-- **References to "access code" / "invite" anywhere below** are pre-pivot vocabulary; re-frame as plain "credit grant" when re-baselining.
-- **Identity layer on main matches the spec's Layer B assumption** — `core.tenants(tenant_id, name, kind)` and `core.users(oidc_subject, tenant_id, ...)` are live. `tenant.kind` defaults to `personal` for Clerk-bootstrapped tenants.
+Before touching any file, run these greps and confirm the surface matches this spec. If results diverge, update the spec first, then EXECUTE.
 
-The foundational idea (plan + credit at tenant level, workspace is a usage scope) is unaffected by the pivot and remains load-bearing for the Team Accounts milestone (M16).
+```bash
+# E0.1: Enumerate every live reference to the workspace-scoped billing + credit symbols this spec deletes.
+grep -rn "workspace_billing_state\|billing\.workspace_billing\|workspace_credit\|workspace_free_credit" src/ schema/
+```
+
+**Expected callers (enumerated — not "any that exist"):**
+
+| File | Expected reference | Action |
+|------|--------------------|--------|
+| `schema/016_workspace_billing_state.sql` | table definition | DELETE file |
+| `schema/017_workspace_free_credit.sql` | table definition | DELETE file |
+| `schema/embed.zig` | `workspace_billing_state_sql`, `workspace_free_credit_sql` `@embedFile` | REMOVE both |
+| `src/cmd/common.zig` | version-16 and version-17 entries in `canonicalMigrations()` | REMOVE entries + update length + index tests |
+| `src/state/workspace_credit.zig`, `workspace_credit_store.zig`, `workspace_credit_test.zig` | facade, store, unit tests | DELETE all three |
+| `src/state/workspace_billing*.zig` | any workspace-plan facade/store | DELETE all |
+| `src/http/handlers/workspaces/lifecycle.zig` | `provisionWorkspaceCredit(..., "api")` call | REMOVE the call |
+| `src/zombie/metering.zig` | `workspace_credit.*` debit path | REWRITE to call `tenant_billing.debit` |
+| `src/http/handlers/workspaces/credit*.zig`, `billing*.zig` | per-workspace read handlers | DELETE |
+| `src/http/router.zig` | `/v1/workspaces/{ws}/credits`, `/v1/workspaces/{ws}/billing`, `/v1/workspaces/{ws}/credits/redeem` | REMOVE registrations |
+| `openapi/paths/*workspaces*credits*`, `*billing*` | path definitions | DELETE |
+| `src/main.zig` | `_ = @import("state/workspace_credit*.zig");` test-discovery lines | REMOVE |
+
+If the grep surfaces a reference **outside this table**, STOP and amend the spec before editing.
+
+**Tenant-id resolution contract (worker debit):** the worker performs exactly one lookup per run:
+
+```sql
+SELECT tenant_id FROM core.workspaces WHERE workspace_id = $1
+```
+
+The resulting tenant_id is carried in memory for the run's lifetime. No per-debit repeat lookup.
+
+**M15_001 metering cross-check (mandatory):**
+
+```bash
+# E0.2: Verify M15_001 metering does NOT read workspace_billing_state.plan_tier.
+grep -rn "plan_tier\|workspace_billing_state" src/ | grep -vi test | grep -v billing/
+```
+
+If any M15_001 metering call site reads `workspace_billing_state.plan_tier`, **add a patch to this milestone's scope**: route plan_tier reads to `billing.tenant_billing.plan_tier` via the tenant_id resolved from workspace_id. Record the found files under Files Changed before EXECUTE.
 
 ---
 
 ## Overview
 
-**Goal (testable):** A signed-up user has a Personal account (`tenant.kind = 'personal'`). Their plan tier (Free / Pro / Scale / Enterprise) lives at the **tenant** level — not on each workspace. Their credit balance lives at the **tenant** level too. Workspaces (projects) consume from the tenant's shared credit pool. `GET /v1/tenants/{tenant_id}/credits` is the source of truth; `GET /v1/workspaces/{ws}/credits` becomes a derived view that returns the parent tenant's balance with workspace-scoped usage attribution.
+**Goal (testable):** A new Clerk signup results in one tenant with `plan_tier='free'` and a 1000¢ balance; any zombie run in any workspace owned by that tenant debits that single tenant balance; creating a second workspace does not grant additional credits and does not create a separate plan row.
 
-**Problem:** Today, plan and credits live on each `workspace` row (`billing.workspace_billing_state.plan_tier`, `billing.workspace_credit_state.*`). This means:
+**Problem:** Today both credit state (`billing.workspace_free_credit`, `schema/017`) AND plan state (`billing.workspace_billing_state`, `schema/016`) live per-workspace. Workspaces live under tenants (`core.workspaces.tenant_id → core.tenants`), so billing anchored on the workspace row is upside-down: every new workspace gets a fresh 1000¢ grant (trivially exploitable) and every plan upgrade has to fan out across N workspace rows. The earlier M11_005 draft piled on audit tables and dual-scope endpoints; none of that is required for the MVP loop.
 
-1. **Personal accounts split their economy across projects** — if Jane has three workspaces, each gets its own free 20-credit pool (not what we promise). Or, if the bootstrap only creates credits on the default workspace, her second workspace can't run.
-2. **Team accounts (M16) are impossible to model cleanly** — five teammates in one tenant should share a Pro plan and one credit pool. Per-workspace plan rows mean one of them is "the billing workspace" and others are second-class.
-3. **Plan changes require touching N workspace rows** — Pro upgrade has to fan out across every workspace the user owns. State drift is inevitable.
-4. **The mental model is upside-down vs. industry standard** (Anthropic, OpenAI, Vercel, Stripe). Every dashboard product has plan and credits at the **account** level. Projects/workspaces are usage scopes.
-
-**Solution summary:** Add two tenant-scoped tables; mark workspace-scoped tables as deprecated; flip API endpoints to tenant-scoped (workspace-scoped paths return a derived view); update the credit-deduction path in the worker to debit tenant credits, attributed to the workspace that ran the consumption. Pre-v2.0 means the deprecated workspace tables can be dropped outright once callers move (no migration needed).
-
-**Non-goals (this milestone):**
-- Team accounts (multi-user invites, shared dashboards) — M16.
-- Stripe subscription wiring — billing adapter stays as-is; only the data model moves.
-- Per-workspace credit caps within a tenant pool (e.g. "workspace acme-prod gets 50% of monthly credits") — V3.
-- Plan-tier UI changes — Settings page (M12) consumes the new endpoints; no visual redesign.
+**Solution summary:** Collapse the billing story to one table (`billing.tenant_billing`) holding the tenant's `plan_tier`, `plan_sku`, balance in cents, and `grant_source`. Seeded on signup at `plan_tier='free'`, `plan_sku='free_default'`, `balance_cents=1000`. Debited by the worker on every completed run. Remove the per-workspace credit grant at workspace-create time. Delete per-workspace credit state AND per-workspace billing state entirely. No audit tables (skill run logs + activity_events already carry debit intent), no Stripe fields (`billing_status`, `subscription_id`, grace timestamps) — those come back when Stripe wires in.
 
 ---
 
-## 1.0 New Schema (Tenant-Scoped Billing)
-
-**Status:** PENDING
-
-Two new tables, each ≤100 lines, single concern.
-
-### 1.1 `billing.tenant_plan` (replaces workspace plan rows)
-
-```sql
-CREATE TABLE IF NOT EXISTS billing.tenant_plan (
-    plan_id            UUID PRIMARY KEY,
-    tenant_id          UUID NOT NULL UNIQUE REFERENCES core.tenants(tenant_id) ON DELETE CASCADE,
-    plan_tier          TEXT NOT NULL,             -- values in src/types/plan_tier.zig
-    plan_sku           TEXT NOT NULL,
-    billing_status     TEXT NOT NULL,             -- values in src/types/billing_status.zig
-    adapter            TEXT NOT NULL,
-    subscription_id    TEXT,
-    payment_failed_at  BIGINT,
-    grace_expires_at   BIGINT,
-    pending_status     TEXT,
-    pending_reason     TEXT,
-    created_at         BIGINT NOT NULL,
-    updated_at         BIGINT NOT NULL
-);
-CREATE INDEX IF NOT EXISTS idx_tenant_plan_tier
-    ON billing.tenant_plan (plan_tier, billing_status, updated_at DESC);
-```
-
-Companion audit table:
-
-```sql
-CREATE TABLE IF NOT EXISTS billing.tenant_plan_audit (
-    audit_id            UUID PRIMARY KEY,
-    tenant_id           UUID NOT NULL REFERENCES core.tenants(tenant_id) ON DELETE CASCADE,
-    event_type          TEXT NOT NULL,
-    from_plan_tier      TEXT,
-    to_plan_tier        TEXT,
-    actor               TEXT NOT NULL,
-    metadata_json       TEXT NOT NULL,
-    created_at          BIGINT NOT NULL
-);
-CREATE INDEX IF NOT EXISTS idx_tenant_plan_audit_tenant
-    ON billing.tenant_plan_audit (tenant_id, created_at DESC);
-```
-
-### 1.2 `billing.tenant_credits` (replaces workspace credit pool)
-
-```sql
-CREATE TABLE IF NOT EXISTS billing.tenant_credits (
-    credit_id              UUID PRIMARY KEY,
-    tenant_id              UUID NOT NULL UNIQUE REFERENCES core.tenants(tenant_id) ON DELETE CASCADE,
-    currency               TEXT NOT NULL,
-    initial_credit_cents   BIGINT NOT NULL CHECK (initial_credit_cents >= 0),
-    consumed_credit_cents  BIGINT NOT NULL CHECK (consumed_credit_cents >= 0),
-    remaining_credit_cents BIGINT NOT NULL CHECK (remaining_credit_cents >= 0),
-    exhausted_at           BIGINT,
-    created_at             BIGINT NOT NULL,
-    updated_at             BIGINT NOT NULL
-);
-CREATE INDEX IF NOT EXISTS idx_tenant_credits_remaining
-    ON billing.tenant_credits (remaining_credit_cents, updated_at DESC);
-
-CREATE TABLE IF NOT EXISTS billing.tenant_credit_audit (
-    audit_id               UUID PRIMARY KEY,
-    tenant_id              UUID NOT NULL REFERENCES core.tenants(tenant_id) ON DELETE CASCADE,
-    workspace_id           UUID REFERENCES core.workspaces(workspace_id) ON DELETE SET NULL,
-    event_type             TEXT NOT NULL,
-    delta_credit_cents     BIGINT NOT NULL,
-    remaining_credit_cents BIGINT NOT NULL CHECK (remaining_credit_cents >= 0),
-    reason                 TEXT NOT NULL,
-    actor                  TEXT NOT NULL,
-    metadata_json          TEXT NOT NULL,
-    created_at             BIGINT NOT NULL
-);
-CREATE INDEX IF NOT EXISTS idx_tenant_credit_audit_tenant
-    ON billing.tenant_credit_audit (tenant_id, created_at DESC);
-```
-
-`workspace_id` on the audit row is **nullable** because some events (signup grant, plan upgrade) aren't workspace-attributable. Runtime debits always carry a workspace_id (which workspace consumed credits).
-
-### 1.3 Deprecate (delete, pre-v2.0) the workspace-scoped versions
-
-Per the Schema Table Removal Guard (VERSION < 2.0.0):
-- Delete `schema/016_workspace_billing_state.sql` and `schema/017_workspace_free_credit.sql`.
-- Remove the `@embedFile` constants from `schema/embed.zig`.
-- Remove the corresponding entries from `canonicalMigrations()` in `src/cmd/common.zig`.
-
-**Dimensions:**
-
-- 1.1 PENDING — fresh DB applies new tables, drops old; tier-3 `make down && make up && make test-integration` clean
-- 1.2 PENDING — `tenant_plan` row created via new state helper for a freshly-bootstrapped personal tenant
-- 1.3 PENDING — `tenant_credits` provisioned at 0 cents on bootstrap; redemption grants credits atomically
-- 1.4 PENDING — old `workspace_billing_state` / `workspace_credit_state` / `_audit` tables not present in fresh DB
-
----
-
-## 2.0 New State Modules
-
-**Status:** PENDING
-
-Mirror the existing layout (facade + store + tests).
+## Files Changed (blast radius)
 
 ```
-src/state/tenant_plan.zig          ← facade (provision, transition, get)
-src/state/tenant_plan_store.zig    ← SQL
-src/state/tenant_plan_test.zig
-src/state/tenant_credits.zig       ← facade (provision, grant, debit, balance)
-src/state/tenant_credits_store.zig
-src/state/tenant_credits_test.zig
+SCHEMA GUARD: VERSION=0.25.0 (<2.0.0) → full teardown branch.
+  Creating:  schema/NNN_tenant_billing.sql                   (new table billing.tenant_billing)
+  Deleting:  schema/016_workspace_billing_state.sql          (workspace-scoped plan + audit, obsolete)
+  Deleting:  schema/017_workspace_free_credit.sql            (workspace-scoped credit pool, obsolete)
+  Removing:  schema.workspace_billing_state_sql from schema/embed.zig
+  Removing:  schema.workspace_free_credit_sql  from schema/embed.zig
+  Removing:  version 16 and version 17 entries from canonicalMigrations() in src/cmd/common.zig
+  Deleting:  src/state/workspace_credit.zig                  (facade replaced by tenant_billing)
+  Deleting:  src/state/workspace_credit_store.zig            (SQL replaced by tenant_billing_store)
+  Deleting:  src/state/workspace_credit_test.zig             (superseded)
+  Deleting:  src/state/workspace_billing*.zig                (any facade/store for the workspace plan row)
 ```
 
-`tenant_credits.zig` carries forward the bvisor error-mapping pattern; `CreditExhausted` keeps its existing error-registry code (`ERR_CREDIT_EXHAUSTED`).
+NNN = next free slot at execute time (verify with `ls schema/`).
 
-The previous `src/state/workspace_billing*.zig` and `src/state/workspace_credit*.zig` modules are **deleted** along with their stores and tests. Any caller that imports them updates to the tenant equivalents.
-
-**Dimensions:**
-- 2.1 PENDING — `tenant_plan.provision(tenant_id, plan_tier='free')` writes a row, idempotent on replay
-- 2.2 PENDING — `tenant_credits.grant(tenant_id, +N, source_ref)` is atomic with audit insert
-- 2.3 PENDING — `tenant_credits.debit(tenant_id, workspace_id, N, run_id)` debits the tenant pool, attributes audit row to workspace
-- 2.4 PENDING — `tenant_credits.debit` returns `CreditExhausted` and does not partial-debit when balance < amount
-- 2.5 PENDING — concurrent debit safety: two parallel debits totalling more than balance → exactly one returns `CreditExhausted`, the other commits
-
----
-
-## 3.0 API Endpoint Migration
-
-**Status:** PENDING
-
-### 3.1 New tenant-scoped endpoints (canonical)
-
-```
-GET  /v1/tenants/{tenant_id}/plan                  — returns plan_tier, billing_status, sub_id
-PUT  /v1/tenants/{tenant_id}/plan                  — admin/billing-adapter upgrade/downgrade
-GET  /v1/tenants/{tenant_id}/credits               — total balance + audit summary
-POST /v1/tenants/{tenant_id}/credits/redeem        — redeem access code (target of M11_003 step 9 — see §9)
-```
-
-### 3.2 Workspace-scoped endpoints (derived views, kept for back-compat)
-
-```
-GET  /v1/workspaces/{ws}/credits   — returns parent tenant's balance + workspace's contribution to consumption
-GET  /v1/workspaces/{ws}/billing   — returns parent tenant's plan
-```
-
-These are **read-only** derived views. Writes (`PUT /v1/workspaces/{ws}/billing/plan`, etc.) return `409 UZ-BILLING-006 "Plan is tenant-scoped — use /v1/tenants/{tenant_id}/plan"` so callers can't drift.
-
-### 3.3 Removed endpoints
-
-```
-PUT  /v1/workspaces/{ws}/billing/plan         → returns 410 with redirect hint to tenant endpoint
-POST /v1/workspaces/{ws}/billing/event        → moved to tenant scope
-POST /v1/workspaces/{ws}/credits/redeem       → moved to tenant scope (see §9 coordination with M11_003)
-```
-
-Pre-v2.0 carve-out per RULE EP4: removed endpoints may return bare 404; we choose 410 with redirect hint here because the data is still present (just at a different scope), and a redirect saves callers a round of debugging.
-
-**Dimensions:**
-- 3.1 PENDING — `GET /v1/tenants/{tenant_id}/plan` returns provisioned plan row
-- 3.2 PENDING — `PUT /v1/tenants/{tenant_id}/plan` upgrades free → pro, audit row written
-- 3.3 PENDING — `GET /v1/workspaces/{ws}/credits` returns parent tenant balance (derived)
-- 3.4 PENDING — `PUT /v1/workspaces/{ws}/billing/plan` returns 409 with redirect hint
-- 3.5 PENDING — removed endpoints return 410 with redirect message
-
----
-
-## 4.0 Worker / Runtime Debit Path
-
-**Status:** PENDING
-
-The credit-debit hot path lives in `src/zombie/metering.zig` and `src/state/workspace_credit.zig#deductCompletedRuntimeUsage`. After this milestone:
-
-- `src/state/workspace_credit.zig` is **deleted**.
-- The worker calls `tenant_credits.debit(tenant_id, workspace_id, cents, run_id)` instead.
-- `tenant_id` is resolved from `workspace_id` via the existing FK (already loaded for most run paths; otherwise add a single SELECT before the debit).
-- Audit row carries both `tenant_id` (the pool) and `workspace_id` (the consumer attribution).
-
-**Dimensions:**
-- 4.1 PENDING — completed run debits parent tenant's pool, audit row attributes to workspace
-- 4.2 PENDING — exhausted tenant pool returns `CreditExhausted` for runs from any of the tenant's workspaces
-- 4.3 PENDING — workspace-deletion does not zero the audit trail (workspace_id audit FK is `ON DELETE SET NULL`)
-- 4.4 PENDING — debit idempotency by `run_id` survives the move (same key, same dedupe semantics)
-
----
-
-## 5.0 Bootstrap Wiring (coordination with M11_003)
-
-**Status:** PENDING
-
-The signup bootstrap helper (`src/state/signup_bootstrap.zig`, written in M11_003 step 5) currently calls:
-
-```zig
-workspace_credit.provisionWorkspaceCredit(workspace_id, 0)
-```
-
-After this milestone, it calls **two** state functions:
-
-```zig
-tenant_plan.provision(tenant_id, plan_tier="free")
-tenant_credits.provision(tenant_id, initial_credit_cents=0)
-```
-
-(The workspace gets created the same way; it just no longer carries plan or credit state.)
-
-The change to `signup_bootstrap.zig` happens in this milestone, not M11_003. M11_003 ships with the workspace-scoped call; this milestone replaces it as part of the cutover.
-
-**Dimensions:**
-- 5.1 PENDING — bootstrap creates exactly one `tenant_plan` (free) and one `tenant_credits` (0 cents) row per new tenant
-- 5.2 PENDING — bootstrap idempotent: replay returns existing rows, no double-provision
-
----
-
-## 6.0 Interfaces
-
-### 6.1 Removed code
-
-- `src/state/workspace_billing*.zig` (model, transition, store, facade)
-- `src/state/workspace_credit*.zig` (facade, store, tests)
-- Any handler that wrote to the deleted endpoints (§3.3)
-
-### 6.2 New code
-
-- `src/state/tenant_plan{,_store,_test}.zig`
-- `src/state/tenant_credits{,_store,_test}.zig`
-- `src/types/plan_tier.zig` and `src/types/billing_status.zig` (closed-set Zig enums; SQL stays TEXT)
-- `src/http/handlers/tenant_plan.zig`, `src/http/handlers/tenant_credits.zig`
-- Router entries `mint_tenant_plan`, `get_tenant_plan`, `redeem_tenant_credits`, etc.
-
-### 6.3 Error contracts
-
-| Condition | Code | HTTP |
-|---|---|---|
-| Plan write attempted at workspace scope | `UZ-BILLING-006` | 409 |
-| Credit redemption at workspace scope after cutover | `UZ-BILLING-007` | 410 (with redirect hint) |
-| (existing `UZ-CODE-00x` codes from M11_003 carry over unchanged) | | |
-
----
-
-## 7.0 Implementation Constraints
-
-| Constraint | How to verify |
-|---|---|
-| Schema files ≤100 lines each, single concern | RULE FLL gate |
-| No CHECK constraints on enum-like TEXT columns | grep schema for `CHECK.*IN \(` |
-| Plan/credits derived-view endpoints are read-only | Dim 3.4 |
-| Tenant credit debit is atomic + idempotent by run_id | Dim 4.4 |
-| Old workspace_billing/credit modules fully deleted (RULE ORP — no orphan refs) | grep `workspace_credit\|workspace_billing` in src/ → only in deleted files |
-| Existing test fixtures (uc1, etc.) updated to use tenant scope | Dim 1.1 fresh DB green |
-| Bootstrap helper (M11_003 §5) updated to call tenant provisions | Dim 5.1 |
-
----
-
-## 8.0 Execution Plan
-
-| Step | Action | Verify |
-|---|---|---|
-| 1 | New schema files for `tenant_plan`, `tenant_plan_audit`, `tenant_credits`, `tenant_credit_audit`. Register in `embed.zig` + `canonicalMigrations()`. Tier-3 fresh DB green. | Dim 1.1 |
-| 2 | `src/types/plan_tier.zig`, `src/types/billing_status.zig` Zig enums | unit |
-| 3 | `src/state/tenant_plan{,_store,_test}.zig` | Dim 2.1 |
-| 4 | `src/state/tenant_credits{,_store,_test}.zig` | Dims 2.2–2.5 |
-| 5 | New tenant-scoped HTTP handlers + router wires | Dims 3.1, 3.2 |
-| 6 | Workspace-scoped derived view handlers (read-only); 409/410 on writes | Dims 3.3, 3.4, 3.5 |
-| 7 | Worker debit path: switch from workspace_credit to tenant_credits | Dims 4.1–4.4 |
-| 8 | Update `signup_bootstrap.zig` (M11_003 product) to call tenant provisions | Dim 5.1 |
-| 9 | **Coordination cutover** (see §9): swap M11_003's redemption handler from workspace path to tenant path; update CLI `zombiectl credits redeem` accordingly | M11_003 dims 5.1, 6.3 still pass |
-| 10 | Delete old workspace_billing/credit files; orphan sweep | RULE ORP green |
-| 11 | OpenAPI regen for new tenant endpoints + 410 redirect on removed workspace endpoints | `make check-openapi-errors` |
-| 12 | Full branch gate (lint, drain, cross-compile, gitleaks, 350-line, fresh-DB tier-3) | All dims |
-
----
-
-## 9.0 Coordination With M11_003 (Cutover Order)
-
-M11_003 is shipping `POST /v1/workspaces/{ws}/credits/redeem` as part of step 9. This milestone moves it to `POST /v1/tenants/{tenant_id}/credits/redeem`. **Both PRs cannot land in arbitrary order without conflicts.** The cutover is:
-
-1. **M11_003 lands first** with the workspace-scoped redemption handler. CLI `zombiectl credits redeem` calls workspace-scoped path. Tests pass.
-2. **This milestone lands second**, with three coordinated changes in a single commit:
-   a. New tenant-scoped redemption handler (alongside the existing workspace-scoped one).
-   b. CLI updated to call the tenant-scoped path.
-   c. Workspace-scoped redemption handler returns 410 with redirect hint.
-3. The M11_003 redemption tests are updated in the same commit to use the new endpoint.
-
-Alternative if this milestone lands first: M11_003's step 9 ships directly against the tenant-scoped endpoint. Either order works; the agents picking up the two milestones must coordinate via the branch.
-
----
-
-## 10.0 Acceptance Criteria
-
-- [ ] `billing.tenant_plan` and `billing.tenant_credits` (+ audit tables) exist on fresh DB — Dim 1.1
-- [ ] `billing.workspace_billing_state` and `billing.workspace_credit_state` no longer exist on fresh DB — Dim 1.4
-- [ ] `tenant_plan.provision`, `tenant_credits.provision/grant/debit` work + tests pass — Dims 2.1–2.5
-- [ ] New tenant-scoped endpoints return correct shape — Dims 3.1–3.2
-- [ ] Workspace-scoped endpoints become read-only derived views; writes return 409/410 — Dims 3.3–3.5
-- [ ] Worker debit path attributes consumption to workspace, drains tenant pool — Dims 4.1–4.4
-- [ ] Signup bootstrap (M11_003 product) provisions tenant plan + tenant credits — Dim 5.1
-- [ ] M11_003 redemption flow continues to work end-to-end after cutover — coordination with M11_003 dims 5.1, 6.3
-- [ ] No orphan refs to deleted workspace_billing/workspace_credit symbols — RULE ORP sweep
-- [ ] Full branch gate green (lint, drain, cross-compile, gitleaks, 350-line, fresh-DB tier-3)
+| File | Action | Why |
+|------|--------|-----|
+| `schema/NNN_tenant_billing.sql` | CREATE | Single table holding `(tenant_id, plan_tier, plan_sku, balance_cents, grant_source, created_at, updated_at)`. ≤100 lines, single concern. **Unit note on `balance_cents`:** MVP uses cents (integer, Stripe-native for chargebacks). Migration to `balance_micros` (millionths of a cent) is deferred to the per-token-metering milestone — pre-v2.0 teardown makes that migration free (drop + recreate), so we explicitly do not preemptively widen the unit now. |
+| `schema/embed.zig` | MODIFY | Add `tenant_billing_sql` `@embedFile`; remove `workspace_billing_state_sql` and `workspace_free_credit_sql`. |
+| `src/cmd/common.zig` | MODIFY | Add new migration entry; remove version-16 and version-17 workspace-billing entries; update array length / index-based tests. |
+| `src/state/tenant_billing.zig` | CREATE | Facade: `provision(tenant_id, plan_tier, plan_sku, balance_cents, grant_source)`, `debit(tenant_id, cents)`, `getBilling(tenant_id)`. MVP call sites pass `plan_tier="free"`, `plan_sku="free_default"`, `balance_cents=1000`; Stripe milestone will vary these. |
+| `src/state/tenant_billing_store.zig` | CREATE | Raw SQL: `INSERT ... ON CONFLICT DO NOTHING`, atomic `UPDATE ... WHERE balance_cents >= $cents RETURNING`, `SELECT`. `conn.query().drain()` discipline. |
+| `src/state/tenant_billing_test.zig` | CREATE | Unit coverage for provision / debit / exhaustion / concurrent-debit. |
+| `src/state/signup_bootstrap.zig` | MODIFY | After tenant/user/workspace insert, call `tenant_billing.provision(tenant_id, "free", "free_default", 1000, "bootstrap_free_grant")`. |
+| `src/zombie/metering.zig` | MODIFY | Replace `workspace_credit.*` calls with `tenant_billing.debit(tenant_id, cents)`. Tenant id resolved via `zombie.workspace_id → core.workspaces.tenant_id` (single `SELECT tenant_id FROM core.workspaces WHERE workspace_id=$1`). |
+| `src/http/handlers/workspaces/lifecycle.zig` | MODIFY | Delete the `provisionWorkspaceCredit(..., "api")` call from the workspace-create handler. New workspaces inherit the tenant balance and plan. |
+| `src/http/handlers/tenant_billing.zig` | CREATE | Single read handler: `GET /v1/tenants/me/billing` → `{plan_tier, plan_sku, balance_cents, updated_at}`. |
+| `src/http/router.zig` (or equivalent) | MODIFY | Register `/v1/tenants/me/billing`; remove `GET /v1/workspaces/{ws}/credits`, `GET /v1/workspaces/{ws}/billing`, `POST /v1/workspaces/{ws}/credits/redeem`. Pre-v2 → 404s. |
+| `src/state/workspace_credit.zig`, `workspace_credit_store.zig`, `workspace_credit_test.zig` | DELETE | Replaced by `tenant_billing.*`. |
+| `src/state/workspace_billing*.zig` (any that exist) | DELETE | Superseded; no separate plan module. |
+| `schema/016_workspace_billing_state.sql` | DELETE | Per Schema Guard (pre-v2.0): remove file + embed + migration entry. |
+| `schema/017_workspace_free_credit.sql` | DELETE | Per Schema Guard (pre-v2.0): remove file + embed + migration entry. |
+| `openapi/paths/*` | MODIFY | Add `/v1/tenants/me/billing`; remove workspace credit + billing endpoints. |
 
 ---
 
 ## Applicable Rules
 
-RULE FLL (350-line file gate), RULE FLS (conn.query drain), RULE XCC (cross-compile Zig), RULE TXN (atomic debit + audit), RULE EP4 (error contracts), RULE ORP (orphan sweep — old workspace_billing/credit symbols must vanish from non-historical files).
+- **RULE FLL** — every touched `.zig`/`.sql` ≤350 lines; each method ≤~50 lines.
+- **RULE FLS** — `conn.query()` + `.drain()` in the same function before `deinit()`; `conn.exec()` for write paths.
+- **RULE XCC** — cross-compile `x86_64-linux` and `aarch64-linux` before commit.
+- **RULE ORP** — orphan sweep: zero remaining references to `workspace_credit*`, `provisionWorkspaceCredit`, `workspace_free_credit` in non-historical files.
+- **RULE TXN** — debit is atomic (`UPDATE ... WHERE balance_cents >= $cents RETURNING balance_cents`); exhausted balance returns a typed error, never a partial debit.
+- **Schema Table Removal Guard** — pre-v2.0 teardown branch: delete SQL file + `@embedFile` + migration array entry; no `ALTER`, no `DROP TABLE`, no `SELECT 1;` marker.
 
-Schema Table Removal Guard (VERSION=0.9.0 < 2.0.0): teardown branch active for `workspace_billing_state` + `workspace_credit_state` removals — full delete (file + embed entry + migration array entry), no DROP/ALTER. Print guard output at EXECUTE before each removal.
+---
+
+## Sections (implementation slices)
+
+### §1 — Schema + migration wiring
+
+**Status:** PENDING
+
+Create the new table, delete the workspace-free-credit file + embed + migration entry in one slice so tier-3 fresh DB is always coherent.
+
+**Dimensions:**
+
+| Dim | Status | Target | Input | Expected | Test type |
+|-----|--------|--------|-------|----------|-----------|
+| 1.1 | PENDING | `schema/NNN_tenant_billing.sql` | fresh DB, run migrations | `billing.tenant_billing` exists with all five columns, PK on `tenant_id`, FK → `core.tenants` | integration (tier-3) |
+| 1.2 | PENDING | `schema/embed.zig` + `src/cmd/common.zig` | fresh DB, run migrations | `billing.workspace_free_credit` does NOT exist; migration array passes length check | integration (tier-3) |
+| 1.3 | PENDING | Schema Guard output | pre-edit | Guard block printed exactly per CLAUDE.md format before any file mutation | lint (manual verify in diff) |
+
+### §2 — State module (tenant_billing)
+
+**Status:** PENDING
+
+Facade + store mirroring the existing state-module layout.
+
+**Dimensions:**
+
+| Dim | Status | Target | Input | Expected | Test type |
+|-----|--------|--------|-------|----------|-----------|
+| 2.1 | PENDING | `tenant_billing.provision` | new tenant, `cents=1000`, `source="bootstrap_free_grant"` | row inserted; second call for same tenant is a no-op (idempotent on replay) | unit |
+| 2.2 | PENDING | `tenant_billing.debit` | tenant with balance 1000, debit 5 | returns `{balance_cents: 995}`; row updated atomically | unit |
+| 2.3 | PENDING | `tenant_billing.debit` (exhaustion) | tenant with balance 3, debit 5 | returns `error.CreditExhausted`; balance unchanged at 3 | unit |
+| 2.4 | PENDING | `tenant_billing.debit` (concurrent) | two parallel debits of 600 against balance 1000 | exactly one succeeds, exactly one returns `CreditExhausted`; final balance = 400 | integration |
+| 2.4a | PENDING | integration harness itself | inspect whether `tests/integration_*.zig` runs each test in a shared transaction (serialized) or opens real parallel connections | if the harness serializes inside one transaction, **rewrite 2.4 against a raw `pg.Pool` with two `std.Thread.spawn` calls** that each check out their own connection — document the chosen path in the test file header before writing 2.4 | design / harness probe |
+
+### §3 — Signup bootstrap + worker debit wiring
+
+**Status:** PENDING
+
+Wire the provision call into signup; replace the workspace-credit debit path in the worker metering module.
+
+**Dimensions:**
+
+| Dim | Status | Target | Input | Expected | Test type |
+|-----|--------|--------|-------|----------|-----------|
+| 3.1 | PENDING | `signup_bootstrap.zig` | Clerk webhook for new user | one `billing.tenant_billing` row with `balance_cents=1000`, `grant_source='bootstrap_free_grant'` | integration |
+| 3.2 | PENDING | `zombie/metering.zig` | completed run in workspace W owned by tenant T | `billing.tenant_billing.balance_cents` for T decremented by the run cost | integration |
+| 3.3 | PENDING | `workspaces/lifecycle.zig` | operator creates a second workspace | no new credit row inserted; tenant balance unchanged | integration |
+| 3.4 | PENDING | metering path | run in workspace W2 created after signup | debits the same tenant row, not a per-workspace row | integration |
+
+### §4 — Read endpoint
+
+**Status:** PENDING
+
+One handler, one route.
+
+**Dimensions:**
+
+| Dim | Status | Target | Input | Expected | Test type |
+|-----|--------|--------|-------|----------|-----------|
+| 4.1 | PENDING | `GET /v1/tenants/me/billing` | authed operator, bootstrap balance | `200 {"balance_cents": 1000, "updated_at": <epoch_ms>}` | integration |
+| 4.2 | PENDING | `GET /v1/tenants/me/billing` | after one debit of 5 | `200 {"balance_cents": 995, ...}` | integration |
+| 4.3 | PENDING | removed workspace credit endpoints | `GET /v1/workspaces/{ws}/credits` | `404` (pre-v2.0 teardown — no 410 ceremony) | integration |
+
+---
+
+## Interfaces
+
+### Public functions (Zig)
+
+```zig
+// src/state/tenant_billing.zig
+pub fn provision(
+    conn: *pg.Conn,
+    tenant_id: Uuid,
+    plan_tier: []const u8,       // "free" for MVP; Stripe milestone will pass tiers
+    plan_sku: []const u8,        // "free_default" for MVP; Stripe milestone will pass SKUs
+    balance_cents: i64,
+    grant_source: []const u8,
+) !void;
+
+pub fn debit(
+    conn: *pg.Conn,
+    tenant_id: Uuid,
+    cents: i64,
+) !DebitResult; // returns new balance, or error.CreditExhausted
+
+pub fn getBalance(
+    conn: *pg.Conn,
+    tenant_id: Uuid,
+) !?Balance; // returns null if no row (should be impossible post-bootstrap)
+
+pub const DebitResult = struct { balance_cents: i64, updated_at_ms: i64 };
+pub const Balance    = struct { balance_cents: i64, updated_at_ms: i64 };
+```
+
+### Input contract — `GET /v1/tenants/me/billing`
+
+| Field | Type | Constraints | Example |
+|-------|------|-------------|---------|
+| Authorization | header | `Bearer <clerk_jwt>` | `Bearer eyJ...` |
+
+### Output contract
+
+| Field | Type | When | Example |
+|-------|------|------|---------|
+| `balance_cents` | i64 | always | `1000` |
+| `updated_at` | i64 (epoch ms) | always | `1713700000000` |
+
+### Error contracts
+
+| Error condition | Behavior | Caller sees |
+|----------------|----------|-------------|
+| Missing / invalid JWT | reject at auth middleware | `401 UZ-AUTH-001` |
+| Tenant has no row (bug) | log + synthesize `{0, now}` or return 500 — pick during EXECUTE; prefer 500 so the invariant bug is visible | `500 UZ-BILLING-010` |
+| Debit below zero | DB `UPDATE ... WHERE balance_cents >= $cents` returns 0 rows | `error.CreditExhausted` at call site; worker maps to `UZ-CREDIT-EXHAUSTED` run outcome |
+
+---
+
+## Failure Modes
+
+| Failure | Trigger | System behavior | User observes |
+|---------|---------|-----------------|---------------|
+| Signup bootstrap runs twice (Clerk retry) | duplicate webhook | `provision` idempotent — `INSERT ... ON CONFLICT (tenant_id) DO NOTHING` | balance stays 1000, no double-grant |
+| Worker debits while concurrent debit runs | two runs complete simultaneously | atomic conditional `UPDATE` — exactly one commits the contested cents | one succeeds, one returns `CreditExhausted` |
+| Operator creates second workspace | workspace-create handler | no credit-provision call is made | tenant balance unchanged |
+| Clerk deletes tenant | `ON DELETE CASCADE` on FK | `tenant_billing` row removed | row gone; API returns 401 (JWT invalid post-delete) |
+| Debit on tenant with no row | bootstrap failure + later run | debit returns `error.CreditExhausted` (0-row update) | run fails with `UZ-CREDIT-EXHAUSTED` |
+
+---
+
+## Implementation Constraints
+
+| Constraint | How to verify |
+|-----------|---------------|
+| SQL file ≤100 lines, single concern (`billing.tenant_billing` only) | `wc -l schema/NNN_tenant_billing.sql` |
+| No `CHECK` constraint enumerating `grant_source` values (open set) | `grep CHECK schema/NNN_tenant_billing.sql` returns only the `balance_cents >= 0` check |
+| Debit is atomic — no read-then-write race | SQL is single `UPDATE ... WHERE balance_cents >= $cents RETURNING`; integration dim 2.4 proves it |
+| No audit table, no plan-tier table introduced | grep schema for `tenant_plan`, `tenant_credit_audit` — 0 matches |
+| Workspace-create handler no longer provisions credit | `grep provisionWorkspaceCredit src/http/handlers/workspaces/lifecycle.zig` → 0 matches |
+| Orphan sweep: `workspace_credit`, `workspace_free_credit`, `provisionWorkspaceCredit` gone from non-historical files | see Eval E5 |
+| Cross-compile green | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` |
+| Drain discipline on new store | `make check-pg-drain` |
+| Per-file FLL gate | `wc -l` < 350 on every touched `.zig` |
+
+---
+
+## Test Specification
+
+### Unit tests
+
+| Test name | Dim | Target | Input | Expected |
+|-----------|-----|--------|-------|----------|
+| `provision inserts one row` | 2.1 | `tenant_billing.provision` | new tenant, 1000¢ | row present, balance=1000 |
+| `provision is idempotent` | 2.1 | `tenant_billing.provision` | call twice for same tenant | second call no-ops; balance still 1000 |
+| `debit decrements balance` | 2.2 | `tenant_billing.debit` | balance 1000, debit 5 | returns `{995, now}` |
+| `debit rejects when exhausted` | 2.3 | `tenant_billing.debit` | balance 3, debit 5 | `error.CreditExhausted`; balance still 3 |
+
+### Integration tests
+
+| Test name | Dim | Infra | Input | Expected |
+|-----------|-----|-------|-------|----------|
+| `concurrent debits serialize correctly` | 2.4 | DB | two parallel 600¢ debits, balance 1000 | one succeeds, one `CreditExhausted`, final 400 |
+| `signup bootstrap grants 1000c` | 3.1 | DB | Clerk webhook | one `billing.tenant_billing` row, source `bootstrap_free_grant` |
+| `worker debits tenant balance` | 3.2 | DB + worker | run completes, cost 5¢ | tenant balance 1000 → 995 |
+| `second workspace does not grant more credits` | 3.3 | DB | create two workspaces | tenant balance stays 1000 |
+| `cross-workspace runs share balance` | 3.4 | DB + worker | run in ws1, then run in ws2 | both decrement same row |
+| `GET /v1/tenants/me/billing happy path` | 4.1, 4.2 | DB + HTTP | authed GET | `200 {balance_cents, updated_at}` matches state |
+| `removed workspace credit endpoint 404s` | 4.3 | HTTP | `GET /v1/workspaces/{ws}/credits` | 404 |
+
+### Negative tests
+
+| Test name | Dim | Input | Expected error |
+|-----------|-----|-------|----------------|
+| `debit on missing tenant` | 2.3 | unknown tenant | `CreditExhausted` (0-row update) |
+| `unauthed credits GET` | 4.1 | no Authorization header | `401 UZ-AUTH-001` |
+
+### Regression tests
+
+| Test name | What it guards | File |
+|-----------|----------------|------|
+| none — greenfield billing layer; workspace credit tests are deleted with the module |  |  |
+
+### Leak detection
+
+| Test name | Dim | What it proves |
+|-----------|-----|----------------|
+| `tenant_billing store unit suite` | 2.x | `std.testing.allocator` detects zero leaks across provision / debit / getBalance |
+
+### Spec-claim tracing
+
+| Spec claim | Test | Type |
+|-----------|------|------|
+| "New signup → 1000¢ balance" | `signup bootstrap grants 1000c` | integration |
+| "Any workspace debits the tenant balance" | `cross-workspace runs share balance` | integration |
+| "Second workspace does not grant more credits" | `second workspace does not grant more credits` | integration |
+
+---
+
+## Execution Plan
+
+| Step | Action | Verify |
+|------|--------|--------|
+| 1 | Print Schema Guard block (see Files Changed). Create `schema/NNN_tenant_billing.sql`; delete `schema/017_workspace_free_credit.sql`; update `schema/embed.zig` and the migration array in `src/cmd/common.zig`. | `make down && make up` clean; `psql -c '\d billing.tenant_billing'` |
+| 2 | Write `src/state/tenant_billing{,_store,_test}.zig`. | `zig build test -Dtest-filter=tenant_billing` green |
+| 3 | Update `src/state/signup_bootstrap.zig` to call `tenant_billing.provision(tenant_id, "free", "free_default", 1000, "bootstrap_free_grant")` after tenant/user/workspace insert. | integration dim 3.1 |
+| 4 | Update `src/zombie/metering.zig` to debit `billing.tenant_billing` using `tenant_id` resolved from `workspace_id`. | integration dims 3.2, 3.4 |
+| 5 | Remove `provisionWorkspaceCredit(..., "api")` call from `src/http/handlers/workspaces/lifecycle.zig`. | integration dim 3.3 |
+| 6 | Delete `src/state/workspace_credit.zig`, `src/state/workspace_credit_store.zig`, `src/state/workspace_credit_test.zig`. Remove `_ = @import("...");` lines from `src/main.zig`. | `grep -rn workspace_credit src/` = 0 matches |
+| 7 | Add `src/http/handlers/tenant_billing.zig` + route. Remove any workspace credit handler files + route registrations. | integration dims 4.1–4.3 |
+| 8 | OpenAPI regen; update any CLI / docs references under scope. | `make check-openapi-errors` |
+| 9 | Tier-3 fresh DB + full branch gate. | `make down && make up && make test-integration`, `make lint`, `make check-pg-drain`, cross-compile both targets, `gitleaks detect` |
+
+---
+
+## Acceptance Criteria
+
+- [ ] `billing.tenant_billing` exists on fresh DB; `billing.workspace_free_credit` does not — verify: `make down && make up && psql -c '\dt billing.*'`
+- [ ] Clerk signup produces exactly one `billing.tenant_billing` row at 1000¢ — verify: integration dim 3.1
+- [ ] Completed run debits the tenant row — verify: integration dim 3.2
+- [ ] Second workspace does not grant additional credits — verify: integration dim 3.3
+- [ ] Runs across two workspaces share the balance — verify: integration dim 3.4
+- [ ] `GET /v1/tenants/me/billing` returns current balance — verify: integration dim 4.1
+- [ ] Concurrent debit correctness — verify: integration dim 2.4
+- [ ] Orphan sweep clean for `workspace_credit`, `provisionWorkspaceCredit`, `workspace_free_credit` — verify: Eval E5
+- [ ] `make lint`, `make check-pg-drain`, cross-compile both targets, `gitleaks detect` all green
+- [ ] 350-line file gate clean on all touched `.zig`
 
 ---
 
@@ -358,26 +352,29 @@ Schema Table Removal Guard (VERSION=0.9.0 < 2.0.0): teardown branch active for `
 
 ```bash
 # E1: Zig build
-zig build 2>&1 | head -5; echo "zig_build=$?"
+zig build 2>&1 | tail -5; echo "zig_build=$?"
 
-# E2: Tier-3 fresh DB integration (mandatory for schema deletes)
+# E2: Tier-3 fresh DB + full integration (mandatory for schema teardown)
 make down && make up && make test-integration 2>&1 | tail -10
 
 # E3: Cross-compile
 zig build -Dtarget=x86_64-linux 2>&1 | tail -3
 zig build -Dtarget=aarch64-linux 2>&1 | tail -3
 
-# E4: Drain + gitleaks
+# E4: Drain + gitleaks + lint
 make check-pg-drain
+make lint 2>&1 | grep -E "PASS|FAIL"
 gitleaks detect 2>&1 | tail -3
 
-# E5: Orphan sweep — old symbols must be gone
-grep -rn "workspace_credit_state\|workspace_billing_state\|provisionWorkspaceCredit" src/ tests/ \
-  | grep -v -E "deleted|historical|done/" || echo "ORP clean"
+# E5: Orphan sweep — deleted symbols must vanish from non-historical files
+grep -rn "workspace_credit\|workspace_free_credit\|provisionWorkspaceCredit" src/ tests/ schema/ \
+  | grep -v -E "done/|historical|v1/done" \
+  || echo "ORP clean"
 
-# E6: 350-line gate
+# E6: 350-line gate on touched .zig / .sql
 git diff --name-only origin/main \
-  | grep -v -E '\.md$|^vendor/|_test\.|\.test\.|\.spec\.|/tests?/' \
+  | grep -E '\.(zig|sql)$' \
+  | grep -v -E '_test\.|/tests?/' \
   | xargs -I{} sh -c 'wc -l "{}"' \
   | awk '$1 > 350 { print "OVER: " $2 ": " $1 }'
 
@@ -387,11 +384,36 @@ make check-openapi-errors
 
 ---
 
+## Dead Code Sweep
+
+| File to delete | Verify deleted |
+|----------------|----------------|
+| `schema/017_workspace_free_credit.sql` | `test ! -f schema/017_workspace_free_credit.sql` |
+| `src/state/workspace_credit.zig` | `test ! -f src/state/workspace_credit.zig` |
+| `src/state/workspace_credit_store.zig` | `test ! -f src/state/workspace_credit_store.zig` |
+| `src/state/workspace_credit_test.zig` | `test ! -f src/state/workspace_credit_test.zig` |
+
+Orphaned references:
+
+| Deleted symbol | Grep | Expected |
+|----------------|------|----------|
+| `workspace_credit` | `grep -rn workspace_credit src/` | 0 |
+| `provisionWorkspaceCredit` | `grep -rn provisionWorkspaceCredit src/` | 0 |
+| `workspace_free_credit` | `grep -rn workspace_free_credit src/ schema/` | 0 |
+
+Also remove the `_ = @import("state/workspace_credit*.zig");` lines from `src/main.zig` test discovery.
+
+---
+
 ## Out of Scope
 
-- Team accounts (multi-user invites, shared dashboards, member roles beyond owner) — M16.
-- Per-workspace credit quotas within a tenant pool — V3.
-- Stripe / billing-adapter changes — adapter is unchanged; only the storage scope moves.
-- Plan-tier UI redesign — Settings page keeps current visuals; just consumes new endpoints.
-- Backfill from existing per-workspace billing rows — pre-v2.0 means no production data exists; teardown handles it.
-- Per-workspace plan overrides (e.g. one workspace on Pro, another on Free within the same tenant) — explicitly excluded; tenant scope is intentional.
+- Separate `billing.tenant_plan` table — plan_tier and plan_sku live on `billing.tenant_billing`; no split until Stripe lands.
+- Stripe subscription fields (`billing_status`, `subscription_id`, `payment_failed_at`, `grace_expires_at`, `pending_status`, `pending_reason`) — deferred to the Stripe-wiring milestone; removed from the new table by design.
+- Audit tables (`tenant_billing_audit`, etc.) — no regulatory need pre-alpha; skill run logs + activity_events already carry debit intent.
+- `PUT /v1/tenants/me/plan` — no tier-change endpoint in this spec; plan stays `free` until Stripe wires in.
+- Per-workspace credit attribution / roll-up views — one tenant balance is the only concept.
+- Stripe top-up / purchase flows — post-MVP; this spec only handles the free grant.
+- Team accounts / multi-user grant sharing — M16+.
+- Invite-based or redeem-code credit grants — killed by the Clerk pivot.
+- `PUT /v1/tenants/me/plan` / any tier-change endpoint — no tier in this spec.
+- Per-workspace plan overrides — deliberately excluded; tenant is the billing boundary.
