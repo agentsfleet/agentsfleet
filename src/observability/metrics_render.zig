@@ -37,6 +37,31 @@ fn appendMetric(
     try writer.print("{s} {d}\n", .{ name, value });
 }
 
+const LabeledSample = struct {
+    label_value: []const u8,
+    value: u64,
+};
+
+/// Emit one metric family with multiple label series: a single `# HELP` +
+/// `# TYPE` block (bare metric name, per Prometheus exposition spec) followed
+/// by one value line per series. Use for counters/gauges that vary by a
+/// single label (e.g. `reason="bad_sig"`) — embedding the label in the HELP
+/// or TYPE lines breaks strict scrapers like `promtool check metrics`.
+fn appendLabeledFamily(
+    writer: anytype,
+    name: []const u8,
+    metric_type: []const u8,
+    help: []const u8,
+    label_name: []const u8,
+    samples: []const LabeledSample,
+) !void {
+    try writer.print("# HELP {s} {s}\n", .{ name, help });
+    try writer.print("# TYPE {s} {s}\n", .{ name, metric_type });
+    for (samples) |sample| {
+        try writer.print("{s}{{{s}=\"{s}\"}} {d}\n", .{ name, label_name, sample.label_value, sample.value });
+    }
+}
+
 pub fn renderPrometheus(
     alloc: std.mem.Allocator,
     worker_running: bool,
@@ -74,15 +99,43 @@ pub fn renderPrometheus(
 
     try appendMetric(writer, "zombie_gate_repair_loops_total", "counter", "Total gate repair loop iterations.", s.gate_repair_loops_total);
     try appendMetric(writer, "zombie_gate_repair_exhausted_total", "counter", "Total gate repair exhaustions (max loops reached).", s.gate_repair_exhausted_total);
-    // M17_001 §1.3: per-limit-type counters
-    try appendMetric(writer, "zombied_run_limit_exceeded_total{reason=\"token_budget\"}", "counter", "Runs terminated by token budget limit.", s.run_limit_token_budget_exceeded_total);
-    try appendMetric(writer, "zombied_run_limit_exceeded_total{reason=\"wall_time\"}", "counter", "Runs terminated by wall-time limit.", s.run_limit_wall_time_exceeded_total);
-    try appendMetric(writer, "zombied_run_limit_exceeded_total{reason=\"repair_loops\"}", "counter", "Runs terminated by repair-loop exhaustion.", s.run_limit_repair_loops_exhausted_total);
+    // Per-limit-type counters as a single labelled family (was three
+    // per-series HELP/TYPE blocks, which strict scrapers reject).
+    try appendLabeledFamily(
+        writer,
+        "zombied_run_limit_exceeded_total",
+        "counter",
+        "Runs terminated by a resource limit, labelled by which limit tripped.",
+        "reason",
+        &.{
+            .{ .label_value = "token_budget", .value = s.run_limit_token_budget_exceeded_total },
+            .{ .label_value = "wall_time", .value = s.run_limit_wall_time_exceeded_total },
+            .{ .label_value = "repair_loops", .value = s.run_limit_repair_loops_exhausted_total },
+        },
+    );
     try appendMetric(writer, "zombie_otel_export_total", "counter", "Total OTEL metric export attempts.", s.otel_export_total);
     try appendMetric(writer, "zombie_otel_export_failed_total", "counter", "Total OTEL metric export failures.", s.otel_export_failed_total);
     try appendMetric(writer, "zombie_otel_last_success_at_ms", "gauge", "Timestamp of last successful OTEL export in epoch ms.", s.otel_last_success_at_ms);
 
     try appendMetric(writer, "zombie_reconcile_running", "gauge", "Reconcile daemon liveness gauge (1 running, 0 stopped).", s.reconcile_running);
+
+    // Signup funnel counters.
+    try appendMetric(writer, "zombie_signup_bootstrapped_total", "counter", "Clerk webhooks that provisioned a fresh personal account.", s.signup_bootstrapped_total);
+    try appendMetric(writer, "zombie_signup_replayed_total", "counter", "Clerk webhooks that matched an existing account (idempotent replay).", s.signup_replayed_total);
+    try appendLabeledFamily(
+        writer,
+        "zombie_signup_failed_total",
+        "counter",
+        "Signup webhooks that were rejected, labelled by rejection reason.",
+        "reason",
+        &.{
+            .{ .label_value = "bad_sig", .value = s.signup_failed_bad_sig_total },
+            .{ .label_value = "stale_ts", .value = s.signup_failed_stale_ts_total },
+            .{ .label_value = "missing_email", .value = s.signup_failed_missing_email_total },
+            .{ .label_value = "db_error", .value = s.signup_failed_db_error_total },
+            .{ .label_value = "pool_unavailable", .value = s.signup_failed_pool_unavailable_total },
+        },
+    );
 
     try appendDurationHistogram(
         writer,

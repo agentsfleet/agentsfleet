@@ -16,3 +16,4 @@ pub const workspace_integrations_sql = @embedFile("028_workspace_integrations.sq
 pub const memory_entries_sql = @embedFile("029_memory_entries.sql");
 pub const zombie_execution_telemetry_sql = @embedFile("030_zombie_execution_telemetry.sql");
 pub const api_keys_sql = @embedFile("031_api_keys.sql");
+pub const core_users_sql = @embedFile("032_core_users.sql");

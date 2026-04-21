@@ -157,6 +157,11 @@ test {
     _ = @import("state/outbox_reconciler.zig");
     _ = @import("state/workspace_billing.zig");
     _ = @import("state/workspace_credit.zig");
+    _ = @import("state/heroku_names.zig");
+    _ = @import("state/heroku_names_test.zig");
+    _ = @import("state/signup_bootstrap.zig");
+    _ = @import("state/signup_bootstrap_store.zig");
+    _ = @import("state/signup_bootstrap_test.zig");
     _ = @import("executor/types.zig");
     _ = @import("executor/protocol.zig");
     _ = @import("executor/transport.zig");
@@ -172,8 +177,8 @@ test {
     _ = @import("http/handlers/byok_handlers_unit_test.zig");
     _ = @import("http/handlers/error_response_test.zig");
     _ = @import("http/handlers/hx_test.zig");
-    _ = @import("http/handlers/memory_handler_test.zig");
-    _ = @import("http/handlers/memory_handler_shapes_test.zig");
+    _ = @import("http/handlers/memory/handler_test.zig");
+    _ = @import("http/handlers/memory/shapes_test.zig");
     _ = @import("cmd/serve_test.zig");
     _ = @import("queue/redis.zig");
     _ = @import("queue/redis_pubsub_test.zig");
@@ -182,13 +187,13 @@ test {
     _ = @import("memory/zombie_memory_role_test.zig");
     _ = @import("executor/zombie_memory.zig");
     // M2_001: Zombie CRUD, activity, router, worker
-    _ = @import("http/handlers/zombie_api.zig");
-    _ = @import("http/handlers/zombie_activity_api.zig");
+    _ = @import("http/handlers/zombies/api.zig");
+    _ = @import("http/handlers/zombies/activity.zig");
     // M18_001: zombie execution telemetry
     _ = @import("state/zombie_telemetry_store.zig");
-    _ = @import("http/handlers/zombie_telemetry.zig");
-    _ = @import("http/handlers/zombie_telemetry_handler_test.zig");
-    _ = @import("http/handlers/telemetry_http_integration_test.zig");
+    _ = @import("http/handlers/zombies/telemetry.zig");
+    _ = @import("http/handlers/zombies/telemetry_test.zig");
+    _ = @import("http/handlers/zombies/telemetry_integration_test.zig");
     // NOTE: src/http/handlers/dashboard_http_integration_test.zig is NOT wired
     // up yet. The test was authored under M12_001 but the seedTestData cleanup
     // pattern (DELETE of activity_events → zombies → workspace) is blocked by
@@ -198,20 +203,21 @@ test {
     // test-integration-db` red.
     _ = @import("http/router_test.zig");
     // M9_001: Integration grant + execute API
-    _ = @import("http/handlers/execute.zig");
-    _ = @import("http/handlers/outbound_proxy.zig");
-    _ = @import("http/handlers/outbound_proxy_test.zig");
-    _ = @import("http/handlers/integration_grants.zig");
-    _ = @import("http/handlers/agent_keys.zig");
-    _ = @import("http/handlers/api_keys.zig");
-    _ = @import("http/handlers/api_keys_list.zig");
-    _ = @import("http/handlers/tenant_api_keys_integration_test.zig");
-    _ = @import("http/handlers/grant_approval_webhook.zig");
+    _ = @import("http/handlers/actions/execute.zig");
+    _ = @import("http/handlers/proxy/outbound.zig");
+    _ = @import("http/handlers/proxy/outbound_test.zig");
+    _ = @import("http/handlers/integration_grants/handler.zig");
+    _ = @import("http/handlers/api_keys/agent.zig");
+    _ = @import("http/handlers/api_keys/tenant.zig");
+    _ = @import("http/handlers/api_keys/list.zig");
+    _ = @import("http/handlers/api_keys/tenant_integration_test.zig");
+    _ = @import("http/handlers/webhooks/grant_approval.zig");
+    _ = @import("http/handlers/webhooks/clerk_integration_test.zig");
     _ = @import("zombie/notifications/grant_notifier.zig");
     _ = @import("http/route_matchers.zig");
-    _ = @import("http/handlers/zombie_steer_http.zig");
+    _ = @import("http/handlers/zombies/steer.zig");
     // M23_001: Zombie Steer — live steering + execution tracking
-    _ = @import("http/handlers/zombie_steer_http_integration_test.zig");
+    _ = @import("http/handlers/zombies/steer_integration_test.zig");
     _ = @import("zombie/event_loop_execution_tracking_test.zig");
     // Cross-workspace IDOR regression tests (RULE WAUTH)
     _ = @import("http/handlers/cross_workspace_idor_test.zig");
@@ -229,9 +235,9 @@ test {
     _ = @import("state/workspace_integrations.zig");
     _ = @import("types/id_format.zig");
     _ = @import("types/id_format_test.zig");
-    _ = @import("http/handlers/slack_oauth.zig");
-    _ = @import("http/handlers/slack_oauth_client.zig");
-    _ = @import("http/handlers/slack_events.zig");
-    _ = @import("http/handlers/slack_interactions.zig");
-    _ = @import("http/handlers/slack_error_code_pins_test.zig");
+    _ = @import("http/handlers/slack/oauth.zig");
+    _ = @import("http/handlers/slack/oauth_client.zig");
+    _ = @import("http/handlers/slack/events.zig");
+    _ = @import("http/handlers/slack/interactions.zig");
+    _ = @import("http/handlers/slack/error_code_pins_test.zig");
 }

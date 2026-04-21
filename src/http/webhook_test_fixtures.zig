@@ -41,7 +41,7 @@ pub fn insertZombie(
     try cleanup(conn, fx);
 
     _ = try conn.exec(
-        "INSERT INTO tenants (tenant_id, name, api_key_hash, created_at, updated_at) VALUES ($1, 'webhook-e2e-test', 'x', $2, $2)",
+        "INSERT INTO tenants (tenant_id, name, created_at, updated_at) VALUES ($1, 'webhook-e2e-test', $2, $2)",
         .{ fx.tenant_id, now_ms },
     );
     _ = try conn.exec(

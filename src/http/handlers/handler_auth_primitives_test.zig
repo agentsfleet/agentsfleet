@@ -113,7 +113,7 @@ test "MAX_BODY_SIZE is 2 MB" {
 // added by the M5 changes resolve without error at compile time.
 
 test "workspaces_ops module imports resolve" {
-    _ = @import("workspaces_ops.zig");
+    _ = @import("workspaces/ops.zig");
 }
 
 test "workspace_guards module imports resolve" {

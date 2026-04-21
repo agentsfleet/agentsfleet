@@ -58,8 +58,8 @@ fn setupSeedData(conn: *pg.Conn) !void {
     _ = try conn.exec("DELETE FROM workspace_billing_audit WHERE workspace_id = $1", .{TEST_WORKSPACE_ID});
 
     _ = try conn.exec(
-        \\INSERT INTO tenants (tenant_id, name, api_key_hash, created_at, updated_at)
-        \\VALUES ($1, 'RBAC Test Tenant', 'managed', $2, $2)
+        \\INSERT INTO tenants (tenant_id, name, created_at, updated_at)
+        \\VALUES ($1, 'RBAC Test Tenant', $2, $2)
         \\ON CONFLICT (tenant_id) DO NOTHING
     , .{ TEST_TENANT_ID, now_ms });
     _ = try conn.exec(

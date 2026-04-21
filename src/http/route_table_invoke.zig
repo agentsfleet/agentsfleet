@@ -14,33 +14,34 @@ const common = @import("handlers/common.zig");
 const hx_mod = @import("handlers/hx.zig");
 
 const health = @import("handlers/health.zig");
-const auth_sessions = @import("handlers/auth_sessions_http.zig");
-const github_cb = @import("handlers/github_callback.zig");
-const zombie_api = @import("handlers/zombie_api.zig");
-const zombie_act = @import("handlers/zombie_activity_api.zig");
-const zombie_tel = @import("handlers/zombie_telemetry.zig");
-const ws_lifecycle = @import("handlers/workspaces_lifecycle.zig");
-const ws_billing = @import("handlers/workspaces_billing.zig");
-const ws_billing_sum = @import("handlers/workspaces_billing_summary.zig");
-const ws_ops = @import("handlers/workspaces_ops.zig");
-const ws_creds = @import("handlers/workspace_credentials_http.zig");
-const admin_keys = @import("handlers/admin_platform_keys_http.zig");
-const webhooks = @import("handlers/webhooks.zig");
-const approval = @import("handlers/approval_http.zig");
-const grant_approval = @import("handlers/grant_approval_webhook.zig");
-const memory = @import("handlers/memory_http.zig");
-const execute_h = @import("handlers/execute.zig");
-const grants = @import("handlers/integration_grants.zig");
-const grants_ws = @import("handlers/integration_grants_workspace.zig");
-const agent_keys_h = @import("handlers/agent_keys.zig");
+const auth_sessions = @import("handlers/auth/sessions.zig");
+const github_cb = @import("handlers/auth/github_callback.zig");
+const zombie_api = @import("handlers/zombies/api.zig");
+const zombie_act = @import("handlers/zombies/activity.zig");
+const zombie_tel = @import("handlers/zombies/telemetry.zig");
+const ws_lifecycle = @import("handlers/workspaces/lifecycle.zig");
+const ws_billing = @import("handlers/workspaces/billing.zig");
+const ws_billing_sum = @import("handlers/workspaces/billing_summary.zig");
+const ws_ops = @import("handlers/workspaces/ops.zig");
+const ws_creds = @import("handlers/workspaces/credentials.zig");
+const admin_keys = @import("handlers/admin/platform_keys.zig");
+const webhooks = @import("handlers/webhooks/zombie.zig");
+const approval = @import("handlers/webhooks/approval.zig");
+const grant_approval = @import("handlers/webhooks/grant_approval.zig");
+const memory = @import("handlers/memory/handler.zig");
+const execute_h = @import("handlers/actions/execute.zig");
+const grants = @import("handlers/integration_grants/handler.zig");
+const grants_ws = @import("handlers/integration_grants/workspace.zig");
+const agent_keys_h = @import("handlers/api_keys/agent.zig");
 const api_keys_invokes = @import("route_table_invoke_api_keys.zig");
 
 pub const invokeTenantApiKeys = api_keys_invokes.invokeTenantApiKeys;
 pub const invokeTenantApiKeyById = api_keys_invokes.invokeTenantApiKeyById;
-const slack_oauth = @import("handlers/slack_oauth.zig");
-const slack_ev = @import("handlers/slack_events.zig");
-const slack_ix = @import("handlers/slack_interactions.zig");
-const zombie_steer = @import("handlers/zombie_steer_http.zig");
+const clerk_webhook_h = @import("handlers/webhooks/clerk.zig");
+const slack_oauth = @import("handlers/slack/oauth.zig");
+const slack_ev = @import("handlers/slack/events.zig");
+const slack_ix = @import("handlers/slack/interactions.zig");
+const zombie_steer = @import("handlers/zombies/steer.zig");
 
 // M12_001 dashboard invokes live in a sibling file (keeps this file ≤ 350
 // lines per RULE FLL). Re-export so the dispatcher reference stays stable:
@@ -172,6 +173,14 @@ pub fn invokeReceiveWebhook(hx: *Hx, req: *httpz.Request, route: router.Route) v
 pub fn invokeReceiveSvixWebhook(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     if (req.method != .POST) { common.respondMethodNotAllowed(hx.res); return; }
     webhooks.innerReceiveWebhook(hx.*, req, route.receive_svix_webhook);
+}
+
+// Clerk signup webhook. No middleware — handler verifies Svix signature
+// inline against env CLERK_WEBHOOK_SECRET.
+pub fn invokeClerkWebhook(hx: *Hx, req: *httpz.Request, route: router.Route) void {
+    _ = route;
+    if (req.method != .POST) { common.respondMethodNotAllowed(hx.res); return; }
+    clerk_webhook_h.innerClerkWebhook(hx.*, req);
 }
 
 pub fn invokeApprovalWebhook(hx: *Hx, req: *httpz.Request, route: router.Route) void {

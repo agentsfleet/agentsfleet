@@ -1,0 +1,166 @@
+const std = @import("std");
+const httpz = @import("httpz");
+const workspace_billing = @import("../../../state/workspace_billing.zig");
+const workspace_credit = @import("../../../state/workspace_credit.zig");
+const obs_log = @import("../../../observability/logging.zig");
+const telemetry_mod = @import("../../../observability/telemetry.zig");
+const error_codes = @import("../../../errors/error_registry.zig");
+const id_format = @import("../../../types/id_format.zig");
+const common = @import("../common.zig");
+const hx_mod = @import("../hx.zig");
+
+const log = std.log.scoped(.http);
+
+fn generateWorkspaceId(alloc: std.mem.Allocator) ![]const u8 {
+    return id_format.generateWorkspaceId(alloc);
+}
+
+fn normalizeDefaultBranch(default_branch: ?[]const u8) []const u8 {
+    const raw = default_branch orelse return "main";
+    const trimmed = std.mem.trim(u8, raw, " \t\r\n");
+    if (trimmed.len == 0) return "main";
+    return trimmed;
+}
+
+fn buildInstallUrl(alloc: std.mem.Allocator, app_slug: []const u8, workspace_id: []const u8) ![]const u8 {
+    return std.fmt.allocPrint(
+        alloc,
+        "https://github.com/apps/{s}/installations/new?state={s}",
+        .{ app_slug, workspace_id },
+    );
+}
+
+/// Upsert the tenant row. Returns false and writes error response on failure.
+fn upsertTenant(conn: anytype, tenant_id: []const u8, now_ms: i64, hx: hx_mod.Hx) bool {
+    _ = common.setTenantSessionContext(conn, tenant_id);
+    _ = conn.exec(
+        \\INSERT INTO tenants (tenant_id, name, created_at, updated_at)
+        \\VALUES ($1, $2, $3, $3)
+        \\ON CONFLICT (tenant_id) DO NOTHING
+    , .{ tenant_id, "Workspace Tenant", now_ms }) catch {
+        log.err("workspace.tenant_upsert_fail error_code=UZ-INTERNAL-003 tenant_id={s}", .{tenant_id});
+        common.internalOperationError(hx.res, "Failed to upsert tenant", hx.req_id);
+        return false;
+    };
+    return true;
+}
+
+/// Enforce free workspace billing gate. Returns false and writes error response on failure.
+fn enforceBillingGate(conn: anytype, tenant_id: []const u8, hx: hx_mod.Hx) bool {
+    workspace_billing.enforceFreeWorkspaceCreationAllowed(conn, tenant_id, null) catch |err| {
+        if (workspace_billing.errorCode(err)) |code| {
+            log.err("workspace.billing_enforcement_fail tenant_id={s} error_code={s}", .{ tenant_id, code });
+            hx.ctx.telemetry.capture(telemetry_mod.ApiError, .{ .distinct_id = hx.principal.user_id orelse "", .error_code = code, .message = workspace_billing.errorMessage(err) orelse "Workspace billing failure", .request_id = hx.req_id });
+            hx.fail(code, workspace_billing.errorMessage(err) orelse "Workspace billing failure");
+            return false;
+        }
+        log.err("workspace.billing_validation_fail error_code=UZ-INTERNAL-003 tenant_id={s}", .{tenant_id});
+        common.internalOperationError(hx.res, "Failed to validate free workspace limit", hx.req_id);
+        return false;
+    };
+    return true;
+}
+
+/// INSERT workspace row and provision free entitlement + credit. Returns false on failure.
+fn insertAndProvision(conn: anytype, hx: hx_mod.Hx, workspace_id: []const u8, tenant_id: []const u8, repo_url: []const u8, default_branch: []const u8, now_ms: i64) bool {
+    _ = conn.exec(
+        \\INSERT INTO workspaces
+        \\  (workspace_id, tenant_id, repo_url, default_branch, paused, created_by, version, created_at, updated_at)
+        \\VALUES ($1, $2, $3, $4, false, $5, 1, $6, $6)
+    , .{ workspace_id, tenant_id, repo_url, default_branch, hx.principal.user_id, now_ms }) catch {
+        common.internalOperationError(hx.res, "Failed to create workspace", hx.req_id);
+        return false;
+    };
+    workspace_billing.provisionFreeWorkspace(conn, hx.alloc, workspace_id, "api") catch {
+        common.internalOperationError(hx.res, "Failed to provision free entitlement", hx.req_id);
+        return false;
+    };
+    workspace_credit.provisionWorkspaceCredit(conn, hx.alloc, workspace_id, "api") catch {
+        common.internalOperationError(hx.res, "Failed to provision free credit", hx.req_id);
+        return false;
+    };
+    return true;
+}
+
+pub fn innerCreateWorkspace(hx: hx_mod.Hx, req: *httpz.Request) void {
+    const Req = struct {
+        repo_url: []const u8,
+        default_branch: ?[]const u8 = null,
+    };
+
+    const body = req.body() orelse {
+        hx.fail(error_codes.ERR_INVALID_REQUEST, "Request body required");
+        return;
+    };
+    const parsed = std.json.parseFromSlice(Req, hx.alloc, body, .{}) catch {
+        hx.fail(error_codes.ERR_INVALID_REQUEST, "Malformed JSON");
+        return;
+    };
+    defer parsed.deinit();
+
+    const repo_url = std.mem.trim(u8, parsed.value.repo_url, " \t\r\n");
+    if (repo_url.len == 0) {
+        hx.fail(error_codes.ERR_INVALID_REQUEST, "repo_url is required");
+        return;
+    }
+    const default_branch = normalizeDefaultBranch(parsed.value.default_branch);
+    const tenant_id = hx.principal.tenant_id orelse id_format.generateTenantId(hx.alloc) catch {
+        common.internalOperationError(hx.res, "Failed to allocate tenant id", hx.req_id);
+        return;
+    };
+
+    const conn = hx.ctx.pool.acquire() catch {
+        log.err("workspace.db_acquire_fail error_code=UZ-INTERNAL-001 op=create_workspace", .{});
+        common.internalDbUnavailable(hx.res, hx.req_id);
+        return;
+    };
+    defer hx.ctx.pool.release(conn);
+
+    const now_ms = std.time.milliTimestamp();
+    if (!upsertTenant(conn, tenant_id, now_ms, hx)) return;
+    if (!enforceBillingGate(conn, tenant_id, hx)) return;
+
+    const workspace_id = generateWorkspaceId(hx.alloc) catch {
+        common.internalOperationError(hx.res, "Failed to allocate workspace id", hx.req_id);
+        return;
+    };
+    if (!insertAndProvision(conn, hx, workspace_id, tenant_id, repo_url, default_branch, now_ms)) return;
+
+    const github_app_slug = std.process.getEnvVarOwned(hx.alloc, "GITHUB_APP_SLUG") catch "usezombie";
+    const install_url = buildInstallUrl(hx.alloc, github_app_slug, workspace_id) catch {
+        common.internalOperationError(hx.res, "Failed to build install URL", hx.req_id);
+        return;
+    };
+
+    log.info("workspace.created workspace_id={s} tenant_id={s} repo_url={s}", .{ workspace_id, tenant_id, repo_url });
+    hx.ctx.telemetry.capture(telemetry_mod.WorkspaceCreated, .{ .distinct_id = hx.principal.user_id orelse "", .workspace_id = workspace_id, .tenant_id = tenant_id, .repo_url = repo_url, .request_id = hx.req_id });
+
+    hx.ok(.created, .{
+        .workspace_id = workspace_id,
+        .repo_url = repo_url,
+        .default_branch = default_branch,
+        .install_url = install_url,
+        .request_id = hx.req_id,
+    });
+}
+
+
+test "normalizeDefaultBranch falls back to main for null/blank input" {
+    try std.testing.expectEqualStrings("main", normalizeDefaultBranch(null));
+    try std.testing.expectEqualStrings("main", normalizeDefaultBranch(""));
+    try std.testing.expectEqualStrings("main", normalizeDefaultBranch("   "));
+}
+
+test "normalizeDefaultBranch trims provided value" {
+    try std.testing.expectEqualStrings("trunk", normalizeDefaultBranch("  trunk\t"));
+}
+
+test "buildInstallUrl renders GitHub app install URL" {
+    const alloc = std.testing.allocator;
+    const url = try buildInstallUrl(alloc, "usezombie", "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f21");
+    defer alloc.free(url);
+    try std.testing.expectEqualStrings(
+        "https://github.com/apps/usezombie/installations/new?state=0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f21",
+        url,
+    );
+}

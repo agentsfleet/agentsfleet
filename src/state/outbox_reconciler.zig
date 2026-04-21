@@ -60,7 +60,10 @@ fn reconcileBatch(conn: *pg.Conn) !u32 {
     _ = try conn.exec("BEGIN", .{});
     var tx_open = true;
     errdefer if (tx_open) {
-        _ = conn.exec("ROLLBACK", .{}) catch {};
+        // Use conn.rollback() — exec("ROLLBACK") short-circuits when the
+        // connection is in FAIL state after a constraint violation, leaving
+        // the session stuck in an aborted tx.
+        conn.rollback() catch {};
     };
 
     var result = PgQuery.from(try conn.query(

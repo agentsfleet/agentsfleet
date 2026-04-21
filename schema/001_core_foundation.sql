@@ -15,7 +15,6 @@ CREATE SCHEMA IF NOT EXISTS audit;
 CREATE TABLE IF NOT EXISTS core.tenants (
     tenant_id    UUID PRIMARY KEY,
     name         TEXT NOT NULL,
-    api_key_hash TEXT NOT NULL,
     created_at   BIGINT NOT NULL,
     updated_at   BIGINT NOT NULL
 );
@@ -23,6 +22,11 @@ CREATE TABLE IF NOT EXISTS core.tenants (
 CREATE TABLE IF NOT EXISTS core.workspaces (
     workspace_id              UUID PRIMARY KEY,
     tenant_id                 UUID NOT NULL REFERENCES core.tenants(tenant_id),
+    -- Human-readable workspace name (e.g. Heroku-style `jolly-harbor-482`).
+    -- Nullable because most workspace rows and fixture INSERTs do not supply a
+    -- name; uniqueness is enforced per-tenant via the partial index below, so
+    -- signup bootstrap can rely on ON CONFLICT for collision retry.
+    name                      TEXT,
     repo_url                  TEXT NOT NULL,
     default_branch            TEXT NOT NULL,
     paused                    BOOLEAN NOT NULL DEFAULT FALSE,
@@ -36,3 +40,5 @@ CREATE TABLE IF NOT EXISTS core.workspaces (
     updated_at                BIGINT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_workspaces_tenant ON core.workspaces(tenant_id);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_workspaces_tenant_name
+    ON core.workspaces(tenant_id, name) WHERE name IS NOT NULL;

@@ -166,3 +166,78 @@
       '404':
         $ref: ../components/responses.yaml#/components/responses/Error
     security: []
+/v1/webhooks/clerk:
+  post:
+    operationId: clerk_webhook
+    summary: Clerk signup webhook
+    description: Ingress for Clerk `user.created` events delivered via Svix. The signature is verified inline against
+      `CLERK_WEBHOOK_SECRET`; on success the handler atomically provisions a personal account (tenant + user + owner
+      membership + default workspace + 0-cent credit state + audit row). Idempotent on `oidc_subject` — replays return
+      `created:false` with no new rows. Non-`user.created` event types are 200-ignored so Clerk stops retrying them.
+    tags:
+    - Webhooks
+    parameters:
+    - name: svix-id
+      in: header
+      required: true
+      description: Svix message identifier (used for deduplication and signature binding).
+      schema:
+        type: string
+    - name: svix-timestamp
+      in: header
+      required: true
+      description: Unix timestamp of the Svix delivery (used for replay protection).
+      schema:
+        type: string
+    - name: svix-signature
+      in: header
+      required: true
+      description: Space-separated list of Svix v1 signatures.
+      schema:
+        type: string
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+            - type
+            - data
+            properties:
+              type:
+                type: string
+                description: Clerk event type. Only `user.created` triggers a bootstrap; other types return 200 ignored.
+              data:
+                type: object
+                description: Clerk user payload. The handler reads `id`, `email_addresses`,
+                  `primary_email_address_id`, `first_name`, and `last_name`; unknown fields are tolerated.
+                additionalProperties: true
+    responses:
+      '200':
+        description: Account bootstrapped (fresh or replayed). `created` is `true` on first delivery and `false` on every
+          subsequent replay of the same `oidc_subject`.
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                workspace_id:
+                  type: string
+                  format: uuid
+                  description: UUIDv7 of the newly provisioned default workspace (or the existing one on replay).
+                workspace_name:
+                  type: string
+                  description: Heroku-style workspace name, e.g. `jolly-harbor-482`.
+                created:
+                  type: boolean
+                  description: "`true` on fresh bootstrap; `false` on idempotent replay."
+      '400':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '401':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '413':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '500':
+        $ref: ../components/responses.yaml#/components/responses/Error
+    security: []

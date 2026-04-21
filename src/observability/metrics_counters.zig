@@ -60,6 +60,14 @@ pub const Snapshot = struct {
     zombie_failed_total: u64 = 0,
     zombie_tokens_total: u64 = 0,
     zombie_execution_seconds: ZombieHistogramSnapshot = .{},
+    // Signup funnel counters.
+    signup_bootstrapped_total: u64 = 0,
+    signup_replayed_total: u64 = 0,
+    signup_failed_bad_sig_total: u64 = 0,
+    signup_failed_stale_ts_total: u64 = 0,
+    signup_failed_missing_email_total: u64 = 0,
+    signup_failed_db_error_total: u64 = 0,
+    signup_failed_pool_unavailable_total: u64 = 0,
 };
 
 var g_agent_tokens_total = std.atomic.Value(u64).init(0);
@@ -76,6 +84,13 @@ var g_otel_export_total = std.atomic.Value(u64).init(0);
 var g_otel_export_failed_total = std.atomic.Value(u64).init(0);
 var g_otel_last_success_at_ms = std.atomic.Value(i64).init(0);
 var g_reconcile_running = std.atomic.Value(u64).init(0);
+var g_signup_bootstrapped_total = std.atomic.Value(u64).init(0);
+var g_signup_replayed_total = std.atomic.Value(u64).init(0);
+var g_signup_failed_bad_sig_total = std.atomic.Value(u64).init(0);
+var g_signup_failed_stale_ts_total = std.atomic.Value(u64).init(0);
+var g_signup_failed_missing_email_total = std.atomic.Value(u64).init(0);
+var g_signup_failed_db_error_total = std.atomic.Value(u64).init(0);
+var g_signup_failed_pool_unavailable_total = std.atomic.Value(u64).init(0);
 const mh = @import("metrics_histograms.zig");
 pub const incExternalRetry = me.incExternalRetry;
 pub const incExternalFailure = me.incExternalFailure;
@@ -130,6 +145,27 @@ pub fn setReconcileRunning(v: bool) void {
     g_reconcile_running.store(if (v) 1 else 0, .release);
 }
 
+// Signup funnel counters. Failure reasons enumerated so a single Prometheus
+// query can answer "how many signups failed for reason X over Y?"
+pub const SignupFailReason = enum { bad_sig, stale_ts, missing_email, db_error, pool_unavailable };
+
+pub fn incSignupBootstrapped() void {
+    _ = g_signup_bootstrapped_total.fetchAdd(1, .monotonic);
+}
+pub fn incSignupReplayed() void {
+    _ = g_signup_replayed_total.fetchAdd(1, .monotonic);
+}
+pub fn incSignupFailed(reason: SignupFailReason) void {
+    const slot = switch (reason) {
+        .bad_sig => &g_signup_failed_bad_sig_total,
+        .stale_ts => &g_signup_failed_stale_ts_total,
+        .missing_email => &g_signup_failed_missing_email_total,
+        .db_error => &g_signup_failed_db_error_total,
+        .pool_unavailable => &g_signup_failed_pool_unavailable_total,
+    };
+    _ = slot.fetchAdd(1, .monotonic);
+}
+
 pub const observeAgentDurationSeconds = mh.observeAgentDurationSeconds;
 
 pub fn snapshot() Snapshot {
@@ -175,5 +211,12 @@ pub fn snapshot() Snapshot {
     s.zombie_failed_total = zf.zombie_failed_total;
     s.zombie_tokens_total = zf.zombie_tokens_total;
     s.zombie_execution_seconds = zf.zombie_execution_seconds;
+    s.signup_bootstrapped_total = g_signup_bootstrapped_total.load(.acquire);
+    s.signup_replayed_total = g_signup_replayed_total.load(.acquire);
+    s.signup_failed_bad_sig_total = g_signup_failed_bad_sig_total.load(.acquire);
+    s.signup_failed_stale_ts_total = g_signup_failed_stale_ts_total.load(.acquire);
+    s.signup_failed_missing_email_total = g_signup_failed_missing_email_total.load(.acquire);
+    s.signup_failed_db_error_total = g_signup_failed_db_error_total.load(.acquire);
+    s.signup_failed_pool_unavailable_total = g_signup_failed_pool_unavailable_total.load(.acquire);
     return s;
 }

@@ -12,7 +12,7 @@
 
 [![CI](https://github.com/usezombie/usezombie/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/usezombie/usezombie/actions/workflows/test.yml?query=branch%3Amain)
 [![Coverage](https://codecov.io/gh/usezombie/usezombie/flags/apps/graph/badge.svg)](https://codecov.io/gh/usezombie/usezombie/flags/apps)
-[![Version](https://img.shields.io/badge/version-0.5.0-blue?style=flat-square)](https://github.com/usezombie/usezombie/releases)
+[![Version](https://img.shields.io/badge/version-0.25.0-blue?style=flat-square)](https://github.com/usezombie/usezombie/releases)
 
 [![Try Free](https://img.shields.io/badge/UseZombie-Try_Free-brightgreen?style=for-the-badge)](https://usezombie.com)
 [![Docs](https://img.shields.io/badge/UseZombie-Docs-blue?style=for-the-badge)](https://docs.usezombie.com)
@@ -56,6 +56,7 @@ You don't code a Zombie. You configure it: what tools it attaches, what credenti
 - **Sandboxed runtime** — bwrap + landlock isolation. Your agent runs in a locked-down process. Network deny-by-default. Only allowlisted domains reachable.
 - **Credentials hidden** — agents never see API keys. The vault injects credentials at the sandbox boundary, outside the agent's process. The agent makes a tool call, UseZombie makes the real API request with the real credential.
 - **Webhooks wired** — receive events from email, Slack, GitHub without ngrok or custom servers. `POST /v1/webhooks/{zombie_id}` with idempotent dedup.
+- **Signup via Clerk** — `POST /v1/webhooks/clerk` accepts Svix-signed `user.created` events and atomically provisions a tenant + user + owner membership + default workspace (Heroku-style name, e.g. `jolly-harbor-482`) + 0-cent credit state in a single transaction. Idempotent on the Clerk OIDC subject.
 - **Activity stream** — every action timestamped and queryable. `zombiectl logs` shows what happened, when, and why.
 - **Spend ceiling** — per-day and per-month dollar budgets. One bad prompt never becomes an infinite burn.
 - **Kill switch** — `zombiectl kill` stops any agent mid-action. Checkpoint saved, no data lost.
@@ -79,8 +80,17 @@ You don't code a Zombie. You configure it: what tools it attaches, what credenti
 
 | Resource | Description |
 |----------|-------------|
-| [docs.usezombie.com](https://docs.usezombie.com) | User-facing docs (guides, API reference, operator guide) |
+| [docs.usezombie.com](https://docs.usezombie.com) | User-facing docs (guides, API reference, operator guide) — sources at [usezombie/docs](https://github.com/usezombie/docs) |
 | [playbooks/](playbooks/) | Agent-readable deployment playbooks and gate scripts |
+| [docs/v2/](docs/v2/) | Milestone specs (pending / active / done). The unit of planning in this repo — every non-trivial change flows through one. |
+
+## Related repositories
+
+| Repo | Description |
+|------|-------------|
+| [usezombie/docs](https://github.com/usezombie/docs) | The user docs site. Publishes to `docs.usezombie.com`. Every user-visible release lands a `<Update>` block in its `changelog.mdx`. |
+| [usezombie/posthog-zig](https://github.com/usezombie/posthog-zig) | PostHog SDK for Zig. Vendored here to power server-side analytics — the signup funnel, zombie triggers, billing events. |
+| [usezombie/.github](https://github.com/usezombie/.github) | Organization profile (landing README shown on the org page). |
 
 ## Local development
 

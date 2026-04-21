@@ -30,6 +30,8 @@ pub const Route = union(enum) {
     receive_webhook: WebhookRoute,
     // M28_001 §5: Clerk / Svix signed webhooks — /v1/webhooks/svix/{zombie_id}.
     receive_svix_webhook: []const u8,
+    // Clerk user.created signup webhook — /v1/webhooks/clerk (no zombie context).
+    clerk_webhook,
     // M4_001: Zombie approval gate callback
     approval_webhook: []const u8,
     // M9_001: Grant approval webhook — /v1/webhooks/{zombie_id}/grant-approval
@@ -178,6 +180,10 @@ pub fn match(path: []const u8) ?Route {
 
     // M4_001: Zombie approval gate callback — /v1/webhooks/{zombie_id}/approval
     if (matchers.matchWebhookAction(path, "/approval")) |zombie_id| return .{ .approval_webhook = zombie_id };
+    // Clerk user.created signup webhook — exact-match before the zombie-scoped
+    // /v1/webhooks/{zombie_id} catch-all so "clerk" is not swallowed as a
+    // zombie_id.
+    if (std.mem.eql(u8, path, "/v1/webhooks/clerk")) return .clerk_webhook;
     // M28_001 §5: Clerk / Svix signed webhooks — /v1/webhooks/svix/{zombie_id}
     // (before matchWebhookRoute so "svix" is not swallowed as zombie_id).
     {

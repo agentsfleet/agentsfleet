@@ -18,6 +18,7 @@ pub const EventKind = enum {
     auth_rejected,
     zombie_triggered,
     zombie_completed,
+    signup_bootstrapped,
 };
 
 pub const AgentCompleted = struct {
@@ -269,6 +270,33 @@ pub const ZombieCompleted = struct {
             .{ .key = "wall_ms", .value = .{ .integer = @intCast(self.wall_ms) } },
             .{ .key = "exit_status", .value = .{ .string = self.exit_status } },
             .{ .key = "time_to_first_token_ms", .value = .{ .integer = @intCast(self.time_to_first_token_ms) } },
+        };
+    }
+};
+
+/// Clerk signup bootstrapped a personal account (or confirmed replay of an
+/// existing one). distinct_id is the OIDC subject so PostHog funnels stitch
+/// across replayed webhooks. email_domain is included (not the full email)
+/// for cohort analysis without storing PII in the event payload.
+pub const SignupBootstrapped = struct {
+    distinct_id: []const u8,
+    tenant_id: []const u8,
+    workspace_id: []const u8,
+    workspace_name: []const u8,
+    email_domain: []const u8,
+    created: bool,
+    request_id: []const u8,
+
+    pub const kind: EventKind = .signup_bootstrapped;
+
+    pub fn properties(self: @This()) [6]posthog.Property {
+        return .{
+            .{ .key = "tenant_id", .value = .{ .string = self.tenant_id } },
+            .{ .key = "workspace_id", .value = .{ .string = self.workspace_id } },
+            .{ .key = "workspace_name", .value = .{ .string = self.workspace_name } },
+            .{ .key = "email_domain", .value = .{ .string = self.email_domain } },
+            .{ .key = "created", .value = .{ .boolean = self.created } },
+            .{ .key = "request_id", .value = .{ .string = self.request_id } },
         };
     }
 };
