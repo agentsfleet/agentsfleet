@@ -288,16 +288,11 @@ test "clerk webhook: oversized body returns 413 UZ-REQ-002 and writes no rows" {
     const sig = try signEntry(ALLOC, svix_id, ts, body);
     defer ALLOC.free(sig);
 
-    const resp = (try (try (try (try h.post("/v1/webhooks/clerk")
+    const resp = try (try (try (try (try h.post("/v1/webhooks/clerk")
         .header(svix.SVIX_ID_HEADER, svix_id))
         .header(svix.SVIX_TS_HEADER, ts))
         .header(svix.SVIX_SIG_HEADER, sig))
-        .json(body)).send() catch |err| {
-        // httpz may reject 2 MiB bodies at the transport layer before reaching
-        // the handler. Either way the user gets a 413; we only assert UZ-REQ-002
-        // when the request actually surfaces in our handler.
-        return err;
-    };
+        .json(body)).send();
     defer resp.deinit();
     try resp.expectStatus(.payload_too_large);
     try resp.expectErrorCode("UZ-REQ-002");
