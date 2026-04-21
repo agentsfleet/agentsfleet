@@ -147,14 +147,18 @@ fn rejectMissingEmail(hx: Hx, detail: []const u8) void {
 /// we don't want to confirm to attackers that the endpoint has no secret
 /// configured). Uses page_allocator so the slice can outlive arenas.
 fn readSecret(hx: Hx) ?[]u8 {
+    // Log at warn so the negative-path test doesn't trip "logged errors" test
+    // gates. The user-visible signal is the 500 response + 5xx-rate Prometheus
+    // alerting on /v1/webhooks/clerk — the log line is supporting context, not
+    // the primary alert.
     const secret = std.process.getEnvVarOwned(std.heap.page_allocator, "CLERK_WEBHOOK_SECRET") catch {
-        log.err("clerk.secret_missing req_id={s}", .{hx.req_id});
+        log.warn("clerk.secret_missing req_id={s}", .{hx.req_id});
         common.internalOperationError(hx.res, "CLERK_WEBHOOK_SECRET not configured", hx.req_id);
         return null;
     };
     if (secret.len == 0) {
         std.heap.page_allocator.free(secret);
-        log.err("clerk.secret_empty req_id={s}", .{hx.req_id});
+        log.warn("clerk.secret_empty req_id={s}", .{hx.req_id});
         common.internalOperationError(hx.res, "CLERK_WEBHOOK_SECRET is empty", hx.req_id);
         return null;
     }

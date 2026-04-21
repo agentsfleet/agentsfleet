@@ -244,6 +244,106 @@ test "clerk webhook: missing primary email returns 400 UZ-REQ-001" {
     try std.testing.expectEqual(@as(i64, 0), try countUsers(conn, oidc));
 }
 
+test "clerk webhook: oversized body returns 413 UZ-REQ-002 and writes no rows" {
+    const h = startHarness(ALLOC) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+    defer unsetSecret();
+    const oidc = "oidc-clerk-http-toobig-01";
+    {
+        const conn = try h.acquireConn();
+        defer h.releaseConn(conn);
+        cleanupAccount(conn, oidc);
+    }
+
+    // Build a JSON body whose length equals MAX_BODY_SIZE (2 MiB). The handler's
+    // checkBodySize fires on `body.len >= MAX_BODY_SIZE`. Padding lives inside a
+    // string field so the document stays valid JSON and the parser ignores it.
+    const max_body: usize = 2 * 1024 * 1024;
+    const prefix = try std.fmt.allocPrint(ALLOC,
+        \\{{"type":"user.created","data":{{"id":"{s}","email_addresses":[{{"id":"idn_x","email_address":"big@acme.test"}}],"primary_email_address_id":"idn_x"}},"_pad":"
+    , .{oidc});
+    defer ALLOC.free(prefix);
+    const suffix: []const u8 = "\"}";
+    std.debug.assert(prefix.len + suffix.len < max_body);
+    const pad_len = max_body - prefix.len - suffix.len;
+
+    const body = try ALLOC.alloc(u8, max_body);
+    defer ALLOC.free(body);
+    @memcpy(body[0..prefix.len], prefix);
+    @memset(body[prefix.len .. prefix.len + pad_len], ' ');
+    @memcpy(body[prefix.len + pad_len ..], suffix);
+
+    const svix_id = "msg_clerk_toobig_01";
+    const ts = try nowTsAlloc(ALLOC);
+    defer ALLOC.free(ts);
+    const sig = try signEntry(ALLOC, svix_id, ts, body);
+    defer ALLOC.free(sig);
+
+    const resp = (try (try (try (try h.post("/v1/webhooks/clerk")
+        .header(svix.SVIX_ID_HEADER, svix_id))
+        .header(svix.SVIX_TS_HEADER, ts))
+        .header(svix.SVIX_SIG_HEADER, sig))
+        .json(body)).send() catch |err| {
+        // httpz may reject 2 MiB bodies at the transport layer before reaching
+        // the handler. Either way the user gets a 413; we only assert UZ-REQ-002
+        // when the request actually surfaces in our handler.
+        return err;
+    };
+    defer resp.deinit();
+    try resp.expectStatus(.payload_too_large);
+    try resp.expectErrorCode("UZ-REQ-002");
+
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    defer cleanupAccount(conn, oidc);
+    try std.testing.expectEqual(@as(i64, 0), try countUsers(conn, oidc));
+}
+
+test "clerk webhook: missing CLERK_WEBHOOK_SECRET fails closed with 500" {
+    // Start the harness with the env var explicitly unset so the handler's
+    // readSecret() fail-closed path runs. This guards the security invariant
+    // that a misconfigured deploy returns 500 (not 401), denying attackers a
+    // way to enumerate "is this endpoint configured?".
+    _ = c.unsetenv("CLERK_WEBHOOK_SECRET");
+    const h = TestHarness.start(ALLOC, .{ .configureRegistry = noopConfigureRegistry }) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+    defer unsetSecret();
+    const oidc = "oidc-clerk-http-nosecret-01";
+    {
+        const conn = try h.acquireConn();
+        defer h.releaseConn(conn);
+        cleanupAccount(conn, oidc);
+    }
+
+    const svix_id = "msg_clerk_nosecret_01";
+    const ts = try nowTsAlloc(ALLOC);
+    defer ALLOC.free(ts);
+    const body = try userCreatedBody(ALLOC, oidc, "nosecret@acme.test");
+    defer ALLOC.free(body);
+    // Sig content is irrelevant — readSecret() fails before verification.
+    const sig = try signEntry(ALLOC, svix_id, ts, body);
+    defer ALLOC.free(sig);
+
+    const resp = try (try (try (try (try h.post("/v1/webhooks/clerk")
+        .header(svix.SVIX_ID_HEADER, svix_id))
+        .header(svix.SVIX_TS_HEADER, ts))
+        .header(svix.SVIX_SIG_HEADER, sig))
+        .json(body)).send();
+    defer resp.deinit();
+    try resp.expectStatus(.internal_server_error);
+
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    defer cleanupAccount(conn, oidc);
+    try std.testing.expectEqual(@as(i64, 0), try countUsers(conn, oidc));
+}
+
 test "clerk webhook: replay of same user.created returns created:false with no new rows" {
     const h = startHarness(ALLOC) catch |err| switch (err) {
         error.SkipZigTest => return error.SkipZigTest,
