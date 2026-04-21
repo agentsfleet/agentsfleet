@@ -41,6 +41,11 @@ fn unsetSecret() void {
 }
 
 fn cleanupAccount(conn: *pg.Conn, oidc_subject: []const u8) void {
+    // FK-safe order: workspaces/memberships first (reference tenant/user),
+    // then users + tenants in a CTE so the RETURNING clause can feed the
+    // tenant delete after users are gone. core.users.tenant_id → core.tenants
+    // has no ON DELETE CASCADE, so tenants cannot drop while users reference
+    // them.
     _ = conn.exec(
         \\DELETE FROM core.workspaces
         \\WHERE tenant_id IN (SELECT tenant_id FROM core.users WHERE oidc_subject = $1)
@@ -50,10 +55,11 @@ fn cleanupAccount(conn: *pg.Conn, oidc_subject: []const u8) void {
         \\WHERE user_id IN (SELECT user_id FROM core.users WHERE oidc_subject = $1)
     , .{oidc_subject}) catch {};
     _ = conn.exec(
-        \\DELETE FROM core.tenants
-        \\WHERE tenant_id IN (SELECT tenant_id FROM core.users WHERE oidc_subject = $1)
+        \\WITH doomed_users AS (
+        \\    DELETE FROM core.users WHERE oidc_subject = $1 RETURNING tenant_id
+        \\)
+        \\DELETE FROM core.tenants WHERE tenant_id IN (SELECT tenant_id FROM doomed_users)
     , .{oidc_subject}) catch {};
-    _ = conn.exec("DELETE FROM core.users WHERE oidc_subject = $1", .{oidc_subject}) catch {};
 }
 
 /// Build a `v1,<base64_hmac>` entry against the test secret.

@@ -79,18 +79,41 @@ pub fn bootstrapPersonalAccount(
     params: BootstrapParams,
 ) !Bootstrap {
     if (try store.findExistingByOidcSubject(conn, alloc, params.oidc_subject)) |existing| {
-        log.info("signup.replay oidc_subject={s} workspace={s}", .{ params.oidc_subject, existing.workspace_id });
-        metrics.incSignupReplayed();
-        return .{
-            .user_id = existing.user_id,
-            .tenant_id = existing.tenant_id,
-            .workspace_id = existing.workspace_id,
-            .workspace_name = existing.workspace_name,
-            .created = false,
-        };
+        return replayExisting(params.oidc_subject, existing);
     }
 
-    return bootstrapTransaction(conn, alloc, params, defaultHerokuNameGen);
+    // Two concurrent user.created deliveries for the same oidc_subject can both
+    // pass the fast-path check above (it runs outside the tx). The first tx
+    // wins; the second trips uq_users_oidc_subject (sqlstate 23505). Re-read
+    // the now-committed row and surface replay instead of propagating a 500.
+    return bootstrapTransaction(conn, alloc, params, defaultHerokuNameGen) catch |err| {
+        if (err == error.PG and isUniqueViolation(conn)) {
+            if (try store.findExistingByOidcSubject(conn, alloc, params.oidc_subject)) |existing| {
+                log.info("signup.replay_after_race oidc_subject={s}", .{params.oidc_subject});
+                return replayExisting(params.oidc_subject, existing);
+            }
+        }
+        return err;
+    };
+}
+
+fn replayExisting(oidc_subject: []const u8, existing: store.ExistingAccount) Bootstrap {
+    log.info("signup.replay oidc_subject={s} workspace={s}", .{ oidc_subject, existing.workspace_id });
+    metrics.incSignupReplayed();
+    return .{
+        .user_id = existing.user_id,
+        .tenant_id = existing.tenant_id,
+        .workspace_id = existing.workspace_id,
+        .workspace_name = existing.workspace_name,
+        .created = false,
+    };
+}
+
+/// Postgres sqlstate `23505` (unique_violation). The driver surfaces the
+/// sqlstate on `conn.err.?.code` after the exec/query returns `error.PG`.
+fn isUniqueViolation(conn: *pg.Conn) bool {
+    const pg_err = conn.err orelse return false;
+    return std.mem.eql(u8, pg_err.code, "23505");
 }
 
 /// Transactional core split from the entry point so tests can inject a

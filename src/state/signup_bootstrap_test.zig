@@ -18,8 +18,10 @@ const COLLISION_WORKSPACE_EXISTING = "0195b4ba-8d3a-7f13-8abc-b00000000004";
 const COLLISION_WORKSPACE_NEW = "0195b4ba-8d3a-7f13-8abc-b00000000005";
 
 fn cleanupBootstrappedAccount(conn: *pg.Conn, oidc_subject: []const u8) void {
-    // Workspaces cascade credit_state + credit_audit; deleting tenants
-    // cascades memberships on the tenant side. Users delete directly.
+    // FK-safe order: workspaces + memberships reference tenant/user, then a
+    // CTE deletes users and feeds their tenant_ids to the tenant delete.
+    // core.users.tenant_id → core.tenants has no ON DELETE CASCADE, so the
+    // naive "tenants then users" order would 23503 out and leave orphans.
     _ = conn.exec(
         \\DELETE FROM core.workspaces
         \\WHERE tenant_id IN (
@@ -31,10 +33,11 @@ fn cleanupBootstrappedAccount(conn: *pg.Conn, oidc_subject: []const u8) void {
         \\WHERE user_id IN (SELECT user_id FROM core.users WHERE oidc_subject = $1)
     , .{oidc_subject}) catch {};
     _ = conn.exec(
-        \\DELETE FROM core.tenants
-        \\WHERE tenant_id IN (SELECT tenant_id FROM core.users WHERE oidc_subject = $1)
+        \\WITH doomed_users AS (
+        \\    DELETE FROM core.users WHERE oidc_subject = $1 RETURNING tenant_id
+        \\)
+        \\DELETE FROM core.tenants WHERE tenant_id IN (SELECT tenant_id FROM doomed_users)
     , .{oidc_subject}) catch {};
-    _ = conn.exec("DELETE FROM core.users WHERE oidc_subject = $1", .{oidc_subject}) catch {};
 }
 
 fn cleanupCollisionFixture(conn: *pg.Conn) void {
