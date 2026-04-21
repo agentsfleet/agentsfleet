@@ -6,6 +6,7 @@ const common = @import("handlers/common.zig");
 const error_codes = @import("../errors/error_registry.zig");
 const workspace_billing = @import("../state/workspace_billing.zig");
 const workspace_credit = @import("../state/workspace_credit.zig");
+const http_auth = @import("../db/test_fixtures_http_auth.zig");
 
 pub const CreditPolicy = enum {
     none,
@@ -296,25 +297,18 @@ test "integration: isWorkspaceCreator returns true for creator" {
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
 
-    _ = try db_ctx.conn.exec(
-        \\CREATE TEMP TABLE workspaces (
-        \\  workspace_id UUID PRIMARY KEY,
-        \\  tenant_id UUID NOT NULL,
-        \\  created_by TEXT
-        \\)
-    , .{});
-    _ = try db_ctx.conn.exec(
-        "INSERT INTO workspaces (workspace_id, tenant_id, created_by) VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01', 'user_creator123')",
-        .{},
-    );
+    http_auth.cleanup(db_ctx.conn);
+    defer http_auth.cleanup(db_ctx.conn);
 
-    const tid = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01";
-    try std.testing.expect(isWorkspaceCreator(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11", "user_creator123", tid));
-    try std.testing.expect(!isWorkspaceCreator(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11", "user_other456", tid));
+    try http_auth.seedTenant(db_ctx.conn);
+    try http_auth.seedGuardWorkspace(db_ctx.conn, http_auth.WS_PRIMARY, "user_creator123");
+
+    try std.testing.expect(isWorkspaceCreator(db_ctx.conn, http_auth.WS_PRIMARY, "user_creator123", http_auth.TENANT_ID));
+    try std.testing.expect(!isWorkspaceCreator(db_ctx.conn, http_auth.WS_PRIMARY, "user_other456", http_auth.TENANT_ID));
     // Without tenant_id still works (nullable path)
-    try std.testing.expect(isWorkspaceCreator(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11", "user_creator123", null));
+    try std.testing.expect(isWorkspaceCreator(db_ctx.conn, http_auth.WS_PRIMARY, "user_creator123", null));
     // Wrong tenant_id blocks even correct creator
-    try std.testing.expect(!isWorkspaceCreator(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11", "user_creator123", "0195b4ba-8d3a-7f13-8abc-000000000099"));
+    try std.testing.expect(!isWorkspaceCreator(db_ctx.conn, http_auth.WS_PRIMARY, "user_creator123", http_auth.TENANT_UNRELATED));
 }
 
 test "integration: isWorkspaceCreator returns false when created_by is null" {
@@ -322,19 +316,13 @@ test "integration: isWorkspaceCreator returns false when created_by is null" {
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
 
-    _ = try db_ctx.conn.exec(
-        \\CREATE TEMP TABLE workspaces (
-        \\  workspace_id UUID PRIMARY KEY,
-        \\  tenant_id UUID NOT NULL,
-        \\  created_by TEXT
-        \\)
-    , .{});
-    _ = try db_ctx.conn.exec(
-        "INSERT INTO workspaces (workspace_id, tenant_id, created_by) VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01', NULL)",
-        .{},
-    );
+    http_auth.cleanup(db_ctx.conn);
+    defer http_auth.cleanup(db_ctx.conn);
 
-    try std.testing.expect(!isWorkspaceCreator(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11", "user_any", "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01"));
+    try http_auth.seedTenant(db_ctx.conn);
+    try http_auth.seedGuardWorkspace(db_ctx.conn, http_auth.WS_PRIMARY, null);
+
+    try std.testing.expect(!isWorkspaceCreator(db_ctx.conn, http_auth.WS_PRIMARY, "user_any", http_auth.TENANT_ID));
 }
 
 test "integration: isWorkspaceCreator returns false for non-existent workspace" {
@@ -342,15 +330,8 @@ test "integration: isWorkspaceCreator returns false for non-existent workspace" 
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
 
-    _ = try db_ctx.conn.exec(
-        \\CREATE TEMP TABLE workspaces (
-        \\  workspace_id UUID PRIMARY KEY,
-        \\  tenant_id UUID NOT NULL,
-        \\  created_by TEXT
-        \\)
-    , .{});
-
-    try std.testing.expect(!isWorkspaceCreator(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-000000000000", "user_any", null));
+    // No seed — WS_ABSENT is a UUID reserved as "never inserted."
+    try std.testing.expect(!isWorkspaceCreator(db_ctx.conn, http_auth.WS_ABSENT, "user_any", null));
 }
 
 test "integration: isWorkspaceCreator is scoped to exact workspace" {
@@ -358,27 +339,17 @@ test "integration: isWorkspaceCreator is scoped to exact workspace" {
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
 
-    _ = try db_ctx.conn.exec(
-        \\CREATE TEMP TABLE workspaces (
-        \\  workspace_id UUID PRIMARY KEY,
-        \\  tenant_id UUID NOT NULL,
-        \\  created_by TEXT
-        \\)
-    , .{});
-    _ = try db_ctx.conn.exec(
-        "INSERT INTO workspaces (workspace_id, tenant_id, created_by) VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01', 'user_alice')",
-        .{},
-    );
-    _ = try db_ctx.conn.exec(
-        "INSERT INTO workspaces (workspace_id, tenant_id, created_by) VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f12', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01', 'user_bob')",
-        .{},
-    );
+    http_auth.cleanup(db_ctx.conn);
+    defer http_auth.cleanup(db_ctx.conn);
 
-    const tid = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01";
-    try std.testing.expect(isWorkspaceCreator(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11", "user_alice", tid));
-    try std.testing.expect(!isWorkspaceCreator(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f12", "user_alice", tid));
-    try std.testing.expect(!isWorkspaceCreator(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11", "user_bob", tid));
-    try std.testing.expect(isWorkspaceCreator(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f12", "user_bob", tid));
+    try http_auth.seedTenant(db_ctx.conn);
+    try http_auth.seedGuardWorkspace(db_ctx.conn, http_auth.WS_PRIMARY, "user_alice");
+    try http_auth.seedGuardWorkspace(db_ctx.conn, http_auth.WS_SECONDARY, "user_bob");
+
+    try std.testing.expect(isWorkspaceCreator(db_ctx.conn, http_auth.WS_PRIMARY, "user_alice", http_auth.TENANT_ID));
+    try std.testing.expect(!isWorkspaceCreator(db_ctx.conn, http_auth.WS_SECONDARY, "user_alice", http_auth.TENANT_ID));
+    try std.testing.expect(!isWorkspaceCreator(db_ctx.conn, http_auth.WS_PRIMARY, "user_bob", http_auth.TENANT_ID));
+    try std.testing.expect(isWorkspaceCreator(db_ctx.conn, http_auth.WS_SECONDARY, "user_bob", http_auth.TENANT_ID));
 }
 
 test "owner override promotes user to operator but not admin" {
@@ -440,19 +411,13 @@ test "integration: non-creator user stays blocked at user role" {
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
 
-    _ = try db_ctx.conn.exec(
-        \\CREATE TEMP TABLE workspaces (
-        \\  workspace_id UUID PRIMARY KEY,
-        \\  tenant_id UUID NOT NULL,
-        \\  created_by TEXT
-        \\)
-    , .{});
-    _ = try db_ctx.conn.exec(
-        "INSERT INTO workspaces (workspace_id, tenant_id, created_by) VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01', 'user_owner')",
-        .{},
-    );
+    http_auth.cleanup(db_ctx.conn);
+    defer http_auth.cleanup(db_ctx.conn);
 
-    try std.testing.expect(!isWorkspaceCreator(db_ctx.conn, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11", "user_invited_member", "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01"));
+    try http_auth.seedTenant(db_ctx.conn);
+    try http_auth.seedGuardWorkspace(db_ctx.conn, http_auth.WS_PRIMARY, "user_owner");
+
+    try std.testing.expect(!isWorkspaceCreator(db_ctx.conn, http_auth.WS_PRIMARY, "user_invited_member", http_auth.TENANT_ID));
 }
 
 test "effective_principal is a copy — original principal is not mutated" {

@@ -14,6 +14,7 @@ const error_codes = @import("../../errors/error_registry.zig");
 const id_format = @import("../../types/id_format.zig");
 const rbac = @import("../../auth/rbac.zig");
 const principal_mod = @import("../../auth/principal.zig");
+const http_auth = @import("../../db/test_fixtures_http_auth.zig");
 
 pub const TraceContext = trace_ctx.TraceContext;
 
@@ -452,24 +453,20 @@ test "integration: oidc workspace scoping blocks cross-workspace access" {
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
 
-    _ = try db_ctx.conn.exec(
-        \\CREATE TEMP TABLE workspaces (
-        \\  workspace_id UUID PRIMARY KEY,
-        \\  tenant_id UUID NOT NULL
-        \\)
-    , .{});
-    _ = try db_ctx.conn.exec(
-        "INSERT INTO workspaces (workspace_id, tenant_id) VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01'), ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f12', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01')",
-        .{},
-    );
+    http_auth.cleanup(db_ctx.conn);
+    defer http_auth.cleanup(db_ctx.conn);
+
+    try http_auth.seedTenant(db_ctx.conn);
+    try http_auth.seedScopeWorkspace(db_ctx.conn, http_auth.WS_PRIMARY);
+    try http_auth.seedScopeWorkspace(db_ctx.conn, http_auth.WS_SECONDARY);
 
     const principal = AuthPrincipal{
         .mode = .jwt_oidc,
-        .tenant_id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01",
-        .workspace_scope_id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11",
+        .tenant_id = http_auth.TENANT_ID,
+        .workspace_scope_id = http_auth.WS_PRIMARY,
     };
-    try std.testing.expect(authorizeWorkspace(db_ctx.conn, principal, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11"));
-    try std.testing.expect(!authorizeWorkspace(db_ctx.conn, principal, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f12"));
+    try std.testing.expect(authorizeWorkspace(db_ctx.conn, principal, http_auth.WS_PRIMARY));
+    try std.testing.expect(!authorizeWorkspace(db_ctx.conn, principal, http_auth.WS_SECONDARY));
 }
 
 test "integration: clerk workspace claim scoping blocks cross-workspace access" {
@@ -477,24 +474,20 @@ test "integration: clerk workspace claim scoping blocks cross-workspace access" 
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
 
-    _ = try db_ctx.conn.exec(
-        \\CREATE TEMP TABLE workspaces (
-        \\  workspace_id UUID PRIMARY KEY,
-        \\  tenant_id UUID NOT NULL
-        \\)
-    , .{});
-    _ = try db_ctx.conn.exec(
-        "INSERT INTO workspaces (workspace_id, tenant_id) VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01'), ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f12', '0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01')",
-        .{},
-    );
+    http_auth.cleanup(db_ctx.conn);
+    defer http_auth.cleanup(db_ctx.conn);
+
+    try http_auth.seedTenant(db_ctx.conn);
+    try http_auth.seedScopeWorkspace(db_ctx.conn, http_auth.WS_PRIMARY);
+    try http_auth.seedScopeWorkspace(db_ctx.conn, http_auth.WS_SECONDARY);
 
     const principal = AuthPrincipal{
         .mode = .jwt_oidc,
-        .tenant_id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01",
-        .workspace_scope_id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11",
+        .tenant_id = http_auth.TENANT_ID,
+        .workspace_scope_id = http_auth.WS_PRIMARY,
     };
-    try std.testing.expect(authorizeWorkspace(db_ctx.conn, principal, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11"));
-    try std.testing.expect(!authorizeWorkspace(db_ctx.conn, principal, "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f12"));
+    try std.testing.expect(authorizeWorkspace(db_ctx.conn, principal, http_auth.WS_PRIMARY));
+    try std.testing.expect(!authorizeWorkspace(db_ctx.conn, principal, http_auth.WS_SECONDARY));
 }
 
 test "integration: tenant context helper writes app.current_tenant_id" {

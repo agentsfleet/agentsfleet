@@ -59,7 +59,7 @@ fn emitToDb(ctx: *anyopaque, event: PromptEvent) anyerror!void {
     defer conn._allocator.free(row_id);
     const event_id = randomEventId();
     _ = try conn.exec(
-        \\INSERT INTO prompt_lifecycle_events
+        \\INSERT INTO core.prompt_lifecycle_events
         \\  (id, event_id, event_type, workspace_id, tenant_id, agent_id, config_version_id, metadata_json, created_at)
         \\VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
     , .{
@@ -110,74 +110,55 @@ fn openPromptEventTestConn(alloc: std.mem.Allocator) !?struct { pool: *db.Pool, 
 }
 
 test "integration: prompt lifecycle events are append-only and auditable" {
+    const fixture = @import("../db/test_fixtures_prompt_events.zig");
+
     const db_ctx = (try openPromptEventTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
 
-    _ = try db_ctx.conn.exec(
-        \\CREATE TEMP TABLE prompt_lifecycle_events (
-        \\  id UUID PRIMARY KEY,
-        \\  event_id TEXT NOT NULL UNIQUE,
-        \\  event_type TEXT NOT NULL,
-        \\  workspace_id TEXT NOT NULL,
-        \\  tenant_id TEXT NOT NULL,
-        \\  agent_id TEXT,
-        \\  config_version_id TEXT,
-        \\  metadata_json TEXT NOT NULL DEFAULT '{}',
-        \\  created_at BIGINT NOT NULL
-        \\) ON COMMIT DROP
-    , .{});
-    _ = try db_ctx.conn.exec(
-        \\CREATE OR REPLACE FUNCTION reject_prompt_lifecycle_event_mutation()
-        \\RETURNS trigger LANGUAGE plpgsql AS $$
-        \\BEGIN
-        \\  RAISE EXCEPTION 'prompt_lifecycle_events is append-only';
-        \\END;
-        \\$$
-    , .{});
-    _ = try db_ctx.conn.exec(
-        \\CREATE TRIGGER trg_prompt_lifecycle_events_no_update
-        \\BEFORE UPDATE ON prompt_lifecycle_events
-        \\FOR EACH ROW EXECUTE FUNCTION reject_prompt_lifecycle_event_mutation()
-    , .{});
-    _ = try db_ctx.conn.exec(
-        \\CREATE TRIGGER trg_prompt_lifecycle_events_no_delete
-        \\BEFORE DELETE ON prompt_lifecycle_events
-        \\FOR EACH ROW EXECUTE FUNCTION reject_prompt_lifecycle_event_mutation()
-    , .{});
+    fixture.cleanup(db_ctx.conn);
+    defer fixture.cleanup(db_ctx.conn);
+    try fixture.seed(db_ctx.conn);
 
-    emitBestEffort(db_ctx.conn, .{
+    try dbEmitter(db_ctx.conn).emit(.{
         .event_type = .prompt_birth,
-        .workspace_id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11",
-        .tenant_id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01",
-        .agent_id = "agent_1",
-        .config_version_id = "0195b4ba-8d3a-7f13-9abc-2b3e1e0a6f98",
+        .workspace_id = fixture.WORKSPACE_ID,
+        .tenant_id = fixture.TENANT_ID,
+        .agent_id = fixture.AGENT_ID,
+        .config_version_id = fixture.CONFIG_VERSION_ID,
         .metadata_json = "{}",
         .ts_ms = std.time.milliTimestamp(),
     });
-    emitBestEffort(db_ctx.conn, .{
+    try dbEmitter(db_ctx.conn).emit(.{
         .event_type = .prompt_applied,
-        .workspace_id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11",
-        .tenant_id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01",
-        .agent_id = "agent_1",
-        .config_version_id = "0195b4ba-8d3a-7f13-9abc-2b3e1e0a6f98",
+        .workspace_id = fixture.WORKSPACE_ID,
+        .tenant_id = fixture.TENANT_ID,
+        .agent_id = fixture.AGENT_ID,
+        .config_version_id = fixture.CONFIG_VERSION_ID,
         .metadata_json = "{}",
         .ts_ms = std.time.milliTimestamp(),
     });
 
+    // Scope the SELECT to this suite's workspace so pre-existing rows from
+    // other suites don't leak into the assertion.
     var events_q = PgQuery.from(try db_ctx.conn.query(
-        "SELECT event_type FROM prompt_lifecycle_events ORDER BY id ASC",
-        .{},
-    ));
+        \\SELECT event_type FROM core.prompt_lifecycle_events
+        \\WHERE workspace_id = $1::uuid
+        \\ORDER BY created_at ASC, id ASC
+    , .{fixture.WORKSPACE_ID}));
     defer events_q.deinit();
     const first = (try events_q.next()) orelse return error.TestUnexpectedResult;
     try std.testing.expectEqualStrings("prompt_birth", try first.get([]const u8, 0));
     const second = (try events_q.next()) orelse return error.TestUnexpectedResult;
     try std.testing.expectEqualStrings("prompt_applied", try second.get([]const u8, 0));
 
+    // Append-only invariant: the BEFORE UPDATE trigger must raise so the
+    // exec returns an error. Scope to our workspace so we don't depend on
+    // the table being empty.
     _ = db_ctx.conn.exec(
-        "UPDATE prompt_lifecycle_events SET metadata_json = '{\"mutated\":true}'",
-        .{},
-    ) catch return;
+        \\UPDATE core.prompt_lifecycle_events
+        \\SET metadata_json = '{"mutated":true}'
+        \\WHERE workspace_id = $1::uuid
+    , .{fixture.WORKSPACE_ID}) catch return;
     return error.TestUnexpectedResult;
 }
