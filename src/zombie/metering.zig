@@ -62,6 +62,10 @@ pub fn deductZombieUsage(
         else => return .{ .db_error = {} },
     };
     _ = result;
+    // Pre-alpha: no audit table, so log every debit at warn with
+    // (event_id, tenant_id, cents) — operators can spot-check a logical
+    // event_id appearing twice as a double-bill signal until audit lands.
+    log.warn("metering.debit tenant_id={s} event_id={s} cents={d}", .{ tenant_id, usage.event_id, debit_cents });
     return .{ .deducted = debit_cents };
 }
 

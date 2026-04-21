@@ -586,14 +586,4 @@ test "integration: readonly roles can only query ops_ro views, not vault" {
         try std.testing.expect(can_read_view);
     }
 
-    {
-        var q = PgQuery.from(try db_ctx.conn.query(
-            "SELECT has_table_privilege('ops_readonly_human', 'ops_ro.billing_overview', 'SELECT')",
-            .{},
-        ));
-        defer q.deinit();
-        const row = (try q.next()) orelse return error.TestUnexpectedResult;
-        const can_read_view = try row.get(bool, 0);
-        try std.testing.expect(can_read_view);
-    }
 }

@@ -94,7 +94,7 @@ fn cleanupSeedData(conn: *pg.Conn) !void {
     // narrow-clean now that workspace-scoped billing audit tables are gone.
 }
 
-// ── Test: role gates for billing + zombie-lifecycle ───────────────────────────
+// ── Test: role gates for admin + zombie-lifecycle; 404 pins for removed billing ───
 
 test "integration: RBAC endpoints enforce operator and admin roles over live HTTP" {
     const alloc = std.testing.allocator;
@@ -104,58 +104,59 @@ test "integration: RBAC endpoints enforce operator and admin roles over live HTT
     };
     defer h.deinit();
 
-    const billing_event_path = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/billing/events", .{TEST_WORKSPACE_ID});
-    defer alloc.free(billing_event_path);
+    // Admin-gated endpoint that survived the billing teardown.
+    const admin_keys_path = "/v1/admin/platform-keys";
 
-    { // No token on billing POST → 401
-        const r = try (try h.post(billing_event_path)
-            .json("{\"event_type\":\"PAYMENT_FAILED\",\"reason\":\"rbac-test\"}")).send();
+    { // No token → 401
+        const r = try h.get(admin_keys_path).send();
         defer r.deinit();
         try r.expectStatus(.unauthorized);
         try r.expectErrorCode(error_codes.ERR_UNAUTHORIZED);
     }
-    { // User role on billing POST → 403
-        const r = try (try (try h.post(billing_event_path).bearer(TEST_USER_TOKEN))
-            .json("{\"event_type\":\"PAYMENT_FAILED\",\"reason\":\"rbac-test\"}")).send();
+    { // User role → 403
+        const r = try (try h.get(admin_keys_path).bearer(TEST_USER_TOKEN)).send();
         defer r.deinit();
         try r.expectStatus(.forbidden);
         try r.expectErrorCode(error_codes.ERR_INSUFFICIENT_ROLE);
     }
-    { // Operator rejected for admin-only billing endpoint
-        const r = try (try (try h.post(billing_event_path).bearer(TEST_OPERATOR_TOKEN))
-            .json("{\"event_type\":\"PAYMENT_FAILED\",\"reason\":\"rbac-test\"}")).send();
+    { // Operator rejected for admin-only endpoint → 403
+        const r = try (try h.get(admin_keys_path).bearer(TEST_OPERATOR_TOKEN)).send();
         defer r.deinit();
         try r.expectStatus(.forbidden);
         try r.expectErrorCode(error_codes.ERR_INSUFFICIENT_ROLE);
     }
-    { // Admin posts billing event — ok
-        const r = try (try (try h.post(billing_event_path).bearer(TEST_ADMIN_TOKEN))
-            .json("{\"event_type\":\"PAYMENT_FAILED\",\"reason\":\"rbac-test\"}")).send();
+    { // Admin → 200
+        const r = try (try h.get(admin_keys_path).bearer(TEST_ADMIN_TOKEN)).send();
         defer r.deinit();
         try r.expectStatus(.ok);
-        try std.testing.expect(r.bodyContains("\"billing_status\":\"GRACE\""));
     }
 
-    // M12_001 RULE BIL regression — destructive lifecycle + per-zombie billing
-    // fire workspace_guards.enforce(.minimum_role = .operator) BEFORE any
-    // zombie lookup, so a well-formed-but-nonexistent zombie_id yields 403
-    // under TEST_USER_TOKEN. Locks in commits 02a3726 + 899c24e.
+    // M12_001 RULE BIL regression — destructive lifecycle fires
+    // workspace_guards.enforce(.minimum_role = .operator) BEFORE any zombie
+    // lookup, so a well-formed-but-nonexistent zombie_id yields 403 under
+    // TEST_USER_TOKEN.
     const m12_stop_path = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/zombies/0195b4ba-8d3a-7f13-8abc-2b3e1e0a71bb/stop", .{TEST_WORKSPACE_ID});
     defer alloc.free(m12_stop_path);
-    const m12_billing_path = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/zombies/0195b4ba-8d3a-7f13-8abc-2b3e1e0a71bb/billing/summary?period_days=30", .{TEST_WORKSPACE_ID});
-    defer alloc.free(m12_billing_path);
-    { // `/stop` is POST-with-empty-body (verb-in-path). std.http.Client asserts
-        // POST carries a payload, so rawBody("") rather than no body.
+    {
         const r = try (try h.post(m12_stop_path).bearer(TEST_USER_TOKEN)).rawBody("").send();
         defer r.deinit();
         try r.expectStatus(.forbidden);
         try r.expectErrorCode(error_codes.ERR_INSUFFICIENT_ROLE);
     }
-    {
-        const r = try (try h.get(m12_billing_path).bearer(TEST_USER_TOKEN)).send();
+
+    // M11_005: removed workspace-scoped billing endpoints must 404 regardless
+    // of role — pre-v2.0 bare 404s per RULE EP4.
+    const removed_paths = [_][]const u8{
+        "/v1/workspaces/" ++ TEST_WORKSPACE_ID ++ "/billing/events",
+        "/v1/workspaces/" ++ TEST_WORKSPACE_ID ++ "/billing/scale",
+        "/v1/workspaces/" ++ TEST_WORKSPACE_ID ++ "/billing/summary",
+        "/v1/workspaces/" ++ TEST_WORKSPACE_ID ++ "/zombies/0195b4ba-8d3a-7f13-8abc-2b3e1e0a71bb/billing/summary",
+        "/v1/workspaces/" ++ TEST_WORKSPACE_ID ++ "/scoring/config",
+    };
+    for (removed_paths) |path| {
+        const r = try (try h.get(path).bearer(TEST_ADMIN_TOKEN)).send();
         defer r.deinit();
-        try r.expectStatus(.forbidden);
-        try r.expectErrorCode(error_codes.ERR_INSUFFICIENT_ROLE);
+        try r.expectStatus(.not_found);
     }
 
     const conn = try h.acquireConn();
@@ -192,15 +193,17 @@ test "integration: RBAC user-role rejection stays deterministic under concurrenc
     };
     defer h.deinit();
 
-    const billing_summary_path = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/billing/summary", .{TEST_WORKSPACE_ID});
-    defer alloc.free(billing_summary_path);
+    // Admin-only endpoint that survived the billing teardown — a user-role
+    // token is deterministically 403'd here. We don't care which endpoint; we
+    // care that the rejection is stable across 5 concurrent callers.
+    const admin_keys_path: []const u8 = "/v1/admin/platform-keys";
 
     var statuses = [_]u16{0} ** 5;
     var threads: [5]std.Thread = undefined;
     for (&threads, 0..) |*thread, idx| {
         thread.* = try std.Thread.spawn(.{}, ConcurrentCtx.run, .{ConcurrentCtx{
             .h = h,
-            .path = billing_summary_path,
+            .path = admin_keys_path,
             .token = TEST_USER_TOKEN,
             .status = &statuses[idx],
         }});

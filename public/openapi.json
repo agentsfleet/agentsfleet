@@ -139,13 +139,6 @@
       "x-mintlify": {
         "navigation": "Telemetry"
       }
-    },
-    {
-      "name": "Spec",
-      "description": "Spec templating and preview endpoints for the agent relay",
-      "x-mintlify": {
-        "navigation": "Spec"
-      }
     }
   ],
   "paths": {
