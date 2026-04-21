@@ -1,4 +1,4 @@
--- 028_workspace_integrations.sql
+-- 013_workspace_integrations.sql
 -- M8_001: Workspace-level provider integration table.
 --
 -- Purpose: routing metadata only.
