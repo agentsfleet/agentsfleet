@@ -12,7 +12,7 @@
 
 [![CI](https://github.com/usezombie/usezombie/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/usezombie/usezombie/actions/workflows/test.yml?query=branch%3Amain)
 [![Coverage](https://codecov.io/gh/usezombie/usezombie/flags/apps/graph/badge.svg)](https://codecov.io/gh/usezombie/usezombie/flags/apps)
-[![Version](https://img.shields.io/badge/version-0.5.0-blue?style=flat-square)](https://github.com/usezombie/usezombie/releases)
+[![Version](https://img.shields.io/badge/version-0.25.0-blue?style=flat-square)](https://github.com/usezombie/usezombie/releases)
 
 [![Try Free](https://img.shields.io/badge/UseZombie-Try_Free-brightgreen?style=for-the-badge)](https://usezombie.com)
 [![Docs](https://img.shields.io/badge/UseZombie-Docs-blue?style=for-the-badge)](https://docs.usezombie.com)
