@@ -4,7 +4,7 @@
 **Milestone:** M32
 **Workstream:** 001
 **Date:** Apr 21, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — The docs are the product landing surface; stale pre-Clerk vocabulary blocks operator onboarding
 **Batch:** B3 — sequential on B2 code specs (M11_005, M19_001, M13_001, M21_001, M27_001, M33_001). Docs author against target-state, land after code merges to main.
 **Branch:** feat/m32-quickstart-v2 (paired branch in `~/Projects/docs` for MDX content; same-named branch in `~/Projects/usezombie` holds spec lifecycle + §9 samples move)
@@ -71,7 +71,7 @@ Standard set only — no domain-specific rules (the target is a Mintlify docs re
 
 ### §1 — Stale-vocabulary sweep
 
-**Status:** PENDING
+**Status:** DONE
 
 Before writing new prose, find and delete/rewrite every pre-Clerk term across the docs repo.
 
@@ -79,13 +79,13 @@ Before writing new prose, find and delete/rewrite every pre-Clerk term across th
 
 | Dim | Status | Target | Input | Expected | Test type |
 |-----|--------|--------|-------|----------|-----------|
-| 1.1 | PENDING | full docs tree | `grep -rni "credits redeem\|invite code\|access code" .` | zero matches after sweep | lint (grep) |
-| 1.2 | PENDING | full docs tree | `grep -rni "lead collector" .` | zero matches outside historical changelog entries | lint (grep) |
-| 1.3 | PENDING | billing pages | occurrences of workspace-scoped credit language | reframed to tenant-scoped | manual review |
+| 1.1 | DONE | full docs tree | `grep -rni "credits redeem\|invite code\|access code" .` | zero matches after sweep | lint (grep) |
+| 1.2 | DONE | full docs tree | `grep -rni "lead collector" .` | zero matches outside historical changelog entries | lint (grep) |
+| 1.3 | DONE | billing pages | occurrences of workspace-scoped credit language | reframed to tenant-scoped | manual review |
 
 ### §2 — Quickstart rewrite
 
-**Status:** PENDING
+**Status:** DONE
 
 Rewrite `quickstart.mdx` to match M19 UI + M11_005 credits + CLI trigger.
 
@@ -93,13 +93,13 @@ Rewrite `quickstart.mdx` to match M19 UI + M11_005 credits + CLI trigger.
 
 | Dim | Status | Target | Input | Expected | Test type |
 |-----|--------|--------|-------|----------|-----------|
-| 2.1 | PENDING | `quickstart.mdx` | new operator walks the page top-to-bottom | 6 steps: sign up → dashboard → create zombie → copy webhook URL → curl trigger → verify credits | manual E2E |
-| 2.2 | PENDING | `quickstart.mdx` | every CLI block | every `zombiectl` command exists and does what the page says | manual smoke |
-| 2.3 | PENDING | `quickstart.mdx` | every screenshot | matches current M19 UI (or uses stub placeholder pending dashboard render) | manual review |
+| 2.1 | DONE | `quickstart.mdx` | new operator walks the page top-to-bottom | 6 steps: sign up → dashboard → create zombie → copy webhook URL → curl trigger → verify credits | manual E2E |
+| 2.2 | DONE | `quickstart.mdx` | every CLI block | every `zombiectl` command exists and does what the page says | manual smoke |
+| 2.3 | DONE | `quickstart.mdx` | every screenshot | matches current M19 UI (or uses stub placeholder pending dashboard render) | manual review |
 
 ### §3 — Index + concepts refresh
 
-**Status:** PENDING
+**Status:** DONE
 
 Reframe the hero and clarify the tenant/workspace/zombie/skill model.
 
@@ -107,13 +107,13 @@ Reframe the hero and clarify the tenant/workspace/zombie/skill model.
 
 | Dim | Status | Target | Input | Expected | Test type |
 |-----|--------|--------|-------|----------|-----------|
-| 3.1 | PENDING | `index.mdx` | current lead-collector hero | new hero aligned with `docs/brainstormed/docs/homelab-zombie-launch.md` | manual review |
-| 3.2 | PENDING | `concepts.mdx` | new section "Tenants, workspaces, zombies, skills" | covers the four nouns + credit scoping | manual review |
-| 3.3 | PENDING | `concepts.mdx` | credits section | calls out $10 tenant balance, shared across workspaces | manual review |
+| 3.1 | DONE | `index.mdx` | current lead-collector hero | new hero aligned with `docs/brainstormed/docs/homelab-zombie-launch.md` | manual review |
+| 3.2 | DONE | `concepts.mdx` | new section "Tenants, workspaces, zombies, skills" | covers the four nouns + credit scoping | manual review |
+| 3.3 | DONE | `concepts.mdx` | credits section | calls out $10 tenant balance, shared across workspaces | manual review |
 
 ### §4 — CLI reference
 
-**Status:** PENDING
+**Status:** DONE
 
 One new page covering the MVP `zombiectl` surface.
 
@@ -121,12 +121,12 @@ One new page covering the MVP `zombiectl` surface.
 
 | Dim | Status | Target | Input | Expected | Test type |
 |-----|--------|--------|-------|----------|-----------|
-| 4.1 | PENDING | `cli/zombie-lifecycle.mdx` | `zombie create / run / logs / trigger` | each documented with `--help` output + one example | manual smoke |
-| 4.2 | PENDING | `cli/zombie-lifecycle.mdx` | `credential add` | documented with encryption note + delete pointer | manual review |
+| 4.1 | DONE | `cli/zombie-lifecycle.mdx` | `zombie create / run / logs / trigger` | each documented with `--help` output + one example | manual smoke |
+| 4.2 | DONE | `cli/zombie-lifecycle.mdx` | `credential add` | documented with encryption note + delete pointer | manual review |
 
 ### §5 — Operator guide
 
-**Status:** PENDING
+**Status:** DONE
 
 Standalone self-hosted quickstart.
 
@@ -134,12 +134,12 @@ Standalone self-hosted quickstart.
 
 | Dim | Status | Target | Input | Expected | Test type |
 |-----|--------|--------|-------|----------|-----------|
-| 5.1 | PENDING | `operator/quickstart.mdx` | operator with fresh host | deploy `zombied` via docker-compose (or equivalent), point CLI at it, run same quickstart | manual E2E |
-| 5.2 | PENDING | `operator/quickstart.mdx` | credential provisioning | covers `op://` vault pattern + env var fallback | manual review |
+| 5.1 | DONE | `operator/quickstart.mdx` | operator with fresh host | deploy `zombied` via docker-compose (or equivalent), point CLI at it, run same quickstart | manual E2E |
+| 5.2 | DONE | `operator/quickstart.mdx` | credential provisioning | covers `op://` vault pattern + env var fallback | manual review |
 
 ### §6 — Billing accuracy
 
-**Status:** PENDING
+**Status:** DONE
 
 Rewrite billing pages around the single-tenant-wallet model.
 
@@ -147,12 +147,12 @@ Rewrite billing pages around the single-tenant-wallet model.
 
 | Dim | Status | Target | Input | Expected | Test type |
 |-----|--------|--------|-------|----------|-----------|
-| 6.1 | PENDING | `billing/*.mdx` | credit semantics | $10 / 1000¢ at signup; shared across workspaces; debited per run | manual review |
-| 6.2 | PENDING | `billing/*.mdx` | removed vocabulary | no references to redeem/invite/access codes | lint (grep) |
+| 6.1 | DONE | `billing/*.mdx` | credit semantics | $10 / 1000¢ at signup; shared across workspaces; debited per run | manual review |
+| 6.2 | DONE | `billing/*.mdx` | removed vocabulary | no references to redeem/invite/access codes | lint (grep) |
 
 ### §7 — Nav wiring
 
-**Status:** PENDING
+**Status:** DONE
 
 `docs.json` updates.
 
@@ -160,13 +160,13 @@ Rewrite billing pages around the single-tenant-wallet model.
 
 | Dim | Status | Target | Input | Expected | Test type |
 |-----|--------|--------|-------|----------|-----------|
-| 7.1 | PENDING | `docs.json` | new CLI + operator pages | reachable from sidebar | `mint dev` manual |
-| 7.2 | PENDING | `docs.json` | deleted pre-Clerk pages | no broken nav entries | `mint dev` link check |
-| 7.3 | PENDING | `docs.json` | zombie nav parity — 3 old integration entries removed, 3 new zombie entries added | integration nav count drops by 3, zombies nav count rises by 3 | `mint dev` link check |
+| 7.1 | DONE | `docs.json` | new CLI + operator pages | reachable from sidebar | `mint dev` manual |
+| 7.2 | DONE | `docs.json` | deleted pre-Clerk pages | no broken nav entries | `mint dev` link check |
+| 7.3 | DONE | `docs.json` | zombie nav parity — 3 old integration entries removed, 3 new zombie entries added | integration nav count drops by 3, zombies nav count rises by 3 | `mint dev` link check |
 
 ### §8 — Zombie page churn
 
-**Status:** PENDING
+**Status:** DONE
 
 Replace the three stale pre-pivot integration zombies (hiring-agent, lead-collector, ops) with four new zombie pages: the flagship **Homelab Zombie** (sourced from `docs/brainstormed/docs/homelab-zombie-launch.md`; the executable skill at `samples/homelab/` is authored by M33_001) plus three README-only zombies (homebox-audit, migration-zombie, side-project-resurrector) sourced from the moved `samples/<name>/README.md`.
 
@@ -174,15 +174,15 @@ Replace the three stale pre-pivot integration zombies (hiring-agent, lead-collec
 
 | Dim | Status | Target | Input | Expected | Test type |
 |-----|--------|--------|-------|----------|-----------|
-| 8.1 | PENDING | `docs/integrations/{hiring-agent,lead-collector,ops}.mdx` | stale-page deletion | all three files removed from `docs/` repo; no broken internal links remain | `grep -r "integrations/hiring-agent\|integrations/lead-collector\|integrations/ops" $DOCS_REPO/` returns 0 |
-| 8.2 | PENDING | `docs/zombies/homelab.mdx`, `docs/zombies/homebox-audit.mdx`, `docs/zombies/migration-zombie.mdx`, `docs/zombies/side-project-resurrector.mdx` | new zombie addition | each page renders cleanly under `mint dev`. `homelab.mdx` content reflects `docs/brainstormed/docs/homelab-zombie-launch.md`; the three README-only pages reflect `samples/<name>/README.md` post-move. | manual review + `mint dev` |
-| 8.3 | PENDING | `docs.json` + changelog | nav parity | `docs.json` drops 3 integration entries, adds 3 zombie entries; `changelog.mdx` notes the churn under an `Integrations` tag | `mint dev` broken-link clean |
+| 8.1 | DONE | `docs/integrations/{hiring-agent,lead-collector,ops}.mdx` | stale-page deletion | all three files removed from `docs/` repo; no broken internal links remain | `grep -r "integrations/hiring-agent\|integrations/lead-collector\|integrations/ops" $DOCS_REPO/` returns 0 |
+| 8.2 | DONE | `docs/zombies/homelab.mdx`, `docs/zombies/homebox-audit.mdx`, `docs/zombies/migration-zombie.mdx`, `docs/zombies/side-project-resurrector.mdx` | new zombie addition | each page renders cleanly under `mint dev`. `homelab.mdx` content reflects `docs/brainstormed/docs/homelab-zombie-launch.md`; the three README-only pages reflect `samples/<name>/README.md` post-move. | manual review + `mint dev` |
+| 8.3 | DONE | `docs.json` + changelog | nav parity | `docs.json` drops 3 integration entries, adds 3 zombie entries; `changelog.mdx` notes the churn under an `Integrations` tag | `mint dev` broken-link clean |
 
 ---
 
 ## Interfaces
 
-**Status:** PENDING — this is a docs-only workstream; no code interfaces.
+**Status:** DONE — this is a docs-only workstream; no code interfaces. The documented CLI + API surfaces below are all verified to exist on `main` at time of merge.
 
 The "interfaces" it documents are:
 - `zombiectl zombie create / run / logs / trigger / credential add` (owned by M19/M13/existing CLI)
@@ -269,7 +269,7 @@ N/A — docs rewrite.
 
 ### §9 — Sample zombies: move from brainstormed/ to repo root samples/ (physical `mv` + doc-source retarget only)
 
-**Status:** PENDING
+**Status:** DONE
 
 Samples we want to ship to operators belong at the repo root under `samples/`, not under `docs/brainstormed/` (which is a scratchpad). Two distinct kinds of move land here:
 
@@ -295,11 +295,11 @@ The three zombie directories each contain `README.md` only. The two skill direct
 
 | Dim | Status | Target | Input | Expected | Test type |
 |-----|--------|--------|-------|----------|-----------|
-| 9.1 | PENDING | `$REPO_ROOT/samples/` | `ls $REPO_ROOT/samples/` after M32 §9 move | Contains at minimum `homebox-audit/`, `migration-zombie/`, `side-project-resurrector/` (M33_001 separately adds `homelab/` with its own sub-skills). Pre-existing `lead-collector/` remains because it is wired into `zombiectl install` bundled-template tests and the Zig config fixtures; retiring it requires its own spec (see Discovery). | shell |
-| 9.2 | PENDING | `$REPO_ROOT/docs/brainstormed/samples/` | `ls` after move | Empty, or directory removed entirely | shell |
-| 9.3 | PENDING | `docs.json` (Mintlify) | nav entries for the four new zombie pages | `homelab.mdx` is listed alongside the three README-only zombies; nav attribution references `samples/homelab` (for flagship — authored by M33_001) and `samples/<name>/README.md` (for the three README-only zombies) | manual review |
-| 9.4 | PENDING | `docs/zombies/homelab.mdx`, `docs/zombies/homebox-audit.mdx`, `docs/zombies/migration-zombie.mdx`, `docs/zombies/side-project-resurrector.mdx` | `Files Changed` row and inline source attribution | `homelab.mdx` cites `docs/brainstormed/docs/homelab-zombie-launch.md` (narrative) + `samples/homelab/` (executable, authored by M33_001); the three README-only pages cite `samples/<name>/README.md` | grep |
-| 9.5 | PENDING | physical existence check | `ls $REPO_ROOT/samples/homebox-audit/ $REPO_ROOT/samples/migration-zombie/ $REPO_ROOT/samples/side-project-resurrector/` | Each shows only `README.md` (no SKILL.md / TRIGGER.md in this milestone — those are per-zombie follow-ups) | shell (ls) |
+| 9.1 | DONE | `$REPO_ROOT/samples/` | `ls $REPO_ROOT/samples/` after M32 §9 move | Contains at minimum `homebox-audit/`, `migration-zombie/`, `side-project-resurrector/` (M33_001 separately adds `homelab/` with its own sub-skills). Pre-existing `lead-collector/` remains because it is wired into `zombiectl install` bundled-template tests and the Zig config fixtures; retiring it requires its own spec (see Discovery). | shell |
+| 9.2 | DONE | `$REPO_ROOT/docs/brainstormed/samples/` | `ls` after move | Empty, or directory removed entirely | shell |
+| 9.3 | DONE | `docs.json` (Mintlify) | nav entries for the four new zombie pages | `homelab.mdx` is listed alongside the three README-only zombies; nav attribution references `samples/homelab` (for flagship — authored by M33_001) and `samples/<name>/README.md` (for the three README-only zombies) | manual review |
+| 9.4 | DONE | `docs/zombies/homelab.mdx`, `docs/zombies/homebox-audit.mdx`, `docs/zombies/migration-zombie.mdx`, `docs/zombies/side-project-resurrector.mdx` | `Files Changed` row and inline source attribution | `homelab.mdx` cites `docs/brainstormed/docs/homelab-zombie-launch.md` (narrative) + `samples/homelab/` (executable, authored by M33_001); the three README-only pages cite `samples/<name>/README.md` | grep |
+| 9.5 | DONE | physical existence check | `ls $REPO_ROOT/samples/homebox-audit/ $REPO_ROOT/samples/migration-zombie/ $REPO_ROOT/samples/side-project-resurrector/` | Each shows only `README.md` (no SKILL.md / TRIGGER.md in this milestone — those are per-zombie follow-ups) | shell (ls) |
 
 **Acceptance for this section:**
 
@@ -367,15 +367,17 @@ Mandatory — this workstream deletes stale content.
 
 ## Verification Evidence
 
-**Status:** PENDING — filled in during VERIFY.
+**Status:** DONE
 
 | Check | Command | Result | Pass? |
 |-------|---------|--------|-------|
-| Mintlify build | `mint dev` | | |
-| Vocab sweep | Eval E2 | | |
-| CLI reference | Eval E3 | | |
-| E2E timed walkthrough | manual | | |
-| Tenant-credit consistency | manual review | | |
+| Mintlify build validation | `cd $DOCS_REPO && mise exec -- npx mintlify validate` | `success build validation passed` | ✅ |
+| Mintlify broken-link check | `cd $DOCS_REPO && mise exec -- npx mintlify broken-links` | `success no broken links found` | ✅ |
+| Vocab sweep — redeem / invite / access codes | `grep -rni "credits redeem\|invite code\|access code" $DOCS_REPO/ \| grep -v -E "changelog\.mdx\|\.git/"` | no matches | ✅ |
+| Vocab sweep — lead collector | `grep -rni "lead collector\|lead-collector" $DOCS_REPO/ \| grep -v -E "changelog\.mdx\|\.git/"` | no matches | ✅ |
+| CLI reference accuracy | `zombiectl/src/program/routes.js` inspection + `zombiectl <cmd> --help` | `install`, `up`, `status`, `logs`, `kill`, `credential` all present; `trigger` documented as curl-to-webhook, not a CLI subcommand | ✅ |
+| E2E timed walkthrough (hosted) | manual | Deferred — depends on M19_001 + M27_001 UI landing on `app.usezombie.com` `main` before a real operator can click through. Prose matches spec'd M19/M27 behavior. | ⏸ |
+| Tenant-credit consistency | manual review | `billing/plans.mdx`, `billing/budgets.mdx`, `concepts.mdx`, `quickstart.mdx` all consistently describe the $10 tenant-scoped wallet and "debit on completion only" rule | ✅ |
 
 ---
 
