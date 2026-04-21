@@ -4,10 +4,10 @@
 **Milestone:** M32
 **Workstream:** 001
 **Date:** Apr 21, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — The docs are the product landing surface; stale pre-Clerk vocabulary blocks operator onboarding
 **Batch:** B3 — sequential on B2 code specs (M11_005, M19_001, M13_001, M21_001, M27_001, M33_001). Docs author against target-state, land after code merges to main.
-**Branch:** feat/m32-quickstart-v2 (in `~/Projects/docs`)
+**Branch:** feat/m32-quickstart-v2 (paired branch in `~/Projects/docs` for MDX content; same-named branch in `~/Projects/usezombie` holds spec lifecycle + §9 samples move)
 **Depends on:** M11_005 (tenant credits), M19_001 (zombie lifecycle UI + `zombiectl zombie install`), M13_001 (credential vault UI), M21_001 (BYOK), M27_001 (dashboard detail + list pages), M33_001 (flagship `samples/homelab` executable Homelab Zombie).
 
 **Sequencing note — M31_001 lands first in the docs repo.** M31_001 and M32_001 both touch `docs.json` and `concepts.mdx`. They are NOT parallel in the docs repo. Order: M31_001's docs-side PR merges first, then M32_001 rebases onto the updated docs `main`. In the usezombie repo, M31 is a code branch (see M31_001 spec); only its sibling docs PR is the one that collides with M32.
