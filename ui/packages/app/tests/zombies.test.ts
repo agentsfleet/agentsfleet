@@ -390,11 +390,10 @@ describe("zombies routes", () => {
     expect(el.querySelector("[data-icon=Loader2Icon]")).toBeTruthy();
   });
 
-  it("zombies list page returns early when no token", async () => {
+  it("zombies list page notFound when no token", async () => {
     auth.mockResolvedValueOnce({ getToken: vi.fn().mockResolvedValue(null) });
     const { default: Page } = await import("../app/(dashboard)/zombies/page");
-    const out = await Page();
-    expect(out).toBeNull();
+    await expect(Page()).rejects.toThrow("notFound");
   });
 
   it("zombies list page renders empty-workspace state", async () => {

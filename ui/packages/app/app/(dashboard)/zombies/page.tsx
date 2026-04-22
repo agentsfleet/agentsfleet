@@ -1,5 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
 import Link from "next/link";
+import { notFound } from "next/navigation";
 import {
   buttonClassName,
   EmptyState,
@@ -17,7 +18,7 @@ export const dynamic = "force-dynamic";
 export default async function ZombiesListPage() {
   const { getToken } = await auth();
   const token = await getToken();
-  if (!token) return null;
+  if (!token) notFound();
 
   const workspace = await resolveActiveWorkspace(token);
   if (!workspace) {
