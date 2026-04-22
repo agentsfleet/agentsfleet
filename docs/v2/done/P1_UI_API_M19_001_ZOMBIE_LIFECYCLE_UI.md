@@ -34,14 +34,14 @@ Before CHORE(open) the backend route manifest (`src/http/route_manifest.zig`) wa
 
 All six gaps are captured in a single pending spec: **`docs/v2/pending/P1_API_UI_M19_002_ZOMBIE_LIFECYCLE_MUTATIONS.md`** (M19_002). Grouped because they share backend boilerplate and all replace UI placeholders this workstream shipped — surfacing them in four separate staggered releases would make the dashboard feel half-finished for longer than shipping them together.
 
-| Missing endpoint | Original §/Dim | Deferred to |
-|---|---|---|
-| `GET /v1/skills` (template picker source) | §1 template picker, dim 1.1 | M19_002 §4 |
-| `PATCH /v1/workspaces/{ws}/zombies/{id}` (rename / describe) | §4 dim 4.1 | M19_002 §1 |
-| `POST \| DELETE .../{id}/schedule` (cron) | §2 cron mode, dims 2.2–2.4 | M19_002 §2 |
-| `GET \| PUT .../{id}/firewall` | §3 entire section | M19_002 §3 |
-| `POST .../{id}:pause` / `:resume` | §4 dim 4.2 | M19_002 §1 |
-| `GET .../{id}/triggers` (webhook URL fetch) | §2 dim 2.1 | Not needed — URL is `${API_BASE}/v1/webhooks/${zombie_id}`, derivable client-side. Dim 2.1 stays, rewritten. |
+| Missing capability | Original §/Dim | Deferred to | Proposed endpoint (M19_002) |
+|---|---|---|---|
+| Rename / re-describe zombie | §4 dim 4.1 | M19_002 §1 | `PATCH /v1/workspaces/{ws}/zombies/{id}` body `{name?, description?}` |
+| Pause / resume | §4 dim 4.2 | M19_002 §1 | same PATCH, body `{paused: true\|false}` — rejects the old `:pause` / `:resume` path-verb style (REST guideline §7) |
+| Set / clear cron schedule | §2 dims 2.2–2.4 | M19_002 §1 | same PATCH, body `{schedule_cron: "…"\|null}` — rejects the old `/schedule` path-verb style |
+| Firewall read / replace | §3 entire section | M19_002 §2 | `GET \| PUT /v1/workspaces/{ws}/zombies/{id}/firewall` — rules are a rich collection, so they stay on their own sub-resource |
+| Skills catalog (template picker source) | §1 dim 1.1 | M19_002 §3 | `GET /v1/skills` |
+| Webhook URL fetch | §2 dim 2.1 | Not needed | URL is `${API_BASE}/v1/webhooks/${zombie_id}`, derivable client-side. Dim 2.1 was delivered in this workstream. |
 
 ### Route ownership bridge (M19 ↔ M27, unchanged in spirit)
 
