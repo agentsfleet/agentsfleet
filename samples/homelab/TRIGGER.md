@@ -9,6 +9,12 @@ trigger:
       max: 4000
       description: The operator's question in natural language.
   optional_cron: "0 9 * * *"
+tools:
+  - kubectl
+  - docker
+credentials:
+  - kubectl_config
+  - docker_socket
 network:
   allow:
     - kubernetes.default.svc

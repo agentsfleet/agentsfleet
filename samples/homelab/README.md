@@ -3,8 +3,8 @@
 An AI agent that diagnoses problems in a homelab — small Kubernetes
 cluster plus a Docker host — and never holds the cluster credentials.
 Ask it "Jellyfin pods keep restarting" and it reads pod state, logs,
-and events through a read-only tool layer, reasons about what it
-sees, and returns a diagnosis.
+and events through read-only kubectl and docker tools, reasons about
+what it sees, and returns a diagnosis.
 
 This sample is the flagship executable zombie for v2.0-alpha. It is
 read-only by design; remediation is a separate zombie behind approval
@@ -20,10 +20,10 @@ gates (not included here).
   includes it; custom images need `kubectl >= 1.28`.
 - Kubeconfig for the target cluster, available locally as
   `~/.kube/config` (or wherever you keep it).
-- Docker Engine on the host where the worker runs (for the
-  `docker-readonly` sub-skill). Optional — if you only want the
-  kubectl side, skip the docker credential and the zombie will
-  reason from cluster evidence alone.
+- Docker Engine on the host where the worker runs (for the docker
+  tool). Optional — if you only want the kubectl side, skip the
+  docker credential and the zombie will reason from cluster evidence
+  alone.
 
 ## Step 1 — Add credentials to the vault
 
@@ -48,10 +48,6 @@ zombiectl zombie install --from samples/homelab
 ```
 
 Expected output: a zombie ID and a webhook URL to trigger it.
-
-The install reads `SKILL.md` and `TRIGGER.md` from this directory,
-validates the sub-skill policies under `skills/`, registers the
-zombie on your tenant, and prints the webhook URL.
 
 ## Step 3 — Trigger it
 
@@ -100,29 +96,21 @@ kubectl logs jellyfin-7f9c-xxxxx -n media --previous --tail=50
 Total tool calls: 4. Total time: about 8–12 seconds, most of it
 waiting on the cluster API.
 
-## Firewall allowlist
+## What the zombie may and may not do
 
-The two sub-skills declare the exact verbs/commands the zombie is
-permitted to run. Attempts to use anything else are rejected by the
-tool dispatcher before the command touches the cluster.
+The allowlist lives as prose in `SKILL.md`. Read the **Tools you can
+use** section there for the authoritative list. Short version:
 
-**`kubectl-readonly`** (see `skills/kubectl-readonly/SKILL.md`):
-- Verbs: `get`, `describe`, `logs`, `top`, `events`, `explain`,
-  `version`, `api-resources`, `api-versions`.
-- Resources: all except `secrets` (denied even for `get`).
-- Destructive verbs (`delete`, `apply`, `patch`, `exec`, `scale`,
-  `rollout`, `cordon`, `drain`) are rejected.
+- **kubectl**: `get`, `describe`, `logs`, `top`, `events`, `explain`,
+  `version`, `api-resources`, `api-versions`. No destructive verbs.
+  No reads of `secrets` resources.
+- **docker**: `ps`, `logs`, `inspect`, `images`, `stats`, `top`,
+  `events`, `version`, `info`. No mutating commands, no pulls, no
+  builds.
 
-**`docker-readonly`** (see `skills/docker-readonly/SKILL.md`):
-- Commands: `ps`, `logs`, `inspect`, `images`, `stats`, `top`,
-  `events`, `version`, `info`.
-- Mutating commands (`run`, `exec`, `start`, `stop`, `rm`, `kill`,
-  `build`, `push`, `pull`, `pause`) are rejected.
-
-When a verb is rejected, the zombie receives a structured error
-string it can reason from and try an allowed verb instead. The
-rejection is visible in the activity stream as
-`firewall_request_blocked` / `UZ-FIREWALL-001`.
+When the tool dispatcher runs (nullclaw, when it ships) it will
+enforce the prose allowlist — a rejected call surfaces as a
+structured error the agent can reason from.
 
 ## Missing credential? Clean halt.
 
@@ -142,23 +130,22 @@ against a cluster it can't reach.
 
 **Credentials never leave the worker.** When you add a kubeconfig via
 `zombiectl credential add`, it goes into the tenant vault encrypted.
-When the zombie invokes a `kubectl-readonly` tool call, the worker
-parses the command, verifies the verb against the allowlist, and
-injects the credential at the HTTPS boundary to the cluster API
+When the zombie invokes a kubectl tool call, the worker parses the
+command, verifies it against the allowlist described in `SKILL.md`,
+and injects the credential at the HTTPS boundary to the cluster API
 server. The agent itself only sees command output — never the
-kubeconfig bytes, bearer token, or certificate material. If the model
-is prompt-injected into asking for credentials, the worst it can leak
-is an opaque placeholder identifier; there is no real token reachable
-from the agent's context.
+kubeconfig bytes, bearer token, or certificate material. If the
+model is prompt-injected into asking for credentials, the worst it
+can leak is an opaque placeholder identifier; there is no real
+token reachable from the agent's context.
 
-**Tools are verb-allowlisted, not sandboxed.** The sub-skills declare
-which verbs (`kubectl-readonly/SKILL.md`) and commands
-(`docker-readonly/SKILL.md`) are allowed. The dispatcher checks every
-tool call against that allowlist before execution. Verbs not on the
-list fail closed — the agent sees an error, reasons from it, and
-tries something allowed. This is cheaper and more auditable than
-running the whole worker inside a tight sandbox, and it makes the
-policy human-readable in one file per skill.
+**Policy is prose, not YAML.** The "what's allowed" rules for
+kubectl and docker live as natural language in `SKILL.md` — no
+separate policy blocks, no sub-skill files. The LLM reads the prose
+as part of its instructions and the dispatcher enforces the same
+allowlist at tool-call time. For this single-consumer sample, one
+file per zombie is enough; if a second zombie ever wants to share
+the same allowlist, we'll lift it then.
 
 ## Limitations (MVP)
 
@@ -172,7 +159,5 @@ policy human-readable in one file per skill.
 
 ## Related
 
-- The two sub-skills under `skills/` — read these to see the exact
-  verb/command allowlists and the credential-injection model.
 - `docs/brainstormed/docs/homelab-zombie-launch.md` — the launch-post
   narrative this sample implements.
