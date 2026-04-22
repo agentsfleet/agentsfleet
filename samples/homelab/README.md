@@ -31,8 +31,16 @@ The zombie never sees raw credentials. The vault holds them; the
 worker injects them at the network boundary when a tool call runs.
 
 ```bash
+# kubeconfig: byte contents are read from the file and stored encrypted.
 zombiectl credential add kubectl_config --file ~/.kube/config
-zombiectl credential add docker_socket --file /var/run/docker.sock
+
+# docker socket: the PATH is stored as a connection hint, not the
+# socket's byte contents (a Unix socket is not a readable file).
+# --path is the right flag here; --file on /var/run/docker.sock would
+# fail or store nothing. For a remote Docker engine, pass a TCP URL
+# (tcp://host:2376) via --path instead, plus separate --ca-cert +
+# --client-cert credentials.
+zombiectl credential add docker_socket --path /var/run/docker.sock
 ```
 
 If you don't have a Docker host to point at, skip the second line.

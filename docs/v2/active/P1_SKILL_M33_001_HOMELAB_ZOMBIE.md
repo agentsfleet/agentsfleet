@@ -58,7 +58,7 @@ Authored `samples/homelab/SKILL.md`, `TRIGGER.md`, and `README.md` following the
 | Dim | Status | Target | Input | Expected | Test type |
 |-----|--------|--------|-------|----------|-----------|
 | 2.1 | DONE | `samples/homelab/SKILL.md` | skill parser | parses; frontmatter has `model: claude-sonnet-4-6`; prompt body contains the "Tools you can use" section naming both `kubectl` and `docker` with their allowed and forbidden verbs/commands | integration |
-| 2.2 | DONE | `samples/homelab/TRIGGER.md` | trigger loader | parses; returns `{ webhook: true, payload_schema: { message: string }, optional_cron: "0 9 * * *", tools: [kubectl, docker], credentials: [kubectl_config, docker_socket] }` | integration |
+| 2.2 | DONE | `samples/homelab/TRIGGER.md` | trigger loader | parses; returns `{ webhook: true, payload_schema: { message: string }, optional_cron: { schedule: "0 9 * * *", message: "Run the daily homelab health scan..." }, tools: [kubectl, docker], credentials: [kubectl_config, docker_socket] }` | integration |
 | 2.3 | DONE | `samples/homelab/README.md` | new operator reads top-to-bottom | sections: Prereqs, Credential setup, Install, Trigger (webhook curl), Example conversation (Jellyfin → OOMKilled diagnosis), prose allowlist summary, How it works (placeholder-credential story + "policy is prose" paragraph) | manual review |
 | 2.4 | DONE | `samples/homelab/SKILL.md` prompt body | grep for destructive verbs after the phrase "Never use" | every destructive verb (`delete`, `apply`, `exec`, `patch`, `edit`, `replace`, `run`, `rm`, `rmi`, `kill`, `pause`, `unpause`, `build`, `push`, `pull`, `scale`, `rollout`, `cordon`, `drain`) appears inside a "Never use" sentence for the right tool; `secrets` appears inside a "never read" sentence | lint (grep) |
 
@@ -106,7 +106,7 @@ This workstream consumes existing interfaces; it introduces no new public code s
 - **SKILL.md frontmatter** (M2_002): `{name, version, description, tags, author, model}` + prompt body. Post-pivot, no `credentials:` or `policy:` keys — credentials in TRIGGER.md, allowlist as prose.
 - **TRIGGER.md frontmatter** (M19_001): `{trigger: {type, payload_schema, optional_cron}, tools[], credentials[], network.allow[], budget}`. `samples/homelab/TRIGGER.md` is the forward canonical example (see Discovery #7 re lead-collector).
 - **`zombiectl zombie install --from <path>`** (M19_001): loads SKILL.md + TRIGGER.md, creates the zombie.
-- **`zombiectl credential add <name>`** (M13_001): README documents `kubectl_config --file ~/.kube/config` and `docker_socket --file /var/run/docker.sock`.
+- **`zombiectl credential add <name>`** (M13_001): README documents `kubectl_config --file ~/.kube/config` (byte contents stored, encrypted) and `docker_socket --path /var/run/docker.sock` (socket path stored as a connection hint; `--file` would fail because Unix sockets aren't readable files).
 - **Tool dispatcher (nullclaw, future)**: reads prose allowlist and enforces. `src/zombie/firewall/` (M6_001) is HTTP-boundary only and is NOT this enforcement layer.
 - **Activity stream events** (M19_001/M20_001): `zombie_triggered`, `tool_call_{requested,completed}`, `zombie_completed`, `UZ-GRANT-001`, `UZ-FIREWALL-001`.
 
@@ -172,7 +172,7 @@ This workstream consumes existing interfaces; it introduces no new public code s
 | Test name | Dim | Target | Input | Expected |
 |-----------|-----|--------|-------|----------|
 | `homelab skill parses` | 2.1 | `samples/homelab/SKILL.md` | parser | non-null skill record with expected fields (model, prompt body) |
-| `homelab trigger parses` | 2.2 | `samples/homelab/TRIGGER.md` | loader | `{ webhook: true, payload_schema, tools: [kubectl, docker], credentials: [kubectl_config, docker_socket] }` |
+| `homelab trigger parses` | 2.2 | `samples/homelab/TRIGGER.md` | loader | `{ webhook: true, payload_schema, optional_cron: { schedule, message }, tools: [kubectl, docker], credentials: [kubectl_config, docker_socket] }` |
 | `prose allowlist gate` | 2.4 | `samples/homelab/SKILL.md` prompt body | grep pipeline in Implementation Constraints | destructive verbs only appear inside "Never use" sentences |
 | `sample payload is valid JSON` | 2.2 | TRIGGER.md payload block | `JSON.parse` | succeeds; matches payload schema |
 

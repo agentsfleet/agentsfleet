@@ -124,7 +124,7 @@ Order is important: §1 and §2 must land first so no test references `lead-coll
 
 ### Removed interfaces
 
-- **`zombiectl install lead-collector`** — removed. Post-teardown, the command returns a "template not found" error identifying the two remaining bundled templates (`slack-bug-fixer`) or directs the user to `zombiectl zombie install --from samples/homelab` once M19_001 ships.
+- **`zombiectl install lead-collector`** — removed. Post-teardown, the command returns a "template not found" error identifying the one remaining bundled template (`slack-bug-fixer`) or directs the user to `zombiectl zombie install --from samples/homelab` once M19_001 ships.
 - **`samples/lead-collector/`** — removed. No sample occupies this path; any downstream doc or tool that still references it is stale.
 
 ### Preserved interfaces
@@ -222,7 +222,7 @@ N/A — rename+delete workstream. The tests that previously depended on `"lead-c
 - [ ] All CI suites green — verify: Dims 4.2, 4.3
 - [ ] `zombiectl install slack-bug-fixer` still produces a working zombie — verify: manual smoke
 - [ ] `zombiectl install lead-collector` returns a clean "template not found" error — verify: negative test
-- [ ] Changelog has a new `<Update>` block tagged `["Internal"]` describing the cleanup — verify: diff of `docs/changelog.mdx` in `/Users/kishore/Projects/docs/`
+- [ ] Changelog has a new `<Update>` block tagged `["Internal"]` describing the cleanup — verify: diff of `changelog.mdx` in the external `usezombie/docs` repo (documentation repo, separate from this application repo)
 
 ---
 

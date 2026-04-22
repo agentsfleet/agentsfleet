@@ -8,7 +8,13 @@ trigger:
       min: 1
       max: 4000
       description: The operator's question in natural language.
-  optional_cron: "0 9 * * *"
+  optional_cron:
+    schedule: "0 9 * * *"
+    # When the cron fires, the platform synthesises this message as the
+    # payload — the zombie receives it the same way it would a webhook
+    # POST, so the prompt's "When the operator sends a question..."
+    # branch applies uniformly.
+    message: "Run the daily homelab health scan: report any pods in CrashLoopBackOff, containers using >80% of their memory limit, and volumes above 85% full. Summarise in three bullets."
 tools:
   - kubectl
   - docker
