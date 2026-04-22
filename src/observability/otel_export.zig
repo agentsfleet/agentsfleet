@@ -93,22 +93,38 @@ pub fn renderOtlpJson(
         }
 
         const sep = std.mem.indexOf(u8, line, " ") orelse continue;
-        const name = line[0..sep];
+        const head = line[0..sep];
         const value_str = std.mem.trim(u8, line[sep + 1 ..], " \t\r\n");
+
+        // A labeled Prometheus line looks like `name{k="v",…} value`. OTLP
+        // requires the braces stripped from the instrument name and the
+        // label set emitted as per-data-point attributes (a name containing
+        // `{…}` is rejected by collectors).
+        const brace_start = std.mem.indexOfScalar(u8, head, '{');
+        const name: []const u8 = if (brace_start) |b| head[0..b] else head;
+        const labels_src: []const u8 = if (brace_start) |b| blk: {
+            const end = std.mem.lastIndexOfScalar(u8, head, '}') orelse break :blk "";
+            if (end <= b) break :blk "";
+            break :blk head[b + 1 .. end];
+        } else "";
 
         if (!first) try w.writeAll(",");
         first = false;
 
         if (std.mem.eql(u8, current_type, "counter")) {
             try w.print(
-                "{{\"name\":\"{s}\",\"sum\":{{\"dataPoints\":[{{\"asInt\":\"{s}\",\"timeUnixNano\":\"{d}\"}}],\"isMonotonic\":true}}}}",
+                "{{\"name\":\"{s}\",\"sum\":{{\"dataPoints\":[{{\"asInt\":\"{s}\",\"timeUnixNano\":\"{d}\"",
                 .{ name, value_str, now_ns },
             );
+            try writeAttributes(w, labels_src);
+            try w.writeAll("}],\"isMonotonic\":true}}");
         } else {
             try w.print(
-                "{{\"name\":\"{s}\",\"gauge\":{{\"dataPoints\":[{{\"asInt\":\"{s}\",\"timeUnixNano\":\"{d}\"}}]}}}}",
+                "{{\"name\":\"{s}\",\"gauge\":{{\"dataPoints\":[{{\"asInt\":\"{s}\",\"timeUnixNano\":\"{d}\"",
                 .{ name, value_str, now_ns },
             );
+            try writeAttributes(w, labels_src);
+            try w.writeAll("}]}}");
         }
     }
 
@@ -196,6 +212,30 @@ fn exportErrorCode(err: anyerror) []const u8 {
         ExportError.UnexpectedStatus => ERR_OTEL_UNEXPECTED_STATUS,
         else => ERR_OTEL_EXPORT_FAILED,
     };
+}
+
+/// Serialize a Prometheus label set `k1="v1",k2="v2"` as an OTLP attribute
+/// array. No-op for unlabeled metrics. Writes a leading comma + `"attributes":[…]`
+/// fragment that plugs into an open dataPoints object.
+pub fn writeAttributes(writer: anytype, labels_src: []const u8) !void {
+    if (labels_src.len == 0) return;
+    try writer.writeAll(",\"attributes\":[");
+    var rest = labels_src;
+    var first = true;
+    while (rest.len > 0) {
+        const eq = std.mem.indexOfScalar(u8, rest, '=') orelse break;
+        const key = std.mem.trim(u8, rest[0..eq], " ,");
+        if (eq + 1 >= rest.len or rest[eq + 1] != '"') break;
+        const v_start = eq + 2;
+        const v_end = std.mem.indexOfScalarPos(u8, rest, v_start, '"') orelse break;
+        const val = rest[v_start..v_end];
+        if (!first) try writer.writeAll(",");
+        first = false;
+        try writer.print("{{\"key\":\"{s}\",\"value\":{{\"stringValue\":\"{s}\"}}}}", .{ key, val });
+        rest = rest[v_end + 1 ..];
+        if (rest.len > 0 and rest[0] == ',') rest = rest[1..];
+    }
+    try writer.writeAll("]");
 }
 
 fn isSuccessStatus(status: std.http.Status) bool {
@@ -289,4 +329,5 @@ test "renderOtlpJson emits OTLP histogram data points for Prometheus histograms"
 
 test {
     _ = @import("otel_histogram.zig");
+    _ = @import("otel_export_test.zig");
 }

@@ -65,18 +65,23 @@ pub const Accumulator = struct {
     }
 
     /// Returns true when `line` was consumed as a histogram component.
+    ///
+    /// Matchers use `lastIndexOf` so a histogram whose base name itself
+    /// contains `_sum`, `_count`, or `_bucket` (e.g. `foo_count_seconds`)
+    /// parses correctly — the real suffix is always the rightmost occurrence
+    /// on a valid Prometheus exposition line.
     pub fn tryIngest(self: *Accumulator, line: []const u8) !bool {
-        if (std.mem.indexOf(u8, line, "_bucket{")) |b_idx| {
+        if (std.mem.lastIndexOf(u8, line, "_bucket{")) |b_idx| {
             return self.ingestBucket(line, b_idx);
         }
-        if (std.mem.indexOf(u8, line, "_sum ")) |s_idx| {
+        if (std.mem.lastIndexOf(u8, line, "_sum ")) |s_idx| {
             const base = line[0..s_idx];
             const value_str = std.mem.trim(u8, line[s_idx + "_sum ".len ..], " \t\r\n");
             const h = try self.getOrCreate(base);
             h.sum = std.fmt.parseFloat(f64, value_str) catch 0;
             return true;
         }
-        if (std.mem.indexOf(u8, line, "_count ")) |c_idx| {
+        if (std.mem.lastIndexOf(u8, line, "_count ")) |c_idx| {
             const base = line[0..c_idx];
             const value_str = std.mem.trim(u8, line[c_idx + "_count ".len ..], " \t\r\n");
             const h = try self.getOrCreate(base);
@@ -165,6 +170,27 @@ test "Accumulator ingests bucket / sum / count lines" {
     try std.testing.expectEqual(@as(usize, 3), h.buckets.items.len);
     try std.testing.expectEqual(@as(u64, 3), h.count);
     try std.testing.expectApproxEqAbs(@as(f64, 0.150), h.sum, 1e-9);
+}
+
+test "Accumulator matches trailing suffix even when base name contains _sum/_count" {
+    const alloc = std.testing.allocator;
+    var acc = Accumulator.init(alloc);
+    defer acc.deinit();
+
+    // Base name itself contains `_count` — a naive indexOf would chop the base
+    // at the first occurrence and associate the count with a phantom histogram.
+    _ = try acc.tryIngest("foo_count_seconds_bucket{le=\"1\"} 2");
+    _ = try acc.tryIngest("foo_count_seconds_bucket{le=\"+Inf\"} 2");
+    _ = try acc.tryIngest("foo_count_seconds_sum 0.5");
+    _ = try acc.tryIngest("foo_count_seconds_count 2");
+
+    try std.testing.expect(acc.histograms.contains("foo_count_seconds"));
+    const h = acc.histograms.get("foo_count_seconds").?;
+    try std.testing.expectEqual(@as(u64, 2), h.count);
+    try std.testing.expectEqual(@as(usize, 2), h.buckets.items.len);
+    // And no phantom truncated-name histogram got created.
+    try std.testing.expect(!acc.histograms.contains("foo"));
+    try std.testing.expect(!acc.histograms.contains("foo_count"));
 }
 
 test "Accumulator ignores non-histogram lines" {

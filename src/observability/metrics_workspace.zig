@@ -72,7 +72,13 @@ fn resolveSlot(ws_id: []const u8, zombie_id: []const u8) ?*Slot {
 
         const occ = slot.occupied.load(.acquire);
         if (occ == 1) {
-            if (slot.ready.load(.acquire) != 1) continue;
+            // Spin-wait for the initializer to publish so we don't race past
+            // a mid-init slot for our own key and claim a duplicate slot.
+            // initSlot is ~100ns of straight-line memcpy + atomic store, so
+            // the spin is bounded under any realistic workload.
+            while (slot.ready.load(.acquire) != 1) {
+                std.atomic.spinLoopHint();
+            }
             if (slotMatches(slot, h, ws_id, zombie_id)) return slot;
             continue;
         }
@@ -198,9 +204,12 @@ test "resolveSlot returns same slot for identical (ws, zombie)" {
     try std.testing.expectEqual(@as(u32, 1), g_slot_count.load(.acquire));
 }
 
-test "slot with occupied=1 but ready=0 is skipped" {
+test "resolveSlot spin-waits on mid-init slot for same key (no duplicate slot)" {
     resetForTest();
 
+    // Simulate an in-progress initializer: slot claimed (occupied=1), fields
+    // written, but ready=0. A concurrent resolveSlot for the same key must
+    // find THIS slot, not probe forward and create a duplicate.
     const h = compositeHash("ws-half", "z-half");
     const idx = h % MAX_SLOTS;
     g_slots[idx].occupied.store(1, .release);
@@ -209,11 +218,24 @@ test "slot with occupied=1 but ready=0 is skipped" {
     @memcpy(g_slots[idx].ws_id[0..7], "ws-half");
     g_slots[idx].zombie_id_len = 6;
     @memcpy(g_slots[idx].zombie_id[0..6], "z-half");
-    // ready=0 — must not be returned.
+    // ready still 0 — resolveSlot will spin on it.
 
-    if (resolveSlot("ws-half", "z-half")) |s| {
-        try std.testing.expectEqual(@as(u8, 1), s.ready.load(.acquire));
-    }
+    const Resolver = struct {
+        fn run(result: *?*Slot) void {
+            result.* = resolveSlot("ws-half", "z-half");
+        }
+    };
+    var result: ?*Slot = null;
+    const t = try std.Thread.spawn(.{}, Resolver.run, .{&result});
+
+    // Let the resolver spin briefly, then publish ready=1.
+    std.Thread.sleep(2 * std.time.ns_per_ms);
+    g_slots[idx].ready.store(1, .release);
+    t.join();
+
+    try std.testing.expect(result != null);
+    try std.testing.expectEqual(&g_slots[idx], result.?);
+    try std.testing.expectEqual(@as(u32, 0), g_slot_count.load(.acquire)); // no new slot created
 }
 
 test "renderPrometheus skips slots with ready=0" {
