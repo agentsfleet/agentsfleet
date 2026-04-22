@@ -50,7 +50,7 @@ An operator — from the dashboard, the CLI, or a scripted API client — can:
 
 1. **Mutate any scalar field on a zombie** through a single `PATCH /v1/workspaces/{ws}/zombies/{zombie_id}` with a partial body. Rename, re-describe, pause/resume (`{"paused": true|false}`), and set/clear a cron schedule (`{"schedule_cron": "0 9 * * 2"}` or `null`) all flow through this one endpoint. UI surfaces: inline edit / pause-resume button / cron editor land in their respective M19_001 panels (`ZombieConfig.tsx`, `TriggerPanel.tsx`).
 2. **Read and edit firewall rules** (`GET` / `PUT /v1/workspaces/{ws}/zombies/{zombie_id}/firewall`). Firewall rules are a rich sub-resource (array of structs), so they stay on their own path. UI surface: replace the entire `FirewallRulesEditor.tsx` placeholder with a rule list + inline add/edit/delete.
-3. **Pick a skill template when installing** (`GET /v1/skills` returns the catalog of skills parsed from the repo's `samples/` folder at server build time). UI surface: the template-picker row above the name/description/skill fields in `InstallZombieForm.tsx`.
+(A skill-template picker UI was originally sketched here as a third surface. After an API-design pass we decided operators can type the skill identifier the same way they type any other resource name — the picker is UX polish, not core functionality, and a `GET /v1/skills` catalog endpoint just to power it isn't carrying enough weight. If a template picker turns out to be operator-essential later, it opens as its own workstream; this spec no longer promises it.)
 
 ### URL-design rationale (`:pause` / `:resume` / `/schedule` explicitly rejected)
 
@@ -68,12 +68,11 @@ Backend (Zig):
 
 | File | Action | Why |
 |------|--------|-----|
-| `src/http/route_manifest.zig` | MODIFY | Register `PATCH /zombies/{id}`, `GET\|PUT /zombies/{id}/firewall`, `GET /v1/skills`. Three routes total. |
+| `src/http/route_manifest.zig` | MODIFY | Register `PATCH /zombies/{id}` and `GET\|PUT /zombies/{id}/firewall`. Two routes total. |
 | `src/http/router.zig` | MODIFY | Match the new methods + paths. |
-| `src/http/route_table.zig` | MODIFY | Dispatch rows for the three new surfaces. |
+| `src/http/route_table.zig` | MODIFY | Dispatch rows for the two new surfaces. |
 | `src/http/handlers/zombies/patch.zig` | CREATE | Single PATCH handler. Accepts partial `{name, description, paused, schedule_cron}`; each field validated at the handler boundary (cron expression → `UZ-ZOM-003`; name conflict → 409). ≤350 lines. |
 | `src/http/handlers/zombies/firewall.zig` | CREATE | Firewall read + replace. Wraps existing `src/zombie/firewall/firewall.zig`. |
-| `src/http/handlers/skills/catalog.zig` | CREATE | Enumerates `samples/*` at server start, caches the catalog in memory. |
 | `src/zombie/zombie_store.zig` (or nearest) | MODIFY | A single `patchZombie(tenant_id, zombie_id, Patch)` facade — `Patch` is a struct with optional fields per scalar. Internal to the store, any write cascade (e.g. pause → cancel pending deliveries) lives in this one function so it can't drift between handlers. |
 | `schema/NNN_zombie_mutations.sql` | CREATE | Columns for `paused_at`, `schedule_cron`, and `description` (if not already present on the zombies table). Schema Guard applies pre-v2.0. |
 | `public/openapi/paths/zombies.yaml` | MODIFY | One new PATCH row + the firewall GET/PUT pair + the skills GET. |
@@ -91,11 +90,9 @@ UI (`ui/packages/app/`):
 | File | Action | Why |
 |------|--------|-----|
 | `ui/packages/app/lib/api/zombies.ts` | MODIFY | Add a single `patchZombie(workspaceId, zombieId, patch: Partial<ZombiePatch>)` that serves rename + pause/resume + schedule. Plus `getFirewall` / `putFirewall` for the sub-resource. |
-| `ui/packages/app/lib/api/skills.ts` | CREATE | `listSkills()` → `Skill[]`. |
 | `ui/packages/app/app/(dashboard)/zombies/[id]/components/TriggerPanel.tsx` | MODIFY | Replace schedule placeholder with a real cron editor (preset buttons + free-text + validation + "next run" display). |
 | `ui/packages/app/app/(dashboard)/zombies/[id]/components/FirewallRulesEditor.tsx` | MODIFY | Replace placeholder with rule table + inline add/edit/delete + confirm-delete. |
 | `ui/packages/app/app/(dashboard)/zombies/[id]/components/ZombieConfig.tsx` | MODIFY | Add rename (inline edit) + pause/resume buttons. Delete stays as shipped. |
-| `ui/packages/app/app/(dashboard)/zombies/new/InstallZombieForm.tsx` | MODIFY | Add template-picker row above name/description. |
 
 ---
 
@@ -156,18 +153,12 @@ The whole scalar-state surface of a zombie behind one endpoint. Do this section 
   - expected: PUT fires with merged array; on success table refreshes
   - test_type: unit
 
-### §3 — Skills catalog + template picker
+<!-- §3 (skills catalog + template picker) removed: the picker is UX polish
+and operators can type the skill identifier. A `/v1/skills` catalog
+endpoint just to power that picker isn't carrying enough weight. If a
+template picker becomes operator-essential later, it opens as its own
+workstream. -->
 
-**Dimensions:**
-
-- 3.1 PENDING — target: `src/http/handlers/skills/catalog.zig`
-  - input: `GET /v1/skills`
-  - expected: array of `{id, display_name, description}` matching what `samples/*` parses
-  - test_type: integration
-- 3.2 PENDING — target: `InstallZombieForm.tsx`
-  - input: form renders; user clicks a template card
-  - expected: name / description / skill inputs pre-filled
-  - test_type: unit
 
 ---
 

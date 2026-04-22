@@ -49,7 +49,7 @@ pub const Route = union(enum) {
     workspace_zombie_steer: matchers.WorkspaceZombieRoute,
     // M12_001: Dashboard-facing reads + kill switch
     workspace_activity: []const u8, // GET /v1/workspaces/{ws}/activity
-    workspace_zombie_stop: matchers.WorkspaceZombieRoute, // POST /v1/workspaces/{ws}/zombies/{id}/stop
+    workspace_zombie_current_run: matchers.WorkspaceZombieRoute, // DELETE /v1/workspaces/{ws}/zombies/{id}/current-run — kill the running action
     // M18_001: zombie execution telemetry
     zombie_telemetry: ZombieTelemetryRoute, // GET /v1/workspaces/{ws}/zombies/{id}/telemetry
     internal_telemetry, // GET /internal/v1/telemetry
@@ -127,11 +127,11 @@ pub fn match(path: []const u8) ?Route {
     if (std.mem.eql(u8, path, "/v1/memory/list")) return .memory_list;
     if (std.mem.eql(u8, path, "/v1/memory/forget")) return .memory_forget;
 
-    // M24_001: Workspace-scoped zombie collection + single-resource + sub-resources.
-    // Most-specific paths first to avoid collisions:
-    //   colon-action (/steer, /stop) before plain-id, suffix-paths (/activity, /billing/summary) before plain-id.
+    // Workspace-scoped zombie collection + single-resource + sub-resources.
+    // Most-specific paths first to avoid collisions: sub-resources (/steer, /current-run,
+    // /activity) are matched before the plain /zombies/{id} path.
     if (matchers.matchWorkspaceZombieAction(path, "/steer")) |route| return .{ .workspace_zombie_steer = route };
-    if (matchers.matchWorkspaceZombieAction(path, "/stop")) |route| return .{ .workspace_zombie_stop = route };
+    if (matchers.matchWorkspaceZombieAction(path, "/current-run")) |route| return .{ .workspace_zombie_current_run = route };
     if (matchers.matchWorkspaceZombieSuffix(path, "/activity")) |route| return .{ .workspace_zombie_activity = route };
     if (matchers.matchWorkspaceZombie(path)) |route| return .{ .delete_workspace_zombie = route };
     if (matchWorkspaceSuffix(path, "/zombies")) |workspace_id| return .{ .workspace_zombies = workspace_id };

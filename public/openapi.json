@@ -3437,11 +3437,11 @@
         }
       }
     },
-    "/v1/workspaces/{workspace_id}/zombies/{zombie_id}/stop": {
-      "post": {
-        "operationId": "stop_workspace_zombie",
-        "summary": "Stop a zombie (kill switch)",
-        "description": "Transitions a zombie's status from `active` or `paused` to `stopped` and records a `zombie_stopped` activity event. Returns 409 if the zombie is already stopped or killed. Returns 404 if the zombie is not in the path workspace (cross-workspace IDOR guard).",
+    "/v1/workspaces/{workspace_id}/zombies/{zombie_id}/current-run": {
+      "delete": {
+        "operationId": "delete_workspace_zombie_current_run",
+        "summary": "Kill the zombie's current running action",
+        "description": "Transitions the zombie's status from `active` or `paused` to `stopped` and records a `zombie_stopped` activity event. Modeled as a DELETE on a singleton sub-resource (the zombie's \"current run\") rather than the retired `POST .../stop` path-verb form — see `docs/REST_API_DESIGN_GUIDELINES.md` §7. Returns 409 if the zombie is already stopped or killed. Returns 404 if the zombie is not in the path workspace (cross-workspace IDOR guard).",
         "tags": [
           "Zombies"
         ],

@@ -291,15 +291,26 @@ test "custom-method subpath: zombie /steer resolves" {
     }
 }
 
-test "custom-method subpath: zombie /stop resolves" {
-    const route = match("/v1/workspaces/ws_abc/zombies/z_xyz/stop") orelse return error.TestExpectedMatch;
+test "subpath: zombie /current-run resolves" {
+    const route = match("/v1/workspaces/ws_abc/zombies/z_xyz/current-run") orelse return error.TestExpectedMatch;
     switch (route) {
-        .workspace_zombie_stop => |r| {
+        .workspace_zombie_current_run => |r| {
             try std.testing.expectEqualStrings("ws_abc", r.workspace_id);
             try std.testing.expectEqualStrings("z_xyz", r.zombie_id);
         },
         else => return error.TestExpectedEqual,
     }
+}
+
+test "retired path: /stop no longer resolves as a zombie action" {
+    // /stop was the pre-hygiene path-verb form. After the REST cleanup it must
+    // either not match or fall through to a plain resource route — it must not
+    // dispatch to the current-run handler.
+    const stop_retired = match("/v1/workspaces/ws1/zombies/z1/stop");
+    if (stop_retired) |r| switch (r) {
+        .workspace_zombie_current_run => return error.TestExpectedNotAction,
+        else => {},
+    };
 }
 
 test "custom-method regression: old colon-action forms no longer hit the migrated routes" {
@@ -320,12 +331,12 @@ test "custom-method regression: old colon-action forms no longer hit the migrate
     };
     const steer_old = match("/v1/workspaces/ws1/zombies/z1:steer");
     if (steer_old) |r| switch (r) {
-        .workspace_zombie_steer, .workspace_zombie_stop => return error.TestExpectedNotAction,
+        .workspace_zombie_steer, .workspace_zombie_current_run => return error.TestExpectedNotAction,
         else => {},
     };
     const stop_old = match("/v1/workspaces/ws1/zombies/z1:stop");
     if (stop_old) |r| switch (r) {
-        .workspace_zombie_steer, .workspace_zombie_stop => return error.TestExpectedNotAction,
+        .workspace_zombie_steer, .workspace_zombie_current_run => return error.TestExpectedNotAction,
         else => {},
     };
     const pause_old = match("/v1/workspaces/ws1:pause");
@@ -371,7 +382,7 @@ test "custom-method subpath: trailing segments after action are rejected" {
     try std.testing.expect(match("/v1/webhooks/z1/approval/extra") == null);
     try std.testing.expect(match("/v1/webhooks/z1/grant-approval/extra") == null);
     try std.testing.expect(match("/v1/workspaces/ws1/zombies/z1/steer/extra") == null);
-    try std.testing.expect(match("/v1/workspaces/ws1/zombies/z1/stop/extra") == null);
+    try std.testing.expect(match("/v1/workspaces/ws1/zombies/z1/current-run/extra") == null);
     try std.testing.expect(match("/v1/workspaces/ws1/pause/extra") == null);
     try std.testing.expect(match("/v1/workspaces/ws1/sync/extra") == null);
 }
@@ -380,7 +391,7 @@ test "custom-method subpath: empty ids are rejected" {
     try std.testing.expect(match("/v1/webhooks//approval") == null);
     try std.testing.expect(match("/v1/webhooks//grant-approval") == null);
     try std.testing.expect(match("/v1/workspaces//zombies/z1/steer") == null);
-    try std.testing.expect(match("/v1/workspaces/ws1/zombies//stop") == null);
+    try std.testing.expect(match("/v1/workspaces/ws1/zombies//current-run") == null);
     try std.testing.expect(match("/v1/workspaces//pause") == null);
     try std.testing.expect(match("/v1/workspaces//sync") == null);
 }

@@ -32,7 +32,7 @@ Before CHORE(open) the backend route manifest (`src/http/route_manifest.zig`) wa
 
 ### Backend surface **missing** — deferred with named follow-up
 
-All six gaps are captured in a single pending spec: **`docs/v2/pending/P1_API_UI_M19_002_ZOMBIE_LIFECYCLE_MUTATIONS.md`** (M19_002). Grouped because they share backend boilerplate and all replace UI placeholders this workstream shipped — surfacing them in four separate staggered releases would make the dashboard feel half-finished for longer than shipping them together.
+Gaps are captured in a single pending spec: **`docs/v2/pending/P1_API_UI_M19_002_ZOMBIE_LIFECYCLE_MUTATIONS.md`** (M19_002). Grouped because every remaining deferred surface shares one shape — a PATCH on a scalar field — so splitting them into separate workstreams would duplicate boilerplate without independent value.
 
 | Missing capability | Original §/Dim | Deferred to | Proposed endpoint (M19_002) |
 |---|---|---|---|
@@ -40,8 +40,25 @@ All six gaps are captured in a single pending spec: **`docs/v2/pending/P1_API_UI
 | Pause / resume | §4 dim 4.2 | M19_002 §1 | same PATCH, body `{paused: true\|false}` — rejects the old `:pause` / `:resume` path-verb style (REST guideline §7) |
 | Set / clear cron schedule | §2 dims 2.2–2.4 | M19_002 §1 | same PATCH, body `{schedule_cron: "…"\|null}` — rejects the old `/schedule` path-verb style |
 | Firewall read / replace | §3 entire section | M19_002 §2 | `GET \| PUT /v1/workspaces/{ws}/zombies/{id}/firewall` — rules are a rich collection, so they stay on their own sub-resource |
-| Skills catalog (template picker source) | §1 dim 1.1 | M19_002 §3 | `GET /v1/skills` |
+| Skills catalog (template picker source) | §1 dim 1.1 | Dropped | Operators type the skill identifier directly; a catalog endpoint just to power a picker isn't carrying enough weight. If the picker becomes operator-essential later, it opens as its own workstream. |
 | Webhook URL fetch | §2 dim 2.1 | Not needed | URL is `${API_BASE}/v1/webhooks/${zombie_id}`, derivable client-side. Dim 2.1 was delivered in this workstream. |
+
+### Legacy `/stop` collapse (in-scope backend change)
+
+While reviewing the proposed M19_002 endpoint shapes, the operator called out that `:pause` / `:resume` / `/schedule` all violate `docs/REST_API_DESIGN_GUIDELINES.md §7` ("avoid action verbs in path names"). The same rule applies retroactively to the pre-existing `POST /v1/workspaces/{ws}/zombies/{id}/stop` endpoint that M12_001 shipped for the dashboard kill switch — it was never REST-clean, we just hadn't pulled the thorn. The operator's instruction: *"drop /skills also /stop or actions must get collapsed and no legacy thorn."*
+
+Scope of this workstream expanded to include that cleanup, because deferring it to M19_002 would mean canonicalizing a REST-correct PATCH on one branch while the one existing path-verb kill-switch endpoint continued to violate §7 in production. Fixing both in the same release preserves the invariant: the zombies routes have no action verbs in paths.
+
+**Replacement shape — DELETE on a singleton sub-resource:**
+
+```
+BEFORE: POST   /v1/workspaces/{ws}/zombies/{id}/stop
+AFTER:  DELETE /v1/workspaces/{ws}/zombies/{id}/current-run
+```
+
+Why DELETE on `current-run` rather than `PATCH {status:"stopped"}`: the zombie's "current run" is conceptually a singleton sub-resource — either a run is happening (DELETE means "kill it") or it isn't (DELETE is a no-op / 409). The semantics map cleanly onto a resource lifecycle, which PATCH would obscure. A future `GET /.../current-run` for run-state becomes symmetric.
+
+**Breaking change.** Any caller of the old `POST .../stop` path receives 404. Pre-v2.0 alpha-gate etiquette is bare 404 (per RULE EP4), no 410 ceremony. The release note carries a migration under `Upgrading`.
 
 ### Route ownership bridge (M19 ↔ M27, unchanged in spirit)
 

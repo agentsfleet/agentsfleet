@@ -22,11 +22,11 @@ pub fn invokeWorkspaceActivity(hx: *Hx, req: *httpz.Request, route: router.Route
     workspace_activity.innerListWorkspaceActivity(hx.*, req, route.workspace_activity);
 }
 
-pub fn invokeWorkspaceZombieStop(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    if (req.method != .POST) {
+pub fn invokeDeleteCurrentRun(hx: *Hx, req: *httpz.Request, route: router.Route) void {
+    if (req.method != .DELETE) {
         common.respondMethodNotAllowed(hx.res);
         return;
     }
-    const r = route.workspace_zombie_stop;
-    zombie_lifecycle.innerStopZombie(hx.*, req, r.workspace_id, r.zombie_id);
+    const r = route.workspace_zombie_current_run;
+    zombie_lifecycle.innerDeleteCurrentRun(hx.*, req, r.workspace_id, r.zombie_id);
 }

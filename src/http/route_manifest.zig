@@ -57,7 +57,7 @@ pub const entries = [_]Entry{
     .{ .method = "DELETE", .path = "/v1/workspaces/{workspace_id}/zombies/{zombie_id}" },
     .{ .method = "GET", .path = "/v1/workspaces/{workspace_id}/zombies/{zombie_id}/activity" },
     .{ .method = "POST", .path = "/v1/workspaces/{workspace_id}/zombies/{zombie_id}/steer" },
-    .{ .method = "POST", .path = "/v1/workspaces/{workspace_id}/zombies/{zombie_id}/stop" },
+    .{ .method = "DELETE", .path = "/v1/workspaces/{workspace_id}/zombies/{zombie_id}/current-run" },
 
     // Zombie webhook ingest
     .{ .method = "POST", .path = "/v1/webhooks/{zombie_id}" },

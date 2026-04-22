@@ -131,14 +131,14 @@ test "integration: RBAC endpoints enforce operator and admin roles over live HTT
         try r.expectStatus(.ok);
     }
 
-    // M12_001 RULE BIL regression — destructive lifecycle fires
-    // workspace_guards.enforce(.minimum_role = .operator) BEFORE any zombie
-    // lookup, so a well-formed-but-nonexistent zombie_id yields 403 under
-    // TEST_USER_TOKEN.
-    const m12_stop_path = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/zombies/0195b4ba-8d3a-7f13-8abc-2b3e1e0a71bb/stop", .{TEST_WORKSPACE_ID});
-    defer alloc.free(m12_stop_path);
+    // RULE BIL regression — destructive lifecycle (DELETE /current-run, the
+    // kill switch) fires workspace_guards.enforce(.minimum_role = .operator)
+    // BEFORE any zombie lookup, so a well-formed-but-nonexistent zombie_id
+    // yields 403 under TEST_USER_TOKEN.
+    const kill_run_path = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/zombies/0195b4ba-8d3a-7f13-8abc-2b3e1e0a71bb/current-run", .{TEST_WORKSPACE_ID});
+    defer alloc.free(kill_run_path);
     {
-        const r = try (try h.post(m12_stop_path).bearer(TEST_USER_TOKEN)).rawBody("").send();
+        const r = try (try h.delete(kill_run_path).bearer(TEST_USER_TOKEN)).send();
         defer r.deinit();
         try r.expectStatus(.forbidden);
         try r.expectErrorCode(error_codes.ERR_INSUFFICIENT_ROLE);
