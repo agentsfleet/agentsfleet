@@ -20,8 +20,14 @@ const tenant_billing = @import("../state/tenant_billing.zig");
 const zombie_telemetry_store = @import("../state/zombie_telemetry_store.zig");
 const otel_traces = @import("../observability/otel_traces.zig");
 const trace = @import("../observability/trace.zig");
+const activity_stream = @import("activity_stream.zig");
+const balance_policy = @import("../config/balance_policy.zig");
 
 const log = std.log.scoped(.zombie_metering);
+
+/// One day in ms — rate-limit window for the recurring `balance_exhausted`
+/// event under policy `warn`.
+const WARN_RATE_LIMIT_WINDOW_MS: i64 = 24 * 60 * 60 * 1000;
 
 pub const ExecutionUsage = struct {
     zombie_id: []const u8,
@@ -83,6 +89,7 @@ pub fn recordZombieDelivery(
     token_count: u64,
     time_to_first_token_ms: u64,
     epoch_wall_time_ms: i64,
+    policy: balance_policy.Policy,
 ) void {
     const conn = pool.acquire() catch |err| {
         log.warn("metering.acquire_fail zombie_id={s} err={s}", .{ zombie_id, @errorName(err) });
@@ -121,7 +128,7 @@ pub fn recordZombieDelivery(
             break :blk 0;
         },
         .exhausted => blk: {
-            log.info("metering.exhausted zombie_id={s} tenant_id={s}", .{ zombie_id, tenant_id });
+            onExhaustedDebit(conn, alloc, workspace_id, zombie_id, tenant_id, policy);
             break :blk 0;
         },
         .missing_tenant_billing => blk: {
@@ -171,6 +178,99 @@ pub fn recordZombieDelivery(
         _ = otel_traces.addAttr(&span, "token_count", cnt_str);
         otel_traces.enqueueSpan(span);
     }
+}
+
+/// Called on the `exhausted` branch of `deductZombieUsage`. Stamps
+/// `balance_exhausted_at` (idempotent), emits the one-shot first-debit
+/// activity event on transition, and — under policy `warn` — emits the
+/// rate-limited recurring `balance_exhausted` event (1 per tenant per
+/// 24h, via a `core.activity_events` JOIN through `core.workspaces` so
+/// the probe is authoritative for the owning tenant regardless of how
+/// many workspaces are exhausting simultaneously).
+/// Fire-and-forget: all DB failures log and continue so the zombie keeps
+/// running.
+fn onExhaustedDebit(
+    conn: *pg.Conn,
+    alloc: Allocator,
+    workspace_id: []const u8,
+    zombie_id: []const u8,
+    tenant_id: []const u8,
+    policy: balance_policy.Policy,
+) void {
+    const transitioned = tenant_billing.markExhausted(conn, tenant_id) catch |err| {
+        log.warn("metering.mark_exhausted_fail tenant_id={s} err={s}", .{ tenant_id, @errorName(err) });
+        return;
+    };
+
+    if (transitioned) {
+        log.info("metering.balance_exhausted_first_debit zombie_id={s} tenant_id={s}", .{ zombie_id, tenant_id });
+        activity_stream.logEventOnConn(conn, alloc, .{
+            .zombie_id = zombie_id,
+            .workspace_id = workspace_id,
+            .event_type = activity_stream.EVT_BALANCE_EXHAUSTED_FIRST_DEBIT,
+            .detail = tenant_id,
+        });
+    } else {
+        log.info("metering.exhausted zombie_id={s} tenant_id={s} policy={s}", .{ zombie_id, tenant_id, policy.label() });
+    }
+
+    if (policy == .warn) {
+        const since_ms = std.time.milliTimestamp() - WARN_RATE_LIMIT_WINDOW_MS;
+        if (!activity_stream.hasRecentActivityEventForTenantOnConn(
+            conn,
+            tenant_id,
+            activity_stream.EVT_BALANCE_EXHAUSTED,
+            since_ms,
+        )) {
+            activity_stream.logEventOnConn(conn, alloc, .{
+                .zombie_id = zombie_id,
+                .workspace_id = workspace_id,
+                .event_type = activity_stream.EVT_BALANCE_EXHAUSTED,
+                .detail = tenant_id,
+            });
+        }
+    }
+}
+
+/// Pre-claim gate. Resolves tenant_id from workspace_id, loads
+/// `balance_exhausted_at`, and returns true iff the policy is `stop` AND
+/// the row is marked exhausted. Callers that receive `true` MUST skip
+/// `deliverEvent` and write a `balance_gate_blocked` activity event.
+///
+/// Any DB failure returns false (fail-open) so the gate never turns into
+/// an availability incident. Under policy `continue`/`warn` this function
+/// short-circuits with `false` without any DB work — the hot path stays
+/// unchanged when the feature isn't enabled.
+pub fn shouldBlockDelivery(
+    pool: *pg.Pool,
+    alloc: Allocator,
+    workspace_id: []const u8,
+    zombie_id: []const u8,
+    policy: balance_policy.Policy,
+) bool {
+    if (policy != .stop) return false;
+
+    const conn = pool.acquire() catch |err| {
+        log.warn("gate.acquire_fail zombie_id={s} err={s}", .{ zombie_id, @errorName(err) });
+        return false;
+    };
+    defer pool.release(conn);
+
+    const tenant_id = tenant_billing.resolveTenantFromWorkspace(conn, alloc, workspace_id) catch |err| {
+        log.warn("gate.tenant_lookup_fail zombie_id={s} err={s}", .{ zombie_id, @errorName(err) });
+        return false;
+    };
+    defer alloc.free(tenant_id);
+
+    const billing = (tenant_billing.getBilling(conn, alloc, tenant_id) catch |err| {
+        log.warn("gate.billing_load_fail zombie_id={s} err={s}", .{ zombie_id, @errorName(err) });
+        return false;
+    }) orelse return false;
+    defer alloc.free(@constCast(billing.plan_tier));
+    defer alloc.free(@constCast(billing.plan_sku));
+    defer alloc.free(@constCast(billing.grant_source));
+
+    return billing.exhausted_at_ms != null;
 }
 
 test {

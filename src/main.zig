@@ -136,6 +136,7 @@ test {
     _ = @import("db/sql_splitter.zig");
     _ = @import("config/env_vars.zig");
     _ = @import("config/load.zig");
+    _ = @import("config/balance_policy.zig");
     _ = @import("zombie/config.zig");
     _ = @import("zombie/yaml_frontmatter.zig");
     _ = @import("http/route_matchers.zig");
@@ -210,6 +211,7 @@ test {
     _ = @import("http/handlers/api_keys/tenant.zig");
     _ = @import("http/handlers/api_keys/list.zig");
     _ = @import("http/handlers/api_keys/tenant_integration_test.zig");
+    _ = @import("http/handlers/tenant_billing_integration_test.zig");
     _ = @import("http/handlers/webhooks/grant_approval.zig");
     _ = @import("http/handlers/webhooks/clerk_integration_test.zig");
     _ = @import("zombie/notifications/grant_notifier.zig");

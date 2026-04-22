@@ -34,6 +34,7 @@ pub const Billing = struct {
     balance_cents: i64,
     grant_source: []const u8,
     updated_at_ms: i64,
+    exhausted_at_ms: ?i64,
 };
 
 pub const DebitResult = struct { balance_cents: i64, updated_at_ms: i64 };
@@ -80,6 +81,24 @@ pub fn debit(conn: *pg.Conn, tenant_id: []const u8, cents: i64) !DebitResult {
     return .{ .balance_cents = r.balance_cents, .updated_at_ms = r.updated_at_ms };
 }
 
+/// Atomically stamp `balance_exhausted_at` on the first CreditExhausted debit.
+/// Returns true if this call transitioned the row (first exhaust), false if
+/// the row was already marked. Callers use the return value to gate the
+/// one-shot `balance_exhausted_first_debit` activity event.
+pub fn markExhausted(conn: *pg.Conn, tenant_id: []const u8) !bool {
+    return store.markExhausted(conn, tenant_id);
+}
+
+/// Clear `balance_exhausted_at` when a tenant is replenished outside the
+/// regular `debit` path (admin manual credit, Stripe top-up when wired,
+/// etc.). `debit` already clears on a successful deduction, so callers
+/// that debit after top-up do not need this — but paths that add credit
+/// without a matching debit (refunds, grants, admin SQL) MUST call it
+/// or the `stop` gate stays permanently closed.
+pub fn clearExhausted(conn: *pg.Conn, tenant_id: []const u8) !bool {
+    return store.clearExhausted(conn, tenant_id);
+}
+
 /// Caller owns all slice fields (plan_tier, plan_sku, grant_source).
 pub fn getBilling(
     conn: *pg.Conn,
@@ -93,6 +112,7 @@ pub fn getBilling(
         .balance_cents = row.balance_cents,
         .grant_source = row.grant_source,
         .updated_at_ms = row.updated_at_ms,
+        .exhausted_at_ms = row.exhausted_at_ms,
     };
 }
 

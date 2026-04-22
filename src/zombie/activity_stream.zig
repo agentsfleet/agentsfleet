@@ -30,6 +30,10 @@ pub const EVT_EVENT_RECEIVED = "event_received";
 pub const EVT_EVENT_ERROR = "event_error";
 pub const EVT_AGENT_RESPONSE = "agent_response";
 pub const EVT_AGENT_ERROR = "agent_error";
+// Balance-gate events (M11_006 §3/§5).
+pub const EVT_BALANCE_EXHAUSTED_FIRST_DEBIT = "balance_exhausted_first_debit";
+pub const EVT_BALANCE_EXHAUSTED = "balance_exhausted";
+pub const EVT_BALANCE_GATE_BLOCKED = "balance_gate_blocked";
 
 pub const ActivityEvent = struct {
     zombie_id: []const u8,
@@ -68,15 +72,67 @@ pub const ActivityPage = struct {
     }
 };
 
-// logEvent writes one activity event to core.activity_events.
-// Never errors — any failure is logged to stderr and silently swallowed.
-// The event loop must not be blocked by a logging failure.
+// Fire-and-forget write via a pool connection.
 pub fn logEvent(pool: *pg.Pool, alloc: Allocator, event: ActivityEvent) void {
     writeActivityEvent(pool, alloc, event) catch |err| {
         log.err("activity_stream.write_failed err={s} zombie_id={s} event_type={s}", .{
             @errorName(err), event.zombie_id, event.event_type,
         });
     };
+}
+
+// Fire-and-forget write on a caller-owned conn (RULE CNX).
+pub fn logEventOnConn(conn: *pg.Conn, alloc: Allocator, event: ActivityEvent) void {
+    writeActivityEventOnConn(conn, alloc, event) catch |err| {
+        log.err("activity_stream.write_failed err={s} zombie_id={s} event_type={s}", .{
+            @errorName(err), event.zombie_id, event.event_type,
+        });
+    };
+}
+
+// Rate-limit probe: true iff an event of `event_type` was written for
+// `workspace_id` after `since_ms`. Fail-open on DB error (caller emits).
+pub fn hasRecentActivityEventOnConn(
+    conn: *pg.Conn,
+    workspace_id: []const u8,
+    event_type: []const u8,
+    since_ms: i64,
+) bool {
+    var q = PgQuery.from(conn.query(
+        \\SELECT 1 FROM core.activity_events
+        \\WHERE workspace_id = $1 AND event_type = $2 AND created_at >= $3
+        \\LIMIT 1
+    , .{ workspace_id, event_type, since_ms }) catch return false);
+    defer q.deinit();
+    const row = q.next() catch return false;
+    return row != null;
+}
+
+// Tenant-scoped rate-limit probe: true iff an event of `event_type`
+// was written for ANY workspace owned by `tenant_id` after `since_ms`.
+// Used by the metering warn-policy path so a tenant with N workspaces
+// does not receive up to N `balance_exhausted` notifications on the
+// same day. JOIN through `core.workspaces` keeps the owning tenant
+// authoritative; the index on `activity_events.workspace_id` still
+// drives the scan. Fail-open on DB error.
+pub fn hasRecentActivityEventForTenantOnConn(
+    conn: *pg.Conn,
+    tenant_id: []const u8,
+    event_type: []const u8,
+    since_ms: i64,
+) bool {
+    var q = PgQuery.from(conn.query(
+        \\SELECT 1
+        \\FROM core.activity_events ae
+        \\JOIN core.workspaces w ON w.workspace_id = ae.workspace_id
+        \\WHERE w.tenant_id = $1::uuid
+        \\  AND ae.event_type = $2
+        \\  AND ae.created_at >= $3
+        \\LIMIT 1
+    , .{ tenant_id, event_type, since_ms }) catch return false);
+    defer q.deinit();
+    const row = q.next() catch return false;
+    return row != null;
 }
 
 // queryByZombie returns a page of events for a single Zombie, ordered newest first.
@@ -146,11 +202,14 @@ pub fn queryByWorkspaceOnConn(
 const FilterKind = enum { zombie, workspace };
 
 fn writeActivityEvent(pool: *pg.Pool, alloc: Allocator, event: ActivityEvent) !void {
-    const event_id = try id_format.generateActivityEventId(alloc);
-    defer alloc.free(event_id);
-
     const conn = try pool.acquire();
     defer pool.release(conn);
+    try writeActivityEventOnConn(conn, alloc, event);
+}
+
+fn writeActivityEventOnConn(conn: *pg.Conn, alloc: Allocator, event: ActivityEvent) !void {
+    const event_id = try id_format.generateActivityEventId(alloc);
+    defer alloc.free(event_id);
 
     const now_ms = std.time.milliTimestamp();
     _ = try conn.exec(
@@ -272,77 +331,6 @@ fn collectActivityPage(alloc: Allocator, q: *PgQuery, limit: u32) !ActivityPage 
     return ActivityPage{ .events = events, .next_cursor = next_cursor };
 }
 
-test "ActivityPage.deinit frees all rows and cursor" {
-    const alloc = std.testing.allocator;
-
-    const events = try alloc.alloc(ActivityEventRow, 1);
-    events[0] = .{
-        .id = try alloc.dupe(u8, "019abc"),
-        .zombie_id = try alloc.dupe(u8, "z1"),
-        .workspace_id = try alloc.dupe(u8, "ws1"),
-        .event_type = try alloc.dupe(u8, "webhook_received"),
-        .detail = try alloc.dupe(u8, "{}"),
-        .created_at = 1744000000000,
-    };
-    const page = ActivityPage{
-        .events = events,
-        .next_cursor = try alloc.dupe(u8, "1744000000000:019abc"),
-    };
-    page.deinit(alloc);
-    // leak detector will catch any missed free
-}
-
-test "collectActivityPage: full page sets next_cursor; partial page sets null" {
-    // Only tests the cursor logic — no DB required.
-    // A full page (events.len == limit) must produce a non-null next_cursor.
-    // A partial page must produce null.
-    const alloc = std.testing.allocator;
-
-    // Simulate a full page of 2 events with limit=2
-    {
-        var rows: std.ArrayList(ActivityEventRow) = .{};
-        defer {
-            for (rows.items) |*r| r.deinit(alloc);
-            rows.deinit(alloc);
-        }
-        for (0..2) |i| {
-            try rows.append(alloc, .{
-                .id = try alloc.dupe(u8, "019abc"),
-                .zombie_id = try alloc.dupe(u8, "z1"),
-                .workspace_id = try alloc.dupe(u8, "ws1"),
-                .event_type = try alloc.dupe(u8, "webhook_received"),
-                .detail = try alloc.dupe(u8, "{}"),
-                .created_at = @as(i64, @intCast(1744000000000 - i * 1000)),
-            });
-        }
-        const events = try rows.toOwnedSlice(alloc);
-        const next_cursor = if (events.len == 2) blk: {
-            break :blk try std.fmt.allocPrint(alloc, "{d}:{s}", .{ events[1].created_at, events[1].id });
-        } else null;
-        const page = ActivityPage{ .events = events, .next_cursor = next_cursor };
-        defer page.deinit(alloc);
-        try std.testing.expect(page.next_cursor != null);
-    }
-
-    // Partial page (1 event, limit=2) → next_cursor null
-    {
-        var rows: std.ArrayList(ActivityEventRow) = .{};
-        defer {
-            for (rows.items) |*r| r.deinit(alloc);
-            rows.deinit(alloc);
-        }
-        try rows.append(alloc, .{
-            .id = try alloc.dupe(u8, "019abc"),
-            .zombie_id = try alloc.dupe(u8, "z1"),
-            .workspace_id = try alloc.dupe(u8, "ws1"),
-            .event_type = try alloc.dupe(u8, "webhook_received"),
-            .detail = try alloc.dupe(u8, "{}"),
-            .created_at = 1744000000000,
-        });
-        const events = try rows.toOwnedSlice(alloc);
-        const next_cursor: ?[]const u8 = if (events.len == 2) try alloc.dupe(u8, "x") else null;
-        const page = ActivityPage{ .events = events, .next_cursor = next_cursor };
-        defer page.deinit(alloc);
-        try std.testing.expect(page.next_cursor == null);
-    }
+test {
+    _ = @import("activity_stream_test.zig");
 }

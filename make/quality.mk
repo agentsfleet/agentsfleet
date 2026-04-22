@@ -2,7 +2,7 @@
 # QUALITY — code quality, formatting, analysis
 # =============================================================================
 
-.PHONY: lint lint-zig lint-website lint-apps lint-ci openapi doctor check-pg-drain _fmt _fmt_check _zlint_check _pg_drain_check _zig_target_lint _zig_line_limit_check _hardcoded_role_check _website_lint _app_lint _design_system_lint _zombiectl_lint _actionlint_check
+.PHONY: lint lint-zig lint-website lint-apps lint-ci openapi doctor check-pg-drain check-schema-gate _fmt _fmt_check _zlint_check _pg_drain_check _schema_gate_check _zig_target_lint _zig_line_limit_check _hardcoded_role_check _website_lint _app_lint _design_system_lint _zombiectl_lint _actionlint_check
 
 ZLINT ?= zlint
 ACTIONLINT ?= actionlint
@@ -151,6 +151,36 @@ _actionlint_check:
 
 check-pg-drain: _pg_drain_check  ## Check that all conn.query() calls have a .drain()
 
+_schema_gate_check:
+	@echo "→ [zombied] Checking schema/*.sql against pre-v2.0 teardown convention..."
+	@version=$$(cat VERSION); \
+	major=$$(echo "$$version" | cut -d. -f1); \
+	if [ "$$major" -ge 2 ]; then \
+		echo "  (VERSION=$$version ≥ 2.0.0 — teardown convention relaxed, skipping)"; \
+		exit 0; \
+	fi; \
+	FAIL=0; \
+	for f in schema/*.sql; do \
+		[ -f "$$f" ] || continue; \
+		if grep -nE '^\s*(ALTER\s+TABLE|DROP\s+TABLE|DROP\s+COLUMN)\b' "$$f" >/dev/null 2>&1; then \
+			echo "✗ $$f: ALTER/DROP forbidden pre-v2.0 (VERSION=$$version)"; \
+			grep -nE '^\s*(ALTER\s+TABLE|DROP\s+TABLE|DROP\s+COLUMN)\b' "$$f" | sed 's/^/    /'; \
+			FAIL=1; \
+		fi; \
+		if grep -nE '^\s*SELECT\s+1\s*;\s*(--|$$)' "$$f" >/dev/null 2>&1; then \
+			echo "✗ $$f: 'SELECT 1;' version marker is a comment-only migration shim (forbidden pre-v2.0)"; \
+			FAIL=1; \
+		fi; \
+	done; \
+	if [ "$$FAIL" = "1" ]; then \
+		echo "  Fix: pre-v2.0 removes tables by deleting the slot file + embed.zig + migration array entry."; \
+		echo "  See CLAUDE.md → 'Schema Table Removal Guard'."; \
+		exit 1; \
+	fi; \
+	echo "✓ [zombied] schema-gate check passed (VERSION=$$version, pre-v2.0 teardown convention)"
+
+check-schema-gate: _schema_gate_check  ## Enforce pre-v2.0 teardown convention on schema/*.sql
+
 REDOCLY := bun x redocly
 
 openapi:  ## Bundle YAML → openapi.json, lint, check error schema, assert router↔spec parity, self-test
@@ -166,7 +196,7 @@ openapi:  ## Bundle YAML → openapi.json, lint, check error schema, assert rout
 	@python3 scripts/test_check_openapi_sync.py
 	@echo "✓ [openapi] Bundle + lint + error-schema + router parity + parser tests all green"
 
-lint-zig: _fmt_check _zlint_check _pg_drain_check _zig_target_lint _zig_line_limit_check _hardcoded_role_check  ## Lint zombied (Zig)
+lint-zig: _fmt_check _zlint_check _pg_drain_check _schema_gate_check _zig_target_lint _zig_line_limit_check _hardcoded_role_check  ## Lint zombied (Zig)
 	@echo "✓ [zombied] Lint passed"
 
 lint-website: _website_lint  ## Lint website only (ESLint + tsc)

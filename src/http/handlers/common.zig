@@ -22,7 +22,6 @@ pub const Context = struct {
     pool: *pg.Pool,
     queue: *queue_redis.Client,
     alloc: std.mem.Allocator,
-    api_keys: []const u8,
     oidc: ?*oidc.Verifier,
     auth_sessions: *auth_sessions.SessionStore,
     app_url: []const u8,
@@ -145,35 +144,8 @@ fn parseBearerToken(req: *httpz.Request) ?[]const u8 {
     return provided;
 }
 
-fn matchApiKey(provided: []const u8, configured_keys: []const u8) bool {
-    var it = std.mem.tokenizeScalar(u8, configured_keys, ',');
-    while (it.next()) |candidate_raw| {
-        const candidate = std.mem.trim(u8, candidate_raw, " \t");
-        if (candidate.len == 0) continue;
-        if (std.mem.eql(u8, provided, candidate)) return true;
-    }
-    return false;
-}
-
-fn authenticateApiKey(provided: []const u8, ctx: *Context) AuthError!AuthPrincipal {
-    if (!matchApiKey(provided, ctx.api_keys)) return AuthError.Unauthorized;
-    return .{
-        .mode = .api_key,
-        .role = .admin,
-        .user_id = null,
-        .tenant_id = null,
-        .workspace_scope_id = null,
-    };
-}
-
 pub fn authenticate(alloc: std.mem.Allocator, req: *httpz.Request, ctx: *Context) AuthError!AuthPrincipal {
-    const provided = parseBearerToken(req) orelse return AuthError.Unauthorized;
-    if (authenticateApiKey(provided, ctx)) |principal| {
-        return principal;
-    } else |err| switch (err) {
-        AuthError.Unauthorized => {},
-        else => return err,
-    }
+    _ = parseBearerToken(req) orelse return AuthError.Unauthorized;
 
     if (ctx.oidc) |verifier| {
         const auth = req.header("authorization") orelse return AuthError.Unauthorized;
@@ -205,15 +177,6 @@ pub fn authenticate(alloc: std.mem.Allocator, req: *httpz.Request, ctx: *Context
     }
 
     return AuthError.Unauthorized;
-}
-
-test "matchApiKey accepts configured key in rotation list" {
-    try std.testing.expect(matchApiKey("key-b", "key-a, key-b, key-c"));
-}
-
-test "matchApiKey rejects empty and non-matching candidates" {
-    try std.testing.expect(!matchApiKey("key-z", "key-a, , key-b"));
-    try std.testing.expect(!matchApiKey("key-a", ""));
 }
 
 pub fn requireUuidV7Id(

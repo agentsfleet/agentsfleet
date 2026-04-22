@@ -18,20 +18,9 @@ pub fn isHexString(s: []const u8) bool {
     return true;
 }
 
-/// True if the comma-separated API_KEY list has at least one non-empty
-/// candidate (ignoring whitespace-only entries).
-pub fn hasUsableApiKey(list: []const u8) bool {
-    var it = std.mem.tokenizeScalar(u8, list, ',');
-    while (it.next()) |candidate_raw| {
-        if (std.mem.trim(u8, candidate_raw, " \t").len > 0) return true;
-    }
-    return false;
-}
-
 pub fn printValidationError(err: ValidationError) void {
     switch (err) {
-        ValidationError.MissingApiKey => std.debug.print("fatal: API_KEY not set\n", .{}),
-        ValidationError.InvalidApiKeyList => std.debug.print("fatal: API_KEY has no usable keys\n", .{}),
+        ValidationError.OidcRequired => std.debug.print("fatal: OIDC is required — set OIDC_JWKS_URL, OIDC_ISSUER, OIDC_AUDIENCE\n", .{}),
         ValidationError.MissingOidcJwksUrl => std.debug.print("fatal: OIDC_JWKS_URL is required and must be non-empty\n", .{}),
         ValidationError.InvalidOidcProvider => std.debug.print("fatal: OIDC_PROVIDER is invalid (supported: {s})\n", .{oidc.supportedProviderList()}),
         ValidationError.MissingEncryptionMasterKey => std.debug.print("fatal: ENCRYPTION_MASTER_KEY not set\n", .{}),
