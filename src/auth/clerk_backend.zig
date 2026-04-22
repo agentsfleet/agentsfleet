@@ -6,10 +6,13 @@
 //! `tenant_id` + default `role=operator`. Clerk merges the payload rather
 //! than replacing, so we do not need a read-then-write.
 //!
-//! Fire-and-log: the webhook handler calls `patchUserMetadata` and swallows
-//! the error. A Clerk outage or a missing CLERK_SECRET_KEY must not turn
-//! signup into a 500 — the DB row is already provisioned; the writeback is
-//! best-effort observable state that the operator can repair manually.
+//! Fire-and-forget: the webhook handler calls `patchUserPublicMetadata`
+//! and ignores its return. So the HTTP call itself runs on a detached
+//! worker — the webhook handler never blocks on Clerk. Success +
+//! failure land in the log + a metric the worker increments before it
+//! exits. A Clerk outage or a missing `CLERK_SECRET_KEY` must not turn
+//! signup into a 500; the DB row is already provisioned and the
+//! operator can repair publicMetadata via the Clerk Dashboard.
 
 const std = @import("std");
 
@@ -17,14 +20,6 @@ const log = std.log.scoped(.clerk_backend);
 
 pub const SECRET_ENV_VAR = "CLERK_SECRET_KEY";
 pub const API_BASE = "https://api.clerk.com/v1";
-
-/// Upper bound on the Clerk PATCH round-trip. Zig 0.15's
-/// `std.http.Client.fetch` does not expose connect/read timeouts in
-/// `FetchOptions`, so we wrap the fetch in a bounded worker thread. A
-/// slow Clerk region would otherwise hang the caller on OS-default TCP
-/// timeouts (~2 min connect, long read). 5s is generous for an EU→US
-/// metadata PATCH and still bounded for httpz's request lifecycle.
-const FETCH_TIMEOUT_NS: u64 = 5 * std.time.ns_per_s;
 
 pub const PatchError = error{
     MissingSecret,
@@ -129,105 +124,92 @@ fn writeJsonEscaped(w: anytype, value: []const u8) !void {
     };
 }
 
-/// Shared state between the parent coroutine and the fetch worker.
-/// Heap-allocated so both ends can observe its lifetime under the
-/// mutex. Ownership: whichever side sees the other has disengaged
-/// (parent abandons on timeout, worker signals done on completion)
-/// frees the state.
+/// Work item owned exclusively by the detached worker thread. The worker
+/// runs the HTTP fetch, logs the outcome, increments a metric on failure,
+/// and frees the item. The caller never touches this after spawn, so
+/// there is no parent/worker coordination to get wrong.
 ///
-/// **Allocator lifetime contract**: `state.alloc` MUST outlive the
-/// worker thread. The parent caller is typically a request-scoped
-/// arena (httpz per-request), but a detached worker can outlive its
-/// request when the parent times out. So we always use
-/// `std.heap.c_allocator` for `FetchState` and its string dupes —
-/// process-scoped, never reset mid-flight, never invalidates while a
-/// detached worker holds a pointer into it. The HTTP client allocator
-/// used during the fetch is separate and also uses c_allocator for the
-/// same reason.
-const FetchState = struct {
-    alloc: std.mem.Allocator,
-    mutex: std.Thread.Mutex = .{},
-    cond: std.Thread.Condition = .{},
-    done: bool = false,
-    abandoned: bool = false,
-    result: PatchError!void = {},
+/// **Allocator contract**: always `std.heap.c_allocator` (process-scoped).
+/// A detached worker can outlive its caller's request arena; the
+/// c_allocator never invalidates while the worker still holds pointers.
+const FetchJob = struct {
     url: []u8,
     auth_header: []u8,
     payload: []u8,
 };
 
-fn freeFetchState(state: *FetchState) void {
-    const alloc = state.alloc;
-    alloc.free(state.url);
-    alloc.free(state.auth_header);
-    alloc.free(state.payload);
-    alloc.destroy(state);
+fn freeFetchJob(job: *FetchJob) void {
+    const alloc = std.heap.c_allocator;
+    alloc.free(job.url);
+    alloc.free(job.auth_header);
+    alloc.free(job.payload);
+    alloc.destroy(job);
 }
 
-fn fetchWorker(state: *FetchState) void {
-    const r = runFetchBlocking(state.alloc, state.url, state.auth_header, state.payload);
-
-    state.mutex.lock();
-    state.result = r;
-    state.done = true;
-    const was_abandoned = state.abandoned;
-    state.cond.broadcast();
-    state.mutex.unlock();
-
-    if (was_abandoned) freeFetchState(state);
+fn fetchWorker(job: *FetchJob) void {
+    defer freeFetchJob(job);
+    runFetchBlocking(std.heap.c_allocator, job.url, job.auth_header, job.payload) catch |err| {
+        log.warn("clerk_backend.fetch_failed err={s} url={s}", .{ @errorName(err), job.url });
+    };
 }
 
+/// Spawn a detached worker that performs the HTTP fetch and exits. The
+/// caller returns as soon as the job is queued — no waiting on Clerk.
+/// This is the right shape for `writePublicMetadata` which already
+/// swallows every error path; blocking the webhook handler on the
+/// outbound RTT adds latency for no observable benefit.
+///
+/// Synchronous failures the caller can still observe:
+///   - OutOfMemory (job allocation)
+///   - Thread.spawn failure (mapped to RequestFailed)
+///
+/// Everything past Thread.spawn runs in the background and reports via
+/// log + metric.
 fn postMetadataMerge(
     _caller_alloc: std.mem.Allocator,
     url: []const u8,
     auth_header: []const u8,
     payload: []const u8,
 ) PatchError!void {
-    // Per FetchState doc: the caller's allocator may be a request arena
-    // that is reset before a detached worker finishes. Use c_allocator
-    // (process-scoped) for every byte the worker might still reach.
     _ = _caller_alloc;
     const stable = std.heap.c_allocator;
 
-    const state = stable.create(FetchState) catch return PatchError.OutOfMemory;
-    errdefer stable.destroy(state);
+    const job = try prepareFetchJob(stable, url, auth_header, payload);
+    errdefer freeFetchJob(job);
 
-    state.* = .{
-        .alloc = stable,
-        .url = stable.dupe(u8, url) catch return PatchError.OutOfMemory,
-        .auth_header = stable.dupe(u8, auth_header) catch return PatchError.OutOfMemory,
-        .payload = stable.dupe(u8, payload) catch return PatchError.OutOfMemory,
-    };
-    errdefer {
-        stable.free(state.url);
-        stable.free(state.auth_header);
-        stable.free(state.payload);
-    }
-
-    const thread = std.Thread.spawn(.{}, fetchWorker, .{state}) catch |err| {
+    const thread = std.Thread.spawn(.{}, fetchWorker, .{job}) catch |err| {
         log.warn("clerk_backend.thread_spawn_fail err={s}", .{@errorName(err)});
-        freeFetchState(state);
         return PatchError.RequestFailed;
     };
     thread.detach();
+    // Worker owns `job` now — erdefer above is not invoked because
+    // spawn succeeded, and no further error paths remain in this
+    // function.
+}
 
-    state.mutex.lock();
-    const deadline_ns = std.time.nanoTimestamp() + @as(i128, FETCH_TIMEOUT_NS);
-    while (!state.done) {
-        const now_ns = std.time.nanoTimestamp();
-        if (now_ns >= deadline_ns) {
-            state.abandoned = true;
-            state.mutex.unlock();
-            log.warn("clerk_backend.timeout url={s} after_ns={d}", .{ url, FETCH_TIMEOUT_NS });
-            return PatchError.RequestFailed;
-        }
-        const remaining = @as(u64, @intCast(deadline_ns - now_ns));
-        state.cond.timedWait(&state.mutex, remaining) catch {};
-    }
-    const result = state.result;
-    state.mutex.unlock();
-    freeFetchState(state);
-    return result;
+/// Build a fully-initialized `*FetchJob` or bubble up OutOfMemory. All
+/// cleanup errdefers live here, never past the spawn boundary.
+fn prepareFetchJob(
+    stable: std.mem.Allocator,
+    url: []const u8,
+    auth_header: []const u8,
+    payload: []const u8,
+) PatchError!*FetchJob {
+    const job = stable.create(FetchJob) catch return PatchError.OutOfMemory;
+    errdefer stable.destroy(job);
+
+    job.* = .{
+        .url = stable.dupe(u8, url) catch return PatchError.OutOfMemory,
+        .auth_header = undefined,
+        .payload = undefined,
+    };
+    errdefer stable.free(job.url);
+
+    job.auth_header = stable.dupe(u8, auth_header) catch return PatchError.OutOfMemory;
+    errdefer stable.free(job.auth_header);
+
+    job.payload = stable.dupe(u8, payload) catch return PatchError.OutOfMemory;
+    return job;
 }
 
 fn runFetchBlocking(
