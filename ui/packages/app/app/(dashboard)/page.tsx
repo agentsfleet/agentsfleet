@@ -11,7 +11,7 @@ import ExhaustionBanner from "@/components/domain/ExhaustionBanner";
 
 export const dynamic = "force-dynamic";
 
-async function StatusTiles() {
+export async function StatusTiles() {
   const token = await getServerToken();
   if (!token) return null;
 
@@ -48,7 +48,7 @@ async function StatusTiles() {
   );
 }
 
-async function RecentActivity() {
+export async function RecentActivity() {
   const token = await getServerToken();
   if (!token) return null;
 
