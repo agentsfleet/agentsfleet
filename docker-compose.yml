@@ -14,6 +14,7 @@ services:
       POSTGRES_USER: usezombie
       POSTGRES_PASSWORD: usezombie
       POSTGRES_DB: usezombiedb
+      PGDATA: /var/lib/postgresql/data/pgdata
     ports:
       - "5432:5432"
     volumes:
