@@ -19,7 +19,6 @@ pub const incOutboxDeadLetter = mc.incOutboxDeadLetter;
 pub const incApiBackpressureRejections = mc.incApiBackpressureRejections;
 pub const setApiInFlightRequests = mc.setApiInFlightRequests;
 pub const observeAgentDurationSeconds = mc.observeAgentDurationSeconds;
-pub const incGateRepairLoops = mc.incGateRepairLoops;
 pub const incGateRepairExhausted = mc.incGateRepairExhausted;
 // M17_001 §1.3
 pub const incRunLimitTokenBudgetExceeded = mc.incRunLimitTokenBudgetExceeded;
@@ -37,9 +36,8 @@ pub const setReconcileRunning = mc.setReconcileRunning;
 
 pub const renderPrometheus = mr.renderPrometheus;
 
-// M28_001 §2.0: Per-workspace metrics.
+// Per-(workspace, zombie) token counter.
 pub const wsAddTokens = mw.addTokens;
-pub const wsIncGateRepairLoops = mw.incGateRepairLoops;
 pub const wsRenderPrometheus = mw.renderPrometheus;
 
 // Executor metrics re-exports (§5.2).
