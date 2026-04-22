@@ -2,7 +2,7 @@ import { lazy, Suspense } from "react";
 import { Link, NavLink, Route, Routes, ScrollRestoration, useLocation, useNavigate } from "react-router-dom";
 import Home from "./pages/Home";
 import Footer from "./components/Footer";
-import { Button, AnimatedIcon, ZombieHandIcon, Tabs, TabsList, TabsTrigger } from "@usezombie/design-system";
+import { Button, AnimatedIcon, ZombieHandIcon } from "@usezombie/design-system";
 import { APP_BASE_URL, DOCS_URL } from "./config";
 import { trackNavigationClicked, trackSignupStarted } from "./analytics/posthog";
 import { getModeFromPathname, MODE_AGENTS, MODE_HUMANS, MODE_PATHS, type Mode } from "./constants/mode";
@@ -59,6 +59,7 @@ function ParticleField() {
 export default function App() {
   const [mode, setMode] = useMode();
   const isHumansMode = mode === MODE_HUMANS;
+  const isAgentsMode = mode === MODE_AGENTS;
 
   return (
     <div className="site-shell">
@@ -73,28 +74,28 @@ export default function App() {
           <span className="badge">agent delivery control plane</span>
         </div>
 
-        <Tabs value={mode} onValueChange={(v) => setMode(v as Mode)}>
-          <TabsList
-            className="mode-switch"
-            aria-label="Mode switch"
-            data-testid="mode-switch"
+        <div className="mode-switch" role="tablist" aria-label="Mode switch" data-testid="mode-switch">
+          <Button
+            variant="ghost"
+            className={isHumansMode ? "mode-btn active" : "mode-btn"}
+            onClick={() => setMode(MODE_HUMANS)}
+            role="tab"
+            aria-selected={isHumansMode}
+            data-testid="mode-humans"
           >
-            <TabsTrigger
-              value={MODE_HUMANS}
-              className="mode-btn"
-              data-testid="mode-humans"
-            >
-              Humans
-            </TabsTrigger>
-            <TabsTrigger
-              value={MODE_AGENTS}
-              className="mode-btn"
-              data-testid="mode-agents"
-            >
-              Agents
-            </TabsTrigger>
-          </TabsList>
-        </Tabs>
+            Humans
+          </Button>
+          <Button
+            variant="ghost"
+            className={isAgentsMode ? "mode-btn active" : "mode-btn"}
+            onClick={() => setMode(MODE_AGENTS)}
+            role="tab"
+            aria-selected={isAgentsMode}
+            data-testid="mode-agents"
+          >
+            Agents
+          </Button>
+        </div>
 
         <nav className="site-nav" aria-label="Primary">
           <NavLink to="/">Home</NavLink>
