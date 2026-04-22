@@ -251,8 +251,10 @@ fn writePublicMetadata(hx: Hx, oidc_subject: []const u8, tenant_id: []const u8) 
         );
         metrics.incSignupFailed(.metadata_writeback);
         // Do not fail the webhook — the DB row exists; the user's first
-        // API call will 403 until their Clerk session refreshes with the
-        // written-back claims. Operators can repair via the Clerk Dashboard.
+        // API call will 401 (workspaces/lifecycle + github_callback raise
+        // `ERR_UNAUTHORIZED` on a null tenant_id) until their Clerk
+        // session refreshes with the written-back claims. Operators can
+        // repair via the Clerk Dashboard.
     };
 }
 

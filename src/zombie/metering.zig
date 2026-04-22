@@ -183,7 +183,11 @@ pub fn recordZombieDelivery(
 /// Called on the `exhausted` branch of `deductZombieUsage`. Stamps
 /// `balance_exhausted_at` (idempotent), emits the one-shot first-debit
 /// activity event on transition, and — under policy `warn` — emits the
-/// rate-limited recurring `balance_exhausted` event (1/tenant/day).
+/// rate-limited recurring `balance_exhausted` event (1 per workspace per
+/// 24h, via a `core.activity_events` probe keyed on `workspace_id`). A
+/// tenant with N workspaces that all exhaust on the same day will see up
+/// to N notifications — acceptable for pre-alpha operator signalling,
+/// revisit if it becomes noisy.
 /// Fire-and-forget: all DB failures log and continue so the zombie keeps
 /// running.
 fn onExhaustedDebit(

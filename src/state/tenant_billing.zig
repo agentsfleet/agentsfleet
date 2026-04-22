@@ -89,6 +89,16 @@ pub fn markExhausted(conn: *pg.Conn, tenant_id: []const u8) !bool {
     return store.markExhausted(conn, tenant_id);
 }
 
+/// Clear `balance_exhausted_at` when a tenant is replenished outside the
+/// regular `debit` path (admin manual credit, Stripe top-up when wired,
+/// etc.). `debit` already clears on a successful deduction, so callers
+/// that debit after top-up do not need this — but paths that add credit
+/// without a matching debit (refunds, grants, admin SQL) MUST call it
+/// or the `stop` gate stays permanently closed.
+pub fn clearExhausted(conn: *pg.Conn, tenant_id: []const u8) !bool {
+    return store.clearExhausted(conn, tenant_id);
+}
+
 /// Caller owns all slice fields (plan_tier, plan_sku, grant_source).
 pub fn getBilling(
     conn: *pg.Conn,
