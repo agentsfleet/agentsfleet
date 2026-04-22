@@ -183,11 +183,10 @@ pub fn recordZombieDelivery(
 /// Called on the `exhausted` branch of `deductZombieUsage`. Stamps
 /// `balance_exhausted_at` (idempotent), emits the one-shot first-debit
 /// activity event on transition, and — under policy `warn` — emits the
-/// rate-limited recurring `balance_exhausted` event (1 per workspace per
-/// 24h, via a `core.activity_events` probe keyed on `workspace_id`). A
-/// tenant with N workspaces that all exhaust on the same day will see up
-/// to N notifications — acceptable for pre-alpha operator signalling,
-/// revisit if it becomes noisy.
+/// rate-limited recurring `balance_exhausted` event (1 per tenant per
+/// 24h, via a `core.activity_events` JOIN through `core.workspaces` so
+/// the probe is authoritative for the owning tenant regardless of how
+/// many workspaces are exhausting simultaneously).
 /// Fire-and-forget: all DB failures log and continue so the zombie keeps
 /// running.
 fn onExhaustedDebit(
@@ -217,9 +216,9 @@ fn onExhaustedDebit(
 
     if (policy == .warn) {
         const since_ms = std.time.milliTimestamp() - WARN_RATE_LIMIT_WINDOW_MS;
-        if (!activity_stream.hasRecentActivityEventOnConn(
+        if (!activity_stream.hasRecentActivityEventForTenantOnConn(
             conn,
-            workspace_id,
+            tenant_id,
             activity_stream.EVT_BALANCE_EXHAUSTED,
             since_ms,
         )) {

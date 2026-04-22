@@ -108,6 +108,33 @@ pub fn hasRecentActivityEventOnConn(
     return row != null;
 }
 
+// Tenant-scoped rate-limit probe: true iff an event of `event_type`
+// was written for ANY workspace owned by `tenant_id` after `since_ms`.
+// Used by the metering warn-policy path so a tenant with N workspaces
+// does not receive up to N `balance_exhausted` notifications on the
+// same day. JOIN through `core.workspaces` keeps the owning tenant
+// authoritative; the index on `activity_events.workspace_id` still
+// drives the scan. Fail-open on DB error.
+pub fn hasRecentActivityEventForTenantOnConn(
+    conn: *pg.Conn,
+    tenant_id: []const u8,
+    event_type: []const u8,
+    since_ms: i64,
+) bool {
+    var q = PgQuery.from(conn.query(
+        \\SELECT 1
+        \\FROM core.activity_events ae
+        \\JOIN core.workspaces w ON w.workspace_id = ae.workspace_id
+        \\WHERE w.tenant_id = $1::uuid
+        \\  AND ae.event_type = $2
+        \\  AND ae.created_at >= $3
+        \\LIMIT 1
+    , .{ tenant_id, event_type, since_ms }) catch return false);
+    defer q.deinit();
+    const row = q.next() catch return false;
+    return row != null;
+}
+
 // queryByZombie returns a page of events for a single Zombie, ordered newest first.
 // cursor: decimal string of created_at from the previous page's last event, or null.
 // limit: capped at MAX_ACTIVITY_PAGE_LIMIT.

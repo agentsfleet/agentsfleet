@@ -18,6 +18,14 @@ const log = std.log.scoped(.clerk_backend);
 pub const SECRET_ENV_VAR = "CLERK_SECRET_KEY";
 pub const API_BASE = "https://api.clerk.com/v1";
 
+/// Upper bound on the Clerk PATCH round-trip. Zig 0.15's
+/// `std.http.Client.fetch` does not expose connect/read timeouts in
+/// `FetchOptions`, so we wrap the fetch in a bounded worker thread. A
+/// slow Clerk region would otherwise hang the caller on OS-default TCP
+/// timeouts (~2 min connect, long read). 5s is generous for an EU→US
+/// metadata PATCH and still bounded for httpz's request lifecycle.
+const FETCH_TIMEOUT_NS: u64 = 5 * std.time.ns_per_s;
+
 pub const PatchError = error{
     MissingSecret,
     ConnectFailed,
@@ -117,7 +125,94 @@ fn writeJsonEscaped(w: anytype, value: []const u8) !void {
     };
 }
 
+/// Shared state between the parent coroutine and the fetch worker.
+/// Heap-allocated so both ends can observe its lifetime under the
+/// mutex. Ownership: whichever side sees the other has disengaged
+/// (parent abandons on timeout, worker signals done on completion)
+/// frees the state. The first-out path carries no allocations, so
+/// callers pay zero allocation overhead on the happy path's memory
+/// footprint beyond the one struct + string dupes.
+const FetchState = struct {
+    alloc: std.mem.Allocator,
+    mutex: std.Thread.Mutex = .{},
+    cond: std.Thread.Condition = .{},
+    done: bool = false,
+    abandoned: bool = false,
+    result: PatchError!void = {},
+    url: []u8,
+    auth_header: []u8,
+    payload: []u8,
+};
+
+fn freeFetchState(state: *FetchState) void {
+    const alloc = state.alloc;
+    alloc.free(state.url);
+    alloc.free(state.auth_header);
+    alloc.free(state.payload);
+    alloc.destroy(state);
+}
+
+fn fetchWorker(state: *FetchState) void {
+    const r = runFetchBlocking(state.alloc, state.url, state.auth_header, state.payload);
+
+    state.mutex.lock();
+    state.result = r;
+    state.done = true;
+    const was_abandoned = state.abandoned;
+    state.cond.broadcast();
+    state.mutex.unlock();
+
+    if (was_abandoned) freeFetchState(state);
+}
+
 fn postMetadataMerge(
+    alloc: std.mem.Allocator,
+    url: []const u8,
+    auth_header: []const u8,
+    payload: []const u8,
+) PatchError!void {
+    const state = alloc.create(FetchState) catch return PatchError.OutOfMemory;
+    errdefer alloc.destroy(state);
+
+    state.* = .{
+        .alloc = alloc,
+        .url = alloc.dupe(u8, url) catch return PatchError.OutOfMemory,
+        .auth_header = alloc.dupe(u8, auth_header) catch return PatchError.OutOfMemory,
+        .payload = alloc.dupe(u8, payload) catch return PatchError.OutOfMemory,
+    };
+    errdefer {
+        alloc.free(state.url);
+        alloc.free(state.auth_header);
+        alloc.free(state.payload);
+    }
+
+    const thread = std.Thread.spawn(.{}, fetchWorker, .{state}) catch |err| {
+        log.warn("clerk_backend.thread_spawn_fail err={s}", .{@errorName(err)});
+        freeFetchState(state);
+        return PatchError.RequestFailed;
+    };
+    thread.detach();
+
+    state.mutex.lock();
+    const deadline_ns = std.time.nanoTimestamp() + @as(i128, FETCH_TIMEOUT_NS);
+    while (!state.done) {
+        const now_ns = std.time.nanoTimestamp();
+        if (now_ns >= deadline_ns) {
+            state.abandoned = true;
+            state.mutex.unlock();
+            log.warn("clerk_backend.timeout url={s} after_ns={d}", .{ url, FETCH_TIMEOUT_NS });
+            return PatchError.RequestFailed;
+        }
+        const remaining = @as(u64, @intCast(deadline_ns - now_ns));
+        state.cond.timedWait(&state.mutex, remaining) catch {};
+    }
+    const result = state.result;
+    state.mutex.unlock();
+    freeFetchState(state);
+    return result;
+}
+
+fn runFetchBlocking(
     alloc: std.mem.Allocator,
     url: []const u8,
     auth_header: []const u8,
@@ -143,7 +238,14 @@ fn postMetadataMerge(
         .response_writer = &aw.writer,
     }) catch |err| return mapFetchError(err);
 
-    const status = @intFromEnum(result.status);
+    return mapStatus(@intFromEnum(result.status), url);
+}
+
+/// Pure status→error mapping. Extracted so tests can exercise every
+/// branch without standing up a mock HTTP server — a real mock would
+/// need a TCP listener + response serialization and does not add
+/// coverage over what this function is responsible for.
+pub fn mapStatus(status: u16, url: []const u8) PatchError!void {
     if (status >= 200 and status < 300) return;
     if (status == 401 or status == 403) return PatchError.Unauthorized;
     if (status == 404) return PatchError.NotFound;
@@ -167,64 +269,6 @@ fn mapFetchError(err: anyerror) PatchError {
     };
 }
 
-// ── Tests ────────────────────────────────────────────────────────────────
-
-test "renderMetadataPayload: both fields → compact merge body" {
-    const alloc = std.testing.allocator;
-    const payload = try renderMetadataPayload(alloc, "0195b4ba-8d3a-7f13-8abc-aa0000000001", "operator");
-    defer alloc.free(payload);
-    try std.testing.expectEqualStrings(
-        \\{"public_metadata":{"tenant_id":"0195b4ba-8d3a-7f13-8abc-aa0000000001","role":"operator"}}
-    , payload);
-}
-
-test "renderMetadataPayload: tenant_id only" {
-    const alloc = std.testing.allocator;
-    const payload = try renderMetadataPayload(alloc, "t_abc", null);
-    defer alloc.free(payload);
-    try std.testing.expectEqualStrings(
-        \\{"public_metadata":{"tenant_id":"t_abc"}}
-    , payload);
-}
-
-test "renderMetadataPayload: role only" {
-    const alloc = std.testing.allocator;
-    const payload = try renderMetadataPayload(alloc, null, "admin");
-    defer alloc.free(payload);
-    try std.testing.expectEqualStrings(
-        \\{"public_metadata":{"role":"admin"}}
-    , payload);
-}
-
-test "renderMetadataPayload: escapes JSON-unsafe chars in values" {
-    const alloc = std.testing.allocator;
-    const payload = try renderMetadataPayload(alloc, "quoted\"name", "oper\\ator");
-    defer alloc.free(payload);
-    // Both fields go through std.json.Stringify.encodeJsonString — backslash
-    // + quote must be escaped, preserving the key ordering we rely on.
-    try std.testing.expect(std.mem.indexOf(u8, payload, "\\\"") != null);
-    try std.testing.expect(std.mem.indexOf(u8, payload, "\\\\") != null);
-}
-
-test "renderMetadataPayload: both null → empty metadata object" {
-    const alloc = std.testing.allocator;
-    const payload = try renderMetadataPayload(alloc, null, null);
-    defer alloc.free(payload);
-    try std.testing.expectEqualStrings(
-        \\{"public_metadata":{}}
-    , payload);
-}
-
-test "patchUserPublicMetadata: missing CLERK_SECRET_KEY returns MissingSecret" {
-    // Nothing to unset in the test process — if the env var happens to be
-    // populated on the runner, skip rather than risk an outbound call.
-    if (std.process.getEnvVarOwned(std.testing.allocator, SECRET_ENV_VAR)) |v| {
-        std.testing.allocator.free(v);
-        return error.SkipZigTest;
-    } else |_| {}
-
-    try std.testing.expectError(
-        PatchError.MissingSecret,
-        patchUserPublicMetadata(std.testing.allocator, "user_test", "t_abc", "operator"),
-    );
+test {
+    _ = @import("clerk_backend_test.zig");
 }

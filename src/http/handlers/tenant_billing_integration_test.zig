@@ -136,7 +136,7 @@ test "integration(m11_006): first exhausting debit stamps balance_exhausted_at +
 
 // ── §3.2 — warn-policy rate limiter proof ────────────────────────────────
 
-test "integration(m11_006): warn-policy rate-limit probe skips second emit within the 24h window" {
+test "integration(m11_006): warn-policy tenant-scoped rate-limit probe skips second emit within the 24h window" {
     const alloc = std.testing.allocator;
     const db_ctx = (try @import("../../db/test_fixtures.zig").openTestConn(alloc)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();
@@ -155,9 +155,11 @@ test "integration(m11_006): warn-policy rate-limit probe skips second emit withi
     });
 
     const since_ms = std.time.milliTimestamp() - (24 * 60 * 60 * 1000);
-    const recent = activity_stream.hasRecentActivityEventOnConn(
+    // Tenant-scoped probe finds the event via the core.workspaces JOIN —
+    // this is the production path used by metering.onExhaustedDebit.
+    const recent = activity_stream.hasRecentActivityEventForTenantOnConn(
         db_ctx.conn,
-        TEST_WORKSPACE_ID,
+        TEST_TENANT_ID,
         activity_stream.EVT_BALANCE_EXHAUSTED,
         since_ms,
     );
@@ -166,9 +168,9 @@ test "integration(m11_006): warn-policy rate-limit probe skips second emit withi
     // And a window anchored in the future (minus 0 ms from *tomorrow*)
     // finds no event — proves the predicate is actually time-bounded.
     const tomorrow_ms = std.time.milliTimestamp() + (25 * 60 * 60 * 1000);
-    const future = activity_stream.hasRecentActivityEventOnConn(
+    const future = activity_stream.hasRecentActivityEventForTenantOnConn(
         db_ctx.conn,
-        TEST_WORKSPACE_ID,
+        TEST_TENANT_ID,
         activity_stream.EVT_BALANCE_EXHAUSTED,
         tomorrow_ms,
     );

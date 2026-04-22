@@ -1,5 +1,6 @@
 const std = @import("std");
 const httpz = @import("httpz");
+const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
 const obs_log = @import("../../../observability/logging.zig");
 const telemetry_mod = @import("../../../observability/telemetry.zig");
 const error_codes = @import("../../../errors/error_registry.zig");
@@ -11,6 +12,20 @@ const log = std.log.scoped(.http);
 
 fn generateWorkspaceId(alloc: std.mem.Allocator) ![]const u8 {
     return id_format.generateWorkspaceId(alloc);
+}
+
+/// Best-effort tenant existence probe. Returns true when the row is
+/// present; returns true on DB error too so we fail open — the FK
+/// constraint on the subsequent INSERT is the authoritative gate, this
+/// is just a cleaner surface for the common "stale claim" case.
+fn tenantExists(conn: anytype, tenant_id: []const u8) bool {
+    var q = PgQuery.from(conn.query(
+        "SELECT 1 FROM tenants WHERE tenant_id = $1 LIMIT 1",
+        .{tenant_id},
+    ) catch return true);
+    defer q.deinit();
+    const row = q.next() catch return true;
+    return row != null;
 }
 
 fn normalizeDefaultBranch(default_branch: ?[]const u8) []const u8 {
@@ -84,6 +99,16 @@ pub fn innerCreateWorkspace(hx: hx_mod.Hx, req: *httpz.Request) void {
 
     const now_ms = std.time.milliTimestamp();
     _ = common.setTenantSessionContext(conn, tenant_id);
+
+    // Defensive probe: a JWT claim that names an unknown tenant (stale
+    // session, hand-crafted token, replay after tenant deletion) would
+    // otherwise 500 on the workspace FK constraint. Converting to a
+    // clean 401 keeps the handler predictable for integration tests +
+    // the alpha client.
+    if (!tenantExists(conn, tenant_id)) {
+        hx.fail(error_codes.ERR_UNAUTHORIZED, "Tenant on session does not exist");
+        return;
+    }
 
     const workspace_id = generateWorkspaceId(hx.alloc) catch {
         common.internalOperationError(hx.res, "Failed to allocate workspace id", hx.req_id);
