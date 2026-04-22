@@ -4,10 +4,10 @@
 **Milestone:** M27
 **Workstream:** 001
 **Date:** Apr 16, 2026
-**Status:** PENDING — blocked on M26_001
+**Status:** IN_PROGRESS
 **Priority:** P1 — Operator-facing pages (dashboard/zombies/detail/firewall/settings); completes what M12 started
 **Batch:** B2 — alpha gate, parallel with M11_005, M19_001, M13_001, M21_001, M31_001, M33_001 (provides dashboard shell for M19 install flow)
-**Branch:** feat/m27-dashboard-pages (not yet created)
+**Branch:** feat/m27-dashboard-pages
 **Depends on:** M12_001 (backend endpoints, shared primitives, token pyramid), **M26_001 (unified `@usezombie/design-system` Button/Card/etc. — must merge first)**
 
 ---
