@@ -40,7 +40,9 @@ All under `$REPO_ROOT/` (the `usezombie` checkout).
 | `src/zombie/event_loop_integration_test.zig` | EDIT | Rename fixture string (10 occurrences: 9 quoted JSON/Zig literals + 1 plaintext YAML line at `\\name: lead-collector`; 7 of the quoted forms are `base.seedZombie` calls). |
 | `src/zombie/event_loop_obs_integration_test.zig` | EDIT | Rename fixture string (5 occurrences at lines 17, 21, 39, 84, 154; 3 of them are `base.seedZombie` calls at lines 39, 84, 154). |
 | `ui/packages/app/tests/app-primitives.test.ts` | EDIT | Rename `zombie_name: "lead-collector"` → `zombie_name: "test-zombie"` (2 occurrences at lines 108, 120). |
-| `ui/packages/website/src/components/domain/tokenize-bash.test.ts` | EDIT | Update bash-command example strings (lines 10, 66). The test checks the bash tokenizer, not the specific zombie name; a neutral example is equivalent. |
+| `ui/packages/website/src/components/domain/tokenize-bash.test.ts` | EDIT | Update bash-command example strings (2 occurrences at lines 10, 66). The test checks the bash tokenizer, not the specific zombie name; a neutral example (e.g. `homelab-zombie`) is equivalent. |
+| `ui/packages/website/src/components/domain/animated-terminal.test.tsx` | EDIT | Update bash-command example string (1 occurrence at line 20). Same shape as `tokenize-bash.test.ts`. |
+| `ui/packages/website/src/pages/Agents.tsx` | EDIT (user-facing) | **Production code, not a test.** This is the marketing website's animated CLI demo. 4 occurrences at lines 21, 22, 26, 27: `zombiectl zombie install --template lead-collector`, `zombiectl zombie up lead-collector --watch`, `"Installed lead-collector@0.1.0"`, `"[ready] lead-collector awaiting triggers"`. Rename to `homelab-zombie` (the M33-landed flagship) so the marketing demo matches what ships. This is a user-facing change — verify the rendered animation still reads naturally after the rename (e.g. `zombiectl zombie install --template homelab-zombie` + `"Installed homelab-zombie@0.1.0"`). Coordinate the version/label strings with whatever `samples/homelab/SKILL.md` declares (`version: 0.1.0`, matches). |
 
 **Note on the test fixture rename:** the new fixture string `"test-zombie"` (or any other non-sample name) must not collide with a real installable template or a real sample directory. This is precisely the drift vector that made M34 necessary.
 
@@ -88,7 +90,9 @@ Default to (a). Drop to (b) only if the tests assert specific content of the lea
 |-----|--------|--------|-------|----------|-----------|
 | 2.1 | PENDING | `zombiectl/test/zombie.unit.test.js` | rename fixture; `bun test` | test passes | unit |
 | 2.2 | PENDING | `ui/packages/app/tests/app-primitives.test.ts` | rename `zombie_name: "lead-collector"` → `"test-zombie"`; `bun test` | test passes | unit |
-| 2.3 | PENDING | `ui/packages/website/src/components/domain/tokenize-bash.test.ts` | update bash-command example string; `bun test` | test passes (tokenizer output unaffected by name change) | unit |
+| 2.3 | PENDING | `ui/packages/website/src/components/domain/tokenize-bash.test.ts` | update bash-command example strings; `bun test` | test passes (tokenizer output unaffected by name change) | unit |
+| 2.4 | PENDING | `ui/packages/website/src/components/domain/animated-terminal.test.tsx` | update bash-command example string; `bun test` | test passes | unit |
+| 2.5 | PENDING | `ui/packages/website/src/pages/Agents.tsx` (production) | rename `lead-collector` → `homelab-zombie` in the CLI-demo strings; `bun dev` + manual verify the animation still reads naturally | animation renders; copy reflects the shipping flagship; no dangling template name | manual + unit |
 
 ### §3 — Remove the sample + template directories + BUNDLED_TEMPLATES entry
 
@@ -213,7 +217,8 @@ N/A — rename+delete workstream. The tests that previously depended on `"lead-c
 - [ ] `samples/lead-collector/` does not exist on disk — verify: `test ! -d samples/lead-collector`
 - [ ] `zombiectl/templates/lead-collector/` does not exist on disk — verify: `test ! -d zombiectl/templates/lead-collector`
 - [ ] `BUNDLED_TEMPLATES` excludes `"lead-collector"` — verify: Invariant 3
-- [ ] Zero load-bearing `"lead-collector"` references — verify: Eval E5
+- [ ] Zero load-bearing `lead-collector` references (word-boundary grep, not quoted) — verify: Eval E5
+- [ ] Marketing website `Agents.tsx` CLI-demo animation reads naturally with the new name (`homelab-zombie`) — verify: manual smoke in `bun dev`
 - [ ] All CI suites green — verify: Dims 4.2, 4.3
 - [ ] `zombiectl install slack-bug-fixer` still produces a working zombie — verify: manual smoke
 - [ ] `zombiectl install lead-collector` returns a clean "template not found" error — verify: negative test
