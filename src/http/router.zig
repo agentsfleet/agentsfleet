@@ -25,6 +25,8 @@ pub const Route = union(enum) {
     pause_workspace: []const u8,
     // Tenant-scoped billing snapshot — GET /v1/tenants/me/billing
     get_tenant_billing,
+    // Tenant-scoped workspace list — GET /v1/tenants/me/workspaces
+    list_tenant_workspaces,
     receive_webhook: WebhookRoute,
     // M28_001 §5: Clerk / Svix signed webhooks — /v1/webhooks/svix/{zombie_id}.
     receive_svix_webhook: []const u8,
@@ -91,6 +93,7 @@ pub fn match(path: []const u8) ?Route {
     if (std.mem.eql(u8, path, "/v1/auth/sessions")) return .create_auth_session;
     if (std.mem.eql(u8, path, "/v1/github/callback")) return .github_callback;
     if (std.mem.eql(u8, path, "/v1/tenants/me/billing")) return .get_tenant_billing;
+    if (std.mem.eql(u8, path, "/v1/tenants/me/workspaces")) return .list_tenant_workspaces;
     if (std.mem.eql(u8, path, "/v1/workspaces")) return .create_workspace;
 
     if (std.mem.startsWith(u8, path, prefix_auth_sessions) and std.mem.endsWith(u8, path, "/complete")) {

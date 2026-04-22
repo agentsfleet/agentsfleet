@@ -5,20 +5,25 @@
 //
 // Uses the shared TestHarness (src/http/test_harness.zig) — see
 // docs/ZIG_RULES.md "HTTP Integration Tests — Use TestHarness".
+//
+// Workspace and tenant IDs are fixed to match the embedded JWT tokens.
+// Zombie, activity-event, and telemetry IDs are generated per call so
+// concurrent or repeated runs never conflict on primary keys. No cleanup
+// function is needed: make down && make up resets the DB between runs, and
+// unique IDs within a run prevent PK collisions.
 
 const std = @import("std");
 const pg = @import("pg");
 const auth_mw = @import("../../../auth/middleware/mod.zig");
 
+const id_format = @import("../../../types/id_format.zig");
 const harness_mod = @import("../../test_harness.zig");
 const TestHarness = harness_mod.TestHarness;
 
+// Fixed — embedded in TOKEN_USER and TOKEN_OPERATOR.
 const TEST_TENANT_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01";
 const TEST_WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
 const TEST_WORKSPACE_OTHER = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f99";
-const TEST_ZOMBIE_ACTIVE = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a7001";
-const TEST_ZOMBIE_EMPTY = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a7002";
-const TEST_ZOMBIE_NONEXISTENT = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a7999";
 const TEST_REPO_URL = "https://github.com/usezombie/m12-http-test";
 const TEST_ISSUER = "https://clerk.dev.usezombie.com";
 const TEST_AUDIENCE = "https://api.usezombie.com";
@@ -30,35 +35,47 @@ const TOKEN_USER =
 const TOKEN_OPERATOR =
     "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6InJiYWMtdGVzdC1raWQifQ.eyJzdWIiOiJ1c2VyX3Rlc3QiLCJpc3MiOiJodHRwczovL2NsZXJrLmRldi51c2V6b21iaWUuY29tIiwiYXVkIjoiaHR0cHM6Ly9hcGkudXNlem9tYmllLmNvbSIsImV4cCI6NDEwMjQ0NDgwMCwibWV0YWRhdGEiOnsidGVuYW50X2lkIjoiMDE5NWI0YmEtOGQzYS03ZjEzLThhYmMtMmIzZTFlMGE2ZjAxIiwid29ya3NwYWNlX2lkIjoiMDE5NWI0YmEtOGQzYS03ZjEzLThhYmMtMmIzZTFlMGE2ZjExIiwicm9sZSI6Im9wZXJhdG9yIn19.V84uE69RTLrRef0sogegUcUZeKWx8E68GEruFoS8HegUa3o7bVCfQjlkllNSbtUut919EygbQv1C16BMfNTOAv1Lvl3AeLYPYr4ni6EnzzGllbyxDw1aY68AGWEEvKOUxd5wCGl8BnEqaOKX7KNNbAOV4AzJNWqnV-uxJiZl6oDtqi8bsSF1HAm9qY9MAl6AwoZLGnT_x6ux_3vfKy_9ckZSbgjN7laZOMqQ5nwwcaSpwYNm_3ZpXJLgHYMVxel2M4rT0SIaFh__rE42yGE9FBDRUFoyktGOR3NYPOzogjj3tfOoecC8NEhrwifzXcSNVAiHOMnmXojjAPEUORovPg";
 
+// Per-call unique IDs to prevent PK conflicts across runs.
+const TestFixtures = struct {
+    zombie_active: []const u8,
+    zombie_empty: []const u8,
+    zombie_nonexistent: []const u8,
+
+    fn deinit(self: TestFixtures, alloc: std.mem.Allocator) void {
+        alloc.free(self.zombie_active);
+        alloc.free(self.zombie_empty);
+        alloc.free(self.zombie_nonexistent);
+    }
+};
+
 fn configureRegistry(_: *auth_mw.MiddlewareRegistry, _: *TestHarness) anyerror!void {}
 
-fn seedAndHarness(alloc: std.mem.Allocator) !*TestHarness {
-    const h = try TestHarness.start(alloc, .{
+fn makeHarness(alloc: std.mem.Allocator) !*TestHarness {
+    return TestHarness.start(alloc, .{
         .configureRegistry = configureRegistry,
         .inline_jwks_json = TEST_JWKS,
         .issuer = TEST_ISSUER,
         .audience = TEST_AUDIENCE,
     });
-    errdefer h.deinit();
-    const conn = try h.acquireConn();
-    defer h.releaseConn(conn);
-    try seedTestData(conn);
-    return h;
 }
 
-fn seedTestData(conn: *pg.Conn) !void {
-    const now_ms = std.time.milliTimestamp();
-    _ = try conn.exec("DELETE FROM zombie_execution_telemetry WHERE workspace_id = $1", .{TEST_WORKSPACE_ID});
-    _ = try conn.exec("DELETE FROM core.zombies WHERE workspace_id = $1::uuid", .{TEST_WORKSPACE_ID});
+fn makeFixtures(alloc: std.mem.Allocator) !TestFixtures {
+    const active = try id_format.generateZombieId(alloc);
+    errdefer alloc.free(active);
+    const empty = try id_format.generateZombieId(alloc);
+    errdefer alloc.free(empty);
+    const nonexistent = try id_format.generateZombieId(alloc);
+    return .{ .zombie_active = active, .zombie_empty = empty, .zombie_nonexistent = nonexistent };
+}
+
+fn seedWorkspace(conn: *pg.Conn, now_ms: i64) !void {
     _ = try conn.exec(
         \\INSERT INTO tenants (tenant_id, name, created_at, updated_at)
-        \\VALUES ($1, 'M12Test', $2, $2)
-        \\ON CONFLICT (tenant_id) DO NOTHING
+        \\VALUES ($1, 'DashTest', $2, $2) ON CONFLICT (tenant_id) DO NOTHING
     , .{ TEST_TENANT_ID, now_ms });
     _ = try conn.exec(
         \\INSERT INTO workspaces (workspace_id, tenant_id, repo_url, default_branch, paused, version, created_at, updated_at)
-        \\VALUES ($1, $2, $3, 'main', false, 1, $4, $4)
-        \\ON CONFLICT (workspace_id) DO NOTHING
+        \\VALUES ($1, $2, $3, 'main', false, 1, $4, $4) ON CONFLICT (workspace_id) DO NOTHING
     , .{ TEST_WORKSPACE_ID, TEST_TENANT_ID, TEST_REPO_URL, now_ms });
     _ = try conn.exec(
         \\INSERT INTO workspace_entitlements
@@ -68,75 +85,71 @@ fn seedTestData(conn: *pg.Conn) !void {
         \\VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6ff3', $1, 'FREE', 2, 8,
         \\        false, false, '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}',
         \\        2048, $2, $2)
-        \\ON CONFLICT (workspace_id) DO UPDATE SET plan_tier=EXCLUDED.plan_tier, updated_at=EXCLUDED.updated_at
+        \\ON CONFLICT (workspace_id) DO UPDATE SET updated_at=EXCLUDED.updated_at
     , .{ TEST_WORKSPACE_ID, now_ms });
     _ = try conn.exec(
         \\INSERT INTO billing.tenant_billing
         \\  (tenant_id, plan_tier, plan_sku, balance_cents, grant_source, created_at, updated_at)
-        \\VALUES ($1, 'free', 'free_default', 1000, 'dashboard_test_seed', $2, $2)
+        \\VALUES ($1, 'free', 'free_default', 1000, 'dash_test', $2, $2)
         \\ON CONFLICT (tenant_id) DO NOTHING
     , .{ TEST_TENANT_ID, now_ms });
+}
 
-    const zombie_specs = [_]struct { id: []const u8, name: []const u8 }{
-        .{ .id = TEST_ZOMBIE_ACTIVE, .name = "zombie-m12-active" },
-        .{ .id = TEST_ZOMBIE_EMPTY, .name = "zombie-m12-empty" },
+fn seedZombies(conn: *pg.Conn, alloc: std.mem.Allocator, fx: TestFixtures, now_ms: i64) !void {
+    const zombies = [_]struct { id: []const u8, suffix: []const u8 }{
+        .{ .id = fx.zombie_active, .suffix = "active" },
+        .{ .id = fx.zombie_empty, .suffix = "empty" },
     };
-    for (zombie_specs) |z| {
+    for (zombies) |z| {
+        // Derive name from the unique zombie id so two test functions in the
+        // same run don't collide on UNIQUE (workspace_id, name).
+        const name = try std.fmt.allocPrint(alloc, "zombie-dash-{s}-{s}", .{ z.suffix, z.id });
+        defer alloc.free(name);
         _ = try conn.exec(
             \\INSERT INTO core.zombies
             \\  (id, workspace_id, name, source_markdown, trigger_markdown, config_json,
             \\   status, created_at, updated_at)
             \\VALUES ($1::uuid, $2::uuid, $3, 'seed', null, '{}'::jsonb, 'active', $4, $4)
-        , .{ z.id, TEST_WORKSPACE_ID, z.name, now_ms });
+        , .{ z.id, TEST_WORKSPACE_ID, name, now_ms });
     }
+}
 
-    const activity_ids = [_][]const u8{
-        "0195b4ba-8d3a-7f13-8abc-2b3e1e0a7100",
-        "0195b4ba-8d3a-7f13-8abc-2b3e1e0a7101",
-        "0195b4ba-8d3a-7f13-8abc-2b3e1e0a7102",
-    };
-    for (activity_ids, 0..) |aid, i| {
+fn seedActivityEvents(conn: *pg.Conn, alloc: std.mem.Allocator, zombie_id: []const u8, now_ms: i64) !void {
+    for (0..3) |i| {
+        const aid = try id_format.allocUuidV7(alloc);
+        defer alloc.free(aid);
         _ = try conn.exec(
             \\INSERT INTO core.activity_events
             \\  (id, zombie_id, workspace_id, event_type, detail, created_at)
             \\VALUES ($1::uuid, $2::uuid, $3::uuid, 'event_received', 'seed', $4)
-        , .{ aid, TEST_ZOMBIE_ACTIVE, TEST_WORKSPACE_ID, now_ms - @as(i64, @intCast(i * 1000)) });
-    }
-
-    const telemetry_rows = [_]struct { tid: []const u8, eid: []const u8, cents: i64 }{
-        .{ .tid = "tel-m12-0", .eid = "ev-m12-0", .cents = 500 },
-        .{ .tid = "tel-m12-1", .eid = "ev-m12-1", .cents = 500 },
-        .{ .tid = "tel-m12-2", .eid = "ev-m12-2", .cents = 0 },
-    };
-    for (telemetry_rows) |row| {
-        _ = try conn.exec(
-            \\INSERT INTO zombie_execution_telemetry
-            \\  (id, zombie_id, workspace_id, event_id, token_count, time_to_first_token_ms,
-            \\   epoch_wall_time_ms, wall_seconds, plan_tier, credit_deducted_cents, recorded_at)
-            \\VALUES ($1, $2, $3, $4, 100, 42, $5, 3, 'free', $6, $5)
-        , .{ row.tid, TEST_ZOMBIE_ACTIVE, TEST_WORKSPACE_ID, row.eid, now_ms, row.cents });
+        , .{ aid, zombie_id, TEST_WORKSPACE_ID, now_ms - @as(i64, @intCast(i * 1000)) });
     }
 }
 
-fn cleanupTestData(conn: *pg.Conn) void {
-    _ = conn.exec("DELETE FROM zombie_execution_telemetry WHERE workspace_id = $1", .{TEST_WORKSPACE_ID}) catch {};
-    _ = conn.exec("DELETE FROM core.zombies WHERE workspace_id = $1::uuid", .{TEST_WORKSPACE_ID}) catch {};
-}
 
-// ── T1–T4: GET /v1/workspaces/{ws}/activity ─────────────────────────────────
+// ── T1–T4: GET /v1/workspaces/{ws}/activity ──────────────────────────────────
 
 test "integration: dashboard activity — auth, seed, invalid cursor" {
     const alloc = std.testing.allocator;
-    const h = seedAndHarness(alloc) catch |err| switch (err) {
+    const h = makeHarness(alloc) catch |err| switch (err) {
         error.SkipZigTest => return error.SkipZigTest,
         else => return err,
     };
     defer h.deinit();
+    const fx = try makeFixtures(alloc);
+    defer fx.deinit(alloc);
+
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    const now_ms = std.time.milliTimestamp();
+    try seedWorkspace(conn, now_ms);
+    try seedZombies(conn, alloc, fx, now_ms);
+    try seedActivityEvents(conn, alloc, fx.zombie_active, now_ms);
 
     const url = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/activity", .{TEST_WORKSPACE_ID});
     defer alloc.free(url);
 
-    { // T1: happy path
+    { // T1: happy path — events key always present
         const r = try (try h.get(url).bearer(TOKEN_USER)).send();
         defer r.deinit();
         try r.expectStatus(.ok);
@@ -161,122 +174,55 @@ test "integration: dashboard activity — auth, seed, invalid cursor" {
         defer r.deinit();
         try r.expectStatus(.bad_request);
     }
-
-    const conn = try h.acquireConn();
-    defer h.releaseConn(conn);
-    cleanupTestData(conn);
 }
 
-// ── Kill switch: DELETE /v1/workspaces/{ws}/zombies/{id}/current-run ────────
+// ── T5–T7: DELETE /v1/workspaces/{ws}/zombies/{id}/current-run ───────────────
+// T8–T11 (billing/summary) removed: those routes are intentionally absent from
+// the router (pre-v2.0 policy — router.zig test "rejects removed workspace
+// billing routes"). Billing display uses /v1/tenants/me/billing instead.
 
 test "integration: dashboard kill switch — transitions, 409, 404" {
     const alloc = std.testing.allocator;
-    const h = seedAndHarness(alloc) catch |err| switch (err) {
+    const h = makeHarness(alloc) catch |err| switch (err) {
         error.SkipZigTest => return error.SkipZigTest,
         else => return err,
     };
     defer h.deinit();
+    const fx = try makeFixtures(alloc);
+    defer fx.deinit(alloc);
 
-    const kill_url = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/zombies/{s}/current-run", .{ TEST_WORKSPACE_ID, TEST_ZOMBIE_ACTIVE });
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    const now_ms = std.time.milliTimestamp();
+    try seedWorkspace(conn, now_ms);
+    try seedZombies(conn, alloc, fx, now_ms);
+
+    const kill_url = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/zombies/{s}/current-run", .{ TEST_WORKSPACE_ID, fx.zombie_active });
     defer alloc.free(kill_url);
 
-    { // user role → 403 (kill switch requires operator)
+    { // T5: user role → 403
         const r = try (try h.delete(kill_url).bearer(TOKEN_USER)).send();
         defer r.deinit();
         try r.expectStatus(.forbidden);
     }
-    { // operator active → 200, status=stopped
+    { // T6: operator active → 200 status=stopped
         const r = try (try h.delete(kill_url).bearer(TOKEN_OPERATOR)).send();
         defer r.deinit();
         try r.expectStatus(.ok);
         try std.testing.expect(r.bodyContains("\"status\":\"stopped\""));
     }
-    { // re-call → 409 UZ-ZMB-010
+    { // T7: re-call on stopped zombie → 409 UZ-ZMB-010
         const r = try (try h.delete(kill_url).bearer(TOKEN_OPERATOR)).send();
         defer r.deinit();
         try r.expectStatus(.conflict);
         try std.testing.expect(r.bodyContains("UZ-ZMB-010"));
     }
     { // nonexistent zombie → 404 UZ-ZMB-009
-        const missing = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/zombies/{s}/current-run", .{ TEST_WORKSPACE_ID, TEST_ZOMBIE_NONEXISTENT });
+        const missing = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/zombies/{s}/current-run", .{ TEST_WORKSPACE_ID, fx.zombie_nonexistent });
         defer alloc.free(missing);
         const r = try (try h.delete(missing).bearer(TOKEN_OPERATOR)).send();
         defer r.deinit();
         try r.expectStatus(.not_found);
         try std.testing.expect(r.bodyContains("UZ-ZMB-009"));
     }
-
-    const conn = try h.acquireConn();
-    defer h.releaseConn(conn);
-    cleanupTestData(conn);
-}
-
-// ── T8–T10: GET /v1/workspaces/{ws}/zombies/{id}/billing/summary ──────────────
-
-test "integration: dashboard per-zombie billing summary — populated, zeros, IDOR" {
-    const alloc = std.testing.allocator;
-    const h = seedAndHarness(alloc) catch |err| switch (err) {
-        error.SkipZigTest => return error.SkipZigTest,
-        else => return err,
-    };
-    defer h.deinit();
-
-    const url_active = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/zombies/{s}/billing/summary?period_days=30", .{ TEST_WORKSPACE_ID, TEST_ZOMBIE_ACTIVE });
-    defer alloc.free(url_active);
-    { // user role → 403 (RULE BIL)
-        const r = try (try h.get(url_active).bearer(TOKEN_USER)).send();
-        defer r.deinit();
-        try r.expectStatus(.forbidden);
-    }
-    { // operator — 2 billable + 1 non-billable → total_runs=3, total_cents=1000
-        const r = try (try h.get(url_active).bearer(TOKEN_OPERATOR)).send();
-        defer r.deinit();
-        try r.expectStatus(.ok);
-        try std.testing.expect(r.bodyContains("\"total_runs\":3"));
-        try std.testing.expect(r.bodyContains("\"total_cents\":1000"));
-    }
-    { // empty zombie → 200 zeros (not 404)
-        const url_empty = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/zombies/{s}/billing/summary?period_days=7", .{ TEST_WORKSPACE_ID, TEST_ZOMBIE_EMPTY });
-        defer alloc.free(url_empty);
-        const r = try (try h.get(url_empty).bearer(TOKEN_OPERATOR)).send();
-        defer r.deinit();
-        try r.expectStatus(.ok);
-        try std.testing.expect(r.bodyContains("\"total_runs\":0"));
-        try std.testing.expect(r.bodyContains("\"total_cents\":0"));
-    }
-    { // nonexistent zombie → 404 UZ-ZMB-009
-        const url_missing = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/zombies/{s}/billing/summary", .{ TEST_WORKSPACE_ID, TEST_ZOMBIE_NONEXISTENT });
-        defer alloc.free(url_missing);
-        const r = try (try h.get(url_missing).bearer(TOKEN_OPERATOR)).send();
-        defer r.deinit();
-        try r.expectStatus(.not_found);
-        try std.testing.expect(r.bodyContains("UZ-ZMB-009"));
-    }
-
-    const conn = try h.acquireConn();
-    defer h.releaseConn(conn);
-    cleanupTestData(conn);
-}
-
-// ── T11: workspace billing summary surfaces aggregated telemetry ──────────────
-
-test "integration: dashboard workspace billing summary surfaces real telemetry" {
-    const alloc = std.testing.allocator;
-    const h = seedAndHarness(alloc) catch |err| switch (err) {
-        error.SkipZigTest => return error.SkipZigTest,
-        else => return err,
-    };
-    defer h.deinit();
-
-    const url = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/billing/summary?period_days=30", .{TEST_WORKSPACE_ID});
-    defer alloc.free(url);
-    const r = try (try h.get(url).bearer(TOKEN_OPERATOR)).send();
-    defer r.deinit();
-    try r.expectStatus(.ok);
-    try std.testing.expect(r.bodyContains("\"total_runs\":3"));
-    try std.testing.expect(r.bodyContains("\"total_cents\":1000"));
-
-    const conn = try h.acquireConn();
-    defer h.releaseConn(conn);
-    cleanupTestData(conn);
 }

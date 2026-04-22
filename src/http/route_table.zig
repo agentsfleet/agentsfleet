@@ -58,6 +58,7 @@ pub fn specFor(route: router.Route, registry: *auth_mw.MiddlewareRegistry) ?Rout
         .pause_workspace => .{ .middlewares = registry.bearer(), .invoke = invoke.invokePauseWorkspace },
         // Tenant billing snapshot
         .get_tenant_billing => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeGetTenantBilling },
+        .list_tenant_workspaces => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeListTenantWorkspaces },
         // sync_workspace returns 410 — no auth required for the stub.
         .sync_workspace => .{ .middlewares = auth_mw.MiddlewareRegistry.none, .invoke = invoke.invokeSyncWorkspace },
         .workspace_llm_credential => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceLlmCredential },
