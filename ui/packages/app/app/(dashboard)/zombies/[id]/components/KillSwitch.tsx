@@ -37,8 +37,16 @@ export default function KillSwitch({ workspaceId, zombie }: KillSwitchProps) {
       } catch (err) {
         setOptimisticStatus(zombie.status);
         if (err instanceof ApiError && err.status === 409) {
+          // Zombie was already stopped elsewhere — refresh picks up the
+          // updated status; no error surface needed.
           setOpen(false);
           router.refresh();
+        } else {
+          setErrorMessage(
+            err instanceof ApiError
+              ? err.message
+              : "Failed to stop zombie. Please try again.",
+          );
         }
       }
     });

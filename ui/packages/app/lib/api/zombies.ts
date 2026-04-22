@@ -1,4 +1,5 @@
 import { API_ORIGIN, request } from "./client";
+import { ApiError } from "./errors";
 import type {
   InstallZombieRequest,
   InstallZombieResponse,
@@ -32,8 +33,20 @@ export async function getZombie(
   zombieId: string,
   token: string,
 ): Promise<Zombie | null> {
-  const { items } = await listZombies(workspaceId, token, { limit: 100 });
-  return items.find((z) => z.id === zombieId) ?? null;
+  const page = await listZombies(workspaceId, token, { limit: 100 });
+  const hit = page.items.find((z) => z.id === zombieId);
+  if (hit) return hit;
+  // `cursor` non-null means the workspace has more zombies than we scanned.
+  // Surface this as a distinct error instead of a silent null → 404 so
+  // operators aren't left staring at "not found" for a zombie that exists.
+  if (page.cursor) {
+    throw new ApiError(
+      `Zombie ${zombieId} is not in the first 100 zombies for this workspace. This workspace has more zombies than the client-side scan can cover; a dedicated GET /zombies/{id} endpoint is required for reliable lookup at this scale.`,
+      404,
+      "UZ-ZMB-SCAN-CAP",
+    );
+  }
+  return null;
 }
 
 export async function installZombie(

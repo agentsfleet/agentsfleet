@@ -1,6 +1,17 @@
+import { cache } from "react";
 import { cookies } from "next/headers";
 import { getServerSessionMetadata } from "./auth/server";
 import { listTenantWorkspaces, type TenantWorkspace } from "./api/workspaces";
+
+/**
+ * Per-request deduped wrapper around `listTenantWorkspaces`. Wrapping with
+ * React's `cache()` makes every caller in a single RSC render share one
+ * round-trip. Without this, a dashboard load can fire 4+ redundant
+ * GET /v1/tenants/me/workspaces calls (layout prefetch + each Suspense
+ * boundary that calls resolveActiveWorkspace). Both the layout and this
+ * module use the cached wrapper.
+ */
+export const listTenantWorkspacesCached = cache(listTenantWorkspaces);
 
 export const ACTIVE_WORKSPACE_COOKIE = "active_workspace_id";
 
@@ -24,7 +35,7 @@ export const ACTIVE_WORKSPACE_COOKIE = "active_workspace_id";
 export async function resolveActiveWorkspace(
   token: string,
 ): Promise<TenantWorkspace | null> {
-  const { items } = await listTenantWorkspaces(token).catch(() => ({ items: [] }));
+  const { items } = await listTenantWorkspacesCached(token).catch(() => ({ items: [] }));
   if (items.length === 0) return null;
 
   const cookieStore = await cookies();

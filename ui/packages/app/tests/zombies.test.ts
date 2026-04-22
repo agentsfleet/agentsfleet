@@ -40,7 +40,10 @@ vi.mock("next/link", () => ({
   default: ({ href, children, ...rest }: { href: string; children: React.ReactNode }) =>
     React.createElement("a", { href, ...rest }, children),
 }));
-vi.mock("@/lib/workspace", () => ({ resolveActiveWorkspace }));
+vi.mock("@/lib/workspace", () => ({
+  resolveActiveWorkspace,
+  listTenantWorkspacesCached: vi.fn().mockResolvedValue({ items: [], total: 0 }),
+}));
 
 vi.mock("lucide-react", () => {
   function Icon(name: string) {

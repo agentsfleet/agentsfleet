@@ -55,6 +55,7 @@ vi.mock("@/lib/auth/server", () => ({
 
 vi.mock("@/lib/workspace", () => ({
   resolveActiveWorkspace: resolveActiveWorkspaceMock,
+  listTenantWorkspacesCached: vi.fn().mockResolvedValue({ items: [], total: 0 }),
 }));
 
 vi.mock("@/lib/api/zombies", () => ({

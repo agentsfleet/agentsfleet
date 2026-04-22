@@ -162,7 +162,10 @@ pub fn innerListZombies(hx: Hx, req: *httpz.Request, workspace_id: []const u8) v
 
 fn parseLimitFromQs(qs: anytype) u32 {
     const limit_str = qs.get("limit") orelse return DEFAULT_LIST_PAGE_LIMIT;
-    return std.fmt.parseInt(u32, limit_str, 10) catch DEFAULT_LIST_PAGE_LIMIT;
+    const parsed = std.fmt.parseInt(u32, limit_str, 10) catch return DEFAULT_LIST_PAGE_LIMIT;
+    // Treat limit=0 as the default. With LIMIT 0 the cursor guard reports
+    // no more pages, so callers would stop paginating even when rows exist.
+    return if (parsed == 0) DEFAULT_LIST_PAGE_LIMIT else parsed;
 }
 
 const ZombieListRow = struct {

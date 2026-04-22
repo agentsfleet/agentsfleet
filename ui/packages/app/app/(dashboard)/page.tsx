@@ -18,8 +18,12 @@ async function StatusTiles() {
   const workspace = await resolveActiveWorkspace(token);
   if (!workspace) return null;
 
+  // Request the server max (100) so the Active/Paused/Stopped tiles don't
+  // silently under-report for workspaces above the 20-default page size.
+  // A dedicated summary endpoint will replace this client-side rollup once it
+  // ships; until then 100 matches what the /zombies list page uses.
   const [zombies, billing] = await Promise.all([
-    listZombies(workspace.id, token).then((r) => r.items).catch(() => []),
+    listZombies(workspace.id, token, { limit: 100 }).then((r) => r.items).catch(() => []),
     getTenantBilling(token).catch(() => null),
   ]);
 
