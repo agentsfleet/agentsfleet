@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router-dom";
 import { describe, it, expect } from "vitest";
@@ -57,9 +57,14 @@ describe("App", () => {
     renderApp("/");
 
     await user.click(screen.getByRole("tab", { name: "Agents" }));
-    expect(screen.getByRole("tab", { name: "Agents" })).toHaveAttribute("aria-selected", "true");
-    // Should now show agents page content
-    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(/autonomous agents/i);
+    // Wait for the lazy /agents route to resolve so the URL-driven
+    // aria-selected flip settles before assertion.
+    await waitFor(() =>
+      expect(screen.getByRole("tab", { name: "Agents" })).toHaveAttribute("aria-selected", "true"),
+    );
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(/autonomous agents/i),
+    );
   });
 
   it("switches to humans mode on click and navigates to /", async () => {
@@ -67,9 +72,12 @@ describe("App", () => {
     renderApp("/agents");
 
     await user.click(screen.getByRole("tab", { name: "Humans" }));
-    expect(screen.getByRole("tab", { name: "Humans" })).toHaveAttribute("aria-selected", "true");
-    // Should now show home page content
-    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(/ship ai-generated prs/i);
+    await waitFor(() =>
+      expect(screen.getByRole("tab", { name: "Humans" })).toHaveAttribute("aria-selected", "true"),
+    );
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(/ship ai-generated prs/i),
+    );
   });
 
   it("renders primary navigation in header", () => {

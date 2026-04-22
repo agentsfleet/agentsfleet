@@ -5,6 +5,7 @@ import Link from "next/link";
 import { AuthUserButton } from "@/lib/auth/client";
 import { trackNavigationClicked } from "@/lib/analytics/posthog";
 import WorkspaceSwitcher from "./WorkspaceSwitcher";
+import { setActiveWorkspace } from "@/app/(dashboard)/actions";
 import type { TenantWorkspace } from "@/lib/api/workspaces";
 import {
   LayoutDashboardIcon,
@@ -85,7 +86,11 @@ export default function Shell({ children, workspaces = [], activeWorkspaceId = n
 
         <div style={{ flex: 1 }} />
 
-        <WorkspaceSwitcher workspaces={workspaces} activeId={activeWorkspaceId} />
+        <WorkspaceSwitcher
+          workspaces={workspaces}
+          activeId={activeWorkspaceId}
+          onSwitch={setActiveWorkspace}
+        />
 
         <nav className="mc-header-nav">
           <a

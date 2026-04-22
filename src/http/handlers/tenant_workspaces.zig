@@ -44,13 +44,20 @@ const WorkspaceRow = struct {
     created_at: i64,
 };
 
+// Hard cap on the tenant workspace result set. Every tenant today sits
+// well below this; the cap exists so a misconfigured import or runaway
+// test fixture can't spill an unbounded result into the ArrayList.
+const MAX_TENANT_WORKSPACES: u32 = 200;
+
+const LIST_WORKSPACES_SQL = std.fmt.comptimePrint(
+    "SELECT workspace_id::text, name, repo_url, created_at " ++
+        "FROM core.workspaces WHERE tenant_id = $1::uuid " ++
+        "ORDER BY created_at ASC, workspace_id ASC LIMIT {d}",
+    .{MAX_TENANT_WORKSPACES},
+);
+
 fn fetchWorkspacesOnConn(conn: *pg.Conn, alloc: std.mem.Allocator, tenant_id: []const u8) ![]WorkspaceRow {
-    var q = PgQuery.from(try conn.query(
-        \\SELECT workspace_id::text, name, repo_url, created_at
-        \\FROM core.workspaces
-        \\WHERE tenant_id = $1::uuid
-        \\ORDER BY created_at ASC, workspace_id ASC
-    , .{tenant_id}));
+    var q = PgQuery.from(try conn.query(LIST_WORKSPACES_SQL, .{tenant_id}));
     defer q.deinit();
 
     var rows: std.ArrayList(WorkspaceRow) = .{};

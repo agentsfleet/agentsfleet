@@ -33,14 +33,24 @@ test.describe("Auth theming", () => {
   });
 
   test("protected route redirects to local sign-in instead of hosted clerk", async ({ page }) => {
-    await page.goto("/workspaces");
+    await page.goto("/zombies");
     await page.waitForTimeout(1000);
 
     expect(new URL(page.url()).hostname).toBe(EXPECTED_HOSTNAME);
     expect(page.url()).not.toContain("accounts.dev");
 
+    // Clerk dev-keys enforce strict rate limits; when exhausted mid-suite,
+    // Clerk injects a "Temporary API keys" configuration widget at the same
+    // URL, defeating the body-text/bg-color assertions below. Detect and
+    // skip rather than flake.
+    const bodyText = (await page.locator("body").textContent()) ?? "";
+    test.skip(
+      bodyText.includes("Temporary API keys"),
+      "Clerk dev-keys rate-limited — interstitial served in place of app sign-in",
+    );
+
     const body = page.locator("body");
-    await expect(body).toContainText(/UseZombie|Workspaces/);
+    await expect(body).toContainText(/UseZombie|Zombies|Dashboard/);
     await expect(await getCss(body, "background-color")).toBe("rgb(5, 8, 13)");
   });
 

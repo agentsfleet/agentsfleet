@@ -477,6 +477,7 @@ describe("WorkspaceSwitcher component", () => {
   async function renderSwitcher(props: {
     workspaces?: Array<{ id: string; name: string | null }>;
     activeId?: string | null;
+    onSwitch?: (id: string) => void | Promise<void>;
   } = {}) {
     const { default: WorkspaceSwitcher } = await import(
       "../components/layout/WorkspaceSwitcher"
@@ -488,6 +489,7 @@ describe("WorkspaceSwitcher component", () => {
           { id: "ws_2", name: "Beta" },
         ],
         activeId: props.activeId ?? "ws_1",
+        onSwitch: props.onSwitch ?? setActiveWorkspaceMock,
       } as never),
     );
   }
@@ -496,7 +498,7 @@ describe("WorkspaceSwitcher component", () => {
     const { container } = render(
       React.createElement(
         (await import("../components/layout/WorkspaceSwitcher")).default,
-        { workspaces: [], activeId: null } as never,
+        { workspaces: [], activeId: null, onSwitch: setActiveWorkspaceMock } as never,
       ),
     );
     expect(container.textContent).toBe("");
@@ -526,7 +528,7 @@ describe("WorkspaceSwitcher component", () => {
     expect(screen.getByLabelText(/select workspace/i).textContent).toContain("Alpha");
   });
 
-  it("picking a different workspace invokes the server action", async () => {
+  it("picking a different workspace invokes the onSwitch callback", async () => {
     const user = userEvent.setup();
     await renderSwitcher();
     const items = screen.getAllByRole("menuitem");

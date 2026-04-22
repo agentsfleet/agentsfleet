@@ -11,14 +11,14 @@ import {
   DropdownMenuSeparator,
 } from "@usezombie/design-system";
 import type { TenantWorkspace } from "@/lib/api/workspaces";
-import { setActiveWorkspace } from "@/app/(dashboard)/actions";
 
 type Props = {
   workspaces: TenantWorkspace[];
   activeId: string | null;
+  onSwitch: (id: string) => void | Promise<void>;
 };
 
-export default function WorkspaceSwitcher({ workspaces, activeId }: Props) {
+export default function WorkspaceSwitcher({ workspaces, activeId, onSwitch }: Props) {
   const [pending, startTransition] = useTransition();
 
   if (workspaces.length === 0) return null;
@@ -29,7 +29,7 @@ export default function WorkspaceSwitcher({ workspaces, activeId }: Props) {
   function pick(id: string) {
     if (id === activeId) return;
     startTransition(async () => {
-      await setActiveWorkspace(id);
+      await onSwitch(id);
     });
   }
 
