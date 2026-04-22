@@ -13,6 +13,21 @@ const otel_histogram = @import("otel_histogram.zig");
 const log = std.log.scoped(.otel_export);
 
 const OTLP_METRICS_PATH = "/v1/metrics";
+
+/// Anchor timestamp for CUMULATIVE aggregation temporality. Lazily set on the
+/// first export call and reused for every subsequent data point. OTLP backends
+/// use the gap `timeUnixNano - startTimeUnixNano` to compute rates; without a
+/// stable start, the first scrape looks like a zero-duration window and the
+/// backend reports zero rate.
+var g_start_time_ns = std.atomic.Value(u64).init(0);
+
+fn startTimeNs() u64 {
+    const cur = g_start_time_ns.load(.acquire);
+    if (cur != 0) return cur;
+    const now = @as(u64, @intCast(std.time.nanoTimestamp()));
+    _ = g_start_time_ns.cmpxchgStrong(0, now, .acq_rel, .acquire);
+    return g_start_time_ns.load(.acquire);
+}
 pub const ERR_OTEL_EXPORT_FAILED = "UZ-OBS-OTEL-001";
 pub const ERR_OTEL_CONNECT_FAILED = "UZ-OBS-OTEL-002";
 pub const ERR_OTEL_REQUEST_FAILED = "UZ-OBS-OTEL-003";
@@ -54,6 +69,7 @@ pub fn renderOtlpJson(
     defer alloc.free(prom_body);
 
     const now_ns = @as(u64, @intCast(std.time.nanoTimestamp()));
+    const start_ns = startTimeNs();
     var out: std.ArrayList(u8) = .{};
     errdefer out.deinit(alloc);
     const w = out.writer(alloc);
@@ -113,22 +129,22 @@ pub fn renderOtlpJson(
 
         if (std.mem.eql(u8, current_type, "counter")) {
             try w.print(
-                "{{\"name\":\"{s}\",\"sum\":{{\"dataPoints\":[{{\"asInt\":\"{s}\",\"timeUnixNano\":\"{d}\"",
-                .{ name, value_str, now_ns },
+                "{{\"name\":\"{s}\",\"sum\":{{\"aggregationTemporality\":2,\"isMonotonic\":true,\"dataPoints\":[{{\"asInt\":\"{s}\",\"startTimeUnixNano\":\"{d}\",\"timeUnixNano\":\"{d}\"",
+                .{ name, value_str, start_ns, now_ns },
             );
             try writeAttributes(w, labels_src);
-            try w.writeAll("}],\"isMonotonic\":true}}");
+            try w.writeAll("}]}}");
         } else {
             try w.print(
-                "{{\"name\":\"{s}\",\"gauge\":{{\"dataPoints\":[{{\"asInt\":\"{s}\",\"timeUnixNano\":\"{d}\"",
-                .{ name, value_str, now_ns },
+                "{{\"name\":\"{s}\",\"gauge\":{{\"dataPoints\":[{{\"asInt\":\"{s}\",\"startTimeUnixNano\":\"{d}\",\"timeUnixNano\":\"{d}\"",
+                .{ name, value_str, start_ns, now_ns },
             );
             try writeAttributes(w, labels_src);
             try w.writeAll("}]}}");
         }
     }
 
-    try hist_acc.writeOtlp(w, now_ns, &first);
+    try hist_acc.writeOtlp(w, start_ns, now_ns, &first);
 
     try w.writeAll("]}]}]}");
 

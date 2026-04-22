@@ -118,7 +118,15 @@ pub const Accumulator = struct {
     /// Write OTLP histogram data point JSON objects for all accumulated
     /// histograms. `first_ptr` tracks whether a preceding metric has been
     /// written (so the caller can manage commas in a single `metrics` array).
-    pub fn writeOtlp(self: *Accumulator, writer: anytype, now_ns: u64, first_ptr: *bool) !void {
+    ///
+    /// Prometheus histograms are cumulative-from-process-start (counts only
+    /// grow, never reset between scrapes), so the correct OTLP temporality is
+    /// CUMULATIVE with a stable `startTimeUnixNano` anchored at process start.
+    /// Per-bucket counts are computed by differencing consecutive cumulative
+    /// bucket counts — this is the Prometheus-cumulative-across-BUCKETS → OTLP
+    /// per-bucket conversion, which is orthogonal to temporality (which is
+    /// about cumulative-across-TIME).
+    pub fn writeOtlp(self: *Accumulator, writer: anytype, start_ns: u64, now_ns: u64, first_ptr: *bool) !void {
         var it = self.histograms.iterator();
         while (it.next()) |e| {
             const h = e.value_ptr.*;
@@ -146,7 +154,7 @@ pub const Accumulator = struct {
                 try writer.print("\"{d}\"", .{delta});
                 prev = b.cumulative_count;
             }
-            try writer.print("],\"count\":\"{d}\",\"sum\":{d},\"timeUnixNano\":\"{d}\"}}]}}}}", .{ h.count, h.sum, now_ns });
+            try writer.print("],\"count\":\"{d}\",\"sum\":{d},\"startTimeUnixNano\":\"{d}\",\"timeUnixNano\":\"{d}\"}}]}}}}", .{ h.count, h.sum, start_ns, now_ns });
         }
     }
 };
@@ -216,7 +224,7 @@ test "writeOtlp emits cumulative→delta bucketCounts and explicitBounds" {
     var buf: [4096]u8 = undefined;
     var fbs = std.io.fixedBufferStream(&buf);
     var first = true;
-    try acc.writeOtlp(fbs.writer(), 1_700_000_000_000_000_000, &first);
+    try acc.writeOtlp(fbs.writer(), 1_600_000_000_000_000_000, 1_700_000_000_000_000_000, &first);
     const out = fbs.getWritten();
 
     try std.testing.expect(std.mem.containsAtLeast(u8, out, 1, "\"name\":\"h\""));
@@ -224,4 +232,6 @@ test "writeOtlp emits cumulative→delta bucketCounts and explicitBounds" {
     try std.testing.expect(std.mem.containsAtLeast(u8, out, 1, "\"explicitBounds\":[0.1,1]"));
     try std.testing.expect(std.mem.containsAtLeast(u8, out, 1, "\"bucketCounts\":[\"1\",\"2\",\"1\"]"));
     try std.testing.expect(std.mem.containsAtLeast(u8, out, 1, "\"count\":\"4\""));
+    try std.testing.expect(std.mem.containsAtLeast(u8, out, 1, "\"startTimeUnixNano\":\"1600000000000000000\""));
+    try std.testing.expect(std.mem.containsAtLeast(u8, out, 1, "\"timeUnixNano\":\"1700000000000000000\""));
 }

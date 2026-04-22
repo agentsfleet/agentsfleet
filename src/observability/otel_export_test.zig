@@ -30,6 +30,20 @@ test "writeAttributes emits multiple label pairs in order" {
     try std.testing.expect(std.mem.containsAtLeast(u8, out, 1, "\"stringValue\":\"z-2\""));
 }
 
+test "renderOtlpJson stamps startTimeUnixNano on counter and gauge data points" {
+    const alloc = std.testing.allocator;
+    const body = try otel_export.renderOtlpJson(alloc, "zombied", true);
+    defer alloc.free(body);
+
+    // Every data point must carry startTimeUnixNano so CUMULATIVE backends can
+    // anchor the aggregation window. Without it, the first scrape looks like a
+    // zero-duration interval and rates compute to zero.
+    try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "\"startTimeUnixNano\":\""));
+    // The counter emitter puts aggregationTemporality + isMonotonic at the sum
+    // level (per OTLP proto), not inside the data point.
+    try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "\"sum\":{\"aggregationTemporality\":2,\"isMonotonic\":true"));
+}
+
 test "writeAttributes is a no-op for empty label set" {
     var buf: [64]u8 = undefined;
     var fbs = std.io.fixedBufferStream(&buf);
