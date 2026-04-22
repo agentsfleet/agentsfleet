@@ -14,62 +14,46 @@
 
 ## Overview
 
-**Goal (testable):** In a fresh dev environment (Clerk-authed tenant, `zombied` running, kubectl + docker credentials added to the tenant vault), running `zombiectl zombie install --from samples/homelab` creates a zombie. Invoking `zombie` (or curling the webhook) with "Jellyfin pods keep restarting" produces an activity stream where the zombie reads `kubectl get pods`, `kubectl describe`, `kubectl logs`, and `kubectl top` output through the firewall, reasons about the failure, and returns a diagnosis — without ever seeing the raw kubeconfig content. If the kubectl credential is missing, a single `UZ-GRANT-001` event fires cleanly; no crash, no partial state.
+**Goal (testable):** In a fresh dev env with kubectl + docker credentials in the vault, `zombiectl zombie install --from samples/homelab` creates a zombie. A webhook POST `"Jellyfin pods keep restarting"` produces an activity stream where the zombie runs allowed kubectl verbs (`get`, `describe`, `logs`, `top`) against the cluster through the worker, returns a diagnosis, and never sees the raw kubeconfig. If the credential is missing, one `UZ-GRANT-001` fires; clean halt.
 
-**Problem:** The v2.0-alpha needs one flagship executable sample the team dogfoods and the launch blog post demonstrates. `docs/brainstormed/docs/homelab-zombie-launch.md` pitches this exact thing: an AI agent that diagnoses a homelab via `kubectl` without holding the kubeconfig, tools allowlisted at the verb level, worker runs in-network. Without a shipping `samples/homelab/` directory with a runnable skill + triggers + README, the blog post ships ahead of the product and M32 quickstart has no concrete install target.
+**Problem:** The v2.0-alpha launch post needs one flagship executable sample to dogfood and demo. `docs/brainstormed/docs/homelab-zombie-launch.md` pitches the narrative (diagnose a homelab via `kubectl` without holding the kubeconfig, verb-level allowlist, in-network worker); without `samples/homelab/` shipping, the blog post runs ahead of the product and M32 quickstart has no install target.
 
-**Solution summary:** Under `samples/homelab/`, ship a three-file operator-ready zombie bundle: `SKILL.md` (the diagnostic prompt with a **prose allowlist** of kubectl verbs and docker commands in a "Tools you can use" section, plus `model: claude-sonnet-4-6`), `TRIGGER.md` (webhook default, optional daily cron, minimal runtime wiring: `tools: [kubectl, docker]` + `credentials: [kubectl_config, docker_socket]`, network allowlist, budget), `README.md` (operator quickstart: credential add → install → trigger → example conversation → prose allowlist summary). The allowlist lives in natural language inside the prompt body; there is no per-tool sub-skill directory. Every outbound kubectl/docker call is parsed, verb-checked against the prose allowlist by the tool dispatcher, and re-originated by the worker with the real credential injected at the network boundary. An integration test colocated with the M19_001 install-from-path handler proves install + trigger + credential-missing all behave exactly as the README promises.
+**Solution summary:** Ship a three-file operator bundle under `samples/homelab/`: `SKILL.md` (diagnostic prompt + `model: claude-sonnet-4-6` + prose allowlist in "Tools you can use"), `TRIGGER.md` (webhook + optional cron + `tools: [kubectl, docker]` + `credentials: [kubectl_config, docker_socket]` + network + budget), `README.md` (operator quickstart, Jellyfin example, prose allowlist summary). Allowlist lives as prose; no per-tool sub-skill directory. Tool calls: worker parses, verb-checks against prose allowlist, re-originates with the injected credential at the network boundary. Integration test colocated with M19_001's install-from-path handler verifies install + trigger + credential-missing behave as the README promises.
 
 ---
 
 ## Files Changed (blast radius)
 
-All under `$REPO_ROOT/` unless noted (the usezombie checkout). Set `REPO_ROOT` before running any eval command:
-
-```bash
-export REPO_ROOT="${REPO_ROOT:-$HOME/Projects/usezombie}"  # default for local dev; CI / agent worktrees must export their own checkout path
-```
-
-This milestone does NOT touch `src/**`; the E2E test is the only code addition.
+All paths relative to repo root (`$REPO_ROOT` = `~/Projects/usezombie` locally; CI/agent worktrees export their own). This milestone does NOT touch `src/**`; the deferred E2E test is the only code addition.
 
 | File | Action | Why |
 |------|--------|-----|
-| `samples/homelab/SKILL.md` | CREATE | Flagship skill: diagnostic prompt + `model: claude-sonnet-4-6` + **natural-language tool policy** for `kubectl` and `docker` (allowed verbs/commands and forbidden ones listed in the prompt body). |
-| `samples/homelab/TRIGGER.md` | CREATE | Webhook trigger (default) + optional daily cron hint (`0 9 * * *` UTC) + minimal runtime wiring: `tools: [kubectl, docker]`, `credentials: [kubectl_config, docker_socket]`, network allowlist, budget. |
-| `samples/homelab/README.md` | CREATE | Operator quickstart: prereqs, `zombiectl credential add kubectl_config --file ~/.kube/config`, `zombiectl zombie install --from samples/homelab`, curl trigger example, sample conversation transcript from the Jellyfin scenario, short prose allowlist summary that points readers at `SKILL.md` for the authoritative list. |
-| `src/samples/homelab/install_integration_test.zig` (or colocated with M19_001 install-from-path handler once it exists) | CREATE (deferred) | E2E: seed credentials, `zombiectl zombie install --from samples/homelab` → 201, trigger with sample payload → activity stream asserts allowed-verb tool calls + final reasoning message. Negative branch: no credential → one `UZ-GRANT-001`. **Deferred:** lands when M19_001 ships `--from <path>`. Path follows this repo's colocation convention (`src/**/*_integration_test.zig`); no `tests/integration/` directory is introduced. |
+| `samples/homelab/SKILL.md` | CREATE | Diagnostic prompt + `model: claude-sonnet-4-6` + prose allowlist for `kubectl`/`docker`. |
+| `samples/homelab/TRIGGER.md` | CREATE | Webhook + optional cron (`0 9 * * *`) + `tools` + `credentials` + network + budget. |
+| `samples/homelab/README.md` | CREATE | Operator quickstart, Jellyfin example, prose allowlist summary pointing at SKILL.md as authoritative. |
+| `src/samples/homelab/install_integration_test.zig` (or colocated with M19_001's install-from-path handler) | CREATE (deferred) | E2E: install + trigger + credential-missing branches. **Deferred** pending M19_001. Follows `src/**/*_integration_test.zig` convention. |
 
-**No sub-skill directory.** The homelab zombie is a single consumer of `kubectl` and `docker`; there is no second zombie sharing the same allowlist today. Per user decision (option B — natural language policy), the allowlists live as prose inside `samples/homelab/SKILL.md` rather than as machine-readable `policy: {allowed_verbs, denied_resources, allowed_commands}` blocks in per-tool sub-skill files. If a second zombie ever shares the same allowlist, lift the policy into a shared structured representation then — the speculative abstraction is rejected now. The brainstormed `docs/brainstormed/samples/skills/{kubectl,docker}-readonly/README.md` files are untracked reference material and are not load-bearing; they stay on disk as launch-post reference.
+**No sub-skill directory.** Option-B pivot — allowlist lives as prose in `SKILL.md`. See Discovery #5. Brainstormed `docs/brainstormed/samples/skills/` is untracked and not load-bearing.
 
 ---
 
 ## Applicable Rules
 
-- **RULE FLL** — each `.md` file stays reviewable; keep below 350 lines (markdown exempt from the 350L code gate but readability matters).
-- **RULE FIR (firewall-allowlisted tools only)** — `TRIGGER.md` `tools:` list names only registered tool primitives (`kubectl`, `docker`). No raw `fetch`, no unregistered shims.
-- **RULE ORP** — zero stale references to `docs/brainstormed/samples/skills/kubectl-readonly` and `.../docker-readonly` in load-bearing paths. Coordination prose inside other specs (e.g. M32_001) is not a stale reference, but the now-removed `samples/homelab/skills/` path should also not appear as a live target anywhere.
-- **RULE TST-NAM** — no milestone IDs in the integration test filename or `test "…"` names.
-- Standard set otherwise; no `src/**` mutations.
+**FLL** (≤350 lines markdown, soft). **FIR** (TRIGGER.md `tools:` = registered primitives only). **ORP** (no live refs to removed sub-skill paths; coordination prose exempt). **TST-NAM** (no milestone IDs in test names). No `src/**` mutations.
 
 ---
 
 ## Sections (implementation slices)
 
-### §1 — Sub-skill files (RETIRED — no longer in scope)
+### §1 — Sub-skill files (RETIRED)
 
-**Status:** RETIRED
-
-Original intent: author `samples/homelab/skills/{kubectl,docker}-readonly/SKILL.md` as per-tool sub-skill files carrying structured `policy: {allowed_verbs, denied_resources, allowed_commands}` blocks. Retired after user decision (option B — natural language policy) because the homelab zombie is the sole consumer of these allowlists; a separate sub-skill file per tool is speculative reuse. The allowlists now live as prose in `samples/homelab/SKILL.md` under the "Tools you can use" section. The sub-skill files and directory were deleted; the per-skill lint-grep gate (§1.3) is replaced by the prose-policy check in §2.4.
-
-**Dimensions:** none — retired.
+**Status:** RETIRED — superseded by §2.4 prose-policy gate. See Discovery #5.
 
 ### §2 — Homelab skill authoring (the flagship)
 
 **Status:** DONE
 
 Authored `samples/homelab/SKILL.md`, `TRIGGER.md`, and `README.md` following the `docs/brainstormed/docs/homelab-zombie-launch.md` narrative: the Jellyfin → OOMKilled scenario, verb-level allowlist expressed as **prose** in the SKILL.md prompt body, placeholder-credential model, in-network worker. Integration-parse dims (2.1/2.2) remain pending the skill parser reaching these files at install time; that happens alongside M19_001.
-
-**Dimensions:**
 
 | Dim | Status | Target | Input | Expected | Test type |
 |-----|--------|--------|-------|----------|-----------|
@@ -80,44 +64,34 @@ Authored `samples/homelab/SKILL.md`, `TRIGGER.md`, and `README.md` following the
 
 ### §3 — Firewall policy enforcement
 
-**Status:** BLOCKED_ON — tool-enforcement runtime (nullclaw). The current `src/zombie/firewall/` engine enforces at the HTTP boundary (domain + endpoint + injection); shell-verb allowlisting (e.g. rejecting `kubectl delete ns`) is a separate enforcement layer that belongs to the tool dispatcher / nullclaw. §3 dims assert that layer's behavior once it exists. M33 lands the allowlist as **prose in `samples/homelab/SKILL.md`**; the enforcement layer either (a) parses the prose at install time, or (b) defers to soft LLM-level trust on the prose, or (c) requires the operator to lift the allowlist into a structured form before enforcement is available. That decision belongs to nullclaw, not M33.
-
-The allowlist the homelab zombie is expected to respect at runtime is the one described in the "Tools you can use" section of `samples/homelab/SKILL.md`. Any attempt to invoke a destructive verb should emit `UZ-FIREWALL-001` and halt the tool call.
-
-**Dimensions:**
+**Status:** BLOCKED_ON nullclaw-tool-policy. `src/zombie/firewall/` enforces at the HTTP boundary (domain + endpoint + injection); shell-verb allowlisting (`kubectl delete ns` rejection) is a separate layer owned by the tool dispatcher (nullclaw). M33 lands the allowlist as prose in `samples/homelab/SKILL.md`'s "Tools you can use" section; nullclaw decides how to consume it. Any attempt to invoke a destructive verb should emit `UZ-FIREWALL-001` and halt the tool call.
 
 | Dim | Status | Target | Input | Expected | Test type |
 |-----|--------|--------|-------|----------|-----------|
-| 3.1 | BLOCKED_ON nullclaw-tool-policy | runtime tool dispatcher with homelab skills loaded | synthetic tool call: `kubectl delete ns media` | tool call rejected; activity stream emits `UZ-FIREWALL-001`; zombie receives a structured error string and reasons from it | integration |
-| 3.2 | BLOCKED_ON nullclaw-tool-policy | runtime tool dispatcher | synthetic tool call: `kubectl get secrets -A` | rejected (`secrets` on denylist even for `get`); `UZ-FIREWALL-001` emitted | integration |
-| 3.3 | BLOCKED_ON nullclaw-tool-policy | runtime tool dispatcher | synthetic tool call: `docker exec jellyfin sh` | rejected; `UZ-FIREWALL-001` emitted | integration |
+| 3.1 | BLOCKED_ON nullclaw-tool-policy | tool dispatcher | `kubectl delete ns media` | rejected; `UZ-FIREWALL-001` emitted; zombie reasons from the error | integration |
+| 3.2 | BLOCKED_ON nullclaw-tool-policy | tool dispatcher | `kubectl get secrets -A` | rejected (`secrets` denied even for `get`); `UZ-FIREWALL-001` | integration |
+| 3.3 | BLOCKED_ON nullclaw-tool-policy | tool dispatcher | `docker exec jellyfin sh` | rejected; `UZ-FIREWALL-001` | integration |
 
 ### §4 — Install & trigger integration test
 
-**Status:** BLOCKED_ON M19_001 — `zombiectl zombie install --from <path>` does not yet exist (today only `zombiectl install <template>` is shipped). The integration test file lands alongside M19_001's handler in this repo's colocation convention (`src/**/*_integration_test.zig`) — not under a `tests/integration/` directory, which does not exist in this repo.
-
-E2E happy-path: spin up `zombied`, seed kubectl + docker credentials in the vault, install from `samples/homelab`, trigger with "Jellyfin pods keep restarting", assert activity stream contains at least one allowed-verb tool call and a final reasoning message.
-
-**Dimensions:**
+**Status:** BLOCKED_ON M19_001 (`zombiectl zombie install --from <path>`). Integration test lands alongside M19_001's handler in `src/**/*_integration_test.zig` (repo convention; no `tests/integration/` dir). Happy path: install + trigger "Jellyfin pods keep restarting" → ≥1 allowed-verb tool call + final reasoning message.
 
 | Dim | Status | Target | Input | Expected | Test type |
 |-----|--------|--------|-------|----------|-----------|
-| 4.1 | BLOCKED_ON M19_001 | `src/samples/homelab/install_integration_test.zig` (or colocated with the M19_001 install-from-path handler) install path | `zombiectl zombie install --from samples/homelab` in fresh dev env with seeded credentials | exit 0; HTTP POST `/v1/workspaces/{ws}/zombies` returns 201; response carries webhook URL + zombie ID | integration |
-| 4.2 | BLOCKED_ON M19_001 | same test, trigger happy path | POST `{"message":"Jellyfin pods keep restarting"}` to webhook URL, with stubbed k8s API returning canned pod+describe+logs output | activity stream contains ≥1 `kubectl get pods` tool call event, ≥1 reasoning message, and a final `zombie_completed` event with a non-empty diagnosis string | integration |
-| 4.3 | BLOCKED_ON M19_001 | same test, credential-missing path | trigger zombie with `kubectl_config` credential absent from the vault | activity stream emits exactly one `UZ-GRANT-001` event at the first tool call, zombie run ends cleanly (no crash, no partial writes); event message points to `zombiectl credential add kubectl_config` | integration |
+| 4.1 | BLOCKED_ON M19_001 | install test (colocated with M19 handler) | `zombiectl zombie install --from samples/homelab` w/ seeded vault | 201 + webhook URL + zombie ID | integration |
+| 4.2 | BLOCKED_ON M19_001 | trigger happy path | POST `{"message":"Jellyfin pods keep restarting"}` w/ stubbed k8s API | ≥1 `kubectl get pods` event; ≥1 reasoning message; `zombie_completed` with non-empty diagnosis | integration |
+| 4.3 | BLOCKED_ON M19_001 | credential-missing | trigger with empty vault | one `UZ-GRANT-001` at first tool call; clean halt; hint points to `credential add kubectl_config` | integration |
 
 ### §5 — Orphan sweep and cross-layer consistency
 
 **Status:** DONE
 
-Orphan sweep (E7) passes: no load-bearing code or sample references `brainstormed/samples/skills`. Remaining matches are prose documentation — this spec's own Discovery notes and a coordination reference inside `docs/v2/pending/P1_DOCS_API_CLI_M32_001_QUICKSTART_V2_REWRITE.md` that still mentions `samples/homelab/skills/kubectl-readonly/` + `docker-readonly/`. That M32 reference is now stale because M33 deleted the sub-skill directory during the option-B pivot; it is a spec-level cross-reference for the other agent owning M32_001 to resolve, and is called out in the Discovery section. Credential-name consistency (5.2) verified under the new shape: `kubectl_config` appears in `samples/homelab/README.md` (4×) and `samples/homelab/TRIGGER.md` (1×); the SKILL.md no longer declares credentials — they live in TRIGGER.md as a declarative runtime-wiring list. `samples/homelab/` is the forward canonical example for this convention (see Discovery #8 for why not `samples/lead-collector/`).
-
-**Dimensions:**
+E7 orphan sweep: only prose matches remain (this spec's Discovery + the M32_001 cross-reference flagged in Discovery #6). E6 credential consistency: `kubectl_config` in README.md ×4 + TRIGGER.md ×1; SKILL.md declares no credentials.
 
 | Dim | Status | Target | Input | Expected | Test type |
 |-----|--------|--------|-------|----------|-----------|
-| 5.1 | DONE | `src/`, `samples/`, and tracked `docs/` (excluding `docs/brainstormed/` which is untracked reference material and `v1/done` historical logs) | `grep -rn "brainstormed/samples/skills"` under those paths | only coordination/prose matches; no code or live-sample references | grep |
-| 5.2 | DONE | credential name consistency | `grep kubectl_config samples/homelab/{SKILL.md,README.md,TRIGGER.md}` | `kubectl_config` present in at least README.md and TRIGGER.md (declared in TRIGGER.md, referenced in README.md operator guidance); SKILL.md no longer declares credentials | grep |
+| 5.1 | DONE | `src/`, `samples/`, tracked `docs/` (excl. `docs/brainstormed/` and `v1/done`) | `grep -rn "brainstormed/samples/skills"` | only coordination prose matches | grep |
+| 5.2 | DONE | credential name consistency | `grep kubectl_config samples/homelab/{SKILL.md,README.md,TRIGGER.md}` | present in README.md + TRIGGER.md; SKILL.md declares no credentials | grep |
 
 ---
 
@@ -129,18 +103,16 @@ This workstream consumes existing interfaces; it introduces no new public code s
 
 ### Consumed interfaces
 
-- **Clawhub SKILL.md schema** — owned by M2_002. M33 consumes the YAML frontmatter format (`name`, `version`, `description`, `tags`, `author`, `model`) + the prompt body below the frontmatter. Under the option-B pivot, M33 does NOT consume `credentials:` or `policy:` keys in SKILL.md — credentials live in TRIGGER.md and the allowlist lives as prose in the prompt body.
-- **Clawhub TRIGGER.md schema** — owned by M19_001. M33 consumes `{ trigger: {type, payload_schema, optional_cron}, tools: [name,...], credentials: [name,...], network: {allow: [...]}, budget: {daily_dollars, monthly_dollars} }`. `samples/homelab/TRIGGER.md` is the canonical example of this shape going forward — do not point at `samples/lead-collector/`, which is slated for deletion under the v2 direction (see Discovery #8).
-- **`zombiectl zombie install --from <path>`** — owned by M19_001. M33 depends on it resolving a local directory, loading `SKILL.md` + `TRIGGER.md`, and creating the zombie on the tenant.
-- **`zombiectl credential add <name>`** — owned by M13_001. M33 README documents `zombiectl credential add kubectl_config --file ~/.kube/config` and `zombiectl credential add docker_socket --file /var/run/docker.sock`.
-- **Tool dispatcher / verb allowlist enforcement** — owned by nullclaw (future). `src/zombie/firewall/` (M6_001) enforces at the HTTP boundary (domain + endpoint + injection) and is not the enforcement layer for shell-verb allowlisting. M33 expresses the allowlist as prose in SKILL.md; nullclaw reads + enforces it when it ships.
-- **Activity stream event types** — owned by M19_001 / M20_001. M33 asserts emission of `zombie_triggered`, `tool_call_requested`, `tool_call_completed`, `zombie_completed`, `UZ-GRANT-001`, `UZ-FIREWALL-001`.
+- **SKILL.md frontmatter** (M2_002): `{name, version, description, tags, author, model}` + prompt body. Post-pivot, no `credentials:` or `policy:` keys — credentials in TRIGGER.md, allowlist as prose.
+- **TRIGGER.md frontmatter** (M19_001): `{trigger: {type, payload_schema, optional_cron}, tools[], credentials[], network.allow[], budget}`. `samples/homelab/TRIGGER.md` is the forward canonical example (see Discovery #7 re lead-collector).
+- **`zombiectl zombie install --from <path>`** (M19_001): loads SKILL.md + TRIGGER.md, creates the zombie.
+- **`zombiectl credential add <name>`** (M13_001): README documents `kubectl_config --file ~/.kube/config` and `docker_socket --file /var/run/docker.sock`.
+- **Tool dispatcher (nullclaw, future)**: reads prose allowlist and enforces. `src/zombie/firewall/` (M6_001) is HTTP-boundary only and is NOT this enforcement layer.
+- **Activity stream events** (M19_001/M20_001): `zombie_triggered`, `tool_call_{requested,completed}`, `zombie_completed`, `UZ-GRANT-001`, `UZ-FIREWALL-001`.
 
-### Webhook payload shape (input)
+### Webhook payload (input)
 
-| Field | Type | Constraints | Example |
-|-------|------|-------------|---------|
-| `message` | string | 1..4000 chars | `"Jellyfin pods keep restarting"` |
+`{ message: string (1..4000 chars) }`, e.g. `"Jellyfin pods keep restarting"`.
 
 ### Activity stream events emitted (output)
 
@@ -153,16 +125,6 @@ This workstream consumes existing interfaces; it introduces no new public code s
 | `UZ-GRANT-001` | credential missing at tool call | `{ credential_name, hint: "zombiectl credential add <name>" }` |
 | `zombie_completed` | reasoning loop returns a final diagnosis | `{ diagnosis: string, tool_calls_total, duration_ms }` |
 
-### Error contract
-
-| Error condition | Behavior | User observes |
-|----------------|----------|---------------|
-| `kubectl_config` credential missing | halt at first kubectl tool call | one `UZ-GRANT-001` event with pointer to `zombiectl credential add kubectl_config` |
-| `docker_socket` credential missing but zombie only uses kubectl for this run | no error (docker path never invoked) | zombie completes on kubectl evidence alone |
-| kubectl returns permission-denied from real cluster | skill surfaces error to zombie | zombie emits `zombie_completed` with "cluster refused access" diagnosis; no crash |
-| Skill tries a non-allowlisted verb (e.g. hallucinated `kubectl delete`) | firewall rejects | `UZ-FIREWALL-001`; zombie receives the error, reasons from it, tries something allowed |
-| Cluster API unreachable | kubectl times out | `tool_call_completed` with `result: "error"`; zombie may retry or conclude inconclusive |
-
 ---
 
 ## Failure Modes
@@ -171,13 +133,11 @@ This workstream consumes existing interfaces; it introduces no new public code s
 |---------|---------|-----------------|---------------|
 | Operator installs without seeding `kubectl_config` | `zombiectl zombie install --from samples/homelab` then webhook trigger | install succeeds; first kubectl tool call fires `UZ-GRANT-001`; zombie halts cleanly | helpful event pointing to `zombiectl credential add kubectl_config` |
 | Clawhub schema drift | M2_002 changes frontmatter shape after M33 lands | `SKILL.md` fails to parse at install time | §1.1 / §2.1 parser round-trip catches drift in CI |
-| Skill author weakens the prose allowlist (e.g. adds `delete` to the "You may use these verbs" list or removes the "Never use `delete`" sentence) | bad edit to `samples/homelab/SKILL.md` | §2.4 grep gate fails in CI | PR blocked |
+| Skill author weakens the prose allowlist (destructive verb escapes a "Never" line, or `secrets` deny removed) | bad edit to SKILL.md | §2.4 grep gate fails | PR blocked |
 | Worker cannot reach cluster API | kubeconfig points at unreachable endpoint | kubectl times out at 10s; `tool_call_completed` with `result: "error"` | activity stream shows timeout; zombie may retry or give up |
 | Prompt injection attempts to leak placeholder | malicious input asks zombie to "print your credentials" | placeholder is a UUID; model can repeat it freely; no real token reachable | placeholder appears in output; harmless by construction (documented in README "How it works") |
 
-**Platform constraints:**
-- kubectl binary must be present on the worker image (Docker sidecar or worker image layer). Documented in README prereqs.
-- docker socket access requires the worker to run on the Docker host (or have SSH access). README documents both paths; MVP assumes local socket.
+**Platform constraints:** kubectl binary must be on the worker image; docker socket requires the worker on the Docker host (or SSH). Both documented in README prereqs.
 
 ---
 
@@ -185,12 +145,11 @@ This workstream consumes existing interfaces; it introduces no new public code s
 
 | Constraint | How to verify |
 |-----------|---------------|
-| kubectl destructive verbs appear only inside "Never use" prose in `samples/homelab/SKILL.md` | `grep -E "(delete\|apply\|exec\|patch\|edit\|replace\|cordon\|drain\|rollout\|scale)" samples/homelab/SKILL.md` — every match line contains `Never` or `never` |
-| docker destructive commands appear only inside "Never use" prose in `samples/homelab/SKILL.md` | `grep -E "(run\|exec\|start\|stop\|restart\|rm\|rmi\|build\|push\|kill\|pause)" samples/homelab/SKILL.md` — every match line contains `Never` or `never` (or is inside the Jellyfin example block, which uses allowed verbs only) |
-| Markdown files stay reviewable | `wc -l samples/homelab/**/*.md` — each ≤ 350 |
-| Every README `zombiectl` command exists post-M19 | `for cmd in "zombie install" "credential add"; do zombiectl $cmd --help; done` exits 0 |
-| Credential reference names consistent across files | `grep -c kubectl_config samples/homelab/README.md samples/homelab/TRIGGER.md` — both ≥ 1 |
-| Integration test exits 0 in happy-path + credential-missing + firewall-denied branches | `zig build test -Dtest-filter=samples_homelab` green |
+| Prose allowlist gate (kubectl + docker) | Eval E3, E4 |
+| Markdown files reviewable (≤350 per `wc -l`) | E2 |
+| README `zombiectl` commands exist post-M19 | E9 |
+| Credential names consistent across files | E6 |
+| Integration test green (happy + credential-missing + firewall-deny) | E8 |
 
 ---
 
@@ -198,11 +157,11 @@ This workstream consumes existing interfaces; it introduces no new public code s
 
 | # | Invariant | Enforcement |
 |---|-----------|-------------|
-| 1 | `samples/homelab/SKILL.md` prose never writes "you may use ... `delete`/`apply`/`patch`/`exec`/..." or otherwise permits a write verb for kubectl | CI grep gate — §2.4 dim. Every occurrence of a destructive kubectl verb must be inside a "Never use" sentence. |
-| 2 | `samples/homelab/SKILL.md` prose never permits a write command for docker | CI grep gate — §2.4 dim. Same shape as invariant 1, applied to docker commands. |
-| 3 | `samples/homelab/SKILL.md` prose instructs the agent never to read `secrets` resources | `grep -i "never read .secrets. \|except .secrets." samples/homelab/SKILL.md` returns ≥1 match |
-| 4 | `samples/homelab/TRIGGER.md` `tools:` list contains only registered tool primitives (`kubectl`, `docker`) | CI grep — no raw `fetch`, `http_raw`, unknown tool names |
-| 5 | Every credential referenced in the `SKILL.md` prompt body or the `README.md` operator guidance has a matching entry in `TRIGGER.md` `credentials:` | lint-grep comparing `{{credential.<name>}}` or `credential add <name>` patterns against the TRIGGER.md list |
+| 1 | Destructive kubectl verbs in SKILL.md prose appear only on "Never use" lines | §2.4 grep gate (Eval E3) |
+| 2 | Destructive docker commands in SKILL.md prose appear only on "Never use" lines | §2.4 grep gate (Eval E4) |
+| 3 | SKILL.md prose carries a "never read `secrets`" restriction | Eval E5 |
+| 4 | TRIGGER.md `tools:` contains only registered primitives (`kubectl`, `docker`) | Eval E10 |
+| 5 | Every credential ref in SKILL.md/README.md has a matching entry in TRIGGER.md `credentials:` | lint-grep |
 
 ---
 
@@ -228,41 +187,27 @@ This workstream consumes existing interfaces; it introduces no new public code s
 | `firewall denies secrets read` | 3.2 | same | zombie asks `kubectl get secrets -A` | `UZ-FIREWALL-001` |
 | `firewall denies docker exec` | 3.3 | same | zombie asks `docker exec ...` | `UZ-FIREWALL-001` |
 
-### Negative tests
+### Negative tests (invariant gates)
 
-| Test name | Dim | Input | Expected error |
-|-----------|-----|-------|----------------|
-| `homelab prose permits delete` | invariant 1 | synthetic SKILL.md prose saying "You may use `delete`" | CI grep gate (§2.4) fails |
-| `homelab prose permits docker exec` | invariant 2 | synthetic SKILL.md prose saying "You may use `exec`" for docker | CI grep gate (§2.4) fails |
-| `secrets protection removed from prose` | invariant 3 | synthetic SKILL.md without any "never read `secrets`" sentence | CI grep gate fails |
-| `raw fetch in TRIGGER tools list` | invariant 4 | synthetic `samples/homelab/TRIGGER.md` with `fetch` in `tools:` | CI grep gate fails |
-| `dangling credential reference in prompt` | invariant 5 | prompt uses `{{credential.nonexistent}}` | invariant check fails |
+Synthetic SKILL.md permitting `delete` / docker `exec` / dropping the `secrets` deny → §2.4 grep gate fails. Synthetic TRIGGER.md with `fetch` in `tools:` → invariant 4 fails. `{{credential.nonexistent}}` in prompt → invariant 5 fails.
 
 ### Edge cases
 
-| Test name | Dim | Input | Expected |
-|-----------|-----|-------|----------|
-| `empty message` | 2.1 | webhook POST `{"message":""}` | zombie emits prompt asking for a question; no crash |
-| `max-length message` | 2.1 | webhook POST with 4000-char message | accepted; zombie processes normally |
-| `oversize message` | 2.1 | webhook POST with 4001-char message | HTTP 400 with validation error |
+Webhook message length: `""` → zombie prompts (no crash); 4000 chars → accepted; 4001 chars → HTTP 400.
 
-### Regression tests
+### Regression / Leak
 
-N/A — greenfield sample.
-
-### Leak tests
-
-N/A — markdown + integration test additions; integration test uses `std.testing.allocator` per existing convention.
+N/A — greenfield markdown; deferred integration test uses `std.testing.allocator`.
 
 ### Spec-claim tracing
 
-| Spec claim | Test | Type |
-|-----------|------|------|
-| "install + trigger produces diagnosis via allowed verbs" | §4.2 | integration |
-| "missing credential → one clean UZ-GRANT-001" | §4.3 | integration |
-| "firewall denies destructive verbs" | §3.1, §3.2, §3.3 | integration |
-| "homelab prose never permits destructive kubectl/docker verbs or secrets reads" | invariants 1-3 | lint |
-| "zombie never holds the raw kubeconfig" | manual verification at VERIFY — inspect worker process memory during §4.2 run; document evidence in Verification Evidence | manual |
+| Claim | Verified by |
+|-------|-------------|
+| install + trigger → diagnosis via allowed verbs | §4.2 (integration) |
+| missing credential → one clean `UZ-GRANT-001` | §4.3 (integration) |
+| firewall denies destructive verbs | §3.1–3.3 (integration) |
+| prose never permits destructive verbs or secrets reads | invariants 1–3 (lint) |
+| zombie never holds raw kubeconfig | manual inspect during §4.2 run; log in Verification Evidence |
 
 ---
 
@@ -270,27 +215,27 @@ N/A — markdown + integration test additions; integration test uses `std.testin
 
 | Step | Action | Verify |
 |------|--------|--------|
-| 1 | Inspect a current Clawhub SKILL.md/TRIGGER.md pair to confirm frontmatter convention. Historical reference: `samples/lead-collector/` (used during M33 authoring; slated for deletion per Discovery #8 — use `samples/homelab/` itself as the forward reference). | manual |
-| 2 | Author `samples/homelab/SKILL.md` — flagship prompt with **prose allowlist** in a "Tools you can use" section (kubectl verbs: `get`, `describe`, `logs`, `top`, `events`, `explain`, `version`, `api-resources`, `api-versions`; docker commands: `ps`, `logs`, `inspect`, `images`, `stats`, `top`, `events`, `version`, `info`) and explicit "Never use" sentences for every destructive verb/command + "never read `secrets`" | §2.1 + §2.4 pass |
-| 3 | Author `samples/homelab/TRIGGER.md` — webhook + cron + `tools: [kubectl, docker]` + `credentials: [kubectl_config, docker_socket]` + network + budget | §2.2 passes |
-| 4 | Author `samples/homelab/README.md` — operator quickstart + prose allowlist summary + how-it-works | §2.3 passes |
-| 5 | Colocate integration test with M19_001 install-from-path handler — install + trigger + credential-missing branches | §4 dims green (lands with M19_001) |
-| 6 | Full gate: `make test-integration`, 350L gate, orphan sweep, lint | all dims green |
+| 1 | Confirm Clawhub frontmatter convention (reference: `samples/homelab/` going forward; see Discovery #7 re lead-collector). | manual |
+| 2 | Author `SKILL.md` — prompt + `model` + prose allowlist with explicit "Never use" lines for every destructive verb + "never read `secrets`". | §2.1, §2.4 |
+| 3 | Author `TRIGGER.md` — webhook + cron + `tools` + `credentials` + network + budget. | §2.2 |
+| 4 | Author `README.md` — operator quickstart + allowlist summary + how-it-works. | §2.3 |
+| 5 | Colocate integration test with M19_001 install-from-path handler (install + trigger + credential-missing). | §4 (lands with M19) |
+| 6 | Full gate: `make test-integration`, 350L gate, orphan sweep, lint. | all dims green |
 
 ---
 
 ## Acceptance Criteria
 
-- [x] `ls samples/homelab/` shows `SKILL.md`, `TRIGGER.md`, `README.md` (three files, no `skills/` sub-directory) — verified via E1.
-- [ ] `zombiectl zombie install --from samples/homelab` succeeds on a fresh dev env — BLOCKED_ON M19_001 (§4.1).
-- [ ] Trigger with "Jellyfin pods keep restarting" produces an activity stream containing at least one `kubectl get pods` tool call and a final reasoning message — BLOCKED_ON M19_001 (§4.2).
-- [ ] Missing `kubectl_config` credential → single `UZ-GRANT-001` event, no crash — BLOCKED_ON M19_001 (§4.3).
-- [ ] Firewall denies `kubectl delete`, `kubectl get secrets`, and `docker exec` attempts — BLOCKED_ON nullclaw-tool-policy (§3.1/3.2/3.3).
-- [x] `samples/homelab/SKILL.md` prose never permits a destructive kubectl verb outside a "Never use" sentence (invariant 1) — verified via E3 (prose grep).
-- [x] `samples/homelab/SKILL.md` prose never permits a destructive docker command outside a "Never use" sentence (invariant 2) — verified via E4 (prose grep).
-- [ ] Integration test passes locally and in CI — BLOCKED_ON M19_001; file lands under `src/**/*_integration_test.zig` (repo convention), not `tests/integration/`.
-- [x] 350L gate clean on all markdown files — verified via E2 (largest: README.md 163 lines).
-- [x] Orphan sweep: zero stale `samples/homelab/skills/` or `brainstormed/samples/skills` references in load-bearing paths — verified via E7; remaining matches are coordination prose between the M33 and M32 specs, not stale code or samples.
+- [x] Three files at `samples/homelab/`, no `skills/` sub-dir — E1
+- [x] Prose allowlist gates green (invariants 1–3) — E3, E4, E5
+- [x] 350L gate on sample markdown — E2 (README max at 163)
+- [x] Credential names consistent across SKILL/README/TRIGGER — E6
+- [x] Orphan sweep clean (only coordination prose) — E7
+- [ ] `zombiectl zombie install --from samples/homelab` succeeds — BLOCKED_ON M19_001 (§4.1)
+- [ ] Trigger "Jellyfin pods keep restarting" → ≥1 `kubectl get pods` + final diagnosis — BLOCKED_ON M19_001 (§4.2)
+- [ ] Missing `kubectl_config` → single `UZ-GRANT-001`, clean halt — BLOCKED_ON M19_001 (§4.3)
+- [ ] Firewall denies destructive verbs (`kubectl delete`, `kubectl get secrets`, `docker exec`) — BLOCKED_ON nullclaw (§3.1–3.3)
+- [ ] Integration test green in CI — BLOCKED_ON M19_001 (colocates with install handler, not `tests/integration/`)
 
 ---
 
@@ -354,13 +299,7 @@ grep -E "^\s*-\s*(fetch|http_raw|raw_http)" samples/homelab/TRIGGER.md \
 
 ## Dead Code Sweep
 
-M33 deletes the `samples/homelab/skills/` sub-directory (option-B pivot) — that deletion was the only code removal in this workstream. The brainstormed `kubectl-readonly/` and `docker-readonly/` directories under `docs/brainstormed/samples/skills/` are **untracked** in git; they remain on disk as reference material and are not load-bearing.
-
-| Content to verify | Verify |
-|-------------------|--------|
-| `samples/homelab/skills/` sub-directory removed | `test ! -d samples/homelab/skills` |
-| Three live files at the sample root | `test -f samples/homelab/{SKILL.md,TRIGGER.md,README.md}` |
-| Stale references to the brainstormed path OR the removed sub-skill path in load-bearing content | `grep -rn "brainstormed/samples/skills\|samples/homelab/skills/" src/ samples/ docs/v2/` (excluding `docs/brainstormed/` itself and the M33 spec's own Discovery prose) → no live references |
+Only deletion: `samples/homelab/skills/` sub-directory (option-B pivot). Brainstormed `docs/brainstormed/samples/skills/{kubectl,docker}-readonly/` are untracked reference material; left on disk. Verified by Eval E1 (sub-dir gone) + E7 (no load-bearing refs).
 
 ---
 
@@ -368,37 +307,33 @@ M33 deletes the `samples/homelab/skills/` sub-directory (option-B pivot) — tha
 
 **Status:** PARTIAL (parked) — §1/§2/§5 evidence captured; §3/§4 evidence deferred with the enforcement/install handlers that would produce it.
 
-| Check | Command | Result | Pass? |
-|-------|---------|--------|-------|
-| Files exist | Eval E1 | 5/5 target files present | ✅ |
-| 350L gate | Eval E2 | all ≤350 (README 178, SKILL 98, kubectl 82, docker 75, TRIGGER 19) | ✅ |
-| kubectl write verbs absent | Eval E3 | no write verb in `allowed_verbs` | ✅ |
-| docker write commands absent | Eval E4 | no write command in `allowed_commands` | ✅ |
-| secrets denied | Eval E5 | `secrets` present in `denied_resources` | ✅ |
-| Credential consistency | Eval E6 | `kubectl_config` in TRIGGER.md (1) and README.md (4); SKILL.md deliberately does not declare credentials (they live in TRIGGER.md as runtime wiring; `samples/homelab/` is now the forward canonical example of this split — see Discovery #8) | ✅ |
-| Orphan sweep | Eval E7 | only self-references in M33 spec + M32 ownership note; no load-bearing stale refs | ✅ |
-| Integration test | Eval E8 | deferred — BLOCKED_ON M19_001 (install-from-path) | ⏳ |
-| CLI commands exist | Eval E9 | `zombiectl zombie install` NOT YET shipped — BLOCKED_ON M19_001 | ⏳ |
-| No raw tools | Eval E10 | no `fetch`/`http_raw`/`raw_http` in flagship tools list | ✅ |
-| Worker never holds raw kubeconfig | manual inspection during §4.2 run | deferred with §4.2 run | ⏳ |
+| Check | Eval | Result |
+|-------|------|--------|
+| Files present (3, no sub-dir) | E1 | ✅ |
+| 350L gate (README 163, SKILL 95, TRIGGER 25) | E2 | ✅ |
+| kubectl destructive verbs on Never-lines only | E3 | ✅ |
+| docker destructive commands on Never-lines only | E4 | ✅ |
+| secrets prose carries a restriction | E5 | ✅ |
+| Credential names consistent (TRIGGER×1, README×4) | E6 | ✅ |
+| Orphan sweep (only coordination prose remains) | E7 | ✅ |
+| No raw tools in TRIGGER `tools:` | E10 | ✅ |
+| Integration test green | E8 | ⏳ BLOCKED_ON M19_001 |
+| `zombiectl zombie install` exists | E9 | ⏳ BLOCKED_ON M19_001 |
+| Worker never holds raw kubeconfig | manual, §4.2 | ⏳ deferred |
 
 ---
 
 ## Discovery
 
-Spec-level findings surfaced during CHORE(open) amendment (Apr 21, 2026):
+Spec-level findings surfaced during authoring (Apr 21–22, 2026). Full chronological narrative in `docs/nostromo/LOG_Apr_22_08_14_31_M33_001.md`.
 
-1. **`zombiectl zombie install --from <path>` dependency.** M19_001 owns the `--from <path>` flag; it is still PENDING. Today only `zombiectl install <template>` is shipped (template-name based). M33 static artifacts land now; §4 integration dimensions carry `BLOCKED_ON: M19_001` and the test file lands alongside M19_001's handler in the repo's colocation convention.
-2. **Tool-enforcement runtime does not yet exist.** `src/zombie/firewall/` enforces at the HTTP request boundary (domain allowlist + endpoint rules + injection detection). Shell-verb allowlisting (e.g. rejecting `kubectl delete ns`) is a different layer — the tool dispatcher / nullclaw. §3 dims are tagged `BLOCKED_ON: nullclaw-tool-policy`. M33 lands the declarative policy (in sub-skill SKILL.md files) so the enforcement layer has data to read when it ships.
-3. **Brainstormed skill sources are untracked.** `docs/brainstormed/samples/skills/kubectl-readonly/README.md` and `docker-readonly/README.md` are not in git. `git mv` is meaningless; M33 authors fresh `SKILL.md` files at the target paths using the brainstormed content as reference. Brainstormed copies remain untracked on disk.
-4. **Test-path convention mismatch.** Spec prescribed `tests/integration/samples_homelab_test.zig`; repo convention is `src/**/*_integration_test.zig`. Amended.
-5. **Internal contradictions in original spec:** header said "M32 §9 moves the skills" while Execution Plan Step 1 said "M33 owns this move (see §0.1 below)"; no §0.1 target existed. Amended: M33 authors the landed content at the new path; no move is needed (untracked sources).
-
-6. **Option-B pivot — sub-skills removed.** After the initial authoring, the user challenged the per-tool sub-skill layer (`samples/homelab/skills/{kubectl,docker}-readonly/SKILL.md`) as invented ceremony with no consumer. Reconsidered: the homelab zombie is the sole user of these allowlists today, YAGNI applies, and a single-file prose policy is simpler. Pivoted to option B — natural-language allowlist in the `SKILL.md` prompt body ("Tools you can use" section), credentials declared in `TRIGGER.md` (same convention used by the in-tree samples today), sub-skill directory deleted. Invariants 1–3 + §2.4 now gate the prose via grep (destructive verbs must appear inside "Never use" sentences). Feedback memory saved at `feedback_skill_policy_prose.md`.
-
-7. **Cross-spec stale reference.** `docs/v2/pending/P1_DOCS_API_CLI_M32_001_QUICKSTART_V2_REWRITE.md` line ~277 still mentions `samples/homelab/skills/kubectl-readonly/` and `docker-readonly/` sub-skill paths. Those paths no longer exist after the option-B pivot. M33 does not edit other agents' active specs; leaving this as a coordination note for the M32_001 author to reconcile when they revisit.
-
-8. **`samples/lead-collector/` is slated for deletion per v2 direction but no current spec owned it at the time of M33 authoring.** The brainstormed v2 direction (`docs/brainstormed/usezombie-v2-milestone-specs-prompt.md` §6, line 71: "DELETE `samples/lead-collector/`") calls for removal. M32_001 removes the external `docs/integrations/lead-collector.mdx` doc page but does not touch the `samples/lead-collector/` directory in this repo. M33 previously described its TRIGGER.md shape as "mirroring `samples/lead-collector/`" — those references were rotting and have been rewritten to be self-describing and to point at `samples/homelab/TRIGGER.md` as the forward canonical example. The deletion itself was **out of scope for M33** (baked into `zombiectl/templates/lead-collector/`, `zombiectl/src/commands/zombie.js` BUNDLED_TEMPLATES, unit-test fixtures in `src/zombie/{yaml_frontmatter,config_markdown_test,config_parser_test,event_loop_integration_test,event_loop_obs_integration_test}.zig`, `zombiectl/test/zombie.unit.test.js`, and `ui/packages/{app,website}/` tests). The coordinated removal now has its own workstream: **`docs/v2/pending/P1_API_CLI_UI_M34_001_LEAD_COLLECTOR_SAMPLE_TEARDOWN.md`**, which sequences the fixture migrations before the directory deletion so CI stays green throughout.
+1. **M19_001 dependency.** `zombiectl zombie install --from <path>` (M19_001-owned) is not yet shipped; only `zombiectl install <template>` exists. §4 dims tagged `BLOCKED_ON: M19_001`.
+2. **Tool-enforcement runtime gap.** `src/zombie/firewall/` enforces HTTP-boundary (domain + endpoint + injection). Shell-verb allowlisting belongs to the tool dispatcher (nullclaw, future). §3 dims tagged `BLOCKED_ON: nullclaw-tool-policy`.
+3. **Test-path convention.** Spec prescribed `tests/integration/samples_homelab_test.zig`; repo uses `src/**/*_integration_test.zig`. Amended.
+4. **Original-spec contradictions.** Header said "M32 §9 moves the skills"; Execution Plan said "M33 owns this (see §0.1 below)"; no §0.1 existed; brainstormed sources are untracked anyway. Resolved: M33 authors fresh at the target path.
+5. **Option-B pivot.** User challenged the per-tool sub-skill layer as invented ceremony with no second consumer. Sub-skill directory deleted; allowlists moved to prose in `SKILL.md` under "Tools you can use"; credentials moved to `TRIGGER.md`. Invariants 1–3 + §2.4 now gate via word-boundary grep for destructive verbs inside "Never" sentences. Memory: `feedback_skill_policy_prose.md`.
+6. **Stale M32_001 cross-reference.** `docs/v2/pending/P1_DOCS_API_CLI_M32_001_QUICKSTART_V2_REWRITE.md:~277` still mentions `samples/homelab/skills/kubectl-readonly/` + `docker-readonly/`. Not edited here (different agent's spec); M32_001 author to reconcile.
+7. **`samples/lead-collector/` death row.** Brainstormed v2 direction (`docs/brainstormed/usezombie-v2-milestone-specs-prompt.md` §6) calls for its deletion; no spec owned it. M33's TRIGGER.md references previously cited it — rewritten to point at `samples/homelab/TRIGGER.md` as the forward canonical example. The deletion is now a separately filed workstream: **`docs/v2/pending/P1_API_CLI_UI_M34_001_LEAD_COLLECTOR_SAMPLE_TEARDOWN.md`** (sequences fixture migrations before directory deletion so CI stays green).
 
 ---
 
