@@ -1,6 +1,5 @@
 const std = @import("std");
 const httpz = @import("httpz");
-const tenant_billing = @import("../../../state/tenant_billing.zig");
 const obs_log = @import("../../../observability/logging.zig");
 const telemetry_mod = @import("../../../observability/telemetry.zig");
 const error_codes = @import("../../../errors/error_registry.zig");
@@ -27,21 +26,6 @@ fn buildInstallUrl(alloc: std.mem.Allocator, app_slug: []const u8, workspace_id:
         "https://github.com/apps/{s}/installations/new?state={s}",
         .{ app_slug, workspace_id },
     );
-}
-
-/// Upsert the tenant row. Returns false and writes error response on failure.
-fn upsertTenant(conn: anytype, tenant_id: []const u8, now_ms: i64, hx: hx_mod.Hx) bool {
-    _ = common.setTenantSessionContext(conn, tenant_id);
-    _ = conn.exec(
-        \\INSERT INTO tenants (tenant_id, name, created_at, updated_at)
-        \\VALUES ($1, $2, $3, $3)
-        \\ON CONFLICT (tenant_id) DO NOTHING
-    , .{ tenant_id, "Workspace Tenant", now_ms }) catch {
-        log.err("workspace.tenant_upsert_fail error_code=UZ-INTERNAL-003 tenant_id={s}", .{tenant_id});
-        common.internalOperationError(hx.res, "Failed to upsert tenant", hx.req_id);
-        return false;
-    };
-    return true;
 }
 
 /// INSERT workspace row. Billing rolls up to the tenant, so new workspaces
@@ -80,8 +64,14 @@ pub fn innerCreateWorkspace(hx: hx_mod.Hx, req: *httpz.Request) void {
         return;
     }
     const default_branch = normalizeDefaultBranch(parsed.value.default_branch);
-    const tenant_id = hx.principal.tenant_id orelse id_format.generateTenantId(hx.alloc) catch {
-        common.internalOperationError(hx.res, "Failed to allocate tenant id", hx.req_id);
+    // M11_006: every authenticated principal MUST carry tenant_id. The
+    // signup webhook writes it back to Clerk publicMetadata after
+    // `bootstrapPersonalAccount`; a null tenant_id here means either an
+    // unprovisioned Clerk session (reject — caller should refresh and
+    // retry once the webhook lands) or a misconfigured JWT template
+    // (reject — operator bug).
+    const tenant_id = hx.principal.tenant_id orelse {
+        hx.fail(error_codes.ERR_UNAUTHORIZED, "Missing tenant context on session");
         return;
     };
 
@@ -93,19 +83,7 @@ pub fn innerCreateWorkspace(hx: hx_mod.Hx, req: *httpz.Request) void {
     defer hx.ctx.pool.release(conn);
 
     const now_ms = std.time.milliTimestamp();
-    if (!upsertTenant(conn, tenant_id, now_ms, hx)) return;
-
-    // Provision the tenant-billing row if it does not already exist. The
-    // `orelse generateTenantId(...)` fallback above now only fires during
-    // the signup-race window (a fresh Clerk session whose
-    // `publicMetadata.tenant_id` the webhook has not yet written back).
-    // That writeback lands in a follow-up workstream; until then this
-    // call keeps the first `POST /v1/workspaces` after signup from
-    // failing the worker's debit path.
-    tenant_billing.provisionFreeDefault(conn, tenant_id) catch {
-        common.internalOperationError(hx.res, "Failed to provision tenant billing", hx.req_id);
-        return;
-    };
+    _ = common.setTenantSessionContext(conn, tenant_id);
 
     const workspace_id = generateWorkspaceId(hx.alloc) catch {
         common.internalOperationError(hx.res, "Failed to allocate workspace id", hx.req_id);

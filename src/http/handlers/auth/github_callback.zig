@@ -5,8 +5,6 @@ const httpz = @import("httpz");
 const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
 const secrets = @import("../../../secrets/crypto.zig");
 const error_codes = @import("../../../errors/error_registry.zig");
-const id_format = @import("../../../types/id_format.zig");
-const tenant_billing = @import("../../../state/tenant_billing.zig");
 const telemetry_mod = @import("../../../observability/telemetry.zig");
 const common = @import("../common.zig");
 const hx_mod = @import("../hx.zig");
@@ -39,7 +37,12 @@ pub fn innerGitHubCallback(hx: hx_mod.Hx, req: *httpz.Request) void {
     };
     defer hx.ctx.pool.release(conn);
 
-    const now_ms = std.time.milliTimestamp();
+    // M11_006: the OAuth `state` must resolve to an existing workspace
+    // row. Post-bootstrap-removal we never fabricate a tenant here —
+    // the workspace is created via `POST /v1/workspaces` ahead of the
+    // GitHub App install, carrying the authenticated user's tenant_id.
+    // A missing row means a tampered `state` or a stale install link;
+    // reject with 403 rather than invent state.
     const tenant_id = blk: {
         var existing = PgQuery.from(conn.query("SELECT tenant_id FROM workspaces WHERE workspace_id = $1", .{workspace_id}) catch {
             log.err("workspace.tenant_lookup_fail error_code=UZ-INTERNAL-002 workspace_id={s}", .{workspace_id});
@@ -57,49 +60,11 @@ pub fn innerGitHubCallback(hx: hx_mod.Hx, req: *httpz.Request) void {
                 return;
             };
         }
-        break :blk id_format.generateTenantId(hx.alloc) catch {
-            common.internalOperationError(hx.res, "Failed to allocate tenant id", hx.req_id);
-            return;
-        };
+        hx.fail(error_codes.ERR_UNAUTHORIZED, "Unknown workspace in OAuth state");
+        return;
     };
+    defer hx.alloc.free(tenant_id);
     _ = common.setTenantSessionContext(conn, tenant_id);
-
-    _ = conn.exec(
-        \\INSERT INTO tenants (tenant_id, name, created_at, updated_at)
-        \\VALUES ($1, 'GitHub App', $2, $2)
-        \\ON CONFLICT (tenant_id) DO NOTHING
-    , .{ tenant_id, now_ms }) catch {
-        common.internalOperationError(hx.res, "Failed to upsert tenant", hx.req_id);
-        return;
-    };
-
-    {
-        const repo_url = qs.get("repo_url") orelse "https://github.com/unknown/unknown";
-        const default_branch = qs.get("default_branch") orelse "main";
-
-        _ = conn.exec(
-            \\INSERT INTO workspaces
-            \\  (workspace_id, tenant_id, repo_url, default_branch, paused, version, created_at, updated_at)
-            \\VALUES ($1, $2, $3, $4, false, 1, $5, $5)
-            \\ON CONFLICT (workspace_id) DO UPDATE
-            \\SET tenant_id = EXCLUDED.tenant_id,
-            \\    repo_url = EXCLUDED.repo_url,
-            \\    default_branch = EXCLUDED.default_branch,
-            \\    updated_at = EXCLUDED.updated_at
-        , .{ workspace_id, tenant_id, repo_url, default_branch, now_ms }) catch {
-            common.internalOperationError(hx.res, "Failed to upsert workspace", hx.req_id);
-            return;
-        };
-    }
-
-    // Idempotent: no-op when the tenant already has a billing row (the
-    // signup-bootstrap path), and seeds 1000¢ on the GitHub-App-created
-    // tenant path where the OAuth `state` carries a workspace_id that has
-    // no prior row.
-    tenant_billing.provisionFreeDefault(conn, tenant_id) catch {
-        common.internalOperationError(hx.res, "Failed to provision tenant billing", hx.req_id);
-        return;
-    };
 
     secrets.store(
         hx.alloc,
