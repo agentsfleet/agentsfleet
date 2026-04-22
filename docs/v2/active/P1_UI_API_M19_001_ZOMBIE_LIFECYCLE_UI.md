@@ -3,18 +3,125 @@
 **Prototype:** v2
 **Milestone:** M19
 **Workstream:** 001
-**Date:** Apr 13, 2026
-**Status:** PENDING
+**Date:** Apr 13, 2026 (amended Apr 22, 2026)
+**Status:** IN_PROGRESS
 **Priority:** P1 — Without this, the dashboard is read-only; operators must use the CLI for all setup
-**Batch:** B2 — alpha gate, parallel with M11_005, M13_001, M21_001, M27_001, M31_001, M33_001
+**Batch:** B2 — alpha gate, parallel with M11_005 (done), M13_001, M21_001, M27_001, M31_001, M33_001
 **Branch:** feat/m19-zombie-lifecycle-ui
-**Depends on:** M12_001 (app shell + layout), M9_001 (grants/execute API, done)
+**Depends on:** M12_001 (app shell + layout — done), M9_001 (grants/execute API — done), M11_006 (tenant billing `is_exhausted` — in progress; §5 reads its field once merged)
+
+---
+
+## §0.5 — Amendment (Apr 22, 2026): Backend Surface Verified, Scope Reduced to Buildable
+
+**Status:** CONSTRAINT (supersedes conflicting statements in §1–§5 below; original text retained for traceability)
+
+Before CHORE(open) the backend route manifest (`src/http/route_manifest.zig`) was verified against every API endpoint this spec assumes. The original spec's claim "All existing (zombiectl calls these today). UI consumes the same endpoints. This is a pure frontend milestone" is **wrong**: zombiectl itself only implements `install` / `list` / `delete` / `activity`; the remaining commands (`schedule`, `firewall set`, `triggers list`, `update`, `pause`, `resume`) do not exist in CLI or backend. Scope is trimmed to what is buildable today; deferred items are named here with their unblocking milestone.
+
+### Backend surface available now (buildable in this workstream)
+
+| Endpoint | In manifest? | M19 use |
+|---|---|---|
+| `POST   /v1/workspaces/{ws}/zombies` | ✓ | §1 install |
+| `GET    /v1/workspaces/{ws}/zombies` | ✓ | zombies list page (scaffolding) |
+| `DELETE /v1/workspaces/{ws}/zombies/{id}` | ✓ | §4 delete |
+| `POST   /v1/workspaces/{ws}/zombies/{id}/stop` | ✓ | kill (already wired by M12 detail page in M27 stub) |
+| `GET    /v1/workspaces/{ws}/zombies/{id}/activity` | ✓ | detail composition (M27 final owner) |
+| `POST   /v1/webhooks/{zombie_id}` | ✓ | §2 webhook URL derived client-side (URL template is deterministic) |
+| `GET    /v1/tenants/me/billing` | ✓ | §5 exhaustion UI (reads `is_exhausted` / `exhausted_at` after M11_006 merges) |
+
+### Backend surface **missing** — deferred with named follow-up
+
+| Missing endpoint | Original §/Dim | Deferred to |
+|---|---|---|
+| `GET /v1/skills` (template picker source) | §1 template picker, dim 1.1 | M19_002 (skills catalog UI + backend) |
+| `PATCH /v1/workspaces/{ws}/zombies/{id}` (rename / describe) | §4 dim 4.1 | M19_003 (zombie mutation endpoints) |
+| `POST .../{id}/schedule` (cron) | §2 cron mode, dims 2.2–2.4 | M19_003 |
+| `GET \| PUT .../{id}/firewall` | §3 entire section | M19_004 (firewall UI — paired with a backend firewall REST surface; CLI-only for V1) |
+| `POST .../{id}:pause` / `:resume` | §4 dim 4.2 | M19_003 |
+| `GET .../{id}/triggers` (webhook URL fetch) | §2 dim 2.1 | Not needed — URL is `${API_BASE}/v1/webhooks/${zombie_id}`, derivable client-side. Dim 2.1 stays, rewritten. |
+
+### Route ownership bridge (M19 ↔ M27, unchanged in spirit)
+
+§0's partition remains: M19 owns `zombies/new/page.tsx` + `zombies/[id]/components/*.tsx`. M27 owns `zombies/[id]/page.tsx`. Because M27 is PENDING on M26_001 (design-system unification) and M19 needs a host for its panel components, **M19 additionally ships a minimal `zombies/[id]/page.tsx` stub** that composes the three M19 panels and a status header. The stub is tagged `// TODO(M27_001): replace with full detail page composition (kill switch, spend panel, activity feed).` When M27 lands, its `page.tsx` supersedes the stub; M19's `components/` tree is imported unchanged. Same for `zombies/page.tsx` (list) — M19 scaffolds a minimal list, M27 replaces.
+
+### Revised §1–§5 dimension status (authoritative)
+
+| Original dim | Status after amendment | Action |
+|---|---|---|
+| 1.1 (template picker pre-fill) | DEFERRED → M19_002 | no `/v1/skills`; install form uses blank fields only |
+| 1.2 (install + redirect) | IN SCOPE | unchanged |
+| 1.3 (empty-name validation) | IN SCOPE | unchanged |
+| 1.4 (409 conflict toast) | IN SCOPE | unchanged |
+| 1.5 (CLI `Woohoo!` line) | IN SCOPE | zombiectl edit only |
+| 2.1 (webhook URL + copy) | IN SCOPE, REWRITTEN | URL derived client-side from `zombie_id` — no backend fetch |
+| 2.2, 2.3, 2.4 (cron) | DEFERRED → M19_003 | cron UI rendered as disabled tab with "CLI-only for V1" message |
+| 3.1–3.4 (firewall editor) | DEFERRED → M19_004 | §3 becomes a read-only placeholder panel |
+| 4.1 (rename) | DEFERRED → M19_003 | |
+| 4.2 (pause) | DEFERRED → M19_003 | |
+| 4.3 (delete + confirmation) | IN SCOPE | unchanged |
+| 5.1 NEW | IN SCOPE | exhaustion banner on dashboard overview (reads `is_exhausted`) |
+| 5.2 NEW | IN SCOPE | per-zombie badge on detail stub when tenant is exhausted |
+
+### §5 — Balance exhaustion UI (new, absorbs M11_006 handoff)
+
+M11_006 Out of Scope line: *"UI banners / dashboard affordances for exhausted state — separate M19 workstream pulls `is_exhausted` into the UI."* Absorbed here so the handoff doesn't drift.
+
+**Dimensions:**
+
+- 5.1 IN SCOPE
+  - target: `app/(dashboard)/page.tsx` (dashboard overview)
+  - input: `GET /v1/tenants/me/billing` returns `{is_exhausted: true, exhausted_at: <epoch_ms>}`
+  - expected: a destructive-tone banner renders above the main content with "Your credit balance is exhausted. Runs are paused/warn/continue per `BALANCE_EXHAUSTED_POLICY`. [Contact support]" and a timestamp.
+  - test_type: unit (component test, API mock)
+- 5.2 IN SCOPE
+  - target: `app/(dashboard)/zombies/[id]/page.tsx` (stub; M27 will preserve this behavior)
+  - input: same API response
+  - expected: a "Balance exhausted" badge renders adjacent to the zombie name in the detail header.
+  - test_type: unit (component test)
+- 5.3 IN SCOPE
+  - target: both surfaces
+  - input: `is_exhausted: false`
+  - expected: no banner, no badge, no layout shift.
+  - test_type: unit (component test)
+
+### §6 — Scaffolding (new)
+
+Before any panel work. Creates the route skeleton so M27's eventual detail page has neighbors and M19's install redirect has a destination.
+
+**Dimensions:**
+
+- 6.1 IN SCOPE
+  - target: `app/(dashboard)/zombies/page.tsx`
+  - expected: renders a minimal list using `GET /v1/workspaces/{ws}/zombies` via the resolved active-workspace context; "+ Install Zombie" button links to `new/`. Marked `// TODO(M27_001): full list with status + spend columns.`
+  - test_type: unit (component test, API mock)
+- 6.2 IN SCOPE
+  - target: `app/(dashboard)/zombies/[id]/page.tsx` (stub)
+  - expected: renders `<ZombieConfig>` + `<TriggerPanel>` + `<FirewallRulesEditor>` and the exhaustion badge from §5.2. TODO comment points to M27_001.
+  - test_type: unit (smoke — component renders without crashing)
+- 6.3 IN SCOPE
+  - target: `components/layout/Shell.tsx`
+  - expected: sidebar gains a "Zombies" link pointing at `/zombies`.
+  - test_type: unit
+
+### Revised §5.1 — API endpoints actually consumed
+
+```
+POST   /v1/workspaces/{ws}/zombies               — install (§1)
+GET    /v1/workspaces/{ws}/zombies               — list (§6.1)
+DELETE /v1/workspaces/{ws}/zombies/{id}          — delete (§4.3)
+GET    /v1/tenants/me/billing                    — exhaustion UI (§5)
+```
+
+Webhook URL (§2) is **derived client-side** — not an API call. `POST /v1/webhooks/{zombie_id}` is the public ingress path the customer pastes into AgentMail/Slack/etc.
 
 ---
 
 ## Overview
 
 **Goal (testable):** An operator with no CLI access can: install a new zombie from a skill template, copy the webhook URL for their trigger, set a cron schedule, configure firewall rules, rename or delete a zombie, and see all of this reflected live in the dashboard. Every action available in `zombiectl zombie *` subcommands has an equivalent UI surface. An agent or pipeline can perform the same operations via the API.
+
+> **Amendment note:** the goal paragraph above is the *original* aspiration. The Apr 22 amendment (§0.5) trims the shippable surface for this workstream to install + delete + webhook copy + exhaustion UI + route scaffolding; rename / pause / resume / cron / firewall editor / template picker move to the M19_002 – M19_004 follow-ups listed in §0.5.
 
 **Problem:** M12 ships a read-only dashboard. The dashboard shows zombie status, activity, and metrics, but offers no way to install or configure zombies. Every setup step requires the CLI: `zombiectl zombie install`, `zombiectl zombie triggers list`, `zombiectl zombie schedule`, `zombiectl zombie firewall set`. This creates a hard dependency on CLI access for anyone who wants to set up or reconfigure a zombie. CTOs, hiring managers, and ops engineers who are not CLI-first users cannot self-serve. They either rely on an engineer or skip UseZombie entirely.
 
