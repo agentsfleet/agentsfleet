@@ -1,3 +1,7 @@
+// @vitest-environment node
+// Stays on the node environment because two tests below exercise the
+// "no window / server-side" branch of the analytics module. Under happy-dom
+// `window` is always defined, which defeats that assertion.
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 type MockClient = {

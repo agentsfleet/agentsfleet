@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
@@ -21,7 +20,7 @@ const auth = vi.fn();
 const getTokenFn = vi.fn().mockResolvedValue("token_xyz");
 const useAuth = vi.fn(() => ({ getToken: getTokenFn }));
 
-const listWorkspaces = vi.fn();
+const resolveActiveWorkspace = vi.fn();
 const fetchMock = vi.fn();
 const clipboardWriteText = vi.fn().mockResolvedValue(undefined);
 
@@ -37,7 +36,7 @@ vi.mock("next/link", () => ({
   default: ({ href, children, ...rest }: { href: string; children: React.ReactNode }) =>
     React.createElement("a", { href, ...rest }, children),
 }));
-vi.mock("@/lib/api", () => ({ listWorkspaces }));
+vi.mock("@/lib/workspace", () => ({ resolveActiveWorkspace }));
 
 vi.mock("lucide-react", () => {
   function Icon(name: string) {
@@ -399,14 +398,14 @@ describe("zombies routes", () => {
   });
 
   it("zombies list page renders empty-workspace state", async () => {
-    listWorkspaces.mockResolvedValueOnce({ data: [] });
+    resolveActiveWorkspace.mockResolvedValueOnce(null);
     const { default: Page } = await import("../app/(dashboard)/zombies/page");
     const markup = renderToStaticMarkup(await Page());
     expect(markup).toContain("No workspace yet");
   });
 
   it("zombies list page renders empty-zombies state with banner suppressed", async () => {
-    listWorkspaces.mockResolvedValueOnce({ data: [{ id: "ws_1" }] });
+    resolveActiveWorkspace.mockResolvedValueOnce({ id: "ws_1" });
     fetchMock.mockImplementation(async (url: string) => {
       if (url.endsWith("/v1/tenants/me/billing")) {
         return { ok: true, status: 200, json: async () => happyBilling };
@@ -425,7 +424,7 @@ describe("zombies routes", () => {
   });
 
   it("zombies list page renders populated list + exhaustion banner", async () => {
-    listWorkspaces.mockResolvedValueOnce({ data: [{ id: "ws_1" }] });
+    resolveActiveWorkspace.mockResolvedValueOnce({ id: "ws_1" });
     mockFetchBilling(exhaustedBilling);
     const { default: Page } = await import("../app/(dashboard)/zombies/page");
     const markup = renderToStaticMarkup(await Page());
@@ -435,7 +434,7 @@ describe("zombies routes", () => {
   });
 
   it("zombies list page swallows a failed billing fetch and still renders", async () => {
-    listWorkspaces.mockResolvedValueOnce({ data: [{ id: "ws_1" }] });
+    resolveActiveWorkspace.mockResolvedValueOnce({ id: "ws_1" });
     fetchMock.mockImplementation(async (url: string) => {
       if (url.endsWith("/v1/tenants/me/billing")) {
         return { ok: false, status: 500, statusText: "err", json: async () => ({}) };
@@ -458,14 +457,14 @@ describe("zombies routes", () => {
   });
 
   it("zombies new page renders empty-workspace guard", async () => {
-    listWorkspaces.mockResolvedValueOnce({ data: [] });
+    resolveActiveWorkspace.mockResolvedValueOnce(null);
     const { default: Page } = await import("../app/(dashboard)/zombies/new/page");
     const markup = renderToStaticMarkup(await Page());
     expect(markup).toContain("Create a workspace before installing zombies");
   });
 
   it("zombies new page renders the install form when a workspace exists", async () => {
-    listWorkspaces.mockResolvedValueOnce({ data: [{ id: "ws_1" }] });
+    resolveActiveWorkspace.mockResolvedValueOnce({ id: "ws_1" });
     const { default: Page } = await import("../app/(dashboard)/zombies/new/page");
     const markup = renderToStaticMarkup(await Page());
     expect(markup).toContain("Install Zombie");
@@ -482,7 +481,7 @@ describe("zombies routes", () => {
   });
 
   it("zombies detail page notFound when no workspace", async () => {
-    listWorkspaces.mockResolvedValueOnce({ data: [] });
+    resolveActiveWorkspace.mockResolvedValueOnce(null);
     const { default: Page } = await import("../app/(dashboard)/zombies/[id]/page");
     await expect(Page({ params: Promise.resolve({ id: "zom_1" }) })).rejects.toThrow(
       "notFound",
@@ -490,7 +489,7 @@ describe("zombies routes", () => {
   });
 
   it("zombies detail page notFound when zombie id is not in the list", async () => {
-    listWorkspaces.mockResolvedValueOnce({ data: [{ id: "ws_1" }] });
+    resolveActiveWorkspace.mockResolvedValueOnce({ id: "ws_1" });
     mockFetchBilling(happyBilling);
     const { default: Page } = await import("../app/(dashboard)/zombies/[id]/page");
     await expect(
@@ -499,7 +498,7 @@ describe("zombies routes", () => {
   });
 
   it("zombies detail page renders panels + exhaustion badge when tenant is exhausted", async () => {
-    listWorkspaces.mockResolvedValueOnce({ data: [{ id: "ws_1" }] });
+    resolveActiveWorkspace.mockResolvedValueOnce({ id: "ws_1" });
     mockFetchBilling(exhaustedBilling);
     const { default: Page } = await import("../app/(dashboard)/zombies/[id]/page");
     const markup = renderToStaticMarkup(
@@ -513,7 +512,7 @@ describe("zombies routes", () => {
   });
 
   it("zombies detail page renders without badge when not exhausted", async () => {
-    listWorkspaces.mockResolvedValueOnce({ data: [{ id: "ws_1" }] });
+    resolveActiveWorkspace.mockResolvedValueOnce({ id: "ws_1" });
     mockFetchBilling(happyBilling);
     const { default: Page } = await import("../app/(dashboard)/zombies/[id]/page");
     const markup = renderToStaticMarkup(
@@ -523,7 +522,7 @@ describe("zombies routes", () => {
   });
 
   it("zombies detail page handles billing fetch failure gracefully (catch branch)", async () => {
-    listWorkspaces.mockResolvedValueOnce({ data: [{ id: "ws_1" }] });
+    resolveActiveWorkspace.mockResolvedValueOnce({ id: "ws_1" });
     fetchMock.mockImplementation(async (url: string) => {
       if (url.endsWith("/v1/tenants/me/billing")) {
         throw new Error("network down");

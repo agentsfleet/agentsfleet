@@ -1,9 +1,9 @@
 import { auth } from "@clerk/nextjs/server";
 import { notFound } from "next/navigation";
 import { PageHeader, PageTitle, SectionLabel } from "@usezombie/design-system";
-import { listWorkspaces } from "@/lib/api";
 import { listZombies } from "@/lib/api/zombies";
 import { getTenantBilling } from "@/lib/api/tenant_billing";
+import { resolveActiveWorkspace } from "@/lib/workspace";
 import TriggerPanel from "./components/TriggerPanel";
 import FirewallRulesEditor from "./components/FirewallRulesEditor";
 import ZombieConfig from "./components/ZombieConfig";
@@ -25,8 +25,7 @@ export default async function ZombieDetailStub({
   const token = await getToken();
   if (!token) notFound();
 
-  const workspaces = await listWorkspaces(token).then((r) => r.data);
-  const workspace = workspaces[0];
+  const workspace = await resolveActiveWorkspace(token);
   if (!workspace) notFound();
 
   const [zombies, billing] = await Promise.all([

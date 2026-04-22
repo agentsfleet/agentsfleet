@@ -1,7 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { notFound } from "next/navigation";
 import { PageHeader, PageTitle } from "@usezombie/design-system";
-import { listWorkspaces } from "@/lib/api";
+import { resolveActiveWorkspace } from "@/lib/workspace";
 import InstallZombieForm from "./InstallZombieForm";
 
 export const dynamic = "force-dynamic";
@@ -13,8 +13,7 @@ export default async function InstallZombiePage() {
   const token = await getToken();
   if (!token) notFound();
 
-  const workspaces = await listWorkspaces(token).then((r) => r.data);
-  const workspace = workspaces[0];
+  const workspace = await resolveActiveWorkspace(token);
   if (!workspace) {
     return (
       <div>

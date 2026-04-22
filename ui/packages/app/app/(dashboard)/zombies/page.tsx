@@ -6,24 +6,20 @@ import {
   PageHeader,
   PageTitle,
 } from "@usezombie/design-system";
-import { listWorkspaces } from "@/lib/api";
 import { listZombies } from "@/lib/api/zombies";
 import { getTenantBilling } from "@/lib/api/tenant_billing";
+import { resolveActiveWorkspace } from "@/lib/workspace";
 import ExhaustionBanner from "@/components/domain/ExhaustionBanner";
 import { PlusIcon } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
-// Resolves "current workspace" as the first one from the list. The proper
-// workspace switcher belongs to the dashboard-pages workstream; keeping
-// this lightweight so the install flow has a destination today.
 export default async function ZombiesListPage() {
   const { getToken } = await auth();
   const token = await getToken();
   if (!token) return null;
 
-  const workspaces = await listWorkspaces(token).then((r) => r.data);
-  const workspace = workspaces[0];
+  const workspace = await resolveActiveWorkspace(token);
   if (!workspace) {
     return (
       <div>
