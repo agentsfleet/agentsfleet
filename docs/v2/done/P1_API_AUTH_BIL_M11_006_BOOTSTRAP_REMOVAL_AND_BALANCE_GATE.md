@@ -4,7 +4,7 @@
 **Milestone:** M11
 **Workstream:** 006
 **Date:** Apr 21, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE (dims 1.2 / 1.3 / 1.7 DEFERRED to M11_006_b — Clerk publicMetadata writeback)
 **Priority:** P1 — Unblocks "tenant billing is the only debit path" and closes the tenant-less auth escape hatch.
 **Batch:** B3 — alpha-hardening; ships after M11_005 + M11_003 are live.
 **Branch:** feat/m11-006-bootstrap-removal-balance-gate
@@ -157,8 +157,8 @@ Deliver `playbooks/012_usezombie_admin_bootstrap/001_playbook.md`. The playbook 
 
 | Dim | Status | Target | Input | Expected | Test type |
 |-----|--------|--------|-------|----------|-----------|
-| 5.1 | PENDING | `playbooks/012_usezombie_admin_bootstrap/001_playbook.md` | file exists | Markdown file with Human/Agent split table, step-by-step instructions, acceptance criteria per step, vault paths resolved via `op` CLI, idempotency notes on each step. | lint |
-| 5.2 | PENDING | playbook correctness | agent reads playbook, extracts the `curl` for key minting | `POST /v1/api-keys` payload shape matches M28_002 contract (`{"key_name":"admin-cli"}`); response path `$.key` written to `op://ZMB_CD_<env>/usezombie-admin` field `api_key` | manual |
+| 5.1 | DONE | `playbooks/012_usezombie_admin_bootstrap/001_playbook.md` | file exists | Markdown file with Human/Agent split table, step-by-step instructions, acceptance criteria per step, vault paths resolved via `op` CLI, idempotency notes on each step. | lint |
+| 5.2 | DONE | playbook correctness | agent reads playbook, extracts the `curl` for key minting | `POST /v1/api-keys` payload shape matches M28_002 contract (`{"key_name":"admin-cli"}`); response path `$.key` written to `op://ZMB_CD_<env>/usezombie-admin` field `api_key` | manual |
 
 ---
 
