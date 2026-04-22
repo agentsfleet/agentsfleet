@@ -12,6 +12,7 @@ import {
   wsZombieActivityPath,
 } from "../lib/api-paths.js";
 import { commandCredential } from "./zombie_credential.js";
+import { commandList } from "./zombie_list.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const TEMPLATES_DIR = join(__dirname, "../../templates");
@@ -27,6 +28,7 @@ export async function commandZombie(ctx, args, workspaces, deps) {
 
   if (action === "install") return commandInstall(ctx, args.slice(1), deps);
   if (action === "up") return commandUp(ctx, args.slice(1), workspaces, deps);
+  if (action === "list") return commandList(ctx, args.slice(1), workspaces, deps);
   if (action === "status") return commandStatus(ctx, args.slice(1), workspaces, deps);
   if (action === "kill") return commandKill(ctx, args.slice(1), workspaces, deps);
   if (action === "logs") return commandLogs(ctx, args.slice(1), workspaces, deps);

@@ -11,6 +11,7 @@ const routes = [
   // M1_001 §5: Zombie commands — flat top-level for common ops
   { key: "zombie.install", match: (cmd) => cmd === "install" },
   { key: "zombie.up", match: (cmd) => cmd === "up" },
+  { key: "zombie.list", match: (cmd) => cmd === "list" },
   { key: "zombie.status", match: (cmd) => cmd === "status" },
   { key: "zombie.kill", match: (cmd) => cmd === "kill" },
   { key: "zombie.logs", match: (cmd) => cmd === "logs" },

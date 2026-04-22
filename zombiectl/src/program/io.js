@@ -34,9 +34,22 @@ function printHelp(stdout, ui, opts = {}) {
   writeLine(stdout, "  logout");
   writeLine(stdout, "  workspace add <repo_url> [--default-branch BRANCH]");
   writeLine(stdout, "  workspace list");
+  writeLine(stdout, "  workspace use <workspace_id>");
+  writeLine(stdout, "  workspace show [--workspace-id ID]");
+  writeLine(stdout, "  workspace credentials");
+  writeLine(stdout, "  workspace billing [--workspace-id ID]");
   writeLine(stdout, "  workspace remove <workspace_id>");
   writeLine(stdout, "  specs sync [--workspace-id ID]");
   writeLine(stdout, "  doctor");
+  writeLine(stdout);
+  writeLine(stdout, ui.head("ZOMBIE COMMANDS  (top-level — e.g. `zombiectl list`)"));
+  writeLine(stdout, "  install <template>                  Scaffold a new zombie");
+  writeLine(stdout, "  up [<path>]                         Deploy the zombie in <path> (or CWD)");
+  writeLine(stdout, "  list [--cursor C] [--limit N]       List zombies (cursor-paginated)");
+  writeLine(stdout, "  status [<zombie_id>]                Show zombie(s) status");
+  writeLine(stdout, "  kill <zombie_id>                    Delete a zombie");
+  writeLine(stdout, "  logs <zombie_id>                    Tail zombie activity");
+  writeLine(stdout, "  credential add|list|remove          Per-zombie credential overrides");
 
   if (showOperator) {
     writeLine(stdout);

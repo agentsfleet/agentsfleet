@@ -163,6 +163,9 @@ export async function runCli(argv, io = {}) {
     zombieUp: (routeArgs) => commandZombieModule(ctx, ["up", ...routeArgs], workspaces, {
       parseFlags, request, apiHeaders, ui, printJson, printKeyValue, printSection, writeLine, writeError,
     }),
+    zombieList: (routeArgs) => commandZombieModule(ctx, ["list", ...routeArgs], workspaces, {
+      parseFlags, request, apiHeaders, ui, printJson, printKeyValue, printSection, printTable, writeLine, writeError,
+    }),
     zombieStatus: (routeArgs) => commandZombieModule(ctx, ["status", ...routeArgs], workspaces, {
       parseFlags, request, apiHeaders, ui, printJson, printKeyValue, printSection, writeLine, writeError,
     }),
