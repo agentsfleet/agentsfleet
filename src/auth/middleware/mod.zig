@@ -24,7 +24,6 @@ pub const run = chain.run;
 pub const AuthCtx = auth_ctx.AuthCtx;
 pub const WriteErrorFn = auth_ctx.WriteErrorFn;
 
-pub const admin_api_key = @import("admin_api_key.zig");
 pub const bearer_oidc = @import("bearer_oidc.zig");
 pub const bearer_or_api_key = @import("bearer_or_api_key.zig");
 pub const tenant_api_key = @import("tenant_api_key.zig");
@@ -36,7 +35,6 @@ pub const slack_signature = @import("slack_signature.zig");
 pub const svix_signature_mod = @import("svix_signature.zig");
 pub const oauth_state = @import("oauth_state.zig");
 
-pub const AdminApiKey = admin_api_key.AdminApiKey;
 pub const BearerOidc = bearer_oidc.BearerOidc;
 pub const BearerOrApiKey = bearer_or_api_key.BearerOrApiKey;
 pub const TenantApiKey = tenant_api_key.TenantApiKey;
@@ -60,7 +58,6 @@ pub const AuthPrincipal = auth_ctx.AuthPrincipal;
 pub const MiddlewareRegistry = struct {
     // ── Concrete middleware instances ─────────────────────────────────────
     bearer_or_api_key: BearerOrApiKey,
-    admin_api_key_mw: AdminApiKey,
     tenant_api_key_mw: TenantApiKey,
     require_role_admin: RequireRole,
     require_role_operator: RequireRole,
@@ -75,7 +72,6 @@ pub const MiddlewareRegistry = struct {
     _bearer_chain: [1]Middleware(AuthCtx) = undefined,
     _admin_chain: [2]Middleware(AuthCtx) = undefined,
     _operator_chain: [2]Middleware(AuthCtx) = undefined,
-    _admin_api_key_chain: [1]Middleware(AuthCtx) = undefined,
     _webhook_hmac_chain: [1]Middleware(AuthCtx) = undefined,
     _webhook_secret_chain: [1]Middleware(AuthCtx) = undefined,
     _slack_chain: [1]Middleware(AuthCtx) = undefined,
@@ -103,7 +99,6 @@ pub const MiddlewareRegistry = struct {
             self.bearer_or_api_key.middleware(),
             self.require_role_operator.middleware(),
         };
-        self._admin_api_key_chain = .{self.admin_api_key_mw.middleware()};
         self._webhook_hmac_chain = .{self.webhook_hmac_mw.middleware()};
         self._webhook_secret_chain = .{self.webhook_url_secret_mw.middleware()};
         self._slack_chain = .{self.slack_sig.middleware()};
@@ -141,11 +136,6 @@ pub const MiddlewareRegistry = struct {
     /// Bearer token or admin API key, operator role required.
     pub fn operator(self: *MiddlewareRegistry) []const Middleware(AuthCtx) {
         return &self._operator_chain;
-    }
-
-    /// Admin API key only (no JWT path).
-    pub fn adminApiKey(self: *MiddlewareRegistry) []const Middleware(AuthCtx) {
-        return &self._admin_api_key_chain;
     }
 
     /// HMAC-SHA256 body signature (approval/generic webhooks).

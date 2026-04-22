@@ -149,7 +149,7 @@ fn startTestServer(alloc: std.mem.Allocator) !*TestServer {
         .session_store = auth_sessions.SessionStore.init(alloc),
         .verifier = oidc.Verifier.init(alloc, .{ .provider = .clerk, .jwks_url = TEST_JWKS_URL, .issuer = TEST_ISSUER, .audience = TEST_AUDIENCE, .inline_jwks_json = TEST_JWKS }),
         .registry = undefined,
-        .ctx = .{ .pool = db_ctx.pool, .queue = undefined, .alloc = alloc, .api_keys = "", .oidc = undefined, .auth_sessions = undefined, .app_url = "http://127.0.0.1", .api_in_flight_requests = std.atomic.Value(u32).init(0), .api_max_in_flight_requests = 64, .ready_max_queue_depth = null, .ready_max_queue_age_ms = null, .telemetry = undefined },
+        .ctx = .{ .pool = db_ctx.pool, .queue = undefined, .alloc = alloc, .oidc = undefined, .auth_sessions = undefined, .app_url = "http://127.0.0.1", .api_in_flight_requests = std.atomic.Value(u32).init(0), .api_max_in_flight_requests = 64, .ready_max_queue_depth = null, .ready_max_queue_age_ms = null, .telemetry = undefined },
         .telemetry = undefined,
         .server = undefined,
         .thread = undefined,
@@ -165,8 +165,7 @@ fn startTestServer(alloc: std.mem.Allocator) !*TestServer {
     srv.ctx.oidc = &srv.verifier;
     srv.ctx.auth_sessions = &srv.session_store;
     srv.registry = .{
-        .bearer_or_api_key = .{ .api_keys = "", .verifier = &srv.verifier },
-        .admin_api_key_mw = .{ .api_keys = "" },
+        .bearer_or_api_key = .{ .verifier = &srv.verifier },
         .tenant_api_key_mw = .{ .host = undefined, .lookup = stubTenantApiKeyLookup },
         .require_role_admin = .{ .required = .admin },
         .require_role_operator = .{ .required = .operator },

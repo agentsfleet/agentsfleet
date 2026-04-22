@@ -20,6 +20,8 @@
               - plan_sku
               - balance_cents
               - updated_at
+              - is_exhausted
+              - exhausted_at
               properties:
                 plan_tier:
                   type: string
@@ -35,5 +37,13 @@
                   type: integer
                   format: int64
                   description: Last update time (epoch ms)
+                is_exhausted:
+                  type: boolean
+                  description: True once the balance has hit zero on a worker debit.
+                exhausted_at:
+                  type: integer
+                  format: int64
+                  nullable: true
+                  description: Epoch ms of the first exhausting debit. Null until the balance is exhausted.
       default:
         $ref: ../components/responses.yaml#/components/responses/Error

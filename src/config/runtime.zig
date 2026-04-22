@@ -24,7 +24,6 @@ pub const ServeConfig = struct {
     pub const printValidationError = validate.printValidationError;
 
     port: u16,
-    api_keys: []u8,
     cache_root: []u8,
     api_http_threads: i16,
     api_http_workers: i16,
@@ -53,15 +52,15 @@ pub const ServeConfig = struct {
         const sizes = try loader.loadSizes(alloc);
         const oidc_cfg = try loader.loadOidc(alloc);
         errdefer loader.freeOidc(alloc, oidc_cfg);
-        const api_keys = try loader.loadApiKeys(alloc, oidc_cfg.enabled);
-        errdefer alloc.free(api_keys);
+        // M11_006: OIDC is now required — the env-var admin bootstrap was
+        // the only non-OIDC auth path and it's gone.
+        if (!oidc_cfg.enabled) return ValidationError.OidcRequired;
         const enc = try loader.loadEncryption(alloc);
         errdefer loader.freeEncryption(alloc, enc);
         const misc = try loader.loadMisc(alloc);
 
         return .{
             .port = sizes.port,
-            .api_keys = api_keys,
             .cache_root = misc.cache_root,
             .api_http_threads = sizes.api_http_threads,
             .api_http_workers = sizes.api_http_workers,
@@ -83,7 +82,6 @@ pub const ServeConfig = struct {
     }
 
     pub fn deinit(self: *ServeConfig) void {
-        self.alloc.free(self.api_keys);
         self.alloc.free(self.cache_root);
         self.alloc.free(self.app_url);
         if (self.oidc_jwks_url) |v| self.alloc.free(v);

@@ -1,6 +1,6 @@
 const std = @import("std");
 const httpz = @import("httpz");
-const tenant_billing = @import("../../../state/tenant_billing.zig");
+const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
 const obs_log = @import("../../../observability/logging.zig");
 const telemetry_mod = @import("../../../observability/telemetry.zig");
 const error_codes = @import("../../../errors/error_registry.zig");
@@ -12,6 +12,20 @@ const log = std.log.scoped(.http);
 
 fn generateWorkspaceId(alloc: std.mem.Allocator) ![]const u8 {
     return id_format.generateWorkspaceId(alloc);
+}
+
+/// Best-effort tenant existence probe. Returns true when the row is
+/// present; returns true on DB error too so we fail open — the FK
+/// constraint on the subsequent INSERT is the authoritative gate, this
+/// is just a cleaner surface for the common "stale claim" case.
+fn tenantExists(conn: anytype, tenant_id: []const u8) bool {
+    var q = PgQuery.from(conn.query(
+        "SELECT 1 FROM tenants WHERE tenant_id = $1 LIMIT 1",
+        .{tenant_id},
+    ) catch return true);
+    defer q.deinit();
+    const row = q.next() catch return true;
+    return row != null;
 }
 
 fn normalizeDefaultBranch(default_branch: ?[]const u8) []const u8 {
@@ -27,21 +41,6 @@ fn buildInstallUrl(alloc: std.mem.Allocator, app_slug: []const u8, workspace_id:
         "https://github.com/apps/{s}/installations/new?state={s}",
         .{ app_slug, workspace_id },
     );
-}
-
-/// Upsert the tenant row. Returns false and writes error response on failure.
-fn upsertTenant(conn: anytype, tenant_id: []const u8, now_ms: i64, hx: hx_mod.Hx) bool {
-    _ = common.setTenantSessionContext(conn, tenant_id);
-    _ = conn.exec(
-        \\INSERT INTO tenants (tenant_id, name, created_at, updated_at)
-        \\VALUES ($1, $2, $3, $3)
-        \\ON CONFLICT (tenant_id) DO NOTHING
-    , .{ tenant_id, "Workspace Tenant", now_ms }) catch {
-        log.err("workspace.tenant_upsert_fail error_code=UZ-INTERNAL-003 tenant_id={s}", .{tenant_id});
-        common.internalOperationError(hx.res, "Failed to upsert tenant", hx.req_id);
-        return false;
-    };
-    return true;
 }
 
 /// INSERT workspace row. Billing rolls up to the tenant, so new workspaces
@@ -80,8 +79,14 @@ pub fn innerCreateWorkspace(hx: hx_mod.Hx, req: *httpz.Request) void {
         return;
     }
     const default_branch = normalizeDefaultBranch(parsed.value.default_branch);
-    const tenant_id = hx.principal.tenant_id orelse id_format.generateTenantId(hx.alloc) catch {
-        common.internalOperationError(hx.res, "Failed to allocate tenant id", hx.req_id);
+    // M11_006: every authenticated principal MUST carry tenant_id. The
+    // signup webhook writes it back to Clerk publicMetadata after
+    // `bootstrapPersonalAccount`; a null tenant_id here means either an
+    // unprovisioned Clerk session (reject — caller should refresh and
+    // retry once the webhook lands) or a misconfigured JWT template
+    // (reject — operator bug).
+    const tenant_id = hx.principal.tenant_id orelse {
+        hx.fail(error_codes.ERR_UNAUTHORIZED, "Missing tenant context on session");
         return;
     };
 
@@ -93,22 +98,17 @@ pub fn innerCreateWorkspace(hx: hx_mod.Hx, req: *httpz.Request) void {
     defer hx.ctx.pool.release(conn);
 
     const now_ms = std.time.milliTimestamp();
-    if (!upsertTenant(conn, tenant_id, now_ms, hx)) return;
+    _ = common.setTenantSessionContext(conn, tenant_id);
 
-    // TODO(legacy-bootstrap): remove when ZOMBIED_ADMIN_API_KEY env-var
-    // principal is deleted. Post-removal `hx.principal.tenant_id` is never
-    // null for authenticated requests, so the `orelse generateTenantId(...)`
-    // fallback above goes away and signup_bootstrap is the only provision
-    // site. Tracked in M11_006.
-    //
-    // Idempotent: signup-bootstrapped tenants already have a row (ON CONFLICT
-    // DO NOTHING). The legacy bootstrap API-key path with no tenant_id claim
-    // generates a fresh tenant above; this seeds 1000¢ so the worker's first
-    // debit doesn't hit the "row missing" branch.
-    tenant_billing.provisionFreeDefault(conn, tenant_id) catch {
-        common.internalOperationError(hx.res, "Failed to provision tenant billing", hx.req_id);
+    // Defensive probe: a JWT claim that names an unknown tenant (stale
+    // session, hand-crafted token, replay after tenant deletion) would
+    // otherwise 500 on the workspace FK constraint. Converting to a
+    // clean 401 keeps the handler predictable for integration tests +
+    // the alpha client.
+    if (!tenantExists(conn, tenant_id)) {
+        hx.fail(error_codes.ERR_UNAUTHORIZED, "Tenant on session does not exist");
         return;
-    };
+    }
 
     const workspace_id = generateWorkspaceId(hx.alloc) catch {
         common.internalOperationError(hx.res, "Failed to allocate workspace id", hx.req_id);

@@ -5,8 +5,7 @@
 // helpers and validation helpers, both of which produce these errors.
 
 pub const ValidationError = error{
-    MissingApiKey,
-    InvalidApiKeyList,
+    OidcRequired,
     MissingOidcJwksUrl,
     InvalidOidcProvider,
     MissingEncryptionMasterKey,

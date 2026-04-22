@@ -120,8 +120,7 @@ pub fn run(alloc: std.mem.Allocator) !void {
     log.info("startup.config_load status=start", .{});
     var serve_cfg = runtime_config.ServeConfig.load(alloc) catch |err| {
         switch (err) {
-            runtime_config.ValidationError.MissingApiKey,
-            runtime_config.ValidationError.InvalidApiKeyList,
+            runtime_config.ValidationError.OidcRequired,
             runtime_config.ValidationError.MissingOidcJwksUrl,
             runtime_config.ValidationError.InvalidOidcProvider,
             runtime_config.ValidationError.MissingEncryptionMasterKey,
@@ -177,7 +176,6 @@ pub fn run(alloc: std.mem.Allocator) !void {
         .pool = api_pool,
         .queue = &api_queue,
         .alloc = alloc,
-        .api_keys = serve_cfg.api_keys,
         .oidc = null,
         .auth_sessions = &sessions,
         .app_url = serve_cfg.app_url,
@@ -229,11 +227,7 @@ pub fn run(alloc: std.mem.Allocator) !void {
 
     var registry = auth_mw.MiddlewareRegistry{
         .bearer_or_api_key = .{
-            .api_keys = serve_cfg.api_keys,
             .verifier = ctx.oidc,
-        },
-        .admin_api_key_mw = .{
-            .api_keys = serve_cfg.api_keys,
         },
         .tenant_api_key_mw = .{
             .host = &api_key_lookup_ctx,
@@ -270,10 +264,6 @@ pub fn run(alloc: std.mem.Allocator) !void {
     registry.setWebhookSig(webhook_sig_mw.middleware());
     registry.setSvixSig(svix_mw.middleware());
     log.info("startup.middleware_registry status=ok", .{});
-
-    if (serve_cfg.api_keys.len > 0) {
-        log.warn("startup.bootstrap_api_key status=warning message=\"env-var API_KEY is bootstrap-only; migrate to tenant API keys via POST /v1/api-keys\"", .{});
-    }
 
     shutdown_requested.store(false, .release);
     preflight.installSignalHandlers(onSignal);

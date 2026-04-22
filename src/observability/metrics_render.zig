@@ -133,6 +133,7 @@ pub fn renderPrometheus(
             .{ .label_value = "missing_email", .value = s.signup_failed_missing_email_total },
             .{ .label_value = "db_error", .value = s.signup_failed_db_error_total },
             .{ .label_value = "pool_unavailable", .value = s.signup_failed_pool_unavailable_total },
+            .{ .label_value = "metadata_writeback", .value = s.signup_failed_metadata_writeback_total },
         },
     );
 
