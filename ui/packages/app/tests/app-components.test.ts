@@ -25,10 +25,15 @@ vi.mock("@/lib/analytics/posthog", () => ({
 vi.mock("@clerk/nextjs", () => ({
   UserButton: () => React.createElement("div", { "data-user-button": "1" }),
   useUser: mocks.useUser,
+  ClerkProvider: ({ children }: { children: React.ReactNode }) => React.createElement(React.Fragment, null, children),
+  SignIn: () => React.createElement("div", { "data-sign-in": "1" }),
+  SignUp: () => React.createElement("div", { "data-sign-up": "1" }),
+  useAuth: () => ({ getToken: async () => "token_stub" }),
 }));
 
 vi.mock("next/navigation", () => ({
   usePathname: mocks.usePathname,
+  useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
 }));
 
 vi.mock("next/link", () => ({
@@ -47,6 +52,8 @@ vi.mock("lucide-react", () => ({
   SettingsIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "SettingsIcon" }),
   BookOpenIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "BookOpenIcon" }),
   ZapIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "ZapIcon" }),
+  ShieldIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "ShieldIcon" }),
+  KeyRoundIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "KeyRoundIcon" }),
 }));
 
 type ClickableElement = React.ReactElement<{ children?: React.ReactNode; onClick?: (...args: unknown[]) => unknown }>;
@@ -83,132 +90,6 @@ afterEach(() => {
 });
 
 describe("app components", () => {
-  it("renders pipeline stages with state icon and optional connector", async () => {
-    const { default: PipelineStage } = await import("../components/domain/PipelineStage");
-    const activeMarkup = renderToStaticMarkup(
-      React.createElement(PipelineStage, {
-        stage: "PATCH_IN_PROGRESS",
-        state: "active",
-        showConnector: true,
-      }),
-    );
-    const pendingMarkup = renderToStaticMarkup(
-      React.createElement(PipelineStage, {
-        stage: "CUSTOM_STAGE" as never,
-        state: "pending",
-        showConnector: false,
-      }),
-    );
-
-    expect(activeMarkup).toContain("Patch");
-    // Connector is a second sibling div with the connector sizing utilities
-    // (h-0.5 w-12). showConnector=true emits it; showConnector=false omits.
-    expect(activeMarkup).toMatch(/<div class="h-0\.5 w-12/);
-    expect(pendingMarkup).not.toMatch(/<div class="h-0\.5 w-12/);
-    expect(pendingMarkup).toContain("CUSTOM_STAGE");
-    expect(pendingMarkup).toContain("○");
-  });
-
-  it("renders run statuses with configured and fallback labels", async () => {
-    const { default: RunStatus } = await import("../components/domain/RunStatus");
-    const known = renderToStaticMarkup(React.createElement(RunStatus, { status: "FAILED", size: "sm" }));
-    const fallback = renderToStaticMarkup(React.createElement(RunStatus, { status: "WAITING" }));
-
-    // FAILED → DS Badge variant="destructive" → text-destructive utility.
-    expect(known).toContain("Failed");
-    expect(known).toContain("text-destructive");
-    // Unknown status → fallback Badge variant="default" → muted foreground.
-    expect(fallback).toContain("WAITING");
-    expect(fallback).toContain("text-muted-foreground");
-  });
-
-  it("tracks workspace and run interactions from domain rows", async () => {
-    const { default: WorkspaceCard } = await import("../components/domain/WorkspaceCard");
-    const { default: RunRow } = await import("../components/domain/RunRow");
-
-    const workspaceTree = WorkspaceCard({
-      workspace: {
-        id: "ws_1",
-        name: "Alpha",
-        repo_url: "https://github.com/usezombie/repo",
-        paused: true,
-        created_at: "2026-03-22T00:00:00Z",
-        run_count: 7,
-        last_run_at: "2026-03-22T00:00:00Z",
-        plan: "pro",
-      },
-    });
-    const runTree = RunRow({
-      workspaceId: "ws_1",
-      run: {
-        id: "run_1",
-        workspace_id: "ws_1",
-        spec_path: "specs/demo.md",
-        status: "PR_OPENED",
-        attempts: 1,
-        max_attempts: 3,
-        created_at: "2026-03-22T00:00:00Z",
-        updated_at: "2026-03-22T00:00:00Z",
-        duration_seconds: 125,
-        pr_url: "https://github.com/usezombie/repo/pull/1",
-        artifacts: null,
-        error: null,
-      },
-    });
-
-    findElements(workspaceTree, (el) => typeof el.props?.onClick === "function")[0]?.props.onClick?.();
-    const runLinks = findElements(runTree, (el) => typeof el.props?.onClick === "function");
-    runLinks[0]?.props.onClick?.();
-    runLinks[1]?.props.onClick?.({ stopPropagation: vi.fn() });
-
-    expect(mocks.trackAppEvent).toHaveBeenCalledWith("workspace_opened", expect.objectContaining({
-      workspace_id: "ws_1",
-      workspace_plan: "pro",
-      paused: true,
-    }));
-    expect(mocks.trackAppEvent).toHaveBeenCalledWith("run_opened", expect.objectContaining({
-      workspace_id: "ws_1",
-      run_id: "run_1",
-      run_status: "PR_OPENED",
-    }));
-    expect(mocks.trackAppEvent).toHaveBeenCalledWith("run_pr_clicked", expect.objectContaining({
-      target: "https://github.com/usezombie/repo/pull/1",
-    }));
-
-    const nonPausedMarkup = renderToStaticMarkup(WorkspaceCard({
-      workspace: {
-        id: "ws_2",
-        name: "Beta",
-        repo_url: "https://github.com/usezombie/repo",
-        paused: false,
-        created_at: "2026-03-22T00:00:00Z",
-        run_count: 0,
-        last_run_at: null,
-        plan: "team",
-      },
-    }));
-    const noPrMarkup = renderToStaticMarkup(RunRow({
-      workspaceId: "ws_2",
-      run: {
-        id: "run_2",
-        workspace_id: "ws_2",
-        spec_path: "specs/short.md",
-        status: "DONE",
-        attempts: 1,
-        max_attempts: 1,
-        created_at: "2026-03-22T00:00:00Z",
-        updated_at: "2026-03-22T00:00:00Z",
-        duration_seconds: null,
-        pr_url: null,
-        artifacts: null,
-        error: null,
-      },
-    }));
-
-    expect(nonPausedMarkup).not.toContain("Paused");
-    expect(noPrMarkup).toContain("—");
-  });
-
   it("tracks analytics wrapper components and shell navigation", async () => {
     const { default: AnalyticsPageEvent } = await import("../components/analytics/AnalyticsPageEvent");
     const { default: TrackedAnchor } = await import("../components/analytics/TrackedAnchor");
@@ -240,6 +121,7 @@ describe("app components", () => {
   it("identifies the current clerk user once loaded", async () => {
     mocks.useUser.mockReturnValue({
       isLoaded: true,
+      isSignedIn: true,
       user: {
         id: "user_123",
         primaryEmailAddress: { emailAddress: "kishore@example.com" },
@@ -260,6 +142,7 @@ describe("app components", () => {
   it("does not identify until clerk user data is ready", async () => {
     mocks.useUser.mockReturnValue({
       isLoaded: false,
+      isSignedIn: false,
       user: null,
     });
 

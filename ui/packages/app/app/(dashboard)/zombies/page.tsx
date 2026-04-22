@@ -1,4 +1,4 @@
-import { auth } from "@clerk/nextjs/server";
+import { getServerToken } from "@/lib/auth/server";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
@@ -12,12 +12,12 @@ import { getTenantBilling } from "@/lib/api/tenant_billing";
 import { resolveActiveWorkspace } from "@/lib/workspace";
 import ExhaustionBanner from "@/components/domain/ExhaustionBanner";
 import { PlusIcon } from "lucide-react";
+import ZombiesList from "./components/ZombiesList";
 
 export const dynamic = "force-dynamic";
 
 export default async function ZombiesListPage() {
-  const { getToken } = await auth();
-  const token = await getToken();
+  const token = await getServerToken();
   if (!token) notFound();
 
   const workspace = await resolveActiveWorkspace(token);
@@ -35,8 +35,8 @@ export default async function ZombiesListPage() {
     );
   }
 
-  const [zombies, billing] = await Promise.all([
-    listZombies(workspace.id, token).then((r) => r.items),
+  const [page, billing] = await Promise.all([
+    listZombies(workspace.id, token, { limit: 20 }),
     getTenantBilling(token).catch(() => null),
   ]);
 
@@ -53,32 +53,17 @@ export default async function ZombiesListPage() {
         </Link>
       </PageHeader>
 
-      {zombies.length === 0 ? (
+      {page.items.length === 0 ? (
         <EmptyState
           title="No zombies yet"
           description="Install your first zombie from a skill template."
         />
       ) : (
-        <ul className="divide-y divide-border rounded-lg border border-border">
-          {zombies.map((z) => (
-            <li key={z.id}>
-              <Link
-                href={`/zombies/${z.id}`}
-                className="flex items-center justify-between px-4 py-3 hover:bg-muted/40"
-              >
-                <div>
-                  <div className="font-medium">{z.name}</div>
-                  <div className="text-xs uppercase tracking-wide text-muted-foreground">
-                    {z.status}
-                  </div>
-                </div>
-                <div className="font-mono text-xs text-muted-foreground">
-                  {z.id}
-                </div>
-              </Link>
-            </li>
-          ))}
-        </ul>
+        <ZombiesList
+          workspaceId={workspace.id}
+          initialZombies={page.items}
+          initialCursor={page.cursor}
+        />
       )}
     </div>
   );

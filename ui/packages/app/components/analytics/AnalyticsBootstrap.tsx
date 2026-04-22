@@ -1,19 +1,16 @@
 "use client";
 
 import { useEffect } from "react";
-import { useUser } from "@clerk/nextjs";
+import { useCurrentUser } from "@/lib/auth/client";
 import { identifyAnalyticsUser } from "@/lib/analytics/posthog";
 
 export default function AnalyticsBootstrap() {
-  const { user, isLoaded } = useUser();
+  const { isLoaded, isSignedIn, userId, emailAddress } = useCurrentUser();
 
   useEffect(() => {
-    if (!isLoaded || !user) return;
-    identifyAnalyticsUser({
-      id: user.id,
-      email: user.primaryEmailAddress?.emailAddress ?? null,
-    });
-  }, [isLoaded, user]);
+    if (!isLoaded || !isSignedIn || !userId) return;
+    identifyAnalyticsUser({ id: userId, email: emailAddress });
+  }, [isLoaded, isSignedIn, userId, emailAddress]);
 
   return null;
 }

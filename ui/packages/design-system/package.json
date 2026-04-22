@@ -40,5 +40,13 @@
     "jsdom": "^29.0.2",
     "typescript": "^6.0.3",
     "vitest": "^4.1.4"
+  },
+  "dependencies": {
+    "@hookform/resolvers": "^5.2.2",
+    "@radix-ui/react-accordion": "^1.2.12",
+    "@radix-ui/react-label": "^2.1.8",
+    "@radix-ui/react-tabs": "^1.1.13",
+    "react-hook-form": "^7.73.1",
+    "zod": "^4.3.6"
   }
 }

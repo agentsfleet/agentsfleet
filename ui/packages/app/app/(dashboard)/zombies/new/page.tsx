@@ -1,4 +1,4 @@
-import { auth } from "@clerk/nextjs/server";
+import { getServerToken } from "@/lib/auth/server";
 import { notFound } from "next/navigation";
 import { PageHeader, PageTitle } from "@usezombie/design-system";
 import { resolveActiveWorkspace } from "@/lib/workspace";
@@ -9,8 +9,7 @@ export const dynamic = "force-dynamic";
 // Blank-fields only for now; a skill-template picker ships once the
 // backend exposes a skills catalog endpoint.
 export default async function InstallZombiePage() {
-  const { getToken } = await auth();
-  const token = await getToken();
+  const token = await getServerToken();
   if (!token) notFound();
 
   const workspace = await resolveActiveWorkspace(token);
