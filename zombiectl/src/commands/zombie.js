@@ -319,7 +319,7 @@ async function commandLogs(ctx, args, workspaces, deps) {
   return 0;
 }
 
-// commandCredential extracted to ./zombie_credential.js (M26_001, RULE FLL).
+// commandCredential extracted to ./zombie_credential.js for the 350-line file gate.
 
 // ── helpers ──────────────────────────────────────────────────────────────
 

@@ -1,5 +1,5 @@
-// M1_001 §5.0 — Zombie credential CLI commands (extracted from zombie.js in M26_001
-// to keep zombie.js under the RULE FLL 350-line gate).
+// Zombie credential CLI commands (extracted from zombie.js to keep it
+// under the 350-line file gate).
 //
 // zombiectl credential add  <name> --value=<value>
 // zombiectl credential list
