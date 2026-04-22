@@ -430,19 +430,8 @@ pub fn run(alloc: std.mem.Allocator) !void {
             }
         }
 
-        const key = std.process.getEnvVarOwned(alloc, "API_KEY") catch null;
-        if (key) |k| {
-            defer alloc.free(k);
-            any_auth_configured = true;
-            if (std.mem.trim(u8, k, " \t\r\n").len == 0) {
-                try appendCheck(alloc, &results, "api_key", false, "API_KEY is empty", &ok);
-            } else {
-                try appendCheck(alloc, &results, "api_key", true, "API_KEY configured", &ok);
-            }
-        }
-
         if (!any_auth_configured) {
-            try appendCheck(alloc, &results, "auth_config", false, "Set OIDC_JWKS_URL or API_KEY", &ok);
+            try appendCheck(alloc, &results, "auth_config", false, "Set OIDC_JWKS_URL — OIDC is required (M11_006 removed the API_KEY bootstrap)", &ok);
         }
     }
 

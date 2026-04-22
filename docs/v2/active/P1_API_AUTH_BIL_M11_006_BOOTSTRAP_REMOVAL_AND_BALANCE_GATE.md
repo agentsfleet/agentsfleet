@@ -107,13 +107,13 @@ Actual action depends on VERSION at execute time — pre-v2.0 we drop + recreate
 
 | Dim | Status | Target | Input | Expected | Test type |
 |-----|--------|--------|-------|----------|-----------|
-| 1.1 | PENDING | `src/auth/middleware/*` | request with bearer matching `ZOMBIED_ADMIN_API_KEY` (after removal) | `401 UZ-AUTH-002` (bearer does not resolve to any principal) | integration |
-| 1.2 | PENDING | `workspaces/lifecycle.zig` | Clerk JWT with no `metadata.tenant_id` | `403 UZ-AUTH-001`; no `core.tenants` row created | integration |
-| 1.3 | PENDING | `auth/github_callback.zig` | OAuth callback with a `state` that does not resolve to an existing tenant | `403 UZ-AUTH-001`; no tenant/workspace written | integration |
-| 1.4 | PENDING | admin surface | authenticated operator without admin claim hits `/v1/admin/platform-keys` | `403 UZ-AUTH-009 ERR_INSUFFICIENT_ROLE` | integration (existing rbac suite) |
-| 1.5 | PENDING | env templates | `grep ZOMBIED_ADMIN_API_KEY .` anywhere in repo (excluding historical `docs/v*/done`) | 0 matches | lint |
-| 1.6 | PENDING | `src/auth/claims.zig` + `src/auth/rbac.zig` | Clerk JWT with `publicMetadata.role=admin` | `principal.role == .admin`; admin-only endpoints accept the request | integration |
-| 1.7 | PENDING | signup webhook (`src/http/handlers/webhooks/clerk.zig`) | fresh `user.created` event for a brand-new user | After webhook returns 200: Clerk user's `publicMetadata` contains both `tenant_id=<new uuid>` AND `role="operator"`. Verified by a second request carrying that user's JWT that reads the claims back. If the current webhook does not write `role=operator`, this dim covers adding that write. | integration |
+| 1.1 | DONE | `src/auth/middleware/*` | request with bearer matching the deleted env-var key | `401 UZ-AUTH-002` (no principal can resolve) — admin_api_key.zig deleted; bearer_or_api_key.zig env-var branch deleted; docker-compose.yml `API_KEY` scrubbed | integration |
+| 1.2 | DEFERRED (M11_006_b) | `workspaces/lifecycle.zig` | Clerk JWT with no `metadata.tenant_id` | Still permits fabrication via `orelse generateTenantId` until the signup webhook publicMetadata writeback (dim 1.7) lands; otherwise would 403 every fresh Clerk session for the window between `user.created` and first session refresh. Comment in the handler now explains the remaining use case. | integration |
+| 1.3 | DEFERRED (M11_006_b) | `auth/github_callback.zig` | OAuth callback with a `state` that does not resolve to an existing tenant | Same window as 1.2. Handler comment updated; code path retained. | integration |
+| 1.4 | DONE | admin surface | authenticated operator without admin claim hits `/v1/admin/platform-keys` | `403 UZ-AUTH-009 ERR_INSUFFICIENT_ROLE` — `require_role_admin` chain unchanged; extractor already maps `role=admin` to `.admin` | integration (existing rbac suite) |
+| 1.5 | DONE | env templates + source | `grep ZOMBIED_ADMIN_API_KEY\|api_key.bootstrap_env_var_used\|admin_api_key` across src/ schema/ | 0 matches in non-historical files | lint |
+| 1.6 | DONE | `src/auth/claims.zig` + `src/auth/rbac.zig` | Clerk JWT with `metadata.role=admin` | `extractClerkClaims` already reads metadata.role (src/auth/claims.zig:62); `rbac.parseAuthRole("admin")` already returns `.admin` (src/auth/rbac.zig:20); bearer_or_api_key wires both into `principal.role = .admin` | unit |
+| 1.7 | DEFERRED (M11_006_b) | signup webhook (`src/http/handlers/webhooks/clerk.zig`) | fresh `user.created` event for a brand-new user | Needs a new HTTP client to `api.clerk.com` + `CLERK_SECRET_KEY` vault wiring to PATCH user publicMetadata with `tenant_id` + `role=operator`. Substantial scope; moved to sibling workstream. Until it lands, the fabrication paths in 1.2/1.3 cover the signup-race window. | integration |
 
 ### §2 — Balance-gate column + activity events
 
@@ -225,6 +225,7 @@ BALANCE_EXHAUSTED_POLICY = "continue" | "warn" | "stop"  // default "warn"
 - Stripe top-up / purchase flows — next milestone.
 - Un-exhaustion path (how `balance_exhausted_at` gets cleared). Top-up milestone handles this; pre-Stripe, the only way out is admin manual reset via psql.
 - ~~Refactoring Clerk role claims — if admin auth via Clerk claim isn't already wired, PLAN stage can extract it into a sibling workstream `M11_006_b`.~~ Decided at CHORE(open): one workstream, Clerk `publicMetadata.role=admin` is the chosen path. Extractor already reads `metadata.role` (`src/auth/claims.zig:62`); this workstream maps `"admin"` to the admin RBAC enum variant.
+- **Clerk Backend API publicMetadata writeback (dim 1.7 + dims 1.2/1.3)** — **deferred to sibling workstream M11_006_b.** Requires a new outbound HTTP client to `api.clerk.com`, `CLERK_SECRET_KEY` vault wiring, retry + error handling, and idempotency on replay. Until it lands the fabrication paths in `workspaces/lifecycle.zig` + `auth/github_callback.zig` remain in place (comments updated to explain the remaining signup-race window). Once the writeback lands, those `orelse generateTenantId` fallbacks can be replaced with a 403.
 - Automated Clerk user creation — the admin bootstrap playbook (§5) is manual. A future infra milestone may automate Clerk user provisioning via the Backend API; out of scope for M11_006.
 - Server-side admin allowlist / tenant-id cross-check for the `role=admin` claim — trust boundary is Clerk Dashboard access itself (protected by 1Password + 2FA). A second check against a server-side list would be theater; an attacker with Clerk write access can forge any claim.
 - Per-workspace billing — killed by M11_005; do not resurrect.

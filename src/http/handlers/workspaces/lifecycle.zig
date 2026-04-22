@@ -95,16 +95,13 @@ pub fn innerCreateWorkspace(hx: hx_mod.Hx, req: *httpz.Request) void {
     const now_ms = std.time.milliTimestamp();
     if (!upsertTenant(conn, tenant_id, now_ms, hx)) return;
 
-    // TODO(legacy-bootstrap): remove when ZOMBIED_ADMIN_API_KEY env-var
-    // principal is deleted. Post-removal `hx.principal.tenant_id` is never
-    // null for authenticated requests, so the `orelse generateTenantId(...)`
-    // fallback above goes away and signup_bootstrap is the only provision
-    // site. Tracked in M11_006.
-    //
-    // Idempotent: signup-bootstrapped tenants already have a row (ON CONFLICT
-    // DO NOTHING). The legacy bootstrap API-key path with no tenant_id claim
-    // generates a fresh tenant above; this seeds 1000¢ so the worker's first
-    // debit doesn't hit the "row missing" branch.
+    // Provision the tenant-billing row if it does not already exist. The
+    // `orelse generateTenantId(...)` fallback above now only fires during
+    // the signup-race window (a fresh Clerk session whose
+    // `publicMetadata.tenant_id` the webhook has not yet written back).
+    // That writeback lands in a follow-up workstream; until then this
+    // call keeps the first `POST /v1/workspaces` after signup from
+    // failing the worker's debit path.
     tenant_billing.provisionFreeDefault(conn, tenant_id) catch {
         common.internalOperationError(hx.res, "Failed to provision tenant billing", hx.req_id);
         return;

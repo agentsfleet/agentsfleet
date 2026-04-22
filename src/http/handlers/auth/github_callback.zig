@@ -92,14 +92,10 @@ pub fn innerGitHubCallback(hx: hx_mod.Hx, req: *httpz.Request) void {
         };
     }
 
-    // TODO(legacy-bootstrap): remove when the GitHub-App "fabricate a tenant
-    // from OAuth state" path is deleted. Post-removal this handler only
-    // ever attaches an install to an existing (signup-bootstrapped) tenant,
-    // so the generateTenantId fallback + this provision call both go away.
-    // Tracked in M11_006.
-    //
-    // Idempotent; no-op when the tenant already has a billing row (signup
-    // bootstrap path) and seeds 1000¢ on fresh GitHub-App-created tenants.
+    // Idempotent: no-op when the tenant already has a billing row (the
+    // signup-bootstrap path), and seeds 1000¢ on the GitHub-App-created
+    // tenant path where the OAuth `state` carries a workspace_id that has
+    // no prior row.
     tenant_billing.provisionFreeDefault(conn, tenant_id) catch {
         common.internalOperationError(hx.res, "Failed to provision tenant billing", hx.req_id);
         return;

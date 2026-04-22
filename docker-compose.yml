@@ -61,7 +61,6 @@ services:
     environment:
       # Local dev defaults: satisfy role-separated startup checks without
       # requiring a checked-in .env file.
-      API_KEY: local-dev-api-key
       ENCRYPTION_MASTER_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef # gitleaks:allow
       GITHUB_APP_ID: "12345"
       GITHUB_APP_PRIVATE_KEY: local-dev-private-key

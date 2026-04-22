@@ -1,19 +1,15 @@
-//! `bearer_or_api_key` middleware (M18_002 §3.1).
+//! `bearer_or_api_key` middleware.
 //!
-//! Accepts either a configured admin API key or a valid OIDC JWT, both
-//! transported via `Authorization: Bearer <token>`. Mirrors the current
-//! `src/http/handlers/common.zig::authenticate` behavior so routes can
-//! migrate without a wire-protocol change.
+//! Accepts a valid OIDC JWT or a tenant-minted `zmb_t_` API key via
+//! `Authorization: Bearer <token>`. The env-var `API_KEY` bootstrap path
+//! was deleted in M11_006 — there is no longer a global admin-by-env-var
+//! principal. Admin gating now flows through Clerk `publicMetadata.role`.
 //!
 //! Resolution order:
 //!   1. Bearer token is parsed.
-//!   2. If it matches `api_keys` rotation → admin principal, `.next`.
-//!   3. Else if `verifier` is configured → JWT verification path (same
-//!      error mapping as `bearer_oidc`).
+//!   2. If prefixed `zmb_t_` → DB-backed tenant_api_key lookup.
+//!   3. Else if `verifier` is configured → JWT verification path.
 //!   4. Else → 401.
-//!
-//! The spec's §3.2 admin policy composes this middleware with `require_role`;
-//! routes that accept workspace JWTs use this middleware alone.
 
 const std = @import("std");
 const httpz = @import("httpz");
@@ -42,12 +38,10 @@ fn freeUnusedPrincipalFields(alloc: std.mem.Allocator, p: oidc.Principal) void {
 }
 
 pub const BearerOrApiKey = struct {
-    api_keys: []const u8,
     verifier: ?*oidc.Verifier,
     /// Populated by MiddlewareRegistry.initChains() when a tenant API-key
     /// lookup is wired. When set, any `zmb_t_`-prefixed Bearer token is
-    /// routed to the tenant-key path (DB-backed lookup via host callback)
-    /// before the env-var rotation match.
+    /// routed to the tenant-key path (DB-backed lookup via host callback).
     tenant_api_key: ?*TenantApiKey = null,
 
     pub fn middleware(self: *BearerOrApiKey) chain.Middleware(AuthCtx) {
@@ -69,12 +63,6 @@ pub const BearerOrApiKey = struct {
             if (std.mem.startsWith(u8, provided, tenant_api_key_mod.TENANT_KEY_PREFIX)) {
                 return tapi.execute(ctx, req);
             }
-        }
-
-        if (bearer.matchRotatedKey(provided, self.api_keys)) {
-            std.log.scoped(.auth).warn("api_key.bootstrap_env_var_used req_id={s} note=\"migrate to tenant API keys via POST /v1/api-keys\"", .{ctx.req_id});
-            ctx.principal = .{ .mode = .api_key, .role = .admin };
-            return .next;
         }
 
         const verifier = self.verifier orelse {
@@ -169,26 +157,7 @@ fn runOne(mw: *BearerOrApiKey, ht: anytype) !struct { outcome: chain.Outcome, ct
     return .{ .outcome = outcome, .ctx = ctx };
 }
 
-test "bearer_or_api_key .next + admin principal when API key matches (verifier present)" {
-    test_fixtures.reset();
-    var verifier = makeVerifier();
-    defer verifier.deinit();
-
-    var ht = httpz.testing.init(.{});
-    defer ht.deinit();
-    ht.header("authorization", "Bearer key-a");
-
-    var mw = BearerOrApiKey{ .api_keys = "key-a", .verifier = &verifier };
-    const result = try runOne(&mw, &ht);
-
-    try testing.expectEqual(chain.Outcome.next, result.outcome);
-    try testing.expectEqual(@as(usize, 0), test_fixtures.write_count);
-    try testing.expect(result.ctx.principal != null);
-    try testing.expectEqual(principal_mod.AuthMode.api_key, result.ctx.principal.?.mode);
-    try testing.expectEqual(principal_mod.AuthRole.admin, result.ctx.principal.?.role);
-}
-
-test "bearer_or_api_key falls through to JWT path when token is not an API key" {
+test "bearer_or_api_key routes a valid JWT to the OIDC path" {
     test_fixtures.reset();
     var verifier = makeVerifier();
     defer verifier.deinit();
@@ -197,7 +166,7 @@ test "bearer_or_api_key falls through to JWT path when token is not an API key" 
     defer ht.deinit();
     ht.header("authorization", "Bearer " ++ TEST_VALID_TOKEN);
 
-    var mw = BearerOrApiKey{ .api_keys = "key-a,key-b", .verifier = &verifier };
+    var mw = BearerOrApiKey{ .verifier = &verifier };
     const result = try runOne(&mw, &ht);
     defer if (result.ctx.principal) |p| {
         if (p.user_id) |v| testing.allocator.free(v);
@@ -211,7 +180,7 @@ test "bearer_or_api_key falls through to JWT path when token is not an API key" 
     try testing.expectEqualStrings("user_test", result.ctx.principal.?.user_id.?);
 }
 
-test "bearer_or_api_key short-circuits with 401 when header missing" {
+test "bearer_or_api_key short-circuits with 401 when Authorization header is missing" {
     test_fixtures.reset();
     var verifier = makeVerifier();
     defer verifier.deinit();
@@ -219,27 +188,27 @@ test "bearer_or_api_key short-circuits with 401 when header missing" {
     var ht = httpz.testing.init(.{});
     defer ht.deinit();
 
-    var mw = BearerOrApiKey{ .api_keys = "key-a", .verifier = &verifier };
+    var mw = BearerOrApiKey{ .verifier = &verifier };
     const result = try runOne(&mw, &ht);
 
     try testing.expectEqual(chain.Outcome.short_circuit, result.outcome);
     try testing.expectEqualStrings(errors.ERR_UNAUTHORIZED, test_fixtures.last_code);
 }
 
-test "bearer_or_api_key short-circuits with 401 when no API key matches and no verifier configured" {
+test "bearer_or_api_key short-circuits with 401 when no verifier is configured" {
     test_fixtures.reset();
     var ht = httpz.testing.init(.{});
     defer ht.deinit();
     ht.header("authorization", "Bearer something-else");
 
-    var mw = BearerOrApiKey{ .api_keys = "key-a", .verifier = null };
+    var mw = BearerOrApiKey{ .verifier = null };
     const result = try runOne(&mw, &ht);
 
     try testing.expectEqual(chain.Outcome.short_circuit, result.outcome);
     try testing.expectEqualStrings(errors.ERR_UNAUTHORIZED, test_fixtures.last_code);
 }
 
-test "bearer_or_api_key short-circuits with 503 when JWT path hits JWKS failure" {
+test "bearer_or_api_key short-circuits with 503 when JWKS fetch fails" {
     test_fixtures.reset();
     var verifier = oidc.Verifier.init(testing.allocator, .{
         .provider = .clerk,
@@ -253,7 +222,7 @@ test "bearer_or_api_key short-circuits with 503 when JWT path hits JWKS failure"
     defer ht.deinit();
     ht.header("authorization", "Bearer " ++ TEST_VALID_TOKEN);
 
-    var mw = BearerOrApiKey{ .api_keys = "key-a", .verifier = &verifier };
+    var mw = BearerOrApiKey{ .verifier = &verifier };
     const result = try runOne(&mw, &ht);
 
     try testing.expectEqual(chain.Outcome.short_circuit, result.outcome);
