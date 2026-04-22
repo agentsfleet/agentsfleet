@@ -44,6 +44,9 @@ pub const entries = [_]Entry{
     // Tenant billing (plan + balance snapshot)
     .{ .method = "GET", .path = "/v1/tenants/me/billing" },
 
+    // Tenant-scoped workspace list (backs the dashboard workspace switcher)
+    .{ .method = "GET", .path = "/v1/tenants/me/workspaces" },
+
     // Credentials
     .{ .method = "GET", .path = "/v1/workspaces/{workspace_id}/credentials" },
     .{ .method = "POST", .path = "/v1/workspaces/{workspace_id}/credentials" },

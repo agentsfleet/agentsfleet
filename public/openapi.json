@@ -1984,6 +1984,69 @@
         }
       }
     },
+    "/v1/tenants/me/workspaces": {
+      "get": {
+        "operationId": "list_tenant_workspaces",
+        "summary": "List every workspace the caller's tenant owns",
+        "description": "Returns the full set of workspaces owned by the caller's tenant. Backs the dashboard workspace switcher: a user can switch to any workspace in this list without re-issuing the JWT, because workspace authorisation is tenant-scoped. No pagination — a tenant's workspace count is bounded and small in practice.\n",
+        "tags": [
+          "Workspaces"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "total"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "name",
+                          "created_at"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "format": "uuid",
+                            "description": "UUIDv7 of the workspace."
+                          },
+                          "name": {
+                            "type": "string",
+                            "nullable": true,
+                            "description": "Human-readable workspace name. Nullable — pre-rename workspaces may not have one."
+                          },
+                          "created_at": {
+                            "type": "integer",
+                            "format": "int64",
+                            "description": "Workspace creation time (epoch ms)."
+                          }
+                        }
+                      }
+                    },
+                    "total": {
+                      "type": "integer",
+                      "description": "Count of items returned."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/v1/workspaces/{workspace_id}/credentials": {
       "get": {
         "operationId": "list_workspace_credentials",
@@ -2770,7 +2833,7 @@
       "get": {
         "operationId": "list_zombies",
         "summary": "List zombies in a workspace",
-        "description": "Returns all zombies the caller has access to in the given workspace. Response envelope follows the RAD §8 `items`/`total` convention.",
+        "description": "Returns zombies the caller has access to in the given workspace. Keyset paginated over `(created_at DESC, id DESC)`. Omit `cursor` for the first page; pass the response `cursor` back verbatim to fetch the next page. `cursor` is `null` when the last page has been reached. Response envelope follows the RAD §8 `items`/`total` convention (`total` is the size of this page, not a global count).\n",
         "tags": [
           "Zombies"
         ],
@@ -2784,6 +2847,27 @@
               "type": "string",
               "format": "uuid"
             }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "description": "Opaque page cursor from a prior response's `cursor` field, formatted `{created_at_epoch_ms}:{zombie_id}`. Omit for the first page.\n",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "Page size. Defaults to 20. Clamped to a maximum of 100.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            }
           }
         ],
         "responses": {
@@ -2795,7 +2879,8 @@
                   "type": "object",
                   "required": [
                     "items",
-                    "total"
+                    "total",
+                    "cursor"
                   ],
                   "properties": {
                     "items": {
@@ -2807,6 +2892,11 @@
                     "total": {
                       "type": "integer",
                       "description": "Count of items in this response (not total across pages)."
+                    },
+                    "cursor": {
+                      "type": "string",
+                      "nullable": true,
+                      "description": "Opaque cursor to fetch the next page. `null` when there are no more pages.\n"
                     }
                   }
                 }

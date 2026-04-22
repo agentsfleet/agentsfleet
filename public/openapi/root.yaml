@@ -136,6 +136,8 @@ paths:
     $ref: ./paths/activity.yaml#/~1v1~1workspaces~1{workspace_id}~1activity
   /v1/tenants/me/billing:
     $ref: ./paths/billing.yaml#/~1v1~1tenants~1me~1billing
+  /v1/tenants/me/workspaces:
+    $ref: ./paths/tenant-workspaces.yaml#/~1v1~1tenants~1me~1workspaces
   /v1/workspaces/{workspace_id}/credentials:
     $ref: ./paths/credentials.yaml#/~1v1~1workspaces~1{workspace_id}~1credentials
   /v1/workspaces/{workspace_id}/credentials/llm:
