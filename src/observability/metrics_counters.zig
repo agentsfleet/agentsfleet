@@ -43,7 +43,6 @@ pub const Snapshot = struct {
     side_effect_outbox_dead_letter_total: u64,
     api_backpressure_rejections_total: u64,
     api_in_flight_requests: u64,
-    gate_repair_loops_total: u64,
     gate_repair_exhausted_total: u64,
     // M17_001 §1.3: per-limit-type termination counters
     run_limit_token_budget_exceeded_total: u64,
@@ -76,7 +75,6 @@ var g_backoff_wait_ms_total = std.atomic.Value(u64).init(0);
 var g_side_effect_outbox_dead_letter_total = std.atomic.Value(u64).init(0);
 var g_api_backpressure_rejections_total = std.atomic.Value(u64).init(0);
 var g_api_in_flight_requests = std.atomic.Value(u64).init(0);
-var g_gate_repair_loops_total = std.atomic.Value(u64).init(0);
 var g_gate_repair_exhausted_total = std.atomic.Value(u64).init(0);
 var g_run_limit_token_budget_exceeded_total = std.atomic.Value(u64).init(0);
 var g_run_limit_wall_time_exceeded_total = std.atomic.Value(u64).init(0);
@@ -118,9 +116,6 @@ pub fn setApiInFlightRequests(v: u32) void {
     g_api_in_flight_requests.store(@as(u64, @intCast(v)), .release);
 }
 
-pub fn incGateRepairLoops() void {
-    _ = g_gate_repair_loops_total.fetchAdd(1, .monotonic);
-}
 pub fn incGateRepairExhausted() void {
     _ = g_gate_repair_exhausted_total.fetchAdd(1, .monotonic);
 }
@@ -178,7 +173,6 @@ pub fn snapshot() Snapshot {
         .side_effect_outbox_dead_letter_total = g_side_effect_outbox_dead_letter_total.load(.acquire),
         .api_backpressure_rejections_total = g_api_backpressure_rejections_total.load(.acquire),
         .api_in_flight_requests = g_api_in_flight_requests.load(.acquire),
-        .gate_repair_loops_total = g_gate_repair_loops_total.load(.acquire),
         .gate_repair_exhausted_total = g_gate_repair_exhausted_total.load(.acquire),
         .run_limit_token_budget_exceeded_total = g_run_limit_token_budget_exceeded_total.load(.acquire),
         .run_limit_wall_time_exceeded_total = g_run_limit_wall_time_exceeded_total.load(.acquire),

@@ -133,9 +133,17 @@ fn writeJsonEscaped(w: anytype, value: []const u8) !void {
 /// Heap-allocated so both ends can observe its lifetime under the
 /// mutex. Ownership: whichever side sees the other has disengaged
 /// (parent abandons on timeout, worker signals done on completion)
-/// frees the state. The first-out path carries no allocations, so
-/// callers pay zero allocation overhead on the happy path's memory
-/// footprint beyond the one struct + string dupes.
+/// frees the state.
+///
+/// **Allocator lifetime contract**: `state.alloc` MUST outlive the
+/// worker thread. The parent caller is typically a request-scoped
+/// arena (httpz per-request), but a detached worker can outlive its
+/// request when the parent times out. So we always use
+/// `std.heap.c_allocator` for `FetchState` and its string dupes —
+/// process-scoped, never reset mid-flight, never invalidates while a
+/// detached worker holds a pointer into it. The HTTP client allocator
+/// used during the fetch is separate and also uses c_allocator for the
+/// same reason.
 const FetchState = struct {
     alloc: std.mem.Allocator,
     mutex: std.Thread.Mutex = .{},
@@ -170,24 +178,30 @@ fn fetchWorker(state: *FetchState) void {
 }
 
 fn postMetadataMerge(
-    alloc: std.mem.Allocator,
+    _caller_alloc: std.mem.Allocator,
     url: []const u8,
     auth_header: []const u8,
     payload: []const u8,
 ) PatchError!void {
-    const state = alloc.create(FetchState) catch return PatchError.OutOfMemory;
-    errdefer alloc.destroy(state);
+    // Per FetchState doc: the caller's allocator may be a request arena
+    // that is reset before a detached worker finishes. Use c_allocator
+    // (process-scoped) for every byte the worker might still reach.
+    _ = _caller_alloc;
+    const stable = std.heap.c_allocator;
+
+    const state = stable.create(FetchState) catch return PatchError.OutOfMemory;
+    errdefer stable.destroy(state);
 
     state.* = .{
-        .alloc = alloc,
-        .url = alloc.dupe(u8, url) catch return PatchError.OutOfMemory,
-        .auth_header = alloc.dupe(u8, auth_header) catch return PatchError.OutOfMemory,
-        .payload = alloc.dupe(u8, payload) catch return PatchError.OutOfMemory,
+        .alloc = stable,
+        .url = stable.dupe(u8, url) catch return PatchError.OutOfMemory,
+        .auth_header = stable.dupe(u8, auth_header) catch return PatchError.OutOfMemory,
+        .payload = stable.dupe(u8, payload) catch return PatchError.OutOfMemory,
     };
     errdefer {
-        alloc.free(state.url);
-        alloc.free(state.auth_header);
-        alloc.free(state.payload);
+        stable.free(state.url);
+        stable.free(state.auth_header);
+        stable.free(state.payload);
     }
 
     const thread = std.Thread.spawn(.{}, fetchWorker, .{state}) catch |err| {
