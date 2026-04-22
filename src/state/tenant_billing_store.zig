@@ -8,6 +8,7 @@ pub const BillingRow = struct {
     balance_cents: i64,
     grant_source: []u8,
     updated_at_ms: i64,
+    exhausted_at_ms: ?i64,
 
     pub fn deinit(self: *BillingRow, alloc: std.mem.Allocator) void {
         alloc.free(self.plan_tier);
@@ -49,9 +50,14 @@ pub const DebitResult = struct { balance_cents: i64, updated_at_ms: i64 };
 pub fn debit(conn: *pg.Conn, tenant_id: []const u8, cents: i64) !DebitResult {
     if (cents < 0) return error.InvalidDebit;
     const now_ms = std.time.milliTimestamp();
+    // A successful debit clears `balance_exhausted_at` — the only path
+    // there is a prior top-up moving balance_cents above zero. Keeping
+    // this in the same UPDATE keeps the transition atomic so the `stop`
+    // gate can never see "positive balance AND exhausted_at set".
     var q = PgQuery.from(try conn.query(
         \\UPDATE billing.tenant_billing
         \\SET balance_cents = balance_cents - $2,
+        \\    balance_exhausted_at = NULL,
         \\    updated_at = $3
         \\WHERE tenant_id = $1::uuid
         \\  AND balance_cents >= $2
@@ -81,7 +87,7 @@ pub fn loadByTenant(
     tenant_id: []const u8,
 ) !?BillingRow {
     var q = PgQuery.from(try conn.query(
-        \\SELECT plan_tier, plan_sku, balance_cents, grant_source, updated_at
+        \\SELECT plan_tier, plan_sku, balance_cents, grant_source, updated_at, balance_exhausted_at
         \\FROM billing.tenant_billing
         \\WHERE tenant_id = $1::uuid
         \\LIMIT 1
@@ -96,13 +102,50 @@ pub fn loadByTenant(
     const grant_source = try alloc.dupe(u8, try row.get([]const u8, 3));
     errdefer alloc.free(grant_source);
     const ts = try row.get(i64, 4);
+    const exhausted_at_ms = try row.get(?i64, 5);
     return .{
         .plan_tier = plan_tier,
         .plan_sku = plan_sku,
         .balance_cents = bal,
         .grant_source = grant_source,
         .updated_at_ms = ts,
+        .exhausted_at_ms = exhausted_at_ms,
     };
+}
+
+/// Atomic first-debit-exhaustion mark. Sets balance_exhausted_at=now_ms only
+/// if currently NULL. Returns true if the transition happened (first call),
+/// false if the row was already marked (idempotent replay).
+pub fn markExhausted(conn: *pg.Conn, tenant_id: []const u8) !bool {
+    const now_ms = std.time.milliTimestamp();
+    var q = PgQuery.from(try conn.query(
+        \\UPDATE billing.tenant_billing
+        \\SET balance_exhausted_at = $2, updated_at = $2
+        \\WHERE tenant_id = $1::uuid
+        \\  AND balance_exhausted_at IS NULL
+        \\RETURNING balance_exhausted_at
+    , .{ tenant_id, now_ms }));
+    defer q.deinit();
+    return (try q.next()) != null;
+}
+
+/// Atomic exhaustion clear. Sets `balance_exhausted_at = NULL`
+/// unconditionally; returns true when a row was present and had been
+/// previously marked. Complements `debit` (which auto-clears on
+/// successful deduction) — intended for paths that top up without
+/// going through `debit`, e.g. an admin manual credit. Required so the
+/// `stop` gate is not a one-way door (greptile #3121312916 follow-up).
+pub fn clearExhausted(conn: *pg.Conn, tenant_id: []const u8) !bool {
+    const now_ms = std.time.milliTimestamp();
+    var q = PgQuery.from(try conn.query(
+        \\UPDATE billing.tenant_billing
+        \\SET balance_exhausted_at = NULL, updated_at = $2
+        \\WHERE tenant_id = $1::uuid
+        \\  AND balance_exhausted_at IS NOT NULL
+        \\RETURNING tenant_id
+    , .{ tenant_id, now_ms }));
+    defer q.deinit();
+    return (try q.next()) != null;
 }
 
 pub fn resolveTenantFromWorkspace(

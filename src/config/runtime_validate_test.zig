@@ -10,13 +10,6 @@ comptime {
     std.debug.assert(runtime.ServeConfig.printValidationError == validate.printValidationError);
 }
 
-test "hasUsableApiKey validates rotation list" {
-    try std.testing.expect(validate.hasUsableApiKey("key1,key2"));
-    try std.testing.expect(validate.hasUsableApiKey(" key1 "));
-    try std.testing.expect(!validate.hasUsableApiKey(""));
-    try std.testing.expect(!validate.hasUsableApiKey(" , , "));
-}
-
 test "isHexString validates encryption key format" {
     try std.testing.expect(validate.isHexString("abcdef0123"));
     try std.testing.expect(!validate.isHexString("abcxyz"));

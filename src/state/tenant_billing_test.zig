@@ -98,3 +98,93 @@ test "error mapping: CreditExhausted → UZ-BILLING-005" {
     try std.testing.expectEqualStrings("UZ-BILLING-005", tenant_billing.errorCode(error.CreditExhausted).?);
     try std.testing.expect(tenant_billing.errorMessage(error.CreditExhausted) != null);
 }
+
+test "clearExhausted + debit together: replenishment path resets the stop gate" {
+    const db_ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
+
+    try uc1.seed(db_ctx.conn, uc1.WS_DEDUCT);
+    defer uc1.teardown(db_ctx.conn, uc1.WS_DEDUCT);
+
+    try tenant_billing.provisionFreeDefault(db_ctx.conn, uc1.TENANT_ID);
+    _ = try tenant_billing.markExhausted(db_ctx.conn, uc1.TENANT_ID);
+
+    // clearExhausted on an already-marked row: transitions and returns true.
+    try std.testing.expect(try tenant_billing.clearExhausted(db_ctx.conn, uc1.TENANT_ID));
+    // Second call on an already-cleared row: idempotent, returns false.
+    try std.testing.expect(!(try tenant_billing.clearExhausted(db_ctx.conn, uc1.TENANT_ID)));
+
+    // And the billing row reflects the clear — covers the "stop gate is a
+    // one-way door" follow-up when admin credit lands without a matching
+    // debit.
+    const row = (try tenant_billing.getBilling(db_ctx.conn, ALLOC, uc1.TENANT_ID)).?;
+    defer ALLOC.free(@constCast(row.plan_tier));
+    defer ALLOC.free(@constCast(row.plan_sku));
+    defer ALLOC.free(@constCast(row.grant_source));
+    try std.testing.expect(row.exhausted_at_ms == null);
+}
+
+test "debit on an exhausted row auto-clears balance_exhausted_at on success" {
+    const db_ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
+
+    try uc1.seed(db_ctx.conn, uc1.WS_DEDUCT);
+    defer uc1.teardown(db_ctx.conn, uc1.WS_DEDUCT);
+
+    try tenant_billing.provisionFreeDefault(db_ctx.conn, uc1.TENANT_ID);
+    _ = try tenant_billing.markExhausted(db_ctx.conn, uc1.TENANT_ID);
+
+    // Simulate a top-up path: the next successful debit must clear the
+    // exhausted flag so the `stop` gate re-opens atomically.
+    const after = try tenant_billing.debit(db_ctx.conn, uc1.TENANT_ID, 5);
+    try std.testing.expectEqual(@as(i64, 995), after.balance_cents);
+
+    const row = (try tenant_billing.getBilling(db_ctx.conn, ALLOC, uc1.TENANT_ID)).?;
+    defer ALLOC.free(@constCast(row.plan_tier));
+    defer ALLOC.free(@constCast(row.plan_sku));
+    defer ALLOC.free(@constCast(row.grant_source));
+    try std.testing.expect(row.exhausted_at_ms == null);
+}
+
+test "markExhausted: first call transitions, second call is a no-op" {
+    const db_ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
+
+    try uc1.seed(db_ctx.conn, uc1.WS_DEDUCT);
+    defer uc1.teardown(db_ctx.conn, uc1.WS_DEDUCT);
+
+    try tenant_billing.provisionFreeDefault(db_ctx.conn, uc1.TENANT_ID);
+
+    // Fresh row: exhausted_at is NULL.
+    {
+        const row = (try tenant_billing.getBilling(db_ctx.conn, ALLOC, uc1.TENANT_ID)).?;
+        defer ALLOC.free(@constCast(row.plan_tier));
+        defer ALLOC.free(@constCast(row.plan_sku));
+        defer ALLOC.free(@constCast(row.grant_source));
+        try std.testing.expect(row.exhausted_at_ms == null);
+    }
+
+    // First mark transitions.
+    try std.testing.expect(try tenant_billing.markExhausted(db_ctx.conn, uc1.TENANT_ID));
+    const first_ts = blk: {
+        const row = (try tenant_billing.getBilling(db_ctx.conn, ALLOC, uc1.TENANT_ID)).?;
+        defer ALLOC.free(@constCast(row.plan_tier));
+        defer ALLOC.free(@constCast(row.plan_sku));
+        defer ALLOC.free(@constCast(row.grant_source));
+        try std.testing.expect(row.exhausted_at_ms != null);
+        break :blk row.exhausted_at_ms.?;
+    };
+
+    // Second call is a no-op; timestamp unchanged.
+    try std.testing.expect(!(try tenant_billing.markExhausted(db_ctx.conn, uc1.TENANT_ID)));
+    {
+        const row = (try tenant_billing.getBilling(db_ctx.conn, ALLOC, uc1.TENANT_ID)).?;
+        defer ALLOC.free(@constCast(row.plan_tier));
+        defer ALLOC.free(@constCast(row.plan_sku));
+        defer ALLOC.free(@constCast(row.grant_source));
+        try std.testing.expectEqual(first_ts, row.exhausted_at_ms.?);
+    }
+}

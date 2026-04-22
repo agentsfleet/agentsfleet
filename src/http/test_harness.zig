@@ -43,7 +43,6 @@ pub const Config = struct {
     inline_jwks_json: []const u8 = DEFAULT_JWKS,
     issuer: []const u8 = "https://test.invalid",
     audience: []const u8 = "https://test.invalid",
-    api_keys: []const u8 = "",
     /// Max time to wait for the in-process server's `/healthz` to return 200
     /// before `start()` returns `error.ServerStartTimeout`. Default 4 s tolerates
     /// CI contention; raise for very slow runners.
@@ -115,7 +114,6 @@ pub const TestHarness = struct {
             .pool = h.pool,
             .queue = &h.queue,
             .alloc = alloc,
-            .api_keys = cfg.api_keys,
             .oidc = &h.verifier,
             .auth_sessions = &h.session_store,
             .app_url = "http://127.0.0.1",
@@ -183,9 +181,9 @@ pub const TestHarness = struct {
 };
 
 fn defaultRegistry(h: *TestHarness, cfg: Config) auth_mw.MiddlewareRegistry {
+    _ = cfg;
     return .{
-        .bearer_or_api_key = .{ .api_keys = cfg.api_keys, .verifier = &h.verifier },
-        .admin_api_key_mw = .{ .api_keys = cfg.api_keys },
+        .bearer_or_api_key = .{ .verifier = &h.verifier },
         .tenant_api_key_mw = .{ .host = undefined, .lookup = stubTenantApiKey },
         .require_role_admin = .{ .required = .admin },
         .require_role_operator = .{ .required = .operator },

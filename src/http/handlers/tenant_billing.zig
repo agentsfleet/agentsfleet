@@ -40,5 +40,7 @@ pub fn innerGetTenantBilling(hx: Hx, req: *httpz.Request) void {
         .plan_sku = billing.plan_sku,
         .balance_cents = billing.balance_cents,
         .updated_at = billing.updated_at_ms,
+        .is_exhausted = billing.exhausted_at_ms != null,
+        .exhausted_at = billing.exhausted_at_ms,
     });
 }

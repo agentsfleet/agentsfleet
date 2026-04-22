@@ -15,6 +15,7 @@ const PgQuery = @import("../db/pg_query.zig").PgQuery;
 
 const metering = @import("metering.zig");
 const tenant_billing = @import("../state/tenant_billing.zig");
+const balance_policy = @import("../config/balance_policy.zig");
 const base = @import("../db/test_fixtures.zig");
 const uc1 = @import("../db/test_fixtures_uc1.zig");
 
@@ -69,6 +70,7 @@ test "M18_001: recordZombieDelivery skips telemetry on negative epoch_wall_time_
         100,
         500,
         -1, // negative epoch — must skip telemetry write
+        balance_policy.DEFAULT,
     );
 
     const count = try countTelemetryRows(db_ctx.conn, WS_TEL_EPOCH_NEG);
@@ -95,6 +97,7 @@ test "M18_001: recordZombieDelivery skips telemetry on zero epoch_wall_time_ms" 
         100,
         500,
         0, // zero epoch — gate-blocked, must skip telemetry write
+        balance_policy.DEFAULT,
     );
 
     const count = try countTelemetryRows(db_ctx.conn, WS_TEL_EPOCH_ZERO);
@@ -124,6 +127,7 @@ test "M18_001: recordZombieDelivery writes one telemetry row on successful deliv
         1420, // token_count
         870, // time_to_first_token_ms
         epoch, // positive epoch — telemetry must be written
+        balance_policy.DEFAULT,
     );
 
     var q = PgQuery.from(try db_ctx.conn.query(
@@ -171,6 +175,7 @@ test "M18_001: recordZombieDelivery telemetry insert is idempotent on replay" {
         100,
         500,
         epoch,
+        balance_policy.DEFAULT,
     );
 
     // Replay: same event_id, different agent_seconds. ON CONFLICT DO NOTHING must
@@ -185,6 +190,7 @@ test "M18_001: recordZombieDelivery telemetry insert is idempotent on replay" {
         200,
         600,
         epoch + 1000,
+        balance_policy.DEFAULT,
     );
 
     const count = try countTelemetryRows(db_ctx.conn, WS_TEL_IDEMPOTENT);

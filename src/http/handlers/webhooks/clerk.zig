@@ -25,6 +25,12 @@ const svix_verify = @import("../../../crypto/svix_verify.zig");
 const signup_bootstrap = @import("../../../state/signup_bootstrap.zig");
 const metrics = @import("../../../observability/metrics_counters.zig");
 const telemetry_mod = @import("../../../observability/telemetry.zig");
+const clerk_backend = @import("../../../auth/clerk_backend.zig");
+
+/// M11_006: default role written to Clerk publicMetadata on signup.
+/// Admin promotion is a manual one-line edit in the Clerk Dashboard
+/// (`role: "admin"`); the webhook never writes admin.
+const DEFAULT_SIGNUP_ROLE = "operator";
 
 const log = std.log.scoped(.clerk_webhook);
 
@@ -223,12 +229,33 @@ fn runBootstrap(hx: Hx, oidc_subject: []const u8, email: []const u8, display_nam
     };
     defer bootstrap.deinit(hx.alloc);
 
+    // M11_006 dim 1.7: write tenant_id + default role back to Clerk
+    // publicMetadata so the user's next session JWT carries both. The DB
+    // row is already provisioned — the writeback is best-effort; an
+    // upstream outage logs + metrics-increments but does not fail signup.
+    writePublicMetadata(hx, oidc_subject, bootstrap.tenant_id);
+
     captureSignupEvent(hx, oidc_subject, email, bootstrap);
     hx.ok(.ok, .{
         .workspace_id = bootstrap.workspace_id,
         .workspace_name = bootstrap.workspace_name,
         .created = bootstrap.created,
     });
+}
+
+fn writePublicMetadata(hx: Hx, oidc_subject: []const u8, tenant_id: []const u8) void {
+    clerk_backend.patchUserPublicMetadata(hx.alloc, oidc_subject, tenant_id, DEFAULT_SIGNUP_ROLE) catch |err| {
+        log.warn(
+            "clerk.metadata_writeback_failed err={s} oidc={s} tenant={s} req_id={s}",
+            .{ @errorName(err), oidc_subject, tenant_id, hx.req_id },
+        );
+        metrics.incSignupFailed(.metadata_writeback);
+        // Do not fail the webhook — the DB row exists; the user's first
+        // API call will 401 (workspaces/lifecycle + github_callback raise
+        // `ERR_UNAUTHORIZED` on a null tenant_id) until their Clerk
+        // session refreshes with the written-back claims. Operators can
+        // repair via the Clerk Dashboard.
+    };
 }
 
 fn captureSignupEvent(hx: Hx, oidc_subject: []const u8, email: []const u8, bootstrap: signup_bootstrap.Bootstrap) void {

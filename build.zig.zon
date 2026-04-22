@@ -1,6 +1,6 @@
 .{
     .name = .zombied,
-    .version = "0.26.1",
+    .version = "0.27.0",
     .minimum_zig_version = "0.15.2",
     .fingerprint = 0xc908abec9a0e1bf3,
     .dependencies = .{
