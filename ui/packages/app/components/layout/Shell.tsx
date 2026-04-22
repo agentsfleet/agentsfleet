@@ -11,6 +11,7 @@ import {
   SettingsIcon,
   BookOpenIcon,
   ZapIcon,
+  SkullIcon,
 } from "lucide-react";
 
 const NAV = [
@@ -18,6 +19,11 @@ const NAV = [
     label: "Workspaces",
     href: "/workspaces",
     icon: BoxIcon,
+  },
+  {
+    label: "Zombies",
+    href: "/zombies",
+    icon: SkullIcon,
   },
   {
     label: "Activity",

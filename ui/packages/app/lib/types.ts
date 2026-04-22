@@ -78,3 +78,37 @@ export type PaginatedResponse<T> = {
   next_cursor: string | null;
   request_id: string;
 };
+
+// ── Zombies (M19_001) ──
+
+export type Zombie = {
+  id: string;
+  workspace_id: string;
+  name: string;
+  description: string | null;
+  skill: string;
+  created_at: string;
+};
+
+export type InstallZombieRequest = {
+  name: string;
+  description?: string;
+  skill: string;
+};
+
+export type ZombieListResponse = {
+  items: Zombie[];
+  total: number;
+  next_cursor: string | null;
+};
+
+// ── Tenant billing (M11_005 + M11_006) ──
+
+export type TenantBilling = {
+  plan_tier: string;
+  plan_sku: string;
+  balance_cents: number;
+  updated_at: number;
+  is_exhausted: boolean;
+  exhausted_at: number | null;
+};

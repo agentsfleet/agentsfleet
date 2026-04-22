@@ -4,7 +4,7 @@
 **Milestone:** M19
 **Workstream:** 001
 **Date:** Apr 13, 2026 (amended Apr 22, 2026)
-**Status:** IN_PROGRESS
+**Status:** DONE (buildable subset; deferred items carried to named follow-ups — see §0.5)
 **Priority:** P1 — Without this, the dashboard is read-only; operators must use the CLI for all setup
 **Batch:** B2 — alpha gate, parallel with M11_005 (done), M13_001, M21_001, M27_001, M31_001, M33_001
 **Branch:** feat/m19-zombie-lifecycle-ui
@@ -50,18 +50,22 @@ Before CHORE(open) the backend route manifest (`src/http/route_manifest.zig`) wa
 | Original dim | Status after amendment | Action |
 |---|---|---|
 | 1.1 (template picker pre-fill) | DEFERRED → M19_002 | no `/v1/skills`; install form uses blank fields only |
-| 1.2 (install + redirect) | IN SCOPE | unchanged |
-| 1.3 (empty-name validation) | IN SCOPE | unchanged |
-| 1.4 (409 conflict toast) | IN SCOPE | unchanged |
-| 1.5 (CLI `Woohoo!` line) | IN SCOPE | zombiectl edit only |
-| 2.1 (webhook URL + copy) | IN SCOPE, REWRITTEN | URL derived client-side from `zombie_id` — no backend fetch |
-| 2.2, 2.3, 2.4 (cron) | DEFERRED → M19_003 | cron UI rendered as disabled tab with "CLI-only for V1" message |
-| 3.1–3.4 (firewall editor) | DEFERRED → M19_004 | §3 becomes a read-only placeholder panel |
+| 1.2 (install + redirect) | DONE | `InstallZombieForm` POSTs, redirects to `/zombies/{id}` |
+| 1.3 (empty-name validation) | DONE | client-side inline error |
+| 1.4 (409 conflict toast) | DONE | 409 → "already exists" alert in form |
+| 1.5 (CLI `Woohoo!` line) | DONE | `zombiectl/test/zombie-up-woohoo.unit.test.js` asserts literal line + URL |
+| 2.1 (webhook URL + copy) | DONE | URL derived client-side, copy button with animated confirmation |
+| 2.2, 2.3, 2.4 (cron) | DEFERRED → M19_003 | cron UI rendered as placeholder tab |
+| 3.1–3.4 (firewall editor) | DEFERRED → M19_004 | §3 renders a read-only placeholder panel |
 | 4.1 (rename) | DEFERRED → M19_003 | |
 | 4.2 (pause) | DEFERRED → M19_003 | |
-| 4.3 (delete + confirmation) | IN SCOPE | unchanged |
-| 5.1 NEW | IN SCOPE | exhaustion banner on dashboard overview (reads `is_exhausted`) |
-| 5.2 NEW | IN SCOPE | per-zombie badge on detail stub when tenant is exhausted |
+| 4.3 (delete + confirmation) | DONE | `ZombieConfig` with confirm dialog + spinner |
+| 5.1 | DONE | `ExhaustionBanner` on `/workspaces` and `/zombies` (practical home while M27 owns `(dashboard)/page.tsx`) |
+| 5.2 | DONE | `ExhaustionBadge` in `/zombies/[id]` header |
+| 5.3 | DONE | banner + badge render null when `is_exhausted=false` |
+| 6.1 (zombies list) | DONE | `/zombies` with "+ Install Zombie" CTA |
+| 6.2 (detail stub) | DONE | `/zombies/[id]` composes panels; `TODO` comment hands off to dashboard-pages owner |
+| 6.3 (Shell nav) | DONE | `Zombies` link added with `SkullIcon` |
 
 ### §5 — Balance exhaustion UI (new, absorbs M11_006 handoff)
 
