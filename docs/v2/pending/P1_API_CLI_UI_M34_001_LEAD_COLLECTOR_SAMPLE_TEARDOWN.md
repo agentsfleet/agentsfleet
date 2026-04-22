@@ -5,7 +5,7 @@
 **Workstream:** 001
 **Date:** Apr 22, 2026
 **Status:** PENDING
-**Priority:** P1 — removes the legacy `lead-collector` sample referenced by `zombiectl install`, by five Zig test suites, by unit tests in `zombiectl/test/`, and by two UI test files. Blocking a clean v2.0-alpha story because the brainstormed v2 direction calls for exactly one flagship executable sample (`samples/homelab/`, owned by M33_001), not two.
+**Priority:** P1 — removes the legacy `lead-collector` sample referenced by `zombiectl install`, by five Zig test suites, by unit tests in `zombiectl/test/`, by three UI test files, and by one production marketing-site page (`Agents.tsx`). Blocking a clean v2.0-alpha story because the brainstormed v2 direction calls for exactly one flagship executable sample (`samples/homelab/`, owned by M33_001), not two.
 **Batch:** B3 — post-alpha cleanup; depends on M33_001 (homelab sample authored) so migrated fixtures have a replacement name to target.
 **Branch:** feat/m34-lead-collector-teardown (to be created when work starts)
 **Depends on:** M33_001 (homelab sample authored — DONE for §1/§2/§5, parked). No dependency on M19_001 or nullclaw.
@@ -18,7 +18,7 @@
 
 **Problem:** The brainstormed v2 direction (`docs/brainstormed/usezombie-v2-milestone-specs-prompt.md` §6 line 71) says "DELETE `samples/lead-collector/`". No v2/pending or v2/active spec currently owns that deletion. M32_001 removes only the external `docs/integrations/lead-collector.mdx` docs-repo page. M33_001 (homelab zombie) stopped citing `samples/lead-collector/` as a convention source but did not touch the directory itself (out of scope). The removal has real blast radius: the sample is baked into `zombiectl install` defaults, five Zig test-fixture suites, unit tests in `zombiectl/test/zombie.unit.test.js`, and two UI tests. Without a dedicated coordinated workstream, the deletion will either drift indefinitely or break CI when someone attempts it piecemeal.
 
-**Solution summary:** Delete `samples/lead-collector/` and `zombiectl/templates/lead-collector/`. Remove `"lead-collector"` from `BUNDLED_TEMPLATES` in `zombiectl/src/commands/zombie.js`. Rename the `lead-collector` fixture strings in five Zig test files and `zombiectl/test/zombie.unit.test.js` to a neutral test name (recommend `test-zombie` — fixture names should not shadow real sample names, to avoid this same drift problem next time). Update the two UI test files similarly. Verify the full test suite (unit + integration + UI) green pre- and post-deletion; the diff should show zero behavioral drift, only name changes + file removals.
+**Solution summary:** Delete `samples/lead-collector/` and `zombiectl/templates/lead-collector/`. Remove `"lead-collector"` from `BUNDLED_TEMPLATES` in `zombiectl/src/commands/zombie.js`. Rename the `lead-collector` fixture strings in five Zig test files and `zombiectl/test/zombie.unit.test.js` to a neutral test name (recommend `test-zombie` — fixture names should not shadow real sample names, to avoid this same drift problem next time). Update three UI test files similarly, and rename the marketing-site animated CLI demo in `ui/packages/website/src/pages/Agents.tsx` from `lead-collector` to `homelab-zombie` (matches the M33-landed flagship). Verify the full test suite (unit + integration + UI) green pre- and post-deletion plus a `bun dev` smoke of the Agents page; the diff should show zero behavioral drift, only name changes + file removals.
 
 ---
 
@@ -203,7 +203,7 @@ N/A — rename+delete workstream. The tests that previously depended on `"lead-c
 | 1 | CHORE(open) — move this spec `pending/` → `active/`, create worktree `../usezombie-m34-lead-collector-teardown` on `feat/m34-lead-collector-teardown`. | `ls docs/v2/active/` shows this spec |
 | 2 | Rename fixture strings in the five Zig test files (§1). Run `zig build test` after each file. | `zig build test` exit 0 after all five |
 | 3 | Rename fixture in `zombiectl/test/zombie.unit.test.js` (§2.1). `bun test`. | exit 0 |
-| 4 | Rename fixture in two UI test files (§2.2, §2.3). `bun test` in each workspace. | exit 0 |
+| 4 | Rename fixture in three UI test files (§2.2, §2.3, §2.4) and the production marketing page (§2.5 — `ui/packages/website/src/pages/Agents.tsx`, rename to `homelab-zombie`). `bun test` in each workspace; `bun dev` smoke for §2.5. | exit 0 + Agents animation reads naturally |
 | 5 | `git rm -r samples/lead-collector zombiectl/templates/lead-collector` (§3.1, §3.2). | `git status` shows 4 deletions |
 | 6 | Edit `BUNDLED_TEMPLATES` in `zombiectl/src/commands/zombie.js` (§3.3). | `grep '"lead-collector"' zombiectl/src/commands/zombie.js` returns 0 |
 | 7 | Full CI: `make test && make test-integration && (cd zombiectl && bun test) && (cd ui && bun test)`. | all green |
