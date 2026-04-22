@@ -68,8 +68,8 @@ export default async function ZombiesListPage() {
               >
                 <div>
                   <div className="font-medium">{z.name}</div>
-                  <div className="text-xs text-muted-foreground">
-                    {z.skill}
+                  <div className="text-xs uppercase tracking-wide text-muted-foreground">
+                    {z.status}
                   </div>
                 </div>
                 <div className="font-mono text-xs text-muted-foreground">

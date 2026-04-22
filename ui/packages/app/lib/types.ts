@@ -83,27 +83,33 @@ export type PaginatedResponse<T> = {
 
 export type Zombie = {
   id: string;
-  workspace_id: string;
   name: string;
-  description: string | null;
-  skill: string;
-  created_at: string;
+  status: string;
+  created_at: number;
+  updated_at: number;
 };
 
 export type InstallZombieRequest = {
   name: string;
-  description?: string;
-  skill: string;
+  source_markdown: string;
+  config_json: string;
+};
+
+export type InstallZombieResponse = {
+  zombie_id: string;
+  status: string;
 };
 
 export type ZombieListResponse = {
   items: Zombie[];
   total: number;
-  next_cursor: string | null;
 };
 
 // ── Tenant billing (M11_005 + M11_006) ──
 
+// Unix-epoch timestamps on this type are **milliseconds**, matching the
+// server's `*_at_ms` fields (src/state/tenant_billing_store.zig). Pass them
+// straight to `new Date(n)`; never multiply by 1000.
 export type TenantBilling = {
   plan_tier: string;
   plan_sku: string;

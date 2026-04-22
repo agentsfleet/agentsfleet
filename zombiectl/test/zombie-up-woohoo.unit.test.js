@@ -77,8 +77,8 @@ test("zombie up: stdout contains the Woohoo literal + webhook URL on success", a
       `stdout missing Woohoo line:\n${out}`,
     );
     assert.ok(
-      out.includes("https://api.usezombie.com/v1/webhooks/zom_01abc"),
-      `stdout missing webhook URL:\n${out}`,
+      out.includes("Webhook URL: https://api.usezombie.com/v1/webhooks/zom_01abc"),
+      `stdout missing labelled webhook URL:\n${out}`,
     );
   } finally {
     process.chdir(origCwd);

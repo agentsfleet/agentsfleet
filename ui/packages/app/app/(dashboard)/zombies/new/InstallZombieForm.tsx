@@ -9,12 +9,16 @@ import { installZombie } from "@/lib/api/zombies";
 
 type Props = { workspaceId: string };
 
+// Power-user install. Server contract is {name, source_markdown, config_json}.
+// The ergonomic flow is `zombiectl up`, which reads SKILL.md + TRIGGER.md
+// from disk and compiles the config JSON. This form exists so an operator
+// without CLI access can still install by pasting the two bodies directly.
 export default function InstallZombieForm({ workspaceId }: Props) {
   const router = useRouter();
   const { getToken } = useAuth();
   const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
-  const [skill, setSkill] = useState("");
+  const [sourceMarkdown, setSourceMarkdown] = useState("");
+  const [configJson, setConfigJson] = useState("");
   const [fieldError, setFieldError] = useState<string | null>(null);
   const [apiError, setApiError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -28,8 +32,18 @@ export default function InstallZombieForm({ workspaceId }: Props) {
       setFieldError("Zombie name is required");
       return;
     }
-    if (!skill.trim()) {
-      setFieldError("Skill is required");
+    if (!sourceMarkdown.trim()) {
+      setFieldError("SKILL.md body is required");
+      return;
+    }
+    if (!configJson.trim()) {
+      setFieldError("Config JSON is required");
+      return;
+    }
+    try {
+      JSON.parse(configJson);
+    } catch {
+      setFieldError("Config JSON must be valid JSON");
       return;
     }
 
@@ -41,16 +55,16 @@ export default function InstallZombieForm({ workspaceId }: Props) {
 
     startTransition(async () => {
       try {
-        const zombie = await installZombie(
+        const created = await installZombie(
           workspaceId,
           {
             name: name.trim(),
-            description: description.trim() || undefined,
-            skill: skill.trim(),
+            source_markdown: sourceMarkdown,
+            config_json: configJson,
           },
           token,
         );
-        router.push(`/zombies/${zombie.id}`);
+        router.push(`/zombies/${created.zombie_id}`);
         router.refresh();
       } catch (e) {
         const err = e as Error & { status?: number };
@@ -67,6 +81,12 @@ export default function InstallZombieForm({ workspaceId }: Props) {
 
   return (
     <form onSubmit={onSubmit} className="max-w-xl space-y-4">
+      <p className="rounded-md border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+        Power-user install. Prefer{" "}
+        <code className="font-mono">zombiectl up</code>, which reads SKILL.md
+        and TRIGGER.md from disk and compiles the config JSON automatically.
+      </p>
+
       <div>
         <label htmlFor="name" className="mb-1 block text-sm font-medium">
           Name
@@ -83,37 +103,45 @@ export default function InstallZombieForm({ workspaceId }: Props) {
 
       <div>
         <label
-          htmlFor="description"
+          htmlFor="source_markdown"
           className="mb-1 block text-sm font-medium"
         >
-          Description <span className="text-muted-foreground">(optional)</span>
+          SKILL.md body
         </label>
-        <input
-          id="description"
-          name="description"
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          placeholder="Monitors inbox, scores leads"
-          className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+        <textarea
+          id="source_markdown"
+          name="source_markdown"
+          value={sourceMarkdown}
+          onChange={(e) => setSourceMarkdown(e.target.value)}
+          placeholder={"---\nname: lead-collector\n---\n# Lead Collector\n..."}
+          rows={8}
+          className="w-full rounded-md border border-border bg-background px-3 py-2 font-mono text-xs"
         />
+        <p className="mt-1 text-xs text-muted-foreground">
+          Paste the full contents of your skill{"'"}s{" "}
+          <code className="font-mono">SKILL.md</code> file.
+        </p>
       </div>
 
       <div>
-        <label htmlFor="skill" className="mb-1 block text-sm font-medium">
-          Skill
+        <label
+          htmlFor="config_json"
+          className="mb-1 block text-sm font-medium"
+        >
+          Config JSON
         </label>
-        <input
-          id="skill"
-          name="skill"
-          value={skill}
-          onChange={(e) => setSkill(e.target.value)}
-          placeholder="lead-collector-v1"
-          className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+        <textarea
+          id="config_json"
+          name="config_json"
+          value={configJson}
+          onChange={(e) => setConfigJson(e.target.value)}
+          placeholder={'{"name":"lead-collector","trigger":{"kind":"webhook"}}'}
+          rows={6}
+          className="w-full rounded-md border border-border bg-background px-3 py-2 font-mono text-xs"
         />
         <p className="mt-1 text-xs text-muted-foreground">
-          Skill identifier from your repo{"'"}s{" "}
-          <code className="font-mono">samples/</code> folder. A template
-          picker ships once the skills catalog endpoint is available.
+          Compiled from TRIGGER.md frontmatter. Operators typically use the
+          CLI to generate this.
         </p>
       </div>
 

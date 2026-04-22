@@ -1,5 +1,6 @@
 import type {
   InstallZombieRequest,
+  InstallZombieResponse,
   Zombie,
   ZombieListResponse,
 } from "../types";
@@ -43,12 +44,25 @@ export async function listZombies(
   );
 }
 
+// Single-zombie lookup. Today the server returns all zombies unpaginated
+// from list_zombies, so this filters that response. When a dedicated
+// GET /v1/workspaces/{ws}/zombies/{id} endpoint lands (M19_002), swap the
+// body of this function — call sites stay unchanged.
+export async function getZombie(
+  workspaceId: string,
+  zombieId: string,
+  token: string,
+): Promise<Zombie | null> {
+  const { items } = await listZombies(workspaceId, token);
+  return items.find((z) => z.id === zombieId) ?? null;
+}
+
 export async function installZombie(
   workspaceId: string,
   body: InstallZombieRequest,
   token: string,
-): Promise<Zombie> {
-  return request<Zombie>(
+): Promise<InstallZombieResponse> {
+  return request<InstallZombieResponse>(
     `/v1/workspaces/${workspaceId}/zombies`,
     { method: "POST", body: JSON.stringify(body) },
     token,

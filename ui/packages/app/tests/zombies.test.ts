@@ -111,22 +111,23 @@ describe("lib/api/zombies", () => {
     fetchMock.mockResolvedValue({
       ok: true,
       status: 201,
-      json: async () => ({ id: "zom_2", name: "lead-collector" }),
+      json: async () => ({ zombie_id: "zom_2", status: "active" }),
     });
     const mod = await import("../lib/api/zombies");
-    const res = await mod.installZombie(
-      "ws_1",
-      { name: "lead-collector", skill: "lead-collector-v1" },
-      "tkn",
-    );
+    const body = {
+      name: "lead-collector",
+      source_markdown: "---\nname: lead-collector\n---\nhi",
+      config_json: '{"name":"lead-collector"}',
+    };
+    const res = await mod.installZombie("ws_1", body, "tkn");
     expect(fetchMock).toHaveBeenCalledWith(
       "https://api.usezombie.com/v1/workspaces/ws_1/zombies",
       expect.objectContaining({
         method: "POST",
-        body: JSON.stringify({ name: "lead-collector", skill: "lead-collector-v1" }),
+        body: JSON.stringify(body),
       }),
     );
-    expect(res.id).toBe("zom_2");
+    expect(res.zombie_id).toBe("zom_2");
   });
 
   it("installZombie surfaces API error status + code", async () => {
@@ -138,7 +139,11 @@ describe("lib/api/zombies", () => {
     });
     const mod = await import("../lib/api/zombies");
     await expect(
-      mod.installZombie("ws_1", { name: "dup", skill: "s" }, "tkn"),
+      mod.installZombie(
+        "ws_1",
+        { name: "dup", source_markdown: "s", config_json: "{}" },
+        "tkn",
+      ),
     ).rejects.toMatchObject({ status: 409, code: "UZ-ZOM-002", message: "name taken" });
   });
 
@@ -153,7 +158,11 @@ describe("lib/api/zombies", () => {
     });
     const mod = await import("../lib/api/zombies");
     await expect(
-      mod.installZombie("ws_1", { name: "x", skill: "y" }, "tkn"),
+      mod.installZombie(
+        "ws_1",
+        { name: "x", source_markdown: "y", config_json: "{}" },
+        "tkn",
+      ),
     ).rejects.toMatchObject({ status: 500, message: "Server Error" });
   });
 
@@ -369,14 +378,12 @@ describe("zombies routes", () => {
             {
               id: "zom_1",
               name: "lead-collector",
-              workspace_id: "ws_1",
-              description: null,
-              skill: "lead-collector-v1",
-              created_at: "2026-04-22T00:00:00Z",
+              status: "active",
+              created_at: 1713700000000,
+              updated_at: 1713700000000,
             },
           ],
           total: 1,
-          next_cursor: null,
         }),
       };
     });
@@ -468,7 +475,8 @@ describe("zombies routes", () => {
     const markup = renderToStaticMarkup(await Page());
     expect(markup).toContain("Install Zombie");
     expect(markup).toContain("name=\"name\"");
-    expect(markup).toContain("name=\"skill\"");
+    expect(markup).toContain("name=\"source_markdown\"");
+    expect(markup).toContain("name=\"config_json\"");
   });
 
   it("zombies detail page notFound when no token", async () => {
@@ -534,14 +542,12 @@ describe("zombies routes", () => {
             {
               id: "zom_1",
               name: "lead-collector",
-              workspace_id: "ws_1",
-              description: null,
-              skill: "s",
-              created_at: "t",
+              status: "active",
+              created_at: 1713700000000,
+              updated_at: 1713700000000,
             },
           ],
           total: 1,
-          next_cursor: null,
         }),
       };
     });
@@ -735,13 +741,38 @@ describe("InstallZombieForm interactions", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("empty skill blocks submit and shows the required-field error", async () => {
+  it("empty SKILL.md blocks submit and shows the required-field error", async () => {
     const user = userEvent.setup();
     await renderForm();
     await user.type(screen.getByLabelText(/^Name$/), "lead-collector");
     await user.click(screen.getByRole("button", { name: /install zombie/i }));
     await waitFor(() =>
-      expect(screen.getByText(/Skill is required/i)).toBeTruthy(),
+      expect(screen.getByText(/SKILL\.md body is required/i)).toBeTruthy(),
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("empty config JSON blocks submit and shows the required-field error", async () => {
+    const user = userEvent.setup();
+    await renderForm();
+    await user.type(screen.getByLabelText(/^Name$/), "lead-collector");
+    await user.type(screen.getByLabelText(/SKILL\.md body/i), "hello");
+    await user.click(screen.getByRole("button", { name: /install zombie/i }));
+    await waitFor(() =>
+      expect(screen.getByText(/Config JSON is required/i)).toBeTruthy(),
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("invalid config JSON blocks submit with a parse error", async () => {
+    const user = userEvent.setup();
+    await renderForm();
+    await user.type(screen.getByLabelText(/^Name$/), "lead-collector");
+    await user.type(screen.getByLabelText(/SKILL\.md body/i), "hello");
+    await user.type(screen.getByLabelText(/Config JSON/i), "not-json");
+    await user.click(screen.getByRole("button", { name: /install zombie/i }));
+    await waitFor(() =>
+      expect(screen.getByText(/Config JSON must be valid JSON/i)).toBeTruthy(),
     );
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -750,13 +781,13 @@ describe("InstallZombieForm interactions", () => {
     fetchMock.mockResolvedValue({
       ok: true,
       status: 201,
-      json: async () => ({ id: "zom_new", name: "lead-collector" }),
+      json: async () => ({ zombie_id: "zom_new", status: "active" }),
     });
     const user = userEvent.setup();
     await renderForm();
     await user.type(screen.getByLabelText(/^Name$/), "lead-collector");
-    await user.type(screen.getByLabelText(/description/i), "Monitors inbox");
-    await user.type(screen.getByLabelText(/^Skill$/), "lead-collector-v1");
+    await user.type(screen.getByLabelText(/SKILL\.md body/i), "# skill body");
+    await user.type(screen.getByLabelText(/Config JSON/i), '{{"name":"x"}');
     await user.click(screen.getByRole("button", { name: /install zombie/i }));
 
     await waitFor(() =>
@@ -770,8 +801,8 @@ describe("InstallZombieForm interactions", () => {
     );
     expect(callBody).toEqual({
       name: "lead-collector",
-      description: "Monitors inbox",
-      skill: "lead-collector-v1",
+      source_markdown: "# skill body",
+      config_json: '{"name":"x"}',
     });
     expect(routerPush).toHaveBeenCalledWith("/zombies/zom_new");
     expect(routerRefresh).toHaveBeenCalled();
@@ -787,7 +818,8 @@ describe("InstallZombieForm interactions", () => {
     const user = userEvent.setup();
     await renderForm();
     await user.type(screen.getByLabelText(/^Name$/), "lead-collector");
-    await user.type(screen.getByLabelText(/^Skill$/), "lead-collector-v1");
+    await user.type(screen.getByLabelText(/SKILL\.md body/i), "# skill");
+    await user.type(screen.getByLabelText(/Config JSON/i), "{{}");
     await user.click(screen.getByRole("button", { name: /install zombie/i }));
     await waitFor(() =>
       expect(screen.getByText(/already exists in this workspace/i)).toBeTruthy(),
@@ -805,7 +837,8 @@ describe("InstallZombieForm interactions", () => {
     const user = userEvent.setup();
     await renderForm();
     await user.type(screen.getByLabelText(/^Name$/), "lead-collector");
-    await user.type(screen.getByLabelText(/^Skill$/), "lead-collector-v1");
+    await user.type(screen.getByLabelText(/SKILL\.md body/i), "# skill");
+    await user.type(screen.getByLabelText(/Config JSON/i), "{{}");
     await user.click(screen.getByRole("button", { name: /install zombie/i }));
     await waitFor(() =>
       expect(screen.getByText(/boom/)).toBeTruthy(),
@@ -817,7 +850,8 @@ describe("InstallZombieForm interactions", () => {
     const user = userEvent.setup();
     await renderForm();
     await user.type(screen.getByLabelText(/^Name$/), "lead-collector");
-    await user.type(screen.getByLabelText(/^Skill$/), "lead-collector-v1");
+    await user.type(screen.getByLabelText(/SKILL\.md body/i), "# skill");
+    await user.type(screen.getByLabelText(/Config JSON/i), "{{}");
     await user.click(screen.getByRole("button", { name: /install zombie/i }));
     await waitFor(() =>
       expect(screen.getByText(/Not authenticated/i)).toBeTruthy(),
