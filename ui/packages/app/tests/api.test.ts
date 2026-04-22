@@ -123,6 +123,40 @@ describe("app api client", () => {
     });
   });
 
+  it("falls back to statusText when the error body lacks an error field", async () => {
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 502,
+      statusText: "Bad Gateway",
+      json: async () => ({}),
+    });
+
+    const mod = await import("../lib/api");
+
+    await expect(mod.getWorkspace("ws_1", "token")).rejects.toMatchObject({
+      message: "Bad Gateway",
+      status: 502,
+    });
+  });
+
+  it("falls back to statusText when the error body is unparseable", async () => {
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 500,
+      statusText: "Server Error",
+      json: async () => {
+        throw new Error("not json");
+      },
+    });
+
+    const mod = await import("../lib/api");
+
+    await expect(mod.getWorkspace("ws_1", "token")).rejects.toMatchObject({
+      message: "Server Error",
+      status: 500,
+    });
+  });
+
   it("pagination response shape has_more=true includes next_cursor", async () => {
     fetchMock.mockResolvedValue({
       ok: true,

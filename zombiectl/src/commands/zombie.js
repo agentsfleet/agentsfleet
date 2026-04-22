@@ -168,12 +168,14 @@ async function commandUp(ctx, args, workspaces, deps) {
   if (ctx.jsonMode) {
     printJson(ctx.stdout, res);
   } else {
+    writeLine(ctx.stdout, "🎉 Woohoo! Your zombie is installed and ready to run.");
+    if (res.webhook_url) {
+      writeLine(ctx.stdout, `Webhook URL: ${res.webhook_url}`);
+    }
+    writeLine(ctx.stdout);
     writeLine(ctx.stdout, ui.ok(`${zombieName} is live.`));
     if (res.zombie_id) {
       writeLine(ctx.stdout, `  Zombie ID: ${res.zombie_id}`);
-    }
-    if (res.webhook_url) {
-      writeLine(ctx.stdout, `  Webhook URL: ${res.webhook_url}`);
     }
     writeLine(ctx.stdout);
     writeLine(ctx.stdout, "Commands:");

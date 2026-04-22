@@ -82,6 +82,7 @@ vi.mock("lucide-react", () => ({
   ExternalLinkIcon: () => React.createElement("svg", { "data-icon": "ExternalLinkIcon" }),
   LayoutDashboardIcon: () => React.createElement("svg", { "data-icon": "LayoutDashboardIcon" }),
   BoxIcon: () => React.createElement("svg", { "data-icon": "BoxIcon" }),
+  SkullIcon: () => React.createElement("svg", { "data-icon": "SkullIcon" }),
   ActivityIcon: () => React.createElement("svg", { "data-icon": "ActivityIcon" }),
   SettingsIcon: () => React.createElement("svg", { "data-icon": "SettingsIcon" }),
   BookOpenIcon: () => React.createElement("svg", { "data-icon": "BookOpenIcon" }),

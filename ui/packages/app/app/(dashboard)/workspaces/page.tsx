@@ -6,7 +6,9 @@ import {
   PageTitle,
 } from "@usezombie/design-system";
 import { listWorkspaces } from "@/lib/api";
+import { getTenantBilling } from "@/lib/api/tenant_billing";
 import WorkspaceCard from "@/components/domain/WorkspaceCard";
+import ExhaustionBanner from "@/components/domain/ExhaustionBanner";
 import AnalyticsPageEvent from "@/components/analytics/AnalyticsPageEvent";
 import TrackedAnchor from "@/components/analytics/TrackedAnchor";
 import { PlusIcon } from "lucide-react";
@@ -29,8 +31,13 @@ export default async function WorkspacesPage() {
     error = e instanceof Error ? e.message : "Failed to load workspaces";
   }
 
+  const billing = token
+    ? await getTenantBilling(token).catch(() => null)
+    : null;
+
   return (
     <div>
+      <ExhaustionBanner billing={billing} />
       <AnalyticsPageEvent
         event="workspace_list_viewed"
         properties={{

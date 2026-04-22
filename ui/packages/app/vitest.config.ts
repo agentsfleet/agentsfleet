@@ -11,6 +11,10 @@ export default defineConfig({
   test: {
     exclude: ['tests/e2e/**'],
     testTimeout: 10000,
+    // Global DOM environment so every test file can render React components
+    // and fire interactions through @testing-library. Node-only tests still
+    // work under happy-dom (it provides a superset of the globals they use).
+    environment: 'happy-dom',
     coverage: {
       provider: 'v8',
       reporter: ['text', 'lcov'],

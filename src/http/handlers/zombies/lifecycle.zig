@@ -1,15 +1,18 @@
-// M12_001: Zombie lifecycle actions — operator kill switch and re-starts.
+// Zombie lifecycle actions — operator kill switch.
 //
-// POST /v1/workspaces/{ws}/zombies/{zombie_id}/stop
-//   Transitions status from `active` | `paused` → `stopped`. `stopped` is the
-//   non-terminal halt state (a stopped zombie can be restarted by the next M19
-//   milestone). `killed` is the terminal delete marker set by DELETE /zombies/{id}.
-//   Returns 200 with the new state. Returns 404 if the zombie is not in the path
-//   workspace (cross-tenant IDOR guard). Returns 409 if the zombie is already
-//   stopped or killed.
+// DELETE /v1/workspaces/{ws}/zombies/{zombie_id}/current-run
+//   Kills the zombie's current running action. Transitions status from
+//   `active` | `paused` → `stopped` and records a `zombie_stopped` activity
+//   event. `stopped` is the non-terminal halt state; `killed` is the terminal
+//   delete marker set by `DELETE /zombies/{id}`.
+//   Returns 200 with the new state. Returns 404 if the zombie is not in the
+//   path workspace (cross-tenant IDOR guard). Returns 409 if the zombie is
+//   already stopped or killed.
 //
-// Writes a `zombie_stopped` activity event so dashboards surface the operator's
-// manual halt alongside auto-transitions.
+// REST shape note: "current-run" is modeled as a singleton sub-resource of
+// the zombie. DELETE on a singleton sub-resource is the §7-compliant way to
+// express "kill the thing that's running." The predecessor endpoint,
+// `POST /.../stop`, baked an action verb into the path and has been retired.
 
 const std = @import("std");
 const httpz = @import("httpz");
@@ -36,7 +39,7 @@ const DETAIL_MANUAL_STOP = "stopped via operator kill switch";
 // StopOutcome describes the three paths: transitioned / already-terminal / not-found.
 const StopOutcome = enum { transitioned, already_terminal, not_found };
 
-pub fn innerStopZombie(
+pub fn innerDeleteCurrentRun(
     hx: hx_mod.Hx,
     _: *httpz.Request,
     workspace_id: []const u8,

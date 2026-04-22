@@ -47,7 +47,7 @@ const zombie_steer = @import("handlers/zombies/steer.zig");
 // `invoke.invokeWorkspaceActivity` continues to resolve here.
 const dashboard_invokes = @import("route_table_invoke_dashboard.zig");
 pub const invokeWorkspaceActivity = dashboard_invokes.invokeWorkspaceActivity;
-pub const invokeWorkspaceZombieStop = dashboard_invokes.invokeWorkspaceZombieStop;
+pub const invokeDeleteCurrentRun = dashboard_invokes.invokeDeleteCurrentRun;
 
 const Hx = hx_mod.Hx;
 

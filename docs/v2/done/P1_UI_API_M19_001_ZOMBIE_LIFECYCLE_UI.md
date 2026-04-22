@@ -3,18 +3,148 @@
 **Prototype:** v2
 **Milestone:** M19
 **Workstream:** 001
-**Date:** Apr 13, 2026
-**Status:** PENDING
+**Date:** Apr 13, 2026 (amended Apr 22, 2026)
+**Status:** DONE (buildable subset; deferred items carried to named follow-ups — see §0.5)
 **Priority:** P1 — Without this, the dashboard is read-only; operators must use the CLI for all setup
-**Batch:** B2 — alpha gate, parallel with M11_005, M13_001, M21_001, M27_001, M31_001, M33_001
+**Batch:** B2 — alpha gate, parallel with M11_005 (done), M13_001, M21_001, M27_001, M31_001, M33_001
 **Branch:** feat/m19-zombie-lifecycle-ui
-**Depends on:** M12_001 (app shell + layout), M9_001 (grants/execute API, done)
+**Depends on:** M12_001 (app shell + layout — done), M9_001 (grants/execute API — done), M11_006 (tenant billing `is_exhausted` — in progress; §5 reads its field once merged)
+
+---
+
+## §0.5 — Amendment (Apr 22, 2026): Backend Surface Verified, Scope Reduced to Buildable
+
+**Status:** CONSTRAINT (supersedes conflicting statements in §1–§5 below; original text retained for traceability)
+
+Before CHORE(open) the backend route manifest (`src/http/route_manifest.zig`) was verified against every API endpoint this spec assumes. The original spec's claim "All existing (zombiectl calls these today). UI consumes the same endpoints. This is a pure frontend milestone" is **wrong**: zombiectl itself only implements `install` / `list` / `delete` / `activity`; the remaining commands (`schedule`, `firewall set`, `triggers list`, `update`, `pause`, `resume`) do not exist in CLI or backend. Scope is trimmed to what is buildable today; deferred items are named here with their unblocking milestone.
+
+### Backend surface available now (buildable in this workstream)
+
+| Endpoint | In manifest? | M19 use |
+|---|---|---|
+| `POST   /v1/workspaces/{ws}/zombies` | ✓ | §1 install |
+| `GET    /v1/workspaces/{ws}/zombies` | ✓ | zombies list page (scaffolding) |
+| `DELETE /v1/workspaces/{ws}/zombies/{id}` | ✓ | §4 delete |
+| `POST   /v1/workspaces/{ws}/zombies/{id}/stop` | ✓ | kill (already wired by M12 detail page in M27 stub) |
+| `GET    /v1/workspaces/{ws}/zombies/{id}/activity` | ✓ | detail composition (M27 final owner) |
+| `POST   /v1/webhooks/{zombie_id}` | ✓ | §2 webhook URL derived client-side (URL template is deterministic) |
+| `GET    /v1/tenants/me/billing` | ✓ | §5 exhaustion UI (reads `is_exhausted` / `exhausted_at` after M11_006 merges) |
+
+### Backend surface **missing** — deferred with named follow-up
+
+Gaps are captured in a single pending spec: **`docs/v2/pending/P1_API_UI_M19_002_ZOMBIE_LIFECYCLE_MUTATIONS.md`** (M19_002). Grouped because every remaining deferred surface shares one shape — a PATCH on a scalar field — so splitting them into separate workstreams would duplicate boilerplate without independent value.
+
+| Missing capability | Original §/Dim | Deferred to | Proposed endpoint (M19_002) |
+|---|---|---|---|
+| Rename / re-describe zombie | §4 dim 4.1 | M19_002 §1 | `PATCH /v1/workspaces/{ws}/zombies/{id}` body `{name?, description?}` |
+| Pause / resume | §4 dim 4.2 | M19_002 §1 | same PATCH, body `{paused: true\|false}` — rejects the old `:pause` / `:resume` path-verb style (REST guideline §7) |
+| Set / clear cron schedule | §2 dims 2.2–2.4 | M19_002 §1 | same PATCH, body `{schedule_cron: "…"\|null}` — rejects the old `/schedule` path-verb style |
+| Firewall read / replace | §3 entire section | M19_002 §2 | `GET \| PUT /v1/workspaces/{ws}/zombies/{id}/firewall` — rules are a rich collection, so they stay on their own sub-resource |
+| Skills catalog (template picker source) | §1 dim 1.1 | Dropped | Operators type the skill identifier directly; a catalog endpoint just to power a picker isn't carrying enough weight. If the picker becomes operator-essential later, it opens as its own workstream. |
+| Webhook URL fetch | §2 dim 2.1 | Not needed | URL is `${API_BASE}/v1/webhooks/${zombie_id}`, derivable client-side. Dim 2.1 was delivered in this workstream. |
+
+### Legacy `/stop` collapse (in-scope backend change)
+
+While reviewing the proposed M19_002 endpoint shapes, the operator called out that `:pause` / `:resume` / `/schedule` all violate `docs/REST_API_DESIGN_GUIDELINES.md §7` ("avoid action verbs in path names"). The same rule applies retroactively to the pre-existing `POST /v1/workspaces/{ws}/zombies/{id}/stop` endpoint that M12_001 shipped for the dashboard kill switch — it was never REST-clean, we just hadn't pulled the thorn. The operator's instruction: *"drop /skills also /stop or actions must get collapsed and no legacy thorn."*
+
+Scope of this workstream expanded to include that cleanup, because deferring it to M19_002 would mean canonicalizing a REST-correct PATCH on one branch while the one existing path-verb kill-switch endpoint continued to violate §7 in production. Fixing both in the same release preserves the invariant: the zombies routes have no action verbs in paths.
+
+**Replacement shape — DELETE on a singleton sub-resource:**
+
+```
+BEFORE: POST   /v1/workspaces/{ws}/zombies/{id}/stop
+AFTER:  DELETE /v1/workspaces/{ws}/zombies/{id}/current-run
+```
+
+Why DELETE on `current-run` rather than `PATCH {status:"stopped"}`: the zombie's "current run" is conceptually a singleton sub-resource — either a run is happening (DELETE means "kill it") or it isn't (DELETE is a no-op / 409). The semantics map cleanly onto a resource lifecycle, which PATCH would obscure. A future `GET /.../current-run` for run-state becomes symmetric.
+
+**Breaking change.** Any caller of the old `POST .../stop` path receives 404. Pre-v2.0 alpha-gate etiquette is bare 404 (per RULE EP4), no 410 ceremony. The release note carries a migration under `Upgrading`.
+
+### Route ownership bridge (M19 ↔ M27, unchanged in spirit)
+
+§0's partition remains: M19 owns `zombies/new/page.tsx` + `zombies/[id]/components/*.tsx`. M27 owns `zombies/[id]/page.tsx`. Because M27 is PENDING on M26_001 (design-system unification) and M19 needs a host for its panel components, **M19 additionally ships a minimal `zombies/[id]/page.tsx` stub** that composes the three M19 panels and a status header. The stub is tagged `// TODO(M27_001): replace with full detail page composition (kill switch, spend panel, activity feed).` When M27 lands, its `page.tsx` supersedes the stub; M19's `components/` tree is imported unchanged. Same for `zombies/page.tsx` (list) — M19 scaffolds a minimal list, M27 replaces.
+
+### Revised §1–§5 dimension status (authoritative)
+
+| Original dim | Status after amendment | Action |
+|---|---|---|
+| 1.1 (template picker pre-fill) | DEFERRED → M19_002 §4 | no `/v1/skills`; install form uses blank fields only |
+| 1.2 (install + redirect) | DONE | `InstallZombieForm` POSTs, redirects to `/zombies/{id}` |
+| 1.3 (empty-name validation) | DONE | client-side inline error |
+| 1.4 (409 conflict toast) | DONE | 409 → "already exists" alert in form |
+| 1.5 (CLI `Woohoo!` line) | DONE | `zombiectl/test/zombie-up-woohoo.unit.test.js` asserts literal line + URL |
+| 2.1 (webhook URL + copy) | DONE | URL derived client-side, copy button with animated confirmation |
+| 2.2, 2.3, 2.4 (cron) | DEFERRED → M19_002 §2 | cron UI rendered as placeholder tab |
+| 3.1–3.4 (firewall editor) | DEFERRED → M19_002 §3 | §3 renders a read-only placeholder panel |
+| 4.1 (rename) | DEFERRED → M19_002 §1 | |
+| 4.2 (pause) | DEFERRED → M19_002 §1 | |
+| 4.3 (delete + confirmation) | DONE | `ZombieConfig` with confirm dialog + spinner |
+| 5.1 | DONE | `ExhaustionBanner` on `/workspaces` and `/zombies` (practical home while M27 owns `(dashboard)/page.tsx`) |
+| 5.2 | DONE | `ExhaustionBadge` in `/zombies/[id]` header |
+| 5.3 | DONE | banner + badge render null when `is_exhausted=false` |
+| 6.1 (zombies list) | DONE | `/zombies` with "+ Install Zombie" CTA |
+| 6.2 (detail stub) | DONE | `/zombies/[id]` composes panels; `TODO` comment hands off to dashboard-pages owner |
+| 6.3 (Shell nav) | DONE | `Zombies` link added with `SkullIcon` |
+
+### §5 — Balance exhaustion UI (new, absorbs M11_006 handoff)
+
+M11_006 Out of Scope line: *"UI banners / dashboard affordances for exhausted state — separate M19 workstream pulls `is_exhausted` into the UI."* Absorbed here so the handoff doesn't drift.
+
+**Dimensions:**
+
+- 5.1 IN SCOPE
+  - target: `app/(dashboard)/page.tsx` (dashboard overview)
+  - input: `GET /v1/tenants/me/billing` returns `{is_exhausted: true, exhausted_at: <epoch_ms>}`
+  - expected: a destructive-tone banner renders above the main content with "Your credit balance is exhausted. Runs are paused/warn/continue per `BALANCE_EXHAUSTED_POLICY`. [Contact support]" and a timestamp.
+  - test_type: unit (component test, API mock)
+- 5.2 IN SCOPE
+  - target: `app/(dashboard)/zombies/[id]/page.tsx` (stub; M27 will preserve this behavior)
+  - input: same API response
+  - expected: a "Balance exhausted" badge renders adjacent to the zombie name in the detail header.
+  - test_type: unit (component test)
+- 5.3 IN SCOPE
+  - target: both surfaces
+  - input: `is_exhausted: false`
+  - expected: no banner, no badge, no layout shift.
+  - test_type: unit (component test)
+
+### §6 — Scaffolding (new)
+
+Before any panel work. Creates the route skeleton so M27's eventual detail page has neighbors and M19's install redirect has a destination.
+
+**Dimensions:**
+
+- 6.1 IN SCOPE
+  - target: `app/(dashboard)/zombies/page.tsx`
+  - expected: renders a minimal list using `GET /v1/workspaces/{ws}/zombies` via the resolved active-workspace context; "+ Install Zombie" button links to `new/`. Marked `// TODO(M27_001): full list with status + spend columns.`
+  - test_type: unit (component test, API mock)
+- 6.2 IN SCOPE
+  - target: `app/(dashboard)/zombies/[id]/page.tsx` (stub)
+  - expected: renders `<ZombieConfig>` + `<TriggerPanel>` + `<FirewallRulesEditor>` and the exhaustion badge from §5.2. TODO comment points to M27_001.
+  - test_type: unit (smoke — component renders without crashing)
+- 6.3 IN SCOPE
+  - target: `components/layout/Shell.tsx`
+  - expected: sidebar gains a "Zombies" link pointing at `/zombies`.
+  - test_type: unit
+
+### Revised §5.1 — API endpoints actually consumed
+
+```
+POST   /v1/workspaces/{ws}/zombies               — install (§1)
+GET    /v1/workspaces/{ws}/zombies               — list (§6.1)
+DELETE /v1/workspaces/{ws}/zombies/{id}          — delete (§4.3)
+GET    /v1/tenants/me/billing                    — exhaustion UI (§5)
+```
+
+Webhook URL (§2) is **derived client-side** — not an API call. `POST /v1/webhooks/{zombie_id}` is the public ingress path the customer pastes into AgentMail/Slack/etc.
 
 ---
 
 ## Overview
 
 **Goal (testable):** An operator with no CLI access can: install a new zombie from a skill template, copy the webhook URL for their trigger, set a cron schedule, configure firewall rules, rename or delete a zombie, and see all of this reflected live in the dashboard. Every action available in `zombiectl zombie *` subcommands has an equivalent UI surface. An agent or pipeline can perform the same operations via the API.
+
+> **Amendment note:** the goal paragraph above is the *original* aspiration. The Apr 22 amendment (§0.5) trims the shippable surface for this workstream to install + delete + webhook copy + exhaustion UI + route scaffolding. Rename / pause / resume / cron editor / firewall editor / template picker move to a single pending follow-up: `docs/v2/pending/P1_API_UI_M19_002_ZOMBIE_LIFECYCLE_MUTATIONS.md` (M19_002), which pairs each deferred UI surface with its backend endpoint.
 
 **Problem:** M12 ships a read-only dashboard. The dashboard shows zombie status, activity, and metrics, but offers no way to install or configure zombies. Every setup step requires the CLI: `zombiectl zombie install`, `zombiectl zombie triggers list`, `zombiectl zombie schedule`, `zombiectl zombie firewall set`. This creates a hard dependency on CLI access for anyone who wants to set up or reconfigure a zombie. CTOs, hiring managers, and ops engineers who are not CLI-first users cannot self-serve. They either rely on an engineer or skip UseZombie entirely.
 

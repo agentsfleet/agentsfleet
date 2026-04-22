@@ -167,9 +167,9 @@ test "integration: dashboard activity — auth, seed, invalid cursor" {
     cleanupTestData(conn);
 }
 
-// ── T5–T7: POST /v1/workspaces/{ws}/zombies/{id}/stop ────────────────────────
+// ── Kill switch: DELETE /v1/workspaces/{ws}/zombies/{id}/current-run ────────
 
-test "integration: dashboard zombie stop — transitions, 409, 404" {
+test "integration: dashboard kill switch — transitions, 409, 404" {
     const alloc = std.testing.allocator;
     const h = seedAndHarness(alloc) catch |err| switch (err) {
         error.SkipZigTest => return error.SkipZigTest,
@@ -177,30 +177,30 @@ test "integration: dashboard zombie stop — transitions, 409, 404" {
     };
     defer h.deinit();
 
-    const stop_url = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/zombies/{s}/stop", .{ TEST_WORKSPACE_ID, TEST_ZOMBIE_ACTIVE });
-    defer alloc.free(stop_url);
+    const kill_url = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/zombies/{s}/current-run", .{ TEST_WORKSPACE_ID, TEST_ZOMBIE_ACTIVE });
+    defer alloc.free(kill_url);
 
     { // user role → 403 (kill switch requires operator)
-        const r = try (try h.post(stop_url).bearer(TOKEN_USER)).rawBody("").send();
+        const r = try (try h.delete(kill_url).bearer(TOKEN_USER)).send();
         defer r.deinit();
         try r.expectStatus(.forbidden);
     }
     { // operator active → 200, status=stopped
-        const r = try (try h.post(stop_url).bearer(TOKEN_OPERATOR)).rawBody("").send();
+        const r = try (try h.delete(kill_url).bearer(TOKEN_OPERATOR)).send();
         defer r.deinit();
         try r.expectStatus(.ok);
         try std.testing.expect(r.bodyContains("\"status\":\"stopped\""));
     }
     { // re-call → 409 UZ-ZMB-010
-        const r = try (try h.post(stop_url).bearer(TOKEN_OPERATOR)).rawBody("").send();
+        const r = try (try h.delete(kill_url).bearer(TOKEN_OPERATOR)).send();
         defer r.deinit();
         try r.expectStatus(.conflict);
         try std.testing.expect(r.bodyContains("UZ-ZMB-010"));
     }
     { // nonexistent zombie → 404 UZ-ZMB-009
-        const missing = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/zombies/{s}/stop", .{ TEST_WORKSPACE_ID, TEST_ZOMBIE_NONEXISTENT });
+        const missing = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/zombies/{s}/current-run", .{ TEST_WORKSPACE_ID, TEST_ZOMBIE_NONEXISTENT });
         defer alloc.free(missing);
-        const r = try (try h.post(missing).bearer(TOKEN_OPERATOR)).rawBody("").send();
+        const r = try (try h.delete(missing).bearer(TOKEN_OPERATOR)).send();
         defer r.deinit();
         try r.expectStatus(.not_found);
         try std.testing.expect(r.bodyContains("UZ-ZMB-009"));
