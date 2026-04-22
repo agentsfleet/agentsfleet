@@ -4,10 +4,10 @@
 **Milestone:** M33
 **Workstream:** 001
 **Date:** Apr 21, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS — parked pending M19_001 (`zombiectl zombie install --from <path>`) and tool-enforcement runtime (nullclaw). §1/§2/§5 land in this pass; §3/§4 dims carry `BLOCKED_ON` tags.
 **Priority:** P1 — The flagship sample that proves the v2.0-alpha demo. Homelab Zombie is the project used for end-to-end testing of the install → trigger → reason → tool-call → diagnosis loop.
 **Batch:** B2 — alpha gate, parallel with M11_005, M19_001, M13_001, M21_001, M27_001, M31_001
-**Branch:** feat/m33-homelab-zombie (in `~/Projects/usezombie`)
+**Branch:** feat/m33-homelab-zombie (worktree at `~/Projects/usezombie-m33-homelab-zombie`)
 **Depends on:** M2_002 (Clawhub skill format — DONE), M19_001 (`zombiectl zombie install --from <path>`), M5_001 (tools as attachments — DONE), M6_001 (firewall policy — DONE)
 
 ---
@@ -39,9 +39,9 @@ This milestone does NOT touch `src/**`; the E2E test is the only code addition.
 | `samples/homelab/README.md` | CREATE | Operator quickstart: prereqs, `zombiectl credential add kubectl_config --file ~/.kube/config`, `zombiectl zombie install --from samples/homelab`, curl trigger example, sample conversation transcript from the Jellyfin scenario, firewall allowlist documentation. |
 | `samples/homelab/skills/kubectl-readonly/SKILL.md` | CREATE | Clawhub-format version of the brainstormed README. Declares read-only verb allowlist: `get`, `describe`, `logs`, `top`, `events`, `explain`, `version`, `api-resources`, `api-versions`. Denies `secrets` resource. |
 | `samples/homelab/skills/docker-readonly/SKILL.md` | CREATE | Clawhub-format version of the brainstormed README. Declares allowed docker commands: `ps`, `logs`, `inspect`, `images`, `stats`, `top`, `events`, `version`, `info`. |
-| `tests/integration/samples_homelab_test.zig` | CREATE | E2E: seed credentials, `zombiectl zombie install --from samples/homelab` → 201, trigger with sample payload → activity stream asserts allowed-verb tool calls + final reasoning message. Negative branch: no credential → one `UZ-GRANT-001`. |
+| `src/samples/homelab/install_integration_test.zig` (or colocated with M19_001 install-from-path handler once it exists) | CREATE (deferred) | E2E: seed credentials, `zombiectl zombie install --from samples/homelab` → 201, trigger with sample payload → activity stream asserts allowed-verb tool calls + final reasoning message. Negative branch: no credential → one `UZ-GRANT-001`. **Deferred:** lands when M19_001 ships `--from <path>`. Path follows this repo's colocation convention (`src/**/*_integration_test.zig`); no `tests/integration/` directory is introduced. |
 
-**Physical move of brainstormed skills:** the `docs/brainstormed/samples/skills/kubectl-readonly/` and `docker-readonly/` directories are moved in M32 §9. M33 authors the Clawhub SKILL.md content that lands at the new path; it does not do the `git mv`.
+**Physical move of brainstormed skills:** the `docs/brainstormed/samples/skills/kubectl-readonly/` and `docker-readonly/` source READMEs are **untracked** in git. M33 authors fresh Clawhub-format `SKILL.md` files at `samples/homelab/skills/{kubectl,docker}-readonly/SKILL.md` using the brainstormed content as reference — no `git mv` is possible or needed. The brainstormed copies remain untracked on disk and can be removed (manually) whenever; they are not load-bearing.
 
 ---
 
@@ -87,21 +87,21 @@ Write `SKILL.md` + `TRIGGER.md` + `README.md` at the `samples/homelab/` root fol
 
 ### §3 — Firewall policy enforcement
 
-**Status:** PENDING
+**Status:** BLOCKED_ON — tool-enforcement runtime (nullclaw). The current `src/zombie/firewall/` engine enforces at the HTTP boundary (domain + endpoint + injection); shell-verb allowlisting (e.g. rejecting `kubectl delete ns`) is a separate enforcement layer that belongs to the tool dispatcher / nullclaw. §3 dims assert that layer's behavior once it exists. M33 lands the **declarative policy** (the `allowed_verbs` / `denied_resources` / `allowed_commands` keys inside the two sub-skill SKILL.md files) so the enforcement layer has something to read when it lands.
 
-Declare the firewall allowlist that constrains the homelab zombie at runtime: only the verbs/commands listed in the two sub-skills. Any attempt to invoke a destructive verb emits `UZ-FIREWALL-001` and halts the tool call.
+Declare the allowlist that should constrain the homelab zombie at runtime: only the verbs/commands listed in the two sub-skills. Any attempt to invoke a destructive verb should emit `UZ-FIREWALL-001` and halt the tool call.
 
 **Dimensions:**
 
 | Dim | Status | Target | Input | Expected | Test type |
 |-----|--------|--------|-------|----------|-----------|
-| 3.1 | PENDING | runtime firewall (M6_001) with homelab skills loaded | synthetic tool call: `kubectl delete ns media` | tool call rejected; activity stream emits `UZ-FIREWALL-001`; zombie receives a structured error string and reasons from it | integration |
-| 3.2 | PENDING | runtime firewall | synthetic tool call: `kubectl get secrets -A` | rejected (`secrets` on denylist even for `get`); `UZ-FIREWALL-001` emitted | integration |
-| 3.3 | PENDING | runtime firewall | synthetic tool call: `docker exec jellyfin sh` | rejected; `UZ-FIREWALL-001` emitted | integration |
+| 3.1 | BLOCKED_ON nullclaw-tool-policy | runtime tool dispatcher with homelab skills loaded | synthetic tool call: `kubectl delete ns media` | tool call rejected; activity stream emits `UZ-FIREWALL-001`; zombie receives a structured error string and reasons from it | integration |
+| 3.2 | BLOCKED_ON nullclaw-tool-policy | runtime tool dispatcher | synthetic tool call: `kubectl get secrets -A` | rejected (`secrets` on denylist even for `get`); `UZ-FIREWALL-001` emitted | integration |
+| 3.3 | BLOCKED_ON nullclaw-tool-policy | runtime tool dispatcher | synthetic tool call: `docker exec jellyfin sh` | rejected; `UZ-FIREWALL-001` emitted | integration |
 
 ### §4 — Install & trigger integration test
 
-**Status:** PENDING
+**Status:** BLOCKED_ON M19_001 — `zombiectl zombie install --from <path>` does not yet exist (today only `zombiectl install <template>` is shipped). The integration test file lands alongside M19_001's handler in this repo's colocation convention (`src/**/*_integration_test.zig`) — not under a `tests/integration/` directory, which does not exist in this repo.
 
 E2E happy-path: spin up `zombied`, seed kubectl + docker credentials in the vault, install from `samples/homelab`, trigger with "Jellyfin pods keep restarting", assert activity stream contains at least one allowed-verb tool call and a final reasoning message.
 
@@ -109,9 +109,9 @@ E2E happy-path: spin up `zombied`, seed kubectl + docker credentials in the vaul
 
 | Dim | Status | Target | Input | Expected | Test type |
 |-----|--------|--------|-------|----------|-----------|
-| 4.1 | PENDING | `tests/integration/samples_homelab_test.zig` install path | `zombiectl zombie install --from samples/homelab` in fresh dev env with seeded credentials | exit 0; HTTP POST `/v1/workspaces/{ws}/zombies` returns 201; response carries webhook URL + zombie ID | integration |
-| 4.2 | PENDING | same test, trigger happy path | POST `{"message":"Jellyfin pods keep restarting"}` to webhook URL, with stubbed k8s API returning canned pod+describe+logs output | activity stream contains ≥1 `kubectl get pods` tool call event, ≥1 reasoning message, and a final `zombie_completed` event with a non-empty diagnosis string | integration |
-| 4.3 | PENDING | same test, credential-missing path | trigger zombie with `kubectl_config` credential absent from the vault | activity stream emits exactly one `UZ-GRANT-001` event at the first tool call, zombie run ends cleanly (no crash, no partial writes); event message points to `zombiectl credential add kubectl_config` | integration |
+| 4.1 | BLOCKED_ON M19_001 | `src/samples/homelab/install_integration_test.zig` (or colocated with the M19_001 install-from-path handler) install path | `zombiectl zombie install --from samples/homelab` in fresh dev env with seeded credentials | exit 0; HTTP POST `/v1/workspaces/{ws}/zombies` returns 201; response carries webhook URL + zombie ID | integration |
+| 4.2 | BLOCKED_ON M19_001 | same test, trigger happy path | POST `{"message":"Jellyfin pods keep restarting"}` to webhook URL, with stubbed k8s API returning canned pod+describe+logs output | activity stream contains ≥1 `kubectl get pods` tool call event, ≥1 reasoning message, and a final `zombie_completed` event with a non-empty diagnosis string | integration |
+| 4.3 | BLOCKED_ON M19_001 | same test, credential-missing path | trigger zombie with `kubectl_config` credential absent from the vault | activity stream emits exactly one `UZ-GRANT-001` event at the first tool call, zombie run ends cleanly (no crash, no partial writes); event message points to `zombiectl credential add kubectl_config` | integration |
 
 ### §5 — Orphan sweep and cross-layer consistency
 
@@ -123,7 +123,7 @@ Post-M32-move, verify zero references to the brainstormed path remain anywhere t
 
 | Dim | Status | Target | Input | Expected | Test type |
 |-----|--------|--------|-------|----------|-----------|
-| 5.1 | PENDING | `docs/`, `src/`, `tests/`, `samples/` | `grep -rn "brainstormed/samples/skills"` excluding `v1/done` and historical logs | zero matches | grep |
+| 5.1 | PENDING | `src/`, `samples/`, and tracked `docs/` (excluding `docs/brainstormed/` which is untracked reference material and `v1/done` historical logs) | `grep -rn "brainstormed/samples/skills"` under those paths | zero matches | grep |
 | 5.2 | PENDING | credential name consistency | `grep kubectl_config samples/homelab/{SKILL.md,README.md,skills/kubectl-readonly/SKILL.md}` | match in all three files | grep |
 
 ---
@@ -278,7 +278,7 @@ N/A — markdown + integration test additions; integration test uses `std.testin
 
 | Step | Action | Verify |
 |------|--------|--------|
-| 1 | `git mv docs/brainstormed/samples/skills/kubectl-readonly samples/homelab/skills/kubectl-readonly` and same for `docker-readonly`. M33 owns this move (see §0.1 below) — does NOT wait on M32 §9. | `ls samples/homelab/skills/kubectl-readonly samples/homelab/skills/docker-readonly` shows moved directories; `ls docs/brainstormed/samples/skills/` is empty |
+| 1 | Author `samples/homelab/skills/kubectl-readonly/SKILL.md` and `.../docker-readonly/SKILL.md` fresh (the brainstormed READMEs are untracked — no `git mv` is meaningful). M33 owns the landed copies at the new path. | `ls samples/homelab/skills/kubectl-readonly samples/homelab/skills/docker-readonly` each show a `SKILL.md` |
 | 2 | Read an existing DONE Clawhub skill (reference M2_002) to confirm current SKILL.md schema | manual |
 | 3 | Rewrite `samples/homelab/skills/kubectl-readonly/SKILL.md` in Clawhub format (content replaces the moved brainstormed README) | §1.1 + §1.3 pass |
 | 4 | Rewrite `samples/homelab/skills/docker-readonly/SKILL.md` in Clawhub format | §1.2 + §1.3 pass |
@@ -338,13 +338,15 @@ grep -c "kubectl_config" \
   samples/homelab/README.md \
   samples/homelab/skills/kubectl-readonly/SKILL.md
 
-# E7: Orphan sweep on brainstormed skills path
-grep -rn "brainstormed/samples/skills" docs/ src/ tests/ samples/ \
+# E7: Orphan sweep on brainstormed skills path (excluding the untracked brainstormed tree itself + v1 history)
+grep -rn "brainstormed/samples/skills" src/ samples/ docs/v2/ \
   | grep -v -E "v1/done|historical|\.git/" \
   || echo "ok: orphans clean"
 
-# E8: Integration test
-zig build test -Dtest-filter=samples_homelab 2>&1 | tail -10
+# E8: Integration test — DEFERRED (BLOCKED_ON M19_001). Landed alongside the
+# install-from-path handler once it exists, at the repo's colocation path
+# (e.g. src/samples/homelab/install_integration_test.zig).
+# zig build test -Dtest-filter=samples_homelab 2>&1 | tail -10
 
 # E9: Every README zombiectl command exists
 for cmd in "zombie install" "credential add"; do
@@ -360,13 +362,12 @@ grep -E "^\s*-\s*(fetch|http_raw|raw_http)" samples/homelab/SKILL.md \
 
 ## Dead Code Sweep
 
-M33 itself deletes nothing. It verifies the M32 §9 move left no orphans.
+M33 itself deletes nothing. The brainstormed `kubectl-readonly/` and `docker-readonly/` directories under `docs/brainstormed/samples/skills/` are **untracked** in git; they remain on disk as reference material and are not load-bearing. Clean-up (if desired) is a separate, non-blocking operation.
 
-| Content to verify gone | Verify |
-|-----------------------|--------|
-| `docs/brainstormed/samples/skills/kubectl-readonly/` | `test ! -d docs/brainstormed/samples/skills/kubectl-readonly` (owned by M32; M33 checks) |
-| `docs/brainstormed/samples/skills/docker-readonly/` | `test ! -d docs/brainstormed/samples/skills/docker-readonly` (owned by M32; M33 checks) |
-| Stale references to the brainstormed path | `grep -rn "brainstormed/samples/skills" docs/ src/ tests/ samples/` excluding historical → 0 matches |
+| Content to verify | Verify |
+|-------------------|--------|
+| Landed SKILL.md files exist at the new path | `test -f samples/homelab/skills/kubectl-readonly/SKILL.md && test -f samples/homelab/skills/docker-readonly/SKILL.md` |
+| Stale references to the brainstormed path in load-bearing content | `grep -rn "brainstormed/samples/skills" src/ samples/ docs/v2/` (excluding the `docs/brainstormed/` tree itself, which is untracked reference) → 0 matches |
 
 ---
 
@@ -387,6 +388,18 @@ M33 itself deletes nothing. It verifies the M32 §9 move left no orphans.
 | CLI commands exist | Eval E9 | | |
 | No raw tools | Eval E10 | | |
 | Worker never holds raw kubeconfig | manual inspection during §4.2 run — document in Ripley's Log | | |
+
+---
+
+## Discovery
+
+Spec-level findings surfaced during CHORE(open) amendment (Apr 21, 2026):
+
+1. **`zombiectl zombie install --from <path>` dependency.** M19_001 owns the `--from <path>` flag; it is still PENDING. Today only `zombiectl install <template>` is shipped (template-name based). M33 static artifacts land now; §4 integration dimensions carry `BLOCKED_ON: M19_001` and the test file lands alongside M19_001's handler in the repo's colocation convention.
+2. **Tool-enforcement runtime does not yet exist.** `src/zombie/firewall/` enforces at the HTTP request boundary (domain allowlist + endpoint rules + injection detection). Shell-verb allowlisting (e.g. rejecting `kubectl delete ns`) is a different layer — the tool dispatcher / nullclaw. §3 dims are tagged `BLOCKED_ON: nullclaw-tool-policy`. M33 lands the declarative policy (in sub-skill SKILL.md files) so the enforcement layer has data to read when it ships.
+3. **Brainstormed skill sources are untracked.** `docs/brainstormed/samples/skills/kubectl-readonly/README.md` and `docker-readonly/README.md` are not in git. `git mv` is meaningless; M33 authors fresh `SKILL.md` files at the target paths using the brainstormed content as reference. Brainstormed copies remain untracked on disk.
+4. **Test-path convention mismatch.** Spec prescribed `tests/integration/samples_homelab_test.zig`; repo convention is `src/**/*_integration_test.zig`. Amended.
+5. **Internal contradictions in original spec:** header said "M32 §9 moves the skills" while Execution Plan Step 1 said "M33 owns this move (see §0.1 below)"; no §0.1 target existed. Amended: M33 authors the landed content at the new path; no move is needed (untracked sources).
 
 ---
 
