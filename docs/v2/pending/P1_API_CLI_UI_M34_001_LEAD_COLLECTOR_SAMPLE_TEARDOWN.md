@@ -36,9 +36,9 @@ All under `$REPO_ROOT/` (the `usezombie` checkout).
 | `zombiectl/test/zombie.unit.test.js` | EDIT | Migrate test assertions: use `"slack-bug-fixer"` (already in `BUNDLED_TEMPLATES`) OR a purpose-built fixture template. The tests verify install behavior, not the specific template content. |
 | `src/zombie/yaml_frontmatter.zig` | EDIT | Rename fixture string `"lead-collector"` → `"test-zombie"` (2 occurrences at lines 228, 234). |
 | `src/zombie/config_markdown_test.zig` | EDIT | Rename fixture string (3 occurrences at lines 12, 17, 42). |
-| `src/zombie/config_parser_test.zig` | EDIT | Rename fixture string (5 occurrences at lines 11, 18, 45, 52). Also update the chain-source fixture `"lead-collector"` → `"test-zombie"`. |
-| `src/zombie/event_loop_integration_test.zig` | EDIT | Rename fixture string (9 occurrences including 7 `base.seedZombie` calls). |
-| `src/zombie/event_loop_obs_integration_test.zig` | EDIT | Rename fixture string (6 occurrences including 3 `base.seedZombie` calls). |
+| `src/zombie/config_parser_test.zig` | EDIT | Rename fixture string (4 occurrences at lines 11, 18, 45, 52). Line 45 is a chain-source fixture — rename that too. |
+| `src/zombie/event_loop_integration_test.zig` | EDIT | Rename fixture string (10 occurrences: 9 quoted JSON/Zig literals + 1 plaintext YAML line at `\\name: lead-collector`; 7 of the quoted forms are `base.seedZombie` calls). |
+| `src/zombie/event_loop_obs_integration_test.zig` | EDIT | Rename fixture string (5 occurrences at lines 17, 21, 39, 84, 154; 3 of them are `base.seedZombie` calls at lines 39, 84, 154). |
 | `ui/packages/app/tests/app-primitives.test.ts` | EDIT | Rename `zombie_name: "lead-collector"` → `zombie_name: "test-zombie"` (2 occurrences at lines 108, 120). |
 | `ui/packages/website/src/components/domain/tokenize-bash.test.ts` | EDIT | Update bash-command example strings (lines 10, 66). The test checks the bash tokenizer, not the specific zombie name; a neutral example is equivalent. |
 
@@ -162,8 +162,8 @@ Order is important: §1 and §2 must land first so no test references `lead-coll
 | 1 | `samples/` contains no `lead-collector/` directory | `test ! -d samples/lead-collector` |
 | 2 | `zombiectl/templates/` contains no `lead-collector/` directory | `test ! -d zombiectl/templates/lead-collector` |
 | 3 | `BUNDLED_TEMPLATES` in `zombiectl/src/commands/zombie.js` does not include `"lead-collector"` | `grep -c '"lead-collector"' zombiectl/src/commands/zombie.js` returns 0 |
-| 4 | No Zig test file uses `"lead-collector"` as a fixture | `grep -rn '"lead-collector"' src/ --include='*.zig'` returns 0 |
-| 5 | No JS/TS test file uses `"lead-collector"` as a fixture | `grep -rn '"lead-collector"' zombiectl/test/ ui/packages/ --include='*.js' --include='*.ts' --include='*.tsx'` returns 0 |
+| 4 | No Zig test file uses `lead-collector` as a fixture — quoted literals OR plaintext YAML/config lines | `grep -rn -w 'lead-collector' src/ --include='*.zig'` returns 0. Word-boundary grep (not `"lead-collector"` with quotes) so plaintext YAML `\\name: lead-collector` lines are caught. |
+| 5 | No JS/TS test file uses `lead-collector` as a fixture — quoted literals OR plaintext substrings in bash-command examples | `grep -rn -w 'lead-collector' zombiectl/test/ ui/packages/ --include='*.js' --include='*.ts' --include='*.tsx'` returns 0. Word-boundary grep so `--template lead-collector` substrings inside larger strings are caught. |
 
 ---
 
@@ -234,8 +234,10 @@ test ! -d zombiectl/templates/lead-collector && echo "ok: template removed" || e
 grep -c '"lead-collector"' zombiectl/src/commands/zombie.js | grep -q '^0$' \
   && echo "ok: BUNDLED_TEMPLATES clean" || echo "FAIL"
 
-# E4: no Zig / JS / TS fixture uses the old name
-grep -rn '"lead-collector"' src/ zombiectl/ ui/ \
+# E4: no Zig / JS / TS fixture uses the old name (word-boundary — catches
+# both `"lead-collector"` quoted literals AND plaintext YAML/bash-cmd
+# substrings like `\\name: lead-collector` and `--template lead-collector`).
+grep -rn -w 'lead-collector' src/ zombiectl/ ui/ \
   --include='*.zig' --include='*.js' --include='*.ts' --include='*.tsx' \
   && echo "FAIL: fixture reference" || echo "ok: no fixture refs"
 
