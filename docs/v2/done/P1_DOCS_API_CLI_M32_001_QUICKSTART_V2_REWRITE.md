@@ -295,7 +295,7 @@ The three zombie directories each contain `README.md` only. The two skill direct
 
 | Dim | Status | Target | Input | Expected | Test type |
 |-----|--------|--------|-------|----------|-----------|
-| 9.1 | DONE | `$REPO_ROOT/samples/` | `ls $REPO_ROOT/samples/` after M32 §9 move | Contains at minimum `homebox-audit/`, `migration-zombie/`, `side-project-resurrector/` (M33_001 separately adds `homelab/` with its own sub-skills). Pre-existing `lead-collector/` remains because it is wired into `zombiectl install` bundled-template tests and the Zig config fixtures; retiring it requires its own spec (see Discovery). | shell |
+| 9.1 | DONE | `$REPO_ROOT/samples/` | `ls $REPO_ROOT/samples/` after M32 §9 move | Lists exactly `homebox-audit/`, `migration-zombie/`, `side-project-resurrector/`. `lead-collector/` deleted in this branch per user authorization — the directory was under `samples/` (not the zombiectl bundled-template copy at `zombiectl/templates/lead-collector/`) and had no live callers. M33_001 separately adds `homelab/`. | shell |
 | 9.2 | DONE | `$REPO_ROOT/docs/brainstormed/samples/` | `ls` after move | Empty, or directory removed entirely | shell |
 | 9.3 | DONE | `docs.json` (Mintlify) | nav entries for the four new zombie pages | `homelab.mdx` is listed alongside the three README-only zombies; nav attribution references `samples/homelab` (for flagship — authored by M33_001) and `samples/<name>/README.md` (for the three README-only zombies) | manual review |
 | 9.4 | DONE | `docs/zombies/homelab.mdx`, `docs/zombies/homebox-audit.mdx`, `docs/zombies/migration-zombie.mdx`, `docs/zombies/side-project-resurrector.mdx` | `Files Changed` row and inline source attribution | `homelab.mdx` cites `docs/brainstormed/docs/homelab-zombie-launch.md` (narrative) + `samples/homelab/` (executable, authored by M33_001); the three README-only pages cite `samples/<name>/README.md` | grep |
@@ -375,7 +375,7 @@ Mandatory — this workstream deletes stale content.
 | Mintlify broken-link check | `cd $DOCS_REPO && mise exec -- npx mintlify broken-links` | `success no broken links found` | ✅ |
 | Vocab sweep — redeem / invite / access codes | `grep -rni "credits redeem\|invite code\|access code" $DOCS_REPO/ \| grep -v -E "changelog\.mdx\|\.git/"` | no matches | ✅ |
 | Vocab sweep — lead collector | `grep -rni "lead collector\|lead-collector" $DOCS_REPO/ \| grep -v -E "changelog\.mdx\|\.git/"` | no matches | ✅ |
-| CLI reference accuracy | `zombiectl/src/program/routes.js` inspection + `zombiectl <cmd> --help` | `install`, `up`, `status`, `logs`, `kill`, `credential` all present; `trigger` documented as curl-to-webhook, not a CLI subcommand | ✅ |
+| CLI reference accuracy | `zombiectl/src/program/routes.js` + `commands/{workspace,zombie,zombie_credential}.js` inspection | Routes verified: `install`, `up`, `status`, `logs`, `kill`, `credential`, `workspace {add,list,upgrade-scale,billing,remove}`. Three initial fabrications caught in self-review and corrected in docs-side fix commit `8decd94`: `zombiectl worker token`/`list` (no `worker` route — rewritten to point at `operator/deployment/worker`), `zombiectl logs --follow` (logs is paginated, not streamed — swapped to `--limit`/`--cursor`), `zombiectl credential rm` (not implemented — now a Note pointing to Mission Control). `trigger` is documented as curl-to-webhook, not a CLI subcommand. | ✅ |
 | E2E timed walkthrough (hosted) | manual | Deferred — depends on M19_001 + M27_001 UI landing on `app.usezombie.com` `main` before a real operator can click through. Prose matches spec'd M19/M27 behavior. | ⏸ |
 | Tenant-credit consistency | manual review | `billing/plans.mdx`, `billing/budgets.mdx`, `concepts.mdx`, `quickstart.mdx` all consistently describe the $10 tenant-scoped wallet and "debit on completion only" rule | ✅ |
 
@@ -389,22 +389,31 @@ Mandatory — this workstream deletes stale content.
 - Video walkthroughs / animated GIFs — text + screenshots only for MVP.
 - Internationalization — English only.
 - Dark mode styling tweaks — Mintlify default is fine.
-- Retiring the `samples/lead-collector/` bundled template — requires CLI surgery (see Discovery D1).
+- Retiring the `zombiectl/templates/lead-collector/` bundled template + the `"lead-collector"` Zig test fixtures — requires CLI + test-suite surgery. Distinct from the `samples/lead-collector/` deletion that IS performed in this branch (see Discovery D1).
 - Deleting literal `docs/integrations/{hiring-agent,lead-collector,ops}.mdx` files — those paths do not exist in the current docs tree; the stale vocabulary lives inside `zombies/*.mdx`, `quickstart.mdx`, `cli/zombiectl.mdx`, and `concepts.mdx` and is rewritten in place (see Discovery D2).
 
 ---
 
 ## Discovery
 
-### D1 — `samples/lead-collector/` is still wired into live code
+### D1 — `samples/lead-collector/` deleted; `zombiectl/templates/lead-collector/` + Zig fixtures survive
 
-**Found during:** CHORE(open) grep sweep across usezombie repo.
+**Found during:** CHORE(open) grep sweep across usezombie repo. **Resolved:** mid-review, with explicit user authorization to delete the sample directory.
 
-**Detail:** `samples/lead-collector/SKILL.md` + `TRIGGER.md` are referenced by:
-- `zombiectl/test/zombie.unit.test.js` — asserts `zombiectl install lead-collector` creates the directory with both files.
-- `src/zombie/yaml_frontmatter.zig`, `src/zombie/config_markdown_test.zig`, `src/zombie/config_parser_test.zig`, `src/zombie/event_loop_integration_test.zig`, `src/zombie/event_loop_obs_integration_test.zig` — use `"lead-collector"` as the canonical test fixture name.
+**Detail.** The initial sweep turned up a tangle between two unrelated paths that both contain the string `lead-collector`:
 
-Deleting the directory would red the CLI bundled-template test. Renaming every fixture to a non-legacy name is a standalone refactor, not a docs rewrite. Logged as follow-up for a future milestone: "Retire `lead-collector` bundled template — replace zombiectl default with `homelab` (M33 output) or delete the bundled-template concept entirely in favor of `zombiectl zombie install --from <path>` (M19 flow)."
+1. `samples/lead-collector/SKILL.md` + `TRIGGER.md` — the **sample** directory. No live callers. Its role was an example zombie from the pre-Clerk era.
+2. `zombiectl/templates/lead-collector/` — the **bundled CLI template**. Loaded at `zombiectl install lead-collector` time (see `zombiectl/src/commands/zombie.js:22`).
+3. Zig tests — `src/zombie/yaml_frontmatter.zig`, `src/zombie/config_markdown_test.zig`, `src/zombie/config_parser_test.zig`, `src/zombie/event_loop_integration_test.zig`, `src/zombie/event_loop_obs_integration_test.zig` — use the literal string `"lead-collector"` as the canonical test fixture name in JSON/YAML bodies.
+4. `zombiectl/test/zombie.unit.test.js` — asserts `zombiectl install lead-collector` creates `SKILL.md` + `TRIGGER.md`; reads from (2), not (1).
+
+My initial instinct was to `rm -rf samples/lead-collector/` blindly. I paused because (2)–(4) also matched the `lead-collector` grep, and I mistakenly conflated them with (1). After confirming with `diff -rq` that (1) and (2) have different content and no shared file paths — and that nothing under `src/`, `zombiectl/`, or `Makefile` reads `samples/lead-collector/` — (1) is definitively safe to delete.
+
+**Action taken (in this branch):** `git rm -rf samples/lead-collector/`. Spec §9.1 expected outcome tightened back to "lists exactly `homebox-audit/`, `migration-zombie/`, `side-project-resurrector/`."
+
+**Deferred to a separate spec:** retiring (2) — `zombiectl/templates/lead-collector/` — and (3) + (4) (the Zig fixture names + the bundled-template install test). That's CLI + test-suite surgery and belongs with a CLI milestone, not a docs rewrite. Candidate follow-up: "Retire `lead-collector` bundled template — replace zombiectl default with `homelab` (M33 output) or delete the bundled-template concept entirely in favor of `zombiectl zombie install --from <path>` (M19 flow). Rename `"lead-collector"` Zig fixtures to a neutral placeholder at the same time."
+
+**Rule for future `samples/<name>/` triage:** grep the repo for the literal name across `src/`, `zombiectl/`, and `Makefile`. Zero hits → safe to remove. Hits → distinguish between "reads the sample directory on disk" (would break) and "happens to use the string as a fixture" (orthogonal, can be renamed separately).
 
 ### D2 — Spec's `docs/integrations/*.mdx` deletion targets don't exist
 
