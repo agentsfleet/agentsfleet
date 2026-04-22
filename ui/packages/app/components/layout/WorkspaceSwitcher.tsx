@@ -36,11 +36,13 @@ export default function WorkspaceSwitcher({ workspaces, activeId, onSwitch }: Pr
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
-        className="mc-ws-switcher"
+        className="inline-flex items-center gap-[0.4rem] px-[0.7rem] py-[0.35rem] mr-3 rounded-full border border-[color:var(--z-border,rgba(255,255,255,0.1))] bg-transparent text-[color:var(--z-text-primary)] text-[0.82rem] cursor-pointer transition-[border-color,background-color] duration-150 enabled:hover:border-[color:var(--z-orange)] enabled:hover:bg-[rgba(255,137,0,0.06)] disabled:opacity-60 disabled:cursor-wait"
         aria-label="Select workspace"
         disabled={pending}
       >
-        <span className="mc-ws-label">{activeLabel}</span>
+        <span className="max-w-[180px] overflow-hidden text-ellipsis whitespace-nowrap">
+          {activeLabel}
+        </span>
         <ChevronDownIcon size={14} aria-hidden="true" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start">
@@ -52,34 +54,11 @@ export default function WorkspaceSwitcher({ workspaces, activeId, onSwitch }: Pr
             onSelect={() => pick(ws.id)}
             data-active={ws.id === active?.id ? "true" : undefined}
           >
-            <span className="mc-ws-item-name">{ws.name ?? ws.id}</span>
+            <span className="flex-1">{ws.name ?? ws.id}</span>
             {ws.id === active?.id ? <span aria-hidden="true">✓</span> : null}
           </DropdownMenuItem>
         ))}
       </DropdownMenuContent>
-      <style>{`
-        .mc-ws-switcher {
-          display: inline-flex;
-          align-items: center;
-          gap: 0.4rem;
-          padding: 0.35rem 0.7rem;
-          margin-right: 0.75rem;
-          border: 1px solid var(--z-border, rgba(255,255,255,0.1));
-          border-radius: var(--z-radius-pill, 9999px);
-          background: transparent;
-          color: var(--z-text-primary);
-          font-size: 0.82rem;
-          cursor: pointer;
-          transition: border-color 0.15s, background 0.15s;
-        }
-        .mc-ws-switcher:hover:not(:disabled) {
-          border-color: var(--z-orange);
-          background: rgba(255, 137, 0, 0.06);
-        }
-        .mc-ws-switcher:disabled { opacity: 0.6; cursor: wait; }
-        .mc-ws-label { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .mc-ws-item-name { flex: 1; }
-      `}</style>
     </DropdownMenu>
   );
 }

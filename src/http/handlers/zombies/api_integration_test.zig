@@ -87,16 +87,54 @@ test "integration: zombies list — cursor pagination roundtrip" {
     const ids = try seedZombies(alloc, conn, 5, now_ms);
     defer freeIds(alloc, ids);
 
-    // Page 1: limit=2 → items present, cursor present.
-    const url_p1 = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/zombies?limit=2", .{TEST_WORKSPACE_ID});
-    defer alloc.free(url_p1);
-    const r1 = try (try h.get(url_p1).bearer(TOKEN_USER)).send();
-    defer r1.deinit();
-    try r1.expectStatus(.ok);
-    try std.testing.expect(r1.bodyContains("\"items\""));
-    try std.testing.expect(r1.bodyContains("\"cursor\""));
-    // Cursor should be a non-null string when more pages remain.
-    try std.testing.expect(!r1.bodyContains("\"cursor\":null"));
+    // Full cursor round-trip: 5 zombies seeded, limit=2 means pages of
+    // 2 + 2 + 1. Walk every page, accumulate ids, and assert:
+    //   (a) continuation has no overlap with prior pages,
+    //   (b) last page carries cursor=null,
+    //   (c) union of ids across pages == seeded set (order agnostic).
+    var seen_ids = std.StringHashMap(void).init(alloc);
+    defer seen_ids.deinit();
+
+    var next_cursor: ?[]const u8 = null;
+    var page_count: usize = 0;
+    while (page_count < 10) : (page_count += 1) { // hard cap guards runaway loop
+        const url = if (next_cursor) |c|
+            try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/zombies?limit=2&cursor={s}", .{ TEST_WORKSPACE_ID, c })
+        else
+            try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/zombies?limit=2", .{TEST_WORKSPACE_ID});
+        defer alloc.free(url);
+        if (next_cursor) |c| alloc.free(c);
+
+        const r = try (try h.get(url).bearer(TOKEN_USER)).send();
+        defer r.deinit();
+        try r.expectStatus(.ok);
+
+        const parsed = try std.json.parseFromSlice(std.json.Value, alloc, r.body, .{});
+        defer parsed.deinit();
+
+        const items = parsed.value.object.get("items").?.array;
+        for (items.items) |item| {
+            const id = item.object.get("id").?.string;
+            const id_copy = try alloc.dupe(u8, id);
+            const gop = try seen_ids.getOrPut(id_copy);
+            try std.testing.expect(!gop.found_existing); // (a) no overlap across pages
+        }
+
+        const cursor_node = parsed.value.object.get("cursor").?;
+        switch (cursor_node) {
+            .null => {
+                next_cursor = null;
+                break; // (b) terminal page reached
+            },
+            .string => |s| next_cursor = try alloc.dupe(u8, s),
+            else => return error.UnexpectedCursorType,
+        }
+    }
+    try std.testing.expect(next_cursor == null);
+    // (c) every seeded zombie was returned across the walk.
+    try std.testing.expectEqual(@as(usize, 5), seen_ids.count());
+    var seen_it = seen_ids.keyIterator();
+    while (seen_it.next()) |key_ptr| alloc.free(key_ptr.*);
 
     // Bad cursor → 400.
     const url_bad = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/zombies?cursor=not-a-cursor", .{TEST_WORKSPACE_ID});
