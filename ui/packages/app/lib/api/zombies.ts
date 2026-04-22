@@ -1,3 +1,5 @@
+import { API_ORIGIN, request } from "./client";
+import { ApiError } from "./errors";
 import type {
   InstallZombieRequest,
   InstallZombieResponse,
@@ -5,56 +7,46 @@ import type {
   ZombieListResponse,
 } from "../types";
 
-const BASE = process.env.NEXT_PUBLIC_API_URL ?? "https://api.usezombie.com";
-
-async function request<T>(
-  path: string,
-  init: RequestInit,
-  token: string,
-): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-      ...init.headers,
-    },
-  });
-
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({ error: res.statusText }));
-    throw Object.assign(new Error(body.error ?? res.statusText), {
-      status: res.status,
-      code: body.code,
-    });
-  }
-
-  if (res.status === 204) return undefined as T;
-  return res.json() as Promise<T>;
-}
+export type { Zombie, ZombieListResponse };
 
 export async function listZombies(
   workspaceId: string,
   token: string,
+  opts?: { cursor?: string; limit?: number },
 ): Promise<ZombieListResponse> {
-  return request<ZombieListResponse>(
-    `/v1/workspaces/${workspaceId}/zombies`,
-    { method: "GET" },
-    token,
-  );
+  const params = new URLSearchParams();
+  if (opts?.cursor) params.set("cursor", opts.cursor);
+  if (opts?.limit != null) params.set("limit", String(opts.limit));
+  const qs = params.toString();
+  const path = qs
+    ? `/v1/workspaces/${workspaceId}/zombies?${qs}`
+    : `/v1/workspaces/${workspaceId}/zombies`;
+  return request<ZombieListResponse>(path, { method: "GET" }, token);
 }
 
-// Single-zombie lookup. Today the server returns all zombies unpaginated
-// from list_zombies, so this filters that response. When a dedicated
-// GET /v1/workspaces/{ws}/zombies/{id} endpoint lands (M19_002), swap the
-// body of this function — call sites stay unchanged.
+// Single-zombie lookup. Filters the list response until a dedicated
+// GET /v1/workspaces/{ws}/zombies/{id} endpoint ships. Requests the
+// server max (100) since we cannot target a specific id without that
+// endpoint — workspaces above that size will miss zombies on later pages.
 export async function getZombie(
   workspaceId: string,
   zombieId: string,
   token: string,
 ): Promise<Zombie | null> {
-  const { items } = await listZombies(workspaceId, token);
-  return items.find((z) => z.id === zombieId) ?? null;
+  const page = await listZombies(workspaceId, token, { limit: 100 });
+  const hit = page.items.find((z) => z.id === zombieId);
+  if (hit) return hit;
+  // `cursor` non-null means the workspace has more zombies than we scanned.
+  // Surface this as a distinct error instead of a silent null → 404 so
+  // operators aren't left staring at "not found" for a zombie that exists.
+  if (page.cursor) {
+    throw new ApiError(
+      `Zombie ${zombieId} is not in the first 100 zombies for this workspace. This workspace has more zombies than the client-side scan can cover; a dedicated GET /zombies/{id} endpoint is required for reliable lookup at this scale.`,
+      404,
+      "UZ-ZMB-SCAN-CAP",
+    );
+  }
+  return null;
 }
 
 export async function installZombie(
@@ -65,6 +57,21 @@ export async function installZombie(
   return request<InstallZombieResponse>(
     `/v1/workspaces/${workspaceId}/zombies`,
     { method: "POST", body: JSON.stringify(body) },
+    token,
+  );
+}
+
+// DELETE /v1/workspaces/{ws}/zombies/{id}/current-run
+// Returns the updated zombie. Throws ApiError UZ-ZMB-010 on 409 (already
+// stopped) and UZ-ZMB-009 on 404 (zombie not found).
+export async function stopZombie(
+  workspaceId: string,
+  zombieId: string,
+  token: string,
+): Promise<Zombie> {
+  return request<Zombie>(
+    `/v1/workspaces/${workspaceId}/zombies/${zombieId}/current-run`,
+    { method: "DELETE" },
     token,
   );
 }
@@ -82,5 +89,5 @@ export async function deleteZombie(
 }
 
 export function webhookUrlFor(zombieId: string): string {
-  return `${BASE}/v1/webhooks/${zombieId}`;
+  return `${API_ORIGIN}/v1/webhooks/${zombieId}`;
 }

@@ -2,23 +2,27 @@
 
 import { usePathname } from "next/navigation";
 import Link from "next/link";
-import { UserButton } from "@clerk/nextjs";
+import { AuthUserButton } from "@/lib/auth/client";
 import { trackNavigationClicked } from "@/lib/analytics/posthog";
+import WorkspaceSwitcher from "./WorkspaceSwitcher";
+import { setActiveWorkspace } from "@/app/(dashboard)/actions";
+import type { TenantWorkspace } from "@/lib/api/workspaces";
 import {
   LayoutDashboardIcon,
-  BoxIcon,
   ActivityIcon,
   SettingsIcon,
   BookOpenIcon,
   ZapIcon,
   SkullIcon,
+  ShieldIcon,
+  KeyRoundIcon,
 } from "lucide-react";
 
 const NAV = [
   {
-    label: "Workspaces",
-    href: "/workspaces",
-    icon: BoxIcon,
+    label: "Dashboard",
+    href: "/",
+    icon: LayoutDashboardIcon,
   },
   {
     label: "Zombies",
@@ -26,14 +30,19 @@ const NAV = [
     icon: SkullIcon,
   },
   {
+    label: "Firewall",
+    href: "/firewall",
+    icon: ShieldIcon,
+  },
+  {
+    label: "Credentials",
+    href: "/credentials",
+    icon: KeyRoundIcon,
+  },
+  {
     label: "Activity",
     href: "/activity",
     icon: ActivityIcon,
-  },
-  {
-    label: "Overview",
-    href: "/",
-    icon: LayoutDashboardIcon,
   },
 ];
 
@@ -51,7 +60,13 @@ const BOTTOM_NAV = [
   },
 ];
 
-export default function Shell({ children }: { children: React.ReactNode }) {
+type ShellProps = {
+  children: React.ReactNode;
+  workspaces?: TenantWorkspace[];
+  activeWorkspaceId?: string | null;
+};
+
+export default function Shell({ children, workspaces = [], activeWorkspaceId = null }: ShellProps) {
   const pathname = usePathname();
 
   function isActive(href: string) {
@@ -70,6 +85,12 @@ export default function Shell({ children }: { children: React.ReactNode }) {
         </Link>
 
         <div style={{ flex: 1 }} />
+
+        <WorkspaceSwitcher
+          workspaces={workspaces}
+          activeId={activeWorkspaceId}
+          onSwitch={setActiveWorkspace}
+        />
 
         <nav className="mc-header-nav">
           <a
@@ -92,7 +113,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
           </a>
         </nav>
 
-        <UserButton
+        <AuthUserButton
           appearance={{
             variables: {
               colorPrimary: "var(--z-orange)",

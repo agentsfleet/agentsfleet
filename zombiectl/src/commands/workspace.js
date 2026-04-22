@@ -165,6 +165,83 @@ export async function commandWorkspace(ctx, workspaces, args, deps) {
     });
   }
 
+  if (action === "use") {
+    const parsed = parseFlags(tail);
+    const workspaceId = parsed.positionals[0] || parsed.options["workspace-id"];
+    if (!workspaceId) {
+      writeError(ctx, "USAGE_ERROR", "workspace use requires <workspace_id>", deps);
+      return 2;
+    }
+    const check = validateRequiredId(workspaceId, "workspace_id");
+    if (!check.ok) {
+      writeError(ctx, "VALIDATION_ERROR", check.message, deps);
+      return 2;
+    }
+    const known = workspaces.items.find((x) => x.workspace_id === workspaceId);
+    if (!known) {
+      writeError(ctx, "UNKNOWN_WORKSPACE", `workspace ${workspaceId} is not in your local list — run "zombiectl workspace add" or "list" first`, deps);
+      return 2;
+    }
+    workspaces.current_workspace_id = workspaceId;
+    await saveWorkspaces(workspaces);
+    setCliAnalyticsContext(ctx, { workspace_id: workspaceId });
+    queueCliAnalyticsEvent(ctx, "workspace_used", { workspace_id: workspaceId });
+    if (ctx.jsonMode) {
+      printJson(ctx.stdout, { active: workspaceId });
+    } else {
+      writeLine(ctx.stdout, ui.ok(`active workspace: ${workspaceId}`));
+    }
+    return 0;
+  }
+
+  if (action === "show") {
+    const parsed = parseFlags(tail);
+    const workspaceId = await ensureWorkspaceId(parsed.options["workspace-id"] || parsed.positionals[0]);
+    if (!workspaceId) {
+      writeError(ctx, "NO_WORKSPACE", "no active workspace — run \"zombiectl workspace use <id>\" or pass --workspace-id", deps);
+      return 2;
+    }
+    const known = workspaces.items.find((x) => x.workspace_id === workspaceId) || null;
+    const detail = {
+      workspace_id: workspaceId,
+      active: workspaceId === workspaces.current_workspace_id,
+      repo_url: known?.repo_url ?? null,
+      default_branch: known?.default_branch ?? null,
+      created_at: known?.created_at ?? null,
+    };
+    setCliAnalyticsContext(ctx, { workspace_id: workspaceId });
+    if (ctx.jsonMode) {
+      printJson(ctx.stdout, detail);
+    } else {
+      printSection(ctx.stdout, "Workspace");
+      printKeyValue(ctx.stdout, {
+        workspace_id: detail.workspace_id,
+        active: detail.active ? "yes" : "no",
+        repo_url: detail.repo_url ?? "—",
+        default_branch: detail.default_branch ?? "—",
+      });
+    }
+    return 0;
+  }
+
+  if (action === "credentials") {
+    // Workspace-level credential vault — mirrors the dashboard /credentials
+    // page. The backing vault ships later; for now both surfaces are a
+    // placeholder so operators don't see one side claim features the other
+    // side can't deliver.
+    if (ctx.jsonMode) {
+      printJson(ctx.stdout, {
+        status: "placeholder",
+        message: "workspace-level credential vault coming soon — use 'zombiectl zombie credential' for per-zombie overrides",
+      });
+    } else {
+      printSection(ctx.stdout, "Workspace credentials");
+      writeLine(ctx.stdout, ui.info("The workspace credential vault ships once the backing feature lands."));
+      writeLine(ctx.stdout, ui.dim("For per-zombie credential overrides today, use: zombiectl zombie credential"));
+    }
+    return 0;
+  }
+
   if (action === "remove") {
     const parsed = parseFlags(tail);
     const workspaceId = parsed.positionals[0] || parsed.options["workspace-id"];
@@ -192,6 +269,6 @@ export async function commandWorkspace(ctx, workspaces, args, deps) {
     return 0;
   }
 
-  writeError(ctx, "UNKNOWN_COMMAND", "usage: workspace add|list|remove|billing|upgrade-scale", deps);
+  writeError(ctx, "UNKNOWN_COMMAND", "usage: workspace add|list|use|show|credentials|remove|billing|upgrade-scale", deps);
   return 2;
 }

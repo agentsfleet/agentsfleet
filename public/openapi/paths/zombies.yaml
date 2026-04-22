@@ -97,8 +97,13 @@
   get:
     operationId: list_zombies
     summary: List zombies in a workspace
-    description: Returns all zombies the caller has access to in the given workspace. Response envelope follows the RAD §8
-      `items`/`total` convention.
+    description: >
+      Returns zombies the caller has access to in the given workspace. Keyset
+      paginated over `(created_at DESC, id DESC)`. Omit `cursor` for the first
+      page; pass the response `cursor` back verbatim to fetch the next page.
+      `cursor` is `null` when the last page has been reached. Response envelope
+      follows the RAD §8 `items`/`total` convention (`total` is the size of
+      this page, not a global count).
     tags:
     - Zombies
     parameters:
@@ -109,6 +114,23 @@
       schema:
         type: string
         format: uuid
+    - name: cursor
+      in: query
+      required: false
+      description: >
+        Opaque page cursor from a prior response's `cursor` field, formatted
+        `{created_at_epoch_ms}:{zombie_id}`. Omit for the first page.
+      schema:
+        type: string
+    - name: limit
+      in: query
+      required: false
+      description: Page size. Defaults to 20. Clamped to a maximum of 100.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
     responses:
       '200':
         description: OK
@@ -119,6 +141,7 @@
               required:
               - items
               - total
+              - cursor
               properties:
                 items:
                   type: array
@@ -127,6 +150,12 @@
                 total:
                   type: integer
                   description: Count of items in this response (not total across pages).
+                cursor:
+                  type: string
+                  nullable: true
+                  description: >
+                    Opaque cursor to fetch the next page. `null` when there are
+                    no more pages.
       '400':
         $ref: ../components/responses.yaml#/components/responses/Error
       '401':

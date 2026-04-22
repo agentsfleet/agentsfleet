@@ -11,6 +11,7 @@ export function registerProgramCommands(handlers) {
     // M1_001 §5: Zombie commands
     "zombie.install": handlers.zombieInstall,
     "zombie.up": handlers.zombieUp,
+    "zombie.list": handlers.zombieList,
     "zombie.status": handlers.zombieStatus,
     "zombie.kill": handlers.zombieKill,
     "zombie.logs": handlers.zombieLogs,

@@ -27,6 +27,36 @@ export {
   type BadgeVariant,
 } from "./Badge";
 export { Input, type InputProps } from "./Input";
+export { Textarea, type TextareaProps } from "./Textarea";
+export { Label, type LabelProps } from "./Label";
+export {
+  Form,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormControl,
+  FormDescription,
+  FormMessage,
+  useFormField,
+} from "./Form";
+export {
+  Tabs,
+  TabsList,
+  TabsTrigger,
+  TabsContent,
+  type TabsListProps,
+  type TabsTriggerProps,
+  type TabsContentProps,
+} from "./Tabs";
+export {
+  Accordion,
+  AccordionItem,
+  AccordionTrigger,
+  AccordionContent,
+  type AccordionItemProps,
+  type AccordionTriggerProps,
+  type AccordionContentProps,
+} from "./Accordion";
 export { Separator, type SeparatorProps } from "./Separator";
 export { Skeleton, type SkeletonProps } from "./Skeleton";
 export {

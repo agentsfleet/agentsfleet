@@ -15,6 +15,16 @@ const nextConfig: NextConfig = {
   typescript: {
     ignoreBuildErrors: false,
   },
+
+  // Same-origin proxy for API calls. Browser hits /backend/v1/... (no CORS);
+  // Next.js server forwards to the real backend. Uses the same env var as
+  // lib/api/client.ts so a single value drives both server-side and
+  // browser-side fetches — no possibility of them routing to different
+  // backends in prod.
+  async rewrites() {
+    const backend = process.env.NEXT_PUBLIC_API_URL ?? "https://api-dev.usezombie.com";
+    return [{ source: "/backend/:path*", destination: `${backend}/:path*` }];
+  },
 };
 
 export default nextConfig;

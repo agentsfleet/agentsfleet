@@ -75,8 +75,8 @@ export default function App() {
         </div>
 
         <div className="mode-switch" role="tablist" aria-label="Mode switch" data-testid="mode-switch">
-          <button
-            type="button"
+          <Button
+            variant="ghost"
             className={isHumansMode ? "mode-btn active" : "mode-btn"}
             onClick={() => setMode(MODE_HUMANS)}
             role="tab"
@@ -84,9 +84,9 @@ export default function App() {
             data-testid="mode-humans"
           >
             Humans
-          </button>
-          <button
-            type="button"
+          </Button>
+          <Button
+            variant="ghost"
             className={isAgentsMode ? "mode-btn active" : "mode-btn"}
             onClick={() => setMode(MODE_AGENTS)}
             role="tab"
@@ -94,7 +94,7 @@ export default function App() {
             data-testid="mode-agents"
           >
             Agents
-          </button>
+          </Button>
         </div>
 
         <nav className="site-nav" aria-label="Primary">

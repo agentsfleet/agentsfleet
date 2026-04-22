@@ -30,13 +30,20 @@ vi.mock("next/navigation", () => ({ redirect, notFound, usePathname, useRouter }
 vi.mock("@clerk/nextjs/server", () => ({ auth }));
 vi.mock("@clerk/nextjs", () => ({
   useAuth,
+  useUser: vi.fn(() => ({ isLoaded: true, isSignedIn: true, user: null })),
   UserButton: () => React.createElement("div", { "data-user-button": "1" }),
+  ClerkProvider: ({ children }: { children: React.ReactNode }) => React.createElement(React.Fragment, null, children),
+  SignIn: () => React.createElement("div", { "data-sign-in": "1" }),
+  SignUp: () => React.createElement("div", { "data-sign-up": "1" }),
 }));
 vi.mock("next/link", () => ({
   default: ({ href, children, ...rest }: { href: string; children: React.ReactNode }) =>
     React.createElement("a", { href, ...rest }, children),
 }));
-vi.mock("@/lib/workspace", () => ({ resolveActiveWorkspace }));
+vi.mock("@/lib/workspace", () => ({
+  resolveActiveWorkspace,
+  listTenantWorkspacesCached: vi.fn().mockResolvedValue({ items: [], total: 0 }),
+}));
 
 vi.mock("lucide-react", () => {
   function Icon(name: string) {
@@ -52,21 +59,99 @@ vi.mock("lucide-react", () => {
     Loader2Icon: Icon("Loader2Icon"),
     PlusIcon: Icon("PlusIcon"),
     ShieldIcon: Icon("ShieldIcon"),
+    KeyRoundIcon: Icon("KeyRoundIcon"),
     Trash2Icon: Icon("Trash2Icon"),
   };
 });
 
-vi.mock("@usezombie/design-system", () => ({
+const TabsCtx = React.createContext<{ active: string; setActive: (v: string) => void }>({
+  active: "",
+  setActive: () => {},
+});
+
+vi.mock("@usezombie/design-system", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@usezombie/design-system")>();
+  return {
+  ...actual,
   buttonClassName: (variant: string, size: string) => `btn-${variant}-${size}`,
+  Button: ({ children, variant, size, ...rest }: { children: React.ReactNode; variant?: string; size?: string } & React.ButtonHTMLAttributes<HTMLButtonElement>) =>
+    React.createElement("button", { "data-variant": variant, "data-size": size, ...rest }, children),
+  ConfirmDialog: ({ open, onOpenChange, title, description, confirmLabel = "Confirm", cancelLabel = "Cancel", onConfirm, errorMessage, onError }: { open: boolean; onOpenChange: (v: boolean) => void; title: string; description?: React.ReactNode; confirmLabel?: string; cancelLabel?: string; onConfirm: () => void | Promise<void>; errorMessage?: string | null; onError?: (e: unknown) => void }) =>
+    open
+      ? React.createElement(
+          "div",
+          { role: "alertdialog", "data-confirm-dialog": title },
+          React.createElement("div", { key: "title" }, title),
+          description ? React.createElement("div", { key: "desc" }, description) : null,
+          errorMessage ? React.createElement("div", { key: "err", role: "alert" }, errorMessage) : null,
+          React.createElement(
+            "button",
+            { key: "cancel", type: "button", onClick: () => onOpenChange(false) },
+            cancelLabel,
+          ),
+          React.createElement(
+            "button",
+            {
+              key: "confirm",
+              type: "button",
+              onClick: async () => {
+                try {
+                  await onConfirm();
+                } catch (e) {
+                  if (onError) onError(e);
+                }
+              },
+            },
+            confirmLabel,
+          ),
+        )
+      : null,
   EmptyState: ({ title, description }: { title: string; description?: string }) =>
     React.createElement("div", { "data-empty-state": title }, description),
+  Input: (props: React.InputHTMLAttributes<HTMLInputElement>) =>
+    React.createElement("input", props),
+  Textarea: (props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) =>
+    React.createElement("textarea", props),
+  Tabs: ({ children, defaultValue, value: controlled, onValueChange }: { children: React.ReactNode; defaultValue?: string; value?: string; onValueChange?: (v: string) => void }) => {
+    const [active, setActive] = React.useState<string>(controlled ?? defaultValue ?? "");
+    const ctxValue = controlled ?? active;
+    return React.createElement(
+      TabsCtx.Provider,
+      { value: { active: ctxValue, setActive: (v: string) => { setActive(v); onValueChange?.(v); } } },
+      React.createElement("div", { "data-tabs-root": ctxValue }, children),
+    );
+  },
+  TabsList: ({ children, ...rest }: { children: React.ReactNode } & React.HTMLAttributes<HTMLDivElement>) =>
+    React.createElement("div", { role: "tablist", ...rest }, children),
+  TabsTrigger: ({ children, value, ...rest }: { children: React.ReactNode; value: string } & React.ButtonHTMLAttributes<HTMLButtonElement>) => {
+    const ctx = React.useContext(TabsCtx);
+    const isActive = ctx.active === value;
+    return React.createElement(
+      "button",
+      {
+        role: "tab",
+        "data-tab-value": value,
+        "data-state": isActive ? "active" : "inactive",
+        type: "button",
+        onClick: () => ctx.setActive(value),
+        ...rest,
+      },
+      children,
+    );
+  },
+  TabsContent: ({ children, value, ...rest }: { children: React.ReactNode; value: string } & React.HTMLAttributes<HTMLDivElement>) => {
+    const ctx = React.useContext(TabsCtx);
+    if (ctx.active !== value) return null;
+    return React.createElement("div", { role: "tabpanel", "data-tab-value": value, ...rest }, children);
+  },
   PageHeader: ({ children }: { children: React.ReactNode }) =>
     React.createElement("header", { "data-page-header": "1" }, children),
   PageTitle: ({ children }: { children: React.ReactNode }) =>
     React.createElement("h1", { "data-page-title": "1" }, children),
   SectionLabel: ({ children }: { children: React.ReactNode }) =>
     React.createElement("h2", { "data-section-label": "1" }, children),
-}));
+  };
+});
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -98,7 +183,7 @@ describe("lib/api/zombies", () => {
     const mod = await import("../lib/api/zombies");
     const res = await mod.listZombies("ws_1", "tkn");
     expect(fetchMock).toHaveBeenCalledWith(
-      "https://api.usezombie.com/v1/workspaces/ws_1/zombies",
+      expect.stringContaining("/v1/workspaces/ws_1/zombies"),
       expect.objectContaining({
         method: "GET",
         headers: expect.objectContaining({ Authorization: "Bearer tkn" }),
@@ -121,7 +206,7 @@ describe("lib/api/zombies", () => {
     };
     const res = await mod.installZombie("ws_1", body, "tkn");
     expect(fetchMock).toHaveBeenCalledWith(
-      "https://api.usezombie.com/v1/workspaces/ws_1/zombies",
+      expect.stringContaining("/v1/workspaces/ws_1/zombies"),
       expect.objectContaining({
         method: "POST",
         body: JSON.stringify(body),
@@ -172,7 +257,7 @@ describe("lib/api/zombies", () => {
     const res = await mod.deleteZombie("ws_1", "zom_2", "tkn");
     expect(res).toBeUndefined();
     expect(fetchMock).toHaveBeenCalledWith(
-      "https://api.usezombie.com/v1/workspaces/ws_1/zombies/zom_2",
+      expect.stringContaining("/v1/workspaces/ws_1/zombies/zom_2"),
       expect.objectContaining({ method: "DELETE" }),
     );
   });
@@ -180,7 +265,7 @@ describe("lib/api/zombies", () => {
   it("webhookUrlFor composes the deterministic webhook URL", async () => {
     const mod = await import("../lib/api/zombies");
     expect(mod.webhookUrlFor("zom_abc")).toBe(
-      "https://api.usezombie.com/v1/webhooks/zom_abc",
+      "https://api-dev.usezombie.com/v1/webhooks/zom_abc",
     );
   });
 });
@@ -204,7 +289,7 @@ describe("lib/api/tenant_billing", () => {
     const mod = await import("../lib/api/tenant_billing");
     const res = await mod.getTenantBilling("tok");
     expect(fetchMock).toHaveBeenCalledWith(
-      "https://api.usezombie.com/v1/tenants/me/billing",
+      expect.stringContaining("/v1/tenants/me/billing"),
       expect.objectContaining({
         headers: expect.objectContaining({ Authorization: "Bearer tok" }),
       }),
@@ -370,6 +455,9 @@ describe("zombies routes", () => {
       if (url.endsWith("/v1/tenants/me/billing")) {
         return { ok: true, status: 200, json: async () => billing };
       }
+      if (url.includes("/activity")) {
+        return { ok: true, status: 200, json: async () => ({ events: [], next_cursor: null }) };
+      }
       return {
         ok: true,
         status: 200,
@@ -534,6 +622,9 @@ describe("zombies routes", () => {
       if (url.endsWith("/v1/tenants/me/billing")) {
         throw new Error("network down");
       }
+      if (url.includes("/activity")) {
+        return { ok: true, status: 200, json: async () => ({ events: [], next_cursor: null }) };
+      }
       return {
         ok: true,
         status: 200,
@@ -570,13 +661,13 @@ describe("TriggerPanel interactions", () => {
     render(React.createElement(TriggerPanel, { zombieId: "zom_abc" }));
 
     expect(screen.getByTestId("webhook-url").textContent).toBe(
-      "https://api.usezombie.com/v1/webhooks/zom_abc",
+      "https://api-dev.usezombie.com/v1/webhooks/zom_abc",
     );
     // fireEvent.click instead of userEvent.click — user-event v14 installs its
     // own clipboard shim that hides the navigator.clipboard spy this test sets.
     fireEvent.click(screen.getByRole("button", { name: /copy webhook url/i }));
     expect(clipboardWriteText).toHaveBeenCalledWith(
-      "https://api.usezombie.com/v1/webhooks/zom_abc",
+      "https://api-dev.usezombie.com/v1/webhooks/zom_abc",
     );
     await waitFor(() =>
       expect(
@@ -637,7 +728,7 @@ describe("ZombieConfig interactions", () => {
 
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith(
-        "https://api.usezombie.com/v1/workspaces/ws_1/zombies/zom_1",
+        expect.stringContaining("/v1/workspaces/ws_1/zombies/zom_1"),
         expect.objectContaining({ method: "DELETE" }),
       ),
     );
@@ -792,7 +883,7 @@ describe("InstallZombieForm interactions", () => {
 
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith(
-        "https://api.usezombie.com/v1/workspaces/ws_1/zombies",
+        expect.stringContaining("/v1/workspaces/ws_1/zombies"),
         expect.objectContaining({ method: "POST" }),
       ),
     );

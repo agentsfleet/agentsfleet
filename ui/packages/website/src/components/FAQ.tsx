@@ -1,4 +1,9 @@
-import { useState } from "react";
+import {
+  Accordion,
+  AccordionItem,
+  AccordionTrigger,
+  AccordionContent,
+} from "@usezombie/design-system";
 
 const items = [
   {
@@ -28,30 +33,27 @@ const items = [
 ];
 
 export default function FAQ() {
-  const [openIndex, setOpenIndex] = useState<number | null>(null);
-
   return (
     <div className="section-gap">
       <p className="eyebrow">FAQ</p>
       <h2>Common questions</h2>
       <div style={{ maxWidth: "640px" }}>
-        {items.map((item, i) => (
-          <div key={i} className={`faq-item${openIndex === i ? " open" : ""}`} data-testid={`faq-item-${i}`}>
-            <button
-              type="button"
-              className="faq-trigger"
-              onClick={() => setOpenIndex(openIndex === i ? null : i)}
-              aria-expanded={openIndex === i}
-              data-testid={`faq-trigger-${i}`}
+        <Accordion type="single" collapsible>
+          {items.map((item, i) => (
+            <AccordionItem
+              key={i}
+              value={`q-${i}`}
+              data-testid={`faq-item-${i}`}
             >
-              {item.q}
-              <span className="chevron" aria-hidden="true">&#9662;</span>
-            </button>
-            {openIndex === i && (
-              <div className="faq-answer" data-testid={`faq-answer-${i}`}>{item.a}</div>
-            )}
-          </div>
-        ))}
+              <AccordionTrigger data-testid={`faq-trigger-${i}`}>
+                {item.q}
+              </AccordionTrigger>
+              <AccordionContent data-testid={`faq-answer-${i}`}>
+                {item.a}
+              </AccordionContent>
+            </AccordionItem>
+          ))}
+        </Accordion>
       </div>
     </div>
   );

@@ -188,19 +188,16 @@ test {
     _ = @import("executor/zombie_memory.zig");
     // M2_001: Zombie CRUD, activity, router, worker
     _ = @import("http/handlers/zombies/api.zig");
+    _ = @import("http/handlers/zombies/api_integration_test.zig");
     _ = @import("http/handlers/zombies/activity.zig");
     // M18_001: zombie execution telemetry
     _ = @import("state/zombie_telemetry_store.zig");
     _ = @import("http/handlers/zombies/telemetry.zig");
     _ = @import("http/handlers/zombies/telemetry_test.zig");
     _ = @import("http/handlers/zombies/telemetry_integration_test.zig");
-    // NOTE: src/http/handlers/dashboard_http_integration_test.zig is NOT wired
-    // up yet. The test was authored under M12_001 but the seedTestData cleanup
-    // pattern (DELETE of activity_events → zombies → workspace) is blocked by
-    // the append-only trigger on core.activity_events and the resulting FK
-    // chain. Proper fix needs unique IDs per test run + token minting — see
-    // follow-up ticket. Until then, wiring this import here will make `make
-    // test-integration-db` red.
+    _ = @import("http/handlers/workspaces/dashboard_integration_test.zig");
+    _ = @import("http/handlers/tenant_workspaces.zig");
+    _ = @import("http/handlers/tenant_workspaces_integration_test.zig");
     _ = @import("http/router_test.zig");
     // M9_001: Integration grant + execute API
     _ = @import("http/handlers/actions/execute.zig");

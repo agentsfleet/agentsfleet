@@ -13,6 +13,7 @@ const hx_mod = @import("../hx.zig");
 const ec = @import("../../../errors/error_registry.zig");
 const id_format = @import("../../../types/id_format.zig");
 const zombie_config = @import("../../../zombie/config.zig");
+const keyset_cursor = @import("../../../zombie/activity_cursor.zig");
 
 const log = std.log.scoped(.zombie_api);
 
@@ -21,6 +22,9 @@ const Hx = hx_mod.Hx;
 
 const MAX_NAME_LEN: usize = 64;
 const MAX_SOURCE_LEN: usize = 64 * 1024; // 64KB
+
+const DEFAULT_LIST_PAGE_LIMIT: u32 = 20;
+const MAX_LIST_PAGE_LIMIT: u32 = 100;
 
 // ── Create Zombie ─────────────────────────────────────────────────────
 
@@ -123,11 +127,14 @@ fn isUniqueViolation(_: anyerror) bool {
 // ── List Zombies ──────────────────────────────────────────────────────
 
 pub fn innerListZombies(hx: Hx, req: *httpz.Request, workspace_id: []const u8) void {
-    _ = req;
     if (!id_format.isSupportedWorkspaceId(workspace_id)) {
         hx.fail(ec.ERR_INVALID_REQUEST, ec.MSG_WORKSPACE_ID_REQUIRED);
         return;
     }
+
+    const qs = req.query() catch null;
+    const limit = if (qs) |q| parseLimitFromQs(q) else DEFAULT_LIST_PAGE_LIMIT;
+    const cursor = if (qs) |q| q.get("cursor") else null;
 
     const conn = hx.ctx.pool.acquire() catch {
         common.internalDbUnavailable(hx.res, hx.req_id);
@@ -140,13 +147,25 @@ pub fn innerListZombies(hx: Hx, req: *httpz.Request, workspace_id: []const u8) v
         return;
     }
 
-    const rows = fetchZombieListOnConn(conn, hx.alloc, workspace_id) catch |err| {
+    const page = fetchZombiePageOnConn(conn, hx.alloc, workspace_id, cursor, limit) catch |err| {
+        if (err == error.InvalidCursor) {
+            hx.fail(ec.ERR_INVALID_REQUEST, "Invalid cursor format");
+            return;
+        }
         log.err("zombie.list_failed err={s} req_id={s}", .{ @errorName(err), hx.req_id });
         common.internalDbError(hx.res, hx.req_id);
         return;
     };
 
-    hx.ok(.ok, .{ .items = rows, .total = rows.len });
+    hx.ok(.ok, .{ .items = page.rows, .total = page.rows.len, .cursor = page.next_cursor });
+}
+
+fn parseLimitFromQs(qs: anytype) u32 {
+    const limit_str = qs.get("limit") orelse return DEFAULT_LIST_PAGE_LIMIT;
+    const parsed = std.fmt.parseInt(u32, limit_str, 10) catch return DEFAULT_LIST_PAGE_LIMIT;
+    // Treat limit=0 as the default. With LIMIT 0 the cursor guard reports
+    // no more pages, so callers would stop paginating even when rows exist.
+    return if (parsed == 0) DEFAULT_LIST_PAGE_LIMIT else parsed;
 }
 
 const ZombieListRow = struct {
@@ -157,18 +176,66 @@ const ZombieListRow = struct {
     updated_at: i64,
 };
 
-fn fetchZombieListOnConn(conn: *pg.Conn, alloc: std.mem.Allocator, workspace_id: []const u8) ![]ZombieListRow {
+const ZombiePage = struct {
+    rows: []ZombieListRow,
+    next_cursor: ?[]const u8,
+};
+
+fn fetchZombiePageOnConn(
+    conn: *pg.Conn,
+    alloc: std.mem.Allocator,
+    workspace_id: []const u8,
+    cursor: ?[]const u8,
+    limit: u32,
+) !ZombiePage {
+    const page_limit = @min(limit, MAX_LIST_PAGE_LIMIT);
+    return if (cursor) |c|
+        fetchZombiePageAfter(conn, alloc, workspace_id, c, page_limit)
+    else
+        fetchZombiePageFirst(conn, alloc, workspace_id, page_limit);
+}
+
+fn fetchZombiePageFirst(
+    conn: *pg.Conn,
+    alloc: std.mem.Allocator,
+    workspace_id: []const u8,
+    limit: u32,
+) !ZombiePage {
     var q = PgQuery.from(try conn.query(
         \\SELECT id::text, name, status, created_at, updated_at
         \\FROM core.zombies
         \\WHERE workspace_id = $1::uuid
-        \\ORDER BY created_at DESC
-    , .{workspace_id}));
+        \\ORDER BY created_at DESC, id DESC
+        \\LIMIT $2
+    , .{ workspace_id, @as(i64, @intCast(limit)) }));
     defer q.deinit();
-    return collectZombieRows(alloc, &q);
+    return collectZombiePage(alloc, &q, limit);
 }
 
-fn collectZombieRows(alloc: std.mem.Allocator, q: *PgQuery) ![]ZombieListRow {
+fn fetchZombiePageAfter(
+    conn: *pg.Conn,
+    alloc: std.mem.Allocator,
+    workspace_id: []const u8,
+    cursor: []const u8,
+    limit: u32,
+) !ZombiePage {
+    // Composite keyset cursor prevents silent skips when multiple zombies
+    // land on the same millisecond timestamp. See activity_cursor.zig.
+    const parsed = keyset_cursor.parse(cursor) catch return error.InvalidCursor;
+
+    var q = PgQuery.from(try conn.query(
+        \\SELECT id::text, name, status, created_at, updated_at
+        \\FROM core.zombies
+        \\WHERE workspace_id = $1::uuid
+        \\  AND (created_at < $2 OR (created_at = $2 AND id::text < $3))
+        \\ORDER BY created_at DESC, id DESC
+        \\LIMIT $4
+    , .{ workspace_id, parsed.created_at_ms, parsed.id, @as(i64, @intCast(limit)) }));
+    defer q.deinit();
+    return collectZombiePage(alloc, &q, limit);
+}
+
+fn collectZombiePage(alloc: std.mem.Allocator, q: *PgQuery, limit: u32) !ZombiePage {
     var rows: std.ArrayList(ZombieListRow) = .{};
     errdefer {
         for (rows.items) |r| {
@@ -193,7 +260,22 @@ fn collectZombieRows(alloc: std.mem.Allocator, q: *PgQuery) ![]ZombieListRow {
             .updated_at = try row.get(i64, 4),
         });
     }
-    return rows.toOwnedSlice(alloc);
+    const owned = try rows.toOwnedSlice(alloc);
+    errdefer {
+        for (owned) |r| {
+            alloc.free(r.id);
+            alloc.free(r.name);
+            alloc.free(r.status);
+        }
+        alloc.free(owned);
+    }
+
+    const next_cursor: ?[]const u8 = if (owned.len == limit and owned.len > 0) blk: {
+        const last = owned[owned.len - 1];
+        break :blk try keyset_cursor.format(alloc, .{ .created_at_ms = last.created_at, .id = last.id });
+    } else null;
+
+    return ZombiePage{ .rows = owned, .next_cursor = next_cursor };
 }
 
 // ── Delete Zombie ─────────────────────────────────────────────────────

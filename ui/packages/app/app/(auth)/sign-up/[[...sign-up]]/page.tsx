@@ -1,6 +1,6 @@
-import { SignUp } from "@clerk/nextjs";
+import { AuthSignUp } from "@/lib/auth/client";
 import { AUTH_APPEARANCE } from "@/lib/clerkAppearance";
 
 export default function SignUpPage() {
-  return <SignUp appearance={AUTH_APPEARANCE} />;
+  return <AuthSignUp appearance={AUTH_APPEARANCE} />;
 }
