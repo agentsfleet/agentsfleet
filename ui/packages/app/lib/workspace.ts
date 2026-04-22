@@ -25,14 +25,15 @@ export async function resolveActiveWorkspace(
   token: string,
 ): Promise<Workspace | null> {
   const workspaces = await listWorkspaces(token).then((r) => r.data);
-  if (workspaces.length === 0) return null;
+  const [first, ...rest] = workspaces;
+  if (!first) return null;
 
   const cookieStore = await cookies();
   const preferredId = cookieStore.get(ACTIVE_WORKSPACE_COOKIE)?.value;
   if (preferredId) {
-    const match = workspaces.find((ws) => ws.id === preferredId);
+    const match = [first, ...rest].find((ws) => ws.id === preferredId);
     if (match) return match;
   }
 
-  return workspaces[0] ?? null;
+  return first;
 }
