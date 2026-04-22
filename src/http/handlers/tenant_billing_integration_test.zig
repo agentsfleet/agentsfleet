@@ -59,10 +59,25 @@ fn seedTenantAndWorkspace(conn: *pg.Conn, tenant_id: []const u8, now_ms: i64) !v
         \\VALUES ($1, $2, 'https://github.com/usezombie/m11-006', 'main', false, 1, $3, $3)
         \\ON CONFLICT (workspace_id) DO NOTHING
     , .{ TEST_WORKSPACE_ID, tenant_id, now_ms });
+    // activity_events.zombie_id carries a NOT NULL FK to core.zombies —
+    // seed a minimal row so logEventOnConn writes do not fail.
+    _ = try conn.exec(
+        \\INSERT INTO core.zombies
+        \\  (id, workspace_id, name, source_markdown, trigger_markdown, config_json,
+        \\   status, created_at, updated_at)
+        \\VALUES ($1::uuid, $2::uuid, 'zombie-m11-006', 'seed', null, '{}'::jsonb, 'active', $3, $3)
+        \\ON CONFLICT (id) DO NOTHING
+    , .{ TEST_ZOMBIE_ID, TEST_WORKSPACE_ID, now_ms });
 }
 
 fn teardown(conn: *pg.Conn, tenant_id: []const u8) void {
+    // core.activity_events has an append-only trigger blocking DELETE.
+    // Disable it for this teardown scope so the test rows can be
+    // workspace-scoped-deleted without blowing away sibling suites' data.
+    _ = conn.exec("ALTER TABLE core.activity_events DISABLE TRIGGER trg_activity_events_append_only", .{}) catch {};
     _ = conn.exec("DELETE FROM core.activity_events WHERE workspace_id = $1::uuid", .{TEST_WORKSPACE_ID}) catch {};
+    _ = conn.exec("ALTER TABLE core.activity_events ENABLE TRIGGER trg_activity_events_append_only", .{}) catch {};
+    _ = conn.exec("DELETE FROM core.zombies WHERE workspace_id = $1::uuid", .{TEST_WORKSPACE_ID}) catch {};
     _ = conn.exec("DELETE FROM workspaces WHERE workspace_id = $1::uuid", .{TEST_WORKSPACE_ID}) catch {};
     _ = conn.exec("DELETE FROM billing.tenant_billing WHERE tenant_id = $1::uuid", .{tenant_id}) catch {};
     _ = conn.exec("DELETE FROM tenants WHERE tenant_id = $1::uuid", .{tenant_id}) catch {};
