@@ -10,6 +10,7 @@ const std = @import("std");
 const metrics = @import("metrics.zig");
 const obs_log = @import("logging.zig");
 const otel_histogram = @import("otel_histogram.zig");
+const otel_json = @import("otel_json.zig");
 const log = std.log.scoped(.otel_export);
 
 const OTLP_METRICS_PATH = "/v1/metrics";
@@ -75,7 +76,9 @@ pub fn renderOtlpJson(
     const w = out.writer(alloc);
 
     try w.writeAll("{\"resourceMetrics\":[{\"resource\":{\"attributes\":[");
-    try w.print("{{\"key\":\"service.name\",\"value\":{{\"stringValue\":\"{s}\"}}}}", .{service_name});
+    try w.writeAll("{\"key\":\"service.name\",\"value\":{\"stringValue\":");
+    try otel_json.writeQuoted(w, service_name);
+    try w.writeAll("}}");
     try w.writeAll("]},\"scopeMetrics\":[{\"scope\":{\"name\":\"zombied\"},\"metrics\":[");
 
     // Parse Prometheus text: emit scalar (counter/gauge) data points inline,
@@ -230,29 +233,7 @@ fn exportErrorCode(err: anyerror) []const u8 {
     };
 }
 
-/// Serialize a Prometheus label set `k1="v1",k2="v2"` as an OTLP attribute
-/// array. No-op for unlabeled metrics. Writes a leading comma + `"attributes":[…]`
-/// fragment that plugs into an open dataPoints object.
-pub fn writeAttributes(writer: anytype, labels_src: []const u8) !void {
-    if (labels_src.len == 0) return;
-    try writer.writeAll(",\"attributes\":[");
-    var rest = labels_src;
-    var first = true;
-    while (rest.len > 0) {
-        const eq = std.mem.indexOfScalar(u8, rest, '=') orelse break;
-        const key = std.mem.trim(u8, rest[0..eq], " ,");
-        if (eq + 1 >= rest.len or rest[eq + 1] != '"') break;
-        const v_start = eq + 2;
-        const v_end = std.mem.indexOfScalarPos(u8, rest, v_start, '"') orelse break;
-        const val = rest[v_start..v_end];
-        if (!first) try writer.writeAll(",");
-        first = false;
-        try writer.print("{{\"key\":\"{s}\",\"value\":{{\"stringValue\":\"{s}\"}}}}", .{ key, val });
-        rest = rest[v_end + 1 ..];
-        if (rest.len > 0 and rest[0] == ',') rest = rest[1..];
-    }
-    try writer.writeAll("]");
-}
+pub const writeAttributes = otel_json.writeAttributes;
 
 fn isSuccessStatus(status: std.http.Status) bool {
     return switch (status) {
@@ -345,5 +326,6 @@ test "renderOtlpJson emits OTLP histogram data points for Prometheus histograms"
 
 test {
     _ = @import("otel_histogram.zig");
+    _ = @import("otel_json.zig");
     _ = @import("otel_export_test.zig");
 }

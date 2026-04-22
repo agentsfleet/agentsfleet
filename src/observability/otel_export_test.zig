@@ -44,6 +44,28 @@ test "renderOtlpJson stamps startTimeUnixNano on counter and gauge data points" 
     try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "\"sum\":{\"aggregationTemporality\":2,\"isMonotonic\":true"));
 }
 
+test "writeAttributes JSON-escapes quotes and backslashes in label values" {
+    var buf: [512]u8 = undefined;
+    var fbs = std.io.fixedBufferStream(&buf);
+    try otel_export.writeAttributes(fbs.writer(), "tricky=\"a\\\"b\"");
+    const out = fbs.getWritten();
+    // The literal value `a\"b` (backslash + quote + b as it appears in the
+    // Prometheus exposition line) must emit as JSON `"a\\\"b"` — backslash
+    // doubled + escaped quote.
+    try std.testing.expect(std.mem.containsAtLeast(u8, out, 1, "\"stringValue\":\"a\\\\\""));
+}
+
+test "renderOtlpJson escapes service name with special characters" {
+    const alloc = std.testing.allocator;
+    const body = try otel_export.renderOtlpJson(alloc, "svc\"with\\special", true);
+    defer alloc.free(body);
+
+    // Raw `"` or `\` characters in the name would have broken JSON. After
+    // escaping, the sequence `\"` and `\\` must appear in place.
+    try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "svc\\\"with\\\\special"));
+    try std.testing.expect(std.mem.indexOf(u8, body, "\"svc\"with") == null);
+}
+
 test "writeAttributes is a no-op for empty label set" {
     var buf: [64]u8 = undefined;
     var fbs = std.io.fixedBufferStream(&buf);

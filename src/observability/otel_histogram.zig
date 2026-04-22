@@ -11,6 +11,8 @@
 
 const std = @import("std");
 
+const log = std.log.scoped(.otel_histogram);
+
 pub const Bucket = struct {
     upper_bound: f64, // +inf stored as std.math.inf(f64)
     cumulative_count: u64,
@@ -70,23 +72,42 @@ pub const Accumulator = struct {
     /// contains `_sum`, `_count`, or `_bucket` (e.g. `foo_count_seconds`)
     /// parses correctly — the real suffix is always the rightmost occurrence
     /// on a valid Prometheus exposition line.
+    ///
+    /// Labeled histograms (any label beyond `le` on bucket/sum/count lines)
+    /// are rejected: the accumulator keys on base name only, so accepting
+    /// them would conflate multiple time-series under one OTLP histogram.
+    /// Returns false + warn-log so format drift surfaces in operator logs.
     pub fn tryIngest(self: *Accumulator, line: []const u8) !bool {
         if (std.mem.lastIndexOf(u8, line, "_bucket{")) |b_idx| {
             return self.ingestBucket(line, b_idx);
         }
-        if (std.mem.lastIndexOf(u8, line, "_sum ")) |s_idx| {
-            const base = line[0..s_idx];
-            const value_str = std.mem.trim(u8, line[s_idx + "_sum ".len ..], " \t\r\n");
-            const h = try self.getOrCreate(base);
-            h.sum = std.fmt.parseFloat(f64, value_str) catch 0;
-            return true;
+        if (std.mem.lastIndexOf(u8, line, "_sum")) |s_idx| {
+            if (splitSuffix(line, s_idx, "_sum")) |parts| {
+                if (parts.has_labels) {
+                    log.warn("otel_histogram.labeled_sum_rejected base={s}", .{parts.base});
+                    return false;
+                }
+                const h = try self.getOrCreate(parts.base);
+                h.sum = std.fmt.parseFloat(f64, parts.value) catch |err| blk: {
+                    log.warn("otel_histogram.sum_parse_failed base={s} value={s} err={}", .{ parts.base, parts.value, err });
+                    break :blk 0;
+                };
+                return true;
+            }
         }
-        if (std.mem.lastIndexOf(u8, line, "_count ")) |c_idx| {
-            const base = line[0..c_idx];
-            const value_str = std.mem.trim(u8, line[c_idx + "_count ".len ..], " \t\r\n");
-            const h = try self.getOrCreate(base);
-            h.count = std.fmt.parseInt(u64, value_str, 10) catch 0;
-            return true;
+        if (std.mem.lastIndexOf(u8, line, "_count")) |c_idx| {
+            if (splitSuffix(line, c_idx, "_count")) |parts| {
+                if (parts.has_labels) {
+                    log.warn("otel_histogram.labeled_count_rejected base={s}", .{parts.base});
+                    return false;
+                }
+                const h = try self.getOrCreate(parts.base);
+                h.count = std.fmt.parseInt(u64, parts.value, 10) catch |err| blk: {
+                    log.warn("otel_histogram.count_parse_failed base={s} value={s} err={}", .{ parts.base, parts.value, err });
+                    break :blk 0;
+                };
+                return true;
+            }
         }
         return false;
     }
@@ -96,6 +117,14 @@ pub const Accumulator = struct {
         const brace_start = b_idx + "_bucket".len;
         const brace_end = std.mem.indexOfScalarPos(u8, line, brace_start, '}') orelse return false;
         const labels = line[brace_start + 1 .. brace_end];
+
+        // Reject labeled histograms (anything beyond `le`) — the accumulator
+        // is keyed on base name, so accepting them would conflate series.
+        if (hasLabelsBeyondLe(labels)) {
+            log.warn("otel_histogram.labeled_bucket_rejected base={s}", .{base});
+            return false;
+        }
+
         const le_prefix = "le=\"";
         const le_pos = std.mem.indexOf(u8, labels, le_prefix) orelse return false;
         const le_val_start = le_pos + le_prefix.len;
@@ -103,12 +132,18 @@ pub const Accumulator = struct {
         const le_str = labels[le_val_start..le_val_end];
 
         const value_str = std.mem.trim(u8, line[brace_end + 1 ..], " \t\r\n");
-        const cnt = std.fmt.parseInt(u64, value_str, 10) catch return false;
+        const cnt = std.fmt.parseInt(u64, value_str, 10) catch |err| {
+            log.warn("otel_histogram.bucket_parse_failed base={s} value={s} err={}", .{ base, value_str, err });
+            return false;
+        };
 
         const upper: f64 = if (std.mem.eql(u8, le_str, "+Inf"))
             std.math.inf(f64)
         else
-            std.fmt.parseFloat(f64, le_str) catch return false;
+            std.fmt.parseFloat(f64, le_str) catch |err| {
+                log.warn("otel_histogram.bucket_le_parse_failed base={s} le={s} err={}", .{ base, le_str, err });
+                return false;
+            };
 
         const h = try self.getOrCreate(base);
         try h.buckets.append(self.alloc, .{ .upper_bound = upper, .cumulative_count = cnt });
@@ -141,7 +176,9 @@ pub const Accumulator = struct {
             try writer.writeAll("\"explicitBounds\":[");
             var wrote_bound = false;
             for (h.buckets.items) |b| {
-                if (std.math.isInf(b.upper_bound)) continue;
+                // OTLP excludes the +Inf bound; non-finite values (nan/-inf)
+                // would also produce invalid JSON via `{d}` — skip defensively.
+                if (!std.math.isFinite(b.upper_bound)) continue;
                 if (wrote_bound) try writer.writeAll(",");
                 wrote_bound = true;
                 try writer.print("{d}", .{b.upper_bound});
@@ -154,13 +191,62 @@ pub const Accumulator = struct {
                 try writer.print("\"{d}\"", .{delta});
                 prev = b.cumulative_count;
             }
-            try writer.print("],\"count\":\"{d}\",\"sum\":{d},\"startTimeUnixNano\":\"{d}\",\"timeUnixNano\":\"{d}\"}}]}}}}", .{ h.count, h.sum, start_ns, now_ns });
+            // Non-finite sum (nan/inf) would serialize as unquoted `nan`/`inf`
+            // — invalid JSON. Clamp to 0; the `count` field still carries the
+            // sample count so the data point isn't entirely lost.
+            const sum_emit: f64 = if (std.math.isFinite(h.sum)) h.sum else 0;
+            try writer.print("],\"count\":\"{d}\",\"sum\":{d},\"startTimeUnixNano\":\"{d}\",\"timeUnixNano\":\"{d}\"}}]}}}}", .{ h.count, sum_emit, start_ns, now_ns });
         }
     }
 };
 
 fn bucketLess(_: void, a: Bucket, b: Bucket) bool {
     return a.upper_bound < b.upper_bound;
+}
+
+const Suffix = struct { base: []const u8, value: []const u8, has_labels: bool };
+
+/// Split a Prometheus histogram sum/count line at `suffix`. Returns null when
+/// the character after the suffix is neither `{` (labeled) nor a whitespace
+/// separator (unlabeled) — i.e. the match was spurious substring.
+fn splitSuffix(line: []const u8, suffix_idx: usize, suffix: []const u8) ?Suffix {
+    const after = suffix_idx + suffix.len;
+    if (after >= line.len) return null;
+    const base = line[0..suffix_idx];
+    if (line[after] == '{') {
+        const brace_end = std.mem.indexOfScalarPos(u8, line, after + 1, '}') orelse return null;
+        if (brace_end + 1 >= line.len) return null;
+        const value_start = brace_end + 1;
+        return .{
+            .base = base,
+            .value = std.mem.trim(u8, line[value_start..], " \t\r\n"),
+            .has_labels = (brace_end > after + 1),
+        };
+    }
+    if (line[after] == ' ' or line[after] == '\t') {
+        return .{
+            .base = base,
+            .value = std.mem.trim(u8, line[after + 1 ..], " \t\r\n"),
+            .has_labels = false,
+        };
+    }
+    return null;
+}
+
+/// True when the label set contains any key other than `le`. Used to reject
+/// labeled histograms whose base name alone can't disambiguate series.
+fn hasLabelsBeyondLe(labels: []const u8) bool {
+    var rest = labels;
+    while (rest.len > 0) {
+        const eq = std.mem.indexOfScalar(u8, rest, '=') orelse return false;
+        const key = std.mem.trim(u8, rest[0..eq], " ,");
+        if (!std.mem.eql(u8, key, "le")) return true;
+        const q1 = std.mem.indexOfScalarPos(u8, rest, eq + 1, '"') orelse return false;
+        const q2 = std.mem.indexOfScalarPos(u8, rest, q1 + 1, '"') orelse return false;
+        rest = rest[q2 + 1 ..];
+        if (rest.len > 0 and rest[0] == ',') rest = rest[1..];
+    }
+    return false;
 }
 
 test "Accumulator ingests bucket / sum / count lines" {
@@ -199,6 +285,20 @@ test "Accumulator matches trailing suffix even when base name contains _sum/_cou
     // And no phantom truncated-name histogram got created.
     try std.testing.expect(!acc.histograms.contains("foo"));
     try std.testing.expect(!acc.histograms.contains("foo_count"));
+}
+
+test "Accumulator rejects labeled histogram lines (would conflate series)" {
+    const alloc = std.testing.allocator;
+    var acc = Accumulator.init(alloc);
+    defer acc.deinit();
+
+    // Labeled bucket / sum / count lines must be rejected and NOT create an
+    // accumulator entry — otherwise two workspaces' histograms would stack
+    // under one OTLP data point.
+    try std.testing.expect(!try acc.tryIngest("http_latency_bucket{workspace=\"w1\",le=\"0.1\"} 5"));
+    try std.testing.expect(!try acc.tryIngest("http_latency_sum{workspace=\"w1\"} 0.42"));
+    try std.testing.expect(!try acc.tryIngest("http_latency_count{workspace=\"w1\"} 5"));
+    try std.testing.expect(!acc.histograms.contains("http_latency"));
 }
 
 test "Accumulator ignores non-histogram lines" {
