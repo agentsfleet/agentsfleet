@@ -129,11 +129,11 @@ This workstream consumes existing interfaces; it introduces no new public code s
 
 ### Consumed interfaces
 
-- **Clawhub SKILL.md schema** — owned by M2_002. M33 consumes the YAML frontmatter format (`name`, `version`, `description`, `tags`, `credentials`, `policy`, prompt body below frontmatter).
-- **Clawhub TRIGGER.md schema** — owned by M19_001. M33 consumes `{ webhook: bool, payload_schema, optional_cron }`.
+- **Clawhub SKILL.md schema** — owned by M2_002. M33 consumes the YAML frontmatter format (`name`, `version`, `description`, `tags`, `author`, `model`) + the prompt body below the frontmatter. Under the option-B pivot, M33 does NOT consume `credentials:` or `policy:` keys in SKILL.md — credentials live in TRIGGER.md and the allowlist lives as prose in the prompt body.
+- **Clawhub TRIGGER.md schema** — owned by M19_001. M33 consumes `{ trigger: {type, payload_schema, optional_cron}, tools: [name,...], credentials: [name,...], network: {allow: [...]}, budget: {daily_dollars, monthly_dollars} }` (shape mirrors `samples/lead-collector/TRIGGER.md`).
 - **`zombiectl zombie install --from <path>`** — owned by M19_001. M33 depends on it resolving a local directory, loading `SKILL.md` + `TRIGGER.md`, and creating the zombie on the tenant.
 - **`zombiectl credential add <name>`** — owned by M13_001. M33 README documents `zombiectl credential add kubectl_config --file ~/.kube/config` and `zombiectl credential add docker_socket --file /var/run/docker.sock`.
-- **Firewall policy engine** — owned by M6_001. M33 declares the policy; the engine enforces.
+- **Tool dispatcher / verb allowlist enforcement** — owned by nullclaw (future). `src/zombie/firewall/` (M6_001) enforces at the HTTP boundary (domain + endpoint + injection) and is not the enforcement layer for shell-verb allowlisting. M33 expresses the allowlist as prose in SKILL.md; nullclaw reads + enforces it when it ships.
 - **Activity stream event types** — owned by M19_001 / M20_001. M33 asserts emission of `zombie_triggered`, `tool_call_requested`, `tool_call_completed`, `zombie_completed`, `UZ-GRANT-001`, `UZ-FIREWALL-001`.
 
 ### Webhook payload shape (input)
@@ -148,8 +148,8 @@ This workstream consumes existing interfaces; it introduces no new public code s
 |------------|------|---------------|
 | `zombie_triggered` | webhook POST received | `{ zombie_id, trigger_id, message }` |
 | `tool_call_requested` | skill asks to run a kubectl/docker command | `{ tool: "kubectl" \| "docker", verb: "get", args: [...] }` |
-| `tool_call_completed` | firewall allowed + command ran | `{ skill, verb, duration_ms, result: "ok" \| "error" }` |
-| `UZ-FIREWALL-001` | firewall denied a verb | `{ skill, attempted_verb, reason, hint }` |
+| `tool_call_completed` | dispatcher allowed + command ran | `{ tool: "kubectl" \| "docker", verb, duration_ms, result: "ok" \| "error" }` |
+| `UZ-FIREWALL-001` | dispatcher denied a verb | `{ tool: "kubectl" \| "docker", attempted_verb, reason, hint }` |
 | `UZ-GRANT-001` | credential missing at tool call | `{ credential_name, hint: "zombiectl credential add <name>" }` |
 | `zombie_completed` | reasoning loop returns a final diagnosis | `{ diagnosis: string, tool_calls_total, duration_ms }` |
 
