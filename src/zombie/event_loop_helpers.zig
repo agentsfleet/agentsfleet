@@ -14,6 +14,7 @@ const crypto_store = @import("../secrets/crypto_store.zig");
 const backoff = @import("../reliability/backoff.zig");
 const activity_stream = @import("activity_stream.zig");
 const metrics_counters = @import("../observability/metrics_counters.zig");
+const metrics_workspace = @import("../observability/metrics_workspace.zig");
 const telemetry_mod = @import("../observability/telemetry.zig");
 const redis_zombie = @import("../queue/redis_zombie.zig");
 const queue_consts = @import("../queue/constants.zig");
@@ -139,6 +140,7 @@ pub fn logDeliveryResult(
         });
         metrics_counters.incZombiesCompleted();
         metrics_counters.addZombieTokens(stage_result.token_count);
+        metrics_workspace.addTokens(session.workspace_id, session.zombie_id, stage_result.token_count);
         metrics_counters.observeZombieExecutionSeconds(wall_ms);
     } else {
         const label = stage_result.failure.?.label();
