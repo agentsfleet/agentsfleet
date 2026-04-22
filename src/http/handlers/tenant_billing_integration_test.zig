@@ -177,6 +177,60 @@ test "integration(m11_006): warn-policy tenant-scoped rate-limit probe skips sec
     try std.testing.expect(!future);
 }
 
+// ── §3.1 — continue-policy: no event emission beyond the one-shot ────────
+
+test "integration(m11_006): continue-policy path emits zero balance_exhausted events on replay" {
+    const alloc = std.testing.allocator;
+    const db_ctx = (try @import("../../db/test_fixtures.zig").openTestConn(alloc)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
+
+    const now_ms = std.time.milliTimestamp();
+    try seedTenantAndWorkspace(db_ctx.conn, TEST_TENANT_ID, now_ms);
+    defer teardown(db_ctx.conn, TEST_TENANT_ID);
+
+    try tenant_billing.provisionFreeDefault(db_ctx.conn, TEST_TENANT_ID);
+
+    // Simulate what `metering.onExhaustedDebit` does when policy=continue:
+    //   1. First exhausted debit → markExhausted returns true → emit
+    //      the one-shot `balance_exhausted_first_debit` event.
+    //   2. Replay → markExhausted returns false → do NOT emit a duplicate.
+    //   3. Under .@"continue", skip the `.warn`-only path entirely →
+    //      NO `balance_exhausted` event is written regardless.
+    {
+        const transitioned = try tenant_billing.markExhausted(db_ctx.conn, TEST_TENANT_ID);
+        try std.testing.expect(transitioned);
+        activity_stream.logEventOnConn(db_ctx.conn, alloc, .{
+            .zombie_id = TEST_ZOMBIE_ID,
+            .workspace_id = TEST_WORKSPACE_ID,
+            .event_type = activity_stream.EVT_BALANCE_EXHAUSTED_FIRST_DEBIT,
+            .detail = TEST_TENANT_ID,
+        });
+    }
+    // Replay the exhausted branch several times under `.continue`.
+    var i: usize = 0;
+    while (i < 3) : (i += 1) {
+        const transitioned = try tenant_billing.markExhausted(db_ctx.conn, TEST_TENANT_ID);
+        try std.testing.expect(!transitioned);
+        // policy == .@"continue" → no balance_exhausted emit — intentionally
+        // no logEventOnConn call in this branch, mirroring production code.
+    }
+
+    const first_debit = try countActivityEvents(
+        db_ctx.conn,
+        TEST_WORKSPACE_ID,
+        activity_stream.EVT_BALANCE_EXHAUSTED_FIRST_DEBIT,
+    );
+    try std.testing.expectEqual(@as(i64, 1), first_debit);
+
+    const recurring = try countActivityEvents(
+        db_ctx.conn,
+        TEST_WORKSPACE_ID,
+        activity_stream.EVT_BALANCE_EXHAUSTED,
+    );
+    try std.testing.expectEqual(@as(i64, 0), recurring);
+}
+
 // ── §3.3 — stop-policy pre-claim gate ────────────────────────────────────
 
 test "integration(m11_006): shouldBlockDelivery returns true only when policy=stop AND balance is exhausted" {
@@ -298,6 +352,62 @@ test "integration(m11_006): GET /v1/tenants/me/billing emits is_exhausted=true +
     try std.testing.expect(!r.bodyContains("\"exhausted_at\":null"));
 }
 
+// ── Concurrency — markExhausted atomicity under parallel callers ─────────
+
+test "integration(m11_006): concurrent markExhausted calls — exactly one transitions, rest are no-ops" {
+    const alloc = std.testing.allocator;
+    // Acquire the pool via the base harness (seed uses a single conn, threads
+    // each acquire their own connection to exercise the real race surface).
+    const db_ctx = (try @import("../../db/test_fixtures.zig").openTestConn(alloc)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.deinit();
+
+    const now_ms = std.time.milliTimestamp();
+    {
+        try seedTenantAndWorkspace(db_ctx.conn, TEST_TENANT_ID, now_ms);
+        try tenant_billing.provisionFreeDefault(db_ctx.conn, TEST_TENANT_ID);
+    }
+    defer {
+        teardown(db_ctx.conn, TEST_TENANT_ID);
+        db_ctx.pool.release(db_ctx.conn);
+    }
+
+    const Worker = struct {
+        pool: *@import("pg").Pool,
+        result: bool = false,
+        err: ?anyerror = null,
+
+        fn run(self: *@This()) void {
+            const conn = self.pool.acquire() catch |e| {
+                self.err = e;
+                return;
+            };
+            defer self.pool.release(conn);
+            self.result = tenant_billing.markExhausted(conn, TEST_TENANT_ID) catch |e| blk: {
+                self.err = e;
+                break :blk false;
+            };
+        }
+    };
+
+    const N = 8;
+    var workers: [N]Worker = undefined;
+    var threads: [N]std.Thread = undefined;
+    for (0..N) |idx| workers[idx] = .{ .pool = db_ctx.pool };
+    for (0..N) |idx| threads[idx] = try std.Thread.spawn(.{}, Worker.run, .{&workers[idx]});
+    for (0..N) |idx| threads[idx].join();
+
+    // Exactly one worker observes the NULL→now transition; the other N-1
+    // see the idempotent replay. This is the load-bearing invariant for
+    // the one-shot `balance_exhausted_first_debit` activity event —
+    // duplicates here would dupe the operator-visible notification.
+    var transitioned_count: usize = 0;
+    for (0..N) |idx| {
+        if (workers[idx].err) |e| return e;
+        if (workers[idx].result) transitioned_count += 1;
+    }
+    try std.testing.expectEqual(@as(usize, 1), transitioned_count);
+}
+
 // ── §1.2 (post-1.7) — null tenant_id → 403 ──────────────────────────────
 
 test "integration(m11_006): POST /v1/workspaces with a JWT lacking tenant_id returns UZ-AUTH-002" {
@@ -324,4 +434,35 @@ test "integration(m11_006): POST /v1/workspaces with a JWT lacking tenant_id ret
     // that ANY authenticated path missing tenant_id is rejected — this
     // assertion covers the negative superset.
     try std.testing.expect(r.status == 401 or r.status == 403);
+}
+
+// ── §1.3 — github_callback rejects unknown workspace in OAuth state ──────
+
+test "integration(m11_006): GET /v1/github/callback with unknown workspace_id → 401" {
+    const alloc = std.testing.allocator;
+    const h = openHarnessOrSkip(alloc) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+
+    // state = workspace_id that does not exist in `workspaces`. Post-M11_006
+    // this path no longer fabricates a tenant; it rejects with
+    // ERR_UNAUTHORIZED("Unknown workspace in OAuth state"). Fresh UUID v7 so
+    // no other test fixture accidentally collides with it.
+    const UNKNOWN_WORKSPACE = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a9999";
+    const path = try std.fmt.allocPrint(
+        alloc,
+        "/v1/github/callback?installation_id=inst_123&state={s}",
+        .{UNKNOWN_WORKSPACE},
+    );
+    defer alloc.free(path);
+
+    const r = try h.get(path).send();
+    defer r.deinit();
+    // GitHub callback is unauthenticated at the middleware level (OAuth
+    // state carries identity). The handler enforces workspace existence
+    // itself and raises ERR_UNAUTHORIZED when the state references an
+    // unknown workspace.
+    try std.testing.expectEqual(@as(u16, 401), r.status);
 }

@@ -38,6 +38,38 @@ test "renderMetadataPayload: escapes JSON-unsafe chars in values" {
     try std.testing.expect(std.mem.indexOf(u8, payload, "\\\\") != null);
 }
 
+test "renderMetadataPayload: security — control chars + DEL + embedded NUL escape to \\uXXXX" {
+    const alloc = std.testing.allocator;
+    // NUL, BEL, BS, VT, FF, SI, DEL — every control byte that could
+    // otherwise smuggle a control character through into Clerk's JSON
+    // parser or a downstream log pipeline. Also prove a literal
+    // newline (0x0A) routes through the \n branch.
+    const nasty = "\x00\x07\x08\x0b\x0c\x0f\x7f\n";
+    const payload = try cb.renderMetadataPayload(alloc, nasty, "operator");
+    defer alloc.free(payload);
+
+    // All NUL/BEL/BS/VT/FF/SI/DEL bytes must be hex-escaped; the literal
+    // newline must appear as \n. No raw control byte may survive in the
+    // output — if one does, it means the escape table missed a branch
+    // and an attacker-controlled tenant_id could inject log noise or a
+    // fake record separator into a downstream consumer.
+    try std.testing.expect(std.mem.indexOf(u8, payload, "\\u0000") != null);
+    try std.testing.expect(std.mem.indexOf(u8, payload, "\\u0007") != null);
+    try std.testing.expect(std.mem.indexOf(u8, payload, "\\u0008") != null);
+    try std.testing.expect(std.mem.indexOf(u8, payload, "\\u000b") != null);
+    try std.testing.expect(std.mem.indexOf(u8, payload, "\\u000c") != null);
+    try std.testing.expect(std.mem.indexOf(u8, payload, "\\u000f") != null);
+    try std.testing.expect(std.mem.indexOf(u8, payload, "\\u007f") != null);
+    try std.testing.expect(std.mem.indexOf(u8, payload, "\\n") != null);
+    // And no bare control byte leaked through.
+    for (payload) |c| {
+        if (c < 0x20 or c == 0x7f) {
+            std.debug.print("raw control byte 0x{x} leaked in payload: {s}\n", .{ c, payload });
+            try std.testing.expect(false);
+        }
+    }
+}
+
 test "renderMetadataPayload: both null → empty metadata object" {
     const alloc = std.testing.allocator;
     const payload = try cb.renderMetadataPayload(alloc, null, null);
