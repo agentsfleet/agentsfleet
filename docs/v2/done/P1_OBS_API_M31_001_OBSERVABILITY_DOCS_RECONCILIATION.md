@@ -1,10 +1,10 @@
 # M31_001: Observability Fixes + Docs Reconciliation
 
-**Prototype:** v0.25.0
+**Prototype:** v0.26.1
 **Milestone:** M31
 **Workstream:** 001
-**Date:** Apr 21, 2026
-**Status:** IN_PROGRESS
+**Date:** Apr 21, 2026 (opened) / Apr 22, 2026 (closed)
+**Status:** DONE
 **Priority:** P1 — Operator-facing docs are out of sync with code AND two live observability paths (per-workspace metrics, OTLP histograms) are broken; this milestone fixes both and reconciles the docs.
 **Batch:** B2 — alpha gate, parallel with M11_005, M19_001, M13_001, M21_001, M27_001, M33_001. Code branch in the usezombie repo; docs edits land in a sibling PR in `~/Projects/docs` once code merges.
 **Branch:** feat/m31-observability-fixes (in `~/Projects/usezombie` — code branch). A sibling docs-repo branch carries the `.mdx` edits and lands after the code PR merges to main.
@@ -92,7 +92,7 @@ After §0.1–§0.3 ship and are verified in dev:
 
 ## §1 — overview.mdx: Remove Langfuse, Add Audit Layer, Update Correlation
 
-**Status:** PENDING
+**Status:** DONE
 
 Replace the three-layer diagram (Infra/Product/AI) with three-layer (Infra/Product/Audit).
 Update correlation fields from pipeline-era to zombie-era. Add DB-backed stores.
@@ -133,7 +133,7 @@ Update correlation fields from pipeline-era to zombie-era. Add DB-backed stores.
 
 ## §2 — metrics.mdx: Document Fixed Behavior + Per-Zombie Label
 
-**Status:** PENDING
+**Status:** DONE
 
 §0 (code fixes) lands first and resolves the per-workspace wiring gap (fix #5) and the OTLP histogram export (fix #6), plus adds the per-zombie label. §2 documents the **post-fix reality** — what an operator observing metrics in v0.25.0+ will see. No caveats about broken behavior: by the time this spec's docs PR merges, the code PR is already on main.
 
@@ -173,7 +173,7 @@ Update correlation fields from pipeline-era to zombie-era. Add DB-backed stores.
 
 ## §3 — posthog-events.mdx: Fix Emitter Paths, Add Zombie Events, Note Allowlist Gap
 
-**Status:** PENDING
+**Status:** DONE
 
 Fix the wrong emitter file name, add the two zombie lifecycle events from the server,
 and document the `zombie_id` allowlist gap in the app.
