@@ -9,6 +9,7 @@
 const std = @import("std");
 const metrics = @import("metrics.zig");
 const obs_log = @import("logging.zig");
+const otel_histogram = @import("otel_histogram.zig");
 const log = std.log.scoped(.otel_export);
 
 const OTLP_METRICS_PATH = "/v1/metrics";
@@ -61,7 +62,11 @@ pub fn renderOtlpJson(
     try w.print("{{\"key\":\"service.name\",\"value\":{{\"stringValue\":\"{s}\"}}}}", .{service_name});
     try w.writeAll("]},\"scopeMetrics\":[{\"scope\":{\"name\":\"zombied\"},\"metrics\":[");
 
-    // Parse Prometheus text and emit OTLP gauge/counter entries.
+    // Parse Prometheus text: emit scalar (counter/gauge) data points inline,
+    // and accumulate histogram families to flush after the loop.
+    var hist_acc = otel_histogram.Accumulator.init(alloc);
+    defer hist_acc.deinit();
+
     var first = true;
     var lines = std.mem.splitScalar(u8, prom_body, '\n');
     var current_type: []const u8 = "gauge";
@@ -72,18 +77,21 @@ pub fn renderOtlpJson(
                 current_type = "counter";
             } else if (std.mem.indexOf(u8, line, " gauge")) |_| {
                 current_type = "gauge";
+            } else if (std.mem.indexOf(u8, line, " histogram")) |_| {
+                current_type = "histogram";
             } else {
                 current_type = "gauge";
             }
             continue;
         }
         if (std.mem.startsWith(u8, line, "# ")) continue;
-        // Skip histogram bucket/sum/count lines (contain { or _bucket/_sum/_count)
-        if (std.mem.indexOf(u8, line, "_bucket{") != null) continue;
-        if (std.mem.indexOf(u8, line, "_sum ") != null) continue;
-        if (std.mem.indexOf(u8, line, "_count ") != null) continue;
 
-        // Parse "metric_name value"
+        if (std.mem.eql(u8, current_type, "histogram")) {
+            if (try hist_acc.tryIngest(line)) continue;
+            // Unrecognized histogram line — skip silently.
+            continue;
+        }
+
         const sep = std.mem.indexOf(u8, line, " ") orelse continue;
         const name = line[0..sep];
         const value_str = std.mem.trim(u8, line[sep + 1 ..], " \t\r\n");
@@ -103,6 +111,8 @@ pub fn renderOtlpJson(
             );
         }
     }
+
+    try hist_acc.writeOtlp(w, now_ns, &first);
 
     try w.writeAll("]}]}]}");
 
@@ -257,12 +267,26 @@ test "isSuccessStatus accepts 2xx and rejects non-2xx" {
     try std.testing.expect(!isSuccessStatus(.unauthorized));
 }
 
-test "renderOtlpJson excludes histogram helper series from prometheus text" {
+test "renderOtlpJson emits OTLP histogram data points for Prometheus histograms" {
     const alloc = std.testing.allocator;
+    const metrics_zombie = @import("metrics_zombie.zig");
+    metrics_zombie.resetForTest();
+    defer metrics_zombie.resetForTest();
+    metrics_zombie.observeZombieExecutionSeconds(1_500);
+
     const body = try renderOtlpJson(alloc, "zombied", true);
     defer alloc.free(body);
 
-    try std.testing.expect(std.mem.indexOf(u8, body, "zombie_agent_duration_seconds_bucket") == null);
-    try std.testing.expect(std.mem.indexOf(u8, body, "zombie_agent_duration_seconds_sum") == null);
-    try std.testing.expect(std.mem.indexOf(u8, body, "zombie_agent_duration_seconds_count") == null);
+    try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "\"name\":\"zombie_execution_seconds\""));
+    try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "\"histogram\":{\"aggregationTemporality\":2"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "\"explicitBounds\":["));
+    try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "\"bucketCounts\":["));
+
+    try std.testing.expect(std.mem.indexOf(u8, body, "zombie_execution_seconds_bucket") == null);
+    try std.testing.expect(std.mem.indexOf(u8, body, "zombie_execution_seconds_sum ") == null);
+    try std.testing.expect(std.mem.indexOf(u8, body, "zombie_execution_seconds_count ") == null);
+}
+
+test {
+    _ = @import("otel_histogram.zig");
 }
