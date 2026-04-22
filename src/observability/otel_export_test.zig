@@ -44,15 +44,14 @@ test "renderOtlpJson stamps startTimeUnixNano on counter and gauge data points" 
     try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "\"sum\":{\"aggregationTemporality\":2,\"isMonotonic\":true"));
 }
 
-test "writeAttributes JSON-escapes quotes and backslashes in label values" {
+test "writeAttributes JSON-escapes plain special characters (no Prom escapes)" {
     var buf: [512]u8 = undefined;
     var fbs = std.io.fixedBufferStream(&buf);
-    try otel_export.writeAttributes(fbs.writer(), "tricky=\"a\\\"b\"");
+    // Label value literally contains a newline (no Prometheus escape). That
+    // must be JSON-encoded as `\n`, and the pipe character passes through.
+    try otel_export.writeAttributes(fbs.writer(), "raw=\"a\nb|c\"");
     const out = fbs.getWritten();
-    // The literal value `a\"b` (backslash + quote + b as it appears in the
-    // Prometheus exposition line) must emit as JSON `"a\\\"b"` — backslash
-    // doubled + escaped quote.
-    try std.testing.expect(std.mem.containsAtLeast(u8, out, 1, "\"stringValue\":\"a\\\\\""));
+    try std.testing.expect(std.mem.containsAtLeast(u8, out, 1, "\"stringValue\":\"a\\nb|c\""));
 }
 
 test "renderOtlpJson escapes service name with special characters" {
@@ -64,6 +63,19 @@ test "renderOtlpJson escapes service name with special characters" {
     // escaping, the sequence `\"` and `\\` must appear in place.
     try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "svc\\\"with\\\\special"));
     try std.testing.expect(std.mem.indexOf(u8, body, "\"svc\"with") == null);
+}
+
+test "writeAttributes preserves Prometheus-escaped quote inside a label value" {
+    var buf: [512]u8 = undefined;
+    var fbs = std.io.fixedBufferStream(&buf);
+    // Source label value in Prometheus exposition: `a\"b` → literal `a"b`.
+    // Output JSON must contain `a\"b` (JSON-escaped quote), not truncate at
+    // the embedded quote as the pre-fix parser did.
+    try otel_export.writeAttributes(fbs.writer(), "workspace=\"a\\\"b\"");
+    const out = fbs.getWritten();
+    try std.testing.expect(std.mem.containsAtLeast(u8, out, 1, "\"stringValue\":\"a\\\"b\""));
+    // And the attribute object must close properly (not mid-emit).
+    try std.testing.expect(std.mem.endsWith(u8, out, "]"));
 }
 
 test "writeAttributes is a no-op for empty label set" {

@@ -11,6 +11,8 @@
 
 const std = @import("std");
 
+const otel_json = @import("otel_json.zig");
+
 const log = std.log.scoped(.otel_histogram);
 
 pub const Bucket = struct {
@@ -50,7 +52,7 @@ pub const Accumulator = struct {
         self.histograms.deinit();
     }
 
-    fn getOrCreate(self: *Accumulator, base: []const u8) !*Histogram {
+    pub fn getOrCreate(self: *Accumulator, base: []const u8) !*Histogram {
         if (self.histograms.get(base)) |h| return h;
         const name_copy = try self.alloc.dupe(u8, base);
         errdefer self.alloc.free(name_copy);
@@ -209,6 +211,10 @@ const Suffix = struct { base: []const u8, value: []const u8, has_labels: bool };
 /// Split a Prometheus histogram sum/count line at `suffix`. Returns null when
 /// the character after the suffix is neither `{` (labeled) nor a whitespace
 /// separator (unlabeled) — i.e. the match was spurious substring.
+///
+/// Degenerate input `foo_sum{} 1.23` (empty braces) is accepted and treated
+/// as unlabeled; standard Prometheus renderers omit the braces entirely in
+/// that case, so the branch never fires in practice.
 fn splitSuffix(line: []const u8, suffix_idx: usize, suffix: []const u8) ?Suffix {
     const after = suffix_idx + suffix.len;
     if (after >= line.len) return null;
@@ -235,103 +241,22 @@ fn splitSuffix(line: []const u8, suffix_idx: usize, suffix: []const u8) ?Suffix 
 
 /// True when the label set contains any key other than `le`. Used to reject
 /// labeled histograms whose base name alone can't disambiguate series.
+/// Uses `findUnescapedQuote` so a label value containing a Prometheus-
+/// escaped quote (`\"`) doesn't falsely terminate the scan mid-value.
 fn hasLabelsBeyondLe(labels: []const u8) bool {
     var rest = labels;
     while (rest.len > 0) {
         const eq = std.mem.indexOfScalar(u8, rest, '=') orelse return false;
         const key = std.mem.trim(u8, rest[0..eq], " ,");
         if (!std.mem.eql(u8, key, "le")) return true;
-        const q1 = std.mem.indexOfScalarPos(u8, rest, eq + 1, '"') orelse return false;
-        const q2 = std.mem.indexOfScalarPos(u8, rest, q1 + 1, '"') orelse return false;
+        if (eq + 1 >= rest.len or rest[eq + 1] != '"') return false;
+        const q2 = otel_json.findUnescapedQuote(rest, eq + 2) orelse return false;
         rest = rest[q2 + 1 ..];
         if (rest.len > 0 and rest[0] == ',') rest = rest[1..];
     }
     return false;
 }
 
-test "Accumulator ingests bucket / sum / count lines" {
-    const alloc = std.testing.allocator;
-    var acc = Accumulator.init(alloc);
-    defer acc.deinit();
-
-    try std.testing.expect(try acc.tryIngest("zombie_execution_seconds_bucket{le=\"0.01\"} 0"));
-    try std.testing.expect(try acc.tryIngest("zombie_execution_seconds_bucket{le=\"0.1\"} 2"));
-    try std.testing.expect(try acc.tryIngest("zombie_execution_seconds_bucket{le=\"+Inf\"} 3"));
-    try std.testing.expect(try acc.tryIngest("zombie_execution_seconds_sum 0.150"));
-    try std.testing.expect(try acc.tryIngest("zombie_execution_seconds_count 3"));
-
-    const h = acc.histograms.get("zombie_execution_seconds").?;
-    try std.testing.expectEqual(@as(usize, 3), h.buckets.items.len);
-    try std.testing.expectEqual(@as(u64, 3), h.count);
-    try std.testing.expectApproxEqAbs(@as(f64, 0.150), h.sum, 1e-9);
-}
-
-test "Accumulator matches trailing suffix even when base name contains _sum/_count" {
-    const alloc = std.testing.allocator;
-    var acc = Accumulator.init(alloc);
-    defer acc.deinit();
-
-    // Base name itself contains `_count` — a naive indexOf would chop the base
-    // at the first occurrence and associate the count with a phantom histogram.
-    _ = try acc.tryIngest("foo_count_seconds_bucket{le=\"1\"} 2");
-    _ = try acc.tryIngest("foo_count_seconds_bucket{le=\"+Inf\"} 2");
-    _ = try acc.tryIngest("foo_count_seconds_sum 0.5");
-    _ = try acc.tryIngest("foo_count_seconds_count 2");
-
-    try std.testing.expect(acc.histograms.contains("foo_count_seconds"));
-    const h = acc.histograms.get("foo_count_seconds").?;
-    try std.testing.expectEqual(@as(u64, 2), h.count);
-    try std.testing.expectEqual(@as(usize, 2), h.buckets.items.len);
-    // And no phantom truncated-name histogram got created.
-    try std.testing.expect(!acc.histograms.contains("foo"));
-    try std.testing.expect(!acc.histograms.contains("foo_count"));
-}
-
-test "Accumulator rejects labeled histogram lines (would conflate series)" {
-    const alloc = std.testing.allocator;
-    var acc = Accumulator.init(alloc);
-    defer acc.deinit();
-
-    // Labeled bucket / sum / count lines must be rejected and NOT create an
-    // accumulator entry — otherwise two workspaces' histograms would stack
-    // under one OTLP data point.
-    try std.testing.expect(!try acc.tryIngest("http_latency_bucket{workspace=\"w1\",le=\"0.1\"} 5"));
-    try std.testing.expect(!try acc.tryIngest("http_latency_sum{workspace=\"w1\"} 0.42"));
-    try std.testing.expect(!try acc.tryIngest("http_latency_count{workspace=\"w1\"} 5"));
-    try std.testing.expect(!acc.histograms.contains("http_latency"));
-}
-
-test "Accumulator ignores non-histogram lines" {
-    const alloc = std.testing.allocator;
-    var acc = Accumulator.init(alloc);
-    defer acc.deinit();
-
-    try std.testing.expect(!try acc.tryIngest("zombie_tokens_total 500"));
-    try std.testing.expect(!try acc.tryIngest("zombie_worker_running 1"));
-}
-
-test "writeOtlp emits cumulative→delta bucketCounts and explicitBounds" {
-    const alloc = std.testing.allocator;
-    var acc = Accumulator.init(alloc);
-    defer acc.deinit();
-
-    _ = try acc.tryIngest("h_bucket{le=\"0.1\"} 1");
-    _ = try acc.tryIngest("h_bucket{le=\"1\"} 3");
-    _ = try acc.tryIngest("h_bucket{le=\"+Inf\"} 4");
-    _ = try acc.tryIngest("h_sum 0.8");
-    _ = try acc.tryIngest("h_count 4");
-
-    var buf: [4096]u8 = undefined;
-    var fbs = std.io.fixedBufferStream(&buf);
-    var first = true;
-    try acc.writeOtlp(fbs.writer(), 1_600_000_000_000_000_000, 1_700_000_000_000_000_000, &first);
-    const out = fbs.getWritten();
-
-    try std.testing.expect(std.mem.containsAtLeast(u8, out, 1, "\"name\":\"h\""));
-    try std.testing.expect(std.mem.containsAtLeast(u8, out, 1, "\"aggregationTemporality\":2"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, out, 1, "\"explicitBounds\":[0.1,1]"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, out, 1, "\"bucketCounts\":[\"1\",\"2\",\"1\"]"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, out, 1, "\"count\":\"4\""));
-    try std.testing.expect(std.mem.containsAtLeast(u8, out, 1, "\"startTimeUnixNano\":\"1600000000000000000\""));
-    try std.testing.expect(std.mem.containsAtLeast(u8, out, 1, "\"timeUnixNano\":\"1700000000000000000\""));
+test {
+    _ = @import("otel_histogram_test.zig");
 }

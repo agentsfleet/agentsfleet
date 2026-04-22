@@ -81,6 +81,11 @@ fn resolveSlot(ws_id: []const u8, zombie_id: []const u8) ?*Slot {
             // back to probing forward, accepting the original duplicate-slot
             // risk for this one pathological case rather than process-wide
             // deadlock.
+            // SPIN_CAP budget: initSlot is 2× memcpy + 3 plain stores + 1
+            // release store, well under 1µs on modern x86/ARM. 4096 iterations
+            // (~4µs at ~1ns/iter) is ~4000× the expected init time — enough
+            // slack that scheduler hiccups stay inside the budget, small
+            // enough that an orphaned slot doesn't wedge readers for long.
             var spins: u32 = 0;
             const SPIN_CAP: u32 = 4096;
             while (slot.ready.load(.acquire) != 1) {
