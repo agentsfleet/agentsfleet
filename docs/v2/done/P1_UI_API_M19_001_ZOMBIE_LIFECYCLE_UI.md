@@ -32,13 +32,15 @@ Before CHORE(open) the backend route manifest (`src/http/route_manifest.zig`) wa
 
 ### Backend surface **missing** — deferred with named follow-up
 
+All six gaps are captured in a single pending spec: **`docs/v2/pending/P1_API_UI_M19_002_ZOMBIE_LIFECYCLE_MUTATIONS.md`** (M19_002). Grouped because they share backend boilerplate and all replace UI placeholders this workstream shipped — surfacing them in four separate staggered releases would make the dashboard feel half-finished for longer than shipping them together.
+
 | Missing endpoint | Original §/Dim | Deferred to |
 |---|---|---|
-| `GET /v1/skills` (template picker source) | §1 template picker, dim 1.1 | M19_002 (skills catalog UI + backend) |
-| `PATCH /v1/workspaces/{ws}/zombies/{id}` (rename / describe) | §4 dim 4.1 | M19_003 (zombie mutation endpoints) |
-| `POST .../{id}/schedule` (cron) | §2 cron mode, dims 2.2–2.4 | M19_003 |
-| `GET \| PUT .../{id}/firewall` | §3 entire section | M19_004 (firewall UI — paired with a backend firewall REST surface; CLI-only for V1) |
-| `POST .../{id}:pause` / `:resume` | §4 dim 4.2 | M19_003 |
+| `GET /v1/skills` (template picker source) | §1 template picker, dim 1.1 | M19_002 §4 |
+| `PATCH /v1/workspaces/{ws}/zombies/{id}` (rename / describe) | §4 dim 4.1 | M19_002 §1 |
+| `POST \| DELETE .../{id}/schedule` (cron) | §2 cron mode, dims 2.2–2.4 | M19_002 §2 |
+| `GET \| PUT .../{id}/firewall` | §3 entire section | M19_002 §3 |
+| `POST .../{id}:pause` / `:resume` | §4 dim 4.2 | M19_002 §1 |
 | `GET .../{id}/triggers` (webhook URL fetch) | §2 dim 2.1 | Not needed — URL is `${API_BASE}/v1/webhooks/${zombie_id}`, derivable client-side. Dim 2.1 stays, rewritten. |
 
 ### Route ownership bridge (M19 ↔ M27, unchanged in spirit)
@@ -49,16 +51,16 @@ Before CHORE(open) the backend route manifest (`src/http/route_manifest.zig`) wa
 
 | Original dim | Status after amendment | Action |
 |---|---|---|
-| 1.1 (template picker pre-fill) | DEFERRED → M19_002 | no `/v1/skills`; install form uses blank fields only |
+| 1.1 (template picker pre-fill) | DEFERRED → M19_002 §4 | no `/v1/skills`; install form uses blank fields only |
 | 1.2 (install + redirect) | DONE | `InstallZombieForm` POSTs, redirects to `/zombies/{id}` |
 | 1.3 (empty-name validation) | DONE | client-side inline error |
 | 1.4 (409 conflict toast) | DONE | 409 → "already exists" alert in form |
 | 1.5 (CLI `Woohoo!` line) | DONE | `zombiectl/test/zombie-up-woohoo.unit.test.js` asserts literal line + URL |
 | 2.1 (webhook URL + copy) | DONE | URL derived client-side, copy button with animated confirmation |
-| 2.2, 2.3, 2.4 (cron) | DEFERRED → M19_003 | cron UI rendered as placeholder tab |
-| 3.1–3.4 (firewall editor) | DEFERRED → M19_004 | §3 renders a read-only placeholder panel |
-| 4.1 (rename) | DEFERRED → M19_003 | |
-| 4.2 (pause) | DEFERRED → M19_003 | |
+| 2.2, 2.3, 2.4 (cron) | DEFERRED → M19_002 §2 | cron UI rendered as placeholder tab |
+| 3.1–3.4 (firewall editor) | DEFERRED → M19_002 §3 | §3 renders a read-only placeholder panel |
+| 4.1 (rename) | DEFERRED → M19_002 §1 | |
+| 4.2 (pause) | DEFERRED → M19_002 §1 | |
 | 4.3 (delete + confirmation) | DONE | `ZombieConfig` with confirm dialog + spinner |
 | 5.1 | DONE | `ExhaustionBanner` on `/workspaces` and `/zombies` (practical home while M27 owns `(dashboard)/page.tsx`) |
 | 5.2 | DONE | `ExhaustionBadge` in `/zombies/[id]` header |
@@ -125,7 +127,7 @@ Webhook URL (§2) is **derived client-side** — not an API call. `POST /v1/webh
 
 **Goal (testable):** An operator with no CLI access can: install a new zombie from a skill template, copy the webhook URL for their trigger, set a cron schedule, configure firewall rules, rename or delete a zombie, and see all of this reflected live in the dashboard. Every action available in `zombiectl zombie *` subcommands has an equivalent UI surface. An agent or pipeline can perform the same operations via the API.
 
-> **Amendment note:** the goal paragraph above is the *original* aspiration. The Apr 22 amendment (§0.5) trims the shippable surface for this workstream to install + delete + webhook copy + exhaustion UI + route scaffolding; rename / pause / resume / cron / firewall editor / template picker move to the M19_002 – M19_004 follow-ups listed in §0.5.
+> **Amendment note:** the goal paragraph above is the *original* aspiration. The Apr 22 amendment (§0.5) trims the shippable surface for this workstream to install + delete + webhook copy + exhaustion UI + route scaffolding. Rename / pause / resume / cron editor / firewall editor / template picker move to a single pending follow-up: `docs/v2/pending/P1_API_UI_M19_002_ZOMBIE_LIFECYCLE_MUTATIONS.md` (M19_002), which pairs each deferred UI surface with its backend endpoint.
 
 **Problem:** M12 ships a read-only dashboard. The dashboard shows zombie status, activity, and metrics, but offers no way to install or configure zombies. Every setup step requires the CLI: `zombiectl zombie install`, `zombiectl zombie triggers list`, `zombiectl zombie schedule`, `zombiectl zombie firewall set`. This creates a hard dependency on CLI access for anyone who wants to set up or reconfigure a zombie. CTOs, hiring managers, and ops engineers who are not CLI-first users cannot self-serve. They either rely on an engineer or skip UseZombie entirely.
 
