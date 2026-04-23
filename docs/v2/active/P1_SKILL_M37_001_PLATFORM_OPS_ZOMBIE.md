@@ -100,9 +100,9 @@ No `src/**` changes in this workstream — all worker/executor/CLI wiring lives 
 
 | Dim | Status | Target | Input | Expected | Test type |
 |-----|--------|--------|-------|----------|-----------|
-| 1.1 | PENDING | `samples/platform-ops/SKILL.md` | skill parser | model `claude-sonnet-4-6`; names `http_request`; prose budget ≤$8/month; optional `cron_add` guidance | integration |
-| 1.2 | PENDING | `samples/platform-ops/TRIGGER.md` | trigger loader | matches shape above; every tool name resolves in NullClaw v2026.4.9; budget ≤ 8 | integration |
-| 1.3 | PENDING | `samples/platform-ops/README.md` | new-operator read-through | sections: Prereqs · Credential setup × 3 · Install · Chat (CLI interactive UX documented + UI path) · Example diagnosis · Cron self-scheduling story · Credential hygiene story | manual |
+| 1.1 | DONE | `samples/platform-ops/SKILL.md` | skill parser | model `claude-sonnet-4-6`; names `http_request` (3×); prose budget ≤$8/month present; `cron_add` guidance gated on operator-asks branch | integration |
+| 1.2 | DONE | `samples/platform-ops/TRIGGER.md` | trigger loader | trigger.type=chat; tools = [http_request, memory_recall, memory_store, cron_add, cron_list, cron_remove]; credentials = [fly, upstash, slack]; network.allow = 3 hosts; budget.daily_dollars=1, monthly_dollars=8 | integration |
+| 1.3 | PENDING | `samples/platform-ops/README.md` | new-operator read-through | sections: Prereqs · Credential setup × 3 · Install · Chat (CLI interactive UX documented + UI path) · Example diagnosis · Cron self-scheduling story · Credential hygiene story — file written, all sections present; manual sign-off still pending | manual |
 
 ### §2 — Install + chat integration (dogfood-ready)
 
@@ -209,24 +209,24 @@ No `src/**` changes in this workstream — all worker/executor/CLI wiring lives 
 
 ## Execution Plan (Ordered)
 
-| Step | Action | Verify |
-|---|---|---|
-| 1 | CHORE(open): spec already in active. Create worktree `../usezombie-m37-platform-ops` on `feat/m37-platform-ops`. | `git worktree list` |
-| 2 | Write `samples/platform-ops/SKILL.md` | §1.1 |
-| 3 | Write `samples/platform-ops/TRIGGER.md` | §1.2 |
-| 4 | Write `samples/platform-ops/README.md` | §1.3 |
-| 5 | `git rm -r samples/homelab/` | filesystem clean |
-| 6 | §2 integration tests land in M34/M36 branches; verify here after those merge | §2.1–2.4 |
-| 7 | CLI dogfood (§3.1) under kishore@usezombie signup; capture transcript in Ripley's Log | §3.1 |
-| 8 | UI dogfood (§3.2) once M36_001 ships; capture screenshots | §3.2 |
-| 9 | CHORE(close): spec → done/, Ripley log, release-doc `<Update>` block | spec in done/; changelog updated |
+| Step | Status | Action | Verify |
+|---|---|---|---|
+| 1 | DONE | CHORE(open): spec already in active. Create worktree `../usezombie-m37-platform-ops` on `feat/m37-platform-ops`. | `git worktree list` shows the worktree |
+| 2 | DONE | Write `samples/platform-ops/SKILL.md` | §1.1 |
+| 3 | DONE | Write `samples/platform-ops/TRIGGER.md` | §1.2 |
+| 4 | DONE | Write `samples/platform-ops/README.md` (manual §1.3 sign-off pending) | §1.3 |
+| 5 | DONE | `git rm -r samples/homelab/` | filesystem clean |
+| 6 | BLOCKED_ON M33–M36 | §2 integration tests land in M34/M36 branches; verify here after those merge | §2.1–2.4 |
+| 7 | BLOCKED_ON §2 | CLI dogfood (§3.1) under kishore@usezombie signup; capture transcript in Ripley's Log | §3.1 |
+| 8 | BLOCKED_ON §2 + M36_001 | UI dogfood (§3.2) once M36_001 ships; capture screenshots | §3.2 |
+| 9 | BLOCKED_ON §3 | CHORE(close): spec → done/, Ripley log, release-doc `<Update>` block | spec in done/; changelog updated |
 
 ---
 
 ## Acceptance Criteria
 
-- [ ] Three files at `samples/platform-ops/`; `samples/homelab/` deleted — E1
-- [ ] Credential names consistent — E6
+- [x] Three files at `samples/platform-ops/`; `samples/homelab/` deleted — E1
+- [x] Credential names consistent — E6
 - [ ] Install succeeds + stream+group+control msg fire — §2.1
 - [ ] Chat opens interactive session; history replays; `[claw]` prints response — §2.2
 - [ ] Credential-missing path emits one `UZ-GRANT-001` — §2.3
@@ -234,7 +234,7 @@ No `src/**` changes in this workstream — all worker/executor/CLI wiring lives 
 - [ ] CLI dogfood under `kishore@usezombie` signup green end-to-end — §3.1
 - [ ] UI dogfood under same signup green end-to-end — §3.2
 - [ ] Cost per dogfood run ≤ $2 — manual billing check
-- [ ] No `samples/homelab/` refs outside historical docs — E7
+- [x] No `samples/homelab/` refs outside historical docs — E7
 
 ---
 
@@ -284,18 +284,18 @@ grep -E 'monthly_dollars' samples/platform-ops/TRIGGER.md \
 
 ## Verification Evidence
 
-**Status:** PENDING — fills during EXECUTE + §3 dogfood.
+**Status:** §1 VERIFIED locally on `feat/m37-platform-ops` (commit `27702f9f`). §2/§3 still pending, gated on M33–M36.
 
 | Check | Eval | Result |
 |---|---|---|
-| Files present | E1 | ⏳ |
-| Tools are NullClaw primitives | E4 | ⏳ |
-| http_request primary | E5 | ⏳ |
-| Credentials consistent | E6 | ⏳ |
-| Orphan sweep | E7 | ⏳ |
-| Budget ≤ $8 | E8 | ⏳ |
-| §2 integration | — | BLOCKED_ON M34/M36 |
-| §3 dogfood | — | BLOCKED_ON §2 + M37 |
+| Files present | E1 | ✓ — SKILL.md, TRIGGER.md, README.md created; `samples/homelab/` deleted |
+| Tools are NullClaw primitives | E4 | ✓ — `[http_request, memory_recall, memory_store, cron_add, cron_list, cron_remove]` (final resolver check vs NullClaw v2026.4.9 tool registry is manual) |
+| http_request primary | E5 | ✓ — named 3× in SKILL.md; no kubectl/docker primary mentions |
+| Credentials consistent | E6 | ✓ — `fly`, `upstash`, `slack` each present in all 3 sample files |
+| Orphan sweep | E7 | ✓ — 0 `samples/homelab` references outside exempt historical paths |
+| Budget ≤ $8 | E8 | ✓ — `monthly_dollars: 8.00`, `daily_dollars: 1.00` in TRIGGER.md |
+| §2 integration | — | BLOCKED_ON M33/M34/M35/M36 |
+| §3 dogfood | — | BLOCKED_ON §2 + live signup run under `kishore@usezombie` |
 
 ---
 
