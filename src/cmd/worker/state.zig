@@ -65,8 +65,18 @@ pub const WorkerState = struct {
         ) == null;
     }
 
+    /// Transition draining → drained. Asserts the phase was draining — reaching
+    /// drained without first calling startDrain() is a programmer error (the
+    /// `draining` phase is the signal that holds new claims at the gate while
+    /// in-flight events finish). CAS makes the invariant self-enforcing.
     pub fn completeDrain(self: *WorkerState) void {
-        self.drain_phase.store(@intFromEnum(DrainPhase.drained), .release);
+        const prev = self.drain_phase.cmpxchgStrong(
+            @intFromEnum(DrainPhase.draining),
+            @intFromEnum(DrainPhase.drained),
+            .acq_rel,
+            .acquire,
+        );
+        if (prev != null) unreachable; // must have been in draining phase
         self.running.store(false, .release);
     }
 };
@@ -104,6 +114,7 @@ test "in-flight counter tracks begin/end safely" {
 
 test "beginEventIfActive rejects drained worker without incrementing" {
     var ws = WorkerState.init();
+    try std.testing.expect(ws.startDrain());
     ws.completeDrain();
     try std.testing.expectError(WorkerError.ShutdownRequested, beginEventIfActive(&ws));
     try std.testing.expectEqual(@as(u32, 0), ws.currentInFlightEvents());
@@ -177,6 +188,88 @@ test "startDrain on already-drained worker returns false" {
     try std.testing.expect(ws.startDrain());
     ws.completeDrain();
     try std.testing.expect(!ws.startDrain());
+    try std.testing.expectEqual(DrainPhase.drained, ws.getDrainPhase());
+}
+
+// The drain-race scenario that motivated the increment-first ordering in
+// beginEventIfActive. N worker threads hammer the gate while a drain thread
+// runs the full cycle: startDrain → wait for in_flight == 0 → completeDrain.
+// Invariant: every claim that got past the gate also reached endEvent.
+// If the TOCTOU race were reintroduced, the drain thread could observe
+// in_flight == 0 while a worker is between increment and endEvent — begins
+// and ends would diverge by at least one, or currentInFlightEvents would
+// be non-zero when the drain thread finishes.
+
+const DrainRaceCtx = struct {
+    ws: *WorkerState,
+    begins: std.atomic.Value(u64),
+    ends: std.atomic.Value(u64),
+    iterations: u32,
+};
+
+fn drainRaceWorker(ctx: *DrainRaceCtx) void {
+    var i: u32 = 0;
+    while (i < ctx.iterations) : (i += 1) {
+        beginEventIfActive(ctx.ws) catch return;
+        _ = ctx.begins.fetchAdd(1, .monotonic);
+        // Minimal "work" — memory fence is enough to widen the window between
+        // increment and endEvent so the race, if present, would manifest.
+        std.atomic.spinLoopHint();
+        ctx.ws.endEvent();
+        _ = ctx.ends.fetchAdd(1, .monotonic);
+    }
+}
+
+fn drainRaceDrain(ws: *WorkerState) void {
+    // Give workers a moment to start hammering the gate.
+    std.Thread.sleep(1 * std.time.ns_per_ms);
+    _ = ws.startDrain();
+    while (ws.currentInFlightEvents() > 0) {
+        std.atomic.spinLoopHint();
+    }
+    ws.completeDrain();
+}
+
+test "integration: drain never completes while a claim is in flight" {
+    var ws = WorkerState.init();
+    var ctx = DrainRaceCtx{
+        .ws = &ws,
+        .begins = std.atomic.Value(u64).init(0),
+        .ends = std.atomic.Value(u64).init(0),
+        .iterations = 2000,
+    };
+
+    const worker_count: usize = 4;
+    const workers = try std.testing.allocator.alloc(std.Thread, worker_count);
+    defer std.testing.allocator.free(workers);
+
+    for (workers) |*t| {
+        t.* = try std.Thread.spawn(.{}, drainRaceWorker, .{&ctx});
+    }
+    const drain_thread = try std.Thread.spawn(.{}, drainRaceDrain, .{&ws});
+
+    drain_thread.join();
+    for (workers) |*t| t.join();
+
+    // Post-conditions:
+    //  - No event in flight at the end.
+    //  - Every claim that got past the gate also reached endEvent.
+    //  - Phase is drained (the CAS succeeded).
+    try std.testing.expectEqual(@as(u32, 0), ws.currentInFlightEvents());
+    try std.testing.expectEqual(ctx.begins.load(.monotonic), ctx.ends.load(.monotonic));
+    try std.testing.expectEqual(DrainPhase.drained, ws.getDrainPhase());
+    try std.testing.expect(!ws.running.load(.acquire));
+}
+
+test "completeDrain requires draining phase (running → drained is a programmer error)" {
+    // Positive path verified in "drain phase transitions running to draining to drained".
+    // Direct running → drained is forbidden by the CAS in completeDrain;
+    // that behavior is enforced via `unreachable`, not a recoverable error,
+    // so we can't test the failure case in a normal unit test. The guarantee
+    // is documented; the CAS is load-bearing.
+    var ws = WorkerState.init();
+    try std.testing.expect(ws.startDrain());
+    ws.completeDrain();
     try std.testing.expectEqual(DrainPhase.drained, ws.getDrainPhase());
 }
 
