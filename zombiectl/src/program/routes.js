@@ -5,7 +5,7 @@ const routes = [
   { key: "specs.sync", match: (cmd, args) => cmd === "specs" && args[0] === "sync" },
   { key: "doctor", match: (cmd) => cmd === "doctor" },
   { key: "admin", match: (cmd) => cmd === "admin" },
-  // M9_001: External agent key management + integration grants
+  // External agent key management + integration grants
   { key: "agent", match: (cmd) => cmd === "agent" },
   { key: "grant", match: (cmd) => cmd === "grant" },
   // Zombie commands — flat top-level for common ops

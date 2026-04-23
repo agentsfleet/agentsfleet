@@ -9,7 +9,11 @@ import { test } from "bun:test";
 import assert from "node:assert/strict";
 import { tmpdir } from "node:os";
 import { mkdtempSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
-import { join } from "node:path";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const TEST_DIR = dirname(fileURLToPath(import.meta.url));
+const PKG_ROOT = dirname(TEST_DIR);
 
 import { commandZombie } from "../src/commands/zombie.js";
 import { findRoute } from "../src/program/routes.js";
@@ -294,9 +298,12 @@ test("install <bundled-name>: legacy usage exits 2 and points at --from", async 
 });
 
 test("filesystem: bundled templates/ and legacy up test are gone", () => {
-  // Paths are relative to the zombiectl working dir where `bun test` runs.
-  assert.ok(!existsSync("templates"), "zombiectl/templates/ should be deleted");
-  assert.ok(!existsSync("test/zombie-up-woohoo.unit.test.js"), "legacy up test should be deleted");
+  // Paths are resolved from the test file — CWD-independent so this assertion
+  // can't silently pass if `bun test` is run from an unexpected directory.
+  const templatesPath = join(PKG_ROOT, "templates");
+  const legacyUpTest = join(TEST_DIR, "zombie-up-woohoo.unit.test.js");
+  assert.ok(!existsSync(templatesPath), `should be deleted: ${templatesPath}`);
+  assert.ok(!existsSync(legacyUpTest), `should be deleted: ${legacyUpTest}`);
 });
 
 // ── §5 — Error-message sweep ──────────────────────────────────────────────

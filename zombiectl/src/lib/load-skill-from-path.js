@@ -18,7 +18,8 @@ export function loadSkillFromPath(path) {
   let stat;
   try {
     stat = statSync(path);
-  } catch {
+  } catch (err) {
+    if (err.code === "EACCES") throw new SkillLoadError("ERR_PATH_DENIED", path);
     throw new SkillLoadError("ERR_PATH_NOT_FOUND", path);
   }
   if (!stat.isDirectory()) {
@@ -31,14 +32,16 @@ export function loadSkillFromPath(path) {
   let skill_md;
   try {
     skill_md = readFileSync(skillPath, "utf-8");
-  } catch {
+  } catch (err) {
+    if (err.code === "EACCES") throw new SkillLoadError("ERR_PATH_DENIED", skillPath);
     throw new SkillLoadError("ERR_SKILL_MISSING", skillPath);
   }
 
   let trigger_md;
   try {
     trigger_md = readFileSync(triggerPath, "utf-8");
-  } catch {
+  } catch (err) {
+    if (err.code === "EACCES") throw new SkillLoadError("ERR_PATH_DENIED", triggerPath);
     throw new SkillLoadError("ERR_TRIGGER_MISSING", triggerPath);
   }
 
