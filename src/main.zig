@@ -220,6 +220,7 @@ test {
     // Cross-workspace IDOR regression tests (RULE WAUTH)
     _ = @import("http/handlers/cross_workspace_idor_test.zig");
     _ = @import("cmd/worker_zombie.zig");
+    _ = @import("cmd/worker/state.zig");
     // M6_001: AI Firewall Policy Engine
     _ = @import("zombie/firewall/domain_policy.zig");
     _ = @import("zombie/firewall/endpoint_policy.zig");

@@ -1,24 +1,24 @@
-# M34_001: Lead-Collector Sample Teardown
+# M39_001: Lead-Collector Sample Teardown
 
 **Prototype:** v2.0.0
-**Milestone:** M34
+**Milestone:** M39
 **Workstream:** 001
-**Date:** Apr 22, 2026
+**Date:** Apr 23, 2026
 **Status:** PENDING
-**Priority:** P1 — removes the legacy `lead-collector` sample referenced by `zombiectl install`, by five Zig test suites, by unit tests in `zombiectl/test/`, by three UI test files, and by one production marketing-site page (`Agents.tsx`). Blocking a clean v2.0-alpha story because the brainstormed v2 direction calls for exactly one flagship executable sample (`samples/homelab/`, owned by M33_001), not two.
-**Batch:** B3 — post-alpha cleanup; depends on M33_001 (homelab sample authored) so migrated fixtures have a replacement name to target.
-**Branch:** feat/m34-lead-collector-teardown (to be created when work starts)
-**Depends on:** M33_001 (homelab sample authored — DONE for §1/§2/§5, parked). No dependency on M19_001 or nullclaw.
+**Priority:** P1 — removes the legacy `lead-collector` sample referenced by `zombiectl install`, by five Zig test suites, by unit tests in `zombiectl/test/`, by three UI test files, and by one production marketing-site page (`Agents.tsx`). Blocking a clean v2.0-alpha story because the product direction calls for exactly one flagship executable sample (`samples/platform-ops/`, owned by M37_001), not two.
+**Batch:** last — post-flagship cleanup; depends on M37_001 (platform-ops sample authored) so migrated fixtures have a replacement name to target.
+**Branch:** feat/m39-lead-collector-teardown (to be created when work starts)
+**Depends on:** M37_001 (platform-ops sample authored), **M19_003** (`zombiectl zombie install --from <path>` — Agents.tsx demo references this command). No dependency on M19_001 or nullclaw.
 
 ---
 
 ## Overview
 
-**Goal (testable):** `rg -nw lead-collector` across `src/`, `zombiectl/`, `ui/`, and `samples/` returns zero load-bearing hits. `zombiectl install lead-collector` either exits with a "template not found" error or is replaced by a `homelab-zombie` installable template. `make test` + `make test-integration` + `bun test` across `ui/packages/` all stay green across the migration.
+**Goal (testable):** `rg -nw lead-collector` across `src/`, `zombiectl/`, `ui/`, and `samples/` returns zero load-bearing hits. `zombiectl install lead-collector` either exits with a "template not found" error or is replaced by a `platform-ops` installable template. `make test` + `make test-integration` + `bun test` across `ui/packages/` all stay green across the migration.
 
-**Problem:** The brainstormed v2 direction (`docs/brainstormed/usezombie-v2-milestone-specs-prompt.md` §6 line 71) says "DELETE `samples/lead-collector/`". No v2/pending or v2/active spec currently owns that deletion. M32_001 removes only the external `docs/integrations/lead-collector.mdx` docs-repo page. M33_001 (homelab zombie) stopped citing `samples/lead-collector/` as a convention source but did not touch the directory itself (out of scope). The removal has real blast radius: the sample is baked into `zombiectl install` defaults, five Zig test-fixture suites, unit tests in `zombiectl/test/zombie.unit.test.js`, and two UI tests. Without a dedicated coordinated workstream, the deletion will either drift indefinitely or break CI when someone attempts it piecemeal.
+**Problem:** The brainstormed v2 direction (`docs/brainstormed/usezombie-v2-milestone-specs-prompt.md` §6 line 71) says "DELETE `samples/lead-collector/`". No v2/pending or v2/active spec currently owns that deletion. M32_001 removes only the external `docs/integrations/lead-collector.mdx` docs-repo page. M37_001 (platform-ops zombie) stopped citing `samples/lead-collector/` as a convention source but did not touch the directory itself (out of scope). The removal has real blast radius: the sample is baked into `zombiectl install` defaults, five Zig test-fixture suites, unit tests in `zombiectl/test/zombie.unit.test.js`, and two UI tests. Without a dedicated coordinated workstream, the deletion will either drift indefinitely or break CI when someone attempts it piecemeal.
 
-**Solution summary:** Delete `samples/lead-collector/` and `zombiectl/templates/lead-collector/`. Remove `"lead-collector"` from `BUNDLED_TEMPLATES` in `zombiectl/src/commands/zombie.js`. Rename the `lead-collector` fixture strings in five Zig test files and `zombiectl/test/zombie.unit.test.js` to a neutral test name (recommend `test-zombie` — fixture names should not shadow real sample names, to avoid this same drift problem next time). Update three UI test files similarly, and rename the marketing-site animated CLI demo in `ui/packages/website/src/pages/Agents.tsx` from `lead-collector` to `homelab-zombie` (matches the M33-landed flagship). Verify the full test suite (unit + integration + UI) green pre- and post-deletion plus a `bun dev` smoke of the Agents page; the diff should show zero behavioral drift, only name changes + file removals.
+**Solution summary:** Delete `samples/lead-collector/` and `zombiectl/templates/lead-collector/`. Remove `"lead-collector"` from `BUNDLED_TEMPLATES` in `zombiectl/src/commands/zombie.js`. Rename the `lead-collector` fixture strings in five Zig test files and `zombiectl/test/zombie.unit.test.js` to a neutral test name (recommend `test-zombie` — fixture names should not shadow real sample names, to avoid this same drift problem next time). Update three UI test files similarly, and rename the marketing-site animated CLI demo in `ui/packages/website/src/pages/Agents.tsx` from `lead-collector` to `platform-ops` (matches the M33-landed flagship). Verify the full test suite (unit + integration + UI) green pre- and post-deletion plus a `bun dev` smoke of the Agents page; the diff should show zero behavioral drift, only name changes + file removals.
 
 ---
 
@@ -40,11 +40,11 @@ All under `$REPO_ROOT/` (the `usezombie` checkout).
 | `src/zombie/event_loop_integration_test.zig` | EDIT | Rename fixture string (10 occurrences: 9 quoted JSON/Zig literals + 1 plaintext YAML line at `\\name: lead-collector`; 7 of the quoted forms are `base.seedZombie` calls). |
 | `src/zombie/event_loop_obs_integration_test.zig` | EDIT | Rename fixture string (5 occurrences at lines 17, 21, 39, 84, 154; 3 of them are `base.seedZombie` calls at lines 39, 84, 154). |
 | `ui/packages/app/tests/app-primitives.test.ts` | EDIT | Rename `zombie_name: "lead-collector"` → `zombie_name: "test-zombie"` (2 occurrences at lines 108, 120). |
-| `ui/packages/website/src/components/domain/tokenize-bash.test.ts` | EDIT | Update bash-command example strings (2 occurrences at lines 10, 66). The test checks the bash tokenizer, not the specific zombie name; a neutral example (e.g. `homelab-zombie`) is equivalent. |
+| `ui/packages/website/src/components/domain/tokenize-bash.test.ts` | EDIT | Update bash-command example strings (2 occurrences at lines 10, 66). The test checks the bash tokenizer, not the specific zombie name; a neutral example (e.g. `platform-ops`) is equivalent. |
 | `ui/packages/website/src/components/domain/animated-terminal.test.tsx` | EDIT | Update bash-command example string (1 occurrence at line 20). Same shape as `tokenize-bash.test.ts`. |
-| `ui/packages/website/src/pages/Agents.tsx` | EDIT (user-facing) | **Production code, not a test.** This is the marketing website's animated CLI demo. 4 occurrences at lines 21, 22, 26, 27: `zombiectl zombie install --template lead-collector`, `zombiectl zombie up lead-collector --watch`, `"Installed lead-collector@0.1.0"`, `"[ready] lead-collector awaiting triggers"`. Rename to `homelab-zombie` (the M33-landed flagship) so the marketing demo matches what ships. This is a user-facing change — verify the rendered animation still reads naturally after the rename (e.g. `zombiectl zombie install --template homelab-zombie` + `"Installed homelab-zombie@0.1.0"`). Coordinate the version/label strings with whatever `samples/homelab/SKILL.md` declares (`version: 0.1.0`, matches). |
+| `ui/packages/website/src/pages/Agents.tsx` | EDIT (user-facing) | **Production code, not a test.** This is the marketing website's animated CLI demo. 4 occurrences at lines 21, 22, 26, 27: `zombiectl zombie install --template lead-collector`, `zombiectl zombie up lead-collector --watch`, `"Installed lead-collector@0.1.0"`, `"[ready] lead-collector awaiting triggers"`. Rename to `platform-ops` (the M33-landed flagship) so the marketing demo matches what ships. This is a user-facing change — verify the rendered animation still reads naturally after the rename (e.g. `zombiectl zombie install --template platform-ops` + `"Installed platform-ops@0.1.0"`). Coordinate the version/label strings with whatever `samples/platform-ops/SKILL.md` declares (`version: 0.1.0`, matches). |
 
-**Note on the test fixture rename:** the new fixture string `"test-zombie"` (or any other non-sample name) must not collide with a real installable template or a real sample directory. This is precisely the drift vector that made M34 necessary.
+**Note on the test fixture rename:** the new fixture string `"test-zombie"` (or any other non-sample name) must not collide with a real installable template or a real sample directory. This is precisely the drift vector that made M39 necessary.
 
 **Zero deletions outside the list above.** No schema files, no migrations, no handler code.
 
@@ -53,7 +53,7 @@ All under `$REPO_ROOT/` (the `usezombie` checkout).
 ## Applicable Rules
 
 - **RULE FLL** — files touched stay reviewable; line counts should not grow.
-- **RULE ORP** — post-teardown, `rg -nw lead-collector -g '!docs/v*/done/' -g '!docs/brainstormed/' -g '!docs/v2/active/P1_SKILL_M33_001*' -g '!docs/v2/pending/P1_DOCS_API_CLI_M32_001*' -g '!docs/v2/pending/P1_API_CLI_UI_M34_001*' -g '!docs/nostromo/' -g '!docs/changelog*'` returns 0 matches. Historical specs (v1/done, v2/done) and this spec itself are exempt; so is M33's Discovery #8 and M32's still-pending reference.
+- **RULE ORP** — post-teardown, `rg -nw lead-collector -g '!docs/v*/done/' -g '!docs/brainstormed/' -g '!docs/v2/active/P1_SKILL_M33_001*' -g '!docs/v2/pending/P1_DOCS_API_CLI_M32_001*' -g '!docs/v2/pending/P1_API_CLI_UI_M39_001*' -g '!docs/nostromo/' -g '!docs/changelog*'` returns 0 matches. Historical specs (v1/done, v2/done) and this spec itself are exempt; so is M33's Discovery #8 and M32's still-pending reference.
 - **RULE TST-NAM** — no milestone IDs in test filenames or `test "…"` names.
 - **Zig drain rule** — if any edited `*.zig` file touches `conn.query`, verify `.drain()` is present. This spec does not introduce new queries; sanity check at VERIFY.
 
@@ -92,7 +92,7 @@ Default to (a). Drop to (b) only if the tests assert specific content of the lea
 | 2.2 | PENDING | `ui/packages/app/tests/app-primitives.test.ts` | rename `zombie_name: "lead-collector"` → `"test-zombie"`; `bun test` | test passes | unit |
 | 2.3 | PENDING | `ui/packages/website/src/components/domain/tokenize-bash.test.ts` | update bash-command example strings; `bun test` | test passes (tokenizer output unaffected by name change) | unit |
 | 2.4 | PENDING | `ui/packages/website/src/components/domain/animated-terminal.test.tsx` | update bash-command example string; `bun test` | test passes | unit |
-| 2.5 | PENDING | `ui/packages/website/src/pages/Agents.tsx` (production) | rename `lead-collector` → `homelab-zombie` in the CLI-demo strings; `bun dev` + manual verify the animation still reads naturally | animation renders; copy reflects the shipping flagship; no dangling template name | manual + unit |
+| 2.5 | PENDING | `ui/packages/website/src/pages/Agents.tsx` (production) | rename `lead-collector` → `platform-ops` in the CLI-demo strings; `bun dev` + manual verify the animation still reads naturally | animation renders; copy reflects the shipping flagship; no dangling template name | manual + unit |
 
 ### §3 — Remove the sample + template directories + BUNDLED_TEMPLATES entry
 
@@ -120,11 +120,11 @@ Order is important: §1 and §2 must land first so no test references `lead-coll
 
 ## Interfaces
 
-**Status:** LOCKED — M34 removes a user-facing installable template (`zombiectl install lead-collector`) but does not introduce new interfaces.
+**Status:** LOCKED — M39 removes a user-facing installable template (`zombiectl install lead-collector`) but does not introduce new interfaces.
 
 ### Removed interfaces
 
-- **`zombiectl install lead-collector`** — removed. Post-teardown, the command returns a "template not found" error identifying the one remaining bundled template (`slack-bug-fixer`) or directs the user to `zombiectl zombie install --from samples/homelab` once M19_001 ships.
+- **`zombiectl install lead-collector`** — removed. Post-teardown, the command returns a "template not found" error identifying the one remaining bundled template (`slack-bug-fixer`) or directs the user to `zombiectl zombie install --from samples/platform-ops` once M19_001 ships.
 - **`samples/lead-collector/`** — removed. No sample occupies this path; any downstream doc or tool that still references it is stale.
 
 ### Preserved interfaces
@@ -200,10 +200,10 @@ N/A — rename+delete workstream. The tests that previously depended on `"lead-c
 
 | Step | Action | Verify |
 |------|--------|--------|
-| 1 | CHORE(open) — move this spec `pending/` → `active/`, create worktree `../usezombie-m34-lead-collector-teardown` on `feat/m34-lead-collector-teardown`. | `ls docs/v2/active/` shows this spec |
+| 1 | CHORE(open) — move this spec `pending/` → `active/`, create worktree `../usezombie-m39-lead-collector-teardown` on `feat/m39-lead-collector-teardown`. | `ls docs/v2/active/` shows this spec |
 | 2 | Rename fixture strings in the five Zig test files (§1). Run `zig build test` after each file. | `zig build test` exit 0 after all five |
 | 3 | Rename fixture in `zombiectl/test/zombie.unit.test.js` (§2.1). `bun test`. | exit 0 |
-| 4 | Rename fixture in three UI test files (§2.2, §2.3, §2.4) and the production marketing page (§2.5 — `ui/packages/website/src/pages/Agents.tsx`, rename to `homelab-zombie`). `bun test` in each workspace; `bun dev` smoke for §2.5. | exit 0 + Agents animation reads naturally |
+| 4 | Rename fixture in three UI test files (§2.2, §2.3, §2.4) and the production marketing page (§2.5 — `ui/packages/website/src/pages/Agents.tsx`, rename to `platform-ops`). `bun test` in each workspace; `bun dev` smoke for §2.5. | exit 0 + Agents animation reads naturally |
 | 5 | `git rm -r samples/lead-collector zombiectl/templates/lead-collector` (§3.1, §3.2). | `git status` shows 4 deletions |
 | 6 | Edit `BUNDLED_TEMPLATES` in `zombiectl/src/commands/zombie.js` (§3.3). | `grep '"lead-collector"' zombiectl/src/commands/zombie.js` returns 0 |
 | 7 | Full CI: `make test && make test-integration && (cd zombiectl && bun test) && (cd ui && bun test)`. | all green |
@@ -218,7 +218,7 @@ N/A — rename+delete workstream. The tests that previously depended on `"lead-c
 - [ ] `zombiectl/templates/lead-collector/` does not exist on disk — verify: `test ! -d zombiectl/templates/lead-collector`
 - [ ] `BUNDLED_TEMPLATES` excludes `"lead-collector"` — verify: Invariant 3
 - [ ] Zero load-bearing `lead-collector` references (word-boundary grep, not quoted) — verify: Eval E5
-- [ ] Marketing website `Agents.tsx` CLI-demo animation reads naturally with the new name (`homelab-zombie`) — verify: manual smoke in `bun dev`
+- [ ] Marketing website `Agents.tsx` CLI-demo animation reads naturally with the new name (`platform-ops`) — verify: manual smoke in `bun dev`
 - [ ] All CI suites green — verify: Dims 4.2, 4.3
 - [ ] `zombiectl install slack-bug-fixer` still produces a working zombie — verify: manual smoke
 - [ ] `zombiectl install lead-collector` returns a clean "template not found" error — verify: negative test
@@ -248,7 +248,7 @@ grep -rn -w 'lead-collector' src/ zombiectl/ ui/ \
 
 # E5: orphan sweep — everything outside historical specs + brainstormed + this spec
 grep -rn -w 'lead-collector' . \
-  | grep -v -E '(\.git/|v1/done/|v2/done/|docs/brainstormed/|docs/nostromo/|docs/changelog|M33_001_HOMELAB_ZOMBIE|M32_001_QUICKSTART|M34_001_LEAD_COLLECTOR)' \
+  | grep -v -E '(\.git/|v1/done/|v2/done/|docs/brainstormed/|docs/nostromo/|docs/changelog|M33_001_PLATFORM_OPS_ZOMBIE|M32_001_QUICKSTART|M39_001_LEAD_COLLECTOR)' \
   && echo "FAIL: orphan reference" || echo "ok: orphans clean"
 
 # E6: slack-bug-fixer install still works (smoke)
@@ -285,7 +285,7 @@ Post-teardown, these paths should not exist:
 ## Out of Scope
 
 - Removing `slack-bug-fixer` template — still in use; not marked for deletion.
-- Creating new sample directories beyond what M33_001 already landed (`samples/homelab/`). `homebox-audit`, `migration-zombie`, `side-project-resurrector` are M32_001's territory.
+- Creating new sample directories beyond what M37_001 already landed (`samples/platform-ops/`). `homebox-audit`, `migration-zombie`, `side-project-resurrector` are M32_001's territory.
 - Changing `zombiectl install` command shape (`--from <path>` is M19_001; `--template X` is a separate concern).
 - External docs-repo updates (`/Users/kishore/Projects/docs/`) — M32_001 already removes `docs/integrations/lead-collector.mdx`; any other stale external prose is cosmetic and follows in that workstream.
 - Renaming existing zombies in operator databases (no such users in v2-alpha).
