@@ -2,7 +2,7 @@
 name: platform-ops-zombie
 trigger:
   type: chat
-  # Chat is the one operator-initiated input channel. `zombiectl zombie chat`
+  # Chat is the one operator-initiated input channel. `zombiectl chat`
   # and the UI chat widget both hit POST /v1/.../zombies/{id}/steer; the
   # zombie thread's top-of-loop poller converts the steer key into a stream
   # event. There is no webhook payload for this zombie, so no payload_schema.

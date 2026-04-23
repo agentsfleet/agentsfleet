@@ -63,7 +63,7 @@ diagnosis, not a remediation.
 ## Your job
 
 You receive a single `message` through chat. The operator types it
-interactively via `zombiectl zombie chat`, or through the UI chat
+interactively via `zombiectl chat`, or through the UI chat
 widget. Treat the message as the starting hypothesis — "redis is slow",
 "the api app keeps restarting", "morning health check". Both broad
 and narrow questions land in the same loop:

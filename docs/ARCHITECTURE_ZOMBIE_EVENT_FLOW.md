@@ -81,7 +81,9 @@ sequenceDiagram
 
 ### 3.2 Chat turn (the hot path)
 
-Chat is the one operator-initiated input channel. CLI `zombiectl zombie chat` and the UI chat widget both hit `/steer`. The zombie thread's top-of-loop `pollSteerAndInject` converts the steer key into a stream event (injecting the chat as if it were a webhook), then the normal event pipeline runs: claim → balance → approval → execute → finalize → XACK.
+Chat is the one operator-initiated input channel. CLI `zombiectl chat` and the UI chat widget both hit `/steer`. The zombie thread's top-of-loop `pollSteerAndInject` converts the steer key into a stream event (injecting the chat as if it were a webhook), then the normal event pipeline runs: claim → balance → approval → execute → finalize → XACK.
+
+> The four `http_request` calls shown below (fly apps → fly logs → upstash stats → slack post) are an illustrative sequence for the platform-ops worked example. The agent-emitted tool-call order, count, and exact endpoints vary per prompt — read the diagram as representative, not prescriptive.
 
 ```mermaid
 sequenceDiagram
@@ -175,16 +177,16 @@ This is the platform-ops dogfood end-to-end, one row per step, tracking what eac
 |---|---|---|---|---|---|---|
 | 1 | Sign in via Clerk | `POST /auth/callback` → INSERT `core.users`, `core.workspaces`. Issues session. | — | — | no | no |
 | 2–4 | `zombiectl credential add fly / upstash / slack` (structured `{host, api_token}` / `{host, bot_token}` fields) | `PUT /v1/.../credentials/{name}` → `crypto_store.store` (KMS envelope) → UPSERT `vault.secrets` | — | — | no | no |
-| 5a | `zombiectl zombie install --from samples/platform-ops` (CLI reads local `SKILL.md` + `TRIGGER.md`, posts JSON) | `POST /v1/.../zombies` → `innerCreateZombie`: INSERT `core.zombies` (status=`active`) | — | — | no | no |
+| 5a | `zombiectl install --from samples/platform-ops` (CLI reads local `SKILL.md` + `TRIGGER.md`, posts JSON) | `POST /v1/.../zombies` → `innerCreateZombie`: INSERT `core.zombies` (status=`active`) | — | — | no | no |
 | 5b | Same handler, two extra writes (M33_001) | (1) XGROUP CREATE `zombie:{id}:events zombie_workers 0 MKSTREAM` so stream + group exist before any producer/consumer race. (2) XADD `zombie:control` `type=zombie_created zombie_id ws_id at_ms`. Returns 201. | +1 entry | created empty, no entries | no (yet) | no |
 | 6 | Watcher wakes | — | — | — | **YES** — watcher unblocks from `XREADGROUP zombie:control zombie_workers_control BLOCK 5s`. Reads `zombie_created`. SELECT `core.zombies WHERE id=$1`. Allocates `cancel_flag`, spawns zombie thread. XACK control msg. Zombie thread runs `claimZombie` (loads config + checkpoint), then blocks on `XREADGROUP zombie:{id}:events zombie_workers <consumer_id> BLOCK 5s`. | no |
-| 7 | `zombiectl zombie chat {id} "poll fly+upstash"` (thin wrapper over `/steer`) | `POST /v1/.../zombies/{id}/steer` → SET `zombie:{id}:steer "<msg>" EX 300`. 202. | — | — (written by worker next) | **YES** (within 5s) — zombie thread's top-of-loop `pollSteerAndInject` reads steer key via GETDEL, generates `event_id`, XADD `zombie:{id}:events * event_id=<uuid> type=chat source=steer actor=steer:kishore data=<msg>`. Next iteration's XREADGROUP returns it. | no |
+| 7 | `zombiectl chat {id} "poll fly+upstash"` (thin wrapper over `/steer`) | `POST /v1/.../zombies/{id}/steer` → SET `zombie:{id}:steer "<msg>" EX 300`. 202. | — | — (written by worker next) | **YES** (within 5s) — zombie thread's top-of-loop `pollSteerAndInject` reads steer key via GETDEL, generates `event_id`, XADD `zombie:{id}:events * event_id=<uuid> type=chat source=steer actor=steer:kishore data=<msg>`. Next iteration's XREADGROUP returns it. | no |
 | 8a | Zombie thread processes the event | — | — | +1 entry → consumed, in pending list under `consumer_id` | working | — |
 | 8b | `processEvent`: INSERT `core.zombie_events` (`status='received'`, `actor='steer:kishore'`); balance + approval gates; `resolveSecretsFromVault` (decrypt in worker, passed over Unix socket, held in executor session only — never touches disk); `executor.createExecution(workspace_path, {network_policy, tools, secrets_map})`; `setExecutionActive`; `executor.startStage(execution_id, {agent_config, message, context})`. | — | — | still working | **YES** — `handleCreateExecution` creates session; `handleStartStage` invokes `runner.execute` → NullClaw `Agent.runSingle`. |
 | 8c | Inside executor: NullClaw agent loops | — | — | — | waiting on Unix socket | working. Tool calls in order: (i) `http_request GET ${fly.host}/v1/apps` → tool-bridge substitutes `Authorization: Bearer ${secrets.fly.api_token}` **after** the agent emits the call (agent never sees raw bytes). (ii) `http_request GET ${fly.host}/v1/apps/{app}/logs` per app. (iii) `http_request GET ${upstash.host}/v2/redis/stats/{db_id}`. (iv) `http_request POST ${slack.host}/api/chat.postMessage` with `${secrets.slack.bot_token}`. Agent returns final message → handler packs `StageResult` → Unix socket → worker. |
 | 8d | Zombie thread finalizes | — | — | XACK | `updateSessionContext` (in-memory); defer `destroyExecution` + `clearExecutionActive`; UPDATE `core.zombie_events` (`status='processed'`, `response_text`, `token_count`, `wall_ms`, `ttft_ms`, `completed_at`); `checkpointState` (UPSERT `core.zombie_sessions`); `metering.recordZombieDelivery`; XACK `zombie:{id}:events zombie_workers <msg_id>`. Back to XREADGROUP BLOCK. | sleeps (session destroyed) |
-| 9 | `zombiectl zombie events {id}` | `GET /v1/.../zombies/{id}/events` (paginated, filterable by `actor`) reads `core.zombie_events` | — | — | no | no |
-| 10a | `zombiectl zombie kill {id}` | `POST /v1/.../zombies/{id}/kill` → UPDATE `core.zombies SET status='killed'`; XADD `zombie:control type=zombie_status_changed status=killed`. 200. | +1 entry | — | not yet | no |
+| 9 | `zombiectl events {id}` | `GET /v1/.../zombies/{id}/events` (paginated, filterable by `actor`) reads `core.zombie_events` | — | — | no | no |
+| 10a | `zombiectl kill {id}` | `POST /v1/.../zombies/{id}/kill` → UPDATE `core.zombies SET status='killed'`; XADD `zombie:control type=zombie_status_changed status=killed`. 200. | +1 entry | — | not yet | no |
 | 10b | Watcher reacts | — | — | — | **YES** — watcher reads control msg, sets `cancels[zombie_id].store(true)`, reads `execution_id` from `core.zombie_sessions`, calls `executor_client.cancelExecution(execution_id)` over Unix socket. XACK control. | **YES** (if mid-stage) — `handleCancelExecution` flips `session.cancelled=true`; any in-flight `runner.execute` breaks out of the agent loop and returns `.cancelled`. |
 | 10c | Zombie thread exits | — | — | — | zombie thread's `watchShutdown` sees `cancel_flag=true` → `running=false` → event loop exits → thread returns. | sleeps |
 | 11 | Credential non-leak grep | manual: grep `<test-token>` across `core.zombie_events.{request_json,response_text}`, `core.zombie_activities.detail`, zombied-api + zombied-worker logs. Expected: 0 hits. | — | — | token bytes held only in transient vars during `createExecution` RPC | token bytes held only in executor session memory + emitted inline into TCP bytes of outgoing HTTPS — never logged, never written to disk |
@@ -356,10 +358,10 @@ agent.runSingle loop:
 | Watcher thread | **M33_001** |
 | Per-zombie cancel flag | **M33_001** |
 | `WorkerState` drain primitive | **M33_001** (port from pre-M10) |
-| `zombiectl zombie chat` interactive CLI | **M33_001** |
+| `zombiectl chat` interactive CLI | **M33_001** |
 | UI chat widget | **M33_001** (or M36_001 if tightly coupled with SSE) |
 | `core.zombie_events` schema + write path + `actor` field | **M34_001** |
-| `GET /v1/.../zombies/{id}/events` + `zombiectl zombie events` + UI events tab | **M34_001** |
+| `GET /v1/.../zombies/{id}/events` + `zombiectl events` + UI events tab | **M34_001** |
 | `createExecution` per-session policy (network/tools/secrets) | **M35_001** |
 | `http_request` credential templating at tool-bridge | **M35_001** |
 | Config PATCH + `zombie_config_changed` control msg + `zombie:{id}:config_rev` | **M35_001** |
@@ -368,7 +370,7 @@ agent.runSingle loop:
 | `samples/platform-ops/` three files (this doc's worked example) | **M37_001** |
 | `samples/homebox-audit/` three files | **M38_001** |
 | Lead-collector teardown (post-flagship cleanup) | **M39_001** |
-| `zombiectl zombie install --from <path>` | **M19_003** (prerequisite for M33) |
+| `zombiectl install --from <path>` | **M19_003** (prerequisite for M33) |
 
 ---
 

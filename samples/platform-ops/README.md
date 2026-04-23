@@ -74,7 +74,7 @@ needing it emits a single `UZ-GRANT-001` event pointing at the exact
 From the root of the `usezombie` checkout:
 
 ```bash
-zombiectl zombie install --from samples/platform-ops
+zombiectl install --from samples/platform-ops
 ```
 
 Expected output: a zombie id. The zombie is `active` immediately —
@@ -85,7 +85,7 @@ architecture doc's install diagram).
 
 ## Step 3 — Chat with it
 
-`zombiectl zombie chat` opens an interactive session: it replays any
+`zombiectl chat` opens an interactive session: it replays any
 prior messages, then prompts you. Type a line and press enter — it
 POSTs to `/steer`, the worker injects it as an event (≤5s), and the
 agent's reply streams back into your terminal prefixed with `[claw]`.
@@ -93,7 +93,7 @@ Ctrl-C exits the chat client; the zombie keeps running and any later
 chat picks up the history.
 
 ```bash
-zombiectl zombie chat <zombie_id>
+zombiectl chat <zombie_id>
 > poll fly+upstash, summarise to #platform-ops
 [claw] Starting from the cluster view. Hypothesis: look for an app that's been
        restarting, and a redis db whose memory is climbing.
@@ -106,7 +106,7 @@ zombiectl zombie chat <zombie_id>
 ```
 
 Everything the agent says, every tool call, and the Slack post is also
-visible in the live activity stream (`zombiectl zombie watch <id>` or
+visible in the live activity stream (`zombiectl watch <id>` or
 the dashboard's activity tab).
 
 ## Example diagnosis
@@ -148,7 +148,7 @@ explicitly and the agent will schedule it via NullClaw's cron:
 ```
 > poll fly+upstash every 30 minutes
 [claw] Scheduled: */30 * * * *  "poll fly+upstash". Next fire ~14:30
-       UTC. Use `zombiectl zombie events <id>` to see results as they
+       UTC. Use `zombiectl events <id>` to see results as they
        land, or just watch #platform-ops.
 ```
 
