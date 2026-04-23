@@ -43,7 +43,7 @@ export async function commandZombie(ctx, args, workspaces, deps) {
 // ── install ──────────────────────────────────────────────────────────────
 
 async function commandInstall(ctx, args, workspaces, deps) {
-  const { parseFlags, request, apiHeaders, ui, printJson, writeLine, writeError } = deps;
+  const { parseFlags, request, apiHeaders, printJson, writeLine, writeError } = deps;
   const parsed = parseFlags(args);
   const fromPath = parsed.options.from;
 
