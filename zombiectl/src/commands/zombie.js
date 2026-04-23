@@ -47,7 +47,7 @@ async function commandInstall(ctx, args, workspaces, deps) {
   const parsed = parseFlags(args);
   const fromPath = parsed.options.from;
 
-  if (!fromPath) {
+  if (!fromPath || typeof fromPath !== "string") {
     writeError(ctx, "MISSING_ARGUMENT", "usage: zombiectl install --from <path>", deps);
     return 2;
   }
@@ -78,14 +78,24 @@ async function commandInstall(ctx, args, workspaces, deps) {
     throw err;
   }
 
-  const res = await request(ctx, wsZombiesPath(wsId), {
-    method: "POST",
-    headers: { ...apiHeaders(ctx), "Content-Type": "application/json" },
-    body: JSON.stringify({
-      source_markdown: bundle.skill_md,
-      trigger_markdown: bundle.trigger_md,
-    }),
-  });
+  let res;
+  try {
+    res = await request(ctx, wsZombiesPath(wsId), {
+      method: "POST",
+      headers: { ...apiHeaders(ctx), "Content-Type": "application/json" },
+      body: JSON.stringify({
+        source_markdown: bundle.skill_md,
+        trigger_markdown: bundle.trigger_md,
+      }),
+    });
+  } catch (err) {
+    // Non-ApiError network failures (ECONNREFUSED, DNS, socket close) land here.
+    // ApiErrors (409/5xx/timeout) get re-thrown so cli.js's printApiError renders
+    // them with the code + request_id the server returned.
+    if (err && err.name === "ApiError") throw err;
+    writeError(ctx, "IO_ERROR", `IO_ERROR: ${err?.message ?? String(err)}`, deps);
+    return 1;
+  }
 
   if (ctx.jsonMode) {
     printJson(ctx.stdout, {

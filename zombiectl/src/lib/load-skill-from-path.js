@@ -15,6 +15,9 @@ export class SkillLoadError extends Error {
 }
 
 export function loadSkillFromPath(path) {
+  if (typeof path !== "string" || path === "") {
+    throw new SkillLoadError("ERR_PATH_NOT_FOUND", "<no path provided>");
+  }
   let stat;
   try {
     stat = statSync(path);

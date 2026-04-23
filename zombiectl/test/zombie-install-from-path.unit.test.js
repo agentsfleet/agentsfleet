@@ -159,6 +159,7 @@ test("install --from: 409 conflict bubbles up an ApiError-shaped error for cli.j
       makeDeps({
         request: async () => {
           const err = new Error("zombie named 'homelab' already exists");
+          err.name = "ApiError";
           err.status = 409;
           err.code = "ERR_ZOMBIE_NAME_CONFLICT";
           throw err;
@@ -173,8 +174,28 @@ test("install --from: 409 conflict bubbles up an ApiError-shaped error for cli.j
   assert.equal(caught.status, 409);
 });
 
-test("install --from: network failure bubbles up", async () => {
+test("install --from: non-ApiError network failure surfaces as IO_ERROR exit 1", async () => {
   const { sampleDir } = setupSampleDir();
+  let captured = null;
+  const code = await commandZombie(
+    { stdout: makeStdout(), stderr: makeNoop(), jsonMode: false, noInput: false },
+    ["install", "--from", sampleDir],
+    workspaces,
+    makeDeps({
+      writeError: (_ctx, errCode, message) => { captured = { code: errCode, message }; },
+      request: async () => { throw new Error("ECONNREFUSED"); },
+    }),
+  );
+  assert.equal(code, 1);
+  assert.equal(captured?.code, "IO_ERROR");
+  assert.ok(captured.message.includes("ECONNREFUSED"), captured.message);
+});
+
+test("install --from: ApiError re-throws for cli.js printApiError to render", async () => {
+  const { sampleDir } = setupSampleDir();
+  // Simulate what `request()` in http.js actually throws for a 5xx — an
+  // ApiError. commandInstall must re-throw these so the top-level handler
+  // emits the structured error with request_id, not a generic IO_ERROR.
   let caught = null;
   try {
     await commandZombie(
@@ -182,14 +203,21 @@ test("install --from: network failure bubbles up", async () => {
       ["install", "--from", sampleDir],
       workspaces,
       makeDeps({
-        request: async () => { throw new Error("ECONNREFUSED"); },
+        request: async () => {
+          const err = new Error("internal server error");
+          err.name = "ApiError";
+          err.status = 500;
+          err.code = "INTERNAL_SERVER_ERROR";
+          throw err;
+        },
       }),
     );
   } catch (e) {
     caught = e;
   }
-  assert.ok(caught);
-  assert.ok(caught.message.includes("ECONNREFUSED"));
+  assert.ok(caught, "ApiError must bubble");
+  assert.equal(caught.code, "INTERNAL_SERVER_ERROR");
+  assert.equal(caught.status, 500);
 });
 
 // ── §3 — Shared pre-flight ────────────────────────────────────────────────
@@ -205,6 +233,7 @@ test("install --from: not-authenticated bubbles up the auth error", async () => 
       makeDeps({
         request: async () => {
           const err = new Error("authentication required");
+          err.name = "ApiError";
           err.status = 401;
           err.code = "NOT_AUTHENTICATED";
           throw err;
@@ -262,6 +291,33 @@ test("install --from --json: emits JSON, no prose", async () => {
 
 test("route: 'up' no longer resolves to a handler", () => {
   assert.equal(findRoute("up", []), null);
+});
+
+test("install --from (no value): boolean-true from parser treated as missing argument, no ugly error", async () => {
+  // Simulates `zombiectl install --from` with no value — minimist-style parsers
+  // set parsed.options.from = true. Before the guard, statSync(true) would
+  // bubble as `ERR_PATH_NOT_FOUND: ERR_PATH_NOT_FOUND: true`.
+  let captured = null;
+  const code = await commandZombie(
+    { stdout: makeStdout(), stderr: makeNoop(), jsonMode: false, noInput: false },
+    ["install"],
+    workspaces,
+    {
+      parseFlags: () => ({ options: { from: true }, positionals: [] }),
+      request: async () => { throw new Error("request should not be called"); },
+      apiHeaders: () => ({}),
+      ui,
+      printJson: () => {},
+      printKeyValue: () => {},
+      printSection: () => {},
+      writeLine: () => {},
+      writeError: (_ctx, errCode, message) => { captured = { code: errCode, message }; },
+    },
+  );
+  assert.equal(code, 2);
+  assert.equal(captured?.code, "MISSING_ARGUMENT");
+  assert.ok(captured.message.includes("--from"), captured.message);
+  assert.ok(!captured.message.includes("true"), `message must not leak boolean: ${captured.message}`);
 });
 
 test("install without --from exits 2 with usage pointing at --from", async () => {
