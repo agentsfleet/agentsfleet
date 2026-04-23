@@ -33,7 +33,7 @@
 3. **API surface.** Add `/v1/tenants/me/credentials` (GET, POST, DELETE) as the new primary surface. Deprecate the workspace-scoped endpoints in-repo (pre-v2 teardown: remove them outright; no 410 stubs per pre-v2 API drift policy).
 4. **UI wiring.** `app/credentials/page.tsx` reads from `/v1/tenants/me/credentials`. The page lives at the tenant level; remove the workspace-switcher dependency on credentials.
 5. **Ripple into M21_001.** Provider credentials read from the tenant vault (already tenant-scoped in M21's own design); no action needed in M21 beyond confirming its credential selector consumes `/v1/tenants/me/credentials`.
-6. **Ripple into M33_001.** Homelab Zombie installs at a workspace but reads `kubectl_config` / `docker_socket` from the tenant vault. README in `samples/homelab/` documents `zombiectl credential add kubectl_config --file ~/.kube/config` as a tenant-level action.
+6. **Ripple into M37_001.** Platform-ops zombie installs at a workspace but reads structured credentials (e.g. `fly`, `upstash`, `slack` in the flagship sample — the pattern generalizes to any tool credential) from the tenant vault. README in `samples/platform-ops/` documents `zombiectl credential add <name>` as a tenant-level action.
 
 **If the pre-EXECUTE grep reveals the vault is already tenant-scoped** (schema drift since §0 was authored), item 2 is a no-op and items 3-4 may be partially complete; update the spec to reflect actuals and proceed.
 

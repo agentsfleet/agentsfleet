@@ -1,5 +1,7 @@
 # M19_001: Zombie Lifecycle UI — Install, Configure, and Manage Zombies from the Dashboard
 
+> **Amendment (Apr 23, 2026):** `M19_002` (referenced throughout §0.5's deferred-items table) was retired on 2026-04-23. Its scope was reabsorbed: the PATCH / kill / pause / resume endpoints moved into **M33_001** (worker control stream + lifecycle mutations), and the PATCH body for tools/firewall moved into **M35_001** (per-session policy). `schedule_cron` was dropped entirely — NullClaw's `cron_add` tool owns self-scheduling. The table below is historical record; the actual delivery targets are M33_001 + M35_001.
+
 **Prototype:** v2
 **Milestone:** M19
 **Workstream:** 001
