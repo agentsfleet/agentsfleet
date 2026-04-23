@@ -19,13 +19,11 @@ pub const DrainPhase = enum(u8) {
 };
 
 pub const WorkerState = struct {
-    running: std.atomic.Value(bool),
     drain_phase: std.atomic.Value(u8),
     in_flight_events: std.atomic.Value(u32),
 
     pub fn init() WorkerState {
         return .{
-            .running = std.atomic.Value(bool).init(true),
             .drain_phase = std.atomic.Value(u8).init(@intFromEnum(DrainPhase.running)),
             .in_flight_events = std.atomic.Value(u32).init(0),
         };
@@ -50,8 +48,18 @@ pub const WorkerState = struct {
         return @enumFromInt(self.drain_phase.load(.acquire));
     }
 
+    /// True while new claims are allowed. False as soon as startDrain() fires.
+    /// Worker loops should use this as their top-of-iteration exit condition —
+    /// it gives prompt response to SIGTERM without stranding in-flight events.
     pub fn isAcceptingWork(self: *const WorkerState) bool {
         return self.getDrainPhase() == .running;
+    }
+
+    /// True once completeDrain() has run and no in-flight events remain.
+    /// This is the "fully stopped" flag — use it when you need to know the
+    /// process is safe to exit, as distinct from "stopped accepting new work".
+    pub fn isStopped(self: *const WorkerState) bool {
+        return self.getDrainPhase() == .drained;
     }
 
     /// Transition running → draining. Returns true on the first call, false
@@ -77,7 +85,6 @@ pub const WorkerState = struct {
             .acquire,
         );
         if (prev != null) unreachable; // must have been in draining phase
-        self.running.store(false, .release);
     }
 };
 
@@ -137,7 +144,8 @@ test "beginEventIfActive increments in-flight when running" {
 
 test "init starts running with zero in-flight" {
     const ws = WorkerState.init();
-    try std.testing.expect(ws.running.load(.acquire));
+    try std.testing.expect(ws.isAcceptingWork());
+    try std.testing.expect(!ws.isStopped());
     try std.testing.expectEqual(DrainPhase.running, ws.getDrainPhase());
     try std.testing.expectEqual(@as(u32, 0), ws.currentInFlightEvents());
 }
@@ -145,15 +153,18 @@ test "init starts running with zero in-flight" {
 test "drain phase transitions running to draining to drained" {
     var ws = WorkerState.init();
     try std.testing.expectEqual(DrainPhase.running, ws.getDrainPhase());
-    try std.testing.expect(ws.running.load(.acquire));
+    try std.testing.expect(ws.isAcceptingWork());
+    try std.testing.expect(!ws.isStopped());
 
     try std.testing.expect(ws.startDrain());
     try std.testing.expectEqual(DrainPhase.draining, ws.getDrainPhase());
-    try std.testing.expect(ws.running.load(.acquire));
+    try std.testing.expect(!ws.isAcceptingWork()); // new work rejected during drain
+    try std.testing.expect(!ws.isStopped()); // but not fully stopped yet
 
     ws.completeDrain();
     try std.testing.expectEqual(DrainPhase.drained, ws.getDrainPhase());
-    try std.testing.expect(!ws.running.load(.acquire));
+    try std.testing.expect(!ws.isAcceptingWork());
+    try std.testing.expect(ws.isStopped());
 }
 
 test "startDrain is idempotent on second call" {
@@ -230,7 +241,15 @@ fn drainRaceDrain(ws: *WorkerState) void {
     ws.completeDrain();
 }
 
-test "integration: drain never completes while a claim is in flight" {
+test "integration: all claims balance after drain completes" {
+    // What this actually proves: every claim that got past the gate also
+    // reached endEvent, and no claim is "in flight" once all threads have
+    // joined. The narrower guarantee "drain never completes while a claim
+    // is in flight" does NOT hold — with increment-first ordering, a worker
+    // can transiently increment between the drain thread's wait-loop exit
+    // and its completeDrain call; that claim rolls back via endEvent when
+    // it sees phase=draining/drained. The post-state invariants hold either
+    // way, which is what callers actually care about.
     var ws = WorkerState.init();
     var ctx = DrainRaceCtx{
         .ws = &ws,
@@ -251,14 +270,16 @@ test "integration: drain never completes while a claim is in flight" {
     drain_thread.join();
     for (workers) |*t| t.join();
 
-    // Post-conditions:
-    //  - No event in flight at the end.
+    // Post-conditions after all threads have joined:
+    //  - No event in flight.
     //  - Every claim that got past the gate also reached endEvent.
     //  - Phase is drained (the CAS succeeded).
+    //  - isStopped() reflects that.
     try std.testing.expectEqual(@as(u32, 0), ws.currentInFlightEvents());
     try std.testing.expectEqual(ctx.begins.load(.monotonic), ctx.ends.load(.monotonic));
     try std.testing.expectEqual(DrainPhase.drained, ws.getDrainPhase());
-    try std.testing.expect(!ws.running.load(.acquire));
+    try std.testing.expect(ws.isStopped());
+    try std.testing.expect(!ws.isAcceptingWork());
 }
 
 test "completeDrain requires draining phase (running → drained is a programmer error)" {
