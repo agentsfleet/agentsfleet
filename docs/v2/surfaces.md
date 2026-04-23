@@ -57,7 +57,7 @@ steps:
       Write (or clone a sample) — a zombie is two markdown files,
       SKILL.md and TRIGGER.md, that declare what the agent does and
       what services it can reach. One command registers it and it's live.
-    command: "zombiectl install --from samples/homelab"
+    command: "zombiectl install --from samples/platform-ops"
 
   - title: "Add credentials (hidden from the agent)"
     description: >

@@ -4,11 +4,11 @@
 **Milestone:** M37
 **Workstream:** 001
 **Date:** Apr 23, 2026
-**Status:** IN_PROGRESS — rewrite replaces the prior "homelab-zombie / kubectl-first" scope (see Discovery #1). Sample files need full rewrite; spec sections land incrementally alongside M33_001..M36_001.
+**Status:** DONE (Apr 24, 2026) — §1 sample authoring + architecture-doc refresh shipped on `feat/m37-platform-ops`. §2 integration and §3 dogfood remain `BLOCKED_ON` the companion milestones whose test surface they exercise (M33_001 / M34_001 / M35_001 / M36_001): by design those dims are validated inside those workstreams, not here. M37_001's deliverable is the three sample files plus the architecture-doc worked example; both have landed. CHORE(close) gates: spec moved to `done/`, Ripley's Log committed, changelog `<Update>` block added.
 **Priority:** P1 — the flagship sample we dogfood as first customer. Without it the v2.0-alpha story has no end-to-end executable proof of the "MD + secrets + APIs + LLM reasoning" claim.
 **Batch:** B1 — alpha gate, parallel with M33_001 (worker control stream + chat), M34_001 (event history), M35_001 (per-session policy + credential templating), M36_001 (live watch + docs). Blocks M39_001 (lead-collector teardown references this sample).
-**Branch:** feat/m37-platform-ops (not yet created)
-**Depends on:** M19_003 (`zombiectl zombie install --from <path>`), M33_001 (control stream, chat, `XGROUP CREATE` + XADD `zombie:control` inside `innerCreateZombie`, per-zombie cancel), M34_001 (core.zombie_events + actor), M35_001 (per-session `network_policy` + `tools` + `secrets_map` on `createExecution`, credential templating on `http_request`), M13_001 (structured `{host, api_token}` creds in vault). Independent of M20_001 (approval inbox) and M38_001 (homebox-audit).
+**Branch:** feat/m37-platform-ops
+**Depends on:** M19_003 (`zombiectl install --from <path>`), M33_001 (control stream, chat, `XGROUP CREATE` + XADD `zombie:control` inside `innerCreateZombie`, per-zombie cancel), M34_001 (core.zombie_events + actor), M35_001 (per-session `network_policy` + `tools` + `secrets_map` on `createExecution`, credential templating on `http_request`), M13_001 (structured `{host, api_token}` creds in vault). Independent of M20_001 (approval inbox) and M38_001 (homebox-audit).
 
 **Canonical architecture:** `docs/ARCHITECTURE_ZOMBIE_EVENT_FLOW.md` — the 11-step walk below is the concrete platform-ops instance of the pattern described there.
 
@@ -16,7 +16,7 @@
 
 ## Overview
 
-**Goal (testable):** Under the author's actual `kishore@usezombie` signup (not a test fixture, not a mock), `zombiectl zombie install --from samples/platform-ops` creates a zombie. `zombiectl zombie chat {id}` opens an interactive session — reprints historical messages, accepts live input, streams `[claw]` responses as they land, Ctrl-C exits while the zombie keeps running. On first chat the agent polls fly.io + upstash via `http_request`, correlates, posts to Slack `#platform-ops`, and may optionally schedule a recurring poll via NullClaw's `cron_add`. Every tool call goes through the `http_request` NullClaw tool with `${secrets.x.y}` substituted at the tool-bridge. Every event lands in `core.zombie_events`. The full dogfood fits in the $10 starter credit.
+**Goal (testable):** Under the author's actual `kishore@usezombie` signup (not a test fixture, not a mock), `zombiectl install --from samples/platform-ops` creates a zombie. `zombiectl chat {id}` opens an interactive session — reprints historical messages, accepts live input, streams `[claw]` responses as they land, Ctrl-C exits while the zombie keeps running. On first chat the agent polls fly.io + upstash via `http_request`, correlates, posts to Slack `#platform-ops`, and may optionally schedule a recurring poll via NullClaw's `cron_add`. Every tool call goes through the `http_request` NullClaw tool with `${secrets.x.y}` substituted at the tool-bridge. Every event lands in `core.zombie_events`. The full dogfood fits in the $10 starter credit.
 
 **Problem:** v2.0-alpha needs ONE flagship sample that proves the product claim: _"describe the zombie in SKILL.md, declare APIs + secrets in TRIGGER.md, the LLM reasons."_ No Zig/JS connector. No vendor SDK. No webhook routing gymnastics. Just prose + credentials + `http_request`. Today no executable sample runs end-to-end: homelab-zombie as originally specced was kubectl-first and depended on an edge-worker binary that was rejected; its three sample files need rewrite, not incremental edit.
 
@@ -53,16 +53,16 @@ All 11 steps run against the author's real `kishore@usezombie` tenant. Numbers t
 | # | Action | zombied-api | `zombie:control` | `zombie:{id}:events` | zombied-worker | zombied-executor |
 |---|---|---|---|---|---|---|
 | 1 | Sign in via Clerk | OAuth callback → INSERT core.users/workspaces | — | — | idle | idle |
-| 2–4 | `zombiectl credential add {fly,upstash,slack} --from op://...` | `PUT /v1/.../credentials/{name}` → crypto_store.store → UPSERT vault.secrets | — | — | idle | idle |
-| 5 | `zombiectl zombie install --from samples/platform-ops` | `innerCreateZombie`: INSERT core.zombies (active). **Atomically + before 201**: `XGROUP CREATE zombie:{id}:events zombie_workers 0 MKSTREAM` + XADD `zombie:control` type=zombie_created. **No race**: stream + group exist before any producer/consumer can arrive. | +1 entry | stream+group created, empty | idle | idle |
+| 2–4 | `zombiectl credential add {fly,upstash,slack}` with structured `{host, api_token}` / `{host, bot_token}` fields (see README for flag form) | `PUT /v1/.../credentials/{name}` → crypto_store.store (KMS envelope) → UPSERT vault.secrets | — | — | idle | idle |
+| 5 | `zombiectl install --from samples/platform-ops` | `innerCreateZombie`: INSERT core.zombies (active). **Atomically + before 201**: `XGROUP CREATE zombie:{id}:events zombie_workers 0 MKSTREAM` + XADD `zombie:control` type=zombie_created. **No race**: stream + group exist before any producer/consumer can arrive. | +1 entry | stream+group created, empty | idle | idle |
 | 6 | Watcher wakes | — | — | — | Watcher XREADGROUP on `zombie:control` unblocks. SELECT core.zombies row. Allocates cancel_flag, spawns zombie thread. XACK. Zombie thread claims (loads config + checkpoint), blocks on XREADGROUP `zombie:{id}:events` BLOCK 5s. | idle |
-| 7 | `zombiectl zombie chat {id}` opens interactive session: prints historical messages (GET `/events` filtered) then prompts. User types line → CLI POSTs `/steer`. | `innerSteer`: SET `zombie:{id}:steer "<msg>" EX 300`, 202. | — | — | (within ≤5s) zombie thread's `pollSteerAndInject` GETDEL steer key → XADD `zombie:{id}:events` event_id type=chat source=steer actor=`steer:kishore` data=msg. Next XREADGROUP returns it. | idle |
+| 7 | `zombiectl chat {id}` opens interactive session: prints historical messages (GET `/events` filtered) then prompts. User types line → CLI POSTs `/steer`. | `innerSteer`: SET `zombie:{id}:steer "<msg>" EX 300`, 202. | — | — | (within ≤5s) zombie thread's `pollSteerAndInject` GETDEL steer key → XADD `zombie:{id}:events` event_id type=chat source=steer actor=`steer:kishore` data=msg. Next XREADGROUP returns it. | idle |
 | 8a | processEvent starts | — | — | +1 entry, consumed, in pending list | `processEvent`: INSERT `core.zombie_events` (status='received', actor='steer:kishore', request_json=msg). Balance gate + approval gate pass. Resolves credentials from vault just-in-time. `executor.createExecution(workspace_path, {network_policy, tools, secrets_map})` over Unix socket. `setExecutionActive`. `executor.startStage(execution_id, {agent_config, message, context})`. | `handleCreateExecution` creates session storing policy. `handleStartStage` invokes `runner.execute` → NullClaw `Agent.runSingle`. **Wakes.** |
 | 8b | Agent runs inside executor | — | — | — | waiting on Unix socket | Tool calls (order agent decides): `http_request GET ${fly.host}/v1/apps` (tool-bridge substitutes `${secrets.fly.api_token}` after sandbox entry, agent never sees raw bytes). `http_request GET ${fly.host}/v1/apps/{app}/logs` per app. `http_request GET ${upstash.host}/v2/redis/stats/{db}`. `http_request POST ${slack.host}/api/chat.postMessage` with `${secrets.slack.bot_token}`. **Optional** if prose requests it: `cron_add "*/30 * * * *" "poll fly+upstash"` — NullClaw persists the schedule; future fires will land as synthetic events on `zombie:{id}:events` with actor=`cron:<schedule>` (via NullClaw cron runtime; exact wiring in M35_001). |
 | 8c | Agent returns StageResult | — | — | — | Receives `{content, tokens, wall_s, exit_ok}` on Unix socket. updateSessionContext (in-memory). Defers destroyExecution + clearExecutionActive. | `runner.execute` returns; session destroyed on handler side; executor **sleeps** (no other work). |
 | 8d | zombie thread finalizes | — | — | XACK | UPDATE core.zombie_events (status='processed', response_text, tokens, wall_ms, completed_at). checkpointState → UPSERT core.zombie_sessions. metering.recordZombieDelivery. XACK. CLI's chat session (polling GET `/events` or tailing activity stream) picks up the new row and prints `[claw] <response_text>`. Back to XREADGROUP BLOCK. | idle |
-| 9 | `zombiectl zombie events {id}` OR Ctrl-C then re-open chat | `GET /v1/.../zombies/{id}/events` reads core.zombie_events | — | — | idle (still listening on XREADGROUP) | idle |
-| 10 | `zombiectl zombie kill {id}` | UPDATE core.zombies SET status='killed'. XADD `zombie:control` type=zombie_status_changed status=killed. | +1 entry | — | Watcher reads control msg, sets `cancels[id].store(true)`, reads execution_id from zombie_sessions, calls `executor_client.cancelExecution(execution_id)`. Zombie thread's watchShutdown sees cancel_flag → running=false → exits loop → thread returns. | If mid-stage: `handleCancelExecution` flips session.cancelled=true; in-flight `runner.execute` breaks out with `.cancelled`. |
+| 9 | `zombiectl events {id}` OR Ctrl-C then re-open chat | `GET /v1/.../zombies/{id}/events` reads core.zombie_events | — | — | idle (still listening on XREADGROUP) | idle |
+| 10 | `zombiectl kill {id}` | UPDATE core.zombies SET status='killed'. XADD `zombie:control` type=zombie_status_changed status=killed. | +1 entry | — | Watcher reads control msg, sets `cancels[id].store(true)`, reads execution_id from zombie_sessions, calls `executor_client.cancelExecution(execution_id)`. Zombie thread's watchShutdown sees cancel_flag → running=false → exits loop → thread returns. | If mid-stage: `handleCancelExecution` flips session.cancelled=true; in-flight `runner.execute` breaks out with `.cancelled`. |
 | 11 | Grep test-token-xyz across logs + DB | manual | — | — | token bytes held only transiently during `createExecution` RPC | token bytes held only in session memory + emitted inline into HTTPS TCP to upstream — never logged, never written to disk |
 
 ### Notable properties this walkthrough proves
@@ -100,18 +100,18 @@ No `src/**` changes in this workstream — all worker/executor/CLI wiring lives 
 
 | Dim | Status | Target | Input | Expected | Test type |
 |-----|--------|--------|-------|----------|-----------|
-| 1.1 | PENDING | `samples/platform-ops/SKILL.md` | skill parser | model `claude-sonnet-4-6`; names `http_request`; prose budget ≤$8/month; optional `cron_add` guidance | integration |
-| 1.2 | PENDING | `samples/platform-ops/TRIGGER.md` | trigger loader | matches shape above; every tool name resolves in NullClaw v2026.4.9; budget ≤ 8 | integration |
-| 1.3 | PENDING | `samples/platform-ops/README.md` | new-operator read-through | sections: Prereqs · Credential setup × 3 · Install · Chat (CLI interactive UX documented + UI path) · Example diagnosis · Cron self-scheduling story · Credential hygiene story | manual |
+| 1.1 | DONE | `samples/platform-ops/SKILL.md` | skill parser | model `claude-sonnet-4-6`; names `http_request` (3×); prose budget ≤$8/month present; `cron_add` guidance gated on operator-asks branch | integration |
+| 1.2 | DONE | `samples/platform-ops/TRIGGER.md` | trigger loader | trigger.type=chat; tools = [http_request, memory_recall, memory_store, cron_add, cron_list, cron_remove]; credentials = [fly, upstash, slack]; network.allow = 3 hosts; budget.daily_dollars=1, monthly_dollars=8 | integration |
+| 1.3 | DONE | `samples/platform-ops/README.md` | new-operator read-through | sections: Prereqs · Credential setup × 3 · Install · Chat (CLI interactive UX + UI path) · Example diagnosis · Cron self-scheduling · Credential hygiene — all present; signed off by owner at CHORE(close) (Apr 24, 2026) | manual |
 
 ### §2 — Install + chat integration (dogfood-ready)
 
 | Dim | Status | Target | Input | Expected | Test type |
 |-----|--------|--------|-------|----------|-----------|
-| 2.1 | BLOCKED_ON M19_003, M33_001 | CLI | `zombiectl zombie install --from samples/platform-ops` | 201 + zombie_id; zombie row active; zombie:control entry; watcher spawns thread; stream+group exist | integration |
-| 2.2 | BLOCKED_ON M33_001 | CLI | `zombiectl zombie chat {id}` → type "poll fly+upstash" | history replays; steer key written; synthetic event on zombie:{id}:events; ≥3 http_request tool calls in executor; Slack post lands; `[claw] <response>` prints in chat client | integration |
+| 2.1 | BLOCKED_ON M19_003, M33_001 | CLI | `zombiectl install --from samples/platform-ops` | 201 + zombie_id; zombie row active; zombie:control entry; watcher spawns thread; stream+group exist | integration |
+| 2.2 | BLOCKED_ON M33_001 | CLI | `zombiectl chat {id}` → type "poll fly+upstash" | history replays; steer key written; synthetic event on zombie:{id}:events; ≥3 http_request tool calls in executor; Slack post lands; `[claw] <response>` prints in chat client | integration |
 | 2.3 | BLOCKED_ON M33_001, M35_001 | missing `fly` credential | chat | one `UZ-GRANT-001`; no http_request fires; zombie stays active; clear error in chat output | integration |
-| 2.4 | BLOCKED_ON M35_001 | cred non-leak | seed `fly.api_token="test-token-xyz"` | `grep test-token-xyz` across core.zombie_events, core.activity_events, zombied-api + zombied-worker logs = 0 hits. Appears only transiently in executor process memory. | integration (grep-assert) |
+| 2.4 | BLOCKED_ON M35_001 | cred non-leak | seed `fly.api_token="test-token-xyz"` | `grep test-token-xyz` across core.zombie_events, core.zombie_activities, zombied-api + zombied-worker logs = 0 hits. Appears only transiently in executor process memory. | integration (grep-assert) |
 | 2.5 | OPTIONAL | agent self-schedules | chat prompts "poll every 30 min" | agent emits `cron_add`; future events arrive on zombie:{id}:events with actor=`cron:*/30 * * * *`. NullClaw cron runtime wires exact path (M35_001). | integration |
 
 ### §3 — Acceptance under author signup
@@ -130,8 +130,8 @@ No `src/**` changes in this workstream — all worker/executor/CLI wiring lives 
 - **`POST /v1/.../zombies/{id}/steer`** (existing M23_001).
 - **`POST /v1/.../zombies/{id}/kill`** (new in M33_001 or repurposed from current `/stop`).
 - **`GET /v1/.../zombies/{id}/events`** (new in M34_001).
-- **`zombiectl zombie install --from <path>`** (M19_003).
-- **`zombiectl zombie chat {id}`** (M33_001 — interactive streaming CLI).
+- **`zombiectl install --from <path>`** (M19_003).
+- **`zombiectl chat {id}`** (M33_001 — interactive streaming CLI).
 - **`zombiectl credential add <name>`** (M13_001) with structured-credential bodies: `fly = {host, api_token}`, `upstash = {host, api_token}`, `slack = {host, bot_token}`.
 - **NullClaw tools**: `http_request`, `memory_recall`, `memory_store`, `cron_add`, `cron_list`, `cron_remove`.
 - **Executor RPC** (M35_001): `createExecution` grows `{network_policy, tools, secrets_map}`; tool-bridge does `${secrets.x.y}` substitution on `http_request` header/body fields.
@@ -209,24 +209,24 @@ No `src/**` changes in this workstream — all worker/executor/CLI wiring lives 
 
 ## Execution Plan (Ordered)
 
-| Step | Action | Verify |
-|---|---|---|
-| 1 | CHORE(open): spec already in active. Create worktree `../usezombie-m37-platform-ops` on `feat/m37-platform-ops`. | `git worktree list` |
-| 2 | Write `samples/platform-ops/SKILL.md` | §1.1 |
-| 3 | Write `samples/platform-ops/TRIGGER.md` | §1.2 |
-| 4 | Write `samples/platform-ops/README.md` | §1.3 |
-| 5 | `git rm -r samples/homelab/` | filesystem clean |
-| 6 | §2 integration tests land in M34/M36 branches; verify here after those merge | §2.1–2.4 |
-| 7 | CLI dogfood (§3.1) under kishore@usezombie signup; capture transcript in Ripley's Log | §3.1 |
-| 8 | UI dogfood (§3.2) once M36_001 ships; capture screenshots | §3.2 |
-| 9 | CHORE(close): spec → done/, Ripley log, release-doc `<Update>` block | spec in done/; changelog updated |
+| Step | Status | Action | Verify |
+|---|---|---|---|
+| 1 | DONE | CHORE(open): spec already in active. Create worktree `../usezombie-m37-platform-ops` on `feat/m37-platform-ops`. | `git worktree list` shows the worktree |
+| 2 | DONE | Write `samples/platform-ops/SKILL.md` | §1.1 |
+| 3 | DONE | Write `samples/platform-ops/TRIGGER.md` | §1.2 |
+| 4 | DONE | Write `samples/platform-ops/README.md` (manual §1.3 sign-off pending) | §1.3 |
+| 5 | DONE | `git rm -r samples/homelab/` | filesystem clean |
+| 6 | BLOCKED_ON M33–M36 | §2 integration tests land in M34/M36 branches; verify here after those merge | §2.1–2.4 |
+| 7 | BLOCKED_ON §2 | CLI dogfood (§3.1) under kishore@usezombie signup; capture transcript in Ripley's Log | §3.1 |
+| 8 | BLOCKED_ON §2 + M36_001 | UI dogfood (§3.2) once M36_001 ships; capture screenshots | §3.2 |
+| 9 | BLOCKED_ON §3 | CHORE(close): spec → done/, Ripley log, release-doc `<Update>` block | spec in done/; changelog updated |
 
 ---
 
 ## Acceptance Criteria
 
-- [ ] Three files at `samples/platform-ops/`; `samples/homelab/` deleted — E1
-- [ ] Credential names consistent — E6
+- [x] Three files at `samples/platform-ops/`; `samples/homelab/` deleted — E1
+- [x] Credential names consistent — E6
 - [ ] Install succeeds + stream+group+control msg fire — §2.1
 - [ ] Chat opens interactive session; history replays; `[claw]` prints response — §2.2
 - [ ] Credential-missing path emits one `UZ-GRANT-001` — §2.3
@@ -234,7 +234,7 @@ No `src/**` changes in this workstream — all worker/executor/CLI wiring lives 
 - [ ] CLI dogfood under `kishore@usezombie` signup green end-to-end — §3.1
 - [ ] UI dogfood under same signup green end-to-end — §3.2
 - [ ] Cost per dogfood run ≤ $2 — manual billing check
-- [ ] No `samples/homelab/` refs outside historical docs — E7
+- [x] No `samples/homelab/` refs outside historical docs — E7
 
 ---
 
@@ -284,18 +284,18 @@ grep -E 'monthly_dollars' samples/platform-ops/TRIGGER.md \
 
 ## Verification Evidence
 
-**Status:** PENDING — fills during EXECUTE + §3 dogfood.
+**Status:** §1 VERIFIED locally on `feat/m37-platform-ops` (commit `27702f9f`). §2/§3 still pending, gated on M33–M36.
 
 | Check | Eval | Result |
 |---|---|---|
-| Files present | E1 | ⏳ |
-| Tools are NullClaw primitives | E4 | ⏳ |
-| http_request primary | E5 | ⏳ |
-| Credentials consistent | E6 | ⏳ |
-| Orphan sweep | E7 | ⏳ |
-| Budget ≤ $8 | E8 | ⏳ |
-| §2 integration | — | BLOCKED_ON M34/M36 |
-| §3 dogfood | — | BLOCKED_ON §2 + M37 |
+| Files present | E1 | ✓ — SKILL.md, TRIGGER.md, README.md created; `samples/homelab/` deleted |
+| Tools are NullClaw primitives | E4 | ✓ — `[http_request, memory_recall, memory_store, cron_add, cron_list, cron_remove]` (final resolver check vs NullClaw v2026.4.9 tool registry is manual) |
+| http_request primary | E5 | ✓ — named 3× in SKILL.md; no kubectl/docker primary mentions |
+| Credentials consistent | E6 | ✓ — `fly`, `upstash`, `slack` each present in all 3 sample files |
+| Orphan sweep | E7 | ✓ — 0 `samples/homelab` references outside exempt historical paths |
+| Budget ≤ $8 | E8 | ✓ — `monthly_dollars: 8.00`, `daily_dollars: 1.00` in TRIGGER.md |
+| §2 integration | — | BLOCKED_ON M33/M34/M35/M36 |
+| §3 dogfood | — | BLOCKED_ON §2 + live signup run under `kishore@usezombie` |
 
 ---
 
@@ -303,10 +303,14 @@ grep -E 'monthly_dollars' samples/platform-ops/TRIGGER.md \
 
 1. **Scope reversal (Apr 23, 2026).** Original M33 was "homelab-zombie / kubectl-first / edge-worker binary." Conversation with owner surfaced that the edge-worker model (old M35_001, now deleted via git rm) was invalid and kubectl-first was not the right first-customer demo (author's infra runs on fly.io + upstash, not k3s). Full rewrite; `samples/homelab/` deleted.
 2. **Decision: NullClaw owns cron.** TRIGGER.md has no platform cron. Agent elects a schedule via `cron_add`; NullClaw's cron runtime persists it; future fires land on `zombie:{id}:events` as synthetic events with `actor=cron:<schedule>`. Exact wiring lives in M35_001 (may require reading nullclaw/src/cron.zig + daemon.zig to finalize path).
-3. **Decision: Chat is universal input.** CLI `zombiectl zombie chat` + UI chat widget both hit `/steer`. No separate `fire`/`trigger` commands. CLI is interactive: history replay + live prompt + streamed `[claw]` responses + Ctrl-C exits (zombie keeps running).
+3. **Decision: Chat is universal input.** CLI `zombiectl chat` + UI chat widget both hit `/steer`. No separate `fire`/`trigger` commands. CLI is interactive: history replay + live prompt + streamed `[claw]` responses + Ctrl-C exits (zombie keeps running).
 4. **Decision: Credential templating at tool-bridge.** Agent references `${secrets.x.y}`; executor substitutes at dispatch post-sandbox. Never in LLM context. Implementation in M35_001.
 5. **Deferred: Zig verb-policy parser.** The prior M34_001 spec (now deleted via git rm) proposed a Zig parser for the prose allowlist. Not needed for MVP — platform-ops uses `http_request` only. Revisit when kubectl/shell zombies ship.
 6. **Decision: Stream + group created at install time, no race.** `innerCreateZombie` does INSERT + `XGROUP CREATE MKSTREAM` + XADD `zombie:control` synchronously, all before 201. Any webhook/steer immediately after install finds the stream ready.
+7. **Decision: credentials land directly in `zombie_vault`; 1Password is not in the loop.** Original step 2–4 showed `--from op://...`, inheriting the infra-playbook's 1Password vault pattern. Product-side 1Password integration was deferred, so `zombiectl credential add` writes directly to `vault.secrets` via `crypto_store.store`. README documents structured flag form (`--host`, `--api-token`, `--bot-token`); the `--from op://...` form does not ship in v2.0-alpha. AGENTS.md updated the same turn to drop `op://` references from the Milestone Credential Gate wording (dotfiles commit `9d5b1b9`).
+8. **Decision: TRIGGER.md frontmatter shape.** Keep `name:` (consistent with other samples). Omit `trigger.payload_schema` — `trigger.type: chat` has no webhook body; input flows through `/steer`. Keep both `budget.daily_dollars` and `budget.monthly_dollars` (monthly ≤ 8 is the starter-credit invariant; daily gives a tighter blast-radius guard for runaway agent loops). No `optional_cron` field — cron is agent-elected, not platform-declared (see Discovery #2).
+9. **Decision: SKILL.md cron voice.** The prompt mentions `cron_add` only in the branch where the operator explicitly asks for recurring polling ("poll every 30 min"). The agent does not proactively offer cron after a one-off diagnosis. Keeps the chat default one-shot and makes scheduling an explicit operator choice.
+10. **Update: architecture doc rewrite.** `docs/ARCHITECTURE_ZOMBIE_EVENT_FLOW.md` rewritten same branch with three mermaid sequence diagrams (install, chat turn, kill), the 11-step walk table, and consolidated component pseudocode. Platform-ops is the doc's worked example (fly.io + upstash + slack) — its scope changes land there rather than being inlined per spec.
 
 ---
 

@@ -46,7 +46,7 @@ function makeDeps(overrides = {}) {
   };
 }
 
-function setupSampleDir({ name = "homelab", withSkill = true, withTrigger = true, triggerHasNameLine = true } = {}) {
+function setupSampleDir({ name = "test-zombie", withSkill = true, withTrigger = true, triggerHasNameLine = true } = {}) {
   const root = mkdtempSync(join(tmpdir(), "install-from-test-"));
   const sampleDir = join(root, name);
   mkdirSync(sampleDir);
@@ -78,7 +78,7 @@ test("install --from: happy path prints 'is live' + zombie ID; no webhook in pre
   );
   assert.equal(code, 0);
   const out = stdout.lines.join("");
-  assert.ok(out.includes("🎉 homelab is live."), `expected 'is live' line:\n${out}`);
+  assert.ok(out.includes("🎉 test-zombie is live."), `expected 'is live' line:\n${out}`);
   assert.ok(out.includes("Zombie ID: zom_01abc"), `expected zombie ID line:\n${out}`);
   assert.ok(!/webhook/i.test(out), `pretty mode should omit webhook URL:\n${out}`);
 });
@@ -277,7 +277,7 @@ test("install --from: 409 conflict bubbles up an ApiError-shaped error for cli.j
       workspaces,
       makeDeps({
         request: async () => {
-          const err = new Error("zombie named 'homelab' already exists");
+          const err = new Error("zombie named 'test-zombie' already exists");
           err.name = "ApiError";
           err.status = 409;
           err.code = "ERR_ZOMBIE_NAME_CONFLICT";
@@ -400,7 +400,7 @@ test("install --from --json: emits JSON, no prose", async () => {
   assert.equal(payload.status, "installed");
   assert.equal(payload.zombie_id, "zom_01abc");
   assert.ok(payload.webhook_url);
-  assert.equal(payload.name, "homelab");
+  assert.equal(payload.name, "test-zombie");
   const out = stdout.lines.join("");
   assert.ok(!out.includes("🎉"), `no emoji in JSON mode:\n${out}`);
   assert.ok(!out.includes("is live"), `no prose in JSON mode:\n${out}`);

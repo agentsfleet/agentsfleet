@@ -30,8 +30,8 @@ This workstream collapses both commands into **one**: `zombiectl install --from 
 From a fresh checkout with a seeded vault:
 
 ```
-$ zombiectl install --from samples/homelab
-🎉 homelab is live.
+$ zombiectl install --from samples/platform-ops
+🎉 platform-ops is live.
   Zombie ID: zom_01xyz
 ```
 
@@ -64,7 +64,7 @@ Post-conditions on the install surface:
 | `zombiectl/templates/` | DELETE | The entire bundled-template directory (`lead-collector/`, `slack-bug-fixer/`). |
 | `zombiectl/test/zombie-up-woohoo.unit.test.js` | DELETE | Tests a command being removed. |
 | `zombiectl/test/zombie-install-from-path.unit.test.js` | CREATE | Unit tests per dims below. |
-| `samples/homelab/README.md` | EDIT | Currently says `zombiectl up if running locally` in the Prerequisites block (conflates zombiectl with `zombied` daemon startup). Rewrite to the correct daemon start + point the sample install at `zombiectl install --from samples/homelab`. |
+| ~~`samples/homelab/README.md`~~ | ~~EDIT~~ | Dropped mid-PR — M37_001 (PR #249) retired `samples/homelab/` in favor of `samples/platform-ops/`. The daemon-start fix and install-command update that would have landed here are no longer applicable. |
 | `docs/v2/surfaces.md` | EDIT | Remove `zombiectl up` + `install <template>` rows; add `install --from`. |
 
 **Explicitly out of scope in this file-list:**
@@ -82,7 +82,7 @@ Post-conditions on the install surface:
 
 **Dimensions:**
 
-- 1.1 DONE — target: `zombiectl install --from samples/homelab` with seeded auth + workspace
+- 1.1 DONE — target: `zombiectl install --from samples/platform-ops` with seeded auth + workspace
   - expected: reads both files, POSTs, prints `🎉 homelab is live.` + `Zombie ID: zom_...`, exits 0; webhook URL not printed in pretty mode
   - test_type: unit (API mocked)
 - 1.2 DONE — target: `install --from ./missing-dir`
@@ -155,7 +155,7 @@ Post-conditions on the install surface:
 
 ## Acceptance Criteria
 
-- [ ] `zombiectl install --from samples/homelab` against a running `zombied` returns 201 and prints the zombie ID — manual smoke
+- [ ] `zombiectl install --from samples/platform-ops` against a running `zombied` returns 201 and prints the zombie ID — manual smoke
 - [ ] `zombiectl status` shows the zombie active immediately after install — confirms liveness per `ARCHITECTURE_ZOMBIE_EVENT_FLOW.md §7`
 - [ ] `zombiectl up` returns unknown-command
 - [ ] `zombiectl install` (no args) returns usage pointing at `--from`
@@ -181,7 +181,7 @@ Post-conditions on the install surface:
 ```bash
 cd zombiectl && bun test test/zombie-install-from-path.unit.test.js   # new dims
 cd zombiectl && bun test                                              # full regression
-cd zombiectl && bun bin/zombiectl.js install --from ../samples/homelab  # smoke
+cd zombiectl && bun bin/zombiectl.js install --from ../samples/platform-ops  # smoke
 zombiectl status                                                      # confirm live
 zombiectl up                                                          # expect unknown-command
 ```
@@ -193,4 +193,5 @@ zombiectl up                                                          # expect u
 - **M39_001 scope overlap.** M39_001 (`docs/v2/pending/P1_API_CLI_UI_M39_001_LEAD_COLLECTOR_SAMPLE_TEARDOWN.md`) prescribes removing `"lead-collector"` from `BUNDLED_TEMPLATES` (§3.3 / invariant 3 / E3). M19_003 deletes `BUNDLED_TEMPLATES` entirely and removes `zombiectl/templates/lead-collector/`. Those M39_001 dims are now obsolete. Remaining M39_001 scope: renaming `lead-collector` fixture strings in Zig tests, UI test files, and marketing copy (`ui/packages/website/src/pages/Agents.tsx`). M39_001 owner should amend their spec before starting.
 - **OpenAPI stale reference.** `public/openapi/paths/zombies.yaml:15` said "Obtained from `POST /v1/zombies` or `zombiectl up`" — both wrong (path moved workspace-scoped in M24_001; `zombiectl up` removed this workstream). Updated in this workstream to `POST /v1/workspaces/{workspace_id}/zombies` and `zombiectl install --from <path>`.
 - **`zombiectl/src/program/io.js:46` help text** referenced `install <template>` + `up [<path>]`. Updated to `install --from <path>`; `up` row removed. Caught by the §5.2 residue grep, not by the original file-change table.
-- **`samples/homelab/README.md` conflated `zombiectl up` with starting the `zombied` daemon.** Correct daemon start is `zombied serve` per `docs/ARCHITECTURE_ZOMBIE_EVENT_FLOW.md §1`. Step 3 now fetches the webhook URL from `zombiectl status --json` instead of assuming it was printed by install.
+- **`samples/homelab/README.md` conflated `zombiectl up` with starting the `zombied` daemon.** Correct daemon start is `zombied serve` per `docs/ARCHITECTURE_ZOMBIE_EVENT_FLOW.md §1`. At the time (Apr 23), Step 3 was rewritten to fetch the webhook URL from `zombiectl status --json` instead of assuming it was printed by install.
+- **Homelab retired mid-PR (merge with main on Apr 24).** While PR #248 was open, PR #249 (M37_001) landed the `samples/platform-ops/` flagship and deleted `samples/homelab/` outright. My in-PR edits to `samples/homelab/README.md` were dropped as part of the merge (the file is gone in v2), and the spec's Goal block + §1.1 target + acceptance criterion + eval command were rewritten to point at `samples/platform-ops/` instead. The Files Changed row for `samples/homelab/README.md` is struck through to preserve the audit trail.
