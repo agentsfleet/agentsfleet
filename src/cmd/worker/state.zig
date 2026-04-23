@@ -37,7 +37,9 @@ pub const WorkerState = struct {
 
     pub fn endEvent(self: *WorkerState) void {
         const prev = self.in_flight_events.fetchSub(1, .acq_rel);
-        std.debug.assert(prev > 0);
+        // `unreachable` is explicit about intent and still fires in ReleaseSafe.
+        // Without this, unbalanced endEvent would wrap u32 and stall drain forever.
+        if (prev == 0) unreachable;
     }
 
     pub fn currentInFlightEvents(self: *const WorkerState) u32 {
@@ -70,12 +72,20 @@ pub const WorkerState = struct {
 };
 
 /// Gate at the top of each event claim. Returns WorkerError.ShutdownRequested
-/// if the process is draining or drained. Only increments the in-flight
-/// counter on the happy path, so callers don't need a paired endEvent on
-/// the shutdown branch.
+/// if the process is draining or drained.
+///
+/// Increments the in-flight counter FIRST, then checks drain phase, rolling
+/// back on shutdown. This order closes a TOCTOU race where a concurrent
+/// startDrain() could observe in_flight == 0 between the phase check and the
+/// increment, letting completeDrain() race ahead of real work. With the flip,
+/// any drain wait loop that sees in_flight == 0 is guaranteed no new claim is
+/// in progress.
 pub fn beginEventIfActive(worker_state: *WorkerState) WorkerError!void {
-    if (!worker_state.isAcceptingWork()) return WorkerError.ShutdownRequested;
     worker_state.beginEvent();
+    if (!worker_state.isAcceptingWork()) {
+        worker_state.endEvent();
+        return WorkerError.ShutdownRequested;
+    }
 }
 
 // ── Tests ────────────────────────────────────────────────────────────────────
