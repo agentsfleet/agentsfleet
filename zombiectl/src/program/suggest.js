@@ -13,7 +13,6 @@ const KNOWN_COMMANDS = [
   "grant",
   // Flat zombie commands — top-level aliases per routes.js.
   "install",
-  "up",
   "status",
   "kill",
   "logs",

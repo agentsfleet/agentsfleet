@@ -8,9 +8,8 @@ const routes = [
   // M9_001: External agent key management + integration grants
   { key: "agent", match: (cmd) => cmd === "agent" },
   { key: "grant", match: (cmd) => cmd === "grant" },
-  // M1_001 §5: Zombie commands — flat top-level for common ops
+  // Zombie commands — flat top-level for common ops
   { key: "zombie.install", match: (cmd) => cmd === "install" },
-  { key: "zombie.up", match: (cmd) => cmd === "up" },
   { key: "zombie.list", match: (cmd) => cmd === "list" },
   { key: "zombie.status", match: (cmd) => cmd === "status" },
   { key: "zombie.kill", match: (cmd) => cmd === "kill" },

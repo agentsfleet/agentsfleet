@@ -52,13 +52,12 @@ pivot: >
 
 ```yaml
 steps:
-  - title: "Install a skill"
+  - title: "Install a zombie"
     description: >
-      Pick a skill from ClawHub — email, Slack, GitHub, git, or
-      write your own. A skill is a markdown file with frontmatter
-      that declares what services the agent needs and what it's
-      allowed to reach.
-    command: "zombiectl install lead-collector"
+      Write (or clone a sample) — a zombie is two markdown files,
+      SKILL.md and TRIGGER.md, that declare what the agent does and
+      what services it can reach. One command registers it and it's live.
+    command: "zombiectl install --from samples/homelab"
 
   - title: "Add credentials (hidden from the agent)"
     description: >
@@ -68,12 +67,12 @@ steps:
       and strips it from the response.
     command: "zombiectl credentials add agentmail"
 
-  - title: "Start and forget"
+  - title: "Watch and steer"
     description: >
-      Your agent runs 24/7 in a sandboxed process. Webhooks are
+      Your zombie runs 24/7 in a sandboxed process. Webhooks are
       wired automatically. Every action is logged. If it goes wrong,
       the spend ceiling stops it and the kill switch is one command away.
-    command: "zombiectl up"
+    command: "zombiectl status"
 ```
 
 ### Features (6 cards)
@@ -372,20 +371,18 @@ Developer and agent-facing. Programmatic control of everything in the app.
 
 ```yaml
 commands:
-  # Skill management
-  - cmd: "zombiectl install <skill>"
-    does: "Install skill from ClawHub, register webhooks, prompt for credentials"
-  - cmd: "zombiectl skills list"
-    does: "List installed skills and their status"
+  # Zombie management
+  - cmd: "zombiectl install --from <path>"
+    does: "Register the zombie at <path>/SKILL.md + <path>/TRIGGER.md; server activates it atomically"
+  - cmd: "zombiectl list"
+    does: "List installed zombies and their status"
 
-  # Agent lifecycle
-  - cmd: "zombiectl up"
-    does: "Start all agents in the workspace"
-  - cmd: "zombiectl stop <agent>"
-    does: "Kill switch — stop agent mid-action"
+  # Zombie lifecycle
+  - cmd: "zombiectl kill <zombie>"
+    does: "Kill switch — stop zombie mid-action"
   - cmd: "zombiectl status"
-    does: "Running agents, last events, firewall stats, spend"
-  - cmd: "zombiectl logs <agent>"
+    does: "Running zombies, last events, firewall stats, spend"
+  - cmd: "zombiectl logs --zombie <id>"
     does: "Full activity log with firewall events"
 
   # Credentials

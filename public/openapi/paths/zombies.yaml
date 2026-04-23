@@ -12,7 +12,7 @@
     - name: zombie_id
       in: path
       required: true
-      description: UUIDv7 of the target Zombie. Obtained from `POST /v1/zombies` or `zombiectl up`.
+      description: UUIDv7 of the target Zombie. Obtained from `POST /v1/workspaces/{workspace_id}/zombies` or `zombiectl install --from <path>`.
       schema:
         type: string
         format: uuid

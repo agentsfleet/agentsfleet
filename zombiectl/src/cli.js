@@ -29,7 +29,7 @@ import { suggestCommand } from "./program/suggest.js";
 import { requireAuth, AUTH_FAIL_MESSAGE } from "./program/auth-guard.js";
 import { createCoreHandlers } from "./commands/core.js";
 
-export const VERSION = "0.28.0";
+export const VERSION = "0.29.0";
 
 export { parseGlobalArgs };
 
@@ -156,11 +156,8 @@ export async function runCli(argv, io = {}) {
       printSection,
       writeLine,
     }),
-    // M1_001 §5: Zombie commands
+    // Zombie commands
     zombieInstall: (routeArgs) => commandZombieModule(ctx, ["install", ...routeArgs], workspaces, {
-      parseFlags, request, apiHeaders, ui, printJson, printKeyValue, printSection, writeLine, writeError,
-    }),
-    zombieUp: (routeArgs) => commandZombieModule(ctx, ["up", ...routeArgs], workspaces, {
       parseFlags, request, apiHeaders, ui, printJson, printKeyValue, printSection, writeLine, writeError,
     }),
     zombieList: (routeArgs) => commandZombieModule(ctx, ["list", ...routeArgs], workspaces, {

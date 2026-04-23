@@ -12,8 +12,9 @@ gates (not included here).
 
 ## Prerequisites
 
-- `zombied` running locally or reachable via the `zombiectl` config
-  (`zombiectl up` if running locally).
+- `zombied` running locally or reachable via the `zombiectl` config.
+  If you're running it locally, start the daemon with `zombied serve`
+  (the zombied-api process, see `docs/ARCHITECTURE_ZOMBIE_EVENT_FLOW.md §1`).
 - A Clerk-authed tenant / workspace (follow the quickstart if you
   haven't done this yet).
 - `kubectl` binary on the worker image. The default dev worker image
@@ -52,12 +53,24 @@ only.
 From the root of the `usezombie` checkout:
 
 ```bash
-zombiectl zombie install --from samples/homelab
+zombiectl install --from samples/homelab
 ```
 
-Expected output: a zombie ID and a webhook URL to trigger it.
+Expected output: `🎉 homelab is live.` and a zombie ID. The zombie is
+registered and active the moment this command returns (no separate
+start step — see `docs/ARCHITECTURE_ZOMBIE_EVENT_FLOW.md §8 invariant #1`).
+Fetch the webhook URL with `zombiectl status` when you need it for
+external wiring.
 
 ## Step 3 — Trigger it
+
+Grab the webhook URL for the zombie you just installed:
+
+```bash
+WEBHOOK_URL=$(zombiectl status --json | jq -r '.zombies[] | select(.name=="homelab") | .webhook_url')
+```
+
+Then POST an event:
 
 ```bash
 curl -X POST \

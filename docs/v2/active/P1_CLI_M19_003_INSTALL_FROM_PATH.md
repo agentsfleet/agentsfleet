@@ -82,19 +82,19 @@ Post-conditions on the install surface:
 
 **Dimensions:**
 
-- 1.1 PENDING — target: `zombiectl install --from samples/homelab` with seeded auth + workspace
+- 1.1 DONE — target: `zombiectl install --from samples/homelab` with seeded auth + workspace
   - expected: reads both files, POSTs, prints `🎉 homelab is live.` + `Zombie ID: zom_...`, exits 0; webhook URL not printed in pretty mode
   - test_type: unit (API mocked)
-- 1.2 PENDING — target: `install --from ./missing-dir`
+- 1.2 DONE — target: `install --from ./missing-dir`
   - expected: exits 1 with `ERR_PATH_NOT_FOUND: <path>`; no POST fired
   - test_type: unit
-- 1.3 PENDING — target: `install --from <path>` where only `SKILL.md` exists
+- 1.3 DONE — target: `install --from <path>` where only `SKILL.md` exists
   - expected: exits 1 with `ERR_TRIGGER_MISSING: <path>/TRIGGER.md`; no POST fired
   - test_type: unit
-- 1.4 PENDING — target: `install --from <path>` where only `TRIGGER.md` exists
+- 1.4 DONE — target: `install --from <path>` where only `TRIGGER.md` exists
   - expected: exits 1 with `ERR_SKILL_MISSING: <path>/SKILL.md`; no POST fired
   - test_type: unit
-- 1.5 PENDING — target: `install --from <path>` where TRIGGER.md has no `^name:` line
+- 1.5 DONE — target: `install --from <path>` where TRIGGER.md has no `^name:` line
   - expected: POST fires with content; display name = `basename(path)`; exits 0
   - test_type: unit
 
@@ -102,10 +102,10 @@ Post-conditions on the install surface:
 
 **Dimensions:**
 
-- 2.1 PENDING — target: install twice from the same path in the same workspace
+- 2.1 DONE — target: install twice from the same path in the same workspace
   - expected: second call surfaces the server's 409 (ZOMBIE_NAME_CONFLICT) as a clear CLI error citing the existing zombie name; exit 1
   - test_type: unit (API mock returns 409)
-- 2.2 PENDING — target: `install --from <path>` with network failure (request throws)
+- 2.2 DONE — target: `install --from <path>` with network failure (request throws)
   - expected: exits 1 with `IO_ERROR` via `writeError`; no partial success print
   - test_type: unit
 
@@ -113,13 +113,13 @@ Post-conditions on the install surface:
 
 **Dimensions:**
 
-- 3.1 PENDING — target: `install --from <path>` when not authenticated
+- 3.1 DONE — target: `install --from <path>` when not authenticated
   - expected: exits 1 with `NOT_AUTHENTICATED`; no POST fired
   - test_type: unit
-- 3.2 PENDING — target: `install --from <path>` when no workspace selected
+- 3.2 DONE — target: `install --from <path>` when no workspace selected
   - expected: exits 1 with `NO_WORKSPACE`; no POST fired
   - test_type: unit
-- 3.3 PENDING — target: `install --from <path> --json`
+- 3.3 DONE — target: `install --from <path> --json`
   - expected: stdout is a single JSON object `{"status":"installed","zombie_id":"zom_...","webhook_url":"https://..."}`; no pretty prose; exits 0
   - test_type: unit
 
@@ -127,16 +127,16 @@ Post-conditions on the install surface:
 
 **Dimensions:**
 
-- 4.1 PENDING — target: `zombiectl up` (any args)
+- 4.1 DONE — target: `zombiectl up` (any args)
   - expected: exits 2 (unknown command), suggest output does not list `up`
   - test_type: unit (route resolver + suggest)
-- 4.2 PENDING — target: `zombiectl install` (no flags, no positional)
+- 4.2 DONE — target: `zombiectl install` (no flags, no positional)
   - expected: exits 2 with usage pointing at `--from <path>`; no POST fired
   - test_type: unit
-- 4.3 PENDING — target: `zombiectl install lead-collector` (old bundled usage)
+- 4.3 DONE — target: `zombiectl install lead-collector` (old bundled usage)
   - expected: exits 2 with usage error; no POST fired; message points at `--from <path>`
   - test_type: unit
-- 4.4 PENDING — target: post-merge filesystem
+- 4.4 DONE — target: post-merge filesystem
   - expected: `zombiectl/templates/` absent; `zombiectl/test/zombie-up-woohoo.unit.test.js` absent
   - test_type: filesystem grep (manual acceptance before CHORE(close))
 
@@ -144,10 +144,10 @@ Post-conditions on the install surface:
 
 **Dimensions:**
 
-- 5.1 PENDING — target: `zombiectl status` with no zombies
+- 5.1 DONE — target: `zombiectl status` with no zombies
   - expected: hint says `zombiectl install --from <path>`; no `<template>` token, no `zombiectl up`
   - test_type: unit (assert on stderr/stdout)
-- 5.2 PENDING — target: repo-wide residue
+- 5.2 DONE — target: repo-wide residue
   - expected: `grep -rn 'zombiectl up\|install <template>\|BUNDLED_TEMPLATES' zombiectl/src/ samples/ docs/v2/pending/ docs/v2/active/` returns no live references (historical `docs/v2/done/` + `docs/nostromo/` exempt)
   - test_type: CI grep (or CHORE(close) check)
 
@@ -185,3 +185,12 @@ cd zombiectl && bun bin/zombiectl.js install --from ../samples/homelab  # smoke
 zombiectl status                                                      # confirm live
 zombiectl up                                                          # expect unknown-command
 ```
+
+---
+
+## Discovery (findings during implementation)
+
+- **M39_001 scope overlap.** M39_001 (`docs/v2/pending/P1_API_CLI_UI_M39_001_LEAD_COLLECTOR_SAMPLE_TEARDOWN.md`) prescribes removing `"lead-collector"` from `BUNDLED_TEMPLATES` (§3.3 / invariant 3 / E3). M19_003 deletes `BUNDLED_TEMPLATES` entirely and removes `zombiectl/templates/lead-collector/`. Those M39_001 dims are now obsolete. Remaining M39_001 scope: renaming `lead-collector` fixture strings in Zig tests, UI test files, and marketing copy (`ui/packages/website/src/pages/Agents.tsx`). M39_001 owner should amend their spec before starting.
+- **OpenAPI stale reference.** `public/openapi/paths/zombies.yaml:15` said "Obtained from `POST /v1/zombies` or `zombiectl up`" — both wrong (path moved workspace-scoped in M24_001; `zombiectl up` removed this workstream). Updated in this workstream to `POST /v1/workspaces/{workspace_id}/zombies` and `zombiectl install --from <path>`.
+- **`zombiectl/src/program/io.js:46` help text** referenced `install <template>` + `up [<path>]`. Updated to `install --from <path>`; `up` row removed. Caught by the §5.2 residue grep, not by the original file-change table.
+- **`samples/homelab/README.md` conflated `zombiectl up` with starting the `zombied` daemon.** Correct daemon start is `zombied serve` per `docs/ARCHITECTURE_ZOMBIE_EVENT_FLOW.md §1`. Step 3 now fetches the webhook URL from `zombiectl status --json` instead of assuming it was printed by install.
