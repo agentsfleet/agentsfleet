@@ -4,7 +4,7 @@
 **Milestone:** M19
 **Workstream:** 003
 **Date:** Apr 23, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — unblocks the platform-ops sample's acceptance script (M37_001). Also collapses the CLI install surface for every future sample.
 **Batch:** B2 — schedule before M37_001 can close its §4 dims.
 **Branch:** feat/m19-003-install-from-path
