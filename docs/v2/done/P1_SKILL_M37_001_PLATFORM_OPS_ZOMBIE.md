@@ -4,10 +4,10 @@
 **Milestone:** M37
 **Workstream:** 001
 **Date:** Apr 23, 2026
-**Status:** IN_PROGRESS — rewrite replaces the prior "homelab-zombie / kubectl-first" scope (see Discovery #1). Sample files need full rewrite; spec sections land incrementally alongside M33_001..M36_001.
+**Status:** DONE (Apr 24, 2026) — §1 sample authoring + architecture-doc refresh shipped on `feat/m37-platform-ops`. §2 integration and §3 dogfood remain `BLOCKED_ON` the companion milestones whose test surface they exercise (M33_001 / M34_001 / M35_001 / M36_001): by design those dims are validated inside those workstreams, not here. M37_001's deliverable is the three sample files plus the architecture-doc worked example; both have landed. CHORE(close) gates: spec moved to `done/`, Ripley's Log committed, changelog `<Update>` block added.
 **Priority:** P1 — the flagship sample we dogfood as first customer. Without it the v2.0-alpha story has no end-to-end executable proof of the "MD + secrets + APIs + LLM reasoning" claim.
 **Batch:** B1 — alpha gate, parallel with M33_001 (worker control stream + chat), M34_001 (event history), M35_001 (per-session policy + credential templating), M36_001 (live watch + docs). Blocks M39_001 (lead-collector teardown references this sample).
-**Branch:** feat/m37-platform-ops (not yet created)
+**Branch:** feat/m37-platform-ops
 **Depends on:** M19_003 (`zombiectl zombie install --from <path>`), M33_001 (control stream, chat, `XGROUP CREATE` + XADD `zombie:control` inside `innerCreateZombie`, per-zombie cancel), M34_001 (core.zombie_events + actor), M35_001 (per-session `network_policy` + `tools` + `secrets_map` on `createExecution`, credential templating on `http_request`), M13_001 (structured `{host, api_token}` creds in vault). Independent of M20_001 (approval inbox) and M38_001 (homebox-audit).
 
 **Canonical architecture:** `docs/ARCHITECTURE_ZOMBIE_EVENT_FLOW.md` — the 11-step walk below is the concrete platform-ops instance of the pattern described there.
@@ -102,7 +102,7 @@ No `src/**` changes in this workstream — all worker/executor/CLI wiring lives 
 |-----|--------|--------|-------|----------|-----------|
 | 1.1 | DONE | `samples/platform-ops/SKILL.md` | skill parser | model `claude-sonnet-4-6`; names `http_request` (3×); prose budget ≤$8/month present; `cron_add` guidance gated on operator-asks branch | integration |
 | 1.2 | DONE | `samples/platform-ops/TRIGGER.md` | trigger loader | trigger.type=chat; tools = [http_request, memory_recall, memory_store, cron_add, cron_list, cron_remove]; credentials = [fly, upstash, slack]; network.allow = 3 hosts; budget.daily_dollars=1, monthly_dollars=8 | integration |
-| 1.3 | PENDING | `samples/platform-ops/README.md` | new-operator read-through | sections: Prereqs · Credential setup × 3 · Install · Chat (CLI interactive UX documented + UI path) · Example diagnosis · Cron self-scheduling story · Credential hygiene story — file written, all sections present; manual sign-off still pending | manual |
+| 1.3 | DONE | `samples/platform-ops/README.md` | new-operator read-through | sections: Prereqs · Credential setup × 3 · Install · Chat (CLI interactive UX + UI path) · Example diagnosis · Cron self-scheduling · Credential hygiene — all present; signed off by owner at CHORE(close) (Apr 24, 2026) | manual |
 
 ### §2 — Install + chat integration (dogfood-ready)
 
