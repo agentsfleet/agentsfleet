@@ -43,8 +43,7 @@ function printHelp(stdout, ui, opts = {}) {
   writeLine(stdout, "  doctor");
   writeLine(stdout);
   writeLine(stdout, ui.head("ZOMBIE COMMANDS  (top-level — e.g. `zombiectl list`)"));
-  writeLine(stdout, "  install <template>                  Scaffold a new zombie");
-  writeLine(stdout, "  up [<path>]                         Deploy the zombie in <path> (or CWD)");
+  writeLine(stdout, "  install --from <path>               Register the zombie at <path>; server activates it");
   writeLine(stdout, "  list [--cursor C] [--limit N]       List zombies (cursor-paginated)");
   writeLine(stdout, "  status [<zombie_id>]                Show zombie(s) status");
   writeLine(stdout, "  kill <zombie_id>                    Delete a zombie");

@@ -8,9 +8,8 @@ export function registerProgramCommands(handlers) {
     admin: handlers.admin,
     agent: handlers.agent,
     grant: handlers.grant,
-    // M1_001 §5: Zombie commands
+    // Zombie commands
     "zombie.install": handlers.zombieInstall,
-    "zombie.up": handlers.zombieUp,
     "zombie.list": handlers.zombieList,
     "zombie.status": handlers.zombieStatus,
     "zombie.kill": handlers.zombieKill,

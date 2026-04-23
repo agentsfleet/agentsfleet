@@ -98,9 +98,10 @@ You don't code a Zombie. You configure it: what tools it attaches, what credenti
 git clone https://github.com/usezombie/usezombie.git
 cd usezombie
 cp .env.example .env
+bun install    # Hydrate workspace packages (ui/, zombiectl/) — required before `make lint`
 make up        # Start Postgres + Redis + zombied
 make test      # Run all unit tests
-make lint      # Format + lint
+make lint      # Format + lint (website ESLint needs `bun install` first)
 make doctor    # Check config, Postgres, LLM key
 ```
 
