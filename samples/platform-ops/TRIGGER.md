@@ -34,9 +34,18 @@ network:
   # list. If the agent invents an endpoint on an unexpected host, the call
   # fails fast and the agent reasons from the error.
 budget:
-  # Starter-credit envelope: $10 total, aim to keep platform-ops under $8/mo
-  # so the operator has headroom for a second zombie. `daily_dollars` is a
-  # tighter blast-radius guard against runaway agent loops.
+  # Two independent hard caps — the first to trip blocks further runs.
+  # They do NOT compose (daily × 30 ≠ monthly); this is intentional.
+  #
+  # `monthly_dollars` is the real spend envelope: the $10 starter credit
+  # minus $2 of headroom so a second zombie fits. At typical cost (~$0.30
+  # per diagnosis) it bites after ~26 runs in a normal month.
+  #
+  # `daily_dollars` is a blast-radius guard, not a pro-rated monthly share
+  # (which would be ~$0.27 — too tight; one normal run would trip it).
+  # $1 ≈ 3 normal runs' worth; hitting it in one UTC day means something
+  # is wrong (stuck reasoning, prompt injection spamming tool calls) and
+  # the right move is to pause and inspect, not burn the whole month.
   daily_dollars: 1.00
   monthly_dollars: 8.00
 ---
