@@ -2,9 +2,12 @@
 
 Canonical layout uses ordered directories so agents can run lexically from `001` upward.
 
+> **Architecture rationale:** see [`ARCHITECHTURE.md`](./ARCHITECHTURE.md) for why every public-facing service in this project sits behind a Cloudflare Tunnel — the WHY behind the operational steps in `001_bootstrap`, `003_priming_infra`, and the deploy playbooks.
+
 ```
 playbooks/
 ├── README.md                          ← this file
+├── ARCHITECHTURE.md                   ← architecture rationale (tunnel-first)
 ├── 001_bootstrap/
 │   └── 001_playbook.md
 ├── 002_preflight/
