@@ -7,31 +7,36 @@
 **Status:** PENDING
 **Priority:** P1 — launch-blocking (substrate-tier, Week 2-3). BYOK is the second of three v2 differentiation pillars (OSS + BYOK + markdown-defined; self-host deferred to v3). Without operator-controlled LLM provider config, the launch tweet's BYOK claim is hollow and the differentiation argument collapses to two pillars, both matchable by competitors within a week. Promoted from "soft-blocks launch claim" to substrate-tier on Apr 25, 2026 (/plan-ceo-review decision §A in HANDOFF_APR_25_22_13_V2_SPEC_BACKLOG.md). Adds ~1 week to the milestone (~6-7 weeks total).
 **Categories:** API, CLI, UI
-**Batch:** B1 — substrate-tier alongside M40-M45. Depends on M45 (vault structured creds with `type=llm_provider`).
+**Batch:** B1 — substrate-tier alongside M40-M45. Depends on M45 (vault stores opaque JSON-object plaintext per credential).
 **Branch:** feat/m48-byok-provider (to be created)
-**Depends on:** M45_001 (vault structured creds — `llm_provider` type defined there). M11_005 (tenant billing — DONE; provides the `tenant_billing.balance_cents` gate that triggers the credit-exhausted UX).
+**Depends on:** M45_001 (vault structured creds — JSON-object plaintext lands there; BYOK uses a credential named `llm` carrying `{provider, api_key, model}`). M11_005 (tenant billing — DONE; provides the `tenant_billing.balance_cents` gate that triggers the credit-exhausted UX).
 
 **Canonical architecture:** `docs/ARCHITECHTURE.md` §0 ("not a coding-agent product" — BYOK matters when the provider key drives all LLM cost), §10 (capabilities — implicit in "secrets never in agent context").
 
 ---
 
+## Cross-spec amendment (Apr 26, 2026)
+
+M45 dropped the typed credential registry. There is no `type=llm_provider` discriminator and no `samples/fixtures/m45-credential-fixtures.json` — credentials are opaque JSON objects keyed by name. M48 retains every BYOK capability described below by storing the provider config as a vault credential whose `data` is `{provider, api_key, model}`. The CLI / UI side filters by **credential name convention** (BYOK reads the vault credential named `llm` per tenant) instead of by type. Wherever this spec says "credential of type `llm_provider`", read it as "the tenant's `llm` credential". Wherever it references the M45 fixtures file, ignore — that file does not exist.
+
+---
+
 ## Implementing agent — read these first
 
-1. M45's spec (sibling) — `llm_provider` is one of the canonical credential types. The vault stores `{provider, api_key, model}`.
-2. `src/zombie/event_loop_helpers.zig` — current LLM provider key resolution path (the legacy `resolveFirstCredential` returning the platform key).
-3. `samples/fixtures/m45-credential-fixtures.json` — `llm_provider` field shape.
-4. M11_005 done spec — tenant billing balance check; BYOK bypasses platform metering for LLM calls.
-5. NullClaw provider routing — read NullClaw's provider abstraction layer to know which provider keys map to which API endpoints.
+1. M45's spec (sibling) — credentials are opaque JSON objects keyed by name. The BYOK record is the credential named `llm` with `data = {provider, api_key, model}`. No type discriminator.
+2. `src/zombie/event_loop_helpers.zig` — `resolveSecretsMap` (M45) returns parsed JSON objects per name; the BYOK resolver reads the `llm` credential through this path. The legacy `resolveFirstCredential` is being phased out.
+3. M11_005 done spec — tenant billing balance check; BYOK bypasses platform metering for LLM calls.
+4. NullClaw provider routing — read NullClaw's provider abstraction layer to know which provider keys map to which API endpoints.
 
 ---
 
 ## Overview
 
-**Goal (testable):** An operator at a tenant who has exhausted their free credits can: (a) open Settings → Provider in the dashboard, switch to "Bring your own key", select an `llm_provider`-typed credential from the vault, choose a model, click Save → after which **all zombie runs in every workspace under their tenant** bill against their own API quota; OR (b) run `zombiectl provider set --credential-ref my_anthropic_key --model claude-sonnet-4-6` with identical effect (no `--workspace` flag — the setting is tenant-scoped); OR (c) call `PUT /v1/tenants/me/provider`. After BYOK is set, `tenant_billing.balance_cents` no longer gates new zombie runs (operator pays Anthropic, not us). Reverting to platform provider re-enables the credit gate.
+**Goal (testable):** An operator at a tenant who has exhausted their free credits can: (a) open Settings → Provider in the dashboard, switch to "Bring your own key", point at the vault credential named `llm` (whose `data` is `{provider, api_key, model}`), optionally override the model, click Save → after which **all zombie runs in every workspace under their tenant** bill against their own API quota; OR (b) run `zombiectl provider set --model claude-sonnet-4-6` after `zombiectl credential add llm --data '{"provider":"anthropic","api_key":"sk-ant-...","model":"claude-sonnet-4-6"}'`, with identical effect (no `--workspace` flag — the setting is tenant-scoped); OR (c) call `PUT /v1/tenants/me/provider`. After BYOK is set, `tenant_billing.balance_cents` no longer gates new zombie runs (operator pays Anthropic, not us). Reverting to platform provider re-enables the credit gate.
 
 **Problem:** Today, when a tenant exhausts their 20 free credits, their only paths are: upgrade the platform plan (pay UseZombie to keep running platform-hosted Claude), or stop. BYOK is the enterprise self-serve unlock — operators with their own Anthropic / OpenAI / Cerebras / Together accounts route LLM calls through their own quota and let UseZombie be the orchestration layer. Without this, operators wanting cost control, model choice, or routing to on-prem inference cannot do so. The differentiation against AWS DevOps Agent (Bedrock-locked) and Sonarly (Claude-Code-managed) is hollow.
 
-**Solution summary:** Provider config lives at the tenant scope, not workspace. One provider per tenant; switching providers changes which API the LLM calls hit. Stored as a separate vault credential (type `llm_provider` with fields `provider`, `api_key`, `model`). Settings → Provider page lets operator switch between "platform-hosted" (default, gated by `tenant_billing.balance_cents`) and "BYOK" (uses the selected `llm_provider` credential, no balance gate). Provider keys flow into `executor.startStage` separately from tool-level secrets — they never enter the agent's tool context, never log, never echo.
+**Solution summary:** Provider config lives at the tenant scope, not workspace. One provider per tenant; switching providers changes which API the LLM calls hit. Stored as a vault credential named `llm` carrying `data = {provider, api_key, model}` — opaque JSON object per M45. Settings → Provider page lets operator switch between "platform-hosted" (default, gated by `tenant_billing.balance_cents`) and "BYOK" (uses the `llm` credential, no balance gate). Provider keys flow into `executor.startStage` separately from tool-level secrets — they never enter the agent's tool context, never log, never echo.
 
 ---
 
@@ -58,7 +63,7 @@
 
 ### §1 — Schema: tenant_providers
 
-The mode discriminator is `platform` (default) or `byok`. When `byok`, `credential_ref` points at a vault credential of type `llm_provider`. Model is optional override; absent → use the credential's `model` field.
+The mode discriminator is `platform` (default) or `byok`. When `byok`, the resolver reads the vault credential named `llm` (parsed JSON object) for the tenant. Model is optional override on the `tenant_providers` row; absent → use the credential's `model` field. `credential_ref` is fixed to `"llm"` in v1 (no per-tenant rename); the column exists for forward-compat if multi-key BYOK ships later.
 
 > **Implementation default:** unique constraint on `tenant_id` (one provider config per tenant). Soft-delete semantics if needed for audit (out of scope here).
 
@@ -68,7 +73,7 @@ The mode discriminator is `platform` (default) or `byok`. When `byok`, `credenti
 
 1. Read `core.tenant_providers` for tenant_id (default if missing: `mode=platform`).
 2. If `mode=platform`: return `{ provider: 'platform', api_key: <platform_key>, model: <default> }`.
-3. If `mode=byok`: read vault credential `credential_ref` of type `llm_provider`, return its fields with `mode=byok`.
+3. If `mode=byok`: read vault credential named `llm` (the tenant-scoped BYOK record), parse `{provider, api_key, model}`, return with `mode=byok`. Surface `credential_missing` if the row is absent.
 4. Return shape consumed by `executor.startStage` to choose provider routing.
 
 ### §3 — Balance gate skip on BYOK
@@ -96,7 +101,7 @@ Page at `/settings/provider`:
 
 - Current provider summary (mode, credential name if BYOK, model)
 - Mode toggle: Platform | BYOK
-- If BYOK: credential dropdown (filter vault credentials by `type=llm_provider`); model dropdown (auto-populated from provider catalog with override field)
+- If BYOK: read the vault credential named `llm` (parsed JSON object) — show its `provider` field as the active provider; model dropdown (auto-populated from provider catalog with override field). If the `llm` credential is absent, render an inline "Add `llm` credential" call-to-action linking to the credentials page.
 - Save button → PUT request → success toast → revalidate
 
 > **Implementation default:** show a "current spend" widget pulling `tenant_billing.balance_cents` only when in platform mode. In BYOK mode, link out to "Manage spend at <provider> directly."
@@ -105,7 +110,7 @@ Page at `/settings/provider`:
 
 ```
 zombiectl provider get                     # current config
-zombiectl provider set --credential-ref my_anthropic_key [--model X]  # switch to BYOK
+zombiectl provider set [--model X]                                  # switch to BYOK (reads `llm` credential)
 zombiectl provider reset                   # back to platform
 ```
 
@@ -126,11 +131,11 @@ HTTP:
     body: { mode: "platform"|"byok", credential_ref?: string, model?: string }
     → 200 (echoes new config)
     → 403 if caller is not a tenant admin
-    → 400 if mode=byok and credential_ref missing OR credential is not type=llm_provider
+    → 400 if mode=byok and the `llm` credential is missing OR its `data` lacks `provider`/`api_key`
 
 CLI:
   zombiectl provider get
-  zombiectl provider set --credential-ref <name> [--model <model>]
+  zombiectl provider set [--model <model>]   # BYOK reads the `llm` credential
   zombiectl provider reset
 
 Internal:
