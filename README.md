@@ -6,9 +6,9 @@
   <img src="assets/logo-dark.svg" width="200" alt="usezombie" />
 </picture>
 
-**Your agent is ready. You're not ready to trust it. We fix that.**
+**A markdown-defined, durable, BYOK zombie that owns one operational outcome — wakes on a GitHub Actions deploy failure, gathers evidence, posts a diagnosis to your Slack.**
 
-**Run your agents 24/7. Credentials hidden. Every action logged. Big moves approved.**
+**Open source. Bring your own LLM key. The zombie keeps state across attempts, requests approval for risky actions, and stays on the outcome until it's resolved or explicitly blocked.**
 
 [![CI](https://github.com/usezombie/usezombie/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/usezombie/usezombie/actions/workflows/test.yml?query=branch%3Amain)
 [![Coverage](https://codecov.io/gh/usezombie/usezombie/flags/apps/graph/badge.svg)](https://codecov.io/gh/usezombie/usezombie/flags/apps)
@@ -26,55 +26,65 @@
 
 ## The problem
 
-You have a working agent. It can reply to emails, fix bugs, process payments, review PRs. But you won't let it run unsupervised because:
+A deploy fails at 2am. Your CD pipeline goes red. Now you're bouncing between five tools while holding the timeline in your head: GitHub Actions for the run logs, Grafana for the metrics, your observability dashboard for the traces, Slack for the alerts, your terminal for `kubectl` and `flyctl`. You correlate, you guess, you restart something with no clear root cause, and the next morning you can't reconstruct what you did.
 
-- It has your API keys (what if it goes rogue?)
-- You can't see what it did (what if the CEO asks?)
-- There's no spend ceiling (what if one bad prompt burns $500?)
-- There's no kill switch (what if it starts replying to every email in your inbox?)
+The work is fragmented. State is lost between attempts. There is no durable memory across incidents. And there is no automatic mechanism to keep your team or your customers informed while you triage.
 
-So you babysit it. Or you don't run it at all.
+## What v2 does
 
-## What Zombies are
+A **Zombie** is a long-lived runtime that owns one operational outcome end-to-end.
 
-A **Zombie** is a preconfigured agent workflow that does one job and runs forever.
+The v2 wedge ships one zombie: **`platform-ops`** — wakes on a GitHub Actions deploy-failure webhook, gathers evidence from your CD logs, your hosting provider, and your data-plane, then posts an evidenced diagnosis to Slack. Same zombie is reachable manually for a "morning health check" or any operator-driven investigation via `zombiectl steer {id}`.
 
 ```
-"Install the Lead Zombie"       → handles inbound email, replies, logs leads
-"Install the Slack Bug Fixer"   → monitors #bugs, opens PRs, replies in thread
-"Install the PR Zombie"         → reviews every PR, posts feedback, alerts on critical
-"Install the Ops Zombie"        → watches infra, alerts on incidents
-"Install the Hiring Zombie"     → receives candidate profile (resume PDF, GitHub PRs,
-                                   Gmail), analyzes attachments for merit, sends you
-                                   a decision report on Discord
+GitHub Actions: workflow_run.conclusion=failure
+   ↓
+Zombie wakes, gathers evidence (Fly logs, Upstash health, GH run logs)
+   ↓
+NullClaw reasons over the message inside a Landlock+cgroups+bwrap sandbox
+   ↓
+Posts evidenced diagnosis to your Slack channel
+   ↓
+Every event lands in core.zombie_events with actor provenance
 ```
 
-You don't code a Zombie. You configure it: what tools it attaches, what credentials it uses, what budget it has, what triggers it. The agent intelligence is built in.
+You don't code the zombie. You write a SKILL.md in plain English, install it with `/usezombie-install-platform-ops` (Claude Code, Amp, Codex CLI, or OpenCode), and the runtime handles the sandbox, credential injection, audit trail, budget caps, and approval gates.
 
 ## How it works
 
-- **Sandboxed runtime** — bwrap + landlock isolation. Your agent runs in a locked-down process. Network deny-by-default. Only allowlisted domains reachable.
-- **Credentials hidden** — agents never see API keys. The vault injects credentials at the sandbox boundary, outside the agent's process. The agent makes a tool call, UseZombie makes the real API request with the real credential.
-- **Webhooks wired** — receive events from email, Slack, GitHub without ngrok or custom servers. `POST /v1/webhooks/{zombie_id}` with idempotent dedup.
-- **Signup via Clerk** — `POST /v1/webhooks/clerk` accepts Svix-signed `user.created` events and atomically provisions a tenant + user + owner membership + default workspace (Heroku-style name, e.g. `jolly-harbor-482`) + 0-cent credit state in a single transaction. Idempotent on the Clerk OIDC subject.
-- **Activity stream** — every action timestamped and queryable. `zombiectl logs` shows what happened, when, and why.
-- **Spend ceiling** — per-day and per-month dollar budgets. One bad prompt never becomes an infinite burn.
-- **Kill switch** — `zombiectl kill` stops any agent mid-action. Checkpoint saved, no data lost.
-- **Crash recovery** — Zombie state checkpointed to Postgres after every event. Worker crashes, restarts, picks up where it left off.
+- **Sandboxed runtime** — bwrap + landlock + cgroups. The zombie's agent runs in a locked-down process. Network deny-by-default; only the hosts in `network.allow` are reachable.
+- **Credentials hidden** — the agent never sees API keys. The vault stores structured `{host, api_token}` records, KMS-enveloped. The tool bridge substitutes `${secrets.NAME.FIELD}` placeholders with real bytes AFTER sandbox entry, on the request line. Tokens never enter the agent's LLM context.
+- **Webhooks wired** — `POST /v1/.../webhooks/github` with HMAC verification lands as a synthetic event with `actor=webhook:github`. Same reasoning loop as a manual steer; only the actor differs.
+- **Durable history** — every event (webhook / cron / steer) lands in `core.zombie_events` with actor provenance. Resumable from checkpoint after worker restart.
+- **BYOK** — bring your own LLM provider key (Anthropic, OpenAI, Together, Groq). Resolved via the same vault as your other credentials. No vendor lock-in on inference cost.
+- **Markdown-defined** — operational behavior lives in `SKILL.md` + `TRIGGER.md` (or merged frontmatter under `x-usezombie:`). Iterate by editing prose, not by redeploying code.
+- **Context lifecycle** — long incidents don't crash the model. Three layers compose: rolling tool-result window, periodic `memory_store` checkpoints, and stage chunking with continuation events when context fills past threshold. See [`docs/ARCHITECHTURE.md`](docs/ARCHITECHTURE.md) §11.
+- **Budget caps + kill switch** — daily and monthly dollar caps; `zombiectl kill` halts any zombie mid-action with checkpoint saved.
+
+## Differentiation (v2)
+
+Three structural pillars:
+
+- **OSS** — read the code that holds your credentials.
+- **BYOK** — your LLM key, your inference cost.
+- **Markdown-defined** — `SKILL.md` + `TRIGGER.md` as configuration; iterate prose, not typed control flow.
+
+Self-host arrives in v3. v2 ships hosted-only on `api.usezombie.com` via Clerk OAuth.
 
 ## Stack
 
 | Layer | Technology |
 |-------|-----------|
 | Runtime | Zig 0.15.2 (zombied server) |
-| Sandbox | bwrap + landlock (Linux) |
-| Agent engine | NullClaw (built-in LLM agent) |
+| Sandbox | bwrap + landlock + cgroups (Linux) |
+| Agent engine | NullClaw (built-in LLM agent loop) |
 | Database | Postgres (PlanetScale) |
 | Queue | Redis Streams (Upstash) |
-| Auth | Clerk |
+| Auth | Clerk OAuth |
 | CLI | Node.js / Bun (zombiectl, npm package) |
+| Install UX | `/usezombie-install-platform-ops` SKILL.md (Claude Code / Amp / Codex CLI / OpenCode) |
 | Analytics | PostHog |
-| Hosting | Fly.io + bare-metal workers |
+| Hosting | Fly.io |
 
 ## Documentation
 

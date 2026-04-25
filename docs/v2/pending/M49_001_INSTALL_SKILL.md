@@ -1,4 +1,4 @@
-# M49_001: Install-Skill — `/install-platform-ops` for Claude Code / Amp / Codex CLI / OpenCode
+# M49_001: Install-Skill — `/usezombie-install-platform-ops`
 
 **Prototype:** v2.0.0
 **Milestone:** M49
@@ -28,7 +28,13 @@
 
 ## Overview
 
-**Goal (testable):** A user runs `/install-platform-ops` in Claude Code (or any host capable of reading the SKILL.md format with variable resolution). The skill:
+**Skill name (locked by /plan-ceo-review on Apr 25, 2026):** The user-facing invocation is **`/usezombie-install-platform-ops`** in every host — Claude Code, Amp, Codex CLI, OpenCode. One slash-command, one install procedure, one screenshot. Future skills follow the same dashed pattern: `/usezombie-steer`, `/usezombie-doctor`.
+
+**Install procedure (same for every host):** Drop the SKILL.md directory into the host's skills folder. For Claude Code: `~/.claude/skills/usezombie-install-platform-ops/SKILL.md`. Other hosts use their equivalent path. No plugin manifest, no per-host packaging fork — one SKILL.md, one directory name, one slash-command.
+
+The directory inside the `usezombie/skills` distribution repo (`usezombie/skills/usezombie-install-platform-ops/`) and the cache path (`~/.cache/usezombie/skills/usezombie-install-platform-ops/<tag>/`) match the slash-command name to keep everything aligned end-to-end.
+
+**Goal (testable):** A user runs `/usezombie-install-platform-ops` in any supported host. The skill:
 
 1. Calls `zombiectl doctor --json`. If any check fails, surfaces the failure with the `auth login` hint and exits.
 2. Detects the user's repo: reads `.github/workflows/*.yml`, `fly.toml`, `Dockerfile`, `pyproject.toml`, `package.json`. Infers deploy target.
@@ -38,7 +44,7 @@
    - `cron_opt_in` (boolean, default false)
    - `byok_provider_credential` (optional — if user wants BYOK from start)
 4. Resolves credentials in order: `op` (1Password CLI) → env vars → interactive prompt fallback. Stores via `zombiectl credential add` with structured fields.
-5. Fetches the canonical platform-ops template from `https://raw.githubusercontent.com/usezombie/usezombie/<pinned-tag>/samples/platform-ops/SKILL.md`. Caches at `~/.cache/usezombie/skills/install-platform-ops/<tag>/`.
+5. Fetches the canonical platform-ops template from `https://raw.githubusercontent.com/usezombie/usezombie/<pinned-tag>/samples/platform-ops/SKILL.md`. Caches at `~/.cache/usezombie/skills/usezombie-install-platform-ops/<tag>/`.
 6. Generates `.usezombie/platform-ops/SKILL.md` in the user's repo with substituted variables.
 7. Calls `zombiectl install --from .usezombie/platform-ops/`.
 8. Calls `zombiectl steer {id} "morning health check"` and prints the zombie's first response inline.
@@ -56,10 +62,10 @@ The user has a working zombie installed in <60 seconds from skill invocation, po
 | File | Action | Why |
 |------|--------|-----|
 | New repo `usezombie/skills/` | NEW REPO | Public OSS skills registry |
-| `usezombie/skills/install-platform-ops/SKILL.md` | NEW | The install skill itself |
-| `usezombie/skills/README.md` | NEW | How to drop into `~/.claude/skills/` or fetch via usezombie.sh |
-| New repo `usezombie/skills-evals/` | NEW REPO | Eval suite for skills (cross-cuts M52 docs) |
-| `usezombie/skills-evals/install-platform-ops/` | NEW | Fixture repos + eval harness |
+| `usezombie/skills/usezombie-install-platform-ops/SKILL.md` | NEW | The install skill itself. Directory name matches the slash-command. |
+| `usezombie/skills/README.md` | NEW | Single install procedure for every host: drop the directory into the host's skills folder. Same `/usezombie-install-platform-ops` invocation everywhere. |
+| New repo `usezombie/skills-evals/` | NEW REPO | Eval suite for skills (cross-cuts M51 docs) |
+| `usezombie/skills-evals/usezombie-install-platform-ops/` | NEW | Fixture repos + eval harness |
 | `samples/platform-ops/SKILL.md` (this repo) | EDIT | Verify it parses cleanly under M46's schema; this is the template the skill fetches |
 | `samples/fixtures/m49-install-skill-fixtures/` | NEW | Test fixture repos: `gh-actions-fly/`, `gh-actions-only/`, `no-ci/` (each with the right files for repo-detection paths) |
 
@@ -71,15 +77,15 @@ The user has a working zombie installed in <60 seconds from skill invocation, po
 
 ### §1 — `usezombie/skills` repo bootstrap
 
-Create the repo with: `README.md`, `LICENSE` (Apache-2.0 or MIT, match main repo), `install-platform-ops/SKILL.md`, a top-level `SKILLS.md` index (lists all available skills with one-line descriptions). The repo is pure markdown — no build artifacts.
+Create the repo with: `README.md`, `LICENSE` (Apache-2.0 or MIT, match main repo), `usezombie-install-platform-ops/SKILL.md`, a top-level `SKILLS.md` index (lists all available skills with one-line descriptions). The repo is pure markdown — no build artifacts.
 
-Public URL: `https://github.com/usezombie/skills`. Mirrored at `https://usezombie.sh/skills.md` (serves the index) and `https://usezombie.sh/skills/install-platform-ops/SKILL.md` (serves the skill body) once M51's CDN is up.
+Public URL: `https://github.com/usezombie/skills`. Mirrored at `https://usezombie.sh/skills.md` (serves the index) and `https://usezombie.sh/skills/usezombie-install-platform-ops/SKILL.md` (serves the skill body) once M51's CDN is up.
 
 > **Implementation default:** repo structure mirrors gstack's convention: one directory per skill, each with a SKILL.md.
 
 ### §2 — `usezombie/skills-evals` repo bootstrap
 
-Eval suite: for each skill, a fixture repo + an expected-output assertion. Run on every PR. For `install-platform-ops`, the eval:
+Eval suite: for each skill, a fixture repo + an expected-output assertion. Run on every PR. For `usezombie-install-platform-ops`, the eval:
 
 1. Spins up a fixture repo (`gh-actions-fly/` from `samples/fixtures/m49-install-skill-fixtures/`).
 2. Runs the skill against a mocked `zombiectl` (faked `doctor` pass, faked `install` returns success, faked `steer` returns canned response).
@@ -90,11 +96,11 @@ Eval suite: for each skill, a fixture repo + an expected-output assertion. Run o
 
 ### §3 — The install skill body
 
-`usezombie/skills/install-platform-ops/SKILL.md`:
+`usezombie/skills/usezombie-install-platform-ops/SKILL.md`:
 
 ```yaml
 ---
-name: install-platform-ops
+name: usezombie-install-platform-ops
 description: Install a usezombie platform-ops zombie on this repo — watches GH Actions CD failures, posts diagnoses to Slack.
 when_to_use: When the user asks to "install platform-ops", "set up the deploy zombie", or "watch my CI for failures".
 tags: [usezombie, platform-ops, install, devops, sre]
@@ -155,7 +161,7 @@ a working platform-ops zombie on the user's current repository.
 
 5. Fetch the canonical platform-ops template from the URL in `template_url`,
    substituting `{tag}` with `template_pinned_tag`. Cache at
-   `~/.cache/usezombie/skills/install-platform-ops/<tag>/SKILL.md`. On cache
+   `~/.cache/usezombie/skills/usezombie-install-platform-ops/<tag>/SKILL.md`. On cache
    hit, use it; on miss + offline, fail with a clear message.
 
 6. Generate `.usezombie/platform-ops/SKILL.md` in the user's repo. Substitute:
@@ -209,7 +215,7 @@ The skill's body specifies the resolution order. The agent runs the commands. No
 
 ### §6 — Template fetch + cache
 
-Fetch URL from frontmatter `template_url`, substitute `{tag}`. The agent uses its HTTP/fetch tool. Cache to `~/.cache/usezombie/skills/install-platform-ops/<tag>/`. Implementation default: cache key is the tag — bumping the tag invalidates older caches automatically.
+Fetch URL from frontmatter `template_url`, substitute `{tag}`. The agent uses its HTTP/fetch tool. Cache to `~/.cache/usezombie/skills/usezombie-install-platform-ops/<tag>/`. Implementation default: cache key is the tag — bumping the tag invalidates older caches automatically.
 
 ### §7 — usezombie.sh CDN serving
 
@@ -220,11 +226,8 @@ Out of scope here (covered by M51). The skill is fetchable from raw GitHub URL o
 ## Interfaces
 
 ```
-Skill invocation (host-dependent):
-  Claude Code:   /install-platform-ops
-  Amp:           /install-platform-ops (similar)
-  Codex CLI:     codex run install-platform-ops
-  OpenCode:      Open the skill from the skill panel
+Skill invocation (same name in every host):
+  Claude Code / Amp / Codex CLI / OpenCode:   /usezombie-install-platform-ops
 
 Skill input (variables, resolved per host):
   slack_channel: string (required)
@@ -295,11 +298,12 @@ Fixtures in `samples/fixtures/m49-install-skill-fixtures/`:
 
 - [ ] `usezombie/skills` repo created and public
 - [ ] `usezombie/skills-evals` repo created with at least 1 eval (this skill)
-- [ ] `install-platform-ops/SKILL.md` parses cleanly under M46's schema
+- [ ] `usezombie-install-platform-ops/SKILL.md` parses cleanly under M46's schema
 - [ ] All 11 tests pass (10 functional + 1 eval-suite)
-- [ ] Manual: Customer Zero (author) runs `/install-platform-ops` on the usezombie repo itself, ends with a working zombie posting to author's Slack
-- [ ] Skill is fetchable from `https://raw.githubusercontent.com/usezombie/skills/main/install-platform-ops/SKILL.md` AND (post-M51) `https://usezombie.sh/skills/install-platform-ops/SKILL.md`
-- [ ] Skill works equivalently in Claude Code AND at least one of (Amp, Codex CLI, OpenCode) — manually verified
+- [ ] Manual: Customer Zero (author) runs `/usezombie-install-platform-ops` on the usezombie repo itself, ends with a working zombie posting to author's Slack
+- [ ] Manual: same author runs `/usezombie-install-platform-ops` in at least one non-Claude host (Amp, Codex CLI, or OpenCode), produces byte-identical `.usezombie/platform-ops/SKILL.md`
+- [ ] Skill is fetchable from `https://raw.githubusercontent.com/usezombie/skills/main/usezombie-install-platform-ops/SKILL.md` AND (post-M51) `https://usezombie.sh/skills/usezombie-install-platform-ops/SKILL.md`
+- [ ] Single SKILL.md directory with no host-specific packaging fork — same drop-in works for every supported host
 
 ---
 

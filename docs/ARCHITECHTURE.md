@@ -32,6 +32,18 @@ UseZombie v2 is not:
 
 If a user can get the same value by opening Claude locally and asking "what should I do next?", then v2 has not earned its existence.
 
+### How we differentiate
+
+Three structural pillars carry v2:
+
+- **OSS** — the runtime is open source. The operator can read the code that holds their credentials and runs against their infrastructure.
+- **BYOK** — operators bring their own LLM provider key (Anthropic, OpenAI, Together, Groq). The executor treats it as another secret resolved at the tool bridge. No vendor lock-in on inference cost.
+- **Markdown-defined** — operational behavior lives in `SKILL.md` + `TRIGGER.md`, not in a typed workflow engine. Iteration is editing prose, not redeploying code.
+
+**Self-host is deferred to v3.** v2 ships hosted-only on `api.usezombie.com` via Clerk OAuth. The architecture admits self-host (the auth substrate, KMS adapter, and process orchestration are the only deployment-specific layers), but validating it on a clean non-Fly Linux host — the Clerk shim, the KMS adapter, and the executor's Landlock+cgroups+bwrap sandbox running on a vanilla VM — is a v3 workstream. Reading the codebase as OSS is supported in v2; running the codebase on your own infra is not.
+
+The `/usezombie-install-platform-ops` skill (§8.0) is what makes the v2 pillars reachable from a cold start — repo detection, ≤4 gating questions, host-neutral so it works from Claude Code, Amp, Codex CLI, or OpenCode.
+
 ### The first problem we solve
 
 The first problem v2 solves is deploy and production failure handling.
@@ -308,6 +320,36 @@ The initial user assumption is simple:
 
 The Claude session becomes the place where the user defines, installs, updates, and supervises zombies. The zombie runtime becomes the place where long-lived operational outcomes continue after the chat session ends.
 
+### 8.0 The wedge surface: `/usezombie-install-platform-ops` skill
+
+The MVP's user-facing wedge is not raw `zombiectl install`. It is a host-neutral SKILL.md invoked as **`/usezombie-install-platform-ops`** — the same slash-command in every host (Claude Code, Amp, Codex CLI, OpenCode). One install procedure: drop the SKILL.md directory into the host's skills folder (`~/.claude/skills/usezombie-install-platform-ops/` or the host-equivalent path), or fetch it from `https://usezombie.sh/skills.md`. No plugin manifest, no per-host packaging fork. The brand is in the slash-command itself; future skills follow the same pattern (`/usezombie-steer`, `/usezombie-doctor`).
+
+The skill is the install UX; `zombiectl install --from <path>` is the substrate it drives.
+
+What the skill does, in order:
+
+1. **Detects the user's repo**: reads `.github/workflows/*.yml`, `fly.toml`, `Dockerfile`, `pyproject.toml`, `package.json` to infer CI provider, deploy target, and Slack channel. Bails clearly if no GitHub Actions workflow is detected (non-GH CI is post-MVP).
+2. **Asks at most three or four gating questions** through the host-neutral `variables:` frontmatter (so the same SKILL.md works on Claude Code, Amp, Codex CLI, and OpenCode without `AskUserQuestion` lock-in). Slack channel, prod branch glob, and cron opt-in.
+3. **Resolves credentials in order**: 1Password CLI (`op read`) → environment variables → interactive prompt. The skill never asks again for what `op` already has.
+4. **Calls `zombiectl doctor --json` first** (see §8.2) to verify auth + workspace binding before any write.
+5. **Generates `.usezombie/platform-ops/{SKILL,TRIGGER,README}.md`** in the user's repo with substituted values, refusing to overwrite without `--force`. These files are committed by the user — they are the configuration, version-controlled by design.
+6. **Drives `zombiectl install --from .usezombie/platform-ops/`** then opens an interactive `zombiectl steer {id}` session.
+
+This matters architecturally for two reasons. First, the skill artifact is portable — it is a markdown file, not a Claude-specific binary. The same wedge installs from any agent CLI that can read SKILL.md. Second, the skill is the only place where repo detection, secret resolution, and ≤4 question discipline are enforced. The runtime stays prompt-driven; the install UX is what makes the prompt-driven runtime tractable for a first-time operator.
+
+### 8.0.1 Deployment posture: hosted-only in v2
+
+v2 ships **hosted-only** on `api.usezombie.com`. The skill detects no choice point: it defaults to the hosted endpoint, prompts Clerk OAuth via `zombiectl auth login` if the CLI is not authenticated, and proceeds. There is no self-host runbook in v2 and no `--self-host` flag.
+
+This is a deliberate scope cut, not a gap in the architecture. The runtime is already structured so the auth substrate (Clerk OAuth), KMS adapter (cloud KMS), and process orchestration (Fly.io machines) are the only deployment-specific layers — the worker, executor, sandbox, event stream, and reasoning loop are all posture-agnostic. **Validating** that on a clean non-Fly Linux host (Clerk shim or local-token auth, a portable KMS adapter, executor's Landlock+cgroups+bwrap on a vanilla VM, systemd orchestration) is a v3 workstream once v2 has earned the trust to justify the integration burden.
+
+Practically, this means:
+
+- v2 launch claim is **OSS + BYOK + markdown-defined** (§0). Not "self-hostable."
+- The `/self-host` runbook page does not exist on `docs.usezombie.com` for v2.
+- Operators who need self-host today are out of scope; the AI-infra / GPU-cloud / regulated mid-market personas in `office_hours_v2.md` P1 are v3 customers, not v2.
+- BYOK still ships in v2 — it sits on top of the hosted posture and removes the inference-cost lock-in independently of where the runtime runs. See §10.
+
 ### 8.1 Authoring the zombie
 
 The user defines the zombie in project files:
@@ -330,11 +372,11 @@ Once the files are ready, the user installs the zombie into the workspace.
 
 Conceptually, the workflow is:
 
-1. Claude (or another agent) helps author or refine `SKILL.md` and `TRIGGER.md`.
-2. The user installs or updates the zombie through `zombiectl install --from <path>` or the API.
-3. `zombiectl doctor` is called first to verify the user's CLI is authenticated and bound to a workspace before the install request fires.
-4. The API stores the zombie config, linked credentials, approval policy, and trigger settings.
-5. The worker runtime becomes responsible for future triggers — no worker restart required.
+1. Claude (or another agent), typically driven by the `/usezombie-install-platform-ops` skill (§8.0), helps author or refine `SKILL.md` and `TRIGGER.md`.
+2. **`zombiectl doctor --json` runs first** as the deterministic readiness gate. Doctor is auth-exempt, fast, and verifies four things: token validity, server reachability, an active workspace, and workspace binding for the current CLI. The skill (and any future caller) reads `doctor`'s JSON output verbatim and aborts on failure with the operator-facing message instead of letting `install` fail with a confusing 401. Doctor is the only sanctioned preflight surface — no parallel `preflight` command exists.
+3. The user (or skill) installs or updates the zombie through `zombiectl install --from <path>` or the API. The CLI POSTs `{name, config_json, source_markdown}`; the API parses frontmatter, persists the zombie row, and synchronously creates the events stream + consumer group before returning 201 (see §12, Invariant 1).
+4. The API stores the zombie config, linked credentials reference, approval policy, and trigger settings.
+5. The worker runtime becomes responsible for future triggers — no worker restart required (the watcher thread on `zombie:control` claims the new zombie within milliseconds).
 
 After install, the zombie is no longer tied to the interactive Claude session that created it.
 
@@ -568,6 +610,7 @@ Two layers — what the LLM is told it can do, and what the platform actually en
 | Approval gating | Risky actions block until human clicks Approve in dashboard or Slack DM. State machine survives worker restart. | Approval inbox (M47) |
 | Budget caps | Daily $ + monthly $ hard caps; blocks further runs at first trip. Configured per-zombie in TRIGGER.md / `x-usezombie.budget`. | Already enforced via M37 sample shape |
 | Per-stage context lifecycle | Rolling tool-result window + memory_store nudge + stage chunking + continuation events. See §11. | Context Layering (M41) — same spec |
+| BYOK provider | Operator-supplied LLM key (Anthropic, OpenAI, Together, Groq) injected into the executor as just another secret resolved at the tool bridge. The reasoning loop is provider-agnostic; the executor reads `provider:` + the operator's stored key and routes accordingly. Soft-blocks the OSS/self-host positioning claim until shipped. | BYOK provider (M48) |
 
 ### What the platform never does
 

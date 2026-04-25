@@ -1,4 +1,4 @@
-# M51_001: docs.usezombie.com Positioning Rewrite + Install-Pingback Endpoint
+# M51_001: docs.usezombie.com Positioning Rewrite + Install-Pingback Endpoint + Architecture Cross-Reference
 
 **Prototype:** v2.0.0
 **Milestone:** M51
@@ -7,11 +7,12 @@
 **Status:** PENDING
 **Priority:** P1 — packaging-blocking. The launch tweet links to `docs.usezombie.com/quickstart/platform-ops`; if it 404s or shows stale homelab-zombie content, the launch lands flat. The install-pingback is what gives us the Day-N install metric without DM-polling Twitter.
 **Categories:** DOCS, API
-**Batch:** B3 — depends on M40-M49 substrate + skill being shippable. Parallel with M50.
+**Batch:** B3 — depends on all other v2 substrate + packaging being shippable. Final milestone before launch.
 **Branch:** feat/m51-docs-and-pingback (to be created)
-**Depends on:** M40-M46 (substrate that the docs describe), M49 (the install-skill being public). Nothing structural for the pingback endpoint itself.
+**Depends on:** M40-M49 (substrate + packaging — cross-reference pass walks every shipped spec). Nothing structural for the pingback endpoint itself.
+**Folded in:** M50 (architecture cross-reference + post-launch reflection) — formerly a separate spec, merged here Apr 25, 2026 because the docs workstream owns documentation drift, M50 was meta-work without independent user value, and consolidating reduces milestone count.
 
-**Canonical architecture:** `docs/ARCHITECHTURE.md` §0, §3 (positioning) + §11 (context lifecycle — needs a user-facing doc).
+**Canonical architecture:** `docs/ARCHITECHTURE.md` §0, §3 (positioning) + §11 (context lifecycle — needs a user-facing doc). This spec also keeps `docs/ARCHITECHTURE.md` itself accurate post-ship (formerly M50's job).
 
 ---
 
@@ -29,18 +30,21 @@
 
 **Goal (testable):** Operator visits `https://docs.usezombie.com` and sees:
 
-1. **Hero**: *"Durable, self-hostable, BYOK, markdown-defined agent runtime — for operators who run their own infra."* — replaces any "AI for SREs" framing. Free hosted zombid; OSS code; self-host when ready.
-2. **`/quickstart/platform-ops`** — single page walking through `/install-platform-ops` skill from agent installation through first Slack post. Includes screenshots / Loom embed.
-3. **`/skills`** — describes the skill catalog (`install-platform-ops` for now; future skills) and how to drop into `~/.claude/skills/` or fetch via `usezombie.sh`.
+1. **Hero**: *"Durable, BYOK, markdown-defined agent runtime — for operators who own their outcomes."* — replaces any "AI for SREs" framing. Three differentiation pillars: OSS + BYOK + markdown-defined. Free hosted; open source; **self-host arrives in v3**.
+2. **`/quickstart/platform-ops`** — single page walking through `/usezombie-install-platform-ops` (same name in every host) from agent installation through first Slack post. Includes screenshots and a short screen recording.
+3. **`/skills`** — describes the `usezombie-*` skill family (`usezombie-install-platform-ops` for now; future `usezombie-steer`, `usezombie-doctor`) and the single install procedure: drop the SKILL.md directory into the host's skills folder or fetch via `usezombie.sh`.
 4. **`/concepts/context-lifecycle`** — user-facing version of §11 in ARCHITECHTURE.md. Includes the L1+L2+L3 ASCII diagram and the override table.
-5. **`/self-host`** — runbook with the per-row tested-as-of badges (the 6-row table from the design doc: Auth, Postgres, Redis, Process orchestration, Executor sandbox, Secrets).
-6. **`/privacy/cli-telemetry`** — privacy contract for the install-pingback (what we collect, what we don't, opt-out flag).
+5. **`/privacy/cli-telemetry`** — privacy contract for the install-pingback (what we collect, what we don't, opt-out flag).
 
 Plus: `POST https://api.usezombie.com/v1/skills/install-pingback` is live, accepting anonymous install events from the install-skill (M49). Returns 204 No Content. Daily aggregates visible in an internal dashboard.
 
-**Problem:** The current docs site (`~/Projects/docs/`) still talks about homelab-zombie and a kubectl-first narrative that no longer ships. If the launch tweet links to it, readers see a contradiction with the tweet's claim. There's also no install metric — Day-21 / Day-50 validation depends on knowing if anyone installed.
+**Plus (folded from M50):** `docs/ARCHITECHTURE.md` cross-referenced against shipped specs and updated with a §14 ship reflection. Every `(M{N})` mention in the architecture doc points at a real spec in `docs/v2/done/`. §14 captures what shipped vs planned, what surprised us, what was deferred.
 
-**Solution summary:** Two parallel deliverables. Docs site rewrite (positioning + 6 new pages, deprecate stale ones). Plus a thin server-side install-pingback endpoint that the install-skill POSTs to anonymously after a successful install. Privacy-first: anonymized install ID (random UUID stored locally, not user/repo identity), skill version, timestamp, OS family. No repo names, no email, no token, no IP retention beyond aggregation.
+**Launch-tweet copy freeze:** 48h before ship date, the launch tweet copy + landing-page hero + first-screenshot are signed off against the architecture doc's §0 differentiation pillars. Catches the moment the tweet drifts from the substrate truth (e.g., accidentally claims self-host).
+
+**Problem:** The current docs site (`~/Projects/docs/`) still talks about homelab-zombie and a kubectl-first narrative that no longer ships. If the launch tweet links to it, readers see a contradiction with the tweet's claim. There's also no install metric — Day-50 validation depends on knowing if anyone installed. Separately, the architecture doc was rewritten BEFORE substrate shipped; predictions in it (e.g., "M43 owns webhook ingest") are guesses until reconciled.
+
+**Solution summary:** Three parallel deliverables. (1) Docs site rewrite — positioning + 5 new pages, deprecate stale ones. (2) Server-side install-pingback endpoint that the install-skill POSTs to anonymously after a successful install. Privacy-first: anonymized install ID (random UUID stored locally, not user/repo identity), skill version, timestamp, OS family. No repo names, no email, no token, no IP retention beyond aggregation. (3) Architecture cross-reference + §14 ship reflection — keeps the canonical doc honest post-ship.
 
 ---
 
@@ -51,13 +55,16 @@ Plus: `POST https://api.usezombie.com/v1/skills/install-pingback` is live, accep
 | `~/Projects/docs/index.mdx` (or equivalent) | EDIT | Hero copy rewrite |
 | `~/Projects/docs/quickstart/platform-ops.mdx` | NEW | Install + first-chat walkthrough |
 | `~/Projects/docs/skills/index.mdx` | NEW | Skill catalog overview |
-| `~/Projects/docs/skills/install-platform-ops.mdx` | NEW | Detail page for the install skill |
+| `~/Projects/docs/skills/usezombie-install-platform-ops.mdx` | NEW | Detail page for the install skill |
 | `~/Projects/docs/concepts/context-lifecycle.mdx` | NEW | User-facing context layering doc |
-| `~/Projects/docs/self-host.mdx` | NEW | Self-host runbook with tested-as-of table |
 | `~/Projects/docs/privacy/cli-telemetry.mdx` | NEW | Pingback privacy contract |
-| `~/Projects/docs/mint.json` (or nav config) | EDIT | Add new pages to nav |
+| `~/Projects/docs/mint.json` (or nav config) | EDIT | Add new pages to nav. **Do NOT add a Self-Host nav entry** — self-host is v3. |
 | `~/Projects/docs/integrations/lead-collector.mdx` | DELETE if exists | Stale homelab-era content |
 | `~/Projects/docs/launch/homelab-zombie.mdx` | DELETE if exists | Same |
+| `~/Projects/docs/self-host.mdx` | DO NOT CREATE | Self-host deferred to v3; no v2 page (removed from M51 scope Apr 25, 2026) |
+| `README.md` (root, this repo) | EDIT | Hero line synced to architecture §0 differentiation pillars |
+| `~/Projects/.github/README.md` (org-level GitHub profile) | EDIT | Same hero line, public-facing |
+| `docs/ARCHITECHTURE.md` | EDIT | Cross-reference correctness pass + §14 ship reflection (folded from M50) |
 | `src/http/handlers/skills/install_pingback.zig` | NEW | The pingback endpoint |
 | `src/http/router.zig` | EXTEND | Wire `/v1/skills/install-pingback` |
 | `src/state/install_metrics.zig` | NEW | Aggregation: count by day, skill version, OS family |
@@ -71,7 +78,7 @@ Plus: `POST https://api.usezombie.com/v1/skills/install-pingback` is live, accep
 
 ### §1 — Hero copy + nav rewrite
 
-Hero copy on landing page leads with: *"Durable, self-hostable, BYOK, markdown-defined agent runtime — for operators who run their own infra."* Sub-line: *"Free hosted. Open source. Self-host when you're ready."* Below the fold: 30-second install demo (Loom embed or animated GIF) of `/install-platform-ops` running.
+Hero copy on landing page leads with: *"Durable, BYOK, markdown-defined agent runtime — for operators who own their outcomes."* Sub-line: *"Free hosted. Open source. Self-host arrives in v3."* Below the fold: 30-second install demo (short screen recording or animated GIF) of `/usezombie-install-platform-ops` running.
 
 > **Implementation default:** mirror the visual rhythm of Resend.com or Turso.com docs — punchy hero, tight code snippet, three-card differentiation block, then the quickstart link. No marketing fluff.
 
@@ -89,34 +96,60 @@ Single page, top-to-bottom walkthrough:
 
 1. Prerequisite: Claude Code (or Amp, Codex CLI, OpenCode) installed locally. `zombiectl` installed (link to install).
 2. Run `zombiectl auth login` (signs in via Clerk OAuth).
-3. Run `/install-platform-ops` in Claude Code.
+3. Run `/usezombie-install-platform-ops` in any supported host (Claude Code, Amp, Codex CLI, OpenCode).
 4. Answer the 4 prompts (Slack channel, branch glob, cron opt-in, BYOK optional).
 5. Skill installs the zombie + posts a first response to Slack.
 6. Set up the GH webhook: copy the URL + secret the skill emits, paste into the GH repo's webhook settings.
 7. Trigger: cause a deploy failure → see the Slack diagnosis arrive.
 
-Include real screenshots (or Loom). Author's repo as the demo target.
+Include real screenshots (or a short screen recording). Author's repo as the demo target.
 
 ### §3 — `/concepts/context-lifecycle`
 
 User-facing version of §11 in ARCHITECHTURE.md. Same ASCII diagram. Same override table. Add: a "common questions" section addressing things like "do I need to tune these?" (answer: no, defaults work), "what if my zombie needs more depth?" (answer: bump `tool_window` first; everything else is fine for 95% of cases).
 
-### §4 — `/self-host`
+### §4 — Architecture cross-reference + §14 ship reflection (folded from M50)
 
-Runbook with the per-row tested-as-of table:
+Three small passes after the substrate ships, before launch tweet goes out:
 
-| Component | Substitution path | Status (as of YYYY-MM-DD) |
-|-----------|-------------------|---------------------------|
-| Auth | Clerk → env-token / OIDC shim | ⚠ Untested — runbook only |
-| Postgres | PlanetScale → standard Postgres URL | ✓ Tested |
-| Redis | Upstash → standard Redis URL | ✓ Tested |
-| Process orchestration | Fly machines → Linux VM (api/worker/executor as systemd or compose) | ⚠ Untested — runbook only |
-| Executor sandbox | Landlock + cgroups + bwrap on Fly Linux → same on vanilla Ubuntu 24.04 | ⚠ Untested — runbook only |
-| Secrets / KMS | Fly KMS envelope → portable adapter | ⚠ Untested — runbook only |
+**§4.1 Cross-reference correctness pass.** For each spec referenced in `docs/ARCHITECHTURE.md` (M40-M49):
+1. Confirm the spec is in `docs/v2/done/` (not still pending or active).
+2. Read the spec's `## Overview`; verify the capability description in ARCHITECHTURE.md §10 (Capabilities table) matches the actual scope.
+3. Verify any interfaces the architecture doc names (e.g., `POST /steer`, `x-usezombie.context.tool_window`) match what shipped.
+4. If a spec was renamed or merged with another during implementation, update the architecture doc accordingly.
 
-Untested rows link to follow-up GitHub issues for tracking validation. The launch claim is "self-hostable in principle, with these caveats" — honest.
+Output: a one-line note per spec in §14 — either "matches plan" or "deviated: <one line>".
 
-> **Implementation default:** as M{N+}_001 self-host validation specs (filed per A3 in the design doc) ship, update the badges to ✓ with the date.
+**§4.2 Cold-read smoke test.** Pick one engineer (or fresh-context LLM in absence of one) who did not work on M40-M49. Have them read ARCHITECHTURE.md end-to-end. Capture every place they pause to ask "what does this mean?" or "is this still true?". Fix those without diluting the doc — usually a one-sentence clarification in the offending paragraph.
+
+**§4.3 New §14 "Ship Reflection" appendix.** Add a section at the end of ARCHITECHTURE.md (after §13 Path to Bastion):
+
+```markdown
+## 14. Ship Reflection (post-launch, Q2 2026)
+
+### What shipped vs planned
+[1-3 paragraphs. Did the wedge ship as designed (GH Actions trigger + chat steer + Slack post)? Did the substrate (M40-M45) hold up? Did context layering (M41) avoid the embarrassment Codex predicted?]
+
+### What surprised us
+[1-2 paragraphs. Decisions that didn't survive contact with implementation. Operational learnings.]
+
+### What we deferred
+[1 paragraph. BYOK/M48 scope coverage. M47 approval inbox status. Self-host (still v3?). Install-skill host coverage.]
+
+### Evidence
+- Launch date: <YYYY-MM-DD>
+- First external install: <YYYY-MM-DD>, <operator> at <company>
+- Public artifacts: <URLs to launch post, HN thread, screen recording>
+- First real external incident the zombie diagnosed: <YYYY-MM-DD, brief>
+```
+
+> **Implementation default:** §14 stays under 600 words. Reflection is what's NEW post-ship — surprises, deferred items, evidence. NOT a roadmap; future work goes in pending specs.
+
+**§4.4 Numbering and anchor sanity.** Run `grep -E "§[0-9]+|\\[.*\\]\\(#[a-z-]+\\)"` on the doc; verify every section reference and anchor link resolves. Fix orphans.
+
+**§4.5 README hero sync.** Update `README.md` (this repo) and `~/Projects/.github/README.md` (org-level GitHub profile) hero line to match architecture §0 differentiation pillars. Keep both byte-identical for the hero paragraph so they stay in sync.
+
+**§4.6 Launch-tweet copy freeze.** 48h before ship date, freeze: tweet copy + landing-page hero + first-screenshot. Review against architecture §0 differentiation pillars. If any artifact drifts (e.g., still claims "self-hostable"), fix before ship — not after.
 
 ### §5 — `/privacy/cli-telemetry`
 
@@ -135,7 +168,7 @@ Privacy contract for the pingback. Mirror Turso / Resend tone — direct, no leg
 body:
   {
     install_id: <UUID generated locally on first install>,
-    skill: "install-platform-ops",
+    skill: "usezombie-install-platform-ops",
     skill_version: "0.1.0",
     os: "darwin"|"linux"|"windows-wsl"|"unknown",
     ts: <RFC3339>,
@@ -222,21 +255,33 @@ Internal queries (admin-only):
 | `test_quickstart_page_renders` | Build docs site → assert /quickstart/platform-ops/index.html exists with non-empty body |
 | `test_concepts_context_lifecycle_renders` | Same as above for /concepts/context-lifecycle |
 | `test_privacy_cli_telemetry_renders` | Same as above for /privacy/cli-telemetry |
-| `test_self_host_runbook_renders` | Same as above for /self-host |
+| `test_no_self_host_page_in_v2` | Build docs site → assert /self-host returns 404 (page intentionally absent in v2; self-host is v3) |
 | `test_homelab_pages_404` | After delete, /integrations/lead-collector and /launch/homelab-zombie return 404 |
 | `test_admin_aggregation` | Insert 100 rows → query daily uniques → matches expected count |
+| `test_arch_M_references_resolve` (folded from M50) | grep + ls — every `M{N}` mentioned in `docs/ARCHITECHTURE.md` has a corresponding `docs/v2/done/M{N}_*.md` file |
+| `test_arch_anchor_links_resolve` (folded from M50) | grep `(#anchor)` style links in ARCHITECHTURE.md → all targets exist as headers |
+| `test_arch_section_14_present` (folded from M50) | After ship, `## 14. Ship Reflection` exists in ARCHITECHTURE.md with non-empty content under 600 words |
+| `test_arch_no_orphan_TODO` (folded from M50) | grep `TODO\|TKTK\|FIXME` in ARCHITECHTURE.md → 0 hits |
+| `test_readme_hero_sync` | Hero paragraph in `README.md` (this repo) is byte-identical to hero paragraph in `~/Projects/.github/README.md` |
 
 ---
 
 ## Acceptance Criteria
 
-- [ ] All 10 tests pass
-- [ ] `docs.usezombie.com` deploys cleanly with new pages live
-- [ ] Hero copy reflects new positioning; old homelab references gone
+- [ ] All 12 tests pass
+- [ ] `docs.usezombie.com` deploys cleanly with the 4 new v2 pages live (quickstart, skills, concepts/context-lifecycle, privacy/cli-telemetry)
+- [ ] `/self-host` returns 404 — no v2 stub for the v3 feature
+- [ ] Hero copy reflects new positioning (3 pillars: OSS + BYOK + markdown-defined); old homelab references gone
 - [ ] `POST /v1/skills/install-pingback` accepting traffic in production
 - [ ] Privacy doc reviewed; matches what's actually collected (audit)
 - [ ] Internal `/admin/installs` dashboard shows the first install (Customer Zero) on Day 0
 - [ ] Manual: Customer Zero re-runs the install skill on a fresh laptop → pingback fires → row in DB → opt-out flag works
+- [ ] **Architecture cross-reference pass complete** (folded from M50): every `M{N}` reference in `docs/ARCHITECHTURE.md` verified against `docs/v2/done/`
+- [ ] **§14 Ship Reflection added** with real evidence (launch date, first external install, URLs, first real diagnosis)
+- [ ] **Cold-read smoke test done** on `docs/ARCHITECHTURE.md`; resulting clarity fixes applied
+- [ ] **No orphan TODOs / FIXMEs** in `docs/ARCHITECHTURE.md`
+- [ ] **README hero synced**: `README.md` (this repo) and `~/Projects/.github/README.md` (org GitHub profile) carry the same hero paragraph
+- [ ] **Launch-tweet copy frozen 48h pre-ship**: tweet copy + landing-page hero + first-screenshot reviewed against architecture §0 differentiation pillars; sign-off captured in Ripley's Log
 
 ---
 
@@ -247,3 +292,18 @@ Internal queries (admin-only):
 - Cohort / funnel analysis (just raw counts in v1)
 - Geographic / IP-based segmentation (we don't retain IPs)
 - Cross-skill metrics (each skill pings separately; cross-skill rollups are future work)
+- **Self-host runbook page** — moved to v3. The `/self-host` URL intentionally 404s in v2; no "coming soon" stub.
+- **Re-architecting based on post-launch learnings.** If substrate decisions look wrong in retrospect, file follow-up specs in `docs/v3/pending/`; do not rewrite ARCHITECHTURE.md mid-cross-reference.
+- **Marketing-tone polish on ARCHITECHTURE.md.** The architecture doc stays technical; marketing copy lives on docs.usezombie.com.
+
+---
+
+## Note on M50 fold (Apr 25, 2026)
+
+M50_001 was originally a separate spec for "ARCHITECHTURE.md cross-reference + post-launch reflection." Folded into M51 because:
+
+1. **Same workstream owner.** Documentation drift (M50) and docs.usezombie.com positioning (M51) are both docs hygiene.
+2. **No independent user value.** M50 was meta-work — internal team correctness, not operator-facing capability.
+3. **Saves a milestone slot.** 12 → 11 specs reduces tier-tracking overhead without losing content.
+
+What was M50 §1-§5 is now M51 §4.1-§4.6 (with the README sync + tweet-freeze deliverables added). All M50 acceptance criteria, tests, and invariants are absorbed above.

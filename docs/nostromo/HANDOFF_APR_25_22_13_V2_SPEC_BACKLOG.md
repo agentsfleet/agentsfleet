@@ -98,18 +98,39 @@ WEDGE v3:  Bastion / customer-facing statuspage. Documented in
 
 ---
 
-## Spec backlog — M40-M51
+## Spec backlog — M40-M51 (revised Apr 25, 2026 by /plan-ceo-review)
 
-Tier breakdown (from M49's spec sequencing in `docs/office_hours_v2.md`):
+Tier breakdown after the CEO scope review:
 
 | Tier | Specs |
 |---|---|
-| **Launch-blocking (Week 1-2 substrate)** | M40 Worker, M41 Context Layering, M42 Streaming, M43 Webhook Ingest, M44 Install Contract + Doctor, M45 Vault Structured |
-| **Launch-shipping (Week 3-6 packaging)** | M46 Frontmatter Schema, M49 Install-Skill, M51 Docs + Install-Pingback |
-| **Soft-blocks BYOK launch claim** | M48 BYOK Provider |
-| **Post-launch** | M47 Approval Inbox, M50 ARCHITECTURE.md cross-reference + reflection |
+| **Launch-blocking substrate (Week 1-3)** | M40 Worker, M41 Context Layering, M42 Streaming, M43 Webhook Ingest, M44 Install Contract + Doctor, M45 Vault Structured, **M48 BYOK Provider** (promoted from "soft-blocks" tier — see decision §A below) |
+| **Launch-shipping packaging (Week 4-7)** | M46 Frontmatter Schema, M49 Install-Skill, M51 Docs + Install-Pingback (now also owns architecture cross-reference + ship reflection — see fold §B below) |
+| **Parallel from Week 1, validation-blocking** | **M50 Customer-Development Parallel Workstream** (NEW — see decision §C below). ~2-3 hours/week founder time alongside substrate. |
+| **Post-launch** | M47 Approval Inbox |
 
-Codex outside-voice review (in `docs/office_hours_v2.md`) flagged 8 issues, 3 P0s. The biggest: M19_003 + M37_001 substrate mismatches — install API contract broken, parser key mismatch (`tools` vs `skills`), worker doesn't pick up new zombies without restart, executor doesn't pass tool config or network policy. M44 + M40 + M41 fix all of these. Sequencing decision (5A in office-hours): substrate-first, ~5-6 week milestone instead of 1.
+**Total: 11 specs (down from 12 after the M50→M51 fold), milestone scope ~6-7 weeks (up from 5-6 after BYOK promotion).**
+
+### §A — M48 BYOK promoted to substrate-tier (Apr 25 /plan-ceo-review decision)
+
+With self-host deferred to v3 (decided earlier in the same session), the v2 differentiation pillars compressed from 4 to 3: **OSS + BYOK + markdown-defined**. The /plan-ceo-review surfaced that dropping BYOK leaves 2 pillars, both matchable by competitors (AWS DevOps Agent / Sonarly / incident.io) within a week. M48 moves from "Soft-blocks BYOK launch claim, post-launch" to "Launch-blocking substrate, Week 2-3." Adds ~1 week to the milestone. Differentiation argument holds at 3 pillars.
+
+### §B — M50 folded into M51 (Apr 25 /plan-ceo-review decision)
+
+M50 was originally "ARCHITECHTURE.md cross-reference + post-launch reflection" — meta-work without independent user value. Folded into M51 (which already owned docs.usezombie.com positioning, install-pingback, and privacy doc). Same workstream owner, same release rhythm. M51 absorbs M50's §1-§5 as its new §4.1-§4.6, plus adds a README hero sync deliverable + launch-tweet copy freeze. Spec count drops 12 → 11; no content lost. The M50 slot was vacated and immediately reassigned to M50 Customer-Dev (§C).
+
+### §C — M50 Customer-Development Parallel Workstream (NEW, Apr 25)
+
+Codex eng-review correctly identified that "3 named installs in 2 weeks" measured setup-pain-tolerance, not demand. Day-50 bar revised to "1 external team kept install on for ≥1 week, real production event." But the original plan started customer-dev at Week 6 (post-ship), giving 14 days from cold outreach to install-and-soak. /plan-ceo-review surfaced this compression as a real failure mode: ship into silence, find out the framing was wrong, burn 5-6 weeks before the signal arrives. M50 Customer-Dev makes operator-discovery a first-class parallel workstream from Week 1. Founder time: ~2-3 hours/week. Goal: 3 named operators committed to Day-35 install slots BEFORE Day 35; 1 of 3 converts by Day 50. Concierge installs OK.
+
+### What didn't change
+
+- Substrate-first sequencing (Codex was right — don't re-litigate)
+- Day-50 validation bar (1 team, real event, ≥1 week)
+- Wedge framing (GH Actions CD-failure responder + manual operator steer)
+- M37_001 platform-ops sample as the wedge artifact
+
+Codex outside-voice review (in `docs/office_hours_v2.md`) flagged 8 issues, 3 P0s. The biggest: M19_003 + M37_001 substrate mismatches — install API contract broken, parser key mismatch (`tools` vs `skills`), worker doesn't pick up new zombies without restart, executor doesn't pass tool config or network policy. M44 + M40 + M41 fix all of these.
 
 ---
 
