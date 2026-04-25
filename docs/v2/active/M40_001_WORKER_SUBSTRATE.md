@@ -4,11 +4,11 @@
 **Milestone:** M40
 **Workstream:** 001
 **Date:** Apr 25, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — launch-blocking. Without this the worker can't pick up a newly-installed zombie without a full restart, and kills don't propagate to in-flight executions. Every other substrate spec (M41 Execution, M42 Streaming, M43 Webhook Ingest) builds on the watcher pattern owned here.
 **Categories:** API, CLI
 **Batch:** B1 — first launch-blocking workstream. Parallel with M41, M42, M44, M45.
-**Branch:** feat/m40-worker-substrate (to be created)
+**Branch:** feat/m40-worker-substrate
 **Depends on:** none structurally — this is the foundation.
 
 **Canonical architecture:** `docs/ARCHITECHTURE.md` §5 (Architecture Direction), §9 (Steer Flow), §12 (End-to-End Technical Sequence — steps 5-7, 10).
