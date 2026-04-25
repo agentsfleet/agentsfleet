@@ -556,6 +556,123 @@ The user's agent is a workstation tool driving `zombiectl`. The zombie's agent i
                   User reads it.
 ```
 
+  Two streams, two planes — both required
+
+  ┌────────────────────┬─────────────┬─────────────────────────────────────────────────────────────────────────────────────────────────────────────┬───────────────┬─────────────────────────────────┐
+  │       Stream       │    Plane    │                                                   Purpose                                                   │  Cardinality  │             Volume              │
+  ├────────────────────┼─────────────┼─────────────────────────────────────────────────────────────────────────────────────────────────────────────┼───────────────┼─────────────────────────────────┤
+  │ zombie:control     │ Control     │ Lifecycle signals (created / status_changed / config_changed / drain_request) — tells the watcher to        │ ONE,          │ Low — only on                   │
+  │                    │ plane       │ spawn/cancel/reconfig per-zombie threads                                                                    │ fleet-wide    │ install/kill/patch              │
+  ├────────────────────┼─────────────┼─────────────────────────────────────────────────────────────────────────────────────────────────────────────┼───────────────┼─────────────────────────────────┤
+  │ zombie:{id}:events │ Data plane  │ The events a single zombie processes (webhooks, steer messages, schedule ticks)                             │ ONE PER       │ High — every event the zombie   │
+  │                    │             │                                                                                                             │ ZOMBIE        │ handles                         │
+  └────────────────────┴─────────────┴─────────────────────────────────────────────────────────────────────────────────────────────────────────────┴───────────────┴─────────────────────────────────┘
+
+  You were right that per-zombie communication is zombie:{id}:events — that's the data plane. The new zombie:control is a separate, low-volume control plane. Different streams, different volumes,
+  different consumer patterns. Both use the same consumer group name zombie_workers but operate independently.
+
+  Why a single zombie:control instead of per-tenant control
+
+  Considered alternatives:
+  - Per-tenant control (zombie:control:{workspace_id}): would force every worker to XREADGROUP on N streams. Discovery problem (which tenants exist?). High-cardinality BLOCK polling with no traffic.
+  - Per-zombie control: collapses control plane into data plane — no longer a control plane.
+  - Single zombie:control ✓: one XREADGROUP per worker, exactly-once delivery via consumer group, payload carries workspace_id + zombie_id. Multi-tenancy is encoded in the message body, not the stream
+  key. Tenant boundary is enforced at the PG layer (RLS on core.zombies) — Redis stays fleet-wide.
+
+  End-to-end sequence
+
+  INSTALL
+  ─────────
+
+     user
+      │  POST /v1/workspaces/{ws}/zombies
+      ▼
+    zombied-api (innerCreateZombie)
+      │
+      ├─► [PG]   INSERT core.zombies (RLS: tenant boundary)
+      ├─► [Redis] XGROUP CREATE MKSTREAM zombie:{id}:events zombie_workers 0
+      ├─► [Redis] XADD zombie:control * type=zombie_created
+      │                                  zombie_id={id} workspace_id={ws}
+      └─► 201 to user  (invariant 1: data stream + group exist before 201)
+
+    zombied-worker:watcher  (any replica, exactly-once via zombie_workers)
+      │  XREADGROUP zombie_workers <consumer> COUNT 16 BLOCK 5000
+      │             STREAMS zombie:control >
+      │
+      ├─► look up zombie config from PG
+      ├─► spawn per-zombie thread on this worker
+      │    └─► thread XREADGROUPs zombie:{id}:events
+      │        with consumer name worker-{pid}:zombie-{id}
+      └─► XACK zombie:control
+
+     ≤1s end-to-end from 201 to thread-ready
+
+  EVENT  (webhook / steer / schedule tick)
+  ─────────
+     user / GH webhook
+      │  POST /v1/.../zombies/{id}/webhook   or   .../steer
+      ▼
+    zombied-api  ──►  XADD zombie:{id}:events * payload=...
+
+    per-zombie thread (already XREADGROUP-blocked on that stream)
+      │  pop event, run executor, write telemetry, XACK
+      └─► loop
+
+  KILL
+  ─────────
+     user
+      │  POST /v1/.../zombies/{id}/kill
+      ▼
+    zombied-api
+      ├─► UPDATE core.zombies SET status='killed' (PG)
+      ├─► XADD zombie:control * type=zombie_status_changed
+      │                              zombie_id={id} status=killed
+      └─► 202 to user
+
+    zombied-worker:watcher
+      ├─► XREADGROUP picks up the control message
+      ├─► cancel_flag_map[zombie_id].store(true, .release)
+      ├─► executor_client.cancelExecution(execution_id)  [if mid-tool-call]
+      └─► XACK
+
+    per-zombie thread (top of loop)
+      ├─► cancel_flag.load(.acquire) → true
+      ├─► WorkerState.endEvent() if mid-event
+      └─► break, thread exits
+
+     ≤200ms end-to-end from 202 to thread-exit
+
+  Multi-tenancy boundary
+
+  ┌───────────────────────────────────────┬───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+  │                 Layer                 │                                                                Tenant isolation mechanism                                                                 │
+  ├───────────────────────────────────────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ PG (core.zombies, core.zombie_events, │ Row-Level Security by workspace_id. API enforces via app.workspace_id session var; worker uses service role with explicit WHERE filtering.                │
+  │  etc.)                                │                                                                                                                                                           │
+  ├───────────────────────────────────────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ Redis data plane (zombie:{id}:events) │ Key namespaced by zombie UUID (globally unique); no cross-tenant collision possible. No RLS in Redis — protected by zombie_id being unguessable + API     │
+  │                                       │ gatekeeping.                                                                                                                                              │
+  ├───────────────────────────────────────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ Redis control plane (zombie:control)  │ Fleet-wide, not tenant-scoped. Workers are tenant-blind by design (one fleet serves all tenants). Message payload carries workspace_id for logging +      │
+  │                                       │ downstream PG lookups; routing uses zombie_id.                                                                                                            │
+  ├───────────────────────────────────────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ Worker process                        │ Per-zombie thread maintains its own consumer name worker-{pid}:zombie-{id} on the data stream. Different zombies' events never cross threads.             │
+  ├───────────────────────────────────────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ Executor (M41 territory)              │ Per-execution session — secrets resolved at createExecution boundary, never flow as raw strings into agent context.                                       │
+  └───────────────────────────────────────┴───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+
+  Why one worker = all events for that zombie
+
+  Concern: if multiple workers are members of zombie_workers, won't zombie:{id}:events round-robin events across workers and break per-zombie state continuity?
+
+  No — consumer groups distribute messages across consumers that are actively reading the stream. Only the worker that won the control message spawns the per-zombie thread; only that thread reads
+  zombie:{id}:events. Other workers never XREADGROUP that stream → no round-robin → all events flow to the right thread.
+
+  Failure mode (out of scope for M40, flagging for v2 followup): if the worker hosting zombie X crashes, no other worker is reading zombie:{id}:events. Recovery needs a heartbeat or XAUTOCLAIM sweep.
+  v2.0 launches single-replica; multi-replica HA is a known v3 concern.
+
+  ---
+
 ### Same flow for webhook and cron triggers
 
 The flow above is identical for webhook and cron triggers — only the entry into the event stream differs:
