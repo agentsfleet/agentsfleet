@@ -5,9 +5,9 @@
 **Workstream:** 001
 **Date:** Apr 25, 2026
 **Status:** PENDING
-**Priority:** P1 — soft-blocks the launch tweet's BYOK claim. The OSS/self-hostable positioning is materially weaker without operator-controlled LLM provider config. Not strictly substrate-blocking but launch-shipping for the wedge messaging.
+**Priority:** P1 — launch-blocking (substrate-tier, Week 2-3). BYOK is the second of three v2 differentiation pillars (OSS + BYOK + markdown-defined; self-host deferred to v3). Without operator-controlled LLM provider config, the launch tweet's BYOK claim is hollow and the differentiation argument collapses to two pillars, both matchable by competitors within a week. Promoted from "soft-blocks launch claim" to substrate-tier on Apr 25, 2026 (/plan-ceo-review decision §A in HANDOFF_APR_25_22_13_V2_SPEC_BACKLOG.md). Adds ~1 week to the milestone (~6-7 weeks total).
 **Categories:** API, CLI, UI
-**Batch:** B2 — depends on M45 (vault structured creds with `type=llm_provider`).
+**Batch:** B1 — substrate-tier alongside M40-M45. Depends on M45 (vault structured creds with `type=llm_provider`).
 **Branch:** feat/m48-byok-provider (to be created)
 **Depends on:** M45_001 (vault structured creds — `llm_provider` type defined there). M11_005 (tenant billing — DONE; provides the `tenant_billing.balance_cents` gate that triggers the credit-exhausted UX).
 

@@ -1,5 +1,7 @@
 # Architecture — v2 MVP Operational Outcome Runner
 
+> **Filename note:** This file is `ARCHITECHTURE.md` (with the extra "CH"), not `ARCHITECTURE.md`. The misspelling is the de-facto canonical name in this repo — every M40-M51 spec, the README, `playbooks/ARCHITECHTURE.md`, and the `office_hours_v2.md` / `plan_engg_review_v2.md` docs reference it under this exact filename. Do not "correct" the spelling without sweeping all ~20 cross-references in the same change; the rename is more expensive than the embarrassment.
+
 Date: Apr 25, 2026
 Status: Canonical reference for the v2 MVP problem, thesis, runtime model, agent/zombie interaction, capabilities, and context lifecycle. This document defines why the product exists, how a zombie runs, how operators and external systems talk to it, and what guarantees the platform enforces. All v2 specs in `docs/v2/pending/` (M40_001 onward) are grounded here.
 
