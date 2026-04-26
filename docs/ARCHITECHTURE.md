@@ -697,6 +697,99 @@ In all three cases the zombie's reasoning loop sees a single `message` and reaso
 
 ---
 
+  The failure scenario, visually
+
+  Important correction up front: the API server (not the worker) is the side that writes to Redis during install. The worker only reads from zombie:control. So the failure is on the API → Redis hop, not
+   worker → Redis.
+
+  TIME ──►
+
+  t=0   USER ──── zombiectl install ────►  zombiectl/src/commands/zombie.js
+                                            │
+  t=1   zombiectl ──── POST /v1/.../zombies ────►  API server
+                                                    │
+                                                    ▼
+  t=2   API ──── INSERT INTO core.zombies (id=Z, status='active') ────►  PG
+                                                                         ✓ committed
+                                                    │
+                                                    ▼
+  t=3   API ──── XGROUP CREATE zombie:Z:events zombie_workers 0 ────►  Redis
+                                                                       ╳ 💥 blip
+                                                                       fail
+
+  t=4   API ──── 500 ────►  zombiectl ────►  USER (sees error)
+          log: zombie.create_publish_failed zombie_id=Z
+               hint=row_committed_worker_blind self_heals_at_next_worker_boot
+
+     ─────────  STATE DURING THE ORPHAN WINDOW  ─────────
+
+     PG (core.zombies)        :  ████ row Z exists, status='active'
+     Redis zombie:Z:events    :  ░░░░ does NOT exist
+     Redis zombie:control     :  ░░░░ never received zombie_created for Z
+     Worker watcher           :  ░░░░ doesn't know Z exists
+     Webhooks arriving for Z  :  XADD zombie:Z:events creates the stream
+                                  with NO consumer group → events accumulate
+                                  untread (Redis-side memory only, bounded
+                                  by retention; no executor work)
+
+     Worker keeps running OTHER zombies normally — no impact on the rest of
+     the fleet. Z is the only one stranded.
+
+
+     ─── time passes — could be seconds, hours, or days ───
+     ─── until the worker process restarts (deploy / supervisor / manual) ───
+
+
+  t=N   Worker process restarts (any reason)
+                                                    │
+                                                    ▼
+  t=N+1 worker.run ──── listActiveZombieIds(pool) ────►  PG
+                                                         returns [Z, ...]
+                                                    │
+                                                    ▼
+  t=N+2 worker.run ──── for each id: watcher.spawnZombieThread(id) ────┐
+                                                                        │
+                         ┌──────────────────────────────────────────────┘
+                         ▼
+         spawnZombieThread(Z):
+           │
+           ├─►  control_stream.ensureZombieEventsGroup(redis, Z)
+           │       └─►  XGROUP CREATE zombie:Z:events zombie_workers 0
+           │            ✓ creates the missing stream + group
+           │            (BUSYGROUP-as-success on the lucky path where
+           │             webhook traffic had already created the stream)
+           │
+           ├─►  alloc cancel_flag, store in self.cancel_flags
+           │
+           └─►  std.Thread.spawn(zombieWorkerLoop, Z)
+                    │
+                    ▼
+                zombie thread:
+                    XREADGROUP zombie_workers worker-{pid}:zombie-Z
+                               ... STREAMS zombie:Z:events >
+                    ✓ blocked, ready
+                    ↓
+                if webhooks accumulated during the orphan window,
+                XREADGROUP returns them with id `0-...` (group started
+                at 0) and the thread processes them in arrival order.
+
+     ─────────  STATE AFTER RESTART  ─────────
+
+     Z is fully healthy. Indistinguishable from a zombie that installed
+     cleanly. Any backlog webhooks get processed in order.
+
+  Variant: XADD zombie:control fails after XGROUP CREATE succeeded
+
+  Same picture, different broken hop:
+
+  t=3a  API ──── XGROUP CREATE zombie:Z:events ✓ (Redis briefly OK)
+  t=3b  API ──── XADD zombie:control * type=zombie_created Z ────►  Redis
+                                                                    ╳ 💥
+
+  Now zombie:Z:events + group both exist; only zombie:control missed the signal. Same orphan, same self-heal: bootstrap finds Z in PG, ensureZombieEventsGroup is a no-op (BUSYGROUP-as-success), thread
+  spawns, healthy.
+---
+
 ## 10. What the Zombie Has (Capabilities)
 
 Two layers — what the LLM is told it can do, and what the platform actually enforces.
