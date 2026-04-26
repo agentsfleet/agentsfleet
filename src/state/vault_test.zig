@@ -111,6 +111,67 @@ test "storeJson + loadJson round-trip preserves nested object" {
     );
 }
 
+test "storeJson + loadJson round-trip preserves nested + arrays + numbers + bools + nulls" {
+    setEncryptionKey();
+    const alloc = std.testing.allocator;
+    const handle = (try base.openTestConn(alloc)) orelse return error.SkipZigTest;
+    defer {
+        handle.pool.release(handle.conn);
+        handle.pool.deinit();
+    }
+    try seedWorkspaceForVault(handle.conn);
+    defer cleanupTestRows(handle.conn);
+
+    // Nested object with every JSON shape the parser supports — guards against
+    // a future "stringify only handles strings" regression in storeJson and
+    // proves loadJson reconstructs the same shape after KMS roundtrip.
+    var nested = std.json.ObjectMap.init(alloc);
+    defer nested.deinit();
+    try nested.put("inner_str", .{ .string = "deep" });
+    try nested.put("inner_num", .{ .integer = 42 });
+
+    var arr = std.json.Array.init(alloc);
+    defer arr.deinit();
+    try arr.append(.{ .integer = 1 });
+    try arr.append(.{ .string = "two" });
+    try arr.append(.{ .bool = true });
+
+    var top = std.json.ObjectMap.init(alloc);
+    defer top.deinit();
+    try top.put("str", .{ .string = "FLY_TOKEN_xyz" });
+    try top.put("num_int", .{ .integer = 31415 });
+    try top.put("num_neg", .{ .integer = -7 });
+    try top.put("bool_t", .{ .bool = true });
+    try top.put("bool_f", .{ .bool = false });
+    try top.put("null_field", .null);
+    try top.put("nested", .{ .object = nested });
+    try top.put("arr", .{ .array = arr });
+
+    try vault.storeJson(alloc, handle.conn, TEST_WS_ID, "zombie:mixed", .{ .object = top }, 1);
+
+    var loaded = try vault.loadJson(alloc, handle.conn, TEST_WS_ID, "zombie:mixed");
+    defer loaded.deinit();
+
+    try std.testing.expect(loaded.value == .object);
+    const root = loaded.value.object;
+    try std.testing.expectEqualStrings("FLY_TOKEN_xyz", root.get("str").?.string);
+    try std.testing.expectEqual(@as(i64, 31415), root.get("num_int").?.integer);
+    try std.testing.expectEqual(@as(i64, -7), root.get("num_neg").?.integer);
+    try std.testing.expect(root.get("bool_t").?.bool == true);
+    try std.testing.expect(root.get("bool_f").?.bool == false);
+    try std.testing.expect(root.get("null_field").? == .null);
+
+    const nested_loaded = root.get("nested").?.object;
+    try std.testing.expectEqualStrings("deep", nested_loaded.get("inner_str").?.string);
+    try std.testing.expectEqual(@as(i64, 42), nested_loaded.get("inner_num").?.integer);
+
+    const arr_loaded = root.get("arr").?.array;
+    try std.testing.expectEqual(@as(usize, 3), arr_loaded.items.len);
+    try std.testing.expectEqual(@as(i64, 1), arr_loaded.items[0].integer);
+    try std.testing.expectEqualStrings("two", arr_loaded.items[1].string);
+    try std.testing.expect(arr_loaded.items[2].bool == true);
+}
+
 test "loadJson surfaces MalformedPlaintext when row was written as bare string" {
     setEncryptionKey();
     const alloc = std.testing.allocator;

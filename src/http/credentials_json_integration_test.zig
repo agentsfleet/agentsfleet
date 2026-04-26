@@ -231,6 +231,36 @@ test "integration: credential endpoints enforce operator role" {
     cleanupRows(conn);
 }
 
+test "integration: cross-workspace DELETE is rejected (IDOR guard)" {
+    setTestEncryptionKey();
+    const alloc = std.testing.allocator;
+    const h = seedAndHarness(alloc) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+
+    // TOKEN_OPERATOR's JWT claim binds it to TEST_WS_ID. Issue a DELETE
+    // against a *different* workspace UUID — workspace_guards.enforce
+    // must reject (4xx), never 204. Without this check, a workspace-A
+    // operator could nuke a workspace-B credential just by URL editing.
+    const other_ws = "0195b4ba-8d3a-7f13-8abc-deadbeef0001";
+    const path = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/credentials/fly", .{other_ws});
+    defer alloc.free(path);
+
+    const r = try (try h.delete(path).bearer(TOKEN_OPERATOR)).send();
+    defer r.deinit();
+    // Concrete code is 403 (Workspace access denied), but the invariant is
+    // "not 204" — any 4xx is an acceptable rejection. Anchoring to "≥ 400"
+    // keeps the test resilient if the guard later returns 404 for IDOR safety.
+    try std.testing.expect(r.status >= 400);
+    try std.testing.expect(r.status != 204);
+
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    cleanupRows(conn);
+}
+
 test "integration: DELETE /credentials/llm is not routed to the generic handler" {
     setTestEncryptionKey();
     const alloc = std.testing.allocator;
