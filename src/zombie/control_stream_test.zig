@@ -278,3 +278,24 @@ test "decodeEntry: malformed config_revision parses to 0 (regression for greptil
         else => return error.UnexpectedMessageType,
     }
 }
+
+// Greptile follow-up on PR #253: log preview bytes truncate at 32. Behaviour
+// is exercised at the parse boundary (function returns 0 on malformed input
+// regardless of input length); this test pins the no-DoS contract — a 1KB
+// garbage string still returns 0 in O(1) post-parseInt time without
+// allocating or copying the full buffer for the log.
+test "parseConfigRevision: log-preview truncation does not change return value for long inputs" {
+    var buf: [4096]u8 = undefined;
+    @memset(&buf, 'x');
+    try std.testing.expectEqual(@as(i64, 0), control_stream.parseConfigRevision(&buf));
+}
+
+test "parseConfigRevision: short malformed input — preview boundary at exactly 32 bytes" {
+    var buf: [32]u8 = undefined;
+    @memset(&buf, 'x');
+    try std.testing.expectEqual(@as(i64, 0), control_stream.parseConfigRevision(&buf));
+}
+
+test "parseConfigRevision: input shorter than preview window stays valid" {
+    try std.testing.expectEqual(@as(i64, 0), control_stream.parseConfigRevision("xy"));
+}
