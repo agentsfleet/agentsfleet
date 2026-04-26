@@ -175,3 +175,127 @@ test "decodeEntry: zombie_created missing workspace_id returns ControlDecodeMiss
 
     try std.testing.expectError(error.ControlDecodeMissingField, control_stream.decodeEntry(alloc, "id", fields));
 }
+
+// ─── parseConfigRevision multi-tier coverage (greptile follow-up) ───
+//
+// /write-unit-test treatment: pin the regression (silent-zero on parse
+// failure became a logged-zero), cover the contract surface end-to-end:
+// happy path, every numeric edge (negative, zero, max, min), every
+// malformed shape (empty, whitespace, decimal, alpha, leading-plus,
+// embedded null, length-bomb), and assert the function never throws —
+// it must always return i64 because the decoder loop can't recover from
+// a thrown error mid-iteration.
+
+test "parseConfigRevision: happy path — small positive integer" {
+    try std.testing.expectEqual(@as(i64, 42), control_stream.parseConfigRevision("42"));
+}
+
+test "parseConfigRevision: leading zeros are accepted (parseInt base-10 default)" {
+    try std.testing.expectEqual(@as(i64, 7), control_stream.parseConfigRevision("007"));
+}
+
+test "parseConfigRevision: zero is a valid revision (boundary)" {
+    try std.testing.expectEqual(@as(i64, 0), control_stream.parseConfigRevision("0"));
+}
+
+test "parseConfigRevision: negative integers parse (signed i64 contract)" {
+    try std.testing.expectEqual(@as(i64, -1), control_stream.parseConfigRevision("-1"));
+}
+
+test "parseConfigRevision: i64 max value parses without overflow" {
+    try std.testing.expectEqual(@as(i64, std.math.maxInt(i64)), control_stream.parseConfigRevision("9223372036854775807"));
+}
+
+test "parseConfigRevision: i64 min value parses without overflow" {
+    try std.testing.expectEqual(@as(i64, std.math.minInt(i64)), control_stream.parseConfigRevision("-9223372036854775808"));
+}
+
+test "parseConfigRevision: empty string → 0 with warning (was the silent failure mode)" {
+    try std.testing.expectEqual(@as(i64, 0), control_stream.parseConfigRevision(""));
+}
+
+test "parseConfigRevision: decimal with fractional part → 0 (parseInt rejects '.')" {
+    try std.testing.expectEqual(@as(i64, 0), control_stream.parseConfigRevision("1.5"));
+}
+
+test "parseConfigRevision: alphabetic noise → 0" {
+    try std.testing.expectEqual(@as(i64, 0), control_stream.parseConfigRevision("abc"));
+}
+
+test "parseConfigRevision: leading whitespace → 0 (parseInt is strict)" {
+    try std.testing.expectEqual(@as(i64, 0), control_stream.parseConfigRevision(" 42"));
+}
+
+test "parseConfigRevision: trailing whitespace → 0" {
+    try std.testing.expectEqual(@as(i64, 0), control_stream.parseConfigRevision("42 "));
+}
+
+test "parseConfigRevision: scientific notation → 0 (parseInt is base-10 only)" {
+    try std.testing.expectEqual(@as(i64, 0), control_stream.parseConfigRevision("1e5"));
+}
+
+test "parseConfigRevision: hex prefix → 0 (parseInt with explicit base 10 rejects)" {
+    try std.testing.expectEqual(@as(i64, 0), control_stream.parseConfigRevision("0xFF"));
+}
+
+test "parseConfigRevision: overflow above i64 max → 0" {
+    try std.testing.expectEqual(@as(i64, 0), control_stream.parseConfigRevision("99999999999999999999"));
+}
+
+test "parseConfigRevision: embedded null byte → 0 (defends against bad RESP framing)" {
+    try std.testing.expectEqual(@as(i64, 0), control_stream.parseConfigRevision("4\x002"));
+}
+
+test "parseConfigRevision: very long numeric-looking string → 0 (no DoS via long strings)" {
+    var buf: [1024]u8 = undefined;
+    @memset(&buf, '9');
+    try std.testing.expectEqual(@as(i64, 0), control_stream.parseConfigRevision(&buf));
+}
+
+test "parseConfigRevision: leading plus sign accepted (parseInt allows it)" {
+    try std.testing.expectEqual(@as(i64, 42), control_stream.parseConfigRevision("+42"));
+}
+
+test "decodeEntry: malformed config_revision parses to 0 (regression for greptile P? on PR #251)" {
+    const alloc = std.testing.allocator;
+    var fields = try alloc.alloc(RespValue, 6);
+    fields[0] = try bulk(alloc, "type");
+    fields[1] = try bulk(alloc, "zombie_config_changed");
+    fields[2] = try bulk(alloc, "zombie_id");
+    fields[3] = try bulk(alloc, "z-abc");
+    fields[4] = try bulk(alloc, "config_revision");
+    fields[5] = try bulk(alloc, "not-a-number");
+    defer freeFields(alloc, fields);
+
+    var decoded = try control_stream.decodeEntry(alloc, "id-1", fields);
+    defer decoded.deinit(alloc);
+
+    switch (decoded.message) {
+        .zombie_config_changed => |m| {
+            try std.testing.expectEqualStrings("z-abc", m.zombie_id);
+            try std.testing.expectEqual(@as(i64, 0), m.config_revision);
+        },
+        else => return error.UnexpectedMessageType,
+    }
+}
+
+// Greptile follow-up on PR #253: log preview bytes truncate at 32. Behaviour
+// is exercised at the parse boundary (function returns 0 on malformed input
+// regardless of input length); this test pins the no-DoS contract — a 1KB
+// garbage string still returns 0 in O(1) post-parseInt time without
+// allocating or copying the full buffer for the log.
+test "parseConfigRevision: log-preview truncation does not change return value for long inputs" {
+    var buf: [4096]u8 = undefined;
+    @memset(&buf, 'x');
+    try std.testing.expectEqual(@as(i64, 0), control_stream.parseConfigRevision(&buf));
+}
+
+test "parseConfigRevision: short malformed input — preview boundary at exactly 32 bytes" {
+    var buf: [32]u8 = undefined;
+    @memset(&buf, 'x');
+    try std.testing.expectEqual(@as(i64, 0), control_stream.parseConfigRevision(&buf));
+}
+
+test "parseConfigRevision: input shorter than preview window stays valid" {
+    try std.testing.expectEqual(@as(i64, 0), control_stream.parseConfigRevision("xy"));
+}

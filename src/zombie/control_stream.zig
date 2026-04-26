@@ -11,6 +11,7 @@ const std = @import("std");
 const redis_client = @import("../queue/redis_client.zig");
 const redis_protocol = @import("../queue/redis_protocol.zig");
 const error_codes = @import("../errors/error_registry.zig");
+const parser = @import("control_stream_parse.zig");
 
 const log = std.log.scoped(.control_stream);
 
@@ -233,6 +234,9 @@ fn appendVariantFields(
     return n;
 }
 
+/// Re-exported from `control_stream_parse.zig` (extracted to keep this file under FLL cap).
+pub const parseConfigRevision = parser.parseConfigRevision;
+
 /// Decode a single XREADGROUP stream entry. `fields` is the flat key/value
 /// alternating list (RESP array of bulk strings). Returns owned heap memory;
 /// caller must call `decoded.deinit(alloc)`.
@@ -263,7 +267,7 @@ pub fn decodeEntry(
         } else if (std.mem.eql(u8, k, "status")) {
             status = ZombieStatus.fromSlice(v);
         } else if (std.mem.eql(u8, k, "config_revision")) {
-            config_revision = std.fmt.parseInt(i64, v, 10) catch 0;
+            config_revision = parseConfigRevision(v);
         } else if (std.mem.eql(u8, k, "reason")) {
             reason = v;
         }

@@ -147,6 +147,7 @@ test {
     _ = @import("zombie/event_loop_secrets_test.zig");
     _ = @import("zombie/metering.zig");
     _ = @import("zombie/control_stream.zig");
+    _ = @import("zombie/control_stream_parse.zig");
     _ = @import("zombie/control_stream_test.zig");
     _ = @import("cmd/worker_watcher.zig");
     _ = @import("cmd/worker_watcher_runtime.zig");
