@@ -37,8 +37,23 @@ pub const PgQuery = struct {
         return self.inner.next();
     }
 
-    /// Explicitly drain remaining rows. Idempotent — no-op if already idle.
+    /// Explicitly drain remaining rows. Idempotent — no-op when there is
+    /// nothing in flight on the connection.
+    ///
+    /// pg.zig's `Result.drain` only early-returns when `conn._state == .idle`.
+    /// That misses a real case: `result.next()` returning null inside an
+    /// explicit transaction consumes the final 'Z' message; pg.zig's
+    /// `Conn.read` sets `_state = .transaction` (because the Z reports
+    /// transaction status 'T'), not `.idle`. Upstream drain then treats the
+    /// connection as "still in flight" and blocks on a socket read that
+    /// will never complete — postgres has nothing more to send.
+    ///
+    /// Mirroring the upstream check against `.query` (the only state where
+    /// there genuinely IS more to drain) avoids the deadlock without
+    /// reaching into pg.zig internals beyond the `_state` field every
+    /// caller already touches indirectly.
     pub fn drain(self: *PgQuery) void {
+        if (self.inner._conn._state != .query) return;
         self.inner.drain() catch {};
     }
 
