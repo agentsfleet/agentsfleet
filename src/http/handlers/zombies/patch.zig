@@ -46,7 +46,11 @@ pub fn innerPatchZombie(hx: Hx, req: *httpz.Request, workspace_id: []const u8, z
     const body = parsePatchBody(hx, req) orelse return;
     const new_config = body.config_json orelse {
         // Empty PATCH body — nothing to do. Treat as a 200 no-op.
-        hx.ok(.ok, .{ .zombie_id = zombie_id, .config_revision = @as(i64, 0) });
+        // `config_revision: null` (vs `0`) lets callers distinguish "no-op,
+        // revision unchanged" from a genuine revision integer. In practice
+        // `updated_at` is a millisecond timestamp so `0` is unreachable, but
+        // returning null makes the contract explicit (greptile P? on PR #251).
+        hx.ok(.ok, .{ .zombie_id = zombie_id, .config_revision = @as(?i64, null) });
         return;
     };
 
