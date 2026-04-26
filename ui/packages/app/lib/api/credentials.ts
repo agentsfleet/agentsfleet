@@ -1,7 +1,7 @@
 import { request } from "./client";
 
-// Workspace credential vault — per M45 the plaintext is an opaque JSON
-// object whose top-level keys are the field names a skill references via
+// Workspace credential vault — the plaintext is an opaque JSON object
+// whose top-level keys are the field names a skill references via
 // `${secrets.<name>.<field>}`. The runtime never returns the data; reads
 // here are name + created_at only.
 

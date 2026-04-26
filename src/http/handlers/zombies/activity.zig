@@ -15,6 +15,7 @@ const ec = @import("../../../errors/error_registry.zig");
 const id_format = @import("../../../types/id_format.zig");
 const activity_stream = @import("../../../zombie/activity_stream.zig");
 const vault = @import("../../../state/vault.zig");
+const credential_key = @import("../../../zombie/credential_key.zig");
 const workspace_guards = @import("../../workspace_guards.zig");
 
 const log = std.log.scoped(.zombie_activity_api);
@@ -23,7 +24,6 @@ const API_ACTOR = "api";
 pub const Context = common.Context;
 
 const KEK_VERSION: u32 = 1;
-const CREDENTIAL_KEY_PREFIX = "zombie:";
 const MAX_CREDENTIAL_DATA_LEN: usize = 4 * 1024; // 4KB stringified JSON
 const MAX_CREDENTIAL_NAME_LEN: usize = 64;
 
@@ -165,15 +165,17 @@ fn storeCredentialJsonOnConn(
     workspace_id: []const u8,
     cred: CredentialBody,
 ) !void {
-    // Pre-flight size check on the canonical-stringified form so the API
-    // surfaces a precise 400 rather than letting the DB layer truncate.
-    const stringified = try std.json.Stringify.valueAlloc(alloc, cred.data, .{});
-    defer alloc.free(stringified);
-    if (stringified.len > MAX_CREDENTIAL_DATA_LEN) return error.DataTooLarge;
+    // Stringify once: serves both the size pre-flight (so the API surfaces a
+    // precise 400 rather than letting the DB layer truncate) and the bytes
+    // we hand to the vault envelope. innerStoreCredential already ran
+    // vault.validateObject on cred.data, so the JSON shape is known good.
+    const plaintext = try std.json.Stringify.valueAlloc(alloc, cred.data, .{});
+    defer alloc.free(plaintext);
+    if (plaintext.len > MAX_CREDENTIAL_DATA_LEN) return error.DataTooLarge;
 
-    const key_name = try std.fmt.allocPrint(alloc, CREDENTIAL_KEY_PREFIX ++ "{s}", .{cred.name});
+    const key_name = try credential_key.allocKeyName(alloc, cred.name);
     defer alloc.free(key_name);
-    try vault.storeJson(alloc, conn, workspace_id, key_name, cred.data, KEK_VERSION);
+    try vault.storeJsonPlaintext(alloc, conn, workspace_id, key_name, plaintext, KEK_VERSION);
 }
 
 // ── Delete Credential ─────────────────────────────────────────────────
@@ -203,7 +205,7 @@ pub fn innerDeleteCredential(
     }) orelse return;
     defer access.deinit(hx.alloc);
 
-    const key_name = std.fmt.allocPrint(hx.alloc, CREDENTIAL_KEY_PREFIX ++ "{s}", .{credential_name}) catch {
+    const key_name = credential_key.allocKeyName(hx.alloc, credential_name) catch {
         common.internalOperationError(hx.res, "Allocation failed", hx.req_id);
         return;
     };

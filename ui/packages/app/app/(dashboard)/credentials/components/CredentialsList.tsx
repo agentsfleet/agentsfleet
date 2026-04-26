@@ -17,6 +17,7 @@ export default function CredentialsList({ workspaceId, credentials }: Props) {
   const { getToken } = useClientToken();
   const [pending, startTransition] = useTransition();
   const [target, setTarget] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   if (credentials.length === 0) {
     return (
@@ -27,12 +28,21 @@ export default function CredentialsList({ workspaceId, credentials }: Props) {
   }
 
   function onConfirmDelete(name: string) {
+    setError(null);
     startTransition(async () => {
       const token = await getToken();
-      if (!token) return;
-      await deleteCredential(workspaceId, name, token);
-      setTarget(null);
-      router.refresh();
+      if (!token) {
+        setError("Not authenticated");
+        return;
+      }
+      try {
+        await deleteCredential(workspaceId, name, token);
+        setTarget(null);
+        router.refresh();
+      } catch (e) {
+        const err = e as Error;
+        setError(err.message || "Failed to delete credential");
+      }
     });
   }
 
@@ -48,7 +58,10 @@ export default function CredentialsList({ workspaceId, credentials }: Props) {
             type="button"
             variant="ghost"
             size="sm"
-            onClick={() => setTarget(c.name)}
+            onClick={() => {
+              setError(null);
+              setTarget(c.name);
+            }}
             disabled={pending}
             aria-label={`Delete credential ${c.name}`}
           >
@@ -63,12 +76,16 @@ export default function CredentialsList({ workspaceId, credentials }: Props) {
       <ConfirmDialog
         open={target !== null}
         onOpenChange={(open) => {
-          if (!open) setTarget(null);
+          if (!open) {
+            setTarget(null);
+            setError(null);
+          }
         }}
         title={`Delete credential "${target ?? ""}"?`}
         description="Zombies referencing this name will fail to resolve until it is re-added. This cannot be undone."
         confirmLabel="Delete"
         intent="destructive"
+        errorMessage={error}
         onConfirm={() => {
           if (target) onConfirmDelete(target);
         }}

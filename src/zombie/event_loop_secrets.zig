@@ -2,12 +2,12 @@
 //!
 //! Sits between `crypto_store` (KMS envelope) and the executor. The zombie
 //! config carries a list of credential *names*; this module resolves each
-//! one to a parsed JSON object (per M45) suitable for `secrets_map` in
-//! `executor.createExecution` (consumed by the M41 tool bridge as
-//! `${secrets.<name>.<field>}`).
+//! one to a parsed JSON object suitable for `secrets_map` in
+//! `executor.createExecution`, which the tool bridge consumes as
+//! `${secrets.<name>.<field>}`.
 //!
 //! Pairs with `resolveFirstCredential` in `event_loop_helpers.zig`, which
-//! is the legacy single-string path being phased out as M41 wires through.
+//! is the legacy single-string path being phased out.
 
 const std = @import("std");
 const pg = @import("pg");
@@ -15,9 +15,9 @@ const Allocator = std.mem.Allocator;
 
 const error_codes = @import("../errors/error_registry.zig");
 const vault = @import("../state/vault.zig");
+const credential_key = @import("credential_key.zig");
 
 const log = std.log.scoped(.zombie_event_loop);
-const CREDENTIAL_KEY_PREFIX = "zombie:";
 
 pub const ResolvedSecret = struct {
     name: []const u8,                          // duped, owned by caller
@@ -26,7 +26,7 @@ pub const ResolvedSecret = struct {
 
 /// Resolve every credential name to its parsed JSON object. Order is
 /// preserved. Any missing name aborts with `error.CredentialNotFound`
-/// (M41 will surface this as `secret_not_found` to the agent loop).
+/// (the agent loop surfaces this as `secret_not_found`).
 ///
 /// On success the caller owns the slice and must call `freeResolved`
 /// to release each entry's `name` dupe and `parsed.deinit()`. On error
@@ -44,7 +44,7 @@ pub fn resolveSecretsMap(
     defer pool.release(conn);
 
     for (names) |name| {
-        const key_name = try std.fmt.allocPrint(alloc, CREDENTIAL_KEY_PREFIX ++ "{s}", .{name});
+        const key_name = try credential_key.allocKeyName(alloc, name);
         defer alloc.free(key_name);
 
         const parsed = vault.loadJson(alloc, conn, workspace_id, key_name) catch |err| {

@@ -55,6 +55,22 @@ pub fn storeJson(
     const plaintext = try std.json.Stringify.valueAlloc(alloc, value, .{});
     defer alloc.free(plaintext);
 
+    try storeJsonPlaintext(alloc, conn, workspace_id, key_name, plaintext, kek_version);
+}
+
+/// Lower-level form for callers that already hold the canonical-stringified
+/// JSON-object plaintext (e.g. an HTTP handler that stringified once for a
+/// pre-flight size check). Skips `validateObject` and re-stringification on
+/// the hot path; the caller is responsible for ensuring `plaintext` decodes
+/// to a non-empty JSON object.
+pub fn storeJsonPlaintext(
+    alloc: std.mem.Allocator,
+    conn: *pg.Conn,
+    workspace_id: []const u8,
+    key_name: []const u8,
+    plaintext: []const u8,
+    kek_version: u32,
+) !void {
     try crypto_store.store(alloc, conn, workspace_id, key_name, plaintext, kek_version);
 }
 

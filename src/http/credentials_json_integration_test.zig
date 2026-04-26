@@ -4,8 +4,9 @@
 // `TestHarness.start` returning `error.SkipZigTest`. Vault tests also
 // require ENCRYPTION_MASTER_KEY — set automatically by setTestEncryptionKey().
 //
-// Tiers: T1 (happy path), T2 (negative shape rejections), T3 (auth/role),
-//        T8 (secret safety), T12 (response contract).
+// Covers the happy-path roundtrip, JSON-shape rejections (string/array/empty),
+// the 4 KiB cap, role enforcement (operator vs user), cross-workspace IDOR,
+// and the `llm` suffix routing guard.
 //
 // Reuses the seeded tenant/workspace + JWT tokens baked into byok_http_integration_test.zig
 // constants — see `setupSeedData` there. Cleanup happens in the test body
