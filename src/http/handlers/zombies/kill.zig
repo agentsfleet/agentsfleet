@@ -65,11 +65,15 @@ pub fn innerKillZombie(hx: Hx, _: *httpz.Request, workspace_id: []const u8, zomb
     }
 
     publishKillSignal(hx.ctx.queue, zombie_id) catch |err| {
-        // Status row updated; control publish failed → worker will pick it up
-        // on the next reconcile sweep but the user-visible response shows
-        // best-effort completion. Log loud so ops sees the divergence.
+        // PG row is `status='killed'` already. The control-stream XADD
+        // failed, so the watcher won't see the kill on this poll cycle.
+        // The watcher's `reconcileCancelNonActive` (≈30s cadence) walks
+        // `core.zombies WHERE status != 'active'` and cancels any local
+        // runtime whose PG row went non-active — that path heals this
+        // case without a worker restart. The user-visible response shows
+        // best-effort completion; log loud so ops sees the divergence.
         log.warn(
-            "zombie.kill_publish_failed err={s} zombie_id={s} req_id={s} hint=row_updated_worker_blind",
+            "zombie.kill_publish_failed err={s} zombie_id={s} req_id={s} hint=row_updated_reconcile_will_cancel_within_30s",
             .{ @errorName(err), zombie_id, hx.req_id },
         );
     };

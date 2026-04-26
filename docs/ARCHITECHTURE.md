@@ -857,12 +857,15 @@ while shouldKeepRunning():       # shutdown_requested OR worker_state.isAcceptin
     for each entry:
       processEntry → dispatch → xack
   if (++ticks_since_reconcile >= 6):    # ≈30s (6 × 5s BLOCK windows)
-    reconcileTick()              # SELECT id FROM core.zombies WHERE status='active'
-                                 #   → spawnZombieThread(id) for each (idempotent)
+    reconcileSpawnActive()       # SELECT id WHERE status='active'
+                                 #   → spawnZombieThread(id) for each
+    reconcileCancelNonActive()   # SELECT id WHERE status != 'active'
+                                 #   → cancelZombie(id) for each (no-op
+                                 #     if not in local runtimes map)
     ticks_since_reconcile = 0
 ```
 
-`reconcileTick` is the safety net for two failure modes: (a) `zombie_created` XADD that never landed (`publishInstallSignals` retries 3× with backoff; on exhaust, the install path rolls back the PG row, but a process death between INSERT and rollback leaves an orphan that this sweep heals); (b) any cross-process drift between PG state and the watcher's in-memory map.
+`reconcileTick` is the bidirectional safety net for three failure modes: (a) `zombie_created` XADD that never landed (`publishInstallSignals` retries 3× with backoff; on exhaust, the install path rolls back the PG row, but a process death between INSERT and rollback leaves an orphan that the spawn-active branch heals); (b) `zombie_status_changed` XADD that failed for a kill or pause — PG row is `killed`/`paused` but the worker's per-zombie thread is still running, healed by the cancel-non-active branch within ≈30s without a worker restart; (c) any cross-process drift between PG state and the watcher's in-memory map.
 
 **Per-zombie runtime lifecycle** (`worker_watcher_runtime.zig`):
 

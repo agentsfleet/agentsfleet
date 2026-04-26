@@ -202,10 +202,23 @@ pub const Watcher = struct {
         log.info("watcher.stop consumer={s}", .{self.cfg.consumer_name});
     }
 
-    /// Periodic sweep against PG state. Walks core.zombies WHERE status='active'
-    /// and calls spawnZombieThread for each id; idempotent on duplicates,
-    /// recovers orphans within ≤reconcile_every_ticks × 5s.
+    /// Periodic two-direction sweep against PG state.
+    ///
+    /// 1. `status='active'` rows → `spawnZombieThread` (idempotent). Heals
+    ///    "PG says active, watcher has no thread" — e.g. install-time
+    ///    `publishInstallSignals` exhausted retries before the rollback
+    ///    landed and the orphan row needs to be claimed.
+    /// 2. `status != 'active'` rows whose runtime is currently in the map
+    ///    → `cancelZombie`. Heals "PG says killed/paused, watcher thread
+    ///    still running" — e.g. the kill handler's `publishKillSignal`
+    ///    XADD failed (greptile P1 on PR #251). Without this branch the
+    ///    thread keeps consuming events until worker restart.
     fn reconcileTick(self: *Watcher) !void {
+        try self.reconcileSpawnActive();
+        try self.reconcileCancelNonActive();
+    }
+
+    fn reconcileSpawnActive(self: *Watcher) !void {
         const ids = try worker_zombie.listActiveZombieIds(self.cfg.pool, self.alloc);
         defer {
             for (ids) |id| self.alloc.free(id);
@@ -215,6 +228,19 @@ pub const Watcher = struct {
             self.spawnZombieThread(zombie_id) catch |err| {
                 log.warn("watcher.reconcile_spawn_fail zombie_id={s} err={s}", .{ zombie_id, @errorName(err) });
             };
+        }
+    }
+
+    fn reconcileCancelNonActive(self: *Watcher) !void {
+        const ids = try worker_zombie.listNonActiveZombieIds(self.cfg.pool, self.alloc);
+        defer {
+            for (ids) |id| self.alloc.free(id);
+            if (ids.len > 0) self.alloc.free(ids);
+        }
+        for (ids) |zombie_id| {
+            // cancelZombie is a no-op if the runtime isn't local or has
+            // already exited — safe to call on every non-active id.
+            self.cancelZombie(zombie_id);
         }
     }
 

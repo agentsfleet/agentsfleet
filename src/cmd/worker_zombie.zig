@@ -93,13 +93,40 @@ fn claimOrReturn(alloc: std.mem.Allocator, cfg: ZombieWorkerConfig) ?event_loop.
 /// Query core.zombies for active zombies and return their IDs.
 /// Called at worker startup to discover which Zombies to claim.
 pub fn listActiveZombieIds(pool: *pg.Pool, alloc: std.mem.Allocator) ![][]const u8 {
+    return queryZombieIdsByStatus(pool, alloc, .equals, zombie_config.ZombieStatus.active.toSlice());
+}
+
+/// Query core.zombies for zombies whose status is NOT active — i.e.
+/// killed or paused. Used by the watcher's reconcile sweep to catch
+/// state drift where a `publishKillSignal` (or pause signal) failed to
+/// XADD: PG row says non-active, worker thread still running. Reconcile
+/// cancels each such id idempotently.
+pub fn listNonActiveZombieIds(pool: *pg.Pool, alloc: std.mem.Allocator) ![][]const u8 {
+    return queryZombieIdsByStatus(pool, alloc, .not_equals, zombie_config.ZombieStatus.active.toSlice());
+}
+
+const StatusComparison = enum { equals, not_equals };
+
+fn queryZombieIdsByStatus(
+    pool: *pg.Pool,
+    alloc: std.mem.Allocator,
+    cmp: StatusComparison,
+    status: []const u8,
+) ![][]const u8 {
     const conn = try pool.acquire();
     defer pool.release(conn);
-    var q = PgQuery.from(try conn.query(
-        \\SELECT id::text FROM core.zombies
-        \\WHERE status = $1
-        \\ORDER BY created_at ASC
-    , .{zombie_config.ZombieStatus.active.toSlice()}));
+    var q = PgQuery.from(switch (cmp) {
+        .equals => try conn.query(
+            \\SELECT id::text FROM core.zombies
+            \\WHERE status = $1
+            \\ORDER BY created_at ASC
+        , .{status}),
+        .not_equals => try conn.query(
+            \\SELECT id::text FROM core.zombies
+            \\WHERE status != $1
+            \\ORDER BY created_at ASC
+        , .{status}),
+    });
     defer q.deinit();
 
     var ids: std.ArrayList([]const u8) = .{};

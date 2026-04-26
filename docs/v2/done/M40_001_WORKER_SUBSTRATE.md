@@ -219,6 +219,15 @@ After PR #251 was opened against `feat/m40-worker-substrate`, two parallel adver
 
 **What is NOT in scope.** The deeper async-install redesign (durable `install_state` column, distributed claim/lease, bounded reconcile, gating webhook/Slack/agent-key/execute on `install_state='ready'`) is a separate workstream; M40 keeps the synchronous-readiness invariant (rollback on retry-exhaust) intact. Ampcode's "Option 2" remains correct but not pursued here.
 
+**Follow-on findings folded into this PR (Apr 26 hardening, second wave).** Greptile reviews on the post-rebase diff surfaced six additional issues — four P1, two P2 — all in M40-introduced or M40-extended code:
+
+1. **P1 — `id_for_thread` leaked on every successful spawn** (~36 bytes per zombie per worker process lifetime). The dupe was passed via `cfg.zombie_id` but never freed. Fix: `zombieRuntimeWrapper` takes ownership and frees the slice after `zombieWorkerLoop` returns.
+2. **P1 — Runtime UAF on OOM during `threads.put`.** `errdefer destroy(runtime)` was still armed after a successful `Thread.spawn`, so an OOM in the post-spawn hashmap insert would have freed the runtime while the wrapper still held the pointer. Fix: `ensureUnusedCapacity` BEFORE `Thread.spawn`, `putAssumeCapacity` (infallible) afterwards. No errdefer can fire while the wrapper is live.
+3. **P1 — Consumer name lacked PID.** WatcherConfig.consumer_name doc said "hostname + pid"; impl used hostname only, so two worker processes on the same host (or a crash-restart on the same host) collided in the `zombie_workers` group. Fix: `makeConsumerName` appends `getpid()`.
+4. **P1 — Failed `publishKillSignal` left thread running until restart.** PG row went `killed`, but the watcher never saw the control message and `reconcileTick` only walked `status='active'`. Fix: `reconcileTick` now runs bidirectionally — `reconcileSpawnActive` (existing) plus `reconcileCancelNonActive` (new) which walks `status != 'active'` rows and `cancelZombie`s any local runtime whose PG row went non-active. Heals within ≈30s, no worker restart.
+5. **P2 — Pending messages stuck in PEL on dispatch failure.** `pollOnce` only read `>` (new messages); a transient OOM during dispatch left the message neither ACKed nor redeliverable. Fix: extracted polling to `worker_watcher_poll.zig` with a two-phase loop — non-blocking PEL drain (`XREADGROUP ... 0`) then blocking new-message read (`XREADGROUP ... > BLOCK 5s`).
+6. **P2 — PATCH succeeded silently against killed zombies.** `patchZombieOnConn` did not gate on status. Fix: `WHERE ... AND status != $5` bound to `ZombieStatus.killed.toSlice()` — mirrors the kill handler's enum-via-parameter pattern; never hardcode the literal (CLAUDE.md "Engineering Discipline → Code Structure").
+
 ---
 
 ## Acceptance Criteria
