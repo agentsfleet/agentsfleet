@@ -94,33 +94,35 @@ pub const Bus = struct {
         return event;
     }
 
+    const NextEvent = struct {
+        event: BusEvent,
+        dropped: u64,
+    };
+
+    fn waitNext(self: *Bus) ?NextEvent {
+        self.mutex.lock();
+        defer self.mutex.unlock();
+        while (self.len == 0 and self.running.load(.acquire)) {
+            self.cond.wait(&self.mutex);
+        }
+        if (self.len == 0 and !self.running.load(.acquire)) return null;
+        const event = self.popLocked();
+        const dropped = self.dropped;
+        self.dropped = 0;
+        return .{ .event = event, .dropped = dropped };
+    }
+
     pub fn run(self: *Bus) void {
-        while (true) {
-            self.mutex.lock();
-            while (self.len == 0 and self.running.load(.acquire)) {
-                self.cond.wait(&self.mutex);
+        while (self.waitNext()) |next| {
+            if (next.dropped > 0) {
+                log.warn("event.dropped count={d}", .{next.dropped});
             }
-
-            if (self.len == 0 and !self.running.load(.acquire)) {
-                self.mutex.unlock();
-                break;
-            }
-
-            const event = self.popLocked();
-            const dropped = self.dropped;
-            self.dropped = 0;
-            self.mutex.unlock();
-
-            if (dropped > 0) {
-                log.warn("event.dropped count={d}", .{dropped});
-            }
-
-            const run_id = if (event.runIdSlice().len == 0) "-" else event.runIdSlice();
+            const run_id = if (next.event.runIdSlice().len == 0) "-" else next.event.runIdSlice();
             log.info("event.emitted ts_ms={d} kind={s} run_id={s} detail={s}", .{
-                event.ts_ms,
-                event.kindSlice(),
+                next.event.ts_ms,
+                next.event.kindSlice(),
                 run_id,
-                event.detailSlice(),
+                next.event.detailSlice(),
             });
         }
     }
