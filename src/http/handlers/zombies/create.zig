@@ -138,16 +138,25 @@ fn insertZombieOnConn(conn: *pg.Conn, workspace_id: []const u8, body: CreateBody
 
 /// Invariant 1: by the time this returns successfully, both the per-zombie
 /// events stream + consumer group AND the control-stream `zombie_created`
-/// signal exist. Retries up to 3× with backoff (100ms / 500ms / 1500ms) so
-/// a sub-second Redis blip does not surface as a user-visible 500. On final
-/// failure, the caller deletes the PG row so the orphan never reaches the
-/// worker.
+/// signal exist. Retries up to 4 attempts with backoff between each
+/// (100ms / 500ms / 1500ms = 2.1s total wall) so a sub-second Redis blip
+/// does not surface as a user-visible 500. On final failure, the caller
+/// rolls back the PG row so the orphan never reaches the worker.
+///
+/// Loop schedule: attempt 0 → fail → sleep 100ms → attempt 1 → fail →
+/// sleep 500ms → attempt 2 → fail → sleep 1500ms → attempt 3 → fail →
+/// return err. Greptile P? (PR #251) caught a guard mistake on the
+/// previous version where `attempt + 1 >= len` exited before the third
+/// sleep ever fired, making the `1500ms` entry dead code; the doc-comment
+/// claimed 3 sleeps but only 2 ever ran. The guard is now `attempt >= len`
+/// which gives the genuine four-attempt / three-sleep schedule the
+/// docstring promises.
 fn publishInstallSignals(redis: *queue_redis.Client, zombie_id: []const u8, workspace_id: []const u8) !void {
     const backoff_ms = [_]u32{ 100, 500, 1500 };
     var attempt: usize = 0;
     while (true) : (attempt += 1) {
         publishOnce(redis, zombie_id, workspace_id) catch |err| {
-            if (attempt + 1 >= backoff_ms.len) return err;
+            if (attempt >= backoff_ms.len) return err;
             log.warn(
                 "zombie.create_publish_retry attempt={d} err={s} zombie_id={s} sleep_ms={d}",
                 .{ attempt + 1, @errorName(err), zombie_id, backoff_ms[attempt] },

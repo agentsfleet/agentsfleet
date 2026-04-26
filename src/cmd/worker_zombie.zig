@@ -91,42 +91,16 @@ fn claimOrReturn(alloc: std.mem.Allocator, cfg: ZombieWorkerConfig) ?event_loop.
 }
 
 /// Query core.zombies for active zombies and return their IDs.
-/// Called at worker startup to discover which Zombies to claim.
+/// Called at worker startup to discover which Zombies to claim, plus
+/// each `reconcileSpawnActive` tick to heal install-time orphans.
 pub fn listActiveZombieIds(pool: *pg.Pool, alloc: std.mem.Allocator) ![][]const u8 {
-    return queryZombieIdsByStatus(pool, alloc, .equals, zombie_config.ZombieStatus.active.toSlice());
-}
-
-/// Query core.zombies for zombies whose status is NOT active — i.e.
-/// killed or paused. Used by the watcher's reconcile sweep to catch
-/// state drift where a `publishKillSignal` (or pause signal) failed to
-/// XADD: PG row says non-active, worker thread still running. Reconcile
-/// cancels each such id idempotently.
-pub fn listNonActiveZombieIds(pool: *pg.Pool, alloc: std.mem.Allocator) ![][]const u8 {
-    return queryZombieIdsByStatus(pool, alloc, .not_equals, zombie_config.ZombieStatus.active.toSlice());
-}
-
-const StatusComparison = enum { equals, not_equals };
-
-fn queryZombieIdsByStatus(
-    pool: *pg.Pool,
-    alloc: std.mem.Allocator,
-    cmp: StatusComparison,
-    status: []const u8,
-) ![][]const u8 {
     const conn = try pool.acquire();
     defer pool.release(conn);
-    var q = PgQuery.from(switch (cmp) {
-        .equals => try conn.query(
-            \\SELECT id::text FROM core.zombies
-            \\WHERE status = $1
-            \\ORDER BY created_at ASC
-        , .{status}),
-        .not_equals => try conn.query(
-            \\SELECT id::text FROM core.zombies
-            \\WHERE status != $1
-            \\ORDER BY created_at ASC
-        , .{status}),
-    });
+    var q = PgQuery.from(try conn.query(
+        \\SELECT id::text FROM core.zombies
+        \\WHERE status = $1
+        \\ORDER BY created_at ASC
+    , .{zombie_config.ZombieStatus.active.toSlice()}));
     defer q.deinit();
 
     var ids: std.ArrayList([]const u8) = .{};
@@ -140,6 +114,51 @@ fn queryZombieIdsByStatus(
     }
     return ids.toOwnedSlice(alloc);
 }
+
+/// How far back the reconcile sweep looks when scanning for state drift
+/// on non-active rows. The reconcile cadence is ≈30s (`reconcile_every_ticks
+/// × block_ms`); a 5-minute window covers 10× the cadence and any realistic
+/// retry / network blip without growing unbounded as historical killed
+/// zombies accumulate (greptile P? on PR #251 — original query was
+/// `WHERE status != 'active'` with no time bound, which scaled with the
+/// total killed-row count fleet-wide).
+const reconcile_recent_window_ms: i64 = 5 * 60 * 1000;
+
+/// Query core.zombies for zombies whose status went non-active recently —
+/// killed or paused, with `updated_at` inside the reconcile window.
+/// Used by the watcher's reconcile sweep to catch state drift where a
+/// `publishKillSignal` (or pause signal) failed to XADD: PG row says
+/// non-active, worker thread still running. Reconcile cancels each such
+/// id idempotently.
+///
+/// Time-bounded so the result set stays small as the killed-row count
+/// grows monotonically across the table's lifetime. A worker that missed
+/// a kill more than `reconcile_recent_window_ms` ago is a different
+/// failure mode than this branch is designed to heal — operator restart
+/// is the recovery path for that.
+pub fn listNonActiveZombieIds(pool: *pg.Pool, alloc: std.mem.Allocator) ![][]const u8 {
+    const conn = try pool.acquire();
+    defer pool.release(conn);
+    const cutoff_ms = std.time.milliTimestamp() - reconcile_recent_window_ms;
+    var q = PgQuery.from(try conn.query(
+        \\SELECT id::text FROM core.zombies
+        \\WHERE status != $1 AND updated_at >= $2
+        \\ORDER BY updated_at DESC
+    , .{ zombie_config.ZombieStatus.active.toSlice(), cutoff_ms }));
+    defer q.deinit();
+
+    var ids: std.ArrayList([]const u8) = .{};
+    errdefer {
+        for (ids.items) |id| alloc.free(id);
+        ids.deinit(alloc);
+    }
+    while (try q.next()) |row| {
+        const id = try alloc.dupe(u8, try row.get([]const u8, 0));
+        try ids.append(alloc, id);
+    }
+    return ids.toOwnedSlice(alloc);
+}
+
 
 /// Polls the global shutdown flag, the (optional) per-zombie cancel flag, and
 /// the (optional) WorkerState drain phase, flipping `running` to false when
