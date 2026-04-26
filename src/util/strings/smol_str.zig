@@ -264,3 +264,31 @@ test "empty() returns a zero-length inlined string" {
     try std.testing.expect(s.isInlined());
     try std.testing.expectEqual(@as(u32, 0), s.len());
 }
+
+test "boundary: exactly 15 bytes is inlined (no allocation)" {
+    // max_len = 120 bits / 8 = 15 bytes. The cap-exact case is the most likely
+    // off-by-one site if someone "fixes" the inline path. No defer deinit:
+    // any heap allocation here would leak under std.testing.allocator.
+    const fifteen = "012345678901234"; // 15 bytes
+    var s = try SmolStr.fromSlice(std.testing.allocator, fifteen);
+    try std.testing.expect(s.isInlined());
+    try std.testing.expectEqual(@as(u32, 15), s.len());
+    try std.testing.expectEqualStrings(fifteen, s.slice());
+}
+
+test "boundary: 16 bytes spills to heap (one byte over inline cap)" {
+    const sixteen = "0123456789012345"; // 16 bytes
+    var s = try SmolStr.fromSlice(std.testing.allocator, sixteen);
+    defer s.deinit(std.testing.allocator);
+    try std.testing.expect(!s.isInlined());
+    try std.testing.expectEqual(@as(u32, 16), s.len());
+    try std.testing.expectEqualStrings(sixteen, s.slice());
+}
+
+test "fromSlice with empty input is inlined and zero-length" {
+    var s = try SmolStr.fromSlice(std.testing.allocator, "");
+    // No defer deinit — empty must be inline (no allocation).
+    try std.testing.expect(s.isInlined());
+    try std.testing.expectEqual(@as(u32, 0), s.len());
+    try std.testing.expectEqualStrings("", s.slice());
+}
