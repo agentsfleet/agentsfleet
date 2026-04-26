@@ -58,7 +58,8 @@ pub const entries = [_]Entry{
     // Zombies
     .{ .method = "GET", .path = "/v1/workspaces/{workspace_id}/zombies" },
     .{ .method = "POST", .path = "/v1/workspaces/{workspace_id}/zombies" },
-    .{ .method = "DELETE", .path = "/v1/workspaces/{workspace_id}/zombies/{zombie_id}" },
+    .{ .method = "PATCH", .path = "/v1/workspaces/{workspace_id}/zombies/{zombie_id}" },
+    .{ .method = "POST", .path = "/v1/workspaces/{workspace_id}/zombies/{zombie_id}/kill" },
     .{ .method = "GET", .path = "/v1/workspaces/{workspace_id}/zombies/{zombie_id}/activity" },
     .{ .method = "POST", .path = "/v1/workspaces/{workspace_id}/zombies/{zombie_id}/steer" },
     .{ .method = "DELETE", .path = "/v1/workspaces/{workspace_id}/zombies/{zombie_id}/current-run" },

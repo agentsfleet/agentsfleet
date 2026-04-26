@@ -44,7 +44,8 @@ pub const Route = union(enum) {
     workspace_llm_credential: []const u8, // PUT|DELETE|GET /v1/workspaces/{id}/credentials/llm
     // M24_001: Zombie CRUD + activity + credentials (workspace-scoped)
     workspace_zombies: []const u8, // GET|POST /v1/workspaces/{ws}/zombies
-    delete_workspace_zombie: matchers.WorkspaceZombieRoute, // DELETE /v1/workspaces/{ws}/zombies/{id}
+    patch_workspace_zombie: matchers.WorkspaceZombieRoute, // PATCH /v1/workspaces/{ws}/zombies/{id}
+    kill_workspace_zombie: matchers.WorkspaceZombieRoute, // POST /v1/workspaces/{ws}/zombies/{id}/kill
     workspace_zombie_activity: matchers.ZombieTelemetryRoute, // GET /v1/workspaces/{ws}/zombies/{id}/activity
     workspace_credentials: []const u8, // GET|POST /v1/workspaces/{ws}/credentials
     delete_workspace_credential: matchers.WorkspaceCredentialRoute, // DELETE /v1/workspaces/{ws}/credentials/{name}
@@ -136,8 +137,9 @@ pub fn match(path: []const u8) ?Route {
     // /activity) are matched before the plain /zombies/{id} path.
     if (matchers.matchWorkspaceZombieAction(path, "/steer")) |route| return .{ .workspace_zombie_steer = route };
     if (matchers.matchWorkspaceZombieAction(path, "/current-run")) |route| return .{ .workspace_zombie_current_run = route };
+    if (matchers.matchWorkspaceZombieAction(path, "/kill")) |route| return .{ .kill_workspace_zombie = route };
     if (matchers.matchWorkspaceZombieSuffix(path, "/activity")) |route| return .{ .workspace_zombie_activity = route };
-    if (matchers.matchWorkspaceZombie(path)) |route| return .{ .delete_workspace_zombie = route };
+    if (matchers.matchWorkspaceZombie(path)) |route| return .{ .patch_workspace_zombie = route };
     if (matchWorkspaceSuffix(path, "/zombies")) |workspace_id| return .{ .workspace_zombies = workspace_id };
     // M12_001: workspace-wide activity feed (/activity, no /zombies prefix)
     if (matchWorkspaceSuffix(path, "/activity")) |workspace_id| return .{ .workspace_activity = workspace_id };

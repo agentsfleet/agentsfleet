@@ -77,7 +77,7 @@ pub const ControlMessage = union(MessageType) {
     },
     zombie_config_changed: struct {
         zombie_id: []const u8,
-        config_revision: u32,
+        config_revision: i64,
     },
     worker_drain_request: struct {
         reason: ?[]const u8 = null,
@@ -149,7 +149,7 @@ pub fn publish(client: *redis_client.Client, msg: ControlMessage) !void {
     argv[n] = tag.toSlice();
     n += 1;
 
-    var revision_buf: [12]u8 = undefined;
+    var revision_buf: [24]u8 = undefined;
     n = appendVariantFields(&argv, n, msg, &revision_buf) catch |err| {
         log.err("control.publish_encode_fail type={s} error_code=" ++ error_codes.ERR_INTERNAL_OPERATION_FAILED, .{tag.toSlice()});
         return err;
@@ -176,7 +176,7 @@ fn appendVariantFields(
     argv: *[16][]const u8,
     start: usize,
     msg: ControlMessage,
-    revision_buf: *[12]u8,
+    revision_buf: *[24]u8,
 ) !usize {
     var n = start;
     switch (msg) {
@@ -227,7 +227,7 @@ pub fn decodeEntry(
     var zombie_id: ?[]const u8 = null;
     var workspace_id: ?[]const u8 = null;
     var status: ?ZombieStatus = null;
-    var config_revision: u32 = 0;
+    var config_revision: i64 = 0;
     var reason: ?[]const u8 = null;
 
     var i: usize = 0;
@@ -243,7 +243,7 @@ pub fn decodeEntry(
         } else if (std.mem.eql(u8, k, "status")) {
             status = ZombieStatus.fromSlice(v);
         } else if (std.mem.eql(u8, k, "config_revision")) {
-            config_revision = std.fmt.parseInt(u32, v, 10) catch 0;
+            config_revision = std.fmt.parseInt(i64, v, 10) catch 0;
         } else if (std.mem.eql(u8, k, "reason")) {
             reason = v;
         }
@@ -279,7 +279,7 @@ const DecodeFields = struct {
     zombie_id: ?[]const u8,
     workspace_id: ?[]const u8,
     status: ?ZombieStatus,
-    config_revision: u32,
+    config_revision: i64,
     reason: ?[]const u8,
 };
 

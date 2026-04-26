@@ -198,6 +198,7 @@ pub const Watcher = struct {
                 "watcher.config_changed zombie_id={s} revision={d}",
                 .{ m.zombie_id, m.config_revision },
             ),
+            // {d} formatter handles both u32 and i64 — no type-specific change needed here.
             .worker_drain_request => |m| self.requestDrain(m.reason),
         }
     }

@@ -14,6 +14,10 @@ export const wsZombiesPath = (wsId) => `${WORKSPACES_PATH}${enc(wsId)}/zombies`;
 export const wsZombiePath = (wsId, zombieId) =>
   `${WORKSPACES_PATH}${enc(wsId)}/zombies/${enc(zombieId)}`;
 
+// Workspace-scoped kill action — POST.
+export const wsZombieKillPath = (wsId, zombieId) =>
+  `${WORKSPACES_PATH}${enc(wsId)}/zombies/${enc(zombieId)}/kill`;
+
 // Workspace-scoped per-zombie activity stream.
 export const wsZombieActivityPath = (wsId, zombieId) =>
   `${WORKSPACES_PATH}${enc(wsId)}/zombies/${enc(zombieId)}/activity`;

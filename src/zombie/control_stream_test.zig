@@ -101,7 +101,7 @@ test "decodeEntry: zombie_config_changed parses revision" {
     switch (decoded.message) {
         .zombie_config_changed => |m| {
             try std.testing.expectEqualStrings("z-cfg", m.zombie_id);
-            try std.testing.expectEqual(@as(u32, 42), m.config_revision);
+            try std.testing.expectEqual(@as(i64, 42), m.config_revision);
         },
         else => return error.WrongVariant,
     }

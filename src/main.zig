@@ -203,7 +203,8 @@ test {
     _ = @import("http/handlers/zombies/api_integration_test.zig");
     _ = @import("http/handlers/zombies/create.zig");
     _ = @import("http/handlers/zombies/list.zig");
-    _ = @import("http/handlers/zombies/delete.zig");
+    _ = @import("http/handlers/zombies/kill.zig");
+    _ = @import("http/handlers/zombies/patch.zig");
     _ = @import("http/handlers/zombies/activity.zig");
     // M18_001: zombie execution telemetry
     _ = @import("state/zombie_telemetry_store.zig");

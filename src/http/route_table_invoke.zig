@@ -195,10 +195,16 @@ pub fn invokeWorkspaceZombies(hx: *Hx, req: *httpz.Request, route: router.Route)
     }
 }
 
-pub fn invokeDeleteWorkspaceZombie(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    if (req.method != .DELETE) { common.respondMethodNotAllowed(hx.res); return; }
-    const r = route.delete_workspace_zombie;
-    zombie_api.innerDeleteZombie(hx.*, req, r.workspace_id, r.zombie_id);
+pub fn invokePatchWorkspaceZombie(hx: *Hx, req: *httpz.Request, route: router.Route) void {
+    if (req.method != .PATCH) { common.respondMethodNotAllowed(hx.res); return; }
+    const r = route.patch_workspace_zombie;
+    zombie_api.innerPatchZombie(hx.*, req, r.workspace_id, r.zombie_id);
+}
+
+pub fn invokeKillWorkspaceZombie(hx: *Hx, req: *httpz.Request, route: router.Route) void {
+    if (req.method != .POST) { common.respondMethodNotAllowed(hx.res); return; }
+    const r = route.kill_workspace_zombie;
+    zombie_api.innerKillZombie(hx.*, req, r.workspace_id, r.zombie_id);
 }
 
 pub fn invokeWorkspaceZombieActivity(hx: *Hx, req: *httpz.Request, route: router.Route) void {
