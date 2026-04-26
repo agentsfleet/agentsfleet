@@ -1,10 +1,10 @@
-// M2_001: Zombie worker — claims and runs a single Zombie event loop.
-//
-// One worker thread per Zombie (1:1 mapping for v0.6.0).
-// The thread connects its own Redis client, claims the Zombie from Postgres,
-// enters the event loop, and runs until shutdown or the Zombie is killed.
-//
-// Crash recovery: on restart, claimZombie loads the last Postgres checkpoint.
+//! Zombie worker — claims and runs a single Zombie event loop.
+//!
+//! One worker thread per Zombie. The thread connects its own Redis client,
+//! claims the Zombie from Postgres, enters the event loop, and runs until
+//! shutdown OR a per-zombie cancel flag flips OR the Zombie is killed.
+//!
+//! Crash recovery: on restart, claimZombie loads the last Postgres checkpoint.
 
 const std = @import("std");
 const pg = @import("pg");
@@ -27,6 +27,13 @@ pub const ZombieWorkerConfig = struct {
     executor: ?*executor_client.ExecutorClient,
     workspace_path: []const u8 = "/tmp/zombie",
     telemetry: ?*telemetry_mod.Telemetry = null,
+    /// Per-zombie cancel flag, owned by the watcher. When the watcher receives a
+    /// `zombie_status_changed status=killed` (or paused) control message it flips
+    /// this flag; the per-zombie thread observes it at the top of every loop
+    /// iteration and exits cleanly. Null when the worker was started without a
+    /// watcher (legacy startup path); in that case only `shutdown_requested`
+    /// drives termination.
+    cancel_flag: ?*std.atomic.Value(bool) = null,
 };
 
 /// Entry point for a Zombie worker thread.
@@ -48,7 +55,7 @@ pub fn zombieWorkerLoop(alloc: std.mem.Allocator, cfg: ZombieWorkerConfig) void 
 
     // shutdown_requested=true means stop; event loop expects running=true to continue.
     var running = std.atomic.Value(bool).init(true);
-    const watcher = std.Thread.spawn(.{}, watchShutdown, .{ cfg.shutdown_requested, &running }) catch {
+    const watcher = std.Thread.spawn(.{}, watchShutdown, .{ cfg.shutdown_requested, cfg.cancel_flag, &running }) catch {
         log.err("zombie_worker.watcher_spawn_fail zombie_id={s}", .{cfg.zombie_id});
         return;
     };
@@ -101,9 +108,17 @@ pub fn listActiveZombieIds(pool: *pg.Pool, alloc: std.mem.Allocator) ![][]const 
     return ids.toOwnedSlice(alloc);
 }
 
-/// Polls shutdown_requested and sets running=false when shutdown is triggered.
-fn watchShutdown(shutdown: *const std.atomic.Value(bool), running: *std.atomic.Value(bool)) void {
-    while (!shutdown.load(.acquire) and running.load(.acquire)) {
+/// Polls the global shutdown flag and the (optional) per-zombie cancel flag,
+/// flipping `running` to false when either fires. The per-zombie cancel is
+/// what drives `POST /kill` propagation into in-flight executions.
+fn watchShutdown(
+    shutdown: *const std.atomic.Value(bool),
+    cancel: ?*std.atomic.Value(bool),
+    running: *std.atomic.Value(bool),
+) void {
+    while (running.load(.acquire)) {
+        if (shutdown.load(.acquire)) break;
+        if (cancel) |c| if (c.load(.acquire)) break;
         std.Thread.sleep(100 * std.time.ns_per_ms);
     }
     running.store(false, .release);

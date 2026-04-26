@@ -148,6 +148,7 @@ test {
     _ = @import("zombie/metering.zig");
     _ = @import("zombie/control_stream.zig");
     _ = @import("zombie/control_stream_test.zig");
+    _ = @import("cmd/worker_watcher.zig");
     _ = @import("hmac_sig");
     _ = @import("crypto/hmac_sig_test.zig");
     _ = @import("zombie/webhook_verify.zig");
