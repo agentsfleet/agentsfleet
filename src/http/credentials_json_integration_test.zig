@@ -231,6 +231,43 @@ test "integration: credential endpoints enforce operator role" {
     cleanupRows(conn);
 }
 
+test "integration: POST rejects reserved name 'llm' (BYOK route owns it)" {
+    setTestEncryptionKey();
+    const alloc = std.testing.allocator;
+    const h = seedAndHarness(alloc) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+
+    const path = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/credentials", .{TEST_WS_ID});
+    defer alloc.free(path);
+
+    // Without this guard, POSTing name="llm" stores a row at key
+    // "zombie:llm" that DELETE /credentials/llm cannot reach (it routes to
+    // BYOK, which looks up key "llm"), and matchWorkspaceCredential returns
+    // null for the "/credentials/llm" path so the generic DELETE never
+    // fires either. The row would be un-deleteable through any HTTP route.
+    const body = "{\"name\":\"llm\",\"data\":{\"k\":\"v\"}}";
+    const r = try (try (try h.post(path).bearer(TOKEN_OPERATOR)).json(body)).send();
+    defer r.deinit();
+    try r.expectStatus(.bad_request);
+    try std.testing.expect(r.bodyContains(error_codes.ERR_INVALID_REQUEST));
+    try std.testing.expect(r.bodyContains("reserved"));
+
+    // Confirm no row landed at key_name = "zombie:llm". `conn.exec` returns
+    // affected-row count and drains internally, sidestepping the pg.zig drain
+    // dance for a 0-row result-set.
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    const rowcount = try conn.exec(
+        "DELETE FROM vault.secrets WHERE workspace_id = $1 AND key_name = $2",
+        .{ TEST_WS_ID, "zombie:llm" },
+    );
+    try std.testing.expectEqual(@as(i64, 0), rowcount orelse 0);
+    cleanupRows(conn);
+}
+
 test "integration: cross-workspace DELETE is rejected (IDOR guard)" {
     setTestEncryptionKey();
     const alloc = std.testing.allocator;

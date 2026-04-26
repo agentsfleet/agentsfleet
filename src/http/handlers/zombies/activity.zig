@@ -26,6 +26,8 @@ pub const Context = common.Context;
 const KEK_VERSION: u32 = 1;
 const MAX_CREDENTIAL_DATA_LEN: usize = 4 * 1024; // 4KB stringified JSON
 const MAX_CREDENTIAL_NAME_LEN: usize = 64;
+const RESERVED_BYOK_NAME = "llm";
+const MSG_CREDENTIAL_NAME_RESERVED = "credential name 'llm' is reserved for the BYOK route";
 
 // ── List Activity ─────────────────────────────────────────────────────
 
@@ -152,6 +154,14 @@ pub fn innerStoreCredential(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []
 fn validateCredentialName(hx: hx_mod.Hx, name: []const u8) bool {
     if (name.len == 0 or name.len > MAX_CREDENTIAL_NAME_LEN) {
         hx.fail(ec.ERR_INVALID_REQUEST, ec.MSG_CREDENTIAL_NAME_REQUIRED);
+        return false;
+    }
+    // Reservation must be enforced symmetrically: the DELETE route matcher
+    // already excludes "/credentials/llm" (BYOK owns it), but if POST
+    // accepted name="llm" the row would be stored at key "zombie:llm" and
+    // become un-deleteable through either route. Reject at the write side.
+    if (std.mem.eql(u8, name, RESERVED_BYOK_NAME)) {
+        hx.fail(ec.ERR_INVALID_REQUEST, MSG_CREDENTIAL_NAME_RESERVED);
         return false;
     }
     return true;
