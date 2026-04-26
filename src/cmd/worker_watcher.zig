@@ -115,6 +115,7 @@ pub const Watcher = struct {
                 .workspace_path = self.cfg.workspace_path,
                 .telemetry = self.cfg.telemetry,
                 .cancel_flag = flag,
+                .worker_state = self.cfg.worker_state,
             },
         });
 

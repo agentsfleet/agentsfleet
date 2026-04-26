@@ -9,6 +9,10 @@ const error_codes = @import("../errors/error_registry.zig");
 const preflight = @import("preflight.zig");
 const executor_client = @import("../executor/client.zig");
 const worker_zombie = @import("worker_zombie.zig");
+const worker_watcher = @import("worker_watcher.zig");
+const worker_state_mod = @import("worker/state.zig");
+const queue_redis = @import("../queue/redis_client.zig");
+const control_stream = @import("../zombie/control_stream.zig");
 
 const log = std.log.scoped(.worker);
 
@@ -19,11 +23,21 @@ fn onSignal(sig: i32) callconv(.c) void {
     shutdown_requested.store(true, .release);
 }
 
-fn signalWatcher(event_bus: *events_bus.Bus) void {
+fn signalWatcher(event_bus: *events_bus.Bus, ws: *worker_state_mod.WorkerState) void {
     while (!shutdown_requested.load(.acquire)) {
         std.Thread.sleep(100 * std.time.ns_per_ms);
     }
+    // Triggers WorkerState drain so per-zombie threads exit at the next loop
+    // iteration (via beginEventIfActive in the zombie event loop). Idempotent
+    // for repeated SIGTERM.
+    _ = ws.startDrain();
     event_bus.stop();
+}
+
+fn makeConsumerName(alloc: std.mem.Allocator) ![]u8 {
+    var host_buf: [std.posix.HOST_NAME_MAX]u8 = undefined;
+    const host = std.posix.gethostname(&host_buf) catch "localhost";
+    return std.fmt.allocPrint(alloc, "worker-control-{s}", .{host});
 }
 
 pub fn run(alloc: std.mem.Allocator) !void {
@@ -109,19 +123,58 @@ pub fn run(alloc: std.mem.Allocator) !void {
     events_bus.install(&event_bus);
     defer events_bus.uninstall();
 
+    var ws = worker_state_mod.WorkerState.init();
+
     var signal_thread: ?std.Thread = null;
     var event_thread: ?std.Thread = null;
     errdefer {
         shutdown_requested.store(true, .release);
+        _ = ws.startDrain();
         event_bus.stop();
         if (signal_thread) |*t| t.join();
         if (event_thread) |*t| t.join();
     }
 
-    signal_thread = try std.Thread.spawn(.{}, signalWatcher, .{&event_bus});
+    signal_thread = try std.Thread.spawn(.{}, signalWatcher, .{ &event_bus, &ws });
     event_thread = try std.Thread.spawn(.{}, events_bus.runThread, .{&event_bus});
 
-    // Spawn zombie worker threads (one per active zombie).
+    var watcher_redis = queue_redis.Client.connectFromEnv(alloc, .worker) catch |err| {
+        log.err("startup.watcher_redis_connect status=fail error_code={s} err={s}", .{ error_codes.ERR_STARTUP_REDIS_CONNECT, @errorName(err) });
+        std.process.exit(1);
+    };
+    defer watcher_redis.deinit();
+
+    control_stream.ensureControlGroup(&watcher_redis) catch |err| {
+        log.err("startup.control_group_ensure status=fail error_code={s} err={s}", .{ error_codes.ERR_STARTUP_REDIS_CONNECT, @errorName(err) });
+        std.process.exit(1);
+    };
+
+    const consumer_name = try makeConsumerName(alloc);
+    defer alloc.free(consumer_name);
+
+    var watcher = worker_watcher.Watcher.init(alloc, .{
+        .redis = &watcher_redis,
+        .pool = worker_pool,
+        .executor = if (exec_client) |*ec| ec else null,
+        .workspace_path = "/tmp/zombie",
+        .telemetry = tel.ptr(),
+        .worker_state = &ws,
+        .shutdown_requested = &shutdown_requested,
+        .consumer_name = consumer_name,
+    });
+    // Trigger drain before joining zombie threads so they exit cleanly even
+    // on an error path. Idempotent — startDrain() returns false if already
+    // draining, watcher.deinit() then joins what's there.
+    defer {
+        shutdown_requested.store(true, .release);
+        _ = ws.startDrain();
+        watcher.deinit();
+    }
+
+    // Bootstrap-spawn currently-active zombies before the watcher starts
+    // claiming control-stream messages. Idempotent on duplicates: the
+    // watcher's spawnZombieThread no-ops if the zombie is already mapped
+    // (covers the case where `zombie_created` is still in the stream backlog).
     const zombie_ids: [][]const u8 = worker_zombie.listActiveZombieIds(worker_pool, alloc) catch |err| blk: {
         log.warn("worker.zombie_discovery_failed err={s} hint=no_zombies_will_run", .{@errorName(err)});
         break :blk &.{};
@@ -130,35 +183,27 @@ pub fn run(alloc: std.mem.Allocator) !void {
         for (zombie_ids) |id| alloc.free(id);
         if (zombie_ids.len > 0) alloc.free(zombie_ids);
     }
-
-    var zombie_threads: std.ArrayList(std.Thread) = .{};
-    defer zombie_threads.deinit(alloc);
     for (zombie_ids) |zombie_id| {
-        const zt = std.Thread.spawn(.{}, worker_zombie.zombieWorkerLoop, .{
-            alloc,
-            worker_zombie.ZombieWorkerConfig{
-                .pool = worker_pool,
-                .zombie_id = zombie_id,
-                .shutdown_requested = &shutdown_requested,
-                .executor = if (exec_client) |*ec| ec else null,
-                .telemetry = tel.ptr(),
-            },
-        }) catch |err| {
-            log.err("worker.zombie_thread_spawn_fail zombie_id={s} err={s}", .{ zombie_id, @errorName(err) });
-            continue;
-        };
-        zombie_threads.append(alloc, zt) catch |err| {
-            log.err("worker.zombie_thread_track_fail zombie_id={s} err={s} hint=thread_untracked", .{ zombie_id, @errorName(err) });
+        watcher.spawnZombieThread(zombie_id) catch |err| {
+            log.err("worker.bootstrap_spawn_fail zombie_id={s} err={s}", .{ zombie_id, @errorName(err) });
         };
     }
     if (zombie_ids.len > 0)
-        log.info("worker.zombie_threads_started count={d}", .{zombie_ids.len});
+        log.info("worker.bootstrap_zombies count={d}", .{zombie_ids.len});
 
-    for (zombie_threads.items) |*t| t.join();
+    var watcher_thread = try std.Thread.spawn(.{}, worker_watcher.Watcher.run, .{&watcher});
+    watcher_thread.join();
+
     shutdown_requested.store(true, .release);
     event_bus.stop();
     if (signal_thread) |*t| t.join();
     if (event_thread) |*t| t.join();
+
+    // Final drain transition. Per-zombie threads have observed drain via the
+    // watcher's watchShutdown poller and are exiting; watcher.deinit() (defer
+    // above) will join them. The completeDrain CAS asserts we passed through
+    // `draining` — if it wasn't entered we skip rather than panic.
+    if (ws.getDrainPhase() == .draining) ws.completeDrain();
 
     _ = preflight.prepareCacheRoot(alloc, worker_cfg.cache_root, "shutdown");
 }

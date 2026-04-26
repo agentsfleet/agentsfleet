@@ -16,6 +16,7 @@ const zombie_config = @import("../zombie/config.zig");
 const error_codes = @import("../errors/error_registry.zig");
 const obs_log = @import("../observability/logging.zig");
 const telemetry_mod = @import("../observability/telemetry.zig");
+const worker_state_mod = @import("worker/state.zig");
 
 const log = std.log.scoped(.zombie_worker);
 
@@ -34,6 +35,11 @@ pub const ZombieWorkerConfig = struct {
     /// watcher (legacy startup path); in that case only `shutdown_requested`
     /// drives termination.
     cancel_flag: ?*std.atomic.Value(bool) = null,
+    /// Process-wide drain state. When the worker enters the draining phase
+    /// (e.g. SIGTERM), the per-zombie watch thread observes `!isAcceptingWork()`
+    /// and flips `running` so the event loop exits. Null when no drain primitive
+    /// is wired (legacy startup); termination then falls back to shutdown_requested.
+    worker_state: ?*const worker_state_mod.WorkerState = null,
 };
 
 /// Entry point for a Zombie worker thread.
@@ -55,7 +61,7 @@ pub fn zombieWorkerLoop(alloc: std.mem.Allocator, cfg: ZombieWorkerConfig) void 
 
     // shutdown_requested=true means stop; event loop expects running=true to continue.
     var running = std.atomic.Value(bool).init(true);
-    const watcher = std.Thread.spawn(.{}, watchShutdown, .{ cfg.shutdown_requested, cfg.cancel_flag, &running }) catch {
+    const watcher = std.Thread.spawn(.{}, watchShutdown, .{ cfg.shutdown_requested, cfg.cancel_flag, cfg.worker_state, &running }) catch {
         log.err("zombie_worker.watcher_spawn_fail zombie_id={s}", .{cfg.zombie_id});
         return;
     };
@@ -108,17 +114,20 @@ pub fn listActiveZombieIds(pool: *pg.Pool, alloc: std.mem.Allocator) ![][]const 
     return ids.toOwnedSlice(alloc);
 }
 
-/// Polls the global shutdown flag and the (optional) per-zombie cancel flag,
-/// flipping `running` to false when either fires. The per-zombie cancel is
-/// what drives `POST /kill` propagation into in-flight executions.
+/// Polls the global shutdown flag, the (optional) per-zombie cancel flag, and
+/// the (optional) WorkerState drain phase, flipping `running` to false when
+/// any of them fires. Per-zombie cancel propagates `POST /kill`; drain phase
+/// propagates SIGTERM-driven graceful shutdown.
 fn watchShutdown(
     shutdown: *const std.atomic.Value(bool),
     cancel: ?*std.atomic.Value(bool),
+    drain: ?*const worker_state_mod.WorkerState,
     running: *std.atomic.Value(bool),
 ) void {
     while (running.load(.acquire)) {
         if (shutdown.load(.acquire)) break;
         if (cancel) |c| if (c.load(.acquire)) break;
+        if (drain) |ws| if (!ws.isAcceptingWork()) break;
         std.Thread.sleep(100 * std.time.ns_per_ms);
     }
     running.store(false, .release);
