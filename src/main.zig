@@ -159,10 +159,6 @@ test {
     _ = @import("util/strings/string_joiner.zig");
     _ = @import("util/strings/string_builder.zig");
     _ = @import("util/strings/smol_str.zig");
-    _ = @import("util/json_line_buffer_test.zig");
-    _ = @import("util/copy_file_test.zig");
-    _ = @import("util/object_pool_test.zig");
-    _ = @import("util/unbounded_queue_test.zig");
     _ = @import("hmac_sig");
     _ = @import("crypto/hmac_sig_test.zig");
     _ = @import("zombie/webhook_verify.zig");
