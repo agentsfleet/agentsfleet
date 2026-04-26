@@ -156,7 +156,7 @@ control stream (Redis):
 
 | Mode | Cause | Handling |
 |---|---|---|
-| XADD fails after INSERT | Redis down briefly | 500 to caller. Self-heals automatically within ≤30s: the watcher runs a PG-backed reconcile sweep every 6 idle ticks (≈30s), walks `core.zombies WHERE status='active'`, and calls `spawnZombieThread` (idempotent) for each. `ensureZombieEventsGroup` inside spawnZombieThread is BUSYGROUP-as-success on already-good zombies and creates the missing stream + group for orphans. No worker restart, no reconcile job. |
+| XADD fails after INSERT | Redis down briefly | Three layers of defense, in order: (1) `publishInstallSignals` retries the XGROUP CREATE + XADD up to 3× with 100/500/1500ms backoff — sub-second blips never surface as a 500. (2) On final failure, the PG row is rolled back via `DELETE FROM core.zombies` so the caller can retry cleanly with no orphan ever reaching the worker. (3) If the rollback itself fails (rare double-fault: API process dies between INSERT and DELETE, or PG flaps in the same handler), the watcher's reconcile sweep walks `core.zombies WHERE status='active'` every ≈30s and spawns threads for any orphans (`ensureZombieEventsGroup` + `spawnZombieThread`, both idempotent). No worker restart needed. |
 | Worker watcher loses connection | Network blip | Reconnect with backoff; XREADGROUP from last-acked id; never miss a message |
 | Cancel flag set but executor unresponsive | Executor process hung | After 5s grace, SIGKILL the executor session; surface `execution_aborted_force` event |
 | Drain timeout exceeded (30s) | Stuck event mid-tool-call | Force-cancel all in-flight, exit dirty (operator sees the timeout in stderr) |

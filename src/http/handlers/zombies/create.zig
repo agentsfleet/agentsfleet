@@ -108,10 +108,19 @@ pub fn innerCreateZombie(hx: Hx, req: *httpz.Request, workspace_id: []const u8) 
 
     publishInstallSignals(hx.ctx.queue, zombie_id, workspace_id) catch |err| {
         log.err(
-            "zombie.create_publish_failed err={s} zombie_id={s} req_id={s} hint=row_committed_worker_blind self_heals_at_next_worker_boot",
+            "zombie.create_publish_failed err={s} zombie_id={s} req_id={s} hint=rolling_back_pg_row",
             .{ @errorName(err), zombie_id, hx.req_id },
         );
-        common.internalOperationError(hx.res, "control-stream publish failed after INSERT (orphan row will be picked up at next worker boot)", hx.req_id);
+        // Roll back the PG row so the caller can retry cleanly without leaving
+        // an orphan behind. If the rollback also fails (rare — PG flapping in
+        // the same handler), the watcher's reconcile sweep is the safety net.
+        deleteZombieRow(conn, workspace_id, zombie_id) catch |rollback_err| {
+            log.err(
+                "zombie.create_rollback_failed err={s} zombie_id={s} req_id={s} hint=row_orphaned_reconcile_will_heal",
+                .{ @errorName(rollback_err), zombie_id, hx.req_id },
+            );
+        };
+        common.internalOperationError(hx.res, "control-stream publish failed; install rolled back", hx.req_id);
         return;
     };
 
@@ -127,17 +136,43 @@ fn insertZombieOnConn(conn: *pg.Conn, workspace_id: []const u8, body: CreateBody
     , .{ zombie_id, workspace_id, body.name, body.source_markdown, body.config_json, zombie_config.ZombieStatus.active.toSlice(), now_ms, now_ms });
 }
 
-/// Invariant 1: by the time this returns, both the per-zombie events stream
-/// + consumer group AND the control-stream `zombie_created` signal exist.
-/// Either step failing leaves the DB row committed and the worker blind —
-/// caller surfaces a 500. The orphan condition is self-healing at the next
-/// worker boot (bootstrap walks core.zombies and re-runs ensureZombieEventsGroup
-/// before spawning the thread; idempotent BUSYGROUP-as-success).
+/// Invariant 1: by the time this returns successfully, both the per-zombie
+/// events stream + consumer group AND the control-stream `zombie_created`
+/// signal exist. Retries up to 3× with backoff (100ms / 500ms / 1500ms) so
+/// a sub-second Redis blip does not surface as a user-visible 500. On final
+/// failure, the caller deletes the PG row so the orphan never reaches the
+/// worker.
 fn publishInstallSignals(redis: *queue_redis.Client, zombie_id: []const u8, workspace_id: []const u8) !void {
+    const backoff_ms = [_]u32{ 100, 500, 1500 };
+    var attempt: usize = 0;
+    while (true) : (attempt += 1) {
+        publishOnce(redis, zombie_id, workspace_id) catch |err| {
+            if (attempt + 1 >= backoff_ms.len) return err;
+            log.warn(
+                "zombie.create_publish_retry attempt={d} err={s} zombie_id={s} sleep_ms={d}",
+                .{ attempt + 1, @errorName(err), zombie_id, backoff_ms[attempt] },
+            );
+            std.Thread.sleep(@as(u64, backoff_ms[attempt]) * std.time.ns_per_ms);
+            continue;
+        };
+        return;
+    }
+}
+
+fn publishOnce(redis: *queue_redis.Client, zombie_id: []const u8, workspace_id: []const u8) !void {
     try control_stream.ensureZombieEventsGroup(redis, zombie_id);
     try control_stream.publish(redis, .{
         .zombie_created = .{ .zombie_id = zombie_id, .workspace_id = workspace_id },
     });
+}
+
+/// Roll back a freshly-INSERTed zombie row. Workspace-scoped to prevent
+/// cross-tenant deletes. Returns errors so the caller can decide whether
+/// to log loudly (rare double-fault) or swallow.
+fn deleteZombieRow(conn: *pg.Conn, workspace_id: []const u8, zombie_id: []const u8) !void {
+    _ = try conn.exec(
+        \\DELETE FROM core.zombies WHERE id = $1::uuid AND workspace_id = $2::uuid
+    , .{ zombie_id, workspace_id });
 }
 
 fn isUniqueViolation(_: anyerror) bool {
