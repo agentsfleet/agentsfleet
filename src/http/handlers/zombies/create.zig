@@ -136,32 +136,37 @@ fn insertZombieOnConn(conn: *pg.Conn, workspace_id: []const u8, body: CreateBody
     , .{ zombie_id, workspace_id, body.name, body.source_markdown, body.config_json, zombie_config.ZombieStatus.active.toSlice(), now_ms, now_ms });
 }
 
+/// Fixed backoff schedule for install-time `XGROUP CREATE` + `XADD` retries.
+/// Total wall budget = sum = 2.1s. Three sleeps means four attempts (one
+/// extra try after the last sleep). See `installBackoffMs` for the lookup.
+const install_backoff_schedule = [_]u32{ 100, 500, 1500 };
+
+/// Pure-function backoff lookup, modelled after Bun's
+/// `valkey/valkey.zig:getReconnectDelay`. Returns the sleep duration (ms)
+/// for `attempt`, or null when the schedule is exhausted (caller bails).
+/// Pulled out of the retry loop so the four-attempt / three-sleep
+/// invariant is unit-testable without standing up a Redis mock.
+fn installBackoffMs(attempt: usize) ?u32 {
+    if (attempt >= install_backoff_schedule.len) return null;
+    return install_backoff_schedule[attempt];
+}
+
 /// Invariant 1: by the time this returns successfully, both the per-zombie
 /// events stream + consumer group AND the control-stream `zombie_created`
-/// signal exist. Retries up to 4 attempts with backoff between each
-/// (100ms / 500ms / 1500ms = 2.1s total wall) so a sub-second Redis blip
-/// does not surface as a user-visible 500. On final failure, the caller
-/// rolls back the PG row so the orphan never reaches the worker.
-///
-/// Loop schedule: attempt 0 → fail → sleep 100ms → attempt 1 → fail →
-/// sleep 500ms → attempt 2 → fail → sleep 1500ms → attempt 3 → fail →
-/// return err. Greptile P? (PR #251) caught a guard mistake on the
-/// previous version where `attempt + 1 >= len` exited before the third
-/// sleep ever fired, making the `1500ms` entry dead code; the doc-comment
-/// claimed 3 sleeps but only 2 ever ran. The guard is now `attempt >= len`
-/// which gives the genuine four-attempt / three-sleep schedule the
-/// docstring promises.
+/// signal exist. Retries up to 4 attempts with `install_backoff_schedule`
+/// between each (2.1s total wall) so a sub-second Redis blip does not
+/// surface as a user-visible 500. On final failure, the caller rolls back
+/// the PG row so the orphan never reaches the worker.
 fn publishInstallSignals(redis: *queue_redis.Client, zombie_id: []const u8, workspace_id: []const u8) !void {
-    const backoff_ms = [_]u32{ 100, 500, 1500 };
     var attempt: usize = 0;
     while (true) : (attempt += 1) {
         publishOnce(redis, zombie_id, workspace_id) catch |err| {
-            if (attempt >= backoff_ms.len) return err;
+            const sleep_ms = installBackoffMs(attempt) orelse return err;
             log.warn(
                 "zombie.create_publish_retry attempt={d} err={s} zombie_id={s} sleep_ms={d}",
-                .{ attempt + 1, @errorName(err), zombie_id, backoff_ms[attempt] },
+                .{ attempt + 1, @errorName(err), zombie_id, sleep_ms },
             );
-            std.Thread.sleep(@as(u64, backoff_ms[attempt]) * std.time.ns_per_ms);
+            std.Thread.sleep(@as(u64, sleep_ms) * std.time.ns_per_ms);
             continue;
         };
         return;
@@ -195,4 +200,93 @@ fn isUniqueViolation(_: anyerror) bool {
 test "isUniqueViolation always returns false (no SQLSTATE introspection)" {
     try std.testing.expect(!isUniqueViolation(error.PGError));
     try std.testing.expect(!isUniqueViolation(error.OutOfMemory));
+}
+
+// ─── installBackoffMs schedule (greptile-caught dead-entry regression) ───
+//
+// The pre-fix retry loop guarded with `attempt + 1 >= len` so the third
+// `1500ms` sleep was never reached — three attempts, two sleeps, dead
+// final entry. These tests pin the corrected 4-attempt / 3-sleep
+// schedule (every entry must be reachable) and assert the exhaustion
+// boundary. The function is a pure lookup — no Redis mock needed.
+
+test "installBackoffMs: attempt 0 returns the first delay (100ms)" {
+    try std.testing.expectEqual(@as(?u32, 100), installBackoffMs(0));
+}
+
+test "installBackoffMs: attempt 1 returns the second delay (500ms)" {
+    try std.testing.expectEqual(@as(?u32, 500), installBackoffMs(1));
+}
+
+test "installBackoffMs: attempt 2 returns the third delay (1500ms — was unreachable pre-fix)" {
+    try std.testing.expectEqual(@as(?u32, 1500), installBackoffMs(2));
+}
+
+test "installBackoffMs: attempt 3 exhausts (caller returns err)" {
+    try std.testing.expectEqual(@as(?u32, null), installBackoffMs(3));
+}
+
+test "installBackoffMs: attempts past the schedule stay exhausted (no integer wraparound)" {
+    try std.testing.expectEqual(@as(?u32, null), installBackoffMs(100));
+    try std.testing.expectEqual(@as(?u32, null), installBackoffMs(std.math.maxInt(usize)));
+}
+
+test "install_backoff_schedule: total wall budget is 2.1s as documented" {
+    var sum: u64 = 0;
+    for (install_backoff_schedule) |ms| sum += ms;
+    try std.testing.expectEqual(@as(u64, 2100), sum);
+}
+
+test "publishInstallSignals retry loop: 4 attempts on permanent failure" {
+    // Drives the exact loop shape from publishInstallSignals against an
+    // injected counter — proves four calls, three sleeps, terminating
+    // err.PermanentFail. Uses installBackoffMs directly (no Thread.sleep
+    // — tests run in microseconds).
+    var calls: usize = 0;
+    var attempt: usize = 0;
+    const result: error{PermanentFail}!void = blk: while (true) : (attempt += 1) {
+        calls += 1;
+        // Simulated publishOnce: always fails.
+        const op_err: error{PermanentFail} = error.PermanentFail;
+        const sleep_ms = installBackoffMs(attempt) orelse break :blk op_err;
+        // In production this is `std.Thread.sleep(sleep_ms * ns_per_ms)`.
+        // The test only needs the fact that a sleep WOULD have happened.
+        _ = sleep_ms;
+        continue;
+    };
+    try std.testing.expectError(error.PermanentFail, result);
+    try std.testing.expectEqual(@as(usize, 4), calls);
+}
+
+test "publishInstallSignals retry loop: succeeds on first attempt → no retries" {
+    var calls: usize = 0;
+    var attempt: usize = 0;
+    while (true) : (attempt += 1) {
+        calls += 1;
+        // Simulated publishOnce: succeeds immediately.
+        const op_result: error{}!void = {};
+        op_result catch |err| {
+            const sleep_ms = installBackoffMs(attempt) orelse return err;
+            _ = sleep_ms;
+            continue;
+        };
+        break;
+    }
+    try std.testing.expectEqual(@as(usize, 1), calls);
+}
+
+test "publishInstallSignals retry loop: succeeds on attempt 2 (after 100ms+500ms sleeps)" {
+    var calls: usize = 0;
+    var attempt: usize = 0;
+    while (true) : (attempt += 1) {
+        calls += 1;
+        const op_err: ?error{Transient} = if (calls < 3) error.Transient else null;
+        if (op_err) |err| {
+            const sleep_ms = installBackoffMs(attempt) orelse return err;
+            _ = sleep_ms;
+            continue;
+        }
+        break;
+    }
+    try std.testing.expectEqual(@as(usize, 3), calls);
 }
