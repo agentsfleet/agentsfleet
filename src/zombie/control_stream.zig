@@ -86,6 +86,11 @@ pub const ControlMessage = union(MessageType) {
 
 /// Result of decoding a single XREADGROUP entry. Owns its backing strings;
 /// the `ControlMessage` slices borrow from `owned_fields`.
+///
+/// Caller passes the same allocator to `deinit` that `decodeEntry` received —
+/// `Decoded` deliberately does not store the allocator, since instances are
+/// transient (one per stream entry) and live only inside the watcher's
+/// dispatch loop. See ZIG_RULES.md "Allocator Ownership in Structs".
 pub const Decoded = struct {
     message_id: []u8,
     message: ControlMessage,
@@ -149,6 +154,8 @@ pub fn publish(client: *redis_client.Client, msg: ControlMessage) !void {
         log.err("control.publish_encode_fail type={s} error_code=" ++ error_codes.ERR_INTERNAL_OPERATION_FAILED, .{tag.toSlice()});
         return err;
     };
+
+    std.debug.assert(n <= argv.len);
 
     var resp = try client.command(argv[0..n]);
     defer resp.deinit(client.alloc);

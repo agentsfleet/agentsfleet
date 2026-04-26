@@ -208,6 +208,9 @@ pub const Watcher = struct {
         self.map_lock.unlock();
 
         if (flag_ptr) |flag| {
+            // safe because: the per-zombie thread reads this with .acquire in
+            // worker_zombie.watchShutdown, observing the publication on its
+            // next 100ms poll. Single-writer flag (this watcher), many-readers.
             flag.store(true, .release);
             log.info("watcher.cancel_set zombie_id={s}", .{zombie_id});
         } else {

@@ -124,12 +124,19 @@ fn watchShutdown(
     drain: ?*const worker_state_mod.WorkerState,
     running: *std.atomic.Value(bool),
 ) void {
+    // Synchronization contract: each flag is written once with .release by the
+    // signal handler / watcher / event loop teardown, and observed here with
+    // .acquire. This is the canonical "publish-once, consume-many" pattern —
+    // .acq_rel is unnecessary since this thread never writes the input flags,
+    // only reads them.
     while (running.load(.acquire)) {
+        // safe because: each input flag is set with .release on its writer
         if (shutdown.load(.acquire)) break;
         if (cancel) |c| if (c.load(.acquire)) break;
         if (drain) |ws| if (!ws.isAcceptingWork()) break;
         std.Thread.sleep(100 * std.time.ns_per_ms);
     }
+    // safe because: paired with .acquire load on the spawning thread before .join()
     running.store(false, .release);
 }
 
