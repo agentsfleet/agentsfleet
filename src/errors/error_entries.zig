@@ -176,8 +176,9 @@ pub const ENTRIES = [_]Entry{
         "Session checkpoint write to Postgres failed. Check database connectivity."),
     e("UZ-ZMB-006", .conflict, "Zombie name already exists",
         "A Zombie with this name already exists. Use 'zombiectl kill <name>' first, then deploy again."),
-    e("UZ-ZMB-007", .bad_request, "Zombie credential value too long",
-        "Credential value exceeds 4KB. Check that the secret is not corrupted or padded."),
+    // UZ-ZMB-007 (Zombie credential value too long) was retired with the
+    // single-string credential body. The structured replacement lives at
+    // UZ-VAULT-002 below.
     e("UZ-ZMB-008", .bad_request, "Invalid zombie config",
         "Config JSON is malformed. Verify trigger, skills, credentials, and budget fields. " ++
         "Run 'zombiectl install <template>' for a valid template."),
