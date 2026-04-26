@@ -10,6 +10,7 @@ const metrics = @import("metrics.zig");
 const obs_log = @import("logging.zig");
 const otel_logs = @import("otel_logs.zig");
 const trace = @import("trace.zig");
+const StringBuilder = @import("../util/strings/string_builder.zig");
 
 const log = std.log.scoped(.otel_traces);
 
@@ -244,14 +245,14 @@ fn flushBatch() void {
 
     const spans_data = spans_json.toOwnedSlice(alloc) catch return;
 
-    var full_payload: std.ArrayList(u8) = .{};
-    const fw = full_payload.writer(alloc);
-    fw.print(
-        "{{\"resourceSpans\":[{{\"resource\":{{\"attributes\":[{{\"key\":\"service.name\",\"value\":{{\"stringValue\":\"{s}\"}}}}]}},\"scopeSpans\":[{{\"scope\":{{\"name\":\"zombied\"}},\"spans\":[{s}]}}]}}]}}",
-        .{ cfg.service_name, spans_data },
-    ) catch return;
+    const envelope_fmt = "{{\"resourceSpans\":[{{\"resource\":{{\"attributes\":[{{\"key\":\"service.name\",\"value\":{{\"stringValue\":\"{s}\"}}}}]}},\"scopeSpans\":[{{\"scope\":{{\"name\":\"zombied\"}},\"spans\":[{s}]}}]}}]}}";
+    const envelope_args = .{ cfg.service_name, spans_data };
 
-    const body = full_payload.toOwnedSlice(alloc) catch return;
+    var sb: StringBuilder = .{};
+    defer sb.deinit(alloc);
+    sb.fmtCount(envelope_fmt, envelope_args);
+    sb.allocate(alloc) catch return;
+    const body = sb.fmt(envelope_fmt, envelope_args);
 
     otel_logs.postWithBasicAuth(alloc, cfg, OTLP_TRACES_PATH, body) catch {};
 }

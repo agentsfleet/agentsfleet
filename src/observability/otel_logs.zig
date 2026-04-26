@@ -8,6 +8,7 @@
 const std = @import("std");
 const metrics = @import("metrics.zig");
 const obs_log = @import("logging.zig");
+const StringBuilder = @import("../util/strings/string_builder.zig");
 
 const log = std.log.scoped(.otel_logs);
 
@@ -206,14 +207,14 @@ fn flushBatch() void {
 
     const log_records = entries.toOwnedSlice(alloc) catch return;
 
-    var full_payload: std.ArrayList(u8) = .{};
-    const fw = full_payload.writer(alloc);
-    fw.print(
-        "{{\"resourceLogs\":[{{\"resource\":{{\"attributes\":[{{\"key\":\"service.name\",\"value\":{{\"stringValue\":\"{s}\"}}}}]}},\"scopeLogs\":[{{\"scope\":{{\"name\":\"zombied\"}},\"logRecords\":[{s}]}}]}}]}}",
-        .{ cfg.service_name, log_records },
-    ) catch return;
+    const envelope_fmt = "{{\"resourceLogs\":[{{\"resource\":{{\"attributes\":[{{\"key\":\"service.name\",\"value\":{{\"stringValue\":\"{s}\"}}}}]}},\"scopeLogs\":[{{\"scope\":{{\"name\":\"zombied\"}},\"logRecords\":[{s}]}}]}}]}}";
+    const envelope_args = .{ cfg.service_name, log_records };
 
-    const body = full_payload.toOwnedSlice(alloc) catch return;
+    var sb: StringBuilder = .{};
+    defer sb.deinit(alloc);
+    sb.fmtCount(envelope_fmt, envelope_args);
+    sb.allocate(alloc) catch return;
+    const body = sb.fmt(envelope_fmt, envelope_args);
 
     postWithBasicAuth(alloc, cfg, OTLP_LOGS_PATH, body) catch {};
 }
