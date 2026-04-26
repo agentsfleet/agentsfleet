@@ -697,97 +697,116 @@ In all three cases the zombie's reasoning loop sees a single `message` and reaso
 
 ---
 
-  The failure scenario, visually
+### The install failure scenario, visually
 
-  Important correction up front: the API server (not the worker) is the side that writes to Redis during install. The worker only reads from zombie:control. So the failure is on the API → Redis hop, not
-   worker → Redis.
+The API server (not the worker) is the side that writes to Redis during install. The worker only reads from `zombie:control`. So a Redis blip during install hits the API → Redis hop, not worker → Redis. The API has two layers of defence, and the watcher's reconcile sweep is the third.
 
-  TIME ──►
+**Defence-in-depth, in order of how the system tries to keep `core.zombies` and Redis consistent:**
 
-  t=0   USER ──── zombiectl install ────►  zombiectl/src/commands/zombie.js
-                                            │
-  t=1   zombiectl ──── POST /v1/.../zombies ────►  API server
-                                                    │
-                                                    ▼
-  t=2   API ──── INSERT INTO core.zombies (id=Z, status='active') ────►  PG
-                                                                         ✓ committed
-                                                    │
-                                                    ▼
-  t=3   API ──── XGROUP CREATE zombie:Z:events zombie_workers 0 ────►  Redis
-                                                                       ╳ 💥 blip
-                                                                       fail
+1. **Inline retry (API).** `publishInstallSignals` retries `XGROUP CREATE` + `XADD zombie:control` on a fixed backoff `[100ms, 500ms, 1500ms]` — four attempts, ~2.1s total wall budget. Most blips never escape this loop.
+2. **PG rollback (API).** If retries exhaust, the handler `DELETE`s the freshly-inserted `core.zombies` row and returns 500 with `hint=rolling_back_pg_row` so the caller can retry cleanly. No orphan.
+3. **Reconcile sweep (worker watcher).** If both publish AND rollback fail (rare double-failure, logged with `hint=row_orphaned_reconcile_will_heal`), the watcher's reconcile loop runs every ~30s (6 ticks × 5s), walks `core.zombies` for `status='active'` rows, and calls `spawnZombieThread` for each. Idempotent: `ensureZombieEventsGroup` treats `BUSYGROUP` as success, and `spawnZombieThread` no-ops if the zombie is already mapped.
 
-  t=4   API ──── 500 ────►  zombiectl ────►  USER (sees error)
-          log: zombie.create_publish_failed zombie_id=Z
-               hint=row_committed_worker_blind self_heals_at_next_worker_boot
+Worker process restart is the same machinery — boot calls `listActiveZombieIds(pool)` and runs the same `spawnZombieThread` per id — but the periodic sweep means orphans don't have to wait for a restart.
 
-     ─────────  STATE DURING THE ORPHAN WINDOW  ─────────
+**Timeline of the rare double-failure path (publish exhausts retries AND rollback also fails):**
 
-     PG (core.zombies)        :  ████ row Z exists, status='active'
-     Redis zombie:Z:events    :  ░░░░ does NOT exist
-     Redis zombie:control     :  ░░░░ never received zombie_created for Z
-     Worker watcher           :  ░░░░ doesn't know Z exists
-     Webhooks arriving for Z  :  XADD zombie:Z:events creates the stream
-                                  with NO consumer group → events accumulate
-                                  untread (Redis-side memory only, bounded
-                                  by retention; no executor work)
+```
+TIME ──►
 
-     Worker keeps running OTHER zombies normally — no impact on the rest of
-     the fleet. Z is the only one stranded.
+t=0   USER ──── zombiectl install ────►  zombiectl/src/commands/zombie.js
+                                          │
+t=1   zombiectl ──── POST /v1/.../zombies ────►  API server
+                                                  │
+                                                  ▼
+t=2   API ──── INSERT INTO core.zombies (id=Z, status='active') ────►  PG
+                                                                       ✓ committed
+                                                  │
+                                                  ▼
+t=3   API ──── publishInstallSignals (XGROUP CREATE + XADD) ────►  Redis
+                 4 attempts over ~2.1s (100ms, 500ms, 1500ms backoffs)
+                                                                       ╳ 💥
+                                                                       all retries fail
+                                                  │
+                                                  ▼
+t=4   API ──── DELETE core.zombies WHERE id=Z ────►  PG
+                                                     ╳ 💥 rare second failure
+                                                  │
+                                                  ▼
+t=5   API ──── 500 ────►  zombiectl ────►  USER (sees error)
+        log: zombie.create_publish_failed err=... hint=rolling_back_pg_row
+        log: zombie.create_rollback_failed  err=... hint=row_orphaned_reconcile_will_heal
+
+   ─────────  STATE DURING THE ORPHAN WINDOW (≤ ~30s typical)  ─────────
+
+   PG (core.zombies)        :  ████ row Z exists, status='active'
+   Redis zombie:Z:events    :  ░░░░ does NOT exist
+   Redis zombie:control     :  ░░░░ never received zombie_created for Z
+   Worker watcher           :  ░░░░ doesn't know Z exists yet
+   Webhooks arriving for Z  :  XADD zombie:Z:events creates the stream
+                                with NO consumer group → events accumulate
+                                untread (Redis-side memory only, bounded
+                                by retention; no executor work)
+
+   Worker keeps running OTHER zombies normally — no impact on the rest of
+   the fleet. Z is the only one stranded, and only until the next reconcile
+   tick.
 
 
-     ─── time passes — could be seconds, hours, or days ───
-     ─── until the worker process restarts (deploy / supervisor / manual) ───
+   ─── ≤ ~30s passes (one reconcile cadence) ───
 
 
-  t=N   Worker process restarts (any reason)
-                                                    │
-                                                    ▼
-  t=N+1 worker.run ──── listActiveZombieIds(pool) ────►  PG
-                                                         returns [Z, ...]
-                                                    │
-                                                    ▼
-  t=N+2 worker.run ──── for each id: watcher.spawnZombieThread(id) ────┐
-                                                                        │
-                         ┌──────────────────────────────────────────────┘
-                         ▼
-         spawnZombieThread(Z):
-           │
-           ├─►  control_stream.ensureZombieEventsGroup(redis, Z)
-           │       └─►  XGROUP CREATE zombie:Z:events zombie_workers 0
-           │            ✓ creates the missing stream + group
-           │            (BUSYGROUP-as-success on the lucky path where
-           │             webhook traffic had already created the stream)
-           │
-           ├─►  alloc cancel_flag, store in self.cancel_flags
-           │
-           └─►  std.Thread.spawn(zombieWorkerLoop, Z)
-                    │
-                    ▼
-                zombie thread:
-                    XREADGROUP zombie_workers worker-{pid}:zombie-Z
-                               ... STREAMS zombie:Z:events >
-                    ✓ blocked, ready
-                    ↓
-                if webhooks accumulated during the orphan window,
-                XREADGROUP returns them with id `0-...` (group started
-                at 0) and the thread processes them in arrival order.
+t=N   Watcher reconcile tick (also runs at worker boot — same code path)
+                                                  │
+                                                  ▼
+t=N+1 watcher ──── worker_zombie.listActiveZombieIds(pool) ────►  PG
+                                                                  returns [Z, ...]
+                                                  │
+                                                  ▼
+t=N+2 for each id: watcher.spawnZombieThread(id)
+                                                                          │
+                       ┌──────────────────────────────────────────────────┘
+                       ▼
+       spawnZombieThread(Z):
+         │
+         ├─►  control_stream.ensureZombieEventsGroup(redis, Z)
+         │       └─►  XGROUP CREATE zombie:Z:events zombie_workers 0
+         │            ✓ creates the missing stream + group
+         │            (BUSYGROUP-as-success on the lucky path where
+         │             webhook traffic had already created the stream)
+         │
+         ├─►  install per-zombie ZombieRuntime (cancel + exited atomics)
+         │
+         └─►  std.Thread.spawn(zombie worker loop, Z)
+                  │
+                  ▼
+              zombie thread:
+                  XREADGROUP zombie_workers worker-{pid}:zombie-Z
+                             ... STREAMS zombie:Z:events >
+                  ✓ blocked, ready
+                  ↓
+              if webhooks accumulated during the orphan window,
+              XREADGROUP returns them with id `0-...` (group started
+              at 0) and the thread processes them in arrival order.
 
-     ─────────  STATE AFTER RESTART  ─────────
+   ─────────  STATE AFTER RECONCILE  ─────────
 
-     Z is fully healthy. Indistinguishable from a zombie that installed
-     cleanly. Any backlog webhooks get processed in order.
+   Z is fully healthy. Indistinguishable from a zombie that installed
+   cleanly. Any backlog webhooks get processed in order.
+```
 
-  Variant: XADD zombie:control fails after XGROUP CREATE succeeded
+**Variant: `XADD zombie:control` fails after `XGROUP CREATE` succeeded.**
 
-  Same picture, different broken hop:
+Same picture, different broken hop inside `publishInstallSignals`'s retry loop:
 
-  t=3a  API ──── XGROUP CREATE zombie:Z:events ✓ (Redis briefly OK)
-  t=3b  API ──── XADD zombie:control * type=zombie_created Z ────►  Redis
-                                                                    ╳ 💥
+```
+t=3a  API ──── XGROUP CREATE zombie:Z:events ✓ (Redis briefly OK)
+t=3b  API ──── XADD zombie:control * type=zombie_created Z ────►  Redis
+                                                                  ╳ 💥
+```
 
-  Now zombie:Z:events + group both exist; only zombie:control missed the signal. Same orphan, same self-heal: bootstrap finds Z in PG, ensureZombieEventsGroup is a no-op (BUSYGROUP-as-success), thread
-  spawns, healthy.
+The retry loop covers both calls, so transient failures here are usually absorbed at layer 1. If retries exhaust and rollback also fails, the orphan picture is identical: `zombie:Z:events` + group both exist; only `zombie:control` missed the signal. The reconcile sweep finds Z in PG, `ensureZombieEventsGroup` is a no-op (BUSYGROUP-as-success), thread spawns, healthy.
+
 ---
 
 ## 10. What the Zombie Has (Capabilities)
