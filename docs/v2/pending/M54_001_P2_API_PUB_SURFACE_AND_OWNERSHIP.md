@@ -9,7 +9,9 @@
 **Categories:** API
 **Batch:** B1 — independent of in-flight milestones. No HTTP, schema, or CLI surface changes.
 **Branch:** {feat/m54-pub-surface — added when work begins}
-**Depends on:** none. Lands in parallel with M53 (hygiene sweep) and M55 (string utilities).
+**Depends on:** M52_001 (Bun Vendor Utilities) **must land first** — M52 introduces four new `pub` APIs in `src/util/{json_line_buffer,copy_file,object_pool,unbounded_queue}.zig`. Auditing `pub` before M52 lands would either flag M52's pre-callsite-migration symbols as unreferenced (false positive) or get rebased away when M52 lands.
+
+**Coordinates with:** M53 (hygiene sweep), M55 (string utilities) — independent file sets, parallel-safe.
 
 **Canonical architecture:** N/A — discipline pass, no architectural change.
 
