@@ -4,7 +4,7 @@
 **Milestone:** M52
 **Workstream:** 001
 **Date:** Apr 26, 2026
-**Status:** PENDING
+**Status:** DEFERRED — investigated and rolled back on Apr 26, 2026. Speculative vendoring without concrete callsites violates this milestone's own "speculative vendoring rots" rule. See **Investigation outcome (Apr 26, 2026)** at the bottom of this spec for the codebase grep, the four findings, and the explicit re-trigger conditions.
 **Priority:** P2 — secondary/tooling. Quality-of-implementation upgrade for hot paths (Redis stream parsing, artifact I/O, buffer reuse, worker control batching). Non-blocking for v2.0 launch; pulls forward correctness + perf wins that land cleanly in std-only Zig.
 **Categories:** API
 **Batch:** B1 — independent of all in-flight worker/auth/billing milestones; safe to land in parallel.
@@ -290,3 +290,87 @@ These were considered during the audit and intentionally rejected for this works
 - `/write-unit-test` outcome: <pass / iterations / skip+reason>
 - `/review` outcome: <pass / findings dispositioned / skip+reason>
 - Migrated callsites: <list four>
+
+---
+
+## Investigation outcome (Apr 26, 2026) — DEFERRED
+
+This milestone was opened, the four utilities were vendored and tested
+(§1 work landed cleanly: `src/util/json_line_buffer.zig`,
+`src/util/copy_file.zig`, `src/util/object_pool.zig`,
+`src/util/unbounded_queue.zig`, plus sibling `_test.zig` files —
+1097 LOC across 9 files, all unit tests green, cross-compile
+x86_64-linux + aarch64-linux clean, lint clean). The §1 commit was
+then **reverted** when §2 (callsite migration) discovery showed no
+real callsite exists for any of the four modules in the current
+codebase.
+
+### Why the rollback
+
+The spec's own §2 constraint says: *"The callsite must reduce LOC
+or eliminate a hand-rolled equivalent — not just rename one alloc
+to another."* A full grep across `src/` produced these findings:
+
+| Module | Spec-prescribed callsite | Actual fit |
+|---|---|---|
+| **JsonLineBuffer** | `src/queue/redis_protocol.zig` (RESP framing) | ✗ — RESP uses CRLF terminators, parses through `std.Io.Reader.takeByte()`, not a buffered byte accumulator. No LF-streaming consumer in the Zig codebase today. `nullclaw` (LLM client) is a vendored build dep that handles its own streaming; M42 SSE substrate emits, doesn't parse; M48 BYOK doesn't add a streaming consumer. |
+| **UnboundedQueue** | `src/cmd/worker_watcher.zig` (control batching) | ✗ — `worker_watcher.map_lock:62` guards a `std.AutoHashMap` of running zombies during dispatch, not a control-message queue. The HashMap lock is structural; swapping to UnboundedQueue removes a queue we don't have. The closest near-fit is `src/events/bus.zig` — but that bus has exactly one emitter (`src/state/policy.zig:31` emitting `"policy_event"`) and one consumer that just `log.info`s every event. Migrating it would be technically correct but performance-invisible — there's no contention to remove. The migration would also require switching `BusEvent` (currently a 352-byte value type in a preallocated 1024-slot ringbuffer) to heap-allocated nodes, *adding* allocator overhead per `emit()` and trading bounded drop-on-overflow for unbounded heap growth. Net change is plausibly worse, not better. |
+| **object_pool** | HTTP response buffer pool / JSON encode scratch (TBD) | ✗ — `httpz` (vendored at `vendor/httpz/`) manages its own request/response buffers; we don't allocate response bytes per-request on a hot path. Per-handler JSON encode goes through `std.json.Stringify` against a request-scoped arena (`src/http/handlers/common.zig` patterns), not a hot reuse target. `executor/session.zig:124` uses `std.heap.ArenaAllocator` per session — replacing arena with pool would be a regression (different reuse semantics). Nothing currently allocates often enough on a hot path to make pooling visible without first introducing the workload. |
+| **copy_file** | Artifact spool move / log rotation (TBD) | ✗ — `grep -rn "std\.fs\..*\.copyFile\|fs\.rename"` returns nothing in `src/`. `src/git/repo.zig` delegates worktree creation to the `git` subprocess. `src/cmd/reconcile/` writes to stdout, not files. Logs go through `std.log` to stderr. There is genuinely no file-copy caller in the Zig codebase today. |
+
+### Re-trigger conditions
+
+This milestone should be **re-opened** (move back to `pending/`) when
+any of the following conditions materialize. Each names a concrete
+callsite that the corresponding utility will service:
+
+- **JsonLineBuffer** — re-open when **either** of these lands:
+  - An LLM streaming consumer in Zig (e.g. a Zig-side Anthropic /
+    OpenAI SSE client; would happen if `nullclaw` is replaced or if
+    BYOK provider work moves the streaming layer in-process).
+  - An SSE *consumer* on the server (e.g. relaying or fan-in from an
+    upstream event source). M42 substrate is a producer, not a fit.
+- **UnboundedQueue** — re-open when **either** of these lands:
+  - A high-emit telemetry / audit layer with multiple producer
+    threads contending on a single consumer thread. Today's
+    `src/events/bus.zig` has one emitter and a near-noop consumer;
+    if it grows to dozens of emitters or ships persistence/replay,
+    the UnboundedQueue migration becomes worthwhile.
+  - A worker-control batching path with **its own queue** (not a
+    HashMap lock) — i.e. a producer/consumer pair where draining N
+    items can amortize an expensive consumer-side operation.
+- **object_pool** — re-open when **either** of these lands:
+  - A profile (`make bench`) that shows allocator overhead in the
+    request hot path or in JSON encode/decode.
+  - A handler pattern that allocates and frees a fixed-shape buffer
+    per request without a request-scoped arena.
+- **copy_file** — re-open when **either** of these lands:
+  - An artifact / spool / log-rotation pipeline that copies files
+    between paths in Zig (not via subprocess).
+  - A reconcile cache write that benefits from `copy_file_range` /
+    FICLONE on Linux.
+
+### Investigation deliverables (preserved in git history)
+
+- `feat/m52-bun-vendor-utilities` branch, commit `5a028fc7`
+  ("feat(util): vendor four bun utilities to src/util") — full §1
+  vendoring with sibling tests, then reverted by the next commit.
+  Available for cherry-pick if any re-trigger condition fires before
+  the bun upstream changes shape significantly. Bun source commit
+  vendored from: `dc578b12eca413e16b6bbea117ff24b73b48187f`.
+- This spec retains the original Files Changed table, Interfaces
+  contract, and Test Specification — all still valid as a
+  resurrection blueprint when a re-trigger fires.
+
+### Downstream milestone impact
+
+- **M53_001 (API Hygiene Sweep)** — *no impact*. M53 "coordinates
+  with" M52 conditionally; with M52 deferred, M53 audits the existing
+  mutex pattern in `src/cmd/worker_watcher.zig` as canonical state.
+- **M54_001 (Pub Surface and Ownership)** — *positively impacted*.
+  M54 was blocked behind M52's four new `pub` APIs. With M52
+  deferred, M54 unblocks immediately — no extra `pub` surface to
+  audit, premise simpler.
+- **M55_001 (String Utility Adoption)** — *no impact*. M55 covers
+  three string utilities (StringBuilder/Joiner/SmolStr); orthogonal
+  to M52's ObjectPool.
