@@ -156,7 +156,7 @@ control stream (Redis):
 
 | Mode | Cause | Handling |
 |---|---|---|
-| XADD fails after INSERT | Redis down briefly | 500 to caller with `rollback_required: true`; ops alert; manual repair via reconcile job |
+| XADD fails after INSERT | Redis down briefly | 500 to caller. Self-heals at next worker boot: bootstrap calls `ensureZombieEventsGroup` (idempotent BUSYGROUP-as-success) before spawning the per-zombie thread, so the orphan row picks up its missing stream + group on restart. No separate reconcile job. |
 | Worker watcher loses connection | Network blip | Reconnect with backoff; XREADGROUP from last-acked id; never miss a message |
 | Cancel flag set but executor unresponsive | Executor process hung | After 5s grace, SIGKILL the executor session; surface `execution_aborted_force` event |
 | Drain timeout exceeded (30s) | Stuck event mid-tool-call | Force-cancel all in-flight, exit dirty (operator sees the timeout in stderr) |

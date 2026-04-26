@@ -103,6 +103,26 @@ pub const Decoded = struct {
     }
 };
 
+/// Idempotent per-zombie `XGROUP CREATE MKSTREAM zombie:{id}:events` with
+/// BUSYGROUP-as-success. Called from `innerCreateZombie` (install path) AND
+/// `worker_watcher.spawnZombieThread` (bootstrap self-heal: orphan rows from
+/// a failed install-time XADD recover at next worker boot, no reconcile job).
+pub fn ensureZombieEventsGroup(client: *redis_client.Client, zombie_id: []const u8) !void {
+    var key_buf: [128]u8 = undefined;
+    const key = try std.fmt.bufPrint(&key_buf, "zombie:{s}:events", .{zombie_id});
+    var resp = try client.commandAllowError(&.{ "XGROUP", "CREATE", key, consumer_group, "0", "MKSTREAM" });
+    defer resp.deinit(client.alloc);
+    switch (resp) {
+        .simple => |v| if (!std.mem.eql(u8, v, "OK")) return error.ZombieEventsGroupCreateFailed,
+        .err => |msg| {
+            if (std.mem.indexOf(u8, msg, "BUSYGROUP") != null) return;
+            log.err("zombie_events.group_create_fail err={s} error_code=" ++ error_codes.ERR_INTERNAL_OPERATION_FAILED, .{msg});
+            return error.ZombieEventsGroupCreateFailed;
+        },
+        else => return error.ZombieEventsGroupCreateFailed,
+    }
+}
+
 /// Idempotent `XGROUP CREATE MKSTREAM zombie:control zombie_workers 0`.
 /// Safe to call on every worker start — `BUSYGROUP` is treated as success.
 /// Starts at id `0` so a fresh group reads any messages already on the

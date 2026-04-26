@@ -94,6 +94,13 @@ pub const Watcher = struct {
             return;
         }
 
+        // Self-heal: bootstrap may be walking a zombie row whose install-time
+        // XADD failed (see `publishInstallSignals` in zombies/create.zig).
+        // Calling ensureZombieEventsGroup here is idempotent (BUSYGROUP-as-
+        // success) and means an orphan zombie picks up its missing stream +
+        // group at this worker's next boot — no separate reconcile job.
+        try control_stream.ensureZombieEventsGroup(self.cfg.redis, zombie_id);
+
         const flag = try self.alloc.create(std.atomic.Value(bool));
         errdefer self.alloc.destroy(flag);
         flag.* = std.atomic.Value(bool).init(false);

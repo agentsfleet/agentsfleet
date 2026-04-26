@@ -108,10 +108,10 @@ pub fn innerCreateZombie(hx: Hx, req: *httpz.Request, workspace_id: []const u8) 
 
     publishInstallSignals(hx.ctx.queue, zombie_id, workspace_id) catch |err| {
         log.err(
-            "zombie.create_publish_failed err={s} zombie_id={s} req_id={s} hint=row_committed_worker_blind reconcile_required=true",
+            "zombie.create_publish_failed err={s} zombie_id={s} req_id={s} hint=row_committed_worker_blind self_heals_at_next_worker_boot",
             .{ @errorName(err), zombie_id, hx.req_id },
         );
-        common.internalOperationError(hx.res, "rollback_required: control-stream publish failed after INSERT", hx.req_id);
+        common.internalOperationError(hx.res, "control-stream publish failed after INSERT (orphan row will be picked up at next worker boot)", hx.req_id);
         return;
     };
 
@@ -130,33 +130,14 @@ fn insertZombieOnConn(conn: *pg.Conn, workspace_id: []const u8, body: CreateBody
 /// Invariant 1: by the time this returns, both the per-zombie events stream
 /// + consumer group AND the control-stream `zombie_created` signal exist.
 /// Either step failing leaves the DB row committed and the worker blind —
-/// caller surfaces a 500 with a rollback hint.
+/// caller surfaces a 500. The orphan condition is self-healing at the next
+/// worker boot (bootstrap walks core.zombies and re-runs ensureZombieEventsGroup
+/// before spawning the thread; idempotent BUSYGROUP-as-success).
 fn publishInstallSignals(redis: *queue_redis.Client, zombie_id: []const u8, workspace_id: []const u8) !void {
-    try ensureZombieEventsGroup(redis, zombie_id);
+    try control_stream.ensureZombieEventsGroup(redis, zombie_id);
     try control_stream.publish(redis, .{
         .zombie_created = .{ .zombie_id = zombie_id, .workspace_id = workspace_id },
     });
-}
-
-/// `XGROUP CREATE MKSTREAM zombie:{id}:events zombie_workers 0` with
-/// BUSYGROUP-as-success. Mirror of `control_stream.ensureControlGroup` but
-/// for the per-zombie data stream.
-fn ensureZombieEventsGroup(redis: *queue_redis.Client, zombie_id: []const u8) !void {
-    var stream_key_buf: [128]u8 = undefined;
-    const stream_key = try std.fmt.bufPrint(&stream_key_buf, "zombie:{s}:events", .{zombie_id});
-
-    var resp = try redis.commandAllowError(&.{
-        "XGROUP", "CREATE", stream_key, "zombie_workers", "0", "MKSTREAM",
-    });
-    defer resp.deinit(redis.alloc);
-    switch (resp) {
-        .simple => |v| if (!std.mem.eql(u8, v, "OK")) return error.ZombieEventsGroupCreateFailed,
-        .err => |msg| {
-            if (std.mem.indexOf(u8, msg, "BUSYGROUP") != null) return;
-            return error.ZombieEventsGroupCreateFailed;
-        },
-        else => return error.ZombieEventsGroupCreateFailed,
-    }
 }
 
 fn isUniqueViolation(_: anyerror) bool {
