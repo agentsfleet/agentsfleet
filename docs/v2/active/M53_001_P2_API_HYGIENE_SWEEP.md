@@ -4,11 +4,11 @@
 **Milestone:** M53
 **Workstream:** 001
 **Date:** Apr 26, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P2 — codebase hygiene. Comment-and-grep sweep across the Zig surface to land five small, independently-bisectable correctness/style improvements.
 **Categories:** API
 **Batch:** B1 — independent of in-flight milestones. No public-API or schema changes.
-**Branch:** {feat/m53-hygiene-sweep — added when work begins}
+**Branch:** feat/m53-hygiene-sweep
 **Depends on:** M40 (worker substrate vendored `src/sys/errno.zig` + `src/sys/error.zig` — this spec adopts them).
 
 **Coordinates with:** M52_001 (Bun Vendor Utilities). M52 §2 replaces the mutex+lock pattern in `src/cmd/worker_watcher.zig` with `UnboundedQueue`. If M52 lands first, this spec's §2 mutex audit on that file is largely moot — re-grep at PLAN. If this spec lands first, M52 rebases against the audited code. Either order works; the second spec to land re-verifies its diff against the first's gates.
