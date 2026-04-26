@@ -105,11 +105,17 @@ fn parsePatchBody(hx: Hx, req: *httpz.Request) ?PatchBody {
 
 fn patchZombieOnConn(conn: *pg.Conn, workspace_id: []const u8, zombie_id: []const u8, config_json: []const u8) !?i64 {
     const now_ms = std.time.milliTimestamp();
+    // Gate on `status != killed` (greptile P2 on PR #251) so a PATCH against
+    // a killed zombie returns null → caller surfaces 404. Mirrors `kill.zig`'s
+    // `status != $1` pattern with `ZombieStatus.killed.toSlice()` — keeps the
+    // enum the single source of truth for status literals (CLAUDE.md
+    // "Engineering Discipline → Code Structure"). Hardcoded `'killed'` in the
+    // SQL would drift from the Zig enum on rename.
     var q = PgQuery.from(try conn.query(
         \\UPDATE core.zombies SET config_json = $1::jsonb, updated_at = $2
-        \\WHERE id = $3::uuid AND workspace_id = $4::uuid
+        \\WHERE id = $3::uuid AND workspace_id = $4::uuid AND status != $5
         \\RETURNING updated_at
-    , .{ config_json, now_ms, zombie_id, workspace_id }));
+    , .{ config_json, now_ms, zombie_id, workspace_id, zombie_config.ZombieStatus.killed.toSlice() }));
     defer q.deinit();
     if (try q.next()) |row| return try row.get(i64, 0);
     return null;

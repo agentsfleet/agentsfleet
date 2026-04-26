@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 
 const worker_config = @import("worker_config.zig");
 const env_vars = @import("../config/env_vars.zig");
@@ -37,7 +38,15 @@ fn signalWatcher(event_bus: *events_bus.Bus, ws: *worker_state_mod.WorkerState) 
 fn makeConsumerName(alloc: std.mem.Allocator) ![]u8 {
     var host_buf: [std.posix.HOST_NAME_MAX]u8 = undefined;
     const host = std.posix.gethostname(&host_buf) catch "localhost";
-    return std.fmt.allocPrint(alloc, "worker-control-{s}", .{host});
+    // Hostname alone collides on crash-restart and on multi-process replicas
+    // sharing a host (greptile P1 on PR #251). PID disambiguates so each
+    // worker process lands in a distinct slot inside the `zombie_workers`
+    // consumer group, preventing PEL sharing + double-dispatch.
+    const pid: i32 = if (builtin.os.tag == .linux)
+        std.os.linux.getpid()
+    else
+        @intCast(std.c.getpid());
+    return std.fmt.allocPrint(alloc, "worker-control-{s}-{d}", .{ host, pid });
 }
 
 pub fn run(alloc: std.mem.Allocator) !void {

@@ -43,10 +43,14 @@ pub const ZombieRuntime = struct {
 
 /// Thread entry point for a per-zombie worker.
 ///
-/// Calls `worker_zombie.zombieWorkerLoop` and on return flips
-/// `runtime.exited`. The watcher's next `spawnZombieThread` (driven either
-/// by a control-stream `zombie_created` retry or the periodic reconcile
-/// sweep) calls `sweepExitedLocked` to reap the runtime.
+/// Calls `worker_zombie.zombieWorkerLoop` and on return:
+///   1. Frees `cfg.zombie_id` — the wrapper takes ownership of the dupe
+///      `spawnZombieThread` made for the worker thread, so nothing else
+///      ever frees this allocation. Pre-greptile-P1 the slice leaked
+///      ~36 bytes per zombie spawn for the worker process's lifetime.
+///   2. Flips `runtime.exited` so the watcher's next `spawnZombieThread`
+///      (driven either by a control-stream `zombie_created` retry or the
+///      periodic reconcile sweep) calls `sweepExitedLocked` to reap.
 ///
 /// Does NOT touch the watcher's maps directly — keeps lock-acquisition
 /// order trivial and avoids blurring map ownership.
@@ -56,6 +60,7 @@ pub fn zombieRuntimeWrapper(
     cfg: worker_zombie.ZombieWorkerConfig,
 ) void {
     worker_zombie.zombieWorkerLoop(alloc, cfg);
+    alloc.free(cfg.zombie_id);
     runtime.exited.store(true, .release);
 }
 

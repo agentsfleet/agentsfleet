@@ -26,16 +26,12 @@ const control_stream = @import("../zombie/control_stream.zig");
 const worker_state_mod = @import("worker/state.zig");
 const worker_zombie = @import("worker_zombie.zig");
 const runtime_mod = @import("worker_watcher_runtime.zig");
+const poll_mod = @import("worker_watcher_poll.zig");
 const executor_client = @import("../executor/client.zig");
 const telemetry_mod = @import("../observability/telemetry.zig");
 const error_codes = @import("../errors/error_registry.zig");
 
 const log = std.log.scoped(.worker_watcher);
-
-/// XREADGROUP idle wakeup interval. Short enough that drain / shutdown is
-/// observed promptly, long enough that idle workers do not hammer Redis.
-const block_ms = "5000";
-const batch_count = "16";
 
 /// Reconcile sweep cadence. The watcher walks core.zombies every Nth tick
 /// (≈ N × 5s) and calls spawnZombieThread for every active row. Picks up:
@@ -101,10 +97,25 @@ pub const Watcher = struct {
     /// failure path: Redis connect, claim, missing executor) reap the
     /// stale entry first, then spawn fresh — no permanent stuck state.
     ///
-    /// All allocations + `Thread.spawn` happen BEFORE either map publish,
-    /// so the `errdefer` chain unwinds linearly with no map mutation —
-    /// closes the original P0-2 use-after-free where a `Thread.spawn`
-    /// failure left a freed key inside `cancel_flags`.
+    /// Memory ownership rules (greptile P1 review on PR #251):
+    ///   - `id_for_runtimes` / `id_for_threads`: each map's `kv.key`,
+    ///     freed by `sweepExitedLocked` (or `deinit`) when the entry is
+    ///     removed.
+    ///   - `id_for_thread`: passed to the worker via `cfg.zombie_id` and
+    ///     freed by `zombieRuntimeWrapper` after `zombieWorkerLoop`
+    ///     returns. Wrapper is the ONLY owner once `Thread.spawn`
+    ///     succeeds.
+    ///   - `runtime`: held by the live wrapper AND the runtimes map; the
+    ///     map's `sweepExitedLocked` destroys it once the wrapper signals
+    ///     `exited`.
+    ///
+    /// Failure-handling rules:
+    ///   - All fallible work — including hashmap capacity reservation —
+    ///     happens BEFORE `Thread.spawn`. After the spawn the only
+    ///     remaining mutations are `putAssumeCapacity` (infallible) and
+    ///     a log line. So no `errdefer` ever fires while the wrapper is
+    ///     live, closing the OOM-driven UAF where `errdefer
+    ///     destroy(runtime)` could free a struct the wrapper still held.
     pub fn spawnZombieThread(self: *Watcher, zombie_id: []const u8) !void {
         self.map_lock.lock();
         defer self.map_lock.unlock();
@@ -136,6 +147,13 @@ pub const Watcher = struct {
         const id_for_threads = try self.alloc.dupe(u8, zombie_id);
         errdefer self.alloc.free(id_for_threads);
 
+        // Reserve a slot in each map BEFORE Thread.spawn so the post-spawn
+        // putAssumeCapacity calls are infallible. Without this, a hashmap
+        // OOM after spawn-success would fire `errdefer destroy(runtime)`
+        // while the wrapper still held the runtime pointer (UAF).
+        try self.runtimes.ensureUnusedCapacity(1);
+        try self.threads.ensureUnusedCapacity(1);
+
         const wcfg = worker_zombie.ZombieWorkerConfig{
             .pool = self.cfg.pool,
             .zombie_id = id_for_thread,
@@ -151,15 +169,11 @@ pub const Watcher = struct {
             runtime_mod.zombieRuntimeWrapper,
             .{ runtime, self.alloc, wcfg },
         );
-        // After Thread.spawn the wrapper is live; we cannot unwind it.
-        // The wrapper will run to completion regardless of the map.put
-        // outcomes below. If a put fails the wrapper still exits cleanly
-        // and a future sweep is a no-op for absent entries.
+        // ── Post-spawn: NOTHING below may fail. Wrapper now owns `runtime`
+        // and `id_for_thread`. Every remaining call is infallible.
 
-        try self.runtimes.put(id_for_runtimes, runtime);
-        errdefer _ = self.runtimes.remove(id_for_runtimes);
-
-        try self.threads.put(id_for_threads, thread);
+        self.runtimes.putAssumeCapacity(id_for_runtimes, runtime);
+        self.threads.putAssumeCapacity(id_for_threads, thread);
 
         log.info("watcher.spawned zombie_id={s}", .{zombie_id});
     }
@@ -173,7 +187,7 @@ pub const Watcher = struct {
         log.info("watcher.start consumer={s}", .{self.cfg.consumer_name});
         var ticks_since_reconcile: u32 = 0;
         while (self.shouldKeepRunning()) {
-            self.pollOnce() catch |err| {
+            poll_mod.pollOnce(self) catch |err| {
                 log.err("watcher.poll_fail err={s} error_code=" ++ error_codes.ERR_INTERNAL_OPERATION_FAILED, .{@errorName(err)});
                 std.Thread.sleep(100 * std.time.ns_per_ms);
             };
@@ -210,34 +224,10 @@ pub const Watcher = struct {
         return true;
     }
 
-    fn pollOnce(self: *Watcher) !void {
-        var resp = try self.cfg.redis.command(&.{
-            "XREADGROUP",
-            "GROUP",
-            control_stream.consumer_group,
-            self.cfg.consumer_name,
-            "COUNT",
-            batch_count,
-            "BLOCK",
-            block_ms,
-            "STREAMS",
-            control_stream.stream_key,
-            ">",
-        });
-        defer resp.deinit(self.cfg.redis.alloc);
-
-        const entries = navigateEntries(resp) catch |err| switch (err) {
-            error.NoEntries => return,
-            else => return err,
-        };
-        for (entries) |*entry_val| {
-            self.processEntry(entry_val.*) catch |err| {
-                log.err("watcher.entry_fail err={s} error_code=" ++ error_codes.ERR_INTERNAL_OPERATION_FAILED, .{@errorName(err)});
-            };
-        }
-    }
-
-    fn processEntry(self: *Watcher, entry: redis_protocol.RespValue) !void {
+    /// Public so `worker_watcher_poll.zig` (sibling module that owns the
+    /// XREADGROUP loop) can dispatch entries through the watcher's
+    /// decoder + handler chain without needing to live in this file.
+    pub fn processEntry(self: *Watcher, entry: redis_protocol.RespValue) !void {
         if (entry != .array) return error.WatcherMalformedEntry;
         const tuple = entry.array orelse return error.WatcherMalformedEntry;
         if (tuple.len != 2) return error.WatcherMalformedEntry;
@@ -321,20 +311,3 @@ pub const Watcher = struct {
         }
     }
 };
-
-/// Navigate the XREADGROUP response shape:
-///   [["zombie:control", [[msg_id, [k, v, ...]], ...]]]
-/// Returns the inner entry array, or `error.NoEntries` if Redis returned
-/// nil (BLOCK timeout with no messages).
-fn navigateEntries(resp: redis_protocol.RespValue) ![]redis_protocol.RespValue {
-    if (resp != .array) return error.NoEntries;
-    const top = resp.array orelse return error.NoEntries;
-    if (top.len == 0) return error.NoEntries;
-    if (top[0] != .array) return error.WatcherMalformedResp;
-    const stream_tuple = top[0].array orelse return error.WatcherMalformedResp;
-    if (stream_tuple.len != 2) return error.WatcherMalformedResp;
-    if (stream_tuple[1] != .array) return error.WatcherMalformedResp;
-    const entries = stream_tuple[1].array orelse return error.NoEntries;
-    if (entries.len == 0) return error.NoEntries;
-    return entries;
-}
