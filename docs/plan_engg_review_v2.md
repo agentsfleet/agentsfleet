@@ -16,7 +16,7 @@ This doc is the original /plan-eng-review session output. The strategic test fra
 2. **Self-host deferred to v3.** The "Self-host opt-in path" interaction is removed from v2 scope. Critical Path #3 (cold install + first chat in self-host mode on clean Ubuntu 24.04) is removed. The `/self-host` page is intentionally absent from `docs.usezombie.com`.
 3. **`docs.usezombie.com/self-host` page** — removed from "Affected Pages/Routes." `/self-host` returns 404 in v2.
 
-For the canonical, current spec backlog see `docs/v2/pending/M40_001`–`M51_001` and the `docs/nostromo/HANDOFF_APR_25_22_13_V2_SPEC_BACKLOG.md` tier table.
+For the canonical, current spec backlog see `docs/v2/pending/M40_001`–`M51_001`. The tier breakdown (substrate / packaging / parallel-validation / post-launch) lives in `docs/v2/pending/M48_001_BYOK_PROVIDER.md` under "Tier promotion provenance" — folded there because M48's substrate-tier promotion is the load-bearing reason the table exists.
 
 ---
 

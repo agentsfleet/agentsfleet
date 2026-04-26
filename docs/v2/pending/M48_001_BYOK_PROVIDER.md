@@ -5,13 +5,30 @@
 **Workstream:** 001
 **Date:** Apr 25, 2026
 **Status:** PENDING
-**Priority:** P1 — launch-blocking (substrate-tier, Week 2-3). BYOK is the second of three v2 differentiation pillars (OSS + BYOK + markdown-defined; self-host deferred to v3). Without operator-controlled LLM provider config, the launch tweet's BYOK claim is hollow and the differentiation argument collapses to two pillars, both matchable by competitors within a week. Promoted from "soft-blocks launch claim" to substrate-tier on Apr 25, 2026 (/plan-ceo-review decision §A in HANDOFF_APR_25_22_13_V2_SPEC_BACKLOG.md). Adds ~1 week to the milestone (~6-7 weeks total).
+**Priority:** P1 — launch-blocking (substrate-tier, Week 2-3). BYOK is the second of three v2 differentiation pillars (OSS + BYOK + markdown-defined; self-host deferred to v3). Without operator-controlled LLM provider config, the launch tweet's BYOK claim is hollow and the differentiation argument collapses to two pillars, both matchable by competitors within a week. Promoted from "soft-blocks launch claim" to substrate-tier on Apr 25, 2026 — see "Tier promotion provenance" below. Adds ~1 week to the milestone (~6-7 weeks total).
 **Categories:** API, CLI, UI
 **Batch:** B1 — substrate-tier alongside M40-M45. Depends on M45 (vault stores opaque JSON-object plaintext per credential).
 **Branch:** feat/m48-byok-provider (to be created)
 **Depends on:** M45_001 (vault structured creds — JSON-object plaintext lands there; BYOK uses a credential named `llm` carrying `{provider, api_key, model}`). M11_005 (tenant billing — DONE; provides the `tenant_billing.balance_cents` gate that triggers the credit-exhausted UX).
 
 **Canonical architecture:** `docs/ARCHITECHTURE.md` §0 ("not a coding-agent product" — BYOK matters when the provider key drives all LLM cost), §10 (capabilities — implicit in "secrets never in agent context").
+
+---
+
+## Tier promotion provenance (Apr 25, 2026 /plan-ceo-review decision)
+
+**Tier breakdown after the CEO scope review:**
+
+| Tier | Specs |
+|---|---|
+| **Launch-blocking substrate (Week 1-3)** | M40 Worker, M41 Context Layering, M42 Streaming, M43 Webhook Ingest, M44 Install Contract + Doctor, M45 Vault Structured, **M48 BYOK Provider** (this spec — promoted from "soft-blocks") |
+| **Launch-shipping packaging (Week 4-7)** | M46 Frontmatter Schema, M49 Install-Skill, M51 Docs + Install-Pingback (also owns architecture cross-reference + ship reflection) |
+| **Parallel from Week 1, validation-blocking** | M50 Customer-Development Parallel Workstream (~2-3 hours/week founder time alongside substrate) |
+| **Post-launch** | M47 Approval Inbox |
+
+**Why M48 was promoted (CEO review reasoning):** with self-host deferred to v3 (decided earlier in the same /plan-ceo-review session), the v2 differentiation pillars compressed from four to three — **OSS + BYOK + markdown-defined**. Dropping BYOK leaves only two pillars, both matchable by competitors (AWS DevOps Agent / Sonarly / incident.io) within a week. M48 moved from "Soft-blocks BYOK launch claim, post-launch" to "Launch-blocking substrate, Week 2-3." Adds ~1 week to the milestone (5-6 → 6-7 weeks). The differentiation argument holds at three pillars; collapses at two.
+
+This provenance was folded inline here so the M48 spec is self-contained — previously it lived in a separate handoff file (now retired) which was the only durable reference to the §A decision and the tier table.
 
 ---
 
