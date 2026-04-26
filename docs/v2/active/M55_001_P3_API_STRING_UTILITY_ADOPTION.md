@@ -4,11 +4,11 @@
 **Milestone:** M55
 **Workstream:** 001
 **Date:** Apr 26, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P3 — performance + clarity. Adopt three vendored Bun string utilities at hot-path callsites; pure refactor with allocator and latency wins.
 **Categories:** API
 **Batch:** B1 — independent of M53/M54. Touches different files.
-**Branch:** {feat/m55-string-utility-adoption — added when work begins}
+**Branch:** feat/m55-string-utility-adoption
 **Depends on:** M40 (worker substrate vendored `src/util/strings/{string_builder,string_joiner,smol_str}.zig`).
 
 **Coordinates with:** M52_001 (Bun Vendor Utilities). M52 vendors `ObjectPool` (separate utility from this spec's three string ones) and migrates one HTTP response buffer / JSON encode scratch site. If that landing site overlaps a callsite this spec wants to migrate to StringBuilder, the second spec to land rebases and re-grep. No conflict expected — pool reuse and string assembly are orthogonal concerns at any given callsite.
