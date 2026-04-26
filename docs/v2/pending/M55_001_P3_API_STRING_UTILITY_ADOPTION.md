@@ -11,7 +11,7 @@
 **Branch:** {feat/m55-string-utility-adoption — added when work begins}
 **Depends on:** M40 (worker substrate vendored `src/util/strings/{string_builder,string_joiner,smol_str}.zig`).
 
-**Coordinates with:** M52_001 (Bun Vendor Utilities). M52 vendors `ObjectPool` (separate utility from this spec's three string ones) and migrates one HTTP response buffer / JSON encode scratch site. If that landing site overlaps a callsite this spec wants to migrate to StringBuilder, the second spec to land rebases and re-grep. No conflict expected — pool reuse and string assembly are orthogonal concerns at any given callsite.
+**Coordinates with:** none. (M52_001 Bun Vendor Utilities was deferred on Apr 26, 2026 — see `docs/v2/done/M52_001_…md`. ObjectPool was orthogonal to this spec's three string utilities at any given callsite, so the deferral is a non-event for M55.)
 
 **Canonical architecture:** N/A — refactor.
 

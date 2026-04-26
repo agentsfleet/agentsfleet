@@ -11,7 +11,7 @@
 **Branch:** {feat/m53-hygiene-sweep — added when work begins}
 **Depends on:** M40 (worker substrate vendored `src/sys/errno.zig` + `src/sys/error.zig` — this spec adopts them).
 
-**Coordinates with:** M52_001 (Bun Vendor Utilities). M52 §2 replaces the mutex+lock pattern in `src/cmd/worker_watcher.zig` with `UnboundedQueue`. If M52 lands first, this spec's §2 mutex audit on that file is largely moot — re-grep at PLAN. If this spec lands first, M52 rebases against the audited code. Either order works; the second spec to land re-verifies its diff against the first's gates.
+**Coordinates with:** none currently. (M52_001 Bun Vendor Utilities was deferred on Apr 26, 2026 — see `docs/v2/done/M52_001_…md`. The originally-anticipated `worker_watcher.zig` mutex → UnboundedQueue migration is no longer pending, so this spec audits the existing mutex pattern as canonical state.)
 
 **Canonical architecture:** N/A — no architectural change. Pure hygiene sweep.
 
