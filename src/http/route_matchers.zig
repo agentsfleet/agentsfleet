@@ -129,6 +129,29 @@ pub fn matchWorkspaceZombie(path: []const u8) ?WorkspaceZombieRoute {
     return .{ .workspace_id = ws_id, .zombie_id = zombie_id };
 }
 
+// WorkspaceCredentialRoute carries workspace_id + credential_name for the
+// per-credential DELETE endpoint.
+pub const WorkspaceCredentialRoute = struct {
+    workspace_id: []const u8,
+    credential_name: []const u8,
+};
+
+// matchWorkspaceCredential matches /v1/workspaces/{ws}/credentials/{name}.
+// Rejects /credentials/llm — that suffix is owned by the BYOK route family.
+pub fn matchWorkspaceCredential(path: []const u8) ?WorkspaceCredentialRoute {
+    const prefix = "/v1/workspaces/";
+    const mid = "/credentials/";
+    if (!std.mem.startsWith(u8, path, prefix)) return null;
+    const rest = path[prefix.len..];
+    const slash = std.mem.indexOf(u8, rest, mid) orelse return null;
+    const workspace_id = rest[0..slash];
+    if (!isSingleSegment(workspace_id)) return null;
+    const credential_name = rest[slash + mid.len ..];
+    if (!isSingleSegment(credential_name)) return null;
+    if (std.mem.eql(u8, credential_name, "llm")) return null;
+    return .{ .workspace_id = workspace_id, .credential_name = credential_name };
+}
+
 // M9_001 / M28_002 §0: WorkspaceAgentRoute carries workspace_id + agent_id for agent-key DELETE.
 pub const WorkspaceAgentRoute = struct {
     workspace_id: []const u8,
@@ -179,6 +202,16 @@ pub fn matchWorkspaceZombieGrant(path: []const u8) ?WorkspaceZombieGrantRoute {
     if (!isSingleSegment(grant_id)) return null;
 
     return .{ .workspace_id = ws_id, .zombie_id = zombie_id, .grant_id = grant_id };
+}
+
+test "matchWorkspaceCredential: workspace_id and credential_name" {
+    const r = matchWorkspaceCredential("/v1/workspaces/ws1/credentials/fly").?;
+    try std.testing.expectEqualStrings("ws1", r.workspace_id);
+    try std.testing.expectEqualStrings("fly", r.credential_name);
+    try std.testing.expect(matchWorkspaceCredential("/v1/workspaces/ws1/credentials/") == null);
+    try std.testing.expect(matchWorkspaceCredential("/v1/workspaces//credentials/fly") == null);
+    try std.testing.expect(matchWorkspaceCredential("/v1/workspaces/ws1/credentials/llm") == null);
+    try std.testing.expect(matchWorkspaceCredential("/v1/workspaces/ws1/credentials") == null);
 }
 
 test "matchWorkspaceAgentDelete: workspace_id and agent_id" {

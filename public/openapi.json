@@ -2103,7 +2103,7 @@
       "post": {
         "operationId": "store_workspace_credential",
         "summary": "Store a credential in the workspace vault",
-        "description": "Envelope-encrypted with the KEK (master key v1) and persisted to `vault.secrets`. The raw value is never stored unencrypted and never returned.",
+        "description": "Plaintext is the canonical-stringified form of the supplied JSON object,\nenvelope-encrypted with the KEK (master key v1) and persisted to\n`vault.secrets`. The raw value is never stored unencrypted and never\nreturned. `data` must be a non-empty JSON object whose stringified form\nis ≤ 4 KiB; bare strings, arrays, scalars, and `{}` are rejected with\n`UZ-VAULT-001`.\n",
         "tags": [
           "Credentials"
         ],
@@ -2127,16 +2127,19 @@
                 "type": "object",
                 "required": [
                   "name",
-                  "value"
+                  "data"
                 ],
                 "properties": {
                   "name": {
                     "type": "string",
-                    "maxLength": 64
+                    "maxLength": 64,
+                    "description": "Credential identifier referenced from a zombie's `credentials:` list."
                   },
-                  "value": {
-                    "type": "string",
-                    "maxLength": 4096
+                  "data": {
+                    "type": "object",
+                    "minProperties": 1,
+                    "additionalProperties": true,
+                    "description": "JSON object whose top-level keys are the field names a skill\nreferences via `${secrets.<name>.<field>}`. The runtime never\ninspects the schema — this is opaque to the platform.\n"
                   }
                 }
               }
@@ -2169,6 +2172,52 @@
             "$ref": "#/components/responses/Error"
           },
           "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/workspaces/{workspace_id}/credentials/{credential_name}": {
+      "delete": {
+        "operationId": "delete_workspace_credential",
+        "summary": "Delete a credential from the workspace vault",
+        "description": "Idempotent — returns 204 whether or not the credential existed. The\nreserved name `llm` is **not** routed here; use the BYOK\n`DELETE /v1/workspaces/{workspace_id}/credentials/llm` path instead.\n",
+        "tags": [
+          "Credentials"
+        ],
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "description": "UUIDv7 of the workspace.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "credential_name",
+            "in": "path",
+            "required": true,
+            "description": "Credential name. Cannot be `llm` (reserved for BYOK).",
+            "schema": {
+              "type": "string",
+              "maxLength": 64
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Credential deleted (or already absent)"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
             "$ref": "#/components/responses/Error"
           }
         }

@@ -47,6 +47,7 @@ pub const Route = union(enum) {
     delete_workspace_zombie: matchers.WorkspaceZombieRoute, // DELETE /v1/workspaces/{ws}/zombies/{id}
     workspace_zombie_activity: matchers.ZombieTelemetryRoute, // GET /v1/workspaces/{ws}/zombies/{id}/activity
     workspace_credentials: []const u8, // GET|POST /v1/workspaces/{ws}/credentials
+    delete_workspace_credential: matchers.WorkspaceCredentialRoute, // DELETE /v1/workspaces/{ws}/credentials/{name}
     // M23_001 / M24_001: Live steering — POST /v1/workspaces/{ws}/zombies/{id}/steer
     workspace_zombie_steer: matchers.WorkspaceZombieRoute,
     // M12_001: Dashboard-facing reads + kill switch
@@ -140,7 +141,10 @@ pub fn match(path: []const u8) ?Route {
     if (matchWorkspaceSuffix(path, "/zombies")) |workspace_id| return .{ .workspace_zombies = workspace_id };
     // M12_001: workspace-wide activity feed (/activity, no /zombies prefix)
     if (matchWorkspaceSuffix(path, "/activity")) |workspace_id| return .{ .workspace_activity = workspace_id };
-    // credentials/llm is already handled above; /credentials (plain) is workspace-level credential vault.
+    // credentials/llm is already handled above; /credentials/{name} matches a single
+    // named credential (DELETE), and /credentials (plain) is the collection (GET|POST).
+    // Most-specific path first.
+    if (matchers.matchWorkspaceCredential(path)) |route| return .{ .delete_workspace_credential = route };
     if (matchWorkspaceSuffix(path, "/credentials")) |workspace_id| return .{ .workspace_credentials = workspace_id };
 
     // M18_001: customer telemetry endpoint

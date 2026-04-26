@@ -1,8 +1,9 @@
-// M2_001 / M24_001: Zombie activity stream + credential API handlers.
+// Zombie activity stream + workspace credential API handlers.
 //
-// GET  /v1/workspaces/{ws}/zombies/{id}/activity  → innerListActivity
-// POST /v1/workspaces/{ws}/credentials            → innerStoreCredential
-// GET  /v1/workspaces/{ws}/credentials            → innerListCredentials
+// GET    /v1/workspaces/{ws}/zombies/{id}/activity   → innerListActivity
+// POST   /v1/workspaces/{ws}/credentials             → innerStoreCredential
+// GET    /v1/workspaces/{ws}/credentials             → innerListCredentials
+// DELETE /v1/workspaces/{ws}/credentials/{name}      → innerDeleteCredential
 
 const std = @import("std");
 const httpz = @import("httpz");
@@ -13,7 +14,7 @@ const hx_mod = @import("../hx.zig");
 const ec = @import("../../../errors/error_registry.zig");
 const id_format = @import("../../../types/id_format.zig");
 const activity_stream = @import("../../../zombie/activity_stream.zig");
-const crypto_store = @import("../../../secrets/crypto_store.zig");
+const vault = @import("../../../state/vault.zig");
 const workspace_guards = @import("../../workspace_guards.zig");
 
 const log = std.log.scoped(.zombie_activity_api);
@@ -21,7 +22,9 @@ const API_ACTOR = "api";
 
 pub const Context = common.Context;
 
-const MAX_CREDENTIAL_VALUE_LEN: usize = 4 * 1024; // 4KB
+const KEK_VERSION: u32 = 1;
+const CREDENTIAL_KEY_PREFIX = "zombie:";
+const MAX_CREDENTIAL_DATA_LEN: usize = 4 * 1024; // 4KB stringified JSON
 const MAX_CREDENTIAL_NAME_LEN: usize = 64;
 
 // ── List Activity ─────────────────────────────────────────────────────
@@ -87,10 +90,10 @@ fn parseLimitFromQs(qs: anytype) u32 {
 
 // ── Store Credential ──────────────────────────────────────────────────
 
-// M24_001: workspace_id comes from URL path (RULE RAD §4).
+// workspace_id comes from URL path; body is `{name, data: <JSON-object>}`.
 const CredentialBody = struct {
     name: []const u8,
-    value: []const u8,
+    data: std.json.Value,
 };
 
 pub fn innerStoreCredential(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []const u8) void {
@@ -108,9 +111,14 @@ pub fn innerStoreCredential(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []
         hx.fail(ec.ERR_INVALID_REQUEST, ec.MSG_MALFORMED_JSON);
         return;
     };
+    defer parsed.deinit();
     const cred = parsed.value;
 
-    if (!validateCredential(hx, cred)) return;
+    if (!validateCredentialName(hx, cred.name)) return;
+    vault.validateObject(cred.data) catch {
+        hx.fail(ec.ERR_VAULT_DATA_INVALID, ec.MSG_CREDENTIAL_DATA_REQUIRED);
+        return;
+    };
 
     const conn = hx.ctx.pool.acquire() catch {
         common.internalDbUnavailable(hx.res, hx.req_id);
@@ -118,45 +126,96 @@ pub fn innerStoreCredential(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []
     };
     defer hx.ctx.pool.release(conn);
 
-    // RULE BIL: credential endpoints require operator-minimum role.
+    // Credential endpoints require operator-minimum role.
     const actor = hx.principal.user_id orelse API_ACTOR;
     const access = workspace_guards.enforce(hx.res, hx.req_id, conn, hx.alloc, hx.principal, workspace_id, actor, .{
         .minimum_role = .operator,
     }) orelse return;
     defer access.deinit(hx.alloc);
 
-    storeCredentialEncryptedOnConn(conn, hx.alloc, workspace_id, cred) catch |err| {
-        log.err("credential.store_failed err={s} name={s} req_id={s}", .{ @errorName(err), cred.name, hx.req_id });
-        common.internalDbError(hx.res, hx.req_id);
-        return;
+    storeCredentialJsonOnConn(conn, hx.alloc, workspace_id, cred) catch |err| switch (err) {
+        error.DataTooLarge => {
+            hx.fail(ec.ERR_VAULT_DATA_TOO_LARGE, ec.MSG_CREDENTIAL_DATA_TOO_LARGE);
+            return;
+        },
+        else => {
+            log.err("credential.store_failed err={s} name={s} req_id={s}", .{ @errorName(err), cred.name, hx.req_id });
+            common.internalDbError(hx.res, hx.req_id);
+            return;
+        },
     };
 
     log.info("credential.stored name={s} workspace={s}", .{ cred.name, workspace_id });
     hx.ok(.created, .{ .name = cred.name });
 }
 
-fn validateCredential(hx: hx_mod.Hx, cred: CredentialBody) bool {
-    if (cred.name.len == 0 or cred.name.len > MAX_CREDENTIAL_NAME_LEN) {
+fn validateCredentialName(hx: hx_mod.Hx, name: []const u8) bool {
+    if (name.len == 0 or name.len > MAX_CREDENTIAL_NAME_LEN) {
         hx.fail(ec.ERR_INVALID_REQUEST, ec.MSG_CREDENTIAL_NAME_REQUIRED);
-        return false;
-    }
-    if (cred.value.len == 0) {
-        hx.fail(ec.ERR_INVALID_REQUEST, ec.MSG_CREDENTIAL_VALUE_REQUIRED);
-        return false;
-    }
-    if (cred.value.len > MAX_CREDENTIAL_VALUE_LEN) {
-        hx.fail(ec.ERR_ZOMBIE_CREDENTIAL_VALUE_TOO_LONG, ec.MSG_ZOMBIE_CREDENTIAL_TOO_LONG);
         return false;
     }
     return true;
 }
 
-fn storeCredentialEncryptedOnConn(conn: *pg.Conn, alloc: std.mem.Allocator, workspace_id: []const u8, cred: CredentialBody) !void {
-    const key_name = try std.fmt.allocPrint(alloc, "zombie:{s}", .{cred.name});
+const StoreError = error{DataTooLarge} || error{OutOfMemory} || vault.Error || std.fmt.AllocPrintError;
+
+fn storeCredentialJsonOnConn(
+    conn: *pg.Conn,
+    alloc: std.mem.Allocator,
+    workspace_id: []const u8,
+    cred: CredentialBody,
+) !void {
+    // Pre-flight size check on the canonical-stringified form so the API
+    // surfaces a precise 400 rather than letting the DB layer truncate.
+    const stringified = try std.json.Stringify.valueAlloc(alloc, cred.data, .{});
+    defer alloc.free(stringified);
+    if (stringified.len > MAX_CREDENTIAL_DATA_LEN) return error.DataTooLarge;
+
+    const key_name = try std.fmt.allocPrint(alloc, CREDENTIAL_KEY_PREFIX ++ "{s}", .{cred.name});
     defer alloc.free(key_name);
-    // Use envelope encryption via crypto_store (vault.secrets table).
-    // KEK version 1 is the default master key.
-    try crypto_store.store(alloc, conn, workspace_id, key_name, cred.value, 1);
+    try vault.storeJson(alloc, conn, workspace_id, key_name, cred.data, KEK_VERSION);
+}
+
+// ── Delete Credential ─────────────────────────────────────────────────
+
+pub fn innerDeleteCredential(
+    hx: hx_mod.Hx,
+    req: *httpz.Request,
+    workspace_id: []const u8,
+    credential_name: []const u8,
+) void {
+    _ = req;
+    if (!id_format.isSupportedWorkspaceId(workspace_id)) {
+        hx.fail(ec.ERR_INVALID_REQUEST, ec.MSG_WORKSPACE_ID_REQUIRED);
+        return;
+    }
+    if (!validateCredentialName(hx, credential_name)) return;
+
+    const conn = hx.ctx.pool.acquire() catch {
+        common.internalDbUnavailable(hx.res, hx.req_id);
+        return;
+    };
+    defer hx.ctx.pool.release(conn);
+
+    const actor = hx.principal.user_id orelse API_ACTOR;
+    const access = workspace_guards.enforce(hx.res, hx.req_id, conn, hx.alloc, hx.principal, workspace_id, actor, .{
+        .minimum_role = .operator,
+    }) orelse return;
+    defer access.deinit(hx.alloc);
+
+    const key_name = std.fmt.allocPrint(hx.alloc, CREDENTIAL_KEY_PREFIX ++ "{s}", .{credential_name}) catch {
+        common.internalOperationError(hx.res, "Allocation failed", hx.req_id);
+        return;
+    };
+    defer hx.alloc.free(key_name);
+
+    const removed = vault.deleteCredential(conn, workspace_id, key_name) catch |err| {
+        log.err("credential.delete_failed err={s} name={s} req_id={s}", .{ @errorName(err), credential_name, hx.req_id });
+        common.internalDbError(hx.res, hx.req_id);
+        return;
+    };
+    log.info("credential.deleted name={s} workspace={s} removed={}", .{ credential_name, workspace_id, removed });
+    hx.res.status = 204;
 }
 
 // ── List Credentials ──────────────────────────────────────────────────

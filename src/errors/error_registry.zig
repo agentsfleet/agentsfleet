@@ -132,7 +132,10 @@ pub const ERR_ZOMBIE_CREDENTIAL_VALUE_TOO_LONG = "UZ-ZMB-007";
 pub const ERR_ZOMBIE_INVALID_CONFIG = "UZ-ZMB-008";
 pub const ERR_ZOMBIE_NOT_FOUND = "UZ-ZMB-009";
 pub const ERR_ZOMBIE_ALREADY_TERMINAL = "UZ-ZMB-010";
-// MEMORY (M14_001)
+// VAULT (structured-credential JSON shape)
+pub const ERR_VAULT_DATA_INVALID = "UZ-VAULT-001";
+pub const ERR_VAULT_DATA_TOO_LARGE = "UZ-VAULT-002";
+// MEMORY
 pub const ERR_MEM_SCOPE = "UZ-MEM-001";
 pub const ERR_MEM_ZOMBIE_NOT_FOUND = "UZ-MEM-002";
 pub const ERR_MEM_UNAVAILABLE = "UZ-MEM-003";
@@ -245,6 +248,8 @@ pub const MSG_ZOMBIE_CONFIG_REQUIRED = "config_json is required";
 pub const MSG_WORKSPACE_ID_REQUIRED = "workspace_id is required (UUIDv7)";
 pub const MSG_CREDENTIAL_NAME_REQUIRED = "credential name is required (max 64 chars)";
 pub const MSG_CREDENTIAL_VALUE_REQUIRED = "credential value is required";
+pub const MSG_CREDENTIAL_DATA_REQUIRED = "credential data must be a non-empty JSON object";
+pub const MSG_CREDENTIAL_DATA_TOO_LARGE = "credential data exceeds 4KB when stringified";
 // Approval messages
 pub const MSG_APPROVAL_NOT_FOUND = "Approval action not found or already resolved";
 pub const MSG_APPROVAL_INVALID_BODY = "Invalid approval payload";
