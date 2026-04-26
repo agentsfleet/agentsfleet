@@ -199,18 +199,34 @@ test("status without workspace returns exit 1", async () => {
 
 // ── kill ───────────────────────────────────────────────────────────────
 
-test("kill sends DELETE to API", async () => {
+test("kill sends POST to /kill endpoint", async () => {
+  const ZOMBIE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
   let requestMethod = null;
+  let requestUrl = null;
   const deps = makeDeps({
-    request: async (_ctx, _url, opts) => {
+    request: async (_ctx, url, opts) => {
       requestMethod = opts.method;
+      requestUrl = url;
       return {};
     },
   });
 
-  const code = await commandZombie(makeCtx(), ["kill"], workspaces, deps);
+  const code = await commandZombie(makeCtx(), ["kill", ZOMBIE_ID], workspaces, deps);
   assert.equal(code, 0);
-  assert.equal(requestMethod, "DELETE");
+  assert.equal(requestMethod, "POST");
+  assert.ok(requestUrl.endsWith(`/zombies/${ZOMBIE_ID}/kill`), `expected kill suffix, got: ${requestUrl}`);
+});
+
+test("kill without zombie_id returns MISSING_ARGUMENT", async () => {
+  let errorCode = null;
+  const deps = makeDeps({
+    writeError: (_ctx, code) => {
+      errorCode = code;
+    },
+  });
+  const code = await commandZombie(makeCtx(), ["kill"], workspaces, deps);
+  assert.equal(code, 2);
+  assert.equal(errorCode, "MISSING_ARGUMENT");
 });
 
 // ── logs ───────────────────────────────────────────────────────────────

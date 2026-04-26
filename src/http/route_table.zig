@@ -82,7 +82,8 @@ pub fn specFor(route: router.Route, registry: *auth_mw.MiddlewareRegistry) ?Rout
 
         // Zombie CRUD + activity + credentials
         .workspace_zombies => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceZombies },
-        .delete_workspace_zombie => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeDeleteWorkspaceZombie },
+        .patch_workspace_zombie => .{ .middlewares = registry.bearer(), .invoke = invoke.invokePatchWorkspaceZombie },
+        .kill_workspace_zombie => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeKillWorkspaceZombie },
         .workspace_zombie_activity => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceZombieActivity },
         .workspace_credentials => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceCredentials },
         .delete_workspace_credential => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceCredentialDelete },
@@ -149,7 +150,8 @@ test "specFor returns a RouteSpec for every Route variant (Batch D — full tabl
     try testing.expect(specFor(.create_workspace, &reg) != null);
     try testing.expect(specFor(.{ .pause_workspace = "ws1" }, &reg) != null);
     try testing.expect(specFor(.{ .workspace_zombies = "ws1" }, &reg) != null);
-    try testing.expect(specFor(.{ .delete_workspace_zombie = .{ .workspace_id = "ws1", .zombie_id = "z1" } }, &reg) != null);
+    try testing.expect(specFor(.{ .patch_workspace_zombie = .{ .workspace_id = "ws1", .zombie_id = "z1" } }, &reg) != null);
+    try testing.expect(specFor(.{ .kill_workspace_zombie = .{ .workspace_id = "ws1", .zombie_id = "z1" } }, &reg) != null);
     try testing.expect(specFor(.{ .workspace_zombie_activity = .{ .workspace_id = "ws1", .zombie_id = "z1" } }, &reg) != null);
     try testing.expect(specFor(.{ .workspace_credentials = "ws1" }, &reg) != null);
     try testing.expect(specFor(.{ .workspace_zombie_steer = .{ .workspace_id = "ws1", .zombie_id = "z1" } }, &reg) != null);

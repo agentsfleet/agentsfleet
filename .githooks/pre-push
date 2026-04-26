@@ -1,5 +1,13 @@
 #!/usr/bin/env bash
-# Pre-push: full unit test suite before anything leaves the machine.
+# Pre-push: comprehensive verification before anything leaves the machine.
+#
+# Always runs:
+#   - make test                  (tier 1 — Zig unit + zombiectl + website + app)
+#
+# Conditional on Zig changes since upstream (or main, on first push):
+#   - make test-integration      (tier 2 — real Postgres + Redis)
+#   - make memleak               (allocator leak gate; valgrind on Linux CI)
+#
 # Bypass for emergencies: `git push --no-verify` (discouraged per AGENTS.md).
 set -euo pipefail
 
@@ -8,3 +16,23 @@ cd "$repo_root"
 
 echo "pre-push: make test"
 make test
+
+# Tier-2 + memleak fire when this push contains Zig changes — those are the
+# branches that exercise the integration paths and allocator wiring.
+if git rev-parse --abbrev-ref --symbolic-full-name '@{u}' >/dev/null 2>&1; then
+  upstream_ref='@{u}'
+else
+  # No upstream yet (first push of this branch) — gate against main fork point.
+  upstream_ref="$(git merge-base HEAD main 2>/dev/null || git rev-list --max-parents=0 HEAD)"
+fi
+
+pushed_zig="$(git diff --name-only "$upstream_ref"..HEAD 2>/dev/null | grep -E '\.zig$' || true)"
+
+if [ -n "$pushed_zig" ]; then
+  echo "pre-push: make test-integration (Zig changed since $upstream_ref)"
+  make test-integration
+  echo "pre-push: make memleak (Zig changed since $upstream_ref)"
+  make memleak
+else
+  echo "pre-push: no Zig changes since $upstream_ref — skipping tier-2 + memleak"
+fi

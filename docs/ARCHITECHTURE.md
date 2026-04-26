@@ -556,6 +556,123 @@ The user's agent is a workstation tool driving `zombiectl`. The zombie's agent i
                   User reads it.
 ```
 
+  Two streams, two planes — both required
+
+  ┌────────────────────┬─────────────┬─────────────────────────────────────────────────────────────────────────────────────────────────────────────┬───────────────┬─────────────────────────────────┐
+  │       Stream       │    Plane    │                                                   Purpose                                                   │  Cardinality  │             Volume              │
+  ├────────────────────┼─────────────┼─────────────────────────────────────────────────────────────────────────────────────────────────────────────┼───────────────┼─────────────────────────────────┤
+  │ zombie:control     │ Control     │ Lifecycle signals (created / status_changed / config_changed / drain_request) — tells the watcher to        │ ONE,          │ Low — only on                   │
+  │                    │ plane       │ spawn/cancel/reconfig per-zombie threads                                                                    │ fleet-wide    │ install/kill/patch              │
+  ├────────────────────┼─────────────┼─────────────────────────────────────────────────────────────────────────────────────────────────────────────┼───────────────┼─────────────────────────────────┤
+  │ zombie:{id}:events │ Data plane  │ The events a single zombie processes (webhooks, steer messages, schedule ticks)                             │ ONE PER       │ High — every event the zombie   │
+  │                    │             │                                                                                                             │ ZOMBIE        │ handles                         │
+  └────────────────────┴─────────────┴─────────────────────────────────────────────────────────────────────────────────────────────────────────────┴───────────────┴─────────────────────────────────┘
+
+  You were right that per-zombie communication is zombie:{id}:events — that's the data plane. The new zombie:control is a separate, low-volume control plane. Different streams, different volumes,
+  different consumer patterns. Both use the same consumer group name zombie_workers but operate independently.
+
+  Why a single zombie:control instead of per-tenant control
+
+  Considered alternatives:
+  - Per-tenant control (zombie:control:{workspace_id}): would force every worker to XREADGROUP on N streams. Discovery problem (which tenants exist?). High-cardinality BLOCK polling with no traffic.
+  - Per-zombie control: collapses control plane into data plane — no longer a control plane.
+  - Single zombie:control ✓: one XREADGROUP per worker, exactly-once delivery via consumer group, payload carries workspace_id + zombie_id. Multi-tenancy is encoded in the message body, not the stream
+  key. Tenant boundary is enforced at the PG layer (RLS on core.zombies) — Redis stays fleet-wide.
+
+  End-to-end sequence
+
+  INSTALL
+  ─────────
+
+     user
+      │  POST /v1/workspaces/{ws}/zombies
+      ▼
+    zombied-api (innerCreateZombie)
+      │
+      ├─► [PG]   INSERT core.zombies (RLS: tenant boundary)
+      ├─► [Redis] XGROUP CREATE MKSTREAM zombie:{id}:events zombie_workers 0
+      ├─► [Redis] XADD zombie:control * type=zombie_created
+      │                                  zombie_id={id} workspace_id={ws}
+      └─► 201 to user  (invariant 1: data stream + group exist before 201)
+
+    zombied-worker:watcher  (any replica, exactly-once via zombie_workers)
+      │  XREADGROUP zombie_workers <consumer> COUNT 16 BLOCK 5000
+      │             STREAMS zombie:control >
+      │
+      ├─► look up zombie config from PG
+      ├─► spawn per-zombie thread on this worker
+      │    └─► thread XREADGROUPs zombie:{id}:events
+      │        with consumer name worker-{pid}:zombie-{id}
+      └─► XACK zombie:control
+
+     ≤1s end-to-end from 201 to thread-ready
+
+  EVENT  (webhook / steer / schedule tick)
+  ─────────
+     user / GH webhook
+      │  POST /v1/.../zombies/{id}/webhook   or   .../steer
+      ▼
+    zombied-api  ──►  XADD zombie:{id}:events * payload=...
+
+    per-zombie thread (already XREADGROUP-blocked on that stream)
+      │  pop event, run executor, write telemetry, XACK
+      └─► loop
+
+  KILL
+  ─────────
+     user
+      │  POST /v1/.../zombies/{id}/kill
+      ▼
+    zombied-api
+      ├─► UPDATE core.zombies SET status='killed' (PG)
+      ├─► XADD zombie:control * type=zombie_status_changed
+      │                              zombie_id={id} status=killed
+      └─► 202 to user
+
+    zombied-worker:watcher
+      ├─► XREADGROUP picks up the control message
+      ├─► cancel_flag_map[zombie_id].store(true, .release)
+      ├─► executor_client.cancelExecution(execution_id)  [if mid-tool-call]
+      └─► XACK
+
+    per-zombie thread (top of loop)
+      ├─► cancel_flag.load(.acquire) → true
+      ├─► WorkerState.endEvent() if mid-event
+      └─► break, thread exits
+
+     ≤200ms end-to-end from 202 to thread-exit
+
+  Multi-tenancy boundary
+
+  ┌───────────────────────────────────────┬───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+  │                 Layer                 │                                                                Tenant isolation mechanism                                                                 │
+  ├───────────────────────────────────────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ PG (core.zombies, core.zombie_events, │ Row-Level Security by workspace_id. API enforces via app.workspace_id session var; worker uses service role with explicit WHERE filtering.                │
+  │  etc.)                                │                                                                                                                                                           │
+  ├───────────────────────────────────────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ Redis data plane (zombie:{id}:events) │ Key namespaced by zombie UUID (globally unique); no cross-tenant collision possible. No RLS in Redis — protected by zombie_id being unguessable + API     │
+  │                                       │ gatekeeping.                                                                                                                                              │
+  ├───────────────────────────────────────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ Redis control plane (zombie:control)  │ Fleet-wide, not tenant-scoped. Workers are tenant-blind by design (one fleet serves all tenants). Message payload carries workspace_id for logging +      │
+  │                                       │ downstream PG lookups; routing uses zombie_id.                                                                                                            │
+  ├───────────────────────────────────────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ Worker process                        │ Per-zombie thread maintains its own consumer name worker-{pid}:zombie-{id} on the data stream. Different zombies' events never cross threads.             │
+  ├───────────────────────────────────────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ Executor (M41 territory)              │ Per-execution session — secrets resolved at createExecution boundary, never flow as raw strings into agent context.                                       │
+  └───────────────────────────────────────┴───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+
+  Why one worker = all events for that zombie
+
+  Concern: if multiple workers are members of zombie_workers, won't zombie:{id}:events round-robin events across workers and break per-zombie state continuity?
+
+  No — consumer groups distribute messages across consumers that are actively reading the stream. Only the worker that won the control message spawns the per-zombie thread; only that thread reads
+  zombie:{id}:events. Other workers never XREADGROUP that stream → no round-robin → all events flow to the right thread.
+
+  Failure mode (out of scope for M40, flagging for v2 followup): if the worker hosting zombie X crashes, no other worker is reading zombie:{id}:events. Recovery needs a heartbeat or XAUTOCLAIM sweep.
+  v2.0 launches single-replica; multi-replica HA is a known v3 concern.
+
+  ---
+
 ### Same flow for webhook and cron triggers
 
 The flow above is identical for webhook and cron triggers — only the entry into the event stream differs:
@@ -719,6 +836,63 @@ This section restores the install → control stream → worker → events → e
 | **zombied-worker** (`zombied worker`) | Hosts one watcher thread (consumes `zombie:control`) + N zombie threads (each consumes one `zombie:{id}:events`). Owns per-zombie cancel flags. Never runs LLM code. |
 | **zombied-executor** (sidecar; `zombied executor`) | Unix-socket RPC server. Hosts NullClaw agent inside Landlock + cgroups + bwrap. Credential substitution lives here. |
 
+### Control-stream messages + worker loops
+
+The watcher is the only `zombie:control` consumer per worker process; it dispatches every message to one of four handlers, then runs a periodic reconcile sweep against `core.zombies` so any signal that was never published (or never delivered) heals without a worker restart.
+
+**Message catalog** (`zombie:control` consumer group `zombie_workers`, BLOCK 5s, COUNT 16):
+
+| Type | Payload | Producer | Watcher action |
+|---|---|---|---|
+| `zombie_created` | `{zombie_id, workspace_id}` | `innerCreateZombie` after PG INSERT + `XGROUP CREATE MKSTREAM` | `spawnZombieThread(zombie_id)` — idempotent: a stale entry whose wrapper already exited is reaped before the fresh spawn (see "Per-zombie runtime lifecycle" below). |
+| `zombie_status_changed` | `{zombie_id, status: active\|killed\|paused}` | `innerKillZombie` (kill verb) and pause/resume mutators | For `killed`/`paused`: hold `map_lock`, `runtime.cancel.store(true, .release)` if the runtime is live (`!exited`), release lock, then `executor.cancelExecution(execution_id)` outside the lock (Redis I/O). The per-zombie thread's `watchShutdown` polls cancel every 100ms and breaks the event loop ≤200ms after the XADD lands. For `active`: log + no-op (status flips back via PATCH; spawn already happened on `zombie_created`). |
+| `zombie_config_changed` | `{zombie_id, config_revision}` | `innerPatchZombie` after `core.zombies.config_json` UPDATE | Logged today; full hot-reload deferred to M41. The revision number lets the per-zombie thread snapshot config-at-claim and apply the new config to the next event. |
+| `worker_drain_request` | `{reason?}` | Operator-initiated (CLI, control plane) or `SIGTERM` handler in `zombied worker` | `WorkerState.startDrain()` — flips the global drain phase. `beginEventIfActive` returns `WorkerError.ShutdownRequested` for new event claims; in-flight events run to `endEvent` then exit. `awaitDrained(30s)`; on overrun, force-cancel + dirty exit. |
+
+**Watcher loop** (`worker_watcher.zig`):
+
+```
+while shouldKeepRunning():       # shutdown_requested OR worker_state.isAcceptingWork
+  pollOnce()                     # XREADGROUP zombie:control ... > BLOCK 5s
+    for each entry:
+      processEntry → dispatch → xack
+  if (++ticks_since_reconcile >= 6):    # ≈30s (6 × 5s BLOCK windows)
+    reconcileSpawnActive()       # SELECT id WHERE status='active'
+                                 #   → spawnZombieThread(id) for each
+    reconcileCancelNonActive()   # SELECT id WHERE status != 'active'
+                                 #   → cancelZombie(id) for each (no-op
+                                 #     if not in local runtimes map)
+    ticks_since_reconcile = 0
+```
+
+`reconcileTick` is the bidirectional safety net for three failure modes: (a) `zombie_created` XADD that never landed (`publishInstallSignals` retries 3× with backoff; on exhaust, the install path rolls back the PG row, but a process death between INSERT and rollback leaves an orphan that the spawn-active branch heals); (b) `zombie_status_changed` XADD that failed for a kill or pause — PG row is `killed`/`paused` but the worker's per-zombie thread is still running, healed by the cancel-non-active branch within ≈30s without a worker restart; (c) any cross-process drift between PG state and the watcher's in-memory map.
+
+**Per-zombie runtime lifecycle** (`worker_watcher_runtime.zig`):
+
+Each spawn allocates a `ZombieRuntime { cancel, exited }` (two atomics) and runs `worker_zombie.zombieWorkerLoop` inside a watcher-owned `zombieRuntimeWrapper`. The wrapper does not touch the watcher maps — it only flips `runtime.exited.store(true, .release)` when the loop returns. Map ownership stays with the watcher.
+
+The next `spawnZombieThread` invocation (driven either by another `zombie_created` for the same id or by the periodic reconcile sweep) calls `sweepExitedLocked` first. The sweep walks the `runtimes` map, collects every entry whose `exited` is set, removes it from both `runtimes` and `threads`, frees the duped key, destroys the runtime, and `Thread.detach()`s the (already-exited) handle so `deinit`'s join no longer races. After the sweep, `runtimes.contains(zombie_id)` is the authoritative "live thread for this zombie" predicate.
+
+This lazy-sweep design closes a class of stuck-zombie bugs that the alternative ("wrapper self-cleans under map_lock") would have introduced: with one lock and no nested acquisitions, deadlock is structurally impossible — every concurrent `cancelZombie` / `spawnZombieThread` / wrapper-exit just serialises on `map_lock`. The trade-off is that an exited entry stays in the map until the next spawn attempt, which is harmless because nothing reads `cancel` once `exited` is set.
+
+**Per-zombie loop** (`worker_zombie.zig`):
+
+```
+zombieWorkerLoop:                        # entered via wrapper
+  redis = connectRedis() orelse return   # early-exit cases below
+  session = claimZombie(pg) orelse return
+  exec = cfg.executor orelse return
+  spawn watchShutdown(shutdown, cancel, drain, &running)
+  defer running.store(false); watcher.join()
+  runEventLoop(...)                      # XREADGROUP zombie:{id}:events ... > BLOCK 5s
+                                         #   processEvent → executor → XACK
+                                         # top-of-loop: cancel.load + drain + steer-poll
+                                         # eventLoop returns on running=false
+                                         #   (set by watchShutdown when any signal fires)
+```
+
+Three early-exit paths return BEFORE the event loop starts: Redis connect failure, PG `claimZombie` failure, missing executor. Historically these left the watcher's map entry pointing at a dead thread (no one re-spawned because `contains == true`); now the wrapper still flips `runtime.exited` on return and the next spawn reaps the entry, so a transient Redis/PG blip self-heals on the next `zombie_created` retry or reconcile tick.
+
 ### Stream + DB ownership
 
 | Target | Producer | Consumer |
@@ -738,7 +912,7 @@ This section restores the install → control stream → worker → events → e
 | 1 | Sign in via Clerk | OAuth callback → INSERT core.users/workspaces | — | — | idle | idle |
 | 2-4 | `zombiectl credential add {fly,upstash,slack,github}` with structured `{host, api_token}` fields | `PUT /v1/.../credentials/{name}` → crypto_store.store (KMS envelope) → UPSERT vault.secrets | — | — | idle | idle |
 | 5 | `zombiectl install --from .usezombie/platform-ops/` | `innerCreateZombie`: INSERT core.zombies (active). **Atomically + before 201**: `XGROUP CREATE zombie:{id}:events zombie_workers 0 MKSTREAM` + XADD `zombie:control` type=zombie_created. **Invariant 1**: stream + group exist before any producer/consumer can arrive. | +1 entry | stream+group created, empty | idle | idle |
-| 6 | Watcher claims | — | — | — | Watcher XREADGROUP on `zombie:control` unblocks. SELECT core.zombies row. Allocates cancel_flag, spawns zombie thread. XACK. Zombie thread claims (loads config + checkpoint), blocks on XREADGROUP `zombie:{id}:events` BLOCK 5s. | idle |
+| 6 | Watcher claims | — | — | — | Watcher `XREADGROUP zombie:control` unblocks. `spawnZombieThread`: under `map_lock`, sweep stale-exited entries; idempotent `XGROUP CREATE` for `zombie:{id}:events` (BUSYGROUP-as-success); allocate `ZombieRuntime { cancel, exited }`; spawn `zombieRuntimeWrapper`; publish to `runtimes` + `threads` maps. XACK. Wrapper invokes `worker_zombie.zombieWorkerLoop` → claims (loads config + checkpoint), spawns `watchShutdown` poller, blocks on `XREADGROUP zombie:{id}:events` BLOCK 5s. | idle |
 | 7 | **Trigger arrives** — three paths land on the same stream | | | | | |
 |  ↳ 7a (webhook) | GitHub Actions posts `workflow_run` failure to `/v1/.../webhooks/github`. Receiver verifies HMAC, normalizes payload. | XADD `zombie:{id}:events` actor=webhook:github data={run_url, head_sha, conclusion, ...} | — | +1 entry | (within ≤5s) zombie thread XREADGROUP returns it | idle |
 |  ↳ 7b (cron) | — | — | (NullClaw cron runtime fires) +1 entry actor=cron:<schedule> | — | idle |
@@ -748,7 +922,7 @@ This section restores the install → control stream → worker → events → e
 | 8c | Agent returns StageResult | — | — | — | Receives `{content, tokens, wall_s, exit_ok}` on Unix socket. updateSessionContext (in-memory). Defers destroyExecution + clearExecutionActive. | `runner.execute` returns; session destroyed on handler side; executor **sleeps** (no other work). |
 | 8d | zombie thread finalizes | — | — | XACK | UPDATE core.zombie_events (status='processed', response_text, tokens, wall_ms, completed_at). checkpointState → UPSERT core.zombie_sessions. metering.recordZombieDelivery. XACK. CLI's `zombiectl steer` session (polling GET `/events` or tailing activity stream) picks up the new row and prints `[claw] <response_text>`. Back to XREADGROUP BLOCK. | idle |
 | 9 | Read history | `GET /v1/.../zombies/{id}/events` reads core.zombie_events. CLI: `zombiectl events {id}`. | — | — | idle | idle |
-| 10 | `zombiectl kill {id}` | UPDATE core.zombies SET status='killed'. XADD `zombie:control` type=zombie_status_changed status=killed. | +1 entry | — | Watcher reads control msg, sets `cancels[id].store(true)`, reads execution_id from zombie_sessions, calls `executor_client.cancelExecution(execution_id)`. Zombie thread's watchShutdown sees cancel_flag → running=false → exits loop → thread returns. | If mid-stage: `handleCancelExecution` flips session.cancelled=true; in-flight `runner.execute` breaks out with `.cancelled`. |
+| 10 | `zombiectl kill {id}` | UPDATE core.zombies SET status='killed'. XADD `zombie:control` type=zombie_status_changed status=killed. | +1 entry | — | Watcher reads control msg, dispatches to `cancelZombie(id)`: under `map_lock` checks `!runtime.exited` then `runtime.cancel.store(true, .release)`, releases lock, calls `executor_client.cancelExecution(execution_id)` outside the lock (Redis I/O). Zombie thread's `watchShutdown` polls `cancel.load(.acquire)` every 100ms → flips `running=false` → event loop exits → wrapper sets `runtime.exited=true` → next `spawnZombieThread` (or `reconcileTick`) reaps the entry via `sweepExitedLocked`. | If mid-stage: `handleCancelExecution` flips session.cancelled=true; in-flight `runner.execute` breaks out with `.cancelled`. |
 | 11 | Audit grep — verify no secret leak | manual `grep <token-bytes> logs/* db_dump.sql` | — | — | token bytes held only transiently during `createExecution` RPC | token bytes held only in session memory + emitted inline into HTTPS TCP to upstream — never logged, never written to disk |
 
 ### Notable invariants this sequence proves
@@ -757,6 +931,8 @@ This section restores the install → control stream → worker → events → e
 - **All triggers funnel into one reasoning loop.** Webhook, cron, and steer are different *producers* into `zombie:{id}:events`; the worker's per-zombie thread doesn't branch on actor type.
 - **Credentials never enter agent context.** Substitution happens at the tool bridge, inside the executor, after sandbox entry. Agent sees `${secrets.fly.api_token}`; HTTPS request headers get real bytes; responses never echo the token.
 - **Kill is immediate for in-flight runs.** Control-stream XADD triggers `cancelExecution` RPC within milliseconds — not the 5s XREADGROUP cycle.
+- **One lock, no deadlock surface.** The watcher takes exactly one mutex (`map_lock`), with no nested acquisitions. `cancelZombie` holds it across the cancel.store to close the UAF window the lazy-sweep wrapper opens; the wrapper itself never touches the lock. Concurrent `cancelZombie` + `spawnZombieThread` + wrapper-exit serialise on the single lock — there is no second-lock ordering to get wrong.
+- **Stuck zombies self-heal.** A per-zombie thread that exits early (Redis connect, PG claim, no executor) flips `runtime.exited` via the watcher-owned wrapper; the next `spawnZombieThread` (driven by `zombie_created` retry or by `reconcileTick`'s ≈30s sweep) reaps the entry and re-spawns. Pre-M40 hardening this was a permanent stuck state for the worker process's life.
 - **Long-running stages don't crash the model.** L1+L2+L3 (§11) keep context bounded; if a single incident exceeds budget the zombie chunks and continues in a new stage from a `memory_recall` snapshot.
 
 ---

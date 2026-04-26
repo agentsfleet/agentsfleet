@@ -5,7 +5,7 @@
 
 import {
   wsZombiesPath,
-  wsZombiePath,
+  wsZombieKillPath,
   wsZombieActivityPath,
 } from "../lib/api-paths.js";
 import {
@@ -162,7 +162,7 @@ async function commandStatus(ctx, args, workspaces, deps) {
 async function commandKill(ctx, args, workspaces, deps) {
   const { parseFlags, request, apiHeaders, ui, printJson, writeLine, writeError } = deps;
   const parsed = parseFlags(args);
-  const zombieName = parsed.positionals[0];
+  const zombieId = parsed.positionals[0];
 
   const wsId = workspaces.current_workspace_id;
   if (!wsId) {
@@ -170,20 +170,20 @@ async function commandKill(ctx, args, workspaces, deps) {
     return 1;
   }
 
-  const endpoint = zombieName
-    ? wsZombiePath(wsId, zombieName)
-    : wsZombiesPath(wsId);
+  if (!zombieId) {
+    writeError(ctx, "MISSING_ARGUMENT", "usage: zombiectl kill <zombie_id>", deps);
+    return 2;
+  }
 
-  const res = await request(ctx, endpoint, {
-    method: "DELETE",
+  const res = await request(ctx, wsZombieKillPath(wsId, zombieId), {
+    method: "POST",
     headers: apiHeaders(ctx),
   });
 
   if (ctx.jsonMode) {
     printJson(ctx.stdout, res);
   } else {
-    const name = zombieName || "all zombies";
-    writeLine(ctx.stdout, ui.ok(`${name} killed.`));
+    writeLine(ctx.stdout, ui.ok(`${zombieId} killed.`));
   }
 
   return 0;

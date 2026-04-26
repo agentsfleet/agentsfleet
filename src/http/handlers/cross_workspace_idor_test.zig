@@ -239,7 +239,7 @@ test "M24_001 IDOR: GET /workspaces/{foreign}/zombies returns 403" {
     try std.testing.expectEqual(@as(u16, 403), r.status);
 }
 
-test "M24_001 IDOR: DELETE /workspaces/{my}/zombies/{foreign} returns 404" {
+test "IDOR: POST /workspaces/{my}/zombies/{foreign}/kill returns 404" {
     const srv = try startTestServer(ALLOC);
     defer {
         if (srv.pool.acquire()) |c| { cleanupTestData(c); srv.pool.release(c); } else |_| {}
@@ -247,10 +247,17 @@ test "M24_001 IDOR: DELETE /workspaces/{my}/zombies/{foreign} returns 404" {
         ALLOC.destroy(srv);
     }
 
-    const url = try urlJoin(ALLOC, srv.port, "/v1/workspaces/{s}/zombies/{s}", .{ TEST_WORKSPACE_ID, ZOMBIE_IN_FOREIGN_WS });
+    // Caller's ws in path, foreign zombie in path. Must 404 — the kill
+    // handler scopes the UPDATE by both ids and returns 404 when no row
+    // matches. (Was DELETE before the M40 grounding pass swapped the kill
+    // verb to POST /kill.)
+    const url = try urlJoin(ALLOC, srv.port, "/v1/workspaces/{s}/zombies/{s}/kill", .{ TEST_WORKSPACE_ID, ZOMBIE_IN_FOREIGN_WS });
     defer ALLOC.free(url);
 
-    const r = try sendReq(ALLOC, url, .DELETE, TOKEN_OPERATOR, null);
+    // std.http.Client asserts POST requests carry a body; pass an empty
+    // payload rather than null. The server treats it as no-body for the
+    // kill handler (which reads no body).
+    const r = try sendReq(ALLOC, url, .POST, TOKEN_OPERATOR, "");
     defer r.deinit(ALLOC);
     try std.testing.expectEqual(@as(u16, 404), r.status);
 }

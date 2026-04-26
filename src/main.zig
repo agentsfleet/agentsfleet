@@ -146,6 +146,18 @@ test {
     _ = @import("zombie/event_loop_secrets.zig");
     _ = @import("zombie/event_loop_secrets_test.zig");
     _ = @import("zombie/metering.zig");
+    _ = @import("zombie/control_stream.zig");
+    _ = @import("zombie/control_stream_test.zig");
+    _ = @import("cmd/worker_watcher.zig");
+    _ = @import("cmd/worker_watcher_runtime.zig");
+    _ = @import("cmd/worker_watcher_poll.zig");
+    _ = @import("cmd/worker_watcher_lifecycle_test.zig");
+    _ = @import("cmd/worker_dynamic_discovery_integration_test.zig");
+    _ = @import("sys/errno.zig");
+    _ = @import("sys/error.zig");
+    _ = @import("util/strings/string_joiner.zig");
+    _ = @import("util/strings/string_builder.zig");
+    _ = @import("util/strings/smol_str.zig");
     _ = @import("hmac_sig");
     _ = @import("crypto/hmac_sig_test.zig");
     _ = @import("zombie/webhook_verify.zig");
@@ -193,6 +205,10 @@ test {
     // M2_001: Zombie CRUD, activity, router, worker
     _ = @import("http/handlers/zombies/api.zig");
     _ = @import("http/handlers/zombies/api_integration_test.zig");
+    _ = @import("http/handlers/zombies/create.zig");
+    _ = @import("http/handlers/zombies/list.zig");
+    _ = @import("http/handlers/zombies/kill.zig");
+    _ = @import("http/handlers/zombies/patch.zig");
     _ = @import("http/handlers/zombies/activity.zig");
     // M18_001: zombie execution telemetry
     _ = @import("state/zombie_telemetry_store.zig");

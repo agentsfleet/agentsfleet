@@ -1,10 +1,10 @@
-// M2_001: Zombie worker — claims and runs a single Zombie event loop.
-//
-// One worker thread per Zombie (1:1 mapping for v0.6.0).
-// The thread connects its own Redis client, claims the Zombie from Postgres,
-// enters the event loop, and runs until shutdown or the Zombie is killed.
-//
-// Crash recovery: on restart, claimZombie loads the last Postgres checkpoint.
+//! Zombie worker — claims and runs a single Zombie event loop.
+//!
+//! One worker thread per Zombie. The thread connects its own Redis client,
+//! claims the Zombie from Postgres, enters the event loop, and runs until
+//! shutdown OR a per-zombie cancel flag flips OR the Zombie is killed.
+//!
+//! Crash recovery: on restart, claimZombie loads the last Postgres checkpoint.
 
 const std = @import("std");
 const pg = @import("pg");
@@ -16,6 +16,7 @@ const zombie_config = @import("../zombie/config.zig");
 const error_codes = @import("../errors/error_registry.zig");
 const obs_log = @import("../observability/logging.zig");
 const telemetry_mod = @import("../observability/telemetry.zig");
+const worker_state_mod = @import("worker/state.zig");
 
 const log = std.log.scoped(.zombie_worker);
 
@@ -27,6 +28,18 @@ pub const ZombieWorkerConfig = struct {
     executor: ?*executor_client.ExecutorClient,
     workspace_path: []const u8 = "/tmp/zombie",
     telemetry: ?*telemetry_mod.Telemetry = null,
+    /// Per-zombie cancel flag, owned by the watcher. When the watcher receives a
+    /// `zombie_status_changed status=killed` (or paused) control message it flips
+    /// this flag; the per-zombie thread observes it at the top of every loop
+    /// iteration and exits cleanly. Null when the worker was started without a
+    /// watcher (legacy startup path); in that case only `shutdown_requested`
+    /// drives termination.
+    cancel_flag: ?*std.atomic.Value(bool) = null,
+    /// Process-wide drain state. When the worker enters the draining phase
+    /// (e.g. SIGTERM), the per-zombie watch thread observes `!isAcceptingWork()`
+    /// and flips `running` so the event loop exits. Null when no drain primitive
+    /// is wired (legacy startup); termination then falls back to shutdown_requested.
+    worker_state: ?*const worker_state_mod.WorkerState = null,
 };
 
 /// Entry point for a Zombie worker thread.
@@ -48,7 +61,7 @@ pub fn zombieWorkerLoop(alloc: std.mem.Allocator, cfg: ZombieWorkerConfig) void 
 
     // shutdown_requested=true means stop; event loop expects running=true to continue.
     var running = std.atomic.Value(bool).init(true);
-    const watcher = std.Thread.spawn(.{}, watchShutdown, .{ cfg.shutdown_requested, &running }) catch {
+    const watcher = std.Thread.spawn(.{}, watchShutdown, .{ cfg.shutdown_requested, cfg.cancel_flag, cfg.worker_state, &running }) catch {
         log.err("zombie_worker.watcher_spawn_fail zombie_id={s}", .{cfg.zombie_id});
         return;
     };
@@ -78,7 +91,8 @@ fn claimOrReturn(alloc: std.mem.Allocator, cfg: ZombieWorkerConfig) ?event_loop.
 }
 
 /// Query core.zombies for active zombies and return their IDs.
-/// Called at worker startup to discover which Zombies to claim.
+/// Called at worker startup to discover which Zombies to claim, plus
+/// each `reconcileSpawnActive` tick to heal install-time orphans.
 pub fn listActiveZombieIds(pool: *pg.Pool, alloc: std.mem.Allocator) ![][]const u8 {
     const conn = try pool.acquire();
     defer pool.release(conn);
@@ -101,11 +115,74 @@ pub fn listActiveZombieIds(pool: *pg.Pool, alloc: std.mem.Allocator) ![][]const 
     return ids.toOwnedSlice(alloc);
 }
 
-/// Polls shutdown_requested and sets running=false when shutdown is triggered.
-fn watchShutdown(shutdown: *const std.atomic.Value(bool), running: *std.atomic.Value(bool)) void {
-    while (!shutdown.load(.acquire) and running.load(.acquire)) {
+/// How far back the reconcile sweep looks when scanning for state drift
+/// on non-active rows. The reconcile cadence is ≈30s (`reconcile_every_ticks
+/// × block_ms`); a 5-minute window covers 10× the cadence and any realistic
+/// retry / network blip without growing unbounded as historical killed
+/// zombies accumulate (greptile P? on PR #251 — original query was
+/// `WHERE status != 'active'` with no time bound, which scaled with the
+/// total killed-row count fleet-wide).
+const reconcile_recent_window_ms: i64 = 5 * 60 * 1000;
+
+/// Query core.zombies for zombies whose status went non-active recently —
+/// killed or paused, with `updated_at` inside the reconcile window.
+/// Used by the watcher's reconcile sweep to catch state drift where a
+/// `publishKillSignal` (or pause signal) failed to XADD: PG row says
+/// non-active, worker thread still running. Reconcile cancels each such
+/// id idempotently.
+///
+/// Time-bounded so the result set stays small as the killed-row count
+/// grows monotonically across the table's lifetime. A worker that missed
+/// a kill more than `reconcile_recent_window_ms` ago is a different
+/// failure mode than this branch is designed to heal — operator restart
+/// is the recovery path for that.
+pub fn listNonActiveZombieIds(pool: *pg.Pool, alloc: std.mem.Allocator) ![][]const u8 {
+    const conn = try pool.acquire();
+    defer pool.release(conn);
+    const cutoff_ms = std.time.milliTimestamp() - reconcile_recent_window_ms;
+    var q = PgQuery.from(try conn.query(
+        \\SELECT id::text FROM core.zombies
+        \\WHERE status != $1 AND updated_at >= $2
+        \\ORDER BY updated_at DESC
+    , .{ zombie_config.ZombieStatus.active.toSlice(), cutoff_ms }));
+    defer q.deinit();
+
+    var ids: std.ArrayList([]const u8) = .{};
+    errdefer {
+        for (ids.items) |id| alloc.free(id);
+        ids.deinit(alloc);
+    }
+    while (try q.next()) |row| {
+        const id = try alloc.dupe(u8, try row.get([]const u8, 0));
+        try ids.append(alloc, id);
+    }
+    return ids.toOwnedSlice(alloc);
+}
+
+
+/// Polls the global shutdown flag, the (optional) per-zombie cancel flag, and
+/// the (optional) WorkerState drain phase, flipping `running` to false when
+/// any of them fires. Per-zombie cancel propagates `POST /kill`; drain phase
+/// propagates SIGTERM-driven graceful shutdown.
+fn watchShutdown(
+    shutdown: *const std.atomic.Value(bool),
+    cancel: ?*std.atomic.Value(bool),
+    drain: ?*const worker_state_mod.WorkerState,
+    running: *std.atomic.Value(bool),
+) void {
+    // Synchronization contract: each flag is written once with .release by the
+    // signal handler / watcher / event loop teardown, and observed here with
+    // .acquire. This is the canonical "publish-once, consume-many" pattern —
+    // .acq_rel is unnecessary since this thread never writes the input flags,
+    // only reads them.
+    while (running.load(.acquire)) {
+        // safe because: each input flag is set with .release on its writer
+        if (shutdown.load(.acquire)) break;
+        if (cancel) |c| if (c.load(.acquire)) break;
+        if (drain) |ws| if (!ws.isAcceptingWork()) break;
         std.Thread.sleep(100 * std.time.ns_per_ms);
     }
+    // safe because: paired with .acquire load on the spawning thread before .join()
     running.store(false, .release);
 }
 

@@ -130,12 +130,25 @@ test "M24_001: flat /v1/zombies/ is removed (pre-v2.0 bare 404 per RULE EP4)" {
     try std.testing.expect(match("/v1/zombies/") == null);
 }
 
-test "M24_001: workspace-scoped zombie DELETE resolves" {
+test "workspace-scoped zombie PATCH resolves to patch_workspace_zombie" {
     const ws_id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
     const zid = "019abc12-8d3a-7f13-8abc-2b3e1e0a6f11";
     const r = match("/v1/workspaces/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/zombies/019abc12-8d3a-7f13-8abc-2b3e1e0a6f11").?;
     switch (r) {
-        .delete_workspace_zombie => |route| {
+        .patch_workspace_zombie => |route| {
+            try std.testing.expectEqualStrings(ws_id, route.workspace_id);
+            try std.testing.expectEqualStrings(zid, route.zombie_id);
+        },
+        else => return error.TestExpectedEqual,
+    }
+}
+
+test "workspace-scoped zombie /kill resolves to kill_workspace_zombie" {
+    const ws_id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
+    const zid = "019abc12-8d3a-7f13-8abc-2b3e1e0a6f11";
+    const r = match("/v1/workspaces/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/zombies/019abc12-8d3a-7f13-8abc-2b3e1e0a6f11/kill").?;
+    switch (r) {
+        .kill_workspace_zombie => |route| {
             try std.testing.expectEqualStrings(ws_id, route.workspace_id);
             try std.testing.expectEqualStrings(zid, route.zombie_id);
         },
