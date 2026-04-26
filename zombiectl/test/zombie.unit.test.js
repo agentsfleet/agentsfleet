@@ -39,14 +39,16 @@ function makeCtx(overrides = {}) {
 
 const workspaces = { current_workspace_id: WS_ID, items: [] };
 
-// ── credential add/list ────────────────────────────────────────────────
+// ── credential add/list/delete ─────────────────────────────────────────
 
-test("credential add stores via API", async () => {
+test("credential add stores via API with structured data", async () => {
   let requestUrl = null;
+  let requestMethod = null;
   let requestBody = null;
   const deps = makeDeps({
     request: async (_ctx, url, opts) => {
       requestUrl = url;
+      requestMethod = opts.method;
       requestBody = JSON.parse(opts.body);
       return {};
     },
@@ -54,15 +56,16 @@ test("credential add stores via API", async () => {
 
   const code = await commandZombie(
     makeCtx(),
-    ["credential", "add", "agentmail", "--value=sk-test-123"],
+    ["credential", "add", "fly", '--data={"host":"api.machines.dev","api_token":"FLY_TOKEN"}'],
     workspaces,
     deps,
   );
   assert.equal(code, 0);
+  assert.equal(requestMethod, "POST");
   assert.ok(requestUrl.includes(`/v1/workspaces/${WS_ID}/credentials`));
-  assert.equal(requestBody.name, "agentmail");
-  assert.equal(requestBody.value, "sk-test-123");
-  assert.equal(requestBody.workspace_id, undefined);
+  assert.equal(requestBody.name, "fly");
+  assert.deepEqual(requestBody.data, { host: "api.machines.dev", api_token: "FLY_TOKEN" });
+  assert.equal(requestBody.value, undefined);
 });
 
 test("credential add without name returns exit 2", async () => {
@@ -70,20 +73,50 @@ test("credential add without name returns exit 2", async () => {
   assert.equal(code, 2);
 });
 
-test("credential add without value in no-input mode returns exit 1", async () => {
+test("credential add without --data returns exit 2", async () => {
   const code = await commandZombie(
-    makeCtx({ noInput: true }),
+    makeCtx(),
     ["credential", "add", "agentmail"],
     workspaces,
     makeDeps(),
   );
-  assert.equal(code, 1);
+  assert.equal(code, 2);
+});
+
+test("credential add rejects invalid JSON", async () => {
+  const code = await commandZombie(
+    makeCtx(),
+    ["credential", "add", "fly", "--data=not-json"],
+    workspaces,
+    makeDeps(),
+  );
+  assert.equal(code, 2);
+});
+
+test("credential add rejects non-object JSON (string)", async () => {
+  const code = await commandZombie(
+    makeCtx(),
+    ["credential", "add", "fly", '--data="bare-string"'],
+    workspaces,
+    makeDeps(),
+  );
+  assert.equal(code, 2);
+});
+
+test("credential add rejects empty object", async () => {
+  const code = await commandZombie(
+    makeCtx(),
+    ["credential", "add", "fly", "--data={}"],
+    workspaces,
+    makeDeps(),
+  );
+  assert.equal(code, 2);
 });
 
 test("credential list returns credentials", async () => {
   let printed = null;
   const deps = makeDeps({
-    request: async () => ({ credentials: [{ name: "agentmail", created_at: "2026-04-08" }] }),
+    request: async () => ({ credentials: [{ name: "fly", created_at: "2026-04-26" }] }),
     printJson: (_s, v) => { printed = v; },
   });
 
@@ -95,6 +128,33 @@ test("credential list returns credentials", async () => {
   );
   assert.equal(code, 0);
   assert.ok(printed.credentials.length > 0);
+});
+
+test("credential delete sends DELETE to per-credential URL", async () => {
+  let requestUrl = null;
+  let requestMethod = null;
+  const deps = makeDeps({
+    request: async (_ctx, url, opts) => {
+      requestUrl = url;
+      requestMethod = opts.method;
+      return {};
+    },
+  });
+
+  const code = await commandZombie(
+    makeCtx(),
+    ["credential", "delete", "fly"],
+    workspaces,
+    deps,
+  );
+  assert.equal(code, 0);
+  assert.equal(requestMethod, "DELETE");
+  assert.ok(requestUrl.endsWith(`/v1/workspaces/${WS_ID}/credentials/fly`));
+});
+
+test("credential delete without name returns exit 2", async () => {
+  const code = await commandZombie(makeCtx(), ["credential", "delete"], workspaces, makeDeps());
+  assert.equal(code, 2);
 });
 
 // ── status ────────────────────────────────────────────────────────────

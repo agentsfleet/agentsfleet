@@ -216,6 +216,12 @@ pub fn invokeWorkspaceCredentials(hx: *Hx, req: *httpz.Request, route: router.Ro
     }
 }
 
+pub fn invokeWorkspaceCredentialDelete(hx: *Hx, req: *httpz.Request, route: router.Route) void {
+    if (req.method != .DELETE) { common.respondMethodNotAllowed(hx.res); return; }
+    const r = route.delete_workspace_credential;
+    zombie_act.innerDeleteCredential(hx.*, req, r.workspace_id, r.credential_name);
+}
+
 // ── Zombie steer (M23_001) ────────────────────────────────────────────────
 
 pub fn invokeZombieSteer(hx: *Hx, req: *httpz.Request, route: router.Route) void {

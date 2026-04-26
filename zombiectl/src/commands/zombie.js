@@ -35,7 +35,7 @@ export async function commandZombie(ctx, args, workspaces, deps) {
     writeLine(ctx.stderr, "       zombiectl status");
     writeLine(ctx.stderr, "       zombiectl kill");
     writeLine(ctx.stderr, "       zombiectl logs");
-    writeLine(ctx.stderr, "       zombiectl credential add|list");
+    writeLine(ctx.stderr, "       zombiectl credential add|list|delete");
   }
   return 2;
 }

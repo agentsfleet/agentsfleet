@@ -50,6 +50,7 @@ pub const entries = [_]Entry{
     // Credentials
     .{ .method = "GET", .path = "/v1/workspaces/{workspace_id}/credentials" },
     .{ .method = "POST", .path = "/v1/workspaces/{workspace_id}/credentials" },
+    .{ .method = "DELETE", .path = "/v1/workspaces/{workspace_id}/credentials/{credential_name}" },
     .{ .method = "GET", .path = "/v1/workspaces/{workspace_id}/credentials/llm" },
     .{ .method = "PUT", .path = "/v1/workspaces/{workspace_id}/credentials/llm" },
     .{ .method = "DELETE", .path = "/v1/workspaces/{workspace_id}/credentials/llm" },

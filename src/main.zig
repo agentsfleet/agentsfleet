@@ -143,6 +143,8 @@ test {
     _ = @import("zombie/activity_stream.zig");
     _ = @import("zombie/activity_cursor.zig");
     _ = @import("zombie/event_loop.zig");
+    _ = @import("zombie/event_loop_secrets.zig");
+    _ = @import("zombie/event_loop_secrets_test.zig");
     _ = @import("zombie/metering.zig");
     _ = @import("hmac_sig");
     _ = @import("crypto/hmac_sig_test.zig");
@@ -162,6 +164,8 @@ test {
     _ = @import("state/signup_bootstrap.zig");
     _ = @import("state/signup_bootstrap_store.zig");
     _ = @import("state/signup_bootstrap_test.zig");
+    _ = @import("state/vault.zig");
+    _ = @import("state/vault_test.zig");
     _ = @import("executor/types.zig");
     _ = @import("executor/protocol.zig");
     _ = @import("executor/transport.zig");
