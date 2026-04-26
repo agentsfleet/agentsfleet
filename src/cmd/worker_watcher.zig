@@ -284,27 +284,28 @@ pub const Watcher = struct {
         }
     }
 
-    fn cancelZombie(self: *Watcher, zombie_id: []const u8) void {
-        // Hold map_lock across the cancel.store to close the UAF window
-        // the lazy-sweep wrapper opens: between get-returning-pointer and
-        // the store, no other thread can sweep the runtime.
-        // Released BEFORE the executor RPC — that's Redis I/O and may block.
+    // Holds map_lock across cancel.store to close the UAF window the lazy-sweep
+    // wrapper opens: between get-returning-pointer and the store, no other
+    // thread can sweep the runtime. Lock released before the executor RPC,
+    // which is Redis I/O and may block.
+    fn tryMarkCancel(self: *Watcher, zombie_id: []const u8) bool {
         self.map_lock.lock();
-        var found: bool = false;
+        defer self.map_lock.unlock();
         if (self.runtimes.get(zombie_id)) |rt| {
             if (!rt.exited.load(.acquire)) {
                 rt.cancel.store(true, .release);
-                found = true;
+                return true;
             }
         }
-        self.map_lock.unlock();
+        return false;
+    }
 
-        if (found) {
-            log.info("watcher.cancel_set zombie_id={s}", .{zombie_id});
-        } else {
+    fn cancelZombie(self: *Watcher, zombie_id: []const u8) void {
+        if (!self.tryMarkCancel(zombie_id)) {
             log.debug("watcher.cancel_skip reason=not_local_or_exited zombie_id={s}", .{zombie_id});
             return;
         }
+        log.info("watcher.cancel_set zombie_id={s}", .{zombie_id});
 
         if (self.cfg.executor) |exec| {
             exec.cancelExecution(zombie_id) catch |err| {
