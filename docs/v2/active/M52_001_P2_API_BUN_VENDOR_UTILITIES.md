@@ -4,7 +4,7 @@
 **Milestone:** M52
 **Workstream:** 001
 **Date:** Apr 26, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P2 — secondary/tooling. Quality-of-implementation upgrade for hot paths (Redis stream parsing, artifact I/O, buffer reuse, worker control batching). Non-blocking for v2.0 launch; pulls forward correctness + perf wins that land cleanly in std-only Zig.
 **Categories:** API
 **Batch:** B1 — independent of all in-flight worker/auth/billing milestones; safe to land in parallel.
