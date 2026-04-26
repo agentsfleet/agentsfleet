@@ -246,12 +246,10 @@ fn getScopesOwned(alloc: std.mem.Allocator, obj: std.json.ObjectMap) !?[]u8 {
 
     var joiner = StringJoiner.init(alloc);
     errdefer joiner.deinit();
-    var first = true;
     for (scp.array.items) |item| {
-        if (item != .string) continue;
-        if (!first) try joiner.pushStatic(" ");
+        if (item != .string or item.string.len == 0) continue;
+        if (joiner.len > 0) try joiner.pushStatic(" ");
         try joiner.pushStatic(item.string);
-        first = false;
     }
     if (joiner.len == 0) {
         joiner.deinit();
