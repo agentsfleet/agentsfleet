@@ -33,6 +33,13 @@ const log = std.log.scoped(.worker_watcher);
 const block_ms = "5000";
 const batch_count = "16";
 
+/// Reconcile sweep cadence. The watcher walks core.zombies every Nth tick
+/// (≈ N × 5s) and calls spawnZombieThread for every active row. Picks up:
+/// orphans from a failed install-time XADD; missed zombie_created control
+/// messages; any drift between PG state and the watcher's in-memory map.
+/// 6 ticks ≈ 30 seconds — bounded staleness, low PG load.
+const reconcile_every_ticks: u32 = 6;
+
 pub const WatcherConfig = struct {
     redis: *queue_redis.Client,
     pool: *pg.Pool,
@@ -135,15 +142,42 @@ pub const Watcher = struct {
 
     /// Main XREADGROUP loop. Returns when shutdown_requested fires or the
     /// WorkerState leaves the running phase. Caller spawns this in a thread.
+    /// Every `reconcile_every_ticks` poll cycles, the loop also runs a PG
+    /// sweep so a zombie row whose install-time XADD failed gets picked up
+    /// without waiting for the next worker restart.
     pub fn run(self: *Watcher) void {
         log.info("watcher.start consumer={s}", .{self.cfg.consumer_name});
+        var ticks_since_reconcile: u32 = 0;
         while (self.shouldKeepRunning()) {
             self.pollOnce() catch |err| {
                 log.err("watcher.poll_fail err={s} error_code=" ++ error_codes.ERR_INTERNAL_OPERATION_FAILED, .{@errorName(err)});
                 std.Thread.sleep(100 * std.time.ns_per_ms);
             };
+            ticks_since_reconcile += 1;
+            if (ticks_since_reconcile >= reconcile_every_ticks) {
+                self.reconcileTick() catch |err| {
+                    log.warn("watcher.reconcile_fail err={s}", .{@errorName(err)});
+                };
+                ticks_since_reconcile = 0;
+            }
         }
         log.info("watcher.stop consumer={s}", .{self.cfg.consumer_name});
+    }
+
+    /// Periodic sweep against PG state. Walks core.zombies WHERE status='active'
+    /// and calls spawnZombieThread for each id; idempotent on duplicates,
+    /// recovers orphans within ≤reconcile_every_ticks × 5s.
+    fn reconcileTick(self: *Watcher) !void {
+        const ids = try worker_zombie.listActiveZombieIds(self.cfg.pool, self.alloc);
+        defer {
+            for (ids) |id| self.alloc.free(id);
+            if (ids.len > 0) self.alloc.free(ids);
+        }
+        for (ids) |zombie_id| {
+            self.spawnZombieThread(zombie_id) catch |err| {
+                log.warn("watcher.reconcile_spawn_fail zombie_id={s} err={s}", .{ zombie_id, @errorName(err) });
+            };
+        }
     }
 
     fn shouldKeepRunning(self: *const Watcher) bool {
