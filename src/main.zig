@@ -143,6 +143,8 @@ test {
     _ = @import("zombie/activity_stream.zig");
     _ = @import("zombie/activity_cursor.zig");
     _ = @import("zombie/event_loop.zig");
+    _ = @import("zombie/event_loop_secrets.zig");
+    _ = @import("zombie/event_loop_secrets_test.zig");
     _ = @import("zombie/metering.zig");
     _ = @import("hmac_sig");
     _ = @import("crypto/hmac_sig_test.zig");

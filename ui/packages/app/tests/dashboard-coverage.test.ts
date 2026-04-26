@@ -75,6 +75,48 @@ vi.mock("@/lib/api/activity", () => ({
   listZombieActivity: vi.fn(),
 }));
 
+const listCredentialsMock = vi.fn();
+const createCredentialMock = vi.fn();
+const deleteCredentialMock = vi.fn();
+vi.mock("@/lib/api/credentials", () => ({
+  listCredentials: listCredentialsMock,
+  createCredential: createCredentialMock,
+  deleteCredential: deleteCredentialMock,
+}));
+
+// The credentials page composes two client components. The structural
+// dashboard-coverage test only cares that the page wraps them with the
+// right header/section labels — each child component carries its own
+// tests for behaviour. Stub them here so the static-markup pass does not
+// drag in react-hook-form or radix client-only providers.
+vi.mock("@/app/(dashboard)/credentials/components/AddCredentialForm", () => ({
+  default: ({ workspaceId }: { workspaceId: string }) =>
+    React.createElement("div", { "data-add-credential-form": workspaceId }),
+}));
+
+vi.mock("@/app/(dashboard)/credentials/components/CredentialsList", () => ({
+  default: ({
+    workspaceId,
+    credentials,
+  }: {
+    workspaceId: string;
+    credentials: { name: string; created_at: string }[];
+  }) =>
+    credentials.length === 0
+      ? React.createElement(
+          "p",
+          { "data-credentials-empty": workspaceId },
+          "No credentials stored yet",
+        )
+      : React.createElement(
+          "div",
+          { "data-credentials-list": workspaceId },
+          ...credentials.map((c) =>
+            React.createElement("div", { key: c.name, "data-credential-name": c.name }, c.name),
+          ),
+        ),
+}));
+
 vi.mock("@/app/(dashboard)/actions", () => ({
   setActiveWorkspace: setActiveWorkspaceMock,
 }));
@@ -92,6 +134,8 @@ vi.mock("lucide-react", () => {
     ShieldIcon: make("ShieldIcon"),
     SettingsIcon: make("SettingsIcon"),
     PlusIcon: make("PlusIcon"),
+    Loader2Icon: make("Loader2Icon"),
+    Trash2Icon: make("Trash2Icon"),
   };
 });
 
@@ -235,12 +279,31 @@ afterEach(() => {
 // ── Placeholder pages ──────────────────────────────────────────────────────
 
 describe("placeholder pages", () => {
-  it("credentials page renders the empty-state pitch", async () => {
+  it("credentials page renders list + add form when workspace + credentials are present", async () => {
+    getServerTokenMock.mockResolvedValue("token_abc");
+    resolveActiveWorkspaceMock.mockResolvedValue({ id: "ws_1", name: "Default" });
+    listCredentialsMock.mockResolvedValue({
+      credentials: [
+        { name: "fly", created_at: "2026-04-26T00:00:00Z" },
+        { name: "slack", created_at: "2026-04-26T00:00:01Z" },
+      ],
+    });
     const { default: Page } = await import("../app/(dashboard)/credentials/page");
-    const m = renderToStaticMarkup(React.createElement(Page));
+    const m = renderToStaticMarkup(await Page());
     expect(m).toContain("Credentials");
-    expect(m).toContain("Credential vault");
-    expect(m).toContain("credential vault ships");
+    expect(m).toContain("Stored credentials");
+    expect(m).toContain("Add a credential");
+    expect(m).toContain("fly");
+    expect(m).toContain("slack");
+  });
+
+  it("credentials page falls back to empty list when API errors", async () => {
+    getServerTokenMock.mockResolvedValue("token_abc");
+    resolveActiveWorkspaceMock.mockResolvedValue({ id: "ws_1", name: "Default" });
+    listCredentialsMock.mockRejectedValue(new Error("boom"));
+    const { default: Page } = await import("../app/(dashboard)/credentials/page");
+    const m = renderToStaticMarkup(await Page());
+    expect(m).toContain("No credentials stored yet");
   });
 
   it("firewall page renders the empty-state pitch", async () => {

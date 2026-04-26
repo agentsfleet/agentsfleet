@@ -22,6 +22,9 @@ export const wsZombieActivityPath = (wsId, zombieId) =>
 export const wsCredentialsPath = (wsId) =>
   `${WORKSPACES_PATH}${enc(wsId)}/credentials`;
 
+export const wsCredentialPath = (wsId, name) =>
+  `${WORKSPACES_PATH}${enc(wsId)}/credentials/${enc(name)}`;
+
 // Workspace-scoped integration grant routes (per zombie).
 export const wsGrantRequestPath = (wsId, zombieId) =>
   `${WORKSPACES_PATH}${enc(wsId)}/zombies/${enc(zombieId)}/integration-requests`;
