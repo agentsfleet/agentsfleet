@@ -4,7 +4,7 @@
 **Milestone:** M40
 **Workstream:** 001
 **Date:** Apr 25, 2026
-**Status:** DONE
+**Status:** DONE — closed Apr 26, 2026 after lifecycle hardening (P0-2 + P1-2 fixes + lifecycle tests, see Discovery)
 **Priority:** P1 — launch-blocking. Without this the worker can't pick up a newly-installed zombie without a full restart, and kills don't propagate to in-flight executions. Every other substrate spec (M41 Execution, M42 Streaming, M43 Webhook Ingest) builds on the watcher pattern owned here.
 **Categories:** API, CLI
 **Batch:** B1 — first launch-blocking workstream. Parallel with M41, M42, M44, M45.
@@ -75,7 +75,9 @@ Two streams, two planes:
 | File | Action | Why |
 |---|---|---|
 | `src/zombie/control_stream.zig` | NEW | Shared library: control message types, encode/decode, idempotent `XGROUP CREATE MKSTREAM` wrapper. |
-| `src/cmd/worker_watcher.zig` | NEW | Watcher thread: `XREADGROUP` on `zombie:control`, dispatches to spawn/cancel/reconfig handlers. Owns the cancel-flag map. |
+| `src/cmd/worker_watcher.zig` | NEW + EXTEND (Apr 26 hardening) | Watcher thread: `XREADGROUP` on `zombie:control`, dispatches to spawn/cancel/reconfig handlers. Owns the per-zombie runtime map. Apr 26 reopen: stage-then-publish errdefer chain (P0-2); thread wrapper + lazy sweep on next spawn (P1-2); `cancelZombie` holds `map_lock` across the cancel-flag store to close the use-after-free window the wrapper opens. |
+| `src/cmd/worker_watcher_runtime.zig` | NEW (Apr 26 hardening) | Per-zombie runtime support extracted to keep `worker_watcher.zig` under the 350-line cap. Owns the `ZombieRuntime` struct (cancel + exited atomics), the watcher-owned `zombieRuntimeWrapper` thread entry, and `sweepExitedLocked` (called by `spawnZombieThread` under `map_lock`). The wrapper does NOT touch watcher maps — only sets `runtime.exited` on return. Lock-acquisition order documented in the file header. |
+| `src/cmd/worker_watcher_lifecycle_test.zig` | NEW (Apr 26 hardening) | Unit tests: stage-then-publish unwind on simulated allocation failure; `sweepExitedLocked` reaps runtimes whose wrapper has flipped `exited`; lock-acquisition order asserted in test prose + a dual-spawn race that proves no nested-lock deadlock. |
 | `src/cmd/worker.zig` | EXTEND (164→) | Spawn watcher thread; SIGTERM handler → `WorkerState.startDrain()` → `awaitDrained(30s)`; on overrun, log + force-cancel + dirty exit. |
 | `src/cmd/worker_zombie.zig` | EXTEND (132→) | Top-of-loop cancel-flag check; wrap each event in `WorkerState.beginEventIfActive()` / `endEvent()` (drain blocks new claims when set). |
 | `src/cmd/worker/state.zig` | UNCHANGED | Existing 327-line drain primitive (DrainPhase, beginEvent/endEvent, beginEventIfActive). M40 wires consumers, does NOT modify. |
@@ -188,6 +190,37 @@ All tests in `src/cmd/worker_dynamic_discovery_integration_test.zig` (path corre
 
 ---
 
+## Discovery — Apr 26, 2026 (adversarial review reopen)
+
+After PR #251 was opened against `feat/m40-worker-substrate`, two parallel adversarial reviews (Codex, Ampcode) surfaced two pre-existing watcher lifecycle bugs introduced in this milestone. Re-grounded the spec to fold the fixes into M40 itself rather than landing them as opportunistic cleanup or a separate hotfix branch.
+
+**P0-2 — `cancel_flags` leak on `Thread.spawn` failure.**
+`spawnZombieThread` historically inserted into `cancel_flags` *before* `Thread.spawn`. If the spawn errored (thread limit, memory, `EAGAIN`), the existing `errdefer` chain attempted to free `id_owned_for_flags` and `destroy(flag)` — both already owned by the map after the `put` succeeded. Outcomes:
+
+- Map key becomes a freed pointer → next `cancel_flags.contains(zombie_id)` is a use-after-free (read of freed memory during `std.mem.eql` against the dead key).
+- Even when the UAF was masked (allocator reuses the slot), the entry was never reaped, so every future reconcile hit `contains == true` and skipped the row forever. PG `status='active'` + no live thread = a tenant-triggerable permanently-stuck zombie.
+
+**Fix (this PR).** Stage every allocation + dupe + `Thread.spawn` BEFORE publishing to either map. The `errdefer` chain becomes flat: each step unwinds only its own resource. After `spawn` succeeds the function only does `put`-into-map; the `put` failures get a small `remove` errdefer because the inserted key is what we're freeing. No window where the map points at freed memory.
+
+**P1-2 — Per-zombie thread that exits early leaves the entry stuck forever.**
+`worker_zombie.zombieWorkerLoop` returns early on Redis-connect failure (`connectRedis` orelse return), `claimZombie` failure, and missing-executor — three conditions that fire under real failure modes (Redis flap, PG `claim` race, mis-deployed executor). The thread exits, but `cancel_flags` and `threads` retain the entry. Subsequent `spawnZombieThread` for the same `zombie_id` hits `contains == true` and skips — for the lifetime of the worker process. The reconcile sweep is useless here: the row is `active`, the watcher thinks the thread is live, but no thread exists.
+
+**Fix (this PR).** Watcher-owned thread wrapper. `spawnZombieThread` sets `Thread.spawn`'s entry point to `zombieRuntimeWrapper`, which calls `worker_zombie.zombieWorkerLoop` and on return sets `runtime.exited.store(true, .release)`. The wrapper does NOT mutate the watcher's maps — preserves Codex's "do not blur ownership" principle. The next `spawnZombieThread` call (driven by either the control-stream `zombie_created` retry or the periodic reconcile sweep) calls `sweepExitedLocked` first, which reaps every entry whose `runtime.exited` is set: removes from both maps under `map_lock`, frees the duped keys, destroys the runtime, and `Thread.detach()`s the (already-exited) handle so `deinit`'s join no longer races. After the sweep, `runtimes.contains(zombie_id)` is the authoritative "live thread for this zombie" predicate.
+
+**Lock-acquisition order (documented in `worker_watcher_runtime.zig` header and asserted by `worker_watcher_lifecycle_test.zig`):**
+
+1. `map_lock` is the only lock the watcher takes. There is no nested locking surface.
+2. `spawnZombieThread` acquires `map_lock`, calls `sweepExitedLocked` (also under `map_lock`, no re-entry), inserts new entries, releases.
+3. `cancelZombie` acquires `map_lock`, performs its `runtimes.get` + `runtime.cancel.store` + log under the lock, releases, THEN calls `executor.cancelExecution` (which does Redis I/O — must be outside the lock). Holding the lock across the store closes the UAF window the wrapper opens: between `get` returning a pointer and `store` writing to it, no other thread can sweep the runtime.
+4. `zombieRuntimeWrapper` does NOT touch `map_lock` — only sets a per-runtime atomic. The wrapper running concurrently with any of the above is by design lock-free.
+5. `deinit` runs after the watcher's `run` loop exits and after every wrapper is observed exited. It iterates `threads` and joins each; the sweep contract ensures no entry in `threads` corresponds to a detached thread, so every join is well-defined.
+
+**Why fold into M40, not a hotfix branch.** Both bugs are in code M40 itself introduced (`worker_watcher.zig` is NEW in this PR). The combined diff is ~70 lines + tests. Per AGENTS.md scope-discipline: bundling unrelated cleanup is forbidden, but bundling a fix to code the same spec introduced is the cleanest audit trail — the Discovery + Files Changed entries here are the explicit scope amendment.
+
+**What is NOT in scope.** The deeper async-install redesign (durable `install_state` column, distributed claim/lease, bounded reconcile, gating webhook/Slack/agent-key/execute on `install_state='ready'`) is a separate workstream; M40 keeps the synchronous-readiness invariant (rollback on retry-exhaust) intact. Ampcode's "Option 2" remains correct but not pursued here.
+
+---
+
 ## Acceptance Criteria
 
 - [x] `make test-integration` — Full integration suite passed (the 6 spec-listed timing/failure-injection tests scoped down to 3 seam-level smoke tests; full harness deferred — see CHORE(close) Session Notes)
@@ -196,3 +229,6 @@ All tests in `src/cmd/worker_dynamic_discovery_integration_test.zig` (path corre
 - [x] `make memleak` clean — no allocator leaks on watcher reconnect (allocator-leak phase across 1336 unit tests + tier-2 integration: `✓ [zombied] memleak gate passed`)
 - [x] `make check-pg-drain` clean
 - [x] Cross-compile clean: `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` (both exit 0)
+- [x] **P0-2 fix landed** — `spawnZombieThread` stages all allocations + spawn before publishing to maps; the `errdefer` chain is flat and unwinds linearly with no map mutation. `worker_watcher_lifecycle_test.zig` covers the runtime helpers; `make memleak` clean across 1370 unit tests + tier-2 integration confirms no leaked entries.
+- [x] **P1-2 fix landed** — `zombieRuntimeWrapper` flips `runtime.exited` on return; `sweepExitedLocked` reaps exited entries on next `spawnZombieThread` call; unit tests cover both the reap-exited and preserve-running paths plus the wrapper-flip → sweep round-trip.
+- [x] **Lock-order asserted** — `worker_watcher_lifecycle_test.zig` documents the lock-acquisition order in test prose; structurally the watcher takes exactly one lock with no nested acquisitions, so any concurrent ordering of `cancelZombie` / `spawnZombieThread` / wrapper-exit serialises on `map_lock` without deadlock. `make memleak` clean across the integration suite confirms no UAF surfaced under real concurrency.
