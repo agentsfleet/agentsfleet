@@ -4,11 +4,11 @@
 **Milestone:** M53
 **Workstream:** 001
 **Date:** Apr 26, 2026
-**Status:** PENDING
+**Status:** DONE (partial — §2 landed; §1/§3/§4/§5 deferred, see Discovery)
 **Priority:** P2 — codebase hygiene. Comment-and-grep sweep across the Zig surface to land five small, independently-bisectable correctness/style improvements.
 **Categories:** API
 **Batch:** B1 — independent of in-flight milestones. No public-API or schema changes.
-**Branch:** {feat/m53-hygiene-sweep — added when work begins}
+**Branch:** feat/m53-hygiene-sweep
 **Depends on:** M40 (worker substrate vendored `src/sys/errno.zig` + `src/sys/error.zig` — this spec adopts them).
 
 **Coordinates with:** none currently. (M52_001 Bun Vendor Utilities was deferred on Apr 26, 2026 — see `docs/v2/done/M52_001_…md`. The originally-anticipated `worker_watcher.zig` mutex → UnboundedQueue migration is no longer pending, so this spec audits the existing mutex pattern as canonical state.)
@@ -237,3 +237,43 @@ N/A — no files deleted. §5 renames identifiers; the renames are full-codebase
 - String utility adoption — StringBuilder / StringJoiner / SmolStr (M55_001).
 - Pub `///` doc-comments — explicitly deferred per author decision Apr 26, 2026.
 - Retrofitting `Maybe(T)` into existing DB / HTTP `!T` return shapes — explicitly out per the boundary in `src/sys/error.zig` and ZIG_RULES.md.
+
+---
+
+## Discovery — Apr 26, 2026 PLAN-phase findings
+
+PLAN grep over the actual tree found four of the five sections infeasible as written. §2 alone landed in this spec; the others split out. Recording here so the follow-up specs inherit context.
+
+### §1 — atomic-ordering commentary: scope explosion
+
+Spec estimate: 25–60 files total across all five sections.
+Reality: §1 alone is 454 production atomic-op sites across 71 files (525 sites with tests). Adding `// safe because: <pairing>` comments that *correctly name the matching site* — which is what the spec demands, not a rubber-stamp — requires real call-graph analysis per site, not a grep sweep. Bundled into one workstream this is unreviewable.
+
+**Disposition:** split into per-subsystem follow-ups. Suggested partition: `executor/`, `observability/`, `queue/` + `events/`, `cmd/worker*` + `state/`, plus a residual sweep for the rest. Each becomes its own workstream with its own grep gate.
+
+### §3 — `Maybe(T)` adoption in new sys/fs paths: directories don't exist
+
+Spec premise: post-M40 `src/sys/fs/`, `src/sys/proc/`, `src/sys/net/` carry `!T` returns to migrate.
+Reality: `src/sys/` contains only `errno.zig` and `error.zig`. None of those subdirectories exist on `main`. M40 vendored the helpers but no callers landed yet.
+
+**Disposition:** revisit when the first sys/fs caller lands. Either fold into that caller's spec or file a new workstream then.
+
+### §4 — `errno.nameOf` in syscall error logs: no rc-bearing sites
+
+Spec premise: replace `@errorName(err)` with `errno.nameOf(rc)` at syscall failure log sites.
+Reality: the codebase uses `std.posix.*` wrappers exclusively (`std.posix.accept`, `std.posix.poll`, `std.posix.connect`, etc.). These wrappers consume the errno internally and return Zig error unions — no rc is exposed at the call site. The only `std.os.linux.*` usage is `getpid()`. The only `std.c._errno()` reference is inside `src/sys/errno.zig` itself.
+
+Substituting `errno.nameOf(rc)` at any of the 25 candidate log sites would require rewriting `std.posix.*` calls as raw `std.os.linux.*` calls and threading rc forward — far outside this spec's "comment-and-grep" framing.
+
+**Disposition:** the `errno.nameOf` helper stays useful for any future code that does call raw syscalls, but the existing surface has nothing to convert. Close as no-op unless a future spec introduces raw-syscall paths.
+
+### §5 — snake_case lint flip: rule does not exist in zlint v0.7.9
+
+Spec premise: flip the snake_case rule on in `.zlint.yaml` and fix violations.
+Reality: the project's zlint config is `zlint.json` (not `.zlint.yaml`). zlint v0.7.9 (`/Users/kishore/bin/zlint`) reports both `snake_case` and `naming-convention` as unknown rule names. The four rules its config recognizes are `avoid-as`, `no-catch-return`, `suppressed-errors`, `unsafe-undefined` — none related to identifier casing.
+
+**Disposition:** either upgrade zlint to a version with a casing rule (no-op research follow-up), or write a lightweight Python lint pass alongside `lint-zig.py`. Either way, out of scope here.
+
+### §2 — landed
+
+Two unpaired `.lock()` sites — `src/events/bus.zig` (cond-wait pattern) and `src/cmd/worker_watcher.zig:cancelZombie` (UAF-window manual unlock). Both refactored by extracting the locked critical section into a defer-pairing helper, per the spec's preferred fix. No behavior change. Build + bus.zig tests green. Commit `b2da9e00`.
