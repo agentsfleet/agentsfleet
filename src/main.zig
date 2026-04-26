@@ -149,6 +149,8 @@ test {
     _ = @import("zombie/control_stream.zig");
     _ = @import("zombie/control_stream_test.zig");
     _ = @import("cmd/worker_watcher.zig");
+    _ = @import("cmd/worker_watcher_runtime.zig");
+    _ = @import("cmd/worker_watcher_lifecycle_test.zig");
     _ = @import("cmd/worker_dynamic_discovery_integration_test.zig");
     _ = @import("sys/errno.zig");
     _ = @import("sys/error.zig");

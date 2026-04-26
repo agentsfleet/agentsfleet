@@ -10,9 +10,12 @@
 //!   - `zombie_config_changed` → log; full hot-reload deferred.
 //!   - `worker_drain_request`  → kick the WorkerState drain phase.
 //!
-//! Owns the cancel-flag map shared with per-zombie threads. Cancel flags are
-//! heap-allocated, kept alive for the life of the worker process, and freed
-//! in `deinit()` after every spawned thread has been joined — never sooner.
+//! Owns the per-zombie runtime map shared with per-zombie threads. Each
+//! runtime carries a cancel atomic + exited atomic; the wrapper at
+//! `worker_watcher_runtime.zombieRuntimeWrapper` flips exited on return,
+//! and `sweepExitedLocked` (called from `spawnZombieThread`) reaps the
+//! entry on the next spawn attempt. Map storage is freed in `deinit()`
+//! after every spawned thread has been joined — never sooner.
 
 const std = @import("std");
 const pg = @import("pg");
@@ -22,6 +25,7 @@ const redis_protocol = @import("../queue/redis_protocol.zig");
 const control_stream = @import("../zombie/control_stream.zig");
 const worker_state_mod = @import("worker/state.zig");
 const worker_zombie = @import("worker_zombie.zig");
+const runtime_mod = @import("worker_watcher_runtime.zig");
 const executor_client = @import("../executor/client.zig");
 const telemetry_mod = @import("../observability/telemetry.zig");
 const error_codes = @import("../errors/error_registry.zig");
@@ -56,7 +60,8 @@ pub const WatcherConfig = struct {
 pub const Watcher = struct {
     alloc: std.mem.Allocator,
     cfg: WatcherConfig,
-    cancel_flags: std.StringHashMap(*std.atomic.Value(bool)),
+    /// Per-zombie runtime (cancel + exited atomics). See `worker_watcher_runtime.zig`.
+    runtimes: std.StringHashMap(*runtime_mod.ZombieRuntime),
     threads: std.StringHashMap(std.Thread),
     map_lock: std.Thread.Mutex = .{},
 
@@ -64,14 +69,16 @@ pub const Watcher = struct {
         return .{
             .alloc = alloc,
             .cfg = cfg,
-            .cancel_flags = std.StringHashMap(*std.atomic.Value(bool)).init(alloc),
+            .runtimes = std.StringHashMap(*runtime_mod.ZombieRuntime).init(alloc),
             .threads = std.StringHashMap(std.Thread).init(alloc),
         };
     }
 
     /// Joins every spawned per-zombie thread (must already have observed
-    /// drain / cancel) and frees the cancel-flag map. Caller must have
-    /// stopped the run loop before this point.
+    /// drain / cancel) and frees the runtime map. Caller must have
+    /// stopped the run loop before this point. Threads that the wrapper
+    /// already detached via `sweepExitedLocked` are not in the threads
+    /// map, so this iteration only joins still-live entries.
     pub fn deinit(self: *Watcher) void {
         var thr_it = self.threads.iterator();
         while (thr_it.next()) |entry| {
@@ -80,62 +87,79 @@ pub const Watcher = struct {
         }
         self.threads.deinit();
 
-        var cf_it = self.cancel_flags.iterator();
-        while (cf_it.next()) |entry| {
+        var rt_it = self.runtimes.iterator();
+        while (rt_it.next()) |entry| {
             self.alloc.free(entry.key_ptr.*);
             self.alloc.destroy(entry.value_ptr.*);
         }
-        self.cancel_flags.deinit();
+        self.runtimes.deinit();
     }
 
-    /// Spawn a per-zombie thread. Idempotent — duplicate calls are a no-op
-    /// (e.g. bootstrap path collides with a `zombie_created` already in the
-    /// stream backlog). Caller owns nothing; the watcher takes a duped
-    /// copy of `zombie_id` for its maps.
+    /// Spawn a per-zombie thread. Idempotent — a duplicate call for a
+    /// zombie whose wrapper has not exited returns without doing work.
+    /// Calls for a zombie whose previous wrapper already exited (early
+    /// failure path: Redis connect, claim, missing executor) reap the
+    /// stale entry first, then spawn fresh — no permanent stuck state.
+    ///
+    /// All allocations + `Thread.spawn` happen BEFORE either map publish,
+    /// so the `errdefer` chain unwinds linearly with no map mutation —
+    /// closes the original P0-2 use-after-free where a `Thread.spawn`
+    /// failure left a freed key inside `cancel_flags`.
     pub fn spawnZombieThread(self: *Watcher, zombie_id: []const u8) !void {
         self.map_lock.lock();
         defer self.map_lock.unlock();
 
-        if (self.cancel_flags.contains(zombie_id)) {
+        // Reap any wrapper that already returned (early-exit path) so the
+        // `contains` check below is the authoritative "live thread" probe.
+        try runtime_mod.sweepExitedLocked(self.alloc, &self.runtimes, &self.threads);
+
+        if (self.runtimes.contains(zombie_id)) {
             log.debug("watcher.spawn_skipped reason=already_running zombie_id={s}", .{zombie_id});
             return;
         }
 
         // Self-heal: bootstrap may be walking a zombie row whose install-time
         // XADD failed (see `publishInstallSignals` in zombies/create.zig).
-        // Calling ensureZombieEventsGroup here is idempotent (BUSYGROUP-as-
-        // success) and means an orphan zombie picks up its missing stream +
-        // group at this worker's next boot — no separate reconcile job.
+        // Idempotent (BUSYGROUP-as-success).
         try control_stream.ensureZombieEventsGroup(self.cfg.redis, zombie_id);
 
-        const flag = try self.alloc.create(std.atomic.Value(bool));
-        errdefer self.alloc.destroy(flag);
-        flag.* = std.atomic.Value(bool).init(false);
+        const runtime = try self.alloc.create(runtime_mod.ZombieRuntime);
+        errdefer self.alloc.destroy(runtime);
+        runtime.* = runtime_mod.ZombieRuntime.init();
 
-        const id_owned_for_flags = try self.alloc.dupe(u8, zombie_id);
-        errdefer self.alloc.free(id_owned_for_flags);
-        try self.cancel_flags.put(id_owned_for_flags, flag);
+        const id_for_runtimes = try self.alloc.dupe(u8, zombie_id);
+        errdefer self.alloc.free(id_for_runtimes);
 
-        const id_owned_for_thread = try self.alloc.dupe(u8, zombie_id);
-        errdefer self.alloc.free(id_owned_for_thread);
+        const id_for_thread = try self.alloc.dupe(u8, zombie_id);
+        errdefer self.alloc.free(id_for_thread);
 
-        const thread = try std.Thread.spawn(.{}, worker_zombie.zombieWorkerLoop, .{
-            self.alloc,
-            worker_zombie.ZombieWorkerConfig{
-                .pool = self.cfg.pool,
-                .zombie_id = id_owned_for_thread,
-                .shutdown_requested = self.cfg.shutdown_requested,
-                .executor = self.cfg.executor,
-                .workspace_path = self.cfg.workspace_path,
-                .telemetry = self.cfg.telemetry,
-                .cancel_flag = flag,
-                .worker_state = self.cfg.worker_state,
-            },
-        });
+        const id_for_threads = try self.alloc.dupe(u8, zombie_id);
+        errdefer self.alloc.free(id_for_threads);
 
-        const id_owned_for_threads_map = try self.alloc.dupe(u8, zombie_id);
-        errdefer self.alloc.free(id_owned_for_threads_map);
-        try self.threads.put(id_owned_for_threads_map, thread);
+        const wcfg = worker_zombie.ZombieWorkerConfig{
+            .pool = self.cfg.pool,
+            .zombie_id = id_for_thread,
+            .shutdown_requested = self.cfg.shutdown_requested,
+            .executor = self.cfg.executor,
+            .workspace_path = self.cfg.workspace_path,
+            .telemetry = self.cfg.telemetry,
+            .cancel_flag = &runtime.cancel,
+            .worker_state = self.cfg.worker_state,
+        };
+        const thread = try std.Thread.spawn(
+            .{},
+            runtime_mod.zombieRuntimeWrapper,
+            .{ runtime, self.alloc, wcfg },
+        );
+        // After Thread.spawn the wrapper is live; we cannot unwind it.
+        // The wrapper will run to completion regardless of the map.put
+        // outcomes below. If a put fails the wrapper still exits cleanly
+        // and a future sweep is a no-op for absent entries.
+
+        try self.runtimes.put(id_for_runtimes, runtime);
+        errdefer _ = self.runtimes.remove(id_for_runtimes);
+
+        try self.threads.put(id_for_threads, thread);
 
         log.info("watcher.spawned zombie_id={s}", .{zombie_id});
     }
@@ -245,18 +269,24 @@ pub const Watcher = struct {
     }
 
     fn cancelZombie(self: *Watcher, zombie_id: []const u8) void {
+        // Hold map_lock across the cancel.store to close the UAF window
+        // the lazy-sweep wrapper opens: between get-returning-pointer and
+        // the store, no other thread can sweep the runtime.
+        // Released BEFORE the executor RPC — that's Redis I/O and may block.
         self.map_lock.lock();
-        const flag_ptr = self.cancel_flags.get(zombie_id);
+        var found: bool = false;
+        if (self.runtimes.get(zombie_id)) |rt| {
+            if (!rt.exited.load(.acquire)) {
+                rt.cancel.store(true, .release);
+                found = true;
+            }
+        }
         self.map_lock.unlock();
 
-        if (flag_ptr) |flag| {
-            // safe because: the per-zombie thread reads this with .acquire in
-            // worker_zombie.watchShutdown, observing the publication on its
-            // next 100ms poll. Single-writer flag (this watcher), many-readers.
-            flag.store(true, .release);
+        if (found) {
             log.info("watcher.cancel_set zombie_id={s}", .{zombie_id});
         } else {
-            log.debug("watcher.cancel_skip reason=not_local zombie_id={s}", .{zombie_id});
+            log.debug("watcher.cancel_skip reason=not_local_or_exited zombie_id={s}", .{zombie_id});
             return;
         }
 
