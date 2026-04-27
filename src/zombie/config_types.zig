@@ -81,7 +81,7 @@ pub const ZombieNetwork = struct {
 pub const ZombieConfig = struct {
     name: []const u8,
     trigger: ZombieTrigger,
-    skills: []const []const u8,
+    tools: []const []const u8,
     credentials: []const []const u8,
     network: ?ZombieNetwork,
     budget: ZombieBudget,
@@ -95,7 +95,7 @@ pub const ZombieConfig = struct {
     pub fn deinit(self: *const ZombieConfig, alloc: Allocator) void {
         alloc.free(self.name);
         freeZombieTrigger(alloc, self.trigger);
-        freeStringSlice(alloc, self.skills);
+        freeStringSlice(alloc, self.tools);
         freeStringSlice(alloc, self.credentials);
         if (self.network) |net| freeStringSlice(alloc, net.allow);
         if (self.gates) |gates| config_gates.freeGatePolicy(alloc, gates);

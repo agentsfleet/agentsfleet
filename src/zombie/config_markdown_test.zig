@@ -11,7 +11,7 @@ test "parseZombieFromTriggerMarkdown: parses frontmatter into config" {
     const trigger_md =
         "---\nname: lead-collector\ntrigger:\n  type: webhook\n  source: agentmail\n" ++
         "chain:\n  - lead-enricher\ncredentials:\n  - agentmail_api_key\n" ++
-        "budget:\n  daily_dollars: 5.0\nskills:\n  - agentmail\n---\n\n## Trigger Logic\n";
+        "budget:\n  daily_dollars: 5.0\ntools:\n  - agentmail\n---\n\n## Trigger Logic\n";
     var cfg = try parseZombieFromTriggerMarkdown(alloc, trigger_md);
     defer cfg.deinit(alloc);
     try std.testing.expectEqualStrings("lead-collector", cfg.name);

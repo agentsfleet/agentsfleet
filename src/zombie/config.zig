@@ -1,9 +1,10 @@
 // Zombie configuration façade — re-exports types + parse/validate/markdown
 // entry points so consumers keep a single import point (`config.X`).
 //
-// M2_002: directory-based zombie format (SKILL.md + TRIGGER.md).
-// zombiectl up sends both files raw. The server parses TRIGGER.md frontmatter
-// into config_json via parseZombieFromTriggerMarkdown. SKILL.md is stored as-is.
+// Directory-based zombie format (SKILL.md + TRIGGER.md). `zombiectl install
+// --from <path>` sends both files raw. The server parses TRIGGER.md frontmatter
+// into config_json via parseTriggerMarkdownWithJson (see config_markdown.zig).
+// SKILL.md is stored as-is.
 // At claim time, the worker calls:
 //   - parseZombieConfig(alloc, config_json_bytes)  → ZombieConfig struct
 //   - extractZombieInstructions(source_markdown)    → system prompt slice (borrowed)
@@ -12,7 +13,7 @@
 //   - config_types.zig     — value types + destructors
 //   - config_parser.zig    — JSON → ZombieConfig, per-field helpers
 //   - config_markdown.zig  — TRIGGER.md frontmatter extraction
-//   - config_validate.zig  — skill / credential registry checks
+//   - config_validate.zig  — tool / credential registry checks
 //   - config_helpers.zig   — shared parse sub-routines (trigger, network, budget)
 //   - config_gates.zig     — gate/anomaly policy types + parser
 
@@ -43,8 +44,10 @@ pub const GatePolicy = config_gates.GatePolicy;
 // Entry points.
 pub const parseZombieConfig = config_parser.parseZombieConfig;
 pub const parseZombieFromTriggerMarkdown = config_markdown.parseZombieFromTriggerMarkdown;
+pub const parseTriggerMarkdownWithJson = config_markdown.parseTriggerMarkdownWithJson;
+pub const ParsedTrigger = config_markdown.ParsedTrigger;
 pub const extractZombieInstructions = config_markdown.extractZombieInstructions;
-pub const validateZombieSkills = config_validate.validateZombieSkills;
+pub const validateZombieTools = config_validate.validateZombieTools;
 
 // Test discovery — Zig only runs tests in transitively imported files. The
 // implementation modules are already reached via the `const` imports above,

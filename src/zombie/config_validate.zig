@@ -14,14 +14,14 @@ const log = std.log.scoped(.zombie_config);
 
 const MAX_CREDENTIAL_NAME_LEN: usize = 128;
 
-/// Fast path for config upload: validates skill+credential names without
+/// Fast path for config upload: validates tool+credential names without
 /// touching allocators. Both arrays borrowed — caller retains ownership.
-pub fn validateSkillsAndCredentials(
-    skills: []const []const u8,
+pub fn validateToolsAndCredentials(
+    tools: []const []const u8,
     credentials: []const []const u8,
 ) ZombieConfigError!void {
-    for (skills) |skill| {
-        if (!helpers.isKnownZombieSkill(skill)) return ZombieConfigError.UnknownSkill;
+    for (tools) |tool| {
+        if (!helpers.isKnownZombieSkill(tool)) return ZombieConfigError.UnknownSkill;
     }
     for (credentials) |cred| {
         try validateCredentialName(cred);
@@ -39,12 +39,12 @@ fn validateCredentialName(cred: []const u8) ZombieConfigError!void {
     }
 }
 
-/// Upload-time check against the known skill registry. Logs the offending
+/// Upload-time check against the known tool registry. Logs the offending
 /// name so the developer sees an actionable message in server logs.
-pub fn validateZombieSkills(config: ZombieConfig) ZombieConfigError!void {
-    for (config.skills) |skill| {
-        if (!helpers.isKnownZombieSkill(skill)) {
-            log.warn("zombie_config.validate unknown_skill={s}", .{skill});
+pub fn validateZombieTools(config: ZombieConfig) ZombieConfigError!void {
+    for (config.tools) |tool| {
+        if (!helpers.isKnownZombieSkill(tool)) {
+            log.warn("zombie_config.validate unknown_tool={s}", .{tool});
             return ZombieConfigError.UnknownSkill;
         }
     }

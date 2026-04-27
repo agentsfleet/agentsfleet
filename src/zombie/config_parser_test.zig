@@ -9,7 +9,7 @@ test "parseZombieConfig: valid config parses all fields" {
     const alloc = std.testing.allocator;
     const json =
         \\{"name":"lead-collector","trigger":{"type":"webhook","source":"agentmail","event":"message.received"},
-        \\ "skills":["agentmail"],"credentials":["agentmail_api_key"],
+        \\ "tools":["agentmail"],"credentials":["agentmail_api_key"],
         \\ "network":{"allow":["api.agentmail.to"]},"budget":{"daily_dollars":5.0},
         \\ "chain":["lead-enricher"]}
     ;
@@ -26,7 +26,7 @@ test "parseZombieConfig: valid config parses all fields" {
 test "parseZombieConfig: missing name returns MissingRequiredField" {
     const alloc = std.testing.allocator;
     const json =
-        \\{"trigger": {"type": "webhook", "source": "agentmail"}, "skills": ["agentmail"], "budget": {"daily_dollars": 1.0}}
+        \\{"trigger": {"type": "webhook", "source": "agentmail"}, "tools": ["agentmail"], "budget": {"daily_dollars": 1.0}}
     ;
     try std.testing.expectError(ZombieConfigError.MissingRequiredField, parseZombieConfig(alloc, json));
 }
@@ -34,7 +34,7 @@ test "parseZombieConfig: missing name returns MissingRequiredField" {
 test "parseZombieConfig: invalid trigger type returns InvalidTriggerType" {
     const alloc = std.testing.allocator;
     const json =
-        \\{"name": "x", "trigger": {"type": "invalid"}, "skills": ["agentmail"], "budget": {"daily_dollars": 1.0}}
+        \\{"name": "x", "trigger": {"type": "invalid"}, "tools": ["agentmail"], "budget": {"daily_dollars": 1.0}}
     ;
     try std.testing.expectError(ZombieConfigError.InvalidTriggerType, parseZombieConfig(alloc, json));
 }
@@ -43,7 +43,7 @@ test "parseZombieConfig: skill field parsed from JSON" {
     const alloc = std.testing.allocator;
     const json =
         \\{"name":"enricher","trigger":{"type":"chain","source":"lead-collector"},
-        \\ "skills":["agentmail"],"skill":"clawhub://queen/lead-hunter@1.0.1",
+        \\ "tools":["agentmail"],"skill":"clawhub://queen/lead-hunter@1.0.1",
         \\ "budget":{"daily_dollars":2.0}}
     ;
     var cfg = try parseZombieConfig(alloc, json);
@@ -56,7 +56,7 @@ test "parseZombieConfig: cron trigger + empty chain defaults" {
     const alloc = std.testing.allocator;
     const json =
         \\{"name":"nightly","trigger":{"type":"cron","schedule":"0 3 * * *"},
-        \\ "skills":["agentmail"],"budget":{"daily_dollars":0.5}}
+        \\ "tools":["agentmail"],"budget":{"daily_dollars":0.5}}
     ;
     var cfg = try parseZombieConfig(alloc, json);
     defer cfg.deinit(alloc);
@@ -70,7 +70,7 @@ test "parseZombieConfig: cron trigger + empty chain defaults" {
 test "parseZombieConfig: api trigger has no payload" {
     const alloc = std.testing.allocator;
     const json =
-        \\{"name":"api-agent","trigger":{"type":"api"},"skills":["agentmail"],
+        \\{"name":"api-agent","trigger":{"type":"api"},"tools":["agentmail"],
         \\ "budget":{"daily_dollars":1.0}}
     ;
     var cfg = try parseZombieConfig(alloc, json);
@@ -88,21 +88,21 @@ test "parseZombieConfig: root is array not object → MissingRequiredField" {
     try std.testing.expectError(ZombieConfigError.MissingRequiredField, parseZombieConfig(alloc, "[]"));
 }
 
-test "parseZombieConfig: empty skills array rejected" {
+test "parseZombieConfig: empty tools array rejected" {
     const alloc = std.testing.allocator;
     const json =
-        \\{"name":"x","trigger":{"type":"api"},"skills":[],"budget":{"daily_dollars":1.0}}
+        \\{"name":"x","trigger":{"type":"api"},"tools":[],"budget":{"daily_dollars":1.0}}
     ;
     try std.testing.expectError(ZombieConfigError.MissingRequiredField, parseZombieConfig(alloc, json));
 }
 
-test "parseZombieConfig: partial-build leak check (invalid budget after valid skills)" {
+test "parseZombieConfig: partial-build leak check (invalid budget after valid tools)" {
     // Proves the errdefer chain in parseZombieConfig frees the already-duped
-    // name / trigger / skills / credentials when a later field fails.
+    // name / trigger / tools / credentials when a later field fails.
     // std.testing.allocator panics on leak, so a clean exit means pass.
     const alloc = std.testing.allocator;
     const json =
-        \\{"name":"x","trigger":{"type":"api"},"skills":["agentmail"],
+        \\{"name":"x","trigger":{"type":"api"},"tools":["agentmail"],
         \\ "credentials":["ok_cred"],"budget":{"daily_dollars":-1.0}}
     ;
     try std.testing.expectError(ZombieConfigError.InvalidBudget, parseZombieConfig(alloc, json));

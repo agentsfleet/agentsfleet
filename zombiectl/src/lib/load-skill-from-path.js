@@ -48,8 +48,8 @@ export function loadSkillFromPath(path) {
     throw new SkillLoadError("ERR_TRIGGER_MISSING", triggerPath);
   }
 
-  const nameMatch = trigger_md.match(/^name:\s*(.+)$/m);
-  const name = nameMatch ? nameMatch[1].trim() : basename(path);
-
-  return { skill_md, trigger_md, name };
+  // The canonical zombie name comes back in the install response after the
+  // server parses TRIGGER.md frontmatter. The directory basename is only a
+  // fallback hint for human-readable CLI output if the server omits it.
+  return { skill_md, trigger_md, fallback_name: basename(path) };
 }

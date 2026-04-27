@@ -78,3 +78,72 @@ pub fn parseZombieFromTriggerMarkdown(
 
     return config_parser.parseZombieConfig(alloc, json);
 }
+
+/// Aggregate returned by `parseTriggerMarkdownWithJson` — the parsed
+/// ZombieConfig plus the JSON that was used to derive it. The JSON is the
+/// canonical `config_json` shape (what `parseZombieConfig` accepts) and is
+/// what the install handler persists into core.zombies. Owning both lets
+/// callers store the JSON without re-serializing the config.
+pub const ParsedTrigger = struct {
+    config: ZombieConfig,
+    config_json: []u8,
+
+    pub fn deinit(self: *ParsedTrigger, alloc: Allocator) void {
+        self.config.deinit(alloc);
+        alloc.free(self.config_json);
+    }
+};
+
+/// Same pipeline as `parseZombieFromTriggerMarkdown`, but also returns the
+/// intermediate JSON. Callers (the install handler) want the JSON for
+/// persistence and the parsed config for name extraction + validation
+/// without doing the work twice.
+pub fn parseTriggerMarkdownWithJson(
+    alloc: Allocator,
+    trigger_markdown: []const u8,
+) (Allocator.Error || ZombieConfigError)!ParsedTrigger {
+    const fm = scanFrontmatter(trigger_markdown) orelse
+        return ZombieConfigError.MissingRequiredField;
+
+    const json = try yaml_frontmatter.yamlFrontmatterToJson(alloc, fm.yaml);
+    errdefer alloc.free(json);
+
+    const config = try config_parser.parseZombieConfig(alloc, json);
+    return .{ .config = config, .config_json = json };
+}
+
+test "parseTriggerMarkdownWithJson: returns both parsed config and owned JSON" {
+    const alloc = std.testing.allocator;
+    const trigger_md =
+        "---\nname: test-zombie\ntrigger:\n  type: api\n" ++
+        "tools:\n  - agentmail\nbudget:\n  daily_dollars: 1.0\n---\n";
+    var parsed = try parseTriggerMarkdownWithJson(alloc, trigger_md);
+    defer parsed.deinit(alloc);
+    try std.testing.expectEqualStrings("test-zombie", parsed.config.name);
+    // The JSON round-trips through parseZombieConfig.
+    var reparsed = try config_parser.parseZombieConfig(alloc, parsed.config_json);
+    defer reparsed.deinit(alloc);
+    try std.testing.expectEqualStrings("test-zombie", reparsed.name);
+}
+
+test "parseTriggerMarkdownWithJson: missing frontmatter → MissingRequiredField" {
+    const alloc = std.testing.allocator;
+    try std.testing.expectError(
+        ZombieConfigError.MissingRequiredField,
+        parseTriggerMarkdownWithJson(alloc, "no frontmatter here"),
+    );
+}
+
+test "parseTriggerMarkdownWithJson: parse failure inside frontmatter → JSON freed (no leak)" {
+    const alloc = std.testing.allocator;
+    // Missing required `name:` — yaml→json succeeds, parseZombieConfig fails.
+    // The errdefer must free the JSON. std.testing.allocator panics on leak,
+    // so a clean error return = pass.
+    const trigger_md =
+        "---\ntrigger:\n  type: api\ntools:\n  - agentmail\n" ++
+        "budget:\n  daily_dollars: 1.0\n---\n";
+    try std.testing.expectError(
+        ZombieConfigError.MissingRequiredField,
+        parseTriggerMarkdownWithJson(alloc, trigger_md),
+    );
+}

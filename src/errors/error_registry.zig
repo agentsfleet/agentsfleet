@@ -240,9 +240,10 @@ pub const MSG_INVALID_TOKEN = "Invalid token";
 pub const MSG_ZOMBIE_NOT_ACTIVE = "Zombie is not active";
 // Zombie CRUD messages
 pub const MSG_ZOMBIE_NAME_EXISTS = "Zombie already exists in this workspace. Use `zombiectl kill` first.";
-pub const MSG_ZOMBIE_INVALID_CONFIG = "Config JSON is not valid. Check trigger, skills, and budget fields.";
+pub const MSG_ZOMBIE_INVALID_CONFIG = "Config JSON is not valid. Check trigger, tools, and budget fields.";
 pub const MSG_ZOMBIE_NAME_REQUIRED = "name is required (max 64 chars, slug-safe)";
 pub const MSG_ZOMBIE_SOURCE_REQUIRED = "source_markdown is required (max 64KB)";
+pub const MSG_ZOMBIE_TRIGGER_REQUIRED = "trigger_markdown is required (max 64KB)";
 pub const MSG_ZOMBIE_CONFIG_REQUIRED = "config_json is required";
 pub const MSG_WORKSPACE_ID_REQUIRED = "workspace_id is required (UUIDv7)";
 pub const MSG_CREDENTIAL_NAME_REQUIRED = "credential name is required (max 64 chars)";
