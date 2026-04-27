@@ -12,43 +12,43 @@
 
 const std = @import("std");
 
-pub const ReconcileArgError = error{
+const ReconcileArgError = error{
     InvalidArgument,
     MissingValue,
     InvalidIntervalSeconds,
     InvalidMetricsPort,
 };
 
-pub const ReconcileMode = enum {
+const ReconcileMode = enum {
     one_shot,
     daemon,
 };
 
-pub const ReconcileArgs = struct {
+const ReconcileArgs = struct {
     mode: ReconcileMode = .one_shot,
     interval_seconds: u64 = 30,
     metrics_port: u16 = 9091,
 };
 
-pub fn parseU64Arg(raw: []const u8, err_value: ReconcileArgError) ReconcileArgError!u64 {
+fn parseU64Arg(raw: []const u8, err_value: ReconcileArgError) ReconcileArgError!u64 {
     const parsed = std.fmt.parseInt(u64, raw, 10) catch return err_value;
     if (parsed == 0) return err_value;
     return parsed;
 }
 
-pub fn parseU16Arg(raw: []const u8, err_value: ReconcileArgError) ReconcileArgError!u16 {
+fn parseU16Arg(raw: []const u8, err_value: ReconcileArgError) ReconcileArgError!u16 {
     const parsed = std.fmt.parseInt(u16, raw, 10) catch return err_value;
     if (parsed == 0) return err_value;
     return parsed;
 }
 
-pub fn envU64OrDefault(alloc: std.mem.Allocator, name: []const u8, default_value: u64, err_value: ReconcileArgError) ReconcileArgError!u64 {
+fn envU64OrDefault(alloc: std.mem.Allocator, name: []const u8, default_value: u64, err_value: ReconcileArgError) ReconcileArgError!u64 {
     const raw = std.process.getEnvVarOwned(alloc, name) catch return default_value;
     defer alloc.free(raw);
     return parseU64Arg(raw, err_value);
 }
 
-pub fn envU16OrDefault(alloc: std.mem.Allocator, name: []const u8, default_value: u16, err_value: ReconcileArgError) ReconcileArgError!u16 {
+fn envU16OrDefault(alloc: std.mem.Allocator, name: []const u8, default_value: u16, err_value: ReconcileArgError) ReconcileArgError!u16 {
     const raw = std.process.getEnvVarOwned(alloc, name) catch return default_value;
     defer alloc.free(raw);
     return parseU16Arg(raw, err_value);

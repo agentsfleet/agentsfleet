@@ -48,7 +48,7 @@ pub fn initPostHog(alloc: std.mem.Allocator) PostHogResult {
     return .{ .client = client, .api_key_owned = api_key };
 }
 
-pub const TelemetryResult = struct {
+const TelemetryResult = struct {
     telemetry: telemetry_mod.Telemetry,
     ph: PostHogResult,
 
@@ -156,7 +156,7 @@ pub fn parseMigrateOnStart(alloc: std.mem.Allocator) !bool {
 // Cache root + git artifact cleanup
 // ---------------------------------------------------------------------------
 
-pub const CleanupStats = struct {
+const CleanupStats = struct {
     removed_worktrees: u32,
     failed_worktree_removals: u32,
     pruned_bare_repos: u32,

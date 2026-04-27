@@ -10,9 +10,9 @@
 
 const std = @import("std");
 
-pub const WorkerError = error{ShutdownRequested};
+const WorkerError = error{ShutdownRequested};
 
-pub const DrainPhase = enum(u8) {
+const DrainPhase = enum(u8) {
     running = 0,
     draining = 1,
     drained = 2,
@@ -29,18 +29,18 @@ pub const WorkerState = struct {
         };
     }
 
-    pub fn beginEvent(self: *WorkerState) void {
+    fn beginEvent(self: *WorkerState) void {
         _ = self.in_flight_events.fetchAdd(1, .acq_rel);
     }
 
-    pub fn endEvent(self: *WorkerState) void {
+    fn endEvent(self: *WorkerState) void {
         const prev = self.in_flight_events.fetchSub(1, .acq_rel);
         // `unreachable` is explicit about intent and still fires in ReleaseSafe.
         // Without this, unbalanced endEvent would wrap u32 and stall drain forever.
         if (prev == 0) unreachable;
     }
 
-    pub fn currentInFlightEvents(self: *const WorkerState) u32 {
+    fn currentInFlightEvents(self: *const WorkerState) u32 {
         return self.in_flight_events.load(.acquire);
     }
 
@@ -58,7 +58,7 @@ pub const WorkerState = struct {
     /// True once completeDrain() has run and no in-flight events remain.
     /// This is the "fully stopped" flag — use it when you need to know the
     /// process is safe to exit, as distinct from "stopped accepting new work".
-    pub fn isStopped(self: *const WorkerState) bool {
+    fn isStopped(self: *const WorkerState) bool {
         return self.getDrainPhase() == .drained;
     }
 
