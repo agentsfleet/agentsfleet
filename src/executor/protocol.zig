@@ -18,7 +18,7 @@ pub const Method = struct {
     pub const inject_user_message = "InjectUserMessage";
 };
 
-pub const RpcError = struct {
+const RpcError = struct {
     code: i32,
     message: []const u8,
 };
@@ -81,7 +81,7 @@ fn readAllFd(fd: std.posix.socket_t, buf: []u8) !void {
 }
 
 /// Write a length-prefixed frame to an ArrayList writer (for tests/serialization).
-pub fn writeFrameToBuf(alloc: std.mem.Allocator, buf: *std.ArrayList(u8), payload: []const u8) !void {
+fn writeFrameToBuf(alloc: std.mem.Allocator, buf: *std.ArrayList(u8), payload: []const u8) !void {
     if (payload.len > MAX_FRAME_SIZE) return error.FrameTooLarge;
     const len: u32 = @intCast(payload.len);
     const len_bytes = std.mem.toBytes(std.mem.nativeTo(u32, len, .big));
@@ -111,7 +111,7 @@ pub fn sendRequest(alloc: std.mem.Allocator, fd: std.posix.socket_t, id: u64, me
 }
 
 /// Parse a JSON-RPC request from a frame payload.
-pub const ParsedRequest = struct {
+const ParsedRequest = struct {
     id: u64,
     method: []const u8,
     params: ?std.json.Value,

@@ -9,7 +9,7 @@ const types = @import("types.zig");
 
 const log = std.log.scoped(.executor_session);
 
-pub const SessionError = error{
+const SessionError = error{
     SessionNotFound,
     SessionAlreadyExists,
     SessionCancelled,
@@ -89,7 +89,7 @@ pub const Session = struct {
     }
 
     /// M27_001: Resource limits context for scoring normalization.
-    pub const ResourceContext = struct {
+    const ResourceContext = struct {
         memory_limit_bytes: u64,
     };
 

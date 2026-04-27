@@ -124,7 +124,7 @@ pub fn observeAgentDurationSeconds(wall_seconds: u64) void {
 
 // ── Snapshot ─────────────────────────────────────────────────────────────────
 
-pub const ExecutorSnapshot = struct {
+const ExecutorSnapshot = struct {
     sessions_created_total: u64,
     sessions_active: u64,
     failures_total: u64,

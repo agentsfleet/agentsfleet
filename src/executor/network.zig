@@ -37,7 +37,7 @@ pub fn policyFromEnv(alloc: std.mem.Allocator) NetworkPolicy {
 }
 
 /// Parse a network policy string. Exported for unit testing.
-pub fn policyFromSlice(raw: []const u8) NetworkPolicy {
+fn policyFromSlice(raw: []const u8) NetworkPolicy {
     if (std.ascii.eqlIgnoreCase(raw, "registry_allowlist")) return .registry_allowlist;
     return .deny_all;
 }
@@ -74,7 +74,7 @@ pub fn appendBwrapNetworkArgs(
 }
 
 /// Check if network namespace isolation is available on this host.
-pub fn isNetworkNamespaceAvailable() bool {
+fn isNetworkNamespaceAvailable() bool {
     if (builtin.os.tag != .linux) return false;
     std.fs.accessAbsolute("/usr/bin/bwrap", .{}) catch {
         std.fs.accessAbsolute("/usr/local/bin/bwrap", .{}) catch return false;

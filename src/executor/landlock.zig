@@ -85,7 +85,7 @@ const SYSTEM_READONLY_ACCESS: u64 = LANDLOCK_ACCESS_FS_READ_FILE |
     LANDLOCK_ACCESS_FS_READ_DIR |
     LANDLOCK_ACCESS_FS_EXECUTE;
 
-pub const LandlockError = error{
+const LandlockError = error{
     UnsupportedPlatform,
     RulesetCreationFailed,
     RuleAddFailed,
@@ -120,7 +120,7 @@ const SYSTEM_READONLY_PATHS = [_][]const u8{
 /// - workspace_path with full RW
 /// - system paths with read-only + execute
 /// - everything else is denied
-pub fn applyPolicy(workspace_path: []const u8) LandlockError!void {
+fn applyPolicy(workspace_path: []const u8) LandlockError!void {
     if (builtin.os.tag != .linux) return LandlockError.UnsupportedPlatform;
 
     // Create ruleset.
