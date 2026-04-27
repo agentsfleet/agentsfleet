@@ -12,7 +12,7 @@ const id_format = @import("../types/id_format.zig");
 /// Fetch recent memories for a workspace, newest first.
 /// Returns a formatted string suitable for injection into Echo's prompt.
 /// Caller owns the returned slice.
-pub fn loadForEcho(
+fn loadForEcho(
     alloc: std.mem.Allocator,
     conn: *pg.Conn,
     workspace_id: []const u8,
@@ -52,7 +52,7 @@ pub fn loadForEcho(
 
 /// Save observations from Warden as workspace memories.
 /// Each line in `observations` that is non-empty is saved as a separate record.
-pub fn saveFromWarden(
+fn saveFromWarden(
     conn: *pg.Conn,
     workspace_id: []const u8,
     run_id: []const u8,
