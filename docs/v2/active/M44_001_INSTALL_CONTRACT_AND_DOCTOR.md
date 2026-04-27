@@ -4,11 +4,11 @@
 **Milestone:** M44
 **Workstream:** 001
 **Date:** Apr 25, 2026 (amended Apr 27, 2026)
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — launch-blocking. Three load-bearing bugs in shipped code that block the wedge end-to-end. Codex outside-voice review surfaced these as P0 contract mismatches.
 **Categories:** API, CLI
 **Batch:** B1 — parallel with M40, M41, M42, M43, M45.
-**Branch:** feat/m44-install-contract (to be created)
+**Branch:** feat/m44-install-contract
 **Depends on:** none — these are bug fixes + a deterministic preflight on existing surfaces.
 
 **Canonical architecture:** `docs/ARCHITECHTURE.md` §8.2 (Installing the zombie), §12 step 5 (innerCreateZombie atomic publish — depends on M40 too but the contract fix is independent).
