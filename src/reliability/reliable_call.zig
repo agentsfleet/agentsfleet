@@ -6,7 +6,7 @@ const classifier = @import("error_classify.zig");
 const metrics = @import("../observability/metrics.zig");
 const log = std.log.scoped(.reliable);
 
-pub const RetryOptions = struct {
+const RetryOptions = struct {
     max_retries: u32 = 2,
     base_delay_ms: u64 = 500,
     max_delay_ms: u64 = 30_000,
@@ -50,7 +50,7 @@ pub fn call(
     }.detail, opts);
 }
 
-pub fn callWithDetail(
+fn callWithDetail(
     comptime T: type,
     ctx: anytype,
     comptime operation: fn (@TypeOf(ctx), u32) anyerror!T,

@@ -2,7 +2,7 @@
 
 const std = @import("std");
 
-pub const TokenBucket = struct {
+const TokenBucket = struct {
     capacity: f64,
     tokens: f64,
     refill_per_sec: f64,
@@ -27,7 +27,7 @@ pub const TokenBucket = struct {
         return false;
     }
 
-    pub fn waitMsUntil(self: *TokenBucket, now_ms: i64, cost: f64) u64 {
+    fn waitMsUntil(self: *TokenBucket, now_ms: i64, cost: f64) u64 {
         self.refill(now_ms);
         if (self.tokens >= cost or self.refill_per_sec <= 0) return 0;
 

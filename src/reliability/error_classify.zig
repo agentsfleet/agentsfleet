@@ -13,7 +13,7 @@ pub const ErrorClass = enum {
     unknown,
 };
 
-pub const Classified = struct {
+const Classified = struct {
     class: ErrorClass,
     retryable: bool,
     retry_after_ms: ?u64,
