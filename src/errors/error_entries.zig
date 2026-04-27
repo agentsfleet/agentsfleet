@@ -158,9 +158,9 @@ pub const ENTRIES = [_]Entry{
     e("UZ-TOOL-003", .bad_gateway, "Tool git operation failed",
         "Git operation failed. Check repo URL, branch name, and credential permissions."),
     e("UZ-TOOL-004", .bad_request, "Tool not attached",
-        "The tool is not in this Zombie's skills list. Add it to the TRIGGER.md skills: section."),
+        "The tool is not in this Zombie's tools list. Add it to the TRIGGER.md tools: section."),
     e("UZ-TOOL-005", .bad_request, "Unknown tool",
-        "Unknown tool name. Check spelling against the known skills list."),
+        "Unknown tool name. Check spelling against the known tools list."),
     e("UZ-TOOL-006", .gateway_timeout, "Tool call timed out",
         "Tool call timed out. Check network connectivity and target service status."),
     // ── ZOMBIE ───────────────────────────────────────────────────────────────
@@ -180,7 +180,7 @@ pub const ENTRIES = [_]Entry{
     // single-string credential body. The structured replacement lives at
     // UZ-VAULT-002 below.
     e("UZ-ZMB-008", .bad_request, "Invalid zombie config",
-        "Config JSON is malformed. Verify trigger, skills, credentials, and budget fields. " ++
+        "Config JSON is malformed. Verify trigger, tools, credentials, and budget fields. " ++
         "Run 'zombiectl install <template>' for a valid template."),
     e("UZ-ZMB-009", .not_found, "Zombie not found",
         "Zombie not found. Verify the zombie_id and that it has not been killed."),

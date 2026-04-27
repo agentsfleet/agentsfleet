@@ -12,7 +12,7 @@
 //   - config_types.zig     — value types + destructors
 //   - config_parser.zig    — JSON → ZombieConfig, per-field helpers
 //   - config_markdown.zig  — TRIGGER.md frontmatter extraction
-//   - config_validate.zig  — skill / credential registry checks
+//   - config_validate.zig  — tool / credential registry checks
 //   - config_helpers.zig   — shared parse sub-routines (trigger, network, budget)
 //   - config_gates.zig     — gate/anomaly policy types + parser
 
@@ -44,7 +44,7 @@ pub const GatePolicy = config_gates.GatePolicy;
 pub const parseZombieConfig = config_parser.parseZombieConfig;
 pub const parseZombieFromTriggerMarkdown = config_markdown.parseZombieFromTriggerMarkdown;
 pub const extractZombieInstructions = config_markdown.extractZombieInstructions;
-pub const validateZombieSkills = config_validate.validateZombieSkills;
+pub const validateZombieTools = config_validate.validateZombieTools;
 
 // Test discovery — Zig only runs tests in transitively imported files. The
 // implementation modules are already reached via the `const` imports above,

@@ -1,6 +1,6 @@
 // Zombie config JSON parser.
 //
-// Parses the `config_json` column (server-computed from TRIGGER.md
+// Parses the `config_json` value (server-derived from TRIGGER.md
 // frontmatter) into a ZombieConfig. Decomposed into per-field helpers so
 // every function stays ≤50 lines and so errdefer chains free partial state
 // on mid-parse failure (see ZIG_RULES "Struct Init Partial Leak").
@@ -50,8 +50,8 @@ pub fn parseZombieConfig(
     const trigger = try parseTriggerField(alloc, root);
     errdefer freeZombieTrigger(alloc, trigger);
 
-    const skills = try parseSkillsField(alloc, root);
-    errdefer freeStringSlice(alloc, skills);
+    const tools = try parseToolsField(alloc, root);
+    errdefer freeStringSlice(alloc, tools);
 
     const credentials = try parseCredentialsField(alloc, root);
     errdefer freeStringSlice(alloc, credentials);
@@ -63,14 +63,14 @@ pub fn parseZombieConfig(
     const gates = try parseGatesField(alloc, root);
     errdefer if (gates) |g| config_gates.freeGatePolicy(alloc, g);
 
-    try validate.validateSkillsAndCredentials(skills, credentials);
+    try validate.validateToolsAndCredentials(tools, credentials);
 
     const extended = try parseExtendedFields(alloc, root);
 
     return ZombieConfig{
         .name = name,
         .trigger = trigger,
-        .skills = skills,
+        .tools = tools,
         .credentials = credentials,
         .network = network,
         .budget = budget,
@@ -105,11 +105,11 @@ fn parseTriggerField(
     return helpers.parseZombieTrigger(alloc, obj);
 }
 
-fn parseSkillsField(
+fn parseToolsField(
     alloc: Allocator,
     root: std.json.ObjectMap,
 ) (Allocator.Error || ZombieConfigError)![]const []const u8 {
-    const val = root.get("skills") orelse return ZombieConfigError.MissingRequiredField;
+    const val = root.get("tools") orelse return ZombieConfigError.MissingRequiredField;
     const arr = switch (val) {
         .array => |a| a,
         else => return ZombieConfigError.MissingRequiredField,
