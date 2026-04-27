@@ -26,23 +26,23 @@ const log = std.log.scoped(.state);
 
 /// Per-tenant uniqueness + a freshly created tenant makes collisions
 /// practically impossible; cap is a guard against a buggy generator.
-pub const MAX_NAME_ATTEMPTS: u8 = 8;
+const MAX_NAME_ATTEMPTS: u8 = 8;
 
 /// Stamped into workspace rows so analytics can identify signup-bootstrapped
 /// workspaces.
-pub const BOOTSTRAP_ACTOR = "signup_bootstrap";
+const BOOTSTRAP_ACTOR = "signup_bootstrap";
 
 /// Tenant-level role for the signup user. Personal accounts have exactly
 /// one owner; team accounts are a future milestone.
-pub const OWNER_ROLE = "owner";
+const OWNER_ROLE = "owner";
 
-pub const BootstrapError = error{
+const BootstrapError = error{
     /// Ran out of `MAX_NAME_ATTEMPTS` without landing a unique name. Only
     /// possible with a broken generator or exotic tenant state.
     WorkspaceNameCollisionExhausted,
 };
 
-pub const BootstrapParams = struct {
+const BootstrapParams = struct {
     oidc_subject: []const u8,
     email: []const u8,
     display_name: ?[]const u8 = null,
@@ -66,7 +66,7 @@ pub const Bootstrap = struct {
 
 /// Injectable name generator used by `pickUniqueWorkspaceName`. Production
 /// passes `defaultHerokuNameGen`; tests inject a sequence to exercise retry.
-pub const NameGenFn = *const fn (std.mem.Allocator) anyerror![]u8;
+const NameGenFn = *const fn (std.mem.Allocator) anyerror![]u8;
 
 pub fn defaultHerokuNameGen(alloc: std.mem.Allocator) anyerror![]u8 {
     return heroku_names.generate(alloc);

@@ -2,7 +2,7 @@ const std = @import("std");
 const pg = @import("pg");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 
-pub const BillingRow = struct {
+const BillingRow = struct {
     plan_tier: []u8,
     plan_sku: []u8,
     balance_cents: i64,

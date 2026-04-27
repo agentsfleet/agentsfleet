@@ -5,11 +5,11 @@ const store = @import("tenant_billing_store.zig");
 
 const log = std.log.scoped(.state);
 
-pub const FREE_PLAN_INITIAL_BALANCE_CENTS: i64 = 1000;
+const FREE_PLAN_INITIAL_BALANCE_CENTS: i64 = 1000;
 pub const FREE_PLAN_CENTS_PER_AGENT_SECOND: i64 = 1;
-pub const BOOTSTRAP_GRANT_SOURCE = "bootstrap_free_grant";
-pub const DEFAULT_FREE_PLAN_TIER = "free";
-pub const DEFAULT_FREE_PLAN_SKU = "free_default";
+const BOOTSTRAP_GRANT_SOURCE = "bootstrap_free_grant";
+const DEFAULT_FREE_PLAN_TIER = "free";
+const DEFAULT_FREE_PLAN_SKU = "free_default";
 
 pub const PlanTier = enum {
     free,

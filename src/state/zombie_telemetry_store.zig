@@ -50,7 +50,7 @@ pub const TelemetryRow = struct {
     }
 };
 
-pub const InsertTelemetryParams = struct {
+const InsertTelemetryParams = struct {
     zombie_id: []const u8,
     workspace_id: []const u8,
     event_id: []const u8,
