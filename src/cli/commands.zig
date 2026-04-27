@@ -1,6 +1,6 @@
 const std = @import("std");
 
-pub const Subcommand = enum {
+const Subcommand = enum {
     serve,
     worker,
     doctor,
@@ -11,14 +11,14 @@ pub const Subcommand = enum {
 /// Returns null for unknown tokens so the caller can fail loudly.
 /// Silent fallback to `.serve` would let a stale `zombied run` invocation
 /// start the HTTP server instead of erroring out.
-pub fn parseSubcommandName(name: []const u8) ?Subcommand {
+fn parseSubcommandName(name: []const u8) ?Subcommand {
     return std.meta.stringToEnum(Subcommand, name);
 }
 
 /// Pure helper — resolves a subcommand from a pre-collected argv slice.
 /// Extracted from `parseSubcommandFromProcessArgs` so tests can exercise
 /// both the "no subcommand → default" path and the unknown-token error.
-pub fn parseSubcommandFromArgv(argv: []const []const u8) !Subcommand {
+fn parseSubcommandFromArgv(argv: []const []const u8) !Subcommand {
     if (argv.len <= 1) return .serve;
     return parseSubcommandName(argv[1]) orelse error.UnknownSubcommand;
 }
