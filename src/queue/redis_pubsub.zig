@@ -80,7 +80,7 @@ pub const Subscriber = struct {
     }
 
     /// Set SO_RCVTIMEO on the underlying socket so reads time out after `ms` milliseconds.
-    pub fn setReadTimeout(self: *Subscriber, ms: u32) void {
+    fn setReadTimeout(self: *Subscriber, ms: u32) void {
         const fd = switch (self.transport) {
             .plain => |p| p.stream.handle,
             .tls => |t| t.stream.handle,

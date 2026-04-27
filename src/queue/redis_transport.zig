@@ -42,7 +42,7 @@ pub const PlainTransport = struct {
     }
 };
 
-pub const TlsTransport = struct {
+const TlsTransport = struct {
     stream: std.net.Stream,
     stream_reader: *std.net.Stream.Reader,
     stream_writer: *std.net.Stream.Writer,
