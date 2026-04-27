@@ -56,9 +56,14 @@ function createCoreOpsHandlers(ctx, workspaces, deps) {
       });
     } else {
       try {
+        // No defensive `apiHeaders ? ... : {}` fallback — a missing dep is a
+        // wiring bug, and silently dropping the Authorization header would
+        // surface as a misleading "binding bad" report instead of a loud
+        // TypeError pointing at the real problem (the call site forgot to
+        // pass apiHeaders).
         await request(ctx, wsZombiesPath(wsId), {
           method: "GET",
-          headers: apiHeaders ? apiHeaders(ctx) : {},
+          headers: apiHeaders(ctx),
           timeoutMs: PER_CHECK_TIMEOUT_MS,
         });
         checks.push({
