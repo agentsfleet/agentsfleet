@@ -21,7 +21,7 @@ const validate = @import("runtime_validate.zig");
 
 const ValidationError = runtime_types.ValidationError;
 
-pub const SizesConfig = struct {
+const SizesConfig = struct {
     port: u16,
     api_http_threads: i16,
     api_http_workers: i16,
@@ -58,7 +58,7 @@ pub fn loadSizes(alloc: Allocator) !SizesConfig {
     };
 }
 
-pub const OidcConfig = struct {
+const OidcConfig = struct {
     enabled: bool,
     provider: oidc.Provider,
     jwks_url: ?[]u8,
@@ -94,7 +94,7 @@ pub fn freeOidc(alloc: Allocator, cfg: OidcConfig) void {
     if (cfg.audience) |v| alloc.free(v);
 }
 
-pub const EncryptionConfig = struct {
+const EncryptionConfig = struct {
     master_key: []u8,
     master_key_v2: ?[]u8,
     active_kek_version: u32,
@@ -125,7 +125,7 @@ pub fn freeEncryption(alloc: Allocator, cfg: EncryptionConfig) void {
     if (cfg.master_key_v2) |v| alloc.free(v);
 }
 
-pub const MiscConfig = struct {
+const MiscConfig = struct {
     cache_root: []u8,
     app_url: []u8,
 };
