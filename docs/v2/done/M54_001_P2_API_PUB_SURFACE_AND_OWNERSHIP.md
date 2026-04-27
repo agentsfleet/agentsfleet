@@ -150,8 +150,9 @@ If the grep gate produces too many false-positives to be useful, downgrade to a 
 
 ```bash
 # E1: pub audit — every pub symbol referenced externally
-# (script or oneliner; agent writes the helper if not present)
-scripts/pub_audit.sh src/ | head
+# Audit scripts (pub_audit.sh, pub_strip.py, alloc_audit.py) lived in scripts/
+# during the M54 work and were dropped before merge — they had no recurring
+# caller. Reconstruct from git history (commit 7fbcb8cd) if a future audit needs them.
 
 # E2: allocator-ownership grep
 rg -nU 'struct \{[^}]*ArrayList' src/ -A20 | rg -v '(alloc:|/// .*allocator)' | head
