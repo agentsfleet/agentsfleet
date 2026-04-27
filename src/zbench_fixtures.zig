@@ -40,7 +40,7 @@ pub const ERROR_CODES = [_][]const u8{
 // ── 1.3 activity_cursor_roundtrip ──────────────────────────────────────────
 // 100 synthetic cursors. Variety in timestamp width and id length keeps the
 // decimal parse from benchmarking a single register-fit case.
-pub fn buildCursors(comptime n: usize) [n][]const u8 {
+fn buildCursors(comptime n: usize) [n][]const u8 {
     @setEvalBranchQuota(1_000_000);
     var out: [n][]const u8 = undefined;
     for (0..n) |i| {
