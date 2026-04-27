@@ -113,9 +113,9 @@ pub fn sleepWithBackoff(cfg: EventLoopConfig, consecutive_errors: u32) void {
 }
 
 // M15_002: exit_status label values for PostHog ZombieCompleted events.
-pub const EXIT_PROCESSED = "processed";
-pub const EXIT_AGENT_ERROR = "agent_error";
-pub const EXIT_DELIVER_ERROR = "deliver_error";
+const EXIT_PROCESSED = "processed";
+const EXIT_AGENT_ERROR = "agent_error";
+const EXIT_DELIVER_ERROR = "deliver_error";
 
 /// M15_002: delivery bookkeeping — activity log + Prometheus + PostHog.
 /// Called from event_loop.processEvent after deliverEvent resolves.

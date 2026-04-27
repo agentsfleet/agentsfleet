@@ -11,7 +11,7 @@
 
 const std = @import("std");
 
-pub const PREFIX = "zombie:";
+const PREFIX = "zombie:";
 
 /// Compose the storage key for a zombie credential. Caller owns the slice
 /// and must free it with the same allocator.

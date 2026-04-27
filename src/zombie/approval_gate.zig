@@ -41,7 +41,7 @@ pub const GateStatus = enum {
     }
 };
 
-pub const AnomalyResult = enum { normal, auto_kill };
+const AnomalyResult = enum { normal, auto_kill };
 
 pub const ActionDetail = struct {
     tool: []const u8,
@@ -192,7 +192,7 @@ fn incrAnomalyCounter(
 }
 
 /// Reset all anomaly counters for a zombie (after restart/auto-kill recovery).
-pub fn resetAnomalyCounters(
+fn resetAnomalyCounters(
     redis: *queue_redis.Client,
     alloc: Allocator,
     zombie_id: []const u8,

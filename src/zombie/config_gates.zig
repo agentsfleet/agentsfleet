@@ -22,7 +22,7 @@ pub const GateRule = struct {
 pub const AnomalyPattern = enum {
     same_action,
 
-    pub fn fromString(s: []const u8) ?AnomalyPattern {
+    fn fromString(s: []const u8) ?AnomalyPattern {
         if (std.mem.eql(u8, s, "same_action")) return .same_action;
         return null;
     }
@@ -40,7 +40,7 @@ pub const GatePolicy = struct {
     timeout_ms: u64,
 };
 
-pub const GateConfigError = error{
+const GateConfigError = error{
     MissingRequiredField,
     InvalidBudget,
 };

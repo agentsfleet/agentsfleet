@@ -35,7 +35,7 @@ pub const EVT_BALANCE_EXHAUSTED_FIRST_DEBIT = "balance_exhausted_first_debit";
 pub const EVT_BALANCE_EXHAUSTED = "balance_exhausted";
 pub const EVT_BALANCE_GATE_BLOCKED = "balance_gate_blocked";
 
-pub const ActivityEvent = struct {
+const ActivityEvent = struct {
     zombie_id: []const u8,
     workspace_id: []const u8,
     event_type: []const u8,
@@ -92,7 +92,7 @@ pub fn logEventOnConn(conn: *pg.Conn, alloc: Allocator, event: ActivityEvent) vo
 
 // Rate-limit probe: true iff an event of `event_type` was written for
 // `workspace_id` after `since_ms`. Fail-open on DB error (caller emits).
-pub fn hasRecentActivityEventOnConn(
+fn hasRecentActivityEventOnConn(
     conn: *pg.Conn,
     workspace_id: []const u8,
     event_type: []const u8,
@@ -168,7 +168,7 @@ pub fn queryByZombieOnConn(
 }
 
 // queryByWorkspace returns a page of events across all Zombies in a workspace.
-pub fn queryByWorkspace(
+fn queryByWorkspace(
     pool: *pg.Pool,
     alloc: Allocator,
     workspace_id: []const u8,

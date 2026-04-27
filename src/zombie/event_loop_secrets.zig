@@ -19,7 +19,7 @@ const credential_key = @import("credential_key.zig");
 
 const log = std.log.scoped(.zombie_event_loop);
 
-pub const ResolvedSecret = struct {
+const ResolvedSecret = struct {
     name: []const u8,                          // duped, owned by caller
     parsed: std.json.Parsed(std.json.Value),   // caller calls .deinit()
 };
