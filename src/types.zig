@@ -5,7 +5,7 @@ const std = @import("std");
 
 // ── Run state machine ─────────────────────────────────────────────────────
 
-pub const RunState = enum {
+const RunState = enum {
     SPEC_QUEUED,
     RUN_PLANNED,
     PATCH_IN_PROGRESS,
@@ -43,7 +43,7 @@ pub const RunState = enum {
         };
     }
 
-    pub fn fromStr(s: []const u8) !RunState {
+    fn fromStr(s: []const u8) !RunState {
         return std.meta.stringToEnum(RunState, s) orelse error.UnknownState;
     }
 
@@ -102,7 +102,7 @@ pub const ReasonCode = enum {
 
 // ── Actor roles ───────────────────────────────────────────────────────────
 
-pub const Actor = enum {
+const Actor = enum {
     echo,
     scout,
     warden,
@@ -113,7 +113,7 @@ pub const Actor = enum {
     }
 };
 
-pub const TrustLevel = enum {
+const TrustLevel = enum {
     unearned,
     trusted,
 
@@ -127,11 +127,11 @@ pub const TrustLevel = enum {
 
 // ── Run ingress mode ──────────────────────────────────────────────────────
 
-pub const IngressMode = enum {
+const IngressMode = enum {
     web,
     api,
 
-    pub fn fromStr(s: []const u8) !IngressMode {
+    fn fromStr(s: []const u8) !IngressMode {
         return std.meta.stringToEnum(IngressMode, s) orelse error.UnknownMode;
     }
 };
@@ -156,13 +156,13 @@ pub const Run = struct {
 
 // ── Spec record ───────────────────────────────────────────────────────────
 
-pub const SpecStatus = enum {
+const SpecStatus = enum {
     pending,
     in_progress,
     done,
     failed,
 
-    pub fn fromStr(s: []const u8) !SpecStatus {
+    fn fromStr(s: []const u8) !SpecStatus {
         return std.meta.stringToEnum(SpecStatus, s) orelse error.UnknownSpecStatus;
     }
 };
@@ -194,7 +194,7 @@ pub const Transition = struct {
 
 // ── Usage ledger ──────────────────────────────────────────────────────────
 
-pub const UsageLedgerEntry = struct {
+const UsageLedgerEntry = struct {
     run_id: []const u8,
     attempt: u32,
     actor: Actor,
@@ -205,14 +205,14 @@ pub const UsageLedgerEntry = struct {
 
 // ── Artifact ──────────────────────────────────────────────────────────────
 
-pub const ArtifactName = enum {
+const ArtifactName = enum {
     plan_json,
     implementation_md,
     validation_md,
     defects_md,
     run_summary_md,
 
-    pub fn filename(self: ArtifactName, attempt: u32, alloc: std.mem.Allocator) ![]const u8 {
+    fn filename(self: ArtifactName, attempt: u32, alloc: std.mem.Allocator) ![]const u8 {
         return switch (self) {
             .plan_json => try alloc.dupe(u8, "plan.json"),
             .implementation_md => try alloc.dupe(u8, "implementation.md"),
@@ -223,7 +223,7 @@ pub const ArtifactName = enum {
     }
 };
 
-pub const Artifact = struct {
+const Artifact = struct {
     run_id: []const u8,
     attempt: u32,
     artifact_name: []const u8,
@@ -253,7 +253,7 @@ pub const PolicyDecision = enum { allow, deny, require_confirmation };
 
 pub const ActionClass = enum { safe, sensitive, critical };
 
-pub const PolicyEvent = struct {
+const PolicyEvent = struct {
     run_id: ?[]const u8,
     workspace_id: []const u8,
     action_class: ActionClass,
@@ -265,7 +265,7 @@ pub const PolicyEvent = struct {
 
 // ── Workspace memory ──────────────────────────────────────────────────────
 
-pub const WorkspaceMemory = struct {
+const WorkspaceMemory = struct {
     id: i64,
     workspace_id: []const u8,
     run_id: []const u8,
