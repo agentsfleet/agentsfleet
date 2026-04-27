@@ -27,7 +27,7 @@ fn jsonEscapeByte(writer: anytype, c: u8) !void {
 }
 
 /// Write `s` as a JSON string *value* (no surrounding quotes).
-pub fn writeEscaped(writer: anytype, s: []const u8) !void {
+fn writeEscaped(writer: anytype, s: []const u8) !void {
     for (s) |c| try jsonEscapeByte(writer, c);
 }
 
@@ -36,7 +36,7 @@ pub fn writeEscaped(writer: anytype, s: []const u8) !void {
 /// escapes `\\`, `\"`, and `\n` inside label values; everything else is a
 /// raw byte. Unknown `\X` sequences pass through with the backslash literal
 /// retained (tolerating non-standard renderers).
-pub fn writePromValueAsJson(writer: anytype, s: []const u8) !void {
+fn writePromValueAsJson(writer: anytype, s: []const u8) !void {
     var i: usize = 0;
     while (i < s.len) : (i += 1) {
         const c = s[i];

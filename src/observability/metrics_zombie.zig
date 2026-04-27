@@ -15,7 +15,7 @@ pub const ZombieHistogramSnapshot = struct {
     sum: u64 = 0,
 };
 
-pub const ZombieFields = struct {
+const ZombieFields = struct {
     zombie_triggered_total: u64,
     zombie_completed_total: u64,
     zombie_failed_total: u64,

@@ -20,8 +20,8 @@ const FLUSH_INTERVAL_MS: u64 = 5_000;
 const FLUSH_BATCH_SIZE: usize = 50;
 const SHUTDOWN_DRAIN_TIMEOUT_MS: u64 = 5_000;
 
-pub const ERR_OTEL_TRACE_EXPORT_FAILED = "UZ-OBS-OTEL-TRACE-001";
-pub const ERR_OTEL_TRACE_CONNECT_FAILED = "UZ-OBS-OTEL-TRACE-002";
+const ERR_OTEL_TRACE_EXPORT_FAILED = "UZ-OBS-OTEL-TRACE-001";
+const ERR_OTEL_TRACE_CONNECT_FAILED = "UZ-OBS-OTEL-TRACE-002";
 
 // ---------------------------------------------------------------------------
 // Span entry
@@ -32,14 +32,14 @@ const MAX_ATTR_COUNT: usize = 12; // M27_002: expanded for run.id, workspace.id,
 const MAX_ATTR_KEY_LEN: usize = 32;
 const MAX_ATTR_VAL_LEN: usize = 64;
 
-pub const SpanAttr = struct {
+const SpanAttr = struct {
     key: [MAX_ATTR_KEY_LEN]u8,
     key_len: u8,
     val: [MAX_ATTR_VAL_LEN]u8,
     val_len: u8,
 };
 
-pub const SpanEntry = struct {
+const SpanEntry = struct {
     trace_id: [trace.TRACE_ID_HEX_LEN]u8,
     span_id: [trace.SPAN_ID_HEX_LEN]u8,
     parent_span_id: [trace.SPAN_ID_HEX_LEN]u8,

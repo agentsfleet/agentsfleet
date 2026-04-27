@@ -15,7 +15,7 @@ const otel_json = @import("otel_json.zig");
 
 const log = std.log.scoped(.otel_histogram);
 
-pub const Bucket = struct {
+const Bucket = struct {
     upper_bound: f64, // +inf stored as std.math.inf(f64)
     cumulative_count: u64,
 };

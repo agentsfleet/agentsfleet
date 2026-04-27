@@ -144,7 +144,7 @@ pub fn setReconcileRunning(v: bool) void {
 
 // Signup funnel counters. Failure reasons enumerated so a single Prometheus
 // query can answer "how many signups failed for reason X over Y?"
-pub const SignupFailReason = enum { bad_sig, stale_ts, missing_email, db_error, pool_unavailable, metadata_writeback };
+const SignupFailReason = enum { bad_sig, stale_ts, missing_email, db_error, pool_unavailable, metadata_writeback };
 
 pub fn incSignupBootstrapped() void {
     _ = g_signup_bootstrapped_total.fetchAdd(1, .monotonic);

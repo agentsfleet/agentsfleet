@@ -18,8 +18,8 @@ const FLUSH_INTERVAL_MS: u64 = 5_000;
 const FLUSH_BATCH_SIZE: usize = 50;
 const SHUTDOWN_DRAIN_TIMEOUT_MS: u64 = 5_000;
 
-pub const ERR_OTEL_LOG_EXPORT_FAILED = "UZ-OBS-OTEL-LOG-001";
-pub const ERR_OTEL_LOG_CONNECT_FAILED = "UZ-OBS-OTEL-LOG-002";
+const ERR_OTEL_LOG_EXPORT_FAILED = "UZ-OBS-OTEL-LOG-001";
+const ERR_OTEL_LOG_CONNECT_FAILED = "UZ-OBS-OTEL-LOG-002";
 
 pub const GrafanaOtlpConfig = struct {
     endpoint: []const u8,
@@ -57,7 +57,7 @@ pub fn configFromEnv(alloc: std.mem.Allocator) ?GrafanaOtlpConfig {
 
 const MAX_MSG_LEN: usize = 512;
 
-pub const LogEntry = struct {
+const LogEntry = struct {
     timestamp_ns: u64,
     level: [5]u8,
     level_len: u8,

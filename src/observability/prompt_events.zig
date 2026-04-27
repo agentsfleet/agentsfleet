@@ -23,7 +23,7 @@ pub const EventType = enum {
     }
 };
 
-pub const PromptEvent = struct {
+const PromptEvent = struct {
     event_type: EventType,
     workspace_id: []const u8,
     tenant_id: []const u8,
@@ -33,7 +33,7 @@ pub const PromptEvent = struct {
     ts_ms: i64,
 };
 
-pub const Emitter = struct {
+const Emitter = struct {
     ctx: *anyopaque,
     emit_fn: *const fn (ctx: *anyopaque, event: PromptEvent) anyerror!void,
 
@@ -46,7 +46,7 @@ const DbEmitterCtx = struct {
     conn: *pg.Conn,
 };
 
-pub fn dbEmitter(conn: *pg.Conn) Emitter {
+fn dbEmitter(conn: *pg.Conn) Emitter {
     return .{
         .ctx = @ptrCast(conn),
         .emit_fn = emitToDb,
@@ -75,7 +75,7 @@ fn emitToDb(ctx: *anyopaque, event: PromptEvent) anyerror!void {
     });
 }
 
-pub fn emitBestEffort(conn: *pg.Conn, event: PromptEvent) void {
+fn emitBestEffort(conn: *pg.Conn, event: PromptEvent) void {
     dbEmitter(conn).emit(event) catch |err| {
         obs_log.logWarnErr(.worker, err, "prompt event emission failed type={s} workspace_id={s}", .{
             event.event_type.label(),

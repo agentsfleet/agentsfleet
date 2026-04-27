@@ -37,8 +37,8 @@ pub const setReconcileRunning = mc.setReconcileRunning;
 pub const renderPrometheus = mr.renderPrometheus;
 
 // Per-(workspace, zombie) token counter.
-pub const wsAddTokens = mw.addTokens;
-pub const wsRenderPrometheus = mw.renderPrometheus;
+const wsAddTokens = mw.addTokens;
+const wsRenderPrometheus = mw.renderPrometheus;
 
 // Executor metrics re-exports (§5.2).
 pub const incExecutorSessionsCreated = em.incExecutorSessionsCreated;

@@ -29,12 +29,12 @@ fn startTimeNs() u64 {
     _ = g_start_time_ns.cmpxchgStrong(0, now, .acq_rel, .acquire);
     return g_start_time_ns.load(.acquire);
 }
-pub const ERR_OTEL_EXPORT_FAILED = "UZ-OBS-OTEL-001";
-pub const ERR_OTEL_CONNECT_FAILED = "UZ-OBS-OTEL-002";
-pub const ERR_OTEL_REQUEST_FAILED = "UZ-OBS-OTEL-003";
-pub const ERR_OTEL_UNEXPECTED_STATUS = "UZ-OBS-OTEL-004";
+const ERR_OTEL_EXPORT_FAILED = "UZ-OBS-OTEL-001";
+const ERR_OTEL_CONNECT_FAILED = "UZ-OBS-OTEL-002";
+const ERR_OTEL_REQUEST_FAILED = "UZ-OBS-OTEL-003";
+const ERR_OTEL_UNEXPECTED_STATUS = "UZ-OBS-OTEL-004";
 
-pub const OtelConfig = struct {
+const OtelConfig = struct {
     endpoint: []const u8, // e.g. "http://localhost:4318"
     service_name: []const u8 = "zombied",
 };
