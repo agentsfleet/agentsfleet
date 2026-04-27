@@ -1,9 +1,10 @@
 // Zombie configuration façade — re-exports types + parse/validate/markdown
 // entry points so consumers keep a single import point (`config.X`).
 //
-// M2_002: directory-based zombie format (SKILL.md + TRIGGER.md).
-// zombiectl up sends both files raw. The server parses TRIGGER.md frontmatter
-// into config_json via parseZombieFromTriggerMarkdown. SKILL.md is stored as-is.
+// Directory-based zombie format (SKILL.md + TRIGGER.md). `zombiectl install
+// --from <path>` sends both files raw. The server parses TRIGGER.md frontmatter
+// into config_json via parseTriggerMarkdownWithJson (see config_markdown.zig).
+// SKILL.md is stored as-is.
 // At claim time, the worker calls:
 //   - parseZombieConfig(alloc, config_json_bytes)  → ZombieConfig struct
 //   - extractZombieInstructions(source_markdown)    → system prompt slice (borrowed)

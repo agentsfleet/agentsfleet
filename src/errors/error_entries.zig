@@ -180,8 +180,8 @@ pub const ENTRIES = [_]Entry{
     // single-string credential body. The structured replacement lives at
     // UZ-VAULT-002 below.
     e("UZ-ZMB-008", .bad_request, "Invalid zombie config",
-        "Config JSON is malformed. Verify trigger, tools, credentials, and budget fields. " ++
-        "Run 'zombiectl install <template>' for a valid template."),
+        "Config JSON is malformed. Verify trigger, tools, credentials, and budget fields " ++
+        "in your TRIGGER.md frontmatter. See samples/platform-ops/TRIGGER.md for a working example."),
     e("UZ-ZMB-009", .not_found, "Zombie not found",
         "Zombie not found. Verify the zombie_id and that it has not been killed."),
     e("UZ-ZMB-010", .conflict, "Zombie already stopped or killed",
