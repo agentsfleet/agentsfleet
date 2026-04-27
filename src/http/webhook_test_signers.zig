@@ -16,7 +16,7 @@ pub const Signed = struct {
     }
 };
 
-pub const SignedSvix = struct {
+const SignedSvix = struct {
     svix_id: []const u8, // heap-owned
     svix_timestamp: []const u8, // heap-owned
     svix_signature: []const u8, // heap-owned
@@ -27,7 +27,7 @@ pub const SignedSvix = struct {
     }
 };
 
-pub const SignedSlack = struct {
+const SignedSlack = struct {
     signed: Signed,
     timestamp: []const u8, // heap-owned
     pub fn deinit(self: SignedSlack, alloc: std.mem.Allocator) void {
@@ -55,7 +55,7 @@ pub fn signGithub(alloc: std.mem.Allocator, secret: []const u8, body: []const u8
 }
 
 // Linear: `linear-signature: <hex>` over raw body bytes (no prefix).
-pub fn signLinear(alloc: std.mem.Allocator, secret: []const u8, body: []const u8) !Signed {
+fn signLinear(alloc: std.mem.Allocator, secret: []const u8, body: []const u8) !Signed {
     return .{
         .header_name = "linear-signature",
         .header_value = try hmacHex(alloc, secret, body, ""),
@@ -63,7 +63,7 @@ pub fn signLinear(alloc: std.mem.Allocator, secret: []const u8, body: []const u8
 }
 
 // Jira: caller-chosen header; `sha256=<hex>` over raw body bytes.
-pub fn signJira(alloc: std.mem.Allocator, secret: []const u8, header_name: []const u8, body: []const u8) !Signed {
+fn signJira(alloc: std.mem.Allocator, secret: []const u8, header_name: []const u8, body: []const u8) !Signed {
     return .{
         .header_name = header_name,
         .header_value = try hmacHex(alloc, secret, body, "sha256="),
@@ -85,7 +85,7 @@ pub fn signSlack(alloc: std.mem.Allocator, secret: []const u8, ts_seconds: i64, 
 
 // Svix v1 single-signature: `v1,<base64>` over `{id}.{ts}.{body}`.
 // `raw_key` is the decoded key bytes (middleware strips `whsec_` + base64-decodes).
-pub fn signSvix(alloc: std.mem.Allocator, raw_key: []const u8, svix_id: []const u8, ts_seconds: i64, body: []const u8) !SignedSvix {
+fn signSvix(alloc: std.mem.Allocator, raw_key: []const u8, svix_id: []const u8, ts_seconds: i64, body: []const u8) !SignedSvix {
     const ts_str = try std.fmt.allocPrint(alloc, "{d}", .{ts_seconds});
     errdefer alloc.free(ts_str);
     const basestring = try std.fmt.allocPrint(alloc, "{s}.{s}.{s}", .{ svix_id, ts_str, body });
@@ -110,7 +110,7 @@ pub fn signSvix(alloc: std.mem.Allocator, raw_key: []const u8, svix_id: []const 
 
 // Build the `whsec_<base64>` form the Svix middleware expects in vault.
 // Returned buffer is heap-owned.
-pub fn svixKeyToVaultForm(alloc: std.mem.Allocator, raw_key: []const u8) ![]u8 {
+fn svixKeyToVaultForm(alloc: std.mem.Allocator, raw_key: []const u8) ![]u8 {
     const enc = std.base64.standard.Encoder;
     const b64_len = enc.calcSize(raw_key.len);
     const total = "whsec_".len + b64_len;

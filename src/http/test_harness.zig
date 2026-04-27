@@ -31,7 +31,7 @@ const http_server = @import("server.zig");
 const telemetry_mod = @import("../observability/telemetry.zig");
 const test_port = @import("test_port.zig");
 
-pub const MAX_HEADERS = 16;
+const MAX_HEADERS = 16;
 
 pub const Config = struct {
     /// Caller configures the middleware registry. Called AFTER init with pool
@@ -279,7 +279,7 @@ pub const Request = struct {
     }
 
     /// Raw body without content-type — caller sets it via `header`.
-    pub fn rawBody(self: Request, body: []const u8) Request {
+    fn rawBody(self: Request, body: []const u8) Request {
         var r = self;
         r.body = body;
         return r;

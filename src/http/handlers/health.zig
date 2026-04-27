@@ -14,7 +14,7 @@ const Hx = hx_mod.Hx;
 // dropped `runs` table for SPEC_QUEUED count. Zombie uses Redis streams,
 // not DB-level queue depth. Queue depth/age metrics are no longer emitted.
 
-pub const ReadyInputs = struct {
+const ReadyInputs = struct {
     db_ok: bool,
     queue_ok: bool,
 };

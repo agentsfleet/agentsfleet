@@ -25,10 +25,10 @@ pub const Hx = hx_mod.Hx;
 /// Handler function invoked by the dispatcher after the middleware chain
 /// returns `.next`. Receives a populated Hx (principal set by middleware),
 /// the original request, and the matched Route (for path-param extraction).
-pub const InvokeFn = *const fn (hx: *hx_mod.Hx, req: *httpz.Request, route: router.Route) void;
+const InvokeFn = *const fn (hx: *hx_mod.Hx, req: *httpz.Request, route: router.Route) void;
 
 /// A route's complete middleware + handler description.
-pub const RouteSpec = struct {
+const RouteSpec = struct {
     middlewares: []const auth_mw.Middleware(AuthCtx),
     invoke: InvokeFn,
 };

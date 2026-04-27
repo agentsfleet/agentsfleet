@@ -43,7 +43,7 @@ pub fn resolveTraceContext(req: *httpz.Request) TraceContext {
 }
 
 /// Format trace_id from TraceContext as a slice for passing to RunContext.
-pub fn traceIdFromContext(tctx: *const TraceContext) []const u8 {
+fn traceIdFromContext(tctx: *const TraceContext) []const u8 {
     return tctx.traceIdSlice();
 }
 
@@ -53,7 +53,7 @@ pub const AuthMode = principal_mod.AuthMode;
 pub const AuthRole = rbac.AuthRole;
 pub const AuthPrincipal = principal_mod.AuthPrincipal;
 
-pub const AuthError = error{
+const AuthError = error{
     Unauthorized,
     UnsupportedRole,
     TokenExpired,
@@ -192,7 +192,7 @@ pub fn requireUuidV7Id(
     return false;
 }
 
-pub fn writeAuthError(ctx: *Context, res: *httpz.Response, req_id: []const u8, err: AuthError) void {
+fn writeAuthError(ctx: *Context, res: *httpz.Response, req_id: []const u8, err: AuthError) void {
     const reason: []const u8 = switch (err) {
         AuthError.TokenExpired => "token_expired",
         AuthError.Unauthorized => "unauthorized",
@@ -222,17 +222,17 @@ pub fn requireRole(res: *httpz.Response, req_id: []const u8, principal: AuthPrin
 
 // ── Keyset Pagination Helpers ─────────────────────────────────────────────
 
-pub const default_page_limit: i64 = 50;
-pub const max_page_limit: i64 = 100;
+const default_page_limit: i64 = 50;
+const max_page_limit: i64 = 100;
 
 /// Parse `starting_after` and `limit` query params for keyset pagination.
 /// Returns validated limit (clamped to [1, 100]) and optional cursor.
-pub const PaginationParams = struct {
+const PaginationParams = struct {
     limit: i64,
     starting_after: ?[]const u8,
 };
 
-pub fn parsePaginationParams(limit_str: ?[]const u8, starting_after: ?[]const u8) PaginationParams {
+fn parsePaginationParams(limit_str: ?[]const u8, starting_after: ?[]const u8) PaginationParams {
     const limit: i64 = blk: {
         const val = limit_str orelse break :blk default_page_limit;
         const parsed = std.fmt.parseInt(i64, val, 10) catch default_page_limit;
@@ -250,7 +250,7 @@ pub fn respondMethodNotAllowed(res: *httpz.Response) void {
 
 /// After fetching limit+1 rows into `items`, derive has_more, slice to limit,
 /// and extract next_cursor from the last item's ID field.
-pub fn derivePaginationResult(
+fn derivePaginationResult(
     items: []const std.json.Value,
     limit: i64,
     id_field: []const u8,
@@ -271,7 +271,7 @@ pub fn derivePaginationResult(
     return .{ .data = result_data, .has_more = has_more, .next_cursor = next_cursor };
 }
 
-pub fn mapOidcVerifyError(err: anyerror) AuthError {
+fn mapOidcVerifyError(err: anyerror) AuthError {
     return switch (err) {
         error.TokenExpired => AuthError.TokenExpired,
         error.JwksFetchFailed, error.JwksParseFailed => AuthError.AuthServiceUnavailable,
@@ -336,7 +336,7 @@ pub fn authorizeWorkspaceAndSetTenantContext(conn: *pg.Conn, principal: AuthPrin
     return authorizeWorkspace(conn, principal, workspace_id);
 }
 
-pub fn beginApiRequest(ctx: *Context) bool {
+fn beginApiRequest(ctx: *Context) bool {
     const prev = ctx.api_in_flight_requests.fetchAdd(1, .acq_rel);
     if (prev >= ctx.api_max_in_flight_requests) {
         const reverted = ctx.api_in_flight_requests.fetchSub(1, .acq_rel);
@@ -349,7 +349,7 @@ pub fn beginApiRequest(ctx: *Context) bool {
     return true;
 }
 
-pub fn endApiRequest(ctx: *Context) void {
+fn endApiRequest(ctx: *Context) void {
     const prev = ctx.api_in_flight_requests.fetchSub(1, .acq_rel);
     std.debug.assert(prev > 0);
     metrics.setApiInFlightRequests(ctx.api_in_flight_requests.load(.acquire));

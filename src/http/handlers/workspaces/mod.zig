@@ -4,9 +4,9 @@
 const wl = @import("lifecycle.zig");
 const wo = @import("ops.zig");
 
-pub const handleCreateWorkspace = wl.handleCreateWorkspace;
-pub const handlePauseWorkspace = wo.handlePauseWorkspace;
-pub const handleSyncSpecs = wo.handleSyncSpecs;
+const handleCreateWorkspace = wl.handleCreateWorkspace;
+const handlePauseWorkspace = wo.handlePauseWorkspace;
+const handleSyncSpecs = wo.handleSyncSpecs;
 
 test {
     _ = @import("lifecycle.zig");
