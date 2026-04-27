@@ -28,12 +28,15 @@ const log = std.log.scoped(.zombie_api);
 
 const Hx = hx_mod.Hx;
 
-const MAX_NAME_LEN: usize = 64;
 const MAX_SOURCE_LEN: usize = 64 * 1024; // 64KB
+const MAX_TRIGGER_LEN: usize = 64 * 1024; // 64KB
 
+/// Install request shape. The server is the single parser of TRIGGER.md
+/// frontmatter — `name` and `config_json` are derived here, not sent by
+/// the CLI. Keeping the contract minimal lets the CLI stay zero-dep
+/// (no YAML parser in JS).
 const CreateBody = struct {
-    name: []const u8,
-    config_json: []const u8,
+    trigger_markdown: []const u8,
     source_markdown: []const u8,
 };
 
@@ -51,16 +54,12 @@ fn parseCreateBody(hx: Hx, req: *httpz.Request) ?CreateBody {
 }
 
 fn validateCreateFields(hx: Hx, b: CreateBody) bool {
-    if (b.name.len == 0 or b.name.len > MAX_NAME_LEN) {
-        hx.fail(ec.ERR_INVALID_REQUEST, ec.MSG_ZOMBIE_NAME_REQUIRED);
-        return false;
-    }
     if (b.source_markdown.len == 0 or b.source_markdown.len > MAX_SOURCE_LEN) {
         hx.fail(ec.ERR_INVALID_REQUEST, ec.MSG_ZOMBIE_SOURCE_REQUIRED);
         return false;
     }
-    if (b.config_json.len == 0) {
-        hx.fail(ec.ERR_INVALID_REQUEST, ec.MSG_ZOMBIE_CONFIG_REQUIRED);
+    if (b.trigger_markdown.len == 0 or b.trigger_markdown.len > MAX_TRIGGER_LEN) {
+        hx.fail(ec.ERR_INVALID_REQUEST, ec.MSG_ZOMBIE_TRIGGER_REQUIRED);
         return false;
     }
     return true;
@@ -74,10 +73,11 @@ pub fn innerCreateZombie(hx: Hx, req: *httpz.Request, workspace_id: []const u8) 
     const body = parseCreateBody(hx, req) orelse return;
     if (!validateCreateFields(hx, body)) return;
 
-    _ = zombie_config.parseZombieConfig(hx.alloc, body.config_json) catch {
+    var parsed = zombie_config.parseTriggerMarkdownWithJson(hx.alloc, body.trigger_markdown) catch {
         hx.fail(ec.ERR_ZOMBIE_INVALID_CONFIG, ec.MSG_ZOMBIE_INVALID_CONFIG);
         return;
     };
+    defer parsed.deinit(hx.alloc);
 
     const conn = hx.ctx.pool.acquire() catch {
         common.internalDbUnavailable(hx.res, hx.req_id);
@@ -96,7 +96,7 @@ pub fn innerCreateZombie(hx: Hx, req: *httpz.Request, workspace_id: []const u8) 
     };
     const now_ms = std.time.milliTimestamp();
 
-    insertZombieOnConn(conn, workspace_id, body, zombie_id, now_ms) catch |err| {
+    insertZombieOnConn(conn, workspace_id, body, parsed, zombie_id, now_ms) catch |err| {
         if (isUniqueViolation(err)) {
             hx.fail(ec.ERR_ZOMBIE_NAME_EXISTS, ec.MSG_ZOMBIE_NAME_EXISTS);
             return;
@@ -124,16 +124,37 @@ pub fn innerCreateZombie(hx: Hx, req: *httpz.Request, workspace_id: []const u8) 
         return;
     };
 
-    log.info("zombie.created id={s} name={s} workspace={s}", .{ zombie_id, body.name, workspace_id });
-    hx.ok(.created, .{ .zombie_id = zombie_id, .status = zombie_config.ZombieStatus.active.toSlice() });
+    log.info("zombie.created id={s} name={s} workspace={s}", .{ zombie_id, parsed.config.name, workspace_id });
+    hx.ok(.created, .{
+        .zombie_id = zombie_id,
+        .name = parsed.config.name,
+        .status = zombie_config.ZombieStatus.active.toSlice(),
+    });
 }
 
-fn insertZombieOnConn(conn: *pg.Conn, workspace_id: []const u8, body: CreateBody, zombie_id: []const u8, now_ms: i64) !void {
+fn insertZombieOnConn(
+    conn: *pg.Conn,
+    workspace_id: []const u8,
+    body: CreateBody,
+    parsed: zombie_config.ParsedTrigger,
+    zombie_id: []const u8,
+    now_ms: i64,
+) !void {
     _ = try conn.exec(
         \\INSERT INTO core.zombies
-        \\  (id, workspace_id, name, source_markdown, config_json, status, created_at, updated_at)
-        \\VALUES ($1::uuid, $2::uuid, $3, $4, $5::jsonb, $6, $7, $8)
-    , .{ zombie_id, workspace_id, body.name, body.source_markdown, body.config_json, zombie_config.ZombieStatus.active.toSlice(), now_ms, now_ms });
+        \\  (id, workspace_id, name, source_markdown, trigger_markdown, config_json,
+        \\   status, created_at, updated_at)
+        \\VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6::jsonb, $7, $8, $8)
+    , .{
+        zombie_id,
+        workspace_id,
+        parsed.config.name,
+        body.source_markdown,
+        body.trigger_markdown,
+        parsed.config_json,
+        zombie_config.ZombieStatus.active.toSlice(),
+        now_ms,
+    });
 }
 
 /// Fixed backoff schedule for install-time `XGROUP CREATE` + `XADD` retries.

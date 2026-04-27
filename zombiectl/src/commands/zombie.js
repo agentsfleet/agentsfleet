@@ -84,8 +84,8 @@ async function commandInstall(ctx, args, workspaces, deps) {
       method: "POST",
       headers: { ...apiHeaders(ctx), "Content-Type": "application/json" },
       body: JSON.stringify({
-        source_markdown: bundle.skill_md,
         trigger_markdown: bundle.trigger_md,
+        source_markdown: bundle.skill_md,
       }),
     });
   } catch (err) {
@@ -97,17 +97,22 @@ async function commandInstall(ctx, args, workspaces, deps) {
     return 1;
   }
 
+  // Server is the source of truth for the resolved name (parsed from
+  // TRIGGER.md frontmatter). Fall back to the directory hint only when the
+  // response omits it.
+  const displayName = res.name || bundle.fallback_name;
+
   if (ctx.jsonMode) {
     printJson(ctx.stdout, {
       status: "installed",
       zombie_id: res.zombie_id,
       webhook_url: res.webhook_url,
-      name: bundle.name,
+      name: displayName,
     });
     return 0;
   }
 
-  writeLine(ctx.stdout, `🎉 ${bundle.name} is live.`);
+  writeLine(ctx.stdout, `🎉 ${displayName} is live.`);
   if (res.zombie_id) {
     writeLine(ctx.stdout, `  Zombie ID: ${res.zombie_id}`);
   }
