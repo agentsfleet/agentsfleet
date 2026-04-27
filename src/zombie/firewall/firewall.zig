@@ -44,7 +44,7 @@ pub const OutboundRequest = struct {
 
 // ── Firewall event (structured for activity stream detail JSON) ────────────
 
-pub const FirewallEvent = struct {
+const FirewallEvent = struct {
     event_type: []const u8,
     tool: []const u8,
     domain: []const u8,

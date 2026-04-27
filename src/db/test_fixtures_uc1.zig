@@ -14,7 +14,7 @@ pub const TENANT_ID = base.TEST_TENANT_ID;
 pub const WS_PROVISION = "0195b4ba-8d3a-7f13-8abc-aa0000000001";
 pub const WS_ENFORCE = "0195b4ba-8d3a-7f13-8abc-aa0000000002";
 pub const WS_DEDUCT = "0195b4ba-8d3a-7f13-8abc-aa0000000003";
-pub const WS_CLAMP = "0195b4ba-8d3a-7f13-8abc-aa0000000004";
+const WS_CLAMP = "0195b4ba-8d3a-7f13-8abc-aa0000000004";
 
 /// Seed tenant + workspace. Idempotent via ON CONFLICT DO NOTHING.
 pub fn seed(conn: *pg.Conn, workspace_id: []const u8) !void {

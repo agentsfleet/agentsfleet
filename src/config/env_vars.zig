@@ -14,7 +14,7 @@ pub const EnvVarsErrors = error{
     RedisWorkerTlsRequired,
 };
 
-pub const EnvVars = struct {
+const EnvVars = struct {
     db_api: ?[]u8,
     db_worker: ?[]u8,
     redis_api: ?[]u8,
@@ -29,7 +29,7 @@ pub const EnvVars = struct {
     }
 };
 
-pub const CheckMode = enum {
+const CheckMode = enum {
     api,
     worker,
     both,
@@ -45,7 +45,7 @@ pub fn loadFromEnv(alloc: std.mem.Allocator) EnvVars {
     };
 }
 
-pub fn validateRoleSeparatedValues(
+fn validateRoleSeparatedValues(
     db_api: []const u8,
     db_worker: []const u8,
     redis_api: []const u8,
@@ -72,7 +72,7 @@ pub fn validateLoaded(urls: EnvVars) EnvVarsErrors!void {
     try validateRoleSeparatedValues(db_api, db_worker, redis_api, redis_worker);
 }
 
-pub fn validateLoadedWithMode(urls: EnvVars, mode: CheckMode) EnvVarsErrors!void {
+fn validateLoadedWithMode(urls: EnvVars, mode: CheckMode) EnvVarsErrors!void {
     switch (mode) {
         .api => {
             const db_api = urls.db_api orelse return EnvVarsErrors.MissingDatabaseUrlApi;

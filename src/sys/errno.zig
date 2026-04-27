@@ -29,7 +29,7 @@ pub fn nameOf(errno: anytype) []const u8 {
 /// Convenience: extract errno from a syscall return code (negative-return
 /// convention on Linux raw syscalls; -1 + thread-local errno on glibc).
 /// Returns `.SUCCESS` if `rc` does not indicate an error.
-pub fn getErrno(rc: anytype) E {
+fn getErrno(rc: anytype) E {
     const T = @TypeOf(rc);
     return switch (T) {
         usize => blk: {

@@ -35,13 +35,14 @@ pub const EVT_BALANCE_EXHAUSTED_FIRST_DEBIT = "balance_exhausted_first_debit";
 pub const EVT_BALANCE_EXHAUSTED = "balance_exhausted";
 pub const EVT_BALANCE_GATE_BLOCKED = "balance_gate_blocked";
 
-pub const ActivityEvent = struct {
+const ActivityEvent = struct {
     zombie_id: []const u8,
     workspace_id: []const u8,
     event_type: []const u8,
     detail: []const u8,
 };
 
+/// Caller-owned allocator: methods that allocate (incl. deinit) take the allocator as a parameter.
 pub const ActivityEventRow = struct {
     id: []const u8,
     zombie_id: []const u8,
@@ -59,6 +60,7 @@ pub const ActivityEventRow = struct {
     }
 };
 
+/// Caller-owned allocator: methods that allocate (incl. deinit) take the allocator as a parameter.
 pub const ActivityPage = struct {
     events: []ActivityEventRow,
     // Decimal string of created_at of the last event in this page.
@@ -92,7 +94,7 @@ pub fn logEventOnConn(conn: *pg.Conn, alloc: Allocator, event: ActivityEvent) vo
 
 // Rate-limit probe: true iff an event of `event_type` was written for
 // `workspace_id` after `since_ms`. Fail-open on DB error (caller emits).
-pub fn hasRecentActivityEventOnConn(
+fn hasRecentActivityEventOnConn(
     conn: *pg.Conn,
     workspace_id: []const u8,
     event_type: []const u8,
@@ -168,7 +170,7 @@ pub fn queryByZombieOnConn(
 }
 
 // queryByWorkspace returns a page of events across all Zombies in a workspace.
-pub fn queryByWorkspace(
+fn queryByWorkspace(
     pool: *pg.Pool,
     alloc: Allocator,
     workspace_id: []const u8,

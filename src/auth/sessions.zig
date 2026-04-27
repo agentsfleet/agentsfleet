@@ -6,7 +6,7 @@ const std = @import("std");
 
 const log = std.log.scoped(.auth);
 
-pub const SessionStatus = enum {
+const SessionStatus = enum {
     pending,
     complete,
     expired,

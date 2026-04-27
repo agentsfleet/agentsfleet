@@ -16,8 +16,8 @@ pub const IdentityClaims = struct {
     scopes: ?[]u8,
 };
 
-pub const ClerkClaims = IdentityClaims;
-pub const CustomClaims = IdentityClaims;
+const ClerkClaims = IdentityClaims;
+const CustomClaims = IdentityClaims;
 
 const CLAIM_TENANT_ID = "tenant_id";
 const CLAIM_ORG_ID = "org_id";

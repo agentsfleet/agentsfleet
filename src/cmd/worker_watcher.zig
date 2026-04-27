@@ -40,7 +40,7 @@ const log = std.log.scoped(.worker_watcher);
 /// 6 ticks ≈ 30 seconds — bounded staleness, low PG load.
 const reconcile_every_ticks: u32 = 6;
 
-pub const WatcherConfig = struct {
+const WatcherConfig = struct {
     redis: *queue_redis.Client,
     pool: *pg.Pool,
     executor: ?*executor_client.ExecutorClient,

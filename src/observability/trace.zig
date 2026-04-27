@@ -35,17 +35,17 @@ pub const TraceContext = struct {
         return &self.trace_id;
     }
 
-    pub fn spanIdSlice(self: *const TraceContext) []const u8 {
+    fn spanIdSlice(self: *const TraceContext) []const u8 {
         return &self.span_id;
     }
 
-    pub fn parentSpanIdSlice(self: *const TraceContext) []const u8 {
+    fn parentSpanIdSlice(self: *const TraceContext) []const u8 {
         if (self.parent_span_id) |*pid| return pid;
         return "";
     }
 
     /// Render as W3C traceparent header value: 00-{trace_id}-{span_id}-01
-    pub fn toW3CHeader(self: *const TraceContext, buf: *[55]u8) []const u8 {
+    fn toW3CHeader(self: *const TraceContext, buf: *[55]u8) []const u8 {
         @memcpy(buf[0..3], "00-");
         @memcpy(buf[3..35], &self.trace_id);
         buf[35] = '-';

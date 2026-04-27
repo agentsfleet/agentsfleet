@@ -76,11 +76,11 @@ pub fn generatePromptLifecycleEventId(alloc: std.mem.Allocator) ![]const u8 {
     return allocUuidV7(alloc);
 }
 
-pub fn generateScoreId(alloc: std.mem.Allocator) ![]const u8 {
+fn generateScoreId(alloc: std.mem.Allocator) ![]const u8 {
     return allocUuidV7(alloc);
 }
 
-pub fn generateGateResultId(alloc: std.mem.Allocator) ![]const u8 {
+fn generateGateResultId(alloc: std.mem.Allocator) ![]const u8 {
     return allocUuidV7(alloc);
 }
 
@@ -92,7 +92,7 @@ pub fn generateZombieId(alloc: std.mem.Allocator) ![]const u8 {
     return allocUuidV7(alloc);
 }
 
-pub fn generateZombieSessionId(alloc: std.mem.Allocator) ![]const u8 {
+fn generateZombieSessionId(alloc: std.mem.Allocator) ![]const u8 {
     return allocUuidV7(alloc);
 }
 

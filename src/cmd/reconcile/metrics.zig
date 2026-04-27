@@ -94,7 +94,7 @@ pub fn appendMetric(writer: anytype, name: []const u8, metric_type: []const u8, 
     try writer.print("{s} {d}\n", .{ name, value });
 }
 
-pub fn renderDaemonMetrics(alloc: std.mem.Allocator, s: *state_mod.DaemonState) ![]u8 {
+fn renderDaemonMetrics(alloc: std.mem.Allocator, s: *state_mod.DaemonState) ![]u8 {
     const base = try metrics.renderPrometheus(
         alloc,
         s.running.load(.acquire),

@@ -12,7 +12,7 @@
 const std = @import("std");
 const errno = @import("errno.zig");
 
-pub const SyscallTag = enum {
+const SyscallTag = enum {
     unknown,
     open,
     read,
@@ -60,21 +60,21 @@ pub const Error = struct {
     /// Borrowed by default. Owned only after `clone(alloc)`.
     path: []const u8 = "",
 
-    pub fn fromCode(code: anytype, syscall_tag: SyscallTag) Error {
+    fn fromCode(code: anytype, syscall_tag: SyscallTag) Error {
         return .{
             .errno = @intCast(code),
             .syscall = syscall_tag,
         };
     }
 
-    pub fn fromErrno(e: errno.E, syscall_tag: SyscallTag) Error {
+    fn fromErrno(e: errno.E, syscall_tag: SyscallTag) Error {
         return .{
             .errno = @intCast(@intFromEnum(e)),
             .syscall = syscall_tag,
         };
     }
 
-    pub fn withPath(self: Error, path: []const u8) Error {
+    fn withPath(self: Error, path: []const u8) Error {
         return .{
             .errno = self.errno,
             .syscall = self.syscall,
@@ -87,7 +87,7 @@ pub const Error = struct {
         return self.errno == @intFromEnum(errno.E.AGAIN);
     }
 
-    pub fn errnoName(self: Error) []const u8 {
+    fn errnoName(self: Error) []const u8 {
         return errno.nameOf(self.errno);
     }
 
@@ -121,7 +121,7 @@ pub const Error = struct {
 /// switch instead of catch, preserving the full error context (errno + syscall
 /// + path). For pure logic errors, prefer Zig's `!T` error union; `Maybe` is
 /// for system-level failures where errno matters.
-pub fn Maybe(comptime T: type) type {
+fn Maybe(comptime T: type) type {
     return union(enum) {
         result: T,
         err: Error,
@@ -134,12 +134,12 @@ pub fn Maybe(comptime T: type) type {
             return .{ .err = e };
         }
 
-        pub fn isOk(self: @This()) bool {
+        fn isOk(self: @This()) bool {
             return self == .result;
         }
 
         /// Convenience: lift to Zig error union for callers that want `try`.
-        pub fn unwrap(self: @This()) error{SyscallFailed}!T {
+        fn unwrap(self: @This()) error{SyscallFailed}!T {
             return switch (self) {
                 .result => |v| v,
                 .err => error.SyscallFailed,

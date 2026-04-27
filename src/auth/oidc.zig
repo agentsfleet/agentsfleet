@@ -12,7 +12,7 @@ pub const Provider = enum {
     custom,
 };
 
-pub const ParseProviderError = error{
+const ParseProviderError = error{
     InvalidProvider,
 };
 

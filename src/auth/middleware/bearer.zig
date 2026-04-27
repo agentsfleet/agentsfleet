@@ -17,7 +17,7 @@ pub fn parseBearerToken(req: *httpz.Request) ?[]const u8 {
 
 /// Linear scan of a comma-separated rotation list. Trims whitespace around
 /// each candidate so operators can format the env var for readability.
-pub fn matchRotatedKey(provided: []const u8, configured: []const u8) bool {
+fn matchRotatedKey(provided: []const u8, configured: []const u8) bool {
     var it = std.mem.tokenizeScalar(u8, configured, ',');
     while (it.next()) |candidate_raw| {
         const candidate = std.mem.trim(u8, candidate_raw, " \t");

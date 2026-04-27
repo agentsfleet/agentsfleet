@@ -78,6 +78,7 @@ pub const ZombieNetwork = struct {
     allow: []const []const u8,
 };
 
+/// Caller-owned allocator: methods that allocate (incl. deinit) take the allocator as a parameter.
 pub const ZombieConfig = struct {
     name: []const u8,
     trigger: ZombieTrigger,

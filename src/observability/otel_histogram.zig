@@ -15,11 +15,12 @@ const otel_json = @import("otel_json.zig");
 
 const log = std.log.scoped(.otel_histogram);
 
-pub const Bucket = struct {
+const Bucket = struct {
     upper_bound: f64, // +inf stored as std.math.inf(f64)
     cumulative_count: u64,
 };
 
+/// Caller-owned allocator: methods that allocate (incl. deinit) take the allocator as a parameter.
 pub const Histogram = struct {
     name: []u8,
     buckets: std.ArrayList(Bucket),

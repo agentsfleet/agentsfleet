@@ -6,13 +6,13 @@ const std = @import("std");
 const pg = @import("pg");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 
-pub const TenantRow = struct {
+const TenantRow = struct {
     tenant_id: []const u8,
     name: []const u8,
     now_ms: i64,
 };
 
-pub const UserRow = struct {
+const UserRow = struct {
     user_id: []const u8,
     tenant_id: []const u8,
     oidc_subject: []const u8,

@@ -17,10 +17,10 @@ const event_loop = @import("event_loop.zig");
 
 const log = std.log.scoped(.zombie_event_loop_gate);
 
-pub const BlockReason = enum { approval_denied, timeout, unavailable };
-pub const AutoKillTrigger = enum { anomaly, policy };
+const BlockReason = enum { approval_denied, timeout, unavailable };
+const AutoKillTrigger = enum { anomaly, policy };
 
-pub const GateCheckResult = union(enum) {
+const GateCheckResult = union(enum) {
     passed: void,
     blocked: BlockReason,
     auto_killed: AutoKillTrigger,

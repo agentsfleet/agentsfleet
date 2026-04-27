@@ -9,7 +9,7 @@ const KIND_MAX: usize = 32;
 const RUN_ID_MAX: usize = 64;
 const DETAIL_MAX: usize = 256;
 
-pub const BusEvent = struct {
+const BusEvent = struct {
     ts_ms: i64 = 0,
     kind: [KIND_MAX]u8 = undefined,
     kind_len: u8 = 0,
@@ -28,15 +28,15 @@ pub const BusEvent = struct {
         return out;
     }
 
-    pub fn kindSlice(self: *const BusEvent) []const u8 {
+    fn kindSlice(self: *const BusEvent) []const u8 {
         return self.kind[0..@as(usize, self.kind_len)];
     }
 
-    pub fn runIdSlice(self: *const BusEvent) []const u8 {
+    fn runIdSlice(self: *const BusEvent) []const u8 {
         return self.run_id[0..@as(usize, self.run_id_len)];
     }
 
-    pub fn detailSlice(self: *const BusEvent) []const u8 {
+    fn detailSlice(self: *const BusEvent) []const u8 {
         return self.detail[0..@as(usize, self.detail_len)];
     }
 };
@@ -66,7 +66,7 @@ pub const Bus = struct {
         return self.len;
     }
 
-    pub fn droppedCount(self: *Bus) u64 {
+    fn droppedCount(self: *Bus) u64 {
         self.mutex.lock();
         defer self.mutex.unlock();
         return self.dropped;

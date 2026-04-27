@@ -38,10 +38,10 @@ pub const BuildCtx = struct {
 };
 
 /// Factory function type — receives context, returns a NullClaw Tool.
-pub const BuildFn = *const fn (ctx: BuildCtx) anyerror!tools_mod.Tool;
+const BuildFn = *const fn (ctx: BuildCtx) anyerror!tools_mod.Tool;
 
 /// One entry in the bridge registry.
-pub const ToolEntry = struct {
+const ToolEntry = struct {
     /// Canonical tool name (matches RPC "name" field).
     name: []const u8,
     /// Factory — instantiates the NullClaw Tool.
@@ -101,7 +101,7 @@ const BRIDGE_REGISTRY = [_]ToolEntry{
 // ── Public API ─────────────────────────────────────────────────────────────
 
 /// Total number of registered tools.
-pub const TOOL_COUNT = BRIDGE_REGISTRY.len;
+const TOOL_COUNT = BRIDGE_REGISTRY.len;
 
 /// Resolve a tool name to its registry entry.
 pub fn resolve(tool_name: []const u8) ?*const ToolEntry {

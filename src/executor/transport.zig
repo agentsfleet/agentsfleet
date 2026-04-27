@@ -18,7 +18,7 @@ pub const ConnectionError = error{
 
 /// Handler callback: receives raw frame payload, returns response payload.
 /// Caller owns both the input and output slices.
-pub const FrameHandler = *const fn (alloc: std.mem.Allocator, payload: []const u8) anyerror![]u8;
+const FrameHandler = *const fn (alloc: std.mem.Allocator, payload: []const u8) anyerror![]u8;
 
 /// Unix socket server for the executor sidecar.
 pub const Server = struct {

@@ -23,7 +23,7 @@ cap: usize = 0,
 ptr: ?[*]u8 = null,
 
 /// Single-step alternative to count → allocate when the cap is known up front.
-pub fn initCapacity(alloc: Allocator, cap: usize) Allocator.Error!StringBuilder {
+fn initCapacity(alloc: Allocator, cap: usize) Allocator.Error!StringBuilder {
     return .{
         .cap = cap,
         .len = 0,
@@ -37,7 +37,7 @@ pub fn count(self: *StringBuilder, slice: []const u8) void {
 }
 
 /// Count phase for null-terminated output: reserves `slice.len + 1`.
-pub fn countZ(self: *StringBuilder, slice: []const u8) void {
+fn countZ(self: *StringBuilder, slice: []const u8) void {
     self.cap += slice.len + 1;
 }
 
@@ -74,7 +74,7 @@ pub fn append(self: *StringBuilder, slice: []const u8) []const u8 {
 }
 
 /// Append a null-terminated slice. Reserves `slice.len + 1` (caller used `countZ`).
-pub fn appendZ(self: *StringBuilder, slice: []const u8) [:0]const u8 {
+fn appendZ(self: *StringBuilder, slice: []const u8) [:0]const u8 {
     std.debug.assert(self.len + slice.len + 1 <= self.cap);
     std.debug.assert(self.ptr != null);
 
@@ -109,14 +109,14 @@ pub fn fmtCount(self: *StringBuilder, comptime comptime_fmt: []const u8, args: a
 
 /// Returns the entire allocated slice (including the unwritten tail). Use
 /// when you need raw access (e.g. to fill via `@memcpy` then advance `len`).
-pub fn allocatedSlice(self: *StringBuilder) []u8 {
+fn allocatedSlice(self: *StringBuilder) []u8 {
     const ptr = self.ptr orelse return &.{};
     std.debug.assert(self.cap > 0);
     return ptr[0..self.cap];
 }
 
 /// Returns the unwritten remainder of the buffer.
-pub fn writable(self: *StringBuilder) []u8 {
+fn writable(self: *StringBuilder) []u8 {
     const ptr = self.ptr orelse return &.{};
     std.debug.assert(self.cap > 0);
     return ptr[self.len..self.cap];
@@ -126,7 +126,7 @@ pub fn writable(self: *StringBuilder) []u8 {
 /// the builder is empty (zero cap) and must not be `append`-ed to again.
 /// Caller is responsible for freeing the returned slice with the same
 /// allocator that `allocate` (or `initCapacity`) received.
-pub fn moveToSlice(self: *StringBuilder, into_slice: *[]u8) void {
+fn moveToSlice(self: *StringBuilder, into_slice: *[]u8) void {
     into_slice.* = self.allocatedSlice();
     self.* = .{};
 }

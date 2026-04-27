@@ -26,11 +26,11 @@ const hs = @import("hmac_sig");
 
 pub const AuthCtx = auth_ctx.AuthCtx;
 
-pub const SIGNATURE_MAX_AGE_SECONDS: i64 = 300;
+const SIGNATURE_MAX_AGE_SECONDS: i64 = 300;
 pub const SIGNATURE_VERSION: []const u8 = "v0";
 
 /// Milliseconds-since-epoch provider; swapped in tests.
-pub const NowMsFn = *const fn () i64;
+const NowMsFn = *const fn () i64;
 
 fn defaultNowMs() i64 {
     return std.time.milliTimestamp();

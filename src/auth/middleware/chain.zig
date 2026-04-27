@@ -56,6 +56,7 @@ pub fn run(
 const testing = std.testing;
 
 const TestCtx = struct {
+    /// Caller-owned allocator: methods that allocate (incl. deinit) take the allocator as a parameter.
     calls: std.ArrayList([]const u8),
 };
 

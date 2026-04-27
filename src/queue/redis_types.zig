@@ -14,6 +14,7 @@ pub fn roleEnvVarName(role: RedisRole) []const u8 {
     };
 }
 
+/// Caller-owned allocator: methods that allocate (incl. deinit) take the allocator as a parameter.
 pub const QueueMessage = struct {
     message_id: []u8,
     run_id: []u8,

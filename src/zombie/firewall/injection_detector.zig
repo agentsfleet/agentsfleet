@@ -11,7 +11,7 @@
 
 const std = @import("std");
 
-pub const InjectionCategory = enum {
+const InjectionCategory = enum {
     instruction_override,
     role_hijacking,
     data_exfiltration,

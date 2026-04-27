@@ -14,7 +14,7 @@ const approval_slack = @import("../approval_gate_slack.zig");
 
 const log = std.log.scoped(.grant_notifier);
 
-pub const GRANT_NOTIFY_TTL_SECONDS: u32 = 7200;
+const GRANT_NOTIFY_TTL_SECONDS: u32 = 7200;
 const GRANT_NOTIFY_KEY_PREFIX = "grant:notify:";
 const GRANT_NONCE_KEY_PREFIX = "grant:nonce:";
 

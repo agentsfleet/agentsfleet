@@ -111,9 +111,9 @@ pub fn buildTriggerConfig(
 pub const ID_TENANT_A = "0197a4ba-8d3a-7f13-8abc-11111111aa01";
 pub const ID_WS_A = "0197a4ba-8d3a-7f13-8abc-11111111aa11";
 pub const ID_ZOMBIE_A = "0197a4ba-8d3a-7f13-8abc-11111111aa21";
-pub const ID_TENANT_B = "0197a4ba-8d3a-7f13-8abc-22222222bb01";
-pub const ID_WS_B = "0197a4ba-8d3a-7f13-8abc-22222222bb11";
-pub const ID_ZOMBIE_B = "0197a4ba-8d3a-7f13-8abc-22222222bb21";
+const ID_TENANT_B = "0197a4ba-8d3a-7f13-8abc-22222222bb01";
+const ID_WS_B = "0197a4ba-8d3a-7f13-8abc-22222222bb11";
+const ID_ZOMBIE_B = "0197a4ba-8d3a-7f13-8abc-22222222bb21";
 
 test "buildTriggerConfig with secret_ref produces valid JSON" {
     const alloc = std.testing.allocator;

@@ -28,7 +28,7 @@ comptime {
     }
 }
 
-pub const SmolStr = packed struct(u128) {
+const SmolStr = packed struct(u128) {
     __len: u32,
     cap: u32,
     __ptr: [*]u8,
@@ -38,7 +38,7 @@ pub const SmolStr = packed struct(u128) {
     const Tag: usize = 0x8000000000000000;
     const NegatedTag: usize = ~Tag;
 
-    pub const Inlined = packed struct(u128) {
+    const Inlined = packed struct(u128) {
         data: u120,
         __len: u7,
         _tag: u1,
@@ -62,7 +62,7 @@ pub const SmolStr = packed struct(u128) {
             return @intCast(self.__len);
         }
 
-        pub fn setLen(self: *Inlined, new_len: u7) void {
+        fn setLen(self: *Inlined, new_len: u7) void {
             self.__len = new_len;
         }
 
@@ -70,7 +70,7 @@ pub const SmolStr = packed struct(u128) {
             return @constCast(self).ptr()[0..self.__len];
         }
 
-        pub fn allChars(self: *Inlined) *[max_len]u8 {
+        fn allChars(self: *Inlined) *[max_len]u8 {
             return self.ptr()[0..max_len];
         }
 
@@ -102,33 +102,33 @@ pub const SmolStr = packed struct(u128) {
         return @ptrFromInt(@as(usize, @intFromPtr(self.__ptr)) & NegatedTag);
     }
 
-    pub fn markInlined(self: *SmolStr) void {
+    fn markInlined(self: *SmolStr) void {
         self.__ptr = @ptrFromInt(@as(usize, @intFromPtr(self.__ptr)) | Tag);
     }
 
-    pub fn markHeap(self: *SmolStr) void {
+    fn markHeap(self: *SmolStr) void {
         self.__ptr = @ptrFromInt(@as(usize, @intFromPtr(self.__ptr)) & NegatedTag);
     }
 
-    pub fn isInlined(self: *const SmolStr) bool {
+    fn isInlined(self: *const SmolStr) bool {
         return @as(usize, @intFromPtr(self.__ptr)) & Tag != 0;
     }
 
     /// Panics in debug if `self` is too long to fit inline.
-    pub fn toInlined(self: *const SmolStr) Inlined {
+    fn toInlined(self: *const SmolStr) Inlined {
         std.debug.assert(self.len() <= Inlined.max_len);
         var inlined: Inlined = @bitCast(@as(u128, @bitCast(self.*)));
         inlined._tag = 1;
         return inlined;
     }
 
-    pub fn fromInlined(inlined: Inlined) SmolStr {
+    fn fromInlined(inlined: Inlined) SmolStr {
         var s: SmolStr = @bitCast(inlined);
         s.markInlined();
         return s;
     }
 
-    pub fn fromChar(char: u8) SmolStr {
+    fn fromChar(char: u8) SmolStr {
         var inlined: Inlined = .{ .data = 0, .__len = 1, ._tag = 1 };
         inlined.allChars()[0] = char;
         return SmolStr.fromInlined(inlined);

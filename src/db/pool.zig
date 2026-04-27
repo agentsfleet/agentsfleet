@@ -158,7 +158,7 @@ pub fn initFromEnvForRole(alloc: std.mem.Allocator, role: DbRole) !*Pool {
 }
 
 /// Backward-compatible default initializer.
-pub fn initFromEnv(alloc: std.mem.Allocator) !*Pool {
+fn initFromEnv(alloc: std.mem.Allocator) !*Pool {
     return initFromEnvForRole(alloc, .default);
 }
 

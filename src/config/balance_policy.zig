@@ -5,7 +5,7 @@ const std = @import("std");
 
 const log = std.log.scoped(.balance_policy);
 
-pub const ENV_VAR_NAME = "BALANCE_EXHAUSTED_POLICY";
+const ENV_VAR_NAME = "BALANCE_EXHAUSTED_POLICY";
 
 pub const Policy = enum {
     /// Log + let the run proceed. Zero cents deducted.
@@ -36,7 +36,7 @@ pub fn parse(raw: []const u8) ?Policy {
 /// Resolve from env. Absent / unknown values fall back to DEFAULT with a
 /// startup warn log that names the observed value (so operators see why
 /// they didn't get what they typed).
-pub fn resolveFromEnv(alloc: std.mem.Allocator) Policy {
+fn resolveFromEnv(alloc: std.mem.Allocator) Policy {
     const raw = std.process.getEnvVarOwned(alloc, ENV_VAR_NAME) catch |err| switch (err) {
         error.EnvironmentVariableNotFound => return DEFAULT,
         else => {

@@ -68,6 +68,7 @@ fn parseLimitFromQs(qs: anytype) u32 {
 // handler itself lives in workspace_activity_integration_test.zig.
 
 const TestQs = struct {
+    /// Caller-owned allocator: methods that allocate (incl. deinit) take the allocator as a parameter.
     values: std.StringHashMap([]const u8),
     pub fn init(alloc: std.mem.Allocator) TestQs {
         return .{ .values = std.StringHashMap([]const u8).init(alloc) };

@@ -85,7 +85,7 @@ pub fn readRespValue(alloc: std.mem.Allocator, reader: *std.Io.Reader) !RespValu
     };
 }
 
-pub fn readRespLine(alloc: std.mem.Allocator, reader: *std.Io.Reader) ![]u8 {
+fn readRespLine(alloc: std.mem.Allocator, reader: *std.Io.Reader) ![]u8 {
     var buf: std.ArrayList(u8) = .{};
     defer buf.deinit(alloc);
 

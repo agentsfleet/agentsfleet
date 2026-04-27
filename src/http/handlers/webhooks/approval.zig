@@ -29,7 +29,7 @@ const ApprovalDecision = enum {
     approve,
     deny,
 
-    pub fn toConstString(self: ApprovalDecision) []const u8 {
+    fn toConstString(self: ApprovalDecision) []const u8 {
         return switch (self) {
             .approve => ec.GATE_DECISION_APPROVE,
             .deny => ec.GATE_DECISION_DENY,

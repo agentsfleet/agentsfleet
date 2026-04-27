@@ -12,7 +12,7 @@ const std = @import("std");
 
 pub const MAX_SCAN_SIZE: usize = 1_048_576; // 1MB
 
-pub const FlagType = enum {
+const FlagType = enum {
     pii_credit_card,
     pii_ssn,
     api_key_leak,

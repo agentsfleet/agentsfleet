@@ -53,7 +53,7 @@ pub fn emitResult(
     }
 }
 
-pub fn pushOtelMetrics(alloc: std.mem.Allocator, dead_lettered: u32) void {
+fn pushOtelMetrics(alloc: std.mem.Allocator, dead_lettered: u32) void {
     const cfg = otel.configFromEnv(alloc) orelse return;
     defer {
         alloc.free(cfg.endpoint);

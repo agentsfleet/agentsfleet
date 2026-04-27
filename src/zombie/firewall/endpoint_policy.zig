@@ -13,7 +13,7 @@ const Allocator = std.mem.Allocator;
 
 const log = std.log.scoped(.firewall);
 
-pub const EndpointAction = enum {
+const EndpointAction = enum {
     allow,
     deny,
     approve,

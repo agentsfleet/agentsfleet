@@ -30,7 +30,7 @@ pub const daemonHealthy = state_mod.daemonHealthy;
 const log = std.log.scoped(.reconcile);
 const ReconcileLeaderLockKey: i64 = 0x7A6F6D6269651001;
 
-pub var daemon_shutdown_requested = std.atomic.Value(bool).init(false);
+var daemon_shutdown_requested = std.atomic.Value(bool).init(false);
 
 pub fn tryAcquireLeaderLock(conn: *db.Conn) !bool {
     var q = PgQuery.from(try conn.query("SELECT pg_try_advisory_lock($1)", .{ReconcileLeaderLockKey}));

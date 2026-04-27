@@ -14,7 +14,7 @@ const route_table = @import("route_table.zig");
 const hx_mod = @import("handlers/hx.zig");
 const log = std.log.scoped(.http);
 
-pub const ServerConfig = struct {
+const ServerConfig = struct {
     port: u16 = 3000,
     /// Dual-stack "::" accepts both IPv4 and IPv6 connections.
     /// httpz (pure Zig) uses std.posix — no C-layer IPV6_V6ONLY concern.
@@ -97,7 +97,7 @@ pub const Server = struct {
     /// Convenience constructor for tests that do not exercise the middleware
     /// fast-path. Uses a module-level dummy registry (route table is empty in
     /// C.2, so the registry is never dereferenced during test runs).
-    pub fn initForTesting(ctx: *handler.Context, cfg: ServerConfig) !*Server {
+    fn initForTesting(ctx: *handler.Context, cfg: ServerConfig) !*Server {
         return init(ctx, &testing_dummy_registry, cfg);
     }
 };

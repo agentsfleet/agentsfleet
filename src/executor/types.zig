@@ -75,7 +75,7 @@ pub const ResourceLimits = struct {
 };
 
 /// Configuration for the executor sidecar.
-pub const ExecutorConfig = struct {
+const ExecutorConfig = struct {
     socket_path: []const u8 = "/run/zombie/executor.sock",
     startup_timeout_ms: u64 = 5_000,
     lease_timeout_ms: u64 = 30_000,
@@ -113,9 +113,9 @@ pub const MemoryBackendConfig = struct {
     /// for forward-compatibility; no entries are pruned today.
     daily_retention_hours: u32 = 72,
 
-    pub const NAMESPACE_PREFIX = "zmb:";
+    const NAMESPACE_PREFIX = "zmb:";
     /// UUID v7 string length: "xxxxxxxx-xxxx-7xxx-xxxx-xxxxxxxxxxxx" = 36 chars.
-    pub const UUID_V7_LEN = 36;
+    const UUID_V7_LEN = 36;
 
     pub const ValidationError = error{
         UnsupportedBackend,

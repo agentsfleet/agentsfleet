@@ -28,7 +28,7 @@ pub const ERR_OAUTH_STATE_INVALID: []const u8 = "UZ-SLACK-001";
 ///   - `false`: nonce missing (expired or already replayed).
 ///   - `error.*`: backing store (Redis/etc.) is unavailable — middleware
 ///     surfaces as 500-ish, not as an auth failure.
-pub const ConsumeNonceFn = *const fn (user: *anyopaque, nonce: []const u8) anyerror!bool;
+const ConsumeNonceFn = *const fn (user: *anyopaque, nonce: []const u8) anyerror!bool;
 
 pub const OAuthState = struct {
     /// Shared signing secret (e.g. `SLACK_SIGNING_SECRET`).

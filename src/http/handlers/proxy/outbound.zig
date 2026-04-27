@@ -13,7 +13,7 @@ const log = std.log.scoped(.outbound_proxy);
 
 pub const MAX_RESPONSE_BYTES: usize = 10 * 1024 * 1024; // 10 MB cap
 
-pub const PipelineInput = struct {
+const PipelineInput = struct {
     zombie_id: []const u8,
     workspace_id: []const u8,
     target: []const u8,   // "slack.com/api/chat.postMessage"
@@ -22,7 +22,7 @@ pub const PipelineInput = struct {
     credential_ref: []const u8,
 };
 
-pub const PipelineResult = struct {
+const PipelineResult = struct {
     status: u16,
     body: []const u8,        // owned by caller's allocator
     action_id: []const u8,   // UUIDv7 string

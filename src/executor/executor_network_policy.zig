@@ -24,7 +24,7 @@ pub const REGISTRY_ALLOWLIST = [_][]const u8{
 /// M2_001: Zombie skill-specific domain allowlists.
 /// Keyed by skill name from ZombieConfig.skills[].
 /// The executor merges these with the Zombie's config.network.allow list.
-pub const ZOMBIE_SKILL_ALLOWLIST = struct {
+const ZOMBIE_SKILL_ALLOWLIST = struct {
     pub const agentmail = [_][]const u8{
         "api.agentmail.to",
     };
@@ -37,7 +37,7 @@ const Allocator = std.mem.Allocator;
 
 /// Merge static registry allowlist with per-Zombie skill domains.
 /// Returns a deduplicated slice of all allowed domains. Caller owns.
-pub fn mergeAllowlists(
+fn mergeAllowlists(
     alloc: Allocator,
     zombie_domains: []const []const u8,
 ) ![]const []const u8 {

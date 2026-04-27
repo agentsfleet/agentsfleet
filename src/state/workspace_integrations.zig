@@ -18,7 +18,7 @@ const log = std.log.scoped(.workspace_integrations);
 pub const Source = enum { oauth, cli };
 pub const Status = enum { active, paused, revoked };
 
-pub const UpsertResult = struct {
+const UpsertResult = struct {
     integration_id: []const u8, // owned by caller
     created: bool,
 };

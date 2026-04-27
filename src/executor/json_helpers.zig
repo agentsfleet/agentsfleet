@@ -52,7 +52,7 @@ pub fn getBool(obj: std.json.Value, key: []const u8) bool {
     };
 }
 
-pub fn getBoolDefaultTrue(obj: std.json.Value, key: []const u8) bool {
+fn getBoolDefaultTrue(obj: std.json.Value, key: []const u8) bool {
     if (obj != .object) return true;
     const val = obj.object.get(key) orelse return true;
     return switch (val) {

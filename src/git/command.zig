@@ -40,7 +40,7 @@ pub const CommandResources = struct {
         return .{ .child = child, .alloc = alloc, .env = env };
     }
 
-    pub fn readOutput(self: *CommandResources) !void {
+    fn readOutput(self: *CommandResources) !void {
         self.stdout = if (self.child.stdout) |*s|
             try s.readToEndAlloc(self.alloc, 1024 * 1024)
         else
@@ -54,13 +54,13 @@ pub const CommandResources = struct {
         errdefer if (self.stderr) |b| self.alloc.free(b);
     }
 
-    pub fn takeStdout(self: *CommandResources) []const u8 {
+    fn takeStdout(self: *CommandResources) []const u8 {
         const out = self.stdout orelse "";
         self.stdout = null;
         return out;
     }
 
-    pub fn stderrOrEmpty(self: *const CommandResources) []const u8 {
+    fn stderrOrEmpty(self: *const CommandResources) []const u8 {
         return self.stderr orelse "";
     }
 

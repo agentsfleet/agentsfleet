@@ -19,7 +19,7 @@ const std = @import("std");
 const log = std.log.scoped(.clerk_backend);
 
 pub const SECRET_ENV_VAR = "CLERK_SECRET_KEY";
-pub const API_BASE = "https://api.clerk.com/v1";
+const API_BASE = "https://api.clerk.com/v1";
 
 pub const PatchError = error{
     MissingSecret,

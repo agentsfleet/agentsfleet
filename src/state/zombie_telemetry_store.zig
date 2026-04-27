@@ -23,6 +23,7 @@ const TELEMETRY_SELECT =
     \\
 ;
 
+/// Caller-owned allocator: methods that allocate (incl. deinit) take the allocator as a parameter.
 pub const TelemetryRow = struct {
     id: []u8,
     zombie_id: []u8,
@@ -50,7 +51,7 @@ pub const TelemetryRow = struct {
     }
 };
 
-pub const InsertTelemetryParams = struct {
+const InsertTelemetryParams = struct {
     zombie_id: []const u8,
     workspace_id: []const u8,
     event_id: []const u8,

@@ -22,9 +22,9 @@ pub const AuthCtx = auth_ctx.AuthCtx;
 
 pub const SLACK_SIG_HEADER: []const u8 = "x-slack-signature";
 pub const SLACK_TS_HEADER: []const u8 = "x-slack-request-timestamp";
-pub const SLACK_SIG_PREFIX: []const u8 = "v0=";
+const SLACK_SIG_PREFIX: []const u8 = "v0=";
 pub const SLACK_SIG_VERSION: []const u8 = "v0";
-pub const SLACK_MAX_DRIFT_SECONDS: i64 = 300;
+const SLACK_MAX_DRIFT_SECONDS: i64 = 300;
 
 /// Seconds-since-epoch provider; swapped in tests.
 pub const NowSecondsFn = *const fn () i64;
@@ -75,7 +75,7 @@ pub const SlackSignature = struct {
 /// Verify `"v0=" ++ hex(HmacSha256(secret, "v0:<ts>:<body>"))`.
 /// Rejects missing prefix, wrong hex length, and mismatched MAC bytes in
 /// constant time.
-pub fn verifyV0Signature(
+fn verifyV0Signature(
     secret: []const u8,
     timestamp: []const u8,
     body: []const u8,

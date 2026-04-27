@@ -3,15 +3,15 @@
 
 const std = @import("std");
 
-pub const SLACK_TOKEN_URL = "https://slack.com/api/oauth.v2.access";
-pub const SLACK_POST_MSG_URL = "https://slack.com/api/chat.postMessage";
+const SLACK_TOKEN_URL = "https://slack.com/api/oauth.v2.access";
+const SLACK_POST_MSG_URL = "https://slack.com/api/chat.postMessage";
 pub const SLACK_SCOPES = "chat:write,channels:read,channels:history,reactions:write,users:read";
 
-pub const SLACK_CONNECTED_MSG =
+const SLACK_CONNECTED_MSG =
     \\{"channel":"general","blocks":[{"type":"section","text":{"type":"mrkdwn","text":"*UseZombie is connected!*\nConfigure at https://app.usezombie.com to request Slack access."}}]}
 ;
 
-pub const SlackTokenResponse = struct {
+const SlackTokenResponse = struct {
     access_token: []const u8,
     team_id: []const u8,
     team_name: []const u8,
