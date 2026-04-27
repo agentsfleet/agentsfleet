@@ -19,6 +19,7 @@ const log = std.log.scoped(.preflight);
 // PostHog client
 // ---------------------------------------------------------------------------
 
+/// Caller-owned allocator: methods that allocate (incl. deinit) take the allocator as a parameter.
 pub const PostHogResult = struct {
     client: ?*posthog.PostHogClient,
     api_key_owned: ?[]const u8,
@@ -48,6 +49,7 @@ pub fn initPostHog(alloc: std.mem.Allocator) PostHogResult {
     return .{ .client = client, .api_key_owned = api_key };
 }
 
+/// Caller-owned allocator: methods that allocate (incl. deinit) take the allocator as a parameter.
 const TelemetryResult = struct {
     telemetry: telemetry_mod.Telemetry,
     ph: PostHogResult,

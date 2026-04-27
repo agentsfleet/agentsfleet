@@ -42,6 +42,7 @@ const ActivityEvent = struct {
     detail: []const u8,
 };
 
+/// Caller-owned allocator: methods that allocate (incl. deinit) take the allocator as a parameter.
 pub const ActivityEventRow = struct {
     id: []const u8,
     zombie_id: []const u8,
@@ -59,6 +60,7 @@ pub const ActivityEventRow = struct {
     }
 };
 
+/// Caller-owned allocator: methods that allocate (incl. deinit) take the allocator as a parameter.
 pub const ActivityPage = struct {
     events: []ActivityEventRow,
     // Decimal string of created_at of the last event in this page.

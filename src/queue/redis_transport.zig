@@ -3,6 +3,7 @@ const redis_config = @import("redis_config.zig");
 
 const log = std.log.scoped(.redis_queue);
 
+/// Caller-owned allocator: methods that allocate (incl. deinit) take the allocator as a parameter.
 pub const PlainTransport = struct {
     stream: std.net.Stream,
     stream_reader: std.net.Stream.Reader,

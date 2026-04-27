@@ -11,6 +11,7 @@ const executor_client = @import("../executor/client.zig");
 const telemetry_mod = @import("../observability/telemetry.zig");
 const balance_policy_mod = @import("../config/balance_policy.zig");
 
+/// Caller-owned allocator: methods that allocate (incl. deinit) take the allocator as a parameter.
 pub const ZombieSession = struct {
     zombie_id: []const u8,
     workspace_id: []const u8,
@@ -42,6 +43,7 @@ pub const ZombieSession = struct {
     }
 };
 
+/// Caller-owned allocator: methods that allocate (incl. deinit) take the allocator as a parameter.
 pub const EventResult = struct {
     status: Status,
     agent_response: []const u8,

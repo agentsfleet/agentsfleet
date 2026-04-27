@@ -20,6 +20,7 @@ const Bucket = struct {
     cumulative_count: u64,
 };
 
+/// Caller-owned allocator: methods that allocate (incl. deinit) take the allocator as a parameter.
 pub const Histogram = struct {
     name: []u8,
     buckets: std.ArrayList(Bucket),

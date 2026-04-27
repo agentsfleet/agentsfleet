@@ -8,6 +8,7 @@ const HmacSha256 = std.crypto.auth.hmac.sha2.HmacSha256;
 
 pub const Source = enum { github, linear, slack, jira, svix };
 
+/// Caller-owned allocator: methods that allocate (incl. deinit) take the allocator as a parameter.
 pub const Signed = struct {
     header_name: []const u8,
     header_value: []const u8, // heap-owned
@@ -16,6 +17,7 @@ pub const Signed = struct {
     }
 };
 
+/// Caller-owned allocator: methods that allocate (incl. deinit) take the allocator as a parameter.
 const SignedSvix = struct {
     svix_id: []const u8, // heap-owned
     svix_timestamp: []const u8, // heap-owned
@@ -27,6 +29,7 @@ const SignedSvix = struct {
     }
 };
 
+/// Caller-owned allocator: methods that allocate (incl. deinit) take the allocator as a parameter.
 const SignedSlack = struct {
     signed: Signed,
     timestamp: []const u8, // heap-owned

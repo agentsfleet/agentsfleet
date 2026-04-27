@@ -10,6 +10,7 @@ pub const Requirement = struct {
     minimum_role: common.AuthRole = .user,
 };
 
+/// Caller-owned allocator: methods that allocate (incl. deinit) take the allocator as a parameter.
 pub const Access = struct {
     /// Reserved for future per-request state. Currently empty; `deinit` is a
     /// no-op so existing call sites (`defer access.deinit(alloc)`) stay valid.

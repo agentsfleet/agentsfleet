@@ -66,6 +66,7 @@ const JwkKey = struct {
     exponent: []u8,
 };
 
+/// Caller-owned allocator: methods that allocate (incl. deinit) take the allocator as a parameter.
 const JwksCache = struct {
     fetched_at_ms: i64,
     keys: []JwkKey,

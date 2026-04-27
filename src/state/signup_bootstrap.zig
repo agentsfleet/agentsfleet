@@ -48,6 +48,7 @@ const BootstrapParams = struct {
     display_name: ?[]const u8 = null,
 };
 
+/// Caller-owned allocator: methods that allocate (incl. deinit) take the allocator as a parameter.
 pub const Bootstrap = struct {
     user_id: []const u8,
     tenant_id: []const u8,

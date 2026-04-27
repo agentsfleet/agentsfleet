@@ -17,6 +17,7 @@ pub const SecretError = error{
     NotFound,
 };
 
+/// Caller-owned allocator: methods that allocate (incl. deinit) take the allocator as a parameter.
 pub const EncryptedBlob = struct {
     nonce: [NONCE_LEN]u8,
     ciphertext: []u8,
