@@ -4,7 +4,7 @@
 **Milestone:** M44
 **Workstream:** 001
 **Date:** Apr 25, 2026 (amended Apr 27, 2026)
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — launch-blocking. Three load-bearing bugs in shipped code that block the wedge end-to-end. Codex outside-voice review surfaced these as P0 contract mismatches.
 **Categories:** API, CLI
 **Batch:** B1 — parallel with M40, M41, M42, M43, M45.
