@@ -33,7 +33,7 @@ export const VERSION = "0.30.0";
 
 export { parseGlobalArgs };
 
-const AUTH_EXEMPT_ROUTES = new Set(["login", "doctor", "zombie.install"]);
+const AUTH_EXEMPT_ROUTES = new Set(["login"]);
 
 export async function runCli(argv, io = {}) {
   const stdout = io.stdout || process.stdout;
@@ -89,7 +89,8 @@ export async function runCli(argv, io = {}) {
   const args = rest.slice(1);
   const route = findRoute(command, args);
 
-  // Auth guard: skip for login, doctor, help, version
+  // Auth guard: only `login` is exempt. Doctor and install both interact with
+  // workspace state, so they require credentials before any HTTP call.
   if (route && !AUTH_EXEMPT_ROUTES.has(route.key)) {
     const auth = requireAuth(ctx);
     if (!auth.ok) {
