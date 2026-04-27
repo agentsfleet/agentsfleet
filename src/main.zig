@@ -24,7 +24,7 @@ const log = std.log.scoped(.zombied);
 
 var runtime_log_level = std.atomic.Value(u8).init(@intFromEnum(if (builtin.mode == .Debug) std.log.Level.debug else std.log.Level.info));
 
-pub const std_options: std.Options = .{
+const std_options: std.Options = .{
     .log_level = .debug,
     .logFn = zombiedLog,
 };
