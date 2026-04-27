@@ -54,7 +54,7 @@ pub fn pushStatic(self: *StringJoiner, data: []const u8) Allocator.Error!void {
 }
 
 /// Push a duplicated copy of `data`. The joiner owns the copy.
-pub fn pushCloned(self: *StringJoiner, data: []const u8) Allocator.Error!void {
+fn pushCloned(self: *StringJoiner, data: []const u8) Allocator.Error!void {
     if (data.len == 0) return;
     const owned = try self.allocator.dupe(u8, data);
     errdefer self.allocator.free(owned);
@@ -100,7 +100,7 @@ pub fn done(self: *StringJoiner, out_alloc: Allocator) Allocator.Error![]u8 {
 }
 
 /// Same as `done`, but appends `end` after the joined nodes.
-pub fn doneWithEnd(self: *StringJoiner, out_alloc: Allocator, end: []const u8) Allocator.Error![]u8 {
+fn doneWithEnd(self: *StringJoiner, out_alloc: Allocator, end: []const u8) Allocator.Error![]u8 {
     const out = try out_alloc.alloc(u8, self.len + end.len);
     errdefer out_alloc.free(out);
 
@@ -133,7 +133,7 @@ pub fn deinit(self: *StringJoiner) void {
     self.len = 0;
 }
 
-pub fn lastByte(self: *const StringJoiner) u8 {
+fn lastByte(self: *const StringJoiner) u8 {
     const slice = (self.tail orelse return 0).slice;
     std.debug.assert(slice.len > 0);
     return slice[slice.len - 1];
