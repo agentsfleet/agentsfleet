@@ -101,6 +101,7 @@ def main() -> int:
             print(
                 f"{file}\t{struct_name}\t{i + 1}\t{int(has_alloc)}\t{int(has_comment)}\t{heap_kind}"
             )
+    return 0
 
 
 if __name__ == "__main__":
