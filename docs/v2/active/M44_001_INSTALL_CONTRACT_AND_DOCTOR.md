@@ -141,7 +141,7 @@ Each check returns `{name: string, ok: boolean, detail: string}`. Aggregate resu
 |---|---|---|
 | `server_reachable` | `GET /healthz` against the configured API URL | 200 within 5s timeout, body `{status: "ok"}` |
 | `workspace_selected` | Local config has a selected workspace_id | Non-empty `workspaces.current_workspace_id` |
-| `workspace_binding_valid` | The token is bound to the selected workspace (server confirms) | `GET /v1/workspaces/{ws}` returns 200 |
+| `workspace_binding_valid` | The token is bound to the selected workspace (server confirms) | `GET /v1/workspaces/{ws}/zombies` returns 200 (the canonical workspace-scoped read; `GET /v1/workspaces/{ws}` does not exist as a standalone endpoint pre-v2.0) |
 
 `auth_token_present` is dropped — the CLI auth guard already enforces it before doctor runs (see §3). The existing `readyz` and `credentials` checks are dropped: `readyz` overlaps `server_reachable`; `credentials` is now covered by the auth guard.
 
@@ -171,6 +171,7 @@ CLI:
     runs 3 checks, exit 0/1
     --json: stdout = { ok: bool, api_url: string, checks: [{name, ok, detail}] }
     requires auth (no longer exempt)
+    workspace_binding probe: GET /v1/workspaces/{ws}/zombies
 
   zombiectl auth login   (optional, this milestone or next)
   zombiectl auth logout  (optional)
