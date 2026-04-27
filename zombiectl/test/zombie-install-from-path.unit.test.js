@@ -1,9 +1,12 @@
 // `zombiectl install --from <path>` — unified install command.
 //
-// Covers §1–§5 dimensions: happy path, missing dir, missing/partial files,
-// name fallback, pre-flight errors, --json mode, removed `up` command,
-// legacy bundled-usage rejection, status hint sweep, and post-merge
-// filesystem state.
+// Post-server-side-parse: the CLI sends raw {trigger_markdown, source_markdown}
+// and trusts the server's response for the canonical name. CLI-side YAML
+// frontmatter parsing was removed (it was a duplicated parser; the server's
+// is the source of truth). These tests cover: shape of the POST body,
+// display-name precedence (server response > directory basename fallback),
+// loader errors (path/file/skill/trigger missing), pre-flight (workspace,
+// auth bubbling), and error surfacing (ApiError vs IO_ERROR).
 
 import { test } from "bun:test";
 import assert from "node:assert/strict";
@@ -31,9 +34,12 @@ function makeStdout() {
 function makeDeps(overrides = {}) {
   return {
     parseFlags,
+    // Default mock mirrors what the create handler returns post-parse.
+    // Tests that need a different shape override `request`.
     request: async () => ({
       zombie_id: "zom_01abc",
-      webhook_url: "https://api.usezombie.com/v1/webhooks/zom_01abc",
+      name: "test-zombie",
+      status: "active",
     }),
     apiHeaders: () => ({}),
     ui,
@@ -46,7 +52,7 @@ function makeDeps(overrides = {}) {
   };
 }
 
-function setupSampleDir({ name = "test-zombie", withSkill = true, withTrigger = true, triggerHasNameLine = true } = {}) {
+function setupSampleDir({ name = "test-zombie", withSkill = true, withTrigger = true } = {}) {
   const root = mkdtempSync(join(tmpdir(), "install-from-test-"));
   const sampleDir = join(root, name);
   mkdirSync(sampleDir);
@@ -54,10 +60,10 @@ function setupSampleDir({ name = "test-zombie", withSkill = true, withTrigger = 
     writeFileSync(join(sampleDir, "SKILL.md"), `---\nname: ${name}\n---\n# skill body\n`);
   }
   if (withTrigger) {
-    const body = triggerHasNameLine
-      ? `---\nname: ${name}\n---\n# trigger body\n`
-      : `---\n# trigger body\n`;
-    writeFileSync(join(sampleDir, "TRIGGER.md"), body);
+    writeFileSync(
+      join(sampleDir, "TRIGGER.md"),
+      `---\nname: ${name}\ntrigger:\n  type: api\ntools:\n  - agentmail\nbudget:\n  daily_dollars: 1.0\n---\n# trigger body\n`,
+    );
   }
   return { root, sampleDir };
 }
@@ -65,9 +71,9 @@ function setupSampleDir({ name = "test-zombie", withSkill = true, withTrigger = 
 const workspaces = { current_workspace_id: WS_ID, items: [] };
 const noWorkspace = { current_workspace_id: null, items: [] };
 
-// ── §1 — CLI flag + loader ────────────────────────────────────────────────
+// ── §1 — Loader + happy path ──────────────────────────────────────────────
 
-test("install --from: happy path prints 'is live' + zombie ID; no webhook in pretty mode", async () => {
+test("install --from: happy path prints 'is live' from server-returned name", async () => {
   const { sampleDir } = setupSampleDir();
   const stdout = makeStdout();
   const code = await commandZombie(
@@ -80,7 +86,45 @@ test("install --from: happy path prints 'is live' + zombie ID; no webhook in pre
   const out = stdout.lines.join("");
   assert.ok(out.includes("🎉 test-zombie is live."), `expected 'is live' line:\n${out}`);
   assert.ok(out.includes("Zombie ID: zom_01abc"), `expected zombie ID line:\n${out}`);
-  assert.ok(!/webhook/i.test(out), `pretty mode should omit webhook URL:\n${out}`);
+});
+
+test("install --from: server-returned name wins over directory basename", async () => {
+  // The server parses TRIGGER.md frontmatter — its name is canonical.
+  // Directory basename is only a fallback for when the server omits it.
+  const { sampleDir } = setupSampleDir({ name: "directory-basename" });
+  const stdout = makeStdout();
+  const code = await commandZombie(
+    { stdout, stderr: makeNoop(), jsonMode: false, noInput: false },
+    ["install", "--from", sampleDir],
+    workspaces,
+    makeDeps({
+      request: async () => ({
+        zombie_id: "zom_01abc",
+        name: "frontmatter-name",
+        status: "active",
+      }),
+    }),
+  );
+  assert.equal(code, 0);
+  const out = stdout.lines.join("");
+  assert.ok(out.includes("🎉 frontmatter-name is live."), `server name should win:\n${out}`);
+  assert.ok(!out.includes("directory-basename"), `basename must not appear when server returned a name:\n${out}`);
+});
+
+test("install --from: server omits name → CLI falls back to directory basename", async () => {
+  const { sampleDir } = setupSampleDir({ name: "fallback-zombie" });
+  const stdout = makeStdout();
+  const code = await commandZombie(
+    { stdout, stderr: makeNoop(), jsonMode: false, noInput: false },
+    ["install", "--from", sampleDir],
+    workspaces,
+    makeDeps({
+      request: async () => ({ zombie_id: "zom_01abc", status: "active" }),
+    }),
+  );
+  assert.equal(code, 0);
+  const out = stdout.lines.join("");
+  assert.ok(out.includes("🎉 fallback-zombie is live."), `expected basename fallback:\n${out}`);
 });
 
 test("install --from: missing directory exits 1 with ERR_PATH_NOT_FOUND", async () => {
@@ -133,9 +177,6 @@ test("install --from: only TRIGGER.md present exits 1 with ERR_SKILL_MISSING", a
 });
 
 test("install --from: path is a file, not a directory → ERR_PATH_NOT_FOUND with reason", async () => {
-  // stat.isDirectory() guards against pointing --from at a single file.
-  // Removing the guard would let the loader try to readFileSync("<file>/SKILL.md"),
-  // which produces a confusing ENOENT error.
   const root = mkdtempSync(join(tmpdir(), "install-from-test-"));
   const filePath = join(root, "not-a-directory.txt");
   writeFileSync(filePath, "hello");
@@ -152,51 +193,6 @@ test("install --from: path is a file, not a directory → ERR_PATH_NOT_FOUND wit
   assert.equal(code, 1);
   assert.equal(captured?.code, "ERR_PATH_NOT_FOUND");
   assert.ok(captured.message.includes("not a directory"), captured.message);
-});
-
-test("install --from: TRIGGER.md name with surrounding whitespace is trimmed", async () => {
-  // If someone drops the .trim() on the name match, the live-message would
-  // be `🎉    my-zombie   is live.` — jarring and breaks copy-paste of the name.
-  const root = mkdtempSync(join(tmpdir(), "install-from-test-"));
-  const sampleDir = join(root, "pkg");
-  mkdirSync(sampleDir);
-  writeFileSync(join(sampleDir, "SKILL.md"), "---\nname: pkg\n---\n");
-  writeFileSync(join(sampleDir, "TRIGGER.md"), "---\nname:    spaced-name   \n---\n");
-  const stdout = makeStdout();
-  const code = await commandZombie(
-    { stdout, stderr: makeNoop(), jsonMode: false, noInput: false },
-    ["install", "--from", sampleDir],
-    workspaces,
-    makeDeps(),
-  );
-  assert.equal(code, 0);
-  const out = stdout.lines.join("");
-  assert.ok(out.includes("🎉 spaced-name is live."), `expected trimmed name:\n${out}`);
-});
-
-test("install --from: TRIGGER.md with multiple name: lines picks the first", async () => {
-  // Documents intent — the frontmatter parser is permissive about ordering
-  // but there's exactly one canonical name. First-match is what the server
-  // uses for display/uniqueness, so the CLI must match.
-  const root = mkdtempSync(join(tmpdir(), "install-from-test-"));
-  const sampleDir = join(root, "pkg");
-  mkdirSync(sampleDir);
-  writeFileSync(join(sampleDir, "SKILL.md"), "---\nname: pkg\n---\n");
-  writeFileSync(
-    join(sampleDir, "TRIGGER.md"),
-    "---\nname: first\nother: x\nname: second\n---\n",
-  );
-  const stdout = makeStdout();
-  const code = await commandZombie(
-    { stdout, stderr: makeNoop(), jsonMode: false, noInput: false },
-    ["install", "--from", sampleDir],
-    workspaces,
-    makeDeps(),
-  );
-  assert.equal(code, 0);
-  const out = stdout.lines.join("");
-  assert.ok(out.includes("🎉 first is live."), `expected first match:\n${out}`);
-  assert.ok(!out.includes("second"), `must not pick second match:\n${out}`);
 });
 
 test("install --from: unicode in SKILL.md + TRIGGER.md reaches the POST body byte-for-byte", async () => {
@@ -218,7 +214,7 @@ test("install --from: unicode in SKILL.md + TRIGGER.md reaches the POST body byt
     makeDeps({
       request: async (_ctx, _path, opts) => {
         capturedBody = JSON.parse(opts.body);
-        return { zombie_id: "zom_01abc", webhook_url: "https://x/" };
+        return { zombie_id: "zom_01abc", name: "pkg", status: "active" };
       },
     }),
   );
@@ -227,11 +223,12 @@ test("install --from: unicode in SKILL.md + TRIGGER.md reaches the POST body byt
   assert.equal(capturedBody.trigger_markdown, triggerBody);
 });
 
-test("install --from: POST body contains exactly source_markdown + trigger_markdown, no extras", async () => {
-  // Contract test — the server's create-zombie handler parses a specific
-  // shape. Accidentally adding fields (e.g. a `name` or `config_json` leak)
-  // would fail schema validation server-side. Catching it here is cheaper
-  // than a round trip.
+test("install --from: POST body contains exactly trigger_markdown + source_markdown, no extras", async () => {
+  // Contract test — the server's create handler accepts {trigger_markdown,
+  // source_markdown} and parses TRIGGER.md frontmatter to derive name +
+  // config_json. A leaked CLI-derived `name` or `config_json` would either
+  // be ignored or trip schema validation; either way it's wasted bytes
+  // and a divergence point. Fail loud if the shape regresses.
   const { sampleDir } = setupSampleDir();
   let capturedBody = null;
   const code = await commandZombie(
@@ -241,7 +238,7 @@ test("install --from: POST body contains exactly source_markdown + trigger_markd
     makeDeps({
       request: async (_ctx, _path, opts) => {
         capturedBody = JSON.parse(opts.body);
-        return { zombie_id: "zom_01abc", webhook_url: "https://x/" };
+        return { zombie_id: "zom_01abc", name: "test-zombie", status: "active" };
       },
     }),
   );
@@ -249,20 +246,6 @@ test("install --from: POST body contains exactly source_markdown + trigger_markd
   const keys = Object.keys(capturedBody).sort();
   assert.deepEqual(keys, ["source_markdown", "trigger_markdown"],
     `POST body keys must be exactly [source_markdown, trigger_markdown], got [${keys.join(", ")}]`);
-});
-
-test("install --from: TRIGGER.md without name line falls back to basename", async () => {
-  const { sampleDir } = setupSampleDir({ name: "my-zombie", triggerHasNameLine: false });
-  const stdout = makeStdout();
-  const code = await commandZombie(
-    { stdout, stderr: makeNoop(), jsonMode: false, noInput: false },
-    ["install", "--from", sampleDir],
-    workspaces,
-    makeDeps(),
-  );
-  assert.equal(code, 0);
-  const out = stdout.lines.join("");
-  assert.ok(out.includes("🎉 my-zombie is live."), `expected basename fallback:\n${out}`);
 });
 
 // ── §2 — Server response handling ─────────────────────────────────────────
@@ -293,6 +276,35 @@ test("install --from: 409 conflict bubbles up an ApiError-shaped error for cli.j
   assert.equal(caught.status, 409);
 });
 
+test("install --from: 400 ERR_ZOMBIE_INVALID_CONFIG bubbles up (frontmatter parse failure)", async () => {
+  // Server-side parse means broken TRIGGER.md (missing name, bad YAML, etc.)
+  // surfaces as ERR_ZOMBIE_INVALID_CONFIG. The CLI just bubbles it; cli.js
+  // renders the structured error with request_id.
+  const { sampleDir } = setupSampleDir();
+  let caught = null;
+  try {
+    await commandZombie(
+      { stdout: makeStdout(), stderr: makeNoop(), jsonMode: false, noInput: false },
+      ["install", "--from", sampleDir],
+      workspaces,
+      makeDeps({
+        request: async () => {
+          const err = new Error("Config JSON is not valid. Check trigger, tools, and budget fields.");
+          err.name = "ApiError";
+          err.status = 400;
+          err.code = "ERR_ZOMBIE_INVALID_CONFIG";
+          throw err;
+        },
+      }),
+    );
+  } catch (e) {
+    caught = e;
+  }
+  assert.ok(caught, "ERR_ZOMBIE_INVALID_CONFIG must bubble for cli.js to render");
+  assert.equal(caught.code, "ERR_ZOMBIE_INVALID_CONFIG");
+  assert.equal(caught.status, 400);
+});
+
 test("install --from: non-ApiError network failure surfaces as IO_ERROR exit 1", async () => {
   const { sampleDir } = setupSampleDir();
   let captured = null;
@@ -312,9 +324,6 @@ test("install --from: non-ApiError network failure surfaces as IO_ERROR exit 1",
 
 test("install --from: ApiError re-throws for cli.js printApiError to render", async () => {
   const { sampleDir } = setupSampleDir();
-  // Simulate what `request()` in http.js actually throws for a 5xx — an
-  // ApiError. commandInstall must re-throw these so the top-level handler
-  // emits the structured error with request_id, not a generic IO_ERROR.
   let caught = null;
   try {
     await commandZombie(
@@ -383,7 +392,7 @@ test("install --from: no workspace selected exits 1 with NO_WORKSPACE", async ()
   assert.equal(captured?.code, "NO_WORKSPACE");
 });
 
-test("install --from --json: emits JSON, no prose", async () => {
+test("install --from --json: emits JSON with server-returned name", async () => {
   const { sampleDir } = setupSampleDir();
   const stdout = makeStdout();
   let payload = null;
@@ -399,7 +408,6 @@ test("install --from --json: emits JSON, no prose", async () => {
   assert.ok(payload);
   assert.equal(payload.status, "installed");
   assert.equal(payload.zombie_id, "zom_01abc");
-  assert.ok(payload.webhook_url);
   assert.equal(payload.name, "test-zombie");
   const out = stdout.lines.join("");
   assert.ok(!out.includes("🎉"), `no emoji in JSON mode:\n${out}`);
@@ -412,10 +420,7 @@ test("route: 'up' no longer resolves to a handler", () => {
   assert.equal(findRoute("up", []), null);
 });
 
-test("install --from (no value): boolean-true from parser treated as missing argument, no ugly error", async () => {
-  // Simulates `zombiectl install --from` with no value — minimist-style parsers
-  // set parsed.options.from = true. Before the guard, statSync(true) would
-  // bubble as `ERR_PATH_NOT_FOUND: ERR_PATH_NOT_FOUND: true`.
+test("install --from (no value): boolean-true treated as missing argument", async () => {
   let captured = null;
   const code = await commandZombie(
     { stdout: makeStdout(), stderr: makeNoop(), jsonMode: false, noInput: false },
@@ -473,8 +478,6 @@ test("install <bundled-name>: legacy usage exits 2 and points at --from", async 
 });
 
 test("filesystem: bundled templates/ and legacy up test are gone", () => {
-  // Paths are resolved from the test file — CWD-independent so this assertion
-  // can't silently pass if `bun test` is run from an unexpected directory.
   const templatesPath = join(PKG_ROOT, "templates");
   const legacyUpTest = join(TEST_DIR, "zombie-up-woohoo.unit.test.js");
   assert.ok(!existsSync(templatesPath), `should be deleted: ${templatesPath}`);

@@ -43,6 +43,8 @@ pub const GatePolicy = config_gates.GatePolicy;
 // Entry points.
 pub const parseZombieConfig = config_parser.parseZombieConfig;
 pub const parseZombieFromTriggerMarkdown = config_markdown.parseZombieFromTriggerMarkdown;
+pub const parseTriggerMarkdownWithJson = config_markdown.parseTriggerMarkdownWithJson;
+pub const ParsedTrigger = config_markdown.ParsedTrigger;
 pub const extractZombieInstructions = config_markdown.extractZombieInstructions;
 pub const validateZombieTools = config_validate.validateZombieTools;
 

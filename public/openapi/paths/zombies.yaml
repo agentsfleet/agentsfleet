@@ -167,8 +167,10 @@
   post:
     operationId: create_zombie
     summary: Create a zombie
-    description: Creates a new zombie from a SKILL.md source and a config JSON. The CLI (`zombiectl up`) compiles TRIGGER.md
-      frontmatter into JSON before upload; the server never sees raw YAML.
+    description: Creates a new zombie from a TRIGGER.md (deployment manifest) and a SKILL.md (agent instructions). The
+      server is the single parser of TRIGGER.md frontmatter — `name` and the persisted `config_json` are derived
+      server-side. The CLI (`zombiectl install --from <path>`) sends the two markdown files as raw bytes; no YAML
+      parsing happens client-side.
     tags:
     - Zombies
     parameters:
@@ -186,20 +188,19 @@
           schema:
             type: object
             required:
-            - name
-            - config_json
+            - trigger_markdown
             - source_markdown
             properties:
-              name:
+              trigger_markdown:
                 type: string
-                maxLength: 64
-              config_json:
-                type: string
-                description: Zombie config serialised as a JSON string.
+                maxLength: 65536
+                description: TRIGGER.md raw bytes — YAML frontmatter (`name`, `trigger`, `tools`, `credentials`,
+                  `network`, `budget`, `gates`) between `---` delimiters. Server parses this to derive `name`
+                  and the persisted `config_json`.
               source_markdown:
                 type: string
                 maxLength: 65536
-                description: SKILL.md body.
+                description: SKILL.md raw bytes — the agent instructions, stored as-is.
     responses:
       '201':
         description: Created
@@ -209,11 +210,16 @@
               type: object
               required:
               - zombie_id
+              - name
               - status
               properties:
                 zombie_id:
                   type: string
                   format: uuid
+                name:
+                  type: string
+                  description: Zombie name parsed from TRIGGER.md frontmatter — the canonical identifier the user
+                    will see in `zombiectl status` and CLI output.
                 status:
                   type: string
       '400':
