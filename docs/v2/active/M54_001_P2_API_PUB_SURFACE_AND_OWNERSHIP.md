@@ -4,11 +4,11 @@
 **Milestone:** M54
 **Workstream:** 001
 **Date:** Apr 26, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P2 — codebase discipline. Two related audits of the Zig surface area: shrink the `pub` namespace to what's actually used, and make heap-ownership explicit at every owning struct.
 **Categories:** API
 **Batch:** B1 — independent of in-flight milestones. No HTTP, schema, or CLI surface changes.
-**Branch:** {feat/m54-pub-surface — added when work begins}
+**Branch:** feat/m54-pub-surface
 **Depends on:** none. (Originally blocked behind M52_001 Bun Vendor Utilities, which would have introduced four new `pub` APIs in `src/util/`. M52 was investigated and deferred on Apr 26, 2026 — no concrete callsites exist yet — so M54 unblocks immediately and audits the existing `pub` surface only. See `docs/v2/done/M52_001_P2_API_BUN_VENDOR_UTILITIES.md` § Investigation outcome for the full discovery and re-trigger conditions.)
 
 **Coordinates with:** M53 (hygiene sweep), M55 (string utilities) — independent file sets, parallel-safe.
