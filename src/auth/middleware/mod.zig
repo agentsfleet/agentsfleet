@@ -144,7 +144,7 @@ pub const MiddlewareRegistry = struct {
     }
 
     /// URL-embedded per-zombie secret.
-    pub fn webhookSecret(self: *MiddlewareRegistry) []const Middleware(AuthCtx) {
+    fn webhookSecret(self: *MiddlewareRegistry) []const Middleware(AuthCtx) {
         return &self._webhook_secret_chain;
     }
 
@@ -154,7 +154,7 @@ pub const MiddlewareRegistry = struct {
     }
 
     /// OAuth state nonce + HMAC (GitHub/Slack OAuth callbacks).
-    pub fn oauthCallback(self: *MiddlewareRegistry) []const Middleware(AuthCtx) {
+    fn oauthCallback(self: *MiddlewareRegistry) []const Middleware(AuthCtx) {
         return &self._oauth_chain;
     }
 

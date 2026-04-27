@@ -4,7 +4,7 @@
 const std = @import("std");
 const log = std.log.scoped(.github_auth);
 
-pub const GitHubAuthError = error{
+const GitHubAuthError = error{
     MissingConfig,
     OpenSslFailed,
     CurlFailed,
@@ -17,7 +17,7 @@ pub const GitHubAuthError = error{
     InvalidInstallationId,
 };
 
-pub const TokenCache = struct {
+const TokenCache = struct {
     alloc: std.mem.Allocator,
     app_id: []const u8,
     private_key_pem: []const u8,
@@ -41,7 +41,7 @@ pub const TokenCache = struct {
         self.refresh_deadline_ms = 0;
     }
 
-    pub fn getInstallationToken(
+    fn getInstallationToken(
         self: *TokenCache,
         alloc: std.mem.Allocator,
         installation_id: []const u8,
@@ -49,7 +49,7 @@ pub const TokenCache = struct {
         return self.getInstallationTokenWithDetail(alloc, installation_id, null);
     }
 
-    pub fn getInstallationTokenWithDetail(
+    fn getInstallationTokenWithDetail(
         self: *TokenCache,
         alloc: std.mem.Allocator,
         installation_id: []const u8,
