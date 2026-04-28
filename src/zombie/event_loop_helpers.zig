@@ -211,10 +211,15 @@ pub fn clearExecutionActive(alloc: Allocator, session: *ZombieSession, pool: *pg
 
 // ── Sandbox execution (moved from event_loop.zig for RULE FLL) ───────────────
 
-fn parseSessionContext(alloc: Allocator, json: []const u8) ?std.json.Value {
+/// Parse the session's stored context JSON. Returns the full
+/// `std.json.Parsed` so the caller can `deinit()` it and reclaim the
+/// arena — the previous shape returned `parsed.value` and dropped the
+/// arena handle, leaking the parse buffer on every event after the
+/// first (because `updateSessionContext` rewrites context_json to a
+/// non-empty value the second event then has to parse).
+fn parseSessionContext(alloc: Allocator, json: []const u8) ?std.json.Parsed(std.json.Value) {
     if (json.len <= 2) return null;
-    const parsed = std.json.parseFromSlice(std.json.Value, alloc, json, .{}) catch return null;
-    return parsed.value;
+    return std.json.parseFromSlice(std.json.Value, alloc, json, .{}) catch null;
 }
 
 /// Create executor session, run the stage, destroy session. Tracks execution_id
@@ -227,7 +232,9 @@ pub fn executeInSandbox(
     cfg: EventLoopConfig,
     emitter: executor_transport.ProgressEmitter,
 ) !executor_client.ExecutorClient.StageResult {
-    const context_val = parseSessionContext(alloc, session.context_json);
+    var context_parsed = parseSessionContext(alloc, session.context_json);
+    defer if (context_parsed) |*p| p.deinit();
+    const context_val: ?std.json.Value = if (context_parsed) |p| p.value else null;
 
     // trace_id and session_id both bind to event.event_id: no upstream trace
     // propagator exists yet, so the per-event ID doubles as both the distributed

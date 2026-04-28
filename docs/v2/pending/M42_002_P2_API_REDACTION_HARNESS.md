@@ -1,4 +1,4 @@
-# M42_002: Redaction Harness — Production-Binary Wire-Level Secret Redaction Tests
+# M42_002: Production-Binary Test Harness — Wire-Level Redaction + Pub/Sub-Failure Coverage
 
 **Prototype:** v2.0.0
 **Milestone:** M42
@@ -12,10 +12,11 @@
 
 ## Why this is its own workstream
 
-M42_001 ships two test rows the spec asks for that the comptime-gated harness cannot exercise:
+M42_001 ships three test rows the spec asks for that the comptime-gated harness cannot cleanly exercise:
 
 1. `test_executor_args_redacted_at_sandbox_boundary`
 2. `test_args_redacted_no_secret_leak`
+3. `test_pubsub_failure_does_not_block` — the spec wants PUBLISH-only failure with XADD/XACK still working. No clean injection point exists in the worker's `queue_redis.Client` without adding test-only state to production code (rejected during M42_001 review). The realistic path is a Redis ACL user without `+publish` permission, used by the worker for the test scope.
 
 The redaction logic lives in `src/executor/runner_progress.Adapter` — the NullClaw observer/stream-callback adapter that intercepts tool-use and response-chunk events, scans the `args` payload for resolved secret bytes, and substitutes the placeholder before encoding the frame. The harness binary built with `build_options.executor_harness = true` **comptime-strips that path entirely** because `runner.execute` short-circuits to `runner_harness.execute` before any of NullClaw's observer pipeline runs.
 
