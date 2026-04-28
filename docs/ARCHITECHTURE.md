@@ -1438,6 +1438,16 @@ The bastion is a SKILL.md authoring pattern + a few new tool primitives + a new 
 
 ---
 
+## 14. Authentication
+
+Three principal types reach the backend — CLI (used by humans and agents at a workstation), UI (browser dashboard), and API key (service-to-service) — all converging on a single credential shape at the wire: `Authorization: Bearer <…>`. The header carries either a Clerk-issued user JWT (CLI + UI) or a backend-issued tenant API key prefixed `zmb_t_` (services). The `bearer_or_api_key` middleware splits on the prefix and dispatches to the JWKS verifier or a DB hash lookup.
+
+Cookies never reach the Zig backend. Clerk's `__session` cookie is scoped to Clerk's Frontend API domain and only ever travels between the browser and Clerk; both the CLI device flow and the UI's per-request token minting are mediated by Clerk's SDK calling Clerk FAPI with that cookie attached, then handing back a fresh JWT with `aud=https://api.usezombie.com`. The substrate stays uniform: new principal types plug in by issuing a JWT with the right audience or minting a new prefixed key — no new auth middleware required.
+
+**Full sequences (mermaid) for all three flows, the cookie scope diagram, the validation flowchart, and the configuration knobs are documented in [`docs/AUTH.md`](./AUTH.md).** That doc is the canonical reference for how a request gets from a workstation, browser, or external service to a populated `AuthPrincipal` inside a handler.
+
+---
+
 ## Appendix — Glossary
 
 | Term | Meaning |
