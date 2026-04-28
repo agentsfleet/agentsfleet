@@ -50,6 +50,16 @@ pub fn writeFrameToFd(fd: std.posix.socket_t, payload: []const u8) !void {
     try writeAllFd(fd, payload);
 }
 
+/// Test-only tap: when set, every successful read of a frame payload is
+/// also appended to the recorder list. Single-writer, intended for
+/// integration tests that grep the captured byte stream for redaction
+/// invariants. Production never assigns this.
+pub const ReadByteRecorder = struct {
+    alloc: std.mem.Allocator,
+    list: *std.ArrayList(u8),
+};
+pub var read_byte_recorder: ?ReadByteRecorder = null;
+
 /// Read a length-prefixed frame from a socket fd.
 /// Caller owns the returned slice.
 pub fn readFrameFromFd(alloc: std.mem.Allocator, fd: std.posix.socket_t) ![]u8 {
@@ -60,6 +70,9 @@ pub fn readFrameFromFd(alloc: std.mem.Allocator, fd: std.posix.socket_t) ![]u8 {
     const buf = try alloc.alloc(u8, len);
     errdefer alloc.free(buf);
     readAllFd(fd, buf) catch return error.ConnectionClosed;
+    if (read_byte_recorder) |rec| {
+        rec.list.appendSlice(rec.alloc, buf) catch {};
+    }
     return buf;
 }
 

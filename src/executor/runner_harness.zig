@@ -89,7 +89,18 @@ fn runScript(
         }
     }
 
-    return readResult(root.object.get("result"));
+    // readResult returns content borrowed from `parsed`; dupe before
+    // the defer above tears parsed down so the caller (handler) can
+    // safely embed the string in its JSON response.
+    const result = readResult(root.object.get("result"));
+    const owned = try alloc.dupe(u8, result.content);
+    return .{
+        .content = owned,
+        .exit_ok = result.exit_ok,
+        .failure = result.failure,
+        .token_count = result.token_count,
+        .wall_seconds = result.wall_seconds,
+    };
 }
 
 fn emitOne(
