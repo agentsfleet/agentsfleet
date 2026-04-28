@@ -1,8 +1,7 @@
 // Zombie event loop helpers — extracted per RULE FLL (350-line gate).
 //
 // Session checkpoint, credential resolution, context update, truncation, backoff,
-// execution tracking (M23_001), steer poll (M23_001), sandbox execution.
-// Called by event_loop.zig.
+// execution tracking, sandbox execution. Called by event_loop.zig.
 
 const std = @import("std");
 const pg = @import("pg");
@@ -16,10 +15,8 @@ const metrics_counters = @import("../observability/metrics_counters.zig");
 const metrics_workspace = @import("../observability/metrics_workspace.zig");
 const telemetry_mod = @import("../observability/telemetry.zig");
 const redis_zombie = @import("../queue/redis_zombie.zig");
-const queue_consts = @import("../queue/constants.zig");
 const executor_client = @import("../executor/client.zig");
 const id_format = @import("../types/id_format.zig");
-const EventEnvelope = @import("event_envelope.zig");
 
 const types = @import("event_loop_types.zig");
 const ZombieSession = types.ZombieSession;
@@ -209,45 +206,6 @@ pub fn clearExecutionActive(alloc: Allocator, session: *ZombieSession, pool: *pg
         \\SET execution_id = NULL, execution_started_at = NULL
         \\WHERE zombie_id = $1::uuid
     , .{session.zombie_id}) catch {};
-}
-
-// ── M23_001: Steer poll ───────────────────────────────────────────────────────
-
-/// Poll Redis for a pending steer signal and inject it as a synthetic event.
-/// Called at the top of the runEventLoop while iteration, before pollNextEvent.
-/// Non-fatal: errors are logged and discarded so they never stall the event loop.
-pub fn pollSteerAndInject(alloc: Allocator, cfg: EventLoopConfig, session: *const ZombieSession) void {
-    var key_buf: [128]u8 = undefined;
-    const key = std.fmt.bufPrint(&key_buf, "zombie:{s}{s}", .{
-        session.zombie_id, queue_consts.zombie_steer_key_suffix,
-    }) catch return;
-
-    const msg = cfg.redis.getDel(key) catch null orelse return;
-    defer alloc.free(msg);
-
-    // Wrap the raw steer message as the envelope's structured request field.
-    const request_json = std.fmt.allocPrint(alloc, "{{\"message\":{f}}}", .{std.json.fmt(msg, .{})}) catch {
-        log.warn("zombie_event_loop.steer_poll_oom zombie_id={s}", .{session.zombie_id});
-        return;
-    };
-    defer alloc.free(request_json);
-
-    const envelope = EventEnvelope{
-        .event_id = "",
-        .zombie_id = session.zombie_id,
-        .workspace_id = session.workspace_id,
-        .actor = "steer:operator",
-        .event_type = .chat,
-        .request_json = request_json,
-        .created_at = std.time.milliTimestamp(),
-    };
-
-    const new_event_id = cfg.redis.xaddZombieEvent(envelope) catch |err| {
-        log.warn("zombie_event_loop.steer_inject_fail zombie_id={s} err={s}", .{ session.zombie_id, @errorName(err) });
-        return;
-    };
-    defer alloc.free(new_event_id);
-    log.info("zombie_event_loop.steer_injected zombie_id={s} event_id={s}", .{ session.zombie_id, new_event_id });
 }
 
 // ── Sandbox execution (moved from event_loop.zig for RULE FLL) ───────────────

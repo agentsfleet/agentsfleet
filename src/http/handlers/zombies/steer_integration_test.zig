@@ -1,8 +1,8 @@
-// HTTP integration tests for zombie steer endpoint (M23_001).
+// HTTP integration tests for zombie steer endpoint.
 //
 // Requires TEST_DATABASE_URL — skipped gracefully otherwise. Success-path
-// tests (idle + active) additionally require a reachable Redis (they use
-// the steer-message queue) and self-skip via `h.tryConnectRedis()`.
+// tests additionally require a reachable Redis (steer XADDs onto
+// zombie:{id}:events) and self-skip via `h.tryConnectRedis()`.
 //
 // Uses the shared TestHarness (src/http/test_harness.zig) — see
 // docs/ZIG_RULES.md "HTTP Integration Tests — Use TestHarness".
@@ -138,9 +138,9 @@ test "integration: zombie steer — auth and body validation" {
     cleanupTestData(conn);
 }
 
-// ── Idle zombie happy path (needs Redis for steer-message queue) ─────────────
+// ── Idle zombie happy path: 202 + event_id ──────────────────────────────────
 
-test "integration: zombie steer idle — queued, execution_active=false" {
+test "integration: zombie steer idle — 202 returns event_id from xadd" {
     const h = seedAndHarness(ALLOC) catch |err| switch (err) {
         error.SkipZigTest => return error.SkipZigTest,
         else => return err,
@@ -154,21 +154,23 @@ test "integration: zombie steer idle — queued, execution_active=false" {
     const r = try (try (try h.post(url).bearer(TOKEN_OPERATOR)).json("{\"message\":\"proceed to phase 2\"}")).send();
     defer r.deinit();
 
-    try r.expectStatus(.ok);
-    try std.testing.expect(r.bodyContains("\"message_queued\":true"));
-    try std.testing.expect(r.bodyContains("\"execution_active\":false"));
+    try r.expectStatus(.accepted);
+    try std.testing.expect(r.bodyContains("\"status\":\"accepted\""));
+    try std.testing.expect(r.bodyContains("\"event_id\":\""));
 
-    // Drop the Redis steer key written by the handler
-    _ = h.queue.getDel("zombie:" ++ ZOMBIE_IDLE ++ ":steer") catch {};
+    // The XADD created the stream — drop it so leftover entries don't bleed
+    // across runs.
+    var del = h.queue.command(&.{ "DEL", "zombie:" ++ ZOMBIE_IDLE ++ ":events" }) catch return;
+    defer del.deinit(h.queue.alloc);
 
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
     cleanupTestData(conn);
 }
 
-// ── Active zombie happy path (needs Redis) ──────────────────────────────────
+// ── Active zombie happy path: same single ingress as idle ───────────────────
 
-test "integration: zombie steer active — queued, execution_active=true, execution_id surfaced" {
+test "integration: zombie steer active — 202 returns event_id (same single ingress)" {
     const h = seedAndHarness(ALLOC) catch |err| switch (err) {
         error.SkipZigTest => return error.SkipZigTest,
         else => return err,
@@ -182,12 +184,12 @@ test "integration: zombie steer active — queued, execution_active=true, execut
     const r = try (try (try h.post(url).bearer(TOKEN_OPERATOR)).json("{\"message\":\"new objective\"}")).send();
     defer r.deinit();
 
-    try r.expectStatus(.ok);
-    try std.testing.expect(r.bodyContains("\"message_queued\":true"));
-    try std.testing.expect(r.bodyContains("\"execution_active\":true"));
-    try std.testing.expect(r.bodyContains(ACTIVE_EXEC_ID));
+    try r.expectStatus(.accepted);
+    try std.testing.expect(r.bodyContains("\"status\":\"accepted\""));
+    try std.testing.expect(r.bodyContains("\"event_id\":\""));
 
-    _ = h.queue.getDel("zombie:" ++ ZOMBIE_ACTIVE ++ ":steer") catch {};
+    var del = h.queue.command(&.{ "DEL", "zombie:" ++ ZOMBIE_ACTIVE ++ ":events" }) catch return;
+    defer del.deinit(h.queue.alloc);
 
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);

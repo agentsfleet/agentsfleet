@@ -1,17 +1,14 @@
-// M23_001 / M24_001: POST /v1/workspaces/{ws}/zombies/{id}/steer — live steering for active zombies.
+// POST /v1/workspaces/{ws}/zombies/{id}/steer — operator-driven event ingress.
 //
-// Verifies zombie ownership, writes message to Redis key zombie:{id}:steer (SETEX
-// 300s TTL). The worker polls this key at the top of each event loop iteration and
-// injects the message as a synthetic "steer" event into the zombie's event stream.
-//
-// Response includes execution_id (from core.zombie_sessions) so the caller can tell
-// whether the message lands mid-execution or queued for the zombie's next event.
-//
-// Auth: Bearer token with workspace scope (registry.bearer()).
-// Scope check: zombie must belong to the caller's workspace.
+// Verifies workspace ownership, normalizes the body into an EventEnvelope,
+// XADDs onto zombie:{id}:events, and returns 202 with the Redis-assigned
+// event_id. The CLI uses event_id to filter SSE frames for the steer it
+// just sent. No SETEX, no GETDEL, no synthetic-event injection in the
+// worker — the event hits the same single-ingress stream every other
+// producer (webhook, cron, continuation) writes to.
 //
 // RULE FLS: all conn.query() calls use PgQuery with defer deinit().
-// RULE NSQ: schema-qualified SQL (core.zombies, core.zombie_sessions).
+// RULE NSQ: schema-qualified SQL (core.zombies).
 
 const std = @import("std");
 const httpz = @import("httpz");
@@ -20,7 +17,7 @@ const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
 const common = @import("../common.zig");
 const hx_mod = @import("../hx.zig");
 const ec = @import("../../../errors/error_registry.zig");
-const queue_consts = @import("../../../queue/constants.zig");
+const EventEnvelope = @import("../../../zombie/event_envelope.zig");
 
 const log = std.log.scoped(.zombie_steer);
 
@@ -35,7 +32,6 @@ const SteerBody = struct {
 // ── Handler ───────────────────────────────────────────────────────────────────
 
 pub fn innerZombieSteer(hx: Hx, req: *httpz.Request, workspace_id: []const u8, zombie_id: []const u8) void {
-    // Parse + validate body.
     const body_raw = req.body() orelse {
         hx.fail(ec.ERR_INVALID_REQUEST, "request body required");
         return;
@@ -65,124 +61,98 @@ pub fn innerZombieSteer(hx: Hx, req: *httpz.Request, workspace_id: []const u8, z
     };
     defer hx.ctx.pool.release(conn);
 
-    // M24_001 / RULE WAUTH: principal must have access to the path workspace_id.
-    //
-    // Intentional widening vs M23_001: the original spec required
-    // `principal.workspace_scope_id != null` (operator-token-only). M24_001 drops
-    // that pre-check because `authorizeWorkspace` is the canonical workspace authZ
-    // gate used by every workspace-scoped handler — special-casing /steer to also
-    // require a workspace-scoped token would be inconsistent with create/list/
-    // delete/activity/credentials/grants. Membership-based principals with access
-    // to the workspace may now steer. If a role gate is ever needed (e.g. only
-    // `.operator`), add `common.requireRole(…, .operator)` here — don't re-add
-    // the token-scope check.
     if (!common.authorizeWorkspace(conn, hx.principal, workspace_id)) {
         hx.fail(ec.ERR_FORBIDDEN, "Workspace access denied");
         return;
     }
 
-    // Verify zombie exists + belongs to path workspace; read active execution_id if any.
-    const exec_id_opt = resolveZombieExecution(hx, conn, workspace_id, zombie_id) orelse return;
+    if (!verifyZombieInWorkspace(hx, conn, workspace_id, zombie_id)) return;
 
-    // Write steer signal to Redis. Worker polls GETDEL at top of event loop.
-    const steer_key = std.fmt.allocPrint(
+    const request_json = std.fmt.allocPrint(
         hx.alloc,
-        "zombie:{s}{s}",
-        .{ zombie_id, queue_consts.zombie_steer_key_suffix },
+        "{{\"message\":{f}}}",
+        .{std.json.fmt(msg, .{})},
     ) catch {
-        common.internalOperationError(hx.res, "OOM building steer key", hx.req_id);
+        common.internalOperationError(hx.res, "OOM building steer request payload", hx.req_id);
         return;
     };
+    defer hx.alloc.free(request_json);
 
-    hx.ctx.queue.setEx(steer_key, msg, queue_consts.zombie_steer_ttl_seconds) catch |err| {
-        log.warn("zombie_steer.redis_write_failed zombie_id={s} err={s}", .{ zombie_id, @errorName(err) });
-        hx.ok(.ok, .{
-            .message_queued = false,
-            .execution_active = exec_id_opt != null,
-            .execution_id = @as(?[]const u8, null),
-        });
+    const actor = buildSteerActor(hx.alloc, hx.principal) catch {
+        common.internalOperationError(hx.res, "OOM building steer actor", hx.req_id);
         return;
     };
+    defer hx.alloc.free(actor);
 
-    const is_active = exec_id_opt != null;
-    log.info("zombie_steer.steered zombie_id={s} execution_active={}", .{ zombie_id, is_active });
-    hx.ok(.ok, .{
-        .message_queued = true,
-        .execution_active = is_active,
-        .execution_id = exec_id_opt,
+    const envelope = EventEnvelope{
+        .event_id = "",
+        .zombie_id = zombie_id,
+        .workspace_id = workspace_id,
+        .actor = actor,
+        .event_type = .chat,
+        .request_json = request_json,
+        .created_at = std.time.milliTimestamp(),
+    };
+
+    const event_id = hx.ctx.queue.xaddZombieEvent(envelope) catch |err| {
+        log.warn("zombie_steer.xadd_failed zombie_id={s} actor={s} err={s}", .{ zombie_id, actor, @errorName(err) });
+        common.internalOperationError(hx.res, "failed to enqueue steer event", hx.req_id);
+        return;
+    };
+    defer hx.alloc.free(event_id);
+
+    log.info("zombie_steer.steered zombie_id={s} event_id={s} actor={s}", .{ zombie_id, event_id, actor });
+    hx.ok(.accepted, .{
+        .status = "accepted",
+        .event_id = event_id,
     });
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-/// Verify zombie belongs to caller's workspace. Returns active execution_id (null
-/// if zombie is idle). Returns null and writes error response on ownership failure.
-///
-/// ??[]const u8 semantics:
-///   outer null = error, response already written — caller must return
-///   inner null = zombie exists, owned, but not currently executing (idle state)
-fn resolveZombieExecution(
+/// Verify zombie exists and belongs to the path workspace. Writes a 404 on
+/// mismatch (do not leak existence across workspaces) and returns false.
+fn verifyZombieInWorkspace(
     hx: Hx,
     conn: *pg.Conn,
     path_workspace_id: []const u8,
     zombie_id: []const u8,
-) ??[]const u8 {
-    // M24_001: verify zombie belongs to the path workspace_id.
-    // Returns 404 (not 403) on mismatch — do not leak existence across workspaces.
-    var q1 = PgQuery.from(conn.query(
+) bool {
+    var q = PgQuery.from(conn.query(
         "SELECT workspace_id::text FROM core.zombies WHERE id = $1::uuid",
         .{zombie_id},
     ) catch {
         common.internalDbError(hx.res, hx.req_id);
-        return null;
+        return false;
     });
-    defer q1.deinit();
+    defer q.deinit();
 
-    const row1 = (q1.next() catch {
+    const row = (q.next() catch {
         common.internalDbError(hx.res, hx.req_id);
-        return null;
+        return false;
     }) orelse {
         hx.fail(ec.ERR_ZOMBIE_NOT_FOUND, ec.MSG_ZOMBIE_NOT_FOUND);
-        return null;
+        return false;
     };
 
-    const zombie_workspace = row1.get([]const u8, 0) catch {
+    const zombie_workspace = row.get([]const u8, 0) catch {
         common.internalDbError(hx.res, hx.req_id);
-        return null;
+        return false;
     };
 
     if (!std.mem.eql(u8, path_workspace_id, zombie_workspace)) {
         hx.fail(ec.ERR_ZOMBIE_NOT_FOUND, ec.MSG_ZOMBIE_NOT_FOUND);
-        return null;
+        return false;
     }
+    return true;
+}
 
-    // Step 2: read active execution_id (M23_001 column — NULL when idle).
-    // PgQuery.deinit() on q1 drains it before we open q2 (RULE FLS).
-    var q2 = PgQuery.from(conn.query(
-        \\SELECT execution_id
-        \\FROM core.zombie_sessions
-        \\WHERE zombie_id = $1::uuid
-        \\  AND execution_id IS NOT NULL
-        \\LIMIT 1
-    , .{zombie_id}) catch {
-        common.internalDbError(hx.res, hx.req_id);
-        return null;
-    });
-    defer q2.deinit();
-
-    const row2 = (q2.next() catch {
-        common.internalDbError(hx.res, hx.req_id);
-        return null;
-    }) orelse return @as(?[]const u8, null); // idle — valid state
-
-    const raw = row2.get([]const u8, 0) catch {
-        common.internalDbError(hx.res, hx.req_id);
-        return null;
-    };
-
-    // Dupe before q2 deinit fires (RULE FLS — borrowed row data).
-    return hx.alloc.dupe(u8, raw) catch {
-        common.internalOperationError(hx.res, "OOM duping execution_id", hx.req_id);
-        return null;
-    };
+/// Build the `steer:<user>` actor string. OIDC principals carry a stable
+/// `user_id`; api-key principals fall back to a flat `steer:api` so the
+/// dashboard can still group by source category.
+fn buildSteerActor(alloc: std.mem.Allocator, principal: common.AuthPrincipal) ![]u8 {
+    if (principal.user_id) |uid| {
+        return std.fmt.allocPrint(alloc, "steer:{s}", .{uid});
+    }
+    return alloc.dupe(u8, "steer:api");
 }

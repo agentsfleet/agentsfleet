@@ -31,8 +31,6 @@ const sleepWithBackoff = helpers.sleepWithBackoff;
 pub const truncateForJson = helpers.truncateForJson;
 const logDeliveryResult = helpers.logDeliveryResult;
 const recordDeliverError = helpers.recordDeliverError;
-// M23_001
-const pollSteerAndInject = helpers.pollSteerAndInject;
 const clearExecutionActive = helpers.clearExecutionActive;
 pub const executeInSandbox = helpers.executeInSandbox;
 
@@ -128,9 +126,6 @@ pub fn runEventLoop(
     var consecutive_errors: u32 = 0;
 
     while (cfg.running.load(.acquire)) {
-        // M23_001: inject any pending steer message into the event stream before polling.
-        pollSteerAndInject(alloc, cfg, session);
-
         const poll_result = pollNextEvent(cfg, session, consumer_id, &last_reclaim_ms);
         if (poll_result.err) {
             consecutive_errors += 1;

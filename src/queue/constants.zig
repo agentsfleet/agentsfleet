@@ -21,13 +21,7 @@ const cancel_key_prefix = "run:cancel:";
 const interrupt_key_prefix = "run:interrupt:";
 const interrupt_ttl_seconds: u32 = 300;
 
-/// M23_001: Redis key suffix for zombie steering signals.
-/// Full key: "zombie:" ++ zombie_id ++ zombie_steer_key_suffix
-/// Worker polls GETDEL at top of event loop; injects result as a synthetic steer event.
-pub const zombie_steer_key_suffix = ":steer";
-pub const zombie_steer_ttl_seconds: u32 = 300;
-
-// ── M1_001: Zombie event stream constants ────────────────────────────────
+// ── Zombie event stream constants ────────────────────────────────────────
 
 /// Zombie stream key format: "zombie:{zombie_id}:events".
 /// Built dynamically per zombie — not a single global stream like run_queue.

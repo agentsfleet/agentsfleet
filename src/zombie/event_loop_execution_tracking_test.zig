@@ -1,20 +1,16 @@
-// M23_001 integration tests — execution tracking (§2) + steer poll (§3.1).
+// Integration tests — zombie session execution tracking.
 //
-// §2.1  setExecutionActive  → execution_id + execution_started_at set in DB
-// §2.2  clearExecutionActive → both columns NULLed in DB
-// §2.3  claimZombie          → stale execution_id cleared on restart (crash recovery)
-// §3.1  pollSteerAndInject   → GETDEL steer key, XADD event with type="steer"
+// setExecutionActive  → execution_id + execution_started_at set in DB
+// clearExecutionActive → both columns NULLed in DB
+// claimZombie          → stale execution_id cleared on restart (crash recovery)
 //
 // All tests require TEST_DATABASE_URL or DATABASE_URL (skipped otherwise).
-// §3.1 additionally requires REDIS_URL (skipped otherwise).
 
 const std = @import("std");
 const pg = @import("pg");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const event_loop = @import("event_loop.zig");
 const helpers = @import("event_loop_helpers.zig");
-const types = @import("event_loop_types.zig");
-const queue_redis = @import("../queue/redis.zig");
 const base = @import("../db/test_fixtures.zig");
 
 const ALLOC = std.testing.allocator;
@@ -153,59 +149,3 @@ test "integration M23_001 §2.3: claimZombie clears stale execution_id on restar
     }
 }
 
-// ── §3.1: pollSteerAndInject reads steer key and XADDs event ─────────────────
-
-test "integration M23_001 §3.1: pollSteerAndInject consumes steer key and XADDs event" {
-    const db_ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
-    defer db_ctx.pool.deinit();
-    defer db_ctx.pool.release(db_ctx.conn);
-
-    var redis_client = queue_redis.Client.connectFromEnv(ALLOC, .default) catch
-        return error.SkipZigTest;
-    defer redis_client.deinit();
-
-    try base.seedTenant(db_ctx.conn);
-    defer base.teardownTenant(db_ctx.conn);
-    try base.seedWorkspace(db_ctx.conn, TEST_WORKSPACE_ID);
-    defer base.teardownWorkspace(db_ctx.conn, TEST_WORKSPACE_ID);
-    try base.seedZombie(db_ctx.conn, TEST_ZOMBIE_ID, TEST_WORKSPACE_ID, "steer-bot", VALID_CONFIG_JSON, VALID_SOURCE_MD);
-    defer base.teardownZombies(db_ctx.conn, TEST_WORKSPACE_ID);
-    try base.seedZombieSession(db_ctx.conn, TEST_SESSION_ID, TEST_ZOMBIE_ID, "{}");
-
-    var session = try event_loop.claimZombie(ALLOC, TEST_ZOMBIE_ID, db_ctx.pool);
-    defer session.deinit(ALLOC);
-
-    // Plant a steer signal in Redis (TTL 60s).
-    const steer_key = "zombie:" ++ TEST_ZOMBIE_ID ++ ":steer";
-    try redis_client.setEx(steer_key, "pivot to phase 2", 60);
-
-    // Build a minimal EventLoopConfig (pollSteerAndInject only accesses redis).
-    var running = std.atomic.Value(bool).init(true);
-    const cfg = types.EventLoopConfig{
-        .pool = db_ctx.pool,
-        .redis = &redis_client,
-        .executor = undefined,
-        .running = &running,
-    };
-
-    helpers.pollSteerAndInject(ALLOC, cfg, &session);
-
-    // Verify steer key was consumed.
-    const leftover = try redis_client.getDel(steer_key);
-    defer if (leftover) |v| ALLOC.free(v);
-    try std.testing.expectEqual(@as(?[]u8, null), leftover);
-
-    // Verify event was written to the zombie's event stream.
-    const events_key = "zombie:" ++ TEST_ZOMBIE_ID ++ ":events";
-    var xlen_resp = try redis_client.command(&.{ "XLEN", events_key });
-    defer xlen_resp.deinit(ALLOC);
-    const count = switch (xlen_resp) {
-        .integer => |n| n,
-        else => return error.UnexpectedRedisResponse,
-    };
-    try std.testing.expect(count >= 1);
-
-    // Cleanup: remove the events stream.
-    var del_resp = try redis_client.command(&.{ "DEL", events_key });
-    defer del_resp.deinit(ALLOC);
-}
