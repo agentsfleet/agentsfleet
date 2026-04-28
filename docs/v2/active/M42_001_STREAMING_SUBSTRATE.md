@@ -372,25 +372,16 @@ Server-Sent Events tail of the **Redis pub/sub channel `zombie:{id}:activity`**.
 
 **Implementation default**: use native `EventSource` on the client side, no SDK.
 
-**Auth (dual-accept, strict no-fallthrough)**. The browser `EventSource` API cannot set custom request headers — only cookies and standard browser-managed headers cross the wire. The endpoint therefore accepts **either**:
+**Auth — Bearer at the wire, single credential shape** (amended Apr 28, 2026). The earlier design accepted a session cookie directly on the SSE handler. That was rejected because Clerk's `__session` cookie has no API audience and would 401 against the server's strict `aud` check. The shipped design keeps the SSE endpoint Bearer-only and pushes the browser's cookie story up into Next.js:
 
-- **Session cookie** (browser dashboard path). The dashboard's existing session cookie is sent automatically by `EventSource`. Server validates cookie → workspace + user → ACL gate identical to `/events`.
-- **`Authorization: Bearer <api_key>`** (CLI / programmatic path). `zombiectl` runs in Node, can set arbitrary headers via the `eventsource` npm package or a `fetch`-based SSE consumer. Same workspace API key as the rest of the `/v1/...` surface.
+- **CLI / programmatic** — `Authorization: Bearer <user-jwt | zmb_t_…>` directly. Existing `bearer_or_api_key` middleware, no changes.
+- **Browser dashboard** — `EventSource('/backend/.../events/stream')` hits a same-origin Next Route Handler (`ui/packages/app/app/backend/v1/.../events/stream/route.ts`). The handler reads the user's Clerk session, calls `auth().getToken()` to mint an API-audience JWT server-side, then proxies the upstream stream with `Authorization: Bearer <jwt>` injected. Browser never holds the JWT; backend never sees a cookie.
 
-**Strict resolution order — no fall-through on validation failure** (timing-oracle prevention + leaked-cookie defense):
+Resolution order on the backend stays the existing `bearer_or_api_key` flow: missing/malformed Authorization → 401; `zmb_t_*` → DB lookup; otherwise → JWKS verify with `aud` + `iss` + `exp` checks.
 
-```
-if request has Cookie header:
-    validate cookie → on failure, return 401 (do NOT also try Authorization)
-elif request has Authorization header:
-    validate Bearer → on failure, return 401
-else:
-    return 401
-```
+Full sequence diagrams for all three principal types (CLI / UI / API key) live in `docs/AUTH.md`.
 
-A stale/leaked cookie does not silently fall through to a valid Bearer; the request is 401'd. No query-param tokens (avoids leaking long-lived API keys via URL/referrer/access logs).
-
-Tests: `test_sse_auth_cookie_browser_path`, `test_sse_auth_bearer_cli_path`, `test_sse_auth_neither_401`, `test_sse_auth_stale_cookie_does_not_fallthrough_to_bearer` (request with invalid cookie + valid Bearer → 401, NOT 200).
+Tests: `test_sse_auth_bearer_cli_path` (Bearer JWT and `zmb_t_` API key both 200), `test_sse_auth_neither_401`, `test_sse_auth_invalid_bearer_401`. Cookie-path tests are dropped — the backend never accepts a cookie.
 
 **Reconnect / sequence ID source**. The `id:` line on each SSE frame is a **per-connection, in-memory monotonic counter** that resets to 0 on each new SUBSCRIBE. The server **ignores the `Last-Event-ID` request header** — sequence IDs are not durable and have no cross-connection meaning. Clients MUST backfill via `GET /events?cursor=<last_seen_event_id>` after reconnect; the new SSE then resumes from sequence 0. Documented to avoid the trap of clients trusting `Last-Event-ID` to resume a stream that never persisted past the previous SUBSCRIBE.
 
@@ -427,9 +418,9 @@ Default print: one line per event with timestamp, actor, status, brief response 
 
 ### §8 — Dashboard live panel + events table
 
-`ui/packages/app/src/routes/zombies/[id]/live.tsx`: SSE consumer, renders tool calls + responses as they arrive. Uses existing UI primitives (`<ActivityCard>`, `<ToolCallRow>` — extend if absent). Storybook fixtures from `samples/fixtures/m42-event-fixtures/`.
+Phase 1 (shipped): `ui/packages/app/components/domain/EventsList.tsx` — paginated history table consuming `GET /events`, embedded in the per-zombie page and the workspace overview. Built from design-system primitives (`Card`, `Badge`, `Pagination`, `EmptyState`).
 
-`ui/packages/app/src/routes/zombies/[id]/events.tsx`: paginated table consuming `GET /events`. Filterable by actor.
+Phase 2 (shipped): `ui/packages/app/components/domain/LiveEventsPanel.tsx` — client-side SSE consumer rendered above the events table on `/zombies/{id}`. Native `EventSource` against same-origin `/backend/v1/.../events/stream`, intercepted by a Next Route Handler at `app/backend/v1/workspaces/[workspaceId]/zombies/[zombieId]/events/stream/route.ts` that mints an api-audience JWT server-side and proxies the upstream stream. Reconnects with exponential backoff capped at 15s; rolling buffer of the last 20 frames; status badge (Connecting / Live / Reconnecting). Frame kinds (`event_received`, `tool_call_started`, `tool_call_progress`, `chunk`, `tool_call_completed`, `event_complete`) come from `lib/api/events.ts::FRAME_KIND` which is kept in sync with `src/zombie/activity_publisher.zig::KIND_*`.
 
 ### §9 — Idempotency on replay
 
@@ -535,7 +526,6 @@ Postgres writes (per event):
 | `test_tool_call_progress_heartbeat` | Synthetic 6-second tool call → SSE client receives ≥3 `tool_call_progress` frames at ~2s intervals. Absence past 5s renders "stuck" in UI fixture. |
 | `test_workspace_events_rls_no_cross_tenant` | Workspace A's API key calls `GET /v1/workspaces/{B}/events` → 403 (or 404 per project's IDOR convention). Workspace A's events are never returned in workspace B's response. |
 | `test_since_and_cursor_mutually_exclusive_400` | `GET /events?since=2h&cursor=<id>` → 400 with `error.code=since_and_cursor_mutually_exclusive`. |
-| `test_sse_auth_stale_cookie_does_not_fallthrough_to_bearer` | Request with an invalid cookie + valid Bearer → 401 (proves no fall-through); request with no cookie + valid Bearer → 200. |
 | `test_sse_sequence_resets_on_reconnect` | Open SSE, receive frames id=0..N, disconnect, reconnect → first frame on new connection is id=0. Server ignores `Last-Event-ID` request header. |
 | `test_executor_progress_callbacks_emit` | `executor.startStage` with a synthetic NullClaw run that calls 2 tools + emits 5 token chunks → worker receives 2 `tool_call_started`, 2 `tool_call_completed`, 5 `agent_response_chunk` callbacks in order |
 | `test_executor_args_redacted_at_sandbox_boundary` | Tool call uses `${secrets.fly.api_token}` → frame leaving the executor RPC contains placeholder, never resolved bytes (asserted at the RPC byte stream, not just the PUBLISH payload) |
@@ -544,9 +534,10 @@ Postgres writes (per event):
 | `test_since_param_invalid_400` | `GET /events?since=bogus` → 400 with `error.code=invalid_since_format` |
 | `test_workspace_events_endpoint` | 3 zombies in workspace, 5 events each → `GET /v1/workspaces/{ws}/events` returns 15 sorted by `created_at DESC`; `?zombie_id=X` filter narrows to 5 |
 | `test_workspace_events_replaces_activity_ui` | Dashboard workspace overview renders at least one row per active zombie via the new endpoint — no UI regression vs. the deleted `activity.zig` view |
-| `test_sse_auth_cookie_browser_path` | SSE request with valid session cookie, no `Authorization` header → 200 + SUBSCRIBE issued |
-| `test_sse_auth_bearer_cli_path` | SSE request with `Authorization: Bearer <api_key>`, no cookie → 200 + SUBSCRIBE issued |
-| `test_sse_auth_neither_401` | SSE request with neither → 401, no SUBSCRIBE issued |
+| `test_sse_auth_bearer_user_jwt` | SSE request with `Authorization: Bearer <clerk-jwt>` → 200 + SUBSCRIBE issued |
+| `test_sse_auth_bearer_tenant_api_key` | SSE request with `Authorization: Bearer zmb_t_…` → 200 + SUBSCRIBE issued |
+| `test_sse_auth_missing_authorization_401` | SSE request with no `Authorization` header → 401, no SUBSCRIBE issued |
+| `test_sse_auth_invalid_bearer_401` | SSE request with malformed/expired Bearer → 401, no SUBSCRIBE issued |
 
 ---
 
@@ -559,7 +550,7 @@ Postgres writes (per event):
 - [ ] Dashboard workspace overview shows live activity per zombie via the new `/v1/workspaces/{ws}/events` endpoint — verified manually before CHORE(close), no regression vs. the deleted `activity.zig` view
 - [ ] Executor RPC progress-callback channel emits the three frame kinds; redaction proven at the RPC byte stream, not just the PUBLISH payload
 - [ ] `zombiectl steer kishore-platform-ops "ping"` returns within 60s with a sensible diagnosis (manual smoke against author's signup)
-- [ ] Dashboard `/zombies/{id}/live` shows tool calls streaming in real-time during a steer (manual smoke)
+- [x] Dashboard `/zombies/{id}` renders `<LiveEventsPanel />` above the events table; tool calls + chunks + completion arrive via SSE within ~200 ms of the worker's PUBLISH (manual smoke pending against dev). Browser auth handled by Next Route Handler that injects api-audience JWT server-side; backend SSE endpoint stays Bearer-only.
 - [x] Legacy table + module deletes are atomic at branch merge (the wire-format substrate switchover passes through intermediate commits as a deliberate slice ordering, but the merge to main is what's atomic). Slot 009 may be reused or left as a gap; do not gap-fill with a placeholder file.
 - [x] Orphan sweep (RULE ORP) returns 0 hits for the deleted symbols above before CHORE(close).
 - [ ] `core.zombie_events` retention: forever until M{N+}_001 retention spec defines policy.

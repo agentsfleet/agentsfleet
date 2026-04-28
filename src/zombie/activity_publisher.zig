@@ -12,6 +12,16 @@
 const channel_prefix = "zombie:";
 const channel_suffix = ":activity";
 
+// Frame kind discriminators carried as the `kind` field on every payload.
+// The dashboard's LiveFrame union (ui/packages/app/lib/api/events.ts)
+// keeps the same set of strings; touch both sides together.
+const KIND_EVENT_RECEIVED = "event_received";
+const KIND_TOOL_CALL_STARTED = "tool_call_started";
+const KIND_TOOL_CALL_PROGRESS = "tool_call_progress";
+const KIND_CHUNK = "chunk";
+const KIND_TOOL_CALL_COMPLETED = "tool_call_completed";
+const KIND_EVENT_COMPLETE = "event_complete";
+
 fn buildChannel(buf: []u8, zombie_id: []const u8) ![]const u8 {
     return std.fmt.bufPrint(buf, "{s}{s}{s}", .{ channel_prefix, zombie_id, channel_suffix });
 }
@@ -39,11 +49,11 @@ pub fn publishEventReceived(
     actor: []const u8,
 ) void {
     const payload = std.json.Stringify.valueAlloc(alloc, .{
-        .kind = "event_received",
+        .kind = KIND_EVENT_RECEIVED,
         .event_id = event_id,
         .actor = actor,
     }, .{}) catch |err| {
-        log.debug("activity.encode_fail kind=event_received err={s}", .{@errorName(err)});
+        log.debug("activity.encode_fail kind={s} err={s}", .{ KIND_EVENT_RECEIVED, @errorName(err) });
         return;
     };
     defer alloc.free(payload);
@@ -67,12 +77,12 @@ pub fn publishToolCallStarted(
     };
     defer parsed.deinit();
     const payload = std.json.Stringify.valueAlloc(alloc, .{
-        .kind = "tool_call_started",
+        .kind = KIND_TOOL_CALL_STARTED,
         .event_id = event_id,
         .name = name,
         .args_redacted = parsed.value,
     }, .{}) catch |err| {
-        log.debug("activity.encode_fail kind=tool_call_started err={s}", .{@errorName(err)});
+        log.debug("activity.encode_fail kind={s} err={s}", .{ KIND_TOOL_CALL_STARTED, @errorName(err) });
         return;
     };
     defer alloc.free(payload);
@@ -88,12 +98,12 @@ pub fn publishToolCallProgress(
     elapsed_ms: i64,
 ) void {
     const payload = std.json.Stringify.valueAlloc(alloc, .{
-        .kind = "tool_call_progress",
+        .kind = KIND_TOOL_CALL_PROGRESS,
         .event_id = event_id,
         .name = name,
         .elapsed_ms = elapsed_ms,
     }, .{}) catch |err| {
-        log.debug("activity.encode_fail kind=tool_call_progress err={s}", .{@errorName(err)});
+        log.debug("activity.encode_fail kind={s} err={s}", .{ KIND_TOOL_CALL_PROGRESS, @errorName(err) });
         return;
     };
     defer alloc.free(payload);
@@ -108,11 +118,11 @@ pub fn publishChunk(
     text: []const u8,
 ) void {
     const payload = std.json.Stringify.valueAlloc(alloc, .{
-        .kind = "chunk",
+        .kind = KIND_CHUNK,
         .event_id = event_id,
         .text = text,
     }, .{}) catch |err| {
-        log.debug("activity.encode_fail kind=chunk err={s}", .{@errorName(err)});
+        log.debug("activity.encode_fail kind={s} err={s}", .{ KIND_CHUNK, @errorName(err) });
         return;
     };
     defer alloc.free(payload);
@@ -128,12 +138,12 @@ pub fn publishToolCallCompleted(
     ms: i64,
 ) void {
     const payload = std.json.Stringify.valueAlloc(alloc, .{
-        .kind = "tool_call_completed",
+        .kind = KIND_TOOL_CALL_COMPLETED,
         .event_id = event_id,
         .name = name,
         .ms = ms,
     }, .{}) catch |err| {
-        log.debug("activity.encode_fail kind=tool_call_completed err={s}", .{@errorName(err)});
+        log.debug("activity.encode_fail kind={s} err={s}", .{ KIND_TOOL_CALL_COMPLETED, @errorName(err) });
         return;
     };
     defer alloc.free(payload);
@@ -148,11 +158,11 @@ pub fn publishEventComplete(
     status: []const u8,
 ) void {
     const payload = std.json.Stringify.valueAlloc(alloc, .{
-        .kind = "event_complete",
+        .kind = KIND_EVENT_COMPLETE,
         .event_id = event_id,
         .status = status,
     }, .{}) catch |err| {
-        log.debug("activity.encode_fail kind=event_complete err={s}", .{@errorName(err)});
+        log.debug("activity.encode_fail kind={s} err={s}", .{ KIND_EVENT_COMPLETE, @errorName(err) });
         return;
     };
     defer alloc.free(payload);

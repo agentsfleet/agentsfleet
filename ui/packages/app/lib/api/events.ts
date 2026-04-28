@@ -76,3 +76,51 @@ export async function listWorkspaceEvents(
     token,
   );
 }
+
+// Live progress frames published on `zombie:{id}:activity` (Redis pub/sub),
+// fanned out to subscribers as SSE messages by the backend handler. The
+// backend authoritatively shapes these — keep `FRAME_KIND` in sync with
+// the KIND_* constants in src/zombie/activity_publisher.zig.
+export const FRAME_KIND = {
+  EVENT_RECEIVED: "event_received",
+  TOOL_CALL_STARTED: "tool_call_started",
+  TOOL_CALL_PROGRESS: "tool_call_progress",
+  CHUNK: "chunk",
+  TOOL_CALL_COMPLETED: "tool_call_completed",
+  EVENT_COMPLETE: "event_complete",
+} as const;
+
+export type FrameKind = (typeof FRAME_KIND)[keyof typeof FRAME_KIND];
+
+export type LiveFrame =
+  | { kind: typeof FRAME_KIND.EVENT_RECEIVED; event_id: string; actor: string }
+  | {
+      kind: typeof FRAME_KIND.TOOL_CALL_STARTED;
+      event_id: string;
+      name: string;
+      args_redacted: unknown;
+    }
+  | {
+      kind: typeof FRAME_KIND.TOOL_CALL_PROGRESS;
+      event_id: string;
+      name: string;
+      elapsed_ms: number;
+    }
+  | { kind: typeof FRAME_KIND.CHUNK; event_id: string; text: string }
+  | {
+      kind: typeof FRAME_KIND.TOOL_CALL_COMPLETED;
+      event_id: string;
+      name: string;
+      ms: number;
+    }
+  | { kind: typeof FRAME_KIND.EVENT_COMPLETE; event_id: string; status: string };
+
+// Same-origin URL for the SSE stream. The path is intercepted by the
+// Next Route Handler at app/backend/.../events/stream/route.ts which
+// injects the api-audience Bearer token server-side.
+export function streamZombieEventsUrl(workspaceId: string, zombieId: string): string {
+  return (
+    `/backend/v1/workspaces/${encodeURIComponent(workspaceId)}` +
+    `/zombies/${encodeURIComponent(zombieId)}/events/stream`
+  );
+}

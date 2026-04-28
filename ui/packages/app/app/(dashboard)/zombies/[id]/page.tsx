@@ -6,6 +6,7 @@ import { getTenantBilling } from "@/lib/api/tenant_billing";
 import { listZombieEvents } from "@/lib/api/events";
 import { resolveActiveWorkspace } from "@/lib/workspace";
 import { EventsList } from "@/components/domain/EventsList";
+import { LiveEventsPanel } from "@/components/domain/LiveEventsPanel";
 import ExhaustionBadge from "@/components/domain/ExhaustionBadge";
 import TriggerPanel from "./components/TriggerPanel";
 import FirewallRulesEditor from "./components/FirewallRulesEditor";
@@ -70,6 +71,13 @@ export default async function ZombieDetailPage({
             zombieId={zombie.id}
             zombieName={zombie.name}
           />
+        </section>
+      </Section>
+
+      <Section asChild>
+        <section aria-label="Live activity">
+          <SectionLabel>Live activity</SectionLabel>
+          <LiveEventsPanel workspaceId={workspace.id} zombieId={zombie.id} />
         </section>
       </Section>
 

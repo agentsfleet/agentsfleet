@@ -79,3 +79,19 @@ describe("listWorkspaceEvents", () => {
     expect(url).toContain("zombie_id=z_2");
   });
 });
+
+describe("streamZombieEventsUrl", () => {
+  it("returns a same-origin path the Next Route Handler intercepts", async () => {
+    const { streamZombieEventsUrl } = await import("./events");
+    expect(streamZombieEventsUrl("ws_1", "z_1")).toBe(
+      "/backend/v1/workspaces/ws_1/zombies/z_1/events/stream",
+    );
+  });
+
+  it("encodes path segments so a slashy id can not escape the URL", async () => {
+    const { streamZombieEventsUrl } = await import("./events");
+    expect(streamZombieEventsUrl("ws/1", "z 2")).toBe(
+      "/backend/v1/workspaces/ws%2F1/zombies/z%202/events/stream",
+    );
+  });
+});
