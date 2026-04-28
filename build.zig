@@ -127,6 +127,26 @@ pub fn build(b: *std.Build) void {
     // ── Sandbox executor sidecar ─────────────────────────────────────────────
     // Separate binary that serves the executor API over a Unix socket.
     // Embeds NullClaw and owns host-level Linux sandboxing.
+    //
+    // Built twice with different `executor_harness` build options:
+    //   - `zombied-executor` (production): harness=false. Real LLM agent loop.
+    //   - `zombied-executor-harness` (test fixture): harness=true. Comptime
+    //     branch in runner.zig dispatches to runner_harness, which emits a
+    //     scripted sequence of progress frames per the EXECUTOR_HARNESS_SCRIPT
+    //     env var. Used by integration tests that need deterministic frame
+    //     emission without spending tokens on a real LLM.
+    //
+    // Comptime gating means harness code is stripped from the production
+    // binary — `if (build_options.executor_harness)` is dead code under
+    // false. Verified via `cargo nm` / `objdump --syms` if paranoid; trust
+    // the optimizer for routine cases.
+
+    const exec_opts_prod = b.addOptions();
+    exec_opts_prod.addOption(bool, "executor_harness", false);
+
+    const exec_opts_harness = b.addOptions();
+    exec_opts_harness.addOption(bool, "executor_harness", true);
+
     const executor_exe = b.addExecutable(.{
         .name = "zombied-executor",
         .root_module = b.createModule(.{
@@ -135,6 +155,7 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
             .imports = &.{
                 .{ .name = "nullclaw", .module = nullclaw_mod },
+                .{ .name = "build_options", .module = exec_opts_prod.createModule() },
             },
         }),
     });
@@ -145,6 +166,21 @@ pub fn build(b: *std.Build) void {
 
     b.installArtifact(executor_exe);
 
+    const executor_harness_exe = b.addExecutable(.{
+        .name = "zombied-executor-harness",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/executor/main.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "nullclaw", .module = nullclaw_mod },
+                .{ .name = "build_options", .module = exec_opts_harness.createModule() },
+            },
+        }),
+    });
+
+    b.installArtifact(executor_harness_exe);
+
     // ── Executor test step ───────────────────────────────────────────────────
     const executor_tests = b.addTest(.{
         .name = "zombied-executor-tests",
@@ -154,6 +190,7 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
             .imports = &.{
                 .{ .name = "nullclaw", .module = nullclaw_mod },
+                .{ .name = "build_options", .module = exec_opts_prod.createModule() },
             },
         }),
     });

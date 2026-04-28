@@ -29,6 +29,8 @@ const tools_mod = nullclaw.tools;
 const memory_mod = nullclaw.memory;
 const observability = nullclaw.observability;
 
+const build_options = @import("build_options");
+
 const json = @import("json_helpers.zig");
 const types = @import("types.zig");
 const executor_metrics = @import("executor_metrics.zig");
@@ -37,6 +39,7 @@ const runner_credentials = @import("runner_credentials.zig");
 const zombie_memory = @import("zombie_memory.zig");
 const runner_helpers = @import("runner_helpers.zig");
 const runner_progress = @import("runner_progress.zig");
+const runner_harness = @import("runner_harness.zig");
 const progress_writer_mod = @import("progress_writer.zig");
 
 const log = std.log.scoped(.executor_runner);
@@ -106,6 +109,12 @@ pub fn execute(
     context: ?std.json.Value,
     progress: ?*const progress_writer_mod,
 ) types.ExecutionResult {
+    // Test-only harness path. Stripped from the production binary because the
+    // build option is a comptime-known false there. See runner_harness.zig.
+    if (build_options.executor_harness) {
+        return runner_harness.execute(alloc, workspace_path, agent_config, tools_spec, message, context, progress);
+    }
+
     const msg = message orelse {
         log.err("executor.runner.invalid_config error_code={s} reason=missing_message", .{ERR_EXEC_RUNNER_INVALID_CONFIG});
         executor_metrics.incStagesFailed();
