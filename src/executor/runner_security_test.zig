@@ -92,7 +92,7 @@ test "T8: execute with api_key in agent_config and null message fails closed (st
     try ac.object.put("model", .{ .string = "claude-sonnet-4-5" });
 
     // Null message -> early return before credential injection path runs.
-    const result = runner.execute(alloc, "/tmp/ws", ac, null, null, null);
+    const result = runner.execute(alloc, "/tmp/ws", ac, null, null, null, null);
     try std.testing.expect(!result.exit_ok);
     try std.testing.expectEqual(types.FailureClass.startup_posture, result.failure.?);
 }
@@ -104,7 +104,7 @@ test "T8: execute with github_token in agent_config and null message fails close
     defer ac.object.deinit();
     try ac.object.put("github_token", .{ .string = "ghs_installtoken" });
 
-    const result = runner.execute(alloc, "/tmp/ws", ac, null, null, null);
+    const result = runner.execute(alloc, "/tmp/ws", ac, null, null, null, null);
     try std.testing.expect(!result.exit_ok);
     try std.testing.expectEqual(types.FailureClass.startup_posture, result.failure.?);
 }
