@@ -324,6 +324,76 @@ test "integration: events GET — since=2h filters by relative duration" {
     cleanupTestData(conn);
 }
 
+fn insertEventWithParent(
+    conn: *pg.Conn,
+    zombie_id: []const u8,
+    event_id: []const u8,
+    actor: []const u8,
+    status: []const u8,
+    resumes_event_id: ?[]const u8,
+    ts: i64,
+) !void {
+    _ = try conn.exec(
+        \\INSERT INTO core.zombie_events
+        \\  (zombie_id, event_id, workspace_id, actor, event_type,
+        \\   status, request_json, resumes_event_id, created_at, updated_at)
+        \\VALUES ($1::uuid, $2, $3::uuid, $4, 'chat', $5,
+        \\        '{"message":"test"}'::jsonb, $6, $7, $7)
+        \\ON CONFLICT (zombie_id, event_id) DO NOTHING
+    , .{ zombie_id, event_id, TEST_WORKSPACE_ID, actor, status, resumes_event_id, ts });
+}
+
+// test_resumes_event_id_immediate_parent
+test "integration: resumes_event_id walks the chain via recursive CTE" {
+    const h = seedAndHarness(ALLOC) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+
+    // Chain: A (origin) → B (continuation chunk) → C (gate-blocked) → D (resumed).
+    // Each event's resumes_event_id points at the *immediate* parent — never a
+    // grandparent — so the recursive walk reproduces the chain top-to-bottom.
+    const a_eid = "1900000000020-0";
+    const b_eid = "1900000000021-0";
+    const c_eid = "1900000000022-0";
+    const d_eid = "1900000000023-0";
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    try insertEventWithParent(conn, ZOMBIE_A, a_eid, "steer:kishore", "processed", null, 1_900_000_000_020);
+    try insertEventWithParent(conn, ZOMBIE_A, b_eid, "continuation:steer:kishore", "processed", a_eid, 1_900_000_000_021);
+    try insertEventWithParent(conn, ZOMBIE_A, c_eid, "continuation:steer:kishore", "gate_blocked", b_eid, 1_900_000_000_022);
+    try insertEventWithParent(conn, ZOMBIE_A, d_eid, "continuation:steer:kishore", "processed", c_eid, 1_900_000_000_023);
+
+    // Walk from D back to A. Depth 1 = D, depth 4 = A.
+    const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
+    var q = PgQuery.from(try conn.query(
+        \\WITH RECURSIVE chain AS (
+        \\    SELECT event_id, resumes_event_id, 1 AS depth
+        \\    FROM core.zombie_events
+        \\    WHERE zombie_id = $1::uuid AND event_id = $2
+        \\  UNION ALL
+        \\    SELECT e.event_id, e.resumes_event_id, c.depth + 1
+        \\    FROM core.zombie_events e
+        \\    JOIN chain c ON e.event_id = c.resumes_event_id
+        \\    WHERE e.zombie_id = $1::uuid
+        \\)
+        \\SELECT event_id, depth FROM chain ORDER BY depth ASC
+    , .{ ZOMBIE_A, d_eid }));
+    defer q.deinit();
+
+    const expected_order = [_][]const u8{ d_eid, c_eid, b_eid, a_eid };
+    var i: usize = 0;
+    while (try q.next()) |row| : (i += 1) {
+        if (i >= expected_order.len) return error.UnexpectedExtraRow;
+        try std.testing.expectEqualStrings(expected_order[i], try row.get([]const u8, 0));
+        try std.testing.expectEqual(@as(i32, @intCast(i + 1)), try row.get(i32, 1));
+    }
+    try std.testing.expectEqual(expected_order.len, i);
+
+    cleanupTestData(conn);
+}
+
 // test_since_param_rfc3339
 test "integration: events GET — since=ISO8601 absolute timestamp" {
     const h = seedAndHarness(ALLOC) catch |err| switch (err) {
