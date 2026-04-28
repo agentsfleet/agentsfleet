@@ -179,7 +179,8 @@ pub fn build(b: *std.Build) void {
         }),
     });
 
-    b.installArtifact(executor_harness_exe);
+    const install_executor_harness = b.addInstallArtifact(executor_harness_exe, .{});
+    b.getInstallStep().dependOn(&install_executor_harness.step);
 
     // ── Executor test step ───────────────────────────────────────────────────
     const executor_tests = b.addTest(.{
@@ -221,7 +222,13 @@ pub fn build(b: *std.Build) void {
         }),
         .filters = test_filters,
     });
-    b.step("test", "Run unit tests").dependOn(&b.addRunArtifact(tests).step);
+    // Worker-side integration tests spawn `zombied-executor-harness` as a
+    // child process for deterministic frame emission; depend on its install
+    // step so `zig build test` produces the binary at the canonical
+    // `zig-out/bin/` path that the harness fixture probes.
+    const run_tests = b.addRunArtifact(tests);
+    run_tests.step.dependOn(&install_executor_harness.step);
+    b.step("test", "Run unit tests").dependOn(&run_tests.step);
 
     // ── test-auth (M18_002 §1.3) ─────────────────────────────────────────────
     // Links ONLY src/auth/** and proves the portability contract: every module
