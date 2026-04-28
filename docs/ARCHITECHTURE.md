@@ -418,7 +418,7 @@ When a GH Actions deploy fails:
 
 1. GitHub posts to `/v1/.../webhooks/github` with the failed `workflow_run` payload.
 2. The webhook receiver verifies the HMAC signature against the workspace's stored GH webhook secret.
-3. The receiver normalizes the payload into a synthetic event and `XADD`s to `zombie:{id}:events` with `actor=webhook:github`, `data={run_url, head_sha, conclusion, ref, repo, attempt}`.
+3. The receiver normalizes the payload into a synthetic event and `XADD`s to `zombie:{id}:events` with `actor=webhook:github`, `type=webhook`, `workspace_id={ws}`, `request={run_url, head_sha, conclusion, ref, repo, attempt}`, `created_at=<epoch_ms>`.
 4. The worker's per-zombie thread unblocks from `XREADGROUP`, processes the event:
    - INSERT `core.zombie_events` (status='received')
    - balance + approval gates pass
@@ -491,7 +491,9 @@ The user's agent is a workstation tool driving `zombiectl`. The zombie's agent i
            ║  XADD zombie:{id}:events *         ║   ← single ingress.
            ║       actor=steer:<user>           ║     Webhook + cron use
            ║       type=chat                    ║     the same XADD.
-           ║       data=<msg>                   ║     No SET/GETDEL key.
+           ║       workspace_id=<uuid>          ║     No SET/GETDEL key.
+           ║       request=<msg-json>           ║
+           ║       created_at=<epoch_ms>        ║
            ║  → 202 { event_id }                ║
            ╚═══════════════════════════════════╝
                           ↓
@@ -708,8 +710,9 @@ If only **one** table existed, every operator query would either pay full-table-
   │                      │ zombie_workers  │ XREADGROUP, XACKed at end of processEvent. Idempotent on replay via INSERT ON CONFLICT.                    │ ZOMBIE        │ handles                        │
   ├──────────────────────┼─────────────────┼──────────────────────────────────────────────────────────────────────────────────────────────────────────┼───────────────┼────────────────────────────────┤
   │ zombie:{id}:activity │ Pub/sub channel │ Best-effort live tail — worker PUBLISHes one frame per event_received, tool_call_started,                  │ ONE PER       │ High during execution, zero    │
-  │                      │ (no group, no   │ agent_response_chunk, tool_call_completed, event_complete. SSE handler SUBSCRIBEs and forwards. No buffer,│ ZOMBIE        │ when idle. Subscribers get     │
-  │                      │ persistence)    │ no ACK, no resume. If a frame drops, fall back to GET /events for the durable record.                      │               │ messages only while connected. │
+  │                      │ (no group, no   │ agent_response_chunk, tool_call_progress (~2s heartbeat during long tool calls), tool_call_completed,      │ ZOMBIE        │ when idle. Subscribers get     │
+  │                      │ persistence)    │ event_complete. SSE handler SUBSCRIBEs and forwards. No buffer, no ACK, no resume. If a frame drops, fall   │               │ messages only while connected. │
+  │                      │                 │ back to GET /events for the durable record.                                                                │               │                                │
   └──────────────────────┴─────────────────┴──────────────────────────────────────────────────────────────────────────────────────────────────────────┴───────────────┴────────────────────────────────┘
 
   The two streams are durable (events appended, XACKed entries pruned) and back the at-least-once delivery contract. The pub/sub channel is ephemeral and exists only to power live operator UIs — its
@@ -765,25 +768,57 @@ If only **one** table existed, every operator query would either pay full-table-
   B. TRIGGER  (steer / webhook / cron — three callers, ONE ingress)
   ─────────────────────────────────────────────────────────────────
 
+     Common envelope (every XADD on zombie:{id}:events carries these
+     five fields; the stream entry id IS the canonical event_id —
+     never carry a separate id in the payload):
+
+         actor         steer:<user> | webhook:<source> | cron:<schedule>
+                       | continuation:<original_actor>
+         type          chat | webhook | cron | continuation
+         workspace_id  <uuid>
+         request       <opaque JSON — the message + metadata>
+         created_at    <epoch milliseconds; project bigint convention>
+
      STEER     zombiectl steer {id} "morning health check"
                  → POST /v1/.../zombies/{id}/steer
                  → XADD zombie:{id}:events *
-                        actor=steer:kishore type=chat data=<msg>
-                 → 202 { event_id }
+                        actor=steer:kishore  type=chat
+                        workspace_id=<ws>    request=<msg>
+                        created_at=<ms>
+                 → 202 { event_id }                ← CLI uses event_id
+                                                     to filter SSE frames
 
      WEBHOOK   GH Actions posts workflow_run failure
-                 → POST /v1/.../webhooks/github     (HMAC-SHA256 verified)
+                 → POST /v1/.../webhooks/github   (HMAC-SHA256 verified)
                  → XADD zombie:{id}:events *
-                        actor=webhook:github type=webhook data=<json>
+                        actor=webhook:github  type=webhook
+                        workspace_id=<ws>     request=<normalized-json>
+                        created_at=<ms>
                  → 202
 
-     CRON      NullClaw cron fires on schedule
+     CRON      NullClaw cron-tool fires on schedule (in-executor)
                  → XADD zombie:{id}:events *
-                        actor=cron:0_*/30_*_*_* type=cron data=<msg>
+                        actor=cron:0_*/30_*_*_*  type=cron
+                        workspace_id=<ws>        request=<msg>
+                        created_at=<ms>
 
-     All three land the same envelope on the same stream. The reasoning loop
-     never branches on actor — it is metadata for the SKILL.md prose and the
-     operator's history filter.
+     CONTINUATION  worker re-enqueue (chunk-continuation OR M47
+                   gate-resolved fulfillment)
+                 → XADD zombie:{id}:events *
+                        actor=continuation:<original_actor>
+                        type=continuation
+                        workspace_id=<ws>  request=<continuation-msg>
+                        created_at=<ms>
+                   The new event's row carries
+                   resumes_event_id=<immediate_parent_event_id>.
+                   Continuation actor is FLAT — never re-nests
+                   `continuation:` (a steer that chunks 3 times produces
+                   `actor=continuation:steer:kishore` on every continuation,
+                   not `continuation:continuation:continuation:...`).
+
+     All four producers land the same envelope on the same stream. The
+     reasoning loop never branches on actor — actor is metadata for the
+     SKILL.md prose and the operator's history filter.
 
   C. EXECUTE  (worker → executor → tables → activity → XACK)
   ──────────────────────────────────────────────────────────
@@ -803,9 +838,26 @@ If only **one** table existed, every operator query would either pay full-table-
             { kind:"event_received", event_id, actor }     pub/sub, no buffer
 
        3. Gates:  balance, approval.
-            Blocked → UPDATE core.zombie_events SET status='gate_blocked'
-                      → return (event row stays; XACK deferred until gate
-                        resolves — see M47 Approval Inbox).
+            Blocked → UPDATE core.zombie_events SET status='gate_blocked',
+                                                    failure_label=<gate>,
+                                                    updated_at=now_ms
+                      → PUBLISH zombie:{id}:activity
+                          { kind:"event_complete", event_id,
+                            status:"gate_blocked" }
+                      → XACK zombie:{id}:events       ← row-terminal:
+                        gate_blocked rows are NEVER reopened. When the
+                        gate resolves (M47 Approval Inbox), a fresh
+                        XADD lands with actor=continuation:<original>,
+                        type=continuation, resumes_event_id=<blocked>,
+                        producing a NEW zombie_events row whose
+                        lifecycle is independent. The original blocked
+                        row stays as the historical record.
+
+                        Until M47 ships: workspace-admin-gated fallback
+                        endpoint POST /v1/.../zombies/{id}/events/{event_id}/admin-resume
+                        synthesises the continuation XADD on the
+                        operator's behalf, audit-logged, idempotent
+                        (409 on already-resumed). Removed when M47 lands.
 
        4. resolveSecretsMap from vault (per-zombie credentials).
 
@@ -819,19 +871,42 @@ If only **one** table existed, every operator query would either pay full-table-
 
        7. executor.startStage(execution_id, message)
             │
-            │  executor RPC streams progress callbacks back to worker
+            │  Executor RPC speaks rpc_version: 2 (HELLO handshake on
+            │  socket connect; mismatch → executor.rpc_version_mismatch
+            │  fast-fail, no v1 compat shim pre-v2.0.0).
+            │
+            │  Reply for StartStage is multiplexed over the same Unix
+            │  socket: zero-or-more JSON-RPC Progress notifications
+            │  followed by exactly ONE terminal result frame, all
+            │  sharing the StartStage request id. The worker dispatches
+            │  each progress frame to its on_progress handler before
+            │  the next read; the handler PUBLISHes to the activity
+            │  channel.
+            │
+            │  args_redacted is built INSIDE the executor before the
+            │  frame leaves the RPC boundary: any byte range that came
+            │  from a secrets_map[NAME][FIELD] substitution is replaced
+            │  with ${secrets.NAME.FIELD} placeholder. Resolved secret
+            │  bytes never appear on this RPC channel and therefore
+            │  never reach the activity pub/sub.
             ▼
             on tool_call_started   → PUBLISH zombie:{id}:activity
                                        { kind:"tool_call_started",
                                          name, args_redacted }
             on agent_response_chunk → PUBLISH zombie:{id}:activity
                                        { kind:"chunk", text }
+            on tool_call_progress  → PUBLISH zombie:{id}:activity
+                                       { kind:"tool_call_progress",
+                                         name, elapsed_ms }
+                                     (~2s heartbeat for any tool call
+                                      still in flight; absence past
+                                      ~5s renders as "stuck" in the UI)
             on tool_call_completed → PUBLISH zombie:{id}:activity
                                        { kind:"tool_call_completed",
                                          name, ms }
             │
-            └─ returns StageResult{ content, tokens, ttft_ms,
-                                    wall_ms, exit_ok }
+            └─ terminal: StageResult{ content, tokens, ttft_ms,
+                                      wall_ms, exit_ok }
 
        8. UPDATE core.zombie_events                  ← narrative log closes
             SET status = exit_ok ? 'processed' : 'agent_error',
@@ -852,16 +927,26 @@ If only **one** table existed, every operator query would either pay full-table-
       12. XACK zombie:{id}:events                    ← consumer group
                                                        cursor advances
 
-     Crash mid-event → worker restarts → XAUTOCLAIM hands the pending entry
-     to a new consumer in zombie_workers → step 1's ON CONFLICT keeps the
-     row idempotent → execution resumes.
+     Crash mid-event → worker restarts. IF an XAUTOCLAIM sweep is wired
+     (currently a v2 followup; see line 936 — v2.0 launches single-replica
+     and does not yet ship the sweep), the pending entry is handed to a
+     new consumer name (the same worker process post-restart, with a
+     new pid → new consumer name worker-{newpid}:zombie-{id}) inside
+     zombie_workers. Step 1's ON CONFLICT (zombie_id, event_id) DO NOTHING
+     and the UNIQUE event_id on zombie_execution_telemetry guarantee
+     the replay is safe — exactly one zombie_events row, exactly one
+     telemetry row — regardless of how many redelivery attempts occur.
+     M42 makes the WRITE PATH replay-safe; the RECLAIM mechanism itself
+     is M40 / v2 followup territory.
 
   D. WATCH  (operator-side: how the live tail surfaces)
   ─────────────────────────────────────────────────────
 
      CLI       zombiectl steer {id}        (interactive REPL)
                  → opens GET /v1/.../zombies/{id}/events/stream (SSE)
-                 → server SUBSCRIBE zombie:{id}:activity
+                 → server SUBSCRIBE zombie:{id}:activity on a dedicated
+                   Redis connection held outside the request-handler pool
+                   (SUBSCRIBE blocks the conn).
                  → forward each PUBLISH as an SSE frame, one per line:
                      id:<seq>\nevent:<kind>\ndata:<json>\n\n
                  → on disconnect: UNSUBSCRIBE, close.
@@ -870,6 +955,25 @@ If only **one** table existed, every operator query would either pay full-table-
                  → same GET /events/stream SSE consumer.
                  → on page load also fetches GET /events?limit=20 for
                    recent history context.
+
+     SSE auth (dual-accept, strict no-fallthrough). The endpoint accepts
+     EITHER a session cookie (browser EventSource path; cookie sent
+     automatically) OR Authorization: Bearer <api_key> (CLI path; Node
+     fetch can set custom headers). Resolution order:
+       if request has Cookie header → validate cookie → 401 on failure
+                                       (do NOT also try Authorization).
+       elif request has Authorization → validate Bearer → 401 on failure.
+       else → 401.
+     A stale or leaked cookie does not silently fall through to a valid
+     Bearer; the request is 401'd. No query-param tokens (avoids leaking
+     long-lived API keys via URL / referrer / access logs).
+
+     Reconnect / sequence id. The id:<seq> line on each SSE frame is a
+     per-connection in-memory monotonic counter that resets to 0 on each
+     new SUBSCRIBE. The server IGNORES the Last-Event-ID request header —
+     sequence ids are not durable and have no cross-connection meaning.
+     Clients backfill via GET /events?cursor=<last_seen_event_id>&limit=20
+     after reconnect; the new SSE then resumes from sequence 0.
 
      HISTORY   zombiectl events {id} [--actor=…] [--since=2h]
                Dashboard /zombies/{id}/events
@@ -1200,9 +1304,9 @@ This section restores the install → control stream → worker → events → e
 
 | Process | Role |
 |---|---|
-| **zombied-api** (`zombied serve`) | HTTP routes. Writes `core.zombies`, `vault.secrets`, `zombie:control` (produces), `zombie:{id}:steer` (produces). Reads `core.zombie_events` for history. Webhook receivers write directly to `zombie:{id}:events`. |
-| **zombied-worker** (`zombied worker`) | Hosts one watcher thread (consumes `zombie:control`) + N zombie threads (each consumes one `zombie:{id}:events`). Owns per-zombie cancel flags. Never runs LLM code. |
-| **zombied-executor** (sidecar; `zombied executor`) | Unix-socket RPC server. Hosts NullClaw agent inside Landlock + cgroups + bwrap. Credential substitution lives here. |
+| **zombied-api** (`zombied serve`) | HTTP routes. Writes `core.zombies`, `vault.secrets`, `zombie:control` (produces). Steer / webhook / cron / continuation handlers all `XADD zombie:{id}:events` directly — single-ingress, no transient `zombie:{id}:steer` key. Reads `core.zombie_events` for history (per-zombie + workspace-aggregate). |
+| **zombied-worker** (`zombied worker`) | Hosts one watcher thread (consumes `zombie:control`) + N zombie threads (each consumes one `zombie:{id}:events`). Owns per-zombie cancel flags. Worker is the sole publisher on `zombie:{id}:activity`. Never runs LLM code. |
+| **zombied-executor** (sidecar; `zombied executor`) | Unix-socket RPC server speaking rpc_version: 2 (HELLO handshake on connect; mismatch fast-fails). Reply for `StartStage` is multiplexed: zero-or-more JSON-RPC Progress notifications (`tool_call_started` / `agent_response_chunk` / `tool_call_progress` / `tool_call_completed`) followed by exactly one terminal result frame, all sharing the request id. Hosts NullClaw agent inside Landlock + cgroups + bwrap. Credential substitution lives here; `args_redacted` is rebuilt before any progress frame leaves the RPC boundary. |
 
 ### Control-stream messages + worker loops
 
@@ -1266,9 +1370,9 @@ Three early-exit paths return BEFORE the event loop starts: Redis connect failur
 | Target | Producer | Consumer |
 |---|---|---|
 | `zombie:control` | zombied-api on `innerCreateZombie`, status change, config PATCH | zombied-worker watcher thread |
-| `zombie:{id}:events` | zombied-api on webhook (GH Actions, others). zombied-worker on steer inject. NullClaw cron-tool fires. | zombied-worker's per-zombie thread |
-| `zombie:{id}:steer` (Redis key, transient) | zombied-api on `POST /steer` | zombied-worker zombie thread (polls + GETDEL at top of loop) |
-| `core.zombie_events` | zombied-worker zombie thread (INSERT on receive, UPDATE on complete) | zombied-api `GET /events`, dashboard, `zombiectl events` |
+| `zombie:{id}:events` | zombied-api on `POST /steer` (direct XADD, no transient key), zombied-api on webhook (GH Actions, others), NullClaw cron-tool fires, zombied-worker on continuation re-enqueue (chunk-continuation, gate-resolved fulfillment) | zombied-worker's per-zombie thread |
+| `zombie:{id}:activity` | zombied-worker (sole publisher: `event_received`, `tool_call_started`, `agent_response_chunk`, `tool_call_progress`, `tool_call_completed`, `event_complete`) | SSE handler in zombied-api on dedicated Redis connection (SUBSCRIBE blocks the conn — outside the request-handler pool). Zero-or-N subscribers per zombie. |
+| `core.zombie_events` | zombied-worker zombie thread (INSERT received, UPDATE terminal). `resumes_event_id` column links continuation rows back to their immediate parent (chunk-continuation OR gate-resolved fulfillment); recursive CTE on `zombie_events_resumes_idx` walks the chain to origin. | zombied-api `GET /v1/.../zombies/{id}/events` + `GET /v1/workspaces/{ws}/events` (workspace-aggregate, RLS-protected, replaces deleted `workspaces/activity.zig`), dashboard, `zombiectl events` |
 | `core.zombies` | zombied-api only | zombied-worker at claim + watcher tick |
 | `core.zombie_sessions` | zombied-worker (checkpoint + execution_id) | zombied-worker at claim + kill path |
 | `vault.secrets` | zombied-api on `credential add` | zombied-worker resolves just-in-time before each `createExecution` |
@@ -1282,9 +1386,9 @@ Three early-exit paths return BEFORE the event loop starts: Redis connect failur
 | 5 | `zombiectl install --from .usezombie/platform-ops/` | `innerCreateZombie`: INSERT core.zombies (active). **Atomically + before 201**: `XGROUP CREATE zombie:{id}:events zombie_workers 0 MKSTREAM` + XADD `zombie:control` type=zombie_created. **Invariant 1**: stream + group exist before any producer/consumer can arrive. | +1 entry | stream+group created, empty | idle | idle |
 | 6 | Watcher claims | — | — | — | Watcher `XREADGROUP zombie:control` unblocks. `spawnZombieThread`: under `map_lock`, sweep stale-exited entries; idempotent `XGROUP CREATE` for `zombie:{id}:events` (BUSYGROUP-as-success); allocate `ZombieRuntime { cancel, exited }`; spawn `zombieRuntimeWrapper`; publish to `runtimes` + `threads` maps. XACK. Wrapper invokes `worker_zombie.zombieWorkerLoop` → claims (loads config + checkpoint), spawns `watchShutdown` poller, blocks on `XREADGROUP zombie:{id}:events` BLOCK 5s. | idle |
 | 7 | **Trigger arrives** — three paths land on the same stream | | | | | |
-|  ↳ 7a (webhook) | GitHub Actions posts `workflow_run` failure to `/v1/.../webhooks/github`. Receiver verifies HMAC, normalizes payload. | XADD `zombie:{id}:events` actor=webhook:github data={run_url, head_sha, conclusion, ...} | — | +1 entry | (within ≤5s) zombie thread XREADGROUP returns it | idle |
+|  ↳ 7a (webhook) | GitHub Actions posts `workflow_run` failure to `/v1/.../webhooks/github`. Receiver verifies HMAC, normalizes payload. | XADD `zombie:{id}:events * actor=webhook:github type=webhook workspace_id={ws} request={run_url, head_sha, conclusion, ...} created_at=<ms>` | — | +1 entry | (within ≤5s) zombie thread XREADGROUP returns it | idle |
 |  ↳ 7b (cron) | — | — | (NullClaw cron runtime fires) +1 entry actor=cron:<schedule> | — | idle |
-|  ↳ 7c (steer) | `innerSteer`: SET `zombie:{id}:steer "<msg>" EX 300`, return 202. | — | — | (within ≤5s) zombie thread's `pollSteerAndInject` GETDEL steer key → XADD `zombie:{id}:events` actor=steer:<user>. Next XREADGROUP returns it. | idle |
+|  ↳ 7c (steer) | `innerSteer`: directly `XADD zombie:{id}:events * actor=steer:<user> type=chat workspace_id={ws} request=<msg> created_at=<ms>`. Returns `202 { event_id }` so CLI can correlate. No transient `zombie:{id}:steer` key, no top-of-loop GETDEL — single ingress. | — | +1 entry | (within ≤5s) zombie thread XREADGROUP returns it | idle |
 | 8a | processEvent starts | — | — | event consumed, in pending list | `processEvent`: INSERT `core.zombie_events` (status='received', actor=<from event>, request_json=msg). Balance gate + approval gate pass. Resolves credentials from vault just-in-time. `executor.createExecution(workspace_path, {network_policy, tools, secrets_map, context})` over Unix socket. `setExecutionActive`. `executor.startStage(execution_id, {agent_config, message, context})`. | `handleCreateExecution` creates session storing policy + context knobs. `handleStartStage` invokes `runner.execute` → NullClaw `Agent.runSingle`. **Wakes.** |
 | 8b | Agent runs inside executor | — | — | — | waiting on Unix socket | NullClaw makes tool calls per the SKILL.md prose. The order the agent decides; example for GH Actions failure: `http_request GET https://api.github.com/repos/{repo}/actions/runs/{run_id}/logs` (tool-bridge substitutes `${secrets.github.api_token}` after sandbox entry, agent never sees raw bytes); `http_request GET ${fly.host}/v1/apps/{app}/logs`; `http_request GET ${upstash.host}/v2/redis/stats/{db}`; `http_request POST ${slack.host}/api/chat.postMessage` with diagnosis. **L1 (memory_checkpoint_every) fires every N tool calls; L2 (tool_window) bounds context growth; L3 (stage_chunk_threshold) escalates to continuation if threshold breached.** **Optional**: `cron_add "*/30 * * * *" "post-recovery health check"` if SKILL.md prose requests it. |
 | 8c | Agent returns StageResult | — | — | — | Receives `{content, tokens, wall_s, exit_ok}` on Unix socket. updateSessionContext (in-memory). Defers destroyExecution + clearExecutionActive. | `runner.execute` returns; session destroyed on handler side; executor **sleeps** (no other work). |
