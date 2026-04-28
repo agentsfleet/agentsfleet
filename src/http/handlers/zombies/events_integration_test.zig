@@ -1,10 +1,11 @@
-// HTTP integration tests for the M42 events read endpoints:
+// HTTP integration tests for the events read endpoints:
 //   GET /v1/workspaces/{ws}/zombies/{id}/events
 //   GET /v1/workspaces/{ws}/events
+//   GET /v1/workspaces/{ws}/zombies/{id}/events/stream  (auth surface only)
 //
 // Requires TEST_DATABASE_URL — skipped gracefully otherwise. SSE happy-path
-// is exercised by tests that need Redis and is left to slice 11; the auth
-// surface and the "no-bearer 401" check still run here without Redis.
+// (Bearer 200 + SUBSCRIBE) is exercised in tests that need Redis; the auth
+// surface (no-bearer / invalid-bearer 401) runs here without Redis.
 
 const std = @import("std");
 const pg = @import("pg");
@@ -158,7 +159,8 @@ test "integration: events GET — invalid since format → 400" {
 
 // ── SSE auth (no Redis) ─────────────────────────────────────────────────────
 
-test "integration: events stream — no bearer → 401 (cookie path lands with dashboard slice)" {
+// test_sse_auth_missing_authorization_401
+test "integration: events stream — no bearer → 401" {
     const h = seedAndHarness(ALLOC) catch |err| switch (err) {
         error.SkipZigTest => return error.SkipZigTest,
         else => return err,
@@ -171,6 +173,183 @@ test "integration: events stream — no bearer → 401 (cookie path lands with d
     const r = try (try h.get(url)).send();
     defer r.deinit();
     try r.expectStatus(.unauthorized);
+
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    cleanupTestData(conn);
+}
+
+// test_sse_auth_invalid_bearer_401
+test "integration: events stream — invalid bearer → 401" {
+    const h = seedAndHarness(ALLOC) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+
+    const url = try std.fmt.allocPrint(ALLOC, "/v1/workspaces/{s}/zombies/{s}/events/stream", .{ TEST_WORKSPACE_ID, ZOMBIE_A });
+    defer ALLOC.free(url);
+
+    const r = try (try (try h.get(url)).bearer("not.a.real.jwt")).send();
+    defer r.deinit();
+    try r.expectStatus(.unauthorized);
+
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    cleanupTestData(conn);
+}
+
+// ── Filters: actor glob, since-param, workspace aggregation ────────────────
+
+// test_actor_filter_steer
+test "integration: events GET — actor=steer:* glob filter returns steer events only" {
+    const h = seedAndHarness(ALLOC) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+
+    // Seed has 3 steer:kishore events (2 in ZOMBIE_A, 1 in ZOMBIE_B), 1 webhook,
+    // 1 cron — across the workspace. The glob `steer:*` becomes SQL `steer:%`.
+    const url = try std.fmt.allocPrint(ALLOC, "/v1/workspaces/{s}/events?actor=steer:*", .{TEST_WORKSPACE_ID});
+    defer ALLOC.free(url);
+
+    const r = try (try (try h.get(url)).bearer(TOKEN_OPERATOR)).send();
+    defer r.deinit();
+    try r.expectStatus(.ok);
+    try std.testing.expect(r.bodyContains("steer:kishore"));
+    try std.testing.expect(!r.bodyContains("webhook:github"));
+    try std.testing.expect(!r.bodyContains("cron:0_*/30"));
+
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    cleanupTestData(conn);
+}
+
+// test_actor_filter_webhook_github
+test "integration: events GET — actor=webhook:github exact filter" {
+    const h = seedAndHarness(ALLOC) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+
+    const url = try std.fmt.allocPrint(ALLOC, "/v1/workspaces/{s}/events?actor=webhook:github", .{TEST_WORKSPACE_ID});
+    defer ALLOC.free(url);
+
+    const r = try (try (try h.get(url)).bearer(TOKEN_OPERATOR)).send();
+    defer r.deinit();
+    try r.expectStatus(.ok);
+    try std.testing.expect(r.bodyContains("webhook:github"));
+    try std.testing.expect(!r.bodyContains("steer:kishore"));
+    try std.testing.expect(!r.bodyContains("cron:0_*/30"));
+
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    cleanupTestData(conn);
+}
+
+// test_workspace_events_endpoint
+test "integration: workspace events GET — sorted DESC + zombie_id drill-down filter" {
+    const h = seedAndHarness(ALLOC) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+
+    // All five seeded events come back unfiltered.
+    {
+        const url = try std.fmt.allocPrint(ALLOC, "/v1/workspaces/{s}/events", .{TEST_WORKSPACE_ID});
+        defer ALLOC.free(url);
+        const r = try (try (try h.get(url)).bearer(TOKEN_OPERATOR)).send();
+        defer r.deinit();
+        try r.expectStatus(.ok);
+        // Newest first: created_at=…004 (cron) precedes …000 (oldest) in body order.
+        const idx_004 = std.mem.indexOf(u8, r.body, "1700000000004-0") orelse return error.TestFailed;
+        const idx_000 = std.mem.indexOf(u8, r.body, "1700000000000-0") orelse return error.TestFailed;
+        try std.testing.expect(idx_004 < idx_000);
+    }
+
+    // ?zombie_id=ZOMBIE_A drills down to that zombie's three events.
+    {
+        const url = try std.fmt.allocPrint(ALLOC, "/v1/workspaces/{s}/events?zombie_id={s}", .{ TEST_WORKSPACE_ID, ZOMBIE_A });
+        defer ALLOC.free(url);
+        const r = try (try (try h.get(url)).bearer(TOKEN_OPERATOR)).send();
+        defer r.deinit();
+        try r.expectStatus(.ok);
+        try std.testing.expect(r.bodyContains("1700000000000-0"));
+        try std.testing.expect(r.bodyContains("1700000000002-0"));
+        try std.testing.expect(!r.bodyContains("1700000000003-0")); // ZOMBIE_B event
+        try std.testing.expect(!r.bodyContains("1700000000004-0")); // ZOMBIE_B event
+    }
+
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    cleanupTestData(conn);
+}
+
+// test_since_param_duration
+test "integration: events GET — since=2h filters by relative duration" {
+    const h = seedAndHarness(ALLOC) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+
+    // Insert one recent event (now - 1h, kept) and one stale event (now - 5h,
+    // filtered). Seed events at 1.7e12 ms are far older than now and excluded.
+    const now_ms = std.time.milliTimestamp();
+    const recent_ts = now_ms - (60 * 60 * 1000);
+    const stale_ts = now_ms - (5 * 60 * 60 * 1000);
+    const recent_eid = "1900000000001-0"; // distinct prefix to avoid seed clash
+    const stale_eid = "1900000000002-0";
+    {
+        const conn = try h.acquireConn();
+        defer h.releaseConn(conn);
+        try insertEvent(conn, ZOMBIE_A, recent_eid, "steer:kishore", "chat", recent_ts);
+        try insertEvent(conn, ZOMBIE_A, stale_eid, "steer:kishore", "chat", stale_ts);
+    }
+
+    const url = try std.fmt.allocPrint(ALLOC, "/v1/workspaces/{s}/zombies/{s}/events?since=2h", .{ TEST_WORKSPACE_ID, ZOMBIE_A });
+    defer ALLOC.free(url);
+    const r = try (try (try h.get(url)).bearer(TOKEN_OPERATOR)).send();
+    defer r.deinit();
+    try r.expectStatus(.ok);
+    try std.testing.expect(r.bodyContains(recent_eid));
+    try std.testing.expect(!r.bodyContains(stale_eid));
+    try std.testing.expect(!r.bodyContains("1700000000000-0")); // 2023-era seed
+
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    cleanupTestData(conn);
+}
+
+// test_since_param_rfc3339
+test "integration: events GET — since=ISO8601 absolute timestamp" {
+    const h = seedAndHarness(ALLOC) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+
+    // 2026-04-25T00:00:00Z = 1745539200000 ms. Insert one event before, one after.
+    const cutoff_ms: i64 = 1_745_539_200_000;
+    const before_eid = "1900000000010-0";
+    const after_eid = "1900000000011-0";
+    {
+        const conn = try h.acquireConn();
+        defer h.releaseConn(conn);
+        try insertEvent(conn, ZOMBIE_A, before_eid, "steer:kishore", "chat", cutoff_ms - 1);
+        try insertEvent(conn, ZOMBIE_A, after_eid, "steer:kishore", "chat", cutoff_ms + 1);
+    }
+
+    const url = try std.fmt.allocPrint(ALLOC, "/v1/workspaces/{s}/zombies/{s}/events?since=2026-04-25T00:00:00Z", .{ TEST_WORKSPACE_ID, ZOMBIE_A });
+    defer ALLOC.free(url);
+    const r = try (try (try h.get(url)).bearer(TOKEN_OPERATOR)).send();
+    defer r.deinit();
+    try r.expectStatus(.ok);
+    try std.testing.expect(r.bodyContains(after_eid));
+    try std.testing.expect(!r.bodyContains(before_eid));
 
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
