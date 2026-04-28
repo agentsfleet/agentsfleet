@@ -19,11 +19,11 @@ const writepath = @import("event_loop_writepath.zig");
 const types = @import("event_loop_types.zig");
 const queue_redis = @import("../queue/redis_client.zig");
 const redis_zombie = @import("../queue/redis_zombie.zig");
-const redis_pubsub = @import("../queue/redis_pubsub.zig");
 const EventEnvelope = @import("event_envelope.zig");
 const base = @import("../db/test_fixtures.zig");
 const activity_publisher = @import("activity_publisher.zig");
 const Harness = @import("test_executor_harness.zig");
+const helpers = @import("test_harness_helpers.zig");
 
 const ALLOC = std.testing.allocator;
 
@@ -31,21 +31,12 @@ const TEST_WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0c6f20";
 const TEST_ZOMBIE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0caa20";
 const TEST_SESSION_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0caa21";
 const ACTIVITY_CHANNEL = "zombie:" ++ TEST_ZOMBIE_ID ++ ":activity";
+const TEST_ACTOR = "steer:test-user";
+const TEST_REQUEST_JSON = "{\"message\":\"ping\"}";
+const EMPTY_CONTEXT_JSON = "{}";
+const TEST_CONSUMER = "harness-test-consumer";
 
-const DRAIN_QUIET_MS: u64 = 250;
 const DRAIN_OVERALL_BUDGET_MS: u64 = 8_000;
-const SUBSCRIBE_SETTLE_MS: u64 = 200;
-
-const VALID_CONFIG_JSON =
-    \\{"name":"harness-bot","trigger":{"type":"webhook","source":"agentmail"},"tools":["agentmail"],"budget":{"daily_dollars":5.0}}
-;
-const VALID_SOURCE_MD =
-    \\---
-    \\name: harness-bot
-    \\---
-    \\
-    \\You are a harness bot.
-;
 
 const PROGRESS_SCRIPT =
     \\{"frames":[
@@ -61,12 +52,6 @@ const PROGRESS_SCRIPT =
     \\],"result":{"content":"ok","exit_ok":true}}
 ;
 
-fn connectSubscriber(alloc: Allocator) !?redis_pubsub.Subscriber {
-    const tls_url = std.process.getEnvVarOwned(alloc, "TEST_REDIS_TLS_URL") catch return null;
-    defer alloc.free(tls_url);
-    return redis_pubsub.Subscriber.connectFromUrl(alloc, tls_url) catch return null;
-}
-
 fn deleteEventStream(redis: *queue_redis.Client) void {
     var resp = redis.command(&.{ "DEL", "zombie:" ++ TEST_ZOMBIE_ID ++ ":events" }) catch return;
     defer resp.deinit(redis.alloc);
@@ -76,44 +61,8 @@ fn cleanupZombieEventsRows(conn: *pg.Conn) void {
     _ = conn.exec("DELETE FROM core.zombie_events WHERE zombie_id = $1::uuid", .{TEST_ZOMBIE_ID}) catch {};
 }
 
-const FrameKindList = std.ArrayList([]u8); // BUFFER GATE: ArrayList for kinds — appendable + indexable for ordered assertions.
-
-fn drainKinds(sub: *redis_pubsub.Subscriber, alloc: Allocator, list: *FrameKindList) !void {
-    const overall_deadline = std.time.milliTimestamp() + @as(i64, @intCast(DRAIN_OVERALL_BUDGET_MS));
-    var last_msg_at = std.time.milliTimestamp();
-    while (std.time.milliTimestamp() < overall_deadline) {
-        const msg_opt = try sub.readMessage();
-        if (msg_opt) |m| {
-            var msg = m;
-            defer msg.deinit();
-            const kind = try extractKind(alloc, msg.data);
-            try list.append(alloc, kind);
-            last_msg_at = std.time.milliTimestamp();
-            // event_complete is the terminal marker — stop draining once it lands.
-            if (std.mem.eql(u8, kind, "event_complete")) return;
-            continue;
-        }
-        if (std.time.milliTimestamp() - last_msg_at > @as(i64, @intCast(DRAIN_QUIET_MS))) return;
-    }
-}
-
-fn extractKind(alloc: Allocator, payload: []const u8) ![]u8 {
-    var parsed = try std.json.parseFromSlice(std.json.Value, alloc, payload, .{});
-    defer parsed.deinit();
-    const root = parsed.value;
-    if (root != .object) return error.MissingKind;
-    const v = root.object.get("kind") orelse return error.MissingKind;
-    if (v != .string) return error.MissingKind;
-    return alloc.dupe(u8, v.string);
-}
-
-fn freeKinds(alloc: Allocator, list: *FrameKindList) void {
-    for (list.items) |k| alloc.free(k);
-    list.deinit(alloc);
-}
-
 test "integration: harness emits started/chunk/completed frames in order via real worker pipeline" {
-    if (std.process.getEnvVarOwned(ALLOC, "EXECUTOR_HARNESS_SKIP")) |s| {
+    if (std.process.getEnvVarOwned(ALLOC, helpers.SKIP_ENV_VAR)) |s| {
         defer ALLOC.free(s);
         return error.SkipZigTest;
     } else |_| {}
@@ -125,24 +74,24 @@ test "integration: harness emits started/chunk/completed frames in order via rea
     // The default RedisRole reads REDIS_URL, but integration tests run with
     // TEST_REDIS_TLS_URL set instead — connect via URL directly.
     var redis = blk: {
-        const tls_url = std.process.getEnvVarOwned(ALLOC, "TEST_REDIS_TLS_URL") catch return error.SkipZigTest;
+        const tls_url = std.process.getEnvVarOwned(ALLOC, helpers.REDIS_TLS_URL_ENV_VAR) catch return error.SkipZigTest;
         defer ALLOC.free(tls_url);
         break :blk queue_redis.Client.connectFromUrl(ALLOC, tls_url) catch return error.SkipZigTest;
     };
     defer redis.deinit();
 
-    var sub = (try connectSubscriber(ALLOC)) orelse return error.SkipZigTest;
+    var sub = (try helpers.connectSubscriber(ALLOC)) orelse return error.SkipZigTest;
     defer sub.deinit();
     try sub.subscribe(ACTIVITY_CHANNEL);
-    std.Thread.sleep(SUBSCRIBE_SETTLE_MS * std.time.ns_per_ms);
+    std.Thread.sleep(helpers.SUBSCRIBE_SETTLE_MS * std.time.ns_per_ms);
 
     try base.seedTenant(db_ctx.conn);
     defer base.teardownTenant(db_ctx.conn);
     try base.seedWorkspace(db_ctx.conn, TEST_WORKSPACE_ID);
     defer base.teardownWorkspace(db_ctx.conn, TEST_WORKSPACE_ID);
-    try base.seedZombie(db_ctx.conn, TEST_ZOMBIE_ID, TEST_WORKSPACE_ID, "harness-bot", VALID_CONFIG_JSON, VALID_SOURCE_MD);
+    try base.seedZombie(db_ctx.conn, TEST_ZOMBIE_ID, TEST_WORKSPACE_ID, helpers.ZOMBIE_NAME, helpers.ZOMBIE_CONFIG_JSON, helpers.ZOMBIE_SOURCE_MD);
     defer base.teardownZombies(db_ctx.conn, TEST_WORKSPACE_ID);
-    try base.seedZombieSession(db_ctx.conn, TEST_SESSION_ID, TEST_ZOMBIE_ID, "{}");
+    try base.seedZombieSession(db_ctx.conn, TEST_SESSION_ID, TEST_ZOMBIE_ID, EMPTY_CONTEXT_JSON);
 
     deleteEventStream(&redis);
     defer deleteEventStream(&redis);
@@ -157,15 +106,15 @@ test "integration: harness emits started/chunk/completed frames in order via rea
         .event_id = "",
         .zombie_id = TEST_ZOMBIE_ID,
         .workspace_id = TEST_WORKSPACE_ID,
-        .actor = "steer:test-user",
+        .actor = TEST_ACTOR,
         .event_type = .chat,
-        .request_json = "{\"message\":\"ping\"}",
+        .request_json = TEST_REQUEST_JSON,
         .created_at = std.time.milliTimestamp(),
     };
     const xadded_id = try redis.xaddZombieEvent(envelope);
     defer ALLOC.free(xadded_id);
 
-    var evt = (try redis_zombie.xreadgroupZombie(&redis, TEST_ZOMBIE_ID, "harness-test-consumer")) orelse
+    var evt = (try redis_zombie.xreadgroupZombie(&redis, TEST_ZOMBIE_ID, TEST_CONSUMER)) orelse
         return error.UnexpectedNullEvent;
     defer evt.deinit(ALLOC);
 
@@ -184,9 +133,9 @@ test "integration: harness emits started/chunk/completed frames in order via rea
     const next_consec = writepath.run(ALLOC, &session, &evt, cfg, &consec);
     try std.testing.expectEqual(@as(u32, 0), next_consec);
 
-    var kinds = FrameKindList{};
-    defer freeKinds(ALLOC, &kinds);
-    try drainKinds(&sub, ALLOC, &kinds);
+    var frames = helpers.FrameList{};
+    defer helpers.freeFrames(ALLOC, &frames);
+    try helpers.drainFrames(&sub, ALLOC, &frames, DRAIN_OVERALL_BUDGET_MS);
 
     // Expected sequence: event_received, 2× tool_call_started, 5× chunk,
     // 2× tool_call_completed, event_complete. Strict order — the worker
@@ -204,9 +153,9 @@ test "integration: harness emits started/chunk/completed frames in order via rea
         activity_publisher.KIND_TOOL_CALL_COMPLETED,
         activity_publisher.KIND_EVENT_COMPLETE,
     };
-    try std.testing.expectEqual(expected.len, kinds.items.len);
-    for (expected, kinds.items) |want, got| {
-        try std.testing.expectEqualStrings(want, got);
+    try std.testing.expectEqual(expected.len, frames.items.len);
+    for (expected, frames.items) |want, got| {
+        try std.testing.expectEqualStrings(want, got.kind);
     }
 
     // Verify zombie_events row landed status=processed (terminal).

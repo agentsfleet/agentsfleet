@@ -203,5 +203,7 @@ test {
     _ = @import("event_loop_integration_test.zig");
     _ = @import("event_loop_writepath_integration_test.zig");
     _ = @import("test_executor_harness.zig");
+    _ = @import("test_harness_helpers.zig");
     _ = @import("event_loop_harness_integration_test.zig");
+    _ = @import("event_loop_harness_heartbeat_test.zig");
 }

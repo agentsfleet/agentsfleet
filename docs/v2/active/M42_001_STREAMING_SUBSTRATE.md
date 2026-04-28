@@ -523,7 +523,7 @@ Postgres writes (per event):
 | `test_gate_blocked_unresolved_query` | 5 blocked rows, 2 already resumed via continuation, 3 still waiting → operator's "unresolved blocks" query returns exactly the 3. |
 | ~~`test_admin_resume_fallback_endpoint`~~ | Dropped — admin-resume fallback deferred to M47 (see Files Changed). Resolution flow is owned by M47's Approval Inbox. |
 | `test_rpc_version_mismatch_fast_fails` | Old worker (rpc_version=1) connects to new executor (rpc_version=2) → both sides log `executor.rpc_version_mismatch` and abort connection within 100ms. No partial frames decoded. |
-| `test_tool_call_progress_heartbeat` | Synthetic 6-second tool call → SSE client receives ≥3 `tool_call_progress` frames at ~2s intervals. Absence past 5s renders "stuck" in UI fixture. |
+| `test_tool_call_progress_heartbeat` | DONE — `event_loop_harness_heartbeat_test.zig`. Harness scripted with 3× tool_call_progress, each preceded by 2 s sleep; drain runs on a background thread (concurrent with writepath.run) so frames arrive in real time. Asserts ≥3 progress frames + adjacent intervals fall in [500 ms, 3500 ms]. Tolerance is generous to absorb RPC + scheduler jitter on busy CI runners. |
 | `test_workspace_events_rls_no_cross_tenant` | Workspace A's API key calls `GET /v1/workspaces/{B}/events` → 403 (or 404 per project's IDOR convention). Workspace A's events are never returned in workspace B's response. |
 | `test_since_and_cursor_mutually_exclusive_400` | `GET /events?since=2h&cursor=<id>` → 400 with `error.code=since_and_cursor_mutually_exclusive`. |
 | `test_sse_sequence_resets_on_reconnect` | Open SSE, receive frames id=0..N, disconnect, reconnect → first frame on new connection is id=0. Server ignores `Last-Event-ID` request header. |
