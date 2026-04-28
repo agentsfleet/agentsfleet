@@ -9,7 +9,6 @@ const Allocator = std.mem.Allocator;
 
 const zombie_config = @import("config.zig");
 const approval_gate = @import("approval_gate.zig");
-const activity_stream = @import("activity_stream.zig");
 const queue_redis = @import("../queue/redis_client.zig");
 const redis_zombie = @import("../queue/redis_zombie.zig");
 const error_codes = @import("../errors/error_registry.zig");
@@ -151,13 +150,15 @@ fn handleApprovalFlow(
     };
 }
 
+/// Best-effort gate-event log. Pre-M42 wrote to core.activity_events; that
+/// table is gone with M42's streaming substrate. Until M42's processEvent
+/// rewrite wires PUBLISHes onto zombie:{id}:activity for gate transitions,
+/// this is a structured log line — durable record lands in core.zombie_events
+/// via the worker's terminal UPDATE.
 fn logGateActivity(pool: *pg.Pool, alloc: Allocator, session: *event_loop.ZombieSession, event_type: []const u8, detail: []const u8) void {
-    activity_stream.logEvent(pool, alloc, .{
-        .zombie_id = session.zombie_id,
-        .workspace_id = session.workspace_id,
-        .event_type = event_type,
-        .detail = detail,
-    });
+    _ = pool;
+    _ = alloc;
+    log.info("zombie_event_loop_gate.event zombie_id={s} workspace_id={s} type={s} detail={s}", .{ session.zombie_id, session.workspace_id, event_type, detail });
 }
 
 fn pauseZombie(pool: *pg.Pool, zombie_id: []const u8) void {

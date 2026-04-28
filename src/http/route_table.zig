@@ -84,13 +84,11 @@ pub fn specFor(route: router.Route, registry: *auth_mw.MiddlewareRegistry) ?Rout
         .workspace_zombies => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceZombies },
         .patch_workspace_zombie => .{ .middlewares = registry.bearer(), .invoke = invoke.invokePatchWorkspaceZombie },
         .kill_workspace_zombie => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeKillWorkspaceZombie },
-        .workspace_zombie_activity => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceZombieActivity },
         .workspace_credentials => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceCredentials },
         .delete_workspace_credential => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceCredentialDelete },
         // M23_001 / M24_001: live steering (workspace-scoped)
         .workspace_zombie_steer => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeZombieSteer },
-        // M12_001: Dashboard endpoints — workspace activity feed, kill switch, per-zombie billing
-        .workspace_activity => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceActivity },
+        // Dashboard endpoints — kill switch, per-zombie billing
         .workspace_zombie_current_run => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeDeleteCurrentRun },
 
         // Zombie telemetry
@@ -152,7 +150,6 @@ test "specFor returns a RouteSpec for every Route variant (Batch D — full tabl
     try testing.expect(specFor(.{ .workspace_zombies = "ws1" }, &reg) != null);
     try testing.expect(specFor(.{ .patch_workspace_zombie = .{ .workspace_id = "ws1", .zombie_id = "z1" } }, &reg) != null);
     try testing.expect(specFor(.{ .kill_workspace_zombie = .{ .workspace_id = "ws1", .zombie_id = "z1" } }, &reg) != null);
-    try testing.expect(specFor(.{ .workspace_zombie_activity = .{ .workspace_id = "ws1", .zombie_id = "z1" } }, &reg) != null);
     try testing.expect(specFor(.{ .workspace_credentials = "ws1" }, &reg) != null);
     try testing.expect(specFor(.{ .workspace_zombie_steer = .{ .workspace_id = "ws1", .zombie_id = "z1" } }, &reg) != null);
     try testing.expect(specFor(.{ .zombie_telemetry = .{ .workspace_id = "ws1", .zombie_id = "z1" } }, &reg) != null);

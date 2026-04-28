@@ -12,7 +12,6 @@ const Allocator = std.mem.Allocator;
 const error_codes = @import("../errors/error_registry.zig");
 const crypto_store = @import("../secrets/crypto_store.zig");
 const backoff = @import("../reliability/backoff.zig");
-const activity_stream = @import("activity_stream.zig");
 const metrics_counters = @import("../observability/metrics_counters.zig");
 const metrics_workspace = @import("../observability/metrics_workspace.zig");
 const telemetry_mod = @import("../observability/telemetry.zig");
@@ -128,16 +127,11 @@ pub fn logDeliveryResult(
     stage_result: anytype,
     wall_ms: u64,
 ) void {
+    _ = alloc;
     const ok = stage_result.failure == null;
     if (ok) {
         log.info("zombie_event_loop.delivered zombie_id={s} event_id={s} tokens={d} wall_s={d}", .{
             session.zombie_id, event.event_id, stage_result.token_count, stage_result.wall_seconds,
-        });
-        activity_stream.logEvent(cfg.pool, alloc, .{
-            .zombie_id = session.zombie_id,
-            .workspace_id = session.workspace_id,
-            .event_type = activity_stream.EVT_AGENT_RESPONSE,
-            .detail = event.event_id,
         });
         metrics_counters.incZombiesCompleted();
         metrics_counters.addZombieTokens(stage_result.token_count);
@@ -147,12 +141,6 @@ pub fn logDeliveryResult(
         const label = stage_result.failure.?.label();
         log.warn("zombie_event_loop.agent_failure zombie_id={s} event_id={s} failure={s}", .{
             session.zombie_id, event.event_id, label,
-        });
-        activity_stream.logEvent(cfg.pool, alloc, .{
-            .zombie_id = session.zombie_id,
-            .workspace_id = session.workspace_id,
-            .event_type = activity_stream.EVT_AGENT_ERROR,
-            .detail = label,
         });
         metrics_counters.incZombiesFailed();
     }

@@ -8,7 +8,6 @@ const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const Allocator = std.mem.Allocator;
 
 const zombie_config = @import("config.zig");
-const activity_stream = @import("activity_stream.zig");
 const queue_redis = @import("../queue/redis_client.zig");
 const redis_zombie = @import("../queue/redis_zombie.zig");
 const queue_consts = @import("../queue/constants.zig");
@@ -124,7 +123,6 @@ pub fn runEventLoop(
     defer if (!std.mem.eql(u8, consumer_id, "zombie-local")) alloc.free(consumer_id);
 
     log.info("zombie_event_loop.started zombie_id={s} name={s}", .{ session.zombie_id, session.config.name });
-    logActivity(cfg.pool, alloc, session, activity_stream.EVT_ZOMBIE_STARTED, "Event loop started");
 
     var last_reclaim_ms: i64 = std.time.milliTimestamp();
     var consecutive_errors: u32 = 0;
@@ -150,7 +148,6 @@ pub fn runEventLoop(
     }
 
     log.info("zombie_event_loop.stopped zombie_id={s}", .{session.zombie_id});
-    logActivity(cfg.pool, alloc, session, activity_stream.EVT_ZOMBIE_STOPPED, "Event loop stopped (shutdown signal)");
 }
 
 const PollResult = struct { event: ?redis_zombie.ZombieEvent, err: bool };
@@ -179,7 +176,6 @@ fn processEvent(alloc: Allocator, session: *ZombieSession, evt: *redis_zombie.Zo
     // whose billing row carries `balance_exhausted_at != NULL` never
     // reaches the executor — log + XACK so Redis doesn't retry.
     if (metering.shouldBlockDelivery(cfg.pool, alloc, session.workspace_id, session.zombie_id, cfg.balance_policy)) {
-        logActivity(cfg.pool, alloc, session, activity_stream.EVT_BALANCE_GATE_BLOCKED, evt.event_id);
         redis_zombie.xackZombie(cfg.redis, session.zombie_id, evt.event_id) catch |err| {
             obs_log.logWarnErr(.zombie_event_loop, err, "zombie_event_loop.xack_fail zombie_id={s} message_id={s}", .{ session.zombie_id, evt.event_id });
         };
@@ -188,7 +184,6 @@ fn processEvent(alloc: Allocator, session: *ZombieSession, evt: *redis_zombie.Zo
 
     var result = deliverEvent(alloc, session, evt, cfg) catch |err| {
         obs_log.logErr(.zombie_event_loop, err, "zombie_event_loop.deliver_fail zombie_id={s} event_id={s}", .{ session.zombie_id, evt.event_id });
-        logActivity(cfg.pool, alloc, session, activity_stream.EVT_EVENT_ERROR, evt.event_id);
         recordDeliverError(cfg, session, evt.event_id);
         sleepWithBackoff(cfg, consecutive_errors.* + 1);
         return consecutive_errors.* + 1;
@@ -207,15 +202,6 @@ fn processEvent(alloc: Allocator, session: *ZombieSession, evt: *redis_zombie.Zo
     return 0;
 }
 
-fn logActivity(pool: *pg.Pool, alloc: Allocator, session: *ZombieSession, event_type: []const u8, detail: []const u8) void {
-    activity_stream.logEvent(pool, alloc, .{
-        .zombie_id = session.zombie_id,
-        .workspace_id = session.workspace_id,
-        .event_type = event_type,
-        .detail = detail,
-    });
-}
-
 /// Deliver a single event to the executor agent.
 pub fn deliverEvent(
     alloc: Allocator,
@@ -226,9 +212,8 @@ pub fn deliverEvent(
     log.info("zombie_event_loop.deliver zombie_id={s} event_id={s} type={s}", .{
         session.zombie_id, event.event_id, event.event_type,
     });
-    logActivity(cfg.pool, alloc, session, activity_stream.EVT_EVENT_RECEIVED, event.event_id);
 
-    const epoch_wall_time_ms: i64 = std.time.milliTimestamp(); // M18_001: absolute epoch at delivery start
+    const epoch_wall_time_ms: i64 = std.time.milliTimestamp();
     // M15_002: wall-time spans the full deliver path — gate wait + sandbox — so the
     // histogram reflects end-to-end latency operators see, not just executor time.
     // Monotonic clock so system-clock steps don't skew or negate the duration.

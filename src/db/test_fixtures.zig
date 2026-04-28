@@ -159,9 +159,6 @@ pub fn teardownZombies(conn: *pg.Conn, workspace_id: []const u8) void {
         \\  (SELECT id FROM core.zombies WHERE workspace_id = $1)
     , .{workspace_id}) catch {};
     _ = conn.exec(
-        \\DELETE FROM core.activity_events WHERE workspace_id = $1
-    , .{workspace_id}) catch {};
-    _ = conn.exec(
         "DELETE FROM core.zombies WHERE workspace_id = $1",
         .{workspace_id},
     ) catch {};

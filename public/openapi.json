@@ -1819,108 +1819,6 @@
         }
       }
     },
-    "/v1/workspaces/{workspace_id}/activity": {
-      "get": {
-        "operationId": "list_workspace_activity",
-        "summary": "List workspace activity feed",
-        "description": "Workspace-wide merged activity stream across every zombie. Cursor-paginated newest-first. Backs the dashboard Recent Activity feed.",
-        "tags": [
-          "Activity"
-        ],
-        "parameters": [
-          {
-            "name": "workspace_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          {
-            "name": "limit",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "minimum": 1,
-              "maximum": 100,
-              "default": 20
-            },
-            "description": "Page size. Capped at 100."
-          },
-          {
-            "name": "cursor",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "description": "Opaque cursor returned by a previous call. Omit for the first page."
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Activity page (newest-first)",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "required": [
-                    "events"
-                  ],
-                  "properties": {
-                    "events": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "required": [
-                          "id",
-                          "zombie_id",
-                          "workspace_id",
-                          "event_type",
-                          "detail",
-                          "created_at"
-                        ],
-                        "properties": {
-                          "id": {
-                            "type": "string"
-                          },
-                          "zombie_id": {
-                            "type": "string"
-                          },
-                          "workspace_id": {
-                            "type": "string"
-                          },
-                          "event_type": {
-                            "type": "string"
-                          },
-                          "detail": {
-                            "type": "string"
-                          },
-                          "created_at": {
-                            "type": "integer",
-                            "format": "int64"
-                          }
-                        }
-                      }
-                    },
-                    "next_cursor": {
-                      "type": "string",
-                      "nullable": true,
-                      "description": "Cursor for the next page. Null when the feed is exhausted."
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "default": {
-            "$ref": "#/components/responses/Error"
-          }
-        }
-      }
-    },
     "/v1/tenants/me/billing": {
       "get": {
         "operationId": "get_tenant_billing",
@@ -3212,103 +3110,6 @@
         }
       }
     },
-    "/v1/workspaces/{workspace_id}/zombies/{zombie_id}/activity": {
-      "get": {
-        "operationId": "list_zombie_activity",
-        "summary": "List zombie activity events",
-        "description": "Returns the append-only activity stream for a zombie (event received, skill invoked, response returned, credential resolved, grant requested, etc.). Cursor-based pagination.",
-        "tags": [
-          "Zombies"
-        ],
-        "parameters": [
-          {
-            "name": "workspace_id",
-            "in": "path",
-            "required": true,
-            "description": "UUIDv7 of the workspace.",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          {
-            "name": "zombie_id",
-            "in": "path",
-            "required": true,
-            "description": "UUIDv7 of the zombie.",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          {
-            "name": "limit",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "default": 20,
-              "minimum": 1,
-              "maximum": 100
-            }
-          },
-          {
-            "name": "cursor",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "description": "Opaque cursor from the previous response."
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "required": [
-                    "items",
-                    "total"
-                  ],
-                  "properties": {
-                    "items": {
-                      "type": "array",
-                      "items": {
-                        "$ref": "#/components/schemas/ActivityEvent"
-                      }
-                    },
-                    "total": {
-                      "type": "integer",
-                      "description": "Count of items in this response (not total across pages)."
-                    },
-                    "cursor": {
-                      "type": "string",
-                      "nullable": true,
-                      "description": "Opaque cursor for the next page. null when no more items."
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "400": {
-            "$ref": "#/components/responses/Error"
-          },
-          "401": {
-            "$ref": "#/components/responses/Error"
-          },
-          "403": {
-            "$ref": "#/components/responses/Error"
-          },
-          "404": {
-            "$ref": "#/components/responses/Error"
-          }
-        }
-      }
-    },
     "/v1/workspaces/{workspace_id}/zombies/{zombie_id}/integration-grants": {
       "get": {
         "operationId": "list_integration_grants",
@@ -4152,30 +3953,6 @@
           }
         }
       },
-      "ActivityEvent": {
-        "type": "object",
-        "required": [
-          "event_id",
-          "event_type",
-          "created_at"
-        ],
-        "properties": {
-          "event_id": {
-            "type": "string"
-          },
-          "event_type": {
-            "type": "string"
-          },
-          "detail": {
-            "type": "string",
-            "nullable": true
-          },
-          "created_at": {
-            "type": "integer",
-            "format": "int64"
-          }
-        }
-      },
       "IntegrationGrant": {
         "type": "object",
         "required": [
@@ -4253,6 +4030,30 @@
           "updated_at": {
             "type": "integer",
             "description": "Unix timestamp in milliseconds"
+          }
+        }
+      },
+      "ActivityEvent": {
+        "type": "object",
+        "required": [
+          "event_id",
+          "event_type",
+          "created_at"
+        ],
+        "properties": {
+          "event_id": {
+            "type": "string"
+          },
+          "event_type": {
+            "type": "string"
+          },
+          "detail": {
+            "type": "string",
+            "nullable": true
+          },
+          "created_at": {
+            "type": "integer",
+            "format": "int64"
           }
         }
       },

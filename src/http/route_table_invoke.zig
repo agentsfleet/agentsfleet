@@ -17,7 +17,7 @@ const health = @import("handlers/health.zig");
 const auth_sessions = @import("handlers/auth/sessions.zig");
 const github_cb = @import("handlers/auth/github_callback.zig");
 const zombie_api = @import("handlers/zombies/api.zig");
-const zombie_act = @import("handlers/zombies/activity.zig");
+const zombie_creds = @import("handlers/zombies/credentials.zig");
 const zombie_tel = @import("handlers/zombies/telemetry.zig");
 const ws_lifecycle = @import("handlers/workspaces/lifecycle.zig");
 const tenant_billing_h = @import("handlers/tenant_billing.zig");
@@ -207,17 +207,11 @@ pub fn invokeKillWorkspaceZombie(hx: *Hx, req: *httpz.Request, route: router.Rou
     zombie_api.innerKillZombie(hx.*, req, r.workspace_id, r.zombie_id);
 }
 
-pub fn invokeWorkspaceZombieActivity(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    if (req.method != .GET) { common.respondMethodNotAllowed(hx.res); return; }
-    const r = route.workspace_zombie_activity;
-    zombie_act.innerListActivity(hx.*, req, r.workspace_id, r.zombie_id);
-}
-
 pub fn invokeWorkspaceCredentials(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     const workspace_id = route.workspace_credentials;
     switch (req.method) {
-        .POST => zombie_act.innerStoreCredential(hx.*, req, workspace_id),
-        .GET => zombie_act.innerListCredentials(hx.*, req, workspace_id),
+        .POST => zombie_creds.innerStoreCredential(hx.*, req, workspace_id),
+        .GET => zombie_creds.innerListCredentials(hx.*, req, workspace_id),
         else => common.respondMethodNotAllowed(hx.res),
     }
 }
@@ -225,7 +219,7 @@ pub fn invokeWorkspaceCredentials(hx: *Hx, req: *httpz.Request, route: router.Ro
 pub fn invokeWorkspaceCredentialDelete(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     if (req.method != .DELETE) { common.respondMethodNotAllowed(hx.res); return; }
     const r = route.delete_workspace_credential;
-    zombie_act.innerDeleteCredential(hx.*, req, r.workspace_id, r.credential_name);
+    zombie_creds.innerDeleteCredential(hx.*, req, r.workspace_id, r.credential_name);
 }
 
 // ── Zombie steer (M23_001) ────────────────────────────────────────────────

@@ -38,9 +38,6 @@ pub const entries = [_]Entry{
     .{ .method = "POST", .path = "/v1/workspaces/{workspace_id}/pause" },
     .{ .method = "POST", .path = "/v1/workspaces/{workspace_id}/sync" },
 
-    // Activity
-    .{ .method = "GET", .path = "/v1/workspaces/{workspace_id}/activity" },
-
     // Tenant billing (plan + balance snapshot)
     .{ .method = "GET", .path = "/v1/tenants/me/billing" },
 
@@ -60,7 +57,6 @@ pub const entries = [_]Entry{
     .{ .method = "POST", .path = "/v1/workspaces/{workspace_id}/zombies" },
     .{ .method = "PATCH", .path = "/v1/workspaces/{workspace_id}/zombies/{zombie_id}" },
     .{ .method = "POST", .path = "/v1/workspaces/{workspace_id}/zombies/{zombie_id}/kill" },
-    .{ .method = "GET", .path = "/v1/workspaces/{workspace_id}/zombies/{zombie_id}/activity" },
     .{ .method = "POST", .path = "/v1/workspaces/{workspace_id}/zombies/{zombie_id}/steer" },
     .{ .method = "DELETE", .path = "/v1/workspaces/{workspace_id}/zombies/{zombie_id}/current-run" },
 

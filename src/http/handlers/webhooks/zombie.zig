@@ -15,7 +15,6 @@ const common = @import("../common.zig");
 const hx_mod = @import("../hx.zig");
 const ec = @import("../../../errors/error_registry.zig");
 const zombie_config = @import("../../../zombie/config.zig");
-const activity_stream = @import("../../../zombie/activity_stream.zig");
 const telemetry_mod = @import("../../../observability/telemetry.zig");
 const metrics_counters = @import("../../../observability/metrics_counters.zig");
 const EventEnvelope = @import("../../../zombie/event_envelope.zig");
@@ -167,13 +166,6 @@ pub fn innerReceiveWebhook(hx: Hx, req: *httpz.Request, zombie_id: []const u8) v
 
     const source_label = zombie.source orelse "";
     if (!dedupAndEnqueue(hx, zombie_id, zombie.workspace_id, payload, source_label)) return;
-
-    activity_stream.logEvent(hx.ctx.pool, hx.alloc, .{
-        .zombie_id = zombie_id,
-        .workspace_id = zombie.workspace_id,
-        .event_type = ec.WEBHOOK_EVENT_TYPE,
-        .detail = payload.event_id,
-    });
 
     recordWebhookAccepted(hx.ctx.telemetry, zombie.workspace_id, zombie_id, payload.event_id, source_label);
 

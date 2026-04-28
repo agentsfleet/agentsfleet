@@ -132,8 +132,6 @@ paths:
     $ref: ./paths/webhooks.yaml#/~1v1~1webhooks~1{zombie_id}~1grant-approval
   /v1/workspaces:
     $ref: ./paths/workspaces.yaml#/~1v1~1workspaces
-  /v1/workspaces/{workspace_id}/activity:
-    $ref: ./paths/activity.yaml#/~1v1~1workspaces~1{workspace_id}~1activity
   /v1/tenants/me/billing:
     $ref: ./paths/billing.yaml#/~1v1~1tenants~1me~1billing
   /v1/tenants/me/workspaces:
@@ -158,8 +156,6 @@ paths:
     $ref: ./paths/zombies.yaml#/~1v1~1workspaces~1{workspace_id}~1zombies~1{zombie_id}
   /v1/workspaces/{workspace_id}/zombies/{zombie_id}/kill:
     $ref: ./paths/zombies.yaml#/~1v1~1workspaces~1{workspace_id}~1zombies~1{zombie_id}~1kill
-  /v1/workspaces/{workspace_id}/zombies/{zombie_id}/activity:
-    $ref: ./paths/zombies.yaml#/~1v1~1workspaces~1{workspace_id}~1zombies~1{zombie_id}~1activity
   /v1/workspaces/{workspace_id}/zombies/{zombie_id}/integration-grants:
     $ref: ./paths/integration-grants.yaml#/~1v1~1workspaces~1{workspace_id}~1zombies~1{zombie_id}~1integration-grants
   /v1/workspaces/{workspace_id}/zombies/{zombie_id}/integration-grants/{grant_id}:

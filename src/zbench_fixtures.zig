@@ -37,7 +37,7 @@ pub const ERROR_CODES = [_][]const u8{
     "UZ-DOES-NOT-EXIST-001", "UZ-ALSO-MISSING-002",
 };
 
-// ── 1.3 activity_cursor_roundtrip ──────────────────────────────────────────
+// ── 1.3 keyset_cursor_roundtrip ──────────────────────────────────────────
 // 100 synthetic cursors. Variety in timestamp width and id length keeps the
 // decimal parse from benchmarking a single register-fit case.
 fn buildCursors(comptime n: usize) [n][]const u8 {

@@ -2,7 +2,7 @@
 //!
 //! Composite keyset pagination: cursor encodes (created_at_ms, id) so multiple
 //! zombies installed on the same millisecond are not silently skipped. See
-//! `src/zombie/activity_cursor.zig` for the cursor format.
+//! `src/zombie/keyset_cursor.zig` for the cursor format.
 
 const std = @import("std");
 const httpz = @import("httpz");
@@ -13,7 +13,7 @@ const common = @import("../common.zig");
 const hx_mod = @import("../hx.zig");
 const ec = @import("../../../errors/error_registry.zig");
 const id_format = @import("../../../types/id_format.zig");
-const keyset_cursor = @import("../../../zombie/activity_cursor.zig");
+const keyset_cursor = @import("../../../zombie/keyset_cursor.zig");
 
 const log = std.log.scoped(.zombie_api);
 

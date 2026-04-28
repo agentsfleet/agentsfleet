@@ -141,8 +141,6 @@ test {
     _ = @import("zombie/config.zig");
     _ = @import("zombie/yaml_frontmatter.zig");
     _ = @import("http/route_matchers.zig");
-    _ = @import("zombie/activity_stream.zig");
-    _ = @import("zombie/activity_cursor.zig");
     _ = @import("zombie/event_envelope.zig");
     _ = @import("zombie/event_envelope_test.zig");
     _ = @import("zombie/activity_publisher.zig");
@@ -217,7 +215,6 @@ test {
     _ = @import("http/handlers/zombies/list.zig");
     _ = @import("http/handlers/zombies/kill.zig");
     _ = @import("http/handlers/zombies/patch.zig");
-    _ = @import("http/handlers/zombies/activity.zig");
     // M18_001: zombie execution telemetry
     _ = @import("state/zombie_telemetry_store.zig");
     _ = @import("http/handlers/zombies/telemetry.zig");

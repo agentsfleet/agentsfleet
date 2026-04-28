@@ -16,7 +16,6 @@ const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
 const common = @import("../common.zig");
 const hx_mod = @import("../hx.zig");
 const ec = @import("../../../errors/error_registry.zig");
-const activity_stream = @import("../../../zombie/activity_stream.zig");
 const queue_redis = @import("../../../queue/redis.zig");
 
 const log = std.log.scoped(.grant_approval_webhook);
@@ -152,15 +151,9 @@ pub fn innerGrantApproval(hx: hx_mod.Hx, req: *httpz.Request, zombie_id: []const
 
     const workspace_id = fetchWorkspaceId(hx.ctx.pool, hx.alloc, zombie_id);
     const event_type: []const u8 = if (is_approved) "grant.approved" else "grant.denied";
-    activity_stream.logEvent(hx.ctx.pool, hx.alloc, .{
-        .zombie_id    = zombie_id,
-        .workspace_id = workspace_id,
-        .event_type   = event_type,
-        .detail       = body.grant_id,
-    });
 
-    log.info("grant_approval.{s} zombie_id={s} grant_id={s}", .{
-        body.decision, zombie_id, body.grant_id,
+    log.info("grant_approval.{s} zombie_id={s} workspace_id={s} grant_id={s} event_type={s}", .{
+        body.decision, zombie_id, workspace_id, body.grant_id, event_type,
     });
 
     hx.ok(.ok, .{

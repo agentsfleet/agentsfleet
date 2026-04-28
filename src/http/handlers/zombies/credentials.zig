@@ -1,6 +1,5 @@
-// Zombie activity stream + workspace credential API handlers.
+// Workspace credential API handlers.
 //
-// GET    /v1/workspaces/{ws}/zombies/{id}/activity   → innerListActivity
 // POST   /v1/workspaces/{ws}/credentials             → innerStoreCredential
 // GET    /v1/workspaces/{ws}/credentials             → innerListCredentials
 // DELETE /v1/workspaces/{ws}/credentials/{name}      → innerDeleteCredential
@@ -13,12 +12,11 @@ const common = @import("../common.zig");
 const hx_mod = @import("../hx.zig");
 const ec = @import("../../../errors/error_registry.zig");
 const id_format = @import("../../../types/id_format.zig");
-const activity_stream = @import("../../../zombie/activity_stream.zig");
 const vault = @import("../../../state/vault.zig");
 const credential_key = @import("../../../zombie/credential_key.zig");
 const workspace_guards = @import("../../workspace_guards.zig");
 
-const log = std.log.scoped(.zombie_activity_api);
+const log = std.log.scoped(.zombie_credentials_api);
 const API_ACTOR = "api";
 
 pub const Context = common.Context;
@@ -28,67 +26,6 @@ const MAX_CREDENTIAL_DATA_LEN: usize = 4 * 1024; // 4KB stringified JSON
 const MAX_CREDENTIAL_NAME_LEN: usize = 64;
 const RESERVED_BYOK_NAME = "llm";
 const MSG_CREDENTIAL_NAME_RESERVED = "credential name 'llm' is reserved for the BYOK route";
-
-// ── List Activity ─────────────────────────────────────────────────────
-
-pub fn innerListActivity(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []const u8, zombie_id: []const u8) void {
-    if (!id_format.isSupportedWorkspaceId(workspace_id)) {
-        hx.fail(ec.ERR_INVALID_REQUEST, ec.MSG_WORKSPACE_ID_REQUIRED);
-        return;
-    }
-    if (!id_format.isSupportedWorkspaceId(zombie_id)) {
-        hx.fail(ec.ERR_INVALID_REQUEST, "zombie_id must be a valid UUIDv7");
-        return;
-    }
-
-    const qs = req.query() catch null;
-    const limit = if (qs) |q| parseLimitFromQs(q) else activity_stream.DEFAULT_ACTIVITY_PAGE_LIMIT;
-    const cursor = if (qs) |q| q.get("cursor") else null;
-
-    const conn = hx.ctx.pool.acquire() catch {
-        common.internalDbUnavailable(hx.res, hx.req_id);
-        return;
-    };
-    defer hx.ctx.pool.release(conn);
-
-    if (!common.authorizeWorkspace(conn, hx.principal, workspace_id)) {
-        hx.fail(ec.ERR_FORBIDDEN, "Workspace access denied");
-        return;
-    }
-
-    // M24_001 / RULE WAUTH: verify the zombie belongs to the path workspace.
-    // authorizeWorkspace only checks the principal's access to the path ws; without
-    // this second check a caller in WS_A could read activity for a zombie in WS_B.
-    // Return 404 (not 403) to avoid leaking zombie existence across workspaces.
-    const zombie_ws_id = common.getZombieWorkspaceId(conn, hx.alloc, zombie_id) orelse {
-        hx.fail(ec.ERR_ZOMBIE_NOT_FOUND, ec.MSG_ZOMBIE_NOT_FOUND);
-        return;
-    };
-    if (!std.mem.eql(u8, zombie_ws_id, workspace_id)) {
-        hx.fail(ec.ERR_ZOMBIE_NOT_FOUND, ec.MSG_ZOMBIE_NOT_FOUND);
-        return;
-    }
-
-    // Reuse `conn` via queryByZombieOnConn instead of calling queryByZombie(pool,…)
-    // — otherwise we'd hold two pool connections concurrently for one request.
-    const page = activity_stream.queryByZombieOnConn(conn, hx.alloc, zombie_id, cursor, limit) catch |err| {
-        if (err == error.InvalidCursor) {
-            hx.fail(ec.ERR_INVALID_REQUEST, "Invalid cursor format");
-            return;
-        }
-        log.err("activity.list_failed err={s} zombie_id={s} req_id={s}", .{ @errorName(err), zombie_id, hx.req_id });
-        common.internalDbError(hx.res, hx.req_id);
-        return;
-    };
-    defer page.deinit(hx.alloc);
-
-    hx.ok(.ok, .{ .items = page.events, .total = page.events.len, .cursor = page.next_cursor });
-}
-
-fn parseLimitFromQs(qs: anytype) u32 {
-    const limit_str = qs.get("limit") orelse return activity_stream.DEFAULT_ACTIVITY_PAGE_LIMIT;
-    return std.fmt.parseInt(u32, limit_str, 10) catch activity_stream.DEFAULT_ACTIVITY_PAGE_LIMIT;
-}
 
 // ── Store Credential ──────────────────────────────────────────────────
 
@@ -297,8 +234,3 @@ fn fetchCredentialListOnConn(conn: *pg.Conn, alloc: std.mem.Allocator, workspace
     return rows.toOwnedSlice(alloc);
 }
 
-test "parseLimit returns default for missing param" {
-    // parseLimit is a pure function on query params; tested indirectly via integration tests.
-    // This test validates the default constant is sensible.
-    try std.testing.expectEqual(@as(u32, 20), activity_stream.DEFAULT_ACTIVITY_PAGE_LIMIT);
-}
