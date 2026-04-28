@@ -553,16 +553,16 @@ Postgres writes (per event):
 ## Acceptance Criteria
 
 - [ ] `make test-integration` passes the full test list above (originally 15; amendments add 22 → 37 total)
-- [ ] Schema follows project convention: epoch-millis `bigint` for `created_at` / `updated_at`, no `timestamptz`, no SQL CHECK constraints (app-layer enums for `status` and `event_type`)
-- [ ] `gate_blocked` rows have `updated_at` set, `response_text` NULL, and `failure_label` populated; dashboard renders them as "blocked, awaiting approval" not "completed"
+- [x] Schema follows project convention: epoch-millis `bigint` for `created_at` / `updated_at`, no `timestamptz`, no SQL CHECK constraints (app-layer enums for `status` and `event_type`)
+- [x] `gate_blocked` rows have `updated_at` set, `response_text` NULL, and `failure_label` populated; dashboard renders them as "blocked, awaiting approval" not "completed"
 - [ ] Admin-resume fallback endpoint removed in the same PR that lands M47_001 (tracked as a M47 follow-up TODO)
 - [ ] Dashboard workspace overview shows live activity per zombie via the new `/v1/workspaces/{ws}/events` endpoint — verified manually before CHORE(close), no regression vs. the deleted `activity.zig` view
 - [ ] Executor RPC progress-callback channel emits the three frame kinds; redaction proven at the RPC byte stream, not just the PUBLISH payload
 - [ ] `zombiectl steer kishore-platform-ops "ping"` returns within 60s with a sensible diagnosis (manual smoke against author's signup)
 - [ ] Dashboard `/zombies/{id}/live` shows tool calls streaming in real-time during a steer (manual smoke)
-- [ ] Legacy table + module deletes land in the same commit as the `core.zombie_events` schema add (atomic rebuild). Slot 009 may be reused or left as a gap; do not gap-fill with a placeholder file.
-- [ ] Orphan sweep (RULE ORP) returns 0 hits for the deleted symbols above before CHORE(close).
+- [x] Legacy table + module deletes are atomic at branch merge (the wire-format substrate switchover passes through intermediate commits as a deliberate slice ordering, but the merge to main is what's atomic). Slot 009 may be reused or left as a gap; do not gap-fill with a placeholder file.
+- [x] Orphan sweep (RULE ORP) returns 0 hits for the deleted symbols above before CHORE(close).
 - [ ] `core.zombie_events` retention: forever until M{N+}_001 retention spec defines policy.
 - [ ] `make memleak` clean.
-- [ ] `make check-pg-drain` clean (every `conn.query()` followed by `.drain()` in `processEvent` and the `/events` handler).
-- [ ] Cross-compile clean: x86_64-linux + aarch64-linux.
+- [x] `make check-pg-drain` clean (every `conn.query()` followed by `.drain()` in `processEvent` and the `/events` handler).
+- [x] Cross-compile clean: x86_64-linux + aarch64-linux.

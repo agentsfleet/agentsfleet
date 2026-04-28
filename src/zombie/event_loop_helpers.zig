@@ -16,6 +16,7 @@ const metrics_workspace = @import("../observability/metrics_workspace.zig");
 const telemetry_mod = @import("../observability/telemetry.zig");
 const redis_zombie = @import("../queue/redis_zombie.zig");
 const executor_client = @import("../executor/client.zig");
+const executor_transport = @import("../executor/transport.zig");
 const id_format = @import("../types/id_format.zig");
 
 const types = @import("event_loop_types.zig");
@@ -217,12 +218,14 @@ fn parseSessionContext(alloc: Allocator, json: []const u8) ?std.json.Value {
 }
 
 /// Create executor session, run the stage, destroy session. Tracks execution_id
-/// in session + DB for API visibility (M23_001).
+/// in session + DB for API visibility. The emitter dispatches each progress
+/// frame the executor streams back — pass `ProgressEmitter.noop()` to opt out.
 pub fn executeInSandbox(
     alloc: Allocator,
     session: *ZombieSession,
     event: *const redis_zombie.ZombieEvent,
     cfg: EventLoopConfig,
+    emitter: executor_transport.ProgressEmitter,
 ) !executor_client.ExecutorClient.StageResult {
     const context_val = parseSessionContext(alloc, session.context_json);
 
@@ -268,14 +271,14 @@ pub fn executeInSandbox(
         break :blk dup;
     };
 
-    return cfg.executor.startStage(execution_id, .{
+    return cfg.executor.startStageStreaming(execution_id, .{
         .agent_config = .{
             .system_prompt = session.instructions,
             .api_key = api_key,
         },
         .message = message_text,
         .context = context_val,
-    }) catch |err| {
+    }, emitter) catch |err| {
         log.err("zombie_event_loop.stage_fail zombie_id={s} event_id={s} error_code=" ++ error_codes.ERR_EXEC_STAGE_START_FAILED, .{ session.zombie_id, event.event_id });
         return err;
     };

@@ -1,6 +1,7 @@
 // Zombie event loop — persistent agent process for a single Zombie.
 // claimZombie loads config + session, runEventLoop reads events via XREADGROUP,
-// delivers to executor, checkpoints state, XACKs. Sequential at-least-once delivery.
+// delegates each event to event_loop_writepath.run for the 13-step write path.
+// Sequential at-least-once delivery.
 
 const std = @import("std");
 const pg = @import("pg");
@@ -8,14 +9,12 @@ const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const Allocator = std.mem.Allocator;
 
 const zombie_config = @import("config.zig");
-const queue_redis = @import("../queue/redis_client.zig");
 const redis_zombie = @import("../queue/redis_zombie.zig");
+const queue_redis = @import("../queue/redis_client.zig");
 const queue_consts = @import("../queue/constants.zig");
 const error_codes = @import("../errors/error_registry.zig");
 const obs_log = @import("../observability/logging.zig");
 const id_format = @import("../types/id_format.zig");
-const event_loop_gate = @import("event_loop_gate.zig");
-const metering = @import("metering.zig");
 
 const log = std.log.scoped(.zombie_event_loop);
 
@@ -25,14 +24,12 @@ pub const ZombieSession = types.ZombieSession;
 pub const EventResult = types.EventResult;
 const helpers = @import("event_loop_helpers.zig");
 pub const EventLoopConfig = types.EventLoopConfig;
+const writepath = @import("event_loop_writepath.zig");
 const loadSessionCheckpoint = helpers.loadSessionCheckpoint;
 pub const updateSessionContext = helpers.updateSessionContext;
-const sleepWithBackoff = helpers.sleepWithBackoff;
 pub const truncateForJson = helpers.truncateForJson;
-const logDeliveryResult = helpers.logDeliveryResult;
-const recordDeliverError = helpers.recordDeliverError;
+const sleepWithBackoff = helpers.sleepWithBackoff;
 const clearExecutionActive = helpers.clearExecutionActive;
-pub const executeInSandbox = helpers.executeInSandbox;
 
 // ── Public API (spec §7.1) ───────────────────────────────────────────────
 
@@ -167,101 +164,7 @@ fn pollNextEvent(cfg: EventLoopConfig, session: *ZombieSession, consumer_id: []c
 }
 
 fn processEvent(alloc: Allocator, session: *ZombieSession, evt: *redis_zombie.ZombieEvent, cfg: EventLoopConfig, consecutive_errors: *u32) u32 {
-    // M11_006 §3: pre-claim balance gate. Under policy `stop`, a tenant
-    // whose billing row carries `balance_exhausted_at != NULL` never
-    // reaches the executor — log + XACK so Redis doesn't retry.
-    if (metering.shouldBlockDelivery(cfg.pool, alloc, session.workspace_id, session.zombie_id, cfg.balance_policy)) {
-        redis_zombie.xackZombie(cfg.redis, session.zombie_id, evt.event_id) catch |err| {
-            obs_log.logWarnErr(.zombie_event_loop, err, "zombie_event_loop.xack_fail zombie_id={s} message_id={s}", .{ session.zombie_id, evt.event_id });
-        };
-        return 0;
-    }
-
-    var result = deliverEvent(alloc, session, evt, cfg) catch |err| {
-        obs_log.logErr(.zombie_event_loop, err, "zombie_event_loop.deliver_fail zombie_id={s} event_id={s}", .{ session.zombie_id, evt.event_id });
-        recordDeliverError(cfg, session, evt.event_id);
-        sleepWithBackoff(cfg, consecutive_errors.* + 1);
-        return consecutive_errors.* + 1;
-    };
-    defer result.deinit(alloc);
-
-    checkpointState(alloc, session, cfg.pool) catch |err| {
-        obs_log.logWarnErr(.zombie_event_loop, err, "zombie_event_loop.checkpoint_fail zombie_id={s} error_code=" ++ error_codes.ERR_ZOMBIE_CHECKPOINT_FAILED, .{session.zombie_id});
-        return consecutive_errors.* + 1;
-    };
-    metering.recordZombieDelivery(cfg.pool, alloc, session.workspace_id, session.zombie_id, evt.event_id, result.wall_seconds, result.token_count, result.time_to_first_token_ms, result.epoch_wall_time_ms, cfg.balance_policy);
-
-    redis_zombie.xackZombie(cfg.redis, session.zombie_id, evt.event_id) catch |err| {
-        obs_log.logWarnErr(.zombie_event_loop, err, "zombie_event_loop.xack_fail zombie_id={s} message_id={s}", .{ session.zombie_id, evt.event_id });
-    };
-    return 0;
-}
-
-/// Deliver a single event to the executor agent.
-pub fn deliverEvent(
-    alloc: Allocator,
-    session: *ZombieSession,
-    event: *const redis_zombie.ZombieEvent,
-    cfg: EventLoopConfig,
-) !EventResult {
-    log.info("zombie_event_loop.deliver zombie_id={s} event_id={s} type={s}", .{
-        session.zombie_id, event.event_id, event.event_type,
-    });
-
-    const epoch_wall_time_ms: i64 = std.time.milliTimestamp();
-    // M15_002: wall-time spans the full deliver path — gate wait + sandbox — so the
-    // histogram reflects end-to-end latency operators see, not just executor time.
-    // Monotonic clock so system-clock steps don't skew or negate the duration.
-    const t_start = std.time.Instant.now() catch null;
-
-    // M4_001: Approval gate — check before tool execution
-    const gate_check = event_loop_gate.checkApprovalGate(alloc, session, event, cfg.pool, cfg.redis);
-    switch (gate_check) {
-        .blocked => |reason| return EventResult{
-            .status = .agent_error,
-            .agent_response = try alloc.dupe(u8, switch (reason) {
-                .approval_denied => "Action denied by operator",
-                .timeout => "Approval timed out — action denied (default-deny)",
-                .unavailable => "Gate service unavailable — action denied (default-deny)",
-            }),
-            .token_count = 0,
-            .wall_seconds = 0,
-        },
-        .auto_killed => |trigger| return EventResult{
-            .status = .agent_error,
-            .agent_response = try alloc.dupe(u8, switch (trigger) {
-                .anomaly => "Zombie auto-killed: anomaly pattern detected",
-                .policy => "Zombie auto-killed: gate policy triggered",
-            }),
-            .token_count = 0,
-            .wall_seconds = 0,
-        },
-        .passed => {},
-    }
-
-    const stage_result = try executeInSandbox(alloc, session, event, cfg);
-    const wall_ms: u64 = if (t_start) |s| blk: {
-        const now = std.time.Instant.now() catch break :blk 0;
-        break :blk now.since(s) / std.time.ns_per_ms;
-    } else 0;
-
-    const response_owned = try alloc.dupe(u8, stage_result.content);
-    errdefer alloc.free(response_owned);
-
-    updateSessionContext(alloc, session, event.event_id, stage_result.content) catch |err| {
-        log.warn("zombie_event_loop.context_update_fail zombie_id={s} err={s}", .{ session.zombie_id, @errorName(err) });
-    };
-
-    logDeliveryResult(cfg, alloc, session, event, &stage_result, wall_ms);
-
-    return EventResult{
-        .status = if (stage_result.exit_ok) .processed else .agent_error,
-        .agent_response = response_owned,
-        .token_count = stage_result.token_count,
-        .wall_seconds = stage_result.wall_seconds,
-        .time_to_first_token_ms = stage_result.time_to_first_token_ms,
-        .epoch_wall_time_ms = epoch_wall_time_ms,
-    };
+    return writepath.run(alloc, session, evt, cfg, consecutive_errors);
 }
 
 /// Checkpoint session state to Postgres (UPSERT on zombie_id).
@@ -295,6 +198,8 @@ pub fn checkpointState(
 test {
     _ = @import("event_loop_types.zig");
     _ = @import("event_loop_helpers.zig");
+    _ = @import("event_loop_writepath.zig");
     _ = @import("event_loop_test.zig");
     _ = @import("event_loop_integration_test.zig");
+    _ = @import("event_loop_writepath_integration_test.zig");
 }
