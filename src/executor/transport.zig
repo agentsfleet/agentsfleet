@@ -20,6 +20,17 @@ pub const ConnectionError = error{
     RpcVersionMismatch,
 };
 
+/// Test-only override for the rpc_version this peer advertises AND
+/// expects from the counterparty. Production sets this once at startup
+/// from EXECUTOR_HARNESS_RPC_VERSION when build_options.executor_harness
+/// is true; production builds never read it. `null` means use the
+/// canonical `pc.rpc_version`. Single-writer, startup-only.
+var hello_version_override: ?u32 = null;
+
+pub fn setHelloVersionOverride(v: ?u32) void {
+    hello_version_override = v;
+}
+
 /// Exchange HELLO frames symmetrically. Both peers write their own
 /// HELLO first (kernel-buffered on Unix sockets) then read the
 /// counterparty's HELLO — no deadlock, no order dependency.
@@ -29,7 +40,8 @@ pub const ConnectionError = error{
 /// it from the returned error; executor side logs in
 /// `Server.handleConnection`).
 fn exchangeHello(alloc: std.mem.Allocator, fd: std.posix.socket_t) !void {
-    const ours = try pc.encodeHello(alloc, .{ .rpc_version = pc.rpc_version });
+    const our_version: u32 = hello_version_override orelse pc.rpc_version;
+    const ours = try pc.encodeHello(alloc, .{ .rpc_version = our_version });
     defer alloc.free(ours);
     try protocol.writeFrameToFd(fd, ours);
 
@@ -37,7 +49,7 @@ fn exchangeHello(alloc: std.mem.Allocator, fd: std.posix.socket_t) !void {
     defer alloc.free(theirs);
 
     const peer = try pc.decodeHello(alloc, theirs);
-    if (peer.rpc_version != pc.rpc_version) return ConnectionError.RpcVersionMismatch;
+    if (peer.rpc_version != our_version) return ConnectionError.RpcVersionMismatch;
 }
 
 /// Handler callback: receives raw frame payload + the optional conn

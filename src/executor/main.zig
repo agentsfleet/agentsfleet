@@ -10,6 +10,7 @@
 
 const std = @import("std");
 const builtin = @import("builtin");
+const build_options = @import("build_options");
 const transport = @import("transport.zig");
 const handler_mod = @import("handler.zig");
 const session_mod = @import("session.zig");
@@ -26,6 +27,11 @@ const DEFAULT_LEASE_TIMEOUT_MS: u64 = 30_000;
 const DEFAULT_MEMORY_LIMIT_MB: u64 = 512;
 const DEFAULT_CPU_LIMIT_PERCENT: u64 = 100;
 
+/// Test-only env var read in harness builds; lets integration tests
+/// drive the rpc_version_mismatch fast-fail path without producing a
+/// second binary. Stripped from production via the comptime branch.
+const HARNESS_RPC_VERSION_ENV_VAR = "EXECUTOR_HARNESS_RPC_VERSION";
+
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{ .thread_safe = true }){};
     defer _ = gpa.deinit();
@@ -36,6 +42,15 @@ pub fn main() !void {
     const memory_limit_mb = parseU64Env(alloc, "EXECUTOR_MEMORY_LIMIT_MB", DEFAULT_MEMORY_LIMIT_MB);
     const cpu_limit_percent = parseU64Env(alloc, "EXECUTOR_CPU_LIMIT_PERCENT", DEFAULT_CPU_LIMIT_PERCENT);
     const net_policy = network.policyFromEnv(alloc);
+
+    if (build_options.executor_harness) {
+        const v_u64 = parseU64Env(alloc, HARNESS_RPC_VERSION_ENV_VAR, 0);
+        if (v_u64 > 0 and v_u64 <= std.math.maxInt(u32)) {
+            const v: u32 = @intCast(v_u64);
+            transport.setHelloVersionOverride(v);
+            log.warn("startup.rpc_version_override version={d} (test-only harness path)", .{v});
+        }
+    }
 
     log.info("startup.executor socket={s} lease_timeout_ms={d} network_policy={s}", .{
         socket_path,

@@ -72,8 +72,13 @@ pub fn start(alloc: Allocator, opts: Options) !Harness {
         .connected = false,
     };
 
+    // Always wait for the listener socket — the binary writes it during
+    // its bind step, well before any handshake. auto_connect only governs
+    // whether we then drive the client through HELLO; tests that want to
+    // observe connect-time errors (e.g. version mismatch) opt out of the
+    // automatic connect and call it themselves.
+    try harness.waitForSocket();
     if (opts.auto_connect) {
-        try harness.waitForSocket();
         harness.executor.connect() catch |err| {
             return err;
         };
@@ -188,7 +193,12 @@ fn waitForSocket(self: *Harness) !void {
 }
 
 fn terminateChild(child: *std.process.Child) void {
+    // Send SIGTERM and reap the child so its OS-level entry doesn't linger
+    // as a zombie and the std.process.Child handle frees its internals.
+    // Without wait(), a long test run accumulates zombies and the test
+    // allocator detects leaked Child internals at suite shutdown.
     _ = child.kill() catch {};
+    _ = child.wait() catch {};
 }
 
 test "harness skips when binary missing and no override" {
