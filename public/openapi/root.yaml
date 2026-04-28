@@ -24,10 +24,6 @@ tags:
   description: Create and manage workspaces (one workspace per repo)
   x-mintlify:
     navigation: Workspaces
-- name: Activity
-  description: Workspace-wide activity feed (scheduled spec queues, zombie state transitions, webhook ingestion)
-  x-mintlify:
-    navigation: Activity
 - name: Runs
   description: Core spec-to-PR pipeline — queue, monitor, stream, retry, and cancel runs
   x-mintlify:

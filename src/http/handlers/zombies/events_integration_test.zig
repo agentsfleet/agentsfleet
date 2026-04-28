@@ -18,11 +18,14 @@ const ALLOC = std.testing.allocator;
 
 // Reuse the JWT signing fixture (kid + JWKS + tenant/workspace claims) from
 // steer_integration_test.zig so we don't have to mint a fresh signature.
-// Zombies live in this same workspace; the test isolates state by zombie_id.
+// Zombie ids must NOT collide with cross_workspace_idor_test (…bbb01) or
+// event_loop_execution_tracking_test (…bbb01) — those suites' `ON CONFLICT
+// DO NOTHING` seeds preserve whichever workspace_id stamped the row first,
+// so a shared id leaks ownership across suites and breaks the loser.
 const TEST_TENANT_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01";
 const TEST_WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
-const ZOMBIE_A = "0195b4ba-8d3a-7f13-8abc-2b3e1e0bbb01";
-const ZOMBIE_B = "0195b4ba-8d3a-7f13-8abc-2b3e1e0bbb02";
+const ZOMBIE_A = "0195b4ba-8d3a-7f13-8abc-2b3e1e0eee01";
+const ZOMBIE_B = "0195b4ba-8d3a-7f13-8abc-2b3e1e0eee02";
 const TEST_ISSUER = "https://clerk.dev.usezombie.com";
 const TEST_AUDIENCE = "https://api.usezombie.com";
 const TEST_JWKS =
@@ -108,7 +111,7 @@ test "integration: events GET — no bearer → 401" {
     const url = try std.fmt.allocPrint(ALLOC, "/v1/workspaces/{s}/zombies/{s}/events", .{ TEST_WORKSPACE_ID, ZOMBIE_A });
     defer ALLOC.free(url);
 
-    const r = try (try h.get(url)).send();
+    const r = try (h.get(url)).send();
     defer r.deinit();
     try r.expectStatus(.unauthorized);
 
@@ -127,7 +130,7 @@ test "integration: events GET — since and cursor mutually exclusive → 400" {
     const url = try std.fmt.allocPrint(ALLOC, "/v1/workspaces/{s}/zombies/{s}/events?since=2h&cursor=abc", .{ TEST_WORKSPACE_ID, ZOMBIE_A });
     defer ALLOC.free(url);
 
-    const r = try (try (try h.get(url)).bearer(TOKEN_OPERATOR)).send();
+    const r = try (try (h.get(url)).bearer(TOKEN_OPERATOR)).send();
     defer r.deinit();
     try r.expectStatus(.bad_request);
     try std.testing.expect(r.bodyContains("since_and_cursor_mutually_exclusive"));
@@ -147,7 +150,7 @@ test "integration: events GET — invalid since format → 400" {
     const url = try std.fmt.allocPrint(ALLOC, "/v1/workspaces/{s}/zombies/{s}/events?since=bogus", .{ TEST_WORKSPACE_ID, ZOMBIE_A });
     defer ALLOC.free(url);
 
-    const r = try (try (try h.get(url)).bearer(TOKEN_OPERATOR)).send();
+    const r = try (try (h.get(url)).bearer(TOKEN_OPERATOR)).send();
     defer r.deinit();
     try r.expectStatus(.bad_request);
     try std.testing.expect(r.bodyContains("invalid_since_format"));
@@ -170,7 +173,7 @@ test "integration: events stream — no bearer → 401" {
     const url = try std.fmt.allocPrint(ALLOC, "/v1/workspaces/{s}/zombies/{s}/events/stream", .{ TEST_WORKSPACE_ID, ZOMBIE_A });
     defer ALLOC.free(url);
 
-    const r = try (try h.get(url)).send();
+    const r = try (h.get(url)).send();
     defer r.deinit();
     try r.expectStatus(.unauthorized);
 
@@ -190,7 +193,7 @@ test "integration: events stream — invalid bearer → 401" {
     const url = try std.fmt.allocPrint(ALLOC, "/v1/workspaces/{s}/zombies/{s}/events/stream", .{ TEST_WORKSPACE_ID, ZOMBIE_A });
     defer ALLOC.free(url);
 
-    const r = try (try (try h.get(url)).bearer("not.a.real.jwt")).send();
+    const r = try (try (h.get(url)).bearer("not.a.real.jwt")).send();
     defer r.deinit();
     try r.expectStatus(.unauthorized);
 
@@ -214,7 +217,7 @@ test "integration: events GET — actor=steer:* glob filter returns steer events
     const url = try std.fmt.allocPrint(ALLOC, "/v1/workspaces/{s}/events?actor=steer:*", .{TEST_WORKSPACE_ID});
     defer ALLOC.free(url);
 
-    const r = try (try (try h.get(url)).bearer(TOKEN_OPERATOR)).send();
+    const r = try (try (h.get(url)).bearer(TOKEN_OPERATOR)).send();
     defer r.deinit();
     try r.expectStatus(.ok);
     try std.testing.expect(r.bodyContains("steer:kishore"));
@@ -237,7 +240,7 @@ test "integration: events GET — actor=webhook:github exact filter" {
     const url = try std.fmt.allocPrint(ALLOC, "/v1/workspaces/{s}/events?actor=webhook:github", .{TEST_WORKSPACE_ID});
     defer ALLOC.free(url);
 
-    const r = try (try (try h.get(url)).bearer(TOKEN_OPERATOR)).send();
+    const r = try (try (h.get(url)).bearer(TOKEN_OPERATOR)).send();
     defer r.deinit();
     try r.expectStatus(.ok);
     try std.testing.expect(r.bodyContains("webhook:github"));
@@ -261,7 +264,7 @@ test "integration: workspace events GET — sorted DESC + zombie_id drill-down f
     {
         const url = try std.fmt.allocPrint(ALLOC, "/v1/workspaces/{s}/events", .{TEST_WORKSPACE_ID});
         defer ALLOC.free(url);
-        const r = try (try (try h.get(url)).bearer(TOKEN_OPERATOR)).send();
+        const r = try (try (h.get(url)).bearer(TOKEN_OPERATOR)).send();
         defer r.deinit();
         try r.expectStatus(.ok);
         // Newest first: created_at=…004 (cron) precedes …000 (oldest) in body order.
@@ -274,7 +277,7 @@ test "integration: workspace events GET — sorted DESC + zombie_id drill-down f
     {
         const url = try std.fmt.allocPrint(ALLOC, "/v1/workspaces/{s}/events?zombie_id={s}", .{ TEST_WORKSPACE_ID, ZOMBIE_A });
         defer ALLOC.free(url);
-        const r = try (try (try h.get(url)).bearer(TOKEN_OPERATOR)).send();
+        const r = try (try (h.get(url)).bearer(TOKEN_OPERATOR)).send();
         defer r.deinit();
         try r.expectStatus(.ok);
         try std.testing.expect(r.bodyContains("1700000000000-0"));
@@ -312,7 +315,7 @@ test "integration: events GET — since=2h filters by relative duration" {
 
     const url = try std.fmt.allocPrint(ALLOC, "/v1/workspaces/{s}/zombies/{s}/events?since=2h", .{ TEST_WORKSPACE_ID, ZOMBIE_A });
     defer ALLOC.free(url);
-    const r = try (try (try h.get(url)).bearer(TOKEN_OPERATOR)).send();
+    const r = try (try (h.get(url)).bearer(TOKEN_OPERATOR)).send();
     defer r.deinit();
     try r.expectStatus(.ok);
     try std.testing.expect(r.bodyContains(recent_eid));
@@ -402,7 +405,7 @@ test "integration: events GET — since=ISO8601 absolute timestamp" {
     };
     defer h.deinit();
 
-    // 2026-04-25T00:00:00Z = 1745539200000 ms. Insert one event before, one after.
+    // 2025-04-25T00:00:00Z = 1745539200000 ms. Insert one event before, one after.
     const cutoff_ms: i64 = 1_745_539_200_000;
     const before_eid = "1900000000010-0";
     const after_eid = "1900000000011-0";
@@ -413,9 +416,9 @@ test "integration: events GET — since=ISO8601 absolute timestamp" {
         try insertEvent(conn, ZOMBIE_A, after_eid, "steer:kishore", "chat", cutoff_ms + 1);
     }
 
-    const url = try std.fmt.allocPrint(ALLOC, "/v1/workspaces/{s}/zombies/{s}/events?since=2026-04-25T00:00:00Z", .{ TEST_WORKSPACE_ID, ZOMBIE_A });
+    const url = try std.fmt.allocPrint(ALLOC, "/v1/workspaces/{s}/zombies/{s}/events?since=2025-04-25T00:00:00Z", .{ TEST_WORKSPACE_ID, ZOMBIE_A });
     defer ALLOC.free(url);
-    const r = try (try (try h.get(url)).bearer(TOKEN_OPERATOR)).send();
+    const r = try (try (h.get(url)).bearer(TOKEN_OPERATOR)).send();
     defer r.deinit();
     try r.expectStatus(.ok);
     try std.testing.expect(r.bodyContains(after_eid));

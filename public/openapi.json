@@ -43,13 +43,6 @@
       }
     },
     {
-      "name": "Activity",
-      "description": "Workspace-wide activity feed (scheduled spec queues, zombie state transitions, webhook ingestion)",
-      "x-mintlify": {
-        "navigation": "Activity"
-      }
-    },
-    {
       "name": "Runs",
       "description": "Core spec-to-PR pipeline — queue, monitor, stream, retry, and cancel runs",
       "x-mintlify": {
@@ -4282,30 +4275,6 @@
           "updated_at": {
             "type": "integer",
             "description": "Unix timestamp in milliseconds"
-          }
-        }
-      },
-      "ActivityEvent": {
-        "type": "object",
-        "required": [
-          "event_id",
-          "event_type",
-          "created_at"
-        ],
-        "properties": {
-          "event_id": {
-            "type": "string"
-          },
-          "event_type": {
-            "type": "string"
-          },
-          "detail": {
-            "type": "string",
-            "nullable": true
-          },
-          "created_at": {
-            "type": "integer",
-            "format": "int64"
           }
         }
       },

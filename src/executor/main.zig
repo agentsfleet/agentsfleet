@@ -37,7 +37,12 @@ pub fn main() !void {
     defer _ = gpa.deinit();
     const alloc = gpa.allocator();
 
-    const socket_path = envOrDefault(alloc, "EXECUTOR_SOCKET_PATH", DEFAULT_SOCKET_PATH);
+    // getEnvVarOwned returns a fresh allocation; the default branch borrows a
+    // const literal. Track ownership so the env-set path doesn't leak at
+    // shutdown when the GPA tallies live allocations.
+    const socket_path_owned: ?[]u8 = std.process.getEnvVarOwned(alloc, "EXECUTOR_SOCKET_PATH") catch null;
+    defer if (socket_path_owned) |p| alloc.free(p);
+    const socket_path: []const u8 = socket_path_owned orelse DEFAULT_SOCKET_PATH;
     const lease_timeout_ms = parseU64Env(alloc, "EXECUTOR_LEASE_TIMEOUT_MS", DEFAULT_LEASE_TIMEOUT_MS);
     const memory_limit_mb = parseU64Env(alloc, "EXECUTOR_MEMORY_LIMIT_MB", DEFAULT_MEMORY_LIMIT_MB);
     const cpu_limit_percent = parseU64Env(alloc, "EXECUTOR_CPU_LIMIT_PERCENT", DEFAULT_CPU_LIMIT_PERCENT);
@@ -128,10 +133,6 @@ pub fn main() !void {
     lease_manager.stop();
     lease_thread.join();
     log.info("executor.shutdown", .{});
-}
-
-fn envOrDefault(alloc: std.mem.Allocator, name: []const u8, default: []const u8) []const u8 {
-    return std.process.getEnvVarOwned(alloc, name) catch default;
 }
 
 fn parseU64Env(alloc: std.mem.Allocator, name: []const u8, default: u64) u64 {

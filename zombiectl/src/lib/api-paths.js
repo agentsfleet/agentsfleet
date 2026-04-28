@@ -18,10 +18,6 @@ export const wsZombiePath = (wsId, zombieId) =>
 export const wsZombieKillPath = (wsId, zombieId) =>
   `${WORKSPACES_PATH}${enc(wsId)}/zombies/${enc(zombieId)}/kill`;
 
-// Workspace-scoped per-zombie activity stream.
-export const wsZombieActivityPath = (wsId, zombieId) =>
-  `${WORKSPACES_PATH}${enc(wsId)}/zombies/${enc(zombieId)}/activity`;
-
 // Workspace-scoped per-zombie steer (POST → 202 with event_id).
 export const wsZombieSteerPath = (wsId, zombieId) =>
   `${WORKSPACES_PATH}${enc(wsId)}/zombies/${enc(zombieId)}/steer`;

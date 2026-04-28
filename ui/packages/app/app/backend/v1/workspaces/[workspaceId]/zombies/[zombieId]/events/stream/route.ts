@@ -19,7 +19,11 @@ export async function GET(req: Request, { params }: Params) {
   const { workspaceId, zombieId } = await params;
 
   const { getToken } = await auth();
-  const token = await getToken();
+  // The Zig backend enforces aud=https://api.usezombie.com; mint an
+  // API-audience JWT via the Clerk "api" template per docs/AUTH.md §"UI ·
+  // SSE stream". Bare getToken() returns the default-aud session JWT and
+  // 401s upstream.
+  const token = await getToken({ template: "api" });
   if (!token) {
     return new Response(JSON.stringify({ error: "Unauthorized", code: "UZ-401" }), {
       status: 401,

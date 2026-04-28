@@ -187,6 +187,11 @@ pub const Handler = struct {
             context,
             writer_ptr,
         );
+        // Ownership: every non-empty `content` is an `alloc.dupe` from the
+        // runner (production runner.zig:285 and harness runner_harness.zig:96);
+        // every empty `content` is a `""` string literal returned by failure or
+        // no-op branches and is therefore not heap-allocated. Free iff non-empty.
+        defer if (result.content.len > 0) alloc.free(result.content);
         session.recordStageResult(result);
         session.touchLease();
 

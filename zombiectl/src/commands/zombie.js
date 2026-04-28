@@ -6,7 +6,7 @@
 import {
   wsZombiesPath,
   wsZombieKillPath,
-  wsZombieActivityPath,
+  wsZombieEventsPath,
 } from "../lib/api-paths.js";
 import {
   loadSkillFromPath,
@@ -218,7 +218,7 @@ async function commandLogs(ctx, args, workspaces, deps) {
     writeError(ctx, "MISSING_ARGUMENT", "logs requires --zombie <id>", deps);
     return 2;
   }
-  let url = `${wsZombieActivityPath(wsId, zombieId)}?limit=${encodeURIComponent(limit)}`;
+  let url = `${wsZombieEventsPath(wsId, zombieId)}?limit=${encodeURIComponent(limit)}`;
   if (parsed.options.cursor) {
     url += `&cursor=${encodeURIComponent(parsed.options.cursor)}`;
   }
@@ -235,19 +235,23 @@ async function commandLogs(ctx, args, workspaces, deps) {
 
   const events = res.items ?? [];
   if (events.length === 0) {
-    writeLine(ctx.stdout, ui.info("No activity yet."));
+    writeLine(ctx.stdout, ui.info("No events yet."));
     return 0;
   }
 
-  printSection(ctx.stdout, "Activity Stream");
+  // The events endpoint replaced the activity stream in M42; row shape now
+  // carries actor/status/response_text instead of event_type/detail. Render
+  // the new shape verbatim — `zombiectl events` is the richer surface.
+  printSection(ctx.stdout, "Event Stream");
   for (const evt of events) {
     const ts = evt.created_at ? new Date(evt.created_at).toISOString() : "—";
-    writeLine(ctx.stdout, `  ${ui.dim(ts)}  ${evt.event_type}  ${evt.detail || ""}`);
+    const summary = evt.response_text ? evt.response_text.slice(0, 80) : (evt.status ?? "");
+    writeLine(ctx.stdout, `  ${ui.dim(ts)}  ${evt.actor}  ${summary}`);
   }
 
-  if (res.cursor) {
+  if (res.next_cursor) {
     writeLine(ctx.stdout);
-    writeLine(ctx.stdout, ui.dim(`  More: zombiectl logs --cursor=${res.cursor}`));
+    writeLine(ctx.stdout, ui.dim(`  More: zombiectl logs --cursor=${res.next_cursor}`));
   }
 
   return 0;

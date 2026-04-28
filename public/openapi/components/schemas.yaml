@@ -1,22 +1,5 @@
 components:
   schemas:
-    ActivityEvent:
-      type: object
-      required:
-      - event_id
-      - event_type
-      - created_at
-      properties:
-        event_id:
-          type: string
-        event_type:
-          type: string
-        detail:
-          type: string
-          nullable: true
-        created_at:
-          type: integer
-          format: int64
     AgentProfile:
       type: object
       description: Agent profile including trust and improvement metadata
