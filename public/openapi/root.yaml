@@ -166,8 +166,14 @@ paths:
     $ref: ./paths/telemetry.yaml#/~1v1~1workspaces~1{workspace_id}~1zombies~1{zombie_id}~1telemetry
   /v1/workspaces/{workspace_id}/zombies/{zombie_id}/steer:
     $ref: ./paths/zombies.yaml#/~1v1~1workspaces~1{workspace_id}~1zombies~1{zombie_id}~1steer
+  /v1/workspaces/{workspace_id}/zombies/{zombie_id}/events:
+    $ref: ./paths/zombies.yaml#/~1v1~1workspaces~1{workspace_id}~1zombies~1{zombie_id}~1events
+  /v1/workspaces/{workspace_id}/zombies/{zombie_id}/events/stream:
+    $ref: ./paths/zombies.yaml#/~1v1~1workspaces~1{workspace_id}~1zombies~1{zombie_id}~1events~1stream
   /v1/workspaces/{workspace_id}/zombies/{zombie_id}/current-run:
     $ref: ./paths/zombies.yaml#/~1v1~1workspaces~1{workspace_id}~1zombies~1{zombie_id}~1current-run
+  /v1/workspaces/{workspace_id}/events:
+    $ref: ./paths/workspaces.yaml#/~1v1~1workspaces~1{workspace_id}~1events
   /v1/workspaces/{workspace_id}/pause:
     $ref: ./paths/workspaces.yaml#/~1v1~1workspaces~1{workspace_id}~1pause
   /v1/workspaces/{workspace_id}/sync:

@@ -50,6 +50,11 @@ pub const Route = union(enum) {
     delete_workspace_credential: matchers.WorkspaceCredentialRoute, // DELETE /v1/workspaces/{ws}/credentials/{name}
     // M23_001 / M24_001: Live steering — POST /v1/workspaces/{ws}/zombies/{id}/steer
     workspace_zombie_steer: matchers.WorkspaceZombieRoute,
+    // Per-zombie event history + SSE live tail
+    workspace_zombie_events: matchers.WorkspaceZombieRoute, // GET /v1/workspaces/{ws}/zombies/{id}/events
+    workspace_zombie_events_stream: matchers.WorkspaceZombieRoute, // GET /v1/workspaces/{ws}/zombies/{id}/events/stream (SSE)
+    // Workspace-aggregate event history (replaces deleted activity.zig)
+    workspace_events: []const u8, // GET /v1/workspaces/{ws}/events
     // Dashboard-facing kill switch
     workspace_zombie_current_run: matchers.WorkspaceZombieRoute, // DELETE /v1/workspaces/{ws}/zombies/{id}/current-run — kill the running action
     // M18_001: zombie execution telemetry
@@ -132,11 +137,15 @@ pub fn match(path: []const u8) ?Route {
 
     // Workspace-scoped zombie collection + single-resource + sub-resources.
     // Most-specific paths first to avoid collisions.
+    if (matchers.matchWorkspaceZombieAction(path, "/events/stream")) |route| return .{ .workspace_zombie_events_stream = route };
+    if (matchers.matchWorkspaceZombieAction(path, "/events")) |route| return .{ .workspace_zombie_events = route };
     if (matchers.matchWorkspaceZombieAction(path, "/steer")) |route| return .{ .workspace_zombie_steer = route };
     if (matchers.matchWorkspaceZombieAction(path, "/current-run")) |route| return .{ .workspace_zombie_current_run = route };
     if (matchers.matchWorkspaceZombieAction(path, "/kill")) |route| return .{ .kill_workspace_zombie = route };
     if (matchers.matchWorkspaceZombie(path)) |route| return .{ .patch_workspace_zombie = route };
     if (matchWorkspaceSuffix(path, "/zombies")) |workspace_id| return .{ .workspace_zombies = workspace_id };
+    // Workspace-aggregate event history — /v1/workspaces/{ws}/events
+    if (matchWorkspaceSuffix(path, "/events")) |workspace_id| return .{ .workspace_events = workspace_id };
     // credentials/llm is already handled above; /credentials/{name} matches a single
     // named credential (DELETE), and /credentials (plain) is the collection (GET|POST).
     // Most-specific path first.

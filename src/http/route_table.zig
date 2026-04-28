@@ -88,6 +88,12 @@ pub fn specFor(route: router.Route, registry: *auth_mw.MiddlewareRegistry) ?Rout
         .delete_workspace_credential => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceCredentialDelete },
         // M23_001 / M24_001: live steering (workspace-scoped)
         .workspace_zombie_steer => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeZombieSteer },
+        // Per-zombie event history + SSE live tail (Bearer this slice;
+        // cookie auth path lands with the dashboard slice).
+        .workspace_zombie_events => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeZombieEvents },
+        .workspace_zombie_events_stream => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeZombieEventsStream },
+        // Workspace-aggregate event history (replaces deleted activity.zig)
+        .workspace_events => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceEvents },
         // Dashboard endpoints — kill switch, per-zombie billing
         .workspace_zombie_current_run => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeDeleteCurrentRun },
 

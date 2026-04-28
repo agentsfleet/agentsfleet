@@ -118,6 +118,79 @@
                   format: uuid
       default:
         $ref: ../components/responses.yaml#/components/responses/Error
+/v1/workspaces/{workspace_id}/events:
+  get:
+    operationId: list_workspace_events
+    summary: List a workspace's aggregate event history
+    description: >
+      Cursor-paginated list of operator-visible events across every
+      zombie in the workspace, newest first. Replaces the deleted
+      activity endpoint. Optional `zombie_id` filter narrows to one
+      zombie. Same query shape as the per-zombie endpoint - `actor`
+      glob, `since=` (duration or RFC 3339), and a `cursor` mutually
+      exclusive with `since`.
+    tags:
+    - Workspaces
+    parameters:
+    - name: workspace_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    - name: zombie_id
+      in: query
+      required: false
+      description: Drill down to one zombie within the workspace.
+      schema:
+        type: string
+        format: uuid
+    - name: cursor
+      in: query
+      required: false
+      description: Opaque cursor from a prior response. Mutually exclusive with `since`.
+      schema:
+        type: string
+    - name: actor
+      in: query
+      required: false
+      description: Glob filter against actor.
+      schema:
+        type: string
+    - name: since
+      in: query
+      required: false
+      description: Lower bound on `created_at`. Go-style duration or RFC 3339 timestamp.
+      schema:
+        type: string
+    - name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 200
+        default: 50
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - items
+              - next_cursor
+              properties:
+                items:
+                  type: array
+                  items:
+                    type: object
+                next_cursor:
+                  type: string
+                  nullable: true
+      default:
+        $ref: ../components/responses.yaml#/components/responses/Error
 /v1/workspaces/{workspace_id}/sync:
   post:
     operationId: sync_specs
