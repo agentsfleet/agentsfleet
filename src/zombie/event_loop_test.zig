@@ -432,27 +432,29 @@ test "T10: zombie reclaim interval matches pipeline pattern" {
 
 const redis_zombie = @import("../queue/redis_zombie.zig");
 
-test "T11: ZombieEvent.deinit frees all owned fields" {
+test "ZombieEvent.deinit frees all owned fields" {
     const alloc = std.testing.allocator;
     var evt = redis_zombie.ZombieEvent{
-        .message_id = try alloc.dupe(u8, "1234567890-0"),
-        .event_id = try alloc.dupe(u8, "evt_abc123"),
-        .event_type = try alloc.dupe(u8, "message.received"),
-        .source = try alloc.dupe(u8, "agentmail"),
-        .data_json = try alloc.dupe(u8, "{\"from\":\"user@example.com\"}"),
+        .event_id = try alloc.dupe(u8, "1234567890-0"),
+        .event_type = try alloc.dupe(u8, "webhook"),
+        .actor = try alloc.dupe(u8, "webhook:agentmail"),
+        .workspace_id = try alloc.dupe(u8, "ws_test"),
+        .request_json = try alloc.dupe(u8, "{\"message\":\"hi\"}"),
+        .created_at_ms = 1745568000000,
     };
     evt.deinit(alloc);
     // leak detector verifies no leaks
 }
 
-test "T11: ZombieEvent.deinit handles empty fields" {
+test "ZombieEvent.deinit handles empty fields" {
     const alloc = std.testing.allocator;
     var evt = redis_zombie.ZombieEvent{
-        .message_id = try alloc.dupe(u8, "0-0"),
         .event_id = try alloc.dupe(u8, ""),
         .event_type = try alloc.dupe(u8, ""),
-        .source = try alloc.dupe(u8, ""),
-        .data_json = try alloc.dupe(u8, "{}"),
+        .actor = try alloc.dupe(u8, ""),
+        .workspace_id = try alloc.dupe(u8, ""),
+        .request_json = try alloc.dupe(u8, "{}"),
+        .created_at_ms = 0,
     };
     evt.deinit(alloc);
 }

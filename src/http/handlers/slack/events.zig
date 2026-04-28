@@ -22,6 +22,7 @@ const workspace_integrations = @import("../../../state/workspace_integrations.zi
 const common = @import("../common.zig");
 const hx_mod = @import("../hx.zig");
 const ec = @import("../../../errors/error_registry.zig");
+const EventEnvelope = @import("../../../zombie/event_envelope.zig");
 
 const log = std.log.scoped(.http_slack_events);
 
@@ -129,18 +130,27 @@ pub fn innerSlackEvent(hx: Hx, req: *httpz.Request) void {
         return;
     };
 
-    const event_id = payload.event_id orelse "slack_evt";
-    const event_type = if (payload.event) |evt| evt.type else "unknown";
+    const event_type_label = if (payload.event) |evt| evt.type else "unknown";
 
-    hx.ctx.queue.xaddZombieEvent(zombie_id, event_id, event_type, "slack", body) catch |err| {
+    const envelope = EventEnvelope{
+        .event_id = "",
+        .zombie_id = zombie_id,
+        .workspace_id = workspace_id,
+        .actor = "webhook:slack",
+        .event_type = .webhook,
+        .request_json = body,
+        .created_at = std.time.milliTimestamp(),
+    };
+    const new_event_id = hx.ctx.queue.xaddZombieEvent(envelope) catch |err| {
         log.err("slack.events.enqueue_fail zombie_id={s} err={s} req_id={s}", .{ zombie_id, @errorName(err), hx.req_id });
         hx.res.status = 503; // Redis error — Slack should retry
         hx.res.body = "{}";
         return;
     };
+    defer hx.alloc.free(new_event_id);
 
-    log.info("slack.events.enqueued zombie_id={s} event_id={s} type={s} req_id={s}", .{
-        zombie_id, event_id, event_type, hx.req_id,
+    log.info("slack.events.enqueued zombie_id={s} event_id={s} slack_event_type={s} req_id={s}", .{
+        zombie_id, new_event_id, event_type_label, hx.req_id,
     });
     hx.res.status = 200;
     hx.res.body = "{}";

@@ -20,6 +20,7 @@ const redis_zombie = @import("../queue/redis_zombie.zig");
 const queue_consts = @import("../queue/constants.zig");
 const executor_client = @import("../executor/client.zig");
 const id_format = @import("../types/id_format.zig");
+const EventEnvelope = @import("event_envelope.zig");
 
 const types = @import("event_loop_types.zig");
 const ZombieSession = types.ZombieSession;
@@ -236,16 +237,29 @@ pub fn pollSteerAndInject(alloc: Allocator, cfg: EventLoopConfig, session: *cons
     const msg = cfg.redis.getDel(key) catch null orelse return;
     defer alloc.free(msg);
 
-    const event_id = id_format.generateZombieId(alloc) catch {
+    // Wrap the raw steer message as the envelope's structured request field.
+    const request_json = std.fmt.allocPrint(alloc, "{{\"message\":{f}}}", .{std.json.fmt(msg, .{})}) catch {
         log.warn("zombie_event_loop.steer_poll_oom zombie_id={s}", .{session.zombie_id});
         return;
     };
-    defer alloc.free(event_id);
+    defer alloc.free(request_json);
 
-    cfg.redis.xaddZombieEvent(session.zombie_id, event_id, "steer", "operator", msg) catch |err| {
-        log.warn("zombie_event_loop.steer_inject_fail zombie_id={s} err={s}", .{ session.zombie_id, @errorName(err) });
+    const envelope = EventEnvelope{
+        .event_id = "",
+        .zombie_id = session.zombie_id,
+        .workspace_id = session.workspace_id,
+        .actor = "steer:operator",
+        .event_type = .chat,
+        .request_json = request_json,
+        .created_at = std.time.milliTimestamp(),
     };
-    log.info("zombie_event_loop.steer_injected zombie_id={s} event_id={s}", .{ session.zombie_id, event_id });
+
+    const new_event_id = cfg.redis.xaddZombieEvent(envelope) catch |err| {
+        log.warn("zombie_event_loop.steer_inject_fail zombie_id={s} err={s}", .{ session.zombie_id, @errorName(err) });
+        return;
+    };
+    defer alloc.free(new_event_id);
+    log.info("zombie_event_loop.steer_injected zombie_id={s} event_id={s}", .{ session.zombie_id, new_event_id });
 }
 
 // ── Sandbox execution (moved from event_loop.zig for RULE FLL) ───────────────
@@ -291,12 +305,29 @@ pub fn executeInSandbox(
     const api_key: []const u8 = resolveFirstCredential(alloc, cfg.pool, session) catch "";
     defer if (api_key.len > 0) alloc.free(api_key);
 
+    // Extract the agent-facing message from the envelope's structured
+    // request payload (`{"message": "...", "metadata": {...}}`). Fall back
+    // to the raw request JSON when the field is missing, so producers that
+    // forget to wrap still deliver something.
+    var owned_message: ?[]u8 = null;
+    defer if (owned_message) |m| alloc.free(m);
+    const message_text: []const u8 = blk: {
+        var parsed = std.json.parseFromSlice(std.json.Value, alloc, event.request_json, .{}) catch break :blk event.request_json;
+        defer parsed.deinit();
+        if (parsed.value != .object) break :blk event.request_json;
+        const msg_val = parsed.value.object.get("message") orelse break :blk event.request_json;
+        if (msg_val != .string) break :blk event.request_json;
+        const dup = alloc.dupe(u8, msg_val.string) catch break :blk event.request_json;
+        owned_message = dup;
+        break :blk dup;
+    };
+
     return cfg.executor.startStage(execution_id, .{
         .agent_config = .{
             .system_prompt = session.instructions,
             .api_key = api_key,
         },
-        .message = event.data_json,
+        .message = message_text,
         .context = context_val,
     }) catch |err| {
         log.err("zombie_event_loop.stage_fail zombie_id={s} event_id={s} error_code=" ++ error_codes.ERR_EXEC_STAGE_START_FAILED, .{ session.zombie_id, event.event_id });

@@ -180,8 +180,8 @@ fn processEvent(alloc: Allocator, session: *ZombieSession, evt: *redis_zombie.Zo
     // reaches the executor — log + XACK so Redis doesn't retry.
     if (metering.shouldBlockDelivery(cfg.pool, alloc, session.workspace_id, session.zombie_id, cfg.balance_policy)) {
         logActivity(cfg.pool, alloc, session, activity_stream.EVT_BALANCE_GATE_BLOCKED, evt.event_id);
-        redis_zombie.xackZombie(cfg.redis, session.zombie_id, evt.message_id) catch |err| {
-            obs_log.logWarnErr(.zombie_event_loop, err, "zombie_event_loop.xack_fail zombie_id={s} message_id={s}", .{ session.zombie_id, evt.message_id });
+        redis_zombie.xackZombie(cfg.redis, session.zombie_id, evt.event_id) catch |err| {
+            obs_log.logWarnErr(.zombie_event_loop, err, "zombie_event_loop.xack_fail zombie_id={s} message_id={s}", .{ session.zombie_id, evt.event_id });
         };
         return 0;
     }
@@ -201,8 +201,8 @@ fn processEvent(alloc: Allocator, session: *ZombieSession, evt: *redis_zombie.Zo
     };
     metering.recordZombieDelivery(cfg.pool, alloc, session.workspace_id, session.zombie_id, evt.event_id, result.wall_seconds, result.token_count, result.time_to_first_token_ms, result.epoch_wall_time_ms, cfg.balance_policy);
 
-    redis_zombie.xackZombie(cfg.redis, session.zombie_id, evt.message_id) catch |err| {
-        obs_log.logWarnErr(.zombie_event_loop, err, "zombie_event_loop.xack_fail zombie_id={s} message_id={s}", .{ session.zombie_id, evt.message_id });
+    redis_zombie.xackZombie(cfg.redis, session.zombie_id, evt.event_id) catch |err| {
+        obs_log.logWarnErr(.zombie_event_loop, err, "zombie_event_loop.xack_fail zombie_id={s} message_id={s}", .{ session.zombie_id, evt.event_id });
     };
     return 0;
 }
