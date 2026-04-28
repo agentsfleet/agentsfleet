@@ -188,6 +188,7 @@ test {
     _ = @import("executor/progress_callbacks.zig");
     _ = @import("executor/progress_callbacks_test.zig");
     _ = @import("executor/transport.zig");
+    _ = @import("executor/transport_test.zig");
     _ = @import("executor/session.zig");
     _ = @import("executor/executor_metrics.zig");
     _ = @import("executor/landlock.zig");

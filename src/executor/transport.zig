@@ -6,6 +6,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const protocol = @import("protocol.zig");
+const pc = @import("progress_callbacks.zig");
 
 const log = std.log.scoped(.executor_transport);
 
@@ -14,11 +15,60 @@ pub const ConnectionError = error{
     SocketConnectFailed,
     ConnectionClosed,
     FrameTooLarge,
+    /// Peer advertised a different rpc_version. Pre-v2.0.0 there is no
+    /// v1 compat shim; both sides log + abort the connection.
+    RpcVersionMismatch,
 };
+
+/// Exchange HELLO frames symmetrically. Both peers write their own
+/// HELLO first (kernel-buffered on Unix sockets) then read the
+/// counterparty's HELLO — no deadlock, no order dependency.
+///
+/// Mismatch on `rpc_version` returns `RpcVersionMismatch`; caller
+/// closes the fd. Logs the failure for both peers (worker side gets
+/// it from the returned error; executor side logs in
+/// `Server.handleConnection`).
+fn exchangeHello(alloc: std.mem.Allocator, fd: std.posix.socket_t) !void {
+    const ours = try pc.encodeHello(alloc, .{ .rpc_version = pc.rpc_version });
+    defer alloc.free(ours);
+    try protocol.writeFrameToFd(fd, ours);
+
+    const theirs = try protocol.readFrameFromFd(alloc, fd);
+    defer alloc.free(theirs);
+
+    const peer = try pc.decodeHello(alloc, theirs);
+    if (peer.rpc_version != pc.rpc_version) return ConnectionError.RpcVersionMismatch;
+}
 
 /// Handler callback: receives raw frame payload, returns response payload.
 /// Caller owns both the input and output slices.
 const FrameHandler = *const fn (alloc: std.mem.Allocator, payload: []const u8) anyerror![]u8;
+
+/// Context + thunk closure for receiving progress frames from
+/// `Client.sendRequestStreaming`. Zig has no first-class closures;
+/// callers build one of these manually with a pointer to their own
+/// state plus a function that knows how to decode that pointer.
+///
+/// Worker usage (slice 4): `ctx` points at a `(redis_client*,
+/// zombie_id, event_id)` bundle; `emit_fn` PUBLISHes the frame onto
+/// `zombie:{id}:activity` via the activity_publisher helpers.
+pub const ProgressEmitter = struct {
+    ctx: *anyopaque,
+    emit_fn: *const fn (ctx: *anyopaque, frame: pc.ProgressFrame) void,
+
+    pub fn emit(self: ProgressEmitter, frame: pc.ProgressFrame) void {
+        self.emit_fn(self.ctx, frame);
+    }
+
+    /// No-op emitter for callers that have no live-tail consumer
+    /// (e.g. unit tests of the transport layer, or the
+    /// non-progress-aware paths).
+    pub fn noop() ProgressEmitter {
+        return .{ .ctx = undefined, .emit_fn = noopEmit };
+    }
+};
+
+fn noopEmit(_: *anyopaque, _: pc.ProgressFrame) void {}
 
 /// Unix socket server for the executor sidecar.
 pub const Server = struct {
@@ -90,6 +140,11 @@ pub const Server = struct {
     }
 
     fn handleConnection(self: *Server, conn: std.posix.socket_t) void {
+        exchangeHello(self.alloc, conn) catch |err| {
+            log.err("executor.rpc_version_mismatch peer=client err={s}", .{@errorName(err)});
+            return;
+        };
+
         while (self.running.load(.acquire)) {
             // Poll the connection fd so we can check running periodically.
             // Without this, readFrameFromFd blocks forever if stop() is
@@ -160,6 +215,11 @@ pub const Client = struct {
             return ConnectionError.SocketConnectFailed;
         };
 
+        exchangeHello(self.alloc, sock) catch |err| {
+            log.err("executor.rpc_version_mismatch peer=server err={s}", .{@errorName(err)});
+            return err;
+        };
+
         self.fd = sock;
     }
 
@@ -171,6 +231,57 @@ pub const Client = struct {
         return protocol.parseResponse(self.alloc, frame);
     }
 
+    /// Send one request, then read frames in a loop until the terminal
+    /// response arrives. Each progress frame is dispatched to `emitter`
+    /// before the next read; the terminal response is returned to the
+    /// caller as `ParsedResponse`.
+    ///
+    /// Today (slice 3b) the executor never emits progress frames, so
+    /// the loop runs exactly once and degenerates to the same wire
+    /// behaviour as `sendRequest`. When slice 3c wires NullClaw
+    /// lifecycle hooks into the executor-side emitter, this loop is
+    /// what surfaces them to the worker without any caller change.
+    pub fn sendRequestStreaming(
+        self: *Client,
+        id: u64,
+        method: []const u8,
+        params: ?std.json.Value,
+        emitter: ProgressEmitter,
+    ) !protocol.ParsedResponse {
+        const sock = self.fd orelse return error.ConnectionClosed;
+        try protocol.sendRequest(self.alloc, sock, id, method, params);
+
+        while (true) {
+            const frame = try protocol.readFrameFromFd(self.alloc, sock);
+            // Parse once to discriminate progress vs terminal. Progress
+            // frames carry method="Progress"; terminal frames carry
+            // result/error and no method.
+            var parsed = std.json.parseFromSlice(std.json.Value, self.alloc, frame, .{}) catch |err| {
+                self.alloc.free(frame);
+                return err;
+            };
+            const is_progress = pc.isProgressPayload(parsed.value);
+            parsed.deinit();
+
+            if (is_progress) {
+                defer self.alloc.free(frame);
+                var pres = pc.decodeProgress(self.alloc, frame) catch |err| {
+                    log.warn("executor.progress_decode_failed err={s}", .{@errorName(err)});
+                    continue;
+                };
+                defer pres.parsed.deinit();
+                emitter.emit(pres.frame);
+                continue;
+            }
+
+            // Terminal response. Caller owns the returned ParsedResponse;
+            // its internal `parsed` holds the frame bytes via the JSON
+            // value, so we hand off the frame buffer ownership too.
+            defer self.alloc.free(frame);
+            return try protocol.parseResponse(self.alloc, frame);
+        }
+    }
+
     pub fn close(self: *Client) void {
         if (self.fd) |sock| {
             std.posix.close(sock);
@@ -179,213 +290,6 @@ pub const Client = struct {
     }
 };
 
-var test_socket_counter = std.atomic.Value(u32).init(0);
-
-fn makeTestSocketPath(alloc: std.mem.Allocator, label: []const u8) ![]u8 {
-    const suffix = test_socket_counter.fetchAdd(1, .acq_rel);
-    const stamp: u64 = @intCast(@max(std.time.nanoTimestamp(), 0));
-    return std.fmt.allocPrint(alloc, "/tmp/zombie-{s}-{d}-{d}.sock", .{ label, stamp, suffix });
-}
-
-test "Server and Client communicate over Unix socket" {
-    if (builtin.os.tag == .windows) return error.SkipZigTest;
-
-    const alloc = std.testing.allocator;
-    const path = try makeTestSocketPath(alloc, "executor-test");
-    defer alloc.free(path);
-    const connect_retry_sleep_ms = 20;
-    const connect_retry_count = 50;
-
-    const echo_handler = struct {
-        fn handle(a: std.mem.Allocator, payload: []const u8) anyerror![]u8 {
-            return a.dupe(u8, payload);
-        }
-    }.handle;
-
-    var server = Server.init(alloc, path, echo_handler);
-    try server.bind();
-    defer server.stop();
-
-    const server_thread = try std.Thread.spawn(.{}, Server.serve, .{&server});
-    defer server_thread.join();
-
-    var client = Client.init(alloc, path);
-    var connected = false;
-    var retry_index: usize = 0;
-    while (retry_index < connect_retry_count) : (retry_index += 1) {
-        client.connect() catch |err| switch (err) {
-            ConnectionError.SocketConnectFailed => {
-                std.Thread.sleep(connect_retry_sleep_ms * std.time.ns_per_ms);
-                continue;
-            },
-            else => return err,
-        };
-        connected = true;
-        break;
-    }
-    if (!connected) return error.SocketConnectFailed;
-    defer client.close();
-
-    const sock = client.fd.?;
-    const payload = "test frame data";
-    try protocol.writeFrameToFd(sock, payload);
-    const response = try protocol.readFrameFromFd(alloc, sock);
-    defer alloc.free(response);
-
-    try std.testing.expectEqualStrings(payload, response);
-
-    client.close();
-    server.stop();
-}
-
-test "Client.sendRequest rejects use before connect" {
-    if (builtin.os.tag == .windows) return error.SkipZigTest;
-
-    const path = try makeTestSocketPath(std.testing.allocator, "executor-unconnected");
-    defer std.testing.allocator.free(path);
-
-    var client = Client.init(std.testing.allocator, path);
-    try std.testing.expectError(error.ConnectionClosed, client.sendRequest(1, "ping", null));
-}
-
-test "Server.stop unblocks idle serve loop without leaked listener" {
-    if (builtin.os.tag == .windows) return error.SkipZigTest;
-
-    const echo_handler = struct {
-        fn handle(a: std.mem.Allocator, payload: []const u8) anyerror![]u8 {
-            return a.dupe(u8, payload);
-        }
-    }.handle;
-
-    const path = try makeTestSocketPath(std.testing.allocator, "executor-stop-test");
-    defer std.testing.allocator.free(path);
-
-    var server = Server.init(std.testing.allocator, path, echo_handler);
-    try server.bind();
-    const thread = try std.Thread.spawn(.{}, Server.serve, .{&server});
-    std.Thread.sleep(30 * std.time.ns_per_ms);
-    server.stop();
-    thread.join();
-    try std.testing.expect(server.listener == null);
-}
-
-// ── Unit tests for transport structs, constants, and pure initialization ──
-
-test "Server.init returns correct default state" {
-    const noop_handler = struct {
-        fn handle(a: std.mem.Allocator, payload: []const u8) anyerror![]u8 {
-            return a.dupe(u8, payload);
-        }
-    }.handle;
-
-    const server = Server.init(std.testing.allocator, "/tmp/test.sock", noop_handler);
-    try std.testing.expectEqualStrings("/tmp/test.sock", server.socket_path);
-    try std.testing.expect(server.listener == null);
-    try std.testing.expect(server.running.load(.acquire) == false);
-    try std.testing.expect(server.handler == noop_handler);
-}
-
-test "Client.init returns correct default state" {
-    const client = Client.init(std.testing.allocator, "/tmp/client-test.sock");
-    try std.testing.expectEqualStrings("/tmp/client-test.sock", client.socket_path);
-    try std.testing.expect(client.fd == null);
-}
-
-test "Client.close on unconnected client is a no-op" {
-    var client = Client.init(std.testing.allocator, "/tmp/noop.sock");
-    // Must not panic or error — just a no-op.
-    client.close();
-    try std.testing.expect(client.fd == null);
-}
-
-test "Server.stop on unbound server is a no-op" {
-    if (builtin.os.tag == .windows) return error.SkipZigTest;
-
-    const noop_handler = struct {
-        fn handle(a: std.mem.Allocator, payload: []const u8) anyerror![]u8 {
-            return a.dupe(u8, payload);
-        }
-    }.handle;
-
-    var server = Server.init(std.testing.allocator, "/tmp/never-bound.sock", noop_handler);
-    // Must not panic — listener is null, running is false.
-    server.stop();
-    try std.testing.expect(server.listener == null);
-    try std.testing.expect(server.running.load(.acquire) == false);
-}
-
-test "Server.serve returns immediately when listener is null" {
-    if (builtin.os.tag == .windows) return error.SkipZigTest;
-
-    const noop_handler = struct {
-        fn handle(a: std.mem.Allocator, payload: []const u8) anyerror![]u8 {
-            return a.dupe(u8, payload);
-        }
-    }.handle;
-
-    var server = Server.init(std.testing.allocator, "/tmp/no-listener.sock", noop_handler);
-    // serve() with null listener should return immediately, not block.
-    server.serve();
-    try std.testing.expect(server.listener == null);
-}
-
-test "ConnectionError variants are distinct" {
-    // Compile-time assertion: all four error variants exist and are usable.
-    const err1: ConnectionError = ConnectionError.SocketBindFailed;
-    const err2: ConnectionError = ConnectionError.SocketConnectFailed;
-    const err3: ConnectionError = ConnectionError.ConnectionClosed;
-    const err4: ConnectionError = ConnectionError.FrameTooLarge;
-    try std.testing.expect(err1 != err2);
-    try std.testing.expect(err2 != err3);
-    try std.testing.expect(err3 != err4);
-}
-
-test "ConnectionError names are stable" {
-    try std.testing.expectEqualStrings("SocketBindFailed", @errorName(ConnectionError.SocketBindFailed));
-    try std.testing.expectEqualStrings("SocketConnectFailed", @errorName(ConnectionError.SocketConnectFailed));
-    try std.testing.expectEqualStrings("ConnectionClosed", @errorName(ConnectionError.ConnectionClosed));
-    try std.testing.expectEqualStrings("FrameTooLarge", @errorName(ConnectionError.FrameTooLarge));
-}
-
-test "makeTestSocketPath produces valid format" {
-    const alloc = std.testing.allocator;
-    const path = try makeTestSocketPath(alloc, "fmt-test");
-    defer alloc.free(path);
-
-    // Must start with /tmp/zombie- prefix.
-    try std.testing.expect(std.mem.startsWith(u8, path, "/tmp/zombie-fmt-test-"));
-    // Must end with .sock extension.
-    try std.testing.expect(std.mem.endsWith(u8, path, ".sock"));
-    // Must be a reasonable length for a Unix socket path (< 104 on most systems).
-    try std.testing.expect(path.len < 104);
-}
-
-test "makeTestSocketPath generates unique paths" {
-    const alloc = std.testing.allocator;
-    const path1 = try makeTestSocketPath(alloc, "unique");
-    defer alloc.free(path1);
-    const path2 = try makeTestSocketPath(alloc, "unique");
-    defer alloc.free(path2);
-
-    // Atomic counter guarantees different suffixes even with same label.
-    try std.testing.expect(!std.mem.eql(u8, path1, path2));
-}
-
-test "Server struct size is non-zero and reasonable" {
-    // Sanity: Server should contain a few fields — not empty, not bloated.
-    const size = @sizeOf(Server);
-    try std.testing.expect(size > 0);
-    try std.testing.expect(size < 1024);
-}
-
-test "Client struct size is non-zero and reasonable" {
-    const size = @sizeOf(Client);
-    try std.testing.expect(size > 0);
-    try std.testing.expect(size < 512);
-}
-
-test "FrameHandler type is a function pointer" {
-    // Compile-time check: FrameHandler is callable with the expected signature.
-    const handler_info = @typeInfo(FrameHandler);
-    try std.testing.expect(handler_info == .pointer);
-}
+// Tests live in transport_test.zig (sibling _test.zig — pattern matches
+// client_test.zig / runner_test.zig). The split keeps this file under
+// the 350-line cap after the M42 RPC v2 additions.
