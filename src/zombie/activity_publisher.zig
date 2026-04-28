@@ -15,12 +15,12 @@ const channel_suffix = ":activity";
 // Frame kind discriminators carried as the `kind` field on every payload.
 // The dashboard's LiveFrame union (ui/packages/app/lib/api/events.ts)
 // keeps the same set of strings; touch both sides together.
-const KIND_EVENT_RECEIVED = "event_received";
-const KIND_TOOL_CALL_STARTED = "tool_call_started";
-const KIND_TOOL_CALL_PROGRESS = "tool_call_progress";
-const KIND_CHUNK = "chunk";
-const KIND_TOOL_CALL_COMPLETED = "tool_call_completed";
-const KIND_EVENT_COMPLETE = "event_complete";
+pub const KIND_EVENT_RECEIVED = "event_received";
+pub const KIND_TOOL_CALL_STARTED = "tool_call_started";
+pub const KIND_TOOL_CALL_PROGRESS = "tool_call_progress";
+pub const KIND_CHUNK = "chunk";
+pub const KIND_TOOL_CALL_COMPLETED = "tool_call_completed";
+pub const KIND_EVENT_COMPLETE = "event_complete";
 
 fn buildChannel(buf: []u8, zombie_id: []const u8) ![]const u8 {
     return std.fmt.bufPrint(buf, "{s}{s}{s}", .{ channel_prefix, zombie_id, channel_suffix });
