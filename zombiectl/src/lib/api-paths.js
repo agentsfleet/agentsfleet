@@ -22,6 +22,22 @@ export const wsZombieKillPath = (wsId, zombieId) =>
 export const wsZombieActivityPath = (wsId, zombieId) =>
   `${WORKSPACES_PATH}${enc(wsId)}/zombies/${enc(zombieId)}/activity`;
 
+// Workspace-scoped per-zombie steer (POST → 202 with event_id).
+export const wsZombieSteerPath = (wsId, zombieId) =>
+  `${WORKSPACES_PATH}${enc(wsId)}/zombies/${enc(zombieId)}/steer`;
+
+// Workspace-scoped per-zombie event history.
+export const wsZombieEventsPath = (wsId, zombieId) =>
+  `${WORKSPACES_PATH}${enc(wsId)}/zombies/${enc(zombieId)}/events`;
+
+// Workspace-scoped per-zombie SSE live tail.
+export const wsZombieEventsStreamPath = (wsId, zombieId) =>
+  `${WORKSPACES_PATH}${enc(wsId)}/zombies/${enc(zombieId)}/events/stream`;
+
+// Workspace-aggregate event history.
+export const wsEventsPath = (wsId) =>
+  `${WORKSPACES_PATH}${enc(wsId)}/events`;
+
 // Workspace-scoped credentials vault (workspace-level, not per-zombie).
 export const wsCredentialsPath = (wsId) =>
   `${WORKSPACES_PATH}${enc(wsId)}/credentials`;

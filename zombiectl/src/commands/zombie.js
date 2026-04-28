@@ -14,6 +14,8 @@ import {
 } from "../lib/load-skill-from-path.js";
 import { commandCredential } from "./zombie_credential.js";
 import { commandList } from "./zombie_list.js";
+import { commandEvents } from "./zombie_events.js";
+import { commandSteer } from "./zombie_steer.js";
 
 export async function commandZombie(ctx, args, workspaces, deps) {
   const action = args[0];
@@ -24,6 +26,8 @@ export async function commandZombie(ctx, args, workspaces, deps) {
   if (action === "status") return commandStatus(ctx, args.slice(1), workspaces, deps);
   if (action === "kill") return commandKill(ctx, args.slice(1), workspaces, deps);
   if (action === "logs") return commandLogs(ctx, args.slice(1), workspaces, deps);
+  if (action === "events") return commandEvents(ctx, args.slice(1), workspaces, deps);
+  if (action === "steer") return commandSteer(ctx, args.slice(1), workspaces, deps);
   if (action === "credential") return commandCredential(ctx, args.slice(1), workspaces, deps);
 
   if (ctx.jsonMode) {
@@ -35,6 +39,8 @@ export async function commandZombie(ctx, args, workspaces, deps) {
     writeLine(ctx.stderr, "       zombiectl status");
     writeLine(ctx.stderr, "       zombiectl kill");
     writeLine(ctx.stderr, "       zombiectl logs");
+    writeLine(ctx.stderr, "       zombiectl steer <id> \"<msg>\"");
+    writeLine(ctx.stderr, "       zombiectl events <id> [--actor=glob] [--since=2h]");
     writeLine(ctx.stderr, "       zombiectl credential add|list|delete");
   }
   return 2;
