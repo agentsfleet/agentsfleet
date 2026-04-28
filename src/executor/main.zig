@@ -64,11 +64,14 @@ pub fn main() !void {
         .cpu_limit_percent = cpu_limit_percent,
     }, net_policy);
 
-    // Wrap the handler method for the transport layer.
+    // Wrap the handler method for the transport layer. The conn_fd
+    // arrives non-null for live socket frames so StartStage can stream
+    // progress notifications back; tests bypass the transport entirely
+    // and call `handleFrame` directly with the 2-arg form.
     const frame_handler = struct {
         var g_handler: *handler_mod.Handler = undefined;
-        fn handle(a: std.mem.Allocator, payload: []const u8) anyerror![]u8 {
-            return g_handler.handleFrame(a, payload);
+        fn handle(a: std.mem.Allocator, payload: []const u8, conn_fd: ?std.posix.socket_t) anyerror![]u8 {
+            return g_handler.handleFrameWithFd(a, payload, conn_fd);
         }
     };
     frame_handler.g_handler = &rpc_handler;

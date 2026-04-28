@@ -17,7 +17,7 @@ fn makeTestSocketPath(alloc: std.mem.Allocator, label: []const u8) ![]u8 {
 }
 
 const echo_handler = struct {
-    fn handle(a: std.mem.Allocator, payload: []const u8) anyerror![]u8 {
+    fn handle(a: std.mem.Allocator, payload: []const u8, _: ?std.posix.socket_t) anyerror![]u8 {
         return a.dupe(u8, payload);
     }
 }.handle;
@@ -213,7 +213,7 @@ test "sendRequestStreaming returns terminal cleanly when zero progress frames ar
     // Echo handler crafts a JSON-RPC-shaped terminal response so
     // parseResponse works; no progress frames are ever emitted.
     const rpc_terminal_handler = struct {
-        fn handle(a: std.mem.Allocator, _: []const u8) anyerror![]u8 {
+        fn handle(a: std.mem.Allocator, _: []const u8, _: ?std.posix.socket_t) anyerror![]u8 {
             return std.json.Stringify.valueAlloc(a, .{
                 .jsonrpc = "2.0",
                 .id = 7,

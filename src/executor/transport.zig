@@ -40,9 +40,20 @@ fn exchangeHello(alloc: std.mem.Allocator, fd: std.posix.socket_t) !void {
     if (peer.rpc_version != pc.rpc_version) return ConnectionError.RpcVersionMismatch;
 }
 
-/// Handler callback: receives raw frame payload, returns response payload.
+/// Handler callback: receives raw frame payload + the optional conn
+/// fd this frame arrived on, returns the terminal response payload.
 /// Caller owns both the input and output slices.
-const FrameHandler = *const fn (alloc: std.mem.Allocator, payload: []const u8) anyerror![]u8;
+///
+/// The fd lets long-running handlers (specifically StartStage)
+/// build a per-call progress writer that emits JSON-RPC progress
+/// notifications onto the same Unix socket before the terminal
+/// response. Handlers that have no streaming surface ignore the fd;
+/// tests pass `null`.
+const FrameHandler = *const fn (
+    alloc: std.mem.Allocator,
+    payload: []const u8,
+    conn_fd: ?std.posix.socket_t,
+) anyerror![]u8;
 
 /// Context + thunk closure for receiving progress frames from
 /// `Client.sendRequestStreaming`. Zig has no first-class closures;
@@ -166,7 +177,7 @@ pub const Server = struct {
             };
             defer self.alloc.free(frame);
 
-            const response = self.handler(self.alloc, frame) catch |err| {
+            const response = self.handler(self.alloc, frame, conn) catch |err| {
                 log.err("executor.handler_failed err={s}", .{@errorName(err)});
                 break;
             };
