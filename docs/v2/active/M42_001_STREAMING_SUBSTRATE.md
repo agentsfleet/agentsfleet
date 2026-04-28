@@ -73,7 +73,7 @@ Before touching any file, read in this order:
 | `src/executor/client.zig` | EDIT | Grow `startStage` RPC: add progress callback channel; emit `tool_call_started` / `agent_response_chunk` / `tool_call_completed` frames over the existing Unix-socket RPC |
 | `src/executor/progress_callbacks.zig` | NEW | Callback-frame encode/decode + NullClaw tool-call lifecycle hook (start/end taps) and per-token streaming tap |
 | `src/http/handlers/zombies/steer.zig` | EDIT | Replace `SET zombie:{id}:steer` with direct `XADD zombie:{id}:events`; return `{event_id}` in response body |
-| `src/http/handlers/zombies/events_admin_resume.zig` | NEW | `POST /v1/.../zombies/{id}/events/{event_id}/admin-resume` — fallback for `gate_blocked` rows until M47 ships. Workspace-admin gated, audit-logged, idempotent (409 on already-resumed). Removed when M47 lands. |
+| ~~`src/http/handlers/zombies/events_admin_resume.zig`~~ | DEFERRED to M47 | Originally a temporary fallback so M42 could ship before M47. Per scope decision Apr 28, 2026 we drop the fallback — `gate_blocked` resolution waits on M47's Approval Inbox UI. The blocked row is still queryable via `GET /events?actor=...` so operators can see what's stuck; only the resume action is blocked on M47. |
 | `zombiectl/src/commands/zombie_steer.js` | NEW | `zombiectl steer` subcommand: interactive REPL (SSE-tail) + batch (poll by `event_id`) |
 | `zombiectl/src/commands/zombie_events.js` | NEW | `zombiectl events` subcommand: paginated history print |
 | `zombiectl/src/program/routes.js` | EDIT | Register `steer` + `events` routes |
@@ -212,11 +212,11 @@ In `src/zombie/event_loop_helpers.zig::processEvent`:
        The new event is a fresh trip through processEvent; the blocked
        row is never mutated to 'processed'.
 
-       FALLBACK (until M47 ships): admin-only endpoint
-       POST /v1/.../zombies/{id}/events/{event_id}/admin-resume
-       reads the blocked row and issues the same continuation XADD on
-       the operator's behalf. Audit-logged via core.audit_log; gated by
-       a workspace-admin role. Removed when M47 lands.)
+       NOTE (Apr 28, 2026 scope decision): the admin-resume fallback
+       is dropped from M42. `gate_blocked` resolution waits on M47's
+       Approval Inbox. Blocked rows remain visible via GET /events so
+       operators can see stranded events, but they cannot be resumed
+       until M47 ships.)
 
  5. Resolve secrets_map from vault.
 
@@ -530,7 +530,7 @@ Postgres writes (per event):
 | `test_continuation_actor_flat` | Origin `steer:kishore` chunks 10 times → all 10 continuation events carry `actor=continuation:steer:kishore`, never `continuation:continuation:...`. Repeat with origin `webhook:github` and `cron:0_*/30_*_*_*` — three actor families, prefix-detection holds at depth 10 each. |
 | `test_resumes_event_id_immediate_parent` | Chain A → B (M41 chunk) → C (gate-blocked) → D (M47 resumed). Assert `B.resumes_event_id=A`, `C.resumes_event_id=B`, `D.resumes_event_id=C`. Recursive CTE walk from D returns full chain in order. |
 | `test_gate_blocked_unresolved_query` | 5 blocked rows, 2 already resumed via continuation, 3 still waiting → operator's "unresolved blocks" query returns exactly the 3. |
-| `test_admin_resume_fallback_endpoint` | Until M47 ships: `POST /events/{id}/admin-resume` on a `gate_blocked` event by a workspace admin → fresh continuation XADD, audit-logged. Non-admin → 403. Already-resumed event → 409. |
+| ~~`test_admin_resume_fallback_endpoint`~~ | Dropped — admin-resume fallback deferred to M47 (see Files Changed). Resolution flow is owned by M47's Approval Inbox. |
 | `test_rpc_version_mismatch_fast_fails` | Old worker (rpc_version=1) connects to new executor (rpc_version=2) → both sides log `executor.rpc_version_mismatch` and abort connection within 100ms. No partial frames decoded. |
 | `test_tool_call_progress_heartbeat` | Synthetic 6-second tool call → SSE client receives ≥3 `tool_call_progress` frames at ~2s intervals. Absence past 5s renders "stuck" in UI fixture. |
 | `test_workspace_events_rls_no_cross_tenant` | Workspace A's API key calls `GET /v1/workspaces/{B}/events` → 403 (or 404 per project's IDOR convention). Workspace A's events are never returned in workspace B's response. |
@@ -555,7 +555,7 @@ Postgres writes (per event):
 - [ ] `make test-integration` passes the full test list above (originally 15; amendments add 22 → 37 total)
 - [x] Schema follows project convention: epoch-millis `bigint` for `created_at` / `updated_at`, no `timestamptz`, no SQL CHECK constraints (app-layer enums for `status` and `event_type`)
 - [x] `gate_blocked` rows have `updated_at` set, `response_text` NULL, and `failure_label` populated; dashboard renders them as "blocked, awaiting approval" not "completed"
-- [ ] Admin-resume fallback endpoint removed in the same PR that lands M47_001 (tracked as a M47 follow-up TODO)
+- [x] Admin-resume fallback dropped from M42 (Apr 28, 2026 scope decision); blocked-event resolution is owned by M47's Approval Inbox.
 - [ ] Dashboard workspace overview shows live activity per zombie via the new `/v1/workspaces/{ws}/events` endpoint — verified manually before CHORE(close), no regression vs. the deleted `activity.zig` view
 - [ ] Executor RPC progress-callback channel emits the three frame kinds; redaction proven at the RPC byte stream, not just the PUBLISH payload
 - [ ] `zombiectl steer kishore-platform-ops "ping"` returns within 60s with a sensible diagnosis (manual smoke against author's signup)
