@@ -14,13 +14,16 @@
 // the primary integration with chat-style UIs and operator scripts.
 
 import { wsZombieSteerPath, wsZombieEventsPath, wsZombieEventsStreamPath } from "../lib/api-paths.js";
-import { streamGet } from "../lib/sse.js";
+import { streamGet as defaultStreamGet } from "../lib/sse.js";
 
 const SSE_FALLBACK_TIMEOUT_MS = 60_000;
 const FALLBACK_POLL_MS = 1_500;
 
 export async function commandSteer(ctx, args, workspaces, deps) {
   const { parseFlags, request, apiHeaders, ui, printJson, writeLine, writeError } = deps;
+  // streamGet is optionally injectable for tests; production resolves to
+  // the real fetch-backed implementation. Same shape, same contract.
+  const streamGet = deps.streamGet || defaultStreamGet;
   const parsed = parseFlags(args);
   const zombieId = parsed.positionals[0];
   const message = parsed.positionals[1];
@@ -54,7 +57,7 @@ export async function commandSteer(ctx, args, workspaces, deps) {
 
   // Step 2 — open SSE and filter on the captured event_id. SSE failures
   // (network, server close) drop us to the polling fallback.
-  let outcome = await tailEventStream(ctx, wsId, zombieId, eventId, deps).catch((err) => ({ kind: "sse_error", err }));
+  let outcome = await tailEventStream(ctx, wsId, zombieId, eventId, deps, streamGet).catch((err) => ({ kind: "sse_error", err }));
 
   if (outcome?.kind !== "complete") {
     outcome = await pollEventTerminal(ctx, wsId, zombieId, eventId, deps);
@@ -74,7 +77,7 @@ export async function commandSteer(ctx, args, workspaces, deps) {
   return outcome.kind === "complete" && outcome.status === "processed" ? 0 : 1;
 }
 
-async function tailEventStream(ctx, wsId, zombieId, eventId, deps) {
+async function tailEventStream(ctx, wsId, zombieId, eventId, deps, streamGet) {
   const { ui, writeLine } = deps;
   const url = `${ctx.apiUrl}${wsZombieEventsStreamPath(wsId, zombieId)}`;
   const headers = { ...buildBearer(ctx) };
