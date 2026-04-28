@@ -125,7 +125,7 @@ test "crash: worker disappears, lease reaper cleans orphaned sessions" {
         const session = try page.create(session_mod.Session);
         var stage_buf: [8]u8 = undefined;
         const session_id = std.fmt.bufPrint(&stage_buf, "s-{d}", .{i}) catch "s";
-        session.* = session_mod.Session.create(page, "/tmp/test", .{
+        session.* = try session_mod.Session.create(page, "/tmp/test", .{
             .trace_id = "trace-orphan",
             .zombie_id = "run-orphan",
             .workspace_id = "ws-orphan",

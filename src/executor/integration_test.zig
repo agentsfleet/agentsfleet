@@ -229,7 +229,7 @@ test "integration: lease expiry reaps orphaned sessions" {
 
     // Create a session with a very short lease.
     const session = try page.create(session_mod.Session);
-    session.* = session_mod.Session.create(page, "/tmp/test", .{
+    session.* = try session_mod.Session.create(page, "/tmp/test", .{
         .trace_id = "t",
         .zombie_id = "r",
         .workspace_id = "w",

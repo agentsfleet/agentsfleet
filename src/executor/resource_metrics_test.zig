@@ -32,7 +32,7 @@ fn testCorrelation() types.CorrelationContext {
 
 test "T1: recordStageResult tracks peak memory (max) and throttle (sum)" {
     const alloc = std.testing.allocator;
-    var session = Session.create(alloc, "/tmp/ws", testCorrelation(), .{}, 30_000);
+    var session = try Session.create(alloc, "/tmp/ws", testCorrelation(), .{}, 30_000);
     defer session.destroy();
 
     // Stage 1: 100 MB peak, 500ms throttle.
@@ -76,7 +76,7 @@ test "T1: recordStageResult tracks peak memory (max) and throttle (sum)" {
 
 test "T2: recordStageResult with zero resource metrics leaves fields at 0" {
     const alloc = std.testing.allocator;
-    var session = Session.create(alloc, "/tmp/ws", testCorrelation(), .{}, 30_000);
+    var session = try Session.create(alloc, "/tmp/ws", testCorrelation(), .{}, 30_000);
     defer session.destroy();
 
     session.recordStageResult(.{ .exit_ok = true, .token_count = 10, .wall_seconds = 1 });
@@ -86,7 +86,7 @@ test "T2: recordStageResult with zero resource metrics leaves fields at 0" {
 
 test "T2: resource fields default to 0 in fresh session" {
     const alloc = std.testing.allocator;
-    var session = Session.create(alloc, "/tmp/ws", testCorrelation(), .{}, 30_000);
+    var session = try Session.create(alloc, "/tmp/ws", testCorrelation(), .{}, 30_000);
     defer session.destroy();
 
     try std.testing.expectEqual(@as(u64, 0), session.max_memory_peak_bytes);
@@ -95,7 +95,7 @@ test "T2: resource fields default to 0 in fresh session" {
 
 test "T2: single-byte peak memory is tracked" {
     const alloc = std.testing.allocator;
-    var session = Session.create(alloc, "/tmp/ws", testCorrelation(), .{}, 30_000);
+    var session = try Session.create(alloc, "/tmp/ws", testCorrelation(), .{}, 30_000);
     defer session.destroy();
 
     session.recordStageResult(.{
@@ -113,7 +113,7 @@ test "T2: single-byte peak memory is tracked" {
 
 test "T3: getUsage includes resource metrics in returned ExecutionResult" {
     const alloc = std.testing.allocator;
-    var session = Session.create(alloc, "/tmp/ws", testCorrelation(), .{}, 30_000);
+    var session = try Session.create(alloc, "/tmp/ws", testCorrelation(), .{}, 30_000);
     defer session.destroy();
 
     session.recordStageResult(.{
@@ -133,7 +133,7 @@ test "T3: getUsage includes resource metrics in returned ExecutionResult" {
 
 test "T3: getUsage with no stages returns zero resource metrics" {
     const alloc = std.testing.allocator;
-    var session = Session.create(alloc, "/tmp/ws", testCorrelation(), .{}, 30_000);
+    var session = try Session.create(alloc, "/tmp/ws", testCorrelation(), .{}, 30_000);
     defer session.destroy();
 
     const usage = session.getUsage();
@@ -147,7 +147,7 @@ test "T3: getUsage with no stages returns zero resource metrics" {
 
 test "T3: getResourceContext converts MB to bytes" {
     const alloc = std.testing.allocator;
-    var session = Session.create(alloc, "/tmp/ws", testCorrelation(), .{
+    var session = try Session.create(alloc, "/tmp/ws", testCorrelation(), .{
         .memory_limit_mb = 256,
     }, 30_000);
     defer session.destroy();
@@ -158,7 +158,7 @@ test "T3: getResourceContext converts MB to bytes" {
 
 test "T3: getResourceContext uses default 512 MB limit" {
     const alloc = std.testing.allocator;
-    var session = Session.create(alloc, "/tmp/ws", testCorrelation(), .{}, 30_000);
+    var session = try Session.create(alloc, "/tmp/ws", testCorrelation(), .{}, 30_000);
     defer session.destroy();
 
     const ctx = session.getResourceContext();
@@ -239,7 +239,7 @@ test "T2: CgroupScope.destroy returns zero metrics on non-Linux" {
 test "T11: session create/record/destroy cycle has no leaks" {
     const alloc = std.testing.allocator;
     for (0..50) |i| {
-        var session = Session.create(alloc, "/tmp/ws", testCorrelation(), .{}, 30_000);
+        var session = try Session.create(alloc, "/tmp/ws", testCorrelation(), .{}, 30_000);
         session.recordStageResult(.{
             .exit_ok = true,
             .token_count = i,
@@ -260,7 +260,7 @@ test "T11: SessionStore lifecycle with resource-bearing sessions has no leaks" {
 
     for (0..10) |i| {
         const sess = try alloc.create(Session);
-        sess.* = Session.create(alloc, "/tmp/ws", testCorrelation(), .{
+        sess.* = try Session.create(alloc, "/tmp/ws", testCorrelation(), .{
             .memory_limit_mb = 256,
         }, 30_000);
         sess.recordStageResult(.{
@@ -279,7 +279,7 @@ test "T11: SessionStore lifecycle with resource-bearing sessions has no leaks" {
 
 test "T5: rapid sequential recordStageResult accumulates correctly" {
     const alloc = std.testing.allocator;
-    var session = Session.create(alloc, "/tmp/ws", testCorrelation(), .{}, 30_000);
+    var session = try Session.create(alloc, "/tmp/ws", testCorrelation(), .{}, 30_000);
     defer session.destroy();
 
     for (0..1000) |i| {

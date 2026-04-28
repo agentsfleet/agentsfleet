@@ -141,7 +141,7 @@ pub const Server = struct {
 
     fn handleConnection(self: *Server, conn: std.posix.socket_t) void {
         exchangeHello(self.alloc, conn) catch |err| {
-            log.err("executor.rpc_version_mismatch peer=client err={s}", .{@errorName(err)});
+            log.warn("executor.rpc_version_mismatch peer=client err={s}", .{@errorName(err)});
             return;
         };
 
@@ -216,7 +216,7 @@ pub const Client = struct {
         };
 
         exchangeHello(self.alloc, sock) catch |err| {
-            log.err("executor.rpc_version_mismatch peer=server err={s}", .{@errorName(err)});
+            log.warn("executor.rpc_version_mismatch peer=server err={s}", .{@errorName(err)});
             return err;
         };
 

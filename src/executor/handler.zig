@@ -90,7 +90,10 @@ pub const Handler = struct {
             correlation,
             self.resource_limits,
             self.lease_timeout_ms,
-        );
+        ) catch {
+            self.alloc.destroy(session_ptr);
+            return self.errorResponse(alloc, id, protocol.ErrorCode.internal_error, "Failed to dupe session inputs");
+        };
 
         self.store.put(session_ptr) catch {
             session_ptr.destroy();
