@@ -3,6 +3,7 @@ import {
   EmptyState,
   PageHeader,
   PageTitle,
+  Section,
 } from "@usezombie/design-system";
 import { KeyRoundIcon } from "lucide-react";
 import { getServerToken } from "@/lib/auth/server";
@@ -48,18 +49,22 @@ export default async function CredentialsPage() {
         {" "}<code>{"${secrets.<name>.<field>}"}</code>.
       </p>
       <div className="grid gap-8 md:grid-cols-2">
-        <section>
-          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-zinc-500">
-            Stored credentials
-          </h2>
-          <CredentialsList workspaceId={workspace.id} credentials={credentials} />
-        </section>
-        <section>
-          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-zinc-500">
-            Add a credential
-          </h2>
-          <AddCredentialForm workspaceId={workspace.id} />
-        </section>
+        <Section asChild>
+          <section aria-label="Stored credentials">
+            <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-zinc-500">
+              Stored credentials
+            </h2>
+            <CredentialsList workspaceId={workspace.id} credentials={credentials} />
+          </section>
+        </Section>
+        <Section asChild>
+          <section aria-label="Add a credential">
+            <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-zinc-500">
+              Add a credential
+            </h2>
+            <AddCredentialForm workspaceId={workspace.id} />
+          </section>
+        </Section>
       </div>
     </div>
   );

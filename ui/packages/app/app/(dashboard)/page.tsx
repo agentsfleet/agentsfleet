@@ -1,12 +1,12 @@
 import { Suspense } from "react";
 import { getServerToken } from "@/lib/auth/server";
 import { notFound } from "next/navigation";
-import { EmptyState, PageHeader, PageTitle, StatusCard, Skeleton } from "@usezombie/design-system";
+import { PageHeader, PageTitle, Section, SectionLabel, StatusCard, Skeleton } from "@usezombie/design-system";
 import { listZombies } from "@/lib/api/zombies";
 import { getTenantBilling } from "@/lib/api/tenant_billing";
-import { listWorkspaceActivity } from "@/lib/api/activity";
+import { listWorkspaceEvents } from "@/lib/api/events";
 import { resolveActiveWorkspace } from "@/lib/workspace";
-import { ActivityFeed } from "@/components/domain/ActivityFeed";
+import { EventsList } from "@/components/domain/EventsList";
 import ExhaustionBanner from "@/components/domain/ExhaustionBanner";
 
 export const dynamic = "force-dynamic";
@@ -55,15 +55,17 @@ export async function RecentActivity() {
   const workspace = await resolveActiveWorkspace(token);
   if (!workspace) return null;
 
-  const page = await listWorkspaceActivity(workspace.id, token).catch(() => null);
-  if (!page) return null;
+  const page = await listWorkspaceEvents(workspace.id, token, { limit: 20 }).catch(
+    () => ({ items: [], next_cursor: null }),
+  );
 
   return (
-    <ActivityFeed
-      events={page.events}
-      title="Recent Activity"
-      empty={<EmptyState title="No activity yet" description="Events appear here as your zombies run." />}
-    />
+    <Section asChild>
+      <section aria-label="Recent Activity">
+        <SectionLabel>Recent Activity</SectionLabel>
+        <EventsList scope={{ kind: "workspace", workspaceId: workspace.id }} initial={page} />
+      </section>
+    </Section>
   );
 }
 
