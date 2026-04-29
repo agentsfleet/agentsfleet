@@ -81,18 +81,21 @@ fn benchWebhookSignatureVerify(allocator: std.mem.Allocator) void {
 // Mirrors `activity_publisher.publishChunk` encode step: clearRetaining
 // the per-event scratch buffer, encode the frame via the Writer
 // interface. Steady-state allocator round-trips → 0 after warmup.
-var bench_chunk_scratch: ?std.io.Writer.Allocating = null;
+//
+// Process-lifetime scratch — initialized in main() under the bench
+// allocator and torn down explicitly before main() returns. zbench
+// drives this fn with the same allocator across iterations.
+var bench_chunk_scratch: std.io.Writer.Allocating = undefined;
 
 fn benchActivityChunkEncode(allocator: std.mem.Allocator) void {
-    if (bench_chunk_scratch == null) bench_chunk_scratch = .init(allocator);
-    const scratch = &bench_chunk_scratch.?;
-    scratch.clearRetainingCapacity();
+    _ = allocator;
+    bench_chunk_scratch.clearRetainingCapacity();
     std.json.Stringify.value(.{
         .kind = "chunk",
         .event_id = fx.CHUNK_EVENT_ID,
         .text = fx.CHUNK_TEXT,
-    }, .{}, &scratch.writer) catch @panic("chunk encode failed");
-    std.mem.doNotOptimizeAway(scratch.written().ptr);
+    }, .{}, &bench_chunk_scratch.writer) catch @panic("chunk encode failed");
+    std.mem.doNotOptimizeAway(bench_chunk_scratch.written().ptr);
 }
 
 // ── progress_frame_decode ─ executor → worker hot path
@@ -118,6 +121,9 @@ pub fn main() !void {
         .time_budget_ns = 200 * std.time.ns_per_ms, // 200 ms per benchmark
     });
     defer bench.deinit();
+
+    bench_chunk_scratch = .init(alloc);
+    defer bench_chunk_scratch.deinit();
 
     try bench.add("route_match", benchRouteMatch, .{});
     try bench.add("error_registry_lookup", benchErrorRegistryLookup, .{});
