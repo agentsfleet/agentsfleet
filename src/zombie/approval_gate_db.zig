@@ -69,7 +69,7 @@ pub const getByGateId = reads.getByGateId;
 // ── Writes ──────────────────────────────────────────────────────────────
 
 /// Insert a pending gate row. Best-effort — logs on failure, does not propagate.
-/// Resolution updates this row via resolveAtomic / resolveGateDecision.
+/// Resolution updates this row via `ResolveArgs.atomic` / `resolveGateDecision`.
 pub fn recordGatePending(
     pool: *pg.Pool,
     alloc: Allocator,
@@ -83,10 +83,10 @@ pub fn recordGatePending(
     };
 }
 
-/// DB-only resolve: thin wrapper over resolveAtomic that discards the rich outcome.
+/// DB-only resolve: thin wrapper that discards the rich outcome.
 /// Retained for the worker timeout path and other call sites that don't need
-/// dedup attribution. New code calling this should consider the channel-agnostic
-/// `approval_gate.resolve()` instead.
+/// dedup attribution. New code should call `approval_gate.resolve()` or
+/// `ResolveArgs.atomic()` directly.
 pub fn resolveGateDecision(
     pool: *pg.Pool,
     action_id: []const u8,
@@ -94,58 +94,79 @@ pub fn resolveGateDecision(
     detail: []const u8,
 ) void {
     const sink_alloc = std.heap.page_allocator;
-    var outcome = resolveAtomic(pool, sink_alloc, action_id, status, "", detail) catch |err| {
+    const args: ResolveArgs = .{
+        .action_id = action_id,
+        .outcome = status,
+        .by = "",
+        .reason = detail,
+    };
+    var outcome = args.atomic(pool, sink_alloc) catch |err| {
         log.err("approval_gate.resolve_fail err={s} action_id={s}", .{ @errorName(err), action_id });
         return;
     };
     outcome.deinit(sink_alloc);
 }
 
-/// Atomic resolution. Returns the canonical resolver attribution either way:
-/// .resolved means this caller won the race; .already_resolved means an
-/// earlier writer (different channel or concurrent retry) already terminated
-/// the row, and the returned attribution is what should surface to the user.
-pub fn resolveAtomic(
-    pool: *pg.Pool,
-    alloc: Allocator,
+/// Inputs + operation for atomic gate resolution. Bundled into a struct so
+/// callers don't grow a long positional arg list as the resolution surface
+/// gains fields, and the SQL lives next to the data that drives it.
+///
+/// `zombie_id_filter` binds the resolution to a specific zombie when the
+/// caller knows it from a trusted source (URL path, worker context). An
+/// empty string disables the filter — used by the sweeper and worker timeout
+/// paths that already operate on a row they read. Channels that derive both
+/// `action_id` and `zombie_id` from the same untrusted payload (Slack
+/// callback URL, webhook URL) MUST set this; otherwise an actor with HMAC
+/// access for zombie A could resolve zombie B's gate by guessing its
+/// action_id.
+pub const ResolveArgs = struct {
     action_id: []const u8,
     outcome: GateStatus,
     by: []const u8,
-    reason: []const u8,
-) !ResolveDbOutcome {
-    if (outcome == .pending) return error.InvalidGateStatus;
+    reason: []const u8 = "",
+    zombie_id_filter: []const u8 = "",
 
-    const conn = try pool.acquire();
-    defer pool.release(conn);
+    /// Atomic resolution. Returns the canonical resolver attribution either
+    /// way: .resolved means this caller won the race; .already_resolved
+    /// means an earlier writer (different channel or concurrent retry)
+    /// already terminated the row.
+    pub fn atomic(self: ResolveArgs, pool: *pg.Pool, alloc: Allocator) !ResolveDbOutcome {
+        if (self.outcome == .pending) return error.InvalidGateStatus;
 
-    const now_ms = std.time.milliTimestamp();
-    var update_q = PgQuery.from(try conn.query(
-        \\UPDATE core.zombie_approval_gates
-        \\SET status = $1, detail = $2, resolved_by = $3, updated_at = $4
-        \\WHERE action_id = $5 AND status = $6
-        \\RETURNING id::text, action_id, workspace_id::text, zombie_id::text,
-        \\          status, COALESCE(updated_at, $4::bigint), resolved_by, detail
-    , .{ outcome.toSlice(), reason, by, now_ms, action_id, PENDING_STATUS }));
-    defer update_q.deinit();
+        const conn = try pool.acquire();
+        defer pool.release(conn);
 
-    if (try update_q.next()) |row| {
-        return .{ .resolved = try readResolvedRow(alloc, row) };
+        const now_ms = std.time.milliTimestamp();
+        var update_q = PgQuery.from(try conn.query(
+            \\UPDATE core.zombie_approval_gates
+            \\SET status = $1, detail = $2, resolved_by = $3, updated_at = $4
+            \\WHERE action_id = $5 AND status = $6
+            \\  AND ($7::text = '' OR zombie_id::text = $7)
+            \\RETURNING id::text, action_id, workspace_id::text, zombie_id::text,
+            \\          status, COALESCE(updated_at, $4::bigint), resolved_by, detail
+        , .{ self.outcome.toSlice(), self.reason, self.by, now_ms, self.action_id, PENDING_STATUS, self.zombie_id_filter }));
+        defer update_q.deinit();
+
+        if (try update_q.next()) |row| {
+            return .{ .resolved = try readResolvedRow(alloc, row) };
+        }
+
+        var select_q = PgQuery.from(try conn.query(
+            \\SELECT id::text, action_id, workspace_id::text, zombie_id::text,
+            \\       status, COALESCE(updated_at, requested_at), resolved_by, detail
+            \\FROM core.zombie_approval_gates
+            \\WHERE action_id = $1
+            \\  AND ($2::text = '' OR zombie_id::text = $2)
+            \\ORDER BY requested_at DESC LIMIT 1
+        , .{ self.action_id, self.zombie_id_filter }));
+        defer select_q.deinit();
+
+        if (try select_q.next()) |row| {
+            return .{ .already_resolved = try readResolvedRow(alloc, row) };
+        }
+        return .not_found;
     }
-
-    var select_q = PgQuery.from(try conn.query(
-        \\SELECT id::text, action_id, workspace_id::text, zombie_id::text,
-        \\       status, COALESCE(updated_at, requested_at), resolved_by, detail
-        \\FROM core.zombie_approval_gates
-        \\WHERE action_id = $1
-        \\ORDER BY requested_at DESC LIMIT 1
-    , .{action_id}));
-    defer select_q.deinit();
-
-    if (try select_q.next()) |row| {
-        return .{ .already_resolved = try readResolvedRow(alloc, row) };
-    }
-    return .not_found;
-}
+};
 
 // ── Internals ───────────────────────────────────────────────────────────
 

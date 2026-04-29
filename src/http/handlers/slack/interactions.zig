@@ -145,15 +145,15 @@ fn handleGateAction(hx: Hx, rest: []const u8) void {
     else
         .denied;
 
-    var outcome = approval_gate.resolve(
-        hx.ctx.pool,
-        hx.ctx.queue,
-        hx.alloc,
-        inner_action_id,
-        gate_status,
-        resolver.SLACK_INTERACTION,
-        "",
-    ) catch |err| {
+    // zombie_id is parsed from the same Slack action payload as the
+    // action_id; bind it into the SQL filter so a crafted payload can't
+    // resolve a gate that belongs to a different zombie.
+    var outcome = approval_gate.resolve(hx.ctx.pool, hx.ctx.queue, hx.alloc, .{
+        .action_id = inner_action_id,
+        .zombie_id_filter = zombie_id,
+        .outcome = gate_status,
+        .by = resolver.SLACK_INTERACTION,
+    }) catch |err| {
         log.err("slack.interactions.resolve_fail err={s} req_id={s}", .{ @errorName(err), hx.req_id });
         hx.res.status = 200;
         hx.res.body = "{}";

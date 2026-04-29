@@ -54,7 +54,12 @@ fn sweepOnce(pool: *pg.Pool, redis: *queue_redis.Client, alloc: Allocator) !void
 
     log.info("approval_gate_sweeper.expired_batch count={d}", .{expired.len});
     for (expired) |action_id| {
-        var outcome = approval_gate.resolve(pool, redis, alloc, action_id, .timed_out, RESOLVER, "auto-timeout") catch |err| {
+        var outcome = approval_gate.resolve(pool, redis, alloc, .{
+            .action_id = action_id,
+            .outcome = .timed_out,
+            .by = RESOLVER,
+            .reason = "auto-timeout",
+        }) catch |err| {
             log.warn("approval_gate_sweeper.resolve_failed action_id={s} err={s}", .{ action_id, @errorName(err) });
             continue;
         };

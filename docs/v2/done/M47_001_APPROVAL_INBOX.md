@@ -369,6 +369,7 @@ UI routes:
 ## Discovery (consult log)
 
 - **Apr 29, 2026** — Pre-EXECUTE consult: Apr 25 draft assumed table `core.approval_gates` and 8 non-existent columns. Schema Removal Guard (pre-v2.0) requires in-place edit, not ALTER. Auto-timeout has no existing mechanism. User decided: amend spec first (path A), then execute with full schema extension (path B) — no corner cutting on UX. Refactor scope: extract single channel-agnostic `resolve()` core; existing Slack handler repointed (no orphans). Sweeper added for auto-timeout. (See Amendment notes block above for the full table.)
+- **Apr 29, 2026 — security follow-up** — Greptile flagged a cross-zombie gate resolution path on PR #265: `webhooks/approval.zig` (and `slack/interactions.zig`) parse both `zombie_id` and `action_id` from the same untrusted Slack/webhook payload, then called `resolve()` keyed only on `action_id`. Post-mutation `zombie_id` cross-check returned 404 to the caller while the DB row was already terminal. Fix lands the `zombie_id` filter in the SQL `WHERE` clause via a new `ResolveArgs` struct (Bun-style options struct + method-on-data), so a mismatched zombie returns `.not_found` without any write. Dashboard, sweeper, and worker timeout paths pass `""` (no filter) since they're already authz-scoped. Negative integration test in `inbox_integration_test.zig` asserts row stays pending under the cross-zombie attack and that the legitimate caller resolves cleanly afterward.
 
 ## Applicable Rules
 

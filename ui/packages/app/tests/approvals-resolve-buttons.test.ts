@@ -181,4 +181,15 @@ describe("ResolveButtons — error paths", () => {
       expect(screen.getByRole("alert").textContent).toMatch(/ECONNRESET/);
     });
   });
+
+  it("falls back to generic 'Resolve failed' when thrown value lacks a message", async () => {
+    approveApprovalMock.mockRejectedValueOnce({ unexpected: true });
+    render(
+      React.createElement(ResolveButtons, { workspaceId: WORKSPACE_ID, gateId: GATE_ID }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: /^approve$/i }));
+    await waitFor(() => {
+      expect(screen.getByRole("alert").textContent).toMatch(/Resolve failed/i);
+    });
+  });
 });

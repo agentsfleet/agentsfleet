@@ -476,10 +476,12 @@ test "integration: sweeper transitions expired pending row to timed_out + system
     {
         const conn2 = try h.acquireConn();
         defer h.releaseConn(conn2);
-        const action_id = "act-sweep-1";
-        var outcome = try @import("../../../zombie/approval_gate.zig").resolve(
-            h.pool, &h.queue, ALLOC, action_id, .timed_out, "system:timeout", "auto-timeout",
-        );
+        var outcome = try @import("../../../zombie/approval_gate.zig").resolve(h.pool, &h.queue, ALLOC, .{
+            .action_id = "act-sweep-1",
+            .outcome = .timed_out,
+            .by = "system:timeout",
+            .reason = "auto-timeout",
+        });
         defer switch (outcome) {
             .resolved => |*r| @constCast(r).deinit(ALLOC),
             .already_resolved => |*r| @constCast(r).deinit(ALLOC),
@@ -495,4 +497,61 @@ test "integration: sweeper transitions expired pending row to timed_out + system
     // Suppress unused-import warning for the sweeper module the test exercises.
     _ = approval_gate_sweeper;
     _ = approval_gate_db;
+}
+
+// ── Cross-zombie defense ────────────────────────────────────────────────
+// When a Slack callback or webhook resolves a gate, the zombie_id from the
+// URL is bound into the SQL WHERE clause. A caller with HMAC access for
+// zombie A who guesses zombie B's action_id must NOT be able to mutate
+// zombie B's row — the resolve returns .not_found and the row stays pending.
+
+test "approval_gate.resolve with mismatched zombie_id_filter leaves row pending" {
+    const h = seedAndHarness(ALLOC) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+    if (!h.tryConnectRedis()) return error.SkipZigTest;
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    defer cleanupTestData(conn);
+
+    const gid = "01999999-cccc-7000-8000-000000000001";
+    // Gate is owned by ZOMBIE_A; attacker presents ZOMBIE_B in the URL.
+    try insertGate(conn, .{ .gate_id = gid, .action_id = "act-cross-1", .zombie_id = ZOMBIE_A });
+
+    var attacker_outcome = try @import("../../../zombie/approval_gate.zig").resolve(h.pool, &h.queue, ALLOC, .{
+        .action_id = "act-cross-1",
+        .zombie_id_filter = ZOMBIE_B,
+        .outcome = .approved,
+        .by = "attacker:slack-webhook",
+    });
+    defer switch (attacker_outcome) {
+        .resolved => |*r| @constCast(r).deinit(ALLOC),
+        .already_resolved => |*r| @constCast(r).deinit(ALLOC),
+        .not_found => {},
+    };
+    try std.testing.expect(attacker_outcome == .not_found);
+
+    const status_after = try statusOf(conn, ALLOC, gid);
+    defer ALLOC.free(status_after);
+    try std.testing.expectEqualStrings("pending", status_after);
+
+    // Legitimate caller with the matching zombie_id still resolves cleanly.
+    var legit_outcome = try @import("../../../zombie/approval_gate.zig").resolve(h.pool, &h.queue, ALLOC, .{
+        .action_id = "act-cross-1",
+        .zombie_id_filter = ZOMBIE_A,
+        .outcome = .approved,
+        .by = "operator:slack-webhook",
+    });
+    defer switch (legit_outcome) {
+        .resolved => |*r| @constCast(r).deinit(ALLOC),
+        .already_resolved => |*r| @constCast(r).deinit(ALLOC),
+        .not_found => {},
+    };
+    try std.testing.expect(legit_outcome == .resolved);
+
+    const status_final = try statusOf(conn, ALLOC, gid);
+    defer ALLOC.free(status_final);
+    try std.testing.expectEqualStrings("approved", status_final);
 }

@@ -57,15 +57,15 @@ pub fn innerApprovalCallback(hx: Hx, req: *httpz.Request, zombie_id: []const u8)
         .deny => .denied,
     };
 
-    var outcome = approval_gate.resolve(
-        hx.ctx.pool,
-        hx.ctx.queue,
-        hx.alloc,
-        payload.action_id,
-        gate_status,
-        resolver.SLACK_WEBHOOK,
-        "",
-    ) catch {
+    // zombie_id from the URL is bound into the SQL WHERE clause inside
+    // resolve(), so a payload whose action_id belongs to a different zombie
+    // returns .not_found without mutating the row.
+    var outcome = approval_gate.resolve(hx.ctx.pool, hx.ctx.queue, hx.alloc, .{
+        .action_id = payload.action_id,
+        .zombie_id_filter = zombie_id,
+        .outcome = gate_status,
+        .by = resolver.SLACK_WEBHOOK,
+    }) catch {
         log.err("approval.resolve_fail zombie_id={s} action_id={s}", .{ zombie_id, payload.action_id });
         common.internalOperationError(hx.res, "Failed to resolve approval", hx.req_id);
         return;
@@ -76,15 +76,7 @@ pub fn innerApprovalCallback(hx: Hx, req: *httpz.Request, zombie_id: []const u8)
         .not_found => {},
     };
 
-    // Cross-check: the URL's zombie_id must match the row's zombie_id, defending
-    // against a caller with HMAC secret resolving an unrelated gate by guessing
-    // action_id. .not_found leaks no information beyond "no such gate".
-    const row_zombie_id: []const u8 = switch (outcome) {
-        .resolved => |r| r.zombie_id,
-        .already_resolved => |r| r.zombie_id,
-        .not_found => "",
-    };
-    if (outcome == .not_found or !std.mem.eql(u8, row_zombie_id, zombie_id)) {
+    if (outcome == .not_found) {
         hx.fail(ec.ERR_APPROVAL_NOT_FOUND, ec.MSG_APPROVAL_NOT_FOUND);
         return;
     }

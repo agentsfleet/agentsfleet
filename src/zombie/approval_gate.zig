@@ -255,6 +255,8 @@ pub const ResolveOutcome = union(enum) {
     not_found,
 };
 
+pub const ResolveArgs = approval_gate_db.ResolveArgs;
+
 /// Single dedup point for gate resolution. Called by:
 ///   - dashboard handler (`/approvals/{gate_id}:approve|:deny`)
 ///   - Slack interactive callback (`/webhooks/{zombie_id}/approval`)
@@ -266,22 +268,22 @@ pub const ResolveOutcome = union(enum) {
 /// per action_id. The Redis decision write happens only on the winning path.
 /// Losers receive `.already_resolved` carrying the canonical resolver
 /// attribution so 409 responses can render "resolved by <X> at <when>".
+///
+/// See `ResolveArgs.zombie_id_filter` for the cross-zombie defense channels
+/// that parse `action_id` from an untrusted URL/payload must enable.
 pub fn resolve(
     pool: *pg.Pool,
     redis: *queue_redis.Client,
     alloc: Allocator,
-    action_id: []const u8,
-    outcome: GateStatus,
-    by: []const u8,
-    reason: []const u8,
+    args: ResolveArgs,
 ) !ResolveOutcome {
-    if (outcome == .pending) return error.InvalidGateStatus;
+    if (args.outcome == .pending) return error.InvalidGateStatus;
 
-    const db_outcome = try approval_gate_db.resolveAtomic(pool, alloc, action_id, outcome, by, reason);
+    const db_outcome = try args.atomic(pool, alloc);
     return switch (db_outcome) {
         .resolved => |row| blk: {
-            resolveApproval(redis, action_id, decisionString(outcome)) catch |err| {
-                log.warn("approval_gate.resolve_redis_fail action_id={s} err={s}", .{ action_id, @errorName(err) });
+            resolveApproval(redis, args.action_id, decisionString(args.outcome)) catch |err| {
+                log.warn("approval_gate.resolve_redis_fail action_id={s} err={s}", .{ args.action_id, @errorName(err) });
             };
             break :blk .{ .resolved = row };
         },

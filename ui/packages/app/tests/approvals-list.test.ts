@@ -278,6 +278,22 @@ describe("ApprovalsList — resolve actions", () => {
       expect(screen.getByRole("alert").textContent).toMatch(/ECONNRESET/);
     });
   });
+
+  it("falls back to generic 'Resolve failed' when thrown value lacks a message", async () => {
+    // Thrown value has no `.message` property — exercises the `?? "Resolve failed"` branch.
+    approveApprovalMock.mockRejectedValueOnce({ not: "an error" });
+    render(
+      React.createElement(ApprovalsList, {
+        workspaceId: WORKSPACE_ID,
+        initialItems: [gate()],
+        initialCursor: null,
+      }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: /^approve$/i }));
+    await waitFor(() => {
+      expect(screen.getByRole("alert").textContent).toMatch(/Resolve failed/i);
+    });
+  });
 });
 
 // ── Pagination ────────────────────────────────────────────────────────

@@ -225,6 +225,13 @@ describe("approveApproval", () => {
     await expect(approveApproval(WORKSPACE_ID, GATE_ID, TOKEN)).rejects.toBeTruthy();
   });
 
+  it("falls back to a generic message when 500 body has no detail field", async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({}, 503));
+    await expect(approveApproval(WORKSPACE_ID, GATE_ID, TOKEN)).rejects.toThrow(
+      /Resolve failed: HTTP 503/,
+    );
+  });
+
   it("throws when fetch itself rejects (network failure)", async () => {
     fetchMock.mockRejectedValueOnce(new Error("ECONNRESET"));
     await expect(approveApproval(WORKSPACE_ID, GATE_ID, TOKEN)).rejects.toThrow(/ECONNRESET/);

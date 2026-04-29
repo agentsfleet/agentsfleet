@@ -85,15 +85,12 @@ pub fn innerResolveApproval(
         .deny => .denied,
     };
 
-    var outcome = approval_gate.resolve(
-        hx.ctx.pool,
-        hx.ctx.queue,
-        hx.alloc,
-        row.action_id,
-        outcome_status,
-        by,
-        reason,
-    ) catch |err| {
+    var outcome = approval_gate.resolve(hx.ctx.pool, hx.ctx.queue, hx.alloc, .{
+        .action_id = row.action_id,
+        .outcome = outcome_status,
+        .by = by,
+        .reason = reason,
+    }) catch |err| {
         log.err("approvals.resolve_failed err={s} gate_id={s}", .{ @errorName(err), gate_id });
         common.internalDbError(hx.res, hx.req_id);
         return;
