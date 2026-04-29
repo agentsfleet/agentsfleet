@@ -124,10 +124,6 @@ pub const ENTRIES = [_]Entry{
         "Stage limit reached for your plan. Upgrade to add more."),
     e("UZ-ENTL-004", .forbidden, "Skill not allowed",
         "This skill is not allowed on your current plan."),
-    // ── PIPELINE V1 REMOVED ─────────────────────────────────────────────────
-    e("UZ-RUNS-410", .gone, "Pipeline v1 permanently removed",
-        "Pipeline v1 has been permanently removed. All /v1/runs/* and /v1/specs " ++
-        "endpoints return 410 Gone. Use the zombie event model instead."),
     // ── AGENT ────────────────────────────────────────────────────────────────
     e("UZ-AGENT-001", .not_found, "Agent not found",
         "Agent not found. Verify the agent_id."),

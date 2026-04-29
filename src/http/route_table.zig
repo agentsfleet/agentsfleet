@@ -59,8 +59,6 @@ pub fn specFor(route: router.Route, registry: *auth_mw.MiddlewareRegistry) ?Rout
         // Tenant billing snapshot
         .get_tenant_billing => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeGetTenantBilling },
         .list_tenant_workspaces => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeListTenantWorkspaces },
-        // sync_workspace returns 410 — no auth required for the stub.
-        .sync_workspace => .{ .middlewares = auth_mw.MiddlewareRegistry.none, .invoke = invoke.invokeSyncWorkspace },
         .workspace_llm_credential => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceLlmCredential },
 
         // Admin platform keys (admin role required)
@@ -168,7 +166,6 @@ test "specFor returns a RouteSpec for every Route variant (Batch D — full tabl
     try testing.expect(specFor(.clerk_webhook, &reg) != null);
     try testing.expect(specFor(.{ .approval_webhook = "z1" }, &reg) != null);
     try testing.expect(specFor(.{ .grant_approval_webhook = "z1" }, &reg) != null);
-    try testing.expect(specFor(.{ .sync_workspace = "ws1" }, &reg) != null);
     try testing.expect(specFor(.memory_store, &reg) != null);
     try testing.expect(specFor(.memory_recall, &reg) != null);
     try testing.expect(specFor(.memory_list, &reg) != null);

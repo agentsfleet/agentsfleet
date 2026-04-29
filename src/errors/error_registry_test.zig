@@ -206,8 +206,8 @@ test "hint() returns UNKNOWN hint for unregistered codes" {
 // ── T7: REGISTRY entry count regression ─────────────────────────────────────
 // Pin the count so accidental deletions are caught immediately.
 
-test "registry contains exactly 121 entries" {
-    try std.testing.expectEqual(@as(usize, 121), reg.REGISTRY.len);
+test "registry contains exactly 120 entries" {
+    try std.testing.expectEqual(@as(usize, 120), reg.REGISTRY.len);
 }
 
 // ── T2: Sentinel code lookup ────────────────────────────────────────────────

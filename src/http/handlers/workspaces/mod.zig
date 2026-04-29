@@ -1,12 +1,7 @@
-//! Facade: re-exports all public workspace handlers from focused sub-modules.
-//! External importers (e.g. src/http/handler.zig) see an unchanged surface.
-
-const wl = @import("lifecycle.zig");
-const wo = @import("ops.zig");
-
-const handleCreateWorkspace = wl.handleCreateWorkspace;
-const handlePauseWorkspace = wo.handlePauseWorkspace;
-const handleSyncSpecs = wo.handleSyncSpecs;
+//! Facade for workspace handler tests. The real route dispatch lives in
+//! `src/http/route_table_invoke.zig`; submodules export the `inner*`
+//! handlers directly. This file exists so `zig test src/main.zig` picks up
+//! the lifecycle test suite via the test block below.
 
 test {
     _ = @import("lifecycle.zig");

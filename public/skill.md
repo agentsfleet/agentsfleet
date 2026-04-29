@@ -20,7 +20,6 @@ control-plane API.
 | `stream_zombie_events` | GET | `/v1/workspaces/{workspace_id}/zombies/{zombie_id}/events/stream` |
 | `ingest_zombie_webhook` | POST | `/v1/webhooks/{zombie_id}` |
 | `pause_workspace` | POST | `/v1/workspaces/{workspace_id}/pause` |
-| `sync_specs` | POST | `/v1/workspaces/{workspace_id}/sync` |
 | `execute_tool` | POST | `/v1/execute` |
 
 ## Authentication
@@ -33,7 +32,7 @@ control-plane API.
 - LLMs discovery: `/llms.txt`
 
 ## Policy classes
-- `safe`: `list_zombie_events`, `stream_zombie_events`, `sync_specs` — allow by default
+- `safe`: `list_zombie_events`, `stream_zombie_events` — allow by default
 - `sensitive`: `create_zombie`, `update_zombie`, `kill_zombie`, `steer_zombie`, `ingest_zombie_webhook`, `pause_workspace`, `execute_tool` — require explicit confirmation
 - `critical`: destructive/permission changes — require double confirmation (none currently)
 

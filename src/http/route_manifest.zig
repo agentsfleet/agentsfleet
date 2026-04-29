@@ -36,7 +36,6 @@ pub const entries = [_]Entry{
     // Workspaces
     .{ .method = "POST", .path = "/v1/workspaces" },
     .{ .method = "POST", .path = "/v1/workspaces/{workspace_id}/pause" },
-    .{ .method = "POST", .path = "/v1/workspaces/{workspace_id}/sync" },
 
     // Tenant billing (plan + balance snapshot)
     .{ .method = "GET", .path = "/v1/tenants/me/billing" },
