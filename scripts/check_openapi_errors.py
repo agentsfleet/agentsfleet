@@ -27,6 +27,32 @@ ALLOWLIST: set[tuple[str, str]] = {
 }
 
 
+def schema_uses_errorbody(node: dict, schemas: dict, seen: set | None = None) -> bool:
+    """Return True iff `node` references ErrorBody directly or via allOf.
+    Follows local component refs so endpoints can extend ErrorBody with
+    structured fields (e.g. the approval-inbox 409 carries gate_id/outcome/
+    resolved_by alongside the standard problem+json envelope) while still
+    satisfying §3.1.
+    """
+    if seen is None:
+        seen = set()
+    ref = node.get("$ref", "")
+    if ref.endswith(f"/{REQUIRED_SCHEMA}"):
+        return True
+    if ref.startswith("#/components/schemas/"):
+        name = ref.rsplit("/", 1)[-1]
+        if name in seen:
+            return False
+        seen.add(name)
+        target = schemas.get(name)
+        if isinstance(target, dict):
+            return schema_uses_errorbody(target, schemas, seen)
+    for branch in node.get("allOf", []) or []:
+        if isinstance(branch, dict) and schema_uses_errorbody(branch, schemas, seen):
+            return True
+    return False
+
+
 def main() -> int:
     try:
         with open(SPEC_PATH) as f:
@@ -87,15 +113,14 @@ def main() -> int:
                         f"uses {list(content.keys())} instead of {REQUIRED_CONTENT_TYPE}"
                     )
                 else:
-                    schema_ref = (
-                        content[REQUIRED_CONTENT_TYPE]
-                        .get("schema", {})
-                        .get("$ref", "")
-                    )
-                    if not schema_ref.endswith(REQUIRED_SCHEMA):
+                    schema_node = content[REQUIRED_CONTENT_TYPE].get("schema", {})
+                    if not schema_uses_errorbody(schema_node, schemas):
+                        ref = schema_node.get("$ref", "")
                         failures.append(
                             f"{method.upper()} {path} HTTP {code}: "
-                            f"schema ref is '{schema_ref}', expected '#/components/schemas/{REQUIRED_SCHEMA}'"
+                            f"schema ref is '{ref}', expected ref to "
+                            f"'#/components/schemas/{REQUIRED_SCHEMA}' "
+                            f"(direct or under allOf)"
                         )
 
     if failures:

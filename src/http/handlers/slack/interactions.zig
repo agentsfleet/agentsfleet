@@ -23,6 +23,7 @@
 const std = @import("std");
 const httpz = @import("httpz");
 const approval_gate = @import("../../../zombie/approval_gate.zig");
+const resolver = @import("../../../zombie/approval_gate_resolver.zig");
 const common = @import("../common.zig");
 const hx_mod = @import("../hx.zig");
 const ec = @import("../../../errors/error_registry.zig");
@@ -136,42 +137,48 @@ fn handleGateAction(hx: Hx, rest: []const u8) void {
         return;
     }
 
-    // Atomically take ownership of the pending gate — GETDEL returns the value
-    // only for the one request that consumes it; concurrent requests get null.
-    var pending_key_buf: [256]u8 = undefined;
-    const pending_key = std.fmt.bufPrint(&pending_key_buf, "{s}{s}:{s}", .{
-        ec.GATE_PENDING_KEY_PREFIX, zombie_id, inner_action_id,
-    }) catch {
-        common.internalOperationError(hx.res, "key overflow", hx.req_id);
-        return;
-    };
-    const get_del = hx.ctx.queue.command(&.{ "GETDEL", pending_key }) catch {
-        log.err("slack.interactions.redis_fail req_id={s}", .{hx.req_id});
-        hx.res.status = 200;
-        hx.res.body = "{}";
-        return;
-    };
-    const owned = switch (get_del) {
-        .bulk => |v| v != null,
-        else => false,
-    };
-    if (!owned) {
-        log.debug("slack.interactions.gate_not_found action_id={s} req_id={s}", .{ inner_action_id, hx.req_id });
-        hx.res.status = 200;
-        hx.res.body = "{\"error\":\"gate_expired\"}";
-        return;
-    }
+    // Funnel through the channel-agnostic resolve core. Dedup against the
+    // dashboard handler and the sweeper falls out of the DB UPDATE
+    // precondition WHERE status='pending'.
+    const gate_status: approval_gate.GateStatus = if (std.mem.eql(u8, decision, "approve"))
+        .approved
+    else
+        .denied;
 
-    approval_gate.resolveApproval(hx.ctx.queue, inner_action_id, decision) catch |err| {
+    // zombie_id is parsed from the same Slack action payload as the
+    // action_id; bind it into the SQL filter so a crafted payload can't
+    // resolve a gate that belongs to a different zombie.
+    var outcome = approval_gate.resolve(hx.ctx.pool, hx.ctx.queue, hx.alloc, .{
+        .action_id = inner_action_id,
+        .zombie_id_filter = zombie_id,
+        .outcome = gate_status,
+        .by = resolver.SLACK_INTERACTION,
+    }) catch |err| {
         log.err("slack.interactions.resolve_fail err={s} req_id={s}", .{ @errorName(err), hx.req_id });
         hx.res.status = 200;
         hx.res.body = "{}";
         return;
     };
+    defer switch (outcome) {
+        .resolved => |*r| @constCast(r).deinit(hx.alloc),
+        .already_resolved => |*r| @constCast(r).deinit(hx.alloc),
+        .not_found => {},
+    };
 
-    log.info("slack.interactions.gate_resolved zombie_id={s} action_id={s} decision={s} req_id={s}", .{
-        zombie_id, inner_action_id, decision, hx.req_id,
-    });
+    switch (outcome) {
+        .not_found => {
+            log.debug("slack.interactions.gate_not_found action_id={s} req_id={s}", .{ inner_action_id, hx.req_id });
+            hx.res.status = 200;
+            hx.res.body = "{\"error\":\"gate_expired\"}";
+            return;
+        },
+        .resolved => log.info("slack.interactions.gate_resolved zombie_id={s} action_id={s} decision={s} req_id={s}", .{
+            zombie_id, inner_action_id, decision, hx.req_id,
+        }),
+        .already_resolved => |r| log.info("slack.interactions.gate_already_resolved zombie_id={s} action_id={s} prior_outcome={s} prior_by={s} req_id={s}", .{
+            zombie_id, inner_action_id, r.outcome.toSlice(), r.resolved_by, hx.req_id,
+        }),
+    }
     hx.res.status = 200;
     hx.res.body = "{}";
 }

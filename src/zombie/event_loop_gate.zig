@@ -9,6 +9,7 @@ const Allocator = std.mem.Allocator;
 
 const zombie_config = @import("config.zig");
 const approval_gate = @import("approval_gate.zig");
+const resolver = @import("approval_gate_resolver.zig");
 const queue_redis = @import("../queue/redis_client.zig");
 const redis_zombie = @import("../queue/redis_zombie.zig");
 const error_codes = @import("../errors/error_registry.zig");
@@ -84,28 +85,30 @@ fn handleApprovalFlow(
     redis: *queue_redis.Client,
     gates: zombie_config.GatePolicy,
 ) GateCheckResult {
+    const detail = approval_gate.ActionDetail{
+        .tool = event.event_type,
+        .action = event.actor,
+        .params_summary = event.event_id,
+        // Inbox-visible defaults: gate_kind/proposed_action/evidence/blast_radius
+        // remain blank until per-call gate metadata is threaded in by the
+        // policy evaluator. The ActionDetail struct documents the contract;
+        // SKILL.md gate definitions populate these fields.
+        .timeout_ms = @intCast(gates.timeout_ms),
+    };
+
     const action_id = approval_gate.requestApproval(
         alloc,
         redis,
         session.zombie_id,
-        .{ .tool = event.event_type, .action = event.actor, .params_summary = event.event_id },
+        detail,
     ) catch {
-        // Redis unavailable — default-deny (spec section 6.0)
+        // Redis unavailable — default-deny.
         logGateActivity(pool, alloc, session, error_codes.GATE_EVENT_DENIED, "gate_unavailable");
         return .{ .blocked = .unavailable };
     };
     defer alloc.free(action_id);
 
     logGateActivity(pool, alloc, session, error_codes.GATE_EVENT_REQUIRED, action_id);
-
-    // Build and store the approval message (Slack/provider sends it via the skill tool).
-    // The message payload is stored in Redis alongside the pending action so the
-    // notification delivery layer (M8 Slack Plugin) can retrieve and POST it.
-    const detail = approval_gate.ActionDetail{
-        .tool = event.event_type,
-        .action = event.actor,
-        .params_summary = event.event_id,
-    };
     const slack_msg = approval_gate.buildSlackApprovalMessage(
         alloc,
         session.config.name,
@@ -127,8 +130,7 @@ fn handleApprovalFlow(
         session.zombie_id,
         session.workspace_id,
         action_id,
-        event.event_type,
-        event.actor,
+        detail,
     );
 
     const result = approval_gate.waitForDecision(redis, action_id, gates.timeout_ms);
@@ -143,7 +145,12 @@ fn handleApprovalFlow(
         },
         .timed_out => blk: {
             logGateActivity(pool, alloc, session, error_codes.GATE_EVENT_TIMEOUT, action_id);
-            approval_gate.resolveGateDecision(pool, action_id, .timed_out, "");
+            // Worker detects its own expiry ~60s before the sweeper's next
+            // cycle, so this path wins the race in every non-crash case;
+            // attribution must be the canonical "system:timeout" string the
+            // sweeper also writes, not "" (which would render blank in the
+            // dashboard's "resolved by" surface).
+            approval_gate.resolveGateDecision(pool, action_id, .timed_out, resolver.SYSTEM_TIMEOUT, "");
             cleanupPendingKey(redis, session.zombie_id, action_id);
             break :blk .{ .blocked = .timeout };
         },

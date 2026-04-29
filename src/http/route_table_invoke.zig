@@ -50,6 +50,10 @@ const events_invokes = @import("route_table_invoke_events.zig");
 pub const invokeZombieEvents = events_invokes.invokeZombieEvents;
 pub const invokeZombieEventsStream = events_invokes.invokeZombieEventsStream;
 pub const invokeWorkspaceEvents = events_invokes.invokeWorkspaceEvents;
+const approvals_invokes = @import("route_table_invoke_approvals.zig");
+pub const invokeWorkspaceApprovals = approvals_invokes.invokeWorkspaceApprovals;
+pub const invokeWorkspaceApprovalDetail = approvals_invokes.invokeWorkspaceApprovalDetail;
+pub const invokeWorkspaceApprovalResolve = approvals_invokes.invokeWorkspaceApprovalResolve;
 
 const Hx = hx_mod.Hx;
 

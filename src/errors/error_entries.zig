@@ -278,8 +278,8 @@ pub const ENTRIES = [_]Entry{
         "The approval callback signature is invalid. Check the signing secret."),
     e("UZ-APPROVAL-004", .service_unavailable, "Approval Redis unavailable",
         "Gate service unavailable \u{2014} default-deny applied. Check Redis connectivity."),
-    e("UZ-APPROVAL-005", .bad_request, "Approval condition invalid",
-        "Gate condition expression is invalid. Supported operators: == and != with single-quoted values."),
+    e("UZ-APPROVAL-005", .bad_request, "Approval condition invalid", "Gate condition expression is invalid. Supported operators: == and != with single-quoted values."),
+    e("UZ-APPROVAL-006", .conflict, "Approval already resolved", "Resolved earlier by Slack, dashboard, or auto-timeout. Original outcome + resolver in body."),
     // ── MEMORY ───────────────────────────────────────────────────────────────
     e("UZ-MEM-001", .forbidden, "Memory scope denied",
         "Memory request targets a zombie that belongs to a different workspace. " ++

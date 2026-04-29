@@ -204,87 +204,73 @@ pub fn matchWorkspaceZombieGrant(path: []const u8) ?WorkspaceZombieGrantRoute {
     return .{ .workspace_id = ws_id, .zombie_id = zombie_id, .grant_id = grant_id };
 }
 
-test "matchWorkspaceCredential: workspace_id and credential_name" {
-    const r = matchWorkspaceCredential("/v1/workspaces/ws1/credentials/fly").?;
-    try std.testing.expectEqualStrings("ws1", r.workspace_id);
-    try std.testing.expectEqualStrings("fly", r.credential_name);
-    try std.testing.expect(matchWorkspaceCredential("/v1/workspaces/ws1/credentials/") == null);
-    try std.testing.expect(matchWorkspaceCredential("/v1/workspaces//credentials/fly") == null);
-    try std.testing.expect(matchWorkspaceCredential("/v1/workspaces/ws1/credentials/llm") == null);
-    try std.testing.expect(matchWorkspaceCredential("/v1/workspaces/ws1/credentials") == null);
+
+// ── Approval inbox routes ──────────────────────────────────────────────
+
+/// Colon-noun action segments for the resolve endpoints. Owned here because
+/// the matcher is the single source of truth for URL shape; tests, manifest,
+/// and TS clients import these.
+pub const APPROVAL_ACTION_APPROVE = ":approve";
+pub const APPROVAL_ACTION_DENY = ":deny";
+pub const APPROVALS_PATH_SEGMENT = "/approvals/";
+const WORKSPACES_PREFIX = "/v1/workspaces/";
+
+pub const ApprovalGateRoute = struct {
+    workspace_id: []const u8,
+    gate_id: []const u8,
+};
+
+pub const ApprovalResolveDecision = enum { approve, deny };
+
+pub const ApprovalResolveRoute = struct {
+    workspace_id: []const u8,
+    gate_id: []const u8,
+    decision: ApprovalResolveDecision,
+};
+
+/// Matches /v1/workspaces/{ws}/approvals/{gate_id}:approve|:deny.
+/// REST §1 colon-noun operation form.
+pub fn matchWorkspaceApprovalResolve(path: []const u8) ?ApprovalResolveRoute {
+    if (!std.mem.startsWith(u8, path, WORKSPACES_PREFIX)) return null;
+
+    const action_str: []const u8 = if (std.mem.endsWith(u8, path, APPROVAL_ACTION_APPROVE))
+        APPROVAL_ACTION_APPROVE
+    else if (std.mem.endsWith(u8, path, APPROVAL_ACTION_DENY))
+        APPROVAL_ACTION_DENY
+    else
+        return null;
+
+    const decision: ApprovalResolveDecision = if (action_str.len == APPROVAL_ACTION_APPROVE.len) .approve else .deny;
+    const inner = path[WORKSPACES_PREFIX.len .. path.len - action_str.len];
+    const sep = std.mem.indexOf(u8, inner, APPROVALS_PATH_SEGMENT) orelse return null;
+    const ws_id = inner[0..sep];
+    const gate_id = inner[sep + APPROVALS_PATH_SEGMENT.len ..];
+
+    if (!isSingleSegment(ws_id)) return null;
+    if (gate_id.len == 0 or std.mem.indexOfScalar(u8, gate_id, '/') != null) return null;
+    if (std.mem.indexOfScalar(u8, gate_id, ':') != null) return null;
+    return .{ .workspace_id = ws_id, .gate_id = gate_id, .decision = decision };
 }
 
-test "matchWorkspaceAgentDelete: workspace_id and agent_id" {
-    const r = matchWorkspaceAgentDelete("/v1/workspaces/ws1/agent-keys/ag1").?;
-    try std.testing.expectEqualStrings("ws1", r.workspace_id);
-    try std.testing.expectEqualStrings("ag1", r.agent_id);
-    try std.testing.expect(matchWorkspaceAgentDelete("/v1/workspaces/ws1/agent-keys/") == null);
-    try std.testing.expect(matchWorkspaceAgentDelete("/v1/workspaces//agent-keys/ag1") == null);
-    try std.testing.expect(matchWorkspaceAgentDelete("/v1/workspaces/a/b/agent-keys/ag1") == null);
+/// Matches /v1/workspaces/{ws}/approvals/{gate_id} (single-resource GET).
+/// Returns null when the path ends in :approve / :deny so the resolve
+/// route claims those.
+pub fn matchWorkspaceApprovalGate(path: []const u8) ?ApprovalGateRoute {
+    if (std.mem.endsWith(u8, path, APPROVAL_ACTION_APPROVE)) return null;
+    if (std.mem.endsWith(u8, path, APPROVAL_ACTION_DENY)) return null;
+    if (!std.mem.startsWith(u8, path, WORKSPACES_PREFIX)) return null;
+
+    const inner = path[WORKSPACES_PREFIX.len..];
+    const sep = std.mem.indexOf(u8, inner, APPROVALS_PATH_SEGMENT) orelse return null;
+    const ws_id = inner[0..sep];
+    const gate_id = inner[sep + APPROVALS_PATH_SEGMENT.len ..];
+
+    if (!isSingleSegment(ws_id)) return null;
+    if (gate_id.len == 0 or std.mem.indexOfScalar(u8, gate_id, '/') != null) return null;
+    if (std.mem.indexOfScalar(u8, gate_id, ':') != null) return null;
+    return .{ .workspace_id = ws_id, .gate_id = gate_id };
 }
 
-test "matchWorkspaceZombieGrant: ws_id, zombie_id, grant_id" {
-    const r = matchWorkspaceZombieGrant("/v1/workspaces/ws1/zombies/z1/integration-grants/g1").?;
-    try std.testing.expectEqualStrings("ws1", r.workspace_id);
-    try std.testing.expectEqualStrings("z1", r.zombie_id);
-    try std.testing.expectEqualStrings("g1", r.grant_id);
-    try std.testing.expect(matchWorkspaceZombieGrant("/v1/workspaces/ws1/zombies/z1/integration-grants/") == null);
-    try std.testing.expect(matchWorkspaceZombieGrant("/v1/workspaces//zombies/z1/integration-grants/g1") == null);
-    try std.testing.expect(matchWorkspaceZombieGrant("/v1/workspaces/ws1/zombies//integration-grants/g1") == null);
-    try std.testing.expect(matchWorkspaceZombieGrant("/v1/workspaces/ws1/zombies/z1/x/integration-grants/g1") == null);
-}
-
-test "matchWorkspaceZombie: workspace_id and zombie_id extracted" {
-    const r = matchWorkspaceZombie("/v1/workspaces/ws_1/zombies/z_1").?;
-    try std.testing.expectEqualStrings("ws_1", r.workspace_id);
-    try std.testing.expectEqualStrings("z_1", r.zombie_id);
-    try std.testing.expect(matchWorkspaceZombie("/v1/workspaces/ws_1/zombies/") == null);
-    try std.testing.expect(matchWorkspaceZombie("/v1/workspaces//zombies/z_1") == null);
-    try std.testing.expect(matchWorkspaceZombie("/v1/workspaces/a/b/zombies/z_1") == null);
-    try std.testing.expect(matchWorkspaceZombie("/v1/workspaces/ws_1/zombies/z_1/extra") == null);
-}
-
-test "matchWorkspaceZombieAction: /steer extracts ws_id + zombie_id" {
-    const r = matchWorkspaceZombieAction("/v1/workspaces/ws1/zombies/z1/steer", "/steer").?;
-    try std.testing.expectEqualStrings("ws1", r.workspace_id);
-    try std.testing.expectEqualStrings("z1", r.zombie_id);
-    // empty ids rejected
-    try std.testing.expect(matchWorkspaceZombieAction("/v1/workspaces/ws1/zombies//steer", "/steer") == null);
-    try std.testing.expect(matchWorkspaceZombieAction("/v1/workspaces//zombies/z1/steer", "/steer") == null);
-    // multi-segment rejected
-    try std.testing.expect(matchWorkspaceZombieAction("/v1/workspaces/ws1/zombies/a/b/steer", "/steer") == null);
-    try std.testing.expect(matchWorkspaceZombieAction("/v1/workspaces/a/b/zombies/z1/steer", "/steer") == null);
-    // wrong action rejected
-    try std.testing.expect(matchWorkspaceZombieAction("/v1/workspaces/ws1/zombies/z1/other-action", "/steer") == null);
-    // flat path no longer matches
-    try std.testing.expect(matchWorkspaceZombieAction("/v1/zombies/z1/steer", "/steer") == null);
-}
-
-test "matchZombieTelemetry: extracts workspace_id and zombie_id" {
-    const ws = "ws_abc";
-    const zid = "z_123";
-    const r = matchZombieTelemetry("/v1/workspaces/ws_abc/zombies/z_123/telemetry").?;
-    try std.testing.expectEqualStrings(ws, r.workspace_id);
-    try std.testing.expectEqualStrings(zid, r.zombie_id);
-    // extra segments rejected
-    try std.testing.expect(matchZombieTelemetry("/v1/workspaces/ws_abc/extra/zombies/z_123/telemetry") == null);
-    // missing trailing segment
-    try std.testing.expect(matchZombieTelemetry("/v1/workspaces/ws_abc/zombies/z_123") == null);
-    // empty zombie_id
-    try std.testing.expect(matchZombieTelemetry("/v1/workspaces/ws_abc/zombies//telemetry") == null);
-    // empty workspace_id
-    try std.testing.expect(matchZombieTelemetry("/v1/workspaces//zombies/z_123/telemetry") == null);
-}
-
-test "matchWebhookRoute: id only and id+secret" {
-    const id = "019abc12-8d3a-7f13-8abc-2b3e1e0a6f11";
-    const r1 = matchWebhookRoute("/v1/webhooks/019abc12-8d3a-7f13-8abc-2b3e1e0a6f11").?;
-    try std.testing.expectEqualStrings(id, r1.zombie_id);
-    try std.testing.expect(r1.secret == null);
-    const r2 = matchWebhookRoute("/v1/webhooks/019abc12-8d3a-7f13-8abc-2b3e1e0a6f11/kR7x2mN").?;
-    try std.testing.expectEqualStrings(id, r2.zombie_id);
-    try std.testing.expectEqualStrings("kR7x2mN", r2.secret.?);
-    try std.testing.expect(matchWebhookRoute("/v1/webhooks/") == null);
-    try std.testing.expect(matchWebhookRoute("/v1/webhooks") == null);
-    try std.testing.expect(matchWebhookRoute("/v1/webhooks/a/b/c") == null);
+test {
+    _ = @import("route_matchers_test.zig");
 }
