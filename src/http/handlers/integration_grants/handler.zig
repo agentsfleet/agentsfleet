@@ -17,6 +17,27 @@ const log = std.log.scoped(.integration_grants);
 
 pub const Context = common.Context;
 
+/// core.integration_grants.status values. Owned here because handler.zig
+/// is the only writer that creates rows; the webhook approval flow imports
+/// these to drive its own UPDATE precondition.
+pub const GrantStatus = enum {
+    pending,
+    approved,
+    revoked,
+    rejected,
+
+    pub fn toSlice(self: GrantStatus) []const u8 {
+        return switch (self) {
+            .pending => "pending",
+            .approved => "approved",
+            .revoked => "revoked",
+            .rejected => "rejected",
+        };
+    }
+};
+
+const STATUS_PENDING = GrantStatus.pending.toSlice();
+
 // ── Zombie auth helpers (Path A + Path B) ─────────────────────────────────
 // Mirrors execute.zig auth — caller must prove zombie identity.
 
@@ -190,10 +211,10 @@ pub fn innerRequestGrant(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []con
         const now_ms_reopen = std.time.milliTimestamp();
         _ = conn.exec(
             \\UPDATE core.integration_grants
-            \\SET status = 'pending', requested_at = $1, requested_reason = $2,
+            \\SET status = $1, requested_at = $2, requested_reason = $3,
             \\    approved_at = NULL, revoked_at = NULL
-            \\WHERE grant_id = $3
-        , .{ now_ms_reopen, body.reason, hx.alloc.dupe(u8, existing_id) catch existing_id }) catch {
+            \\WHERE grant_id = $4
+        , .{ STATUS_PENDING, now_ms_reopen, body.reason, hx.alloc.dupe(u8, existing_id) catch existing_id }) catch {
             common.internalDbError(hx.res, hx.req_id);
             return;
         };
@@ -220,7 +241,7 @@ pub fn innerRequestGrant(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []con
             .grant_id     = existing_grant_id,
             .zombie_id    = zombie_id,
             .service      = body.service,
-            .status       = "pending",
+            .status       = STATUS_PENDING,
             .requested_at = now_ms_reopen,
             .message      = "Grant re-requested. Awaiting workspace owner approval.",
         });
@@ -236,8 +257,8 @@ pub fn innerRequestGrant(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []con
     _ = conn.exec(
         \\INSERT INTO core.integration_grants
         \\  (grant_id, zombie_id, service, scopes, status, requested_at, requested_reason)
-        \\VALUES ($1, $2::uuid, $3, ARRAY['*'], 'pending', $4, $5)
-    , .{ grant_id, zombie_id, body.service, now_ms, body.reason }) catch {
+        \\VALUES ($1, $2::uuid, $3, ARRAY['*'], $4, $5, $6)
+    , .{ grant_id, zombie_id, body.service, STATUS_PENDING, now_ms, body.reason }) catch {
         common.internalDbError(hx.res, hx.req_id);
         return;
     };
