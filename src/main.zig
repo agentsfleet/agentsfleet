@@ -242,6 +242,7 @@ test {
     // M23_001: Zombie Steer — live steering + execution tracking
     _ = @import("http/handlers/zombies/steer_integration_test.zig");
     _ = @import("http/handlers/zombies/events_integration_test.zig");
+    _ = @import("http/handlers/approvals/inbox_integration_test.zig");
     _ = @import("http/handlers/zombies/sse_streaming_integration_test.zig");
     _ = @import("zombie/event_loop_execution_tracking_test.zig");
     // Cross-workspace IDOR regression tests (RULE WAUTH)
