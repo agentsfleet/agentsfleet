@@ -194,7 +194,9 @@ openapi:  ## Bundle YAML → openapi.json, lint, check error schema, assert rout
 	@python3 scripts/check_openapi_sync.py
 	@echo "→ [openapi] Sync-gate parser regression tests..."
 	@python3 scripts/test_check_openapi_sync.py
-	@echo "✓ [openapi] Bundle + lint + error-schema + router parity + parser tests all green"
+	@echo "→ [openapi] REST §1 URL shape (no verbs in URLs)..."
+	@python3 scripts/check_openapi_url_shape.py
+	@echo "✓ [openapi] Bundle + lint + error-schema + router parity + parser tests + url-shape all green"
 
 _legacy_symbols_check:
 	@echo "→ [zombied] Checking for legacy event-substrate symbols (orphan sweep — RULE ORP)..."
