@@ -3,6 +3,8 @@ Milestone: M11
 Workstream: M11_001
 Name: API_ERROR_STANDARDIZATION
 Status: DONE
+Priority: P1 — establishes RFC 7807 error contract; foundational for all handler work
+Categories: API
 Branch: feat/m11-api-error-standardization
 Created: Apr 10, 2026
 ---
