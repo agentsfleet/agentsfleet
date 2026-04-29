@@ -96,6 +96,7 @@ _test-integration-redis: _reset-test-db
 	  ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" \
 	  ZIG_LOCAL_CACHE_DIR="$(ZIG_LOCAL_CACHE_DIR)" \
 	  TEST_REDIS_TLS_URL="$$redis_tls_test_url" \
+	  REDIS_URL_API="$$redis_tls_test_url" \
 	  REDIS_TLS_CA_CERT_FILE="$(TEST_REDIS_TLS_CA_CERT)" \
 	  zig build test
 	@echo "✓ [zombied] Redis integration tests passed"
@@ -130,6 +131,7 @@ _test-integration-full: _reset-test-db
 	LIVE_DB=1 \
 	TEST_DATABASE_URL="$$db_url" \
 	TEST_REDIS_TLS_URL="$$redis_tls_test_url" \
+	REDIS_URL_API="$$redis_tls_test_url" \
 	REDIS_TLS_CA_CERT_FILE="$(TEST_REDIS_TLS_CA_CERT)" \
 	zig build test
 	@echo "✓ [zombied] Full integration suite passed"

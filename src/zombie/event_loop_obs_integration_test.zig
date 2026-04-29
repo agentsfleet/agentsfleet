@@ -107,11 +107,12 @@ test "integration M15_002 3.2: event_loop_emits_completion updates all 4 counter
     };
 
     var event = redis_zombie.ZombieEvent{
-        .message_id = try alloc.dupe(u8, "0-1"),
-        .event_id = try alloc.dupe(u8, "evt_success"),
-        .event_type = try alloc.dupe(u8, "email.received"),
-        .source = try alloc.dupe(u8, "webhook"),
-        .data_json = try alloc.dupe(u8, "{}"),
+        .event_id = try alloc.dupe(u8, "0-1"),
+        .event_type = try alloc.dupe(u8, "webhook"),
+        .actor = try alloc.dupe(u8, "webhook:agentmail"),
+        .workspace_id = try alloc.dupe(u8, "ws_test"),
+        .request_json = try alloc.dupe(u8, "{}"),
+        .created_at_ms = 0,
     };
     defer event.deinit(alloc);
     // Shape-compatible stage_result stand-in (logDeliveryResult takes anytype).

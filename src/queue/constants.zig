@@ -21,13 +21,7 @@ const cancel_key_prefix = "run:cancel:";
 const interrupt_key_prefix = "run:interrupt:";
 const interrupt_ttl_seconds: u32 = 300;
 
-/// M23_001: Redis key suffix for zombie steering signals.
-/// Full key: "zombie:" ++ zombie_id ++ zombie_steer_key_suffix
-/// Worker polls GETDEL at top of event loop; injects result as a synthetic steer event.
-pub const zombie_steer_key_suffix = ":steer";
-pub const zombie_steer_ttl_seconds: u32 = 300;
-
-// ── M1_001: Zombie event stream constants ────────────────────────────────
+// ── Zombie event stream constants ────────────────────────────────────────
 
 /// Zombie stream key format: "zombie:{zombie_id}:events".
 /// Built dynamically per zombie — not a single global stream like run_queue.
@@ -37,11 +31,13 @@ pub const zombie_stream_suffix = ":events";
 /// Consumer group for zombie event processing. One group per zombie stream.
 pub const zombie_consumer_group = "zombie_workers";
 
-/// Stream field names for zombie events (written by xaddZombieEvent).
-pub const zombie_field_event_id = "event_id";
+/// Stream field names for zombie events. Wire shape matches EventEnvelope.encodeForXAdd.
+/// The Redis stream entry id IS the canonical event_id — never carry a separate id.
 pub const zombie_field_type = "type";
-pub const zombie_field_source = "source";
-pub const zombie_field_data = "data";
+pub const zombie_field_actor = "actor";
+pub const zombie_field_workspace_id = "workspace_id";
+pub const zombie_field_request = "request";
+pub const zombie_field_created_at = "created_at";
 
 /// XREADGROUP settings for zombie streams.
 pub const zombie_xread_count = "1";

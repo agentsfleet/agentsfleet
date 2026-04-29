@@ -1,8 +1,7 @@
 // Zombie event loop helpers — extracted per RULE FLL (350-line gate).
 //
 // Session checkpoint, credential resolution, context update, truncation, backoff,
-// execution tracking (M23_001), steer poll (M23_001), sandbox execution.
-// Called by event_loop.zig.
+// execution tracking, sandbox execution. Called by event_loop.zig.
 
 const std = @import("std");
 const pg = @import("pg");
@@ -12,13 +11,12 @@ const Allocator = std.mem.Allocator;
 const error_codes = @import("../errors/error_registry.zig");
 const crypto_store = @import("../secrets/crypto_store.zig");
 const backoff = @import("../reliability/backoff.zig");
-const activity_stream = @import("activity_stream.zig");
 const metrics_counters = @import("../observability/metrics_counters.zig");
 const metrics_workspace = @import("../observability/metrics_workspace.zig");
 const telemetry_mod = @import("../observability/telemetry.zig");
 const redis_zombie = @import("../queue/redis_zombie.zig");
-const queue_consts = @import("../queue/constants.zig");
 const executor_client = @import("../executor/client.zig");
+const executor_transport = @import("../executor/transport.zig");
 const id_format = @import("../types/id_format.zig");
 
 const types = @import("event_loop_types.zig");
@@ -127,16 +125,11 @@ pub fn logDeliveryResult(
     stage_result: anytype,
     wall_ms: u64,
 ) void {
+    _ = alloc;
     const ok = stage_result.failure == null;
     if (ok) {
         log.info("zombie_event_loop.delivered zombie_id={s} event_id={s} tokens={d} wall_s={d}", .{
             session.zombie_id, event.event_id, stage_result.token_count, stage_result.wall_seconds,
-        });
-        activity_stream.logEvent(cfg.pool, alloc, .{
-            .zombie_id = session.zombie_id,
-            .workspace_id = session.workspace_id,
-            .event_type = activity_stream.EVT_AGENT_RESPONSE,
-            .detail = event.event_id,
         });
         metrics_counters.incZombiesCompleted();
         metrics_counters.addZombieTokens(stage_result.token_count);
@@ -146,12 +139,6 @@ pub fn logDeliveryResult(
         const label = stage_result.failure.?.label();
         log.warn("zombie_event_loop.agent_failure zombie_id={s} event_id={s} failure={s}", .{
             session.zombie_id, event.event_id, label,
-        });
-        activity_stream.logEvent(cfg.pool, alloc, .{
-            .zombie_id = session.zombie_id,
-            .workspace_id = session.workspace_id,
-            .event_type = activity_stream.EVT_AGENT_ERROR,
-            .detail = label,
         });
         metrics_counters.incZombiesFailed();
     }
@@ -222,49 +209,32 @@ pub fn clearExecutionActive(alloc: Allocator, session: *ZombieSession, pool: *pg
     , .{session.zombie_id}) catch {};
 }
 
-// ── M23_001: Steer poll ───────────────────────────────────────────────────────
-
-/// Poll Redis for a pending steer signal and inject it as a synthetic event.
-/// Called at the top of the runEventLoop while iteration, before pollNextEvent.
-/// Non-fatal: errors are logged and discarded so they never stall the event loop.
-pub fn pollSteerAndInject(alloc: Allocator, cfg: EventLoopConfig, session: *const ZombieSession) void {
-    var key_buf: [128]u8 = undefined;
-    const key = std.fmt.bufPrint(&key_buf, "zombie:{s}{s}", .{
-        session.zombie_id, queue_consts.zombie_steer_key_suffix,
-    }) catch return;
-
-    const msg = cfg.redis.getDel(key) catch null orelse return;
-    defer alloc.free(msg);
-
-    const event_id = id_format.generateZombieId(alloc) catch {
-        log.warn("zombie_event_loop.steer_poll_oom zombie_id={s}", .{session.zombie_id});
-        return;
-    };
-    defer alloc.free(event_id);
-
-    cfg.redis.xaddZombieEvent(session.zombie_id, event_id, "steer", "operator", msg) catch |err| {
-        log.warn("zombie_event_loop.steer_inject_fail zombie_id={s} err={s}", .{ session.zombie_id, @errorName(err) });
-    };
-    log.info("zombie_event_loop.steer_injected zombie_id={s} event_id={s}", .{ session.zombie_id, event_id });
-}
-
 // ── Sandbox execution (moved from event_loop.zig for RULE FLL) ───────────────
 
-fn parseSessionContext(alloc: Allocator, json: []const u8) ?std.json.Value {
+/// Parse the session's stored context JSON. Returns the full
+/// `std.json.Parsed` so the caller can `deinit()` it and reclaim the
+/// arena — the previous shape returned `parsed.value` and dropped the
+/// arena handle, leaking the parse buffer on every event after the
+/// first (because `updateSessionContext` rewrites context_json to a
+/// non-empty value the second event then has to parse).
+fn parseSessionContext(alloc: Allocator, json: []const u8) ?std.json.Parsed(std.json.Value) {
     if (json.len <= 2) return null;
-    const parsed = std.json.parseFromSlice(std.json.Value, alloc, json, .{}) catch return null;
-    return parsed.value;
+    return std.json.parseFromSlice(std.json.Value, alloc, json, .{}) catch null;
 }
 
 /// Create executor session, run the stage, destroy session. Tracks execution_id
-/// in session + DB for API visibility (M23_001).
+/// in session + DB for API visibility. The emitter dispatches each progress
+/// frame the executor streams back — pass `ProgressEmitter.noop()` to opt out.
 pub fn executeInSandbox(
     alloc: Allocator,
     session: *ZombieSession,
     event: *const redis_zombie.ZombieEvent,
     cfg: EventLoopConfig,
+    emitter: executor_transport.ProgressEmitter,
 ) !executor_client.ExecutorClient.StageResult {
-    const context_val = parseSessionContext(alloc, session.context_json);
+    var context_parsed = parseSessionContext(alloc, session.context_json);
+    defer if (context_parsed) |*p| p.deinit();
+    const context_val: ?std.json.Value = if (context_parsed) |p| p.value else null;
 
     // trace_id and session_id both bind to event.event_id: no upstream trace
     // propagator exists yet, so the per-event ID doubles as both the distributed
@@ -291,14 +261,31 @@ pub fn executeInSandbox(
     const api_key: []const u8 = resolveFirstCredential(alloc, cfg.pool, session) catch "";
     defer if (api_key.len > 0) alloc.free(api_key);
 
-    return cfg.executor.startStage(execution_id, .{
+    // Extract the agent-facing message from the envelope's structured
+    // request payload (`{"message": "...", "metadata": {...}}`). Fall back
+    // to the raw request JSON when the field is missing, so producers that
+    // forget to wrap still deliver something.
+    var owned_message: ?[]u8 = null;
+    defer if (owned_message) |m| alloc.free(m);
+    const message_text: []const u8 = blk: {
+        var parsed = std.json.parseFromSlice(std.json.Value, alloc, event.request_json, .{}) catch break :blk event.request_json;
+        defer parsed.deinit();
+        if (parsed.value != .object) break :blk event.request_json;
+        const msg_val = parsed.value.object.get("message") orelse break :blk event.request_json;
+        if (msg_val != .string) break :blk event.request_json;
+        const dup = alloc.dupe(u8, msg_val.string) catch break :blk event.request_json;
+        owned_message = dup;
+        break :blk dup;
+    };
+
+    return cfg.executor.startStageStreaming(execution_id, .{
         .agent_config = .{
             .system_prompt = session.instructions,
             .api_key = api_key,
         },
-        .message = event.data_json,
+        .message = message_text,
         .context = context_val,
-    }) catch |err| {
+    }, emitter) catch |err| {
         log.err("zombie_event_loop.stage_fail zombie_id={s} event_id={s} error_code=" ++ error_codes.ERR_EXEC_STAGE_START_FAILED, .{ session.zombie_id, event.event_id });
         return err;
     };

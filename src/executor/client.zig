@@ -151,11 +151,30 @@ pub const ExecutorClient = struct {
         context: ?std.json.Value = null,
     };
 
-    /// Send a StartStage RPC with full agent execution payload (M12_003).
+    /// Send a StartStage RPC, non-streaming. Equivalent to
+    /// `startStageStreaming` with a no-op progress emitter — kept for
+    /// call sites that don't (yet) want a live-tail consumer.
     pub fn startStage(
         self: *ExecutorClient,
         execution_id: []const u8,
         payload: StagePayload,
+    ) !StageResult {
+        return self.startStageStreaming(execution_id, payload, transport.ProgressEmitter.noop());
+    }
+
+    /// Send a StartStage RPC and dispatch executor-side progress
+    /// frames to `emitter` as they arrive. Returns the terminal
+    /// StageResult once the executor's terminal frame lands.
+    ///
+    /// Today (until slice 3c wires NullClaw lifecycle hooks into the
+    /// executor-side emitter) the executor emits zero progress frames,
+    /// so the streaming path degenerates to one-shot — `emitter.emit`
+    /// fires zero times and behaviour matches the old `startStage`.
+    pub fn startStageStreaming(
+        self: *ExecutorClient,
+        execution_id: []const u8,
+        payload: StagePayload,
+        emitter: transport.ProgressEmitter,
     ) !StageResult {
         var params = std.json.Value{ .object = std.json.ObjectMap.init(self.alloc) };
         defer params.object.deinit();
@@ -172,11 +191,11 @@ pub const ExecutorClient = struct {
         try ac.object.put("system_prompt", .{ .string = payload.agent_config.system_prompt });
         try ac.object.put("temperature", .{ .float = payload.agent_config.temperature });
         try ac.object.put("max_tokens", .{ .integer = @intCast(payload.agent_config.max_tokens) });
-        // M16_003 §1: pass workspace LLM API key; omit field when empty so executor
+        // Pass workspace LLM API key; omit field when empty so executor
         // falls back to its own env (dev mode).
         if (payload.agent_config.api_key.len > 0)
             try ac.object.put("api_key", .{ .string = payload.agent_config.api_key });
-        // M16_003 §2: pass GitHub installation token; omit when empty.
+        // Pass GitHub installation token; omit when empty.
         if (payload.agent_config.github_token.len > 0)
             try ac.object.put("github_token", .{ .string = payload.agent_config.github_token });
         try params.object.put("agent_config", ac);
@@ -185,7 +204,7 @@ pub const ExecutorClient = struct {
         if (payload.tools) |t| try params.object.put("tools", t);
         if (payload.context) |c| try params.object.put("context", c);
 
-        var resp = self.transport_client.sendRequest(self.nextId(), protocol.Method.start_stage, params) catch {
+        var resp = self.transport_client.sendRequestStreaming(self.nextId(), protocol.Method.start_stage, params, emitter) catch {
             log.err("executor_client.transport_loss error_code=UZ-EXEC-006 method=StartStage execution_id={s}", .{execution_id});
             executor_metrics.incExecutorFailures();
             return ClientError.TransportLoss;

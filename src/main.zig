@@ -141,8 +141,9 @@ test {
     _ = @import("zombie/config.zig");
     _ = @import("zombie/yaml_frontmatter.zig");
     _ = @import("http/route_matchers.zig");
-    _ = @import("zombie/activity_stream.zig");
-    _ = @import("zombie/activity_cursor.zig");
+    _ = @import("zombie/event_envelope.zig");
+    _ = @import("zombie/event_envelope_test.zig");
+    _ = @import("zombie/activity_publisher.zig");
     _ = @import("zombie/event_loop.zig");
     _ = @import("zombie/event_loop_secrets.zig");
     _ = @import("zombie/event_loop_secrets_test.zig");
@@ -182,7 +183,10 @@ test {
     _ = @import("state/vault_test.zig");
     _ = @import("executor/types.zig");
     _ = @import("executor/protocol.zig");
+    _ = @import("executor/progress_callbacks.zig");
+    _ = @import("executor/progress_callbacks_test.zig");
     _ = @import("executor/transport.zig");
+    _ = @import("executor/transport_test.zig");
     _ = @import("executor/session.zig");
     _ = @import("executor/executor_metrics.zig");
     _ = @import("executor/landlock.zig");
@@ -211,7 +215,6 @@ test {
     _ = @import("http/handlers/zombies/list.zig");
     _ = @import("http/handlers/zombies/kill.zig");
     _ = @import("http/handlers/zombies/patch.zig");
-    _ = @import("http/handlers/zombies/activity.zig");
     // M18_001: zombie execution telemetry
     _ = @import("state/zombie_telemetry_store.zig");
     _ = @import("http/handlers/zombies/telemetry.zig");
@@ -238,6 +241,8 @@ test {
     _ = @import("http/handlers/zombies/steer.zig");
     // M23_001: Zombie Steer — live steering + execution tracking
     _ = @import("http/handlers/zombies/steer_integration_test.zig");
+    _ = @import("http/handlers/zombies/events_integration_test.zig");
+    _ = @import("http/handlers/zombies/sse_streaming_integration_test.zig");
     _ = @import("zombie/event_loop_execution_tracking_test.zig");
     // Cross-workspace IDOR regression tests (RULE WAUTH)
     _ = @import("http/handlers/cross_workspace_idor_test.zig");

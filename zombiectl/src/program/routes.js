@@ -14,6 +14,8 @@ const routes = [
   { key: "zombie.status", match: (cmd) => cmd === "status" },
   { key: "zombie.kill", match: (cmd) => cmd === "kill" },
   { key: "zombie.logs", match: (cmd) => cmd === "logs" },
+  { key: "zombie.steer", match: (cmd) => cmd === "steer" },
+  { key: "zombie.events", match: (cmd) => cmd === "events" },
   { key: "zombie.credential", match: (cmd) => cmd === "credential" },
 ];
 

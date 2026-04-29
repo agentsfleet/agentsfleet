@@ -11,6 +11,7 @@ const session_mod = @import("session.zig");
 const executor_metrics = @import("executor_metrics.zig");
 const runner = @import("runner.zig");
 const network = @import("network.zig");
+const progress_writer_mod = @import("progress_writer.zig");
 
 const log = std.log.scoped(.executor_handler);
 
@@ -37,21 +38,42 @@ pub const Handler = struct {
         };
     }
 
-    /// Top-level frame handler called by the transport layer.
+    /// Top-level frame handler called by the transport layer. Tests
+    /// invoke this 2-arg form directly; the streaming wire path goes
+    /// through `handleFrameWithFd` so StartStage can write progress
+    /// notifications back to the same connection mid-execution.
     pub fn handleFrame(self: *Handler, alloc: std.mem.Allocator, payload: []const u8) ![]u8 {
+        return self.handleFrameWithFd(alloc, payload, null);
+    }
+
+    /// Frame handler with the optional connection fd plumbed through.
+    /// Bound to the transport layer in main.zig.
+    pub fn handleFrameWithFd(
+        self: *Handler,
+        alloc: std.mem.Allocator,
+        payload: []const u8,
+        conn_fd: ?std.posix.socket_t,
+    ) ![]u8 {
         var req = protocol.parseRequest(alloc, payload) catch {
             return self.errorResponse(alloc, 0, protocol.ErrorCode.parse_error, "Invalid JSON-RPC request");
         };
         defer req.deinit();
 
-        return self.dispatch(alloc, req.id, req.method, req.params);
+        return self.dispatch(alloc, req.id, req.method, req.params, conn_fd);
     }
 
-    fn dispatch(self: *Handler, alloc: std.mem.Allocator, id: u64, method: []const u8, params: ?std.json.Value) ![]u8 {
+    fn dispatch(
+        self: *Handler,
+        alloc: std.mem.Allocator,
+        id: u64,
+        method: []const u8,
+        params: ?std.json.Value,
+        conn_fd: ?std.posix.socket_t,
+    ) ![]u8 {
         if (std.mem.eql(u8, method, protocol.Method.create_execution)) {
             return self.handleCreateExecution(alloc, id, params);
         } else if (std.mem.eql(u8, method, protocol.Method.start_stage)) {
-            return self.handleStartStage(alloc, id, params);
+            return self.handleStartStage(alloc, id, params, conn_fd);
         } else if (std.mem.eql(u8, method, protocol.Method.cancel_execution)) {
             return self.handleCancelExecution(alloc, id, params);
         } else if (std.mem.eql(u8, method, protocol.Method.get_usage)) {
@@ -90,7 +112,10 @@ pub const Handler = struct {
             correlation,
             self.resource_limits,
             self.lease_timeout_ms,
-        );
+        ) catch {
+            self.alloc.destroy(session_ptr);
+            return self.errorResponse(alloc, id, protocol.ErrorCode.internal_error, "Failed to dupe session inputs");
+        };
 
         self.store.put(session_ptr) catch {
             session_ptr.destroy();
@@ -109,7 +134,13 @@ pub const Handler = struct {
         , .{ id, &hex });
     }
 
-    fn handleStartStage(self: *Handler, alloc: std.mem.Allocator, id: u64, params: ?std.json.Value) ![]u8 {
+    fn handleStartStage(
+        self: *Handler,
+        alloc: std.mem.Allocator,
+        id: u64,
+        params: ?std.json.Value,
+        conn_fd: ?std.posix.socket_t,
+    ) ![]u8 {
         const p = params orelse return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, "Missing params");
         if (p != .object) return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, "Params must be object");
 
@@ -128,7 +159,6 @@ pub const Handler = struct {
 
         const hex = types.executionIdHex(exec_id);
 
-        // Extract M12_003 payload fields.
         const agent_config = getObjectParam(p, "agent_config");
         const tools_spec = getArrayParam(p, "tools");
         const message = json.getStr(p, "message");
@@ -136,6 +166,16 @@ pub const Handler = struct {
 
         const model_name = if (agent_config) |ac| json.getStr(ac, "model") orelse "default" else "default";
         log.info("executor.runner.start execution_id={s} zombie_id={s} session_id={s} model={s} network_policy={s}", .{ &hex, session.correlation.zombie_id, session.correlation.session_id, model_name, @tagName(self.network_policy) });
+
+        // Build a per-call progress writer when this frame arrived on a
+        // real socket. Direct `handleFrame` callers (tests, repair paths)
+        // pass null and the runner falls back to a noop observer.
+        const writer_storage = if (conn_fd) |fd| progress_writer_mod{
+            .fd = fd,
+            .request_id = id,
+            .alloc = alloc,
+        } else null;
+        const writer_ptr: ?*const progress_writer_mod = if (writer_storage) |*w| w else null;
 
         // Invoke NullClaw runner — this blocks until agent execution completes.
         const result = runner.execute(
@@ -145,7 +185,13 @@ pub const Handler = struct {
             tools_spec,
             message,
             context,
+            writer_ptr,
         );
+        // Ownership: every non-empty `content` is an `alloc.dupe` from the
+        // runner (production runner.zig:285 and harness runner_harness.zig:96);
+        // every empty `content` is a `""` string literal returned by failure or
+        // no-op branches and is therefore not heap-allocated. Free iff non-empty.
+        defer if (result.content.len > 0) alloc.free(result.content);
         session.recordStageResult(result);
         session.touchLease();
 

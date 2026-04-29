@@ -455,8 +455,8 @@ describe("zombies routes", () => {
       if (url.endsWith("/v1/tenants/me/billing")) {
         return { ok: true, status: 200, json: async () => billing };
       }
-      if (url.includes("/activity")) {
-        return { ok: true, status: 200, json: async () => ({ events: [], next_cursor: null }) };
+      if (url.includes("/events")) {
+        return { ok: true, status: 200, json: async () => ({ items: [], next_cursor: null }) };
       }
       return {
         ok: true,
@@ -622,8 +622,8 @@ describe("zombies routes", () => {
       if (url.endsWith("/v1/tenants/me/billing")) {
         throw new Error("network down");
       }
-      if (url.includes("/activity")) {
-        return { ok: true, status: 200, json: async () => ({ events: [], next_cursor: null }) };
+      if (url.includes("/events")) {
+        return { ok: true, status: 200, json: async () => ({ items: [], next_cursor: null }) };
       }
       return {
         ok: true,

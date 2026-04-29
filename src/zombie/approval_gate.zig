@@ -12,7 +12,6 @@ const Allocator = std.mem.Allocator;
 const queue_redis = @import("../queue/redis_client.zig");
 const ec = @import("../errors/error_registry.zig");
 const id_format = @import("../types/id_format.zig");
-const activity_stream = @import("activity_stream.zig");
 const config_gates = @import("config_gates.zig");
 
 const log = std.log.scoped(.approval_gate);

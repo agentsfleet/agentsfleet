@@ -18,7 +18,6 @@ const common = @import("../common.zig");
 const hx_mod = @import("../hx.zig");
 const ec = @import("../../../errors/error_registry.zig");
 const approval_gate = @import("../../../zombie/approval_gate.zig");
-const activity_stream = @import("../../../zombie/activity_stream.zig");
 
 const log = std.log.scoped(.http_approval);
 
@@ -96,15 +95,8 @@ pub fn innerApprovalCallback(hx: Hx, req: *httpz.Request, zombie_id: []const u8)
         "", // detail
     );
 
-    // Log to activity stream
-    if (workspace_id.len > 0) {
-        activity_stream.logEvent(hx.ctx.pool, hx.alloc, .{
-            .zombie_id = zombie_id,
-            .workspace_id = workspace_id,
-            .event_type = event_type,
-            .detail = payload.action_id,
-        });
-    }
+    _ = event_type;
+    _ = workspace_id;
 
     log.info("approval.resolved zombie_id={s} action_id={s} decision={s}", .{
         zombie_id, payload.action_id, decision_str,

@@ -15,9 +15,9 @@ const common = @import("../common.zig");
 const hx_mod = @import("../hx.zig");
 const ec = @import("../../../errors/error_registry.zig");
 const zombie_config = @import("../../../zombie/config.zig");
-const activity_stream = @import("../../../zombie/activity_stream.zig");
 const telemetry_mod = @import("../../../observability/telemetry.zig");
 const metrics_counters = @import("../../../observability/metrics_counters.zig");
+const EventEnvelope = @import("../../../zombie/event_envelope.zig");
 
 const log = std.log.scoped(.http_webhook);
 
@@ -96,7 +96,7 @@ fn parseBody(hx: Hx, req: *httpz.Request, zombie_id: []const u8) ?WebhookPayload
     return payload;
 }
 
-fn dedupAndEnqueue(hx: Hx, zombie_id: []const u8, payload: WebhookPayload, source_label: []const u8) bool {
+fn dedupAndEnqueue(hx: Hx, zombie_id: []const u8, workspace_id: []const u8, payload: WebhookPayload, source_label: []const u8) bool {
     var dedup_key_buf: [256]u8 = undefined;
     const dedup_key = std.fmt.bufPrint(&dedup_key_buf, "webhook:dedup:{s}:{s}", .{ zombie_id, payload.event_id }) catch {
         common.internalOperationError(hx.res, "dedup key overflow", hx.req_id);
@@ -116,11 +116,26 @@ fn dedupAndEnqueue(hx: Hx, zombie_id: []const u8, payload: WebhookPayload, sourc
         common.internalOperationError(hx.res, "Failed to serialize event data", hx.req_id);
         return false;
     };
-    hx.ctx.queue.xaddZombieEvent(zombie_id, payload.event_id, payload.type, source_label, data_json) catch |err| {
-        log.err("webhook.enqueue_failed zombie_id={s} event_id={s} err={s}", .{ zombie_id, payload.event_id, @errorName(err) });
+    defer hx.alloc.free(data_json);
+
+    var actor_buf: [128]u8 = undefined;
+    const actor = std.fmt.bufPrint(&actor_buf, "webhook:{s}", .{source_label}) catch "webhook:unknown";
+    const envelope = EventEnvelope{
+        .event_id = "",
+        .zombie_id = zombie_id,
+        .workspace_id = workspace_id,
+        .actor = actor,
+        .event_type = .webhook,
+        .request_json = data_json,
+        .created_at = std.time.milliTimestamp(),
+    };
+    const new_event_id = hx.ctx.queue.xaddZombieEvent(envelope) catch |err| {
+        log.err("webhook.enqueue_failed zombie_id={s} sender_event_id={s} err={s}", .{ zombie_id, payload.event_id, @errorName(err) });
         common.internalOperationError(hx.res, "Failed to enqueue event", hx.req_id);
         return false;
     };
+    defer hx.alloc.free(new_event_id);
+    log.info("webhook.enqueued zombie_id={s} stream_event_id={s} sender_event_id={s} actor={s}", .{ zombie_id, new_event_id, payload.event_id, actor });
     return true;
 }
 
@@ -150,14 +165,7 @@ pub fn innerReceiveWebhook(hx: Hx, req: *httpz.Request, zombie_id: []const u8) v
     }
 
     const source_label = zombie.source orelse "";
-    if (!dedupAndEnqueue(hx, zombie_id, payload, source_label)) return;
-
-    activity_stream.logEvent(hx.ctx.pool, hx.alloc, .{
-        .zombie_id = zombie_id,
-        .workspace_id = zombie.workspace_id,
-        .event_type = ec.WEBHOOK_EVENT_TYPE,
-        .detail = payload.event_id,
-    });
+    if (!dedupAndEnqueue(hx, zombie_id, zombie.workspace_id, payload, source_label)) return;
 
     recordWebhookAccepted(hx.ctx.telemetry, zombie.workspace_id, zombie_id, payload.event_id, source_label);
 

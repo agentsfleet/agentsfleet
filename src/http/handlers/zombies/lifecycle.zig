@@ -24,7 +24,6 @@ const hx_mod = @import("../hx.zig");
 const ec = @import("../../../errors/error_registry.zig");
 const id_format = @import("../../../types/id_format.zig");
 const zombie_config = @import("../../../zombie/config.zig");
-const activity_stream = @import("../../../zombie/activity_stream.zig");
 const workspace_guards = @import("../../workspace_guards.zig");
 
 const log = std.log.scoped(.zombie_lifecycle);
@@ -141,12 +140,8 @@ fn stopZombieOnConn(conn: *pg.Conn, workspace_id: []const u8, zombie_id: []const
 }
 
 fn writeStoppedEvent(hx: hx_mod.Hx, workspace_id: []const u8, zombie_id: []const u8) void {
-    activity_stream.logEvent(hx.ctx.pool, hx.alloc, .{
-        .zombie_id = zombie_id,
-        .workspace_id = workspace_id,
-        .event_type = activity_stream.EVT_ZOMBIE_STOPPED,
-        .detail = DETAIL_MANUAL_STOP,
-    });
+    _ = hx;
+    log.info("zombie.stopped workspace_id={s} zombie_id={s} reason={s}", .{ workspace_id, zombie_id, DETAIL_MANUAL_STOP });
 }
 
 // ── Unit tests ────────────────────────────────────────────────────────────
@@ -158,10 +153,6 @@ fn writeStoppedEvent(hx: hx_mod.Hx, workspace_id: []const u8, zombie_id: []const
 test "ZombieStatus.stopped round-trips through toSlice/fromSlice" {
     try std.testing.expectEqualStrings("stopped", zombie_config.ZombieStatus.stopped.toSlice());
     try std.testing.expectEqual(zombie_config.ZombieStatus.stopped, zombie_config.ZombieStatus.fromSlice("stopped").?);
-}
-
-test "activity EVT_ZOMBIE_STOPPED constant is the wire string" {
-    try std.testing.expectEqualStrings("zombie_stopped", activity_stream.EVT_ZOMBIE_STOPPED);
 }
 
 test "DETAIL_MANUAL_STOP is human-readable and non-empty" {

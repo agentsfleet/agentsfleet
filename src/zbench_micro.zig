@@ -9,7 +9,7 @@ const zbench = @import("zbench");
 
 const router = @import("http/router.zig");
 const error_registry = @import("errors/error_registry.zig");
-const activity_cursor = @import("zombie/activity_cursor.zig");
+const keyset_cursor = @import("zombie/keyset_cursor.zig");
 const id_format = @import("types/id_format.zig");
 const webhook_verify = @import("zombie/webhook_verify.zig");
 const fx = @import("zbench_fixtures.zig");
@@ -34,13 +34,13 @@ fn benchErrorRegistryLookup(allocator: std.mem.Allocator) void {
     }
 }
 
-// ── 1.3 activity_cursor_roundtrip ─ spec §1.3
+// ── 1.3 keyset_cursor_roundtrip ─ spec §1.3
 fn benchActivityCursorRoundtrip(allocator: std.mem.Allocator) void {
     for (fx.CURSORS) |raw| {
-        // Fixtures are synthesized in-process and covered by activity_cursor
+        // Fixtures are synthesized in-process and covered by keyset_cursor
         // unit tests; any failure here means the fixture builder drifted.
-        const parsed = activity_cursor.parse(raw) catch @panic("CURSORS fixture invalid");
-        const re = activity_cursor.format(allocator, parsed) catch @panic("cursor format OOM");
+        const parsed = keyset_cursor.parse(raw) catch @panic("CURSORS fixture invalid");
+        const re = keyset_cursor.format(allocator, parsed) catch @panic("cursor format OOM");
         allocator.free(re);
     }
 }
@@ -90,7 +90,7 @@ pub fn main() !void {
 
     try bench.add("route_match", benchRouteMatch, .{});
     try bench.add("error_registry_lookup", benchErrorRegistryLookup, .{});
-    try bench.add("activity_cursor_roundtrip", benchActivityCursorRoundtrip, .{});
+    try bench.add("keyset_cursor_roundtrip", benchActivityCursorRoundtrip, .{});
     try bench.add("json_encode_response", benchJsonEncodeResponse, .{});
     try bench.add("uuid_v7_generate", benchUuidV7Generate, .{});
     try bench.add("webhook_signature_verify", benchWebhookSignatureVerify, .{});

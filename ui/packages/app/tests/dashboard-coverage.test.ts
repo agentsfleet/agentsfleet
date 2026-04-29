@@ -16,7 +16,8 @@ const getTokenFn = vi.fn().mockResolvedValue("token_abc");
 const stopZombieMock = vi.fn();
 const listZombiesMock = vi.fn();
 const getTenantBillingMock = vi.fn();
-const listWorkspaceActivityMock = vi.fn();
+const listWorkspaceEventsMock = vi.fn();
+const listZombieEventsMock = vi.fn();
 const resolveActiveWorkspaceMock = vi.fn();
 const getServerTokenMock = vi.fn();
 const getServerAuthMock = vi.fn();
@@ -70,9 +71,9 @@ vi.mock("@/lib/api/tenant_billing", () => ({
   getTenantBilling: getTenantBillingMock,
 }));
 
-vi.mock("@/lib/api/activity", () => ({
-  listWorkspaceActivity: listWorkspaceActivityMock,
-  listZombieActivity: vi.fn(),
+vi.mock("@/lib/api/events", () => ({
+  listWorkspaceEvents: listWorkspaceEventsMock,
+  listZombieEvents: listZombieEventsMock,
 }));
 
 const listCredentialsMock = vi.fn();
@@ -267,7 +268,8 @@ beforeEach(() => {
     is_exhausted: false,
     exhausted_at: null,
   });
-  listWorkspaceActivityMock.mockResolvedValue({ events: [], next_cursor: null });
+  listWorkspaceEventsMock.mockResolvedValue({ items: [], next_cursor: null });
+  listZombieEventsMock.mockResolvedValue({ items: [], next_cursor: null });
   getTokenFn.mockResolvedValue("token_abc");
   stopZombieMock.mockResolvedValue(undefined);
 });

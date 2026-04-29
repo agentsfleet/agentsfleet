@@ -40,8 +40,8 @@ const NAV = [
     icon: KeyRoundIcon,
   },
   {
-    label: "Activity",
-    href: "/activity",
+    label: "Events",
+    href: "/",
     icon: ActivityIcon,
   },
 ];

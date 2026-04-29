@@ -2,7 +2,7 @@
 # QUALITY — code quality, formatting, analysis
 # =============================================================================
 
-.PHONY: lint lint-zig lint-website lint-apps lint-ci openapi doctor check-pg-drain check-schema-gate _fmt _fmt_check _zlint_check _pg_drain_check _schema_gate_check _zig_target_lint _zig_line_limit_check _hardcoded_role_check _website_lint _app_lint _design_system_lint _zombiectl_lint _actionlint_check
+.PHONY: lint lint-zig lint-website lint-apps lint-ci openapi doctor check-pg-drain check-schema-gate _fmt _fmt_check _zlint_check _pg_drain_check _schema_gate_check _zig_target_lint _zig_line_limit_check _hardcoded_role_check _legacy_symbols_check _website_lint _app_lint _design_system_lint _zombiectl_lint _actionlint_check
 
 ZLINT ?= zlint
 ACTIONLINT ?= actionlint
@@ -194,9 +194,25 @@ openapi:  ## Bundle YAML → openapi.json, lint, check error schema, assert rout
 	@python3 scripts/check_openapi_sync.py
 	@echo "→ [openapi] Sync-gate parser regression tests..."
 	@python3 scripts/test_check_openapi_sync.py
-	@echo "✓ [openapi] Bundle + lint + error-schema + router parity + parser tests all green"
+	@echo "→ [openapi] REST §1 URL shape (no verbs in URLs)..."
+	@python3 scripts/check_openapi_url_shape.py
+	@echo "✓ [openapi] Bundle + lint + error-schema + router parity + parser tests + url-shape all green"
 
-lint-zig: _fmt_check _zlint_check _pg_drain_check _schema_gate_check _zig_target_lint _zig_line_limit_check _hardcoded_role_check  ## Lint zombied (Zig)
+_legacy_symbols_check:
+	@echo "→ [zombied] Checking for legacy event-substrate symbols (orphan sweep — RULE ORP)..."
+	@FAIL=0; \
+	PATTERNS='\bactivity_events\b|\bactivity_stream\b|\bactivity_cursor\b|\bzombie_steer_key_suffix\b|"GETDEL".*"zombie:'; \
+	HITS=$$(grep -rEn "$$PATTERNS" src/ --include='*.zig' \
+	         | grep -vE '^[^:]+:[0-9]+:[ \t]*//' || true); \
+	if [ -n "$$HITS" ]; then \
+		echo "✗ Legacy event-substrate symbols found in active code (RULE ORP). Strip or replace — these were removed in slice 1/8 of the unified event substrate:"; \
+		echo "$$HITS"; \
+		FAIL=1; \
+	fi; \
+	if [ $$FAIL -eq 1 ]; then exit 1; fi; \
+	echo "✓ [zombied] No legacy event-substrate symbols in active code"
+
+lint-zig: _fmt_check _zlint_check _pg_drain_check _schema_gate_check _zig_target_lint _zig_line_limit_check _hardcoded_role_check _legacy_symbols_check  ## Lint zombied (Zig)
 	@echo "✓ [zombied] Lint passed"
 
 lint-website: _website_lint  ## Lint website only (ESLint + tsc)

@@ -9,7 +9,6 @@
 const std = @import("std");
 const pg = @import("pg");
 const queue_redis = @import("../../queue/redis.zig");
-const activity_stream = @import("../activity_stream.zig");
 const approval_slack = @import("../approval_gate_slack.zig");
 
 const log = std.log.scoped(.grant_notifier);
@@ -126,13 +125,9 @@ fn logDashboard(
     grant_id: []const u8,
     service: []const u8,
 ) void {
-    const detail = std.fmt.allocPrint(alloc, "grant_request:{s}:{s}", .{ service, grant_id }) catch grant_id;
-    activity_stream.logEvent(pool, alloc, .{
-        .zombie_id    = zombie_id,
-        .workspace_id = workspace_id,
-        .event_type   = "grant.requested",
-        .detail       = detail,
-    });
+    _ = pool;
+    _ = alloc;
+    log.info("grant_notifier.requested zombie_id={s} workspace_id={s} service={s} grant_id={s}", .{ zombie_id, workspace_id, service, grant_id });
 }
 
 // ── Public API ─────────────────────────────────────────────────────────────

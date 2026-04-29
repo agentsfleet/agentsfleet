@@ -117,9 +117,9 @@ describe("dashboard page inner async components", () => {
         balance_cents: 1000, is_exhausted: false, exhausted_at: null,
       }),
     }));
-    vi.doMock("@/lib/api/activity", () => ({
-      listWorkspaceActivity: overrides.activity ?? vi.fn().mockResolvedValue({ events: [], next_cursor: null }),
-      listZombieActivity: vi.fn(),
+    vi.doMock("@/lib/api/events", () => ({
+      listWorkspaceEvents: overrides.activity ?? vi.fn().mockResolvedValue({ items: [], next_cursor: null }),
+      listZombieEvents: vi.fn().mockResolvedValue({ items: [], next_cursor: null }),
     }));
     vi.doMock("next/navigation", () => ({
       notFound: vi.fn(() => { throw new Error("notFound"); }),
@@ -167,10 +167,14 @@ describe("dashboard page inner async components", () => {
     expect(await RecentActivity()).toBeNull();
   });
 
-  it("RecentActivity returns null on activity fetch failure (catch arrow)", async () => {
-    await withMocks({ activity: () => Promise.reject(new Error("activity-down")) });
+  it("RecentActivity falls back to an empty events page on fetch failure", async () => {
+    await withMocks({ activity: vi.fn().mockRejectedValue(new Error("events-down")) });
     const { RecentActivity } = await import("../app/(dashboard)/page");
-    expect(await RecentActivity()).toBeNull();
+    const element = await RecentActivity();
+    // Slice 10 changed the failure mode: instead of returning null and
+    // hiding the panel, render the events list with an empty initial
+    // page. Operators still see the section header + EmptyState.
+    expect(element).not.toBeNull();
   });
 
   it("RecentActivity renders the feed on success", async () => {

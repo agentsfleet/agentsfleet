@@ -231,19 +231,19 @@ test("kill without zombie_id returns MISSING_ARGUMENT", async () => {
 
 // ── logs ───────────────────────────────────────────────────────────────
 
-test("logs fetches per-zombie activity stream", async () => {
+test("logs fetches per-zombie events stream (M42: activity → events repoint)", async () => {
   let requestUrl = null;
   const deps = makeDeps({
     request: async (_ctx, url) => {
       requestUrl = url;
-      return { events: [{ event_type: "webhook_received", detail: "evt_001" }] };
+      return { items: [{ actor: "webhook:github", status: "processed", response_text: "ok", created_at: 1745539200000 }] };
     },
   });
 
   const ZOMBIE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
   const code = await commandZombie(makeCtx(), ["logs", "--zombie", ZOMBIE_ID], workspaces, deps);
   assert.equal(code, 0);
-  assert.ok(requestUrl.includes(`/v1/workspaces/${WS_ID}/zombies/${ZOMBIE_ID}/activity`));
+  assert.ok(requestUrl.includes(`/v1/workspaces/${WS_ID}/zombies/${ZOMBIE_ID}/events`));
 });
 
 test("logs without --zombie returns exit 2", async () => {

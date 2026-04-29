@@ -14,6 +14,8 @@ export function registerProgramCommands(handlers) {
     "zombie.status": handlers.zombieStatus,
     "zombie.kill": handlers.zombieKill,
     "zombie.logs": handlers.zombieLogs,
+    "zombie.steer": handlers.zombieSteer,
+    "zombie.events": handlers.zombieEvents,
     "zombie.credential": handlers.zombieCredential,
   };
 }

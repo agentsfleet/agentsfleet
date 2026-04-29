@@ -340,79 +340,14 @@
         $ref: ../components/responses.yaml#/components/responses/Error
       '404':
         $ref: ../components/responses.yaml#/components/responses/Error
-/v1/workspaces/{workspace_id}/zombies/{zombie_id}/activity:
-  get:
-    operationId: list_zombie_activity
-    summary: List zombie activity events
-    description: Returns the append-only activity stream for a zombie (event received, skill invoked, response returned, credential
-      resolved, grant requested, etc.). Cursor-based pagination.
-    tags:
-    - Zombies
-    parameters:
-    - name: workspace_id
-      in: path
-      required: true
-      description: UUIDv7 of the workspace.
-      schema:
-        type: string
-        format: uuid
-    - name: zombie_id
-      in: path
-      required: true
-      description: UUIDv7 of the zombie.
-      schema:
-        type: string
-        format: uuid
-    - name: limit
-      in: query
-      required: false
-      schema:
-        type: integer
-        default: 20
-        minimum: 1
-        maximum: 100
-    - name: cursor
-      in: query
-      required: false
-      schema:
-        type: string
-      description: Opaque cursor from the previous response.
-    responses:
-      '200':
-        description: OK
-        content:
-          application/json:
-            schema:
-              type: object
-              required:
-              - items
-              - total
-              properties:
-                items:
-                  type: array
-                  items:
-                    $ref: ../components/schemas.yaml#/components/schemas/ActivityEvent
-                total:
-                  type: integer
-                  description: Count of items in this response (not total across pages).
-                cursor:
-                  type: string
-                  nullable: true
-                  description: Opaque cursor for the next page. null when no more items.
-      '400':
-        $ref: ../components/responses.yaml#/components/responses/Error
-      '401':
-        $ref: ../components/responses.yaml#/components/responses/Error
-      '403':
-        $ref: ../components/responses.yaml#/components/responses/Error
-      '404':
-        $ref: ../components/responses.yaml#/components/responses/Error
 /v1/workspaces/{workspace_id}/zombies/{zombie_id}/steer:
   post:
     operationId: steer_zombie
-    summary: Steer a running zombie
-    description: Send a message to a running zombie to nudge it at the next gate checkpoint. Queued (next checkpoint) or instant
-      (IPC delivery) per body.
+    summary: Steer a zombie by enqueueing a chat event
+    description: Build an EventEnvelope with `actor=steer:<user>` / `event_type=chat` and XADD it onto `zombie:{id}:events`.
+      The Redis stream entry id IS the canonical event_id and is returned to the caller so SSE consumers can filter
+      frames for the steer they just sent. Same single-ingress contract as webhook and continuation events — no separate
+      "queued vs instant" mode.
     tags:
     - Zombies
     parameters:
@@ -441,24 +376,26 @@
             properties:
               message:
                 type: string
-              mode:
-                type: string
-                enum:
-                - queued
-                - instant
-                default: queued
+                description: Operator message body. Up to 8192 bytes. The server wraps it in a JSON object with a "message"
+                  field as the envelope's request payload.
     responses:
       '202':
-        description: Accepted
+        description: Event enqueued. The CLI uses event_id to filter SSE frames.
         content:
           application/json:
             schema:
               type: object
+              required:
+              - status
+              - event_id
               properties:
                 status:
                   type: string
+                  enum:
+                  - accepted
                 event_id:
                   type: string
+                  description: Redis stream entry id (the canonical event_id). Format `<ms>-<seq>`.
       '400':
         $ref: ../components/responses.yaml#/components/responses/Error
       '401':
@@ -467,6 +404,124 @@
         $ref: ../components/responses.yaml#/components/responses/Error
       '404':
         $ref: ../components/responses.yaml#/components/responses/Error
+/v1/workspaces/{workspace_id}/zombies/{zombie_id}/events:
+  get:
+    operationId: list_zombie_events
+    summary: List a zombie's event history
+    description: >
+      Cursor-paginated list of operator-visible events for one zombie,
+      newest first. Each row is a `core.zombie_events` entry — the
+      durable record produced by the worker write path on every steer,
+      webhook, cron, or continuation event. Filter by actor glob
+      (e.g. `steer:*`, `webhook:github`) or `since=` (Go-style
+      duration like `2h`/`30m` or RFC 3339 timestamp). `since=` and
+      `cursor=` are mutually exclusive.
+    tags:
+    - Zombies
+    parameters:
+    - name: workspace_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    - name: zombie_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    - name: cursor
+      in: query
+      required: false
+      description: Opaque base64url-no-pad cursor returned in `next_cursor`. Mutually exclusive with `since`.
+      schema:
+        type: string
+    - name: actor
+      in: query
+      required: false
+      description: Glob filter against the row's actor. `*` is a wildcard. Examples - 'steer:kishore', 'webhook:github', 'webhook:*'.
+      schema:
+        type: string
+    - name: since
+      in: query
+      required: false
+      description: Lower bound on `created_at`. Accepts Go-style durations (15s/30m/2h/7d) or RFC 3339 timestamps. Mutually exclusive with `cursor`.
+      schema:
+        type: string
+    - name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 200
+        default: 50
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - items
+              - next_cursor
+              properties:
+                items:
+                  type: array
+                  items:
+                    type: object
+                    description: One zombie_events row.
+                next_cursor:
+                  type: string
+                  nullable: true
+      default:
+        $ref: ../components/responses.yaml#/components/responses/Error
+/v1/workspaces/{workspace_id}/zombies/{zombie_id}/events/stream:
+  get:
+    operationId: stream_zombie_events
+    summary: Subscribe to a zombie's live activity stream (SSE)
+    description: >
+      Server-Sent Events tail of the Redis pub/sub channel
+      `zombie:{id}:activity`. The handler SUBSCRIBEs on a dedicated
+      Redis connection and forwards each PUBLISH frame as one SSE
+      event with id (per-connection monotonic counter), event (frame
+      kind), and data (JSON payload) lines. Frame kinds - event_received,
+      tool_call_started, tool_call_progress, chunk, tool_call_completed,
+      event_complete. Sequence ids reset to 0 on every new SUBSCRIBE
+      and the server ignores `Last-Event-ID`. Clients reconnect by
+      calling GET /events with a cursor to backfill the durable record,
+      then re-open this stream. Authentication this slice is Bearer-only
+      (CLI / programmatic). Browser cookie auth lands with the dashboard
+      slice.
+    tags:
+    - Zombies
+    parameters:
+    - name: workspace_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    - name: zombie_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    responses:
+      '200':
+        description: SSE stream opened.
+        content:
+          text/event-stream:
+            schema:
+              type: string
+              description: SSE-formatted frames.
+      default:
+        $ref: ../components/responses.yaml#/components/responses/Error
+    security:
+    - BearerAuth: []
 /v1/workspaces/{workspace_id}/zombies/{zombie_id}/current-run:
   delete:
     operationId: delete_workspace_zombie_current_run

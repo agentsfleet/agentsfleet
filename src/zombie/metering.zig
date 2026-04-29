@@ -20,7 +20,6 @@ const tenant_billing = @import("../state/tenant_billing.zig");
 const zombie_telemetry_store = @import("../state/zombie_telemetry_store.zig");
 const otel_traces = @import("../observability/otel_traces.zig");
 const trace = @import("../observability/trace.zig");
-const activity_stream = @import("activity_stream.zig");
 const balance_policy = @import("../config/balance_policy.zig");
 
 const log = std.log.scoped(.zombie_metering);
@@ -202,33 +201,13 @@ fn onExhaustedDebit(
         return;
     };
 
+    _ = workspace_id;
+    _ = alloc;
+    _ = WARN_RATE_LIMIT_WINDOW_MS;
     if (transitioned) {
         log.info("metering.balance_exhausted_first_debit zombie_id={s} tenant_id={s}", .{ zombie_id, tenant_id });
-        activity_stream.logEventOnConn(conn, alloc, .{
-            .zombie_id = zombie_id,
-            .workspace_id = workspace_id,
-            .event_type = activity_stream.EVT_BALANCE_EXHAUSTED_FIRST_DEBIT,
-            .detail = tenant_id,
-        });
     } else {
         log.info("metering.exhausted zombie_id={s} tenant_id={s} policy={s}", .{ zombie_id, tenant_id, policy.label() });
-    }
-
-    if (policy == .warn) {
-        const since_ms = std.time.milliTimestamp() - WARN_RATE_LIMIT_WINDOW_MS;
-        if (!activity_stream.hasRecentActivityEventForTenantOnConn(
-            conn,
-            tenant_id,
-            activity_stream.EVT_BALANCE_EXHAUSTED,
-            since_ms,
-        )) {
-            activity_stream.logEventOnConn(conn, alloc, .{
-                .zombie_id = zombie_id,
-                .workspace_id = workspace_id,
-                .event_type = activity_stream.EVT_BALANCE_EXHAUSTED,
-                .detail = tenant_id,
-            });
-        }
     }
 }
 

@@ -65,8 +65,8 @@ test "crash: executor stops mid-session, client RPC returns TransportLoss" {
 
     const Wrapper = struct {
         var g_handler: *handler_mod.Handler = undefined;
-        fn handle(a: std.mem.Allocator, payload: []const u8) anyerror![]u8 {
-            return g_handler.handleFrame(a, payload);
+        fn handle(a: std.mem.Allocator, payload: []const u8, conn_fd: ?std.posix.socket_t) anyerror![]u8 {
+            return g_handler.handleFrameWithFd(a, payload, conn_fd);
         }
     };
     Wrapper.g_handler = &rpc_handler;
@@ -125,7 +125,7 @@ test "crash: worker disappears, lease reaper cleans orphaned sessions" {
         const session = try page.create(session_mod.Session);
         var stage_buf: [8]u8 = undefined;
         const session_id = std.fmt.bufPrint(&stage_buf, "s-{d}", .{i}) catch "s";
-        session.* = session_mod.Session.create(page, "/tmp/test", .{
+        session.* = try session_mod.Session.create(page, "/tmp/test", .{
             .trace_id = "trace-orphan",
             .zombie_id = "run-orphan",
             .workspace_id = "ws-orphan",
@@ -162,8 +162,8 @@ test "crash: executor restart, worker reconnects to new socket" {
 
     const Wrapper1 = struct {
         var g_handler: *handler_mod.Handler = undefined;
-        fn handle(a: std.mem.Allocator, payload: []const u8) anyerror![]u8 {
-            return g_handler.handleFrame(a, payload);
+        fn handle(a: std.mem.Allocator, payload: []const u8, conn_fd: ?std.posix.socket_t) anyerror![]u8 {
+            return g_handler.handleFrameWithFd(a, payload, conn_fd);
         }
     };
     Wrapper1.g_handler = &handler1;
@@ -201,8 +201,8 @@ test "crash: executor restart, worker reconnects to new socket" {
 
     const Wrapper2 = struct {
         var g_handler: *handler_mod.Handler = undefined;
-        fn handle(a: std.mem.Allocator, payload: []const u8) anyerror![]u8 {
-            return g_handler.handleFrame(a, payload);
+        fn handle(a: std.mem.Allocator, payload: []const u8, conn_fd: ?std.posix.socket_t) anyerror![]u8 {
+            return g_handler.handleFrameWithFd(a, payload, conn_fd);
         }
     };
     Wrapper2.g_handler = &handler2;

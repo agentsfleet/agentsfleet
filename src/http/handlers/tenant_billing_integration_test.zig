@@ -11,7 +11,6 @@ const pg = @import("pg");
 const auth_mw = @import("../../auth/middleware/mod.zig");
 
 const tenant_billing = @import("../../state/tenant_billing.zig");
-const activity_stream = @import("../../zombie/activity_stream.zig");
 const metering = @import("../../zombie/metering.zig");
 const balance_policy = @import("../../config/balance_policy.zig");
 
@@ -71,165 +70,13 @@ fn seedTenantAndWorkspace(conn: *pg.Conn, tenant_id: []const u8, now_ms: i64) !v
 }
 
 fn teardown(conn: *pg.Conn, tenant_id: []const u8) void {
-    // core.activity_events has an append-only trigger blocking DELETE.
-    // Disable it for this teardown scope so the test rows can be
-    // workspace-scoped-deleted without blowing away sibling suites' data.
-    _ = conn.exec("ALTER TABLE core.activity_events DISABLE TRIGGER trg_activity_events_append_only", .{}) catch {};
-    _ = conn.exec("DELETE FROM core.activity_events WHERE workspace_id = $1::uuid", .{TEST_WORKSPACE_ID}) catch {};
-    _ = conn.exec("ALTER TABLE core.activity_events ENABLE TRIGGER trg_activity_events_append_only", .{}) catch {};
     _ = conn.exec("DELETE FROM core.zombies WHERE workspace_id = $1::uuid", .{TEST_WORKSPACE_ID}) catch {};
     _ = conn.exec("DELETE FROM workspaces WHERE workspace_id = $1::uuid", .{TEST_WORKSPACE_ID}) catch {};
     _ = conn.exec("DELETE FROM billing.tenant_billing WHERE tenant_id = $1::uuid", .{tenant_id}) catch {};
     _ = conn.exec("DELETE FROM tenants WHERE tenant_id = $1::uuid", .{tenant_id}) catch {};
 }
 
-fn countActivityEvents(conn: *pg.Conn, workspace_id: []const u8, event_type: []const u8) !i64 {
-    const PgQuery = @import("../../db/pg_query.zig").PgQuery;
-    var q = PgQuery.from(try conn.query(
-        \\SELECT COUNT(*) FROM core.activity_events
-        \\WHERE workspace_id = $1::uuid AND event_type = $2
-    , .{ workspace_id, event_type }));
-    defer q.deinit();
-    const row = (try q.next()) orelse return 0;
-    return try row.get(i64, 0);
-}
 
-// ── §2.3 / §2.4 — first-debit transition + replay ─────────────────────────
-
-test "integration(m11_006): first exhausting debit stamps balance_exhausted_at + emits one-shot event; replay does not duplicate" {
-    const alloc = std.testing.allocator;
-    const db_ctx = (try @import("../../db/test_fixtures.zig").openTestConn(alloc)) orelse return error.SkipZigTest;
-    defer db_ctx.pool.deinit();
-    defer db_ctx.pool.release(db_ctx.conn);
-
-    const now_ms = std.time.milliTimestamp();
-    try seedTenantAndWorkspace(db_ctx.conn, TEST_TENANT_ID, now_ms);
-    defer teardown(db_ctx.conn, TEST_TENANT_ID);
-
-    try tenant_billing.provisionFreeDefault(db_ctx.conn, TEST_TENANT_ID);
-
-    // First exhausting debit: mark the row and write the one-shot event
-    // on the same conn, same pattern as metering.onExhaustedDebit.
-    const first = try tenant_billing.markExhausted(db_ctx.conn, TEST_TENANT_ID);
-    try std.testing.expect(first);
-    activity_stream.logEventOnConn(db_ctx.conn, alloc, .{
-        .zombie_id = TEST_ZOMBIE_ID,
-        .workspace_id = TEST_WORKSPACE_ID,
-        .event_type = activity_stream.EVT_BALANCE_EXHAUSTED_FIRST_DEBIT,
-        .detail = TEST_TENANT_ID,
-    });
-
-    // Replay: second markExhausted is a no-op; no duplicate event.
-    const second = try tenant_billing.markExhausted(db_ctx.conn, TEST_TENANT_ID);
-    try std.testing.expect(!second);
-
-    const count = try countActivityEvents(db_ctx.conn, TEST_WORKSPACE_ID, activity_stream.EVT_BALANCE_EXHAUSTED_FIRST_DEBIT);
-    try std.testing.expectEqual(@as(i64, 1), count);
-
-    // And the billing row carries a non-null exhausted_at that survived the replay.
-    const billing = (try tenant_billing.getBilling(db_ctx.conn, alloc, TEST_TENANT_ID)).?;
-    defer alloc.free(@constCast(billing.plan_tier));
-    defer alloc.free(@constCast(billing.plan_sku));
-    defer alloc.free(@constCast(billing.grant_source));
-    try std.testing.expect(billing.exhausted_at_ms != null);
-}
-
-// ── §3.2 — warn-policy rate limiter proof ────────────────────────────────
-
-test "integration(m11_006): warn-policy tenant-scoped rate-limit probe skips second emit within the 24h window" {
-    const alloc = std.testing.allocator;
-    const db_ctx = (try @import("../../db/test_fixtures.zig").openTestConn(alloc)) orelse return error.SkipZigTest;
-    defer db_ctx.pool.deinit();
-    defer db_ctx.pool.release(db_ctx.conn);
-
-    const now_ms = std.time.milliTimestamp();
-    try seedTenantAndWorkspace(db_ctx.conn, TEST_TENANT_ID, now_ms);
-    defer teardown(db_ctx.conn, TEST_TENANT_ID);
-
-    // Seed one event well inside the 24h window.
-    activity_stream.logEventOnConn(db_ctx.conn, alloc, .{
-        .zombie_id = TEST_ZOMBIE_ID,
-        .workspace_id = TEST_WORKSPACE_ID,
-        .event_type = activity_stream.EVT_BALANCE_EXHAUSTED,
-        .detail = TEST_TENANT_ID,
-    });
-
-    const since_ms = std.time.milliTimestamp() - (24 * 60 * 60 * 1000);
-    // Tenant-scoped probe finds the event via the core.workspaces JOIN —
-    // this is the production path used by metering.onExhaustedDebit.
-    const recent = activity_stream.hasRecentActivityEventForTenantOnConn(
-        db_ctx.conn,
-        TEST_TENANT_ID,
-        activity_stream.EVT_BALANCE_EXHAUSTED,
-        since_ms,
-    );
-    try std.testing.expect(recent); // Would suppress a second emit.
-
-    // And a window anchored in the future (minus 0 ms from *tomorrow*)
-    // finds no event — proves the predicate is actually time-bounded.
-    const tomorrow_ms = std.time.milliTimestamp() + (25 * 60 * 60 * 1000);
-    const future = activity_stream.hasRecentActivityEventForTenantOnConn(
-        db_ctx.conn,
-        TEST_TENANT_ID,
-        activity_stream.EVT_BALANCE_EXHAUSTED,
-        tomorrow_ms,
-    );
-    try std.testing.expect(!future);
-}
-
-// ── §3.1 — continue-policy: no event emission beyond the one-shot ────────
-
-test "integration(m11_006): continue-policy path emits zero balance_exhausted events on replay" {
-    const alloc = std.testing.allocator;
-    const db_ctx = (try @import("../../db/test_fixtures.zig").openTestConn(alloc)) orelse return error.SkipZigTest;
-    defer db_ctx.pool.deinit();
-    defer db_ctx.pool.release(db_ctx.conn);
-
-    const now_ms = std.time.milliTimestamp();
-    try seedTenantAndWorkspace(db_ctx.conn, TEST_TENANT_ID, now_ms);
-    defer teardown(db_ctx.conn, TEST_TENANT_ID);
-
-    try tenant_billing.provisionFreeDefault(db_ctx.conn, TEST_TENANT_ID);
-
-    // Simulate what `metering.onExhaustedDebit` does when policy=continue:
-    //   1. First exhausted debit → markExhausted returns true → emit
-    //      the one-shot `balance_exhausted_first_debit` event.
-    //   2. Replay → markExhausted returns false → do NOT emit a duplicate.
-    //   3. Under .@"continue", skip the `.warn`-only path entirely →
-    //      NO `balance_exhausted` event is written regardless.
-    {
-        const transitioned = try tenant_billing.markExhausted(db_ctx.conn, TEST_TENANT_ID);
-        try std.testing.expect(transitioned);
-        activity_stream.logEventOnConn(db_ctx.conn, alloc, .{
-            .zombie_id = TEST_ZOMBIE_ID,
-            .workspace_id = TEST_WORKSPACE_ID,
-            .event_type = activity_stream.EVT_BALANCE_EXHAUSTED_FIRST_DEBIT,
-            .detail = TEST_TENANT_ID,
-        });
-    }
-    // Replay the exhausted branch several times under `.continue`.
-    var i: usize = 0;
-    while (i < 3) : (i += 1) {
-        const transitioned = try tenant_billing.markExhausted(db_ctx.conn, TEST_TENANT_ID);
-        try std.testing.expect(!transitioned);
-        // policy == .@"continue" → no balance_exhausted emit — intentionally
-        // no logEventOnConn call in this branch, mirroring production code.
-    }
-
-    const first_debit = try countActivityEvents(
-        db_ctx.conn,
-        TEST_WORKSPACE_ID,
-        activity_stream.EVT_BALANCE_EXHAUSTED_FIRST_DEBIT,
-    );
-    try std.testing.expectEqual(@as(i64, 1), first_debit);
-
-    const recurring = try countActivityEvents(
-        db_ctx.conn,
-        TEST_WORKSPACE_ID,
-        activity_stream.EVT_BALANCE_EXHAUSTED,
-    );
-    try std.testing.expectEqual(@as(i64, 0), recurring);
-}
 
 // ── §3.3 — stop-policy pre-claim gate ────────────────────────────────────
 

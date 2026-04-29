@@ -29,6 +29,8 @@ const tools_mod = nullclaw.tools;
 const memory_mod = nullclaw.memory;
 const observability = nullclaw.observability;
 
+const build_options = @import("build_options");
+
 const json = @import("json_helpers.zig");
 const types = @import("types.zig");
 const executor_metrics = @import("executor_metrics.zig");
@@ -36,6 +38,9 @@ const tool_bridge = @import("tool_bridge.zig");
 const runner_credentials = @import("runner_credentials.zig");
 const zombie_memory = @import("zombie_memory.zig");
 const runner_helpers = @import("runner_helpers.zig");
+const runner_progress = @import("runner_progress.zig");
+const runner_harness = @import("runner_harness.zig");
+const progress_writer_mod = @import("progress_writer.zig");
 
 const log = std.log.scoped(.executor_runner);
 
@@ -102,7 +107,14 @@ pub fn execute(
     tools_spec: ?std.json.Value,
     message: ?[]const u8,
     context: ?std.json.Value,
+    progress: ?*const progress_writer_mod,
 ) types.ExecutionResult {
+    // Test-only harness path. Stripped from the production binary because the
+    // build option is a comptime-known false there. See runner_harness.zig.
+    if (build_options.executor_harness) {
+        return runner_harness.execute(alloc, workspace_path, agent_config, tools_spec, message, context, progress);
+    }
+
     const msg = message orelse {
         log.err("executor.runner.invalid_config error_code={s} reason=missing_message", .{ERR_EXEC_RUNNER_INVALID_CONFIG});
         executor_metrics.incStagesFailed();
@@ -112,7 +124,7 @@ pub fn execute(
     executor_metrics.incStagesStarted();
     const start = std.time.milliTimestamp();
 
-    const result = executeInner(alloc, workspace_path, agent_config, tools_spec, msg, context) catch |err| {
+    const result = executeInner(alloc, workspace_path, agent_config, tools_spec, msg, context, progress) catch |err| {
         const elapsed = elapsedSeconds(start);
         executor_metrics.incStagesFailed();
         executor_metrics.observeAgentDurationSeconds(elapsed);
@@ -152,6 +164,7 @@ fn executeInner(
     tools_spec: ?std.json.Value,
     message: []const u8,
     context: ?std.json.Value,
+    progress: ?*const progress_writer_mod,
 ) !InnerResult {
     // 1. Build config from env defaults + agent_config overrides.
     var cfg = Config.load(alloc) catch {
@@ -231,9 +244,18 @@ fn executeInner(
     const mem_opt: ?memory_mod.Memory = if (mem_rt) |rt| rt.memory else null;
     tools_mod.bindMemoryTools(tools, mem_opt);
 
-    // 5. Initialize observer.
+    // 5. Initialize observer. When streaming is enabled (progress != null),
+    // wire the runner_progress adapter so NullClaw events surface as
+    // ProgressFrame notifications on the StartStage RPC. Otherwise fall
+    // back to the noop / log / verbose backend (default for non-streaming
+    // call sites and tests).
     var obs_runtime = ObserverRuntime.init(alloc);
-    const obs = obs_runtime.observer();
+    var secrets_list = collectSecrets(agent_config);
+    var adapter: runner_progress.Adapter = undefined;
+    const obs = if (progress) |w| blk: {
+        adapter = .{ .writer = w, .alloc = alloc, .secrets = secrets_list[0..] };
+        break :blk adapter.observer();
+    } else obs_runtime.observer();
 
     // 6. Create agent.
     var agent = Agent.fromConfig(alloc, &cfg, provider_i, tools, mem_opt, obs) catch {
@@ -241,6 +263,12 @@ fn executeInner(
         return RunnerError.AgentInitFailed;
     };
     defer agent.deinit();
+
+    if (progress != null) {
+        const stream_pair = adapter.streamCallback();
+        agent.stream_callback = stream_pair.cb;
+        agent.stream_ctx = stream_pair.ctx;
+    }
 
     // 7. Compose message with context fields.
     const composed = composeMessage(alloc, message, context) catch {
@@ -267,6 +295,23 @@ const applyAgentConfig = runner_helpers.applyAgentConfig;
 const injectProviderApiKey = runner_helpers.injectProviderApiKey;
 const buildToolsFromSpec = runner_helpers.buildToolsFromSpec;
 pub const composeMessage = runner_helpers.composeMessage;
+
+/// Collect the known secret values + canonical placeholders from
+/// agent_config so the progress adapter can redact them out of tool
+/// arguments before they cross the RPC boundary. The returned array is
+/// stack-storage; the adapter borrows it for the duration of the run.
+/// Secrets with empty values are still returned but the redactor
+/// short-circuits on `value.len == 0`.
+fn collectSecrets(agent_config: ?std.json.Value) [2]runner_progress.Secret {
+    const ac = agent_config orelse return .{
+        .{ .value = "", .placeholder = "${secrets.llm.api_key}" },
+        .{ .value = "", .placeholder = "${secrets.github.token}" },
+    };
+    return .{
+        .{ .value = json.getStr(ac, "api_key") orelse "", .placeholder = "${secrets.llm.api_key}" },
+        .{ .value = json.getStr(ac, "github_token") orelse "", .placeholder = "${secrets.github.token}" },
+    };
+}
 
 /// Map a runner error to a FailureClass.
 pub fn mapError(err: anyerror) types.FailureClass {

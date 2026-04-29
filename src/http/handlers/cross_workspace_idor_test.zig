@@ -514,49 +514,6 @@ test "M26_001 no-content: DELETE agent-key returns 204 with empty body" {
     try std.testing.expectEqual(@as(usize, 0), r.body.len);
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// M26_001 additional coverage — activity envelope w/ cursor key, DELETE grant
-// 204 with empty body, memory validation negative paths.
-// ─────────────────────────────────────────────────────────────────────────────
-
-test "M26_001 envelope: GET /zombies/{id}/activity body has items+total+cursor" {
-    const srv = try startTestServer(ALLOC);
-    defer {
-        if (srv.pool.acquire()) |c| { cleanupTestData(c); srv.pool.release(c); } else |_| {}
-        srv.deinit();
-        ALLOC.destroy(srv);
-    }
-
-    // Seed a zombie in TEST_WORKSPACE_ID so the activity query hits an
-    // authorised target (otherwise activity returns 404).
-    const zombie_id = "0195b4ba-8d3a-7f13-8abc-2b3e1ecafe01";
-    const conn = try srv.pool.acquire();
-    _ = try conn.exec(
-        \\INSERT INTO core.zombies (id, workspace_id, name, source_markdown, config_json, status, created_at, updated_at)
-        \\VALUES ($1::uuid, $2::uuid, 'm26-activity-test', '---\nname: m26-activity\n---\nx', '{"name":"m26-activity"}', 'active', 0, 0)
-        \\ON CONFLICT DO NOTHING
-    , .{ zombie_id, TEST_WORKSPACE_ID });
-    srv.pool.release(conn);
-    defer {
-        if (srv.pool.acquire()) |c| {
-            _ = c.exec("DELETE FROM core.zombies WHERE id = $1::uuid", .{zombie_id}) catch {};
-            srv.pool.release(c);
-        } else |_| {}
-    }
-
-    const url = try urlJoin(ALLOC, srv.port, "/v1/workspaces/{s}/zombies/{s}/activity", .{ TEST_WORKSPACE_ID, zombie_id });
-    defer ALLOC.free(url);
-
-    const r = try sendReq(ALLOC, url, .GET, TOKEN_OPERATOR, null);
-    defer r.deinit(ALLOC);
-    try std.testing.expectEqual(@as(u16, 200), r.status);
-    try std.testing.expect(bodyHasTopLevelKey(r.body, "items"));
-    try std.testing.expect(bodyHasTopLevelKey(r.body, "total"));
-    try std.testing.expect(bodyHasTopLevelKey(r.body, "cursor"));
-    // Old keys must be gone.
-    try std.testing.expect(!bodyHasTopLevelKey(r.body, "events"));
-    try std.testing.expect(!bodyHasTopLevelKey(r.body, "next_cursor"));
-}
 
 test "M26_001 no-content: DELETE integration-grant returns 204 with empty body" {
     const srv = try startTestServer(ALLOC);

@@ -35,26 +35,44 @@ pub const Session = struct {
     /// M27_001: total CPU throttle time across all stages.
     total_cpu_throttled_ms: u64 = 0,
 
+    /// Create a session, duping `workspace_path` and every CorrelationContext
+    /// string into the session's own arena. The caller-supplied slices are
+    /// typically borrowed from a transient request frame that gets freed
+    /// before the session is used; without this dupe the session ends up
+    /// holding dangling pointers and SEGVs on first read (e.g. NullClaw
+    /// memory-init reading workspace_dir).
     pub fn create(
         alloc: std.mem.Allocator,
         workspace_path: []const u8,
         correlation: types.CorrelationContext,
         resource_limits: types.ResourceLimits,
         lease_timeout_ms: u64,
-    ) Session {
+    ) !Session {
+        var arena = std.heap.ArenaAllocator.init(alloc);
+        errdefer arena.deinit();
+        const arena_alloc = arena.allocator();
+
+        const wp_owned = try arena_alloc.dupe(u8, workspace_path);
+        const correlation_owned = types.CorrelationContext{
+            .trace_id = try arena_alloc.dupe(u8, correlation.trace_id),
+            .zombie_id = try arena_alloc.dupe(u8, correlation.zombie_id),
+            .workspace_id = try arena_alloc.dupe(u8, correlation.workspace_id),
+            .session_id = try arena_alloc.dupe(u8, correlation.session_id),
+        };
+
         const execution_id = types.generateExecutionId();
         return .{
             .execution_id = execution_id,
-            .correlation = correlation,
+            .correlation = correlation_owned,
             .lease = .{
                 .execution_id = execution_id,
                 .last_heartbeat_ms = std.time.milliTimestamp(),
                 .lease_timeout_ms = lease_timeout_ms,
             },
             .resource_limits = resource_limits,
-            .workspace_path = workspace_path,
+            .workspace_path = wp_owned,
             .cancelled = std.atomic.Value(bool).init(false),
-            .arena = std.heap.ArenaAllocator.init(alloc),
+            .arena = arena,
         };
     }
 
@@ -200,7 +218,7 @@ pub const SessionStore = struct {
 };
 
 test "Session create and lifecycle" {
-    var session = Session.create(std.testing.allocator, "/tmp/test", .{
+    var session = try Session.create(std.testing.allocator, "/tmp/test", .{
         .trace_id = "trace-1",
         .zombie_id = "run-1",
         .workspace_id = "ws-1",
@@ -225,7 +243,7 @@ test "SessionStore put/get/remove" {
     defer store.deinit();
 
     const session = try alloc.create(Session);
-    session.* = Session.create(alloc, "/tmp/test", .{
+    session.* = try Session.create(alloc, "/tmp/test", .{
         .trace_id = "t",
         .zombie_id = "r",
         .workspace_id = "w",
@@ -265,7 +283,7 @@ test "SessionStore remove returns null for unknown id" {
 
 test "Session getUsage returns cumulative results" {
     const alloc = std.testing.allocator;
-    var session = Session.create(alloc, "/tmp/ws", .{
+    var session = try Session.create(alloc, "/tmp/ws", .{
         .trace_id = "t",
         .zombie_id = "r",
         .workspace_id = "w",
@@ -284,7 +302,7 @@ test "Session getUsage returns cumulative results" {
 
 test "Session touchLease refreshes lease" {
     const alloc = std.testing.allocator;
-    var session = Session.create(alloc, "/tmp/ws", .{
+    var session = try Session.create(alloc, "/tmp/ws", .{
         .trace_id = "t",
         .zombie_id = "r",
         .workspace_id = "w",
@@ -303,7 +321,7 @@ test "SessionStore reapExpired returns 0 when no expired sessions" {
     defer store.deinit();
 
     const session = try alloc.create(Session);
-    session.* = Session.create(alloc, "/tmp/ws", .{
+    session.* = try Session.create(alloc, "/tmp/ws", .{
         .trace_id = "t",
         .zombie_id = "r",
         .workspace_id = "w",
@@ -335,7 +353,7 @@ test "SessionStore concurrent put/get from multiple threads" {
                     .zombie_id = "r",
                     .workspace_id = "w",
                     .session_id = "s",
-                }, .{}, 30_000);
+                }, .{}, 30_000) catch return;
                 s.put(sess) catch return;
             }
         }
@@ -354,7 +372,7 @@ test "SessionStore concurrent put/get from multiple threads" {
 // ── T7: Regression — Session struct fields stable ────────────────────
 test "Session create initializes all fields correctly" {
     const alloc = std.testing.allocator;
-    var session = Session.create(alloc, "/tmp/ws", .{
+    var session = try Session.create(alloc, "/tmp/ws", .{
         .trace_id = "trace-abc",
         .zombie_id = "run-123",
         .workspace_id = "ws-456",
@@ -377,7 +395,7 @@ test "Session create initializes all fields correctly" {
 // ── T3: Error path — getUsage on session with no stages ──────────────
 test "Session getUsage with no stages returns zero values" {
     const alloc = std.testing.allocator;
-    var session = Session.create(alloc, "/tmp/ws", .{
+    var session = try Session.create(alloc, "/tmp/ws", .{
         .trace_id = "t",
         .zombie_id = "r",
         .workspace_id = "w",
@@ -395,7 +413,7 @@ test "Session getUsage with no stages returns zero values" {
 // ── T2: Edge case — cancel is idempotent ─────────────────────────────
 test "Session cancel is idempotent" {
     const alloc = std.testing.allocator;
-    var session = Session.create(alloc, "/tmp/ws", .{
+    var session = try Session.create(alloc, "/tmp/ws", .{
         .trace_id = "t",
         .zombie_id = "r",
         .workspace_id = "w",

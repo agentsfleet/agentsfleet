@@ -1,7 +1,7 @@
-// Activity cursor — pure parse/format for keyset-pagination cursors.
+// Keyset cursor — pure parse/format for keyset-pagination cursors.
 //
 // Composite form: "{created_at_ms}:{uuid}" — the composite key prevents
-// silent skips when multiple events land on the same millisecond. Kept as
+// silent skips when multiple rows land on the same millisecond. Kept as
 // a leaf module with no DB dependency so it is usable from micro-benchmarks
 // (src/zbench_micro.zig) alongside the request path.
 
