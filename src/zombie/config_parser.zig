@@ -88,8 +88,16 @@ pub fn parseZombieConfig(
 
 /// Runtime keys must live under `x-usezombie:`. Their presence at the top
 /// level is a structural error pointing the author at the schema doc.
+/// Forbidden set must mirror the `known` set in `ensureKnownRuntimeKeys` —
+/// any key that's accepted under `x-usezombie:` must also be rejected at
+/// top level. Otherwise an author who forgets the indentation gets a
+/// silently-dropped key (e.g. `gates:` at root → no rate limiting installed,
+/// no error surfaced).
 fn ensureRuntimeKeysNotAtTopLevel(root: std.json.ObjectMap) ZombieConfigError!void {
-    const forbidden = [_][]const u8{ "trigger", "tools", "credentials", "network", "budget" };
+    const forbidden = [_][]const u8{
+        "trigger", "tools", "credentials", "network", "budget",
+        "gates",   "skill", "chain",
+    };
     for (forbidden) |k| {
         if (root.get(k) != null) return ZombieConfigError.RuntimeKeysOutsideBlock;
     }

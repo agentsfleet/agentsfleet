@@ -73,7 +73,7 @@ pub fn validateSkillVersion(version: []const u8) ZombieConfigError!void {
     var part_count: usize = 0;
     var part_len: usize = 0;
     var part_first: u8 = 0;
-    for (version, 0..) |c, i| {
+    for (version) |c| {
         if (c == '.') {
             if (part_len == 0) return ZombieConfigError.InvalidVersionFormat;
             if (part_len > 1 and part_first == '0') return ZombieConfigError.InvalidVersionFormat;
@@ -84,7 +84,6 @@ pub fn validateSkillVersion(version: []const u8) ZombieConfigError!void {
         if (c < '0' or c > '9') return ZombieConfigError.InvalidVersionFormat;
         if (part_len == 0) part_first = c;
         part_len += 1;
-        _ = i;
     }
     if (part_len == 0) return ZombieConfigError.InvalidVersionFormat;
     if (part_len > 1 and part_first == '0') return ZombieConfigError.InvalidVersionFormat;

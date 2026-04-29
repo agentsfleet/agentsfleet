@@ -155,7 +155,7 @@ x-usezombie:
 
 **Validation policy:**
 - SKILL.md top-level: required = `name`, `description`, `version`. Optional pass-through (parsed but not validated): `when_to_use`, `tags`, `author`, `model`. Unknown keys: silent pass-through.
-- TRIGGER.md top-level: required = `name`. Required nested = `x-usezombie:`. Unknown top-level keys other than `name`/`x-*`: silent pass-through (forward compat). **Runtime keys at top level** (`tools:`, `credentials:`, `network:`, `budget:`, `trigger:` outside the `x-usezombie:` block): hard error, `runtime_keys_outside_block`.
+- TRIGGER.md top-level: required = `name`. Required nested = `x-usezombie:`. Unknown top-level keys other than `name`/`x-*`: silent pass-through (forward compat). **Runtime keys at top level** (any of `trigger`, `tools`, `credentials`, `network`, `budget`, `gates`, `skill`, `chain` outside the `x-usezombie:` block — i.e. the full set the parser knows how to interpret): hard error, `runtime_keys_outside_block`. The forbidden set must mirror the accepted-under-x-usezombie set, otherwise an author who forgets the indentation gets a silently-dropped key (e.g. `gates:` at root → no rate limiting installed, no error).
 - TRIGGER.md `x-usezombie:` block: required subkeys = `trigger`, `tools`, `credentials`, `network`, `budget`. Unknown subkey: hard error, `unknown_runtime_key`.
 - Cross-file: SKILL.md `name:` == TRIGGER.md `name:`, else `name_mismatch` at install handler.
 - Other `x-*:` blocks (e.g. `x-amp:`): parsed structurally but ignored — belong to other vendors.

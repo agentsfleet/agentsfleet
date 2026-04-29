@@ -152,6 +152,52 @@ test "parseSkillMetadata: missing name → MissingRequiredField" {
     );
 }
 
+test "parseSkillMetadata: non-string tag element → InvalidTagFormat" {
+    const alloc = std.testing.allocator;
+    const skill_md =
+        \\---
+        \\name: x
+        \\description: Foo
+        \\version: 0.1.0
+        \\tags: [leads, 42, true]
+        \\---
+    ;
+    try std.testing.expectError(
+        ZombieConfigError.InvalidTagFormat,
+        parseSkillMetadata(alloc, skill_md),
+    );
+}
+
+test "parseSkillMetadata: all-string tags pass" {
+    const alloc = std.testing.allocator;
+    const skill_md =
+        \\---
+        \\name: x
+        \\description: Foo
+        \\version: 0.1.0
+        \\tags: [leads, email, agentmail]
+        \\---
+    ;
+    var meta = try parseSkillMetadata(alloc, skill_md);
+    defer meta.deinit(alloc);
+    try std.testing.expectEqual(@as(usize, 3), meta.tags.len);
+}
+
+test "parseSkillMetadata: tags as non-array → silently ignored (returns empty)" {
+    const alloc = std.testing.allocator;
+    const skill_md =
+        \\---
+        \\name: x
+        \\description: Foo
+        \\version: 0.1.0
+        \\tags: not-an-array
+        \\---
+    ;
+    var meta = try parseSkillMetadata(alloc, skill_md);
+    defer meta.deinit(alloc);
+    try std.testing.expectEqual(@as(usize, 0), meta.tags.len);
+}
+
 test "parseSkillMetadata: unknown top-level keys pass through silently" {
     const alloc = std.testing.allocator;
     const skill_md =

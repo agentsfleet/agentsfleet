@@ -217,7 +217,7 @@ fn dupeOptionalStringArray(
     alloc: Allocator,
     root: std.json.ObjectMap,
     key: []const u8,
-) Allocator.Error![]const []const u8 {
+) (Allocator.Error || ZombieConfigError)![]const []const u8 {
     const val = root.get(key) orelse return try alloc.alloc([]const u8, 0);
     const arr = switch (val) {
         .array => |a| a,
@@ -228,9 +228,13 @@ fn dupeOptionalStringArray(
     var i: usize = 0;
     errdefer for (out[0..i]) |s| alloc.free(s);
     while (i < arr.items.len) : (i += 1) {
+        // Non-string array elements are an authoring mistake (e.g.
+        // `tags: [leads, 42, true]`). Surface it loud at install rather
+        // than silently coercing to "" — the previous behavior produced
+        // ["leads", "", ""] with no diagnostic.
         const s = switch (arr.items[i]) {
             .string => |str| str,
-            else => "",
+            else => return ZombieConfigError.InvalidTagFormat,
         };
         out[i] = try alloc.dupe(u8, s);
     }

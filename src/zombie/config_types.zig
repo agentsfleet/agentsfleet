@@ -21,6 +21,7 @@ pub const ZombieConfigError = error{
     NameMismatch,
     InvalidNameFormat,
     InvalidVersionFormat,
+    InvalidTagFormat,
 };
 
 pub const ZombieStatus = enum {

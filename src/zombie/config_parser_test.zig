@@ -121,6 +121,33 @@ test "parseZombieConfig: tools at top level → RuntimeKeysOutsideBlock" {
     try std.testing.expectError(ZombieConfigError.RuntimeKeysOutsideBlock, parseZombieConfig(alloc, json));
 }
 
+test "parseZombieConfig: gates at top level → RuntimeKeysOutsideBlock" {
+    const alloc = std.testing.allocator;
+    const json =
+        \\{"name":"x","gates":{"daily":{"max":1}},"x-usezombie":{"trigger":{"type":"api"},
+        \\ "tools":["agentmail"],"budget":{"daily_dollars":1.0}}}
+    ;
+    try std.testing.expectError(ZombieConfigError.RuntimeKeysOutsideBlock, parseZombieConfig(alloc, json));
+}
+
+test "parseZombieConfig: skill at top level → RuntimeKeysOutsideBlock" {
+    const alloc = std.testing.allocator;
+    const json =
+        \\{"name":"x","skill":"clawhub://q/s@1","x-usezombie":{"trigger":{"type":"api"},
+        \\ "tools":["agentmail"],"budget":{"daily_dollars":1.0}}}
+    ;
+    try std.testing.expectError(ZombieConfigError.RuntimeKeysOutsideBlock, parseZombieConfig(alloc, json));
+}
+
+test "parseZombieConfig: chain at top level → RuntimeKeysOutsideBlock" {
+    const alloc = std.testing.allocator;
+    const json =
+        \\{"name":"x","chain":["downstream"],"x-usezombie":{"trigger":{"type":"api"},
+        \\ "tools":["agentmail"],"budget":{"daily_dollars":1.0}}}
+    ;
+    try std.testing.expectError(ZombieConfigError.RuntimeKeysOutsideBlock, parseZombieConfig(alloc, json));
+}
+
 test "parseZombieConfig: budget at top level → RuntimeKeysOutsideBlock" {
     const alloc = std.testing.allocator;
     const json =
