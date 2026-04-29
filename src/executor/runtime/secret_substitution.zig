@@ -36,10 +36,8 @@ pub const SubstitutionError = error{
     NotAString,
 };
 
-/// Marker bytes the scanner walks for. Public so callers can grep their
-/// own buffers (e.g., the pre-flight assert that catches partial substitution).
-pub const placeholder_prefix: []const u8 = "${secrets.";
-pub const placeholder_suffix: u8 = '}';
+const placeholder_prefix: []const u8 = "${secrets.";
+const placeholder_suffix: u8 = '}';
 
 /// Walk `raw` and produce a fresh buffer with every `${secrets.NAME.FIELD}`
 /// replaced by `secrets_map[NAME][FIELD]`. Caller owns the returned slice.

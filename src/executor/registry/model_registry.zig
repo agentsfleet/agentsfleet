@@ -23,7 +23,7 @@ pub const Tier = enum { large, medium, small };
 
 /// Anthropic models currently supported by the runtime. Extend by PR when a
 /// new model rolls out; M48 will layer tenant-validation on the same set.
-pub const entries = [_]Entry{
+const entries = [_]Entry{
     .{ .name = "claude-opus-4-7", .context_cap_tokens = 1_000_000 },
     .{ .name = "claude-sonnet-4-6", .context_cap_tokens = 200_000 },
     .{ .name = "claude-sonnet-4-5", .context_cap_tokens = 200_000 },
@@ -43,7 +43,7 @@ pub fn lookup(name: []const u8) UnknownModelError!Entry {
 /// otherwise small. The 200k boundary is inclusive on the medium side
 /// because every shipped 200k-cap model in this registry should pick the
 /// medium default tool window, not the small one.
-pub fn tierFor(cap_tokens: u32) Tier {
+fn tierFor(cap_tokens: u32) Tier {
     if (cap_tokens >= 1_000_000) return .large;
     if (cap_tokens >= 200_000) return .medium;
     return .small;
