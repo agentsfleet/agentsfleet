@@ -498,4 +498,42 @@ describe("ApprovalsList — 5s polling effect", () => {
     expect(screen.queryByRole("alert")).toBeNull();
     expect(screen.getByText("approvals-a")).toBeTruthy();
   });
+
+  it("polling skips the reset once the operator has clicked Load more", async () => {
+    // Initial page-2 load via the cursor-bearing initial state.
+    listApprovalsMock.mockResolvedValueOnce({
+      items: [
+        gate({
+          gate_id: "01999999-bbbb-7000-8000-000000000099",
+          action_id: "appended",
+          zombie_name: "approvals-c",
+        }),
+      ],
+      next_cursor: null,
+    });
+    render(
+      React.createElement(ApprovalsList, {
+        workspaceId: WORKSPACE_ID,
+        initialItems: [gate({ action_id: "page-1-row" })],
+        initialCursor: "cur_abc",
+      }),
+    );
+    // Click Load more — extends the visible list past page 1 and latches
+    // the polling guard. Advance just enough to flush the load-more
+    // microtask without firing the polling setInterval (POLL_MS = 5000).
+    fireEvent.click(screen.getByRole("button", { name: /load more/i }));
+    await vi.advanceTimersByTimeAsync(50);
+    // Poll the mock that the next interval would normally pull from.
+    listApprovalsMock.mockResolvedValueOnce({
+      items: [
+        gate({ gate_id: "01999999-cccc-7000-8000-000000000001", action_id: "fresh-page-1" }),
+      ],
+      next_cursor: null,
+    });
+    await vi.advanceTimersByTimeAsync(5_001);
+    // The poll did NOT reset items — the appended page-2 row is still there
+    // and the page-1 row hasn't been replaced by "fresh-page-1".
+    expect(screen.getByText("approvals-c")).toBeTruthy();
+    expect(screen.queryByText("fresh-page-1")).toBeNull();
+  });
 });

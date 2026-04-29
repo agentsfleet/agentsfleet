@@ -40,15 +40,19 @@ pub fn innerListApprovals(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []co
         return;
     }) else null;
 
-    const conn = hx.ctx.pool.acquire() catch {
-        common.internalDbUnavailable(hx.res, hx.req_id);
-        return;
-    };
-    defer hx.ctx.pool.release(conn);
-
-    if (!common.authorizeWorkspaceAndSetTenantContext(conn, hx.principal, workspace_id)) {
-        hx.fail(ec.ERR_FORBIDDEN, "Workspace access denied");
-        return;
+    // Authz scope: hold conn only for the workspace check, then release so
+    // listPending's pool.acquire() doesn't compete with this handler's own
+    // held connection on small test pools.
+    {
+        const conn = hx.ctx.pool.acquire() catch {
+            common.internalDbUnavailable(hx.res, hx.req_id);
+            return;
+        };
+        defer hx.ctx.pool.release(conn);
+        if (!common.authorizeWorkspaceAndSetTenantContext(conn, hx.principal, workspace_id)) {
+            hx.fail(ec.ERR_FORBIDDEN, "Workspace access denied");
+            return;
+        }
     }
 
     const filter = approval_gate_db.ListFilter{

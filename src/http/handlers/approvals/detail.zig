@@ -31,15 +31,19 @@ pub fn innerGetApproval(
         return;
     }
 
-    const conn = hx.ctx.pool.acquire() catch {
-        common.internalDbUnavailable(hx.res, hx.req_id);
-        return;
-    };
-    defer hx.ctx.pool.release(conn);
-
-    if (!common.authorizeWorkspaceAndSetTenantContext(conn, hx.principal, workspace_id)) {
-        hx.fail(ec.ERR_FORBIDDEN, "Workspace access denied");
-        return;
+    // Authz scope: hold conn only for the workspace check, then release so
+    // downstream pool-acquiring calls (getByGateId) don't compete for slots
+    // with this handler's own held connection on small test pools.
+    {
+        const conn = hx.ctx.pool.acquire() catch {
+            common.internalDbUnavailable(hx.res, hx.req_id);
+            return;
+        };
+        defer hx.ctx.pool.release(conn);
+        if (!common.authorizeWorkspaceAndSetTenantContext(conn, hx.principal, workspace_id)) {
+            hx.fail(ec.ERR_FORBIDDEN, "Workspace access denied");
+            return;
+        }
     }
 
     const maybe_row = approval_gate_db.getByGateId(hx.ctx.pool, hx.alloc, gate_id, workspace_id) catch |err| {

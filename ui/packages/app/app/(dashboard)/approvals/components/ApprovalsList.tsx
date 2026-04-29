@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import {
   Badge,
@@ -57,9 +57,17 @@ export default function ApprovalsList({ workspaceId, initialItems, initialCursor
   // Background poll. SWR not yet on this page, so a manual interval keeps
   // the list within ~5 s of reality. Worker wake on resolution is a separate
   // ≤2 s concern handled server-side.
+  //
+  // Skip the poll-driven reset once the operator has clicked Load more.
+  // Polling fetches page 1 only (`limit: 50`, no cursor); replacing items
+  // wholesale would silently drop the loaded-more pages. A ref is fine —
+  // the latest value is read inside the interval callback, no re-render
+  // needed.
+  const hasLoadedMore = useRef(false);
   useEffect(() => {
     let alive = true;
     const id = setInterval(async () => {
+      if (hasLoadedMore.current) return;
       const token = await getToken();
       if (!token || !alive) return;
       try {
@@ -67,7 +75,7 @@ export default function ApprovalsList({ workspaceId, initialItems, initialCursor
           limit: 50,
           zombieId,
         });
-        if (!alive) return;
+        if (!alive || hasLoadedMore.current) return;
         setItems(next.items);
         setCursor(next.next_cursor);
       } catch {
@@ -97,6 +105,9 @@ export default function ApprovalsList({ workspaceId, initialItems, initialCursor
         });
         setItems((prev) => [...prev, ...next.items]);
         setCursor(next.next_cursor);
+        // Latch the polling guard so the next 5s tick doesn't reset the
+        // operator back to page 1 by replacing items with the first page.
+        hasLoadedMore.current = true;
       } catch (e) {
         setError((e as Error).message ?? "Failed to load more");
       }
