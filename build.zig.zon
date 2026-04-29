@@ -35,6 +35,10 @@
         .httpz = .{
             .path = "vendor/httpz",
         },
+        .zig_yaml = .{
+            .url = "git+https://github.com/kubkon/zig-yaml.git?ref=0.2.0#5d16badfb0fa7065b999d344ec9fcd1e94cf8530",
+            .hash = "zig_yaml-0.2.0-C1161pmrAgC_rL9WzjvgNg7HnmyAMwHsG3Sre0F4haPI",
+        },
     },
     .paths = .{
         "build.zig",

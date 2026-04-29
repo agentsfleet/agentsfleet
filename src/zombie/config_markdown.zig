@@ -73,7 +73,10 @@ pub fn parseZombieFromTriggerMarkdown(
     const fm = scanFrontmatter(trigger_markdown) orelse
         return ZombieConfigError.MissingRequiredField;
 
-    const json = try yaml_frontmatter.yamlFrontmatterToJson(alloc, fm.yaml);
+    const json = yaml_frontmatter.yamlFrontmatterToJson(alloc, fm.yaml) catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+        error.ParseFailure => return ZombieConfigError.MissingRequiredField,
+    };
     defer alloc.free(json);
 
     return config_parser.parseZombieConfig(alloc, json);
@@ -105,7 +108,10 @@ pub fn parseTriggerMarkdownWithJson(
     const fm = scanFrontmatter(trigger_markdown) orelse
         return ZombieConfigError.MissingRequiredField;
 
-    const json = try yaml_frontmatter.yamlFrontmatterToJson(alloc, fm.yaml);
+    const json = yaml_frontmatter.yamlFrontmatterToJson(alloc, fm.yaml) catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+        error.ParseFailure => return ZombieConfigError.MissingRequiredField,
+    };
     errdefer alloc.free(json);
 
     const config = try config_parser.parseZombieConfig(alloc, json);
