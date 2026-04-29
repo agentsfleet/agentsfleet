@@ -161,6 +161,7 @@ fn dupePolicy(arena_alloc: std.mem.Allocator, p: context_budget.ExecutionPolicy)
             .memory_checkpoint_every = p.context.memory_checkpoint_every,
             .stage_chunk_threshold = p.context.stage_chunk_threshold,
             .model = model_owned,
+            .context_cap_tokens = p.context.context_cap_tokens,
         },
     };
 }

@@ -79,6 +79,10 @@ fn parsePolicy(alloc: std.mem.Allocator, p: std.json.Value) !context_budget.Exec
                 };
             }
             if (json.getStr(ctx_val, "model")) |m| policy.context.model = m;
+            if (ctx_val.object.get("context_cap_tokens")) |cct| {
+                if (cct == .integer and cct.integer >= 0)
+                    policy.context.context_cap_tokens = @intCast(cct.integer);
+            }
         }
     }
 

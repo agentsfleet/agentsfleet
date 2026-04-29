@@ -125,6 +125,7 @@ pub const ExecutorClient = struct {
         try ctx_obj.put("memory_checkpoint_every", .{ .integer = @intCast(params_in.context.memory_checkpoint_every) });
         try ctx_obj.put("stage_chunk_threshold", .{ .float = @floatCast(params_in.context.stage_chunk_threshold) });
         try ctx_obj.put("model", .{ .string = params_in.context.model });
+        try ctx_obj.put("context_cap_tokens", .{ .integer = @intCast(params_in.context.context_cap_tokens) });
         try params.object.put("context", .{ .object = ctx_obj });
 
         var resp = self.transport_client.sendRequest(self.nextId(), protocol.Method.create_execution, params) catch {
