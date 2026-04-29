@@ -123,7 +123,7 @@ Response matches the existing `billing/summary` envelope (`workspace_id`, `perio
 
 ## 3.0 – 8.0 Dashboard pages + nav — MOVED_TO_M27
 
-The five pages (`/dashboard`, `/zombies`, `/zombies/[id]`, `/firewall`, `/settings`), the Shell sidebar nav updates, and the typed API client split are now scoped to `docs/v2/pending/P1_UI_M27_001_DASHBOARD_PAGES.md`. M27 is blocked by M26_001 — pages consume the unified Button landed there.
+The five pages (`/dashboard`, `/zombies`, `/zombies/[id]`, `/firewall`, `/settings`), the Shell sidebar nav updates, and the typed API client split are now scoped to `docs/v2/done/M27_001_P1_UI_DASHBOARD_PAGES.md`. M27 is blocked by M26_001 — pages consume the unified Button landed there.
 
 The dimensions below (originally §3.x – §8.1) are preserved verbatim for reference by M27's author. Their status stays **MOVED_TO_M27**; the source of truth is the new spec.
 
@@ -334,8 +334,8 @@ Several components will be reused across M11_003, M12, M13, M19, M20, M22. To av
 | 5 | Three-layer token pyramid: `globals.css` gains `@theme inline` + `--success`/`--warning`/`--info` + `--primary-bright`/`--primary-glow[-strong]`; `button.tsx` refactored to drop all `var(--z-*)` arbitrary values | grep shows zero `var(--z-` in components | ✅ DONE (`6712f7c`) |
 | 6 | `components.json` + `tw-animate-css` + `@custom-variant dark` installed | shadcn CLI contract present | ✅ DONE (`6712f7c`) |
 | 7 | CHORE(close): narrow spec, move to done/, write Ripley log, bump VERSION 0.9.0 → 0.18.0, add changelog entry, open PR | spec in `done/`, changelog + log committed | ⏳ IN_PROGRESS |
-| 8 | **MOVED_TO_M26:** Design System Unification — self-contained `@usezombie/design-system` package usable by both `ui/packages/app` (Next.js RSC) and `ui/packages/website` (Vite SPA) without framework-specific imports | see `docs/v2/pending/P1_UI_M26_001_DESIGN_SYSTEM_UNIFICATION.md` | — |
-| 9 | **MOVED_TO_M27:** typed API client split + 4 pages + firewall placeholder + Shell nav + frontend VERIFY + Vercel preview | see `docs/v2/pending/P1_UI_M27_001_DASHBOARD_PAGES.md` | — |
+| 8 | **MOVED_TO_M26:** Design System Unification — self-contained `@usezombie/design-system` package usable by both `ui/packages/app` (Next.js RSC) and `ui/packages/website` (Vite SPA) without framework-specific imports | see `docs/v2/done/M26_001b_P1_UI_DESIGN_SYSTEM_UNIFICATION.md` | — |
+| 9 | **MOVED_TO_M27:** typed API client split + 4 pages + firewall placeholder + Shell nav + frontend VERIFY + Vercel preview | see `docs/v2/done/M27_001_P1_UI_DASHBOARD_PAGES.md` | — |
 
 ---
 

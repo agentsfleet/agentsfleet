@@ -55,7 +55,7 @@ This spec inherits, and MUST NOT contradict, the following repository documents.
 
 - `docs/REST_API_DESIGN_GUIDELINES.md` — resource naming, HTTP method semantics, "avoid verbs in URLs" (§7), list-response envelope (`items` + `total`), error status codes (§10), snake_case + `_at` suffix conventions. This is why revocation is modeled as `PATCH /v1/api-keys/{id}` with `{ "active": false }` (partial update of lifecycle state) rather than a verb in the path like `/revoke`, and why `DELETE /v1/api-keys/{id}` retains pure removal semantics.
 - `docs/nostromo/api_handler_guide.md` — handler shape (`innerXxx(hx: Hx, ...)`), `hx.ok` / `hx.fail` envelope usage, route registration in five places (router.zig → route_table.zig → route_table_invoke.zig → openapi.json), and the "NEVER call `common.writeJson` / `common.errorResponse`" rules. All api-key handlers defined below MUST follow this shape verbatim.
-- `docs/v2/done/M11_002_HX_HANDLER_CONTEXT.md` — the `Hx` context type, how middleware populates `hx.principal`, and why handlers receive `Hx` by value. The tenant_api_key middleware MUST populate `hx.principal.user_id` and `hx.principal.tenant_id` such that every CRUD handler can authorize and tenant-scope without re-parsing the token.
+- `docs/v2/done/M11_002_P1_API_ZIG_HX_HANDLER_CONTEXT.md` — the `Hx` context type, how middleware populates `hx.principal`, and why handlers receive `Hx` by value. The tenant_api_key middleware MUST populate `hx.principal.user_id` and `hx.principal.tenant_id` such that every CRUD handler can authorize and tenant-scope without re-parsing the token.
 
 ## Applicable Rules
 

@@ -18,6 +18,7 @@ const common = @import("common.zig");
 const error_codes = @import("../errors/error_registry.zig");
 const serve_args = @import("serve_args.zig");
 const pg = @import("pg");
+const approval_gate_sweeper = @import("../zombie/approval_gate_sweeper.zig");
 const serve_webhook_lookup = @import("serve_webhook_lookup.zig");
 
 const log = std.log.scoped(.zombied);
@@ -274,21 +275,21 @@ pub fn run(alloc: std.mem.Allocator) !void {
 
     var signal_thread: ?std.Thread = null;
     var event_thread: ?std.Thread = null;
+    var approval_sweeper_thread: ?std.Thread = null;
     errdefer {
         shutdown_requested.store(true, .release);
         event_bus.stop();
         if (signal_thread) |*t| t.join();
         if (event_thread) |*t| t.join();
+        if (approval_sweeper_thread) |*t| t.join();
     }
     signal_thread = try std.Thread.spawn(.{}, signalWatcher, .{});
     event_thread = try std.Thread.spawn(.{}, events_bus.runThread, .{&event_bus});
+    approval_sweeper_thread = try std.Thread.spawn(.{}, approval_gate_sweeper.run, .{ api_pool, &api_queue, alloc, &shutdown_requested });
 
     log.info("http.server_starting port={d} api_threads={d} api_workers={d} api_max_clients={d} api_max_in_flight={d}", .{
-        serve_cfg.port,
-        serve_cfg.api_http_threads,
-        serve_cfg.api_http_workers,
-        serve_cfg.api_max_clients,
-        serve_cfg.api_max_in_flight_requests,
+        serve_cfg.port, serve_cfg.api_http_threads, serve_cfg.api_http_workers,
+        serve_cfg.api_max_clients, serve_cfg.api_max_in_flight_requests,
     });
     ctx.telemetry.capture(telemetry_mod.ServerStarted, .{ .port = serve_cfg.port });
     const srv = http_server.Server.init(&ctx, &registry, .{
@@ -312,6 +313,7 @@ pub fn run(alloc: std.mem.Allocator) !void {
     event_bus.stop();
     if (signal_thread) |*t| t.join();
     if (event_thread) |*t| t.join();
+    if (approval_sweeper_thread) |*t| t.join();
     _ = preflight.prepareCacheRoot(alloc, serve_cfg.cache_root, "shutdown");
 }
 

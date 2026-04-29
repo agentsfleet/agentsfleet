@@ -77,6 +77,10 @@ tags:
   description: Per-zombie execution telemetry and internal operator telemetry
   x-mintlify:
     navigation: Telemetry
+- name: Approvals
+  description: Approval-gate inbox — list, inspect, and resolve pending gates from the dashboard or programmatically.
+  x-mintlify:
+    navigation: Approvals
 paths:
   /healthz:
     $ref: ./paths/health.yaml#/~1healthz
@@ -170,10 +174,16 @@ paths:
     $ref: ./paths/zombies.yaml#/~1v1~1workspaces~1{workspace_id}~1zombies~1{zombie_id}~1current-run
   /v1/workspaces/{workspace_id}/events:
     $ref: ./paths/workspaces.yaml#/~1v1~1workspaces~1{workspace_id}~1events
+  /v1/workspaces/{workspace_id}/approvals:
+    $ref: ./paths/approvals.yaml#/~1v1~1workspaces~1{workspace_id}~1approvals
+  /v1/workspaces/{workspace_id}/approvals/{gate_id}:
+    $ref: ./paths/approvals.yaml#/~1v1~1workspaces~1{workspace_id}~1approvals~1{gate_id}
+  /v1/workspaces/{workspace_id}/approvals/{gate_id}:approve:
+    $ref: ./paths/approvals.yaml#/~1v1~1workspaces~1{workspace_id}~1approvals~1{gate_id}:approve
+  /v1/workspaces/{workspace_id}/approvals/{gate_id}:deny:
+    $ref: ./paths/approvals.yaml#/~1v1~1workspaces~1{workspace_id}~1approvals~1{gate_id}:deny
   /v1/workspaces/{workspace_id}/pause:
     $ref: ./paths/workspaces.yaml#/~1v1~1workspaces~1{workspace_id}~1pause
-  /v1/workspaces/{workspace_id}/sync:
-    $ref: ./paths/workspaces.yaml#/~1v1~1workspaces~1{workspace_id}~1sync
 components:
   securitySchemes:
     $ref: ./components/security.yaml#/components/securitySchemes

@@ -2,7 +2,7 @@
 # TEST-UNIT — zombied, zombiectl, website, app
 # =============================================================================
 
-.PHONY: test-zombied test-unit-zombied _test-unit-zombied-executor test-unit-zombiectl test-unit-website test-unit-app test-depth test-coverage-zombied test-auth
+.PHONY: test-zombied test-unit-zombied _test-unit-zombied-executor test-unit-zombiectl test-unit-website test-unit-app test-coverage-app test-depth test-coverage-zombied test-auth
 
 test-unit-zombied:  ## Run zombied unit tests (Zig)
 	@echo "→ [zombied] Running Zig unit tests..."
@@ -52,6 +52,11 @@ test-unit-app:  ## Run app unit tests (vitest)
 	@echo "→ [app] Running Vitest unit tests..."
 	@cd ui/packages/app && bun run test
 	@echo "✓ [app] Unit tests passed"
+
+test-coverage-app:  ## Run app unit tests with v8 coverage and enforce thresholds (vitest.config.ts)
+	@echo "→ [app] Running Vitest with --coverage..."
+	@cd ui/packages/app && bun run test:coverage
+	@echo "✓ [app] Coverage gate passed (statements ≥95, branches ≥90, functions ≥95, lines ≥95)"
 
 test-zombied: test-unit-zombied _test-integration-zombied  ## Run zombied tests (unit + integration)
 	@echo "✓ [zombied] Unit + integration passed"

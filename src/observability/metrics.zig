@@ -15,7 +15,6 @@ pub const incExternalFailure = mc.incExternalFailure;
 pub const incRetryAfterHintsApplied = mc.incRetryAfterHintsApplied;
 pub const addAgentTokens = mc.addAgentTokens;
 pub const addBackoffWaitMs = mc.addBackoffWaitMs;
-pub const incOutboxDeadLetter = mc.incOutboxDeadLetter;
 pub const incApiBackpressureRejections = mc.incApiBackpressureRejections;
 pub const setApiInFlightRequests = mc.setApiInFlightRequests;
 pub const observeAgentDurationSeconds = mc.observeAgentDurationSeconds;
@@ -30,9 +29,6 @@ pub const snapshot = mc.snapshot;
 pub const incOtelExportTotal = mc.incOtelExportTotal;
 pub const incOtelExportFailed = mc.incOtelExportFailed;
 pub const setOtelLastSuccessAtMs = mc.setOtelLastSuccessAtMs;
-
-// Reconciler daemon gauge.
-pub const setReconcileRunning = mc.setReconcileRunning;
 
 pub const renderPrometheus = mr.renderPrometheus;
 
@@ -61,7 +57,6 @@ test "prometheus render includes key live metrics" {
 
     try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_external_retries_total"));
     try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_external_failures_total"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_side_effect_outbox_dead_letter_total"));
     try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_api_backpressure_rejections_total"));
     try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_api_in_flight_requests"));
     try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_agent_duration_seconds_bucket"));
@@ -77,14 +72,17 @@ test "prometheus render emits zombie_worker_running 0 when worker is not running
     try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_worker_running 0"));
 }
 
-test "integration: outbox dead-letter metric is exposed in prometheus output" {
+// T7 — regression lock for the removed reconciler. The standalone reconcile
+// daemon and the side-effect outbox dead-letter counter were retired together;
+// neither name should ever reappear in /metrics output without the supporting
+// machinery being reintroduced first. Catches a re-export that ships a metric
+// nothing increments (would silently flatline downstream dashboards).
+test "prometheus render does not emit removed reconciler metrics" {
     const alloc = std.testing.allocator;
-    incOutboxDeadLetter();
-
-    const body = try renderPrometheus(alloc, false);
+    const body = try renderPrometheus(alloc, true);
     defer alloc.free(body);
-
-    try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_side_effect_outbox_dead_letter_total"));
+    try std.testing.expect(!std.mem.containsAtLeast(u8, body, 1, "zombie_reconcile_running"));
+    try std.testing.expect(!std.mem.containsAtLeast(u8, body, 1, "zombie_side_effect_outbox_dead_letter_total"));
 }
 
 test "integration: api throughput guardrail metrics are exposed in prometheus output" {

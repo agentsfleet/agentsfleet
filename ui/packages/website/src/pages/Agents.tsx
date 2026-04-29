@@ -49,28 +49,24 @@ const contracts = [
 ];
 
 const apiOps = [
-  { action: "Start run", method: "POST", path: "/v1/runs", purpose: "Queue a spec for delivery" },
-  { action: "Get run", method: "GET", path: "/v1/runs/:id", purpose: "Check run status and artifacts" },
-  { action: "Retry run", method: "POST", path: "/v1/runs/:id/retry", purpose: "Retry a failed run" },
-  { action: "Pause workspace", method: "POST", path: "/v1/workspaces/:id/pause", purpose: "Pause all runs in workspace" },
-  { action: "List specs", method: "GET", path: "/v1/specs", purpose: "List queued specs" },
-  { action: "Sync specs", method: "POST", path: "/v1/specs/sync", purpose: "Sync specs from repo" },
+  { action: "Create zombie", method: "POST", path: "/v1/workspaces/:workspace_id/zombies", purpose: "Provision a new Zombie in a workspace" },
+  { action: "Update zombie", method: "PATCH", path: "/v1/workspaces/:workspace_id/zombies/:zombie_id", purpose: "Update a Zombie's mutable configuration" },
+  { action: "Kill zombie", method: "POST", path: "/v1/workspaces/:workspace_id/zombies/:zombie_id/kill", purpose: "Cancel any in-flight session and mark the Zombie killed" },
+  { action: "Steer zombie", method: "POST", path: "/v1/workspaces/:workspace_id/zombies/:zombie_id/steer", purpose: "Inject a steering instruction into the Zombie's loop" },
+  { action: "Stream events", method: "GET", path: "/v1/workspaces/:workspace_id/zombies/:zombie_id/events/stream", purpose: "Server-Sent Events stream of new events" },
+  { action: "Ingest webhook", method: "POST", path: "/v1/webhooks/:zombie_id", purpose: "Deliver an inbound event to a Zombie" },
+  { action: "Pause workspace", method: "POST", path: "/v1/workspaces/:workspace_id/pause", purpose: "Pause admission of new work for a workspace" },
+  { action: "Execute tool", method: "POST", path: "/v1/execute", purpose: "Synchronous tool execution proxy for external agents" },
 ];
 
 const webhookPayload = `{
-  "event": "run.completed",
-  "run_id": "run_01JEXAMPLE",
-  "workspace_id": "ws_01JEXAMPLE",
-  "status": "DONE",
-  "pr_url": "https://github.com/org/repo/pull/42",
-  "artifacts": {
-    "plan": "plan.json",
-    "implementation": "implementation.md",
-    "validation": "validation.md",
-    "summary": "run_summary.md"
-  },
-  "attempts": 1,
-  "duration_seconds": 34
+  "event_id": "evt_01JEXAMPLE",
+  "type": "email.received",
+  "data": {
+    "from": "lead@example.com",
+    "subject": "Demo request",
+    "body": "..."
+  }
 }`;
 
 export default function Agents() {
@@ -171,9 +167,10 @@ npx zombiectl login && zombiectl workspace add https://github.com/your-org/your-
 
       {/* Webhook example */}
       <div>
-        <h2 style={{ marginBottom: "0.75rem" }}>Webhook Callback Example</h2>
+        <h2 style={{ marginBottom: "0.75rem" }}>Webhook Ingest Example</h2>
         <p style={{ color: "var(--z-text-muted)", marginBottom: "0.75rem" }}>
-          Register a webhook URL on your workspace. UseZombie posts event payloads on run completion:
+          Configure a Zombie&apos;s trigger and POST inbound events to <code>/v1/webhooks/:zombie_id</code>.
+          The event is appended to the Zombie&apos;s stream and dispatched to its loop:
         </p>
         <pre className="terminal" aria-label="Webhook payload example">
           <code>{webhookPayload}</code>
@@ -186,11 +183,11 @@ npx zombiectl login && zombiectl workspace add https://github.com/your-org/your-
         <div className="grid two">
           <article className="card">
             <h3>Idempotency</h3>
-            <p>Workspace-scoped idempotency keys prevent duplicate runs. CAS transitions with monotonic versions ensure no lost updates.</p>
+            <p>Inbound webhook events deduplicate on <code>event_id</code> within a 24-hour window. Workspace updates use monotonic versions to prevent lost updates.</p>
           </article>
           <article className="card">
             <h3>Audit Trail</h3>
-            <p>Append-only transition ledger records every state change with reason codes, timestamps, and actor identity.</p>
+            <p>Append-only zombie event stream records every inbound trigger, steer, status change, and tool call with timestamps and actor identity.</p>
           </article>
           <article className="card">
             <h3>Secret Management</h3>

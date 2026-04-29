@@ -124,10 +124,6 @@ pub const ENTRIES = [_]Entry{
         "Stage limit reached for your plan. Upgrade to add more."),
     e("UZ-ENTL-004", .forbidden, "Skill not allowed",
         "This skill is not allowed on your current plan."),
-    // ── PIPELINE V1 REMOVED ─────────────────────────────────────────────────
-    e("UZ-RUNS-410", .gone, "Pipeline v1 permanently removed",
-        "Pipeline v1 has been permanently removed. All /v1/runs/* and /v1/specs " ++
-        "endpoints return 410 Gone. Use the zombie event model instead."),
     // ── AGENT ────────────────────────────────────────────────────────────────
     e("UZ-AGENT-001", .not_found, "Agent not found",
         "Agent not found. Verify the agent_id."),
@@ -282,8 +278,8 @@ pub const ENTRIES = [_]Entry{
         "The approval callback signature is invalid. Check the signing secret."),
     e("UZ-APPROVAL-004", .service_unavailable, "Approval Redis unavailable",
         "Gate service unavailable \u{2014} default-deny applied. Check Redis connectivity."),
-    e("UZ-APPROVAL-005", .bad_request, "Approval condition invalid",
-        "Gate condition expression is invalid. Supported operators: == and != with single-quoted values."),
+    e("UZ-APPROVAL-005", .bad_request, "Approval condition invalid", "Gate condition expression is invalid. Supported operators: == and != with single-quoted values."),
+    e("UZ-APPROVAL-006", .conflict, "Approval already resolved", "Resolved earlier by Slack, dashboard, or auto-timeout. Original outcome + resolver in body."),
     // ── MEMORY ───────────────────────────────────────────────────────────────
     e("UZ-MEM-001", .forbidden, "Memory scope denied",
         "Memory request targets a zombie that belongs to a different workspace. " ++

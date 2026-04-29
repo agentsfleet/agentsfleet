@@ -11,27 +11,28 @@
 https://usezombie.com/v1
 
 ## Operations (operationId: method path)
-- start_run: POST /v1/runs
-- get_run: GET /v1/runs/{run_id}
-- retry_run: POST /v1/runs/{run_id}:retry
+- create_zombie: POST /v1/workspaces/{workspace_id}/zombies
+- update_zombie: PATCH /v1/workspaces/{workspace_id}/zombies/{zombie_id}
+- kill_zombie: POST /v1/workspaces/{workspace_id}/zombies/{zombie_id}/kill
+- steer_zombie: POST /v1/workspaces/{workspace_id}/zombies/{zombie_id}/steer
+- list_zombie_events: GET /v1/workspaces/{workspace_id}/zombies/{zombie_id}/events
+- stream_zombie_events: GET /v1/workspaces/{workspace_id}/zombies/{zombie_id}/events/stream
+- ingest_zombie_webhook: POST /v1/webhooks/{zombie_id}
 - pause_workspace: POST /v1/workspaces/{workspace_id}/pause
-- list_specs: GET /v1/specs?workspace_id={id}
-- sync_specs: POST /v1/workspaces/{workspace_id}/sync
+- execute_tool: POST /v1/execute
 
 ## Authentication
 Bearer token: Authorization: Bearer <api_key>
 
-## Run lifecycle
-SPEC_QUEUED → RUN_PLANNED → PATCH_IN_PROGRESS → PATCH_READY →
-VERIFICATION_IN_PROGRESS → (PASS) PR_PREPARED → PR_OPENED → NOTIFIED → DONE
-                          → (FAIL) VERIFICATION_FAILED → retry → BLOCKED
+## Execution model
+A Zombie is a long-lived, event-driven autonomous worker scoped to a workspace.
+Inbound events arrive via `POST /v1/webhooks/{zombie_id}` (or other configured
+triggers) and are appended to the Zombie's event stream. The worker watcher
+dispatches each event to the Zombie's loop, which can call tools, update state,
+and emit further events. Operators steer or kill running Zombies through the
+control-plane endpoints above.
 
-## Agent pipeline
-Echo (planner, read-only) → Scout (builder, full access) → Warden (validator, read+test)
-
-## Artifacts per run
-- plan.json (echo) — task plan
-- implementation.md (scout) — what was built
-- validation.md (warden) — tiered T1-T4 findings
-- attempt_N_defects.md (warden) — defects on failure
-- run_summary.md (orchestrator) — final summary with token totals
+## Tool execution
+External agents (LangGraph, CrewAI, Composio, etc.) can invoke tools
+synchronously via `POST /v1/execute` — the agent supplies its API key and a
+tool name, and receives the tool's result inline.

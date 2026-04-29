@@ -59,8 +59,6 @@ pub fn specFor(route: router.Route, registry: *auth_mw.MiddlewareRegistry) ?Rout
         // Tenant billing snapshot
         .get_tenant_billing => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeGetTenantBilling },
         .list_tenant_workspaces => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeListTenantWorkspaces },
-        // sync_workspace returns 410 — no auth required for the stub.
-        .sync_workspace => .{ .middlewares = auth_mw.MiddlewareRegistry.none, .invoke = invoke.invokeSyncWorkspace },
         .workspace_llm_credential => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceLlmCredential },
 
         // Admin platform keys (admin role required)
@@ -94,6 +92,10 @@ pub fn specFor(route: router.Route, registry: *auth_mw.MiddlewareRegistry) ?Rout
         .workspace_zombie_events_stream => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeZombieEventsStream },
         // Workspace-aggregate event history (replaces deleted activity.zig)
         .workspace_events => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceEvents },
+        // Approval inbox
+        .workspace_approvals => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceApprovals },
+        .workspace_approval_detail => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceApprovalDetail },
+        .workspace_approval_resolve => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceApprovalResolve },
         // Dashboard endpoints — kill switch, per-zombie billing
         .workspace_zombie_current_run => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeDeleteCurrentRun },
 
@@ -168,7 +170,6 @@ test "specFor returns a RouteSpec for every Route variant (Batch D — full tabl
     try testing.expect(specFor(.clerk_webhook, &reg) != null);
     try testing.expect(specFor(.{ .approval_webhook = "z1" }, &reg) != null);
     try testing.expect(specFor(.{ .grant_approval_webhook = "z1" }, &reg) != null);
-    try testing.expect(specFor(.{ .sync_workspace = "ws1" }, &reg) != null);
     try testing.expect(specFor(.memory_store, &reg) != null);
     try testing.expect(specFor(.memory_recall, &reg) != null);
     try testing.expect(specFor(.memory_list, &reg) != null);
@@ -183,4 +184,7 @@ test "specFor returns a RouteSpec for every Route variant (Batch D — full tabl
     try testing.expect(specFor(.slack_callback, &reg) != null);
     try testing.expect(specFor(.slack_events, &reg) != null);
     try testing.expect(specFor(.slack_interactions, &reg) != null);
+    try testing.expect(specFor(.{ .workspace_approvals = "ws1" }, &reg) != null);
+    try testing.expect(specFor(.{ .workspace_approval_detail = .{ .workspace_id = "ws1", .gate_id = "g1" } }, &reg) != null);
+    try testing.expect(specFor(.{ .workspace_approval_resolve = .{ .workspace_id = "ws1", .gate_id = "g1", .decision = .approve } }, &reg) != null);
 }

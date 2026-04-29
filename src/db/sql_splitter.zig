@@ -170,8 +170,8 @@ test "comment-only input returns null" {
 
 test "version marker file: comments + SELECT 1" {
     var s = SqlStatementSplitter.init(
-        \\-- 007_side_effect_outbox.sql
-        \\-- M10_001: Pipeline v1 removed. This slot's existence matters.
+        \\-- removed_table.sql
+        \\-- Slot reserved; original table dropped. This slot's existence matters.
         \\SELECT 1;
     );
     try std.testing.expectEqualStrings("SELECT 1", s.next().?);

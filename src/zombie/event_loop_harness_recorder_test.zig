@@ -118,6 +118,7 @@ test "integration: RpcRecorder captures secret-placeholder bytes from executor R
     const cfg = types.EventLoopConfig{
         .pool = db_ctx.pool,
         .redis = &redis,
+        .redis_publish = &redis,
         .executor = harness.executorPtr(),
         .running = &running,
         .balance_policy = .stop,

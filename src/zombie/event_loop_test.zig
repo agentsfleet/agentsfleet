@@ -326,6 +326,7 @@ test "T7: EventLoopConfig has sensible defaults" {
     const cfg = EventLoopConfig{
         .pool = undefined,
         .redis = undefined,
+        .redis_publish = undefined,
         .executor = undefined,
         .running = undefined,
     };

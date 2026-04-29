@@ -17,8 +17,13 @@ const common = @import("../common.zig");
 const hx_mod = @import("../hx.zig");
 const ec = @import("../../../errors/error_registry.zig");
 const queue_redis = @import("../../../queue/redis.zig");
+const grants = @import("../integration_grants/handler.zig");
 
 const log = std.log.scoped(.grant_approval_webhook);
+
+const STATUS_PENDING = grants.GrantStatus.pending.toSlice();
+const STATUS_APPROVED = grants.GrantStatus.approved.toSlice();
+const STATUS_REVOKED = grants.GrantStatus.revoked.toSlice();
 
 pub const Context = common.Context;
 
@@ -86,18 +91,18 @@ fn applyDecision(
     if (is_approved) {
         _ = conn.exec(
             \\UPDATE core.integration_grants
-            \\SET status = 'approved', approved_at = $1
-            \\WHERE grant_id = $2 AND zombie_id = $3::uuid AND status = 'pending'
-        , .{ now_ms, grant_id, zombie_id }) catch {
+            \\SET status = $1, approved_at = $2
+            \\WHERE grant_id = $3 AND zombie_id = $4::uuid AND status = $5
+        , .{ STATUS_APPROVED, now_ms, grant_id, zombie_id, STATUS_PENDING }) catch {
             common.internalDbError(hx.res, hx.req_id);
             return false;
         };
     } else {
         _ = conn.exec(
             \\UPDATE core.integration_grants
-            \\SET status = 'revoked', revoked_at = $1
-            \\WHERE grant_id = $2 AND zombie_id = $3::uuid AND status = 'pending'
-        , .{ now_ms, grant_id, zombie_id }) catch {
+            \\SET status = $1, revoked_at = $2
+            \\WHERE grant_id = $3 AND zombie_id = $4::uuid AND status = $5
+        , .{ STATUS_REVOKED, now_ms, grant_id, zombie_id, STATUS_PENDING }) catch {
             common.internalDbError(hx.res, hx.req_id);
             return false;
         };

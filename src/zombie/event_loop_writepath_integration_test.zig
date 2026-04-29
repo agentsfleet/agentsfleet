@@ -113,6 +113,7 @@ test "integration: writepath.run on balance-exhausted tenant writes gate_blocked
     const cfg = types.EventLoopConfig{
         .pool = db_ctx.pool,
         .redis = &redis,
+        .redis_publish = &redis,
         .executor = undefined, // gate fires before executor work
         .running = &running,
         .balance_policy = .stop,

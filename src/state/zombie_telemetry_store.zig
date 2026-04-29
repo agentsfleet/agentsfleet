@@ -135,7 +135,6 @@ pub fn listTelemetryAll(
 ) ![]TelemetryRow {
     // LIMIT must be i32 — PostgreSQL's prepared-statement type inference resolves
     // `$N` in a LIMIT position as int4; binding int8 causes error.PG at parse time.
-    // (Same pattern as outbox_reconciler.zig.)
     const lim: i32 = @intCast(limit);
     if (workspace_id) |ws| {
         if (zombie_id) |zid| {

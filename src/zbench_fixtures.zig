@@ -7,6 +7,27 @@ const std = @import("std");
 const webhook_verify = @import("zombie/webhook_verify.zig");
 const HmacSha256 = std.crypto.auth.hmac.sha2.HmacSha256;
 
+// ── activity_chunk_encode ─────────────────────────────────────────────────
+// Representative chunk frame: a UUIDv7 event id, a 256-byte text payload
+// (≈64 BPE tokens — typical LLM chunk batch), and the kind discriminator.
+pub const CHUNK_ZOMBIE_ID = "019abcde-1234-7aaa-8bbb-abcdef012345";
+pub const CHUNK_EVENT_ID = "019abcde-5678-7ccc-8ddd-abcdef012345";
+pub const CHUNK_TEXT =
+    "The quick brown fox jumps over the lazy dog. " ++
+    "The quick brown fox jumps over the lazy dog. " ++
+    "The quick brown fox jumps over the lazy dog. " ++
+    "The quick brown fox jumps over the lazy dog. " ++
+    "The quick brown fox jumps over the lazy dog. " ++
+    "Pack my box with five dozen liquor jugs. The end.";
+
+// ── progress_frame_decode ─────────────────────────────────────────────────
+// Wire-shape JSON-RPC notification produced by the executor. Mirrors what
+// `progress_callbacks.encodeProgress` emits for an agent_response_chunk;
+// the bench feeds this verbatim into the transport read loop.
+pub const PROGRESS_FRAME_BYTES =
+    \\{"jsonrpc":"2.0","id":1,"method":"Progress","params":{"kind":"agent_response_chunk","text":"hello world streaming chunk payload of moderate size for the bench"}}
+;
+
 // ── 1.1 route_match ────────────────────────────────────────────────────────
 // Representative paths covering every Route arm (one per group). Enough
 // diversity that the worst-case fall-through path is exercised on each sweep.

@@ -50,6 +50,11 @@ pub fn zombieWorkerLoop(alloc: std.mem.Allocator, cfg: ZombieWorkerConfig) void 
 
     var redis = connectRedis(alloc) orelse return;
     defer redis.deinit();
+    // Dedicated PUBLISH-only client for the activity channel. Decoupling
+    // pub/sub from stream commands prevents per-frame PUBLISH from
+    // contending on the queue client's mutex during chunk bursts.
+    var redis_publish = connectRedis(alloc) orelse return;
+    defer redis_publish.deinit();
 
     var session = claimOrReturn(alloc, cfg) orelse return;
     defer session.deinit(alloc);
@@ -73,6 +78,7 @@ pub fn zombieWorkerLoop(alloc: std.mem.Allocator, cfg: ZombieWorkerConfig) void 
     event_loop.runEventLoop(alloc, &session, .{
         .pool = cfg.pool,
         .redis = &redis,
+        .redis_publish = &redis_publish,
         .executor = exec_ref,
         .running = &running,
         .workspace_path = cfg.workspace_path,

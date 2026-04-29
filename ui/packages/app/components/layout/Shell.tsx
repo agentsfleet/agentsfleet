@@ -16,6 +16,7 @@ import {
   SkullIcon,
   ShieldIcon,
   KeyRoundIcon,
+  CheckCircle2Icon,
 } from "lucide-react";
 
 const NAV = [
@@ -38,6 +39,11 @@ const NAV = [
     label: "Credentials",
     href: "/credentials",
     icon: KeyRoundIcon,
+  },
+  {
+    label: "Approvals",
+    href: "/approvals",
+    icon: CheckCircle2Icon,
   },
   {
     label: "Events",
