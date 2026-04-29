@@ -5,7 +5,6 @@ const Subcommand = enum {
     worker,
     doctor,
     migrate,
-    reconcile,
 };
 
 /// Returns null for unknown tokens so the caller can fail loudly.
@@ -38,14 +37,14 @@ test "parseSubcommandName returns known subcommands" {
     try std.testing.expectEqual(@as(?Subcommand, .worker), parseSubcommandName("worker"));
     try std.testing.expectEqual(@as(?Subcommand, .doctor), parseSubcommandName("doctor"));
     try std.testing.expectEqual(@as(?Subcommand, .migrate), parseSubcommandName("migrate"));
-    try std.testing.expectEqual(@as(?Subcommand, .reconcile), parseSubcommandName("reconcile"));
 }
 
 test "parseSubcommandName returns null for unknown values" {
     try std.testing.expectEqual(@as(?Subcommand, null), parseSubcommandName("unknown"));
     try std.testing.expectEqual(@as(?Subcommand, null), parseSubcommandName("help"));
-    // `run` must not silently map to any real subcommand.
+    // Removed subcommands must not silently map to any real subcommand.
     try std.testing.expectEqual(@as(?Subcommand, null), parseSubcommandName("run"));
+    try std.testing.expectEqual(@as(?Subcommand, null), parseSubcommandName("reconcile"));
 }
 
 test "parseSubcommandFromArgv defaults to serve when argv has no subcommand" {
@@ -61,7 +60,6 @@ test "parseSubcommandFromArgv resolves each known subcommand" {
         .{ .arg = "worker", .expected = .worker },
         .{ .arg = "doctor", .expected = .doctor },
         .{ .arg = "migrate", .expected = .migrate },
-        .{ .arg = "reconcile", .expected = .reconcile },
     };
     for (cases) |c| {
         try std.testing.expectEqual(c.expected, try parseSubcommandFromArgv(&.{ "zombied", c.arg }));
@@ -69,10 +67,10 @@ test "parseSubcommandFromArgv resolves each known subcommand" {
 }
 
 test "parseSubcommandFromArgv returns UnknownSubcommand error for removed and unknown tokens" {
-    // T3: negative path — removed subcommands (run, spec-validate) and typos
-    // must surface as an error so the dispatcher can exit 1 instead of
-    // silently falling through to `.serve` and booting the HTTP server.
-    const rejects = [_][]const u8{ "run", "spec-validate", "unknown", "help", "" };
+    // T3: negative path — removed subcommands (run, spec-validate, reconcile)
+    // and typos must surface as an error so the dispatcher can exit 1 instead
+    // of silently falling through to `.serve` and booting the HTTP server.
+    const rejects = [_][]const u8{ "run", "spec-validate", "reconcile", "unknown", "help", "" };
     for (rejects) |bad| {
         try std.testing.expectError(
             error.UnknownSubcommand,
@@ -95,14 +93,22 @@ test "parseSubcommandFromArgv ignores trailing arguments past the subcommand slo
     );
 }
 
-test "Subcommand enum has no run variant" {
+test "Subcommand enum has no removed variants" {
     const fields = @typeInfo(Subcommand).@"enum".fields;
     comptime var has_run = false;
+    comptime var has_reconcile = false;
+    comptime var has_spec_validate = false;
     comptime {
         for (fields) |f| {
             if (std.mem.eql(u8, f.name, "run")) has_run = true;
+            if (std.mem.eql(u8, f.name, "reconcile")) has_reconcile = true;
+            // Zig identifiers can't contain a dash, so a resurrection would
+            // land as the underscore form.
+            if (std.mem.eql(u8, f.name, "spec_validate")) has_spec_validate = true;
         }
     }
     try std.testing.expect(!has_run);
-    try std.testing.expectEqual(@as(usize, 5), fields.len);
+    try std.testing.expect(!has_reconcile);
+    try std.testing.expect(!has_spec_validate);
+    try std.testing.expectEqual(@as(usize, 4), fields.len);
 }
