@@ -83,11 +83,14 @@ test "crash: executor stops mid-session, client RPC returns TransportLoss" {
     try ec.connect();
     defer ec.close();
 
-    const exec_id = try ec.createExecution("/tmp/ws", .{
-        .trace_id = "t",
-        .zombie_id = "r",
-        .workspace_id = "w",
-        .session_id = "s",
+    const exec_id = try ec.createExecution(.{
+        .workspace_path = "/tmp/ws",
+        .correlation = .{
+            .trace_id = "t",
+            .zombie_id = "r",
+            .workspace_id = "w",
+            .session_id = "s",
+        },
     });
     defer alloc.free(exec_id);
 
@@ -130,7 +133,7 @@ test "crash: worker disappears, lease reaper cleans orphaned sessions" {
             .zombie_id = "run-orphan",
             .workspace_id = "ws-orphan",
             .session_id = session_id,
-        }, .{}, 50); // 50ms lease
+        }, .{}, 50, .{}); // 50ms lease
         try store.put(session);
     }
 
@@ -178,11 +181,14 @@ test "crash: executor restart, worker reconnects to new socket" {
     var ec1 = client_mod.ExecutorClient.init(alloc, path);
     try ec1.connect();
 
-    const exec_id1 = try ec1.createExecution("/tmp/ws", .{
-        .trace_id = "t",
-        .zombie_id = "r",
-        .workspace_id = "w",
-        .session_id = "s",
+    const exec_id1 = try ec1.createExecution(.{
+        .workspace_path = "/tmp/ws",
+        .correlation = .{
+            .trace_id = "t",
+            .zombie_id = "r",
+            .workspace_id = "w",
+            .session_id = "s",
+        },
     });
     defer alloc.free(exec_id1);
     try std.testing.expectEqual(@as(usize, 1), store1.activeCount());
@@ -221,11 +227,14 @@ test "crash: executor restart, worker reconnects to new socket" {
 
     // Old execution_id no longer exists on the new executor.
     // But worker can create a new session successfully.
-    const exec_id2 = try ec2.createExecution("/tmp/ws", .{
-        .trace_id = "t2",
-        .zombie_id = "r2",
-        .workspace_id = "w2",
-        .session_id = "s2",
+    const exec_id2 = try ec2.createExecution(.{
+        .workspace_path = "/tmp/ws",
+        .correlation = .{
+            .trace_id = "t2",
+            .zombie_id = "r2",
+            .workspace_id = "w2",
+            .session_id = "s2",
+        },
     });
     defer alloc.free(exec_id2);
 

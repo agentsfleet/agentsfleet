@@ -234,7 +234,7 @@ test "integration: lease expiry reaps orphaned sessions" {
         .zombie_id = "r",
         .workspace_id = "w",
         .session_id = "s",
-    }, .{}, 1); // 1ms lease timeout
+    }, .{}, 1, .{}); // 1ms lease timeout
 
     try store.put(session);
     try std.testing.expectEqual(@as(usize, 1), store.activeCount());

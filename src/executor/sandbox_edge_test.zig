@@ -174,7 +174,7 @@ test "T1: Session.recordStageResult accumulates tokens and wall_seconds" {
         .zombie_id = "r",
         .workspace_id = "w",
         .session_id = "s",
-    }, .{}, 30_000);
+    }, .{}, 30_000, .{});
     defer session.destroy();
 
     session.recordStageResult(.{ .content = "a", .token_count = 100, .wall_seconds = 5, .exit_ok = true });
@@ -193,7 +193,7 @@ test "T1: Session.getUsage reflects last_result failure" {
         .zombie_id = "r",
         .workspace_id = "w",
         .session_id = "s",
-    }, .{}, 30_000);
+    }, .{}, 30_000, .{});
     defer session.destroy();
 
     session.recordStageResult(.{ .content = "ok", .token_count = 10, .wall_seconds = 1, .exit_ok = true });
@@ -212,7 +212,7 @@ test "T2: Session.getUsage with no stages returns safe defaults" {
         .zombie_id = "r",
         .workspace_id = "w",
         .session_id = "s",
-    }, .{}, 30_000);
+    }, .{}, 30_000, .{});
     defer session.destroy();
 
     const usage = session.getUsage();
@@ -232,7 +232,7 @@ test "T5: Session.cancel is atomic — concurrent cancel from 8 threads" {
         .zombie_id = "r",
         .workspace_id = "w",
         .session_id = "s",
-    }, .{}, 30_000);
+    }, .{}, 30_000, .{});
     defer session.destroy();
 
     const Canceller = struct {
@@ -258,7 +258,7 @@ test "T5: Concurrent lease touch from 8 threads — no data race" {
         .zombie_id = "r",
         .workspace_id = "w",
         .session_id = "s",
-    }, .{}, 30_000);
+    }, .{}, 30_000, .{});
     defer session.destroy();
 
     const Toucher = struct {
@@ -337,7 +337,7 @@ test "T3: SessionStore.reapExpired only removes expired sessions, leaves active 
             .zombie_id = "r",
             .workspace_id = "w",
             .session_id = "exp",
-        }, .{}, 1); // 1ms — will expire
+        }, .{}, 1, .{}); // 1ms — will expire
         try store.put(s);
     }
 
@@ -349,7 +349,7 @@ test "T3: SessionStore.reapExpired only removes expired sessions, leaves active 
             .zombie_id = "r",
             .workspace_id = "w",
             .session_id = "act",
-        }, .{}, 30_000); // 30s — will NOT expire
+        }, .{}, 30_000, .{}); // 30s — will NOT expire
         try store.put(s);
     }
 

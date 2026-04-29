@@ -81,7 +81,7 @@ test "T3: StartStage on lease-expired session returns lease_expired" {
         .zombie_id = "r",
         .workspace_id = "w",
         .session_id = "s",
-    }, .{}, 1); // 1ms lease
+    }, .{}, 1, .{}); // 1ms lease
     try store.put(s);
 
     const exec_id_hex = types.executionIdHex(s.execution_id);

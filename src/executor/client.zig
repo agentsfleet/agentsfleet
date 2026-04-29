@@ -70,19 +70,61 @@ pub const ExecutorClient = struct {
         return id;
     }
 
-    pub fn createExecution(
-        self: *ExecutorClient,
+    /// Per-execution policy + identity payload for `createExecution`.
+    /// `workspace_path` and `correlation` are required; the policy fields
+    /// default to empty (deny-all egress, no tool filter, no secrets,
+    /// default context budget) so callers that don't yet care can omit them.
+    pub const CreateExecutionParams = struct {
         workspace_path: []const u8,
         correlation: types.CorrelationContext,
+        network_policy: types.NetworkPolicy = .{},
+        tools: []const []const u8 = &.{},
+        /// JSON object: `{ [name]: <parsed json value> }`. Null = no secrets.
+        secrets_map: ?std.json.Value = null,
+        context: types.ContextBudget = .{},
+    };
+
+    pub fn createExecution(
+        self: *ExecutorClient,
+        params_in: CreateExecutionParams,
     ) ![]const u8 {
         var params = std.json.Value{ .object = std.json.ObjectMap.init(self.alloc) };
         defer params.object.deinit();
 
-        try params.object.put("workspace_path", .{ .string = workspace_path });
-        try params.object.put("trace_id", .{ .string = correlation.trace_id });
-        try params.object.put("zombie_id", .{ .string = correlation.zombie_id });
-        try params.object.put("workspace_id", .{ .string = correlation.workspace_id });
-        try params.object.put("session_id", .{ .string = correlation.session_id });
+        try params.object.put("workspace_path", .{ .string = params_in.workspace_path });
+        try params.object.put("trace_id", .{ .string = params_in.correlation.trace_id });
+        try params.object.put("zombie_id", .{ .string = params_in.correlation.zombie_id });
+        try params.object.put("workspace_id", .{ .string = params_in.correlation.workspace_id });
+        try params.object.put("session_id", .{ .string = params_in.correlation.session_id });
+
+        // Per-execution policy fields. Always serialised so the wire
+        // shape is invariant; empty defaults are explicit.
+        var network_policy_obj = std.json.ObjectMap.init(self.alloc);
+        defer network_policy_obj.deinit();
+        var allow_arr: std.json.Array = .init(self.alloc);
+        defer allow_arr.deinit();
+        for (params_in.network_policy.allow) |host| {
+            try allow_arr.append(.{ .string = host });
+        }
+        try network_policy_obj.put("allow", .{ .array = allow_arr });
+        try params.object.put("network_policy", .{ .object = network_policy_obj });
+
+        var tools_arr: std.json.Array = .init(self.alloc);
+        defer tools_arr.deinit();
+        for (params_in.tools) |t| try tools_arr.append(.{ .string = t });
+        try params.object.put("tools", .{ .array = tools_arr });
+
+        if (params_in.secrets_map) |sm| {
+            try params.object.put("secrets_map", sm);
+        }
+
+        var ctx_obj = std.json.ObjectMap.init(self.alloc);
+        defer ctx_obj.deinit();
+        try ctx_obj.put("tool_window", .{ .integer = @intCast(params_in.context.tool_window) });
+        try ctx_obj.put("memory_checkpoint_every", .{ .integer = @intCast(params_in.context.memory_checkpoint_every) });
+        try ctx_obj.put("stage_chunk_threshold", .{ .float = @floatCast(params_in.context.stage_chunk_threshold) });
+        try ctx_obj.put("model", .{ .string = params_in.context.model });
+        try params.object.put("context", .{ .object = ctx_obj });
 
         var resp = self.transport_client.sendRequest(self.nextId(), protocol.Method.create_execution, params) catch {
             log.err("executor_client.transport_loss error_code=UZ-EXEC-006 method=CreateExecution", .{});

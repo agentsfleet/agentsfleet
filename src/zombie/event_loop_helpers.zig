@@ -239,11 +239,18 @@ pub fn executeInSandbox(
     // trace_id and session_id both bind to event.event_id: no upstream trace
     // propagator exists yet, so the per-event ID doubles as both the distributed
     // trace handle and the per-turn session identifier.
-    const execution_id = cfg.executor.createExecution(cfg.workspace_path, .{
-        .trace_id = event.event_id,
-        .zombie_id = session.zombie_id,
-        .workspace_id = session.workspace_id,
-        .session_id = event.event_id,
+    const execution_id = cfg.executor.createExecution(.{
+        .workspace_path = cfg.workspace_path,
+        .correlation = .{
+            .trace_id = event.event_id,
+            .zombie_id = session.zombie_id,
+            .workspace_id = session.workspace_id,
+            .session_id = event.event_id,
+        },
+        // Per-execution policy fields default empty for now: deny-all
+        // egress, no tool restriction, no secrets, default context budget.
+        // The vault → secrets_map plumbing and policy-from-config lands in
+        // a follow-up commit on this branch.
     }) catch |err| {
         log.err("zombie_event_loop.exec_create_fail zombie_id={s} event_id={s} error_code=" ++ error_codes.ERR_EXEC_SESSION_CREATE_FAILED, .{ session.zombie_id, event.event_id });
         return err;

@@ -114,7 +114,7 @@ test "T5: concurrent heartbeat and cancel race — session is cancelled" {
         .zombie_id = "r",
         .workspace_id = "w",
         .session_id = "s",
-    }, .{}, 30_000);
+    }, .{}, 30_000, .{});
     defer session.destroy();
 
     const Heartbeater = struct {
@@ -219,7 +219,7 @@ test "T5: 20 sessions all expire simultaneously — reapExpired clears all" {
             .zombie_id = "r",
             .workspace_id = "w",
             .session_id = "mass",
-        }, .{}, 1); // 1ms — expires immediately
+        }, .{}, 1, .{}); // 1ms — expires immediately
         try store.put(s);
     }
 
@@ -247,7 +247,7 @@ test "T3: reapExpired does not remove session with fresh heartbeat" {
         .zombie_id = "r",
         .workspace_id = "w",
         .session_id = "active",
-    }, .{}, 30_000); // 30s lease
+    }, .{}, 30_000, .{}); // 30s lease
     try store.put(s);
 
     // Keep touching the lease so it never expires.
@@ -274,7 +274,7 @@ test "T3: worker crash simulation — no heartbeat → session reaped as orphan"
         .zombie_id = "r",
         .workspace_id = "w",
         .session_id = "orphan-1",
-    }, .{}, 5); // 5ms lease — simulates worker crash timeout
+    }, .{}, 5, .{}); // 5ms lease — simulates worker crash timeout
     try store.put(s);
 
     try std.testing.expectEqual(@as(usize, 1), store.activeCount());

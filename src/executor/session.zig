@@ -22,6 +22,11 @@ pub const Session = struct {
     lease: types.LeaseState,
     resource_limits: types.ResourceLimits,
     workspace_path: []const u8,
+    /// Per-execution policy bundle: network allowlist, tool allowlist,
+    /// resolved secrets_map, context-budget knobs. Set at createExecution
+    /// and invariant for the session's lifetime — every stage inherits
+    /// these. All inner slices are arena-owned dupes.
+    policy: types.ExecutionPolicy,
     cancelled: std.atomic.Value(bool),
     arena: std.heap.ArenaAllocator,
 
@@ -47,6 +52,7 @@ pub const Session = struct {
         correlation: types.CorrelationContext,
         resource_limits: types.ResourceLimits,
         lease_timeout_ms: u64,
+        policy: types.ExecutionPolicy,
     ) !Session {
         var arena = std.heap.ArenaAllocator.init(alloc);
         errdefer arena.deinit();
@@ -60,6 +66,8 @@ pub const Session = struct {
             .session_id = try arena_alloc.dupe(u8, correlation.session_id),
         };
 
+        const policy_owned = try dupePolicy(arena_alloc, policy);
+
         const execution_id = types.generateExecutionId();
         return .{
             .execution_id = execution_id,
@@ -71,6 +79,7 @@ pub const Session = struct {
             },
             .resource_limits = resource_limits,
             .workspace_path = wp_owned,
+            .policy = policy_owned,
             .cancelled = std.atomic.Value(bool).init(false),
             .arena = arena,
         };
@@ -136,6 +145,60 @@ pub const Session = struct {
         self.arena.deinit();
     }
 };
+
+/// Deep-copy an `ExecutionPolicy` into `arena_alloc`. Caller-provided
+/// slices (network_policy.allow, tools, secrets_map JSON tree, model name)
+/// are typically borrowed from a transient request frame; without this dupe
+/// the session would dangle the moment the RPC handler returns.
+fn dupePolicy(arena_alloc: std.mem.Allocator, p: types.ExecutionPolicy) !types.ExecutionPolicy {
+    const allow_owned = try dupeStringList(arena_alloc, p.network_policy.allow);
+    const tools_owned = try dupeStringList(arena_alloc, p.tools);
+    const secrets_owned: ?std.json.Value = if (p.secrets_map) |sm| try dupeJsonValue(arena_alloc, sm) else null;
+    const model_owned = try arena_alloc.dupe(u8, p.context.model);
+    return .{
+        .network_policy = .{ .allow = allow_owned },
+        .tools = tools_owned,
+        .secrets_map = secrets_owned,
+        .context = .{
+            .tool_window = p.context.tool_window,
+            .memory_checkpoint_every = p.context.memory_checkpoint_every,
+            .stage_chunk_threshold = p.context.stage_chunk_threshold,
+            .model = model_owned,
+        },
+    };
+}
+
+fn dupeStringList(arena_alloc: std.mem.Allocator, src: []const []const u8) ![]const []const u8 {
+    const out = try arena_alloc.alloc([]const u8, src.len);
+    for (src, 0..) |s, i| out[i] = try arena_alloc.dupe(u8, s);
+    return out;
+}
+
+/// Recursively duplicate a `std.json.Value` into `arena_alloc`. The whole
+/// tree ends up arena-owned, so a single arena.deinit reclaims everything.
+fn dupeJsonValue(arena_alloc: std.mem.Allocator, v: std.json.Value) !std.json.Value {
+    return switch (v) {
+        .null, .bool, .integer, .float, .number_string => v,
+        .string => |s| .{ .string = try arena_alloc.dupe(u8, s) },
+        .array => |a| blk: {
+            var out: std.json.Array = .init(arena_alloc);
+            try out.ensureTotalCapacity(a.items.len);
+            for (a.items) |item| out.appendAssumeCapacity(try dupeJsonValue(arena_alloc, item));
+            break :blk .{ .array = out };
+        },
+        .object => |o| blk: {
+            var out: std.json.ObjectMap = .init(arena_alloc);
+            try out.ensureTotalCapacity(o.count());
+            var it = o.iterator();
+            while (it.next()) |entry| {
+                const k = try arena_alloc.dupe(u8, entry.key_ptr.*);
+                const val = try dupeJsonValue(arena_alloc, entry.value_ptr.*);
+                out.putAssumeCapacity(k, val);
+            }
+            break :blk .{ .object = out };
+        },
+    };
+}
 
 /// Thread-safe session store keyed by ExecutionId.
 pub const SessionStore = struct {
@@ -223,7 +286,7 @@ test "Session create and lifecycle" {
         .zombie_id = "run-1",
         .workspace_id = "ws-1",
         .session_id = "stage-1",
-    }, .{}, 30_000);
+    }, .{}, 30_000, .{});
     defer session.destroy();
 
     try std.testing.expect(!session.isCancelled());
@@ -248,7 +311,7 @@ test "SessionStore put/get/remove" {
         .zombie_id = "r",
         .workspace_id = "w",
         .session_id = "s",
-    }, .{}, 30_000);
+    }, .{}, 30_000, .{});
 
     try store.put(session);
     try std.testing.expectEqual(@as(usize, 1), store.activeCount());
@@ -288,7 +351,7 @@ test "Session getUsage returns cumulative results" {
         .zombie_id = "r",
         .workspace_id = "w",
         .session_id = "s",
-    }, .{}, 30_000);
+    }, .{}, 30_000, .{});
     defer session.destroy();
 
     session.recordStageResult(.{ .content = "", .token_count = 50, .wall_seconds = 2, .exit_ok = true });
@@ -307,7 +370,7 @@ test "Session touchLease refreshes lease" {
         .zombie_id = "r",
         .workspace_id = "w",
         .session_id = "s",
-    }, .{}, 50); // 50ms lease
+    }, .{}, 50, .{}); // 50ms lease
     defer session.destroy();
 
     // Touch before expiry.
@@ -326,7 +389,7 @@ test "SessionStore reapExpired returns 0 when no expired sessions" {
         .zombie_id = "r",
         .workspace_id = "w",
         .session_id = "s",
-    }, .{}, 300_000); // 5 minute lease — won't expire
+    }, .{}, 300_000, .{}); // 5 minute lease — won't expire
 
     try store.put(session);
     try std.testing.expectEqual(@as(u32, 0), store.reapExpired());
@@ -353,7 +416,7 @@ test "SessionStore concurrent put/get from multiple threads" {
                     .zombie_id = "r",
                     .workspace_id = "w",
                     .session_id = "s",
-                }, .{}, 30_000) catch return;
+                }, .{}, 30_000, .{}) catch return;
                 s.put(sess) catch return;
             }
         }
@@ -377,7 +440,7 @@ test "Session create initializes all fields correctly" {
         .zombie_id = "run-123",
         .workspace_id = "ws-456",
         .session_id = "stg-1",
-    }, .{ .memory_limit_mb = 256, .cpu_limit_percent = 50 }, 5_000);
+    }, .{ .memory_limit_mb = 256, .cpu_limit_percent = 50 }, 5_000, .{});
     defer session.destroy();
 
     try std.testing.expectEqualStrings("/tmp/ws", session.workspace_path);
@@ -400,7 +463,7 @@ test "Session getUsage with no stages returns zero values" {
         .zombie_id = "r",
         .workspace_id = "w",
         .session_id = "s",
-    }, .{}, 30_000);
+    }, .{}, 30_000, .{});
     defer session.destroy();
 
     const usage = session.getUsage();
@@ -418,7 +481,7 @@ test "Session cancel is idempotent" {
         .zombie_id = "r",
         .workspace_id = "w",
         .session_id = "s",
-    }, .{}, 30_000);
+    }, .{}, 30_000, .{});
     defer session.destroy();
 
     session.cancel();

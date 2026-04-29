@@ -39,9 +39,9 @@ fn testCorrelation() types.CorrelationContext {
 
 test "T8: two sessions with different executions do not contaminate resource metrics" {
     const alloc = std.testing.allocator;
-    var s1 = try Session.create(alloc, "/tmp/ws1", testCorrelation(), .{ .memory_limit_mb = 256 }, 30_000);
+    var s1 = try Session.create(alloc, "/tmp/ws1", testCorrelation(), .{ .memory_limit_mb = 256 }, 30_000, .{});
     defer s1.destroy();
-    var s2 = try Session.create(alloc, "/tmp/ws2", testCorrelation(), .{ .memory_limit_mb = 512 }, 30_000);
+    var s2 = try Session.create(alloc, "/tmp/ws2", testCorrelation(), .{ .memory_limit_mb = 512 }, 30_000, .{});
     defer s2.destroy();
 
     // Session 1 records heavy resource usage.
@@ -83,7 +83,7 @@ test "T8: destroying one session in store does not affect neighbor's metrics" {
     defer store.deinit();
 
     const s1 = try alloc.create(Session);
-    s1.* = try Session.create(alloc, "/tmp/ws1", testCorrelation(), .{}, 30_000);
+    s1.* = try Session.create(alloc, "/tmp/ws1", testCorrelation(), .{}, 30_000, .{});
     s1.recordStageResult(.{
         .exit_ok = true,
         .memory_peak_bytes = 300 * 1024 * 1024,
@@ -92,7 +92,7 @@ test "T8: destroying one session in store does not affect neighbor's metrics" {
     try store.put(s1);
 
     const s2 = try alloc.create(Session);
-    s2.* = try Session.create(alloc, "/tmp/ws2", testCorrelation(), .{}, 30_000);
+    s2.* = try Session.create(alloc, "/tmp/ws2", testCorrelation(), .{}, 30_000, .{});
     s2.recordStageResult(.{
         .exit_ok = true,
         .memory_peak_bytes = 50 * 1024 * 1024,
@@ -146,7 +146,7 @@ test "T8: execution ID hex contains only lowercase hex chars (no path traversal)
 
 test "T8: OOM-killed stage still has resource metrics recorded before failure" {
     const alloc = std.testing.allocator;
-    var session = try Session.create(alloc, "/tmp/ws", testCorrelation(), .{}, 30_000);
+    var session = try Session.create(alloc, "/tmp/ws", testCorrelation(), .{}, 30_000, .{});
     defer session.destroy();
 
     // Stage succeeds with 100 MB peak.
@@ -180,7 +180,7 @@ test "T8: OOM-killed stage still has resource metrics recorded before failure" {
 
 test "T8: cancelled session preserves accumulated resource metrics" {
     const alloc = std.testing.allocator;
-    var session = try Session.create(alloc, "/tmp/ws", testCorrelation(), .{}, 30_000);
+    var session = try Session.create(alloc, "/tmp/ws", testCorrelation(), .{}, 30_000, .{});
     defer session.destroy();
 
     session.recordStageResult(.{
@@ -203,7 +203,7 @@ test "T8: cancelled session preserves accumulated resource metrics" {
 test "T8: lease-expired session metrics survive for scoring" {
     const alloc = std.testing.allocator;
     // Set lease timeout far in the past by manipulating timestamp after create.
-    var session = try Session.create(alloc, "/tmp/ws", testCorrelation(), .{}, 1); // 1ms lease
+    var session = try Session.create(alloc, "/tmp/ws", testCorrelation(), .{}, 1, .{}); // 1ms lease
     defer session.destroy();
 
     session.recordStageResult(.{
@@ -229,7 +229,7 @@ test "T8: agent exceeding memory limit is detectable in session metrics" {
     const alloc = std.testing.allocator;
     var session = try Session.create(alloc, "/tmp/ws", testCorrelation(), .{
         .memory_limit_mb = 512,
-    }, 30_000);
+    }, 30_000, .{});
     defer session.destroy();
 
     // Agent uses 600 MB against 512 MB limit (117% usage — OOM-adjacent).
@@ -248,7 +248,7 @@ test "T8: agent exceeding memory limit is detectable in session metrics" {
     try std.testing.expect(usage.memory_peak_bytes > ctx.memory_limit_bytes);
 
     // 100% throttle + 100% memory scenario.
-    var rogue = try Session.create(alloc, "/tmp/ws2", testCorrelation(), .{ .memory_limit_mb = 512 }, 30_000);
+    var rogue = try Session.create(alloc, "/tmp/ws2", testCorrelation(), .{ .memory_limit_mb = 512 }, 30_000, .{});
     defer rogue.destroy();
     rogue.recordStageResult(.{
         .exit_ok = false,
@@ -278,7 +278,7 @@ test "T5+T8: concurrent sessions in store maintain independent resource metrics"
                 const sess = a.create(Session) catch return;
                 sess.* = Session.create(a, "/tmp/ws", testCorrelation(), .{
                     .memory_limit_mb = @as(u64, @intCast(thread_id + 1)) * 128,
-                }, 30_000) catch return;
+                }, 30_000, .{}) catch return;
                 sess.recordStageResult(.{
                     .exit_ok = true,
                     .memory_peak_bytes = (thread_id + 1 + i) * 1024 * 1024,
@@ -340,7 +340,7 @@ test "T8: rogue agent consuming max resources across 3 stages has metrics visibl
     const alloc = std.testing.allocator;
     var session = try Session.create(alloc, "/tmp/ws", testCorrelation(), .{
         .memory_limit_mb = 512,
-    }, 30_000);
+    }, 30_000, .{});
     defer session.destroy();
 
     // Stage 1: moderate.
@@ -396,7 +396,7 @@ test "T11: rapid session create/record/destroy with high metric values has no le
     for (0..100) |i| {
         var session = try Session.create(alloc, "/tmp/ws", testCorrelation(), .{
             .memory_limit_mb = @as(u64, @intCast(i + 1)) * 64,
-        }, 30_000);
+        }, 30_000, .{});
         session.recordStageResult(.{
             .exit_ok = i % 3 != 0,
             .failure = if (i % 3 == 0) .oom_kill else null,
@@ -418,7 +418,7 @@ test "T11: SessionStore with mixed failure sessions has no leaks" {
 
     for (0..20) |i| {
         const sess = try alloc.create(Session);
-        sess.* = try Session.create(alloc, "/tmp/ws", testCorrelation(), .{}, 30_000);
+        sess.* = try Session.create(alloc, "/tmp/ws", testCorrelation(), .{}, 30_000, .{});
         sess.recordStageResult(.{
             .exit_ok = i % 2 == 0,
             .failure = if (i % 2 != 0) .resource_kill else null,
