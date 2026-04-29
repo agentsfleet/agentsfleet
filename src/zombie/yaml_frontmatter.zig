@@ -105,17 +105,39 @@ fn writeJsonString(w: anytype, s: []const u8) !void {
     try w.writeByte('"');
 }
 
+// Returns true only when `v` is a JSON-valid number literal. Stricter than
+// the YAML 1.2 numeric grammar on purpose: scalars that YAML accepts but
+// JSON rejects (`1.`, `.5`, `-`, bare `.`, `01`) must be quoted, otherwise
+// std.json.parseFromSlice fails downstream with a non-actionable error.
+// Leading sign is accepted only as the first byte, decimal point at most
+// once, must have a digit on each side of any decimal, and no leading
+// zero on a multi-digit integer part (JSON spec).
 fn isNumeric(v: []const u8) bool {
     if (v.len == 0) return false;
     var has_dot = false;
+    var digit_seen = false;
+    var int_part_len: usize = 0;
+    var int_first: u8 = 0;
     for (v, 0..) |c, i| {
         if (c == '-' and i == 0) continue;
         if (c == '.' and !has_dot) {
+            // Must have at least one integer digit before the dot.
+            if (int_part_len == 0) return false;
             has_dot = true;
             continue;
         }
         if (!std.ascii.isDigit(c)) return false;
+        digit_seen = true;
+        if (!has_dot) {
+            if (int_part_len == 0) int_first = c;
+            int_part_len += 1;
+        }
     }
+    if (!digit_seen) return false;
+    // No digit after the decimal point ("1." would emit invalid JSON).
+    if (has_dot and v[v.len - 1] == '.') return false;
+    // No leading zero on multi-digit integer part ("01" → invalid JSON).
+    if (int_part_len > 1 and int_first == '0') return false;
     return true;
 }
 
@@ -169,6 +191,31 @@ test "yamlFrontmatterToJson: inline array" {
     const tags = parsed.value.object.get("tags").?.array;
     try std.testing.expectEqual(@as(usize, 3), tags.items.len);
     try std.testing.expectEqualStrings("leads", tags.items[0].string);
+}
+
+// Pins isNumeric's JSON-correctness guard: scalars that YAML accepts but
+// JSON rejects must be quoted, not emitted as bare numbers. Each input
+// here, if isNumeric returned true, would emit invalid JSON downstream.
+test "yamlFrontmatterToJson: invalid JSON-numeric scalars get quoted (isNumeric guard)" {
+    const alloc = std.testing.allocator;
+    const cases = [_][]const u8{
+        "name: -", // bare sign
+        "name: .", // sole decimal
+        "name: 1.", // trailing decimal
+        "name: .5", // leading decimal
+        "name: '01'", // leading zero — already quoted but proves quoted path works
+        "name: 01", // leading zero unquoted — must NOT emit bare 01 (JSON rejects)
+    };
+    for (cases) |src| {
+        const json = try yamlFrontmatterToJson(alloc, src);
+        defer alloc.free(json);
+        // Must round-trip through std.json without error: the guard kicked in
+        // and produced a quoted string instead of an invalid bare number.
+        const parsed = try std.json.parseFromSlice(std.json.Value, alloc, json, .{});
+        defer parsed.deinit();
+        const v = parsed.value.object.get("name").?;
+        try std.testing.expect(v == .string);
+    }
 }
 
 // Pins the kubkon/zig-yaml v0.2.0 limitation called out in writeScalar: a
