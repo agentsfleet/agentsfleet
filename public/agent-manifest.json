@@ -2,7 +2,7 @@
   "@context": "https://schema.org",
   "@type": "SoftwareApplication",
   "name": "UseZombie",
-  "description": "Agent Delivery Control Plane — deterministic spec-to-PR automation for autonomous engineering teams.",
+  "description": "Agent Delivery Control Plane — long-lived, event-driven autonomous workers (Zombies) scoped to a workspace.",
   "url": "https://usezombie.com",
   "applicationCategory": "DeveloperApplication",
   "operatingSystem": "Linux",
@@ -12,71 +12,76 @@
     "llms": "/llms.txt",
     "skill": "/skill.md"
   },
-  "agents": [
-    {
-      "@type": "SoftwareAgent",
-      "name": "Echo",
-      "role": "planner",
-      "description": "Reads specs, explores the repo, produces ordered task plans (plan.json). Read-only access.",
-      "permissions": ["file_read", "grep", "find", "ls"]
-    },
-    {
-      "@type": "SoftwareAgent",
-      "name": "Scout",
-      "role": "builder",
-      "description": "Implements code changes according to Echo's plan. Produces implementation.md. Full read/write/shell access.",
-      "permissions": ["file_read", "file_write", "file_edit", "shell"]
-    },
-    {
-      "@type": "SoftwareAgent",
-      "name": "Warden",
-      "role": "validator",
-      "description": "Red-team reviewer. Checks Scout's work against spec, runs tests, produces validation.md with T1-T4 tiered findings.",
-      "permissions": ["file_read", "grep", "find", "shell"]
-    }
-  ],
   "operations": [
     {
-      "operationId": "start_run",
+      "operationId": "create_zombie",
       "method": "POST",
-      "path": "/v1/runs",
-      "description": "Queue a spec-to-PR run. Returns run_id and initial state SPEC_QUEUED.",
+      "path": "/v1/workspaces/{workspace_id}/zombies",
+      "description": "Provision a new Zombie in the given workspace. Returns the zombie_id used for subsequent operations.",
       "actionClass": "sensitive"
     },
     {
-      "operationId": "get_run",
+      "operationId": "update_zombie",
+      "method": "PATCH",
+      "path": "/v1/workspaces/{workspace_id}/zombies/{zombie_id}",
+      "description": "Update a Zombie's mutable configuration.",
+      "actionClass": "sensitive"
+    },
+    {
+      "operationId": "kill_zombie",
+      "method": "POST",
+      "path": "/v1/workspaces/{workspace_id}/zombies/{zombie_id}/kill",
+      "description": "Terminate a running Zombie. The watcher cancels any in-flight executor session and marks the Zombie killed.",
+      "actionClass": "sensitive"
+    },
+    {
+      "operationId": "steer_zombie",
+      "method": "POST",
+      "path": "/v1/workspaces/{workspace_id}/zombies/{zombie_id}/steer",
+      "description": "Inject a steering instruction into a running Zombie's loop.",
+      "actionClass": "sensitive"
+    },
+    {
+      "operationId": "list_zombie_events",
       "method": "GET",
-      "path": "/v1/runs/{run_id}",
-      "description": "Fetch run status, state transitions, artifacts, and policy events.",
+      "path": "/v1/workspaces/{workspace_id}/zombies/{zombie_id}/events",
+      "description": "List the Zombie's event history with pagination.",
       "actionClass": "safe"
     },
     {
-      "operationId": "retry_run",
+      "operationId": "stream_zombie_events",
+      "method": "GET",
+      "path": "/v1/workspaces/{workspace_id}/zombies/{zombie_id}/events/stream",
+      "description": "Server-Sent Events stream of new events as they arrive.",
+      "actionClass": "safe"
+    },
+    {
+      "operationId": "ingest_zombie_webhook",
       "method": "POST",
-      "path": "/v1/runs/{run_id}:retry",
-      "description": "Re-queue a blocked or failed run with defect context injected into Scout.",
+      "path": "/v1/webhooks/{zombie_id}",
+      "description": "Deliver an inbound event to a Zombie. Validated against the Zombie's trigger token; idempotent within 24h via event_id.",
       "actionClass": "sensitive"
     },
     {
       "operationId": "pause_workspace",
       "method": "POST",
       "path": "/v1/workspaces/{workspace_id}/pause",
-      "description": "Pause or unpause admission of new runs for a workspace.",
+      "description": "Pause or unpause admission of new work for a workspace.",
       "actionClass": "sensitive"
-    },
-    {
-      "operationId": "list_specs",
-      "method": "GET",
-      "path": "/v1/specs",
-      "description": "List specs registered for a workspace, with status and pagination.",
-      "actionClass": "safe"
     },
     {
       "operationId": "sync_specs",
       "method": "POST",
       "path": "/v1/workspaces/{workspace_id}/sync",
-      "description": "Scan workspace repo for PENDING_*.md files and upsert spec records. Idempotent.",
+      "description": "Trigger a workspace-level reconciliation sync.",
       "actionClass": "safe"
+    },
+    {
+      "operationId": "execute_tool",
+      "method": "POST",
+      "path": "/v1/execute",
+      "description": "Synchronous tool execution proxy. External agents (LangGraph, CrewAI, Composio) call this with their API key and a tool name; the tool result returns inline.",
+      "actionClass": "sensitive"
     }
   ],
   "authentication": {
@@ -89,8 +94,8 @@
     "description": "Users supply their own LLM API keys. UseZombie bills per agent-second. Never stores LLM costs."
   },
   "policyClasses": {
-    "safe": ["get_run", "list_specs", "sync_specs"],
-    "sensitive": ["start_run", "retry_run", "pause_workspace"],
+    "safe": ["list_zombie_events", "stream_zombie_events", "sync_specs"],
+    "sensitive": ["create_zombie", "update_zombie", "kill_zombie", "steer_zombie", "ingest_zombie_webhook", "pause_workspace", "execute_tool"],
     "critical": []
   }
 }
