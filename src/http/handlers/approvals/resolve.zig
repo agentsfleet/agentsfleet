@@ -44,6 +44,10 @@ pub fn innerResolveApproval(
     }
 
     const reason = parseReason(hx, req) orelse return;
+    // parseReason heap-dupes the JSON body's reason string onto hx.alloc when
+    // it was non-empty. Empty/missing body cases return the literal "" which
+    // must NOT be freed — guard on len so we only release real allocations.
+    defer if (reason.len > 0) hx.alloc.free(reason);
 
     // Authz scope: hold conn only for the workspace check, then release so
     // downstream pool-acquiring calls (getByGateId, approval_gate.resolve)

@@ -41,6 +41,17 @@ pub fn checkAnomaly(
     return .normal;
 }
 
+// Atomic INCR + first-time-EXPIRE in a single EVAL. Two-command INCR
+// followed by EXPIRE leaves a window where a Redis crash between commands
+// strands the just-created key with no TTL — every subsequent call sees
+// count > 1 and skips the EXPIRE branch, so the counter lives forever and
+// eventually triggers an indefinite auto-kill once it crosses threshold.
+const ANOMALY_INCR_SCRIPT =
+    \\local v = redis.call('INCR', KEYS[1])
+    \\if v == 1 then redis.call('EXPIRE', KEYS[1], ARGV[1]) end
+    \\return v
+;
+
 fn incrAnomalyCounter(
     redis: *queue_redis.Client,
     zombie_id: []const u8,
@@ -53,21 +64,15 @@ fn incrAnomalyCounter(
         ec.GATE_ANOMALY_KEY_PREFIX, zombie_id, tool, action,
     }) catch return error.BufferOverflow;
 
-    var resp = try redis.command(&.{ "INCR", key });
+    var ttl_buf: [16]u8 = undefined;
+    const ttl_str = std.fmt.bufPrint(&ttl_buf, "{d}", .{window_s}) catch return error.BufferOverflow;
+
+    var resp = try redis.command(&.{ "EVAL", ANOMALY_INCR_SCRIPT, "1", key, ttl_str });
     defer resp.deinit(redis.alloc);
-    const count: u32 = switch (resp) {
+    return switch (resp) {
         .integer => |n| if (n > 0) @intCast(n) else 1,
-        else => return error.RedisCommandError,
+        else => error.RedisCommandError,
     };
-
-    if (count == 1) {
-        var ttl_buf: [16]u8 = undefined;
-        const ttl_str = std.fmt.bufPrint(&ttl_buf, "{d}", .{window_s}) catch return error.BufferOverflow;
-        var expire_resp = try redis.command(&.{ "EXPIRE", key, ttl_str });
-        defer expire_resp.deinit(redis.alloc);
-    }
-
-    return count;
 }
 
 /// Reset all anomaly counters for a zombie (after restart / auto-kill recovery).
