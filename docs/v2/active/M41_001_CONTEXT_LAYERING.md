@@ -29,36 +29,56 @@
 
 | File | Action | Why |
 |---|---|---|
-| `src/executor/rpc.zig` | EXTEND | `CreateExecutionRequest`: add `network_policy`, `tools`, `secrets_map`, `context` fields. Versioned schema. |
-| `src/executor/session.zig` | EXTEND | Session stores per-execution policy + context knobs |
-| `src/executor/tool_builders.zig` | EXTEND | `http_request` builder reads `network_policy.allow`, rejects off-list. Adds substitution wrapper. |
-| `src/executor/tool_bridge.zig` | NEW | Substitution layer: pre-flight pass on outbound request builder, replaces `${secrets.x.y}` with `secrets_map[x][y]`. Substitution happens INSIDE the sandbox. |
-| `src/executor/runner.zig` | EXTEND | NullClaw integration: pass context knobs into Agent.runSingle. Wire L1/L2/L3 hooks. |
-| `src/executor/context_lifecycle.zig` | NEW | The L1+L2+L3 enforcement: rolling-window state, memory-checkpoint nudge, stage-chunk threshold detection. |
-| `src/zombie/event_loop_helpers.zig` | EXTEND | `processEvent`: resolves `secrets_map` from vault before `createExecution`; passes context knobs from zombie config. |
-| `src/zombie/continuation.zig` | NEW | Worker-side: when stage returns `exit_ok=false` with `checkpoint_id`, XADD synthetic event `actor=continuation` to `zombie:{id}:events`. |
-| `src/zombie/config_parser.zig` | EXTEND | Parse `x-usezombie.context` knobs from frontmatter; apply tier-aware defaults if `auto`. |
-| `tests/integration/executor_policy_test.zig` | NEW | E2E: install zombie with structured creds → tool call substitutes → real bytes never in event log |
-| `tests/integration/context_lifecycle_test.zig` | NEW | E2E: 30-tool-call zombie → memory_store nudges fire → tool_window drops → stage chunks → continuation event → recovery |
+| `src/executor/rpc.zig` | EXTEND | `CreateExecutionRequest`: add `network_policy`, `tools`, `secrets_map`, `context` fields. In-place additive extension per RULE NLG — no `V2` twin, no legacy fallback branch. Every caller updated in the same commit. |
+| `src/executor/client.zig` | EXTEND | `createExecution(...)` call site grows the four new params. The single in-tree caller (the worker) lands in `event_loop_helpers.zig` (this commit). |
+| `src/executor/session.zig` | EXTEND | Session stores per-execution policy + context knobs. |
+| `src/executor/tool_builders.zig` | EXTEND | `http_request` builder reads `network_policy.allow`, rejects off-list with `host_not_allowed`. |
+| `src/executor/runner_progress.zig` | EXTEND | Substitution layer lives here, NOT in a new `tool_bridge.zig`. The existing `Adapter` already intercepts tool-use frames for redaction (M42_002 pending); §2 adds the `${secrets.NAME.FIELD}` → resolved-value pass on the same path. Coordinate with M42_002 on the same struct. |
+| `src/executor/tool_bridge.zig` | (unchanged) | Existing tool *registry* — not touched by M41. |
+| `src/executor/registry/model_registry.zig` | NEW | Compile-time `const` table mapping model name → `{ context_cap_tokens, tier }`. Drives §6 fill estimation and §8 auto-defaults. Operator (`nkishore@megam.io`) extends by PR; M48 (BYOK) layers tenant validation against the same table. |
+| `src/executor/runtime/context_lifecycle.zig` | NEW | L1+L2+L3 enforcement: rolling-window state, memory-checkpoint nudge, stage-chunk threshold detection. New file lands in `runtime/` subfolder; existing `runner.zig`/`runner_progress.zig`/`session.zig` stay put for this PR (mass-move is a follow-up hygiene spec). |
+| `src/executor/runner.zig` | EXTEND | NullClaw integration: pass context knobs into `Agent.runSingle`. Wire L1/L2/L3 hooks via `runtime/context_lifecycle`. |
+| `src/zombie/event_loop_helpers.zig` | EXTEND | Replace `resolveFirstCredential` (line 242) with `resolveSecretsMap` (already shipped in `event_loop_secrets.zig:34`). Resolved `[]ResolvedSecret` flows directly into the extended `createExecution` payload. Also passes context knobs from zombie config. |
+| `src/zombie/continuation.zig` | NEW | Worker-side: when stage returns `exit_ok=false` with `checkpoint_id`, XADD synthetic event with `event_type='continuation'`, `actor='continuation:<original_actor>'`, `request_json={checkpoint_id, original_event_id}`. Counts prior continuation events on the incident to enforce the max-10 cap (no new state column — derived at re-enqueue time from `core.zombie_events`). |
+| `src/zombie/config_parser.zig` | EXTEND | Parse `x-usezombie.context` knobs from frontmatter; apply tier-aware defaults if `auto`. (Note: M46 also touches this file later — sequencing watch.) |
+| `tests/integration/executor_policy_test.zig` | NEW | E2E: install zombie with structured creds → tool call substitutes → real bytes never in event log. |
+| `tests/integration/context_lifecycle_test.zig` | NEW | E2E: 30-tool-call zombie → memory_store nudges fire → tool_window drops → stage chunks → continuation event → recovery. |
 
 ---
 
 ## Sections (implementation slices)
 
-### §1 — RPC schema extension
-`createExecution` adds:
+### §1 — RPC schema extension (in-place, per RULE NLG)
+`CreateExecutionRequest` in `src/executor/rpc.zig` grows four fields. **No `V2` twin, no legacy `secrets_map=null` fallback** — pre-v2.0.0 has no external consumers, the in-tree caller (`src/zombie/event_loop_helpers.zig`) is updated in the same commit.
+
 ```
-{
-  network_policy: { allow: [string] },
-  tools: [string],
-  secrets_map: { [name: string]: { [field: string]: string } },
-  context: { tool_window: int|"auto", memory_checkpoint_every: int, stage_chunk_threshold: float },
+CreateExecutionRequest {
+  workspace_path:   string,                     // existing
+  correlation:      CorrelationContext,         // existing
+  network_policy:   { allow: []string },        // NEW
+  tools:            []string,                   // NEW (per-zombie tool allowlist)
+  secrets_map:      []ResolvedSecret,           // NEW (M45 shape: { name, parsed: std.json.Value })
+  context:          ExecutionContextBudget,     // NEW
+}
+ExecutionContextBudget {
+  tool_window:               u32 | "auto",
+  memory_checkpoint_every:   u32,
+  stage_chunk_threshold:     f32,   // 0.0..1.0
+  model:                     []const u8,    // looked up against registry/model_registry.zig
 }
 ```
-Versioned: existing `secrets_map=null` callers get the old single-string LLM key path (legacy).
 
-### §2 — Tool bridge substitution
-Inside `src/executor/tool_bridge.zig`: just before the outbound `std.http.Client.fetch` call, scan request headers + body for `${secrets.NAME.FIELD}` patterns. Replace with `secrets_map[NAME][FIELD]`. Substitution happens AFTER the sandbox is established (Landlock + cgroups + bwrap have closed). The agent's view of the request never contains the real bytes — it sees the placeholder string in tool call records that flow back into context.
+`ResolvedSecret` is the type already returned by `src/zombie/event_loop_secrets.zig:34`. Substitution-time field lookup walks `parsed` (`std.json.Value`) — the spec's earlier `{ [field]: string }` shape was wrong; M45 ships the whole JSON value per credential and lets the substitution path do field traversal at use-time.
+
+### §2 — Substitution lives in `runner_progress.Adapter`
+The substitution pass lands on the **existing** `runner_progress.Adapter` (`src/executor/runner_progress.zig:9-15`), which already intercepts tool-use frames in the observer/stream-callback path for M42_002's redaction work. Adding the `${secrets.NAME.FIELD}` resolver here means one observer pipeline owns both invariants (redaction inbound to the agent's context, real-byte substitution outbound to the network). Substitution timing is unchanged: AFTER the sandbox is established (Landlock + cgroups + bwrap closed), BEFORE the outbound `std.http.Client.fetch` call.
+
+**Implementation pattern** (mirrored from `bun/src/bun.zig:919-1040` and `bun/src/StaticHashMap.zig`, not lifted):
+- Headers: a small case-insensitive ASCII string hashmap (custom `Context` over `std.HashMapUnmanaged`) for `[]const u8 → []const u8` header lookups.
+- Body: hand-rolled scanner over the JSON-stringified payload for the `\$\{secrets\.[a-zA-Z_][a-zA-Z0-9_]*\.[a-zA-Z_][a-zA-Z0-9_]*\}` shape; rewrite into a fresh `std.ArrayList(u8)` to avoid parse → walk → restringify.
+- Module shape follows file-as-struct (`const This = @This()` + mixin) per the PUB GATE / `docs/ZIG_RULES.md` conventions.
+
+The agent's view of the tool call (the frame that flows back into context) keeps the placeholder string. Real bytes never appear in the agent context, in `core.zombie_events`, or in any log line.
 
 ### §3 — Network policy enforcement
 `http_request` tool builder reads `network_policy.allow` from session. Outbound URLs must match an entry. Reject with `tool_call_failed: host not in allowlist`. Agent reasons over the error and either reformulates or gives up — visible failure beats silent egress.
@@ -70,13 +90,27 @@ After every N tool calls (default 5), NullClaw inserts a soft frame in the agent
 Maintain a deque of the last N tool results in the agent's active context. When N is exceeded, oldest results are summarized to a single `[tool result for <tool>:<args> dropped — see event log]` line. The full result stays in `core.zombie_events` (M42). Agent reasons over the summary if needed via `memory_recall`.
 
 ### §6 — Context lifecycle (L3: stage_chunk_threshold)
-Before each tool call, check estimated context fill (current_tokens / model_context_cap). If >= `stage_chunk_threshold` (default 0.75), nudge the agent: *"Context approaching budget. Snapshot findings now and return for continuation."* If the next tool call would exceed the threshold, force the agent to call `memory_store` and return `{exit_ok: false, checkpoint_id: <auto>, content: <agent's final reasoning>}`. Worker re-enqueues a continuation event.
+Before each tool call, check estimated context fill: `current_tokens / model_context_cap`. `current_tokens` already flows on every stage response (`src/executor/client.zig:230`). `model_context_cap` is a NEW lookup against `src/executor/registry/model_registry.zig` keyed by the resolved model name (which is part of `ExecutionContextBudget.model`). If the ratio ≥ `stage_chunk_threshold` (default 0.75), nudge the agent: *"Context approaching budget. Snapshot findings now and return for continuation."* If the next tool call would exceed the threshold, force the agent to call `memory_store` and return `{exit_ok: false, checkpoint_id: <auto>, content: <agent's final reasoning>}`. Worker re-enqueues a continuation event (§7).
 
 ### §7 — Continuation event flow
-`src/zombie/continuation.zig`: when stage returns `exit_ok=false` with `checkpoint_id`, XADD `zombie:{id}:events` with `type=continuation`, `actor=continuation:<original_actor>`, `data={checkpoint_id, original_event_id}`. Next stage opens with a synthetic prompt: *"You are continuing incident <id>. Call `memory_recall(\"<checkpoint_id>\")` first to load your prior reasoning. Then continue."*
+`src/zombie/continuation.zig`: when stage returns `exit_ok=false` with `checkpoint_id`, the worker:
+1. Counts existing continuation events for this incident — `SELECT count(*) FROM core.zombie_events WHERE incident_id = $1 AND event_type = 'continuation'`. If ≥ 10, force-stop with `incident_chunk_loop` error (Invariant 4) — no XADD, surface to operator.
+2. Otherwise XADD to `zombie:{id}:events` with the **shipped column names** (per `schema/019_zombie_events.sql:20-22`):
+   - `event_type = 'continuation'`
+   - `actor = 'continuation:<original_actor>'`  (flat string, colon-compound — `event_envelope.zig` already accepts this shape)
+   - `request_json = { checkpoint_id, original_event_id }`  (merges into the existing JSONB column; no separate `data` column exists)
+3. Next stage opens with a synthetic prompt: *"You are continuing incident `<id>`. Call `memory_recall(\"<checkpoint_id>\")` first to load your prior reasoning. Then continue."*
 
 ### §8 — Auto-defaults and override resolution
-On `createExecution`, if `context.tool_window == "auto"`, pick from a tier table based on the active model: ≥1M → 30, 200-300k → 20, ≤200k → 10. User overrides in `x-usezombie.context` win over auto. Surface the resolved knobs in event log for observability.
+On `createExecution`, if `context.tool_window == "auto"`, look up the resolved model in `src/executor/registry/model_registry.zig` and pick from the same table that drives §6 fill estimation:
+
+| Tier | Context cap | Default `tool_window` |
+|---|---|---|
+| LARGE | ≥ 1M tokens | 30 |
+| MEDIUM | 200k - 300k tokens | 20 |
+| SMALL | ≤ 200k tokens | 10 |
+
+User overrides in `x-usezombie.context` win over auto. The registry is a compile-time `const` table; new model entries land via PR (admin: `nkishore@megam.io`). M48 (BYOK) extends the validation surface — tenant-supplied model names are checked against the same table. Surface the resolved knobs in the event log for observability.
 
 ### §9 — Config hot-reload
 When watcher receives `zombie_config_changed` (M40), the per-zombie thread loads the new config revision. In-flight execution keeps old config; next event uses new. Test: PATCH config → in-flight finishes with old context budget → next event uses new budget.
@@ -86,16 +120,18 @@ When watcher receives `zombie_config_changed` (M40), the per-zombie thread loads
 ## Interfaces
 
 ```
-RPC: executor.createExecution
+RPC: executor.createExecution    (extended in place — no V2 twin, no legacy fallback)
   request: {
     workspace_path: string,
-    network_policy: { allow: [string] },
-    tools: [string],
-    secrets_map: { [name]: { [field]: string } },
-    context: {
-      tool_window: int | "auto",
-      memory_checkpoint_every: int,
-      stage_chunk_threshold: float,
+    correlation:    CorrelationContext,           // existing
+    network_policy: { allow: []string },          // NEW
+    tools:          []string,                     // NEW
+    secrets_map:    []ResolvedSecret,             // NEW — {name, parsed: std.json.Value}
+    context: {                                    // NEW
+      tool_window:               u32 | "auto",
+      memory_checkpoint_every:   u32,
+      stage_chunk_threshold:     f32,
+      model:                     []const u8,
     },
   }
   response: { execution_id: string }
@@ -141,7 +177,7 @@ Substitution contract:
 | Test | Asserts |
 |---|---|
 | `test_secret_substitution_real_bytes_outbound` | Mock HTTPS server captures Authorization header → asserts real bytes match vault entry |
-| `test_secret_no_leak_into_event_log` | Run a tool call → grep `core.zombie_events.response_text` for token bytes → 0 matches |
+| `test_secret_no_leak_into_event_log` | Run a tool call → grep all JSONB columns of `core.zombie_events` (`request_json`, response columns) for token bytes → 0 matches |
 | `test_secret_no_leak_into_agent_context` | Capture agent's tool-call record → asserts placeholder string only |
 | `test_network_allow_blocks_off_list` | Agent calls http_request to `evil.com` (not in allow) → tool returns `host_not_allowed` |
 | `test_tool_window_drops_old_results` | Run 25 tool calls with `tool_window=10` → assert oldest 15 are summarized in active context |
@@ -163,3 +199,20 @@ All tests in `tests/integration/executor_policy_test.zig` and `tests/integration
 - [ ] A 50-tool-call adversarial scenario chunks at least once and resumes via continuation event
 - [ ] `make memleak` clean
 - [ ] Cross-compile clean: x86_64-linux + aarch64-linux
+
+---
+
+## Discovery (PLAN-phase audit, Apr 29, 2026)
+
+Cross-checked the spec against what M40/M42/M45 actually shipped. Six amendments landed in the same commit as this section:
+
+1. **`createExecution` RPC extension strategy.** Spec was silent between in-place vs `V2`. Locked in-place per new `RULE NLG` (`docs/greptile-learnings/RULES.md`) — no legacy compat shims pre-v2.0.0. Single in-tree caller (worker) updates in the same commit.
+2. **`secrets_map` shape.** M45's `resolveSecretsMap` (`src/zombie/event_loop_secrets.zig:34`) returns `[]ResolvedSecret { name, parsed: std.json.Value }`. Spec previously assumed `{ [name]: { [field]: string } }`. Substitution path now does field traversal against `parsed` at use-time. Also caught: `event_loop_helpers.zig:242` still calls `resolveFirstCredential` — replaced as part of this milestone.
+3. **Substitution module.** Lives in the existing `runner_progress.Adapter` (`src/executor/runner_progress.zig:9-15`), not a new `tool_bridge.zig`. M42_002 (pending) shares the same struct for redaction; coordinate.
+4. **Model context cap.** `model_context_cap` doesn't exist anywhere today. Added `src/executor/registry/model_registry.zig` as compile-time `const` table; same table drives §6 fill estimation and §8 auto-defaults. Admin: `nkishore@megam.io` extends by PR. M48 (BYOK) layers tenant validation against it.
+5. **Continuation max-10 enforcement.** Derived at re-enqueue time from `core.zombie_events` (count rows where `event_type='continuation' AND incident_id=$1`). No new state column.
+6. **Schema column names.** Spec used `type` and `data`; shipped schema (`schema/019_zombie_events.sql:20-22`) has `event_type TEXT` + `request_json JSONB`. §7 + Test Specification updated.
+
+Folder hygiene: M41's NEW files land in `src/executor/registry/` and `src/executor/runtime/` to seed a future reorg. Existing files stay put for this PR — mass-move during a security-critical change is a bad idea. Follow-up hygiene spec (TBD) does the full executor + zombie reorg.
+
+Bun reference (research only, no code lifted): mirroring patterns from `bun/src/bun.zig:919-1040` (case-insensitive ASCII string hashmap context) and `bun/src/StaticHashMap.zig:40` (file-as-struct + mixin), implemented from scratch over `std.HashMapUnmanaged` and `std.json.Stringify`.
