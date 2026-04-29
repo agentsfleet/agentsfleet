@@ -151,7 +151,9 @@ The gate runs for both postures. The Free plan does not allow BYOK (paid plans o
 {
   "anthropic": {"default_model": "claude-sonnet-4-6", "api_base": "https://api.anthropic.com"},
   "openai": {"default_model": "gpt-5", "api_base": "https://api.openai.com"},
-  "cerebras": {"default_model": "qwen3-coder", "api_base": "https://api.cerebras.ai"},
+  "fireworks": {"default_model": "accounts/fireworks/models/kimi-k2.6", "api_base": "https://api.fireworks.ai/inference/v1"},
+  "moonshot": {"default_model": "kimi-k2.6", "api_base": "https://api.moonshot.cn/v1"},
+  "zhipu": {"default_model": "glm-5.1", "api_base": "https://open.bigmodel.cn/api/paas/v4"},
   "together": {"default_model": "deepseek-coder", "api_base": "https://api.together.xyz"}
 }
 ```

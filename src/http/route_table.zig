@@ -43,6 +43,7 @@ pub fn specFor(route: router.Route, registry: *auth_mw.MiddlewareRegistry) ?Rout
         .healthz => .{ .middlewares = auth_mw.MiddlewareRegistry.none, .invoke = invoke.invokeHealthz },
         .readyz => .{ .middlewares = auth_mw.MiddlewareRegistry.none, .invoke = invoke.invokeReadyz },
         .metrics => .{ .middlewares = auth_mw.MiddlewareRegistry.none, .invoke = invoke.invokeMetrics },
+        .model_caps => .{ .middlewares = auth_mw.MiddlewareRegistry.none, .invoke = invoke.invokeModelCaps },
 
         // Auth sessions
         .create_auth_session => .{ .middlewares = auth_mw.MiddlewareRegistry.none, .invoke = invoke.invokeCreateAuthSession },

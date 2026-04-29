@@ -14,7 +14,7 @@ NullClaw's `providers/factory.zig` already maps Fireworks as an OpenAI-compatibl
 |---|---|---|
 | `fireworks` / `fireworks-ai` | OpenAI-compatible (`/chat/completions`) | `https://api.fireworks.ai/inference/v1` |
 
-Kimi K2 (Moonshot's Kimi 2.6) is hosted on Fireworks at the model id `accounts/fireworks/models/kimi-k2-instruct`. The OpenAI-compatible client in `nullclaw/src/providers/compatible.zig` handles the wire shape; no provider-specific code needed in this repo.
+Kimi K2 (Moonshot's Kimi 2.6) is hosted on Fireworks at the model id `accounts/fireworks/models/kimi-k2.6`. The OpenAI-compatible client in `nullclaw/src/providers/compatible.zig` handles the wire shape; no provider-specific code needed in this repo.
 
 The operator can also pick Moonshot's own endpoint (`provider: "kimi"` → `https://api.moonshot.cn/v1`) if they have a Moonshot account directly. Same wire shape; same code path.
 
@@ -51,7 +51,7 @@ The operator runs two CLI commands:
 zombiectl credential add llm --data '{
   "provider": "fireworks",
   "api_key":  "fw_LIVE_xxxxxxxxxxxxxxxx",
-  "model":    "accounts/fireworks/models/kimi-k2-instruct"
+  "model":    "accounts/fireworks/models/kimi-k2.6"
 }'
 
 zombiectl provider set
@@ -61,7 +61,7 @@ What each does:
 
 - **`credential add llm`** — vault stores an opaque JSON object keyed by the literal name `llm` (per M45's structured-credentials model). The JSON body is the provider's identity and key. **Note: `context_cap_tokens` is NOT in the credential body** — it's resolved separately at provider-set time from the public model-caps endpoint.
 - **`provider set`** — flips `core.tenant_providers.mode` to `byok`. As part of the PUT, the API:
-  1. Reads the `llm` credential to learn the model (`accounts/fireworks/models/kimi-k2-instruct`).
+  1. Reads the `llm` credential to learn the model (`accounts/fireworks/models/kimi-k2.6`).
   2. GETs `https://api.usezombie.com/_um/da5b6b3810543fe108d816ee972e4ff8/model-caps.json?model=<urlencoded-model>` to resolve the cap (cryptic-prefix endpoint — see §5).
   3. Writes `tenant_providers.context_cap_tokens` (e.g. `256000` for Kimi K2, which has a 256k context window).
 
@@ -75,7 +75,7 @@ The same setup works through the dashboard at `/settings/provider`: a Provider d
 
 When the operator runs `/usezombie-install-platform-ops` after BYOK is set:
 
-1. The skill calls `zombiectl doctor --json`. Doctor's extended output now reports `tenant_provider: { mode: "byok", provider: "fireworks", model: "...kimi-k2-instruct", context_cap_tokens: 256000 }`.
+1. The skill calls `zombiectl doctor --json`. Doctor's extended output now reports `tenant_provider: { mode: "byok", provider: "fireworks", model: "...kimi-k2.6", context_cap_tokens: 256000 }`.
 2. The skill **skips** the model-cap lookup against `/_um/da5b6b3810543fe108d816ee972e4ff8/model-caps.json` — the cap is already in `tenant_providers`.
 3. The skill writes `.usezombie/platform-ops/SKILL.md` with frontmatter:
    ```yaml
@@ -91,7 +91,7 @@ When the operator runs `/usezombie-install-platform-ops` after BYOK is set:
 
 The two zero-sentinels (`model: ""` and `context_cap_tokens: 0`) are the runtime contract that says *"resolve at trigger time from tenant config."* The frontmatter is a static document, but the BYOK config is mutable per tenant — the worker overlay is the only sane way to keep them coherent.
 
-If the operator later runs `zombiectl provider set --model accounts/fireworks/models/llama-v3p1-405b-instruct`, the API re-resolves the cap from the public endpoint and overwrites `tenant_providers.context_cap_tokens`. Existing zombies pick up the new model + cap on their **next** event; in-flight events finish with the snapshot they were claimed under (M48 invariant 4).
+If the operator later runs `zombiectl provider set --model accounts/fireworks/models/deepseek-v4-pro`, the API re-resolves the cap from the public endpoint and overwrites `tenant_providers.context_cap_tokens`. Existing zombies pick up the new model + cap on their **next** event; in-flight events finish with the snapshot they were claimed under (M48 invariant 4).
 
 ---
 
@@ -103,16 +103,16 @@ When a webhook arrives or the operator steers, the worker's `processEvent`:
 2. Balance gate fires. **Important:** the gate runs for BYOK too — see Scenario 03 for the full billing model. (Earlier drafts said BYOK skips the gate; that's wrong. BYOK skips only the **LLM-token meter**, not the orchestration-fee meter. The gate stays on.)
 3. Approval gate.
 4. Resolve `secrets_map` (tool credentials only — `fly`, `slack`, `github`, etc.).
-5. **Resolve provider:** `tenant_provider.resolveActiveProvider(tenant_id)` returns `{mode: "byok", provider: "fireworks", api_key: "fw_…", model: "...kimi-k2-instruct", context_cap_tokens: 256000}`.
+5. **Resolve provider:** `tenant_provider.resolveActiveProvider(tenant_id)` returns `{mode: "byok", provider: "fireworks", api_key: "fw_…", model: "...kimi-k2.6", context_cap_tokens: 256000}`.
 6. **Overlay sentinels:**
    - if `frontmatter.context_cap_tokens == 0` → use `tenant_providers.context_cap_tokens`.
    - if `frontmatter.model == ""` → use `tenant_providers.model`.
    - both are mutually independent overlays; either can be pinned in frontmatter and overridden in tenant config or vice versa. The platform path leaves frontmatter populated; the BYOK path leaves it empty.
-7. `executor.createExecution(workspace_path, {network_policy, tools, secrets_map, context: {context_cap_tokens=256000, ...}, model: "accounts/fireworks/models/kimi-k2-instruct", provider_api_key: "fw_…", provider_endpoint: "https://api.fireworks.ai/inference/v1"})`.
+7. `executor.createExecution(workspace_path, {network_policy, tools, secrets_map, context: {context_cap_tokens=256000, ...}, model: "accounts/fireworks/models/kimi-k2.6", provider_api_key: "fw_…", provider_endpoint: "https://api.fireworks.ai/inference/v1"})`.
 
 The provider key flows through `executor.createExecution` as a separate field from `secrets_map` — it never enters the agent's tool context, never substitutes into a tool call, never logs. NullClaw's HTTP client uses it as the `Authorization: Bearer <key>` on the inference call only.
 
-NullClaw routes the call through `compatible.zig` to `POST https://api.fireworks.ai/inference/v1/chat/completions` with `model: accounts/fireworks/models/kimi-k2-instruct` and the agent's prompt. Fireworks bills the operator. The diagnosis returns over the Unix socket; the worker handles it the same way as Scenario 01.
+NullClaw routes the call through `compatible.zig` to `POST https://api.fireworks.ai/inference/v1/chat/completions` with `model: accounts/fireworks/models/kimi-k2.6` and the agent's prompt. Fireworks bills the operator. The diagnosis returns over the Unix socket; the worker handles it the same way as Scenario 01.
 
 `StageResult` arrives. Telemetry insert:
 - `token_count=2110` (Kimi tends to be slightly more verbose than Sonnet on the same prompt)
@@ -138,16 +138,20 @@ GET https://api.usezombie.com/_um/da5b6b3810543fe108d816ee972e4ff8/model-caps.js
 200 {
   "version": "2026-04-29",
   "models": [
-    { "id": "claude-opus-4-7",                                    "context_cap_tokens": 1000000, "default_provider": "anthropic" },
-    { "id": "claude-sonnet-4-6",                                  "context_cap_tokens": 200000,  "default_provider": "anthropic" },
-    { "id": "claude-haiku-4-5-20251001",                          "context_cap_tokens": 200000,  "default_provider": "anthropic" },
-    { "id": "gpt-5",                                              "context_cap_tokens": 256000,  "default_provider": "openai" },
-    { "id": "kimi-k2-instruct",                                   "context_cap_tokens": 256000,  "default_provider": "moonshot" },
-    { "id": "accounts/fireworks/models/kimi-k2-instruct",         "context_cap_tokens": 256000,  "default_provider": "fireworks" },
-    { "id": "accounts/fireworks/models/llama-v3p1-405b-instruct", "context_cap_tokens": 128000, "default_provider": "fireworks" }
+    { "id": "claude-opus-4-7",                          "context_cap_tokens": 1000000 },
+    { "id": "claude-sonnet-4-6",                        "context_cap_tokens": 200000  },
+    { "id": "claude-haiku-4-5-20251001",                "context_cap_tokens": 200000  },
+    { "id": "gpt-5.5",                                  "context_cap_tokens": 256000  },
+    { "id": "gpt-5.4",                                  "context_cap_tokens": 256000  },
+    { "id": "kimi-k2.6",                                "context_cap_tokens": 256000  },
+    { "id": "accounts/fireworks/models/kimi-k2.6",      "context_cap_tokens": 256000  },
+    { "id": "accounts/fireworks/models/deepseek-v4-pro","context_cap_tokens": 256000  },
+    { "id": "glm-5.1",                                  "context_cap_tokens": 128000  }
   ]
 }
 ```
+
+The provider hosting a given model is encoded in the `model_id` itself (`accounts/fireworks/...` is Fireworks; bare `kimi-k2.6` is Moonshot; `claude-*` is Anthropic; `gpt-*` is OpenAI; `glm-*` is Zhipu). Operators pick their provider via their `llm` credential body, not via this catalogue.
 
 Properties:
 

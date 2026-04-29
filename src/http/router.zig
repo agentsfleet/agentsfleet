@@ -1,5 +1,6 @@
 const std = @import("std");
 const matchers = @import("route_matchers.zig");
+const model_caps_h = @import("handlers/model_caps.zig");
 
 // M2_002: webhook route carries zombie_id and optional URL-embedded secret
 pub const WebhookRoute = struct {
@@ -17,6 +18,10 @@ pub const Route = union(enum) {
     healthz,
     readyz,
     metrics,
+    // Public, unauthenticated model→cap catalogue served at a cryptic path
+    // prefix (handlers/model_caps.zig). Both the install-skill and
+    // `zombiectl provider set` consume this once at provisioning time.
+    model_caps,
     create_auth_session,
     complete_auth_session: []const u8,
     poll_auth_session: []const u8,
@@ -95,6 +100,7 @@ pub fn match(path: []const u8) ?Route {
     if (std.mem.eql(u8, path, "/healthz")) return .healthz;
     if (std.mem.eql(u8, path, "/readyz")) return .readyz;
     if (std.mem.eql(u8, path, "/metrics")) return .metrics;
+    if (std.mem.eql(u8, path, model_caps_h.MODEL_CAPS_PATH)) return .model_caps;
     if (std.mem.eql(u8, path, "/v1/auth/sessions")) return .create_auth_session;
     if (std.mem.eql(u8, path, "/v1/github/callback")) return .github_callback;
     if (std.mem.eql(u8, path, "/v1/tenants/me/billing")) return .get_tenant_billing;

@@ -123,7 +123,7 @@ Per M45, vault credentials are opaque JSON objects keyed by name. The BYOK recor
 {
   "provider": "fireworks",
   "api_key":  "fw_LIVE_xxxxxxxxxxxxxxxx",
-  "model":    "accounts/fireworks/models/kimi-k2-instruct"
+  "model":    "accounts/fireworks/models/kimi-k2.6"
 }
 ```
 
@@ -152,7 +152,7 @@ For Bring Your Own Key with Fireworks + Kimi 2.6 (also known as Kimi K2-Instruct
 
 ```
 provider: "fireworks"
-model:    "accounts/fireworks/models/kimi-k2-instruct"
+model:    "accounts/fireworks/models/kimi-k2.6"
 ```
 
 The OpenAI-compatible client routes the call to `https://api.fireworks.ai/inference/v1/chat/completions`. No provider-specific code needed in this repo. The same path opens up every other compatible provider in NullClaw's catalogue without further work.
@@ -175,15 +175,20 @@ GET https://api.usezombie.com/_um/da5b6b3810543fe108d816ee972e4ff8/model-caps.js
 200 {
   "version": "2026-04-29",
   "models": [
-    { "id": "claude-opus-4-7",                                    "context_cap_tokens": 1000000, "default_provider": "anthropic" },
-    { "id": "claude-sonnet-4-6",                                  "context_cap_tokens": 200000,  "default_provider": "anthropic" },
-    { "id": "gpt-5",                                              "context_cap_tokens": 256000,  "default_provider": "openai" },
-    { "id": "kimi-k2-instruct",                                   "context_cap_tokens": 256000,  "default_provider": "moonshot" },
-    { "id": "accounts/fireworks/models/kimi-k2-instruct",         "context_cap_tokens": 256000,  "default_provider": "fireworks" },
-    { "id": "accounts/fireworks/models/llama-v3p1-405b-instruct", "context_cap_tokens": 128000, "default_provider": "fireworks" }
+    { "id": "claude-opus-4-7",                          "context_cap_tokens": 1000000 },
+    { "id": "claude-sonnet-4-6",                        "context_cap_tokens": 200000  },
+    { "id": "claude-haiku-4-5-20251001",                "context_cap_tokens": 200000  },
+    { "id": "gpt-5.5",                                  "context_cap_tokens": 256000  },
+    { "id": "gpt-5.4",                                  "context_cap_tokens": 256000  },
+    { "id": "kimi-k2.6",                                "context_cap_tokens": 256000  },
+    { "id": "accounts/fireworks/models/kimi-k2.6",      "context_cap_tokens": 256000  },
+    { "id": "accounts/fireworks/models/deepseek-v4-pro","context_cap_tokens": 256000  },
+    { "id": "glm-5.1",                                  "context_cap_tokens": 128000  }
   ]
 }
 ```
+
+The provider hosting a given model is encoded in the `model_id` itself (`accounts/fireworks/...` is Fireworks; bare `kimi-k2.6` is Moonshot; `claude-*` is Anthropic; `gpt-*` is OpenAI; `glm-*` is Zhipu). Operators pick their provider via their `llm` credential body, not via this catalogue — so the catalogue does not carry a `default_provider` field.
 
 Properties:
 
