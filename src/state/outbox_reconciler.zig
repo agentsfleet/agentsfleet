@@ -12,10 +12,32 @@ const log = std.log.scoped(.outbox_reconciler);
 
 pub const RECONCILE_BATCH_LIMIT: u32 = 64;
 
+/// run_side_effect_outbox.status values. Owned here because this module is
+/// the only writer that flips rows out of `pending`; all other consumers
+/// (reconcile.zig tests, future emitters) import these.
+pub const OutboxStatus = enum {
+    pending,
+    dead_letter,
+
+    pub fn toSlice(self: OutboxStatus) []const u8 {
+        return switch (self) {
+            .pending => "pending",
+            .dead_letter => "dead_letter",
+        };
+    }
+};
+
+/// reconciled_state values written when a row is dead-lettered. Distinguishes
+/// startup reconciliation from in-flight dead-letter paths once those exist.
+pub const RECONCILED_BY_STARTUP = "startup_reconcile";
+
 pub const ReconcileResult = struct {
     dead_lettered: u32,
     skipped: u32,
 };
+
+const STATUS_PENDING = OutboxStatus.pending.toSlice();
+const STATUS_DEAD_LETTER = OutboxStatus.dead_letter.toSlice();
 
 /// Reconcile stale pending outbox rows at startup using distributed batching.
 ///
@@ -68,18 +90,18 @@ fn reconcileBatch(conn: *pg.Conn) !u32 {
 
     var result = PgQuery.from(try conn.query(
         \\UPDATE run_side_effect_outbox
-        \\SET status = 'dead_letter',
-        \\    reconciled_state = 'startup_reconcile',
-        \\    updated_at = $1
+        \\SET status = $1,
+        \\    reconciled_state = $2,
+        \\    updated_at = $3
         \\WHERE id IN (
         \\    SELECT id FROM run_side_effect_outbox
-        \\    WHERE status = 'pending'
+        \\    WHERE status = $4
         \\    ORDER BY created_at ASC
-        \\    LIMIT $2
+        \\    LIMIT $5
         \\    FOR UPDATE SKIP LOCKED
         \\)
         \\RETURNING run_id, effect_key
-    , .{ now_ms, @as(i32, @intCast(RECONCILE_BATCH_LIMIT)) }));
+    , .{ STATUS_DEAD_LETTER, RECONCILED_BY_STARTUP, now_ms, STATUS_PENDING, @as(i32, @intCast(RECONCILE_BATCH_LIMIT)) }));
     defer result.deinit();
 
     var dead_lettered: u32 = 0;

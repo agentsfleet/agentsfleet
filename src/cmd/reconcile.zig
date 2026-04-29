@@ -71,13 +71,15 @@ fn openReconcileTestConn(alloc: std.mem.Allocator) !?struct { pool: *db.Pool, co
 }
 
 fn createTempOutboxTable(conn: *db.Conn) !void {
+    // No DEFAULT 'claimed' — every INSERT supplies last_event explicitly via
+    // the OUTBOX_LAST_EVENT_CLAIMED constant. RULE STS.
     _ = try conn.exec(
         \\CREATE TEMP TABLE run_side_effect_outbox (
         \\  id UUID PRIMARY KEY,
         \\  run_id TEXT NOT NULL,
         \\  effect_key TEXT NOT NULL,
         \\  status TEXT NOT NULL,
-        \\  last_event TEXT NOT NULL DEFAULT 'claimed',
+        \\  last_event TEXT NOT NULL,
         \\  payload TEXT,
         \\  reconciled_state TEXT,
         \\  created_at BIGINT NOT NULL,
@@ -85,6 +87,10 @@ fn createTempOutboxTable(conn: *db.Conn) !void {
         \\) ON COMMIT DROP
     , .{});
 }
+
+const OUTBOX_LAST_EVENT_CLAIMED = "claimed";
+const STATUS_PENDING = outbox.OutboxStatus.pending.toSlice();
+const STATUS_DEAD_LETTER = outbox.OutboxStatus.dead_letter.toSlice();
 
 fn insertPendingRows(conn: *db.Conn, count: usize) !void {
     var i: usize = 0;
@@ -98,26 +104,26 @@ fn insertPendingRows(conn: *db.Conn, count: usize) !void {
         _ = try conn.exec(
             \\INSERT INTO run_side_effect_outbox
             \\  (id, run_id, effect_key, status, last_event, created_at, updated_at)
-            \\VALUES ($1, $2, $3, 'pending', 'claimed', $4, $4)
-        , .{ outbox_id, run_id, key, @as(i64, @intCast(i + 1)) });
+            \\VALUES ($1, $2, $3, $4, $5, $6, $6)
+        , .{ outbox_id, run_id, key, STATUS_PENDING, OUTBOX_LAST_EVENT_CLAIMED, @as(i64, @intCast(i + 1)) });
     }
 }
 
 fn simulateSingleBatchDeadLetter(conn: *db.Conn, now_ms: i64) !u32 {
     var q = PgQuery.from(try conn.query(
         \\UPDATE run_side_effect_outbox
-        \\SET status = 'dead_letter',
-        \\    reconciled_state = 'startup_reconcile',
-        \\    updated_at = $1
+        \\SET status = $1,
+        \\    reconciled_state = $2,
+        \\    updated_at = $3
         \\WHERE id IN (
         \\    SELECT id FROM run_side_effect_outbox
-        \\    WHERE status = 'pending'
+        \\    WHERE status = $4
         \\    ORDER BY created_at ASC
-        \\    LIMIT $2
+        \\    LIMIT $5
         \\    FOR UPDATE SKIP LOCKED
         \\)
         \\RETURNING id
-    , .{ now_ms, @as(i32, @intCast(outbox.RECONCILE_BATCH_LIMIT)) }));
+    , .{ STATUS_DEAD_LETTER, outbox.RECONCILED_BY_STARTUP, now_ms, STATUS_PENDING, @as(i32, @intCast(outbox.RECONCILE_BATCH_LIMIT)) }));
     defer q.deinit();
 
     var count: u32 = 0;
@@ -129,8 +135,8 @@ fn simulateSingleBatchDeadLetter(conn: *db.Conn, now_ms: i64) !u32 {
 
 fn pendingCount(conn: *db.Conn) !i64 {
     var q = PgQuery.from(try conn.query(
-        "SELECT COUNT(*)::BIGINT FROM run_side_effect_outbox WHERE status = 'pending'",
-        .{},
+        "SELECT COUNT(*)::BIGINT FROM run_side_effect_outbox WHERE status = $1",
+        .{STATUS_PENDING},
     ));
     defer q.deinit();
     const row = (try q.next()).?;

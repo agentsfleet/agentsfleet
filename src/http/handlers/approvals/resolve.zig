@@ -152,7 +152,7 @@ fn writeAlreadyResolved(hx: hx_mod.Hx, r: approval_gate_db.ResolvedRow) void {
     // gate_id/outcome/resolved_by to render "already resolved by X" UX.
     const entry = error_registry.lookup(ec.ERR_APPROVAL_ALREADY_RESOLVED);
     hx.res.status = 409;
-    hx.res.header("Content-Type", "application/problem+json");
+    hx.res.header(common.HEADER_CONTENT_TYPE, common.CONTENT_TYPE_PROBLEM_JSON);
     hx.res.json(.{
         .docs_uri = entry.docs_uri,
         .title = entry.title,

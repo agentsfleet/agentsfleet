@@ -207,6 +207,14 @@ pub fn matchWorkspaceZombieGrant(path: []const u8) ?WorkspaceZombieGrantRoute {
 
 // ── Approval inbox routes ──────────────────────────────────────────────
 
+/// Colon-noun action segments for the resolve endpoints. Owned here because
+/// the matcher is the single source of truth for URL shape; tests, manifest,
+/// and TS clients import these.
+pub const APPROVAL_ACTION_APPROVE = ":approve";
+pub const APPROVAL_ACTION_DENY = ":deny";
+pub const APPROVALS_PATH_SEGMENT = "/approvals/";
+const WORKSPACES_PREFIX = "/v1/workspaces/";
+
 pub const ApprovalGateRoute = struct {
     workspace_id: []const u8,
     gate_id: []const u8,
@@ -223,22 +231,20 @@ pub const ApprovalResolveRoute = struct {
 /// Matches /v1/workspaces/{ws}/approvals/{gate_id}:approve|:deny.
 /// REST §1 colon-noun operation form.
 pub fn matchWorkspaceApprovalResolve(path: []const u8) ?ApprovalResolveRoute {
-    const prefix = "/v1/workspaces/";
-    const mid = "/approvals/";
-    if (!std.mem.startsWith(u8, path, prefix)) return null;
+    if (!std.mem.startsWith(u8, path, WORKSPACES_PREFIX)) return null;
 
-    const action_str: []const u8 = if (std.mem.endsWith(u8, path, ":approve"))
-        ":approve"
-    else if (std.mem.endsWith(u8, path, ":deny"))
-        ":deny"
+    const action_str: []const u8 = if (std.mem.endsWith(u8, path, APPROVAL_ACTION_APPROVE))
+        APPROVAL_ACTION_APPROVE
+    else if (std.mem.endsWith(u8, path, APPROVAL_ACTION_DENY))
+        APPROVAL_ACTION_DENY
     else
         return null;
 
-    const decision: ApprovalResolveDecision = if (action_str.len == ":approve".len) .approve else .deny;
-    const inner = path[prefix.len .. path.len - action_str.len];
-    const sep = std.mem.indexOf(u8, inner, mid) orelse return null;
+    const decision: ApprovalResolveDecision = if (action_str.len == APPROVAL_ACTION_APPROVE.len) .approve else .deny;
+    const inner = path[WORKSPACES_PREFIX.len .. path.len - action_str.len];
+    const sep = std.mem.indexOf(u8, inner, APPROVALS_PATH_SEGMENT) orelse return null;
     const ws_id = inner[0..sep];
-    const gate_id = inner[sep + mid.len ..];
+    const gate_id = inner[sep + APPROVALS_PATH_SEGMENT.len ..];
 
     if (!isSingleSegment(ws_id)) return null;
     if (gate_id.len == 0 or std.mem.indexOfScalar(u8, gate_id, '/') != null) return null;
@@ -247,19 +253,17 @@ pub fn matchWorkspaceApprovalResolve(path: []const u8) ?ApprovalResolveRoute {
 }
 
 /// Matches /v1/workspaces/{ws}/approvals/{gate_id} (single-resource GET).
-/// Returns null when the path ends in `:approve` / `:deny` so the resolve
+/// Returns null when the path ends in :approve / :deny so the resolve
 /// route claims those.
 pub fn matchWorkspaceApprovalGate(path: []const u8) ?ApprovalGateRoute {
-    if (std.mem.endsWith(u8, path, ":approve")) return null;
-    if (std.mem.endsWith(u8, path, ":deny")) return null;
-    const prefix = "/v1/workspaces/";
-    const mid = "/approvals/";
-    if (!std.mem.startsWith(u8, path, prefix)) return null;
+    if (std.mem.endsWith(u8, path, APPROVAL_ACTION_APPROVE)) return null;
+    if (std.mem.endsWith(u8, path, APPROVAL_ACTION_DENY)) return null;
+    if (!std.mem.startsWith(u8, path, WORKSPACES_PREFIX)) return null;
 
-    const inner = path[prefix.len..];
-    const sep = std.mem.indexOf(u8, inner, mid) orelse return null;
+    const inner = path[WORKSPACES_PREFIX.len..];
+    const sep = std.mem.indexOf(u8, inner, APPROVALS_PATH_SEGMENT) orelse return null;
     const ws_id = inner[0..sep];
-    const gate_id = inner[sep + mid.len ..];
+    const gate_id = inner[sep + APPROVALS_PATH_SEGMENT.len ..];
 
     if (!isSingleSegment(ws_id)) return null;
     if (gate_id.len == 0 or std.mem.indexOfScalar(u8, gate_id, '/') != null) return null;
