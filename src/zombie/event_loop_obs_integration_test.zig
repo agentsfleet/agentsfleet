@@ -56,6 +56,7 @@ test "integration M15_002: recordDeliverError increments failed counter + PostHo
     const cfg = types.EventLoopConfig{
         .pool = db_ctx.pool,
         .redis = undefined,
+        .redis_publish = undefined,
         .executor = undefined,
         .running = &running,
         .telemetry = &tel,
@@ -101,6 +102,7 @@ test "integration M15_002 3.2: event_loop_emits_completion updates all 4 counter
     const cfg = types.EventLoopConfig{
         .pool = db_ctx.pool,
         .redis = undefined,
+        .redis_publish = undefined,
         .executor = undefined,
         .running = &running,
         .telemetry = &tel,
@@ -168,6 +170,7 @@ test "integration M15_002: null telemetry in recordDeliverError does not panic" 
     const cfg = types.EventLoopConfig{
         .pool = db_ctx.pool,
         .redis = undefined,
+        .redis_publish = undefined,
         .executor = undefined,
         .running = &running,
         .telemetry = null, // explicit — prod fallback
