@@ -44,7 +44,7 @@ Usezombie repo (`<usezombie worktree>`):
 | `zombiectl/src/program/routes.js` | MODIFY | Remove `skill-secret` route if distinct from registry. |
 | `zombiectl/test/` | MODIFY | Remove any `skill-secret` unit tests. |
 | `public/openapi.json` | MODIFY | Remove paths and schemas tagged with the skill_secrets operation. |
-| `docs/v2/pending/P1_API_CLI_INFRA_M30_001_SKILL_SECRET_TEARDOWN.md` | MOVE | pending → active → done per spec lifecycle. |
+| `docs/v2/done/M30_001_P1_API_CLI_INFRA_SKILL_SECRET_TEARDOWN.md` | MOVE | pending → active → done per spec lifecycle. |
 
 Docs repo (`<docs worktree>`) — companion PR:
 

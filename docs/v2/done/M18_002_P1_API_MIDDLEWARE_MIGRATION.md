@@ -3,6 +3,8 @@ Milestone: M18
 Workstream: M18_002
 Name: MIDDLEWARE_MIGRATION
 Status: DONE
+Priority: P1 — replaces bespoke hx.authenticated* with standard middleware chain
+Categories: API
 Branch: feat/m18-002-middleware-migration
 Depends-on: M11_002 (introduced hx.zig — this workstream replaces hx.authenticated*)
 Created: Apr 13, 2026

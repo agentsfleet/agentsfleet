@@ -3,6 +3,8 @@ Milestone: M10
 Workstream: M10_001
 Name: PIPELINE_V1_REMOVAL
 Status: DONE
+Priority: P1 — removes dead v1 pipeline worker; unblocks zombie-only worker binary
+Categories: API, CLI, ZIG
 Branch: feat/m10-pipeline-v1-removal
 Created: Apr 10, 2026
 ---

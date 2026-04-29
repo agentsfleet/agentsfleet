@@ -20,7 +20,7 @@ This doc is the original /office-hours session output. The strategic narrative b
 
 The Week-by-Week sequencing in §"Recommended Approach" below is now ~6-7 weeks instead of 5-6. Day-50 validation bar unchanged.
 
-For the canonical, current spec backlog see `docs/v2/pending/M40_001`–`M51_001`. The tier breakdown (substrate / packaging / parallel-validation / post-launch) lives in `docs/v2/pending/M48_001_BYOK_PROVIDER.md` under "Tier promotion provenance" — folded there because M48's substrate-tier promotion is the load-bearing reason the table exists.
+For the canonical, current spec backlog see `docs/v2/pending/M40_001`–`M51_001`. The tier breakdown (substrate / packaging / parallel-validation / post-launch) lives in `docs/v2/pending/M48_001_P1_API_CLI_UI_BYOK_PROVIDER.md` under "Tier promotion provenance" — folded there because M48's substrate-tier promotion is the load-bearing reason the table exists.
 
 ---
 

@@ -311,7 +311,7 @@ Each step must pass `zig build && zig build test` before the next. Integration s
 
 **Status:** DONE
 
-- [x] All dimensions in §1–§7 DONE — verify: `grep -c PENDING docs/v2/*/P2_API_M28_003*.md` returns 0
+- [x] All dimensions in §1–§7 DONE — verify: `grep -c PENDING docs/v2/*/M28_003_P2_API_WEBHOOK_E2E_INTEGRATION_TESTS.md` returns 0
 - [x] `make test-integration` green — verify: exit code 0, no skipped tests other than documented DB-unavailable skip
 - [x] `make lint`, `make check-pg-drain`, cross-compile (x86_64 + aarch64 Linux), `gitleaks detect` all green
 - [x] Every touched `.zig` file ≤ 350 lines — verify: `git diff --name-only origin/main | grep '\.zig$' | xargs wc -l | awk '$1>350'` empty

@@ -19,7 +19,7 @@ before it was scheduled:
 
 - **OpenAPI split + bundle + CI sync gate** — landed in commit `bf8f735c`
   ("feat(m28_003): OpenAPI split, bundle, sync gate, and agent-edit recipes")
-  under `docs/v2/done/P2_INFRA_M28_003_OPENAPI_TOOLING.md`. Per-domain partials
+  under `docs/v2/done/M28_003b_P2_INFRA_OPENAPI_TOOLING.md`. Per-domain partials
   now live at `public/openapi/{root.yaml,paths/*.yaml,components/*.yaml}`, and
   `make openapi` bundles them into `public/openapi.json`. CI enforces sync.
 - **Svix webhook endpoint docs** — `/v1/webhooks/svix/{zombie_id}` is
@@ -30,7 +30,7 @@ before it was scheduled:
 Milestone numbering note: the M28 slots were reshuffled after this spec was
 drafted. What this spec called "M28_002" became M28_003's OpenAPI tooling
 workstream, while the M28_002 filename was reused for Tenant API Key
-Management (see `docs/v2/done/P1_API_M28_002_TENANT_API_KEY_MANAGEMENT.md`).
+Management (see `docs/v2/done/M28_002b_P1_API_TENANT_API_KEY_MANAGEMENT.md`).
 
 Moving to `done/` rather than deleting so the decision trail is preserved.
 
