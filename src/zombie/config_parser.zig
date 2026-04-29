@@ -96,11 +96,13 @@ fn ensureRuntimeKeysNotAtTopLevel(root: std.json.ObjectMap) ZombieConfigError!vo
 }
 
 /// Extract the `x-usezombie:` runtime block from the parsed JSON root.
+/// Distinguished from `MissingRequiredField` because the user fix is different:
+/// they need to add a whole namespaced block, not just one missing key.
 fn extractRuntimeBlock(root: std.json.ObjectMap) ZombieConfigError!std.json.ObjectMap {
-    const val = root.get("x-usezombie") orelse return ZombieConfigError.MissingRequiredField;
+    const val = root.get("x-usezombie") orelse return ZombieConfigError.UsezombieBlockRequired;
     return switch (val) {
         .object => |o| o,
-        else => ZombieConfigError.MissingRequiredField,
+        else => ZombieConfigError.UsezombieBlockRequired,
     };
 }
 

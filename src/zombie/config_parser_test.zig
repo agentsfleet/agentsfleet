@@ -130,10 +130,16 @@ test "parseZombieConfig: budget at top level → RuntimeKeysOutsideBlock" {
     try std.testing.expectError(ZombieConfigError.RuntimeKeysOutsideBlock, parseZombieConfig(alloc, json));
 }
 
-test "parseZombieConfig: missing x-usezombie block → MissingRequiredField" {
+test "parseZombieConfig: missing x-usezombie block → UsezombieBlockRequired" {
     const alloc = std.testing.allocator;
     const json = "{\"name\":\"x\"}";
-    try std.testing.expectError(ZombieConfigError.MissingRequiredField, parseZombieConfig(alloc, json));
+    try std.testing.expectError(ZombieConfigError.UsezombieBlockRequired, parseZombieConfig(alloc, json));
+}
+
+test "parseZombieConfig: x-usezombie present but not an object → UsezombieBlockRequired" {
+    const alloc = std.testing.allocator;
+    const json = "{\"name\":\"x\",\"x-usezombie\":\"oops-string-not-object\"}";
+    try std.testing.expectError(ZombieConfigError.UsezombieBlockRequired, parseZombieConfig(alloc, json));
 }
 
 test "parseZombieConfig: typo under x-usezombie → UnknownRuntimeKey" {

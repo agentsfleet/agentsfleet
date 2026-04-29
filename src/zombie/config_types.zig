@@ -17,6 +17,7 @@ pub const ZombieConfigError = error{
     InvalidSignatureConfig,
     RuntimeKeysOutsideBlock,
     UnknownRuntimeKey,
+    UsezombieBlockRequired,
     NameMismatch,
 };
 

@@ -64,6 +64,13 @@ fn writeJsonValue(w: anytype, v: yaml.Yaml.Value) !void {
     }
 }
 
+// Known limitation (kubkon/zig-yaml v0.2.0): scalars arrive as raw bytes
+// without quote-style metadata, so `name: true` (bool) and `name: "true"`
+// (quoted string) are indistinguishable here. Both serialize as JSON `true`.
+// Downstream schema validation rejects the type mismatch (e.g. parseNameField
+// requires `.string`), so the user sees a config error rather than silent
+// corruption — only the diagnostic specificity suffers. Documented here so
+// future readers don't try to "fix" it without a parser-side hook.
 fn writeScalar(w: anytype, s: []const u8) !void {
     if (std.mem.eql(u8, s, "true") or std.mem.eql(u8, s, "false")) {
         try w.writeAll(s);
@@ -162,6 +169,24 @@ test "yamlFrontmatterToJson: inline array" {
     const tags = parsed.value.object.get("tags").?.array;
     try std.testing.expectEqual(@as(usize, 3), tags.items.len);
     try std.testing.expectEqualStrings("leads", tags.items[0].string);
+}
+
+// Pins the kubkon/zig-yaml v0.2.0 limitation called out in writeScalar: a
+// quoted magic-word scalar collapses to its bare-word JSON type. If this test
+// breaks because the upstream parser starts surfacing quote style, update
+// writeScalar to honor it and delete this pin.
+test "yamlFrontmatterToJson: quoted magic-word scalars collapse to bare type (known limitation)" {
+    const alloc = std.testing.allocator;
+    const src =
+        \\name: "true"
+        \\version: "null"
+    ;
+    const json = try yamlFrontmatterToJson(alloc, src);
+    defer alloc.free(json);
+    const parsed = try std.json.parseFromSlice(std.json.Value, alloc, json, .{});
+    defer parsed.deinit();
+    try std.testing.expect(parsed.value.object.get("name").? == .bool);
+    try std.testing.expect(parsed.value.object.get("version").? == .null);
 }
 
 test "yamlFrontmatterToJson: two-level nesting via x-usezombie shape" {

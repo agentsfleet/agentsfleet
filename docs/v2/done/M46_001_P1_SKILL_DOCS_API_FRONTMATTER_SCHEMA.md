@@ -75,7 +75,7 @@ After review with the user mid-PLAN, the spec was reshaped twice:
 | File | Action | Why |
 |---|---|---|
 | `docs/SKILL_FRONTMATTER_SCHEMA.md` | NEW | Canonical schema reference: SKILL.md side + TRIGGER.md side + cross-file invariant |
-| `src/zombie/yaml_frontmatter.zig` | EDIT | Support one extra nesting level (under `x-usezombie:`); reject duplicate keys |
+| `src/zombie/yaml_frontmatter.zig` | EDIT | Replaced bespoke converter with `kubkon/zig-yaml v0.2.0` (handles arbitrary nesting). Duplicate-key detection deferred to upstream parser — see §2 |
 | `src/zombie/config_parser.zig` | EDIT | Parse runtime keys from `x-usezombie:` subtree, not top level. Reject runtime keys at top level (`runtime_keys_outside_block`). Reject unknown subkeys (`unknown_runtime_key`) |
 | `src/zombie/config_markdown.zig` | EDIT | Add `parseSkillMetadata` entry point for SKILL.md frontmatter. Existing `parseZombieFromTriggerMarkdown` stays — only the inner JSON shape it produces changes |
 | `src/zombie/config_types.zig` | EDIT | Add `SkillMetadata` struct (small: name, description, version + optional pass-through). `ZombieConfig` unchanged in shape — only its source is now nested under `x-usezombie:` |
@@ -162,7 +162,7 @@ x-usezombie:
 
 ### §2 — Parser update
 
-`yaml_frontmatter.zig`: extend the YAML→JSON converter to handle one additional nesting level under `x-usezombie:`. Today it does top-level + one-level-nested (e.g. `network: { allow: [...] }`). Post-M46 the runtime block is itself nested, so `network.allow` becomes 3-deep. Reject duplicate keys at any level.
+`yaml_frontmatter.zig`: replaced bespoke converter with `kubkon/zig-yaml v0.2.0`, which already handles arbitrary nesting depth (the M46 shape `x-usezombie.network.allow` is 3 deep counting root). Duplicate-key detection is delegated to the upstream parser; we do not surface a separate `duplicate_key` variant — the library silently merges duplicates the same way YAML 1.1/1.2 implementations conventionally do, and authors can lint duplicates with any standard YAML tool. Promised but not implemented: removed from the ParseError set below.
 
 `config_parser.zig`: change `parseZombieConfig` to look for runtime keys *inside* the `x-usezombie` object on the parsed root, not at root. Detect runtime keys at the top level and surface `runtime_keys_outside_block` with the offending key name. Detect unknown subkeys under `x-usezombie:` and surface `unknown_runtime_key`.
 
@@ -232,10 +232,9 @@ Parser API (Zig):
 
 ParseError variants:
   - missing_required_field: { field: string, file: skill | trigger }
-  - usezombie_block_required                            // x-usezombie: missing in TRIGGER.md
+  - usezombie_block_required                            // x-usezombie: missing or non-object in TRIGGER.md
   - unknown_runtime_key: { key: string }                // unknown subkey under x-usezombie:
   - runtime_keys_outside_block: { key: string }           // tools/credentials/etc at top of TRIGGER.md
-  - duplicate_key: { path: string }
   - name_mismatch: { skill_name, trigger_name }         // surfaced at install handler
 
 CLI behavior (zombiectl install --from <dir>) — UNCHANGED SHAPE:
