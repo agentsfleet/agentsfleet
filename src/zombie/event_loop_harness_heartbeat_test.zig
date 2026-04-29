@@ -142,6 +142,7 @@ test "integration: harness emits ≥3 tool_call_progress frames at ~2s intervals
     const cfg = types.EventLoopConfig{
         .pool = db_ctx.pool,
         .redis = &redis,
+        .redis_publish = &redis,
         .executor = harness.executorPtr(),
         .running = &running,
         .balance_policy = .stop,

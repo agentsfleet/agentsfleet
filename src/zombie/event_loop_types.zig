@@ -63,7 +63,15 @@ pub const EventResult = struct {
 
 pub const EventLoopConfig = struct {
     pool: *pg.Pool,
+    /// Stream client (XADD, XACK, XAUTOCLAIM, XREADGROUP, approval gate
+    /// SET/GET). Mutex-locked Client; one TCP connection per worker.
     redis: *queue_redis.Client,
+    /// Dedicated PUBLISH client for the activity channel. Decoupling
+    /// pub/sub from the writepath stream commands prevents the per-frame
+    /// PUBLISH from contending on the queue client's mutex during chunk
+    /// bursts. Worker owns both clients; tests may pass the same pointer
+    /// when the contention path isn't under test.
+    redis_publish: *queue_redis.Client,
     executor: *executor_client.ExecutorClient,
     /// Cooperative shutdown flag — checked between events.
     running: *const std.atomic.Value(bool),

@@ -145,7 +145,7 @@ fn markGateBlocked(
     , .{ session.zombie_id, event.event_id, failure_label, now_ms }) catch |err| {
         log.warn("zombie_event_loop.gate_blocked_update_fail zombie_id={s} event_id={s} err={s}", .{ session.zombie_id, event.event_id, @errorName(err) });
     };
-    activity_publisher.publishEventComplete(cfg.redis, scratch, session.zombie_id, event.event_id, STATUS_GATE_BLOCKED);
+    activity_publisher.publishEventComplete(cfg.redis_publish, scratch, session.zombie_id, event.event_id, STATUS_GATE_BLOCKED);
     redis_zombie.xackZombie(cfg.redis, session.zombie_id, event.event_id) catch |err| {
         obs_log.logWarnErr(.zombie_event_loop, err, "zombie_event_loop.gate_blocked_xack_fail zombie_id={s} event_id={s}", .{ session.zombie_id, event.event_id });
     };
@@ -266,7 +266,7 @@ fn finalize(
     };
     helpers.logDeliveryResult(cfg, alloc, session, event, stage_result, wall_ms);
     const status_text: []const u8 = if (stage_result.exit_ok) STATUS_PROCESSED else STATUS_AGENT_ERROR;
-    activity_publisher.publishEventComplete(cfg.redis, scratch, session.zombie_id, event.event_id, status_text);
+    activity_publisher.publishEventComplete(cfg.redis_publish, scratch, session.zombie_id, event.event_id, status_text);
     redis_zombie.xackZombie(cfg.redis, session.zombie_id, event.event_id) catch |err| {
         obs_log.logWarnErr(.zombie_event_loop, err, "zombie_event_loop.xack_fail zombie_id={s} event_id={s}", .{ session.zombie_id, event.event_id });
     };
@@ -290,7 +290,7 @@ pub fn run(
     };
     var scratch: activity_publisher.Scratch = .init(alloc);
     defer scratch.deinit();
-    activity_publisher.publishEventReceived(cfg.redis, &scratch, session.zombie_id, event.event_id, event.actor);
+    activity_publisher.publishEventReceived(cfg.redis_publish, &scratch, session.zombie_id, event.event_id, event.actor);
 
     switch (runGates(alloc, cfg, session, event)) {
         .passed => {},
@@ -301,7 +301,7 @@ pub fn run(
     }
 
     var emitter_ctx = EmitterCtx{
-        .redis = cfg.redis,
+        .redis = cfg.redis_publish,
         .alloc = alloc,
         .scratch = &scratch,
         .zombie_id = session.zombie_id,
