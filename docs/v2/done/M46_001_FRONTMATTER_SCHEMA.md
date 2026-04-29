@@ -4,7 +4,7 @@
 **Milestone:** M46
 **Workstream:** 001
 **Date:** Apr 25, 2026 (re-scoped Apr 29, 2026)
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — packaging-blocking. M49 install-skill needs a stable, validated frontmatter contract to generate user files against. The current shape has runtime keys (`tools`, `credentials`, `network`, `budget`) at the top level of TRIGGER.md, which collides with any future skill-host that reads top-level metadata. Schema cleanup is a one-shot decision that everything downstream inherits.
 **Categories:** SKILL, DOCS, API
 **Batch:** B2 — after M40-M45 substrate lands, before M49 install-skill.
