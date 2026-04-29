@@ -12,6 +12,7 @@ const error_registry = @import("errors/error_registry.zig");
 const keyset_cursor = @import("zombie/keyset_cursor.zig");
 const id_format = @import("types/id_format.zig");
 const webhook_verify = @import("zombie/webhook_verify.zig");
+const pc = @import("executor/progress_callbacks.zig");
 const fx = @import("zbench_fixtures.zig");
 
 // Authoritative gates live in spec §1.X — these comments are pointers, not sources of truth.
@@ -76,6 +77,35 @@ fn benchWebhookSignatureVerify(allocator: std.mem.Allocator) void {
     std.mem.doNotOptimizeAway(ok);
 }
 
+// ── activity_chunk_encode ─ streaming-substrate hot path
+// Mirrors `activity_publisher.publishChunk` encode step exactly: shape
+// the frame, serialize via valueAlloc, free. When the publisher migrates
+// to a scratch ArrayList, this bench gets rewritten in lockstep so the
+// pre/post delta surfaces cleanly.
+fn benchActivityChunkEncode(allocator: std.mem.Allocator) void {
+    const payload = std.json.Stringify.valueAlloc(allocator, .{
+        .kind = "chunk",
+        .event_id = fx.CHUNK_EVENT_ID,
+        .text = fx.CHUNK_TEXT,
+    }, .{}) catch @panic("chunk encode OOM");
+    defer allocator.free(payload);
+    std.mem.doNotOptimizeAway(payload.ptr);
+}
+
+// ── progress_frame_decode ─ executor → worker hot path
+// Mirrors transport.sendRequestStreaming: parse once to discriminate
+// progress vs terminal, then decodeProgress (which parses again). After
+// the Finding 2 fix this bench's body collapses to the single-parse path.
+fn benchProgressFrameDecode(allocator: std.mem.Allocator) void {
+    var parsed = std.json.parseFromSlice(std.json.Value, allocator, fx.PROGRESS_FRAME_BYTES, .{}) catch @panic("progress parse 1 failed");
+    const is_progress = pc.isProgressPayload(parsed.value);
+    parsed.deinit();
+    if (!is_progress) @panic("progress fixture invalid");
+    var res = pc.decodeProgress(allocator, fx.PROGRESS_FRAME_BYTES) catch @panic("progress parse 2 failed");
+    defer res.parsed.deinit();
+    std.mem.doNotOptimizeAway(&res.frame);
+}
+
 // ── Entry point ───────────────────────────────────────────────────────────
 
 pub fn main() !void {
@@ -94,6 +124,8 @@ pub fn main() !void {
     try bench.add("json_encode_response", benchJsonEncodeResponse, .{});
     try bench.add("uuid_v7_generate", benchUuidV7Generate, .{});
     try bench.add("webhook_signature_verify", benchWebhookSignatureVerify, .{});
+    try bench.add("activity_chunk_encode", benchActivityChunkEncode, .{});
+    try bench.add("progress_frame_decode", benchProgressFrameDecode, .{});
 
     const stdout: std.fs.File = .stdout();
     var buf: [4096]u8 = undefined;
