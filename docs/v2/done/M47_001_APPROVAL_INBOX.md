@@ -4,7 +4,7 @@
 **Milestone:** M47
 **Workstream:** 001
 **Date:** Apr 29, 2026 (amended from Apr 25, 2026 draft)
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — without this, the dashboard misleads (zombies stalled at approval gates appear "Active"). Not strictly launch-blocking for the platform-ops wedge (which is read-only diagnostics in v1) but adjacent enough that shipping the runtime without it leaves a known UX hole. Approval gates can still fire on platform-ops (e.g., tool-call cost overruns, agent proposing a write action) and any future zombie that performs gated destructive operations.
 **Categories:** UI, API
 **Batch:** B2 — after M40-M45 substrate, parallel with M46/M48/M49.
