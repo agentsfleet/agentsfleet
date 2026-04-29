@@ -127,7 +127,7 @@ export default function ApprovalsList({ workspaceId, initialItems, initialCursor
     }
   }
 
-  if (filtered.length === 0 && filter.trim() === "") {
+  if (filtered.length === 0 && filter.trim() === "" && !error) {
     return (
       <EmptyState title="No pending approvals" description="Nothing waiting on operator action." />
     );
