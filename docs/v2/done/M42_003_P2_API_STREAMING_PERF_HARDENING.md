@@ -4,7 +4,7 @@
 **Milestone:** M42
 **Workstream:** 003
 **Date:** Apr 29, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P2 — pre-alpha is acceptable as-is; this lands before any meaningful concurrent-zombie or chunk-heavy load. Filed as a follow-up from the M42_001 PR review (specialist sweep, 4/4 specialists in agreement).
 **Categories:** API, INFRA
 **Branch:** feat/m42-003-streaming-perf
@@ -72,15 +72,15 @@ Trade-off: actor-filtered queries fall back to "seek by zombie_id on the new ind
 
 ## Acceptance
 
-- [ ] `make bench` runs cleanly; if broken, repaired in this branch. Baseline captured pre/post.
-- [ ] `make memleak` clean; final 3 lines of output pasted into PR Session Notes (worker lifecycle touched).
-- [ ] `make test` clean.
-- [ ] `make test-integration` clean.
-- [ ] `make down && make up && make test-integration` clean (schema file touched; teardown convention reapplies the new index from a fresh DB).
-- [ ] `schema/019_zombie_events.sql` carries `zombie_events_zombie_idx` and no longer carries `zombie_events_actor_idx`. Pre-v2.0.0 teardown convention — no `ALTER`/`DROP` migration files.
-- [ ] Worker publisher Redis client is separate from queue client; the `Client` mutex no longer contends across PUBLISH and stream commands.
-- [ ] `activity_publisher` helpers reuse a per-emitter scratch buffer; no `valueAlloc` on the steady-state frame path.
-- [ ] `transport.sendRequestStreaming` parses each progress frame exactly once.
+- [x] `make bench` runs cleanly; if broken, repaired in this branch. Baseline captured pre/post.
+- [x] `make memleak` clean; final 3 lines of output pasted into PR Session Notes (worker lifecycle touched).
+- [x] `make test` clean.
+- [x] `make test-integration` clean.
+- [x] `make down && make up && make test-integration` clean (schema file touched; teardown convention reapplies the new index from a fresh DB).
+- [x] `schema/019_zombie_events.sql` carries `zombie_events_zombie_idx` and no longer carries `zombie_events_actor_idx`. Pre-v2.0.0 teardown convention — no `ALTER`/`DROP` migration files.
+- [x] Worker publisher Redis client is separate from queue client; the `Client` mutex no longer contends across PUBLISH and stream commands.
+- [x] `activity_publisher` helpers reuse a per-emitter scratch buffer; no `valueAlloc` on the steady-state frame path.
+- [x] `transport.sendRequestStreaming` parses each progress frame exactly once.
 
 ## Out of scope
 
