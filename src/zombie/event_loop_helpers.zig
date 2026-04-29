@@ -20,6 +20,7 @@ const executor_transport = @import("../executor/transport.zig");
 const id_format = @import("../types/id_format.zig");
 
 const types = @import("event_loop_types.zig");
+const event_loop_secrets = @import("event_loop_secrets.zig");
 const ZombieSession = types.ZombieSession;
 const EventLoopConfig = types.EventLoopConfig;
 
@@ -239,6 +240,31 @@ pub fn executeInSandbox(
     // trace_id and session_id both bind to event.event_id: no upstream trace
     // propagator exists yet, so the per-event ID doubles as both the distributed
     // trace handle and the per-turn session identifier.
+    // Build the secrets_map from the zombie's configured credential names.
+    // The slice is owned here; createExecution serialises it across the RPC
+    // boundary (handler deep-dupes into the session arena), so the resolved
+    // slice can be freed as soon as the call returns. An empty credential
+    // list or a vault failure produces a null secrets_map — the agent will
+    // surface `secret_not_found` if it tries to substitute against it.
+    var secrets_obj_alive = false;
+    var secrets_obj = std.json.ObjectMap.init(alloc);
+    defer if (secrets_obj_alive) secrets_obj.deinit();
+    var resolved_secrets: ?[]event_loop_secrets.ResolvedSecret = null;
+    defer if (resolved_secrets) |r| event_loop_secrets.freeResolved(alloc, r);
+
+    if (session.config.credentials.len > 0) {
+        if (event_loop_secrets.resolveSecretsMap(alloc, cfg.pool, session.workspace_id, session.config.credentials)) |r| {
+            resolved_secrets = r;
+            for (r) |entry| {
+                secrets_obj.put(entry.name, entry.parsed.value) catch {};
+            }
+            secrets_obj_alive = true;
+        } else |err| {
+            log.warn("zombie_event_loop.secrets_resolve_failed zombie_id={s} err={s}", .{ session.zombie_id, @errorName(err) });
+        }
+    }
+    const secrets_map: ?std.json.Value = if (secrets_obj_alive) .{ .object = secrets_obj } else null;
+
     const execution_id = cfg.executor.createExecution(.{
         .workspace_path = cfg.workspace_path,
         .correlation = .{
@@ -247,10 +273,10 @@ pub fn executeInSandbox(
             .workspace_id = session.workspace_id,
             .session_id = event.event_id,
         },
-        // Per-execution policy fields default empty for now: deny-all
-        // egress, no tool restriction, no secrets, default context budget.
-        // The vault → secrets_map plumbing and policy-from-config lands in
-        // a follow-up commit on this branch.
+        .secrets_map = secrets_map,
+        // network_policy / tools / context budget remain default empty for
+        // now — slice 3 wires per-zombie network allowlist + tool filter,
+        // slice 6 wires the context budget from frontmatter.
     }) catch |err| {
         log.err("zombie_event_loop.exec_create_fail zombie_id={s} event_id={s} error_code=" ++ error_codes.ERR_EXEC_SESSION_CREATE_FAILED, .{ session.zombie_id, event.event_id });
         return err;

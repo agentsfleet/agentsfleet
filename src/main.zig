@@ -192,6 +192,7 @@ test {
     _ = @import("executor/session.zig");
     _ = @import("executor/session_test.zig");
     _ = @import("executor/runtime/session_store.zig");
+    _ = @import("executor/runtime/secret_substitution.zig");
     _ = @import("executor/executor_metrics.zig");
     _ = @import("executor/landlock.zig");
     _ = @import("executor/cgroup.zig");

@@ -19,9 +19,9 @@ const credential_key = @import("credential_key.zig");
 
 const log = std.log.scoped(.zombie_event_loop);
 
-const ResolvedSecret = struct {
-    name: []const u8,                          // duped, owned by caller
-    parsed: std.json.Parsed(std.json.Value),   // caller calls .deinit()
+pub const ResolvedSecret = struct {
+    name: []const u8, // duped, owned by caller
+    parsed: std.json.Parsed(std.json.Value), // caller calls .deinit()
 };
 
 /// Resolve every credential name to its parsed JSON object. Order is
