@@ -70,8 +70,10 @@ describe("Agents", () => {
     renderAgents();
     const posts = screen.getAllByText("POST");
     const gets = screen.getAllByText("GET");
+    const patches = screen.getAllByText("PATCH");
     expect(posts.length).toBeGreaterThanOrEqual(3);
     expect(gets.length).toBeGreaterThanOrEqual(1);
+    expect(patches.length).toBeGreaterThanOrEqual(1);
   });
 
   it("renders webhook example", () => {

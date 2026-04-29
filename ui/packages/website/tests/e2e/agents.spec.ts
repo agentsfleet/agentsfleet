@@ -40,15 +40,16 @@ test.describe("Agents page (/agents)", () => {
 
   test("renders API operations table", async ({ page }) => {
     await expect(page.getByText("API Operations")).toBeVisible();
-    await expect(page.getByText("Start run")).toBeVisible();
-    await expect(page.getByText("Get run")).toBeVisible();
-    await expect(page.getByText("Retry run")).toBeVisible();
+    await expect(page.getByText("Create zombie")).toBeVisible();
+    await expect(page.getByText("Kill zombie")).toBeVisible();
+    await expect(page.getByText("Steer zombie")).toBeVisible();
     await expect(page.getByText("Pause workspace")).toBeVisible();
+    await expect(page.getByText("Execute tool")).toBeVisible();
   });
 
   test("renders webhook example", async ({ page }) => {
-    await expect(page.getByText("Webhook Callback Example")).toBeVisible();
-    await expect(page.getByText(/run\.completed/)).toBeVisible();
+    await expect(page.getByText("Webhook Ingest Example")).toBeVisible();
+    await expect(page.getByText(/email\.received/)).toBeVisible();
   });
 
   test("renders safety limit cards", async ({ page }) => {
