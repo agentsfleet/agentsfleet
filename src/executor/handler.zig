@@ -106,7 +106,7 @@ pub const Handler = struct {
     store: *SessionStore,
     lease_timeout_ms: u64,
     resource_limits: types.ResourceLimits,
-    network_policy: network.NetworkPolicy,
+    network_policy: network.PolicyMode,
     alloc: std.mem.Allocator,
 
     pub fn init(
@@ -114,7 +114,7 @@ pub const Handler = struct {
         store: *SessionStore,
         lease_timeout_ms: u64,
         resource_limits: types.ResourceLimits,
-        net_policy: network.NetworkPolicy,
+        net_policy: network.PolicyMode,
     ) Handler {
         return .{
             .store = store,
@@ -192,9 +192,12 @@ pub const Handler = struct {
 
         // Per-execution policy fields. All optional — absent fields mean
         // "no policy" (deny-all egress, no tool restriction, no secrets,
-        // default context budget). Intermediate slices live on the
-        // request `alloc`; Session.create deep-dupes into its arena.
-        const policy = parsePolicy(alloc, p) catch {
+        // default context budget). Intermediate slices live on a scoped
+        // arena that's freed below; Session.create deep-dupes everything
+        // it needs into its own arena before this one tears down.
+        var policy_arena = std.heap.ArenaAllocator.init(alloc);
+        defer policy_arena.deinit();
+        const policy = parsePolicy(policy_arena.allocator(), p) catch {
             return self.errorResponse(alloc, id, protocol.ErrorCode.internal_error, Msg.parse_policy_failed);
         };
 

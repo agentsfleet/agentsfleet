@@ -151,6 +151,7 @@ test {
     _ = @import("session_test.zig");
     _ = @import("runtime/session_store.zig");
     _ = @import("handler.zig");
+    _ = @import("handler_create_execution_test.zig");
     _ = @import("lease.zig");
     _ = @import("landlock.zig");
     _ = @import("cgroup.zig");

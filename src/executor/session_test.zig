@@ -97,6 +97,91 @@ test "Session getUsage with no stages returns zero values" {
     try std.testing.expect(usage.failure == null);
 }
 
+test "Session.create deep-dupes the ExecutionPolicy into the session arena" {
+    const alloc = std.testing.allocator;
+
+    // Build a transient ExecutionPolicy on a separate arena that we deinit
+    // BEFORE reading session.policy. If Session.create only borrowed the
+    // slices, the reads below would dangle.
+    var src_arena = std.heap.ArenaAllocator.init(alloc);
+    const src = src_arena.allocator();
+
+    const allow = try src.alloc([]const u8, 2);
+    allow[0] = try src.dupe(u8, "api.machines.dev");
+    allow[1] = try src.dupe(u8, "api.upstash.com");
+
+    const tools = try src.alloc([]const u8, 1);
+    tools[0] = try src.dupe(u8, "http_request");
+
+    var fly_obj: std.json.ObjectMap = .init(src);
+    try fly_obj.put(try src.dupe(u8, "api_token"), .{ .string = try src.dupe(u8, "FLY_TOKEN_VALUE") });
+
+    var secrets_obj: std.json.ObjectMap = .init(src);
+    try secrets_obj.put(try src.dupe(u8, "fly"), .{ .object = fly_obj });
+
+    const policy = types.ExecutionPolicy{
+        .network_policy = .{ .allow = allow },
+        .tools = tools,
+        .secrets_map = .{ .object = secrets_obj },
+        .context = .{
+            .tool_window = 25,
+            .memory_checkpoint_every = 7,
+            .stage_chunk_threshold = 0.8,
+            .model = try src.dupe(u8, "claude-opus-4-7"),
+        },
+    };
+
+    var session = try Session.create(alloc, "/tmp/ws", .{
+        .trace_id = "t",
+        .zombie_id = "r",
+        .workspace_id = "w",
+        .session_id = "s",
+    }, .{}, 30_000, policy);
+    defer session.destroy();
+
+    // Drop the source arena — anything still referencing src is dangling.
+    src_arena.deinit();
+
+    // Network allow list survived.
+    try std.testing.expectEqual(@as(usize, 2), session.policy.network_policy.allow.len);
+    try std.testing.expectEqualStrings("api.machines.dev", session.policy.network_policy.allow[0]);
+    try std.testing.expectEqualStrings("api.upstash.com", session.policy.network_policy.allow[1]);
+
+    // Tools allowlist survived.
+    try std.testing.expectEqual(@as(usize, 1), session.policy.tools.len);
+    try std.testing.expectEqualStrings("http_request", session.policy.tools[0]);
+
+    // secrets_map JSON tree survived (key + nested field).
+    const sm = session.policy.secrets_map.?;
+    try std.testing.expect(sm == .object);
+    const fly = sm.object.get("fly").?;
+    try std.testing.expect(fly == .object);
+    try std.testing.expectEqualStrings("FLY_TOKEN_VALUE", fly.object.get("api_token").?.string);
+
+    // Context budget survived (model name was duped).
+    try std.testing.expectEqual(@as(u32, 25), session.policy.context.tool_window);
+    try std.testing.expectEqual(@as(u32, 7), session.policy.context.memory_checkpoint_every);
+    try std.testing.expectApproxEqAbs(@as(f32, 0.8), session.policy.context.stage_chunk_threshold, 1e-6);
+    try std.testing.expectEqualStrings("claude-opus-4-7", session.policy.context.model);
+}
+
+test "Session.create accepts an empty default ExecutionPolicy" {
+    const alloc = std.testing.allocator;
+    var session = try Session.create(alloc, "/tmp/ws", .{
+        .trace_id = "t",
+        .zombie_id = "r",
+        .workspace_id = "w",
+        .session_id = "s",
+    }, .{}, 30_000, .{});
+    defer session.destroy();
+
+    try std.testing.expectEqual(@as(usize, 0), session.policy.network_policy.allow.len);
+    try std.testing.expectEqual(@as(usize, 0), session.policy.tools.len);
+    try std.testing.expect(session.policy.secrets_map == null);
+    try std.testing.expectEqualStrings("", session.policy.context.model);
+    try std.testing.expectEqual(@as(u32, 0), session.policy.context.tool_window); // 0 == "auto" sentinel
+}
+
 test "Session cancel is idempotent" {
     const alloc = std.testing.allocator;
     var session = try Session.create(alloc, "/tmp/ws", .{

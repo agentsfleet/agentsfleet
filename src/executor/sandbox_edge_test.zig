@@ -11,7 +11,7 @@
 //! - Atomic cancel propagation (T5 concurrency)
 //! - Concurrent lease touch from multiple threads (T5)
 //! - Mixed expired/active sessions — partial reap only clears expired (T3)
-//! - NetworkPolicy.registry_allowlist adds --share-net bwrap arg
+//! - PolicyMode.registry_allowlist adds --share-net bwrap arg
 //! - incFailureMetric covers resource_kill, landlock_deny, lease_expired paths
 //! (cgroup guards + protocol/metric constants live in executor_limits_test.zig)
 
@@ -368,7 +368,7 @@ test "T3: SessionStore.reapExpired only removes expired sessions, leaves active 
 // Network policy — T3 registry_allowlist adds --share-net, T2 edge cases
 // ─────────────────────────────────────────────────────────────────────────────
 
-test "T3: NetworkPolicy.registry_allowlist appends --share-net bwrap arg" {
+test "T3: PolicyMode.registry_allowlist appends --share-net bwrap arg" {
     const alloc = std.testing.allocator;
     var argv = std.ArrayList([]const u8){};
     defer argv.deinit(alloc);
@@ -385,12 +385,12 @@ test "T2: NetworkConfig deny_all policy is representable" {
     const config = network.NetworkConfig{
         .policy = .deny_all,
     };
-    try std.testing.expectEqual(network.NetworkPolicy.deny_all, config.policy);
+    try std.testing.expectEqual(network.PolicyMode.deny_all, config.policy);
 }
 
 test "T2: NetworkConfig default is deny_all" {
     const config = network.NetworkConfig{};
-    try std.testing.expectEqual(network.NetworkPolicy.deny_all, config.policy);
+    try std.testing.expectEqual(network.PolicyMode.deny_all, config.policy);
 }
 
 // (cgroup platform guards, errorCodeForFailure, and protocol constants
