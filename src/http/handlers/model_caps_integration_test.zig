@@ -88,7 +88,8 @@ test "integration(model_caps): POST returns 405" {
     };
     defer h.deinit();
 
-    const r = try h.post(model_caps_h.MODEL_CAPS_PATH).send();
+    const req = try h.post(model_caps_h.MODEL_CAPS_PATH).json("{}");
+    const r = try req.send();
     defer r.deinit();
     try r.expectStatus(.method_not_allowed);
 }
