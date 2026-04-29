@@ -314,3 +314,40 @@ Fixtures in `samples/fixtures/m49-install-skill-fixtures/`:
 - Skills for other zombie shapes — separate milestones if/when those shapes ship
 - Skill auto-update mechanism (user re-runs skill to get newer template)
 - Skill telemetry (covered by M51 install-pingback)
+
+---
+
+## Discovery owed by M49 (added Apr 29, 2026 from M41 spillover)
+
+### `context_cap_tokens` source of truth — end-to-end
+
+M41 lands `ContextBudget.context_cap_tokens: u32` as a passthrough wire field on `executor.createExecution`. M41 explicitly does **not** know how to populate it; it just plumbs the value from the zombie's runtime config to the executor. The end-to-end "where does this number come from" question lands here.
+
+This milestone owns three artifacts:
+
+1. **A model→cap source of truth that lives outside our binary.** The install-skill writes the value into the generated SKILL.md frontmatter, so adding a new model is a skill update — no usezombie release required. Open questions:
+   - Does the skill carry an embedded list (e.g. `~/.claude/skills/usezombie-install-platform-ops/model_caps.json`)?
+   - Does the skill query a usezombie-hosted endpoint at install time and pin the value into the frontmatter (one-shot lookup, not a hot-path call)?
+   - Does the skill ask Anthropic's models API directly when the user is on Anthropic's platform-managed pool?
+   Pick one and document the choice in this spec before §1 starts.
+
+2. **The BYOK split.** When the customer brings their own credential (M48), the `context_cap_tokens` value comes from the customer's credential body, not from the install-skill's table. Both paths converge on the same wire field. The install-skill's job is **"write a value if the customer is using platform-managed; leave 0 if they're on BYOK and let M48 fill in"** — confirm before §1.
+
+3. **`docs/ARCHITECHTURE.md` end-to-end walkthrough.** Add a section to architecture under §8 ("Authoring + Installing") that traces:
+   - `model: claude-opus-4-7` (frontmatter) →
+   - install-skill writes `context_cap_tokens: 1_000_000` (frontmatter) →
+   - `config_parser.zig` lifts both into `x-usezombie.context` →
+   - worker (`event_loop_helpers.executeInSandbox`) populates `ContextBudget` →
+   - `executor.createExecution` carries the values →
+   - L3 (slice §6 of M41) consumes the cap.
+   Same diagram for the BYOK path: cap originates in the credential body, not the frontmatter.
+
+### Why this lands in M49, not M41
+
+The cap question is inseparable from the install-skill's design: whatever decision the skill makes about where models come from also decides where the cap comes from. Solving it inside M41 would force the executor to know about model identity (rejected — that's what made the original `model_registry.zig` rot). Deferring to M49 lets the skill design and the cap design get worked out end-to-end in one place.
+
+### Required before §1 starts
+
+- A single sentence in this spec's §1 stating which of the three lookup options above won.
+- A sketch of the SKILL.md frontmatter shape (probably an `x-usezombie.context.context_cap_tokens` field that the skill writes during install).
+- The architecture cross-reference edit landed in the same M49 PR.
