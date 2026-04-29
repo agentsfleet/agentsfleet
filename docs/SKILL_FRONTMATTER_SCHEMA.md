@@ -62,7 +62,7 @@ name: platform-ops-zombie
 
 x-usezombie:
   trigger:
-    types: [chat]
+    type: chat
   tools:
     - http_request
     - memory_store
@@ -107,7 +107,10 @@ x-usezombie:
 
 | Subkey | Required | Type | Constraint |
 |---|---|---|---|
-| `types` | yes | string[] | Non-empty. Each: `chat` \| `webhook` \| `cron` \| `api` \| `chain` |
+| `type` | yes | string | One of: `chat` \| `webhook` \| `cron` \| `api` \| `chain` |
+| `source` | per `type` | string | Required for `webhook` and `chain`; absent for `chat`/`api`/`cron` |
+| `schedule` | per `type` | string | Cron expression; required for `type: cron` |
+| `signature` | optional | object | Webhook signature config (`secret_ref` etc.); applies only to `type: webhook` |
 
 Behavioral schedules (e.g. "every 30 min during incident windows") live in SKILL.md prose. The agent owns scheduling via the `cron_add` tool.
 
