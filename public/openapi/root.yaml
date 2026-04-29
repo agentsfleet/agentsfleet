@@ -172,8 +172,6 @@ paths:
     $ref: ./paths/workspaces.yaml#/~1v1~1workspaces~1{workspace_id}~1events
   /v1/workspaces/{workspace_id}/pause:
     $ref: ./paths/workspaces.yaml#/~1v1~1workspaces~1{workspace_id}~1pause
-  /v1/workspaces/{workspace_id}/sync:
-    $ref: ./paths/workspaces.yaml#/~1v1~1workspaces~1{workspace_id}~1sync
 components:
   securitySchemes:
     $ref: ./components/security.yaml#/components/securitySchemes

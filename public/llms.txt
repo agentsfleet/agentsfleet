@@ -19,7 +19,6 @@ https://usezombie.com/v1
 - stream_zombie_events: GET /v1/workspaces/{workspace_id}/zombies/{zombie_id}/events/stream
 - ingest_zombie_webhook: POST /v1/webhooks/{zombie_id}
 - pause_workspace: POST /v1/workspaces/{workspace_id}/pause
-- sync_specs: POST /v1/workspaces/{workspace_id}/sync
 - execute_tool: POST /v1/execute
 
 ## Authentication

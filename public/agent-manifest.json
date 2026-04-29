@@ -70,13 +70,6 @@
       "actionClass": "sensitive"
     },
     {
-      "operationId": "sync_specs",
-      "method": "POST",
-      "path": "/v1/workspaces/{workspace_id}/sync",
-      "description": "Trigger a workspace-level reconciliation sync.",
-      "actionClass": "safe"
-    },
-    {
       "operationId": "execute_tool",
       "method": "POST",
       "path": "/v1/execute",
@@ -94,7 +87,7 @@
     "description": "Users supply their own LLM API keys. UseZombie bills per agent-second. Never stores LLM costs."
   },
   "policyClasses": {
-    "safe": ["list_zombie_events", "stream_zombie_events", "sync_specs"],
+    "safe": ["list_zombie_events", "stream_zombie_events"],
     "sensitive": ["create_zombie", "update_zombie", "kill_zombie", "steer_zombie", "ingest_zombie_webhook", "pause_workspace", "execute_tool"],
     "critical": []
   }

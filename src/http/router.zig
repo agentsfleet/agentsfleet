@@ -36,7 +36,6 @@ pub const Route = union(enum) {
     approval_webhook: []const u8,
     // M9_001: Grant approval webhook — /v1/webhooks/{zombie_id}/grant-approval
     grant_approval_webhook: []const u8,
-    sync_workspace: []const u8,
     // M16_004: admin platform key management
     admin_platform_keys, // GET + PUT /v1/admin/platform-keys (method-dispatched in server.zig)
     delete_admin_platform_key: []const u8, // DELETE /v1/admin/platform-keys/{provider}
@@ -199,11 +198,6 @@ pub fn match(path: []const u8) ?Route {
     }
     // M1_001: Zombie webhook endpoint — /v1/webhooks/{zombie_id}
     if (matchWebhookRoute(path)) |route| return .{ .receive_webhook = route };
-
-    if (std.mem.startsWith(u8, path, prefix_workspaces) and std.mem.endsWith(u8, path, "/sync")) {
-        const inner = path[prefix_workspaces.len .. path.len - "/sync".len];
-        if (inner.len > 0) return .{ .sync_workspace = inner };
-    }
 
     return null;
 }

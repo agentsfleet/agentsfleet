@@ -83,7 +83,6 @@ LEGACY_VIOLATIONS: set[str] = {
     # Pre-§1 endpoints kept while their owning specs are paused:
     # TODO: triage during the next API hygiene sweep.
     "/v1/workspaces/{workspace_id}/pause",
-    "/v1/workspaces/{workspace_id}/sync",
     "/v1/workspaces/{workspace_id}/zombies/{zombie_id}/kill",
     "/v1/auth/sessions/{session_id}/complete",
     "/v1/memory/forget",
