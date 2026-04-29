@@ -95,7 +95,7 @@ x-usezombie:
 | `name` | yes | string | Same constraints as SKILL.md `name:`; must match |
 | `x-usezombie` | yes | object | Runtime config block |
 
-**Forbidden at top level** (hard error, `legacy_top_level_runtime`): `tools`, `credentials`, `network`, `budget`, `trigger`. These belong under `x-usezombie:`.
+**Forbidden at top level** (hard error, `runtime_keys_outside_block`): `tools`, `credentials`, `network`, `budget`, `trigger`. These belong under `x-usezombie:`.
 
 **Other top-level keys** (e.g. `x-amp:`, unknown vendor extensions): silent pass-through.
 
@@ -152,7 +152,7 @@ The directory basename is **not** the canonical name — it's a fallback hint fo
 |---|---|---|
 | SKILL.md top-level | permissive | silent pass-through |
 | SKILL.md body | unparsed | n/a |
-| TRIGGER.md top-level | mostly permissive | unknown: pass-through; legacy runtime keys (`tools`, etc.): hard error |
+| TRIGGER.md top-level | mostly permissive | unknown: pass-through; runtime keys (`tools`, etc.): hard error — must move under `x-usezombie:` |
 | TRIGGER.md `x-usezombie:` block | rigid | hard error (`unknown_runtime_key`) |
 | TRIGGER.md other `x-*:` blocks | parsed but ignored | pass-through (other vendors) |
 | TRIGGER.md body | unparsed | n/a (operator commentary) |
@@ -165,7 +165,7 @@ The directory basename is **not** the canonical name — it's a fallback hint fo
 |---|---|---|
 | `missing_required_field` | parser | required field absent in SKILL.md or TRIGGER.md frontmatter |
 | `usezombie_block_required` | parser | `x-usezombie:` missing in TRIGGER.md |
-| `legacy_top_level_runtime` | parser | runtime key (`tools`/`credentials`/`network`/`budget`/`trigger`) at top level of TRIGGER.md |
+| `runtime_keys_outside_block` | parser | runtime key (`tools`/`credentials`/`network`/`budget`/`trigger`) at top level of TRIGGER.md |
 | `unknown_runtime_key` | parser | unknown subkey under `x-usezombie:` |
 | `duplicate_key` | YAML→JSON converter | same key declared twice at any level |
 | `name_mismatch` | install handler | SKILL.md `name:` ≠ TRIGGER.md `name:` |

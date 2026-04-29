@@ -25,7 +25,7 @@ After review with the user mid-PLAN, the spec was reshaped twice:
 
 3. **Validation policy split by ownership.** Top-level keys: **permissive** — accept unknown silently. `x-usezombie:` block: **rigid** — unknown subkey is an error. Typos in our own namespace must fail loud.
 
-4. **Hard break on legacy top-level runtime keys.** v2.0.0 is the first release; no pre-v2 user state. Parser rejects `tools:`/`credentials:`/`network:`/`budget:` at the top level of TRIGGER.md with `legacy_top_level_runtime` and an error pointing at the schema doc. The shipped sample is the only existing artifact; we update it in this spec.
+4. **Runtime keys forbidden at top level.** Parser rejects `tools:`/`credentials:`/`network:`/`budget:` at the top level of TRIGGER.md with `runtime_keys_outside_block` and an error pointing at the schema doc. v2.0.0 is the first release; the shipped sample is the only existing artifact and we update it in this spec.
 
 5. **Cross-file invariant.** TRIGGER.md `name:` (top-level) must equal SKILL.md `name:` (top-level). Install rejects mismatch with `name_mismatch`. Single source of identity per zombie bundle.
 
@@ -51,7 +51,7 @@ After review with the user mid-PLAN, the spec was reshaped twice:
 **Goal (testable):** Two-file zombie bundle with disciplined frontmatter on each side.
 
 - **SKILL.md** (the SOUL — LLM prompt). Top-level frontmatter carries authoring metadata only: `name`, `description`, `version` (required) + `tags`/`author`/`model`/`when_to_use` (optional pass-through). Body is prose. M46 adds parser validation; today the frontmatter is decorative.
-- **TRIGGER.md** (the CONTRACT — runtime config). Top-level: `name` only (cross-file identity). All runtime keys (`trigger`, `tools`, `credentials`, `network`, `budget`) move under `x-usezombie:`. Parser rejects legacy top-level runtime keys.
+- **TRIGGER.md** (the CONTRACT — runtime config). Top-level: `name` only (cross-file identity). All runtime keys (`trigger`, `tools`, `credentials`, `network`, `budget`) move under `x-usezombie:`. Runtime keys at the top level are rejected.
 
 **Cross-file invariant:** SKILL.md `name:` == TRIGGER.md `name:`. Enforced at install.
 
@@ -76,7 +76,7 @@ After review with the user mid-PLAN, the spec was reshaped twice:
 |---|---|---|
 | `docs/SKILL_FRONTMATTER_SCHEMA.md` | NEW | Canonical schema reference: SKILL.md side + TRIGGER.md side + cross-file invariant |
 | `src/zombie/yaml_frontmatter.zig` | EDIT | Support one extra nesting level (under `x-usezombie:`); reject duplicate keys |
-| `src/zombie/config_parser.zig` | EDIT | Parse runtime keys from `x-usezombie:` subtree, not top level. Reject legacy top-level runtime keys (`legacy_top_level_runtime`). Reject unknown subkeys (`unknown_runtime_key`) |
+| `src/zombie/config_parser.zig` | EDIT | Parse runtime keys from `x-usezombie:` subtree, not top level. Reject runtime keys at top level (`runtime_keys_outside_block`). Reject unknown subkeys (`unknown_runtime_key`) |
 | `src/zombie/config_markdown.zig` | EDIT | Add `parseSkillMetadata` entry point for SKILL.md frontmatter. Existing `parseZombieFromTriggerMarkdown` stays — only the inner JSON shape it produces changes |
 | `src/zombie/config_types.zig` | EDIT | Add `SkillMetadata` struct (small: name, description, version + optional pass-through). `ZombieConfig` unchanged in shape — only its source is now nested under `x-usezombie:` |
 | `src/zombie/config_validate.zig` | EDIT | Add cross-field validators if needed; tighten rigid unknown-key check |
@@ -85,9 +85,9 @@ After review with the user mid-PLAN, the spec was reshaped twice:
 | `samples/platform-ops/TRIGGER.md` | EDIT | Move runtime keys under `x-usezombie:`. Keep operator-facing comments. Keep `name:` at top level for cross-file check |
 | `samples/platform-ops/SKILL.md` | EDIT (light) | Verify frontmatter has `name`, `description`, `version`. Already does — validate against schema |
 | `samples/platform-ops/README.md` | EDIT (light) | Update any references to old key locations |
-| `tests/integration/frontmatter_schema_test.zig` | NEW | Cover: x-usezombie: parse, legacy top-level rejection, unknown runtime key error, name_mismatch, SKILL metadata required fields |
+| `tests/integration/frontmatter_schema_test.zig` | NEW | Cover: x-usezombie: parse, runtime-keys-at-top-level rejection, unknown runtime key error, name_mismatch, SKILL metadata required fields |
 | `samples/fixtures/frontmatter/skill/` | NEW | `minimal.md`, `missing_name.md`, `extra_top_level.md` (passes — permissive) |
-| `samples/fixtures/frontmatter/trigger/` | NEW | `minimal.md`, `full.md`, `legacy_top_level.md` (rejected), `unknown_runtime_key.md` (rejected) |
+| `samples/fixtures/frontmatter/trigger/` | NEW | `minimal.md`, `full.md`, `runtime_at_top_level.md` (rejected), `unknown_runtime_key.md` (rejected) |
 | `samples/fixtures/frontmatter/bundles/` | NEW | `name_mismatch/` (SKILL+TRIGGER pair, install rejects) |
 | `~/Projects/docs/snippets/skill-frontmatter.mdx` (cross-repo) | EDIT/NEW | End-user schema reference + "why YAML not prose" rationale; updated at CHORE(close) |
 
@@ -155,7 +155,7 @@ x-usezombie:
 
 **Validation policy:**
 - SKILL.md top-level: required = `name`, `description`, `version`. Optional pass-through (parsed but not validated): `when_to_use`, `tags`, `author`, `model`. Unknown keys: silent pass-through.
-- TRIGGER.md top-level: required = `name`. Required nested = `x-usezombie:`. Unknown top-level keys other than `name`/`x-*`: silent pass-through (forward compat). **Legacy top-level runtime keys** (`tools:`, `credentials:`, `network:`, `budget:`, `trigger:` at top): hard error, `legacy_top_level_runtime`.
+- TRIGGER.md top-level: required = `name`. Required nested = `x-usezombie:`. Unknown top-level keys other than `name`/`x-*`: silent pass-through (forward compat). **Runtime keys at top level** (`tools:`, `credentials:`, `network:`, `budget:`, `trigger:` outside the `x-usezombie:` block): hard error, `runtime_keys_outside_block`.
 - TRIGGER.md `x-usezombie:` block: required subkeys = `trigger`, `tools`, `credentials`, `network`, `budget`. Unknown subkey: hard error, `unknown_runtime_key`.
 - Cross-file: SKILL.md `name:` == TRIGGER.md `name:`, else `name_mismatch` at install handler.
 - Other `x-*:` blocks (e.g. `x-amp:`): parsed structurally but ignored — belong to other vendors.
@@ -164,7 +164,7 @@ x-usezombie:
 
 `yaml_frontmatter.zig`: extend the YAML→JSON converter to handle one additional nesting level under `x-usezombie:`. Today it does top-level + one-level-nested (e.g. `network: { allow: [...] }`). Post-M46 the runtime block is itself nested, so `network.allow` becomes 3-deep. Reject duplicate keys at any level.
 
-`config_parser.zig`: change `parseZombieConfig` to look for runtime keys *inside* the `x-usezombie` object on the parsed root, not at root. Detect legacy top-level runtime keys and surface `legacy_top_level_runtime` with the offending key name. Detect unknown subkeys under `x-usezombie:` and surface `unknown_runtime_key`.
+`config_parser.zig`: change `parseZombieConfig` to look for runtime keys *inside* the `x-usezombie` object on the parsed root, not at root. Detect runtime keys at the top level and surface `runtime_keys_outside_block` with the offending key name. Detect unknown subkeys under `x-usezombie:` and surface `unknown_runtime_key`.
 
 `config_markdown.zig`: add `parseSkillMetadata(alloc, source_markdown) → SkillMetadata`. Reads SKILL.md frontmatter only — does not interpret the body. Returns owned struct. Existing `parseZombieFromTriggerMarkdown` stays as-is for the runtime side; only the inner JSON shape it produces changes.
 
@@ -194,7 +194,7 @@ x-usezombie:
 `samples/fixtures/frontmatter/trigger/`:
 - `minimal.md` — `name:` + `x-usezombie:` with all required runtime subkeys
 - `full.md` — every runtime field set
-- `legacy_top_level.md` — `tools:` at top level → `legacy_top_level_runtime`
+- `runtime_at_top_level.md` — `tools:` at top level → `runtime_keys_outside_block`
 - `unknown_runtime_key.md` — `x-usezombie.contxt: ...` (typo) → `unknown_runtime_key`
 
 `samples/fixtures/frontmatter/bundles/`:
@@ -202,7 +202,7 @@ x-usezombie:
 
 `tests/integration/frontmatter_schema_test.zig`:
 - `test_canonical_sample_parses` — `samples/platform-ops/` post-update
-- `test_legacy_top_level_rejected`
+- `test_runtime_keys_at_top_level_rejected`
 - `test_unknown_runtime_key_rejected`
 - `test_skill_missing_name_rejected`
 - `test_unknown_top_level_key_passes`
@@ -234,7 +234,7 @@ ParseError variants:
   - missing_required_field: { field: string, file: skill | trigger }
   - usezombie_block_required                            // x-usezombie: missing in TRIGGER.md
   - unknown_runtime_key: { key: string }                // unknown subkey under x-usezombie:
-  - legacy_top_level_runtime: { key: string }           // tools/credentials/etc at top of TRIGGER.md
+  - runtime_keys_outside_block: { key: string }           // tools/credentials/etc at top of TRIGGER.md
   - duplicate_key: { path: string }
   - name_mismatch: { skill_name, trigger_name }         // surfaced at install handler
 
@@ -252,7 +252,7 @@ CLI behavior (zombiectl install --from <dir>) — UNCHANGED SHAPE:
 |---|---|---|
 | Missing `name:` in SKILL.md | Author error | `missing_required_field { field: name, file: skill }` |
 | `x-usezombie:` block missing in TRIGGER.md | Pre-M46 file | `usezombie_block_required` |
-| `tools:` at top level of TRIGGER.md | Pre-M46 file or copy-paste | `legacy_top_level_runtime { key: "tools" }` |
+| `tools:` at top level of TRIGGER.md | Pre-M46 file or copy-paste | `runtime_keys_outside_block { key: "tools" }` |
 | Unknown subkey under `x-usezombie:` | Typo or future-version key | `unknown_runtime_key { key }` |
 | SKILL.md `name:` ≠ TRIGGER.md `name:` | Authoring drift | `name_mismatch` at install |
 | Credential name in vault missing | Operator forgot to add | First event fails `secret_not_found` (M41 surfaces) |
@@ -279,7 +279,7 @@ CLI behavior (zombiectl install --from <dir>) — UNCHANGED SHAPE:
 | `test_skill_unknown_top_level_passes` | SKILL.md with extra unknown top-level key → silent pass-through |
 | `test_trigger_minimal` | TRIGGER.md with `name:` + minimal `x-usezombie:` parses |
 | `test_trigger_full` | Every optional runtime field populated |
-| `test_legacy_top_level_runtime_rejected` | `tools:` at top of TRIGGER.md → `legacy_top_level_runtime` |
+| `test_runtime_keys_outside_block_rejected` | `tools:` at top of TRIGGER.md → `runtime_keys_outside_block` |
 | `test_unknown_runtime_key_rejected` | `x-usezombie.contxt:` → `unknown_runtime_key` |
 | `test_name_mismatch_rejected` | Install with mismatched `name:` across files → `name_mismatch` |
 | `test_yaml_two_levels_nesting` | `x-usezombie.network.allow:` (3 levels deep counting root) parses correctly |
