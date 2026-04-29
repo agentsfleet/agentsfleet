@@ -58,12 +58,12 @@ describe("Agents", () => {
   it("renders API operations table", () => {
     renderAgents();
     expect(screen.getByText("API Operations")).toBeInTheDocument();
-    expect(screen.getByText("Start run")).toBeInTheDocument();
-    expect(screen.getByText("Get run")).toBeInTheDocument();
-    expect(screen.getByText("Retry run")).toBeInTheDocument();
+    expect(screen.getByText("Create zombie")).toBeInTheDocument();
+    expect(screen.getByText("Kill zombie")).toBeInTheDocument();
+    expect(screen.getByText("Steer zombie")).toBeInTheDocument();
+    expect(screen.getByText("Stream events")).toBeInTheDocument();
     expect(screen.getByText("Pause workspace")).toBeInTheDocument();
-    expect(screen.getByText("List specs")).toBeInTheDocument();
-    expect(screen.getByText("Sync specs")).toBeInTheDocument();
+    expect(screen.getByText("Execute tool")).toBeInTheDocument();
   });
 
   it("renders HTTP methods", () => {
@@ -71,13 +71,13 @@ describe("Agents", () => {
     const posts = screen.getAllByText("POST");
     const gets = screen.getAllByText("GET");
     expect(posts.length).toBeGreaterThanOrEqual(3);
-    expect(gets.length).toBeGreaterThanOrEqual(2);
+    expect(gets.length).toBeGreaterThanOrEqual(1);
   });
 
   it("renders webhook example", () => {
     renderAgents();
-    expect(screen.getByText("Webhook Callback Example")).toBeInTheDocument();
-    expect(screen.getByText(/run\.completed/)).toBeInTheDocument();
+    expect(screen.getByText("Webhook Ingest Example")).toBeInTheDocument();
+    expect(screen.getByText(/email\.received/)).toBeInTheDocument();
   });
 
   it("renders safety limits cards", () => {
