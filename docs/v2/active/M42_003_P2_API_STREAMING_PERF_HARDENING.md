@@ -61,10 +61,12 @@ Performance targets (validated via `make bench` pre/post):
 
 Actor filtering uses `actor LIKE $X` (not equality) — see `src/state/zombie_events_store.zig:90,106,121,155,170,183`. The actor index only helps for left-anchored LIKE patterns; on `'%foo%'` it is unused either way. The 80/20: no-actor listing is the dashboard's primary view; actor filter is a rare sub-view.
 
-**Fix (drop + add, single migration):**
+**Fix (pre-v2.0.0 teardown convention):**
 
-- DROP `zombie_events_actor_idx`.
-- CREATE `zombie_events_zombie_idx ON core.zombie_events (zombie_id, created_at DESC, event_id DESC)` — covers no-actor listing AND keyset-cursor `(created_at, event_id) <` comparison.
+VERSION is 0.30.0 — pre-v2.0.0. The schema-gate enforces direct edits to the canonical schema file (no `ALTER`/`DROP` migrations until v2.0.0; DB is wiped on `make down && make up`). Edit `schema/019_zombie_events.sql` directly:
+
+- Remove the `zombie_events_actor_idx` declaration.
+- Replace with `zombie_events_zombie_idx ON core.zombie_events (zombie_id, created_at DESC, event_id DESC)` — covers no-actor listing AND keyset-cursor `(created_at, event_id) <` comparison.
 
 Trade-off: actor-filtered queries fall back to "seek by zombie_id on the new index, scan-and-filter on actor". With LIMIT 50 and the most-recent-rows-first ordering, this satisfies the limit in a few pages even on chatty zombies. If actor filtering becomes a measured bottleneck later, add a partial or expression index then. One index instead of two also reduces write amplification on the hot insert path.
 
@@ -74,8 +76,8 @@ Trade-off: actor-filtered queries fall back to "seek by zombie_id on the new ind
 - [ ] `make memleak` clean; final 3 lines of output pasted into PR Session Notes (worker lifecycle touched).
 - [ ] `make test` clean.
 - [ ] `make test-integration` clean.
-- [ ] `make down && make up && make test-integration` clean (schema migration touched).
-- [ ] Schema change lands as proper migration (post-v2.0.0 era; teardown rules don't apply): `DROP INDEX zombie_events_actor_idx; CREATE INDEX zombie_events_zombie_idx ...`.
+- [ ] `make down && make up && make test-integration` clean (schema file touched; teardown convention reapplies the new index from a fresh DB).
+- [ ] `schema/019_zombie_events.sql` carries `zombie_events_zombie_idx` and no longer carries `zombie_events_actor_idx`. Pre-v2.0.0 teardown convention — no `ALTER`/`DROP` migration files.
 - [ ] Worker publisher Redis client is separate from queue client; the `Client` mutex no longer contends across PUBLISH and stream commands.
 - [ ] `activity_publisher` helpers reuse a per-emitter scratch buffer; no `valueAlloc` on the steady-state frame path.
 - [ ] `transport.sendRequestStreaming` parses each progress frame exactly once.
