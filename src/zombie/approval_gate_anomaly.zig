@@ -1,0 +1,121 @@
+// Anomaly detection: Redis-backed sliding-window counters per (zombie_id, tool, action).
+// Runs BEFORE gate evaluation as a fast-path circuit breaker against runaway loops.
+
+const std = @import("std");
+const Allocator = std.mem.Allocator;
+const queue_redis = @import("../queue/redis_client.zig");
+const ec = @import("../errors/error_registry.zig");
+const config_gates = @import("config_gates.zig");
+
+const log = std.log.scoped(.approval_gate_anomaly);
+
+pub const AnomalyResult = enum { normal, auto_kill };
+
+/// Check anomaly counters. Runs BEFORE gate evaluation (fast path).
+/// Uses Redis INCR + EXPIRE for sliding window per (zombie_id, tool, action).
+pub fn checkAnomaly(
+    redis: *queue_redis.Client,
+    zombie_id: []const u8,
+    tool: []const u8,
+    action: []const u8,
+    rules: []const config_gates.AnomalyRule,
+) AnomalyResult {
+    for (rules) |rule| {
+        switch (rule.pattern) {
+            .same_action => {},
+        }
+        const count = incrAnomalyCounter(redis, zombie_id, tool, action, rule.threshold_window_s) catch {
+            // Redis unavailable — fail open for anomaly detection (the approval
+            // gate itself fails closed; only the speculative anomaly check is
+            // permissive on Redis outage).
+            log.warn("approval_gate.anomaly_redis_fail zombie_id={s}", .{zombie_id});
+            return .normal;
+        };
+        if (count >= rule.threshold_count) {
+            log.err("approval_gate.anomaly_auto_kill zombie_id={s} tool={s} action={s} count={d} threshold={d}", .{
+                zombie_id, tool, action, count, rule.threshold_count,
+            });
+            return .auto_kill;
+        }
+    }
+    return .normal;
+}
+
+fn incrAnomalyCounter(
+    redis: *queue_redis.Client,
+    zombie_id: []const u8,
+    tool: []const u8,
+    action: []const u8,
+    window_s: u32,
+) !u32 {
+    var key_buf: [256]u8 = undefined;
+    const key = std.fmt.bufPrint(&key_buf, "{s}{s}:{s}:{s}", .{
+        ec.GATE_ANOMALY_KEY_PREFIX, zombie_id, tool, action,
+    }) catch return error.BufferOverflow;
+
+    var resp = try redis.command(&.{ "INCR", key });
+    defer resp.deinit(redis.alloc);
+    const count: u32 = switch (resp) {
+        .integer => |n| if (n > 0) @intCast(n) else 1,
+        else => return error.RedisCommandError,
+    };
+
+    if (count == 1) {
+        var ttl_buf: [16]u8 = undefined;
+        const ttl_str = std.fmt.bufPrint(&ttl_buf, "{d}", .{window_s}) catch return error.BufferOverflow;
+        var expire_resp = try redis.command(&.{ "EXPIRE", key, ttl_str });
+        defer expire_resp.deinit(redis.alloc);
+    }
+
+    return count;
+}
+
+/// Reset all anomaly counters for a zombie (after restart / auto-kill recovery).
+/// Currently called on no path; retained for the recovery flow.
+fn resetAnomalyCounters(
+    redis: *queue_redis.Client,
+    alloc: Allocator,
+    zombie_id: []const u8,
+) void {
+    var cursor_buf: [32]u8 = undefined;
+    var cursor: []const u8 = "0";
+    var pattern_buf: [128]u8 = undefined;
+    const pattern = std.fmt.bufPrint(&pattern_buf, "{s}{s}:*", .{
+        ec.GATE_ANOMALY_KEY_PREFIX, zombie_id,
+    }) catch return;
+
+    var iterations: u32 = 0;
+    while (iterations < 100) : (iterations += 1) {
+        var resp = redis.command(&.{ "SCAN", cursor, "MATCH", pattern, "COUNT", "100" }) catch return;
+        defer resp.deinit(alloc);
+        const arr = switch (resp) {
+            .array => |a| a orelse return,
+            else => return,
+        };
+        if (arr.len < 2) return;
+
+        const next_cursor = switch (arr[0]) {
+            .bulk => |b| b orelse return,
+            .simple => |s| s,
+            else => return,
+        };
+        cursor = std.fmt.bufPrint(&cursor_buf, "{s}", .{next_cursor}) catch return;
+
+        const keys = switch (arr[1]) {
+            .array => |k| k orelse continue,
+            else => continue,
+        };
+        for (keys) |key_val| {
+            const key_str = switch (key_val) {
+                .bulk => |b| b orelse continue,
+                .simple => |s| s,
+                else => continue,
+            };
+            var del_resp = redis.command(&.{ "DEL", key_str }) catch continue;
+            del_resp.deinit(alloc);
+        }
+
+        if (std.mem.eql(u8, cursor, "0")) break;
+    }
+    log.info("approval_gate.anomaly_counters_reset zombie_id={s}", .{zombie_id});
+}

@@ -12,8 +12,6 @@
 
 const std = @import("std");
 const httpz = @import("httpz");
-const pg = @import("pg");
-const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
 const common = @import("../common.zig");
 const hx_mod = @import("../hx.zig");
 const ec = @import("../../../errors/error_registry.zig");
@@ -49,58 +47,56 @@ pub fn innerApprovalCallback(hx: Hx, req: *httpz.Request, zombie_id: []const u8)
     const payload = parseApprovalBody(hx, req) orelse return;
     const decision_str = payload.decision.toConstString();
 
-    // Check that the pending action exists in Redis
-    var pending_key_buf: [256]u8 = undefined;
-    const pending_key = std.fmt.bufPrint(&pending_key_buf, "{s}{s}:{s}", .{
-        ec.GATE_PENDING_KEY_PREFIX, zombie_id, payload.action_id,
-    }) catch {
-        common.internalOperationError(hx.res, "key overflow", hx.req_id);
-        return;
-    };
-
-    const exists = hx.ctx.queue.exists(pending_key) catch {
-        log.err("approval.redis_check_fail zombie_id={s} action_id={s}", .{ zombie_id, payload.action_id });
-        common.internalOperationError(hx.res, "Redis unavailable", hx.req_id);
-        return;
-    };
-    if (!exists) {
-        hx.fail(ec.ERR_APPROVAL_NOT_FOUND, ec.MSG_APPROVAL_NOT_FOUND);
-        return;
-    }
-
-    // Write the decision to Redis (unblocks waitForDecision)
-    approval_gate.resolveApproval(hx.ctx.queue, payload.action_id, decision_str) catch {
-        log.err("approval.resolve_fail zombie_id={s} action_id={s}", .{ zombie_id, payload.action_id });
-        common.internalOperationError(hx.res, "Failed to resolve approval", hx.req_id);
-        return;
-    };
-
-    // Fetch workspace_id for activity logging
-    const workspace_id = fetchWorkspaceId(hx.ctx.pool, hx.alloc, zombie_id) catch "";
-
-    // Record in audit table
+    // Single dedup point: dashboard, Slack, and sweeper all funnel through resolve().
+    // The DB UPDATE precondition + Redis decision write happen atomically (from
+    // the worker's perspective). A concurrent dashboard click on the same gate
+    // observes .already_resolved here and surfaces 409 to its caller.
     const gate_status: approval_gate.GateStatus = switch (payload.decision) {
         .approve => .approved,
         .deny => .denied,
     };
-    const event_type: []const u8 = switch (payload.decision) {
-        .approve => ec.GATE_EVENT_APPROVED,
-        .deny => ec.GATE_EVENT_DENIED,
-    };
 
-    approval_gate.resolveGateDecision(
+    var outcome = approval_gate.resolve(
         hx.ctx.pool,
+        hx.ctx.queue,
+        hx.alloc,
         payload.action_id,
         gate_status,
-        "", // detail
-    );
+        "slack:webhook",
+        "",
+    ) catch {
+        log.err("approval.resolve_fail zombie_id={s} action_id={s}", .{ zombie_id, payload.action_id });
+        common.internalOperationError(hx.res, "Failed to resolve approval", hx.req_id);
+        return;
+    };
+    defer switch (outcome) {
+        .resolved => |*r| @constCast(r).deinit(hx.alloc),
+        .already_resolved => |*r| @constCast(r).deinit(hx.alloc),
+        .not_found => {},
+    };
 
-    _ = event_type;
-    _ = workspace_id;
+    // Cross-check: the URL's zombie_id must match the row's zombie_id, defending
+    // against a caller with HMAC secret resolving an unrelated gate by guessing
+    // action_id. .not_found leaks no information beyond "no such gate".
+    const row_zombie_id: []const u8 = switch (outcome) {
+        .resolved => |r| r.zombie_id,
+        .already_resolved => |r| r.zombie_id,
+        .not_found => "",
+    };
+    if (outcome == .not_found or !std.mem.eql(u8, row_zombie_id, zombie_id)) {
+        hx.fail(ec.ERR_APPROVAL_NOT_FOUND, ec.MSG_APPROVAL_NOT_FOUND);
+        return;
+    }
 
-    log.info("approval.resolved zombie_id={s} action_id={s} decision={s}", .{
-        zombie_id, payload.action_id, decision_str,
-    });
+    switch (outcome) {
+        .resolved => log.info("approval.resolved zombie_id={s} action_id={s} decision={s}", .{
+            zombie_id, payload.action_id, decision_str,
+        }),
+        .already_resolved => |r| log.info("approval.already_resolved zombie_id={s} action_id={s} prior_outcome={s} prior_by={s}", .{
+            zombie_id, payload.action_id, r.outcome.toSlice(), r.resolved_by,
+        }),
+        .not_found => unreachable,
+    }
 
     hx.ok(.ok, .{
         .status = "resolved",
@@ -210,17 +206,6 @@ fn verifyRequestSignature(hx: Hx, req: *httpz.Request) bool {
     }
 
     return true;
-}
-
-fn fetchWorkspaceId(pool: *pg.Pool, alloc: std.mem.Allocator, zombie_id: []const u8) ![]const u8 {
-    const conn = try pool.acquire();
-    defer pool.release(conn);
-    var q = PgQuery.from(try conn.query(
-        \\SELECT workspace_id::text FROM core.zombies WHERE id = $1::uuid
-    , .{zombie_id}));
-    defer q.deinit();
-    const row = try q.next() orelse return "";
-    return try alloc.dupe(u8, try row.get([]const u8, 0));
 }
 
 test "ApprovalDecision.toConstString maps correctly" {
