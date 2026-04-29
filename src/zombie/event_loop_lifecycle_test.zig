@@ -129,6 +129,7 @@ test "integration: one processed event lands exactly 1 zombie_events + 1 telemet
     const cfg = types.EventLoopConfig{
         .pool = db_ctx.pool,
         .redis = &redis,
+        .redis_publish = &redis,
         .executor = harness.executorPtr(),
         .running = &running,
         .balance_policy = .stop,
@@ -193,6 +194,7 @@ test "integration: replaying the same event_id twice does not duplicate any of t
     const cfg = types.EventLoopConfig{
         .pool = db_ctx.pool,
         .redis = &redis,
+        .redis_publish = &redis,
         .executor = harness.executorPtr(),
         .running = &running,
         .balance_policy = .stop,

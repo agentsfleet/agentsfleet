@@ -184,8 +184,6 @@ paths:
     $ref: ./paths/approvals.yaml#/~1v1~1workspaces~1{workspace_id}~1approvals~1{gate_id}:deny
   /v1/workspaces/{workspace_id}/pause:
     $ref: ./paths/workspaces.yaml#/~1v1~1workspaces~1{workspace_id}~1pause
-  /v1/workspaces/{workspace_id}/sync:
-    $ref: ./paths/workspaces.yaml#/~1v1~1workspaces~1{workspace_id}~1sync
 components:
   securitySchemes:
     $ref: ./components/security.yaml#/components/securitySchemes

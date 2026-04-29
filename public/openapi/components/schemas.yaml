@@ -77,33 +77,6 @@ components:
                 type: object
                 additionalProperties: true
                 description: JSON Schema for the tool's input
-    Artifact:
-      type: object
-      description: An artifact produced during a run (e.g. plan, diff, review)
-      properties:
-        artifact_name:
-          type: string
-          description: Human-readable artifact name
-        object_key:
-          type: string
-          description: 'Git path: docs/runs/<run_id>/<name>'
-        checksum_sha256:
-          type: string
-          description: SHA-256 checksum of the artifact content
-        producer:
-          type: string
-          enum:
-          - echo
-          - scout
-          - warden
-          - orchestrator
-          description: Pipeline stage that produced the artifact
-        attempt:
-          type: integer
-          description: Run attempt number that produced this artifact
-        created_at:
-          type: integer
-          description: Unix timestamp in milliseconds
     CredentialSummary:
       type: object
       required:
@@ -266,68 +239,6 @@ components:
         updated_at:
           type: string
           format: date-time
-    PolicyEvent:
-      type: object
-      description: A policy evaluation event from the Warden stage
-      properties:
-        action_class:
-          type: string
-          enum:
-          - safe
-          - sensitive
-          - critical
-          description: Classification of the action being evaluated
-        decision:
-          type: string
-          enum:
-          - allow
-          - deny
-          - require_confirmation
-          description: Policy decision
-        rule_id:
-          type: string
-          description: Identifier of the policy rule that matched
-        actor:
-          type: string
-          description: Pipeline stage that triggered the policy check
-        ts:
-          type: integer
-          description: Unix timestamp in milliseconds
-    Proposal:
-      type: object
-      description: An agent self-tuning proposal — a suggested change to the agent configuration
-      properties:
-        proposal_id:
-          type: string
-          format: uuid
-        trigger_reason:
-          type: string
-          description: Why the agent generated this proposal
-        proposed_changes:
-          type: string
-          description: Description of the proposed configuration changes
-        config_version_id:
-          type: string
-          format: uuid
-          description: Config version this proposal targets
-        approval_mode:
-          type: string
-          description: Whether the proposal requires manual approval or can auto-apply
-        status:
-          type: string
-          description: Proposal lifecycle status (e.g. PENDING, APPLIED, REJECTED, VETOED)
-        auto_apply_at:
-          type:
-          - string
-          - "null"
-          format: date-time
-          description: Timestamp when the proposal will auto-apply, null if manual approval required
-        created_at:
-          type: string
-          format: date-time
-        updated_at:
-          type: string
-          format: date-time
     ReadyzBody:
       type: object
       description: Response body for GET /readyz. Identical shape for both 200 (healthy) and 503 (degraded) responses — only
@@ -348,53 +259,6 @@ components:
           type: boolean
           description: True if the Redis queue backend is reachable
       additionalProperties: false
-    SpecSummary:
-      type: object
-      description: Summary of a spec document
-      properties:
-        spec_id:
-          type: string
-          format: uuid
-          description: Unique spec identifier
-        file_path:
-          type: string
-          description: Path to the spec file in the repository
-        title:
-          type: string
-          description: Spec title extracted from the document
-        status:
-          type: string
-          enum:
-          - pending
-          - in_progress
-          - done
-          - failed
-          description: Current spec lifecycle status
-        created_at:
-          type: integer
-          description: Unix timestamp in milliseconds
-        updated_at:
-          type: integer
-          description: Unix timestamp in milliseconds
-    Transition:
-      type: object
-      description: A state transition in the run pipeline
-      properties:
-        state_from:
-          type: string
-          description: State before the transition
-        state_to:
-          type: string
-          description: State after the transition
-        actor:
-          type: string
-          description: Pipeline stage or user that triggered the transition
-        reason_code:
-          type: string
-          description: Machine-readable reason for the transition
-        ts:
-          type: integer
-          description: Unix timestamp in milliseconds
     ZombieSummary:
       type: object
       required:

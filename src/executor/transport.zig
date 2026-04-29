@@ -276,26 +276,28 @@ pub const Client = struct {
 
         while (true) {
             const frame = try protocol.readFrameFromFd(self.alloc, sock);
-            // Parse once to discriminate progress vs terminal. Progress
-            // frames carry method="Progress"; terminal frames carry
-            // result/error and no method.
+            // Parse once. Progress frames carry method="Progress";
+            // terminal frames carry result/error and no method. The
+            // parsed value is reused for the progress branch (no second
+            // parse). Terminal branch hands the frame bytes off to
+            // `protocol.parseResponse` for the ParsedResponse shape.
             var parsed = std.json.parseFromSlice(std.json.Value, self.alloc, frame, .{}) catch |err| {
                 self.alloc.free(frame);
                 return err;
             };
             const is_progress = pc.isProgressPayload(parsed.value);
-            parsed.deinit();
 
             if (is_progress) {
                 defer self.alloc.free(frame);
-                var pres = pc.decodeProgress(self.alloc, frame) catch |err| {
+                defer parsed.deinit();
+                const decoded = pc.decodeProgressFromValue(parsed.value) catch |err| {
                     log.warn("executor.progress_decode_failed err={s}", .{@errorName(err)});
                     continue;
                 };
-                defer pres.parsed.deinit();
-                emitter.emit(pres.frame);
+                emitter.emit(decoded.frame);
                 continue;
             }
+            parsed.deinit();
 
             // Terminal response. Caller owns the returned ParsedResponse;
             // its internal `parsed` holds the frame bytes via the JSON

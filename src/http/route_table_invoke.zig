@@ -127,11 +127,6 @@ pub fn invokeListTenantWorkspaces(hx: *Hx, req: *httpz.Request, route: router.Ro
     tenant_workspaces_h.innerListTenantWorkspaces(hx.*, req);
 }
 
-pub fn invokeSyncWorkspace(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    if (req.method != .POST) { common.respondMethodNotAllowed(hx.res); return; }
-    ws_ops.innerSyncSpecs(hx.*, route.sync_workspace);
-}
-
 pub fn invokeWorkspaceLlmCredential(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     const workspace_id = route.workspace_llm_credential;
     switch (req.method) {

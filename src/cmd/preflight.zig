@@ -1,4 +1,4 @@
-//! Shared startup preflight helpers for serve, worker, and reconcile commands.
+//! Shared startup preflight helpers for serve and worker commands.
 //! Each function logs structured output and returns errors — callers decide
 //! exit policy and PostHog tracking.
 

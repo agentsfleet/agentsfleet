@@ -269,12 +269,11 @@ test "custom-method subpath: workspace /pause resolves" {
     });
 }
 
-test "custom-method subpath: workspace /sync resolves" {
-    const route = match("/v1/workspaces/ws_123/sync") orelse return error.TestExpectedMatch;
-    try std.testing.expectEqualStrings("ws_123", switch (route) {
-        .sync_workspace => |id| id,
-        else => return error.TestExpectedEqual,
-    });
+test "retired path: /v1/workspaces/{ws}/sync no longer resolves" {
+    // Pipeline v1 sync_specs endpoint removed. Requests against the URL
+    // must not match any current route — any future re-introduction of a
+    // workspace-scoped /sync action should be deliberate.
+    try std.testing.expect(match("/v1/workspaces/ws_123/sync") == null);
 }
 
 test "custom-method subpath: zombie /steer resolves" {
@@ -340,12 +339,7 @@ test "custom-method regression: old colon-action forms no longer hit the migrate
     };
     const pause_old = match("/v1/workspaces/ws1:pause");
     if (pause_old) |r| switch (r) {
-        .pause_workspace, .sync_workspace => return error.TestExpectedNotAction,
-        else => {},
-    };
-    const sync_old = match("/v1/workspaces/ws1:sync");
-    if (sync_old) |r| switch (r) {
-        .pause_workspace, .sync_workspace => return error.TestExpectedNotAction,
+        .pause_workspace => return error.TestExpectedNotAction,
         else => {},
     };
 }
