@@ -79,6 +79,17 @@ pub fn innerCreateZombie(hx: Hx, req: *httpz.Request, workspace_id: []const u8) 
     };
     defer parsed.deinit(hx.alloc);
 
+    var skill_meta = zombie_config.parseSkillMetadata(hx.alloc, body.source_markdown) catch {
+        hx.fail(ec.ERR_ZOMBIE_INVALID_CONFIG, ec.MSG_ZOMBIE_SKILL_INVALID);
+        return;
+    };
+    defer skill_meta.deinit(hx.alloc);
+
+    if (!std.mem.eql(u8, skill_meta.name, parsed.config.name)) {
+        hx.fail(ec.ERR_ZOMBIE_NAME_MISMATCH, ec.MSG_ZOMBIE_NAME_MISMATCH);
+        return;
+    }
+
     const conn = hx.ctx.pool.acquire() catch {
         common.internalDbUnavailable(hx.res, hx.req_id);
         return;
