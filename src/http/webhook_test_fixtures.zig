@@ -28,7 +28,7 @@ pub const Fixture = struct {
 /// Caller must call `cleanup()` at end of test before `harness.deinit()`.
 ///
 /// `config_json` is the ENTIRE config — e.g.:
-///   {"trigger":{"type":"webhook","source":"github","signature":{"secret_ref":"gh_secret"}}}
+///   {"name":"x","x-usezombie":{"trigger":{"type":"webhook","source":"github","signature":{"secret_ref":"gh_secret"}}}}
 pub fn insertZombie(
     conn: *pg.Conn,
     fx: Fixture,
@@ -94,13 +94,13 @@ pub fn buildTriggerConfig(
     if (secret_ref) |ref| {
         return std.fmt.allocPrint(
             alloc,
-            "{{\"trigger\":{{\"type\":\"webhook\",\"source\":\"{s}\",\"signature\":{{\"secret_ref\":\"{s}\"}}}}}}",
+            "{{\"x-usezombie\":{{\"trigger\":{{\"type\":\"webhook\",\"source\":\"{s}\",\"signature\":{{\"secret_ref\":\"{s}\"}}}}}}}}",
             .{ source, ref },
         );
     }
     return std.fmt.allocPrint(
         alloc,
-        "{{\"trigger\":{{\"type\":\"webhook\",\"source\":\"{s}\"}}}}",
+        "{{\"x-usezombie\":{{\"trigger\":{{\"type\":\"webhook\",\"source\":\"{s}\"}}}}}}",
         .{source},
     );
 }
@@ -119,7 +119,7 @@ test "buildTriggerConfig with secret_ref produces valid JSON" {
     const alloc = std.testing.allocator;
     const got = try buildTriggerConfig(alloc, "github", "my_secret");
     defer alloc.free(got);
-    const want = "{\"trigger\":{\"type\":\"webhook\",\"source\":\"github\",\"signature\":{\"secret_ref\":\"my_secret\"}}}";
+    const want = "{\"x-usezombie\":{\"trigger\":{\"type\":\"webhook\",\"source\":\"github\",\"signature\":{\"secret_ref\":\"my_secret\"}}}}";
     try std.testing.expectEqualStrings(want, got);
 }
 
@@ -127,7 +127,7 @@ test "buildTriggerConfig without secret_ref produces URL-secret-only config" {
     const alloc = std.testing.allocator;
     const got = try buildTriggerConfig(alloc, "agentmail", null);
     defer alloc.free(got);
-    const want = "{\"trigger\":{\"type\":\"webhook\",\"source\":\"agentmail\"}}";
+    const want = "{\"x-usezombie\":{\"trigger\":{\"type\":\"webhook\",\"source\":\"agentmail\"}}}";
     try std.testing.expectEqualStrings(want, got);
 }
 

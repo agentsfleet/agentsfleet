@@ -21,7 +21,7 @@ const TEST_ZOMBIE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0bbb01";
 const TEST_SESSION_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0bbb10";
 
 const VALID_CONFIG_JSON =
-    \\{"name":"steer-bot","trigger":{"type":"webhook","source":"agentmail"},"tools":["agentmail"],"budget":{"daily_dollars":5.0}}
+    \\{"name":"steer-bot","x-usezombie":{"trigger":{"type":"webhook","source":"agentmail"},"tools":["agentmail"],"budget":{"daily_dollars":5.0}}}
 ;
 const VALID_SOURCE_MD =
     \\---

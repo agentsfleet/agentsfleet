@@ -1,7 +1,7 @@
 // POST /v1/webhooks/{zombie_id} or /v1/webhooks/{zombie_id}/{secret}
 //
 // Auth: URL-embedded secret (resolved from vault via webhook_secret_ref)
-//       or Bearer token (config_json->'trigger'->>'token') as fallback.
+//       or Bearer token (config_json->'x-usezombie'->'trigger'->>'token') as fallback.
 // Idempotency: Redis SET NX EX on "webhook:dedup:{zombie_id}:{event_id}".
 // On success: event enqueued to zombie:{zombie_id}:events stream, returns 202.
 //
@@ -51,9 +51,9 @@ fn fetchZombieById(pool: *pg.Pool, alloc: std.mem.Allocator, zombie_id: []const 
     defer pool.release(conn);
     var q = PgQuery.from(try conn.query(
         \\SELECT workspace_id::text, status,
-        \\       config_json->'trigger'->>'token',
+        \\       config_json->'x-usezombie'->'trigger'->>'token',
         \\       webhook_secret_ref,
-        \\       config_json->'trigger'->>'source'
+        \\       config_json->'x-usezombie'->'trigger'->>'source'
         \\FROM core.zombies WHERE id = $1::uuid
     , .{zombie_id}));
     defer q.deinit();

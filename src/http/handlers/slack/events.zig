@@ -165,7 +165,7 @@ fn lookupSlackZombie(conn: *pg.Conn, alloc: std.mem.Allocator, workspace_id: []c
         \\SELECT id::text FROM core.zombies
         \\WHERE workspace_id = $1::uuid
         \\  AND status = 'active'
-        \\  AND config_json->'trigger'->>'type' = 'slack_event'
+        \\  AND config_json->'x-usezombie'->'trigger'->>'type' = 'slack_event'
         \\ORDER BY created_at ASC
         \\LIMIT 1
     , .{workspace_id}) catch |err| {

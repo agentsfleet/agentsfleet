@@ -18,7 +18,7 @@ const TEST_ZOMBIE_ID = "0195b4ba-8d3a-7f13-8abc-000000000100";
 const TEST_SESSION_ID = "0195b4ba-8d3a-7f13-8abc-000000000101";
 
 const VALID_CONFIG_JSON =
-    \\{"name":"lead-collector","trigger":{"type":"webhook","source":"agentmail"},"tools":["agentmail"],"budget":{"daily_dollars":5.0}}
+    \\{"name":"lead-collector","x-usezombie":{"trigger":{"type":"webhook","source":"agentmail"},"tools":["agentmail"],"budget":{"daily_dollars":5.0}}}
 ;
 const VALID_SOURCE_MD =
     \\---
