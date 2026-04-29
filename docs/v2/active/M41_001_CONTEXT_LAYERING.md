@@ -35,7 +35,7 @@
 | `src/executor/tool_builders.zig` | EXTEND | `http_request` builder reads `network_policy.allow`, rejects off-list with `host_not_allowed`. |
 | `src/executor/runner_progress.zig` | EXTEND | Substitution layer lives here, NOT in a new `tool_bridge.zig`. The existing `Adapter` already intercepts tool-use frames for redaction (M42_002 pending); §2 adds the `${secrets.NAME.FIELD}` → resolved-value pass on the same path. Coordinate with M42_002 on the same struct. |
 | `src/executor/tool_bridge.zig` | (unchanged) | Existing tool *registry* — not touched by M41. |
-| `src/executor/registry/model_registry.zig` | NEW | Compile-time `const` table mapping model name → `{ context_cap_tokens, tier }`. Drives §6 fill estimation and §8 auto-defaults. Operator (`nkishore@megam.io`) extends by PR; M48 (BYOK) layers tenant validation against the same table. |
+| `src/executor/types.zig` | EXTEND | `ContextBudget` carries `context_cap_tokens: u32` alongside `model: []const u8` — both originate in the zombie's runtime config (frontmatter for platform-managed credentials, BYOK credential body for customer-supplied providers). Pure tier math lives next to it: `Tier`, `tierFor(cap)`, `defaultToolWindow(cap)`, `fallback_cap_tokens`. **No compile-time model table** — picking model→cap as code couples every new model release to a usezombie release and makes BYOK impossible. |
 | `src/executor/runtime/context_lifecycle.zig` | NEW | L1+L2+L3 enforcement: rolling-window state, memory-checkpoint nudge, stage-chunk threshold detection. New file lands in `runtime/` subfolder; existing `runner.zig`/`runner_progress.zig`/`session.zig` stay put for this PR (mass-move is a follow-up hygiene spec). |
 | `src/executor/runner.zig` | EXTEND | NullClaw integration: pass context knobs into `Agent.runSingle`. Wire L1/L2/L3 hooks via `runtime/context_lifecycle`. |
 | `src/zombie/event_loop_helpers.zig` | EXTEND | Replace `resolveFirstCredential` (line 242) with `resolveSecretsMap` (already shipped in `event_loop_secrets.zig:34`). Resolved `[]ResolvedSecret` flows directly into the extended `createExecution` payload. Also passes context knobs from zombie config. |
@@ -64,7 +64,8 @@ ExecutionContextBudget {
   tool_window:               u32 | "auto",
   memory_checkpoint_every:   u32,
   stage_chunk_threshold:     f32,   // 0.0..1.0
-  model:                     []const u8,    // looked up against registry/model_registry.zig
+  model:                     []const u8,    // resolved from zombie config
+  context_cap_tokens:        u32,            // resolved from zombie config (0 = use fallback)
 }
 ```
 
@@ -90,7 +91,7 @@ After every N tool calls (default 5), NullClaw inserts a soft frame in the agent
 Maintain a deque of the last N tool results in the agent's active context. When N is exceeded, oldest results are summarized to a single `[tool result for <tool>:<args> dropped — see event log]` line. The full result stays in `core.zombie_events` (M42). Agent reasons over the summary if needed via `memory_recall`.
 
 ### §6 — Context lifecycle (L3: stage_chunk_threshold)
-Before each tool call, check estimated context fill: `current_tokens / model_context_cap`. `current_tokens` already flows on every stage response (`src/executor/client.zig:230`). `model_context_cap` is a NEW lookup against `src/executor/registry/model_registry.zig` keyed by the resolved model name (which is part of `ExecutionContextBudget.model`). If the ratio ≥ `stage_chunk_threshold` (default 0.75), nudge the agent: *"Context approaching budget. Snapshot findings now and return for continuation."* If the next tool call would exceed the threshold, force the agent to call `memory_store` and return `{exit_ok: false, checkpoint_id: <auto>, content: <agent's final reasoning>}`. Worker re-enqueues a continuation event (§7).
+Before each tool call, check estimated context fill: `current_tokens / context_cap_tokens`. `current_tokens` already flows on every stage response (`src/executor/client.zig:230`). `context_cap_tokens` travels in `ExecutionContextBudget` alongside the model name — sourced from the zombie's runtime config (frontmatter for platform-managed providers, BYOK credential body for customer-supplied providers). When the config omits the cap, fall back to `types.fallback_cap_tokens` (200k) — conservative, prefers a smaller tool_window over an unbounded budget. If the ratio ≥ `stage_chunk_threshold` (default 0.75), nudge the agent: *"Context approaching budget. Snapshot findings now and return for continuation."* If the next tool call would exceed the threshold, force the agent to call `memory_store` and return `{exit_ok: false, checkpoint_id: <auto>, content: <agent's final reasoning>}`. Worker re-enqueues a continuation event (§7).
 
 ### §7 — Continuation event flow
 `src/zombie/continuation.zig`: when stage returns `exit_ok=false` with `checkpoint_id`, the worker:
@@ -102,7 +103,7 @@ Before each tool call, check estimated context fill: `current_tokens / model_con
 3. Next stage opens with a synthetic prompt: *"You are continuing incident `<id>`. Call `memory_recall(\"<checkpoint_id>\")` first to load your prior reasoning. Then continue."*
 
 ### §8 — Auto-defaults and override resolution
-On `createExecution`, if `context.tool_window == "auto"`, look up the resolved model in `src/executor/registry/model_registry.zig` and pick from the same table that drives §6 fill estimation:
+On `createExecution`, if `context.tool_window == "auto"` (or 0), call `types.defaultToolWindow(context_cap_tokens)` — pure cap-keyed math, same boundaries as §6:
 
 | Tier | Context cap | Default `tool_window` |
 |---|---|---|
@@ -110,7 +111,7 @@ On `createExecution`, if `context.tool_window == "auto"`, look up the resolved m
 | MEDIUM | 200k - 300k tokens | 20 |
 | SMALL | ≤ 200k tokens | 10 |
 
-User overrides in `x-usezombie.context` win over auto. The registry is a compile-time `const` table; new model entries land via PR (admin: `nkishore@megam.io`). M48 (BYOK) extends the validation surface — tenant-supplied model names are checked against the same table. Surface the resolved knobs in the event log for observability.
+User overrides in `x-usezombie.context` win over auto. The cap travels in the zombie's config: for platform-managed credentials the install-skill (M49) writes a sensible default into the SKILL.md frontmatter; for BYOK (M48) the credential body itself carries `{provider, api_key, model, context_cap_tokens}`. Either way, the value lands on `ContextBudget.context_cap_tokens` at `createExecution` time. Missing cap → `fallback_cap_tokens` (medium tier). Surface the resolved knobs in the event log for observability.
 
 ### §9 — Config hot-reload
 When watcher receives `zombie_config_changed` (M40), the per-zombie thread loads the new config revision. In-flight execution keeps old config; next event uses new. Test: PATCH config → in-flight finishes with old context budget → next event uses new budget.
@@ -209,7 +210,7 @@ Cross-checked the spec against what M40/M42/M45 actually shipped. Six amendments
 1. **`createExecution` RPC extension strategy.** Spec was silent between in-place vs `V2`. Locked in-place per new `RULE NLG` (`docs/greptile-learnings/RULES.md`) — no legacy compat shims pre-v2.0.0. Single in-tree caller (worker) updates in the same commit.
 2. **`secrets_map` shape.** M45's `resolveSecretsMap` (`src/zombie/event_loop_secrets.zig:34`) returns `[]ResolvedSecret { name, parsed: std.json.Value }`. Spec previously assumed `{ [name]: { [field]: string } }`. Substitution path now does field traversal against `parsed` at use-time. Also caught: `event_loop_helpers.zig:242` still calls `resolveFirstCredential` — replaced as part of this milestone.
 3. **Substitution module.** Lives in the existing `runner_progress.Adapter` (`src/executor/runner_progress.zig:9-15`), not a new `tool_bridge.zig`. M42_002 (pending) shares the same struct for redaction; coordinate.
-4. **Model context cap.** `model_context_cap` doesn't exist anywhere today. Added `src/executor/registry/model_registry.zig` as compile-time `const` table; same table drives §6 fill estimation and §8 auto-defaults. Admin: `nkishore@megam.io` extends by PR. M48 (BYOK) layers tenant validation against it.
+4. **Model context cap.** Originally landed as a compile-time `const` model→cap table in `src/executor/registry/model_registry.zig`. Pulled apart on Apr 29, 2026 because (a) Anthropic ships new models faster than usezombie release cadence — the table rots in days, and (b) BYOK (M48) lets customers bring providers we've never heard of, which the table can't validate. Replacement: `ContextBudget.context_cap_tokens` carries the cap directly from the zombie's runtime config. Pure tier math (`tierFor`, `defaultToolWindow`) lives in `types.zig` next to the struct. `fallback_cap_tokens` (200k) handles the "config omitted the cap" case conservatively.
 5. **Continuation max-10 enforcement.** Derived at re-enqueue time from `core.zombie_events` (count rows where `event_type='continuation' AND incident_id=$1`). No new state column.
 6. **Schema column names.** Spec used `type` and `data`; shipped schema (`schema/019_zombie_events.sql:20-22`) has `event_type TEXT` + `request_json JSONB`. §7 + Test Specification updated.
 

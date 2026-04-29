@@ -8,6 +8,7 @@ const json = @import("json_helpers.zig");
 const transport = @import("transport.zig");
 const protocol = @import("protocol.zig");
 const types = @import("types.zig");
+const context_budget = @import("context_budget.zig");
 const executor_metrics = @import("executor_metrics.zig");
 
 const log = std.log.scoped(.executor_client);
@@ -77,11 +78,11 @@ pub const ExecutorClient = struct {
     pub const CreateExecutionParams = struct {
         workspace_path: []const u8,
         correlation: types.CorrelationContext,
-        network_policy: types.NetworkPolicy = .{},
+        network_policy: context_budget.NetworkPolicy = .{},
         tools: []const []const u8 = &.{},
         /// JSON object: `{ [name]: <parsed json value> }`. Null = no secrets.
         secrets_map: ?std.json.Value = null,
-        context: types.ContextBudget = .{},
+        context: context_budget.ContextBudget = .{},
     };
 
     pub fn createExecution(

@@ -162,7 +162,7 @@ test {
     _ = @import("util/strings/string_builder.zig");
     _ = @import("util/strings/smol_str.zig");
     _ = @import("util/strings/case_insensitive_ascii_map.zig");
-    _ = @import("executor/registry/model_registry.zig");
+    _ = @import("executor/context_budget.zig");
     _ = @import("hmac_sig");
     _ = @import("crypto/hmac_sig_test.zig");
     _ = @import("zombie/webhook_verify.zig");

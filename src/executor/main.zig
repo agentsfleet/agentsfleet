@@ -145,6 +145,7 @@ fn parseU64Env(alloc: std.mem.Allocator, name: []const u8, default: u64) u64 {
 // Pull in tests from all executor modules.
 test {
     _ = @import("types.zig");
+    _ = @import("context_budget.zig");
     _ = @import("protocol.zig");
     _ = @import("transport.zig");
     _ = @import("session.zig");

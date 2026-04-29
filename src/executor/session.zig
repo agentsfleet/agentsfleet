@@ -11,6 +11,7 @@
 
 const std = @import("std");
 const types = @import("types.zig");
+const context_budget = @import("context_budget.zig");
 
 const log = std.log.scoped(.executor_session);
 
@@ -25,7 +26,7 @@ workspace_path: []const u8,
 /// resolved secrets_map, context-budget knobs. Set at createExecution
 /// and invariant for the session's lifetime — every stage inherits
 /// these. All inner slices are arena-owned dupes.
-policy: types.ExecutionPolicy,
+policy: context_budget.ExecutionPolicy,
 cancelled: std.atomic.Value(bool),
 arena: std.heap.ArenaAllocator,
 
@@ -56,7 +57,7 @@ pub fn create(
     correlation: types.CorrelationContext,
     resource_limits: types.ResourceLimits,
     lease_timeout_ms: u64,
-    policy: types.ExecutionPolicy,
+    policy: context_budget.ExecutionPolicy,
 ) !Session {
     var arena = std.heap.ArenaAllocator.init(alloc);
     errdefer arena.deinit();
@@ -146,7 +147,7 @@ pub fn destroy(self: *Session) void {
 /// slices (network_policy.allow, tools, secrets_map JSON tree, model name)
 /// are typically borrowed from a transient request frame; without this dupe
 /// the session would dangle the moment the RPC handler returns.
-fn dupePolicy(arena_alloc: std.mem.Allocator, p: types.ExecutionPolicy) !types.ExecutionPolicy {
+fn dupePolicy(arena_alloc: std.mem.Allocator, p: context_budget.ExecutionPolicy) !context_budget.ExecutionPolicy {
     const allow_owned = try dupeStringList(arena_alloc, p.network_policy.allow);
     const tools_owned = try dupeStringList(arena_alloc, p.tools);
     const secrets_owned: ?std.json.Value = if (p.secrets_map) |sm| try dupeJsonValue(arena_alloc, sm) else null;

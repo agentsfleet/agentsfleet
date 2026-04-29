@@ -4,6 +4,7 @@
 const std = @import("std");
 const Session = @import("session.zig");
 const types = @import("types.zig");
+const context_budget = @import("context_budget.zig");
 
 test "Session create and lifecycle" {
     var session = try Session.create(std.testing.allocator, "/tmp/test", .{
@@ -119,7 +120,7 @@ test "Session.create deep-dupes the ExecutionPolicy into the session arena" {
     var secrets_obj: std.json.ObjectMap = .init(src);
     try secrets_obj.put(try src.dupe(u8, "fly"), .{ .object = fly_obj });
 
-    const policy = types.ExecutionPolicy{
+    const policy = context_budget.ExecutionPolicy{
         .network_policy = .{ .allow = allow },
         .tools = tools,
         .secrets_map = .{ .object = secrets_obj },

@@ -7,6 +7,7 @@ const std = @import("std");
 const json = @import("json_helpers.zig");
 const protocol = @import("protocol.zig");
 const types = @import("types.zig");
+const context_budget = @import("context_budget.zig");
 const Session = @import("session.zig");
 const SessionStore = @import("runtime/session_store.zig");
 const executor_metrics = @import("executor_metrics.zig");
@@ -41,8 +42,8 @@ const Msg = struct {
 /// into a borrowed `ExecutionPolicy`. Allocates string slices on `alloc`
 /// (the request frame allocator) — the lifetime is bounded by the frame.
 /// `Session.create` deep-dupes into its own arena before the frame ends.
-fn parsePolicy(alloc: std.mem.Allocator, p: std.json.Value) !types.ExecutionPolicy {
-    var policy: types.ExecutionPolicy = .{};
+fn parsePolicy(alloc: std.mem.Allocator, p: std.json.Value) !context_budget.ExecutionPolicy {
+    var policy: context_budget.ExecutionPolicy = .{};
 
     if (p.object.get("network_policy")) |np_val| {
         if (np_val == .object) {
