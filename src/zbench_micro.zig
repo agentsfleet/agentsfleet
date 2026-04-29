@@ -93,17 +93,15 @@ fn benchActivityChunkEncode(allocator: std.mem.Allocator) void {
 }
 
 // ── progress_frame_decode ─ executor → worker hot path
-// Mirrors transport.sendRequestStreaming: parse once to discriminate
-// progress vs terminal, then decodeProgress (which parses again). After
-// the Finding 2 fix this bench's body collapses to the single-parse path.
+// Mirrors transport.sendRequestStreaming: parse once, discriminate
+// progress vs terminal, decode the frame from the already-parsed value.
 fn benchProgressFrameDecode(allocator: std.mem.Allocator) void {
-    var parsed = std.json.parseFromSlice(std.json.Value, allocator, fx.PROGRESS_FRAME_BYTES, .{}) catch @panic("progress parse 1 failed");
+    var parsed = std.json.parseFromSlice(std.json.Value, allocator, fx.PROGRESS_FRAME_BYTES, .{}) catch @panic("progress parse failed");
+    defer parsed.deinit();
     const is_progress = pc.isProgressPayload(parsed.value);
-    parsed.deinit();
     if (!is_progress) @panic("progress fixture invalid");
-    var res = pc.decodeProgress(allocator, fx.PROGRESS_FRAME_BYTES) catch @panic("progress parse 2 failed");
-    defer res.parsed.deinit();
-    std.mem.doNotOptimizeAway(&res.frame);
+    const decoded = pc.decodeProgressFromValue(parsed.value) catch @panic("progress decode failed");
+    std.mem.doNotOptimizeAway(&decoded.frame);
 }
 
 // ── Entry point ───────────────────────────────────────────────────────────
