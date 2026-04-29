@@ -134,6 +134,7 @@ fn parseNameField(
         else => return ZombieConfigError.MissingRequiredField,
     };
     if (s.len == 0) return ZombieConfigError.MissingRequiredField;
+    try validate.validateSkillName(s);
     return try alloc.dupe(u8, s);
 }
 

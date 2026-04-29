@@ -79,6 +79,16 @@ pub fn innerCreateZombie(hx: Hx, req: *httpz.Request, workspace_id: []const u8) 
     };
     defer parsed.deinit(hx.alloc);
 
+    // SKILL.md parsing is validate-only: the spec keeps SKILL.md verbatim
+    // for the LLM (the SOUL half of the SOUL/CONTRACT split — see the
+    // frontmatter schema spec under docs/v*/done/). The parsed metadata
+    // (description/version/tags/author/model/when_to_use) exists to enforce
+    // required fields + the cross-file `name:` invariant here, then
+    // deinit'd below. body.source_markdown is the canonical store; future
+    // readers re-parse if they need a field. If a query pattern emerges
+    // (e.g. "list zombies with model=claude-sonnet-4-6"), promote those
+    // fields to columns or a config_json sidecar — don't assume they're
+    // already persisted.
     var skill_meta = zombie_config.parseSkillMetadata(hx.alloc, body.source_markdown) catch {
         hx.fail(ec.ERR_ZOMBIE_INVALID_CONFIG, ec.MSG_ZOMBIE_SKILL_INVALID);
         return;

@@ -66,3 +66,132 @@ test "validateToolsAndCredentials: alphanumeric + underscore accepted" {
         &[_][]const u8{ "api_key_1", "SECRET_123" },
     );
 }
+
+// ── validateSkillName ──────────────────────────────────────────────────────
+
+test "validateSkillName: kebab slug accepted" {
+    try config_validate.validateSkillName("platform-ops-zombie");
+    try config_validate.validateSkillName("a");
+    try config_validate.validateSkillName("z9");
+}
+
+test "validateSkillName: empty rejected" {
+    try std.testing.expectError(
+        ZombieConfigError.InvalidNameFormat,
+        config_validate.validateSkillName(""),
+    );
+}
+
+test "validateSkillName: 65 chars rejected (over MAX_NAME_LEN)" {
+    const sixty_five = "a" ** 65;
+    try std.testing.expectError(
+        ZombieConfigError.InvalidNameFormat,
+        config_validate.validateSkillName(sixty_five),
+    );
+}
+
+test "validateSkillName: 64 chars accepted (boundary)" {
+    const sixty_four = "a" ** 64;
+    try config_validate.validateSkillName(sixty_four);
+}
+
+test "validateSkillName: uppercase rejected" {
+    try std.testing.expectError(
+        ZombieConfigError.InvalidNameFormat,
+        config_validate.validateSkillName("Foo-bar"),
+    );
+}
+
+test "validateSkillName: underscore rejected (kebab not snake)" {
+    try std.testing.expectError(
+        ZombieConfigError.InvalidNameFormat,
+        config_validate.validateSkillName("foo_bar"),
+    );
+}
+
+test "validateSkillName: space rejected" {
+    try std.testing.expectError(
+        ZombieConfigError.InvalidNameFormat,
+        config_validate.validateSkillName("foo bar"),
+    );
+}
+
+test "validateSkillName: dot rejected" {
+    try std.testing.expectError(
+        ZombieConfigError.InvalidNameFormat,
+        config_validate.validateSkillName("foo.bar"),
+    );
+}
+
+// ── validateSkillVersion ───────────────────────────────────────────────────
+
+test "validateSkillVersion: standard semver accepted" {
+    try config_validate.validateSkillVersion("0.1.0");
+    try config_validate.validateSkillVersion("1.2.3");
+    try config_validate.validateSkillVersion("10.20.30");
+    try config_validate.validateSkillVersion("0.0.0");
+}
+
+test "validateSkillVersion: empty rejected" {
+    try std.testing.expectError(
+        ZombieConfigError.InvalidVersionFormat,
+        config_validate.validateSkillVersion(""),
+    );
+}
+
+test "validateSkillVersion: missing patch rejected" {
+    try std.testing.expectError(
+        ZombieConfigError.InvalidVersionFormat,
+        config_validate.validateSkillVersion("1.2"),
+    );
+}
+
+test "validateSkillVersion: four parts rejected" {
+    try std.testing.expectError(
+        ZombieConfigError.InvalidVersionFormat,
+        config_validate.validateSkillVersion("1.2.3.4"),
+    );
+}
+
+test "validateSkillVersion: leading zero rejected" {
+    try std.testing.expectError(
+        ZombieConfigError.InvalidVersionFormat,
+        config_validate.validateSkillVersion("01.2.3"),
+    );
+    try std.testing.expectError(
+        ZombieConfigError.InvalidVersionFormat,
+        config_validate.validateSkillVersion("1.02.3"),
+    );
+}
+
+test "validateSkillVersion: bare zero per part accepted" {
+    try config_validate.validateSkillVersion("0.0.1");
+}
+
+test "validateSkillVersion: prerelease suffix rejected (not yet supported)" {
+    try std.testing.expectError(
+        ZombieConfigError.InvalidVersionFormat,
+        config_validate.validateSkillVersion("1.2.3-alpha"),
+    );
+}
+
+test "validateSkillVersion: empty part rejected (1..3)" {
+    try std.testing.expectError(
+        ZombieConfigError.InvalidVersionFormat,
+        config_validate.validateSkillVersion("1..3"),
+    );
+}
+
+test "validateSkillVersion: trailing dot rejected" {
+    try std.testing.expectError(
+        ZombieConfigError.InvalidVersionFormat,
+        config_validate.validateSkillVersion("1.2.3."),
+    );
+}
+
+test "validateSkillVersion: non-digit rejected" {
+    try std.testing.expectError(
+        ZombieConfigError.InvalidVersionFormat,
+        config_validate.validateSkillVersion("1.2.x"),
+    );
+}

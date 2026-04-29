@@ -4,6 +4,7 @@ const config_types = @import("config_types.zig");
 
 const extractZombieInstructions = config_markdown.extractZombieInstructions;
 const parseZombieFromTriggerMarkdown = config_markdown.parseZombieFromTriggerMarkdown;
+const parseTriggerMarkdownWithJson = config_markdown.parseTriggerMarkdownWithJson;
 const parseSkillMetadata = config_markdown.parseSkillMetadata;
 const ZombieConfigError = config_types.ZombieConfigError;
 
@@ -164,4 +165,51 @@ test "parseSkillMetadata: unknown top-level keys pass through silently" {
     var meta = try parseSkillMetadata(alloc, skill_md);
     defer meta.deinit(alloc);
     try std.testing.expectEqualStrings("x", meta.name);
+}
+
+// Pins the write-path JSON shape: parseTriggerMarkdownWithJson MUST produce
+// JSON with `x-usezombie:` at the top level and runtime keys nested under
+// it. This is the contract the 3 production read-path SQL queries rely on
+// (config_json->'x-usezombie'->'trigger'->>'source' etc.). If the parser
+// regresses to top-level runtime keys, those queries return null and the
+// regression is silent in production until a webhook fails.
+test "parseTriggerMarkdownWithJson: JSON shape has x-usezombie at top, runtime keys nested" {
+    const alloc = std.testing.allocator;
+    const trigger_md =
+        \\---
+        \\name: shape-pin
+        \\x-usezombie:
+        \\  trigger:
+        \\    type: webhook
+        \\    source: agentmail
+        \\  tools:
+        \\    - agentmail
+        \\  budget:
+        \\    daily_dollars: 1.0
+        \\---
+    ;
+    var parsed = try parseTriggerMarkdownWithJson(alloc, trigger_md);
+    defer parsed.deinit(alloc);
+
+    const j = try std.json.parseFromSlice(std.json.Value, alloc, parsed.config_json, .{});
+    defer j.deinit();
+    const root = j.value.object;
+
+    // x-usezombie block exists at top.
+    const x = root.get("x-usezombie") orelse return error.MissingUsezombieBlock;
+    try std.testing.expect(x == .object);
+    try std.testing.expect(x.object.get("trigger") != null);
+    try std.testing.expect(x.object.get("tools") != null);
+    try std.testing.expect(x.object.get("budget") != null);
+
+    // Runtime keys MUST NOT appear at the top level — that would break
+    // config_json->'x-usezombie'->'trigger' lookups in production.
+    try std.testing.expect(root.get("trigger") == null);
+    try std.testing.expect(root.get("tools") == null);
+    try std.testing.expect(root.get("budget") == null);
+
+    // Nested values reach down correctly.
+    const trig = x.object.get("trigger").?.object;
+    try std.testing.expectEqualStrings("webhook", trig.get("type").?.string);
+    try std.testing.expectEqualStrings("agentmail", trig.get("source").?.string);
 }

@@ -19,6 +19,8 @@ pub const ZombieConfigError = error{
     UnknownRuntimeKey,
     UsezombieBlockRequired,
     NameMismatch,
+    InvalidNameFormat,
+    InvalidVersionFormat,
 };
 
 pub const ZombieStatus = enum {

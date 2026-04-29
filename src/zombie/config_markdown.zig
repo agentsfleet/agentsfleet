@@ -13,6 +13,7 @@ const Allocator = std.mem.Allocator;
 
 const config_types = @import("config_types.zig");
 const config_parser = @import("config_parser.zig");
+const config_validate = @import("config_validate.zig");
 const yaml_frontmatter = @import("yaml_frontmatter.zig");
 
 const ZombieConfig = config_types.ZombieConfig;
@@ -157,10 +158,12 @@ fn buildSkillMetadata(
 ) (Allocator.Error || ZombieConfigError)!SkillMetadata {
     const name = try dupeRequiredString(alloc, root, "name");
     errdefer alloc.free(name);
+    try config_validate.validateSkillName(name);
     const description = try dupeRequiredString(alloc, root, "description");
     errdefer alloc.free(description);
     const version = try dupeRequiredString(alloc, root, "version");
     errdefer alloc.free(version);
+    try config_validate.validateSkillVersion(version);
 
     const when_to_use = try dupeOptionalString(alloc, root, "when_to_use");
     errdefer if (when_to_use) |s| alloc.free(s);
