@@ -53,15 +53,17 @@ const STATUS_GATE_BLOCKED = "gate_blocked";
 const EmitterCtx = struct {
     redis: *queue_redis.Client,
     alloc: Allocator,
+    scratch: *activity_publisher.Scratch,
     zombie_id: []const u8,
     event_id: []const u8,
 };
 
 fn emitProgress(ctx_ptr: *anyopaque, frame: progress_callbacks.ProgressFrame) void {
-    const ctx: *const EmitterCtx = @ptrCast(@alignCast(ctx_ptr));
+    const ctx: *EmitterCtx = @ptrCast(@alignCast(ctx_ptr));
     switch (frame) {
         .tool_call_started => |body| activity_publisher.publishToolCallStarted(
             ctx.redis,
+            ctx.scratch,
             ctx.alloc,
             ctx.zombie_id,
             ctx.event_id,
@@ -70,14 +72,14 @@ fn emitProgress(ctx_ptr: *anyopaque, frame: progress_callbacks.ProgressFrame) vo
         ),
         .agent_response_chunk => |body| activity_publisher.publishChunk(
             ctx.redis,
-            ctx.alloc,
+            ctx.scratch,
             ctx.zombie_id,
             ctx.event_id,
             body.text,
         ),
         .tool_call_completed => |body| activity_publisher.publishToolCallCompleted(
             ctx.redis,
-            ctx.alloc,
+            ctx.scratch,
             ctx.zombie_id,
             ctx.event_id,
             body.name,
@@ -85,7 +87,7 @@ fn emitProgress(ctx_ptr: *anyopaque, frame: progress_callbacks.ProgressFrame) vo
         ),
         .tool_call_progress => |body| activity_publisher.publishToolCallProgress(
             ctx.redis,
-            ctx.alloc,
+            ctx.scratch,
             ctx.zombie_id,
             ctx.event_id,
             body.name,
@@ -124,8 +126,8 @@ fn insertReceivedRow(
 // ── UPDATE zombie_events status=gate_blocked + PUBLISH + XACK ───────────────
 
 fn markGateBlocked(
-    alloc: Allocator,
     cfg: EventLoopConfig,
+    scratch: *activity_publisher.Scratch,
     session: *ZombieSession,
     event: *const redis_zombie.ZombieEvent,
     failure_label: []const u8,
@@ -143,7 +145,7 @@ fn markGateBlocked(
     , .{ session.zombie_id, event.event_id, failure_label, now_ms }) catch |err| {
         log.warn("zombie_event_loop.gate_blocked_update_fail zombie_id={s} event_id={s} err={s}", .{ session.zombie_id, event.event_id, @errorName(err) });
     };
-    activity_publisher.publishEventComplete(cfg.redis, alloc, session.zombie_id, event.event_id, STATUS_GATE_BLOCKED);
+    activity_publisher.publishEventComplete(cfg.redis, scratch, session.zombie_id, event.event_id, STATUS_GATE_BLOCKED);
     redis_zombie.xackZombie(cfg.redis, session.zombie_id, event.event_id) catch |err| {
         obs_log.logWarnErr(.zombie_event_loop, err, "zombie_event_loop.gate_blocked_xack_fail zombie_id={s} event_id={s}", .{ session.zombie_id, event.event_id });
     };
@@ -235,6 +237,7 @@ fn runGates(
 
 fn finalize(
     alloc: Allocator,
+    scratch: *activity_publisher.Scratch,
     session: *ZombieSession,
     event: *const redis_zombie.ZombieEvent,
     cfg: EventLoopConfig,
@@ -263,7 +266,7 @@ fn finalize(
     };
     helpers.logDeliveryResult(cfg, alloc, session, event, stage_result, wall_ms);
     const status_text: []const u8 = if (stage_result.exit_ok) STATUS_PROCESSED else STATUS_AGENT_ERROR;
-    activity_publisher.publishEventComplete(cfg.redis, alloc, session.zombie_id, event.event_id, status_text);
+    activity_publisher.publishEventComplete(cfg.redis, scratch, session.zombie_id, event.event_id, status_text);
     redis_zombie.xackZombie(cfg.redis, session.zombie_id, event.event_id) catch |err| {
         obs_log.logWarnErr(.zombie_event_loop, err, "zombie_event_loop.xack_fail zombie_id={s} event_id={s}", .{ session.zombie_id, event.event_id });
     };
@@ -285,12 +288,14 @@ pub fn run(
         helpers.sleepWithBackoff(cfg, consecutive_errors.* + 1);
         return consecutive_errors.* + 1;
     };
-    activity_publisher.publishEventReceived(cfg.redis, alloc, session.zombie_id, event.event_id, event.actor);
+    var scratch: activity_publisher.Scratch = .init(alloc);
+    defer scratch.deinit();
+    activity_publisher.publishEventReceived(cfg.redis, &scratch, session.zombie_id, event.event_id, event.actor);
 
     switch (runGates(alloc, cfg, session, event)) {
         .passed => {},
         .blocked => |label| {
-            markGateBlocked(alloc, cfg, session, event, label);
+            markGateBlocked(cfg, &scratch, session, event, label);
             return 0;
         },
     }
@@ -298,6 +303,7 @@ pub fn run(
     var emitter_ctx = EmitterCtx{
         .redis = cfg.redis,
         .alloc = alloc,
+        .scratch = &scratch,
         .zombie_id = session.zombie_id,
         .event_id = event.event_id,
     };
@@ -319,6 +325,6 @@ pub fn run(
         break :blk now.since(s) / std.time.ns_per_ms;
     } else 0;
 
-    finalize(alloc, session, event, cfg, &stage_result, epoch_wall_time_ms, wall_ms);
+    finalize(alloc, &scratch, session, event, cfg, &stage_result, epoch_wall_time_ms, wall_ms);
     return 0;
 }

@@ -78,18 +78,21 @@ fn benchWebhookSignatureVerify(allocator: std.mem.Allocator) void {
 }
 
 // ── activity_chunk_encode ─ streaming-substrate hot path
-// Mirrors `activity_publisher.publishChunk` encode step exactly: shape
-// the frame, serialize via valueAlloc, free. When the publisher migrates
-// to a scratch ArrayList, this bench gets rewritten in lockstep so the
-// pre/post delta surfaces cleanly.
+// Mirrors `activity_publisher.publishChunk` encode step: clearRetaining
+// the per-event scratch buffer, encode the frame via the Writer
+// interface. Steady-state allocator round-trips → 0 after warmup.
+var bench_chunk_scratch: ?std.io.Writer.Allocating = null;
+
 fn benchActivityChunkEncode(allocator: std.mem.Allocator) void {
-    const payload = std.json.Stringify.valueAlloc(allocator, .{
+    if (bench_chunk_scratch == null) bench_chunk_scratch = .init(allocator);
+    const scratch = &bench_chunk_scratch.?;
+    scratch.clearRetainingCapacity();
+    std.json.Stringify.value(.{
         .kind = "chunk",
         .event_id = fx.CHUNK_EVENT_ID,
         .text = fx.CHUNK_TEXT,
-    }, .{}) catch @panic("chunk encode OOM");
-    defer allocator.free(payload);
-    std.mem.doNotOptimizeAway(payload.ptr);
+    }, .{}, &scratch.writer) catch @panic("chunk encode failed");
+    std.mem.doNotOptimizeAway(scratch.written().ptr);
 }
 
 // ── progress_frame_decode ─ executor → worker hot path
