@@ -4,12 +4,12 @@
 **Milestone:** M41
 **Workstream:** 001
 **Date:** Apr 25, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — launch-blocking. Without this the "secrets never in agent context" claim is hollow (creds flow as raw strings) AND long-running incidents crash the model when context overflows. Two independent guarantees that compose at the same boundary: `executor.createExecution`.
 **Categories:** API
 **Batch:** B1 — parallel with M40 (worker), M42 (streaming), M44 (install contract), M45 (vault).
-**Branch:** feat/m41-context-layering (to be created)
-**Depends on:** M40_001 (control stream — config hot-reload consumes the `zombie_config_changed` signal). M45_001 (vault structured creds — required for `secrets_map` resolution; if M45 lands later, M41 ships with placeholder single-string fallback).
+**Branch:** feat/m41-context-layering
+**Depends on:** M40_001 (control stream — control stream + `zombie_config_changed` signal landed Apr 25, 2026). M45_001 (vault structured creds — landed; `secrets_map` resolution uses the structured form directly, no single-string fallback needed).
 
 **Canonical architecture:** `docs/ARCHITECHTURE.md` §10 (Capabilities — per-execution policy row + context lifecycle row), §11 (Context Lifecycle — full L1+L2+L3 mechanics), §12 step 8a/8b (executor invocation + tool-bridge substitution).
 
