@@ -180,9 +180,9 @@ describe("EventsList", () => {
     });
     const times = container.querySelectorAll("time");
     expect(times.length).toBe(1);
-    expect(times[0].getAttribute("datetime")).toMatch(/^2026-01-02T/);
+    expect(times[0]!.getAttribute("datetime")).toMatch(/^2026-01-02T/);
     // "HH:MM" formatted in local time — assert digits/colon shape
-    expect(times[0].textContent).toMatch(/^\d{2}:\d{2}$/);
+    expect(times[0]!.textContent).toMatch(/^\d{2}:\d{2}$/);
   });
 
   it("loadMore (zombie scope) appends items and updates cursor", async () => {
@@ -315,7 +315,7 @@ describe("LiveEventsPanel", () => {
   it("opens an EventSource against the same-origin stream URL on mount", () => {
     mount();
     expect(FakeEventSource.instances.length).toBe(1);
-    expect(FakeEventSource.instances[0].url).toBe(
+    expect(FakeEventSource.instances[0]!.url).toBe(
       "/backend/v1/workspaces/ws_1/zombies/zomb_1/events/stream",
     );
   });
@@ -323,7 +323,7 @@ describe("LiveEventsPanel", () => {
   it("starts in connecting state, transitions to live on onopen", async () => {
     mount();
     expect(screen.getByText(/Connecting…/)).toBeTruthy();
-    act(() => FakeEventSource.instances[0].open());
+    act(() => FakeEventSource.instances[0]!.open());
     await waitFor(() => expect(screen.getByText(/^Live$/)).toBeTruthy());
   });
 
@@ -334,7 +334,7 @@ describe("LiveEventsPanel", () => {
 
   it("appends each well-formed frame and renders the kind summary", async () => {
     mount();
-    const es = FakeEventSource.instances[0];
+    const es = FakeEventSource.instances[0]!;
     act(() => es.open());
     const frames: LiveFrame[] = [
       { kind: FRAME_KIND.EVENT_RECEIVED, event_id: "evt_1", actor: "alice" },
@@ -356,7 +356,7 @@ describe("LiveEventsPanel", () => {
 
   it("drops malformed frames: invalid JSON, non-object, missing kind", async () => {
     mount();
-    const es = FakeEventSource.instances[0];
+    const es = FakeEventSource.instances[0]!;
     act(() => es.open());
     act(() => es.emit("{not json"));
     act(() => es.emit("null"));
@@ -377,7 +377,7 @@ describe("LiveEventsPanel", () => {
 
   it("falls back to empty summary for unknown frame kind (defensive default)", async () => {
     mount();
-    const es = FakeEventSource.instances[0];
+    const es = FakeEventSource.instances[0]!;
     act(() => es.open());
     act(() => es.emit(JSON.stringify({ kind: "bogus_kind" })));
     await waitFor(() => expect(screen.getAllByRole("listitem").length).toBe(1));
@@ -387,7 +387,7 @@ describe("LiveEventsPanel", () => {
 
   it("rolls older frames off when buffer size is exceeded", async () => {
     mount({ bufferSize: 3 });
-    const es = FakeEventSource.instances[0];
+    const es = FakeEventSource.instances[0]!;
     act(() => es.open());
     for (let i = 0; i < 5; i++) {
       act(() =>
@@ -409,7 +409,7 @@ describe("LiveEventsPanel", () => {
     vi.useFakeTimers();
     try {
       mount();
-      const first = FakeEventSource.instances[0];
+      const first = FakeEventSource.instances[0]!;
       act(() => first.open());
       act(() => first.fail());
       expect(screen.getByText(/Reconnecting…/)).toBeTruthy();
@@ -429,7 +429,7 @@ describe("LiveEventsPanel", () => {
     try {
       mount();
       for (let i = 0; i < 7; i++) {
-        const es = FakeEventSource.instances[FakeEventSource.instances.length - 1];
+        const es = FakeEventSource.instances[FakeEventSource.instances.length - 1]!;
         act(() => es.fail());
         act(() => {
           vi.advanceTimersByTime(15_000);
@@ -445,7 +445,7 @@ describe("LiveEventsPanel", () => {
     vi.useFakeTimers();
     try {
       const { unmount } = mount();
-      const first = FakeEventSource.instances[0];
+      const first = FakeEventSource.instances[0]!;
       act(() => first.fail());
       unmount();
       expect(first.closed).toBe(true);
