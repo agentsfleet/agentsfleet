@@ -91,13 +91,14 @@ pub fn resolveGateDecision(
     pool: *pg.Pool,
     action_id: []const u8,
     status: GateStatus,
+    by: []const u8,
     detail: []const u8,
 ) void {
     const sink_alloc = std.heap.page_allocator;
     const args: ResolveArgs = .{
         .action_id = action_id,
         .outcome = status,
-        .by = "",
+        .by = by,
         .reason = detail,
     };
     var outcome = args.atomic(pool, sink_alloc) catch |err| {

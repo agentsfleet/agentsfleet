@@ -9,6 +9,7 @@ const Allocator = std.mem.Allocator;
 
 const zombie_config = @import("config.zig");
 const approval_gate = @import("approval_gate.zig");
+const resolver = @import("approval_gate_resolver.zig");
 const queue_redis = @import("../queue/redis_client.zig");
 const redis_zombie = @import("../queue/redis_zombie.zig");
 const error_codes = @import("../errors/error_registry.zig");
@@ -144,7 +145,12 @@ fn handleApprovalFlow(
         },
         .timed_out => blk: {
             logGateActivity(pool, alloc, session, error_codes.GATE_EVENT_TIMEOUT, action_id);
-            approval_gate.resolveGateDecision(pool, action_id, .timed_out, "");
+            // Worker detects its own expiry ~60s before the sweeper's next
+            // cycle, so this path wins the race in every non-crash case;
+            // attribution must be the canonical "system:timeout" string the
+            // sweeper also writes, not "" (which would render blank in the
+            // dashboard's "resolved by" surface).
+            approval_gate.resolveGateDecision(pool, action_id, .timed_out, resolver.SYSTEM_TIMEOUT, "");
             cleanupPendingKey(redis, session.zombie_id, action_id);
             break :blk .{ .blocked = .timeout };
         },
