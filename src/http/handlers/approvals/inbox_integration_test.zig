@@ -19,23 +19,27 @@ const approval_gate_sweeper = @import("../../../zombie/approval_gate_sweeper.zig
 
 const ALLOC = std.testing.allocator;
 
-// Distinct workspace + zombie ids so we don't collide with neighbour suites
-// (events_integration_test, cross_workspace_idor_test, et al.). Every UUID
-// here ends in `…approval…` so a grep on test failure points at this file.
-const TEST_TENANT_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a7f01";
-const TEST_WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a7f11";
-const OTHER_WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a7f99";
+// Reuse the JWT signing fixture (kid + JWKS + tenant/workspace claims) from
+// events_integration_test.zig so we don't have to mint a fresh signature.
+// Workspace + tenant ids match events_integration_test; ON CONFLICT DO
+// NOTHING on the seed inserts handles the inevitable shared-row collisions.
+// Zombie ids are distinct so per-suite cleanup (DELETE WHERE workspace_id=…)
+// doesn't strand the other suite's rows.
+const TEST_TENANT_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01";
+const TEST_WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
+// OTHER_WORKSPACE_ID is in the same tenant but not in the token's claims.
+// A second workspace row is inserted under it so the cross-workspace 404
+// test has somewhere to seed a gate that the operator token cannot reach.
+const OTHER_WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f99";
 const ZOMBIE_A = "0195b4ba-8d3a-7f13-8abc-2b3e1e0aa701";
 const ZOMBIE_B = "0195b4ba-8d3a-7f13-8abc-2b3e1e0aa702";
 const TEST_ISSUER = "https://clerk.dev.usezombie.com";
 const TEST_AUDIENCE = "https://api.usezombie.com";
 const TEST_JWKS =
-    \\{"keys":[{"kty":"RSA","n":"2hg972tpbq8H6kzRZ3oVL4wZ9bO-04gJ6gCig68aluyRBzagx-7XXPCiuX80oBHBVj51kvMjT_QDNXfrwzjy4cPbwiVV4HqOGpeIZkPEopfyzs4G7mjiQmx0YuM_5WQUlUjji6Y_DfeaoH-yOhTWBMBVoI0vW_1n66CFaGuEarj3VasdWYxObJTBAM6Jn4XZDcDsBBPNGO4ku7yILkfi11FqXfBP2V8NT0hAGXVAxlWwv-8up1RDzgACp-8JWoC2-kOUJN82fGenDGKq9hW_sumO-4YPNP4U1smnw5jzLlvKa0LBrYG8IgW-3Dniuq2mojhrD_ZQClUd5rF42OyYqw","e":"AQAB","kid":"approvals-test-kid","use":"sig","alg":"RS256"}]}
+    \\{"keys":[{"kty":"RSA","n":"2hg972tpbq8H6kzRZ3oVL4wZ9bO-04gJ6gCig68aluyRBzagx-7XXPCiuX80oBHBVj51kvMjT_QDNXfrwzjy4cPbwiVV4HqOGpeIZkPEopfyzs4G7mjiQmx0YuM_5WQUlUjji6Y_DfeaoH-yOhTWBMBVoI0vW_1n66CFaGuEarj3VasdWYxObJTBAM6Jn4XZDcDsBBPNGO4ku7yILkfi11FqXfBP2V8NT0hAGXVAxlWwv-8up1RDzgACp-8JWoC2-kOUJN82fGenDGKq9hW_sumO-4YPNP4U1smnw5jzLlvKa0LBrYG8IgW-3Dniuq2mojhrD_ZQClUd5rF42OyYqw","e":"AQAB","kid":"rbac-test-kid","use":"sig","alg":"RS256"}]}
 ;
-// Pre-signed JWT (operator role, target tenant + workspace, far-future exp).
-// Re-uses the same RSA key as events_integration_test; only the kid differs.
 const TOKEN_OPERATOR =
-    "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6ImFwcHJvdmFscy10ZXN0LWtpZCJ9.eyJzdWIiOiJ1c2VyX2FwcHJvdmFscyIsImlzcyI6Imh0dHBzOi8vY2xlcmsuZGV2LnVzZXpvbWJpZS5jb20iLCJhdWQiOiJodHRwczovL2FwaS51c2V6b21iaWUuY29tIiwiZXhwIjo0MTAyNDQ0ODAwLCJtZXRhZGF0YSI6eyJ0ZW5hbnRfaWQiOiIwMTk1YjRiYS04ZDNhLTdmMTMtOGFiYy0yYjNlMWUwYTdmMDEiLCJ3b3Jrc3BhY2VfaWQiOiIwMTk1YjRiYS04ZDNhLTdmMTMtOGFiYy0yYjNlMWUwYTdmMTEiLCJyb2xlIjoib3BlcmF0b3IifX0.placeholder-signature-overwritten-by-helper";
+    "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6InJiYWMtdGVzdC1raWQifQ.eyJzdWIiOiJ1c2VyX3Rlc3QiLCJpc3MiOiJodHRwczovL2NsZXJrLmRldi51c2V6b21iaWUuY29tIiwiYXVkIjoiaHR0cHM6Ly9hcGkudXNlem9tYmllLmNvbSIsImV4cCI6NDEwMjQ0NDgwMCwibWV0YWRhdGEiOnsidGVuYW50X2lkIjoiMDE5NWI0YmEtOGQzYS03ZjEzLThhYmMtMmIzZTFlMGE2ZjAxIiwid29ya3NwYWNlX2lkIjoiMDE5NWI0YmEtOGQzYS03ZjEzLThhYmMtMmIzZTFlMGE2ZjExIiwicm9sZSI6Im9wZXJhdG9yIn19.V84uE69RTLrRef0sogegUcUZeKWx8E68GEruFoS8HegUa3o7bVCfQjlkllNSbtUut919EygbQv1C16BMfNTOAv1Lvl3AeLYPYr4ni6EnzzGllbyxDw1aY68AGWEEvKOUxd5wCGl8BnEqaOKX7KNNbAOV4AzJNWqnV-uxJiZl6oDtqi8bsSF1HAm9qY9MAl6AwoZLGnT_x6ux_3vfKy_9ckZSbgjN7laZOMqQ5nwwcaSpwYNm_3ZpXJLgHYMVxel2M4rT0SIaFh__rE42yGE9FBDRUFoyktGOR3NYPOzogjj3tfOoecC8NEhrwifzXcSNVAiHOMnmXojjAPEUORovPg";
 
 fn configureRegistry(_: *auth_mw.MiddlewareRegistry, _: *TestHarness) anyerror!void {}
 
@@ -162,7 +166,7 @@ test "integration: approvals POST :approve — no bearer → 401" {
 
     const url = try std.fmt.allocPrint(ALLOC, "/v1/workspaces/{s}/approvals/01999999-9999-7999-9999-999999999999:approve", .{TEST_WORKSPACE_ID});
     defer ALLOC.free(url);
-    const r = try (h.post(url)).send();
+    const r = try (try (h.post(url)).json("{}")).send();
     defer r.deinit();
     try r.expectStatus(.unauthorized);
 }
@@ -334,7 +338,7 @@ test "integration: approvals POST :approve — cross-workspace gate_id → 404" 
 
     const url = try std.fmt.allocPrint(ALLOC, "/v1/workspaces/{s}/approvals/01999999-8888-7000-8000-000000000001:approve", .{TEST_WORKSPACE_ID});
     defer ALLOC.free(url);
-    const r = try (try (h.post(url)).bearer(TOKEN_OPERATOR)).send();
+    const r = try (try (try (h.post(url)).bearer(TOKEN_OPERATOR)).json("{}")).send();
     defer r.deinit();
     try r.expectStatus(.not_found);
 }
@@ -347,6 +351,7 @@ test "integration: approvals POST :approve — pending → approved + resolved_b
         else => return err,
     };
     defer h.deinit();
+    if (!h.tryConnectRedis()) return error.SkipZigTest;
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
     defer cleanupTestData(conn);
@@ -356,7 +361,7 @@ test "integration: approvals POST :approve — pending → approved + resolved_b
 
     const url = try std.fmt.allocPrint(ALLOC, "/v1/workspaces/{s}/approvals/{s}:approve", .{ TEST_WORKSPACE_ID, gid });
     defer ALLOC.free(url);
-    const r = try (try (h.post(url)).bearer(TOKEN_OPERATOR)).send();
+    const r = try (try (try (h.post(url)).bearer(TOKEN_OPERATOR)).json("{}")).send();
     defer r.deinit();
     try r.expectStatus(.ok);
     try std.testing.expect(std.mem.indexOf(u8, r.body, "\"outcome\":\"approved\"") != null);
@@ -373,6 +378,7 @@ test "integration: approvals POST :deny — pending → denied" {
         else => return err,
     };
     defer h.deinit();
+    if (!h.tryConnectRedis()) return error.SkipZigTest;
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
     defer cleanupTestData(conn);
@@ -382,7 +388,7 @@ test "integration: approvals POST :deny — pending → denied" {
 
     const url = try std.fmt.allocPrint(ALLOC, "/v1/workspaces/{s}/approvals/{s}:deny", .{ TEST_WORKSPACE_ID, gid });
     defer ALLOC.free(url);
-    const r = try (try (h.post(url)).bearer(TOKEN_OPERATOR)).send();
+    const r = try (try (try (h.post(url)).bearer(TOKEN_OPERATOR)).json("{}")).send();
     defer r.deinit();
     try r.expectStatus(.ok);
     try std.testing.expect(std.mem.indexOf(u8, r.body, "\"outcome\":\"denied\"") != null);
@@ -398,6 +404,7 @@ test "integration: approvals POST :approve twice — second call returns 409 wit
         else => return err,
     };
     defer h.deinit();
+    if (!h.tryConnectRedis()) return error.SkipZigTest;
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
     defer cleanupTestData(conn);
@@ -408,11 +415,11 @@ test "integration: approvals POST :approve twice — second call returns 409 wit
     const url = try std.fmt.allocPrint(ALLOC, "/v1/workspaces/{s}/approvals/{s}:approve", .{ TEST_WORKSPACE_ID, gid });
     defer ALLOC.free(url);
 
-    const first = try (try (h.post(url)).bearer(TOKEN_OPERATOR)).send();
+    const first = try (try (try (h.post(url)).bearer(TOKEN_OPERATOR)).json("{}")).send();
     defer first.deinit();
     try first.expectStatus(.ok);
 
-    const second = try (try (h.post(url)).bearer(TOKEN_OPERATOR)).send();
+    const second = try (try (try (h.post(url)).bearer(TOKEN_OPERATOR)).json("{}")).send();
     defer second.deinit();
     try second.expectStatus(.conflict);
     try second.expectErrorCode("UZ-APPROVAL-006");
@@ -425,6 +432,7 @@ test "integration: approvals POST :deny on already-approved row → 409 with pri
         else => return err,
     };
     defer h.deinit();
+    if (!h.tryConnectRedis()) return error.SkipZigTest;
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
     defer cleanupTestData(conn);
@@ -434,13 +442,13 @@ test "integration: approvals POST :deny on already-approved row → 409 with pri
 
     const approve_url = try std.fmt.allocPrint(ALLOC, "/v1/workspaces/{s}/approvals/{s}:approve", .{ TEST_WORKSPACE_ID, gid });
     defer ALLOC.free(approve_url);
-    const first = try (try (h.post(approve_url)).bearer(TOKEN_OPERATOR)).send();
+    const first = try (try (try (h.post(approve_url)).bearer(TOKEN_OPERATOR)).json("{}")).send();
     defer first.deinit();
     try first.expectStatus(.ok);
 
     const deny_url = try std.fmt.allocPrint(ALLOC, "/v1/workspaces/{s}/approvals/{s}:deny", .{ TEST_WORKSPACE_ID, gid });
     defer ALLOC.free(deny_url);
-    const second = try (try (h.post(deny_url)).bearer(TOKEN_OPERATOR)).send();
+    const second = try (try (try (h.post(deny_url)).bearer(TOKEN_OPERATOR)).json("{}")).send();
     defer second.deinit();
     try second.expectStatus(.conflict);
     try std.testing.expect(std.mem.indexOf(u8, second.body, "\"outcome\":\"approved\"") != null);

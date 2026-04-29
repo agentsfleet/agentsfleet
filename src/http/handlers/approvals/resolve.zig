@@ -45,15 +45,19 @@ pub fn innerResolveApproval(
 
     const reason = parseReason(hx, req) orelse return;
 
-    const conn = hx.ctx.pool.acquire() catch {
-        common.internalDbUnavailable(hx.res, hx.req_id);
-        return;
-    };
-    defer hx.ctx.pool.release(conn);
-
-    if (!common.authorizeWorkspaceAndSetTenantContext(conn, hx.principal, workspace_id)) {
-        hx.fail(ec.ERR_FORBIDDEN, "Workspace access denied");
-        return;
+    // Authz scope: hold conn only for the workspace check, then release so
+    // downstream pool-acquiring calls (getByGateId, approval_gate.resolve)
+    // don't deadlock on small test pools.
+    {
+        const conn = hx.ctx.pool.acquire() catch {
+            common.internalDbUnavailable(hx.res, hx.req_id);
+            return;
+        };
+        defer hx.ctx.pool.release(conn);
+        if (!common.authorizeWorkspaceAndSetTenantContext(conn, hx.principal, workspace_id)) {
+            hx.fail(ec.ERR_FORBIDDEN, "Workspace access denied");
+            return;
+        }
     }
 
     // Look up the row to get its action_id (the Redis-side identifier the
