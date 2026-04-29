@@ -11,11 +11,11 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const types = @import("types.zig");
-const session_mod = @import("session.zig");
+const Session = @import("session.zig");
+const SessionStore = @import("runtime/session_store.zig");
 const cgroup = @import("cgroup.zig");
 const client_mod = @import("client.zig");
 
-const Session = session_mod.Session;
 
 fn testCorrelation() types.CorrelationContext {
     return .{
@@ -255,7 +255,7 @@ test "T11: session create/record/destroy cycle has no leaks" {
 
 test "T11: SessionStore lifecycle with resource-bearing sessions has no leaks" {
     const alloc = std.testing.allocator;
-    var store = session_mod.SessionStore.init(alloc);
+    var store = SessionStore.init(alloc);
     defer store.deinit();
 
     for (0..10) |i| {

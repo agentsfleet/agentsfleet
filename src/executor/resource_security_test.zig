@@ -16,13 +16,12 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const types = @import("types.zig");
-const session_mod = @import("session.zig");
+const Session = @import("session.zig");
+const SessionStore = @import("runtime/session_store.zig");
 const cgroup = @import("cgroup.zig");
 const executor_metrics = @import("executor_metrics.zig");
 const runner = @import("runner.zig");
 
-const Session = session_mod.Session;
-const SessionStore = session_mod.SessionStore;
 
 fn testCorrelation() types.CorrelationContext {
     return .{

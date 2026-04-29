@@ -20,7 +20,8 @@ const builtin = @import("builtin");
 const runner = @import("runner.zig");
 const types = @import("types.zig");
 const executor_metrics = @import("executor_metrics.zig");
-const session_mod = @import("session.zig");
+const Session = @import("session.zig");
+const SessionStore = @import("runtime/session_store.zig");
 const network = @import("network.zig");
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -169,7 +170,7 @@ test "T10: ResourceLimits network egress is denied by default" {
 
 test "T1: Session.recordStageResult accumulates tokens and wall_seconds" {
     const page = std.heap.page_allocator;
-    var session = try session_mod.Session.create(page, "/tmp/ws", .{
+    var session = try Session.create(page, "/tmp/ws", .{
         .trace_id = "t",
         .zombie_id = "r",
         .workspace_id = "w",
@@ -188,7 +189,7 @@ test "T1: Session.recordStageResult accumulates tokens and wall_seconds" {
 
 test "T1: Session.getUsage reflects last_result failure" {
     const page = std.heap.page_allocator;
-    var session = try session_mod.Session.create(page, "/tmp/ws", .{
+    var session = try Session.create(page, "/tmp/ws", .{
         .trace_id = "t",
         .zombie_id = "r",
         .workspace_id = "w",
@@ -207,7 +208,7 @@ test "T1: Session.getUsage reflects last_result failure" {
 
 test "T2: Session.getUsage with no stages returns safe defaults" {
     const page = std.heap.page_allocator;
-    var session = try session_mod.Session.create(page, "/tmp/ws", .{
+    var session = try Session.create(page, "/tmp/ws", .{
         .trace_id = "t",
         .zombie_id = "r",
         .workspace_id = "w",
@@ -227,7 +228,7 @@ test "T2: Session.getUsage with no stages returns safe defaults" {
 
 test "T5: Session.cancel is atomic — concurrent cancel from 8 threads" {
     const page = std.heap.page_allocator;
-    var session = try session_mod.Session.create(page, "/tmp/ws", .{
+    var session = try Session.create(page, "/tmp/ws", .{
         .trace_id = "t",
         .zombie_id = "r",
         .workspace_id = "w",
@@ -236,7 +237,7 @@ test "T5: Session.cancel is atomic — concurrent cancel from 8 threads" {
     defer session.destroy();
 
     const Canceller = struct {
-        fn run(s: *session_mod.Session) void {
+        fn run(s: *Session) void {
             s.cancel();
         }
     };
@@ -253,7 +254,7 @@ test "T5: Session.cancel is atomic — concurrent cancel from 8 threads" {
 
 test "T5: Concurrent lease touch from 8 threads — no data race" {
     const page = std.heap.page_allocator;
-    var session = try session_mod.Session.create(page, "/tmp/ws", .{
+    var session = try Session.create(page, "/tmp/ws", .{
         .trace_id = "t",
         .zombie_id = "r",
         .workspace_id = "w",
@@ -262,7 +263,7 @@ test "T5: Concurrent lease touch from 8 threads — no data race" {
     defer session.destroy();
 
     const Toucher = struct {
-        fn run(s: *session_mod.Session) void {
+        fn run(s: *Session) void {
             for (0..100) |_| {
                 s.touchLease();
             }
@@ -323,7 +324,7 @@ test "T2: LeaseState with very large timeout never expires" {
 
 test "T3: SessionStore.reapExpired only removes expired sessions, leaves active ones" {
     const page = std.heap.page_allocator;
-    var store = session_mod.SessionStore.init(page);
+    var store = SessionStore.init(page);
     defer store.deinit();
 
     // Create 3 sessions that will expire (1ms lease).
@@ -331,8 +332,8 @@ test "T3: SessionStore.reapExpired only removes expired sessions, leaves active 
     // iteration and produce dangling pointers since Session stores the slice
     // header without copying the bytes.
     for (0..3) |_| {
-        const s = try page.create(session_mod.Session);
-        s.* = try session_mod.Session.create(page, "/tmp/ws", .{
+        const s = try page.create(Session);
+        s.* = try Session.create(page, "/tmp/ws", .{
             .trace_id = "t",
             .zombie_id = "r",
             .workspace_id = "w",
@@ -343,8 +344,8 @@ test "T3: SessionStore.reapExpired only removes expired sessions, leaves active 
 
     // Create 2 sessions with long lease (30s).
     for (0..2) |_| {
-        const s = try page.create(session_mod.Session);
-        s.* = try session_mod.Session.create(page, "/tmp/ws", .{
+        const s = try page.create(Session);
+        s.* = try Session.create(page, "/tmp/ws", .{
             .trace_id = "t",
             .zombie_id = "r",
             .workspace_id = "w",

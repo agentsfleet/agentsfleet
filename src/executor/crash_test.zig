@@ -12,7 +12,8 @@ const std = @import("std");
 const builtin = @import("builtin");
 const transport = @import("transport.zig");
 const handler_mod = @import("handler.zig");
-const session_mod = @import("session.zig");
+const Session = @import("session.zig");
+const SessionStore = @import("runtime/session_store.zig");
 const protocol = @import("protocol.zig");
 const types = @import("types.zig");
 const client_mod = @import("client.zig");
@@ -58,7 +59,7 @@ test "crash: executor stops mid-session, client RPC returns TransportLoss" {
     const alloc = std.testing.allocator;
     const path = "/tmp/zombie-executor-crash-test.sock";
 
-    var store = session_mod.SessionStore.init(alloc);
+    var store = SessionStore.init(alloc);
     defer store.deinit();
 
     var rpc_handler = handler_mod.Handler.init(alloc, &store, 30_000, .{}, .deny_all);
@@ -119,16 +120,16 @@ test "crash: executor stops mid-session, client RPC returns TransportLoss" {
 test "crash: worker disappears, lease reaper cleans orphaned sessions" {
     // Use page_allocator to avoid test allocator leak noise from arena internals.
     const page = std.heap.page_allocator;
-    var store = session_mod.SessionStore.init(page);
+    var store = SessionStore.init(page);
     defer store.deinit();
 
     // Simulate: worker created sessions but then crashed (never sent heartbeats).
     // Sessions have 50ms lease — will expire quickly.
     for (0..3) |i| {
-        const session = try page.create(session_mod.Session);
+        const session = try page.create(Session);
         var stage_buf: [8]u8 = undefined;
         const session_id = std.fmt.bufPrint(&stage_buf, "s-{d}", .{i}) catch "s";
-        session.* = try session_mod.Session.create(page, "/tmp/test", .{
+        session.* = try Session.create(page, "/tmp/test", .{
             .trace_id = "trace-orphan",
             .zombie_id = "run-orphan",
             .workspace_id = "ws-orphan",
@@ -159,7 +160,7 @@ test "crash: executor restart, worker reconnects to new socket" {
     const path = "/tmp/zombie-executor-restart-test.sock";
 
     // Start first executor.
-    var store1 = session_mod.SessionStore.init(alloc);
+    var store1 = SessionStore.init(alloc);
 
     var handler1 = handler_mod.Handler.init(alloc, &store1, 30_000, .{}, .deny_all);
 
@@ -200,7 +201,7 @@ test "crash: executor restart, worker reconnects to new socket" {
     store1.deinit();
 
     // RESTART: new executor starts on same socket.
-    var store2 = session_mod.SessionStore.init(alloc);
+    var store2 = SessionStore.init(alloc);
     defer store2.deinit();
 
     var handler2 = handler_mod.Handler.init(alloc, &store2, 30_000, .{}, .deny_all);
@@ -257,7 +258,7 @@ test "crash: metrics increment on executor failure responses" {
     if (builtin.os.tag == .windows) return error.SkipZigTest;
 
     const alloc = std.testing.allocator;
-    var store = session_mod.SessionStore.init(alloc);
+    var store = SessionStore.init(alloc);
     defer store.deinit();
 
     var rpc_handler = handler_mod.Handler.init(alloc, &store, 30_000, .{}, .deny_all);
@@ -282,7 +283,7 @@ test "crash: cancelled session returns error on StartStage" {
     if (builtin.os.tag == .windows) return error.SkipZigTest;
 
     const alloc = std.testing.allocator;
-    var store = session_mod.SessionStore.init(alloc);
+    var store = SessionStore.init(alloc);
     defer store.deinit();
 
     var rpc_handler = handler_mod.Handler.init(alloc, &store, 30_000, .{}, .deny_all);

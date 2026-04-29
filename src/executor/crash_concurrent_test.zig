@@ -18,7 +18,8 @@ const std = @import("std");
 const builtin = @import("builtin");
 const transport = @import("transport.zig");
 const handler_mod = @import("handler.zig");
-const session_mod = @import("session.zig");
+const Session = @import("session.zig");
+const SessionStore = @import("runtime/session_store.zig");
 const protocol = @import("protocol.zig");
 const types = @import("types.zig");
 const client_mod = @import("client.zig");
@@ -32,7 +33,7 @@ test "T5: concurrent CreateExecution from 8 workers produces unique execution ID
     if (builtin.os.tag == .windows) return error.SkipZigTest;
 
     const alloc = std.testing.allocator;
-    var store = session_mod.SessionStore.init(alloc);
+    var store = SessionStore.init(alloc);
     defer store.deinit();
 
     var rpc_handler = handler_mod.Handler.init(alloc, &store, 30_000, .{}, .deny_all);
@@ -109,7 +110,7 @@ test "T5: concurrent CreateExecution from 8 workers produces unique execution ID
 
 test "T5: concurrent heartbeat and cancel race — session is cancelled" {
     const page = std.heap.page_allocator;
-    var session = try session_mod.Session.create(page, "/tmp/ws", .{
+    var session = try Session.create(page, "/tmp/ws", .{
         .trace_id = "t",
         .zombie_id = "r",
         .workspace_id = "w",
@@ -118,7 +119,7 @@ test "T5: concurrent heartbeat and cancel race — session is cancelled" {
     defer session.destroy();
 
     const Heartbeater = struct {
-        fn run(s: *session_mod.Session) void {
+        fn run(s: *Session) void {
             for (0..500) |_| {
                 s.touchLease();
                 std.Thread.sleep(1);
@@ -126,7 +127,7 @@ test "T5: concurrent heartbeat and cancel race — session is cancelled" {
         }
     };
     const Canceller = struct {
-        fn run(s: *session_mod.Session) void {
+        fn run(s: *Session) void {
             s.cancel();
         }
     };
@@ -149,7 +150,7 @@ test "T5: 10 parallel worker lifecycle runs leave the session store empty" {
     if (builtin.os.tag == .windows) return error.SkipZigTest;
 
     const alloc = std.testing.allocator;
-    var store = session_mod.SessionStore.init(alloc);
+    var store = SessionStore.init(alloc);
     defer store.deinit();
 
     var rpc_handler = handler_mod.Handler.init(alloc, &store, 30_000, .{}, .deny_all);
@@ -206,15 +207,15 @@ test "T5: 10 parallel worker lifecycle runs leave the session store empty" {
 
 test "T5: 20 sessions all expire simultaneously — reapExpired clears all" {
     const page = std.heap.page_allocator;
-    var store = session_mod.SessionStore.init(page);
+    var store = SessionStore.init(page);
     defer store.deinit();
 
     for (0..20) |_| {
-        const s = try page.create(session_mod.Session);
+        const s = try page.create(Session);
         // Use a string literal — stack-buffer session_id would outlive the loop
         // iteration and produce dangling pointers since Session stores the slice
         // header without copying the bytes.
-        s.* = try session_mod.Session.create(page, "/tmp/ws", .{
+        s.* = try Session.create(page, "/tmp/ws", .{
             .trace_id = "t",
             .zombie_id = "r",
             .workspace_id = "w",
@@ -238,11 +239,11 @@ test "T5: 20 sessions all expire simultaneously — reapExpired clears all" {
 
 test "T3: reapExpired does not remove session with fresh heartbeat" {
     const page = std.heap.page_allocator;
-    var store = session_mod.SessionStore.init(page);
+    var store = SessionStore.init(page);
     defer store.deinit();
 
-    const s = try page.create(session_mod.Session);
-    s.* = try session_mod.Session.create(page, "/tmp/ws", .{
+    const s = try page.create(Session);
+    s.* = try Session.create(page, "/tmp/ws", .{
         .trace_id = "t",
         .zombie_id = "r",
         .workspace_id = "w",
@@ -264,12 +265,12 @@ test "T3: reapExpired does not remove session with fresh heartbeat" {
 
 test "T3: worker crash simulation — no heartbeat → session reaped as orphan" {
     const page = std.heap.page_allocator;
-    var store = session_mod.SessionStore.init(page);
+    var store = SessionStore.init(page);
     defer store.deinit();
 
     // Worker creates a session but then crashes — never sends heartbeat or destroy.
-    const s = try page.create(session_mod.Session);
-    s.* = try session_mod.Session.create(page, "/tmp/ws", .{
+    const s = try page.create(Session);
+    s.* = try Session.create(page, "/tmp/ws", .{
         .trace_id = "t",
         .zombie_id = "r",
         .workspace_id = "w",
@@ -295,7 +296,7 @@ test "T3: executor restart: new SessionStore starts empty regardless of prior se
     const alloc = std.testing.allocator;
 
     // First store with sessions.
-    var store1 = session_mod.SessionStore.init(alloc);
+    var store1 = SessionStore.init(alloc);
     const rpc_handler1 = handler_mod.Handler.init(alloc, &store1, 30_000, .{}, .deny_all);
     _ = rpc_handler1;
 
@@ -313,7 +314,7 @@ test "T3: executor restart: new SessionStore starts empty regardless of prior se
     // "Executor restarts" — old store goes away, new one is created.
     store1.deinit();
 
-    var store2 = session_mod.SessionStore.init(alloc);
+    var store2 = SessionStore.init(alloc);
     defer store2.deinit();
 
     // New store starts empty.

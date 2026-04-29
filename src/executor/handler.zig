@@ -7,7 +7,8 @@ const std = @import("std");
 const json = @import("json_helpers.zig");
 const protocol = @import("protocol.zig");
 const types = @import("types.zig");
-const session_mod = @import("session.zig");
+const Session = @import("session.zig");
+const SessionStore = @import("runtime/session_store.zig");
 const executor_metrics = @import("executor_metrics.zig");
 const runner = @import("runner.zig");
 const network = @import("network.zig");
@@ -102,7 +103,7 @@ fn jsonStrArray(alloc: std.mem.Allocator, v: std.json.Value) ![]const []const u8
 }
 
 pub const Handler = struct {
-    store: *session_mod.SessionStore,
+    store: *SessionStore,
     lease_timeout_ms: u64,
     resource_limits: types.ResourceLimits,
     network_policy: network.NetworkPolicy,
@@ -110,7 +111,7 @@ pub const Handler = struct {
 
     pub fn init(
         alloc: std.mem.Allocator,
-        store: *session_mod.SessionStore,
+        store: *SessionStore,
         lease_timeout_ms: u64,
         resource_limits: types.ResourceLimits,
         net_policy: network.NetworkPolicy,
@@ -197,10 +198,10 @@ pub const Handler = struct {
             return self.errorResponse(alloc, id, protocol.ErrorCode.internal_error, Msg.parse_policy_failed);
         };
 
-        const session_ptr = self.alloc.create(session_mod.Session) catch {
+        const session_ptr = self.alloc.create(Session) catch {
             return self.errorResponse(alloc, id, protocol.ErrorCode.internal_error, Msg.alloc_session_failed);
         };
-        session_ptr.* = session_mod.Session.create(
+        session_ptr.* = Session.create(
             self.alloc,
             workspace_path,
             correlation,
@@ -457,7 +458,7 @@ test "parseExecutionId rejects non-hex characters" {
 
 test "handler dispatch returns error for malformed JSON frame" {
     const alloc = std.testing.allocator;
-    var store = session_mod.SessionStore.init(alloc);
+    var store = SessionStore.init(alloc);
     defer store.deinit();
     var handler = Handler.init(alloc, &store, 30_000, .{}, .deny_all);
 
@@ -472,7 +473,7 @@ test "handler dispatch returns error for malformed JSON frame" {
 
 test "handler dispatch returns method_not_found for unknown method" {
     const alloc = std.testing.allocator;
-    var store = session_mod.SessionStore.init(alloc);
+    var store = SessionStore.init(alloc);
     defer store.deinit();
     var handler = Handler.init(alloc, &store, 30_000, .{}, .deny_all);
 
@@ -489,7 +490,7 @@ test "handler dispatch returns method_not_found for unknown method" {
 
 test "handler CreateExecution returns execution_id" {
     const alloc = std.testing.allocator;
-    var store = session_mod.SessionStore.init(alloc);
+    var store = SessionStore.init(alloc);
     defer store.deinit();
     var handler = Handler.init(alloc, &store, 30_000, .{}, .deny_all);
 
@@ -513,12 +514,12 @@ test "handler CreateExecution returns execution_id" {
 
     // Clean up session.
     store.deinit();
-    store = session_mod.SessionStore.init(alloc);
+    store = SessionStore.init(alloc);
 }
 
 test "handler CreateExecution without params returns invalid_params" {
     const alloc = std.testing.allocator;
-    var store = session_mod.SessionStore.init(alloc);
+    var store = SessionStore.init(alloc);
     defer store.deinit();
     var handler = Handler.init(alloc, &store, 30_000, .{}, .deny_all);
 
@@ -535,7 +536,7 @@ test "handler CreateExecution without params returns invalid_params" {
 
 test "handler StreamEvents returns empty array" {
     const alloc = std.testing.allocator;
-    var store = session_mod.SessionStore.init(alloc);
+    var store = SessionStore.init(alloc);
     defer store.deinit();
     var handler = Handler.init(alloc, &store, 30_000, .{}, .deny_all);
 
@@ -552,7 +553,7 @@ test "handler StreamEvents returns empty array" {
 // ── T2: Edge case — unicode in correlation fields ────────────────────
 test "handler CreateExecution with unicode correlation fields" {
     const alloc = std.testing.allocator;
-    var store = session_mod.SessionStore.init(alloc);
+    var store = SessionStore.init(alloc);
     defer store.deinit();
     var handler = Handler.init(alloc, &store, 30_000, .{}, .deny_all);
 
@@ -576,7 +577,7 @@ test "handler CreateExecution with unicode correlation fields" {
 // ── T3: Error path — StartStage with non-existent session ────────────
 test "handler StartStage with unknown execution_id returns execution_failed" {
     const alloc = std.testing.allocator;
-    var store = session_mod.SessionStore.init(alloc);
+    var store = SessionStore.init(alloc);
     defer store.deinit();
     var handler = Handler.init(alloc, &store, 30_000, .{}, .deny_all);
 
@@ -600,7 +601,7 @@ test "handler StartStage with unknown execution_id returns execution_failed" {
 // ── T3: Error path — DestroyExecution unknown session ────────────────
 test "handler DestroyExecution with unknown execution_id returns error" {
     const alloc = std.testing.allocator;
-    var store = session_mod.SessionStore.init(alloc);
+    var store = SessionStore.init(alloc);
     defer store.deinit();
     var handler = Handler.init(alloc, &store, 30_000, .{}, .deny_all);
 
@@ -623,7 +624,7 @@ test "handler DestroyExecution with unknown execution_id returns error" {
 // ── T4: Output — verify errorResponse JSON structure ─────────────────
 test "handler errorResponse output is valid parseable JSON-RPC" {
     const alloc = std.testing.allocator;
-    var store = session_mod.SessionStore.init(alloc);
+    var store = SessionStore.init(alloc);
     defer store.deinit();
     var handler = Handler.init(alloc, &store, 30_000, .{}, .deny_all);
 
@@ -652,7 +653,7 @@ test "handler errorResponse output is valid parseable JSON-RPC" {
 // later add validation, this test should be updated to expect rejection.
 test "handler CreateExecution accepts path traversal without crashing" {
     const alloc = std.testing.allocator;
-    var store = session_mod.SessionStore.init(alloc);
+    var store = SessionStore.init(alloc);
     defer store.deinit();
     var handler = Handler.init(alloc, &store, 30_000, .{}, .deny_all);
 
@@ -675,7 +676,7 @@ test "handler CreateExecution accepts path traversal without crashing" {
 // ── T11: Perf/leak — repeated handler calls don't leak ───────────────
 test "handler 100 create+destroy cycles no leak" {
     const alloc = std.testing.allocator;
-    var store = session_mod.SessionStore.init(alloc);
+    var store = SessionStore.init(alloc);
     defer store.deinit();
     var handler = Handler.init(alloc, &store, 30_000, .{}, .deny_all);
 
@@ -865,7 +866,7 @@ test "failureToRpcError maps null to execution_failed" {
 
 test "handler GetUsage returns zero for fresh session" {
     const alloc = std.testing.allocator;
-    var store = session_mod.SessionStore.init(alloc);
+    var store = SessionStore.init(alloc);
     defer store.deinit();
     var handler = Handler.init(alloc, &store, 30_000, .{}, .deny_all);
 
@@ -914,7 +915,7 @@ test "handler GetUsage returns zero for fresh session" {
 
 test "handler Heartbeat refreshes lease" {
     const alloc = std.testing.allocator;
-    var store = session_mod.SessionStore.init(alloc);
+    var store = SessionStore.init(alloc);
     defer store.deinit();
     var handler = Handler.init(alloc, &store, 30_000, .{}, .deny_all);
 

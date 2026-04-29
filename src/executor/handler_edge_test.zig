@@ -19,7 +19,8 @@
 
 const std = @import("std");
 const handler_mod = @import("handler.zig");
-const session_mod = @import("session.zig");
+const Session = @import("session.zig");
+const SessionStore = @import("runtime/session_store.zig");
 const protocol = @import("protocol.zig");
 const types = @import("types.zig");
 const executor_metrics = @import("executor_metrics.zig");
@@ -28,7 +29,7 @@ const executor_metrics = @import("executor_metrics.zig");
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
-fn makeHandler(alloc: std.mem.Allocator, store: *session_mod.SessionStore) handler_mod.Handler {
+fn makeHandler(alloc: std.mem.Allocator, store: *SessionStore) handler_mod.Handler {
     return handler_mod.Handler.init(alloc, store, 30_000, .{}, .deny_all);
 }
 
@@ -71,12 +72,12 @@ fn destroySession(alloc: std.mem.Allocator, h: *handler_mod.Handler, exec_id: []
 test "T3: StartStage on lease-expired session returns lease_expired" {
     // Use page allocator to avoid test-allocator leak noise from Session arena.
     const page = std.heap.page_allocator;
-    var store = session_mod.SessionStore.init(page);
+    var store = SessionStore.init(page);
     defer store.deinit();
 
     // Create a session with 1ms lease that will expire quickly.
-    const s = try page.create(session_mod.Session);
-    s.* = try session_mod.Session.create(page, "/tmp/ws", .{
+    const s = try page.create(Session);
+    s.* = try Session.create(page, "/tmp/ws", .{
         .trace_id = "t",
         .zombie_id = "r",
         .workspace_id = "w",
@@ -115,7 +116,7 @@ test "T3: StartStage on lease-expired session returns lease_expired" {
 
 test "T1: StreamEvents returns success with empty events array" {
     const alloc = std.testing.allocator;
-    var store = session_mod.SessionStore.init(alloc);
+    var store = SessionStore.init(alloc);
     defer store.deinit();
     var h = makeHandler(alloc, &store);
 
@@ -135,7 +136,7 @@ test "T1: StreamEvents returns success with empty events array" {
 
 test "T3: completely invalid JSON returns parse_error" {
     const alloc = std.testing.allocator;
-    var store = session_mod.SessionStore.init(alloc);
+    var store = SessionStore.init(alloc);
     defer store.deinit();
     var h = makeHandler(alloc, &store);
 
@@ -150,7 +151,7 @@ test "T3: completely invalid JSON returns parse_error" {
 
 test "T3: empty payload returns parse_error" {
     const alloc = std.testing.allocator;
-    var store = session_mod.SessionStore.init(alloc);
+    var store = SessionStore.init(alloc);
     defer store.deinit();
     var h = makeHandler(alloc, &store);
 
@@ -169,7 +170,7 @@ test "T3: empty payload returns parse_error" {
 
 test "T1: multiple independent sessions coexist without interference" {
     const alloc = std.testing.allocator;
-    var store = session_mod.SessionStore.init(alloc);
+    var store = SessionStore.init(alloc);
     defer store.deinit();
     var h = makeHandler(alloc, &store);
 
@@ -209,7 +210,7 @@ test "T1: multiple independent sessions coexist without interference" {
 
 test "T1: CancelExecution increments cancellations metric" {
     const alloc = std.testing.allocator;
-    var store = session_mod.SessionStore.init(alloc);
+    var store = SessionStore.init(alloc);
     defer store.deinit();
     var h = makeHandler(alloc, &store);
 
@@ -242,7 +243,7 @@ test "T1: CancelExecution increments cancellations metric" {
 
 test "T2: CreateExecution with 200-char workspace path succeeds" {
     const alloc = std.testing.allocator;
-    var store = session_mod.SessionStore.init(alloc);
+    var store = SessionStore.init(alloc);
     defer store.deinit();
     var h = makeHandler(alloc, &store);
 
@@ -272,7 +273,7 @@ test "T2: CreateExecution with 200-char workspace path succeeds" {
 
 test "T2: CreateExecution with unicode trace_id is stored without corruption" {
     const alloc = std.testing.allocator;
-    var store = session_mod.SessionStore.init(alloc);
+    var store = SessionStore.init(alloc);
     defer store.deinit();
     var h = makeHandler(alloc, &store);
 
@@ -303,7 +304,7 @@ test "T2: CreateExecution with unicode trace_id is stored without corruption" {
 
 test "T3: DestroyExecution twice returns error on second call" {
     const alloc = std.testing.allocator;
-    var store = session_mod.SessionStore.init(alloc);
+    var store = SessionStore.init(alloc);
     defer store.deinit();
     var h = makeHandler(alloc, &store);
 
@@ -348,7 +349,7 @@ test "T3: DestroyExecution twice returns error on second call" {
 
 test "T12: all error responses include code and message fields" {
     const alloc = std.testing.allocator;
-    var store = session_mod.SessionStore.init(alloc);
+    var store = SessionStore.init(alloc);
     defer store.deinit();
     var h = makeHandler(alloc, &store);
 
@@ -377,7 +378,7 @@ test "T12: all error responses include code and message fields" {
 
 test "T1: all 7 known RPC methods are recognized and do not return method_not_found" {
     const alloc = std.testing.allocator;
-    var store = session_mod.SessionStore.init(alloc);
+    var store = SessionStore.init(alloc);
     defer store.deinit();
     var h = makeHandler(alloc, &store);
 
@@ -416,7 +417,7 @@ test "T1: all 7 known RPC methods are recognized and do not return method_not_fo
 
 test "T2: CreateExecution with missing workspace_path returns invalid_params" {
     const alloc = std.testing.allocator;
-    var store = session_mod.SessionStore.init(alloc);
+    var store = SessionStore.init(alloc);
     defer store.deinit();
     var h = makeHandler(alloc, &store);
 
