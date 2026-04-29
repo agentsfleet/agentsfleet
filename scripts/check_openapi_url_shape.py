@@ -50,6 +50,7 @@ NOUN_FINAL_SEGMENT_ALLOW: set[str] = {
     "billing",           # billing summary view
     "integration-grants",
     "integration-requests",
+    "approvals",         # approval-gate inbox collection
     # Sub-resource leaves that are operator-facing nouns:
     "stream",            # SSE sub-resource of /events; not "to stream", a thing
     "current-run",       # the active run record (read-only resource)
@@ -101,6 +102,9 @@ LEGACY_VIOLATIONS: set[str] = {
 # pluralization mechanically — the allowlist carries the policy).
 PATH_PARAM_RE = re.compile(r"^\{[a-zA-Z_][a-zA-Z0-9_]*\}$")
 COLON_OP_RE = re.compile(r"^:[a-z][a-z0-9-]*$")
+# {gate_id}:approve form — colon-noun applied to a path parameter, the
+# canonical REST §1 single-resource operation shape (e.g. /approvals/{id}:approve).
+PARAM_COLON_OP_RE = re.compile(r"^\{[a-zA-Z_][a-zA-Z0-9_]*\}:[a-z][a-z0-9-]*$")
 
 
 def final_segment(path: str) -> str:
@@ -114,6 +118,8 @@ def is_legal_shape(path: str, last: str) -> bool:
     if PATH_PARAM_RE.match(last):
         return True
     if COLON_OP_RE.match(last):
+        return True
+    if PARAM_COLON_OP_RE.match(last):
         return True
     if last in NOUN_FINAL_SEGMENT_ALLOW:
         return True
