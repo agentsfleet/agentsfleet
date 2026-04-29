@@ -154,17 +154,22 @@ describe("SSE route handler — upstream errors", () => {
     expect(await res.text()).toBe("Upstream error 503");
   });
 
-  it("falls back to text/plain when upstream omits content-type", async () => {
+  it("returns 502 (not status passthrough) when upstream is OK but has no body", async () => {
     getTokenFn.mockResolvedValueOnce("tk");
-    // 200 with null body trips the `!upstream.body` branch, which still
-    // takes the error path because we cannot pipe a null stream.
-    const noBody = new Response(null, {
-      status: 200,
-      headers: {},
-    });
+    const noBody = new Response(null, { status: 200, headers: {} });
     fetchSpy.mockResolvedValueOnce(noBody);
     const res = await GET(makeReq(), paramsOf("ws_1", "zomb_1"));
+    expect(res.status).toBe(502);
     expect(res.headers.get("content-type")).toBe("text/plain");
+    expect(await res.text()).toBe("Upstream returned no body");
+  });
+
+  it("falls back to text/plain when upstream omits content-type on a non-OK response", async () => {
+    getTokenFn.mockResolvedValueOnce("tk");
+    fetchSpy.mockResolvedValueOnce(new Response("oops", { status: 500, headers: {} }));
+    const res = await GET(makeReq(), paramsOf("ws_1", "zomb_1"));
+    expect(res.status).toBe(500);
+    expect(res.headers.get("content-type")).toMatch(/^text\/plain/);
   });
 
   it("survives upstream.text() rejection without throwing", async () => {

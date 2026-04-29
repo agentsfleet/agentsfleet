@@ -112,16 +112,16 @@ fn streamLoop(
 }
 
 /// Extract the `kind` field from the JSON payload so the SSE `event:`
-/// line can carry it. Best-effort — falls back to `message` if parsing
-/// is too costly or the field is missing. We avoid a full JSON parse;
-/// the publisher always emits `{"kind":"<value>",` as the leading
-/// field, so a tiny scan is sufficient.
+/// line can carry it. Anchors on the leading `{"kind":"` prefix so an
+/// embedded "\"kind\":\"" inside a string field cannot poison the
+/// dispatch. Best-effort — falls back to `message` if the publisher's
+/// shape changes.
 fn extractKind(payload: []const u8) ?[]const u8 {
-    const needle = "\"kind\":\"";
-    const start = std.mem.indexOf(u8, payload, needle) orelse return null;
-    const value_start = start + needle.len;
-    const close = std.mem.indexOfScalarPos(u8, payload, value_start, '"') orelse return null;
-    return payload[value_start..close];
+    const prefix = "{\"kind\":\"";
+    if (payload.len < prefix.len) return null;
+    if (!std.mem.startsWith(u8, payload, prefix)) return null;
+    const close = std.mem.indexOfScalarPos(u8, payload, prefix.len, '"') orelse return null;
+    return payload[prefix.len..close];
 }
 
 fn writeFrame(w: anytype, seq: u64, kind: []const u8, data_json: []const u8) !void {
@@ -188,4 +188,21 @@ test "extractKind: parses leading kind field" {
 
 test "extractKind: returns null when field missing" {
     try testing.expect(extractKind("{\"foo\":\"bar\"}") == null);
+}
+
+test "extractKind: ignores embedded kind inside a string value" {
+    // If a chunk's text happens to contain the kind-needle literal, the
+    // anchored prefix scan must not pick it up — the real kind comes
+    // first per publisher contract.
+    const poisoned = "{\"kind\":\"chunk\",\"text\":\"\\\"kind\\\":\\\"fake\\\"\"}";
+    try testing.expectEqualStrings("chunk", extractKind(poisoned).?);
+}
+
+test "extractKind: returns null when kind is not the leading field" {
+    try testing.expect(extractKind("{\"event_id\":\"x\",\"kind\":\"chunk\"}") == null);
+}
+
+test "extractKind: handles short payloads without panicking" {
+    try testing.expect(extractKind("") == null);
+    try testing.expect(extractKind("{\"k\"") == null);
 }

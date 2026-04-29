@@ -44,13 +44,19 @@ export async function GET(req: Request, { params }: Params) {
     signal: req.signal,
   });
 
-  if (!upstream.ok || !upstream.body) {
+  if (!upstream.ok) {
     const text = await upstream.text().catch(() => "");
     return new Response(text || `Upstream error ${upstream.status}`, {
       status: upstream.status,
       headers: {
         "Content-Type": upstream.headers.get("content-type") ?? "text/plain",
       },
+    });
+  }
+  if (!upstream.body) {
+    return new Response("Upstream returned no body", {
+      status: 502,
+      headers: { "Content-Type": "text/plain" },
     });
   }
 
