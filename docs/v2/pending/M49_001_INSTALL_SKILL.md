@@ -317,37 +317,82 @@ Fixtures in `samples/fixtures/m49-install-skill-fixtures/`:
 
 ---
 
-## Discovery owed by M49 (added Apr 29, 2026 from M41 spillover)
+## Discovery owed by M49 (locked Apr 29, 2026)
 
-### `context_cap_tokens` source of truth — end-to-end
+### `context_cap_tokens` source of truth — locked
 
-M41 lands `ContextBudget.context_cap_tokens: u32` as a passthrough wire field on `executor.createExecution`. M41 explicitly does **not** know how to populate it; it just plumbs the value from the zombie's runtime config to the executor. The end-to-end "where does this number come from" question lands here.
+M41 lands `ContextBudget.context_cap_tokens: u32` as a passthrough wire field on `executor.createExecution`. M41 does **not** know how to populate it. The end-to-end "where does this number come from" question is answered below; the architecture cross-reference now lives in [`docs/architecture/user_flow.md`](../../architecture/user_flow.md) §8.7 and [`docs/architecture/billing_and_byok.md`](../../architecture/billing_and_byok.md) §9.
 
-This milestone owns three artifacts:
+#### Decision 1 (D1) — model→cap source of truth
 
-1. **A model→cap source of truth that lives outside our binary.** The install-skill writes the value into the generated SKILL.md frontmatter, so adding a new model is a skill update — no usezombie release required. Open questions:
-   - Does the skill carry an embedded list (e.g. `~/.claude/skills/usezombie-install-platform-ops/model_caps.json`)?
-   - Does the skill query a usezombie-hosted endpoint at install time and pin the value into the frontmatter (one-shot lookup, not a hot-path call)?
-   - Does the skill ask Anthropic's models API directly when the user is on Anthropic's platform-managed pool?
-   Pick one and document the choice in this spec before §1 starts.
+**Locked: a hosted endpoint at a cryptic public URL.**
 
-2. **The BYOK split.** When the customer brings their own credential (M48), the `context_cap_tokens` value comes from the customer's credential body, not from the install-skill's table. Both paths converge on the same wire field. The install-skill's job is **"write a value if the customer is using platform-managed; leave 0 if they're on BYOK and let M48 fill in"** — confirm before §1.
+```
+GET https://api.usezombie.com/_um/da5b6b3810543fe108d816ee972e4ff8/model-caps.json
+GET https://api.usezombie.com/_um/da5b6b3810543fe108d816ee972e4ff8/model-caps.json?model=<urlencoded>
+```
 
-3. **`docs/ARCHITECHTURE.md` end-to-end walkthrough.** Add a section to architecture under §8 ("Authoring + Installing") that traces:
-   - `model: claude-opus-4-7` (frontmatter) →
-   - install-skill writes `context_cap_tokens: 1_000_000` (frontmatter) →
-   - `config_parser.zig` lifts both into `x-usezombie.context` →
-   - worker (`event_loop_helpers.executeInSandbox`) populates `ContextBudget` →
-   - `executor.createExecution` carries the values →
-   - L3 (slice §6 of M41) consumes the cap.
-   Same diagram for the BYOK path: cap originates in the credential body, not the frontmatter.
+Properties (full design in `billing_and_byok.md` §9):
+- Cryptic path key (sixty-four bits of entropy) keeps random scanners off the endpoint without making the URL secret. Hard-coded in `zombiectl` and the install-skill; rotated quarterly via a coordinated CLI + skill release.
+- Cloudflare-fronted, aggressive caching (`Cache-Control: public, max-age=86400, immutable`), per-IP rate limit of 1 RPS sustained / burst 10.
+- Backed by a static JSON file in v2.0. Later, an admin-zombie owned by `nkishore@megam.io` wakes hourly, queries each provider's models endpoint where one exists, reconciles, and opens a PR with deltas. Same endpoint; fresher data. The admin-zombie is a dogfood instance of the platform-ops pattern.
+- Resolved exactly once per install (platform-managed) or once per `provider set` (BYOK). **Never resolved at trigger time.**
+
+Rejected: skill-embedded JSON (forces a skill release per cap change), provider API at install (Anthropic / OpenAI publish models endpoints; Fireworks / Together / Groq don't reliably).
+
+#### Decision 2 (D2) — Bring-Your-Own-Key split
+
+**Locked: same endpoint serves both postures.** The install-skill and `zombiectl provider set` both call `/_um/.../model-caps.json` with the active model name and pin the cap into the appropriate place:
+
+- **Platform-managed.** The install-skill resolves the platform-default model's cap and writes it into the generated `SKILL.md` frontmatter under `x-usezombie.context.context_cap_tokens`.
+- **Bring Your Own Key.** `zombiectl provider set` (M48) resolves the cap for the model in the operator's `llm` credential and writes it into `core.tenant_providers.context_cap_tokens`. The install-skill writes `context_cap_tokens: 0` and `model: ""` in the generated frontmatter as sentinels; the worker overlays from `tenant_providers` at trigger time.
+
+The cap is **not** in the `llm` credential body. The body stays `{provider, api_key, model}` — splitting cap from credential lets the cap re-resolve when the model changes without touching the vault.
+
+#### Decision 3 (D3) — architecture cross-reference
+
+**Locked: the architecture doc is split.** ARCHITECHTURE.md is now a TOC. The end-to-end walkthrough lives in:
+
+- [`docs/architecture/user_flow.md`](../../architecture/user_flow.md) §8.7 — the three-rail diagram showing platform vs BYOK origin and how the worker overlays sentinels at trigger time.
+- [`docs/architecture/billing_and_byok.md`](../../architecture/billing_and_byok.md) §9 — the endpoint shape, rotation, and Cloudflare configuration.
+- [`docs/architecture/scenarios/01_default_free_tier.md`](../../architecture/scenarios/01_default_free_tier.md) and [`02_byok.md`](../../architecture/scenarios/02_byok.md) — the two end-to-end scenarios.
+
+These edits already landed in this same Discovery commit. M49 §1 inherits the locked decisions.
+
+### SKILL.md frontmatter shape — what the skill writes
+
+**Platform-managed install** (Scenario 01):
+
+```yaml
+x-usezombie:
+  model: claude-sonnet-4-6                    # platform default at install time
+  context:
+    context_cap_tokens: 200000                # ← from /_um/.../model-caps.json
+    tool_window: auto
+    memory_checkpoint_every: 5
+    stage_chunk_threshold: 0.75
+```
+
+**Bring-Your-Own-Key install** (Scenario 02):
+
+```yaml
+x-usezombie:
+  model: ""                                   # sentinel: worker overlays from tenant_providers
+  context:
+    context_cap_tokens: 0                     # sentinel: worker overlays from tenant_providers
+    tool_window: auto
+    memory_checkpoint_every: 5
+    stage_chunk_threshold: 0.75
+```
+
+The worker treats `model == ""` and `context_cap_tokens == 0` as "resolve at trigger time from `tenant_providers`." The two sentinels are independent — either can be populated in frontmatter and overlaid by tenant config or vice versa.
 
 ### Why this lands in M49, not M41
 
-The cap question is inseparable from the install-skill's design: whatever decision the skill makes about where models come from also decides where the cap comes from. Solving it inside M41 would force the executor to know about model identity (rejected — that's what made the original `model_registry.zig` rot). Deferring to M49 lets the skill design and the cap design get worked out end-to-end in one place.
+The cap question is inseparable from the install-skill's design: whatever decision the skill makes about where models come from also decides where the cap comes from. Solving it inside M41 would force the executor to know about model identity (rejected — that's what made the original `model_registry.zig` rot). Centralising the lookup in M49 + M48 lets the skill and cap design stay coherent.
 
-### Required before §1 starts
+### Required before §1 starts — done
 
-- A single sentence in this spec's §1 stating which of the three lookup options above won.
-- A sketch of the SKILL.md frontmatter shape (probably an `x-usezombie.context.context_cap_tokens` field that the skill writes during install).
-- The architecture cross-reference edit landed in the same M49 PR.
+- ✓ Lookup mechanism locked to the hosted cryptic-URL endpoint.
+- ✓ Frontmatter shape sketched (above).
+- ✓ Architecture cross-reference landed in `docs/architecture/user_flow.md` §8.7 and `docs/architecture/billing_and_byok.md` §9 in this same commit.

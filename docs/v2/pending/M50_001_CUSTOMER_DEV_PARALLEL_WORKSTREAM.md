@@ -12,7 +12,7 @@
 **Batch:** B1 — runs in parallel with M40-M48 substrate. ~2-3 hours/week founder time. Non-blocking on engineering work.
 **Branch:** No code branch. Artifacts live in `~/.gstack/projects/usezombie/customer-dev/` (local) and Ripley's Log entries (durable record).
 
-**Canonical architecture:** `docs/ARCHITECHTURE.md` §0 (differentiation pillars define who the wedge is for) + §4.1 (platform-ops persona) + `docs/office_hours_v2.md` P1 persona expansion (AI-infra / GPU-clouds / regulated mid-market / 10x indies / agentic-OS operators).
+**Canonical architecture:** `docs/ARCHITECHTURE.md` (TOC) → `docs/architecture/high_level.md` §1 differentiation pillars + §5.1 platform-ops persona + `docs/architecture/office_hours_v2.md` P1 persona expansion (AI-infra / GPU-clouds / regulated mid-market / 10x indies / agentic-OS operators).
 
 ---
 
@@ -22,9 +22,9 @@ This workstream is founder-led, not agent-led. The "implementing agent" here is 
 
 Required reading before Week 1 outreach:
 
-1. `docs/office_hours_v2.md` Persona section (lines 36-40) — the explicit P1 + P2 personas and the SaaS-fatigue signal.
-2. `docs/ARCHITECHTURE.md` §0 differentiation (3 pillars: OSS + BYOK + markdown-defined) — the actual claim being tested.
-3. `docs/ARCHITECHTURE.md` §4.1 platform-ops persona — what the zombie does in concrete terms.
+1. `docs/architecture/office_hours_v2.md` Persona section (lines 36-40) — the explicit P1 + P2 personas and the SaaS-fatigue signal.
+2. `docs/architecture/high_level.md` §1 differentiation (3 pillars: OSS + BYOK + markdown-defined) — the actual claim being tested.
+3. `docs/architecture/high_level.md` §5.1 platform-ops persona — what the zombie does in concrete terms.
 4. The author's existing E2E Networks SRE workflow notes (mental model only, not in repo) — Customer Zero's lived experience, source of credibility in outreach.
 
 ---
