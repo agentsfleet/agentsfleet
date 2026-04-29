@@ -14,6 +14,7 @@ const ec = @import("../../../errors/error_registry.zig");
 const id_format = @import("../../../types/id_format.zig");
 const approval_gate = @import("../../../zombie/approval_gate.zig");
 const approval_gate_db = @import("../../../zombie/approval_gate_db.zig");
+const resolver = @import("../../../zombie/approval_gate_resolver.zig");
 const error_registry = @import("../../../errors/error_registry.zig");
 
 const log = std.log.scoped(.http_approvals_resolve);
@@ -138,13 +139,11 @@ fn parseReason(hx: hx_mod.Hx, req: *httpz.Request) ?[]const u8 {
 }
 
 fn formatResolverAttribution(hx: hx_mod.Hx) ![]const u8 {
-    const principal = hx.principal;
-    const channel: []const u8 = switch (principal.mode) {
-        .jwt_oidc => "user",
-        .api_key => "api",
+    const subject = hx.principal.user_id orelse "unknown";
+    return switch (hx.principal.mode) {
+        .jwt_oidc => resolver.user(hx.alloc, subject),
+        .api_key => resolver.apiKey(hx.alloc, subject),
     };
-    const subject = principal.user_id orelse "unknown";
-    return std.fmt.allocPrint(hx.alloc, "{s}:{s}", .{ channel, subject });
 }
 
 fn writeAlreadyResolved(hx: hx_mod.Hx, r: approval_gate_db.ResolvedRow) void {

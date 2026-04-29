@@ -17,6 +17,7 @@ const Allocator = std.mem.Allocator;
 const queue_redis = @import("../queue/redis_client.zig");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const approval_gate = @import("approval_gate.zig");
+const resolver = @import("approval_gate_resolver.zig");
 
 const log = std.log.scoped(.approval_gate_sweeper);
 
@@ -25,7 +26,7 @@ const PENDING_STATUS = approval_gate.GateStatus.pending.toSlice();
 const SCAN_INTERVAL_NS: u64 = 60 * std.time.ns_per_s;
 const SHUTDOWN_POLL_NS: u64 = 1 * std.time.ns_per_s;
 const BATCH_LIMIT: u32 = 100;
-const RESOLVER = "system:timeout";
+const RESOLVER = resolver.SYSTEM_TIMEOUT;
 
 /// Run the sweeper loop until shutdown is signalled. Intended to be spawned
 /// in its own thread by the worker process at boot time.

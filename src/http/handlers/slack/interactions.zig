@@ -23,6 +23,7 @@
 const std = @import("std");
 const httpz = @import("httpz");
 const approval_gate = @import("../../../zombie/approval_gate.zig");
+const resolver = @import("../../../zombie/approval_gate_resolver.zig");
 const common = @import("../common.zig");
 const hx_mod = @import("../hx.zig");
 const ec = @import("../../../errors/error_registry.zig");
@@ -150,7 +151,7 @@ fn handleGateAction(hx: Hx, rest: []const u8) void {
         hx.alloc,
         inner_action_id,
         gate_status,
-        "slack:interaction",
+        resolver.SLACK_INTERACTION,
         "",
     ) catch |err| {
         log.err("slack.interactions.resolve_fail err={s} req_id={s}", .{ @errorName(err), hx.req_id });

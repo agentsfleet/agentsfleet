@@ -16,6 +16,7 @@ const common = @import("../common.zig");
 const hx_mod = @import("../hx.zig");
 const ec = @import("../../../errors/error_registry.zig");
 const approval_gate = @import("../../../zombie/approval_gate.zig");
+const resolver = @import("../../../zombie/approval_gate_resolver.zig");
 
 const log = std.log.scoped(.http_approval);
 
@@ -62,7 +63,7 @@ pub fn innerApprovalCallback(hx: Hx, req: *httpz.Request, zombie_id: []const u8)
         hx.alloc,
         payload.action_id,
         gate_status,
-        "slack:webhook",
+        resolver.SLACK_WEBHOOK,
         "",
     ) catch {
         log.err("approval.resolve_fail zombie_id={s} action_id={s}", .{ zombie_id, payload.action_id });
