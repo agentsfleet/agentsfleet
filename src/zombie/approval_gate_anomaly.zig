@@ -2,7 +2,6 @@
 // Runs BEFORE gate evaluation as a fast-path circuit breaker against runaway loops.
 
 const std = @import("std");
-const Allocator = std.mem.Allocator;
 const queue_redis = @import("../queue/redis_client.zig");
 const ec = @import("../errors/error_registry.zig");
 const config_gates = @import("config_gates.zig");
@@ -75,52 +74,3 @@ fn incrAnomalyCounter(
     };
 }
 
-/// Reset all anomaly counters for a zombie (after restart / auto-kill recovery).
-/// Currently called on no path; retained for the recovery flow.
-fn resetAnomalyCounters(
-    redis: *queue_redis.Client,
-    alloc: Allocator,
-    zombie_id: []const u8,
-) void {
-    var cursor_buf: [32]u8 = undefined;
-    var cursor: []const u8 = "0";
-    var pattern_buf: [128]u8 = undefined;
-    const pattern = std.fmt.bufPrint(&pattern_buf, "{s}{s}:*", .{
-        ec.GATE_ANOMALY_KEY_PREFIX, zombie_id,
-    }) catch return;
-
-    var iterations: u32 = 0;
-    while (iterations < 100) : (iterations += 1) {
-        var resp = redis.command(&.{ "SCAN", cursor, "MATCH", pattern, "COUNT", "100" }) catch return;
-        defer resp.deinit(alloc);
-        const arr = switch (resp) {
-            .array => |a| a orelse return,
-            else => return,
-        };
-        if (arr.len < 2) return;
-
-        const next_cursor = switch (arr[0]) {
-            .bulk => |b| b orelse return,
-            .simple => |s| s,
-            else => return,
-        };
-        cursor = std.fmt.bufPrint(&cursor_buf, "{s}", .{next_cursor}) catch return;
-
-        const keys = switch (arr[1]) {
-            .array => |k| k orelse continue,
-            else => continue,
-        };
-        for (keys) |key_val| {
-            const key_str = switch (key_val) {
-                .bulk => |b| b orelse continue,
-                .simple => |s| s,
-                else => continue,
-            };
-            var del_resp = redis.command(&.{ "DEL", key_str }) catch continue;
-            del_resp.deinit(alloc);
-        }
-
-        if (std.mem.eql(u8, cursor, "0")) break;
-    }
-    log.info("approval_gate.anomaly_counters_reset zombie_id={s}", .{zombie_id});
-}

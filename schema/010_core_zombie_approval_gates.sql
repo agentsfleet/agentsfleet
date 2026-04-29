@@ -19,13 +19,16 @@ CREATE TABLE IF NOT EXISTS core.zombie_approval_gates (
     -- proposed_action / blast_radius: human-readable prose for the detail page.
     -- evidence: agent-gathered context (free-form JSON; rendered as expandable tree).
     -- timeout_at: epoch ms; sweeper transitions pending → timed_out at or after this point.
+    -- No DEFAULT — every INSERT supplies timeout_at via recordGatePending, and a
+    -- DEFAULT of 0 would sweep every pre-existing pending row on the next cycle
+    -- (0 ≤ now_ms is always true), auto-denying gates outside the writer's intent.
     -- resolved_by: attribution of the resolver across channels
     --   ('user:<email>' | 'slack:<user_id>' | 'api:<key_id>' | 'system:timeout').
     gate_kind       TEXT NOT NULL DEFAULT '',
     proposed_action TEXT NOT NULL DEFAULT '',
     evidence        JSONB NOT NULL DEFAULT '{}'::jsonb,
     blast_radius    TEXT NOT NULL DEFAULT '',
-    timeout_at      BIGINT NOT NULL DEFAULT 0,
+    timeout_at      BIGINT NOT NULL,
     resolved_by     TEXT NOT NULL DEFAULT '',
 
     -- status: enum maintained in application code (src/zombie/approval_gate.zig

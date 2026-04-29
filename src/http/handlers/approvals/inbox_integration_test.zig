@@ -345,6 +345,139 @@ test "integration: approvals POST :approve — cross-workspace gate_id → 404" 
 
 // ── Resolve happy paths (DB-side; Redis decision write is best-effort) ──
 
+test "integration: approvals POST :approve with reason — body persists in detail column" {
+    // Validates parseReason → ResolveArgs.reason → detail column round-trip,
+    // and exercises the heap-ownership defer free path on resolve.zig:46.
+    const h = seedAndHarness(ALLOC) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+    if (!h.tryConnectRedis()) return error.SkipZigTest;
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    defer cleanupTestData(conn);
+
+    const gid = "01999999-9000-7000-8000-000000000010";
+    try insertGate(conn, .{ .gate_id = gid, .action_id = "act-reason-1" });
+
+    const url = try std.fmt.allocPrint(ALLOC, "/v1/workspaces/{s}/approvals/{s}:approve", .{ TEST_WORKSPACE_ID, gid });
+    defer ALLOC.free(url);
+    const r = try (try (try (h.post(url)).bearer(TOKEN_OPERATOR)).json("{\"reason\":\"verified change-management ticket\"}")).send();
+    defer r.deinit();
+    try r.expectStatus(.ok);
+
+    var q = @import("../../../db/pg_query.zig").PgQuery.from(try conn.query(
+        \\SELECT detail FROM core.zombie_approval_gates WHERE id = $1::uuid
+    , .{gid}));
+    defer q.deinit();
+    const row = (try q.next()) orelse return error.MissingGateRow;
+    try std.testing.expectEqualStrings("verified change-management ticket", try row.get([]const u8, 0));
+}
+
+test "integration: anomaly EVAL atomically sets TTL on first INCR" {
+    // Validates approval_gate_anomaly.zig EVAL Lua: a fresh key receives a
+    // TTL bound to the rule's threshold_window_s in the same Redis round-trip
+    // as INCR. The pre-fix code did INCR then EXPIRE as separate commands,
+    // leaving a window where a connection drop or server restart between the
+    // two would strand the key without a TTL — every subsequent call would
+    // see count > 1 and skip the EXPIRE branch, so the counter would live
+    // forever.
+    const h = seedAndHarness(ALLOC) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+    if (!h.tryConnectRedis()) return error.SkipZigTest;
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    defer cleanupTestData(conn);
+
+    const approval_gate = @import("../../../zombie/approval_gate.zig");
+    const cfg = @import("../../../zombie/config_gates.zig");
+    const ec = @import("../../../errors/error_registry.zig");
+
+    const test_zombie = "anomaly-ttl-zombie-001";
+    const tool = "write_repo";
+    const action = "create_pr";
+    const window_s: u32 = 60;
+
+    var key_buf: [256]u8 = undefined;
+    const key = try std.fmt.bufPrint(&key_buf, "{s}{s}:{s}:{s}", .{
+        ec.GATE_ANOMALY_KEY_PREFIX, test_zombie, tool, action,
+    });
+    var del_resp = try h.queue.command(&.{ "DEL", key });
+    del_resp.deinit(h.queue.alloc);
+
+    const rules = [_]cfg.AnomalyRule{
+        .{ .pattern = .same_action, .threshold_count = 100, .threshold_window_s = window_s },
+    };
+    const result = approval_gate.checkAnomaly(&h.queue, test_zombie, tool, action, &rules);
+    try std.testing.expectEqual(approval_gate.AnomalyResult.normal, result);
+
+    var ttl_resp = try h.queue.command(&.{ "PTTL", key });
+    defer ttl_resp.deinit(h.queue.alloc);
+    const ttl_ms: i64 = switch (ttl_resp) {
+        .integer => |n| n,
+        else => return error.RedisCommandError,
+    };
+    // -1 = key exists with no TTL (the bug); -2 = key does not exist.
+    try std.testing.expect(ttl_ms > 0);
+    try std.testing.expect(ttl_ms <= @as(i64, window_s) * 1000);
+
+    // Subsequent INCRs within the window must NOT reset the TTL — the EVAL
+    // script gates EXPIRE on `v == 1`, so the second call reads the same
+    // remaining-window TTL (slightly less due to elapsed time) instead of a
+    // fresh 60_000ms. Without this guarantee a high-rate caller would never
+    // accumulate count past threshold because every call would extend the
+    // window.
+    const second = approval_gate.checkAnomaly(&h.queue, test_zombie, tool, action, &rules);
+    try std.testing.expectEqual(approval_gate.AnomalyResult.normal, second);
+
+    var ttl_resp_2 = try h.queue.command(&.{ "PTTL", key });
+    defer ttl_resp_2.deinit(h.queue.alloc);
+    const ttl_ms_2: i64 = switch (ttl_resp_2) {
+        .integer => |n| n,
+        else => return error.RedisCommandError,
+    };
+    try std.testing.expect(ttl_ms_2 > 0);
+    try std.testing.expect(ttl_ms_2 <= ttl_ms);
+
+    var cleanup_resp = try h.queue.command(&.{ "DEL", key });
+    cleanup_resp.deinit(h.queue.alloc);
+}
+
+test "integration: worker self-timeout writes resolved_by=system:timeout" {
+    // Validates event_loop_gate.zig:147 -> resolveGateDecision -> ResolveArgs.atomic
+    // attribution flow. Worker fires its own timeout ~60s before the sweeper
+    // wakes up; both paths must produce the same canonical attribution.
+    const h = seedAndHarness(ALLOC) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    defer cleanupTestData(conn);
+
+    const gid = "01999999-9000-7000-8000-000000000020";
+    const action_id = "act-worker-to-1";
+    try insertGate(conn, .{ .gate_id = gid, .action_id = action_id });
+
+    const resolver = @import("../../../zombie/approval_gate_resolver.zig");
+    @import("../../../zombie/approval_gate.zig").resolveGateDecision(
+        h.pool, action_id, .timed_out, resolver.SYSTEM_TIMEOUT, "",
+    );
+
+    var q = @import("../../../db/pg_query.zig").PgQuery.from(try conn.query(
+        \\SELECT status, resolved_by FROM core.zombie_approval_gates WHERE id = $1::uuid
+    , .{gid}));
+    defer q.deinit();
+    const row = (try q.next()) orelse return error.MissingGateRow;
+    try std.testing.expectEqualStrings("timed_out", try row.get([]const u8, 0));
+    try std.testing.expectEqualStrings("system:timeout", try row.get([]const u8, 1));
+}
+
 test "integration: approvals POST :approve — pending → approved + resolved_by user" {
     const h = seedAndHarness(ALLOC) catch |err| switch (err) {
         error.SkipZigTest => return error.SkipZigTest,
