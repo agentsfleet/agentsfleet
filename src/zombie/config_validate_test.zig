@@ -8,7 +8,7 @@ const ZombieConfigError = config_types.ZombieConfigError;
 test "validateZombieTools: unknown tool returns UnknownSkill" {
     const alloc = std.testing.allocator;
     const json =
-        \\{"name": "x", "trigger": {"type": "api"}, "tools": ["unknown_tool"], "budget": {"daily_dollars": 1.0}}
+        \\{"name":"x","x-usezombie":{"trigger":{"type":"api"},"tools":["unknown_tool"],"budget":{"daily_dollars":1.0}}}
     ;
     try std.testing.expectError(
         ZombieConfigError.UnknownSkill,
@@ -19,9 +19,9 @@ test "validateZombieTools: unknown tool returns UnknownSkill" {
 test "parseZombieConfig: credential names validated (no op:// paths)" {
     const alloc = std.testing.allocator;
     const json =
-        \\{"name":"x","trigger":{"type":"api"},"tools":["agentmail"],
+        \\{"name":"x","x-usezombie":{"trigger":{"type":"api"},"tools":["agentmail"],
         \\ "credentials":["op://ZMB_LOCAL_DEV/agentmail/api_key"],
-        \\ "budget":{"daily_dollars":1.0}}
+        \\ "budget":{"daily_dollars":1.0}}}
     ;
     try std.testing.expectError(
         ZombieConfigError.InvalidCredentialRef,
