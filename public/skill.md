@@ -1,24 +1,27 @@
 # UseZombie — Agent Delivery Control Plane
 
 ## What UseZombie does
-Turns spec files into validated pull requests using a sequential NullClaw agent pipeline:
+Hosts long-lived, event-driven autonomous workers (Zombies) scoped to a
+workspace. Inbound events arrive via webhooks (or other configured triggers)
+and are appended to each Zombie's event stream; the worker watcher dispatches
+them to the Zombie's loop, which can call tools, update state, and emit
+further events. Operators steer or kill running Zombies through the
+control-plane API.
 
-1. **Echo** (planner) — reads spec + repo, produces `plan.json`
-2. **Scout** (builder) — implements plan, produces code + `implementation.md`
-3. **Warden** (validator) — reviews against spec, runs tests, produces `validation.md` (T1-T4 tiered findings)
-4. On failure: Warden's defects feed back into Scout for retry (up to 3 attempts)
-5. On pass: PR is opened, `run_summary.md` is committed
-
-## API endpoints (6 operations)
+## API endpoints
 
 | operationId | Method | Path |
 |---|---|---|
-| `start_run` | POST | `/v1/runs` |
-| `get_run` | GET | `/v1/runs/{run_id}` |
-| `retry_run` | POST | `/v1/runs/{run_id}:retry` |
+| `create_zombie` | POST | `/v1/workspaces/{workspace_id}/zombies` |
+| `update_zombie` | PATCH | `/v1/workspaces/{workspace_id}/zombies/{zombie_id}` |
+| `kill_zombie` | POST | `/v1/workspaces/{workspace_id}/zombies/{zombie_id}/kill` |
+| `steer_zombie` | POST | `/v1/workspaces/{workspace_id}/zombies/{zombie_id}/steer` |
+| `list_zombie_events` | GET | `/v1/workspaces/{workspace_id}/zombies/{zombie_id}/events` |
+| `stream_zombie_events` | GET | `/v1/workspaces/{workspace_id}/zombies/{zombie_id}/events/stream` |
+| `ingest_zombie_webhook` | POST | `/v1/webhooks/{zombie_id}` |
 | `pause_workspace` | POST | `/v1/workspaces/{workspace_id}/pause` |
-| `list_specs` | GET | `/v1/specs?workspace_id={id}` |
 | `sync_specs` | POST | `/v1/workspaces/{workspace_id}/sync` |
+| `execute_tool` | POST | `/v1/execute` |
 
 ## Authentication
 `Authorization: Bearer <api_key>`
@@ -30,23 +33,14 @@ Turns spec files into validated pull requests using a sequential NullClaw agent 
 - LLMs discovery: `/llms.txt`
 
 ## Policy classes
-- `safe`: get_run, list_specs, sync_specs — allow by default
-- `sensitive`: start_run, retry_run, pause_workspace — require explicit confirmation
-- `critical`: destructive/permission changes — require double confirmation (none in M1)
+- `safe`: `list_zombie_events`, `stream_zombie_events`, `sync_specs` — allow by default
+- `sensitive`: `create_zombie`, `update_zombie`, `kill_zombie`, `steer_zombie`, `ingest_zombie_webhook`, `pause_workspace`, `execute_tool` — require explicit confirmation
+- `critical`: destructive/permission changes — require double confirmation (none currently)
 
-## Run lifecycle states
-```
-SPEC_QUEUED → RUN_PLANNED → PATCH_IN_PROGRESS → PATCH_READY
-→ VERIFICATION_IN_PROGRESS → (PASS) PR_PREPARED → PR_OPENED → NOTIFIED → DONE
-                            → (FAIL) VERIFICATION_FAILED → Scout retry → BLOCKED
-```
-
-## Artifacts per run (committed to feature branch under docs/runs/<run_id>/)
-- `plan.json` — Echo's task plan
-- `implementation.md` — Scout's implementation summary
-- `validation.md` — Warden's T1-T4 findings
-- `attempt_N_defects.md` — defects from failed attempt N
-- `run_summary.md` — final summary: run_id, PR URL, token totals, artifact list
+## Tool execution
+External agents (LangGraph, CrewAI, Composio, etc.) can invoke tools
+synchronously via `POST /v1/execute` — the agent supplies its API key and a
+tool name, and receives the tool's result inline.
 
 ## Revenue model
 BYOK (bring your own LLM API key) + per-agent-second compute billing.
