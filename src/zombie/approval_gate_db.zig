@@ -122,10 +122,10 @@ pub fn resolveAtomic(
     var update_q = PgQuery.from(try conn.query(
         \\UPDATE core.zombie_approval_gates
         \\SET status = $1, detail = $2, resolved_by = $3, updated_at = $4
-        \\WHERE action_id = $5 AND status = 'pending'
+        \\WHERE action_id = $5 AND status = $6
         \\RETURNING id::text, action_id, workspace_id::text, zombie_id::text,
         \\          status, COALESCE(updated_at, $4::bigint), resolved_by, detail
-    , .{ outcome.toSlice(), reason, by, now_ms, action_id }));
+    , .{ outcome.toSlice(), reason, by, now_ms, action_id, PENDING_STATUS }));
     defer update_q.deinit();
 
     if (try update_q.next()) |row| {

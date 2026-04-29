@@ -20,6 +20,8 @@ const approval_gate = @import("approval_gate.zig");
 
 const log = std.log.scoped(.approval_gate_sweeper);
 
+const PENDING_STATUS = approval_gate.GateStatus.pending.toSlice();
+
 const SCAN_INTERVAL_NS: u64 = 60 * std.time.ns_per_s;
 const SHUTDOWN_POLL_NS: u64 = 1 * std.time.ns_per_s;
 const BATCH_LIMIT: u32 = 100;
@@ -75,10 +77,10 @@ fn fetchExpired(pool: *pg.Pool, alloc: Allocator) ![][]const u8 {
     const now_ms = std.time.milliTimestamp();
     var q = PgQuery.from(try conn.query(
         \\SELECT action_id FROM core.zombie_approval_gates
-        \\WHERE status = 'pending' AND timeout_at <= $1
+        \\WHERE status = $1 AND timeout_at <= $2
         \\ORDER BY timeout_at ASC
-        \\LIMIT $2
-    , .{ now_ms, @as(i64, @intCast(BATCH_LIMIT)) }));
+        \\LIMIT $3
+    , .{ PENDING_STATUS, now_ms, @as(i64, @intCast(BATCH_LIMIT)) }));
     defer q.deinit();
 
     var ids: std.ArrayList([]const u8) = .{};

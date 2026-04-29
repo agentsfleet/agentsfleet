@@ -28,7 +28,11 @@ CREATE TABLE IF NOT EXISTS core.zombie_approval_gates (
     timeout_at      BIGINT NOT NULL DEFAULT 0,
     resolved_by     TEXT NOT NULL DEFAULT '',
 
-    status          TEXT NOT NULL DEFAULT 'pending',
+    -- status: enum maintained in application code (src/zombie/approval_gate.zig
+    -- GateStatus). No DEFAULT here — every INSERT supplies it explicitly via
+    -- approval_gate.GateStatus.<variant>.toSlice() so a rename of an enum
+    -- variant cannot drift past the type system.
+    status          TEXT NOT NULL,
     detail          TEXT NOT NULL DEFAULT '',
     requested_at    BIGINT NOT NULL,
     updated_at      BIGINT,
