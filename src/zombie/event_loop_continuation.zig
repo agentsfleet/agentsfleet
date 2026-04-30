@@ -55,7 +55,7 @@ fn countPriorContinuationsForChain(
         \\      JOIN chain c ON e.zombie_id = $1::uuid
         \\                  AND e.event_id = c.resumes_event_id
         \\)
-        \\SELECT count(*)::int FROM chain WHERE event_type = 'continuation'
+        \\SELECT count(*) FROM chain WHERE event_type = 'continuation'
     , .{ zombie_id, event_id }));
     defer q.deinit();
     if (try q.next()) |row| {
