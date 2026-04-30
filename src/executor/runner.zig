@@ -255,8 +255,14 @@ fn executeInner(
     var obs_runtime = ObserverRuntime.init(alloc);
     var secrets_list = collectSecrets(agent_config);
     var adapter: runner_progress.Adapter = undefined;
+    const checkpoint_every: u32 = if (policy) |p| p.context.memory_checkpoint_every else 0;
     const obs = if (progress) |w| blk: {
-        adapter = .{ .writer = w, .alloc = alloc, .secrets = secrets_list[0..] };
+        adapter = .{
+            .writer = w,
+            .alloc = alloc,
+            .secrets = secrets_list[0..],
+            .memory_checkpoint_every = checkpoint_every,
+        };
         break :blk adapter.observer();
     } else obs_runtime.observer();
 
