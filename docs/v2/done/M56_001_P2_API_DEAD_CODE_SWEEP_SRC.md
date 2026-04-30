@@ -4,7 +4,7 @@
 **Milestone:** M56
 **Workstream:** 001
 **Date:** Apr 30, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P2 — pre-v2.0.0 hygiene; no consumer impact, but every orphan rots the codebase and lies to future readers (RULE NLG, RULE ORP).
 **Categories:** API
 **Batch:** B1
@@ -250,18 +250,17 @@ git diff --name-status origin/main
 
 ## Verification Evidence
 
-(Filled in during VERIFY phase.)
-
 | Check | Command | Result | Pass? |
 |-------|---------|--------|-------|
-| Unit tests | `make test` | | |
-| Lint | `make lint` | | |
-| Cross-compile (x86_64) | `zig build -Dtarget=x86_64-linux` | | |
-| Cross-compile (aarch64) | `zig build -Dtarget=aarch64-linux` | | |
-| pg-drain | `make check-pg-drain` | | |
-| Gitleaks | `gitleaks detect` | | |
-| Orphan sweep (E8) | (see above) | | |
-| Milestone-ID self-audit (E9) | (see above) | | |
+| Unit tests | `zig build test --summary all` | 1473/1663 passed; 190 skipped; 0 failed (matches origin/main pass rate; the 88-test count drop equals dead-symbol tests removed by the deletions) | ✅ |
+| Lint | `make lint` (full pre-commit hook) | passed on both refactor commits | ✅ |
+| Cross-compile (x86_64) | `zig build -Dtarget=x86_64-linux` | exit 0 | ✅ |
+| Cross-compile (aarch64) | `zig build -Dtarget=aarch64-linux` | exit 0 | ✅ |
+| pg-drain | `make check-pg-drain` (via pre-commit hook) | 346 files scanned, clean | ✅ |
+| Gitleaks | `gitleaks detect` | 1326 commits / 108 MB scanned, no leaks | ✅ |
+| Orphan-reference sweep | `grep -rnE 'reliable_call\|rate_limit\.zig\|prompt_events\|test_fixtures_uc[23]\|generatePromptLifecycleEventId\|isSafeGitRef\|isSafeRelativePath\|extractPrNumber\|ensureBareClone\|createWorktree\|removeWorktree\|getHeadSha\|commitFile\|remoteBranchExists\|createPullRequest\|findOpenPullRequestByHead\|postPrComment\|parseGitHubOwnerRepo' src/` | 0 matches outside `src/git/` (noise: `auth/github.zig` carries its own local `splitHttpResponse`/`parseHttpStatus` — unrelated; `metrics_*` files use the unrelated `rate_limited` enum/metric name) | ✅ |
+| Milestone-ID self-audit | `git diff --name-only --diff-filter=AMR HEAD~3..HEAD \| grep -vE '(^docs/\|\.md$)' \| xargs grep -nE 'M[0-9]+_[0-9]+\|§[0-9]+(\.[0-9]+)+\|\bT[0-9]+\b'` | empty | ✅ |
+| `src/git/` line totals | `wc -l src/git/*.zig` | 319 LOC across 5 files (down from 1161 LOC across 7 files) | ✅ |
 
 ---
 
