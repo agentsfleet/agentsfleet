@@ -4,11 +4,11 @@
 **Milestone:** M56
 **Workstream:** 001
 **Date:** Apr 30, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P2 — pre-v2.0.0 hygiene; no consumer impact, but every orphan rots the codebase and lies to future readers (RULE NLG, RULE ORP).
 **Categories:** API
 **Batch:** B1
-**Branch:** feat/m56-dead-code-sweep (to be created)
+**Branch:** feat/m56-dead-code-sweep
 **Depends on:** none
 
 **Canonical architecture:** `docs/ARCHITECHTURE.md` — N/A (no flow change; pure removal/wiring).
