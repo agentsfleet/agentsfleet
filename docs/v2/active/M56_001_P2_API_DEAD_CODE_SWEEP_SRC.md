@@ -44,7 +44,7 @@
 
 The most insidious is `src/types/defaults.zig`: its header comment claims "if a constant diverges from its schema DEFAULT, the tests below will fail" — but the file is never imported, so those tests never run. It is a self-deceiving guard.
 
-**Solution summary:** Delete the dead production modules and dead fixtures (728 LOC removed). Wire the legitimate test file (`pr_comment_test.zig`) into its parent via `comptime { _ = @import("pr_comment_test.zig"); }` so its test cases run under `make test`. Strip the `M16_001 §3.4` Milestone-ID violation from `pr_comment_test.zig` while wiring it. Re-run `make lint`, `make test`, `make test-integration`, and the orphan-sweep eval to confirm zero regressions and zero remaining orphans.
+**Solution summary:** Delete the dead production modules and dead fixtures (~728 LOC). Then sweep `src/git/` to its live closure: only `cmd/preflight.zig` calls `git_ops.cleanupRuntimeArtifacts`, so every other symbol under `src/git/` (PR creation, commit, push, clone, worktree lifecycle, ref/path validation) is unreachable. Delete `src/git/pr.zig` and `src/git/pr_comment_test.zig`; trim `src/git/repo.zig` to `cleanupRuntimeArtifacts` + helpers; trim `src/git/validate.zig` to `isSafeIdentifierSegment` + `isSafeWorktreeDirName`; trim `src/git/ops.zig` to the two re-exports `cmd/preflight.zig` actually consumes; reduce `src/git/errors.zig` to the one `CommandFailed` variant `command.run` returns. Re-run `make lint`, `zig build test`, cross-compile, and the orphan-sweep eval to confirm zero regressions.
 
 ---
 
@@ -59,12 +59,16 @@ The most insidious is `src/types/defaults.zig`: its header comment claims "if a 
 | `src/db/test_fixtures_prompt_events.zig` | DELETE | Sole consumer was `prompt_events.zig`; orphans together. |
 | `src/db/test_fixtures_uc2.zig` | DELETE | Zero consumers. |
 | `src/db/test_fixtures_uc3.zig` | DELETE | Zero consumers. |
-| `src/git/pr_comment_test.zig` | EDIT | Strip `M16_001 §3.4` header (Milestone-ID Gate) and rename test names if they carry milestone tags. |
-| `src/git/pr.zig` | EDIT | Add `comptime { _ = @import("pr_comment_test.zig"); }` so its tests participate in `make test`. |
-| `src/types/id_format.zig` | EDIT | Drop `generatePromptLifecycleEventId` (and its test rows in `id_format_test.zig`) iff `prompt_events.zig` is deleted — it was the only caller. |
-| `src/types/id_format_test.zig` | EDIT | Drop the two rows referencing `generatePromptLifecycleEventId`. |
+| `src/git/pr.zig` | DELETE | Zero external callers; PR creation/comment/parsing surface never reached from any live entry point. |
+| `src/git/pr_comment_test.zig` | DELETE | Tests `extractPrNumber` from the now-deleted `pr.zig`; nothing else consumes the function. |
+| `src/git/repo.zig` | EDIT | Drop dead functions (`ensureBareClone`, `createWorktree`, `removeWorktree`, `getHeadSha`, `commitFile`, `push`, `remoteBranchExists`, `WorktreeHandle`) and their integration tests. Keep `cleanupRuntimeArtifacts`, the two cleanup helpers, and `RuntimeCleanupStats`. |
+| `src/git/validate.zig` | EDIT | Drop `isSafeGitRef` and `isSafeRelativePath` (and their tests) — only the cleanup path needs `isSafeIdentifierSegment` + `isSafeWorktreeDirName`. |
+| `src/git/ops.zig` | EDIT | Drop every re-export not consumed externally. Keep `RuntimeCleanupStats` and `cleanupRuntimeArtifacts` for `cmd/preflight.zig`. |
+| `src/git/errors.zig` | EDIT | Reduce `GitError` to the one variant `command.run` returns (`CommandFailed`). |
+| `src/types/id_format.zig` | EDIT | Drop `generatePromptLifecycleEventId` — its only caller was `prompt_events.zig`. |
+| `src/types/id_format_test.zig` | EDIT | Drop the two rows referencing `generatePromptLifecycleEventId`, rename remaining tests to drop legacy `T2`/`T3`/`T5` prefixes. |
 
-No schema, no HTTP handlers, no auth surface, no architecture changes. Pure deletion + one wiring + one downstream symbol cleanup.
+No schema, no HTTP handlers, no auth surface, no architecture changes. Pure deletion of unreachable surface.
 
 ---
 
@@ -78,9 +82,9 @@ Remove `reliable_call.zig`, `rate_limit.zig`, `types/defaults.zig`, `observabili
 
 Remove `db/test_fixtures_uc2.zig` and `db/test_fixtures_uc3.zig`. If a future spec adds UC2/UC3 tests, the fixture lands with the test that needs it — not on speculation.
 
-### §3 — Wire `pr_comment_test.zig` into its parent
+### §3 — Sweep `src/git/` to its live closure
 
-Add a `comptime { _ = @import("pr_comment_test.zig"); }` line at the top of `src/git/pr.zig` so Zig's test discovery picks up the existing tests. Strip the `M16_001 §3.4` reference from the file header (Milestone-ID Gate). Verify each test name complies with RULE TST-NAM (no `M{N}_{NNN}` token, no `§X.Y`, no `T{N}`, no `dim X.Y`).
+`cmd/preflight.zig:173` calls `git_ops.cleanupRuntimeArtifacts` and nothing else under `src/git/` is reachable. Delete `src/git/pr.zig` and `src/git/pr_comment_test.zig` outright. Trim `src/git/repo.zig` to `cleanupRuntimeArtifacts` + the two private helpers + `RuntimeCleanupStats`. Trim `src/git/validate.zig` to `isSafeIdentifierSegment` + `isSafeWorktreeDirName` (the two segment-shape checks the cleanup helpers actually call). Trim `src/git/ops.zig` to the two re-exports `cmd/preflight.zig` consumes. Reduce `src/git/errors.zig` to the lone `CommandFailed` variant. After the trim, `wc -l src/git/*.zig` should sit around 200 LOC total (vs 1161 LOC pre-sweep).
 
 ### §4 — Drop the orphaned `id_format` helper
 
@@ -121,9 +125,8 @@ N/A — no public interface (HTTP, CLI, RPC, library) changes. The deleted symbo
 
 | Test | Asserts |
 |------|---------|
-| `git_pr_extract_pr_number_happy` | `extractPrNumber("https://github.com/owner/repo/pull/42")` returns `42`. (Existing test, just newly wired.) |
-| `git_pr_extract_pr_number_invalid` | Malformed URLs return `null` / error. (Existing test.) |
-| `make_test_count_does_not_decrease` | Before/after test count from `zig build test --summary all` is `>=` baseline minus only the count of intentionally-deleted tests (the two in `prompt_events.zig`). |
+| `git_cleanup_runtime_artifacts_kept` | The existing `integration: cleanupRuntimeArtifacts removes stale worktrees in root` test in `repo.zig` still passes after the trim. |
+| `make_test_count_drop_matches_deletions` | Before/after test count from `zig build test --summary all` drops only by the count of intentionally-deleted tests (orphan production tests + git/ tests for symbols whose functions were deleted). No surviving test starts failing. |
 | `orphan_sweep_eval_clean` | The orphan-sweep grep in E8 produces empty output. |
 | `milestone_id_self_audit_clean` | E9 self-audit grep produces empty output. |
 
@@ -134,8 +137,9 @@ Negative tests covered by Failure Modes; the deletes themselves are negative-by-
 ## Acceptance Criteria
 
 - [ ] All seven files in §1+§2 deleted from disk and tracked by `git rm` — verify: `git status` shows them under `deleted:`.
-- [ ] `src/git/pr.zig` contains `comptime { _ = @import("pr_comment_test.zig"); }` — verify: `grep -F 'comptime { _ = @import("pr_comment_test.zig"); }' src/git/pr.zig`.
-- [ ] `src/git/pr_comment_test.zig` contains no Milestone-ID tokens — verify: `grep -E 'M[0-9]+_[0-9]+|§[0-9]+\.[0-9]+|\bT[0-9]+\b|\bdim [0-9]+\.[0-9]+\b' src/git/pr_comment_test.zig` returns empty.
+- [ ] `src/git/pr.zig` and `src/git/pr_comment_test.zig` deleted — verify: `test ! -f src/git/pr.zig && test ! -f src/git/pr_comment_test.zig`.
+- [ ] `src/git/repo.zig`, `validate.zig`, `ops.zig`, `errors.zig` trimmed to live closure — verify: `wc -l src/git/*.zig` totals ≲ 250.
+- [ ] No external caller references a removed `git/` symbol — verify: `grep -rnE 'isSafeGitRef|isSafeRelativePath|extractPrNumber|ensureBareClone|createWorktree|removeWorktree|getHeadSha|commitFile|remoteBranchExists|createPullRequest|findOpenPullRequestByHead|postPrComment|HttpResponseParts|splitHttpResponse|parseHttpStatus|parseGitHubOwnerRepo' src/ --include='*.zig' | grep -v '^src/git/'` returns empty.
 - [ ] `generatePromptLifecycleEventId` removed from `src/types/id_format.zig` and `src/types/id_format_test.zig` — verify: `grep -rn 'generatePromptLifecycleEventId' src/` empty.
 - [ ] `make lint` clean.
 - [ ] `make test` passes (with `pr_comment_test` cases now counted).
@@ -209,6 +213,8 @@ git diff --name-status origin/main
 | `src/db/test_fixtures_prompt_events.zig` | `test ! -f src/db/test_fixtures_prompt_events.zig` |
 | `src/db/test_fixtures_uc2.zig` | `test ! -f src/db/test_fixtures_uc2.zig` |
 | `src/db/test_fixtures_uc3.zig` | `test ! -f src/db/test_fixtures_uc3.zig` |
+| `src/git/pr.zig` | `test ! -f src/git/pr.zig` |
+| `src/git/pr_comment_test.zig` | `test ! -f src/git/pr_comment_test.zig` |
 
 **2. Orphaned references — zero remaining imports or uses.**
 
@@ -221,12 +227,14 @@ git diff --name-status origin/main
 | `test_fixtures_uc2` import | `grep -rn 'test_fixtures_uc2' src/` | 0 matches |
 | `test_fixtures_uc3` import | `grep -rn 'test_fixtures_uc3' src/` | 0 matches |
 | `generatePromptLifecycleEventId` symbol | `grep -rn 'generatePromptLifecycleEventId' src/` | 0 matches |
+| `git/pr.zig` import | `grep -rn '@import.*"pr\.zig"\|@import.*"git/pr"' src/` | 0 matches outside `src/git/` |
+| Removed `git/` symbols | `grep -rnE 'isSafeGitRef\|isSafeRelativePath\|extractPrNumber\|ensureBareClone\|createWorktree\|removeWorktree\|getHeadSha\|commitFile\|remoteBranchExists\|createPullRequest\|findOpenPullRequestByHead\|postPrComment\|parseGitHubOwnerRepo' src/` | 0 matches outside `src/git/` |
 
 ---
 
 ## Discovery (consult log)
 
-(Empty at creation. Populate as Legacy-Design Consults / Architecture Consults fire during EXECUTE.)
+**Apr 30, 2026 — `src/git/` live-closure audit (scope expansion).** While preparing to wire `src/git/pr_comment_test.zig` into the test graph, a closer audit showed that `src/git/` has exactly one external production caller: `cmd/preflight.zig:173` invokes `git_ops.cleanupRuntimeArtifacts`. Every other symbol — PR creation/comment/parsing, commit, push, clone, worktree create/remove, ref/path validation — has zero external callers. Wiring `pr_comment_test.zig` would have surfaced a real path-traversal bug in `validate.isSafeRelativePath` (which treats `..` as a safe segment because `isSafeIdentifierSegment` allows the `.` character), but that bug lives in dead code: `commitFile` (its only caller via `validate.isSafeRelativePath`) has no live caller either. Rather than fix the bug or wire the test against a dead surface, this spec was expanded to **delete the entire dead surface** — `pr.zig`, `pr_comment_test.zig`, plus the dead branches of `repo.zig`/`validate.zig`/`ops.zig`/`errors.zig`. Net effect: ~1000 LOC removed instead of ~728, the buggy validator goes away, and the orphan sweep becomes substantially cleaner. User authorized the scope expansion explicitly before the trim landed.
 
 ---
 
