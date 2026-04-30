@@ -123,6 +123,13 @@ pub fn runEventLoop(
     var consecutive_errors: u32 = 0;
 
     while (cfg.running.load(.acquire)) {
+        if (cfg.reload_pending) |flag| {
+            if (flag.swap(false, .acq_rel)) {
+                reloadZombieConfig(alloc, session, cfg.pool) catch |err| {
+                    log.warn("zombie_event_loop.reload_fail zombie_id={s} err={s}", .{ session.zombie_id, @errorName(err) });
+                };
+            }
+        }
         const poll_result = pollNextEvent(cfg, session, consumer_id, &last_reclaim_ms);
         if (poll_result.err) {
             consecutive_errors += 1;
@@ -165,6 +172,30 @@ fn pollNextEvent(cfg: EventLoopConfig, session: *ZombieSession, consumer_id: []c
 
 fn processEvent(alloc: Allocator, session: *ZombieSession, evt: *redis_zombie.ZombieEvent, cfg: EventLoopConfig, consecutive_errors: *u32) u32 {
     return writepath.run(alloc, session, evt, cfg, consecutive_errors);
+}
+
+/// §9 hot-reload: re-read core.zombies.config_json, reparse, swap on
+/// the session, free the old config. In-flight executions are not
+/// interrupted (this only runs between events). Errors leave the old
+/// config in place; the next reload signal can retry.
+fn reloadZombieConfig(alloc: Allocator, session: *ZombieSession, pool: *pg.Pool) !void {
+    const conn = try pool.acquire();
+    defer pool.release(conn);
+    var q = PgQuery.from(try conn.query(
+        \\SELECT config_json::text FROM core.zombies WHERE id = $1
+    , .{session.zombie_id}));
+    defer q.deinit();
+    const row = try q.next() orelse return error.ZombieNotFound;
+    const config_json_owned = try alloc.dupe(u8, try row.get([]const u8, 0));
+    defer alloc.free(config_json_owned);
+
+    var new_config = try zombie_config.parseZombieConfig(alloc, config_json_owned);
+    errdefer new_config.deinit(alloc);
+
+    var old_config = session.config;
+    session.config = new_config;
+    old_config.deinit(alloc);
+    log.info("zombie_event_loop.config_reloaded zombie_id={s} name={s}", .{ session.zombie_id, session.config.name });
 }
 
 /// Checkpoint session state to Postgres (UPSERT on zombie_id).

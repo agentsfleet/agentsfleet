@@ -28,18 +28,19 @@ pub const ZombieWorkerConfig = struct {
     executor: ?*executor_client.ExecutorClient,
     workspace_path: []const u8 = "/tmp/zombie",
     telemetry: ?*telemetry_mod.Telemetry = null,
-    /// Per-zombie cancel flag, owned by the watcher. When the watcher receives a
-    /// `zombie_status_changed status=killed` (or paused) control message it flips
-    /// this flag; the per-zombie thread observes it at the top of every loop
-    /// iteration and exits cleanly. Null when the worker was started without a
-    /// watcher (legacy startup path); in that case only `shutdown_requested`
-    /// drives termination.
-    cancel_flag: ?*std.atomic.Value(bool) = null,
-    /// Process-wide drain state. When the worker enters the draining phase
-    /// (e.g. SIGTERM), the per-zombie watch thread observes `!isAcceptingWork()`
-    /// and flips `running` so the event loop exits. Null when no drain primitive
-    /// is wired (legacy startup); termination then falls back to shutdown_requested.
-    worker_state: ?*const worker_state_mod.WorkerState = null,
+    /// Per-zombie cancel flag, owned by the watcher's ZombieRuntime.
+    /// Watcher flips it on `zombie_status_changed status=killed|paused`;
+    /// the per-zombie thread observes it via watchShutdown and exits.
+    cancel_flag: *std.atomic.Value(bool),
+    /// §9 hot-reload signal, owned by the watcher's ZombieRuntime.
+    /// Watcher flips it on `zombie_config_changed`; the per-zombie
+    /// thread reads + clears it between events and reloads
+    /// `session.config` from PG.
+    reload_pending: *std.atomic.Value(bool),
+    /// Process-wide drain state. SIGTERM-driven graceful shutdown
+    /// flips this; per-zombie watchShutdown observes `!isAcceptingWork()`
+    /// and flips `running` so the event loop exits.
+    worker_state: *const worker_state_mod.WorkerState,
 };
 
 /// Entry point for a Zombie worker thread.
@@ -83,6 +84,8 @@ pub fn zombieWorkerLoop(alloc: std.mem.Allocator, cfg: ZombieWorkerConfig) void 
         .running = &running,
         .workspace_path = cfg.workspace_path,
         .telemetry = cfg.telemetry,
+        .reload_pending = cfg.reload_pending,
+
     });
     log.info("zombie_worker.stopped zombie_id={s}", .{cfg.zombie_id});
 }
@@ -166,14 +169,14 @@ pub fn listNonActiveZombieIds(pool: *pg.Pool, alloc: std.mem.Allocator) ![][]con
 }
 
 
-/// Polls the global shutdown flag, the (optional) per-zombie cancel flag, and
-/// the (optional) WorkerState drain phase, flipping `running` to false when
-/// any of them fires. Per-zombie cancel propagates `POST /kill`; drain phase
+/// Polls the global shutdown flag, the per-zombie cancel flag, and the
+/// WorkerState drain phase, flipping `running` to false when any of them
+/// fires. Per-zombie cancel propagates `POST /kill`; drain phase
 /// propagates SIGTERM-driven graceful shutdown.
 fn watchShutdown(
     shutdown: *const std.atomic.Value(bool),
-    cancel: ?*std.atomic.Value(bool),
-    drain: ?*const worker_state_mod.WorkerState,
+    cancel: *std.atomic.Value(bool),
+    drain: *const worker_state_mod.WorkerState,
     running: *std.atomic.Value(bool),
 ) void {
     // Synchronization contract: each flag is written once with .release by the
@@ -182,10 +185,9 @@ fn watchShutdown(
     // .acq_rel is unnecessary since this thread never writes the input flags,
     // only reads them.
     while (running.load(.acquire)) {
-        // safe because: each input flag is set with .release on its writer
         if (shutdown.load(.acquire)) break;
-        if (cancel) |c| if (c.load(.acquire)) break;
-        if (drain) |ws| if (!ws.isAcceptingWork()) break;
+        if (cancel.load(.acquire)) break;
+        if (!drain.isAcceptingWork()) break;
         std.Thread.sleep(100 * std.time.ns_per_ms);
     }
     // safe because: paired with .acquire load on the spawning thread before .join()
