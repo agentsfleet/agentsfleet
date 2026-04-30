@@ -17,6 +17,7 @@ const telemetry_mod = @import("../observability/telemetry.zig");
 const redis_zombie = @import("../queue/redis_zombie.zig");
 const executor_client = @import("../executor/client.zig");
 const executor_transport = @import("../executor/transport.zig");
+const context_budget = @import("../executor/context_budget.zig");
 const id_format = @import("../types/id_format.zig");
 
 const types = @import("event_loop_types.zig");
@@ -265,6 +266,22 @@ pub fn executeInSandbox(
     }
     const secrets_map: ?std.json.Value = if (secrets_obj_alive) .{ .object = secrets_obj } else null;
 
+    // §8 auto-defaults: every empty/zero knob is the auto sentinel.
+    // applyContextDefaults substitutes spec defaults so the executor
+    // receives a fully-populated ContextBudget. Frontmatter overrides
+    // (x-usezombie.context) land here once the parser ships — the
+    // parser writes non-zero values, applyContextDefaults leaves them
+    // alone.
+    var ctx_budget: context_budget.ContextBudget = .{};
+    context_budget.applyContextDefaults(&ctx_budget);
+    log.info("zombie_event_loop.context_budget_resolved zombie_id={s} tool_window={d} memory_checkpoint_every={d} stage_chunk_threshold={d:.2} context_cap_tokens={d}", .{
+        session.zombie_id,
+        ctx_budget.tool_window,
+        ctx_budget.memory_checkpoint_every,
+        ctx_budget.stage_chunk_threshold,
+        ctx_budget.context_cap_tokens,
+    });
+
     const execution_id = cfg.executor.createExecution(.{
         .workspace_path = cfg.workspace_path,
         .correlation = .{
@@ -274,9 +291,9 @@ pub fn executeInSandbox(
             .session_id = event.event_id,
         },
         .secrets_map = secrets_map,
-        // network_policy / tools / context budget remain default empty for
-        // now — slice 3 wires per-zombie network allowlist + tool filter,
-        // slice 6 wires the context budget from frontmatter.
+        .context = ctx_budget,
+        // network_policy / tools remain default empty — slice 3 wires
+        // per-zombie network allowlist + tool filter from frontmatter.
     }) catch |err| {
         log.err("zombie_event_loop.exec_create_fail zombie_id={s} event_id={s} error_code=" ++ error_codes.ERR_EXEC_SESSION_CREATE_FAILED, .{ session.zombie_id, event.event_id });
         return err;
