@@ -62,8 +62,22 @@ The original spec below was written assuming greenfield. M28_001 (DONE) had alre
 - Out: Manual smoke against staging (defer to M49 install-skill validation, parallel to M48b's pattern).
 - Out: high-entropy secret generation and "show once" UX (M49 owns the install-skill UX; M43 assumes the secret exists in vault).
 
-**A13 — Follow-up spec scheduled (not folded here):**
-- Slack workspace-global secret removal (`SLACK_SIGNING_SECRET` env var, `auth/middleware/slack_signature.zig`, `/v1/slack/events`, `/v1/slack/interactions`). Workspace-global secrets are not a valid use case going forward; per-zombie via the unified `webhook_sig` + `PROVIDER_REGISTRY` (which already has SLACK registered) is the only sanctioned path. Pending spec to be filed under `docs/v2/pending/M{next}_001_P2_API_SLACK_WORKSPACE_GLOBAL_REMOVAL.md`.
+**A13 — Slack workspace-global surface removed in this same PR (no separate spec).**
+
+Per operator decision during the review walkthrough, the dead Slack-app inbound layer was deleted as part of this same review-amendment PR rather than scheduled as a follow-up spec. The investigation confirmed:
+
+- Zero UI/CLI consumers for `/v1/slack/install` or `/v1/slack/callback`.
+- Outbound Slack (`chat.postMessage` from zombies) uses each operator's *workspace* credential `slack`.bot_token — unaffected.
+- M47 approval inbox is in-dashboard, not Slack-button-driven — `/v1/slack/interactions` was strictly orphan.
+- The platform-ops wedge has zombies posting *to* Slack, never receiving from Slack — `/v1/slack/events` had no live use case.
+
+**What was deleted:** `SLACK_SIGNING_SECRET` env read, `auth/middleware/slack_signature.zig`, `auth/middleware/oauth_state.zig` (Slack-only — referenced `slack:oauth:nonce:` Redis keys), the four `/v1/slack/*` routes + path matches + route-table + invoke entries, `src/http/handlers/slack/{events,interactions,oauth,oauth_client}.zig`, `public/openapi/paths/slack.yaml` + root.yaml refs, the four `route_manifest.zig` entries, and the Slack carve-outs in `scripts/check_openapi_url_shape.py`. Net deletion: ~2100 lines.
+
+**What stayed:** `webhook_verify.PROVIDER_REGISTRY.SLACK` (used by the generic per-zombie webhook receiver if any zombie ever declares `trigger.source: slack`). Outbound Slack via `chat.postMessage`. `/v1/github/callback` (vendor-pinned by GitHub App manifest, alive and used by `zombiectl workspace add` for App-installation binding — different concern from Slack inbound).
+
+Verified clean: `zig build`, `make test`, `make openapi` (route-manifest ↔ openapi parity), `make lint`, orphan-grep for the removed symbols.
+
+When "Slack-as-input" becomes a real product need (e.g. a `usezombie-slack-bot` skill, or per-zombie Slack subscriptions), it ships as a fresh design rather than reviving the workspace-global path.
 
 The original spec text below describes the *problem and intent* correctly; the *implementation shape* is superseded by the amendments above where they conflict.
 
